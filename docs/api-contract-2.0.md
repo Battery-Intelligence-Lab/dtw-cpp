@@ -108,15 +108,15 @@ res  = dtwc.cluster(data, k=3)# Result: labels, medoids, score(name), save(dir),
 |---|---|---|---|
 | Set | `std::string dtwc::device(std::string_view name)` | `dtwcpp.device(name: str) -> str` | `dtwc.device(name)` |
 | Get | `std::string dtwc::device()` | `dtwcpp.device() -> str` (`__init__.py`) | `name = dtwc.device()` |
-| Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"`,`"hpc"` | same, parsed by the C++ grammar through its binding (`_dtwcpp_core.parse_device`) | same |
+| Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"` | same, plus `"hpc"` and `"hpc:gpu"`; local names are parsed by the C++ grammar through its binding (`_dtwcpp_core.parse_device`) | same as C++ |
 | Returns | canonical name from `to_string(Device)` (+`:N` for a non-zero GPU ordinal) | same: `device()` returns what `dtwc::device()` returns, so `"cuda:0"` comes back as `"gpu"` | same |
-| Errors | `DeviceError` on unknown name (§6) | `DeviceError` on unknown/unavailable local device; HPC transport gap F24 | `dtwc:deviceError` |
-| Delegates to | `dtwc::env().set_device(name)` | `dtwc::device(name)` after local validation, so `Env` is the only store; HPC credentials deferred to the wrapper (Python keeps only the deferred `hpc` selection) | MEX `set_device` → `Env` |
+| Errors | `DeviceError` on an unknown name, and on `"hpc"`, naming Python's `dtwcpp.device("hpc")` and `slurm_remote.sh` (§6) | `DeviceError` on unknown/unavailable local device; HPC transport gap F24 | `dtwc:deviceError`, as C++ |
+| Delegates to | one process-wide `{Device, index}` | `dtwc::device(name)` after local validation, so C++ holds the local selection; Python records `hpc` / `hpc:gpu` itself and checks credentials at submit | MEX `set_device` → `dtwc::device(name)` |
 
-C++ and MATLAB delegate local-device validation directly to `dtwc::Env`; Python
-parses with the same grammar (`dtwc::detail::parse_device`), checks that the GPU
-is live, and stores a CPU/GPU selection in Env through `dtwc::device(name)`; it
-keeps only a deferred `hpc` selection of its own. The friendly name `"gpu"`, and
+C++ and MATLAB validate through `dtwc::device(name)`; Python parses with the same
+grammar (`dtwc::detail::parse_device`), checks that the GPU is live, and stores a
+CPU/GPU selection in C++ through `dtwc::device(name)`; it records an `hpc` or
+`hpc:gpu` selection of its own, which C++ refuses. The friendly name `"gpu"`, and
 its alias `"cuda"`, resolves to CUDA (or Metal on macOS) at call time. C++
 Tier-1 HPC submission remains the approved 2.1 transport defer. Python owns the
 SLURM wrapper, but its current HPC errors violate the frozen taxonomy/messages
@@ -172,7 +172,7 @@ so the two share one method x device resolution: on `gpu` the matrix methods
 covers every series) run with the GPU filling the matrix, while `onebatch`,
 `tadpole` and a smaller `clara` sample, which compute on the CPU as they go,
 raise `DeviceError`. A path dataset reads every format `dtwc_cl` reads (CSV/TSV,
-a folder, Parquet, Arrow IPC, `.dtws`).
+a folder, Parquet, Arrow IPC).
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as
@@ -255,7 +255,7 @@ not prove execution:
 
 | Parameter | Python | MATLAB | Current status |
 |---|---|---|---|
-| `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validated through `Env` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s distance strategy |
+| `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validated through `dtwc::device` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s distance strategy |
 | `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit | `Metric='l1'` or `'squared_euclidean'`, consumed by fit: a non-L1 metric builds the exact matrix through `dtwc_mex('DTWClustering_compute_distance_matrix', X, band, metric)` and sets it on the `Problem`, as `_clustering.py` does |
 
 Both estimators converge on the shared constructor set `{n_clusters, variant, band,
@@ -271,7 +271,7 @@ input, device, or `Problem` effect, and an unknown value raises
 
 Retained for power users. `Problem` stays a first-class object. Canonical
 snake_case methods, core-owned algorithm result writeback, and the frozen
-encapsulation/accessor split are live. Ten C++ `Problem` fields are private;
+encapsulation/accessor split are live. Eight C++ `Problem` fields are private;
 eleven deliberately retained expert/result fields remain public. A live symbol
 in the tables below does not imply that every other promised invariant or
 deprecation diagnostic is complete.
@@ -279,28 +279,27 @@ deprecation diagnostic is complete.
 ### 2.1 `Problem` — configuration setters
 
 Canonical config setters are snake_case. Eleven expert/result fields remain
-public: the deprecated actual `int` fields `maxIter` and `N_repetition`, plus
+public: the v1.0.0 `int` fields `maxIter` and `N_repetition`, plus
 `band`, `variant_params`, `missing_strategy`, `distance_strategy`,
 `cuda_settings`, `mip_settings`, `init_fun`, `clusters_ind`, and
-`centroids_ind`. Canonical accessors for the two deprecated fields are
-out-of-line and warning-silent.
+`centroids_ind`. The setters check what they are given; a direct write to
+a field does not.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
 | k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; retained C++ `set_numberOfClusters` and Python `set_number_of_clusters` are deprecated warning aliases |
 | method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
-| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | deprecated public `int maxIter` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
-| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | deprecated public `int N_repetition` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
+| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | public `int maxIter` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
+| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | public `int N_repetition` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
 | random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | retained field (`Problem.hpp`) |
 | metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill and lazy lookups, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW with `MissingStrategy::Error`, else `InvalidInput` |
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
-| device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one `Env` grammar (§6.4) |
+| device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
-| storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[introduced-2.0]` | `set_storage_policy(str)` `[introduced-2.0]` | live in all three routes; governs the next owning `set_data` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
@@ -325,7 +324,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `fillDistanceMatrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
 | `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
-| `dense_distance_matrix()` | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
+| — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
 | — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
@@ -333,17 +332,18 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `calculateMedoids()` | `calculate_medoids()` | `calculate_medoids()` (live) | — |
 | `cluster()` | `cluster()` | `cluster()` (live) | `cluster()` `[introduced-2.0]` |
 | `cluster_by_MIP()` | `cluster_by_mip()` | — | — |
-| `cluster_by_kMedoidsLloyd()` | `cluster_by_kmedoids_lloyd()` | — | — |
+| `cluster_by_kMedoidsPAM()` | `cluster_by_kmedoids_lloyd()` | — | — |
 | `printClusters()` | `print_clusters()` | `print_clusters()` (live) | — |
 | `writeClusters()` | `write_clusters()` | `write_clusters()` (live) | — |
 | `writeMedoidMembers(iter,rep=0)` | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` `[introduced-2.0]` | — |
 | `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
 **† Name collision (adjudicated in §10 item 6).** C++
-`Problem::distance_matrix()` returns the internal
-`std::variant<DenseDistanceMatrix, MmapDistanceMatrix>` by reference. The
-Python/MATLAB spelling returns an NxN numeric matrix; Python returns an
-independent copy. The language-specific semantics are retained.
+`Problem::distance_matrix()` returns the `core::DistanceMatrix` by reference:
+the packed lower triangle, on the heap or mapped (`use_mmap_distance_matrix`),
+read and written through the same `get` / `set`. The Python/MATLAB spelling
+returns an NxN numeric matrix of either storage; Python returns an independent
+copy. The language-specific semantics are retained.
 
 **‡ Python read/write rename.** `distance_matrix()` and
 `set_distance_matrix()` are canonical and live. The old
@@ -363,11 +363,11 @@ write lost after a successful open (a full disk, a file-size quota) raises
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,
 `series_name(i)`, `labels()`, `medoids()`, and `centroid_of(i)`.
-The nine same-name reads for encapsulated state are `method()`, `random_seed()`,
-`last_iterations()`, `tadpole_dc()`, `storage_policy()`,
-`verbose()`, `output_folder()`, `name()`, and `data()`.
+The eight same-name reads for encapsulated state are `method()`, `random_seed()`,
+`last_iterations()`, `tadpole_dc()`, `verbose()`, `output_folder()`,
+`name()`, and `data()`.
 `last_iterations()` is intentionally read-only, and
-`data()` returns `const Data&`; the other seven configuration values have
+`data()` returns `const Data&`; the other six configuration values have
 `set_*` mutators, while data replacement uses
 `set_data()` or `set_view_data()`.
 
@@ -385,7 +385,7 @@ The nine same-name reads for encapsulated state are `method()`, `random_seed()`,
 ### 2.3 `DataLoader` (C++ Tier-2 only) `[rename: camelCase → snake_case]`
 
 CSV/TSV builder. Bindings do **not** expose `DataLoader` — Tier-1 `load()`
-covers the binding use case; the multi-format (Parquet/Arrow/.dtws) loading in
+covers the binding use case; the multi-format (Parquet/Arrow) loading in
 `dtwc::run` (`cli/run.cpp`), which `dtwc_cl` and Tier-1 `cluster()` share, is the
 other path. Chained setters return `DataLoader&`.
 
@@ -504,78 +504,47 @@ are snake_case; current availability and gaps are explicit below.
 | Concept | C++ live (`checkpoint.hpp`) | Python | MATLAB 2.0 |
 |---|---|---|---|
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
-| save dir checkpoint | `save_checkpoint(const Problem&, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
-| load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
-| save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | `save_binary_checkpoint(result, path) -> None` `[introduced-2.0]` | live `[introduced-2.0]` |
-| load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | `load_binary_checkpoint(path) -> ClusteringResult` `[introduced-2.0]` | live `[introduced-2.0]` |
+| save checkpoint | `save_checkpoint(const Problem&, path)` writes `checkpoint_path(prob, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
+| load checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` only when the file is absent; other series or settings `InvalidInput`, a file that is not a whole `.dtwm` file `IOError`, neither changing the `Problem` | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
+
+A checkpoint is one `.dtwm` file, `checkpoint_path(prob, dir)` =
+`<dir>/<name>.dtwm` (`distances.dtwm` for an unnamed `Problem`): the layout of a
+mapped matrix (below), so a checkpoint maps with `use_mmap_distance_matrix` and a
+mapped matrix loads as a checkpoint. A save writes `<name>.dtwm.tmp`, flushes it
+to the device and renames it over the previous file; a `Problem` mapped to that
+file is its own checkpoint and a save flushes the mapping in place.
 
 `CheckpointOptions` is consumed by `Problem::fill_distance_matrix()` through
 the public `Problem::checkpoint` member. With `enabled`, the fill runs the exact
 BruteForce row schedule in consecutive blocks of `save_interval` completed
-matrix rows and publishes one generation after each block, the last block
-included, so a completed fill leaves a complete checkpoint. Each save runs on
-the calling thread after its block has joined; a save that throws propagates out
-of `fill_distance_matrix()`, leaving the computed cells resident and the
-previously published generation valid. `enabled` requires dense distance storage
-and `save_interval >= 1`; either violation raises `InvalidInput` before any
-distance is computed. `enabled` defaults
-to `false`, in which case the fill is unchanged. Each save writes the whole
-`N`x`N` CSV, so it costs `O(N^2)` bytes and time and an automatic fill costs
-`O(N^3 / save_interval)` in total; choose `save_interval` so a save is a small
-fraction of a block (a block costs about `save_interval * N` DTWs, a save about
-`N^2` number formats). Explicit persistence through
-`save_checkpoint(prob, path)` and `load_checkpoint(prob, path)` is unchanged and
-remains the only way to save outside a fill. The CLI opts in with a non-zero
+matrix rows and saves after each block, the last block included, so a completed
+fill leaves a complete checkpoint. Each save runs on the calling thread after its
+block has joined; a save that throws propagates out of `fill_distance_matrix()`,
+leaving the computed cells resident and the previous file whole.
+`save_interval >= 1` and a non-empty `directory` are required; either violation
+raises `InvalidInput` before any distance is computed. `enabled` defaults to
+`false`, in which case the fill is unchanged. A save of a matrix in RAM writes all
+`N(N+1)/2` doubles, so an automatic fill writes `O(N^3 / save_interval)` bytes in
+total; choose `save_interval` so a save is a small fraction of a block (a block
+costs about `save_interval * N` DTWs). The CLI opts in with a non-zero
 `--checkpoint-interval <rows>`, which requires `--checkpoint <dir>`; the default
-`0` saves once, at the end.
+`0` saves once, at the end. The CLI's mapped matrix is `<name>.dtwm` in the
+`--checkpoint` directory when one is given, else in the output directory.
 
-Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
-`generations/<id>/{distances.csv,metadata.txt}` payload. A directory holds
-exactly one generation after a successful save: the old generation is removed
-only after `CURRENT` points at the new one. A binary result
-checkpoint is `<name>_checkpoint.bin`; the mmap distance cache is
-`<name>_distmat.cache`. CLI `--resume` validates and exactly replays all five
-fields of the completed binary result, restores them into `Problem`, skips
-clustering, and does not rewrite the source checkpoint. A `converged=false`
-snapshot is a completed iteration-capped result; `--max-iter` is not an
-additional continuation budget. Missing, unreadable-header/payload, wrong-N/k,
-out-of-domain, duplicate-medoid, negative-iteration, and non-finite-cost state
-fails loudly.
-Binary v1 has no data, input-order, configuration, or producing-method identity,
-so the caller must select the same `<output>/<name>`, input order, and
-configuration. It is result replay, not mid-algorithm continuation.
-
-Python accepts valid-Unicode `str | os.PathLike[str]` values for both binary
-paths and releases the GIL while the native filesystem operation runs. A
-successful save returns `None`; a successful load returns a new
-`ClusteringResult`. Native write failures raise `dtwcpp.IOError`. A missing,
-inaccessible, or structurally invalid binary read raises `dtwcpp.IOError` with
-the exact message below, where `<path>` is the supplied path:
-
-```text
-load_binary_checkpoint: cannot read a valid binary result checkpoint from '<path>'.
-```
-
-As specified in §5, `dtwcpp.IOError` subclasses both `DtwcError` and `OSError`.
-F56 tracks the remaining error-formatting boundary for surrogateescaped
-non-UTF-8 filenames and lone-surrogate path values; the live guarantee above
-does not claim those representations.
-
-**Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
-64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,
-series order and lengths, storage precision, `ndim`, band, every DTW-variant
-parameter, multivariate mode, missing-data strategy, pointwise metric, compute
-backend, and backend precision. Series names are excluded because they do not
-affect distance semantics. Header metadata has a CRC, reserved bytes are
-checked, and an aligned footer stores two digest words per logical row. Reopen
-takes a nonblocking exclusive session lease and recomputes every row digest
-before exposing the mapping. A mismatch is a hard error; callers must use the
-original semantics or delete/rename the cache and recompute it. The digests
-detect accidental corruption and are not keyed tamper-proof authentication.
-
-Version 1 had only an N-sized identity; version 2 did not protect mutable packed
-values. Both are deliberately rejected. Semantic setters detach a bound cache
-without deleting it. The complete data identity is checked at bind and once at
+**Persistent mmap identity (2.0 safety addendum).** A mapped matrix is a `.dtwm`
+file: a 48-byte header (magic `DTWM`, version 4, N, a SHA-256 identity) and the
+packed lower triangle of doubles, NaN = not computed. The identity covers the raw
+IEEE series values, series order and lengths, storage precision, `ndim`, band,
+every DTW-variant parameter, multivariate mode, missing-data strategy, pointwise
+metric, compute backend, and backend precision. Series names are excluded because
+they do not affect distance semantics. Opening an existing file checks its magic,
+version, exact length and N, then the identity, before any distance can be read:
+a file for other series or settings raises `InvalidInput`; a short or foreign file,
+or one of the earlier cache layouts (versions 1-3), raises `IOError`. Either way,
+use the original semantics or delete/rename the file and recompute it. A new file
+is filled with NaN and flushed to the device before its header is written, so a
+power cut can leave a file that does not open, never one whose zeros read as
+distances. Semantic setters detach a bound cache without deleting it. The complete data identity is checked at bind and once at
 first use; later lookups compare a fixed-size configuration snapshot so warm
 access remains O(1). `Problem::data()` is read-only, but heap values exposed by
 `p_vec()` and caller-owned backing storage supplied through `set_view_data()`
@@ -592,20 +561,20 @@ lookups and the GPU routes all compute.
 Frozen registry of public camelCase/duplicate/divergent names. Column
 **Compatibility requirement** states the live transition. Every retained
 callable alias in this table emits its required C++ compile diagnostic or
-Python/MATLAB runtime warning while forwarding to canonical behavior; direct
-access to the retained C++ fields `maxIter` and `N_repetition` emits its compile
-diagnostic while preserving the actual field shape. PLAN.md separately retains
-F22's evidence adjudication because its registered C++ mutation band was
-falsified; that does not change the implemented public policy.
+Python/MATLAB runtime warning while forwarding to canonical behavior; the
+v1.0.0 C++ fields `maxIter` and `N_repetition` stay plain public fields.
+PLAN.md separately retains F22's evidence adjudication because its registered
+C++ mutation band was falsified; that does not change the implemented public
+policy.
 
 | # | Concept | 1.x name(s) | 2.0 canonical | Compatibility requirement |
 |---|---|---|---|---|
 | 1 | set k (C++) | `Problem::set_numberOfClusters` (`Problem.hpp`) | `set_n_clusters` | C++ `[[deprecated]]` |
 | 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp`) | `set_n_clusters` | alias 1 cycle |
 | 3 | set k (MATLAB) | `Problem.set_n_clusters` (Problem.m:148) | `set_n_clusters` | already canonical |
-| 4 | max iterations (C++ field) | `Problem::maxIter` (`Problem.hpp`) | `set_max_iter` / `max_iter` accessor | C++ `[[deprecated]]` field-name kept |
+| 4 | max iterations (C++ field) | `Problem::maxIter` (`Problem.hpp`) | `set_max_iter` / `max_iter` accessor | plain field, as in v1.0.0 |
 | 5 | max iterations (MATLAB prop) | `Problem.MaxIter` (Problem.m:31) | `set_max_iter` | alias (loud warn) |
-| 6 | repetitions (C++ field) | `Problem::N_repetition` (`Problem.hpp`) | `set_n_repetitions` / `n_repetitions` | C++ `[[deprecated]]` |
+| 6 | repetitions (C++ field) | `Problem::N_repetition` (`Problem.hpp`) | `set_n_repetitions` / `n_repetitions` | plain field, as in v1.0.0 |
 | 7 | repetitions (Python prop) | `Problem.n_repetition` (`_dtwcpp_core.cpp`) | `n_repetitions` | alias 1 cycle |
 | 8 | repetitions (MATLAB prop) | `Problem.NRepetition` (Problem.m:32) | `set_n_repetitions` | alias (loud warn) |
 | 9 | band (MATLAB prop) | `Problem.Band` (Problem.m:29) | `set_band` | alias (loud warn) |
@@ -626,7 +595,7 @@ falsified; that does not change the implemented public policy.
 | 24 | assign clusters | `assignClusters` (`Problem.hpp`) | `assign_clusters` | C++ `[[deprecated]]` |
 | 25 | calc medoids | `calculateMedoids` (`Problem.hpp`) | `calculate_medoids` | C++ `[[deprecated]]` |
 | 26 | cluster via MIP | `cluster_by_MIP` (`Problem.hpp`) | `cluster_by_mip` | C++ `[[deprecated]]` |
-| 27 | cluster via Lloyd | `cluster_by_kMedoidsLloyd` (`Problem.hpp`) | `cluster_by_kmedoids_lloyd` | C++ `[[deprecated]]` |
+| 27 | cluster via Lloyd | `cluster_by_kMedoidsPAM` (`Problem.hpp`) | `cluster_by_kmedoids_lloyd` | C++ `[[deprecated]]` |
 | 28 | n clusters read | `cluster_size` (`Problem.hpp`) | `n_clusters` | C++ `[[deprecated]]` alias |
 | 28a | n clusters read (Python) | `Problem.cluster_size` (`_dtwcpp_core.cpp`) | `n_clusters` | warning alias 1 cycle |
 | 29 | dist mat read (MATLAB) | `get_distance_matrix` (`Problem.m`) | `distance_matrix` | warning alias 1 cycle; `set_distance_matrix` is canonical and silent |
@@ -646,14 +615,12 @@ falsified; that does not change the implemented public policy.
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:30) | `= double` | behaviour change (§8), no name change |
 | 42 | CLI dtype default | `--dtype float32` (dtwc_cl.cpp:717-725) | `--dtype float64` | old accepted, default flips (§8) |
 
-**Mmap-cache migration.** Version-1 and version-2 `<name>_distmat.cache` files
-are not resumed by the current format. Delete or rename either legacy cache and
-rerun to create an identity- and payload-checked version-3 cache; source data
-and result checkpoints are unaffected. At the CLI
-mmap threshold, legacy dense `--checkpoint` and `--dist-matrix` inputs cannot be
-combined with the mmap cache and fail before either storage path is opened. Omit
-the dense option to use automatic mmap resume, or raise the threshold only when
-the dense matrix and CSV checkpoint fit in memory.
+**Checkpoint and mmap-cache migration.** A checkpoint directory in the earlier
+CSV layout (`CURRENT`, `generations/`) or a cache in an earlier layout (versions
+1-3 of `<name>_distmat.cache`) is not read by the `.dtwm` format (version 4):
+delete it and rerun; source data is unaffected. At the CLI mmap threshold,
+`--dist-matrix` (a CSV matrix) cannot be combined with mapped storage and fails
+before either path is opened; `--checkpoint` maps `<dir>/<name>.dtwm`.
 
 **Duplicate-elimination principle (surface report §7).** Documentation exposes
 one canonical name per concept. Compatibility aliases remain callable for the
@@ -670,10 +637,9 @@ bindings").
 
 - **C++.** Every renamed method/function keeps a `[[deprecated("use <new>")]]`
   inline shim forwarding to the canonical implementation. Shims compile-warn,
-  never change behaviour, and are scheduled for removal in 3.0. Renamed *fields*
-  (`maxIter`, `N_repetition`) remain actual public `int` members annotated
-  `[[deprecated]]`; the invariant-preserving setters/accessors are canonical
-  and warning-silent.
+  never change behaviour, and are scheduled for removal in 3.0. The v1.0.0
+  fields `maxIter` and `N_repetition` stay plain public `int` members; the
+  checking setters and the accessors are canonical.
 - **Python.** Removed duplicate names (`set_number_of_clusters`,
   `n_repetition` get/set, `cluster_size`, `distance_matrix_numpy`,
   `set_distance_matrix_from_numpy`, the five `*_index`/`*_information` score
@@ -697,7 +663,7 @@ bindings").
   behaviour.
 
 This section is normative and implemented for the complete retained inventory:
-29 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
+22 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
 operations. PLAN.md retains F22's separate evidence verdict; the exhausted
 C++ mutation campaign was falsified at 33/46 and is not described here as
 closure of that finding.
@@ -720,7 +686,7 @@ Bindings translate to native exceptions / `mexErrMsgIdAndTxt`.
 | C++ type | Covers | Python class | MATLAB identifier |
 |---|---|---|---|
 | `dtwc::Error` (base) | anything DTWC-thrown not more specific | `dtwcpp.DtwcError(Exception)` | `dtwc:error` |
-| `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name, a NaN or ±inf value a distance does not take (§2.6), `skip_cols` wider than a row, a matrix stored for other data (a CSV of another size, an mmap cache of other data or configuration; `load_checkpoint` returns `false`) | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
+| `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name, a NaN or ±inf value a distance does not take (§2.6), `skip_cols` wider than a row, a matrix stored for other data (a CSV of another size, a `.dtwm` checkpoint or mmap cache of other data or configuration) | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
 | `dtwc::UndefinedScore` | (an `InvalidInput`) a quality score is mathematically undefined for the labelling supplied — fewer than two non-empty clusters. `save` catches it to skip the silhouette file; `score("silhouette")` propagates it | `dtwcpp.UndefinedScore(InvalidInput)` | `dtwc:invalidArgument` (inherited: the MEX ladder catches it as `InvalidInput`) |
 | `dtwc::SolverError` | MIP/LP solver failure: infeasible, iteration/time limit hit without optimum, solver returned non-optimal status | `dtwcpp.SolverError(DtwcError, RuntimeError)` | `dtwc:solverError` |
 | `dtwc::DeviceError` | device/backend problem: unknown device name; `gpu` on a non-GPU build; a request the device cannot honour (§6.4) and `hpc` asked of a local run (§1.3); `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
@@ -728,10 +694,10 @@ Bindings translate to native exceptions / `mexErrMsgIdAndTxt`.
 
 A failure no public entry point can cause — an unreachable branch, a broken invariant, a precondition every caller validates —
 throws `std::logic_error` (Python `RuntimeError`, MATLAB `dtwc:internal`). Every other throw raises a type above. A file that
-cannot be parsed (a bad field or row, a bad `.dtws` or cache header, a Parquet / Arrow type or offset) is `IOError`; a
+cannot be parsed (a bad field or row, a bad cache header, a Parquet / Arrow type or offset) is `IOError`; a
 well-formed file the request cannot use (a non-square matrix, Parquet nulls, an unknown column, a matrix or cache made for
 other data, `skip_cols` wider than a row) is `InvalidInput`. A format this build cannot read (Parquet or Arrow IPC without
-Arrow, `.dtws` or a memory-mapped store without llfio, a YAML `--config` file without fkYAML) is `IOError` too, and a GPU
+Arrow, a memory-mapped matrix without llfio, a YAML `--config` file without fkYAML) is `IOError` too, and a GPU
 backend it lacks (`gpu`) is `DeviceError`.
 
 **Binding-translation rules.**
@@ -757,6 +723,13 @@ backend it lacks (`gpu`) is `DeviceError`.
 
 ## 6. Device / `Env` semantics
 
+**Superseded 2026-09-28.** `dtwc::Env` is gone: `dtwc::device(name)` /
+`dtwc::device()` hold one process-wide `{Device, index}`, and `Device` is
+`{CPU, GPU}`. `hpc` / `hpc:gpu` belong to Python's `dtwcpp.device` and
+`slurm_remote.sh`; C++, MATLAB and `dtwc_cl` raise a `DeviceError` naming them,
+so the §6.2 `.env` messages live in `python/dtwcpp/_hpc.py` only, and
+`Problem::set_device` has no `hpc` case. The text below is kept for history.
+
 **Fixed decision.** `dtwc::Env` owns device (`cpu`/`gpu`/`hpc`) and thread
 policy. Series/recurrence precision belongs to `Data`, `Problem`, and CLI
 configuration, not Env. Singleton accessor: `dtwc::env()`. C++ and MATLAB
@@ -776,7 +749,7 @@ raised). `dtwc_cl --device` reads the same grammar since IF-2 S3; its own `cpu` 
 
 - **Unknown device name → `DeviceError`** listing valid names, verbatim:
   ```
-  [dtwc] unknown device 'foo'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N), hpc.
+  [dtwc] unknown device 'foo'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N).
   ```
 - **`gpu` on a build with no GPU backend → `DeviceError`** naming the build
   flag (NOT silent CPU fallback), verbatim:
@@ -840,6 +813,12 @@ on substitution): `{key}` = the missing key name; `{host}` = value of
 block are constant text.
 
 ### 6.3 Lazy load & big-data policy (fixed decision, contract-level)
+
+**Superseded 2026-09-28.** Series always load into RAM (`DataLoader::load()`, as
+in v1.0.0): the metadata-only load, `StoragePolicy` and its `.dtws` series store
+are gone. `hpc` forwards a path (`_hpc.py`); data beyond RAM is list-per-row
+Parquet streamed by CLARA / OneBatchPAM under `--ram-limit`. The first two
+bullets below are kept for history.
 
 - `device="hpc"`: **metadata-only** local load — shapes/counts/names read
   locally; bulk series streamed to the cluster at submit (`load()` never reads
@@ -910,7 +889,7 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
 
 1. **File formats read.** CSV/TSV (start_row/start_col/delimiter/Ndata,
    folder-of-files), Parquet file+dir with optional `--column`, Arrow IPC
-   (`.arrow/.ipc/.feather`), `.dtws` mmap + `.names` sidecar
+   (`.arrow/.ipc/.feather`)
    (`cli/run.cpp`, `dtwc::run`), Python Polars `large_list<float>` ragged ingest.
 2. **Output contract (bit-identical).** Two distinct sets, and the equal-bytes
    guarantee applies to the **first set only**:
@@ -925,17 +904,10 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
      Streamed list rows retain the eager names `series_0`, `series_1`, and so on.
      The SLURM path machine-parses `<name>_labels.csv` and maps 1-based
      lexically-sorted rows back to input order (`_hpc.py:284-304`).
-   - *Run-time persistence artifacts (up to 2 files) — NOT part of the save()
-     equal-bytes set.* `<name>_checkpoint.bin` is written by every successful
-     fresh clustering run, including streamed FastCLARA, and is preserved
-     unchanged by a successful replay; `<name>_distmat.cache` is written when
-     mapped distance storage is selected. They are produced **during a fresh
-     run** for resume (invariant 4), **not** by `Result::save(dir)`. Their format
-     is preserved for `--resume` compatibility,
-     but they are explicitly outside the `save()`↔CLI byte-identity claim. The
-     mmap cache's safety-mandated v1/v2→v3 invalidation is the authorized
-     exception: v1 cannot identify its data/configuration, while v2 does not
-     protect mutable packed values.
+   - *Run-time persistence artifact — NOT part of the save() equal-bytes set.*
+     `<name>.dtwm` is written when mapped distance storage is selected, or by
+     `--checkpoint`, **during a run** for resume (invariant 4), **not** by
+     `Result::save(dir)`, and is outside the `save()`↔CLI byte-identity claim.
 3. **CLI flag set + TOML/YAML config keys** (kebab-case, identical in both formats) are a de-facto API:
    `cluster_generic.slurm` and `_hpc.build_dtwc_command` (`_hpc.py:307-353`)
    compose `dtwc_cl` command lines. Renames go through the accept-old-name
@@ -943,19 +915,12 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    The keys are `dtwc::Config`'s: `cli::bind` is the one key table, and
    `dtwc_cl --print-config` writes every key back as a file `--config` reads
    (tests/conformance/`config_all_fields.toml`, `config_defaults.toml`).
-4. **Checkpoint/resume triple.** Directory checkpoint v2 (`CURRENT` plus
-   `generations/<id>/{distances.csv,metadata.txt}`), binary result checkpoint,
-   and mmap distance-matrix cache form the frozen triple. Directory checkpoints
-   load whenever `--checkpoint` is supplied, and mmap caches reopen
-   automatically; neither requires `--resume`. The latter flag is solely the
-   structurally validated completed-result replay described in §2.7. Python
-   exposes that binary result surface as
-   `save_binary_checkpoint(result, path) -> None` and
-   `load_binary_checkpoint(path) -> ClusteringResult`; invalid reads raise the
-   typed `dtwcpp.IOError` described there. A non-full FastCLARA run
-   has no parent distance matrix and therefore rejects the directory checkpoint
-   and imported dense matrix paths; its automatic binary result checkpoint is
-   still written. The full-sample PAM fallback retains the ordinary triple.
+4. **Checkpoint.** One `.dtwm` file, `<dir>/<name>.dtwm`, for the checkpoint
+   and the mapped distance matrix alike. It loads (or maps) whenever
+   `--checkpoint` is supplied, and a mapped cache reopens automatically. A
+   non-full FastCLARA run has no parent distance matrix and therefore rejects
+   the checkpoint and imported dense matrix paths. The full-sample PAM fallback
+   retains them.
 5. **Precision contract.** `Problem`/`Result`/CLI distance results and matrices
    are double, including Float32 storage; explicit C++ helper templates return
    their requested scalar type (§8).

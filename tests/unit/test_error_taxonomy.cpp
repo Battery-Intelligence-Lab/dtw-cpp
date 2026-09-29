@@ -1,6 +1,6 @@
 /**
  * @file test_error_taxonomy.cpp
- * @brief Unit tests for the dtwc::Error exception taxonomy (dtwc/error.hpp).
+ * @brief Unit tests for the dtwc::Error exception taxonomy (dtwc/base/error.hpp).
  *
  * @details Covers, for Error and every derived type (InvalidInput, SolverError,
  * DeviceError, IOError):
@@ -39,12 +39,9 @@
 #include <checkpoint.hpp>
 #include <core/distance_sampling_weights.hpp>
 #include <core/matrix_io.hpp>
-#include <core/mmap_data_store.hpp>
-#include <core/mmap_distance_matrix.hpp>
 #include <initialisation.hpp>
 #include <io/arrow_ipc_reader.hpp>
 #include <io/parquet_reader.hpp>
-#include <metal/metal_dtw.hpp>
 #include <scores.hpp>
 #include <soft_dtw.hpp>
 
@@ -255,17 +252,15 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
       [&dir] { dtwc::save_checkpoint(dtwc::Problem("gt4_empty"), (dir.path / "ckpt").string()); } },
     { "matrix_io.hpp: a distance matrix that does not exist", "IOError",
       [&dir] {
-        dtwc::core::DenseDistanceMatrix matrix;
+        dtwc::core::DistanceMatrix matrix;
         dtwc::io::read_csv(matrix, dir.path / "missing.csv");
       } },
     { "fileOperations.hpp: a non-numeric field", "IOError",
       [&bad_csv] { (void)dtwc::DataLoader(bad_csv).load(); } },
-    // Without llfio the file-backed constructors are stubs, which are IOError too.
-    { "mmap_distance_matrix.hpp: a file that is not a cache", "IOError",
-      [&garbage] { (void)dtwc::core::MmapDistanceMatrix::open(garbage); } },
+    // Without llfio map() is IOError too.
+    { "distance_matrix.cpp: a file that is not a .dtwm matrix", "IOError",
+      [&garbage] { (void)dtwc::core::DistanceMatrix::map(garbage, 0, {}); } },
 #ifdef DTWC_HAS_MMAP
-    { "mmap_data_store.hpp: a file that is not a .dtws cache", "IOError",
-      [&garbage] { (void)dtwc::core::MmapDataStore::open(garbage); } },
     { "Problem_IO.cpp: a CSV read into a mapped cache", "InvalidInput",
       [&dir] {
         auto prob = three_series();
@@ -279,13 +274,6 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
         fs::create_directories(dir.path / "real");
         fs::create_directory_symlink(dir.path / "real", dir.path / "link");
         dtwc::save_checkpoint(three_series(), (dir.path / "link").string());
-      } },
-#endif
-#ifdef DTWC_HAS_METAL
-    { "metal_dtw.mm: a query index past the last series", "InvalidInput",
-      [] {
-        (void)dtwc::metal::compute_dtw_one_vs_all_metal(
-          std::vector<std::vector<double>>{ { 1.0, 2.0 } }, 5);
       } },
 #endif
 #ifdef DTWC_HAS_ARROW

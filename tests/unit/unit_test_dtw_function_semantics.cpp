@@ -170,13 +170,11 @@ TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
     problem.use_mmap_distance_matrix(cache.first);
 
     const auto *function = &problem.dtw_function();
-    REQUIRE(std::holds_alternative<core::MmapDistanceMatrix>(
-      problem.distance_matrix()));
+    REQUIRE(problem.distance_matrix().is_mapped());
 
     const Problem &view = problem;
     REQUIRE(&view.dtw_function() == function);
-    REQUIRE(std::holds_alternative<core::MmapDistanceMatrix>(
-      view.distance_matrix()));
+    REQUIRE(view.distance_matrix().is_mapped());
   }
 
   SECTION("mutable stale getter detaches mmap and rebinds without rewriting it")
@@ -189,8 +187,7 @@ TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
     REQUIRE_THAT(
       problem.dtw_function()(problem.series(0), problem.series(1)),
       WithinAbs(4.0, 1e-12));
-    REQUIRE(std::holds_alternative<core::DenseDistanceMatrix>(
-      problem.distance_matrix()));
+    REQUIRE(!problem.distance_matrix().is_mapped());
 
     Problem original_semantics = make_bound_problem();
     REQUIRE_NOTHROW(original_semantics.use_mmap_distance_matrix(cache.first));
@@ -210,8 +207,7 @@ TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
     // the rejecting const accessor must not have detached or rewritten it.
     problem.variant_params.variant = core::DTWVariant::Standard;
     const Problem &restored_view = problem;
-    REQUIRE(std::holds_alternative<core::MmapDistanceMatrix>(
-      restored_view.distance_matrix()));
+    REQUIRE(restored_view.distance_matrix().is_mapped());
   }
 
   SECTION("mmap replacement reconciles dispatcher before publishing new identity")
@@ -222,8 +218,7 @@ TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
     problem.variant_params.variant = core::DTWVariant::ADTW;
 
     problem.use_mmap_distance_matrix(cache.second);
-    REQUIRE(std::holds_alternative<core::MmapDistanceMatrix>(
-      problem.distance_matrix()));
+    REQUIRE(problem.distance_matrix().is_mapped());
     REQUIRE_THAT(problem.dist_by_ind(0, 1), WithinAbs(4.0, 1e-12));
   }
 #endif

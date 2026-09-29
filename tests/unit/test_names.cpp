@@ -6,7 +6,7 @@
  * @details The oracle is transcribed from the parsers the tables replace, not from
  * the tables: dtwc_cl's CLI11 CheckedTransformer maps (dtwc_cl.cpp, the options
  * block of run_cli_main) and MATLAB's hand-written parsers (dtwc_mex.cpp,
- * parse_missing_strategy .. parse_storage_policy). Per table it checks the
+ * parse_missing_strategy and its siblings). Per table it checks the
  * canonical name of every value, that every alias reads as its value, that the
  * table holds nothing else, that case is ignored, and the error text.
  *
@@ -118,13 +118,9 @@ TEST_CASE("distance tables: metric, variant, mv-mode, missing strategy", "[names
   CHECK_THROWS_AS(dtwc::name_of(metric_names, MetricType::L2), dtwc::InvalidInput);
 }
 
-TEST_CASE("storage, dtype, linkage and OneBatchPAM weighting tables", "[names]")
+TEST_CASE("dtype, linkage and OneBatchPAM weighting tables", "[names]")
 {
   using dtwc::core::Precision;
-  using dtwc::core::StoragePolicy;
-  check_table(dtwc::core::storage_policy_names,
-              { { "auto", StoragePolicy::Auto }, { "heap", StoragePolicy::Heap }, { "mmap", StoragePolicy::Mmap } },
-              {});
   check_table(dtwc::core::precision_names, { { "float32", Precision::Float32 }, { "float64", Precision::Float64 } },
               { { "f32", "float32" }, { "fp32", "float32" }, { "float", "float32" }, { "f64", "float64" },
                 { "fp64", "float64" }, { "double", "float64" } });
@@ -143,7 +139,9 @@ TEST_CASE("config tables: cluster method and GPU precision", "[names]")
                 { "mip", ClusterMethod::MIP }, { "lrcore", ClusterMethod::LRCore },
                 { "tadpole", ClusterMethod::TADPole }, { "hierarchical", ClusterMethod::Hierarchical } },
               { { "obp", "onebatch" }, { "lr", "lrcore" }, { "hclust", "hierarchical" } });
-  check_table(dtwc::gpu_precision_names, { { "auto", 0 }, { "fp32", 1 }, { "fp64", 2 } },
+  using dtwc::GpuPrecision;
+  check_table(dtwc::gpu_precision_names,
+              { { "auto", GpuPrecision::Auto }, { "fp32", GpuPrecision::FP32 }, { "fp64", GpuPrecision::FP64 } },
               { { "float32", "fp32" }, { "f32", "fp32" }, { "float", "fp32" }, { "float64", "fp64" },
                 { "f64", "fp64" }, { "double", "fp64" } });
 }

@@ -36,7 +36,6 @@ delimiter = ""
 dist-matrix = ""
 checkpoint = ""
 checkpoint-interval = 0
-resume = false
 mmap-threshold = 50000
 solver = "highs"
 mip-gap = 1e-05

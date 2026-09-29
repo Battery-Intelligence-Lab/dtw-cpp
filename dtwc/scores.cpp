@@ -16,6 +16,7 @@
 #include "Problem.hpp"
 #include "base/error.hpp"
 #include "base/parallelisation.hpp"
+#include "types/Range.hpp"
 
 #include <algorithm>      // for std::max, std::count_if
 #include <cmath>          // for std::log

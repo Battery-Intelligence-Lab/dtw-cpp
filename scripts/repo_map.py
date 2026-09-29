@@ -42,7 +42,7 @@ ORDER = ["base", "core", "io", "backends", "algorithms", "mip", "session", "surf
 
 DIR_LAYER = {
     "base": "base", "types": "base", "enums": "base", "core": "core", "detail": "core", "io": "io",
-    "cuda": "backends", "metal": "backends", "mpi": "backends",
+    "cuda": "backends", "metal": "backends",
     "algorithms": "algorithms", "mip": "mip", "cli": "surface", "extern": "vendored",
 }
 ROOT_FILE_LAYER = {
@@ -51,7 +51,7 @@ ROOT_FILE_LAYER = {
     # includes the real one; it is still foundation, so it still ranks base.
     "error.hpp": "base", "settings.hpp": "base", "missing_utils.hpp": "base",
     "parallelisation.hpp": "base", "timing.hpp": "base",
-    "system_memory.hpp": "base", "env.hpp": "base", "random_engine.hpp": "base",
+    "env.hpp": "base", "random_engine.hpp": "base",
     # the DTW wrapper family and the series container are core value/kernels code
     "warping.hpp": "core", "warping_adtw.hpp": "core", "warping_ddtw.hpp": "core",
     "warping_missing.hpp": "core", "warping_missing_arow.hpp": "core",
@@ -69,8 +69,7 @@ ROOT_FILE_LAYER = {
 FILE_OVERRIDE = {
     "core/matrix_io.hpp": "io",
     "core/gpu_dtw_common.hpp": "backends",
-    "core/portable_random.hpp": "base", "core/crc32.hpp": "base",
-    "core/sha256.hpp": "base", "core/llfio_include.hpp": "base",
+    "core/portable_random.hpp": "base", "core/sha256.hpp": "base",
 }
 PROBES = ["core/dtw_kernel.hpp", "core/dtw_dispatch.hpp",
           "warping.hpp", "distance.hpp", "settings.hpp", "Data.hpp", "Problem.hpp",

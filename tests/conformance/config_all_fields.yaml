@@ -34,7 +34,6 @@ delimiter: ";"
 dist-matrix: dist.csv
 checkpoint: ckpt
 checkpoint-interval: 10
-resume: true
 mmap-threshold: 1000
 solver: gurobi
 mip-gap: 0.001

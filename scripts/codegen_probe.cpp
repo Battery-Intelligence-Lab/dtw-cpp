@@ -1,9 +1,10 @@
 // Codegen probe for the DTW hot paths (ledger X-04).
 //
-// Not a test and not part of any target. scripts/codegen_report.py compiles this
-// file with the project's real flags -- taken from compile_commands.json, so the
-// same -O level, floating-point model and architecture tuning the library ships
-// with -- and reads clang's loop-vectorize remarks off it.
+// Not part of any target. scripts/codegen_report.py compiles this file with the
+// project's real flags -- taken from compile_commands.json, so the same -O level,
+// floating-point model and architecture tuning the library ships with -- and reads
+// clang's loop-vectorize remarks off it, or (--no-calls, test_codegen_no_calls)
+// fails when an innermost loop of these kernels makes a call.
 //
 // It has to exist because the kernels are function templates in dtwc/warping.hpp.
 // A template that nobody instantiates generates no code, so no library
@@ -11,13 +12,14 @@
 // explicit instantiations below are what force the loops into existence where a
 // compiler can be asked about them.
 //
-// Add an instantiation here when a kernel joins the hot path, then re-record the
-// expectation table.
+// Add an instantiation here when a kernel joins the hot path.
 
 // Included as "warping.hpp", not "dtwc/warping.hpp": the build puts dtwc/ on the
 // include path and deliberately never the repo root, because on a
 // case-insensitive filesystem the root VERSION file shadows <version>.
 #include "warping.hpp"
+#include "core/msm.hpp"
+#include "core/twe.hpp"
 
 #include <cstddef>
 #include <span>
@@ -71,6 +73,38 @@ float dtwc_probe_dtwFull_L_f32(
   const float *x, std::size_t nx, const float *y, std::size_t ny, float early_abandon)
 {
   return dtwc::detail::dtwFull_L_impl<float>(x, nx, y, ny, early_abandon, AbsDiff{});
+}
+
+// The remaining cells and kernels: ADTW, AROW, banded, EAPruned, MSM, TWE.
+double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, std::size_t ny)
+{
+  namespace core = dtwc::core;
+  const auto cost = [x, y](std::size_t i, std::size_t j) noexcept { return AbsDiff{}(x[i], y[j]); };
+  return core::dtw_kernel_linear<double>(nx, ny, cost, core::ADTWCell<double>{0.5})
+         + core::dtw_kernel_banded<double>(nx, ny, 8, cost, core::AROWCell{})
+         + dtwc::detail::dtwBanded_impl<double>(x, nx, y, ny, 8, -1.0, AbsDiff{})
+         + core::dtw_kernel_eap<double>(nx, ny, cost)
+         + core::msm_distance<double>(x, nx, y, ny) + core::twe_distance<double>(x, nx, y, ny);
+}
+
+// The fill's lane kernel: W pairs per call, f64 under L1 and f32 under squared L2.
+double dtwc_probe_lanes_f64(const double *x, const double *const *ys, std::size_t n, int band)
+{
+  double sum = 0;
+  for (const double d : dtwc::core::dtw_kernel_lanes<double>(x, ys, n, band, dtwc::detail::L1Dist{},
+                                                             dtwc::core::StandardCell{}))
+    sum += d;
+  return sum;
+}
+
+float dtwc_probe_lanes_f32(const float *x, const float *const *ys, std::size_t n, int band)
+{
+  float sum = 0;
+  for (const float d : dtwc::core::dtw_kernel_lanes<float>(x, ys, n, band,
+                                                           dtwc::detail::SquaredL2Dist{},
+                                                           dtwc::core::StandardCell{}))
+    sum += d;
+  return sum;
 }
 
 } // extern "C"

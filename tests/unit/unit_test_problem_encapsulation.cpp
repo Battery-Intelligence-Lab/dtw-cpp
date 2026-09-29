@@ -70,7 +70,6 @@ TEST_CASE("F19 Problem canonical accessors round-trip setter state",
   CHECK(defaults.random_seed() == dtwc::settings::DEFAULT_RANDOM_SEED);
   CHECK(defaults.last_iterations() == 0);
   CHECK(defaults.tadpole_dc() == -1.0);
-  CHECK(defaults.storage_policy() == dtwc::core::StoragePolicy::Auto);
   CHECK_FALSE(defaults.verbose());
   CHECK_FALSE(defaults.output_folder().empty());
   CHECK(defaults.name().empty());
@@ -81,7 +80,6 @@ TEST_CASE("F19 Problem canonical accessors round-trip setter state",
   problem.set_method(dtwc::Method::TADPole);
   problem.set_random_seed(123456789ULL);
   problem.set_tadpole_dc(0.125);
-  problem.set_storage_policy(dtwc::core::StoragePolicy::Heap);
   problem.set_verbose(true);
   problem.set_output_folder(output);
   problem.set_name("renamed");
@@ -91,7 +89,6 @@ TEST_CASE("F19 Problem canonical accessors round-trip setter state",
   CHECK(problem.random_seed() == 123456789ULL);
   CHECK(problem.last_iterations() == 0);
   CHECK(problem.tadpole_dc() == 0.125);
-  CHECK(problem.storage_policy() == dtwc::core::StoragePolicy::Heap);
   CHECK(problem.verbose());
   CHECK(problem.output_folder() == output);
   CHECK(problem.name() == "renamed");
@@ -108,15 +105,10 @@ TEST_CASE("F19 Problem setters reject invalid state transactionally",
   dtwc::Problem problem{ "preserved" };
   problem.set_data(two_series_data());
   problem.set_method(dtwc::Method::MIP);
-  problem.set_storage_policy(dtwc::core::StoragePolicy::Heap);
 
   CHECK_THROWS_AS(
     problem.set_method(static_cast<dtwc::Method>(-1)), dtwc::InvalidInput);
   CHECK(problem.method() == dtwc::Method::MIP);
-  CHECK_THROWS_AS(
-    problem.set_storage_policy(static_cast<dtwc::core::StoragePolicy>(-1)),
-    dtwc::InvalidInput);
-  CHECK(problem.storage_policy() == dtwc::core::StoragePolicy::Heap);
 
   auto invalid_data = two_series_data();
   invalid_data.precision = static_cast<dtwc::core::Precision>(-1);

@@ -16,7 +16,7 @@
 #include "base/parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
 #include "base/settings.hpp"        // for data_t, randGenerator, band, isDebug
-#include "core/matrix_io.hpp"  // for operator<<(ostream, DenseDistanceMatrix)
+#include "core/matrix_io.hpp"  // for operator<<(ostream, DistanceMatrix)
 #include "core/medoid_assignment_policy.hpp" // finite assignment contract
 
 #ifdef DTWC_HAS_CUDA
@@ -26,6 +26,7 @@
 #include "metal/metal_dtw.hpp" // Apple Metal GPU distance matrix computation
 #endif
 #include "warping.hpp"         // for detail::require_finite
+#include "core/dtw_kernel.hpp" // for dtw_lanes
 #include "warping_wdtw.hpp"    // for wdtw_weights (cache population)
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
@@ -44,6 +45,7 @@
 #include <iomanip>   // for operator<<, setprecision
 #include <iostream>  // for cout
 #include <limits>    // for numeric_limits
+#include <cassert>
 #include <stdexcept> // for logic_error
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
@@ -147,13 +149,13 @@ const char *metric_name(core::MetricType m)
 }
 
 #ifdef DTWC_HAS_METAL
-/// CUDASettings::precision (0 Auto, 1 FP32, 2 FP64) as the Metal selector;
-/// validate_metal_precision() then rejects FP64, which Metal cannot run.
-metal::MetalPrecision metal_precision(int precision)
+/// The Metal selector for `precision`; validate_metal_precision() then rejects
+/// FP64, which Metal cannot run.
+metal::MetalPrecision metal_precision(GpuPrecision precision)
 {
-  return precision == 1 ? metal::MetalPrecision::FP32
-       : precision == 2 ? metal::MetalPrecision::FP64
-                        : metal::MetalPrecision::Auto;
+  return precision == GpuPrecision::FP32 ? metal::MetalPrecision::FP32
+       : precision == GpuPrecision::FP64 ? metal::MetalPrecision::FP64
+                                         : metal::MetalPrecision::Auto;
 }
 #endif
 
@@ -226,31 +228,17 @@ void Problem::require_owned_storage(std::string_view accessor, bool float64_valu
   const std::string at(accessor);
   if (data_.is_view())
     throw InvalidInput(
-      at + ": this Problem's series are a non-owning view (set_view_data, or a "
-           "memory-mapped series store), so there is no owned "
+      at + ": this Problem's series are a non-owning view (set_view_data), so "
+           "there is no owned "
       + (float64_values ? "series to return. Use series(i) (data().series_f32(i) "
                           "for Float32), which reads every storage mode."
                         : "name to return. Use series_name(i), which reads every "
                           "storage mode."));
   if (!float64_values) return;
-  if (data_.is_metadata_only())
-    throw InvalidInput(at + ": this Problem's series are not resident (a "
-                            "metadata-only load); there are no values to return.");
   if (data_.is_f32())
     throw InvalidInput(at + ": this Problem holds Float32 series, and p_vec "
                             "returns the Float64 store. Use data().series_f32(i).");
 }
-
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning(disable : 4996)
-#endif
 
 Problem::Problem(Problem &&) = default;
 
@@ -285,14 +273,6 @@ int Problem::n_repetitions() const
 {
   return N_repetition;
 }
-
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#  pragma warning(pop)
-#endif
 
 /**
  * @brief Sets the initial centroids for clustering.
@@ -369,7 +349,7 @@ void Problem::print_distance_matrix() const
 {
   validate_mmap_cache_identity();
   validate_dense_cache_configuration();
-  visit_distmat([](const auto &m) { std::cout << m; });
+  std::cout << distMat;
 }
 
 /**
@@ -389,18 +369,13 @@ void Problem::refresh_distance_matrix()
   // Raw public-field edits remain caller-owned and recoverable: correcting the
   // edit exposes the last valid cache/callable state again.
   preflight_current_distance_semantics();
-  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)) {
-    // A semantic mutation (set_data/set_band/set_variant) must never keep a
-    // mapped matrix whose computed bits describe the prior configuration.
-    // Detach without deleting or rewriting the persistent file; rebinding it
-    // under changed semantics will then fail its fingerprint check loudly.
-    distMat = core::DenseDistanceMatrix{};
-    clear_mmap_cache_identity();
-  } else {
-    auto &m = std::get<core::DenseDistanceMatrix>(distMat);
-    if (m.size() != 0)
-      m.resize(0); // Release old data; re-allocation deferred to fill_distance_matrix().
-  }
+  // A semantic mutation (set_data/set_band/set_variant) must never keep
+  // distances computed under the prior configuration. The heap matrix is
+  // released (re-allocated by fill_distance_matrix()); a mapped one is detached
+  // and its file left as it is, so rebinding it under the changed semantics
+  // fails its fingerprint check loudly.
+  distMat = core::DistanceMatrix{};
+  clear_mmap_cache_identity();
   fill_request_validated_ = false; // new data or semantics: a new request
   rebind_dtw_fn();
 }
@@ -456,10 +431,14 @@ void Problem::rebind_dtw_fn() const
   preflight_current_distance_semantics();
   refresh_variant_caches();
   dtw_fn_ = core::resolve_dtw_fn<data_t>(*this);
-  if (core::active_variant_params_representable_f32(variant_params))
+  dtw_block_fn_ = core::resolve_dtw_block_fn<data_t>(*this);
+  if (core::active_variant_params_representable_f32(variant_params)) {
     dtw_fn_f32_ = core::resolve_dtw_fn<float>(*this);
-  else
+    dtw_block_fn_f32_ = core::resolve_dtw_block_fn<float>(*this);
+  } else {
     dtw_fn_f32_ = {};
+    dtw_block_fn_f32_ = {};
+  }
   dense_cache_configuration_ = distance_cache_configuration(metric_);
   dense_cache_configuration_bound_ = true;
   dtw_binding_owner_ = this;
@@ -513,12 +492,6 @@ void Problem::set_device(Device device, int index)
     throw DeviceError(detail::gpu_not_built_message());
 #endif
   }
-  case Device::HPC:
-    throw InvalidInput(
-      "Problem::set_device: hpc is not a Problem device. It submits a whole run "
-      "to a SLURM cluster, which Python's dtwcpp.cluster(..., device='hpc') does "
-      "by running dtwc_cl there; a Problem computes locally. Use device cpu or "
-      "gpu.");
   }
 }
 
@@ -595,13 +568,12 @@ void Problem::preflight_distance_semantics(
   core::MetricType metric,
   const Data &candidate_data,
   DistanceMatrixStrategy candidate_distance_strategy,
-  const CUDASettings &candidate_cuda_settings,
+  const CUDASettings &, // its precision is a GpuPrecision: nothing to check
   bool force_float32)
 {
   core::validate_precision(candidate_data.precision);
   core::validate_metric_type(metric);
   validate_distance_matrix_strategy(candidate_distance_strategy);
-  validate_cuda_settings_precision(candidate_cuda_settings.precision);
   core::validate_problem_distance_semantics(
     params, missing, candidate_data.ndim,
     force_float32 || candidate_data.is_f32());
@@ -666,8 +638,7 @@ void Problem::ensure_dense_cache_configuration_current()
 void Problem::ensure_dense_cache_configuration_current_preflighted()
 {
   repair_dtw_binding_after_relocation();
-  if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
-      || dense_cache_configuration_is_current())
+  if (distMat.is_mapped() || dense_cache_configuration_is_current())
     return;
 
   // Public fields remain source-compatible, and nested language-binding
@@ -679,12 +650,11 @@ void Problem::ensure_dense_cache_configuration_current_preflighted()
 void Problem::validate_dense_cache_configuration() const
 {
   preflight_current_distance_semantics();
-  if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
-      || dense_cache_configuration_is_current())
+  if (distMat.is_mapped() || dense_cache_configuration_is_current())
     return;
 
   throw InvalidInput(
-    "DenseDistanceMatrix: cached distance configuration changed through a raw "
+    "Distance matrix: cached distance configuration changed through a raw "
     "or nested mutation. Use a semantic setter or a non-const compute path to "
     "refresh the matrix before reading cached values.");
 }
@@ -727,13 +697,8 @@ Problem::DistanceCacheIdentity
 Problem::distance_cache_identity(core::MetricType metric) const
 {
   core::validate_metric_type(metric);
-  if (data_.is_metadata_only()) {
-    throw InvalidInput(
-      "use_mmap_distance_matrix: cannot fingerprint metadata-only data; "
-      "time-series values must be resident before a distance cache can be bound");
-  }
   if (distance_strategy == DistanceMatrixStrategy::CUDA
-      && cuda_settings.precision == 0) {
+      && cuda_settings.precision == GpuPrecision::Auto) {
     throw InvalidInput(
       "use_mmap_distance_matrix: CUDA precision=Auto is not safe for persistent "
       "warm-start caches because its resolved FP32/FP64 semantics depend on the "
@@ -774,13 +739,13 @@ Problem::distance_cache_identity(core::MetricType metric) const
   return identity;
 }
 
-core::MmapDistanceMatrix::fingerprint_type
+core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity() const
 {
   return distance_checkpoint_identity(metric_);
 }
 
-core::MmapDistanceMatrix::fingerprint_type
+core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity(core::MetricType metric) const
 {
   preflight_current_distance_semantics();
@@ -800,21 +765,22 @@ void Problem::clear_mmap_cache_identity()
 void Problem::validate_mmap_cache_identity() const
 {
   preflight_current_distance_semantics();
-  if (!std::holds_alternative<core::MmapDistanceMatrix>(distMat)) return;
+  if (!distMat.is_mapped()) return;
   if (!mmap_cache_identity_bound_) {
     throw InvalidInput(
-      "MmapDistanceMatrix: mapped storage has no bound Problem cache identity");
+      "Mapped distance matrix: mapped storage has no bound Problem cache identity");
   }
 
-  const auto &matrix = std::get<core::MmapDistanceMatrix>(distMat);
-  if (matrix.fingerprint() != mmap_cache_identity_.full
-      || data_.size() != mmap_cache_identity_.n
+  // The file's fingerprint is mmap_cache_identity_.full: map() checked it when
+  // use_mmap_distance_matrix bound the two. What can drift since is the data
+  // and the distance settings.
+  if (data_.size() != mmap_cache_identity_.n
       || data_.ndim != mmap_cache_identity_.ndim
       || data_.precision != mmap_cache_identity_.precision
       || !distance_cache_configuration_matches(
         mmap_cache_identity_.configuration_values)) {
     throw InvalidInput(
-      "MmapDistanceMatrix: bound cache fingerprint mismatch after Problem data "
+      "Mapped distance matrix: bound cache fingerprint mismatch after Problem data "
       "or distance configuration changed. Call refresh_distance_matrix(), then "
       "bind a cache created for the new semantics.");
   }
@@ -830,7 +796,7 @@ void Problem::validate_mmap_cache_identity() const
       mmap_cache_identity_.configuration_values.metric);
     if (current.full != mmap_cache_identity_.full) {
       throw InvalidInput(
-        "MmapDistanceMatrix: bound cache fingerprint mismatch after Problem data "
+        "Mapped distance matrix: bound cache fingerprint mismatch after Problem data "
         "changed before first use. Call refresh_distance_matrix(), then bind a "
         "cache created for the new data.");
     }
@@ -855,20 +821,10 @@ void Problem::use_mmap_distance_matrix(
   // configuration mutation could label Standard-DTW writes with an ADTW (or
   // missing-policy) fingerprint.
   ensure_dtw_function_configuration_current();
-  const size_t N = data_.size();
   DistanceCacheIdentity identity = distance_cache_identity(metric);
-  // open(path, expected) validates version, header integrity, length, and the
-  // full semantic fingerprint before exposing the mapped computed-bit region.
-  std::error_code ec; // an unreadable parent is an IOError, not a bare filesystem_error
-  const bool cached = std::filesystem::exists(cache_path, ec);
-  if (ec)
-    throw IOError("Problem::use_mmap_distance_matrix: cannot inspect '" + cache_path.string()
-                  + "': " + ec.message());
-  auto mapped = cached ? core::MmapDistanceMatrix::open(cache_path, identity.full)
-                       : core::MmapDistanceMatrix(cache_path, N, identity.full);
-  if (mapped.size() != N) // the fingerprint that open() checked covers N
-    throw std::logic_error("Problem::use_mmap_distance_matrix: a cache whose fingerprint matched holds N="
-                           + std::to_string(mapped.size()) + ", not " + std::to_string(N));
+  // map() checks an existing file's magic, version, length, N and fingerprint
+  // before any of its distances can be read.
+  auto mapped = core::DistanceMatrix::map(cache_path, data_.size(), identity.full);
   if (metric_ != metric) { // new semantics, as in set_metric
     metric_ = metric;
     fill_request_validated_ = false;
@@ -913,47 +869,37 @@ double Problem::dist_by_ind(int i, int j)
   // library's kernels under the same request filled it, and proving it
   // complete would read the whole mapped file.
   if (!fill_request_validated_) {
-    const auto *dense = std::get_if<core::DenseDistanceMatrix>(&distMat);
     const bool complete =
-      dense && dense->size() == data_.size() && dense->all_computed();
+      !distMat.is_mapped() && distMat.size() == data_.size() && distMat.all_computed();
     if (!complete) validate_fill_request("Problem::dist_by_ind");
     fill_request_validated_ = true;
   }
 
   const size_t N = data_.size();
 
-  // Lazily allocate the dense matrix on first individual distance request.
-  // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
-  // The critical section prevents duplicate allocation. Callers that enter a
-  // parallel region must still prime one non-diagonal distance serially first
-  // (or call fill_distance_matrix), because rebind_dtw_fn mutates shared state.
-  bool needs_init = visit_distmat([&](const auto &m) { return m.size() != N; });
-  if (needs_init) {
+  // Lazily allocate the heap matrix on first individual distance request (a
+  // mapped matrix is sized when it is bound). The critical section prevents
+  // duplicate allocation. Callers that enter a parallel region must still prime
+  // one non-diagonal distance serially first (or call fill_distance_matrix),
+  // because rebind_dtw_fn mutates shared state.
+  if (distMat.size() != N) {
 #ifdef _OPENMP
     #pragma omp critical(distByInd_init)
 #endif
     {
-      bool initialised_here = false;
-      visit_distmat([&](auto &m) {
-        if (m.size() != N) {
-          if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-            m.resize(N);
-            initialised_here = true;
-          }
-        }
-      });
-      if (initialised_here) rebind_dtw_fn();
+      if (distMat.size() != N) {
+        distMat.resize(N);
+        rebind_dtw_fn();
+      }
     }
   }
 
-  bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
-  if (computed)
-    return visit_distmat([&](const auto &m) { return m.get(i, j); });
+  if (distMat.is_computed(i, j)) return distMat.get(i, j);
 
   const double d = data_.is_f32()
                      ? validated_dtw_function_f32()(data_.series_f32(i), data_.series_f32(j))
                      : dtw_fn_(series(i), series(j));
-  visit_distmat([&](auto &m) { m.set(i, j, d); });
+  distMat.set(i, j, d);
   return d;
 }
 
@@ -971,11 +917,6 @@ void Problem::validate_checkpoint_settings() const
     throw InvalidInput(
       "Problem::fill_distance_matrix: checkpoint.enabled requires a non-empty "
       "checkpoint.directory.");
-  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat))
-    throw InvalidInput(
-      "Problem::fill_distance_matrix: automatic checkpointing requires dense "
-      "distance storage. Mapped storage is already durable on disk; the dense "
-      "checkpoint format is for heap matrices.");
 }
 
 void Problem::validate_fill_request(std::string_view where) const
@@ -1017,21 +958,18 @@ void Problem::validate_fill_request(std::string_view where) const
   // missing-data strategy, and otherwise poisons the recurrence (NaN also marks
   // an uncomputed matrix entry). One check through the raw entry points' own
   // boundary test, serial so the message names the series and its (flat)
-  // position. A metadata-only store holds no values here to scan.
-  if (!data_.is_metadata_only()) {
-    const bool nan_is_missing = missing_strategy != core::MissingStrategy::Error;
-    std::string name;
-    for (std::size_t i = 0; i < data_.size(); ++i) {
-      name.assign("series '").append(series_name(i)).append("' (index ")
-        .append(std::to_string(i)).append(")");
-      if (data_.is_f32())
-        detail::require_finite(data_.series_f32(i), name, at, nan_is_missing);
-      else
-        detail::require_finite(series(i), name, at, nan_is_missing);
-    }
+  // position.
+  const bool nan_is_missing = missing_strategy != core::MissingStrategy::Error;
+  std::string name;
+  for (std::size_t i = 0; i < data_.size(); ++i) {
+    name.assign("series '").append(series_name(i)).append("' (index ")
+      .append(std::to_string(i)).append(")");
+    if (data_.is_f32())
+      detail::require_finite(data_.series_f32(i), name, at, nan_is_missing);
+    else
+      detail::require_finite(series(i), name, at, nan_is_missing);
   }
-  if (!data_.is_metadata_only()
-      && missing_strategy == core::MissingStrategy::Interpolate) {
+  if (missing_strategy == core::MissingStrategy::Interpolate) {
     // interpolate_linear() has no observed value to interpolate from when a
     // series is entirely NaN, and used to throw from inside the per-pair lambda.
     for (std::size_t i = 0; i < data_.size(); ++i) {
@@ -1049,15 +987,10 @@ void Problem::validate_fill_request(std::string_view where) const
   // The GPU routes also need owned, resident, univariate series.
   const bool cuda = distance_strategy == DistanceMatrixStrategy::CUDA;
   if (!cuda && distance_strategy != DistanceMatrixStrategy::Metal) return;
-  if (has_mmap_series_storage())
-    reject_gpu_request(at, cuda, "does not support mmap-backed series data",
-                       "Select StoragePolicy::Heap before set_data.");
-  if (data_.is_view() || data_.is_metadata_only())
+  if (data_.is_view())
     reject_gpu_request(at, cuda,
-                       std::string("needs owned series in RAM, but this Problem's series are ")
-                         + (data_.is_view() ? "a non-owning view (set_view_data, as "
-                                              "FastCLARA's in-memory subsamples are)"
-                                            : "not resident (metadata-only)"),
+                       "needs owned series in RAM, but this Problem's series are a non-owning "
+                       "view (set_view_data, as FastCLARA's in-memory subsamples are)",
                        "Install owning series with set_data, or use device cpu.");
   validate_gpu_request(at, distance_strategy, variant_params, missing_strategy, data_.precision,
                        cuda_settings);
@@ -1085,43 +1018,56 @@ void Problem::fillDistanceMatrix_BruteForce()
                                        ? &validated_dtw_function_f32()
                                        : nullptr;
 
-  // Resize (Dense only — mmap is pre-allocated at creation). resize() re-fills
-  // every packed slot with NaN, so it must NOT run when the matrix is already
-  // the right size: an unconditional resize discarded a restored checkpoint and
-  // recomputed every pair.
-  visit_distmat([&](auto &m) {
-    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      if (m.size() != N) m.resize(N);
-    }
-  });
+  // resize() re-fills every packed slot with NaN, so it must NOT run when the
+  // matrix is already the right size (a mapped one always is): an unconditional
+  // resize discarded a restored checkpoint and recomputed every pair.
+  if (distMat.size() != N) distMat.resize(N);
 
-  // Set diagonal to 0
-  visit_distmat([&](auto &m) {
-    for (size_t i = 0; i < N; ++i)
-      if (!m.is_computed(i, i))
-        m.set(i, i, 0.0);
-  });
+  for (size_t i = 0; i < N; ++i)
+    if (!distMat.is_computed(i, i)) distMat.set(i, i, 0.0);
 
   // Lock-free by design: each worker owns a disjoint row. run_openmp catches
   // inside the structured block and deterministically rethrows the lowest-row
   // failure after the join; a failed pair remains uncomputed.
+  //
+  // Row i first takes its columns W at a time through the lane function, where
+  // the block's series are as long as series i and not all its pairs are known;
+  // each of those distances is bitwise the per-pair one. The block at the row's
+  // end repeats its last column in the lanes past it, whose results are dropped.
+  // The per-pair loop then fills the rest: mixed-length blocks, every pair
+  // without a lane function.
+  auto fill_lanes = [&](size_t i, auto x, auto column, const auto &block) {
+    using T = typename decltype(x)::value_type;
+    constexpr size_t W = core::dtw_lanes<T>;
+    if (!block) return;
+    std::array<std::span<const T>, W> ys;
+    std::array<double, W> d;
+    for (size_t j = i + 1; j < N; j += W) {
+      const size_t count = std::min(W, N - j);
+      bool equal = true, known = true;
+      for (size_t w = 0; w < W; ++w) {
+        const size_t c = j + std::min(w, count - 1);
+        ys[w] = column(c);
+        equal = equal && ys[w].size() == x.size();
+        known = known && distMat.is_computed(i, c);
+      }
+      if (!equal || known) continue;
+      block(x, ys, d);
+      for (size_t w = 0; w < count; ++w)
+        if (!distMat.is_computed(i, j + w)) distMat.set(i, j + w, d[w]);
+    }
+  };
   auto fill_row = [&](size_t i) {
     if (data_.is_f32()) {
       const auto si = data_.series_f32(i);
-      for (size_t j = i + 1; j < N; ++j) {
-        bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
-        if (!computed)
-          visit_distmat([&](auto &m) {
-            m.set(i, j, (*f32_function)(si, data_.series_f32(j)));
-          });
-      }
+      fill_lanes(i, si, [&](size_t j) { return data_.series_f32(j); }, dtw_block_fn_f32_);
+      for (size_t j = i + 1; j < N; ++j)
+        if (!distMat.is_computed(i, j)) distMat.set(i, j, (*f32_function)(si, data_.series_f32(j)));
     } else {
       const auto si = series(i);
-      for (size_t j = i + 1; j < N; ++j) {
-        bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
-        if (!computed)
-          visit_distmat([&](auto &m) { m.set(i, j, dtw_fn_(si, series(j))); });
-      }
+      fill_lanes(i, si, [&](size_t j) { return series(j); }, dtw_block_fn_);
+      for (size_t j = i + 1; j < N; ++j)
+        if (!distMat.is_computed(i, j)) distMat.set(i, j, dtw_fn_(si, series(j)));
     }
   };
   if (!checkpoint.enabled) {
@@ -1158,14 +1104,9 @@ void Problem::fill_distance_matrix()
   validate_fill_request("Problem::fill_distance_matrix");
   fill_request_validated_ = true; // the same request needs no lazy re-check
 
-  // Allocate the dense N×N matrix on first call (deferred from set_data / refresh_distance_matrix).
-  // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
-  visit_distmat([&](auto &m) {
-    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      if (m.size() != data_.size())
-        m.resize(data_.size());
-    }
-  });
+  // Allocate the heap N×N matrix on first call (deferred from set_data /
+  // refresh_distance_matrix); a mapped matrix is sized when it is bound.
+  if (distMat.size() != data_.size()) distMat.resize(data_.size());
 
   // Re-bind the DTW function in case missing_strategy was changed after construction
   // (e.g., user sets prob.missing_strategy = ZeroCost after prob.set_data(...)).
@@ -1191,23 +1132,14 @@ void Problem::fill_distance_matrix()
       throw DeviceError(std::string(backend)
                         + " returned no distance pairs. No CPU fallback was attempted.");
     }
-    visit_distmat([&](auto &m) {
-      if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-        m.resize(result.n);
-      }
-      for (size_t i = 0; i < result.n; ++i)
-        for (size_t j = i; j < result.n; ++j)
-          m.set(i, j, result.matrix[i * result.n + j]);
-    });
+    if (distMat.size() != result.n) distMat.resize(result.n);
+    for (size_t i = 0; i < result.n; ++i)
+      for (size_t j = i; j < result.n; ++j)
+        distMat.set(i, j, result.matrix[i * result.n + j]);
     if (verbose_) {
       std::cout << backend << " distance matrix: " << result.pairs_computed
                 << " pairs in " << std::setprecision(3)
-                << result.gpu_time_sec * 1000 << " ms";
-      if (result.lb_time_sec > 0) {
-        std::cout << " (LB_Keogh: " << result.lb_time_sec * 1000 << " ms"
-                  << ", pruned " << result.pairs_pruned << ")";
-      }
-      std::cout << "\n";
+                << result.gpu_time_sec * 1000 << " ms\n";
     }
     return true;
   };
@@ -1226,9 +1158,9 @@ void Problem::fill_distance_matrix()
     dtwc::cuda::CUDADistMatOptions cuda_opts;
     cuda_opts.band = band;
     cuda_opts.device_id = cuda_settings.device_id;
-    if (cuda_settings.precision == 1)
+    if (cuda_settings.precision == GpuPrecision::FP32)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP32;
-    else if (cuda_settings.precision == 2)
+    else if (cuda_settings.precision == GpuPrecision::FP64)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
     // L2 is L1 on the univariate series the GPU routes take.
     cuda_opts.use_squared_l2 = metric_ == core::MetricType::SquaredL2;
@@ -1478,16 +1410,12 @@ void Problem::init_with_seed(std::uint64_t seed)
 void Problem::cluster_by_kmedoids_lloyd()
 {
   const bool persist_artifacts = persist_run_artifacts_;
-  // The setters reject both; the deprecated public fields bypass them.
+  // The setters reject both; the public fields maxIter and N_repetition bypass them.
   const int repetitions = n_repetitions();
   if (repetitions <= 0)
     throw InvalidInput("Lloyd k-medoids requires n_repetitions >= 1.");
   if (max_iter() <= 0)
     throw InvalidInput("Lloyd k-medoids requires max_iter >= 1.");
-  const auto restart_offset = static_cast<std::uint64_t>(repetitions - 1);
-  if (restart_offset
-      > std::numeric_limits<std::uint64_t>::max() - random_seed_)
-    throw InvalidInput("Lloyd k-medoids random_seed + repetition index overflows uint64.");
 
   fill_distance_matrix(); // Ensure all distances computed before parallel clustering.
 
@@ -1499,6 +1427,7 @@ void Problem::cluster_by_kmedoids_lloyd()
 
   for (int i_rand = 0; i_rand < repetitions; i_rand++) {
     if (verbose_) std::cout << "Metoid initialisation is started.\n";
+    // Unsigned: a seed near 2^64 wraps to another valid seed.
     init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
 
     if (verbose_)

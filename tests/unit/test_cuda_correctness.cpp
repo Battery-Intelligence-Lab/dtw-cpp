@@ -91,15 +91,6 @@ std::vector<std::vector<double>> f12_pairwise_inventory(
   return series;
 }
 
-std::vector<std::vector<double>> f12_external_targets(
-    const F12CUDARoute &route)
-{
-  namespace oracle = dtwc::test::gpu_fixed_band;
-  std::vector<std::vector<double>> targets{oracle::principal_y()};
-  if (route.needs_filler_129) targets.push_back(oracle::filler_129());
-  return targets;
-}
-
 double f12_expected_public_cost(
     const dtwc::test::gpu_fixed_band::LedgerRow &row,
     bool squared)
@@ -119,7 +110,6 @@ dtwc::cuda::CUDADistMatOptions f12_cuda_options(
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = row.band;
   opts.use_squared_l2 = squared;
-  opts.use_lb_keogh = false;
   opts.precision = precision;
   opts.kernel_override = route.requested;
   return opts;
@@ -222,33 +212,6 @@ TEST_CASE("F12 CUDA pairwise kernels use canonical fixed-band geometry",
   }
 }
 
-TEST_CASE("F12 CUDA external one-vs-N kernels use canonical fixed-band geometry",
-          "[cuda][F12][banded][one_vs_n]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  namespace oracle = dtwc::test::gpu_fixed_band;
-  for (const auto &route : f12_cuda_routes) {
-    const auto targets = f12_external_targets(route);
-
-    for (const bool squared : {false, true}) {
-      for (const auto &row : oracle::ledger) {
-        CAPTURE(route.expected_kernel, squared, row.band);
-        const auto opts = f12_cuda_options(route, row, squared);
-        const auto result = dtwc::cuda::compute_dtw_one_vs_all(
-            oracle::principal_x(), targets, opts);
-        const auto expected = f12_expected_public_cost(row, squared);
-
-        REQUIRE(result.n == targets.size());
-        REQUIRE(result.distances.size() == targets.size());
-        REQUIRE(result.kernel_used == route.expected_kernel);
-        REQUIRE_FALSE(result.kernel_override_fell_back);
-        REQUIRE(result.distances[0] == expected);
-      }
-    }
-  }
-}
-
 TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
           "[cuda][F12][banded][singleton]")
 {
@@ -258,12 +221,6 @@ TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
   const auto &route = f12_cuda_routes.front();
   const std::vector<std::vector<double>> pairwise_series{
       oracle::singleton_x(), oracle::singleton_y()
-  };
-  const std::vector<std::vector<double>> external_targets{
-      oracle::singleton_y()
-  };
-  const std::vector<std::vector<double>> reverse_external_targets{
-      oracle::singleton_x()
   };
 
   for (const bool squared : {false, true}) {
@@ -280,22 +237,6 @@ TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
       REQUIRE_FALSE(pairwise.kernel_override_fell_back);
       REQUIRE(pairwise.matrix[1] == expected);
       REQUIRE(pairwise.matrix[2] == expected);
-
-      const auto external = dtwc::cuda::compute_dtw_one_vs_all(
-          oracle::singleton_x(), external_targets, opts);
-      REQUIRE(external.n == 1);
-      REQUIRE(external.distances.size() == 1);
-      REQUIRE(external.kernel_used == "warp");
-      REQUIRE_FALSE(external.kernel_override_fell_back);
-      REQUIRE(external.distances[0] == expected);
-
-      const auto reverse_external = dtwc::cuda::compute_dtw_one_vs_all(
-          oracle::singleton_y(), reverse_external_targets, opts);
-      REQUIRE(reverse_external.n == 1);
-      REQUIRE(reverse_external.distances.size() == 1);
-      REQUIRE(reverse_external.kernel_used == "warp");
-      REQUIRE_FALSE(reverse_external.kernel_override_fell_back);
-      REQUIRE(reverse_external.distances[0] == expected);
     }
   }
 }
@@ -316,36 +257,6 @@ TEST_CASE("F12 CUDA FP32 results translate no-path to the public double sentinel
   REQUIRE(pairwise.kernel_used == "warp");
   REQUIRE(pairwise.matrix[1] == oracle::public_no_path_sentinel);
   REQUIRE(pairwise.matrix[2] == oracle::public_no_path_sentinel);
-
-  const auto external = dtwc::cuda::compute_dtw_one_vs_all(
-      oracle::principal_x(), f12_external_targets(route), opts);
-  REQUIRE(external.kernel_used == "warp");
-  REQUIRE(external.distances[0] == oracle::public_no_path_sentinel);
-}
-
-TEST_CASE("F12 CUDA K-vs-N public route reaches the canonical launcher",
-          "[cuda][F12][banded][k_vs_n]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  namespace oracle = dtwc::test::gpu_fixed_band;
-  const auto &at_gap = oracle::ledger[1];
-  const auto &route = f12_cuda_routes.back();
-  const std::vector<std::vector<double>> series{
-      oracle::principal_x(), oracle::principal_y()
-  };
-  const std::vector<std::size_t> query_indices{0};
-  const auto opts = f12_cuda_options(route, at_gap, false);
-
-  const auto result =
-      dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts);
-  REQUIRE(result.k == 1);
-  REQUIRE(result.n == 2);
-  REQUIRE(result.distances.size() == 2);
-  REQUIRE(result.kernel_used == "wavefront");
-  REQUIRE_FALSE(result.kernel_override_fell_back);
-  REQUIRE(result.distances[0] == 0.0);
-  REQUIRE(result.distances[1] == at_gap.l1);
 }
 
 // ---------------------------------------------------------------------------
@@ -1526,338 +1437,6 @@ TEST_CASE("GPU stress test (100 series x 200 length)", "[cuda]")
       REQUIRE(gpu_result.matrix[i * N + j] == gpu_result.matrix[j * N + i]);
 }
 
-// =========================================================================
-// 1-vs-N tests
-// =========================================================================
-
-TEST_CASE("test_gpu_one_vs_all_by_index", "[cuda][one_vs_n]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 20;
-  constexpr size_t L = 50;
-  auto series = generate_random_series(N, L, /*seed=*/42);
-
-  // Test with query_index = 0 (first), 5 (middle), N-1 (last)
-  for (size_t query_idx : {size_t(0), size_t(5), N - 1}) {
-    INFO("query_index=" << query_idx);
-
-    dtwc::cuda::CUDADistMatOptions opts;
-    opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-    auto gpu_result = dtwc::cuda::compute_dtw_one_vs_all(series, query_idx, opts);
-
-    REQUIRE(gpu_result.n == N);
-    REQUIRE(gpu_result.distances.size() == N);
-
-    // Compare against CPU reference
-    for (size_t j = 0; j < N; ++j) {
-      INFO("target j=" << j);
-      if (j == query_idx) {
-        REQUIRE(gpu_result.distances[j] == 0.0);
-      } else {
-        double cpu_dist = dtwc::dtwFull_L<double>(series[query_idx], series[j]);
-        REQUIRE_THAT(gpu_result.distances[j],
-                     WithinRel(cpu_dist, 1e-10));
-      }
-    }
-  }
-}
-
-TEST_CASE("test_gpu_one_vs_all_external_query", "[cuda][one_vs_n]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 15;
-  constexpr size_t L = 40;
-  auto series = generate_random_series(N, L, /*seed=*/99);
-
-  // Create an external query (not in the series)
-  std::mt19937 rng(12345);
-  std::uniform_real_distribution<double> dist(-10.0, 10.0);
-  std::vector<double> query(L);
-  for (auto &v : query) v = dist(rng);
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-  auto gpu_result = dtwc::cuda::compute_dtw_one_vs_all(query, series, opts);
-
-  REQUIRE(gpu_result.n == N);
-  REQUIRE(gpu_result.distances.size() == N);
-
-  for (size_t j = 0; j < N; ++j) {
-    INFO("target j=" << j);
-    double cpu_dist = dtwc::dtwFull_L<double>(query, series[j]);
-    REQUIRE_THAT(gpu_result.distances[j],
-                 WithinRel(cpu_dist, 1e-10));
-  }
-}
-
-TEST_CASE("test_gpu_one_vs_all_short_series", "[cuda][one_vs_n]")
-{
-  // Short series (L <= 32) uses the warp kernel path
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 25;
-  constexpr size_t L = 20;
-  auto series = generate_random_series(N, L, /*seed=*/777);
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-  auto gpu_result = dtwc::cuda::compute_dtw_one_vs_all(series, 0, opts);
-
-  REQUIRE(gpu_result.n == N);
-  for (size_t j = 0; j < N; ++j) {
-    INFO("target j=" << j);
-    if (j == 0) {
-      REQUIRE(gpu_result.distances[j] == 0.0);
-    } else {
-      double cpu_dist = dtwc::dtwFull_L<double>(series[0], series[j]);
-      REQUIRE_THAT(gpu_result.distances[j],
-                   WithinRel(cpu_dist, 1e-10));
-    }
-  }
-}
-
-TEST_CASE("test_gpu_one_vs_all_medium_series", "[cuda][one_vs_n]")
-{
-  // Medium series (32 < L <= 128) uses the regtile kernel path
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 12;
-  constexpr size_t L = 80;
-  auto series = generate_random_series(N, L, /*seed=*/333);
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-  auto gpu_result = dtwc::cuda::compute_dtw_one_vs_all(series, 3, opts);
-
-  REQUIRE(gpu_result.n == N);
-  for (size_t j = 0; j < N; ++j) {
-    INFO("target j=" << j);
-    if (j == 3) {
-      REQUIRE(gpu_result.distances[j] == 0.0);
-    } else {
-      double cpu_dist = dtwc::dtwFull_L<double>(series[3], series[j]);
-      REQUIRE_THAT(gpu_result.distances[j],
-                   WithinRel(cpu_dist, 1e-10));
-    }
-  }
-}
-
-TEST_CASE("test_gpu_one_vs_all_banded", "[cuda][one_vs_n][banded]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 10;
-  constexpr size_t L = 100;
-  constexpr int band = 15;
-  auto series = generate_random_series(N, L, /*seed=*/456);
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-  auto gpu_result = dtwc::cuda::compute_dtw_one_vs_all(series, 2, opts);
-
-  REQUIRE(gpu_result.n == N);
-  for (size_t j = 0; j < N; ++j) {
-    INFO("target j=" << j);
-    if (j == 2) {
-      REQUIRE(gpu_result.distances[j] == 0.0);
-    } else {
-      double cpu_dist = dtwc::dtwBanded<double>(series[2], series[j], band);
-      REQUIRE_THAT(gpu_result.distances[j],
-                   WithinRel(cpu_dist, 1e-10));
-    }
-  }
-}
-
-TEST_CASE("test_gpu_one_vs_all_squared_l2", "[cuda][one_vs_n]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 10;
-  constexpr size_t L = 30;
-  auto series = generate_random_series(N, L, /*seed=*/888);
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.use_squared_l2 = true;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-  // Compare 1-vs-N GPU result against full distance matrix GPU result
-  auto gpu_one = dtwc::cuda::compute_dtw_one_vs_all(series, 0, opts);
-  auto gpu_full = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-
-  REQUIRE(gpu_one.n == N);
-  for (size_t j = 0; j < N; ++j) {
-    INFO("target j=" << j);
-    REQUIRE_THAT(gpu_one.distances[j],
-                 WithinRel(gpu_full.matrix[0 * N + j], 1e-10));
-  }
-}
-
-// =========================================================================
-// K-vs-N tests
-// =========================================================================
-
-TEST_CASE("test_gpu_k_vs_all_basic", "[cuda][k_vs_n]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 20;
-  constexpr size_t L = 50;
-  auto series = generate_random_series(N, L, /*seed=*/42);
-
-  std::vector<size_t> query_indices = {0, 5, 12};
-  const size_t K = query_indices.size();
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-  auto gpu_result = dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts);
-
-  REQUIRE(gpu_result.k == K);
-  REQUIRE(gpu_result.n == N);
-  REQUIRE(gpu_result.distances.size() == K * N);
-
-  // Compare against CPU
-  for (size_t ki = 0; ki < K; ++ki) {
-    size_t qi = query_indices[ki];
-    for (size_t j = 0; j < N; ++j) {
-      INFO("query_indices[" << ki << "]=" << qi << " target j=" << j);
-      if (qi == j) {
-        REQUIRE(gpu_result.distances[ki * N + j] == 0.0);
-      } else {
-        double cpu_dist = dtwc::dtwFull_L<double>(series[qi], series[j]);
-        REQUIRE_THAT(gpu_result.distances[ki * N + j],
-                     WithinRel(cpu_dist, 1e-10));
-      }
-    }
-  }
-}
-
-TEST_CASE("test_gpu_k_vs_all_single_query", "[cuda][k_vs_n]")
-{
-  // K=1 should match 1-vs-N result
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 15;
-  constexpr size_t L = 60;
-  auto series = generate_random_series(N, L, /*seed=*/111);
-
-  std::vector<size_t> query_indices = {7};
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-  auto gpu_k = dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts);
-  auto gpu_one = dtwc::cuda::compute_dtw_one_vs_all(series, 7, opts);
-
-  REQUIRE(gpu_k.distances.size() == N);
-  for (size_t j = 0; j < N; ++j) {
-    INFO("target j=" << j);
-    REQUIRE_THAT(gpu_k.distances[j],
-                 WithinRel(gpu_one.distances[j], 1e-10));
-  }
-}
-
-TEST_CASE("test_gpu_k_vs_all_matches_full_matrix", "[cuda][k_vs_n]")
-{
-  // K=N should reproduce the full NxN distance matrix
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 10;
-  constexpr size_t L = 40;
-  auto series = generate_random_series(N, L, /*seed=*/222);
-
-  std::vector<size_t> query_indices(N);
-  std::iota(query_indices.begin(), query_indices.end(), 0);
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-  auto gpu_k    = dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts);
-  auto gpu_full = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-
-  REQUIRE(gpu_k.distances.size() == N * N);
-  for (size_t i = 0; i < N; ++i) {
-    for (size_t j = 0; j < N; ++j) {
-      INFO("i=" << i << " j=" << j);
-      REQUIRE_THAT(gpu_k.distances[i * N + j],
-                   WithinRel(gpu_full.matrix[i * N + j], 1e-10));
-    }
-  }
-}
-
-TEST_CASE("test_gpu_k_vs_all_banded", "[cuda][k_vs_n][banded]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 12;
-  constexpr size_t L = 80;
-  constexpr int band = 10;
-  auto series = generate_random_series(N, L, /*seed=*/555);
-
-  std::vector<size_t> query_indices = {0, 3, N - 1};
-  const size_t K = query_indices.size();
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-
-  auto gpu_result = dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts);
-
-  REQUIRE(gpu_result.k == K);
-  REQUIRE(gpu_result.n == N);
-
-  for (size_t ki = 0; ki < K; ++ki) {
-    size_t qi = query_indices[ki];
-    for (size_t j = 0; j < N; ++j) {
-      INFO("query=" << qi << " target=" << j);
-      if (qi == j) {
-        REQUIRE(gpu_result.distances[ki * N + j] == 0.0);
-      } else {
-        double cpu_dist = dtwc::dtwBanded<double>(series[qi], series[j], band);
-        REQUIRE_THAT(gpu_result.distances[ki * N + j],
-                     WithinRel(cpu_dist, 1e-10));
-      }
-    }
-  }
-}
-
-TEST_CASE("test_gpu_one_vs_all_out_of_range", "[cuda][one_vs_n]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 5;
-  constexpr size_t L = 20;
-  auto series = generate_random_series(N, L, /*seed=*/42);
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  REQUIRE_THROWS_AS(
-      dtwc::cuda::compute_dtw_one_vs_all(series, N, opts),
-      dtwc::InvalidInput);
-}
-
-TEST_CASE("test_gpu_k_vs_all_out_of_range", "[cuda][k_vs_n]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 5;
-  constexpr size_t L = 20;
-  auto series = generate_random_series(N, L, /*seed=*/42);
-
-  std::vector<size_t> query_indices = {0, N}; // N is out of range
-  dtwc::cuda::CUDADistMatOptions opts;
-  REQUIRE_THROWS_AS(
-      dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts),
-      dtwc::InvalidInput);
-}
-
 // FX-1: a squared-L2 cache is filled by the Problem's CUDA route with the
 // squared-L2 kernel (it used to be refused as external-fill-only) and matches
 // the CPU squared-L2 kernels. FP64 is explicit: a persistent cache refuses Auto.
@@ -1878,7 +1457,7 @@ TEST_CASE("FX-1 CUDA squared-L2 cache via Problem::fill_distance_matrix",
     prob.set_data(dtwc::Data{ std::vector<std::vector<double>>(series),
                               { "s0", "s1", "s2", "s3", "s4", "s5" } });
     prob.set_band(band);
-    prob.set_cuda_settings(dtwc::CUDASettings{ 0, 2 });
+    prob.set_cuda_settings(dtwc::CUDASettings{ 0, dtwc::GpuPrecision::FP64 });
     prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::CUDA);
     prob.use_mmap_distance_matrix(cache, dtwc::core::MetricType::SquaredL2);
     prob.fill_distance_matrix();
@@ -1904,7 +1483,7 @@ TEST_CASE("IF-2 CUDA dense squared-L2 via Problem::set_metric",
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
   const auto series = generate_random_series(6, 40, /*seed=*/9);
-  for (const int precision : { 1, 2 })
+  for (const auto precision : { dtwc::GpuPrecision::FP32, dtwc::GpuPrecision::FP64 })
     for (const int band : { -1, 6 }) {
       CAPTURE(precision, band);
       dtwc::Problem prob("cuda_dense_sql2");
@@ -1919,7 +1498,7 @@ TEST_CASE("IF-2 CUDA dense squared-L2 via Problem::set_metric",
         for (size_t j = i + 1; j < series.size(); ++j) {
           const double oracle = dtwc::distance::dtw<double>(
             series[i], series[j], band, dtwc::core::MetricType::SquaredL2);
-          if (precision == 2)
+          if (precision == dtwc::GpuPrecision::FP64)
             REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)), WithinRel(oracle, 1e-9));
           else
             REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)),

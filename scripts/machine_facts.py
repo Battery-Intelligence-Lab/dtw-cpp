@@ -227,7 +227,7 @@ def dtwcpp_probes() -> dict[str, object]:
         return {"importable": False, "reason": str(exc)}
     out: dict[str, object] = {"importable": True, "version": getattr(dtwcpp, "__version__", UNKNOWN)}
     for flag in ("OPENMP_AVAILABLE", "CUDA_AVAILABLE", "METAL_AVAILABLE",
-                 "HIGHS_AVAILABLE", "MPI_AVAILABLE"):
+                 "HIGHS_AVAILABLE"):
         out[flag.lower()] = getattr(dtwcpp, flag, None)
     try:
         out["parallelisation"] = dtwcpp.test.parallelisation()

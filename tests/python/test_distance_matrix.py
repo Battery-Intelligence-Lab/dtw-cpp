@@ -1,6 +1,6 @@
 """
 @file test_distance_matrix.py
-@brief Tests for DenseDistanceMatrix Python bindings.
+@brief Tests for the distance-matrix Python bindings.
 @author Volkan Kumtepeli
 """
 
@@ -10,93 +10,6 @@ import numpy as np
 import pytest
 
 import dtwcpp
-
-
-class TestDenseDistanceMatrix:
-    """Tests for dtwcpp.DenseDistanceMatrix."""
-
-    def test_construction_size(self):
-        """Constructed matrix has correct size."""
-        dm = dtwcpp.DenseDistanceMatrix(5)
-        assert dm.size == 5
-
-    def test_set_get(self):
-        """set(i,j,v) and get(i,j) round-trip correctly."""
-        dm = dtwcpp.DenseDistanceMatrix(4)
-        dm.set(1, 2, 3.14)
-        assert dm.get(1, 2) == pytest.approx(3.14)
-
-    def test_symmetry_enforcement(self):
-        """set(i,j,v) makes get(j,i) == v (symmetric storage)."""
-        dm = dtwcpp.DenseDistanceMatrix(4)
-        dm.set(0, 3, 7.5)
-        assert dm.get(3, 0) == pytest.approx(7.5)
-
-    def test_to_numpy_shape(self):
-        """to_numpy() returns (n, n) array."""
-        n = 6
-        dm = dtwcpp.DenseDistanceMatrix(n)
-        arr = dm.to_numpy()
-        assert arr.shape == (n, n)
-
-    def test_to_numpy_values(self):
-        """to_numpy() reflects values set via set()."""
-        dm = dtwcpp.DenseDistanceMatrix(3)
-        dm.set(0, 1, 5.0)
-        dm.set(0, 2, 7.0)
-        dm.set(1, 2, 3.0)
-        arr = dm.to_numpy()
-        assert arr[0, 1] == pytest.approx(5.0)
-        assert arr[1, 0] == pytest.approx(5.0)
-        assert arr[0, 2] == pytest.approx(7.0)
-        assert arr[2, 0] == pytest.approx(7.0)
-        assert arr[1, 2] == pytest.approx(3.0)
-        assert arr[2, 1] == pytest.approx(3.0)
-
-    def test_to_numpy_symmetric(self):
-        """The full numpy matrix is symmetric."""
-        dm = dtwcpp.DenseDistanceMatrix(4)
-        dm.set(0, 1, 1.0)
-        dm.set(0, 2, 2.0)
-        dm.set(0, 3, 3.0)
-        dm.set(1, 2, 4.0)
-        dm.set(1, 3, 5.0)
-        dm.set(2, 3, 6.0)
-        arr = dm.to_numpy()
-        np.testing.assert_array_almost_equal(arr, arr.T)
-
-    def test_to_numpy_is_independent_copy(self):
-        """to_numpy() returns an independent copy — DenseDistanceMatrix uses
-        packed triangular storage so a zero-copy full-NxN view is structurally
-        impossible. Mutating the returned array must NOT affect the C++ matrix;
-        use ``set(i, j, v)`` for that."""
-        dm = dtwcpp.DenseDistanceMatrix(4)
-        dm.set(0, 1, 1.0)
-        arr = dm.to_numpy()
-        arr[0, 1] = 42.0
-        arr[1, 0] = 99.0
-        assert dm.get(0, 1) == pytest.approx(1.0)
-
-    def test_to_numpy_dtype(self):
-        """to_numpy() returns float64 array."""
-        dm = dtwcpp.DenseDistanceMatrix(3)
-        arr = dm.to_numpy()
-        assert arr.dtype == np.float64
-
-    def test_resize(self):
-        """resize() changes the matrix size."""
-        dm = dtwcpp.DenseDistanceMatrix(3)
-        assert dm.size == 3
-        dm.resize(7)
-        assert dm.size == 7
-
-    def test_max(self):
-        """max() returns the largest stored value."""
-        dm = dtwcpp.DenseDistanceMatrix(3)
-        dm.set(0, 1, 10.0)
-        dm.set(0, 2, 5.0)
-        dm.set(1, 2, 20.0)
-        assert dm.max() == pytest.approx(20.0)
 
 
 class TestOwnedBufferHandover:
@@ -123,20 +36,53 @@ class TestOwnedBufferHandover:
         arr = dtwcpp.compute_distance_matrix([])
         assert arr.shape == (0, 0)
 
-    def test_dense_to_numpy_owns_its_data(self):
-        dm = dtwcpp.DenseDistanceMatrix(3)
-        dm.set(0, 1, 2.0)
-        arr = dm.to_numpy()
-        del dm
+    def test_problem_distance_matrix_owns_its_data(self):
+        prob = dtwcpp.Problem("owned")
+        prob.set_data([[1.0, 2.0, 3.0], [2.0, 3.0, 5.0], [9.0, 1.0, 5.0]], ["a", "b", "c"])
+        arr = prob.distance_matrix()
+        expected = arr.copy()
+        del prob
         import gc
 
         gc.collect()
-        assert arr[0, 1] == pytest.approx(2.0)
-        assert arr[1, 0] == pytest.approx(2.0)
+        np.testing.assert_array_equal(arr, expected)
+        assert arr[0, 1] == arr[1, 0] > 0.0
 
-    def test_zero_sized_dense_to_numpy(self):
-        dm = dtwcpp.DenseDistanceMatrix(0)
-        assert dm.to_numpy().shape == (0, 0)
+
+class TestMappedDistanceMatrix:
+    """Problem.distance_matrix() reads a mapped matrix as it reads one in RAM.
+
+    It raised "bad variant access" on a mapped Problem while the matrix was a
+    std::variant of two classes.
+    """
+
+    SERIES = [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0], [0.0, 2.0, 0.0, 2.0]]
+
+    def _problem(self, name):
+        prob = dtwcpp.Problem(name)
+        prob.set_data(self.SERIES, [f"s{i}" for i in range(len(self.SERIES))])
+        return prob
+
+    def test_mapped_matrix_reads_as_the_heap_one(self, tmp_path):
+        mapped = self._problem("mapped")
+        try:
+            mapped.use_mmap_distance_matrix(str(tmp_path / "mapped.dtwm"))
+        except dtwcpp.IOError as error:
+            if "DTWC_ENABLE_LLFIO" not in str(error):
+                raise
+            pytest.skip("this build has no memory-mapped support (DTWC_ENABLE_LLFIO=OFF)")
+        in_ram = self._problem("in_ram")
+        np.testing.assert_array_equal(mapped.distance_matrix(), in_ram.distance_matrix())
+        assert (tmp_path / "mapped.dtwm").stat().st_size == 48 + 10 * 8
+
+        # The file keeps the distances: a second Problem maps them without computing.
+        reopened = self._problem("reopened")
+        reopened.use_mmap_distance_matrix(str(tmp_path / "mapped.dtwm"))
+        assert reopened.is_distance_matrix_filled()
+        np.testing.assert_array_equal(reopened.distance_matrix(), in_ram.distance_matrix())
+
+        with pytest.raises(dtwcpp.InvalidInput, match="memory-mapped"):
+            reopened.set_distance_matrix(in_ram.distance_matrix())
 
 
 class TestProblemThreadSafety:
@@ -272,46 +218,38 @@ class TestCheckpointMetricFingerprint:
     """Audit 2026-09-02, item 3: the A5 metric fingerprint did not reach
     Python, so a SquaredL2 checkpoint was still accepted by a later L1 run."""
 
-    def _filled_problem(self, name):
-        p = dtwcpp.Problem(name)
-        p.set_data(
-            [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0]],
-            ["a", "b", "c"],
-        )
-        p.fill_distance_matrix()
+    SERIES = [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0]]
+
+    def _problem(self, filled=False):
+        # One name: the checkpoint is <directory>/<name>.dtwm.
+        p = dtwcpp.Problem("ckpt")
+        p.set_data(self.SERIES, ["a", "b", "c"])
+        if filled:
+            p.fill_distance_matrix()
         return p
 
     def test_squared_l2_checkpoint_is_rejected_by_an_l1_load(self, tmp_path):
         directory = str(tmp_path / "ckpt_sq")
-        dtwcpp.save_checkpoint(
-            self._filled_problem("ckpt_src"), directory, dtwcpp.MetricType.SquaredL2
-        )
+        dtwcpp.save_checkpoint(self._problem(filled=True), directory, dtwcpp.MetricType.SquaredL2)
 
-        # Default (L1) load must refuse the SquaredL2 fingerprint.
-        target = dtwcpp.Problem("ckpt_dst")
-        target.set_data(
-            [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0]],
-            ["a", "b", "c"],
-        )
-        assert dtwcpp.load_checkpoint(target, directory) is False
+        # Default (L1) load must refuse the SquaredL2 fingerprint, loudly.
+        target = self._problem()
+        with pytest.raises(dtwcpp.InvalidInput, match="fingerprint mismatch"):
+            dtwcpp.load_checkpoint(target, directory)
         assert not target.is_distance_matrix_filled()
 
         # The matching metric still loads, so the rejection is the fingerprint
         # and not a broken write.
-        assert (
-            dtwcpp.load_checkpoint(target, directory, dtwcpp.MetricType.SquaredL2)
-            is True
-        )
+        assert dtwcpp.load_checkpoint(target, directory, dtwcpp.MetricType.SquaredL2) is True
 
     def test_l1_checkpoint_round_trips_on_the_default_metric(self, tmp_path):
         directory = str(tmp_path / "ckpt_l1")
-        source = self._filled_problem("ckpt_l1_src")
+        source = self._problem(filled=True)
         dtwcpp.save_checkpoint(source, directory)
 
-        target = dtwcpp.Problem("ckpt_l1_dst")
-        target.set_data(
-            [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0]],
-            ["a", "b", "c"],
-        )
+        target = self._problem()
         assert dtwcpp.load_checkpoint(target, directory) is True
-        np.testing.assert_allclose(target.distance_matrix(), source.distance_matrix())
+        np.testing.assert_array_equal(target.distance_matrix(), source.distance_matrix())
+
+    def test_an_absent_checkpoint_is_false(self, tmp_path):
+        assert dtwcpp.load_checkpoint(self._problem(), str(tmp_path / "nothing")) is False

@@ -7,7 +7,7 @@ weight: 1
 
 DTW-C++ can be used as a C++ library, from the command line, or via its Python bindings. The sections below cover building from source for C++ use. For Python, see the Python section below.
 
-- Edit `main.cpp` in the `dtwc` folder and use the `dtwc_main` executable after compilation using the examples in `examples` folder. 
+- Write a C++ program against the library, starting from the programs in `examples/cpp` (built with `-DDTWC_BUILD_EXAMPLES=ON`).
 - Use DTW-C++ from the command line interface, by using the `dtwc_cl` executable after compilation. 
 - Use DTW-C++ as an external library in your C++ project by linking the `dtwc++` target in your project. Download the source code to your folder of preference, include the line `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library. Alternatively, you may also use [CPM](https://github.com/cpm-cmake/) to interactively download and include DTW-C++. DTW-C++ has no built-in data or results folder: pass your data paths to the loaders, and set a `Problem`'s output folder with `set_output_folder` (the default is `./results/`, relative to the working directory).
 
@@ -70,10 +70,9 @@ DTWC++ requires CMake 3.26 or newer and a C++20-capable compiler. Distribution p
     ```bash
     cmake --build . -j4 --config Release
     ```
-6. After this, both executables (`dtwc_main` and `dtwc_cl`) will be ready to run `dtw-cpp/bin` folder. To run the the main application you may use 
+6. After this, the `dtwc_cl` executable will be ready to run in the `dtw-cpp/bin` folder:
     ```bash
     cd ../bin
-    ./dtwc_main # to run the code in main.cpp
     ./dtwc_cl # to run the command line interface
     ```
 
@@ -120,10 +119,9 @@ brew install libomp llvm && brew link --force libomp
     ```bash
     cmake --build . -j4 --config Release
     ```
-7. After this, both executables (`dtwc_main` and `dtwc_cl`) will be ready to run `dtw-cpp/bin` folder. To run the the main application you may use 
+7. After this, the `dtwc_cl` executable will be ready to run in the `dtw-cpp/bin` folder:
     ```bash
     cd ../bin
-    ./dtwc_main # to run the code in main.cpp
     ./dtwc_cl # to run the command line interface
     ```
 
@@ -156,10 +154,9 @@ On Windows platforms, you probably need to install CMake and a C++ compiler:
     ```bash
     cmake --build . -j4 --config Release
     ```
-6. After this, both executables (`dtwc_main` and `dtwc_cl`) will be ready to run `dtw-cpp/bin` folder. To run the the main application you may use 
+6. After this, the `dtwc_cl` executable will be ready to run in the `dtw-cpp/bin` folder:
     ```bash
     cd ../bin
-    ./dtwc_main # to run the code in main.cpp
     ./dtwc_cl # to run the command line interface
     ```
 
@@ -185,11 +182,11 @@ To build from source with GPU support:
 pip install . --config-settings=cmake.define.DTWC_ENABLE_CUDA=ON
 ```
 
-See [MPI & CUDA Setup](mpi-cuda-setup.md) for detailed GPU configuration.
+See [CUDA Setup](cuda-setup.md) for detailed GPU configuration.
 
-## GPU and MPI Acceleration
+## GPU Acceleration
 
-CUDA GPU acceleration and MPI distributed computing are optional. See the dedicated [MPI & CUDA Setup Guide](mpi-cuda-setup.md) for installation instructions.
+CUDA GPU acceleration is optional. See the dedicated [CUDA Setup Guide](cuda-setup.md) for installation instructions.
 
 > **Note:** CUDA is not available on macOS. Use Linux or Windows with an NVIDIA GPU.
 
@@ -203,7 +200,7 @@ Visual Studio Code (VScode) is one of the powerful editors and we personally pre
 4. Open VScode and install extensions `C/C++ Extension Pack` and `CMake Tools`. 
 5. Open the `dtw-cpp` folder with the VScode. 
 6. Let the VScode to configure the folder. Now it will scan the kits where you can select a suitable kit (use the 64-bit kits). 
-7. It will compile all targets and you can select `dtwc_main` as your target to run the code in `main.cpp`. 
+7. It will compile all targets; select `dtwc_cl`, or an example target (with `DTWC_BUILD_EXAMPLES=ON`), to run.
 
 ## Importing as a library
 

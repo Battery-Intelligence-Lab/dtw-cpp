@@ -55,17 +55,10 @@ inline constexpr Name<ClusterMethod> cluster_method_names[]{
   { "hclust", ClusterMethod::Hierarchical },
 };
 
-/// The spellings of `--gpu-precision`, onto CUDASettings::precision (0 Auto, 1 FP32, 2 FP64).
-inline constexpr Name<int> gpu_precision_names[]{
-  { "auto", 0 },
-  { "fp32", 1 }, { "float32", 1 }, { "f32", 1 }, { "float", 1 },
-  { "fp64", 2 }, { "float64", 2 }, { "f64", 2 }, { "double", 2 },
-};
-
 struct Config
 {
   // Input and storage
-  std::string input;                     ///< `--input`: CSV, Parquet, Arrow IPC, .dtws, or a folder.
+  std::string input;                     ///< `--input`: CSV, Parquet, Arrow IPC, or a folder.
   std::string column;                    ///< `--column`: Parquet column holding the series.
   int skip_rows = 0;                     ///< `--skip-rows`
   int skip_cols = 0;                     ///< `--skip-cols`
@@ -99,7 +92,6 @@ struct Config
   // Checkpoint
   std::string checkpoint;                ///< `--checkpoint` directory
   int checkpoint_interval = 0;           ///< `--checkpoint-interval` (0 = at the end only)
-  bool resume = false;                   ///< `--resume`
   // Output
   std::string output = "./results";      ///< `--output` ("" = write nothing)
   std::string name = "dtwc";             ///< `--name`
@@ -110,8 +102,8 @@ namespace cli {
 
 /// Adds every Config key to `app`, bound to `config`, plus `--config <file>`
 /// (TOML or YAML, the same keys; flags beat the file; an unknown key is an error).
-/// `--help` shows `config`'s values as the defaults. `--clusters` and `--restart`
-/// stay hidden spellings that warn on stderr and yield to `--n-clusters` / `--resume`.
+/// `--help` shows `config`'s values as the defaults. `--clusters` stays a hidden
+/// spelling that warns on stderr and yields to `--n-clusters`.
 /// A value no spelling reads raises during the parse: CLI11's error for a bad
 /// choice or number, InvalidInput for `--ram-limit` / `--delimiter`, DeviceError
 /// for `--device`.
@@ -126,7 +118,7 @@ void bind(CLI::App &app, Config &config);
 std::string to_config_text(const Config &config);
 
 /// `device` as to_config_text() writes it and detail::parse_device() reads it
-/// back: cpu, gpu, gpu:N (N the GPU index when it is not 0), hpc.
+/// back: cpu, gpu, gpu:N (N the GPU index when it is not 0).
 std::string device_text(const Config &config);
 
 /// A Config from (key, value) pairs, as Python keywords and MATLAB name-value

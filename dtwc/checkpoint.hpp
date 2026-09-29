@@ -1,31 +1,18 @@
 /**
  * @file checkpoint.hpp
- * @brief Save/resume checkpointing for distance matrix computation.
+ * @brief Save and resume a Problem's distance matrix as one `.dtwm` file.
  *
- * @details For large datasets, fill_distance_matrix() can take hours. These
- * functions save a (possibly partial) distance matrix to disk and restore it
- * later, so pairs already computed are not recomputed.
+ * @details A checkpoint is the file checkpoint_path() names: the layout of a
+ * mapped matrix (core/distance_matrix.hpp), so a checkpoint can be mapped with
+ * Problem::use_mmap_distance_matrix and a mapped matrix loaded as a checkpoint.
+ * A Problem whose matrix is mapped to that file is its own checkpoint: saving it
+ * flushes the mapping in place.
  *
- * Saving is either explicit (call save_checkpoint()) or automatic. Automatic
- * saving is driven by Problem::checkpoint (a CheckpointOptions): with
- * `enabled`, fill_distance_matrix() saves a new generation after every
- * `save_interval` completed matrix rows, on the calling thread, after the
- * parallel row block has joined. Never call save_checkpoint() yourself from
- * inside a parallel region.
- *
- * If an automatic save throws, the exception propagates out of
- * fill_distance_matrix(): the distances computed so far stay in memory and the
- * previously published generation on disk remains valid and loadable.
- *
- * Dense checkpoint v2 publishes immutable generations. A directory holds
- * exactly one generation after a successful save: the old generation is removed
- * only once CURRENT points at the new one, so a reader never observes a
- * directory without a valid payload.
- *   - CURRENT -- one lowercase 64-hex generation identifier
- *   - generations/<id>/distances.csv -- exact full NxN matrix; an empty field
- *     is the only uncomputed representation
- *   - generations/<id>/metadata.txt -- strict version, dimension, pair count,
- *     UTC timestamp, full Problem identity, and payload SHA-256
+ * Saving is explicit (save_checkpoint) or automatic through Problem::checkpoint
+ * (CheckpointOptions): with `enabled`, fill_distance_matrix() saves after every
+ * `save_interval` completed matrix rows, on the calling thread, after the row
+ * block has joined. A save that throws propagates out of the fill; the distances
+ * computed so far stay in the Problem and the previous file stays whole.
  *
  * @author Volkan Kumtepeli
  * @date 29 Mar 2026
@@ -33,80 +20,53 @@
 
 #pragma once
 
-#include "core/clustering_result.hpp"
 #include "core/dtw_options.hpp"
-#include "base/error.hpp"
 
-#include <string>
 #include <filesystem>
+#include <string>
 
 namespace dtwc {
 
-// Forward declaration
 class Problem;
 
-/// Options controlling automatic checkpoint behavior.
-///
-/// Consumed by Problem::fill_distance_matrix() through Problem::checkpoint.
-/// With `enabled` the fill runs the BruteForce row schedule in consecutive
-/// blocks of `save_interval` rows and publishes one generation after each
-/// block, the last block included, so a completed fill leaves a complete
-/// checkpoint. `enabled` requires dense distance storage and
-/// `save_interval >= 1`; either violation is an InvalidInput raised before any
-/// distance is computed.
+/// Options controlling automatic checkpointing, read by
+/// Problem::fill_distance_matrix() through Problem::checkpoint. With `enabled`
+/// the fill runs the BruteForce row schedule in blocks of `save_interval` rows
+/// and saves after each block, the last included, so a completed fill leaves a
+/// complete checkpoint. `enabled` with `save_interval < 1` or an empty
+/// `directory` is InvalidInput before any distance is computed.
 struct CheckpointOptions {
-  std::string directory = "./checkpoints";  ///< Directory to save checkpoint files.
-  /// Completed matrix rows between automatic saves (>= 1). Every save writes the
-  /// whole N-by-N CSV, so it costs O(N^2) bytes and time and a fill costs
-  /// O(N^3 / save_interval) in total. Choose `save_interval` so a save is a small
-  /// fraction of a block: a block costs about save_interval * N DTWs, a save
-  /// about N^2 number formats.
+  std::string directory = "./checkpoints"; ///< Directory of the checkpoint file.
+  /// Completed matrix rows between automatic saves (>= 1). A save of a matrix in
+  /// RAM writes all N(N+1)/2 doubles, so a fill writes O(N^3 / save_interval)
+  /// bytes in total; a mapped matrix is flushed in place instead.
   int save_interval = 100;
-  bool enabled = false;                     ///< Whether automatic mid-fill checkpointing is enabled.
+  bool enabled = false; ///< Whether automatic checkpointing is enabled.
 };
 
-/// Save the current distance matrix state to a checkpoint directory.
-///
-/// Validates the complete source before filesystem effects, streams a new
-/// immutable generation, and atomically replaces CURRENT. Existing active
-/// generations are never overwritten. After CURRENT names the new generation,
-/// every other generation directory is removed (best effort), so a directory
-/// holds exactly one generation after a successful save. Unverifiable legacy
-/// direct-file directories are upgraded only by a successful save.
-///
-/// The identity fingerprint includes prob.metric(): an L1 and a SquaredL2
-/// matrix over the same data are different numbers.
-///
-/// @param prob   The Problem whose distance matrix to save.
-/// @param path   Directory path for checkpoint files.
-/// @throws IOError if the directory cannot be created or a file cannot be
-///         written; InvalidInput if the Problem holds no series, or a matrix of
-///         another size or with a non-finite distance.
+/// The checkpoint file of `prob` in `directory`: `<directory>/<name>.dtwm`,
+/// "distances" standing in for an empty name. Both strings are UTF-8.
+std::filesystem::path checkpoint_path(const Problem &prob, const std::string &directory);
+
+/// Save the Problem's distance matrix to checkpoint_path(prob, path): written to
+/// a ".tmp" file, flushed to the device, then renamed over any previous
+/// checkpoint. The directory is created if missing. The identity in the file
+/// includes prob.metric(): an L1 and a SquaredL2 matrix of the same data differ.
+/// @throws IOError if the directory or the file cannot be written; InvalidInput
+///         if the Problem holds no series, or a matrix of another size.
 void save_checkpoint(const Problem &prob, const std::string &path);
 
-/// As above, but tagged with `metric`, the pointwise metric the stored
-/// distances were computed with. It may differ from prob.metric() only for a
-/// matrix a producer outside this Problem filled; prefer the two-argument form.
-void save_checkpoint(const Problem &prob, const std::string &path,
-                     core::MetricType metric);
+/// As above, tagged with `metric`, the pointwise metric the stored distances
+/// were computed with. It may differ from prob.metric() only for a matrix a
+/// producer outside this Problem filled; prefer the two-argument form.
+void save_checkpoint(const Problem &prob, const std::string &path, core::MetricType metric);
 
-/// Load a checkpoint and restore the distance matrix into the Problem.
-///
-/// Validates CURRENT, the exact seven-key v2 manifest, the full Problem
-/// data/configuration identity, payload digest, CSV shape, finite full-token
-/// numbers, bit-identical symmetry, and pair count. Parsing occurs into a local
-/// candidate and publishes with one non-throwing move only after every check.
-/// Legacy direct-file directories are rejected because their data identity is
-/// unverifiable.
-///
-/// The expected identity includes prob.metric(): a checkpoint written under a
-/// different metric no longer matches it.
-///
-/// @param prob   The Problem to restore the distance matrix into.
-/// @param path   Directory path containing checkpoint files.
-/// @return true if checkpoint was loaded successfully; false without changing
-///         Problem state if it is absent, incompatible, or malformed. A caller
-///         that ignores false recomputes every distance without knowing it.
+/// Read checkpoint_path(prob, path) into the Problem's distance matrix, in RAM
+/// (a mapped matrix is let go of; its file is left as it is).
+/// @return false, with the Problem unchanged, only when there is no such file.
+/// @throws InvalidInput if the file holds distances of other series or other
+///         distance settings, prob.metric() included; IOError if it is not a
+///         whole `.dtwm` file (short, foreign, another version, wrong length).
 [[nodiscard]] bool load_checkpoint(Problem &prob, const std::string &path);
 
 /// As above, but expecting distances computed with `metric`, which may differ
@@ -114,44 +74,5 @@ void save_checkpoint(const Problem &prob, const std::string &path,
 /// prefer the two-argument form.
 [[nodiscard]] bool load_checkpoint(Problem &prob, const std::string &path,
                                    core::MetricType metric);
-
-// ---- Binary checkpoint for ClusteringResult --------------------------------
-
-/// Save clustering result to a compact binary file.
-///
-/// Binary format (strict little-endian):
-///   bytes 0-3:   magic "DCKP"
-///   bytes 4-5:   version uint16 = 1
-///   bytes 6-7:   reserved (0)
-///   bytes 8-11:  k (int32) -- number of medoids
-///   bytes 12-15: N (int32) -- number of data points
-///   bytes 16-19: iterations (int32)
-///   byte  20:    converged (uint8, 0 or 1)
-///   bytes 21-23: padding (0)
-///   bytes 24-31: total_cost (double)
-///   bytes 32+:   medoid_indices (k * int32)
-///   then:        labels (N * int32)
-///
-/// @param result  The clustering result to save.
-/// @param path    File path for the binary checkpoint.
-/// @throws InvalidInput if a count or integer field is not representable by
-///         the version-1 int32 wire format.
-/// @throws IOError if the file or its parent directories cannot be written.
-void save_binary_checkpoint(const core::ClusteringResult &result,
-                            const std::filesystem::path &path);
-
-/// Load clustering result from a binary checkpoint file.
-///
-/// Validates the complete header, canonical structural bytes, exact file
-/// length, and payload before publishing a local candidate. Structural
-/// validation deliberately does not impose clustering-semantic or provenance
-/// policy. Returns false without changing @p result if the file is missing,
-/// inaccessible, malformed, or cannot be decoded.
-///
-/// @param result  The ClusteringResult to populate.
-/// @param path    File path of the binary checkpoint.
-/// @return true if loaded successfully, false otherwise.
-bool load_binary_checkpoint(core::ClusteringResult &result,
-                            const std::filesystem::path &path);
 
 } // namespace dtwc

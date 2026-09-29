@@ -17,14 +17,13 @@
 #include "base/settings.hpp"       // for data_t, DEFAULT_BAND
 #include "base/env.hpp"            // for Device
 #include "base/error.hpp"          // for InvalidInput
+#include "base/names.hpp"          // for Name
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
-#include "core/storage.hpp"     // for StoragePolicy
+#include "core/storage.hpp"     // for Precision
+#include "core/distance_matrix.hpp" // for DistanceMatrix
 #include "core/clustering_result.hpp" // for set_result
-
-#include "core/mmap_distance_matrix.hpp"
-#include <variant>
 
 #include <cstddef>     // for size_t
 #include <cstdint>     // for uint64_t, int64_t
@@ -40,28 +39,31 @@
 #include <atomic>      // for std::atomic (RelaxedFlag)
 #include <stdexcept>
 
-#include "core/distance_matrix.hpp"
 #include "checkpoint.hpp" // for CheckpointOptions, load_checkpoint
 
 namespace dtwc {
+
+/// GPU compute precision, on every GPU backend. `Auto` is FP32 on consumer CUDA
+/// GPUs and FP64 on HPC ones; Metal computes in FP32 and rejects FP64. The values
+/// are hashed into the distance-matrix identity, so they never change.
+enum class GpuPrecision { Auto = 0, FP32 = 1, FP64 = 2 };
+
+/// The spellings of `--gpu-precision`.
+inline constexpr Name<GpuPrecision> gpu_precision_names[]{
+  { "auto", GpuPrecision::Auto },
+  { "fp32", GpuPrecision::FP32 }, { "float32", GpuPrecision::FP32 }, { "f32", GpuPrecision::FP32 },
+  { "float", GpuPrecision::FP32 },
+  { "fp64", GpuPrecision::FP64 }, { "float64", GpuPrecision::FP64 }, { "f64", GpuPrecision::FP64 },
+  { "double", GpuPrecision::FP64 },
+};
 
 /// GPU compute settings, read by the CUDA and Metal routes. Metal runs on the
 /// system default device in FP32: a device_id other than 0, or precision FP64,
 /// is rejected on Metal rather than ignored.
 struct CUDASettings {
   int device_id = 0;  ///< GPU index (Problem::set_device(Device::GPU, index)).
-  /// Compute precision. `Auto` → FP32 on consumer GPUs, FP64 on HPC GPUs.
-  /// Declared as a plain int here (rather than `dtwc::cuda::CUDAPrecision`)
-  /// so this header stays parsable when DTWC_HAS_CUDA is undefined.
-  /// Values: 0 = Auto, 1 = FP32, 2 = FP64. See settings::Precision constants.
-  int precision = 0;
+  GpuPrecision precision = GpuPrecision::Auto; ///< Compute precision.
 };
-
-inline void validate_cuda_settings_precision(int value)
-{
-  if (value < 0 || value > 2)
-    throw InvalidInput("Invalid CUDA precision value.");
-}
 
 /// MIP solver tuning parameters.
 struct MIPSettings {
@@ -128,7 +130,6 @@ void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strateg
 class Problem
 {
 public:
-  using distMat_t = std::variant<core::DenseDistanceMatrix, core::MmapDistanceMatrix>;
   using path_t = std::filesystem::path;
 
   /// DTW distance function types: float64 and float32 variants.
@@ -138,14 +139,19 @@ public:
 
 private:
   int Nc{ 1 };                                      /*!< Number of clusters. */
-  distMat_t distMat;                                /*!< Distance matrix. */
+  core::DistanceMatrix distMat;                     /*!< Distance matrix, on the heap or mapped (use_mmap_distance_matrix). */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
   mutable dtw_fn_t dtw_fn_;                         /*!< Derived DTW dispatcher for float64. */
   mutable dtw_fn_f32_t dtw_fn_f32_;                 /*!< Derived DTW dispatcher for float32. */
+  /// The fill's lane functions (core::resolve_dtw_block_fn); empty where none applies.
+  mutable std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
+                             std::span<double>)> dtw_block_fn_;
+  mutable std::function<void(std::span<const float>, std::span<const std::span<const float>>,
+                             std::span<double>)> dtw_block_fn_f32_;
   mutable const Problem *dtw_binding_owner_{ nullptr }; /*!< Address captured by the dispatchers. */
   mutable std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Derived WDTW weights keyed by max_dev. */
 
-  using cache_fingerprint_t = core::MmapDistanceMatrix::fingerprint_type;
+  using cache_fingerprint_t = core::DistanceMatrix::fingerprint_type;
   struct DistanceCacheConfiguration {
     core::MetricType metric{ core::MetricType::L1 };
     int band{ settings::DEFAULT_BAND };
@@ -153,7 +159,7 @@ private:
     core::MissingStrategy missing_strategy{ core::MissingStrategy::Error };
     DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto };
     int cuda_device_id{ 0 };
-    int cuda_precision{ 0 };
+    GpuPrecision cuda_precision{ GpuPrecision::Auto };
   };
   struct DistanceCacheIdentity {
     cache_fingerprint_t full{};
@@ -198,29 +204,13 @@ private:
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
   int last_iterations_{ 0 };
   double tadpole_dc_{ -1.0 };
-  core::StoragePolicy storage_policy_{ core::StoragePolicy::Auto };
-  std::size_t ram_limit_bytes_{ 0 }; //!< set_data() footprint threshold override (bytes); 0 = default (50% free RAM).
   bool verbose_{ false };
   /// Run-artifact files (per-repetition medoids, best-repetition record) belong
   /// to cluster_and_process(); cluster() itself is side-effect free.
   bool persist_run_artifacts_{ false };
   path_t output_folder_{ "./results/" }; //!< Relative to the working directory; set_output_folder.
   std::string name_{};
-  std::unique_ptr<LoadedData> series_storage_owner_;
   Data data_;
-
-  /// Dispatch through variant via std::visit.
-  template <typename F>
-  decltype(auto) visit_distmat(F &&f)
-  {
-    return std::visit(std::forward<F>(f), distMat);
-  }
-
-  template <typename F>
-  decltype(auto) visit_distmat(F &&f) const
-  {
-    return std::visit(std::forward<F>(f), distMat);
-  }
 
   void rebind_dtw_fn() const; ///< Rebind derived dispatch state to this address/configuration.
   void refresh_variant_caches() const; ///< Refresh precomputed variant-specific caches.
@@ -266,16 +256,14 @@ private:
   /// out the kernel itself, so no filled matrix can serve their pairs.
   void validate_fill_request_once(std::string_view where) const;
   /// get_name / p_vec return references into owned heap storage. A view
-  /// (set_view_data, an mmap series store) has none, nor has a Float32 or
-  /// metadata-only store Float64 values: indexing would read past an empty
-  /// vector in a Release build (F25).
+  /// (set_view_data) has none, nor has a Float32 store Float64 values:
+  /// indexing would read past an empty vector in a Release build (F25).
   void require_owned_storage(std::string_view accessor, bool float64_values) const;
   void clear_mmap_cache_identity();
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
   void resize();                        ///< Resize cluster/centroid buffers to size()/Nc. Private invariant maintenance.
 
   // Private functions:
-  friend struct ProblemStoragePolicyTestAccess;
   friend bool load_checkpoint(Problem &prob, const std::string &path,
                               core::MetricType metric);
   std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(
@@ -298,44 +286,8 @@ private:
             "least one value.");
   }
 
-  void adopt_loaded_data(LoadedData loaded)
-  {
-    if (loaded.is_mmap()) {
-      auto owner =
-        std::make_unique<LoadedData>(std::move(loaded));
-      Data view = owner->data;
-#ifdef DTWC_HAS_MMAP
-      if (!view.is_view()
-          || owner->names.size() != view.size()) {
-        throw std::logic_error(
-          "Problem::adopt_loaded_data: mmap name ownership invariant failed.");
-      }
-      for (std::size_t i = 0; i < view.size(); ++i) {
-        if (view.name(i).data() != owner->names[i].data()
-            || view.name(i).size() != owner->names[i].size()) {
-          throw std::logic_error(
-            "Problem::adopt_loaded_data: mmap name ownership invariant failed.");
-        }
-      }
-#endif
-      data_ = std::move(view);
-      series_storage_owner_ = std::move(owner);
-      return;
-    }
-    data_ = std::move(loaded.data);
-    series_storage_owner_.reset();
-  }
-
-  bool has_mmap_series_storage() const
-  {
-    return series_storage_owner_
-        && series_storage_owner_->is_mmap();
-  }
-
 public:
-  [[deprecated("use set_max_iter/max_iter")]]
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
-  [[deprecated("use set_n_repetitions/n_repetitions")]]
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int band{ settings::DEFAULT_BAND };        /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   /// DTW variant selection and parameters.
@@ -355,47 +307,22 @@ public:
   std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
-  // GCC emits -Wdeprecated-declarations for in-class initializers of the
-  // deprecated maxIter / N_repetition fields at every constructor definition.
-  // Canonical construction must stay silent (F22); caller access of those
-  // fields must still diagnose. Same push/pop as Problem.cpp accessors.
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning(disable : 4996)
-#endif
   Problem() { rebind_dtw_fn(); }
   Problem(std::string_view problem_name) : name_{ problem_name }
   {
     rebind_dtw_fn();
   }
   Problem(std::string_view problem_name, DataLoader &loader)
-    : storage_policy_{ loader.storage_policy() },
-      ram_limit_bytes_{ loader.ram_limit() }, name_{ problem_name }
+    : name_{ problem_name }, data_{ loader.load() }
   {
-    auto loaded = loader.load_stored();
-    reject_empty_series(loaded.data, "Problem(name, DataLoader)");
-    adopt_loaded_data(std::move(loaded));
+    reject_empty_series(data_, "Problem(name, DataLoader)");
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#  pragma warning(pop)
-#endif
   Problem(const Problem &) = delete;
   Problem &operator=(const Problem &) = delete;
   Problem(Problem &&);
-  /// Not noexcept: moving the members (the variant distance matrix, the
-  /// dispatchers, the WDTW weight map) may throw, and a noexcept promise would
-  /// turn that into std::terminate (S-13).
+  /// Not noexcept: moving the members (the dispatchers, the WDTW weight map)
+  /// may throw, and a noexcept promise would turn that into std::terminate (S-13).
   Problem &operator=(Problem &&);
 
   auto size() const { return data_.size(); }
@@ -475,8 +402,6 @@ public:
   std::uint64_t random_seed() const { return random_seed_; }
   int last_iterations() const { return last_iterations_; }
   double tadpole_dc() const { return tadpole_dc_; }
-  core::StoragePolicy storage_policy() const { return storage_policy_; }
-  std::size_t ram_limit() const { return ram_limit_bytes_; }
   bool verbose() const { return verbose_; }
   const path_t &output_folder() const { return output_folder_; }
   const std::string &name() const { return name_; }
@@ -541,18 +466,8 @@ public:
   /// ordinal. A Problem never reads the process-wide default (dtwc::device());
   /// until told otherwise it computes on the CPU.
   /// @throws DeviceError for `gpu` on a build with no GPU backend;
-  ///         InvalidInput for `hpc`, a Tier-1 / CLI run option (D-10), or a
-  ///         negative index.
+  ///         InvalidInput for a negative index.
   void set_device(Device device, int index = 0);
-  void set_storage_policy(core::StoragePolicy policy)
-  {
-    core::validate_storage_policy(policy);
-    if (storage_policy_ == policy) return;
-    // Governs future owning set_data calls; installed data is not moved.
-    storage_policy_ = policy;
-  }
-  /// Footprint threshold override for the next owning set_data (bytes; 0 = default).
-  void set_ram_limit(std::size_t bytes) { ram_limit_bytes_ = bytes; }
   void set_cuda_settings(CUDASettings settings)
   {
     preflight_distance_semantics(
@@ -581,13 +496,7 @@ public:
     reject_empty_series(candidate, "Problem::set_data");
     preflight_distance_semantics(
       variant_params, missing_strategy, metric_, candidate, distance_strategy, cuda_settings);
-    auto loaded = detail::route_series_storage(
-      std::move(candidate),
-      storage_policy_,
-      ram_limit_bytes_,
-      {},
-      "Problem::set_data");
-    adopt_loaded_data(std::move(loaded));
+    data_ = std::move(candidate);
     refresh_distance_matrix();
   }
 
@@ -600,7 +509,6 @@ public:
     preflight_distance_semantics(
       variant_params, missing_strategy, metric_, candidate, distance_strategy, cuda_settings);
     data_ = std::move(candidate);
-    series_storage_owner_.reset();
     refresh_distance_matrix();
     resize(); // sizes distance matrix for new N
   }
@@ -613,7 +521,7 @@ public:
   {
     validate_mmap_cache_identity();
     validate_dense_cache_configuration();
-    return visit_distmat([](const auto &m) { return m.max(); });
+    return distMat.max();
   }
   [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
 
@@ -669,23 +577,22 @@ public:
   bool is_distance_matrix_filled() const
   {
     validate_mmap_cache_identity();
-    if (std::holds_alternative<core::DenseDistanceMatrix>(distMat)
-        && !dense_cache_configuration_is_current())
+    if (!distMat.is_mapped() && !dense_cache_configuration_is_current())
       return false;
-    return visit_distmat([](const auto &m) { return m.size() > 0 && m.all_computed(); });
+    return distMat.size() > 0 && distMat.all_computed();
   }
   [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
 
-  /// Access the underlying distance matrix (const).
-  const distMat_t &distance_matrix() const
+  /// The distance matrix, on the heap or mapped (const).
+  const core::DistanceMatrix &distance_matrix() const
   {
     validate_mmap_cache_identity();
     validate_dense_cache_configuration();
     return distMat;
   }
-  /// Access the underlying distance matrix (mutable). The caller may change
-  /// which pairs are known, so the next lazy lookup re-checks the request.
-  distMat_t &distance_matrix()
+  /// The distance matrix (mutable). The caller may change which pairs are
+  /// known, so the next lazy lookup re-checks the request.
+  core::DistanceMatrix &distance_matrix()
   {
     validate_mmap_cache_identity();
     ensure_dense_cache_configuration_current();
@@ -693,28 +600,19 @@ public:
     return distMat;
   }
 
-  /// Access the Dense distance matrix. Throws std::bad_variant_access if mmap is active.
-  const core::DenseDistanceMatrix &dense_distance_matrix() const
-  {
-    validate_dense_cache_configuration();
-    return std::get<core::DenseDistanceMatrix>(distMat);
-  }
-  core::DenseDistanceMatrix &dense_distance_matrix()
-  {
-    ensure_dense_cache_configuration_current();
-    fill_request_validated_ = false; // as distance_matrix()
-    return std::get<core::DenseDistanceMatrix>(distMat);
-  }
   /// Full data-plus-distance-semantics identity used by durable checkpoints,
   /// for this Problem's metric(). Names and clustering outputs are
   /// intentionally excluded because they do not affect any stored distance.
-  core::MmapDistanceMatrix::fingerprint_type distance_checkpoint_identity() const;
+  core::DistanceMatrix::fingerprint_type distance_checkpoint_identity() const;
   /// The same identity for distances computed with `metric`, which may differ
   /// from metric() only for a matrix a producer outside this Problem filled.
-  core::MmapDistanceMatrix::fingerprint_type distance_checkpoint_identity(
+  core::DistanceMatrix::fingerprint_type distance_checkpoint_identity(
     core::MetricType metric) const;
-  /// Bind persistent storage to this Problem's exact data/configuration,
-  /// metric() included.
+  /// Map the distance matrix to the `.dtwm` file `cache_path`, bound to this
+  /// Problem's exact data and distance settings, metric() included. An existing
+  /// file is reopened with the distances it holds (InvalidInput if they are for
+  /// other series or settings, IOError if it is not a whole `.dtwm` file); an
+  /// absent one is created. IOError on a build without llfio.
   /// The full data fingerprint is verified at bind and once again on first use;
   /// subsequent warm lookups compare a fixed-size configuration snapshot to
   /// preserve O(1) access. After first use, replace data through set_data and
@@ -773,7 +671,7 @@ public:
   void cluster_by_mip();
   [[deprecated("use cluster_by_mip")]] void cluster_by_MIP() { cluster_by_mip(); }
   void cluster_by_kmedoids_lloyd();
-  [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsLloyd() { cluster_by_kmedoids_lloyd(); }
+  [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsPAM() { cluster_by_kmedoids_lloyd(); }
 
   void cluster_and_process();
 

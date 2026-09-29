@@ -3,24 +3,16 @@
  * @brief Runtime loudness — single-thread warning on the COMPUTE entry points
  *        (Task 3.6, adversarial-review finding H1).
  *
- * @details Task 3.2 wired the single-thread warning into the dtwc::Env
- * constructor, but the compute hot paths — Problem::fill_distance_matrix, the
- * Python distance-matrix bindings, direct C++ Problem use — never construct
- * dtwc::env(). So on a build with OpenMP present but only 1 usable thread
- * (OMP_NUM_THREADS=1, common on SLURM/containers) the computation ran SILENTLY
- * single-threaded — a no-silent-fallback violation that survived Phase 3's own
- * gate. The fix routes every compute path through dtwc::get_max_threads(), which
- * now calls the shared process-once emitter dtwc::warn_if_single_threaded().
+ * @details On a build with OpenMP present but only 1 usable thread
+ * (OMP_NUM_THREADS=1, common on SLURM/containers) a computation must not run
+ * silently single-threaded. Every compute path goes through
+ * dtwc::get_max_threads(), which calls the process-once emitter
+ * dtwc::warn_if_single_threaded().
  *
  * This test drives a REAL compute path (fill_distance_matrix on 3 tiny series)
- * with NO dtwc::Env ever constructed, and asserts the loud warning still fires —
- * exactly once, and never again on a second compute call.
- *
- * Separate executable on purpose: the warning is process-once (a single
- * std::call_once guard SHARED with the Env constructor, so the CLI — which both
- * builds env() and computes — warns at most once). A dedicated test process gives
- * this test a fresh guard. The Env-constructor half of the guarantee is pinned in
- * test_runtime_loudness_env.cpp.
+ * and asserts the loud warning fires exactly once, and never again on a second
+ * compute call. Separate executable on purpose: the warning is process-once, so
+ * a dedicated test process gives this test a fresh guard.
  *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026
@@ -48,8 +40,8 @@
 using namespace dtwc;
 
 // ===========================================================================
-// Registered expected values — transcribed VERBATIM from dtwc/env.cpp
-// (detail::sequential_warning_text). Declared BEFORE any run so every assertion
+// Registered expected values — transcribed VERBATIM from dtwc/base/env.cpp
+// (warn_if_single_threaded). Declared BEFORE any run so every assertion
 // is judged against a pre-declared band, never a post-hoc one.
 // ===========================================================================
 
@@ -90,7 +82,7 @@ static std::size_t count_occurrences(const std::string &hay, const std::string &
 }
 
 // Build a tiny Problem and fill its distance matrix — a real compute path that
-// funnels through omp_chunk_size() -> get_max_threads(). Constructs NO Env.
+// funnels through omp_chunk_size() -> get_max_threads().
 static void run_tiny_fill()
 {
   std::vector<std::vector<data_t>> vecs{
@@ -106,10 +98,10 @@ static void run_tiny_fill()
 }
 
 // ===========================================================================
-// A compute path with only 1 usable thread warns loudly — WITHOUT any Env.
+// A compute path with only 1 usable thread warns loudly.
 // ===========================================================================
 
-TEST_CASE("compute path warns when single-threaded, without constructing Env", "[loudness][compute]")
+TEST_CASE("compute path warns when single-threaded", "[loudness][compute]")
 {
 #if defined(DTWC_SEQUENTIAL_BUILD)
   // No OpenMP (-DDTWC_ALLOW_SEQUENTIAL=ON): the compute loops run serially and do

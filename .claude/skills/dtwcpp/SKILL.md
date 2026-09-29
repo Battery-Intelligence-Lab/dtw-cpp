@@ -28,7 +28,7 @@ Check what this installation can actually do, and say so:
 
 ```python
 import dtwcpp
-dtwcpp.check_system()          # OpenMP threads, CUDA / Metal device, MPI, HiGHS
+dtwcpp.check_system()          # OpenMP threads, CUDA / Metal device, HiGHS
 ```
 
 The flags are compile-time; `dtwcpp.test.parallelisation()` and `dtwcpp.test.gpu()` prove

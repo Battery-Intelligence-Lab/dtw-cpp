@@ -70,7 +70,7 @@ dtwc-convert = "dtwcpp.convert:main"
 [tool.scikit-build]
 cmake.version = ">=3.26"
 ninja.version = ">=1.11"
-cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=ON", "-DDTWC_ENABLE_LLFIO=OFF"]
+cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=ON", "-DDTWC_ENABLE_LLFIO=ON"]
 wheel.packages = ["python/dtwcpp"]
 wheel.exclude = ["include/**", "lib/**", "bin/**", "share/**"]
 sdist.exclude = ["build/**", "build_*/**", "docs/public*/**"]

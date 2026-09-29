@@ -24,15 +24,15 @@ needs a dated line in §3. Anything older or longer is in git history (`git log 
   (`baselines/2026-09-22-x27-drop-eigen-band.md`, `baselines/2026-09-23-x27-eigen-gap.md`).
 - **Highway / xsimd; SIMD within one pair** — tried March–April 2026, not worth it (Volkan, 2026-09-23); the
   row recurrence does not vectorise (`baselines/2026-09-22-x04-codegen-report.md`). SIMD lanes across pairs in
-  plain C++ stay open (PF-5, after phase G, kill criterion 1.5×).
+  plain C++ passed their probe (2026-09-29, §3) and enter the CPU fill.
 - **A runtime check on a count** (series, clusters, labels) — counts are `index_t`; see §2 rule 2.
 - **Extending the hand-written CMake URL-pin deny-list** — replaced by `scripts/check_pins.py`.
 - **Not planned** (reopen with clustering evidence): ERP, LCSS, EDR, ShapeDTW, Itakura parallelogram.
 - **Libraries not adopted** (2026-09-22; each duplicates in-tree code chosen on purpose): xxHash (SHA-256 is
   identity), PCG / xoshiro (`portable_random.hpp`), magic_enum (the name tables are the cross-language
   contract), toml++ / nlohmann-json (CLI11 + fkYAML read the config), {fmt}, kokkos-mdspan, rapidcheck
-  (Catch2 `GENERATE`), Taskflow / TBB (OpenMP). Adopted: fast_float (FX-6), libpfm4 (benchmarks only).
-  Open: llfio → mio (Q2).
+  (Catch2 `GENERATE`), Taskflow / TBB (OpenMP). Adopted: fast_float (FX-6), libpfm4 (benchmarks only), llfio
+  header-only for the mapped matrix (Q2 closed 2026-09-28: not mio).
 
 ## 2. Standing rules
 
@@ -55,8 +55,11 @@ needs a dated line in §3. Anything older or longer is in git history (`git log 
    naming the fix; a guard that must fire without a dependency lives outside its `#ifdef`. A feature this build
    lacks takes its subsystem's error: `DeviceError`, `SolverError`, `IOError`.
 5. **Optional dependencies stay optional** (OpenMP aside): HiGHS, Gurobi, CUDA, Metal, llfio, Arrow, YAML.
-6. **Lock-free and fast by design** (Volkan, 2026-09-02): no lock in a hot path; a critical is named, cold and
-   justified.
+6. **Race-free by design** (Volkan, 2026-09-02; 2026-09-28: "we should be race-free by design (except the file
+   operations), so no mutex for data reading from the distance matrix etc."). In a parallel region each element or
+   slot has one writer and shared data is read-only; reductions and error capture go through per-thread slots
+   combined serially after the region. No `std::mutex`, `omp critical` or atomic on a data path; only file
+   operations and one-time process init (`std::call_once`) may lock.
 7. **FP model:** `-fassociative-math` without `-ffinite-math-only`; NaN means missing or not computed; no
    `infinity()` sentinel.
 8. **Gates assert their subject ran** (CTest scores a skip as a pass); CLI behaviour is proven on the real
@@ -127,3 +130,38 @@ CHANGELOG rule.
   pulled in header-only without the quickcpplib superbuild if the spike proves it builds in wheels; otherwise
   Boost.Interprocess. New files are created non-sparse (`win_disable_sparse_file_creation`): a sparse mapped file cost
   1.8× on random reads on Windows.
+- **2026-09-28 — llfio header-only: the spike held** (`78af336` on `worktree-agent-aff6e262d581bae10`, base
+  `80c4dcb`). Pinned archives, no superbuild (`Dependencies.cmake` −196/+69); warm configure 198 s → 44 s; ctest green;
+  a wheel with llfio ON passed pytest 1174/19/0 with a bit-identical mapped round trip; an R2025b MSVC MEX with llfio ON
+  passed its storage test. The superbuild had compiled quickcpplib from master and outcome from develop, unpinned; both
+  are pinned now. wg14_signals is Apache-2.0 (notice added). Boost.Interprocess is not needed; D-18 stands.
+- 2026-09-28 — W2a FALSIFIED: LB_Webb prunes exactly as LB_Keogh in TADPole (78.0 %, N = 200;
+  `baselines/2026-09-28-webb-vs-keogh-tadpole.md`), so it went. `docs/api-contract-2.0.md` was edited to drop
+  `lb_strategy` and `Pruned`.
+- 2026-09-28 — W5b: the auto-spill to `.dtws` ran only after the heap load had filled RAM, so it never served data
+  larger than RAM (it copied it and leaked the temp file). Data beyond RAM = list-per-row Parquet streamed by CLARA /
+  OneBatchPAM under `--ram-limit`, plus the mapped distance matrix.
+- 2026-09-28 — W5e: an internal precondition whose public entry already raises a typed error is an `assert`, and a
+  test that expected it to throw goes (`ParquetChunkReader::read_rows` on a scalar column; `fast_clara` rejects it).
+- 2026-09-28 — Sophos 'Generic ML PUA' on X2's Release `dtwc_cl.exe`: no exclusion. Volkan: "It is alright probably
+  it will be resolved when we add more and more features". X2 re-merges once the binary has changed; if still
+  quarantined, that merge's CLI tests run on a Debug build of the same tree; every other gate stays Release; CI runs
+  the Release CLI tests.
+- 2026-09-29 — PF-5 probe PASS: W equal-length pairs in SIMD lanes, plain C++, run 3.7–4.2× (W = 4) and 5.2–7.9×
+  (W = 8) the fixed scalar kernel for f64, full and banded, every lane bitwise equal; a 24-thread fill 3.6× / 4.8×
+  (`baselines/2026-09-29-pf5-simd-lanes-probe.md`). The kill criterion (1.5×) is not met, so lanes enter the CPU fill
+  now (unit P1, after K1 and Y2), not after phase G: Volkan asked on 2026-09-29 that the code "generates decent
+  assembly like SIMD where needed".
+- 2026-09-29 — K1 merged (`4441969`): no DP cell makes a library call; the linear kernel 7.0× and the banded 5.6× faster
+  on Windows (pinned P-core), digit-identical. The fill band (≥ 2×) FALSIFIED at 1.36×: the unbanded fill runs the
+  EAPruned kernel, which made no call; P1 measures lanes against it. `test_codegen_no_calls` (clang builds) fails a
+  build whose DP inner loop calls; registered with `add_test` because it runs a Python script, its PASS regex requires
+  `inner_loops` ≥ 1.
+- 2026-09-29 — Y2 merged (`959dc5b`): heap and mapped matrices are one `core::DistanceMatrix`; get/set index a raw
+  `double *`. The mapped file's fingerprint is checked once, when it is mapped; a matrix assigned through the mutable
+  accessor is the caller's (review point 4: a per-lookup compare to catch deliberate C++ misuse is the defensive design
+  the charter rules out). A checkpoint is `<dir>/<name>.dtwm` (`distances.dtwm` unnamed), flushed to the device before
+  the rename; writing values into a mapped Problem is `InvalidInput`.
+- 2026-09-29 — Y3 merged (`b260415`): the CMake named-critical scanner goes with `run_openmp`'s critical (no header has
+  one); `dtwc_main` goes, overriding the ledger's keep-as-tutorial (B-07/O-19) per the 09-27 instruction; `--ram-limit`
+  rounds a fractional byte up; `gpu_precision_names` keeps its spellings (docs and SLURM scripts use f32 / f64).

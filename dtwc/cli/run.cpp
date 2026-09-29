@@ -5,7 +5,7 @@
  *
  * @details Moved from dtwc_cl.cpp's main() and api.cpp's cluster(), which both
  * call it now (IF-2 S3), so each rule has one copy. Progress lines go to stdout
- * under `verbose`; the line that announces a --resume replay is unconditional.
+ * under `verbose`.
  *
  * @date 24 Sep 2026
  */
@@ -24,9 +24,6 @@
 #include "../checkpoint.hpp"
 #include "../fileOperations.hpp"
 #include "../scores.hpp"
-#ifdef DTWC_HAS_MMAP
-#include "../core/mmap_data_store.hpp"
-#endif
 #ifdef DTWC_HAS_ARROW
 #include "../io/arrow_ipc_reader.hpp"
 #endif
@@ -36,6 +33,7 @@
 #endif
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -43,7 +41,6 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -89,7 +86,7 @@ std::pair<Method, const char *> problem_route(ClusterMethod method)
 }
 
 /// Where the series come from.
-enum class Source { Text, ParquetFile, ParquetDirectory, ArrowIPC, Dtws, Memory };
+enum class Source { Text, ParquetFile, ParquetDirectory, ArrowIPC, Memory };
 
 struct Input
 {
@@ -126,13 +123,12 @@ Input classify(const std::string &input_text)
   const auto ext = lower_extension(input.path);
   if (ext == ".parquet" || ext == ".pq") input.source = Source::ParquetFile;
   else if (ext == ".arrow" || ext == ".ipc" || ext == ".feather") input.source = Source::ArrowIPC;
-  else if (ext == ".dtws") input.source = Source::Dtws;
   else input.source = Source::Text; // anything a typed reader does not claim goes to the CSV/TSV DataLoader
   return input;
 }
 
-/// Reject an input format whose reader this binary does not contain: IOError,
-/// as for `.dtws` without llfio (api-contract-2.0.md §5). The rejection must
+/// Reject an input format whose reader this binary does not contain: IOError
+/// (api-contract-2.0.md §5). The rejection must
 /// exist in the build that LACKS the capability, so it sits under `#ifndef`:
 /// inside `#ifdef DTWC_HAS_PARQUET` it would be absent from the
 /// `DTWC_ENABLE_ARROW=OFF` build, and a Parquet file would reach the CSV
@@ -152,12 +148,6 @@ void require_input_format_is_built([[maybe_unused]] Source source)
       "Arrow IPC input (.arrow/.ipc/.feather) requires a build with Arrow "
       "(-DDTWC_ENABLE_ARROW=ON). This binary was built without Arrow support; "
       "convert the input to CSV/TSV or use an Arrow-enabled build.");
-#endif
-#ifndef DTWC_HAS_MMAP
-  if (source == Source::Dtws)
-    throw IOError(
-      ".dtws memory-mapped input requires a build with llfio "
-      "(-DDTWC_ENABLE_LLFIO=ON). This binary was built without mmap support.");
 #endif
 }
 
@@ -197,29 +187,8 @@ Data read_series(const Config &config, const Input &input, std::string &from)
       from = " from Parquet";
       return io::load_parquet_file(input.path, config.column);
 #endif
-#ifdef DTWC_HAS_MMAP
-    case Source::Dtws: { // copied out of the map (a mapped series store is a later step)
-      from = " from .dtws cache";
-      auto store = core::MmapDataStore::open(input.path);
-      std::vector<std::vector<data_t>> series(store.size());
-      for (std::size_t i = 0; i < series.size(); ++i) {
-        const auto values = store.series(i);
-        series[i].assign(values.begin(), values.end());
-      }
-      std::vector<std::string> names(series.size());
-      const fs::path names_path = input.path.string() + ".names"; // the sidecar, when present
-      std::error_code ec;
-      if (fs::exists(names_path, ec)) {
-        std::ifstream name_file(names_path);
-        for (std::size_t i = 0; i < names.size() && std::getline(name_file, names[i]); ++i) {}
-      } else {
-        for (std::size_t i = 0; i < names.size(); ++i) names[i] = "series_" + std::to_string(i);
-      }
-      return Data(std::move(series), std::move(names), store.ndim());
-    }
-#endif
 #ifdef DTWC_HAS_ARROW
-    case Source::ArrowIPC: { // copied out of the map, as .dtws
+    case Source::ArrowIPC: { // copied out of the map
       from = " from Arrow IPC";
       auto source = io::ArrowIPCDataSource::open(input.path);
       std::vector<std::vector<data_t>> series(source.size());
@@ -235,7 +204,7 @@ Data read_series(const Config &config, const Input &input, std::string &from)
       DataLoader loader{ input.path };
       loader.start_column(config.skip_cols).start_row(config.skip_rows).verbosity(config.verbose ? 1 : 0);
       if (config.delimiter != '\0') loader.delimiter(config.delimiter);
-      return loader.load_local();
+      return loader.load();
     }
     }
   } catch (const IOError &e) {
@@ -259,15 +228,6 @@ Data convert_to_f32(const Data &data_f64)
   return Data(std::move(series), std::move(names), data_f64.ndim);
 }
 
-#ifdef DTWC_HAS_PARQUET
-std::size_t checked_parquet_series_count(std::int64_t count)
-{
-  if (count < 0 || static_cast<std::uint64_t>(count) > std::numeric_limits<std::size_t>::max())
-    throw InvalidInput("Parquet logical series count exceeds this platform's size limit.");
-  return static_cast<std::size_t>(count);
-}
-#endif
-
 /// Bind persistent distance storage once every distance-affecting setting has
 /// reached the Problem. Returns the mmap cache path, or nullopt when the method
 /// keeps its own storage or N is below the threshold. OneBatchPAM owns a fixed
@@ -289,12 +249,6 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
   }
   if (method == ClusterMethod::OneBatch) return std::nullopt;
   if (config.mmap_threshold != 0 && prob.size() < config.mmap_threshold) return std::nullopt;
-  if (checkpoint)
-    throw InvalidInput(
-      "--checkpoint uses the legacy dense CSV checkpoint format and cannot be "
-      "combined with memory-mapped distance storage. The mmap cache already "
-      "resumes automatically; omit --checkpoint, or raise --mmap-threshold if "
-      "the dense matrix and CSV checkpoint fit in RAM.");
   if (dist_matrix)
     throw InvalidInput(
       "--dist-matrix uses a legacy dense CSV matrix and cannot be combined "
@@ -315,47 +269,14 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
 #endif
 }
 
-/// Binary v1 has no input or configuration identity, so a replay checks only
-/// what can be proven without changing the frozen format.
-void validate_resume_result(const core::ClusteringResult &result, std::size_t expected_series,
-                            int expected_clusters)
-{
-  const auto fail = [](const std::string &message) { throw InvalidInput("Binary result checkpoint " + message); };
-  if (result.labels.size() != expected_series)
-    fail("has " + std::to_string(result.labels.size()) + " labels; current input has "
-         + std::to_string(expected_series) + " series.");
-  if (result.medoid_indices.size() != static_cast<std::size_t>(expected_clusters))
-    fail("has " + std::to_string(result.medoid_indices.size()) + " medoids; --n-clusters requests "
-         + std::to_string(expected_clusters) + ".");
-  for (std::size_t i = 0; i < result.labels.size(); ++i)
-    if (result.labels[i] < 0 || result.labels[i] >= expected_clusters)
-      fail("label[" + std::to_string(i) + "]=" + std::to_string(result.labels[i]) + " is outside [0,"
-           + std::to_string(expected_clusters) + ").");
-  for (std::size_t i = 0; i < result.medoid_indices.size(); ++i) {
-    const int medoid = result.medoid_indices[i];
-    if (medoid < 0 || static_cast<std::size_t>(medoid) >= expected_series)
-      fail("medoid[" + std::to_string(i) + "]=" + std::to_string(medoid) + " is outside [0,"
-           + std::to_string(expected_series) + ").");
-    for (std::size_t previous = 0; previous < i; ++previous)
-      if (result.medoid_indices[previous] == medoid)
-        fail("medoid index " + std::to_string(medoid) + " is duplicated.");
-  }
-  if (result.iterations < 0) fail("iteration count " + std::to_string(result.iterations) + " is negative.");
-  if (!std::isfinite(result.total_cost)) fail("total cost is not finite.");
-}
-
 // ---- outputs ---------------------------------------------------------------
 
 /// A series' name in the outputs. A streamed Parquet run holds no series, so
 /// its names are the readers' own synthetic `series_<i>`.
 std::string output_series_name(const Problem &prob, std::size_t index, std::optional<std::size_t> streamed_count)
 {
-  // Programming errors: a result comes from an algorithm run on this input or
-  // from a --resume that validate_resume_result() checked against it.
-  const std::size_t n = streamed_count.value_or(prob.size());
-  if (index >= n)
-    throw std::logic_error("Result index " + std::to_string(index) + " is outside the " + std::to_string(n)
-                           + "-series input.");
+  // A result comes from an algorithm run on this input.
+  assert(index < streamed_count.value_or(prob.size()));
   return streamed_count ? "series_" + std::to_string(index) : std::string(prob.series_name(index));
 }
 
@@ -382,10 +303,7 @@ void close_output(std::ofstream &out, const fs::path &path)
 void write_labels_csv(const fs::path &path, const Problem &prob, const core::ClusteringResult &result,
                       std::optional<std::size_t> streamed_count)
 {
-  const std::size_t expected = streamed_count.value_or(prob.size());
-  if (result.labels.size() != expected) // programming error, as in output_series_name
-    throw std::logic_error("Clustering result has " + std::to_string(result.labels.size()) + " labels for a "
-                           + std::to_string(expected) + "-series input.");
+  assert(result.labels.size() == streamed_count.value_or(prob.size()));
   std::ofstream out = open_output(path);
   out << "name,cluster\n";
   for (std::size_t i = 0; i < result.labels.size(); ++i)
@@ -396,10 +314,6 @@ void write_labels_csv(const fs::path &path, const Problem &prob, const core::Clu
 void write_medoids_csv(const fs::path &path, const Problem &prob, const core::ClusteringResult &result,
                        std::optional<std::size_t> streamed_count)
 {
-  for (const int index : result.medoid_indices) { // every name before the file is truncated
-    if (index < 0) throw std::logic_error("Result medoid index " + std::to_string(index) + " is negative.");
-    (void)output_series_name(prob, static_cast<std::size_t>(index), streamed_count);
-  }
   std::ofstream out = open_output(path);
   out << "cluster,medoid_index,medoid_name\n";
   for (int c = 0; c < result.n_clusters(); ++c) {
@@ -441,13 +355,6 @@ Outcome execute(const Config &config, std::optional<Data> data)
     throw InvalidInput("--max-iter must be a positive integer, got " + std::to_string(config.max_iter));
   if (config.checkpoint_interval != 0 && config.checkpoint.empty())
     throw InvalidInput("--checkpoint-interval requires --checkpoint <dir>.");
-  if (config.resume && config.output.empty())
-    throw InvalidInput("--resume replays <output>/<name>_checkpoint.bin, so it needs --output.");
-  if (config.device == Device::HPC)
-    throw DeviceError(
-      "run: device 'hpc' submits a run to a SLURM cluster, which Python's dtwcpp.cluster(..., "
-      "device='hpc') and slurm_remote.sh submit-cluster do; dtwc_cl and dtwc::run compute where they "
-      "start. No local fallback was attempted.");
 
   auto problem = std::make_shared<Problem>(config.name);
   Problem &prob = *problem;
@@ -529,23 +436,19 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // readers map the file and its footer; no row group is decoded.
   if (input.parquet()
       && (config.ram_limit > 0 || method == ClusterMethod::Auto || method == ClusterMethod::CLARA)) {
-    const auto saturating_add = [](std::size_t lhs, std::size_t rhs) {
-      return rhs > std::numeric_limits<std::size_t>::max() - lhs ? std::numeric_limits<std::size_t>::max()
-                                                                  : lhs + rhs;
-    };
     const bool f32 = config.dtype == core::Precision::Float32;
     auto layout = detail::ParquetLayout::Directory;
     std::size_t resident_bytes = 0;
     if (input.source == Source::ParquetFile) {
       io::ParquetChunkReader metadata(input.path, config.column);
       layout = metadata.is_list_layout() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
-      n_series = checked_parquet_series_count(metadata.logical_series_count());
+      n_series = static_cast<std::size_t>(metadata.logical_series_count());
       resident_bytes = metadata.estimated_materialization_peak_bytes(f32);
     } else {
       for (const auto &path : input.parquet_files) {
         io::ParquetChunkReader metadata(path, config.column);
-        n_series = saturating_add(n_series, checked_parquet_series_count(metadata.logical_series_count()));
-        resident_bytes = saturating_add(resident_bytes, metadata.estimated_materialization_peak_bytes(f32));
+        n_series += static_cast<std::size_t>(metadata.logical_series_count());
+        resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
       }
     }
     const auto plan = detail::plan_parquet_load(method, config.device, n_series, resident_bytes, config.ram_limit, layout);
@@ -575,8 +478,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   }
 #endif
 
-  // ---- 3. Load: series storage follows the device (the GPU uploads heap series) ----
-  prob.set_storage_policy(config.device == Device::GPU ? core::StoragePolicy::Heap : core::StoragePolicy::Auto);
+  // ---- 3. Load the series into RAM ----
   if (!stream_payload) {
     std::string from = " in memory";
     Data series = data ? std::move(*data) : read_series(config, input, from);
@@ -607,32 +509,15 @@ Outcome execute(const Config &config, std::optional<Data> data)
     std::cout << "Auto-selected method: " << method_name(method) << " (N=" << n_series << ")\n";
   plan_clara();
 
-  // ---- 4. A --resume replays a completed result instead of computing one ----
-  const fs::path binary_checkpoint = output / utf8_to_path(config.name + "_checkpoint.bin");
-  std::optional<core::ClusteringResult> replay;
-  if (config.resume) {
-    core::ClusteringResult candidate;
-    if (!load_binary_checkpoint(candidate, binary_checkpoint))
-      throw InvalidInput("--resume requires a readable binary result checkpoint at '" + binary_checkpoint.string()
-                         + "'. Omit --resume to start a new clustering run.");
-    validate_resume_result(candidate, n_series, config.k);
-    replay.emplace(std::move(candidate));
-  }
-
-  // ---- 5. Distance storage, once every distance setting is in place ----
-  // The mmap cache lives in the output directory, so a run that writes nothing
-  // keeps its matrix in RAM. A replay creates no unused O(N^2) state, but an
-  // existing cache still reopens for scoring; an imported matrix or a
-  // checkpoint uses dense storage.
+  // ---- 4. Distance storage, once every distance setting is in place ----
+  // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
+  // the checkpoint, else in the output directory; a run that writes nothing
+  // keeps its matrix in RAM, as does an imported matrix.
+  std::optional<fs::path> cache;
   if (!config.output.empty()) {
-    const fs::path mmap_cache = output / utf8_to_path(config.name + "_distmat.cache");
-    std::error_code ec;
-    const bool reopen = replay && config.checkpoint.empty() && config.dist_matrix.empty()
-                        && fs::is_regular_file(mmap_cache, ec);
-    if (!replay || reopen) {
-      const auto cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, mmap_cache);
-      if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
-    }
+    const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
+    cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, path);
+    if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
   }
   // A matrix the user supplied but that cannot be loaded is an error: going on
   // without it silently recomputed every distance and exited 0 (S-04).
@@ -651,101 +536,92 @@ Outcome execute(const Config &config, std::optional<Data> data)
     prob.checkpoint.save_interval = config.checkpoint_interval;
     prob.checkpoint.enabled = true;
   }
-  if (!config.checkpoint.empty()) {
-    const bool resumed = load_checkpoint(prob, config.checkpoint); // false: start fresh
+  if (!config.checkpoint.empty() && !cache) { // a mapped matrix is its own checkpoint
+    const bool resumed = load_checkpoint(prob, config.checkpoint); // false: no file, start fresh
     if (config.verbose)
       std::cout << (resumed ? "Resumed from checkpoint: " + config.checkpoint + "\n"
-                            : "No valid checkpoint found at " + config.checkpoint + ", starting fresh.\n");
+                            : "No checkpoint in " + config.checkpoint + ", starting fresh.\n");
   }
 
-  // ---- 6. Cluster; the matrix methods fill through the Problem, on its device ----
+  // ---- 5. Cluster; the matrix methods fill through the Problem, on its device ----
   core::ClusteringResult result;
   const int k = config.k;
-  if (replay) {
-    result = std::move(*replay);
-    std::cout << "Replaying completed result checkpoint: N=" << result.labels.size()
-              << ", k=" << result.medoid_indices.size() << ", iterations=" << result.iterations
-              << ", converged=" << (result.converged ? "yes" : "no") << " (requested method="
-              << method_name(method) << "; binary v1 has no method provenance)\n";
-  } else {
-    switch (method) {
-    case ClusterMethod::PAM:
-      if (config.verbose) std::cout << "Running FastPAM (k=" << k << ") ...\n";
-      // Restart r uses seed + r, invocation-local; the strictly lowest cost is
-      // kept, so a tie keeps the earlier restart.
-      result = fast_pam_seeded(prob, k, config.seed, config.max_iter);
-      for (int restart = 1; restart < config.n_init; ++restart) {
-        auto candidate =
-          fast_pam_seeded(prob, k, std::uint64_t{ config.seed } + static_cast<std::uint64_t>(restart), config.max_iter);
-        if (candidate.total_cost < result.total_cost) result = std::move(candidate);
-      }
-      if (config.verbose)
-        std::cout << "FastPAM " << (result.converged ? "converged" : "did not converge") << " in "
-                  << result.iterations << " iterations, cost=" << std::setprecision(6) << result.total_cost
-                  << " [" << clk << "]\n";
-      break;
-    case ClusterMethod::OneBatch: {
-      algorithms::OneBatchPAMOptions options;
-      options.n_clusters = k;
-      options.batch_size = config.batch_size;
-      options.max_iter = config.max_iter;
-      options.random_seed = config.seed;
-      algorithms::OneBatchPAMStats stats;
-      result = algorithms::one_batch_pam(prob, options, &stats);
-      if (config.verbose)
-        std::cout << "OneBatchPAM finished, cost=" << std::setprecision(6) << result.total_cost
-                  << ", batch=" << stats.batch_size << ", distance-matrix fraction=" << std::setprecision(3)
-                  << stats.full_matrix_fraction << " [" << clk << "]\n";
-      break;
+  switch (method) {
+  case ClusterMethod::PAM:
+    if (config.verbose) std::cout << "Running FastPAM (k=" << k << ") ...\n";
+    // Restart r uses seed + r, invocation-local; the strictly lowest cost is
+    // kept, so a tie keeps the earlier restart.
+    result = fast_pam_seeded(prob, k, config.seed, config.max_iter);
+    for (int restart = 1; restart < config.n_init; ++restart) {
+      auto candidate =
+        fast_pam_seeded(prob, k, std::uint64_t{ config.seed } + static_cast<std::uint64_t>(restart), config.max_iter);
+      if (candidate.total_cost < result.total_cost) result = std::move(candidate);
     }
-    case ClusterMethod::CLARA:
-      if (config.verbose) std::cout << "Running FastCLARA (k=" << k << ") ...\n";
-      result = algorithms::fast_clara(prob, clara);
-      if (config.verbose)
-        std::cout << "FastCLARA finished, cost=" << std::setprecision(6) << result.total_cost << " [" << clk << "]\n";
-      break;
-    case ClusterMethod::Hierarchical: {
-      if (config.verbose)
-        std::cout << "Running hierarchical clustering (k=" << k
-                  << ", linkage=" << name_of(algorithms::linkage_names, config.linkage) << ") ...\n";
-      algorithms::HierarchicalOptions options;
-      options.linkage = config.linkage;
-      prob.fill_distance_matrix(); // the dendrogram reads every pair
-      result = algorithms::cut_dendrogram(algorithms::build_dendrogram(prob, options), prob, k);
-      if (config.verbose)
-        std::cout << "Hierarchical clustering finished, cost=" << std::setprecision(6) << result.total_cost
-                  << " [" << clk << "]\n";
-      break;
-    }
-    // Problem::cluster()'s four: Lloyd, the exact MIP and LR-core, and
-    // TADPole density-peaks with conditionally admissible LB/UB DTW pruning.
-    case ClusterMethod::Kmedoids:
-    case ClusterMethod::MIP:
-    case ClusterMethod::LRCore:
-    case ClusterMethod::TADPole: {
-      const auto [problem_method, label] = problem_route(method);
-      prob.set_n_clusters(k);
-      prob.set_method(problem_method);
-      prob.cluster();
-      result.labels = prob.clusters_ind;
-      result.medoid_indices = prob.centroids_ind;
-      result.total_cost = prob.find_total_cost();
-      // Lloyd reports its iterations; the exact methods and TADPole finish.
-      result.iterations = method == ClusterMethod::Kmedoids ? prob.last_iterations() : 0;
-      result.converged = method != ClusterMethod::Kmedoids || prob.last_iterations() < config.max_iter;
-      if (config.verbose) std::cout << label << " finished, cost=" << result.total_cost << " [" << clk << "]\n";
-      break;
-    }
-    case ClusterMethod::Auto: // resolved above
-      throw std::logic_error("run: unresolved method auto");
-    }
+    if (config.verbose)
+      std::cout << "FastPAM " << (result.converged ? "converged" : "did not converge") << " in "
+                << result.iterations << " iterations, cost=" << std::setprecision(6) << result.total_cost
+                << " [" << clk << "]\n";
+    break;
+  case ClusterMethod::OneBatch: {
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = k;
+    options.batch_size = config.batch_size;
+    options.max_iter = config.max_iter;
+    options.random_seed = config.seed;
+    algorithms::OneBatchPAMStats stats;
+    result = algorithms::one_batch_pam(prob, options, &stats);
+    if (config.verbose)
+      std::cout << "OneBatchPAM finished, cost=" << std::setprecision(6) << result.total_cost
+                << ", batch=" << stats.batch_size << ", distance-matrix fraction=" << std::setprecision(3)
+                << stats.full_matrix_fraction << " [" << clk << "]\n";
+    break;
+  }
+  case ClusterMethod::CLARA:
+    if (config.verbose) std::cout << "Running FastCLARA (k=" << k << ") ...\n";
+    result = algorithms::fast_clara(prob, clara);
+    if (config.verbose)
+      std::cout << "FastCLARA finished, cost=" << std::setprecision(6) << result.total_cost << " [" << clk << "]\n";
+    break;
+  case ClusterMethod::Hierarchical: {
+    if (config.verbose)
+      std::cout << "Running hierarchical clustering (k=" << k
+                << ", linkage=" << name_of(algorithms::linkage_names, config.linkage) << ") ...\n";
+    algorithms::HierarchicalOptions options;
+    options.linkage = config.linkage;
+    prob.fill_distance_matrix(); // the dendrogram reads every pair
+    result = algorithms::cut_dendrogram(algorithms::build_dendrogram(prob, options), prob, k);
+    if (config.verbose)
+      std::cout << "Hierarchical clustering finished, cost=" << std::setprecision(6) << result.total_cost
+                << " [" << clk << "]\n";
+    break;
+  }
+  // Problem::cluster()'s four: Lloyd, the exact MIP and LR-core, and
+  // TADPole density-peaks with conditionally admissible LB/UB DTW pruning.
+  case ClusterMethod::Kmedoids:
+  case ClusterMethod::MIP:
+  case ClusterMethod::LRCore:
+  case ClusterMethod::TADPole: {
+    const auto [problem_method, label] = problem_route(method);
+    prob.set_n_clusters(k);
+    prob.set_method(problem_method);
+    prob.cluster();
+    result.labels = prob.clusters_ind;
+    result.medoid_indices = prob.centroids_ind;
+    result.total_cost = prob.find_total_cost();
+    // Lloyd reports its iterations; the exact methods and TADPole finish.
+    result.iterations = method == ClusterMethod::Kmedoids ? prob.last_iterations() : 0;
+    result.converged = method != ClusterMethod::Kmedoids || prob.last_iterations() < config.max_iter;
+    if (config.verbose) std::cout << label << " finished, cost=" << result.total_cost << " [" << clk << "]\n";
+    break;
+  }
+  case ClusterMethod::Auto: // resolved above
+    throw std::logic_error("run: unresolved method auto");
   }
 
-  // ---- 7. Checkpoints first, then the outputs ----
-  if (!replay && !config.output.empty()) save_binary_checkpoint(result, binary_checkpoint);
-  prob.set_result(result); // the kept result, in every route and in a replay
+  // ---- 6. Checkpoints first, then the outputs ----
+  prob.set_result(result); // the kept result, in every route
 
-  // Before the results, in fresh and replay runs alike, so a result write that
+  // Before the results, so a result write that
   // fails cannot lose the distance matrix. A save that fails is kept and raised
   // once the results are on disk, so it cannot lose them either (S-04).
   std::optional<std::string> checkpoint_failure;

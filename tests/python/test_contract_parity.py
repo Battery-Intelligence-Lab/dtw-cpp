@@ -8,7 +8,7 @@ introspectable, its documented default values).
 
 Contract pinned: docs/api-contract-2.0.md — STATUS: FROZEN 2026-07-07.
 Sections consumed: §1 (Tier-1), §2.1/§2.2 (Problem), §2.4 (scores), §2.5
-(algorithms), §2.6 (distance), §5 (error taxonomy), §6 (device/Env).
+(algorithms), §2.6 (distance), §5 (error taxonomy), §6 (device).
 
 Why the contract's Python column is HARD-CODED here (not parsed at test time):
 the column lives inside prose markdown tables carrying provenance tags
@@ -38,9 +38,9 @@ _TIER1 = [
 ]
 
 # ---------------------------------------------------------------------------
-# §6 device / Env registry
+# §6 device
 # ---------------------------------------------------------------------------
-_ENV = ["Env", "env", "device_to_string", "Device"]
+_ENV = ["device_to_string", "Device"]
 
 # ---------------------------------------------------------------------------
 # §5 error taxonomy
@@ -52,11 +52,11 @@ _ERRORS = ["DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError"]
 # ---------------------------------------------------------------------------
 _ENUMS = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
-    "MissingStrategy", "DistanceMatrixStrategy", "StoragePolicy", "Linkage",
+    "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision", "Linkage",
 ]
 _STRUCTS = [
-    "DTWVariantParams", "MIPSettings", "CUDASettings", "DenseDistanceMatrix",
-    "Data", "DendrogramStep", "Dendrogram", "HierarchicalOptions",
+    "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",
+    "DendrogramStep", "Dendrogram", "HierarchicalOptions",
     "CLARAOptions", "ClusteringResult", "Problem",
     "CheckpointOptions",
 ]
@@ -68,8 +68,6 @@ _ALGOS = ["fast_pam", "fast_clara", "build_dendrogram", "cut_dendrogram"]
 _CHECKPOINT = [
     "save_checkpoint",
     "load_checkpoint",
-    "save_binary_checkpoint",
-    "load_binary_checkpoint",
     "CheckpointOptions",
 ]
 _UTILS = ["derivative_transform", "z_normalize", "soft_dtw_gradient"]
@@ -97,7 +95,7 @@ _PROBLEM_CANON = [
     "set_data", "set_view_data",
     # config attributes (§2.1)
     "method", "max_iter", "n_repetitions", "band", "variant_params",
-    "missing_strategy", "distance_strategy", "storage_policy",
+    "missing_strategy", "distance_strategy",
     "cuda_settings", "mip_settings", "verbose", "name", "output_folder",
     "clusters_ind", "centroids_ind",
     # read accessors (§2.2)

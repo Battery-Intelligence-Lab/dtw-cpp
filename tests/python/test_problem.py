@@ -157,7 +157,7 @@ class TestDenseSemanticMutation:
         p.set_distance_matrix(precomputed)
         settings = dtwcpp.CUDASettings()
         settings.device_id = 3
-        settings.precision = 2
+        settings.precision = dtwcpp.GpuPrecision.FP64
         p.cuda_settings = settings
         assert not p.is_distance_matrix_filled()
 

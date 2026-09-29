@@ -345,7 +345,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
             raise ValueError("n_init is too large for distinct uint64 restart seeds")
 
         import dtwcpp
-        from dtwcpp import compute_distance_matrix, _resolve_device
+        from dtwcpp import compute_distance_matrix, _resolve_device, _hpc_remote_device
         eff_device = self.device if self.device is not None else dtwcpp.device()
         backend, _ = _resolve_device(eff_device)
         semantics = self._validate_semantics(backend)
@@ -355,6 +355,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
             from dtwcpp import _hpc
             self.labels_ = _hpc.cluster_on_hpc(
                 series, self.n_clusters, method="pam", band=self.band,
+                device=_hpc_remote_device(eff_device),
                 name=f"dtwc_k{self.n_clusters}", n_init=restart_count,
                 seed=DEFAULT_RANDOM_SEED, max_iter=self.max_iter,
                 variant=semantics["variant"], wdtw_g=semantics["wdtw_g"],

@@ -239,7 +239,7 @@ std::vector<HelpOption> help_options(const std::string &help)
 TEST_CASE("every spelling of every Config key renders to the golden text", "[config][spellings]")
 {
   const std::string golden = golden_text();
-  REQUIRE(values_of(golden).size() == 46);
+  REQUIRE(values_of(golden).size() == 45);
 
   SECTION("the golden file itself, through --config")
   {
@@ -270,7 +270,7 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       "--sample-size", "40", "--n-samples", "3", "--seed", "7", "--batch-size", "64",
       "--linkage", "Complete",
       "--skip-rows", "1", "--skip-cols", "2", "--delimiter", ";",
-      "--dist-matrix", "dist.csv", "--checkpoint", "ckpt", "--checkpoint-interval", "10", "--resume",
+      "--dist-matrix", "dist.csv", "--checkpoint", "ckpt", "--checkpoint-interval", "10",
       "--mmap-threshold", "1000",
       "--solver", "GUROBI", "--mip-gap", "1e-3", "--time-limit", "60", "--no-warm-start",
       "--numeric-focus", "3", "--mip-focus", "1", "--verbose-solver",
@@ -291,7 +291,7 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       { "sample_size", "40" }, { "n_samples", "3" }, { "seed", "7" }, { "batch_size", "64" },
       { "linkage", "complete" },
       { "skip_rows", "1" }, { "skip_cols", "2" }, { "delimiter", ";" },
-      { "dist_matrix", "dist.csv" }, { "checkpoint", "ckpt" }, { "checkpoint_interval", "10" }, { "resume", "true" },
+      { "dist_matrix", "dist.csv" }, { "checkpoint", "ckpt" }, { "checkpoint_interval", "10" },
       { "mmap_threshold", "1000" },
       { "solver", "gurobi" }, { "mip_gap", "0.001" }, { "time_limit", "60" }, { "no_warm_start", "true" },
       { "numeric_focus", "3" }, { "mip_focus", "1" }, { "verbose_solver", "true" },
@@ -379,8 +379,8 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
   // Keys of deleted features are unknown keys, not silently ignored ones.
   for (const char *gone : { "benders", "max_benders_iter", "batch_weighting" })
     CHECK_THROWS_AS(dtwc::parse_config({ { gone, "1" } }), dtwc::InvalidInput);
-  CHECK_THROWS_WITH(dtwc::parse_config({ { "ram_limit", "1.5" } }),
-                    Catch::Matchers::ContainsSubstring("whole positive byte count"));
+  CHECK_THROWS_WITH(dtwc::parse_config({ { "ram_limit", "-1G" } }),
+                    Catch::Matchers::ContainsSubstring("Invalid --ram-limit '-1G'"));
   CHECK_THROWS_AS(dtwc::parse_config({ { "delimiter", ";;" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "device", "tpu" } }), dtwc::DeviceError);
   CHECK(values_of(dtwc::to_config_text(dtwc::parse_config({ { "ram_limit", "1.5G" } }))).at("ram-limit")
@@ -394,19 +394,16 @@ TEST_CASE("the deprecated spellings warn and yield to the canonical ones", "[con
   std::string warnings;
   {
     CapturedStderr captured;
-    alone = values_of(dtwc::to_config_text(parse_args({ "--clusters", "6", "--restart" })));
+    alone = values_of(dtwc::to_config_text(parse_args({ "--clusters", "6" })));
     both = values_of(dtwc::to_config_text(parse_args({ "--clusters", "6", "-k", "2" })));
     warnings = captured.text.str();
   }
   CHECK(alone.at("n-clusters") == "6");
-  CHECK(alone.at("resume") == "true");
   CHECK(both.at("n-clusters") == "2");
   CHECK(warnings
         == "[dtwc] warning: '--clusters' is deprecated, use '--n-clusters' instead\n"
-           "[dtwc] warning: '--restart' is deprecated, use '--resume' instead\n"
            "[dtwc] warning: '--clusters' is deprecated, use '--n-clusters' instead\n");
   CHECK(alone.count("clusters") == 0); // the text form never writes a deprecated key
-  CHECK(alone.count("restart") == 0);
 }
 
 TEST_CASE("bind() reads every option, alias and choice dtwc_cl --help lists", "[config][cli]")

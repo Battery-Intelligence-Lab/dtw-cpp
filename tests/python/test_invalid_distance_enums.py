@@ -1,11 +1,8 @@
 """M47 preregistration for binding-side selector conversion and publication."""
 
-import re
-
 import numpy as np
 import pytest
 
-import dtwcpp
 from dtwcpp import _dtwcpp_core as core
 
 
@@ -17,7 +14,6 @@ ENUM_DOMAINS = (
     ("MetricType", core.MetricType, 3),
     ("MVMode", core.MVMode, 2),
     ("DistanceMatrixStrategy", core.DistanceMatrixStrategy, 4),
-    ("StoragePolicy", core.StoragePolicy, 3),
 )
 
 
@@ -37,7 +33,6 @@ PROPERTY_ROUTES = (
     ("mv_mode", "mv_mode", 2),
     ("missing_strategy", "missing_strategy", 4),
     ("distance_strategy", "distance_strategy", 4),
-    ("storage_policy", "storage_policy", 3),
 )
 
 
@@ -66,19 +61,13 @@ def test_invalid_cuda_precision_property_is_rejected_transactionally(raw):
     problem.set_distance_matrix(expected)
 
     candidate = core.CUDASettings()
-    with pytest.raises(
-        dtwcpp.InvalidInput,
-        match=f"^{re.escape('Invalid CUDA precision value.')}$",
-    ):
+    with pytest.raises(TypeError):
         candidate.precision = raw
-    assert candidate.precision == 0
+    assert candidate.precision == core.GpuPrecision.Auto
 
-    with pytest.raises(
-        dtwcpp.InvalidInput,
-        match=f"^{re.escape('Invalid CUDA precision value.')}$",
-    ):
+    with pytest.raises(TypeError):
         problem.cuda_settings.precision = raw
 
-    assert problem.cuda_settings.precision == 0
+    assert problem.cuda_settings.precision == core.GpuPrecision.Auto
     assert problem.is_distance_matrix_filled()
     np.testing.assert_array_equal(problem.distance_matrix(), expected)

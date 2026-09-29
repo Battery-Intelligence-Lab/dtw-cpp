@@ -36,9 +36,9 @@ Records are **per machine**. Never put two machines in one table and call the ra
    ```
 
    Targets: `bench_dtw_baseline` (the DTW kernels and matrix fill), `bench_mmap_access` (dense vs
-   mmap, and vector-of-vector vs flat), `bench_f32_vs_f64`, `bench_openmp_schedule`,
+   mmap, and vector-of-vector vs flat), `bench_f32_vs_f64`,
    `bench_cuda_dtw`, `bench_metal_dtw` (both have custom mains that inject GPU device info),
-   `bench_mpi_dtw`, `benchmark_UCR` (the long sweep; needs the UCR archive under
+   `benchmark_UCR` (the long sweep; needs the UCR archive under
    `settings::paths::data`, which nothing downloads for you).
 
 4. **Run through the existing driver** — it already writes JSON, timestamps the filename under

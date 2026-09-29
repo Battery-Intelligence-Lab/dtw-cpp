@@ -157,7 +157,7 @@ Problem no_path_problem(const std::string &name)
 Problem poisoned_matrix_problem(double poison)
 {
   auto problem = scalar_problem<double>({0.0, 1.0, 2.0}, "f13_poison");
-  auto &matrix = problem.dense_distance_matrix();
+  auto &matrix = problem.distance_matrix();
   matrix.resize(3);
   matrix.set(0, 0, 0.0);
   matrix.set(0, 1, poison);
@@ -320,14 +320,14 @@ TEST_CASE("F13 public assignment routes agree on an exact midpoint tie",
     dtwc::algorithms::fast_clara(
       clara_f64, clara_options(2, 2, 0)),
     medoids, labels, 1.0);
-  CHECK(clara_f64.dense_distance_matrix().size() == 0);
+  CHECK(clara_f64.distance_matrix().size() == 0);
 
   auto clara_f32 = scalar_problem<float>({0.0f, 1.0f, 2.0f});
   require_result(
     dtwc::algorithms::fast_clara(
       clara_f32, clara_options(2, 2, 0)),
     medoids, labels, 1.0);
-  CHECK(clara_f32.dense_distance_matrix().size() == 0);
+  CHECK(clara_f32.distance_matrix().size() == 0);
 
   auto lloyd = scalar_problem<double>({0.0, 1.0, 2.0});
   lloyd.centroids_ind = medoids;

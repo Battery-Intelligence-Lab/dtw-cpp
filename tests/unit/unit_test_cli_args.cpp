@@ -7,9 +7,8 @@
  * reach its file-local helpers. Those helpers are gone: the device grammar is
  * detail::parse_device, the selectors are types, and the pipeline is run(). The
  * contracts they carried are asserted here through the production entry points;
- * the device matrix is test_run_resolution.cpp's, the resume rejections
- * test_cli_resume_state's (real binary), and the streamed Parquet names F8 /
- * F13's (real binary, Arrow builds).
+ * the device matrix is test_run_resolution.cpp's, and the streamed Parquet
+ * names F8 / F13's (real binary, Arrow builds).
  *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026
@@ -92,10 +91,10 @@ dtwc::Data seed_sensitive_series()
 } // namespace
 
 // ---------------------------------------------------------------------------
-// --ram-limit (Task 8.2 F7): exact and fail-closed, read by cli::bind()
+// --ram-limit, read by cli::bind()
 // ---------------------------------------------------------------------------
 
-TEST_CASE("--ram-limit is exact and fail-closed", "[cli][parquet][ram]")
+TEST_CASE("--ram-limit reads a size and rejects anything else", "[cli][parquet][ram]")
 {
   CHECK(ram_limit("") == 0);
   CHECK(ram_limit("0") == 0);
@@ -103,19 +102,23 @@ TEST_CASE("--ram-limit is exact and fail-closed", "[cli][parquet][ram]")
   CHECK(ram_limit("2K") == 2ULL * 1024ULL);
   CHECK(ram_limit("1.5MiB") == 1572864ULL);
   CHECK(ram_limit("3gb") == 3ULL * 1024ULL * 1024ULL * 1024ULL);
+  // A plain byte count is exact past 2^53, up to size_t's maximum.
   if constexpr (std::numeric_limits<std::size_t>::digits > 53)
     CHECK(ram_limit("9007199254740993") == 9007199254740993ULL);
   CHECK(ram_limit(std::to_string(std::numeric_limits<std::size_t>::max())) == std::numeric_limits<std::size_t>::max());
+  // A fraction of a byte rounds up, so a nonzero value never turns the cap off.
+  CHECK(ram_limit("0.1B") == 1);
+  CHECK(ram_limit("1.1K") == 1127); // 1126.4 bytes
 
-  for (const std::string malformed : { "-1G", "nan", "inf", "1GBjunk", "G", "0.1B" }) {
+  for (const std::string malformed : { "-1G", "nan", "inf", "1GBjunk", "G", "1Q", "+1G", " 1G",
+                                       "999999999999999999999999T" }) {
     CAPTURE(malformed);
     CHECK_THROWS_AS(ram_limit(malformed), dtwc::InvalidInput);
   }
-  CHECK_THROWS_WITH(ram_limit("999999999999999999999999T"), ContainsSubstring("exceeds this platform's size limit"));
 }
 
 // A cap on an input no reader can apply it to must fail: the CLI once accepted
-// --ram-limit for CSV / Arrow / .dtws, printed the cap and loaded everything.
+// --ram-limit for CSV / Arrow, printed the cap and loaded everything.
 TEST_CASE("--ram-limit is rejected where no reader can honour it", "[cli][parquet][ram]")
 {
   auto config = quiet_config(2, ClusterMethod::PAM);
@@ -250,7 +253,7 @@ dtwc::Config mapped_config(ClusterMethod method, const ScratchDirectory &scratch
 
 bool cache_exists(const ScratchDirectory &scratch, const std::string &name)
 {
-  return fs::exists(scratch.path / (name + "_distmat.cache"));
+  return fs::exists(scratch.path / (name + ".dtwm"));
 }
 
 } // namespace
@@ -312,13 +315,18 @@ TEST_CASE("run's mmap storage binds the pointwise metric", "[cli][storage][mmap]
 #endif
 }
 
-TEST_CASE("run rejects a legacy CSV checkpoint plus mmap before either is opened", "[cli][storage][mmap][checkpoint]")
+TEST_CASE("run's mmap storage with --checkpoint maps the checkpoint file", "[cli][storage][mmap][checkpoint]")
 {
+  // One file: the mapped matrix is the checkpoint, <checkpoint>/<name>.dtwm.
   const ScratchDirectory scratch{ "dtwc_cli_checkpoint_mmap" };
   auto config = mapped_config(ClusterMethod::PAM, scratch, "checkpoint");
   config.checkpoint = (scratch.path / "ckpt").string();
-  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
-                    ContainsSubstring("cannot be combined") && ContainsSubstring("resumes automatically"));
+#ifdef DTWC_HAS_MMAP
+  CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
+  CHECK(fs::file_size(scratch.path / "ckpt" / "checkpoint.dtwm") == 48 + 6 * sizeof(double));
+#else
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("requires memory-mapped distance storage"));
+#endif
   CHECK_FALSE(cache_exists(scratch, "checkpoint"));
 }
 

@@ -25,6 +25,7 @@
 #include <parquet/file_reader.h>
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -205,13 +206,11 @@ public:
           || rg_row_counts_[rg] > std::numeric_limits<int64_t>::max() - offset)
         throw dtwc::IOError("ParquetChunkReader: invalid row-group metadata");
       rg_row_offsets_[rg] = offset;
-      rg_encoded_bytes_[rg] = saturating_from_i64(encoded_bytes);
-      rg_value_counts_[rg] = saturating_from_i64(value_count);
+      rg_encoded_bytes_[rg] = static_cast<size_t>(encoded_bytes);
+      rg_value_counts_[rg] = static_cast<size_t>(value_count);
       offset += rg_row_counts_[rg];
-      column_encoded_bytes_ = saturating_add(
-        column_encoded_bytes_, rg_encoded_bytes_[rg]);
-      total_value_count_ = saturating_add(
-        total_value_count_, rg_value_counts_[rg]);
+      column_encoded_bytes_ += rg_encoded_bytes_[rg];
+      total_value_count_ += rg_value_counts_[rg];
     }
     if (offset != total_rows_)
       throw dtwc::IOError(
@@ -241,7 +240,7 @@ public:
   /// Conservative estimate of resident `Data` bytes for the selected output
   /// precision. The selected Parquet column bytes are never scaled down; a
   /// Float32 column is scaled up for Float64 materialization, and per-series
-  /// vector/name objects are included. Saturation routes to streaming safely.
+  /// vector/name objects are included.
   size_t estimated_resident_bytes(bool use_float32) const
   {
     const size_t payload = estimated_payload_bytes(use_float32);
@@ -249,8 +248,7 @@ public:
     const size_t object_bytes = use_float32
       ? sizeof(std::vector<float>) + sizeof(std::string)
       : sizeof(std::vector<data_t>) + sizeof(std::string);
-    const auto count = saturating_from_i64(logical_series_count());
-    return saturating_add(payload, saturating_multiply(count, object_bytes));
+    return payload + static_cast<size_t>(logical_series_count()) * object_bytes;
   }
 
   /// Conservative peak while the CLI materializes this file. The current
@@ -259,11 +257,9 @@ public:
   size_t estimated_materialization_peak_bytes(bool use_float32) const
   {
     const size_t f64 = estimated_resident_bytes(false);
-    const size_t decode_peak = saturating_add(
-      source_payload_bytes(), f64);
+    const size_t decode_peak = source_payload_bytes() + f64;
     if (!use_float32) return decode_peak;
-    const size_t conversion_peak = saturating_add(
-      f64, estimated_resident_bytes(true));
+    const size_t conversion_peak = f64 + estimated_resident_bytes(true);
     return std::max(decode_peak, conversion_peak);
   }
 
@@ -274,10 +270,8 @@ public:
   /// @return Owning Data with all series from the batch.
   Data read_row_groups(int rg_start, int count) const
   {
-    // Programming error: fast_clara walks [0, num_row_groups()) in batches.
-    if (rg_start < 0 || count < 0 || count > num_row_groups_
-        || rg_start > num_row_groups_ - count)
-      throw std::logic_error("ParquetChunkReader::read_row_groups: range out of bounds");
+    // fast_clara walks [0, num_row_groups()) in batches.
+    assert(rg_start >= 0 && count >= 0 && count <= num_row_groups_ && rg_start <= num_row_groups_ - count);
 
     std::vector<int> rg_indices(count);
     std::iota(rg_indices.begin(), rg_indices.end(), rg_start);
@@ -300,9 +294,7 @@ public:
   /// Read a contiguous batch of row groups as float32 Data (2x memory saving).
   Data read_row_groups_f32(int rg_start, int count) const
   {
-    if (rg_start < 0 || count < 0 || count > num_row_groups_
-        || rg_start > num_row_groups_ - count) // programming error, as in read_row_groups
-      throw std::logic_error("ParquetChunkReader::read_row_groups_f32: range out of bounds");
+    assert(rg_start >= 0 && count >= 0 && count <= num_row_groups_ && rg_start <= num_row_groups_ - count);
 
     std::vector<int> rg_indices(count);
     std::iota(rg_indices.begin(), rg_indices.end(), rg_start);
@@ -381,37 +373,19 @@ public:
   }
 
 private:
-  static size_t saturating_from_i64(int64_t value)
-  {
-    const auto unsigned_value = static_cast<std::uint64_t>(value);
-    if (unsigned_value > std::numeric_limits<size_t>::max())
-      return std::numeric_limits<size_t>::max();
-    return static_cast<size_t>(unsigned_value);
-  }
-
   template <typename T>
   Data read_rows_impl(
     std::vector<int64_t> indices, size_t ram_budget) const
   {
     static_assert(std::is_same_v<T, data_t> || std::is_same_v<T, float>);
     if (indices.empty()) return Data{};
-    // Programming errors: fast_clara rejects a scalar column before streaming and
-    // samples indices from [0, rows).
-    if (!list_layout_)
-      throw std::logic_error(
-        "ParquetChunkReader::read_rows requires list-per-row Parquet; "
-        "a scalar column is one time series");
-
-    for (const auto index : indices) {
-      if (index < 0 || index >= total_rows_)
-        throw std::logic_error(
-          "ParquetChunkReader::read_rows: index " + std::to_string(index) +
-          " out of range [0, " + std::to_string(total_rows_) + ")");
-    }
+    // fast_clara rejects a scalar column before streaming and samples indices
+    // from [0, rows).
+    assert(list_layout_);
+    for ([[maybe_unused]] const auto index : indices) assert(index >= 0 && index < total_rows_);
 
     const size_t result_object_bytes = sizeof(std::vector<T>) + sizeof(std::string);
-    size_t retained_bytes = saturating_multiply(
-      indices.size(), result_object_bytes);
+    size_t retained_bytes = indices.size() * result_object_bytes;
     if (retained_bytes > ram_budget)
       throw dtwc::InvalidInput(
         "ParquetChunkReader::read_rows: --ram-limit is too small for sparse "
@@ -474,11 +448,7 @@ private:
 
       size_t selected_payload = 0;
       for (const auto local_index : local_indices) {
-        selected_payload = saturating_add(
-          selected_payload,
-          saturating_multiply(
-            row_group_series[static_cast<size_t>(local_index)].size(),
-            sizeof(T)));
+        selected_payload += row_group_series[static_cast<size_t>(local_index)].size() * sizeof(T);
       }
       const size_t copy_budget = ram_budget - retained_bytes - group_peak;
       if (selected_payload > copy_budget)
@@ -496,23 +466,9 @@ private:
         result_names[original] =
           "series_" + std::to_string(indices[original]);
       }
-      retained_bytes = saturating_add(retained_bytes, selected_payload);
+      retained_bytes += selected_payload;
     }
     return Data(std::move(result_vecs), std::move(result_names));
-  }
-
-  static size_t saturating_add(size_t lhs, size_t rhs)
-  {
-    if (rhs > std::numeric_limits<size_t>::max() - lhs)
-      return std::numeric_limits<size_t>::max();
-    return lhs + rhs;
-  }
-
-  static size_t saturating_multiply(size_t lhs, size_t rhs)
-  {
-    if (lhs != 0 && rhs > std::numeric_limits<size_t>::max() / lhs)
-      return std::numeric_limits<size_t>::max();
-    return lhs * rhs;
   }
 
   size_t estimated_payload_bytes(bool use_float32) const
@@ -520,29 +476,25 @@ private:
     const size_t target_width = use_float32 ? sizeof(float) : sizeof(data_t);
     return std::max(
       column_encoded_bytes_,
-      saturating_multiply(total_value_count_, target_width));
+      total_value_count_ * target_width);
   }
 
   size_t source_payload_bytes() const
   {
     return std::max(
       column_encoded_bytes_,
-      saturating_multiply(total_value_count_, source_value_bytes_));
+      total_value_count_ * source_value_bytes_);
   }
 
   size_t row_group_materialization_peak_bytes(
     int row_group, bool use_float32, size_t object_bytes) const
   {
     const size_t source = std::max(
-      rg_encoded_bytes_[row_group],
-      saturating_multiply(
-        rg_value_counts_[row_group], source_value_bytes_));
+      rg_encoded_bytes_[row_group], rg_value_counts_[row_group] * source_value_bytes_);
     const size_t target_width = use_float32 ? sizeof(float) : sizeof(data_t);
-    const size_t target = saturating_multiply(
-      rg_value_counts_[row_group], target_width);
-    const size_t objects = saturating_multiply(
-      saturating_from_i64(rg_row_counts_[row_group]), object_bytes);
-    return saturating_add(source, saturating_add(target, objects));
+    const size_t target = rg_value_counts_[row_group] * target_width;
+    const size_t objects = static_cast<size_t>(rg_row_counts_[row_group]) * object_bytes;
+    return source + target + objects;
   }
 
   std::shared_ptr<arrow::io::RandomAccessFile> file_;

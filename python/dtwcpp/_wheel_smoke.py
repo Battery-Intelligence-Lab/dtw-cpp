@@ -5,6 +5,7 @@ two representatives from each of its three deliberately separated groups.
 """
 
 import os
+import tempfile
 
 
 _SERIES = [
@@ -22,8 +23,29 @@ def _canonical(labels):
     return [mapping.setdefault(int(label), len(mapping)) for label in labels]
 
 
+def _mapped_matrix_persists(dtwcpp):
+    """Map a distance matrix to a .dtwm file, fill it, and reopen it filled."""
+    series = [[float(v) for v in s] for s in _SERIES]
+    names = [str(i) for i in range(len(series))]
+    with tempfile.TemporaryDirectory() as scratch:
+        path = os.path.join(scratch, "smoke.dtwm")
+        first = dtwcpp.Problem("smoke")
+        first.set_data(series, names)
+        first.use_mmap_distance_matrix(path)
+        first.fill_distance_matrix()
+        second = dtwcpp.Problem("smoke")
+        second.set_data(series, names)
+        second.use_mmap_distance_matrix(path)
+        filled = second.is_distance_matrix_filled()
+        size = os.path.getsize(path)
+        del first, second  # unmap before the directory goes
+    assert filled, "the mapped distance matrix did not persist"
+    assert size == 48 + 21 * 8, size
+    return size
+
+
 def run():
-    """Assert compiled parallelism, bundled HiGHS, and a real MIP solve."""
+    """Assert compiled parallelism, bundled HiGHS, a real MIP solve and a mapped matrix."""
     import dtwcpp
     import dtwcpp.test
 
@@ -35,11 +57,13 @@ def run():
     assert dtwcpp.HIGHS_AVAILABLE, "wheel was built without bundled HiGHS"
     result = dtwcpp.cluster(_SERIES, 3, method="mip", band=3, device="cpu")
     assert _canonical(result.labels) == [0, 0, 1, 1, 2, 2], result.labels
+    mapped_bytes = _mapped_matrix_persists(dtwcpp)
     print(
         "dtwcpp wheel smoke OK:",
         dtwcpp.__version__,
         "OpenMP threads =", parallel["threads_engaged"],
         "HiGHS MIP cost =", result.cost,
+        "mapped .dtwm bytes =", mapped_bytes,
     )
 
 

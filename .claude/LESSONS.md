@@ -54,10 +54,17 @@ Append new entries at the end of their section; keep each to a few lines.
   exits a loop that writes memory. *`baselines/2026-09-22-x04-codegen-report.md`*
 - **`-Rpass` is silent under ThinLTO, and a header template reports only where it is instantiated.** Compile
   a probe without LTO to see vectorisation remarks. *`scripts/codegen_report.py`*
+- **lld-link's LTO backend runs no SLP vectoriser**, so on Windows a non-LTO listing is not what ships: code
+  only SLP packs links as scalar chains. Read the linked binary (`llvm-objdump`). *`baselines/2026-09-29-p1-lanes-fill.md`*
 - **A large fill is latency-bound per pair; the PAM swap on a cached matrix is memory-bound.** FastPAM1 gives
   2.95–8.06×, not k×. *`baselines/2026-07-08-faster-pam-bench.md`*
-- **Benchmark the kernel you change.** Nested `std::min` helped legacy kernels 2.5–3.1× and the rolling
-  kernel 1.006×; a lookup table for the triangular index regressed 5 %.
+- **Benchmark the kernel you change, on each standard library.** A lookup table for the triangular index regressed 5 %.
+- **On the MSVC STL, `std::min({a,b,c})` and `std::min_element` are library calls** (`__std_min_d`,
+  `__std_min_element_d`), under cl and under clang on Windows; libc++ inlines both, so a Mac benchmark cannot see it.
+  One call per DP cell cost 7.2 ns against 1.36 with a nested, register-carried min. Read the Windows assembly;
+  `test_codegen_no_calls` guards the kernels (`baselines/2026-09-29-k1-dp-cell-no-call.md`).
+- **clang's Windows driver passes `-relaxed-aliasing`** (no TBAA, as MSVC): a store through a `double *` makes the
+  compiler reload every pointer it cannot prove distinct. Copy what a hot loop reads into locals.
 - **Float32 is opt-in.** It halves the payload and measured 1.57–1.90× faster; Float64 stays the default.
 - **Interleave A and B, and check the power state.** A laptop dropped to low-power mid-run and made unchanged
   code 1.56× slower; one-after-the-other runs would have called it a regression.
@@ -95,6 +102,8 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A zero count proves nothing ran.** Pair a disabled stage with a case that must trigger it.
 - **Poison external seams before testing a rejection.** Make the command or file a rejection path would reach
   unusable, so a pass cannot come from the wrong branch.
+- **An Arrow gate can pass while running nothing.** `test_io_readers` registers only when Arrow is found: check that
+  `ctest -N` lists it (the Arrow shim was deleted once, 2026-09-28).
 
 ## C++, OpenMP and correctness
 
@@ -193,7 +202,9 @@ Append new entries at the end of their section; keep each to a few lines.
   drifted from C++.
 - **Hand a numpy buffer over as an owned object:** build the capsule while a `unique_ptr` still owns it, then
   release. Keep one GIL policy for a class.
-- **A reader or binding change is not verified until the Python suite has run** from a fresh `uv` venv.
+- **A reader or binding change is not verified until the Python suite has run** from a fresh `uv` venv. After a
+  binding is removed, import the package first: `7ba0b4c` reported Python results that had never run, and
+  `import dtwcpp` raised ImportError.
 - **Tier-1 routes have no side effects; tests run in a scratch working directory (F45).** A route that wrote
   `./results` collided between concurrent runs. *`tests/matlab/test_tier1_route_parity.m`*
 
@@ -221,6 +232,9 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A per-pair decode is device code.** Its cost is paid once per pair per launch.
 - **A profiler can exit 0 having seen no kernel.** Check that it observed one.
 - **Git Bash rewrites a leading `/c` argument.** Call `cmd //c`, or run from PowerShell.
+- **Sophos may quarantine a Release `dtwc_cl.exe` as 'Generic ML PUA'.** Symptoms: "Permission denied", CLI tests
+  "dtwc_cl not found"; the Application event log names the file. Never work around it; a Debug build runs. Volkan
+  declined an exclusion (2026-09-28): run the CLI tests from a Debug build of the same tree and say so.
 - **ARC:** compute capability is not the CUDA version in the docs (P100 6.0 … H100 9.0); Rome and Broadwell
   nodes lack AVX-512 (`DTWC_ARCH_LEVEL=v3`); Grace Hopper is AArch64.
 
@@ -246,3 +260,16 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A comment/string stripper under-counts silently.** Compare it with a naive grep.
 - **An agent's finding is a hypothesis until the cited line has been opened.**
 - **Remote-tracking refs are mutable evidence.** Re-read them at close-out.
+- **Before deleting a build dir, grep the surviving `CMakeCache.txt` files for its path.** The 2 KB
+  `build/f9-arrow-config` was the Arrow shim of `build/arrow-pyarrow-23`.
+- **Agent tooling:** in the Bash tool a `\\` inside a quoted heredoc reaches the program as `\` (write scripts with
+  the Write tool); the Workflow tool rejects a `scriptPath` file holding non-ASCII text as "control characters"
+  (escape it to `\uXXXX`).
+- **On Windows a plain stream cannot open a file llfio holds mapped** (llfio takes delete access): loading a checkpoint
+  that another live Problem maps is `IOError`.
+- **Do not export `CPM_SOURCE_CACHE` for a build dir configured without it**: its cached `CPM_DIRECTORY` differs and the
+  reconfigure fails with "Unknown CMake command CPMAddPackage".
+- **uv reuses a wheel it built from a local directory unless `pyproject.toml` changed**: after a C++ change, install with
+  `--reinstall` (implies `--refresh`) and check the `.pyd` time, or pytest tests stale code.
+- **MSVC STL: `exception_ptr::operator bool` is an out-of-line call**; under Windows EH a local written in a `catch`
+  and read after costs spills per iteration. Keep such a flag in memory behind a reference.

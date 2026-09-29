@@ -41,7 +41,6 @@ option(DTWC_DEV_MODE "Enable developer-only warnings, analyzers, and sanitizer o
 
 option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
-option(DTWC_ENABLE_MPI "Enable MPI distributed computing" OFF)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 # Metal defaults ON on Apple (zero extra toolchain — ships with Xcode CLT).
 # Silently ignored on non-Apple platforms.
@@ -246,17 +245,6 @@ add_subdirectory(dtwc bin)
 target_compile_definitions(dtwc++ PUBLIC DTWC_VERSION_STRING="${DTWC_VERSION_STRING}")
 
 if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
-  add_executable(dtwc_main
-    dtwc/main.cpp
-  )
-
-  target_link_libraries(dtwc_main
-    PRIVATE
-    dtwc++
-    project_warnings
-    project_options
-  )
-
   add_executable(dtwc_cl
     dtwc/dtwc_cl.cpp
   )
@@ -435,13 +423,6 @@ if(PROJECT_IS_TOP_LEVEL)
     set(_cuda_status "REQUESTED BUT NOT FOUND")
   endif()
 
-  set(_mpi_status "OFF")
-  if(DTWC_ENABLE_MPI AND TARGET MPI::MPI_CXX)
-    set(_mpi_status "ON")
-  elseif(DTWC_ENABLE_MPI)
-    set(_mpi_status "REQUESTED BUT NOT FOUND")
-  endif()
-
   set(_metal_status "OFF")
   if(DTWC_ENABLE_METAL AND DTWC_HAS_METAL_DETECTED)
     set(_metal_status "ON (Apple GPU)")
@@ -455,7 +436,6 @@ if(PROJECT_IS_TOP_LEVEL)
   message(STATUS "║  OpenMP:    ${_omp_status}")
   message(STATUS "║  CUDA:      ${_cuda_status}")
   message(STATUS "║  Metal:     ${_metal_status}")
-  message(STATUS "║  MPI:       ${_mpi_status}")
   message(STATUS "║  Gurobi:    ${_gurobi_status}")
   message(STATUS "║  HiGHS:     ${_highs_status}")
   message(STATUS "║  Testing:   ${DTWC_BUILD_TESTING}")

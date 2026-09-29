@@ -73,7 +73,7 @@ Data load_path(const fs::path &path, int start_row = 0, int start_col = 0)
 {
   DataLoader loader(path);
   loader.start_row(start_row).start_column(start_col).verbosity(0);
-  return loader.load_local();
+  return loader.load();
 }
 
 /// A read-only stream buffer that cannot seek, like a pipe or FIFO: the
@@ -135,8 +135,8 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
   // Test round-trip of distance matrix I/O through Problem.
   auto N = GENERATE(1, 2, 5, 10, 20);
 
-  // Create a DenseDistanceMatrix with random values.
-  dtwc::core::DenseDistanceMatrix matrix(static_cast<size_t>(N));
+  // Create a DistanceMatrix with random values.
+  dtwc::core::DistanceMatrix matrix(static_cast<size_t>(N));
   std::mt19937 rng(42);
   std::uniform_real_distribution<double> dist(0.0, 100.0);
   for (size_t i = 0; i < static_cast<size_t>(N); ++i) {
@@ -253,11 +253,11 @@ TEST_CASE("Problem::write_distance_matrix + read_distance_matrix end-to-end roun
 
 TEST_CASE("Write and Read Empty Matrix", "[fileOperations]")
 {
-  dtwc::core::DenseDistanceMatrix matrix;
+  dtwc::core::DistanceMatrix matrix;
   REQUIRE(matrix.size() == 0);
 
   // Empty matrix should be default-constructed with size 0.
-  dtwc::core::DenseDistanceMatrix readMat;
+  dtwc::core::DistanceMatrix readMat;
   REQUIRE(readMat.size() == 0);
 }
 
@@ -335,17 +335,13 @@ TEST_CASE("Batch loader preserves textual NaN and later fields",
   DataLoader loader(file.path);
   loader.start_column(1).verbosity(0);
 
-  const Data loaded = loader.load_local();
+  const Data loaded = loader.load();
   REQUIRE(loaded.size() == 2);
   REQUIRE(loaded.p_vec[0].size() == 3);
   CHECK(loaded.p_vec[0][0] == 1.0);
   CHECK(std::isnan(loaded.p_vec[0][1]));
   CHECK(loaded.p_vec[0][2] == 3.0);
   CHECK(loaded.p_vec[1] == std::vector<double>{4.0, 5.0, 6.0});
-
-  const Data metadata = loader.load_metadata();
-  CHECK(metadata.series_flat_size(0) == loaded.p_vec[0].size());
-  CHECK(metadata.series_flat_size(1) == loaded.p_vec[1].size());
 }
 
 TEST_CASE("Batch loader rejects malformed and unapproved non-finite fields",
@@ -359,9 +355,7 @@ TEST_CASE("Batch loader rejects malformed and unapproved non-finite fields",
       TemporaryBatchFile file(".csv", "id,1," + token + ",3\n");
       DataLoader loader(file.path);
       loader.start_column(1).verbosity(0);
-      REQUIRE_THROWS_WITH(loader.load_local(),
-        ContainsSubstring("row 1, column 3"));
-      REQUIRE_THROWS_WITH(loader.load_metadata(),
+      REQUIRE_THROWS_WITH(loader.load(),
         ContainsSubstring("row 1, column 3"));
     }
   }
@@ -374,15 +368,14 @@ TEST_CASE("Batch loader uses exact delimiters and arbitrary skipped fields",
     "sensor A\tquality=good\t+1\t-2.5\t1e3\n");
   DataLoader loader(valid.path);
   loader.start_column(2).verbosity(0);
-  const Data loaded = loader.load_local();
+  const Data loaded = loader.load();
   REQUIRE(loaded.p_vec.size() == 1);
   CHECK(loaded.p_vec[0] == std::vector<double>{1.0, -2.5, 1000.0});
-  CHECK(loader.load_metadata().series_flat_size(0) == 3);
 
   TemporaryBatchFile empty_field(".tsv", "id\t1\t\t3\n");
   DataLoader invalid(empty_field.path);
   invalid.start_column(1).verbosity(0);
-  REQUIRE_THROWS_WITH(invalid.load_local(),
+  REQUIRE_THROWS_WITH(invalid.load(),
     ContainsSubstring("row 1, column 3"));
 }
 
@@ -524,17 +517,10 @@ TEST_CASE("Directory-source series names are UTF-8 on every platform",
   DataLoader loader(folder);
   loader.verbosity(0);
   dtwc::Problem problem("utf8_names");
-  problem.set_data(loader.load_local());
+  problem.set_data(loader.load());
 
   REQUIRE(problem.size() == 1);
   CHECK(std::string{ problem.series_name(0) } == expected_utf8);
-
-  // The metadata-only folder route names series the same way.
-  DataLoader metadata_loader(folder);
-  metadata_loader.verbosity(0);
-  const auto metadata = metadata_loader.load_metadata();
-  REQUIRE(metadata.size() == 1);
-  CHECK(std::string{ metadata.name(0) } == expected_utf8);
 
   // utf8_to_path is the inverse, and must not throw on a name that never came
   // from a loader: MSVC's char8_t conversion throws on unmappable bytes, which
@@ -560,13 +546,9 @@ TEST_CASE("FX-6 trailing blank lines are ignored, not read as an empty series",
   // with DBL_MAX distances, exit 0.
   DataLoader loader(reader_fixture("trailing_blank.csv"));
   loader.verbosity(0);
-  const Data loaded = loader.load_local();
+  const Data loaded = loader.load();
   CHECK(loaded.p_vec == Series{ { 1, 2, 3 }, { 4, 5, 6 } });
   CHECK(loaded.p_names == std::vector<std::string>{ "1", "2" });
-  CHECK(loader.count() == 2);
-  const Data metadata = loader.load_metadata();
-  REQUIRE(metadata.size() == 2);
-  CHECK(metadata.series_flat_size(1) == 3);
 }
 
 TEST_CASE("FX-6 a blank line followed by data is an error naming its row",
@@ -577,16 +559,13 @@ TEST_CASE("FX-6 a blank line followed by data is an error naming its row",
     CAPTURE(name);
     DataLoader loader(reader_fixture(name));
     loader.verbosity(0);
-    CHECK_THROWS_WITH(loader.load_local(), ContainsSubstring("row 2 is empty"));
-    CHECK_THROWS_WITH(loader.load_metadata(), ContainsSubstring("row 2 is empty"));
-    CHECK_THROWS_WITH(loader.count(), ContainsSubstring("row 2 is empty"));
+    CHECK_THROWS_WITH(loader.load(), ContainsSubstring("row 2 is empty"));
   }
   // A folder file "0.5\n\n0.7\n" read as {0.5, 0.7}: the missing value vanished
   // and every later value shifted by one.
   DataLoader folder(reader_fixture("folder_blank_line"));
   folder.verbosity(0);
-  CHECK_THROWS_WITH(folder.load_local(), ContainsSubstring("row 2 is empty"));
-  CHECK_THROWS_WITH(folder.load_metadata(), ContainsSubstring("row 2 is empty"));
+  CHECK_THROWS_WITH(folder.load(), ContainsSubstring("row 2 is empty"));
 }
 
 TEST_CASE("FX-6 a file in a series folder holds one value per line",
@@ -599,11 +578,6 @@ TEST_CASE("FX-6 a file in a series folder holds one value per line",
   const Data values = load_path(two_column, 0, 1);
   CHECK(values.p_vec == Series{ { 0.5, 0.6, 0.9 } });
   CHECK(values.p_names == std::vector<std::string>{ "a" });
-
-  DataLoader metadata(two_column);
-  metadata.verbosity(0);
-  CHECK_THROWS_WITH(metadata.load_metadata(), ContainsSubstring("row 1 has 2 fields"));
-  CHECK(metadata.start_column(1).load_metadata().series_flat_size(0) == 3);
 
   // Decimal commas "1,5\n2,5\n3,75\n" read as {1, 2, 3}.
   CHECK_THROWS_WITH(load_path(reader_fixture("folder_decimal_comma")),
@@ -639,10 +613,6 @@ TEST_CASE("FX-6 dot-files in a series folder are not series",
   const Data loaded = load_path(folder);
   CHECK(loaded.p_names == std::vector<std::string>{ "a", "b" });
   CHECK(loaded.p_vec == Series{ { 1, 2, 3 }, { 4, 5, 6 } });
-  DataLoader counter(folder);
-  counter.verbosity(0);
-  CHECK(counter.count() == 2);
-  CHECK(counter.load_metadata().size() == 2);
   fs::remove_all(folder, ec);
 }
 
@@ -902,7 +872,7 @@ TEST_CASE("FX-6 Problem rejects an empty series from any source",
   loader.verbosity(0);
   CHECK_THROWS_WITH((Problem{ "fx6_loader", loader }),
                     ContainsSubstring("series 1 ('b') is empty"));
-  CHECK_THROWS_AS(problem.set_data(loader.load_local()), InvalidInput);
+  CHECK_THROWS_AS(problem.set_data(loader.load()), InvalidInput);
   fs::remove_all(folder, ec);
 
   // Non-empty data is still accepted.
@@ -921,9 +891,6 @@ TEST_CASE("GT-4b skip_cols wider than a row is InvalidInput, from a file as from
   TemporaryBatchFile batch(".csv", "1,2,3\n4,5,6\n");
   CHECK_THROWS_AS(dtwc::cluster(dtwc::load(batch.path, 5), 1), InvalidInput);
   CHECK_THROWS_AS(load_path(batch.path, 0, 5), InvalidInput);
-  DataLoader metadata(batch.path);
-  metadata.start_column(5).verbosity(0);
-  CHECK_THROWS_AS(metadata.load_metadata(), InvalidInput);
 
   // A one-series-per-file folder reads one value per line from column skip_cols + 1.
   const auto folder = fs::temp_directory_path() / "dtwc_gt4b_skip_cols_folder";

@@ -42,11 +42,7 @@ constexpr std::string_view mv_mode_error = "Invalid MVMode value.";
 constexpr std::string_view constraint_error = "Invalid ConstraintType value.";
 constexpr std::string_view matrix_strategy_error =
   "Invalid DistanceMatrixStrategy value.";
-constexpr std::string_view storage_policy_error =
-  "Invalid StoragePolicy value.";
 constexpr std::string_view precision_error = "Invalid Precision value.";
-constexpr std::string_view cuda_settings_precision_error =
-  "Invalid CUDA precision value.";
 constexpr std::string_view kernel_override_error =
   "Invalid KernelOverride value.";
 constexpr std::string_view cuda_precision_error =
@@ -118,7 +114,7 @@ Data basic_f32_data(std::size_t ndim = 1)
 void seed_dense_sentinel(Problem &problem, double sentinel = 123.0)
 {
   problem.set_data(basic_f64_data());
-  auto &matrix = problem.dense_distance_matrix();
+  auto &matrix = problem.distance_matrix();
   matrix.resize(2);
   matrix.set(0, 0, 0.0);
   matrix.set(0, 1, sentinel);
@@ -129,7 +125,7 @@ void seed_dense_sentinel(Problem &problem, double sentinel = 123.0)
 void check_dense_sentinel(const Problem &problem, double sentinel = 123.0)
 {
   try {
-    const auto &matrix = problem.dense_distance_matrix();
+    const auto &matrix = problem.distance_matrix();
     CHECK(matrix.size() == 2);
     if (matrix.size() == 2) {
       CHECK(matrix.all_computed());
@@ -143,7 +139,7 @@ void check_dense_sentinel(const Problem &problem, double sentinel = 123.0)
 void check_dense_unallocated(const Problem &problem)
 {
   try {
-    CHECK(problem.dense_distance_matrix().size() == 0);
+    CHECK(problem.distance_matrix().size() == 0);
   } catch (const std::exception &error) {
     FAIL_CHECK("matrix inspection threw: " << error.what());
   }
@@ -829,74 +825,11 @@ TEST_CASE("M47 rejects every invalid distance-matrix and lower-bound strategy",
         check_dense_sentinel(cache_problem);
       });
   }
-
-  SECTION("CUDASettings precision selector")
-  {
-    for (const int invalid : {-1, 3, INT_MIN, INT_MAX}) {
-      CAPTURE(invalid);
-      Problem setter{"m47_cuda_precision_setter"};
-      seed_dense_sentinel(setter);
-      CUDASettings settings = setter.cuda_settings;
-      settings.precision = invalid;
-      check_invalid_input("Problem::set_cuda_settings",
-                          cuda_settings_precision_error, [&] {
-        setter.set_cuda_settings(settings);
-      });
-      CHECK(setter.cuda_settings.precision == 0);
-      check_dense_sentinel(setter);
-
-      Problem capability_order{"m47_cuda_precision_capability_order"};
-      capability_order.set_data(basic_f64_data());
-      capability_order.distance_strategy = DistanceMatrixStrategy::CUDA;
-      capability_order.cuda_settings.precision = invalid;
-      check_invalid_input("CUDA precision before backend capability",
-                          cuda_settings_precision_error, [&] {
-        capability_order.fill_distance_matrix();
-      });
-      capability_order.distance_strategy = DistanceMatrixStrategy::Auto;
-      capability_order.cuda_settings.precision = 0;
-      check_dense_unallocated(capability_order);
-
-      ScratchDirectory scratch{"m47_cuda_precision_cache"};
-      const fs::path cache = scratch.root / "invalid.dtwcache";
-      Problem cache_problem{"m47_cuda_precision_cache"};
-      seed_dense_sentinel(cache_problem);
-      cache_problem.cuda_settings.precision = invalid;
-      check_invalid_input("mmap cache identity",
-                          cuda_settings_precision_error, [&] {
-        cache_problem.use_mmap_distance_matrix(cache);
-      });
-      CHECK_FALSE(fs::exists(cache));
-      cache_problem.cuda_settings.precision = 0;
-      check_dense_sentinel(cache_problem);
-    }
-  }
 }
 
 TEST_CASE("M47 rejects every invalid storage policy and active precision",
           "[m47][enum][storage][precision]")
 {
-  SECTION("StoragePolicy")
-  {
-    for_each_invalid_enum<core::StoragePolicy, core::StoragePolicy::Mmap>(
-      [&](core::StoragePolicy invalid) {
-        DataLoader loader;
-        check_invalid_input("DataLoader::storage_policy", storage_policy_error, [&] {
-          (void)loader.storage_policy(invalid);
-        });
-
-        Problem setter{"m47_storage_policy_setter"};
-        seed_dense_sentinel(setter);
-        setter.set_storage_policy(core::StoragePolicy::Heap);
-        check_invalid_input("Problem::set_storage_policy",
-                            storage_policy_error, [&] {
-          setter.set_storage_policy(invalid);
-        });
-        CHECK(setter.storage_policy() == core::StoragePolicy::Heap);
-        check_dense_sentinel(setter);
-      });
-  }
-
   SECTION("Precision")
   {
     for_each_invalid_enum<core::Precision, core::Precision::Float64>(
@@ -1060,16 +993,6 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
     Problem problem{"m47_valid_matrix_strategy"};
     CHECK_NOTHROW(problem.set_distance_strategy(strategy));
   }
-  for (const auto policy : {
-         core::StoragePolicy::Auto,
-         core::StoragePolicy::Heap,
-         core::StoragePolicy::Mmap}) {
-    DataLoader loader;
-    CHECK_NOTHROW((void)loader.storage_policy(policy));
-    Problem problem{"m47_valid_problem_storage_policy"};
-    CHECK_NOTHROW(problem.set_storage_policy(policy));
-    CHECK(problem.storage_policy() == policy);
-  }
 
   Problem f32_problem{"m47_valid_f32_precision"};
   CHECK_NOTHROW(f32_problem.set_data(basic_f32_data()));
@@ -1078,7 +1001,7 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
   CHECK_NOTHROW(f64_problem.set_data(basic_f64_data()));
   CHECK(f64_problem.data().precision == core::Precision::Float64);
 
-  for (const int precision : {0, 1, 2}) {
+  for (const auto precision : {GpuPrecision::Auto, GpuPrecision::FP32, GpuPrecision::FP64}) {
     Problem problem{"m47_valid_cuda_settings_precision"};
     CUDASettings settings;
     settings.precision = precision;

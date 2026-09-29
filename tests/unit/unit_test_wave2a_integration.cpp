@@ -160,7 +160,7 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
   prob.set_output_folder(g_tmp_dir());
 
   // Dense matrix must NOT be allocated yet (deferred).
-  REQUIRE(prob.dense_distance_matrix().size() == 0);
+  REQUIRE(prob.distance_matrix().size() == 0);
 
   // dist_by_ind works on-demand (lazy compute).
   double d01 = prob.dist_by_ind(0, 1);
@@ -176,7 +176,7 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
 
   // We asked for 3 unique off-diagonal pairs: (0,1),(0,2),(1,0).
   // The matrix should have some cached entries but NOT the full N*(N-1)/2.
-  size_t computed = prob.dense_distance_matrix().count_computed();
+  size_t computed = prob.distance_matrix().count_computed();
   // N^2 / 2 = ~12.5M; computed must be tiny by comparison.
   REQUIRE(computed < 100); // only the few pairs we explicitly queried
 
@@ -190,10 +190,10 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
   Problem small_prob;
   small_prob.set_data(std::move(small_data));
   small_prob.set_verbose(false);
-  REQUIRE(small_prob.dense_distance_matrix().size() == 0);
+  REQUIRE(small_prob.distance_matrix().size() == 0);
 
   small_prob.fill_distance_matrix();
-  REQUIRE(small_prob.dense_distance_matrix().size() == 5);
+  REQUIRE(small_prob.distance_matrix().size() == 5);
   REQUIRE(small_prob.is_distance_matrix_filled());
 }
 
@@ -491,7 +491,7 @@ TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
   prob.set_output_folder(g_tmp_dir());
 
   // The matrix must start empty.
-  REQUIRE(prob.dense_distance_matrix().size() == 0);
+  REQUIRE(prob.distance_matrix().size() == 0);
 
   algorithms::CLARAOptions opts;
   opts.n_clusters = k;
@@ -510,7 +510,7 @@ TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
 
   // Assignment computes N*k distances directly and leaves no packed parent
   // cache behind; testing count_computed alone would miss the allocation.
-  const auto &parent_matrix = prob.dense_distance_matrix();
+  const auto &parent_matrix = prob.distance_matrix();
   REQUIRE(parent_matrix.size() == 0);
   REQUIRE(parent_matrix.packed_count() == 0);
   REQUIRE(parent_matrix.count_computed() == 0);
@@ -530,7 +530,7 @@ TEST_CASE("Wave2A: deferred dist_by_ind is cached after first call",
   Problem prob = make_problem_uv(vecs, 2);
 
   // Matrix not yet allocated.
-  REQUIRE(prob.dense_distance_matrix().size() == 0);
+  REQUIRE(prob.distance_matrix().size() == 0);
 
   // First call triggers lazy computation.
   double d01 = prob.dist_by_ind(0, 1);

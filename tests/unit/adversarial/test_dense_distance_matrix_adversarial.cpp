@@ -1,6 +1,6 @@
 /**
  * @file test_dense_distance_matrix_adversarial.cpp
- * @brief Adversarial tests for DenseDistanceMatrix.
+ * @brief Adversarial tests for DistanceMatrix.
  *
  * These tests are written from the SPECIFICATION, not the implementation.
  * Spec: "Dense symmetric distance matrix with flat array storage.
@@ -31,12 +31,12 @@ using Catch::Matchers::WithinAbs;
 using namespace dtwc::core;
 
 // ============================================================================
-// Area 1: DenseDistanceMatrix Edge Cases & Contracts
+// Area 1: DistanceMatrix Edge Cases & Contracts
 // ============================================================================
 
 TEST_CASE("Adversarial: Symmetry enforcement via set()", "[adversarial][DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(5);
+  DistanceMatrix dm(5);
 
   SECTION("set(i,j,v) makes get(j,i)==v AND get(i,j)==v")
   {
@@ -73,7 +73,7 @@ TEST_CASE("Adversarial: NaN sentinel after resize", "[adversarial][DistanceMatri
 {
   SECTION("All entries NaN after construction including diagonal")
   {
-    DenseDistanceMatrix dm(4);
+    DistanceMatrix dm(4);
     for (size_t i = 0; i < 4; ++i) {
       for (size_t j = 0; j < 4; ++j) {
         REQUIRE_FALSE(dm.is_computed(i, j));
@@ -83,7 +83,7 @@ TEST_CASE("Adversarial: NaN sentinel after resize", "[adversarial][DistanceMatri
 
   SECTION("All entries uncomputed after resize including diagonal")
   {
-    DenseDistanceMatrix dm(3);
+    DistanceMatrix dm(3);
     dm.set(0, 0, 0.0);
     dm.set(1, 2, 5.0);
 
@@ -99,7 +99,7 @@ TEST_CASE("Adversarial: NaN sentinel after resize", "[adversarial][DistanceMatri
 
 TEST_CASE("Adversarial: Diagonal self-distance", "[adversarial][DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
 
   dm.set(1, 1, 0.0);
 
@@ -122,7 +122,7 @@ TEST_CASE("Adversarial: Diagonal self-distance", "[adversarial][DistanceMatrix]"
 
 TEST_CASE("Adversarial: max() skips NaN", "[adversarial][DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(5);
+  DistanceMatrix dm(5);
 
   SECTION("max of partially-filled matrix returns max of computed values only")
   {
@@ -135,7 +135,7 @@ TEST_CASE("Adversarial: max() skips NaN", "[adversarial][DistanceMatrix]")
 
   SECTION("max of empty matrix (size 0) returns 0.0")
   {
-    DenseDistanceMatrix empty;
+    DistanceMatrix empty;
     REQUIRE_THAT(empty.max(), WithinAbs(0.0, 1e-15));
   }
 
@@ -148,7 +148,7 @@ TEST_CASE("Adversarial: max() skips NaN", "[adversarial][DistanceMatrix]")
   SECTION("max with only zero distances returns 0.0")
   {
     // DTW distances are always >= 0. Zero distances (identical series) are valid.
-    DenseDistanceMatrix dm2(3);
+    DistanceMatrix dm2(3);
     dm2.set(0, 1, 0.0);
     dm2.set(1, 2, 0.0);
 
@@ -158,7 +158,7 @@ TEST_CASE("Adversarial: max() skips NaN", "[adversarial][DistanceMatrix]")
 
 TEST_CASE("Adversarial: resize clears old data", "[adversarial][DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
   dm.set(0, 1, 100.0);
   dm.set(2, 2, 50.0);
 
@@ -194,19 +194,19 @@ TEST_CASE("Adversarial: Zero-size matrix", "[adversarial][DistanceMatrix]")
 {
   SECTION("Constructor with 0 does not crash")
   {
-    DenseDistanceMatrix dm(0);
+    DistanceMatrix dm(0);
     REQUIRE(dm.size() == 0);
   }
 
   SECTION("max() on zero-size returns 0.0")
   {
-    DenseDistanceMatrix dm(0);
+    DistanceMatrix dm(0);
     REQUIRE_THAT(dm.max(), WithinAbs(0.0, 1e-15));
   }
 
   SECTION("resize(0) does not crash")
   {
-    DenseDistanceMatrix dm(5);
+    DistanceMatrix dm(5);
     dm.resize(0);
     REQUIRE(dm.size() == 0);
   }
@@ -214,7 +214,7 @@ TEST_CASE("Adversarial: Zero-size matrix", "[adversarial][DistanceMatrix]")
 
 TEST_CASE("Adversarial: Single element matrix", "[adversarial][DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(1);
+  DistanceMatrix dm(1);
 
   REQUIRE(dm.size() == 1);
   REQUIRE_FALSE(dm.is_computed(0, 0)); // initially uncomputed
@@ -227,7 +227,7 @@ TEST_CASE("Adversarial: Single element matrix", "[adversarial][DistanceMatrix]")
 TEST_CASE("Adversarial: Large indices boundary", "[adversarial][DistanceMatrix]")
 {
   constexpr size_t N = 1000;
-  DenseDistanceMatrix dm(N);
+  DistanceMatrix dm(N);
 
   SECTION("Set and get at (0, N-1)")
   {
@@ -268,7 +268,7 @@ struct TempFile {
 TEST_CASE("Adversarial: Full matrix CSV round-trip", "[adversarial][DistanceMatrix][IO]")
 {
   constexpr size_t N = 10;
-  DenseDistanceMatrix dm(N);
+  DistanceMatrix dm(N);
 
   // Fill with deterministic values
   for (size_t i = 0; i < N; ++i)
@@ -278,7 +278,7 @@ TEST_CASE("Adversarial: Full matrix CSV round-trip", "[adversarial][DistanceMatr
   TempFile tmp("full_roundtrip");
   dtwc::io::write_csv(dm,tmp.path);
 
-  DenseDistanceMatrix dm2;
+  DistanceMatrix dm2;
   dtwc::io::read_csv(dm2,tmp.path);
 
   REQUIRE(dm2.size() == N);
@@ -291,7 +291,7 @@ TEST_CASE("Adversarial: Partial matrix CSV round-trip (empty-field preservation)
   "[adversarial][DistanceMatrix][IO]")
 {
   constexpr size_t N = 5;
-  DenseDistanceMatrix dm(N);
+  DistanceMatrix dm(N);
 
   // Set only some entries, leave others as NaN
   dm.set(0, 1, 1.0);
@@ -301,7 +301,7 @@ TEST_CASE("Adversarial: Partial matrix CSV round-trip (empty-field preservation)
   TempFile tmp("partial_roundtrip");
   dtwc::io::write_csv(dm,tmp.path);
 
-  DenseDistanceMatrix dm2;
+  DistanceMatrix dm2;
   dtwc::io::read_csv(dm2,tmp.path);
 
   REQUIRE(dm2.size() == N);
@@ -321,14 +321,14 @@ TEST_CASE("Adversarial: Partial matrix CSV round-trip (empty-field preservation)
 
 TEST_CASE("Adversarial: Small values in distance matrix roundtrip", "[adversarial][DistanceMatrix][IO]")
 {
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
   dm.set(0, 1, 42.5);
   dm.set(1, 2, 0.001);
 
   TempFile tmp("small_roundtrip");
   dtwc::io::write_csv(dm,tmp.path);
 
-  DenseDistanceMatrix dm2;
+  DistanceMatrix dm2;
   dtwc::io::read_csv(dm2,tmp.path);
 
   REQUIRE_THAT(dm2.get(0, 1), WithinAbs(42.5, 1e-12));
@@ -338,13 +338,13 @@ TEST_CASE("Adversarial: Small values in distance matrix roundtrip", "[adversaria
 
 TEST_CASE("Adversarial: Very large values (1e300)", "[adversarial][DistanceMatrix][IO]")
 {
-  DenseDistanceMatrix dm(2);
+  DistanceMatrix dm(2);
   dm.set(0, 1, 1e300);
 
   TempFile tmp("large_roundtrip");
   dtwc::io::write_csv(dm,tmp.path);
 
-  DenseDistanceMatrix dm2;
+  DistanceMatrix dm2;
   dtwc::io::read_csv(dm2,tmp.path);
 
   // Relative tolerance for very large values
@@ -354,13 +354,13 @@ TEST_CASE("Adversarial: Very large values (1e300)", "[adversarial][DistanceMatri
 
 TEST_CASE("Adversarial: Very small values (1e-300)", "[adversarial][DistanceMatrix][IO]")
 {
-  DenseDistanceMatrix dm(2);
+  DistanceMatrix dm(2);
   dm.set(0, 1, 1e-300);
 
   TempFile tmp("small_roundtrip");
   dtwc::io::write_csv(dm,tmp.path);
 
-  DenseDistanceMatrix dm2;
+  DistanceMatrix dm2;
   dtwc::io::read_csv(dm2,tmp.path);
 
   // Must not underflow to zero
@@ -372,7 +372,7 @@ TEST_CASE("Adversarial: operator<< matches write_csv output",
   "[adversarial][DistanceMatrix][IO]")
 {
   constexpr size_t N = 4;
-  DenseDistanceMatrix dm(N);
+  DistanceMatrix dm(N);
   for (size_t i = 0; i < N; ++i)
     for (size_t j = i; j < N; ++j)
       dm.set(i, j, static_cast<double>(i * 10 + j) * 1.1);
@@ -404,7 +404,7 @@ TEST_CASE("Adversarial: read_csv with trailing newline", "[adversarial][Distance
     f << "0.0,2.5\n2.5,0.0\n\n"; // trailing blank line
   }
 
-  DenseDistanceMatrix dm;
+  DistanceMatrix dm;
   dtwc::io::read_csv(dm,tmp.path);
 
   // Should have 2 rows, not 3 — trailing blank line must be ignored
@@ -417,7 +417,7 @@ TEST_CASE("Adversarial: read_csv with trailing newline", "[adversarial][Distance
 
 TEST_CASE("Adversarial: Empty matrix write/read", "[adversarial][DistanceMatrix][IO]")
 {
-  DenseDistanceMatrix dm(0);
+  DistanceMatrix dm(0);
 
   TempFile tmp("empty_roundtrip");
 
@@ -432,7 +432,7 @@ TEST_CASE("Adversarial: Empty matrix write/read", "[adversarial][DistanceMatrix]
       std::ofstream f(tmp.path);
       // write nothing
     }
-    DenseDistanceMatrix dm2;
+    DistanceMatrix dm2;
     REQUIRE_NOTHROW(dtwc::io::read_csv(dm2,tmp.path));
     REQUIRE(dm2.size() == 0);
   }
@@ -453,7 +453,7 @@ TEST_CASE("Adversarial: read_csv of asymmetric CSV is rejected, not overwritten"
       << "20.0,30.0,0.0\n";
   }
 
-  DenseDistanceMatrix dm;
+  DistanceMatrix dm;
   REQUIRE_THROWS_AS(dtwc::io::read_csv(dm, tmp.path), dtwc::InvalidInput);
   REQUIRE_THROWS_WITH(dtwc::io::read_csv(dm, tmp.path),
     Catch::Matchers::ContainsSubstring("row 2, column 1 is 10 but row 1, column 2 is 1"));

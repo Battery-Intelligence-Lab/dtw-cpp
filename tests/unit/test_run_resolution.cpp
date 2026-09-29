@@ -21,6 +21,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
@@ -44,7 +45,6 @@ constexpr ClusterMethod kMatrix[]{ ClusterMethod::Auto,     ClusterMethod::PAM, 
                                    ClusterMethod::Kmedoids, ClusterMethod::MIP, ClusterMethod::LRCore,
                                    ClusterMethod::Hierarchical };
 
-const std::string kHpc = "run: device 'hpc' submits a run to a SLURM cluster";
 const std::string kCpuAsItGoes = "computes its distances on the CPU as it goes, so device 'gpu' would sit idle";
 
 /// Two groups of three constant series; each group's middle series is its
@@ -144,8 +144,13 @@ TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "
   const auto matrix = dtwc::run(config, levels()).distance_matrix();
   for (std::size_t i = 0; i < 6; ++i)
     for (std::size_t j = 0; j < 6; ++j)
-      CHECK(matrix[i * 6 + j]
-            == dtwc::distance::dtw<double>(data.p_vec[i], data.p_vec[j], -1, dtwc::core::MetricType::SquaredL2));
+      // A different call path to the same recurrence: under MSVC /fp:contract
+      // the last bit may differ (observed: 1 ulp), so 1e-14 relative.
+      CHECK_THAT(matrix[i * 6 + j],
+                 Catch::Matchers::WithinRel(
+                   dtwc::distance::dtw<double>(data.p_vec[i], data.p_vec[j], -1,
+                                               dtwc::core::MetricType::SquaredL2),
+                   1e-14));
 }
 
 TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes methods raise", "[run][device][gpu]")
@@ -201,16 +206,13 @@ TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes method
 #endif
 }
 
-TEST_CASE("run on hpc: every method raises DeviceError before any series is read", "[run][device][hpc]")
+TEST_CASE("--device hpc is a DeviceError naming the Python and SLURM routes", "[run][device][hpc]")
 {
-  for (const auto method : kAll) {
-    CAPTURE(name(method));
-    CHECK_THAT(device_error([&] { (void)dtwc::run(config_for(method, Device::HPC), levels()); }),
-               StartsWith(kHpc) && ContainsSubstring("No local fallback was attempted."));
+  for (const char *name : { "hpc", "hpc:gpu" }) {
+    CAPTURE(name);
+    CHECK_THAT(device_error([&] { (void)dtwc::parse_config({ { "device", name } }); }),
+               ContainsSubstring("dtwcpp.device(\"hpc\")") && ContainsSubstring("slurm_remote.sh"));
   }
-  auto config = config_for(ClusterMethod::Auto, Device::HPC);
-  config.input = (std::filesystem::temp_directory_path() / "dtwc_run_never_created.csv").string();
-  CHECK_THAT(device_error([&] { (void)dtwc::run(config); }), StartsWith(kHpc));
 }
 
 TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any series is read",
@@ -228,7 +230,7 @@ TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any
   const auto zero_cost = [](dtwc::Config &c) { c.missing = dtwc::core::MissingStrategy::ZeroCost; };
   const auto float32 = [](dtwc::Config &c) { c.dtype = dtwc::core::Precision::Float32; };
   const auto index_1 = [](dtwc::Config &c) { c.gpu.device_id = 1; };
-  const auto fp64 = [](dtwc::Config &c) { c.gpu.precision = 2; };
+  const auto fp64 = [](dtwc::Config &c) { c.gpu.precision = dtwc::GpuPrecision::FP64; };
 
   // The CPU takes each of these, so it goes on to read the file, which fails.
   for (const auto &set : { +wdtw, +zero_cost, +float32 })

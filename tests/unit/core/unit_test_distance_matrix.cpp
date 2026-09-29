@@ -1,6 +1,6 @@
 /**
  * @file unit_test_distance_matrix.cpp
- * @brief Unit tests for DenseDistanceMatrix class.
+ * @brief Unit tests for DistanceMatrix class.
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026
@@ -17,15 +17,15 @@
 using Catch::Matchers::WithinAbs;
 using namespace dtwc::core;
 
-TEST_CASE("DenseDistanceMatrix default constructor", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix default constructor", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm;
+  DistanceMatrix dm;
   REQUIRE(dm.size() == 0);
 }
 
-TEST_CASE("DenseDistanceMatrix sized constructor", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix sized constructor", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(5);
+  DistanceMatrix dm(5);
   REQUIRE(dm.size() == 5);
 
   // All entries should be uncomputed (NaN sentinel)
@@ -34,26 +34,26 @@ TEST_CASE("DenseDistanceMatrix sized constructor", "[DistanceMatrix]")
       REQUIRE_FALSE(dm.is_computed(i, j));
 }
 
-TEST_CASE("DenseDistanceMatrix set and get", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix set and get", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(4);
+  DistanceMatrix dm(4);
 
   dm.set(0, 1, 3.5);
   REQUIRE_THAT(dm.get(0, 1), WithinAbs(3.5, 1e-12));
 }
 
-TEST_CASE("DenseDistanceMatrix symmetry", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix symmetry", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(4);
+  DistanceMatrix dm(4);
 
   dm.set(1, 3, 7.25);
   REQUIRE_THAT(dm.get(1, 3), WithinAbs(7.25, 1e-12));
   REQUIRE_THAT(dm.get(3, 1), WithinAbs(7.25, 1e-12));
 }
 
-TEST_CASE("DenseDistanceMatrix is_computed with NaN sentinel", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix is_computed with NaN sentinel", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
 
   // Initially all entries are uncomputed (NaN)
   REQUIRE_FALSE(dm.is_computed(0, 1));
@@ -68,18 +68,18 @@ TEST_CASE("DenseDistanceMatrix is_computed with NaN sentinel", "[DistanceMatrix]
   REQUIRE_FALSE(dm.is_computed(0, 2));
 }
 
-TEST_CASE("DenseDistanceMatrix zero distance is computed", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix zero distance is computed", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
 
   dm.set(0, 0, 0.0);
   REQUIRE(dm.is_computed(0, 0));
   REQUIRE_THAT(dm.get(0, 0), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("DenseDistanceMatrix resize", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix resize", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
   dm.set(0, 1, 5.0);
 
   dm.resize(5);
@@ -91,9 +91,9 @@ TEST_CASE("DenseDistanceMatrix resize", "[DistanceMatrix]")
       REQUIRE_FALSE(dm.is_computed(i, j));
 }
 
-TEST_CASE("DenseDistanceMatrix max skips NaN entries", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix max skips NaN entries", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
   dm.set(0, 1, 2.0);
   dm.set(0, 2, 8.5);
   dm.set(1, 2, 4.0);
@@ -102,23 +102,23 @@ TEST_CASE("DenseDistanceMatrix max skips NaN entries", "[DistanceMatrix]")
   REQUIRE_THAT(dm.max(), WithinAbs(8.5, 1e-12));
 }
 
-TEST_CASE("DenseDistanceMatrix max empty", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix max empty", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm;
+  DistanceMatrix dm;
   REQUIRE_THAT(dm.max(), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("DenseDistanceMatrix max on sized-but-unfilled matrix", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix max on sized-but-unfilled matrix", "[DistanceMatrix]")
 {
   // A matrix that has been sized but has no computed entries
-  DenseDistanceMatrix dm(5);
+  DistanceMatrix dm(5);
   // All entries are NaN, so max should return 0.0 (the fallback)
   REQUIRE_THAT(dm.max(), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("DenseDistanceMatrix diagonal self-distance", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix diagonal self-distance", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(4);
+  DistanceMatrix dm(4);
 
   // Set diagonal to zero (self-distance)
   for (size_t i = 0; i < 4; ++i)
@@ -130,9 +130,9 @@ TEST_CASE("DenseDistanceMatrix diagonal self-distance", "[DistanceMatrix]")
   }
 }
 
-TEST_CASE("DenseDistanceMatrix raw pointer access (packed triangular)", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix raw pointer access (packed triangular)", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(2);
+  DistanceMatrix dm(2);
   dm.set(0, 0, 1.0);
   dm.set(0, 1, 2.0);
   dm.set(1, 1, 3.0);
@@ -150,9 +150,9 @@ TEST_CASE("DenseDistanceMatrix raw pointer access (packed triangular)", "[Distan
   REQUIRE_THAT(dm.get(1, 0), WithinAbs(2.0, 1e-12));
 }
 
-TEST_CASE("DenseDistanceMatrix to_full_matrix", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix to_full_matrix", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
   dm.set(0, 1, 5.0);
   dm.set(0, 2, 3.0);
   dm.set(1, 2, 7.0);
@@ -177,9 +177,9 @@ TEST_CASE("DenseDistanceMatrix to_full_matrix", "[DistanceMatrix]")
       if (i != j) REQUIRE_THAT(at(i, j), WithinAbs(at(j, i), 1e-12));
 }
 
-TEST_CASE("DenseDistanceMatrix uncomputed entries are not computed", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix uncomputed entries are not computed", "[DistanceMatrix]")
 {
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
 
   // Verify that fresh entries are marked as not computed.
   REQUIRE_FALSE(dm.is_computed(0, 1));
@@ -191,11 +191,11 @@ TEST_CASE("DenseDistanceMatrix uncomputed entries are not computed", "[DistanceM
   REQUIRE(dm.is_computed(1, 0));
 }
 
-TEST_CASE("DenseDistanceMatrix zero distance is valid and computed", "[DistanceMatrix]")
+TEST_CASE("DistanceMatrix zero distance is valid and computed", "[DistanceMatrix]")
 {
   // Zero is a valid DTW distance (identical series). The NaN sentinel must not
   // confuse 0.0 with "uncomputed".
-  DenseDistanceMatrix dm(3);
+  DistanceMatrix dm(3);
 
   dm.set(0, 1, 0.0);
   REQUIRE(dm.is_computed(0, 1));

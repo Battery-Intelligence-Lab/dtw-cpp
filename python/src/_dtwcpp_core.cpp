@@ -116,12 +116,6 @@ void require_finite_series(const std::vector<std::vector<double>> &series,
       series[i], "series[" + std::to_string(i) + "]", where);
 }
 
-std::string utf8_path_text(const std::filesystem::path &path) {
-  const std::u8string encoded = path.u8string();
-  return std::string(
-    reinterpret_cast<const char *>(encoded.data()), encoded.size());
-}
-
 } // namespace
 
 NB_MODULE(_dtwcpp_core, m) {
@@ -191,32 +185,15 @@ NB_MODULE(_dtwcpp_core, m) {
     });
 
   // =========================================================================
-  // Env / Device registry (api-contract-2.0.md §6)
+  // Device (api-contract-2.0.md §6)
   // =========================================================================
 
   nb::enum_<dtwc::Device>(m, "Device")
     .value("CPU", dtwc::Device::CPU)
-    .value("GPU", dtwc::Device::GPU)
-    .value("HPC", dtwc::Device::HPC);
-
-  nb::class_<dtwc::Env>(m, "Env")
-    .def("set_device", [](dtwc::Env &e, const std::string &name) { e.set_device(name); }, "name"_a,
-         "Select the compute device (cpu/gpu/gpu:N/cuda/cuda:N/hpc). Raises\n"
-         "DeviceError on an unknown name, gpu without a GPU backend, or any of the\n"
-         "three device='hpc' .env failures — never a silent CPU fallback.")
-    .def("device", &dtwc::Env::device, "Currently selected Device.")
-    .def("device_index", &dtwc::Env::device_index, "GPU ordinal from the last gpu:N/cuda:N selection.")
-    .def("threads", &dtwc::Env::threads, "Resolved thread count for parallel regions.")
-    .def("set_env_file_dir",
-         [](dtwc::Env &e, const std::filesystem::path &d) { e.set_env_file_dir(d); }, "dir"_a,
-         "Directory searched for the device='hpc' .env file.")
-    .def("env_file_dir", [](const dtwc::Env &e) { return e.env_file_dir(); });
-
-  m.def("env", &dtwc::env, nb::rv_policy::reference,
-        "Return the process-wide Env singleton (the shared device registry, §6).");
+    .value("GPU", dtwc::Device::GPU);
 
   m.def("device_to_string", [](dtwc::Device d) { return dtwc::to_string(d); }, "device"_a,
-        "Canonical lower-case name of a Device ('cpu'/'gpu'/'hpc').");
+        "Canonical lower-case name of a Device ('cpu'/'gpu').");
 
   m.def("parse_device", [](const std::string &name) {
         const auto [device, index] = dtwc::detail::parse_device(name);
@@ -227,13 +204,10 @@ NB_MODULE(_dtwcpp_core, m) {
         "only, the build is not checked; an unknown name raises DeviceError.");
 
   m.def("device", [](const std::string &name) {
-        // Env::set_device probes GPU/HPC availability (device query, .env read,
-        // sinfo) without touching Python; hold no GIL across it.
-        nb::gil_scoped_release release;
         return dtwc::device(name);
       }, "name"_a,
         "Set the process-wide device and return its CANONICAL name\n"
-        "('cpu'/'gpu'/'gpu:N'/'hpc'), exactly as dtwc::device(name) does.");
+        "('cpu'/'gpu'/'gpu:N'), exactly as dtwc::device(name) does.");
 
   m.def("device", []() { return dtwc::device(); },
         "Canonical name of the process-wide device (dtwc::device()).");
@@ -257,7 +231,7 @@ NB_MODULE(_dtwcpp_core, m) {
     if (!delimiter.empty()) loader.delimiter(delimiter[0]);
     // A read failure names the file, as C++ dtwc::load does (api.cpp).
     try {
-      return loader.load_local();
+      return loader.load();
     } catch (const dtwc::IOError &e) {
       throw dtwc::IOError("load: failed to read '" + source.string() + "': " + e.what());
     } catch (const dtwc::Error &) {
@@ -324,28 +298,23 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("CUDA", dtwc::DistanceMatrixStrategy::CUDA)
     .value("Metal", dtwc::DistanceMatrixStrategy::Metal);
 
-  nb::enum_<dtwc::core::StoragePolicy>(m, "StoragePolicy")
-    .value("Auto", dtwc::core::StoragePolicy::Auto)
-    .value("Heap", dtwc::core::StoragePolicy::Heap)
-    .value("Mmap", dtwc::core::StoragePolicy::Mmap);
-
   // =========================================================================
   // CUDASettings
   // =========================================================================
 
+  nb::enum_<dtwc::GpuPrecision>(m, "GpuPrecision")
+    .value("Auto", dtwc::GpuPrecision::Auto)
+    .value("FP32", dtwc::GpuPrecision::FP32)
+    .value("FP64", dtwc::GpuPrecision::FP64);
+
   nb::class_<dtwc::CUDASettings>(m, "CUDASettings")
     .def(nb::init<>())
     .def_rw("device_id", &dtwc::CUDASettings::device_id, "CUDA device index (default 0).")
-    .def_prop_rw("precision",
-      [](const dtwc::CUDASettings &s) { return s.precision; },
-      [](dtwc::CUDASettings &s, int value) {
-        dtwc::validate_cuda_settings_precision(value);
-        s.precision = value;
-      },
-      "Compute precision: 0=Auto, 1=FP32, 2=FP64 (default 0).")
+    .def_rw("precision", &dtwc::CUDASettings::precision,
+            "Compute precision: GpuPrecision.Auto (default), FP32 or FP64.")
     .def("__repr__", [](const dtwc::CUDASettings &s) {
-      return "CUDASettings(device_id=" + std::to_string(s.device_id)
-             + ", precision=" + std::to_string(s.precision) + ")";
+      return "CUDASettings(device_id=" + std::to_string(s.device_id) + ", precision="
+             + std::string(dtwc::name_of(dtwc::gpu_precision_names, s.precision)) + ")";
     });
 
   // =========================================================================
@@ -572,52 +541,6 @@ NB_MODULE(_dtwcpp_core, m) {
     });
 
   // =========================================================================
-  // DenseDistanceMatrix
-  // =========================================================================
-
-  nb::class_<dtwc::core::DenseDistanceMatrix>(m, "DenseDistanceMatrix")
-    .def(nb::init<>())
-    .def(nb::init<size_t>(), "n"_a)
-    .def("resize", &dtwc::core::DenseDistanceMatrix::resize, "n"_a)
-    .def("get", &dtwc::core::DenseDistanceMatrix::get, "i"_a, "j"_a)
-    .def("set", &dtwc::core::DenseDistanceMatrix::set, "i"_a, "j"_a, "value"_a)
-    .def("is_computed", &dtwc::core::DenseDistanceMatrix::is_computed, "i"_a, "j"_a)
-    .def_prop_ro("size", &dtwc::core::DenseDistanceMatrix::size)
-    .def("max", &dtwc::core::DenseDistanceMatrix::max)
-    .def("to_numpy", [](const dtwc::core::DenseDistanceMatrix &dm) {
-      // Expand packed triangular storage to a full N*N numpy array.
-      // This is always a COPY — the C++ matrix stores only the upper triangle
-      // (n*(n+1)/2 entries) so a true zero-copy view into a full N*N layout
-      // is structurally impossible. Modifying the returned array does NOT
-      // mutate the C++ matrix; use set(i, j, v) for that.
-      // G4: the packed->dense expansion and the memcpy are O(N^2) and would
-      // block every other Python thread. `dm` is const here, so releasing is safe.
-      const size_t n = dm.size();
-      std::vector<double> values;
-      {
-        nb::gil_scoped_release release;
-        // to_full_matrix already returns row-major std::vector<double> (X-27),
-        // so the N*N copy this used to memcpy through is simply gone.
-        values = dtwc::io::to_full_matrix(dm);
-      }
-      return adopt_as_ndarray(std::move(values), {n, n});
-    }, "Return an independent copy of the full N*N distance matrix.\n\n"
-       "The C++ matrix stores only the upper triangle, so this expands to a\n"
-       "full symmetric N*N numpy array. Modifying the returned array does NOT\n"
-       "affect the C++ matrix — use set(i, j, v) for that.")
-    .def("write_csv", [](const dtwc::core::DenseDistanceMatrix &dm,
-                          const std::filesystem::path &path) {
-      dtwc::io::write_csv(dm, path);
-    }, "path"_a)
-    .def("read_csv", [](dtwc::core::DenseDistanceMatrix &dm,
-                         const std::filesystem::path &path) {
-      dtwc::io::read_csv(dm, path);
-    }, "path"_a)
-    .def("__repr__", [](const dtwc::core::DenseDistanceMatrix &dm) {
-      return "DenseDistanceMatrix(n=" + std::to_string(dm.size()) + ")";
-    });
-
-  // =========================================================================
   // DTW distance functions
   // =========================================================================
 
@@ -840,7 +763,7 @@ NB_MODULE(_dtwcpp_core, m) {
     {
       nb::gil_scoped_release release;
       prob.fill_distance_matrix();
-      const auto &dm = prob.dense_distance_matrix();
+      const auto &dm = prob.distance_matrix(); // on the heap or mapped
       n = dm.size();
       // Row-major std::vector<double> straight from to_full_matrix (X-27).
       values = dtwc::io::to_full_matrix(dm);
@@ -855,7 +778,13 @@ NB_MODULE(_dtwcpp_core, m) {
         throw dtwc::InvalidInput("Expected square distance matrix");
       if (n != p.size())
         throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
-      auto &mat = p.dense_distance_matrix();
+      auto &mat = p.distance_matrix();
+      // Values written into a mapped matrix would persist in its file under the
+      // Problem's fingerprint, whatever they were computed from.
+      if (mat.is_mapped())
+        throw dtwc::InvalidInput("Problem.set_distance_matrix: this Problem's distance matrix is "
+                                 "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
+                                 "kept in RAM only; call refresh_distance_matrix() first.");
       mat.resize(n);
       const double *data = dm.data();
       for (size_t i = 0; i < n; ++i)
@@ -936,10 +865,6 @@ NB_MODULE(_dtwcpp_core, m) {
                    p.set_distance_strategy(value);
                  },
                  "Distance matrix computation strategy (Auto, BruteForce, CUDA, Metal).")
-    .def_prop_rw("storage_policy", &dtwc::Problem::storage_policy,
-                 &dtwc::Problem::set_storage_policy,
-                 "How the next owning set_data call stores series "
-                 "(Auto/Heap/Mmap); existing data is unchanged.")
     .def_prop_rw("cuda_settings",
                  [](const dtwc::Problem &p) -> const dtwc::CUDASettings & {
                    return p.cuda_settings;
@@ -1118,9 +1043,9 @@ NB_MODULE(_dtwcpp_core, m) {
     const auto mt = dtwc::core::parse_metric_token(metric);
     require_finite_series(series, "compute_distance_matrix");
 
-    // Task 3.6 (review H1): this high-level Python compute path never constructs
-    // dtwc::env(), so its OpenMP warning would otherwise be silent under
-    // OMP_NUM_THREADS=1. Warn once, deterministically, before the fill.
+    // Warn once under OMP_NUM_THREADS=1, deterministically, before either branch
+    // (the pruned branch also warns via get_max_threads; this covers the
+    // unpruned one).
     dtwc::warn_if_single_threaded();
 
     const size_t n = series.size();
@@ -1313,14 +1238,13 @@ NB_MODULE(_dtwcpp_core, m) {
             "Checkpoint directory. Empty with enabled raises InvalidInput.")
     .def_rw("save_interval", &dtwc::CheckpointOptions::save_interval,
             "Completed matrix ROWS between automatic saves (>= 1). The fill\n"
-            "runs consecutive row blocks of this size and publishes one\n"
-            "generation after each block, the last included, so a completed\n"
-            "fill leaves ceil(N / save_interval) generations. A value below 1\n"
-            "with enabled raises InvalidInput.")
+            "runs consecutive row blocks of this size and saves after each\n"
+            "block, the last included, so a completed fill leaves a complete\n"
+            "checkpoint. A value below 1 with enabled raises InvalidInput.")
     .def_rw("enabled", &dtwc::CheckpointOptions::enabled,
-            "Enable automatic mid-fill checkpointing. Requires dense distance\n"
-            "storage (mmap storage raises InvalidInput) and a non-empty\n"
-            "directory; both are checked before any distance is computed.")
+            "Enable automatic mid-fill checkpointing to <directory>/<name>.dtwm.\n"
+            "A matrix mapped to that file is flushed in place. An empty\n"
+            "directory raises InvalidInput before any distance is computed.")
     .def("__repr__", [](const dtwc::CheckpointOptions &o) {
       return "CheckpointOptions(dir='" + o.directory
              + "', interval=" + std::to_string(o.save_interval)
@@ -1330,14 +1254,13 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("save_checkpoint", [](const dtwc::Problem &prob,
                               const std::string &path,
                               dtwc::core::MetricType metric) {
-        // N^2 CSV write; released for consistency with save_binary_checkpoint.
-        // `prob` is const here and the writer only reads it.
+        // An N^2 write; `prob` is const here and the writer only reads it.
         nb::gil_scoped_release release;
         dtwc::save_checkpoint(prob, path, metric);
       }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
-        "Save distance matrix checkpoint to directory.\n\n"
-        "Creates distances.csv and metadata.txt in the given directory.\n"
-        "The directory is created if it does not exist.\n\n"
+        "Save the distance matrix to <path>/<name>.dtwm ('distances' for an\n"
+        "unnamed Problem), replacing any previous checkpoint there. The\n"
+        "directory is created if it does not exist; IOError if it cannot be.\n\n"
         "`metric` is the pointwise metric the stored distances were computed\n"
         "with. It is part of the identity fingerprint, so a SquaredL2 matrix is\n"
         "no longer accepted by a later L1 load. Mirrors the CLI's --metric and\n"
@@ -1349,47 +1272,17 @@ NB_MODULE(_dtwcpp_core, m) {
         nb::gil_scoped_release release;
         return dtwc::load_checkpoint(prob, path, metric);
       }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
-        "Load distance matrix checkpoint from directory.\n\n"
-        "Returns True if checkpoint was loaded successfully, False otherwise.\n"
-        "Validates that matrix dimensions match the Problem's data size.\n"
-        "Sets distance matrix filled flag if all pairs are computed.\n\n"
+        "Load <path>/<name>.dtwm into the Problem's distance matrix.\n\n"
+        "Returns True when loaded, False only when there is no such file.\n"
+        "Raises InvalidInput for a checkpoint of other series or other\n"
+        "distance settings, and IOError for a file that is not a whole .dtwm\n"
+        "file; neither changes the Problem.\n\n"
         "`metric` is the pointwise metric THIS run computes with: a checkpoint\n"
-        "written under a different metric no longer matches the identity\n"
-        "fingerprint and is rejected. Mirrors the CLI's --metric; defaults to\n"
+        "written under a different metric does not match the identity\n"
+        "fingerprint (InvalidInput). Mirrors the CLI's --metric; defaults to\n"
         "L1 for backward compatibility.\n\n"
         "MUTATES `prob`: do not run it concurrently with any other method on\n"
         "the same Problem (see the Problem class docstring).");
-
-  m.def("save_binary_checkpoint",
-        [](const dtwc::core::ClusteringResult &result,
-           const std::filesystem::path &path) {
-    // A Python thread may mutate the bound result after the GIL is released.
-    // Snapshot it first so the native writer always observes one coherent value.
-    const dtwc::core::ClusteringResult snapshot = result;
-    nb::gil_scoped_release release;
-    dtwc::save_binary_checkpoint(snapshot, path);
-  }, "result"_a, "path"_a,
-     "Save a ClusteringResult to a binary version-1 checkpoint.");
-
-  m.def("load_binary_checkpoint", [](const std::filesystem::path &path) {
-    // Prepare all Python-facing text while the GIL is held. The release scope
-    // contains only native state and filesystem work.
-    const std::string path_text = utf8_path_text(path);
-    dtwc::core::ClusteringResult result;
-    bool loaded = false;
-    {
-      nb::gil_scoped_release release;
-      loaded = dtwc::load_binary_checkpoint(result, path);
-    }
-    if (!loaded) {
-      throw dtwc::IOError(
-        "load_binary_checkpoint: cannot read a valid binary result "
-        "checkpoint from '" + path_text + "'.");
-    }
-    return result;
-  }, "path"_a,
-     "Load a ClusteringResult from a binary version-1 checkpoint.\n\n"
-     "Raises IOError if the checkpoint is absent, inaccessible, or invalid.");
 
   // =========================================================================
   // Scores
@@ -1474,15 +1367,12 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix_cuda",
         [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, int device_id, bool verbose,
-           bool use_lb_keogh, double lb_threshold) {
+           int band, bool use_squared_l2, int device_id, bool verbose) {
           dtwc::cuda::CUDADistMatOptions opts;
           opts.band = band;
           opts.use_squared_l2 = use_squared_l2;
           opts.device_id = device_id;
           opts.verbose = verbose;
-          opts.use_lb_keogh = use_lb_keogh;
-          opts.lb_threshold = lb_threshold;
           require_finite_series(series, "compute_distance_matrix_cuda");
           std::vector<double> matrix;
           size_t n = 0;
@@ -1496,33 +1386,10 @@ NB_MODULE(_dtwcpp_core, m) {
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = -1.0,
         "Compute NxN DTW distance matrix on CUDA GPU.\n\n"
-        "Returns NxN numpy array of DTW distances.\n"
-        "When `use_lb_keogh=True`, `band >= 0`, and `lb_threshold > 0`, pairs\n"
-        "whose LB_Keogh lower bound exceeds `lb_threshold` are pruned and read\n"
-        "NaN (not computed); the bound squares each excess under\n"
-        "`use_squared_l2`. A pair with no warping path under `band` reads the\n"
-        "finite double-max sentinel, not IEEE infinity.\n"
-        "NaN or +-inf in a series raises InvalidInput.");
-
-  m.def("compute_lb_keogh_cuda",
-        [](const std::vector<std::vector<double>> &series,
-           int band, int device_id) {
-          require_finite_series(series, "compute_lb_keogh_cuda");
-          std::vector<double> lb_values;
-          {
-            nb::gil_scoped_release release;
-            auto result = dtwc::cuda::compute_lb_keogh_cuda(series, band, device_id);
-            lb_values = std::move(result.lb_values);
-          }
-          const size_t np = lb_values.size();
-          return adopt_as_ndarray(std::move(lb_values), {np});
-        },
-        "series"_a, "band"_a, "device_id"_a = 0,
-        "Compute LB_Keogh lower bounds for all N*(N-1)/2 pairs on GPU.\n\n"
-        "Returns flat array of symmetric LB_Keogh values (upper triangle).\n"
-        "Requires band >= 0 (Sakoe-Chiba constraint).\n"
+        "Returns NxN numpy array of DTW distances. A pair with no warping\n"
+        "path under `band` reads the finite double-max sentinel, not IEEE\n"
+        "infinity.\n"
         "NaN or +-inf in a series raises InvalidInput.");
 
   m.attr("CUDA_AVAILABLE") = true;
@@ -1535,21 +1402,12 @@ NB_MODULE(_dtwcpp_core, m) {
         "Get CUDA device info string.");
 
   m.def("compute_distance_matrix_cuda",
-        [](const std::vector<std::vector<double>> &, int, bool, int, bool,
-           bool, double) -> nb::object {
+        [](const std::vector<std::vector<double>> &, int, bool, int, bool) -> nb::object {
           throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = -1.0,
         "Compute NxN DTW distance matrix on CUDA GPU (requires CUDA build).");
-
-  m.def("compute_lb_keogh_cuda",
-        [](const std::vector<std::vector<double>> &, int, int) -> nb::object {
-          throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
-        },
-        "series"_a, "band"_a, "device_id"_a = 0,
-        "Compute LB_Keogh lower bounds on GPU (requires CUDA build).");
 
   m.attr("CUDA_AVAILABLE") = false;
 #endif
@@ -1567,15 +1425,11 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix_metal",
         [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, bool verbose,
-           bool use_lb_keogh, double lb_threshold, int lb_envelope_band) {
+           int band, bool use_squared_l2, bool verbose) {
           dtwc::metal::MetalDistMatOptions opts;
           opts.band = band;
           opts.use_squared_l2 = use_squared_l2;
           opts.verbose = verbose;
-          opts.use_lb_keogh = use_lb_keogh;
-          opts.lb_threshold = lb_threshold;
-          opts.lb_envelope_band = lb_envelope_band;
           require_finite_series(series, "compute_distance_matrix_metal");
           std::vector<double> matrix;
           size_t n = 0;
@@ -1589,15 +1443,8 @@ NB_MODULE(_dtwcpp_core, m) {
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = 0.0,
-        "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU via Metal.\n\n"
-        "Returns NxN numpy array of DTW distances. When `use_lb_keogh=True`\n"
-        "on a wavefront dispatch path, pairs whose LB_Keogh lower bound exceeds\n"
-        "`lb_threshold` are pruned and read NaN (not computed). The bound\n"
-        "squares each excess under `use_squared_l2`; its envelope is the DTW\n"
-        "window (`band`, or the whole series for `band=-1`), and an\n"
-        "`lb_envelope_band` narrower than that window raises InvalidInput.\n"
+        "Returns NxN numpy array of DTW distances.\n"
         "NaN or +-inf in a series raises InvalidInput.");
 
   m.attr("METAL_AVAILABLE") = true;
@@ -1607,20 +1454,17 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("metal_device_info", []() { return std::string("Metal not available (not compiled)"); },
         "Get Metal device info string.");
   m.def("compute_distance_matrix_metal",
-        [](const std::vector<std::vector<double>> &, int, bool, bool,
-           bool, double, int) -> nb::object {
+        [](const std::vector<std::vector<double>> &, int, bool, bool) -> nb::object {
           throw std::runtime_error("Metal support not compiled. Rebuild on macOS with -DDTWC_ENABLE_METAL=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = 0.0,
-        "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU (requires Metal build).");
   m.attr("METAL_AVAILABLE") = false;
 #endif
 
   // =========================================================================
-  // Capability detection: OpenMP, MPI
+  // Capability detection: OpenMP
   // =========================================================================
 
 #ifdef _OPENMP
@@ -1632,12 +1476,6 @@ NB_MODULE(_dtwcpp_core, m) {
   m.attr("OPENMP_AVAILABLE") = false;
   m.def("openmp_max_threads", []() { return 1; },
         "Return 1 (OpenMP not compiled in).");
-#endif
-
-#ifdef DTWC_HAS_MPI
-  m.attr("MPI_AVAILABLE") = true;
-#else
-  m.attr("MPI_AVAILABLE") = false;
 #endif
 
   m.def("system_info", []() {
@@ -1663,11 +1501,6 @@ NB_MODULE(_dtwcpp_core, m) {
       info += "  Metal:  compiled but no GPU detected\n";
 #else
     info += "  Metal:  not compiled (macOS only)\n";
-#endif
-#ifdef DTWC_HAS_MPI
-    info += "  MPI:    available\n";
-#else
-    info += "  MPI:    not compiled (rebuild with -DDTWC_ENABLE_MPI=ON)\n";
 #endif
     return info;
   }, "Return a string summarizing available backends and capabilities.");

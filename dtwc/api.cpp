@@ -34,13 +34,13 @@ std::string lower(std::string_view value)
   return out;
 }
 
-std::string canonical_device_name(const Env &e)
+/// The process-wide default device: what dtwc::device(name) set, CPU until then.
+struct DeviceSelection
 {
-  std::string out = to_string(e.device());
-  if (e.device() == Device::GPU && e.device_index() != 0)
-    out += ":" + std::to_string(e.device_index());
-  return out;
-}
+  Device device = Device::CPU;
+  int index = 0;
+};
+DeviceSelection g_device;
 
 std::string derive_name(const std::filesystem::path &path)
 {
@@ -104,9 +104,9 @@ const std::filesystem::path &Dataset::path() const
   return std::get<std::filesystem::path>(source_);
 }
 
-Data Dataset::materialize_local() const
+Data Dataset::materialize_local() &&
 {
-  auto series = std::get<series_type>(source_);
+  auto series = std::move(std::get<series_type>(source_));
   // One memory row is one file line, so skip_rows drops leading series exactly
   // as it drops leading lines of a batch file.
   const auto dropped = std::min<std::size_t>(
@@ -143,11 +143,20 @@ Dataset load(Dataset::series_type source, int skip_cols, int skip_rows,
 
 std::string device(std::string_view name)
 {
-  env().set_device(name);
-  return canonical_device_name(env());
+  const auto [selected, index] = detail::parse_device(name);
+#if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
+  if (selected == Device::GPU) throw DeviceError(detail::gpu_not_built_message());
+#endif
+  g_device = { selected, index };
+  return device();
 }
 
-std::string device() { return canonical_device_name(env()); }
+std::string device()
+{
+  std::string out = to_string(g_device.device);
+  if (g_device.device == Device::GPU && g_device.index != 0) out += ":" + std::to_string(g_device.index);
+  return out;
+}
 
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
                ClusterMethod method, int iterations, bool converged)
@@ -231,13 +240,14 @@ void Result::save(const std::filesystem::path &directory) const
   // save() promises the complete matrix and silhouettes. Matrix-free methods
   // retain their scaling until this explicitly requested operation.
   problem_->fill_distance_matrix();
-  std::visit([&](const auto &matrix) {
+  {
+    const core::DistanceMatrix &matrix = problem_->distance_matrix();
     core::detail::preflight_distance_matrix_csv(matrix);
     auto out = open_output(
       matrix_path, std::ios::out | std::ios::binary | std::ios::trunc);
     out << matrix;
     close_output(out, matrix_path);
-  }, problem_->distance_matrix());
+  }
 
   // s(i) is undefined with fewer than two realised clusters, where
   // scores::silhouette() throws UndefinedScore. save() must not fail a
@@ -264,6 +274,12 @@ void Result::save(const std::filesystem::path &directory) const
 Result cluster(const Dataset &dataset, int k, std::string_view method, int band,
                std::string_view device, int max_iter)
 {
+  return cluster(Dataset(dataset), k, method, band, device, max_iter);
+}
+
+Result cluster(Dataset &&dataset, int k, std::string_view method, int band,
+               std::string_view device, int max_iter)
+{
   Config config; // dtwc_cl's defaults for everything this signature does not name
   config.k = k;
   config.method = parse_name(cluster_method_names, method, "method");
@@ -271,11 +287,9 @@ Result cluster(const Dataset &dataset, int k, std::string_view method, int band,
   config.max_iter = max_iter;
   config.output.clear(); // Result::save writes; cluster() does not
   config.name = dataset.name();
-  // The grammar only: an `hpc` .env is Python's to read, so run() refuses hpc
-  // without opening one.
   std::tie(config.device, config.gpu.device_id) =
-    device.empty() ? std::pair{ env().device(), env().device_index() } : detail::parse_device(device);
-  if (!dataset.is_path()) return run(config, dataset.materialize_local());
+    device.empty() ? std::pair{ g_device.device, g_device.index } : detail::parse_device(device);
+  if (!dataset.is_path()) return run(config, std::move(dataset).materialize_local());
   config.input = path_to_utf8(dataset.path());
   config.skip_cols = dataset.skip_cols();
   config.skip_rows = dataset.skip_rows();
