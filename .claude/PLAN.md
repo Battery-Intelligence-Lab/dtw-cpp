@@ -75,12 +75,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   builds (the MEX waits for F43, W6e/f) (Y2 `a539d5d`, `75a65a4`, `6a96642`, `6d0f0c3`, `1d8c82a`; merged
   `959dc5b`; Dense and Mmap are one DistanceMatrix)
 - ☑ W5e Parquet saturating helpers and leaf guards → asserts (Y1 `3000ca9`, `d8dd4f7`; merged `7eb928b`)
-- ☐ W6a `index_t` alias in `base/settings.hpp`; every count guard deleted; `mip/index_guard.hpp` → two inline throws
+- ☑ W6a `index_t` alias in `base/settings.hpp`; every count guard deleted; `mip/index_guard.hpp` → two inline throws
+  (Y3 `17843f4`, `36c7883`; merged `b260415`; outside algorithms/ and mip/; X2 carries their part)
 - ◐ W6b enum validator tails → `-Werror=switch` (X3 `8c73029` on pb/X2; merges after X2)
-- ☐ W6c `run_openmp` captures failures in per-thread slots (no critical, no atomic); `parse_ram_limit` shrinks;
-  `GpuPrecision{Auto, FP32, FP64}`
-- ☐ W6d `cluster_by_kMedoidsPAM` shim restored; non-v1 root forwarders, D2/D3/F57 markers, tracker ids in
-  comments go
+- ☑ W6c `run_openmp` captures failures in per-thread slots (no critical, no atomic); `parse_ram_limit` shrinks;
+  `GpuPrecision{Auto, FP32, FP64}` (Y3 `36c7883`, `dc55d13`, `b88ae0c`, `119216d`; merged `b260415`)
+- ☑ W6d `cluster_by_kMedoidsPAM` shim restored; non-v1 root forwarders, D2/D3/F57 markers, tracker ids in
+  comments go (Y3 `9c0b8cb`, `94ae95f`, `8b48caa`, `119216d`; merged `b260415`; tracker ids in comments move to a
+  later sweep)
 - ☐ W6e never-released Python and MATLAB aliases and the bindings of deleted surface go
 - ☐ W6f C++ tests of deleted surface trimmed
 - ☐ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
