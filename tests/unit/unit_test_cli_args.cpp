@@ -91,10 +91,10 @@ dtwc::Data seed_sensitive_series()
 } // namespace
 
 // ---------------------------------------------------------------------------
-// --ram-limit (Task 8.2 F7): exact and fail-closed, read by cli::bind()
+// --ram-limit, read by cli::bind()
 // ---------------------------------------------------------------------------
 
-TEST_CASE("--ram-limit is exact and fail-closed", "[cli][parquet][ram]")
+TEST_CASE("--ram-limit reads a size and rejects anything else", "[cli][parquet][ram]")
 {
   CHECK(ram_limit("") == 0);
   CHECK(ram_limit("0") == 0);
@@ -102,15 +102,19 @@ TEST_CASE("--ram-limit is exact and fail-closed", "[cli][parquet][ram]")
   CHECK(ram_limit("2K") == 2ULL * 1024ULL);
   CHECK(ram_limit("1.5MiB") == 1572864ULL);
   CHECK(ram_limit("3gb") == 3ULL * 1024ULL * 1024ULL * 1024ULL);
+  // A plain byte count is exact past 2^53, up to size_t's maximum.
   if constexpr (std::numeric_limits<std::size_t>::digits > 53)
     CHECK(ram_limit("9007199254740993") == 9007199254740993ULL);
   CHECK(ram_limit(std::to_string(std::numeric_limits<std::size_t>::max())) == std::numeric_limits<std::size_t>::max());
+  // A fraction of a byte rounds up, so a nonzero value never turns the cap off.
+  CHECK(ram_limit("0.1B") == 1);
+  CHECK(ram_limit("1.1K") == 1127); // 1126.4 bytes
 
-  for (const std::string malformed : { "-1G", "nan", "inf", "1GBjunk", "G", "0.1B" }) {
+  for (const std::string malformed : { "-1G", "nan", "inf", "1GBjunk", "G", "1Q", "+1G", " 1G",
+                                       "999999999999999999999999T" }) {
     CAPTURE(malformed);
     CHECK_THROWS_AS(ram_limit(malformed), dtwc::InvalidInput);
   }
-  CHECK_THROWS_WITH(ram_limit("999999999999999999999999T"), ContainsSubstring("exceeds this platform's size limit"));
 }
 
 // A cap on an input no reader can apply it to must fail: the CLI once accepted

@@ -621,7 +621,7 @@ TEST_CASE("MIP Benders warm start preserves caller configuration on success",
   prob.set_random_seed(1234);
   prob.set_tadpole_dc(0.125);
   prob.cuda_settings.device_id = 3;
-  prob.cuda_settings.precision = 2;
+  prob.cuda_settings.precision = dtwc::GpuPrecision::FP64;
   prob.mip_settings.benders = "on";
   prob.mip_settings.warm_start = true;
   prob.mip_settings.max_benders_iter = 50;

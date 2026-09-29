@@ -17,6 +17,7 @@
 #include "base/settings.hpp"       // for data_t, DEFAULT_BAND
 #include "base/env.hpp"            // for Device
 #include "base/error.hpp"          // for InvalidInput
+#include "base/names.hpp"          // for Name
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
@@ -41,23 +42,27 @@
 
 namespace dtwc {
 
+/// GPU compute precision, on every GPU backend. `Auto` is FP32 on consumer CUDA
+/// GPUs and FP64 on HPC ones; Metal computes in FP32 and rejects FP64. The values
+/// are hashed into the distance-matrix identity, so they never change.
+enum class GpuPrecision { Auto = 0, FP32 = 1, FP64 = 2 };
+
+/// The spellings of `--gpu-precision`.
+inline constexpr Name<GpuPrecision> gpu_precision_names[]{
+  { "auto", GpuPrecision::Auto },
+  { "fp32", GpuPrecision::FP32 }, { "float32", GpuPrecision::FP32 }, { "f32", GpuPrecision::FP32 },
+  { "float", GpuPrecision::FP32 },
+  { "fp64", GpuPrecision::FP64 }, { "float64", GpuPrecision::FP64 }, { "f64", GpuPrecision::FP64 },
+  { "double", GpuPrecision::FP64 },
+};
+
 /// GPU compute settings, read by the CUDA and Metal routes. Metal runs on the
 /// system default device in FP32: a device_id other than 0, or precision FP64,
 /// is rejected on Metal rather than ignored.
 struct CUDASettings {
   int device_id = 0;  ///< GPU index (Problem::set_device(Device::GPU, index)).
-  /// Compute precision. `Auto` → FP32 on consumer GPUs, FP64 on HPC GPUs.
-  /// Declared as a plain int here (rather than `dtwc::cuda::CUDAPrecision`)
-  /// so this header stays parsable when DTWC_HAS_CUDA is undefined.
-  /// Values: 0 = Auto, 1 = FP32, 2 = FP64. See settings::Precision constants.
-  int precision = 0;
+  GpuPrecision precision = GpuPrecision::Auto; ///< Compute precision.
 };
-
-inline void validate_cuda_settings_precision(int value)
-{
-  if (value < 0 || value > 2)
-    throw InvalidInput("Invalid CUDA precision value.");
-}
 
 /// MIP solver tuning parameters.
 struct MIPSettings {
@@ -153,7 +158,7 @@ private:
     core::MissingStrategy missing_strategy{ core::MissingStrategy::Error };
     DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto };
     int cuda_device_id{ 0 };
-    int cuda_precision{ 0 };
+    GpuPrecision cuda_precision{ GpuPrecision::Auto };
   };
   struct DistanceCacheIdentity {
     cache_fingerprint_t full{};
@@ -285,9 +290,7 @@ private:
   }
 
 public:
-  [[deprecated("use set_max_iter/max_iter")]]
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
-  [[deprecated("use set_n_repetitions/n_repetitions")]]
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int band{ settings::DEFAULT_BAND };        /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   /// DTW variant selection and parameters.
@@ -307,20 +310,6 @@ public:
   std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
-  // GCC emits -Wdeprecated-declarations for in-class initializers of the
-  // deprecated maxIter / N_repetition fields at every constructor definition.
-  // Canonical construction must stay silent (F22); caller access of those
-  // fields must still diagnose. Same push/pop as Problem.cpp accessors.
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning(disable : 4996)
-#endif
   Problem() { rebind_dtw_fn(); }
   Problem(std::string_view problem_name) : name_{ problem_name }
   {
@@ -332,13 +321,6 @@ public:
     reject_empty_series(data_, "Problem(name, DataLoader)");
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#  pragma warning(pop)
-#endif
   Problem(const Problem &) = delete;
   Problem &operator=(const Problem &) = delete;
   Problem(Problem &&);
@@ -688,7 +670,7 @@ public:
   void cluster_by_mip();
   [[deprecated("use cluster_by_mip")]] void cluster_by_MIP() { cluster_by_mip(); }
   void cluster_by_kmedoids_lloyd();
-  [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsLloyd() { cluster_by_kmedoids_lloyd(); }
+  [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsPAM() { cluster_by_kmedoids_lloyd(); }
 
   void cluster_and_process();
 

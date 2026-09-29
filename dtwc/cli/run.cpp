@@ -41,7 +41,6 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -228,15 +227,6 @@ Data convert_to_f32(const Data &data_f64)
   auto names = data_f64.p_names;
   return Data(std::move(series), std::move(names), data_f64.ndim);
 }
-
-#ifdef DTWC_HAS_PARQUET
-std::size_t checked_parquet_series_count(std::int64_t count)
-{
-  if (count < 0 || static_cast<std::uint64_t>(count) > std::numeric_limits<std::size_t>::max())
-    throw InvalidInput("Parquet logical series count exceeds this platform's size limit.");
-  return static_cast<std::size_t>(count);
-}
-#endif
 
 /// Bind persistent distance storage once every distance-affecting setting has
 /// reached the Problem. Returns the mmap cache path, or nullopt when the method
@@ -446,23 +436,19 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // readers map the file and its footer; no row group is decoded.
   if (input.parquet()
       && (config.ram_limit > 0 || method == ClusterMethod::Auto || method == ClusterMethod::CLARA)) {
-    const auto saturating_add = [](std::size_t lhs, std::size_t rhs) {
-      return rhs > std::numeric_limits<std::size_t>::max() - lhs ? std::numeric_limits<std::size_t>::max()
-                                                                  : lhs + rhs;
-    };
     const bool f32 = config.dtype == core::Precision::Float32;
     auto layout = detail::ParquetLayout::Directory;
     std::size_t resident_bytes = 0;
     if (input.source == Source::ParquetFile) {
       io::ParquetChunkReader metadata(input.path, config.column);
       layout = metadata.is_list_layout() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
-      n_series = checked_parquet_series_count(metadata.logical_series_count());
+      n_series = static_cast<std::size_t>(metadata.logical_series_count());
       resident_bytes = metadata.estimated_materialization_peak_bytes(f32);
     } else {
       for (const auto &path : input.parquet_files) {
         io::ParquetChunkReader metadata(path, config.column);
-        n_series = saturating_add(n_series, checked_parquet_series_count(metadata.logical_series_count()));
-        resident_bytes = saturating_add(resident_bytes, metadata.estimated_materialization_peak_bytes(f32));
+        n_series += static_cast<std::size_t>(metadata.logical_series_count());
+        resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
       }
     }
     const auto plan = detail::plan_parquet_load(method, config.device, n_series, resident_bytes, config.ram_limit, layout);

@@ -148,13 +148,13 @@ const char *metric_name(core::MetricType m)
 }
 
 #ifdef DTWC_HAS_METAL
-/// CUDASettings::precision (0 Auto, 1 FP32, 2 FP64) as the Metal selector;
-/// validate_metal_precision() then rejects FP64, which Metal cannot run.
-metal::MetalPrecision metal_precision(int precision)
+/// The Metal selector for `precision`; validate_metal_precision() then rejects
+/// FP64, which Metal cannot run.
+metal::MetalPrecision metal_precision(GpuPrecision precision)
 {
-  return precision == 1 ? metal::MetalPrecision::FP32
-       : precision == 2 ? metal::MetalPrecision::FP64
-                        : metal::MetalPrecision::Auto;
+  return precision == GpuPrecision::FP32 ? metal::MetalPrecision::FP32
+       : precision == GpuPrecision::FP64 ? metal::MetalPrecision::FP64
+                                         : metal::MetalPrecision::Auto;
 }
 #endif
 
@@ -239,17 +239,6 @@ void Problem::require_owned_storage(std::string_view accessor, bool float64_valu
                             "returns the Float64 store. Use data().series_f32(i).");
 }
 
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning(disable : 4996)
-#endif
-
 Problem::Problem(Problem &&) = default;
 
 Problem &Problem::operator=(Problem &&) = default;
@@ -283,14 +272,6 @@ int Problem::n_repetitions() const
 {
   return N_repetition;
 }
-
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#  pragma warning(pop)
-#endif
 
 /**
  * @brief Sets the initial centroids for clustering.
@@ -554,13 +535,12 @@ void Problem::preflight_distance_semantics(
   core::MetricType metric,
   const Data &candidate_data,
   DistanceMatrixStrategy candidate_distance_strategy,
-  const CUDASettings &candidate_cuda_settings,
+  const CUDASettings &, // its precision is a GpuPrecision: nothing to check
   bool force_float32)
 {
   core::validate_precision(candidate_data.precision);
   core::validate_metric_type(metric);
   validate_distance_matrix_strategy(candidate_distance_strategy);
-  validate_cuda_settings_precision(candidate_cuda_settings.precision);
   core::validate_problem_distance_semantics(
     params, missing, candidate_data.ndim,
     force_float32 || candidate_data.is_f32());
@@ -685,7 +665,7 @@ Problem::distance_cache_identity(core::MetricType metric) const
 {
   core::validate_metric_type(metric);
   if (distance_strategy == DistanceMatrixStrategy::CUDA
-      && cuda_settings.precision == 0) {
+      && cuda_settings.precision == GpuPrecision::Auto) {
     throw InvalidInput(
       "use_mmap_distance_matrix: CUDA precision=Auto is not safe for persistent "
       "warm-start caches because its resolved FP32/FP64 semantics depend on the "
@@ -1115,9 +1095,9 @@ void Problem::fill_distance_matrix()
     dtwc::cuda::CUDADistMatOptions cuda_opts;
     cuda_opts.band = band;
     cuda_opts.device_id = cuda_settings.device_id;
-    if (cuda_settings.precision == 1)
+    if (cuda_settings.precision == GpuPrecision::FP32)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP32;
-    else if (cuda_settings.precision == 2)
+    else if (cuda_settings.precision == GpuPrecision::FP64)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
     // L2 is L1 on the univariate series the GPU routes take.
     cuda_opts.use_squared_l2 = metric_ == core::MetricType::SquaredL2;
@@ -1377,16 +1357,12 @@ void Problem::cluster_by_kmedoids_lloyd()
 
 void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
 {
-  // The setters reject both; the deprecated public fields bypass them.
+  // The setters reject both; the public fields maxIter and N_repetition bypass them.
   const int repetitions = n_repetitions();
   if (repetitions <= 0)
     throw InvalidInput("Lloyd k-medoids requires n_repetitions >= 1.");
   if (max_iter() <= 0)
     throw InvalidInput("Lloyd k-medoids requires max_iter >= 1.");
-  const auto restart_offset = static_cast<std::uint64_t>(repetitions - 1);
-  if (restart_offset
-      > std::numeric_limits<std::uint64_t>::max() - random_seed_)
-    throw InvalidInput("Lloyd k-medoids random_seed + repetition index overflows uint64.");
 
   fill_distance_matrix(); // Ensure all distances computed before parallel clustering.
 
@@ -1398,6 +1374,7 @@ void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
 
   for (int i_rand = 0; i_rand < repetitions; i_rand++) {
     if (verbose_) std::cout << "Metoid initialisation is started.\n";
+    // Unsigned: a seed near 2^64 wraps to another valid seed.
     init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
 
     if (verbose_)

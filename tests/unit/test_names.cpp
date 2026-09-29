@@ -144,7 +144,9 @@ TEST_CASE("config tables: cluster method and GPU precision", "[names]")
                 { "mip", ClusterMethod::MIP }, { "lrcore", ClusterMethod::LRCore },
                 { "tadpole", ClusterMethod::TADPole }, { "hierarchical", ClusterMethod::Hierarchical } },
               { { "obp", "onebatch" }, { "lr", "lrcore" }, { "hclust", "hierarchical" } });
-  check_table(dtwc::gpu_precision_names, { { "auto", 0 }, { "fp32", 1 }, { "fp64", 2 } },
+  using dtwc::GpuPrecision;
+  check_table(dtwc::gpu_precision_names,
+              { { "auto", GpuPrecision::Auto }, { "fp32", GpuPrecision::FP32 }, { "fp64", GpuPrecision::FP64 } },
               { { "float32", "fp32" }, { "f32", "fp32" }, { "float", "fp32" }, { "float64", "fp64" },
                 { "f64", "fp64" }, { "double", "fp64" } });
 }

@@ -138,10 +138,9 @@ The cap is fail-closed:
 `--ram-limit` is a conservative cap for series decoding/materialisation, not a
 hard operating-system RSS limit: algorithm result arrays, the subsample PAM
 matrix, library metadata, and fixed process overhead are outside it. Units are
-binary and case-insensitive: `K`/`KB`/`KiB` through `T`/`TB`/`TiB`. A decimal is
-accepted only when it resolves exactly to a whole number of bytes. Zero means
-unlimited; malformed, negative, fractional-byte, or overflowing values are
-errors rather than silently disabling the limit.
+binary and case-insensitive: `K`/`KB`/`KiB` through `T`/`TB`/`TiB`. A fraction
+of a byte rounds up, so a nonzero value never disables the limit. Zero means
+unlimited; malformed, negative, or overflowing values are errors.
 
 The cap governs Parquet series materialisation and nothing else. No other reader
 can honour it, so a nonzero `--ram-limit` on CSV/TSV, HDF5, Arrow IPC,

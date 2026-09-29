@@ -55,13 +55,6 @@ inline constexpr Name<ClusterMethod> cluster_method_names[]{
   { "hclust", ClusterMethod::Hierarchical },
 };
 
-/// The spellings of `--gpu-precision`, onto CUDASettings::precision (0 Auto, 1 FP32, 2 FP64).
-inline constexpr Name<int> gpu_precision_names[]{
-  { "auto", 0 },
-  { "fp32", 1 }, { "float32", 1 }, { "f32", 1 }, { "float", 1 },
-  { "fp64", 2 }, { "float64", 2 }, { "f64", 2 }, { "double", 2 },
-};
-
 struct Config
 {
   // Input and storage

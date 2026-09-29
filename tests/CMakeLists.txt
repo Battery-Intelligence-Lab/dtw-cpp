@@ -11,7 +11,7 @@ include("${CMAKE_SOURCE_DIR}/cmake/DtwcTest.cmake")
 # compiler family: GCC, Clang and clang-cl print "'<name>' is deprecated", cl
 # prints C4996; -Wno-error keeps a -Werror in CMAKE_CXX_FLAGS from turning the
 # warning under test into a failed compile. SERIAL: it builds in this tree.
-set(_dtwc_shims set_numberOfClusters distByInd maxIter daviesBouldinIndex
+set(_dtwc_shims set_numberOfClusters distByInd cluster_by_kMedoidsPAM daviesBouldinIndex
     adjustedRandIndex startColumn fillDistanceMatrix)
 add_library(deprecated_shims_probe OBJECT EXCLUDE_FROM_ALL integration/deprecated_shims_probe.cc)
 target_link_libraries(deprecated_shims_probe PRIVATE dtwc++ project_options)

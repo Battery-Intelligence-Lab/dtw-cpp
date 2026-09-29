@@ -75,8 +75,8 @@ TEST_CASE("Problem: MissingStrategy::Error throws on the caller thread",
 // rethrown by run_openmp. It is now rejected by the serial pre-scan in
 // fill_distance_matrix, which can name the offending series. The invariant this
 // case guards is unchanged: the failed fill must not publish a full cache.
-// (run_openmp's own lowest-index rethrow contract is covered directly by
-// unit_test_parallelisation.cpp, "OpenMP task failures rethrow ...".)
+// (run_openmp's own rethrow contract is covered directly by
+// unit_test_parallelisation.cpp, "run_openmp rethrows a task's failure ...".)
 TEST_CASE("Problem: a rejected fill does not publish a full cache",
           "[problem][missing][m40]")
 {

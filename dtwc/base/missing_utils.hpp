@@ -61,24 +61,6 @@ bool all_missing(std::span<const T> v)
   return true;
 }
 
-/// Returns the fraction of NaN values in the range (0.0 if empty).
-template <typename T>
-double missing_rate(std::span<const T> v)
-{
-  if (v.empty()) return 0.0;
-  size_t count = 0;
-  for (const auto &x : v)
-    if (is_missing(x)) ++count;
-  return static_cast<double>(count) / static_cast<double>(v.size());
-}
-
-/// Convenience overload: vector -> span.
-template <typename T>
-double missing_rate(const std::vector<T> &v)
-{
-  return missing_rate(std::span<const T>{v});
-}
-
 /// Linear interpolation of NaN gaps.
 /// Interior NaN: linearly interpolated between nearest observed neighbors.
 /// Leading NaN: filled with first observed value (NOCB).

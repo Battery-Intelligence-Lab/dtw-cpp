@@ -45,6 +45,10 @@ using default_data_t = double;
 ///       default template argument on public distance helpers.
 using data_t = double;
 
+/// Counts and indices of series, clusters and rows: 64-bit, so no count needs a
+/// range check.
+using index_t = std::int64_t;
+
 // Random number settings: dtwc::randGenerator moved to dtwc/random_engine.hpp
 // (X-12), which dtwc/dtwc.hpp includes, so the public name is unaffected.
 } // namespace dtwc

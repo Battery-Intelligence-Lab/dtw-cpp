@@ -52,7 +52,7 @@ _ERRORS = ["DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError"]
 # ---------------------------------------------------------------------------
 _ENUMS = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
-    "MissingStrategy", "DistanceMatrixStrategy", "Linkage",
+    "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision", "Linkage",
 ]
 _STRUCTS = [
     "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",

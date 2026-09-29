@@ -28,6 +28,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   written before this change is not readable (2.0-born, never released). `load_checkpoint` returns `false` only when the
   file is absent and raises `InvalidInput` for other data or settings and `IOError` for a damaged file, where it returned
   `false` and the CLI recomputed over the checkpoint.
+- **Fixed (C++ compatibility):** `Problem::cluster_by_kMedoidsPAM()`, v1.0.0's name for the Lloyd k-medoids run, compiles
+  again as a deprecated forwarder to `cluster_by_kmedoids_lloyd()` (the 2.0 spelling `cluster_by_kMedoidsLloyd()` is gone), and
+  `Problem::maxIter` and `N_repetition` are plain public fields again, as in v1.0.0, with no deprecation warning.
+- **Removed (build):** the `dtwc_main` demo executable (`dtwc/main.cpp`), which ran a MIP on `data/dummy` relative to the
+  working directory; `examples/cpp/MIP_single.cpp` (`-DDTWC_BUILD_EXAMPLES=ON`) runs the same MIP and takes the data folder
+  as an argument.
 - **Fixed (docs):** the `/cluster` and `/help` commands showed `--k` and `--output-dir`, and `/troubleshoot` showed
   `--repetitions` and `--prune`, none of which `dtwc_cl` has; they now show `-k`, `--output` and `--n-init`, and the pruning tip
   is gone. CI now fails when a page in `docs/content`, `README.md` or `.claude/commands` shows a `dtwc_cl` flag that the live
@@ -121,9 +127,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   process-wide device; Tier-1 `cluster()` now calls `set_device`.
 - **Breaking (GPU):** a CUDA or Metal fill with a DTW variant other than standard, a missing-data strategy, multivariate data,
   Float32 series or view / mmap series raises `DeviceError` naming the setting; before, the GPU silently computed standard
-  univariate DTW. On Metal, precision FP64 (`MetalPrecision::FP64`, or `cuda_settings.precision = 2`) and a GPU index other
-  than 0 raise too, instead of silently running FP32 on the default GPU. A squared-L2 mapped cache now fills on the GPU instead
-  of being refused.
+  univariate DTW. On Metal, precision FP64 (`MetalPrecision::FP64`, or `cuda_settings.precision = GpuPrecision::FP64`)
+  and a GPU index other than 0 raise too, instead of silently running FP32 on the default GPU. A squared-L2 mapped cache now
+  fills on the GPU instead of being refused.
 - **Breaking (band):** a band narrower than the length difference between the longest and shortest series raises
   `InvalidInput`, naming both series and the smallest feasible band, before any pair is computed; before, those pairs were
   stored as 1.8e308 and summed into the clustering cost. The check runs on every route that computes distances —
