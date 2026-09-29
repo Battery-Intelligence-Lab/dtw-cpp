@@ -182,9 +182,9 @@ function(dtwc_setup_dependencies)
   endif()
 
   # llfio — memory-mapped I/O for large distance matrices (OPTIONAL). With
-  # DTWC_ENABLE_LLFIO=OFF there is no llfio_hl target, dtwc/CMakeLists.txt and
-  # dtwc/mip/CMakeLists.txt then leave DTWC_HAS_MMAP undefined, and a request for
-  # mmap storage raises a typed error.
+  # DTWC_ENABLE_LLFIO=OFF there is no llfio_hl target, dtwc/CMakeLists.txt then
+  # leaves DTWC_HAS_MMAP undefined, and a request for mmap storage raises a typed
+  # error. Only dtwc/core/distance_matrix.cpp includes llfio.
   #
   # Header-only, from pinned archives: no llfio CMake, no quickcpplib bootstrap,
   # no nested build. llfio_hl carries what llfio's own header-only target carried
