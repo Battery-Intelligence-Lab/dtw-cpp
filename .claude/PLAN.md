@@ -16,6 +16,8 @@ pytest from a fresh `uv` venv when bindings, readers or defaults change; `matlab
 CUDA build (`build/cuda-verify-0928`, RTX 4000 Ada) for GPU steps, macOS CI for Metal; `git grep` proof for every
 deleted name (and `git grep <name> v1.0.0` = 0). Gates: `scripts/check_docs.py --cli <dtwc_cl>`,
 `scripts/check_pins.py`, gitleaks in CI. A new gate is shown to bite by a reverted mutation.
+A step that changes a hot loop (kernel cell, matrix get/set, `dist_by_ind`, swap or assignment loop) shows the
+inner loop's assembly before and after: no call, reload or spill added (CHARTER 2026-09-29).
 
 **Pre-registered result changes** (everything else stays digit-identical): `pam` results (FasterPAM only); the
 LR-core seed (same cost, medoids may differ on ties); Soft-DTW summation order (1e-12 relative); the v1
@@ -73,7 +75,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   builds (the MEX waits for F43, W6e/f)
 - ☑ W5e Parquet saturating helpers and leaf guards → asserts (Y1 `3000ca9`, `d8dd4f7`; merged `7eb928b`)
 - ☐ W6a `index_t` alias in `base/settings.hpp`; every count guard deleted; `mip/index_guard.hpp` → two inline throws
-- ☐ W6b enum validator tails → `-Werror=switch`
+- ◐ W6b enum validator tails → `-Werror=switch` (X3 `8c73029` on pb/X2; merges after X2)
 - ☐ W6c `run_openmp` captures failures in per-thread slots (no critical, no atomic); `parse_ram_limit` shrinks;
   `GpuPrecision{Auto, FP32, FP64}`
 - ☐ W6d `cluster_by_kMedoidsPAM` shim restored; non-v1 root forwarders, D2/D3/F57 markers, tracker ids in
@@ -83,6 +85,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
   `one_batch_pam` through `run_openmp`; the FasterPAM and TADPole reductions → per-thread slots combined serially;
   OneBatchPAM's warning mutex → a serial warning. Proof: TSan in WSL (LLVM libomp + Archer)
+- ◐ K1 (2026-09-29) the DP cell makes no library call: `std::min({…})` is `__std_min_d` on the MSVC STL, 7.2 ns/cell
+  vs 1.06 on the Mac; nested two-argument min, `dp[i-1, j]` carried in a register; digit-identical
+  (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`)
+- ☐ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
+  compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions)
 
 ## C — GPU to one fill (W4 + W13's GPU half)
 
@@ -151,7 +158,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ one `kmedoids_pp` (W13c) · ☐ HiGHS model built row-wise (W13d) · ☐ barycenter workspace (W13e)
 - ☐ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel; it is serial today
 - ☐ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
-- ☐ PF-5 SIMD lanes across pairs, plain C++, kill criterion 1.5×
+- ☐ PF-5 SIMD lanes across pairs, plain C++, kill criterion 1.5× — ◐ feasibility probe pulled forward (2026-09-29, research only)
 
 ## Blocked on another machine or on Volkan
 
@@ -162,9 +169,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - Linux wheel: whether `libgomp` ships, and the notice says so.
 - Two crashes recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42); an
   llfio-ON MEX under R2024b in `std::mutex` (F43).
-- X2 (W3a–g) is gated but not merged: Sophos quarantines every Release `dtwc_cl.exe` built from it as
-  'Generic ML PUA' (a Debug build runs). It needs an exclusion for the build trees or a false-positive
-  submission (Volkan's). A released `dtwc_cl.exe` may meet the same on users' machines.
+- X2 (W3a–g) is gated but not merged: Sophos quarantined every Release `dtwc_cl.exe` built from it on 7fb09a4 as
+  'Generic ML PUA' (a Debug build runs). No exclusion (DECISIONS §3, 2026-09-28): X2 re-merges once the binary has
+  changed; if still quarantined, that merge's CLI tests run on a Debug build of the same tree. A released
+  `dtwc_cl.exe` may meet the same on users' machines.
 
 ## Records
 

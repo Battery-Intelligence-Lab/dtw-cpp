@@ -4,6 +4,12 @@ Volkan's instructions, verbatim. Agents do not edit the quoted text; new instruc
 with a date. The target they lead to is in `MAP.md` and `DECISIONS.md`; how it is scheduled is in
 `PLAN.md`.
 
+## 2026-09-29 — continue
+
+> Please go through what was done and try to continue. Don't forget our principles of no unnecessary
+> abstraction. Clean code, maintainable code, is better than pages of abstractions. Also make sure the code
+> works fast and generates decent assembly like SIMD where needed.
+
 ## 2026-09-27 — bloat pass
 
 > I was working on this on another computer, but my limit there finishes do I don't know where we are.

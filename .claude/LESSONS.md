@@ -226,8 +226,8 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A profiler can exit 0 having seen no kernel.** Check that it observed one.
 - **Git Bash rewrites a leading `/c` argument.** Call `cmd //c`, or run from PowerShell.
 - **Sophos may quarantine a Release `dtwc_cl.exe` as 'Generic ML PUA'.** Symptoms: "Permission denied", CLI tests
-  "dtwc_cl not found"; the Application event log names the file. Never work around it; a Debug build runs; the fix
-  (an exclusion or a false-positive report) is Volkan's.
+  "dtwc_cl not found"; the Application event log names the file. Never work around it; a Debug build runs. Volkan
+  declined an exclusion (2026-09-28): run the CLI tests from a Debug build of the same tree and say so.
 - **ARC:** compute capability is not the CUDA version in the docs (P100 6.0 … H100 9.0); Rome and Broadwell
   nodes lack AVX-512 (`DTWC_ARCH_LEVEL=v3`); Grace Hopper is AArch64.
 

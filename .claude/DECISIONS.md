@@ -143,3 +143,7 @@ CHANGELOG rule.
   OneBatchPAM under `--ram-limit`, plus the mapped distance matrix.
 - 2026-09-28 — W5e: an internal precondition whose public entry already raises a typed error is an `assert`, and a
   test that expected it to throw goes (`ParquetChunkReader::read_rows` on a scalar column; `fast_clara` rejects it).
+- 2026-09-28 — Sophos 'Generic ML PUA' on X2's Release `dtwc_cl.exe`: no exclusion. Volkan: "It is alright probably
+  it will be resolved when we add more and more features". X2 re-merges once the binary has changed; if still
+  quarantined, that merge's CLI tests run on a Debug build of the same tree; every other gate stays Release; CI runs
+  the Release CLI tests.
