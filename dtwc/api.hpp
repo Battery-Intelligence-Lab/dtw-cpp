@@ -69,8 +69,8 @@ Dataset load(const std::filesystem::path &source, int skip_cols = 0,
 Dataset load(Dataset::series_type source, int skip_cols = 0, int skip_rows = 0,
              char delimiter = 0, std::string_view name = "");
 
-/** Poison the pre-2.0 3-argument shape `load(src, skip_cols, delimiter)`: without
- *  these, `load(p, 0, ',')` binds the char to `skip_rows` (','==44) instead. */
+/** `load(src, skip_cols, delimiter)` does not compile: without these,
+ *  `load(p, 0, ',')` would bind the char to `skip_rows` (',' == 44). */
 Dataset load(const std::filesystem::path &, int, char, std::string_view = "") = delete;
 Dataset load(Dataset::series_type, int, char, std::string_view = "") = delete;
 

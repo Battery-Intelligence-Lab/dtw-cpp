@@ -14,7 +14,6 @@
 #pragma once
 
 #include "settings.hpp" // index_t
-#include "../types/Range.hpp" // not used here; consumers still reach Range through it
 
 #include <algorithm>
 #include <cassert>
