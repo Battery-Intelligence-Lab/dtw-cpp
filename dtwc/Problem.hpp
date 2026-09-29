@@ -307,9 +307,7 @@ private:
   }
 
 public:
-  [[deprecated("use set_max_iter/max_iter")]]
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
-  [[deprecated("use set_n_repetitions/n_repetitions")]]
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int band{ settings::DEFAULT_BAND };        /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   /// DTW variant selection and parameters.
@@ -329,20 +327,6 @@ public:
   std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
-  // GCC emits -Wdeprecated-declarations for in-class initializers of the
-  // deprecated maxIter / N_repetition fields at every constructor definition.
-  // Canonical construction must stay silent (F22); caller access of those
-  // fields must still diagnose. Same push/pop as Problem.cpp accessors.
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning(disable : 4996)
-#endif
   Problem() { rebind_dtw_fn(); }
   Problem(std::string_view problem_name) : name_{ problem_name }
   {
@@ -354,13 +338,6 @@ public:
     reject_empty_series(data_, "Problem(name, DataLoader)");
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#  pragma warning(pop)
-#endif
   Problem(const Problem &) = delete;
   Problem &operator=(const Problem &) = delete;
   Problem(Problem &&);
@@ -721,7 +698,7 @@ public:
   void cluster_by_mip();
   [[deprecated("use cluster_by_mip")]] void cluster_by_MIP() { cluster_by_mip(); }
   void cluster_by_kmedoids_lloyd();
-  [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsLloyd() { cluster_by_kmedoids_lloyd(); }
+  [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsPAM() { cluster_by_kmedoids_lloyd(); }
 
   void cluster_and_process();
 

@@ -239,17 +239,6 @@ void Problem::require_owned_storage(std::string_view accessor, bool float64_valu
                             "returns the Float64 store. Use data().series_f32(i).");
 }
 
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning(disable : 4996)
-#endif
-
 Problem::Problem(Problem &&) = default;
 
 Problem &Problem::operator=(Problem &&) = default;
@@ -283,14 +272,6 @@ int Problem::n_repetitions() const
 {
   return N_repetition;
 }
-
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#  pragma warning(pop)
-#endif
 
 /**
  * @brief Sets the initial centroids for clustering.
@@ -1431,7 +1412,7 @@ void Problem::cluster_by_kmedoids_lloyd()
 
 void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
 {
-  // The setters reject both; the deprecated public fields bypass them.
+  // The setters reject both; the public fields maxIter and N_repetition bypass them.
   const int repetitions = n_repetitions();
   if (repetitions <= 0)
     throw InvalidInput("Lloyd k-medoids requires n_repetitions >= 1.");

@@ -279,19 +279,19 @@ deprecation diagnostic is complete.
 ### 2.1 `Problem` — configuration setters
 
 Canonical config setters are snake_case. Eleven expert/result fields remain
-public: the deprecated actual `int` fields `maxIter` and `N_repetition`, plus
+public: the v1.0.0 `int` fields `maxIter` and `N_repetition`, plus
 `band`, `variant_params`, `missing_strategy`, `distance_strategy`,
 `cuda_settings`, `mip_settings`, `init_fun`, `clusters_ind`, and
-`centroids_ind`. Canonical accessors for the two deprecated fields are
-out-of-line and warning-silent.
+`centroids_ind`. The setters check what they are given; a direct write to
+a field does not.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
 | k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; retained C++ `set_numberOfClusters` and Python `set_number_of_clusters` are deprecated warning aliases |
 | method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
-| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | deprecated public `int maxIter` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
-| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | deprecated public `int N_repetition` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
+| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | public `int maxIter` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
+| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | public `int N_repetition` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
 | random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
@@ -332,7 +332,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `calculateMedoids()` | `calculate_medoids()` | `calculate_medoids()` (live) | — |
 | `cluster()` | `cluster()` | `cluster()` (live) | `cluster()` `[introduced-2.0]` |
 | `cluster_by_MIP()` | `cluster_by_mip()` | — | — |
-| `cluster_by_kMedoidsLloyd()` | `cluster_by_kmedoids_lloyd()` | — | — |
+| `cluster_by_kMedoidsPAM()` | `cluster_by_kmedoids_lloyd()` | — | — |
 | `printClusters()` | `print_clusters()` | `print_clusters()` (live) | — |
 | `writeClusters()` | `write_clusters()` | `write_clusters()` (live) | — |
 | `writeMedoidMembers(iter,rep=0)` | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` `[introduced-2.0]` | — |
@@ -567,20 +567,20 @@ lookups and the GPU routes all compute.
 Frozen registry of public camelCase/duplicate/divergent names. Column
 **Compatibility requirement** states the live transition. Every retained
 callable alias in this table emits its required C++ compile diagnostic or
-Python/MATLAB runtime warning while forwarding to canonical behavior; direct
-access to the retained C++ fields `maxIter` and `N_repetition` emits its compile
-diagnostic while preserving the actual field shape. PLAN.md separately retains
-F22's evidence adjudication because its registered C++ mutation band was
-falsified; that does not change the implemented public policy.
+Python/MATLAB runtime warning while forwarding to canonical behavior; the
+v1.0.0 C++ fields `maxIter` and `N_repetition` stay plain public fields.
+PLAN.md separately retains F22's evidence adjudication because its registered
+C++ mutation band was falsified; that does not change the implemented public
+policy.
 
 | # | Concept | 1.x name(s) | 2.0 canonical | Compatibility requirement |
 |---|---|---|---|---|
 | 1 | set k (C++) | `Problem::set_numberOfClusters` (`Problem.hpp`) | `set_n_clusters` | C++ `[[deprecated]]` |
 | 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp`) | `set_n_clusters` | alias 1 cycle |
 | 3 | set k (MATLAB) | `Problem.set_n_clusters` (Problem.m:148) | `set_n_clusters` | already canonical |
-| 4 | max iterations (C++ field) | `Problem::maxIter` (`Problem.hpp`) | `set_max_iter` / `max_iter` accessor | C++ `[[deprecated]]` field-name kept |
+| 4 | max iterations (C++ field) | `Problem::maxIter` (`Problem.hpp`) | `set_max_iter` / `max_iter` accessor | plain field, as in v1.0.0 |
 | 5 | max iterations (MATLAB prop) | `Problem.MaxIter` (Problem.m:31) | `set_max_iter` | alias (loud warn) |
-| 6 | repetitions (C++ field) | `Problem::N_repetition` (`Problem.hpp`) | `set_n_repetitions` / `n_repetitions` | C++ `[[deprecated]]` |
+| 6 | repetitions (C++ field) | `Problem::N_repetition` (`Problem.hpp`) | `set_n_repetitions` / `n_repetitions` | plain field, as in v1.0.0 |
 | 7 | repetitions (Python prop) | `Problem.n_repetition` (`_dtwcpp_core.cpp`) | `n_repetitions` | alias 1 cycle |
 | 8 | repetitions (MATLAB prop) | `Problem.NRepetition` (Problem.m:32) | `set_n_repetitions` | alias (loud warn) |
 | 9 | band (MATLAB prop) | `Problem.Band` (Problem.m:29) | `set_band` | alias (loud warn) |
@@ -601,7 +601,7 @@ falsified; that does not change the implemented public policy.
 | 24 | assign clusters | `assignClusters` (`Problem.hpp`) | `assign_clusters` | C++ `[[deprecated]]` |
 | 25 | calc medoids | `calculateMedoids` (`Problem.hpp`) | `calculate_medoids` | C++ `[[deprecated]]` |
 | 26 | cluster via MIP | `cluster_by_MIP` (`Problem.hpp`) | `cluster_by_mip` | C++ `[[deprecated]]` |
-| 27 | cluster via Lloyd | `cluster_by_kMedoidsLloyd` (`Problem.hpp`) | `cluster_by_kmedoids_lloyd` | C++ `[[deprecated]]` |
+| 27 | cluster via Lloyd | `cluster_by_kMedoidsPAM` (`Problem.hpp`) | `cluster_by_kmedoids_lloyd` | C++ `[[deprecated]]` |
 | 28 | n clusters read | `cluster_size` (`Problem.hpp`) | `n_clusters` | C++ `[[deprecated]]` alias |
 | 28a | n clusters read (Python) | `Problem.cluster_size` (`_dtwcpp_core.cpp`) | `n_clusters` | warning alias 1 cycle |
 | 29 | dist mat read (MATLAB) | `get_distance_matrix` (`Problem.m`) | `distance_matrix` | warning alias 1 cycle; `set_distance_matrix` is canonical and silent |
@@ -650,10 +650,9 @@ bindings").
 
 - **C++.** Every renamed method/function keeps a `[[deprecated("use <new>")]]`
   inline shim forwarding to the canonical implementation. Shims compile-warn,
-  never change behaviour, and are scheduled for removal in 3.0. Renamed *fields*
-  (`maxIter`, `N_repetition`) remain actual public `int` members annotated
-  `[[deprecated]]`; the invariant-preserving setters/accessors are canonical
-  and warning-silent.
+  never change behaviour, and are scheduled for removal in 3.0. The v1.0.0
+  fields `maxIter` and `N_repetition` stay plain public `int` members; the
+  checking setters and the accessors are canonical.
 - **Python.** Removed duplicate names (`set_number_of_clusters`,
   `n_repetition` get/set, `cluster_size`, `distance_matrix_numpy`,
   `set_distance_matrix_from_numpy`, the five `*_index`/`*_information` score
@@ -677,7 +676,7 @@ bindings").
   behaviour.
 
 This section is normative and implemented for the complete retained inventory:
-29 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
+27 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
 operations. PLAN.md retains F22's separate evidence verdict; the exhausted
 C++ mutation campaign was falsified at 33/46 and is not described here as
 closure of that finding.
