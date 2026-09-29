@@ -44,10 +44,25 @@ template <typename T>
 std::function<double(std::span<const T>, std::span<const T>)>
 resolve_dtw_fn(const Problem &p);
 
+/// The brute-force fill's block function: x and W = core::dtw_lanes<T> series
+/// of x's length in `ys`, their W distances out, each bitwise what
+/// resolve_dtw_fn's function returns for that pair (dtw_kernel_lanes). Reads
+/// `p.band` at call time, as resolve_dtw_fn's does. Empty unless Standard DTW,
+/// MissingStrategy::Error and univariate series; the fill then goes pair by pair.
+template <typename T>
+std::function<void(std::span<const T>, std::span<const std::span<const T>>, std::span<double>)>
+resolve_dtw_block_fn(const Problem &p);
+
 // Instantiated in dtw_dispatch.cpp — no other Ts are supported.
 extern template std::function<double(std::span<const data_t>, std::span<const data_t>)>
 resolve_dtw_fn<data_t>(const Problem &);
 extern template std::function<double(std::span<const float>, std::span<const float>)>
 resolve_dtw_fn<float>(const Problem &);
+extern template std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
+                                   std::span<double>)>
+resolve_dtw_block_fn<data_t>(const Problem &);
+extern template std::function<void(std::span<const float>, std::span<const std::span<const float>>,
+                                   std::span<double>)>
+resolve_dtw_block_fn<float>(const Problem &);
 
 } // namespace dtwc::core

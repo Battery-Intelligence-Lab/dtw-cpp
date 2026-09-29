@@ -426,10 +426,14 @@ void Problem::rebind_dtw_fn() const
   preflight_current_distance_semantics();
   refresh_variant_caches();
   dtw_fn_ = core::resolve_dtw_fn<data_t>(*this);
-  if (core::active_variant_params_representable_f32(variant_params))
+  dtw_block_fn_ = core::resolve_dtw_block_fn<data_t>(*this);
+  if (core::active_variant_params_representable_f32(variant_params)) {
     dtw_fn_f32_ = core::resolve_dtw_fn<float>(*this);
-  else
+    dtw_block_fn_f32_ = core::resolve_dtw_block_fn<float>(*this);
+  } else {
     dtw_fn_f32_ = {};
+    dtw_block_fn_f32_ = {};
+  }
   dense_cache_configuration_ = distance_cache_configuration(metric_);
   dense_cache_configuration_bound_ = true;
   dtw_binding_owner_ = this;

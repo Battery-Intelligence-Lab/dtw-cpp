@@ -375,10 +375,38 @@ resolve_dtw_fn(const Problem &p)
   }
 }
 
+template <typename T>
+std::function<void(std::span<const T>, std::span<const std::span<const T>>, std::span<double>)>
+resolve_dtw_block_fn(const Problem &p)
+{
+  // make_standard's univariate path: its kernels are the ones the lanes
+  // reproduce bit for bit. The metric is resolved here, once, as a functor.
+  if (p.variant_params.variant != DTWVariant::Standard
+      || p.missing_strategy != MissingStrategy::Error || p.data().ndim != 1)
+    return {};
+  return dtwc::detail::dispatch_metric(p.metric(), [&p](auto dist) {
+    return std::function<void(std::span<const T>, std::span<const std::span<const T>>,
+                              std::span<double>)>(
+      [&p, dist](std::span<const T> x, std::span<const std::span<const T>> ys,
+                 std::span<double> out) {
+        const T *y[dtw_lanes<T>];
+        for (std::size_t w = 0; w < dtw_lanes<T>; ++w) y[w] = ys[w].data();
+        const auto d = dtw_kernel_lanes<T>(x.data(), y, x.size(), p.band, dist, StandardCell{});
+        for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
+      });
+  });
+}
+
 // Explicit instantiations.
 template std::function<double(std::span<const data_t>, std::span<const data_t>)>
 resolve_dtw_fn<data_t>(const Problem &);
 template std::function<double(std::span<const float>, std::span<const float>)>
 resolve_dtw_fn<float>(const Problem &);
+template std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
+                            std::span<double>)>
+resolve_dtw_block_fn<data_t>(const Problem &);
+template std::function<void(std::span<const float>, std::span<const std::span<const float>>,
+                            std::span<double>)>
+resolve_dtw_block_fn<float>(const Problem &);
 
 } // namespace dtwc::core
