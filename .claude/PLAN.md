@@ -64,14 +64,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W3e `Method::MIP` uses the selected solver at every N
 - ☐ W3f unclustered `silhouette()` and `batch_size < k` → `InvalidInput`; score aliases go
 - ☐ W3g decisive test: duplicate series `{a,a,b,c}`, k = 4; fix only what it falsifies
-- ☐ W5a delete `--resume` / `--restart` and the binary result checkpoint
-- ☐ W5b delete `StoragePolicy`, `.dtws`, `MmapDataStore`, CRC32, the auto-spill; `load()` = heap
-- ☐ W5c `Env` → two free functions over a static `{Device, int}`
+- ☑ W5a delete `--resume` / `--restart` and the binary result checkpoint (Y1 `469e545`, `3ff7469`, `97bb54f`)
+- ☑ W5b delete `StoragePolicy`, `.dtws`, `MmapDataStore`, CRC32, the auto-spill; `load()` = heap (Y1 `46b3a89`)
+- ☑ W5c `Env` → two free functions over a static `{Device, int}` (Y1 `7ba0b4c`, `07b0ea4`)
 - ☐ W5d one `.dtwm` file (magic, version, N, SHA-256, packed doubles); the mapped cache is the checkpoint;
   identity mismatch → `InvalidInput`, malformed → `IOError`, absent → fresh; llfio header-only (`78af336`) confined to
   one `.cpp`; Python `distance_matrix()` on a mapped `Problem` fixed; `DTWC_ENABLE_LLFIO=ON` in the wheel and release
   builds (the MEX waits for F43, W6e/f)
-- ☐ W5e Parquet saturating helpers and leaf guards → asserts
+- ☑ W5e Parquet saturating helpers and leaf guards → asserts (Y1 `3000ca9`, `d8dd4f7`; merged `7eb928b`)
 - ☐ W6a `index_t` alias in `base/settings.hpp`; every count guard deleted; `mip/index_guard.hpp` → two inline throws
 - ☐ W6b enum validator tails → `-Werror=switch`
 - ☐ W6c `run_openmp` captures failures in per-thread slots (no critical, no atomic); `parse_ram_limit` shrinks;
