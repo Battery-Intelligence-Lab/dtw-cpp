@@ -39,7 +39,6 @@
 #include <checkpoint.hpp>
 #include <core/distance_sampling_weights.hpp>
 #include <core/matrix_io.hpp>
-#include <core/mmap_distance_matrix.hpp>
 #include <initialisation.hpp>
 #include <io/arrow_ipc_reader.hpp>
 #include <io/parquet_reader.hpp>
@@ -258,14 +257,14 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
       [&dir] { dtwc::save_checkpoint(dtwc::Problem("gt4_empty"), (dir.path / "ckpt").string()); } },
     { "matrix_io.hpp: a distance matrix that does not exist", "IOError",
       [&dir] {
-        dtwc::core::DenseDistanceMatrix matrix;
+        dtwc::core::DistanceMatrix matrix;
         dtwc::io::read_csv(matrix, dir.path / "missing.csv");
       } },
     { "fileOperations.hpp: a non-numeric field", "IOError",
       [&bad_csv] { (void)dtwc::DataLoader(bad_csv).load(); } },
-    // Without llfio the file-backed constructors are stubs, which are IOError too.
-    { "mmap_distance_matrix.hpp: a file that is not a cache", "IOError",
-      [&garbage] { (void)dtwc::core::MmapDistanceMatrix::open(garbage); } },
+    // Without llfio map() is IOError too.
+    { "distance_matrix.cpp: a file that is not a .dtwm matrix", "IOError",
+      [&garbage] { (void)dtwc::core::DistanceMatrix::map(garbage, 0, {}); } },
 #ifdef DTWC_HAS_MMAP
     { "Problem_IO.cpp: a CSV read into a mapped cache", "InvalidInput",
       [&dir] {

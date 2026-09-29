@@ -471,7 +471,7 @@ TEST_CASE("Interpolate: a partially-missing series still fills normally",
 // A4: MissingStrategy::Error means "throw on NaN". It was implemented only in
 // Problem::fill_distance_matrix; the pairwise entry points ran the recurrence
 // on NaN and returned NaN, which is ALSO the "uncomputed" sentinel of
-// DenseDistanceMatrix — an unfillable matrix with no diagnostic.
+// DistanceMatrix — an unfillable matrix with no diagnostic.
 // ===========================================================================
 
 TEST_CASE("distance::dtw honours MissingStrategy::Error",

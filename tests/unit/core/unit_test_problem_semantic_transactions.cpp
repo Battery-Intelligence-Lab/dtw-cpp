@@ -71,7 +71,7 @@ void check_original_univariate_data(const dtwc::Problem &problem)
 
 void inject_complete_dense_cache(dtwc::Problem &problem, double sentinel)
 {
-  auto &matrix = problem.dense_distance_matrix();
+  auto &matrix = problem.distance_matrix();
   matrix.resize(2);
   matrix.set(0, 0, 0.0);
   matrix.set(0, 1, sentinel);
@@ -132,7 +132,7 @@ struct ScratchCache
 void inject_complete_mmap_cache(dtwc::Problem &problem, double sentinel)
 {
   auto &storage = problem.distance_matrix();
-  auto &matrix = std::get<dtwc::core::MmapDistanceMatrix>(storage);
+  auto &matrix = storage;
   matrix.set(0, 0, 0.0);
   matrix.set(0, 1, sentinel);
   matrix.set(1, 1, 0.0);
@@ -142,9 +142,9 @@ void inject_complete_mmap_cache(dtwc::Problem &problem, double sentinel)
 bool mapped_cache_matches(const dtwc::Problem &problem, double sentinel)
 {
   const auto &storage = problem.distance_matrix();
-  if (!std::holds_alternative<dtwc::core::MmapDistanceMatrix>(storage))
+  if (!storage.is_mapped())
     return false;
-  const auto &matrix = std::get<dtwc::core::MmapDistanceMatrix>(storage);
+  const auto &matrix = storage;
   return matrix.size() == 2 && matrix.all_computed()
       && matrix.get(0, 0) == 0.0
       && matrix.get(0, 1) == sentinel

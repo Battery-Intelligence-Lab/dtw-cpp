@@ -116,7 +116,7 @@ Data basic_f32_data(std::size_t ndim = 1)
 void seed_dense_sentinel(Problem &problem, double sentinel = 123.0)
 {
   problem.set_data(basic_f64_data());
-  auto &matrix = problem.dense_distance_matrix();
+  auto &matrix = problem.distance_matrix();
   matrix.resize(2);
   matrix.set(0, 0, 0.0);
   matrix.set(0, 1, sentinel);
@@ -127,7 +127,7 @@ void seed_dense_sentinel(Problem &problem, double sentinel = 123.0)
 void check_dense_sentinel(const Problem &problem, double sentinel = 123.0)
 {
   try {
-    const auto &matrix = problem.dense_distance_matrix();
+    const auto &matrix = problem.distance_matrix();
     CHECK(matrix.size() == 2);
     if (matrix.size() == 2) {
       CHECK(matrix.all_computed());
@@ -141,7 +141,7 @@ void check_dense_sentinel(const Problem &problem, double sentinel = 123.0)
 void check_dense_unallocated(const Problem &problem)
 {
   try {
-    CHECK(problem.dense_distance_matrix().size() == 0);
+    CHECK(problem.distance_matrix().size() == 0);
   } catch (const std::exception &error) {
     FAIL_CHECK("matrix inspection threw: " << error.what());
   }

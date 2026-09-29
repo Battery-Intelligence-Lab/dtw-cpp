@@ -18,6 +18,7 @@ target_sources(dtwc++
   scores.cpp
   cli/config.cpp
   cli/run.cpp
+  core/distance_matrix.cpp
   core/dtw.cpp
   core/dtw_dispatch.cpp
   algorithms/fast_pam.cpp
@@ -58,9 +59,7 @@ target_sources(dtwc++
   soft_dtw.hpp
   # Core types
   core/clustering_result.hpp
-  core/crc32.hpp
   core/distance_matrix.hpp
-  core/mmap_distance_matrix.hpp
   core/dtw.hpp
   core/dtw_options.hpp
   core/lower_bound_impl.hpp
@@ -210,9 +209,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GN
   target_compile_options(dtwc++ PRIVATE -fno-finite-math-only)
 endif()
 
-# llfio (required) — memory-mapped distance matrices
+# llfio (optional) — memory-mapped distance matrices. core/distance_matrix.cpp
+# is the one file that includes it, so the link is PRIVATE; DTWC_HAS_MMAP is
+# PUBLIC, as every capability is, so a consumer (and the tests) can tell whether
+# use_mmap_distance_matrix can map a file.
 if(TARGET llfio_hl)
-  target_link_libraries(dtwc++ PUBLIC llfio_hl)
+  target_link_libraries(dtwc++ PRIVATE llfio_hl)
   target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_MMAP)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()

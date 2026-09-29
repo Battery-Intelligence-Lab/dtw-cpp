@@ -93,8 +93,7 @@ double negative_zero()
   return std::bit_cast<double>(UINT64_C(0x8000000000000000));
 }
 
-template <class Matrix>
-void populate_contract_matrix(Matrix &matrix)
+void populate_contract_matrix(dtwc::core::DistanceMatrix &matrix)
 {
   matrix.set(0, 1, negative_zero());
   matrix.set(0, 2, std::nextafter(1.0, 2.0));
@@ -103,8 +102,7 @@ void populate_contract_matrix(Matrix &matrix)
   matrix.set(2, 2, 0.0);
 }
 
-template <class Matrix>
-void check_contract_bits(const Matrix &matrix)
+void check_contract_bits(const dtwc::core::DistanceMatrix &matrix)
 {
   CHECK_FALSE(matrix.is_computed(0, 0));
   CHECK(std::bit_cast<std::uint64_t>(matrix.get(0, 1))
@@ -119,9 +117,9 @@ void check_contract_bits(const Matrix &matrix)
         == UINT64_C(0x0000000000000000));
 }
 
-dtwc::core::DenseDistanceMatrix contract_dense()
+dtwc::core::DistanceMatrix contract_dense()
 {
-  dtwc::core::DenseDistanceMatrix matrix(3);
+  dtwc::core::DistanceMatrix matrix(3);
   populate_contract_matrix(matrix);
   return matrix;
 }
@@ -131,7 +129,7 @@ void configure_dense_problem(dtwc::Problem &problem)
   problem.set_data(dtwc::Data(
     std::vector<std::vector<double>>{{0.0}, {1.0}, {2.0}},
     std::vector<std::string>{"a", "b", "c"}));
-  auto &matrix = problem.dense_distance_matrix();
+  auto &matrix = problem.distance_matrix();
   matrix.resize(3);
   populate_contract_matrix(matrix);
   problem.set_output_folder(test_root());
@@ -145,8 +143,7 @@ void configure_mmap_problem(
     std::vector<std::vector<double>>{{0.0}, {1.0}, {2.0}},
     std::vector<std::string>{"a", "b", "c"}));
   problem.use_mmap_distance_matrix(cache_path);
-  auto &matrix =
-    std::get<dtwc::core::MmapDistanceMatrix>(problem.distance_matrix());
+  auto &matrix = problem.distance_matrix();
   populate_contract_matrix(matrix);
   problem.set_output_folder(test_root());
 }
@@ -291,7 +288,7 @@ TEST_CASE("F14 dense file is binary locale-free and bit-roundtrippable",
   const std::string bytes = read_binary(path);
   check_literal_bytes(bytes);
 
-  dtwc::core::DenseDistanceMatrix loaded;
+  dtwc::core::DistanceMatrix loaded;
   std::string read_error;
   try {
     dtwc::io::read_csv(loaded, path);
@@ -370,7 +367,7 @@ TEST_CASE("F14 negative infinity rejects before dense Problem output",
 {
   dtwc::Problem problem("f14_negative");
   configure_dense_problem(problem);
-  problem.dense_distance_matrix().set(
+  problem.distance_matrix().set(
     1, 2, -std::numeric_limits<double>::infinity());
 
   const auto path = fresh_path("negative_existing.csv");
@@ -392,7 +389,7 @@ TEST_CASE("F14 negative infinity rejects before dense Problem output",
 TEST_CASE("F14 zero-size dense routes emit zero bytes",
           "[f14][csv][dense][empty]")
 {
-  const dtwc::core::DenseDistanceMatrix matrix;
+  const dtwc::core::DistanceMatrix matrix;
   std::ostringstream stream;
   stream << matrix;
   CHECK(stream.str().empty());
@@ -435,8 +432,8 @@ TEST_CASE("F14 native Result save matches the registered dense stream bytes",
 TEST_CASE("F14 mmap stream is literal and hostile-state independent",
           "[f14][csv][mmap][stream]")
 {
-  const auto cache = fresh_path("stream.dtwcache");
-  dtwc::core::MmapDistanceMatrix matrix(cache, 3);
+  const auto cache = fresh_path("stream.dtwm");
+  auto matrix = dtwc::core::DistanceMatrix::map(cache, 3, {});
   populate_contract_matrix(matrix);
   check_contract_bits(matrix);
 
@@ -469,7 +466,7 @@ TEST_CASE("F14 mmap Problem visitor and print route are literal-identical",
           "[f14][csv][mmap][problem]")
 {
   dtwc::Problem problem("f14_mmap");
-  configure_mmap_problem(problem, fresh_path("problem.dtwcache"));
+  configure_mmap_problem(problem, fresh_path("problem.dtwm"));
   const auto path = fresh_path("mmap_problem.csv");
   {
     global_locale_guard guard(hostile_locale());
@@ -486,7 +483,7 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
           "[f14][csv][mmap][nonfinite][empty]")
 {
   {
-    dtwc::core::MmapDistanceMatrix empty(fresh_path("empty.dtwcache"), 0);
+    auto empty = dtwc::core::DistanceMatrix::map(fresh_path("empty.dtwm"), 0, {});
     std::ostringstream output;
     output << empty;
     CHECK(output.str().empty());
@@ -494,7 +491,7 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
   {
     dtwc::Problem empty_problem("f14_mmap_empty");
     empty_problem.use_mmap_distance_matrix(
-      fresh_path("empty_problem.dtwcache"));
+      fresh_path("empty_problem.dtwm"));
     empty_problem.set_output_folder(test_root());
     const auto empty_path = fresh_path("mmap_empty.csv");
     empty_problem.write_distance_matrix(empty_path.filename().string());
@@ -505,9 +502,8 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
   }
 
   dtwc::Problem problem("f14_mmap_nonfinite");
-  configure_mmap_problem(problem, fresh_path("nonfinite.dtwcache"));
-  auto &matrix =
-    std::get<dtwc::core::MmapDistanceMatrix>(problem.distance_matrix());
+  configure_mmap_problem(problem, fresh_path("nonfinite.dtwm"));
+  auto &matrix = problem.distance_matrix();
   matrix.set(1, 2, -std::numeric_limits<double>::infinity());
 
   std::ostringstream stream;
@@ -587,7 +583,7 @@ TEST_CASE("F14 CSV read is independent of the C numeric locale",
   const bool comma_decimal = std::strtod("1.5", nullptr) != 1.5;
 
   const auto path = fresh_path("locale.csv");
-  dtwc::core::DenseDistanceMatrix matrix;
+  dtwc::core::DistanceMatrix matrix;
   matrix.resize(2);
   matrix.set(0, 0, 0.0);
   matrix.set(1, 0, 1.5);
@@ -595,7 +591,7 @@ TEST_CASE("F14 CSV read is independent of the C numeric locale",
   dtwc::io::write_csv(matrix, path);
   const std::string bytes = read_binary(path);
 
-  dtwc::core::DenseDistanceMatrix loaded;
+  dtwc::core::DistanceMatrix loaded;
   dtwc::io::read_csv(loaded, path);
 
   std::cout << "F14_LOCALE_NUMERIC locale=" << applied << " comma_decimal="
@@ -614,7 +610,7 @@ TEST_CASE("FX-11 the matrix reader rejects a non-square, asymmetric or short fil
   const auto read = [](std::string_view name, std::string_view bytes) {
     const auto path = fresh_path(name);
     seed_binary(path, bytes);
-    dtwc::core::DenseDistanceMatrix loaded;
+    dtwc::core::DistanceMatrix loaded;
     dtwc::io::read_csv(loaded, path);
     return loaded;
   };

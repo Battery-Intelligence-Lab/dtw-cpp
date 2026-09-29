@@ -16,7 +16,7 @@
 #include "base/parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
 #include "base/settings.hpp"        // for data_t, randGenerator, band, isDebug
-#include "core/matrix_io.hpp"  // for operator<<(ostream, DenseDistanceMatrix)
+#include "core/matrix_io.hpp"  // for operator<<(ostream, DistanceMatrix)
 #include "core/medoid_assignment_policy.hpp" // finite assignment contract
 
 #ifdef DTWC_HAS_CUDA
@@ -339,7 +339,7 @@ void Problem::print_distance_matrix() const
 {
   validate_mmap_cache_identity();
   validate_dense_cache_configuration();
-  visit_distmat([](const auto &m) { std::cout << m; });
+  std::cout << distMat;
 }
 
 /**
@@ -359,18 +359,13 @@ void Problem::refresh_distance_matrix()
   // Raw public-field edits remain caller-owned and recoverable: correcting the
   // edit exposes the last valid cache/callable state again.
   preflight_current_distance_semantics();
-  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)) {
-    // A semantic mutation (set_data/set_band/set_variant) must never keep a
-    // mapped matrix whose computed bits describe the prior configuration.
-    // Detach without deleting or rewriting the persistent file; rebinding it
-    // under changed semantics will then fail its fingerprint check loudly.
-    distMat = core::DenseDistanceMatrix{};
-    clear_mmap_cache_identity();
-  } else {
-    auto &m = std::get<core::DenseDistanceMatrix>(distMat);
-    if (m.size() != 0)
-      m.resize(0); // Release old data; re-allocation deferred to fill_distance_matrix().
-  }
+  // A semantic mutation (set_data/set_band/set_variant) must never keep
+  // distances computed under the prior configuration. The heap matrix is
+  // released (re-allocated by fill_distance_matrix()); a mapped one is detached
+  // and its file left as it is, so rebinding it under the changed semantics
+  // fails its fingerprint check loudly.
+  distMat = core::DistanceMatrix{};
+  clear_mmap_cache_identity();
   fill_request_validated_ = false; // new data or semantics: a new request
   rebind_dtw_fn();
 }
@@ -630,8 +625,7 @@ void Problem::ensure_dense_cache_configuration_current()
 void Problem::ensure_dense_cache_configuration_current_preflighted()
 {
   repair_dtw_binding_after_relocation();
-  if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
-      || dense_cache_configuration_is_current())
+  if (distMat.is_mapped() || dense_cache_configuration_is_current())
     return;
 
   // Public fields remain source-compatible, and nested language-binding
@@ -643,12 +637,11 @@ void Problem::ensure_dense_cache_configuration_current_preflighted()
 void Problem::validate_dense_cache_configuration() const
 {
   preflight_current_distance_semantics();
-  if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
-      || dense_cache_configuration_is_current())
+  if (distMat.is_mapped() || dense_cache_configuration_is_current())
     return;
 
   throw InvalidInput(
-    "DenseDistanceMatrix: cached distance configuration changed through a raw "
+    "Distance matrix: cached distance configuration changed through a raw "
     "or nested mutation. Use a semantic setter or a non-const compute path to "
     "refresh the matrix before reading cached values.");
 }
@@ -733,13 +726,13 @@ Problem::distance_cache_identity(core::MetricType metric) const
   return identity;
 }
 
-core::MmapDistanceMatrix::fingerprint_type
+core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity() const
 {
   return distance_checkpoint_identity(metric_);
 }
 
-core::MmapDistanceMatrix::fingerprint_type
+core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity(core::MetricType metric) const
 {
   preflight_current_distance_semantics();
@@ -759,21 +752,22 @@ void Problem::clear_mmap_cache_identity()
 void Problem::validate_mmap_cache_identity() const
 {
   preflight_current_distance_semantics();
-  if (!std::holds_alternative<core::MmapDistanceMatrix>(distMat)) return;
+  if (!distMat.is_mapped()) return;
   if (!mmap_cache_identity_bound_) {
     throw InvalidInput(
-      "MmapDistanceMatrix: mapped storage has no bound Problem cache identity");
+      "Mapped distance matrix: mapped storage has no bound Problem cache identity");
   }
 
-  const auto &matrix = std::get<core::MmapDistanceMatrix>(distMat);
-  if (matrix.fingerprint() != mmap_cache_identity_.full
-      || data_.size() != mmap_cache_identity_.n
+  // The file's fingerprint is mmap_cache_identity_.full: map() checked it when
+  // use_mmap_distance_matrix bound the two. What can drift since is the data
+  // and the distance settings.
+  if (data_.size() != mmap_cache_identity_.n
       || data_.ndim != mmap_cache_identity_.ndim
       || data_.precision != mmap_cache_identity_.precision
       || !distance_cache_configuration_matches(
         mmap_cache_identity_.configuration_values)) {
     throw InvalidInput(
-      "MmapDistanceMatrix: bound cache fingerprint mismatch after Problem data "
+      "Mapped distance matrix: bound cache fingerprint mismatch after Problem data "
       "or distance configuration changed. Call refresh_distance_matrix(), then "
       "bind a cache created for the new semantics.");
   }
@@ -789,7 +783,7 @@ void Problem::validate_mmap_cache_identity() const
       mmap_cache_identity_.configuration_values.metric);
     if (current.full != mmap_cache_identity_.full) {
       throw InvalidInput(
-        "MmapDistanceMatrix: bound cache fingerprint mismatch after Problem data "
+        "Mapped distance matrix: bound cache fingerprint mismatch after Problem data "
         "changed before first use. Call refresh_distance_matrix(), then bind a "
         "cache created for the new data.");
     }
@@ -814,18 +808,10 @@ void Problem::use_mmap_distance_matrix(
   // configuration mutation could label Standard-DTW writes with an ADTW (or
   // missing-policy) fingerprint.
   ensure_dtw_function_configuration_current();
-  const size_t N = data_.size();
   DistanceCacheIdentity identity = distance_cache_identity(metric);
-  // open(path, expected) validates version, header integrity, length, and the
-  // full semantic fingerprint before exposing the mapped computed-bit region.
-  std::error_code ec; // an unreadable parent is an IOError, not a bare filesystem_error
-  const bool cached = std::filesystem::exists(cache_path, ec);
-  if (ec)
-    throw IOError("Problem::use_mmap_distance_matrix: cannot inspect '" + cache_path.string()
-                  + "': " + ec.message());
-  auto mapped = cached ? core::MmapDistanceMatrix::open(cache_path, identity.full)
-                       : core::MmapDistanceMatrix(cache_path, N, identity.full);
-  assert(mapped.size() == N); // the fingerprint that open() checked covers N
+  // map() checks an existing file's magic, version, length, N and fingerprint
+  // before any of its distances can be read.
+  auto mapped = core::DistanceMatrix::map(cache_path, data_.size(), identity.full);
   if (metric_ != metric) { // new semantics, as in set_metric
     metric_ = metric;
     fill_request_validated_ = false;
@@ -870,47 +856,37 @@ double Problem::dist_by_ind(int i, int j)
   // library's kernels under the same request filled it, and proving it
   // complete would read the whole mapped file.
   if (!fill_request_validated_) {
-    const auto *dense = std::get_if<core::DenseDistanceMatrix>(&distMat);
     const bool complete =
-      dense && dense->size() == data_.size() && dense->all_computed();
+      !distMat.is_mapped() && distMat.size() == data_.size() && distMat.all_computed();
     if (!complete) validate_fill_request("Problem::dist_by_ind");
     fill_request_validated_ = true;
   }
 
   const size_t N = data_.size();
 
-  // Lazily allocate the dense matrix on first individual distance request.
-  // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
-  // The critical section prevents duplicate allocation. Callers that enter a
-  // parallel region must still prime one non-diagonal distance serially first
-  // (or call fill_distance_matrix), because rebind_dtw_fn mutates shared state.
-  bool needs_init = visit_distmat([&](const auto &m) { return m.size() != N; });
-  if (needs_init) {
+  // Lazily allocate the heap matrix on first individual distance request (a
+  // mapped matrix is sized when it is bound). The critical section prevents
+  // duplicate allocation. Callers that enter a parallel region must still prime
+  // one non-diagonal distance serially first (or call fill_distance_matrix),
+  // because rebind_dtw_fn mutates shared state.
+  if (distMat.size() != N) {
 #ifdef _OPENMP
     #pragma omp critical(distByInd_init)
 #endif
     {
-      bool initialised_here = false;
-      visit_distmat([&](auto &m) {
-        if (m.size() != N) {
-          if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-            m.resize(N);
-            initialised_here = true;
-          }
-        }
-      });
-      if (initialised_here) rebind_dtw_fn();
+      if (distMat.size() != N) {
+        distMat.resize(N);
+        rebind_dtw_fn();
+      }
     }
   }
 
-  bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
-  if (computed)
-    return visit_distmat([&](const auto &m) { return m.get(i, j); });
+  if (distMat.is_computed(i, j)) return distMat.get(i, j);
 
   const double d = data_.is_f32()
                      ? validated_dtw_function_f32()(data_.series_f32(i), data_.series_f32(j))
                      : dtw_fn_(series(i), series(j));
-  visit_distmat([&](auto &m) { m.set(i, j, d); });
+  distMat.set(i, j, d);
   return d;
 }
 
@@ -928,7 +904,7 @@ void Problem::validate_checkpoint_settings() const
     throw InvalidInput(
       "Problem::fill_distance_matrix: checkpoint.enabled requires a non-empty "
       "checkpoint.directory.");
-  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat))
+  if (distMat.is_mapped())
     throw InvalidInput(
       "Problem::fill_distance_matrix: automatic checkpointing requires dense "
       "distance storage. Mapped storage is already durable on disk; the dense "
@@ -1034,22 +1010,13 @@ void Problem::fillDistanceMatrix_BruteForce()
                                        ? &validated_dtw_function_f32()
                                        : nullptr;
 
-  // Resize (Dense only — mmap is pre-allocated at creation). resize() re-fills
-  // every packed slot with NaN, so it must NOT run when the matrix is already
-  // the right size: an unconditional resize discarded a restored checkpoint and
-  // recomputed every pair.
-  visit_distmat([&](auto &m) {
-    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      if (m.size() != N) m.resize(N);
-    }
-  });
+  // resize() re-fills every packed slot with NaN, so it must NOT run when the
+  // matrix is already the right size (a mapped one always is): an unconditional
+  // resize discarded a restored checkpoint and recomputed every pair.
+  if (distMat.size() != N) distMat.resize(N);
 
-  // Set diagonal to 0
-  visit_distmat([&](auto &m) {
-    for (size_t i = 0; i < N; ++i)
-      if (!m.is_computed(i, i))
-        m.set(i, i, 0.0);
-  });
+  for (size_t i = 0; i < N; ++i)
+    if (!distMat.is_computed(i, i)) distMat.set(i, i, 0.0);
 
   // Lock-free by design: each worker owns a disjoint row. run_openmp catches
   // inside the structured block and deterministically rethrows the lowest-row
@@ -1057,20 +1024,12 @@ void Problem::fillDistanceMatrix_BruteForce()
   auto fill_row = [&](size_t i) {
     if (data_.is_f32()) {
       const auto si = data_.series_f32(i);
-      for (size_t j = i + 1; j < N; ++j) {
-        bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
-        if (!computed)
-          visit_distmat([&](auto &m) {
-            m.set(i, j, (*f32_function)(si, data_.series_f32(j)));
-          });
-      }
+      for (size_t j = i + 1; j < N; ++j)
+        if (!distMat.is_computed(i, j)) distMat.set(i, j, (*f32_function)(si, data_.series_f32(j)));
     } else {
       const auto si = series(i);
-      for (size_t j = i + 1; j < N; ++j) {
-        bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
-        if (!computed)
-          visit_distmat([&](auto &m) { m.set(i, j, dtw_fn_(si, series(j))); });
-      }
+      for (size_t j = i + 1; j < N; ++j)
+        if (!distMat.is_computed(i, j)) distMat.set(i, j, dtw_fn_(si, series(j)));
     }
   };
   if (!checkpoint.enabled) {
@@ -1107,14 +1066,9 @@ void Problem::fill_distance_matrix()
   validate_fill_request("Problem::fill_distance_matrix");
   fill_request_validated_ = true; // the same request needs no lazy re-check
 
-  // Allocate the dense N×N matrix on first call (deferred from set_data / refresh_distance_matrix).
-  // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
-  visit_distmat([&](auto &m) {
-    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      if (m.size() != data_.size())
-        m.resize(data_.size());
-    }
-  });
+  // Allocate the heap N×N matrix on first call (deferred from set_data /
+  // refresh_distance_matrix); a mapped matrix is sized when it is bound.
+  if (distMat.size() != data_.size()) distMat.resize(data_.size());
 
   // Re-bind the DTW function in case missing_strategy was changed after construction
   // (e.g., user sets prob.missing_strategy = ZeroCost after prob.set_data(...)).
@@ -1140,14 +1094,10 @@ void Problem::fill_distance_matrix()
       throw DeviceError(std::string(backend)
                         + " returned no distance pairs. No CPU fallback was attempted.");
     }
-    visit_distmat([&](auto &m) {
-      if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-        m.resize(result.n);
-      }
-      for (size_t i = 0; i < result.n; ++i)
-        for (size_t j = i; j < result.n; ++j)
-          m.set(i, j, result.matrix[i * result.n + j]);
-    });
+    if (distMat.size() != result.n) distMat.resize(result.n);
+    for (size_t i = 0; i < result.n; ++i)
+      for (size_t j = i; j < result.n; ++j)
+        distMat.set(i, j, result.matrix[i * result.n + j]);
     if (verbose_) {
       std::cout << backend << " distance matrix: " << result.pairs_computed
                 << " pairs in " << std::setprecision(3)

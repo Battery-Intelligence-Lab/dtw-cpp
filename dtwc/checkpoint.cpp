@@ -319,7 +319,7 @@ bool parse_finite_double(std::string_view token, double &value)
 }
 
 bool parse_csv(const fs::path &path, const CheckpointMetadata &metadata,
-               core::DenseDistanceMatrix &candidate)
+               core::DistanceMatrix &candidate)
 {
   if (!is_regular_file_without_symlink(path)) return false;
   std::size_t square = 0;
@@ -388,7 +388,7 @@ bool parse_csv(const fs::path &path, const CheckpointMetadata &metadata,
 }
 
 std::string generation_id(
-  const core::MmapDistanceMatrix::fingerprint_type &identity)
+  const core::DistanceMatrix::fingerprint_type &identity)
 {
   static std::atomic<std::uint64_t> sequence{0};
   core::detail::Sha256 hash;
@@ -477,7 +477,9 @@ void save_checkpoint(const Problem &prob, const std::string &path,
   // Complete every semantic, shape, identity, and finite-value check before
   // touching the filesystem. A zero-sized Dense matrix is the valid deferred
   // representation of an all-uncomputed logical N-by-N matrix.
-  const core::DenseDistanceMatrix &matrix = prob.dense_distance_matrix();
+  const core::DistanceMatrix &matrix = prob.distance_matrix();
+  if (matrix.is_mapped())
+    throw InvalidInput("Dense checkpoint requires a distance matrix in RAM; a mapped one is on disk already.");
   const std::size_t n = prob.size();
   if (n == 0)
     throw InvalidInput("Dense checkpoint requires at least one series.");
@@ -629,8 +631,8 @@ bool load_checkpoint(Problem &prob, const std::string &path,
   try {
     // Capture the proven Dense destination without invoking a mutable accessor.
     // No Problem state changes before the final nothrow assignment below.
-    auto *destination = std::get_if<core::DenseDistanceMatrix>(&prob.distMat);
-    if (destination == nullptr) return false;
+    if (prob.distMat.is_mapped()) return false;
+    auto *destination = &prob.distMat;
     prob.validate_dense_cache_configuration();
     const auto expected_identity = prob.distance_checkpoint_identity(metric);
     const std::string expected_identity_hex = digest_hex(expected_identity);
@@ -651,12 +653,12 @@ bool load_checkpoint(Problem &prob, const std::string &path,
         || metadata.identity_sha256 != expected_identity_hex)
       return false;
 
-    core::DenseDistanceMatrix candidate;
+    core::DistanceMatrix candidate;
     if (!parse_csv(generation / "distances.csv", metadata, candidate))
       return false;
 
     static_assert(
-      std::is_nothrow_move_assignable_v<core::DenseDistanceMatrix>,
+      std::is_nothrow_move_assignable_v<core::DistanceMatrix>,
       "Dense checkpoint publication must preserve the strong guarantee");
     *destination = std::move(candidate);
     prob.fill_request_validated_ = false; // other pairs known: re-check lazily

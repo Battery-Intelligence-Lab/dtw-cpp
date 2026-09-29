@@ -1,525 +1,107 @@
 /**
  * @file bench_mmap_access.cpp
- * @brief Mmap vs dense access pattern benchmarks for distance matrices.
+ * @brief Read and write probe of core::DistanceMatrix, on the heap and mapped.
  *
- * @details Compares DenseDistanceMatrix and MmapDistanceMatrix across seven
- *          access patterns: fill, random get, sequential scan, open/read
- *          latency, medoid access, series layout, and CLARA subsample.
- *          All benchmarks always compile (llfio is a required dependency).
+ * @details get and set are the same inline code for both storages, so the probe
+ *          compares only where the doubles live: the heap, or a mapped `.dtwm`
+ *          file behind the page cache. Argument 0 is the heap, 1 the mapped file.
+ *          A build without llfio reports the mapped cases as errors.
  *
  * @author Volkan Kumtepeli
- * @date 08 Apr 2026
+ * @date 29 Sep 2026
  */
 
 #include <benchmark/benchmark.h>
-#include <dtwc.hpp>
+#include <core/distance_matrix.hpp>
 
-#include "../tests/support/deterministic_series.hpp"
-
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <filesystem>
-#include <fstream>
-#include <numeric>
+#include <optional>
 #include <random>
-#include <string>
-#include <utility>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+namespace {
 
-/// Build a dtwc::Data object with N random series of length L.
-static dtwc::Data make_random_data(int N, int L, unsigned base_seed = 100)
+using dtwc::core::DistanceMatrix;
+namespace fs = std::filesystem;
+
+constexpr std::size_t N = 4000; // 8 million doubles, 64 MB
+
+/// An N x N matrix with every pair set, on the heap or mapped to a fresh file
+/// that is removed with it.
+struct Filled
 {
-  auto vecs = dtwc::test_support::benchmark_series_set(
-    static_cast<std::size_t>(N), static_cast<std::size_t>(L), base_seed);
-  std::vector<std::string> names;
-  names.reserve(N);
-  for (int i = 0; i < N; ++i)
-    names.push_back("s" + std::to_string(i));
-  return dtwc::Data(std::move(vecs), std::move(names));
-}
+  fs::path path = fs::temp_directory_path() / "dtwc_bench_mmap_access.dtwm";
+  std::optional<DistanceMatrix> m;
 
-/// Return a temp directory path for mmap benchmark files.
-static std::filesystem::path temp_mmap_path(const std::string &name)
-{
-  auto dir = std::filesystem::temp_directory_path() / "dtwc_bench";
-  std::filesystem::create_directories(dir);
-  return dir / name;
-}
-
-// ---------------------------------------------------------------------------
-// 1. BM_fill_dense / BM_fill_mmap — Distance matrix fill
-// ---------------------------------------------------------------------------
-
-static void BM_fill_dense(benchmark::State &state)
-{
-  constexpr int N = 5000, L = 25, band = 10;
-
-  for (auto _ : state) {
-    state.PauseTiming();
-    dtwc::Problem prob("bench_fill_dense");
-    prob.set_data(make_random_data(N, L));
-    prob.band = band;
-    prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-    state.ResumeTiming();
-
-    prob.fill_distance_matrix();
-  }
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(N) * (N - 1) / 2);
-}
-BENCHMARK(BM_fill_dense)->Unit(benchmark::kMillisecond);
-
-static void BM_fill_mmap(benchmark::State &state)
-{
-  constexpr int N = 5000, L = 25, band = 10;
-  static int counter = 0;
-  auto data = make_random_data(N, L);
-  std::vector<std::filesystem::path> cleanup_paths;
-
-  for (auto _ : state) {
-    state.PauseTiming();
-    auto path = temp_mmap_path("fill_mmap_" + std::to_string(counter++) + ".cache");
-    dtwc::Problem prob("bench_fill_mmap");
-    prob.set_data(data);
-    prob.band = band;
-    prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-    prob.use_mmap_distance_matrix(path);
-    cleanup_paths.push_back(path);
-    state.ResumeTiming();
-
-    prob.fill_distance_matrix();
-  }
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(N) * (N - 1) / 2);
-
-  // Clean up after all iterations (prob already destroyed at this point)
-  for (const auto &p : cleanup_paths)
-    std::filesystem::remove(p);
-}
-BENCHMARK(BM_fill_mmap)->Unit(benchmark::kMillisecond);
-
-// ---------------------------------------------------------------------------
-// 2. BM_random_get_dense / BM_random_get_mmap — Random tri_index lookups
-// ---------------------------------------------------------------------------
-
-static void BM_random_get_dense(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-  constexpr size_t num_lookups = 500000;
-
-  // Pre-fill dense matrix with random values
-  dtwc::core::DenseDistanceMatrix dm(N);
+  explicit Filled(benchmark::State &state)
   {
-    std::mt19937 rng(77);
-    std::uniform_real_distribution<double> ddist(0.0, 100.0);
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = 0; j <= i; ++j)
-        dm.set(i, j, ddist(rng));
+    fs::remove(path);
+    try {
+      m.emplace(state.range(0) == 1 ? DistanceMatrix::map(path, N, {}) : DistanceMatrix(N));
+    } catch (const std::exception &e) {
+      state.SkipWithError(e.what());
+      return;
+    }
+    for (std::size_t i = 0; i < N; ++i)
+      for (std::size_t j = 0; j <= i; ++j)
+        m->set(i, j, static_cast<double>(i + j));
   }
-
-  // Pre-generate random (i,j) pairs
-  std::vector<std::pair<size_t, size_t>> pairs(num_lookups);
+  ~Filled()
   {
-    std::mt19937 rng(88);
-    std::uniform_int_distribution<size_t> idist(0, N - 1);
-    for (auto &p : pairs)
-      p = { idist(rng), idist(rng) };
+    m.reset(); // unmap before the file goes
+    std::error_code ignored;
+    fs::remove(path, ignored);
   }
+};
 
+void BM_set_all(benchmark::State &state)
+{
+  Filled f(state);
+  if (!f.m) return;
+  for (auto _ : state) {
+    for (std::size_t i = 0; i < N; ++i)
+      for (std::size_t j = 0; j <= i; ++j)
+        f.m->set(i, j, static_cast<double>(i));
+    benchmark::ClobberMemory();
+  }
+  state.SetItemsProcessed(state.iterations() * static_cast<std::int64_t>(f.m->packed_count()));
+}
+
+void BM_get_row(benchmark::State &state) // a row per medoid, as the assignment loops read
+{
+  Filled f(state);
+  if (!f.m) return;
   for (auto _ : state) {
     double sum = 0.0;
-    for (const auto &[i, j] : pairs)
-      sum += dm.get(i, j);
+    for (std::size_t i = 0; i < N; i += 97)
+      for (std::size_t j = 0; j < N; ++j)
+        sum += f.m->get(i, j);
     benchmark::DoNotOptimize(sum);
   }
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_lookups);
+  state.SetItemsProcessed(state.iterations() * static_cast<std::int64_t>(((N + 96) / 97) * N));
 }
-BENCHMARK(BM_random_get_dense)->Unit(benchmark::kMillisecond);
 
-static void BM_random_get_mmap(benchmark::State &state)
+void BM_get_random(benchmark::State &state)
 {
-  constexpr size_t N = 5000;
-  constexpr size_t num_lookups = 500000;
-
-  auto path = temp_mmap_path("random_get_mmap.cache");
-
-  // Pre-fill mmap matrix with same random values
-  {
-    dtwc::core::MmapDistanceMatrix dm(path, N);
-    std::mt19937 rng(77);
-    std::uniform_real_distribution<double> ddist(0.0, 100.0);
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = 0; j <= i; ++j)
-        dm.set(i, j, ddist(rng));
-    dm.sync();
-  }
-
-  // Reopen for benchmark
-  auto dm = dtwc::core::MmapDistanceMatrix::open(path);
-
-  // Pre-generate random (i,j) pairs
-  std::vector<std::pair<size_t, size_t>> pairs(num_lookups);
-  {
-    std::mt19937 rng(88);
-    std::uniform_int_distribution<size_t> idist(0, N - 1);
-    for (auto &p : pairs)
-      p = { idist(rng), idist(rng) };
-  }
-
+  Filled f(state);
+  if (!f.m) return;
+  std::vector<std::size_t> index(1 << 16);
+  std::mt19937_64 rng(42);
+  for (auto &k : index) k = rng() % N;
   for (auto _ : state) {
     double sum = 0.0;
-    for (const auto &[i, j] : pairs)
-      sum += dm.get(i, j);
+    for (std::size_t k = 0; k + 1 < index.size(); ++k)
+      sum += f.m->get(index[k], index[k + 1]);
     benchmark::DoNotOptimize(sum);
   }
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_lookups);
-
-  // Cleanup
-  std::filesystem::remove(path);
+  state.SetItemsProcessed(state.iterations() * static_cast<std::int64_t>(index.size() - 1));
 }
-BENCHMARK(BM_random_get_mmap)->Unit(benchmark::kMillisecond);
 
-// ---------------------------------------------------------------------------
-// 3. BM_sequential_scan_dense / BM_sequential_scan_mmap — Raw pointer scan
-// ---------------------------------------------------------------------------
+} // namespace
 
-static void BM_sequential_scan_dense(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-
-  dtwc::core::DenseDistanceMatrix dm(N);
-  {
-    std::mt19937 rng(99);
-    std::uniform_real_distribution<double> ddist(0.0, 100.0);
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = 0; j <= i; ++j)
-        dm.set(i, j, ddist(rng));
-  }
-
-  const size_t count = dm.packed_count();
-  for (auto _ : state) {
-    double sum = 0.0;
-    const double *ptr = dm.raw();
-    for (size_t i = 0; i < count; ++i)
-      sum += ptr[i];
-    benchmark::DoNotOptimize(sum);
-  }
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(count) * 8);
-}
-BENCHMARK(BM_sequential_scan_dense)->Unit(benchmark::kMillisecond);
-
-static void BM_sequential_scan_mmap(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-
-  auto path = temp_mmap_path("seq_scan_mmap.cache");
-  {
-    dtwc::core::MmapDistanceMatrix dm(path, N);
-    std::mt19937 rng(99);
-    std::uniform_real_distribution<double> ddist(0.0, 100.0);
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = 0; j <= i; ++j)
-        dm.set(i, j, ddist(rng));
-    dm.sync();
-  }
-
-  auto dm = dtwc::core::MmapDistanceMatrix::open(path);
-  const size_t count = dm.packed_count();
-
-  for (auto _ : state) {
-    double sum = 0.0;
-    const double *ptr = dm.raw();
-    for (size_t i = 0; i < count; ++i)
-      sum += ptr[i];
-    benchmark::DoNotOptimize(sum);
-  }
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(count) * 8);
-
-  std::filesystem::remove(path);
-}
-BENCHMARK(BM_sequential_scan_mmap)->Unit(benchmark::kMillisecond);
-
-// ---------------------------------------------------------------------------
-// 4. BM_open_mmap / BM_read_binary_to_vector — Startup latency
-// ---------------------------------------------------------------------------
-
-static void BM_open_mmap(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-
-  auto path = temp_mmap_path("open_latency.cache");
-  {
-    dtwc::core::MmapDistanceMatrix dm(path, N);
-    std::mt19937 rng(55);
-    std::uniform_real_distribution<double> ddist(0.0, 100.0);
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = 0; j <= i; ++j)
-        dm.set(i, j, ddist(rng));
-    dm.sync();
-  }
-
-  const auto file_sz = std::filesystem::file_size(path);
-
-  for (auto _ : state) {
-    auto dm = dtwc::core::MmapDistanceMatrix::open(path);
-    benchmark::DoNotOptimize(dm.raw());
-  }
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(file_sz));
-
-  std::filesystem::remove(path);
-}
-BENCHMARK(BM_open_mmap)->Unit(benchmark::kMicrosecond);
-
-static void BM_read_binary_to_vector(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-
-  auto path = temp_mmap_path("read_vec_latency.cache");
-  {
-    dtwc::core::MmapDistanceMatrix dm(path, N);
-    std::mt19937 rng(55);
-    std::uniform_real_distribution<double> ddist(0.0, 100.0);
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = 0; j <= i; ++j)
-        dm.set(i, j, ddist(rng));
-    dm.sync();
-  }
-
-  const auto file_sz = std::filesystem::file_size(path);
-
-  for (auto _ : state) {
-    std::ifstream ifs(path, std::ios::binary);
-    std::vector<double> vec(file_sz / sizeof(double));
-    ifs.read(reinterpret_cast<char *>(vec.data()), static_cast<std::streamsize>(file_sz));
-    benchmark::DoNotOptimize(vec.data());
-  }
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(file_sz));
-
-  std::filesystem::remove(path);
-}
-BENCHMARK(BM_read_binary_to_vector)->Unit(benchmark::kMicrosecond);
-
-// ---------------------------------------------------------------------------
-// 5. BM_medoid_access_dense / BM_medoid_access_mmap — Realistic FastPAM access
-// ---------------------------------------------------------------------------
-
-static void BM_medoid_access_dense(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-  constexpr size_t k = 10;
-
-  dtwc::core::DenseDistanceMatrix dm(N);
-  {
-    std::mt19937 rng(111);
-    std::uniform_real_distribution<double> ddist(0.0, 100.0);
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = 0; j <= i; ++j)
-        dm.set(i, j, ddist(rng));
-  }
-
-  // Pick k medoids deterministically
-  std::vector<size_t> medoids(k);
-  std::iota(medoids.begin(), medoids.end(), 0);
-
-  for (auto _ : state) {
-    double total = 0.0;
-    for (size_t p = k; p < N; ++p) {
-      double min_d = std::numeric_limits<double>::max();
-      for (size_t m = 0; m < k; ++m) {
-        double d = dm.get(p, medoids[m]);
-        if (d < min_d) min_d = d;
-      }
-      total += min_d;
-    }
-    benchmark::DoNotOptimize(total);
-  }
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(N - k) * static_cast<int64_t>(k));
-}
-BENCHMARK(BM_medoid_access_dense)->Unit(benchmark::kMillisecond);
-
-static void BM_medoid_access_mmap(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-  constexpr size_t k = 10;
-
-  auto path = temp_mmap_path("medoid_access_mmap.cache");
-  {
-    dtwc::core::MmapDistanceMatrix dm(path, N);
-    std::mt19937 rng(111);
-    std::uniform_real_distribution<double> ddist(0.0, 100.0);
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = 0; j <= i; ++j)
-        dm.set(i, j, ddist(rng));
-    dm.sync();
-  }
-
-  auto dm = dtwc::core::MmapDistanceMatrix::open(path);
-
-  std::vector<size_t> medoids(k);
-  std::iota(medoids.begin(), medoids.end(), 0);
-
-  for (auto _ : state) {
-    double total = 0.0;
-    for (size_t p = k; p < N; ++p) {
-      double min_d = std::numeric_limits<double>::max();
-      for (size_t m = 0; m < k; ++m) {
-        double d = dm.get(p, medoids[m]);
-        if (d < min_d) min_d = d;
-      }
-      total += min_d;
-    }
-    benchmark::DoNotOptimize(total);
-  }
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(N - k) * static_cast<int64_t>(k));
-
-  std::filesystem::remove(path);
-}
-BENCHMARK(BM_medoid_access_mmap)->Unit(benchmark::kMillisecond);
-
-// ---------------------------------------------------------------------------
-// 6. BM_series_contiguous_flat / BM_series_vec_of_vec — Series access layout
-// ---------------------------------------------------------------------------
-
-static void BM_series_vec_of_vec(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-  constexpr size_t L = 25;
-
-  std::vector<std::vector<double>> series(N);
-  {
-    std::mt19937 rng(200);
-    std::uniform_real_distribution<double> ddist(-1.0, 1.0);
-    for (auto &s : series) {
-      s.resize(L);
-      for (auto &v : s) v = ddist(rng);
-    }
-  }
-
-  for (auto _ : state) {
-    double sum = 0.0;
-    for (const auto &s : series)
-      for (double v : s)
-        sum += v;
-    benchmark::DoNotOptimize(sum);
-  }
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(N * L * 8));
-}
-BENCHMARK(BM_series_vec_of_vec)->Unit(benchmark::kMicrosecond);
-
-static void BM_series_contiguous_flat(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-  constexpr size_t L = 25;
-
-  std::vector<double> flat(N * L);
-  std::vector<size_t> offsets(N);
-  {
-    std::mt19937 rng(200);
-    std::uniform_real_distribution<double> ddist(-1.0, 1.0);
-    for (size_t i = 0; i < N; ++i) {
-      offsets[i] = i * L;
-      for (size_t j = 0; j < L; ++j)
-        flat[i * L + j] = ddist(rng);
-    }
-  }
-
-  for (auto _ : state) {
-    double sum = 0.0;
-    for (size_t i = 0; i < N; ++i) {
-      const double *ptr = flat.data() + offsets[i];
-      for (size_t j = 0; j < L; ++j)
-        sum += ptr[j];
-    }
-    benchmark::DoNotOptimize(sum);
-  }
-  state.SetBytesProcessed(static_cast<int64_t>(state.iterations())
-                          * static_cast<int64_t>(N * L * 8));
-}
-BENCHMARK(BM_series_contiguous_flat)->Unit(benchmark::kMicrosecond);
-
-// ---------------------------------------------------------------------------
-// 7. BM_clara_copy / BM_clara_view — CLARA subsample overhead
-// ---------------------------------------------------------------------------
-
-static void BM_clara_copy(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-  constexpr size_t L = 25;
-  constexpr size_t S = 100;
-
-  std::vector<std::vector<double>> series(N);
-  {
-    std::mt19937 rng(300);
-    std::uniform_real_distribution<double> ddist(-1.0, 1.0);
-    for (auto &s : series) {
-      s.resize(L);
-      for (auto &v : s) v = ddist(rng);
-    }
-  }
-
-  // Pick 100 random sample indices
-  std::vector<size_t> indices(S);
-  {
-    std::mt19937 rng(400);
-    std::uniform_int_distribution<size_t> idist(0, N - 1);
-    for (auto &idx : indices) idx = idist(rng);
-  }
-
-  for (auto _ : state) {
-    std::vector<std::vector<double>> sub;
-    sub.reserve(S);
-    for (size_t idx : indices)
-      sub.push_back(series[idx]);
-    benchmark::DoNotOptimize(sub.data());
-  }
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * S);
-}
-BENCHMARK(BM_clara_copy)->Unit(benchmark::kMicrosecond);
-
-static void BM_clara_view(benchmark::State &state)
-{
-  constexpr size_t N = 5000;
-  constexpr size_t L = 25;
-  constexpr size_t S = 100;
-
-  std::vector<double> flat(N * L);
-  std::vector<size_t> offsets(N);
-  {
-    std::mt19937 rng(300);
-    std::uniform_real_distribution<double> ddist(-1.0, 1.0);
-    for (size_t i = 0; i < N; ++i) {
-      offsets[i] = i * L;
-      for (size_t j = 0; j < L; ++j)
-        flat[i * L + j] = ddist(rng);
-    }
-  }
-
-  std::vector<size_t> indices(S);
-  {
-    std::mt19937 rng(400);
-    std::uniform_int_distribution<size_t> idist(0, N - 1);
-    for (auto &idx : indices) idx = idist(rng);
-  }
-
-  for (auto _ : state) {
-    std::vector<std::pair<const double *, size_t>> views;
-    views.reserve(S);
-    for (size_t idx : indices)
-      views.emplace_back(flat.data() + offsets[idx], L);
-    benchmark::DoNotOptimize(views.data());
-  }
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * S);
-}
-BENCHMARK(BM_clara_view)->Unit(benchmark::kMicrosecond);
+BENCHMARK(BM_set_all)->Arg(0)->Arg(1)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_get_row)->Arg(0)->Arg(1)->Unit(benchmark::kMicrosecond);
+BENCHMARK(BM_get_random)->Arg(0)->Arg(1)->Unit(benchmark::kMicrosecond);

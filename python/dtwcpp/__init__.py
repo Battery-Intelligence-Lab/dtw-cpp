@@ -18,7 +18,6 @@ from dtwcpp._dtwcpp_core import (
     # Structs
     DTWVariantParams,
     ClusteringResult,
-    DenseDistanceMatrix,
     Data,
     MIPSettings,
     CUDASettings,
@@ -353,7 +352,7 @@ __all__ = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
     "MissingStrategy", "DistanceMatrixStrategy",
     "Linkage", "Device",
-    "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
+    "DTWVariantParams", "ClusteringResult", "Data",
     "MIPSettings", "CUDASettings", "DendrogramStep", "Dendrogram",
     "HierarchicalOptions", "CLARANSOptions", "OneBatchWeighting",
     "OneBatchPAMOptions", "OneBatchPAMStats",

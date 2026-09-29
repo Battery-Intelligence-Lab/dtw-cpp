@@ -1,9 +1,9 @@
 /**
  * @file unit_test_variant_distmat.cpp
- * @brief Integration tests for std::variant-based distance matrix in Problem.
+ * @brief Integration tests for the Problem's distance matrix, on the heap and mapped.
  *
- * Tests that Problem works correctly with both DenseDistanceMatrix (default)
- * and MmapDistanceMatrix (when forced via use_mmap_distance_matrix()).
+ * Tests that Problem works correctly with its distance matrix on the heap
+ * (default) and mapped to a `.dtwm` file (use_mmap_distance_matrix()).
  *
  * @date 08 Apr 2026
  */
@@ -80,7 +80,7 @@ Data make_data_f32(std::vector<std::vector<float>> series, size_t ndim = 1)
 }
 }
 
-TEST_CASE("Problem uses DenseDistanceMatrix by default for small N", "[variant][distmat]")
+TEST_CASE("Problem keeps its distance matrix on the heap by default", "[variant][distmat]")
 {
   DataLoader dl = dummy_loader();
   Problem prob("test_variant", dl);
@@ -143,7 +143,7 @@ TEST_CASE("Problem dense cache never survives a raw semantic configuration mutat
     Problem prob{"dense_backend_mutation"};
     prob.set_data(make_data({{0.0}, {2.0}}));
     auto load_precomputed = [&] {
-      auto &matrix = prob.dense_distance_matrix();
+      auto &matrix = prob.distance_matrix();
       matrix.resize(2);
       matrix.set(0, 0, 0.0);
       matrix.set(0, 1, 123.0);
@@ -180,7 +180,7 @@ TEST_CASE("Problem dense cache never survives a raw semantic configuration mutat
       CAPTURE(name);
       Problem prob{"dense_variant_parameter_mutation"};
       prob.set_data(make_data({{0.0}, {2.0}}));
-      auto &matrix = prob.dense_distance_matrix();
+      auto &matrix = prob.distance_matrix();
       matrix.resize(2);
       matrix.set(0, 0, 0.0);
       matrix.set(0, 1, 123.0);
@@ -204,7 +204,7 @@ TEST_CASE("Problem dense cache never survives a raw semantic configuration mutat
     const Problem &view = prob;
     REQUIRE_FALSE(view.is_distance_matrix_filled());
     REQUIRE_THROWS_WITH(
-      view.dense_distance_matrix(),
+      view.distance_matrix(),
       Catch::Matchers::ContainsSubstring("cached distance configuration changed"));
   }
 }
@@ -215,7 +215,7 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   Problem prob{"dense_semantic_setters"};
   prob.set_data(make_data({{0.0}, {2.0}}));
   const auto load_precomputed = [&] {
-    auto &matrix = prob.dense_distance_matrix();
+    auto &matrix = prob.distance_matrix();
     matrix.resize(2);
     matrix.set(0, 0, 0.0);
     matrix.set(0, 1, 123.0);
@@ -251,7 +251,7 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
 }
 
-TEST_CASE("Problem uses MmapDistanceMatrix when forced", "[variant][distmat][mmap]")
+TEST_CASE("Problem maps its distance matrix when asked", "[variant][distmat][mmap]")
 {
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
@@ -281,7 +281,7 @@ TEST_CASE("Problem uses MmapDistanceMatrix when forced", "[variant][distmat][mma
 #endif
 }
 
-TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]")
+TEST_CASE("A mapped distance matrix warm-starts through Problem", "[variant][distmat][mmap]")
 {
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
@@ -520,8 +520,7 @@ TEST_CASE("Problem invalidates or rejects post-bind distance-semantic mutations"
     REQUIRE(prob.dist_by_ind(0, 1) >= 0.0);
 
     prob.set_band(0);
-    REQUIRE(std::holds_alternative<core::DenseDistanceMatrix>(
-      prob.distance_matrix()));
+    REQUIRE(!prob.distance_matrix().is_mapped());
     REQUIRE_THROWS_WITH(
       prob.use_mmap_distance_matrix(cache.path),
       Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
@@ -580,7 +579,7 @@ TEST_CASE("Warm mmap cached lookups remain O(1) in series length",
     prob.set_data(make_data({std::move(a), std::move(b)}));
     prob.use_mmap_distance_matrix(cache.path);
     // Exclude the deliberately one-time full identity validation from timing.
-    auto &matrix = std::get<core::MmapDistanceMatrix>(prob.distance_matrix());
+    auto &matrix = prob.distance_matrix();
     matrix.set(0, 1, 7.0);
 
     const auto start = clock::now();
@@ -623,8 +622,7 @@ TEST_CASE("Problem non-L1 mmap identity is lazily filled by the CPU in that metr
   REQUIRE(prob.dist_by_ind(0, 1)
           == distance::dtw<data_t>(x, y, -1, core::MetricType::SquaredL2));
   REQUIRE(prob.dist_by_ind(0, 1) != distance::dtw<data_t>(x, y));
-  REQUIRE(std::get<core::MmapDistanceMatrix>(prob.distance_matrix())
-            .count_computed() == 1);
+  REQUIRE(prob.distance_matrix().count_computed() == 1);
 #endif
 }
 

@@ -121,8 +121,8 @@ function(dtwc_setup_dependencies)
   # for exactly two uses: ScratchMatrix's base class and a to_full_matrix return
   # type that every caller immediately copied into a std::vector. Both are now
   # plain standard library. The CMake rationale here had also gone stale — it
-  # claimed "zero-copy Map" and "DenseDistanceMatrix internals", and there was no
-  # Eigen::Map anywhere and DenseDistanceMatrix was already std::vector<double>.
+  # claimed "zero-copy Map" and dense distance-matrix internals, and there was no
+  # Eigen::Map anywhere and the matrix was already std::vector<double>.
 
   # PMU counters (X-24, D-17). Every route by which this could fail to deliver
   # counters is a FATAL_ERROR, because Google Benchmark's own runtime guard cannot

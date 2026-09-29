@@ -301,7 +301,6 @@ TEST_CASE("F15 all registered consumers reach shared support",
     Consumer{"benchmarks/bench_cuda_dtw.cpp", 2},
     Consumer{"benchmarks/bench_dtw_baseline.cpp", 1},
     Consumer{"benchmarks/bench_metal_dtw.cpp", 1},
-    Consumer{"benchmarks/bench_mmap_access.cpp", 1},
   };
   for (const auto &consumer : benchmark_consumers) {
     INFO(consumer.path);

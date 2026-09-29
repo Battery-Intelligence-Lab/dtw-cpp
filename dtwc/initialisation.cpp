@@ -96,7 +96,7 @@ void kmeanspp_with(Problem &prob, FirstIndex &first_index,
 
   std::vector<data_t> distances(prob.size(), std::numeric_limits<data_t>::max());
 
-  // Prime the lazy DenseDistanceMatrix allocation and DTW-function rebind on
+  // Prime the lazy distance-matrix allocation and DTW-function rebind on
   // the caller thread before `run()` enters OpenMP. Direct public calls to
   // Kmeanspp do not necessarily come through Problem::fill_distance_matrix().
   // Without this serial first lookup, workers can race in the lazy rebind and

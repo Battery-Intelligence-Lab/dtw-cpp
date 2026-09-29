@@ -207,7 +207,7 @@ struct ProblemSnapshot
 
 ProblemSnapshot snapshot(const Problem &problem)
 {
-  const auto &matrix = problem.dense_distance_matrix();
+  const auto &matrix = problem.distance_matrix();
   ProblemSnapshot result;
   result.matrix_address = matrix.raw();
   result.matrix_size = matrix.size();
@@ -230,7 +230,7 @@ ProblemSnapshot snapshot(const Problem &problem)
 
 bool state_matches(const Problem &problem, const ProblemSnapshot &before)
 {
-  const auto &matrix = problem.dense_distance_matrix();
+  const auto &matrix = problem.distance_matrix();
   if (matrix.raw() != before.matrix_address
       || matrix.size() != before.matrix_size
       || matrix.packed_count() != before.matrix_bits.size())
@@ -254,7 +254,7 @@ bool state_matches(const Problem &problem, const ProblemSnapshot &before)
 
 void install_target_cache(Problem &problem, double base = 900.0)
 {
-  auto &matrix = problem.dense_distance_matrix();
+  auto &matrix = problem.distance_matrix();
   matrix.resize(problem.size());
   for (std::size_t i = 0; i < problem.size(); ++i) {
     for (std::size_t j = 0; j <= i; ++j) {
@@ -267,7 +267,7 @@ void install_target_cache(Problem &problem, double base = 900.0)
 
 void install_full_source_cache(Problem &problem, double offset = 0.0)
 {
-  auto &matrix = problem.dense_distance_matrix();
+  auto &matrix = problem.distance_matrix();
   matrix.resize(problem.size());
   matrix.set(0, 0, 0.0);
   matrix.set(1, 1, 0.0);
@@ -513,8 +513,8 @@ std::map<fs::path, std::string> tree_snapshot(const fs::path &root)
   return result;
 }
 
-bool matrix_bits_equal(const core::DenseDistanceMatrix &a,
-                       const core::DenseDistanceMatrix &b)
+bool matrix_bits_equal(const core::DistanceMatrix &a,
+                       const core::DistanceMatrix &b)
 {
   if (a.size() != b.size() || a.packed_count() != b.packed_count())
     return false;
@@ -550,8 +550,8 @@ TEST_CASE("dense checkpoint v2 full and partial round trips are bit exact",
     INFO("load exception: " << outcome.exception);
     CHECK_FALSE(outcome.threw);
     CHECK(outcome.loaded);
-    CHECK(matrix_bits_equal(source.dense_distance_matrix(),
-                            target.dense_distance_matrix()));
+    CHECK(matrix_bits_equal(source.distance_matrix(),
+                            target.distance_matrix()));
     CHECK(target.is_distance_matrix_filled());
   }
 
@@ -559,7 +559,7 @@ TEST_CASE("dense checkpoint v2 full and partial round trips are bit exact",
   {
     Problem source{"m49_partial_source"};
     source.set_data(make_f64_data());
-    auto &matrix = source.dense_distance_matrix();
+    auto &matrix = source.distance_matrix();
     matrix.resize(series_count);
     matrix.set(0, 1, std::nextafter(1.0, 2.0));
     const fs::path checkpoint = scratch.root / "partial";
@@ -573,11 +573,11 @@ TEST_CASE("dense checkpoint v2 full and partial round trips are bit exact",
     const LoadOutcome outcome = try_load(target, checkpoint);
     CHECK_FALSE(outcome.threw);
     CHECK(outcome.loaded);
-    CHECK(matrix_bits_equal(source.dense_distance_matrix(),
-                            target.dense_distance_matrix()));
-    CHECK(target.dense_distance_matrix().count_computed() == 1);
-    CHECK_FALSE(target.dense_distance_matrix().is_computed(0, 0));
-    CHECK_FALSE(target.dense_distance_matrix().is_computed(0, 2));
+    CHECK(matrix_bits_equal(source.distance_matrix(),
+                            target.distance_matrix()));
+    CHECK(target.distance_matrix().count_computed() == 1);
+    CHECK_FALSE(target.distance_matrix().is_computed(0, 0));
+    CHECK_FALSE(target.distance_matrix().is_computed(0, 2));
   }
 
   SECTION("zero computed pairs")
@@ -595,8 +595,8 @@ TEST_CASE("dense checkpoint v2 full and partial round trips are bit exact",
     const LoadOutcome outcome = try_load(target, checkpoint);
     CHECK_FALSE(outcome.threw);
     CHECK(outcome.loaded);
-    CHECK(target.dense_distance_matrix().size() == series_count);
-    CHECK(target.dense_distance_matrix().count_computed() == 0);
+    CHECK(target.distance_matrix().size() == series_count);
+    CHECK(target.distance_matrix().count_computed() == 0);
   }
 }
 
@@ -867,7 +867,7 @@ TEST_CASE("dense checkpoint CSV parsing is exact and transactional",
 #ifdef NDEBUG
   // The unfixed Debug implementation asserts while publishing NaN. Release is
   // the authoritative public-input boundary; the repaired parser rejects it
-  // before DenseDistanceMatrix::set in every build mode.
+  // before DistanceMatrix::set in every build mode.
   mutations.push_back({"textual NaN is not an uncomputed sentinel",
                        [](std::string &csv) {
                          set_csv_cell(csv, 0, 1, "nan");
@@ -948,8 +948,8 @@ TEST_CASE("legacy dense checkpoint directories never bypass v2 identity",
   const LoadOutcome outcome = try_load(upgraded_target, legacy);
   CHECK_FALSE(outcome.threw);
   CHECK(outcome.loaded);
-  CHECK(matrix_bits_equal(source.dense_distance_matrix(),
-                          upgraded_target.dense_distance_matrix()));
+  CHECK(matrix_bits_equal(source.distance_matrix(),
+                          upgraded_target.distance_matrix()));
 }
 
 TEST_CASE("invalid checkpoint saves have no filesystem effects",
@@ -961,7 +961,7 @@ TEST_CASE("invalid checkpoint saves have no filesystem effects",
   {
     Problem problem{"m49_bad_shape"};
     problem.set_data(make_f64_data());
-    problem.dense_distance_matrix().resize(2);
+    problem.distance_matrix().resize(2);
     const fs::path checkpoint = scratch.root / "bad_shape";
     const SaveOutcome outcome = try_save(problem, checkpoint);
     INFO(outcome.exception);
@@ -973,7 +973,7 @@ TEST_CASE("invalid checkpoint saves have no filesystem effects",
   {
     Problem problem{"m49_bad_value"};
     problem.set_data(make_f64_data());
-    auto &matrix = problem.dense_distance_matrix();
+    auto &matrix = problem.distance_matrix();
     matrix.resize(series_count);
     matrix.set(0, 1, std::numeric_limits<double>::infinity());
     const fs::path checkpoint = scratch.root / "bad_value";
@@ -1025,7 +1025,7 @@ TEST_CASE("failed overwrite preserves the previous checkpoint generation",
 
   Problem invalid{"m49_invalid_overwrite"};
   invalid.set_data(make_f64_data());
-  invalid.dense_distance_matrix().resize(2);
+  invalid.distance_matrix().resize(2);
   const SaveOutcome outcome = try_save(invalid, checkpoint);
   INFO(outcome.exception);
   CHECK(outcome.threw);
@@ -1037,8 +1037,8 @@ TEST_CASE("failed overwrite preserves the previous checkpoint generation",
   const LoadOutcome load = try_load(target, checkpoint);
   CHECK_FALSE(load.threw);
   CHECK(load.loaded);
-  CHECK(matrix_bits_equal(original.dense_distance_matrix(),
-                          target.dense_distance_matrix()));
+  CHECK(matrix_bits_equal(original.distance_matrix(),
+                          target.distance_matrix()));
 }
 
 TEST_CASE("a checkpoint directory that cannot be created is IOError naming it",

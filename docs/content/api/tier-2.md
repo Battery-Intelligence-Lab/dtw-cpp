@@ -63,7 +63,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `fillDistanceMatrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
 | `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
-| `dense_distance_matrix()` | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
+| — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
 | — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
@@ -78,10 +78,11 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
 **† Name collision (adjudicated in §10 item 6).** C++
-`Problem::distance_matrix()` returns the internal
-`std::variant<DenseDistanceMatrix, MmapDistanceMatrix>` by reference. The
-Python/MATLAB spelling returns an NxN numeric matrix; Python returns an
-independent copy. The language-specific semantics are retained.
+`Problem::distance_matrix()` returns the `core::DistanceMatrix` by reference:
+the packed lower triangle, on the heap or mapped (`use_mmap_distance_matrix`),
+read and written through the same `get` / `set`. The Python/MATLAB spelling
+returns an NxN numeric matrix of either storage; Python returns an independent
+copy. The language-specific semantics are retained.
 
 **‡ Python read/write rename.** `distance_matrix()` and
 `set_distance_matrix()` are canonical and live. The old
@@ -275,21 +276,20 @@ exactly one generation after a successful save: the old generation is removed
 only after `CURRENT` points at the new one. The mmap distance cache is
 `<name>_distmat.cache`.
 
-**Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
-64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,
-series order and lengths, storage precision, `ndim`, band, every DTW-variant
-parameter, multivariate mode, missing-data strategy, pointwise metric, compute
-backend, and backend precision. Series names are excluded because they do not
-affect distance semantics. Header metadata has a CRC, reserved bytes are
-checked, and an aligned footer stores two digest words per logical row. Reopen
-takes a nonblocking exclusive session lease and recomputes every row digest
-before exposing the mapping. A mismatch is a hard error; callers must use the
-original semantics or delete/rename the cache and recompute it. The digests
-detect accidental corruption and are not keyed tamper-proof authentication.
-
-Version 1 had only an N-sized identity; version 2 did not protect mutable packed
-values. Both are deliberately rejected. Semantic setters detach a bound cache
-without deleting it. The complete data identity is checked at bind and once at
+**Persistent mmap identity (2.0 safety addendum).** A mapped matrix is a `.dtwm`
+file: a 48-byte header (magic `DTWM`, version 4, N, a SHA-256 identity) and the
+packed lower triangle of doubles, NaN = not computed. The identity covers the raw
+IEEE series values, series order and lengths, storage precision, `ndim`, band,
+every DTW-variant parameter, multivariate mode, missing-data strategy, pointwise
+metric, compute backend, and backend precision. Series names are excluded because
+they do not affect distance semantics. Opening an existing file checks its magic,
+version, exact length and N, then the identity, before any distance can be read:
+a file for other series or settings raises `InvalidInput`; a short or foreign file,
+or one of the earlier cache layouts (versions 1-3), raises `IOError`. Either way,
+use the original semantics or delete/rename the file and recompute it. A new file
+is filled with NaN and flushed to the device before its header is written, so a
+power cut can leave a file that does not open, never one whose zeros read as
+distances. Semantic setters detach a bound cache without deleting it. The complete data identity is checked at bind and once at
 first use; later lookups compare a fixed-size configuration snapshot so warm
 access remains O(1). `Problem::data()` is read-only, but heap values exposed by
 `p_vec()` and caller-owned backing storage supplied through `set_view_data()`

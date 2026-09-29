@@ -69,8 +69,7 @@ ROOT_FILE_LAYER = {
 FILE_OVERRIDE = {
     "core/matrix_io.hpp": "io",
     "core/gpu_dtw_common.hpp": "backends",
-    "core/portable_random.hpp": "base", "core/crc32.hpp": "base",
-    "core/sha256.hpp": "base", "core/llfio_include.hpp": "base",
+    "core/portable_random.hpp": "base", "core/sha256.hpp": "base",
 }
 PROBES = ["core/dtw_kernel.hpp", "core/dtw_dispatch.hpp",
           "warping.hpp", "distance.hpp", "settings.hpp", "Data.hpp", "Problem.hpp",

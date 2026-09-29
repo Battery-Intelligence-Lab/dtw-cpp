@@ -108,8 +108,8 @@ std::size_t count_generations(const std::string &dir)
 /// Bit-exact comparison of two resident dense distance matrices.
 void require_identical_matrices(const Problem &lhs, const Problem &rhs)
 {
-  const auto &a = lhs.dense_distance_matrix();
-  const auto &b = rhs.dense_distance_matrix();
+  const auto &a = lhs.distance_matrix();
+  const auto &b = rhs.distance_matrix();
   REQUIRE(a.size() == b.size());
   REQUIRE(a.packed_count() == b.packed_count());
   for (std::size_t k = 0; k < a.packed_count(); ++k)
@@ -190,7 +190,7 @@ TEST_CASE("Checkpoint saves and loads partial distance matrix", "[checkpoint]")
   REQUIRE_THAT(prob2.dist_by_ind(1, 0), WithinAbs(prob.dist_by_ind(1, 0), 1e-10));
 
   // Uncomputed pair should still be NaN in the raw matrix
-  REQUIRE_FALSE(prob2.dense_distance_matrix().is_computed(4, 5));
+  REQUIRE_FALSE(prob2.distance_matrix().is_computed(4, 5));
 
   cleanup_dir(ckpt_dir);
 }
@@ -325,11 +325,11 @@ TEST_CASE("save_checkpoint overwrites existing checkpoint", "[checkpoint]")
 
 
 // ---------------------------------------------------------------------------
-// 8. DenseDistanceMatrix count_computed and all_computed
+// 8. DistanceMatrix count_computed and all_computed
 // ---------------------------------------------------------------------------
-TEST_CASE("DenseDistanceMatrix count_computed and all_computed", "[checkpoint][distance_matrix]")
+TEST_CASE("DistanceMatrix count_computed and all_computed", "[checkpoint][distance_matrix]")
 {
-  core::DenseDistanceMatrix dm(4);
+  core::DistanceMatrix dm(4);
 
   // Initially all NaN
   REQUIRE(dm.count_computed() == 0);
@@ -404,7 +404,7 @@ TEST_CASE("Resumed automatic fill only computes uncomputed cells",
   // computed with sentinel values no DTW kernel can produce.
   auto crashed = make_problem(N);
   {
-    auto &matrix = crashed.dense_distance_matrix();
+    auto &matrix = crashed.distance_matrix();
     matrix.resize(N); // allocation is deferred until the first fill
     for (int i = 0; i < 2; ++i)
       for (int j = i + 1; j < N; ++j)
@@ -420,7 +420,7 @@ TEST_CASE("Resumed automatic fill only computes uncomputed cells",
   auto resumed = make_problem(N);
   REQUIRE(load_checkpoint(resumed, partial_dir));
   // 5 entries from row 0 plus 4 from row 1; the diagonal is still uncomputed.
-  REQUIRE(resumed.dense_distance_matrix().count_computed() == 9);
+  REQUIRE(resumed.distance_matrix().count_computed() == 9);
 
   auto resume_dir = make_temp_dir("resume_fill");
   resumed.checkpoint.enabled = true;
@@ -429,7 +429,7 @@ TEST_CASE("Resumed automatic fill only computes uncomputed cells",
   resumed.fill_distance_matrix();
 
   REQUIRE(resumed.is_distance_matrix_filled());
-  REQUIRE(resumed.dense_distance_matrix().count_computed() == N * (N + 1) / 2);
+  REQUIRE(resumed.distance_matrix().count_computed() == N * (N + 1) / 2);
   REQUIRE(count_generations(resume_dir) == 1);
   REQUIRE(manifest_pairs_computed(resume_dir) == N * (N + 1) / 2);
 
@@ -521,7 +521,7 @@ TEST_CASE("Automatic checkpointing rejects an empty directory",
 
   REQUIRE_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
   REQUIRE_FALSE(prob.is_distance_matrix_filled());
-  REQUIRE(prob.dense_distance_matrix().count_computed() == 0);
+  REQUIRE(prob.distance_matrix().count_computed() == 0);
 }
 
 
@@ -550,7 +550,7 @@ TEST_CASE("A failing automatic save preserves computed distances",
   {
     // Row 0 is poisoned with values no DTW kernel can produce, so any later
     // recomputation of those cells is visible.
-    auto &matrix = prob.dense_distance_matrix();
+    auto &matrix = prob.distance_matrix();
     matrix.resize(N);
     for (int j = 1; j < N; ++j)
       matrix.set(0, j, 900.0 + j);
@@ -562,7 +562,7 @@ TEST_CASE("A failing automatic save preserves computed distances",
   REQUIRE_THROWS(prob.fill_distance_matrix());
   REQUIRE_FALSE(prob.is_distance_matrix_filled());
   // Diagonal (6) + poisoned row 0 (5) + genuine row 1 (4) from the first block.
-  REQUIRE(prob.dense_distance_matrix().count_computed() == 15);
+  REQUIRE(prob.distance_matrix().count_computed() == 15);
 
   // A subsequent disabled fill completes and touches only uncomputed cells.
   prob.checkpoint.enabled = false;

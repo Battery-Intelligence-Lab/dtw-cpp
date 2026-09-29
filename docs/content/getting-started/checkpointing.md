@@ -177,25 +177,21 @@ When `--checkpoint` is specified, the CLI will:
 
 ### Memory-mapped cache safety and migration
 
-The current mmap cache is format version 3. Its 64-byte header contains a
-SHA-256 fingerprint of all inputs that can change a distance: exact series bits,
-order, lengths, dtype and `ndim`; band and every variant/multivariate parameter;
-missing-data strategy; pointwise metric; backend; and backend precision. Names
-are intentionally excluded. Header CRC, reserved bytes, and exact file length
-are validated before cached distances can be read.
+The mmap cache is a `.dtwm` file: a 48-byte header (magic `DTWM`, version 4,
+the number of series N, and a SHA-256 fingerprint of all inputs that can change a
+distance: exact series bits, order, lengths, dtype and `ndim`; band and every
+variant/multivariate parameter; missing-data strategy; pointwise metric; backend;
+and backend precision) followed by the packed lower triangle of doubles, NaN = not
+computed. Names are intentionally excluded.
 
-A same-sized cache from different data or configuration therefore fails loudly
-instead of returning stale distances. A footer holds two digest words per
-logical row; reopening under a nonblocking exclusive file lease recomputes
-those digests before exposing the mapping. This detects accidental packed-value
-or computed-sentinel corruption, including mutations made through the legacy
-raw pointer. It is not keyed cryptographic authentication, and `sync()` remains
-the durability boundary.
-
-Version-1 caches contained only the matrix dimension. Version 2 authenticated
-the data/configuration identity but not the mutable packed payload. Both are
-rejected with recompute guidance. Delete or rename a legacy/mismatched cache and
-rerun; the source data is not modified.
+Reopening checks the magic, the version, the exact file length and N, then the
+fingerprint, before any cached distance can be read. A cache from other data or
+configuration raises `InvalidInput` instead of returning stale distances; a short
+or foreign file, or one written in an earlier cache layout (versions 1-3), raises
+`IOError`. Delete or rename such a file and rerun; the source data is not
+modified. A new cache is filled with NaN and flushed to the device before its
+header is written, so a power cut can leave a cache that does not open, never one
+whose zeros read as distances.
 
 Set data, band, variant, backend, metric, and precision before binding a cache.
 Use the semantic setters after binding; they detach the old mapping. Raw in-place
