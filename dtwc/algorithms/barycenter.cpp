@@ -187,21 +187,25 @@ double align_squared(const Series& x, const Series& y, bool need_path,
   const std::size_t nx = x.size();
   const std::size_t ny = y.size();
   workspace.prepare(nx, ny, need_path);
-  auto at = [&](std::size_t i, std::size_t j) -> double& {
-    return workspace.matrix[i * ny + j];
+  // The matrix pointer is hoisted and at(i, j - 1) carried in a register: without
+  // TBAA (the MSVC target) each store forced a reload of both.
+  double *const matrix = workspace.matrix.data();
+  auto at = [matrix, ny](std::size_t i, std::size_t j) -> double& {
+    return matrix[i * ny + j];
   };
   for (std::size_t i = 0; i < nx; ++i) {
+    double left = std::numeric_limits<double>::infinity(); // at(i, j - 1)
     for (std::size_t j = 0; j < ny; ++j) {
       const double diff = x[i] - y[j];
       const double local = diff * diff;
-      if (i == 0 && j == 0) at(i, j) = local;
+      if (i == 0 && j == 0) left = local;
       else {
         const double up = i > 0 ? at(i - 1, j) : std::numeric_limits<double>::infinity();
-        const double left = j > 0 ? at(i, j - 1) : std::numeric_limits<double>::infinity();
         const double diagonal = (i > 0 && j > 0)
           ? at(i - 1, j - 1) : std::numeric_limits<double>::infinity();
-        at(i, j) = local + std::min(std::min(diagonal, up), left);
+        left = local + std::min(std::min(diagonal, up), left);
       }
+      at(i, j) = left;
     }
   }
   const double cost = at(nx - 1, ny - 1);

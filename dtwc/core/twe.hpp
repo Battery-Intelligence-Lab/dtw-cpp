@@ -82,16 +82,18 @@ T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
 
   for (std::size_t i = 1; i <= na; ++i) {
     std::swap(prev, curr);
-    curr[0] = maxValue; // D[i][0] = +inf for i > 0
+    T left = maxValue; // D[i][j-1], carried; D[i][0] = +inf for i > 0
+    curr[0] = left;
     for (std::size_t j = 1; j <= nb; ++j) {
       const T del_x = add(prev[j],     std::abs(ap(i - 1) - ap(i)) + del_add);
-      const T del_y = add(curr[j - 1], std::abs(bp(j - 1) - bp(j)) + del_add);
+      const T del_y = add(left,        std::abs(bp(j - 1) - bp(j)) + del_add);
       const auto idx_pen = static_cast<T>(
           std::abs(static_cast<long long>(i) - static_cast<long long>(j)));
       const T match = add(prev[j - 1],
                           std::abs(ap(i) - bp(j)) + std::abs(ap(i - 1) - bp(j - 1))
                           + T(2) * nu * idx_pen);
-      curr[j] = std::min(std::min(del_x, del_y), match); // std::min({...}) is a call on the MSVC STL
+      left = std::min(std::min(del_x, del_y), match); // std::min({...}) is a call on the MSVC STL
+      curr[j] = left;
     }
   }
   return curr[nb];
