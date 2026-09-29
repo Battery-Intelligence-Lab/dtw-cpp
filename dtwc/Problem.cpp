@@ -1061,26 +1061,30 @@ void Problem::fillDistanceMatrix_BruteForce()
   // failure after the join; a failed pair remains uncomputed.
   //
   // Row i first takes its columns W at a time through the lane function, where
-  // all W series are as long as series i and not all W pairs are known; each of
-  // those distances is bitwise the per-pair one. The per-pair loop then fills the
-  // rest: the tail, mixed-length blocks, every pair without a lane function.
+  // the block's series are as long as series i and not all its pairs are known;
+  // each of those distances is bitwise the per-pair one. The block at the row's
+  // end repeats its last column in the lanes past it, whose results are dropped.
+  // The per-pair loop then fills the rest: mixed-length blocks, every pair
+  // without a lane function.
   auto fill_lanes = [&](size_t i, auto x, auto column, const auto &block) {
     using T = typename decltype(x)::value_type;
     constexpr size_t W = core::dtw_lanes<T>;
     if (!block) return;
     std::array<std::span<const T>, W> ys;
     std::array<double, W> d;
-    for (size_t j = i + 1; j + W <= N; j += W) {
+    for (size_t j = i + 1; j < N; j += W) {
+      const size_t count = std::min(W, N - j);
       bool equal = true, known = true;
       for (size_t w = 0; w < W; ++w) {
-        ys[w] = column(j + w);
+        const size_t c = j + std::min(w, count - 1);
+        ys[w] = column(c);
         equal = equal && ys[w].size() == x.size();
-        known = known && visit_distmat([&](const auto &m) { return m.is_computed(i, j + w); });
+        known = known && visit_distmat([&](const auto &m) { return m.is_computed(i, c); });
       }
       if (!equal || known) continue;
       block(x, ys, d);
       visit_distmat([&](auto &m) {
-        for (size_t w = 0; w < W; ++w)
+        for (size_t w = 0; w < count; ++w)
           if (!m.is_computed(i, j + w)) m.set(i, j + w, d[w]);
       });
     }
