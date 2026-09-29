@@ -9,6 +9,9 @@ subjects, every matrix bitwise identical. On the way it turned out that the lane
 was **not** packed in the shipped build: lld-link's LTO backend runs no SLP vectoriser, so under clang's ThinLTO
 the loop linked as eight scalar chains. That form already passed the band (5.4×, 2.4×, 7.3×); compiling the
 lane binding natively (`3c95dc7`) packs it and gives the numbers above. MSVC `cl` does not pack the loop at all.
+After the orchestrator's rulings, padding each row's last block (`b930ff8`) takes the two benchmark fills to
+14.5× and 5.1×; a value-returning min in the cells, to let cl pack, broke bitwise identity under cl and was
+reverted (both below).
 
 ## Band (registered 2026-09-29, before the first timed run)
 
@@ -150,6 +153,36 @@ eight scalar chains, `left` in registers, but each lane goes through `std::min`'
 stack addresses, as K1 saw; `/Qvec-report:2` says `loop not vectorized due to reason '1200'` (loop-carried data
 dependence) for `dtw_kernel.hpp(606)`, the lane loop. The eight chains still overlap (ILP), but cl gets no SIMD.
 
+## After the rulings
+
+**Padded row tails** (ruling b, `b930ff8`): the block at a row's end repeats its last column in the lanes past
+the row; their results are dropped. Same protocol as run 2 (9 interleaved rounds, base `f705329`, load median 99 %,
+88–100) [confirmed]:
+
+| subject | per-pair (ms) | lanes, padded (ms) | per-pair / lanes |
+| --- | --- | --- | --- |
+| `BM_fillDistanceMatrix/100/1000/-1` | 1075.2 [973.5–1322.0] | 73.6 [67.2–89.3] | **14.48** [11.80–18.22] |
+| `BM_fillDistanceMatrix/50/1000/50` | 10.51 [9.52–11.55] | 2.068 [1.923–2.760] | **5.12** [3.81–5.68] |
+
+against 8.21× and 3.13× with per-pair tails. The fill tests and both fill mutations were re-run on it (tests pass
+under clang and cl; swapped slots fail 6 of 7 cases, no equal-length check fails the 2 mixed ones).
+
+**A value-returning min in the cells** (ruling c: `b < a ? b : a`, std::min's comparison, in `StandardCell`,
+`ADTWCell` and `AROWCell` through one helper) — tried, **reverted** [confirmed]:
+
+- cl's per-pair loops lose the stack traffic: `dtw_kernel_linear<double, …, StandardCell>` in `dtw_dispatch.cpp`'s
+  `/FA` goes from 11 `cmov` and 41 `up$`/`diag$` slot references to none (`vminsd` register to register).
+- cl then vectorises the float lane loop (`/Qvec-report:2`: `loop vectorized` at the lane loop, 4 `vminps`); the
+  double one stays scalar (reason `1303`, too few iterations). But under the project's `/fp:contract` the vector
+  loop contracts squared L2's `(x − y)² + min` into `vfmadd231ps`, where the scalar per-pair kernel keeps `vmulss`
+  and `vaddss`: under cl `unit_test_dtw_kernel_lanes` fails 17 of 175 assertions, all float squared L2 on
+  non-integer data (cpp_conformance, L1, still passes). A `#pragma fp_contract(off)` in `dtw_lanes.cpp` removes the
+  `vfmadd` from that TU's listing but not the failures: the kernel is a header template, and the instance another
+  TU compiles with contraction is as good as any to the linker.
+- Without the change (as shipped) cl's reason for the lane loop is `1200`, a loop-carried dependence through
+  `std::min`'s references. Making cl pack it bitwise needs contraction off wherever the kernel is instantiated,
+  i.e. `/fp:contract` out of the MSVC flags: a project-wide FP-model decision, not P1's.
+
 ## Bit identity [confirmed]
 
 - `unit_test_dtw_kernel_lanes`: every lane against `dtwBanded` (and `dtwFull_eap` unbanded) for double and float,
@@ -164,10 +197,9 @@ dependence) for `dtw_kernel.hpp(606)`, the lane loop. The eight chains still ove
 
 ## Observations
 
-- The unbanded fill's per-pair kernel, EAPruned, costs 6.4–7.6 ns per cell on these series against 1.8–1.9 for
-  `dtwFull_L` (table above): on uniform noise its data-dependent branches cost more than its pruning saves
-  [inferred]. The per-pair tail of each row still runs it.
-- With W = 8 the per-pair tail is 7 % of the pairs at N = 100 and 14 % at N = 50; it is most of what separates
-  run 2's 3.1× (band 50, N = 50) from the kernel's 9× [inferred]. Padding the tail with a repeated column, as the
-  probe did, would remove it; the brief keeps it per pair.
+- For the EAPruned follow-up: the unbanded fill's per-pair kernel costs 6.4 (L 1000) and 7.6 (L 140) ns per cell
+  on the benchmark's uniform series against 1.9 and 1.8 for `dtwFull_L` (pinned table above, loaded machine); on
+  ECG5000 the per-pair fill took 700 CPU-seconds for 1.98e11 cells. On uniform noise its data-dependent branches
+  cost more than its pruning saves [inferred]; its pruning rate was not measured. With padded tails it now runs
+  only in mixed-length blocks and rows without a lane function.
 - The codegen gate (`scripts/codegen_report.py`) compiles without LTO, so it cannot see this class of loss.
