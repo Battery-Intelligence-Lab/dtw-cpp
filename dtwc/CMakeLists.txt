@@ -20,6 +20,7 @@ target_sources(dtwc++
   cli/run.cpp
   core/dtw.cpp
   core/dtw_dispatch.cpp
+  core/dtw_lanes.cpp
   algorithms/fast_pam.cpp
   algorithms/fast_clara.cpp
   algorithms/one_batch_pam.cpp
@@ -78,6 +79,14 @@ target_sources(dtwc++
   algorithms/tadpole.hpp
   algorithms/detail/medoid_utils.hpp
 )
+
+# lld-link's LTO backend (LLVM 21) runs the loop vectoriser but not the SLP
+# vectoriser, which is what turns dtw_kernel_lanes' unrolled lane loop into
+# packed vminpd/vaddpd. Clang targeting the MSVC ABI links through lld-link, so
+# there the fill's lane binding is compiled to native code, not ThinLTO bitcode.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+  set_source_files_properties(core/dtw_lanes.cpp PROPERTIES COMPILE_OPTIONS -fno-lto)
+endif()
 
 target_include_directories(dtwc++ PUBLIC .)
 # Vendored, dependency-free nanoarrow (dtwc/extern/nanoarrow) for Arrow C Data
