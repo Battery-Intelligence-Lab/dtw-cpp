@@ -1438,10 +1438,6 @@ void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
     throw InvalidInput("Lloyd k-medoids requires n_repetitions >= 1.");
   if (max_iter() <= 0)
     throw InvalidInput("Lloyd k-medoids requires max_iter >= 1.");
-  const auto restart_offset = static_cast<std::uint64_t>(repetitions - 1);
-  if (restart_offset
-      > std::numeric_limits<std::uint64_t>::max() - random_seed_)
-    throw InvalidInput("Lloyd k-medoids random_seed + repetition index overflows uint64.");
 
   fill_distance_matrix(); // Ensure all distances computed before parallel clustering.
 
@@ -1453,6 +1449,7 @@ void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
 
   for (int i_rand = 0; i_rand < repetitions; i_rand++) {
     if (verbose_) std::cout << "Metoid initialisation is started.\n";
+    // Unsigned: a seed near 2^64 wraps to another valid seed.
     init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
 
     if (verbose_)
