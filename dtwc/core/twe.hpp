@@ -91,7 +91,7 @@ T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
       const T match = add(prev[j - 1],
                           std::abs(ap(i) - bp(j)) + std::abs(ap(i - 1) - bp(j - 1))
                           + T(2) * nu * idx_pen);
-      curr[j] = std::min({del_x, del_y, match});
+      curr[j] = std::min(std::min(del_x, del_y), match); // std::min({...}) is a call on the MSVC STL
     }
   }
   return curr[nb];

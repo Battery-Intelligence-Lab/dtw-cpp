@@ -51,13 +51,18 @@ namespace dtwc::core {
 // Cell policies
 // ===========================================================================
 
+// The cells nest two-argument std::min, never std::min({...}): the MSVC STL
+// compiles the initializer-list form to an out-of-line call per cell
+// (__std_min_d). The nesting makes the comparisons min_element makes, so the
+// result is unchanged, NaN ordering included.
+
 /// Standard DTW recurrence: min(diag, up, left) + cost.
 struct StandardCell {
   template <typename T>
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
-    return std::min({diag, up, left}) + cost;
+    return std::min(std::min(diag, up), left) + cost;
   }
   template <typename T>
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -74,7 +79,7 @@ struct ADTWCell {
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
-    return std::min({diag, up + penalty, left + penalty}) + cost;
+    return std::min(std::min(diag, up + penalty), left + penalty) + cost;
   }
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
@@ -173,7 +178,7 @@ struct AROWCell {
       if (left != maxValue) return left;
       return T(0);
     }
-    const T m = std::min({diag, up, left});
+    const T m = std::min(std::min(diag, up), left);
     return (m == maxValue) ? maxValue : m + cost;
   }
   template <typename T>

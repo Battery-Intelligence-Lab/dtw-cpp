@@ -28,12 +28,12 @@
 ## Performance Rules
 
 - **No virtual dispatch in hot paths** — use CRTP or templates; virtual only at API boundary
-- **`std::min({a,b,c})` vs nested `std::min` — measure, don't assume.** The
-  2.45×–3.14× win recorded at `65e249b` was specific to the legacy full/banded
-  kernels; rolling `BM_dtwFull_L/4000` was unchanged (1.006×). The live
-  recurrences use the initialiser-list form (`core/dtw_kernel.hpp:60, 77, 176`,
-  `core/msm.hpp`, `core/twe.hpp`) and are **not** to be rewritten on this rule
-  alone — see LESSONS.md, "Nested `std::min` helped specific legacy kernels".
+- **No `std::min({a,b,c})`, `std::max({…})` or `std::min_element` in a hot loop — nest
+  two-argument `std::min`.** The MSVC STL (MSVC, and clang on Windows) compiles the
+  initialiser-list form to an out-of-line `__std_min_d` call per element; libc++ inlines
+  it, which is why a Mac measures no difference. `std::min(std::min(a, b), c)` makes the
+  comparisons `min_element` makes, so results are unchanged, NaN ordering included
+  (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`).
 - **Template judiciously** — on constraint type only (2-3 variants), NOT on metric type
 - **thread_local scratch buffers** — resize, never shrink, avoid per-call allocation
 - **Lock-free parallel** — structure decomposition so threads write non-overlapping regions

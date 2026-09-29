@@ -91,7 +91,7 @@ T msm_distance(const T* x, std::size_t nx, const T* y, std::size_t ny, T c = T(1
       const T move  = prev[j - 1] + std::abs(a[i] - b[j]);
       const T del_a = prev[j]     + msm_cost<T>(a[i], a[i - 1], b[j], c);
       const T del_b = curr[j - 1] + msm_cost<T>(b[j], a[i], b[j - 1], c);
-      curr[j] = std::min({move, del_a, del_b});
+      curr[j] = std::min(std::min(move, del_a), del_b); // std::min({...}) is a call on the MSVC STL
     }
   }
   return curr[nb - 1];

@@ -200,7 +200,7 @@ double align_squared(const Series& x, const Series& y, bool need_path,
         const double left = j > 0 ? at(i, j - 1) : std::numeric_limits<double>::infinity();
         const double diagonal = (i > 0 && j > 0)
           ? at(i - 1, j - 1) : std::numeric_limits<double>::infinity();
-        at(i, j) = local + std::min({diagonal, up, left});
+        at(i, j) = local + std::min(std::min(diagonal, up), left);
       }
     }
   }
@@ -337,7 +337,7 @@ Series ssg(const std::vector<Series>& series, Series center,
 
 double softmin3(double a, double b, double c, double gamma)
 {
-  const double minimum = std::min({a, b, c});
+  const double minimum = std::min(std::min(a, b), c);
   return minimum - gamma * std::log(std::exp((minimum - a) / gamma)
                                    + std::exp((minimum - b) / gamma)
                                    + std::exp((minimum - c) / gamma));
