@@ -2,13 +2,16 @@
  * @file unit_test_duplicate_series.cpp
  * @brief Duplicate series as medoids: every route publishes k non-empty clusters.
  *
- * @details Four series {a, a, b, c} with k = 4. The optimum opens every series
- * (cost 0), so both copies of `a` are medoids and each is at distance 0 from the
- * other. A nearest-medoid scan whose ties go to the first slot labels the second
- * copy with the first copy's slot: its own cluster is then empty (a published
- * k-clustering with k - 1 clusters), and an exact backend that checks "every
- * medoid is in its own cluster" throws on a valid optimum. The oracle is the
- * definition: each medoid carries its own slot, so no cluster is empty.
+ * @details Four series {a, a, b, c} with k = N = 4: the optimum opens every
+ * series (cost 0), so both copies of `a` are medoids and each is at distance 0
+ * from the other. Four series {a, a, b, b} with k = 3 < N: any three of them
+ * hold two copies, so whichever medoids a route settles on, two tie at distance
+ * 0 (and the optimum costs 0 again). A nearest-medoid scan whose ties go to the
+ * first slot labels the second copy with the first copy's slot: its own cluster
+ * is then empty (a published k-clustering with k - 1 clusters), and an exact
+ * backend that checks "every medoid is in its own cluster" throws on a valid
+ * optimum. The oracle is the definition: each medoid carries its own slot, so no
+ * cluster is empty.
  */
 
 #include <dtwc.hpp>
@@ -51,36 +54,54 @@ void require_self_labelled(const std::vector<int> &medoids, const std::vector<in
   }
 }
 
-const std::vector<double> kFour = { 0.0, 0.0, 5.0, 10.0 }; // {a, a, b, c}
+struct DuplicateCase
+{
+  std::vector<double> values;
+  int k;
+};
+
+const DuplicateCase kCases[] = {
+  { { 0.0, 0.0, 5.0, 10.0 }, 4 }, // {a, a, b, c}, k = N
+  { { 0.0, 0.0, 5.0, 5.0 }, 3 },  // {a, a, b, b}, k < N
+};
 
 } // namespace
 
 TEST_CASE("FasterPAM labels a duplicate medoid with its own slot", "[duplicates][pam]")
 {
-  auto prob = duplicate_problem(kFour);
-  const auto result = fast_pam(prob, 4);
-  CHECK(result.total_cost == 0.0);
-  require_self_labelled(result.medoid_indices, result.labels, 4);
+  for (const auto &[values, k] : kCases) {
+    INFO("k = " << k);
+    auto prob = duplicate_problem(values);
+    const auto result = fast_pam(prob, k);
+    CHECK(result.total_cost == 0.0);
+    require_self_labelled(result.medoid_indices, result.labels, k);
+  }
 }
 
 TEST_CASE("OneBatchPAM labels a duplicate medoid with its own slot", "[duplicates][onebatch]")
 {
-  auto prob = duplicate_problem(kFour);
-  algorithms::OneBatchPAMOptions options;
-  options.n_clusters = 4;
-  const auto result = algorithms::one_batch_pam(prob, options);
-  require_self_labelled(result.medoid_indices, result.labels, 4);
+  for (const auto &[values, k] : kCases) {
+    INFO("k = " << k);
+    auto prob = duplicate_problem(values);
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = k;
+    const auto result = algorithms::one_batch_pam(prob, options);
+    require_self_labelled(result.medoid_indices, result.labels, k);
+  }
 }
 
 TEST_CASE("CLARA labels a duplicate medoid with its own slot", "[duplicates][clara]")
 {
-  SECTION("k = N delegates to FasterPAM")
+  SECTION("a sample of all N series delegates to FasterPAM")
   {
-    auto prob = duplicate_problem(kFour);
-    algorithms::CLARAOptions options;
-    options.n_clusters = 4;
-    const auto result = algorithms::fast_clara(prob, options);
-    require_self_labelled(result.medoid_indices, result.labels, 4);
+    for (const auto &[values, k] : kCases) {
+      INFO("k = " << k);
+      auto prob = duplicate_problem(values);
+      algorithms::CLARAOptions options;
+      options.n_clusters = k;
+      const auto result = algorithms::fast_clara(prob, options);
+      require_self_labelled(result.medoid_indices, result.labels, k);
+    }
   }
   SECTION("a sample holding both copies runs CLARA's own assignment")
   {
@@ -108,20 +129,26 @@ TEST_CASE("CLARA labels a duplicate medoid with its own slot", "[duplicates][cla
 
 TEST_CASE("Lloyd k-medoids labels a duplicate medoid with its own slot", "[duplicates][kmedoids]")
 {
-  auto prob = duplicate_problem(kFour);
-  prob.set_n_clusters(4);
-  prob.set_method(Method::Kmedoids);
-  prob.cluster();
-  require_self_labelled(prob.centroids_ind, prob.clusters_ind, 4);
+  for (const auto &[values, k] : kCases) {
+    INFO("k = " << k);
+    auto prob = duplicate_problem(values);
+    prob.set_n_clusters(k);
+    prob.set_method(Method::Kmedoids);
+    prob.cluster();
+    require_self_labelled(prob.centroids_ind, prob.clusters_ind, k);
+  }
 }
 
 TEST_CASE("LR-core publishes the zero-cost optimum with duplicate medoids", "[duplicates][lrcore]")
 {
-  auto prob = duplicate_problem(kFour);
-  prob.set_n_clusters(4);
-  prob.set_method(Method::LRCore);
-  REQUIRE_NOTHROW(prob.cluster());
-  require_self_labelled(prob.centroids_ind, prob.clusters_ind, 4);
+  for (const auto &[values, k] : kCases) {
+    INFO("k = " << k);
+    auto prob = duplicate_problem(values);
+    prob.set_n_clusters(k);
+    prob.set_method(Method::LRCore);
+    REQUIRE_NOTHROW(prob.cluster());
+    require_self_labelled(prob.centroids_ind, prob.clusters_ind, k);
+  }
 }
 
 TEST_CASE("MIP publishes the zero-cost optimum with duplicate medoids", "[duplicates][mip]")
@@ -130,10 +157,13 @@ TEST_CASE("MIP publishes the zero-cost optimum with duplicate medoids", "[duplic
     SUCCEED("HiGHS is not built here.");
     return;
   }
-  auto prob = duplicate_problem(kFour);
-  prob.set_n_clusters(4);
-  prob.set_method(Method::MIP);
-  REQUIRE(prob.set_solver(Solver::HiGHS));
-  REQUIRE_NOTHROW(prob.cluster());
-  require_self_labelled(prob.centroids_ind, prob.clusters_ind, 4);
+  for (const auto &[values, k] : kCases) {
+    INFO("k = " << k);
+    auto prob = duplicate_problem(values);
+    prob.set_n_clusters(k);
+    prob.set_method(Method::MIP);
+    REQUIRE(prob.set_solver(Solver::HiGHS));
+    REQUIRE_NOTHROW(prob.cluster());
+    require_self_labelled(prob.centroids_ind, prob.clusters_ind, k);
+  }
 }

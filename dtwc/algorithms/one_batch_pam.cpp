@@ -347,6 +347,13 @@ core::ClusteringResult one_batch_pam(Problem& prob,
     result.labels[point] = label;
     point_cost[point] = best;
   }
+  // A medoid tied with another medoid (a duplicate series) serves itself, or its
+  // own cluster would be published empty. Its own distance is exactly 0, so a
+  // best of 0 is that tie. After the scan, so the scan's min stays branch-free.
+  for (int slot = 0; slot < k; ++slot) {
+    const auto medoid = static_cast<std::size_t>(medoids[slot]);
+    if (point_cost[medoid] == 0.0) result.labels[medoid] = slot;
+  }
   // Point-ordered accumulation: the published objective is a cross-route byte
   // contract, so it uses the same reassociation-proof accumulator as fast_pam
   // and fast_clara rather than a plain std::accumulate.
