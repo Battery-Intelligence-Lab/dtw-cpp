@@ -88,10 +88,10 @@ Use canonical keys (`dtype`, `gpu-precision`) rather than their aliases in new
 files. The repository's complete example is
 [`examples/cpp/config.toml`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/examples/cpp/config.toml).
 
-`checkpoint` enables the dense CSV distance checkpoint, which loads on startup
-and saves on completion. A non-zero `checkpoint-interval` additionally publishes
-a generation every N completed distance-matrix rows and requires `checkpoint`;
-`0`, the default, saves once at the end.
+`checkpoint` names the directory of the distance checkpoint `<name>.dtwm`, which
+loads on startup and saves on completion. A non-zero `checkpoint-interval`
+additionally saves it every N completed distance-matrix rows and requires
+`checkpoint`; `0`, the default, saves once at the end.
 
 These four flags control the command invocation rather than the clustering
 payload and are passed on the command line: `--help`, `--version`, `--config`

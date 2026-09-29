@@ -5,9 +5,10 @@
 Demonstrates: save_checkpoint(), load_checkpoint() for long-running
 computations that may need to survive crashes or interruptions.
 
-Checkpoint format:
-  - distances.csv: the NxN matrix (NaN for uncomputed entries)
-  - metadata.txt:  key=value metadata (n, band, pairs_computed, timestamp)
+Checkpoint format: one file, <dir>/<name>.dtwm -- a 48-byte header (magic,
+version, N, SHA-256 of the data and distance settings) and the packed lower
+triangle of doubles, NaN for uncomputed entries. A memory-mapped matrix
+(Problem.use_mmap_distance_matrix) uses the same file.
 @author Volkan Kumtepeli
 """
 
@@ -45,7 +46,7 @@ for fname in os.listdir(ckpt_dir):
 print()
 
 # --- 3. Resume from checkpoint in a new Problem ---
-prob2 = dtwcpp.Problem("resumed")
+prob2 = dtwcpp.Problem("checkpoint_demo")  # the checkpoint is <dir>/<name>.dtwm
 prob2.set_data(series, names)  # must set data first (to know matrix size)
 prob2.band = -1
 
@@ -65,7 +66,7 @@ if loaded:
                 break
     print(f"All distances match original: {match}")
 else:
-    print("Checkpoint not found or incompatible.")
+    print("No checkpoint file for this name.")
 
 print()
 

@@ -904,11 +904,6 @@ void Problem::validate_checkpoint_settings() const
     throw InvalidInput(
       "Problem::fill_distance_matrix: checkpoint.enabled requires a non-empty "
       "checkpoint.directory.");
-  if (distMat.is_mapped())
-    throw InvalidInput(
-      "Problem::fill_distance_matrix: automatic checkpointing requires dense "
-      "distance storage. Mapped storage is already durable on disk; the dense "
-      "checkpoint format is for heap matrices.");
 }
 
 void Problem::validate_fill_request(std::string_view where) const

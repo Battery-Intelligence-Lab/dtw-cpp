@@ -1280,14 +1280,13 @@ NB_MODULE(_dtwcpp_core, m) {
             "Checkpoint directory. Empty with enabled raises InvalidInput.")
     .def_rw("save_interval", &dtwc::CheckpointOptions::save_interval,
             "Completed matrix ROWS between automatic saves (>= 1). The fill\n"
-            "runs consecutive row blocks of this size and publishes one\n"
-            "generation after each block, the last included, so a completed\n"
-            "fill leaves ceil(N / save_interval) generations. A value below 1\n"
-            "with enabled raises InvalidInput.")
+            "runs consecutive row blocks of this size and saves after each\n"
+            "block, the last included, so a completed fill leaves a complete\n"
+            "checkpoint. A value below 1 with enabled raises InvalidInput.")
     .def_rw("enabled", &dtwc::CheckpointOptions::enabled,
-            "Enable automatic mid-fill checkpointing. Requires dense distance\n"
-            "storage (mmap storage raises InvalidInput) and a non-empty\n"
-            "directory; both are checked before any distance is computed.")
+            "Enable automatic mid-fill checkpointing to <directory>/<name>.dtwm.\n"
+            "A matrix mapped to that file is flushed in place. An empty\n"
+            "directory raises InvalidInput before any distance is computed.")
     .def("__repr__", [](const dtwc::CheckpointOptions &o) {
       return "CheckpointOptions(dir='" + o.directory
              + "', interval=" + std::to_string(o.save_interval)
@@ -1297,13 +1296,13 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("save_checkpoint", [](const dtwc::Problem &prob,
                               const std::string &path,
                               dtwc::core::MetricType metric) {
-        // N^2 CSV write; `prob` is const here and the writer only reads it.
+        // An N^2 write; `prob` is const here and the writer only reads it.
         nb::gil_scoped_release release;
         dtwc::save_checkpoint(prob, path, metric);
       }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
-        "Save distance matrix checkpoint to directory.\n\n"
-        "Creates distances.csv and metadata.txt in the given directory.\n"
-        "The directory is created if it does not exist.\n\n"
+        "Save the distance matrix to <path>/<name>.dtwm ('distances' for an\n"
+        "unnamed Problem), replacing any previous checkpoint there. The\n"
+        "directory is created if it does not exist; IOError if it cannot be.\n\n"
         "`metric` is the pointwise metric the stored distances were computed\n"
         "with. It is part of the identity fingerprint, so a SquaredL2 matrix is\n"
         "no longer accepted by a later L1 load. Mirrors the CLI's --metric and\n"
@@ -1315,13 +1314,14 @@ NB_MODULE(_dtwcpp_core, m) {
         nb::gil_scoped_release release;
         return dtwc::load_checkpoint(prob, path, metric);
       }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
-        "Load distance matrix checkpoint from directory.\n\n"
-        "Returns True if checkpoint was loaded successfully, False otherwise.\n"
-        "Validates that matrix dimensions match the Problem's data size.\n"
-        "Sets distance matrix filled flag if all pairs are computed.\n\n"
+        "Load <path>/<name>.dtwm into the Problem's distance matrix.\n\n"
+        "Returns True when loaded, False only when there is no such file.\n"
+        "Raises InvalidInput for a checkpoint of other series or other\n"
+        "distance settings, and IOError for a file that is not a whole .dtwm\n"
+        "file; neither changes the Problem.\n\n"
         "`metric` is the pointwise metric THIS run computes with: a checkpoint\n"
-        "written under a different metric no longer matches the identity\n"
-        "fingerprint and is rejected. Mirrors the CLI's --metric; defaults to\n"
+        "written under a different metric does not match the identity\n"
+        "fingerprint (InvalidInput). Mirrors the CLI's --metric; defaults to\n"
         "L1 for backward compatibility.\n\n"
         "MUTATES `prob`: do not run it concurrently with any other method on\n"
         "the same Problem (see the Problem class docstring).");

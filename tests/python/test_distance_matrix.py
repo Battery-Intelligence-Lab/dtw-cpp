@@ -255,46 +255,38 @@ class TestCheckpointMetricFingerprint:
     """Audit 2026-09-02, item 3: the A5 metric fingerprint did not reach
     Python, so a SquaredL2 checkpoint was still accepted by a later L1 run."""
 
-    def _filled_problem(self, name):
-        p = dtwcpp.Problem(name)
-        p.set_data(
-            [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0]],
-            ["a", "b", "c"],
-        )
-        p.fill_distance_matrix()
+    SERIES = [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0]]
+
+    def _problem(self, filled=False):
+        # One name: the checkpoint is <directory>/<name>.dtwm.
+        p = dtwcpp.Problem("ckpt")
+        p.set_data(self.SERIES, ["a", "b", "c"])
+        if filled:
+            p.fill_distance_matrix()
         return p
 
     def test_squared_l2_checkpoint_is_rejected_by_an_l1_load(self, tmp_path):
         directory = str(tmp_path / "ckpt_sq")
-        dtwcpp.save_checkpoint(
-            self._filled_problem("ckpt_src"), directory, dtwcpp.MetricType.SquaredL2
-        )
+        dtwcpp.save_checkpoint(self._problem(filled=True), directory, dtwcpp.MetricType.SquaredL2)
 
-        # Default (L1) load must refuse the SquaredL2 fingerprint.
-        target = dtwcpp.Problem("ckpt_dst")
-        target.set_data(
-            [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0]],
-            ["a", "b", "c"],
-        )
-        assert dtwcpp.load_checkpoint(target, directory) is False
+        # Default (L1) load must refuse the SquaredL2 fingerprint, loudly.
+        target = self._problem()
+        with pytest.raises(dtwcpp.InvalidInput, match="fingerprint mismatch"):
+            dtwcpp.load_checkpoint(target, directory)
         assert not target.is_distance_matrix_filled()
 
         # The matching metric still loads, so the rejection is the fingerprint
         # and not a broken write.
-        assert (
-            dtwcpp.load_checkpoint(target, directory, dtwcpp.MetricType.SquaredL2)
-            is True
-        )
+        assert dtwcpp.load_checkpoint(target, directory, dtwcpp.MetricType.SquaredL2) is True
 
     def test_l1_checkpoint_round_trips_on_the_default_metric(self, tmp_path):
         directory = str(tmp_path / "ckpt_l1")
-        source = self._filled_problem("ckpt_l1_src")
+        source = self._problem(filled=True)
         dtwcpp.save_checkpoint(source, directory)
 
-        target = dtwcpp.Problem("ckpt_l1_dst")
-        target.set_data(
-            [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0]],
-            ["a", "b", "c"],
-        )
+        target = self._problem()
         assert dtwcpp.load_checkpoint(target, directory) is True
-        np.testing.assert_allclose(target.distance_matrix(), source.distance_matrix())
+        np.testing.assert_array_equal(target.distance_matrix(), source.distance_matrix())
+
+    def test_an_absent_checkpoint_is_false(self, tmp_path):
+        assert dtwcpp.load_checkpoint(self._problem(), str(tmp_path / "nothing")) is False

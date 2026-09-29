@@ -7,7 +7,8 @@
 #SBATCH --output=logs/checkpoint_test_%j.out
 #SBATCH --error=logs/checkpoint_test_%j.err
 #
-# DTWC++ checkpoint test — a clustering run saves its distance checkpoint
+# DTWC++ checkpoint test — a clustering run saves its distance checkpoint,
+# <ckpt>/coffee.dtwm, and a second run resumes from it
 #
 # Usage: sbatch scripts/slurm/jobs/checkpoint_test.slurm
 #        Expects build-htc-cpu/ to exist (see scripts/slurm/build-arc.sh htc-cpu)
@@ -113,15 +114,38 @@ for artifact in coffee_labels.csv coffee_medoids.csv; do
         exit 1
     fi
 done
-if [[ -z "$(ls -A "${CKPT_DIR}")" ]]; then
-    echo "ERROR: The run saved no distance checkpoint in ${CKPT_DIR}." >&2
+if [[ ! -s "${CKPT_DIR}/coffee.dtwm" ]]; then
+    echo "ERROR: The run saved no distance checkpoint ${CKPT_DIR}/coffee.dtwm." >&2
+    exit 1
+fi
+
+# ── Run 2: the same run resumes from the checkpoint ─────────────────────
+RUN2_LOG="${RESULTS_DIR}/checkpoint_run2.log"
+echo ""
+echo "── Run 2: Resume from the checkpoint ───────────────────────────"
+DTWC_EXIT=0
+"${DTWC_BIN}" \
+    --input "${WORKDIR}/Coffee/Coffee_TRAIN.tsv" \
+    -k2 \
+    --skip-cols 1 \
+    --dtype float64 \
+    --method pam \
+    --verbose \
+    --name coffee \
+    --checkpoint "${CKPT_DIR}" \
+    --output "${RESULTS_DIR}/ckpt_run2" \
+    >"${RUN2_LOG}" 2>&1 \
+    || DTWC_EXIT=$?
+cat "${RUN2_LOG}"
+if [[ "${DTWC_EXIT}" -ne 0 ]] || ! grep -q "Resumed from checkpoint" "${RUN2_LOG}"; then
+    echo "ERROR: The second run did not resume from ${CKPT_DIR} (exit ${DTWC_EXIT})." >&2
     exit 1
 fi
 
 CKPT_RESULT="PASS"
 cat > "${RESULTS_DIR}/checkpoint_result.json" <<JSONEOF
 {
-    "test": "distance_checkpoint_save",
+    "test": "distance_checkpoint_save_and_resume",
     "job_id": "${SLURM_JOB_ID}",
     "result": "${CKPT_RESULT}",
     "timestamp": "$(date -Iseconds)"
