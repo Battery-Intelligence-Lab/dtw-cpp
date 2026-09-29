@@ -181,6 +181,7 @@ def main() -> None:
                 "--method", "pam",
                 "--max-iter", "3",
                 "--device", "cpu",
+                "--mmap-threshold", "0",  # the distance matrix is mapped (llfio)
             ],
             cwd=scratch,
             text=True,
@@ -193,7 +194,13 @@ def main() -> None:
                 f"CLI returned success but did not create {labels}\n"
                 f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
             )
-        print(f"release archive smoke OK: {archive.name} -> {labels}")
+        matrix = output / "archive_smoke.dtwm"  # 4 series: 48-byte header, 10 doubles
+        if not matrix.exists() or matrix.stat().st_size != 48 + 10 * 8:
+            raise RuntimeError(
+                f"the archive's CLI did not map its distance matrix to {matrix}\n"
+                f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+            )
+        print(f"release archive smoke OK: {archive.name} -> {labels}, {matrix.name}")
 
 
 if __name__ == "__main__":

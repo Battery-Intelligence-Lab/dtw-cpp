@@ -92,7 +92,8 @@ much more than a save.
 ## Memory-mapped matrix
 
 `prob.use_mmap_distance_matrix(path)` keeps the matrix in a `.dtwm` file instead
-of RAM (a build with `DTWC_ENABLE_LLFIO=ON`; otherwise `IOError`). The fill
+of RAM (the wheels and release archives have it; a source build needs
+`DTWC_ENABLE_LLFIO=ON`, the default, and raises `IOError` without it). The fill
 writes into the file through the page cache, so the file is a checkpoint at every
 moment: a process that dies keeps every distance written, and reopening the file
 with the same data and settings resumes. A `Problem` mapped to

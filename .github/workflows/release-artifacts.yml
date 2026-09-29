@@ -53,7 +53,7 @@ jobs:
           cmake -S . -B build/release
           -DDTWC_ENABLE_GUROBI=OFF
           -DDTWC_ENABLE_HIGHS=ON
-          -DDTWC_ENABLE_LLFIO=OFF
+          -DDTWC_ENABLE_LLFIO=ON
           -DDTWC_BUILD_TESTING=OFF
           -DDTWC_ENABLE_NATIVE_ARCH=OFF
           -DCMAKE_BUILD_TYPE=Release

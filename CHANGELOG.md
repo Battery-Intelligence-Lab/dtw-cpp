@@ -13,8 +13,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   (196 lines out, 69 in). The superbuild compiled quickcpplib from `master` and outcome from `develop`, whatever they
   were at configure time; both are now pinned, with wg14_signals, span-lite, byte-lite and (Windows) ntkernel-error-category
   at the commits llfio and quickcpplib record. The preprocessed `<llfio/v2.0/llfio.hpp>` is identical to the superbuild's.
-  A fresh Windows configure took 44 s instead of 198 s (warm download cache). `DTWC_ENABLE_LLFIO` is unchanged and
-  released artefacts still set it `OFF`.
+  A fresh Windows configure took 44 s instead of 198 s (warm download cache). The Python wheels and the release CLI
+  archives are built with `DTWC_ENABLE_LLFIO=ON`, so they map the distance matrix (`use_mmap_distance_matrix`,
+  `--mmap-threshold`); they were built without it.
 - **Changed (mmap, Windows):** a new mmap distance-matrix cache is no longer a sparse file (llfio's default on NTFS);
   random reads from a filled sparse cache measured 1.9x slower.
 - **Changed (checkpoint, mmap):** a distance checkpoint is one file, `<dir>/<name>.dtwm`, the file a memory-mapped matrix
