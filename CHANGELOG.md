@@ -17,6 +17,27 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   missing-data strategy) between a series and 8 others of its length at once (16 in `float32`), one pair per SIMD lane; every
   distance is bit for bit what the one-pair kernel returns. On an Intel Core Ultra 9 285 (24 threads) the unbanded fill of
   ECG5000's 4,500 series drops from 66 s to 3.9 s, and a band-50 fill of 50 series of length 1,000 runs 5.1× faster.
+- **Changed (build):** llfio is header-only, from SHA-256-pinned GitHub archives, behind one `llfio_hl` target:
+  `cmake/Dependencies.cmake` loses the quickcpplib bootstrap, its patched nested superbuild and `add_subdirectory(llfio)`
+  (196 lines out, 69 in). The superbuild compiled quickcpplib from `master` and outcome from `develop`, whatever they
+  were at configure time; both are now pinned, with wg14_signals, span-lite, byte-lite and (Windows) ntkernel-error-category
+  at the commits llfio and quickcpplib record. The preprocessed `<llfio/v2.0/llfio.hpp>` is identical to the superbuild's.
+  A fresh Windows configure took 44 s instead of 198 s (warm download cache). The Python wheels and the release CLI
+  archives are built with `DTWC_ENABLE_LLFIO=ON`, so they map the distance matrix (`use_mmap_distance_matrix`,
+  `--mmap-threshold`); they were built without it.
+- **Changed (mmap, Windows):** a new mmap distance-matrix cache is no longer a sparse file (llfio's default on NTFS);
+  random reads from a filled sparse cache measured 1.9x slower.
+- **Changed (checkpoint, mmap):** a distance checkpoint is one file, `<dir>/<name>.dtwm`, the file a memory-mapped matrix
+  lives in (a 48-byte header of magic, version 4, N and SHA-256 fingerprint, then the packed doubles); a checkpoint or cache
+  written before this change is not readable (2.0-born, never released). `load_checkpoint` returns `false` only when the
+  file is absent and raises `InvalidInput` for other data or settings and `IOError` for a damaged file, where it returned
+  `false` and the CLI recomputed over the checkpoint.
+- **Fixed (C++ compatibility):** `Problem::cluster_by_kMedoidsPAM()`, v1.0.0's name for the Lloyd k-medoids run, compiles
+  again as a deprecated forwarder to `cluster_by_kmedoids_lloyd()` (the 2.0 spelling `cluster_by_kMedoidsLloyd()` is gone), and
+  `Problem::maxIter` and `N_repetition` are plain public fields again, as in v1.0.0, with no deprecation warning.
+- **Removed (build):** the `dtwc_main` demo executable (`dtwc/main.cpp`), which ran a MIP on `data/dummy` relative to the
+  working directory; `examples/cpp/MIP_single.cpp` (`-DDTWC_BUILD_EXAMPLES=ON`) runs the same MIP and takes the data folder
+  as an argument.
 - **Fixed (docs):** the `/cluster` and `/help` commands showed `--k` and `--output-dir`, and `/troubleshoot` showed
   `--repetitions` and `--prune`, none of which `dtwc_cl` has; they now show `-k`, `--output` and `--n-init`, and the pruning tip
   is gone. CI now fails when a page in `docs/content`, `README.md` or `.claude/commands` shows a `dtwc_cl` flag that the live
@@ -110,9 +131,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   process-wide device; Tier-1 `cluster()` now calls `set_device`.
 - **Breaking (GPU):** a CUDA or Metal fill with a DTW variant other than standard, a missing-data strategy, multivariate data,
   Float32 series or view / mmap series raises `DeviceError` naming the setting; before, the GPU silently computed standard
-  univariate DTW. On Metal, precision FP64 (`MetalPrecision::FP64`, or `cuda_settings.precision = 2`) and a GPU index other
-  than 0 raise too, instead of silently running FP32 on the default GPU. A squared-L2 mapped cache now fills on the GPU instead
-  of being refused.
+  univariate DTW. On Metal, precision FP64 (`MetalPrecision::FP64`, or `cuda_settings.precision = GpuPrecision::FP64`)
+  and a GPU index other than 0 raise too, instead of silently running FP32 on the default GPU. A squared-L2 mapped cache now
+  fills on the GPU instead of being refused.
 - **Breaking (band):** a band narrower than the length difference between the longest and shortest series raises
   `InvalidInput`, naming both series and the smallest feasible band, before any pair is computed; before, those pairs were
   stored as 1.8e308 and summed into the clustering cost. The check runs on every route that computes distances —

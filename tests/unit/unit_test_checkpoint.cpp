@@ -1,578 +1,300 @@
 /**
  * @file unit_test_checkpoint.cpp
- * @brief Tests for checkpoint save/load functionality.
+ * @brief save_checkpoint / load_checkpoint: one `.dtwm` file and its typed outcomes.
  *
- * Verifies:
- *  - Round-trip: save then load produces identical distance matrix
- *  - Partial checkpoint: only some pairs computed
- *  - V2 manifest metadata is published correctly
- *  - Missing directory is created automatically
- *  - Dimension mismatch is detected
- *  - Missing checkpoint returns false
- *  - Fully computed matrix sets filled flag
+ * @details The table is the contract: no file is `false`; a file for other
+ * series or other distance settings is InvalidInput; a file that is not a whole
+ * `.dtwm` file is IOError; a round trip is bit-exact. A checkpoint has the layout
+ * of a mapped matrix, so with llfio every row also runs through
+ * use_mmap_distance_matrix, which must answer the same.
  *
  * @author Volkan Kumtepeli
- * @date 29 Mar 2026
+ * @date 29 Sep 2026
  */
 
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include "../test_util.hpp"
-
-#include <cmath>
+#include <bit>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <iterator>
 #include <string>
 #include <vector>
 
-#ifndef DTWC_TEST_DATA_DIR
-#define DTWC_TEST_DATA_DIR "./data"
-#endif
-
-using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 namespace fs = std::filesystem;
 
 namespace {
 
-/// Build a Problem from the dummy dataset with N series.
-Problem make_problem(int N_data)
+/// n short integer-valued series, all of one length.
+Problem make_problem(const std::string &name, std::size_t n = 5)
 {
-  dtwc::DataLoader dl{ fs::path{ DTWC_TEST_DATA_DIR } / "dummy", N_data };
-  dl.start_column(1).start_row(1);
-  dtwc::Problem prob{ "checkpoint_test", dl };
+  std::vector<std::vector<double>> series;
+  std::vector<std::string> names;
+  for (std::size_t i = 0; i < n; ++i) {
+    series.push_back({ double(i), double(i * i % 7), double(3 * i % 5), 1.0, double(i % 2) });
+    names.push_back("s" + std::to_string(i));
+  }
+  Problem prob(name);
+  prob.set_data(Data(std::move(series), std::move(names)));
   return prob;
 }
 
-/// Helper to create a unique temporary directory for each test.
-std::string make_temp_dir(const std::string &suffix)
+/// An empty directory under the test temp directory, removed on scope exit.
+struct Scratch
 {
-  auto dir = fs::temp_directory_path() / ("dtwc_test_ckpt_" + suffix);
-  // Clean up if left over from previous test run
-  if (fs::exists(dir))
-    fs::remove_all(dir);
-  return dir.string();
-}
-
-/// Clean up a temporary directory.
-void cleanup_dir(const std::string &dir)
-{
-  if (fs::exists(dir))
-    fs::remove_all(dir);
-}
-
-/// Resolve the immutable payload selected by the strict CURRENT file.
-fs::path active_checkpoint_payload(const std::string &dir)
-{
-  const fs::path root(dir);
-  std::ifstream current(root / "CURRENT", std::ios::binary);
-  REQUIRE(current.good());
-  std::string generation;
-  REQUIRE(static_cast<bool>(std::getline(current, generation)));
-  REQUIRE(generation.size() == 64);
-  REQUIRE(current.peek() == std::char_traits<char>::eof());
-  return root / "generations" / generation;
-}
-
-
-/// pairs_computed recorded in the manifest of the active generation.
-std::size_t manifest_pairs_computed(const std::string &dir)
-{
-  std::ifstream manifest(active_checkpoint_payload(dir) / "metadata.txt",
-                         std::ios::binary);
-  REQUIRE(manifest.good());
-  const std::string key = "pairs_computed=";
-  std::string line;
-  while (std::getline(manifest, line))
-    if (line.rfind(key, 0) == 0)
-      return static_cast<std::size_t>(std::stoull(line.substr(key.size())));
-  FAIL("checkpoint manifest has no pairs_computed key");
-  return 0;
-}
-
-
-/// Number of immutable generations published under a checkpoint root.
-std::size_t count_generations(const std::string &dir)
-{
-  const fs::path generations = fs::path(dir) / "generations";
-  if (!fs::exists(generations)) return 0;
-  std::size_t total = 0;
-  for (const auto &entry : fs::directory_iterator(generations))
-    if (entry.is_directory()) ++total;
-  return total;
-}
-
-/// Bit-exact comparison of two resident dense distance matrices.
-void require_identical_matrices(const Problem &lhs, const Problem &rhs)
-{
-  const auto &a = lhs.dense_distance_matrix();
-  const auto &b = rhs.dense_distance_matrix();
-  REQUIRE(a.size() == b.size());
-  REQUIRE(a.packed_count() == b.packed_count());
-  for (std::size_t k = 0; k < a.packed_count(); ++k)
-    REQUIRE(a.raw()[k] == b.raw()[k]);
-}
-
-} // anonymous namespace
-
-
-// ---------------------------------------------------------------------------
-// 1. Round-trip: save then load produces identical distance matrix
-// ---------------------------------------------------------------------------
-TEST_CASE("Checkpoint round-trip preserves full distance matrix", "[checkpoint]")
-{
-  constexpr int N = 8;
-  auto prob = make_problem(N);
-  prob.fill_distance_matrix();
-  REQUIRE(prob.is_distance_matrix_filled());
-
-  auto ckpt_dir = make_temp_dir("roundtrip");
-
-  // Save
-  REQUIRE_NOTHROW(save_checkpoint(prob, ckpt_dir));
-
-  // Verify files exist
-  const fs::path payload = active_checkpoint_payload(ckpt_dir);
-  REQUIRE(fs::exists(payload / "distances.csv"));
-  REQUIRE(fs::exists(payload / "metadata.txt"));
-
-  // Load into a fresh problem with same data
-  auto prob2 = make_problem(N);
-  REQUIRE_FALSE(prob2.is_distance_matrix_filled());
-
-  bool loaded = load_checkpoint(prob2, ckpt_dir);
-  REQUIRE(loaded);
-  REQUIRE(prob2.is_distance_matrix_filled());
-
-  // Compare all entries
-  for (int i = 0; i < N; ++i) {
-    for (int j = 0; j < N; ++j) {
-      REQUIRE_THAT(prob2.dist_by_ind(i, j), WithinAbs(prob.dist_by_ind(i, j), 1e-10));
-    }
-  }
-
-  cleanup_dir(ckpt_dir);
-}
-
-
-// ---------------------------------------------------------------------------
-// 2. Partial checkpoint: only some pairs computed
-// ---------------------------------------------------------------------------
-TEST_CASE("Checkpoint saves and loads partial distance matrix", "[checkpoint]")
-{
-  constexpr int N = 6;
-  auto prob = make_problem(N);
-
-  // Compute only a few pairs (not all)
-  prob.dist_by_ind(0, 1);
-  prob.dist_by_ind(0, 2);
-  prob.dist_by_ind(2, 3);
-  REQUIRE_FALSE(prob.is_distance_matrix_filled());
-
-  auto ckpt_dir = make_temp_dir("partial");
-
-  save_checkpoint(prob, ckpt_dir);
-
-  // Load into fresh problem
-  auto prob2 = make_problem(N);
-  bool loaded = load_checkpoint(prob2, ckpt_dir);
-  REQUIRE(loaded);
-  REQUIRE_FALSE(prob2.is_distance_matrix_filled()); // Not all pairs computed
-
-  // Verify the computed pairs match
-  REQUIRE_THAT(prob2.dist_by_ind(0, 1), WithinAbs(prob.dist_by_ind(0, 1), 1e-10));
-  REQUIRE_THAT(prob2.dist_by_ind(0, 2), WithinAbs(prob.dist_by_ind(0, 2), 1e-10));
-  REQUIRE_THAT(prob2.dist_by_ind(2, 3), WithinAbs(prob.dist_by_ind(2, 3), 1e-10));
-  // Symmetry preserved
-  REQUIRE_THAT(prob2.dist_by_ind(1, 0), WithinAbs(prob.dist_by_ind(1, 0), 1e-10));
-
-  // Uncomputed pair should still be NaN in the raw matrix
-  REQUIRE_FALSE(prob2.dense_distance_matrix().is_computed(4, 5));
-
-  cleanup_dir(ckpt_dir);
-}
-
-
-// ---------------------------------------------------------------------------
-// 3. Metadata round-trips correctly
-// ---------------------------------------------------------------------------
-TEST_CASE("Checkpoint metadata file contains expected fields", "[checkpoint]")
-{
-  constexpr int N = 5;
-  auto prob = make_problem(N);
-  prob.fill_distance_matrix();
-
-  auto ckpt_dir = make_temp_dir("metadata");
-  save_checkpoint(prob, ckpt_dir);
-
-  // Read the active v2 manifest and verify its canonical fields.
-  std::string content;
+  fs::path dir;
+  explicit Scratch(const std::string &name) : dir(fs::temp_directory_path() / ("dtwc_test_ckpt_" + name))
   {
-    std::ifstream meta_file(active_checkpoint_payload(ckpt_dir) / "metadata.txt");
-    REQUIRE(meta_file.good());
-    content.assign((std::istreambuf_iterator<char>(meta_file)),
-                    std::istreambuf_iterator<char>());
-  } // meta_file closed here
-
-  // Check identity/integrity fields as well as the logical payload shape.
-  REQUIRE(content.find("format=dtwc-dense-checkpoint\n") != std::string::npos);
-  REQUIRE(content.find("version=2\n") != std::string::npos);
-  REQUIRE(content.find("n=5") != std::string::npos);
-  REQUIRE(content.find("pairs_computed=") != std::string::npos);
-  REQUIRE(content.find("timestamp=") != std::string::npos);
-  REQUIRE(content.find("identity_sha256=") != std::string::npos);
-  REQUIRE(content.find("payload_sha256=") != std::string::npos);
-
-  // pairs_computed = N*(N+1)/2 = 15 (packed triangular, all computed)
-  REQUIRE(content.find("pairs_computed=15") != std::string::npos);
-
-  cleanup_dir(ckpt_dir);
-}
-
-
-// ---------------------------------------------------------------------------
-// 4. Missing checkpoint directory creates it
-// ---------------------------------------------------------------------------
-TEST_CASE("save_checkpoint creates directory if it does not exist", "[checkpoint]")
-{
-  constexpr int N = 3;
-  auto prob = make_problem(N);
-  prob.fill_distance_matrix();
-
-  auto ckpt_dir = make_temp_dir("create_dir");
-  // Ensure it does not exist
-  if (fs::exists(ckpt_dir))
-    fs::remove_all(ckpt_dir);
-  REQUIRE_FALSE(fs::exists(ckpt_dir));
-
-  REQUIRE_NOTHROW(save_checkpoint(prob, ckpt_dir));
-  REQUIRE(fs::exists(ckpt_dir));
-  const fs::path payload = active_checkpoint_payload(ckpt_dir);
-  REQUIRE(fs::exists(payload / "distances.csv"));
-  REQUIRE(fs::exists(payload / "metadata.txt"));
-
-  cleanup_dir(ckpt_dir);
-}
-
-
-// ---------------------------------------------------------------------------
-// 5. Dimension mismatch is detected
-// ---------------------------------------------------------------------------
-TEST_CASE("load_checkpoint rejects dimension mismatch", "[checkpoint]")
-{
-  constexpr int N = 5;
-  auto prob = make_problem(N);
-  prob.fill_distance_matrix();
-
-  auto ckpt_dir = make_temp_dir("mismatch");
-  save_checkpoint(prob, ckpt_dir);
-
-  // Load into a problem with different N
-  auto prob2 = make_problem(3); // 3 != 5
-  bool loaded = load_checkpoint(prob2, ckpt_dir);
-  REQUIRE_FALSE(loaded);
-
-  cleanup_dir(ckpt_dir);
-}
-
-
-// ---------------------------------------------------------------------------
-// 6. Missing checkpoint returns false
-// ---------------------------------------------------------------------------
-TEST_CASE("load_checkpoint returns false for nonexistent path", "[checkpoint]")
-{
-  constexpr int N = 3;
-  auto prob = make_problem(N);
-
-  bool loaded = load_checkpoint(prob, "/nonexistent/path/that/does/not/exist");
-  REQUIRE_FALSE(loaded);
-}
-
-
-// ---------------------------------------------------------------------------
-// 7. Overwriting an existing checkpoint works
-// ---------------------------------------------------------------------------
-TEST_CASE("save_checkpoint overwrites existing checkpoint", "[checkpoint]")
-{
-  constexpr int N = 5;
-  auto prob = make_problem(N);
-
-  auto ckpt_dir = make_temp_dir("overwrite");
-
-  // First save with partial data
-  prob.dist_by_ind(0, 1);
-  save_checkpoint(prob, ckpt_dir);
-
-  // Now fill fully and save again
-  prob.fill_distance_matrix();
-  save_checkpoint(prob, ckpt_dir);
-
-  // The superseded partial generation is gone: one directory, one generation.
-  REQUIRE(count_generations(ckpt_dir) == 1);
-  REQUIRE(manifest_pairs_computed(ckpt_dir) == N * (N + 1) / 2);
-
-  // Load and verify it's the full matrix
-  auto prob2 = make_problem(N);
-  bool loaded = load_checkpoint(prob2, ckpt_dir);
-  REQUIRE(loaded);
-  REQUIRE(prob2.is_distance_matrix_filled());
-
-  cleanup_dir(ckpt_dir);
-}
-
-
-// ---------------------------------------------------------------------------
-// 8. DenseDistanceMatrix count_computed and all_computed
-// ---------------------------------------------------------------------------
-TEST_CASE("DenseDistanceMatrix count_computed and all_computed", "[checkpoint][distance_matrix]")
-{
-  core::DenseDistanceMatrix dm(4);
-
-  // Initially all NaN
-  REQUIRE(dm.count_computed() == 0);
-  REQUIRE_FALSE(dm.all_computed());
-
-  // Set a few entries (packed triangular: each set() marks 1 unique entry)
-  dm.set(0, 0, 0.0);
-  dm.set(1, 1, 0.0);
-  dm.set(0, 1, 1.5);  // maps to tri(1,0) — single entry
-
-  // 3 unique packed entries: (0,0), (1,1), tri(1,0)
-  REQUIRE(dm.count_computed() == 3);
-  REQUIRE_FALSE(dm.all_computed());
-
-  // Fill the rest — N=4 has N*(N+1)/2 = 10 packed entries
-  dm.set(2, 2, 0.0);
-  dm.set(3, 3, 0.0);
-  dm.set(0, 2, 2.0);
-  dm.set(0, 3, 3.0);
-  dm.set(1, 2, 4.0);
-  dm.set(1, 3, 5.0);
-  dm.set(2, 3, 6.0);
-
-  REQUIRE(dm.count_computed() == 10); // N*(N+1)/2
-  REQUIRE(dm.all_computed());
-}
-
-
-// ---------------------------------------------------------------------------
-// 9. Automatic mid-fill checkpointing: one generation per row block
-// ---------------------------------------------------------------------------
-TEST_CASE("Automatic checkpointing retains exactly one generation",
-          "[checkpoint][fill]")
-{
-  constexpr int N = 5;
-  auto reference = make_problem(N);
-  reference.fill_distance_matrix();
-
-  auto ckpt_dir = make_temp_dir("auto_interval1");
-  auto prob = make_problem(N);
-  prob.checkpoint.enabled = true;
-  prob.checkpoint.save_interval = 1;
-  prob.checkpoint.directory = ckpt_dir;
-  REQUIRE_NOTHROW(prob.fill_distance_matrix());
-  REQUIRE(prob.is_distance_matrix_filled());
-
-  // Five blocks each publish a generation, and each publication supersedes the
-  // previous one, so the directory holds exactly one: the complete matrix.
-  REQUIRE(count_generations(ckpt_dir) == 1);
-  REQUIRE(manifest_pairs_computed(ckpt_dir) == N * (N + 1) / 2);
-
-  auto restored = make_problem(N);
-  REQUIRE(load_checkpoint(restored, ckpt_dir));
-  REQUIRE(restored.is_distance_matrix_filled());
-  require_identical_matrices(restored, reference);
-
-  cleanup_dir(ckpt_dir);
-}
-
-
-// ---------------------------------------------------------------------------
-// 10. Crash-resume: a resumed fill recomputes only the missing cells
-// ---------------------------------------------------------------------------
-TEST_CASE("Resumed automatic fill only computes uncomputed cells",
-          "[checkpoint][fill]")
-{
-  constexpr int N = 6;
-  auto reference = make_problem(N);
-  reference.fill_distance_matrix();
-
-  // Stand-in for a crash after the first two rows: rows 0 and 1 are marked
-  // computed with sentinel values no DTW kernel can produce.
-  auto crashed = make_problem(N);
-  {
-    auto &matrix = crashed.dense_distance_matrix();
-    matrix.resize(N); // allocation is deferred until the first fill
-    for (int i = 0; i < 2; ++i)
-      for (int j = i + 1; j < N; ++j)
-        matrix.set(i, j, 900.0 + 10.0 * i + j);
+    fs::remove_all(dir);
   }
-  auto partial_dir = make_temp_dir("resume_partial");
-  save_checkpoint(crashed, partial_dir);
-  // Mid-fill evidence survives pruning: the surviving generation is the partial
-  // one, and its manifest counts exactly the cells computed so far.
-  REQUIRE(count_generations(partial_dir) == 1);
-  REQUIRE(manifest_pairs_computed(partial_dir) == 9);
+  ~Scratch()
+  {
+    std::error_code ignored;
+    fs::remove_all(dir, ignored);
+  }
+  std::string str() const { return dir.string(); }
+};
 
-  auto resumed = make_problem(N);
-  REQUIRE(load_checkpoint(resumed, partial_dir));
-  // 5 entries from row 0 plus 4 from row 1; the diagonal is still uncomputed.
-  REQUIRE(resumed.dense_distance_matrix().count_computed() == 9);
-
-  auto resume_dir = make_temp_dir("resume_fill");
-  resumed.checkpoint.enabled = true;
-  resumed.checkpoint.save_interval = 2;
-  resumed.checkpoint.directory = resume_dir;
-  resumed.fill_distance_matrix();
-
-  REQUIRE(resumed.is_distance_matrix_filled());
-  REQUIRE(resumed.dense_distance_matrix().count_computed() == N * (N + 1) / 2);
-  REQUIRE(count_generations(resume_dir) == 1);
-  REQUIRE(manifest_pairs_computed(resume_dir) == N * (N + 1) / 2);
-
-  // Poisoned cells survive untouched: the resumed fill did not recompute them.
-  for (int i = 0; i < 2; ++i)
-    for (int j = i + 1; j < N; ++j)
-      REQUIRE(resumed.dist_by_ind(i, j) == 900.0 + 10.0 * i + j);
-
-  // Every previously missing cell is the exact brute-force value.
-  for (int i = 2; i < N; ++i)
-    for (int j = i; j < N; ++j)
-      REQUIRE(resumed.dist_by_ind(i, j) == reference.dist_by_ind(i, j));
-
-  cleanup_dir(partial_dir);
-  cleanup_dir(resume_dir);
-}
-
-
-// ---------------------------------------------------------------------------
-// 11. Invalid automatic-checkpoint settings fail before any work
-// ---------------------------------------------------------------------------
-TEST_CASE("Automatic checkpointing rejects a non-positive save interval",
-          "[checkpoint][fill]")
+std::vector<std::uint64_t> packed_bits(const Problem &prob)
 {
-  auto ckpt_dir = make_temp_dir("auto_interval0");
-  auto prob = make_problem(4);
-  prob.checkpoint.enabled = true;
-  prob.checkpoint.save_interval = 0;
-  prob.checkpoint.directory = ckpt_dir;
-
-  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
-  REQUIRE_FALSE(prob.is_distance_matrix_filled());
-  REQUIRE_FALSE(fs::exists(ckpt_dir));
+  const auto &m = prob.distance_matrix();
+  std::vector<std::uint64_t> bits;
+  for (std::size_t k = 0; k < m.packed_count(); ++k) bits.push_back(std::bit_cast<std::uint64_t>(m.raw()[k]));
+  return bits;
 }
 
-
-// ---------------------------------------------------------------------------
-// 12. Disabled checkpointing writes nothing
-// ---------------------------------------------------------------------------
-TEST_CASE("Disabled checkpointing creates no checkpoint directory",
-          "[checkpoint][fill]")
+std::vector<char> read_bytes(const fs::path &path)
 {
-  auto ckpt_dir = make_temp_dir("auto_disabled");
-  auto prob = make_problem(5);
-  prob.checkpoint.directory = ckpt_dir;
-  REQUIRE_FALSE(prob.checkpoint.enabled); // default
-
-  prob.fill_distance_matrix();
-  REQUIRE(prob.is_distance_matrix_filled());
-  REQUIRE_FALSE(fs::exists(ckpt_dir));
+  std::ifstream in(path, std::ios::binary);
+  return { std::istreambuf_iterator<char>{ in }, std::istreambuf_iterator<char>{} };
 }
 
+void write_bytes(const fs::path &path, const std::vector<char> &bytes)
+{
+  std::ofstream(path, std::ios::binary | std::ios::trunc).write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+}
 
-// ---------------------------------------------------------------------------
-// 13. Mapped distance storage rejects automatic checkpointing
-// ---------------------------------------------------------------------------
+enum class Outcome { Loaded, Absent, InvalidInput, IOError };
+
+Outcome load_outcome(Problem &prob, const std::string &dir)
+{
+  try {
+    return load_checkpoint(prob, dir) ? Outcome::Loaded : Outcome::Absent;
+  } catch (const dtwc::InvalidInput &) {
+    return Outcome::InvalidInput;
+  } catch (const dtwc::IOError &) {
+    return Outcome::IOError;
+  }
+}
+
 #ifdef DTWC_HAS_MMAP
-TEST_CASE("Automatic checkpointing rejects mmap distance storage",
-          "[checkpoint][fill]")
+Outcome map_outcome(Problem &prob, const fs::path &file)
 {
-  auto scratch = make_temp_dir("auto_mmap");
-  fs::create_directories(scratch);
-  auto ckpt_dir = make_temp_dir("auto_mmap_ckpt");
-
-  auto prob = make_problem(5);
-  prob.use_mmap_distance_matrix(fs::path(scratch) / "distmat.dtwcache");
-  prob.checkpoint.enabled = true;
-  prob.checkpoint.save_interval = 2;
-  prob.checkpoint.directory = ckpt_dir;
-
-  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
-  REQUIRE_FALSE(fs::exists(ckpt_dir));
-
-  cleanup_dir(scratch);
+  try {
+    prob.use_mmap_distance_matrix(file);
+    return Outcome::Loaded;
+  } catch (const dtwc::InvalidInput &) {
+    return Outcome::InvalidInput;
+  } catch (const dtwc::IOError &) {
+    return Outcome::IOError;
+  }
 }
 #endif
 
+} // namespace
 
-// ---------------------------------------------------------------------------
-// 15. Automatic checkpointing rejects an empty directory before any work
-// ---------------------------------------------------------------------------
-TEST_CASE("Automatic checkpointing rejects an empty directory",
-          "[checkpoint][fill]")
+TEST_CASE("A checkpoint round trip is bit-exact, full and partial", "[checkpoint]")
 {
-  auto prob = make_problem(4);
-  prob.checkpoint.enabled = true;
-  prob.checkpoint.save_interval = 2;
-  prob.checkpoint.directory.clear();
+  Scratch scratch("round_trip");
+  auto full = make_problem("full");
+  full.fill_distance_matrix();
+  save_checkpoint(full, scratch.str());
+  REQUIRE(fs::file_size(scratch.dir / "full.dtwm") == 48 + 15 * sizeof(double));
 
-  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
-  REQUIRE_FALSE(prob.is_distance_matrix_filled());
-  REQUIRE(prob.dense_distance_matrix().count_computed() == 0);
+  auto partial = make_problem("partial");
+  partial.distance_matrix().resize(5);
+  partial.distance_matrix().set(3, 1, -0.0);
+  partial.distance_matrix().set(4, 4, 5e-324);
+  save_checkpoint(partial, scratch.str());
+
+  for (const Problem *source : { &full, &partial }) {
+    auto target = make_problem(source->name());
+    REQUIRE(load_checkpoint(target, scratch.str()));
+    REQUIRE_FALSE(target.distance_matrix().is_mapped());
+    REQUIRE(packed_bits(target) == packed_bits(*source)); // NaN = not computed, bit for bit
+#ifdef DTWC_HAS_MMAP
+    auto mapped = make_problem(source->name()); // the same file, mapped
+    mapped.use_mmap_distance_matrix(checkpoint_path(mapped, scratch.str()));
+    REQUIRE(packed_bits(mapped) == packed_bits(*source));
+#endif
+  }
+  REQUIRE(partial.distance_matrix().count_computed() == 2);
 }
 
-
-// ---------------------------------------------------------------------------
-// 16. A throwing automatic save keeps the cells the completed blocks computed
-// ---------------------------------------------------------------------------
-TEST_CASE("A failing automatic save preserves computed distances",
-          "[checkpoint][fill]")
+TEST_CASE("Loading a checkpoint: the table of typed outcomes", "[checkpoint][error]")
 {
-  constexpr int N = 6;
-  auto reference = make_problem(N);
+  struct Row
+  {
+    const char *what;
+    Outcome expected;
+    std::function<void(std::vector<char> &)> damage; // applied to the saved file
+    std::size_t reader_n = 5;
+    int reader_band = -1;
+  };
+  const std::vector<Row> rows{
+    { "other N", Outcome::InvalidInput, [](std::vector<char> &) {}, 4 },
+    { "other identity (band)", Outcome::InvalidInput, [](std::vector<char> &) {}, 5, 2 },
+    { "short", Outcome::IOError, [](std::vector<char> &b) { b.resize(20); } },
+    { "empty", Outcome::IOError, [](std::vector<char> &b) { b.clear(); } },
+    { "bad magic", Outcome::IOError, [](std::vector<char> &b) { b[0] = 'X'; } },
+    { "bad version", Outcome::IOError, [](std::vector<char> &b) { b[4] = 3; } },
+    { "wrong length (a double more)", Outcome::IOError, [](std::vector<char> &b) { b.resize(b.size() + 8); } },
+    { "wrong length (a byte less)", Outcome::IOError, [](std::vector<char> &b) { b.pop_back(); } },
+  };
+  Scratch scratch("table");
+  auto writer = make_problem("table");
+  writer.fill_distance_matrix();
+  save_checkpoint(writer, scratch.str());
+  const fs::path file = scratch.dir / "table.dtwm";
+  const auto saved = read_bytes(file);
+
+  {
+    auto reader = make_problem("absent");
+    REQUIRE(load_outcome(reader, scratch.str()) == Outcome::Absent);
+    REQUIRE(reader.distance_matrix().size() == 0);
+  }
+  for (const auto &row : rows) {
+    INFO(row.what);
+    auto bytes = saved;
+    row.damage(bytes);
+    write_bytes(file, bytes);
+    auto reader = make_problem("table", row.reader_n);
+    reader.set_band(row.reader_band);
+    CHECK(load_outcome(reader, scratch.str()) == row.expected);
+    CHECK(reader.distance_matrix().size() == 0); // nothing was installed
+#ifdef DTWC_HAS_MMAP
+    CHECK(map_outcome(reader, file) == row.expected);
+    CHECK_FALSE(reader.distance_matrix().is_mapped());
+#endif
+    CHECK(read_bytes(file) == bytes); // a rejected file is left as it is
+  }
+}
+
+TEST_CASE("save_checkpoint makes its directory, replaces its file and fails typed", "[checkpoint]")
+{
+  Scratch scratch("save");
+  const fs::path dir = scratch.dir / "a" / "b";
+  auto prob = make_problem("replace");
+  save_checkpoint(prob, dir.string()); // nothing computed yet: all NaN
+  prob.fill_distance_matrix();
+  save_checkpoint(prob, dir.string());
+  REQUIRE_FALSE(fs::exists(dir / "replace.dtwm.tmp"));
+  auto reader = make_problem("replace");
+  REQUIRE(load_checkpoint(reader, dir.string()));
+  REQUIRE(reader.is_distance_matrix_filled());
+
+  std::ofstream(scratch.dir / "plain") << "a file where the directory belongs";
+  REQUIRE_THROWS_AS(save_checkpoint(prob, (scratch.dir / "plain").string()), dtwc::IOError);
+  REQUIRE_THROWS_AS(save_checkpoint(prob, (scratch.dir / "plain" / "sub").string()), dtwc::IOError);
+  REQUIRE_THROWS_AS(save_checkpoint(Problem("empty"), scratch.str()), dtwc::InvalidInput);
+}
+
+TEST_CASE("Automatic checkpointing saves after every row block", "[checkpoint][fill]")
+{
+  Scratch scratch("auto");
+  auto reference = make_problem("auto", 6);
   reference.fill_distance_matrix();
 
-  // A regular file where the checkpoint root belongs: the first save fails in
-  // the filesystem, after its row block has already been computed.
-  auto scratch = make_temp_dir("save_throws");
-  fs::create_directories(scratch);
-  const fs::path blocking_file = fs::path(scratch) / "not_a_directory";
-  {
-    std::ofstream blocker(blocking_file);
-    blocker << "occupied";
+  auto prob = make_problem("auto", 6);
+  prob.checkpoint = { scratch.str(), 1, true };
+  prob.fill_distance_matrix();
+  auto restored = make_problem("auto", 6);
+  REQUIRE(load_checkpoint(restored, scratch.str()));
+  REQUIRE(packed_bits(restored) == packed_bits(reference));
+
+  auto disabled = make_problem("off", 6);
+  disabled.checkpoint.directory = (scratch.dir / "never").string();
+  disabled.fill_distance_matrix();
+  REQUIRE_FALSE(fs::exists(scratch.dir / "never"));
+
+  for (const CheckpointOptions bad : { CheckpointOptions{ scratch.str(), 0, true }, CheckpointOptions{ "", 1, true } }) {
+    auto rejected = make_problem("bad", 6);
+    rejected.checkpoint = bad;
+    REQUIRE_THROWS_AS(rejected.fill_distance_matrix(), dtwc::InvalidInput);
+    REQUIRE(rejected.distance_matrix().count_computed() == 0);
   }
-  REQUIRE(fs::is_regular_file(blocking_file));
-
-  auto prob = make_problem(N);
-  {
-    // Row 0 is poisoned with values no DTW kernel can produce, so any later
-    // recomputation of those cells is visible.
-    auto &matrix = prob.dense_distance_matrix();
-    matrix.resize(N);
-    for (int j = 1; j < N; ++j)
-      matrix.set(0, j, 900.0 + j);
-  }
-  prob.checkpoint.enabled = true;
-  prob.checkpoint.save_interval = 2;
-  prob.checkpoint.directory = blocking_file.string();
-
-  REQUIRE_THROWS(prob.fill_distance_matrix());
-  REQUIRE_FALSE(prob.is_distance_matrix_filled());
-  // Diagonal (6) + poisoned row 0 (5) + genuine row 1 (4) from the first block.
-  REQUIRE(prob.dense_distance_matrix().count_computed() == 15);
-
-  // A subsequent disabled fill completes and touches only uncomputed cells.
-  prob.checkpoint.enabled = false;
-  REQUIRE_NOTHROW(prob.fill_distance_matrix());
-  REQUIRE(prob.is_distance_matrix_filled());
-  for (int j = 1; j < N; ++j)
-    REQUIRE(prob.dist_by_ind(0, j) == 900.0 + j);
-  for (int i = 1; i < N; ++i)
-    for (int j = i; j < N; ++j)
-      REQUIRE(prob.dist_by_ind(i, j) == reference.dist_by_ind(i, j));
-
-  cleanup_dir(scratch);
 }
+
+TEST_CASE("A resumed fill computes only the missing cells", "[checkpoint][fill]")
+{
+  constexpr std::size_t N = 6;
+  Scratch scratch("resume");
+  auto reference = make_problem("resume", N);
+  reference.fill_distance_matrix();
+
+  // A crash after two rows: those cells hold values no DTW kernel produces.
+  auto crashed = make_problem("resume", N);
+  crashed.distance_matrix().resize(N);
+  for (std::size_t i = 0; i < 2; ++i)
+    for (std::size_t j = i + 1; j < N; ++j) crashed.distance_matrix().set(i, j, 900.0 + 10.0 * i + j);
+  save_checkpoint(crashed, scratch.str());
+
+  auto resumed = make_problem("resume", N);
+  REQUIRE(load_checkpoint(resumed, scratch.str()));
+  REQUIRE(resumed.distance_matrix().count_computed() == 9);
+  resumed.checkpoint = { scratch.str(), 2, true };
+  resumed.fill_distance_matrix();
+  for (std::size_t i = 0; i < N; ++i)
+    for (std::size_t j = i + 1; j < N; ++j)
+      REQUIRE(resumed.dist_by_ind(int(i), int(j)) == (i < 2 ? 900.0 + 10.0 * i + j : reference.dist_by_ind(int(i), int(j))));
+
+  auto reread = make_problem("resume", N); // the last block's save holds the whole matrix
+  REQUIRE(load_checkpoint(reread, scratch.str()));
+  REQUIRE(packed_bits(reread) == packed_bits(resumed));
+}
+
+TEST_CASE("A failing automatic save keeps the computed distances", "[checkpoint][fill]")
+{
+  constexpr std::size_t N = 6;
+  Scratch scratch("save_fails");
+  fs::create_directories(scratch.dir);
+  std::ofstream(scratch.dir / "not_a_directory") << "occupied";
+
+  auto prob = make_problem("fails", N);
+  prob.checkpoint = { (scratch.dir / "not_a_directory").string(), 2, true };
+  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), dtwc::IOError);
+  // The first block ran before its save failed: the diagonal and rows 0-1.
+  REQUIRE(prob.distance_matrix().count_computed() == N + (N - 1) + (N - 2));
+  prob.checkpoint.enabled = false;
+  prob.fill_distance_matrix();
+  REQUIRE(prob.is_distance_matrix_filled());
+}
+
+#ifdef DTWC_HAS_MMAP
+TEST_CASE("A matrix mapped to its checkpoint file is saved in place", "[checkpoint][mmap]")
+{
+  Scratch scratch("mapped");
+  fs::create_directories(scratch.dir);
+  auto reference = make_problem("mapped", 6);
+  reference.fill_distance_matrix();
+
+  {
+    auto prob = make_problem("mapped", 6);
+    prob.use_mmap_distance_matrix(checkpoint_path(prob, scratch.str()));
+    prob.checkpoint = { scratch.str(), 2, true };
+    prob.fill_distance_matrix(); // each block's save flushes the mapping
+    REQUIRE(prob.distance_matrix().is_mapped());
+    REQUIRE_FALSE(fs::exists(scratch.dir / "mapped.dtwm.tmp"));
+    save_checkpoint(prob, scratch.str());
+  }
+  auto reader = make_problem("mapped", 6);
+  REQUIRE(load_checkpoint(reader, scratch.str()));
+  REQUIRE(packed_bits(reader) == packed_bits(reference));
+}
+#endif

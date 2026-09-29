@@ -19,13 +19,6 @@ def _problem(name="ckpt"):
     return prob
 
 
-def _generation_count(directory):
-    generations = directory / "generations"
-    if not generations.is_dir():
-        return 0
-    return sum(1 for entry in generations.iterdir() if entry.is_dir())
-
-
 class TestCheckpointMember:
     def test_in_place_mutation_survives(self):
         """Without rv_policy::reference_internal the getter returns a copy."""
@@ -56,11 +49,11 @@ class TestCheckpointMember:
 
 
 class TestAutomaticMidFill:
-    def test_row_blocks_publish_one_retained_generation_and_resume(self, tmp_path):
-        """Mirrors C++ unit_test_checkpoint case 9.
+    def test_row_blocks_save_one_file_and_resume(self, tmp_path):
+        """Mirrors the C++ automatic-checkpointing case in unit_test_checkpoint.
 
-        Each row block publishes a generation that supersedes the previous
-        one, so a completed fill leaves exactly one, holding the full matrix.
+        Each row block replaces <directory>/<name>.dtwm, so a completed fill
+        leaves that one file, holding the full matrix.
         """
         directory = tmp_path / "ckpt"
         reference = _problem()
@@ -73,7 +66,7 @@ class TestAutomaticMidFill:
         prob.fill_distance_matrix()
 
         assert prob.is_distance_matrix_filled()
-        assert _generation_count(directory) == 1
+        assert [entry.name for entry in directory.iterdir()] == ["ckpt.dtwm"]
 
         restored = _problem()
         assert dtwcpp.load_checkpoint(restored, str(directory)) is True

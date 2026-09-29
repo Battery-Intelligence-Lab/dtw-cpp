@@ -19,7 +19,6 @@
 #include <fstream>
 #include <iostream> // for cout
 #include <system_error> // for error_code
-#include <type_traits> // for std::is_same_v, std::decay_t (visit_distmat)
 #include <string>  // for allocator, char_traits, operator+
 #include <vector>  // for vector, operator==
 
@@ -207,26 +206,7 @@ void Problem::write_distance_matrix(const std::string &name_) const
   validate_dense_cache_configuration();
   const auto path = output_folder_ / utf8_to_path(name_);
   ensure_output_directory(path);
-  visit_distmat([&](const auto &m) {
-    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      io::write_csv(m, path);
-    } else {
-      // MmapDistanceMatrix: data already on disk; write a CSV copy through the
-      // shared formatter. F14 requires rejecting a non-finite value BEFORE the
-      // destination is truncated, so the preflight is hoisted above the open
-      // and the already-preflighted emitter is called directly -- operator<<
-      // would repeat that O(N^2) scan. Bytes are identical either way.
-      core::detail::preflight_distance_matrix_csv(m);
-      std::ofstream file(
-        path, std::ios::out | std::ios::binary | std::ios::trunc);
-      if (!file.good())
-        throw IOError("Cannot open file for writing: " + path.string());
-      core::detail::write_distance_matrix_csv_preflighted(file, m);
-      file.close();
-      if (!file.good())
-        throw IOError("Write error on file: " + path.string());
-    }
-  });
+  io::write_csv(distMat, path);
 }
 
 /**
@@ -257,29 +237,28 @@ void Problem::writeBestRep(int best_rep)
 void Problem::read_distance_matrix(const fs::path &distMat_path)
 {
   ensure_dense_cache_configuration_current();
-  visit_distmat([&](auto &m) {
-    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      // Parsed into a local so a rejected file leaves the matrix untouched. A
-      // matrix of another size describes other series: it used to be kept, then
-      // discarded silently at the first lookup and every distance recomputed.
-      // An empty file loaded nothing, equally silently. A Problem without
-      // series takes any matrix, as before.
-      core::DenseDistanceMatrix loaded;
-      io::read_csv(loaded, distMat_path);
-      if (size() != 0 && loaded.size() != size())
-        throw InvalidInput(
-          "Problem::read_distance_matrix: '" + distMat_path.string() + "' has "
-          + std::to_string(loaded.size()) + " rows, but this Problem holds "
-          + std::to_string(size()) + " series; a distance matrix has one row and "
-            "one column per series, in input order. Load the matrix computed for "
-            "these series, or omit it to compute the distances.");
-      if (loaded.size() != 0) m = std::move(loaded);
-      fill_request_validated_ = false; // other pairs known: re-check lazily
-    } else {
-      throw InvalidInput("read_distance_matrix: CSV read not supported for MmapDistanceMatrix "
-                         "(use warm-start via use_mmap_distance_matrix instead).");
-    }
-  });
+  // Values read into a mapped matrix would persist in its file under this
+  // Problem's fingerprint, whatever they were computed from.
+  if (distMat.is_mapped())
+    throw InvalidInput("read_distance_matrix: this Problem's distance matrix is memory-mapped "
+                       "(use_mmap_distance_matrix), and a CSV matrix is read into RAM only; call "
+                       "refresh_distance_matrix() first, or reuse the mapped file instead.");
+  // Parsed into a local so a rejected file leaves the matrix untouched. A
+  // matrix of another size describes other series: it used to be kept, then
+  // discarded silently at the first lookup and every distance recomputed.
+  // An empty file loaded nothing, equally silently. A Problem without
+  // series takes any matrix, as before.
+  core::DistanceMatrix loaded;
+  io::read_csv(loaded, distMat_path);
+  if (size() != 0 && loaded.size() != size())
+    throw InvalidInput(
+      "Problem::read_distance_matrix: '" + distMat_path.string() + "' has "
+      + std::to_string(loaded.size()) + " rows, but this Problem holds "
+      + std::to_string(size()) + " series; a distance matrix has one row and "
+        "one column per series, in input order. Load the matrix computed for "
+        "these series, or omit it to compute the distances.");
+  if (loaded.size() != 0) distMat = std::move(loaded);
+  fill_request_validated_ = false; // other pairs known: re-check lazily
 }
 
 } // namespace dtwc

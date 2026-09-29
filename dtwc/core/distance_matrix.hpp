@@ -1,14 +1,29 @@
 /**
  * @file distance_matrix.hpp
- * @brief Dense symmetric distance matrix with packed triangular storage.
+ * @brief The pairwise distance matrix: a packed lower triangle on the heap or in
+ *        a memory-mapped `.dtwm` file.
  *
- * @details Stores pairwise distances in a packed lower-triangular array of
- * size N*(N+1)/2, cutting memory use by ~50% vs a full N*N matrix.
- * Uncomputed entries use a NaN sentinel (safe for all DTW variants
- * including Soft-DTW which can return negative values).
- * No synchronization needed: parallel fills use disjoint (i,j) pairs by design.
+ * @details One layout in memory and on disk: N(N+1)/2 doubles, row i holding
+ * columns 0..i, NaN = not computed (Soft-DTW can return a negative distance, so
+ * no finite sentinel works). get, set and is_computed index a raw `double *`
+ * whichever storage holds the doubles; the storage is chosen once, when the
+ * matrix is made.
  *
- * I/O (CSV, stream, full-matrix export) is in core/matrix_io.hpp.
+ * A `.dtwm` file is a 48-byte header and the packed doubles, in the host's byte
+ * order (every supported platform is little-endian):
+ *
+ *   bytes  0-3   magic "DTWM"
+ *   bytes  4-7   version (uint32) = 4; versions 1-3 were earlier cache layouts
+ *   bytes  8-15  N (uint64)
+ *   bytes 16-47  SHA-256 fingerprint of the data and the distance settings
+ *   bytes 48-    double[N(N+1)/2]
+ *
+ * distance_matrix.cpp, the one translation unit that includes llfio, owns the
+ * format: map() (memory-mapped, needs llfio) and read() / write() (plain
+ * streams, every build).
+ *
+ * No locks and no atomics: parallel fills write disjoint (i, j) cells, and a
+ * read never writes.
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026
@@ -16,11 +31,14 @@
 
 #pragma once
 
-#include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <limits>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <utility>
 #include <vector>
 
 namespace dtwc::core {
@@ -35,24 +53,34 @@ inline size_t tri_index(size_t i, size_t j)
 /// Number of elements in a packed lower-triangular matrix of dimension n.
 inline size_t packed_size(size_t n) { return n * (n + 1) / 2; }
 
-/// Thread-safety contract: no locking, no atomics.
-/// Parallel fills (brute-force, CUDA) partition the pair space so each
-/// (i,j) is written by exactly one thread. count_computed()/all_computed() are
-/// cold-path queries called only after the parallel region joins.
-class DenseDistanceMatrix {
-  std::vector<double> data_;   ///< Packed lower-triangular: N*(N+1)/2 elements. NaN = uncomputed.
-  size_t n_{ 0 };
-
+class DistanceMatrix
+{
 public:
-  DenseDistanceMatrix() = default;
-  explicit DenseDistanceMatrix(size_t n)
-    : data_(packed_size(n), std::numeric_limits<double>::quiet_NaN()), n_(n) {}
+  /// SHA-256 of what the distances were computed from (Problem::distance_checkpoint_identity).
+  using fingerprint_type = std::array<std::uint8_t, 32>;
 
-  void resize(size_t n)
-  {
-    data_.assign(packed_size(n), std::numeric_limits<double>::quiet_NaN());
-    n_ = n;
-  }
+  DistanceMatrix() noexcept;
+  explicit DistanceMatrix(size_t n); ///< n x n on the heap, every entry NaN.
+  ~DistanceMatrix();
+  DistanceMatrix(DistanceMatrix &&other) noexcept;
+  DistanceMatrix &operator=(DistanceMatrix &&other) noexcept;
+  DistanceMatrix(const DistanceMatrix &) = delete;
+  DistanceMatrix &operator=(const DistanceMatrix &) = delete;
+
+  /// Map `path` as the matrix of n series computed under `fingerprint`: an
+  /// existing file is opened, an absent one is created with every entry NaN.
+  /// Writes reach the file through the page cache.
+  /// @throws InvalidInput if the file holds another N or fingerprint; IOError if
+  ///         it is not a whole `.dtwm` file, and on a build without llfio.
+  static DistanceMatrix map(const std::filesystem::path &path, size_t n,
+                            const fingerprint_type &fingerprint);
+  /// Read a `.dtwm` file into a heap matrix, with map()'s checks and errors.
+  static DistanceMatrix read(const std::filesystem::path &path, size_t n,
+                             const fingerprint_type &fingerprint);
+  /// Write this matrix as a `.dtwm` file: to `path` + ".tmp", flushed to the
+  /// device, then renamed over `path`. A matrix mapped to `path` is flushed in
+  /// place instead. @throws IOError
+  void write(const std::filesystem::path &path, const fingerprint_type &fingerprint) const;
 
   double get(size_t i, size_t j) const
   {
@@ -60,44 +88,38 @@ public:
     return data_[tri_index(i, j)];
   }
 
-  /// Set distance. Parallel fills must use disjoint (i,j) pairs — no locking needed.
+  /// Parallel fills write disjoint (i,j) pairs; no locking is needed.
   void set(size_t i, size_t j, double v)
   {
     assert(i < n_ && j < n_ && !std::isnan(v));
     data_[tri_index(i, j)] = v;
   }
 
-  bool is_computed(size_t i, size_t j) const
-  {
-    assert(i < n_ && j < n_);
-    return !std::isnan(data_[tri_index(i, j)]);
-  }
+  bool is_computed(size_t i, size_t j) const { return !std::isnan(get(i, j)); }
 
-  size_t size() const { return n_; }
+  size_t size() const noexcept { return n_; }
+  size_t packed_count() const noexcept { return packed_size(n_); }
+  double *raw() noexcept { return data_; }
+  const double *raw() const noexcept { return data_; }
+  bool is_mapped() const noexcept { return mapping_ != nullptr; }
 
-  double max() const
-  {
-    double result = -std::numeric_limits<double>::infinity();
-    for (double d : data_)
-      if (!std::isnan(d) && d > result)
-        result = d;
-    return std::isfinite(result) ? result : 0.0;
-  }
+  /// Become an n x n heap matrix, every entry NaN. A mapped matrix lets go of
+  /// its file and leaves it as it is.
+  void resize(size_t n);
+  /// Flush a mapped matrix's doubles to its file; a heap matrix has nothing to flush.
+  void sync() const;
 
-  size_t count_computed() const
-  {
-    return static_cast<size_t>(
-      std::count_if(data_.begin(), data_.end(), [](double d) { return !std::isnan(d); }));
-  }
+  double max() const; ///< Largest computed distance; 0 when none is computed.
+  size_t count_computed() const;
+  bool all_computed() const;
 
-  bool all_computed() const
-  {
-    return std::none_of(data_.begin(), data_.end(), [](double d) { return std::isnan(d); });
-  }
+private:
+  struct Mapping; // the llfio file handle and its map, in distance_matrix.cpp
 
-  double *raw() { return data_.data(); }
-  const double *raw() const { return data_.data(); }
-  size_t packed_count() const { return data_.size(); }
+  std::vector<double> heap_;
+  std::unique_ptr<Mapping> mapping_;
+  double *data_{ nullptr }; ///< heap_.data() or the mapped doubles
+  size_t n_{ 0 };
 };
 
 } // namespace dtwc::core

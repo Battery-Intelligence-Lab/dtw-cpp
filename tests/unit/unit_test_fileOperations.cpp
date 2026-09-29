@@ -135,8 +135,8 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
   // Test round-trip of distance matrix I/O through Problem.
   auto N = GENERATE(1, 2, 5, 10, 20);
 
-  // Create a DenseDistanceMatrix with random values.
-  dtwc::core::DenseDistanceMatrix matrix(static_cast<size_t>(N));
+  // Create a DistanceMatrix with random values.
+  dtwc::core::DistanceMatrix matrix(static_cast<size_t>(N));
   std::mt19937 rng(42);
   std::uniform_real_distribution<double> dist(0.0, 100.0);
   for (size_t i = 0; i < static_cast<size_t>(N); ++i) {
@@ -253,11 +253,11 @@ TEST_CASE("Problem::write_distance_matrix + read_distance_matrix end-to-end roun
 
 TEST_CASE("Write and Read Empty Matrix", "[fileOperations]")
 {
-  dtwc::core::DenseDistanceMatrix matrix;
+  dtwc::core::DistanceMatrix matrix;
   REQUIRE(matrix.size() == 0);
 
   // Empty matrix should be default-constructed with size 0.
-  dtwc::core::DenseDistanceMatrix readMat;
+  dtwc::core::DistanceMatrix readMat;
   REQUIRE(readMat.size() == 0);
 }
 

@@ -1,11 +1,11 @@
 /**
  * @file test_metal_mmap.cpp
- * @brief Verify the Metal backend writes correctly into both
- *        DenseDistanceMatrix and the memory-mapped distance matrix.
+ * @brief Verify the Metal backend writes correctly into the distance matrix
+ *        on the heap and mapped to a file.
  *
- *        The Problem::fill_distance_matrix() dispatch uses visit_distmat to
- *        route into either storage; this test exercises both paths via the
- *        Metal strategy and confirms the numbers match the CPU reference.
+ *        Problem::fill_distance_matrix() writes the GPU result through the one
+ *        DistanceMatrix whichever storage holds it; this test exercises both via
+ *        the Metal strategy and confirms the numbers match the CPU reference.
  *
  * @date 2026-04-12
  */

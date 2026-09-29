@@ -102,36 +102,13 @@ TEST_CASE("Boundary Conditions", "[run_openmp]")
   REQUIRE(count == 0);
 }
 
-TEST_CASE("OpenMP task failures rethrow the lowest-index typed exception",
-          "[run_openmp][m40]")
+TEST_CASE("run_openmp rethrows a task's failure on the caller", "[run_openmp]")
 {
-  auto run_failures = [] {
-    std::atomic<bool> row_seven_failed{false};
-    const auto deadline = std::chrono::steady_clock::now()
-                        + std::chrono::seconds(5);
-    auto task = [&](size_t i) {
-      if (i == 2) {
-#ifdef _OPENMP
-        // Force the higher row to fail first in wall-clock order. Correctness
-        // must still select row 2 by canonical loop index.
-        while (!row_seven_failed.load(std::memory_order_acquire))
-        {
-          if (std::chrono::steady_clock::now() >= deadline)
-            throw std::runtime_error("test coordination timeout");
-          std::this_thread::yield();
-        }
-#endif
-        throw std::invalid_argument("failure at row 2");
-      }
-      if (i == 7) {
-        row_seven_failed.store(true, std::memory_order_release);
-        throw std::runtime_error("failure at row 7");
-      }
-    };
-    // 64 chunks/thread makes chunk=1 for this 64-row fixture, so rows 2 and 7
-    // cannot be trapped sequentially inside one worker's chunk.
-    dtwc::run_openmp(task, 64, true, 64);
+  auto fails_at_37 = [](size_t i) {
+    if (i == 37) throw std::invalid_argument("failure at row 37");
   };
+  REQUIRE_THROWS_AS(dtwc::run_openmp(fails_at_37, 64, false), std::invalid_argument);
+  REQUIRE_THROWS_WITH(dtwc::run_openmp(fails_at_37, 64, false), "failure at row 37");
 
 #ifdef _OPENMP
   const int previous_threads = omp_get_max_threads();
@@ -152,14 +129,33 @@ TEST_CASE("OpenMP task failures rethrow the lowest-index typed exception",
   if (actual_threads < 2) SKIP("two OpenMP workers unavailable");
 #endif
 
-  REQUIRE_THROWS_AS(run_failures(), std::invalid_argument);
-  REQUIRE_THROWS_WITH(run_failures(), "failure at row 2");
+  // 64 chunks per thread make chunk = 1 for 64 rows, so both threads take rows.
+  REQUIRE_THROWS_AS(dtwc::run_openmp(fails_at_37, 64, true, 64), std::invalid_argument);
+  REQUIRE_THROWS_WITH(dtwc::run_openmp(fails_at_37, 64, true, 64), "failure at row 37");
 
-  REQUIRE_THROWS_WITH(dtwc::omp_chunk_size(64, 0),
-                      "omp_chunk_size: chunks_per_thread must be positive");
-  REQUIRE_THROWS_WITH(dtwc::omp_chunk_size(64, -1),
-                      "omp_chunk_size: chunks_per_thread must be positive");
-  auto no_op = [](size_t) {};
-  REQUIRE_THROWS_WITH(dtwc::run_openmp(no_op, 64, true, 0),
-                      "run_openmp: chunks_per_thread must be positive");
+  // A thread runs no row after its first failure: with every row failing, each of
+  // the two threads runs at most one.
+  std::atomic<int> calls{ 0 };
+  auto every_row_fails = [&](size_t) {
+    ++calls;
+    throw std::runtime_error("every row fails");
+  };
+  REQUIRE_THROWS_WITH(dtwc::run_openmp(every_row_fails, 64, true, 64), "every row fails");
+  CHECK(calls >= 1);
+  CHECK(calls <= 2);
+
+#ifdef _OPENMP
+  // A failure stored by the worker thread, not the caller's thread 0, is found:
+  // thread 0 waits in its row until thread 1 has failed.
+  std::atomic<bool> worker_failed{ false };
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  auto worker_fails = [&](size_t) {
+    if (omp_get_thread_num() == 1) {
+      worker_failed = true;
+      throw std::invalid_argument("worker failed");
+    }
+    while (!worker_failed && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+  };
+  REQUIRE_THROWS_WITH(dtwc::run_openmp(worker_fails, 64, true, 64), "worker failed");
+#endif
 }

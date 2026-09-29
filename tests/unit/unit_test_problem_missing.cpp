@@ -65,7 +65,7 @@ TEST_CASE("Problem: MissingStrategy::Error throws on the caller thread",
         ContainsSubstring("series 'b' (index 1)[1] is NaN"));
       CHECK_FALSE(prob.is_distance_matrix_filled());
       // Rejected before the matrix is allocated (FX-15): no pair was computed.
-      CHECK(prob.dense_distance_matrix().count_computed() == 0);
+      CHECK(prob.distance_matrix().count_computed() == 0);
     }
   }
 }
@@ -75,8 +75,8 @@ TEST_CASE("Problem: MissingStrategy::Error throws on the caller thread",
 // rethrown by run_openmp. It is now rejected by the serial pre-scan in
 // fill_distance_matrix, which can name the offending series. The invariant this
 // case guards is unchanged: the failed fill must not publish a full cache.
-// (run_openmp's own lowest-index rethrow contract is covered directly by
-// unit_test_parallelisation.cpp, "OpenMP task failures rethrow ...".)
+// (run_openmp's own rethrow contract is covered directly by
+// unit_test_parallelisation.cpp, "run_openmp rethrows a task's failure ...".)
 TEST_CASE("Problem: a rejected fill does not publish a full cache",
           "[problem][missing][m40]")
 {
@@ -109,7 +109,7 @@ TEST_CASE("Problem: a rejected fill does not publish a full cache",
         ContainsSubstring("'all-missing' (index 1) is entirely NaN"));
       CHECK_FALSE(prob.is_distance_matrix_filled());
       // Rejected before the matrix is allocated: no pair was computed.
-      CHECK(prob.dense_distance_matrix().count_computed() == 0);
+      CHECK(prob.distance_matrix().count_computed() == 0);
     }
   }
 }

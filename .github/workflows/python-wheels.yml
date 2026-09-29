@@ -58,13 +58,13 @@ jobs:
           # Re-add x86_64 ONLY behind a genuine x86_64 libomp on an Intel runner.
           CIBW_ARCHS_MACOS: "arm64"
 
-          # Release build with bundled open-source HiGHS; Gurobi stays external.
-          # LLFIO is disabled in wheels to avoid its fragile nested superbuild.
+          # Release build with bundled open-source HiGHS and header-only llfio
+          # (the memory-mapped distance matrix); Gurobi stays external.
           CIBW_CONFIG_SETTINGS: >-
             cmake.args=-DDTWC_BUILD_PYTHON=ON
             cmake.args=-DDTWC_ENABLE_GUROBI=OFF
             cmake.args=-DDTWC_ENABLE_HIGHS=ON
-            cmake.args=-DDTWC_ENABLE_LLFIO=OFF
+            cmake.args=-DDTWC_ENABLE_LLFIO=ON
             cmake.args=-DDTWC_BUILD_TESTING=OFF
             cmake.args=-DDTWC_BUILD_BENCHMARK=OFF
             cmake.args=-DCMAKE_BUILD_TYPE=Release
@@ -87,9 +87,10 @@ jobs:
           CIBW_BEFORE_ALL_MACOS: bash scripts/build_libomp_macos.sh "$OpenMP_ROOT"
           CIBW_BUILD_VERBOSITY: 1
 
-          # Execute a real OpenMP region and solve a compact conformance subset
-          # through the bundled HiGHS MIP path in every produced wheel, and
-          # check the wheel carries the SLURM wrapper device='hpc' runs (FX-5).
+          # Execute a real OpenMP region, solve a compact conformance subset
+          # through the bundled HiGHS MIP path and map a distance matrix to a
+          # file and reopen it (llfio) in every produced wheel, and check the
+          # wheel carries the SLURM wrapper device='hpc' runs (FX-5).
           CIBW_TEST_COMMAND: >-
             python -c "from dtwcpp._wheel_smoke import run; run()" &&
             python -c "import os, dtwcpp._hpc as h; d = os.path.dirname(h.slurm_wrapper_path()); assert all(os.path.isfile(os.path.join(d, f)) for f in ('slurm_remote.sh', 'cluster_generic.slurm')), d"

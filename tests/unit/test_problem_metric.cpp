@@ -262,7 +262,7 @@ TEST_CASE("set_metric: the metric is part of refresh and of the checkpoint ident
   dtwc::save_checkpoint(squared, dir); // tagged with squared.metric()
 
   auto l1 = make_problem(series);
-  CHECK_FALSE(dtwc::load_checkpoint(l1, dir));
+  CHECK_THROWS_AS(dtwc::load_checkpoint(l1, dir), dtwc::InvalidInput); // another metric's matrix
   // The three-argument form keeps its explicit tag: the CLI's own CUDA fill
   // (squared L2 into an L1 Problem) relies on it until IF-2 S3.
   CHECK(dtwc::load_checkpoint(l1, dir, MetricType::SquaredL2));
@@ -294,7 +294,7 @@ TEST_CASE("set_metric: automatic checkpoints are tagged with the metric",
   prob.fill_distance_matrix();
 
   auto l1 = make_problem(series);
-  CHECK_FALSE(dtwc::load_checkpoint(l1, prob.checkpoint.directory));
+  CHECK_THROWS_AS(dtwc::load_checkpoint(l1, prob.checkpoint.directory), dtwc::InvalidInput);
   auto resumed = make_problem(series);
   resumed.set_metric(MetricType::SquaredL2);
   REQUIRE(dtwc::load_checkpoint(resumed, prob.checkpoint.directory));

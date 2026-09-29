@@ -166,7 +166,7 @@ cmake -S . -B build -DDTWC_ENABLE_CUDA=ON -DDTWC_CUDA_ARCH_LIST="80;90"
 export OMP_NUM_THREADS=288
 export OMP_PROC_BIND=close
 export OMP_PLACES=cores
-./build/bin/dtwc_main ...
+./build/bin/dtwc_cl ...
 ```
 
 ### All CMake options

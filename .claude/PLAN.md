@@ -69,10 +69,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W5a delete `--resume` / `--restart` and the binary result checkpoint (Y1 `469e545`, `3ff7469`, `97bb54f`)
 - ☑ W5b delete `StoragePolicy`, `.dtws`, `MmapDataStore`, CRC32, the auto-spill; `load()` = heap (Y1 `46b3a89`)
 - ☑ W5c `Env` → two free functions over a static `{Device, int}` (Y1 `7ba0b4c`, `07b0ea4`)
-- ☐ W5d one `.dtwm` file (magic, version, N, SHA-256, packed doubles); the mapped cache is the checkpoint;
+- ☑ W5d one `.dtwm` file (magic, version, N, SHA-256, packed doubles); the mapped cache is the checkpoint;
   identity mismatch → `InvalidInput`, malformed → `IOError`, absent → fresh; llfio header-only (`78af336`) confined to
   one `.cpp`; Python `distance_matrix()` on a mapped `Problem` fixed; `DTWC_ENABLE_LLFIO=ON` in the wheel and release
-  builds (the MEX waits for F43, W6e/f)
+  builds (the MEX waits for F43, W6e/f) (Y2 `a539d5d`, `75a65a4`, `6a96642`, `6d0f0c3`, `1d8c82a`; merged
+  `959dc5b`; Dense and Mmap are one DistanceMatrix)
 - ☑ W5e Parquet saturating helpers and leaf guards → asserts (Y1 `3000ca9`, `d8dd4f7`; merged `7eb928b`)
 - ☐ W6a `index_t` alias in `base/settings.hpp`; every count guard deleted; `mip/index_guard.hpp` → two inline throws
 - ◐ W6b enum validator tails → `-Werror=switch` (X3 `8c73029` on pb/X2; merges after X2)
@@ -85,11 +86,16 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
   `one_batch_pam` through `run_openmp`; the FasterPAM and TADPole reductions → per-thread slots combined serially;
   OneBatchPAM's warning mutex → a serial warning. Proof: TSan in WSL (LLVM libomp + Archer)
-- ◐ K1 (2026-09-29) the DP cell makes no library call: `std::min({…})` is `__std_min_d` on the MSVC STL, 7.2 ns/cell
+- ☑ K1 (2026-09-29) the DP cell makes no library call: `std::min({…})` is `__std_min_d` on the MSVC STL, 7.2 ns/cell
   vs 1.06 on the Mac; nested two-argument min, `dp[i-1, j]` carried in a register; digit-identical
-  (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`)
+  (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`) (K1 `8bd6881`, `123146b`, `d114677`, `f705329`; merged
+  `4441969`); the fill band is FALSIFIED — the unbanded fill runs the EAPruned kernel, which made no call; P1 measures
+  lanes against it
 - ☐ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
   compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions)
+- ☐ P1 lanes in the CPU fill, after K1 and Y2: `dtw_kernel_lanes<T, W, Cell>` beside `_linear` / `_banded`, W one cache
+  line of T; the fill steps a row by W columns of equal length, per-pair kernel otherwise; Standard DTW, L1 and
+  squared L2, full and banded first; bitwise equal to the per-pair fill; band ≥ 2.5× on the 24-thread fill
 
 ## C — GPU to one fill (W4 + W13's GPU half)
 
@@ -158,7 +164,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ one `kmedoids_pp` (W13c) · ☐ HiGHS model built row-wise (W13d) · ☐ barycenter workspace (W13e)
 - ☐ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel; it is serial today
 - ☐ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
-- ☐ PF-5 SIMD lanes across pairs, plain C++, kill criterion 1.5× — ◐ feasibility probe pulled forward (2026-09-29, research only)
+- ☑ PF-5 probe: SIMD lanes across pairs PASS, 3.7–7.9× single-thread f64, bit-identical (2026-09-29; P1 in phase B
+  integrates it)
 
 ## Blocked on another machine or on Volkan
 

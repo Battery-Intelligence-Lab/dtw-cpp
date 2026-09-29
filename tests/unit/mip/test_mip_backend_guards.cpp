@@ -336,7 +336,7 @@ Problem make_uniform_lr_problem(int N, int k, unsigned seed)
 
   std::mt19937 rng(seed);
   std::uniform_real_distribution<double> u(1.0, 100.0);
-  auto &dm = prob.dense_distance_matrix(); // packed lower-triangular => symmetric
+  auto &dm = prob.distance_matrix(); // packed lower-triangular => symmetric
   for (int i = 0; i < N; ++i) {
     dm.set(static_cast<std::size_t>(i), static_cast<std::size_t>(i), 0.0);
     for (int j = i + 1; j < N; ++j)

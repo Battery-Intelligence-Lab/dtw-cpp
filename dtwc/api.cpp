@@ -104,9 +104,9 @@ const std::filesystem::path &Dataset::path() const
   return std::get<std::filesystem::path>(source_);
 }
 
-Data Dataset::materialize_local() const
+Data Dataset::materialize_local() &&
 {
-  auto series = std::get<series_type>(source_);
+  auto series = std::move(std::get<series_type>(source_));
   // One memory row is one file line, so skip_rows drops leading series exactly
   // as it drops leading lines of a batch file.
   const auto dropped = std::min<std::size_t>(
@@ -240,13 +240,14 @@ void Result::save(const std::filesystem::path &directory) const
   // save() promises the complete matrix and silhouettes. Matrix-free methods
   // retain their scaling until this explicitly requested operation.
   problem_->fill_distance_matrix();
-  std::visit([&](const auto &matrix) {
+  {
+    const core::DistanceMatrix &matrix = problem_->distance_matrix();
     core::detail::preflight_distance_matrix_csv(matrix);
     auto out = open_output(
       matrix_path, std::ios::out | std::ios::binary | std::ios::trunc);
     out << matrix;
     close_output(out, matrix_path);
-  }, problem_->distance_matrix());
+  }
 
   // s(i) is undefined with fewer than two realised clusters, where
   // scores::silhouette() throws UndefinedScore. save() must not fail a
@@ -273,6 +274,12 @@ void Result::save(const std::filesystem::path &directory) const
 Result cluster(const Dataset &dataset, int k, std::string_view method, int band,
                std::string_view device, int max_iter)
 {
+  return cluster(Dataset(dataset), k, method, band, device, max_iter);
+}
+
+Result cluster(Dataset &&dataset, int k, std::string_view method, int band,
+               std::string_view device, int max_iter)
+{
   Config config; // dtwc_cl's defaults for everything this signature does not name
   config.k = k;
   config.method = parse_name(cluster_method_names, method, "method");
@@ -282,7 +289,7 @@ Result cluster(const Dataset &dataset, int k, std::string_view method, int band,
   config.name = dataset.name();
   std::tie(config.device, config.gpu.device_id) =
     device.empty() ? std::pair{ g_device.device, g_device.index } : detail::parse_device(device);
-  if (!dataset.is_path()) return run(config, dataset.materialize_local());
+  if (!dataset.is_path()) return run(config, std::move(dataset).materialize_local());
   config.input = path_to_utf8(dataset.path());
   config.skip_cols = dataset.skip_cols();
   config.skip_rows = dataset.skip_rows();

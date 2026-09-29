@@ -144,7 +144,7 @@ int fill_mismatches(const FillCase &c)
         c.f32 ? prob.dtw_function_f32()(prob.data().series_f32(i), prob.data().series_f32(j))
               : prob.dtw_function()(prob.series(i), prob.series(j));
   if (!c.known.empty()) {
-    auto &m = prob.dense_distance_matrix();
+    auto &m = prob.distance_matrix();
     m.resize(N);
     for (const auto [i, j] : c.known) {
       expected[i * N + j] = 1e9 + double(i * N + j); // no distance here comes near
@@ -152,7 +152,7 @@ int fill_mismatches(const FillCase &c)
     }
   }
   prob.fill_distance_matrix();
-  const auto &m = prob.dense_distance_matrix();
+  const auto &m = prob.distance_matrix();
   int bad = 0;
   for (std::size_t i = 0; i < N; ++i)
     for (std::size_t j = i + 1; j < N; ++j) bad += !same_bits(m.get(i, j), expected[i * N + j]);

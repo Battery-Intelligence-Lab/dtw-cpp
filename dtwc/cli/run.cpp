@@ -41,7 +41,6 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -229,15 +228,6 @@ Data convert_to_f32(const Data &data_f64)
   return Data(std::move(series), std::move(names), data_f64.ndim);
 }
 
-#ifdef DTWC_HAS_PARQUET
-std::size_t checked_parquet_series_count(std::int64_t count)
-{
-  if (count < 0 || static_cast<std::uint64_t>(count) > std::numeric_limits<std::size_t>::max())
-    throw InvalidInput("Parquet logical series count exceeds this platform's size limit.");
-  return static_cast<std::size_t>(count);
-}
-#endif
-
 /// Bind persistent distance storage once every distance-affecting setting has
 /// reached the Problem. Returns the mmap cache path, or nullopt when the method
 /// keeps its own storage or N is below the threshold. OneBatchPAM owns a fixed
@@ -259,12 +249,6 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
   }
   if (method == ClusterMethod::OneBatch) return std::nullopt;
   if (config.mmap_threshold != 0 && prob.size() < config.mmap_threshold) return std::nullopt;
-  if (checkpoint)
-    throw InvalidInput(
-      "--checkpoint uses the legacy dense CSV checkpoint format and cannot be "
-      "combined with memory-mapped distance storage. The mmap cache already "
-      "resumes automatically; omit --checkpoint, or raise --mmap-threshold if "
-      "the dense matrix and CSV checkpoint fit in RAM.");
   if (dist_matrix)
     throw InvalidInput(
       "--dist-matrix uses a legacy dense CSV matrix and cannot be combined "
@@ -452,23 +436,19 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // readers map the file and its footer; no row group is decoded.
   if (input.parquet()
       && (config.ram_limit > 0 || method == ClusterMethod::Auto || method == ClusterMethod::CLARA)) {
-    const auto saturating_add = [](std::size_t lhs, std::size_t rhs) {
-      return rhs > std::numeric_limits<std::size_t>::max() - lhs ? std::numeric_limits<std::size_t>::max()
-                                                                  : lhs + rhs;
-    };
     const bool f32 = config.dtype == core::Precision::Float32;
     auto layout = detail::ParquetLayout::Directory;
     std::size_t resident_bytes = 0;
     if (input.source == Source::ParquetFile) {
       io::ParquetChunkReader metadata(input.path, config.column);
       layout = metadata.is_list_layout() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
-      n_series = checked_parquet_series_count(metadata.logical_series_count());
+      n_series = static_cast<std::size_t>(metadata.logical_series_count());
       resident_bytes = metadata.estimated_materialization_peak_bytes(f32);
     } else {
       for (const auto &path : input.parquet_files) {
         io::ParquetChunkReader metadata(path, config.column);
-        n_series = saturating_add(n_series, checked_parquet_series_count(metadata.logical_series_count()));
-        resident_bytes = saturating_add(resident_bytes, metadata.estimated_materialization_peak_bytes(f32));
+        n_series += static_cast<std::size_t>(metadata.logical_series_count());
+        resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
       }
     }
     const auto plan = detail::plan_parquet_load(method, config.device, n_series, resident_bytes, config.ram_limit, layout);
@@ -530,12 +510,13 @@ Outcome execute(const Config &config, std::optional<Data> data)
   plan_clara();
 
   // ---- 4. Distance storage, once every distance setting is in place ----
-  // The mmap cache lives in the output directory, so a run that writes nothing
-  // keeps its matrix in RAM; an imported matrix or a checkpoint uses dense
-  // storage.
+  // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
+  // the checkpoint, else in the output directory; a run that writes nothing
+  // keeps its matrix in RAM, as does an imported matrix.
+  std::optional<fs::path> cache;
   if (!config.output.empty()) {
-    const fs::path mmap_cache = output / utf8_to_path(config.name + "_distmat.cache");
-    const auto cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, mmap_cache);
+    const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
+    cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, path);
     if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
   }
   // A matrix the user supplied but that cannot be loaded is an error: going on
@@ -555,11 +536,11 @@ Outcome execute(const Config &config, std::optional<Data> data)
     prob.checkpoint.save_interval = config.checkpoint_interval;
     prob.checkpoint.enabled = true;
   }
-  if (!config.checkpoint.empty()) {
-    const bool resumed = load_checkpoint(prob, config.checkpoint); // false: start fresh
+  if (!config.checkpoint.empty() && !cache) { // a mapped matrix is its own checkpoint
+    const bool resumed = load_checkpoint(prob, config.checkpoint); // false: no file, start fresh
     if (config.verbose)
       std::cout << (resumed ? "Resumed from checkpoint: " + config.checkpoint + "\n"
-                            : "No valid checkpoint found at " + config.checkpoint + ", starting fresh.\n");
+                            : "No checkpoint in " + config.checkpoint + ", starting fresh.\n");
   }
 
   // ---- 5. Cluster; the matrix methods fill through the Problem, on its device ----

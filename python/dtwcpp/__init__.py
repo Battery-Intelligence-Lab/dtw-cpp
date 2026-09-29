@@ -13,12 +13,12 @@ from dtwcpp._dtwcpp_core import (
     DTWVariant,
     MissingStrategy,
     DistanceMatrixStrategy,
+    GpuPrecision,
     Linkage,
     Device,
     # Structs
     DTWVariantParams,
     ClusteringResult,
-    DenseDistanceMatrix,
     Data,
     MIPSettings,
     CUDASettings,
@@ -351,9 +351,9 @@ def check_system():
 
 __all__ = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
-    "MissingStrategy", "DistanceMatrixStrategy",
+    "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision",
     "Linkage", "Device",
-    "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
+    "DTWVariantParams", "ClusteringResult", "Data",
     "MIPSettings", "CUDASettings", "DendrogramStep", "Dendrogram",
     "HierarchicalOptions", "CLARANSOptions", "OneBatchWeighting",
     "OneBatchPAMOptions", "OneBatchPAMStats",

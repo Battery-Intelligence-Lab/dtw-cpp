@@ -230,7 +230,7 @@ TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any
   const auto zero_cost = [](dtwc::Config &c) { c.missing = dtwc::core::MissingStrategy::ZeroCost; };
   const auto float32 = [](dtwc::Config &c) { c.dtype = dtwc::core::Precision::Float32; };
   const auto index_1 = [](dtwc::Config &c) { c.gpu.device_id = 1; };
-  const auto fp64 = [](dtwc::Config &c) { c.gpu.precision = 2; };
+  const auto fp64 = [](dtwc::Config &c) { c.gpu.precision = dtwc::GpuPrecision::FP64; };
 
   // The CPU takes each of these, so it goes on to read the file, which fails.
   for (const auto &set : { +wdtw, +zero_cost, +float32 })

@@ -18,19 +18,19 @@ deprecation diagnostic is complete.
 ### 2.1 `Problem` — configuration setters
 
 Canonical config setters are snake_case. Eleven expert/result fields remain
-public: the deprecated actual `int` fields `maxIter` and `N_repetition`, plus
+public: the v1.0.0 `int` fields `maxIter` and `N_repetition`, plus
 `band`, `variant_params`, `missing_strategy`, `distance_strategy`,
 `cuda_settings`, `mip_settings`, `init_fun`, `clusters_ind`, and
-`centroids_ind`. Canonical accessors for the two deprecated fields are
-out-of-line and warning-silent.
+`centroids_ind`. The setters check what they are given; a direct write to
+a field does not.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
 | k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; retained C++ `set_numberOfClusters` and Python `set_number_of_clusters` are deprecated warning aliases |
 | method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
-| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | deprecated public `int maxIter` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
-| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | deprecated public `int N_repetition` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
+| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | public `int maxIter` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
+| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | public `int N_repetition` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
 | random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
@@ -63,7 +63,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `fillDistanceMatrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
 | `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
-| `dense_distance_matrix()` | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
+| — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
 | — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
@@ -71,17 +71,18 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `calculateMedoids()` | `calculate_medoids()` | `calculate_medoids()` (live) | — |
 | `cluster()` | `cluster()` | `cluster()` (live) | `cluster()` `[introduced-2.0]` |
 | `cluster_by_MIP()` | `cluster_by_mip()` | — | — |
-| `cluster_by_kMedoidsLloyd()` | `cluster_by_kmedoids_lloyd()` | — | — |
+| `cluster_by_kMedoidsPAM()` | `cluster_by_kmedoids_lloyd()` | — | — |
 | `printClusters()` | `print_clusters()` | `print_clusters()` (live) | — |
 | `writeClusters()` | `write_clusters()` | `write_clusters()` (live) | — |
 | `writeMedoidMembers(iter,rep=0)` | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` `[introduced-2.0]` | — |
 | `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
 **† Name collision (adjudicated in §10 item 6).** C++
-`Problem::distance_matrix()` returns the internal
-`std::variant<DenseDistanceMatrix, MmapDistanceMatrix>` by reference. The
-Python/MATLAB spelling returns an NxN numeric matrix; Python returns an
-independent copy. The language-specific semantics are retained.
+`Problem::distance_matrix()` returns the `core::DistanceMatrix` by reference:
+the packed lower triangle, on the heap or mapped (`use_mmap_distance_matrix`),
+read and written through the same `get` / `set`. The Python/MATLAB spelling
+returns an NxN numeric matrix of either storage; Python returns an independent
+copy. The language-specific semantics are retained.
 
 **‡ Python read/write rename.** `distance_matrix()` and
 `set_distance_matrix()` are canonical and live. The old
@@ -246,50 +247,47 @@ are snake_case; current availability and gaps are explicit below.
 | Concept | C++ live (`checkpoint.hpp`) | Python | MATLAB 2.0 |
 |---|---|---|---|
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
-| save dir checkpoint | `save_checkpoint(const Problem&, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
-| load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
+| save checkpoint | `save_checkpoint(const Problem&, path)` writes `checkpoint_path(prob, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
+| load checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` only when the file is absent; other series or settings `InvalidInput`, a file that is not a whole `.dtwm` file `IOError`, neither changing the `Problem` | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
+
+A checkpoint is one `.dtwm` file, `checkpoint_path(prob, dir)` =
+`<dir>/<name>.dtwm` (`distances.dtwm` for an unnamed `Problem`): the layout of a
+mapped matrix (below), so a checkpoint maps with `use_mmap_distance_matrix` and a
+mapped matrix loads as a checkpoint. A save writes `<name>.dtwm.tmp`, flushes it
+to the device and renames it over the previous file; a `Problem` mapped to that
+file is its own checkpoint and a save flushes the mapping in place.
 
 `CheckpointOptions` is consumed by `Problem::fill_distance_matrix()` through
 the public `Problem::checkpoint` member. With `enabled`, the fill runs the exact
 BruteForce row schedule in consecutive blocks of `save_interval` completed
-matrix rows and publishes one generation after each block, the last block
-included, so a completed fill leaves a complete checkpoint. Each save runs on
-the calling thread after its block has joined; a save that throws propagates out
-of `fill_distance_matrix()`, leaving the computed cells resident and the
-previously published generation valid. `enabled` requires dense distance storage
-and `save_interval >= 1`; either violation raises `InvalidInput` before any
-distance is computed. `enabled` defaults
-to `false`, in which case the fill is unchanged. Each save writes the whole
-`N`x`N` CSV, so it costs `O(N^2)` bytes and time and an automatic fill costs
-`O(N^3 / save_interval)` in total; choose `save_interval` so a save is a small
-fraction of a block (a block costs about `save_interval * N` DTWs, a save about
-`N^2` number formats). Explicit persistence through
-`save_checkpoint(prob, path)` and `load_checkpoint(prob, path)` is unchanged and
-remains the only way to save outside a fill. The CLI opts in with a non-zero
+matrix rows and saves after each block, the last block included, so a completed
+fill leaves a complete checkpoint. Each save runs on the calling thread after its
+block has joined; a save that throws propagates out of `fill_distance_matrix()`,
+leaving the computed cells resident and the previous file whole.
+`save_interval >= 1` and a non-empty `directory` are required; either violation
+raises `InvalidInput` before any distance is computed. `enabled` defaults to
+`false`, in which case the fill is unchanged. A save of a matrix in RAM writes all
+`N(N+1)/2` doubles, so an automatic fill writes `O(N^3 / save_interval)` bytes in
+total; choose `save_interval` so a save is a small fraction of a block (a block
+costs about `save_interval * N` DTWs). The CLI opts in with a non-zero
 `--checkpoint-interval <rows>`, which requires `--checkpoint <dir>`; the default
-`0` saves once, at the end.
+`0` saves once, at the end. The CLI's mapped matrix is `<name>.dtwm` in the
+`--checkpoint` directory when one is given, else in the output directory.
 
-Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
-`generations/<id>/{distances.csv,metadata.txt}` payload. A directory holds
-exactly one generation after a successful save: the old generation is removed
-only after `CURRENT` points at the new one. The mmap distance cache is
-`<name>_distmat.cache`.
-
-**Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
-64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,
-series order and lengths, storage precision, `ndim`, band, every DTW-variant
-parameter, multivariate mode, missing-data strategy, pointwise metric, compute
-backend, and backend precision. Series names are excluded because they do not
-affect distance semantics. Header metadata has a CRC, reserved bytes are
-checked, and an aligned footer stores two digest words per logical row. Reopen
-takes a nonblocking exclusive session lease and recomputes every row digest
-before exposing the mapping. A mismatch is a hard error; callers must use the
-original semantics or delete/rename the cache and recompute it. The digests
-detect accidental corruption and are not keyed tamper-proof authentication.
-
-Version 1 had only an N-sized identity; version 2 did not protect mutable packed
-values. Both are deliberately rejected. Semantic setters detach a bound cache
-without deleting it. The complete data identity is checked at bind and once at
+**Persistent mmap identity (2.0 safety addendum).** A mapped matrix is a `.dtwm`
+file: a 48-byte header (magic `DTWM`, version 4, N, a SHA-256 identity) and the
+packed lower triangle of doubles, NaN = not computed. The identity covers the raw
+IEEE series values, series order and lengths, storage precision, `ndim`, band,
+every DTW-variant parameter, multivariate mode, missing-data strategy, pointwise
+metric, compute backend, and backend precision. Series names are excluded because
+they do not affect distance semantics. Opening an existing file checks its magic,
+version, exact length and N, then the identity, before any distance can be read:
+a file for other series or settings raises `InvalidInput`; a short or foreign file,
+or one of the earlier cache layouts (versions 1-3), raises `IOError`. Either way,
+use the original semantics or delete/rename the file and recompute it. A new file
+is filled with NaN and flushed to the device before its header is written, so a
+power cut can leave a file that does not open, never one whose zeros read as
+distances. Semantic setters detach a bound cache without deleting it. The complete data identity is checked at bind and once at
 first use; later lookups compare a fixed-size configuration snapshot so warm
 access remains O(1). `Problem::data()` is read-only, but heap values exposed by
 `p_vec()` and caller-owned backing storage supplied through `set_view_data()`

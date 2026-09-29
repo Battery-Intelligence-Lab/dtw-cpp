@@ -290,7 +290,7 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
   fs::remove_all(out, ec);
 }
 
-TEST_CASE("Lloyd uses a checked seed schedule and preserves custom initializers",
+TEST_CASE("Lloyd uses a wrapping seed schedule and preserves custom initializers",
           "[api][tier1][seed][lloyd]")
 {
   REQUIRE(dtwc::Problem{}.random_seed() == dtwc::settings::DEFAULT_RANDOM_SEED);
@@ -319,11 +319,22 @@ TEST_CASE("Lloyd uses a checked seed schedule and preserves custom initializers"
   REQUIRE_THROWS_AS(no_restarts.set_n_repetitions(0), dtwc::InvalidInput);
   CHECK(no_restarts.n_repetitions() == 1);
 
-  auto overflow = seed_sensitive_problem();
-  overflow.set_n_clusters(3);
-  overflow.set_n_repetitions(2);
-  overflow.set_random_seed(std::numeric_limits<std::uint64_t>::max());
-  REQUIRE_THROWS_AS(overflow.cluster_by_kmedoids_lloyd(), dtwc::InvalidInput);
+  // Restart r runs with seed + r, unsigned: the second restart of seed 2^64 - 1
+  // is seed 0, so two restarts keep the better of those two single runs.
+  const auto lloyd = [](std::uint64_t seed, int restarts) {
+    auto run = seed_sensitive_problem();
+    run.set_n_clusters(3);
+    run.set_n_repetitions(restarts);
+    run.set_random_seed(seed);
+    run.cluster_by_kmedoids_lloyd();
+    return std::pair{ run.find_total_cost(), run.medoids() };
+  };
+  constexpr auto max_seed = std::numeric_limits<std::uint64_t>::max();
+  const auto last = lloyd(max_seed, 1);
+  const auto wrapped = lloyd(0, 1);
+  const auto both = lloyd(max_seed, 2);
+  CHECK((both == last || both == wrapped));
+  CHECK(both.first == std::min(last.first, wrapped.first));
 }
 
 TEST_CASE("Lloyd rejects a non-finite assignment before publishing labels",
@@ -415,6 +426,22 @@ TEST_CASE("Tier-1 C++ load honours skip_rows", "[api][tier1][skip_rows]")
 
   std::error_code ec;
   fs::remove(csv, ec);
+}
+
+TEST_CASE("Tier-1 C++ cluster() moves an rvalue in-memory dataset and copies an lvalue",
+          "[api][tier1]")
+{
+  auto dataset = dtwc::load(
+    dtwc::Dataset::series_type{ { 0.0, 0.0 }, { 0.0, 1.0 }, { 9.0, 9.0 }, { 9.0, 8.0 } });
+  const auto copied = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10);
+  const auto again = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10); // the lvalue kept its series
+  const auto moved = dtwc::cluster(std::move(dataset), 2, "pam", -1, "cpu", 10);
+  CHECK(again.labels() == copied.labels());
+  CHECK(moved.labels() == copied.labels());
+  CHECK(moved.medoids() == copied.medoids());
+  // The rvalue gave its series to the run instead of a copy: nothing is left.
+  CHECK_THROWS_AS(dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10), // NOLINT(bugprone-use-after-move)
+                  dtwc::InvalidInput);
 }
 
 namespace {

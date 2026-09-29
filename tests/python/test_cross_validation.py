@@ -138,7 +138,7 @@ class TestDTWCrossValidation:
 # ---------------------------------------------------------------------------
 
 class TestDistanceMatrixCrossValidation:
-    """Verify DenseDistanceMatrix.to_numpy() matches individual dist_by_ind calls."""
+    """Verify the filled matrix matches individual dist_by_ind calls."""
 
     def test_full_matrix_matches_pairwise(self, three_cluster_data):
         series = three_cluster_data

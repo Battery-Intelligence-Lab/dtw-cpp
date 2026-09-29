@@ -18,6 +18,7 @@ target_sources(dtwc++
   scores.cpp
   cli/config.cpp
   cli/run.cpp
+  core/distance_matrix.cpp
   core/dtw.cpp
   core/dtw_dispatch.cpp
   core/dtw_lanes.cpp
@@ -42,7 +43,6 @@ target_sources(dtwc++
   checkpoint.hpp
   dtwc.hpp
   distance.hpp
-  env.hpp
   fileOperations.hpp
   initialisation.hpp
   parallelisation.hpp
@@ -59,9 +59,7 @@ target_sources(dtwc++
   soft_dtw.hpp
   # Core types
   core/clustering_result.hpp
-  core/crc32.hpp
   core/distance_matrix.hpp
-  core/mmap_distance_matrix.hpp
   core/dtw.hpp
   core/dtw_options.hpp
   core/lower_bound_impl.hpp
@@ -99,29 +97,6 @@ target_include_directories(dtwc++ PUBLIC .)
 # Vendored fast_float (dtwc/extern/fast_float, header only) likewise: only
 # io/parse_number.cpp includes it, behind a header that names no fast_float type.
 target_include_directories(dtwc++ PRIVATE extern)
-
-# A NAMED `#pragma omp critical(x)` in a header makes GCC emit a COMMON symbol
-# `.gomp_critical_user_x` into every TU that includes it. Under IPO/LTO with the
-# static libdtwc++.a, ld.bfd searches the archive for a real definition of that
-# COMMON, pulls in unused members, and gives their COMDAT symbols a second
-# PREVAILING_DEF_IRONLY resolution -- lto1 then aborts with "multiple prevailing
-# defs" (binutils PR ld/32083, GCC PR lto/116361). Named criticals are fine in a
-# .cpp; in a header they are a build break that only shows up on Linux/Release.
-file(GLOB_RECURSE _dtwc_headers CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp")
-foreach(_hdr IN LISTS _dtwc_headers)
-  file(STRINGS "${_hdr}" _omp_criticals REGEX "pragma[ \t]+omp[ \t]+critical")
-  foreach(_line IN LISTS _omp_criticals)
-    string(REGEX MATCH "critical[ \t]*[(]" _named "${_line}")
-    if(_named)
-      message(FATAL_ERROR
-        "Named '#pragma omp critical(...)' in ${_hdr}:${_line}  "
-        "Headers must use the unnamed form: the named one emits a COMMON "
-        ".gomp_critical_user_* symbol that breaks GCC LTO links against "
-        "libdtwc++.a (binutils PR ld/32083, GCC PR lto/116361).")
-    endif()
-  endforeach()
-endforeach()
-unset(_dtwc_headers)
 
 target_link_libraries(dtwc++
   PRIVATE
@@ -219,9 +194,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GN
   target_compile_options(dtwc++ PRIVATE -fno-finite-math-only)
 endif()
 
-# llfio (required) — memory-mapped distance matrices
+# llfio (optional) — memory-mapped distance matrices. core/distance_matrix.cpp
+# is the one file that includes it, so the link is PRIVATE; DTWC_HAS_MMAP is
+# PUBLIC, as every capability is, so a consumer (and the tests) can tell whether
+# use_mmap_distance_matrix can map a file.
 if(TARGET llfio_hl)
-  target_link_libraries(dtwc++ PUBLIC llfio_hl)
+  target_link_libraries(dtwc++ PRIVATE llfio_hl)
   target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_MMAP)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()

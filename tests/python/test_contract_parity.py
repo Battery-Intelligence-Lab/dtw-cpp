@@ -52,11 +52,11 @@ _ERRORS = ["DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError"]
 # ---------------------------------------------------------------------------
 _ENUMS = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
-    "MissingStrategy", "DistanceMatrixStrategy", "Linkage",
+    "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision", "Linkage",
 ]
 _STRUCTS = [
-    "DTWVariantParams", "MIPSettings", "CUDASettings", "DenseDistanceMatrix",
-    "Data", "DendrogramStep", "Dendrogram", "HierarchicalOptions",
+    "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",
+    "DendrogramStep", "Dendrogram", "HierarchicalOptions",
     "CLARANSOptions", "CLARAOptions", "ClusteringResult", "Problem",
     "CheckpointOptions",
 ]

@@ -7,7 +7,7 @@ weight: 1
 
 To get started, users should first check the [dependencies](installation.md#dependencies) to ensure they are ready to run the _DTW-C++_ software.
 
-Then users can choose to run the code by editing `main.cpp`, using a source-code editor such as Visual Studio Code, which gives the user more freedom. Or for simpler implementation, the user can use the [command line interface](cli.md).
+Then users can write a C++ program against the library, starting from the programs in `examples/cpp`, which gives the user more freedom. Or for simpler implementation, the user can use the [command line interface](cli.md).
 
 The format for your input data is detailed [here](supported-data.md). The results are output as .csv files, which the user can specify the location of if desired. The output results include:
 - DTW matrix, which contains the DTW distance each all time series with each other.

@@ -121,8 +121,8 @@ function(dtwc_setup_dependencies)
   # for exactly two uses: ScratchMatrix's base class and a to_full_matrix return
   # type that every caller immediately copied into a std::vector. Both are now
   # plain standard library. The CMake rationale here had also gone stale — it
-  # claimed "zero-copy Map" and "DenseDistanceMatrix internals", and there was no
-  # Eigen::Map anywhere and DenseDistanceMatrix was already std::vector<double>.
+  # claimed "zero-copy Map" and dense distance-matrix internals, and there was no
+  # Eigen::Map anywhere and the matrix was already std::vector<double>.
 
   # PMU counters (X-24, D-17). Every route by which this could fail to deliver
   # counters is a FATAL_ERROR, because Google Benchmark's own runtime guard cannot
@@ -181,209 +181,82 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
-  # llfio — memory-mapped I/O for large distance matrices (OPTIONAL).
-  # Optional per the project "optional deps only" rule (Task 0.12): the core
-  # must configure without llfio. When disabled/absent, DTWC_HAS_MMAP is never
-  # defined (see dtwc/CMakeLists.txt, which already guards on TARGET llfio_hl)
-  # and mmap-backed stores fall back to the in-memory path.
-  #   RESOLVED (Task R3): dtwc/mip/CMakeLists.txt now guards its `llfio_hl` link
-  #   (and a mirrored DTWC_HAS_MMAP define) on `if(TARGET llfio_hl)`, so a full
-  #   llfio-less configure+generate succeeds — verified by a live configure-only
-  #   run with -DDTWC_ENABLE_LLFIO=OFF (exit 0). With the default
-  #   (DTWC_ENABLE_LLFIO=ON) behaviour is unchanged.
+  # llfio — memory-mapped I/O for large distance matrices (OPTIONAL). With
+  # DTWC_ENABLE_LLFIO=OFF there is no llfio_hl target, dtwc/CMakeLists.txt then
+  # leaves DTWC_HAS_MMAP undefined, and a request for mmap storage raises a typed
+  # error. Only dtwc/core/distance_matrix.cpp includes llfio.
+  #
+  # Header-only, from pinned archives: no llfio CMake, no quickcpplib bootstrap,
+  # no nested build. llfio_hl carries what llfio's own header-only target carried
+  # through quickcpplib::hl, outcome::hl and, on Windows, ntkernel-error-category::hl;
+  # the preprocessed <llfio/v2.0/llfio.hpp> is line for line the one the former
+  # superbuild produced (clang 21, Windows, 2026-09-28).
+  #
+  # Pins. llfio b17613fb is 5 commits past its newest tag, 20260506, and is kept
+  # for 284ba8d9 (PR #178, a libc++ char8_t codecvt fix that AppleClang needs);
+  # move to a tag once one includes it. quickcpplib publishes no tags, so a commit
+  # is the only pin it offers. outcome 32f20369 is the develop == master tip the
+  # superbuild used to fetch unpinned. wg14_signals, ntkernel-error-category,
+  # span-lite and byte-lite are the submodule commits that llfio b17613fb and
+  # quickcpplib 3c1d8cb5 record; GitHub archives leave submodules out.
   option(DTWC_ENABLE_LLFIO "Enable llfio memory-mapped distance matrices" ON)
   if(DTWC_ENABLE_LLFIO AND NOT TARGET llfio_hl)
-    CPMAddPackage(
-      NAME llfio
-      GITHUB_REPOSITORY ned14/llfio
-      # PINNED to a specific commit (Task 0.12): previously tracked the moving
-      # `develop` branch tip — a supply-chain risk (upstream force-push / hijack
-      # changes what we build).
-      #
-      # RESOLVED 2026-09-22 (X-25), was "OPEN: needs maintainer blessing". The
-      # pin is 5 commits past llfio's newest release tag, `20260506`
-      # (`git describe` → 20260506-5-gb17613fb), and we KEEP it rather than move
-      # back to that tag, because those 5 commits contain 284ba8d9 / PR #178,
-      # "path_view: guard char8_t->wchar_t locale codecvt for libc++" — and
-      # libc++ is exactly what AppleClang gives us on macOS. The newest tag
-      # predates that fix, so pinning to it would regress our primary dev
-      # platform. The remaining four commits are a CI addition, a README unit
-      # fix and their two merges. b17613fb is itself the merge commit of an
-      # upstream-reviewed PR, which is the blessing in substance.
-      # Revisit when upstream tags a release at or after 284ba8d9.
-      GIT_TAG b17613fb2149a93b0cc7022c8e649dbf5a015b90
-      DOWNLOAD_ONLY YES
-    )
-    if(llfio_ADDED)
-      # ---------------------------------------------------------------------
-      # quickcpplib ninja-propagation patch
-      #
-      # llfio's `find_quickcpplib_library()` (in QuickCppLibUtils.cmake) calls
-      # `download_build_install()`, which runs
-      #     execute_process(COMMAND "${CMAKE_COMMAND}" .)
-      # with no `-G` and no `-DCMAKE_MAKE_PROGRAM`. The grandchild CMake then
-      # re-detects a generator from scratch. In sandboxed wheel builds
-      # (scikit-build-core's `pip-build-env`, cibuildwheel) the ninja binary
-      # lives under an ephemeral path (e.g. `/.../uv/builds-v0/.tmpXXX/bin/`)
-      # that isn't on the default PATH and — worse — gets rewritten on every
-      # reinstall, making any cached `CMakeCache.txt` in the sub-build point
-      # at a dead path. `-DCMAKE_MAKE_PROGRAM` on the sub-CMake command line
-      # is the only thing that reliably overrides that stale cache.
-      #
-      # Fix: pre-clone quickcpplib into the location llfio's bootstrap uses
-      # (`${CMAKE_BINARY_DIR}/quickcpplib/repo`) and patch
-      # `download_build_install()` to forward `-G` and `-DCMAKE_MAKE_PROGRAM`.
-      # llfio's bootstrap will then see the pre-existing repo and skip its
-      # own git clone, and subsequently `include(QuickCppLibUtils)` picks up
-      # the patched version.
-      #
-      # Scope note (X-25, 2026-09-22): the file rewritten below is the clone in
-      # OUR build tree, not a shared cache or anything of the user's — each build
-      # directory gets its own. And the justification above may now be spent:
-      # the ephemeral-ninja-path problem only arises in wheel sandboxes, and
-      # every artefact build sets DTWC_ENABLE_LLFIO=OFF (`python-wheels.yml:67`,
-      # `release-artifacts.yml:36`). llfio is only ever built where ninja sits at
-      # a stable path — developer machines and the macos/windows/ubuntu/cuda unit
-      # jobs, which take the default ON. Deleting the patch is therefore the
-      # likely end state, but it wants a real wheel build with llfio forced ON to
-      # confirm, which no runner currently performs. Left in place, now loud.
-      # ---------------------------------------------------------------------
-      set(_dtwc_qcl_root "${CMAKE_BINARY_DIR}/quickcpplib")
-      set(_dtwc_qcl_repo "${_dtwc_qcl_root}/repo")
-      # PINNED (Task 0.12): the previous `git clone --depth 1` checked out
-      # whatever the default branch HEAD was at configure time — a moving
-      # target and supply-chain risk. Pin to a reviewed commit.
-      #   SHA read from the local checkout build/quickcpplib/repo on 2026-07-07
-      #   (commit 3c1d8cb5, authored 2026-03-10).
-      #
-      #   RESOLVED 2026-09-22 (X-25), was "OPEN: maintainer to bless". There is
-      #   nothing to bless: quickcpplib publishes NO tags at all —
-      #   `git ls-remote --tags --refs https://github.com/ned14/quickcpplib.git`
-      #   returned 0 refs on 2026-09-22 (llfio, by contrast, has 104). A pinned
-      #   SHA is therefore the only mechanism upstream offers, not a stopgap
-      #   until a release appears. Do not reopen this expecting a version
-      #   number; re-check the ls-remote before changing the pin.
-      #
-      # Set outside the clone guard below: the patch diagnostics name this SHA,
-      # and they run on every configure, not only the one that clones.
-      set(_dtwc_qcl_sha "3c1d8cb5e94722447e4f17e87b5a9e3a0c66fb39")
-      if(NOT EXISTS "${_dtwc_qcl_repo}/cmakelib/QuickCppLibUtils.cmake")
-        find_package(Git REQUIRED)
-        file(MAKE_DIRECTORY "${_dtwc_qcl_root}")
-        # A full (non-shallow) clone is used because an arbitrary historical SHA
-        # is not reachable from a depth-1 tip; we then detach onto the SHA and
-        # sync submodules (also full — pinned gitlink commits may predate any
-        # shallow tip) to reproduce that exact tree.
-        message(STATUS
-          "Pre-cloning quickcpplib into ${_dtwc_qcl_repo} @ ${_dtwc_qcl_sha} ...")
-        execute_process(
-          COMMAND "${GIT_EXECUTABLE}" clone --no-checkout --jobs 8
-            "https://github.com/ned14/quickcpplib.git" repo
-          WORKING_DIRECTORY "${_dtwc_qcl_root}"
-          RESULT_VARIABLE _dtwc_clone_rc
-        )
-        if(_dtwc_clone_rc EQUAL 0)
-          execute_process(
-            COMMAND "${GIT_EXECUTABLE}" checkout --detach "${_dtwc_qcl_sha}"
-            WORKING_DIRECTORY "${_dtwc_qcl_repo}"
-            RESULT_VARIABLE _dtwc_clone_rc
-          )
-        endif()
-        if(_dtwc_clone_rc EQUAL 0)
-          execute_process(
-            COMMAND "${GIT_EXECUTABLE}" submodule update --init --recursive
-              --jobs 8
-            WORKING_DIRECTORY "${_dtwc_qcl_repo}"
-            RESULT_VARIABLE _dtwc_clone_rc
-          )
-        endif()
-        if(NOT _dtwc_clone_rc EQUAL 0
-            OR NOT EXISTS "${_dtwc_qcl_repo}/cmakelib/QuickCppLibUtils.cmake")
-          message(FATAL_ERROR
-            "Failed to pre-clone quickcpplib at pinned SHA ${_dtwc_qcl_sha} "
-            "(rc=${_dtwc_clone_rc}). If your build environment is offline, clone "
-            "manually: git clone --recursive "
-            "https://github.com/ned14/quickcpplib.git ${_dtwc_qcl_repo} && "
-            "git -C ${_dtwc_qcl_repo} checkout ${_dtwc_qcl_sha}")
-        endif()
-      endif()
+    CPMAddPackage(NAME llfio DOWNLOAD_ONLY YES
+      URL "https://github.com/ned14/llfio/archive/b17613fb2149a93b0cc7022c8e649dbf5a015b90.tar.gz"
+      URL_HASH SHA256=f1dda54633647791101ffb21dc2311750aa5d39a0a017bced4383ffb66362913)
+    CPMAddPackage(NAME wg14_signals DOWNLOAD_ONLY YES
+      URL "https://github.com/ned14/wg14_signals/archive/36d3cdb66993078c8fecba93e2a5f2c549572d64.tar.gz"
+      URL_HASH SHA256=0fc195c3074815486e3d200254fb2940814903895d1d77898eaf498aec409d29)
+    CPMAddPackage(NAME quickcpplib DOWNLOAD_ONLY YES
+      URL "https://github.com/ned14/quickcpplib/archive/3c1d8cb5e94722447e4f17e87b5a9e3a0c66fb39.tar.gz"
+      URL_HASH SHA256=4d2c775c1fcfe984d2b0b8c313d68dfda433e272a97ffd9706c74f86652b4deb)
+    CPMAddPackage(NAME span_lite DOWNLOAD_ONLY YES
+      URL "https://github.com/martinmoene/span-lite/archive/dbb484f6c2060b41afa55653dec99b228013a813.tar.gz"
+      URL_HASH SHA256=ebfde55f9d141ef4ea5ca99a140829ff3c1b17220613fe7177e661e542c77a39)
+    CPMAddPackage(NAME byte_lite DOWNLOAD_ONLY YES
+      URL "https://github.com/martinmoene/byte-lite/archive/5bf0d80352197a4fb3526ad678a23a4c0c40d094.tar.gz"
+      URL_HASH SHA256=b8384d7c184f8e3ec82107651fc56b0e160e2067db59aa03967b3db1d39733de)
+    CPMAddPackage(NAME outcome DOWNLOAD_ONLY YES
+      URL "https://github.com/ned14/outcome/archive/32f203695dea0073722699890d8f3faca58ff9bb.tar.gz"
+      URL_HASH SHA256=c20f52413e1b2a7dbe6fa809f07b923abf43e994d9f01c3179e1cd300c9dd3c7)
 
-      # Two patches — each checks its own pattern is still present so we can
-      # recover from partially-patched state without touching an
-      # already-modified line twice.
-      #
-      #   A) `download_build_install()` spawns a CHILD CMake with `cmake .`
-      #      (no -G, no -DCMAKE_MAKE_PROGRAM).
-      #   B) `find_quickcpplib_library()` builds a `cmakeargs` string that
-      #      template-substitutes into ExternalProject_Add's CMAKE_ARGS,
-      #      driving the GRANDCHILD CMake that configures outcome/etc.
-      #      Upstream includes -G here but not -DCMAKE_MAKE_PROGRAM.
-      set(_dtwc_qcl_utils "${_dtwc_qcl_repo}/cmakelib/QuickCppLibUtils.cmake")
-      file(READ "${_dtwc_qcl_utils}" _dtwc_qcl_orig)
-      set(_dtwc_qcl_current "${_dtwc_qcl_orig}")
+    # llfio includes wg14_signals by a path relative to its own headers
+    # (detail/impl/signal_guard.hpp: "../../../wg14_signals/include/..."), so the
+    # two trees are joined here, in the build tree; the downloads stay untouched.
+    set(_dtwc_llfio_include "${CMAKE_BINARY_DIR}/_deps/llfio-hl/include")
+    file(COPY "${llfio_SOURCE_DIR}/include/llfio" DESTINATION "${_dtwc_llfio_include}")
+    file(COPY "${wg14_signals_SOURCE_DIR}/include"
+         DESTINATION "${_dtwc_llfio_include}/llfio/wg14_signals")
 
-      set(_dtwc_qcl_from_A "COMMAND \"\${CMAKE_COMMAND}\" .\n    WORKING_DIRECTORY \"\${DBI_DESTINATION}\"")
-      set(_dtwc_qcl_to_A   "# DTWC_NINJA_PROPAGATION_PATCH (child)\n    COMMAND \"\${CMAKE_COMMAND}\" . -G \"\${CMAKE_GENERATOR}\" \"-DCMAKE_MAKE_PROGRAM=\${CMAKE_MAKE_PROGRAM}\"\n    WORKING_DIRECTORY \"\${DBI_DESTINATION}\"")
-      if(NOT _dtwc_qcl_current MATCHES "DTWC_NINJA_PROPAGATION_PATCH .child.")
-        string(REPLACE "${_dtwc_qcl_from_A}" "${_dtwc_qcl_to_A}"
-          _dtwc_qcl_current "${_dtwc_qcl_current}")
-      endif()
-
-      set(_dtwc_qcl_from_B "set(cmakeargs \"-DCMAKE_BUILD_TYPE=\${config} -G \\\"\${CMAKE_GENERATOR}\\\" -DBUILD_TESTING=OFF \\\"-DQUICKCPPLIB_ROOT_BINARY_DIR=\${QUICKCPPLIB_ROOT_BINARY_DIR}\\\"\")")
-      set(_dtwc_qcl_to_B   "# DTWC_NINJA_PROPAGATION_PATCH (grandchild)\n        set(cmakeargs \"-DCMAKE_BUILD_TYPE=\${config} -G \\\"\${CMAKE_GENERATOR}\\\" -DBUILD_TESTING=OFF \\\"-DQUICKCPPLIB_ROOT_BINARY_DIR=\${QUICKCPPLIB_ROOT_BINARY_DIR}\\\" \\\"-DCMAKE_MAKE_PROGRAM=\${CMAKE_MAKE_PROGRAM}\\\"\")")
-      if(NOT _dtwc_qcl_current MATCHES "DTWC_NINJA_PROPAGATION_PATCH .grandchild.")
-        string(REPLACE "${_dtwc_qcl_from_B}" "${_dtwc_qcl_to_B}"
-          _dtwc_qcl_current "${_dtwc_qcl_current}")
-      endif()
-
-      if(NOT _dtwc_qcl_current STREQUAL _dtwc_qcl_orig)
-        file(WRITE "${_dtwc_qcl_utils}" "${_dtwc_qcl_current}")
-        message(STATUS "Patched QuickCppLibUtils.cmake "
-          "(forward -G + -DCMAKE_MAKE_PROGRAM to child + grandchild CMake)")
-      endif()
-      # Both markers must now be present, whether this run applied them or an
-      # earlier one did. A `string(REPLACE)` whose pattern is absent succeeds and
-      # changes nothing, so the old `message(WARNING)` here meant an upstream
-      # text change downgraded to a line of build noise and then a confusing
-      # failure much later inside the nested llfio superbuild. That is precisely
-      # the silent fallback the project forbids: fail at configure instead.
-      foreach(_dtwc_qcl_marker child grandchild)
-        if(NOT _dtwc_qcl_current MATCHES "DTWC_NINJA_PROPAGATION_PATCH .${_dtwc_qcl_marker}.")
-          message(FATAL_ERROR
-            "Could not apply the QuickCppLibUtils ninja-propagation patch "
-            "(${_dtwc_qcl_marker}) — the upstream text at pinned quickcpplib "
-            "${_dtwc_qcl_sha} no longer matches what we replace. Re-derive the "
-            "patterns against that file, or configure with "
-            "-DDTWC_ENABLE_LLFIO=OFF to build without memory-mapped I/O. File: "
-            "${_dtwc_qcl_utils}")
-        endif()
-      endforeach()
-      unset(_dtwc_qcl_marker)
-      unset(_dtwc_qcl_orig)
-      unset(_dtwc_qcl_current)
-      unset(_dtwc_qcl_from_A)
-      unset(_dtwc_qcl_to_A)
-      unset(_dtwc_qcl_from_B)
-      unset(_dtwc_qcl_to_B)
-      unset(_dtwc_qcl_root)
-      unset(_dtwc_qcl_repo)
-      unset(_dtwc_qcl_sha)
-      unset(_dtwc_qcl_utils)
-      unset(_dtwc_qcl_contents)
-      unset(_dtwc_qcl_patched)
-
-      add_subdirectory(${llfio_SOURCE_DIR} ${llfio_BINARY_DIR} EXCLUDE_FROM_ALL)
+    find_package(Threads REQUIRED)
+    add_library(llfio_hl INTERFACE IMPORTED)
+    set_target_properties(llfio_hl PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES
+        "${_dtwc_llfio_include};${quickcpplib_SOURCE_DIR}/include;${outcome_SOURCE_DIR}/include;${span_lite_SOURCE_DIR}/include;${byte_lite_SOURCE_DIR}/include"
+      # quickcpplib's own build writes the first define into a generated
+      # detail/config.hpp (the archive ships a placeholder). Its C++14 ABI takes
+      # span and byte from span-lite and byte-lite, found here on the include path.
+      INTERFACE_COMPILE_DEFINITIONS
+        "QUICKCPPLIB_REQUIRE_CXX_STANDARD=201402L;QUICKCPPLIB_USE_SYSTEM_SPAN_LITE=1;QUICKCPPLIB_USE_SYSTEM_BYTE_LITE=1;$<$<CONFIG:Debug>:QUICKCPPLIB_ENABLE_VALGRIND=1>"
+      # glibc < 2.34 keeps dladdr (ringbuffer_log) in libdl. quickcpplib's own target
+      # links dl too, and rt, which only its signal_guard needs; llfio does not use that.
+      INTERFACE_LINK_LIBRARIES "Threads::Threads;${CMAKE_DL_LIBS}")
+    if(WIN32)
+      CPMAddPackage(NAME ntkernel_error_category DOWNLOAD_ONLY YES
+        URL "https://github.com/ned14/ntkernel-error-category/archive/c20f97bccacc3162d515c0828ff35fe88f4bf9f2.tar.gz"
+        URL_HASH SHA256=3c6376496407774b54b59201bf1faedfa0f92a35439cf0d8a87c26cdfd21094c)
+      # llfio's Windows API floor, and the NT error category in header-only form:
+      # one category object per binary. Upstream warns that comparing error codes
+      # across binaries then fails; dtwc never compares them, it turns each llfio
+      # error into a message in the binary that raised it.
+      set_property(TARGET llfio_hl APPEND PROPERTY
+        INTERFACE_INCLUDE_DIRECTORIES "${ntkernel_error_category_SOURCE_DIR}/include")
+      set_property(TARGET llfio_hl APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS
+        _WIN32_WINNT=0x601 NTKERNEL_ERROR_CATEGORY_INLINE NTKERNEL_ERROR_CATEGORY_STATIC)
     endif()
   endif()
-
-  # OPTIONAL (Task 0.12): llfio must not abort configure when absent — that
-  # violated the "optional deps only" rule. Was `message(FATAL_ERROR ...)`.
   if(TARGET llfio_hl)
-    message(STATUS "  llfio:    YES (memory-mapped distance matrix enabled)")
-    set(DTWC_HAS_MMAP TRUE)
-  elseif(DTWC_ENABLE_LLFIO)
-    message(WARNING "  llfio:    requested but NOT FOUND — memory-mapped "
-      "distance matrices disabled (falls back to in-memory store).")
+    message(STATUS "  llfio:    YES (header-only; memory-mapped distance matrix enabled)")
   else()
     message(STATUS "  llfio:    OFF (DTWC_ENABLE_LLFIO=OFF) — mmap disabled.")
   endif()

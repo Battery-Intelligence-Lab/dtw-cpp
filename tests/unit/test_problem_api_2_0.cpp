@@ -1203,13 +1203,13 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
     ledger.behavior(f22_entity::cluster_by_mip, route_ok);
   }
 
-  // 19. Problem::cluster_by_kMedoidsLloyd()
+  // 19. Problem::cluster_by_kMedoidsPAM(), the v1.0.0 name of Lloyd k-medoids
   {
     constexpr std::string_view expected =
       "Lloyd k-medoids requires n_repetitions >= 1.";
     Problem legacy = make_f22_problem();
     Problem canonical = make_f22_problem();
-    // set_n_repetitions(0) throws (O-06); only the deprecated field still
+    // set_n_repetitions(0) throws (O-06); only the public field still
     // reaches Lloyd's own check.
     DTWC_PUSH_NO_DEPRECATED
     legacy.N_repetition = 0;
@@ -1222,7 +1222,7 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
     f22_exception_outcome legacy_outcome;
     DTWC_PUSH_NO_DEPRECATED
     legacy_outcome = f22_capture_exception([&] {
-      legacy.cluster_by_kMedoidsLloyd();
+      legacy.cluster_by_kMedoidsPAM();
     });
     DTWC_POP_NO_DEPRECATED
     const auto canonical_outcome = f22_capture_exception([&] {

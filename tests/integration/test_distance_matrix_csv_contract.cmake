@@ -164,7 +164,7 @@ function(run_cli_route route output_dir threshold expect_mmap)
     string(REPLACE "\\\\" "/" normalized_stdout "${stdout}")
     string(REPLACE "\\" "/" normalized_stdout "${normalized_stdout}")
     set(matrix_path "${output_dir}/conformance_distance_matrix.csv")
-    set(cache_path "${output_dir}/conformance_distmat.cache")
+    set(cache_path "${output_dir}/conformance.dtwm")
     set(matrix_marker "Distance matrix written to")
     require_occurrences(
         "${normalized_stdout}" "${matrix_marker}" 1
@@ -199,8 +199,10 @@ function(run_cli_route route output_dir threshold expect_mmap)
         file(SIZE "${cache_path}" cache_size)
         file(SHA256 "${cache_path}" cache_sha)
         string(TOUPPER "${cache_sha}" cache_sha)
-        if(cache_size LESS_EQUAL 0)
-            message(FATAL_ERROR "F14 ${route} mmap cache is empty")
+        # The .dtwm file of the 27 series: a 48-byte header and 27*28/2 doubles.
+        if(NOT cache_size EQUAL 3072)
+            message(FATAL_ERROR
+                "F14 ${route} mmap cache is ${cache_size} bytes, not the 3072 of a 27-series .dtwm")
         endif()
         message(STATUS
             "F14_CSV_CACHE route=${route} bytes=${cache_size} "
@@ -237,7 +239,7 @@ function(run_result_route output_dir)
         "F14_RESULT_SAVE subject=native_result labels=27 medoids=3 device=cpu"
         1
         "native Result::save")
-    if(EXISTS "${output_dir}/conformance_distmat.cache")
+    if(EXISTS "${output_dir}/conformance.dtwm")
         message(FATAL_ERROR "F14 native Result::save unexpectedly used mmap")
     endif()
     set_property(GLOBAL APPEND PROPERTY f14_runs "result")

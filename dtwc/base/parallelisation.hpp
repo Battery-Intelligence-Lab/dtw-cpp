@@ -13,15 +13,13 @@
 
 #pragma once
 
-#include "../types/Range.hpp" // not used here; consumers still reach Range through it
+#include "settings.hpp" // index_t
 
 #include <algorithm>
-#include <atomic>
+#include <cassert>
 #include <cstddef>
 #include <exception>
-#include <limits>
-#include <stdexcept>
-#include <utility>
+#include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -58,32 +56,31 @@ inline int get_max_threads()
 /// Heuristic: each thread gets ~chunks_per_thread work units. This balances
 /// dispatch overhead (fewer, larger chunks) against load imbalance (more, smaller chunks).
 /// For 168 threads with N=8926: chunk=13. For 16 threads with N=28: chunk=1.
-inline int omp_chunk_size_for(int n_iterations, int chunks_per_thread, int nthreads)
+inline index_t omp_chunk_size_for(index_t n_iterations, int chunks_per_thread, int nthreads)
 {
-  // Programming errors: callers pass a literal chunk count and an OpenMP thread count.
-  if (chunks_per_thread <= 0)
-    throw std::logic_error("omp_chunk_size: chunks_per_thread must be positive");
-  if (nthreads <= 0)
-    throw std::logic_error("omp_chunk_size: nthreads must be positive");
-  return std::max(1, n_iterations / (nthreads * chunks_per_thread));
+  assert(chunks_per_thread > 0 && nthreads > 0); // a literal and an OpenMP thread count
+  return std::max<index_t>(1, n_iterations / (index_t{ nthreads } * chunks_per_thread));
 }
 
 inline int omp_chunk_size(int n_iterations, int chunks_per_thread = 4)
 {
-  return omp_chunk_size_for(n_iterations, chunks_per_thread, get_max_threads());
+  // At most n_iterations, so it fits in int.
+  return static_cast<int>(omp_chunk_size_for(n_iterations, chunks_per_thread, get_max_threads()));
 }
 
 /**
- * @brief Runs a given task in parallel using OpenMP if available.
+ * @brief Runs task_indv(i) for every i in [0, i_end), on OpenMP threads with
+ *        dynamic scheduling (tasks of uneven cost balance), else serially.
  *
- * This function executes the provided task in parallel, leveraging OpenMP's dynamic scheduling.
- * The dynamic scheduling is advantageous for tasks with varying completion times. It allows for
- * better load balancing across threads. Falls back to serial execution if OpenMP is not available.
+ * An exception may not leave an OpenMP region, so each thread keeps its first
+ * failure in its own slot and skips its remaining iterations; after the join the
+ * caller rethrows one of the stored failures (which one, when several threads
+ * fail, may vary between runs). A serial run lets a failure propagate directly.
  *
  * @tparam Tfun The type of the task function.
- * @param task_indv Reference to the task function to be executed.
- * @param i_end The upper bound of the loop index.
- * @param isParallel Flag to enable/disable parallel execution (default is true).
+ * @param task_indv The task; in a parallel run it is called from several threads.
+ * @param i_end Number of iterations.
+ * @param isParallel Run on OpenMP threads (default true).
  * @param chunks_per_thread Dynamic-scheduling granularity (default is 4).
  * @param max_workers Upper bound on workers for THIS region only (0 = the
  *        OpenMP default), applied through a num_threads(...) clause. Nothing
@@ -95,74 +92,41 @@ void run_openmp(Tfun &task_indv, size_t i_end,
                 [[maybe_unused]] int chunks_per_thread = 4,
                 [[maybe_unused]] int max_workers = 0)
 {
-  // Programming errors: callers pass a literal chunk count, and a loop bound that
-  // is a series count or a block count, both int-sized.
-  if (chunks_per_thread <= 0)
-    throw std::logic_error("run_openmp: chunks_per_thread must be positive");
-  // OpenMP requires signed loop variables for compatibility with older compilers
-  if (i_end > static_cast<size_t>(std::numeric_limits<int>::max())) {
-    throw std::logic_error("Loop bound exceeds maximum int value for OpenMP loop");
-  }
-  const int end = static_cast<int>(i_end);
-
+  const auto end = static_cast<index_t>(i_end);
 #ifdef _OPENMP
   if (isParallel) {
     const int available = get_max_threads();
     const int nthreads =
       (max_workers > 0) ? std::min(max_workers, available) : available;
-    const int chunk = omp_chunk_size_for(end, chunks_per_thread, nthreads);
-    // An exception may not leave an OpenMP structured block. Capture one
-    // O(1)-space exception pointer under a named OpenMP critical region, then
-    // rethrow the lowest-index failure on the caller thread after the implicit
-    // join. The atomic cutoff prevents useful work above the best known failing
-    // index while still allowing every lower index to run, so scheduling cannot
-    // change which error wins.
-    std::exception_ptr failure;
-    int failure_index = end;
-    std::atomic<int> earliest_failure{end};
-#pragma omp parallel for schedule(dynamic, chunk) num_threads(nthreads)
-    for (int i = 0; i < end; i++) {
-      if (i > earliest_failure.load(std::memory_order_acquire)) continue;
-      try {
-        task_indv(static_cast<size_t>(i));
-      } catch (...) {
-        auto current = std::current_exception();
-        int observed = earliest_failure.load(std::memory_order_relaxed);
-        while (i < observed
-               && !earliest_failure.compare_exchange_weak(
-                 observed, i, std::memory_order_release,
-                 std::memory_order_relaxed)) {}
-        // Deliberately UNNAMED. A *named* critical makes GCC emit a COMMON
-        // symbol `.gomp_critical_user_<name>` into every TU that inlines this
-        // header. With -flto and a static libdtwc++.a, ld.bfd's search for a
-        // real definition of that COMMON symbol drags unused archive members
-        // into the link and hands their COMDAT symbols a second
-        // PREVAILING_DEF_IRONLY resolution, so lto1 aborts with "multiple
-        // prevailing defs" (binutils PR ld/32083, GCC PR lto/116361).
-        // Observed on GCC 13.3 / binutils 2.42, Release + IPO: the Linux MPI
-        // CI job failed to link unit_test_run_thread_scope. Do NOT re-add a
-        // name here, and do not add other unnamed criticals to hot paths —
-        // all unnamed criticals share one runtime lock. This one is on the
-        // exception path only.
-#pragma omp critical
-        {
-          if (i < failure_index) {
-            failure = current;
-            failure_index = i;
-          }
+    const index_t chunk = omp_chunk_size_for(end, chunks_per_thread, nthreads);
+    // One slot per thread. `failed` is what the loop tests: the MSVC STL's
+    // exception_ptr::operator bool is an out-of-line call.
+    struct Slot {
+      std::exception_ptr failure;
+      bool failed = false;
+    };
+    std::vector<Slot> slots(static_cast<size_t>(nthreads));
+#pragma omp parallel num_threads(nthreads)
+    {
+      Slot &slot = slots[static_cast<size_t>(omp_get_thread_num())];
+#pragma omp for schedule(dynamic, chunk) nowait
+      for (index_t i = 0; i < end; i++) {
+        if (slot.failed) continue;
+        try {
+          task_indv(static_cast<size_t>(i));
+        } catch (...) {
+          slot.failure = std::current_exception();
+          slot.failed = true;
         }
       }
     }
-    if (failure) std::rethrow_exception(failure);
-  } else {
-    for (int i = 0; i < end; i++)
-      task_indv(static_cast<size_t>(i));
+    for (const auto &slot : slots)
+      if (slot.failed) std::rethrow_exception(slot.failure);
+    return;
   }
-#else
-  // Serial fallback when OpenMP is not available
-  for (int i = 0; i < end; i++)
-    task_indv(static_cast<size_t>(i));
 #endif
+  for (index_t i = 0; i < end; i++)
+    task_indv(static_cast<size_t>(i));
 }
 
 /**

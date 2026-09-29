@@ -2,7 +2,7 @@
  * @file unit_test_missing_utils.cpp
  * @brief Unit tests for missing_utils.hpp (bitwise NaN check, interpolation).
  *
- * @details Tests is_missing<T>(), has_missing(), missing_rate(), and
+ * @details Tests is_missing<T>(), has_missing() and
  * interpolate_linear() — all of which use bitwise NaN detection safe
  * under -ffast-math / /fp:fast.
  *
@@ -103,29 +103,6 @@ TEST_CASE("has_missing: all NaN returns true", "[missing_utils]")
   double nan = std::numeric_limits<double>::quiet_NaN();
   std::vector<double> v = { nan, nan, nan };
   REQUIRE(dtwc::has_missing(v));
-}
-
-// ===========================================================================
-// missing_rate
-// ===========================================================================
-
-TEST_CASE("missing_rate: no NaN gives 0.0", "[missing_utils]")
-{
-  std::vector<double> v = { 1.0, 2.0, 3.0, 4.0 };
-  REQUIRE_THAT(dtwc::missing_rate(v), WithinAbs(0.0, 1e-15));
-}
-
-TEST_CASE("missing_rate: half NaN gives 0.5", "[missing_utils]")
-{
-  double nan = std::numeric_limits<double>::quiet_NaN();
-  std::vector<double> v = { 1.0, nan, 3.0, nan };
-  REQUIRE_THAT(dtwc::missing_rate(v), WithinAbs(0.5, 1e-15));
-}
-
-TEST_CASE("missing_rate: empty vector gives 0.0", "[missing_utils]")
-{
-  std::vector<double> v;
-  REQUIRE_THAT(dtwc::missing_rate(v), WithinAbs(0.0, 1e-15));
 }
 
 // ===========================================================================
