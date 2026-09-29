@@ -58,14 +58,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   (X1 `872349d`, `fe06efd`)
 - ☑ W2c bounds → `compute_envelopes`, `lb_keogh`, `lb_keogh_symmetric`; the LB tests merged (X1 `b1d6514`)
 - ☑ W2d derivation 03 and the GPU LB docs follow (X1 `afdfc50`, `5aff090`; merged `227c956`)
-- ☐ W3a config keys `benders`, `max-benders-iter`, `batch-weighting` go (goldens 49 → 46)
-- ☐ W3b delete Benders, PDLP, `DTWC_HIGHS_GPU`
-- ☐ W3c delete CLARANS, `PAMVariant`, FastPAM1, public `fast_pam_swap`, `medoid_utils`; FasterPAM only;
-  `OneBatchWeighting` goes (NNIW stays the one weighting)
-- ☐ W3d `decode_assignment` + `Problem::set_result` replace `solution_transaction` and `warm_start`
-- ☐ W3e `Method::MIP` uses the selected solver at every N
-- ☐ W3f unclustered `silhouette()` and `batch_size < k` → `InvalidInput`; score aliases go
-- ☐ W3g decisive test: duplicate series `{a,a,b,c}`, k = 4; fix only what it falsifies
+- ☑ W3a config keys `benders`, `max-benders-iter`, `batch-weighting` go (goldens 49 → 46) (X2 `104158c`; merged `4de2ce9`)
+- ☑ W3b delete Benders, PDLP, `DTWC_HIGHS_GPU` (X2 `6e650f9`; merged `4de2ce9`)
+- ☑ W3c delete CLARANS, `PAMVariant`, FastPAM1, public `fast_pam_swap`, `medoid_utils`; FasterPAM only;
+  `OneBatchWeighting` goes (NNIW stays the one weighting) (X2 `3bdb5d8`; merged `4de2ce9`)
+- ☑ W3d `decode_assignment` + `Problem::set_result` replace `solution_transaction` and `warm_start` (X2 `a85682b`; merged `4de2ce9`)
+- ☑ W3e `Method::MIP` uses the selected solver at every N (X2 `6e650f9`; merged `4de2ce9`)
+- ☑ W3f unclustered `silhouette()` and `batch_size < k` → `InvalidInput`; score aliases go (X2 `8995ad7`; merged `4de2ce9`)
+- ☑ W3g decisive test: duplicate series `{a,a,b,c}`, k = 4; fix only what it falsifies (X2 `0e583e8`, `9edfad2`; merged `4de2ce9`)
 - ☑ W5a delete `--resume` / `--restart` and the binary result checkpoint (Y1 `469e545`, `3ff7469`, `97bb54f`)
 - ☑ W5b delete `StoragePolicy`, `.dtws`, `MmapDataStore`, CRC32, the auto-spill; `load()` = heap (Y1 `46b3a89`)
 - ☑ W5c `Env` → two free functions over a static `{Device, int}` (Y1 `7ba0b4c`, `07b0ea4`)
@@ -76,7 +76,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `959dc5b`; Dense and Mmap are one DistanceMatrix)
 - ☑ W5e Parquet saturating helpers and leaf guards → asserts (Y1 `3000ca9`, `d8dd4f7`; merged `7eb928b`)
 - ☑ W6a `index_t` alias in `base/settings.hpp`; every count guard deleted; `mip/index_guard.hpp` → two inline throws
-  (Y3 `17843f4`, `36c7883`; merged `b260415`; outside algorithms/ and mip/; X2 carries their part)
+  (Y3 `17843f4`, `36c7883`; merged `b260415`; outside algorithms/ and mip/; X2 `a587964` carries their part)
 - ◐ W6b enum validator tails → `-Werror=switch` (X3 `8c73029` on pb/X2; merges after X2)
 - ☑ W6c `run_openmp` captures failures in per-thread slots (no critical, no atomic); `parse_ram_limit` shrinks;
   `GpuPrecision{Auto, FP32, FP64}` (Y3 `36c7883`, `dc55d13`, `b88ae0c`, `119216d`; merged `b260415`)
@@ -188,10 +188,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - Linux wheel: whether `libgomp` ships, and the notice says so.
 - Two crashes recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42); an
   llfio-ON MEX under R2024b in `std::mutex` (F43).
-- X2 (W3a–g) is gated but not merged: Sophos quarantined every Release `dtwc_cl.exe` built from it on 7fb09a4 as
-  'Generic ML PUA' (a Debug build runs). No exclusion (DECISIONS §3, 2026-09-28): X2 re-merges once the binary has
-  changed; if still quarantined, that merge's CLI tests run on a Debug build of the same tree. A released
-  `dtwc_cl.exe` may meet the same on users' machines.
+- X2 merged `4de2ce9` on 2026-09-30; its Release `dtwc_cl.exe` ran without a Sophos event
 
 ## Records
 
