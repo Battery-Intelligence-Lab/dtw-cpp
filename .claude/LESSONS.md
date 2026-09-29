@@ -273,3 +273,5 @@ Append new entries at the end of their section; keep each to a few lines.
   `--reinstall` (implies `--refresh`) and check the `.pyd` time, or pytest tests stale code.
 - **MSVC STL: `exception_ptr::operator bool` is an out-of-line call**; under Windows EH a local written in a `catch`
   and read after costs spills per iteration. Keep such a flag in memory behind a reference.
+- **A uv wheel build inherits `CMAKE_GENERATOR`**: exported as Ninja it builds the wheel with clang, which links
+  `libomp.dll`, and the import fails with "DLL load failed". Unset it for `uv pip install` (X2 merge, 2026-09-30).
