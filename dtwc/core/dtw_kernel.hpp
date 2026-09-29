@@ -51,13 +51,18 @@ namespace dtwc::core {
 // Cell policies
 // ===========================================================================
 
+// The cells nest two-argument std::min, never std::min({...}): the MSVC STL
+// compiles the initializer-list form to an out-of-line call per cell
+// (__std_min_d). The nesting makes the comparisons min_element makes, so the
+// result is unchanged, NaN ordering included.
+
 /// Standard DTW recurrence: min(diag, up, left) + cost.
 struct StandardCell {
   template <typename T>
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
-    return std::min({diag, up, left}) + cost;
+    return std::min(std::min(diag, up), left) + cost;
   }
   template <typename T>
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -74,7 +79,7 @@ struct ADTWCell {
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
-    return std::min({diag, up + penalty, left + penalty}) + cost;
+    return std::min(std::min(diag, up + penalty), left + penalty) + cost;
   }
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
@@ -173,7 +178,7 @@ struct AROWCell {
       if (left != maxValue) return left;
       return T(0);
     }
-    const T m = std::min({diag, up, left});
+    const T m = std::min(std::min(diag, up), left);
     return (m == maxValue) ? maxValue : m + cost;
   }
   template <typename T>
@@ -228,13 +233,18 @@ T dtw_kernel_full(std::size_t n_short, std::size_t n_long, Cost cost, Cell cell)
     C(0, static_cast<int>(j)) = cell.combine(
         maxValue, maxValue, C(0, static_cast<int>(j - 1)), cost(0, j), 0, j);
 
+  // As in the rolling kernels below: C(i-1, j) is carried in a register rather
+  // than reloaded right after its store, and the column pointers are taken once
+  // per column.
   for (std::size_t j = 1; j < n_long; ++j) {
+    const T *prev = &C(0, static_cast<int>(j - 1));
+    T *col = &C(0, static_cast<int>(j));
+    T up = col[0];
     for (std::size_t i = 1; i < n_short; ++i) {
-      const T diag = C(static_cast<int>(i - 1), static_cast<int>(j - 1));
-      const T up   = C(static_cast<int>(i - 1), static_cast<int>(j));
-      const T left = C(static_cast<int>(i), static_cast<int>(j - 1));
-      C(static_cast<int>(i), static_cast<int>(j)) =
-          cell.combine(diag, up, left, cost(i, j), i, j);
+      const T diag = prev[i - 1];
+      const T left = prev[i];
+      up = cell.combine(diag, up, left, cost(i, j), i, j); // C(i, j), the next cell's up
+      col[i] = up;
     }
   }
   return C(static_cast<int>(n_short - 1), static_cast<int>(n_long - 1));
@@ -252,8 +262,9 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (n_short == 0 || n_long == 0) return maxValue;
 
-  thread_local static std::vector<T> short_side;
-  short_side.resize(n_short);
+  thread_local static std::vector<T> short_buf;
+  short_buf.resize(n_short);
+  T *short_side = short_buf.data(); // hoisted, as in dtw_kernel_full
 
   // First column (long_idx = 0): accumulate along short axis, no diag/left.
   short_side[0] = cell.seed(cost(0, 0), 0, 0);
@@ -267,24 +278,24 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
     T diag = short_side[0];
     // First row of new column: no up, no diag (they'd be from out-of-bounds
     // previous column/row). Only `left` (short_side[0] == dp[0, j-1]) is valid.
-    short_side[0] = cell.combine(maxValue, maxValue, short_side[0],
-                                 cost(0, j), 0, j);
+    T left = cell.combine(maxValue, maxValue, short_side[0], cost(0, j), 0, j);
+    short_side[0] = left;
 
-    T row_min = do_early_abandon ? short_side[0] : T(0);
+    T row_min = do_early_abandon ? left : T(0);
 
     for (std::size_t i = 1; i < n_short; ++i) {
-      const T old_left = short_side[i - 1]; // dp[i-1, j] — already updated
-      const T old_up   = short_side[i];     // dp[i, j-1]
-      const T next = cell.combine(diag, old_up, old_left, cost(i, j), i, j);
+      const T old_up = short_side[i]; // dp[i, j-1]
+      // dp[i, j]; carried as the next cell's left (dp[i-1, j]) instead of reloaded.
+      left = cell.combine(diag, old_up, left, cost(i, j), i, j);
       diag = old_up;
-      short_side[i] = next;
-      if (do_early_abandon) row_min = std::min(row_min, next);
+      short_side[i] = left;
+      if (do_early_abandon) row_min = std::min(row_min, left);
     }
 
     if (do_early_abandon && row_min > early_abandon) return maxValue;
   }
 
-  return short_side.back();
+  return short_side[n_short - 1];
 }
 
 // ===========================================================================
@@ -375,12 +386,12 @@ T dtw_kernel_eap(std::size_t n_short, std::size_t n_long, Cost cost)
 
     std::size_t first_live = n_short; // sentinel: none yet
     std::size_t last_live = comp_start;
+    T left = maxValue; // curr[s-1], carried; nothing is live left of comp_start
 
     for (std::size_t s = comp_start; s < n_short; ++s) {
       const T up   = (s >= prev_lo && s < prev_hi) ? prev[s] : maxValue;
       const T diag = (s >= 1 && (s - 1) >= prev_lo && (s - 1) < prev_hi)
                        ? prev[s - 1] : maxValue;
-      const T left = (s > comp_start) ? curr[s - 1] : maxValue;
 
       T m = up;
       if (left < m) m = left;
@@ -388,12 +399,13 @@ T dtw_kernel_eap(std::size_t n_short, std::size_t n_long, Cost cost)
       const T d = (m == maxValue) ? maxValue : m + cost(s, L);
 
       if (d <= thr) {
-        curr[s] = d;
+        left = d;
         last_live = s;
         if (first_live == n_short) first_live = s;
       } else {
-        curr[s] = maxValue;
+        left = maxValue;
       }
+      curr[s] = left;
 
       // Keep computing through the previous row's support region; only stop
       // once we are at/past prev_hi (no up/diag support) AND the cell died —
@@ -435,8 +447,9 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
   if (n_short == 1 || n_long == 1 || band_width >= n_long - 1)
     return dtw_kernel_linear<T>(n_short, n_long, cost, cell, early_abandon);
 
-  thread_local std::vector<T> col;
-  col.assign(n_long, maxValue);
+  thread_local std::vector<T> col_buf;
+  col_buf.assign(n_long, maxValue);
+  T *col = col_buf.data(); // hoisted, as in dtw_kernel_full
   thread_local std::vector<std::size_t> low_bounds, high_bounds;
   low_bounds.resize(n_short);
   high_bounds.resize(n_short);
@@ -486,12 +499,14 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
     for (std::size_t i = prev_lo; i < std::min(low, prev_hi); ++i)
       col[i] = maxValue;
 
+    T left = col[first_row - 1];                    // dp[j, first_row-1]
     for (std::size_t i = first_row; i < high; ++i) {
       const T old_up = col[i];                      // dp[j-1, i]
-      const T left   = col[i - 1];                  // dp[j, i-1] — already updated
-      col[i] = cell.combine(diag, old_up, left, cost(j, i), j, i);
+      // dp[j, i]; carried as the next cell's left instead of reloaded.
+      left = cell.combine(diag, old_up, left, cost(j, i), j, i);
+      col[i] = left;
       diag = old_up;
-      if (do_early_abandon) row_min = std::min(row_min, col[i]);
+      if (do_early_abandon) row_min = std::min(row_min, left);
     }
 
     // Zero out cells that leave the band on the high side.

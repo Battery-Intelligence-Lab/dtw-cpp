@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (performance, Windows):** a DTW cell no longer makes a library call. The MSVC STL compiles `std::min({…})` to an
+  out-of-line helper (`__std_min_d` under clang, `__std_min_element_d` under cl), which full, banded, ADTW, AROW, MSM, TWE and
+  the DBA alignment called once per cell; they now nest two-argument `std::min` and keep the value a cell stores in a register.
+  On an Intel Core Ultra 9 285, pinned DTW of two 1000-sample series drops from 7.2 ms to 1.4 ms (band 100: 1.4 to 0.26 ms);
+  results are unchanged digit for digit.
 - **Fixed (docs):** the `/cluster` and `/help` commands showed `--k` and `--output-dir`, and `/troubleshoot` showed
   `--repetitions` and `--prune`, none of which `dtwc_cl` has; they now show `-k`, `--output` and `--n-init`, and the pruning tip
   is gone. CI now fails when a page in `docs/content`, `README.md` or `.claude/commands` shows a `dtwc_cl` flag that the live
