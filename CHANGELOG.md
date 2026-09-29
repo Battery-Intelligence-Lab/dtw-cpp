@@ -101,9 +101,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   process-wide device; Tier-1 `cluster()` now calls `set_device`.
 - **Breaking (GPU):** a CUDA or Metal fill with a DTW variant other than standard, a missing-data strategy, multivariate data,
   Float32 series or view / mmap series raises `DeviceError` naming the setting; before, the GPU silently computed standard
-  univariate DTW. On Metal, precision FP64 (`MetalPrecision::FP64`, or `cuda_settings.precision = 2`) and a GPU index other
-  than 0 raise too, instead of silently running FP32 on the default GPU. A squared-L2 mapped cache now fills on the GPU instead
-  of being refused.
+  univariate DTW. On Metal, precision FP64 (`MetalPrecision::FP64`, or `cuda_settings.precision = GpuPrecision::FP64`)
+  and a GPU index other than 0 raise too, instead of silently running FP32 on the default GPU. A squared-L2 mapped cache now
+  fills on the GPU instead of being refused.
 - **Breaking (band):** a band narrower than the length difference between the longest and shortest series raises
   `InvalidInput`, naming both series and the smallest feasible band, before any pair is computed; before, those pairs were
   stored as 1.8e308 and summed into the clustering cost. The check runs on every route that computes distances —

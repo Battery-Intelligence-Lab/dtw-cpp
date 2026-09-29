@@ -148,13 +148,13 @@ const char *metric_name(core::MetricType m)
 }
 
 #ifdef DTWC_HAS_METAL
-/// CUDASettings::precision (0 Auto, 1 FP32, 2 FP64) as the Metal selector;
-/// validate_metal_precision() then rejects FP64, which Metal cannot run.
-metal::MetalPrecision metal_precision(int precision)
+/// The Metal selector for `precision`; validate_metal_precision() then rejects
+/// FP64, which Metal cannot run.
+metal::MetalPrecision metal_precision(GpuPrecision precision)
 {
-  return precision == 1 ? metal::MetalPrecision::FP32
-       : precision == 2 ? metal::MetalPrecision::FP64
-                        : metal::MetalPrecision::Auto;
+  return precision == GpuPrecision::FP32 ? metal::MetalPrecision::FP32
+       : precision == GpuPrecision::FP64 ? metal::MetalPrecision::FP64
+                                         : metal::MetalPrecision::Auto;
 }
 #endif
 
@@ -559,13 +559,12 @@ void Problem::preflight_distance_semantics(
   core::MetricType metric,
   const Data &candidate_data,
   DistanceMatrixStrategy candidate_distance_strategy,
-  const CUDASettings &candidate_cuda_settings,
+  const CUDASettings &, // its precision is a GpuPrecision: nothing to check
   bool force_float32)
 {
   core::validate_precision(candidate_data.precision);
   core::validate_metric_type(metric);
   validate_distance_matrix_strategy(candidate_distance_strategy);
-  validate_cuda_settings_precision(candidate_cuda_settings.precision);
   core::validate_problem_distance_semantics(
     params, missing, candidate_data.ndim,
     force_float32 || candidate_data.is_f32());
@@ -692,7 +691,7 @@ Problem::distance_cache_identity(core::MetricType metric) const
 {
   core::validate_metric_type(metric);
   if (distance_strategy == DistanceMatrixStrategy::CUDA
-      && cuda_settings.precision == 0) {
+      && cuda_settings.precision == GpuPrecision::Auto) {
     throw InvalidInput(
       "use_mmap_distance_matrix: CUDA precision=Auto is not safe for persistent "
       "warm-start caches because its resolved FP32/FP64 semantics depend on the "
@@ -1170,9 +1169,9 @@ void Problem::fill_distance_matrix()
     dtwc::cuda::CUDADistMatOptions cuda_opts;
     cuda_opts.band = band;
     cuda_opts.device_id = cuda_settings.device_id;
-    if (cuda_settings.precision == 1)
+    if (cuda_settings.precision == GpuPrecision::FP32)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP32;
-    else if (cuda_settings.precision == 2)
+    else if (cuda_settings.precision == GpuPrecision::FP64)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
     // L2 is L1 on the univariate series the GPU routes take.
     cuda_opts.use_squared_l2 = metric_ == core::MetricType::SquaredL2;

@@ -305,19 +305,19 @@ NB_MODULE(_dtwcpp_core, m) {
   // CUDASettings
   // =========================================================================
 
+  nb::enum_<dtwc::GpuPrecision>(m, "GpuPrecision")
+    .value("Auto", dtwc::GpuPrecision::Auto)
+    .value("FP32", dtwc::GpuPrecision::FP32)
+    .value("FP64", dtwc::GpuPrecision::FP64);
+
   nb::class_<dtwc::CUDASettings>(m, "CUDASettings")
     .def(nb::init<>())
     .def_rw("device_id", &dtwc::CUDASettings::device_id, "CUDA device index (default 0).")
-    .def_prop_rw("precision",
-      [](const dtwc::CUDASettings &s) { return s.precision; },
-      [](dtwc::CUDASettings &s, int value) {
-        dtwc::validate_cuda_settings_precision(value);
-        s.precision = value;
-      },
-      "Compute precision: 0=Auto, 1=FP32, 2=FP64 (default 0).")
+    .def_rw("precision", &dtwc::CUDASettings::precision,
+            "Compute precision: GpuPrecision.Auto (default), FP32 or FP64.")
     .def("__repr__", [](const dtwc::CUDASettings &s) {
-      return "CUDASettings(device_id=" + std::to_string(s.device_id)
-             + ", precision=" + std::to_string(s.precision) + ")";
+      return "CUDASettings(device_id=" + std::to_string(s.device_id) + ", precision="
+             + std::string(dtwc::name_of(dtwc::gpu_precision_names, s.precision)) + ")";
     });
 
   // =========================================================================

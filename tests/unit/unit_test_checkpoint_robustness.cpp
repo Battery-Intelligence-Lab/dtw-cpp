@@ -197,7 +197,7 @@ struct ProblemSnapshot
   core::MissingStrategy missing{};
   DistanceMatrixStrategy distance_strategy{};
   int cuda_device{};
-  int cuda_precision{};
+  GpuPrecision cuda_precision{};
   core::Precision precision{};
   std::size_t ndim{};
   std::vector<std::uint64_t> series_bits;
@@ -648,7 +648,7 @@ TEST_CASE("dense checkpoint identity covers every distance semantic axis",
        p.set_cuda_settings(settings);
      }},
     {"CUDA precision", [](Problem &p) {
-       CUDASettings settings = p.cuda_settings; settings.precision = 2;
+       CUDASettings settings = p.cuda_settings; settings.precision = GpuPrecision::FP64;
        p.set_cuda_settings(settings);
      }},
   };

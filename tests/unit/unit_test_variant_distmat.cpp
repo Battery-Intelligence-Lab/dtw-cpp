@@ -245,7 +245,7 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   load_precomputed();
   CUDASettings settings;
   settings.device_id = 7;
-  settings.precision = 2;
+  settings.precision = GpuPrecision::FP64;
   prob.set_cuda_settings(settings);
   REQUIRE_FALSE(prob.is_distance_matrix_filled());
   REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
@@ -638,7 +638,7 @@ TEST_CASE("Problem rejects CUDA Auto precision for persistent mmap identity",
   Problem prob{"cache_cuda_auto"};
   prob.set_data(make_data({{0.0, 1.0}, {1.0, 2.0}}));
   prob.distance_strategy = DistanceMatrixStrategy::CUDA;
-  prob.cuda_settings.precision = 0; // Auto: runtime-hardware dependent
+  prob.cuda_settings.precision = GpuPrecision::Auto; // runtime-hardware dependent
 
   REQUIRE_THROWS_WITH(
     prob.use_mmap_distance_matrix(cache.path),

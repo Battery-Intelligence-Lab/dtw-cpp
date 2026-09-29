@@ -1457,7 +1457,7 @@ TEST_CASE("FX-1 CUDA squared-L2 cache via Problem::fill_distance_matrix",
     prob.set_data(dtwc::Data{ std::vector<std::vector<double>>(series),
                               { "s0", "s1", "s2", "s3", "s4", "s5" } });
     prob.set_band(band);
-    prob.set_cuda_settings(dtwc::CUDASettings{ 0, 2 });
+    prob.set_cuda_settings(dtwc::CUDASettings{ 0, dtwc::GpuPrecision::FP64 });
     prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::CUDA);
     prob.use_mmap_distance_matrix(cache, dtwc::core::MetricType::SquaredL2);
     prob.fill_distance_matrix();
@@ -1483,7 +1483,7 @@ TEST_CASE("IF-2 CUDA dense squared-L2 via Problem::set_metric",
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
   const auto series = generate_random_series(6, 40, /*seed=*/9);
-  for (const int precision : { 1, 2 })
+  for (const auto precision : { dtwc::GpuPrecision::FP32, dtwc::GpuPrecision::FP64 })
     for (const int band : { -1, 6 }) {
       CAPTURE(precision, band);
       dtwc::Problem prob("cuda_dense_sql2");
@@ -1498,7 +1498,7 @@ TEST_CASE("IF-2 CUDA dense squared-L2 via Problem::set_metric",
         for (size_t j = i + 1; j < series.size(); ++j) {
           const double oracle = dtwc::distance::dtw<double>(
             series[i], series[j], band, dtwc::core::MetricType::SquaredL2);
-          if (precision == 2)
+          if (precision == dtwc::GpuPrecision::FP64)
             REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)), WithinRel(oracle, 1e-9));
           else
             REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)),

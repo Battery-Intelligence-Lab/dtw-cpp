@@ -384,11 +384,11 @@ TEST_CASE("FX-1: Metal rejects a GPU index and a precision it cannot honour",
   prob.set_data(named({ ramp(8, 0.0), ramp(8, 1.0) }));
   prob.set_distance_strategy(DistanceMatrixStrategy::Metal);
 
-  prob.set_cuda_settings(dtwc::CUDASettings{ 1, 0 });
+  prob.set_cuda_settings(dtwc::CUDASettings{ 1, dtwc::GpuPrecision::Auto });
   CHECK_THAT(message_of<dtwc::DeviceError>([&] { prob.fill_distance_matrix(); }),
              ContainsSubstring("GPU index = 1"));
 
-  prob.set_cuda_settings(dtwc::CUDASettings{ 0, 2 });
+  prob.set_cuda_settings(dtwc::CUDASettings{ 0, dtwc::GpuPrecision::FP64 });
   const auto fp64 =
     message_of<dtwc::DeviceError>([&] { prob.fill_distance_matrix(); });
 #ifdef DTWC_HAS_METAL

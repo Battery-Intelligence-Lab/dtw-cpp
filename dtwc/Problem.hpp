@@ -17,6 +17,7 @@
 #include "base/settings.hpp"       // for data_t, DEFAULT_BAND
 #include "base/env.hpp"            // for Device
 #include "base/error.hpp"          // for InvalidInput
+#include "base/names.hpp"          // for Name
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
@@ -44,23 +45,27 @@
 
 namespace dtwc {
 
+/// GPU compute precision, on every GPU backend. `Auto` is FP32 on consumer CUDA
+/// GPUs and FP64 on HPC ones; Metal computes in FP32 and rejects FP64. The values
+/// are hashed into the distance-matrix identity, so they never change.
+enum class GpuPrecision { Auto = 0, FP32 = 1, FP64 = 2 };
+
+/// The spellings of `--gpu-precision`.
+inline constexpr Name<GpuPrecision> gpu_precision_names[]{
+  { "auto", GpuPrecision::Auto },
+  { "fp32", GpuPrecision::FP32 }, { "float32", GpuPrecision::FP32 }, { "f32", GpuPrecision::FP32 },
+  { "float", GpuPrecision::FP32 },
+  { "fp64", GpuPrecision::FP64 }, { "float64", GpuPrecision::FP64 }, { "f64", GpuPrecision::FP64 },
+  { "double", GpuPrecision::FP64 },
+};
+
 /// GPU compute settings, read by the CUDA and Metal routes. Metal runs on the
 /// system default device in FP32: a device_id other than 0, or precision FP64,
 /// is rejected on Metal rather than ignored.
 struct CUDASettings {
   int device_id = 0;  ///< GPU index (Problem::set_device(Device::GPU, index)).
-  /// Compute precision. `Auto` → FP32 on consumer GPUs, FP64 on HPC GPUs.
-  /// Declared as a plain int here (rather than `dtwc::cuda::CUDAPrecision`)
-  /// so this header stays parsable when DTWC_HAS_CUDA is undefined.
-  /// Values: 0 = Auto, 1 = FP32, 2 = FP64. See settings::Precision constants.
-  int precision = 0;
+  GpuPrecision precision = GpuPrecision::Auto; ///< Compute precision.
 };
-
-inline void validate_cuda_settings_precision(int value)
-{
-  if (value < 0 || value > 2)
-    throw InvalidInput("Invalid CUDA precision value.");
-}
 
 /// MIP solver tuning parameters.
 struct MIPSettings {
@@ -157,7 +162,7 @@ private:
     core::MissingStrategy missing_strategy{ core::MissingStrategy::Error };
     DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto };
     int cuda_device_id{ 0 };
-    int cuda_precision{ 0 };
+    GpuPrecision cuda_precision{ GpuPrecision::Auto };
   };
   struct DistanceCacheIdentity {
     cache_fingerprint_t full{};
