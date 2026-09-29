@@ -26,6 +26,7 @@
 #include "metal/metal_dtw.hpp" // Apple Metal GPU distance matrix computation
 #endif
 #include "warping.hpp"         // for detail::require_finite
+#include "core/dtw_kernel.hpp" // for dtw_lanes
 #include "warping_wdtw.hpp"    // for wdtw_weights (cache population)
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
@@ -1058,9 +1059,36 @@ void Problem::fillDistanceMatrix_BruteForce()
   // Lock-free by design: each worker owns a disjoint row. run_openmp catches
   // inside the structured block and deterministically rethrows the lowest-row
   // failure after the join; a failed pair remains uncomputed.
+  //
+  // Row i first takes its columns W at a time through the lane function, where
+  // all W series are as long as series i and not all W pairs are known; each of
+  // those distances is bitwise the per-pair one. The per-pair loop then fills the
+  // rest: the tail, mixed-length blocks, every pair without a lane function.
+  auto fill_lanes = [&](size_t i, auto x, auto column, const auto &block) {
+    using T = typename decltype(x)::value_type;
+    constexpr size_t W = core::dtw_lanes<T>;
+    if (!block) return;
+    std::array<std::span<const T>, W> ys;
+    std::array<double, W> d;
+    for (size_t j = i + 1; j + W <= N; j += W) {
+      bool equal = true, known = true;
+      for (size_t w = 0; w < W; ++w) {
+        ys[w] = column(j + w);
+        equal = equal && ys[w].size() == x.size();
+        known = known && visit_distmat([&](const auto &m) { return m.is_computed(i, j + w); });
+      }
+      if (!equal || known) continue;
+      block(x, ys, d);
+      visit_distmat([&](auto &m) {
+        for (size_t w = 0; w < W; ++w)
+          if (!m.is_computed(i, j + w)) m.set(i, j + w, d[w]);
+      });
+    }
+  };
   auto fill_row = [&](size_t i) {
     if (data_.is_f32()) {
       const auto si = data_.series_f32(i);
+      fill_lanes(i, si, [&](size_t j) { return data_.series_f32(j); }, dtw_block_fn_f32_);
       for (size_t j = i + 1; j < N; ++j) {
         bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
         if (!computed)
@@ -1070,6 +1098,7 @@ void Problem::fillDistanceMatrix_BruteForce()
       }
     } else {
       const auto si = series(i);
+      fill_lanes(i, si, [&](size_t j) { return series(j); }, dtw_block_fn_);
       for (size_t j = i + 1; j < N; ++j) {
         bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
         if (!computed)
