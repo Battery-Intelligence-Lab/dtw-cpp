@@ -657,8 +657,8 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
   REQUIRE(result.labels.size() == static_cast<size_t>(N));
   REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
   REQUIRE(result.total_cost > 0.0);
-  REQUIRE(prob.dense_distance_matrix().size() == 0);
-  REQUIRE(prob.dense_distance_matrix().packed_count() == 0);
+  REQUIRE(prob.distance_matrix().size() == 0);
+  REQUIRE(prob.distance_matrix().packed_count() == 0);
 
   // All labels valid
   for (int label : result.labels) {
@@ -786,8 +786,8 @@ TEST_CASE("FastCLARA parallel in-RAM assignment is deterministic and consistent"
     recomputed += p == medoid ? 0.0 : distance(prob1.series(p), prob1.series(medoid));
   }
   REQUIRE_THAT(r1.total_cost, WithinAbs(recomputed, 1e-9));
-  REQUIRE(prob1.dense_distance_matrix().size() == 0);
-  REQUIRE(prob1.dense_distance_matrix().packed_count() == 0);
+  REQUIRE(prob1.distance_matrix().size() == 0);
+  REQUIRE(prob1.distance_matrix().packed_count() == 0);
 }
 
 TEST_CASE("FastCLARA leaves an existing parent cache byte-stable",
@@ -797,7 +797,7 @@ TEST_CASE("FastCLARA leaves an existing parent cache byte-stable",
   Problem cached = make_clara_problem(N);
   Problem fresh = make_clara_problem(N);
 
-  auto &matrix = cached.dense_distance_matrix();
+  auto &matrix = cached.distance_matrix();
   matrix.resize(N);
   matrix.set(0, 1, 12345.0);
   matrix.set(2, 3, 67890.0);

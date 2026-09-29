@@ -142,8 +142,9 @@ int main()
   dtwc::save_checkpoint(prob2, ckpt_path);
   std::cout << "  Checkpoint saved to: " << ckpt_path << "\n";
 
-  // Resume in a fresh Problem
-  dtwc::Problem prob3("resumed");
+  // Resume in a fresh Problem of the same name: the checkpoint is
+  // <directory>/<name>.dtwm.
+  dtwc::Problem prob3("ckpt_demo");
   // Must reload data with same series in same order
   std::vector<std::vector<data_t>> small_series2(
       all_series.begin(), all_series.begin() + n_small);

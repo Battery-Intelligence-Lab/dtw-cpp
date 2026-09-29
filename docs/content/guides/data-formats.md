@@ -28,9 +28,9 @@ Arrow/Parquet support is optional in native builds:
 cmake -S . -B build -DDTWC_ENABLE_ARROW=ON
 ```
 
-Series are always held in RAM. Published Python wheels omit LLFIO and native mmap
-support to stay small and portable, so the memory-mapped distance matrix is a
-source-build feature.
+Series are always held in RAM. The distance matrix can live in a memory-mapped
+`.dtwm` file instead (`use_mmap_distance_matrix`, `--mmap-threshold`); the Python
+wheels and the release CLI archives include that support (llfio).
 
 For data larger than an all-pairs matrix, choose a matrix-free method such as
 OneBatchPAM, CLARA, or TADPole rather than changing only the input container.

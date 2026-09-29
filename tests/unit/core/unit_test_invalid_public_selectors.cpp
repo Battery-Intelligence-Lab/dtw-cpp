@@ -130,7 +130,7 @@ struct ProblemSnapshot
   std::vector<int> labels;
   std::vector<std::vector<std::uint64_t>> series_bits;
   std::vector<std::string> names;
-  std::size_t matrix_alternative;
+  bool matrix_mapped;
   std::size_t matrix_size;
   std::vector<std::uint64_t> packed_bits;
 };
@@ -151,7 +151,7 @@ std::vector<std::vector<std::uint64_t>> exact_series_bits(const Problem &problem
 
 ProblemSnapshot snapshot(const Problem &problem)
 {
-  const auto &matrix = problem.dense_distance_matrix();
+  const auto &matrix = problem.distance_matrix();
   std::vector<std::uint64_t> bits;
   bits.reserve(matrix.packed_count());
   for (std::size_t i = 0; i < matrix.packed_count(); ++i)
@@ -163,7 +163,7 @@ ProblemSnapshot snapshot(const Problem &problem)
     problem.clusters_ind,
     exact_series_bits(problem),
     problem.data().p_names,
-    problem.distance_matrix().index(),
+    problem.distance_matrix().is_mapped(),
     matrix.size(),
     std::move(bits)
   };
@@ -177,8 +177,8 @@ void check_snapshot(const Problem &problem, const ProblemSnapshot &before)
   CHECK(problem.clusters_ind == before.labels);
   CHECK(exact_series_bits(problem) == before.series_bits);
   CHECK(problem.data().p_names == before.names);
-  CHECK(problem.distance_matrix().index() == before.matrix_alternative);
-  const auto &matrix = problem.dense_distance_matrix();
+  CHECK(problem.distance_matrix().is_mapped() == before.matrix_mapped);
+  const auto &matrix = problem.distance_matrix();
   CHECK(matrix.size() == before.matrix_size);
   std::vector<std::uint64_t> after;
   after.reserve(matrix.packed_count());

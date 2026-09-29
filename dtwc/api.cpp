@@ -240,13 +240,14 @@ void Result::save(const std::filesystem::path &directory) const
   // save() promises the complete matrix and silhouettes. Matrix-free methods
   // retain their scaling until this explicitly requested operation.
   problem_->fill_distance_matrix();
-  std::visit([&](const auto &matrix) {
+  {
+    const core::DistanceMatrix &matrix = problem_->distance_matrix();
     core::detail::preflight_distance_matrix_csv(matrix);
     auto out = open_output(
       matrix_path, std::ios::out | std::ios::binary | std::ios::trunc);
     out << matrix;
     close_output(out, matrix_path);
-  }, problem_->distance_matrix());
+  }
 
   // s(i) is undefined with fewer than two realised clusters, where
   // scores::silhouette() throws UndefinedScore. save() must not fail a

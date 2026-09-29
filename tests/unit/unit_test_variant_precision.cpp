@@ -64,8 +64,7 @@ struct DenseSnapshot
 
 DenseSnapshot snapshot_dense(const Problem &problem)
 {
-  const auto &matrix = std::get<core::DenseDistanceMatrix>(
-    problem.distance_matrix());
+  const auto &matrix = problem.distance_matrix();
   return {matrix.raw(), matrix.size(), matrix.count_computed(), matrix.get(0, 1)};
 }
 
@@ -362,8 +361,7 @@ TEST_CASE("float32 narrowing preflight preserves mmap and bind transactions",
     CHECK(caught);
 
     problem.variant_params = original_params;
-    CHECK(std::holds_alternative<core::MmapDistanceMatrix>(
-      std::as_const(problem).distance_matrix()));
+    CHECK(std::as_const(problem).distance_matrix().is_mapped());
     if (caught) CHECK(problem.is_distance_matrix_filled());
   }
 #endif

@@ -1,8 +1,8 @@
 /**
  * @file matrix_io.hpp
- * @brief CSV I/O and full-matrix expansion for DenseDistanceMatrix.
+ * @brief CSV I/O and full-matrix expansion for DistanceMatrix.
  *
- * @details Free functions in dtwc::io operating on DenseDistanceMatrix
+ * @details Free functions in dtwc::io operating on DistanceMatrix
  *          by (const) reference. Separated from distance_matrix.hpp to satisfy
  *          SRP: the core data structure carries no I/O knowledge.
  *
@@ -15,7 +15,7 @@
  *          not square and symmetric is rejected with InvalidInput.
  *
  *          operator<< lives in dtwc::core (not dtwc::io) so that
- *          ADL resolves it for DenseDistanceMatrix arguments.
+ *          ADL resolves it for DistanceMatrix arguments.
  *
  * @author Volkan Kumtepeli
  * @date 04 Apr 2026
@@ -26,8 +26,6 @@
 #include "../base/error.hpp"
 #include "../io/parse_number.hpp" // exact, locale-free floating-point parsing
 #include "distance_matrix.hpp"
-#include "mmap_distance_matrix.hpp"
-
 
 #include <array>
 #include <bit>
@@ -47,8 +45,7 @@
 
 namespace dtwc::core::detail {
 
-template <class Matrix>
-inline void preflight_distance_matrix_csv(const Matrix &matrix)
+inline void preflight_distance_matrix_csv(const DistanceMatrix &matrix)
 {
   constexpr std::uint64_t exponent_mask = UINT64_C(0x7ff0000000000000);
   constexpr std::uint64_t fraction_mask = UINT64_C(0x000fffffffffffff);
@@ -90,32 +87,41 @@ inline std::string_view distance_matrix_csv_token(
           static_cast<size_t>(formatted.ptr - buffer.data())};
 }
 
-} // namespace dtwc::core::detail
 
-namespace dtwc::io {
-
-/// Write the full N×N matrix to a CSV file.
-/// Uncomputed entries are written as an empty field.
-inline void write_csv(const core::DenseDistanceMatrix &dm, const std::filesystem::path &path)
+/// Emit the full N x N CSV. Assumes preflight_distance_matrix_csv() has
+/// ALREADY run on @p dm: it is the only part of the write that can throw, and
+/// the F14 contract requires it to run before the destination is truncated.
+inline std::ostream &write_distance_matrix_csv_preflighted(std::ostream &os,
+                                                           const DistanceMatrix &dm)
 {
-  core::detail::preflight_distance_matrix_csv(dm);
-  std::ofstream file(
-    path, std::ios::out | std::ios::binary | std::ios::trunc);
-  if (!file.good())
-    throw IOError("Cannot open file for writing: " + path.string());
   const size_t n = dm.size();
   std::array<char, 64> number{};
   for (size_t i = 0; i < n; ++i) {
     for (size_t j = 0; j < n; ++j) {
-      if (j > 0) file.put(',');
-      const auto token =
-        core::detail::distance_matrix_csv_token(dm.get(i, j), number);
+      if (j > 0) os.put(',');
+      const auto token = distance_matrix_csv_token(dm.get(i, j), number);
       if (!token.empty())
-        file.write(token.data(), static_cast<std::streamsize>(token.size()));
-      // uncomputed → empty field
+        os.write(token.data(), static_cast<std::streamsize>(token.size()));
+      // uncomputed -> empty field
     }
-    file.put('\n');
+    os.put('\n');
   }
+  return os;
+}
+
+} // namespace dtwc::core::detail
+
+namespace dtwc::io {
+
+/// Write the full N×N matrix to a CSV file; an uncomputed entry is an empty
+/// field. A non-finite distance is rejected before the file is truncated.
+inline void write_csv(const core::DistanceMatrix &dm, const std::filesystem::path &path)
+{
+  core::detail::preflight_distance_matrix_csv(dm);
+  std::ofstream file(path, std::ios::out | std::ios::binary | std::ios::trunc);
+  if (!file.good())
+    throw IOError("Cannot open file for writing: " + path.string());
+  core::detail::write_distance_matrix_csv_preflighted(file, dm);
   file.close();
   if (!file.good())
     throw IOError("Write error on file: " + path.string());
@@ -127,7 +133,7 @@ inline void write_csv(const core::DenseDistanceMatrix &dm, const std::filesystem
 /// read a 2×3 file as 2×2, let the later of two different values of a pair
 /// win, and leave a short row's missing cells silently uncomputed. One cell of
 /// a pair may be empty (an upper- or lower-triangle file).
-inline void read_csv(core::DenseDistanceMatrix &dm, const std::filesystem::path &path)
+inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path)
 {
   std::ifstream file(path);
   if (!file.good())
@@ -212,7 +218,7 @@ inline void read_csv(core::DenseDistanceMatrix &dm, const std::filesystem::path 
 /// The matrix is symmetric, so row- and column-major layouts are byte-identical
 /// and every caller already copied it straight into a `std::vector<double>` —
 /// returning one removes an N×N copy instead of adding one.
-inline std::vector<double> to_full_matrix(const core::DenseDistanceMatrix &dm)
+inline std::vector<double> to_full_matrix(const core::DistanceMatrix &dm)
 {
   const size_t n = dm.size();
   std::vector<double> full(n * n, 0.0);
@@ -229,44 +235,9 @@ inline std::vector<double> to_full_matrix(const core::DenseDistanceMatrix &dm)
 
 namespace dtwc::core {
 
-namespace detail {
-
-/// Emit the full N x N CSV. Assumes preflight_distance_matrix_csv() has
-/// ALREADY run on @p dm: it is the only part of the write that can throw, and
-/// the F14 contract requires it to run before the destination is truncated.
-/// Callers that must preflight before opening the file (Problem_IO's mmap CSV
-/// copy) call this directly rather than paying a second O(N^2) value scan.
-template <class Matrix>
-inline std::ostream &write_distance_matrix_csv_preflighted(std::ostream &os,
-                                                           const Matrix &dm)
-{
-  const size_t n = dm.size();
-  std::array<char, 64> number{};
-  for (size_t i = 0; i < n; ++i) {
-    for (size_t j = 0; j < n; ++j) {
-      if (j > 0) os.put(',');
-      const auto token = distance_matrix_csv_token(dm.get(i, j), number);
-      if (!token.empty())
-        os.write(token.data(), static_cast<std::streamsize>(token.size()));
-      // uncomputed -> empty field
-    }
-    os.put('\n');
-  }
-  return os;
-}
-
-} // namespace detail
-
 /// Stream output: prints CSV format (same as io::write_csv) to any ostream.
-/// Defined in dtwc::core so ADL resolves it for DenseDistanceMatrix arguments.
-inline std::ostream &operator<<(std::ostream &os, const DenseDistanceMatrix &dm)
-{
-  detail::preflight_distance_matrix_csv(dm);
-  return detail::write_distance_matrix_csv_preflighted(os, dm);
-}
-
-/// Stream output for MmapDistanceMatrix (same CSV format as DenseDistanceMatrix).
-inline std::ostream &operator<<(std::ostream &os, const MmapDistanceMatrix &dm)
+/// Defined in dtwc::core so ADL resolves it for DistanceMatrix arguments.
+inline std::ostream &operator<<(std::ostream &os, const DistanceMatrix &dm)
 {
   detail::preflight_distance_matrix_csv(dm);
   return detail::write_distance_matrix_csv_preflighted(os, dm);

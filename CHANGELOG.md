@@ -13,6 +13,21 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   the DBA alignment called once per cell; they now nest two-argument `std::min` and keep the value a cell stores in a register.
   On an Intel Core Ultra 9 285, pinned DTW of two 1000-sample series drops from 7.2 ms to 1.4 ms (band 100: 1.4 to 0.26 ms);
   results are unchanged digit for digit.
+- **Changed (build):** llfio is header-only, from SHA-256-pinned GitHub archives, behind one `llfio_hl` target:
+  `cmake/Dependencies.cmake` loses the quickcpplib bootstrap, its patched nested superbuild and `add_subdirectory(llfio)`
+  (196 lines out, 69 in). The superbuild compiled quickcpplib from `master` and outcome from `develop`, whatever they
+  were at configure time; both are now pinned, with wg14_signals, span-lite, byte-lite and (Windows) ntkernel-error-category
+  at the commits llfio and quickcpplib record. The preprocessed `<llfio/v2.0/llfio.hpp>` is identical to the superbuild's.
+  A fresh Windows configure took 44 s instead of 198 s (warm download cache). The Python wheels and the release CLI
+  archives are built with `DTWC_ENABLE_LLFIO=ON`, so they map the distance matrix (`use_mmap_distance_matrix`,
+  `--mmap-threshold`); they were built without it.
+- **Changed (mmap, Windows):** a new mmap distance-matrix cache is no longer a sparse file (llfio's default on NTFS);
+  random reads from a filled sparse cache measured 1.9x slower.
+- **Changed (checkpoint, mmap):** a distance checkpoint is one file, `<dir>/<name>.dtwm`, the file a memory-mapped matrix
+  lives in (a 48-byte header of magic, version 4, N and SHA-256 fingerprint, then the packed doubles); a checkpoint or cache
+  written before this change is not readable (2.0-born, never released). `load_checkpoint` returns `false` only when the
+  file is absent and raises `InvalidInput` for other data or settings and `IOError` for a damaged file, where it returned
+  `false` and the CLI recomputed over the checkpoint.
 - **Fixed (docs):** the `/cluster` and `/help` commands showed `--k` and `--output-dir`, and `/troubleshoot` showed
   `--repetitions` and `--prune`, none of which `dtwc_cl` has; they now show `-k`, `--output` and `--n-init`, and the pruning tip
   is gone. CI now fails when a page in `docs/content`, `README.md` or `.claude/commands` shows a `dtwc_cl` flag that the live

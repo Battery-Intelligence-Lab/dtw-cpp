@@ -4,8 +4,11 @@
  *
  * @details A unit test on Problem::checkpoint proves the option is honoured,
  * never that the CLI reaches it, so this drives the built dtwc_cl executable:
- *   - `--checkpoint <dir> --checkpoint-interval 2` publishes a generation;
+ *   - `--checkpoint <dir> --checkpoint-interval 2` writes `<dir>/<name>.dtwm`;
  *   - a second identical run resumes from it;
+ *   - a run on other data exits 1 naming the mismatch, never recomputing
+ *     over the checkpoint;
+ *   - above --mmap-threshold the mapped matrix is that same file;
  *   - `--checkpoint-interval` without `--checkpoint` exits 1 with a message.
  *
  * The fixture series are written into a temporary directory so the test does
@@ -17,6 +20,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -118,7 +122,8 @@ CommandResult run(const std::vector<std::string> &argv, const fs::path &scratch)
 
 /// Six short integer-valued series, one CSV per series, matching the
 /// index-column + header-row layout the CLI reads with --skip-rows/--skip-cols.
-void write_fixture_series(const fs::path &directory)
+/// `shift` changes every value, so two shifts are other data of the same shape.
+void write_fixture_series(const fs::path &directory, int shift = 0)
 {
   fs::create_directories(directory);
   for (int s = 0; s < 6; ++s) {
@@ -126,18 +131,26 @@ void write_fixture_series(const fs::path &directory)
     REQUIRE(file.good());
     file << "t,value\n";
     for (int t = 0; t < 16; ++t)
-      file << t << ',' << (t * 7 + s * 13) % 11 << '\n';
+      file << t << ',' << (t * 7 + s * 13) % 11 + shift << '\n';
   }
 }
 
-std::size_t count_generations(const fs::path &checkpoint_dir)
+/// The checkpoint of six series: a 48-byte header and 21 packed doubles.
+constexpr std::uintmax_t checkpoint_bytes = 48 + 21 * sizeof(double);
+
+std::vector<std::string> cli_args(const fs::path &data, const fs::path &scratch, const fs::path &checkpoint_dir)
 {
-  const fs::path generations = checkpoint_dir / "generations";
-  if (!fs::exists(generations)) return 0;
-  std::size_t total = 0;
-  for (const auto &entry : fs::directory_iterator(generations))
-    if (entry.is_directory()) ++total;
-  return total;
+  return { cli_executable().string(),
+           "-i", data.string(),
+           "-k", "2",
+           "-o", (scratch / "out").string(),
+           "--name", "cli_ckpt",
+           "--skip-rows", "1",
+           "--skip-cols", "1",
+           "--max-iter", "1",
+           "--n-init", "1",
+           "--checkpoint", checkpoint_dir.string(),
+           "--verbose" };
 }
 
 } // anonymous namespace
@@ -151,38 +164,75 @@ TEST_CASE("dtwc_cl --checkpoint-interval publishes and resumes a checkpoint",
   fs::create_directories(scratch);
   const fs::path data = scratch / "series";
   const fs::path checkpoint_dir = scratch / "ckpt";
+  const fs::path checkpoint = checkpoint_dir / "cli_ckpt.dtwm";
   write_fixture_series(data);
-
-  const std::vector<std::string> argv{
-    cli_executable().string(),
-    "-i", data.string(),
-    "-k", "2",
-    "-o", (scratch / "out").string(),
-    "--name", "cli_ckpt",
-    "--skip-rows", "1",
-    "--skip-cols", "1",
-    "--max-iter", "1",
-    "--n-init", "1",
-    "--checkpoint", checkpoint_dir.string(),
-    "--checkpoint-interval", "2",
-    "--verbose"
-  };
+  auto argv = cli_args(data, scratch, checkpoint_dir);
+  argv.insert(argv.end(), { "--checkpoint-interval", "2" });
 
   const CommandResult first = run(argv, scratch);
   INFO("stdout:\n" << first.out << "\nstderr:\n" << first.err);
   REQUIRE(first.exit_code == 0);
-  REQUIRE(first.out.find("No valid checkpoint found") != std::string::npos);
-  REQUIRE(fs::is_regular_file(checkpoint_dir / "CURRENT"));
-  REQUIRE(count_generations(checkpoint_dir) == 1);
+  REQUIRE(first.out.find("No checkpoint in") != std::string::npos);
+  REQUIRE(fs::file_size(checkpoint) == checkpoint_bytes);
+  REQUIRE_FALSE(fs::exists(fs::path(checkpoint).concat(".tmp")));
 
   const CommandResult second = run(argv, scratch);
   INFO("stdout:\n" << second.out << "\nstderr:\n" << second.err);
   REQUIRE(second.exit_code == 0);
   REQUIRE(second.out.find("Resumed from checkpoint") != std::string::npos);
-  REQUIRE(count_generations(checkpoint_dir) == 1);
+  REQUIRE(std::vector<fs::path>(fs::directory_iterator(checkpoint_dir), fs::directory_iterator())
+          == std::vector<fs::path>{ checkpoint });
 
   fs::remove_all(scratch);
 }
+
+
+TEST_CASE("dtwc_cl refuses a checkpoint of other data", "[cli][checkpoint]")
+{
+  // It used to recompute every distance, exit 0, and overwrite the checkpoint.
+  const fs::path scratch = fs::temp_directory_path() / "dtwc_test_cli_ckpt_other";
+  fs::remove_all(scratch);
+  const fs::path checkpoint_dir = scratch / "ckpt";
+  write_fixture_series(scratch / "series");
+  write_fixture_series(scratch / "other", 1);
+
+  REQUIRE(run(cli_args(scratch / "series", scratch, checkpoint_dir), scratch).exit_code == 0);
+  const auto saved = read_text(checkpoint_dir / "cli_ckpt.dtwm");
+
+  const CommandResult other = run(cli_args(scratch / "other", scratch, checkpoint_dir), scratch);
+  INFO("stdout:\n" << other.out << "\nstderr:\n" << other.err);
+  REQUIRE(other.exit_code == 1);
+  REQUIRE(other.err.find("fingerprint mismatch") != std::string::npos);
+  REQUIRE(read_text(checkpoint_dir / "cli_ckpt.dtwm") == saved);
+
+  fs::remove_all(scratch);
+}
+
+
+#ifdef DTWC_HAS_MMAP
+TEST_CASE("dtwc_cl maps its checkpoint above --mmap-threshold", "[cli][checkpoint][mmap]")
+{
+  // One file for both storages: a checkpoint written in RAM is reopened mapped.
+  const fs::path scratch = fs::temp_directory_path() / "dtwc_test_cli_ckpt_mapped";
+  fs::remove_all(scratch);
+  const fs::path checkpoint_dir = scratch / "ckpt";
+  write_fixture_series(scratch / "series");
+  const auto in_ram = cli_args(scratch / "series", scratch, checkpoint_dir);
+  REQUIRE(run(in_ram, scratch).exit_code == 0);
+
+  auto mapped = in_ram;
+  mapped.insert(mapped.end(), { "--mmap-threshold", "0" });
+  const CommandResult result = run(mapped, scratch);
+  INFO("stdout:\n" << result.out << "\nstderr:\n" << result.err);
+  REQUIRE(result.exit_code == 0);
+  REQUIRE(result.out.find("Using memory-mapped distance matrix:") != std::string::npos);
+  REQUIRE(result.out.find("cli_ckpt.dtwm") != std::string::npos);
+  REQUIRE(fs::file_size(checkpoint_dir / "cli_ckpt.dtwm") == checkpoint_bytes);
+  REQUIRE_FALSE(fs::exists(scratch / "out" / "cli_ckpt.dtwm"));
+
+  fs::remove_all(scratch);
+}
+#endif
 
 
 TEST_CASE("dtwc_cl rejects --checkpoint-interval without --checkpoint",

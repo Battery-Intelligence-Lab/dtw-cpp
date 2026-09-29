@@ -259,12 +259,6 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
   }
   if (method == ClusterMethod::OneBatch) return std::nullopt;
   if (config.mmap_threshold != 0 && prob.size() < config.mmap_threshold) return std::nullopt;
-  if (checkpoint)
-    throw InvalidInput(
-      "--checkpoint uses the legacy dense CSV checkpoint format and cannot be "
-      "combined with memory-mapped distance storage. The mmap cache already "
-      "resumes automatically; omit --checkpoint, or raise --mmap-threshold if "
-      "the dense matrix and CSV checkpoint fit in RAM.");
   if (dist_matrix)
     throw InvalidInput(
       "--dist-matrix uses a legacy dense CSV matrix and cannot be combined "
@@ -530,12 +524,13 @@ Outcome execute(const Config &config, std::optional<Data> data)
   plan_clara();
 
   // ---- 4. Distance storage, once every distance setting is in place ----
-  // The mmap cache lives in the output directory, so a run that writes nothing
-  // keeps its matrix in RAM; an imported matrix or a checkpoint uses dense
-  // storage.
+  // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
+  // the checkpoint, else in the output directory; a run that writes nothing
+  // keeps its matrix in RAM, as does an imported matrix.
+  std::optional<fs::path> cache;
   if (!config.output.empty()) {
-    const fs::path mmap_cache = output / utf8_to_path(config.name + "_distmat.cache");
-    const auto cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, mmap_cache);
+    const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
+    cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, path);
     if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
   }
   // A matrix the user supplied but that cannot be loaded is an error: going on
@@ -555,11 +550,11 @@ Outcome execute(const Config &config, std::optional<Data> data)
     prob.checkpoint.save_interval = config.checkpoint_interval;
     prob.checkpoint.enabled = true;
   }
-  if (!config.checkpoint.empty()) {
-    const bool resumed = load_checkpoint(prob, config.checkpoint); // false: start fresh
+  if (!config.checkpoint.empty() && !cache) { // a mapped matrix is its own checkpoint
+    const bool resumed = load_checkpoint(prob, config.checkpoint); // false: no file, start fresh
     if (config.verbose)
       std::cout << (resumed ? "Resumed from checkpoint: " + config.checkpoint + "\n"
-                            : "No valid checkpoint found at " + config.checkpoint + ", starting fresh.\n");
+                            : "No checkpoint in " + config.checkpoint + ", starting fresh.\n");
   }
 
   // ---- 5. Cluster; the matrix methods fill through the Problem, on its device ----

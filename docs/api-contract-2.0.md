@@ -324,7 +324,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `fillDistanceMatrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
 | `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
-| `dense_distance_matrix()` | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
+| — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
 | — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
@@ -339,10 +339,11 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
 **† Name collision (adjudicated in §10 item 6).** C++
-`Problem::distance_matrix()` returns the internal
-`std::variant<DenseDistanceMatrix, MmapDistanceMatrix>` by reference. The
-Python/MATLAB spelling returns an NxN numeric matrix; Python returns an
-independent copy. The language-specific semantics are retained.
+`Problem::distance_matrix()` returns the `core::DistanceMatrix` by reference:
+the packed lower triangle, on the heap or mapped (`use_mmap_distance_matrix`),
+read and written through the same `get` / `set`. The Python/MATLAB spelling
+returns an NxN numeric matrix of either storage; Python returns an independent
+copy. The language-specific semantics are retained.
 
 **‡ Python read/write rename.** `distance_matrix()` and
 `set_distance_matrix()` are canonical and live. The old
@@ -507,50 +508,47 @@ are snake_case; current availability and gaps are explicit below.
 | Concept | C++ live (`checkpoint.hpp`) | Python | MATLAB 2.0 |
 |---|---|---|---|
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
-| save dir checkpoint | `save_checkpoint(const Problem&, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
-| load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
+| save checkpoint | `save_checkpoint(const Problem&, path)` writes `checkpoint_path(prob, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
+| load checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` only when the file is absent; other series or settings `InvalidInput`, a file that is not a whole `.dtwm` file `IOError`, neither changing the `Problem` | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
+
+A checkpoint is one `.dtwm` file, `checkpoint_path(prob, dir)` =
+`<dir>/<name>.dtwm` (`distances.dtwm` for an unnamed `Problem`): the layout of a
+mapped matrix (below), so a checkpoint maps with `use_mmap_distance_matrix` and a
+mapped matrix loads as a checkpoint. A save writes `<name>.dtwm.tmp`, flushes it
+to the device and renames it over the previous file; a `Problem` mapped to that
+file is its own checkpoint and a save flushes the mapping in place.
 
 `CheckpointOptions` is consumed by `Problem::fill_distance_matrix()` through
 the public `Problem::checkpoint` member. With `enabled`, the fill runs the exact
 BruteForce row schedule in consecutive blocks of `save_interval` completed
-matrix rows and publishes one generation after each block, the last block
-included, so a completed fill leaves a complete checkpoint. Each save runs on
-the calling thread after its block has joined; a save that throws propagates out
-of `fill_distance_matrix()`, leaving the computed cells resident and the
-previously published generation valid. `enabled` requires dense distance storage
-and `save_interval >= 1`; either violation raises `InvalidInput` before any
-distance is computed. `enabled` defaults
-to `false`, in which case the fill is unchanged. Each save writes the whole
-`N`x`N` CSV, so it costs `O(N^2)` bytes and time and an automatic fill costs
-`O(N^3 / save_interval)` in total; choose `save_interval` so a save is a small
-fraction of a block (a block costs about `save_interval * N` DTWs, a save about
-`N^2` number formats). Explicit persistence through
-`save_checkpoint(prob, path)` and `load_checkpoint(prob, path)` is unchanged and
-remains the only way to save outside a fill. The CLI opts in with a non-zero
+matrix rows and saves after each block, the last block included, so a completed
+fill leaves a complete checkpoint. Each save runs on the calling thread after its
+block has joined; a save that throws propagates out of `fill_distance_matrix()`,
+leaving the computed cells resident and the previous file whole.
+`save_interval >= 1` and a non-empty `directory` are required; either violation
+raises `InvalidInput` before any distance is computed. `enabled` defaults to
+`false`, in which case the fill is unchanged. A save of a matrix in RAM writes all
+`N(N+1)/2` doubles, so an automatic fill writes `O(N^3 / save_interval)` bytes in
+total; choose `save_interval` so a save is a small fraction of a block (a block
+costs about `save_interval * N` DTWs). The CLI opts in with a non-zero
 `--checkpoint-interval <rows>`, which requires `--checkpoint <dir>`; the default
-`0` saves once, at the end.
+`0` saves once, at the end. The CLI's mapped matrix is `<name>.dtwm` in the
+`--checkpoint` directory when one is given, else in the output directory.
 
-Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
-`generations/<id>/{distances.csv,metadata.txt}` payload. A directory holds
-exactly one generation after a successful save: the old generation is removed
-only after `CURRENT` points at the new one. The mmap distance cache is
-`<name>_distmat.cache`.
-
-**Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
-64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,
-series order and lengths, storage precision, `ndim`, band, every DTW-variant
-parameter, multivariate mode, missing-data strategy, pointwise metric, compute
-backend, and backend precision. Series names are excluded because they do not
-affect distance semantics. Header metadata has a CRC, reserved bytes are
-checked, and an aligned footer stores two digest words per logical row. Reopen
-takes a nonblocking exclusive session lease and recomputes every row digest
-before exposing the mapping. A mismatch is a hard error; callers must use the
-original semantics or delete/rename the cache and recompute it. The digests
-detect accidental corruption and are not keyed tamper-proof authentication.
-
-Version 1 had only an N-sized identity; version 2 did not protect mutable packed
-values. Both are deliberately rejected. Semantic setters detach a bound cache
-without deleting it. The complete data identity is checked at bind and once at
+**Persistent mmap identity (2.0 safety addendum).** A mapped matrix is a `.dtwm`
+file: a 48-byte header (magic `DTWM`, version 4, N, a SHA-256 identity) and the
+packed lower triangle of doubles, NaN = not computed. The identity covers the raw
+IEEE series values, series order and lengths, storage precision, `ndim`, band,
+every DTW-variant parameter, multivariate mode, missing-data strategy, pointwise
+metric, compute backend, and backend precision. Series names are excluded because
+they do not affect distance semantics. Opening an existing file checks its magic,
+version, exact length and N, then the identity, before any distance can be read:
+a file for other series or settings raises `InvalidInput`; a short or foreign file,
+or one of the earlier cache layouts (versions 1-3), raises `IOError`. Either way,
+use the original semantics or delete/rename the file and recompute it. A new file
+is filled with NaN and flushed to the device before its header is written, so a
+power cut can leave a file that does not open, never one whose zeros read as
+distances. Semantic setters detach a bound cache without deleting it. The complete data identity is checked at bind and once at
 first use; later lookups compare a fixed-size configuration snapshot so warm
 access remains O(1). `Problem::data()` is read-only, but heap values exposed by
 `p_vec()` and caller-owned backing storage supplied through `set_view_data()`
@@ -626,14 +624,12 @@ falsified; that does not change the implemented public policy.
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:30) | `= double` | behaviour change (§8), no name change |
 | 42 | CLI dtype default | `--dtype float32` (dtwc_cl.cpp:717-725) | `--dtype float64` | old accepted, default flips (§8) |
 
-**Mmap-cache migration.** Version-1 and version-2 `<name>_distmat.cache` files
-are not resumed by the current format. Delete or rename either legacy cache and
-rerun to create an identity- and payload-checked version-3 cache; source data
-and result checkpoints are unaffected. At the CLI
-mmap threshold, legacy dense `--checkpoint` and `--dist-matrix` inputs cannot be
-combined with the mmap cache and fail before either storage path is opened. Omit
-the dense option to use automatic mmap resume, or raise the threshold only when
-the dense matrix and CSV checkpoint fit in memory.
+**Checkpoint and mmap-cache migration.** A checkpoint directory in the earlier
+CSV layout (`CURRENT`, `generations/`) or a cache in an earlier layout (versions
+1-3 of `<name>_distmat.cache`) is not read by the `.dtwm` format (version 4):
+delete it and rerun; source data is unaffected. At the CLI mmap threshold,
+`--dist-matrix` (a CSV matrix) cannot be combined with mapped storage and fails
+before either path is opened; `--checkpoint` maps `<dir>/<name>.dtwm`.
 
 **Duplicate-elimination principle (surface report §7).** Documentation exposes
 one canonical name per concept. Compatibility aliases remain callable for the
@@ -700,7 +696,7 @@ Bindings translate to native exceptions / `mexErrMsgIdAndTxt`.
 | C++ type | Covers | Python class | MATLAB identifier |
 |---|---|---|---|
 | `dtwc::Error` (base) | anything DTWC-thrown not more specific | `dtwcpp.DtwcError(Exception)` | `dtwc:error` |
-| `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name, a NaN or ±inf value a distance does not take (§2.6), `skip_cols` wider than a row, a matrix stored for other data (a CSV of another size, an mmap cache of other data or configuration; `load_checkpoint` returns `false`) | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
+| `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name, a NaN or ±inf value a distance does not take (§2.6), `skip_cols` wider than a row, a matrix stored for other data (a CSV of another size, a `.dtwm` checkpoint or mmap cache of other data or configuration) | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
 | `dtwc::UndefinedScore` | (an `InvalidInput`) a quality score is mathematically undefined for the labelling supplied — fewer than two non-empty clusters. `save` catches it to skip the silhouette file; `score("silhouette")` propagates it | `dtwcpp.UndefinedScore(InvalidInput)` | `dtwc:invalidArgument` (inherited: the MEX ladder catches it as `InvalidInput`) |
 | `dtwc::SolverError` | MIP/LP solver failure: infeasible, iteration/time limit hit without optimum, solver returned non-optimal status | `dtwcpp.SolverError(DtwcError, RuntimeError)` | `dtwc:solverError` |
 | `dtwc::DeviceError` | device/backend problem: unknown device name; `gpu` on a non-GPU build, or PDLP `use_gpu` without CUPDLP_GPU; a request the device cannot honour (§6.4) and `hpc` asked of a local run (§1.3); `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
@@ -919,12 +915,9 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
      The SLURM path machine-parses `<name>_labels.csv` and maps 1-based
      lexically-sorted rows back to input order (`_hpc.py:284-304`).
    - *Run-time persistence artifact — NOT part of the save() equal-bytes set.*
-     `<name>_distmat.cache` is written when mapped distance storage is selected,
-     **during a run** for resume (invariant 4), **not** by `Result::save(dir)`,
-     and is outside the `save()`↔CLI byte-identity claim. The
-     mmap cache's safety-mandated v1/v2→v3 invalidation is the authorized
-     exception: v1 cannot identify its data/configuration, while v2 does not
-     protect mutable packed values.
+     `<name>.dtwm` is written when mapped distance storage is selected, or by
+     `--checkpoint`, **during a run** for resume (invariant 4), **not** by
+     `Result::save(dir)`, and is outside the `save()`↔CLI byte-identity claim.
 3. **CLI flag set + TOML/YAML config keys** (kebab-case, identical in both formats) are a de-facto API:
    `cluster_generic.slurm` and `_hpc.build_dtwc_command` (`_hpc.py:307-353`)
    compose `dtwc_cl` command lines. Renames go through the accept-old-name
@@ -932,12 +925,12 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    The keys are `dtwc::Config`'s: `cli::bind` is the one key table, and
    `dtwc_cl --print-config` writes every key back as a file `--config` reads
    (tests/conformance/`config_all_fields.toml`, `config_defaults.toml`).
-4. **Checkpoint pair.** Directory checkpoint v2 (`CURRENT` plus
-   `generations/<id>/{distances.csv,metadata.txt}`) and the mmap distance-matrix
-   cache. Directory checkpoints load whenever `--checkpoint` is supplied, and
-   mmap caches reopen automatically. A non-full FastCLARA run has no parent
-   distance matrix and therefore rejects the directory checkpoint and imported
-   dense matrix paths. The full-sample PAM fallback retains the ordinary pair.
+4. **Checkpoint.** One `.dtwm` file, `<dir>/<name>.dtwm`, for the checkpoint
+   and the mapped distance matrix alike. It loads (or maps) whenever
+   `--checkpoint` is supplied, and a mapped cache reopens automatically. A
+   non-full FastCLARA run has no parent distance matrix and therefore rejects
+   the checkpoint and imported dense matrix paths. The full-sample PAM fallback
+   retains them.
 5. **Precision contract.** `Problem`/`Result`/CLI distance results and matrices
    are double, including Float32 storage; explicit C++ helper templates return
    their requested scalar type (§8).

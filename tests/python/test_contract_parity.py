@@ -55,8 +55,8 @@ _ENUMS = [
     "MissingStrategy", "DistanceMatrixStrategy", "Linkage",
 ]
 _STRUCTS = [
-    "DTWVariantParams", "MIPSettings", "CUDASettings", "DenseDistanceMatrix",
-    "Data", "DendrogramStep", "Dendrogram", "HierarchicalOptions",
+    "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",
+    "DendrogramStep", "Dendrogram", "HierarchicalOptions",
     "CLARANSOptions", "CLARAOptions", "ClusteringResult", "Problem",
     "CheckpointOptions",
 ]

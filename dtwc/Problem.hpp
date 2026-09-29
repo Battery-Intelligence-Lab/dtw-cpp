@@ -21,9 +21,7 @@
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
 #include "core/storage.hpp"     // for Precision
-
-#include "core/mmap_distance_matrix.hpp"
-#include <variant>
+#include "core/distance_matrix.hpp" // for DistanceMatrix
 
 #include <cstddef>     // for size_t
 #include <cstdint>     // for uint64_t, int64_t
@@ -39,7 +37,6 @@
 #include <atomic>      // for std::atomic (RelaxedFlag)
 #include <stdexcept>
 
-#include "core/distance_matrix.hpp"
 #include "checkpoint.hpp" // for CheckpointOptions, load_checkpoint
 
 namespace dtwc {
@@ -132,7 +129,6 @@ void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strateg
 class Problem
 {
 public:
-  using distMat_t = std::variant<core::DenseDistanceMatrix, core::MmapDistanceMatrix>;
   using path_t = std::filesystem::path;
 
   /// DTW distance function types: float64 and float32 variants.
@@ -142,14 +138,14 @@ public:
 
 private:
   int Nc{ 1 };                                      /*!< Number of clusters. */
-  distMat_t distMat;                                /*!< Distance matrix. */
+  core::DistanceMatrix distMat;                     /*!< Distance matrix, on the heap or mapped (use_mmap_distance_matrix). */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
   mutable dtw_fn_t dtw_fn_;                         /*!< Derived DTW dispatcher for float64. */
   mutable dtw_fn_f32_t dtw_fn_f32_;                 /*!< Derived DTW dispatcher for float32. */
   mutable const Problem *dtw_binding_owner_{ nullptr }; /*!< Address captured by the dispatchers. */
   mutable std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Derived WDTW weights keyed by max_dev. */
 
-  using cache_fingerprint_t = core::MmapDistanceMatrix::fingerprint_type;
+  using cache_fingerprint_t = core::DistanceMatrix::fingerprint_type;
   struct DistanceCacheConfiguration {
     core::MetricType metric{ core::MetricType::L1 };
     int band{ settings::DEFAULT_BAND };
@@ -209,19 +205,6 @@ private:
   path_t output_folder_{ "./results/" }; //!< Relative to the working directory; set_output_folder.
   std::string name_{};
   Data data_;
-
-  /// Dispatch through variant via std::visit.
-  template <typename F>
-  decltype(auto) visit_distmat(F &&f)
-  {
-    return std::visit(std::forward<F>(f), distMat);
-  }
-
-  template <typename F>
-  decltype(auto) visit_distmat(F &&f) const
-  {
-    return std::visit(std::forward<F>(f), distMat);
-  }
 
   void rebind_dtw_fn() const; ///< Rebind derived dispatch state to this address/configuration.
   void refresh_variant_caches() const; ///< Refresh precomputed variant-specific caches.
@@ -359,9 +342,8 @@ public:
   Problem(const Problem &) = delete;
   Problem &operator=(const Problem &) = delete;
   Problem(Problem &&);
-  /// Not noexcept: moving the members (the variant distance matrix, the
-  /// dispatchers, the WDTW weight map) may throw, and a noexcept promise would
-  /// turn that into std::terminate (S-13).
+  /// Not noexcept: moving the members (the dispatchers, the WDTW weight map)
+  /// may throw, and a noexcept promise would turn that into std::terminate (S-13).
   Problem &operator=(Problem &&);
 
   auto size() const { return data_.size(); }
@@ -556,7 +538,7 @@ public:
   {
     validate_mmap_cache_identity();
     validate_dense_cache_configuration();
-    return visit_distmat([](const auto &m) { return m.max(); });
+    return distMat.max();
   }
   [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
 
@@ -612,23 +594,22 @@ public:
   bool is_distance_matrix_filled() const
   {
     validate_mmap_cache_identity();
-    if (std::holds_alternative<core::DenseDistanceMatrix>(distMat)
-        && !dense_cache_configuration_is_current())
+    if (!distMat.is_mapped() && !dense_cache_configuration_is_current())
       return false;
-    return visit_distmat([](const auto &m) { return m.size() > 0 && m.all_computed(); });
+    return distMat.size() > 0 && distMat.all_computed();
   }
   [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
 
-  /// Access the underlying distance matrix (const).
-  const distMat_t &distance_matrix() const
+  /// The distance matrix, on the heap or mapped (const).
+  const core::DistanceMatrix &distance_matrix() const
   {
     validate_mmap_cache_identity();
     validate_dense_cache_configuration();
     return distMat;
   }
-  /// Access the underlying distance matrix (mutable). The caller may change
-  /// which pairs are known, so the next lazy lookup re-checks the request.
-  distMat_t &distance_matrix()
+  /// The distance matrix (mutable). The caller may change which pairs are
+  /// known, so the next lazy lookup re-checks the request.
+  core::DistanceMatrix &distance_matrix()
   {
     validate_mmap_cache_identity();
     ensure_dense_cache_configuration_current();
@@ -636,28 +617,19 @@ public:
     return distMat;
   }
 
-  /// Access the Dense distance matrix. Throws std::bad_variant_access if mmap is active.
-  const core::DenseDistanceMatrix &dense_distance_matrix() const
-  {
-    validate_dense_cache_configuration();
-    return std::get<core::DenseDistanceMatrix>(distMat);
-  }
-  core::DenseDistanceMatrix &dense_distance_matrix()
-  {
-    ensure_dense_cache_configuration_current();
-    fill_request_validated_ = false; // as distance_matrix()
-    return std::get<core::DenseDistanceMatrix>(distMat);
-  }
   /// Full data-plus-distance-semantics identity used by durable checkpoints,
   /// for this Problem's metric(). Names and clustering outputs are
   /// intentionally excluded because they do not affect any stored distance.
-  core::MmapDistanceMatrix::fingerprint_type distance_checkpoint_identity() const;
+  core::DistanceMatrix::fingerprint_type distance_checkpoint_identity() const;
   /// The same identity for distances computed with `metric`, which may differ
   /// from metric() only for a matrix a producer outside this Problem filled.
-  core::MmapDistanceMatrix::fingerprint_type distance_checkpoint_identity(
+  core::DistanceMatrix::fingerprint_type distance_checkpoint_identity(
     core::MetricType metric) const;
-  /// Bind persistent storage to this Problem's exact data/configuration,
-  /// metric() included.
+  /// Map the distance matrix to the `.dtwm` file `cache_path`, bound to this
+  /// Problem's exact data and distance settings, metric() included. An existing
+  /// file is reopened with the distances it holds (InvalidInput if they are for
+  /// other series or settings, IOError if it is not a whole `.dtwm` file); an
+  /// absent one is created. IOError on a build without llfio.
   /// The full data fingerprint is verified at bind and once again on first use;
   /// subsequent warm lookups compare a fixed-size configuration snapshot to
   /// preserve O(1) access. After first use, replace data through set_data and

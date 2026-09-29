@@ -580,52 +580,6 @@ NB_MODULE(_dtwcpp_core, m) {
     });
 
   // =========================================================================
-  // DenseDistanceMatrix
-  // =========================================================================
-
-  nb::class_<dtwc::core::DenseDistanceMatrix>(m, "DenseDistanceMatrix")
-    .def(nb::init<>())
-    .def(nb::init<size_t>(), "n"_a)
-    .def("resize", &dtwc::core::DenseDistanceMatrix::resize, "n"_a)
-    .def("get", &dtwc::core::DenseDistanceMatrix::get, "i"_a, "j"_a)
-    .def("set", &dtwc::core::DenseDistanceMatrix::set, "i"_a, "j"_a, "value"_a)
-    .def("is_computed", &dtwc::core::DenseDistanceMatrix::is_computed, "i"_a, "j"_a)
-    .def_prop_ro("size", &dtwc::core::DenseDistanceMatrix::size)
-    .def("max", &dtwc::core::DenseDistanceMatrix::max)
-    .def("to_numpy", [](const dtwc::core::DenseDistanceMatrix &dm) {
-      // Expand packed triangular storage to a full N*N numpy array.
-      // This is always a COPY — the C++ matrix stores only the upper triangle
-      // (n*(n+1)/2 entries) so a true zero-copy view into a full N*N layout
-      // is structurally impossible. Modifying the returned array does NOT
-      // mutate the C++ matrix; use set(i, j, v) for that.
-      // G4: the packed->dense expansion and the memcpy are O(N^2) and would
-      // block every other Python thread. `dm` is const here, so releasing is safe.
-      const size_t n = dm.size();
-      std::vector<double> values;
-      {
-        nb::gil_scoped_release release;
-        // to_full_matrix already returns row-major std::vector<double> (X-27),
-        // so the N*N copy this used to memcpy through is simply gone.
-        values = dtwc::io::to_full_matrix(dm);
-      }
-      return adopt_as_ndarray(std::move(values), {n, n});
-    }, "Return an independent copy of the full N*N distance matrix.\n\n"
-       "The C++ matrix stores only the upper triangle, so this expands to a\n"
-       "full symmetric N*N numpy array. Modifying the returned array does NOT\n"
-       "affect the C++ matrix — use set(i, j, v) for that.")
-    .def("write_csv", [](const dtwc::core::DenseDistanceMatrix &dm,
-                          const std::filesystem::path &path) {
-      dtwc::io::write_csv(dm, path);
-    }, "path"_a)
-    .def("read_csv", [](dtwc::core::DenseDistanceMatrix &dm,
-                         const std::filesystem::path &path) {
-      dtwc::io::read_csv(dm, path);
-    }, "path"_a)
-    .def("__repr__", [](const dtwc::core::DenseDistanceMatrix &dm) {
-      return "DenseDistanceMatrix(n=" + std::to_string(dm.size()) + ")";
-    });
-
-  // =========================================================================
   // DTW distance functions
   // =========================================================================
 
@@ -848,7 +802,7 @@ NB_MODULE(_dtwcpp_core, m) {
     {
       nb::gil_scoped_release release;
       prob.fill_distance_matrix();
-      const auto &dm = prob.dense_distance_matrix();
+      const auto &dm = prob.distance_matrix(); // on the heap or mapped
       n = dm.size();
       // Row-major std::vector<double> straight from to_full_matrix (X-27).
       values = dtwc::io::to_full_matrix(dm);
@@ -863,7 +817,13 @@ NB_MODULE(_dtwcpp_core, m) {
         throw dtwc::InvalidInput("Expected square distance matrix");
       if (n != p.size())
         throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
-      auto &mat = p.dense_distance_matrix();
+      auto &mat = p.distance_matrix();
+      // Values written into a mapped matrix would persist in its file under the
+      // Problem's fingerprint, whatever they were computed from.
+      if (mat.is_mapped())
+        throw dtwc::InvalidInput("Problem.set_distance_matrix: this Problem's distance matrix is "
+                                 "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
+                                 "kept in RAM only; call refresh_distance_matrix() first.");
       mat.resize(n);
       const double *data = dm.data();
       for (size_t i = 0; i < n; ++i)
@@ -1320,14 +1280,13 @@ NB_MODULE(_dtwcpp_core, m) {
             "Checkpoint directory. Empty with enabled raises InvalidInput.")
     .def_rw("save_interval", &dtwc::CheckpointOptions::save_interval,
             "Completed matrix ROWS between automatic saves (>= 1). The fill\n"
-            "runs consecutive row blocks of this size and publishes one\n"
-            "generation after each block, the last included, so a completed\n"
-            "fill leaves ceil(N / save_interval) generations. A value below 1\n"
-            "with enabled raises InvalidInput.")
+            "runs consecutive row blocks of this size and saves after each\n"
+            "block, the last included, so a completed fill leaves a complete\n"
+            "checkpoint. A value below 1 with enabled raises InvalidInput.")
     .def_rw("enabled", &dtwc::CheckpointOptions::enabled,
-            "Enable automatic mid-fill checkpointing. Requires dense distance\n"
-            "storage (mmap storage raises InvalidInput) and a non-empty\n"
-            "directory; both are checked before any distance is computed.")
+            "Enable automatic mid-fill checkpointing to <directory>/<name>.dtwm.\n"
+            "A matrix mapped to that file is flushed in place. An empty\n"
+            "directory raises InvalidInput before any distance is computed.")
     .def("__repr__", [](const dtwc::CheckpointOptions &o) {
       return "CheckpointOptions(dir='" + o.directory
              + "', interval=" + std::to_string(o.save_interval)
@@ -1337,13 +1296,13 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("save_checkpoint", [](const dtwc::Problem &prob,
                               const std::string &path,
                               dtwc::core::MetricType metric) {
-        // N^2 CSV write; `prob` is const here and the writer only reads it.
+        // An N^2 write; `prob` is const here and the writer only reads it.
         nb::gil_scoped_release release;
         dtwc::save_checkpoint(prob, path, metric);
       }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
-        "Save distance matrix checkpoint to directory.\n\n"
-        "Creates distances.csv and metadata.txt in the given directory.\n"
-        "The directory is created if it does not exist.\n\n"
+        "Save the distance matrix to <path>/<name>.dtwm ('distances' for an\n"
+        "unnamed Problem), replacing any previous checkpoint there. The\n"
+        "directory is created if it does not exist; IOError if it cannot be.\n\n"
         "`metric` is the pointwise metric the stored distances were computed\n"
         "with. It is part of the identity fingerprint, so a SquaredL2 matrix is\n"
         "no longer accepted by a later L1 load. Mirrors the CLI's --metric and\n"
@@ -1355,13 +1314,14 @@ NB_MODULE(_dtwcpp_core, m) {
         nb::gil_scoped_release release;
         return dtwc::load_checkpoint(prob, path, metric);
       }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
-        "Load distance matrix checkpoint from directory.\n\n"
-        "Returns True if checkpoint was loaded successfully, False otherwise.\n"
-        "Validates that matrix dimensions match the Problem's data size.\n"
-        "Sets distance matrix filled flag if all pairs are computed.\n\n"
+        "Load <path>/<name>.dtwm into the Problem's distance matrix.\n\n"
+        "Returns True when loaded, False only when there is no such file.\n"
+        "Raises InvalidInput for a checkpoint of other series or other\n"
+        "distance settings, and IOError for a file that is not a whole .dtwm\n"
+        "file; neither changes the Problem.\n\n"
         "`metric` is the pointwise metric THIS run computes with: a checkpoint\n"
-        "written under a different metric no longer matches the identity\n"
-        "fingerprint and is rejected. Mirrors the CLI's --metric; defaults to\n"
+        "written under a different metric does not match the identity\n"
+        "fingerprint (InvalidInput). Mirrors the CLI's --metric; defaults to\n"
         "L1 for backward compatibility.\n\n"
         "MUTATES `prob`: do not run it concurrently with any other method on\n"
         "the same Problem (see the Problem class docstring).");

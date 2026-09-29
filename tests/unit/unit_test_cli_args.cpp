@@ -249,7 +249,7 @@ dtwc::Config mapped_config(ClusterMethod method, const ScratchDirectory &scratch
 
 bool cache_exists(const ScratchDirectory &scratch, const std::string &name)
 {
-  return fs::exists(scratch.path / (name + "_distmat.cache"));
+  return fs::exists(scratch.path / (name + ".dtwm"));
 }
 
 } // namespace
@@ -311,13 +311,18 @@ TEST_CASE("run's mmap storage binds the pointwise metric", "[cli][storage][mmap]
 #endif
 }
 
-TEST_CASE("run rejects a legacy CSV checkpoint plus mmap before either is opened", "[cli][storage][mmap][checkpoint]")
+TEST_CASE("run's mmap storage with --checkpoint maps the checkpoint file", "[cli][storage][mmap][checkpoint]")
 {
+  // One file: the mapped matrix is the checkpoint, <checkpoint>/<name>.dtwm.
   const ScratchDirectory scratch{ "dtwc_cli_checkpoint_mmap" };
   auto config = mapped_config(ClusterMethod::PAM, scratch, "checkpoint");
   config.checkpoint = (scratch.path / "ckpt").string();
-  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
-                    ContainsSubstring("cannot be combined") && ContainsSubstring("resumes automatically"));
+#ifdef DTWC_HAS_MMAP
+  CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
+  CHECK(fs::file_size(scratch.path / "ckpt" / "checkpoint.dtwm") == 48 + 6 * sizeof(double));
+#else
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("requires memory-mapped distance storage"));
+#endif
   CHECK_FALSE(cache_exists(scratch, "checkpoint"));
 }
 

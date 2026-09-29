@@ -7,9 +7,9 @@ cmake_minimum_required(VERSION 3.26)
 #
 #   checkpoint_save      --checkpoint names a regular file: rejected before the
 #                        data is read, so no clustering work is lost
-#   checkpoint_late      --checkpoint is a directory whose generations/ is a
-#                        file, so only the save itself fails: the results must
-#                        already be on disk
+#   checkpoint_late      in the --checkpoint directory the save's temporary file,
+#                        loud.dtwm.tmp, is a directory, so only the save itself
+#                        fails: the results must already be on disk
 #   results_blocked_checkpoint_kept  a result write fails (a directory occupies
 #                        <name>_labels.csv): the checkpoint, saved before the
 #                        results, must be on disk
@@ -122,12 +122,11 @@ if(early_outputs OR "${loud_stdout}" MATCHES "time-series data are read|=== Resu
         "(outputs: ${early_outputs})\nstdout:\n${loud_stdout}")
 endif()
 
-# A save that fails only at the end (here generations/ is a file) must leave
-# every result artefact on disk.
+# A save that fails only at the end (here the path of its temporary file,
+# loud.dtwm.tmp, is a directory) must leave every result artefact on disk.
 set(result_files loud_labels.csv loud_medoids.csv loud_distance_matrix.csv
     loud_silhouettes.csv)
-file(MAKE_DIRECTORY "${WORK_ROOT}/checkpoint_late")
-file(WRITE "${WORK_ROOT}/checkpoint_late/generations" "not a directory\n")
+file(MAKE_DIRECTORY "${WORK_ROOT}/checkpoint_late/loud.dtwm.tmp")
 expect_loud_failure(checkpoint_late
     NAMES "--checkpoint" "checkpoint_late"
     COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_late"
@@ -147,8 +146,12 @@ expect_loud_failure(results_blocked_checkpoint_kept
     NAMES "loud_labels.csv"
     COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_blocked"
             --checkpoint "${WORK_ROOT}/checkpoint_kept")
-file(GLOB kept_generation "${WORK_ROOT}/checkpoint_kept/generations/*/distances.csv")
-if(NOT EXISTS "${WORK_ROOT}/checkpoint_kept/CURRENT" OR NOT kept_generation)
+# The checkpoint of the 6 series: a 48-byte header and 21 packed doubles.
+set(kept_size 0)
+if(EXISTS "${WORK_ROOT}/checkpoint_kept/loud.dtwm")
+    file(SIZE "${WORK_ROOT}/checkpoint_kept/loud.dtwm" kept_size)
+endif()
+if(NOT kept_size EQUAL 216)
     message(FATAL_ERROR
         "results_blocked_checkpoint_kept: the failing result write lost the "
         "distance checkpoint\nstderr:\n${loud_stderr}")

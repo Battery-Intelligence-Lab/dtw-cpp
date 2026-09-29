@@ -5,125 +5,112 @@ weight: 8
 
 # Checkpointing
 
-Checkpointing allows you to save and resume distance-matrix computation. For
-large datasets, computing the full pairwise DTW matrix can take hours. A
-directory checkpoint or a validated mmap cache lets a *later* run skip pairs a
-*previous* run already finished. Nothing resumes a clustering method in
-mid-iteration.
+Checkpointing saves the distance matrix so that a *later* run skips the pairs a
+*previous* run already computed. For large datasets the full pairwise DTW matrix
+can take hours. Nothing resumes a clustering method in mid-iteration.
 
-Saving is explicit and happens between phases. Nothing checkpoints from inside
-`fill_distance_matrix()`, so a crash during one uninterrupted fill loses that
-fill; call `save_checkpoint` yourself if you want a partial matrix on disk.
+## One file
 
-DTWC++ has two persistence mechanisms: the directory checkpoint documented
-below, and the packed memory-mapped distance cache selected by `--mmap-threshold`. The mmap cache
-resumes automatically when its identity matches; it is not the same format as
-the dense CSV directory checkpoint.
+A checkpoint is one file, `<directory>/<name>.dtwm`, named after the `Problem`
+(`distances.dtwm` for an unnamed one). It is the same file a memory-mapped
+distance matrix lives in, so a checkpoint can be mapped and a mapped matrix loaded
+as a checkpoint:
 
-## Directory checkpoint format
+| Bytes | Content |
+|-------|---------|
+| 0-3 | magic `DTWM` |
+| 4-7 | version (uint32) = 4 |
+| 8-15 | N, the number of series (uint64) |
+| 16-47 | SHA-256 fingerprint of everything that can change a distance |
+| 48- | the packed lower triangle, N(N+1)/2 doubles; NaN = not computed |
 
-Directory checkpoint v2 publishes a small root `CURRENT` file whose lowercase
-64-hex generation ID selects immutable
-`generations/<id>/{distances.csv,metadata.txt}` files. A successful save writes
-and validates a new generation before atomically replacing `CURRENT`; it does
-not overwrite the active generation in place. A directory holds exactly one
-generation after a successful save: the old generation is removed only after
-`CURRENT` points at the new one.
+The fingerprint covers the exact series bits, their order, lengths, dtype and
+`ndim`; the band and every variant and multivariate parameter; the missing-data
+strategy; the pointwise metric; the backend and its precision. Series names are
+not part of it. Integers and doubles are in the host byte order, which is
+little-endian on every supported platform.
 
-- **`distances.csv`** -- the exact N-by-N matrix; an empty field is the only
-  uncomputed representation.
-- **`metadata.txt`** -- the exact seven-key manifest described below.
+## Loading: the outcomes
 
-### Metadata fields
+| The file | `load_checkpoint` | `use_mmap_distance_matrix` |
+|----------|-------------------|----------------------------|
+| absent | returns `false`; nothing changes | creates it, every entry NaN |
+| for other series (another N) or other settings (another fingerprint) | `InvalidInput` | `InvalidInput` |
+| short, not a `.dtwm` file, another version (1-3 are earlier cache layouts), or a length that does not fit its N | `IOError` | `IOError` |
+| a match | the distances are loaded, bit for bit | the file is mapped with its distances |
 
-| Key | Description |
-|-----|-------------|
-| `n` | Number of time series (matrix dimension) |
-| `pairs_computed` | Number of distance pairs already computed |
-| `timestamp` | ISO 8601 UTC timestamp of when the checkpoint was saved |
-| `format` / `version` | `dtwc-dense-checkpoint` / `2` |
-| `identity_sha256` | Exact data and distance-configuration identity |
-| `payload_sha256` | Digest of the canonical CSV bytes |
-
-Example `metadata.txt`:
-
-```
-format=dtwc-dense-checkpoint
-version=2
-n=500
-pairs_computed=125000
-timestamp=2026-03-29T14:30:00Z
-identity_sha256=<64 lowercase hex characters>
-payload_sha256=<64 lowercase hex characters>
-```
+A rejected file is left as it is, and so is the `Problem`. Delete or rename such a
+file to compute the distances again. A checkpoint is never silently recomputed
+over, and a file for other data is never silently accepted.
 
 ## C++ API
-
-### save_checkpoint
-
-Save the current distance matrix state to a checkpoint directory. Creates the directory if it does not exist.
 
 ```cpp
 #include "dtwc/checkpoint.hpp"
 
 dtwc::Problem prob("my_problem", loader);
-// ... compute some or all of the distance matrix ...
-
-dtwc::save_checkpoint(prob, "./checkpoints/run1");
+if (dtwc::load_checkpoint(prob, "./checkpoints"))   // ./checkpoints/my_problem.dtwm
+    std::cout << "Resumed from checkpoint\n";        // computed pairs are kept
+prob.fill_distance_matrix();                         // computes only the rest
+dtwc::save_checkpoint(prob, "./checkpoints");
 ```
 
-### load_checkpoint
+`save_checkpoint` creates the directory if it is missing, writes
+`<name>.dtwm.tmp`, flushes it to the device and renames it over the previous
+checkpoint, so a crash or power cut during a save leaves the previous file whole.
+It raises `IOError` when the directory or the file cannot be written and
+`InvalidInput` for a `Problem` without series. `load_checkpoint` returns `false`
+only when there is no file; its C++ result is `[[nodiscard]]`. A loaded matrix is
+held in RAM; a `Problem` whose matrix was mapped lets go of the mapping.
 
-Load a checkpoint and restore the distance matrix into the Problem. Returns `true` on success, `false` if no valid checkpoint was found or the dimensions do not match. The C++ result is `[[nodiscard]]`: ignoring a `false` would recompute every distance without saying so.
-
-```cpp
-dtwc::Problem prob("my_problem", loader);
-
-if (dtwc::load_checkpoint(prob, "./checkpoints/run1")) {
-    std::cout << "Resumed from checkpoint\n";
-    // Continue computation -- already-computed pairs are preserved
-} else {
-    std::cout << "No checkpoint found, starting fresh\n";
-}
-```
-
-Load validates `CURRENT`, the exact manifest, full data/configuration identity,
-payload digest, CSV shape, finite full-token values, bit-identical symmetry, and
-computed-pair count before publishing any matrix state. Missing, incompatible,
-legacy, or malformed state returns `false` without changing `Problem`.
-
-The identity includes the Problem's pointwise metric (`prob.set_metric(...)`,
-L1 by default), so a checkpoint saved under one metric is not accepted by a
-`Problem` using another. `save_checkpoint(prob, path, metric)` and
+The fingerprint includes the `Problem`'s metric (`prob.set_metric(...)`, L1 by
+default). `save_checkpoint(prob, path, metric)` and
 `load_checkpoint(prob, path, metric)` tag or expect an explicit metric instead,
 for a matrix that something other than the `Problem` computed.
 
 ### CheckpointOptions
 
-`CheckpointOptions` drives automatic mid-fill saving through `Problem::checkpoint`:
+`CheckpointOptions` drives automatic saving through `Problem::checkpoint`:
 
 ```cpp
-prob.checkpoint.directory = "./checkpoints"; // Directory to save checkpoint files
+prob.checkpoint.directory = "./checkpoints"; // Directory of <name>.dtwm
 prob.checkpoint.save_interval = 100;        // Completed matrix rows between saves
-prob.checkpoint.enabled = true;             // Enable automatic mid-fill saving
-prob.fill_distance_matrix();                // Saves a generation every 100 rows
+prob.checkpoint.enabled = true;             // Enable automatic saving
+prob.fill_distance_matrix();                // Saves every 100 rows and at the end
 ```
 
-`fill_distance_matrix()` then fills rows in consecutive blocks of
-`save_interval` rows and publishes one generation after each block, the last
-block included. Enabling it requires dense distance storage and
-`save_interval >= 1`; either violation raises `InvalidInput` before any distance
-is computed. `enabled` defaults to `false`, in which case the fill is unchanged
-and you call `save_checkpoint` and `load_checkpoint` explicitly.
+`fill_distance_matrix()` then fills rows in consecutive blocks of `save_interval`
+rows and saves after each block, the last included. `save_interval >= 1` and a
+non-empty directory are required; either violation raises `InvalidInput` before
+any distance is computed. A save that fails propagates out of the fill; the
+distances computed so far stay in the `Problem`.
 
-Each save writes the whole N-by-N CSV, so it costs O(N^2) bytes and time and an
-automatic fill costs O(N^3 / save_interval) in total. Choose `save_interval` so
-a save costs a small fraction of a block: a block costs about
-`save_interval * N` DTW computations, a save about N^2 number formats.
+A save of a matrix in RAM writes all N(N+1)/2 doubles, 4N² bytes, so choose
+`save_interval` so that a block (about `save_interval * N` DTW computations) costs
+much more than a save.
 
-## Python directory API
+## Memory-mapped matrix
 
-The directory-checkpoint functions are exposed through the Python bindings:
+`prob.use_mmap_distance_matrix(path)` keeps the matrix in a `.dtwm` file instead
+of RAM (the wheels and release archives have it; a source build needs
+`DTWC_ENABLE_LLFIO=ON`, the default, and raises `IOError` without it). The fill
+writes into the file through the page cache, so the file is a checkpoint at every
+moment: a process that dies keeps every distance written, and reopening the file
+with the same data and settings resumes. A `Problem` mapped to
+`<directory>/<name>.dtwm` saves by flushing the mapping in place, so
+`CheckpointOptions` with that directory flushes after every block.
+
+A new file is filled with NaN and flushed to the device before its header is
+written, so a power cut during creation leaves a file that does not open
+(`IOError`), never one whose zeros read as distances.
+
+Set data, band, variant, backend, metric and precision before mapping. The
+semantic setters detach the mapping and leave the file as it is. Raw in-place
+series edits after the first use are unsupported because warm lookup is kept
+O(1): call `refresh_distance_matrix()` before editing, or use `set_data()`. CUDA
+matrices need an explicit FP32 or FP64 precision rather than `auto`.
+
+## Python
 
 ```python
 import dtwcpp
@@ -131,142 +118,68 @@ import dtwcpp
 prob = dtwcpp.Problem("my_clustering")
 prob.set_data(series, names)
 
-# Save checkpoint (metric defaults to MetricType.L1)
-dtwcpp.save_checkpoint(prob, "./checkpoints/run1")
-
-# Load checkpoint (returns True/False)
-if dtwcpp.load_checkpoint(prob, "./checkpoints/run1"):
-    print("Resumed from checkpoint")
+if not dtwcpp.load_checkpoint(prob, "./checkpoints"):  # ./checkpoints/my_clustering.dtwm
+    print("No checkpoint yet")
+prob.fill_distance_matrix()
+dtwcpp.save_checkpoint(prob, "./checkpoints")
 ```
 
 The optional `metric` argument mirrors the CLI's `--metric` and is part of the
-checkpoint identity fingerprint, so a matrix written under one pointwise metric
-is not accepted by a run using another:
+fingerprint, so a matrix written under one metric is refused by a run using
+another:
 
 ```python
 dtwcpp.save_checkpoint(prob, "./ckpt_sq", dtwcpp.MetricType.SquaredL2)
 
-dtwcpp.load_checkpoint(prob, "./ckpt_sq")                              # False
+dtwcpp.load_checkpoint(prob, "./ckpt_sq")                              # InvalidInput
 dtwcpp.load_checkpoint(prob, "./ckpt_sq", dtwcpp.MetricType.SquaredL2)  # True
 ```
 
-`load_checkpoint` holds the GIL for the whole call because it publishes a new
-distance matrix into `prob`; `save_checkpoint` is a read-only N^2 write and
-releases it.
+Both functions release the GIL. `load_checkpoint` replaces the `Problem`'s
+matrix: do not run it concurrently with another method on the same `Problem`.
+`dtwcpp.CheckpointOptions` and `Problem.checkpoint` mirror the C++ options.
 
-The `CheckpointOptions` class is also available:
-
-```python
-opts = dtwcpp.CheckpointOptions()
-opts.directory = "./checkpoints"
-opts.enabled = True
-```
-
-## CLI usage
-
-The command-line tool supports checkpointing via the `--checkpoint` flag:
+## CLI
 
 ```bash
 dtwc_cl --input data.csv -k 5 --method pam --checkpoint ./checkpoints
 ```
 
-When `--checkpoint` is specified, the CLI will:
+With `--checkpoint <dir>` the CLI
 
-1. **On startup**: create the directory if it is missing, and stop with exit status 1 if the path is not a directory, before any data is read. Then attempt to load a checkpoint from it. If a valid checkpoint is found and the dimensions match, the saved distance matrix is restored.
-2. **On completion**: after the result files are written, save the current state to the checkpoint directory, so it can be resumed if run again. A save that fails (for example, the disk is full) stops the run with exit status 1 and a message naming the directory; it is not a warning, and the results already written stay on disk.
+1. creates the directory before any data is read, and stops with exit status 1
+   if the path is not a directory;
+2. loads `<dir>/<name>.dtwm` if it exists (`--name`, default `dtwc`); a file for
+   other data or settings, or a damaged one, stops the run with exit status 1 and
+   the reason, before anything is computed;
+3. saves the matrix there after the result files are written, and every
+   `--checkpoint-interval` rows during the fill when that is non-zero. A save that
+   fails (a full disk) stops the run with exit status 1; the results already
+   written stay.
 
-### Memory-mapped cache safety and migration
-
-The current mmap cache is format version 3. Its 64-byte header contains a
-SHA-256 fingerprint of all inputs that can change a distance: exact series bits,
-order, lengths, dtype and `ndim`; band and every variant/multivariate parameter;
-missing-data strategy; pointwise metric; backend; and backend precision. Names
-are intentionally excluded. Header CRC, reserved bytes, and exact file length
-are validated before cached distances can be read.
-
-A same-sized cache from different data or configuration therefore fails loudly
-instead of returning stale distances. A footer holds two digest words per
-logical row; reopening under a nonblocking exclusive file lease recomputes
-those digests before exposing the mapping. This detects accidental packed-value
-or computed-sentinel corruption, including mutations made through the legacy
-raw pointer. It is not keyed cryptographic authentication, and `sync()` remains
-the durability boundary.
-
-Version-1 caches contained only the matrix dimension. Version 2 authenticated
-the data/configuration identity but not the mutable packed payload. Both are
-rejected with recompute guidance. Delete or rename a legacy/mismatched cache and
-rerun; the source data is not modified.
-
-Set data, band, variant, backend, metric, and precision before binding a cache.
-Use the semantic setters after binding; they detach the old mapping. Raw in-place
-series edits after the first cache use are unsupported because warm lookup is
-kept O(1): call `refresh_distance_matrix()` before editing, or use `set_data()`.
-CUDA-backed mmap caches require explicit FP32 or FP64 rather than `auto`.
-
-When `--mmap-threshold` selects mmap storage, `--checkpoint` and
-`--dist-matrix` are rejected because both require a legacy dense CSV matrix.
-Omit those options to use the fingerprinted cache's automatic resume, or raise
-the threshold only if the dense matrix and CSV checkpoint fit in RAM.
+When `--mmap-threshold` selects mapped storage, the mapped matrix is
+`<dir>/<name>.dtwm` itself: it is reopened if present and written in place.
+Without `--checkpoint`, a mapped matrix is `<name>.dtwm` in the output directory.
 
 ## Example workflow
 
-### Start a long computation
-
 ```bash
-dtwc_cl --input large_dataset.csv -k 10 --method pam \
-        --checkpoint ./ckpt --verbose
+dtwc_cl --input large_dataset.csv -k 10 --method pam --checkpoint ./ckpt --verbose
 ```
-
-Output:
 
 ```
 Data loaded: 2000 series [0.5s]
-No checkpoint found at ./ckpt, starting fresh.
+No checkpoint in ./ckpt, starting fresh.
 Running FastPAM (k=10) ...
 ```
 
-### Interrupt and resume
-
-If the process is interrupted (e.g., Ctrl+C, system crash), restart with the same command:
-
-```bash
-dtwc_cl --input large_dataset.csv -k 10 --method pam \
-        --checkpoint ./ckpt --verbose
-```
-
-Output:
+After an interruption, run the same command again:
 
 ```
 Data loaded: 2000 series [0.5s]
-Checkpoint partially loaded from ./ckpt (1250000/4000000 entries computed)
 Resumed from checkpoint: ./ckpt
 Running FastPAM (k=10) ...
 ```
 
-The computation continues from where it left off, skipping the already-computed distance pairs.
-
-### Python equivalent
-
-```python
-import dtwcpp
-
-series = [...]  # 2000 time series
-names = [str(i) for i in range(len(series))]
-
-prob = dtwcpp.Problem("large_run")
-prob.set_data(series, names)
-prob.band = 10
-
-# Try to resume
-if not dtwcpp.load_checkpoint(prob, "./ckpt"):
-    print("Starting fresh")
-
-# Run clustering (computes remaining distances as needed)
-result = dtwcpp.fast_pam(prob, n_clusters=10, max_iter=100)
-
-# Save for future runs
-dtwcpp.save_checkpoint(prob, "./ckpt")
-
-print(f"Total cost: {result.total_cost}")
-print(f"Labels: {result.labels}")
-```
+The fill skips every pair the checkpoint holds. A run with `--checkpoint-interval`
+saves during the fill, so an interrupted fill resumes from its last block.

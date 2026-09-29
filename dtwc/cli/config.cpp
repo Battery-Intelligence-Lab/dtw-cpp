@@ -311,9 +311,9 @@ void bind(CLI::App &app, Config &config)
 
   // Distance matrix and checkpoints
   key(app, "--dist-matrix", config.dist_matrix, "Path to precomputed distance matrix CSV");
-  key(app, "--checkpoint", config.checkpoint, "Checkpoint directory for save/resume");
+  key(app, "--checkpoint", config.checkpoint, "Checkpoint directory: <name>.dtwm is saved there and resumed from");
   key(app, "--checkpoint-interval", config.checkpoint_interval,
-      "Save a checkpoint generation every N filled distance-matrix rows (requires --checkpoint)");
+      "Needs --checkpoint: save the checkpoint every N filled distance-matrix rows (0: at the end)");
   key(app, "--mmap-threshold", config.mmap_threshold, "N above which to use memory-mapped distance matrix (0=always)");
 
   // MIP solver

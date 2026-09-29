@@ -70,14 +70,12 @@ falsified; that does not change the implemented public policy.
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:30) | `= double` | behaviour change (§8), no name change |
 | 42 | CLI dtype default | `--dtype float32` (dtwc_cl.cpp:717-725) | `--dtype float64` | old accepted, default flips (§8) |
 
-**Mmap-cache migration.** Version-1 and version-2 `<name>_distmat.cache` files
-are not resumed by the current format. Delete or rename either legacy cache and
-rerun to create an identity- and payload-checked version-3 cache; source data
-and result checkpoints are unaffected. At the CLI
-mmap threshold, legacy dense `--checkpoint` and `--dist-matrix` inputs cannot be
-combined with the mmap cache and fail before either storage path is opened. Omit
-the dense option to use automatic mmap resume, or raise the threshold only when
-the dense matrix and CSV checkpoint fit in memory.
+**Checkpoint and mmap-cache migration.** A checkpoint directory in the earlier
+CSV layout (`CURRENT`, `generations/`) or a cache in an earlier layout (versions
+1-3 of `<name>_distmat.cache`) is not read by the `.dtwm` format (version 4):
+delete it and rerun; source data is unaffected. At the CLI mmap threshold,
+`--dist-matrix` (a CSV matrix) cannot be combined with mapped storage and fails
+before either path is opened; `--checkpoint` maps `<dir>/<name>.dtwm`.
 
 **Duplicate-elimination principle (surface report §7).** Documentation exposes
 one canonical name per concept. Compatibility aliases remain callable for the

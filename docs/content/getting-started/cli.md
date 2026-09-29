@@ -195,11 +195,11 @@ input is an error rather than an option silently ignored.
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--dist-matrix <path>` | Path to precomputed distance matrix CSV | — |
-| `--checkpoint <path>` | Checkpoint directory for save/resume | — |
-| `--checkpoint-interval <rows>` | Publish a checkpoint generation every N completed distance-matrix rows (a non-zero N requires `--checkpoint`) | 0 (save once, at the end) |
+| `--checkpoint <path>` | Checkpoint directory: `<name>.dtwm` is saved there and resumed from | — |
+| `--checkpoint-interval <rows>` | Needs `--checkpoint`: save the checkpoint every N completed distance-matrix rows | 0 (save once, at the end) |
 | `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
-Without `--checkpoint-interval` (or with `0`) the dense checkpoint is written once, after clustering. With a non-zero interval, `fill_distance_matrix` saves a generation after every `<rows>` completed matrix rows, so an interrupted run resumes from the last block instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. Each save rewrites the whole N-by-N CSV, so choose an interval whose block (about `<rows>` * N DTW computations) costs much more than one save (about N^2 number formats).
+The checkpoint is one file, `<dir>/<name>.dtwm` ([Checkpointing](checkpointing.md)). Without `--checkpoint-interval` (or with `0`) it is written once, after clustering. With a non-zero interval, `fill_distance_matrix` saves it after every `<rows>` completed matrix rows, so an interrupted run resumes from the last block instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. A save of a matrix in RAM writes all N(N+1)/2 doubles, so choose an interval whose block (about `<rows>` * N DTW computations) costs much more than one save. A checkpoint for other data or settings, or a damaged one, stops the run with exit status 1 before anything is computed; it is never recomputed over.
 
 A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, or with a row count other than the number of input series) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes after the result files, so a save that fails there (a full disk) leaves the results written.
 
@@ -219,19 +219,15 @@ resolves to N, FastCLARA deliberately becomes one full-data PAM run and the
 ordinary distance-storage/checkpoint rules apply. RAM-limited streaming always
 uses a non-full sample.
 
-The mmap cache resumes automatically only when its version-3 semantic
-fingerprint, payload row digests, and exact file layout validate under an
-exclusive session lease. Version 1 had only an N-sized identity; version 2 did
-not authenticate mutable payload values. Both legacy formats and any
-identity/payload mismatch fail before exposing a cached distance and must be
-recomputed. The row digests detect accidental corruption; they are not a keyed
-tamper-proof authenticator.
-
-When the threshold selects mmap, `--checkpoint` and `--dist-matrix` are
-incompatible because they require a dense CSV matrix; the CLI rejects the
-combination before opening either path. CUDA mmap runs must select explicit
-`--gpu-precision fp32` or `fp64`; the hardware-dependent `auto` setting is not a
-stable cache identity.
+The mapped matrix is `<name>.dtwm`, in the `--checkpoint` directory when one is
+given (it is then the checkpoint) and in the output directory otherwise. It
+resumes automatically when its magic, version, exact length, N and SHA-256
+fingerprint of the data and distance settings match; a file of other data or
+settings is `InvalidInput` and a damaged or earlier-layout one `IOError`, both
+before any cached distance is read. When the threshold selects mmap,
+`--dist-matrix` (a CSV matrix) is rejected before either path is opened. CUDA
+mmap runs must select explicit `--gpu-precision fp32` or `fp64`; the
+hardware-dependent `auto` setting is not a stable cache identity.
 
 ### GPU Options
 
@@ -344,7 +340,7 @@ dtwc_cl --config config.yaml
 ### Distance checkpoint
 
 ```bash
-# Save/load dense distance state; a restart uses the same command
+# Save <name>.dtwm to ./checkpoints and resume from it; a restart uses the same command
 dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
 dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
 ```

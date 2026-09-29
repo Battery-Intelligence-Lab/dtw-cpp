@@ -131,7 +131,7 @@ struct ProblemConfigurationSnapshot {
   std::vector<std::vector<double>> series;
   std::vector<std::vector<float>> series_f32;
   std::vector<std::string> series_names;
-  std::size_t distance_matrix_index;
+  bool distance_matrix_mapped;
   bool distance_matrix_filled;
   std::vector<double> distances;
 };
@@ -172,7 +172,7 @@ static ProblemConfigurationSnapshot snapshot_configuration(dtwc::Problem &prob)
     prob.data().p_vec,
     prob.data().p_vec_f32,
     prob.data().p_names,
-    prob.distance_matrix().index(),
+    prob.distance_matrix().is_mapped(),
     prob.is_distance_matrix_filled(),
     std::move(distances)
   };
@@ -230,7 +230,7 @@ static void check_configuration_unchanged(
     for (std::size_t j = 0; j < prob.size(); ++j)
       distances.push_back(prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j)));
   CHECK((distances == before.distances
-         && prob.distance_matrix().index() == before.distance_matrix_index
+         && prob.distance_matrix().is_mapped() == before.distance_matrix_mapped
          && prob.is_distance_matrix_filled() == before.distance_matrix_filled));
 }
 
