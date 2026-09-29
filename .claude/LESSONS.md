@@ -56,8 +56,13 @@ Append new entries at the end of their section; keep each to a few lines.
   a probe without LTO to see vectorisation remarks. *`scripts/codegen_report.py`*
 - **A large fill is latency-bound per pair; the PAM swap on a cached matrix is memory-bound.** FastPAM1 gives
   2.95–8.06×, not k×. *`baselines/2026-07-08-faster-pam-bench.md`*
-- **Benchmark the kernel you change.** Nested `std::min` helped legacy kernels 2.5–3.1× and the rolling
-  kernel 1.006×; a lookup table for the triangular index regressed 5 %.
+- **Benchmark the kernel you change, on each standard library.** A lookup table for the triangular index regressed 5 %.
+- **On the MSVC STL, `std::min({a,b,c})` and `std::min_element` are library calls** (`__std_min_d`,
+  `__std_min_element_d`), under cl and under clang on Windows; libc++ inlines both, so a Mac benchmark cannot see it.
+  One call per DP cell cost 7.2 ns against 1.36 with a nested, register-carried min. Read the Windows assembly;
+  `test_codegen_no_calls` guards the kernels (`baselines/2026-09-29-k1-dp-cell-no-call.md`).
+- **clang's Windows driver passes `-relaxed-aliasing`** (no TBAA, as MSVC): a store through a `double *` makes the
+  compiler reload every pointer it cannot prove distinct. Copy what a hot loop reads into locals.
 - **Float32 is opt-in.** It halves the payload and measured 1.57–1.90× faster; Float64 stays the default.
 - **Interleave A and B, and check the power state.** A laptop dropped to low-power mid-run and made unchanged
   code 1.56× slower; one-after-the-other runs would have called it a regression.
