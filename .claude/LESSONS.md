@@ -54,6 +54,8 @@ Append new entries at the end of their section; keep each to a few lines.
   exits a loop that writes memory. *`baselines/2026-09-22-x04-codegen-report.md`*
 - **`-Rpass` is silent under ThinLTO, and a header template reports only where it is instantiated.** Compile
   a probe without LTO to see vectorisation remarks. *`scripts/codegen_report.py`*
+- **lld-link's LTO backend runs no SLP vectoriser**, so on Windows a non-LTO listing is not what ships: code
+  only SLP packs links as scalar chains. Read the linked binary (`llvm-objdump`). *`baselines/2026-09-29-p1-lanes-fill.md`*
 - **A large fill is latency-bound per pair; the PAM swap on a cached matrix is memory-bound.** FastPAM1 gives
   2.95–8.06×, not k×. *`baselines/2026-07-08-faster-pam-bench.md`*
 - **Benchmark the kernel you change.** Nested `std::min` helped legacy kernels 2.5–3.1× and the rolling
