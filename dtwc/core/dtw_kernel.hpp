@@ -233,9 +233,9 @@ T dtw_kernel_full(std::size_t n_short, std::size_t n_long, Cost cost, Cell cell)
     C(0, static_cast<int>(j)) = cell.combine(
         maxValue, maxValue, C(0, static_cast<int>(j - 1)), cost(0, j), 0, j);
 
-  // Column pointers are hoisted and C(i-1, j) is carried in a register: without
-  // TBAA (the MSVC target) every store through C forced a reload of the buffer
-  // pointer and of the value stored one iteration earlier.
+  // As in the rolling kernels below: C(i-1, j) is carried in a register rather
+  // than reloaded right after its store, and the column pointers are taken once
+  // per column.
   for (std::size_t j = 1; j < n_long; ++j) {
     const T *prev = &C(0, static_cast<int>(j - 1));
     T *col = &C(0, static_cast<int>(j));
