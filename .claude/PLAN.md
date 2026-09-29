@@ -97,9 +97,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   lanes against it
 - ☐ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
   compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions)
-- ☐ P1 lanes in the CPU fill, after K1 and Y2: `dtw_kernel_lanes<T, W, Cell>` beside `_linear` / `_banded`, W one cache
+- ☑ P1 lanes in the CPU fill, after K1 and Y2: `dtw_kernel_lanes<T, W, Cell>` beside `_linear` / `_banded`, W one cache
   line of T; the fill steps a row by W columns of equal length, per-pair kernel otherwise; Standard DTW, L1 and
   squared L2, full and banded first; bitwise equal to the per-pair fill; band ≥ 2.5× on the 24-thread fill
+  (P1 `94ef14b`, `e34c37f`, `940cd8a`, `3c95dc7`, `b930ff8`; merged `d61c499`; fill 14.5× unbanded, 5.1× band 50,
+  15.3× ECG5000; cl builds get unpacked lanes — the Windows wheel is built by cl)
 
 ## C — GPU to one fill (W4 + W13's GPU half)
 
