@@ -191,6 +191,15 @@ if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GN
   target_compile_options(dtwc++ PRIVATE -fno-finite-math-only)
 endif()
 
+# A switch over an enum names every enumerator, with no default: adding an
+# enumerator is then a compile error at each switch that misses it, instead of
+# a runtime throw. Values reach users only as names, which the name tables check.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  target_compile_options(dtwc++ PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/we4062>)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  target_compile_options(dtwc++ PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Werror=switch>)
+endif()
+
 # llfio (optional) — memory-mapped distance matrices. core/distance_matrix.cpp
 # is the one file that includes it, so the link is PRIVATE; DTWC_HAS_MMAP is
 # PUBLIC, as every capability is, so a consumer (and the tests) can tell whether

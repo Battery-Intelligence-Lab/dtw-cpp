@@ -5,7 +5,6 @@
 /// @date 08 Apr 2026
 #pragma once
 
-#include "../base/error.hpp"
 #include "../base/names.hpp"
 
 namespace dtwc::core {
@@ -29,15 +28,5 @@ inline constexpr Name<Precision> precision_names[]{
   { "fp64", Precision::Float64 },
   { "double", Precision::Float64 },
 };
-
-inline void validate_precision(Precision value)
-{
-  switch (value) {
-  case Precision::Float32:
-  case Precision::Float64:
-    return;
-  }
-  throw InvalidInput("Invalid Precision value.");
-}
 
 } // namespace dtwc::core

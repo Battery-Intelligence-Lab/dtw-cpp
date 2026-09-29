@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include "../base/error.hpp"
 #include "../base/names.hpp"
 
 namespace dtwc {
@@ -17,16 +16,6 @@ enum class Solver {
   Gurobi, //<! Gurobi solver for MIP solution
   HiGHS   //<! HiGHS solver for MIP solution.
 };
-
-inline void validate_solver(Solver value)
-{
-  switch (value) {
-  case Solver::Gurobi:
-  case Solver::HiGHS:
-    return;
-  }
-  throw InvalidInput("Invalid Solver value.");
-}
 
 inline constexpr Name<Solver> solver_names[]{
   { "highs", Solver::HiGHS },

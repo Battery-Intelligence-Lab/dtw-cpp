@@ -15,7 +15,6 @@
 #include "msm.hpp"
 #include "twe.hpp"
 #include "variant_validation.hpp"
-#include "selector_validation.hpp"
 #include "distance_semantics.hpp"
 
 #include <span>
@@ -29,8 +28,6 @@ double dtw_runtime(const double* x, std::size_t nx,
   validate_variant_params(opts.variant_params);
   validate_variant_missing_semantics(
     opts.variant_params, opts.missing_strategy);
-  validate_metric_type(opts.metric);
-  validate_constraint_type(opts.constraint);
   // WDTW, ADTW, Soft-DTW, MSM and TWE compute L1: refuse another metric.
   dtwc::detail::require_metric_supported(
     opts.variant_params.variant, opts.metric, "dtw_runtime");
@@ -111,10 +108,8 @@ double dtw_runtime(const double* x, std::size_t nx,
       return banded
         ? dtwBanded<double>(x, nx, y, ny, band, -1.0, opts.metric)
         : dtwFull_L<double>(x, nx, y, ny, -1.0, opts.metric);
-    default:
-      validate_dtw_variant(opts.variant_params.variant);
-      throw std::logic_error("dtw_runtime: unreachable DTWVariant");
   }
+  throw std::logic_error("dtw_runtime: unreachable DTWVariant");
 }
 
 } // namespace dtwc::core

@@ -99,25 +99,6 @@ TEST_CASE("F19 Problem canonical accessors round-trip setter state",
   CHECK(problem.series(1)[1] == 4.0);
 }
 
-TEST_CASE("F19 Problem setters reject invalid state transactionally",
-          "[f19][problem][api][invalid]")
-{
-  dtwc::Problem problem{ "preserved" };
-  problem.set_data(two_series_data());
-  problem.set_method(dtwc::Method::MIP);
-
-  CHECK_THROWS_AS(
-    problem.set_method(static_cast<dtwc::Method>(-1)), dtwc::InvalidInput);
-  CHECK(problem.method() == dtwc::Method::MIP);
-
-  auto invalid_data = two_series_data();
-  invalid_data.precision = static_cast<dtwc::core::Precision>(-1);
-  CHECK_THROWS_AS(problem.set_data(std::move(invalid_data)), dtwc::InvalidInput);
-  CHECK(problem.data().precision == dtwc::core::Precision::Float64);
-  CHECK(problem.data().size() == 2);
-  CHECK(problem.name() == "preserved");
-}
-
 TEST_CASE("F19 capped Lloyd behavior survives Problem encapsulation",
           "[f19][problem][api][lloyd]")
 {

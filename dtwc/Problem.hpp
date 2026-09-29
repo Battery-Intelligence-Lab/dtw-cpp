@@ -97,18 +97,6 @@ enum class DistanceMatrixStrategy {
   Metal       ///< Apple Metal GPU (requires DTWC_HAS_METAL)
 };
 
-inline void validate_distance_matrix_strategy(DistanceMatrixStrategy value)
-{
-  switch (value) {
-  case DistanceMatrixStrategy::Auto:
-  case DistanceMatrixStrategy::BruteForce:
-  case DistanceMatrixStrategy::CUDA:
-  case DistanceMatrixStrategy::Metal:
-    return;
-  }
-  throw InvalidInput("Invalid DistanceMatrixStrategy value.");
-}
-
 /// FX-1's GPU rules that need no series: Float32 values, a variant or a
 /// missing-data strategy the GPU kernels do not implement, and a GPU index or
 /// precision Metal cannot honour. A fill applies them to its Problem
@@ -226,8 +214,6 @@ private:
     core::MissingStrategy missing,
     core::MetricType metric,
     const Data &candidate_data,
-    DistanceMatrixStrategy candidate_distance_strategy,
-    const CUDASettings &candidate_cuda_settings,
     bool force_float32 = false);
   void preflight_current_distance_semantics() const;
   void preflight_float32_distance_semantics() const;
@@ -409,7 +395,6 @@ public:
 
   void set_method(Method m)
   {
-    validate_method(m);
     method_ = m;
   }
   void set_band(int b)
@@ -431,7 +416,7 @@ public:
   void set_missing_strategy(core::MissingStrategy strategy)
   {
     preflight_distance_semantics(
-      variant_params, strategy, metric_, data_, distance_strategy, cuda_settings);
+      variant_params, strategy, metric_, data_);
     if (missing_strategy == strategy) return;
     missing_strategy = strategy;
     refresh_distance_matrix();
@@ -441,12 +426,12 @@ public:
   /// L1 by default. A metric other than L1 is implemented for Standard DTW with
   /// MissingStrategy::Error (univariate or multivariate): the Problem passes the
   /// metric to the Standard kernels only.
-  /// @throws InvalidInput for an invalid value, or a metric other than L1 with
-  ///         a variant other than Standard or a missing-data strategy.
+  /// @throws InvalidInput for a metric other than L1 with a variant other than
+  ///         Standard or a missing-data strategy.
   void set_metric(core::MetricType metric)
   {
     preflight_distance_semantics(
-      variant_params, missing_strategy, metric, data_, distance_strategy, cuda_settings);
+      variant_params, missing_strategy, metric, data_);
     if (metric_ == metric) return;
     metric_ = metric;
     refresh_distance_matrix();
@@ -455,7 +440,7 @@ public:
   void set_distance_strategy(DistanceMatrixStrategy strategy)
   {
     preflight_distance_semantics(
-      variant_params, missing_strategy, metric_, data_, strategy, cuda_settings);
+      variant_params, missing_strategy, metric_, data_);
     if (distance_strategy == strategy) return;
     distance_strategy = strategy;
     refresh_distance_matrix();
@@ -471,7 +456,7 @@ public:
   void set_cuda_settings(CUDASettings settings)
   {
     preflight_distance_semantics(
-      variant_params, missing_strategy, metric_, data_, distance_strategy, settings);
+      variant_params, missing_strategy, metric_, data_);
     if (cuda_settings.device_id == settings.device_id
         && cuda_settings.precision == settings.precision)
       return;
@@ -491,11 +476,10 @@ public:
 
   void set_data(dtwc::Data candidate)
   {
-    core::validate_precision(candidate.precision);
     candidate.validate_ndim();
     reject_empty_series(candidate, "Problem::set_data");
     preflight_distance_semantics(
-      variant_params, missing_strategy, metric_, candidate, distance_strategy, cuda_settings);
+      variant_params, missing_strategy, metric_, candidate);
     data_ = std::move(candidate);
     refresh_distance_matrix();
   }
@@ -503,11 +487,10 @@ public:
   /// Set view-mode data (non-owning spans). Sizes distance matrix but skips mmap cache.
   void set_view_data(dtwc::Data candidate)
   {
-    core::validate_precision(candidate.precision);
     candidate.validate_ndim();
     reject_empty_series(candidate, "Problem::set_view_data");
     preflight_distance_semantics(
-      variant_params, missing_strategy, metric_, candidate, distance_strategy, cuda_settings);
+      variant_params, missing_strategy, metric_, candidate);
     data_ = std::move(candidate);
     refresh_distance_matrix();
     resize(); // sizes distance matrix for new N

@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include "../base/error.hpp"
 #include "../base/names.hpp"
 
 namespace dtwc {
@@ -25,18 +24,6 @@ enum class Method {
    */
   TADPole
 };
-
-inline void validate_method(Method value)
-{
-  switch (value) {
-  case Method::Kmedoids:
-  case Method::MIP:
-  case Method::LRCore:
-  case Method::TADPole:
-    return;
-  }
-  throw InvalidInput("Invalid Method value.");
-}
 
 /// No aliases: MATLAB's 'pam' and 'auto' selected Lloyd k-medoids, so they are
 /// not names of Kmedoids (config.hpp's ClusterMethod spells the CLI's methods).

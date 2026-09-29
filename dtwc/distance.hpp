@@ -46,9 +46,8 @@ namespace dtwc::detail {
 /// WDTW, ADTW, Soft-DTW, MSM and TWE take no metric: their kernels compute an
 /// L1 cost, so asking one of them for another metric is InvalidInput, never the
 /// L1 distance. Standard and DDTW pass the metric to their kernels, as do the
-/// missing-data strategies, which run with Standard only. Call after
-/// validate_metric_type. Problem::set_metric is stricter: its resolver passes
-/// the metric to the Standard kernels only.
+/// missing-data strategies, which run with Standard only. Problem::set_metric
+/// is stricter: its resolver passes the metric to the Standard kernels only.
 inline void require_metric_supported(core::DTWVariant variant,
                                      core::MetricType metric,
                                      std::string_view where)
@@ -61,7 +60,8 @@ inline void require_metric_supported(core::DTWVariant variant,
   case core::DTWVariant::SoftDTW: name = "SoftDTW"; break;
   case core::DTWVariant::MSM: name = "MSM"; break;
   case core::DTWVariant::TWE: name = "TWE"; break;
-  default: return; // Standard and DDTW take the metric.
+  case core::DTWVariant::Standard:
+  case core::DTWVariant::DDTW: return; // they take the metric
   }
   throw InvalidInput(
     std::string(where) + ": metric "
@@ -79,7 +79,6 @@ T dtw(std::span<const T> x, std::span<const T> y,
       int band = settings::DEFAULT_BAND,
       core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   dtwc::detail::require_finite<T>(x, y, "distance::dtw");
   return dtwBanded<T>(x, y, band, static_cast<T>(-1), metric);
 }
@@ -89,7 +88,6 @@ T ddtw(std::span<const T> x, std::span<const T> y,
        int band = settings::DEFAULT_BAND,
        core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   dtwc::detail::require_finite<T>(x, y, "distance::ddtw");
   return ddtwBanded<T>(x, y, band, metric);
 }
@@ -128,7 +126,6 @@ T missing(std::span<const T> x, std::span<const T> y,
           int band = settings::DEFAULT_BAND,
           core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   dtwc::detail::require_finite<T>(x, y, "distance::missing", /*nan_is_missing=*/true);
   return dtwMissing_banded<T>(x, y, band, static_cast<T>(-1), metric);
 }
@@ -138,7 +135,6 @@ T arow(std::span<const T> x, std::span<const T> y,
        int band = settings::DEFAULT_BAND,
        core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   dtwc::detail::require_finite<T>(x, y, "distance::arow", /*nan_is_missing=*/true);
   return dtwAROW_banded<T>(x, y, band, metric);
 }
@@ -175,7 +171,6 @@ T dtw(std::span<const T> x, std::span<const T> y,
 {
   core::validate_variant_params(params);
   core::validate_variant_missing_semantics(params, missing_strategy);
-  core::validate_metric_type(metric);
   dtwc::detail::require_metric_supported(params.variant, metric, "distance::dtw");
   // Each branch ends in a checked function above, which scans the input.
   // Interpolate first rejects ±inf, which interpolate_linear() would spread
@@ -196,9 +191,6 @@ T dtw(std::span<const T> x, std::span<const T> y,
 
   case core::MissingStrategy::Error:
     break;
-  default:
-    core::validate_missing_strategy(missing_strategy);
-    throw std::logic_error("distance::dtw: unreachable MissingStrategy");
   }
 
   switch (params.variant) {
@@ -217,10 +209,8 @@ T dtw(std::span<const T> x, std::span<const T> y,
                   static_cast<T>(params.twe_lambda));
   case core::DTWVariant::Standard:
     return dtw<T>(x, y, band, metric);
-  default:
-    core::validate_dtw_variant(params.variant);
-    throw std::logic_error("distance::dtw: unreachable DTWVariant");
   }
+  throw std::logic_error("distance::dtw: unreachable DTWVariant");
 }
 
 template <typename T = dtwc::settings::default_data_t>

@@ -500,7 +500,6 @@ Series compute_barycenter(const std::vector<Series>& series, std::size_t target_
                           const BarycenterOptions& options, const Series& initial,
                           AlignmentWorkspace& workspace, const char* entry_point)
 {
-  validate_barycenter_method(options.method);
   validate_series(series);
   validate_options(options);
   Series center = resample_linear(initial, target_length);
@@ -587,7 +586,6 @@ std::vector<data_t> dtw_barycenter(const Problem& prob,
                                    std::size_t target_length,
                                    const BarycenterOptions& options)
 {
-  validate_barycenter_method(options.method);
   validate_problem_configuration(prob, "dtw_barycenter");
   const auto all = copy_problem_series(prob);
   if (series_indices.empty())
@@ -608,7 +606,6 @@ std::vector<data_t> dtw_barycenter(const Problem& prob,
 BarycenterClusteringResult barycenter_kmeans(
   const Problem& prob, const BarycenterClusteringOptions& options)
 {
-  validate_barycenter_method(options.method);
   validate_problem_configuration(prob, "barycenter_kmeans");
   const auto data = copy_problem_series(prob);
   const std::size_t n = data.size();

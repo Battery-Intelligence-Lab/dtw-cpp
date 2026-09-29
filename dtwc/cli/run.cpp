@@ -81,8 +81,14 @@ std::pair<Method, const char *> problem_route(ClusterMethod method)
   case ClusterMethod::Kmedoids: return { Method::Kmedoids, "kMedoids Lloyd" };
   case ClusterMethod::MIP: return { Method::MIP, "MIP clustering" };
   case ClusterMethod::LRCore: return { Method::LRCore, "LR-core clustering" };
-  default: return { Method::TADPole, "TADPole clustering" };
+  case ClusterMethod::TADPole: return { Method::TADPole, "TADPole clustering" };
+  case ClusterMethod::Auto:
+  case ClusterMethod::PAM:
+  case ClusterMethod::OneBatch:
+  case ClusterMethod::CLARA:
+  case ClusterMethod::Hierarchical: break;
   }
+  throw std::logic_error("run: method " + method_name(method) + " is not a Problem::cluster() route");
 }
 
 /// Where the series come from.

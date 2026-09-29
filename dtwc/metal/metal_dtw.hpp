@@ -40,17 +40,11 @@ enum class MetalPrecision {
 
 inline void validate_metal_precision(MetalPrecision value)
 {
-  switch (value) {
-  case MetalPrecision::Auto:
-  case MetalPrecision::FP32:
-    return;
-  case MetalPrecision::FP64:
+  if (value == MetalPrecision::FP64)
     throw DeviceError(
       "Metal: precision FP64 is not implemented (the Metal kernels compute in "
       "FP32); no backend call or CPU fallback was attempted. Use precision Auto "
       "or FP32, or device cpu for Float64 distances.");
-  }
-  throw InvalidInput("Invalid MetalPrecision value.");
 }
 
 struct MetalDistMatOptions : public dtwc::gpu::DistMatOptionsBase {
