@@ -49,6 +49,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   refuse the same way. `set_n_clusters` no longer sizes `clusters_ind` and `centroids_ind`, which stay empty until a
   clustering writes them; a Problem is clustered when it holds one label per series and one medoid per cluster
   (`Problem::require_clustered`), so a clustering goes stale when `set_n_clusters` or the data change its shape.
+- **Changed (C++, Python, MATLAB):** `set_n_clusters(k)` with k < 1 and `set_band(b)` with b < -1 raise `InvalidInput` naming
+  the value. v1.0.0 (`set_numberOfClusters`) accepted k = 0, failed on k = -1 with an untyped "vector too long" from a
+  resize, and ran a band below -1 as full DTW. k above N is still refused by `cluster()`, since the data may change after the
+  setter.
 - **Changed (exact solvers):** `Method::MIP` and `Method::LRCore` publish through the new
   `Problem::set_result(ClusteringResult)`, which refuses a malformed clustering with `InvalidInput`. A solve that fails with
   `SolverError` leaves the Problem holding a valid clustering (the FastPAM warm start), not necessarily the one it held before

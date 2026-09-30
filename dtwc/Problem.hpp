@@ -421,8 +421,13 @@ public:
     validate_method(m);
     method_ = m;
   }
+  /// @throws InvalidInput for b < -1: -1 is full DTW and b >= 0 a Sakoe-Chiba
+  ///         half-width; nothing lies between.
   void set_band(int b)
   {
+    if (b < -1)
+      throw InvalidInput("Problem::set_band: band must be -1 (full DTW) or at least 0; got "
+                         + std::to_string(b) + ".");
     preflight_current_distance_semantics();
     if (band == b) return;
     band = b;

@@ -253,6 +253,51 @@ class TestClusterFirst:
         assert [f.name for f in tmp_path.iterdir()] == ["first_Nc_2.csv"]
 
 
+class TestSetterRanges:
+    """A cluster count below 1 and a band below -1 have no meaning, so the setters
+    refuse them (k = -1 was an untyped "vector too long" from a resize, and a band
+    of -5 ran as full DTW). k above N is not the setter's to judge: the data may
+    change after it, so `cluster()` refuses it."""
+
+    _DATA = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
+
+    def _problem(self):
+        p = dtwcpp.Problem("ranges")
+        p.set_data(self._DATA, ["a", "b", "c"])
+        return p
+
+    @pytest.mark.parametrize("bad", [0, -1, -(2**31)])
+    def test_set_n_clusters_below_one_raises_and_keeps_the_count(self, bad):
+        p = self._problem()
+        p.set_n_clusters(2)
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"set_n_clusters: n_clusters must be at least 1; got {bad}\b"):
+            p.set_n_clusters(bad)
+        assert p.n_clusters() == 2
+
+    def test_k_above_n_is_refused_when_clustering(self):
+        p = self._problem()
+        p.set_n_clusters(4)  # N = 3
+        assert p.n_clusters() == 4
+        with pytest.raises(dtwcpp.InvalidInput):
+            p.cluster()
+
+    @pytest.mark.parametrize("bad", [-2, -5, -(2**31)])
+    def test_set_band_below_minus_one_raises_and_keeps_the_band(self, bad):
+        p = self._problem()
+        p.set_band(2)
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"set_band: band must be -1 .* got {bad}\b"):
+            p.set_band(bad)
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"set_band: .* got {bad}\b"):
+            p.band = bad
+        assert p.band == 2
+
+    @pytest.mark.parametrize("good", [-1, 0, 5])
+    def test_full_dtw_and_every_non_negative_band_stay_valid(self, good):
+        p = self._problem()
+        p.set_band(good)
+        assert p.band == good
+
+
 class TestClusteringIsWrittenThroughSetResult:
     """`clusters_ind` and `centroids_ind` are read-only (v1.0.0's Python never bound
     them), so a clustering reaches a Problem, and the scores that read it, only

@@ -41,7 +41,9 @@ them (`set_result`, `set_clusters` for the medoids, the algorithms):
 `print_clusters`, `write_medoid_members`, `calculate_medoids`, the scores and
 Python's `centroid_of` raise `InvalidInput` ("... cluster it first") on a
 `Problem` that holds none, one check per call; C++ `centroid_of(i)` stays
-unchecked, and `require_clustered(who)` is the check.
+unchecked, and `require_clustered(who)` is the check. `set_n_clusters(k)` refuses
+k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
+`cluster()`, since the data may change after the setter.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|

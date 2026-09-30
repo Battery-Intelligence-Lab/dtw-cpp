@@ -615,6 +615,36 @@ function test_find_total_cost_before_clustering_is_an_error(testCase)
     verifyError(testCase, @() dtwc_mex('Problem_find_total_cost', h), 'dtwc:invalidArgument');
 end
 
+function test_set_n_clusters_and_set_band_refuse_values_with_no_meaning(testCase)
+%   set_n_clusters(-1) was an untyped "vector too long" (dtwc:internal), and
+%   set_n_clusters(0) and set_band(-5) were accepted (a band below -1 ran as
+%   full DTW). k above N is not the setter's to judge: cluster() refuses it.
+    h = int_problem(testCase);   % N = 4, band -1
+    dtwc_mex('Problem_set_n_clusters', h, 2);
+    for bad = {0, -1}
+        verifyError(testCase, @() dtwc_mex('Problem_set_n_clusters', h, bad{1}), ...
+            'dtwc:invalidArgument', sprintf('k = %g', bad{1}));
+    end
+    for bad = {-2, -5}
+        verifyError(testCase, @() dtwc_mex('Problem_set_band', h, bad{1}), ...
+            'dtwc:invalidArgument', sprintf('band = %g', bad{1}));
+    end
+    err = [];
+    try
+        dtwc_mex('Problem_set_band', h, -5);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'band -5 was accepted');
+    verifySubstring(testCase, err.message, 'got -5');
+    verifyEqual(testCase, dtwc_mex('Problem_n_clusters', h), 2);   % a refused call changes nothing
+    verifyEqual(testCase, dtwc_mex('Problem_get_info', h).band, -1);
+
+    dtwc_mex('Problem_set_band', h, 0);   % the smallest band, and -1 (full DTW), stay valid
+    dtwc_mex('Problem_set_band', h, -1);
+    dtwc_mex('Problem_set_n_clusters', h, 5);   % above N: accepted here
+    verifyError(testCase, @() dtwc_mex('Problem_cluster', h), 'dtwc:invalidArgument');
+end
+
 function test_a_double_handle_must_be_an_exact_integer(testCase)
     h = int_problem(testCase);
     verifyEqual(testCase, dtwc_mex('Problem_get_size', double(h)), 4);

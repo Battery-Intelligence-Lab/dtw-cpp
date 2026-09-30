@@ -204,9 +204,14 @@ void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strateg
  * @brief Sets the number of clusters for the problem.
  *
  * @param Nc_ The number of clusters to set.
+ * @throws InvalidInput for Nc_ < 1. Nc_ > N is accepted: the data may change
+ *         after this call, so cluster() checks it against the series it finds.
  */
 void Problem::set_n_clusters(int Nc_)
 {
+  if (Nc_ < 1)
+    throw InvalidInput("Problem::set_n_clusters: n_clusters must be at least 1; got "
+                       + std::to_string(Nc_) + ".");
   Nc = Nc_;
 }
 

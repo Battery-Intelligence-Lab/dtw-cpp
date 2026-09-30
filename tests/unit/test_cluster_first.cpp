@@ -1,6 +1,7 @@
 /**
  * @file test_cluster_first.cpp
- * @brief A Problem holds a clustering only after a clustering wrote it.
+ * @brief A Problem holds a clustering only after a clustering wrote it, and a
+ *        setter refuses a value that has no meaning.
  *
  * @details `set_n_clusters` used to size and zero-fill `clusters_ind` and
  *   `centroids_ind`, so a Problem that had only been sized looked clustered:
@@ -221,4 +222,47 @@ TEST_CASE("set_n_clusters then cluster still clusters, for every method that run
   CHECK(prob.centroid_of(4) == prob.medoids()[static_cast<std::size_t>(prob.labels()[4])]);
   CHECK_NOTHROW(prob.write_clusters());
   CHECK(files_in(dir.path) == 1);
+}
+
+TEST_CASE("set_n_clusters refuses k < 1 and keeps the count it had", "[problem][cluster-first]")
+{
+  ScratchDirectory dir{ "cluster_first_setter_k" };
+  auto prob = six_series(dir.path);
+  prob.set_n_clusters(3);
+  for (const int bad : { 0, -1, std::numeric_limits<int>::min() }) {
+    CAPTURE(bad);
+    REQUIRE_THROWS_MATCHES(prob.set_n_clusters(bad), dtwc::InvalidInput,
+                           MessageMatches(ContainsSubstring("Problem::set_n_clusters")
+                                          && ContainsSubstring("got " + std::to_string(bad))));
+  }
+  CHECK(prob.n_clusters() == 3);
+}
+
+TEST_CASE("k above N is accepted by the setter and refused when clustering",
+          "[problem][cluster-first]")
+{
+  ScratchDirectory dir{ "cluster_first_k_above_n" };
+  auto prob = six_series(dir.path);
+  REQUIRE_NOTHROW(prob.set_n_clusters(7));
+  CHECK(prob.n_clusters() == 7);
+  REQUIRE_THROWS_AS(prob.cluster(), dtwc::InvalidInput);
+  CHECK(prob.labels().empty());
+}
+
+TEST_CASE("set_band refuses a band below -1 and keeps the band it had", "[problem][cluster-first]")
+{
+  ScratchDirectory dir{ "cluster_first_setter_band" };
+  auto prob = six_series(dir.path);
+  prob.set_band(2);
+  for (const int bad : { -2, -5, std::numeric_limits<int>::min() }) {
+    CAPTURE(bad);
+    REQUIRE_THROWS_MATCHES(prob.set_band(bad), dtwc::InvalidInput,
+                           MessageMatches(ContainsSubstring("Problem::set_band")
+                                          && ContainsSubstring("got " + std::to_string(bad))));
+    CHECK(prob.band == 2);
+  }
+  prob.set_band(-1); // full DTW
+  CHECK(prob.band == -1);
+  prob.set_band(0);
+  CHECK(prob.band == 0);
 }
