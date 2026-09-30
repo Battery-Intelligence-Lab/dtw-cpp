@@ -116,7 +116,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   shared memory; W4a)
 - ☐ W4e Metal: one pipeline, one wavefront template, scratch failure → `DeviceError` (macOS CI)
 - ☐ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset
-  (the N ≤ 65,536 refusal goes)
+  (the N ≤ 65,536 refusal goes); a backend refuses before the N×N matrix is allocated — today `Problem` resizes first,
+  so a huge N on a host without a GPU hits bad_alloc before DeviceError (W4d review)
 - ☐ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C
 - ☐ CUDA tuning, each behind its own band (W4a): a separately compiled preload wavefront for L 257–1024 (−15–17 %
   FP32 measured); a 64 KB carveout above L = 2048 (−18 % at L = 2049)
