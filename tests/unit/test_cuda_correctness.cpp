@@ -9,7 +9,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <dtwc.hpp>
 
@@ -32,6 +34,8 @@
 #include <thread>
 #include <vector>
 
+using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::MessageMatches;
 using Catch::Matchers::WithinRel;
 
 #ifndef DTWC_HAS_CUDA
@@ -495,6 +499,40 @@ TEST_CASE("FP32 wavefront at L = 4095 and 4096 matches the host kernel",
   const auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
   REQUIRE(gpu_result.kernel_used == "wavefront");
   REQUIRE(gpu_result.matrix == cpu_fp32_distance_matrix(series));
+}
+
+// A wavefront block that needs more shared memory than the device offers is
+// refused with the typed error before anything is allocated or copied, and the
+// same thread's next fill is unaffected. Above L = 2048 a block holds three
+// diagonals of L values plus the kernel's 16 static bytes, so the first refused
+// L is FP32 8447 and FP64 4224 on the RTX 4000 Ada (101,376 bytes).
+TEST_CASE("CUDA refuses a wavefront beyond the device's shared memory before filling",
+          "[cuda][long]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  int max_shared = 0;
+  REQUIRE(cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, 0)
+          == cudaSuccess);
+  const auto precision =
+      GENERATE(dtwc::cuda::CUDAPrecision::FP32, dtwc::cuda::CUDAPrecision::FP64);
+  const bool fp32 = precision == dtwc::cuda::CUDAPrecision::FP32;
+  const size_t first_refused =
+      (static_cast<size_t>(max_shared) - 16) / (3 * (fp32 ? 4 : 8)) + 1;
+  CAPTURE(fp32, first_refused);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = precision;
+  REQUIRE_NOTHROW(dtwc::cuda::compute_distance_matrix_cuda(
+      generate_random_walks(2, first_refused - 1, /*seed=*/41), opts));
+  REQUIRE_THROWS_MATCHES(
+      dtwc::cuda::compute_distance_matrix_cuda(
+          generate_random_walks(2, first_refused, /*seed=*/41), opts),
+      dtwc::DeviceError, MessageMatches(ContainsSubstring("bytes of shared memory per block")));
+
+  const auto series = generate_random_series(4, 300, /*seed=*/9);
+  REQUIRE(dtwc::cuda::compute_distance_matrix_cuda(series, opts).matrix
+          == (fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series)));
 }
 
 // The wavefront's dynamic shared-memory limit is one value per kernel and

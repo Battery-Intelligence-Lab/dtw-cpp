@@ -980,6 +980,18 @@ std::vector<double> launch_dtw_kernel(
   // before it allocates the NxN result.
   detail::require_pair_count_fits(num_pairs, "launch_dtw_kernel");
 
+  // A wavefront block's shared memory is its diagonal buffers (how many is
+  // wavefront_buffer_count's) plus the kernel's static variables; device_limits
+  // opened the whole opt-in maximum once. A block that cannot fit is refused
+  // here, before anything is allocated or copied.
+  const size_t wavefront_shared_mem =
+      detail::wavefront_buffer_count(max_L) * max_L * sizeof(T);
+  if (kernel_path == detail::KernelPath::Wavefront)
+    require_shared_mem_fits(
+        wavefront_shared_mem
+            + device_limits(device_id).wavefront_static_bytes[std::is_same_v<T, double>],
+        device_id, "dtw_wavefront_kernel");
+
   const size_t series_bytes = N * max_L * sizeof(T);
   const size_t matrix_elems = N * N;
   const size_t matrix_bytes = matrix_elems * sizeof(T);
@@ -1037,26 +1049,13 @@ std::vector<double> launch_dtw_kernel(
   } else if (kernel_path == detail::KernelPath::RegTileW8) {
     launch_warp_family(dtw_regtile_kernel<T, 8>, max_L); // 32 lanes x 8 = 256 columns
   } else if (kernel_path == detail::KernelPath::Wavefront) {
-    // Wavefront kernel: shared memory and block size configuration
-    // Buffer-count policy (incl. the Task 0.1 cap at L>2048) lives in
-    // detail::wavefront_buffer_count so both dispatch paths share it.
-    const size_t n_bufs = detail::wavefront_buffer_count(max_L);
-    const size_t shared_mem = n_bufs * max_L * sizeof(T);
-
     // Block size heuristic tuned for the anti-diagonal wavefront pattern.
     constexpr int block_size = 256;
-
-    // A block's shared memory is these buffers plus the kernel's static
-    // variables; device_limits opened the whole opt-in maximum once.
-    require_shared_mem_fits(
-        shared_mem
-            + device_limits(device_id).wavefront_static_bytes[std::is_same_v<T, double>],
-        device_id, "dtw_wavefront_kernel");
 
     // Determine whether to use persistent mode
     int blocks_per_sm = 0;
     cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-        &blocks_per_sm, dtw_wavefront_kernel<T>, block_size, shared_mem);
+        &blocks_per_sm, dtw_wavefront_kernel<T>, block_size, wavefront_shared_mem);
     const int persistent_grid =
         device_limits(device_id).sm_count * std::max(blocks_per_sm, 1);
     const bool use_persistent =
@@ -1069,14 +1068,15 @@ std::vector<double> launch_dtw_kernel(
       }
       CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
 
-      dtw_wavefront_kernel<T><<<persistent_grid, block_size, shared_mem, stream>>>(
+      dtw_wavefront_kernel<T><<<persistent_grid, block_size, wavefront_shared_mem, stream>>>(
           workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
           N_series, static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
           workspace.d_counter.get());
     } else {
       // Non-persistent: one block per pair (original behavior)
-      dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, shared_mem, stream>>>(
+      dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, wavefront_shared_mem,
+                                stream>>>(
           workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
           N_series, static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
@@ -1127,9 +1127,10 @@ CUDADistMatResult compute_distance_matrix_cuda(
   CUDADistMatResult result;
   result.kernel_used = "none";
   result.n = N;
-  result.matrix.resize(N * N, 0.0);
-
-  if (N <= 1) return result;
+  if (N <= 1) {
+    result.matrix.assign(N * N, 0.0);
+    return result;
+  }
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
