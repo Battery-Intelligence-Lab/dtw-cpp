@@ -57,7 +57,7 @@ TEST_CASE("DBA and SSG recover the scalar arithmetic mean",
           "[barycenter][dba][ssg]")
 {
   auto problem = make_problem({{0.0}, {2.0}, {4.0}});
-  const std::vector<int> indices{0, 1, 2};
+  const std::vector<index_t> indices{0, 1, 2};
 
   algorithms::BarycenterOptions options;
   options.max_iter = 200;
@@ -301,7 +301,7 @@ TEST_CASE("barycenter k-means updates its center before testing convergence",
     CHECK(result.converged);
     CHECK(result.iterations == 1);
     REQUIRE(result.labels.size() == 2);
-    CHECK(result.labels == std::vector<int>{0, 0});
+    CHECK(result.labels == std::vector<index_t>{0, 0});
     REQUIRE(result.barycenters.size() == 1);
     REQUIRE(result.barycenters[0].size() == 1);
     CHECK_THAT(result.barycenters[0][0], WithinAbs(1.0, 1e-12));
@@ -404,7 +404,7 @@ TEST_CASE("barycenter k-means mixed-length no-op fingerprint",
   // 19.50 lands one ULP from GCC/Clang on barycenters[0][1]. RNG or schedule
   // drift moves these numbers by O(1), so the tolerance still pins the
   // assignment order, the cluster-local streams, the centres and the inertia.
-  const std::vector<int> expected_labels{0, 2, 1, 0, 2, 1, 0, 2, 1};
+  const std::vector<index_t> expected_labels{0, 2, 1, 0, 2, 1, 0, 2, 1};
   const std::vector<std::vector<data_t>> expected_barycenters{
     {-7.0173908226487498, -6.10105517828847255, -5.73290735028454357,
      -6.01109573627146609, -6.67454216978708459},

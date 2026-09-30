@@ -207,7 +207,7 @@ void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strateg
  * @throws InvalidInput for Nc_ < 1. Nc_ > N is accepted: the data may change
  *         after this call, so cluster() checks it against the series it finds.
  */
-void Problem::set_n_clusters(int Nc_)
+void Problem::set_n_clusters(index_t Nc_)
 {
   if (Nc_ < 1)
     throw InvalidInput("Problem::set_n_clusters: n_clusters must be at least 1; got "
@@ -281,7 +281,7 @@ int Problem::n_repetitions() const
  * @param candidate_centroids A vector containing the indices of candidate centroids.
  * @throws InvalidInput if the size of candidate_centroids is not equal to Nc.
  */
-void Problem::set_clusters(std::vector<int> &candidate_centroids)
+void Problem::set_clusters(const std::vector<index_t> &candidate_centroids)
 {
   if (candidate_centroids.size() != static_cast<size_t>(Nc))
     throw InvalidInput("Set cluster has failed as number of centroids is not same as the number of indices in candidate centroids vector.\n");
@@ -301,14 +301,14 @@ void Problem::set_result(const core::ClusteringResult &result)
                        + " labels; got " + std::to_string(medoids.size()) + " medoids and "
                        + std::to_string(labels.size()) + " labels.");
   std::vector<bool> is_medoid(n, false);
-  for (const int medoid : medoids) {
+  for (const index_t medoid : medoids) {
     if (medoid < 0 || static_cast<std::size_t>(medoid) >= n || is_medoid[static_cast<std::size_t>(medoid)])
       throw InvalidInput("Problem::set_result: medoid " + std::to_string(medoid)
                          + " is outside [0, N) or repeated.");
     is_medoid[static_cast<std::size_t>(medoid)] = true;
   }
-  const int k = static_cast<int>(medoids.size());
-  for (const int label : labels)
+  const auto k = static_cast<index_t>(medoids.size());
+  for (const index_t label : labels)
     if (label < 0 || label >= k)
       throw InvalidInput("Problem::set_result: label " + std::to_string(label) + " is outside [0, k).");
 
@@ -840,7 +840,7 @@ void Problem::use_mmap_distance_matrix(
  *      session flag; perform fill_distance_matrix() or
  *      is_distance_matrix_filled() once serially before parallel lookups.
  */
-double Problem::dist_by_ind(int i, int j)
+double Problem::dist_by_ind(index_t i, index_t j)
 {
   // Exactly ONE preflight per call: the SWAP kernel issues N^2 of these per
   // iteration. Order (preflight → mmap identity → dense-cache) is load-bearing.
@@ -1247,23 +1247,23 @@ void Problem::cluster_by_mip()
  */
 void Problem::assign_clusters()
 {
-  std::vector<int> labels(data_.size());
+  std::vector<index_t> labels(data_.size());
   auto assignClustersTask = [this, &labels](size_t i_p) //!< i_p and i_c in [0, Np)
   {
-    const int ip = static_cast<int>(i_p);
+    const auto ip = static_cast<index_t>(i_p);
     double best_distance = std::numeric_limits<double>::max();
-    int best_slot = 0;
+    index_t best_slot = 0;
     bool has_best = false;
     for (std::size_t slot = 0; slot < centroids_ind.size(); ++slot) {
-      const int medoid = centroids_ind[slot];
+      const index_t medoid = centroids_ind[slot];
       const double distance = core::detail::require_finite_medoid_distance(
         dist_by_ind(ip, medoid), "kmedoids_lloyd", i_p,
-        static_cast<int>(slot), medoid);
+        static_cast<index_t>(slot), medoid);
       // A medoid tied with another medoid (a duplicate series) serves itself,
       // or its own cluster would be published empty.
       if (!has_best || distance < best_distance || (distance == best_distance && medoid == ip)) {
         best_distance = distance;
-        best_slot = static_cast<int>(slot);
+        best_slot = static_cast<index_t>(slot);
         has_best = true;
       }
     }
@@ -1288,10 +1288,10 @@ void Problem::assign_clusters()
 void Problem::distanceInClusters()
 {
   auto distanceInClustersTask = [&, N = size()](size_t i_p) {
-    const int clusterNo{ clusters_ind[i_p] };
+    const index_t clusterNo{ clusters_ind[i_p] };
     for (size_t i{ i_p }; i < N; i++)
       if (clusters_ind[i] == clusterNo) // If they are in the same cluster
-        dist_by_ind(static_cast<int>(i_p), static_cast<int>(i));
+        dist_by_ind(static_cast<index_t>(i_p), static_cast<index_t>(i));
   };
 
   run(distanceInClustersTask, size());
@@ -1312,7 +1312,7 @@ void Problem::calculate_medoids()
     double sum{ 0 };
     for (const auto i : Range(size()))
       if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
-        sum += dist_by_ind(static_cast<int>(i_p), static_cast<int>(i));
+        sum += dist_by_ind(static_cast<index_t>(i_p), static_cast<index_t>(i));
 
     pointCosts[i_p] = sum;
   };
@@ -1323,7 +1323,7 @@ void Problem::calculate_medoids()
   for (const auto i : Range(size()))
     if (pointCosts[i] < clusterCosts[clusters_ind[i]]) {
       clusterCosts[clusters_ind[i]] = pointCosts[i];
-      centroids_ind[clusters_ind[i]] = static_cast<int>(i);
+      centroids_ind[clusters_ind[i]] = static_cast<index_t>(i);
     }
 }
 
@@ -1367,8 +1367,8 @@ void Problem::cluster_by_kmedoids_lloyd()
   int best_rep = 0;
   double best_cost = std::numeric_limits<data_t>::max();
   int best_iterations = 0;
-  std::vector<int> best_medoids;
-  std::vector<int> best_labels;
+  std::vector<index_t> best_medoids;
+  std::vector<index_t> best_labels;
 
   for (int i_rand = 0; i_rand < repetitions; i_rand++) {
     if (verbose_) std::cout << "Metoid initialisation is started.\n";
@@ -1427,7 +1427,7 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
   auto oldmedoids = centroids_ind;
 
   int status = -1;
-  std::vector<std::vector<int>> centroids_all;
+  std::vector<std::vector<index_t>> centroids_all;
 
   int actual_iters = 0;
   const int iteration_limit = max_iter();
@@ -1486,9 +1486,9 @@ double Problem::find_total_cost()
   require_clustered("find_total_cost");
   core::detail::OrderedMedoidObjective total("kmedoids_lloyd");
   for (const auto idx : Range(size())) {
-    const int i = static_cast<int>(idx);
-    const int medoid_slot = clusters_ind[i];
-    const int medoid_index = centroids_ind[medoid_slot];
+    const auto i = static_cast<index_t>(idx);
+    const index_t medoid_slot = clusters_ind[i];
+    const index_t medoid_index = centroids_ind[medoid_slot];
     const double distance = core::detail::require_finite_medoid_distance(
       dist_by_ind(i, medoid_index), "kmedoids_lloyd",
       idx, medoid_slot, medoid_index);

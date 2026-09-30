@@ -23,9 +23,9 @@ namespace dtwc {
  */
 class DataLoader
 {
-  int start_col_{ 0 };                    //!< Starting column for data extraction
-  int start_row_{ 0 };                    //!< Starting row for data extraction
-  int Ndata{ -1 };                        //!< Number of data rows to load
+  index_t start_col_{ 0 };                //!< Starting column for data extraction
+  index_t start_row_{ 0 };                //!< Starting row for data extraction
+  index_t Ndata{ -1 };                    //!< Number of data rows to load
   int verbose{ 1 };                       //!< Verbosity level
   char delim{ ',' };                      //!< Column delimiter character
   bool delim_explicit_{ false };          //!< True once delimiter() was called; path() must not override it.
@@ -35,7 +35,7 @@ public:
   // Constructors
   DataLoader() = default;                                  //!< Default constructor.
   DataLoader(const fs::path &path_) { this->path(path_); } //!< Constructor with path initialization.
-  DataLoader(const fs::path &path_, int Ndata_)
+  DataLoader(const fs::path &path_, index_t Ndata_)
   {
     this->path(path_);
     this->n_data(Ndata_);
@@ -56,7 +56,7 @@ public:
    * @param N Starting column
    * @return Reference to self for chaining
    */
-  DataLoader &start_column(int N)
+  DataLoader &start_column(index_t N)
   {
     start_col_ = N;
     return *this;
@@ -65,7 +65,7 @@ public:
   DataLoader &startColumn(int N) { return start_column(N); }
 
   //!< Set start row
-  DataLoader &start_row(int N)
+  DataLoader &start_row(index_t N)
   {
     start_row_ = N;
     return *this;
@@ -74,7 +74,7 @@ public:
   DataLoader &startRow(int N) { return start_row(N); }
 
   //!< Set number of series to read (-1 = all). Rejects N < -1.
-  DataLoader &n_data(int N)
+  DataLoader &n_data(index_t N)
   {
     validate_ndata(N, "DataLoader::n_data");
     Ndata = N;

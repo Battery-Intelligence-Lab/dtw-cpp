@@ -126,7 +126,7 @@ public:
   using dtw_fn_f32_t = std::function<double(std::span<const float>, std::span<const float>)>;
 
 private:
-  int Nc{ 1 };                                      /*!< Number of clusters. */
+  index_t Nc{ 1 };                                  /*!< Number of clusters. */
   core::DistanceMatrix distMat;                     /*!< Distance matrix, on the heap or mapped (use_mmap_distance_matrix). */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
   mutable dtw_fn_t dtw_fn_;                         /*!< Derived DTW dispatcher for float64. */
@@ -256,7 +256,7 @@ private:
   void init_with_seed(std::uint64_t seed);
 
   void writeBestRep(int best_rep);
-  void writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost);
+  void writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost);
   void distanceInClusters();
 
   /// An empty series has no finite DTW distance to anything, so it clustered
@@ -292,8 +292,8 @@ public:
   /// medoids, the algorithms); set_n_clusters sizes neither, and set_data and
   /// set_view_data empty both (the labels describe the old series).
   /// require_clustered() tells a clustering from a sizing.
-  std::vector<int> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Nc)
-  std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
+  std::vector<index_t> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Nc)
+  std::vector<index_t> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
   Problem() { rebind_dtw_fn(); }
@@ -359,8 +359,8 @@ public:
   /// Canonical read accessors (API contract §2.2): the raw fields
   /// `clusters_ind`/`centroids_ind` stay public, but `labels()`/`medoids()` are
   /// the cross-language read path (parity with `Result::labels`/`Result::medoids`).
-  const std::vector<int> &labels() const { return clusters_ind; }
-  const std::vector<int> &medoids() const { return centroids_ind; }
+  const std::vector<index_t> &labels() const { return clusters_ind; }
+  const std::vector<index_t> &medoids() const { return centroids_ind; }
 
   void refresh_distance_matrix();
   [[deprecated("use refresh_distance_matrix")]] void refreshDistanceMatrix() { refresh_distance_matrix(); }
@@ -369,20 +369,27 @@ public:
   /// The centroid of the cluster of i_p, i_p in [0, N). Unchecked like dist_by_ind:
   /// write_clusters and the bindings call it per series, so a caller that cannot
   /// vouch for the clustering calls require_clustered() once first.
-  int centroid_of(int i_p) const { return centroids_ind[clusters_ind[i_p]]; }
+  index_t centroid_of(index_t i_p) const { return centroids_ind[clusters_ind[i_p]]; }
 
   void read_distance_matrix(const fs::path &distMat_path);
   [[deprecated("use read_distance_matrix")]]
   void readDistanceMatrix(const fs::path &p) { read_distance_matrix(p); }
 
-  void set_n_clusters(int Nc_);
+  void set_n_clusters(index_t Nc_);
   [[deprecated("use set_n_clusters")]] void set_numberOfClusters(int Nc_) { set_n_clusters(Nc_); }
 
   /// A Problem is clustered when it holds one label per series and one medoid per
   /// cluster. Every call that reads the whole clustering checks that once.
   /// @throws InvalidInput ("<who>: ... cluster it first") when it is not.
   void require_clustered(std::string_view who) const;
-  void set_clusters(std::vector<int> &candidate_centroids);
+  void set_clusters(const std::vector<index_t> &candidate_centroids);
+  /// The v1.0.0 signature, kept so v1 code compiles; a braced list takes the
+  /// index_t overload.
+  [[deprecated("use set_clusters(const std::vector<index_t> &)")]]
+  void set_clusters(std::vector<int> &candidate_centroids)
+  {
+    set_clusters(std::vector<index_t>(candidate_centroids.begin(), candidate_centroids.end()));
+  }
   /// Publish a clustering: k = the number of medoids, which are distinct
   /// indices in [0, N), and one label in [0, k) per series. Anything else is
   /// InvalidInput and leaves the Problem unchanged.
@@ -530,7 +537,7 @@ public:
   }
   [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
 
-  data_t dist_by_ind(int i, int j);
+  data_t dist_by_ind(index_t i, index_t j);
   [[deprecated("use dist_by_ind")]] data_t distByInd(int i, int j) { return dist_by_ind(i, j); }
 
   /// Access the bound DTW distance function (float64). Mutable access repairs

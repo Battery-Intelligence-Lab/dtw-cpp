@@ -288,10 +288,10 @@ TEST_CASE("Adversarial: Better than random medoid selection", "[adversarial][pam
 
   for (int trial = 0; trial < 10; ++trial) {
     // Pick k random medoids
-    std::vector<int> indices(N);
+    std::vector<index_t> indices(N);
     std::iota(indices.begin(), indices.end(), 0);
     std::shuffle(indices.begin(), indices.end(), test_rng);
-    std::vector<int> random_medoids(indices.begin(), indices.begin() + k);
+    std::vector<index_t> random_medoids(indices.begin(), indices.begin() + k);
 
     // Create a fresh problem and assign clusters using these medoids
     auto rprob = make_synthetic_problem(series);
@@ -393,7 +393,7 @@ TEST_CASE("Adversarial: Every point assigned to exactly one cluster", "[adversar
 
   // clusters_ind gives one label per point -- by construction it's a single label.
   // Verify every cluster has at least one member (its medoid).
-  std::vector<int> cluster_counts(k, 0);
+  std::vector<index_t> cluster_counts(k, 0);
   for (int i = 0; i < prob.size(); ++i) {
     int label = prob.clusters_ind[i];
     REQUIRE(label >= 0);

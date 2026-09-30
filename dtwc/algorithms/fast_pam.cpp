@@ -62,27 +62,27 @@ namespace {
  */
 void compute_nearest_and_second(
   Problem& prob,
-  const std::vector<int>& medoids,
-  int N,
-  std::vector<int>& nearest,
+  const std::vector<index_t>& medoids,
+  index_t N,
+  std::vector<index_t>& nearest,
   std::vector<double>& nearest_dist,
   std::vector<double>& second_dist)
 {
-  const int k = static_cast<int>(medoids.size());
+  const auto k = static_cast<index_t>(medoids.size());
 
   // Lock-free by design: each index writes only to nearest[p], nearest_dist[p],
   // and second_dist[p] at its own index p — no two threads access the same element.
   auto assign_point = [&](std::size_t index) {
-    const int p = static_cast<int>(index);
+    const auto p = static_cast<index_t>(index);
     double best = std::numeric_limits<double>::max();
     double second_best = std::numeric_limits<double>::max();
-    int best_idx = 0;
+    index_t best_idx = 0;
     bool has_best = false;
     bool has_second = false;
 
-    for (int m = 0; m < k; ++m) {
+    for (index_t m = 0; m < k; ++m) {
       const double d = core::detail::require_finite_medoid_distance(
-        prob.dist_by_ind(p, medoids[m]), "fast_pam", p, m, medoids[m]);
+        prob.dist_by_ind(p, medoids[m]), "fast_pam", index, m, medoids[m]);
       // A medoid tied with another medoid (a duplicate series) serves itself,
       // or its own cluster would be published empty.
       if (!has_best || d < best || (d == best && medoids[m] == p)) {
@@ -118,17 +118,17 @@ double compute_total_cost(const std::vector<double>& nearest_dist)
 // Removal loss ρ[m] = Σ_{o: nearest[o]=m} (second_dist[o] − nearest_dist[o]) ≥ 0:
 // the extra total cost if medoid slot m were removed and each of its points
 // reassigned to its current second-nearest medoid. O(N).
-void update_removal_loss(int N, const std::vector<int>& nearest,
+void update_removal_loss(index_t N, const std::vector<index_t>& nearest,
                          const std::vector<double>& nearest_dist,
                          const std::vector<double>& second_dist, std::vector<double>& rho)
 {
   std::fill(rho.begin(), rho.end(), 0.0);
-  for (int o = 0; o < N; ++o)
+  for (index_t o = 0; o < N; ++o)
     rho[nearest[o]] += second_dist[o] - nearest_dist[o];
 }
 
 /// Best medoid slot to swap out for candidate x_c, and the resulting ΔTD.
-struct SwapEval { double change; int best_m; };
+struct SwapEval { double change; index_t best_m; };
 
 // Evaluate, for candidate x_c = xj, ΔTD(m, xj) = acc + ploss[m] for every medoid
 // slot m in ONE O(N) pass, then return the most negative over m (Algorithm 3
@@ -141,17 +141,17 @@ struct SwapEval { double change; int best_m; };
 // sequential loop at N=1000). FasterPAM wins by doing ~1/k the work, not by using
 // cores; the parallelism lives in the post-swap refresh (compute_nearest_and_second,
 // run only on accepted swaps). Very-large-N is the CLARA subsample path, not this.
-SwapEval find_best_swap(Problem& prob, int N, int k, int xj,
-                        const std::vector<double>& rho, const std::vector<int>& nearest,
+SwapEval find_best_swap(Problem& prob, index_t N, index_t xj,
+                        const std::vector<double>& rho, const std::vector<index_t>& nearest,
                         const std::vector<double>& nearest_dist,
                         const std::vector<double>& second_dist,
                         std::vector<double>& ploss)
 {
   ploss.assign(rho.begin(), rho.end()); // reuse caller's buffer (no per-candidate alloc)
   double acc = 0.0;                     // shared benefit of adding x_c (Case A over all points)
-  for (int o = 0; o < N; ++o) {
+  for (index_t o = 0; o < N; ++o) {
     const double doj = core::detail::require_finite_candidate_distance(
-      prob.dist_by_ind(xj, o), "fast_pam", o, xj);
+      prob.dist_by_ind(xj, o), "fast_pam", static_cast<std::size_t>(o), xj);
     const double d1 = nearest_dist[o];
     if (doj < d1) {
       acc += doj - d1;                             // x_c becomes o's nearest
@@ -161,10 +161,10 @@ SwapEval find_best_swap(Problem& prob, int N, int k, int xj,
     }
   }
 
-  int best_m = 0;
+  index_t best_m = 0;
   double best = ploss[0];
-  for (int m = 1; m < k; ++m)
-    if (ploss[m] < best) { best = ploss[m]; best_m = m; }
+  for (std::size_t m = 1; m < ploss.size(); ++m)
+    if (ploss[m] < best) { best = ploss[m]; best_m = static_cast<index_t>(m); }
   return { acc + best, best_m };
 }
 
@@ -180,9 +180,9 @@ SwapEval find_best_swap(Problem& prob, int N, int k, int xj,
 // paper's O(N) incremental do_swap: identical result, and since accepted swaps
 // total O(k) over the run the extra work is negligible next to O(N²) per sweep.
 // ---------------------------------------------------------------------------
-void fasterpam_swap_impl(Problem& prob, int N, int k,
-                         std::vector<int>& medoids, std::vector<bool>& is_medoid,
-                         std::vector<int>& nearest, std::vector<double>& nearest_dist,
+void fasterpam_swap_impl(Problem& prob, index_t N, index_t k,
+                         std::vector<index_t>& medoids, std::vector<bool>& is_medoid,
+                         std::vector<index_t>& nearest, std::vector<double>& nearest_dist,
                          std::vector<double>& second_dist, int max_iter,
                          int& iter, bool& converged)
 {
@@ -196,9 +196,9 @@ void fasterpam_swap_impl(Problem& prob, int N, int k,
 
   for (iter = 0; iter < max_iter; ++iter) {
     bool any_swap = false;
-    for (int j = 0; j < N; ++j) {
+    for (index_t j = 0; j < N; ++j) {
       if (is_medoid[j]) continue;
-      const SwapEval e = find_best_swap(prob, N, k, j, rho, nearest, nearest_dist, second_dist, ploss);
+      const SwapEval e = find_best_swap(prob, N, j, rho, nearest, nearest_dist, second_dist, ploss);
       if (e.change < -eps) {
         is_medoid[medoids[e.best_m]] = false;
         medoids[e.best_m] = j;
@@ -215,12 +215,12 @@ void fasterpam_swap_impl(Problem& prob, int N, int k,
 /// Point count of a Problem that can hold `n_clusters` medoids, after the arguments
 /// are checked. max_iter = 0 is meaningful (BUILD only, no SWAP); a negative count
 /// is not, and every binding inherits this refusal.
-int checked_point_count(const Problem& prob, int n_clusters, int max_iter, const char* caller)
+index_t checked_point_count(const Problem& prob, index_t n_clusters, int max_iter, const char* caller)
 {
   if (max_iter < 0)
     throw InvalidInput(std::string(caller) + ": max_iter must be at least 0 (0 returns the BUILD "
                        "medoids without a SWAP); got " + std::to_string(max_iter) + ".");
-  const int n = static_cast<int>(prob.size());
+  const index_t n = prob.size();
   if (n == 0)
     throw InvalidInput(std::string(caller) + ": Problem has no data points.");
   if (n_clusters <= 0 || n_clusters > n)
@@ -230,15 +230,15 @@ int checked_point_count(const Problem& prob, int n_clusters, int max_iter, const
 }
 
 /// SWAP phase from the BUILD medoids; writes the result back into `prob`.
-core::ClusteringResult swap_phase(Problem& prob, std::vector<int> medoids, int max_iter)
+core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, int max_iter)
 {
-  const int N = static_cast<int>(prob.size());
-  const int k = static_cast<int>(medoids.size());
+  const index_t N = prob.size();
+  const auto k = static_cast<index_t>(medoids.size());
 
   std::vector<bool> is_medoid(N, false);
-  for (int m : medoids) is_medoid[m] = true;
+  for (index_t m : medoids) is_medoid[m] = true;
 
-  std::vector<int> nearest(N);
+  std::vector<index_t> nearest(N);
   std::vector<double> nearest_dist(N);
   std::vector<double> second_dist(N);
   compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
@@ -253,16 +253,16 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<int> medoids, int m
     // own cost; the argmin is taken serially.
     std::vector<double> candidate_cost(static_cast<std::size_t>(N));
     auto total_distance = [&](std::size_t index) {
-      const int x = static_cast<int>(index);
+      const auto x = static_cast<index_t>(index);
       core::detail::OrderedMedoidObjective cost("fast_pam");
-      for (int o = 0; o < N; ++o) {
+      for (index_t o = 0; o < N; ++o) {
         cost.add(core::detail::require_finite_candidate_distance(
-          prob.dist_by_ind(x, o), "fast_pam", o, x));
+          prob.dist_by_ind(x, o), "fast_pam", static_cast<std::size_t>(o), x));
       }
       candidate_cost[index] = cost.value();
     };
     run_openmp(total_distance, static_cast<std::size_t>(N));
-    medoids[0] = static_cast<int>(
+    medoids[0] = static_cast<index_t>(
       std::min_element(candidate_cost.begin(), candidate_cost.end()) - candidate_cost.begin());
     compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
     converged = true;
@@ -273,7 +273,7 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<int> medoids, int m
 
   core::ClusteringResult result;
   result.medoid_indices = medoids;
-  result.labels.assign(nearest.begin(), nearest.end());
+  result.labels = std::move(nearest);
   result.total_cost = compute_total_cost(nearest_dist);
   result.iterations = iter;
   result.converged = converged;
@@ -285,7 +285,7 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<int> medoids, int m
 } // anonymous namespace
 
 
-core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
+core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter)
 {
   (void)checked_point_count(prob, n_clusters, max_iter, "fast_pam");
   prob.fill_distance_matrix();
@@ -294,13 +294,13 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   // BUILD phase: initialize medoids using K-means++. Temporarily set prob's
   // cluster count, run the existing initializer, copy medoids, restore state.
   // -------------------------------------------------------------------------
-  const int orig_Nc = prob.n_clusters();
+  const index_t orig_Nc = prob.n_clusters();
   const auto orig_centroids = prob.centroids_ind;
   const auto orig_clusters = prob.clusters_ind;
 
   prob.set_n_clusters(n_clusters);
   init::Kmeanspp(prob);
-  std::vector<int> medoids = prob.centroids_ind;
+  std::vector<index_t> medoids = prob.centroids_ind;
 
   prob.set_n_clusters(orig_Nc);
   prob.centroids_ind = orig_centroids;
@@ -309,23 +309,23 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   return swap_phase(prob, std::move(medoids), max_iter);
 }
 
-core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
+core::ClusteringResult fast_pam_seeded(Problem& prob, index_t n_clusters,
                                        std::uint64_t random_seed, int max_iter)
 {
-  const int N = checked_point_count(prob, n_clusters, max_iter, "fast_pam_seeded");
+  const index_t N = checked_point_count(prob, n_clusters, max_iter, "fast_pam_seeded");
   prob.fill_distance_matrix();
 
   std::mt19937_64 rng(random_seed);
-  std::vector<int> medoids{static_cast<int>(core::portable_bounded(
+  std::vector<index_t> medoids{static_cast<index_t>(core::portable_bounded(
     rng, static_cast<std::uint64_t>(N)))};
   medoids.reserve(static_cast<std::size_t>(n_clusters));
   std::vector<double> distances(static_cast<std::size_t>(N),
                                 std::numeric_limits<double>::infinity());
-  while (static_cast<int>(medoids.size()) < n_clusters) {
-    for (int i = 0; i < N; ++i)
+  while (static_cast<index_t>(medoids.size()) < n_clusters) {
+    for (index_t i = 0; i < N; ++i)
       distances[static_cast<std::size_t>(i)] = std::min(
         distances[static_cast<std::size_t>(i)], prob.dist_by_ind(medoids.back(), i));
-    for (int medoid : medoids) distances[static_cast<std::size_t>(medoid)] = 0.0;
+    for (index_t medoid : medoids) distances[static_cast<std::size_t>(medoid)] = 0.0;
     // This is k-median++ D-sampling: PAM minimizes a sum of DTW distances, so
     // the sampling weight is the current nearest objective contribution d.
     // Barycenter k-means uses D^2-sampling because its `align_squared` values
@@ -333,11 +333,11 @@ core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
     // vector would instead bias a different (sum-of-squares) PAM objective.
     const auto weights = core::distance_sampling_weights(
       distances, medoids, "fast_pam_seeded");
-    int chosen = 0;
+    index_t chosen = 0;
     if (weights.total <= 0.0) {
       while (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) ++chosen;
     } else {
-      chosen = static_cast<int>(core::portable_weighted_index(
+      chosen = static_cast<index_t>(core::portable_weighted_index(
         weights.values.begin(), weights.values.end(), weights.total, rng));
       if (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) {
         chosen = 0;

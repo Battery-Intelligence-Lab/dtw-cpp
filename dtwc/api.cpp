@@ -53,7 +53,7 @@ std::string derive_name(const std::filesystem::path &path)
   return "dataset";
 }
 
-void validate_skips(int skip_cols, int skip_rows)
+void validate_skips(index_t skip_cols, index_t skip_rows)
 {
   if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
   if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
@@ -81,13 +81,13 @@ void close_output(std::ofstream &stream, const std::filesystem::path &path)
 
 } // namespace
 
-Dataset::Dataset(std::filesystem::path source, int skip_cols, int skip_rows,
+Dataset::Dataset(std::filesystem::path source, index_t skip_cols, index_t skip_rows,
                  char delimiter, std::string name)
   : source_(std::move(source)), skip_cols_(skip_cols), skip_rows_(skip_rows),
     delimiter_(delimiter), name_(std::move(name))
 {}
 
-Dataset::Dataset(series_type source, int skip_cols, int skip_rows, char delimiter,
+Dataset::Dataset(series_type source, index_t skip_cols, index_t skip_rows, char delimiter,
                  std::string name)
   : source_(std::move(source)), skip_cols_(skip_cols), skip_rows_(skip_rows),
     delimiter_(delimiter), name_(std::move(name))
@@ -125,7 +125,7 @@ Data Dataset::materialize_local() &&
   return Data(std::move(series), std::move(names));
 }
 
-Dataset load(const std::filesystem::path &source, int skip_cols, int skip_rows,
+Dataset load(const std::filesystem::path &source, index_t skip_cols, index_t skip_rows,
              char delimiter, std::string_view name)
 {
   validate_skips(skip_cols, skip_rows);
@@ -133,7 +133,7 @@ Dataset load(const std::filesystem::path &source, int skip_cols, int skip_rows,
   return Dataset(source, skip_cols, skip_rows, delimiter, std::move(resolved));
 }
 
-Dataset load(Dataset::series_type source, int skip_cols, int skip_rows,
+Dataset load(Dataset::series_type source, index_t skip_cols, index_t skip_rows,
              char delimiter, std::string_view name)
 {
   validate_skips(skip_cols, skip_rows);
@@ -164,8 +164,8 @@ Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device
     iterations_(iterations), converged_(converged)
 {}
 
-const std::vector<int> &Result::labels() const noexcept { return problem_->labels(); }
-const std::vector<int> &Result::medoids() const noexcept { return problem_->medoids(); }
+const std::vector<index_t> &Result::labels() const noexcept { return problem_->labels(); }
+const std::vector<index_t> &Result::medoids() const noexcept { return problem_->medoids(); }
 
 double Result::score(std::string_view name) const
 {
@@ -197,7 +197,7 @@ std::vector<double> Result::distance_matrix() const
   for (std::size_t i = 0; i < n; ++i)
     for (std::size_t j = 0; j < n; ++j)
       flat[i * n + j] =
-        problem_->dist_by_ind(static_cast<int>(i), static_cast<int>(j));
+        problem_->dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j));
 
   return flat;
 }
@@ -230,7 +230,7 @@ void Result::save(const std::filesystem::path &directory) const
     auto out = open_output(medoids_path);
     out << "cluster,medoid_index,medoid_name\n";
     for (std::size_t c = 0; c < medoids().size(); ++c) {
-      const int idx = medoids()[c];
+      const index_t idx = medoids()[c];
       out << c << ',' << idx << ','
           << problem_->series_name(static_cast<std::size_t>(idx)) << '\n';
     }
@@ -271,13 +271,13 @@ void Result::save(const std::filesystem::path &directory) const
   }
 }
 
-Result cluster(const Dataset &dataset, int k, std::string_view method, int band,
+Result cluster(const Dataset &dataset, index_t k, std::string_view method, int band,
                std::string_view device, int max_iter)
 {
   return cluster(Dataset(dataset), k, method, band, device, max_iter);
 }
 
-Result cluster(Dataset &&dataset, int k, std::string_view method, int band,
+Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
                std::string_view device, int max_iter)
 {
   Config config; // dtwc_cl's defaults for everything this signature does not name

@@ -139,12 +139,12 @@ TEST_CASE("IF-1: Tier-1 cluster(device=gpu) runs through Problem::set_device",
   for (const double level : { 0.1, 0.3, 0.5, 10.1, 10.3, 10.5 })
     series.emplace_back(5, level);
   const auto dataset = dtwc::load(series);
-  const auto sorted = [](std::vector<int> v) {
+  const auto sorted = [](std::vector<dtwc::index_t> v) {
     std::sort(v.begin(), v.end());
     return v;
   };
   const auto cpu = dtwc::cluster(dataset, 2, "pam", -1, "cpu");
-  CHECK(sorted(cpu.medoids()) == std::vector<int>{ 1, 4 });
+  CHECK(sorted(cpu.medoids()) == std::vector<dtwc::index_t>{ 1, 4 });
 #if defined(DTWC_HAS_METAL)
   if (!dtwc::metal::metal_available()) {
     CHECK_THROWS_AS(dtwc::cluster(dataset, 2, "pam", -1, "gpu"), dtwc::DeviceError);

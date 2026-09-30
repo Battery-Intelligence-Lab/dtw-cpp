@@ -36,7 +36,7 @@ struct BarycenterOptions {
 };
 
 struct BarycenterClusteringOptions {
-  int n_clusters = 3;
+  index_t n_clusters = 3;
   int max_iter = 50;
   int barycenter_max_iter = 30;
   int target_length = -1; ///< -1 keeps each initial centre's length.
@@ -52,7 +52,7 @@ struct BarycenterClusteringOptions {
 
 /** Barycentric clustering has sequence-valued centres, not medoid indices. */
 struct BarycenterClusteringResult {
-  std::vector<int> labels;
+  std::vector<index_t> labels;
   std::vector<std::vector<data_t>> barycenters;
   double total_cost = 0.0; ///< Hard squared-DTW inertia for comparability.
   int iterations = 0;
@@ -80,7 +80,7 @@ struct SoftDtwValueGradient {
  * rejected rather than silently ignored.
  */
 std::vector<data_t> dtw_barycenter(const Problem& prob,
-                                   const std::vector<int>& series_indices,
+                                   const std::vector<index_t>& series_indices,
                                    std::size_t target_length,
                                    const BarycenterOptions& options = {});
 

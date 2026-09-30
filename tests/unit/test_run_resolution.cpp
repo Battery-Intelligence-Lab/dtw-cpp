@@ -197,8 +197,8 @@ TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes method
     CHECK(result.method() == resolved(method));
     CHECK(result.device() == "gpu");
     CHECK(two_groups(result));
-    std::vector<int> medoids = result.medoids();
-    std::vector<int> cpu_medoids = cpu.medoids();
+    std::vector<dtwc::index_t> medoids = result.medoids();
+    std::vector<dtwc::index_t> cpu_medoids = cpu.medoids();
     std::sort(medoids.begin(), medoids.end());
     std::sort(cpu_medoids.begin(), cpu_medoids.end());
     CHECK(medoids == cpu_medoids);

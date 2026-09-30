@@ -63,7 +63,9 @@ using dtwc::test_support::ScratchDirectory;
 namespace {
 fs::path dummy_data_path() { return fs::path{DTWC_TEST_DATA_DIR} / "dummy"; }
 
-using loader_setter_t = DataLoader &(DataLoader::*)(int);
+// Row and column counts are index_t; the v1 spellings keep v1's int.
+using loader_setter_t = DataLoader &(DataLoader::*)(dtwc::index_t);
+using v1_loader_setter_t = DataLoader &(DataLoader::*)(int);
 
 static_assert(std::same_as<
               decltype(static_cast<loader_setter_t>(&DataLoader::start_column)),
@@ -74,11 +76,11 @@ static_assert(std::same_as<
 
 DTWC_PUSH_NO_DEPRECATED
 static_assert(std::same_as<
-              decltype(static_cast<loader_setter_t>(&DataLoader::startColumn)),
-              loader_setter_t>);
+              decltype(static_cast<v1_loader_setter_t>(&DataLoader::startColumn)),
+              v1_loader_setter_t>);
 static_assert(std::same_as<
-              decltype(static_cast<loader_setter_t>(&DataLoader::startRow)),
-              loader_setter_t>);
+              decltype(static_cast<v1_loader_setter_t>(&DataLoader::startRow)),
+              v1_loader_setter_t>);
 DTWC_POP_NO_DEPRECATED
 
 }

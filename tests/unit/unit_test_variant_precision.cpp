@@ -188,8 +188,8 @@ TEST_CASE("float32 set_variant rejects narrowing transactionally",
     CHECK(params_equal(problem.variant_params, original_params));
     CHECK(problem.data().is_f32());
     CHECK(problem.data().series_f32(1)[1] == 2.0f);
-    CHECK(problem.labels() == std::vector<int>{1, 0});
-    CHECK(problem.medoids() == std::vector<int>{1});
+    CHECK(problem.labels() == std::vector<index_t>{1, 0});
+    CHECK(problem.medoids() == std::vector<index_t>{1});
     if (caught) require_dense_unchanged(problem, original_cache);
   }
 
@@ -238,8 +238,8 @@ TEST_CASE("float32 heap and view data replacement validate before mutation",
     const bool preserved_f64 = !problem.data().is_f32();
     CHECK(preserved_f64);
     if (preserved_f64) CHECK(problem.series(0)[0] == 0.0);
-    CHECK(problem.labels() == std::vector<int>{0, 1});
-    CHECK(problem.medoids() == std::vector<int>{0, 1});
+    CHECK(problem.labels() == std::vector<index_t>{0, 1});
+    CHECK(problem.medoids() == std::vector<index_t>{0, 1});
     if (caught) require_dense_unchanged(problem, original_cache);
   }
 
@@ -264,8 +264,8 @@ TEST_CASE("float32 heap and view data replacement validate before mutation",
       CHECK_FALSE(problem.data().is_view());
       CHECK(problem.series(0)[0] == 0.0);
     }
-    CHECK(problem.labels() == std::vector<int>{0, 1});
-    CHECK(problem.medoids() == std::vector<int>{0, 1});
+    CHECK(problem.labels() == std::vector<index_t>{0, 1});
+    CHECK(problem.medoids() == std::vector<index_t>{0, 1});
     if (caught) require_dense_unchanged(problem, original_cache);
   }
 }

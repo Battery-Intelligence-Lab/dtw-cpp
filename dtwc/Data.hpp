@@ -37,10 +37,12 @@ struct Data
   core::Precision precision = core::Precision::Float64; //!< Active precision
 
   /// Returns the number of data points (series count).
-  size_t size() const
+  index_t size() const
   {
-    if (is_view_) return is_f32() ? p_spans_f32_.size() : p_spans_.size();
-    return (precision == core::Precision::Float32) ? p_vec_f32.size() : p_vec.size();
+    if (is_view_)
+      return static_cast<index_t>(is_f32() ? p_spans_f32_.size() : p_spans_.size());
+    return static_cast<index_t>(
+      (precision == core::Precision::Float32) ? p_vec_f32.size() : p_vec.size());
   }
 
   /// Returns the number of timesteps for series i.

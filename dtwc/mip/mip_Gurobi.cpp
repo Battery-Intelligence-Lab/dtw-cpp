@@ -44,7 +44,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // GRBModel::addVars takes an `int` count: an N*N above INT_MAX would narrow
     // into a wrong-sized (or negative) model.
-    if (Nb * Nb > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    if (Nb * Nb > std::numeric_limits<int>::max())
       throw SolverError("Gurobi: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX variables; use Method::LRCore.");
 
     // Create variables
@@ -82,7 +82,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     GRBLinExpr obj = 0;
     for (auto j : Range(Nb))
       for (auto i : Range(Nb))
-        obj += w[i + j * Nb] * prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j)) / scaling_factor;
+        obj += w[i + j * Nb] * prob.dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j)) / scaling_factor;
 
     model.setObjective(obj, GRB_MINIMIZE);
 

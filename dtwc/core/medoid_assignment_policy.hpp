@@ -15,6 +15,7 @@
 #pragma once
 
 #include "../base/error.hpp"
+#include "../base/settings.hpp" // index_t
 
 #include <cmath>
 #include <cstddef>
@@ -25,8 +26,8 @@
 namespace dtwc::core::detail {
 
 [[noreturn]] inline void throw_nonfinite_medoid_distance(
-  std::string_view caller, std::size_t point, int medoid_slot,
-  int medoid_index)
+  std::string_view caller, std::size_t point, index_t medoid_slot,
+  index_t medoid_index)
 {
   throw InvalidInput(
     std::string(caller)
@@ -38,7 +39,7 @@ namespace dtwc::core::detail {
 
 inline double require_finite_medoid_distance(
   double value, std::string_view caller, std::size_t point,
-  int medoid_slot, int medoid_index)
+  index_t medoid_slot, index_t medoid_index)
 {
   if (!std::isfinite(value))
     throw_nonfinite_medoid_distance(
@@ -47,7 +48,7 @@ inline double require_finite_medoid_distance(
 }
 
 [[noreturn]] inline void throw_nonfinite_candidate_distance(
-  std::string_view caller, std::size_t point, int candidate_index)
+  std::string_view caller, std::size_t point, index_t candidate_index)
 {
   throw InvalidInput(
     std::string(caller)
@@ -58,7 +59,7 @@ inline double require_finite_medoid_distance(
 
 inline double require_finite_candidate_distance(
   double value, std::string_view caller, std::size_t point,
-  int candidate_index)
+  index_t candidate_index)
 {
   if (!std::isfinite(value))
     throw_nonfinite_candidate_distance(

@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "../base/settings.hpp" // index_t
+
 #include <limits>
 
 namespace dtwc::mip {
@@ -26,22 +28,22 @@ namespace dtwc::mip {
 /// Position of the serving medoid within the open set, and its distance.
 struct NearestMedoid
 {
-  int position{ 0 };                                              ///< index into the open-medoid array, in [0, k).
+  index_t position{ 0 };                                          ///< index into the open-medoid array, in [0, k).
   double distance{ std::numeric_limits<double>::infinity() };     ///< D(open[position], point).
 };
 
 /**
  * @brief Nearest open medoid of one point.
  * @param k    Number of open medoids; must be >= 1.
- * @param dist Callable `double(int position)` returning D(open[position], point).
+ * @param dist Callable `double(index_t position)` returning D(open[position], point).
  * @return The winning position and its distance; position 0 when k distances tie
  *         or are all non-finite.
  */
 template <typename Dist>
-[[nodiscard]] inline NearestMedoid nearest_medoid(int k, Dist dist)
+[[nodiscard]] inline NearestMedoid nearest_medoid(index_t k, Dist dist)
 {
   NearestMedoid best{};
-  for (int t = 0; t < k; ++t) {
+  for (index_t t = 0; t < k; ++t) {
     const double d = dist(t);
     if (d < best.distance) {
       best.position = t;

@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (C++, breaks source):** counts, labels and medoids are `dtwc::index_t` (`std::int64_t`): `Problem::clusters_ind`,
+  `centroids_ind`, `labels()`, `medoids()`, `size()`, `n_clusters()`, `dist_by_ind`, `ClusteringResult`, `Result::labels()`
+  and `medoids()`, every algorithm's `k` and the loaders' row, column and series counts; `band`, `max_iter`, `n_init` and
+  `n_samples` stay `int`, and seeds are `std::uint64_t`. Code that keeps the outputs in a `std::vector<int>` stops
+  compiling; declare it `std::vector<dtwc::index_t> medoids = prob.medoids();` (or `auto`). `set_clusters(std::vector<int>&)`
+  still compiles, `[[deprecated]]`. `adjusted_rand` and `normalized_mutual_info` key their counts on whole labels, and
+  `dtwc_cl` reads 64-bit `-k`, `--sample-size`, `--batch-size`, `--skip-rows`, `--skip-cols` and `--seed`.
 - **Changed (GPU):** the CUDA distance-matrix fill runs for any number of series; it refused more than 65,536. It
   computes at most 2^27 pairs per launch and copies each launch's share of the packed matrix straight into the
   `Problem`'s matrix, on the heap or memory-mapped, where it built an N×N matrix on the GPU and two more on the host

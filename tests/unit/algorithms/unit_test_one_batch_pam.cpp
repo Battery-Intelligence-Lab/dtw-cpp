@@ -335,7 +335,7 @@ TEST_CASE("OneBatchPAM finite-maximum debiasing uses actual Dmax below one",
     // The experiment-code finite-max correction normalizes the fixed table by
     // Dmax=0.1, so the far nonsampled point cannot win merely because all
     // off-diagonal distances are numerically below 1.
-    REQUIRE(result.medoid_indices == std::vector<int>{0});
+    REQUIRE(result.medoid_indices == std::vector<index_t>{0});
     REQUIRE(std::abs(result.total_cost - 0.11) <= 1e-12);
   }
 
@@ -377,7 +377,7 @@ TEST_CASE("OneBatchPAM relative tolerance scales with the estimated cost",
   algorithms::OneBatchPAMStats initial_stats;
   const auto initial = algorithms::one_batch_pam(
     problem, options, &initial_stats);
-  REQUIRE(initial.medoid_indices == std::vector<int>{3, 2});
+  REQUIRE(initial.medoid_indices == std::vector<index_t>{3, 2});
   REQUIRE(std::abs(initial.total_cost - 0.03) <= 1e-12);
   REQUIRE(initial_stats.accepted_swaps == 0);
 
@@ -393,7 +393,7 @@ TEST_CASE("OneBatchPAM relative tolerance scales with the estimated cost",
   options.relative_tolerance = 0.2;
   algorithms::OneBatchPAMStats stats;
   const auto result = algorithms::one_batch_pam(problem, options, &stats);
-  REQUIRE(result.medoid_indices == std::vector<int>{0, 2});
+  REQUIRE(result.medoid_indices == std::vector<index_t>{0, 2});
   REQUIRE(std::abs(result.total_cost - 0.99) <= 1e-12);
   REQUIRE(stats.accepted_swaps == 1);
   REQUIRE(std::abs(stats.estimated_objective - 1.03) <= 1e-12);

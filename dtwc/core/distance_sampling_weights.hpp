@@ -6,6 +6,7 @@
 #pragma once
 
 #include "../base/error.hpp"
+#include "../base/settings.hpp" // index_t
 
 #include <algorithm>
 #include <cmath>
@@ -33,11 +34,11 @@ struct DistanceSamplingWeights
 template <typename Distance>
 DistanceSamplingWeights distance_sampling_weights(
   const std::vector<Distance> &distances,
-  const std::vector<int> &selected,
+  const std::vector<index_t> &selected,
   const std::string &caller)
 {
   std::vector<bool> is_selected(distances.size(), false);
-  for (const int index : selected) {
+  for (const index_t index : selected) {
     if (index < 0 || static_cast<size_t>(index) >= distances.size()) // chosen by the caller's own seeding
       throw std::logic_error(caller + ": selected index is out of range");
     is_selected[static_cast<size_t>(index)] = true;

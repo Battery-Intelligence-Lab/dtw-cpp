@@ -37,7 +37,7 @@ dtwc::Problem capped_lloyd_problem(const std::filesystem::path &output)
   problem.set_n_repetitions(1);
   problem.set_output_folder(output);
   problem.init_fun = [](dtwc::Problem &candidate) {
-    std::vector<int> initial_medoids{ 0, 8 };
+    std::vector<dtwc::index_t> initial_medoids{ 0, 8 };
     candidate.set_clusters(initial_medoids);
   };
   return problem;
@@ -108,9 +108,9 @@ TEST_CASE("F19 capped Lloyd behavior survives Problem encapsulation",
   REQUIRE_NOTHROW(problem.cluster_by_kmedoids_lloyd());
   CHECK(problem.method() == dtwc::Method::Kmedoids);
   CHECK(problem.last_iterations() == 2);
-  CHECK(problem.medoids() == std::vector<int>{ 1, 5 });
+  CHECK(problem.medoids() == std::vector<dtwc::index_t>{ 1, 5 });
   CHECK(problem.labels()
-        == std::vector<int>{ 0, 0, 0, 1, 1, 1, 1, 1, 1 });
+        == std::vector<dtwc::index_t>{ 0, 0, 0, 1, 1, 1, 1, 1, 1 });
   CHECK_THAT(problem.find_total_cost(), WithinAbs(96.0, 1e-12));
   CHECK(problem.name() == "f19_capped_lloyd");
   CHECK(problem.output_folder() == output.path);

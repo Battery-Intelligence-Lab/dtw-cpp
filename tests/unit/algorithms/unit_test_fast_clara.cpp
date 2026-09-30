@@ -361,8 +361,8 @@ TEST_CASE("FastCLARA throws on invalid inputs", "[fast_clara][errors]")
   }
 }
 
-TEST_CASE("FastCLARA dimension planning is overflow-safe before allocation",
-          "[fast_clara][errors][overflow]")
+TEST_CASE("FastCLARA plans counts above INT_MAX before allocation",
+          "[fast_clara][errors][index_t]")
 {
   algorithms::CLARAOptions opts;
   opts.n_clusters = 300'000'000;
@@ -370,17 +370,16 @@ TEST_CASE("FastCLARA dimension planning is overflow-safe before allocation",
   opts.n_samples = 1;
   opts.max_iter = 1;
 
-  // 10*k+100 overflows a 32-bit int. The mathematical auto size is capped by
-  // N and must remain exactly INT_MAX, not wrap to the smaller 40+2*k arm.
-  const auto plan = algorithms::detail::resolve_clara_plan(
-    std::numeric_limits<int>::max(), opts, "fast_clara");
-  REQUIRE(plan.n_points == std::numeric_limits<int>::max());
-  REQUIRE(plan.sample_size == std::numeric_limits<int>::max());
+  // Counts are index_t: the auto size max(40+2k, min(N, 10k+100)) is N here,
+  // an N above INT_MAX.
+  constexpr dtwc::index_t n = 3'000'000'000;
+  const auto plan = algorithms::detail::resolve_clara_plan(n, opts, "fast_clara");
+  REQUIRE(plan.n_points == n);
+  REQUIRE(plan.sample_size == n);
 
-  opts.n_clusters = std::numeric_limits<int>::max();
-  const auto maximal_k_plan = algorithms::detail::resolve_clara_plan(
-    std::numeric_limits<int>::max(), opts, "fast_clara");
-  REQUIRE(maximal_k_plan.sample_size == std::numeric_limits<int>::max());
+  opts.n_clusters = n;
+  const auto maximal_k_plan = algorithms::detail::resolve_clara_plan(n, opts, "fast_clara");
+  REQUIRE(maximal_k_plan.sample_size == n);
 
   REQUIRE_THROWS_WITH(
     algorithms::detail::validate_streaming_clara_plan(

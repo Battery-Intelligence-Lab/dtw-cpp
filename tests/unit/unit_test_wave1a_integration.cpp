@@ -347,13 +347,13 @@ TEST_CASE("Integration: ARI and NMI > 0 for reasonable clustering of separated d
   prob.cluster();
 
   // Ground truth: first 10 points are group 0, last 10 are group 1.
-  std::vector<int> ground_truth(2 * n_each);
+  std::vector<index_t> ground_truth(2 * n_each);
   for (int i = 0; i < n_each; ++i) ground_truth[i] = 0;
   for (int i = n_each; i < 2 * n_each; ++i) ground_truth[i] = 1;
 
   // Predicted labels from clustering (may use different label integers — ARI/NMI are
   // invariant to permutation).
-  const std::vector<int> &pred = prob.clusters_ind;
+  const std::vector<index_t> &pred = prob.clusters_ind;
 
   double ari = scores::adjusted_rand(ground_truth, pred);
   double nmi = scores::normalized_mutual_info(ground_truth, pred);
@@ -414,7 +414,7 @@ TEST_CASE("Integration: ZeroCost clustering — ARI and NMI > 0",
   prob.fill_distance_matrix();
   prob.cluster();
 
-  std::vector<int> ground_truth(2 * n_each);
+  std::vector<index_t> ground_truth(2 * n_each);
   for (int i = 0; i < n_each; ++i) ground_truth[i] = 0;
   for (int i = n_each; i < 2 * n_each; ++i) ground_truth[i] = 1;
 

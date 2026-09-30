@@ -60,8 +60,8 @@ struct Config
   // Input and storage
   std::string input;                     ///< `--input`: CSV, Parquet, Arrow IPC, or a folder.
   std::string column;                    ///< `--column`: Parquet column holding the series.
-  int skip_rows = 0;                     ///< `--skip-rows`
-  int skip_cols = 0;                     ///< `--skip-cols`
+  index_t skip_rows = 0;                 ///< `--skip-rows`
+  index_t skip_cols = 0;                 ///< `--skip-cols`
   char delimiter = '\0';                 ///< `--delimiter`; '\0' infers it from the extension.
   core::Precision dtype = core::Precision::Float64; ///< `--dtype`
   std::size_t ram_limit = 0;             ///< `--ram-limit` in bytes; 0 = no limit.
@@ -69,13 +69,13 @@ struct Config
   std::string dist_matrix;               ///< `--dist-matrix`: precomputed distance-matrix CSV.
   // Method
   ClusterMethod method = ClusterMethod::Auto; ///< `--method`
-  int k = 3;                             ///< `--n-clusters`
+  index_t k = 3;                         ///< `--n-clusters`
   int max_iter = 100;                    ///< `--max-iter`
   int n_init = 1;                        ///< `--n-init`
-  unsigned seed = settings::DEFAULT_RANDOM_SEED; ///< `--seed`
-  int sample_size = -1;                  ///< `--sample-size` (CLARA; -1 = auto)
+  std::uint64_t seed = settings::DEFAULT_RANDOM_SEED; ///< `--seed`
+  index_t sample_size = -1;              ///< `--sample-size` (CLARA; -1 = auto)
   int n_samples = 5;                     ///< `--n-samples` (CLARA)
-  int batch_size = -1;                   ///< `--batch-size` (OneBatchPAM; -1 = auto)
+  index_t batch_size = -1;               ///< `--batch-size` (OneBatchPAM; -1 = auto)
   algorithms::Linkage linkage = algorithms::Linkage::Average; ///< `--linkage`
   double tadpole_dc = -1.0;              ///< `--dc` (TADPole; -1 = auto)
   // Distance

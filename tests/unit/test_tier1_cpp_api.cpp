@@ -86,11 +86,11 @@ dtwc::Problem seed_sensitive_problem()
   return problem;
 }
 
-std::pair<std::vector<int>, std::vector<int>> canonicalise(const dtwc::Result &result)
+std::pair<std::vector<dtwc::index_t>, std::vector<dtwc::index_t>> canonicalise(const dtwc::Result &result)
 {
-  std::vector<int> medoids = result.medoids();
+  std::vector<dtwc::index_t> medoids = result.medoids();
   std::sort(medoids.begin(), medoids.end());
-  std::vector<int> labels(result.labels().size());
+  std::vector<dtwc::index_t> labels(result.labels().size());
   for (std::size_t i = 0; i < labels.size(); ++i) {
     const int assigned = result.medoids().at(
       static_cast<std::size_t>(result.labels().at(i)));
@@ -126,11 +126,11 @@ TEST_CASE("Tier-1 C++ conformance fixture clusters, scores, and saves", "[api][t
   const auto result = dtwc::cluster(dataset, 3, "pam", 3, "cpu", 100);
   const auto [labels, medoids] = canonicalise(result);
 
-  const std::vector<int> expected_labels = {
+  const std::vector<dtwc::index_t> expected_labels = {
     0,0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1,1, 2,2,2,2,2,2,2,2,2
   };
   REQUIRE(labels == expected_labels);
-  REQUIRE(medoids == std::vector<int>{4, 13, 22});
+  REQUIRE(medoids == std::vector<dtwc::index_t>{4, 13, 22});
   REQUIRE(result.cost() >= 0.0);
   REQUIRE(result.device() == "cpu");
   REQUIRE(result.score("silhouette") > 0.96);
@@ -182,16 +182,16 @@ TEST_CASE("Tier-1 C++ PAM uses the shared local seed without touching legacy RNG
   auto init_42_problem = seed_sensitive_problem();
   const auto init_29 = dtwc::fast_pam_seeded(init_29_problem, 3, 29, 0);
   const auto init_42 = dtwc::fast_pam_seeded(init_42_problem, 3, 42, 0);
-  CHECK(init_29.medoid_indices == std::vector<int>{4, 2, 7});
-  CHECK(init_42.medoid_indices == std::vector<int>{6, 2, 5});
+  CHECK(init_29.medoid_indices == std::vector<dtwc::index_t>{4, 2, 7});
+  CHECK(init_42.medoid_indices == std::vector<dtwc::index_t>{6, 2, 5});
 
   auto final_29_problem = seed_sensitive_problem();
   auto final_42_problem = seed_sensitive_problem();
   const auto final_29 = dtwc::fast_pam_seeded(final_29_problem, 3, 29);
   const auto final_42 = dtwc::fast_pam_seeded(final_42_problem, 3, 42);
-  CHECK(final_29.medoid_indices == std::vector<int>{4, 1, 7});
+  CHECK(final_29.medoid_indices == std::vector<dtwc::index_t>{4, 1, 7});
   CHECK(final_29.total_cost == 20.0);
-  CHECK(final_42.medoid_indices == std::vector<int>{6, 2, 5});
+  CHECK(final_42.medoid_indices == std::vector<dtwc::index_t>{6, 2, 5});
   CHECK(final_42.total_cost == 24.0);
 
   // Tier-1 owns an invocation-local engine.  Its result is the seed-42 oracle,
@@ -244,16 +244,16 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
 
   int repetition = 0;
   problem.init_fun = [&repetition](dtwc::Problem &current) {
-    std::vector<int> medoids = repetition++ == 0
-      ? std::vector<int>{0, 1, 7}
-      : std::vector<int>{0, 1, 2};
+    std::vector<dtwc::index_t> medoids = repetition++ == 0
+      ? std::vector<dtwc::index_t>{0, 1, 7}
+      : std::vector<dtwc::index_t>{0, 1, 2};
     current.set_clusters(medoids);
   };
 
   problem.cluster_and_process(); // owns the run artifacts; cluster() does not
   CHECK(repetition == 2);
   CHECK(problem.find_total_cost() == 20.0);
-  CHECK(problem.medoids() == std::vector<int>{0, 3, 6});
+  CHECK(problem.medoids() == std::vector<dtwc::index_t>{0, 3, 6});
   CHECK(first_line(out / "tier1_seed_fixture_bestRepetition_Nc_3.csv") == "0");
 }
 
@@ -269,7 +269,7 @@ TEST_CASE("Lloyd uses a wrapping seed schedule and preserves custom initializers
   problem.set_n_clusters(3);
   dtwc::init::random_seeded(problem, 42);
   const auto seed_42_medoids = problem.medoids();
-  CHECK(seed_42_medoids == std::vector<int>{6, 2, 1});
+  CHECK(seed_42_medoids == std::vector<dtwc::index_t>{6, 2, 1});
   dtwc::init::random_seeded(problem, 43);
   const auto seed_43_medoids = problem.medoids();
   CHECK(seed_42_medoids != seed_43_medoids);
@@ -277,7 +277,7 @@ TEST_CASE("Lloyd uses a wrapping seed schedule and preserves custom initializers
   auto kmeanspp_problem = seed_sensitive_problem();
   kmeanspp_problem.set_n_clusters(3);
   dtwc::init::Kmeanspp_seeded(kmeanspp_problem, 42);
-  CHECK(kmeanspp_problem.medoids() == std::vector<int>{6, 2, 5});
+  CHECK(kmeanspp_problem.medoids() == std::vector<dtwc::index_t>{6, 2, 5});
   CHECK(dtwc::randGenerator == legacy_rng_before);
   dtwc::randGenerator = legacy_rng_original;
 

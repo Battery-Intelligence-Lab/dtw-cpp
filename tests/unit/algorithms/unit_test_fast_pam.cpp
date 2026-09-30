@@ -424,12 +424,12 @@ TEST_CASE("FastPAM max_iter = 0 returns the seeded BUILD medoids and runs no SWA
   auto prob = make_offset_problem();
 
   const auto build_29 = fast_pam_seeded(prob, 3, 29, 0);
-  CHECK(build_29.medoid_indices == std::vector<int>{ 4, 2, 7 });
+  CHECK(build_29.medoid_indices == std::vector<index_t>{ 4, 2, 7 });
   CHECK(build_29.iterations == 0);
   CHECK_FALSE(build_29.converged);
 
   const auto build_42 = fast_pam_seeded(prob, 3, 42, 0);
-  CHECK(build_42.medoid_indices == std::vector<int>{ 6, 2, 5 });
+  CHECK(build_42.medoid_indices == std::vector<index_t>{ 6, 2, 5 });
 
   const auto unseeded = fast_pam(prob, 3, 0);
   CHECK(unseeded.medoid_indices.size() == 3);
@@ -438,7 +438,7 @@ TEST_CASE("FastPAM max_iter = 0 returns the seeded BUILD medoids and runs no SWA
 
   // With a SWAP budget seed 29 leaves {4, 2, 7} for {4, 1, 7}.
   const auto swapped = fast_pam_seeded(prob, 3, 29, 100);
-  CHECK(swapped.medoid_indices == std::vector<int>{ 4, 1, 7 });
+  CHECK(swapped.medoid_indices == std::vector<index_t>{ 4, 1, 7 });
   CHECK_THAT(swapped.total_cost, WithinAbs(20.0, 1e-9));
   CHECK(swapped.converged);
 }

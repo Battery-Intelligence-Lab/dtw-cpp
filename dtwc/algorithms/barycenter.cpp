@@ -288,7 +288,7 @@ Series ssg(const std::vector<Series>& series, Series center,
 {
   std::mt19937_64 rng(options.random_seed);
   std::vector<std::size_t> order(series.size());
-  std::iota(order.begin(), order.end(), 0);
+  std::iota(order.begin(), order.end(), std::size_t{ 0 });
   std::uint64_t step = 0;
   double previous = hard_objective(center, series, workspace, entry_point);
   for (int epoch = 0; epoch < options.max_iter; ++epoch) {
@@ -515,13 +515,13 @@ Series compute_barycenter(const std::vector<Series>& series, std::size_t target_
   throw std::logic_error("compute_barycenter: unreachable BarycenterMethod");
 }
 
-std::vector<int> kmeanspp(const std::vector<Series>& data, int k,
-                          std::mt19937_64& rng, AlignmentWorkspace& workspace)
+std::vector<index_t> kmeanspp(const std::vector<Series>& data, index_t k,
+                              std::mt19937_64& rng, AlignmentWorkspace& workspace)
 {
-  std::vector<int> centers{static_cast<int>(
+  std::vector<index_t> centers{static_cast<index_t>(
     core::portable_bounded(rng, static_cast<std::uint64_t>(data.size())))};
   std::vector<double> closest(data.size(), std::numeric_limits<double>::infinity());
-  while (static_cast<int>(centers.size()) < k) {
+  while (static_cast<index_t>(centers.size()) < k) {
     for (std::size_t i = 0; i < data.size(); ++i)
       closest[i] = std::min(closest[i],
         align_squared(data[i], data[static_cast<std::size_t>(centers.back())],
@@ -531,24 +531,24 @@ std::vector<int> kmeanspp(const std::vector<Series>& data, int k,
       total, "barycenter_kmeans", "initialization distance total");
     std::size_t chosen = 0;
     if (total <= 0.0) {
-      while (std::find(centers.begin(), centers.end(), static_cast<int>(chosen)) != centers.end())
+      while (std::find(centers.begin(), centers.end(), static_cast<index_t>(chosen)) != centers.end())
         ++chosen;
     } else {
       chosen = core::portable_weighted_index(
         closest.begin(), closest.end(), total, rng);
-      if (std::find(centers.begin(), centers.end(), static_cast<int>(chosen)) != centers.end()) {
+      if (std::find(centers.begin(), centers.end(), static_cast<index_t>(chosen)) != centers.end()) {
         chosen = 0;
-        while (std::find(centers.begin(), centers.end(), static_cast<int>(chosen)) != centers.end())
+        while (std::find(centers.begin(), centers.end(), static_cast<index_t>(chosen)) != centers.end())
           ++chosen;
       }
     }
-    centers.push_back(static_cast<int>(chosen));
+    centers.push_back(static_cast<index_t>(chosen));
   }
   return centers;
 }
 
 double assign(const std::vector<Series>& data, const std::vector<Series>& centers,
-              std::vector<int>& labels, std::vector<AlignmentWorkspace>& workspaces,
+              std::vector<index_t>& labels, std::vector<AlignmentWorkspace>& workspaces,
               int worker_count, std::vector<double>* costs = nullptr)
 {
   labels.resize(data.size());
@@ -563,10 +563,10 @@ double assign(const std::vector<Series>& data, const std::vector<Series>& center
     const auto worker = parallel_assignment ? current_worker_index() : 0;
     auto& workspace = workspaces[worker];
     double best = std::numeric_limits<double>::infinity();
-    int label = 0;
+    index_t label = 0;
     for (std::size_t c = 0; c < centers.size(); ++c) {
       const double distance = align_squared(data[i], centers[c], false, workspace);
-      if (distance < best) { best = distance; label = static_cast<int>(c); }
+      if (distance < best) { best = distance; label = static_cast<index_t>(c); }
     }
     labels[i] = label;
     local_costs[i] = best;
@@ -582,7 +582,7 @@ double assign(const std::vector<Series>& data, const std::vector<Series>& center
 } // namespace
 
 std::vector<data_t> dtw_barycenter(const Problem& prob,
-                                   const std::vector<int>& series_indices,
+                                   const std::vector<index_t>& series_indices,
                                    std::size_t target_length,
                                    const BarycenterOptions& options)
 {
@@ -592,7 +592,7 @@ std::vector<data_t> dtw_barycenter(const Problem& prob,
     throw InvalidInput("dtw_barycenter: series_indices must not be empty.");
   std::vector<Series> selected;
   selected.reserve(series_indices.size());
-  for (int index : series_indices) {
+  for (index_t index : series_indices) {
     if (index < 0 || static_cast<std::size_t>(index) >= all.size())
       throw InvalidInput("dtw_barycenter: series index out of range.");
     selected.push_back(all[static_cast<std::size_t>(index)]);
@@ -663,7 +663,7 @@ BarycenterClusteringResult barycenter_kmeans(
     data, options.n_clusters, rng, workspaces.front());
   std::vector<Series> centers;
   centers.reserve(static_cast<std::size_t>(options.n_clusters));
-  for (int index : initial_indices) {
+  for (index_t index : initial_indices) {
     const std::size_t length = options.target_length > 0
       ? static_cast<std::size_t>(options.target_length)
       : data[static_cast<std::size_t>(index)].size();
@@ -671,7 +671,7 @@ BarycenterClusteringResult barycenter_kmeans(
   }
 
   BarycenterClusteringResult result;
-  std::vector<int> previous_labels(n, -1);
+  std::vector<index_t> previous_labels(n, -1);
   double previous_cost = std::numeric_limits<double>::infinity();
   for (int iteration = 0; iteration < options.max_iter; ++iteration) {
     std::vector<double> point_costs;
@@ -704,7 +704,7 @@ BarycenterClusteringResult barycenter_kmeans(
     std::vector<Series> next_centers = centers;
     std::vector<bool> needs_update(
       static_cast<std::size_t>(options.n_clusters), true);
-    for (int cluster = 0; cluster < options.n_clusters; ++cluster) {
+    for (index_t cluster = 0; cluster < options.n_clusters; ++cluster) {
       const auto cluster_index = static_cast<std::size_t>(cluster);
       if (members[cluster_index].empty()) {
         // Deterministic empty-cluster repair: use the currently worst-represented
@@ -727,7 +727,7 @@ BarycenterClusteringResult barycenter_kmeans(
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) num_threads(update_workers) if(parallel_updates)
 #endif
-    for (int cluster = 0; cluster < options.n_clusters; ++cluster) {
+    for (index_t cluster = 0; cluster < options.n_clusters; ++cluster) {
       const auto cluster_index = static_cast<std::size_t>(cluster);
       if (!needs_update[cluster_index]) continue;
       try {

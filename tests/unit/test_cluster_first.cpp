@@ -107,10 +107,10 @@ TEST_CASE("set_n_clusters sizes nothing: the outputs stay empty until a clusteri
   CHECK(prob.medoids().empty());
 
   // Initial medoids are a starting point, not a clustering.
-  std::vector<int> initial{ 0, 3 };
+  std::vector<dtwc::index_t> initial{ 0, 3 };
   prob.set_clusters(initial);
   CHECK(prob.labels().empty());
-  CHECK(prob.medoids() == std::vector<int>{ 0, 3 });
+  CHECK(prob.medoids() == std::vector<dtwc::index_t>{ 0, 3 });
 
   prob.cluster();
   CHECK(prob.labels().size() == 6);
@@ -153,7 +153,7 @@ TEST_CASE("every whole-clustering reader refuses a Problem given only initial me
   ScratchDirectory dir{ "cluster_first_initial" };
   auto prob = six_series(dir.path);
   prob.set_n_clusters(2);
-  std::vector<int> initial{ 0, 3 };
+  std::vector<dtwc::index_t> initial{ 0, 3 };
   prob.set_clusters(initial);
   require_every_reader_refuses(prob);
   CHECK(files_in(dir.path) == 0);

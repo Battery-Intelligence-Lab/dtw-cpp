@@ -183,15 +183,15 @@ TEST_CASE("run's PAM honors default seed 42 and explicit seed override 29", "[cl
 {
   REQUIRE(dtwc::Config{}.seed == 42);
   const auto default_result = dtwc::run(quiet_config(3, ClusterMethod::PAM), seed_sensitive_series());
-  CHECK(default_result.medoids() == std::vector<int>{ 6, 2, 5 });
-  CHECK(default_result.labels() == std::vector<int>{ 1, 1, 1, 1, 2, 2, 0, 0 });
+  CHECK(default_result.medoids() == std::vector<dtwc::index_t>{ 6, 2, 5 });
+  CHECK(default_result.labels() == std::vector<dtwc::index_t>{ 1, 1, 1, 1, 2, 2, 0, 0 });
   CHECK(default_result.cost() == 24.0);
 
   auto seed_29 = quiet_config(3, ClusterMethod::PAM);
   seed_29.seed = 29;
   const auto override_result = dtwc::run(seed_29, seed_sensitive_series());
-  CHECK(override_result.medoids() == std::vector<int>{ 4, 1, 7 });
-  CHECK(override_result.labels() == std::vector<int>{ 1, 1, 1, 0, 0, 0, 2, 2 });
+  CHECK(override_result.medoids() == std::vector<dtwc::index_t>{ 4, 1, 7 });
+  CHECK(override_result.labels() == std::vector<dtwc::index_t>{ 1, 1, 1, 0, 0, 0, 2, 2 });
   CHECK(override_result.cost() == 20.0);
 }
 

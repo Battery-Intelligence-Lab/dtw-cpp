@@ -60,7 +60,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // HiGHS and the triplets below index with `int`; the ~3N² nonzeros are the
   // largest count (N ≈ 26,750), and a cast past INT_MAX builds a wrong model.
   const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
-  if (numel > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+  if (numel > std::numeric_limits<int>::max())
     throw SolverError("HiGHS: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX nonzeros; use Method::LRCore.");
 
   HighsModel model;
@@ -77,7 +77,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   for (size_t j{ 0 }; j < Nb; j++)
     for (size_t i{ 0 }; i < Nb; i++)
-      model.lp_.col_cost_[i + j * Nb] = prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j)) / scaling_factor;
+      model.lp_.col_cost_[i + j * Nb] = prob.dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j)) / scaling_factor;
 
 
   model.lp_.col_lower_.clear();

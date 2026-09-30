@@ -35,7 +35,7 @@ using dtwc::core::ClusteringResult;
 
 struct OracleAssignment
 {
-  std::vector<int> labels;
+  std::vector<dtwc::index_t> labels;
   std::vector<double> nearest;
   std::vector<double> second;
   double objective = 0.0;
@@ -184,8 +184,8 @@ void require_invalid_input(Fn &&fn, const std::string &expected)
 }
 
 void require_result(
-  const ClusteringResult &result, const std::vector<int> &medoids,
-  const std::vector<int> &labels, double objective)
+  const ClusteringResult &result, const std::vector<dtwc::index_t> &medoids,
+  const std::vector<dtwc::index_t> &labels, double objective)
 {
   CHECK(result.medoid_indices == medoids);
   CHECK(result.labels == labels);
@@ -213,7 +213,7 @@ TEST_CASE("F13 independent oracle pins ties, presence, and ordered bits",
     {1.0, 1.0},
     {2.0, 0.0},
   });
-  REQUIRE(midpoint.labels == std::vector<int>{0, 0, 1});
+  REQUIRE(midpoint.labels == std::vector<dtwc::index_t>{0, 0, 1});
   REQUIRE(bits(midpoint.objective) == UINT64_C(0x3ff0000000000000));
 
   const auto reversed_slots = independent_assignment_oracle({
@@ -221,7 +221,7 @@ TEST_CASE("F13 independent oracle pins ties, presence, and ordered bits",
     {1.0, 1.0},
     {0.0, 2.0},
   });
-  REQUIRE(reversed_slots.labels == std::vector<int>{1, 0, 0});
+  REQUIRE(reversed_slots.labels == std::vector<dtwc::index_t>{1, 0, 0});
   REQUIRE(bits(reversed_slots.objective)
           == UINT64_C(0x3ff0000000000000));
 
@@ -233,7 +233,7 @@ TEST_CASE("F13 independent oracle pins ties, presence, and ordered bits",
     {-0x1p53, -0x1p53},
     {2.0, 3.0},
   });
-  REQUIRE(mixed.labels == std::vector<int>{0, 1, 0, 0, 0, 0});
+  REQUIRE(mixed.labels == std::vector<dtwc::index_t>{0, 1, 0, 0, 0, 0});
   REQUIRE(mixed.objective == 2.0);
   REQUIRE(bits(mixed.objective) == UINT64_C(0x4000000000000000));
 
@@ -250,20 +250,20 @@ TEST_CASE("F13 independent oracle pins ties, presence, and ordered bits",
     CHECK(bits(mixed.nearest[i]) == expected_nearest[i]);
 
   const auto zero = independent_assignment_oracle({{-0.0, +0.0}});
-  REQUIRE(zero.labels == std::vector<int>{0});
+  REQUIRE(zero.labels == std::vector<dtwc::index_t>{0});
   REQUIRE(bits(zero.nearest[0]) == UINT64_C(0x0000000000000000));
   REQUIRE(bits(zero.objective) == UINT64_C(0x0000000000000000));
 
   const double maximum = std::numeric_limits<double>::max();
   const auto sentinel = independent_assignment_oracle({{maximum, maximum}});
-  REQUIRE(sentinel.labels == std::vector<int>{0});
+  REQUIRE(sentinel.labels == std::vector<dtwc::index_t>{0});
   REQUIRE(bits(sentinel.nearest[0]) == UINT64_C(0x7fefffffffffffff));
   REQUIRE(bits(sentinel.second[0]) == UINT64_C(0x7fefffffffffffff));
   REQUIRE(bits(sentinel.objective) == UINT64_C(0x7fefffffffffffff));
 
   const double adjacent = std::nextafter(maximum, 0.0);
   const auto below = independent_assignment_oracle({{adjacent, maximum}});
-  REQUIRE(below.labels == std::vector<int>{0});
+  REQUIRE(below.labels == std::vector<dtwc::index_t>{0});
   REQUIRE(bits(below.nearest[0]) == UINT64_C(0x7feffffffffffffe));
 
   const auto finite_huge =
@@ -312,8 +312,8 @@ TEST_CASE("F13 independent oracle rejects every non-finite coordinate",
 TEST_CASE("F13 public assignment routes agree on an exact midpoint tie",
           "[F13][medoid-assignment][tie][public]")
 {
-  const std::vector<int> medoids{0, 2};
-  const std::vector<int> labels{0, 0, 1};
+  const std::vector<dtwc::index_t> medoids{0, 2};
+  const std::vector<dtwc::index_t> labels{0, 0, 1};
 
   auto clara_f64 = scalar_problem<double>({0.0, 1.0, 2.0});
   require_result(
@@ -338,8 +338,8 @@ TEST_CASE("F13 public assignment routes agree on an exact midpoint tie",
 TEST_CASE("F13 ties select the first slot, not the smallest global index",
           "[F13][medoid-assignment][tie][slot-order]")
 {
-  const std::vector<int> reversed_medoids{2, 0};
-  const std::vector<int> reversed_labels{1, 0, 0};
+  const std::vector<dtwc::index_t> reversed_medoids{2, 0};
+  const std::vector<dtwc::index_t> reversed_labels{1, 0, 0};
 
   auto clara_problem = scalar_problem<double>({0.0, 1.0, 2.0});
   require_result(
@@ -357,10 +357,10 @@ TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
           "[F13][medoid-assignment][objective][order]")
 {
   const std::vector<double> values{0.0, 0x1p53, 1.0, 1.0, 0.0};
-  const std::vector<int> medoids{0, 4};
+  const std::vector<dtwc::index_t> medoids{0, 4};
   // Series 4 duplicates series 0: every other point ties and takes the first
   // slot, but medoid 4 serves itself so its cluster is not published empty.
-  const std::vector<int> labels{0, 0, 0, 0, 1};
+  const std::vector<dtwc::index_t> labels{0, 0, 0, 0, 1};
   constexpr double expected = 0x1p53;
 
   const auto oracle = independent_assignment_oracle({
@@ -370,7 +370,7 @@ TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
     {1.0, 1.0},
     {0.0, 0.0},
   });
-  REQUIRE(oracle.labels == std::vector<int>(5, 0)); // the table alone knows no medoid identity
+  REQUIRE(oracle.labels == std::vector<dtwc::index_t>(5, 0)); // the table alone knows no medoid identity
   REQUIRE(bits(oracle.objective) == UINT64_C(0x4340000000000000));
 
   auto clara_f64 = scalar_problem<double>(values);

@@ -82,8 +82,8 @@ std::string fmt17(double x)
 
 struct CanonicalResult
 {
-  std::vector<int> labels;   ///< canonical 0-based label per series (rank of its medoid)
-  std::vector<int> medoids;  ///< canonical medoid SET: series indices, sorted ascending
+  std::vector<dtwc::index_t> labels;   ///< canonical 0-based label per series (rank of its medoid)
+  std::vector<dtwc::index_t> medoids;  ///< canonical medoid SET: series indices, sorted ascending
   double silhouette{};       ///< mean silhouette
   double davies_bouldin{};
   double dunn{};
@@ -93,22 +93,22 @@ struct CanonicalResult
 /// identical clusterings: sort the medoid SET, and label each point by the rank of
 /// its assigned medoid within that sorted set. `raw_labels[i]` indexes into
 /// `raw_medoids` (FastPAM contract), `raw_medoids[m]` is a series index.
-void canonicalise(const std::vector<int>& raw_labels,
-                  const std::vector<int>& raw_medoids,
-                  std::vector<int>& out_labels,
-                  std::vector<int>& out_medoids)
+void canonicalise(const std::vector<dtwc::index_t>& raw_labels,
+                  const std::vector<dtwc::index_t>& raw_medoids,
+                  std::vector<dtwc::index_t>& out_labels,
+                  std::vector<dtwc::index_t>& out_medoids)
 {
   out_medoids = raw_medoids;
   std::sort(out_medoids.begin(), out_medoids.end());
 
-  auto rank_of = [&](int series_idx) {
+  auto rank_of = [&](dtwc::index_t series_idx) {
     auto it = std::lower_bound(out_medoids.begin(), out_medoids.end(), series_idx);
-    return static_cast<int>(it - out_medoids.begin());
+    return static_cast<dtwc::index_t>(it - out_medoids.begin());
   };
 
   out_labels.resize(raw_labels.size());
   for (size_t i = 0; i < raw_labels.size(); ++i) {
-    const int assigned_series = raw_medoids.at(static_cast<size_t>(raw_labels[i]));
+    const dtwc::index_t assigned_series = raw_medoids.at(static_cast<size_t>(raw_labels[i]));
     out_labels[i] = rank_of(assigned_series);
   }
 }
@@ -161,10 +161,10 @@ void write_reference(const CanonicalResult& r)
       << "# canonical: medoids = sorted series indices; labels[i] = rank of series i's\n"
       << "# medoid; silhouette = mean of the per-point vector.\n";
   out << "labels";
-  for (int v : r.labels) out << "," << v;
+  for (dtwc::index_t v : r.labels) out << "," << v;
   out << "\n";
   out << "medoids";
-  for (int v : r.medoids) out << "," << v;
+  for (dtwc::index_t v : r.medoids) out << "," << v;
   out << "\n";
   out << "silhouette," << fmt17(r.silhouette) << "\n";
   out << "davies_bouldin," << fmt17(r.davies_bouldin) << "\n";
@@ -185,8 +185,8 @@ CanonicalResult read_reference()
     std::string key, tok;
     std::getline(ls, key, ',');
     if (key == "labels" || key == "medoids") {
-      std::vector<int>& dst = (key == "labels") ? r.labels : r.medoids;
-      while (std::getline(ls, tok, ',')) dst.push_back(std::stoi(tok));
+      std::vector<dtwc::index_t>& dst = (key == "labels") ? r.labels : r.medoids;
+      while (std::getline(ls, tok, ',')) dst.push_back(std::stoll(tok));
     } else if (key == "silhouette") {
       std::getline(ls, tok, ','); r.silhouette = std::stod(tok);
     } else if (key == "davies_bouldin") {
