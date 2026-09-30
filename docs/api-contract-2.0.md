@@ -59,11 +59,8 @@ The following post-freeze scope decisions are approved:
 
 **Naming law (fixed decision).** *One name per concept.* Classes/structs are
 `PascalCase` in every language. Methods and free functions are `snake_case` in
-every language. MATLAB's historical `PascalCase` properties remain functional
-compatibility aliases while snake_case setters/getters are canonical. The
-four configuration properties warn on assignment while their retained reads
-stay functional; the five dependent read properties warn and forward to their
-canonical snake_case readers.
+every language. MATLAB has no `PascalCase` property aliases: it was not in
+v1.0.0, so its `Problem` offers the snake_case methods only.
 
 **Indexing.** C++ and Python are 0-based. MATLAB is 1-based; the 0↔1 conversion
 happens *only* at the MEX boundary (`ivec_to_mx_1based`, `dtwc_mex.cpp:224-230`)
@@ -324,7 +321,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `fillDistanceMatrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
 | `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
-| — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
+| — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `distance_matrix()` |
 | — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
@@ -561,7 +558,7 @@ lookups and the GPU routes all compute.
 Frozen registry of public camelCase/duplicate/divergent names. Column
 **Compatibility requirement** states the live transition. Every retained
 callable alias in this table emits its required C++ compile diagnostic or
-Python/MATLAB runtime warning while forwarding to canonical behavior; the
+Python runtime warning while forwarding to canonical behavior; the
 v1.0.0 C++ fields `maxIter` and `N_repetition` stay plain public fields.
 PLAN.md separately retains F22's evidence adjudication because its registered
 C++ mutation band was falsified; that does not change the implemented public
@@ -573,12 +570,8 @@ policy.
 | 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp`) | `set_n_clusters` | alias 1 cycle |
 | 3 | set k (MATLAB) | `Problem.set_n_clusters` (Problem.m:148) | `set_n_clusters` | already canonical |
 | 4 | max iterations (C++ field) | `Problem::maxIter` (`Problem.hpp`) | `set_max_iter` / `max_iter` accessor | plain field, as in v1.0.0 |
-| 5 | max iterations (MATLAB prop) | `Problem.MaxIter` (Problem.m:31) | `set_max_iter` | alias (loud warn) |
 | 6 | repetitions (C++ field) | `Problem::N_repetition` (`Problem.hpp`) | `set_n_repetitions` / `n_repetitions` | plain field, as in v1.0.0 |
 | 7 | repetitions (Python prop) | `Problem.n_repetition` (`_dtwcpp_core.cpp`) | `n_repetitions` | alias 1 cycle |
-| 8 | repetitions (MATLAB prop) | `Problem.NRepetition` (Problem.m:32) | `set_n_repetitions` | alias (loud warn) |
-| 9 | band (MATLAB prop) | `Problem.Band` (Problem.m:29) | `set_band` | alias (loud warn) |
-| 10 | verbose (MATLAB prop) | `Problem.Verbose` (Problem.m:30) | `set_verbose` | alias (loud warn) |
 | 11 | refresh dist mat | `refreshDistanceMatrix` (`Problem.hpp`) | `refresh_distance_matrix` | C++ `[[deprecated]]` |
 | 12 | read dist mat | `readDistanceMatrix` (`Problem.hpp`) | `read_distance_matrix` | C++ `[[deprecated]]` |
 | 13 | max distance | `maxDistance` (`Problem.hpp`) | `max_distance` | C++ `[[deprecated]]` |
@@ -598,14 +591,8 @@ policy.
 | 27 | cluster via Lloyd | `cluster_by_kMedoidsPAM` (`Problem.hpp`) | `cluster_by_kmedoids_lloyd` | C++ `[[deprecated]]` |
 | 28 | n clusters read | `cluster_size` (`Problem.hpp`) | `n_clusters` | C++ `[[deprecated]]` alias |
 | 28a | n clusters read (Python) | `Problem.cluster_size` (`_dtwcpp_core.cpp`) | `n_clusters` | warning alias 1 cycle |
-| 29 | dist mat read (MATLAB) | `get_distance_matrix` (`Problem.m`) | `distance_matrix` | warning alias 1 cycle; `set_distance_matrix` is canonical and silent |
 | 29a | dist mat read (Python) | `Problem.distance_matrix_numpy` (`_dtwcpp_core.cpp`) | `distance_matrix` | warning alias 1 cycle |
 | 29b | dist mat write (Python) | `Problem.set_distance_matrix_from_numpy` (`_dtwcpp_core.cpp`) | `set_distance_matrix` | warning alias 1 cycle |
-| 29c | size read (MATLAB) | `Problem.Size` (dependent prop, Problem.m:36; getter :363) | `size()` | alias (loud warn) |
-| 29d | n clusters read (MATLAB) | `Problem.ClusterSize` (dependent prop, Problem.m:37; getter :370) | `n_clusters()` | alias (loud warn) |
-| 29e | name read (MATLAB) | `Problem.Name` (dependent prop, Problem.m:38; getter :377) | `name()` | alias (loud warn) |
-| 29f | medoids read (MATLAB) | `Problem.CentroidsInd` (dependent prop, Problem.m:39; getter :384) | `medoids()` | alias (loud warn) |
-| 29g | labels read (MATLAB) | `Problem.ClustersInd` (dependent prop, Problem.m:40; getter :391) | `labels()` | alias (loud warn) |
 | 35 | start column (loader) | `DataLoader::startColumn` (DataLoader.hpp) | `start_column` | C++ `[[deprecated]]` |
 | 36 | start row (loader) | `DataLoader::startRow` | `start_row` | C++ `[[deprecated]]` |
 | 37 | set data path | `settings::paths::setDataPath` (2.0-born) | — | removed pre-tag with `set_data_path` (D-3): pass input paths explicitly (`load(path)`, `--input`) |
@@ -647,13 +634,8 @@ bindings").
   release as thin aliases that emit exactly one caller-attributed
   `DeprecationWarning` per operation, then are deleted. New canonical names are
   the only ones documented.
-- **MATLAB.** PascalCase settable properties (`Band`, `MaxIter`, `NRepetition`,
-  `Verbose`) warn on assignment; their retained reads remain functional.
-  `get_distance_matrix`, the dependent read properties (`Size`, `ClusterSize`,
-  `Name`, `CentroidsInd`, `ClustersInd`), and the five legacy score functions
-  each warn once in their `.m` compatibility shim before forwarding.
-  `set_distance_matrix` is canonical and warning-silent. The 1-based boundary
-  conversion is untouched.
+- **MATLAB.** No alias survives: MATLAB was not in v1.0.0, so `Problem` has the
+  snake_case methods only. The 1-based boundary conversion is untouched.
 - **CLI.** Old flag spellings are accepted with a deprecation warning; the SLURM
   callers (`cluster_generic.slurm`, `_hpc.build_dtwc_command`) are updated in the
   same change that renames a flag. The CLI flag set is a de-facto API (§7 item
@@ -663,8 +645,8 @@ bindings").
   behaviour.
 
 This section is normative and implemented for the complete retained inventory:
-22 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
-operations. PLAN.md retains F22's separate evidence verdict; the exhausted
+22 C++ diagnostic entities and 13 Python alias operations. PLAN.md retains
+F22's separate evidence verdict; the exhausted
 C++ mutation campaign was falsified at 33/46 and is not described here as
 closure of that finding.
 
@@ -998,10 +980,8 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    `normalized_mutual_info`. The `_index`/`_information` spellings remain
    compatibility aliases for one cycle and emit one deprecation warning per
    call.
-2. **Resolved:** snake_case MATLAB methods are canonical. PascalCase settable
-   and dependent properties remain functional compatibility aliases; settable
-   properties warn on assignment, dependent reads warn on access, and canonical
-   operations stay silent.
+2. **Resolved:** snake_case MATLAB methods are the only spelling; MATLAB has no
+   `PascalCase` property aliases.
 3. **Resolved:** `Result.score("silhouette")` returns the arithmetic mean of
    the per-series silhouette vector. Tier-2 `scores::silhouette(prob)` returns
    the vector.

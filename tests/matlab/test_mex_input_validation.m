@@ -479,3 +479,23 @@ function test_int_min_label_rejected(testCase)
         @() dtwc_mex('adjusted_rand', int32([1 -2147483648 2 1]), int32([1 2 2 1])), ...
         'dtwc:invalidArgument');
 end
+
+% -------------------------------------------------------------------------
+%  Gateway errors and handle lifetime
+% -------------------------------------------------------------------------
+
+function test_invalid_handle_and_unknown_command_are_typed(testCase)
+    verifyError(testCase, @() dtwc_mex('Problem_get_size', uint64(99999)), ...
+        'dtwc:invalidArgument');
+    verifyError(testCase, @() dtwc_mex('nonexistent_command'), ...
+        'dtwc:invalidArgument');
+end
+
+function test_deleted_problem_handle_is_invalid(testCase)
+    prob = dtwc.Problem('delete_test');
+    h = prob.get_handle();
+    verifyGreaterThan(testCase, h, 0);
+    delete(prob);
+    verifyError(testCase, @() dtwc_mex('Problem_get_size', uint64(h)), ...
+        'dtwc:invalidArgument');
+end

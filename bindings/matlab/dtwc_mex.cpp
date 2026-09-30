@@ -621,12 +621,6 @@ static void cmd_Problem_set_band(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   prob.set_band(static_cast<int>(get_scalar(prhs[2])));
 }
 
-static void cmd_Problem_get_band(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("Problem_get_band requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.band));
-}
-
 static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_verbose requires handle and bool.");
   if (!mxIsLogical(prhs[2]) || mxGetNumberOfElements(prhs[2]) != 1)
@@ -705,12 +699,6 @@ static void cmd_Problem_get_size(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   if (nrhs < 2) throw std::invalid_argument("Problem_get_size requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.size()));
-}
-
-static void cmd_Problem_get_cluster_size(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("Problem_get_cluster_size requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.n_clusters()));
 }
 
 static void cmd_Problem_get_name(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1510,7 +1498,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Problem properties
     else if (cmd == "Problem_set_data") cmd_Problem_set_data(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_band") cmd_Problem_set_band(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_get_band") cmd_Problem_get_band(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_verbose") cmd_Problem_set_verbose(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_max_iter") cmd_Problem_set_max_iter(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_n_repetition") cmd_Problem_set_n_repetition(nlhs, plhs, nrhs, prhs);
@@ -1520,7 +1507,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_set_device") cmd_Problem_set_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_variant") cmd_Problem_set_variant(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_size") cmd_Problem_get_size(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_get_cluster_size") cmd_Problem_get_cluster_size(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_name") cmd_Problem_get_name(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_centroids") cmd_Problem_get_centroids(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_clusters") cmd_Problem_get_clusters(nlhs, plhs, nrhs, prhs);

@@ -19,8 +19,8 @@ function ds = load(source, varargin)
 %   delimiter : field delimiter for path sources. '' = auto from extension.
 %   name : dataset name. '' = derive from the filename stem (or 'dataset').
 %
-%   Contract: load() performs NO file I/O. A path source is only read when the
-%   dataset is materialised inside dtwc.cluster().
+%   Contract: load() performs NO file I/O. A path source is only read inside
+%   dtwc.cluster().
 %
 %   See also dtwc.Dataset, dtwc.cluster
 

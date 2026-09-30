@@ -110,10 +110,7 @@ function test_ragged_cell_source_honours_skip_rows_and_skip_cols(testCase)
     verifyEqual(testCase, res.labels, trimmed.labels);
     verifyEqual(testCase, res.cost, trimmed.cost, 'AbsTol', 1e-12);
 
-    [Xm, ~] = dtwc.load(ragged, 'skip_rows', 1, 'skip_cols', 1).materialize();
-    verifyEqual(testCase, Xm, {[0 1], 5});
-
-    err = capture_error(@() dtwc.load({[0 1 2], 3}, 'skip_cols', 2).materialize());
+    err = capture_error(@() dtwc.cluster(dtwc.load({[0 1 2], 3}, 'skip_cols', 2), 2));
     verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
     verifyEqual(testCase, err.message, ...
         'load: skip_cols exceeds an in-memory series length.');
@@ -213,14 +210,11 @@ function test_in_memory_skip_cols_is_honoured(testCase)
         'skip_cols must change the distances');
 end
 
-function test_dataset_materialize_honours_in_memory_skip_cols(testCase)
-%   Drift 7, second half: the lazy handle itself must agree with C++, not only
-%   the clustering route that now bypasses it.
+function test_in_memory_skip_cols_beyond_the_series_is_rejected(testCase)
+%   Drift 7, second half: C++ rejects a skip_cols longer than a series; the
+%   lazy handle has no reader of its own to disagree with it.
     X = testCase.TestData.X;
-    [Xm, ~] = dtwc.load(X, 'skip_cols', 3).materialize();
-    verifyEqual(testCase, Xm, X(:, 4:end));
-
-    err = capture_error(@() dtwc.load(X, 'skip_cols', 99).materialize());
+    err = capture_error(@() dtwc.cluster(dtwc.load(X, 'skip_cols', 99), 2));
     verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
     verifyEqual(testCase, err.message, ...
         'load: skip_cols exceeds an in-memory series length.');
