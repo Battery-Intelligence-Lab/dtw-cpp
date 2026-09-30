@@ -964,24 +964,31 @@ void launch_dtw_kernel(
             + device_limits(device_id).wavefront_static_bytes[std::is_same_v<T, double>],
         device_id, "dtw_wavefront_kernel");
 
-  // Every refusal is behind us: size the caller's matrix. One already N x N,
-  // as a mapped one is, keeps its storage.
-  if (out.size() != N) out.resize(N);
-
   const auto n = static_cast<std::int64_t>(N);
   const std::int64_t num_pairs = n * (n - 1) / 2;
   const std::int64_t chunk = std::min(num_pairs, detail::kMaxPairsPerLaunch);
+
+  // Every device buffer the launches use is allocated before the caller's
+  // matrix, so a device that cannot hold them refuses the fill first. A
+  // launch's span holds its pairs and one diagonal slot per row it crosses.
+  auto &workspace = get_dtw_launch_workspace<T>(device_id);
+  ensure_dtw_device_capacity(workspace, N * max_L, N, static_cast<size_t>(chunk) + N);
+  if (kernel_path == detail::KernelPath::Wavefront && workspace.counter_capacity < 1) {
+    workspace.d_counter = cuda_alloc<int>(1);
+    workspace.counter_capacity = 1;
+  }
 
   // The flattened series go through pinned memory where the budget allows, so
   // the upload is a true asynchronous copy; pageable memory otherwise.
   constexpr size_t PINNED_THRESHOLD = 256 * 1024;
   const size_t series_bytes = N * max_L * sizeof(T);
-  auto &workspace = get_dtw_launch_workspace<T>(device_id);
   T *h_flat_series = workspace.host_series.ensure(
       N * max_L, series_bytes >= PINNED_THRESHOLD);
   flatten_series_buffer(h_flat_series, series, max_L);
-  // A launch's span holds its pairs and one diagonal slot per row it crosses.
-  ensure_dtw_device_capacity(workspace, N * max_L, N, static_cast<size_t>(chunk) + N);
+
+  // Every refusal is behind us and every buffer is allocated: size the
+  // caller's matrix. One already N x N, as a mapped one is, keeps its storage.
+  if (out.size() != N) out.resize(N);
 
   const int N_series = static_cast<int>(N);
   auto stream = workspace.stream.get();
@@ -1033,10 +1040,6 @@ void launch_dtw_kernel(
       launch_warp_family(dtw_regtile_kernel<T, 8>, max_L, first, count, first_slot); // 32 lanes x 8 = 256 columns
     } else if (kernel_path == detail::KernelPath::Wavefront) {
       if (count > persistent_grid * 4) {
-        if (workspace.counter_capacity < 1) {
-          workspace.d_counter = cuda_alloc<int>(1);
-          workspace.counter_capacity = 1;
-        }
         CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
         dtw_wavefront_kernel<T><<<persistent_grid, block_size, wavefront_shared_mem, stream>>>(
             workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
