@@ -158,7 +158,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1)
 - ☐ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases
 - ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
-- ☐ W9c `hpc` → `job.toml`; the positional transport goes
+- ☐ W9c `hpc` → `job.toml`; the positional transport goes; `device=hpc` takes `gpu_device=` (a100, a6000, l40s, h100, …) to pick the
+  SLURM GPU and the build's CUDA arch; a build on the target node detects both itself (Volkan 09-30)
 - ☐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
   regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
   (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m)

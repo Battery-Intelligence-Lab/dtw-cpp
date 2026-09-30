@@ -20,6 +20,17 @@ Later the same day, on build targets:
 
 > So for CUDA we can put some limits. Let's put the limit to A30, when it was relesed and same year ones
 
+Answers of the same evening (to the orchestrator's questions):
+
+- May W11c, W12a and W6f delete the tests the permission system refused? "Yes, all three".
+- CPU floor for release archives and wheels: "x86-64-v3 (Recommended)".
+- The ARC scripts:
+
+> See this https://arc-user-guide.readthedocs.io/en/latest/_sources/arc-systems.rst.txt   available gpu and cpu
+> hardware in slurm. We could definitely   device=hpc  and  gpu_device=...  name here. So that we could deploy the
+> most specialised code if checking and automatically deploying the most high performance code was not available.
+> If it is, then we could just internally detect it.
+
 ## 2026-09-29 — continue
 
 > Please go through what was done and try to continue. Don't forget our principles of no unnecessary

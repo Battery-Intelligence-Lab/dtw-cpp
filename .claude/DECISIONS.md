@@ -210,3 +210,7 @@ CHANGELOG rule.
 - 2026-09-30 — C1 merged (`ceb7f91`): the CUDA toolkit floor stays 12.0 (ARC loads CUDA 12.4), so the shared-memory
   carveout (−17–20 % at FP32 L 2049–2644, its band passed) is dropped — its launch attribute needs CUDA 12.5. The
   global-memory wavefront removes every length limit on the GPU.
+- 2026-09-30 — Volkan: test deletions that the permission system refused are approved for W11c, W12a and W6f
+  (each deleted test names the kept test that covers its subject). CPU floor for release archives and wheels:
+  x86-64-v3 (AVX2+FMA; every ARC/HTC node has it). HPC builds the most specialised code for the target: detected
+  on the node when the build runs there (native CPU flags, CUDA arch native), else named with `gpu_device=`.
