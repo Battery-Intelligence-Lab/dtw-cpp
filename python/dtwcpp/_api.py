@@ -181,11 +181,25 @@ class Result:
             return list(self._series_names)
         return [str(i) for i in range(len(self.labels) if n is None else n)]
 
+    def _clustering(self):
+        """This result as the ``ClusteringResult`` that ``Problem.set_result`` validates."""
+        import dtwcpp
+        if self.medoids is None:
+            raise dtwcpp.InvalidInput(
+                "this Result carries no medoids, and the scores and save() read them "
+                "from a Problem (an hpc run returns labels only)."
+            )
+        result = dtwcpp.ClusteringResult()
+        result.labels = [int(x) for x in self.labels]
+        result.medoid_indices = [int(x) for x in self.medoids]
+        return result
+
     def _scoring_problem(self):
         """Rebuild a Tier-2 Problem carrying this result's distance matrix + labels.
 
         Scores read state from a Problem (its distance matrix + clusters_ind +
-        centroids_ind), so score()/save() reconstruct a minimal one. Dummy series
+        centroids_ind, published through set_result), so score()/save()
+        reconstruct a minimal one. Dummy series
         stand in — the scores use only the distance matrix and the labels.
 
         A matrix-free run kept its own Problem instead of a matrix; filling it
@@ -202,10 +216,7 @@ class Result:
                 )
             prob = self._problem
             prob.fill_distance_matrix()
-            prob.set_n_clusters(int(self.k))
-            prob.clusters_ind = [int(x) for x in self.labels]
-            if self.medoids is not None:
-                prob.centroids_ind = [int(x) for x in self.medoids]
+            prob.set_result(self._clustering())
             return prob
         D = np.asarray(self._distance_matrix, dtype=float)
         n = D.shape[0]
@@ -213,10 +224,7 @@ class Result:
         prob = dtwcpp.Problem(self.name)
         prob.set_data([[0.0] for _ in range(n)], names)
         prob.set_distance_matrix(D)
-        prob.set_n_clusters(int(self.k))
-        prob.clusters_ind = [int(x) for x in self.labels]
-        if self.medoids is not None:
-            prob.centroids_ind = [int(x) for x in self.medoids]
+        prob.set_result(self._clustering())
         return prob
 
     def score(self, name):

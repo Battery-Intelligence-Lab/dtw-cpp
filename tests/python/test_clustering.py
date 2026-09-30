@@ -23,9 +23,7 @@ def _make_problem(data, names=None):
 def _cluster_with_fast_pam(prob, k=3):
     """Cluster using fast_pam and apply results to prob for scoring."""
     result = dtwcpp.fast_pam(prob, k)
-    prob.set_n_clusters(k)
-    prob.clusters_ind = result.labels
-    prob.centroids_ind = result.medoid_indices
+    prob.set_result(result)
     return result
 
 

@@ -22,7 +22,17 @@ public: the v1.0.0 `int` fields `maxIter` and `N_repetition`, plus
 `band`, `variant_params`, `missing_strategy`, `distance_strategy`,
 `cuda_settings`, `mip_settings`, `init_fun`, `clusters_ind`, and
 `centroids_ind`. The setters check what they are given; a direct write to
-a field does not.
+a field does not. Python binds `clusters_ind` and `centroids_ind` read-only
+(v1.0.0's Python never bound them): a clustering reaches a Python `Problem`,
+and the scores that read it, through `set_result(ClusteringResult)`, which
+validates it as C++ `Problem::set_result` does.
+
+The C++ accessors stay unchecked because they sit in hot loops, so the Python
+and MATLAB boundaries own the range checks: `dist_by_ind(i, j)`, `series(i)`,
+`series_name(i)` and `centroid_of(i)` raise `InvalidInput` for an index outside
+`[0, N)`, naming the index and N, and `centroid_of(i)` raises it for a `Problem`
+that holds no clustering. MATLAB exposes `dist_by_ind` only (1-based, checked
+in the MEX); it has no series, name or medoid accessor.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|

@@ -67,9 +67,7 @@ result = dtwcpp.fast_pam(prob, n_clusters=3)
 print(f"FastPAM result: {result}")
 
 # Apply labels to Problem for scoring
-prob.set_n_clusters(3)
-prob.clusters_ind = result.labels
-prob.centroids_ind = result.medoid_indices
+prob.set_result(result)
 
 sil = dtwcpp.silhouette(prob)
 sil_mean = np.mean(sil)
