@@ -73,3 +73,29 @@ lanes ns/cell, L = 1000: unbanded 0.203 / 0.226 / 0.199 (x86-64), 0.203 / 0.212 
 for `min` then `add` of the row above (4 + 4 cycles). 8 lanes × 0.203 ns = 1.6 ns per row step, which is 8 cycles at
 about 5 GHz (clock not measured). The kernel is bound by that dependency chain, not by vector width. Next decisive test:
 W = 16 doubles, which keeps four ymm chains in flight.
+
+## V4: GCC after the tests follow the FP ruling (2026-10-01, pb/V4 on V3's tip 41a1be1) [confirmed]
+
+Volkan, 2026-10-01: no bit-for-bit equivalence between compilers; last-bits differences are fine while the clustering is
+unchanged. No FP flag changed; contraction stays on (GCC default, clang `on`, MSVC `/fp:contract`).
+
+- **Tree:** V3's GCC tree (`~/dtwc_v3/build-gcc-v3` in WSL Ubuntu 24.04, g++ 13.3, x86-64-v3, no `-ffp-contract` flag,
+  HiGHS, Gurobi, llfio OFF), source synced from the pb/V4 worktree. The linked `unit_test_dtw_kernel_lanes` holds 190
+  `vfmadd`/`vfnmadd`/`vfmsub` instructions, so contraction is in effect.
+- **Bound:** `tests/support/dtw_route_bound.hpp`, `|a - b| <= 2 * (nx + ny - 1) * eps(T) * max(|a|, |b|)`. On this tree over the
+  configurations of the test x 20 seeds (scratch program `C:/D/git/wt/V4-lanes-ratio.cpp`): lanes vs `dtwBanded`, double,
+  L1 0 of 6400 pairs differ, squared L2 1 of 6400; float, L1 0 of 12800, squared L2 1489 of 12800; worst
+  `|a - b| / ((2n - 1) * eps * max)` 0.0043 (double), 0.33 (float), against the bound's 2. With `-ffp-contract=off` nothing
+  differs. A per-pair oracle with a band one wider fails 67 of 175 assertions, so the bound still bites.
+- **GCC serial ctest, base (V3 log `V3-gcc-v3-ctest.log`, not re-run):** 122 tests, 3 failed (`test_deprecated_shims_warn`,
+  `unit_test_dtw_kernel_lanes`, `test_error_taxonomy`), 3 skipped. **Head:** 122 = 119 passed + 3 skipped
+  (`test_cuda_correctness`, `test_metal_correctness`, `test_metal_mmap`), 0 failed (`C:/D/git/wt/V4-gcc-head-ctest.log`).
+  `cpp_conformance` passes; `DTWC_CONFORMANCE_REGEN=1` then `diff --strip-trailing-cr` against the tracked reference shows no
+  difference (scores to 17 digits, labels, medoids; 15 lines), restored afterwards.
+- **clang-win serial ctest:** base 123 = 120 passed + 3 skipped, head the same, 0 failed.
+- **`test_deprecated_shims_warn`:** GCC did warn for all six shims; the script's patterns match ASCII `'`, and GCC quotes with
+  U+2018/U+2019 in a UTF-8 locale (`LANG=en_US.UTF-8`: bytes `e2 80 98`; `LC_ALL=C`: `'`). The script now sets `LC_ALL=C`.
+- **`test_error_taxonomy`:** the row "a checkpoint root that is a symlink" is compiled off Windows only. W5d (`6a96642`) deleted
+  the symlink rejection with the generation directories it protected; `save_checkpoint` through a symlinked root now
+  succeeds and writes into the target (probe `C:/D/git/wt/V4-symlink-probe.cpp`). The row asserted removed behaviour and was removed;
+  rejecting a symlinked root again would be a product change.
