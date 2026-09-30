@@ -8,13 +8,13 @@ introspectable, its documented default values).
 
 Contract pinned: docs/api-contract-2.0.md — STATUS: FROZEN 2026-07-07.
 Sections consumed: §1 (Tier-1), §2.1/§2.2 (Problem), §2.4 (scores), §2.5
-(algorithms), §2.6 (distance), §5 (error taxonomy), §6 (device).
+(algorithms), §2.6 (distance), §2.7 (checkpoint), §5 (error taxonomy), §6 (device).
 
 Why the contract's Python column is HARD-CODED here (not parsed at test time):
 the column lives inside prose markdown tables carrying provenance tags
 (``[new bind]``), footnote markers (``†``/``‡``), and multi-name cells — a parser
 would be brittle and could *silently pass on a mis-parse*, which is worse than a
-maintained explicit list. The list below is auditable line-by-line against the
+maintained explicit list. ``_SURFACE`` below is auditable line-by-line against the
 FROZEN doc, and drift in either direction (a dropped binding or a renamed symbol)
 fails loudly. Re-pin the version string above when the contract changes.
 
@@ -30,90 +30,88 @@ import dtwcpp
 
 
 # ---------------------------------------------------------------------------
-# §1 Tier-1 + top-level classes / functions
+# The Python surface the contract promises: one table, one row per name.
+# The key says which object the name is looked up on (see _OWNER).
 # ---------------------------------------------------------------------------
-_TIER1 = [
-    "device", "load", "cluster", "plot",
-    "Dataset", "Result",
-    "DTWClustering", "compute_distance_matrix",
-]
+_SURFACE = {
+    "module": [
+        # §1 Tier-1 + top-level classes / functions
+        "device", "load", "cluster", "plot",
+        "Dataset", "Result",
+        "DTWClustering", "compute_distance_matrix",
+        "DEFAULT_RANDOM_SEED",
+        # §6 device
+        "device_to_string", "Device",
+        # §5 error taxonomy
+        "DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError",
+        # enums, structs, Tier-2 classes: the types behind the contract's fields and
+        # arguments (several have no table row of their own)
+        "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
+        "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision", "Linkage",
+        "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",
+        "DendrogramStep", "Dendrogram", "HierarchicalOptions",
+        "CLARAOptions", "ClusteringResult", "Problem",
+        # §2.5 algorithm free functions
+        "fast_pam", "fast_clara", "build_dendrogram", "cut_dendrogram",
+        # §2.7 checkpoint
+        "CheckpointOptions", "save_checkpoint", "load_checkpoint",
+        # utils: public exports the contract does not tabulate
+        "derivative_transform", "z_normalize", "soft_dtw_gradient",
+        # §2.4 scores
+        "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
+        "adjusted_rand", "normalized_mutual_info",
+    ],
+    # §2.6 distance namespace
+    "distance": [
+        "standard", "ddtw", "wdtw", "adtw", "soft_dtw", "missing", "arow", "dtw",
+    ],
+    # §2.1/§2.2 Problem canonical setters / accessors / methods
+    "Problem": [
+        # config setters (§2.1)
+        "set_n_clusters", "set_method", "set_band", "set_max_iter",
+        "set_n_repetitions", "set_variant", "set_variant_params", "set_solver",
+        "set_data", "set_result", "set_device", "set_random_seed",
+        # config attributes (§2.1)
+        "method", "max_iter", "n_repetitions", "band", "variant_params",
+        "missing_strategy", "distance_strategy", "random_seed",
+        "cuda_settings", "mip_settings", "verbose", "name", "output_folder",
+        "clusters_ind", "centroids_ind", "checkpoint",
+        # read accessors (§2.2)
+        "size", "n_clusters", "labels", "medoids", "series", "series_name",
+        "centroid_of", "is_distance_matrix_filled", "max_distance", "dist_by_ind",
+        # distance-matrix methods (§2.2)
+        "fill_distance_matrix", "refresh_distance_matrix", "read_distance_matrix",
+        "print_distance_matrix", "write_distance_matrix", "distance_matrix",
+        "set_distance_matrix", "use_mmap_distance_matrix",
+        # clustering (§2.2)
+        "cluster", "find_total_cost", "assign_clusters", "calculate_medoids",
+        # I/O (§2.2)
+        "print_clusters", "write_clusters", "write_medoid_members", "write_silhouettes",
+    ],
+    # §1.4 Result members: labels/medoids/cost/device are set in __init__
+    # (instance attributes), so the owner is an instance; score/save/plot are methods.
+    "Result": ["labels", "medoids", "score", "distance_matrix", "save", "plot",
+               "cost", "device"],
+    # §2.1 MIP settings fields
+    "MIPSettings": [
+        "mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus",
+        "verbose_solver", "lr_max_nodes",
+    ],
+}
+_ROWS = [pytest.param(kind, name, id=f"{kind}.{name}")
+         for kind, names in _SURFACE.items() for name in names]
 
-# ---------------------------------------------------------------------------
-# §6 device
-# ---------------------------------------------------------------------------
-_ENV = ["device_to_string", "Device"]
+_RESULT = dtwcpp.Result([0, 1], device="cpu", elapsed_s=0.0, k=1, n_series=2)
+_OWNER = {
+    "module": lambda: dtwcpp,
+    "distance": lambda: dtwcpp.distance,
+    "Problem": lambda: dtwcpp.Problem("parity"),
+    "Result": lambda: _RESULT,
+    "MIPSettings": dtwcpp.MIPSettings,
+}
 
-# ---------------------------------------------------------------------------
-# §5 error taxonomy
-# ---------------------------------------------------------------------------
-_ERRORS = ["DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError"]
-
-# ---------------------------------------------------------------------------
-# Enums, structs, Tier-2 classes
-# ---------------------------------------------------------------------------
-_ENUMS = [
-    "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
-    "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision", "Linkage",
-]
-_STRUCTS = [
-    "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",
-    "DendrogramStep", "Dendrogram", "HierarchicalOptions",
-    "CLARAOptions", "ClusteringResult", "Problem",
-    "CheckpointOptions",
-]
-
-# ---------------------------------------------------------------------------
-# §2.5 algorithm free functions + checkpoint + utils
-# ---------------------------------------------------------------------------
-_ALGOS = ["fast_pam", "fast_clara", "build_dendrogram", "cut_dendrogram"]
-_CHECKPOINT = [
-    "save_checkpoint",
-    "load_checkpoint",
-    "CheckpointOptions",
-]
-_UTILS = ["derivative_transform", "z_normalize", "soft_dtw_gradient"]
-
-# ---------------------------------------------------------------------------
-# §2.4 scores
-# ---------------------------------------------------------------------------
-_SCORES_CANON = [
-    "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
-    "adjusted_rand", "normalized_mutual_info",
-]
-
-# ---------------------------------------------------------------------------
-# §2.6 distance namespace
-# ---------------------------------------------------------------------------
-_DISTANCE = ["standard", "ddtw", "wdtw", "adtw", "soft_dtw", "missing", "arow", "dtw"]
-
-# ---------------------------------------------------------------------------
-# §2.1/§2.2 Problem canonical setters / accessors / methods
-# ---------------------------------------------------------------------------
-_PROBLEM_CANON = [
-    # config setters (§2.1)
-    "set_n_clusters", "set_method", "set_band", "set_max_iter",
-    "set_n_repetitions", "set_variant", "set_variant_params", "set_solver",
-    "set_data", "set_result",
-    # config attributes (§2.1)
-    "method", "max_iter", "n_repetitions", "band", "variant_params",
-    "missing_strategy", "distance_strategy",
-    "cuda_settings", "mip_settings", "verbose", "name", "output_folder",
-    "clusters_ind", "centroids_ind",
-    # read accessors (§2.2)
-    "size", "n_clusters", "labels", "medoids", "series", "series_name",
-    "centroid_of", "is_distance_matrix_filled", "max_distance", "dist_by_ind",
-    # distance-matrix methods (§2.2)
-    "fill_distance_matrix", "refresh_distance_matrix", "read_distance_matrix",
-    "print_distance_matrix", "write_distance_matrix", "distance_matrix",
-    "set_distance_matrix", "use_mmap_distance_matrix",
-    # clustering (§2.2)
-    "cluster", "find_total_cost", "assign_clusters", "calculate_medoids",
-    # I/O (§2.2)
-    "print_clusters", "write_clusters", "write_medoid_members", "write_silhouettes",
-]
 # Names 2.0 development coined and renamed before any release. None is an alias:
 # a removed name raises AttributeError and never resolves to something else (§4).
-_RESULT = dtwcpp.Result([0, 1], device="cpu", elapsed_s=0.0, k=1, n_series=2)
 _REMOVED = [
     pytest.param(dtwcpp, "get_device", id="dtwcpp.get_device"),
     pytest.param(dtwcpp, "ClusterResult", id="dtwcpp.ClusterResult"),
@@ -129,39 +127,12 @@ _REMOVED = [
 
 
 # ===========================================================================
-# Module-level symbol existence
+# Symbol existence
 # ===========================================================================
-@pytest.mark.parametrize(
-    "name",
-    _TIER1 + _ENV + _ERRORS + _ENUMS + _STRUCTS + _ALGOS + _CHECKPOINT
-    + _UTILS + _SCORES_CANON,
-)
-def test_module_symbol_exists(name):
-    """Every contract Python-column module symbol is present with its exact name."""
-    assert hasattr(dtwcpp, name), f"dtwcpp.{name} missing (contract §1/§2/§5/§6)"
-
-
-def test_distance_dtw_distance_is_not_public():
-    """The pairwise helper is namespaced under dtwcpp.distance, not the root
-    (pinned separately in test_dtw.py); the root alias stays removed."""
-    assert not hasattr(dtwcpp, "dtw_distance")
-
-
-# ===========================================================================
-# §2.6 distance submodule
-# ===========================================================================
-@pytest.mark.parametrize("name", _DISTANCE)
-def test_distance_symbol_exists(name):
-    assert hasattr(dtwcpp.distance, name), f"dtwcpp.distance.{name} missing (§2.6)"
-
-
-# ===========================================================================
-# §2.1/§2.2 Problem surface
-# ===========================================================================
-@pytest.mark.parametrize("name", _PROBLEM_CANON)
-def test_problem_canonical_member_exists(name):
-    p = dtwcpp.Problem("parity")
-    assert hasattr(p, name), f"Problem.{name} missing (contract §2.1/§2.2)"
+@pytest.mark.parametrize("kind, name", _ROWS)
+def test_contract_name_exists(kind, name):
+    """Every contract Python-column name is present with its exact spelling."""
+    assert hasattr(_OWNER[kind](), name), f"{kind}.{name} missing (api-contract-2.0)"
 
 
 @pytest.mark.parametrize("owner, name", _REMOVED)
@@ -215,29 +186,8 @@ def test_cpp_file_failure_raises_io_error(tmp_path):
 
 
 # ===========================================================================
-# §1.4 Result members
+# MIPSettings — §2.1 lr_max_nodes
 # ===========================================================================
-@pytest.mark.parametrize(
-    "name", ["labels", "medoids", "score", "save", "plot", "cost", "device"])
-def test_result_member_exists(name):
-    # labels/medoids/cost/device are set in __init__ (instance attrs), so check an
-    # instance; score/save/plot are methods on the class.
-    res = dtwcpp.Result([0, 1], device="cpu", elapsed_s=0.0, k=1, n_series=2)
-    assert hasattr(res, name), f"Result.{name} missing (contract §1.4)"
-
-
-# ===========================================================================
-# MIPSettings — §2.1 fields
-# ===========================================================================
-@pytest.mark.parametrize(
-    "name",
-    ["mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus",
-     "verbose_solver", "lr_max_nodes"],
-)
-def test_mip_settings_field_exists(name):
-    assert hasattr(dtwcpp.MIPSettings(), name), f"MIPSettings.{name} missing (§2.1)"
-
-
 def test_mip_settings_lr_max_nodes_roundtrip():
     """§2.1: lr_max_nodes reaches the C++ Problem and is reported back."""
     s = dtwcpp.MIPSettings()
