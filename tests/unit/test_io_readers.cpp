@@ -622,6 +622,47 @@ TEST_CASE("Parquet: a null list cell or null list element is rejected",
   }
 }
 
+// The streamed nearest-medoid assignment runs in parallel over each chunk (more
+// than 64 rows). The in-RAM route must give the same clustering bit for bit.
+TEST_CASE("Parquet: streamed FastCLARA equals the in-RAM run",
+          "[io][parquet][streaming]")
+{
+  std::vector<std::vector<double>> series;
+  std::vector<std::string> names;
+  for (int i = 0; i < 150; ++i) {
+    const double base = 10.0 * (i % 3) + 0.01 * i;
+    series.push_back({ base, base + 1.0, base + 0.5, base + 2.0 });
+    names.push_back("s" + std::to_string(i));
+  }
+
+  dtwc::algorithms::CLARAOptions options;
+  options.n_clusters = 3;
+  options.sample_size = 30;
+  options.n_samples = 2;
+  options.random_seed = 7;
+
+  dtwc::Problem in_ram{"clara_in_ram"};
+  in_ram.set_data(dtwc::Data(std::vector<std::vector<double>>(series),
+                             std::vector<std::string>(names)));
+  const auto expected = dtwc::algorithms::fast_clara(in_ram, options);
+
+  auto schema = arrow::schema({ arrow::field("data", arrow::list(arrow::float64())) });
+  auto tmp = tmpdir() / "clara_streaming.parquet";
+  write_parquet(tmp, arrow::Table::Make(schema, { make_list_f64(series) }));
+  options.ram_limit_bytes = 1u << 20;
+  options.parquet_path = tmp;
+  options.parquet_column = "data";
+  options.force_parquet_streaming = true;
+  dtwc::Problem settings_only{"clara_streamed"};
+  const auto streamed = dtwc::algorithms::fast_clara(settings_only, options);
+  std::filesystem::remove(tmp);
+
+  CHECK(streamed.medoid_indices == expected.medoid_indices);
+  CHECK(streamed.labels == expected.labels);
+  CHECK(streamed.total_cost == expected.total_cost);
+  CHECK(streamed.labels.size() == series.size());
+}
+
 #else
 
 // An Arrow build without Parquet must not pass on the Arrow cases alone: this
