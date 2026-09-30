@@ -615,6 +615,26 @@ function test_find_total_cost_before_clustering_is_an_error(testCase)
     verifyError(testCase, @() dtwc_mex('Problem_find_total_cost', h), 'dtwc:invalidArgument');
 end
 
+function test_replacing_the_series_with_as_many_drops_the_clustering(testCase)
+%   The old labels describe the old series: a Problem_set_data with the same N left
+%   them counting as a clustering, so the cost of the new series was read from them.
+    h = int_problem(testCase);   % N = 4
+    dtwc_mex('Problem_set_n_clusters', h, 2);
+    dtwc_mex('Problem_cluster', h);
+    verifyGreaterThan(testCase, dtwc_mex('Problem_find_total_cost', h), 0);
+    dtwc_mex('Problem_set_data', h, [1 2 3 4 5; 2 3 4 5 6; 7 7 7 7 7; 8 7 6 5 4]);
+    err = [];
+    try
+        dtwc_mex('Problem_find_total_cost', h);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'the stale clustering was costed');
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifySubstring(testCase, err.message, 'cluster it first');
+    dtwc_mex('Problem_cluster', h);   % the control: a clustering of the new series
+    verifyGreaterThan(testCase, dtwc_mex('Problem_find_total_cost', h), 0);
+end
+
 function test_set_n_clusters_and_set_band_refuse_values_with_no_meaning(testCase)
 %   set_n_clusters(-1) was an untyped "vector too long" (dtwc:internal), and
 %   set_n_clusters(0) and set_band(-5) were accepted (a band below -1 ran as

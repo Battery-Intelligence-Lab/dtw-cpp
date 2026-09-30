@@ -48,7 +48,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   R2024b), or, after `set_n_clusters`, its zeros. `print_clusters`, `write_medoid_members`, `calculate_medoids` and the scores
   refuse the same way. `set_n_clusters` no longer sizes `clusters_ind` and `centroids_ind`, which stay empty until a
   clustering writes them; a Problem is clustered when it holds one label per series and one medoid per cluster
-  (`Problem::require_clustered`), so a clustering goes stale when `set_n_clusters` or the data change its shape.
+  (`Problem::require_clustered`), so a clustering goes stale when `set_n_clusters` changes the count; `set_data` and
+  `set_view_data` empty both vectors, whatever the new number of series (the labels describe the old series).
 - **Changed (C++, Python, MATLAB):** `set_n_clusters(k)` with k < 1 raises `InvalidInput` naming the value; v1.0.0
   (`set_numberOfClusters`) accepted k = 0, which `cluster()` refused later, and failed on k = -1 with an untyped "vector too
   long" from a resize. `set_band(b)` with b < -1 raises the same, so `dtwc_cl --band -5` stops with that error where v1.0.0

@@ -294,7 +294,8 @@ in the MEX); it has no series, name or medoid accessor.
 A `Problem` holds a clustering when `clusters_ind` has one label per series and
 `centroids_ind` one medoid per cluster. Both stay empty until a clustering writes
 them (`set_result`, `set_clusters` for the medoids, the algorithms):
-`set_n_clusters` sizes neither. `find_total_cost`, `write_clusters`,
+`set_n_clusters` sizes neither, and `set_data` and `set_view_data` empty both (the
+labels describe the series they were computed on). `find_total_cost`, `write_clusters`,
 `print_clusters`, `write_medoid_members`, `calculate_medoids`, the scores and
 Python's `centroid_of` raise `InvalidInput` ("... cluster it first") on a
 `Problem` that holds none, one check per call; C++ `centroid_of(i)` stays

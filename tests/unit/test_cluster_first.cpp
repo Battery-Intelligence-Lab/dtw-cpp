@@ -189,6 +189,37 @@ TEST_CASE("a clustering goes stale when the cluster count changes", "[problem][c
   CHECK(files_in(dir.path) == 0);
 }
 
+TEST_CASE("replacing the series drops the clustering, even with as many series",
+          "[problem][cluster-first]")
+{
+  ScratchDirectory dir{ "cluster_first_replaced" };
+  auto prob = six_series(dir.path);
+  prob.set_n_clusters(2);
+  prob.cluster();
+  REQUIRE_NOTHROW(prob.find_total_cost());
+
+  SECTION("set_data")
+  {
+    auto changed = kSeries;
+    changed[0] = { 5, 5, 5, 5 };
+    prob.set_data(dtwc::Data(std::move(changed), std::vector(kNames)));
+  }
+  SECTION("set_view_data")
+  {
+    std::vector<std::span<const double>> spans(kSeries.rbegin(), kSeries.rend());
+    std::vector<std::string_view> names(kNames.begin(), kNames.end());
+    prob.set_view_data(dtwc::Data(std::move(spans), std::move(names), 1));
+  }
+  CHECK(prob.labels().empty());
+  CHECK(prob.medoids().empty());
+  CHECK(prob.n_clusters() == 2); // the requested count is a setting, not an output
+  require_every_reader_refuses(prob);
+  CHECK(files_in(dir.path) == 0);
+
+  prob.cluster(); // a clustering of the new series is a clustering again
+  CHECK_NOTHROW(prob.find_total_cost());
+}
+
 TEST_CASE("the refusal names the counts it found", "[problem][cluster-first]")
 {
   ScratchDirectory dir{ "cluster_first_counts" };
