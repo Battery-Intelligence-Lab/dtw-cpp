@@ -480,10 +480,6 @@ cmd_submit_cluster() {
         echo "ERROR: band must be -1 or a non-negative integer: ${BAND}" >&2
         exit 1
     }
-    if [[ "${BAND}" != "-1" ]] && ! decimal_leq "${BAND}" "2147483647"; then
-        echo "ERROR: band exceeds the dtwc_cl int range: ${BAND}" >&2
-        exit 1
-    fi
     (( ${#NAME} >= 1 && ${#NAME} <= 128 )) \
         && [[ "${NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || {
         echo "ERROR: job name must be 1-128 ASCII letters, digits, '.', '_', or '-': ${NAME}" >&2
@@ -509,28 +505,18 @@ cmd_submit_cluster() {
         echo "ERROR: n_init must be a positive integer: ${N_INIT}" >&2
         exit 1
     }
-    decimal_leq "${N_INIT}" "2147483647" || {
-        echo "ERROR: n_init exceeds the dtwc_cl int range: ${N_INIT}" >&2
-        exit 1
-    }
     [[ -z "${SEED}" || "${SEED}" =~ ^[0-9]+$ ]] || {
         echo "ERROR: seed must be a non-negative integer: ${SEED}" >&2
         exit 1
     }
-    [[ "${MAX_ITER}" =~ ^[1-9][0-9]*$ ]] \
-        && decimal_leq "${MAX_ITER}" "2147483647" || {
-        echo "ERROR: max_iter must fit the dtwc_cl positive int range: ${MAX_ITER}" >&2
+    [[ "${MAX_ITER}" =~ ^[1-9][0-9]*$ ]] || {
+        echo "ERROR: max_iter must be a positive integer: ${MAX_ITER}" >&2
         exit 1
     }
     [[ "${DEVICE}" =~ ^(cpu|cuda(:[0-9]+)?)$ ]] || {
         echo "ERROR: unsupported remote device: ${DEVICE}" >&2
         exit 1
     }
-    if [[ "${DEVICE}" == cuda:* ]] \
-        && ! decimal_leq "${DEVICE#cuda:}" "2147483647"; then
-        echo "ERROR: remote CUDA ordinal exceeds the dtwc_cl int range: ${DEVICE}" >&2
-        exit 1
-    fi
     [[ "${VARIANT}" =~ ^(standard|ddtw|wdtw|adtw|msm|twe)$ ]] || {
         echo "ERROR: unsupported variant: ${VARIANT}" >&2
         exit 1
