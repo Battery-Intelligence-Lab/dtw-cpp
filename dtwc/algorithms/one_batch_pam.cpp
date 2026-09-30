@@ -6,18 +6,22 @@
 #include "one_batch_pam.hpp"
 
 #include "../Problem.hpp"
+#include "../core/dtw_dispatch.hpp"
+#include "../core/dtw_kernel.hpp"
 #include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <limits>
 #include <numeric>
 #include <random>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -85,23 +89,52 @@ struct FixedBatchDistances {
     for (std::size_t j = 0; j < m; ++j)
       sample_position[static_cast<std::size_t>(sample[j])] = static_cast<index_t>(j);
 
-    // Each worker writes a disjoint row.
+    // Each worker writes a disjoint row. Row i takes its batch columns W at a
+    // time through the lane function (the entry Problem's fill uses, resolved
+    // once here; each of its distances is bitwise the per-pair one) where the
+    // block's series are as long as series i; every other column, and every
+    // request the lanes do not cover, goes pair by pair. The block at the end of
+    // the batch repeats its last column in the lanes past it, whose results are
+    // dropped, and a block holding series i computes that self-pair and drops it.
     std::vector<std::uint64_t> row_evaluations(n, 0);
     std::vector<double> row_maxima(n, 0.0);
+    const auto block_f32 = core::resolve_dtw_block_fn<float>(problem);
+    const auto block_f64 = core::resolve_dtw_block_fn<data_t>(problem);
     auto fill_row = [&](std::size_t i) {
       double row_max = 0.0;
       std::uint64_t calls = 0;
-      for (std::size_t j = 0; j < m; ++j) {
-        double d = 0.0;
-        if (i != static_cast<std::size_t>(sample[j])) {
-          d = dtw(i, static_cast<std::size_t>(sample[j]));
-          ++calls;
+      auto fill_blocks = [&](auto x, auto column, const auto &block) {
+        using T = typename decltype(x)::value_type;
+        constexpr std::size_t W = core::dtw_lanes<T>;
+        std::array<std::span<const T>, W> ys;
+        std::array<double, W> lane;
+        for (std::size_t j0 = 0; j0 < m; j0 += W) {
+          const std::size_t count = std::min(W, m - j0);
+          bool lanes = static_cast<bool>(block);
+          for (std::size_t w = 0; lanes && w < W; ++w) {
+            ys[w] = column(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
+            lanes = ys[w].size() == x.size();
+          }
+          if (lanes) block(x, ys, lane);
+          for (std::size_t w = 0; w < count; ++w) {
+            const auto column_series = static_cast<std::size_t>(sample[j0 + w]);
+            double d = 0.0;
+            if (i != column_series) {
+              d = lanes ? lane[w] : dtw(i, column_series);
+              ++calls;
+            }
+            if (!std::isfinite(d) || d < 0.0)
+              throw InvalidInput("one_batch_pam: distance function returned a non-finite or negative value.");
+            raw[i * m + j0 + w] = d;
+            row_max = std::max(row_max, d);
+          }
         }
-        if (!std::isfinite(d) || d < 0.0)
-          throw InvalidInput("one_batch_pam: distance function returned a non-finite or negative value.");
-        raw[i * m + j] = d;
-        row_max = std::max(row_max, d);
-      }
+      };
+      if (prob.data().is_f32())
+        fill_blocks(prob.data().series_f32(i),
+                    [&](std::size_t c) { return prob.data().series_f32(c); }, block_f32);
+      else
+        fill_blocks(prob.series(i), [&](std::size_t c) { return prob.series(c); }, block_f64);
       row_evaluations[i] = calls;
       row_maxima[i] = row_max;
     };

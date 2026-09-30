@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -238,7 +239,8 @@ std::string capture_stderr(Function&& function)
 // <random> distribution). Steps are multiples of 0.001, which binary64 cannot
 // hold, so the DTW sums are inexact and a reduction whose order followed the
 // thread count would change the last bits of the cost.
-Problem make_walk_problem(int n, int length)
+template <typename T>
+Data walk_data(const std::vector<std::size_t> &lengths)
 {
   std::uint64_t state = 0x9E3779B97F4A7C15ull;
   const auto next = [&state] {
@@ -248,20 +250,26 @@ Problem make_walk_problem(int n, int length)
     z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
     return z ^ (z >> 31);
   };
-  std::vector<std::vector<data_t>> series;
+  std::vector<std::vector<T>> series;
   std::vector<std::string> names;
-  for (int i = 0; i < n; ++i) {
-    std::vector<data_t> walk(static_cast<std::size_t>(length));
+  for (std::size_t i = 0; i < lengths.size(); ++i) {
+    std::vector<T> walk(lengths[i]);
     double x = 0.0;
-    for (double &value : walk) {
+    for (T &value : walk) {
       x += (static_cast<double>(next() % 2001) - 1000.0) / 1000.0;
-      value = x;
+      value = static_cast<T>(x);
     }
     series.push_back(std::move(walk));
     names.push_back("w" + std::to_string(i));
   }
+  return Data(std::move(series), std::move(names));
+}
+
+Problem make_walk_problem(int n, int length)
+{
   Problem problem("one_batch_walks");
-  problem.set_data(Data(std::move(series), std::move(names)));
+  problem.set_data(walk_data<data_t>(std::vector<std::size_t>(static_cast<std::size_t>(n),
+                                                              static_cast<std::size_t>(length))));
   return problem;
 }
 
@@ -293,10 +301,10 @@ int workers_granted()
 /// The scan the final assignment replaced: each point against the medoids in
 /// slot order, the first strictly nearest wins, a medoid tied with another
 /// serves itself, the objective is point-ordered.
-core::ClusteringResult serial_assignment(Problem &problem, const std::vector<index_t> &medoids)
+template <typename Distance>
+core::ClusteringResult serial_assignment(std::size_t n, const std::vector<index_t> &medoids,
+                                         Distance &&distance)
 {
-  const auto &dtw = problem.dtw_function();
-  const std::size_t n = problem.size();
   core::ClusteringResult result;
   result.medoid_indices = medoids;
   result.labels.assign(n, 0);
@@ -305,7 +313,7 @@ core::ClusteringResult serial_assignment(Problem &problem, const std::vector<ind
     double best = std::numeric_limits<double>::infinity();
     for (std::size_t slot = 0; slot < medoids.size(); ++slot) {
       const auto medoid = static_cast<std::size_t>(medoids[slot]);
-      const double d = point == medoid ? 0.0 : dtw(problem.series(point), problem.series(medoid));
+      const double d = point == medoid ? 0.0 : distance(point, medoid);
       if (d < best) { best = d; result.labels[point] = static_cast<index_t>(slot); }
     }
     cost[point] = best;
@@ -316,6 +324,14 @@ core::ClusteringResult serial_assignment(Problem &problem, const std::vector<ind
   }
   result.total_cost = core::detail::ordered_medoid_objective(cost, "serial_assignment");
   return result;
+}
+
+core::ClusteringResult serial_assignment(Problem &problem, const std::vector<index_t> &medoids)
+{
+  const auto &dtw = problem.dtw_function();
+  return serial_assignment(problem.size(), medoids, [&](std::size_t point, std::size_t medoid) {
+    return dtw(problem.series(point), problem.series(medoid));
+  });
 }
 
 } // namespace
@@ -839,4 +855,76 @@ TEST_CASE("OneBatchPAM's parallel final assignment reports the failure a serial 
     if (serial.find("nearest-medoid distance at point") != std::string::npos) ++failed_in_assignment;
   }
   REQUIRE(failed_in_assignment > 0);
+}
+
+namespace {
+
+bool same_bits(double a, double b)
+{
+  return std::memcmp(&a, &b, sizeof(double)) == 0;
+}
+
+} // namespace
+
+TEST_CASE("OneBatchPAM's batch table through the lanes is bitwise the per-pair table",
+          "[one_batch_pam][lanes]")
+{
+  // The table fill takes W columns of a row at a time through the lane function
+  // (W = 8 for float64, 16 for float32) where they are as long as the row's
+  // series, and every other column pair by pair. With the batch the whole data
+  // set, every selected medoid is a table column and the final labels and cost
+  // read N x k entries of the table: each must be the bits of the per-pair
+  // function, whichever lane its column fell in. The batch order is the seed's,
+  // so the seeds move the columns across the lanes and the blocks.
+  struct FillCase
+  {
+    const char *name;
+    bool f32;
+    std::vector<std::size_t> lengths; // one per series
+    int band;
+    core::MetricType metric;
+  };
+  constexpr std::size_t n = 70; // above the 64-row threshold of the OpenMP path
+  std::vector<std::size_t> alternating, mostly_one;
+  for (std::size_t i = 0; i < n; ++i) alternating.push_back(i % 2 ? 53 : 50);
+  for (std::size_t i = 0; i < n; ++i) mostly_one.push_back(i % 9 == 4 ? 53 : 50);
+  const std::vector<FillCase> cases{
+    { "float64, equal lengths, full", false, std::vector<std::size_t>(n, 50), -1, core::MetricType::L1 },
+    { "float64, equal lengths, band 6, squared L2", false, std::vector<std::size_t>(n, 50), 6,
+      core::MetricType::SquaredL2 },
+    { "float32, equal lengths, full", true, std::vector<std::size_t>(n, 50), -1, core::MetricType::L1 },
+    { "float32, equal lengths, band 4, squared L2", true, std::vector<std::size_t>(n, 50), 4,
+      core::MetricType::SquaredL2 },
+    { "float64, two lengths half and half", false, alternating, 3, core::MetricType::L1 },
+    { "float64, two lengths, some blocks of one length", false, mostly_one, -1, core::MetricType::L1 },
+    { "float32, two lengths, some blocks of one length", true, mostly_one, 5,
+      core::MetricType::SquaredL2 },
+  };
+
+  for (const auto &c : cases) {
+    for (std::uint64_t seed = 1; seed <= 4; ++seed) {
+      CAPTURE(c.name, seed);
+      Problem problem("one_batch_lanes");
+      problem.set_data(c.f32 ? walk_data<float>(c.lengths) : walk_data<data_t>(c.lengths));
+      problem.set_band(c.band);
+      problem.set_metric(c.metric);
+      algorithms::OneBatchPAMOptions options;
+      options.n_clusters = 10;
+      options.batch_size = static_cast<index_t>(n);
+      options.random_seed = seed;
+      algorithms::OneBatchPAMStats stats;
+      const auto result = algorithms::one_batch_pam(problem, options, &stats);
+
+      const auto oracle = serial_assignment(n, result.medoid_indices,
+        [&](std::size_t point, std::size_t medoid) {
+          return c.f32 ? problem.dtw_function_f32()(problem.data().series_f32(point),
+                                                    problem.data().series_f32(medoid))
+                       : problem.dtw_function()(problem.series(point), problem.series(medoid));
+        });
+      CHECK(result.labels == oracle.labels);
+      CHECK(same_bits(result.total_cost, oracle.total_cost));
+      // The N x N table minus its diagonal; every medoid is in the batch.
+      CHECK(stats.distance_evaluations == n * (n - 1));
+    }
+  }
 }
