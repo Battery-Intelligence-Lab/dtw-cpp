@@ -16,8 +16,8 @@ grep them for the symbol or finding id you need.
 
 1. No runtime dependence on repo-relative paths. Never put the repo root on an include path (on a
    case-insensitive filesystem the root `VERSION` file shadows `<version>`).
-2. A user-visible change against v1.0.0 gets a CHANGELOG line. Every change adds or adjusts tests; keep lint
-   clean.
+2. A user-visible change against v1.0.0 gets a CHANGELOG line. A change adds or adjusts a test only where a
+   contract needs one (Volkan 09-30: no tests just for writing tests); keep lint clean.
 3. Optional dependencies only (HiGHS, Gurobi, CUDA, Metal, llfio, Arrow, YAML; OpenMP unless
    `DTWC_ALLOW_SEQUENTIAL`). The core builds without them. No silent fallback, ever: a request that
    cannot be honoured is a typed error.
