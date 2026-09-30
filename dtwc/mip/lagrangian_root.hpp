@@ -33,25 +33,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace dtwc {
-class Problem;
-}
-
 namespace dtwc::mip {
-
-/// @brief Tuning knobs for the subgradient ascent (safe defaults).
-struct LagrangianParams
-{
-  int max_iters = 4000;        ///< Subgradient iteration cap.
-  double rel_gap_tol = 1e-6;   ///< Certify optimal when (UB − LB)/max(|UB|,ε) ≤ this.
-  double lambda0 = 1.0;        ///< Initial Polyak step scale λ ∈ (0, 2] (1.0 = damped, well inside the convergent range).
-  int stall_halve = 20;        ///< Halve λ after this many iters with no LB improvement.
-  double lambda_min = 1e-4;    ///< Floor for λ — CLAMPED here (never frozen), so diminishing steps keep converging.
-  double deflect = 1.5;        ///< CFM subgradient deflection γ ∈ [0,2) — steers the step off the previous direction to kill zig-zag (0 = plain subgradient).
-  int polish_period = 16;      ///< Run the O(N²) medoid polish every this many iters (a cheap O(Nk) assignment repair still runs EVERY iter).
-  int kelley_max_major = 500;  ///< Cutting-plane (Kelley) variant only: cap on major iterations (each adds one cut + re-solves the small master LP).
-  std::int64_t max_nodes = 2000000; ///< Exact B&B (lagrangian_root_exact) only: cap on branch-and-bound nodes before giving up (returns best-so-far, certified_optimal=false — never silent).
-};
 
 /// @brief Result of a Lagrangian-root solve. Bounds are in RAW distance units
 ///        (unscaled Σ_j min_{i∈S} D_ij), so they compare directly to a
@@ -67,7 +49,7 @@ struct LagrangianResult
   std::vector<double> multipliers;  ///< μ at termination (size N).
   int iterations = 0;               ///< subgradient iterations actually run (root dual).
   int n_core = 0;                   ///< candidate medoids surviving reduced-cost fixing (≤ N) = core.size().
-  std::vector<int> core;            ///< the surviving candidate facilities (Task 4.2), ascending; consumed by 4.3.
+  std::vector<int> core;            ///< candidate facilities surviving reduced-cost fixing, ascending.
   long nodes = 0;                   ///< exact B&B nodes explored (lagrangian_root_exact); 0 for the bound-only routines.
 };
 
@@ -79,13 +61,11 @@ struct LagrangianResult
  * @param k          Number of medoids, 1 ≤ k ≤ N.
  * @param initial_ub A heuristic upper bound (e.g. FastPAM cost). If ≤ 0 the
  *                   routine bootstraps its own bound from the first primal repair.
- * @param params     Subgradient tuning.
  * @return Lower/upper bounds, gap, the best primal clustering, and n_core.
  * @throws dtwc::InvalidInput if N ≤ 0 or k ∉ [1, N].
  */
 LagrangianResult lagrangian_root(const double *D, int N, int k,
-                                 double initial_ub = -1.0,
-                                 const LagrangianParams &params = {});
+                                 double initial_ub = -1.0);
 
 /**
  * @brief Same Lagrangian bound, solved by a Kelley CUTTING-PLANE method — the
@@ -103,11 +83,10 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
  * Requires HiGHS for the master LP (the subgradient variant above is the
  * solver-free default). Throws dtwc::SolverError if HiGHS is not compiled in.
  *
- * @param D,N,k,initial_ub,params  As lagrangian_root; uses params.kelley_max_major.
+ * @param D,N,k,initial_ub  As lagrangian_root.
  */
 LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
-                                        double initial_ub = -1.0,
-                                        const LagrangianParams &params = {});
+                                        double initial_ub = -1.0);
 
 /**
  * @brief EXACT p-median solve: LR-bounded branch-and-bound on y over the core —
@@ -127,25 +106,17 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
  *
  * On well-separated data the root certifies immediately and the tree is a single
  * node (the P1 regime). On the adversarial regime (uniform non-metric D, large
- * integrality gap) the tree can grow; @p params.max_nodes caps it and the routine
+ * integrality gap) the tree can grow; @p max_nodes caps it and the routine
  * then returns the best incumbent with `certified_optimal = false` (never a silent
  * wrong answer).
  *
- * @param D,N,k,initial_ub,params  As lagrangian_root; uses params.max_nodes.
+ * @param D,N,k,initial_ub  As lagrangian_root.
+ * @param max_nodes  Branch-and-bound node cap (MIPSettings::lr_max_nodes).
  * @return `certified_optimal = true` and `lower_bound == upper_bound == optimum`
  *         when the tree is fully explored within the node cap.
  */
 LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
                                        double initial_ub = -1.0,
-                                       const LagrangianParams &params = {});
-
-/**
- * @brief Lagrangian root bound for a Problem: fills the distance matrix (if
- *        needed), seeds the upper bound with the in-repo k-medoids heuristic,
- *        materializes a dense copy of D, and calls the core routine.
- * @param prob   Problem with data set; its distance matrix is filled if needed.
- * @param params Subgradient tuning.
- */
-LagrangianResult lagrangian_root(Problem &prob, const LagrangianParams &params = {});
+                                       std::int64_t max_nodes = 2000000);
 
 } // namespace dtwc::mip

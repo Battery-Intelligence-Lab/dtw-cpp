@@ -78,9 +78,9 @@ Canonical keys and aliases represented by the live CLI are:
 | Input/output | `--input`, `--output`, `--name`, `--column`, `--dtype`, `--data-precision`, `--data-type`, `--skip-rows`, `--skip-cols`, `--delimiter`, `--ram-limit` |
 | Clustering | `--n-clusters`, `--method`, `--max-iter`, `--n-init`, `--seed` |
 | Distances | `--band`, `--metric`, `--variant`, `--missing-strategy`, `--mv-mode`, `--wdtw-g`, `--adtw-penalty`, `--sdtw-gamma`, `--msm-c`, `--twe-nu`, `--twe-lambda` |
-| FastCLARA/OneBatch/TADPole | `--sample-size`, `--n-samples`, `--batch-size`, `--batch-weighting`, `--dc` |
+| FastCLARA/OneBatch/TADPole | `--sample-size`, `--n-samples`, `--batch-size`, `--dc` |
 | Hierarchical | `--linkage` |
-| Exact solvers | `--solver`, `--mip-gap`, `--time-limit`, `--no-warm-start`, `--numeric-focus`, `--mip-focus`, `--verbose-solver`, `--benders`, `--max-benders-iter`, `--lr-max-nodes` |
+| Exact solvers | `--solver`, `--mip-gap`, `--time-limit`, `--no-warm-start`, `--numeric-focus`, `--mip-focus`, `--verbose-solver`, `--lr-max-nodes` |
 | Device/storage | `--device`, `--gpu-precision`, `--gpu-dtype`, `--dist-matrix`, `--checkpoint`, `--checkpoint-interval`, `--mmap-threshold` |
 | Diagnostics | `--verbose` |
 

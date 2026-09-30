@@ -50,6 +50,6 @@ The recorded claims are intentionally not polished after the fact:
 
 See the [full derivation and registered-band ledger](../../math/lr-core/).
 
-HiGHS PDLP is retained as an LP-bound cross-check, not as the production
-p-median solver: the recorded comparison found matrix-free Kelley substantially
-faster at tested sizes even when GPU PDLP crossed over its CPU variant.
+HiGHS PDLP was tried as an LP-bound cross-check and removed: the recorded
+comparison found matrix-free Kelley substantially faster at tested sizes even
+when GPU PDLP crossed over its CPU variant.

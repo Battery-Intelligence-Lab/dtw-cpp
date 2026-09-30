@@ -1101,8 +1101,7 @@ class TestClusterMethodDispatch:
 #   build_dendrogram (m.def, prob + default opts), cut_dendrogram (dend, prob, k),
 #   Problem.set_n_clusters / .method / .cluster / .clusters_ind /
 #   .centroids_ind / .find_total_cost, Method.MIP / Method.Kmedoids.
-# Task 2.1: _run_local_method now calls the canonical Problem.set_n_clusters
-# (was the deprecated set_number_of_clusters); the fakes below pin that name.
+# _run_local_method calls Problem.set_n_clusters; the fakes below pin that name.
 # ---------------------------------------------------------------------------
 class TestLocalDispatchBindingNames:
     @pytest.mark.parametrize(
@@ -1333,10 +1332,9 @@ class TestLocalDispatchBindingNames:
 # Result write-back moved to the C++ core (api-contract-2.0.md §2.5, Task 1.6/2.1)
 #
 # 1.x wired labels/medoids/k back into Problem inside the *binding* lambdas
-# (_dtwcpp_core.cpp fast_pam/fast_clara/clarans, lines 573-576/615-619/744-747).
+# (_dtwcpp_core.cpp fast_pam/fast_clara).
 # Task 2.1 DELETES that wrapper-side wiring — the C++ algorithm free functions now
-# do it (fast_pam.cpp:261-263, fast_clara.cpp:508-510, clarans.cpp:215-217,
-# hierarchical.cpp:243-245). These tests pin the behaviour END-TO-END: after a
+# do it (fast_pam.cpp, fast_clara.cpp, hierarchical.cpp). These tests pin the behaviour END-TO-END: after a
 # REAL algorithm call on a REAL Problem, with NO Python-side assignment to
 # clusters_ind/centroids_ind, the results are already visible on the Problem
 # (labels()/medoids()) and the scores read them. If the write-back regressed,
@@ -1371,15 +1369,6 @@ class TestResultWriteBackInCpp:
         assert list(p.labels()) == list(res.labels)
         assert p.n_clusters() == 2
         assert len(dtwcpp.silhouette(p)) == 12
-
-    def test_clarans_writes_back_without_wrapper(self):
-        """drives dtwcpp.clarans(prob, opts)."""
-        p = self._filled_problem()
-        opts = dtwcpp.CLARANSOptions()
-        opts.n_clusters = 2
-        res = dtwcpp.clarans(p, opts)
-        assert list(p.labels()) == list(res.labels)
-        assert p.n_clusters() == 2
 
     def test_cut_dendrogram_writes_back_without_wrapper(self):
         """drives build_dendrogram + cut_dendrogram — 2.0 also writes back (§2.5)."""

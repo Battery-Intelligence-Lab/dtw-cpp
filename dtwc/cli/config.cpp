@@ -220,8 +220,6 @@ void bind(CLI::App &app, Config &config)
   key(app, "--n-samples", config.n_samples, "CLARA number of subsamples");
   key(app, "--seed", config.seed, "Random seed for stochastic clustering and MIP warm starts");
   key(app, "--batch-size", config.batch_size, "OneBatchPAM fixed objective batch size (-1 = logarithmic auto)");
-  key(app, "--batch-weighting", config.batch_weighting, algorithms::one_batch_weighting_names, "batch weighting",
-      "OneBatchPAM weighting: uniform, debiased, nniw");
   key(app, "--linkage", config.linkage, algorithms::linkage_names, "linkage",
       "Hierarchical linkage: single, complete, average");
 
@@ -259,16 +257,6 @@ void bind(CLI::App &app, Config &config)
   key(app, "--numeric-focus", config.mip.numeric_focus, "Gurobi NumericFocus (0-3, default: 1)");
   key(app, "--mip-focus", config.mip.mip_focus, "Gurobi MIPFocus (0-3, default: 2)");
   key(app, "--verbose-solver", config.mip.verbose_solver, "Show MIP solver log output");
-  // Without the transformer, `--benders ON`, `true` or the typo `of` reach
-  // Problem::cluster_by_mip(), whose test is `benders == "on"`, and mean OFF.
-  key(app, "--benders", config.mip.benders, "Benders decomposition: auto (N>200), on, off")
-    ->transform(CLI::CheckedTransformer(
-      std::map<std::string, std::string>{ { "auto", "auto" }, { "on", "on" }, { "off", "off" },
-                                          { "true", "on" }, { "false", "off" }, { "yes", "on" },
-                                          { "no", "off" }, { "1", "on" }, { "0", "off" } },
-      CLI::ignore_case));
-  key(app, "--max-benders-iter", config.mip.max_benders_iter,
-      "Benders iteration cap; a MIP that reaches it fails with SolverError");
   key(app, "--lr-max-nodes", config.mip.lr_max_nodes, "Branch-and-bound node cap of --method lrcore");
 
   // Compute device

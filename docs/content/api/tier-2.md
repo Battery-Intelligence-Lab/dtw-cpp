@@ -26,7 +26,7 @@ a field does not.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
-| k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; retained C++ `set_numberOfClusters` and Python `set_number_of_clusters` are deprecated warning aliases |
+| k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; the retained C++ `set_numberOfClusters` is a deprecated warning alias |
 | method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
 | max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | public `int maxIter` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
@@ -40,16 +40,13 @@ a field does not.
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
-| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
+| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
 | problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |
 | data (owning) | `data() const` / `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | read-only C++ accessor plus live setters |
-| data (view) | `set_view_data(Data)` | `set_view_data(...)` `[introduced-2.0; gap F26: owning copy]` | — | C++ view path is live; Python name is live but not non-owning |
-
-Python `Problem.set_view_data` currently constructs owning nested-vector
-storage before calling C++; it is not a non-owning ndarray view (F26).
+| data (view) | `set_view_data(Data)` | — | — | C++ only: the view path CLARA uses; no binding exposes it |
 
 ### 2.2 `Problem` — distance-matrix & clustering methods `[rename: camelCase → snake_case]`
 
@@ -64,7 +61,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
 | — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
-| — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
+| — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
 | `assignClusters()` | `assign_clusters()` | `assign_clusters()` (live) | — |
@@ -84,10 +81,8 @@ read and written through the same `get` / `set`. The Python/MATLAB spelling
 returns an NxN numeric matrix of either storage; Python returns an independent
 copy. The language-specific semantics are retained.
 
-**‡ Python read/write rename.** `distance_matrix()` and
-`set_distance_matrix()` are canonical and live. The old
-`distance_matrix_numpy()`/`set_distance_matrix_from_numpy()` spellings remain
-compatibility aliases; each emits one caller-attributed `DeprecationWarning`.
+**‡ Python read/write names.** `distance_matrix()` and
+`set_distance_matrix()` are the only spellings; no `_numpy` variant exists.
 
 **Reading and writing files (2026-09-24).** `read_distance_matrix(path)` takes
 only a matrix of this `Problem`'s size: a file whose row count is not the series
@@ -149,23 +144,20 @@ Canonical scheme drops the redundant `Index`/`Information` noun (the fixed
 decision `daviesBouldinIndex → davies_bouldin` sets the pattern; applied
 uniformly). Same name in all three languages.
 
-| Concept | C++ retained 1.x alias (scores.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
-|---|---|---|---|---|
-| silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` (live) | `silhouette(prob)` (live) |
-| Davies–Bouldin | `daviesBouldinIndex(prob)` | **`davies_bouldin(prob)`** *(fixed)* | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
-| Dunn | `dunnIndex(prob)` | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
-| inertia | `inertia(prob)` | `inertia(prob)` | `inertia(prob)` (live) | `inertia(prob)` (live) |
-| Calinski–Harabasz | `calinskiHarabaszIndex(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
-| Adjusted Rand | `adjustedRandIndex(l1,l2)` | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
-| Normalized MI | `normalizedMutualInformation(l1,l2)` | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
+| Concept | C++ | Python | MATLAB |
+|---|---|---|---|
+| silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` |
+| Davies–Bouldin | `davies_bouldin(prob)` | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
+| Dunn | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
+| inertia | `inertia(prob)` | `inertia(prob)` | `inertia(prob)` |
+| Calinski–Harabasz | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
+| Adjusted Rand | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
+| Normalized MI | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
 
-Deprecated aliases retained one cycle (§4): Python `davies_bouldin_index`,
-`dunn_index`, `calinski_harabasz_index`, `adjusted_rand_index`,
-`normalized_mutual_information` (`_dtwcpp_core.cpp`); MATLAB the same five
-public spellings in their dedicated `+dtwc/*.m` compatibility wrappers. Every
-old Python/MATLAB call emits one deprecation warning before forwarding; the
-shared MEX score commands remain warning-silent. The canonical Adjusted-Rand
-and Normalized-MI spellings are adjudicated in §10 item 1.
+Only `silhouette` shipped in v1.0.0; the camelCase and `*_index` spellings were
+never released and are gone. `silhouette` on an unclustered Problem raises
+`InvalidInput`. The canonical Adjusted-Rand and Normalized-MI spellings are
+adjudicated in §10 item 1.
 
 ### 2.5 Algorithm free functions (Tier-2, all languages)
 
@@ -173,11 +165,10 @@ and Normalized-MI spellings are adjudicated in §10 item 1.
 |---|---|---|---|
 | FastPAM | `fast_pam(Problem&, int k, int max_iter=100)` | `fast_pam(prob, n_clusters, max_iter=100)` | `fast_pam(prob, k, 'max_iter',100)` |
 | FastCLARA | `algorithms::fast_clara(Problem&, CLARAOptions)` | `fast_clara(prob, n_clusters, sample_size=-1, n_samples=5, max_iter=100, seed=42)` | `fast_clara(prob, k, ...)` |
-| CLARANS | `algorithms::clarans(Problem&, CLARANSOptions)` | `clarans(prob, opts)` | `clarans(prob, k, ...)` |
 | dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` | `build_dendrogram(prob, ...)` |
 | dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, int k)` | `cut_dendrogram(dend, prob, k)` | `cut_dendrogram(dend, prob, k)` |
 
-**Result write-back (implemented).** `fast_pam`/`fast_clara`/`clarans` and
+**Result write-back (implemented).** `fast_pam`/`fast_clara` and
 `cut_dendrogram` write `labels`/`medoids`/`k` back into `Problem` in C++.
 Python and MATLAB both rely on that core-owned writeback; neither binding
 repeats the assignment.

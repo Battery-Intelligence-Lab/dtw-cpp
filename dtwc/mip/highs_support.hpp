@@ -4,8 +4,8 @@
  *
  * @details `Highs::setOptionValue` returns a status: an unknown option name, or
  * a value outside the option's domain, yields `kError`. Discarding that status
- * leaves the solve running on HiGHS's DEFAULTS — a mistyped `solver` string
- * quietly runs dual simplex while the result is still reported as a PDLP value.
+ * leaves the solve running on HiGHS's DEFAULTS while the caller believes its
+ * setting took effect.
  *
  * @author Volkan Kumtepeli
  * @date 02 Sep 2026

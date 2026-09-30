@@ -20,18 +20,19 @@
 #endif
 
 #ifdef DTWC_MEX_MATLAB_LIBOMP
-// On macOS this MEX runs on the libomp MATLAB ships (bindings/matlab/CMakeLists.txt).
-// R2026a's copy predates __kmpc_dispatch_deinit, which Clang (AppleClang 21 here)
-// calls after every dynamic or guided loop, so dyld refused to load the MEX. LLVM's
-// host runtime gives it an empty body in every release that has it (19.1.0 to
-// 23.1.1, openmp/runtime/src/kmp_dispatch.cpp), so this is the same behaviour.
+// On macOS this MEX runs on the libomp MATLAB ships, and on Windows with clang on
+// its libiomp5md (bindings/matlab/CMakeLists.txt). Neither has
+// __kmpc_dispatch_deinit, which Clang calls after every dynamic or guided loop:
+// R2026a's libomp predates it, so dyld refused to load the MEX, and libiomp5md
+// leaves it undefined at link time. LLVM's host runtime gives it an empty body in
+// every release that has it (19.1.0 to 23.1.1, openmp/runtime/src/kmp_dispatch.cpp),
+// so this is the same behaviour.
 extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #endif
 
 #include "../../dtwc/dtwc.hpp"
 #include "../../dtwc/algorithms/fast_pam.hpp"
 #include "../../dtwc/algorithms/fast_clara.hpp"
-#include "../../dtwc/algorithms/clarans.hpp"
 #include "../../dtwc/algorithms/hierarchical.hpp"
 #include "../../dtwc/scores.hpp"
 #include "../../dtwc/core/z_normalize.hpp"
@@ -41,11 +42,10 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/warping_missing.hpp"
 #include "../../dtwc/warping_missing_arow.hpp"
 #include "../../dtwc/soft_dtw.hpp"
-#include "../../dtwc/base/env.hpp"     // dtwc::Env / device() (contract §1.1, §6)
+#include "../../dtwc/base/env.hpp"     // detail::parse_device: the device-name grammar
 #include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
-#include "../../dtwc/mip/pdlp_lp.hpp" // dtwc::mip::pdlp_lp_bound (cross-language parity)
 #include "../../dtwc/core/distance_semantics.hpp" // parse_metric_token (checkpoint + metric routes)
 
 #include <string>
@@ -521,20 +521,12 @@ static dtwc::Solver parse_solver(const std::string &s) {
   throw std::invalid_argument("Unknown solver: '" + s + "'. Valid: 'highs', 'gurobi'.");
 }
 
-/// Parse storage policy string -> enum (contract §2.1 set_storage_policy).
-static dtwc::core::StoragePolicy parse_storage_policy(const std::string &s) {
-  if (s == "auto") return dtwc::core::StoragePolicy::Auto;
-  if (s == "heap") return dtwc::core::StoragePolicy::Heap;
-  if (s == "mmap") return dtwc::core::StoragePolicy::Mmap;
-  throw std::invalid_argument("Unknown storage_policy: '" + s + "'. "
-    "Valid: 'auto', 'heap', 'mmap'.");
-}
-
 // =========================================================================
 //  Problem lifecycle commands
 // =========================================================================
 
-/// Problem::set_device from a device name, parsed by the grammar dtwc::Env uses.
+/// Problem::set_device from a device name, parsed by dtwc::detail::parse_device,
+/// the grammar behind dtwc::device(name) and the CLI's --device.
 static void set_problem_device(dtwc::Problem &prob, const mxArray *device) {
   require_char(device, "device");
   const auto [selected, index] = dtwc::detail::parse_device(get_string(device));
@@ -782,7 +774,7 @@ static void cmd_Problem_get_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   if (nrhs < 2) throw std::invalid_argument("Problem_get_distance_matrix requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
-  const auto &dm = prob.dense_distance_matrix();
+  const auto &dm = prob.distance_matrix();
   size_t N = dm.size();
   mxArray *result = mxCreateDoubleMatrix(N, N, mxREAL);
   double *out = mxGetDoubles(result);
@@ -805,7 +797,7 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   if (N != prob.size())
     throw std::invalid_argument("Distance matrix size does not match problem size.");
 
-  auto &dm = prob.dense_distance_matrix();
+  auto &dm = prob.distance_matrix();
   dm.resize(N);
   const double *data = mxGetDoubles(prhs[2]);
   for (size_t i = 0; i < N; ++i)
@@ -815,13 +807,13 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
 }
 
 // =========================================================================
-//  Device / Env commands (contract §1.1, §6 — delegate to dtwc::Env)
+//  Device commands (contract §1.1, §6 — delegate to dtwc::device)
 // =========================================================================
 
-/// set_device(name) -> canonical name ("cpu"/"gpu"/"gpu:N"/"hpc"), exactly as
-/// C++ dtwc::device(name) returns it. Env::set_device throws dtwc::DeviceError
-/// (mapped to dtwc:deviceError) on any unknown name / gpu-without-backend / hpc
-/// .env failure — NEVER a silent fallback.
+/// set_device(name) -> canonical name ("cpu"/"gpu"/"gpu:N"), exactly as C++
+/// dtwc::device(name) returns it. It throws dtwc::DeviceError (mapped to
+/// dtwc:deviceError) on an unknown name, on hpc (which C++ and MATLAB do not
+/// have) and on gpu without a backend — NEVER a silent fallback.
 static void cmd_set_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("set_device requires a device-name string.");
   require_char(prhs[1], "device");   // validate BEFORE mxArrayToString deref
@@ -889,14 +881,6 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
   plhs[0] = mxCreateLogicalScalar(ok);  // false => requested solver not compiled in
 }
 
-static void cmd_Problem_set_storage_policy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("Problem_set_storage_policy requires handle and policy string.");
-  require_char(prhs[2], "storage_policy");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  const auto candidate = parse_storage_policy(get_string(prhs[2]));
-  prob.set_storage_policy(candidate);
-}
-
 static void cmd_Problem_set_output_folder(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_output_folder requires handle and folder string.");
   require_char(prhs[2], "output_folder");
@@ -911,8 +895,7 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   const mxArray *s = prhs[2];
   if (!mxIsStruct(s))
     throw std::invalid_argument("mip_settings must be a struct (fields: mip_gap, time_limit_sec, "
-      "warm_start, numeric_focus, mip_focus, verbose_solver, max_benders_iter, benders, "
-      "lr_max_nodes).");
+      "warm_start, numeric_focus, mip_focus, verbose_solver, lr_max_nodes).");
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap"))        m.mip_gap        = get_scalar(f, "mip_gap");
@@ -921,13 +904,8 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (mxArray *f = mxGetField(s, 0, "numeric_focus"))  m.numeric_focus  = static_cast<int>(get_scalar(f, "numeric_focus"));
   if (mxArray *f = mxGetField(s, 0, "mip_focus"))      m.mip_focus      = static_cast<int>(get_scalar(f, "mip_focus"));
   if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = (get_scalar(f, "verbose_solver") != 0.0);
-  if (mxArray *f = mxGetField(s, 0, "max_benders_iter")) m.max_benders_iter = static_cast<int>(get_scalar(f, "max_benders_iter"));
   if (mxArray *f = mxGetField(s, 0, "lr_max_nodes"))
     m.lr_max_nodes = exact_int_from_double(get_scalar(f, "lr_max_nodes"), "lr_max_nodes");
-  if (mxArray *f = mxGetField(s, 0, "benders")) {
-    if (!mxIsChar(f)) throw std::invalid_argument("mip_settings.benders must be a string ('auto'/'on'/'off').");
-    m.benders = get_string(f);
-  }
   prob.mip_settings = m;
 }
 
@@ -937,23 +915,18 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   const auto &m = prob.mip_settings;
   const char *fields[] = { "mip_gap", "time_limit_sec", "warm_start", "numeric_focus",
-                           "mip_focus", "verbose_solver", "max_benders_iter", "benders",
-                           "lr_max_nodes" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 9, fields);
+                           "mip_focus", "verbose_solver", "lr_max_nodes" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 7, fields);
   mxSetField(s, 0, "mip_gap", mxCreateDoubleScalar(m.mip_gap));
   mxSetField(s, 0, "time_limit_sec", mxCreateDoubleScalar(m.time_limit_sec));
   mxSetField(s, 0, "warm_start", mxCreateLogicalScalar(m.warm_start));
   mxSetField(s, 0, "numeric_focus", mxCreateDoubleScalar(m.numeric_focus));
   mxSetField(s, 0, "mip_focus", mxCreateDoubleScalar(m.mip_focus));
   mxSetField(s, 0, "verbose_solver", mxCreateLogicalScalar(m.verbose_solver));
-  mxSetField(s, 0, "max_benders_iter", mxCreateDoubleScalar(m.max_benders_iter));
-  mxSetField(s, 0, "benders", mxCreateString(m.benders.c_str()));
   mxSetField(s, 0, "lr_max_nodes", mxCreateDoubleScalar(static_cast<double>(m.lr_max_nodes)));
   plhs[0] = s;
 }
 
-/// set_cuda_settings(device_id, precision) — CUDA dispatch passthrough (contract §2.1).
-/// precision: 0 = Auto, 1 = FP32, 2 = FP64 (see CUDASettings docs).
 /// set_checkpoint(handle, struct) -- writes Problem::checkpoint, which
 /// fill_distance_matrix() consumes (contract 2.7). Fields are optional; the
 /// current value is kept for any field the struct omits.
@@ -992,12 +965,14 @@ static void cmd_Problem_get_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
   plhs[0] = s;
 }
 
+/// set_cuda_settings(device_id, precision) — CUDA dispatch passthrough (contract §2.1).
+/// precision: 0 = Auto, 1 = FP32, 2 = FP64, the values of dtwc::GpuPrecision.
 static void cmd_Problem_set_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_cuda_settings requires handle and device_id.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   auto settings = prob.cuda_settings;
   settings.device_id = get_exact_int(prhs[2], "device_id");
-  if (nrhs > 3) settings.precision = get_cuda_precision(prhs[3]);
+  if (nrhs > 3) settings.precision = static_cast<dtwc::GpuPrecision>(get_cuda_precision(prhs[3]));
   prob.set_cuda_settings(settings);
 }
 
@@ -1041,26 +1016,6 @@ static void cmd_Problem_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mx
 //  Checkpoint / resume commands (contract §2.7)
 // =========================================================================
 
-/// Reconstruct a core::ClusteringResult from a MATLAB result struct.
-/// Converts 1-based labels/medoid_indices back to 0-based at the MEX boundary.
-static dtwc::core::ClusteringResult mx_to_clustering_result(const mxArray *mx) {
-  if (!mxIsStruct(mx))
-    throw std::invalid_argument("result must be a struct with fields labels, medoid_indices, "
-      "total_cost, iterations, converged.");
-  dtwc::core::ClusteringResult r;
-
-  const mxArray *lab = mxGetField(mx, 0, "labels");
-  const mxArray *med = mxGetField(mx, 0, "medoid_indices");
-  if (!lab || !med)
-    throw std::invalid_argument("result struct is missing 'labels' or 'medoid_indices'.");
-  r.labels = label_vector_to_0based(lab, "result.labels");
-  r.medoid_indices = label_vector_to_0based(med, "result.medoid_indices");
-  if (mxArray *f = mxGetField(mx, 0, "total_cost")) r.total_cost = get_scalar(f, "total_cost");
-  if (mxArray *f = mxGetField(mx, 0, "iterations")) r.iterations = static_cast<int>(get_scalar(f, "iterations"));
-  if (mxArray *f = mxGetField(mx, 0, "converged")) r.converged = (get_scalar(f, "converged") != 0.0);
-  return r;
-}
-
 static void cmd_save_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("save_checkpoint requires handle and directory path.");
   require_char(prhs[2], "path");
@@ -1077,24 +1032,6 @@ static void cmd_load_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArr
   const bool ok = dtwc::load_checkpoint(prob, get_string(prhs[2]),
                                        optional_metric(nrhs, prhs, 3));
   plhs[0] = mxCreateLogicalScalar(ok);
-}
-
-static void cmd_save_binary_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("save_binary_checkpoint requires a result struct and a file path.");
-  require_char(prhs[2], "path");
-  const auto result = mx_to_clustering_result(prhs[1]);
-  dtwc::save_binary_checkpoint(result, std::filesystem::path(get_string(prhs[2])));
-}
-
-static void cmd_load_binary_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("load_binary_checkpoint requires a file path.");
-  require_char(prhs[1], "path");
-  dtwc::core::ClusteringResult result;
-  const bool ok = dtwc::load_binary_checkpoint(result, std::filesystem::path(get_string(prhs[1])));
-  if (!ok)
-    throw std::runtime_error("load_binary_checkpoint: file not found or invalid header: "
-      + get_string(prhs[1]));
-  plhs[0] = clustering_result_to_mx(result);  // 0-based -> 1-based inside
 }
 
 // =========================================================================
@@ -1294,23 +1231,6 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   plhs[0] = clustering_result_to_mx(result);
 }
 
-static void cmd_clarans(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("clarans requires handle and k.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-
-  dtwc::algorithms::CLARANSOptions opts;
-  opts.n_clusters = static_cast<int>(get_scalar(prhs[2]));
-  if (nrhs > 3) opts.num_local = static_cast<int>(get_scalar(prhs[3]));
-  if (nrhs > 4) opts.max_neighbor = static_cast<int>(get_scalar(prhs[4]));
-  if (nrhs > 5) opts.max_dtw_evals = static_cast<int64_t>(get_scalar(prhs[5]));
-  if (nrhs > 6)
-    opts.random_seed = static_cast<unsigned>(
-      get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
-
-  auto result = dtwc::algorithms::clarans(prob, opts);
-  plhs[0] = clustering_result_to_mx(result);
-}
-
 static void cmd_build_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("build_dendrogram requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
@@ -1349,14 +1269,14 @@ static void cmd_silhouette(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   plhs[0] = result;
 }
 
-static void cmd_davies_bouldin_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("davies_bouldin_index requires a handle.");
+static void cmd_davies_bouldin(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("davies_bouldin requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::davies_bouldin(prob));
 }
 
-static void cmd_dunn_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("dunn_index requires a handle.");
+static void cmd_dunn(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("dunn requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::dunn(prob));
 }
@@ -1367,14 +1287,14 @@ static void cmd_inertia(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::inertia(prob));
 }
 
-static void cmd_calinski_harabasz_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("calinski_harabasz_index requires a handle.");
+static void cmd_calinski_harabasz(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("calinski_harabasz requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::calinski_harabasz(prob));
 }
 
-static void cmd_adjusted_rand_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("adjusted_rand_index requires two label vectors.");
+static void cmd_adjusted_rand(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("adjusted_rand requires two label vectors.");
   const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
   const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
@@ -1383,80 +1303,14 @@ static void cmd_adjusted_rand_index(int nlhs, mxArray *plhs[], int nrhs, const m
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::adjusted_rand(labels1, labels2));
 }
 
-static void cmd_normalized_mutual_information(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("normalized_mutual_information requires two label vectors.");
+static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("normalized_mutual_info requires two label vectors.");
   const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
   const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
     throw std::invalid_argument("Label vectors must have the same length.");
 
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::normalized_mutual_info(labels1, labels2));
-}
-
-// =========================================================================
-//  LP-relaxation bound (PDLP) — cross-language parity with the Python binding
-// =========================================================================
-
-static void cmd_pdlp_gpu_available(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  (void)nlhs; (void)nrhs; (void)prhs;
-  plhs[0] = mxCreateLogicalScalar(dtwc::mip::pdlp_gpu_available());
-}
-
-static void cmd_pdlp_lp_bound(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  (void)nlhs;
-  if (nrhs < 3)
-    throw std::invalid_argument("pdlp_lp_bound requires a square distance matrix and k.");
-  require_real_double(prhs[1], "D");
-  const size_t rows = mxGetM(prhs[1]);
-  const size_t cols = mxGetN(prhs[1]);
-  if (rows != cols)
-    throw std::invalid_argument("pdlp_lp_bound: D must be square (got "
-      + std::to_string(rows) + "x" + std::to_string(cols) + ").");
-  if (rows > static_cast<size_t>(std::numeric_limits<int>::max()))
-    throw std::invalid_argument("pdlp_lp_bound: D is larger than the int index range.");
-  const int N = static_cast<int>(rows);
-  const int k = get_exact_int(prhs[2], "k");
-
-  // MATLAB stores column-major; the C++ routine indexes D[i*N + j] row-major.
-  const double *src = mxGetDoubles(prhs[1]);
-  std::vector<double> D(rows * cols);
-  for (size_t i = 0; i < rows; ++i)
-    for (size_t j = 0; j < cols; ++j)
-      D[i * cols + j] = src[i + j * rows];
-
-  // Name/value options carry the C++ PdlpParams field names verbatim.
-  dtwc::mip::PdlpParams params;
-  if (((nrhs - 3) % 2) != 0)
-    throw std::invalid_argument("pdlp_lp_bound: options must be name/value pairs.");
-  for (int a = 3; a + 1 < nrhs; a += 2) {
-    require_char(prhs[a], "option name");
-    const std::string name = get_string(prhs[a]);
-    if (name == "variant") {
-      require_char(prhs[a + 1], "variant");
-      params.variant = get_string(prhs[a + 1]);
-    } else if (name == "tol") {
-      params.tol = get_scalar(prhs[a + 1], "tol");
-    } else if (name == "iteration_limit") {
-      params.iteration_limit = static_cast<long>(get_exact_int(prhs[a + 1], "iteration_limit"));
-    } else if (name == "use_gpu") {
-      params.use_gpu = (get_scalar(prhs[a + 1], "use_gpu") != 0.0);
-    } else if (name == "verbose") {
-      params.verbose = (get_scalar(prhs[a + 1], "verbose") != 0.0);
-    } else {
-      throw std::invalid_argument("pdlp_lp_bound: unknown option '" + name
-        + "'. Valid: variant, tol, iteration_limit, use_gpu, verbose.");
-    }
-  }
-
-  const dtwc::mip::PdlpResult result = dtwc::mip::pdlp_lp_bound(D.data(), N, k, params);
-
-  const char *fields[] = { "lp_bound", "solved", "iterations", "gpu_used" };
-  mxArray *out = mxCreateStructMatrix(1, 1, 4, fields);
-  mxSetField(out, 0, "lp_bound", mxCreateDoubleScalar(result.lp_bound));
-  mxSetField(out, 0, "solved", mxCreateLogicalScalar(result.solved));
-  mxSetField(out, 0, "iterations", mxCreateDoubleScalar(static_cast<double>(result.iterations)));
-  mxSetField(out, 0, "gpu_used", mxCreateLogicalScalar(result.gpu_used));
-  plhs[0] = out;
 }
 
 // =========================================================================
@@ -1635,7 +1489,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
   // longjmp-safe: catch C++ exceptions, exit scope, THEN call mexErrMsgIdAndTxt
   std::string error_id, error_msg;
   try {
-    // Device / Env (contract §1.1, §6)
+    // Device (contract §1.1, §6)
     if (cmd == "version") {
       if (nlhs > 0) plhs[0] = mxCreateString(DTWC_VERSION_STRING);
     }
@@ -1674,7 +1528,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Problem: 2.0 config setters (method / solver / strategies / output / MIP / CUDA)
     else if (cmd == "Problem_set_method") cmd_Problem_set_method(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_solver") cmd_Problem_set_solver(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_set_storage_policy") cmd_Problem_set_storage_policy(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_output_folder") cmd_Problem_set_output_folder(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_mip_settings") cmd_Problem_set_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_mip_settings") cmd_Problem_get_mip_settings(nlhs, plhs, nrhs, prhs);
@@ -1696,8 +1549,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Checkpoint / resume (contract §2.7)
     else if (cmd == "save_checkpoint") cmd_save_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "load_checkpoint") cmd_load_checkpoint(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "save_binary_checkpoint") cmd_save_binary_checkpoint(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "load_binary_checkpoint") cmd_load_binary_checkpoint(nlhs, plhs, nrhs, prhs);
     // Stateless DTW functions
     else if (cmd == "dtw_distance") cmd_dtw_distance(nlhs, plhs, nrhs, prhs);
     else if (cmd == "ddtw_distance") cmd_ddtw_distance(nlhs, plhs, nrhs, prhs);
@@ -1713,20 +1564,16 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Algorithms
     else if (cmd == "fast_pam") cmd_fast_pam(nlhs, plhs, nrhs, prhs);
     else if (cmd == "fast_clara") cmd_fast_clara(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "clarans") cmd_clarans(nlhs, plhs, nrhs, prhs);
     else if (cmd == "build_dendrogram") cmd_build_dendrogram(nlhs, plhs, nrhs, prhs);
     else if (cmd == "cut_dendrogram") cmd_cut_dendrogram(nlhs, plhs, nrhs, prhs);
     // Scoring
     else if (cmd == "silhouette") cmd_silhouette(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "davies_bouldin_index") cmd_davies_bouldin_index(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "dunn_index") cmd_dunn_index(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "davies_bouldin") cmd_davies_bouldin(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "dunn") cmd_dunn(nlhs, plhs, nrhs, prhs);
     else if (cmd == "inertia") cmd_inertia(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "calinski_harabasz_index") cmd_calinski_harabasz_index(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "adjusted_rand_index") cmd_adjusted_rand_index(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "normalized_mutual_information") cmd_normalized_mutual_information(nlhs, plhs, nrhs, prhs);
-    // LP-relaxation bound (PDLP)
-    else if (cmd == "pdlp_lp_bound") cmd_pdlp_lp_bound(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "pdlp_gpu_available") cmd_pdlp_gpu_available(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "calinski_harabasz") cmd_calinski_harabasz(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "adjusted_rand") cmd_adjusted_rand(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "normalized_mutual_info") cmd_normalized_mutual_info(nlhs, plhs, nrhs, prhs);
     // Tier-1 route (contract 1.3 / 1.4): dtwc::cluster owns every decision
     else if (cmd == "tier1_cluster") cmd_tier1_cluster(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_score") cmd_Result_score(nlhs, plhs, nrhs, prhs);

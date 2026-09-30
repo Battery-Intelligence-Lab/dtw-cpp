@@ -115,22 +115,16 @@ classdef DTWClustering
             metric = obj.resolve_metric();
             validateattributes(X, {'numeric'}, {'2d', 'nonempty'}, 'fit', 'X');
 
-            % Per-call device override (contract §1.5): resolved through the one
-            % dtwc::Env registry for validation and normalisation, then restored,
+            % Per-call device override (contract §1.5): resolved through C++
+            % dtwc::device() for validation and normalisation, then restored,
             % so fit() never leaves the process device changed. An unknown device
-            % / gpu-without-backend raises dtwc:deviceError (no silent fallback).
+            % / hpc / gpu-without-backend raises dtwc:deviceError (no silent fallback).
             if isempty(obj.Device)
                 activeDevice = dtwc.device();
             else
                 previousDevice = dtwc.device();
                 deviceCleanup = onCleanup(@() dtwc.device(previousDevice));
                 activeDevice = dtwc.device(obj.Device);
-            end
-            if strcmp(activeDevice, 'hpc')
-                error('dtwc:deviceError', ...
-                    ['DTWClustering: device=''hpc'' offloads the whole job and ' ...
-                     'has no MATLAB transport. Use the Python API or ' ...
-                     'scripts/slurm/slurm_remote.sh.']);
             end
 
             % Problem's lazy matrix is intrinsically L1, so a non-L1 metric needs

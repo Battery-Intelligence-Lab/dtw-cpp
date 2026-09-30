@@ -5,9 +5,7 @@
  * @details Wave 2A added:
  *   1. Deferred dense allocation (Problem::set_data doesn't allocate O(N^2))
  *   2. FastCLARA bugfixes (ndim, missing_strategy propagation) + improved sample size
- *   3. Shared medoid utilities (algorithms/detail/medoid_utils.hpp)
- *   4. Hierarchical clustering (single/complete/average, build_dendrogram + cut_dendrogram)
- *   5. CLARANS (experimental, budget-gated)
+ *   3. Hierarchical clustering (single/complete/average, build_dendrogram + cut_dendrogram)
  *
  * All tests use Catch2 with MSVC/C++17.
  *
@@ -17,7 +15,6 @@
 
 #include <dtwc.hpp>
 #include <algorithms/hierarchical.hpp>
-#include <algorithms/clarans.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -409,88 +406,6 @@ TEST_CASE("Wave2A: hierarchical max_points guard throws when N > max_points",
 }
 
 // ===========================================================================
-// Test 7: CLARANS vs FastPAM quality on well-separated 30-point data
-//   On well-separated data, CLARANS cost must be <= FastPAM cost * 1.5
-//   (i.e., CLARANS should find a near-optimal solution).
-// ===========================================================================
-TEST_CASE("Wave2A: CLARANS vs FastPAM quality on well-separated 30-point data",
-          "[wave2a][clarans][quality]")
-{
-  constexpr int n_per = 10;
-  constexpr int k = 3;
-
-  auto prob_pam = make_separated_problem(n_per, k, 77);
-  auto prob_claran = make_separated_problem(n_per, k, 77);
-
-  // FastPAM (optimal baseline).
-  auto pam_result = fast_pam(prob_pam, k);
-
-  // CLARANS with multiple restarts.
-  algorithms::CLARANSOptions opts;
-  opts.n_clusters = k;
-  opts.num_local = 5;
-  opts.max_neighbor = -1;  // auto
-  opts.max_dtw_evals = -1; // no budget limit
-  opts.random_seed = 42;
-
-  auto clarans_result = algorithms::clarans(prob_claran, opts);
-
-  // Both must produce valid results.
-  REQUIRE(pam_result.labels.size() == static_cast<size_t>(n_per * k));
-  REQUIRE(clarans_result.labels.size() == static_cast<size_t>(n_per * k));
-
-  // CLARANS cost should be reasonably close to FastPAM on well-separated data.
-  // We allow 50% slack since CLARANS is randomized (not guaranteed optimal).
-  REQUIRE(clarans_result.total_cost <= pam_result.total_cost * 1.5 + 1.0);
-
-  // Basic sanity: labels and medoids valid.
-  for (int l : clarans_result.labels) {
-    REQUIRE(l >= 0);
-    REQUIRE(l < k);
-  }
-  std::set<int> um(clarans_result.medoid_indices.begin(), clarans_result.medoid_indices.end());
-  REQUIRE(um.size() == static_cast<size_t>(k));
-}
-
-// ===========================================================================
-// Test 8: CLARANS budget enforcement
-//   max_dtw_evals=100 must produce a valid result (not crash, not garbage).
-// ===========================================================================
-TEST_CASE("Wave2A: CLARANS budget enforcement — max_dtw_evals=100 gives valid result",
-          "[wave2a][clarans][budget]")
-{
-  auto prob = make_separated_problem(10, 3, 13);
-  const int N = static_cast<int>(prob.size()); // 30
-
-  algorithms::CLARANSOptions opts;
-  opts.n_clusters = 3;
-  opts.num_local = 5;
-  opts.max_dtw_evals = 100; // very tight budget
-  opts.random_seed = 7;
-
-  core::ClusteringResult result;
-  REQUIRE_NOTHROW(result = algorithms::clarans(prob, opts));
-
-  REQUIRE(result.labels.size() == static_cast<size_t>(N));
-  REQUIRE(result.medoid_indices.size() == 3u);
-  REQUIRE(result.total_cost >= 0.0);
-  REQUIRE(std::isfinite(result.total_cost));
-
-  for (int l : result.labels) {
-    REQUIRE(l >= 0);
-    REQUIRE(l < 3);
-  }
-
-  // Medoids must be valid and distinct.
-  std::set<int> um(result.medoid_indices.begin(), result.medoid_indices.end());
-  REQUIRE(um.size() == 3u);
-  for (int m : result.medoid_indices) {
-    REQUIRE(m >= 0);
-    REQUIRE(m < N);
-  }
-}
-
-// ===========================================================================
 // Test 9: Full pipeline — hierarchical → cut(3) → silhouette + Dunn + CH all finite
 // ===========================================================================
 TEST_CASE("Wave2A: full pipeline hierarchical→cut(3)→score metrics all finite",
@@ -673,27 +588,6 @@ TEST_CASE("Wave2A: FastCLARA propagates missing_strategy to sub-problems",
 
   REQUIRE(result.labels.size() == static_cast<size_t>(N));
   REQUIRE(std::isfinite(result.total_cost));
-}
-
-// ===========================================================================
-// Test 13: CLARANS medoids are self-assigned (invariant check)
-// ===========================================================================
-TEST_CASE("Wave2A: CLARANS medoids are self-assigned to their own cluster",
-          "[wave2a][clarans][self_assignment]")
-{
-  auto prob = make_separated_problem(8, 3, 42);
-
-  algorithms::CLARANSOptions opts;
-  opts.n_clusters = 3;
-  opts.num_local = 2;
-  opts.random_seed = 42;
-
-  auto result = algorithms::clarans(prob, opts);
-
-  for (int c = 0; c < 3; ++c) {
-    int med = result.medoid_indices[c];
-    REQUIRE(result.labels[med] == c);
-  }
 }
 
 // ===========================================================================

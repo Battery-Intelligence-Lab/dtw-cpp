@@ -166,28 +166,6 @@ data_t dtwFull_L_impl(std::span<const data_t> x, std::span<const data_t> y,
   return dtwFull_L_impl(x.data(), x.size(), y.data(), y.size(), early_abandon, distance);
 }
 
-/// EAPruned unbanded DTW shim — forwards to core::dtw_kernel_eap. Returns the
-/// EXACT standard-DTW distance (digit-identical to dtwFull_L) using a diagonal
-/// upper bound to prune off-optimal cells (Herrmann & Webb DMKD 2021).
-template <typename data_t, typename DistFn>
-data_t dtwFull_eap_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
-                        DistFn distance)
-{
-  if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
-  if (x == y && nx == ny) return 0;
-
-  const bool swap = nx > ny;
-  const data_t* xs = swap ? y : x;
-  const data_t* ys = swap ? x : y;
-  const size_t ns = swap ? ny : nx;
-  const size_t nl = swap ? nx : ny;
-
-  auto cost = [xs, ys, distance](size_t row, size_t col) noexcept {
-    return distance(xs[row], ys[col]);
-  };
-  return core::dtw_kernel_eap<data_t>(ns, nl, cost);
-}
-
 /// Sakoe-Chiba banded DTW shim.
 template <typename data_t, typename DistFn>
 data_t dtwBanded_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
@@ -397,33 +375,6 @@ data_t dtwFull_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
 }
 
 /**
- * @brief Exact unbanded DTW via EAPruned cell pruning (pointer + length).
- *
- * @details Returns the SAME value as dtwFull_L (exact standard DTW, no band)
- *          but prunes cells the diagonal upper bound already beats
- *          (Herrmann & Webb, DMKD 2021). Standard recurrence + L1/SquaredL2
- *          only. Speedup is data-dependent: large for well-aligned long series,
- *          negligible for short series or when the diagonal UB is loose.
- *
- * @tparam data_t Data type of the elements in the sequences.
- * @param x Pointer to first sequence.
- * @param nx Length of first sequence.
- * @param y Pointer to second sequence.
- * @param ny Length of second sequence.
- * @param metric Pointwise distance metric (default: L1).
- * @return The (exact) dynamic time warping distance.
- */
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwFull_eap(const data_t* x, size_t nx, const data_t* y, size_t ny,
-                   core::MetricType metric = core::MetricType::L1)
-{
-  core::validate_metric_type(metric);
-  return detail::dispatch_metric(metric, [&](auto dist) {
-    return detail::dtwFull_eap_impl(x, nx, y, ny, dist);
-  });
-}
-
-/**
  * @brief Computes the banded DTW distance (pointer + length).
  *
  * @details Uses the canonical fixed Sakoe-Chiba window `|i-j| <= band`.
@@ -496,22 +447,6 @@ data_t dtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                  core::MetricType metric = core::MetricType::L1)
 {
   return dtwBanded<data_t>(x.data(), x.size(), y.data(), y.size(), band, early_abandon, metric);
-}
-
-/// Exact unbanded EAPruned DTW (span overload).
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwFull_eap(std::span<const data_t> x, std::span<const data_t> y,
-                   core::MetricType metric = core::MetricType::L1)
-{
-  return dtwFull_eap<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
-}
-
-/// Exact unbanded EAPruned DTW (vector overload).
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwFull_eap(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                   core::MetricType metric = core::MetricType::L1)
-{
-  return dtwFull_eap<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
 }
 
 // Vector convenience overloads (vector -> span implicit conversion is non-deduced).
@@ -632,9 +567,8 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
  *          channel is free to pick its own optimal path).
  *
  *          Input layout is interleaved: x[t * ndim + d] is feature d at timestep t
- *          (same as dtwFull_L_mv). Unbanded (band < 0) uses the exact EAPruned
- *          kernel per channel (matches the scalar Standard default); banded uses
- *          dtwBanded per channel. A non-negative band narrower than
+ *          (same as dtwFull_L_mv). Each channel runs dtwBanded (the linear-space
+ *          kernel when band < 0). A non-negative band narrower than
  *          `|nx_steps-ny_steps|` returns the single finite no-path sentinel
  *          before channel summation. L1 / SquaredL2 metrics only (per-channel
  *          scalar).
@@ -658,10 +592,7 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
                           core::MetricType metric = core::MetricType::L1)
 {
   core::validate_metric_type(metric);
-  if (ndim == 1) {
-    return band < 0 ? dtwFull_eap<data_t>(x, nx_steps, y, ny_steps, metric)
-                    : dtwBanded<data_t>(x, nx_steps, y, ny_steps, band, -1, metric);
-  }
+  if (ndim == 1) return dtwBanded<data_t>(x, nx_steps, y, ny_steps, band, -1, metric);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
   if (band >= 0) {
     const auto min_steps = std::min(nx_steps, ny_steps);
@@ -681,8 +612,7 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
   for (size_t c = 0; c < ndim; ++c) {
     for (size_t t = 0; t < nx_steps; ++t) cx[t] = x[t * ndim + c];
     for (size_t t = 0; t < ny_steps; ++t) cy[t] = y[t * ndim + c];
-    total += band < 0 ? dtwFull_eap<data_t>(cx.data(), nx_steps, cy.data(), ny_steps, metric)
-                      : dtwBanded<data_t>(cx.data(), nx_steps, cy.data(), ny_steps, band, -1, metric);
+    total += dtwBanded<data_t>(cx.data(), nx_steps, cy.data(), ny_steps, band, -1, metric);
   }
   return total;
 }

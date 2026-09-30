@@ -11,7 +11,7 @@ description: "Complete rename table, deprecations, and behavioural changes."
 Frozen registry of public camelCase/duplicate/divergent names. Column
 **Compatibility requirement** states the live transition. Every retained
 callable alias in this table emits its required C++ compile diagnostic or
-Python/MATLAB runtime warning while forwarding to canonical behavior; the
+MATLAB runtime warning while forwarding to canonical behavior; the
 v1.0.0 C++ fields `maxIter` and `N_repetition` stay plain public fields.
 PLAN.md separately retains F22's evidence adjudication because its registered
 C++ mutation band was falsified; that does not change the implemented public
@@ -20,12 +20,10 @@ policy.
 | # | Concept | 1.x name(s) | 2.0 canonical | Compatibility requirement |
 |---|---|---|---|---|
 | 1 | set k (C++) | `Problem::set_numberOfClusters` (`Problem.hpp`) | `set_n_clusters` | C++ `[[deprecated]]` |
-| 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp`) | `set_n_clusters` | alias 1 cycle |
 | 3 | set k (MATLAB) | `Problem.set_n_clusters` (Problem.m:148) | `set_n_clusters` | already canonical |
 | 4 | max iterations (C++ field) | `Problem::maxIter` (`Problem.hpp`) | `set_max_iter` / `max_iter` accessor | plain field, as in v1.0.0 |
 | 5 | max iterations (MATLAB prop) | `Problem.MaxIter` (Problem.m:31) | `set_max_iter` | alias (loud warn) |
 | 6 | repetitions (C++ field) | `Problem::N_repetition` (`Problem.hpp`) | `set_n_repetitions` / `n_repetitions` | plain field, as in v1.0.0 |
-| 7 | repetitions (Python prop) | `Problem.n_repetition` (`_dtwcpp_core.cpp`) | `n_repetitions` | alias 1 cycle |
 | 8 | repetitions (MATLAB prop) | `Problem.NRepetition` (Problem.m:32) | `set_n_repetitions` | alias (loud warn) |
 | 9 | band (MATLAB prop) | `Problem.Band` (Problem.m:29) | `set_band` | alias (loud warn) |
 | 10 | verbose (MATLAB prop) | `Problem.Verbose` (Problem.m:30) | `set_verbose` | alias (loud warn) |
@@ -47,26 +45,17 @@ policy.
 | 26 | cluster via MIP | `cluster_by_MIP` (`Problem.hpp`) | `cluster_by_mip` | C++ `[[deprecated]]` |
 | 27 | cluster via Lloyd | `cluster_by_kMedoidsPAM` (`Problem.hpp`) | `cluster_by_kmedoids_lloyd` | C++ `[[deprecated]]` |
 | 28 | n clusters read | `cluster_size` (`Problem.hpp`) | `n_clusters` | C++ `[[deprecated]]` alias |
-| 28a | n clusters read (Python) | `Problem.cluster_size` (`_dtwcpp_core.cpp`) | `n_clusters` | warning alias 1 cycle |
+| 28a | n clusters read (Python) | `Problem.cluster_size()` (`py_main.cpp`, a method) | `n_clusters` | kept, silent |
 | 29 | dist mat read (MATLAB) | `get_distance_matrix` (`Problem.m`) | `distance_matrix` | warning alias 1 cycle; `set_distance_matrix` is canonical and silent |
-| 29a | dist mat read (Python) | `Problem.distance_matrix_numpy` (`_dtwcpp_core.cpp`) | `distance_matrix` | warning alias 1 cycle |
-| 29b | dist mat write (Python) | `Problem.set_distance_matrix_from_numpy` (`_dtwcpp_core.cpp`) | `set_distance_matrix` | warning alias 1 cycle |
 | 29c | size read (MATLAB) | `Problem.Size` (dependent prop, Problem.m:36; getter :363) | `size()` | alias (loud warn) |
 | 29d | n clusters read (MATLAB) | `Problem.ClusterSize` (dependent prop, Problem.m:37; getter :370) | `n_clusters()` | alias (loud warn) |
 | 29e | name read (MATLAB) | `Problem.Name` (dependent prop, Problem.m:38; getter :377) | `name()` | alias (loud warn) |
 | 29f | medoids read (MATLAB) | `Problem.CentroidsInd` (dependent prop, Problem.m:39; getter :384) | `medoids()` | alias (loud warn) |
 | 29g | labels read (MATLAB) | `Problem.ClustersInd` (dependent prop, Problem.m:40; getter :391) | `labels()` | alias (loud warn) |
-| 30 | Davies–Bouldin | `scores::daviesBouldinIndex` (scores.hpp:38-39) | `scores::davies_bouldin` **(fixed)** | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 31 | Dunn | `scores::dunnIndex` (scores.hpp:41-42) | `scores::dunn` | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 32 | Calinski–Harabasz | `scores::calinskiHarabaszIndex` (scores.hpp:44-45) | `scores::calinski_harabasz` | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 33 | Adjusted Rand | `scores::adjustedRandIndex` (scores.hpp:47-52) | `scores::adjusted_rand` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 34 | Normalized MI | `scores::normalizedMutualInformation` (scores.hpp:54-59) | `scores::normalized_mutual_info` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
 | 35 | start column (loader) | `DataLoader::startColumn` (DataLoader.hpp) | `start_column` | C++ `[[deprecated]]` |
 | 36 | start row (loader) | `DataLoader::startRow` | `start_row` | C++ `[[deprecated]]` |
 | 37 | set data path | `settings::paths::setDataPath` (2.0-born) | — | removed pre-tag with `set_data_path` (D-3): pass input paths explicitly (`load(path)`, `--input`) |
 | 38 | set results path | `settings::paths::setResultsPath` (2.0-born) | `Problem::set_output_folder` | removed pre-tag with `set_results_path` (D-3); a `Problem`'s default output folder is `./results/` |
-| 39 | Result class (Python) | `ClusterResult` (`python/dtwcpp/__init__.py:319-339`) | `Result` | uncached identity-preserving warning alias 1 cycle |
-| 40 | medoids field (Result) | `Result.medoid_indices` (`python/dtwcpp/_api.py:174-180`) | `Result.medoids` | warning alias 1 cycle |
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:30) | `= double` | behaviour change (§8), no name change |
 | 42 | CLI dtype default | `--dtype float32` (dtwc_cl.cpp:717-725) | `--dtype float64` | old accepted, default flips (§8) |
 
@@ -95,13 +84,9 @@ bindings").
   never change behaviour, and are scheduled for removal in 3.0. The v1.0.0
   fields `maxIter` and `N_repetition` stay plain public `int` members; the
   checking setters and the accessors are canonical.
-- **Python.** Removed duplicate names (`set_number_of_clusters`,
-  `n_repetition` get/set, `cluster_size`, `distance_matrix_numpy`,
-  `set_distance_matrix_from_numpy`, the five `*_index`/`*_information` score
-  aliases, `ClusterResult`, and `Result.medoid_indices`) survive **one** minor
-  release as thin aliases that emit exactly one caller-attributed
-  `DeprecationWarning` per operation, then are deleted. New canonical names are
-  the only ones documented.
+- **Python.** The names that 2.0 development renamed were never released, so
+  none is kept as an alias. The v1.0.0 method `Problem.cluster_size()` stays,
+  silent, beside `n_clusters()`.
 - **MATLAB.** PascalCase settable properties (`Band`, `MaxIter`, `NRepetition`,
   `Verbose`) warn on assignment; their retained reads remain functional.
   `get_distance_matrix`, the dependent read properties (`Size`, `ClusterSize`,
@@ -118,10 +103,9 @@ bindings").
   behaviour.
 
 This section is normative and implemented for the complete retained inventory:
-27 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
-operations. PLAN.md retains F22's separate evidence verdict; the exhausted
-C++ mutation campaign was falsified at 33/46 and is not described here as
-closure of that finding.
+22 C++ diagnostic entities and 15 MATLAB alias operations. PLAN.md retains
+F22's separate evidence verdict; the exhausted C++ mutation campaign was
+falsified at 33/46 and is not described here as closure of that finding.
 
 ---
 

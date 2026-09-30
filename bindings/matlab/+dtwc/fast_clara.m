@@ -31,7 +31,7 @@ function result = fast_clara(prob, k, varargin)
 %
 %   Reference: Schubert & Rousseeuw (2021)
 %
-%   See also dtwc.fast_pam, dtwc.clarans
+%   See also dtwc.fast_pam
 
     p = inputParser;
     addRequired(p, 'prob');

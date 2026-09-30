@@ -206,7 +206,7 @@ TEST_CASE("Hierarchical: throws when N > max_points", "[hierarchical]")
   REQUIRE_THROWS(dtwc::algorithms::build_dendrogram(prob, opts));
 }
 
-TEST_CASE("Hierarchical: throws when matrix not computed", "[hierarchical]")
+TEST_CASE("Hierarchical: fills an unfilled distance matrix itself", "[hierarchical]")
 {
   dtwc::Data data;
   data.p_vec   = { { 1.0 }, { 2.0 }, { 3.0 } };
@@ -215,9 +215,12 @@ TEST_CASE("Hierarchical: throws when matrix not computed", "[hierarchical]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  // Intentionally NOT calling fill_distance_matrix().
+  REQUIRE_FALSE(prob.is_distance_matrix_filled());
 
-  REQUIRE_THROWS(dtwc::algorithms::build_dendrogram(prob));
+  const auto dend = dtwc::algorithms::build_dendrogram(prob);
+  REQUIRE(prob.is_distance_matrix_filled());
+  REQUIRE(dend.merges.size() == 2);
+  REQUIRE_THAT(dend.merges[0].distance, WithinAbs(1.0, 1e-12)); // |1 - 2|, the first pair
 }
 
 // ---------------------------------------------------------------------------

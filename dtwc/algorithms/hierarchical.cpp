@@ -36,10 +36,7 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
       "build_dendrogram: N=" + std::to_string(N) +
       " exceeds max_points=" + std::to_string(opts.max_points));
 
-  if (!prob.is_distance_matrix_filled())
-    throw InvalidInput(
-      "build_dendrogram: distance matrix is not fully computed. "
-      "Call prob.fill_distance_matrix() first.");
+  prob.fill_distance_matrix();
 
   // -------------------------------------------------------------------------
   // Copy pairwise distances into a flat working array (indexed i*N+j).
@@ -272,13 +269,7 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
   result.converged = true;
   result.iterations = N - 1; // dendrogram always completes in N-1 steps
 
-  // 2.0 result write-back (Task 1.6): store labels/medoids/k into `prob` so
-  // scores::silhouette(prob) etc. work with NO manual wiring. cut_dendrogram did
-  // NOT write back in 1.x (bindings left it un-wired, _dtwcpp_core.cpp:732); 2.0
-  // makes the C++ path authoritative per API contract §2.5.
-  prob.set_n_clusters(k);
-  prob.centroids_ind = result.medoid_indices;
-  prob.clusters_ind  = result.labels;
+  prob.set_result(result); // scores::silhouette(prob) etc. read it back
 
   return result;
 }

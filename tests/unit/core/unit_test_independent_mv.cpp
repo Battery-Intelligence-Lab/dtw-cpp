@@ -19,7 +19,7 @@
  *              per-channel cost; each channel is free to pick its own path).
  *              Checked L1 + SquaredL2, unbanded + banded, on random MV pairs.
  *            - BAND-DEINTERLEAVE [HARD]: dtw_independent_mv equals the manual
- *              sum of univariate dtwFull_eap over channels extracted with an
+ *              sum of univariate dtwFull over channels extracted with an
  *              independent de-interleave (guards the strided channel copy).
  *            - BAND-WIRING [HARD]: a Problem with mv_mode=Independent, ndim>1
  *              fills a matrix equal to the direct kernel, and different from the
@@ -51,7 +51,7 @@
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
 using dtwc::dtw_independent_mv;
-using dtwc::dtwFull_eap;
+using dtwc::dtwFull;
 using dtwc::dtwFull_L_mv;
 using dtwc::dtwBanded_mv;
 using MT = dtwc::core::MetricType;
@@ -103,7 +103,7 @@ TEST_CASE("Independent MV DTW equals manual per-channel sum", "[indep][mv][deint
       for (std::size_t c = 0; c < p.ndim; ++c) {
         for (std::size_t t = 0; t < p.nx; ++t) cx[t] = p.x[t * p.ndim + c];
         for (std::size_t t = 0; t < p.ny; ++t) cy[t] = p.y[t * p.ndim + c];
-        manual += dtwFull_eap<double>(cx.data(), p.nx, cy.data(), p.ny, m);
+        manual += dtwFull<double>(cx.data(), p.nx, cy.data(), p.ny, m);
       }
       const double got = dtw_independent_mv<double>(
         p.x.data(), p.nx, p.y.data(), p.ny, p.ndim, -1, m);
@@ -284,7 +284,7 @@ TEST_CASE("Independent MV DTW reduces to scalar DTW for ndim=1", "[indep][mv][un
     auto x = rnd_mv(g, nx, 1), y = rnd_mv(g, ny, 1);
     for (MT m : { MT::L1, MT::SquaredL2 }) {
       const double di = dtw_independent_mv<double>(x.data(), nx, y.data(), ny, 1, -1, m);
-      const double sc = dtwFull_eap<double>(x.data(), nx, y.data(), ny, m);
+      const double sc = dtwFull<double>(x.data(), nx, y.data(), ny, m);
       REQUIRE_THAT(di, WithinRel(sc, 1e-12) || WithinAbs(sc, 1e-12));
     }
   }

@@ -39,7 +39,6 @@
 #include <algorithms/fast_clara.hpp>
 #include <algorithms/one_batch_pam.hpp>
 #include <algorithms/barycenter.hpp>
-#include <algorithms/clarans.hpp>
 #include <algorithms/hierarchical.hpp>
 #include <scores.hpp>
 #include <core/z_normalize.hpp>
@@ -49,7 +48,6 @@
 #include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
 #include <mip/mip.hpp>
-#include <mip/pdlp_lp.hpp>
 
 
 #include <algorithm>
@@ -66,14 +64,6 @@ namespace nb = nanobind;
 using namespace nb::literals; // for _a arg names
 
 namespace {
-
-void warn_deprecated_alias(const char *old_name, const char *new_name) {
-  std::string message(old_name);
-  message += " is deprecated; use ";
-  message += new_name;
-  if (PyErr_WarnEx(PyExc_DeprecationWarning, message.c_str(), 1) < 0)
-    throw nb::python_error();
-}
 
 /// Hand an owning buffer to numpy with no leak window and no nested GIL scope.
 ///
@@ -122,10 +112,8 @@ void require_finite_series(const std::vector<std::vector<double>> &series,
 
 NB_MODULE(_dtwcpp_core, m) {
   m.attr("__version__") = DTWC_VERSION_STRING;
-  m.attr("_F22_DEPRECATION_POLICY") = true;
   m.attr("DEFAULT_RANDOM_SEED") = dtwc::settings::DEFAULT_RANDOM_SEED;
   m.attr("HIGHS_AVAILABLE") = dtwc::highs_solver_available();
-  m.attr("PDLP_GPU_AVAILABLE") = dtwc::mip::pdlp_gpu_available();
   m.doc() = "DTWC++ — Fast Dynamic Time Warping and Clustering (C++ core)";
 
   // =========================================================================
@@ -329,11 +317,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("Complete", dtwc::algorithms::Linkage::Complete)
     .value("Average", dtwc::algorithms::Linkage::Average);
 
-  nb::enum_<dtwc::algorithms::OneBatchWeighting>(m, "OneBatchWeighting")
-    .value("Uniform", dtwc::algorithms::OneBatchWeighting::Uniform)
-    .value("Debiased", dtwc::algorithms::OneBatchWeighting::Debiased)
-    .value("NearestNeighbor", dtwc::algorithms::OneBatchWeighting::NearestNeighbor);
-
   nb::enum_<dtwc::algorithms::BarycenterMethod>(m, "BarycenterMethod")
     .value("SSG", dtwc::algorithms::BarycenterMethod::SSG)
     .value("DBA", dtwc::algorithms::BarycenterMethod::DBA)
@@ -345,16 +328,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("batch_size", &dtwc::algorithms::OneBatchPAMOptions::batch_size)
     .def_rw("max_iter", &dtwc::algorithms::OneBatchPAMOptions::max_iter)
     .def_rw("random_seed", &dtwc::algorithms::OneBatchPAMOptions::random_seed)
-    .def_rw("weighting", &dtwc::algorithms::OneBatchPAMOptions::weighting)
     .def_rw("relative_tolerance", &dtwc::algorithms::OneBatchPAMOptions::relative_tolerance);
-
-  nb::class_<dtwc::algorithms::OneBatchPAMStats>(m, "OneBatchPAMStats")
-    .def(nb::init<>())
-    .def_ro("batch_size", &dtwc::algorithms::OneBatchPAMStats::batch_size)
-    .def_ro("distance_evaluations", &dtwc::algorithms::OneBatchPAMStats::distance_evaluations)
-    .def_ro("full_matrix_fraction", &dtwc::algorithms::OneBatchPAMStats::full_matrix_fraction)
-    .def_ro("estimated_objective", &dtwc::algorithms::OneBatchPAMStats::estimated_objective)
-    .def_ro("accepted_swaps", &dtwc::algorithms::OneBatchPAMStats::accepted_swaps);
 
   nb::class_<dtwc::algorithms::BarycenterOptions>(m, "BarycenterOptions")
     .def(nb::init<>())
@@ -460,10 +434,6 @@ NB_MODULE(_dtwcpp_core, m) {
             "Gurobi MIPFocus (0=balanced, 1=feasible, 2=optimal, 3=bound).")
     .def_rw("verbose_solver", &dtwc::MIPSettings::verbose_solver,
             "Show solver log output (default False).")
-    .def_rw("max_benders_iter", &dtwc::MIPSettings::max_benders_iter,
-            "Maximum Benders iterations (default 200).")
-    .def_rw("benders", &dtwc::MIPSettings::benders,
-            "Benders decomposition mode: 'auto' (N>200), 'on', or 'off'.")
     .def_rw("lr_max_nodes", &dtwc::MIPSettings::lr_max_nodes,
             "Method.LRCore branch-and-bound node cap (>= 1, default 2000000).")
     .def("__repr__", [](const dtwc::MIPSettings &s) {
@@ -472,8 +442,6 @@ NB_MODULE(_dtwcpp_core, m) {
              + ", warm_start=" + (s.warm_start ? "True" : "False")
              + ", numeric_focus=" + std::to_string(s.numeric_focus)
              + ", mip_focus=" + std::to_string(s.mip_focus)
-             + ", benders=" + s.benders
-             + ", max_benders_iter=" + std::to_string(s.max_benders_iter)
              + ", lr_max_nodes=" + std::to_string(s.lr_max_nodes)
              + ", verbose=" + (s.verbose_solver ? "True" : "False") + ")";
     });
@@ -533,30 +501,6 @@ NB_MODULE(_dtwcpp_core, m) {
       }
       return "HierarchicalOptions(linkage=" + linkage_str
              + ", max_points=" + std::to_string(o.max_points) + ")";
-    });
-
-  // =========================================================================
-  // CLARANSOptions
-  // =========================================================================
-
-  nb::class_<dtwc::algorithms::CLARANSOptions>(m, "CLARANSOptions")
-    .def(nb::init<>())
-    .def_rw("n_clusters", &dtwc::algorithms::CLARANSOptions::n_clusters,
-            "Number of clusters (k).")
-    .def_rw("num_local", &dtwc::algorithms::CLARANSOptions::num_local,
-            "Number of random restarts (default 2).")
-    .def_rw("max_neighbor", &dtwc::algorithms::CLARANSOptions::max_neighbor,
-            "Max non-improving swaps per restart (-1 = auto).")
-    .def_rw("max_dtw_evals", &dtwc::algorithms::CLARANSOptions::max_dtw_evals,
-            "Hard budget on total DTW computations (-1 = no limit).")
-    .def_rw("random_seed", &dtwc::algorithms::CLARANSOptions::random_seed,
-            "RNG seed for determinism (default 42).")
-    .def("__repr__", [](const dtwc::algorithms::CLARANSOptions &o) {
-      return "CLARANSOptions(k=" + std::to_string(o.n_clusters)
-             + ", num_local=" + std::to_string(o.num_local)
-             + ", max_neighbor=" + std::to_string(o.max_neighbor)
-             + ", max_dtw_evals=" + std::to_string(o.max_dtw_evals)
-             + ", seed=" + std::to_string(o.random_seed) + ")";
     });
 
   // =========================================================================
@@ -791,46 +735,6 @@ NB_MODULE(_dtwcpp_core, m) {
   // Problem class
   // =========================================================================
 
-  // Shared read accessor: fill (if needed) and expand packed triangular → NxN.
-  // Named `distance_matrix()` in 2.0 (was `distance_matrix_numpy()`); always a
-  // COPY because the C++ store keeps only the upper triangle, so a zero-copy view
-  // into a full NxN layout is structurally impossible (§2.2 ‡).
-  auto read_distance_matrix_np = [](dtwc::Problem &prob) {
-    // Size is only known after the fill, so both happen inside one release.
-    std::vector<double> values;
-    size_t n = 0;
-    {
-      nb::gil_scoped_release release;
-      prob.fill_distance_matrix();
-      const auto &dm = prob.distance_matrix(); // on the heap or mapped
-      n = dm.size();
-      // Row-major std::vector<double> straight from to_full_matrix (X-27).
-      values = dtwc::io::to_full_matrix(dm);
-    }
-    return adopt_as_ndarray(std::move(values), {n, n});
-  };
-  // Shared writer: load a precomputed NxN matrix (e.g. from a GPU compute).
-  auto write_distance_matrix_np =
-    [](dtwc::Problem &p, nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
-      const size_t n = dm.shape(0);
-      if (dm.shape(1) != n)
-        throw dtwc::InvalidInput("Expected square distance matrix");
-      if (n != p.size())
-        throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
-      auto &mat = p.distance_matrix();
-      // Values written into a mapped matrix would persist in its file under the
-      // Problem's fingerprint, whatever they were computed from.
-      if (mat.is_mapped())
-        throw dtwc::InvalidInput("Problem.set_distance_matrix: this Problem's distance matrix is "
-                                 "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
-                                 "kept in RAM only; call refresh_distance_matrix() first.");
-      mat.resize(n);
-      const double *data = dm.data();
-      for (size_t i = 0; i < n; ++i)
-        for (size_t j = i; j < n; ++j)
-          mat.set(i, j, data[i * n + j]);
-    };
-
   nb::class_<dtwc::Problem>(m, "Problem",
     "A clustering problem: data, configuration, distance matrix and results.\n\n"
     "Threading: a Problem instance must not be used concurrently from multiple\n"
@@ -867,18 +771,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_prop_rw("n_repetitions", &dtwc::Problem::n_repetitions,
                  &dtwc::Problem::set_n_repetitions,
                  "Repetitions for iterative methods.")
-    .def_prop_rw("n_repetition",
-                 [](const dtwc::Problem &p) {
-                   warn_deprecated_alias("Problem.n_repetition",
-                                         "Problem.n_repetitions");
-                   return p.n_repetitions();
-                 },
-                 [](dtwc::Problem &p, int value) {
-                   warn_deprecated_alias("Problem.n_repetition",
-                                         "Problem.n_repetitions");
-                   p.set_n_repetitions(value);
-                 },
-                 "Deprecated alias for n_repetitions (kept one cycle, §4).")
     .def_prop_rw("random_seed", &dtwc::Problem::random_seed,
                  &dtwc::Problem::set_random_seed,
                  "Invocation-local seed for Lloyd and MIP warm starts.")
@@ -931,13 +823,9 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("centroids_ind", &dtwc::Problem::centroids_ind)
     // ---- read accessors ----
     .def_prop_ro("size", &dtwc::Problem::size)
-    .def("n_clusters", &dtwc::Problem::n_clusters, "Number of clusters (was cluster_size()).")
-    .def_prop_ro("cluster_size", [](const dtwc::Problem &p) {
-                   warn_deprecated_alias("Problem.cluster_size",
-                                         "Problem.n_clusters");
-                   return p.n_clusters();
-                 },
-                 "Deprecated alias for n_clusters() (kept one cycle, §4).")
+    .def("n_clusters", &dtwc::Problem::n_clusters, "Number of clusters.")
+    .def("cluster_size", &dtwc::Problem::n_clusters,
+         "Number of clusters: the v1.0.0 spelling of n_clusters().")
     .def("labels", &dtwc::Problem::labels,
          "Cluster label of each series (reads clusters_ind; parity with Result.labels).")
     .def("medoids", &dtwc::Problem::medoids,
@@ -963,12 +851,6 @@ NB_MODULE(_dtwcpp_core, m) {
        "Problem class docstring).")
     // ---- config setters ----
     .def("set_n_clusters", &dtwc::Problem::set_n_clusters, "n_clusters"_a)
-    .def("set_number_of_clusters", [](dtwc::Problem &p, int n) {
-           warn_deprecated_alias("Problem.set_number_of_clusters",
-                                 "Problem.set_n_clusters");
-           p.set_n_clusters(n);
-         },
-         "n_clusters"_a, "Deprecated alias for set_n_clusters (kept one cycle, §4).")
     .def("set_method", &dtwc::Problem::set_method, "method"_a)
     .def("set_band", &dtwc::Problem::set_band, "band"_a)
     .def("set_max_iter", &dtwc::Problem::set_max_iter, "max_iter"_a)
@@ -988,39 +870,50 @@ NB_MODULE(_dtwcpp_core, m) {
        "Set time series data (ndim>1 for multivariate interleaved layout).")
     .def("set_data", [](dtwc::Problem &p, dtwc::Data d) { p.set_data(std::move(d)); },
          "data"_a, "Set time series data from a Data object (enables f32 storage).")
-    .def("set_view_data", [](dtwc::Problem &p, std::vector<std::vector<double>> series,
-                              std::vector<std::string> names, size_t ndim) {
-      dtwc::Data d(std::move(series), std::move(names), ndim);
-      p.set_view_data(std::move(d));
-    }, "series"_a, "names"_a, "ndim"_a = 1,
-       "Set data via the light/view path (sizes the distance matrix, skips the mmap\n"
-       "cache). Python builds an owning Data (safe lifetime); the zero-copy span\n"
-       "mode is a C++/CLARA-internal optimisation.")
     // ---- distance matrix ----
     .def("fill_distance_matrix", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       p.fill_distance_matrix();
     }, "Compute all pairwise DTW distances.")
-    .def("distance_matrix", read_distance_matrix_np,
+    // Always a COPY: the C++ store keeps only the upper triangle, so a zero-copy
+    // view into a full NxN layout is structurally impossible (§2.2 ‡).
+    .def("distance_matrix", [](dtwc::Problem &prob) {
+           // Size is only known after the fill, so both happen inside one release.
+           std::vector<double> values;
+           size_t n = 0;
+           {
+             nb::gil_scoped_release release;
+             prob.fill_distance_matrix();
+             const auto &dm = prob.distance_matrix(); // on the heap or mapped
+             n = dm.size();
+             values = dtwc::io::to_full_matrix(dm); // row-major, expanded from the triangle
+           }
+           return adopt_as_ndarray(std::move(values), {n, n});
+         },
          "Fill (if needed) and return the full NxN distance matrix as a numpy\n"
          "array (independent copy; use set_distance_matrix to write).")
-    .def("distance_matrix_numpy", [read_distance_matrix_np](dtwc::Problem &p) {
-           warn_deprecated_alias("Problem.distance_matrix_numpy",
-                                 "Problem.distance_matrix");
-           return read_distance_matrix_np(p);
-         },
-         "Deprecated alias for distance_matrix() (kept one cycle, §4).")
-    .def("set_distance_matrix", write_distance_matrix_np, "dm"_a,
-         "Load a precomputed NxN distance matrix (e.g. from a GPU compute).")
-    .def("set_distance_matrix_from_numpy",
-         [write_distance_matrix_np](
-           dtwc::Problem &p,
-           nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
-           warn_deprecated_alias("Problem.set_distance_matrix_from_numpy",
-                                 "Problem.set_distance_matrix");
-           write_distance_matrix_np(p, dm);
+    .def("set_distance_matrix",
+         [](dtwc::Problem &p,
+            nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
+           const size_t n = dm.shape(0);
+           if (dm.shape(1) != n)
+             throw dtwc::InvalidInput("Expected square distance matrix");
+           if (n != p.size())
+             throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
+           auto &mat = p.distance_matrix();
+           // Values written into a mapped matrix would persist in its file under the
+           // Problem's fingerprint, whatever they were computed from.
+           if (mat.is_mapped())
+             throw dtwc::InvalidInput("Problem.set_distance_matrix: this Problem's distance matrix is "
+                                      "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
+                                      "kept in RAM only; call refresh_distance_matrix() first.");
+           mat.resize(n);
+           const double *data = dm.data();
+           for (size_t i = 0; i < n; ++i)
+             for (size_t j = i; j < n; ++j)
+               mat.set(i, j, data[i * n + j]);
          }, "dm"_a,
-         "Deprecated alias for set_distance_matrix() (kept one cycle, §4).")
+         "Load a precomputed NxN distance matrix (e.g. from a GPU compute).")
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
     .def("read_distance_matrix", [](dtwc::Problem &p, const std::filesystem::path &path) {
       nb::gil_scoped_release release;
@@ -1220,32 +1113,17 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   m.def("one_batch_pam", [](dtwc::Problem &prob, int n_clusters, int batch_size,
-                              int max_iter, std::uint64_t seed,
-                              dtwc::algorithms::OneBatchWeighting weighting) {
+                              int max_iter, std::uint64_t seed) {
     dtwc::algorithms::OneBatchPAMOptions options;
     options.n_clusters = n_clusters;
     options.batch_size = batch_size;
     options.max_iter = max_iter;
     options.random_seed = seed;
-    options.weighting = weighting;
     nb::gil_scoped_release release;
     return dtwc::algorithms::one_batch_pam(prob, options);
   }, "prob"_a, "n_clusters"_a, "batch_size"_a = -1, "max_iter"_a = 100,
      "seed"_a = dtwc::settings::DEFAULT_RANDOM_SEED,
-     "weighting"_a = dtwc::algorithms::OneBatchWeighting::NearestNeighbor,
      "Run OneBatchPAM using one fixed N-by-m distance table (AAAI 2025).");
-
-  m.def("one_batch_pam_with_stats",
-        [](dtwc::Problem &prob, const dtwc::algorithms::OneBatchPAMOptions &options) {
-    dtwc::algorithms::OneBatchPAMStats stats;
-    dtwc::core::ClusteringResult result;
-    {
-      nb::gil_scoped_release release;
-      result = dtwc::algorithms::one_batch_pam(prob, options, &stats);
-    }
-    return nb::make_tuple(std::move(result), std::move(stats));
-  }, "prob"_a, "options"_a,
-     "Run OneBatchPAM and return (ClusteringResult, OneBatchPAMStats).");
 
   // =========================================================================
   // DTW barycenters
@@ -1330,9 +1208,7 @@ NB_MODULE(_dtwcpp_core, m) {
   // Scores
   // =========================================================================
 
-  // Canonical 2.0 score names (api-contract-2.0.md §2.4): the `Index`/`Information`
-  // noun is dropped. The old *_index / *_information spellings stay one cycle as
-  // deprecated aliases (§4) — both forward to the same canonical C++ function.
+  // Score names drop the `Index`/`Information` noun (api-contract-2.0.md §2.4).
   m.def("silhouette", [](dtwc::Problem &prob) {
     nb::gil_scoped_release release;
     return dtwc::scores::silhouette(prob);
@@ -1342,23 +1218,12 @@ NB_MODULE(_dtwcpp_core, m) {
     nb::gil_scoped_release release;
     return dtwc::scores::davies_bouldin(prob);
   }, "prob"_a, "Compute Davies-Bouldin index (lower is better).");
-  m.def("davies_bouldin_index", [](dtwc::Problem &prob) {
-    warn_deprecated_alias("dtwcpp.davies_bouldin_index",
-                          "dtwcpp.davies_bouldin");
-    nb::gil_scoped_release release;
-    return dtwc::scores::davies_bouldin(prob);
-  }, "prob"_a, "Deprecated alias for davies_bouldin() (kept one cycle, §4).");
 
   m.def("dunn", [](dtwc::Problem &prob) {
     nb::gil_scoped_release release;
     return dtwc::scores::dunn(prob);
   }, "prob"_a,
      "Compute Dunn index (min inter-cluster distance / max intra-cluster diameter).");
-  m.def("dunn_index", [](dtwc::Problem &prob) {
-    warn_deprecated_alias("dtwcpp.dunn_index", "dtwcpp.dunn");
-    nb::gil_scoped_release release;
-    return dtwc::scores::dunn(prob);
-  }, "prob"_a, "Deprecated alias for dunn() (kept one cycle, §4).");
 
   m.def("inertia", [](dtwc::Problem &prob) {
     nb::gil_scoped_release release;
@@ -1370,38 +1235,18 @@ NB_MODULE(_dtwcpp_core, m) {
     nb::gil_scoped_release release;
     return dtwc::scores::calinski_harabasz(prob);
   }, "prob"_a, "Compute Calinski-Harabasz index (medoid-adapted; higher is better).");
-  m.def("calinski_harabasz_index", [](dtwc::Problem &prob) {
-    warn_deprecated_alias("dtwcpp.calinski_harabasz_index",
-                          "dtwcpp.calinski_harabasz");
-    nb::gil_scoped_release release;
-    return dtwc::scores::calinski_harabasz(prob);
-  }, "prob"_a, "Deprecated alias for calinski_harabasz() (kept one cycle, §4).");
 
   m.def("adjusted_rand", [](const std::vector<int> &labels_true,
                             const std::vector<int> &labels_pred) {
     return dtwc::scores::adjusted_rand(labels_true, labels_pred);
   }, "labels_true"_a, "labels_pred"_a,
      "Adjusted Rand index between two label assignments (1.0 = perfect agreement).");
-  m.def("adjusted_rand_index", [](const std::vector<int> &labels_true,
-                                    const std::vector<int> &labels_pred) {
-    warn_deprecated_alias("dtwcpp.adjusted_rand_index",
-                          "dtwcpp.adjusted_rand");
-    return dtwc::scores::adjusted_rand(labels_true, labels_pred);
-  }, "labels_true"_a, "labels_pred"_a,
-     "Deprecated alias for adjusted_rand() (kept one cycle, §4).");
 
   m.def("normalized_mutual_info", [](const std::vector<int> &labels_true,
                                       const std::vector<int> &labels_pred) {
     return dtwc::scores::normalized_mutual_info(labels_true, labels_pred);
   }, "labels_true"_a, "labels_pred"_a,
      "Normalized Mutual Information between two label assignments ([0,1]).");
-  m.def("normalized_mutual_information", [](const std::vector<int> &labels_true,
-                                              const std::vector<int> &labels_pred) {
-    warn_deprecated_alias("dtwcpp.normalized_mutual_information",
-                          "dtwcpp.normalized_mutual_info");
-    return dtwc::scores::normalized_mutual_info(labels_true, labels_pred);
-  }, "labels_true"_a, "labels_pred"_a,
-     "Deprecated alias for normalized_mutual_info() (kept one cycle, §4).");
 
   // =========================================================================
   // Hierarchical clustering
@@ -1413,7 +1258,7 @@ NB_MODULE(_dtwcpp_core, m) {
     return dtwc::algorithms::build_dendrogram(prob, opts);
   }, "prob"_a, "opts"_a = dtwc::algorithms::HierarchicalOptions{},
      "Build a hierarchical dendrogram from a Problem.\n\n"
-     "Requires distance matrix to be filled (call fill_distance_matrix() first).\n"
+     "Fills the distance matrix first if it is not filled.\n"
      "Returns a Dendrogram containing N-1 merge steps in merge order.\n"
      "Raises InvalidInput (a ValueError) if N > opts.max_points (default 2000).");
 
@@ -1427,69 +1272,6 @@ NB_MODULE(_dtwcpp_core, m) {
      "The C++ core also writes labels/medoids/k back into prob (since 1.6), so\n"
      "silhouette(prob) etc. work after this call with no wrapper wiring (§2.5).");
 
-  // =========================================================================
-  // CLARANS
-  // =========================================================================
-
-  m.def("clarans", [](dtwc::Problem &prob, const dtwc::algorithms::CLARANSOptions &opts) {
-    nb::gil_scoped_release release;
-    return dtwc::algorithms::clarans(prob, opts);
-  }, "prob"_a, "opts"_a,
-     "Run CLARANS randomized k-medoids clustering.\n\n"
-     "Experimental bounded mid-ground algorithm. Tests random\n"
-     "(medoid_out, x_in) swaps, accepting only strictly improving ones.\n"
-     "The C++ core writes labels/medoids/k back into prob (since 1.6) so\n"
-     "scoring functions work after this call (§2.5).\n\n"
-     "Reference: Ng & Han (2002), IEEE TKDE 14(5).");
-
-
-  // =========================================================================
-  // PDLP LP-relaxation arbiter (E2: was C++-only)
-  // =========================================================================
-
-  m.def("pdlp_gpu_available", &dtwc::mip::pdlp_gpu_available,
-        "True if this build's HiGHS carries the cuPDLP GPU backend.\n\n"
-        "The GPU-LP counterpart of HIGHS_AVAILABLE: the device is a property\n"
-        "of the linked HiGHS build, not a per-call toggle.");
-
-  nb::class_<dtwc::mip::PdlpParams>(m, "PdlpParams")
-    .def(nb::init<>())
-    .def_rw("variant", &dtwc::mip::PdlpParams::variant)
-    .def_rw("tol", &dtwc::mip::PdlpParams::tol)
-    .def_rw("iteration_limit", &dtwc::mip::PdlpParams::iteration_limit)
-    .def_rw("use_gpu", &dtwc::mip::PdlpParams::use_gpu)
-    .def_rw("verbose", &dtwc::mip::PdlpParams::verbose);
-
-  nb::class_<dtwc::mip::PdlpResult>(m, "PdlpResult")
-    .def_ro("lp_bound", &dtwc::mip::PdlpResult::lp_bound)
-    .def_ro("solved", &dtwc::mip::PdlpResult::solved)
-    .def_ro("iterations", &dtwc::mip::PdlpResult::iterations)
-    .def_ro("gpu_used", &dtwc::mip::PdlpResult::gpu_used)
-    .def("__repr__", [](const dtwc::mip::PdlpResult &r) {
-      return "PdlpResult(lp_bound=" + std::to_string(r.lp_bound)
-             + ", solved=" + (r.solved ? "True" : "False")
-             + ", iterations=" + std::to_string(r.iterations)
-             + ", gpu_used=" + (r.gpu_used ? "True" : "False") + ")";
-    });
-
-  m.def("pdlp_lp_bound",
-        [](nb::ndarray<const double, nb::ndim<2>, nb::c_contig> D, int k,
-           const dtwc::mip::PdlpParams &params) {
-          if (D.shape(0) != D.shape(1))
-            throw dtwc::InvalidInput("pdlp_lp_bound: D must be square.");
-          if (D.shape(0) > static_cast<size_t>(std::numeric_limits<int>::max()))
-            throw dtwc::InvalidInput("pdlp_lp_bound: N exceeds INT_MAX.");
-          const int n = static_cast<int>(D.shape(0));
-          const double *data = D.data();
-          nb::gil_scoped_release release;
-          return dtwc::mip::pdlp_lp_bound(data, n, k, params);
-        },
-        "D"_a, "k"_a, "params"_a = dtwc::mip::PdlpParams{},
-        "Solve the p-median LP relaxation with HiGHS PDLP.\n\n"
-        "Returns the LP-relaxation optimum in RAW distance units - a valid\n"
-        "lower bound on the integer k-medoids cost, NOT a clustering. It is\n"
-        "the independent arbiter for the matrix-free LR-core bound.\n"
-        "Requires a HiGHS build; raises SolverError otherwise.");
 
   // =========================================================================
   // CUDA (optional)

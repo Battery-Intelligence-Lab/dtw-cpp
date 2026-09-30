@@ -18,7 +18,6 @@
  */
 
 #include <dtwc.hpp>
-#include <mip/mip.hpp> // MIP_clustering_byBenders, highs_solver_available
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
@@ -154,52 +153,6 @@ TEST_CASE("O-06: Lloyd refuses zero iterations held by the deprecated field",
   DTWC_POP_NO_DEPRECATED
   REQUIRE_NOTHROW(prob.cluster_by_kmedoids_lloyd());
   CHECK(prob.last_iterations() >= 1);
-}
-
-TEST_CASE("O-06: Benders refuses a deprecated-field n_repetitions below 1 up front",
-          "[problem][o06][mip][benders]")
-{
-  // Benders' warm start restores the caller's n_repetitions through the
-  // validating setter inside a noexcept scope guard: without this check a 0
-  // there would std::terminate the process instead of raising. The one guard
-  // is MIP_clustering_byBenders' own, which the Problem route reaches (IF-2 S2
-  // deleted Problem::cluster_by_mip's copy).
-  auto prob = six_series("o06_benders");
-  prob.set_n_clusters(2);
-  prob.set_method(dtwc::Method::MIP);
-  prob.mip_settings.benders = "on";
-  DTWC_PUSH_NO_DEPRECATED
-  prob.N_repetition = 0;
-  DTWC_POP_NO_DEPRECATED
-  if (dtwc::highs_solver_available()) {
-    REQUIRE_THROWS_MATCHES(prob.cluster(), dtwc::InvalidInput,
-                           MessageMatches(ContainsSubstring(
-                             "MIP_clustering_byBenders: n_repetitions must be at least 1; got 0.")));
-  } else {
-    REQUIRE_THROWS_AS(prob.cluster(), dtwc::SolverError); // no warm start runs
-  }
-}
-
-TEST_CASE("GT-4: a direct Benders call refuses a deprecated-field n_repetitions below 1",
-          "[problem][gt4][mip][benders]")
-{
-  // The guard above covers Problem::cluster(); MIP_clustering_byBenders is public
-  // too. Without its own check the warm start's noexcept restore called the
-  // validating setter with 0 and std::terminate ended the process.
-  auto prob = six_series("gt4_benders");
-  prob.set_n_clusters(2);
-  prob.mip_settings.warm_start = true;
-  DTWC_PUSH_NO_DEPRECATED
-  prob.N_repetition = 0;
-  DTWC_POP_NO_DEPRECATED
-  if (dtwc::highs_solver_available()) {
-    REQUIRE_THROWS_MATCHES(dtwc::MIP_clustering_byBenders(prob), dtwc::InvalidInput,
-                           MessageMatches(ContainsSubstring(
-                             "MIP_clustering_byBenders: n_repetitions must be at least 1; got 0.")));
-    CHECK(prob.n_repetitions() == 0); // refused before anything was changed
-  } else {
-    REQUIRE_THROWS_AS(dtwc::MIP_clustering_byBenders(prob), dtwc::SolverError);
-  }
 }
 
 TEST_CASE("FX-3: read_distance_matrix refuses a matrix of another size and an empty file",

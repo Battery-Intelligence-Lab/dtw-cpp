@@ -3,9 +3,8 @@
  * @brief Task 8.2-F1 preregistration: clustering selectors reject before effects.
  *
  * Public caller-controlled enum inventory under dtwc headers:
- * - F1: Method, Solver, algorithms::Linkage, PAMVariant,
- *   algorithms::OneBatchWeighting, algorithms::BarycenterMethod, Device, and
- *   mip::AssignmentMatrixLayout (a public parameter despite backend-oriented use).
+ * - F1: Method, Solver, algorithms::Linkage, algorithms::BarycenterMethod, and
+ *   Device.
  * - Already exhaustively pinned by M47: core::ConstraintType, MetricType,
  *   DTWVariant, MVMode, MissingStrategy, DistanceMatrixStrategy,
  *   core::Precision, CUDASettings::precision, cuda::CUDAPrecision, and
@@ -24,11 +23,8 @@
 #include <dtwc.hpp>
 
 #include <algorithms/barycenter.hpp>
-#include <algorithms/fast_pam.hpp>
 #include <algorithms/hierarchical.hpp>
-#include <algorithms/one_batch_pam.hpp>
 #include <base/env.hpp>
-#include <mip/solution_transaction.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -52,14 +48,9 @@ using namespace dtwc;
 constexpr std::string_view method_error = "Invalid Method value.";
 constexpr std::string_view solver_error = "Invalid Solver value.";
 constexpr std::string_view linkage_error = "Invalid Linkage value.";
-constexpr std::string_view pam_variant_error = "Invalid PAMVariant value.";
-constexpr std::string_view weighting_error =
-  "Invalid OneBatchWeighting value.";
 constexpr std::string_view barycenter_method_error =
   "Invalid BarycenterMethod value.";
 constexpr std::string_view device_error = "Invalid Device value.";
-constexpr std::string_view assignment_layout_error =
-  "Invalid AssignmentMatrixLayout value.";
 
 template <typename Enum, Enum Last, typename Function>
 void for_each_invalid_enum(Function &&function)
@@ -187,42 +178,6 @@ void check_snapshot(const Problem &problem, const ProblemSnapshot &before)
   CHECK(after == before.packed_bits);
 }
 
-algorithms::OneBatchPAMStats sentinel_stats()
-{
-  algorithms::OneBatchPAMStats stats;
-  stats.batch_size = 91;
-  stats.distance_evaluations = 92;
-  stats.full_matrix_fraction = 93.0;
-  stats.estimated_objective = 94.0;
-  stats.accepted_swaps = 95;
-  return stats;
-}
-
-void check_stats(const algorithms::OneBatchPAMStats &stats)
-{
-  CHECK(stats.batch_size == 91);
-  CHECK(stats.distance_evaluations == 92);
-  CHECK(stats.full_matrix_fraction == 93.0);
-  CHECK(stats.estimated_objective == 94.0);
-  CHECK(stats.accepted_swaps == 95);
-}
-
-std::vector<double> exact_assignment_fixture(
-  mip::AssignmentMatrixLayout layout)
-{
-  constexpr std::size_t n = 4;
-  std::vector<double> values(n * n, 0.0);
-  const auto index = [layout](std::size_t facility, std::size_t point) {
-    return layout == mip::AssignmentMatrixLayout::FacilityMajor
-      ? facility * n + point : facility + point * n;
-  };
-  values[index(1, 0)] = 1.0;
-  values[index(1, 1)] = 1.0;
-  values[index(3, 2)] = 1.0;
-  values[index(3, 3)] = 1.0;
-  return values;
-}
-
 } // namespace
 
 TEST_CASE("F1 invalid Method rejects before clustering or publication",
@@ -247,7 +202,6 @@ TEST_CASE("F1 invalid Solver rejects before any backend call",
 {
   for_each_invalid_enum<Solver, Solver::HiGHS>([](Solver invalid) {
     auto problem = make_problem();
-    problem.mip_settings.benders = "off";
     problem.mip_settings.warm_start = false;
     REQUIRE_NOTHROW(problem.set_solver(Solver::HiGHS));
     const auto before = snapshot(problem);
@@ -289,63 +243,6 @@ TEST_CASE("F1 invalid Linkage dominates matrix checks and degenerate loops",
   });
 }
 
-TEST_CASE("F1 invalid PAMVariant cannot fill or write back",
-          "[f1][enum][invalid][pam]")
-{
-  for_each_invalid_enum<PAMVariant, PAMVariant::FasterPAM>(
-    [](PAMVariant invalid) {
-      auto problem = make_problem();
-      const auto before = snapshot(problem);
-      // k=1 used to bypass the variant switch completely. Validation must be
-      // entry-point-wide, before distance fill and the single-medoid branch.
-      expect_invalid_input(pam_variant_error, [&] {
-        (void)fast_pam_swap(problem, {1}, 1, invalid);
-      });
-      check_snapshot(problem, before);
-    });
-}
-
-TEST_CASE("F1 invalid OneBatchWeighting has no table, DTW, stats, or write-back effects",
-          "[f1][enum][invalid][onebatch]")
-{
-  using algorithms::OneBatchPAMOptions;
-  using algorithms::OneBatchWeighting;
-  for_each_invalid_enum<OneBatchWeighting, OneBatchWeighting::NearestNeighbor>(
-    [](OneBatchWeighting invalid) {
-      {
-        auto problem = make_problem();
-        auto stats = sentinel_stats();
-        const auto before = snapshot(problem);
-        OneBatchPAMOptions options;
-        options.n_clusters = 4;
-        options.batch_size = 4;
-        options.max_iter = 1;
-        options.weighting = invalid;
-        expect_invalid_input(weighting_error, [&] {
-          (void)algorithms::one_batch_pam(problem, options, &stats);
-        });
-        check_snapshot(problem, before);
-        check_stats(stats);
-      }
-
-      {
-        auto problem = make_problem(4, true);
-        auto stats = sentinel_stats();
-        const auto before = snapshot(problem);
-        OneBatchPAMOptions options;
-        options.n_clusters = 2;
-        options.batch_size = 2;
-        options.max_iter = 1;
-        options.weighting = invalid;
-        expect_invalid_input(weighting_error, [&] {
-          (void)algorithms::one_batch_pam(problem, options, &stats);
-        });
-        check_snapshot(problem, before);
-        check_stats(stats);
-      }
-    });
-}
-
 TEST_CASE("F1 invalid BarycenterMethod rejects before reading series",
           "[f1][enum][invalid][barycenter]")
 {
@@ -381,22 +278,6 @@ TEST_CASE("F1 invalid Device never aliases CPU in public reporting",
   for_each_invalid_enum<Device, Device::GPU>([](Device invalid) {
     expect_invalid_input(device_error, [&] { (void)to_string(invalid); });
   });
-}
-
-TEST_CASE("F1 invalid AssignmentMatrixLayout cannot alias point-major",
-          "[f1][enum][invalid][assignment]")
-{
-  using mip::AssignmentMatrixLayout;
-  for_each_invalid_enum<AssignmentMatrixLayout,
-                        AssignmentMatrixLayout::PointMajor>(
-    [](AssignmentMatrixLayout invalid) {
-      const auto values = exact_assignment_fixture(
-        AssignmentMatrixLayout::PointMajor);
-      expect_invalid_input(assignment_layout_error, [&] {
-        (void)mip::extract_exact_clustering(
-          values, 4, 2, invalid, "F1 selector test");
-      });
-    });
 }
 
 TEST_CASE("F1 all declared Method values remain accepted",
@@ -439,48 +320,6 @@ TEST_CASE("F1 all declared Linkage values dispatch",
   }
 }
 
-TEST_CASE("F1 all declared PAMVariant values dispatch",
-          "[f1][enum][valid][pam]")
-{
-  constexpr std::array values{
-    PAMVariant::FastPAM1Naive, PAMVariant::FastPAM1, PAMVariant::FasterPAM
-  };
-  for (const PAMVariant value : values) {
-    auto problem = make_problem();
-    const auto result = fast_pam_swap(problem, {0, 2}, 1, value);
-    CHECK(result.medoid_indices.size() == 2);
-    CHECK(result.labels.size() == 4);
-    CHECK(problem.centroids_ind == result.medoid_indices);
-    CHECK(problem.clusters_ind == result.labels);
-  }
-}
-
-TEST_CASE("F1 all declared OneBatchWeighting values dispatch",
-          "[f1][enum][valid][onebatch]")
-{
-  using algorithms::OneBatchPAMOptions;
-  using algorithms::OneBatchPAMStats;
-  using algorithms::OneBatchWeighting;
-  constexpr std::array values{
-    OneBatchWeighting::Uniform,
-    OneBatchWeighting::Debiased,
-    OneBatchWeighting::NearestNeighbor
-  };
-  for (const OneBatchWeighting value : values) {
-    auto problem = make_problem();
-    OneBatchPAMOptions options;
-    options.n_clusters = 2;
-    options.batch_size = 4;
-    options.max_iter = 1;
-    options.weighting = value;
-    OneBatchPAMStats stats;
-    const auto result = algorithms::one_batch_pam(problem, options, &stats);
-    CHECK(result.medoid_indices.size() == 2);
-    CHECK(result.labels.size() == 4);
-    CHECK(stats.batch_size == 4);
-  }
-}
-
 TEST_CASE("F1 all declared BarycenterMethod values dispatch at both entry points",
           "[f1][enum][valid][barycenter]")
 {
@@ -517,20 +356,4 @@ TEST_CASE("F1 all declared Device values report their exact names",
 {
   CHECK(to_string(Device::CPU) == "cpu");
   CHECK(to_string(Device::GPU) == "gpu");
-}
-
-TEST_CASE("F1 both AssignmentMatrixLayout values decode exact assignments",
-          "[f1][enum][valid][assignment]")
-{
-  using mip::AssignmentMatrixLayout;
-  constexpr std::array values{
-    AssignmentMatrixLayout::FacilityMajor,
-    AssignmentMatrixLayout::PointMajor
-  };
-  for (const AssignmentMatrixLayout value : values) {
-    const auto result = mip::extract_exact_clustering(
-      exact_assignment_fixture(value), 4, 2, value, "F1 valid control");
-    CHECK(result.medoid_indices == std::vector<int>{1, 3});
-    CHECK(result.labels == std::vector<int>{0, 0, 1, 1});
-  }
 }

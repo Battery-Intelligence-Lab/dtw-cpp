@@ -25,10 +25,7 @@ from dtwcpp._dtwcpp_core import (
     DendrogramStep,
     Dendrogram,
     HierarchicalOptions,
-    CLARANSOptions,
-    OneBatchWeighting,
     OneBatchPAMOptions,
-    OneBatchPAMStats,
     BarycenterMethod,
     BarycenterOptions,
     BarycenterClusteringOptions,
@@ -45,7 +42,6 @@ from dtwcpp._dtwcpp_core import (
     DeviceError,
     IOError,
     DEFAULT_RANDOM_SEED,
-    _F22_DEPRECATION_POLICY,
     device_to_string,
     # DTW functions (raw C++ bindings — require numpy arrays)
     dtw_distance as _dtw_distance_raw,
@@ -61,11 +57,9 @@ from dtwcpp._dtwcpp_core import (
     fast_pam_seeded,
     fast_clara,
     one_batch_pam,
-    one_batch_pam_with_stats,
     dtw_barycenter,
     barycenter_kmeans,
     CLARAOptions,
-    clarans,
     build_dendrogram,
     cut_dendrogram,
     # Scores (canonical 2.0 names)
@@ -76,12 +70,6 @@ from dtwcpp._dtwcpp_core import (
     calinski_harabasz,
     adjusted_rand,
     normalized_mutual_info,
-    # Scores (deprecated aliases, kept one cycle — api-contract §4)
-    davies_bouldin_index,
-    dunn_index,
-    calinski_harabasz_index,
-    adjusted_rand_index,
-    normalized_mutual_information,
     # Utils
     derivative_transform,
     z_normalize,
@@ -92,11 +80,6 @@ from dtwcpp._dtwcpp_core import (
     load_checkpoint,
     CheckpointOptions,
 )
-
-if _F22_DEPRECATION_POLICY is not True:
-    raise ImportError(
-        "dtwcpp native extension does not implement the F22 deprecation policy"
-    )
 
 from dtwcpp._dtwcpp_core import device as _core_device
 # The one device grammar, dtwc::detail::parse_device (§6.1): a name becomes
@@ -196,15 +179,6 @@ def device(device=None):
     return canonical
 
 
-def get_device():
-    """Deprecated alias for :func:`device` (kept one cycle, §4)."""
-    import warnings
-
-    warnings.warn("dtwcpp.get_device is deprecated; use dtwcpp.device",
-                  DeprecationWarning, stacklevel=2)
-    return _current_device()
-
-
 def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
     """Compute pairwise DTW distance matrix.
 
@@ -261,29 +235,6 @@ from dtwcpp.sklearn import DTWCKMedoids
 
 # Unified high-level interface: device() -> load() -> cluster() -> result.plot()
 from dtwcpp._api import Dataset, load, cluster, Result, plot
-
-
-def __getattr__(name):
-    """Resolve retained module aliases without caching their deprecated names."""
-    if name != "ClusterResult":
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-    import sys
-    import warnings
-
-    caller = sys._getframe(1)
-    caller_module = caller.f_globals.get("__name__")
-    importlib_preflight = (
-        caller.f_code.co_name == "_handle_fromlist"
-        and caller_module in {"importlib._bootstrap", "_frozen_importlib"}
-    )
-    if not importlib_preflight:
-        warnings.warn(
-            "dtwcpp.ClusterResult is deprecated; use dtwcpp.Result",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    return Result
 
 # Pure-Python I/O utilities (CSV always available; HDF5/Parquet optional)
 from dtwcpp.io import (
@@ -355,8 +306,8 @@ __all__ = [
     "Linkage", "Device",
     "DTWVariantParams", "ClusteringResult", "Data",
     "MIPSettings", "CUDASettings", "DendrogramStep", "Dendrogram",
-    "HierarchicalOptions", "CLARANSOptions", "OneBatchWeighting",
-    "OneBatchPAMOptions", "OneBatchPAMStats",
+    "HierarchicalOptions",
+    "OneBatchPAMOptions",
     "BarycenterMethod", "BarycenterOptions", "BarycenterClusteringOptions",
     "BarycenterClusteringResult",
     "Problem", "device_to_string", "data_from_arrow_c_array",
@@ -365,19 +316,15 @@ __all__ = [
     "DEFAULT_RANDOM_SEED",
     "soft_dtw_gradient",
     "fast_pam", "fast_pam_seeded", "fast_clara", "CLARAOptions", "one_batch_pam",
-    "one_batch_pam_with_stats",
     "dtw_barycenter", "barycenter_kmeans",
-    "clarans", "build_dendrogram", "cut_dendrogram",
+    "build_dendrogram", "cut_dendrogram",
     # Scores (canonical 2.0 names)
     "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
     "adjusted_rand", "normalized_mutual_info",
-    # Scores (deprecated aliases, §4)
-    "davies_bouldin_index", "dunn_index", "calinski_harabasz_index",
-    "adjusted_rand_index", "normalized_mutual_information",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
-    "device", "get_device",
-    "Dataset", "load", "cluster", "Result", "ClusterResult", "plot",
+    "device",
+    "Dataset", "load", "cluster", "Result", "plot",
     "distance",
     "CUDA_AVAILABLE", "cuda_available", "cuda_device_info",
     "METAL_AVAILABLE", "metal_available", "metal_device_info",

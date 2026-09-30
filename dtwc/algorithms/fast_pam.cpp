@@ -1,12 +1,12 @@
 /**
  * @file fast_pam.cpp
- * @brief FastPAM1 / FasterPAM k-medoids SWAP (Schubert & Rousseeuw 2021).
+ * @brief FasterPAM k-medoids SWAP (Schubert & Rousseeuw 2021).
  *
  * @details Reference: Schubert, E. & Rousseeuw, P.J. (2021). "Fast and eager
  *   k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS
  *   algorithms." *Information Systems* 101:101804 (arXiv:2008.05171). BUILD uses
- *   the existing K-means++; three SWAP variants (see PAMVariant) share the O(N)
- *   ΔTD decomposition derived below.
+ *   the existing K-means++; the eager FasterPAM SWAP uses the O(N) ΔTD
+ *   decomposition derived below.
  *
  * ── ΔTD decomposition (Eq. 11), derived from first principles ──────────────────
  * State per point o: nearest medoid slot m₁(o), d₁(o)=dist to it, d₂(o)=dist to
@@ -23,7 +23,7 @@
  * d₁ ≤ a < d₂ → ploss[m₁] += a−d₂; a ≥ d₂ → 0. So ΔTD for removing EVERY medoid is
  * found in ONE O(N) pass per candidate (argmin over m, then add acc once) — O(N²)
  * per iteration, not O(N²·k). (Degenerate k=1: d₂=+inf makes ρ and the correction
- * ±inf ⇒ NaN, so k=1 is special-cased to a direct argmin in fast_pam_swap.)
+ * ±inf ⇒ NaN, so k=1 is special-cased to a direct argmin in swap_phase.)
  * Cross-checked against the paper (Alg. 3–4) and the Rust `kmedoids` reference.
  *
  * @author Volkan Kumtepeli
@@ -31,8 +31,6 @@
  */
 
 #include "fast_pam.hpp"
-#include "detail/fast_pam_plan.hpp"
-#include "detail/medoid_utils.hpp"
 #include "../Problem.hpp"
 #include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
@@ -42,41 +40,11 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <exception>
 #include <limits>
 #include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-namespace dtwc::algorithms::detail {
-
-int checked_fast_pam_point_count(
-  std::size_t n_points, std::string_view caller)
-{
-  const std::string prefix(caller);
-  if (n_points == 0)
-    throw InvalidInput(prefix + ": Problem has no data points.");
-  if (n_points > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-    throw InvalidInput(
-      prefix + ": N exceeds the int-indexed clustering result limit.");
-  return static_cast<int>(n_points);
-}
-
-FastPamPlan resolve_fast_pam_plan(
-  std::size_t n_points, int n_clusters, std::string_view caller)
-{
-  const int n = checked_fast_pam_point_count(n_points, caller);
-  if (n_clusters <= 0 || n_clusters > n) {
-    const std::string prefix(caller);
-    throw InvalidInput(
-      prefix + ": n_clusters must be in [1, N]. Got n_clusters="
-      + std::to_string(n_clusters) + ", N=" + std::to_string(n) + ".");
-  }
-  return { n, n_clusters };
-}
-
-} // namespace dtwc::algorithms::detail
 
 namespace dtwc {
 
@@ -101,52 +69,41 @@ void compute_nearest_and_second(
   std::vector<double>& second_dist)
 {
   const int k = static_cast<int>(medoids.size());
-  std::exception_ptr failure;
-  int failure_point = N;
 
-  // Lock-free by design: each iteration writes only to nearest[p], nearest_dist[p],
+  // Lock-free by design: each index writes only to nearest[p], nearest_dist[p],
   // and second_dist[p] at its own index p — no two threads access the same element.
-#pragma omp parallel for schedule(static)
-  for (int p = 0; p < N; ++p) {
-    try {
-      double best = std::numeric_limits<double>::max();
-      double second_best = std::numeric_limits<double>::max();
-      int best_idx = 0;
-      bool has_best = false;
-      bool has_second = false;
+  auto assign_point = [&](std::size_t index) {
+    const int p = static_cast<int>(index);
+    double best = std::numeric_limits<double>::max();
+    double second_best = std::numeric_limits<double>::max();
+    int best_idx = 0;
+    bool has_best = false;
+    bool has_second = false;
 
-      for (int m = 0; m < k; ++m) {
-        const double d = core::detail::require_finite_medoid_distance(
-          prob.dist_by_ind(p, medoids[m]), "fast_pam", p, m, medoids[m]);
-        if (!has_best || d < best) {
-          if (has_best) {
-            second_best = best;
-            has_second = true;
-          }
-          best = d;
-          best_idx = m;
-          has_best = true;
-        } else if (!has_second || d < second_best) {
-          second_best = d;
+    for (int m = 0; m < k; ++m) {
+      const double d = core::detail::require_finite_medoid_distance(
+        prob.dist_by_ind(p, medoids[m]), "fast_pam", p, m, medoids[m]);
+      // A medoid tied with another medoid (a duplicate series) serves itself,
+      // or its own cluster would be published empty.
+      if (!has_best || d < best || (d == best && medoids[m] == p)) {
+        if (has_best) {
+          second_best = best;
           has_second = true;
         }
-      }
-
-      nearest[p] = best_idx;
-      nearest_dist[p] = best;
-      second_dist[p] = second_best;
-    } catch (...) {
-#pragma omp critical(dtwc_medoid_assignment_failure)
-      {
-        if (p < failure_point) {
-          failure_point = p;
-          failure = std::current_exception();
-        }
+        best = d;
+        best_idx = m;
+        has_best = true;
+      } else if (!has_second || d < second_best) {
+        second_best = d;
+        has_second = true;
       }
     }
-  }
 
-  if (failure) std::rethrow_exception(failure);
+    nearest[p] = best_idx;
+    nearest_dist[p] = best;
+    second_dist[p] = second_best;
+  };
+  run_openmp(assign_point, static_cast<std::size_t>(N));
 }
 
 /**
@@ -156,101 +113,6 @@ double compute_total_cost(const std::vector<double>& nearest_dist)
 {
   return core::detail::ordered_medoid_objective(
     nearest_dist, "fast_pam");
-}
-
-// Deterministic best-swap selection order, shared by the naive and decomposition
-// FastPAM1 so their results are DIGIT-IDENTICAL: prefer the most-negative ΔTD;
-// break ties by the smaller candidate index x, then (within a candidate) the
-// smaller medoid slot. Returns true if (cand_x, cand_m) should replace (best_x,·).
-inline bool better_swap(double cand_delta, int cand_x, double best_delta, int best_x)
-{
-  if (cand_x < 0) return false;
-  if (cand_delta < best_delta) return true;
-  return cand_delta == best_delta && (best_x < 0 || cand_x < best_x);
-}
-
-// ---------------------------------------------------------------------------
-// FastPAM1Naive SWAP — the pre-5.1 baseline. Single best (medoid_out, candidate_in)
-// swap per pass, but the per-candidate gain uses the NAIVE nested O(N·k) loop:
-//   for point p, for medoid m:
-//     if m == nearest[p]: delta_m += min(second_dist[p], d_xp) - nearest_dist[p]
-//     else:               delta_m += min(0, d_xp - nearest_dist[p])
-// ⇒ O(N²·k) per iteration. Kept as the bench baseline and the digit-identity
-// oracle for the O(N)-decomposition FastPAM1 below.
-// ---------------------------------------------------------------------------
-void pam1_naive_swap_impl(Problem& prob, int N, int k,
-                          std::vector<int>& medoids, std::vector<bool>& is_medoid,
-                          std::vector<int>& nearest, std::vector<double>& nearest_dist,
-                          std::vector<double>& second_dist, int max_iter,
-                          int& iter, bool& converged)
-{
-  const double eps = 1e-9 * std::max(1.0, compute_total_cost(nearest_dist));
-  for (iter = 0; iter < max_iter; ++iter) {
-    double best_delta = 0.0;
-    int best_m_idx = -1, best_x_new = -1;
-    std::exception_ptr failure;
-    int failure_candidate = N;
-
-    const int swap_chunk = dtwc::omp_chunk_size(N);
-    #pragma omp parallel
-    {
-      std::vector<double> local_delta_m(k);
-      double local_best_delta = 0.0;
-      int local_best_m_idx = -1, local_best_x_new = -1;
-
-      #pragma omp for schedule(dynamic, swap_chunk)
-      for (int x = 0; x < N; ++x) {
-        if (is_medoid[x]) continue;
-        try {
-          std::fill(local_delta_m.begin(), local_delta_m.end(), 0.0);
-          for (int p = 0; p < N; ++p) {
-            const double d_xp = core::detail::require_finite_candidate_distance(
-              prob.dist_by_ind(p, x), "fast_pam", p, x);
-            const int nearest_m = nearest[p];
-            for (int m = 0; m < k; ++m) {
-              if (m == nearest_m)
-                local_delta_m[m] += std::min(second_dist[p], d_xp) - nearest_dist[p];
-              else if (d_xp - nearest_dist[p] < 0.0)
-                local_delta_m[m] += d_xp - nearest_dist[p];
-            }
-          }
-          for (int m = 0; m < k; ++m)             // smallest m wins ties (strict <)
-            if (better_swap(local_delta_m[m], x, local_best_delta, local_best_x_new)) {
-              local_best_delta = local_delta_m[m];
-              local_best_m_idx = m;
-              local_best_x_new = x;
-            }
-        } catch (...) {
-#pragma omp critical(dtwc_medoid_candidate_failure)
-          {
-            if (x < failure_candidate) {
-              failure_candidate = x;
-              failure = std::current_exception();
-            }
-          }
-        }
-      }
-      // G1: an UNNAMED critical region shares one implementation-defined name
-      // program-wide, serialising against every unnamed critical in any linked
-      // TU. Each per-thread reduction gets its own name.
-      #pragma omp critical(dtwc_pam1_naive_swap_reduce)
-      {
-        if (better_swap(local_best_delta, local_best_x_new, best_delta, best_x_new)) {
-          best_delta = local_best_delta;
-          best_m_idx = local_best_m_idx;
-          best_x_new = local_best_x_new;
-        }
-      }
-    } // end omp parallel
-
-    if (failure) std::rethrow_exception(failure);
-    if (best_x_new < 0 || best_delta >= -eps) { converged = true; break; }
-
-    is_medoid[medoids[best_m_idx]] = false;
-    is_medoid[best_x_new] = true;
-    medoids[best_m_idx] = best_x_new;
-    compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
-  }
 }
 
 // Removal loss ρ[m] = Σ_{o: nearest[o]=m} (second_dist[o] − nearest_dist[o]) ≥ 0:
@@ -307,84 +169,11 @@ SwapEval find_best_swap(Problem& prob, int N, int k, int xj,
 }
 
 // ---------------------------------------------------------------------------
-// FastPAM1 SWAP (Schubert & Rousseeuw 2021, Algorithm 2) — the O(N)-decomposition
-// form. Same single-best-swap RESULT as the naive baseline (digit-identical via
-// better_swap ordering), but each candidate's ΔTD over ALL medoids comes from the
-// O(N) find_best_swap pass, so an iteration is O(N²) — parallel over candidates —
-// instead of O(N²·k). Best swap per iteration, then refresh nearest/second/ρ.
-// ---------------------------------------------------------------------------
-void fastpam1_swap_impl(Problem& prob, int N, int k,
-                        std::vector<int>& medoids, std::vector<bool>& is_medoid,
-                        std::vector<int>& nearest, std::vector<double>& nearest_dist,
-                        std::vector<double>& second_dist, int max_iter,
-                        int& iter, bool& converged)
-{
-  std::vector<double> rho(k);
-  update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
-  const double eps = 1e-9 * std::max(1.0, compute_total_cost(nearest_dist));
-
-  for (iter = 0; iter < max_iter; ++iter) {
-    double best_delta = 0.0;
-    int best_m_idx = -1, best_x_new = -1;
-    std::exception_ptr failure;
-    int failure_candidate = N;
-
-    const int swap_chunk = dtwc::omp_chunk_size(N);
-    #pragma omp parallel
-    {
-      std::vector<double> ploss(k);   // per-thread scratch, reused across candidates
-      double local_best_delta = 0.0;
-      int local_best_m_idx = -1, local_best_x_new = -1;
-
-      #pragma omp for schedule(dynamic, swap_chunk)
-      for (int x = 0; x < N; ++x) {
-        if (is_medoid[x]) continue;
-        try {
-          const SwapEval e = find_best_swap(
-            prob, N, k, x, rho, nearest, nearest_dist, second_dist, ploss);
-          if (better_swap(e.change, x, local_best_delta, local_best_x_new)) {
-            local_best_delta = e.change;
-            local_best_m_idx = e.best_m;
-            local_best_x_new = x;
-          }
-        } catch (...) {
-#pragma omp critical(dtwc_medoid_candidate_failure)
-          {
-            if (x < failure_candidate) {
-              failure_candidate = x;
-              failure = std::current_exception();
-            }
-          }
-        }
-      }
-      // G1: distinct name, see pam1_naive_swap_impl.
-      #pragma omp critical(dtwc_fastpam1_swap_reduce)
-      {
-        if (better_swap(local_best_delta, local_best_x_new, best_delta, best_x_new)) {
-          best_delta = local_best_delta;
-          best_m_idx = local_best_m_idx;
-          best_x_new = local_best_x_new;
-        }
-      }
-    } // end omp parallel
-
-    if (failure) std::rethrow_exception(failure);
-    if (best_x_new < 0 || best_delta >= -eps) { converged = true; break; }
-
-    is_medoid[medoids[best_m_idx]] = false;
-    is_medoid[best_x_new] = true;
-    medoids[best_m_idx] = best_x_new;
-    compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
-    update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // FasterPAM SWAP (Schubert & Rousseeuw 2021, Algorithm 3). Eager: cycle through
 // candidate points; for each, find the best medoid to swap it in for in O(N)
 // (find_best_swap) and perform the swap immediately if it lowers TD, then refresh
 // nearest/second and ρ. A full sweep of N candidates with no accepted swap ⇒
-// converged. Per-sweep cost O(N²) vs FastPAM1's O(N²·k); accepted swaps (few over
+// converged. Per-sweep cost O(N²); accepted swaps (few over
 // the whole run) each refresh state in O(N·k) via compute_nearest_and_second.
 //
 // State refresh after a swap uses the full (parallel) recompute rather than the
@@ -423,20 +212,22 @@ void fasterpam_swap_impl(Problem& prob, int N, int k,
   }
 }
 
-} // anonymous namespace
-
-
-core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& initial_medoids,
-                                     int max_iter, PAMVariant variant)
+/// Point count of a Problem that can hold `n_clusters` medoids.
+int checked_point_count(const Problem& prob, int n_clusters, const char* caller)
 {
-  validate_pam_variant(variant);
-  const int N = algorithms::detail::checked_fast_pam_point_count(
-    prob.size(), "fast_pam_swap");
-  algorithms::detail::validate_medoids(initial_medoids, N);
+  const int n = static_cast<int>(prob.size());
+  if (n == 0)
+    throw InvalidInput(std::string(caller) + ": Problem has no data points.");
+  if (n_clusters <= 0 || n_clusters > n)
+    throw InvalidInput(std::string(caller) + ": n_clusters must be in [1, N]. Got n_clusters="
+                       + std::to_string(n_clusters) + ", N=" + std::to_string(n) + ".");
+  return n;
+}
 
-  prob.fill_distance_matrix();
-
-  std::vector<int> medoids = initial_medoids;
+/// SWAP phase from the BUILD medoids; writes the result back into `prob`.
+core::ClusteringResult swap_phase(Problem& prob, std::vector<int> medoids, int max_iter)
+{
+  const int N = static_cast<int>(prob.size());
   const int k = static_cast<int>(medoids.size());
 
   std::vector<bool> is_medoid(N, false);
@@ -453,75 +244,26 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
     // Degenerate: with one medoid there is no second-nearest (second_dist = +inf),
     // so the removal-loss decomposition is undefined (ρ = inf, corrections = −inf
     // ⇒ NaN). The single-medoid optimum is simply argmin_x Σ_o d(x, o); compute it
-    // directly in O(N²), smallest index winning ties. Handles all three variants.
-    double best_cost = std::numeric_limits<double>::max();
-    int best_x = medoids[0];
-    bool best_present = false;
-    std::exception_ptr failure;
-    int failure_candidate = N;
-    const int chunk = dtwc::omp_chunk_size(N);
-    #pragma omp parallel
-    {
-      double loc_cost = std::numeric_limits<double>::max();
-      int loc_x = medoids[0];
-      bool loc_present = false;
-      #pragma omp for schedule(dynamic, chunk) nowait
-      for (int x = 0; x < N; ++x) {
-        try {
-          core::detail::OrderedMedoidObjective candidate_cost("fast_pam");
-          for (int o = 0; o < N; ++o) {
-            candidate_cost.add(core::detail::require_finite_candidate_distance(
-              prob.dist_by_ind(x, o), "fast_pam", o, x));
-          }
-          const double c = candidate_cost.value();
-          if (!loc_present || c < loc_cost || (c == loc_cost && x < loc_x)) {
-            loc_cost = c;
-            loc_x = x;
-            loc_present = true;
-          }
-        } catch (...) {
-#pragma omp critical(dtwc_medoid_candidate_failure)
-          {
-            if (x < failure_candidate) {
-              failure_candidate = x;
-              failure = std::current_exception();
-            }
-          }
-        }
+    // directly in O(N²), smallest index winning ties. Each candidate writes its
+    // own cost; the argmin is taken serially.
+    std::vector<double> candidate_cost(static_cast<std::size_t>(N));
+    auto total_distance = [&](std::size_t index) {
+      const int x = static_cast<int>(index);
+      core::detail::OrderedMedoidObjective cost("fast_pam");
+      for (int o = 0; o < N; ++o) {
+        cost.add(core::detail::require_finite_candidate_distance(
+          prob.dist_by_ind(x, o), "fast_pam", o, x));
       }
-      // G1: distinct name, see pam1_naive_swap_impl.
-      #pragma omp critical(dtwc_fast_pam_single_medoid_reduce)
-      {
-        if (loc_present
-            && (!best_present || loc_cost < best_cost
-                || (loc_cost == best_cost && loc_x < best_x))) {
-          best_cost = loc_cost;
-          best_x = loc_x;
-          best_present = true;
-        }
-      }
-    }
-    if (failure) std::rethrow_exception(failure);
-    medoids[0] = best_x;
+      candidate_cost[index] = cost.value();
+    };
+    run_openmp(total_distance, static_cast<std::size_t>(N));
+    medoids[0] = static_cast<int>(
+      std::min_element(candidate_cost.begin(), candidate_cost.end()) - candidate_cost.begin());
     compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
     converged = true;
   } else {
-    switch (variant) {
-      case PAMVariant::FastPAM1Naive:
-        pam1_naive_swap_impl(prob, N, k, medoids, is_medoid, nearest, nearest_dist,
-                             second_dist, max_iter, iter, converged);
-        break;
-      case PAMVariant::FastPAM1:
-        fastpam1_swap_impl(prob, N, k, medoids, is_medoid, nearest, nearest_dist,
-                           second_dist, max_iter, iter, converged);
-        break;
-      case PAMVariant::FasterPAM:
-        fasterpam_swap_impl(prob, N, k, medoids, is_medoid, nearest, nearest_dist,
-                            second_dist, max_iter, iter, converged);
-        break;
-      default:
-        throw std::logic_error("fast_pam_swap: unreachable PAMVariant");
-    }
+    fasterpam_swap_impl(prob, N, k, medoids, is_medoid, nearest, nearest_dist,
+                        second_dist, max_iter, iter, converged);
   }
 
   core::ClusteringResult result;
@@ -531,21 +273,16 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
   result.iterations = iter;
   result.converged = converged;
 
-  // 2.0 result write-back (Task 1.6): store labels/medoids/k back into `prob` so
-  // pure-C++ users get the same state the Python/MATLAB wrappers wired by hand —
-  // scores::silhouette(prob) etc. then work with NO manual wiring.
-  prob.set_n_clusters(k);
-  prob.centroids_ind = result.medoid_indices;
-  prob.clusters_ind  = result.labels;
+  prob.set_result(result); // scores::silhouette(prob) etc. read it back
   return result;
 }
+
+} // anonymous namespace
 
 
 core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
 {
-  const auto plan = algorithms::detail::resolve_fast_pam_plan(
-    prob.size(), n_clusters, "fast_pam");
-
+  (void)checked_point_count(prob, n_clusters, "fast_pam");
   prob.fill_distance_matrix();
 
   // -------------------------------------------------------------------------
@@ -556,7 +293,7 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   const auto orig_centroids = prob.centroids_ind;
   const auto orig_clusters = prob.clusters_ind;
 
-  prob.set_n_clusters(plan.n_clusters);
+  prob.set_n_clusters(n_clusters);
   init::Kmeanspp(prob);
   std::vector<int> medoids = prob.centroids_ind;
 
@@ -564,28 +301,22 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   prob.centroids_ind = orig_centroids;
   prob.clusters_ind = orig_clusters;
 
-  // Default: the O(N)-decomposition FastPAM1 (Task 5.1) — same result as the old
-  // naive O(N²·k) swap but O(N²) per iteration and parallel over candidates, so it
-  // never regresses the common small-k / large-N case. FasterPAM (eager) wins at
-  // large k but is sequential; callers pick it explicitly via fast_pam_swap.
-  return fast_pam_swap(prob, medoids, max_iter, PAMVariant::FastPAM1);
+  return swap_phase(prob, std::move(medoids), max_iter);
 }
 
 core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
                                        std::uint64_t random_seed, int max_iter)
 {
-  const auto plan = algorithms::detail::resolve_fast_pam_plan(
-    prob.size(), n_clusters, "fast_pam_seeded");
-  const int N = plan.n_points;
+  const int N = checked_point_count(prob, n_clusters, "fast_pam_seeded");
   prob.fill_distance_matrix();
 
   std::mt19937_64 rng(random_seed);
   std::vector<int> medoids{static_cast<int>(core::portable_bounded(
     rng, static_cast<std::uint64_t>(N)))};
-  medoids.reserve(static_cast<std::size_t>(plan.n_clusters));
+  medoids.reserve(static_cast<std::size_t>(n_clusters));
   std::vector<double> distances(static_cast<std::size_t>(N),
                                 std::numeric_limits<double>::infinity());
-  while (static_cast<int>(medoids.size()) < plan.n_clusters) {
+  while (static_cast<int>(medoids.size()) < n_clusters) {
     for (int i = 0; i < N; ++i)
       distances[static_cast<std::size_t>(i)] = std::min(
         distances[static_cast<std::size_t>(i)], prob.dist_by_ind(medoids.back(), i));
@@ -610,7 +341,7 @@ core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
     }
     medoids.push_back(chosen);
   }
-  return fast_pam_swap(prob, medoids, max_iter, PAMVariant::FastPAM1);
+  return swap_phase(prob, std::move(medoids), max_iter);
 }
 
 } // namespace dtwc

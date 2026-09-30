@@ -59,7 +59,7 @@ end
 % =========================================================================
 
 function test_tier1_device_get_set(testCase)
-%   §1.1 dtwc.device -> MEX set_device/get_device -> dtwc::Env.
+%   §1.1 dtwc.device -> MEX set_device/get_device -> dtwc::device().
     name = dtwc.device('cpu');
     verifyEqual(testCase, name, 'cpu');
     verifyEqual(testCase, dtwc.device(), 'cpu');
@@ -201,9 +201,12 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
     l1_problem.set_data(X);
     l1_problem.set_distance_matrix(D_l1);
     l1_result = dtwc.fast_pam(l1_problem, 2, 'MaxIter', 100, 'Seed', 42);
-    assertEqual(testCase, l1_result.labels, int32([1 2 1 1]));
-    assertEqual(testCase, l1_result.medoid_indices, int32([3 2]));
-    assertEqual(testCase, l1_result.total_cost, 9);
+    % Seed 42 ends in the swap-local optimum {4, 1}: no single swap of it is
+    % cheaper than 10. The global optimum {3, 2}, cost 9, is what seed 43 finds,
+    % and what the NInit = 2 estimator below reports.
+    assertEqual(testCase, l1_result.labels, int32([2 1 1 1]));
+    assertEqual(testCase, l1_result.medoid_indices, int32([4 1]));
+    assertEqual(testCase, l1_result.total_cost, 10);
     assertEqual(testCase, l1_result.iterations, int32(1));
     assertTrue(testCase, l1_result.converged);
 
@@ -350,7 +353,7 @@ function test_tier1_result_save_and_plot(testCase)
 end
 
 function test_tier1_dtwclustering_device_param(testCase)
-%   §1.5 DTWClustering gains a Device parameter (delegates to Env).
+%   §1.5 DTWClustering gains a Device parameter (delegates to dtwc::device()).
     c = dtwc.DTWClustering('NClusters', 2, 'Device', 'cpu');
     verifyEqual(testCase, c.Device, 'cpu');
     c = c.fit(testCase.TestData.X);
@@ -367,7 +370,7 @@ function test_device_names_are_read_by_the_cpp_grammar(testCase)
     restore = onCleanup(@() dtwc.device(previous)); %#ok<NASGU>
     verifyEqual(testCase, dtwc.device(' CPU '), 'cpu');
     unknown = ['[dtwc] unknown device ''gpu:x''. Valid devices: cpu, gpu, ' ...
-               'gpu:N (aliases cuda, cuda:N), hpc.'];
+               'gpu:N (aliases cuda, cuda:N).'];
     prob = dtwc.Problem('grammar');
     for request = {@() dtwc.device('gpu:x'), @() prob.set_device('gpu:x')}
         verifyError(testCase, request{1}, 'dtwc:deviceError');
@@ -379,6 +382,29 @@ function test_device_names_are_read_by_the_cpp_grammar(testCase)
     end
     mc = meta.class.fromName('dtwc.DTWClustering');
     verifyFalse(testCase, any(strcmp({mc.MethodList.Name}, 'gpu_index')));
+end
+
+function test_hpc_is_a_device_error_as_in_cpp(testCase)
+%   hpc is Python's: it submits a whole run to SLURM. C++ refuses it with a
+%   DeviceError naming Python and slurm_remote.sh; MATLAB reads the same grammar,
+%   so every route that takes a device name refuses it alike and the process
+%   device is left alone.
+    previous = dtwc.device();
+    restore = onCleanup(@() dtwc.device(previous)); %#ok<NASGU>
+    X = testCase.TestData.X;
+    routes = {@() dtwc.device('hpc'), ...
+              @() dtwc.Problem('hpc', 'Device', 'hpc'), ...
+              @() dtwc.Problem('hpc').set_device('hpc'), ...
+              @() dtwc.DTWClustering('NClusters', 2, 'Device', 'hpc').fit(X)};
+    for route = routes
+        verifyError(testCase, route{1}, 'dtwc:deviceError');
+        try
+            route{1}();
+        catch err
+            verifySubstring(testCase, err.message, 'slurm_remote.sh');
+        end
+    end
+    verifyEqual(testCase, dtwc.device(), previous);
 end
 
 function test_dtwclustering_forwards_the_gpu_ordinal_to_cuda_settings(testCase)
@@ -396,7 +422,7 @@ function test_dtwclustering_forwards_the_gpu_ordinal_to_cuda_settings(testCase)
         fprintf('S3_GPU_ORDINAL branch=gpu observed_device_id=%d\n', ...
                 prob.get_cuda_settings().device_id);
     else
-        % No GPU backend: Env must reject the request before fit() creates a
+        % No GPU backend: dtwc::device() must reject the request before fit() creates a
         % Problem, and the process device must be left untouched.
         dtwc.device('cpu');
         c = dtwc.DTWClustering('NClusters', 2, 'Device', 'gpu:1');
@@ -436,7 +462,6 @@ function test_problem_setters_all_callable(testCase)
     prob.set_variant('standard');
     prob.set_missing_strategy('error');
     prob.set_distance_strategy('auto');
-    prob.set_storage_policy('heap');
     ok = prob.set_solver('highs');
     verifyTrue(testCase, islogical(ok));
     prob.set_output_folder(tempdir);
@@ -465,15 +490,14 @@ function test_problem_set_method_refuses_pam_and_auto(testCase)
 end
 
 function test_problem_set_mip_settings_roundtrip(testCase)
-%   §2.1 set_mip_settings(struct) + get_mip_settings (MIPSettings + benders).
+%   §2.1 set_mip_settings(struct) + get_mip_settings (MIPSettings).
     prob = dtwc.Problem('mip');
-    s = struct('mip_gap', 1e-4, 'time_limit_sec', 30, 'warm_start', true, ...
-               'max_benders_iter', 150, 'benders', 'on');
+    s = struct('mip_gap', 1e-4, 'time_limit_sec', 30, 'warm_start', false);
     prob.set_mip_settings(s);
     got = prob.get_mip_settings();
     verifyEqual(testCase, got.mip_gap, 1e-4, 'AbsTol', 1e-12);
-    verifyEqual(testCase, got.max_benders_iter, 150);
-    verifyEqual(testCase, char(got.benders), 'on');
+    verifyEqual(testCase, got.time_limit_sec, 30);
+    verifyEqual(testCase, got.warm_start, false);
 end
 
 function test_problem_set_mip_settings_lr_max_nodes(testCase)
@@ -599,7 +623,7 @@ end
 % =========================================================================
 
 function test_algorithms_all_callable(testCase)
-%   §2.5 fast_pam / fast_clara / clarans / build_dendrogram / cut_dendrogram.
+%   §2.5 fast_pam / fast_clara / build_dendrogram / cut_dendrogram.
     prob = dtwc.Problem('algos');
     prob.set_data(testCase.TestData.X);
     prob.fill_distance_matrix();
@@ -608,8 +632,6 @@ function test_algorithms_all_callable(testCase)
     verifyNumElements(testCase, r1.labels, 6);
     r2 = dtwc.fast_clara(prob, 2, 'NSamples', 2, 'Seed', 42);
     verifyNumElements(testCase, r2.labels, 6);
-    r3 = dtwc.clarans(prob, 2, 'NumLocal', 2, 'Seed', 42);
-    verifyNumElements(testCase, r3.labels, 6);
 
     dend = dtwc.build_dendrogram(prob, 'Linkage', 'average');
     verifyTrue(testCase, isstruct(dend) && isfield(dend, 'merges'));
@@ -651,22 +673,11 @@ function test_checkpoint_dir_roundtrip(testCase)
     ckdir = fullfile(tempdir, ['dtwc_parity_ck_' num2str(feature('getpid'))]);
     dtwc.save_checkpoint(prob, ckdir);
 
-    prob2 = dtwc.Problem('ckpt2');
+    % The checkpoint file is <dirpath>/<name>.dtwm, named after the Problem.
+    prob2 = dtwc.Problem('ckpt');
     prob2.set_data(testCase.TestData.X);
     ok = dtwc.load_checkpoint(prob2, ckdir);
     verifyTrue(testCase, islogical(ok) && ok);
-end
-
-function test_checkpoint_binary_roundtrip(testCase)
-%   §2.7 save_binary_checkpoint / load_binary_checkpoint (ClusteringResult).
-    prob = make_filled_problem(testCase);
-    result = dtwc.fast_pam(prob, 2);
-    binpath = fullfile(tempdir, ['dtwc_parity_' num2str(feature('getpid')) '.bin']);
-    dtwc.save_binary_checkpoint(result, binpath);
-    loaded = dtwc.load_binary_checkpoint(binpath);
-    verifyEqual(testCase, numel(loaded.labels), numel(result.labels));
-    verifyEqual(testCase, sort(double(loaded.medoid_indices)), ...
-                          sort(double(result.medoid_indices)));
 end
 
 % =========================================================================
@@ -692,8 +703,6 @@ function test_f22_matlab_deprecation_policy(testCase)
          9 8 3 0  2  6; ...
         14 13 7 2 0  3; ...
         20 19 12 6 3 0];
-    labelsTrue = int32([1 1 1 2 2 2 3 3]);
-    labelsPred = int32([1 1 2 2 2 3 3 3]);
 
     rows = {
         'dtwc.Problem.Band', ...
@@ -735,35 +744,12 @@ function test_f22_matlab_deprecation_policy(testCase)
         'dtwc.Problem.ClustersInd', ...
             'dtwc.Problem.labels', ...
             @() f22_read_property_operation(X, 'ClustersInd', false), ...
-            @() f22_read_property_operation(X, 'ClustersInd', true);
-        'dtwc.davies_bouldin_index', ...
-            'dtwc.davies_bouldin', ...
-            @() f22_problem_score_operation(X, 'davies_bouldin_index'), ...
-            @() f22_problem_score_operation(X, 'davies_bouldin');
-        'dtwc.dunn_index', ...
-            'dtwc.dunn', ...
-            @() f22_problem_score_operation(X, 'dunn_index'), ...
-            @() f22_problem_score_operation(X, 'dunn');
-        'dtwc.calinski_harabasz_index', ...
-            'dtwc.calinski_harabasz', ...
-            @() f22_problem_score_operation(X, 'calinski_harabasz_index'), ...
-            @() f22_problem_score_operation(X, 'calinski_harabasz');
-        'dtwc.adjusted_rand_index', ...
-            'dtwc.adjusted_rand', ...
-            @() f22_label_score_operation( ...
-                labelsTrue, labelsPred, 'adjusted_rand_index'), ...
-            @() f22_label_score_operation( ...
-                labelsTrue, labelsPred, 'adjusted_rand');
-        'dtwc.normalized_mutual_information', ...
-            'dtwc.normalized_mutual_info', ...
-            @() f22_label_score_operation( ...
-                labelsTrue, labelsPred, 'normalized_mutual_information'), ...
-            @() f22_label_score_operation( ...
-                labelsTrue, labelsPred, 'normalized_mutual_info')
+            @() f22_read_property_operation(X, 'ClustersInd', true)
     };
 
-    verifyEqual(testCase, size(rows, 1), 15, ...
+    verifyEqual(testCase, size(rows, 1), 10, ...
         'F22 frozen MATLAB alias inventory changed.');
+    nRows = size(rows, 1);
 
     warningProfiles = 0;
     messages = 0;
@@ -838,19 +824,20 @@ function test_f22_matlab_deprecation_policy(testCase)
     assertNumElements(testCase, fitted.Labels, size(X, 1));
     assertNumElements(testCase, fitted.MedoidIndices, 2);
 
-    allPass = warningProfiles == 15 && messages == 15 && ...
-              canonicalSilent == 15 && equivalent == 15 && ...
+    allPass = warningProfiles == nRows && messages == nRows && ...
+              canonicalSilent == nRows && equivalent == nRows && ...
               constructorSilent && writerSilent && tier1Silent;
     verdict = 'FAIL';
     if allPass
         verdict = 'PASS';
     end
-    fprintf(['F22_MATLAB_DEPRECATION aliases=15/15 ' ...
-             'warning_profiles=%d/15 messages=%d/15 ' ...
-             'canonical_silent=%d/15 equivalence=%d/15 ' ...
+    fprintf(['F22_MATLAB_DEPRECATION aliases=%d/%d ' ...
+             'warning_profiles=%d/%d messages=%d/%d ' ...
+             'canonical_silent=%d/%d equivalence=%d/%d ' ...
              'constructor_silent=%d/1 tier1_silent=%d/1 ' ...
              'skips=0 verdict=%s\n'], ...
-            warningProfiles, messages, canonicalSilent, equivalent, ...
+            nRows, nRows, warningProfiles, nRows, messages, nRows, ...
+            canonicalSilent, nRows, equivalent, nRows, ...
             constructorSilent, tier1Silent, verdict);
     verifyTrue(testCase, allPass, ...
         'F22 MATLAB deprecation contract is incomplete.');
@@ -950,17 +937,6 @@ function value = f22_read_property_operation(X, propertyName, canonical)
     end
 end
 
-function value = f22_problem_score_operation(X, scoreName)
-    prob = f22_clustered_problem(X, 'f22_problem_score');
-    scoreFunction = str2func(['dtwc.' scoreName]);
-    value = scoreFunction(prob);
-end
-
-function value = f22_label_score_operation(labelsTrue, labelsPred, scoreName)
-    scoreFunction = str2func(['dtwc.' scoreName]);
-    value = scoreFunction(labelsTrue, labelsPred);
-end
-
 function prob = f22_clustered_problem(X, name)
     prob = dtwc.Problem(name);
     prob.set_data(X);
@@ -1008,16 +984,6 @@ function f22_verify_nondegenerate_value(testCase, oldName, value, D)
         case 'dtwc.Problem.ClustersInd'
             assertNumElements(testCase, value, 6);
             assertTrue(testCase, all(value >= 1 & value <= 2));
-        case {'dtwc.davies_bouldin_index', ...
-              'dtwc.dunn_index', ...
-              'dtwc.calinski_harabasz_index'}
-            assertTrue(testCase, isscalar(value) && isfinite(value));
-            assertGreaterThan(testCase, value, 0);
-        case {'dtwc.adjusted_rand_index', ...
-              'dtwc.normalized_mutual_information'}
-            assertTrue(testCase, isscalar(value) && isfinite(value));
-            assertGreaterThan(testCase, value, 0);
-            assertLessThan(testCase, value, 1);
         otherwise
             error('dtwc:f22TestOracle', ...
                 'Unknown F22 non-degenerate observation: %s.', oldName);

@@ -38,6 +38,16 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - **Removed (build):** the `dtwc_main` demo executable (`dtwc/main.cpp`), which ran a MIP on `data/dummy` relative to the
   working directory; `examples/cpp/MIP_single.cpp` (`-DDTWC_BUILD_EXAMPLES=ON`) runs the same MIP and takes the data folder
   as an argument.
+- **Fixed:** a medoid at distance 0 from another medoid (a duplicate series) is labelled with its own cluster by
+  k-medoids (Lloyd), FastPAM, FastCLARA, OneBatchPAM and LR-core. v1.0.0's Lloyd gave it to the first tied medoid and
+  published the other cluster empty; LR-core refused the valid optimum with `SolverError`.
+- **Fixed (C++):** `scores::silhouette()` on a Problem that has not been clustered raises `InvalidInput`; v1.0.0 printed a
+  line and returned one `-1` per series, a vector that reads as a (poor) score.
+- **Changed (exact solvers):** `Method::MIP` and `Method::LRCore` publish through the new
+  `Problem::set_result(ClusteringResult)`, which refuses a malformed clustering with `InvalidInput`. A solve that fails with
+  `SolverError` leaves the Problem holding a valid clustering (the FastPAM warm start), not necessarily the one it held before
+  (basic exception guarantee). LR-core seeds its upper bound with FastPAM instead of Lloyd k-medoids: the optimal cost is
+  unchanged, the medoids may differ where optima tie.
 - **Fixed (docs):** the `/cluster` and `/help` commands showed `--k` and `--output-dir`, and `/troubleshoot` showed
   `--repetitions` and `--prune`, none of which `dtwc_cl` has; they now show `-k`, `--output` and `--n-init`, and the pruning tip
   is gone. CI now fails when a page in `docs/content`, `README.md` or `.claude/commands` shows a `dtwc_cl` flag that the live
@@ -49,7 +59,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   read. Squared L2 runs on the CPU; `--checkpoint-interval 0` saves once at the end; every check that needs no data, the MIP
   settings included, runs before any I/O; the loader's progress lines print only with `-v`.
 - **Added (CLI):** `--print-config` writes the parsed settings as a TOML config file; the binary now reads `--delimiter`,
-  `--max-benders-iter` and `--lr-max-nodes`.
+  and `--lr-max-nodes`.
 - **Changed (C++ Tier-1):** `cluster()` wraps `run`, with results unchanged; path datasets read Parquet, Arrow and `.dtws`; the
   aliases `obp` and `lr` are accepted; `device="hpc"` raises without reading `.env`; `Result` reports `method()`, `iterations()`
   and `converged()`. `detail/tier1_method_resolution.hpp` is removed. An unreadable mmap-cache parent, an output directory that
@@ -489,8 +499,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `cluster()` enforces `k <= N` and rejects an empty dataset with the C++
   messages; `Result.score`/`save` work after matrix-free methods by filling the
   matrix lazily as C++ does; `Problem.checkpoint` is bound (in-place mutation
-  works); `get_device()` is a deprecated alias of `device()`;
-  `dtwcpp.UndefinedScore` is bound (subclass of `InvalidInput`) and
+  works); `dtwcpp.UndefinedScore` is bound (subclass of `InvalidInput`) and
   `Result.save` warns and skips the silhouettes file on it as C++ does; ragged
   in-memory sources load; series names come from the C++ loader, so all four
   `Result.save` CSVs are byte-identical to the CLI's (UTF-8 names included).
@@ -970,10 +979,6 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   legacy Problem I/O overloads now emit their registered replacement
   diagnostics while remaining behavior-identical; canonical I/O names own the
   implementations and canonical Problem moves remain warning-silent.
-- Enforced the frozen Python deprecation policy for all 13 retained alias
-  operations. Each now emits one caller-attributed `DeprecationWarning` before
-  effects while canonical operations stay silent; `ClusterResult` remains an
-  uncached, identity-preserving alias of `Result`.
 - Enforced the frozen MATLAB deprecation policy for all 15 retained alias
   operations. Each now emits one exact `dtwc:deprecatedAlias` warning while
   canonical operations stay silent; rejected configuration values leave the

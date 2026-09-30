@@ -203,8 +203,7 @@ still invoked unchanged once per repetition and owns its own RNG policy.
 
 ### 1.4 `Result` — clustering outcome  `[live in C++/Python/MATLAB]`
 
-Canonical class name is **`Result`** in all three languages. Python keeps
-`ClusterResult` as a deprecated alias (§4).
+Canonical class name is **`Result`** in all three languages.
 
 | Member | C++ `dtwc::Result` `[live]` | Python `dtwcpp.Result` `[live]` | MATLAB `dtwc.Result` `[live]` |
 |---|---|---|---|
@@ -287,7 +286,7 @@ a field does not.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
-| k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; retained C++ `set_numberOfClusters` and Python `set_number_of_clusters` are deprecated warning aliases |
+| k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; the retained C++ `set_numberOfClusters` is a deprecated warning alias |
 | method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
 | max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | public `int maxIter` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
@@ -301,16 +300,13 @@ a field does not.
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
-| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
+| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
 | problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |
 | data (owning) | `data() const` / `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | read-only C++ accessor plus live setters |
-| data (view) | `set_view_data(Data)` | `set_view_data(...)` `[introduced-2.0; gap F26: owning copy]` | — | C++ view path is live; Python name is live but not non-owning |
-
-Python `Problem.set_view_data` currently constructs owning nested-vector
-storage before calling C++; it is not a non-owning ndarray view (F26).
+| data (view) | `set_view_data(Data)` | — | — | C++ only: the view path CLARA uses; no binding exposes it |
 
 ### 2.2 `Problem` — distance-matrix & clustering methods `[rename: camelCase → snake_case]`
 
@@ -325,7 +321,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
 | — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
-| — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
+| — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
 | `assignClusters()` | `assign_clusters()` | `assign_clusters()` (live) | — |
@@ -345,10 +341,8 @@ read and written through the same `get` / `set`. The Python/MATLAB spelling
 returns an NxN numeric matrix of either storage; Python returns an independent
 copy. The language-specific semantics are retained.
 
-**‡ Python read/write rename.** `distance_matrix()` and
-`set_distance_matrix()` are canonical and live. The old
-`distance_matrix_numpy()`/`set_distance_matrix_from_numpy()` spellings remain
-compatibility aliases; each emits one caller-attributed `DeprecationWarning`.
+**‡ Python read/write names.** `distance_matrix()` and
+`set_distance_matrix()` are the only spellings; no `_numpy` variant exists.
 
 **Reading and writing files (2026-09-24).** `read_distance_matrix(path)` takes
 only a matrix of this `Problem`'s size: a file whose row count is not the series
@@ -410,23 +404,20 @@ Canonical scheme drops the redundant `Index`/`Information` noun (the fixed
 decision `daviesBouldinIndex → davies_bouldin` sets the pattern; applied
 uniformly). Same name in all three languages.
 
-| Concept | C++ retained 1.x alias (scores.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
-|---|---|---|---|---|
-| silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` (live) | `silhouette(prob)` (live) |
-| Davies–Bouldin | `daviesBouldinIndex(prob)` | **`davies_bouldin(prob)`** *(fixed)* | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
-| Dunn | `dunnIndex(prob)` | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
-| inertia | `inertia(prob)` | `inertia(prob)` | `inertia(prob)` (live) | `inertia(prob)` (live) |
-| Calinski–Harabasz | `calinskiHarabaszIndex(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
-| Adjusted Rand | `adjustedRandIndex(l1,l2)` | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
-| Normalized MI | `normalizedMutualInformation(l1,l2)` | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
+| Concept | C++ | Python | MATLAB |
+|---|---|---|---|
+| silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` |
+| Davies–Bouldin | `davies_bouldin(prob)` | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
+| Dunn | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
+| inertia | `inertia(prob)` | `inertia(prob)` | `inertia(prob)` |
+| Calinski–Harabasz | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
+| Adjusted Rand | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
+| Normalized MI | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
 
-Deprecated aliases retained one cycle (§4): Python `davies_bouldin_index`,
-`dunn_index`, `calinski_harabasz_index`, `adjusted_rand_index`,
-`normalized_mutual_information` (`_dtwcpp_core.cpp`); MATLAB the same five
-public spellings in their dedicated `+dtwc/*.m` compatibility wrappers. Every
-old Python/MATLAB call emits one deprecation warning before forwarding; the
-shared MEX score commands remain warning-silent. The canonical Adjusted-Rand
-and Normalized-MI spellings are adjudicated in §10 item 1.
+Only `silhouette` shipped in v1.0.0; the camelCase and `*_index` spellings were
+never released and are gone. `silhouette` on an unclustered Problem raises
+`InvalidInput`. The canonical Adjusted-Rand and Normalized-MI spellings are
+adjudicated in §10 item 1.
 
 ### 2.5 Algorithm free functions (Tier-2, all languages)
 
@@ -434,11 +425,10 @@ and Normalized-MI spellings are adjudicated in §10 item 1.
 |---|---|---|---|
 | FastPAM | `fast_pam(Problem&, int k, int max_iter=100)` | `fast_pam(prob, n_clusters, max_iter=100)` | `fast_pam(prob, k, 'max_iter',100)` |
 | FastCLARA | `algorithms::fast_clara(Problem&, CLARAOptions)` | `fast_clara(prob, n_clusters, sample_size=-1, n_samples=5, max_iter=100, seed=42)` | `fast_clara(prob, k, ...)` |
-| CLARANS | `algorithms::clarans(Problem&, CLARANSOptions)` | `clarans(prob, opts)` | `clarans(prob, k, ...)` |
 | dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` | `build_dendrogram(prob, ...)` |
 | dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, int k)` | `cut_dendrogram(dend, prob, k)` | `cut_dendrogram(dend, prob, k)` |
 
-**Result write-back (implemented).** `fast_pam`/`fast_clara`/`clarans` and
+**Result write-back (implemented).** `fast_pam`/`fast_clara` and
 `cut_dendrogram` write `labels`/`medoids`/`k` back into `Problem` in C++.
 Python and MATLAB both rely on that core-owned writeback; neither binding
 repeats the assignment.
@@ -565,7 +555,7 @@ lookups and the GPU routes all compute.
 Frozen registry of public camelCase/duplicate/divergent names. Column
 **Compatibility requirement** states the live transition. Every retained
 callable alias in this table emits its required C++ compile diagnostic or
-Python/MATLAB runtime warning while forwarding to canonical behavior; the
+MATLAB runtime warning while forwarding to canonical behavior; the
 v1.0.0 C++ fields `maxIter` and `N_repetition` stay plain public fields.
 PLAN.md separately retains F22's evidence adjudication because its registered
 C++ mutation band was falsified; that does not change the implemented public
@@ -574,12 +564,10 @@ policy.
 | # | Concept | 1.x name(s) | 2.0 canonical | Compatibility requirement |
 |---|---|---|---|---|
 | 1 | set k (C++) | `Problem::set_numberOfClusters` (`Problem.hpp`) | `set_n_clusters` | C++ `[[deprecated]]` |
-| 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp`) | `set_n_clusters` | alias 1 cycle |
 | 3 | set k (MATLAB) | `Problem.set_n_clusters` (Problem.m:148) | `set_n_clusters` | already canonical |
 | 4 | max iterations (C++ field) | `Problem::maxIter` (`Problem.hpp`) | `set_max_iter` / `max_iter` accessor | plain field, as in v1.0.0 |
 | 5 | max iterations (MATLAB prop) | `Problem.MaxIter` (Problem.m:31) | `set_max_iter` | alias (loud warn) |
 | 6 | repetitions (C++ field) | `Problem::N_repetition` (`Problem.hpp`) | `set_n_repetitions` / `n_repetitions` | plain field, as in v1.0.0 |
-| 7 | repetitions (Python prop) | `Problem.n_repetition` (`_dtwcpp_core.cpp`) | `n_repetitions` | alias 1 cycle |
 | 8 | repetitions (MATLAB prop) | `Problem.NRepetition` (Problem.m:32) | `set_n_repetitions` | alias (loud warn) |
 | 9 | band (MATLAB prop) | `Problem.Band` (Problem.m:29) | `set_band` | alias (loud warn) |
 | 10 | verbose (MATLAB prop) | `Problem.Verbose` (Problem.m:30) | `set_verbose` | alias (loud warn) |
@@ -601,26 +589,17 @@ policy.
 | 26 | cluster via MIP | `cluster_by_MIP` (`Problem.hpp`) | `cluster_by_mip` | C++ `[[deprecated]]` |
 | 27 | cluster via Lloyd | `cluster_by_kMedoidsPAM` (`Problem.hpp`) | `cluster_by_kmedoids_lloyd` | C++ `[[deprecated]]` |
 | 28 | n clusters read | `cluster_size` (`Problem.hpp`) | `n_clusters` | C++ `[[deprecated]]` alias |
-| 28a | n clusters read (Python) | `Problem.cluster_size` (`_dtwcpp_core.cpp`) | `n_clusters` | warning alias 1 cycle |
+| 28a | n clusters read (Python) | `Problem.cluster_size()` (`py_main.cpp`, a method) | `n_clusters` | kept, silent |
 | 29 | dist mat read (MATLAB) | `get_distance_matrix` (`Problem.m`) | `distance_matrix` | warning alias 1 cycle; `set_distance_matrix` is canonical and silent |
-| 29a | dist mat read (Python) | `Problem.distance_matrix_numpy` (`_dtwcpp_core.cpp`) | `distance_matrix` | warning alias 1 cycle |
-| 29b | dist mat write (Python) | `Problem.set_distance_matrix_from_numpy` (`_dtwcpp_core.cpp`) | `set_distance_matrix` | warning alias 1 cycle |
 | 29c | size read (MATLAB) | `Problem.Size` (dependent prop, Problem.m:36; getter :363) | `size()` | alias (loud warn) |
 | 29d | n clusters read (MATLAB) | `Problem.ClusterSize` (dependent prop, Problem.m:37; getter :370) | `n_clusters()` | alias (loud warn) |
 | 29e | name read (MATLAB) | `Problem.Name` (dependent prop, Problem.m:38; getter :377) | `name()` | alias (loud warn) |
 | 29f | medoids read (MATLAB) | `Problem.CentroidsInd` (dependent prop, Problem.m:39; getter :384) | `medoids()` | alias (loud warn) |
 | 29g | labels read (MATLAB) | `Problem.ClustersInd` (dependent prop, Problem.m:40; getter :391) | `labels()` | alias (loud warn) |
-| 30 | Davies–Bouldin | `scores::daviesBouldinIndex` (scores.hpp:38-39) | `scores::davies_bouldin` **(fixed)** | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 31 | Dunn | `scores::dunnIndex` (scores.hpp:41-42) | `scores::dunn` | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 32 | Calinski–Harabasz | `scores::calinskiHarabaszIndex` (scores.hpp:44-45) | `scores::calinski_harabasz` | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 33 | Adjusted Rand | `scores::adjustedRandIndex` (scores.hpp:47-52) | `scores::adjusted_rand` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 34 | Normalized MI | `scores::normalizedMutualInformation` (scores.hpp:54-59) | `scores::normalized_mutual_info` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
 | 35 | start column (loader) | `DataLoader::startColumn` (DataLoader.hpp) | `start_column` | C++ `[[deprecated]]` |
 | 36 | start row (loader) | `DataLoader::startRow` | `start_row` | C++ `[[deprecated]]` |
 | 37 | set data path | `settings::paths::setDataPath` (2.0-born) | — | removed pre-tag with `set_data_path` (D-3): pass input paths explicitly (`load(path)`, `--input`) |
 | 38 | set results path | `settings::paths::setResultsPath` (2.0-born) | `Problem::set_output_folder` | removed pre-tag with `set_results_path` (D-3); a `Problem`'s default output folder is `./results/` |
-| 39 | Result class (Python) | `ClusterResult` (`python/dtwcpp/__init__.py:319-339`) | `Result` | uncached identity-preserving warning alias 1 cycle |
-| 40 | medoids field (Result) | `Result.medoid_indices` (`python/dtwcpp/_api.py:174-180`) | `Result.medoids` | warning alias 1 cycle |
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:30) | `= double` | behaviour change (§8), no name change |
 | 42 | CLI dtype default | `--dtype float32` (dtwc_cl.cpp:717-725) | `--dtype float64` | old accepted, default flips (§8) |
 
@@ -649,13 +628,9 @@ bindings").
   never change behaviour, and are scheduled for removal in 3.0. The v1.0.0
   fields `maxIter` and `N_repetition` stay plain public `int` members; the
   checking setters and the accessors are canonical.
-- **Python.** Removed duplicate names (`set_number_of_clusters`,
-  `n_repetition` get/set, `cluster_size`, `distance_matrix_numpy`,
-  `set_distance_matrix_from_numpy`, the five `*_index`/`*_information` score
-  aliases, `ClusterResult`, and `Result.medoid_indices`) survive **one** minor
-  release as thin aliases that emit exactly one caller-attributed
-  `DeprecationWarning` per operation, then are deleted. New canonical names are
-  the only ones documented.
+- **Python.** The names that 2.0 development renamed were never released, so
+  none is kept as an alias. The v1.0.0 method `Problem.cluster_size()` stays,
+  silent, beside `n_clusters()`.
 - **MATLAB.** PascalCase settable properties (`Band`, `MaxIter`, `NRepetition`,
   `Verbose`) warn on assignment; their retained reads remain functional.
   `get_distance_matrix`, the dependent read properties (`Size`, `ClusterSize`,
@@ -672,10 +647,9 @@ bindings").
   behaviour.
 
 This section is normative and implemented for the complete retained inventory:
-27 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
-operations. PLAN.md retains F22's separate evidence verdict; the exhausted
-C++ mutation campaign was falsified at 33/46 and is not described here as
-closure of that finding.
+22 C++ diagnostic entities and 15 MATLAB alias operations. PLAN.md retains
+F22's separate evidence verdict; the exhausted C++ mutation campaign was
+falsified at 33/46 and is not described here as closure of that finding.
 
 ---
 
@@ -698,7 +672,7 @@ Bindings translate to native exceptions / `mexErrMsgIdAndTxt`.
 | `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name, a NaN or ±inf value a distance does not take (§2.6), `skip_cols` wider than a row, a matrix stored for other data (a CSV of another size, a `.dtwm` checkpoint or mmap cache of other data or configuration) | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
 | `dtwc::UndefinedScore` | (an `InvalidInput`) a quality score is mathematically undefined for the labelling supplied — fewer than two non-empty clusters. `save` catches it to skip the silhouette file; `score("silhouette")` propagates it | `dtwcpp.UndefinedScore(InvalidInput)` | `dtwc:invalidArgument` (inherited: the MEX ladder catches it as `InvalidInput`) |
 | `dtwc::SolverError` | MIP/LP solver failure: infeasible, iteration/time limit hit without optimum, solver returned non-optimal status | `dtwcpp.SolverError(DtwcError, RuntimeError)` | `dtwc:solverError` |
-| `dtwc::DeviceError` | device/backend problem: unknown device name; `gpu` on a non-GPU build, or PDLP `use_gpu` without CUPDLP_GPU; a request the device cannot honour (§6.4) and `hpc` asked of a local run (§1.3); `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
+| `dtwc::DeviceError` | device/backend problem: unknown device name; `gpu` on a non-GPU build; a request the device cannot honour (§6.4) and `hpc` asked of a local run (§1.3); `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
 | `dtwc::IOError` | file/format failure: file not found, unreadable or unwritable (a directory that cannot be created, a quota), bad Parquet/Arrow type, OOB offsets | `dtwcpp.IOError(DtwcError, OSError)` | `dtwc:ioError` |
 
 A failure no public entry point can cause — an unreachable branch, a broken invariant, a precondition every caller validates —
@@ -707,7 +681,7 @@ cannot be parsed (a bad field or row, a bad cache header, a Parquet / Arrow type
 well-formed file the request cannot use (a non-square matrix, Parquet nulls, an unknown column, a matrix or cache made for
 other data, `skip_cols` wider than a row) is `InvalidInput`. A format this build cannot read (Parquet or Arrow IPC without
 Arrow, a memory-mapped matrix without llfio, a YAML `--config` file without fkYAML) is `IOError` too, and a GPU
-backend it lacks (`gpu`, PDLP `use_gpu`) is `DeviceError`.
+backend it lacks (`gpu`) is `DeviceError`.
 
 **Binding-translation rules.**
 
@@ -937,13 +911,11 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    and release the GIL on long calls; Data view-mode spans and interleaved
    multivariate layout
    (`[t0f0,t0f1,t1f0,…]`); lock-free row-partitioned matrix fill
-   are preserved. Python `Problem.set_view_data` currently constructs owning
-   storage rather than a view (F26).
+   are preserved.
 7. **Determinism.** Seed-aware Tier-1 PAM/OneBatchPAM/CLARA entry points use the
    invocation-local cross-language default 42 (§1.3); estimator restart `i` uses
    `42+i`. The unseeded Tier-2 FastPAM overload retains the legacy mutable
-   `std::mt19937 randGenerator(29)`, and CLARANS retains its explicit option
-   default 42. Scores read state from `Problem`, so result write-back (now in
+   `std::mt19937 randGenerator(29)`. Scores read state from `Problem`, so result write-back (now in
    C++, §2.5) must run before any `score()`.
 8. **MATLAB 1-based conversion at the MEX boundary only**; rectangular N×L
    matrix input still accepted. Optional deps (OpenMP/HiGHS/CUDA/Metal/Arrow)

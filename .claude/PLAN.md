@@ -58,14 +58,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   (X1 `872349d`, `fe06efd`)
 - ☑ W2c bounds → `compute_envelopes`, `lb_keogh`, `lb_keogh_symmetric`; the LB tests merged (X1 `b1d6514`)
 - ☑ W2d derivation 03 and the GPU LB docs follow (X1 `afdfc50`, `5aff090`; merged `227c956`)
-- ☐ W3a config keys `benders`, `max-benders-iter`, `batch-weighting` go (goldens 49 → 46)
-- ☐ W3b delete Benders, PDLP, `DTWC_HIGHS_GPU`
-- ☐ W3c delete CLARANS, `PAMVariant`, FastPAM1, public `fast_pam_swap`, `medoid_utils`; FasterPAM only;
-  `OneBatchWeighting` goes (NNIW stays the one weighting)
-- ☐ W3d `decode_assignment` + `Problem::set_result` replace `solution_transaction` and `warm_start`
-- ☐ W3e `Method::MIP` uses the selected solver at every N
-- ☐ W3f unclustered `silhouette()` and `batch_size < k` → `InvalidInput`; score aliases go
-- ☐ W3g decisive test: duplicate series `{a,a,b,c}`, k = 4; fix only what it falsifies
+- ☑ W3a config keys `benders`, `max-benders-iter`, `batch-weighting` go (goldens 49 → 46) (X2 `104158c`; merged `4de2ce9`)
+- ☑ W3b delete Benders, PDLP, `DTWC_HIGHS_GPU` (X2 `6e650f9`; merged `4de2ce9`)
+- ☑ W3c delete CLARANS, `PAMVariant`, FastPAM1, public `fast_pam_swap`, `medoid_utils`; FasterPAM only;
+  `OneBatchWeighting` goes (NNIW stays the one weighting) (X2 `3bdb5d8`; merged `4de2ce9`)
+- ☑ W3d `decode_assignment` + `Problem::set_result` replace `solution_transaction` and `warm_start` (X2 `a85682b`; merged `4de2ce9`)
+- ☑ W3e `Method::MIP` uses the selected solver at every N (X2 `6e650f9`; merged `4de2ce9`)
+- ☑ W3f unclustered `silhouette()` and `batch_size < k` → `InvalidInput`; score aliases go (X2 `8995ad7`; merged `4de2ce9`)
+- ☑ W3g decisive test: duplicate series `{a,a,b,c}`, k = 4; fix only what it falsifies (X2 `0e583e8`, `9edfad2`; merged `4de2ce9`)
 - ☑ W5a delete `--resume` / `--restart` and the binary result checkpoint (Y1 `469e545`, `3ff7469`, `97bb54f`)
 - ☑ W5b delete `StoragePolicy`, `.dtws`, `MmapDataStore`, CRC32, the auto-spill; `load()` = heap (Y1 `46b3a89`)
 - ☑ W5c `Env` → two free functions over a static `{Device, int}` (Y1 `7ba0b4c`, `07b0ea4`)
@@ -76,34 +76,34 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `959dc5b`; Dense and Mmap are one DistanceMatrix)
 - ☑ W5e Parquet saturating helpers and leaf guards → asserts (Y1 `3000ca9`, `d8dd4f7`; merged `7eb928b`)
 - ☑ W6a `index_t` alias in `base/settings.hpp`; every count guard deleted; `mip/index_guard.hpp` → two inline throws
-  (Y3 `17843f4`, `36c7883`; merged `b260415`; outside algorithms/ and mip/; X2 carries their part)
+  (Y3 `17843f4`, `36c7883`; merged `b260415`; outside algorithms/ and mip/; X2 `a587964` carries their part)
 - ◐ W6b enum validator tails → `-Werror=switch` (X3 `8c73029` on pb/X2; merges after X2)
 - ☑ W6c `run_openmp` captures failures in per-thread slots (no critical, no atomic); `parse_ram_limit` shrinks;
   `GpuPrecision{Auto, FP32, FP64}` (Y3 `36c7883`, `dc55d13`, `b88ae0c`, `119216d`; merged `b260415`)
 - ☑ W6d `cluster_by_kMedoidsPAM` shim restored; non-v1 root forwarders, D2/D3/F57 markers, tracker ids in
   comments go (Y3 `9c0b8cb`, `94ae95f`, `8b48caa`, `119216d`; merged `b260415`; tracker ids in comments move to a
   later sweep)
-- ☐ W6e never-released Python and MATLAB aliases and the bindings of deleted surface go
+- ◐ W6e never-released Python and MATLAB aliases and the bindings of deleted surface go (Python half: W6e 6f5048c, 7f6a46a; merged fe1bf9b; MATLAB half W6m in progress)
 - ☐ W6f C++ tests of deleted surface trimmed
-- ☐ `test_run_resolution` runs MIP and LR-core on the CPU without a HiGHS guard: 2 of 7 cases fail in a build with
-  `DTWC_ENABLE_HIGHS=OFF` (as `build/arrow-pyarrow-23`); guard them (Y3 merge report)
-- ☐ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
+- ☑ `test_run_resolution` runs MIP and LR-core on the CPU without a HiGHS guard: 2 of 7 cases fail in a build with
+  `DTWC_ENABLE_HIGHS=OFF` (as `build/arrow-pyarrow-23`); guard them (Y3 merge report) (G1 `0c695c6`; merged 1bb9413; only MIP needs HiGHS — LR-core is exact without it; the GPU branch of the test is unproven without a CUDA build lacking HiGHS)
+- ☑ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
   `one_batch_pam` through `run_openmp`; the FasterPAM and TADPole reductions → per-thread slots combined serially;
-  OneBatchPAM's warning mutex → a serial warning. Proof: TSan in WSL (LLVM libomp + Archer)
+  OneBatchPAM's warning mutex → a serial warning. Proof: TSan in WSL (LLVM libomp + Archer) (R1 1e03509, 5f0b65a, 091ea8b, 2a79aa9, 45a7cd8; merged 1ea8327; TSan with LLVM libomp + Archer in WSL: 0 reports at base and head, controls bite; `baselines/2026-09-30-r1-tsan.md`)
 - ☑ K1 (2026-09-29) the DP cell makes no library call: `std::min({…})` is `__std_min_d` on the MSVC STL, 7.2 ns/cell
   vs 1.06 on the Mac; nested two-argument min, `dp[i-1, j]` carried in a register; digit-identical
   (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`) (K1 `8bd6881`, `123146b`, `d114677`, `f705329`; merged
   `4441969`); the fill band is FALSIFIED — the unbanded fill runs the EAPruned kernel, which made no call; P1 measures
   lanes against it
-- ☐ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
-  compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions)
+- ☑ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
+  compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions) (Y4 a46b0f7, ac311c4, aa7487b; merged 93eefe1; matlab_suite 119/120 + 1 allowed incomplete on R2024b and R2025b)
 - ☑ P1 lanes in the CPU fill, after K1 and Y2: `dtw_kernel_lanes<T, W, Cell>` beside `_linear` / `_banded`, W one cache
   line of T; the fill steps a row by W columns of equal length, per-pair kernel otherwise; Standard DTW, L1 and
   squared L2, full and banded first; bitwise equal to the per-pair fill; band ≥ 2× on the 24-thread fill
   (P1 `94ef14b`, `e34c37f`, `940cd8a`, `3c95dc7`, `b930ff8`; merged `d61c499`; fill 14.5× unbanded, 5.1× band 50,
   15.3× ECG5000; cl builds get unpacked lanes — the Windows wheel is built by cl)
-- ◐ P3 unbanded per-pair Standard DTW runs the linear kernel and EAPruned goes: after K1 the linear kernel is
-  1.5–3.6× faster on 7 of 7 UCR datasets, bitwise equal (`baselines/2026-09-29-p2-eap-vs-linear.md`)
+- ☑ P3 unbanded per-pair Standard DTW runs the linear kernel and EAPruned goes: after K1 the linear kernel is
+  1.5–3.6× faster on 7 of 7 UCR datasets, bitwise equal (`baselines/2026-09-29-p2-eap-vs-linear.md`) (P3 6587cda, 9e64074; merged 5e15459)
 
 ## C — GPU to one fill (W4 + W13's GPU half)
 
@@ -120,6 +120,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C
 - ☐ CUDA tuning, each behind its own band (W4a): a separately compiled preload wavefront for L 257–1024 (−15–17 %
   FP32 measured); a 64 KB carveout above L = 2048 (−18 % at L = 2049)
+- ☐ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
+  L can shrink it under each other's launch; set it once to the opt-in maximum less the static bytes, behind a band (W4d)
+- ☐ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
+  (L 9406) cannot run with `--device gpu`; the 8K-sample target fits FP32 only (W4d)
+- ☐ `launch_dtw_kernel`'s warn-once latch prints to stderr above L 2048 whatever `verbose` says; a library does not
+  print unasked (W4d)
 
 ## D — `index_t` in public counts (W11)
 
@@ -142,7 +148,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W13b one finite scan at each matrix intake; read-only loops lose per-lookup checks
 - ☐ W8a one reader entry (`read_data`); Parquet names and IPC nulls fixed; `load('x.parquet')` in Python
 - ☐ W8b one writer (`write_result_files`); `Result::save` after streaming fixed
-- ☐ W8c Python and MATLAB `compute_distance_matrix` through `Problem`
+- ☐ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1)
 - ☐ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases
 - ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits)
 - ☐ W9c `hpc` → `job.toml`; the positional transport goes
@@ -170,6 +176,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W14b CMake `FATAL_ERROR` for an explicit `ON` it cannot honour; CUDA CI asserts CUDA built;
   `test_conformance.py` collected
 - ☐ W14c CHANGELOG → one `2.0.0 (unreleased)` section vs v1.0.0; MAP regenerated; audit folder deleted
+- ☐ `scripts/generate_docs.py` keeps each page's line endings: on Windows it rewrites untouched pages with LF, so `git status` shows them modified (W6e)
 
 ## After G (each behind a registered benchmark band)
 
@@ -186,12 +193,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `dumpbin /dependents` leg).
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
 - Linux wheel: whether `libgomp` ships, and the notice says so.
-- Two crashes recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42); an
-  llfio-ON MEX under R2024b in `std::mutex` (F43).
-- X2 (W3a–g) is gated but not merged: Sophos quarantined every Release `dtwc_cl.exe` built from it on 7fb09a4 as
-  'Generic ML PUA' (a Debug build runs). No exclusion (DECISIONS §3, 2026-09-28): X2 re-merges once the binary has
-  changed; if still quarantined, that merge's CLI tests run on a Debug build of the same tree. A released
-  `dtwc_cl.exe` may meet the same on users' machines.
+- A crash recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42). F43 (an llfio-ON MEX under R2024b crashing in `std::mutex`) did not reproduce on 2026-09-30, and no MEX route maps a matrix yet (Y4, `baselines/2026-09-30-y4-matlab.md`).
+- X2 merged `4de2ce9` on 2026-09-30; its Release `dtwc_cl.exe` ran without a Sophos event
 
 ## Records
 

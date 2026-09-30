@@ -2,7 +2,7 @@
  * @file fast_clara.hpp
  * @brief FastCLARA: scalable k-medoids via subsampling + FastPAM.
  *
- * @details Implements CLARA (Clustering Large Applications) using FastPAM1
+ * @details Implements CLARA (Clustering Large Applications) using FasterPAM
  *   on random subsamples. Reference:
  *   - Kaufman, L. & Rousseeuw, P.J. (1990). "Finding Groups in Data."
  *     Wiley Series in Probability and Statistics.
@@ -68,7 +68,7 @@ namespace algorithms {
    * (strategy, GPU index, precision). An in-memory sample is a view of `prob`'s
    * series, which a GPU fill refuses: on a GPU device, clara with a sample
    * smaller than N raises DeviceError.
- * @throws InvalidInput for invalid dimensions/options, including N > INT_MAX;
+ * @throws InvalidInput for invalid dimensions/options;
  *         IOError for force_parquet_streaming on a build without Parquet;
  *         DeviceError as above.
  */

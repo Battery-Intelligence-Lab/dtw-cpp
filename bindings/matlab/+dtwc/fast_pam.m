@@ -1,15 +1,15 @@
 %> @file fast_pam.m
-%> @brief Run FastPAM1 k-medoids clustering on a Problem.
+%> @brief Run FasterPAM k-medoids clustering on a Problem.
 %> @author Volkan Kumtepeli
 function result = fast_pam(prob, k, varargin)
-%FAST_PAM Run FastPAM1 k-medoids clustering on a Problem.
+%FAST_PAM Run FasterPAM k-medoids clustering on a Problem.
 %
 %   result = dtwc.fast_pam(prob, k)
 %   result = dtwc.fast_pam(prob, k, 'MaxIter', 200)
 %   result = dtwc.fast_pam(prob, k, 'Seed', 42)
 %
-%   FastPAM1 considers swapping any medoid with any non-medoid globally
-%   (true PAM SWAP), achieving the same quality as PAM with O(k) speedup.
+%   FasterPAM considers swapping any medoid with any non-medoid globally
+%   (true PAM SWAP) and performs each improving swap as soon as it is found.
 %
 %   Parameters
 %   ----------
@@ -38,7 +38,7 @@ function result = fast_pam(prob, k, varargin)
 %
 %   Reference: Schubert & Rousseeuw (2021), "Fast and eager k-medoids"
 %
-%   See also dtwc.fast_clara, dtwc.clarans, dtwc.silhouette
+%   See also dtwc.fast_clara, dtwc.silhouette
 
     p = inputParser;
     addRequired(p, 'prob');

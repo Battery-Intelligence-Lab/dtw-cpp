@@ -7,8 +7,9 @@ function save_checkpoint(prob, path, metric)
 %   dtwc.save_checkpoint(prob, dirpath)
 %   dtwc.save_checkpoint(prob, dirpath, 'squared_euclidean')
 %
-%   Publishes a new immutable generation under DIRPATH (created if absent), so a
-%   long distance-matrix build can be resumed later via dtwc.load_checkpoint.
+%   Writes DIRPATH/<name>.dtwm (DIRPATH is created if absent; <name> is the
+%   Problem's name, "distances" when empty), replacing any earlier file whole, so
+%   a long distance-matrix build can be resumed later via dtwc.load_checkpoint.
 %
 %   metric is the pointwise metric the stored distances were computed with:
 %   'l1' (default) or 'squared_euclidean' ('sqeuclidean'). It is part of the

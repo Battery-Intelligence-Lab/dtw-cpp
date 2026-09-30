@@ -31,15 +31,9 @@ function(dtwc_setup_dependencies)
 
   # HiGHS library:
   if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)# HiGHS library:
-  # v1.15.1 ships PDLP (first-order LP: solver="pdlp"/"hipdlp"). The GPU/cuPDLP
-  # backend is behind HiGHS's own CUPDLP_GPU option (default OFF ⇒ CPU PDLP, same
-  # bound). We forward it only when DTWC_HIGHS_GPU is set; on Windows HiGHS then
-  # forces itself shared (highs.dll) and pulls cudart/cublas/cusparse.
-  if(DTWC_HIGHS_GPU)
-    set(CUPDLP_GPU ON CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
-  else()
-    set(CUPDLP_GPU OFF CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
-  endif()
+  # HiGHS's cuPDLP GPU backend stays off: nothing here uses PDLP, and ON would
+  # force HiGHS shared on Windows and pull cudart/cublas/cusparse.
+  set(CUPDLP_GPU OFF CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
   # HiGHS defaults to a shared libhighs on Linux and macOS. The CLI archive ships
   # it under lib/ (X-29); a wheel cannot: wheel.exclude drops lib/ and the
   # extension records no rpath, so delocate and auditwheel stop at the missing

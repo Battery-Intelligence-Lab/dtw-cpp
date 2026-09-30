@@ -33,6 +33,7 @@
 #include "tadpole.hpp"
 #include "../Problem.hpp"
 #include "../base/error.hpp"
+#include "../base/parallelisation.hpp"
 #include "../core/lower_bound_impl.hpp" // Envelope, compute_envelope, lb_keogh_symmetric
 #include "../core/distance_matrix.hpp"  // tri_index, packed_size
 #include "../core/dtw_options.hpp"      // DTWVariant, MissingStrategy
@@ -172,12 +173,22 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
   }
 
   // ── Stage 1 · local density ρ_i = |{ j≠i : d(i,j) < dc }| (cutoff kernel) ──
-  std::vector<int> rho(N, 0);
-  std::size_t plb = 0, pub = 0; // density-stage LB / UB pruning tallies
+  // Each thread owns one count row and one pair of tallies (LB / UB pruning),
+  // so the region has no shared write; the rows are summed serially after it.
+  const int n_threads = get_max_threads();
+  const auto threads = static_cast<std::size_t>(n_threads);
+  const auto points = static_cast<std::size_t>(N);
+  std::vector<int> rho_rows(threads * points, 0);
+  std::vector<std::size_t> plb_by_thread(threads, 0), pub_by_thread(threads, 0);
 
-  #pragma omp parallel
+  #pragma omp parallel num_threads(n_threads)
   {
-    std::vector<int> rho_local(N, 0);
+#ifdef _OPENMP
+    const auto thread = static_cast<std::size_t>(omp_get_thread_num());
+#else
+    const std::size_t thread = 0;
+#endif
+    int *const rho_local = rho_rows.data() + thread * points;
     std::size_t loc_plb = 0, loc_pub = 0;
 
     // `can_prune` is loop-invariant, so it selects the whole i-body once rather
@@ -214,13 +225,15 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
           if (exact(i, j) < dc) { ++rho_local[i]; ++rho_local[j]; }
       }
     }
-    #pragma omp critical(tadpole_density_reduce)
-    {
-      for (int i = 0; i < N; ++i) rho[i] += rho_local[i];
-      plb += loc_plb;
-      pub += loc_pub;
-    }
+    plb_by_thread[thread] = loc_plb;
+    pub_by_thread[thread] = loc_pub;
   }
+
+  std::vector<int> rho(N, 0);
+  for (std::size_t t = 0; t < threads; ++t)
+    for (std::size_t i = 0; i < points; ++i) rho[i] += rho_rows[t * points + i];
+  const std::size_t plb = std::accumulate(plb_by_thread.begin(), plb_by_thread.end(), std::size_t{ 0 });
+  const std::size_t pub = std::accumulate(pub_by_thread.begin(), pub_by_thread.end(), std::size_t{ 0 });
 
   // ── Stage 2 · separation δ_i = min distance to a higher-density point, and
   //    parent = that nearest higher-density neighbour (with LB pruning) ──
@@ -329,11 +342,7 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
   result.iterations = 1; // single non-iterative pass
   result.converged = true;
 
-  // Write-back (Task 1.6 contract): pure-C++ callers get the same state the
-  // bindings wire by hand, so scores::silhouette(prob) etc. work with no wiring.
-  prob.set_n_clusters(k);
-  prob.centroids_ind = result.medoid_indices;
-  prob.clusters_ind = result.labels;
+  prob.set_result(result); // scores::silhouette(prob) etc. read it back
   return result;
 }
 

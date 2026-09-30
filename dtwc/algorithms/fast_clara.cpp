@@ -27,6 +27,7 @@
 #include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
 #include "../base/error.hpp"
+#include "../base/parallelisation.hpp"
 
 #ifdef DTWC_HAS_PARQUET
 #include "../io/parquet_chunk_reader.hpp"
@@ -34,7 +35,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <exception>
 #include <iostream>
 #include <limits>
 #include <random>
@@ -68,9 +68,6 @@ namespace detail {
     const std::string prefix(caller);
     if (n_points <= 0)
       throw InvalidInput(prefix + ": Problem has no data points.");
-    if (n_points > std::numeric_limits<int>::max())
-      throw InvalidInput(
-        prefix + ": N exceeds the int-indexed clustering result limit.");
     if (options.n_clusters <= 0 || options.n_clusters > n_points) {
       throw InvalidInput(
         prefix + ": n_clusters must be in [1, N]. Got n_clusters="
@@ -108,34 +105,15 @@ namespace detail {
 
 namespace {
 
-  void capture_assignment_failure(
-    std::exception_ptr candidate, std::int64_t point,
-    std::exception_ptr &failure, std::int64_t &failure_point)
-  {
-#pragma omp critical(dtwc_medoid_assignment_failure)
-    {
-      if (point < failure_point) {
-        failure_point = point;
-        failure = std::move(candidate);
-      }
-    }
-  }
-
 #ifdef DTWC_HAS_PARQUET
   size_t resident_data_bytes(const Data &data, size_t element_bytes)
   {
     const size_t object_bytes = data.is_f32()
       ? sizeof(std::vector<float>) + sizeof(std::string)
       : sizeof(std::vector<data_t>) + sizeof(std::string);
-    if (data.size() > std::numeric_limits<size_t>::max() / object_bytes)
-      return std::numeric_limits<size_t>::max();
     size_t total = data.size() * object_bytes;
-    for (size_t i = 0; i < data.size(); ++i) {
-      const size_t count = data.series_flat_size(i);
-      if (count > (std::numeric_limits<size_t>::max() - total) / element_bytes)
-        return std::numeric_limits<size_t>::max();
-      total += count * element_bytes;
-    }
+    for (size_t i = 0; i < data.size(); ++i)
+      total += data.series_flat_size(i) * element_bytes;
     return total;
   }
 #endif
@@ -157,38 +135,33 @@ namespace {
     const int k = static_cast<int>(medoid_indices.size());
     labels.resize(static_cast<std::size_t>(n_points));
     std::vector<double> best_dists(static_cast<std::size_t>(n_points));
-    std::exception_ptr failure;
-    std::int64_t failure_point = n_points;
 
-#pragma omp parallel for schedule(static) if (n_points > 64)
-    for (int p = 0; p < n_points; ++p) {
-      try {
-        double best_dist = std::numeric_limits<double>::max();
-        int best_label = 0;
-        bool has_best = false;
-        const auto point = series_at(p);
+    auto assign_point = [&](std::size_t index) {
+      const int p = static_cast<int>(index);
+      double best_dist = std::numeric_limits<double>::max();
+      int best_label = 0;
+      bool has_best = false;
+      const auto point = series_at(p);
 
-        for (int m = 0; m < k; ++m) {
-          const int medoid = medoid_indices[m];
-          const double d = core::detail::require_finite_medoid_distance(
-            p == medoid ? 0.0 : distance(point, series_at(medoid)),
-            "fast_clara", p, m, medoid);
-          if (!has_best || d < best_dist) {
-            best_dist = d;
-            best_label = m;
-            has_best = true;
-          }
+      for (int m = 0; m < k; ++m) {
+        const int medoid = medoid_indices[m];
+        const double d = core::detail::require_finite_medoid_distance(
+          p == medoid ? 0.0 : distance(point, series_at(medoid)),
+          "fast_clara", p, m, medoid);
+        // A medoid tied with another medoid (a duplicate series) serves
+        // itself, or its own cluster would be published empty.
+        if (!has_best || d < best_dist || (d == best_dist && medoid == p)) {
+          best_dist = d;
+          best_label = m;
+          has_best = true;
         }
-
-        labels[p] = best_label;
-        best_dists[static_cast<std::size_t>(p)] = best_dist;
-      } catch (...) {
-        capture_assignment_failure(
-          std::current_exception(), p, failure, failure_point);
       }
-    }
 
-    if (failure) std::rethrow_exception(failure);
+      labels[p] = best_label;
+      best_dists[index] = best_dist;
+    };
+    run_openmp(assign_point, static_cast<std::size_t>(n_points), n_points > 64);
+
     return core::detail::ordered_medoid_objective(
       best_dists, "fast_clara");
   }
@@ -198,9 +171,6 @@ namespace {
     Problem &prob, const std::vector<int> &medoid_indices,
     std::vector<int> &labels)
   {
-    if (prob.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-      throw InvalidInput(
-        "fast_clara: N exceeds the int-indexed clustering result limit.");
     const int n_points = static_cast<int>(prob.size());
     if (prob.data().is_f32()) {
       const auto &distance = prob.dtw_function_f32();
@@ -282,41 +252,35 @@ namespace {
 
       const int chunk_size = static_cast<int>(chunk.size());
       best_dists.resize(static_cast<size_t>(chunk_size));
-      std::exception_ptr failure;
-      std::int64_t failure_point = global_offset + chunk_size;
 
 // Inner loop is embarrassingly parallel: each point's DTW is independent.
 // Reader is NOT called here (chunk already loaded), so this is thread-safe.
-#pragma omp parallel for schedule(dynamic) if (chunk_size > 64)
-      for (int p = 0; p < chunk_size; ++p) {
+      auto assign_point = [&](std::size_t index) {
+        const int p = static_cast<int>(index);
         const auto global_index = global_offset + p;
-        try {
-          double best_dist = std::numeric_limits<double>::max();
-          int best_label = 0;
-          bool has_best = false;
-          auto series_p = series_at(chunk, p);
+        double best_dist = std::numeric_limits<double>::max();
+        int best_label = 0;
+        bool has_best = false;
+        auto series_p = series_at(chunk, p);
 
-          for (int m = 0; m < k; ++m) {
-            const double d = core::detail::require_finite_medoid_distance(
-              global_index == medoid_indices[m]
-                ? 0.0 : dtw_fn(series_p, series_at(medoid_data, m)),
-              "fast_clara", static_cast<std::size_t>(global_index),
-              m, medoid_indices[m]);
-            if (!has_best || d < best_dist) {
-              best_dist = d;
-              best_label = m;
-              has_best = true;
-            }
+        for (int m = 0; m < k; ++m) {
+          const double d = core::detail::require_finite_medoid_distance(
+            global_index == medoid_indices[m]
+              ? 0.0 : dtw_fn(series_p, series_at(medoid_data, m)),
+            "fast_clara", static_cast<std::size_t>(global_index),
+            m, medoid_indices[m]);
+          if (!has_best || d < best_dist
+              || (d == best_dist && global_index == medoid_indices[m])) {
+            best_dist = d;
+            best_label = m;
+            has_best = true;
           }
-
-          labels[static_cast<size_t>(global_index)] = best_label;
-          best_dists[static_cast<size_t>(p)] = best_dist;
-        } catch (...) {
-          capture_assignment_failure(
-            std::current_exception(), global_index, failure, failure_point);
         }
-      }
-      if (failure) std::rethrow_exception(failure);
+
+        labels[static_cast<size_t>(global_index)] = best_label;
+        best_dists[index] = best_dist;
+      };
+      run_openmp(assign_point, static_cast<std::size_t>(chunk_size), chunk_size > 64);
       total_cost.add(best_dists);
       global_offset += chunk_size;
     }
@@ -417,12 +381,7 @@ namespace {
       }
     }
 
-    // 2.0 result write-back (Task 1.6): mirror the in-RAM fast_clara path so the
-    // Parquet-streamed path also populates prob's labels/medoids/k (Phase 2 deletes
-    // the binding auto-wire at _dtwcpp_core.cpp:615-619).
-    prob_template.set_n_clusters(opts.n_clusters);
-    prob_template.centroids_ind = best_result.medoid_indices;
-    prob_template.clusters_ind = best_result.labels;
+    prob_template.set_result(best_result);
 
     return best_result;
   }
@@ -483,9 +442,6 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   }
 #endif
 
-  if (prob.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-    throw InvalidInput(
-      "fast_clara: N exceeds the int-indexed clustering result limit.");
   const auto plan = detail::resolve_clara_plan(
     static_cast<std::int64_t>(prob.size()), opts, "fast_clara");
   const int N = plan.n_points;
@@ -569,13 +525,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     }
   }
 
-  // 2.0 result write-back (Task 1.6): store labels/medoids/k into `prob` so
-  // scores::silhouette(prob) etc. work with NO manual wiring (mirrors the binding
-  // auto-wire at _dtwcpp_core.cpp:615-619, which Phase 2 deletes). The
-  // sample_size>=N branch above delegates to fast_pam, which already writes back.
-  prob.set_n_clusters(opts.n_clusters);
-  prob.centroids_ind = best_result.medoid_indices;
-  prob.clusters_ind = best_result.labels;
+  // The sample_size >= N branch above delegates to fast_pam, which publishes too.
+  prob.set_result(best_result);
 
   return best_result;
 }

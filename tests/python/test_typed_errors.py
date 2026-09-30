@@ -1,20 +1,17 @@
 """docs/api-contract-2.0.md §5 at the seams the GT-4 sweep left (GT-4b).
 
 Each case raised an untyped C++ error (Python ``RuntimeError``), the wrong
-leaf, or nothing: a checkpoint directory that cannot be created, ``skip_cols``
-wider than a file's rows, and a GPU PDLP solve on a build without the GPU
-backend, which warned and ran on the CPU.
+leaf, or nothing: a checkpoint directory that cannot be created and
+``skip_cols`` wider than a file's rows.
 """
 
 import os
 import re
 import sys
 
-import numpy as np
 import pytest
 
 import dtwcpp
-from dtwcpp import _dtwcpp_core as core
 
 
 def _problem():
@@ -64,14 +61,3 @@ class TestSkipColsWiderThanARow:
         csv.write_text("1,2,3\n4,5,6\n", encoding="utf-8")
         with pytest.raises(dtwcpp.InvalidInput, match="fewer than start_col=5"):
             dtwcpp.load(csv, skip_cols=5).as_series()
-
-
-class TestPdlpGpuRequest:
-    @pytest.mark.skipif(not dtwcpp.HIGHS_AVAILABLE or core.PDLP_GPU_AVAILABLE,
-                        reason="needs HiGHS built without its GPU backend")
-    def test_gpu_request_without_the_gpu_backend_is_device_error(self):
-        D = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=np.float64)
-        params = core.PdlpParams()
-        params.use_gpu = True
-        with pytest.raises(dtwcpp.DeviceError, match="DTWC_HIGHS_GPU"):
-            core.pdlp_lp_bound(D, 1, params)

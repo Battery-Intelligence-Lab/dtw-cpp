@@ -1,18 +1,14 @@
 /**
  * @file test_reduced_cost_fixing.cpp
- * @brief Correctness + P2 band for Beasley reduced-cost fixing (PLAN.md Phase 4,
- *        Task 4.2; reduced_cost_fixing.hpp).
+ * @brief Soundness + P2 band for the Beasley reduced-cost fixing inside the
+ *        Lagrangian root (its `core` is the fixing's survivor set).
  *
  * @details Registered checks (bands stated BEFORE the runs):
  *
- *   UNIT     the two conditional-bound tests on a hand-constructed dual state
- *            (close/open partition matches an arithmetic-checked expectation),
- *            plus the "nothing fixed" guards for non-finite bounds.
  *   VALID    on random non-degenerate instances (clustered + uniform, N ≤ 14),
- *            NO facility in `fixed_closed` is in the brute-force optimum and
- *            EVERY facility in `fixed_open` IS — fixing never removes an optimal
- *            medoid nor forces a non-optimal one. This is the safety property:
- *            the exact solver built on the core must not lose the optimum.
+ *            every medoid of the brute-force optimum survives in `core` — fixing
+ *            never removes an optimal medoid. This is the safety property: the
+ *            exact solver built on the core must not lose the optimum.
  *   BAND-P2  on well-separated clustered instances whose ROOT GAP ≤ 1%, fixing
  *            leaves n_core ≤ 0.2·N (≥ 80% of candidate medoids eliminated) for
  *            ≥ 90% of qualifying instances.
@@ -31,7 +27,6 @@
 
 #include <dtwc.hpp>
 #include <mip/lagrangian_root.hpp>
-#include <mip/reduced_cost_fixing.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -45,10 +40,8 @@
 #include <vector>
 
 using namespace dtwc;
-using dtwc::mip::FixingResult;
 using dtwc::mip::lagrangian_root;
 using dtwc::mip::LagrangianResult;
-using dtwc::mip::reduced_cost_fixing;
 
 namespace {
 
@@ -128,32 +121,6 @@ std::vector<double> uniform_D(int N, unsigned seed)
 }
 
 /// ρ_i(μ) = Σ_j min(0, D_ij − μ_j) — the facility scores the fixing consumes.
-std::vector<double> compute_rho(const std::vector<double> &D, int N, const std::vector<double> &mu)
-{
-  std::vector<double> rho(static_cast<std::size_t>(N), 0.0);
-  for (int i = 0; i < N; ++i) {
-    double s = 0.0;
-    for (int j = 0; j < N; ++j) {
-      const double dd = D[static_cast<std::size_t>(i) * N + j] - mu[static_cast<std::size_t>(j)];
-      if (dd < 0.0) s += dd;
-    }
-    rho[static_cast<std::size_t>(i)] = s;
-  }
-  return rho;
-}
-
-/// L(μ) = Σ_j μ_j + (sum of the k smallest ρ) — a valid lower bound at μ.
-double dual_L(const std::vector<double> &rho, const std::vector<double> &mu, int k)
-{
-  double sm = 0.0;
-  for (double m : mu) sm += m;
-  std::vector<double> s = rho;
-  std::nth_element(s.begin(), s.begin() + (k - 1), s.end());
-  double sr = 0.0;
-  for (int t = 0; t < k; ++t) sr += s[static_cast<std::size_t>(t)];
-  return sm + sr;
-}
-
 bool contains(const std::vector<int> &v, int x)
 {
   return std::find(v.begin(), v.end(), x) != v.end();
@@ -162,87 +129,19 @@ bool contains(const std::vector<int> &v, int x)
 } // namespace
 
 // ===========================================================================
-// UNIT — the two conditional tests on a hand-constructed dual state.
-// ===========================================================================
-TEST_CASE("reduced_cost_fixing partitions a hand-constructed dual state", "[fixing][unit]")
-{
-  // rho ascending: order = [0(-10), 1(-9), 2(-1), 3(-0.5), 4(0)], k=2.
-  //   S_k = {0,1}; ρ_(k) = -9; ρ_(k+1) = -1.
-  const std::vector<double> rho{ -10.0, -9.0, -1.0, -0.5, 0.0 };
-  const int k = 2;
-
-  SECTION("tight gap ⇒ full fix")
-  {
-    // LB = -19, UB = -18.5 (gap 0.5).
-    // close i∉S_k: -19+(ρ_i+9) > -18.5 ⟺ ρ_i > -8.5 ⇒ 2,3,4 all closed.
-    // open  i∈S_k: -19+(-1−ρ_i) > -18.5 ⟺ ρ_i < -1.5 ⇒ 0,1 both open.
-    const FixingResult f = reduced_cost_fixing(rho, k, -19.0, -18.5);
-    REQUIRE(f.core == std::vector<int>{ 0, 1 });
-    REQUIRE(f.fixed_closed == std::vector<int>{ 2, 3, 4 });
-    REQUIRE(f.fixed_open == std::vector<int>{ 0, 1 });
-  }
-
-  SECTION("loose gap ⇒ partial fix")
-  {
-    // LB = -19, UB = -11 (gap 8). close threshold ρ_i > UB−LB+ρ_(k) = 8−9 = -1.
-    //   i=2 (ρ=-1): NOT > -1 ⇒ survives; i=3,4 closed. open threshold ρ_i < ρ_(k+1)−(UB−LB) = -1−8 = -9.
-    //   i=0 (-10) < -9 ⇒ open; i=1 (-9) NOT < -9 ⇒ not forced.
-    const FixingResult f = reduced_cost_fixing(rho, k, -19.0, -11.0);
-    REQUIRE(f.core == std::vector<int>{ 0, 1, 2 });
-    REQUIRE(f.fixed_closed == std::vector<int>{ 3, 4 });
-    REQUIRE(f.fixed_open == std::vector<int>{ 0 });
-  }
-
-  SECTION("non-finite bounds ⇒ nothing fixed")
-  {
-    const FixingResult a = reduced_cost_fixing(rho, k, -kInf, -11.0);
-    const FixingResult b = reduced_cost_fixing(rho, k, -19.0, kInf);
-    REQUIRE(a.core.size() == 5);
-    REQUIRE(a.fixed_closed.empty());
-    REQUIRE(a.fixed_open.empty());
-    REQUIRE(b.core.size() == 5);
-    REQUIRE(b.fixed_closed.empty());
-    REQUIRE(b.fixed_open.empty());
-  }
-}
-
-TEST_CASE("reduced_cost_fixing rejects bad arguments", "[fixing][unit]")
-{
-  const std::vector<double> rho{ -1.0, -2.0, -3.0 };
-  REQUIRE_THROWS_AS(reduced_cost_fixing({}, 1, 0.0, 0.0), InvalidInput);
-  REQUIRE_THROWS_AS(reduced_cost_fixing(rho, 0, 0.0, 0.0), InvalidInput);
-  REQUIRE_THROWS_AS(reduced_cost_fixing(rho, 4, 0.0, 0.0), InvalidInput);
-}
-
-// ===========================================================================
-// VALID — no fixed-out facility is optimal; every fixed-open facility is.
+// VALID — every optimal medoid survives the fixing.
 // ===========================================================================
 TEST_CASE("fixing never removes an optimal medoid (N ≤ 14)", "[fixing][valid]")
 {
-  int instances = 0, total_fixed_closed = 0, total_fixed_open = 0;
+  int instances = 0, total_fixed_closed = 0;
 
   auto check_instance = [&](const std::vector<double> &D, int N, int k) {
     const OracleResult orc = brute_force_pmedian(D, N, k);
     const LagrangianResult lr = lagrangian_root(D.data(), N, k);
-
-    // Rebuild a self-consistent (ρ, LB, UB) triple at the terminal μ; LB from
-    // this μ is valid, UB is the LR primal cost (valid). Every resulting fix is
-    // therefore provably valid, independent of the solver's internal bookkeeping.
-    const std::vector<double> rho = compute_rho(D, N, lr.multipliers);
-    const double LB = dual_L(rho, lr.multipliers, k);
-    const FixingResult f = reduced_cost_fixing(rho, k, LB, lr.upper_bound);
-
-    for (int m : f.fixed_closed)
-      REQUIRE_FALSE(contains(orc.medoids, m)); // an optimal medoid must never be fixed out.
-    for (int m : f.fixed_open)
-      REQUIRE(contains(orc.medoids, m));       // a forced-open medoid must be optimal.
-    // The integrated result.core (built at the solver's best_lb) must also keep
-    // every optimal medoid.
-    for (int m : orc.medoids) REQUIRE(contains(lr.core, m));
+    for (int m : orc.medoids) REQUIRE(contains(lr.core, m)); // never fixed out.
 
     ++instances;
-    total_fixed_closed += static_cast<int>(f.fixed_closed.size());
-    total_fixed_open += static_cast<int>(f.fixed_open.size());
+    total_fixed_closed += N - lr.n_core;
   };
 
   for (unsigned seed = 1; seed <= 20; ++seed) {
@@ -251,9 +150,10 @@ TEST_CASE("fixing never removes an optimal medoid (N ≤ 14)", "[fixing][valid]"
     { check_instance(uniform_D(10, seed), 10, 3); }
     { check_instance(uniform_D(12, seed), 12, 4); }
   }
-  std::printf("[fixing][valid] %d instances: total fixed_closed=%d fixed_open=%d\n",
-              instances, total_fixed_closed, total_fixed_open);
+  std::printf("[fixing][valid] %d instances: total fixed_closed=%d\n",
+              instances, total_fixed_closed);
   REQUIRE(instances == 80);
+  REQUIRE(total_fixed_closed > 0); // the fixing ran: some facility was eliminated
 }
 
 // ===========================================================================

@@ -12,7 +12,7 @@
 
 #include "Problem.hpp"
 #include "base/error.hpp"           // for DeviceError
-#include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byBenders
+#include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byHiGHS
 #include "base/parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
 #include "base/settings.hpp"        // for data_t, randGenerator, band, isDebug
@@ -286,6 +286,34 @@ void Problem::set_clusters(std::vector<int> &candidate_centroids)
     throw InvalidInput("Set cluster has failed as number of centroids is not same as the number of indices in candidate centroids vector.\n");
 
   centroids_ind = candidate_centroids;
+}
+
+void Problem::set_result(const core::ClusteringResult &result)
+{
+  const auto &medoids = result.medoid_indices;
+  const auto &labels = result.labels;
+  // A settings-only Problem (Parquet-streamed CLARA) holds no series; the
+  // result's own point count is the reference there.
+  const std::size_t n = size() == 0 ? labels.size() : size();
+  if (medoids.empty() || medoids.size() > n || labels.size() != n)
+    throw InvalidInput("Problem::set_result: expected 1..N medoids and N = " + std::to_string(n)
+                       + " labels; got " + std::to_string(medoids.size()) + " medoids and "
+                       + std::to_string(labels.size()) + " labels.");
+  std::vector<bool> is_medoid(n, false);
+  for (const int medoid : medoids) {
+    if (medoid < 0 || static_cast<std::size_t>(medoid) >= n || is_medoid[static_cast<std::size_t>(medoid)])
+      throw InvalidInput("Problem::set_result: medoid " + std::to_string(medoid)
+                         + " is outside [0, N) or repeated.");
+    is_medoid[static_cast<std::size_t>(medoid)] = true;
+  }
+  const int k = static_cast<int>(medoids.size());
+  for (const int label : labels)
+    if (label < 0 || label >= k)
+      throw InvalidInput("Problem::set_result: label " + std::to_string(label) + " is outside [0, k).");
+
+  set_n_clusters(k);
+  centroids_ind = medoids;
+  clusters_ind = labels;
 }
 
 /**
@@ -1232,21 +1260,13 @@ void Problem::cluster_and_process()
  */
 void Problem::cluster_by_mip()
 {
-  // Validate before Benders policy: an invalid stored selector must not bypass
-  // membership checks merely because the large-N route ignores mipSolver.
   validate_solver(mipSolver);
-  // Validate every consumed MIPSettings field before any solver sees it: an
-  // unrecognised `benders` selector otherwise tests false below and silently
-  // means "off", and a negative `mip_gap` reaches HiGHS as an out-of-domain
-  // option value, reported as a solver failure rather than as bad input.
+  // A negative `mip_gap` would otherwise reach HiGHS as an out-of-domain option
+  // value, reported as a solver failure rather than as bad input.
   validate_mip_settings(mip_settings);
-  const bool use_benders = (mip_settings.benders == "on") || (mip_settings.benders == "auto" && data_.size() > 200);
 
-  if (use_benders) {
-    MIP_clustering_byBenders(*this); // guards n_repetitions for its warm start
-    return;
-  }
-
+  // The compact model on the selected solver at every N, as in v1.0.0; large N
+  // belongs to Method::LRCore, never to a silent reroute.
   switch (mipSolver) {
   case Solver::Gurobi:
     MIP_clustering_byGurobi(*this);
@@ -1278,7 +1298,9 @@ void Problem::assign_clusters()
       const double distance = core::detail::require_finite_medoid_distance(
         dist_by_ind(ip, medoid), "kmedoids_lloyd", i_p,
         static_cast<int>(slot), medoid);
-      if (!has_best || distance < best_distance) {
+      // A medoid tied with another medoid (a duplicate series) serves itself,
+      // or its own cluster would be published empty.
+      if (!has_best || distance < best_distance || (distance == best_distance && medoid == ip)) {
         best_distance = distance;
         best_slot = static_cast<int>(slot);
         has_best = true;
@@ -1370,11 +1392,7 @@ void Problem::init_with_seed(std::uint64_t seed)
  */
 void Problem::cluster_by_kmedoids_lloyd()
 {
-  cluster_by_kmedoids_lloyd_impl(persist_run_artifacts_);
-}
-
-void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
-{
+  const bool persist_artifacts = persist_run_artifacts_;
   // The setters reject both; the public fields maxIter and N_repetition bypass them.
   const int repetitions = n_repetitions();
   if (repetitions <= 0)

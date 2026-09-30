@@ -173,3 +173,23 @@ CHANGELOG rule.
   the MEX — get unpacked lanes. A value-returning min let cl pack the float lanes but, under `/fp:contract`, fused
   squared L2 in the lanes only (a bitwise mismatch), so it was reverted; whether MSVC keeps `/fp:contract` is Volkan's.
 - 2026-09-29 — W4a: no CUDA kernel variant is within 5 % of its replacement; W4d deletes the forcing machinery only.
+- 2026-09-30 — Volkan: no Fable; simpler delegated tasks run on Sonnet 5.5 at xhigh effort (CHARTER). Workflow agents
+  take `model` and `effort`; the Agent tool does not, so Sonnet units run as one-agent workflows.
+- 2026-09-30 — X2 merged (`4de2ce9`): its Release `dtwc_cl.exe` ran with no Sophos event; the 09-28 quarantine did not
+  recur once the binary changed.
+- 2026-09-30 — P3 merged (`5e15459`): no CHANGELOG line. v1.0.0 already ran `dtwFull_L` for unbanded DTW; EAP was
+  2.0-born, so P2's 1.48–3.57× is against a kernel no release shipped.
+- 2026-09-30 — Y4 merged (`93eefe1`): the F18 MATLAB oracle's seed-42 L1 `fast_pam` expectation follows FasterPAM (a
+  different swap-local optimum; pre-registered "`pam` results"). F43 did not reproduce: a scratch mapped route in an
+  llfio-ON MSVC MEX under R2024b ran clean, and no MEX route maps a matrix, so no `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR`.
+- 2026-09-30 — G1 merged (`1bb9413`): only `mip` needs HiGHS; LR-core is exact without it (subgradient root, then
+  branch and bound), so a HiGHS-OFF build asserts `SolverError` for `mip` alone.
+- 2026-09-30 — W6e's MATLAB half: `cmd_cluster_legacy` and snake_case MATLAB keys move to W9e, where `run(Config)`
+  replaces them (chair.md line 20 already puts `cmd_cluster_legacy` in W9); renaming the keys twice is waste.
+- 2026-09-30 — W6e, Python half: `Problem.cluster_size` is a method again, silent (v1 bound it as a method; the 2.0
+  warning property made `prob.cluster_size()` a TypeError). The bindings of `set_view_data`, `OneBatchPAMStats` and
+  `one_batch_pam_with_stats` go as chair.md §4 W6 approved; the C++ stays (FastCLARA and the CLI use it).
+- 2026-09-30 — W4d: one verbose line per GPU fill, printed by the backend (it knows the kernel and precision used);
+  `Problem`'s duplicate print and its GPU pre-checks go, so the refusal wording lives in the backends (pinned by
+  `test_run_resolution` and `test_cli_device_matrix`). The device limits are read once under `std::call_once`, whose
+  callable does not throw (GCC PR 66146).

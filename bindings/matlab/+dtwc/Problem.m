@@ -50,7 +50,8 @@ classdef Problem < handle
         %   Device: 'cpu' (default), 'gpu', 'gpu:N', 'cuda' or 'cuda:N' -- the
         %   names dtwc.device() accepts. A Problem does not follow the
         %   process-wide dtwc.device(). 'gpu' without a GPU backend raises
-        %   dtwc:deviceError; 'hpc' raises dtwc:invalidArgument.
+        %   dtwc:deviceError, as does 'hpc' (Python's dtwcpp.device("hpc") submits a
+        %   run to SLURM; MATLAB computes where it starts).
             if nargin < 1, name = ''; end
             p = inputParser;
             addParameter(p, 'Device', 'cpu', @(v) ischar(v) || isstring(v));
@@ -283,12 +284,6 @@ classdef Problem < handle
             ok = dtwc_mex('Problem_set_solver', obj.Handle, char(s));
         end
 
-        function set_storage_policy(obj, s)
-        %SET_STORAGE_POLICY Set storage for the next owning set_data call.
-        %   Existing data is unchanged. Values: 'auto' | 'heap' | 'mmap'.
-            dtwc_mex('Problem_set_storage_policy', obj.Handle, char(s));
-        end
-
         function set_output_folder(obj, dir)
         %SET_OUTPUT_FOLDER Set the folder where result CSVs are written.
             dtwc_mex('Problem_set_output_folder', obj.Handle, char(dir));
@@ -297,8 +292,7 @@ classdef Problem < handle
         function set_mip_settings(obj, s)
         %SET_MIP_SETTINGS Configure MIP solver tuning from a struct.
         %   Recognised fields: mip_gap, time_limit_sec, warm_start, numeric_focus,
-        %   mip_focus, verbose_solver, max_benders_iter, lr_max_nodes,
-        %   benders ('auto'|'on'|'off').
+        %   mip_focus, verbose_solver, lr_max_nodes.
             dtwc_mex('Problem_set_mip_settings', obj.Handle, s);
         end
 

@@ -7,12 +7,15 @@ function ok = load_checkpoint(prob, path, metric)
 %   ok = dtwc.load_checkpoint(prob, dirpath)
 %   ok = dtwc.load_checkpoint(prob, dirpath, 'squared_euclidean')
 %
-%   Returns true if the checkpoint was found and loaded, false otherwise.
+%   Returns true if the checkpoint was loaded and false, with the Problem
+%   unchanged, if DIRPATH holds no checkpoint file for it. A file for other
+%   series or another metric raises 'dtwc:invalidArgument', and a file that is not
+%   a whole checkpoint raises 'dtwc:ioError'.
 %
 %   metric is the pointwise metric THIS run computes with: 'l1' (default) or
 %   'squared_euclidean' ('sqeuclidean'). A checkpoint written under a different
-%   metric no longer matches the identity fingerprint and is rejected (returns
-%   false). Mirrors C++ load_checkpoint(prob, path, metric).
+%   metric no longer matches the identity fingerprint. Mirrors C++
+%   load_checkpoint(prob, path, metric).
 %
 %   See also dtwc.save_checkpoint, dtwc.CheckpointOptions
     if nargin < 3, metric = 'l1'; end

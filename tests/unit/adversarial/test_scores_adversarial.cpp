@@ -428,22 +428,17 @@ TEST_CASE("Silhouette: three clusters, hand-computed",
   }
 }
 
-TEST_CASE("Silhouette: unclustered problem returns -1 vector",
+TEST_CASE("Silhouette: unclustered problem throws",
           "[scores][silhouette][adversarial]")
 {
-  // If centroids_ind is empty, silhouette should return all -1.
+  // v1.0.0 printed a line and returned N copies of -1, which reads as a score.
   auto prob = make_problem({
     {1, 2, 3},
     {4, 5, 6},
   });
 
   // Do NOT call assign_clusters -- centroids_ind stays empty
-  auto sil = dtwc::scores::silhouette(prob);
-
-  REQUIRE(sil.size() == 2);
-  for (size_t i = 0; i < sil.size(); ++i) {
-    REQUIRE_THAT(sil[i], WithinAbs(-1.0, 1e-15));
-  }
+  REQUIRE_THROWS_AS(dtwc::scores::silhouette(prob), dtwc::InvalidInput);
 }
 
 // ===========================================================================
