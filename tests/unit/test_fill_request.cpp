@@ -1,7 +1,8 @@
 /**
  * @file test_fill_request.cpp
- * @brief FX-1: Problem::validate_fill_request() runs before every fill and where
- *        the lazy dist_by_ind path starts, and names the axis it rejects.
+ * @brief FX-1: Problem::validate_fill_request() runs before every fill that
+ *        computes a pair and in the dtw_function accessors, and names the axis
+ *        it rejects.
  *
  * @details Every case runs in every build. The validator's GPU checks run before
  * any backend is called — compiled or not, device present or not — so a CPU-only
@@ -94,21 +95,15 @@ TEST_CASE("FX-1: a band narrower than the widest length difference is rejected",
   CHECK_THAT(fill_msg, ContainsSubstring("band = -1"));
   CHECK_FALSE(prob.is_distance_matrix_filled());
 
-  // The lazy path checks the same request, even for a pair that fits (a, c).
-  const auto lazy_msg =
-    message_of<dtwc::InvalidInput>([&] { (void)prob.dist_by_ind(0, 2); });
-  CHECK_THAT(lazy_msg, ContainsSubstring("Problem::dist_by_ind: band = 2"));
-
-  // A cached pair does not skip it: a caller's serial prime (TADPole reads
-  // pair (0, 1) before its parallel regions) must be the call that validates.
+  // A matrix holding some pairs, not all, does not skip it.
   dtwc::Problem primed("band_primed");
   primed.set_data(named(series));
   primed.set_band(2);
   auto &cache = primed.distance_matrix();
   cache.resize(3);
   cache.set(0, 1, 1.0);
-  CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)primed.dist_by_ind(0, 1); }),
-             ContainsSubstring("Problem::dist_by_ind: band = 2"));
+  CHECK_THAT(message_of<dtwc::InvalidInput>([&] { primed.fill_distance_matrix(); }),
+             ContainsSubstring("Problem::fill_distance_matrix: band = 2"));
 
   // The band the message names is feasible: every entry is the CPU kernel's.
   prob.set_band(static_cast<int>(gap));
@@ -137,7 +132,7 @@ TEST_CASE("FX-1: a matrix holding every pair needs no feasible band; a new one r
   // that already holds it computes nothing. Oracle: the numbers put in.
   const dtwc::test_support::ScratchDirectory dir{ "fx1_known_pairs" };
   const auto band_error = [](dtwc::Problem &p) {
-    return message_of<dtwc::InvalidInput>([&] { (void)p.dist_by_ind(0, 1); });
+    return message_of<dtwc::InvalidInput>([&] { p.fill_distance_matrix(); });
   };
 
   dtwc::Problem prob("known_pairs");
@@ -151,11 +146,14 @@ TEST_CASE("FX-1: a matrix holding every pair needs no feasible band; a new one r
   matrix.set(1, 1, 0.0);
   dtwc::save_checkpoint(prob, (dir.path / "partial").string()); // pair uncomputed
   prob.distance_matrix().set(0, 1, 7.5);
+  CHECK_NOTHROW(prob.fill_distance_matrix());
+  CHECK(prob.is_distance_matrix_filled());
   CHECK(prob.dist_by_ind(0, 1) == 7.5);
 
-  // A checkpoint without the pair brings the check back, cached pair or not.
+  // A checkpoint without the pair brings the check back.
   REQUIRE(dtwc::load_checkpoint(prob, (dir.path / "partial").string()));
-  CHECK_THAT(band_error(prob), ContainsSubstring("Problem::dist_by_ind: band = 2"));
+  CHECK_FALSE(prob.is_distance_matrix_filled());
+  CHECK_THAT(band_error(prob), ContainsSubstring("Problem::fill_distance_matrix: band = 2"));
 
   // So does a file without it; a file with it serves the pair.
   {
@@ -163,15 +161,18 @@ TEST_CASE("FX-1: a matrix holding every pair needs no feasible band; a new one r
     std::ofstream(dir.path / "hole.csv") << "0,\n,0\n";
   }
   prob.read_distance_matrix(dir.path / "full.csv");
+  CHECK(prob.is_distance_matrix_filled());
+  CHECK_NOTHROW(prob.fill_distance_matrix());
   CHECK(prob.dist_by_ind(0, 1) == 2.5);
   prob.read_distance_matrix(dir.path / "hole.csv");
-  CHECK_THAT(band_error(prob), ContainsSubstring("Problem::dist_by_ind: band = 2"));
+  CHECK_FALSE(prob.is_distance_matrix_filled());
+  CHECK_THAT(band_error(prob), ContainsSubstring("Problem::fill_distance_matrix: band = 2"));
 
   // And an edit through the matrix accessor (resize() NaN-wipes every entry).
   prob.read_distance_matrix(dir.path / "full.csv");
   CHECK(prob.dist_by_ind(0, 1) == 2.5);
   prob.distance_matrix().resize(2);
-  CHECK_THAT(band_error(prob), ContainsSubstring("Problem::dist_by_ind: band = 2"));
+  CHECK_THAT(band_error(prob), ContainsSubstring("Problem::fill_distance_matrix: band = 2"));
 }
 
 TEST_CASE("FX-1: the dtw_function accessors validate the request before any pair",
@@ -188,9 +189,6 @@ TEST_CASE("FX-1: the dtw_function accessors validate the request before any pair
   prob.set_band(2);
   CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)prob.dtw_function(); }),
              ContainsSubstring("Problem::dtw_function: band = 2"));
-  const dtwc::Problem &view = prob;
-  CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)view.dtw_function(); }),
-             ContainsSubstring("Problem::dtw_function: band = 2"));
 
   // Float32 data through the Float32 accessors.
   std::vector<std::vector<float>> narrow;
@@ -199,9 +197,6 @@ TEST_CASE("FX-1: the dtw_function accessors validate the request before any pair
   f32.set_data(dtwc::Data(std::move(narrow), std::vector<std::string>{ "a", "b" }));
   f32.set_band(2);
   CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)f32.dtw_function_f32(); }),
-             ContainsSubstring("Problem::dtw_function_f32: band = 2"));
-  const dtwc::Problem &f32_view = f32;
-  CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)f32_view.dtw_function_f32(); }),
              ContainsSubstring("Problem::dtw_function_f32: band = 2"));
 
   // A feasible band passes, and the function computes what the kernel does.
@@ -234,12 +229,12 @@ TEST_CASE("FX-15: ±inf, and NaN under MissingStrategy::Error, are rejected by p
       "Problem::fill_distance_matrix: series 'b' (index 1)[2] is +inf"));
     CHECK_FALSE(prob.is_distance_matrix_filled());
   }
-  SECTION("-inf on the lazy dist_by_ind path")
+  SECTION("-inf through the accessor")
   {
-    dtwc::Problem prob("fx15_lazy");
+    dtwc::Problem prob("fx15_accessor_inf");
     prob.set_data(named({ { 0.0, 1.0 }, { 1.0, 2.0 }, { -inf, 0.0 } }));
-    CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)prob.dist_by_ind(0, 1); }),
-               ContainsSubstring("Problem::dist_by_ind: series 'c' (index 2)[0] is -inf"));
+    CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)prob.dtw_function(); }),
+               ContainsSubstring("Problem::dtw_function: series 'c' (index 2)[0] is -inf"));
   }
   SECTION("NaN through the accessors, in both precisions")
   {
@@ -334,10 +329,10 @@ TEST_CASE("FX-1: a GPU strategy rejects what its kernels do not implement",
       prob.set_variant(dtwc::core::DTWVariant::WDTW);
       prob.set_distance_strategy(strategy);
       rejects(prob, "variant = WDTW");
-      // The lazy path starts with the same check.
-      const auto lazy = message_of<dtwc::DeviceError>(
-        [&] { (void)prob.dist_by_ind(0, 1); });
-      CHECK_THAT(lazy, ContainsSubstring("Problem::dist_by_ind: " + backend));
+      // The accessor makes the same check.
+      const auto accessor = message_of<dtwc::DeviceError>(
+        [&] { (void)prob.dtw_function(); });
+      CHECK_THAT(accessor, ContainsSubstring("Problem::dtw_function: " + backend));
     }
     {
       dtwc::Problem prob("gpu_missing");

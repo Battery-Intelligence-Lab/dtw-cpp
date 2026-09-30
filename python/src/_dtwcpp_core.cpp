@@ -778,15 +778,13 @@ NB_MODULE(_dtwcpp_core, m) {
                  },
                  "Strategy for handling NaN values (Error, ZeroCost, AROW, Interpolate).")
     .def_prop_rw("distance_strategy",
-                 [](const dtwc::Problem &p) { return p.distance_strategy; },
+                 [](const dtwc::Problem &p) { return p.distance_strategy(); },
                  [](dtwc::Problem &p, dtwc::DistanceMatrixStrategy value) {
                    p.set_distance_strategy(value);
                  },
                  "Distance matrix computation strategy (Auto, BruteForce, CUDA, Metal).")
     .def_prop_rw("cuda_settings",
-                 [](const dtwc::Problem &p) -> const dtwc::CUDASettings & {
-                   return p.cuda_settings;
-                 },
+                 [](const dtwc::Problem &p) { return p.cuda_settings(); },
                  [](dtwc::Problem &p, dtwc::CUDASettings value) {
                    p.set_cuda_settings(value);
                  },
@@ -850,11 +848,13 @@ NB_MODULE(_dtwcpp_core, m) {
       require_index("dist_by_ind", "i", i, p.size());
       require_index("dist_by_ind", "j", j, p.size());
       nb::gil_scoped_release release;
+      p.fill_distance_matrix(); // a no-op once filled: Problem::dist_by_ind reads the matrix
       return p.dist_by_ind(i, j);
     }, "i"_a, "j"_a,
-       "Distance between series i and j, computing it on demand.\n\n"
+       "Distance between series i and j.\n\n"
        "Raises InvalidInput if i or j is outside [0, N).\n\n"
-       "The lazy compute path MUTATES this Problem, so it must not be called\n"
+       "The first call on a Problem whose matrix is not filled fills it\n"
+       "(fill_distance_matrix()), which MUTATES this Problem: do not make it\n"
        "concurrently from several Python threads on the same object (see the\n"
        "Problem class docstring).")
     // ---- config setters ----

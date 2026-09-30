@@ -12,10 +12,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
 #include <functional>
-#include <iterator>
 #include <limits>
 #include <span>
 #include <string>
@@ -136,15 +133,6 @@ constexpr std::array<NarrowingCase, 12> narrowing_cases{{
    +[](core::DTWVariantParams &p) { p.twe_lambda = std::numeric_limits<double>::max(); },
    "TWE lambda cannot be represented in float32 without becoming zero or non-finite."},
 }};
-
-std::string read_problem_source()
-{
-  const auto repo_root = std::filesystem::path{DTWC_TEST_DATA_DIR}.parent_path();
-  std::ifstream source(repo_root / "dtwc" / "Problem.cpp", std::ios::binary);
-  REQUIRE(source.is_open());
-  return {std::istreambuf_iterator<char>{source},
-          std::istreambuf_iterator<char>{}};
-}
 
 } // namespace
 
@@ -272,24 +260,12 @@ TEST_CASE("f64 accepts its full domain and explicit f32 access stays transaction
     const bool caught = catches_exact(
       [&] { (void)problem.dtw_function_f32(); }, test.message);
     CHECK(caught);
-    const Problem &const_problem = problem;
     CHECK(catches_exact(
-      [&] { (void)const_problem.dtw_function_f32(); }, test.message));
-    CHECK(catches_exact(
-      [&] { (void)core::resolve_dtw_fn<float>(problem); }, test.message));
+      [&] { (void)core::resolve_dtw_fn<float>(problem.distance(), problem.data()); }, test.message));
     CHECK(params_equal(problem.variant_params(), params));
     CHECK_FALSE(problem.data().is_f32());
     if (caught) require_dense_unchanged(problem, original_cache);
   }
-}
-
-TEST_CASE("Problem float32 callable uses stay behind validated access",
-          "[problem][variant][f32][source_guard][m45]")
-{
-  const std::string source = read_problem_source();
-
-  CHECK(source.find("dtw_fn_f32_(") == std::string::npos);
-  CHECK(source.find("validated_dtw_function_f32()") != std::string::npos);
 }
 
 TEST_CASE("float32 representable boundaries and inactive parameters remain valid",

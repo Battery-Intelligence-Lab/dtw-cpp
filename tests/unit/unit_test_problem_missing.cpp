@@ -57,7 +57,7 @@ TEST_CASE("Problem: MissingStrategy::Error throws on the caller thread",
       dtwc::Problem prob;
       prob.set_data(data);
       prob.set_missing_strategy(dtwc::core::MissingStrategy::Error);
-      prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+      prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
       prob.set_verbose(false);
 
       REQUIRE_THROWS_AS(prob.fill_distance_matrix(), dtwc::InvalidInput);
@@ -102,7 +102,7 @@ TEST_CASE("Problem: a rejected fill does not publish a full cache",
       dtwc::Problem prob;
       prob.set_data(std::move(data));
       prob.set_missing_strategy(dtwc::core::MissingStrategy::Interpolate);
-      prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+      prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
       prob.set_verbose(false);
 
       REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
@@ -135,7 +135,7 @@ TEST_CASE("Problem: ordinary and ZeroCost distance fingerprints survive exceptio
       dtwc::Problem standard;
       standard.set_data(dtwc::Data(
         std::move(ordinary), std::vector<std::string>{"a", "b", "c"}));
-      standard.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+      standard.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
       standard.set_verbose(false);
       standard.fill_distance_matrix();
       CHECK(standard.dist_by_ind(0, 1) == 1.0);
@@ -148,7 +148,7 @@ TEST_CASE("Problem: ordinary and ZeroCost distance fingerprints survive exceptio
       zero_cost.set_data(dtwc::Data(
         std::move(missing), std::vector<std::string>{"a", "b", "c"}));
       zero_cost.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
-      zero_cost.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+      zero_cost.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
       zero_cost.set_verbose(false);
       zero_cost.fill_distance_matrix();
       CHECK(zero_cost.dist_by_ind(0, 1) == 0.0);

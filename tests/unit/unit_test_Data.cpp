@@ -260,6 +260,7 @@ TEST_CASE("Float32 DTW via Problem", "[Problem][float32]")
   REQUIRE(prob.size() == 3);
 
   // DTW distances should reflect grouping
+  prob.fill_distance_matrix();
   double d_close = prob.dist_by_ind(0, 1); // a1 vs a2 — should be small
   double d_far = prob.dist_by_ind(0, 2);   // a1 vs b1 — should be large
 

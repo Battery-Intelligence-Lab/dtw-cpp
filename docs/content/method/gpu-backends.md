@@ -43,10 +43,10 @@ raises `DeviceError` naming the setting and its value:
 | CUDA: precision Auto, FP32 or FP64; any device index | honoured |
 | a band narrower than the longest-minus-shortest series length (every device) | `InvalidInput` naming both series and the smallest feasible band |
 
-The same validator runs where the lazy `dist_by_ind` path starts. Known gap:
-that path, like the matrix-free schedules, still computes on the CPU when the
-device is a GPU, and OneBatchPAM and FastCLARA's assignment compute through
-`Problem::dtw_function()`, which the validator does not see.
+The same validator runs in `Problem::dtw_function()`, through which
+OneBatchPAM, FastCLARA's assignment and TADPole compute the pairs they need.
+Known gap: those matrix-free schedules compute on the CPU when the device is a
+GPU.
 
 > **Compile-time flags.** CUDA defaults OFF and is enabled with
 > `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON but is built only on

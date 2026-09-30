@@ -427,7 +427,7 @@ class TestDenseSemanticMutation:
         assert not p.is_distance_matrix_filled()
         assert p.dist_by_ind(0, 1) == 1.0
 
-    def test_backend_and_cuda_whole_and_nested_mutations_drop_precomputed(self):
+    def test_backend_and_cuda_setters_drop_precomputed_and_the_getter_is_a_copy(self):
         p = self._problem([[0.0], [2.0]])
         precomputed = np.array([[0.0, 123.0], [123.0, 0.0]])
         p.set_distance_matrix(precomputed)
@@ -443,10 +443,12 @@ class TestDenseSemanticMutation:
         p.cuda_settings = settings
         assert not p.is_distance_matrix_filled()
 
+        # cuda_settings returns a copy: editing it leaves the Problem as it was.
         p.set_distance_matrix(precomputed)
         p.cuda_settings.device_id = 4
-        assert not p.is_distance_matrix_filled()
-        assert p.dist_by_ind(0, 1) == 2.0
+        assert p.cuda_settings.device_id == 3
+        assert p.is_distance_matrix_filled()
+        assert p.dist_by_ind(0, 1) == 123.0
 
 
 class TestBandProperty:

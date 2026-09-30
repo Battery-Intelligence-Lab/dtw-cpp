@@ -16,6 +16,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using Catch::Matchers::WithinAbs;
@@ -107,10 +108,6 @@ TEST_CASE("unchanged DTW function getters keep stable bound callable storage",
     REQUIRE(&problem.dtw_function() == f64);
     REQUIRE(&problem.dtw_function_f32() == f32);
   }
-
-  const Problem &view = problem;
-  REQUIRE(&view.dtw_function() == f64);
-  REQUIRE(&view.dtw_function_f32() == f32);
 }
 
 TEST_CASE("DTW function getters keep a mapped cache",
@@ -119,18 +116,16 @@ TEST_CASE("DTW function getters keep a mapped cache",
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
 #else
-  SECTION("unchanged mutable and const getters retain mapped storage")
+  SECTION("the getters retain mapped storage")
   {
     const ScratchDirectory cache{"m37_unchanged_mmap"};
     Problem problem = make_bound_problem();
     problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
 
     const auto *function = &problem.dtw_function();
-    REQUIRE(problem.distance_matrix().is_mapped());
-
-    const Problem &view = problem;
-    REQUIRE(&view.dtw_function() == function);
-    REQUIRE(view.distance_matrix().is_mapped());
+    REQUIRE(std::as_const(problem).distance_matrix().is_mapped());
+    REQUIRE(&problem.dtw_function() == function);
+    REQUIRE(std::as_const(problem).distance_matrix().is_mapped());
   }
 #endif
 }

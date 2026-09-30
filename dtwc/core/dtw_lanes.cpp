@@ -11,7 +11,6 @@
 
 #include "dtw_dispatch.hpp"
 
-#include "../Problem.hpp"
 #include "../warping.hpp"     // detail::dispatch_metric
 #include "dtw_kernel.hpp"     // dtw_kernel_lanes, dtw_lanes, StandardCell
 #include "dtw_options.hpp"    // DTWVariant, MissingStrategy
@@ -25,21 +24,21 @@ namespace dtwc::core {
 
 template <typename T>
 std::function<void(std::span<const T>, std::span<const std::span<const T>>, std::span<double>)>
-resolve_dtw_block_fn(const Problem &p)
+resolve_dtw_block_fn(const DistanceConfig &config)
 {
   // make_standard's univariate path: its kernels are the ones the lanes
   // reproduce bit for bit. The metric is resolved here, once, as a functor.
-  if (p.variant_params().variant != DTWVariant::Standard
-      || p.missing_strategy() != MissingStrategy::Error || p.data().ndim != 1)
+  if (config.variant.variant != DTWVariant::Standard
+      || config.missing != MissingStrategy::Error || config.ndim != 1)
     return {};
-  return dtwc::detail::dispatch_metric(p.metric(), [&p](auto dist) {
+  return dtwc::detail::dispatch_metric(config.metric, [band = config.band](auto dist) {
     return std::function<void(std::span<const T>, std::span<const std::span<const T>>,
                               std::span<double>)>(
-      [&p, dist](std::span<const T> x, std::span<const std::span<const T>> ys,
-                 std::span<double> out) {
+      [band, dist](std::span<const T> x, std::span<const std::span<const T>> ys,
+                   std::span<double> out) {
         const T *y[dtw_lanes<T>];
         for (std::size_t w = 0; w < dtw_lanes<T>; ++w) y[w] = ys[w].data();
-        const auto d = dtw_kernel_lanes<T>(x.data(), y, x.size(), p.band, dist, StandardCell{});
+        const auto d = dtw_kernel_lanes<T>(x.data(), y, x.size(), band, dist, StandardCell{});
         for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
       });
   });
@@ -47,9 +46,9 @@ resolve_dtw_block_fn(const Problem &p)
 
 template std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
                             std::span<double>)>
-resolve_dtw_block_fn<data_t>(const Problem &);
+resolve_dtw_block_fn<data_t>(const DistanceConfig &);
 template std::function<void(std::span<const float>, std::span<const std::span<const float>>,
                             std::span<double>)>
-resolve_dtw_block_fn<float>(const Problem &);
+resolve_dtw_block_fn<float>(const DistanceConfig &);
 
 } // namespace dtwc::core

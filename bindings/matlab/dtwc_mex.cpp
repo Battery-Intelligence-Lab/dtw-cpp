@@ -715,6 +715,7 @@ static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const m
   };
   const int i = index(2, "i");
   const int j = index(3, "j");
+  prob.fill_distance_matrix(); // a no-op once filled: Problem::dist_by_ind reads the matrix
   plhs[0] = mxCreateDoubleScalar(prob.dist_by_ind(i, j));
 }
 
@@ -934,7 +935,7 @@ static void cmd_Problem_get_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
 static void cmd_Problem_set_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_cuda_settings requires handle and device_id.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  auto settings = prob.cuda_settings;
+  auto settings = prob.cuda_settings();
   settings.device_id = get_exact_int(prhs[2], "device_id");
   if (nrhs > 3) settings.precision = static_cast<dtwc::GpuPrecision>(get_cuda_precision(prhs[3]));
   prob.set_cuda_settings(settings);
@@ -943,7 +944,7 @@ static void cmd_Problem_set_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, c
 /// get_cuda_settings() -> struct mirroring CUDASettings (round-trip).
 static void cmd_Problem_get_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_cuda_settings requires a handle.");
-  const auto &settings = HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->cuda_settings;
+  const auto &settings = HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->cuda_settings();
   const char *fields[] = { "device_id", "precision" };
   mxArray *s = mxCreateStructMatrix(1, 1, 2, fields);
   mxSetField(s, 0, "device_id", mxCreateDoubleScalar(static_cast<double>(settings.device_id)));

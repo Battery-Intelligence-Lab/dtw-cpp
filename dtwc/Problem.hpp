@@ -33,10 +33,8 @@
 #include <utility>     // for pair
 #include <vector>      // for vector, allocator
 #include <functional>  // std::function
-#include <unordered_map> // std::unordered_map
 #include <span>        // std::span
 #include <memory>
-#include <atomic>      // for std::atomic (RelaxedFlag)
 #include <stdexcept>
 
 #include "checkpoint.hpp" // for CheckpointOptions, load_checkpoint
@@ -129,67 +127,20 @@ private:
   index_t Nc{ 1 };                                  /*!< Number of clusters. */
   core::DistanceMatrix distMat;                     /*!< Distance matrix, on the heap or mapped (use_mmap_distance_matrix). */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
-  mutable dtw_fn_t dtw_fn_;                         /*!< Derived DTW dispatcher for float64. */
-  mutable dtw_fn_f32_t dtw_fn_f32_;                 /*!< Derived DTW dispatcher for float32. */
-  /// The fill's lane functions (core::resolve_dtw_block_fn); empty where none applies.
-  mutable std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
-                             std::span<double>)> dtw_block_fn_;
-  mutable std::function<void(std::span<const float>, std::span<const std::span<const float>>,
-                             std::span<double>)> dtw_block_fn_f32_;
-  mutable const Problem *dtw_binding_owner_{ nullptr }; /*!< Address captured by the dispatchers. */
-  mutable std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Derived WDTW weights keyed by max_dev. */
-
-  using cache_fingerprint_t = core::DistanceMatrix::fingerprint_type;
-  struct DistanceCacheConfiguration {
-    core::MetricType metric{ core::MetricType::L1 };
-    int band{ settings::DEFAULT_BAND };
-    core::DTWVariantParams variant_params{};
-    core::MissingStrategy missing_strategy{ core::MissingStrategy::Error };
-    DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto };
-    int cuda_device_id{ 0 };
-    GpuPrecision cuda_precision{ GpuPrecision::Auto };
-  };
-  struct DistanceCacheIdentity {
-    cache_fingerprint_t full{};
-    cache_fingerprint_t configuration{};
-    DistanceCacheConfiguration configuration_values{};
-    core::Precision precision{ core::Precision::Float64 };
-    size_t n{ 0 };
-    size_t ndim{ 1 };
-  };
-  /// Boolean flag written from a const method, where two threads may hold one
-  /// const Problem& (Python releases the GIL around the const writers). Relaxed
-  /// ordering suffices: the flag guards a pure recomputation, not a publication.
-  /// std::atomic is neither copyable nor movable, so the value-moving members
-  /// are what keep Problem's `= default` move operations well-formed.
-  class RelaxedFlag
-  {
-    std::atomic<bool> value_{ false };
-    bool get() const noexcept { return value_.load(std::memory_order_relaxed); }
-
-  public:
-    RelaxedFlag() = default;
-    RelaxedFlag(RelaxedFlag &&other) noexcept : value_{ other.get() } {}
-    RelaxedFlag &operator=(RelaxedFlag &&other) noexcept { return *this = other.get(); }
-    RelaxedFlag &operator=(bool v) noexcept { value_.store(v, std::memory_order_relaxed); return *this; }
-    explicit operator bool() const noexcept { return get(); }
-  };
-
-  DistanceCacheIdentity mmap_cache_identity_{};
-  bool mmap_cache_identity_bound_{ false };
-  mutable RelaxedFlag mmap_cache_data_validated_{};
-  /// Set once validate_fill_request() has passed for the current data and
-  /// semantics (by a fill, the lazy dist_by_ind path or a dtw_function
-  /// accessor), or once the lazy path found a dense matrix holding every pair.
-  /// refresh_distance_matrix() clears it, as does installing or editing a
-  /// matrix. Mutable: the const accessors validate too.
-  mutable RelaxedFlag fill_request_validated_{};
-  mutable DistanceCacheConfiguration dense_cache_configuration_{};
-  mutable bool dense_cache_configuration_bound_{ false };
-
   /// What every distance of this Problem means. Only the setters change it;
-  /// `band` mirrors the public v1 field, and `ndim` is the series'.
+  /// `band` is the v1 field's value when it was bound, and `ndim` the series'.
   core::DistanceConfig distance_{};
+  DistanceMatrixStrategy distance_strategy_{ DistanceMatrixStrategy::Auto };
+  CUDASettings cuda_settings_{};
+  /// Bound from distance_ (and, for WDTW, the series lengths) whenever either
+  /// changes; each holds copies of the settings it reads.
+  dtw_fn_t dtw_fn_;
+  dtw_fn_f32_t dtw_fn_f32_;
+  /// The fill's lane functions (core::resolve_dtw_block_fn); empty where none applies.
+  std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
+                     std::span<double>)> dtw_block_fn_;
+  std::function<void(std::span<const float>, std::span<const std::span<const float>>,
+                     std::span<double>)> dtw_block_fn_f32_;
   /// distMat holds every pair under distance_: set by a fill and by a complete
   /// load or bind; cleared by any change of series or distance settings and by
   /// the mutable distance_matrix() accessor.
@@ -207,48 +158,23 @@ private:
   std::string name_{};
   Data data_;
 
-  void rebind_dtw_fn() const; ///< Rebind derived dispatch state to this address/configuration.
-  void refresh_variant_caches() const; ///< Refresh precomputed variant-specific caches.
-  cache_fingerprint_t distance_cache_configuration_fingerprint(
-    core::MetricType metric) const;
-  DistanceCacheConfiguration distance_cache_configuration(
-    core::MetricType metric) const;
-  bool distance_cache_configuration_matches(
-    const DistanceCacheConfiguration &expected) const;
-  bool dense_cache_configuration_is_current() const;
-  static void preflight_distance_semantics(
-    const core::DistanceConfig &config, const Data &candidate_data, bool force_float32 = false);
-  void preflight_current_distance_semantics() const;
-  void preflight_float32_distance_semantics() const;
-  const dtw_fn_f32_t &validated_dtw_function_f32() const;
-  void repair_dtw_binding_after_relocation();
-  void ensure_dense_cache_configuration_current();
-  /// As ensure_dense_cache_configuration_current(), minus the leading preflight,
-  /// for callers that have already run preflight_current_distance_semantics().
-  /// The SWAP kernel issues N^2 dist_by_ind() calls per iteration, so paying for
-  /// that preflight twice per element is not free.
-  void ensure_dense_cache_configuration_current_preflighted();
-  void validate_dense_cache_configuration() const;
-  void ensure_dtw_function_configuration_current();
-  void validate_dtw_function_configuration() const;
-  DistanceCacheIdentity distance_cache_identity(core::MetricType metric) const;
-  void validate_mmap_cache_identity() const;
+  void rebind_dtw_fn(); ///< Resolve the distance functions from distance_ and the series.
+  /// A direct write to the v1 field `band` takes effect here, as set_band(band).
+  void sync_band();
+  /// The rules a distance configuration must meet on `data`, checked before a
+  /// setter or set_data changes anything.
+  static void validate_distance(
+    const core::DistanceConfig &config, const Data &data, bool force_float32 = false);
   void validate_checkpoint_settings() const;
   /// FX-1: the one check of a distance request — every device axis, band
   /// feasibility and (FX-15) the series values the missing-data strategy
-  /// cannot take — before any pair is computed. O(N·L); called through
-  /// validate_fill_request_once(), never per pair.
+  /// cannot take — before any pair is computed. O(N·L): run once per fill and
+  /// per dtw_function() call, never per pair.
   void validate_fill_request(std::string_view where) const;
-  /// validate_fill_request() unless it already passed for this configuration.
-  /// The dtw_function accessors, which OneBatchPAM and FastCLARA's assignment
-  /// compute through serially before their parallel loops, call it; they hand
-  /// out the kernel itself, so no filled matrix can serve their pairs.
-  void validate_fill_request_once(std::string_view where) const;
   /// get_name / p_vec return references into owned heap storage. A view
   /// (set_view_data) has none, nor has a Float32 store Float64 values:
   /// indexing would read past an empty vector in a Release build (F25).
   void require_owned_storage(std::string_view accessor, bool float64_values) const;
-  void clear_mmap_cache_identity();
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
 
   // Private functions:
@@ -260,7 +186,6 @@ private:
 
   void writeBestRep(int best_rep);
   void writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost);
-  void distanceInClusters();
 
   /// An empty series has no finite DTW distance to anything, so it clustered
   /// with DBL_MAX distances and exit 0 (it used to arrive from a blank line).
@@ -280,8 +205,6 @@ public:
   /// Band length for Sakoe-Chiba band, -1 for full DTW (the v1 field). Prefer
   /// set_band(); a direct write takes effect at the next fill.
   int band{ settings::DEFAULT_BAND };
-  DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
-  CUDASettings cuda_settings;                /*!< GPU options (used when distance_strategy == GPU). */
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
   CheckpointOptions checkpoint;              /*!< Automatic mid-fill checkpointing (see checkpoint.hpp). */
 
@@ -310,8 +233,8 @@ public:
   Problem(const Problem &) = delete;
   Problem &operator=(const Problem &) = delete;
   Problem(Problem &&);
-  /// Not noexcept: moving the members (the dispatchers, the WDTW weight map)
-  /// may throw, and a noexcept promise would turn that into std::terminate (S-13).
+  /// Not noexcept: moving the members (the dispatchers, the WDTW weights they
+  /// hold) may throw, and a noexcept promise would turn that into std::terminate (S-13).
   Problem &operator=(Problem &&);
 
   auto size() const { return data_.size(); }
@@ -335,9 +258,8 @@ public:
 
   /// Mutable vector access (owned Float64 series only). series(i) reads a
   /// series in every storage mode.
-  /// Call refresh_distance_matrix() before mutating values when any distance
-  /// cache has been used; raw in-place edits during a bound-cache session are
-  /// unsupported because warm lookups intentionally remain O(1).
+  /// Call refresh_distance_matrix() after mutating values: the distance matrix,
+  /// on the heap or mapped, holds the distances of the series as they were.
   /// @throws InvalidInput on a view, Float32 or metadata-only store.
   auto &p_vec(size_t i)
   {
@@ -453,11 +375,11 @@ public:
   /// @throws InvalidInput for a metric other than L1 with a variant other than
   ///         Standard or a missing-data strategy.
   void set_metric(core::MetricType metric);
+  DistanceMatrixStrategy distance_strategy() const noexcept { return distance_strategy_; }
   void set_distance_strategy(DistanceMatrixStrategy strategy)
   {
-    preflight_current_distance_semantics();
-    if (distance_strategy == strategy) return;
-    distance_strategy = strategy;
+    if (distance_strategy_ == strategy) return;
+    distance_strategy_ = strategy;
     refresh_distance_matrix();
   }
   /// Where this Problem computes distances. `cpu` keeps a CPU strategy you
@@ -468,17 +390,18 @@ public:
   /// @throws DeviceError for `gpu` on a build with no GPU backend;
   ///         InvalidInput for a negative index.
   void set_device(Device device, int index = 0);
+  /// GPU options (the device index and precision), read by the CUDA and Metal routes.
+  const CUDASettings &cuda_settings() const noexcept { return cuda_settings_; }
   /// @throws InvalidInput for a negative device_id, as set_device refuses the same index.
   void set_cuda_settings(CUDASettings settings)
   {
     if (settings.device_id < 0)
       throw InvalidInput("Problem::set_cuda_settings: device_id must be >= 0; got "
                          + std::to_string(settings.device_id) + ".");
-    preflight_current_distance_semantics();
-    if (cuda_settings.device_id == settings.device_id
-        && cuda_settings.precision == settings.precision)
+    if (cuda_settings_.device_id == settings.device_id
+        && cuda_settings_.precision == settings.precision)
       return;
-    cuda_settings = settings;
+    cuda_settings_ = settings;
     refresh_distance_matrix();
   }
 
@@ -496,7 +419,7 @@ public:
   {
     candidate.validate_ndim();
     reject_empty_series(candidate, "Problem::set_data");
-    preflight_distance_semantics(distance_, candidate);
+    validate_distance(distance_, candidate);
     data_ = std::move(candidate);
     distance_.ndim = data_.ndim;
     clusters_ind.clear(); // a clustering describes the series it was computed on
@@ -509,7 +432,7 @@ public:
   {
     candidate.validate_ndim();
     reject_empty_series(candidate, "Problem::set_view_data");
-    preflight_distance_semantics(distance_, candidate);
+    validate_distance(distance_, candidate);
     data_ = std::move(candidate);
     distance_.ndim = data_.ndim;
     clusters_ind.clear();
@@ -521,86 +444,51 @@ public:
   void set_variant(core::DTWVariant v);
   void set_variant(core::DTWVariantParams params);
 
-  data_t max_distance() const
-  {
-    validate_mmap_cache_identity();
-    validate_dense_cache_configuration();
-    return distMat.max();
-  }
+  data_t max_distance() const { return distMat.max(); }
   [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
 
-  data_t dist_by_ind(index_t i, index_t j);
-  [[deprecated("use dist_by_ind")]] data_t distByInd(int i, int j) { return dist_by_ind(i, j); }
+  /// The distance between series i and j, read from the matrix: O(1), no check
+  /// and no computation, so parallel loops read it freely. Unchecked like
+  /// centroid_of: i and j are in [0, N) and the matrix holds the pair — call
+  /// fill_distance_matrix() first, as every method that reads the matrix does.
+  data_t dist_by_ind(index_t i, index_t j) const
+  {
+    return distMat.get(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+  }
+  /// The v1.0.0 lookup, which computed a pair on demand: it fills the matrix on
+  /// its first call, then reads it.
+  [[deprecated("use dist_by_ind")]] data_t distByInd(int i, int j)
+  {
+    fill_distance_matrix();
+    return dist_by_ind(i, j);
+  }
 
-  /// Access the bound DTW distance function (float64). Mutable access repairs
-  /// legacy raw configuration mutations before returning the dispatcher;
-  /// const access rejects stale semantics instead of silently using them.
-  /// The first accessor after a Problem move or a (re)configuration repairs
-  /// logically-const derived dispatch state and validates the request against
-  /// this Problem's series (validate_fill_request), so it must run serially
-  /// before parallel use.
+  /// The bound DTW distance function (float64), for methods that compute the
+  /// pairs they need instead of filling the matrix. Each call first takes a
+  /// direct write to `band` into account and checks the request against the
+  /// series (validate_fill_request, O(N·L)), so call it once, serially, before a
+  /// parallel loop; the function itself only reads what it holds.
   /// @throws InvalidInput for a band no pair's warping path fits, a ±inf
   ///         series value, or a NaN under MissingStrategy::Error; DeviceError
   ///         for a GPU strategy the kernels cannot honour.
-  const dtw_fn_t &dtw_function()
-  {
-    ensure_dtw_function_configuration_current();
-    validate_fill_request_once("Problem::dtw_function");
-    return dtw_fn_;
-  }
-  const dtw_fn_t &dtw_function() const
-  {
-    validate_dtw_function_configuration();
-    validate_fill_request_once("Problem::dtw_function");
-    return dtw_fn_;
-  }
+  const dtw_fn_t &dtw_function();
+  /// Float32 counterpart of dtw_function(), with the same checks.
+  /// @throws InvalidInput also for an active variant parameter float32 cannot represent.
+  const dtw_fn_f32_t &dtw_function_f32();
 
-  /// Float32 counterpart of dtw_function(), with the same semantic guard.
-  const dtw_fn_f32_t &dtw_function_f32()
-  {
-    preflight_float32_distance_semantics();
-    ensure_dtw_function_configuration_current();
-    validate_fill_request_once("Problem::dtw_function_f32");
-    return validated_dtw_function_f32();
-  }
-  const dtw_fn_f32_t &dtw_function_f32() const
-  {
-    preflight_float32_distance_semantics();
-    validate_dtw_function_configuration();
-    validate_fill_request_once("Problem::dtw_function_f32");
-    return validated_dtw_function_f32();
-  }
-
-  /// Read-only access to the WDTW weights cache (consumed by core::resolve_dtw_fn).
-  /// Cache is populated serially by refresh_variant_caches() before parallel fill
-  /// and is lock-free for parallel readers.
-  const std::unordered_map<std::size_t, std::vector<data_t>> &wdtw_weights_cache() const
-  {
-    return wdtw_weights_cache_;
-  }
-  bool is_distance_matrix_filled() const
-  {
-    validate_mmap_cache_identity();
-    if (!distMat.is_mapped() && !dense_cache_configuration_is_current())
-      return false;
-    return filled_;
-  }
+  /// True when the matrix holds every pair under the current settings: after a
+  /// fill, a complete read or load, or binding a complete mapped file. O(1).
+  bool is_distance_matrix_filled() const { return filled_ && band == distance_.band; }
   [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
 
   /// The distance matrix, on the heap or mapped (const).
-  const core::DistanceMatrix &distance_matrix() const
-  {
-    validate_mmap_cache_identity();
-    validate_dense_cache_configuration();
-    return distMat;
-  }
+  const core::DistanceMatrix &distance_matrix() const { return distMat; }
   /// The distance matrix (mutable). The caller may change which pairs are
-  /// known, so the next lazy lookup re-checks the request.
+  /// known, so the Problem no longer calls it filled: the next
+  /// fill_distance_matrix() computes the pairs left NaN, none when all are set.
   core::DistanceMatrix &distance_matrix()
   {
-    validate_mmap_cache_identity();
-    ensure_dense_cache_configuration_current();
-    fill_request_validated_ = false;
+    sync_band();
     filled_ = false;
     return distMat;
   }
@@ -618,12 +506,9 @@ public:
   /// file is reopened with the distances it holds (InvalidInput if they are for
   /// other series or settings, IOError if it is not a whole `.dtwm` file); an
   /// absent one is created. IOError on a build without llfio.
-  /// The full data fingerprint is verified at bind and once again on first use;
-  /// subsequent warm lookups compare a fixed-size configuration snapshot to
-  /// preserve O(1) access. After first use, replace data through set_data and
-  /// distance-semantic setters, or call refresh_distance_matrix() before any
-  /// raw in-place Data edit; mutating raw storage during a bound session is
-  /// unsupported.
+  /// The fingerprint of the data and the settings is checked here, once; every
+  /// setter and set_data detach the file. Call refresh_distance_matrix() before
+  /// editing series values in place.
   void use_mmap_distance_matrix(const std::filesystem::path &cache_path);
   /// Bind a cache for `metric`, which becomes this Problem's metric as with
   /// set_metric: the cache and every distance computed into it share it. A

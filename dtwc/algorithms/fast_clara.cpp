@@ -332,8 +332,8 @@ namespace {
         sub_prob.set_distance(prob_template.distance());
         // Device, GPU index and precision: the sample fill honours them, or
         // validate_fill_request refuses them (e.g. a Float32 sample on a GPU).
-        sub_prob.distance_strategy = prob_template.distance_strategy;
-        sub_prob.cuda_settings = prob_template.cuda_settings;
+        sub_prob.set_distance_strategy(prob_template.distance_strategy());
+        sub_prob.set_cuda_settings(prob_template.cuda_settings());
         sub_prob.set_verbose(false);
         sub_prob.set_data(std::move(sample_data));
         sub_result = fast_pam_seeded(
@@ -472,8 +472,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     sub_prob.set_distance(prob.distance());
     // The sample is a view, so a GPU device is refused by the sample fill
     // (validate_fill_request) rather than computed on the CPU.
-    sub_prob.distance_strategy = prob.distance_strategy;
-    sub_prob.cuda_settings = prob.cuda_settings;
+    sub_prob.set_distance_strategy(prob.distance_strategy());
+    sub_prob.set_cuda_settings(prob.cuda_settings());
     sub_prob.set_verbose(prob.verbose());
 
     if (prob.data().is_f32()) {

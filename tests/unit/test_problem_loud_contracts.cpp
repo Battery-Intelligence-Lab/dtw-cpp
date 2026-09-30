@@ -131,7 +131,7 @@ TEST_CASE("set_cuda_settings refuses a negative device index and keeps the setti
       prob.set_cuda_settings(settings), dtwc::InvalidInput,
       MessageMatches(ContainsSubstring("Problem::set_cuda_settings: device_id must be >= 0; got "
                                        + std::to_string(bad))));
-    CHECK(prob.cuda_settings.device_id == 0);
+    CHECK(prob.cuda_settings().device_id == 0);
   }
   // Control: index 0 is valid on every build.
   REQUIRE_NOTHROW(prob.set_cuda_settings(dtwc::CUDASettings{}));

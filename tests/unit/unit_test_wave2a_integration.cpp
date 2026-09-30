@@ -158,25 +158,23 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
   prob.set_output_folder(g_tmp_dir());
 
   // Dense matrix must NOT be allocated yet (deferred).
-  REQUIRE(prob.distance_matrix().size() == 0);
+  REQUIRE(std::as_const(prob).distance_matrix().size() == 0);
 
-  // dist_by_ind works on-demand (lazy compute).
-  double d01 = prob.dist_by_ind(0, 1);
-  double d02 = prob.dist_by_ind(0, 2);
+  // A few pairs come from the bound function, which allocates no matrix.
+  const auto &distance = prob.dtw_function();
+  double d01 = distance(prob.series(0), prob.series(1));
+  double d02 = distance(prob.series(0), prob.series(2));
   REQUIRE(d01 >= 0.0);
   REQUIRE(d02 >= 0.0);
   REQUIRE(std::isfinite(d01));
   REQUIRE(std::isfinite(d02));
 
-  // Verify symmetry of cached distances.
-  double d10 = prob.dist_by_ind(1, 0);
+  // Symmetry.
+  double d10 = distance(prob.series(1), prob.series(0));
   REQUIRE_THAT(d01, WithinAbs(d10, 1e-12));
 
-  // We asked for 3 unique off-diagonal pairs: (0,1),(0,2),(1,0).
-  // The matrix should have some cached entries but NOT the full N*(N-1)/2.
-  size_t computed = prob.distance_matrix().count_computed();
-  // N^2 / 2 = ~12.5M; computed must be tiny by comparison.
-  REQUIRE(computed < 100); // only the few pairs we explicitly queried
+  // Still not the N*(N+1)/2 matrix (~12.5M doubles).
+  REQUIRE(std::as_const(prob).distance_matrix().size() == 0);
 
   // Now fill the full matrix — should work on a much smaller problem to keep
   // the test fast. We recreate a tiny problem for the fill step.
@@ -517,7 +515,7 @@ TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
 // ===========================================================================
 // Test 11: Deferred allocation — dist_by_ind after set_data is correct and cached
 // ===========================================================================
-TEST_CASE("Wave2A: deferred dist_by_ind is cached after first call",
+TEST_CASE("Wave2A: the deferred matrix is filled once, then read",
           "[wave2a][deferred][cache]")
 {
   std::vector<std::vector<double>> vecs = {
@@ -528,9 +526,9 @@ TEST_CASE("Wave2A: deferred dist_by_ind is cached after first call",
   Problem prob = make_problem_uv(vecs, 2);
 
   // Matrix not yet allocated.
-  REQUIRE(prob.distance_matrix().size() == 0);
+  REQUIRE(std::as_const(prob).distance_matrix().size() == 0);
 
-  // First call triggers lazy computation.
+  prob.fill_distance_matrix();
   double d01 = prob.dist_by_ind(0, 1);
   REQUIRE(std::isfinite(d01));
   REQUIRE(d01 > 0.0);
@@ -646,6 +644,7 @@ TEST_CASE("Wave2A: FastCLARA ndim=2 sub-problem distances consistent with parent
   REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
 
   // Verify total_cost matches manual recomputation via parent prob.dist_by_ind.
+  prob.fill_distance_matrix();
   double recomputed = 0.0;
   for (int p = 0; p < N; ++p) {
     int med = result.medoid_indices[result.labels[p]];

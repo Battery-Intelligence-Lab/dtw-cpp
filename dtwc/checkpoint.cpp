@@ -59,10 +59,7 @@ bool load_checkpoint(Problem &prob, const std::string &path)
 
 bool load_checkpoint(Problem &prob, const std::string &path, core::MetricType metric)
 {
-  // A raw edit to a distance setting since the last bind would discard the
-  // loaded matrix at the next lookup, a silent recompute: refuse it here.
-  prob.validate_mmap_cache_identity();
-  prob.validate_dense_cache_configuration();
+  prob.sync_band(); // the file is checked against the band the Problem computes with
   const auto identity = prob.distance_checkpoint_identity(metric);
   const fs::path file = checkpoint_path(prob, path);
   std::error_code ec;
@@ -72,8 +69,6 @@ bool load_checkpoint(Problem &prob, const std::string &path, core::MetricType me
 
   prob.distMat = core::DistanceMatrix::read(file, prob.size(), identity);
   prob.filled_ = prob.distMat.size() > 0 && prob.distMat.all_computed();
-  prob.clear_mmap_cache_identity();
-  prob.fill_request_validated_ = false; // other pairs known: re-check lazily
   return true;
 }
 

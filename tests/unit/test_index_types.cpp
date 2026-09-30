@@ -43,7 +43,7 @@ static_assert(same<decltype(std::declval<const Problem &>().size()), index_t>);
 static_assert(same<decltype(std::declval<const Problem &>().n_clusters()), index_t>);
 static_assert(same<decltype(&Problem::set_n_clusters), void (Problem::*)(index_t)>);
 static_assert(same<decltype(&Problem::centroid_of), index_t (Problem::*)(index_t) const>);
-static_assert(same<decltype(&Problem::dist_by_ind), dtwc::data_t (Problem::*)(index_t, index_t)>);
+static_assert(same<decltype(&Problem::dist_by_ind), dtwc::data_t (Problem::*)(index_t, index_t) const>);
 
 // ClusteringResult counts.
 static_assert(same<decltype(std::declval<const ClusteringResult &>().n_clusters()), index_t>);

@@ -3,66 +3,61 @@
  * @brief Single-point DTW function resolver for Problem::rebind_dtw_fn.
  *
  * @details Collapses the per-(variant x missing_strategy x ndim) nested
- *          dispatch from Problem.cpp into one templated `resolve_dtw_fn<T>`.
- *          Resolution runs *once* at rebind time; the returned std::function
- *          dispatches with zero branching across the {variant, missing_strategy,
- *          ndim} axes per call (the only per-call branches are length-dependent
- *          choices inside individual wrappers — unchanged from pre-refactor).
+ *          dispatch into one templated `resolve_dtw_fn<T>`. Resolution runs
+ *          *once*, when a Problem's distance settings or series change; the
+ *          returned std::function dispatches with zero branching across the
+ *          {variant, missing_strategy, ndim} axes per call (the only per-call
+ *          branches are length-dependent choices inside individual wrappers).
+ *
+ *          The returned functions hold copies of the settings they read, so
+ *          they stay valid when the Problem that bound them moves, and parallel
+ *          callers only read them.
  *
  *          Explicit instantiations for `T = data_t` (float64) and `T = float`
  *          live in dtw_dispatch.cpp, so adding a new variant only touches
  *          dtw_dispatch.cpp.
- *
- *          Fixes the pre-existing silent-fallback bug where the float32
- *          Problem::dtw_fn_f32_ always ran Standard DTW regardless of the
- *          configured variant and missing_strategy (e.g. fast_clara's
- *          chunked-Parquet path used Standard DTW even when the Problem was
- *          set to WDTW). `resolve_dtw_fn<T>` honours both axes for both T.
  */
 
 #pragma once
 
 #include "../base/settings.hpp" // data_t
+#include "dtw_options.hpp"      // DistanceConfig
 
 #include <functional>
 #include <span>
 
 namespace dtwc {
-class Problem;
+struct Data;
 }
 
 namespace dtwc::core {
 
-/// Build the per-pair DTW distance function for Problem `p`, templated on
-/// element type (T = data_t or float). The returned std::function reads
-/// `p.band`, `p.variant_params`, `p.missing_strategy`, `p.data().ndim`,
-/// `p.metric()` (Standard only), and — for WDTW with T = data_t —
-/// `p.wdtw_weights_cache_` at call time.
-///
-/// The referenced Problem must outlive the returned function.
+/// The per-pair DTW distance function for `config`, templated on element type
+/// (T = data_t or float). `data` sizes the WDTW weight table (T = data_t) to the
+/// lengths of the series the function will meet; no other variant reads it.
 template <typename T>
 std::function<double(std::span<const T>, std::span<const T>)>
-resolve_dtw_fn(const Problem &p);
+resolve_dtw_fn(const DistanceConfig &config, const Data &data);
 
 /// The brute-force fill's block function: x and W = core::dtw_lanes<T> series
 /// of x's length in `ys`, their W distances out, each bitwise what
-/// resolve_dtw_fn's function returns for that pair (dtw_kernel_lanes). Reads
-/// `p.band` at call time, as resolve_dtw_fn's does. Empty unless Standard DTW,
-/// MissingStrategy::Error and univariate series; the fill then goes pair by pair.
+/// resolve_dtw_fn's function returns for that pair (dtw_kernel_lanes). Empty
+/// unless Standard DTW, MissingStrategy::Error and univariate series; the fill
+/// then goes pair by pair.
 template <typename T>
 std::function<void(std::span<const T>, std::span<const std::span<const T>>, std::span<double>)>
-resolve_dtw_block_fn(const Problem &p);
+resolve_dtw_block_fn(const DistanceConfig &config);
 
-// Instantiated in dtw_dispatch.cpp — no other Ts are supported.
+// Instantiated in dtw_dispatch.cpp and dtw_lanes.cpp — no other Ts are supported.
 extern template std::function<double(std::span<const data_t>, std::span<const data_t>)>
-resolve_dtw_fn<data_t>(const Problem &);
+resolve_dtw_fn<data_t>(const DistanceConfig &, const Data &);
 extern template std::function<double(std::span<const float>, std::span<const float>)>
-resolve_dtw_fn<float>(const Problem &);
+resolve_dtw_fn<float>(const DistanceConfig &, const Data &);
 extern template std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
                                    std::span<double>)>
-resolve_dtw_block_fn<data_t>(const Problem &);
+resolve_dtw_block_fn<data_t>(const DistanceConfig &);
 extern template std::function<void(std::span<const float>, std::span<const std::span<const float>>,
                                    std::span<double>)>
-resolve_dtw_block_fn<float>(const Problem &);
+resolve_dtw_block_fn<float>(const DistanceConfig &);
 
 } // namespace dtwc::core
