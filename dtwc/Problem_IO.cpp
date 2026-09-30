@@ -260,7 +260,10 @@ void Problem::read_distance_matrix(const fs::path &distMat_path)
       + std::to_string(size()) + " series; a distance matrix has one row and "
         "one column per series, in input order. Load the matrix computed for "
         "these series, or omit it to compute the distances.");
-  if (loaded.size() != 0) distMat = std::move(loaded);
+  if (loaded.size() != 0) {
+    distMat = std::move(loaded);
+    filled_ = distMat.all_computed();
+  }
   fill_request_validated_ = false; // other pairs known: re-check lazily
 }
 

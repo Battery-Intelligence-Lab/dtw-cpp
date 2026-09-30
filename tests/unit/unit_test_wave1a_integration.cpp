@@ -96,7 +96,7 @@ static Problem make_problem(
   Problem prob("integration");
   prob.set_data(std::move(d));
   prob.set_n_clusters(Nc);
-  prob.missing_strategy = strategy;
+  prob.set_missing_strategy(strategy);
   prob.set_verbose(false);
   prob.set_output_folder(g_tmp_output_dir()); // avoid failure writing result CSVs
   return prob;

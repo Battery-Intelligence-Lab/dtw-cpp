@@ -58,6 +58,7 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include <cstdint>
 #include <stdexcept>
 #include <algorithm>
+#include <utility>
 
 // =========================================================================
 //  HandleManager: counter-based handle map for shared_ptr<T>
@@ -647,7 +648,7 @@ static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const m
   const DTWVariant variant = dtwc::parse_name(
     dtwc::core::variant_names, get_string(prhs[2]), "variant");
 
-  dtwc::core::DTWVariantParams params = prob.variant_params;
+  dtwc::core::DTWVariantParams params = prob.variant_params();
   params.variant = variant;
   // The one optional scalar is the parameter of WDTW, ADTW and Soft-DTW; the
   // other variants (MSM and TWE keep their defaults) take none here.
@@ -734,7 +735,7 @@ static void cmd_Problem_get_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   if (nrhs < 2) throw std::invalid_argument("Problem_get_distance_matrix requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
-  const auto &dm = prob.distance_matrix();
+  const auto &dm = std::as_const(prob).distance_matrix();
   size_t N = dm.size();
   mxArray *result = mxCreateDoubleMatrix(N, N, mxREAL);
   double *out = mxGetDoubles(result);
@@ -763,6 +764,8 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   for (size_t i = 0; i < N; ++i)
     for (size_t j = i; j < N; ++j)
       dm.set(i, j, data[i + j * N]);  // column-major
+  // A complete matrix is filled; NaN entries are computed on first use.
+  if (dm.all_computed()) prob.fill_distance_matrix();
 
 }
 
@@ -1118,7 +1121,7 @@ static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, con
   for (size_t i = 0; i < N; ++i) names[i] = std::to_string(i);
 
   dtwc::Problem prob("matlab_distmat");
-  prob.band = band;
+  prob.set_band(band);
   prob.set_verbose(false);
   dtwc::Data data(std::move(series), std::move(names));
   prob.set_data(std::move(data));
@@ -1417,7 +1420,7 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
   for (size_t i = 0; i < N; ++i) names[i] = std::to_string(i);
 
   dtwc::Problem prob("matlab_clustering");
-  prob.band = band;
+  prob.set_band(band);
   prob.set_max_iter(max_iter);
   prob.set_verbose(false);
 

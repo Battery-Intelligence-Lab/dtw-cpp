@@ -567,7 +567,7 @@ TEST_CASE("FastCLARA: propagates missing_strategy", "[clara][missing]")
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   prob.set_verbose(false);
 
   dtwc::algorithms::CLARAOptions opts;

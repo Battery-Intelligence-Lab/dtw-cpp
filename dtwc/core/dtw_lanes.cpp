@@ -29,8 +29,8 @@ resolve_dtw_block_fn(const Problem &p)
 {
   // make_standard's univariate path: its kernels are the ones the lanes
   // reproduce bit for bit. The metric is resolved here, once, as a functor.
-  if (p.variant_params.variant != DTWVariant::Standard
-      || p.missing_strategy != MissingStrategy::Error || p.data().ndim != 1)
+  if (p.variant_params().variant != DTWVariant::Standard
+      || p.missing_strategy() != MissingStrategy::Error || p.data().ndim != 1)
     return {};
   return dtwc::detail::dispatch_metric(p.metric(), [&p](auto dist) {
     return std::function<void(std::span<const T>, std::span<const std::span<const T>>,

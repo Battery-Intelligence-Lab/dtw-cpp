@@ -282,9 +282,10 @@ import dtwcpp
 
 prob = dtwcpp.Problem()
 prob.set_data(series, names)
-prob.variant_params.variant = dtwcpp.DTWVariant.ADTW
-prob.variant_params.adtw_penalty = 0.1
-prob.set_variant(dtwcpp.DTWVariant.ADTW)
+params = prob.variant_params  # a copy: set it back with set_variant_params
+params.variant = dtwcpp.DTWVariant.ADTW
+params.adtw_penalty = 0.1
+prob.set_variant_params(params)
 ```
 
 The `Problem::rebind_dtw_fn()` method automatically selects the correct function (including multivariate variants when `Problem::data().ndim > 1`).

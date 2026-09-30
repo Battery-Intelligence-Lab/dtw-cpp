@@ -68,11 +68,11 @@ bool bounds_valid(const Problem &prob)
 {
   // The bounds are L1: under Problem::set_metric(SquaredL2) the LB can exceed
   // the exact distance, so another metric takes the exact path too.
-  return prob.variant_params.variant == core::DTWVariant::Standard
+  return prob.variant_params().variant == core::DTWVariant::Standard
          && prob.metric() == core::MetricType::L1
          && prob.data().ndim == 1
          && !prob.data().is_f32()
-         && prob.missing_strategy == core::MissingStrategy::Error;
+         && prob.missing_strategy() == core::MissingStrategy::Error;
 }
 
 /// No-warp diagonal cost Σ_t |x_t − y_t| — a valid DTW upper bound for

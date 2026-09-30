@@ -58,6 +58,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace nb = nanobind;
@@ -766,14 +767,12 @@ NB_MODULE(_dtwcpp_core, m) {
                  [](const dtwc::Problem &p) { return p.band; },
                  [](dtwc::Problem &p, int value) { p.set_band(value); })
     .def_prop_rw("variant_params",
-                 [](const dtwc::Problem &p) -> const dtwc::core::DTWVariantParams & {
-                   return p.variant_params;
-                 },
+                 [](const dtwc::Problem &p) { return p.variant_params(); },
                  [](dtwc::Problem &p, dtwc::core::DTWVariantParams value) {
                    p.set_variant(value);
                  })
     .def_prop_rw("missing_strategy",
-                 [](const dtwc::Problem &p) { return p.missing_strategy; },
+                 [](const dtwc::Problem &p) { return p.missing_strategy(); },
                  [](dtwc::Problem &p, dtwc::core::MissingStrategy value) {
                    p.set_missing_strategy(value);
                  },
@@ -893,7 +892,7 @@ NB_MODULE(_dtwcpp_core, m) {
            {
              nb::gil_scoped_release release;
              prob.fill_distance_matrix();
-             const auto &dm = prob.distance_matrix(); // on the heap or mapped
+             const auto &dm = std::as_const(prob).distance_matrix(); // on the heap or mapped
              n = dm.size();
              values = dtwc::io::to_full_matrix(dm); // row-major, expanded from the triangle
            }
@@ -921,6 +920,8 @@ NB_MODULE(_dtwcpp_core, m) {
            for (size_t i = 0; i < n; ++i)
              for (size_t j = i; j < n; ++j)
                mat.set(i, j, data[i * n + j]);
+           // A complete matrix is filled; NaN entries are computed on first use.
+           if (mat.all_computed()) p.fill_distance_matrix();
          }, "dm"_a,
          "Load a precomputed NxN distance matrix (e.g. from a GPU compute).")
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)

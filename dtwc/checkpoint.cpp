@@ -71,6 +71,7 @@ bool load_checkpoint(Problem &prob, const std::string &path, core::MetricType me
   if (!exists) return false;
 
   prob.distMat = core::DistanceMatrix::read(file, prob.size(), identity);
+  prob.filled_ = prob.distMat.size() > 0 && prob.distMat.all_computed();
   prob.clear_mmap_cache_identity();
   prob.fill_request_validated_ = false; // other pairs known: re-check lazily
   return true;

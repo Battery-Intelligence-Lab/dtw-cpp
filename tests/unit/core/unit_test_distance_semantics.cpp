@@ -106,15 +106,14 @@ TEST_CASE("M36 runtime and Problem resolver reject before selecting a kernel",
       x.data(), x.size(), y.data(), y.size(), options);
   });
 
+  // A Problem refuses the combination at the setter, so no kernel is ever
+  // resolved for it.
   dtwc::Problem problem("m36");
-  problem.variant_params.variant = dtwc::core::DTWVariant::ADTW;
-  problem.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  problem.set_variant(dtwc::core::DTWVariant::ADTW);
   require_semantic_error([&] {
-    (void)dtwc::core::resolve_dtw_fn<double>(problem);
+    problem.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   });
-  require_semantic_error([&] {
-    (void)dtwc::core::resolve_dtw_fn<float>(problem);
-  });
+  REQUIRE(problem.missing_strategy() == dtwc::core::MissingStrategy::Error);
 }
 
 TEST_CASE("M36 accepted semantic fingerprints remain exact",

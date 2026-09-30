@@ -395,7 +395,7 @@ class TestDenseSemanticMutation:
         assert not p.is_distance_matrix_filled()
         assert p.dist_by_ind(0, 1) == 10.0
 
-    def test_variant_whole_and_nested_mutations_rebind(self):
+    def test_variant_setters_rebind_and_the_getter_is_a_copy(self):
         p = self._problem([[0.0], [2.0]])
         precomputed = np.array([[0.0, 123.0], [123.0, 0.0]])
         p.set_distance_matrix(precomputed)
@@ -412,10 +412,10 @@ class TestDenseSemanticMutation:
 
         p.set_variant(dtwcpp.DTWVariant.Standard)
         assert p.dist_by_ind(0, 1) == 2.0
+        # variant_params returns a copy: editing it leaves the Problem as it was.
         p.variant_params.variant = dtwcpp.DTWVariant.WDTW
-
-        assert not p.is_distance_matrix_filled()
-        assert p.dist_by_ind(0, 1) == 1.0
+        assert p.variant_params.variant == dtwcpp.DTWVariant.Standard
+        assert p.dist_by_ind(0, 1) == 2.0
 
     def test_missing_strategy_property_invalidates_cached_distance(self):
         p = self._problem([[0.0, np.nan, 2.0], [0.0, 2.0, 2.0]])

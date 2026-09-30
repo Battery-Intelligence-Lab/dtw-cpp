@@ -187,8 +187,15 @@ private:
   mutable DistanceCacheConfiguration dense_cache_configuration_{};
   mutable bool dense_cache_configuration_bound_{ false };
 
+  /// What every distance of this Problem means. Only the setters change it;
+  /// `band` mirrors the public v1 field, and `ndim` is the series'.
+  core::DistanceConfig distance_{};
+  /// distMat holds every pair under distance_: set by a fill and by a complete
+  /// load or bind; cleared by any change of series or distance settings and by
+  /// the mutable distance_matrix() accessor.
+  bool filled_{ false };
+
   Method method_{ Method::Kmedoids };
-  core::MetricType metric_{ core::MetricType::L1 }; //!< Pointwise cost of every distance (set_metric).
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
   int last_iterations_{ 0 };
   double tadpole_dc_{ -1.0 };
@@ -210,11 +217,7 @@ private:
     const DistanceCacheConfiguration &expected) const;
   bool dense_cache_configuration_is_current() const;
   static void preflight_distance_semantics(
-    const core::DTWVariantParams &params,
-    core::MissingStrategy missing,
-    core::MetricType metric,
-    const Data &candidate_data,
-    bool force_float32 = false);
+    const core::DistanceConfig &config, const Data &candidate_data, bool force_float32 = false);
   void preflight_current_distance_semantics() const;
   void preflight_float32_distance_semantics() const;
   const dtw_fn_f32_t &validated_dtw_function_f32() const;
@@ -274,13 +277,9 @@ private:
 public:
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
-  int band{ settings::DEFAULT_BAND };        /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
-  /// DTW variant selection and parameters.
-  /// Prefer set_variant(), which invalidates and rebinds eagerly. Legacy direct
-  /// writes remain source-compatible and are detected by the fixed-size dense
-  /// configuration snapshot before cached values can be reused.
-  core::DTWVariantParams variant_params;
-  core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
+  /// Band length for Sakoe-Chiba band, -1 for full DTW (the v1 field). Prefer
+  /// set_band(); a direct write takes effect at the next fill.
+  int band{ settings::DEFAULT_BAND };
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
   CUDASettings cuda_settings;                /*!< GPU options (used when distance_strategy == GPU). */
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
@@ -305,6 +304,7 @@ public:
     : name_{ problem_name }, data_{ loader.load() }
   {
     reject_empty_series(data_, "Problem(name, DataLoader)");
+    distance_.ndim = data_.ndim;
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
   Problem(const Problem &) = delete;
@@ -414,18 +414,27 @@ public:
   {
     method_ = m;
   }
+  /// The distance settings: variant, metric, missing-data strategy, band (the
+  /// v1 field, a direct write included) and the series' ndim.
+  core::DistanceConfig distance() const noexcept
+  {
+    auto config = distance_;
+    config.band = band;
+    return config;
+  }
+  const core::DTWVariantParams &variant_params() const noexcept { return distance_.variant; }
+  core::MissingStrategy missing_strategy() const noexcept { return distance_.missing; }
+  core::MetricType metric() const noexcept { return distance_.metric; }
+
+  /// Change the distance settings; `config.ndim` is ignored, the series decide
+  /// it. A change drops the distance matrix and the clustering, which describe
+  /// the old distances; the same settings change nothing.
+  /// @throws InvalidInput for a band below -1, or a combination no kernel
+  ///         implements (see set_metric); the Problem is then unchanged.
+  void set_distance(core::DistanceConfig config);
   /// @throws InvalidInput for b < -1: -1 is full DTW and b >= 0 a Sakoe-Chiba
   ///         half-width; nothing lies between.
-  void set_band(int b)
-  {
-    if (b < -1)
-      throw InvalidInput("Problem::set_band: band must be -1 (full DTW) or at least 0; got "
-                         + std::to_string(b) + ".");
-    preflight_current_distance_semantics();
-    if (band == b) return;
-    band = b;
-    refresh_distance_matrix();
-  }
+  void set_band(int b);
   /// @throws InvalidInput for n < 1: no iteration would report the initial
   ///         medoids' cost as a clustering result (O-06).
   void set_max_iter(int n);
@@ -435,14 +444,7 @@ public:
   int n_repetitions() const;
   void set_random_seed(std::uint64_t seed) { random_seed_ = seed; }
   void set_tadpole_dc(double dc) { tadpole_dc_ = dc; }
-  void set_missing_strategy(core::MissingStrategy strategy)
-  {
-    preflight_distance_semantics(
-      variant_params, strategy, metric_, data_);
-    if (missing_strategy == strategy) return;
-    missing_strategy = strategy;
-    refresh_distance_matrix();
-  }
+  void set_missing_strategy(core::MissingStrategy strategy);
   /// Pointwise cost of every distance this Problem computes: the CPU fill and
   /// lazy lookups, the GPU routes, the mmap cache and checkpoint identities.
   /// L1 by default. A metric other than L1 is implemented for Standard DTW with
@@ -450,19 +452,10 @@ public:
   /// metric to the Standard kernels only.
   /// @throws InvalidInput for a metric other than L1 with a variant other than
   ///         Standard or a missing-data strategy.
-  void set_metric(core::MetricType metric)
-  {
-    preflight_distance_semantics(
-      variant_params, missing_strategy, metric, data_);
-    if (metric_ == metric) return;
-    metric_ = metric;
-    refresh_distance_matrix();
-  }
-  core::MetricType metric() const noexcept { return metric_; }
+  void set_metric(core::MetricType metric);
   void set_distance_strategy(DistanceMatrixStrategy strategy)
   {
-    preflight_distance_semantics(
-      variant_params, missing_strategy, metric_, data_);
+    preflight_current_distance_semantics();
     if (distance_strategy == strategy) return;
     distance_strategy = strategy;
     refresh_distance_matrix();
@@ -481,8 +474,7 @@ public:
     if (settings.device_id < 0)
       throw InvalidInput("Problem::set_cuda_settings: device_id must be >= 0; got "
                          + std::to_string(settings.device_id) + ".");
-    preflight_distance_semantics(
-      variant_params, missing_strategy, metric_, data_);
+    preflight_current_distance_semantics();
     if (cuda_settings.device_id == settings.device_id
         && cuda_settings.precision == settings.precision)
       return;
@@ -504,9 +496,9 @@ public:
   {
     candidate.validate_ndim();
     reject_empty_series(candidate, "Problem::set_data");
-    preflight_distance_semantics(
-      variant_params, missing_strategy, metric_, candidate);
+    preflight_distance_semantics(distance_, candidate);
     data_ = std::move(candidate);
+    distance_.ndim = data_.ndim;
     clusters_ind.clear(); // a clustering describes the series it was computed on
     centroids_ind.clear();
     refresh_distance_matrix();
@@ -517,9 +509,9 @@ public:
   {
     candidate.validate_ndim();
     reject_empty_series(candidate, "Problem::set_view_data");
-    preflight_distance_semantics(
-      variant_params, missing_strategy, metric_, candidate);
+    preflight_distance_semantics(distance_, candidate);
     data_ = std::move(candidate);
+    distance_.ndim = data_.ndim;
     clusters_ind.clear();
     centroids_ind.clear();
     refresh_distance_matrix();
@@ -591,7 +583,7 @@ public:
     validate_mmap_cache_identity();
     if (!distMat.is_mapped() && !dense_cache_configuration_is_current())
       return false;
-    return distMat.size() > 0 && distMat.all_computed();
+    return filled_;
   }
   [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
 
@@ -609,6 +601,7 @@ public:
     validate_mmap_cache_identity();
     ensure_dense_cache_configuration_current();
     fill_request_validated_ = false;
+    filled_ = false;
     return distMat;
   }
 

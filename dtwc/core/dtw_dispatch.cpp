@@ -168,7 +168,7 @@ inline auto make_wdtw_f64(const Problem &p)
       auto it = p.wdtw_weights_cache().find(max_dev);
       if (it == p.wdtw_weights_cache().end()) {
         // Cache miss (e.g. DBA centroid with novel length). Serial-only fallback.
-        const auto g = static_cast<data_t>(p.variant_params.wdtw_g);
+        const auto g = static_cast<data_t>(p.variant_params().wdtw_g);
         auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
         return normalize_public_distance(
           wdtwBanded_mv<data_t>(x.data(), x_steps, y.data(), y_steps, ndim, w, p.band));
@@ -187,7 +187,7 @@ inline auto make_wdtw_f64(const Problem &p)
     const auto max_dev = max_len - 1;
     auto it = p.wdtw_weights_cache().find(max_dev);
     if (it == p.wdtw_weights_cache().end()) {
-      const auto g = static_cast<data_t>(p.variant_params.wdtw_g);
+      const auto g = static_cast<data_t>(p.variant_params().wdtw_g);
       auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
       return normalize_public_distance(wdtwBanded<data_t>(x, y, w, p.band));
     }
@@ -204,7 +204,7 @@ inline auto make_wdtw_f64(const Problem &p)
 inline auto make_wdtw_f32(const Problem &p)
   -> std::function<double(std::span<const float>, std::span<const float>)>
 {
-  const auto g = static_cast<float>(p.variant_params.wdtw_g);
+  const auto g = static_cast<float>(p.variant_params().wdtw_g);
   if (p.data().ndim > 1) {
     return [&p, g](std::span<const float> x, std::span<const float> y) -> double {
       const auto ndim = p.data().ndim;
@@ -227,12 +227,12 @@ auto make_adtw(const Problem &p)
       const auto ndim = p.data().ndim;
       return normalize_public_distance(adtwBanded_mv<T>(
         x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band,
-        static_cast<T>(p.variant_params.adtw_penalty)));
+        static_cast<T>(p.variant_params().adtw_penalty)));
     };
   }
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
     return normalize_public_distance(adtwBanded<T>(
-      x, y, p.band, static_cast<T>(p.variant_params.adtw_penalty)));
+      x, y, p.band, static_cast<T>(p.variant_params().adtw_penalty)));
   };
 }
 
@@ -258,7 +258,7 @@ auto make_soft_dtw(const Problem &p)
     const auto a = swap ? y : x;
     const auto b = swap ? x : y;
     SpanL1Cost<T> cost{a.data(), b.data()};
-    SoftCell<T> cell{static_cast<T>(p.variant_params.sdtw_gamma)};
+    SoftCell<T> cell{static_cast<T>(p.variant_params().sdtw_gamma)};
     return normalize_public_distance(
       dtw_kernel_full<T, SpanL1Cost<T>, SoftCell<T>>(
         a.size(), b.size(), cost, cell));
@@ -282,7 +282,7 @@ auto make_msm(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   require_univariate(p.data().ndim, "MSM distance");
-  const T c = static_cast<T>(p.variant_params.msm_c);
+  const T c = static_cast<T>(p.variant_params().msm_c);
   return [c](std::span<const T> x, std::span<const T> y) -> double {
     return normalize_public_distance(msm_distance<T>(x, y, c));
   };
@@ -293,8 +293,8 @@ auto make_twe(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   require_univariate(p.data().ndim, "TWE distance");
-  const T nu  = static_cast<T>(p.variant_params.twe_nu);
-  const T lam = static_cast<T>(p.variant_params.twe_lambda);
+  const T nu  = static_cast<T>(p.variant_params().twe_nu);
+  const T lam = static_cast<T>(p.variant_params().twe_lambda);
   return [nu, lam](std::span<const T> x, std::span<const T> y) -> double {
     return normalize_public_distance(twe_distance<T>(x, y, nu, lam));
   };
@@ -310,10 +310,10 @@ template <typename T>
 auto make_independent(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (p.variant_params.variant != DTWVariant::Standard)
+  if (p.variant_params().variant != DTWVariant::Standard)
     throw InvalidInput("Independent multivariate mode is implemented for the Standard "
                        "DTW variant only in this release");
-  if (p.missing_strategy != MissingStrategy::Error)
+  if (p.missing_strategy() != MissingStrategy::Error)
     throw InvalidInput("Independent multivariate mode does not support a missing-data "
                        "strategy in this release (set missing_strategy = Error)");
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
@@ -335,22 +335,22 @@ std::function<double(std::span<const T>, std::span<const T>)>
 resolve_dtw_fn(const Problem &p)
 {
   validate_problem_distance_semantics(
-    p.variant_params, p.missing_strategy, p.data().ndim, std::is_same_v<T, float>);
+    p.variant_params(), p.missing_strategy(), p.data().ndim, std::is_same_v<T, float>);
 
   // Independent multivariate mode intercepts before every other axis: it is a
   // per-channel decomposition, not a cell-cost or missing-data choice.
-  if (p.variant_params.mv_mode == MVMode::Independent && p.data().ndim > 1)
+  if (p.variant_params().mv_mode == MVMode::Independent && p.data().ndim > 1)
     return make_independent<T>(p);
 
   // Missing-data strategies override variant dispatch — pre-refactor behaviour.
-  switch (p.missing_strategy) {
+  switch (p.missing_strategy()) {
   case MissingStrategy::ZeroCost:    return make_zero_cost<T>(p);
   case MissingStrategy::Interpolate: return make_interpolate<T>(p);
   case MissingStrategy::AROW:        return make_arow<T>(p);
   case MissingStrategy::Error:       break; // fall through to variant switch
   }
 
-  switch (p.variant_params.variant) {
+  switch (p.variant_params().variant) {
   case DTWVariant::DDTW:    return make_ddtw<T>(p);
   case DTWVariant::WDTW:    return make_wdtw<T>(p);
   case DTWVariant::ADTW:    return make_adtw<T>(p);

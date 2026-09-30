@@ -593,7 +593,7 @@ TEST_CASE("Problem: MissingStrategy::AROW wires correctly", "[arow_dtw][problem]
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::AROW);
   prob.set_verbose(false);
   prob.fill_distance_matrix();
 
@@ -618,7 +618,7 @@ TEST_CASE("Problem: AROW gives finite distance with leading NaN", "[arow_dtw][pr
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::AROW);
   prob.set_verbose(false);
   prob.fill_distance_matrix();
 
@@ -720,7 +720,7 @@ TEST_CASE("MV AROW: ndim=1 matches scalar AROW", "[arow_dtw][mv][phase3]")
     data.p_names = { "a", "b" };
     dtwc::Problem prob;
     prob.set_data(std::move(data));
-    prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+    prob.set_missing_strategy(dtwc::core::MissingStrategy::AROW);
     prob.band = band;
     prob.set_variant(dtwc::core::DTWVariant::Standard); // triggers rebind
     const double mv = prob.dtw_function()(std::span<const double>{x},
@@ -741,7 +741,7 @@ TEST_CASE("MV AROW: identical MV series distance = 0", "[arow_dtw][mv][phase3]")
   data.p_names = { "a", "b" };
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::AROW);
   prob.fill_distance_matrix();
   REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(0.0, 1e-10));
 }
@@ -764,7 +764,7 @@ TEST_CASE("MV AROW: per-channel skip when one channel is NaN", "[arow_dtw][mv][p
   data.p_names = { "a", "b" };
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::AROW);
   prob.fill_distance_matrix();
   // Sum of per-channel L1 = 0 at every step (channel 1 matches everywhere;
   // channel 0 matches except at step 2 where one side is NaN, per-channel
@@ -789,7 +789,7 @@ TEST_CASE("MV AROW: all channels NaN at a step triggers diagonal carry", "[arow_
   data.p_names = { "a", "b" };
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::AROW);
   prob.fill_distance_matrix();
   const double d_with_missing = prob.dist_by_ind(0, 1);
   REQUIRE(d_with_missing >= 0.0);

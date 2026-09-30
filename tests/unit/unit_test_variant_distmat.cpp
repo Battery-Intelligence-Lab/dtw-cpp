@@ -91,35 +91,6 @@ TEST_CASE("Problem dense cache never survives a raw semantic configuration mutat
     REQUIRE(prob.dist_by_ind(0, 1) == 10.0);
   }
 
-  SECTION("variant and parameters")
-  {
-    Problem prob{"dense_variant_mutation"};
-    prob.set_data(make_data({{0.0}, {2.0}}));
-
-    REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
-    core::DTWVariantParams params;
-    params.variant = core::DTWVariant::WDTW;
-    params.wdtw_g = 0.5;
-    prob.variant_params = params; // Legacy whole-field mutation.
-
-    REQUIRE_FALSE(prob.is_distance_matrix_filled());
-    REQUIRE(prob.dist_by_ind(0, 1) == 1.0);
-  }
-
-  SECTION("missing-data strategy")
-  {
-    const double nan = std::numeric_limits<double>::quiet_NaN();
-    Problem prob{"dense_missing_mutation"};
-    prob.missing_strategy = core::MissingStrategy::ZeroCost;
-    prob.set_data(make_data({{0.0, nan, 2.0}, {0.0, 2.0, 2.0}}));
-
-    REQUIRE(prob.dist_by_ind(0, 1) == 0.0);
-    prob.missing_strategy = core::MissingStrategy::Interpolate;
-
-    REQUIRE_FALSE(prob.is_distance_matrix_filled());
-    REQUIRE(prob.dist_by_ind(0, 1) == 1.0);
-  }
-
   SECTION("distance backend and nested CUDA settings")
   {
     Problem prob{"dense_backend_mutation"};
@@ -130,6 +101,7 @@ TEST_CASE("Problem dense cache never survives a raw semantic configuration mutat
       matrix.set(0, 0, 0.0);
       matrix.set(0, 1, 123.0);
       matrix.set(1, 1, 0.0);
+      prob.fill_distance_matrix(); // every pair is set: marks it complete, computes nothing
       REQUIRE(prob.is_distance_matrix_filled());
     };
 
@@ -167,9 +139,12 @@ TEST_CASE("Problem dense cache never survives a raw semantic configuration mutat
       matrix.set(0, 0, 0.0);
       matrix.set(0, 1, 123.0);
       matrix.set(1, 1, 0.0);
+      prob.fill_distance_matrix(); // every pair is set: marks it complete, computes nothing
       REQUIRE(prob.is_distance_matrix_filled());
 
-      mutate(prob.variant_params);
+      auto params = prob.variant_params();
+      mutate(params);
+      prob.set_variant(params);
 
       REQUIRE_FALSE(prob.is_distance_matrix_filled());
       REQUIRE(prob.dist_by_ind(0, 1) != 123.0);
@@ -202,6 +177,7 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
     matrix.set(0, 0, 0.0);
     matrix.set(0, 1, 123.0);
     matrix.set(1, 1, 0.0);
+    prob.fill_distance_matrix(); // every pair is set: marks it complete, computes nothing
     REQUIRE(prob.is_distance_matrix_filled());
   };
 
@@ -209,7 +185,7 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   prob.set_missing_strategy(core::MissingStrategy::Error);
   REQUIRE(prob.is_distance_matrix_filled());
   REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
-  prob.set_variant(prob.variant_params);
+  prob.set_variant(prob.variant_params());
   REQUIRE(prob.is_distance_matrix_filled());
   REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
   prob.set_variant(core::DTWVariant::Standard);
@@ -388,8 +364,8 @@ TEST_CASE("Problem mmap warmstart fingerprints every distance configuration dime
     const double nan = std::numeric_limits<double>::quiet_NaN();
     reopen_throws(
       "mmap_missing_fingerprint",
-      [](Problem &p) { p.missing_strategy = core::MissingStrategy::ZeroCost; },
-      [](Problem &p) { p.missing_strategy = core::MissingStrategy::AROW; },
+      [](Problem &p) { p.set_missing_strategy(core::MissingStrategy::ZeroCost); },
+      [](Problem &p) { p.set_missing_strategy(core::MissingStrategy::AROW); },
       make_data({{0.0, nan, 2.0}, {0.0, 2.0, 3.0}}),
       make_data({{0.0, nan, 2.0}, {0.0, 2.0, 3.0}}));
   }

@@ -98,19 +98,6 @@ void hash_float(FingerprintHash &hash, float value)
   hash_u32(hash, bits);
 }
 
-bool variant_params_equal(
-  const core::DTWVariantParams &a, const core::DTWVariantParams &b) noexcept
-{
-  return a.variant == b.variant
-      && a.wdtw_g == b.wdtw_g
-      && a.adtw_penalty == b.adtw_penalty
-      && a.sdtw_gamma == b.sdtw_gamma
-      && a.msm_c == b.msm_c
-      && a.twe_nu == b.twe_nu
-      && a.twe_lambda == b.twe_lambda
-      && a.mv_mode == b.mv_mode;
-}
-
 // Enum spellings for validate_fill_request's messages: the C++ and Python
 // enumerator names.
 const char *variant_name(core::DTWVariant v)
@@ -375,6 +362,7 @@ void Problem::refresh_distance_matrix()
   // and its file left as it is, so rebinding it under the changed semantics
   // fails its fingerprint check loudly.
   distMat = core::DistanceMatrix{};
+  filled_ = false;
   clear_mmap_cache_identity();
   fill_request_validated_ = false; // new data or semantics: a new request
   rebind_dtw_fn();
@@ -384,10 +372,10 @@ void Problem::refresh_variant_caches() const
 {
   wdtw_weights_cache_.clear();
 
-  if (variant_params.variant != core::DTWVariant::WDTW || data_.size() == 0)
+  if (distance_.variant.variant != core::DTWVariant::WDTW || data_.size() == 0)
     return;
 
-  const auto g = static_cast<data_t>(variant_params.wdtw_g);
+  const auto g = static_cast<data_t>(distance_.variant.wdtw_g);
 
   // Precompute WDTW weights for every unique max_dev that can arise.
   // max_dev = max(len_x, len_y) for univariate, max(steps_x, steps_y)-1 for MV.
@@ -432,36 +420,69 @@ void Problem::rebind_dtw_fn() const
   refresh_variant_caches();
   dtw_fn_ = core::resolve_dtw_fn<data_t>(*this);
   dtw_block_fn_ = core::resolve_dtw_block_fn<data_t>(*this);
-  if (core::active_variant_params_representable_f32(variant_params)) {
+  if (core::active_variant_params_representable_f32(distance_.variant)) {
     dtw_fn_f32_ = core::resolve_dtw_fn<float>(*this);
     dtw_block_fn_f32_ = core::resolve_dtw_block_fn<float>(*this);
   } else {
     dtw_fn_f32_ = {};
     dtw_block_fn_f32_ = {};
   }
-  dense_cache_configuration_ = distance_cache_configuration(metric_);
+  dense_cache_configuration_ = distance_cache_configuration(distance_.metric);
   dense_cache_configuration_bound_ = true;
   dtw_binding_owner_ = this;
 }
 
+void Problem::set_distance(core::DistanceConfig config)
+{
+  if (config.band < -1)
+    throw InvalidInput("Problem::set_distance: band must be -1 (full DTW) or at least 0; got "
+                       + std::to_string(config.band) + ".");
+  config.ndim = data_.ndim;
+  preflight_distance_semantics(config, data_);
+  if (config == distance_ && band == config.band) return;
+  distance_ = config;
+  band = config.band;
+  clusters_ind.clear(); // a clustering describes the distances it was computed with
+  centroids_ind.clear();
+  refresh_distance_matrix();
+}
+
+void Problem::set_band(int b)
+{
+  if (b < -1)
+    throw InvalidInput("Problem::set_band: band must be -1 (full DTW) or at least 0; got "
+                       + std::to_string(b) + ".");
+  auto config = distance();
+  config.band = b;
+  set_distance(config);
+}
+
+void Problem::set_metric(core::MetricType metric)
+{
+  auto config = distance();
+  config.metric = metric;
+  set_distance(config);
+}
+
+void Problem::set_missing_strategy(core::MissingStrategy strategy)
+{
+  auto config = distance();
+  config.missing = strategy;
+  set_distance(config);
+}
+
 void Problem::set_variant(core::DTWVariant v)
 {
-  auto candidate = variant_params;
-  candidate.variant = v;
-  preflight_distance_semantics(
-    candidate, missing_strategy, metric_, data_);
-  if (variant_params.variant == v) return;
-  variant_params.variant = v;
-  refresh_distance_matrix(); // calls rebind_dtw_fn() internally
+  auto config = distance();
+  config.variant.variant = v;
+  set_distance(config);
 }
 
 void Problem::set_variant(core::DTWVariantParams params)
 {
-  preflight_distance_semantics(
-    params, missing_strategy, metric_, data_);
-  if (variant_params_equal(variant_params, params)) return;
-  variant_params = params;
-  refresh_distance_matrix(); // calls rebind_dtw_fn() internally
+  auto config = distance();
+  config.variant = params;
+  set_distance(config);
 }
 
 void Problem::set_device(Device device, int index)
@@ -506,15 +527,15 @@ Problem::distance_cache_configuration_fingerprint(core::MetricType metric) const
   // cache miss over trusting distances after an ambiguous configuration edit.
   hash_enum(hash, metric);
   hash_u64(hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(band)));
-  hash_enum(hash, variant_params.variant);
-  hash_double(hash, variant_params.wdtw_g);
-  hash_double(hash, variant_params.adtw_penalty);
-  hash_double(hash, variant_params.sdtw_gamma);
-  hash_double(hash, variant_params.msm_c);
-  hash_double(hash, variant_params.twe_nu);
-  hash_double(hash, variant_params.twe_lambda);
-  hash_enum(hash, variant_params.mv_mode);
-  hash_enum(hash, missing_strategy);
+  hash_enum(hash, distance_.variant.variant);
+  hash_double(hash, distance_.variant.wdtw_g);
+  hash_double(hash, distance_.variant.adtw_penalty);
+  hash_double(hash, distance_.variant.sdtw_gamma);
+  hash_double(hash, distance_.variant.msm_c);
+  hash_double(hash, distance_.variant.twe_nu);
+  hash_double(hash, distance_.variant.twe_lambda);
+  hash_enum(hash, distance_.variant.mv_mode);
+  hash_enum(hash, distance_.missing);
 
   // Backend/precision can change the stored numeric result even when the
   // mathematical recurrence is the same (notably GPU FP32 versus CPU FP64).
@@ -533,8 +554,8 @@ Problem::distance_cache_configuration(core::MetricType metric) const
   return {
     metric,
     band,
-    variant_params,
-    missing_strategy,
+    distance_.variant,
+    distance_.missing,
     distance_strategy,
     cuda_settings.device_id,
     cuda_settings.precision
@@ -544,10 +565,10 @@ Problem::distance_cache_configuration(core::MetricType metric) const
 bool Problem::distance_cache_configuration_matches(
   const DistanceCacheConfiguration &expected) const
 {
-  return expected.metric == metric_
+  return expected.metric == distance_.metric
       && expected.band == band
-      && variant_params_equal(expected.variant_params, variant_params)
-      && expected.missing_strategy == missing_strategy
+      && expected.variant_params == distance_.variant
+      && expected.missing_strategy == distance_.missing
       && expected.distance_strategy == distance_strategy
       && expected.cuda_device_id == cuda_settings.device_id
       && expected.cuda_precision == cuda_settings.precision;
@@ -560,12 +581,11 @@ bool Problem::dense_cache_configuration_is_current() const
 }
 
 void Problem::preflight_distance_semantics(
-  const core::DTWVariantParams &params,
-  core::MissingStrategy missing,
-  core::MetricType metric,
-  const Data &candidate_data,
-  bool force_float32)
+  const core::DistanceConfig &config, const Data &candidate_data, bool force_float32)
 {
+  const auto &params = config.variant;
+  const auto missing = config.missing;
+  const auto metric = config.metric;
   core::validate_problem_distance_semantics(
     params, missing, candidate_data.ndim,
     force_float32 || candidate_data.is_f32());
@@ -584,15 +604,12 @@ void Problem::preflight_distance_semantics(
 
 void Problem::preflight_current_distance_semantics() const
 {
-  preflight_distance_semantics(
-    variant_params, missing_strategy, metric_, data_);
+  preflight_distance_semantics(distance_, data_);
 }
 
 void Problem::preflight_float32_distance_semantics() const
 {
-  preflight_distance_semantics(
-    variant_params, missing_strategy, metric_, data_,
-    true);
+  preflight_distance_semantics(distance_, data_, true);
 }
 
 const Problem::dtw_fn_f32_t &Problem::validated_dtw_function_f32() const
@@ -733,7 +750,7 @@ Problem::distance_cache_identity(core::MetricType metric) const
 core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity() const
 {
-  return distance_checkpoint_identity(metric_);
+  return distance_checkpoint_identity(distance_.metric);
 }
 
 core::DistanceMatrix::fingerprint_type
@@ -797,7 +814,7 @@ void Problem::validate_mmap_cache_identity() const
 
 void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
 {
-  use_mmap_distance_matrix(cache_path, metric_);
+  use_mmap_distance_matrix(cache_path, distance_.metric);
 }
 
 void Problem::use_mmap_distance_matrix(
@@ -805,8 +822,9 @@ void Problem::use_mmap_distance_matrix(
 {
   // Every check, the identity and the mapping come before any change: a bind
   // that fails leaves this Problem's metric and matrix as they were.
-  preflight_distance_semantics(
-    variant_params, missing_strategy, metric, data_);
+  auto candidate = distance();
+  candidate.metric = metric;
+  preflight_distance_semantics(candidate, data_);
   // Reconcile dispatcher semantics before publishing a new mapped identity.
   // Without this generic guard, replacing an already-bound mmap after a raw
   // configuration mutation could label Standard-DTW writes with an ADTW (or
@@ -816,12 +834,13 @@ void Problem::use_mmap_distance_matrix(
   // map() checks an existing file's magic, version, length, N and fingerprint
   // before any of its distances can be read.
   auto mapped = core::DistanceMatrix::map(cache_path, data_.size(), identity.full);
-  if (metric_ != metric) { // new semantics, as in set_metric
-    metric_ = metric;
+  if (distance_.metric != metric) { // new semantics, as in set_metric
+    distance_.metric = metric;
     fill_request_validated_ = false;
     rebind_dtw_fn();
   }
   distMat = std::move(mapped);
+  filled_ = distMat.size() > 0 && distMat.all_computed(); // a warm start holds every pair
   mmap_cache_identity_ = identity;
   mmap_cache_identity_bound_ = true;
   mmap_cache_data_validated_ = false;
@@ -919,7 +938,7 @@ void Problem::validate_fill_request(std::string_view where) const
   // isfinite() guard, so clustering would silently sum 1.8e308 (design §9,
   // D-12). The widest gap is shortest vs longest. Soft-DTW, MSM and TWE ignore
   // the band. Lengths are timesteps, as the multivariate kernels count them.
-  const auto variant = variant_params.variant;
+  const auto variant = distance_.variant.variant;
   if (band >= 0 && data_.size() > 1 && variant != core::DTWVariant::SoftDTW
       && variant != core::DTWVariant::MSM && variant != core::DTWVariant::TWE) {
     std::size_t shortest = 0, longest = 0;
@@ -950,7 +969,7 @@ void Problem::validate_fill_request(std::string_view where) const
   // an uncomputed matrix entry). One check through the raw entry points' own
   // boundary test, serial so the message names the series and its (flat)
   // position.
-  const bool nan_is_missing = missing_strategy != core::MissingStrategy::Error;
+  const bool nan_is_missing = distance_.missing != core::MissingStrategy::Error;
   std::string name;
   for (std::size_t i = 0; i < data_.size(); ++i) {
     name.assign("series '").append(series_name(i)).append("' (index ")
@@ -960,7 +979,7 @@ void Problem::validate_fill_request(std::string_view where) const
     else
       detail::require_finite(series(i), name, at, nan_is_missing);
   }
-  if (missing_strategy == core::MissingStrategy::Interpolate) {
+  if (distance_.missing == core::MissingStrategy::Interpolate) {
     // interpolate_linear() has no observed value to interpolate from when a
     // series is entirely NaN, and used to throw from inside the per-pair lambda.
     for (std::size_t i = 0; i < data_.size(); ++i) {
@@ -983,7 +1002,7 @@ void Problem::validate_fill_request(std::string_view where) const
                        "needs owned series in RAM, but this Problem's series are a non-owning "
                        "view (set_view_data, as FastCLARA's in-memory subsamples are)",
                        "Install owning series with set_data, or use device cpu.");
-  validate_gpu_request(at, distance_strategy, variant_params, missing_strategy, data_.precision,
+  validate_gpu_request(at, distance_strategy, distance_.variant, distance_.missing, data_.precision,
                        cuda_settings);
   if (data_.ndim > 1)
     reject_gpu_request(at, cuda, "is univariate only, but ndim = " + std::to_string(data_.ndim) + " was requested",
@@ -1091,6 +1110,9 @@ void Problem::fill_distance_matrix()
   preflight_current_distance_semantics();
   validate_mmap_cache_identity();
   ensure_dense_cache_configuration_current();
+  // A matrix installed through distance_matrix() or read whole needs no pair.
+  if (!filled_ && data_.size() > 0 && distMat.size() == data_.size() && distMat.all_computed())
+    filled_ = true;
   if (is_distance_matrix_filled()) return;
   validate_fill_request("Problem::fill_distance_matrix");
   fill_request_validated_ = true; // the same request needs no lazy re-check
@@ -1098,10 +1120,6 @@ void Problem::fill_distance_matrix()
   // Each fill below sizes the matrix (deferred from set_data /
   // refresh_distance_matrix) only after its own refusals; a mapped matrix is
   // sized when it is bound.
-
-  // Re-bind the DTW function in case missing_strategy was changed after construction
-  // (e.g., user sets prob.missing_strategy = ZeroCost after prob.set_data(...)).
-  rebind_dtw_fn();
 
   if (verbose_)
     std::cout << "Distance matrix is being filled!" << '\n';
@@ -1127,7 +1145,7 @@ void Problem::fill_distance_matrix()
     else if (cuda_settings.precision == GpuPrecision::FP64)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
     // L2 is L1 on the univariate series the GPU routes take.
-    cuda_opts.use_squared_l2 = metric_ == core::MetricType::SquaredL2;
+    cuda_opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
     cuda_opts.verbose = verbose_;
 
     (void)dtwc::cuda::compute_distance_matrix_cuda(data_.p_vec, cuda_opts, distMat);
@@ -1144,7 +1162,7 @@ void Problem::fill_distance_matrix()
     dtwc::metal::MetalDistMatOptions metal_opts;
     metal_opts.band = band;
     metal_opts.precision = metal_precision(cuda_settings.precision);
-    metal_opts.use_squared_l2 = metric_ == core::MetricType::SquaredL2;
+    metal_opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
     metal_opts.verbose = verbose_;
 
     (void)dtwc::metal::compute_distance_matrix_metal(data_.p_vec, metal_opts, distMat);
@@ -1167,6 +1185,7 @@ void Problem::fill_distance_matrix()
   // in one call, so its only automatic save is here.
   if (checkpoint.enabled && effective != DistanceMatrixStrategy::BruteForce)
     save_checkpoint(*this, checkpoint.directory);
+  filled_ = data_.size() > 0; // an empty Problem has no matrix to call filled
 
   if (verbose_)
     std::cout << "Distance matrix has been filled!" << '\n';

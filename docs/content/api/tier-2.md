@@ -10,19 +10,23 @@ description: "Advanced Problem, algorithms, scores, distance, and checkpoint API
 
 Retained for power users. `Problem` stays a first-class object. Canonical
 snake_case methods, core-owned algorithm result writeback, and the frozen
-encapsulation/accessor split are live. Eight C++ `Problem` fields are private;
-eleven deliberately retained expert/result fields remain public. A live symbol
+encapsulation/accessor split are live. The distance settings are private, in one
+`DistanceConfig`; nine deliberately retained expert/result fields remain public. A live symbol
 in the tables below does not imply that every other promised invariant or
 deprecation diagnostic is complete.
 
 ### 2.1 `Problem` — configuration setters
 
-Canonical config setters are snake_case. Eleven expert/result fields remain
+Canonical config setters are snake_case. Nine expert/result fields remain
 public: the v1.0.0 `int` fields `maxIter` and `N_repetition`, plus
-`band`, `variant_params`, `missing_strategy`, `distance_strategy`,
-`cuda_settings`, `mip_settings`, `init_fun`, `clusters_ind`, and
-`centroids_ind`. The setters check what they are given; a direct write to
-a field does not. Python binds `clusters_ind` and `centroids_ind` read-only
+`band`, `distance_strategy`, `cuda_settings`, `mip_settings`, `init_fun`,
+`clusters_ind`, and `centroids_ind`. The setters check what they are given; a
+direct write to a field does not. The distance settings (variant and parameters,
+metric, missing-data strategy, band) are one private `DistanceConfig`, read with
+`distance()`, `variant_params()`, `missing_strategy()` and `metric()` and changed
+with `set_distance()` or the per-setting setters; a change drops the distance
+matrix and the clustering, which describe the old distances. `band` is also the
+v1.0.0 field: a direct write takes effect at the next fill. Python binds `clusters_ind` and `centroids_ind` read-only
 (v1.0.0's Python never bound them): a clustering reaches a Python `Problem`,
 and the scores that read it, through `set_result(ClusteringResult)`, which
 validates it as C++ `Problem::set_result` does.
@@ -56,7 +60,8 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
-| missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | retained field (`Problem.hpp`) |
+| missing strategy | `missing_strategy()` / `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | private state (`Problem.hpp`) |
+| distance settings | `distance()` / `set_distance(core::DistanceConfig)` `[introduced-2.0]` | — | — | private state: variant and parameters, metric, missing-data strategy and band in one struct; `ndim` is the series' |
 | metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill and lazy lookups, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW with `MissingStrategy::Error`, else `InvalidInput` |
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |

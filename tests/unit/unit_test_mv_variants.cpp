@@ -479,7 +479,7 @@ TEST_CASE("Problem::dtw_function_f32 honours MissingStrategy::ZeroCost", "[f32][
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   prob.set_variant(dtwc::core::DTWVariant::Standard); // triggers rebind
 
   const double d = prob.dtw_function_f32()(std::span<const float>{x},
@@ -512,8 +512,5 @@ TEST_CASE("MV + SoftDTW is rejected at bind time, not silently flattened",
   prob.set_verbose(false);
   REQUIRE_THROWS_AS(prob.set_variant(dtwc::core::DTWVariant::SoftDTW),
                     dtwc::InvalidInput);
-
-  // The direct-assignment path (public variant_params) is caught by the fill preflight.
-  prob.variant_params.variant = dtwc::core::DTWVariant::SoftDTW;
-  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), dtwc::InvalidInput);
+  CHECK(prob.variant_params().variant == dtwc::core::DTWVariant::Standard);
 }

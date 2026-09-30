@@ -30,6 +30,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -68,7 +69,7 @@ static Problem make_problem_uv(std::vector<std::vector<double>> vecs, int Nc,
   Problem prob("wave2a_uv");
   prob.set_data(std::move(d));
   prob.set_n_clusters(Nc);
-  prob.missing_strategy = ms;
+  prob.set_missing_strategy(ms);
   prob.set_verbose(false);
   prob.set_output_folder(g_tmp_dir());
   return prob;
@@ -103,7 +104,7 @@ static Problem make_problem_mv(int N, int n_steps, int ndim,
   Problem prob("wave2a_mv");
   prob.set_data(std::move(data));
   prob.set_n_clusters(Nc);
-  prob.missing_strategy = ms;
+  prob.set_missing_strategy(ms);
   prob.set_verbose(false);
   prob.set_output_folder(g_tmp_dir());
   return prob;
@@ -190,7 +191,7 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
   REQUIRE(small_prob.distance_matrix().size() == 0);
 
   small_prob.fill_distance_matrix();
-  REQUIRE(small_prob.distance_matrix().size() == 5);
+  REQUIRE(std::as_const(small_prob).distance_matrix().size() == 5);
   REQUIRE(small_prob.is_distance_matrix_filled());
 }
 

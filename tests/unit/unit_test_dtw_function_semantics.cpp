@@ -42,16 +42,16 @@ std::span<const T> as_span(const std::vector<T> &values)
 
 } // namespace
 
-TEST_CASE("mutable DTW function getters refresh raw variant mutations",
-          "[problem][dtw_function][semantic_mutation][m37]")
+TEST_CASE("DTW function getters compute with the Problem's variant",
+          "[problem][dtw_function][m37]")
 {
   Problem problem = make_bound_problem();
-  core::DTWVariantParams params = problem.variant_params;
+  core::DTWVariantParams params = problem.variant_params();
   params.variant = core::DTWVariant::ADTW;
   params.adtw_penalty = 1.0;
-  problem.variant_params = params; // Legacy raw mutation bypasses set_variant().
+  problem.set_variant(params);
 
-  // Registered before the repair: Standard=3, ADTW(p=1)=4 for these series.
+  // Standard=3, ADTW(p=1)=4 for these series.
   SECTION("float64")
   {
     REQUIRE_THAT(
@@ -69,11 +69,11 @@ TEST_CASE("mutable DTW function getters refresh raw variant mutations",
   }
 }
 
-TEST_CASE("mutable DTW function getters refresh raw missing-policy mutations",
-          "[problem][dtw_function][semantic_mutation][missing][m37]")
+TEST_CASE("DTW function getters compute with the Problem's missing-data strategy",
+          "[problem][dtw_function][missing][m37]")
 {
   Problem problem = make_bound_problem();
-  problem.missing_strategy = core::MissingStrategy::ZeroCost;
+  problem.set_missing_strategy(core::MissingStrategy::ZeroCost);
 
   SECTION("float64")
   {
@@ -96,30 +96,6 @@ TEST_CASE("mutable DTW function getters refresh raw missing-policy mutations",
   }
 }
 
-TEST_CASE("const DTW function getters reject stale raw semantics",
-          "[problem][dtw_function][const][semantic_mutation][m37]")
-{
-  SECTION("variant mutation rejects both precisions")
-  {
-    Problem problem = make_bound_problem();
-    problem.variant_params.variant = core::DTWVariant::ADTW;
-    const Problem &view = problem;
-
-    CHECK_THROWS_AS(view.dtw_function(), std::runtime_error);
-    CHECK_THROWS_AS(view.dtw_function_f32(), std::runtime_error);
-  }
-
-  SECTION("missing-policy mutation rejects both precisions")
-  {
-    Problem problem = make_bound_problem();
-    problem.missing_strategy = core::MissingStrategy::ZeroCost;
-    const Problem &view = problem;
-
-    CHECK_THROWS_AS(view.dtw_function(), std::runtime_error);
-    CHECK_THROWS_AS(view.dtw_function_f32(), std::runtime_error);
-  }
-}
-
 TEST_CASE("unchanged DTW function getters keep stable bound callable storage",
           "[problem][dtw_function][allocation_free][m37]")
 {
@@ -137,8 +113,8 @@ TEST_CASE("unchanged DTW function getters keep stable bound callable storage",
   REQUIRE(&view.dtw_function_f32() == f32);
 }
 
-TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
-          "[problem][dtw_function][semantic_mutation][mmap][m37]")
+TEST_CASE("DTW function getters keep a mapped cache",
+          "[problem][dtw_function][mmap][m37]")
 {
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
@@ -155,51 +131,6 @@ TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
     const Problem &view = problem;
     REQUIRE(&view.dtw_function() == function);
     REQUIRE(view.distance_matrix().is_mapped());
-  }
-
-  SECTION("mutable stale getter detaches mmap and rebinds without rewriting it")
-  {
-    const ScratchDirectory cache{"m37_mutable_mmap"};
-    Problem problem = make_bound_problem();
-    problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
-    problem.variant_params.variant = core::DTWVariant::ADTW;
-
-    REQUIRE_THAT(
-      problem.dtw_function()(problem.series(0), problem.series(1)),
-      WithinAbs(4.0, 1e-12));
-    REQUIRE(!problem.distance_matrix().is_mapped());
-
-    Problem original_semantics = make_bound_problem();
-    REQUIRE_NOTHROW(original_semantics.use_mmap_distance_matrix(cache.path / "first.dtwcache"));
-  }
-
-  SECTION("const stale getter rejects without detaching mmap")
-  {
-    const ScratchDirectory cache{"m37_const_mmap"};
-    Problem problem = make_bound_problem();
-    problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
-    problem.variant_params.variant = core::DTWVariant::ADTW;
-
-    const Problem &stale_view = problem;
-    REQUIRE_THROWS_AS(stale_view.dtw_function(), std::runtime_error);
-
-    // Restoring the raw value makes the original mapping observable again;
-    // the rejecting const accessor must not have detached or rewritten it.
-    problem.variant_params.variant = core::DTWVariant::Standard;
-    const Problem &restored_view = problem;
-    REQUIRE(restored_view.distance_matrix().is_mapped());
-  }
-
-  SECTION("mmap replacement reconciles dispatcher before publishing new identity")
-  {
-    const ScratchDirectory cache{"m37_replace_mmap"};
-    Problem problem = make_bound_problem();
-    problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
-    problem.variant_params.variant = core::DTWVariant::ADTW;
-
-    problem.use_mmap_distance_matrix(cache.path / "second.dtwcache");
-    REQUIRE(problem.distance_matrix().is_mapped());
-    REQUIRE_THAT(problem.dist_by_ind(0, 1), WithinAbs(4.0, 1e-12));
   }
 #endif
 }
