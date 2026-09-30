@@ -4,14 +4,15 @@ include("${CMAKE_SOURCE_DIR}/cmake/DtwcTest.cmake")
 
 # B-19: the 1.x [[deprecated]] shims that docs/api-contract-2.0.md §3 keeps until
 # 3.0 must still compile, and must warn (test_problem_api_2_0 proves they forward).
-# One use of each shim kind stands in for all 22. The probe is an EXCLUDE_FROM_ALL
+# One use of each shim kind stands in for all 22, plus v1's std::vector<int>
+# set_clusters overload beside the index_t one. The probe is an EXCLUDE_FROM_ALL
 # object built by the configured compiler with dtwc++'s usage requirements; the
 # script deletes the object, rebuilds it, and passes only on exit 0 plus one
 # deprecation diagnostic naming each entry of _dtwc_shims. Flags differ per
 # compiler family: GCC, Clang and clang-cl print "'<name>' is deprecated", cl
 # prints C4996; -Wno-error keeps a -Werror in CMAKE_CXX_FLAGS from turning the
 # warning under test into a failed compile. SERIAL: it builds in this tree.
-set(_dtwc_shims set_numberOfClusters distByInd cluster_by_kMedoidsPAM startColumn fillDistanceMatrix)
+set(_dtwc_shims set_numberOfClusters distByInd cluster_by_kMedoidsPAM startColumn fillDistanceMatrix set_clusters)
 add_library(deprecated_shims_probe OBJECT EXCLUDE_FROM_ALL integration/deprecated_shims_probe.cc)
 target_link_libraries(deprecated_shims_probe PRIVATE dtwc++ project_options)
 if(MSVC AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")

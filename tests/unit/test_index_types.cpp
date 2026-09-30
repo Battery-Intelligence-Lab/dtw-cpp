@@ -142,7 +142,7 @@ static_assert(same<decltype(dtwc::Config::band), int>);
 static_assert(requires(const std::filesystem::path &p) { dtwc::load(p, 0, 1); });
 static_assert(requires(dtwc::Dataset::series_type s) { dtwc::load(s, 0, 1); });
 
-// The break W11a makes on purpose: a std::vector<int> no longer assigns to the
+// The one source break, on purpose: a std::vector<int> no longer assigns to the
 // public outputs (CHANGELOG: declare the vector as std::vector<dtwc::index_t>).
 static_assert(!std::is_assignable_v<indices &, const std::vector<int> &>);
 static_assert(!std::is_assignable_v<decltype((std::declval<Problem &>().clusters_ind)),
