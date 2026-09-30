@@ -102,8 +102,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   squared L2, full and banded first; bitwise equal to the per-pair fill; band ≥ 2× on the 24-thread fill
   (P1 `94ef14b`, `e34c37f`, `940cd8a`, `3c95dc7`, `b930ff8`; merged `d61c499`; fill 14.5× unbanded, 5.1× band 50,
   15.3× ECG5000; cl builds get unpacked lanes — the Windows wheel is built by cl)
-- ◐ P3 unbanded per-pair Standard DTW runs the linear kernel and EAPruned goes: after K1 the linear kernel is
-  1.5–3.6× faster on 7 of 7 UCR datasets, bitwise equal (`baselines/2026-09-29-p2-eap-vs-linear.md`)
+- ☑ P3 unbanded per-pair Standard DTW runs the linear kernel and EAPruned goes: after K1 the linear kernel is
+  1.5–3.6× faster on 7 of 7 UCR datasets, bitwise equal (`baselines/2026-09-29-p2-eap-vs-linear.md`) (P3 6587cda, 9e64074; merged 5e15459)
 
 ## C — GPU to one fill (W4 + W13's GPU half)
 
