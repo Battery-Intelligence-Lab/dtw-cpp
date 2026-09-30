@@ -14,6 +14,7 @@
 
 #include <dtwc.hpp>
 #include <algorithms/one_batch_pam.hpp>
+#include <core/medoid_assignment_policy.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
@@ -30,6 +31,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 using namespace dtwc;
 
@@ -227,6 +232,90 @@ std::string capture_stderr(Function&& function)
   }
   std::cerr.rdbuf(previous);
   return captured.str();
+}
+
+// A fixed, library-independent set of random walks (integer hash, no
+// <random> distribution). Steps are multiples of 0.001, which binary64 cannot
+// hold, so the DTW sums are inexact and a reduction whose order followed the
+// thread count would change the last bits of the cost.
+Problem make_walk_problem(int n, int length)
+{
+  std::uint64_t state = 0x9E3779B97F4A7C15ull;
+  const auto next = [&state] {
+    state += 0x9E3779B97F4A7C15ull;
+    std::uint64_t z = state;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    return z ^ (z >> 31);
+  };
+  std::vector<std::vector<data_t>> series;
+  std::vector<std::string> names;
+  for (int i = 0; i < n; ++i) {
+    std::vector<data_t> walk(static_cast<std::size_t>(length));
+    double x = 0.0;
+    for (double &value : walk) {
+      x += (static_cast<double>(next() % 2001) - 1000.0) / 1000.0;
+      value = x;
+    }
+    series.push_back(std::move(walk));
+    names.push_back("w" + std::to_string(i));
+  }
+  Problem problem("one_batch_walks");
+  problem.set_data(Data(std::move(series), std::move(names)));
+  return problem;
+}
+
+/// Holds the OpenMP thread count at `threads` for the scope (a no-op without OpenMP).
+struct ThreadCount
+{
+#ifdef _OPENMP
+  int previous = omp_get_max_threads();
+  explicit ThreadCount(int threads) { omp_set_num_threads(threads); }
+  ~ThreadCount() { omp_set_num_threads(previous); }
+#else
+  explicit ThreadCount(int) {}
+#endif
+};
+
+#ifdef _OPENMP
+int workers_granted()
+{
+  int workers = 1;
+#pragma omp parallel
+  {
+#pragma omp single
+    workers = omp_get_num_threads();
+  }
+  return workers;
+}
+#endif
+
+/// The scan the final assignment replaced: each point against the medoids in
+/// slot order, the first strictly nearest wins, a medoid tied with another
+/// serves itself, the objective is point-ordered.
+core::ClusteringResult serial_assignment(Problem &problem, const std::vector<index_t> &medoids)
+{
+  const auto &dtw = problem.dtw_function();
+  const std::size_t n = problem.size();
+  core::ClusteringResult result;
+  result.medoid_indices = medoids;
+  result.labels.assign(n, 0);
+  std::vector<double> cost(n, 0.0);
+  for (std::size_t point = 0; point < n; ++point) {
+    double best = std::numeric_limits<double>::infinity();
+    for (std::size_t slot = 0; slot < medoids.size(); ++slot) {
+      const auto medoid = static_cast<std::size_t>(medoids[slot]);
+      const double d = point == medoid ? 0.0 : dtw(problem.series(point), problem.series(medoid));
+      if (d < best) { best = d; result.labels[point] = static_cast<index_t>(slot); }
+    }
+    cost[point] = best;
+  }
+  for (std::size_t slot = 0; slot < medoids.size(); ++slot) {
+    const auto medoid = static_cast<std::size_t>(medoids[slot]);
+    if (cost[medoid] == 0.0) result.labels[medoid] = static_cast<index_t>(slot);
+  }
+  result.total_cost = core::detail::ordered_medoid_objective(cost, "serial_assignment");
+  return result;
 }
 
 } // namespace
@@ -657,4 +746,97 @@ TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
   // (A `returned + threw == 64` check would be tautological — every iteration
   // increments exactly one counter and any other exception escapes the loop.)
   REQUIRE(threw > 0);
+}
+
+TEST_CASE("OneBatchPAM's final assignment is the serial scan at every thread count",
+          "[one_batch_pam][parallel][determinism]")
+{
+  constexpr int n = 200; // above the 64-point threshold of the OpenMP path
+  constexpr int k = 5;
+  constexpr int m = 40;
+  algorithms::OneBatchPAMOptions options;
+  options.n_clusters = k;
+  options.batch_size = m;
+  options.random_seed = 3;
+
+  const auto run = [&](int threads, algorithms::OneBatchPAMStats &stats) {
+    const ThreadCount scope(threads);
+#ifdef _OPENMP
+    // The subject must run in parallel: without this the two runs could both be serial.
+    if (threads > 1) REQUIRE(workers_granted() > 1);
+#endif
+    auto problem = make_walk_problem(n, 24);
+    return algorithms::one_batch_pam(problem, options, &stats);
+  };
+
+  algorithms::OneBatchPAMStats one_stats, four_stats;
+  const auto one = run(1, one_stats);
+  const auto four = run(4, four_stats);
+
+  REQUIRE(four.medoid_indices == one.medoid_indices);
+  REQUIRE(four.labels == one.labels);
+  REQUIRE(four.total_cost == one.total_cost);
+  REQUIRE(four_stats.distance_evaluations == one_stats.distance_evaluations);
+
+  // Both equal the serial scan over the published medoids.
+  auto oracle_problem = make_walk_problem(n, 24);
+  const auto oracle = serial_assignment(oracle_problem, one.medoid_indices);
+  REQUIRE(one.labels == oracle.labels);
+  REQUIRE(one.total_cost == oracle.total_cost);
+
+  // The table costs m(N-1) calls and each medoid outside the batch (N-1) more:
+  // at least one such medoid makes the exact-DTW branch the subject of this test.
+  const std::uint64_t evaluations = one_stats.distance_evaluations;
+  REQUIRE(evaluations % (n - 1) == 0);
+  const std::uint64_t outside = evaluations / (n - 1) - m;
+  REQUIRE(outside >= 1);
+  REQUIRE(outside <= k);
+}
+
+TEST_CASE("OneBatchPAM's parallel final assignment reports the failure a serial scan meets first",
+          "[one_batch_pam][parallel][nonfinite]")
+{
+  // The poison pair {+DBL_MAX} and {-DBL_MAX} has DTW +inf, every other pair is
+  // finite. Rejecting every swap keeps the seeded initial medoids, so a seed
+  // that draws a poison point as a medoid, with both poison points outside the
+  // batch, fails in the assignment (the table check cannot see it). 70 points
+  // take the OpenMP path.
+  const double huge = std::numeric_limits<double>::max();
+  constexpr int n = 70;
+  std::vector<std::vector<data_t>> series;
+  std::vector<std::string> names;
+  for (int i = 0; i < n - 2; ++i) {
+    series.push_back({ 0.001 * i });
+    names.push_back("s" + std::to_string(i));
+  }
+  series.push_back({ huge });
+  names.push_back("pos");
+  series.push_back({ -huge });
+  names.push_back("neg");
+
+  const auto outcome = [&](int threads, std::uint64_t seed) {
+    const ThreadCount scope(threads);
+    Problem problem("obpam_parallel_nonfinite");
+    problem.set_data(Data(std::vector<std::vector<data_t>>(series), std::vector<std::string>(names)));
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 2;
+    options.batch_size = 4;
+    options.relative_tolerance = 1e300;
+    options.random_seed = seed;
+    try {
+      (void)algorithms::one_batch_pam(problem, options);
+    } catch (const InvalidInput &error) {
+      return std::string(error.what());
+    }
+    return std::string();
+  };
+
+  int failed_in_assignment = 0;
+  for (std::uint64_t seed = 0; seed < 300; ++seed) {
+    const std::string serial = outcome(1, seed);
+    INFO("seed " << seed);
+    REQUIRE(outcome(4, seed) == serial);
+    if (serial.find("nearest-medoid distance at point") != std::string::npos) ++failed_in_assignment;
+  }
+  REQUIRE(failed_in_assignment > 0);
 }

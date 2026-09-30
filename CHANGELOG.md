@@ -31,6 +31,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   missing-data strategy) between a series and 8 others of its length at once (16 in `float32`), one pair per SIMD lane; every
   distance is bit for bit what the one-pair kernel returns. On an Intel Core Ultra 9 285 (24 threads) the unbanded fill of
   ECG5000's 4,500 series drops from 66 s to 3.9 s, and a band-50 fill of 50 series of length 1,000 runs 5.1× faster.
+- **Changed (performance):** OneBatchPAM's final exact assignment, each of the N series against the k medoids (N-1 DTW calls
+  per medoid outside the batch), runs on all OpenMP threads instead of one. Labels, medoids, total cost and the distance count
+  are bit for bit what the serial loop returned, at any thread count. On an Intel Core Ultra 9 285 (24 threads, shared
+  machine) with N = 2,000, k = 10 and 200-sample random walks, the assignment takes 0.041 s instead of 0.90 s (21.9×) and the
+  whole call 0.96 s instead of 1.82 s (1.9×); the table fill before it was already parallel and now bounds the gain.
 - **Changed (build):** llfio is header-only, from SHA-256-pinned GitHub archives, behind one `llfio_hl` target:
   `cmake/Dependencies.cmake` loses the quickcpplib bootstrap, its patched nested superbuild and `add_subdirectory(llfio)`
   (196 lines out, 69 in). The superbuild compiled quickcpplib from `master` and outcome from `develop`, whatever they

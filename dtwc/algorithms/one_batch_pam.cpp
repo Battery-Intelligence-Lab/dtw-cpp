@@ -57,6 +57,15 @@ void validate_options(std::size_t n, const OneBatchPAMOptions& options)
 
 struct FixedBatchDistances {
   Problem& prob;
+  // The dispatcher for the stored precision, resolved once and serially before
+  // any OpenMP region: a legacy raw semantic mutation may require the mutable
+  // getter to rebind once, and its first call validates the request (band
+  // feasibility, non-finite values) with a typed error that must not be thrown
+  // inside a parallel region. Workers read the stable function object; none calls
+  // the accessor. Only the getter for the stored precision: the Float32 one also
+  // rejects variant parameters Float64 data never narrows.
+  const Problem::dtw_fn_f32_t *dtw_f32;
+  const Problem::dtw_fn_t *dtw_f64;
   std::size_t n;
   std::size_t m;
   std::vector<index_t> sample;
@@ -67,22 +76,16 @@ struct FixedBatchDistances {
   std::uint64_t evaluations = 0;
 
   FixedBatchDistances(Problem& problem, std::vector<index_t> batch)
-    : prob(problem), n(problem.size()), m(batch.size()), sample(std::move(batch)),
+    : prob(problem),
+      dtw_f32(problem.data().is_f32() ? &problem.dtw_function_f32() : nullptr),
+      dtw_f64(problem.data().is_f32() ? nullptr : &problem.dtw_function()),
+      n(problem.size()), m(batch.size()), sample(std::move(batch)),
       sample_position(n, -1), raw(n * m, 0.0), weights(m, 0.0)
   {
     for (std::size_t j = 0; j < m; ++j)
       sample_position[static_cast<std::size_t>(sample[j])] = static_cast<index_t>(j);
 
-    // Resolve the getter serially before entering OpenMP: a legacy raw
-    // semantic mutation may require the mutable getter to rebind once, and its
-    // first call validates the request (band feasibility, non-finite values)
-    // with a typed error that must not be thrown inside the parallel region.
-    // Only the getter for the stored precision: the Float32 one also rejects
-    // variant parameters Float64 data never narrows. Each worker then reads a
-    // stable function object and writes a disjoint row.
-    const bool f32 = prob.data().is_f32();
-    const Problem::dtw_fn_f32_t *dtw_f32 = f32 ? &prob.dtw_function_f32() : nullptr;
-    const Problem::dtw_fn_t *dtw_f64 = f32 ? nullptr : &prob.dtw_function();
+    // Each worker writes a disjoint row.
     std::vector<std::uint64_t> row_evaluations(n, 0);
     std::vector<double> row_maxima(n, 0.0);
     auto fill_row = [&](std::size_t i) {
@@ -91,13 +94,7 @@ struct FixedBatchDistances {
       for (std::size_t j = 0; j < m; ++j) {
         double d = 0.0;
         if (i != static_cast<std::size_t>(sample[j])) {
-          if (f32)
-            d = (*dtw_f32)(
-              prob.data().series_f32(i),
-              prob.data().series_f32(static_cast<std::size_t>(sample[j])));
-          else
-            d = (*dtw_f64)(prob.series(i),
-                           prob.series(static_cast<std::size_t>(sample[j])));
+          d = dtw(i, static_cast<std::size_t>(sample[j]));
           ++calls;
         }
         if (!std::isfinite(d) || d < 0.0)
@@ -133,6 +130,13 @@ struct FixedBatchDistances {
     for (double& weight : weights) weight /= mean;
   }
 
+  double dtw(std::size_t a, std::size_t b) const
+  {
+    if (dtw_f32)
+      return (*dtw_f32)(prob.data().series_f32(a), prob.data().series_f32(b));
+    return (*dtw_f64)(prob.series(a), prob.series(b));
+  }
+
   double estimate(std::size_t candidate, std::size_t batch_column) const
   {
     // The authors' obpam experiment code replaces d(x,x)=0 by the actual finite
@@ -143,19 +147,17 @@ struct FixedBatchDistances {
     return (raw[candidate * m + batch_column] / scale) * weights[batch_column];
   }
 
-  double exact(std::size_t point, index_t medoid)
+  /// Distance of a point to a medoid: the table entry when the medoid is in the
+  /// batch, else one DTW call, added to the caller's own tally `calls`. Const,
+  /// so every worker may call it on its own point.
+  double exact(std::size_t point, index_t medoid, std::uint64_t& calls) const
   {
     const index_t column = sample_position[static_cast<std::size_t>(medoid)];
     if (column >= 0)
       return raw[point * m + static_cast<std::size_t>(column)];
     if (point == static_cast<std::size_t>(medoid)) return 0.0;
-    ++evaluations;
-    if (prob.data().is_f32())
-      return prob.dtw_function_f32()(
-        prob.data().series_f32(point),
-        prob.data().series_f32(static_cast<std::size_t>(medoid)));
-    return prob.dtw_function()(prob.series(point),
-                               prob.series(static_cast<std::size_t>(medoid)));
+    ++calls;
+    return dtw(point, static_cast<std::size_t>(medoid));
   }
 };
 
@@ -316,27 +318,36 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   result.medoid_indices = medoids;
   result.labels.resize(n);
   std::vector<double> point_cost(n, 0.0);
+  std::vector<std::uint64_t> point_evaluations(n, 0);
 
-  // exact() updates the evaluation counter, so keep this loop serial. DTW work
-  // dominates and selected medoids are frequently in the batch; correctness
-  // and an exact observable count are preferable to an atomic hot path here.
+  // Race-free by design: point p alone writes labels[p], point_cost[p] and
+  // point_evaluations[p]; the batch table, the medoids and the series are
+  // read-only here. The DTW call count and the objective are combined serially
+  // after the region, in point order, so neither depends on the thread count.
   //
   // exact() is the one distance read here that the fixed-batch table's
   // finiteness check cannot cover: it is reached precisely when a selected
   // medoid is NOT in the batch. Unguarded, a non-finite d makes `d < best` false
   // in every slot, the point silently keeps label 0, and the run publishes a
-  // wrong partition where fast_pam and fast_clara throw.
-  for (std::size_t point = 0; point < n; ++point) {
+  // wrong partition where fast_pam and fast_clara throw. run_openmp rethrows the
+  // failure of the lowest point, the one a serial scan meets first.
+  auto assign_point = [&](std::size_t point) {
     double best = std::numeric_limits<double>::infinity();
     index_t label = 0;
+    std::uint64_t calls = 0;
     for (index_t slot = 0; slot < k; ++slot) {
       const double d = core::detail::require_finite_medoid_distance(
-        distances.exact(point, medoids[slot]), "one_batch_pam", point, slot, medoids[slot]);
+        distances.exact(point, medoids[slot], calls), "one_batch_pam", point, slot,
+        medoids[slot]);
       if (d < best) { best = d; label = slot; }
     }
     result.labels[point] = label;
     point_cost[point] = best;
-  }
+    point_evaluations[point] = calls;
+  };
+  run_openmp(assign_point, n, n > 64);
+  distances.evaluations += std::accumulate(point_evaluations.begin(), point_evaluations.end(),
+                                           std::uint64_t{0});
   // A medoid tied with another medoid (a duplicate series) serves itself, or its
   // own cluster would be published empty. Its own distance is exactly 0, so a
   // best of 0 is that tie. After the scan, so the scan's min stays branch-free.
