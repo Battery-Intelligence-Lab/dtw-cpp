@@ -95,8 +95,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`) (K1 `8bd6881`, `123146b`, `d114677`, `f705329`; merged
   `4441969`); the fill band is FALSIFIED — the unbanded fill runs the EAPruned kernel, which made no call; P1 measures
   lanes against it
-- ☐ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
-  compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions)
+- ☑ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
+  compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions) (Y4 a46b0f7, ac311c4, aa7487b; merged 93eefe1; matlab_suite 119/120 + 1 allowed incomplete on R2024b and R2025b)
 - ☑ P1 lanes in the CPU fill, after K1 and Y2: `dtw_kernel_lanes<T, W, Cell>` beside `_linear` / `_banded`, W one cache
   line of T; the fill steps a row by W columns of equal length, per-pair kernel otherwise; Standard DTW, L1 and
   squared L2, full and banded first; bitwise equal to the per-pair fill; band ≥ 2× on the 24-thread fill
@@ -186,8 +186,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `dumpbin /dependents` leg).
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
 - Linux wheel: whether `libgomp` ships, and the notice says so.
-- Two crashes recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42); an
-  llfio-ON MEX under R2024b in `std::mutex` (F43).
+- A crash recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42). F43 (an llfio-ON MEX under R2024b crashing in `std::mutex`) did not reproduce on 2026-09-30, and no MEX route maps a matrix yet (Y4, `baselines/2026-09-30-y4-matlab.md`).
 - X2 merged `4de2ce9` on 2026-09-30; its Release `dtwc_cl.exe` ran without a Sophos event
 
 ## Records
