@@ -91,6 +91,7 @@ struct DeviceLimits {
   bool slow_fp64 = false;                ///< FP32 runs more than twice as fast as FP64
   int sm_count = 0;                      ///< multiprocessors, for the persistent grid
   size_t max_shared_per_block = 0;       ///< opt-in maximum, static + dynamic
+  size_t l2_bytes = 0;                   ///< L2 cache, which the global wavefront's slices fit
   size_t wavefront_static_bytes[2] = {}; ///< the FP32 and FP64 wavefront kernels' own
   cudaError_t setup_error = cudaSuccess;
   std::once_flag set_up;
@@ -140,6 +141,7 @@ const DeviceLimits &device_limits(int device_id)
       device.sm_count = read(cudaDevAttrMultiProcessorCount, d);
       device.max_shared_per_block =
           static_cast<size_t>(read(cudaDevAttrMaxSharedMemoryPerBlockOptin, d));
+      device.l2_bytes = static_cast<size_t>(read(cudaDevAttrL2CacheSize, d));
     }
   });
   CUDA_CHECK(read_error);
@@ -977,6 +979,7 @@ void launch_dtw_kernel(
   constexpr int block_size = 256;
   const size_t wavefront_shared_mem =
       global ? 0 : detail::wavefront_buffer_count(max_L) * max_L * sizeof(T);
+  const auto &device = device_limits(device_id);
   int persistent_grid = 0;
   if (wavefront) {
     int blocks_per_sm = 0;
@@ -987,10 +990,17 @@ void launch_dtw_kernel(
       cudaOccupancyMaxActiveBlocksPerMultiprocessor(
           &blocks_per_sm, dtw_wavefront_kernel<T, WavefrontBuffers::Shared>, block_size,
           wavefront_shared_mem);
-    persistent_grid = device_limits(device_id).sm_count * std::max(blocks_per_sm, 1);
+    persistent_grid = device.sm_count * std::max(blocks_per_sm, 1);
   }
+  // A global block's slice holds three anti-diagonals of max_L values. The grid
+  // holds no more slices than fit the L2 cache, and a block per SM at least:
+  // past the L2 their traffic goes to DRAM, which halved the FP32 fill at
+  // L = 20,000 on an RTX 4000 Ada (.claude/baselines/2026-09-30-c1-cuda-long-series.md).
+  const auto l2_slices = static_cast<std::int64_t>(device.l2_bytes / (3 * max_L * sizeof(T)));
   const int global_grid =
-      global ? static_cast<int>(std::min<std::int64_t>(chunk, persistent_grid)) : 0;
+      global ? static_cast<int>(std::min(std::min<std::int64_t>(chunk, persistent_grid),
+                                         std::max<std::int64_t>(device.sm_count, l2_slices)))
+             : 0;
 
   // Every device buffer the launches use is allocated before the caller's
   // matrix, so a device that cannot hold them refuses the fill first. A

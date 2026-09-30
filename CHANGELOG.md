@@ -12,9 +12,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   anti-diagonals) did not fit a block's shared memory was refused with `DeviceError`: on an RTX 4000 Ada any series longer
   than 8,446 samples in FP32 or 4,223 in FP64, so `data/dummy` (up to 9,405 samples) could not run with `--device gpu`.
   Those buffers now live in global memory, with the same arithmetic: every distance is the host kernel's bit for bit (in
-  FP32, the host FP32 kernel's), and `data/dummy` clusters on the GPU with the labels and medoids of `--device cpu`. On an
-  RTX 4000 Ada the FP32 fill runs 82 Gcell/s at L = 10,000, 2.1× the CPU fill on the 8 P-cores of an Intel Core Ultra 9
-  285, and 38 Gcell/s at L = 20,000 (1.1×), where the buffers no longer fit the GPU's 40 MB L2 cache.
+  FP32, the host FP32 kernel's), and `data/dummy` clusters on the GPU with the labels and medoids of `--device cpu`. The
+  fill runs no more blocks than the L2 cache holds buffers for. On an RTX 4000 Ada the FP32 fill runs 82 Gcell/s at
+  L = 10,000 and 73 at L = 20,000, 2.1× and 2.2× the CPU fill on the 8 P-cores of an Intel Core Ultra 9 285.
 - **Changed (GPU):** the CUDA distance-matrix fill runs for any number of series; it refused more than 65,536. It
   computes at most 2^27 pairs per launch and copies each launch's share of the packed matrix straight into the
   `Problem`'s matrix, on the heap or memory-mapped, where it built an N×N matrix on the GPU and two more on the host

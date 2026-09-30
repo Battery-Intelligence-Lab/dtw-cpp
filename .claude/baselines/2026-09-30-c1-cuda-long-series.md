@@ -6,8 +6,9 @@ on this GPU, a typed refusal since W4d) with the host kernel's distances, and ho
 **Answer:** yes. Above the shared-memory limit the wavefront keeps its three anti-diagonals in global memory, one slice
 per resident block, with the shared kernel's source and arithmetic; every tested distance is the host kernel's bit for
 bit, and the eight existing kernels are byte-identical in SASS. FP32 public fill, pinned: 82.1 Gcell/s at L = 10,000
-(CPU fill on the 8 P-cores: 38.6) and 38.2 at L = 20,000 (CPU 33.7). The fall above L ≈ 12,000 is the 40 MB L2: capping
-the resident blocks so the scratch fits it gives 75.7 Gcell/s at L = 20,000 (probe; step 1b decides it behind a band).
+(CPU fill on the 8 P-cores: 38.6) and 38.2 at L = 20,000 (CPU 33.7). The fall above L ≈ 12,000 is the 40 MB L2: step 1b
+runs no more blocks than the L2 holds slices for, which passed its band and gives 73.2 Gcell/s at L = 20,000 (2.2× the
+CPU fill).
 
 Machine: RTX 4000 Ada (sm_89, 48 SMs, 101,376 B opt-in shared memory per block, 40 MB L2, 360 GB/s, WDDM, driver 596.72),
 Intel Core Ultra 9 285. Trees of worktree `C:/D/git/wt/C1`: `build` (clang, Ninja, Release) and `build-cuda` (MSVC 14.50 +
@@ -78,3 +79,43 @@ when the blocks are capped so that it fits; the distances are unchanged (the gri
 CUDA tree: ctest 121 / 0 failed (Metal skips 2); `test_cuda_correctness` 59 cases / 7169 assertions passed (base 56 / 7145; launch guards 4 passed + 1 skip, as at base). Clang tree: ctest 122 = 119
 passed + 3 MAY_SKIP (`test_cuda_correctness`, `test_metal_correctness`, `test_metal_mmap`), `cpp_conformance` passed.
 `check_docs.py` PASS, `check_pins.py` 0 failures, `generate_docs.py --check` current.
+
+## Step 1b — the global route runs at most as many blocks as the L2 holds slices
+
+Change: `DeviceLimits` reads `cudaDevAttrL2CacheSize` once; the global grid is
+min(pairs of the launch, resident blocks, max(SMs, L2 bytes / (3 · max_L · sizeof(T)))). Host code only.
+
+### Band — registered 2026-09-30 19:30 BST, before the first timed run of the head
+
+- Measure: `long_fill gpu N L 5` (public fill, precision Auto; FP64 cases through a `long_fill` built with FP64 forced,
+  see below), median of 5 fills after one warm-up fill, under `start /affinity 0xC03C03` (8 P-cores). Base: `long_fill`
+  linked against step 1 (`9cc754a`, sha256 `aef92d7f…4321`). Head: the same source linked against the step-1b library.
+  Base and head back to back in one session, alternating per case.
+- Cases, N = 48: FP32 L = 10,000 (cap 349 blocks, not binding: 288 run), 14,000, 16,000, 20,000 (binding: 249, 218,
+  174 blocks); FP64 L = 5,000 (not binding) and 10,000 (binding, 174 blocks). No shared-route case: the change is inside
+  the global route's grid only (host code; the shared route's launches are untouched).
+- Pass, every case: head median ≤ 1.05 × base median. Where the cap binds in FP32 (the gain the step-1 probe showed:
+  0.83, 0.65, 0.50): head ≤ 0.90 × base at 14,000 and 16,000, ≤ 0.70 × base at 20,000. No gain is claimed in FP64 (the
+  FP64 wavefront is bound by the 1:64 FP64 rate, not memory [assumed]); FP64 10,000 must stay ≤ 1.05.
+- Distances: head `d(0,1)` and `d(N−1,N−2)` equal to base's in every case (the grid only schedules pairs).
+- Noise: a case outside the band is re-run once, base and head back to back; still outside, the cap is FALSIFIED and does
+  not land (no per-precision variant).
+
+### Band results [inferred: CPU load 0–70 % from other agents; the fills are GPU-bound]
+
+Run 1, 19:33–19:39 BST (`step1b_band.txt`); head `long_fill` sha256 `5ade24f2…5111`:
+
+| case (N = 48) | grid base → head | base median | head median | head / base | registered | verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| FP32 L 10,000 | 288 → 288 | 1.3916 s | 1.3923 s | 1.001 | ≤ 1.05 | pass |
+| FP32 L 14,000 | 288 → 249 | 3.5007 s | 2.9055 s | 0.830 | ≤ 0.90 | pass |
+| FP32 L 16,000 | 288 → 218 | 5.7578 s | 3.8632 s | 0.671 | ≤ 0.90 | pass |
+| FP32 L 20,000 | 288 → 174 | 11.9639 s | 6.1669 s | 0.515 | ≤ 0.70 | pass |
+| FP64 L 5,000 | 288 → 288 | 1.0133 s | 0.9766 s | 0.964 | ≤ 1.05 | pass (ranges overlap) |
+| FP64 L 10,000 | 288 → 174 | 5.4294 s | 4.1533 s | 0.765 | ≤ 1.05 | pass, and 24 % less time |
+
+Every case's `d(0,1)` and `d(N−1,N−2)` equal base's. The FP64 gain falsifies the band's assumption that the FP64 route is
+bound by the FP64 rate alone. The cap lands: the FP32 fill at L = 20,000 is 73.2 Gcell/s, 2.2× the CPU fill of the same
+matrix (33.7), where step 1 was 1.13×. The kernels' SASS is step 1's, byte for byte (host change). Tests: the 64-series
+case now runs FP64 at twice the limit (L 8448: 206 of 288 blocks, 2016 pairs). CUDA tree ctest 121 / 0 failed,
+`test_cuda_correctness` 59 cases / 7169 assertions.

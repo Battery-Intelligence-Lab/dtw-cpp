@@ -1,5 +1,6 @@
-// C1: Problem::fill_distance_matrix of the same N x L series on the GPU (precision Auto) or the
-// CPU, one warm-up fill on the GPU, then REPS timed fills. Usage: long_fill <gpu|cpu> <N> <L> <REPS>.
+// C1: Problem::fill_distance_matrix of the same N x L series on the GPU (gpu: precision Auto;
+// gpu64: FP64) or the CPU, one warm-up fill on the GPU, then REPS timed fills.
+// Usage: long_fill <gpu|gpu64|cpu> <N> <L> <REPS>.
 // Series: bench_cuda_dtw's benchmark_series_set(N, L, 200). Scratch tool; not part of the library.
 #include <dtwc.hpp>
 
@@ -16,10 +17,11 @@
 int main(int argc, char **argv)
 {
   if (argc != 5) {
-    std::fprintf(stderr, "usage: long_fill <gpu|cpu> <N> <L> <REPS>\n");
+    std::fprintf(stderr, "usage: long_fill <gpu|gpu64|cpu> <N> <L> <REPS>\n");
     return 1;
   }
-  const bool gpu = std::string(argv[1]) == "gpu";
+  const std::string device = argv[1];
+  const bool gpu = device == "gpu" || device == "gpu64";
   const std::size_t N = std::strtoull(argv[2], nullptr, 10);
   const std::size_t L = std::strtoull(argv[3], nullptr, 10);
   const int reps = std::atoi(argv[4]);
@@ -31,6 +33,7 @@ int main(int argc, char **argv)
   prob.set_data(dtwc::Data(std::move(series), std::move(names)));
   if (gpu) {
     prob.set_device(dtwc::Device::GPU);
+    if (device == "gpu64") prob.set_cuda_settings({ 0, dtwc::GpuPrecision::FP64 });
     prob.fill_distance_matrix(); // warm-up: the CUDA context and this thread's buffers
   }
 

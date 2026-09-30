@@ -625,17 +625,20 @@ TEST_CASE("CUDA fill of series beyond the shared-memory limit matches the host k
           == (c.fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series)));
 }
 
-// More pairs than the device holds blocks, so each block runs several pairs in
-// its own slice of the global scratch: one series at the limit and 63 of 1 to
-// 300 samples, which keeps the host oracle cheap.
+// More pairs than the grid has blocks, so each block runs several pairs in its
+// own slice of the global scratch: one long series and 63 of 1 to 300 samples,
+// which keeps the host oracle cheap. At FP64 twice the limit the slices of the
+// resident blocks pass the L2 (40 MB on the RTX 4000 Ada), so the grid is cut to
+// the slices the L2 holds.
 TEST_CASE("CUDA global-memory wavefront runs many pairs per block",
           "[cuda][long]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
   const bool fp32 = GENERATE(true, false);
-  CAPTURE(fp32);
-  auto series = generate_random_walks(64, first_global_length(fp32), /*seed=*/20261002);
+  const size_t L = fp32 ? first_global_length(true) : 2 * first_global_length(false);
+  CAPTURE(fp32, L);
+  auto series = generate_random_walks(64, L, /*seed=*/20261002);
   for (size_t k = 1; k < series.size(); ++k) series[k].resize(1 + (k * 37) % 300);
 
   dtwc::cuda::CUDADistMatOptions opts;
