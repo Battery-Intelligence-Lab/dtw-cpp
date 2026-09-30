@@ -8,7 +8,7 @@ classdef Dataset < handle
 %   array of numeric vectors for ragged series, or a file path) plus load
 %   options. It performs NO file I/O at construction time — a
 %   path is only read when materialize() is called (from dtwc.cluster). This
-%   preserves the large-N / device='hpc' lazy-load contract.
+%   preserves the large-N lazy-load contract.
 %
 %   Create via dtwc.load(...), not directly.
 %

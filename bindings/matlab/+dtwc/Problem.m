@@ -50,7 +50,8 @@ classdef Problem < handle
         %   Device: 'cpu' (default), 'gpu', 'gpu:N', 'cuda' or 'cuda:N' -- the
         %   names dtwc.device() accepts. A Problem does not follow the
         %   process-wide dtwc.device(). 'gpu' without a GPU backend raises
-        %   dtwc:deviceError; 'hpc' raises dtwc:invalidArgument.
+        %   dtwc:deviceError, as does 'hpc' (Python's dtwcpp.device("hpc") submits a
+        %   run to SLURM; MATLAB computes where it starts).
             if nargin < 1, name = ''; end
             p = inputParser;
             addParameter(p, 'Device', 'cpu', @(v) ischar(v) || isstring(v));
@@ -281,12 +282,6 @@ classdef Problem < handle
         %SET_SOLVER Set the MIP solver ('highs' or 'gurobi').
         %   ok = prob.set_solver('highs')  % ok=false if solver not compiled in
             ok = dtwc_mex('Problem_set_solver', obj.Handle, char(s));
-        end
-
-        function set_storage_policy(obj, s)
-        %SET_STORAGE_POLICY Set storage for the next owning set_data call.
-        %   Existing data is unchanged. Values: 'auto' | 'heap' | 'mmap'.
-            dtwc_mex('Problem_set_storage_policy', obj.Handle, char(s));
         end
 
         function set_output_folder(obj, dir)

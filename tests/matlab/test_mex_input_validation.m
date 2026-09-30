@@ -292,8 +292,7 @@ function test_unknown_problem_selector_tokens_remain_typed(testCase)
     calls = {
         @() dtwc_mex('Problem_set_variant', h, 'bogus'), ...
         @() dtwc_mex('Problem_set_missing_strategy', h, 'bogus'), ...
-        @() dtwc_mex('Problem_set_distance_strategy', h, 'bogus'), ...
-        @() dtwc_mex('Problem_set_storage_policy', h, 'bogus')
+        @() dtwc_mex('Problem_set_distance_strategy', h, 'bogus')
     };
     for i = 1:numel(calls)
         verifyError(testCase, calls{i}, 'dtwc:invalidArgument');

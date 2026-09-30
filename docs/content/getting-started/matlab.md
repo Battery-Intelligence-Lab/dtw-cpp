@@ -184,6 +184,6 @@ The MATLAB and Python APIs are designed to mirror each other where reasonable:
 | `clf.medoid_indices_` | `clust.MedoidIndices` | 0-based vs 1-based |
 | `clf.inertia_` | `clust.TotalCost` | |
 | `Problem("p", device="gpu")` | `dtwc.Problem('p', 'Device', 'gpu')` | a `Problem`'s device; it does not follow `dtwc.device()` |
-| `prob.set_device("cpu")` | `prob.set_device('cpu')` | same names as `dtwc.device()`; `'hpc'` is `dtwc:invalidArgument` |
+| `prob.set_device("cpu")` | `prob.set_device('cpu')` | same names as `dtwc.device()`; `'hpc'` is Python's alone and is `dtwc:deviceError` here |
 
 

@@ -7,12 +7,13 @@ function out = device(name)
 %   name = dtwc.device()          % get the current normalised device name
 %   name = dtwc.device('cpu')     % set the device; returns the normalised name
 %
-%   Accepts: 'cpu', 'gpu', 'gpu:N', 'cuda', 'cuda:N', 'hpc' (case-insensitive).
-%   Delegates to the single dtwc::Env device registry shared by C++/Python/MATLAB.
+%   Accepts: 'cpu', 'gpu', 'gpu:N', 'cuda', 'cuda:N' (case-insensitive).
+%   Delegates to C++ dtwc::device(), the process-wide default of the C++ core.
 %
 %   No silent fallback: an unknown name, 'gpu' on a build without a GPU backend,
-%   or an 'hpc' .env credential failure raises a 'dtwc:deviceError' — the device
-%   is never quietly downgraded to CPU.
+%   or 'hpc' (Python's dtwcpp.device("hpc") submits a run to SLURM; MATLAB
+%   computes where it starts) raises a 'dtwc:deviceError' — the device is never
+%   quietly downgraded to CPU.
 %
 %   See also dtwc.cluster, dtwc.DTWClustering
 
