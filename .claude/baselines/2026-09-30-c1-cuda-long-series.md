@@ -179,6 +179,16 @@ Confirmation of the R2 build against base, 19:57–19:59 (`step2_confirm_r2.txt`
 CUDA tree ctest 121 / 0 failed, `test_cuda_correctness` 59 / 7169 (the regime test runs FP32 L = 2049 with the
 attribute, bit for bit). The clang tree compiles none of it (`ninja: no work to do`).
 
+**Not landed after all: step 2 is reverted** (the commit after the compute-capability floor). The review found, and
+NVIDIA's runtime API references confirm, that `cudaLaunchAttributePreferredSharedMemoryCarveout` and
+`cudaLaunchAttributeValue::sharedMemCarveout` first appear in CUDA 12.5 (absent from the 12.4.0 reference), while the
+project builds with CUDA 12.0 and later and the ARC scripts load `CUDA/12.4.0`: the step broke those builds. The other
+ways to set a carveout are no better: the function attribute is one value for every host thread (the race W4d removed),
+and a second instantiation of the same kernel only to carry the attribute is an abstraction for a knob. The 64 % rule is
+also specific to an SM with 100 KB of shared memory in a 128 KB L1 (sm_86/sm_89): on an H100 the same hint would leave
+the block count alone and only take L1 [inferred, unmeasured]. The measured gain (17–20 % at FP32 L 2049–2644 on the RTX
+4000 Ada) stands for a ruling: raise the CUDA floor to 12.5 and gate the rule on the SM's shared memory, or leave it.
+
 ## Step 3 — the preload wavefront compiled apart (W4a: −15–17 % at FP32 L 257–500)
 
 Change: a third instantiation, `dtw_wavefront_kernel<T, Preload>`, compiles only the preload mode (both series and the
