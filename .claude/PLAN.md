@@ -143,11 +143,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## E — interface (W7 → W8 ‖ W9 + W10)
 
-- ☐ W7a `DistanceConfig`; `set_distance / set_band / set_metric / set_variant / set_missing_strategy`
-  invalidate the matrix; `bool filled_` — MATLAB cannot set `msm_c`, `twe_nu`, `twe_lambda` today (W6m); the same setters clear the clustering too (B3)
-- ☐ W7b `resolve_dtw_fn(const DistanceConfig&)`; O(1) `dist_by_ind`; the preflight machinery goes. Acceptance:
+- ☑ W7a `DistanceConfig`; `set_distance / set_band / set_metric / set_variant / set_missing_strategy`
+  invalidate the matrix; `bool filled_` — MATLAB cannot set `msm_c`, `twe_nu`, `twe_lambda` today (W6m); the same setters clear the clustering too (B3) (E1 2645fbc, 3c15a4e; merged 770816e)
+- ☑ W7b `resolve_dtw_fn(const DistanceConfig&)`; O(1) `dist_by_ind`; the preflight machinery goes. Acceptance:
   `dist_by_ind`'s parallel read path has no critical, atomic, validation flag or lazy allocation; a method that
-  needs the matrix prepares it serially at entry
+  needs the matrix prepares it serially at entry (E1 2645fbc, 3c15a4e; merged 770816e; PAM swap 5.6–5.9× faster, no lock or atomic left in dtwc/)
 - ☐ W7c one `validate(DistanceConfig)`; `core/dtw.*`, `DTWOptions`, selector validation go
 - ☐ W7d one orientation helper replaces the copied preambles
 - ☐ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers (WDTW weights at bind done in E1); the mutable
