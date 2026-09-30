@@ -15,10 +15,14 @@
 #include <memory>
 #include <string>
 
+// The runtime also keeps a failed call's error as the thread's last error, which
+// a launch is checked with (cudaGetLastError); consume it here, where it is
+// reported, or the thread's next launch reports it again.
 #define CUDA_CHECK(call)                                                     \
   do {                                                                       \
     cudaError_t err = (call);                                                \
     if (err != cudaSuccess) {                                                \
+      cudaGetLastError();                                                    \
       throw dtwc::DeviceError(std::string("CUDA error at ") + __FILE__ +    \
                               ":" + std::to_string(__LINE__) + ": " +       \
                               cudaGetErrorString(err));                      \

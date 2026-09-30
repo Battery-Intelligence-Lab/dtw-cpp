@@ -715,6 +715,30 @@ TEST_CASE("CUDA fill of all-empty series is InvalidInput and no zero matrix", "[
   CHECK(untouched.size() == 0);
 }
 
+// A CUDA call that fails is reported once, by the fill that made it. The
+// runtime also keeps the error as the thread's last error, which each launch is
+// checked with, so the thread's next fill used to fail with it: here
+// cudaSetDevice's "invalid device ordinal" for a device index past the last.
+TEST_CASE("A fill the CUDA runtime refuses leaves the thread's next fill unaffected", "[cuda]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  int device_count = 0;
+  REQUIRE(cudaGetDeviceCount(&device_count) == cudaSuccess);
+  const auto series = generate_random_series(4, 60, /*seed=*/13);
+  const auto before = gpu_fill(series); // the thread's CUDA context exists from here
+
+  dtwc::cuda::CUDADistMatOptions missing_device;
+  missing_device.device_id = device_count;
+  dtwc::core::DistanceMatrix untouched;
+  REQUIRE_THROWS_MATCHES(
+      dtwc::cuda::compute_distance_matrix_cuda(series, missing_device, untouched),
+      dtwc::DeviceError, MessageMatches(ContainsSubstring("invalid device ordinal")));
+  CHECK(untouched.size() == 0);
+
+  REQUIRE(gpu_fill(series).matrix == before.matrix);
+}
+
 // ---------------------------------------------------------------------------
 // Banded DTW: GPU vs CPU comparison
 // ---------------------------------------------------------------------------
