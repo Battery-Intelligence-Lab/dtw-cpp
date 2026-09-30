@@ -703,11 +703,18 @@ static void cmd_Problem_fill_distance_matrix(int nlhs, mxArray *plhs[], int nrhs
 static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 4) throw std::invalid_argument("Problem_dist_by_ind requires handle, i, j.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  // Convert from MATLAB 1-based to C++ 0-based
-  int i = to_0based(get_exact_int(prhs[2], "i"), "i");
-  int j = to_0based(get_exact_int(prhs[3], "j"), "j");
-  double d = prob.dist_by_ind(i, j);
-  plhs[0] = mxCreateDoubleScalar(d);
+  // Problem::dist_by_ind is the unchecked hot path: this boundary owns the range check.
+  const auto n = static_cast<int>(prob.size());
+  const auto index = [&](int arg, const char *name) {
+    const int i = to_0based(get_exact_int(prhs[arg], name), name);
+    if (i >= n)
+      throw std::invalid_argument(std::string(name) + " = " + std::to_string(i + 1)
+        + " is outside 1..N (N = " + std::to_string(n) + ").");
+    return i;
+  };
+  const int i = index(2, "i");
+  const int j = index(3, "j");
+  plhs[0] = mxCreateDoubleScalar(prob.dist_by_ind(i, j));
 }
 
 static void cmd_Problem_cluster(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {

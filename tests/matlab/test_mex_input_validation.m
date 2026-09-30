@@ -571,6 +571,27 @@ function test_index_arguments_must_be_at_least_one(testCase)
         'dtwc:invalidArgument');
 end
 
+function test_dist_by_ind_index_above_n_is_an_error(testCase)
+%   Problem::dist_by_ind is the unchecked hot path and returned 0 for an index
+%   past the last series; the boundary owns the check and names index and N.
+    h = int_problem(testCase);   % N = 4
+    verifyGreaterThan(testCase, dtwc_mex('Problem_dist_by_ind', h, 4, 1), 0);   % N is valid
+    for bad = {5, 100}
+        verifyError(testCase, @() dtwc_mex('Problem_dist_by_ind', h, bad{1}, 1), ...
+            'dtwc:invalidArgument', sprintf('i = %g', bad{1}));
+        verifyError(testCase, @() dtwc_mex('Problem_dist_by_ind', h, 1, bad{1}), ...
+            'dtwc:invalidArgument', sprintf('j = %g', bad{1}));
+    end
+    err = [];
+    try
+        dtwc_mex('Problem_dist_by_ind', h, 1, 5);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'j = 5 was accepted');
+    verifySubstring(testCase, err.message, 'j = 5');
+    verifySubstring(testCase, err.message, 'N = 4');
+end
+
 function test_a_double_handle_must_be_an_exact_integer(testCase)
     h = int_problem(testCase);
     verifyEqual(testCase, dtwc_mex('Problem_get_size', double(h)), 4);
