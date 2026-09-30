@@ -116,8 +116,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W4d CUDA: `KernelOverride` and fallback flags go; `gpu_config.cuh` reads attributes once at bind (sm_120 FP64
   fixed; its mutex and atomics go); FP32 L = 4095–4096 "invalid argument" fixed (the 48 KiB check ignores static
   shared memory; W4a) (W4d 4479ec0, 3a1e54e, e4a1d77, d46ac35, f22155f, 6b83682, d62c417, c3e24ae, 350ae39, a14454b; merged febd25f)
-- ☐ W4e Metal: one pipeline, one wavefront template, scratch failure → `DeviceError` (macOS CI)
-- ☐ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset
+- ☐ W4e Metal: one pipeline, one wavefront template, scratch failure → `DeviceError` (macOS CI) — a bad_alloc in Metal's out.resize leaks its released buffers (W13a review)
+- ☑ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset (W13a e9216f4, ccc07db, c67dd3f, 71a26b6, 08db34d, 1affff2, ace7f07; merged 62d5822; no fill.cpp — the fill was already one function; FP32 L 100 fill 0.756× base time, host memory at N 20,000 L 1000 6.2 → 1.6 GB)
   (the N ≤ 65,536 refusal goes); a backend refuses before the N×N matrix is allocated — today `Problem` resizes first,
   so a huge N on a host without a GPU hits bad_alloc before DeviceError (W4d review)
 - ☐ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C
