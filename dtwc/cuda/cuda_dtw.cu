@@ -34,6 +34,7 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -51,6 +52,13 @@ namespace dtwc::cuda {
 // int64 correction, fixing the int32 overflow of the retired local copy.
 using dtwc::detail::decode_pair;
 
+// Declared for the device setup below; defined with the other kernels.
+template <typename T>
+__global__ void dtw_wavefront_kernel(
+    const T *__restrict__ all_series, const int *__restrict__ lengths,
+    T *__restrict__ result_matrix, int N_series, int max_L, int num_pairs,
+    bool use_squared_l2, int band, int *__restrict__ work_counter);
+
 namespace {
 
 __device__ __forceinline__ bool fixed_band_contains(int i, int j, int band)
@@ -59,23 +67,42 @@ __device__ __forceinline__ bool fixed_band_contains(int i, int j, int band)
   return (i >= j) ? (i - j <= band) : (j - i <= band);
 }
 
-/// What the fill needs to know about a device.
+/// What the fill needs to know about a device, and the device's one-time setup.
 struct DeviceLimits {
-  bool slow_fp64;              ///< FP32 runs more than twice as fast as FP64
-  int sm_count;                ///< multiprocessors, for the persistent grid
-  size_t max_shared_per_block; ///< opt-in maximum, static + dynamic
+  bool slow_fp64 = false;                ///< FP32 runs more than twice as fast as FP64
+  int sm_count = 0;                      ///< multiprocessors, for the persistent grid
+  size_t max_shared_per_block = 0;       ///< opt-in maximum, static + dynamic
+  size_t wavefront_static_bytes[2] = {}; ///< the FP32 and FP64 wavefront kernels' own
+  cudaError_t setup_error = cudaSuccess;
+  std::once_flag set_up;
 };
 
-/// The limits of every device, read once per process and read-only after.
-/// @p device_id must have passed cudaSetDevice.
+/// Opens the whole opt-in shared memory of a block to the wavefront kernel in
+/// T on the current device, and records the kernel's static part.
+template <typename T>
+cudaError_t open_wavefront_shared_memory(DeviceLimits &device)
+{
+  cudaFuncAttributes attributes{};
+  const cudaError_t error = cudaFuncGetAttributes(&attributes, dtw_wavefront_kernel<T>);
+  if (error != cudaSuccess) return error;
+  device.wavefront_static_bytes[std::is_same_v<T, double>] = attributes.sharedSizeBytes;
+  return cudaFuncSetAttribute(
+      dtw_wavefront_kernel<T>, cudaFuncAttributeMaxDynamicSharedMemorySize,
+      static_cast<int>(device.max_shared_per_block - attributes.sharedSizeBytes));
+}
+
+/// Every device's limits, read once per process, and each device's setup, run
+/// once on its first fill. The wavefront kernels' dynamic shared-memory limit is
+/// one value per kernel and device, shared by every host thread: opened fully
+/// once, it is never set per launch, where one thread lowered it under another's
+/// launch. Read-only afterwards. Neither callable throws: where call_once runs on
+/// glibc's pthread_once, a throw can hang the next caller on non-x86 targets
+/// such as aarch64 (GCC PR 66146). @p device_id must have passed cudaSetDevice.
 const DeviceLimits &device_limits(int device_id)
 {
-  static std::vector<DeviceLimits> limits;
+  static std::unique_ptr<DeviceLimits[]> limits;
   static cudaError_t read_error = cudaSuccess;
   static std::once_flag read_once;
-  // The callable records an error rather than throwing it: where call_once
-  // runs on glibc's pthread_once, a throw can hang the next caller on non-x86
-  // targets such as aarch64 (GCC PR 66146).
   std::call_once(read_once, [] {
     const auto read = [](cudaDeviceAttr attribute, int device) {
       int value = 0;
@@ -85,14 +112,25 @@ const DeviceLimits &device_limits(int device_id)
     };
     int count = 0;
     read_error = cudaGetDeviceCount(&count);
-    for (int d = 0; d < count; ++d)
-      limits.push_back({
-          read(cudaDevAttrSingleToDoublePrecisionPerfRatio, d) > 2,
-          read(cudaDevAttrMultiProcessorCount, d),
-          static_cast<size_t>(read(cudaDevAttrMaxSharedMemoryPerBlockOptin, d))});
+    if (read_error != cudaSuccess) return;
+    limits = std::make_unique<DeviceLimits[]>(static_cast<size_t>(count));
+    for (int d = 0; d < count; ++d) {
+      DeviceLimits &device = limits[static_cast<size_t>(d)];
+      device.slow_fp64 = read(cudaDevAttrSingleToDoublePrecisionPerfRatio, d) > 2;
+      device.sm_count = read(cudaDevAttrMultiProcessorCount, d);
+      device.max_shared_per_block =
+          static_cast<size_t>(read(cudaDevAttrMaxSharedMemoryPerBlockOptin, d));
+    }
   });
   CUDA_CHECK(read_error);
-  return limits[static_cast<size_t>(device_id)];
+  DeviceLimits &device = limits[static_cast<size_t>(device_id)];
+  std::call_once(device.set_up, [&device] {
+    device.setup_error = open_wavefront_shared_memory<float>(device);
+    if (device.setup_error == cudaSuccess)
+      device.setup_error = open_wavefront_shared_memory<double>(device);
+  });
+  CUDA_CHECK(device.setup_error);
+  return device;
 }
 
 /// Auto takes FP64 only where it runs at least half as fast as FP32 (the HPC
@@ -1009,16 +1047,11 @@ std::vector<double> launch_dtw_kernel(
     constexpr int block_size = 256;
 
     // A block's shared memory is these buffers plus the kernel's static
-    // variables; beyond the 48 KiB any block may use, it must be opted in.
-    cudaFuncAttributes kernel_attributes{};
-    CUDA_CHECK(cudaFuncGetAttributes(&kernel_attributes, dtw_wavefront_kernel<T>));
-    const size_t block_shared_mem = shared_mem + kernel_attributes.sharedSizeBytes;
-    require_shared_mem_fits(block_shared_mem, device_id, "dtw_wavefront_kernel");
-    if (block_shared_mem > 48 * 1024) {
-      CUDA_CHECK(cudaFuncSetAttribute(dtw_wavefront_kernel<T>,
-                           cudaFuncAttributeMaxDynamicSharedMemorySize,
-                           static_cast<int>(shared_mem)));
-    }
+    // variables; device_limits opened the whole opt-in maximum once.
+    require_shared_mem_fits(
+        shared_mem
+            + device_limits(device_id).wavefront_static_bytes[std::is_same_v<T, double>],
+        device_id, "dtw_wavefront_kernel");
 
     // Determine whether to use persistent mode
     int blocks_per_sm = 0;

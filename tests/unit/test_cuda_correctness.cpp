@@ -25,9 +25,11 @@
 #include <array>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
 #include <random>
+#include <thread>
 #include <vector>
 
 using Catch::Matchers::WithinRel;
@@ -493,6 +495,36 @@ TEST_CASE("FP32 wavefront at L = 4095 and 4096 matches the host kernel",
   const auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
   REQUIRE(gpu_result.kernel_used == "wavefront");
   REQUIRE(gpu_result.matrix == cpu_fp32_distance_matrix(series));
+}
+
+// The wavefront's dynamic shared-memory limit is one value per kernel and
+// device, shared by every host thread. Set on each launch, a thread at L = 4096
+// lowered it under another thread's L = 8000 launch ("invalid argument").
+TEST_CASE("Two host threads filling at different long lengths do not fail each other",
+          "[cuda][long][threads]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  const auto long_pair = generate_random_series(2, 8000, /*seed=*/31);
+  const auto short_pair = generate_random_series(2, 4096, /*seed=*/32);
+  std::array<int, 2> failures{}; // one slot per thread
+  const auto fill = [&](size_t slot, const std::vector<std::vector<double>> &series) {
+    for (int round = 0; round < 50; ++round) {
+      try {
+        (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+      } catch (const std::exception &) {
+        ++failures[slot];
+      }
+    }
+  };
+  std::thread first(fill, size_t{0}, std::cref(long_pair));
+  std::thread second(fill, size_t{1}, std::cref(short_pair));
+  first.join();
+  second.join();
+  CHECK(failures[0] == 0);
+  CHECK(failures[1] == 0);
 }
 
 // ---------------------------------------------------------------------------
