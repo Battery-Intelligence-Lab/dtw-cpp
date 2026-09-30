@@ -63,6 +63,26 @@ if(APPLE AND EXISTS "${_dtwc_matlab_bin}/libomp.dylib")
   endforeach()
 endif()
 
+# Windows + clang: the same clash, with MATLAB's Intel runtime. MATLAB has
+# libiomp5md.dll loaded at start-up, and a MEX linked to LLVM's libomp.lib aborts
+# it at the first parallel region ("OMP: Error #15: Initializing libomp.dll, but
+# found libiomp5md.dll already initialized", R2024b, 2026-09-30). So libomp is
+# dropped from the link and MATLAB's import library for libiomp5md takes its
+# place: clang's __kmpc_* calls resolve to it, and DTWC_MEX_MATLAB_LIBOMP supplies
+# the one entry it lacks (see dtwc_mex.cpp). An MSVC build uses vcomp and needs
+# none of this. A missing library is an error, not a MEX that aborts MATLAB.
+if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set(_dtwc_matlab_iomp "${Matlab_ROOT_DIR}/bin/win64/libiomp5md.lib")
+  if(NOT EXISTS "${_dtwc_matlab_iomp}")
+    message(FATAL_ERROR "${_dtwc_matlab_iomp} not found: a clang-built MEX needs "
+      "MATLAB's OpenMP runtime, not LLVM's (see bindings/matlab/CMakeLists.txt).")
+  endif()
+  target_compile_definitions(dtwc_mex PRIVATE DTWC_MEX_MATLAB_LIBOMP)
+  target_link_options(dtwc_mex PRIVATE "LINKER:/NODEFAULTLIB:libomp.lib")
+  # Plain signature: matlab_add_mex() linked the target with it.
+  target_link_libraries(dtwc_mex "${_dtwc_matlab_iomp}")
+endif()
+
 # FindMatlab (CMake 4.2) exports the MEX entry points only under `if(MSVC)`.
 # A GNU-frontend Clang build on Windows therefore links a .mexw64 with no
 # exported mexFunction, and MATLAB rejects it at load time with

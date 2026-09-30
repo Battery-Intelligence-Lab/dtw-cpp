@@ -20,11 +20,13 @@
 #endif
 
 #ifdef DTWC_MEX_MATLAB_LIBOMP
-// On macOS this MEX runs on the libomp MATLAB ships (bindings/matlab/CMakeLists.txt).
-// R2026a's copy predates __kmpc_dispatch_deinit, which Clang (AppleClang 21 here)
-// calls after every dynamic or guided loop, so dyld refused to load the MEX. LLVM's
-// host runtime gives it an empty body in every release that has it (19.1.0 to
-// 23.1.1, openmp/runtime/src/kmp_dispatch.cpp), so this is the same behaviour.
+// On macOS this MEX runs on the libomp MATLAB ships, and on Windows with clang on
+// its libiomp5md (bindings/matlab/CMakeLists.txt). Neither has
+// __kmpc_dispatch_deinit, which Clang calls after every dynamic or guided loop:
+// R2026a's libomp predates it, so dyld refused to load the MEX, and libiomp5md
+// leaves it undefined at link time. LLVM's host runtime gives it an empty body in
+// every release that has it (19.1.0 to 23.1.1, openmp/runtime/src/kmp_dispatch.cpp),
+// so this is the same behaviour.
 extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #endif
 
