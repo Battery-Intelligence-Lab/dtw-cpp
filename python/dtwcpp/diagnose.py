@@ -21,7 +21,7 @@ import numpy as np
 
 
 def _as_int_array(x) -> np.ndarray:
-    return np.asarray(x, dtype=int)
+    return np.asarray(x, dtype=np.int64)
 
 
 def cluster_sizes(labels: Sequence[int]) -> list[int]:

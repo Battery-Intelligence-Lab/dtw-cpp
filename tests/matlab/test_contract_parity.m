@@ -155,11 +155,11 @@ function test_tier1_default_seed_matches_cpp_and_python(testCase)
     prob29.set_data(X);
     seeded29 = dtwc.fast_pam(prob29, 3, 'Seed', 29);
 
-    verifyEqual(testCase, seeded42.medoid_indices, int32([7 3 6]));
-    verifyEqual(testCase, seeded42.labels, int32([2 2 2 2 3 3 1 1]));
+    verifyEqual(testCase, seeded42.medoid_indices, [7 3 6]);
+    verifyEqual(testCase, seeded42.labels, [2 2 2 2 3 3 1 1]);
     verifyEqual(testCase, seeded42.total_cost, 24);
-    verifyEqual(testCase, seeded29.medoid_indices, int32([5 2 8]));
-    verifyEqual(testCase, seeded29.labels, int32([2 2 2 1 1 1 3 3]));
+    verifyEqual(testCase, seeded29.medoid_indices, [5 2 8]);
+    verifyEqual(testCase, seeded29.labels, [2 2 2 1 1 1 3 3]);
     verifyEqual(testCase, seeded29.total_cost, 20);
 
     verifyEqual(testCase, tier1.medoids, seeded42.medoid_indices);
@@ -205,10 +205,10 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
     % Seed 42 ends in the swap-local optimum {4, 1}: no single swap of it is
     % cheaper than 10. The global optimum {3, 2}, cost 9, is what seed 43 finds,
     % and what the NInit = 2 estimator below reports.
-    assertEqual(testCase, l1_result.labels, int32([2 1 1 1]));
-    assertEqual(testCase, l1_result.medoid_indices, int32([4 1]));
+    assertEqual(testCase, l1_result.labels, [2 1 1 1]);
+    assertEqual(testCase, l1_result.medoid_indices, [4 1]);
     assertEqual(testCase, l1_result.total_cost, 10);
-    assertEqual(testCase, l1_result.iterations, int32(1));
+    assertEqual(testCase, l1_result.iterations, 1);
     assertTrue(testCase, l1_result.converged);
 
     squared_problem = dtwc.Problem('F18_squared_oracle');
@@ -216,32 +216,32 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
     squared_problem.set_distance_matrix(D_squared);
     squared_result = dtwc.fast_pam(squared_problem, 2, ...
                                    'MaxIter', 100, 'Seed', 42);
-    assertEqual(testCase, squared_result.labels, int32([2 1 1 1]));
-    assertEqual(testCase, squared_result.medoid_indices, int32([4 1]));
+    assertEqual(testCase, squared_result.labels, [2 1 1 1]);
+    assertEqual(testCase, squared_result.medoid_indices, [4 1]);
     assertEqual(testCase, squared_result.total_cost, 30);
-    assertEqual(testCase, squared_result.iterations, int32(1));
+    assertEqual(testCase, squared_result.iterations, 1);
     assertTrue(testCase, squared_result.converged);
 
     l1_estimator = dtwc.DTWClustering( ...
         'NClusters', 2, 'Metric', 'l1', 'Device', 'cpu', 'NInit', 2);
     l1_estimator = l1_estimator.fit(X);
-    assertEqual(testCase, l1_estimator.Labels, int32([1 2 1 1]));
-    assertEqual(testCase, l1_estimator.MedoidIndices, int32([3 2]));
+    assertEqual(testCase, l1_estimator.Labels, [1 2 1 1]);
+    assertEqual(testCase, l1_estimator.MedoidIndices, [3 2]);
     assertEqual(testCase, l1_estimator.TotalCost, 9);
 
     squared_estimator = dtwc.DTWClustering( ...
         'NClusters', 2, 'Metric', 'squared_euclidean', ...
         'Device', 'cpu', 'NInit', 2);
     squared_estimator = squared_estimator.fit(X);
-    assertEqual(testCase, squared_estimator.Labels, int32([2 1 1 1]));
-    assertEqual(testCase, squared_estimator.MedoidIndices, int32([4 1]));
+    assertEqual(testCase, squared_estimator.Labels, [2 1 1 1]);
+    assertEqual(testCase, squared_estimator.MedoidIndices, [4 1]);
     assertEqual(testCase, squared_estimator.TotalCost, 30);
 
     uppercase_estimator = dtwc.DTWClustering( ...
         'NClusters', 2, 'Metric', 'SQUARED_EUCLIDEAN', ...
         'Device', 'cpu', 'NInit', 2);
     uppercase_labels = uppercase_estimator.fit_predict(X);
-    assertEqual(testCase, uppercase_labels, int32([2 1 1 1]));
+    assertEqual(testCase, uppercase_labels, [2 1 1 1]);
 
     assertNotEqual(testCase, l1_estimator.Labels, squared_estimator.Labels);
     assertNotEqual(testCase, l1_estimator.MedoidIndices, ...

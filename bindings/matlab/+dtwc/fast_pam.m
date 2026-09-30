@@ -28,10 +28,10 @@ function result = fast_pam(prob, k, varargin)
 %   Returns
 %   -------
 %   result : struct with fields:
-%       labels          - int32 row vector (1-based cluster assignments)
-%       medoid_indices  - int32 row vector (1-based medoid indices)
+%       labels          - double row vector (1-based cluster assignments)
+%       medoid_indices  - double row vector (1-based medoid indices)
 %       total_cost      - double scalar
-%       iterations      - int32 scalar
+%       iterations      - double scalar
 %       converged       - logical scalar
 %
 %   Note: Results are also stored back into prob for use by scoring

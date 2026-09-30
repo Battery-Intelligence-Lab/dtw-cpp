@@ -22,7 +22,7 @@ function result = fast_clara(prob, k, varargin)
 %       Number of subsamples to try.
 %   MaxIter : int, optional (default 100)
 %       Max PAM iterations per subsample.
-%   Seed : int, optional (default 42)
+%   Seed : non-negative integer up to flintmax, optional (default 42)
 %       Random seed for reproducibility.
 %
 %   Returns
@@ -41,7 +41,7 @@ function result = fast_clara(prob, k, varargin)
     addParameter(p, 'MaxIter', 100, @(v) isnumeric(v) && isscalar(v) && v > 0);
     addParameter(p, 'Seed', dtwc.default_random_seed(), ...
         @(v) isnumeric(v) && isscalar(v) && isfinite(v) && v >= 0 ...
-             && v <= double(intmax('uint32')) && v == fix(v));
+             && v <= flintmax && v == fix(v));
     parse(p, prob, k, varargin{:});
 
     result = dtwc_mex('fast_clara', prob.get_handle(), ...

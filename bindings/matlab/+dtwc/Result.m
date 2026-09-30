@@ -11,8 +11,8 @@ classdef Result < handle
 %
 %   Properties
 %   ----------
-%   labels  : int32 row vector (1-based cluster assignment per series).
-%   medoids : int32 row vector (1-based medoid series index per cluster).
+%   labels  : double row vector (1-based cluster assignment per series).
+%   medoids : double row vector (1-based medoid series index per cluster).
 %   cost    : double, sum of intra-cluster DTW distances.
 %   device  : char, normalised device name the run used ('cpu'/'gpu').
 %

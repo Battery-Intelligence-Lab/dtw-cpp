@@ -26,7 +26,7 @@ function dend = build_dendrogram(prob, varargin)
 %   dend : struct with fields:
 %       merges    - (N-1) x 4 double matrix [cluster_a, cluster_b, distance, new_size]
 %                   cluster_a and cluster_b are 1-based.
-%       n_points  - int32 scalar
+%       n_points  - double scalar
 %
 %   See also dtwc.cut_dendrogram, dtwc.fast_pam
 % @author Volkan Kumtepeli

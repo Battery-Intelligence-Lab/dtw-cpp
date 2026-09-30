@@ -205,7 +205,6 @@ class TestClusterCommonValidation:
             ("k", "1", TypeError),
             ("k", 0, ValueError),
             ("k", -1, ValueError),
-            ("k", (1 << 31), ValueError),
             ("max_iter", True, TypeError),
             ("max_iter", np.bool_(True), TypeError),
             ("max_iter", 1.0, TypeError),
@@ -224,7 +223,7 @@ class TestClusterCommonValidation:
         kwargs[field] = bad
 
         with pytest.raises(
-            error, match=rf"\b{field}\b.*(?:integer|must be in)",
+            error, match=rf"\b{field}\b.*(?:integer|must be)",
         ) as caught:
             dtwcpp.cluster(source, method="pam", device=device, **kwargs)
         assert type(caught.value) is error
@@ -239,7 +238,6 @@ class TestClusterCommonValidation:
             (1.0, TypeError),
             ("1", TypeError),
             (-1, ValueError),
-            ((1 << 31), ValueError),
         ],
     )
     def test_invalid_dataset_skip_cols_precedes_every_effect(
@@ -249,7 +247,7 @@ class TestClusterCommonValidation:
         touched = self._poison_effects(monkeypatch)
 
         with pytest.raises(
-            error, match=r"\bskip_cols\b.*(?:integer|must be in)",
+            error, match=r"\bskip_cols\b.*(?:integer|must be)",
         ) as caught:
             dtwcpp.cluster(source, k=1, max_iter=1, device=device)
         assert type(caught.value) is error
@@ -301,6 +299,26 @@ class TestClusterCommonValidation:
         assert type(captured["k"]) is int
         assert type(captured["skip_cols"]) is int
         assert type(captured["max_iter"]) is int
+
+    def test_counts_past_int32_cross_to_hpc_as_native_ints(self, monkeypatch):
+        """k and skip_cols are index_t in C++ and in dtwc_cl; only max_iter is an int."""
+        from dtwcpp import _hpc
+
+        captured = {}
+
+        def fake(source, k, **kwargs):
+            captured.update(source=source, k=k, **kwargs)
+            return np.array([0], dtype=np.int64)
+
+        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
+        source = dtwcpp.Dataset(
+            "/remote/already_staged.tsv", skip_cols=np.int64(1 << 40),
+        )
+        dtwcpp.cluster(source, k=np.int64(1 << 40), device="hpc")
+
+        assert captured["k"] == captured["skip_cols"] == 1 << 40
+        assert type(captured["k"]) is int
+        assert type(captured["skip_cols"]) is int
 
     def test_valid_minimum_numpy_integers_run_locally(self):
         source = dtwcpp.Dataset(

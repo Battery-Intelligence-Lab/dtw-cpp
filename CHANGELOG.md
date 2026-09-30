@@ -15,6 +15,14 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   compiling; declare it `std::vector<dtwc::index_t> medoids = prob.medoids();` (or `auto`). `set_clusters(std::vector<int>&)`
   still compiles, `[[deprecated]]`. `adjusted_rand` and `normalized_mutual_info` key their counts on whole labels, and
   `dtwc_cl` reads 64-bit `-k`, `--sample-size`, `--batch-size`, `--skip-rows`, `--skip-cols` and `--seed`.
+- **Changed (Python, MATLAB):** labels and medoids are `np.int64` arrays in Python (`Problem.labels()`, `medoids()`,
+  `clusters_ind`, `centroids_ind`, `ClusteringResult.labels` and `medoid_indices`, `Result.labels` and `medoids`, the
+  estimators' `labels_` and `medoid_indices_`, `BarycenterClusteringResult.labels`; each read is an independent copy) and
+  1-based exact doubles in MATLAB (they were `int32`, as were the `iterations` and dendrogram `n_points` fields). Python and
+  MATLAB take `k`, `sample_size`, `batch_size`, `max_points` and the skip counts as 64-bit values, and `fast_clara` takes a
+  64-bit seed, so the Python checks that refused `k` or a skip count above 2^31 - 1 are gone; `max_iter`, `n_init` and
+  `band` stay `int`. No Python name v1.0.0 shipped (`cluster_size`, `centroid_of`) changes type.
+  Code that kept `list`-typed labels (`labels == [0, 1]`, `labels.index(1)`) calls `.tolist()` first.
 - **Changed (GPU):** the CUDA backend needs an NVIDIA GPU of compute capability 8.0 or newer (Ampere, 2021: A30/A100/RTX 30
   and later). An older GPU is refused with `DeviceError` naming its compute capability when a fill first reads the device,
   before anything is allocated. The default `DTWC_CUDA_ARCH_LIST` is `80-real;86-real;89-real;90` (was

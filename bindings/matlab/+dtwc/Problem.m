@@ -300,12 +300,12 @@ classdef Problem < handle
         end
 
         function l = labels(obj)
-        %LABELS Cluster assignment per series (int32, 1-based).
+        %LABELS Cluster assignment per series (double, 1-based).
             l = dtwc_mex('Problem_get_clusters', obj.Handle);
         end
 
         function m = medoids(obj)
-        %MEDOIDS Medoid series index per cluster (int32, 1-based).
+        %MEDOIDS Medoid series index per cluster (double, 1-based).
             m = dtwc_mex('Problem_get_centroids', obj.Handle);
         end
 

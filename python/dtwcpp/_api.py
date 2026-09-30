@@ -190,8 +190,8 @@ class Result:
                 "from a Problem (an hpc run returns labels only)."
             )
         result = dtwcpp.ClusteringResult()
-        result.labels = [int(x) for x in self.labels]
-        result.medoid_indices = [int(x) for x in self.medoids]
+        result.labels = self.labels
+        result.medoid_indices = self.medoids
         return result
 
     def _scoring_problem(self):
@@ -376,18 +376,22 @@ _AUTO_PAM_SERIES_LIMIT = 5000
 _CPP_INT_MAX = (1 << 31) - 1
 
 
-def _normalize_tier1_int(name, value, *, minimum):
-    """Normalize one public integer to the signed C++ ``int`` domain."""
+def _normalize_tier1_int(name, value, *, minimum, maximum=None):
+    """Normalize one public integer to a native ``int``.
+
+    Counts (``k``, the skip counts) are ``index_t`` in C++ and have no upper
+    bound here; ``maximum`` is passed only for a parameter that is still a C++
+    ``int`` (``max_iter``).
+    """
     if isinstance(value, (bool, np.bool_)) or not isinstance(
         value, (int, np.integer)
     ):
         raise TypeError(f"{name} must be an integer")
     value = int(value)
-    if not minimum <= value <= _CPP_INT_MAX:
-        raise ValueError(
-            f"{name} must be in [{minimum}, {_CPP_INT_MAX}] for the C++ "
-            "Tier-1 API"
-        )
+    if value < minimum or (maximum is not None and value > maximum):
+        bound = (f"at least {minimum}" if maximum is None
+                 else f"in [{minimum}, {maximum}]")
+        raise ValueError(f"{name} must be {bound} for the C++ Tier-1 API")
     return value
 
 
@@ -400,7 +404,8 @@ def _validate_common(data, k, max_iter):
     ``k``, ``max_iter``, then ``skip_cols`` and ``skip_rows``.
     """
     k = _normalize_tier1_int("k", k, minimum=1)
-    max_iter = _normalize_tier1_int("max_iter", max_iter, minimum=1)
+    max_iter = _normalize_tier1_int(
+        "max_iter", max_iter, minimum=1, maximum=_CPP_INT_MAX)
     handle = data if isinstance(data, Dataset) else None
     skip_cols = _normalize_tier1_int(
         "skip_cols", handle.skip_cols if handle else 0, minimum=0)

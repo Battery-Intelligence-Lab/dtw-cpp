@@ -41,9 +41,9 @@ classdef DTWClustering
 %
 %   Properties (read-only, set after fit)
 %   -------------------------------------
-%   Labels : int32 row vector (1 x N)
+%   Labels : double row vector (1 x N)
 %       Cluster assignments (1-based).
-%   MedoidIndices : int32 row vector (1 x k)
+%   MedoidIndices : double row vector (1 x k)
 %       Indices of medoid series (1-based).
 %   TotalCost : double
 %       Sum of intra-cluster DTW distances.
@@ -65,8 +65,8 @@ classdef DTWClustering
     end
 
     properties (SetAccess = private)
-        Labels (:,:) int32 = int32([])
-        MedoidIndices (:,:) int32 = int32([])
+        Labels (:,:) double = double([])
+        MedoidIndices (:,:) double = double([])
         TotalCost (1,1) double = NaN
     end
 
