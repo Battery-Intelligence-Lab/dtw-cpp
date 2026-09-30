@@ -8,7 +8,13 @@ per resident block, with the shared kernel's source and arithmetic; every tested
 bit, and the eight existing kernels are byte-identical in SASS. FP32 public fill, pinned: 82.1 Gcell/s at L = 10,000
 (CPU fill on the 8 P-cores: 38.6) and 38.2 at L = 20,000 (CPU 33.7). The fall above L ≈ 12,000 is the 40 MB L2: step 1b
 runs no more blocks than the L2 holds slices for, which passed its band and gives 73.2 Gcell/s at L = 20,000 (2.2× the
-CPU fill).
+CPU fill). All timings are advisory: the machine was shared (CPU load up to 100 %, the GPU idle but for the desktop).
+
+The W4a leads: the preload wavefront compiled apart (step 3) lands, 11.5–18.5 % less time at L 257–512 in FP32 and FP64.
+The 64 KB carveout (step 2) fails as the brief states it (FP32 L 3000: +7.5 %); restricted to where 64 KB holds two blocks
+it passed its band (−17–20 % at FP32 L 2049–2644) but is reverted: its per-launch attribute needs CUDA 12.5, the project
+builds with 12.0. Compute capability 8.0 is the floor since `c445089` (Volkan, 2026-09-30). Leads for their own bands:
+the global route above L = 2048 wherever the shared wavefront holds fewer than three blocks per SM ("After the review").
 
 Machine: RTX 4000 Ada (sm_89, 48 SMs, 101,376 B opt-in shared memory per block, 40 MB L2, 360 GB/s, WDDM, driver 596.72),
 Intel Core Ultra 9 285. Trees of worktree `C:/D/git/wt/C1`: `build` (clang, Ninja, Release) and `build-cuda` (MSVC 14.50 +
