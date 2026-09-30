@@ -189,3 +189,7 @@ CHANGELOG rule.
 - 2026-09-30 — W6e, Python half: `Problem.cluster_size` is a method again, silent (v1 bound it as a method; the 2.0
   warning property made `prob.cluster_size()` a TypeError). The bindings of `set_view_data`, `OneBatchPAMStats` and
   `one_batch_pam_with_stats` go as chair.md §4 W6 approved; the C++ stays (FastCLARA and the CLI use it).
+- 2026-09-30 — W4d: one verbose line per GPU fill, printed by the backend (it knows the kernel and precision used);
+  `Problem`'s duplicate print and its GPU pre-checks go, so the refusal wording lives in the backends (pinned by
+  `test_run_resolution` and `test_cli_device_matrix`). The device limits are read once under `std::call_once`, whose
+  callable does not throw (GCC PR 66146).

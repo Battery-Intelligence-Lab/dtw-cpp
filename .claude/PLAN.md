@@ -120,6 +120,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C
 - ☐ CUDA tuning, each behind its own band (W4a): a separately compiled preload wavefront for L 257–1024 (−15–17 %
   FP32 measured); a 64 KB carveout above L = 2048 (−18 % at L = 2049)
+- ☐ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
+  L can shrink it under each other's launch; set it once to the opt-in maximum less the static bytes, behind a band (W4d)
+- ☐ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
+  (L 9406) cannot run with `--device gpu`; the 8K-sample target fits FP32 only (W4d)
+- ☐ `launch_dtw_kernel`'s warn-once latch prints to stderr above L 2048 whatever `verbose` says; a library does not
+  print unasked (W4d)
 
 ## D — `index_t` in public counts (W11)
 
