@@ -39,11 +39,12 @@ static void BM_metal_distanceMatrix(benchmark::State &state)
   // Warm-up (first call lazy-compiles the MSL library).
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = -1;
-  (void)dtwc::metal::compute_distance_matrix_metal(series, opts);
+  dtwc::core::DistanceMatrix matrix;
+  (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
 
   for (auto _ : state) {
-    auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
-    benchmark::DoNotOptimize(r.matrix.data());
+    (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
+    benchmark::DoNotOptimize(matrix.raw());
   }
 
   const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;
@@ -76,11 +77,12 @@ static void BM_metal_distanceMatrix_banded(benchmark::State &state)
 
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = band;
-  (void)dtwc::metal::compute_distance_matrix_metal(series, opts);
+  dtwc::core::DistanceMatrix matrix;
+  (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
 
   for (auto _ : state) {
-    auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
-    benchmark::DoNotOptimize(r.matrix.data());
+    (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
+    benchmark::DoNotOptimize(matrix.raw());
   }
 
   const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;
@@ -106,11 +108,12 @@ static void BM_metal_distanceMatrix_tightband(benchmark::State &state)
 
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = band;
-  (void)dtwc::metal::compute_distance_matrix_metal(series, opts);
+  dtwc::core::DistanceMatrix matrix;
+  (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
 
   for (auto _ : state) {
-    auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
-    benchmark::DoNotOptimize(r.matrix.data());
+    (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
+    benchmark::DoNotOptimize(matrix.raw());
   }
   state.counters["N"] = N;
   state.counters["L"] = L;
@@ -139,11 +142,12 @@ static void BM_metal_regtile_short(benchmark::State &state)
 
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = -1;
-  (void)dtwc::metal::compute_distance_matrix_metal(series, opts); // warm-up
+  dtwc::core::DistanceMatrix matrix;
+  (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix); // warm-up
 
   for (auto _ : state) {
-    auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
-    benchmark::DoNotOptimize(r.matrix.data());
+    (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
+    benchmark::DoNotOptimize(matrix.raw());
   }
 
   const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;
@@ -168,11 +172,12 @@ static void BM_metal_flops(benchmark::State &state)
   auto series = make_series_set(N, L);
 
   dtwc::metal::MetalDistMatOptions opts;
-  (void)dtwc::metal::compute_distance_matrix_metal(series, opts); // warm-up
+  dtwc::core::DistanceMatrix matrix;
+  (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix); // warm-up
 
   for (auto _ : state) {
-    auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
-    benchmark::DoNotOptimize(r.matrix.data());
+    (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
+    benchmark::DoNotOptimize(matrix.raw());
   }
 
   const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;

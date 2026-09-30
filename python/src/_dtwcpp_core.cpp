@@ -85,19 +85,6 @@ nb::ndarray<nb::numpy, double> adopt_as_ndarray(
   return nb::ndarray<nb::numpy, double>(ptr, shape, owner);
 }
 
-/// Move an N*N GPU result into an owned buffer, refusing a size mismatch.
-/// A backend that returns fewer elements than n*n must not be zero-padded into
-/// something that reads as a valid distance matrix.
-std::vector<double> checked_square_matrix(
-  std::vector<double> &&matrix, size_t n, const char *backend) {
-  if (matrix.size() != n * n)
-    throw dtwc::DeviceError(
-      std::string(backend) + " returned " + std::to_string(matrix.size())
-      + " distances for " + std::to_string(n) + " series; expected "
-      + std::to_string(n * n) + ".");
-  return std::move(matrix);
-}
-
 /// The matrix bindings' input check: every series once, before any pair is
 /// computed, since the per-pair kernels do not check (warping.hpp). NaN or
 /// ±inf raises InvalidInput naming the series index and the position.
@@ -1319,12 +1306,12 @@ NB_MODULE(_dtwcpp_core, m) {
           opts.verbose = verbose;
           require_finite_series(series, "compute_distance_matrix_cuda");
           std::vector<double> matrix;
-          size_t n = 0;
+          const size_t n = series.size();
           {
             nb::gil_scoped_release release;
-            auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-            n = result.n;
-            matrix = checked_square_matrix(std::move(result.matrix), n, "CUDA");
+            dtwc::core::DistanceMatrix packed;
+            dtwc::cuda::compute_distance_matrix_cuda(series, opts, packed);
+            matrix = dtwc::io::to_full_matrix(packed); // row-major, expanded from the triangle
           }
           return adopt_as_ndarray(std::move(matrix), {n, n});
         },
@@ -1376,12 +1363,12 @@ NB_MODULE(_dtwcpp_core, m) {
           opts.verbose = verbose;
           require_finite_series(series, "compute_distance_matrix_metal");
           std::vector<double> matrix;
-          size_t n = 0;
+          const size_t n = series.size();
           {
             nb::gil_scoped_release release;
-            auto result = dtwc::metal::compute_distance_matrix_metal(series, opts);
-            n = result.n;
-            matrix = checked_square_matrix(std::move(result.matrix), n, "Metal");
+            dtwc::core::DistanceMatrix packed;
+            dtwc::metal::compute_distance_matrix_metal(series, opts, packed);
+            matrix = dtwc::io::to_full_matrix(packed); // row-major, expanded from the triangle
           }
           return adopt_as_ndarray(std::move(matrix), {n, n});
         },

@@ -7,10 +7,10 @@
  * so these cases compile and RUN in the CUDA-OFF canonical gate as well as in
  * build/cuda-verify. Two properties are under test:
  *
- *   A15 — a pair count above INT_MAX is rejected before anything is allocated
- *         or narrowed. `N*(N-1)/2` must be evaluated in 64 bits: the smallest
- *         failing N is 65537, whose N*N result matrix (34 GB) must never be
- *         allocated in order to discover the problem.
+ *   A15 — the pair count `N*(N-1)/2` is evaluated in 64 bits and never
+ *         narrowed: a fill splits it into launches of at most
+ *         kMaxPairsPerLaunch pairs, a count an int holds. N = 65,537, the first
+ *         N whose pair count passes INT_MAX, fills (test_cuda_correctness).
  *   A16 — a missing CUDA device is a typed DeviceError, never an N*N matrix of
  *         zeros (a valid-looking wrong answer). The entry-point case runs only
  *         when the process sees no device: on a GPU host, execute this binary
@@ -40,22 +40,24 @@
 #include <limits>
 #include <vector>
 
-TEST_CASE("A15 CUDA pair-count guard is host-testable and 64-bit",
+TEST_CASE("A15 CUDA pair count is 64-bit and launches split it into int counts",
           "[cuda][launch_guard][host]")
 {
 #if !DTWC_HAS_CUDA_LAUNCH_PREP_SEAM
   FAIL("CUDA launch preconditions must be exposed through a host-testable seam");
 #else
   using dtwc::cuda::detail::kMaxPairsPerLaunch;
-  using dtwc::cuda::detail::require_pair_count_fits;
   using dtwc::cuda::detail::upper_triangle_pairs;
 
   constexpr std::size_t int_max =
     static_cast<std::size_t>(std::numeric_limits<int>::max());
-  REQUIRE(kMaxPairsPerLaunch == int_max);
+  // A launch counts its pairs in int, and the persistent wavefront's counter
+  // overshoots the count by up to one per block: room to spare.
+  STATIC_REQUIRE(kMaxPairsPerLaunch > 0);
+  STATIC_REQUIRE(static_cast<std::size_t>(kMaxPairsPerLaunch) <= int_max / 2);
 
   SECTION("the count itself never overflows") {
-    // 65536 is the last N that fits; 65537 is the first that does not.
+    // 65536 is the last N whose pair count fits an int; 65537 the first that does not.
     REQUIRE(upper_triangle_pairs(0) == 0u);
     REQUIRE(upper_triangle_pairs(1) == 0u);
     REQUIRE(upper_triangle_pairs(2) == 1u);
@@ -65,18 +67,6 @@ TEST_CASE("A15 CUDA pair-count guard is host-testable and 64-bit",
     REQUIRE(upper_triangle_pairs(65537) > int_max);
     // The 100M-series target: only a 64-bit count can represent this.
     REQUIRE(upper_triangle_pairs(100000000u) == 4999999950000000u);
-  }
-
-  SECTION("the guard admits what fits and rejects what does not") {
-    REQUIRE_NOTHROW(require_pair_count_fits(upper_triangle_pairs(65536), "probe"));
-    REQUIRE_NOTHROW(require_pair_count_fits(kMaxPairsPerLaunch, "probe"));
-    REQUIRE_THROWS_AS(require_pair_count_fits(kMaxPairsPerLaunch + 1, "probe"),
-                      dtwc::InvalidInput);
-    REQUIRE_THROWS_AS(require_pair_count_fits(upper_triangle_pairs(65537), "probe"),
-                      dtwc::InvalidInput);
-    // Every dtwc error stays catchable through the standard hierarchy.
-    REQUIRE_THROWS_AS(require_pair_count_fits(upper_triangle_pairs(100000000u), "probe"),
-                      std::runtime_error);
   }
 #endif
 }
@@ -124,27 +114,6 @@ TEST_CASE("CUDA kernel choice follows the longest series length",
 
 #ifdef DTWC_HAS_CUDA
 
-TEST_CASE("A15 CUDA entry points reject an over-large N before allocating",
-          "[cuda][launch_guard][device]")
-{
-  if (!dtwc::cuda::cuda_available()) {
-    SKIP("No CUDA device");
-    return;
-  }
-
-  // 65537 length-1 series: a few MB of host memory. Before the guard the first
-  // act of the entry point was to size an N*N matrix (34 GB).
-  const std::vector<std::vector<double>> series(65537, std::vector<double>{ 1.0 });
-  REQUIRE(dtwc::cuda::detail::upper_triangle_pairs(series.size())
-          > dtwc::cuda::detail::kMaxPairsPerLaunch);
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.band = 4;
-
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, opts),
-                    dtwc::InvalidInput);
-}
-
 TEST_CASE("A16 CUDA entry points refuse to answer without a device",
           "[cuda][launch_guard][no_device]")
 {
@@ -159,8 +128,10 @@ TEST_CASE("A16 CUDA entry points refuse to answer without a device",
   const std::vector<std::vector<double>> series{ { 1.0, 2.0, 3.0 },
                                                  { 2.0, 3.0, 4.0 } };
 
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, {}),
+  dtwc::core::DistanceMatrix out;
+  REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, {}, out),
                     dtwc::DeviceError);
+  CHECK(out.size() == 0);
 }
 
 TEST_CASE("A16 CUDA entry points still answer normally on a real device",
@@ -174,11 +145,12 @@ TEST_CASE("A16 CUDA entry points still answer normally on a real device",
   const std::vector<std::vector<double>> series{
     { 1.0, 2.0, 3.0, 4.0 }, { 1.0, 2.0, 3.0, 5.0 }, { 4.0, 3.0, 2.0, 1.0 }
   };
-  const auto result = dtwc::cuda::compute_distance_matrix_cuda(series, {});
+  dtwc::core::DistanceMatrix out;
+  const auto result = dtwc::cuda::compute_distance_matrix_cuda(series, {}, out);
   REQUIRE(result.n == 3u);
-  REQUIRE(result.matrix.size() == 9u);
+  REQUIRE(out.size() == 3u);
   CHECK(result.kernel_used != "none");
-  CHECK(result.matrix[1] > 0.0);
+  CHECK(out.get(0, 1) > 0.0);
 }
 
 #else

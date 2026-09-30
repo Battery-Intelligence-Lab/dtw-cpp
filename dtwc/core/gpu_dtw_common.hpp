@@ -18,7 +18,6 @@
 
 #include <cstddef>
 #include <string>
-#include <vector>
 
 namespace dtwc::gpu {
 
@@ -29,9 +28,9 @@ struct DistMatOptionsBase {
   bool verbose = false;           ///< Print timing info.
 };
 
-/// Common result fields shared by CUDA and Metal distance-matrix entry points.
+/// Common result fields shared by CUDA and Metal distance-matrix entry points;
+/// the distances are in the caller's DistanceMatrix.
 struct DistMatResultBase {
-  std::vector<double> matrix;     ///< N*N flat row-major distance matrix.
   size_t n = 0;                   ///< Number of series.
   double gpu_time_sec = 0;        ///< Full GPU execution time.
   size_t pairs_computed = 0;      ///< Number of DTW pairs computed.

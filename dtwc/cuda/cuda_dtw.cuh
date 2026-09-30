@@ -2,12 +2,9 @@
  * @file cuda_dtw.cuh
  * @brief CUDA GPU kernels for batch DTW computation.
  *
- * @details Each CUDA block computes one DTW pair. Within a block,
- *          threads cooperate on the anti-diagonal wavefront:
- *          cells on the same anti-diagonal are independent.
- *
- *          For the distance matrix, launch N*(N-1)/2 blocks.
- *          Each block has min(band, L) threads.
+ * @details The kernels write the packed lower triangle of the distance matrix,
+ *          DistanceMatrix's own layout, in launches of consecutive pairs whose
+ *          slots stream into the caller's matrix (cuda_dtw.cu).
  *
  * @date 29 Mar 2026
  */
@@ -17,6 +14,7 @@
 #ifdef DTWC_HAS_CUDA
 
 #include "../base/error.hpp"
+#include "../core/distance_matrix.hpp"
 #include "../core/gpu_dtw_common.hpp"
 
 #include <cstddef>
@@ -47,12 +45,14 @@ bool cuda_available();
 /// Get CUDA device info string.
 std::string cuda_device_info(int device_id = 0);
 
-/// Compute NxN DTW distance matrix on GPU.
-/// Series data is transferred to GPU, all pairs computed in parallel,
-/// results transferred back.
+/// Fill @p out with the DTW distance of every pair of @p series on the GPU.
+/// Every refusal (an invalid precision, no device, all series empty, a
+/// wavefront that does not fit the device) comes before @p out is touched;
+/// then @p out is resized to series.size() unless it already has that size
+/// (a mapped matrix keeps its file), and every entry is written.
 CUDADistMatResult compute_distance_matrix_cuda(
     const std::vector<std::vector<double>> &series,
-    const CUDADistMatOptions &opts = {});
+    const CUDADistMatOptions &opts, core::DistanceMatrix &out);
 
 }  // namespace dtwc::cuda
 
