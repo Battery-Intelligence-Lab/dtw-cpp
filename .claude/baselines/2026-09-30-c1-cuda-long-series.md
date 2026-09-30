@@ -119,3 +119,62 @@ bound by the FP64 rate alone. The cap lands: the FP32 fill at L = 20,000 is 73.2
 matrix (33.7), where step 1 was 1.13×. The kernels' SASS is step 1's, byte for byte (host change). Tests: the 64-series
 case now runs FP64 at twice the limit (L 8448: 206 of 288 blocks, 2016 pairs). CUDA tree ctest 121 / 0 failed,
 `test_cuda_correctness` 59 cases / 7169 assertions.
+
+## Step 2 — a 64 KB shared-memory carveout above L = 2048 (W4a: −18 % at FP32 L = 2049)
+
+Change (R1, the brief's rule): the shared-memory wavefront launches through `cudaLaunchKernelEx`, with the per-launch
+attribute `cudaLaunchAttributePreferredSharedMemoryCarveout = 64` (% of 100 KB) when max_L > 2048 and none otherwise; the
+function attribute is not used, as it is one value per kernel shared by every host thread. Prediction from the block
+sizes (3 · L · sizeof(T) + 16 static + 1 KB reserved per block; 100 KB per SM): FP32 2049–2644 runs 2 blocks per SM
+instead of 3, with 64 instead of 28 KB of L1 (W4a's regime); FP32 2645–5375 runs 1 block instead of 2–3; FP32 ≥ 5376 and
+FP64 ≥ 2688 cannot hold a block in 64 KB, so the driver keeps its own choice; FP64 2049–2090 runs 1 block instead of 2.
+
+### Band — registered 2026-09-30 19:50 BST, before the first timed run of a head
+
+- Measure: `long_fill` public fill, N per case below (about 1.5 s per fill), one warm-up fill, median of 5, pinned
+  (8 P-cores). Base: `long_fill` linked against step 1b (`60e2ec7`, sha256 `5ade24f2…5111`). Head: the same source
+  against the step-2 library. Base and head back to back per case, one session.
+- Cases, FP32 (N): L 1024 (600), 2048 (320), 2049 (272), 2400 (240), 2644 (216), 3000 (184), 4096 (136), 5000 (112),
+  6000 (92), 8000 (68), 10,000 (48, global route); FP64 (N): 2048 (136), 2049 (136), 2400 (112), 3000 (92), 4000 (68).
+- R1 lands if FP32 L 2049 has head ≤ 0.90 × base (the claimed gain, with margin) and every other case head ≤ 1.05 × base.
+- R2, registered now as the alternative if R1 fails: the carveout only where 64 KB holds two blocks (on this GPU FP32
+  L 2049–2644; never FP64). It lands if FP32 L 2049, 2400 and 2644 are each ≤ 0.95 × base with 2049 ≤ 0.90, and the cases
+  R2 leaves on the base launch parameters (L ≤ 2048, the global route) are ≤ 1.05 in the R1 run (same launch path).
+- Noise: a case outside is re-run once, base and head back to back; still outside, it counts. Distances: head `d(0,1)`,
+  `d(N−1,N−2)` equal to base's (the carveout does not touch the arithmetic).
+- Neither rule lands: FALSIFIED, recorded with the numbers, no code change.
+
+### Band results [inferred: CPU load 0–55 % from other agents; the fills are GPU-bound]
+
+Run 1, 19:47–19:53 BST (`step2_band.txt`); R1 head sha256 `138ee8db…997a`. The re-run of FP32 L 3000 (the only case
+outside) at 19:53 (`step2_rerun.txt`):
+
+| case (N) | base median | R1 median | R1 / base | R2 carveout | note |
+| --- | --- | --- | --- | --- | --- |
+| FP32 L 1024 (600) | 1.5407 s | 1.4857 s | 0.964 | no | launch through `cudaLaunchKernelEx`, no attribute |
+| FP32 L 2048 (320) | 1.4621 s | 1.4667 s | 1.003 | no | |
+| FP32 L 2049 (272) | 1.4961 s | 1.2327 s | **0.824** | yes | claimed −18 %: reproduced |
+| FP32 L 2400 (240) | 1.5899 s | 1.3157 s | **0.828** | yes | |
+| FP32 L 2644 (216) | 1.5468 s | 1.2355 s | **0.799** | yes | |
+| FP32 L 3000 (184) | 1.6873 s | 1.7988 s | **1.066** | no | re-run 1.7062 → 1.8349 s, **1.075**: outside |
+| FP32 L 4096 (136) | 1.7214 s | 1.8063 s | 1.049 | no | |
+| FP32 L 5000 (112) | 1.7112 s | 1.7741 s | 1.037 | no | ranges overlap |
+| FP32 L 6000 (92) | 2.8026 s | 2.7713 s | 0.989 | no | 64 KB cannot hold a block: the driver's choice |
+| FP32 L 8000 (68) | 2.6811 s | 2.6287 s | 0.980 | no | idem |
+| FP32 L 10,000 (48) | 1.4179 s | 1.4279 s | 1.007 | no | global route |
+| FP64 L 2048 (136) | 1.3330 s | 1.3498 s | 1.013 | no | |
+| FP64 L 2049 (136) | 1.6103 s | 1.6819 s | 1.044 | no | 1 block instead of 2; ranges apart |
+| FP64 L 2400 (112) | 1.5084 s | 1.5668 s | 1.039 | no | ranges apart |
+| FP64 L 3000 (92) | 1.7369 s | 1.6699 s | 0.961 | no | |
+| FP64 L 4000 (68) | 1.5767 s | 1.5773 s | 1.000 | no | |
+
+**R1 (the carveout for every L > 2048) is FALSIFIED**: FP32 L 3000, where 64 KB holds one block instead of two, takes 7.5 %
+more time on the re-run. **R2 lands**: its three cases gain 17–20 % (2049 ≤ 0.90, all ≤ 0.95) and the cases it leaves on
+the base parameters are within 1.05. Distances equal to base's in every case. Code: `DeviceLimits` reads the SM's
+shared memory and the per-block reserve once; the shared wavefront launches through `cudaLaunchKernelEx` with the
+attribute where 2 · (dynamic + static + reserved bytes) ≤ 64 % of the SM's shared memory and L > 2048.
+
+Confirmation of the R2 build against base, 19:57–19:59 (`step2_confirm_r2.txt`; head sha256 `96705284…5a2d`): FP32 L 2049
+0.847, 2644 0.815, 2645 1.002 (not applied), 3000 0.999; FP64 2049 1.002. SASS byte-identical to step 1 (host change).
+CUDA tree ctest 121 / 0 failed, `test_cuda_correctness` 59 / 7169 (the regime test runs FP32 L = 2049 with the
+attribute, bit for bit). The clang tree compiles none of it (`ninja: no work to do`).

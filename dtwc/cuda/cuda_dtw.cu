@@ -92,6 +92,8 @@ struct DeviceLimits {
   int sm_count = 0;                      ///< multiprocessors, for the persistent grid
   size_t max_shared_per_block = 0;       ///< opt-in maximum, static + dynamic
   size_t l2_bytes = 0;                   ///< L2 cache, which the global wavefront's slices fit
+  size_t shared_per_sm = 0;              ///< an SM's shared memory, which a carveout divides
+  size_t reserved_shared_per_block = 0;  ///< the runtime's own shared memory in every block
   size_t wavefront_static_bytes[2] = {}; ///< the FP32 and FP64 wavefront kernels' own
   cudaError_t setup_error = cudaSuccess;
   std::once_flag set_up;
@@ -142,6 +144,10 @@ const DeviceLimits &device_limits(int device_id)
       device.max_shared_per_block =
           static_cast<size_t>(read(cudaDevAttrMaxSharedMemoryPerBlockOptin, d));
       device.l2_bytes = static_cast<size_t>(read(cudaDevAttrL2CacheSize, d));
+      device.shared_per_sm =
+          static_cast<size_t>(read(cudaDevAttrMaxSharedMemoryPerMultiprocessor, d));
+      device.reserved_shared_per_block =
+          static_cast<size_t>(read(cudaDevAttrReservedSharedMemoryPerBlock, d));
     }
   });
   CUDA_CHECK(read_error);
@@ -1001,6 +1007,17 @@ void launch_dtw_kernel(
       global ? static_cast<int>(std::min(std::min<std::int64_t>(chunk, persistent_grid),
                                          std::max<std::int64_t>(device.sm_count, l2_slices)))
              : 0;
+  // A 64 % shared-memory carveout (64 KB of an RTX 4000 Ada's 100) runs two
+  // blocks per SM where the default runs three, and leaves 64 instead of 28 KB
+  // of L1 for the series the blocks read: 17-20 % less time at FP32
+  // L = 2049-2644. Where it holds one block it cost 7.5 % (FP32 L = 3000), so the
+  // long three-buffer mode (L > 2048) takes it only where it holds two
+  // (.claude/baselines/2026-09-30-c1-cuda-long-series.md).
+  constexpr unsigned carveout_percent = 64;
+  const size_t block_shared = wavefront_shared_mem
+      + device.wavefront_static_bytes[std::is_same_v<T, double>] + device.reserved_shared_per_block;
+  const bool carveout =
+      max_L > 2048 && 2 * block_shared * 100 <= carveout_percent * device.shared_per_sm;
 
   // Every device buffer the launches use is allocated before the caller's
   // matrix, so a device that cannot hold them refuses the fill first. A
@@ -1073,20 +1090,26 @@ void launch_dtw_kernel(
     } else if (kernel_path == detail::KernelPath::RegTileW8) {
       launch_warp_family(dtw_regtile_kernel<T, 8>, max_L, first, count, first_slot); // 32 lanes x 8 = 256 columns
     } else if (kernel_path == detail::KernelPath::Wavefront) {
-      if (count > persistent_grid * 4) {
+      // The carveout is a launch attribute: the function attribute is one value
+      // for every host thread.
+      const bool persistent = count > persistent_grid * 4;
+      if (persistent)
         CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
-        dtw_wavefront_kernel<T, WavefrontBuffers::Shared>
-            <<<persistent_grid, block_size, wavefront_shared_mem, stream>>>(
-                workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
-                N_series, static_cast<int>(max_L), count, use_squared_l2, band,
-                workspace.d_counter.get(), first, first_slot, nullptr);
-      } else {
-        dtw_wavefront_kernel<T, WavefrontBuffers::Shared>
-            <<<count, block_size, wavefront_shared_mem, stream>>>(
-                workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
-                N_series, static_cast<int>(max_L), count, use_squared_l2, band,
-                nullptr, first, first_slot, nullptr);
-      }
+      cudaLaunchAttribute carveout_attribute{};
+      carveout_attribute.id = cudaLaunchAttributePreferredSharedMemoryCarveout;
+      carveout_attribute.val.sharedMemCarveout = carveout_percent;
+      cudaLaunchConfig_t config{};
+      config.gridDim = dim3(persistent ? persistent_grid : count);
+      config.blockDim = dim3(block_size);
+      config.dynamicSmemBytes = wavefront_shared_mem;
+      config.stream = stream;
+      config.attrs = &carveout_attribute;
+      config.numAttrs = carveout ? 1 : 0;
+      CUDA_CHECK(cudaLaunchKernelEx(
+          &config, dtw_wavefront_kernel<T, WavefrontBuffers::Shared>,
+          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
+          N_series, static_cast<int>(max_L), count, use_squared_l2, band,
+          persistent ? workspace.d_counter.get() : nullptr, first, first_slot, nullptr));
     } else if (global) {
       CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
       dtw_wavefront_kernel<T, WavefrontBuffers::Global><<<global_grid, block_size, 0, stream>>>(
