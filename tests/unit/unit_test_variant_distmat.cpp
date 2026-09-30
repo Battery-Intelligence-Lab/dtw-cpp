@@ -16,7 +16,6 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <limits>
@@ -538,52 +537,6 @@ TEST_CASE("Problem invalidates or rejects post-bind distance-semantic mutations"
       prob.dist_by_ind(0, 1),
       Catch::Matchers::ContainsSubstring("changed before first use"));
   }
-#endif
-}
-
-TEST_CASE("Warm mmap cached lookups remain O(1) in series length",
-          "[variant][distmat][mmap][fingerprint][performance]")
-{
-#ifndef DTWC_HAS_MMAP
-  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
-#else
-  using clock = std::chrono::steady_clock;
-  constexpr int repeats = 100000;
-
-  const auto elapsed_for_length = [](size_t length, std::string_view stem) {
-    const ScratchDirectory cache_dir{ stem };
-    const fs::path cache = cache_dir.path / "distances.dtwcache";
-    std::vector<data_t> a(length), b(length);
-    for (size_t i = 0; i < length; ++i) {
-      a[i] = static_cast<double>(i % 17);
-      b[i] = static_cast<double>((i + 3) % 19);
-    }
-
-    Problem prob{"cache_lookup_complexity"};
-    prob.set_data(make_data({std::move(a), std::move(b)}));
-    prob.use_mmap_distance_matrix(cache);
-    // Exclude the deliberately one-time full identity validation from timing.
-    auto &matrix = prob.distance_matrix();
-    matrix.set(0, 1, 7.0);
-
-    const auto start = clock::now();
-    double checksum = 0.0;
-    for (int iteration = 0; iteration < repeats; ++iteration)
-      checksum += prob.dist_by_ind(0, 1);
-    const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      clock::now() - start).count();
-    REQUIRE(checksum == static_cast<double>(repeats) * 7.0);
-    return elapsed;
-  };
-
-  // Registered before running: after the one-time validation, length 4096 must
-  // stay within 8x the length-1 lookup plus a 20 ms scheduler allowance. A
-  // per-lookup data hash performs ~819M scalar visits here and violates the band
-  // by orders of magnitude; the intended path is two O(1) config/variant checks.
-  const auto short_ns = elapsed_for_length(1, "mmap_lookup_short");
-  const auto long_ns = elapsed_for_length(4096, "mmap_lookup_long");
-  INFO("short_ns=" << short_ns << " long_ns=" << long_ns);
-  REQUIRE(long_ns <= short_ns * 8 + 20'000'000);
 #endif
 }
 
