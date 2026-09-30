@@ -18,11 +18,13 @@ kernel that fails raises `DeviceError` too.
 Both write the matrix the CPU fill writes, `DistanceMatrix`'s packed lower
 triangle, in place, whether it is on the heap or memory-mapped; the result
 structs report what ran (kernel, pair count, GPU time), not the distances. A
-backend that refuses a request (no device, a series too long for the GPU's
-shared memory) does so before the matrix is allocated. CUDA computes at most
-2^27 pairs per launch and copies each launch's share of the matrix to the host
-as it finishes: the GPU holds the padded series and about 1 GiB of output
-whatever N is, and the matrix itself lives in host memory.
+backend that refuses a request (no device, a GPU that cannot hold the fill's
+buffers) does so before the matrix is allocated. Both accept series of any
+length. CUDA computes at most 2^27 pairs per launch and copies each launch's
+share of the matrix to the host as it finishes: the GPU holds the padded series
+and about 1 GiB of output whatever N is (plus, for series too long for shared
+memory, three anti-diagonals per resident block), and the matrix itself lives in
+host memory.
 
 ## What a `Problem` can run on a GPU
 
@@ -93,10 +95,14 @@ device's threadgroup-memory cap.
 |---|---|---|
 | `max_L ≤ 32` | `dtw_warp_kernel` | One warp per pair, full series in registers |
 | `32 < max_L ≤ 256` | `dtw_regtile_kernel<TILE_W>` | `TILE_W=4` for `≤128`, `TILE_W=8` for `≤256` |
+| `3·max_L·sizeof(T)` plus the kernel's 16 static bytes exceeds the device's opt-in shared memory per block | `dtw_wavefront_kernel` (global) | Anti-diagonals in global memory, one slice per resident block |
 | otherwise | `dtw_wavefront_kernel` | Anti-diagonals in shared memory |
 
 On an RTX 4000 Ada each CUDA kernel is the fastest of those that accept its
-length range, FP32 and FP64 alike.
+length range, FP32 and FP64 alike. Its 101,376 bytes of shared memory per block
+hold the anti-diagonals up to `max_L` = 8,446 in FP32 and 4,223 in FP64; the
+global-memory wavefront runs the same cells, so its distances are the shared
+kernel's.
 
 ### Options
 
