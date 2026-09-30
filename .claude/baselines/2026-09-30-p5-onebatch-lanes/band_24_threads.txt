@@ -1,0 +1,72 @@
+base OBP fill_s=0.939283 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.986191 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.955474 table_hash=a00eefb248cb87ec evals=439780
+base call_s=1.003096 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.951939 table_hash=a00eefb248cb87ec evals=439780
+base call_s=1.000062 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.197821 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.244464 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.194052 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.241928 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.205789 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.254294 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.904000 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.947410 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.902206 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.947557 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.950520 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.996771 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.194639 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.241488 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.193350 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.236970 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.192296 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.243021 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.896252 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.943050 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.886873 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.932034 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.857191 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.905146 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.204964 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.252725 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.199561 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.244705 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.195378 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.244480 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.922782 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.969945 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.923079 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.968505 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.938727 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.984471 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.201519 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.250096 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.207548 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.255351 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.208472 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.254339 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=1.019463 table_hash=a00eefb248cb87ec evals=439780
+base call_s=1.067137 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.944135 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.989266 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.939791 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.986130 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.209104 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.259155 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.202116 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.251208 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.203343 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.250613 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.934438 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.981727 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.892033 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.937357 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base OBP fill_s=0.889837 table_hash=a00eefb248cb87ec evals=439780
+base call_s=0.935880 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.203438 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.250340 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.194808 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.245356 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head OBP fill_s=0.193920 table_hash=a00eefb248cb87ec evals=439780
+head call_s=0.239990 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220

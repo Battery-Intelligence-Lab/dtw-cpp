@@ -54,6 +54,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   are bit for bit what the serial loop returned, at any thread count. On an Intel Core Ultra 9 285 (24 threads, shared
   machine) with N = 2,000, k = 10 and 200-sample random walks, the assignment takes 0.041 s instead of 0.90 s (21.9×) and the
   whole call 0.96 s instead of 1.82 s (1.9×); the table fill before it was already parallel and now bounds the gain.
+- **Changed (performance):** OneBatchPAM fills its N x m batch table, m(N-1) DTW calls and nearly all of a call, with the same
+  SIMD lanes as the distance-matrix fill: 8 batch series of the row's length per call (16 in `float32`), one pair per lane.
+  Pairs of other lengths, every DTW variant, missing-data strategy and multivariate input keep the one-pair path. The table,
+  labels, medoids, total cost and distance count are bit for bit what the one-pair fill returned. On an Intel Core Ultra 9 285
+  (24 threads, shared machine) with N = 2,000, k = 10 and 200-sample random walks the table fill takes 0.20 s instead of
+  0.93 s (4.6×) and the whole call 0.25 s instead of 0.98 s (3.9×); on one thread, 3.0 s instead of 19.5 s (6.5×).
 - **Changed (build):** llfio is header-only, from SHA-256-pinned GitHub archives, behind one `llfio_hl` target:
   `cmake/Dependencies.cmake` loses the quickcpplib bootstrap, its patched nested superbuild and `add_subdirectory(llfio)`
   (196 lines out, 69 in). The superbuild compiled quickcpplib from `master` and outcome from `develop`, whatever they
