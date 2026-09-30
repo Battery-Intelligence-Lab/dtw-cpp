@@ -915,10 +915,20 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("is_distance_matrix_filled", &dtwc::Problem::is_distance_matrix_filled)
     .def("max_distance", &dtwc::Problem::max_distance)
     .def("dist_by_ind", [](dtwc::Problem &p, int i, int j) {
+      // Problem::dist_by_ind is the unchecked hot path: this boundary owns the range check.
+      const std::size_t n = p.size();
+      const auto check = [n](const char *name, int index) {
+        if (index < 0 || static_cast<std::size_t>(index) >= n)
+          throw dtwc::InvalidInput(std::string("dist_by_ind: ") + name + " = "
+            + std::to_string(index) + " is outside [0, N) with N = " + std::to_string(n) + ".");
+      };
+      check("i", i);
+      check("j", j);
       nb::gil_scoped_release release;
       return p.dist_by_ind(i, j);
     }, "i"_a, "j"_a,
        "Distance between series i and j, computing it on demand.\n\n"
+       "Raises InvalidInput if i or j is outside [0, N).\n\n"
        "The lazy compute path MUTATES this Problem, so it must not be called\n"
        "concurrently from several Python threads on the same object (see the\n"
        "Problem class docstring).")

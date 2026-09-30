@@ -94,6 +94,32 @@ class TestDistanceMatrix:
         expected = dtwcpp.distance.dtw([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
         assert p.dist_by_ind(0, 1) == pytest.approx(expected)
 
+    @pytest.mark.parametrize(
+        "i, j, name, bad",
+        [(3, 0, "i", 3), (0, 3, "j", 3), (100, 0, "i", 100), (0, 100, "j", 100),
+         (-1, 0, "i", -1), (0, -1, "j", -1)],
+    )
+    def test_index_outside_the_problem_raises(self, i, j, name, bad):
+        """Problem::dist_by_ind is the unchecked hot path, so the binding owns the
+        range check: an index outside [0, N) raises InvalidInput naming it and N
+        instead of reading past the matrix."""
+        p = self._make_problem([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]])
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"{name} = {bad}\b.*N = 3"):
+            p.dist_by_ind(i, j)
+
+    def test_index_on_an_empty_problem_raises(self):
+        """Every index is outside an empty Problem."""
+        with pytest.raises(dtwcpp.InvalidInput, match=r"i = 0\b.*N = 0"):
+            dtwcpp.Problem("empty").dist_by_ind(0, 0)
+
+    def test_last_index_is_valid(self):
+        """N - 1 is a valid index and the check leaves valid calls unchanged."""
+        data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
+        p = self._make_problem(data)
+        assert p.dist_by_ind(2, 0) == pytest.approx(
+            dtwcpp.distance.dtw(data[2], data[0]))
+        assert p.dist_by_ind(2, 2) == 0.0
+
 
 class TestDenseSemanticMutation:
     """A populated dense/precomputed matrix is bound to one exact configuration."""

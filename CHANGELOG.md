@@ -100,6 +100,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   grammar (its own ordinal parser and the MEX's second canonicaliser are gone).
 - **Fixed (Python, hpc):** a file `Dataset` with a `delimiter` raises `InvalidInput`, because the SLURM transport does not carry
   it (it was dropped silently); an in-memory dataset's `skip_cols` is applied once, not twice.
+- **Fixed (Python):** `Problem.dist_by_ind(i, j)` raises `InvalidInput` for an index outside `[0, N)`, naming the index and N;
+  v1.0.0's `distByInd` read past the distance matrix (undefined behaviour). C++ `Problem::dist_by_ind` stays unchecked.
 - **Fixed (CLI):** `--dtype float32 --device cuda` raises `DeviceError`; the CUDA fill received no series. Parquet / Arrow IPC
   input on a build without Arrow is `IOError`, like `.dtws` input without llfio. The documented `--method` default is `auto`.
 - **Fixed (load):** Tier-1 `load` read errors again start `load: failed to read '<path>': ` and stay `IOError`; the partial
