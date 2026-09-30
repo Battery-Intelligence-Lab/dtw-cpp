@@ -186,3 +186,6 @@ CHANGELOG rule.
   branch and bound), so a HiGHS-OFF build asserts `SolverError` for `mip` alone.
 - 2026-09-30 — W6e's MATLAB half: `cmd_cluster_legacy` and snake_case MATLAB keys move to W9e, where `run(Config)`
   replaces them (chair.md line 20 already puts `cmd_cluster_legacy` in W9); renaming the keys twice is waste.
+- 2026-09-30 — W6e, Python half: `Problem.cluster_size` is a method again, silent (v1 bound it as a method; the 2.0
+  warning property made `prob.cluster_size()` a TypeError). The bindings of `set_view_data`, `OneBatchPAMStats` and
+  `one_batch_pam_with_stats` go as chair.md §4 W6 approved; the C++ stays (FastCLARA and the CLI use it).
