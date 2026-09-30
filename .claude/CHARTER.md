@@ -8,6 +8,12 @@ with a date. The target they lead to is in `MAP.md` and `DECISIONS.md`; how it i
 
 > Please continue but don't call fable, for delegating simpler tasks use Sonnet 5.5 xhigh
 
+Later the same day, on keeping `Nb` as `size_t` in the MIP backends to protect overflow guards:
+
+> It is fine, we will never cluster as many as Nb^2 more than int64
+
+> You are overthiking about simple things. Just keep the code simple, we think about it when it overflows
+
 ## 2026-09-29 — continue
 
 > Please go through what was done and try to continue. Don't forget our principles of no unnecessary
