@@ -96,6 +96,8 @@ struct DeviceLimits {
   int sm_count = 0;                      ///< multiprocessors, for the persistent grid
   size_t max_shared_per_block = 0;       ///< opt-in maximum, static + dynamic
   size_t l2_bytes = 0;                   ///< L2 cache, which the global wavefront's slices fit
+  size_t shared_per_sm = 0;              ///< an SM's shared memory, which picks the wavefront's route
+  size_t reserved_shared_per_block = 0;  ///< the runtime's own shared memory in every block
   size_t wavefront_static_bytes[2] = {}; ///< the FP32 and FP64 wavefront kernels' own
   cudaError_t setup_error = cudaSuccess;
   std::once_flag set_up;
@@ -148,6 +150,10 @@ const DeviceLimits &device_limits(int device_id)
       device.max_shared_per_block =
           static_cast<size_t>(read(cudaDevAttrMaxSharedMemoryPerBlockOptin, d));
       device.l2_bytes = static_cast<size_t>(read(cudaDevAttrL2CacheSize, d));
+      device.shared_per_sm =
+          static_cast<size_t>(read(cudaDevAttrMaxSharedMemoryPerMultiprocessor, d));
+      device.reserved_shared_per_block =
+          static_cast<size_t>(read(cudaDevAttrReservedSharedMemoryPerBlock, d));
     }
   });
   CUDA_CHECK(read_error);
@@ -982,7 +988,8 @@ void launch_dtw_kernel(
   // The wavefront loops persistent blocks over a launch that has many more
   // pairs than fit on the device at once, one block per pair otherwise. A
   // shared-memory block holds wavefront_buffer_count's diagonal buffers, which
-  // select_kernel fitted to the opt-in maximum that device_limits opened once;
+  // select_kernel sized so that three fit an SM above L = 2048, within the
+  // opt-in maximum that device_limits opened once;
   // up to kPreloadMaxLength its kernel is the preload mode compiled alone: 40
   // registers instead of 68 (FP32) or 79 (FP64), so up to 6 blocks per SM
   // instead of 3, and 11.5-18.5 % less time at L 257-512 in FP32 and FP64
@@ -1156,8 +1163,8 @@ CUDADistMatResult compute_distance_matrix_cuda(
   const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
   const auto &device = device_limits(opts.device_id);
   const auto kernel_path = detail::select_kernel(
-      max_L, use_fp32 ? sizeof(float) : sizeof(double),
-      device.max_shared_per_block - device.wavefront_static_bytes[use_fp32 ? 0 : 1]);
+      max_L, use_fp32 ? sizeof(float) : sizeof(double), device.shared_per_sm,
+      device.wavefront_static_bytes[use_fp32 ? 0 : 1] + device.reserved_shared_per_block);
   result.kernel_used = std::string(detail::kernel_path_name(kernel_path));
   result.pairs_computed = detail::upper_triangle_pairs(N);
 
