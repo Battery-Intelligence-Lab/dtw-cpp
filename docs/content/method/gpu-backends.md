@@ -99,11 +99,11 @@ device's threadgroup-memory cap.
 | `3·max_L·sizeof(T)` plus the kernel's 16 static bytes exceeds the device's opt-in shared memory per block | `dtw_wavefront_kernel` (global) | Anti-diagonals in global memory, one slice per resident block |
 | otherwise | `dtw_wavefront_kernel` | Anti-diagonals in shared memory |
 
-On an RTX 4000 Ada each CUDA kernel is the fastest of those that accept its
-length range, FP32 and FP64 alike. Its 101,376 bytes of shared memory per block
-hold the anti-diagonals up to `max_L` = 8,446 in FP32 and 4,223 in FP64; the
-global-memory wavefront runs the same cells, so its distances are the shared
-kernel's.
+On an RTX 4000 Ada the warp and register-tile kernels are the fastest of those
+that accept their length ranges, FP32 and FP64 alike. Its 101,376 bytes of shared
+memory per block hold the anti-diagonals up to `max_L` = 8,446 in FP32 and 4,223
+in FP64; the global-memory wavefront runs the same cells, so its distances are
+the shared kernel's.
 
 ### Options
 

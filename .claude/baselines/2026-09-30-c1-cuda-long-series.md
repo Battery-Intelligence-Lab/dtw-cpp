@@ -233,3 +233,35 @@ and FP64 (the `Shared` kernel 68 / 79), its series loads are `LDS` and its cell 
 add). The regime test (L 257 and 512), the F12 route test (filler 257, banded, both metrics), the two-launch test (257,
 persistent) and `test_gpu_matches_cpu_large` (L 500) run it against their oracles. CUDA tree ctest 121 / 0 failed,
 `test_cuda_correctness` 59 / 7169; clang tree ctest 122 = 119 + 3 MAY_SKIP, `cpp_conformance` passed.
+
+## After the review
+
+An adversarial review of the branch (read-only) raised, besides the CUDA 12.5 attribute (step 2, reverted):
+
+- **The global route beats the shared one at the top of the shared range** [inferred: 3 fills each, 21:13–21:16 BST,
+  CPU load 23–100 % from other agents, GPU otherwise idle]. `route_ab.txt`: the same public fill with the normal
+  selection and with a probe build (reverted) that takes the global route for every L > 2048; distances identical.
+
+  | case (N) | shared route | global route | global / shared | shared blocks per SM |
+  | --- | --- | --- | --- | --- |
+  | FP32 L 2049 (272) | 1.4548 s | 1.5724 s | 1.081 | 3 |
+  | FP32 L 3000 (184) | 1.7091 s | 1.6285 s | 0.953 | 2 |
+  | FP32 L 4096 (136) | 1.6677 s | 1.6525 s | 0.991 | 2 |
+  | FP32 L 6000 (92) | 2.6954 s | 1.7190 s | **0.638** | 1 |
+  | FP32 L 8000 (68) | 2.6198 s | 1.7201 s | **0.657** | 1 |
+  | FP64 L 2049 (136) | 1.5654 s | 1.3076 s | **0.835** | 2 |
+  | FP64 L 3000 (92) | 1.6663 s | 1.2606 s | **0.757** | 1 |
+  | FP64 L 4000 (68) | 1.5776 s | 1.2466 s | **0.790** | 1 |
+
+  Every case fits "the shared wavefront above L = 2048 only where three blocks fit an SM": a lead for its own band. The
+  brief keeps the selection below the shared-memory limit as it was, so C1 does not change it. The docs page's "each
+  kernel is the fastest of those that accept its length range" now names only the warp and register-tile kernels.
+- **Tests:** a banded (64) and a squared-L2 FP64 fill at the limit on the global route (banded equal to the host's banded
+  kernel bit for bit; squared L2 within 1e-10 relative, as the other squared-L2 tests). The occupancy queries are checked
+  (`CUDA_CHECK`), so a failure is reported where it happens, before any allocation.
+- **CHANGELOG:** the speed sentences go; the CPU fills were timed under 18–70 % load, and the L2 cap is floored at one
+  block per SM (it binds above FP32 L ≈ 72,800, FP64 ≈ 36,400 on this GPU), which the sentence did not say. The numbers
+  stay here, advisory.
+- **Kept:** `T *__restrict__ scratch` (the buffers are reached through the stack array `diag_buf`; the global kernel's
+  scratch loads are `LD.E`, never the read-only path); the extra persistent blocks the occupancy query counts but a
+  per-launch carveout would not hold (moot after the revert).

@@ -650,6 +650,38 @@ TEST_CASE("CUDA global-memory wavefront runs many pairs per block",
           == (fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series)));
 }
 
+// The global-memory wavefront runs the shared kernel's band and squared-L2 cost
+// too: FP64 at the limit, a band of 64 against the host's banded kernel bit for
+// bit, and squared L2 against the host kernel within the relative 1e-10 of the
+// other squared-L2 tests (a host compiler may contract the square into an FMA).
+TEST_CASE("CUDA global-memory wavefront matches the host kernel with a band and with squared L2",
+          "[cuda][long][banded]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  const auto series = generate_random_walks(4, first_global_length(false), /*seed=*/20261003);
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+
+  opts.band = 64;
+  const auto banded = gpu_fill(series, opts);
+  CHECK(banded.kernel_used == "wavefront_global");
+  CHECK(banded.matrix == cpu_banded_distance_matrix(series, 64));
+
+  opts.band = -1;
+  opts.use_squared_l2 = true;
+  const auto squared = gpu_fill(series, opts);
+  CHECK(squared.kernel_used == "wavefront_global");
+  for (size_t i = 0; i < series.size(); ++i)
+    for (size_t j = 0; j < i; ++j) {
+      CAPTURE(i, j);
+      CHECK_THAT(squared.matrix[i * series.size() + j],
+                 WithinRel(dtwc::dtwFull_L<double>(series[i], series[j], -1.0,
+                                                   dtwc::core::MetricType::SquaredL2),
+                           1e-10));
+    }
+}
+
 // The Problem's fill hands its matrix to the backend, which sizes it only after
 // its own refusals: a device index past the last device leaves no matrix
 // allocated (Problem used to size it first, which at N = 65,537 is 17 GB of NaN).

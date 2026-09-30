@@ -1002,11 +1002,11 @@ void launch_dtw_kernel(
   if (wavefront) {
     int blocks_per_sm = 0;
     if (global)
-      cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-          &blocks_per_sm, dtw_wavefront_kernel<T, Wavefront::Global>, block_size, 0);
+      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+          &blocks_per_sm, dtw_wavefront_kernel<T, Wavefront::Global>, block_size, 0));
     else
-      cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-          &blocks_per_sm, shared_kernel, block_size, wavefront_shared_mem);
+      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+          &blocks_per_sm, shared_kernel, block_size, wavefront_shared_mem));
     persistent_grid = device.sm_count * std::max(blocks_per_sm, 1);
   }
   // A global block's slice holds three anti-diagonals of max_L values. The grid
