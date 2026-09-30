@@ -19,7 +19,10 @@ Both write the matrix the CPU fill writes, `DistanceMatrix`'s packed lower
 triangle, in place, whether it is on the heap or memory-mapped; the result
 structs report what ran (kernel, pair count, GPU time), not the distances. A
 backend that refuses a request (no device, a series too long for the GPU's
-shared memory) does so before the matrix is allocated.
+shared memory) does so before the matrix is allocated. CUDA computes at most
+2^27 pairs per launch and copies each launch's share of the matrix to the host
+as it finishes, so the GPU holds about 1 GiB of output whatever N is, and N is
+bounded by host memory, not by the GPU.
 
 ## What a `Problem` can run on a GPU
 

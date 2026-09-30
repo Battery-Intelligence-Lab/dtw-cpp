@@ -36,7 +36,6 @@
 #include <stdexcept>
 
 #include "../detail/decode_pair.hpp"
-#include "detail/chunk_dispatch.hpp"
 
 namespace dtwc::metal {
 
@@ -1056,7 +1055,8 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     id<MTLCommandBuffer> last_cmd = nil;
     for (size_t off = 0; off < effective_pairs; off += chunk) {
-      const auto pair_offset = detail::pair_chunk_offset(off);
+      // The kernels read buffer(8) as a 64-bit `long`: typed here, never narrowed.
+      const std::int64_t pair_offset = static_cast<std::int64_t>(off);
       const size_t this_chunk = std::min(chunk, effective_pairs - off);
 
       id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];

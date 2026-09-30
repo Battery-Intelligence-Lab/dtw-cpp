@@ -935,9 +935,11 @@ void flatten_series_buffer(
 }
 
 /// Fill @p out with the distance of every pair, computed in T. The pairs run
-/// in launches of consecutive pairs; a launch writes its span of packed slots
-/// on the device, and the span is copied as it is into out.raw(), on the heap or
-/// mapped. No launch writes a diagonal slot: the host zeroes the diagonal.
+/// in launches of at most kMaxPairsPerLaunch consecutive pairs, whose first
+/// pair is an int64 offset; a launch writes its span of packed slots on the
+/// device, and the span is copied as it is into out.raw(), on the heap or
+/// mapped, so the device holds one launch's output whatever N is. No launch
+/// writes a diagonal slot: the host zeroes the diagonal.
 ///
 /// Pair indices are decoded on the device (decode_pair), so no pair list is
 /// built or uploaded. GPU timing is measured with CUDA events around the
@@ -968,7 +970,7 @@ void launch_dtw_kernel(
 
   const auto n = static_cast<std::int64_t>(N);
   const std::int64_t num_pairs = n * (n - 1) / 2;
-  const std::int64_t chunk = num_pairs;
+  const std::int64_t chunk = std::min(num_pairs, detail::kMaxPairsPerLaunch);
 
   // The flattened series go through pinned memory where the budget allows, so
   // the upload is a true asynchronous copy; pageable memory otherwise.
@@ -1075,12 +1077,8 @@ CUDADistMatResult compute_distance_matrix_cuda(
 {
   validate_cuda_precision(opts.precision);
   const size_t N = series.size();
-  // Both guards run before `out` is touched: a missing device must not answer
-  // with a zero matrix, and a pair count that does not fit the launch geometry
-  // must not be narrowed to int.
+  // Before `out` is touched: a missing device must not answer with a zero matrix.
   detail::require_cuda_device(cuda_available(), "compute_distance_matrix_cuda");
-  detail::require_pair_count_fits(detail::upper_triangle_pairs(N),
-                                  "compute_distance_matrix_cuda");
 
   CUDADistMatResult result;
   result.kernel_used = "none";

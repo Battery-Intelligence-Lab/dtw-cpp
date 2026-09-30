@@ -14,6 +14,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <dtwc.hpp>
+#include <base/parallelisation.hpp>
 
 #include "gpu_fixed_band_oracle.hpp"
 #include "../support/deterministic_series.hpp"
@@ -31,6 +32,7 @@
 #include <limits>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
 #include <random>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -1612,6 +1614,61 @@ TEST_CASE("test_regtile_kernel_squared_l2_L80", "[cuda][regtile]")
       REQUIRE_THAT(gpu_result.matrix[i * N + j],
                    WithinRel(cpu_d, 1e-10));
     }
+  }
+}
+
+// A15: at N = 65,537 the pair count passes INT_MAX, so the fill runs in several
+// launches of consecutive pairs, each streaming its span of the packed matrix to
+// the host; the CUDA fill used to refuse any N above 65,536. Series of 4 to 8
+// samples keep the host oracle cheap enough to check every pair, so every launch
+// boundary is checked: bit for bit in FP64 against the host kernel, and in FP32
+// against the host kernel run in FP32 on the float-rounded series (the exact
+// standard of the kernel-range test above).
+TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair",
+          "[cuda][A15][large]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  constexpr size_t N = 65537;
+  std::vector<std::vector<double>> series(N);
+  std::vector<std::vector<float>> rounded(N);
+  std::vector<std::string> names(N);
+  std::mt19937 rng(20260930);
+  std::uniform_real_distribution<double> value(-1.0, 1.0);
+  for (size_t i = 0; i < N; ++i) {
+    series[i].resize(4 + i % 5);
+    for (auto &v : series[i]) v = value(rng);
+    rounded[i].assign(series[i].begin(), series[i].end());
+    names[i] = "s" + std::to_string(i);
+  }
+
+  dtwc::Problem prob("a15");
+  prob.set_data(dtwc::Data{ std::vector<std::vector<double>>(series), std::move(names) });
+  prob.set_device(dtwc::Device::GPU);
+  for (const bool fp64 : { true, false }) {
+    CAPTURE(fp64);
+    prob.set_cuda_settings(
+        dtwc::CUDASettings{ 0, fp64 ? dtwc::GpuPrecision::FP64 : dtwc::GpuPrecision::FP32 });
+    prob.fill_distance_matrix();
+    const auto &matrix = std::as_const(prob).distance_matrix();
+    REQUIRE(matrix.size() == N);
+
+    // One mismatch count per row: each row has one writer.
+    std::vector<size_t> mismatches(N, 0);
+    auto check_row = [&](size_t i) {
+      for (size_t j = 0; j < i; ++j) {
+        const double host = fp64
+            ? dtwc::dtwFull_L<double>(series[i], series[j])
+            : static_cast<double>(dtwc::dtwFull_L<float>(rounded[i], rounded[j]));
+        mismatches[i] += matrix.get(i, j) != host;
+      }
+      mismatches[i] += matrix.get(i, i) != 0.0;
+    };
+    dtwc::run_openmp(check_row, N);
+    const auto first_bad =
+        std::find_if(mismatches.begin(), mismatches.end(), [](size_t m) { return m != 0; });
+    CAPTURE(first_bad - mismatches.begin());
+    REQUIRE(std::accumulate(mismatches.begin(), mismatches.end(), size_t{ 0 }) == 0);
   }
 }
 

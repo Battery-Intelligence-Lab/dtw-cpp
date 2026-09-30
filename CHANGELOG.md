@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (GPU):** the CUDA distance-matrix fill runs for any number of series; it refused more than 65,536. It
+  computes at most 2^27 pairs per launch and copies each launch's share of the packed matrix straight into the
+  `Problem`'s matrix, on the heap or memory-mapped, where it built an N×N matrix on the GPU and two more on the host
+  and copied them element by element. On an RTX 4000 Ada at N = 20,000 (FP32) one fill's memory above its input fell
+  from 6.0 to 1.6 GiB on the host and from 1.6 to 1.1 GiB on the GPU, and 9,000 series of length 100 fill in 1.17 s
+  instead of 1.50 s. A fill its backend refuses (no device, a series too long for the GPU's shared memory) no longer
+  leaves a matrix allocated.
 - **Changed (performance, Windows):** a DTW cell no longer makes a library call. The MSVC STL compiles `std::min({…})` to an
   out-of-line helper (`__std_min_d` under clang, `__std_min_element_d` under cl), which full, banded, ADTW, AROW, MSM, TWE and
   the DBA alignment called once per cell; they now nest two-argument `std::min` and keep the value a cell stores in a register.
