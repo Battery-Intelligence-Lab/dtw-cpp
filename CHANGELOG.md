@@ -8,6 +8,16 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (C++):** `Problem::dist_by_ind` reads the distance matrix and computes nothing: an inlined O(1) load, where
+  every lookup re-checked the distance settings (FastPAM's swap made N² such lookups per sweep). It needs a matrix that
+  holds the pair: call `fill_distance_matrix()` first, as the library's methods that read the matrix now do
+  (`assign_clusters`, `calculate_medoids` and `init::Kmeanspp` fill it before reading; `find_total_cost` computes the N
+  point-to-medoid distances when no matrix is filled). The v1.0.0 `distByInd`, which computed one pair on demand, fills
+  the matrix on its first call. `is_distance_matrix_filled()` is a flag again, as in v1.0.0, not a scan of the matrix.
+  A direct write to the v1.0.0 `band` field takes effect at the next `fill_distance_matrix()`, where v1.0.0 kept the
+  distances computed under the old band. The distance settings are one private `DistanceConfig`, changed through
+  `set_distance`, `set_band`, `set_metric`, `set_variant` and `set_missing_strategy`; a change drops the matrix and the
+  clustering.
 - **Changed (C++, breaks source):** counts, labels and medoids are `dtwc::index_t` (`std::int64_t`): `Problem::clusters_ind`,
   `centroids_ind`, `labels()`, `medoids()`, `size()`, `n_clusters()`, `dist_by_ind`, `ClusteringResult`, `Result::labels()`
   and `medoids()`, every algorithm's `k` and the loaders' row, column and series counts; `band`, `max_iter`, `n_init` and

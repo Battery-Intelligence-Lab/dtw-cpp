@@ -170,6 +170,7 @@ Problem make_uniform_lr_problem(int N, int k, unsigned seed)
     for (int j = i + 1; j < N; ++j)
       dm.set(static_cast<std::size_t>(i), static_cast<std::size_t>(j), u(rng));
   }
+  prob.fill_distance_matrix(); // every pair is set: marks the edit complete, computes nothing
   REQUIRE(prob.is_distance_matrix_filled());
   return prob;
 }

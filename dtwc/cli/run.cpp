@@ -237,9 +237,9 @@ Data convert_to_f32(const Data &data_f64)
 /// Bind persistent distance storage once every distance-affecting setting has
 /// reached the Problem. Returns the mmap cache path, or nullopt when the method
 /// keeps its own storage or N is below the threshold. OneBatchPAM owns a fixed
-/// O(Nm) table and never calls Problem::dist_by_ind(); non-full FastCLARA reads
-/// no parent matrix. TADPole is NOT exempt: its exact distances go through
-/// dist_by_ind(), whose dense cache would allocate packed O(N^2) doubles.
+/// O(Nm) table and reads no parent matrix; nor does non-full FastCLARA. TADPole
+/// reads the matrix when it is complete (a file or a cache from an earlier run)
+/// and otherwise computes the pairs it needs.
 std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &config, ClusterMethod method,
                                                    bool clara_uses_full_sample, const fs::path &cache_path)
 {
@@ -388,7 +388,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   if (config.device == Device::GPU
       && (config.method == ClusterMethod::OneBatch || config.method == ClusterMethod::TADPole))
     refuse_gpu_method(config.method);
-  validate_gpu_request("run", prob.distance_strategy, config.variant, config.missing, config.dtype, config.gpu);
+  validate_gpu_request("run", prob.distance_strategy(), config.variant, config.missing, config.dtype, config.gpu);
 
   algorithms::CLARAOptions clara;
   clara.n_clusters = config.k;

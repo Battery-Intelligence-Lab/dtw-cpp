@@ -46,6 +46,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dtwc {
@@ -60,19 +61,19 @@ namespace {
 /// series length fits the integer envelope-radius API (F46).
 ///
 /// Float32 is excluded because the prune would not be ADMISSIBLE: the bound path
-/// reads Data::series() (float64 storage) while the exact side goes through
-/// Problem::dist_by_ind, which branches on is_f32() — the two sides of the bound
-/// would come from different data. Float32 therefore takes the exact path
-/// everywhere, a slowdown TADPoleStats::pruning_enabled reports.
+/// reads Data::series() (float64 storage) while the exact side computes on the
+/// stored Float32 series — the two sides of the bound would come from different
+/// data. Float32 therefore takes the exact path everywhere, a slowdown
+/// TADPoleStats::pruning_enabled reports.
 bool bounds_valid(const Problem &prob)
 {
   // The bounds are L1: under Problem::set_metric(SquaredL2) the LB can exceed
   // the exact distance, so another metric takes the exact path too.
-  return prob.variant_params.variant == core::DTWVariant::Standard
+  return prob.variant_params().variant == core::DTWVariant::Standard
          && prob.metric() == core::MetricType::L1
          && prob.data().ndim == 1
          && !prob.data().is_f32()
-         && prob.missing_strategy == core::MissingStrategy::Error;
+         && prob.missing_strategy() == core::MissingStrategy::Error;
 }
 
 /// No-warp diagonal cost Σ_t |x_t − y_t| — a valid DTW upper bound for
@@ -83,6 +84,25 @@ double diagonal_ub_l1(std::span<const double> x, std::span<const double> y)
   double s = 0.0; // caller guarantees x.size() == y.size()
   for (std::size_t t = 0; t < x.size(); ++t) s += std::abs(x[t] - y[t]);
   return s;
+}
+
+/// The exact distance of a pair: the Problem's matrix when it is filled (a
+/// matrix read from a file included), else the bound DTW function on the stored
+/// series, whose request is checked here, once, serially. Neither writes, so
+/// the parallel stages may call it for disjoint pairs.
+auto exact_distance(Problem &prob)
+{
+  const bool filled = prob.is_distance_matrix_filled();
+  const bool f32 = prob.data().is_f32();
+  const Problem::dtw_fn_t *f64_fn = filled || f32 ? nullptr : &prob.dtw_function();
+  const Problem::dtw_fn_f32_t *f32_fn = filled || !f32 ? nullptr : &prob.dtw_function_f32();
+  return [&prob, f64_fn, f32_fn](index_t i, index_t j) -> double {
+    if (f64_fn) return (*f64_fn)(prob.series(static_cast<std::size_t>(i)),
+                                 prob.series(static_cast<std::size_t>(j)));
+    if (f32_fn) return (*f32_fn)(prob.data().series_f32(static_cast<std::size_t>(i)),
+                                 prob.data().series_f32(static_cast<std::size_t>(j)));
+    return prob.dist_by_ind(i, j);
+  };
 }
 
 /// Strict total order that makes "higher density" well-defined under ρ-ties:
@@ -106,11 +126,17 @@ double tadpole_auto_dc(Problem &prob, double percentile)
   // Deterministic subsample: all pairs among the first min(N, cap) series (no
   // RNG → reproducible). Rodriguez & Laio pick dc so avg neighbours ≈ 1–2% of N.
   const index_t cap = std::min<index_t>(N, 64);
-  std::vector<double> sample;
-  sample.reserve(static_cast<std::size_t>(cap * (cap - 1) / 2));
+  const auto distance = exact_distance(prob);
+  std::vector<std::pair<index_t, index_t>> pairs;
+  pairs.reserve(static_cast<std::size_t>(cap * (cap - 1) / 2));
   for (index_t i = 0; i < cap; ++i)
     for (index_t j = i + 1; j < cap; ++j)
-      sample.push_back(prob.dist_by_ind(i, j));
+      pairs.emplace_back(i, j);
+  // Up to 2016 exact DTWs, which tadpole() computes again (it keeps its own
+  // pair cache): one slot per pair, in parallel.
+  std::vector<double> sample(pairs.size());
+  auto sample_pair = [&](std::size_t p) { sample[p] = distance(pairs[p].first, pairs[p].second); };
+  run_openmp(sample_pair, pairs.size());
 
   std::size_t idx = static_cast<std::size_t>(percentile / 100.0 * (sample.size() - 1));
   if (idx >= sample.size()) idx = sample.size() - 1;
@@ -137,26 +163,26 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
                        + std::to_string(k) + ", N=" + std::to_string(N) + ".");
   if (!(dc > 0.0)) throw InvalidInput("tadpole: dc must be > 0.");
 
+  const auto distance = exact_distance(prob); // before the band is read: it takes a direct write
   const int band = prob.band;
   const bool can_prune = prune && bounds_valid(prob);
 
   const std::size_t M = core::packed_size(static_cast<std::size_t>(N)); // incl. diagonal slots
   std::vector<char> computed(M, 0); // first-touch flag per pair (dedup + exact-call count)
+  // The pairs computed so far, when the Problem's matrix does not hold them.
+  core::DistanceMatrix cache(prob.is_distance_matrix_filled() ? 0 : static_cast<std::size_t>(N));
 
-  // Exact DTW with dedup. computed[p] is written by exactly one thread per pair
-  // (each unordered pair is visited by a single owner in every stage, and the
-  // stages are barrier-separated), so no lock is needed. prob.dist_by_ind caches
-  // internally, so a pair touched twice recomputes zero times.
+  // Exact DTW with dedup. computed[p] and the cache slot are written by exactly
+  // one thread per pair (each unordered pair is visited by a single owner in
+  // every stage, and the stages are barrier-separated), so no lock is needed; a
+  // pair touched twice is computed once.
   auto exact = [&](index_t i, index_t j) -> double {
     computed[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))] = 1;
-    return prob.dist_by_ind(i, j);
+    if (cache.size() == 0) return distance(i, j);
+    const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>(j);
+    if (!cache.is_computed(a, b)) cache.set(a, b, distance(i, j));
+    return cache.get(a, b);
   };
-
-  // Serial pre-trigger: allocate the lazy distance matrix and bind the DTW fn
-  // ONCE, single-threaded, so the parallel regions never race the lazy-init /
-  // rebind path inside dist_by_ind. Counted (conservative: if pruning would have
-  // skipped this pair, it still shows as one real DTW — never over-claims pruning).
-  if (N >= 2) exact(0, 1);
 
   // Per-series LB_Keogh envelopes, reused across ALL pairs (Begum's cached
   // envelope). For full DTW (band<0) the valid envelope is the GLOBAL min/max

@@ -18,8 +18,9 @@ implemented.
 | Squared L2 | $$(x_i-y_j)^2$$ | $$\sum_c (x_{i,c}-y_{j,c})^2$$ | Emphasizes large pointwise deviations; the accumulated result is not itself a metric distance. |
 
 The C++ runtime API selects among all three. `Problem::set_metric` makes the
-metric part of a `Problem`'s distance semantics — its CPU and GPU fills, lazy
-lookups, mmap cache and checkpoint identities, and FastCLARA's samples. A metric
+metric part of a `Problem`'s distance semantics — its CPU and GPU fills, its
+bound distance function, mmap cache and checkpoint identities, and FastCLARA's
+samples. A metric
 other than L1 is implemented for Standard DTW with `MissingStrategy::Error`
 (univariate or multivariate); with another variant or a missing-data strategy
 it raises `InvalidInput`, because the `Problem` passes the metric to the

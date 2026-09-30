@@ -10,19 +10,34 @@ description: "Advanced Problem, algorithms, scores, distance, and checkpoint API
 
 Retained for power users. `Problem` stays a first-class object. Canonical
 snake_case methods, core-owned algorithm result writeback, and the frozen
-encapsulation/accessor split are live. Eight C++ `Problem` fields are private;
-eleven deliberately retained expert/result fields remain public. A live symbol
+encapsulation/accessor split are live. The distance and device settings are
+private; seven deliberately retained expert/result fields remain public. A live symbol
 in the tables below does not imply that every other promised invariant or
 deprecation diagnostic is complete.
 
 ### 2.1 `Problem` — configuration setters
 
-Canonical config setters are snake_case. Eleven expert/result fields remain
+Canonical config setters are snake_case. Seven expert/result fields remain
 public: the v1.0.0 `int` fields `maxIter` and `N_repetition`, plus
-`band`, `variant_params`, `missing_strategy`, `distance_strategy`,
-`cuda_settings`, `mip_settings`, `init_fun`, `clusters_ind`, and
-`centroids_ind`. The setters check what they are given; a direct write to
-a field does not. Python binds `clusters_ind` and `centroids_ind` read-only
+`band`, `mip_settings`, `init_fun`, `clusters_ind`, and `centroids_ind`. The
+setters check what they are given; a direct write to a field does not. The
+device settings are read with `distance_strategy()` and `cuda_settings()`. The distance settings (variant and parameters,
+metric, missing-data strategy, band) are one private `DistanceConfig`, read with
+`distance()`, `variant_params()`, `missing_strategy()` and `metric()` and changed
+with `set_distance()` or the per-setting setters; a change drops the distance
+matrix and the clustering, which describe the old distances. `band` is also the
+v1.0.0 field: a direct write takes effect at the next fill or `dtw_function()`
+call, and until then `is_distance_matrix_filled()` is false.
+
+`dist_by_ind(i, j)` reads the matrix: O(1), no check and no computation, so a
+parallel loop reads it freely. It needs a matrix that holds the pair, which
+`fill_distance_matrix()` provides; every method that reads the matrix fills it
+first (FastPAM, Lloyd's steps, the MIP and LR-core, the dendrogram, the scores,
+`init::Kmeanspp`), while OneBatchPAM, FastCLARA's assignment and TADPole compute
+the pairs they need through `dtw_function()`. `is_distance_matrix_filled()` is a
+flag, set by a fill and by a complete read, load or mapped bind. The v1.0.0
+`distByInd`, which computed a pair on demand, fills the matrix on its first
+call. Python binds `clusters_ind` and `centroids_ind` read-only
 (v1.0.0's Python never bound them): a clustering reaches a Python `Problem`,
 and the scores that read it, through `set_result(ClusteringResult)`, which
 validates it as C++ `Problem::set_result` does.
@@ -56,14 +71,15 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
-| missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | retained field (`Problem.hpp`) |
-| metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill and lazy lookups, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW with `MissingStrategy::Error`, else `InvalidInput` |
-| distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
+| missing strategy | `missing_strategy()` / `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | private state (`Problem.hpp`) |
+| distance settings | `distance()` / `set_distance(core::DistanceConfig)` `[introduced-2.0]` | — | — | private state: variant and parameters, metric, missing-data strategy and band in one struct; `ndim` is the series' |
+| metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill, the bound function, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW with `MissingStrategy::Error`, else `InvalidInput` |
+| distance strategy | `distance_strategy()` / `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | private state (`Problem.hpp`) |
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
-| CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
+| CUDA settings | `cuda_settings()` / `set_cuda_settings(CUDASettings)` | `cuda_settings` prop (a copy) `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
 | problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |
@@ -305,14 +321,14 @@ or one of the earlier cache layouts (versions 1-3), raises `IOError`. Either way
 use the original semantics or delete/rename the file and recompute it. A new file
 is filled with NaN and flushed to the device before its header is written, so a
 power cut can leave a file that does not open, never one whose zeros read as
-distances. Semantic setters detach a bound cache without deleting it. The complete data identity is checked at bind and once at
-first use; later lookups compare a fixed-size configuration snapshot so warm
-access remains O(1). `Problem::data()` is read-only, but heap values exposed by
-`p_vec()` and caller-owned backing storage supplied through `set_view_data()`
-can still change in place. Before such an edit, call
-`refresh_distance_matrix()`, or replace the data through `set_data()`. CUDA
+distances. Semantic setters detach a bound cache without deleting it. The complete
+data identity is checked once, at bind; a lookup is a read. `Problem::data()` is
+read-only, but heap values exposed by `p_vec()` and caller-owned backing storage
+supplied through `set_view_data()` can still change in place. Before such an
+edit, call `refresh_distance_matrix()`, or replace the data through
+`set_data()`. CUDA
 mmap caches require explicit FP32 or FP64 (not hardware-dependent `Auto`). The
-metric in the identity is the `Problem`'s `metric()`, which the CPU fill, the lazy
-lookups and the GPU routes all compute.
+metric in the identity is the `Problem`'s `metric()`, which the CPU fill, the
+bound function and the GPU routes all compute.
 
 ---

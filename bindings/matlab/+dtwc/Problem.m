@@ -89,6 +89,7 @@ classdef Problem < handle
         function d = dist_by_ind(obj, i, j)
         %DIST_BY_IND Get DTW distance between series i and j (1-based).
         %   d = prob.dist_by_ind(i, j)
+        %   The first call on a Problem whose matrix is not filled fills it.
             d = dtwc_mex('Problem_dist_by_ind', obj.Handle, double(i), double(j));
         end
 

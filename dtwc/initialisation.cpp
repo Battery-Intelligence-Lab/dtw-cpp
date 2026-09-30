@@ -92,16 +92,9 @@ void kmeanspp_with(Problem &prob, FirstIndex &first_index,
 
   std::vector<data_t> distances(prob.size(), std::numeric_limits<data_t>::max());
 
-  // Prime the lazy distance-matrix allocation and DTW-function rebind on
-  // the caller thread before `run()` enters OpenMP. Direct public calls to
-  // Kmeanspp do not necessarily come through Problem::fill_distance_matrix().
-  // Without this serial first lookup, workers can race in the lazy rebind and
-  // corrupt the shared distance callable before their disjoint matrix writes.
-  if (!prob.is_distance_matrix_filled() && prob.size() > 1) {
-    const index_t first_centroid = candidate_centroids.front();
-    const index_t anchor = (first_centroid == 0) ? 1 : 0;
-    (void)prob.dist_by_ind(first_centroid, anchor);
-  }
+  // The workers below only read the matrix, filled here, serially (a no-op
+  // after FastPAM's or Lloyd's own fill).
+  prob.fill_distance_matrix();
 
   auto distTask = [&](size_t i_p) {
     distances[i_p] = std::min(distances[i_p], prob.dist_by_ind(candidate_centroids.back(), static_cast<index_t>(i_p)));

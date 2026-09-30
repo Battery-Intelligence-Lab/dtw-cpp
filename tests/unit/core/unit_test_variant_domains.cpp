@@ -167,7 +167,7 @@ TEST_CASE("M34 Problem rejects invalid variant state transactionally",
           "[m34][variant-domain][problem]")
 {
   dtwc::Problem problem("m34");
-  const auto original = problem.variant_params;
+  const auto original = problem.variant_params();
 
   auto invalid = original;
   invalid.variant = dtwc::core::DTWVariant::ADTW;
@@ -176,6 +176,6 @@ TEST_CASE("M34 Problem rejects invalid variant state transactionally",
     [&] { problem.set_variant(invalid); },
     "ADTW penalty must be finite and non-negative.");
 
-  REQUIRE(problem.variant_params.variant == original.variant);
-  REQUIRE(problem.variant_params.adtw_penalty == original.adtw_penalty);
+  REQUIRE(problem.variant_params().variant == original.variant);
+  REQUIRE(problem.variant_params().adtw_penalty == original.adtw_penalty);
 }

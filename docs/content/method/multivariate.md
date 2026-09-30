@@ -149,7 +149,7 @@ prob.set_n_clusters(2);
 prob.cluster();
 ```
 
-To request independent mode, copy `prob.variant_params`, set its `mv_mode` to
+To request independent mode, copy `prob.variant_params()`, set its `mv_mode` to
 `MVMode::Independent`, and pass it to `prob.set_variant(...)`.
 
 ## Python API

@@ -20,6 +20,7 @@
 #include <functional>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace dtwc;
@@ -75,72 +76,22 @@ TEST_CASE("Problem keeps its distance matrix on the heap by default", "[variant]
   REQUIRE(d == prob.dist_by_ind(1, 0)); // symmetry
 }
 
-TEST_CASE("Problem dense cache never survives a raw semantic configuration mutation",
+TEST_CASE("Problem dense cache never survives a semantic configuration change",
           "[variant][distmat][dense][semantic_mutation]")
 {
-  SECTION("band")
+  SECTION("a direct write to the v1 band field")
   {
     Problem prob{"dense_band_mutation"};
     prob.set_data(make_data({{0.0, 0.0, 10.0}, {0.0, 10.0, 10.0}}));
 
+    prob.fill_distance_matrix();
     REQUIRE(prob.dist_by_ind(0, 1) == 0.0);
-    prob.band = 0; // Legacy public-field mutation must not preserve the cached 0.
+    prob.band = 0; // the v1 field; the next fill takes it
 
     REQUIRE_FALSE(prob.is_distance_matrix_filled());
+    prob.fill_distance_matrix();
+    REQUIRE(prob.distance().band == 0);
     REQUIRE(prob.dist_by_ind(0, 1) == 10.0);
-  }
-
-  SECTION("variant and parameters")
-  {
-    Problem prob{"dense_variant_mutation"};
-    prob.set_data(make_data({{0.0}, {2.0}}));
-
-    REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
-    core::DTWVariantParams params;
-    params.variant = core::DTWVariant::WDTW;
-    params.wdtw_g = 0.5;
-    prob.variant_params = params; // Legacy whole-field mutation.
-
-    REQUIRE_FALSE(prob.is_distance_matrix_filled());
-    REQUIRE(prob.dist_by_ind(0, 1) == 1.0);
-  }
-
-  SECTION("missing-data strategy")
-  {
-    const double nan = std::numeric_limits<double>::quiet_NaN();
-    Problem prob{"dense_missing_mutation"};
-    prob.missing_strategy = core::MissingStrategy::ZeroCost;
-    prob.set_data(make_data({{0.0, nan, 2.0}, {0.0, 2.0, 2.0}}));
-
-    REQUIRE(prob.dist_by_ind(0, 1) == 0.0);
-    prob.missing_strategy = core::MissingStrategy::Interpolate;
-
-    REQUIRE_FALSE(prob.is_distance_matrix_filled());
-    REQUIRE(prob.dist_by_ind(0, 1) == 1.0);
-  }
-
-  SECTION("distance backend and nested CUDA settings")
-  {
-    Problem prob{"dense_backend_mutation"};
-    prob.set_data(make_data({{0.0}, {2.0}}));
-    auto load_precomputed = [&] {
-      auto &matrix = prob.distance_matrix();
-      matrix.resize(2);
-      matrix.set(0, 0, 0.0);
-      matrix.set(0, 1, 123.0);
-      matrix.set(1, 1, 0.0);
-      REQUIRE(prob.is_distance_matrix_filled());
-    };
-
-    load_precomputed();
-    prob.distance_strategy = DistanceMatrixStrategy::BruteForce;
-    REQUIRE_FALSE(prob.is_distance_matrix_filled());
-    REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
-
-    load_precomputed();
-    prob.cuda_settings.device_id = 7; // Nested public-struct mutation.
-    REQUIRE_FALSE(prob.is_distance_matrix_filled());
-    REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
   }
 
   SECTION("every variant parameter and multivariate mode")
@@ -166,27 +117,17 @@ TEST_CASE("Problem dense cache never survives a raw semantic configuration mutat
       matrix.set(0, 0, 0.0);
       matrix.set(0, 1, 123.0);
       matrix.set(1, 1, 0.0);
+      prob.fill_distance_matrix(); // every pair is set: marks it complete, computes nothing
       REQUIRE(prob.is_distance_matrix_filled());
 
-      mutate(prob.variant_params);
+      auto params = prob.variant_params();
+      mutate(params);
+      prob.set_variant(params);
 
       REQUIRE_FALSE(prob.is_distance_matrix_filled());
+      prob.fill_distance_matrix();
       REQUIRE(prob.dist_by_ind(0, 1) != 123.0);
     }
-  }
-
-  SECTION("const readers reject a stale raw configuration")
-  {
-    Problem prob{"dense_const_reader_mutation"};
-    prob.set_data(make_data({{0.0, 0.0, 10.0}, {0.0, 10.0, 10.0}}));
-    REQUIRE(prob.dist_by_ind(0, 1) == 0.0);
-    prob.band = 0;
-
-    const Problem &view = prob;
-    REQUIRE_FALSE(view.is_distance_matrix_filled());
-    REQUIRE_THROWS_WITH(
-      view.distance_matrix(),
-      Catch::Matchers::ContainsSubstring("cached distance configuration changed"));
   }
 }
 
@@ -201,6 +142,7 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
     matrix.set(0, 0, 0.0);
     matrix.set(0, 1, 123.0);
     matrix.set(1, 1, 0.0);
+    prob.fill_distance_matrix(); // every pair is set: marks it complete, computes nothing
     REQUIRE(prob.is_distance_matrix_filled());
   };
 
@@ -208,7 +150,7 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   prob.set_missing_strategy(core::MissingStrategy::Error);
   REQUIRE(prob.is_distance_matrix_filled());
   REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
-  prob.set_variant(prob.variant_params);
+  prob.set_variant(prob.variant_params());
   REQUIRE(prob.is_distance_matrix_filled());
   REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
   prob.set_variant(core::DTWVariant::Standard);
@@ -216,11 +158,13 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
   prob.set_missing_strategy(core::MissingStrategy::Interpolate);
   REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  prob.fill_distance_matrix();
   REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
 
   load_precomputed();
   prob.set_distance_strategy(DistanceMatrixStrategy::BruteForce);
   REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  prob.fill_distance_matrix();
   REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
 
   load_precomputed();
@@ -229,6 +173,7 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   settings.precision = GpuPrecision::FP64;
   prob.set_cuda_settings(settings);
   REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  prob.fill_distance_matrix();
   REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
 }
 
@@ -330,7 +275,8 @@ TEST_CASE("Problem mmap warmstart fingerprints every distance configuration dime
       original.set_data(std::move(original_data));
       configure_original(original);
       original.use_mmap_distance_matrix(cache);
-      // One computed bit is enough to make stale reuse observable.
+      // Computed bits make stale reuse observable.
+      original.fill_distance_matrix();
       REQUIRE(original.dist_by_ind(0, 1) >= 0.0);
     }
 
@@ -387,8 +333,8 @@ TEST_CASE("Problem mmap warmstart fingerprints every distance configuration dime
     const double nan = std::numeric_limits<double>::quiet_NaN();
     reopen_throws(
       "mmap_missing_fingerprint",
-      [](Problem &p) { p.missing_strategy = core::MissingStrategy::ZeroCost; },
-      [](Problem &p) { p.missing_strategy = core::MissingStrategy::AROW; },
+      [](Problem &p) { p.set_missing_strategy(core::MissingStrategy::ZeroCost); },
+      [](Problem &p) { p.set_missing_strategy(core::MissingStrategy::AROW); },
       make_data({{0.0, nan, 2.0}, {0.0, 2.0, 3.0}}),
       make_data({{0.0, nan, 2.0}, {0.0, 2.0, 3.0}}));
   }
@@ -401,6 +347,7 @@ TEST_CASE("Problem mmap warmstart fingerprints every distance configuration dime
       Problem original{"cache_metric"};
       original.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
       original.use_mmap_distance_matrix(cache, core::MetricType::L1);
+      original.fill_distance_matrix();
       REQUIRE(original.dist_by_ind(0, 1) >= 0.0);
     }
 
@@ -427,6 +374,7 @@ TEST_CASE("Problem mmap data fingerprint includes precision and multivariate sha
       Problem original{"cache_precision"};
       original.set_data(make_data({{0.0, 1.0}, {1.0, 2.0}}));
       original.use_mmap_distance_matrix(cache);
+      original.fill_distance_matrix();
       REQUIRE(original.dist_by_ind(0, 1) >= 0.0);
     }
 
@@ -446,6 +394,7 @@ TEST_CASE("Problem mmap data fingerprint includes precision and multivariate sha
       original.set_data(make_data(
         {{0.0, 1.0, 2.0, 3.0}, {1.0, 2.0, 3.0, 4.0}}, 1));
       original.use_mmap_distance_matrix(cache);
+      original.fill_distance_matrix();
       REQUIRE(original.dist_by_ind(0, 1) >= 0.0);
     }
 
@@ -473,6 +422,7 @@ TEST_CASE("Problem mmap warmstart accepts an unchanged fingerprint",
     original.set_data(make_data({{0.0, 1.0, 2.0}, {1.0, 2.0, 4.0}}));
     original.set_band(1);
     original.use_mmap_distance_matrix(cache);
+    original.fill_distance_matrix();
     expected = original.dist_by_ind(0, 1);
   }
 
@@ -480,6 +430,7 @@ TEST_CASE("Problem mmap warmstart accepts an unchanged fingerprint",
   reopened.set_data(make_data({{0.0, 1.0, 2.0}, {1.0, 2.0, 4.0}}));
   reopened.set_band(1);
   reopened.use_mmap_distance_matrix(cache);
+  REQUIRE(reopened.is_distance_matrix_filled());
   REQUIRE(reopened.dist_by_ind(0, 1) == expected);
 #endif
 }
@@ -497,6 +448,7 @@ TEST_CASE("Problem invalidates or rejects post-bind distance-semantic mutations"
     Problem prob{"cache_mutation"};
     prob.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
     prob.use_mmap_distance_matrix(cache);
+    prob.fill_distance_matrix();
     REQUIRE(prob.dist_by_ind(0, 1) >= 0.0);
 
     prob.set_band(0);
@@ -506,48 +458,38 @@ TEST_CASE("Problem invalidates or rejects post-bind distance-semantic mutations"
       Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
   }
 
-  SECTION("naked config edit is caught before a computed bit is read")
+  SECTION("a direct band write detaches at the next fill without rewriting the old cache")
   {
     const ScratchDirectory cache_dir{ "mmap_post_bind_direct_band" };
     const fs::path cache = cache_dir.path / "distances.dtwcache";
     Problem prob{"cache_mutation"};
     prob.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
     prob.use_mmap_distance_matrix(cache);
-    REQUIRE(prob.dist_by_ind(0, 1) >= 0.0);
+    prob.fill_distance_matrix();
+    const double full = prob.dist_by_ind(0, 1);
 
-    prob.band = 0; // legacy public field; bypasses set_band deliberately
-    REQUIRE_THROWS_WITH(
-      prob.dist_by_ind(0, 1),
-      Catch::Matchers::ContainsSubstring("bound cache fingerprint mismatch"));
-  }
+    prob.band = 0; // the v1 field; the next fill takes it
+    REQUIRE_FALSE(prob.is_distance_matrix_filled());
+    prob.fill_distance_matrix();
+    REQUIRE(!std::as_const(prob).distance_matrix().is_mapped());
 
-  SECTION("in-place series edit before first use is caught")
-  {
-    const ScratchDirectory cache_dir{ "mmap_post_bind_data_edit" };
-    const fs::path cache = cache_dir.path / "distances.dtwcache";
-    Problem prob{"cache_mutation"};
-    prob.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
-    prob.use_mmap_distance_matrix(cache);
-
-    // Mutate after binding but before the first use-session validation. Raw
-    // edits after that first validation are unsupported; semantic setters are
-    // the cache-invalidating API.
-    prob.p_vec(1)[2] = 30.0;
-    REQUIRE_THROWS_WITH(
-      prob.dist_by_ind(0, 1),
-      Catch::Matchers::ContainsSubstring("changed before first use"));
+    Problem reopened{"cache_mutation"};
+    reopened.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
+    reopened.use_mmap_distance_matrix(cache); // still the full-DTW cache
+    REQUIRE(reopened.is_distance_matrix_filled());
+    REQUIRE(reopened.dist_by_ind(0, 1) == full);
   }
 #endif
 }
 
-TEST_CASE("Problem non-L1 mmap identity is lazily filled by the CPU in that metric",
+TEST_CASE("Problem non-L1 mmap identity is filled by the CPU in that metric",
           "[variant][distmat][mmap][fingerprint][metric]")
 {
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
 #else
   // IF-2 S2: binding a squared-L2 cache sets the Problem's metric, which the
-  // CPU kernels take, so the lazy path fills it (it was refused as
+  // CPU kernels take, so the fill computes in it (it was refused as
   // external-fill-only while the CPU computed L1 only).
   const ScratchDirectory cache_dir{ "mmap_external_metric" };
   const fs::path cache = cache_dir.path / "distances.dtwcache";
@@ -557,10 +499,11 @@ TEST_CASE("Problem non-L1 mmap identity is lazily filled by the CPU in that metr
   prob.use_mmap_distance_matrix(cache, core::MetricType::SquaredL2);
   REQUIRE(prob.metric() == core::MetricType::SquaredL2);
 
+  prob.fill_distance_matrix();
+  REQUIRE(std::as_const(prob).distance_matrix().is_mapped());
   REQUIRE(prob.dist_by_ind(0, 1)
           == distance::dtw<data_t>(x, y, -1, core::MetricType::SquaredL2));
   REQUIRE(prob.dist_by_ind(0, 1) != distance::dtw<data_t>(x, y));
-  REQUIRE(prob.distance_matrix().count_computed() == 1);
 #endif
 }
 
@@ -574,8 +517,7 @@ TEST_CASE("Problem rejects CUDA Auto precision for persistent mmap identity",
   const fs::path cache = cache_dir.path / "distances.dtwcache";
   Problem prob{"cache_cuda_auto"};
   prob.set_data(make_data({{0.0, 1.0}, {1.0, 2.0}}));
-  prob.distance_strategy = DistanceMatrixStrategy::CUDA;
-  prob.cuda_settings.precision = GpuPrecision::Auto; // runtime-hardware dependent
+  prob.set_distance_strategy(DistanceMatrixStrategy::CUDA); // precision stays Auto, the default
 
   REQUIRE_THROWS_WITH(
     prob.use_mmap_distance_matrix(cache),
