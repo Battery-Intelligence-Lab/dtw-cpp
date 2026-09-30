@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <limits>
@@ -37,6 +38,18 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h> // GlobalMemoryStatusEx: A15's host-memory check
+#else
+#include <fstream>
+#endif
 
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::MessageMatches;
@@ -55,6 +68,23 @@ namespace {
 
 constexpr auto generate_random_series =
   &dtwc::test_support::accelerator_series_set;
+
+/// Physical memory the host can give a new allocation now, in bytes: Windows'
+/// available physical memory, Linux's MemAvailable; 0 when unknown.
+std::uint64_t available_host_memory()
+{
+#ifdef _WIN32
+  MEMORYSTATUSEX status{};
+  status.dwLength = sizeof(status);
+  return GlobalMemoryStatusEx(&status) ? status.ullAvailPhys : 0;
+#else
+  std::ifstream meminfo("/proc/meminfo");
+  for (std::string line; std::getline(meminfo, line);)
+    if (line.rfind("MemAvailable:", 0) == 0)
+      return std::stoull(line.substr(13)) * 1024; // the value is in kB
+  return 0;
+#endif
+}
 
 /// The CUDA fill of `series` into a fresh packed matrix, and its distances as
 /// the N x N row-major matrix the oracles below build.
@@ -1589,6 +1619,16 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
   constexpr size_t N = 65537;
+  // The matrix is N(N+1)/2 doubles (17.2 GB); a GiB more covers the series and
+  // the rest of the process. A host that cannot hold it skips, and says so.
+  const std::uint64_t needed =
+      dtwc::core::packed_size(N) * sizeof(double) + (std::uint64_t{ 1 } << 30);
+  const std::uint64_t available = available_host_memory();
+  if (available != 0 && available < needed) {
+    SKIP("A15 needs " << (needed >> 20) << " MiB of available host memory for its "
+         << N << "-series matrix; this host has " << (available >> 20) << " MiB");
+    return;
+  }
   std::vector<std::vector<double>> series(N);
   std::vector<std::vector<float>> rounded(N);
   std::vector<std::string> names(N);
@@ -1597,7 +1637,9 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
   for (size_t i = 0; i < N; ++i) {
     series[i].resize(4 + i % 5);
     for (auto &v : series[i]) v = value(rng);
-    rounded[i].assign(series[i].begin(), series[i].end());
+    rounded[i].resize(series[i].size());
+    std::transform(series[i].begin(), series[i].end(), rounded[i].begin(),
+                   [](double v) { return static_cast<float>(v); });
     names[i] = "s" + std::to_string(i);
   }
 
