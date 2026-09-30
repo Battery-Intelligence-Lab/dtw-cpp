@@ -14,6 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include "../support/dtw_route_bound.hpp"
 #include "../test_util.hpp"
 
 #include <algorithm>
@@ -193,7 +194,8 @@ TEST_CASE("Default band produces same distances as dtwFull", "[Phase1][distance_
   for (int i = 0; i < N; ++i) {
     for (int j = i; j < N; ++j) {
       double expected = dtwFull<data_t>(prob.p_vec(i), prob.p_vec(j));
-      REQUIRE_THAT(prob.dist_by_ind(i, j), WithinAbs(expected, 1e-12));
+      REQUIRE(test_support::dtw_routes_agree<data_t>(
+        prob.dist_by_ind(i, j), expected, prob.series(i).size(), prob.series(j).size()));
     }
   }
 }
