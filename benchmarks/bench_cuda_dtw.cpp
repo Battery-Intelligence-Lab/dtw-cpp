@@ -240,6 +240,48 @@ BENCHMARK(BM_cuda_structuredDistanceMatrix)
   ->Args({100, 1000})
   ->Unit(benchmark::kMillisecond);
 
+// ---------------------------------------------------------------------------
+// BM_cuda_fill — the public fill: Problem::fill_distance_matrix on device gpu,
+// from the series to the filled packed matrix (upload, kernels, transfer, the
+// host's share). Args: (N_series, series_length, fp64). N is sized so one fill
+// takes at least a second on the RTX 4000 Ada.
+// ---------------------------------------------------------------------------
+static void BM_cuda_fill(benchmark::State &state)
+{
+  const int N = static_cast<int>(state.range(0));
+  const int L = static_cast<int>(state.range(1));
+  const bool fp64 = state.range(2) != 0;
+
+  dtwc::Problem prob("bench");
+  prob.set_data(make_random_data(N, L));
+  prob.set_device(dtwc::Device::GPU);
+  prob.set_cuda_settings({ 0, fp64 ? dtwc::GpuPrecision::FP64 : dtwc::GpuPrecision::FP32 });
+  prob.fill_distance_matrix(); // warm-up: the CUDA context and this thread's buffers
+
+  for (auto _ : state) {
+    state.PauseTiming();
+    prob.refresh_distance_matrix();
+    state.ResumeTiming();
+    prob.fill_distance_matrix();
+  }
+
+  const double cells = static_cast<double>(N) * (N - 1) / 2 * L * L;
+  state.counters["Gcell/s"] = benchmark::Counter(
+      cells * 1e-9, benchmark::Counter::kIsIterationInvariantRate);
+}
+
+BENCHMARK(BM_cuda_fill)
+  ->ArgNames({ "N", "L", "fp64" })
+  ->Args({ 9000, 100, 0 })
+  ->Args({ 1100, 500, 0 })
+  ->Args({ 330, 2000, 0 })
+  ->Args({ 2700, 100, 1 })
+  ->Args({ 520, 500, 1 })
+  ->Args({ 140, 2000, 1 })
+  ->Iterations(1)
+  ->UseRealTime()
+  ->Unit(benchmark::kMillisecond);
+
 #endif // DTWC_HAS_CUDA
 
 // If CUDA is not available, provide a placeholder so the binary still links
