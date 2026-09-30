@@ -446,6 +446,11 @@ adjudicated in §10 item 1.
 | dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` | `build_dendrogram(prob, ...)` |
 | dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, int k)` | `cut_dendrogram(dend, prob, k)` | `cut_dendrogram(dend, prob, k)` |
 
+**`max_iter` of `fast_pam`.** `0` returns the BUILD medoids without a SWAP
+(`converged` false) in all three languages; a negative count raises `InvalidInput`
+from the C++ core, and neither binding checks it again. `fast_clara`, the
+`Problem` setter and the Tier-1 `cluster` give `0` no meaning and refuse it.
+
 **Result write-back (implemented).** `fast_pam`/`fast_clara` and
 `cut_dendrogram` write `labels`/`medoids`/`k` back into `Problem` in C++.
 Python and MATLAB both rely on that core-owned writeback; neither binding

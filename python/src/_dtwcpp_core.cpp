@@ -1088,14 +1088,18 @@ NB_MODULE(_dtwcpp_core, m) {
      "Run FastPAM k-medoids clustering (Schubert & Rousseeuw 2021).\n\n"
      "The C++ core writes labels/medoids/k back into prob (since 1.6), so\n"
      "silhouette(prob) and davies_bouldin(prob) work after this call with no\n"
-     "wrapper-side wiring (api-contract-2.0.md §2.5).");
+     "wrapper-side wiring (api-contract-2.0.md §2.5).\n\n"
+     "max_iter is the SWAP budget: 0 returns the BUILD medoids without a SWAP\n"
+     "(converged is False); a negative count raises InvalidInput.");
 
   m.def("fast_pam_seeded",
         [](dtwc::Problem &prob, int n_clusters, std::uint64_t seed, int max_iter) {
     nb::gil_scoped_release release;
     return dtwc::fast_pam_seeded(prob, n_clusters, seed, max_iter);
   }, "prob"_a, "n_clusters"_a, "seed"_a, "max_iter"_a = 100,
-     "Run FastPAM with an invocation-local deterministic BUILD seed.");
+     "Run FastPAM with an invocation-local deterministic BUILD seed.\n\n"
+     "max_iter reads as in fast_pam: 0 is BUILD only, a negative count raises\n"
+     "InvalidInput.");
 
   // =========================================================================
   // FastCLARA
