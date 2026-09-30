@@ -9,11 +9,11 @@
 #include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
 #include "../base/error.hpp"
+#include "../base/parallelisation.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <exception>
 #include <iostream>
 #include <limits>
 #include <numeric>
@@ -85,40 +85,30 @@ struct FixedBatchDistances {
     const Problem::dtw_fn_t *dtw_f64 = f32 ? nullptr : &prob.dtw_function();
     std::vector<std::uint64_t> row_evaluations(n, 0);
     std::vector<double> row_maxima(n, 0.0);
-    std::exception_ptr failure;
-    #pragma omp parallel for schedule(dynamic) if(n > 64)
-    for (std::int64_t i = 0; i < static_cast<std::int64_t>(n); ++i) {
-      try {
-        double row_max = 0.0;
-        std::uint64_t calls = 0;
-        for (std::size_t j = 0; j < m; ++j) {
-          double d = 0.0;
-          if (i != sample[j]) {
-            if (f32)
-              d = (*dtw_f32)(
-                prob.data().series_f32(static_cast<std::size_t>(i)),
-                prob.data().series_f32(
-                  static_cast<std::size_t>(sample[j])));
-            else
-              d = (*dtw_f64)(prob.series(static_cast<std::size_t>(i)),
-                             prob.series(static_cast<std::size_t>(sample[j])));
-            ++calls;
-          }
-          if (!std::isfinite(d) || d < 0.0)
-            throw InvalidInput("one_batch_pam: distance function returned a non-finite or negative value.");
-          raw[static_cast<std::size_t>(i) * m + j] = d;
-          row_max = std::max(row_max, d);
+    auto fill_row = [&](std::size_t i) {
+      double row_max = 0.0;
+      std::uint64_t calls = 0;
+      for (std::size_t j = 0; j < m; ++j) {
+        double d = 0.0;
+        if (i != static_cast<std::size_t>(sample[j])) {
+          if (f32)
+            d = (*dtw_f32)(
+              prob.data().series_f32(i),
+              prob.data().series_f32(static_cast<std::size_t>(sample[j])));
+          else
+            d = (*dtw_f64)(prob.series(i),
+                           prob.series(static_cast<std::size_t>(sample[j])));
+          ++calls;
         }
-        row_evaluations[static_cast<std::size_t>(i)] = calls;
-        row_maxima[static_cast<std::size_t>(i)] = row_max;
-      } catch (...) {
-        // G1: an unnamed critical region serialises against every other
-        // unnamed critical in any linked TU. Name it.
-        #pragma omp critical(dtwc_one_batch_table_failure)
-        { if (!failure) failure = std::current_exception(); }
+        if (!std::isfinite(d) || d < 0.0)
+          throw InvalidInput("one_batch_pam: distance function returned a non-finite or negative value.");
+        raw[i * m + j] = d;
+        row_max = std::max(row_max, d);
       }
-    }
-    if (failure) std::rethrow_exception(failure);
+      row_evaluations[i] = calls;
+      row_maxima[i] = row_max;
+    };
+    run_openmp(fill_row, n, n > 64);
     const double table_max = *std::max_element(row_maxima.begin(), row_maxima.end());
     scale = table_max > 0.0 ? table_max : 1.0;
     evaluations = std::accumulate(row_evaluations.begin(), row_evaluations.end(),

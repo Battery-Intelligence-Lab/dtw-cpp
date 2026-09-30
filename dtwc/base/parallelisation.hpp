@@ -72,10 +72,14 @@ inline int omp_chunk_size(int n_iterations, int chunks_per_thread = 4)
  * @brief Runs task_indv(i) for every i in [0, i_end), on OpenMP threads with
  *        dynamic scheduling (tasks of uneven cost balance), else serially.
  *
- * An exception may not leave an OpenMP region, so each thread keeps its first
- * failure in its own slot and skips its remaining iterations; after the join the
- * caller rethrows one of the stored failures (which one, when several threads
- * fail, may vary between runs). A serial run lets a failure propagate directly.
+ * An exception may not leave an OpenMP region, so each thread keeps the failure
+ * of the lowest index it saw fail in its own slot; after the join the failure
+ * with the lowest index over all threads is rethrown, the one a serial run
+ * raises, on every run. A thread skips the indices above its own failure but
+ * not the ones below it: libomp's dynamic schedule is nonmonotonic (a thread
+ * may be handed a lower index after a higher one), so skipping everything after
+ * a first failure could lose the lowest. A serial run lets a failure propagate
+ * directly.
  *
  * @tparam Tfun The type of the task function.
  * @param task_indv The task; in a parallel run it is called from several threads.
@@ -99,29 +103,30 @@ void run_openmp(Tfun &task_indv, size_t i_end,
     const int nthreads =
       (max_workers > 0) ? std::min(max_workers, available) : available;
     const index_t chunk = omp_chunk_size_for(end, chunks_per_thread, nthreads);
-    // One slot per thread. `failed` is what the loop tests: the MSVC STL's
-    // exception_ptr::operator bool is an out-of-line call.
+    // One slot per thread; `failed_at` (== end: none) is what the loop tests,
+    // since the MSVC STL's exception_ptr::operator bool is an out-of-line call.
     struct Slot {
       std::exception_ptr failure;
-      bool failed = false;
+      index_t failed_at;
     };
-    std::vector<Slot> slots(static_cast<size_t>(nthreads));
+    std::vector<Slot> slots(static_cast<size_t>(nthreads), Slot{ nullptr, end });
 #pragma omp parallel num_threads(nthreads)
     {
       Slot &slot = slots[static_cast<size_t>(omp_get_thread_num())];
 #pragma omp for schedule(dynamic, chunk) nowait
       for (index_t i = 0; i < end; i++) {
-        if (slot.failed) continue;
+        if (i > slot.failed_at) continue;
         try {
           task_indv(static_cast<size_t>(i));
         } catch (...) {
           slot.failure = std::current_exception();
-          slot.failed = true;
+          slot.failed_at = i;
         }
       }
     }
-    for (const auto &slot : slots)
-      if (slot.failed) std::rethrow_exception(slot.failure);
+    const auto lowest = std::min_element(slots.begin(), slots.end(),
+      [](const Slot &a, const Slot &b) { return a.failed_at < b.failed_at; });
+    if (lowest->failed_at < end) std::rethrow_exception(lowest->failure);
     return;
   }
 #endif
