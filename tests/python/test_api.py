@@ -1101,8 +1101,7 @@ class TestClusterMethodDispatch:
 #   build_dendrogram (m.def, prob + default opts), cut_dendrogram (dend, prob, k),
 #   Problem.set_n_clusters / .method / .cluster / .clusters_ind /
 #   .centroids_ind / .find_total_cost, Method.MIP / Method.Kmedoids.
-# Task 2.1: _run_local_method now calls the canonical Problem.set_n_clusters
-# (was the deprecated set_number_of_clusters); the fakes below pin that name.
+# _run_local_method calls Problem.set_n_clusters; the fakes below pin that name.
 # ---------------------------------------------------------------------------
 class TestLocalDispatchBindingNames:
     @pytest.mark.parametrize(

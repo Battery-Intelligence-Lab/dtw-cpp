@@ -22,6 +22,7 @@ Drives the LIVE public surface: `import dtwcpp` and its `dtwcpp.distance`
 submodule — i.e. exactly what a user imports.
 """
 import inspect
+import warnings
 
 import pytest
 
@@ -32,8 +33,8 @@ import dtwcpp
 # §1 Tier-1 + top-level classes / functions
 # ---------------------------------------------------------------------------
 _TIER1 = [
-    "device", "get_device", "load", "cluster", "plot",
-    "Dataset", "Result", "ClusterResult",           # ClusterResult = deprecated alias (§4)
+    "device", "load", "cluster", "plot",
+    "Dataset", "Result",
     "DTWClustering", "compute_distance_matrix",
 ]
 
@@ -92,7 +93,7 @@ _PROBLEM_CANON = [
     # config setters (§2.1)
     "set_n_clusters", "set_method", "set_band", "set_max_iter",
     "set_n_repetitions", "set_variant", "set_variant_params", "set_solver",
-    "set_data", "set_view_data",
+    "set_data",
     # config attributes (§2.1)
     "method", "max_iter", "n_repetitions", "band", "variant_params",
     "missing_strategy", "distance_strategy",
@@ -110,11 +111,20 @@ _PROBLEM_CANON = [
     # I/O (§2.2)
     "print_clusters", "write_clusters", "write_medoid_members", "write_silhouettes",
 ]
-# Deprecated Problem names that must still RESOLVE one cycle (§4 "nothing silently
-# disappears") — canonical is the documented one, the old spelling still works.
-_PROBLEM_DEPRECATED = [
-    "set_number_of_clusters", "distance_matrix_numpy",
-    "set_distance_matrix_from_numpy", "n_repetition", "cluster_size",
+# Names 2.0 development coined and renamed before any release. None is an alias:
+# a removed name raises AttributeError and never resolves to something else (§4).
+_RESULT = dtwcpp.Result([0, 1], device="cpu", elapsed_s=0.0, k=1, n_series=2)
+_REMOVED = [
+    pytest.param(dtwcpp, "get_device", id="dtwcpp.get_device"),
+    pytest.param(dtwcpp, "ClusterResult", id="dtwcpp.ClusterResult"),
+    pytest.param(dtwcpp.Problem, "set_number_of_clusters",
+                 id="Problem.set_number_of_clusters"),
+    pytest.param(dtwcpp.Problem, "n_repetition", id="Problem.n_repetition"),
+    pytest.param(dtwcpp.Problem, "distance_matrix_numpy",
+                 id="Problem.distance_matrix_numpy"),
+    pytest.param(dtwcpp.Problem, "set_distance_matrix_from_numpy",
+                 id="Problem.set_distance_matrix_from_numpy"),
+    pytest.param(_RESULT, "medoid_indices", id="Result.medoid_indices"),
 ]
 
 
@@ -128,18 +138,6 @@ _PROBLEM_DEPRECATED = [
 )
 def test_module_symbol_exists(name):
     """Every contract Python-column module symbol is present with its exact name."""
-    if name == "ClusterResult":
-        with pytest.warns(
-            DeprecationWarning,
-            match=(
-                r"^dtwcpp\.ClusterResult is deprecated; "
-                r"use dtwcpp\.Result$"
-            ),
-        ) as caught:
-            resolved = getattr(dtwcpp, name)
-        assert len(caught) == 1
-        assert resolved is dtwcpp.Result
-        return
     assert hasattr(dtwcpp, name), f"dtwcpp.{name} missing (contract §1/§2/§5/§6)"
 
 
@@ -166,11 +164,20 @@ def test_problem_canonical_member_exists(name):
     assert hasattr(p, name), f"Problem.{name} missing (contract §2.1/§2.2)"
 
 
-@pytest.mark.parametrize("name", _PROBLEM_DEPRECATED)
-def test_problem_deprecated_alias_still_resolves(name):
-    """§4: deprecated names survive one cycle; nothing silently disappears."""
-    member = inspect.getattr_static(dtwcpp.Problem, name)
-    assert member is not None, f"Problem.{name} should still resolve one cycle (§4)"
+@pytest.mark.parametrize("owner, name", _REMOVED)
+def test_removed_name_is_gone(owner, name):
+    assert not hasattr(owner, name), f"{owner!r}.{name} must not exist (§4)"
+
+
+def test_problem_cluster_size_is_the_v1_method():
+    """v1.0.0 bound ``cluster_size`` as a method (python/py_main.cpp), so
+    ``prob.cluster_size()`` must keep working, silently, and equal ``n_clusters()``."""
+    prob = dtwcpp.Problem("v1_cluster_size")
+    prob.set_n_clusters(3)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert prob.cluster_size() == 3
+    assert prob.n_clusters() == 3
 
 
 # ===========================================================================
@@ -217,16 +224,6 @@ def test_result_member_exists(name):
     # instance; score/save/plot are methods on the class.
     res = dtwcpp.Result([0, 1], device="cpu", elapsed_s=0.0, k=1, n_series=2)
     assert hasattr(res, name), f"Result.{name} missing (contract §1.4)"
-
-
-def test_result_is_clusterresult_alias():
-    with pytest.warns(
-        DeprecationWarning,
-        match=r"^dtwcpp\.ClusterResult is deprecated; use dtwcpp\.Result$",
-    ) as caught:
-        cluster_result = dtwcpp.ClusterResult
-    assert len(caught) == 1
-    assert dtwcpp.Result is cluster_result
 
 
 # ===========================================================================

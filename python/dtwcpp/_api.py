@@ -136,8 +136,7 @@ class Result:
     Members: ``labels``, ``medoids``, ``score(name)``, ``save(dir)``, ``plot()``,
     plus ``cost`` and ``device``. ``distance_matrix`` fills on demand from the
     retained ``Problem`` after a matrix-free OneBatchPAM/CLARA/TADPole run, and
-    is ``None`` only for an ``hpc`` run. ``ClusterResult`` is a deprecated alias
-    name.
+    is ``None`` only for an ``hpc`` run.
     """
 
     def __init__(self, labels, *, device, elapsed_s, k, n_series,
@@ -170,14 +169,6 @@ class Result:
         if self._distance_matrix is None and self._problem is not None:
             self._distance_matrix = self._problem.distance_matrix()
         return self._distance_matrix
-
-    @property
-    def medoid_indices(self):
-        """Deprecated alias for :attr:`medoids` (kept one cycle, api-contract §4)."""
-        import warnings
-        warnings.warn("Result.medoid_indices is deprecated; use Result.medoids",
-                      DeprecationWarning, stacklevel=2)
-        return self.medoids
 
     def summary(self):
         extra = f", cost={self.cost:.2f}" if self.cost is not None else ""

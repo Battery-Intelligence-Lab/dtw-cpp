@@ -117,8 +117,7 @@ still invoked unchanged once per repetition and owns its own RNG policy.
 
 ### 1.4 `Result` — clustering outcome  `[live in C++/Python/MATLAB]`
 
-Canonical class name is **`Result`** in all three languages. Python keeps
-`ClusterResult` as a deprecated alias (§4).
+Canonical class name is **`Result`** in all three languages.
 
 | Member | C++ `dtwc::Result` `[live]` | Python `dtwcpp.Result` `[live]` | MATLAB `dtwc.Result` `[live]` |
 |---|---|---|---|
