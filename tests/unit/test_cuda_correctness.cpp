@@ -18,7 +18,7 @@
 
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
-// gpu_config.cuh is an internal header — tested indirectly via compute_distance_matrix_cuda()
+#include <cuda_runtime.h>
 #endif
 
 #include <algorithm>
@@ -1106,12 +1106,35 @@ TEST_CASE("test_gpu_fp32_banded_matches_cpu", "[cuda][fp32][banded]")
 }
 
 // ---------------------------------------------------------------------------
-// GPU config detection
+// Auto precision
 // ---------------------------------------------------------------------------
 
-// GPU config (query_gpu_config) is an internal API tested indirectly
-// through compute_distance_matrix_cuda's precision auto-detection.
-// Direct testing would require linking cudart to the test binary.
+// Auto computes in FP64 only on a device that runs FP64 at least half as fast
+// as FP32 (the HPC parts). A compute-capability table once gave consumer
+// Blackwell (sm_120, FP64 at 1/64) FP64; the runtime's own ratio decides now.
+TEST_CASE("CUDA Auto precision follows the device's FP32:FP64 throughput",
+          "[cuda][precision]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  int fp32_per_fp64 = 0;
+  REQUIRE(cudaDeviceGetAttribute(&fp32_per_fp64,
+                                 cudaDevAttrSingleToDoublePrecisionPerfRatio, 0)
+          == cudaSuccess);
+  CAPTURE(fp32_per_fp64);
+
+  const auto series = generate_random_series(6, 40, /*seed=*/11);
+  const auto fill = [&](dtwc::cuda::CUDAPrecision precision) {
+    dtwc::cuda::CUDADistMatOptions opts;
+    opts.precision = precision;
+    return dtwc::cuda::compute_distance_matrix_cuda(series, opts).matrix;
+  };
+  const auto fp32 = fill(dtwc::cuda::CUDAPrecision::FP32);
+  const auto fp64 = fill(dtwc::cuda::CUDAPrecision::FP64);
+  REQUIRE(fp32 != fp64); // this input tells the two precisions apart
+  REQUIRE(fill(dtwc::cuda::CUDAPrecision::Auto)
+          == (fp32_per_fp64 > 2 ? fp32 : fp64));
+}
 
 // ---------------------------------------------------------------------------
 // Squared-L2 metric: GPU vs CPU

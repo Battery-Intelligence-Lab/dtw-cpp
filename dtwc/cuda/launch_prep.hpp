@@ -61,9 +61,8 @@ inline void require_cuda_device(bool available, const char *entry)
 {
   if (!available)
     throw dtwc::DeviceError(
-      std::string(entry) + ": no CUDA device is available. DTWC++ was built "
-      "with CUDA support but no usable device was found; no CPU fallback was "
-      "attempted.");
+      std::string(entry) + ": DTWC++ was built with CUDA support, but no "
+      "usable CUDA GPU was detected. No CPU fallback was attempted.");
 }
 
 /// @brief Fill @p lengths with each series' length and return the maximum.

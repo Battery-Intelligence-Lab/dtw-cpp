@@ -828,15 +828,17 @@ MetalDistMatResult compute_distance_matrix_metal(
   result.n = N;
   result.matrix.assign(N * N, 0.0);
 
-  if (N <= 1) return result;
-
   auto &ctx = context();
-  // A16 parity with CUDA: an unavailable backend is a typed DeviceError,
-  // never a zero-filled result that reads as a valid answer.
+  // A16 parity with CUDA: an unavailable backend is a typed DeviceError, for
+  // every N, never a zero-filled result that reads as a valid answer.
   if (!ctx.initialized)
-    throw dtwc::DeviceError("Metal backend unavailable: "
+    throw dtwc::DeviceError("Metal backend unavailable ("
                             + (ctx.init_error.empty()
-                                 ? std::string("unknown") : ctx.init_error));
+                                 ? std::string("unknown") : ctx.init_error)
+                            + "): no usable Metal GPU was detected. No CPU "
+                              "fallback was attempted.");
+
+  if (N <= 1) return result;
 
   // Find max length and build padded FP32 input buffer.
   int max_L = 0;
@@ -1137,7 +1139,7 @@ MetalDistMatResult compute_distance_matrix_metal(
     for (size_t i = 0; i < N; ++i) {
       for (size_t j = 0; j < N; ++j) {
         result.matrix[i * N + j] =
-            dtwc::gpu::detail::normalize_public_distance(out_ptr[i * N + j]);
+            dtwc::core::normalize_public_distance(out_ptr[i * N + j]);
       }
     }
 

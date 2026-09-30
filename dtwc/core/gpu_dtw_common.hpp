@@ -22,14 +22,6 @@
 
 namespace dtwc::gpu {
 
-namespace detail {
-
-// Preserve the F12 GPU detail seam while sharing the compute/public boundary
-// with CPU Float32 dispatch.
-using dtwc::core::normalize_public_distance;
-
-} // namespace detail
-
 /// Common options fields shared by CUDA and Metal distance-matrix entry points.
 struct DistMatOptionsBase {
   int band = -1;                  ///< Sakoe-Chiba band width (-1 = full DTW).

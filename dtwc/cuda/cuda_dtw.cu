@@ -21,7 +21,6 @@
 
 #include "cuda_dtw.cuh"
 #include "cuda_memory.cuh"
-#include "gpu_config.cuh"
 #include "kernel_selection.hpp"
 #include "launch_prep.hpp"
 #include "../detail/decode_pair.hpp"
@@ -36,19 +35,11 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
-
-#define CUDA_CHECK(call)                                                     \
-  do {                                                                       \
-    cudaError_t err = (call);                                                \
-    if (err != cudaSuccess) {                                                \
-      throw dtwc::DeviceError(std::string("CUDA error at ") + __FILE__ +    \
-                              ":" + std::to_string(__LINE__) + ": " +       \
-                              cudaGetErrorString(err));                      \
-    }                                                                        \
-  } while (0)
+#include <vector>
 
 namespace dtwc::cuda {
 
@@ -69,6 +60,41 @@ __device__ __forceinline__ bool fixed_band_contains(int i, int j, int band)
   return (i >= j) ? (i - j <= band) : (j - i <= band);
 }
 
+/// What the fill needs to know about a device.
+struct DeviceLimits {
+  bool slow_fp64;              ///< FP32 runs more than twice as fast as FP64
+  int sm_count;                ///< multiprocessors, for the persistent grid
+  size_t max_shared_per_block; ///< opt-in maximum, static + dynamic
+};
+
+/// The limits of every device, read once per process and read-only after.
+/// @p device_id must have passed cudaSetDevice.
+const DeviceLimits &device_limits(int device_id)
+{
+  static std::vector<DeviceLimits> limits;
+  static std::once_flag read_once;
+  std::call_once(read_once, [] {
+    int count = 0;
+    CUDA_CHECK(cudaGetDeviceCount(&count));
+    std::vector<DeviceLimits> read(static_cast<size_t>(count));
+    for (int d = 0; d < count; ++d) {
+      int fp32_per_fp64 = 0, sm_count = 0, max_shared = 0;
+      CUDA_CHECK(cudaDeviceGetAttribute(
+          &fp32_per_fp64, cudaDevAttrSingleToDoublePrecisionPerfRatio, d));
+      CUDA_CHECK(cudaDeviceGetAttribute(
+          &sm_count, cudaDevAttrMultiProcessorCount, d));
+      CUDA_CHECK(cudaDeviceGetAttribute(
+          &max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, d));
+      read[static_cast<size_t>(d)] = {
+          fp32_per_fp64 > 2, sm_count, static_cast<size_t>(max_shared)};
+    }
+    limits = std::move(read);
+  });
+  return limits[static_cast<size_t>(device_id)];
+}
+
+/// Auto takes FP64 only where it runs at least half as fast as FP32 (the HPC
+/// parts); a compute-capability table misread consumer Blackwell (sm_120).
 bool resolve_fp32(CUDAPrecision precision, int device_id)
 {
   switch (precision) {
@@ -77,7 +103,7 @@ bool resolve_fp32(CUDAPrecision precision, int device_id)
   case CUDAPrecision::FP64:
     return false;
   case CUDAPrecision::Auto:
-    return query_gpu_config(device_id).fp64_rate == FP64Rate::Slow;
+    return device_limits(device_id).slow_fp64;
   }
   throw std::logic_error("resolve_fp32: unreachable CUDAPrecision");
 }
@@ -86,7 +112,7 @@ bool resolve_fp32(CUDAPrecision precision, int device_id)
 /// over-large request surfaced as a bare "invalid argument" from CUDA.
 void require_shared_mem_fits(size_t shared_mem, int device_id, const char *what)
 {
-  const size_t cap = query_gpu_config(device_id).max_shared_per_block;
+  const size_t cap = device_limits(device_id).max_shared_per_block;
   if (cap > 0 && shared_mem > cap)
     throw dtwc::DeviceError(
         std::string(what) + ": needs " + std::to_string(shared_mem)
@@ -881,11 +907,11 @@ std::vector<double> convert_result_matrix(
       const size_t row_offset = i * N;
       for (size_t j = 0; j < i; ++j)
         result[row_offset + j] =
-            dtwc::gpu::detail::normalize_public_distance(src[row_offset + j]);
+            dtwc::core::normalize_public_distance(src[row_offset + j]);
       result[row_offset + i] = 0.0;
       for (size_t j = i + 1; j < N; ++j)
         result[row_offset + j] =
-            dtwc::gpu::detail::normalize_public_distance(src[row_offset + j]);
+            dtwc::core::normalize_public_distance(src[row_offset + j]);
     }
   }
   return result;
@@ -951,44 +977,25 @@ std::vector<double> launch_dtw_kernel(
   // ---------------------------------------------------------------------------
   // Kernel launch (on the same stream -- automatically waits for H2D)
   // ---------------------------------------------------------------------------
+  // The warp-family kernels run one pair per warp, PAIRS_PER_BLOCK warps per
+  // block; each warp stages its pair's two series, `staged` samples apiece, in
+  // shared memory.
+  const auto launch_warp_family = [&](auto kernel, size_t staged) {
+    const int grid_size = static_cast<int>(
+        (num_pairs + PAIRS_PER_BLOCK - 1) / PAIRS_PER_BLOCK);
+    const size_t shared_mem = PAIRS_PER_BLOCK * 2 * staged * sizeof(T);
+    kernel<<<grid_size, PAIRS_PER_BLOCK * 32, shared_mem, stream>>>(
+        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
+        N_series, static_cast<int>(max_L),
+        static_cast<int>(num_pairs), use_squared_l2, band);
+  };
+
   if (kernel_path == detail::KernelPath::Warp) {
-    // Warp-level kernel: 8 pairs per block, 256 threads (8 warps)
-    constexpr int pairs_per_block = PAIRS_PER_BLOCK;  // 8
-    const int grid_size = static_cast<int>(
-        (num_pairs + pairs_per_block - 1) / pairs_per_block);
-    constexpr int block_size = pairs_per_block * 32;  // 256
-    const size_t shared_mem = pairs_per_block * 2 * 32 * sizeof(T);
-
-    dtw_warp_kernel<T><<<grid_size, block_size, shared_mem, stream>>>(
-        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
-        N_series, static_cast<int>(max_L),
-        static_cast<int>(num_pairs), use_squared_l2, band);
+    launch_warp_family(dtw_warp_kernel<T>, 32);
   } else if (kernel_path == detail::KernelPath::RegTileW4) {
-    // Register-tiled kernel with TILE_W=4: 32 threads * 4 = 128 columns max
-    constexpr int pairs_per_block = PAIRS_PER_BLOCK;
-    constexpr int TILE_W = 4;
-    const int grid_size = static_cast<int>(
-        (num_pairs + pairs_per_block - 1) / pairs_per_block);
-    constexpr int block_size = pairs_per_block * 32;
-    const size_t shared_mem = pairs_per_block * 2 * max_L * sizeof(T);
-
-    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
-        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
-        N_series, static_cast<int>(max_L),
-        static_cast<int>(num_pairs), use_squared_l2, band);
+    launch_warp_family(dtw_regtile_kernel<T, 4>, max_L); // 32 lanes x 4 = 128 columns
   } else if (kernel_path == detail::KernelPath::RegTileW8) {
-    // Register-tiled kernel with TILE_W=8: 32 threads * 8 = 256 columns max
-    constexpr int pairs_per_block = PAIRS_PER_BLOCK;
-    constexpr int TILE_W = 8;
-    const int grid_size = static_cast<int>(
-        (num_pairs + pairs_per_block - 1) / pairs_per_block);
-    constexpr int block_size = pairs_per_block * 32;
-    const size_t shared_mem = pairs_per_block * 2 * max_L * sizeof(T);
-
-    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
-        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
-        N_series, static_cast<int>(max_L),
-        static_cast<int>(num_pairs), use_squared_l2, band);
+    launch_warp_family(dtw_regtile_kernel<T, 8>, max_L); // 32 lanes x 8 = 256 columns
   } else if (kernel_path == detail::KernelPath::Wavefront) {
     // Wavefront kernel: shared memory and block size configuration
     // Buffer-count policy (incl. the Task 0.1 cap at L>2048) lives in
@@ -1021,11 +1028,11 @@ std::vector<double> launch_dtw_kernel(
     }
 
     // Determine whether to use persistent mode
-    const auto &gpu_cfg = query_gpu_config(device_id);
     int blocks_per_sm = 0;
     cudaOccupancyMaxActiveBlocksPerMultiprocessor(
         &blocks_per_sm, dtw_wavefront_kernel<T>, block_size, shared_mem);
-    const int persistent_grid = gpu_cfg.sm_count * std::max(blocks_per_sm, 1);
+    const int persistent_grid =
+        device_limits(device_id).sm_count * std::max(blocks_per_sm, 1);
     const bool use_persistent =
         (static_cast<int>(num_pairs) > persistent_grid * 4);
 
