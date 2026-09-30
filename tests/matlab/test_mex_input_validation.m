@@ -582,3 +582,76 @@ function h = int_problem(testCase)
         [1 2 3 4 5; 2 3 4 5 6; 9 8 7 6 5; 8 7 6 5 4]);
     dtwc_mex('Problem_fill_distance_matrix', h);
 end
+
+% -------------------------------------------------------------------------
+%  Names are parsed by dtwc::parse_name over the C++ tables (the CLI's),
+%  ignoring ASCII case, so MATLAB accepts every spelling C++ does.
+% -------------------------------------------------------------------------
+
+function test_every_spelling_in_the_cpp_name_tables_is_accepted(testCase)
+    h = dtwc_mex('Problem_new', 'names');
+    testCase.addTeardown(@() dtwc_mex('Problem_delete', h));
+    for name = {'kmedoids', 'mip', 'lrcore', 'tadpole', 'LRCore'}
+        dtwc_mex('Problem_set_method', h, name{1});
+    end
+    for name = {'standard', 'ddtw', 'wdtw', 'adtw', 'softdtw', 'soft-dtw', 'msm', ...
+                'twe', 'MSM'}
+        dtwc_mex('Problem_set_variant', h, name{1});
+    end
+    dtwc_mex('Problem_set_variant', h, 'standard');
+    for name = {'error', 'zero_cost', 'zero-cost', 'zerocost', 'arow', ...
+                'interpolate', 'AROW'}
+        dtwc_mex('Problem_set_missing_strategy', h, name{1});
+    end
+    for name = {'highs', 'gurobi', 'HiGHS'}
+        dtwc_mex('Problem_set_solver', h, name{1});   % false: not compiled in
+    end
+    dtwc_mex('Problem_set_data', h, [1 2 3; 2 3 4; 9 8 7; 8 7 6]);
+    for name = {'single', 'complete', 'average', 'Complete'}
+        dend = dtwc_mex('build_dendrogram', h, name{1}, 100);
+        verifySize(testCase, dend.merges, [3 4]);
+    end
+end
+
+function test_metric_names_share_one_meaning(testCase)
+%   'l2sq' and 'SqEuclidean' were unknown to MATLAB; the table spells them.
+    X = [1 2 3; 2 3 5; 9 8 7; 8 7 5];
+    squared = dtwc_mex('DTWClustering_compute_distance_matrix', X, -1, 'squared_euclidean');
+    for name = {'sqeuclidean', 'l2sq', 'SqEuclidean'}
+        verifyEqual(testCase, ...
+            dtwc_mex('DTWClustering_compute_distance_matrix', X, -1, name{1}), squared);
+    end
+    verifyNotEqual(testCase, ...
+        dtwc_mex('DTWClustering_compute_distance_matrix', X, -1, 'l1'), squared);
+end
+
+function test_unknown_names_list_the_cpp_table(testCase)
+%   The "Valid:" list is parse_name's: canonical spellings, in table order.
+    h = dtwc_mex('Problem_new', 'names_unknown');
+    testCase.addTeardown(@() dtwc_mex('Problem_delete', h));
+    dtwc_mex('Problem_set_data', h, [1 2 3; 2 3 4; 9 8 7; 8 7 6]);
+    cases = {
+        @() dtwc_mex('Problem_set_method', h, 'bogus'), ...
+            'unknown method ''bogus''. Valid: kmedoids, mip, lrcore, tadpole.'
+        @() dtwc_mex('Problem_set_solver', h, 'bogus'), ...
+            'unknown solver ''bogus''. Valid: highs, gurobi.'
+        @() dtwc_mex('build_dendrogram', h, 'bogus', 100), ...
+            'unknown linkage ''bogus''. Valid: single, complete, average.'
+        @() dtwc_mex('Problem_set_missing_strategy', h, 'bogus'), ...
+            ['unknown missing strategy ''bogus''. Valid: error, zero_cost, arow, ' ...
+             'interpolate.']
+        @() dtwc_mex('DTWClustering_compute_distance_matrix', [1 2; 3 4], -1, 'bogus'), ...
+            'unknown metric ''bogus''. Valid: l1, squared_euclidean.'
+    };
+    for i = 1:size(cases, 1)
+        err = [];
+        try
+            cases{i, 1}();
+        catch caught
+            err = caught;
+        end
+        assertNotEmpty(testCase, err);
+        verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+        verifyEqual(testCase, err.message, cases{i, 2});
+    end
+end

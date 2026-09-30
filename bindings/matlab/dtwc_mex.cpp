@@ -46,7 +46,7 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
-#include "../../dtwc/core/distance_semantics.hpp" // parse_metric_token (checkpoint + metric routes)
+#include "../../dtwc/base/names.hpp"   // parse_name over the C++ name tables
 
 #include <string>
 #include <vector>
@@ -377,12 +377,12 @@ static char parse_delimiter(const std::string &value) {
   return value[0];
 }
 
-/// Optional metric token; absent means L1, matching C++/Python defaults.
+/// Optional metric name; absent means L1, matching C++/Python defaults.
 static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
                                               int index) {
   const std::string token = optional_string(nrhs, prhs, index, "metric");
   if (token.empty()) return dtwc::core::MetricType::L1;
-  return dtwc::core::parse_metric_token(token);
+  return dtwc::parse_name(dtwc::core::metric_names, token, "metric");
 }
 
 /// Build a ClusteringResult MATLAB struct from a C++ ClusteringResult
@@ -473,17 +473,8 @@ static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx) {
   return dend;
 }
 
-/// Parse missing strategy string -> enum
-static dtwc::core::MissingStrategy parse_missing_strategy(const std::string &s) {
-  if (s == "error") return dtwc::core::MissingStrategy::Error;
-  if (s == "zero_cost") return dtwc::core::MissingStrategy::ZeroCost;
-  if (s == "arow") return dtwc::core::MissingStrategy::AROW;
-  if (s == "interpolate") return dtwc::core::MissingStrategy::Interpolate;
-  throw std::invalid_argument("Unknown missing strategy: '" + s + "'. "
-    "Valid: 'error', 'zero_cost', 'arow', 'interpolate'.");
-}
-
-/// Parse distance strategy string -> enum
+/// Parse distance strategy string -> enum. C++ has no name table for
+/// DistanceMatrixStrategy (the CLI and Python select devices, not strategies).
 static dtwc::DistanceMatrixStrategy parse_distance_strategy(const std::string &s) {
   if (s == "auto") return dtwc::DistanceMatrixStrategy::Auto;
   if (s == "brute_force") return dtwc::DistanceMatrixStrategy::BruteForce;
@@ -493,32 +484,15 @@ static dtwc::DistanceMatrixStrategy parse_distance_strategy(const std::string &s
     "Valid: 'auto', 'brute_force', 'cuda', 'metal'.");
 }
 
-/// Parse linkage string -> enum
-static dtwc::algorithms::Linkage parse_linkage(const std::string &s) {
-  if (s == "single") return dtwc::algorithms::Linkage::Single;
-  if (s == "complete") return dtwc::algorithms::Linkage::Complete;
-  if (s == "average") return dtwc::algorithms::Linkage::Average;
-  throw std::invalid_argument("Unknown linkage: '" + s + "'. Valid: 'single', 'complete', 'average'.");
-}
-
-/// Parse clustering method string -> enum (contract §2.1 set_method).
-/// 'pam' and 'auto' are not Problem methods: they used to run Lloyd k-medoids.
+/// Parse a Problem method name (contract §2.1 set_method). 'pam' and 'auto' are
+/// dtwc.cluster methods, not Problem methods: they used to run Lloyd k-medoids.
 static dtwc::Method parse_method(const std::string &s) {
-  if (s == "kmedoids") return dtwc::Method::Kmedoids;
-  if (s == "mip") return dtwc::Method::MIP;
   if (s == "pam" || s == "auto")
     throw dtwc::InvalidInput(
-      "set_method('" + s + "'): a Problem runs 'kmedoids' (Lloyd) or 'mip' only. "
-      "Use dtwc.fast_pam(prob, k) for PAM, or dtwc.cluster(data, k, 'method', '"
-      + s + "').");
-  throw std::invalid_argument("Unknown method: '" + s + "'. Valid: 'kmedoids', 'mip'.");
-}
-
-/// Parse MIP solver string -> enum (contract §2.1 set_solver).
-static dtwc::Solver parse_solver(const std::string &s) {
-  if (s == "highs") return dtwc::Solver::HiGHS;
-  if (s == "gurobi") return dtwc::Solver::Gurobi;
-  throw std::invalid_argument("Unknown solver: '" + s + "'. Valid: 'highs', 'gurobi'.");
+      "set_method('" + s + "'): a Problem runs kmedoids (Lloyd), mip, lrcore or "
+      "tadpole only. Use dtwc.fast_pam(prob, k) for PAM, or dtwc.cluster(data, k, "
+      "'method', '" + s + "').");
+  return dtwc::parse_name(dtwc::method_names, s, "method");
 }
 
 // =========================================================================
@@ -650,8 +624,8 @@ static void cmd_Problem_set_n_clusters(int nlhs, mxArray *plhs[], int nrhs, cons
 static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_missing_strategy requires handle and string.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  std::string s = get_string(prhs[2]);
-  prob.set_missing_strategy(parse_missing_strategy(s));
+  prob.set_missing_strategy(dtwc::parse_name(
+    dtwc::core::missing_strategy_names, get_string(prhs[2]), "missing strategy"));
 }
 
 static void cmd_Problem_set_distance_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -669,27 +643,18 @@ static void cmd_Problem_set_device(int nlhs, mxArray *plhs[], int nrhs, const mx
 static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_variant requires handle and variant string.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  std::string variant = get_string(prhs[2]);
+  using dtwc::core::DTWVariant;
+  const DTWVariant variant = dtwc::parse_name(
+    dtwc::core::variant_names, get_string(prhs[2]), "variant");
 
   dtwc::core::DTWVariantParams params = prob.variant_params;
-
-  if (variant == "standard") params.variant = dtwc::core::DTWVariant::Standard;
-  else if (variant == "ddtw") params.variant = dtwc::core::DTWVariant::DDTW;
-  else if (variant == "wdtw") {
-    params.variant = dtwc::core::DTWVariant::WDTW;
-    if (nrhs > 3) params.wdtw_g = get_scalar(prhs[3]);
-  }
-  else if (variant == "adtw") {
-    params.variant = dtwc::core::DTWVariant::ADTW;
-    if (nrhs > 3) params.adtw_penalty = get_scalar(prhs[3]);
-  }
-  else if (variant == "softdtw") {
-    params.variant = dtwc::core::DTWVariant::SoftDTW;
-    if (nrhs > 3) params.sdtw_gamma = get_scalar(prhs[3]);
-  }
-  else {
-    throw std::invalid_argument("Unknown variant: '" + variant + "'. "
-      "Valid: 'standard', 'ddtw', 'wdtw', 'adtw', 'softdtw'.");
+  params.variant = variant;
+  // The one optional scalar is the parameter of WDTW, ADTW and Soft-DTW; the
+  // other variants (MSM and TWE keep their defaults) take none here.
+  if (nrhs > 3) {
+    if (variant == DTWVariant::WDTW) params.wdtw_g = get_scalar(prhs[3]);
+    else if (variant == DTWVariant::ADTW) params.adtw_penalty = get_scalar(prhs[3]);
+    else if (variant == DTWVariant::SoftDTW) params.sdtw_gamma = get_scalar(prhs[3]);
   }
 
   prob.set_variant(params);
@@ -865,7 +830,8 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
   if (nrhs < 3) throw std::invalid_argument("Problem_set_solver requires handle and solver string.");
   require_char(prhs[2], "solver");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  const bool ok = prob.set_solver(parse_solver(get_string(prhs[2])));
+  const bool ok = prob.set_solver(
+    dtwc::parse_name(dtwc::solver_names, get_string(prhs[2]), "solver"));
   plhs[0] = mxCreateLogicalScalar(ok);  // false => requested solver not compiled in
 }
 
@@ -1224,7 +1190,8 @@ static void cmd_build_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
   dtwc::algorithms::HierarchicalOptions opts;
-  if (nrhs > 2) opts.linkage = parse_linkage(get_string(prhs[2]));
+  if (nrhs > 2)
+    opts.linkage = dtwc::parse_name(dtwc::algorithms::linkage_names, get_string(prhs[2]), "linkage");
   if (nrhs > 3) opts.max_points = get_exact_int(prhs[3], "max_points");
 
   auto dend = dtwc::algorithms::build_dendrogram(prob, opts);

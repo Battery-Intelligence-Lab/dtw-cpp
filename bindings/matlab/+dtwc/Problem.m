@@ -105,6 +105,9 @@ classdef Problem < handle
         %   prob.set_variant('wdtw', 0.1)      % g parameter
         %   prob.set_variant('adtw', 2.0)       % penalty
         %   prob.set_variant('softdtw', 0.5)    % gamma
+        %   prob.set_variant('msm')             % also 'twe': default parameters
+        %
+        %   Names are the C++ table's (the CLI's), ignoring case.
             if nargin > 2
                 dtwc_mex('Problem_set_variant', obj.Handle, variant, double(varargin{1}));
             else
@@ -184,7 +187,7 @@ classdef Problem < handle
         end
 
         function set_method(obj, m)
-        %SET_METHOD Set the clustering method ('kmedoids' or 'mip').
+        %SET_METHOD Set the Problem's method: 'kmedoids', 'mip', 'lrcore' or 'tadpole'.
             dtwc_mex('Problem_set_method', obj.Handle, char(m));
         end
 
