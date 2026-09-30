@@ -3,7 +3,7 @@
 ## Base
 
 Branch `design-2.0`, HEAD after this file's commit (on `218127d`). Session base `a073113`; first commit `cf0cf4a`.
-Interim version, written mid-session: units X3b, B1 and W13a were running in worktrees `C:/D/git/wt/<id>`.
+Interim version (updated 09-30 evening): W11a (index_t, Opus) and C1 (long-series CUDA kernel, Opus) were running.
 Agent briefs and inventories: session scratchpad `…/79bd8991-b0e9-441b-bc55-95584dcfaf55/scratchpad/`
 (`brief_*.md`, `gates_*.md`, `y4_inventory.md`, `w11_inventory.md`, `brief_w11a.md`, `brief_w12a.md`, `brief_b1.md`).
 
@@ -19,6 +19,10 @@ Agent briefs and inventories: session scratchpad `…/79bd8991-b0e9-441b-bc55-95
 - F1 `b5c7048`: every C++ test writes to its own scratch directory; `ctest -j 8` passes.
 - W4d `febd25f`: `KernelOverride` gone; FP32 L 4095–4096 fixed; shared memory opened once per device (a
   two-thread race, now tested) and checked before any allocation; typed stubs; empty series → `InvalidInput`.
+- B1 `4968d44`, B2 `e0085fd`, B3 `65edcf7`: the bindings check indices; outputs stay empty until a clustering; one
+  `require_clustered`; `set_data` clears it; `fast_pam` `max_iter = 0` is BUILD only everywhere (crashes before).
+- X3b `6e346a7`: validator tails gone; `-Werror=switch` and MSVC C4062 both bite. H1 `1a079cd`: msvc preset, docs tool.
+- W13a `62d5822`: GPU writes the packed matrix; int64 chunks (N > 65,536); FP32 L 100 fill 0.756×; host memory −74 %.
 - Records: DECISIONS §3 (09-30 rulings), LESSONS (+3), MAP, runbook (overlapping test runs), PLAN marks.
 
 ## Verified by me
@@ -33,15 +37,17 @@ Agent briefs and inventories: session scratchpad `…/79bd8991-b0e9-441b-bc55-95
 
 ## Reported by agents, unverified
 
-- Last green (W4d merge): clang ctest 121 = 118 + 3 MAY_SKIP; pytest 1111 / 19 / 0; CUDA tree 120 / 0 failed
-  (`test_cuda_correctness` 54 passed, 7315 assertions); `matlab_suite` 141 run / 140 passed / 1 allowed
-  incomplete (W6m merge); conformance digit-identical at every merge.
+- Last green (B3 merge `1cc4fcc`): clang ctest 122 = 119 + 3 MAY_SKIP; pytest 1172 / 19 / 0; `matlab_suite` 147 run /
+  146 passed / 1 allowed incomplete; CUDA tree 121 / 0 failed (W13a merge; llfio-ON tree 7145 assertions);
+  conformance digit-identical at every merge.
 - R1: TSan with LLVM libomp 18 + Archer (WSL, user space, `~/tsan`): 0 reports at base and head; controls bite.
 - W4d: band within 1 % on a quiet machine (cv ≤ 0.6 %); SASS byte-identical.
 
 ## Decisions
 
 - Volkan 09-30: "Please continue but don't call fable, for delegating simpler tasks use Sonnet 5.5 xhigh".
+  Later: "It is fine, we will never cluster as many as Nb^2 more than int64"; "You are overthiking about simple
+  things. Just keep the code simple, we think about it when it overflows" (CHARTER).
   Sonnet units run as one-agent workflows (`model: sonnet`, `effort: xhigh`); harder ones on the default model.
 - Awaiting Volkan: (1) clang-cl Windows wheels (libomp shipped); (2) drop `/fp:contract` from MSVC `fast`;
   (3) VERSIONINFO for `dtwc_cl.exe`; (4) NEW — the permission system refused W12a's `git rm` of tests ("Security
@@ -49,11 +55,10 @@ Agent briefs and inventories: session scratchpad `…/79bd8991-b0e9-441b-bc55-95
 
 ## Next steps (PLAN)
 
-1. B: merge X3b (validator tails, `-Werror=switch`, MSVC C4062), B1 (binding index checks), W12a's additive
-   half (`pb/W12a`, 3 commits) with or without its deletions.
-2. C: merge W13a (one fill, packed GPU output, int64 chunks; band at L 100/500/2000); then the global-memory
-   wavefront for L above the shared-memory limit, the CUDA tuning rows, W4e (macOS CI).
-3. D: W11a (brief ready) → W11b (Python `np.int64`, MATLAB double labels, drop `_CPP_INT_MAX`).
+1. B: W12a's additive half (`pb/W12a`, 3 commits) with or without its deletions (Volkan's OK needed).
+2. C: C1 (global-memory wavefront for long series; carveout; preload wavefront — each behind its band), then W4e
+   (macOS CI).
+3. D: W11a (in flight) → W11b (Python `np.int64`, MATLAB double labels, drop `_CPP_INT_MAX`).
 4. B/F: W6f after X3b (permission); W12b–d; the tracker-id comment sweep when no code unit is in flight.
 
 ## Open questions
