@@ -193,3 +193,6 @@ CHANGELOG rule.
   `Problem`'s duplicate print and its GPU pre-checks go, so the refusal wording lives in the backends (pinned by
   `test_run_resolution` and `test_cli_device_matrix`). The device limits are read once under `std::call_once`, whose
   callable does not throw (GCC PR 66146).
+- 2026-09-30 — W6m: MATLAB integers are read exactly (`get_exact_int`); an index is >= 1, a label is any integer (labels
+  are values: ARI/NMI take 0 and negatives, as C++ and Python). `Problem::dist_by_ind` stays unchecked (hot path); the
+  bindings check indices at the language boundary (MATLAB and Python returned 0 or read out of bounds).

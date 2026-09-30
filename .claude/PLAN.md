@@ -136,7 +136,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 ## E — interface (W7 → W8 ‖ W9 + W10)
 
 - ☐ W7a `DistanceConfig`; `set_distance / set_band / set_metric / set_variant / set_missing_strategy`
-  invalidate the matrix; `bool filled_`
+  invalidate the matrix; `bool filled_` — MATLAB cannot set `msm_c`, `twe_nu`, `twe_lambda` today (W6m)
 - ☐ W7b `resolve_dtw_fn(const DistanceConfig&)`; O(1) `dist_by_ind`; the preflight machinery goes. Acceptance:
   `dist_by_ind`'s parallel read path has no critical, atomic, validation flag or lazy allocation; a method that
   needs the matrix prepares it serially at entry
@@ -152,7 +152,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases
 - ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits)
 - ☐ W9c `hpc` → `job.toml`; the positional transport goes
-- ☐ W9e MATLAB on the `run(Config)` MEX route
+- ☐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
+  regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
+  (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m)
 - ☐ W9f Python test and example trims
 - ☐ W10a `DistanceMatrixStrategy`, `CUDASettings` → `set_device` + `set_gpu_precision`; the fingerprint
   hashes the resolved backend
