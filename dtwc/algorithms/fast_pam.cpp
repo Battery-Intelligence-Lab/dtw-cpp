@@ -40,7 +40,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <exception>
 #include <limits>
 #include <random>
 #include <stdexcept>
@@ -70,54 +69,41 @@ void compute_nearest_and_second(
   std::vector<double>& second_dist)
 {
   const int k = static_cast<int>(medoids.size());
-  std::exception_ptr failure;
-  int failure_point = N;
 
-  // Lock-free by design: each iteration writes only to nearest[p], nearest_dist[p],
+  // Lock-free by design: each index writes only to nearest[p], nearest_dist[p],
   // and second_dist[p] at its own index p — no two threads access the same element.
-#pragma omp parallel for schedule(static)
-  for (int p = 0; p < N; ++p) {
-    try {
-      double best = std::numeric_limits<double>::max();
-      double second_best = std::numeric_limits<double>::max();
-      int best_idx = 0;
-      bool has_best = false;
-      bool has_second = false;
+  auto assign_point = [&](std::size_t index) {
+    const int p = static_cast<int>(index);
+    double best = std::numeric_limits<double>::max();
+    double second_best = std::numeric_limits<double>::max();
+    int best_idx = 0;
+    bool has_best = false;
+    bool has_second = false;
 
-      for (int m = 0; m < k; ++m) {
-        const double d = core::detail::require_finite_medoid_distance(
-          prob.dist_by_ind(p, medoids[m]), "fast_pam", p, m, medoids[m]);
-        // A medoid tied with another medoid (a duplicate series) serves itself,
-        // or its own cluster would be published empty.
-        if (!has_best || d < best || (d == best && medoids[m] == p)) {
-          if (has_best) {
-            second_best = best;
-            has_second = true;
-          }
-          best = d;
-          best_idx = m;
-          has_best = true;
-        } else if (!has_second || d < second_best) {
-          second_best = d;
+    for (int m = 0; m < k; ++m) {
+      const double d = core::detail::require_finite_medoid_distance(
+        prob.dist_by_ind(p, medoids[m]), "fast_pam", p, m, medoids[m]);
+      // A medoid tied with another medoid (a duplicate series) serves itself,
+      // or its own cluster would be published empty.
+      if (!has_best || d < best || (d == best && medoids[m] == p)) {
+        if (has_best) {
+          second_best = best;
           has_second = true;
         }
-      }
-
-      nearest[p] = best_idx;
-      nearest_dist[p] = best;
-      second_dist[p] = second_best;
-    } catch (...) {
-#pragma omp critical(dtwc_medoid_assignment_failure)
-      {
-        if (p < failure_point) {
-          failure_point = p;
-          failure = std::current_exception();
-        }
+        best = d;
+        best_idx = m;
+        has_best = true;
+      } else if (!has_second || d < second_best) {
+        second_best = d;
+        has_second = true;
       }
     }
-  }
 
-  if (failure) std::rethrow_exception(failure);
+    nearest[p] = best_idx;
+    nearest_dist[p] = best;
+    second_dist[p] = second_best;
+  };
+  run_openmp(assign_point, static_cast<std::size_t>(N));
 }
 
 /**
@@ -258,57 +244,21 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<int> medoids, int m
     // Degenerate: with one medoid there is no second-nearest (second_dist = +inf),
     // so the removal-loss decomposition is undefined (ρ = inf, corrections = −inf
     // ⇒ NaN). The single-medoid optimum is simply argmin_x Σ_o d(x, o); compute it
-    // directly in O(N²), smallest index winning ties.
-    double best_cost = std::numeric_limits<double>::max();
-    int best_x = medoids[0];
-    bool best_present = false;
-    std::exception_ptr failure;
-    int failure_candidate = N;
-    const int chunk = dtwc::omp_chunk_size(N);
-    #pragma omp parallel
-    {
-      double loc_cost = std::numeric_limits<double>::max();
-      int loc_x = medoids[0];
-      bool loc_present = false;
-      #pragma omp for schedule(dynamic, chunk) nowait
-      for (int x = 0; x < N; ++x) {
-        try {
-          core::detail::OrderedMedoidObjective candidate_cost("fast_pam");
-          for (int o = 0; o < N; ++o) {
-            candidate_cost.add(core::detail::require_finite_candidate_distance(
-              prob.dist_by_ind(x, o), "fast_pam", o, x));
-          }
-          const double c = candidate_cost.value();
-          if (!loc_present || c < loc_cost || (c == loc_cost && x < loc_x)) {
-            loc_cost = c;
-            loc_x = x;
-            loc_present = true;
-          }
-        } catch (...) {
-#pragma omp critical(dtwc_medoid_candidate_failure)
-          {
-            if (x < failure_candidate) {
-              failure_candidate = x;
-              failure = std::current_exception();
-            }
-          }
-        }
+    // directly in O(N²), smallest index winning ties. Each candidate writes its
+    // own cost; the argmin is taken serially.
+    std::vector<double> candidate_cost(static_cast<std::size_t>(N));
+    auto total_distance = [&](std::size_t index) {
+      const int x = static_cast<int>(index);
+      core::detail::OrderedMedoidObjective cost("fast_pam");
+      for (int o = 0; o < N; ++o) {
+        cost.add(core::detail::require_finite_candidate_distance(
+          prob.dist_by_ind(x, o), "fast_pam", o, x));
       }
-      // An unnamed critical would serialise against every unnamed critical in
-      // any linked TU.
-      #pragma omp critical(dtwc_fast_pam_single_medoid_reduce)
-      {
-        if (loc_present
-            && (!best_present || loc_cost < best_cost
-                || (loc_cost == best_cost && loc_x < best_x))) {
-          best_cost = loc_cost;
-          best_x = loc_x;
-          best_present = true;
-        }
-      }
-    }
-    if (failure) std::rethrow_exception(failure);
-    medoids[0] = best_x;
+      candidate_cost[index] = cost.value();
+    };
+    run_openmp(total_distance, static_cast<std::size_t>(N));
+    medoids[0] = static_cast<int>(
+      std::min_element(candidate_cost.begin(), candidate_cost.end()) - candidate_cost.begin());
     compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
     converged = true;
   } else {

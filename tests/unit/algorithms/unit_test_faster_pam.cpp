@@ -264,3 +264,21 @@ TEST_CASE("FasterPAM finds the true 1-medoid at k=1", "[faster_pam][k1]")
     for (int p = 0; p < N; ++p) REQUIRE(res.labels[p] == 0);
   }
 }
+
+// Scalar series 0, 1, 2, 3: the L1 costs are 6, 4, 4, 6, so candidates 1 and 2
+// tie exactly and the lowest index must win however the candidates are shared
+// between threads.
+TEST_CASE("FasterPAM k=1 breaks a cost tie by the lowest index", "[faster_pam][k1]")
+{
+  std::vector<std::vector<data_t>> vecs{ { 0.0 }, { 1.0 }, { 2.0 }, { 3.0 } };
+  std::vector<std::string> names{ "a", "b", "c", "d" };
+  Problem prob("faster_pam_tie");
+  prob.set_data(Data(std::move(vecs), std::move(names)));
+
+  for (const bool seeded : { false, true }) {
+    const auto res = seeded ? fast_pam_seeded(prob, 1, 3) : fast_pam(prob, 1);
+    INFO("seeded=" << seeded);
+    REQUIRE(res.medoid_indices == std::vector<int>{ 1 });
+    REQUIRE(res.total_cost == 4.0);
+  }
+}
