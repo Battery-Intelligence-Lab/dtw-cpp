@@ -91,12 +91,13 @@ bool float_exact(const std::vector<double> &matrix)
 }
 
 /// Without HiGHS, `mip` (whose default backend it is) must raise SolverError, not
-/// solve some other way. True once that refusal has been asserted, so the caller
-/// skips the checks that need a result; false on a build with HiGHS.
-bool mip_refused_without_highs(ClusterMethod method)
+/// solve some other way, on either device and before a GPU is looked for. True
+/// once that refusal has been asserted, so the caller skips the checks that need
+/// a result; false on a build with HiGHS.
+bool mip_refused_without_highs(ClusterMethod method, Device device = Device::CPU)
 {
   if (method != ClusterMethod::MIP || dtwc::highs_solver_available()) return false;
-  CHECK_THROWS_MATCHES(dtwc::run(config_for(method, Device::CPU), levels()), dtwc::SolverError,
+  CHECK_THROWS_MATCHES(dtwc::run(config_for(method, device), levels()), dtwc::SolverError,
                        MessageMatches(ContainsSubstring("HiGHS solver is unavailable")));
   return true;
 }
@@ -184,6 +185,7 @@ TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes method
   const auto cpu = dtwc::run(config_for(ClusterMethod::PAM, Device::CPU), levels());
   for (const auto method : kMatrix) {
     CAPTURE(name(method));
+    if (mip_refused_without_highs(method, Device::GPU)) continue;
     if (!gpu_present()) { // the backend's own refusal; nothing ran on the CPU instead
       CHECK_THAT(device_error([&] { (void)dtwc::run(config_for(method, Device::GPU), levels()); }),
                  ContainsSubstring("GPU was detected") && ContainsSubstring("No CPU fallback was attempted"));
