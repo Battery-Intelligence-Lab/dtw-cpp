@@ -31,7 +31,6 @@
 #include <device_launch_parameters.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -1004,15 +1003,6 @@ std::vector<double> launch_dtw_kernel(
     // Buffer-count policy (incl. the Task 0.1 cap at L>2048) lives in
     // detail::wavefront_buffer_count so both dispatch paths share it.
     const size_t n_bufs = detail::wavefront_buffer_count(max_L);
-    if (max_L > 2048) {
-      // Lock-free warn-once: exchange() is a single RMW, never a mutex.
-      static std::atomic<bool> logged{ false };
-      if (!logged.exchange(true, std::memory_order_relaxed)) {
-        std::cerr << "[CUDA] max_L=" << max_L
-                  << " > 2048: using the 3-buffer wavefront path "
-                     "(the double-buffer register cache would drop cells).\n";
-      }
-    }
     const size_t shared_mem = n_bufs * max_L * sizeof(T);
 
     // Block size heuristic tuned for the anti-diagonal wavefront pattern.
