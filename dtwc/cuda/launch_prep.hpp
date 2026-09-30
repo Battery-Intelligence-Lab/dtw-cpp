@@ -39,6 +39,19 @@ inline constexpr std::size_t upper_triangle_pairs(std::size_t n) noexcept
   return (n < 2) ? std::size_t{ 0 } : n * (n - 1) / 2;
 }
 
+/// @brief Reject a GPU older than compute capability 8.0 (Ampere, 2021), the
+/// oldest the kernels are built and tuned for.
+/// @throws dtwc::DeviceError naming device @p device_id's compute capability.
+inline void require_compute_capability(int major, int minor, int device_id)
+{
+  if (major < 8)
+    throw dtwc::DeviceError(
+      "CUDA device " + std::to_string(device_id) + " has compute capability "
+      + std::to_string(major) + "." + std::to_string(minor)
+      + "; DTWC++ needs 8.0 or newer (Ampere, 2021: A30, A100, RTX 30 and later). "
+        "No CPU fallback was attempted.");
+}
+
 /// @brief Reject a CUDA call on a host with no usable device.
 /// @throws dtwc::DeviceError when @p available is false.
 inline void require_cuda_device(bool available, const char *entry)
@@ -48,6 +61,9 @@ inline void require_cuda_device(bool available, const char *entry)
       std::string(entry) + ": DTWC++ was built with CUDA support, but no "
       "usable CUDA GPU was detected. No CPU fallback was attempted.");
 }
+
+/// The wavefront stages both series in shared memory up to this length.
+inline constexpr std::size_t kPreloadMaxLength = 512;
 
 /// @brief Shared-memory buffer count for the anti-diagonal wavefront kernels.
 ///
@@ -59,7 +75,7 @@ inline void require_cuda_device(bool available, const char *entry)
 ///            anti-diagonal cells beyond that (Task 0.1).
 inline constexpr std::size_t wavefront_buffer_count(std::size_t max_L) noexcept
 {
-  if (max_L <= 512) return 5;
+  if (max_L <= kPreloadMaxLength) return 5;
   if (max_L > 1024 && max_L <= 2048) return 2;
   return 3;
 }

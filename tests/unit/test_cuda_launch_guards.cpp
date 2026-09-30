@@ -21,6 +21,8 @@
  */
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <dtwc.hpp>
 #include <base/error.hpp>
@@ -86,7 +88,33 @@ TEST_CASE("A16 missing CUDA device is a typed error, never a zero matrix",
 #endif
 }
 
-TEST_CASE("CUDA kernel choice follows the longest series length",
+// The kernels are built for compute capability 8.0 and newer (Ampere, 2021); an
+// older GPU is refused with the typed error when the fill first reads the device,
+// before anything is allocated, instead of failing at its first launch.
+TEST_CASE("CUDA refuses a GPU older than compute capability 8.0",
+          "[cuda][launch_guard][host]")
+{
+#if !DTWC_HAS_CUDA_LAUNCH_PREP_SEAM
+  FAIL("CUDA launch preconditions must be exposed through a host-testable seam");
+#else
+  using Catch::Matchers::ContainsSubstring;
+  using Catch::Matchers::MessageMatches;
+  using dtwc::cuda::detail::require_compute_capability;
+
+  REQUIRE_NOTHROW(require_compute_capability(8, 0, 0));  // A30, A100
+  REQUIRE_NOTHROW(require_compute_capability(8, 6, 0));  // RTX 30
+  REQUIRE_NOTHROW(require_compute_capability(8, 9, 0));  // RTX 4000 Ada, L40S
+  REQUIRE_NOTHROW(require_compute_capability(9, 0, 0));  // H100
+  REQUIRE_NOTHROW(require_compute_capability(12, 0, 0)); // RTX 50
+  REQUIRE_THROWS_MATCHES(
+      require_compute_capability(7, 5, 1), dtwc::DeviceError,
+      MessageMatches(ContainsSubstring("CUDA device 1 has compute capability 7.5")
+                     && ContainsSubstring("needs 8.0 or newer")));
+  REQUIRE_THROWS_AS(require_compute_capability(6, 0, 0), dtwc::DeviceError);
+#endif
+}
+
+TEST_CASE("CUDA kernel choice follows the longest series length and the shared memory",
           "[cuda][launch_guard][host]")
 {
 #if !DTWC_HAS_CUDA_LAUNCH_PREP_SEAM
@@ -98,17 +126,32 @@ TEST_CASE("CUDA kernel choice follows the longest series length",
 
   // Each range's kernel beats every other kernel that accepts the range by at
   // least 15 % on the RTX 4000 Ada (.claude/baselines/2026-09-29-w4a-cuda-kernel-ab.md).
-  CHECK(select_kernel(1) == KernelPath::Warp);
-  CHECK(select_kernel(32) == KernelPath::Warp);
-  CHECK(select_kernel(33) == KernelPath::RegTileW4);
-  CHECK(select_kernel(128) == KernelPath::RegTileW4);
-  CHECK(select_kernel(129) == KernelPath::RegTileW8);
-  CHECK(select_kernel(256) == KernelPath::RegTileW8);
-  CHECK(select_kernel(257) == KernelPath::Wavefront);
+  // That device gives a wavefront block 101,376 bytes of shared memory, 16 of
+  // them the kernel's own: a block's anti-diagonals (three of L samples above
+  // L = 2048) leave shared memory for global memory from FP32 L = 8447 and
+  // FP64 L = 4224.
+  constexpr std::size_t shared = 101376 - 16;
+  for (const std::size_t sample : { std::size_t{ 4 }, std::size_t{ 8 } }) {
+    CHECK(select_kernel(1, sample, shared) == KernelPath::Warp);
+    CHECK(select_kernel(32, sample, shared) == KernelPath::Warp);
+    CHECK(select_kernel(33, sample, shared) == KernelPath::RegTileW4);
+    CHECK(select_kernel(128, sample, shared) == KernelPath::RegTileW4);
+    CHECK(select_kernel(129, sample, shared) == KernelPath::RegTileW8);
+    CHECK(select_kernel(256, sample, shared) == KernelPath::RegTileW8);
+    CHECK(select_kernel(257, sample, shared) == KernelPath::Wavefront);
+    CHECK(select_kernel(2048, sample, shared) == KernelPath::Wavefront);
+    CHECK(select_kernel(2049, sample, shared) == KernelPath::Wavefront);
+  }
+  CHECK(select_kernel(8446, 4, shared) == KernelPath::Wavefront);
+  CHECK(select_kernel(8447, 4, shared) == KernelPath::WavefrontGlobal);
+  CHECK(select_kernel(4223, 8, shared) == KernelPath::Wavefront);
+  CHECK(select_kernel(4224, 8, shared) == KernelPath::WavefrontGlobal);
+  CHECK(select_kernel(100000000, 4, shared) == KernelPath::WavefrontGlobal);
   CHECK(kernel_path_name(KernelPath::Warp) == "warp");
   CHECK(kernel_path_name(KernelPath::RegTileW4) == "regtile_w4");
   CHECK(kernel_path_name(KernelPath::RegTileW8) == "regtile_w8");
   CHECK(kernel_path_name(KernelPath::Wavefront) == "wavefront");
+  CHECK(kernel_path_name(KernelPath::WavefrontGlobal) == "wavefront_global");
 #endif
 }
 

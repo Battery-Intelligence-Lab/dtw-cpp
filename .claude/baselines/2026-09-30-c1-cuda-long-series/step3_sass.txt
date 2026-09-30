@@ -1,0 +1,24 @@
+dtw_regtile_kernel<d,Li4E>: 2240 vs 2240 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<d,Li8E>: 3232 vs 3232 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<f,Li4E>: 1680 vs 1680 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<f,Li8E>: 2224 vs 2224 lines; byte-identical True; differing lines 0
+dtw_warp_kernel<d>: 1392 vs 1392 lines; byte-identical True; differing lines 0
+dtw_warp_kernel<f>: 1872 vs 1872 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<d,Global>: only in head (928 lines)
+dtw_wavefront_kernel<d,Preload>: only in head (1024 lines)
+dtw_wavefront_kernel<d,Shared>: 2496 vs 2496 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<f,Global>: only in head (928 lines)
+dtw_wavefront_kernel<f,Preload>: only in head (944 lines)
+dtw_wavefront_kernel<f,Shared>: 2176 vs 2176 lines; byte-identical True; differing lines 0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE2EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:36 STACK:24 SHARED:16 LOCAL:0 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE0EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:40 STACK:24 SHARED:16 LOCAL:0 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE2EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:28 STACK:24 SHARED:16 LOCAL:0 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE0EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:40 STACK:24 SHARED:16 LOCAL:0 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:79 STACK:24 SHARED:16 LOCAL:0 CONSTANT[2]:8 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:68 STACK:24 SHARED:16 LOCAL:0 CONSTANT[2]:8 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0

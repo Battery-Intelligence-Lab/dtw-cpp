@@ -550,63 +550,152 @@ TEST_CASE("FP32 wavefront at L = 4095 and 4096 matches the host kernel",
   REQUIRE(gpu_result.matrix == cpu_fp32_distance_matrix(series));
 }
 
-// A wavefront block that needs more shared memory than the device offers is
-// refused with the typed error before anything is allocated or copied, and the
-// same thread's next fill is unaffected. Above L = 2048 a block holds three
-// diagonals of L values plus the kernel's 16 static bytes, so the first refused
-// L is FP32 8447 and FP64 4224 on the RTX 4000 Ada (101,376 bytes).
-TEST_CASE("CUDA refuses a wavefront beyond the device's shared memory before filling",
+namespace {
+
+/// The first length whose wavefront block does not fit the device's opt-in
+/// shared memory: above L = 2048 a block holds three anti-diagonals of L values
+/// plus the kernel's 16 static bytes, so FP32 8447 and FP64 4224 on the RTX 4000
+/// Ada (101,376 bytes). Every supported GPU (compute capability 8.0 or newer)
+/// offers at least 99 KB, so the limit lies above 2048. From there the wavefront
+/// keeps its anti-diagonals in global memory.
+size_t first_global_length(bool fp32)
+{
+  int max_shared = 0;
+  REQUIRE(cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, 0)
+          == cudaSuccess);
+  return (static_cast<size_t>(max_shared) - 16) / (3 * (fp32 ? 4 : 8)) + 1;
+}
+
+} // anonymous namespace
+
+// One length below the limit the anti-diagonals stay in shared memory, at the
+// limit they go to global memory; both fills are the host kernel's bit for bit,
+// and the same thread's next shared-memory fill is too.
+TEST_CASE("CUDA wavefront keeps its anti-diagonals in global memory from the shared-memory limit",
           "[cuda][long]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  int max_shared = 0;
-  REQUIRE(cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, 0)
-          == cudaSuccess);
-  const auto precision =
-      GENERATE(dtwc::cuda::CUDAPrecision::FP32, dtwc::cuda::CUDAPrecision::FP64);
-  const bool fp32 = precision == dtwc::cuda::CUDAPrecision::FP32;
-  const size_t first_refused =
-      (static_cast<size_t>(max_shared) - 16) / (3 * (fp32 ? 4 : 8)) + 1;
-  CAPTURE(fp32, first_refused);
+  const bool fp32 = GENERATE(true, false);
+  const size_t first_global = first_global_length(fp32);
+  CAPTURE(fp32, first_global);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = precision;
-  REQUIRE_NOTHROW(gpu_fill(
-      generate_random_walks(2, first_refused - 1, /*seed=*/41), opts));
-  dtwc::core::DistanceMatrix untouched;
-  REQUIRE_THROWS_MATCHES(
-      dtwc::cuda::compute_distance_matrix_cuda(
-          generate_random_walks(2, first_refused, /*seed=*/41), opts, untouched),
-      dtwc::DeviceError, MessageMatches(ContainsSubstring("bytes of shared memory per block")));
-  CHECK(untouched.size() == 0); // refused before the caller's matrix was sized
-
+  opts.precision = fp32 ? dtwc::cuda::CUDAPrecision::FP32 : dtwc::cuda::CUDAPrecision::FP64;
+  const auto host = [fp32](const auto &series) {
+    return fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series);
+  };
+  for (const size_t L : { first_global - 1, first_global }) {
+    CAPTURE(L);
+    const auto series = generate_random_walks(2, L, /*seed=*/41);
+    const auto gpu_result = gpu_fill(series, opts);
+    CHECK(gpu_result.kernel_used == (L < first_global ? "wavefront" : "wavefront_global"));
+    CHECK(gpu_result.matrix == host(series));
+  }
   const auto series = generate_random_series(4, 300, /*seed=*/9);
-  REQUIRE(gpu_fill(series, opts).matrix
+  REQUIRE(gpu_fill(series, opts).matrix == host(series));
+}
+
+// Series longer than the shared-memory limit fill on the GPU (FP32 L 8447 and
+// 12,000, FP64 L 4224 and 9406, one past data/dummy's longest; each refused
+// before the global-memory wavefront). Lengths are mixed down to 1 sample, so
+// pairs run in both orientations and most are padded; every distance is the
+// host kernel's, bit for bit, in the fill's precision.
+TEST_CASE("CUDA fill of series beyond the shared-memory limit matches the host kernel",
+          "[cuda][long]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  struct Case {
+    size_t L;
+    bool fp32;
+  };
+  const auto c = GENERATE(values<Case>({ { 8447, true }, { 12000, true },
+                                         { 4224, false }, { 9406, false } }));
+  CAPTURE(c.L, c.fp32);
+  const size_t lengths[] = { c.L, c.L - 1, c.L - 700, 3 * c.L / 4, c.L / 2 + 1, 2049, 300, 1 };
+  auto series = generate_random_walks(std::size(lengths), c.L, /*seed=*/20261001);
+  for (size_t k = 0; k < series.size(); ++k) series[k].resize(lengths[k]);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = c.fp32 ? dtwc::cuda::CUDAPrecision::FP32 : dtwc::cuda::CUDAPrecision::FP64;
+  const auto gpu_result = gpu_fill(series, opts);
+  CHECK(gpu_result.kernel_used
+        == (c.L < first_global_length(c.fp32) ? "wavefront" : "wavefront_global"));
+  REQUIRE(gpu_result.matrix
+          == (c.fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series)));
+}
+
+// More pairs than the grid has blocks, so each block runs several pairs in its
+// own slice of the global scratch: one long series and 63 of 1 to 300 samples,
+// which keeps the host oracle cheap. At FP64 twice the limit the slices of the
+// resident blocks pass the L2 (40 MB on the RTX 4000 Ada), so the grid is cut to
+// the slices the L2 holds.
+TEST_CASE("CUDA global-memory wavefront runs many pairs per block",
+          "[cuda][long]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  const bool fp32 = GENERATE(true, false);
+  const size_t L = fp32 ? first_global_length(true) : 2 * first_global_length(false);
+  CAPTURE(fp32, L);
+  auto series = generate_random_walks(64, L, /*seed=*/20261002);
+  for (size_t k = 1; k < series.size(); ++k) series[k].resize(1 + (k * 37) % 300);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = fp32 ? dtwc::cuda::CUDAPrecision::FP32 : dtwc::cuda::CUDAPrecision::FP64;
+  const auto gpu_result = gpu_fill(series, opts);
+  CHECK(gpu_result.kernel_used == "wavefront_global");
+  REQUIRE(gpu_result.matrix
           == (fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series)));
 }
 
-// The Problem's fill hands its matrix to the backend, which sizes it only after
-// its own refusals: a wavefront that cannot fit leaves no matrix allocated
-// (Problem used to size it first, which at N = 65,537 is 17 GB of NaN).
-TEST_CASE("A refused CUDA fill leaves the Problem's matrix unallocated",
-          "[cuda][long]")
+// The global-memory wavefront runs the shared kernel's band and squared-L2 cost
+// too: FP64 at the limit, a band of 64 against the host's banded kernel bit for
+// bit, and squared L2 against the host kernel within the relative 1e-10 of the
+// other squared-L2 tests (a host compiler may contract the square into an FMA).
+TEST_CASE("CUDA global-memory wavefront matches the host kernel with a band and with squared L2",
+          "[cuda][long][banded]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  int max_shared = 0;
-  REQUIRE(cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, 0)
-          == cudaSuccess);
-  const size_t first_refused_fp32 = (static_cast<size_t>(max_shared) - 16) / (3 * 4) + 1;
+  const auto series = generate_random_walks(4, first_global_length(false), /*seed=*/20261003);
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
 
+  opts.band = 64;
+  const auto banded = gpu_fill(series, opts);
+  CHECK(banded.kernel_used == "wavefront_global");
+  CHECK(banded.matrix == cpu_banded_distance_matrix(series, 64));
+
+  opts.band = -1;
+  opts.use_squared_l2 = true;
+  const auto squared = gpu_fill(series, opts);
+  CHECK(squared.kernel_used == "wavefront_global");
+  for (size_t i = 0; i < series.size(); ++i)
+    for (size_t j = 0; j < i; ++j) {
+      CAPTURE(i, j);
+      CHECK_THAT(squared.matrix[i * series.size() + j],
+                 WithinRel(dtwc::dtwFull_L<double>(series[i], series[j], -1.0,
+                                                   dtwc::core::MetricType::SquaredL2),
+                           1e-10));
+    }
+}
+
+// The Problem's fill hands its matrix to the backend, which sizes it only after
+// its own refusals: a device index past the last device leaves no matrix
+// allocated (Problem used to size it first, which at N = 65,537 is 17 GB of NaN).
+TEST_CASE("A refused CUDA fill leaves the Problem's matrix unallocated", "[cuda]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  int device_count = 0;
+  REQUIRE(cudaGetDeviceCount(&device_count) == cudaSuccess);
   dtwc::Problem prob("refused");
-  prob.set_data(dtwc::Data{ generate_random_walks(2, first_refused_fp32, /*seed=*/41),
-                            { "s0", "s1" } });
-  prob.set_cuda_settings(dtwc::CUDASettings{ 0, dtwc::GpuPrecision::FP32 });
-  prob.set_device(dtwc::Device::GPU);
-  REQUIRE_THROWS_MATCHES(
-      prob.fill_distance_matrix(), dtwc::DeviceError,
-      MessageMatches(ContainsSubstring("bytes of shared memory per block")));
+  prob.set_data(dtwc::Data{ generate_random_walks(2, 100, /*seed=*/41), { "s0", "s1" } });
+  prob.set_device(dtwc::Device::GPU, device_count);
+  REQUIRE_THROWS_MATCHES(prob.fill_distance_matrix(), dtwc::DeviceError,
+                         MessageMatches(ContainsSubstring("invalid device ordinal")));
   CHECK(std::as_const(prob).distance_matrix().size() == 0);
 }
 
@@ -713,6 +802,30 @@ TEST_CASE("CUDA fill of all-empty series is InvalidInput and no zero matrix", "[
   REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(empty, {}, untouched),
                     dtwc::InvalidInput);
   CHECK(untouched.size() == 0);
+}
+
+// A CUDA call that fails is reported once, by the fill that made it. The
+// runtime also keeps the error as the thread's last error, which each launch is
+// checked with, so the thread's next fill used to fail with it: here
+// cudaSetDevice's "invalid device ordinal" for a device index past the last.
+TEST_CASE("A fill the CUDA runtime refuses leaves the thread's next fill unaffected", "[cuda]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  int device_count = 0;
+  REQUIRE(cudaGetDeviceCount(&device_count) == cudaSuccess);
+  const auto series = generate_random_series(4, 60, /*seed=*/13);
+  const auto before = gpu_fill(series); // the thread's CUDA context exists from here
+
+  dtwc::cuda::CUDADistMatOptions missing_device;
+  missing_device.device_id = device_count;
+  dtwc::core::DistanceMatrix untouched;
+  REQUIRE_THROWS_MATCHES(
+      dtwc::cuda::compute_distance_matrix_cuda(series, missing_device, untouched),
+      dtwc::DeviceError, MessageMatches(ContainsSubstring("invalid device ordinal")));
+  CHECK(untouched.size() == 0);
+
+  REQUIRE(gpu_fill(series).matrix == before.matrix);
 }
 
 // ---------------------------------------------------------------------------

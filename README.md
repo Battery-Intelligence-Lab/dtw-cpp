@@ -147,10 +147,12 @@ cmake -S . -B build -DDTWC_ARCH_LEVEL=v4
 cmake --build build --config Release -j
 ```
 
-**CUDA multi-arch build** — covers the full common HPC GPU fleet (V100→H100) by default. To target specific GPUs:
+**CUDA multi-arch build** — the CUDA backend needs an NVIDIA GPU of compute capability 8.0 or newer (Ampere, 2021:
+A30/A100/RTX 30 and later) and refuses an older one with `DeviceError`. The default build covers them all. To target
+specific GPUs:
 
 ```bash
-# Default: P100, V100, Turing, A100, RTX Ampere, Ada/L40s, H100 (sm 60/70/75/80/86/89/90)
+# Default: A30/A100, RTX 30, Ada/L40S, H100 (sm 80/86/89/90), plus PTX that later GPUs compile at load
 cmake -S . -B build -DDTWC_ENABLE_CUDA=ON
 
 # Single-arch build for A100-only cluster (faster compile):
@@ -190,7 +192,7 @@ export OMP_PLACES=cores
 | `DTWC_ENABLE_NATIVE_ARCH` | ON | Tune for host CPU (`-march=native`); disable for portable binaries |
 | `DTWC_REPRODUCIBLE_BUILD` | OFF | Strip source/build paths from supported compiler outputs |
 | `DTWC_ARCH_LEVEL` | `""` | Override native arch: `v3` (AVX2+FMA, all modern HPC CPUs), `v4` (AVX-512) |
-| `DTWC_CUDA_ARCH_LIST` | `60;70;75;80;86;89;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set |
+| `DTWC_CUDA_ARCH_LIST` | `80-real;86-real;89-real;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set (compute capability 8.0 is the floor) |
 
 AI-assisted workflow (Claude Code)
 ===========================

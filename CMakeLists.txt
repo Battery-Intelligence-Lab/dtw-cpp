@@ -153,10 +153,11 @@ if(DTWC_ENABLE_CUDA)
   check_language(CUDA)
   if(CMAKE_CUDA_COMPILER)
     # Set default CUDA arch list before enable_language(CUDA) — CMake reads this at language-enable time.
-    # Covers common HPC GPU fleets: P100(60), V100(70), Turing(75), A100(80), Ampere(86), L40s/Ada(89), H100(90).
+    # Compute capability 8.0 (Ampere, 2021) is the floor: the fill refuses an older GPU. Machine code for
+    # A30/A100 (80), RTX 30 (86), Ada/L40S (89) and H100 (90), and PTX of 90 for later GPUs to compile at load.
     # Override with -DCMAKE_CUDA_ARCHITECTURES=... or -DDTWC_CUDA_ARCH_LIST=... on the command line.
-    set(DTWC_CUDA_ARCH_LIST "60;70;75;80;86;89;90" CACHE STRING
-        "CUDA architectures to compile for (default covers P100 through H100)")
+    set(DTWC_CUDA_ARCH_LIST "80-real;86-real;89-real;90" CACHE STRING
+        "CUDA architectures to compile for (default: compute capability 8.0 to 9.0, PTX for later GPUs)")
     if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "")
       set(CMAKE_CUDA_ARCHITECTURES "${DTWC_CUDA_ARCH_LIST}" CACHE STRING
           "CUDA architectures (set from DTWC_CUDA_ARCH_LIST)" FORCE)

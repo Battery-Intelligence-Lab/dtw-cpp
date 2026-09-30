@@ -1,0 +1,30 @@
+dtw_regtile_kernel<d,Li4E>: 2240 vs 2240 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<d,Li8E>: 3232 vs 3232 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<f,Li4E>: 1680 vs 1680 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<f,Li8E>: 2224 vs 2224 lines; byte-identical True; differing lines 0
+dtw_warp_kernel<d>: 1392 vs 1392 lines; byte-identical True; differing lines 0
+dtw_warp_kernel<f>: 1872 vs 1872 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<d,Global>: only in head (928 lines)
+dtw_wavefront_kernel<d>: 2496 vs 2496 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<f,Global>: only in head (928 lines)
+dtw_wavefront_kernel<f>: 2176 vs 2176 lines; byte-identical True; differing lines 0
+ Function _ZN4dtwc4cuda18dtw_regtile_kernelIdLi8EEEvPKT_PKiPdiiibixx:
+  REG:90 STACK:64 SHARED:0 LOCAL:0 CONSTANT[0]:416 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda18dtw_regtile_kernelIdLi4EEEvPKT_PKiPdiiibixx:
+  REG:64 STACK:32 SHARED:0 LOCAL:0 CONSTANT[0]:416 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda15dtw_warp_kernelIdEEvPKT_PKiPdiiibixx:
+  REG:37 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:416 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_16WavefrontBuffersE1EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:36 STACK:24 SHARED:16 LOCAL:0 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda18dtw_regtile_kernelIfLi8EEEvPKT_PKiPdiiibixx:
+  REG:56 STACK:32 SHARED:0 LOCAL:0 CONSTANT[0]:416 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda18dtw_regtile_kernelIfLi4EEEvPKT_PKiPdiiibixx:
+  REG:48 STACK:16 SHARED:0 LOCAL:0 CONSTANT[0]:416 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda15dtw_warp_kernelIfEEvPKT_PKiPdiiibixx:
+  REG:32 STACK:0 SHARED:0 LOCAL:0 CONSTANT[0]:416 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_16WavefrontBuffersE1EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:28 STACK:24 SHARED:16 LOCAL:0 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_16WavefrontBuffersE0EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:79 STACK:24 SHARED:16 LOCAL:0 CONSTANT[2]:8 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0
+ Function _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_16WavefrontBuffersE0EEEvPKT_PKiPdiiibiPixxPS3_:
+  REG:68 STACK:24 SHARED:16 LOCAL:0 CONSTANT[2]:8 CONSTANT[0]:432 TEXTURE:0 SURFACE:0 SAMPLER:0
