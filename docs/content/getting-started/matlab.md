@@ -119,8 +119,8 @@ disp(clust.MedoidIndices);
 
 ### Read-only properties (set after fit)
 
-- `Labels` -- `int32` row vector of cluster assignments (**1-based**)
-- `MedoidIndices` -- `int32` row vector of medoid indices (**1-based**)
+- `Labels` -- `double` row vector of cluster assignments (**1-based**)
+- `MedoidIndices` -- `double` row vector of medoid indices (**1-based**)
 - `TotalCost` -- sum of intra-cluster DTW distances
 
 ### Indexing note
