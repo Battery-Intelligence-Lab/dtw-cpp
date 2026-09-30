@@ -195,7 +195,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 - ☐ one `kmedoids_pp` (W13c) · ☐ HiGHS model built row-wise (W13d) · ☐ barycenter workspace (W13e)
 - ☑ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel (P4 9168ed9; merged 69be49c; that step 21.9× at 24 threads, the whole call 1.89× at N 2000, k 10, L 200 — identical labels, medoids, cost)
-- ☐ OneBatchPAM's batch table fill (m·(N−1) DTW calls, 95 % of the call after P4) on the P1 lanes kernel
+- ☑ OneBatchPAM's batch table fill (m·(N−1) DTW calls, 95 % of the call after P4) on the P1 lanes kernel (P5 1b69614; merged bac9120; table fill 4.61×, whole call 3.87× at N 2000, k 10, L 200, 24 threads; bitwise identical over 24 configurations)
 - ☐ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
 - ☑ PF-5 probe: SIMD lanes across pairs PASS, 3.7–7.9× single-thread f64, bit-identical (2026-09-29; P1 in phase B
   integrates it)
