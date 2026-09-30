@@ -32,8 +32,6 @@ from dtwcpp._variant_validation import normalize_variant_parameters
 
 
 _UINT64_MAX = (1 << 64) - 1
-_CLI_INT_MAX = (1 << 31) - 1
-_CLI_UINT_MAX = (1 << 32) - 1
 _SAFE_JOB_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 _SAFE_REMOTE_PATH = re.compile(r"[A-Za-z0-9_./:+@%=-]+\Z")
 _METHOD_ALIASES = {
@@ -54,8 +52,6 @@ def _validate_restart_schedule(n_init, seed):
     n_init = int(n_init)
     if n_init < 1:
         raise ValueError("n_init must be at least 1")
-    if n_init > _CLI_INT_MAX:
-        raise ValueError("n_init exceeds the dtwc_cl int range")
 
     if seed is None:
         return n_init, None
@@ -68,8 +64,6 @@ def _validate_restart_schedule(n_init, seed):
         raise ValueError("seed must fit in uint64")
     if n_init - 1 > _UINT64_MAX - seed:
         raise ValueError("seed + n_init - 1 overflows uint64")
-    if seed > _CLI_UINT_MAX:
-        raise ValueError("seed exceeds the dtwc_cl unsigned range")
     return n_init, seed
 
 
@@ -95,16 +89,10 @@ def _validate_remote_configuration(
     ):
         raise TypeError("max_iter must be an integer")
     max_iter = int(max_iter)
-    if not 1 <= max_iter <= _CLI_INT_MAX:
-        raise ValueError("max_iter must be in the dtwc_cl positive int range")
+    if max_iter < 1:
+        raise ValueError("max_iter must be at least 1")
 
-    cuda_match = (
-        re.fullmatch(r"cuda:([0-9]+)", device.lower())
-        if isinstance(device, str) else None
-    )
-    if cuda_match is not None:
-        if int(cuda_match.group(1)) > _CLI_INT_MAX:
-            raise ValueError("device CUDA ordinal exceeds the dtwc_cl int range")
+    if isinstance(device, str) and re.fullmatch(r"cuda:[0-9]+", device.lower()):
         device = device.lower()
     else:
         device = _normalize_choice(
@@ -180,17 +168,15 @@ def _validate_remote_configuration(
     }
 
 
-def _normalize_cli_int(name, value, *, minimum, maximum=None):
-    """Normalize one integer for dtwc_cl; ``maximum`` only for what it reads as an ``int``."""
+def _normalize_cli_int(name, value, *, minimum):
+    """Normalize one integer for dtwc_cl."""
     if isinstance(value, (bool, np.bool_)) or not isinstance(
         value, (int, np.integer)
     ):
         raise TypeError(f"{name} must be an integer")
     value = int(value)
-    if value < minimum or (maximum is not None and value > maximum):
-        bound = (f"at least {minimum}" if maximum is None
-                 else f"in [{minimum}, {maximum}]")
-        raise ValueError(f"{name} must be {bound} for dtwc_cl")
+    if value < minimum:
+        raise ValueError(f"{name} must be at least {minimum} for dtwc_cl")
     return value
 
 
@@ -220,7 +206,7 @@ def _validate_submission_envelope(
 ):
     """Normalize fields that cross the local-shell/SSH/Slurm boundary."""
     n_clusters = _normalize_cli_int("n_clusters", n_clusters, minimum=1)
-    band = _normalize_cli_int("band", band, minimum=-1, maximum=_CLI_INT_MAX)
+    band = _normalize_cli_int("band", band, minimum=-1)
     skip_cols = _normalize_cli_int("skip_cols", skip_cols, minimum=0)
     method = _normalize_choice("method", method, _METHOD_ALIASES)
 
