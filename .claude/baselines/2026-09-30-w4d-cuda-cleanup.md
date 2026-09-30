@@ -60,6 +60,20 @@ costing well under a microsecond per fill (next section), so the 1.053 is taken 
 slowdown. The base itself ran `scaling_L/250` 14 % slower in run 1 than in `2026-09-29-windows-gpu-fill.md` (0.297
 vs 0.261 ms), which is why the band compares against a base measured in the same session.
 
+Run 3, head `a14454b` (after design-2.0 was merged in and the review's five points: the wavefront's dynamic
+shared-memory limit opened once per device instead of per launch, the fit refused before any allocation),
+03:10 BST, CPU load 1 %:
+
+| case | base, head (ms) | head / base | cv base, head |
+| --- | --- | --- | --- |
+| `distanceMatrix/100/1000` | 39.860, 40.077 | 1.006 | 0.1 %, 0.1 % |
+| `scaling_L/250` | 0.2770, 0.2760 | 0.997 | 0.6 %, 0.2 % |
+| `scaling_L/500` | 3.3560, 3.3694 | 1.004 | 0.1 %, 0.2 % |
+| `scaling_L/2000` | 33.598, 33.839 | 1.007 | 0.2 %, 0.1 % |
+
+On a quiet machine every case is within 0.8 %, including `distanceMatrix/100/1000`, which read 1.053 in run 2's
+loaded re-run.
+
 ## Per-launch cost of the new host call [inferred]
 
 The fix calls `cudaFuncGetAttributes` once per wavefront launch: 278–290 ns per call (a standalone nvcc probe
