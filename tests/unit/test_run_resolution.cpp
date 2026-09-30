@@ -11,6 +11,8 @@
  * without a device the backend's. `hpc` raises DeviceError for every method.
  * The GPU rules that need no series are raised before one is read: the input
  * named does not exist. A CUDA build runs the CUDA branch blind here (V-row).
+ * A build without HiGHS raises SolverError for `mip`, the one method that needs
+ * a solver; `lrcore` needs none and runs there like every other method.
  *
  * @date 24 Sep 2026
  */
@@ -18,6 +20,7 @@
 #include <dtwc.hpp>
 #include <cli/run.hpp>
 #include <metal/metal_dtw.hpp>
+#include <mip/mip.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
@@ -87,6 +90,17 @@ bool float_exact(const std::vector<double> &matrix)
                      [](double v) { return static_cast<double>(static_cast<float>(v)) == v; });
 }
 
+/// Without HiGHS, `mip` (whose default backend it is) must raise SolverError, not
+/// solve some other way. True once that refusal has been asserted, so the caller
+/// skips the checks that need a result; false on a build with HiGHS.
+bool mip_refused_without_highs(ClusterMethod method)
+{
+  if (method != ClusterMethod::MIP || dtwc::highs_solver_available()) return false;
+  CHECK_THROWS_MATCHES(dtwc::run(config_for(method, Device::CPU), levels()), dtwc::SolverError,
+                       MessageMatches(ContainsSubstring("HiGHS solver is unavailable")));
+  return true;
+}
+
 template <class F>
 std::string device_error(F &&f)
 {
@@ -115,6 +129,7 @@ TEST_CASE("run on cpu: every method runs; auto is pam up to 5000 series, clara a
 {
   for (const auto method : kAll) {
     CAPTURE(name(method));
+    if (mip_refused_without_highs(method)) continue;
     const auto result = dtwc::run(config_for(method, Device::CPU), levels());
     CHECK(result.method() == resolved(method));
     CHECK(result.device() == "cpu");
@@ -297,6 +312,8 @@ TEST_CASE("Result reports the method, iterations and convergence the run had", "
   CHECK(lloyd.iterations() >= 1);
   CHECK(lloyd.converged() == (lloyd.iterations() < 100));
   for (const auto method : { ClusterMethod::MIP, ClusterMethod::LRCore, ClusterMethod::TADPole }) {
+    CAPTURE(name(method));
+    if (mip_refused_without_highs(method)) continue;
     const auto result = dtwc::run(config_for(method, Device::CPU), levels());
     CHECK(result.converged());
     CHECK(result.iterations() == 0);
