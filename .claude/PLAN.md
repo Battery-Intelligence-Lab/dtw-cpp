@@ -122,12 +122,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   (the N ≤ 65,536 refusal goes); a backend refuses before the N×N matrix is allocated — today `Problem` resizes first,
   so a huge N on a host without a GPU hits bad_alloc before DeviceError (W4d review)
 - ☐ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C
-- ☐ CUDA tuning, each behind its own band (W4a): a separately compiled preload wavefront for L 257–1024 (−15–17 %
-  FP32 measured); a 64 KB carveout above L = 2048 (−18 % at L = 2049)
+- ☑ CUDA tuning, each behind its own band (W4a): a separately compiled preload wavefront for L 257–1024 (−15–17 %
+  FP32 measured); a 64 KB carveout above L = 2048 (−18 % at L = 2049) (preload landed, C1 15b9143: FP32/FP64 L 257–512 at 0.82–0.89 of base; the carveout passed its band but needs the CUDA 12.5 API and the floor stays CUDA 12.0 — ARC loads 12.4 — so it was reverted, b803e47)
+- ☐ CUDA: the global wavefront above L 2048 where fewer than 3 blocks fit an SM (C1's probe: FP32 L 6000/8000 at 0.64/0.66 of the shared route, FP64 L 2049–4000 at 0.76–0.84) — its own band; the Shared kernel's unreachable preload branch goes with it (C1)
+- ☑ CUDA floor: compute capability 8.0 (the A30's generation, Volkan 09-30); older devices get a typed DeviceError before any allocation (C1 c445089)
 - ☑ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
   L can shrink it under each other's launch; set it once to the opt-in maximum less the static bytes, behind a band (W4d) (350ae39)
-- ☐ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
-  (L 9406) cannot run with `--device gpu`; the 8K-sample target fits FP32 only (W4d)
+- ☑ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
+  (L 9406) cannot run with `--device gpu`; the 8K-sample target fits FP32 only (W4d) (C1 9cc754a, 60e2ec7; merged ceb7f91; FP32 L 10,000 82 Gcell/s vs the CPU fill's 39, L 20,000 73 vs 34, inferred under load)
 - ☑ `launch_dtw_kernel`'s warn-once latch prints to stderr above L 2048 whatever `verbose` says; a library does not
   print unasked (W4d) (6b83682)
 
