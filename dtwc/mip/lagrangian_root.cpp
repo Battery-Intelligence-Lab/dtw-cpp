@@ -63,9 +63,9 @@ constexpr LagrangianParams params{};
 /// `core ∪ fixed_closed = {0..N-1}`, `fixed_open ⊆ core`, each ascending.
 struct FixingResult
 {
-  std::vector<int> core;         ///< survivors (facilities NOT proven closed).
-  std::vector<int> fixed_closed; ///< facilities proven closed in every optimum.
-  std::vector<int> fixed_open;   ///< facilities proven open in every optimum.
+  std::vector<index_t> core;         ///< survivors (facilities NOT proven closed).
+  std::vector<index_t> fixed_closed; ///< facilities proven closed in every optimum.
+  std::vector<index_t> fixed_open;   ///< facilities proven open in every optimum.
 };
 
 /**
@@ -84,23 +84,23 @@ struct FixingResult
  * never on rounding: on a certified instance a ρ that ties ρ_(k) is a genuine
  * alternative optimum and must survive. Non-finite bounds fix nothing.
  */
-FixingResult reduced_cost_fixing(const std::vector<double> &rho, int k,
+FixingResult reduced_cost_fixing(const std::vector<double> &rho, index_t k,
                                  double lower_bound, double upper_bound)
 {
-  const int N = static_cast<int>(rho.size());
+  const auto N = static_cast<index_t>(rho.size());
   FixingResult out;
 
   // No valid finite gap ⇒ nothing can be fixed; the whole set survives.
   if (!std::isfinite(lower_bound) || !std::isfinite(upper_bound)) {
     out.core.resize(static_cast<std::size_t>(N));
-    std::iota(out.core.begin(), out.core.end(), 0);
+    std::iota(out.core.begin(), out.core.end(), index_t{ 0 });
     return out;
   }
 
   // Order facilities by ascending score, index tie-break ⇒ deterministic S_k.
-  std::vector<int> order(static_cast<std::size_t>(N));
-  std::iota(order.begin(), order.end(), 0);
-  std::sort(order.begin(), order.end(), [&](int a, int b) {
+  std::vector<index_t> order(static_cast<std::size_t>(N));
+  std::iota(order.begin(), order.end(), index_t{ 0 });
+  std::sort(order.begin(), order.end(), [&](index_t a, index_t b) {
     const double ra = rho[static_cast<std::size_t>(a)], rb = rho[static_cast<std::size_t>(b)];
     return ra < rb || (ra == rb && a < b);
   });
@@ -122,10 +122,10 @@ FixingResult reduced_cost_fixing(const std::vector<double> &rho, int k,
 
   // Mark S_k = the k smallest (the facilities the dual opens).
   std::vector<char> in_Sk(static_cast<std::size_t>(N), 0);
-  for (int t = 0; t < k; ++t) in_Sk[static_cast<std::size_t>(order[static_cast<std::size_t>(t)])] = 1;
+  for (index_t t = 0; t < k; ++t) in_Sk[static_cast<std::size_t>(order[static_cast<std::size_t>(t)])] = 1;
 
   // Single ascending pass ⇒ every output vector is already sorted.
-  for (int i = 0; i < N; ++i) {
+  for (index_t i = 0; i < N; ++i) {
     const double ri = rho[static_cast<std::size_t>(i)];
     if (in_Sk[static_cast<std::size_t>(i)]) {
       // Force i CLOSED: dual falls to LB + (ρ_(k+1) − ρ_i). > UB ⇒ i must be open.
@@ -148,13 +148,13 @@ FixingResult reduced_cost_fixing(const std::vector<double> &rho, int k,
 /// local optimum (= global optimum on well-separated clusters). O(N²) per sweep,
 /// warm-started, converges in 1–2 sweeps in practice. Fills @p medoids (sorted)
 /// and @p labels (medoid POINT INDEX per point); returns the raw cost.
-double pmedian_local_search(const double *D, int N, int k,
-                            std::vector<int> &medoids, std::vector<int> &labels,
+double pmedian_local_search(const double *D, index_t N, index_t k,
+                            std::vector<index_t> &medoids, std::vector<index_t> &labels,
                             int max_sweeps = 32)
 {
   const std::size_t Nz = static_cast<std::size_t>(N);
   const double inf = std::numeric_limits<double>::infinity();
-  std::vector<int> cluster_of(Nz, 0); // cluster id 0..k-1 per point.
+  std::vector<index_t> cluster_of(Nz, 0); // cluster id 0..k-1 per point.
   labels.assign(Nz, medoids[0]);
   double cost = 0.0;
 
@@ -163,8 +163,8 @@ double pmedian_local_search(const double *D, int N, int k,
   // describe the medoid set the caller receives.
   auto assign = [&]() {
     cost = 0.0;
-    for (int j = 0; j < N; ++j) {
-      const auto nearest = mip::nearest_medoid(k, [&](int c) {
+    for (index_t j = 0; j < N; ++j) {
+      const auto nearest = mip::nearest_medoid(k, [&](index_t c) {
         return D[static_cast<std::size_t>(medoids[static_cast<std::size_t>(c)]) * Nz
                  + static_cast<std::size_t>(j)];
       });
@@ -178,13 +178,13 @@ double pmedian_local_search(const double *D, int N, int k,
     assign();
     // Update: each cluster's medoid = member minimizing its intra-cluster sum.
     bool changed = false;
-    for (int c = 0; c < k; ++c) {
+    for (index_t c = 0; c < k; ++c) {
       double best_sum = inf;
-      int best_m = medoids[static_cast<std::size_t>(c)];
-      for (int cand = 0; cand < N; ++cand) {
+      index_t best_m = medoids[static_cast<std::size_t>(c)];
+      for (index_t cand = 0; cand < N; ++cand) {
         if (cluster_of[static_cast<std::size_t>(cand)] != c) continue;
         double s = 0.0;
-        for (int j = 0; j < N; ++j)
+        for (index_t j = 0; j < N; ++j)
           if (cluster_of[static_cast<std::size_t>(j)] == c)
             s += D[static_cast<std::size_t>(cand) * Nz + static_cast<std::size_t>(j)];
         if (s < best_sum) { best_sum = s; best_m = cand; }
@@ -208,44 +208,44 @@ double pmedian_local_search(const double *D, int N, int k,
 /// subgradient of L), and @p idx (idx[0..k-1] = S_k, the k smallest ρ); sets
 /// @p rho_k (the k-th smallest ρ) and returns L(μ). Shared by the subgradient
 /// and cutting-plane solvers so the "dual oracle" lives in exactly one place.
-double evaluate_dual(const double *D, int N, std::size_t Nz, int k,
+double evaluate_dual(const double *D, index_t N, std::size_t Nz, index_t k,
                      const std::vector<double> &mu, std::vector<double> &rho,
-                     std::vector<double> &g, std::vector<int> &idx, double &rho_k)
+                     std::vector<double> &g, std::vector<index_t> &idx, double &rho_k)
 {
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
-  for (int i = 0; i < N; ++i) {
+  for (index_t i = 0; i < N; ++i) {
     const double *Di = D + static_cast<std::size_t>(i) * Nz;
     double s = 0.0;
-    for (int j = 0; j < N; ++j) {
+    for (index_t j = 0; j < N; ++j) {
       const double dd = Di[j] - mu[static_cast<std::size_t>(j)];
       if (dd < 0.0) s += dd;
     }
     rho[static_cast<std::size_t>(i)] = s;
   }
 
-  std::iota(idx.begin(), idx.end(), 0);
+  std::iota(idx.begin(), idx.end(), index_t{ 0 });
   std::nth_element(idx.begin(), idx.begin() + (k - 1), idx.end(),
-                   [&](int a, int b) { return rho[static_cast<std::size_t>(a)]
+                   [&](index_t a, index_t b) { return rho[static_cast<std::size_t>(a)]
                                             < rho[static_cast<std::size_t>(b)]; });
   rho_k = rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(k - 1)])];
 
   double sum_mu = 0.0;
-  for (int j = 0; j < N; ++j) sum_mu += mu[static_cast<std::size_t>(j)];
+  for (index_t j = 0; j < N; ++j) sum_mu += mu[static_cast<std::size_t>(j)];
   double sum_rho_S = 0.0;
-  for (int t = 0; t < k; ++t) sum_rho_S += rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(t)])];
+  for (index_t t = 0; t < k; ++t) sum_rho_S += rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(t)])];
   const double L = sum_mu + sum_rho_S;
 
   // g_j = 1 − #{i ∈ S_k : D_ij < μ_j}  (a subgradient of the concave L at μ).
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
-  for (int j = 0; j < N; ++j) {
-    int served = 0;
+  for (index_t j = 0; j < N; ++j) {
+    index_t served = 0;
     const double muj = mu[static_cast<std::size_t>(j)];
-    for (int t = 0; t < k; ++t) {
-      const int m = idx[static_cast<std::size_t>(t)];
+    for (index_t t = 0; t < k; ++t) {
+      const index_t m = idx[static_cast<std::size_t>(t)];
       if (D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)] < muj) ++served;
     }
     g[static_cast<std::size_t>(j)] = 1.0 - static_cast<double>(served);
@@ -256,14 +256,14 @@ double evaluate_dual(const double *D, int N, std::size_t Nz, int k,
 /// Update the primal incumbent from S_k (idx[0..k-1]): a cheap O(Nk) nearest
 /// assignment always; a full O(N²) medoid polish when @p do_polish. Mutates
 /// best_* only on strict improvement.
-void try_primal(const double *D, int N, std::size_t Nz, int k,
-                const std::vector<int> &idx, bool do_polish, double &best_primal,
-                std::vector<int> &best_medoids, std::vector<int> &best_labels,
-                std::vector<int> &cheap_lab)
+void try_primal(const double *D, index_t N, std::size_t Nz, index_t k,
+                const std::vector<index_t> &idx, bool do_polish, double &best_primal,
+                std::vector<index_t> &best_medoids, std::vector<index_t> &best_labels,
+                std::vector<index_t> &cheap_lab)
 {
   double cheap_cost = 0.0;
-  for (int j = 0; j < N; ++j) {
-    const auto nearest = mip::nearest_medoid(k, [&](int t) {
+  for (index_t j = 0; j < N; ++j) {
+    const auto nearest = mip::nearest_medoid(k, [&](index_t t) {
       return D[static_cast<std::size_t>(idx[static_cast<std::size_t>(t)]) * Nz
                + static_cast<std::size_t>(j)];
     });
@@ -277,7 +277,7 @@ void try_primal(const double *D, int N, std::size_t Nz, int k,
     best_labels = cheap_lab;
   }
   if (do_polish) {
-    std::vector<int> rm(idx.begin(), idx.begin() + k), rl;
+    std::vector<index_t> rm(idx.begin(), idx.begin() + k), rl;
     const double rc = pmedian_local_search(D, N, k, rm, rl);
     if (rc < best_primal) {
       best_primal = rc;
@@ -289,15 +289,15 @@ void try_primal(const double *D, int N, std::size_t Nz, int k,
 
 /// Shared tail for both solvers: one final polish (guarantees a true local
 /// optimum), Beasley reduced-cost fixing (n_core), and result assembly.
-LagrangianResult finalize(const double *D, int N, int k, double best_lb,
+LagrangianResult finalize(const double *D, index_t N, index_t k, double best_lb,
                           double best_primal, double seed_ub,
-                          std::vector<int> best_medoids, std::vector<int> best_labels,
+                          std::vector<index_t> best_medoids, std::vector<index_t> best_labels,
                           std::vector<double> mu, const std::vector<double> &rho_at_best,
                           int iterations, double rel_gap_tol)
 {
   const double inf = std::numeric_limits<double>::infinity();
   if (!best_medoids.empty()) {
-    std::vector<int> fm = best_medoids, fl;
+    std::vector<index_t> fm = best_medoids, fl;
     const double fc = pmedian_local_search(D, N, k, fm, fl);
     if (fc < best_primal) {
       best_primal = fc;
@@ -322,12 +322,12 @@ LagrangianResult finalize(const double *D, int N, int k, double best_lb,
   r.multipliers = std::move(mu);
   r.iterations = iterations;
   r.core = std::move(fix.core);
-  r.n_core = static_cast<int>(r.core.size());
+  r.n_core = static_cast<index_t>(r.core.size());
   return r;
 }
 } // namespace
 
-LagrangianResult lagrangian_root(const double *D, int N, int k, double initial_ub)
+LagrangianResult lagrangian_root(const double *D, index_t N, index_t k, double initial_ub)
 {
   if (N <= 0) throw InvalidInput("lagrangian_root: N must be positive");
   if (k < 1 || k > N)
@@ -342,15 +342,15 @@ LagrangianResult lagrangian_root(const double *D, int N, int k, double initial_u
   std::vector<double> g(Nz, 0.0);     // subgradient this iteration.
   std::vector<double> d(Nz, 0.0);     // deflected step direction (CFM).
   std::vector<double> d_prev(Nz, 0.0);// previous deflected direction.
-  std::vector<int> idx(Nz);           // scratch for k-smallest selection.
-  std::vector<int> cheap_lab(Nz, 0);  // per-iter cheap assignment labels.
+  std::vector<index_t> idx(Nz);           // scratch for k-smallest selection.
+  std::vector<index_t> cheap_lab(Nz, 0);  // per-iter cheap assignment labels.
   double dprev_norm2 = 0.0;
   bool have_dprev = false;
 
   double best_lb = -inf;
   double best_primal = inf;                              // best cost of LR's OWN primal repair.
   const double seed_ub = (initial_ub > 0.0) ? initial_ub : inf; // external heuristic UB (step target only).
-  std::vector<int> best_medoids, best_labels;
+  std::vector<index_t> best_medoids, best_labels;
 
   // Snapshot of ρ at the μ that produced best_lb — the state reduced-cost fixing
   // consumes (LB + (ρ_i − ρ_(k)) > UB ⇒ facility i cannot be open; Task 4.2).
@@ -362,7 +362,7 @@ LagrangianResult lagrangian_root(const double *D, int N, int k, double initial_u
 
   // Trigger the shared single-thread loudness check once (Task 3.6) and get a
   // scheduling hint; the reductions below are correct serial or parallel.
-  const int chunk = omp_chunk_size(N, 8);
+  const index_t chunk = omp_chunk_size(N, 8);
   (void)chunk;
 
   for (iter = 0; iter < params.max_iters; ++iter) {
@@ -393,7 +393,7 @@ LagrangianResult lagrangian_root(const double *D, int N, int k, double initial_u
     }
 
     double gnorm2 = 0.0;
-    for (int j = 0; j < N; ++j) gnorm2 += g[static_cast<std::size_t>(j)] * g[static_cast<std::size_t>(j)];
+    for (index_t j = 0; j < N; ++j) gnorm2 += g[static_cast<std::size_t>(j)] * g[static_cast<std::size_t>(j)];
     if (gnorm2 == 0.0) { // μ stationary: no ascent direction ⇒ done.
       ++iter;
       break;
@@ -412,11 +412,11 @@ LagrangianResult lagrangian_root(const double *D, int N, int k, double initial_u
     double beta = 0.0;
     if (have_dprev && params.deflect > 0.0 && dprev_norm2 > 0.0) {
       double dot = 0.0;
-      for (int j = 0; j < N; ++j) dot += g[static_cast<std::size_t>(j)] * d_prev[static_cast<std::size_t>(j)];
+      for (index_t j = 0; j < N; ++j) dot += g[static_cast<std::size_t>(j)] * d_prev[static_cast<std::size_t>(j)];
       if (dot < 0.0) beta = -params.deflect * dot / dprev_norm2;
     }
     double dnorm2 = 0.0, dg = 0.0;
-    for (int j = 0; j < N; ++j) {
+    for (index_t j = 0; j < N; ++j) {
       const double dj = g[static_cast<std::size_t>(j)] + beta * d_prev[static_cast<std::size_t>(j)];
       d[static_cast<std::size_t>(j)] = dj;
       dnorm2 += dj * dj;
@@ -430,7 +430,7 @@ LagrangianResult lagrangian_root(const double *D, int N, int k, double initial_u
     // Polyak step along d toward the best available UB (≥ L ⇒ step ≥ 0).
     const double ub_step = std::min(best_primal, seed_ub);
     const double step = lambda * (ub_step - L) / dnorm2;
-    for (int j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] += step * d[static_cast<std::size_t>(j)];
+    for (index_t j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] += step * d[static_cast<std::size_t>(j)];
 
     d_prev = d;
     dprev_norm2 = dnorm2;
@@ -442,7 +442,7 @@ LagrangianResult lagrangian_root(const double *D, int N, int k, double initial_u
                   iter, params.rel_gap_tol);
 }
 
-LagrangianResult lagrangian_root_kelley(const double *D, int N, int k, double initial_ub)
+LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, double initial_ub)
 {
 #ifndef DTWC_ENABLE_HIGHS
   (void)D; (void)N; (void)k; (void)initial_ub;
@@ -465,10 +465,10 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k, double in
   if (!(maxD > 0.0)) maxD = 1.0;
 
   std::vector<double> mu(Nz, 0.0), rho(Nz, 0.0), g(Nz, 0.0);
-  std::vector<int> idx(Nz), cheap_lab(Nz, 0);
+  std::vector<index_t> idx(Nz), cheap_lab(Nz, 0);
   double best_lb = -inf, best_primal = inf;
   const double seed_ub = (initial_ub > 0.0) ? initial_ub : inf;
-  std::vector<int> best_medoids, best_labels;
+  std::vector<index_t> best_medoids, best_labels;
   std::vector<double> rho_at_best(Nz, 0.0);
 
   (void)omp_chunk_size(N, 8); // Task 3.6 loudness.
@@ -506,7 +506,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k, double in
     ridx.push_back(static_cast<HighsInt>(N)); // θ column, coeff +1
     rval.push_back(1.0);
     double gdotmu = 0.0;
-    for (int j = 0; j < N; ++j) {
+    for (index_t j = 0; j < N; ++j) {
       const double gj = g[static_cast<std::size_t>(j)];
       gdotmu += gj * mu[static_cast<std::size_t>(j)];
       if (gj != 0.0) {
@@ -535,7 +535,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k, double in
 
   for (major = 1; major <= params.kelley_max_major; ++major) {
     // Trust region: μ_j ∈ [μ̂_j − δ, μ̂_j + δ] ∩ [0, maxD].
-    for (int j = 0; j < N; ++j) {
+    for (index_t j = 0; j < N; ++j) {
       const double lo = std::max(0.0, mu_hat[static_cast<std::size_t>(j)] - delta);
       const double hi = std::min(maxD, mu_hat[static_cast<std::size_t>(j)] + delta);
       highs.changeColBounds(static_cast<HighsInt>(j), lo, hi);
@@ -544,7 +544,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k, double in
     if (highs.getModelStatus() != HighsModelStatus::kOptimal) break;
     const std::vector<double> &sol = highs.getSolution().col_value;
     const double theta_master = sol[Nz]; // model max over the trust region.
-    for (int j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] = sol[static_cast<std::size_t>(j)];
+    for (index_t j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] = sol[static_cast<std::size_t>(j)];
 
     // Oracle at the new point; refine the model and the incumbents.
     const double L_new = evaluate_dual(D, N, Nz, k, mu, rho, g, idx, rho_k);
@@ -579,7 +579,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k, double in
 #endif
 }
 
-LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
+LagrangianResult lagrangian_root_exact(const double *D, index_t N, index_t k,
                                        double initial_ub, std::int64_t max_nodes)
 {
   // 1. Root Lagrangian dual + primal. Prefer the Kelley cutting-plane root when
@@ -600,12 +600,12 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
   // 2. Recompute ρ* and Σμ* at the root multipliers (the fixed dual we bound with).
   const std::vector<double> &mu = root.multipliers;
   double sum_mu = 0.0;
-  for (int j = 0; j < N; ++j) sum_mu += mu[static_cast<std::size_t>(j)];
+  for (index_t j = 0; j < N; ++j) sum_mu += mu[static_cast<std::size_t>(j)];
   std::vector<double> rho(Nz, 0.0);
-  for (int i = 0; i < N; ++i) {
+  for (index_t i = 0; i < N; ++i) {
     const double *Di = D + static_cast<std::size_t>(i) * Nz;
     double s = 0.0;
-    for (int j = 0; j < N; ++j) {
+    for (index_t j = 0; j < N; ++j) {
       const double dd = Di[j] - mu[static_cast<std::size_t>(j)];
       if (dd < 0.0) s += dd;
     }
@@ -623,26 +623,26 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
   {
     std::vector<double> rho_sorted = rho;
     std::nth_element(rho_sorted.begin(), rho_sorted.begin() + (k - 1), rho_sorted.end());
-    for (int t = 0; t < k; ++t) lb_star += rho_sorted[static_cast<std::size_t>(t)];
+    for (index_t t = 0; t < k; ++t) lb_star += rho_sorted[static_cast<std::size_t>(t)];
   }
   root.lower_bound = std::max(root.lower_bound, lb_star); // keep the tighter valid LB for reporting.
   const FixingResult fx = reduced_cost_fixing(rho, k, lb_star, root.upper_bound);
-  const std::vector<int> forced = fx.fixed_open;
+  const std::vector<index_t> forced = fx.fixed_open;
   std::vector<char> is_forced(Nz, 0);
-  for (int f : forced) is_forced[static_cast<std::size_t>(f)] = 1;
-  std::vector<int> cand;
+  for (index_t f : forced) is_forced[static_cast<std::size_t>(f)] = 1;
+  std::vector<index_t> cand;
   cand.reserve(fx.core.size());
-  for (int c : fx.core)
+  for (index_t c : fx.core)
     if (!is_forced[static_cast<std::size_t>(c)]) cand.push_back(c);
   // Sort branch candidates by ρ* ascending: the k−|forced| smallest form the LP's
   // tentative open set, so the prefix is both the best incumbent guess and the
   // tightest bound term.
-  std::sort(cand.begin(), cand.end(), [&](int a, int b) {
+  std::sort(cand.begin(), cand.end(), [&](index_t a, index_t b) {
     const double ra = rho[static_cast<std::size_t>(a)], rb = rho[static_cast<std::size_t>(b)];
     return ra < rb || (ra == rb && a < b);
   });
-  const int C = static_cast<int>(cand.size());
-  const int need = k - static_cast<int>(forced.size());
+  const auto C = static_cast<index_t>(cand.size());
+  const index_t need = k - static_cast<index_t>(forced.size());
   // Reduced-cost fixing can only prove facilities open; proving MORE than k of
   // them open contradicts the cardinality constraint, so the (LB, UB) pair it
   // was given cannot both be valid. A negative `need` never reaches the leaf
@@ -653,18 +653,18 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
       + "; the lower/upper bound pair driving the fixing is inconsistent.");
 
   double forced_rho = 0.0;
-  for (int f : forced) forced_rho += rho[static_cast<std::size_t>(f)];
+  for (index_t f : forced) forced_rho += rho[static_cast<std::size_t>(f)];
   std::vector<double> csum(static_cast<std::size_t>(C) + 1, 0.0); // prefix sums of sorted cand ρ*.
-  for (int t = 0; t < C; ++t)
+  for (index_t t = 0; t < C; ++t)
     csum[static_cast<std::size_t>(t) + 1] = csum[static_cast<std::size_t>(t)]
                                           + rho[cand[static_cast<std::size_t>(t)]];
 
   // Actual p-median cost of an open set S (O(N·|S|)).
-  auto cost_of = [&](const std::vector<int> &S) {
-    const int n_open = static_cast<int>(S.size());
+  auto cost_of = [&](const std::vector<index_t> &S) {
+    const auto n_open = static_cast<index_t>(S.size());
     double c = 0.0;
-    for (int j = 0; j < N; ++j)
-      c += nearest_medoid(n_open, [&](int t) {
+    for (index_t j = 0; j < N; ++j)
+      c += nearest_medoid(n_open, [&](index_t t) {
              return D[static_cast<std::size_t>(S[static_cast<std::size_t>(t)]) * Nz
                       + static_cast<std::size_t>(j)];
            }).distance;
@@ -672,11 +672,11 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
   };
 
   double best_cost = root.upper_bound;
-  std::vector<int> best_medoids = root.medoids;
+  std::vector<index_t> best_medoids = root.medoids;
   const double tol = 1e-9 * (1.0 + std::abs(best_cost));
 
   // 4. DFS branch-and-bound on the open/close decision of one candidate at a time.
-  struct Frame { int pos; int opened; double opened_rho; std::vector<int> S; };
+  struct Frame { index_t pos; index_t opened; double opened_rho; std::vector<index_t> S; };
   std::vector<Frame> stack;
   stack.push_back({ 0, 0, 0.0, {} });
   std::int64_t nodes = 0;
@@ -688,15 +688,15 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
     stack.pop_back();
     ++nodes;
 
-    const int remaining_need = need - fr.opened;
+    const index_t remaining_need = need - fr.opened;
     if (remaining_need == 0) { // leaf: all k chosen ⇒ evaluate the exact cost.
-      std::vector<int> S = forced;
+      std::vector<index_t> S = forced;
       S.insert(S.end(), fr.S.begin(), fr.S.end());
       const double c = cost_of(S);
       if (c < best_cost - tol) { best_cost = c; best_medoids = std::move(S); }
       continue;
     }
-    const int rem = C - fr.pos;
+    const index_t rem = C - fr.pos;
     if (rem < remaining_need) continue; // not enough candidates left ⇒ infeasible.
 
     // Node bound: fixed-dual value with the remaining_need SMALLEST candidate ρ*
@@ -709,7 +709,7 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
     // Branch on cand[pos]: push the SKIP child first so the OPEN child is explored
     // first (drives strong incumbents early).
     stack.push_back({ fr.pos + 1, fr.opened, fr.opened_rho, fr.S });
-    std::vector<int> S_open = fr.S;
+    std::vector<index_t> S_open = fr.S;
     S_open.push_back(cand[static_cast<std::size_t>(fr.pos)]);
     stack.push_back({ fr.pos + 1, fr.opened + 1,
                       fr.opened_rho + rho[cand[static_cast<std::size_t>(fr.pos)]],
@@ -721,10 +721,10 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
   LagrangianResult r = root;                 // keep μ, iterations, core, n_core.
   r.medoids = best_medoids;
   r.labels.assign(Nz, best_medoids.empty() ? 0 : best_medoids[0]);
-  const int n_best = static_cast<int>(best_medoids.size());
+  const auto n_best = static_cast<index_t>(best_medoids.size());
   if (n_best > 0)
-    for (int j = 0; j < N; ++j) {
-      const auto nearest = nearest_medoid(n_best, [&](int t) {
+    for (index_t j = 0; j < N; ++j) {
+      const auto nearest = nearest_medoid(n_best, [&](index_t t) {
         return D[static_cast<std::size_t>(best_medoids[static_cast<std::size_t>(t)]) * Nz
                  + static_cast<std::size_t>(j)];
       });
@@ -740,10 +740,11 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
     r.gap = (best_cost - r.lower_bound) / denom;
     r.certified_optimal = false;
     std::fprintf(stderr,
-                 "lagrangian_root_exact: node cap %lld reached at N=%d k=%d before the tree "
+                 "lagrangian_root_exact: node cap %lld reached at N=%lld k=%lld before the tree "
                  "closed; returning best incumbent (cost %.10g, gap %.3e) UNCERTIFIED. "
                  "Raise the node cap or use an exact MIP solver for a certificate.\n",
-                 static_cast<long long>(max_nodes), N, k, best_cost, r.gap);
+                 static_cast<long long>(max_nodes), static_cast<long long>(N),
+                 static_cast<long long>(k), best_cost, r.gap);
   } else {
     r.lower_bound = best_cost; // tree fully explored ⇒ incumbent is optimal.
     r.gap = 0.0;
@@ -759,15 +760,15 @@ namespace dtwc {
 void LR_core_clustering(Problem &prob)
 {
   validate_mip_settings(prob.mip_settings); // lr_max_nodes is consumed below.
-  const int N = static_cast<int>(prob.size());
-  const int k = prob.n_clusters();
+  const index_t N = prob.size();
+  const index_t k = prob.n_clusters();
   if (N <= 0) throw InvalidInput("LR-core: the Problem has no data.");
 
   // The FastPAM cost seeds the upper bound; fast_pam_seeded fills the matrix.
   const double ub = fast_pam_seeded(prob, k, prob.random_seed(), settings::DEFAULT_MAX_ITER).total_cost;
   std::vector<double> D(static_cast<std::size_t>(N) * static_cast<std::size_t>(N));
-  for (int i = 0; i < N; ++i)
-    for (int j = 0; j < N; ++j)
+  for (index_t i = 0; i < N; ++i)
+    for (index_t j = 0; j < N; ++j)
       D[static_cast<std::size_t>(i) * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)]
         = prob.dist_by_ind(i, j);
 
@@ -791,19 +792,19 @@ void LR_core_clustering(Problem &prob)
 
   // Problem's convention: centroids_ind holds the medoid POINT indices;
   // clusters_ind[j] is the 0..k-1 index of j's medoid within centroids_ind.
-  const int n_medoids = static_cast<int>(r.medoids.size());
+  const auto n_medoids = static_cast<index_t>(r.medoids.size());
   core::ClusteringResult result;
   result.medoid_indices = r.medoids;
   result.labels.assign(static_cast<std::size_t>(N), 0);
-  for (int j = 0; j < N; ++j)
+  for (index_t j = 0; j < N; ++j)
     result.labels[static_cast<std::size_t>(j)] =
-      mip::nearest_medoid(n_medoids, [&](int c) {
+      mip::nearest_medoid(n_medoids, [&](index_t c) {
         return D[static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)])
                  * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)];
       }).position;
   // A medoid tied with another medoid (a duplicate series) serves itself: the
   // first-slot tie-break would publish its own cluster empty.
-  for (int c = 0; c < n_medoids; ++c) {
+  for (index_t c = 0; c < n_medoids; ++c) {
     const auto m = static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)]);
     const auto served_by = static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(result.labels[m])]);
     if (D[m * static_cast<std::size_t>(N) + m] <= D[served_by * static_cast<std::size_t>(N) + m])

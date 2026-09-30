@@ -44,7 +44,7 @@ Problem duplicate_problem(const std::vector<double> &values)
 }
 
 /// Each medoid carries its own slot, hence no slot is empty.
-void require_self_labelled(const std::vector<int> &medoids, const std::vector<int> &labels, int k)
+void require_self_labelled(const std::vector<index_t> &medoids, const std::vector<index_t> &labels, int k)
 {
   REQUIRE(medoids.size() == static_cast<std::size_t>(k));
   REQUIRE(std::set<int>(medoids.begin(), medoids.end()).size() == static_cast<std::size_t>(k));

@@ -322,8 +322,8 @@ void write_medoids_csv(const fs::path &path, const Problem &prob, const core::Cl
 {
   std::ofstream out = open_output(path);
   out << "cluster,medoid_index,medoid_name\n";
-  for (int c = 0; c < result.n_clusters(); ++c) {
-    const int index = result.medoid_indices[c];
+  for (index_t c = 0; c < result.n_clusters(); ++c) {
+    const index_t index = result.medoid_indices[c];
     out << c << "," << index << "," << output_series_name(prob, static_cast<std::size_t>(index), streamed_count)
         << "\n";
   }

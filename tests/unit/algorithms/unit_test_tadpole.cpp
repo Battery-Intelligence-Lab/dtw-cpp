@@ -90,7 +90,7 @@ core::ClusteringResult oracle_dp(Problem& prob, int k, double dc)
   const int N = static_cast<int>(prob.size());
   auto D = [&](int i, int j) { return prob.dist_by_ind(i, j); };
 
-  std::vector<int> rho(N, 0);
+  std::vector<index_t> rho(N, 0);
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
       if (i != j && D(i, j) < dc) ++rho[i];
@@ -98,7 +98,7 @@ core::ClusteringResult oracle_dp(Problem& prob, int k, double dc)
   auto higher = [&](int a, int b) { return rho[a] > rho[b] || (rho[a] == rho[b] && a < b); };
 
   std::vector<double> delta(N, kInf);
-  std::vector<int> parent(N, -1);
+  std::vector<index_t> parent(N, -1);
   for (int i = 0; i < N; ++i) {
     double best = kInf;
     int bp = -1;
@@ -122,15 +122,15 @@ core::ClusteringResult oracle_dp(Problem& prob, int k, double dc)
 
   std::vector<double> g(N);
   for (int i = 0; i < N; ++i) g[i] = static_cast<double>(rho[i]) * delta[i];
-  std::vector<int> bg(N);
+  std::vector<index_t> bg(N);
   std::iota(bg.begin(), bg.end(), 0);
   std::sort(bg.begin(), bg.end(), [&](int a, int b) { return g[a] != g[b] ? g[a] > g[b] : a < b; });
 
-  std::vector<int> label(N, -1), col(k);
+  std::vector<index_t> label(N, -1), col(k);
   std::vector<char> isc(N, 0);
   for (int c = 0; c < k; ++c) { isc[bg[c]] = 1; label[bg[c]] = c; col[c] = bg[c]; }
 
-  std::vector<int> order(N);
+  std::vector<index_t> order(N);
   std::iota(order.begin(), order.end(), 0);
   std::sort(order.begin(), order.end(), [&](int a, int b) { return rho[a] != rho[b] ? rho[a] > rho[b] : a < b; });
   for (int r = 0; r < N; ++r) {
@@ -274,7 +274,7 @@ TEST_CASE("TADPole: edge cases (k=1, k=N, N=1, identical series)", "[tadpole][ed
     const int N = 12;
     Problem prob = make_clusters(N, 3, 20, 3);
     auto res = algorithms::tadpole(prob, N, 1.0, true);
-    std::vector<int> ls = res.labels;
+    std::vector<index_t> ls = res.labels;
     std::sort(ls.begin(), ls.end());
     ls.erase(std::unique(ls.begin(), ls.end()), ls.end());
     REQUIRE(static_cast<int>(ls.size()) == N);

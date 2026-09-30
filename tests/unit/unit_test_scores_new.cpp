@@ -206,7 +206,7 @@ TEST_CASE("Calinski-Harabasz Index: better clustering has higher CH", "[scores][
 // ---------------------------------------------------------------------------
 TEST_CASE("ARI: perfect agreement", "[scores][ari]")
 {
-  std::vector<int> labels = { 0, 0, 1, 1 };
+  std::vector<index_t> labels = { 0, 0, 1, 1 };
   double ari = scores::adjusted_rand(labels, labels);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
@@ -214,8 +214,8 @@ TEST_CASE("ARI: perfect agreement", "[scores][ari]")
 TEST_CASE("ARI: permuted labels still gives 1.0", "[scores][ari]")
 {
   // {0,0,1,1} and {1,1,0,0} are equivalent clusterings (permutation invariant)
-  std::vector<int> true_labels = { 0, 0, 1, 1 };
-  std::vector<int> pred_labels = { 1, 1, 0, 0 };
+  std::vector<index_t> true_labels = { 0, 0, 1, 1 };
+  std::vector<index_t> pred_labels = { 1, 1, 0, 0 };
   double ari = scores::adjusted_rand(true_labels, pred_labels);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
@@ -223,8 +223,8 @@ TEST_CASE("ARI: permuted labels still gives 1.0", "[scores][ari]")
 TEST_CASE("ARI: low agreement gives near-zero ARI", "[scores][ari]")
 {
   // true={0,0,0,1,1,1}, pred={0,1,0,1,0,1} — alternating, very poor agreement
-  std::vector<int> true_labels = { 0, 0, 0, 1, 1, 1 };
-  std::vector<int> pred_labels = { 0, 1, 0, 1, 0, 1 };
+  std::vector<index_t> true_labels = { 0, 0, 0, 1, 1, 1 };
+  std::vector<index_t> pred_labels = { 0, 1, 0, 1, 0, 1 };
   double ari = scores::adjusted_rand(true_labels, pred_labels);
   // Should be close to 0 (or even negative)
   REQUIRE(ari < 0.1);
@@ -232,16 +232,16 @@ TEST_CASE("ARI: low agreement gives near-zero ARI", "[scores][ari]")
 
 TEST_CASE("ARI: throws on size mismatch", "[scores][ari]")
 {
-  std::vector<int> a = { 0, 0, 1 };
-  std::vector<int> b = { 0, 1 };
+  std::vector<index_t> a = { 0, 0, 1 };
+  std::vector<index_t> b = { 0, 1 };
   REQUIRE_THROWS_AS(scores::adjusted_rand(a, b), InvalidInput);
 }
 
 TEST_CASE("ARI: 6-point two-cluster known result", "[scores][ari]")
 {
   // Perfect match
-  std::vector<int> true_labels = { 0, 0, 0, 1, 1, 1 };
-  std::vector<int> pred_labels = { 0, 0, 0, 1, 1, 1 };
+  std::vector<index_t> true_labels = { 0, 0, 0, 1, 1, 1 };
+  std::vector<index_t> pred_labels = { 0, 0, 0, 1, 1, 1 };
   REQUIRE_THAT(scores::adjusted_rand(true_labels, pred_labels), WithinAbs(1.0, 1e-12));
 }
 
@@ -250,23 +250,23 @@ TEST_CASE("ARI: 6-point two-cluster known result", "[scores][ari]")
 // ---------------------------------------------------------------------------
 TEST_CASE("NMI: perfect agreement", "[scores][nmi]")
 {
-  std::vector<int> labels = { 0, 0, 1, 1 };
+  std::vector<index_t> labels = { 0, 0, 1, 1 };
   double nmi = scores::normalized_mutual_info(labels, labels);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
 
 TEST_CASE("NMI: permuted labels gives 1.0", "[scores][nmi]")
 {
-  std::vector<int> true_labels = { 0, 0, 1, 1 };
-  std::vector<int> pred_labels = { 1, 1, 0, 0 };
+  std::vector<index_t> true_labels = { 0, 0, 1, 1 };
+  std::vector<index_t> pred_labels = { 1, 1, 0, 0 };
   double nmi = scores::normalized_mutual_info(true_labels, pred_labels);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
 
 TEST_CASE("NMI: low agreement gives low NMI", "[scores][nmi]")
 {
-  std::vector<int> true_labels = { 0, 0, 0, 1, 1, 1 };
-  std::vector<int> pred_labels = { 0, 1, 0, 1, 0, 1 };
+  std::vector<index_t> true_labels = { 0, 0, 0, 1, 1, 1 };
+  std::vector<index_t> pred_labels = { 0, 1, 0, 1, 0, 1 };
   double nmi = scores::normalized_mutual_info(true_labels, pred_labels);
   // Should be well below 1.0
   REQUIRE(nmi < 0.5);
@@ -275,15 +275,15 @@ TEST_CASE("NMI: low agreement gives low NMI", "[scores][nmi]")
 
 TEST_CASE("NMI: throws on size mismatch", "[scores][nmi]")
 {
-  std::vector<int> a = { 0, 0, 1 };
-  std::vector<int> b = { 0, 1 };
+  std::vector<index_t> a = { 0, 0, 1 };
+  std::vector<index_t> b = { 0, 1 };
   REQUIRE_THROWS_AS(scores::normalized_mutual_info(a, b), InvalidInput);
 }
 
 TEST_CASE("NMI: value is in [0, 1] for all test cases", "[scores][nmi]")
 {
   // Various clusterings
-  std::vector<std::pair<std::vector<int>, std::vector<int>>> cases = {
+  std::vector<std::pair<std::vector<index_t>, std::vector<index_t>>> cases = {
     { { 0, 0, 1, 1 }, { 0, 0, 1, 1 } },
     { { 0, 0, 1, 1 }, { 1, 1, 0, 0 } },
     { { 0, 1, 2, 0 }, { 0, 0, 1, 1 } },

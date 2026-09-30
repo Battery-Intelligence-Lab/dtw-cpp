@@ -23,9 +23,9 @@
 #include <cstddef>
 #include <cstdint>        // for int64_t
 #include <limits>         // for std::numeric_limits
+#include <map>
 #include <stdexcept>
 #include <string>         // for std::to_string
-#include <unordered_map>
 #include <utility>        // for pair
 #include <vector>
 
@@ -42,14 +42,14 @@ namespace {
  * b(i) contribution; counting it corrupts the 1/k normaliser and lets the
  * "at least 2 clusters" guards pass vacuously.
  */
-std::vector<int> cluster_counts_checked(const Problem &prob, const char *who)
+std::vector<index_t> cluster_counts_checked(const Problem &prob, const char *who)
 {
   const auto N = prob.size();
-  const int Nc = prob.n_clusters();
+  const index_t Nc = prob.n_clusters();
 
-  std::vector<int> counts(static_cast<std::size_t>(std::max(Nc, 0)), 0);
+  std::vector<index_t> counts(static_cast<std::size_t>(std::max<index_t>(Nc, 0)), 0);
   for (auto i : Range(N)) {
-    const int c = prob.clusters_ind[i];
+    const index_t c = prob.clusters_ind[i];
     if (c < 0 || c >= Nc)
       throw InvalidInput(std::string(who) + ": label " + std::to_string(c)
                                + " on point " + std::to_string(i) + " is outside [0, "
@@ -60,19 +60,19 @@ std::vector<int> cluster_counts_checked(const Problem &prob, const char *who)
 }
 
 /// Number of non-empty clusters in `counts`.
-int n_realised_clusters(const std::vector<int> &counts)
+index_t n_realised_clusters(const std::vector<index_t> &counts)
 {
-  return static_cast<int>(std::count_if(counts.begin(), counts.end(),
-                                        [](int c) { return c > 0; }));
+  return static_cast<index_t>(std::count_if(counts.begin(), counts.end(),
+                                            [](index_t c) { return c > 0; }));
 }
 
 /// Shared guard: an internal index that compares clusters needs at least two
 /// NON-EMPTY ones. Throws UndefinedScore (not the plain InvalidInput of the
 /// other guards) so a save path that must survive an undefined index can catch
 /// exactly this case. Returns the realised count.
-int require_two_realised(const std::vector<int> &counts, const char *who, const char *why)
+index_t require_two_realised(const std::vector<index_t> &counts, const char *who, const char *why)
 {
-  const int realised = n_realised_clusters(counts);
+  const index_t realised = n_realised_clusters(counts);
   if (realised < 2)
     throw UndefinedScore(std::string(who) + " requires at least 2 non-empty clusters; "
                                 + why + " Got " + std::to_string(realised)
@@ -120,11 +120,12 @@ std::vector<double> silhouette(Problem &prob)
   auto oneTask = [&](size_t i_b) {
     const auto i_c = prob.clusters_ind[i_b];
 
-    std::vector<std::pair<int, double>> mean_distances(Nc, { 0, 0 });
+    std::vector<std::pair<index_t, double>> mean_distances(Nc, { 0, 0 });
 
     for (auto i : Range(prob.size())) {
       mean_distances[prob.clusters_ind[i]].first++;
-      mean_distances[prob.clusters_ind[i]].second += prob.dist_by_ind(static_cast<int>(i), static_cast<int>(i_b));
+      mean_distances[prob.clusters_ind[i]].second
+        += prob.dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(i_b));
     }
 
 
@@ -132,7 +133,7 @@ std::vector<double> silhouette(Problem &prob)
       silhouettes[i_b] = 0;
     else {
       auto min = std::numeric_limits<double>::max();
-      for (int i = 0; i < Nc; i++) // Finding means:
+      for (index_t i = 0; i < Nc; i++) // Finding means:
         if (i == i_c)
           mean_distances[i].second /= (mean_distances[i].first - 1);
         else if (mean_distances[i].first > 0) {
@@ -184,7 +185,7 @@ double davies_bouldin(Problem &prob)
   // k, i and j range over the REALISED clusters: an empty one has no meaningful
   // S_c or medoid, yet would still divide the final sum.
   const auto cluster_counts = cluster_counts_checked(prob, "davies_bouldin");
-  const int k_realised = require_two_realised(
+  const index_t k_realised = require_two_realised(
     cluster_counts, "davies_bouldin",
     "R_ij needs a second cluster j != i, so the index is undefined "
     "for a single realised cluster.");
@@ -194,10 +195,10 @@ double davies_bouldin(Problem &prob)
   // Compute within-cluster scatter S_i = (1/|C_i|) * sum_{x in C_i} d(x, medoid_i)
   std::vector<double> scatter(Nc, 0.0);
   for (auto i : Range(prob.size())) {
-    int ci = prob.clusters_ind[i];
-    scatter[ci] += prob.dist_by_ind(static_cast<int>(i), prob.centroids_ind[ci]);
+    const index_t ci = prob.clusters_ind[i];
+    scatter[ci] += prob.dist_by_ind(static_cast<index_t>(i), prob.centroids_ind[ci]);
   }
-  for (int c = 0; c < Nc; ++c) {
+  for (index_t c = 0; c < Nc; ++c) {
     if (cluster_counts[c] > 0)
       scatter[c] /= cluster_counts[c];
   }
@@ -205,10 +206,10 @@ double davies_bouldin(Problem &prob)
   // Compute DBI = (1/k) * sum_i max_{j != i} R_ij
   // where R_ij = (S_i + S_j) / M_ij and M_ij = d(medoid_i, medoid_j).
   double dbi = 0.0;
-  for (int i = 0; i < Nc; ++i) {
+  for (index_t i = 0; i < Nc; ++i) {
     if (cluster_counts[i] == 0) continue; // skip empty clusters
     double max_ratio = 0.0;
-    for (int j = 0; j < Nc; ++j) {
+    for (index_t j = 0; j < Nc; ++j) {
       if (i == j || cluster_counts[j] == 0) continue;
       const double d_ij = prob.dist_by_ind(prob.centroids_ind[i], prob.centroids_ind[j]);
       const double combined_scatter = scatter[i] + scatter[j];
@@ -254,13 +255,13 @@ double dunn(Problem &prob)
 
   prob.fill_distance_matrix();
 
-  const auto N = static_cast<int>(prob.size());
+  const index_t N = prob.size();
 
   double min_inter = std::numeric_limits<double>::max();
   double max_intra = 0.0;
 
-  for (int i = 0; i < N; ++i) {
-    for (int j = i + 1; j < N; ++j) {
+  for (index_t i = 0; i < N; ++i) {
+    for (index_t j = i + 1; j < N; ++j) {
       const double d = prob.dist_by_ind(i, j);
       if (prob.clusters_ind[i] == prob.clusters_ind[j]) 
         max_intra = std::max(max_intra, d); // Same cluster: contributes to intra-cluster diameter
@@ -292,8 +293,8 @@ double inertia(Problem &prob)
 
   double total = 0.0;
   for (auto i : Range(prob.size())) {
-    int medoid = prob.centroids_ind[prob.clusters_ind[i]];
-    total += prob.dist_by_ind(static_cast<int>(i), medoid);
+    const index_t medoid = prob.centroids_ind[prob.clusters_ind[i]];
+    total += prob.dist_by_ind(static_cast<index_t>(i), medoid);
   }
   return total;
 }
@@ -313,13 +314,13 @@ double calinski_harabasz(Problem &prob)
 {
   prob.require_clustered("calinski_harabasz");
 
-  const auto N = static_cast<int>(prob.size());
+  const index_t N = prob.size();
   const auto Nc = prob.n_clusters();
 
   // k is the number of REALISED clusters: it sets both the (k-1) and the (N-k)
   // degrees of freedom, so an empty declared cluster would bias both.
   const auto cluster_counts = cluster_counts_checked(prob, "calinski_harabasz");
-  const int k = n_realised_clusters(cluster_counts);
+  const index_t k = n_realised_clusters(cluster_counts);
 
   if (k <= 1)
     throw InvalidInput("Calinski-Harabasz Index requires at least 2 clusters");
@@ -329,11 +330,11 @@ double calinski_harabasz(Problem &prob)
   prob.fill_distance_matrix();
 
   // Find overall medoid: point with minimum sum of distances to all other points
-  int overall_medoid = 0;
+  index_t overall_medoid = 0;
   double min_row_sum = std::numeric_limits<double>::max();
-  for (int i = 0; i < N; ++i) {
+  for (index_t i = 0; i < N; ++i) {
     double row_sum = 0.0;
-    for (int j = 0; j < N; ++j)
+    for (index_t j = 0; j < N; ++j)
       row_sum += prob.dist_by_ind(i, j);
     if (row_sum < min_row_sum) {
       min_row_sum = row_sum;
@@ -343,18 +344,18 @@ double calinski_harabasz(Problem &prob)
 
   // Within-cluster scatter W = sum_c sum_{x in c} d(x, medoid_c)^2
   double W = 0.0;
-  for (int i = 0; i < N; ++i) {
-    int medoid_c = prob.centroids_ind[prob.clusters_ind[i]];
+  for (index_t i = 0; i < N; ++i) {
+    const index_t medoid_c = prob.centroids_ind[prob.clusters_ind[i]];
     double d = prob.dist_by_ind(i, medoid_c);
     W += d * d;
   }
 
   // Between-cluster scatter B = sum_c |c| * d(medoid_c, overall_medoid)^2
   double B = 0.0;
-  for (int c = 0; c < Nc; ++c) {
+  for (index_t c = 0; c < Nc; ++c) {
     if (cluster_counts[c] == 0) continue; // an empty cluster has no medoid
     double d = prob.dist_by_ind(prob.centroids_ind[c], overall_medoid);
-    B += cluster_counts[c] * d * d;
+    B += static_cast<double>(cluster_counts[c]) * d * d;
   }
 
   if (W == 0.0)
@@ -373,42 +374,40 @@ double calinski_harabasz(Problem &prob)
  * @return double ARI value.
  * @throws InvalidInput if label vectors have different sizes.
  */
-double adjusted_rand(const std::vector<int> &labels_true,
-                     const std::vector<int> &labels_pred)
+double adjusted_rand(const std::vector<index_t> &labels_true,
+                     const std::vector<index_t> &labels_pred)
 {
   if (labels_true.size() != labels_pred.size())
     throw InvalidInput("adjusted_rand: label vectors must have the same length");
 
-  const auto n = static_cast<int64_t>(labels_true.size());
+  const auto n = static_cast<index_t>(labels_true.size());
 
-  // Build contingency table using pair keys
-  std::unordered_map<int, int> a_counts, b_counts;
-  std::unordered_map<int64_t, int> contingency;
+  // Contingency table keyed by the label pair: any two labels count apart.
+  std::map<index_t, index_t> a_counts, b_counts;
+  std::map<std::pair<index_t, index_t>, index_t> contingency;
 
-  for (int i = 0; i < static_cast<int>(labels_true.size()); ++i) {
+  for (std::size_t i = 0; i < labels_true.size(); ++i) {
     a_counts[labels_true[i]]++;
     b_counts[labels_pred[i]]++;
-    // Encode pair as a single 64-bit key (assumes labels fit in 32-bit int)
-    int64_t key = (static_cast<int64_t>(labels_true[i]) << 32) | static_cast<uint32_t>(labels_pred[i]);
-    contingency[key]++;
+    contingency[{ labels_true[i], labels_pred[i] }]++;
   }
 
   // C(x,2) = x*(x-1)/2
-  auto c2 = [](int64_t x) -> int64_t { return x * (x - 1) / 2; };
+  auto c2 = [](index_t x) -> index_t { return x * (x - 1) / 2; };
 
-  int64_t sum_cij2 = 0;
+  index_t sum_cij2 = 0;
   for (auto &kv : contingency)
     sum_cij2 += c2(kv.second);
 
-  int64_t sum_ai2 = 0;
+  index_t sum_ai2 = 0;
   for (auto &kv : a_counts)
     sum_ai2 += c2(kv.second);
 
-  int64_t sum_bj2 = 0;
+  index_t sum_bj2 = 0;
   for (auto &kv : b_counts)
     sum_bj2 += c2(kv.second);
 
-  int64_t cn2 = c2(n);
+  index_t cn2 = c2(n);
 
   // expected = sum_ai2 * sum_bj2 / C(n,2)
   double expected = (cn2 > 0) ? static_cast<double>(sum_ai2) * static_cast<double>(sum_bj2) / static_cast<double>(cn2) : 0.0;
@@ -433,48 +432,45 @@ double adjusted_rand(const std::vector<int> &labels_true,
  * @return double NMI in [0, 1]. Returns 1.0 if both labelings are constant.
  * @throws InvalidInput if label vectors have different sizes.
  */
-double normalized_mutual_info(const std::vector<int> &labels_true,
-                              const std::vector<int> &labels_pred)
+double normalized_mutual_info(const std::vector<index_t> &labels_true,
+                              const std::vector<index_t> &labels_pred)
 {
   if (labels_true.size() != labels_pred.size())
     throw InvalidInput("normalized_mutual_info: label vectors must have the same length");
 
-  const auto n = static_cast<int>(labels_true.size());
-  if (n == 0) return 0.0;
+  if (labels_true.empty()) return 0.0;
 
-  const double inv_n = 1.0 / n;
+  const double inv_n = 1.0 / static_cast<double>(labels_true.size());
 
-  std::unordered_map<int, int> a_counts, b_counts;
-  std::unordered_map<int64_t, int> contingency;
+  // Contingency table keyed by the label pair: any two labels count apart.
+  std::map<index_t, index_t> a_counts, b_counts;
+  std::map<std::pair<index_t, index_t>, index_t> contingency;
 
-  for (int i = 0; i < n; ++i) {
+  for (std::size_t i = 0; i < labels_true.size(); ++i) {
     a_counts[labels_true[i]]++;
     b_counts[labels_pred[i]]++;
-    int64_t key = (static_cast<int64_t>(labels_true[i]) << 32) | static_cast<uint32_t>(labels_pred[i]);
-    contingency[key]++;
+    contingency[{ labels_true[i], labels_pred[i] }]++;
   }
 
   // Marginal entropies
   double H_true = 0.0;
   for (auto &kv : a_counts) {
-    double p = kv.second * inv_n;
+    double p = static_cast<double>(kv.second) * inv_n;
     H_true -= p * std::log(p);
   }
 
   double H_pred = 0.0;
   for (auto &kv : b_counts) {
-    double p = kv.second * inv_n;
+    double p = static_cast<double>(kv.second) * inv_n;
     H_pred -= p * std::log(p);
   }
 
   // Mutual information
   double MI = 0.0;
   for (auto &kv : contingency) {
-    int row_key = static_cast<int>(kv.first >> 32);
-    int col_key = static_cast<int>(kv.first & 0xFFFFFFFF);
-    double p_ij = kv.second * inv_n;
-    double p_i = a_counts[row_key] * inv_n;
-    double p_j = b_counts[col_key] * inv_n;
+    double p_ij = static_cast<double>(kv.second) * inv_n;
+    double p_i = static_cast<double>(a_counts[kv.first.first]) * inv_n;
+    double p_j = static_cast<double>(b_counts[kv.first.second]) * inv_n;
     MI += p_ij * std::log(p_ij / (p_i * p_j));
   }
 

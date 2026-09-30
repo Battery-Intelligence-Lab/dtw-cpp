@@ -46,12 +46,12 @@ namespace dtwc::init {
 
 namespace {
 
-int first_unselected(std::size_t size, const std::vector<int> &selected)
+index_t first_unselected(std::size_t size, const std::vector<index_t> &selected)
 {
   for (std::size_t candidate = 0; candidate < size; ++candidate) {
     if (std::find(selected.begin(), selected.end(),
-                  static_cast<int>(candidate)) == selected.end())
-      return static_cast<int>(candidate);
+                  static_cast<index_t>(candidate)) == selected.end())
+      return static_cast<index_t>(candidate);
   }
   // Programming error: callers select at most Nc <= N indices, validated first.
   throw std::logic_error("initialization exhausted all candidate indices");
@@ -65,8 +65,8 @@ void random_with(Problem &prob, Shuffle &shuffle)
   if (prob.size() == 0 || static_cast<std::size_t>(Nc) > prob.size())
     throw InvalidInput("init::random requires 1 <= number of clusters <= number of series");
 
-  std::vector<int> candidate_centroids(prob.size());
-  std::iota(candidate_centroids.begin(), candidate_centroids.end(), 0);
+  std::vector<index_t> candidate_centroids(prob.size());
+  std::iota(candidate_centroids.begin(), candidate_centroids.end(), index_t{ 0 });
   shuffle(candidate_centroids.begin(), candidate_centroids.end());
   candidate_centroids.resize(static_cast<std::size_t>(Nc));
 
@@ -85,7 +85,7 @@ void kmeanspp_with(Problem &prob, FirstIndex &first_index,
 
   prob.centroids_ind.clear();
 
-  std::vector<int> candidate_centroids;
+  std::vector<index_t> candidate_centroids;
   candidate_centroids.reserve(Nc);
 
   candidate_centroids.push_back(first_index(prob.size()));
@@ -98,16 +98,16 @@ void kmeanspp_with(Problem &prob, FirstIndex &first_index,
   // Without this serial first lookup, workers can race in the lazy rebind and
   // corrupt the shared distance callable before their disjoint matrix writes.
   if (!prob.is_distance_matrix_filled() && prob.size() > 1) {
-    const int first_centroid = candidate_centroids.front();
-    const int anchor = (first_centroid == 0) ? 1 : 0;
+    const index_t first_centroid = candidate_centroids.front();
+    const index_t anchor = (first_centroid == 0) ? 1 : 0;
     (void)prob.dist_by_ind(first_centroid, anchor);
   }
 
   auto distTask = [&](size_t i_p) {
-    distances[i_p] = std::min(distances[i_p], prob.dist_by_ind(candidate_centroids.back(), static_cast<int>(i_p)));
+    distances[i_p] = std::min(distances[i_p], prob.dist_by_ind(candidate_centroids.back(), static_cast<index_t>(i_p)));
   };
 
-  for (int i = 1; i < Nc; i++) {
+  for (index_t i = 1; i < Nc; i++) {
     dtwc::run(distTask, prob.size());
     const auto weights = core::distance_sampling_weights(
       distances, candidate_centroids, "init::Kmeanspp");
@@ -171,7 +171,7 @@ void Kmeanspp(Problem &prob)
     return distribution(randGenerator);
   };
   auto weighted_index = [](const auto &distances, double total,
-                           const std::vector<int> &selected) {
+                           const std::vector<index_t> &selected) {
     // std::discrete_distribution requires a positive total weight. Identical
     // series (and equal signed dissimilarities after translation) legitimately
     // leave every unselected weight at zero, so complete the distinct medoid
@@ -180,7 +180,7 @@ void Kmeanspp(Problem &prob)
       return first_unselected(distances.size(), selected);
     std::discrete_distribution<int> distribution(
       distances.begin(), distances.end());
-    const int candidate = distribution(randGenerator);
+    const index_t candidate = distribution(randGenerator);
     return std::find(selected.begin(), selected.end(), candidate)
              == selected.end()
          ? candidate
@@ -193,15 +193,15 @@ void Kmeanspp_seeded(Problem &prob, std::uint64_t random_seed)
 {
   std::mt19937_64 rng(random_seed);
   auto first_index = [&rng](std::size_t size) {
-    return static_cast<int>(core::portable_bounded(
+    return static_cast<index_t>(core::portable_bounded(
       rng, static_cast<std::uint64_t>(size)));
   };
   auto weighted_index = [&rng](const auto &distances, double total,
-                               const std::vector<int> &selected) {
+                               const std::vector<index_t> &selected) {
     if (total <= 0.0) {
       return first_unselected(distances.size(), selected);
     }
-    int candidate = static_cast<int>(core::portable_weighted_index(
+    auto candidate = static_cast<index_t>(core::portable_weighted_index(
       distances.begin(), distances.end(), total, rng));
     if (std::find(selected.begin(), selected.end(), candidate)
         != selected.end()) {

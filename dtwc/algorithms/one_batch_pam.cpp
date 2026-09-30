@@ -59,19 +59,19 @@ struct FixedBatchDistances {
   Problem& prob;
   std::size_t n;
   std::size_t m;
-  std::vector<int> sample;
-  std::vector<int> sample_position;
+  std::vector<index_t> sample;
+  std::vector<index_t> sample_position;
   std::vector<double> raw;
   std::vector<double> weights;
   double scale = 1.0;
   std::uint64_t evaluations = 0;
 
-  FixedBatchDistances(Problem& problem, std::vector<int> batch)
+  FixedBatchDistances(Problem& problem, std::vector<index_t> batch)
     : prob(problem), n(problem.size()), m(batch.size()), sample(std::move(batch)),
       sample_position(n, -1), raw(n * m, 0.0), weights(m, 0.0)
   {
     for (std::size_t j = 0; j < m; ++j)
-      sample_position[static_cast<std::size_t>(sample[j])] = static_cast<int>(j);
+      sample_position[static_cast<std::size_t>(sample[j])] = static_cast<index_t>(j);
 
     // Resolve the getter serially before entering OpenMP: a legacy raw
     // semantic mutation may require the mutable getter to rebind once, and its
@@ -145,7 +145,7 @@ struct FixedBatchDistances {
 
   double exact(std::size_t point, index_t medoid)
   {
-    const int column = sample_position[static_cast<std::size_t>(medoid)];
+    const index_t column = sample_position[static_cast<std::size_t>(medoid)];
     if (column >= 0)
       return raw[point * m + static_cast<std::size_t>(column)];
     if (point == static_cast<std::size_t>(medoid)) return 0.0;
@@ -160,8 +160,8 @@ struct FixedBatchDistances {
 };
 
 void nearest_two(const FixedBatchDistances& distances,
-                 const std::vector<int>& medoids,
-                 std::vector<int>& nearest,
+                 const std::vector<index_t>& medoids,
+                 std::vector<index_t>& nearest,
                  std::vector<double>& nearest_distance,
                  std::vector<double>& second_distance)
 {
@@ -203,8 +203,8 @@ core::ClusteringResult one_batch_pam(Problem& prob,
     core::ClusteringResult result;
     result.labels.resize(n);
     result.medoid_indices.resize(n);
-    std::iota(result.labels.begin(), result.labels.end(), 0);
-    std::iota(result.medoid_indices.begin(), result.medoid_indices.end(), 0);
+    std::iota(result.labels.begin(), result.labels.end(), index_t{ 0 });
+    std::iota(result.medoid_indices.begin(), result.medoid_indices.end(), index_t{ 0 });
     result.converged = true;
     prob.set_result(result);
     if (stats) *stats = OneBatchPAMStats{};
@@ -219,20 +219,20 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   m = std::max(m, static_cast<std::size_t>(k));
 
   std::mt19937_64 rng(options.random_seed);
-  std::vector<int> permutation(n);
-  std::iota(permutation.begin(), permutation.end(), 0);
+  std::vector<index_t> permutation(n);
+  std::iota(permutation.begin(), permutation.end(), index_t{ 0 });
   core::portable_shuffle(permutation.begin(), permutation.end(), rng);
-  std::vector<int> sample(permutation.begin(), permutation.begin() + static_cast<std::ptrdiff_t>(m));
+  std::vector<index_t> sample(permutation.begin(), permutation.begin() + static_cast<std::ptrdiff_t>(m));
   // The paper draws the candidate initialization independently of the fixed
   // batch: sampled points remain eligible, just like every other point.
   core::portable_shuffle(permutation.begin(), permutation.end(), rng);
-  std::vector<int> medoids(permutation.begin(), permutation.begin() + k);
+  std::vector<index_t> medoids(permutation.begin(), permutation.begin() + k);
 
   FixedBatchDistances distances(prob, std::move(sample));
   std::vector<bool> is_medoid(n, false);
-  for (int medoid : medoids) is_medoid[static_cast<std::size_t>(medoid)] = true;
+  for (index_t medoid : medoids) is_medoid[static_cast<std::size_t>(medoid)] = true;
 
-  std::vector<int> nearest;
+  std::vector<index_t> nearest;
   std::vector<double> nearest_distance;
   std::vector<double> second_distance;
   nearest_two(distances, medoids, nearest, nearest_distance, second_distance);
@@ -285,7 +285,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
         double add_gain = 0.0;
         for (std::size_t j = 0; j < m; ++j) {
           const double d = distances.estimate(candidate, j);
-          const int slot = nearest[j];
+          const index_t slot = nearest[j];
           if (d < nearest_distance[j]) {
             add_gain += nearest_distance[j] - d;
             removal_gain[static_cast<std::size_t>(slot)]
@@ -300,7 +300,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
         const double gain = add_gain + *best_it;
         if (gain > tolerance) {
           is_medoid[static_cast<std::size_t>(medoids[slot])] = false;
-          medoids[slot] = static_cast<int>(candidate);
+          medoids[slot] = static_cast<index_t>(candidate);
           is_medoid[candidate] = true;
           nearest_two(distances, medoids, nearest, nearest_distance, second_distance);
           refresh_swap_state();

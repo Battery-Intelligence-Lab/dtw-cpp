@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "base/settings.hpp" // index_t
+
 #include <vector>
 
 namespace dtwc {
@@ -27,10 +29,10 @@ namespace scores {
   double inertia(Problem &prob);
   double calinski_harabasz(Problem &prob);
 
-  double adjusted_rand(const std::vector<int> &labels_true,
-                       const std::vector<int> &labels_pred);
-  double normalized_mutual_info(const std::vector<int> &labels_true,
-                                const std::vector<int> &labels_pred);
+  double adjusted_rand(const std::vector<index_t> &labels_true,
+                       const std::vector<index_t> &labels_pred);
+  double normalized_mutual_info(const std::vector<index_t> &labels_true,
+                                const std::vector<index_t> &labels_pred);
 
 } // namespace scores
 

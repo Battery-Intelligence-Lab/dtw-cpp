@@ -219,7 +219,7 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
       [] {
         auto prob = three_series();
         prob.set_n_clusters(2);
-        std::vector<int> one{ 0 };
+        std::vector<dtwc::index_t> one{ 0 };
         prob.set_clusters(one);
       } },
     { "hierarchical.cpp: dendrogram over another point count", "InvalidInput",

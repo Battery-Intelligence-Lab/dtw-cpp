@@ -103,7 +103,7 @@ Problem make_kgroup_problem(int N, int n_groups, const std::string& name = "kgro
 }
 
 /// Total assignment cost for a medoid set (each point → nearest medoid). O(N·k).
-double assign_cost(Problem& prob, const std::vector<int>& medoids, int N)
+double assign_cost(Problem& prob, const std::vector<index_t>& medoids, int N)
 {
   double total = 0.0;
   for (int p = 0; p < N; ++p) {
@@ -117,13 +117,13 @@ double assign_cost(Problem& prob, const std::vector<int>& medoids, int N)
 /// INDEPENDENT arbiter: most-negative TRUE ΔTD over ALL (medoid slot, non-medoid
 /// candidate) swaps, each evaluated by full point reassignment — no shared math
 /// with FasterPAM's decomposition. Returns 0 if no swap lowers cost (local opt).
-double brute_force_best_delta(Problem& prob, const std::vector<int>& medoids, int N)
+double brute_force_best_delta(Problem& prob, const std::vector<index_t>& medoids, int N)
 {
   const double base = assign_cost(prob, medoids, N);
   std::set<int> med_set(medoids.begin(), medoids.end());
   const int k = static_cast<int>(medoids.size());
   double best = 0.0;
-  std::vector<int> trial = medoids;
+  std::vector<index_t> trial = medoids;
   for (int slot = 0; slot < k; ++slot) {
     const int keep = trial[slot];
     for (int x = 0; x < N; ++x) {
@@ -278,7 +278,7 @@ TEST_CASE("FasterPAM k=1 breaks a cost tie by the lowest index", "[faster_pam][k
   for (const bool seeded : { false, true }) {
     const auto res = seeded ? fast_pam_seeded(prob, 1, 3) : fast_pam(prob, 1);
     INFO("seeded=" << seeded);
-    REQUIRE(res.medoid_indices == std::vector<int>{ 1 });
+    REQUIRE(res.medoid_indices == std::vector<index_t>{ 1 });
     REQUIRE(res.total_cost == 4.0);
   }
 }

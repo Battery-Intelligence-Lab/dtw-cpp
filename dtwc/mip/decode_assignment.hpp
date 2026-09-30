@@ -19,7 +19,7 @@ namespace dtwc::mip {
 /// `x[facility, point]` is binary; the open medoids are the diagonal. HiGHS
 /// stores facility-major (`f·n + p`), Gurobi point-major (`f + p·n`). A solution
 /// that is not exactly k medoids with one open medoid per point is SolverError.
-inline core::ClusteringResult decode_assignment(std::span<const double> x, std::size_t n, int k,
+inline core::ClusteringResult decode_assignment(std::span<const double> x, std::size_t n, index_t k,
                                                 bool point_major, std::string_view backend)
 {
   const auto chosen = [&](std::size_t f, std::size_t p) { return x[point_major ? f + p * n : f * n + p] > 0.5; };
@@ -27,17 +27,17 @@ inline core::ClusteringResult decode_assignment(std::span<const double> x, std::
     throw SolverError(std::string(backend) + " returned an invalid p-median solution: " + what);
   };
   core::ClusteringResult result;
-  std::vector<int> slot_of(n, -1);
+  std::vector<index_t> slot_of(n, -1);
   for (std::size_t f = 0; f < n; ++f)
     if (chosen(f, f)) {
-      slot_of[f] = static_cast<int>(result.medoid_indices.size());
-      result.medoid_indices.push_back(static_cast<int>(f));
+      slot_of[f] = static_cast<index_t>(result.medoid_indices.size());
+      result.medoid_indices.push_back(static_cast<index_t>(f));
     }
   if (result.medoid_indices.size() != static_cast<std::size_t>(k))
     fail(std::to_string(result.medoid_indices.size()) + " medoids for k = " + std::to_string(k) + ".");
   result.labels.assign(n, -1);
   for (std::size_t p = 0; p < n; ++p) {
-    int assignments = 0;
+    index_t assignments = 0;
     for (std::size_t f = 0; f < n; ++f)
       if (chosen(f, p)) {
         result.labels[p] = slot_of[f];

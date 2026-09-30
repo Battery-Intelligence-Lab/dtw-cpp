@@ -1145,7 +1145,7 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   m.def("dtw_barycenter",
-        [](const dtwc::Problem &prob, const std::vector<int> &indices,
+        [](const dtwc::Problem &prob, const std::vector<dtwc::index_t> &indices,
            std::size_t target_length, const dtwc::algorithms::BarycenterOptions &options) {
     nb::gil_scoped_release release;
     return dtwc::algorithms::dtw_barycenter(prob, indices, target_length, options);
@@ -1251,14 +1251,14 @@ NB_MODULE(_dtwcpp_core, m) {
     return dtwc::scores::calinski_harabasz(prob);
   }, "prob"_a, "Compute Calinski-Harabasz index (medoid-adapted; higher is better).");
 
-  m.def("adjusted_rand", [](const std::vector<int> &labels_true,
-                            const std::vector<int> &labels_pred) {
+  m.def("adjusted_rand", [](const std::vector<dtwc::index_t> &labels_true,
+                            const std::vector<dtwc::index_t> &labels_pred) {
     return dtwc::scores::adjusted_rand(labels_true, labels_pred);
   }, "labels_true"_a, "labels_pred"_a,
      "Adjusted Rand index between two label assignments (1.0 = perfect agreement).");
 
-  m.def("normalized_mutual_info", [](const std::vector<int> &labels_true,
-                                      const std::vector<int> &labels_pred) {
+  m.def("normalized_mutual_info", [](const std::vector<dtwc::index_t> &labels_true,
+                                      const std::vector<dtwc::index_t> &labels_pred) {
     return dtwc::scores::normalized_mutual_info(labels_true, labels_pred);
   }, "labels_true"_a, "labels_pred"_a,
      "Normalized Mutual Information between two label assignments ([0,1]).");

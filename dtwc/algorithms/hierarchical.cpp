@@ -50,7 +50,7 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
   std::vector<bool> active(N, true);
 
   // size[i] = current number of original points in cluster i.
-  std::vector<int> sz(N, 1);
+  std::vector<index_t> sz(N, 1);
 
   Dendrogram dend;
   dend.n_points = N;
@@ -84,8 +84,8 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
 
     // Update working distances from every other active cluster c to the merged
     // cluster (kept under index best_a) using the Lance-Williams formula.
-    const int sz_a = sz[best_a];
-    const int sz_b = sz[best_b];
+    const index_t sz_a = sz[best_a];
+    const index_t sz_b = sz[best_b];
 
     for (index_t c = 0; c < N; ++c) {
       if (!active[c] || c == best_a || c == best_b) continue;
@@ -127,14 +127,14 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
 namespace {
 
 struct UF {
-  std::vector<int> parent, rank_;
+  std::vector<index_t> parent, rank_;
 
-  explicit UF(int n) : parent(n), rank_(n, 0)
+  explicit UF(index_t n) : parent(n), rank_(n, 0)
   {
-    std::iota(parent.begin(), parent.end(), 0);
+    std::iota(parent.begin(), parent.end(), index_t{ 0 });
   }
 
-  int find(int x)
+  index_t find(index_t x)
   {
     while (parent[x] != x) {
       parent[x] = parent[parent[x]]; // path compression (halving)
@@ -143,7 +143,7 @@ struct UF {
     return x;
   }
 
-  void unite(int a, int b)
+  void unite(index_t a, index_t b)
   {
     a = find(a);
     b = find(b);
@@ -204,12 +204,12 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, ind
 
   // Map canonical root → contiguous cluster label [0, k).
   // We assign labels in order of smallest root index for determinism.
-  std::vector<int> root_to_label(N, -1);
-  int next_label = 0;
-  std::vector<int> labels(N);
+  std::vector<index_t> root_to_label(N, -1);
+  index_t next_label = 0;
+  std::vector<index_t> labels(N);
 
   for (index_t i = 0; i < N; ++i) {
-    int root = uf.find(i);
+    const index_t root = uf.find(i);
     if (root_to_label[root] == -1)
       root_to_label[root] = next_label++;
     labels[i] = root_to_label[root];
@@ -224,23 +224,23 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, ind
       + std::to_string(k) + "; the merge list is not a valid dendrogram.");
 
   // Collect members per cluster.
-  std::vector<std::vector<int>> members(k);
+  std::vector<std::vector<index_t>> members(k);
   for (index_t i = 0; i < N; ++i)
     members[static_cast<size_t>(labels[i])].push_back(i);
 
   // Find medoid per cluster: point minimising sum of distances to cluster peers.
   // Tie-breaking: smallest original index wins.
-  std::vector<int> medoid_indices(k, -1);
+  std::vector<index_t> medoid_indices(k, -1);
   double total_cost = 0.0;
 
   for (index_t cl = 0; cl < k; ++cl) {
     const auto &mem = members[static_cast<size_t>(cl)];
     double best_cost = std::numeric_limits<double>::infinity();
-    int best_idx = mem[0]; // fallback (smallest index in cluster)
+    index_t best_idx = mem[0]; // fallback (smallest index in cluster)
 
-    for (int cand : mem) {
+    for (index_t cand : mem) {
       double cost = 0.0;
-      for (int other : mem)
+      for (index_t other : mem)
         cost += prob.dist_by_ind(cand, other);
 
       if (cost < best_cost ||
@@ -253,7 +253,7 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, ind
     medoid_indices[static_cast<size_t>(cl)] = best_idx;
 
     // Total cost = sum of distances of each point to its medoid.
-    for (int pt : mem)
+    for (index_t pt : mem)
       total_cost += prob.dist_by_ind(pt, best_idx);
   }
 

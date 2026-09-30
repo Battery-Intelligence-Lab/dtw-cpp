@@ -164,8 +164,8 @@ Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device
     iterations_(iterations), converged_(converged)
 {}
 
-const std::vector<int> &Result::labels() const noexcept { return problem_->labels(); }
-const std::vector<int> &Result::medoids() const noexcept { return problem_->medoids(); }
+const std::vector<index_t> &Result::labels() const noexcept { return problem_->labels(); }
+const std::vector<index_t> &Result::medoids() const noexcept { return problem_->medoids(); }
 
 double Result::score(std::string_view name) const
 {
@@ -197,7 +197,7 @@ std::vector<double> Result::distance_matrix() const
   for (std::size_t i = 0; i < n; ++i)
     for (std::size_t j = 0; j < n; ++j)
       flat[i * n + j] =
-        problem_->dist_by_ind(static_cast<int>(i), static_cast<int>(j));
+        problem_->dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j));
 
   return flat;
 }
@@ -230,7 +230,7 @@ void Result::save(const std::filesystem::path &directory) const
     auto out = open_output(medoids_path);
     out << "cluster,medoid_index,medoid_name\n";
     for (std::size_t c = 0; c < medoids().size(); ++c) {
-      const int idx = medoids()[c];
+      const index_t idx = medoids()[c];
       out << c << ',' << idx << ','
           << problem_->series_name(static_cast<std::size_t>(idx)) << '\n';
     }

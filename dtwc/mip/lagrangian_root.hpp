@@ -30,6 +30,8 @@
 
 #pragma once
 
+#include "../base/settings.hpp" // index_t
+
 #include <cstdint>
 #include <vector>
 
@@ -44,13 +46,13 @@ struct LagrangianResult
   double upper_bound = 0.0;         ///< best primal-repair cost: a valid upper bound.
   double gap = 0.0;                 ///< (upper_bound − lower_bound) / max(|upper_bound|, ε).
   bool certified_optimal = false;   ///< gap ≤ rel_gap_tol — the primal solution is proven optimal.
-  std::vector<int> medoids;         ///< k medoid point indices of the best primal (ascending).
-  std::vector<int> labels;          ///< labels[j] = medoid POINT INDEX serving point j.
+  std::vector<index_t> medoids;     ///< k medoid point indices of the best primal (ascending).
+  std::vector<index_t> labels;      ///< labels[j] = medoid POINT INDEX serving point j.
   std::vector<double> multipliers;  ///< μ at termination (size N).
   int iterations = 0;               ///< subgradient iterations actually run (root dual).
-  int n_core = 0;                   ///< candidate medoids surviving reduced-cost fixing (≤ N) = core.size().
-  std::vector<int> core;            ///< candidate facilities surviving reduced-cost fixing, ascending.
-  long nodes = 0;                   ///< exact B&B nodes explored (lagrangian_root_exact); 0 for the bound-only routines.
+  index_t n_core = 0;               ///< candidate medoids surviving reduced-cost fixing (≤ N) = core.size().
+  std::vector<index_t> core;        ///< candidate facilities surviving reduced-cost fixing, ascending.
+  std::int64_t nodes = 0;           ///< exact B&B nodes explored (lagrangian_root_exact); 0 for the bound-only routines.
 };
 
 /**
@@ -64,7 +66,7 @@ struct LagrangianResult
  * @return Lower/upper bounds, gap, the best primal clustering, and n_core.
  * @throws dtwc::InvalidInput if N ≤ 0 or k ∉ [1, N].
  */
-LagrangianResult lagrangian_root(const double *D, int N, int k,
+LagrangianResult lagrangian_root(const double *D, index_t N, index_t k,
                                  double initial_ub = -1.0);
 
 /**
@@ -85,7 +87,7 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
  *
  * @param D,N,k,initial_ub  As lagrangian_root.
  */
-LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
+LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k,
                                         double initial_ub = -1.0);
 
 /**
@@ -115,7 +117,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
  * @return `certified_optimal = true` and `lower_bound == upper_bound == optimum`
  *         when the tree is fully explored within the node cap.
  */
-LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
+LagrangianResult lagrangian_root_exact(const double *D, index_t N, index_t k,
                                        double initial_ub = -1.0,
                                        std::int64_t max_nodes = 2000000);
 

@@ -70,7 +70,7 @@ void close_output(std::ofstream &file, const std::filesystem::path &path)
  *  @param rep The current repetition number.
  *  @param total_cost The total cost associated with the medoids.
  */
-void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost)
+void Problem::writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost)
 {
   const auto outPath = output_folder_
     / utf8_to_path(name_ + "medoids_rep_" + std::to_string(rep) + ".csv");
@@ -124,7 +124,7 @@ void Problem::write_clusters()
 
   myFile << "Cluster centroids:\n";
 
-  for (int i{ 0 }; i < Nc; i++) {
+  for (index_t i{ 0 }; i < Nc; i++) {
     if (i != 0) myFile << ',';
 
     myFile << series_name(centroids_ind[i]);
@@ -134,7 +134,7 @@ void Problem::write_clusters()
          << "Data" << ',' << "its cluster\n";
 
   for (const auto i : Range(size()))
-    myFile << series_name(i) << ',' << series_name(centroid_of(static_cast<int>(i))) << '\n';
+    myFile << series_name(i) << ',' << series_name(centroid_of(static_cast<index_t>(i))) << '\n';
 
   myFile << "Procedure is completed with cost: " << find_total_cost() << '\n';
 

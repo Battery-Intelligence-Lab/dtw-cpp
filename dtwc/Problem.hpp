@@ -256,7 +256,7 @@ private:
   void init_with_seed(std::uint64_t seed);
 
   void writeBestRep(int best_rep);
-  void writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost);
+  void writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost);
   void distanceInClusters();
 
   /// An empty series has no finite DTW distance to anything, so it clustered
@@ -292,8 +292,8 @@ public:
   /// medoids, the algorithms); set_n_clusters sizes neither, and set_data and
   /// set_view_data empty both (the labels describe the old series).
   /// require_clustered() tells a clustering from a sizing.
-  std::vector<int> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Nc)
-  std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
+  std::vector<index_t> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Nc)
+  std::vector<index_t> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
   Problem() { rebind_dtw_fn(); }
@@ -359,8 +359,8 @@ public:
   /// Canonical read accessors (API contract §2.2): the raw fields
   /// `clusters_ind`/`centroids_ind` stay public, but `labels()`/`medoids()` are
   /// the cross-language read path (parity with `Result::labels`/`Result::medoids`).
-  const std::vector<int> &labels() const { return clusters_ind; }
-  const std::vector<int> &medoids() const { return centroids_ind; }
+  const std::vector<index_t> &labels() const { return clusters_ind; }
+  const std::vector<index_t> &medoids() const { return centroids_ind; }
 
   void refresh_distance_matrix();
   [[deprecated("use refresh_distance_matrix")]] void refreshDistanceMatrix() { refresh_distance_matrix(); }
@@ -382,7 +382,14 @@ public:
   /// cluster. Every call that reads the whole clustering checks that once.
   /// @throws InvalidInput ("<who>: ... cluster it first") when it is not.
   void require_clustered(std::string_view who) const;
-  void set_clusters(std::vector<int> &candidate_centroids);
+  void set_clusters(const std::vector<index_t> &candidate_centroids);
+  /// The v1.0.0 signature, kept so v1 code compiles; a braced list takes the
+  /// index_t overload.
+  [[deprecated("use set_clusters(const std::vector<index_t> &)")]]
+  void set_clusters(std::vector<int> &candidate_centroids)
+  {
+    set_clusters(std::vector<index_t>(candidate_centroids.begin(), candidate_centroids.end()));
+  }
   /// Publish a clustering: k = the number of medoids, which are distinct
   /// indices in [0, N), and one label in [0, k) per series. Anything else is
   /// InvalidInput and leaves the Problem unchanged.

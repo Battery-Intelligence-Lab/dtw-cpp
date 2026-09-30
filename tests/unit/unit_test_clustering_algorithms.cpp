@@ -78,7 +78,7 @@ Problem make_capped_lloyd_problem(
   problem.set_n_repetitions(1);
   problem.set_output_folder(output);
   problem.init_fun = [](Problem &candidate) {
-    std::vector<int> initial_medoids{0, 8};
+    std::vector<index_t> initial_medoids{0, 8};
     candidate.set_clusters(initial_medoids);
   };
   return problem;
@@ -362,8 +362,8 @@ TEST_CASE("Capped Lloyd returns labels assigned to its final medoids",
   capped.cluster_by_kmedoids_lloyd();
   converged.cluster_by_kmedoids_lloyd();
 
-  const std::vector<int> expected_medoids{1, 5};
-  const std::vector<int> expected_labels{0, 0, 0, 1, 1, 1, 1, 1, 1};
+  const std::vector<index_t> expected_medoids{1, 5};
+  const std::vector<index_t> expected_labels{0, 0, 0, 1, 1, 1, 1, 1, 1};
   REQUIRE(capped.medoids() == expected_medoids);
   CHECK(capped.last_iterations() == 1);
   REQUIRE(converged.medoids() == expected_medoids);
@@ -371,7 +371,7 @@ TEST_CASE("Capped Lloyd returns labels assigned to its final medoids",
   CHECK(converged.last_iterations() == 2);
   CHECK_THAT(converged.find_total_cost(), WithinAbs(96.0, 1e-12));
 
-  std::vector<int> nearest_labels;
+  std::vector<index_t> nearest_labels;
   nearest_labels.reserve(capped.size());
   double nearest_cost = 0.0;
   for (std::size_t point = 0; point < capped.size(); ++point) {

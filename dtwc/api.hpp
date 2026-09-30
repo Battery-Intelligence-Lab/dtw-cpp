@@ -84,8 +84,8 @@ std::string device();
 class Result
 {
 public:
-  const std::vector<int> &labels() const noexcept;
-  const std::vector<int> &medoids() const noexcept;
+  const std::vector<index_t> &labels() const noexcept;
+  const std::vector<index_t> &medoids() const noexcept;
   double score(std::string_view name) const;
   /** Dense row-major N*N pairwise DTW distances, matching Python's
    *  `Result.distance_matrix`.  Fills the matrix first if it is not yet

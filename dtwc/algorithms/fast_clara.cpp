@@ -125,8 +125,8 @@ namespace {
 
   template <typename Distance, typename SeriesAt>
   double assign_all_points_direct(
-    index_t n_points, const std::vector<int> &medoid_indices,
-    std::vector<int> &labels, const Distance &distance, SeriesAt series_at)
+    index_t n_points, const std::vector<index_t> &medoid_indices,
+    std::vector<index_t> &labels, const Distance &distance, SeriesAt series_at)
   {
     const auto k = static_cast<index_t>(medoid_indices.size());
     labels.resize(static_cast<std::size_t>(n_points));
@@ -164,8 +164,8 @@ namespace {
 
   /** Assign through the bound DTW function without allocating the parent cache. */
   double assign_all_points(
-    Problem &prob, const std::vector<int> &medoid_indices,
-    std::vector<int> &labels)
+    Problem &prob, const std::vector<index_t> &medoid_indices,
+    std::vector<index_t> &labels)
   {
     const index_t n_points = prob.size();
     if (prob.data().is_f32()) {
@@ -208,8 +208,8 @@ namespace {
   double assign_all_points_chunked(
     const DtwFn &dtw_fn,
     const Data &medoid_data,
-    const std::vector<int> &medoid_indices,
-    std::vector<int> &labels,
+    const std::vector<index_t> &medoid_indices,
+    std::vector<index_t> &labels,
     const io::ParquetChunkReader &reader,
     size_t ram_budget)
   {
@@ -314,7 +314,7 @@ namespace {
       // 1. Stable O(N)-time selection with O(sample_size) sampling scratch.  The
       // result still necessarily owns O(N) labels, but the old 8*N-byte index
       // pool was avoidable in the streaming path.
-      auto sample_indices = core::portable_sample_indices<int64_t>(
+      auto sample_indices = core::portable_sample_indices<index_t>(
         N, sample_size, rng);
 
       // 2. Load subsample from Parquet (small — always fits in RAM)
@@ -344,11 +344,11 @@ namespace {
       }
 
       // 5. Map medoid indices back to global dataset indices
-      std::vector<int> full_medoids(opts.n_clusters);
+      std::vector<index_t> full_medoids(opts.n_clusters);
       std::vector<int64_t> medoid_rows(opts.n_clusters);
       for (index_t m = 0; m < opts.n_clusters; ++m) {
-        int64_t global_idx = sample_indices[sub_result.medoid_indices[m]];
-        full_medoids[m] = static_cast<int>(global_idx); // ClusteringResult uses int
+        const index_t global_idx = sample_indices[sub_result.medoid_indices[m]];
+        full_medoids[m] = global_idx;
         medoid_rows[m] = global_idx;
       }
 
@@ -358,7 +358,7 @@ namespace {
         : reader.read_rows(std::move(medoid_rows), opts.ram_limit_bytes);
 
       // 7. Chunked assignment: stream row groups, compute DTW to medoids
-      std::vector<int> labels;
+      std::vector<index_t> labels;
       double total_cost;
       if (opts.use_float32) {
         total_cost = assign_all_points_chunked<true>(
@@ -462,14 +462,13 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 
   for (int s = 0; s < opts.n_samples; ++s) {
     // 1. Draw a sorted sample using the same map as the chunked path.
-    auto sample_indices = core::portable_sample_indices<int>(
-      static_cast<int>(N), sample_size, rng);
+    auto sample_indices = core::portable_sample_indices<index_t>(N, sample_size, rng);
 
     // 2. Create a sub-Problem with zero-copy span views into parent data.
     std::vector<std::string_view> sub_names;
     sub_names.reserve(sample_size);
-    for (int idx : sample_indices)
-      sub_names.push_back(prob.series_name(idx)); // O(1), no string copy
+    for (index_t idx : sample_indices)
+      sub_names.push_back(prob.series_name(static_cast<std::size_t>(idx))); // O(1), no string copy
 
     Problem sub_prob("clara_subsample_" + std::to_string(s));
     // Copy all relevant settings from the original problem.
@@ -486,15 +485,15 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     if (prob.data().is_f32()) {
       std::vector<std::span<const float>> sub_spans;
       sub_spans.reserve(sample_size);
-      for (int idx : sample_indices)
-        sub_spans.push_back(prob.data().series_f32(idx));
+      for (index_t idx : sample_indices)
+        sub_spans.push_back(prob.data().series_f32(static_cast<std::size_t>(idx)));
       sub_prob.set_view_data(
         Data(std::move(sub_spans), std::move(sub_names), prob.data().ndim));
     } else {
       std::vector<std::span<const data_t>> sub_spans;
       sub_spans.reserve(sample_size);
-      for (int idx : sample_indices)
-        sub_spans.push_back(prob.series(idx)); // O(1), no data copy
+      for (index_t idx : sample_indices)
+        sub_spans.push_back(prob.series(static_cast<std::size_t>(idx))); // O(1), no data copy
       sub_prob.set_view_data(
         Data(std::move(sub_spans), std::move(sub_names), prob.data().ndim));
     }
@@ -504,13 +503,13 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
       sub_prob, opts.n_clusters, clara_pam_seed(opts, s), opts.max_iter);
 
     // 4. Map sub-Problem medoid indices back to full dataset indices.
-    std::vector<int> full_medoids(opts.n_clusters);
+    std::vector<index_t> full_medoids(opts.n_clusters);
     for (index_t m = 0; m < opts.n_clusters; ++m) {
       full_medoids[m] = sample_indices[sub_result.medoid_indices[m]];
     }
 
     // 5. Assign ALL N points to the nearest medoid.
-    std::vector<int> labels;
+    std::vector<index_t> labels;
     double total_cost = assign_all_points(prob, full_medoids, labels);
 
     // 6. Track the best result.

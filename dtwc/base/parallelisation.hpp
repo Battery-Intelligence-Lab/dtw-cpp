@@ -62,10 +62,9 @@ inline index_t omp_chunk_size_for(index_t n_iterations, int chunks_per_thread, i
   return std::max<index_t>(1, n_iterations / (index_t{ nthreads } * chunks_per_thread));
 }
 
-inline int omp_chunk_size(int n_iterations, int chunks_per_thread = 4)
+inline index_t omp_chunk_size(index_t n_iterations, int chunks_per_thread = 4)
 {
-  // At most n_iterations, so it fits in int.
-  return static_cast<int>(omp_chunk_size_for(n_iterations, chunks_per_thread, get_max_threads()));
+  return omp_chunk_size_for(n_iterations, chunks_per_thread, get_max_threads());
 }
 
 /**

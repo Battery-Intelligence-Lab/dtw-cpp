@@ -50,15 +50,15 @@ constexpr double kInf = std::numeric_limits<double>::infinity();
 struct OracleResult
 {
   double cost = kInf;
-  std::vector<int> medoids;
+  std::vector<index_t> medoids;
 };
 
 /// Exact p-median optimum by enumerating every C(N,k) medoid subset (N ≤ 14).
 OracleResult brute_force_pmedian(const std::vector<double> &D, int N, int k)
 {
-  std::vector<int> comb(static_cast<std::size_t>(k));
+  std::vector<index_t> comb(static_cast<std::size_t>(k));
   std::iota(comb.begin(), comb.end(), 0);
-  auto eval = [&](const std::vector<int> &S) {
+  auto eval = [&](const std::vector<index_t> &S) {
     double c = 0.0;
     for (int j = 0; j < N; ++j) {
       double best = kInf;
@@ -121,7 +121,7 @@ std::vector<double> uniform_D(int N, unsigned seed)
 }
 
 /// ρ_i(μ) = Σ_j min(0, D_ij − μ_j) — the facility scores the fixing consumes.
-bool contains(const std::vector<int> &v, int x)
+bool contains(const std::vector<index_t> &v, index_t x)
 {
   return std::find(v.begin(), v.end(), x) != v.end();
 }
@@ -138,7 +138,7 @@ TEST_CASE("fixing never removes an optimal medoid (N ≤ 14)", "[fixing][valid]"
   auto check_instance = [&](const std::vector<double> &D, int N, int k) {
     const OracleResult orc = brute_force_pmedian(D, N, k);
     const LagrangianResult lr = lagrangian_root(D.data(), N, k);
-    for (int m : orc.medoids) REQUIRE(contains(lr.core, m)); // never fixed out.
+    for (index_t m : orc.medoids) REQUIRE(contains(lr.core, m)); // never fixed out.
 
     ++instances;
     total_fixed_closed += N - lr.n_core;

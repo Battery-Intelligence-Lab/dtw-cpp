@@ -74,8 +74,8 @@ dtwc::Problem make_problem(std::vector<std::vector<double>> series)
  * @param centroids   Per-cluster centroid index  (size == k, each in [0, prob.size())).
  */
 void assign_clusters(dtwc::Problem &prob, int k,
-                     std::vector<int> cluster_ids,
-                     std::vector<int> centroids)
+                     std::vector<index_t> cluster_ids,
+                     std::vector<index_t> centroids)
 {
   prob.set_n_clusters(k);
   prob.clusters_ind = std::move(cluster_ids);
@@ -525,8 +525,8 @@ TEST_CASE("CH index: k=1 throws instead of dividing by k-1 == 0",
 TEST_CASE("ARI: perfect agreement gives 1.0",
           "[scores][ari][adversarial]")
 {
-  std::vector<int> labels = {0, 0, 1, 1};
-  std::vector<int> pred   = {0, 0, 1, 1};
+  std::vector<index_t> labels = {0, 0, 1, 1};
+  std::vector<index_t> pred   = {0, 0, 1, 1};
   double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
@@ -535,10 +535,24 @@ TEST_CASE("ARI: perfect agreement with different label names gives 1.0",
           "[scores][ari][adversarial]")
 {
   // Cluster labels are permuted: 0->1, 1->0.  Same partition.
-  std::vector<int> labels = {0, 0, 1, 1};
-  std::vector<int> pred   = {1, 1, 0, 0};
+  std::vector<index_t> labels = {0, 0, 1, 1};
+  std::vector<index_t> pred   = {1, 1, 0, 0};
   double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
+}
+
+TEST_CASE("ARI and NMI count labels that agree in their low 32 bits apart",
+          "[scores][ari][nmi][adversarial][index_t]")
+{
+  // A relabelling scores exactly 1. Labels 0 and 2^32 share their low 32 bits
+  // and -1 is negative: a key packing two labels into 32-bit halves merges them.
+  constexpr index_t high = index_t{ 1 } << 32;
+  const std::vector<index_t> truth = {0, 0, 1, 1, 2, 2};
+  const std::vector<index_t> pred  = {0, 0, high, high, -1, -1};
+  REQUIRE_THAT(dtwc::scores::adjusted_rand(truth, pred), WithinAbs(1.0, 1e-12));
+  REQUIRE_THAT(dtwc::scores::adjusted_rand(pred, truth), WithinAbs(1.0, 1e-12));
+  REQUIRE_THAT(dtwc::scores::normalized_mutual_info(truth, pred), WithinAbs(1.0, 1e-12));
+  REQUIRE_THAT(dtwc::scores::normalized_mutual_info(pred, truth), WithinAbs(1.0, 1e-12));
 }
 
 TEST_CASE("ARI: anti-correlated labels give negative ARI",
@@ -546,8 +560,8 @@ TEST_CASE("ARI: anti-correlated labels give negative ARI",
 {
   // labels={0,0,1,1}, pred={0,1,0,1}: every pair that was together is split.
   // Known ARI = -0.5 for this 4-element case.
-  std::vector<int> labels = {0, 0, 1, 1};
-  std::vector<int> pred   = {0, 1, 0, 1};
+  std::vector<index_t> labels = {0, 0, 1, 1};
+  std::vector<index_t> pred   = {0, 1, 0, 1};
   double ari = dtwc::scores::adjusted_rand(labels, pred);
   // Verify: ARI < 0
   REQUIRE(ari < 0.0);
@@ -562,8 +576,8 @@ TEST_CASE("ARI: all-same labels in both partitions — degenerate case",
   // sum_ai2 = C(4,2)=6, sum_bj2 = 6, sum_cij2 = 6, cn2 = 6
   // expected = 6*6/6 = 6, max_val = 6, numerator = 6-6 = 0, denom = 6-6 = 0.
   // denominator == 0 => ARI = 1.0 (convention in implementation).
-  std::vector<int> labels = {0, 0, 0, 0};
-  std::vector<int> pred   = {0, 0, 0, 0};
+  std::vector<index_t> labels = {0, 0, 0, 0};
+  std::vector<index_t> pred   = {0, 0, 0, 0};
   double ari = dtwc::scores::adjusted_rand(labels, pred);
   // Should not crash and return a finite value
   REQUIRE(std::isfinite(ari));
@@ -574,8 +588,8 @@ TEST_CASE("ARI: all-same labels in both partitions — degenerate case",
 TEST_CASE("ARI: mismatched label-vector sizes throw",
           "[scores][ari][adversarial]")
 {
-  std::vector<int> labels = {0, 1, 0};
-  std::vector<int> pred   = {0, 1};
+  std::vector<index_t> labels = {0, 1, 0};
+  std::vector<index_t> pred   = {0, 1};
   REQUIRE_THROWS_AS(dtwc::scores::adjusted_rand(labels, pred),
                     dtwc::InvalidInput);
 }
@@ -583,8 +597,8 @@ TEST_CASE("ARI: mismatched label-vector sizes throw",
 TEST_CASE("ARI: single element — degenerate, must not crash",
           "[scores][ari][adversarial]")
 {
-  std::vector<int> labels = {0};
-  std::vector<int> pred   = {0};
+  std::vector<index_t> labels = {0};
+  std::vector<index_t> pred   = {0};
   // n=1 => cn2 = C(1,2) = 0, sum_ai2=0, sum_bj2=0, expected=0, max_val=0 => denom=0 => ARI=1.0
   double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE(std::isfinite(ari));
@@ -593,8 +607,8 @@ TEST_CASE("ARI: single element — degenerate, must not crash",
 TEST_CASE("ARI: two elements, one pair, perfect agreement",
           "[scores][ari][adversarial]")
 {
-  std::vector<int> labels = {0, 0};
-  std::vector<int> pred   = {0, 0};
+  std::vector<index_t> labels = {0, 0};
+  std::vector<index_t> pred   = {0, 0};
   double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE(std::isfinite(ari));
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
@@ -603,8 +617,8 @@ TEST_CASE("ARI: two elements, one pair, perfect agreement",
 TEST_CASE("ARI: symmetry — ARI(a,b) == ARI(b,a)",
           "[scores][ari][adversarial]")
 {
-  std::vector<int> a = {0, 0, 1, 1, 2, 2};
-  std::vector<int> b = {0, 1, 1, 2, 2, 0};
+  std::vector<index_t> a = {0, 0, 1, 1, 2, 2};
+  std::vector<index_t> b = {0, 1, 1, 2, 2, 0};
   double ari_ab = dtwc::scores::adjusted_rand(a, b);
   double ari_ba = dtwc::scores::adjusted_rand(b, a);
   REQUIRE_THAT(ari_ab, WithinAbs(ari_ba, 1e-12));
@@ -619,7 +633,7 @@ TEST_CASE("ARI: large random labels stay in a finite range",
   const int K = 10;
   std::mt19937 rng(42);
   std::uniform_int_distribution<int> dist(0, K - 1);
-  std::vector<int> labels(N), pred(N);
+  std::vector<index_t> labels(N), pred(N);
   for (int i = 0; i < N; ++i) {
     labels[i] = dist(rng);
     pred[i]   = dist(rng);
@@ -649,8 +663,8 @@ TEST_CASE("ARI: step-by-step contingency-table verification",
   // expected = 2*2/6 = 4/6 = 2/3
   // max_val  = (2+2)/2 = 2
   // ARI = (2 - 2/3) / (2 - 2/3) = 1.0
-  std::vector<int> labels = {0, 0, 1, 1};
-  std::vector<int> pred   = {0, 0, 1, 1};
+  std::vector<index_t> labels = {0, 0, 1, 1};
+  std::vector<index_t> pred   = {0, 0, 1, 1};
   double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
@@ -674,8 +688,8 @@ TEST_CASE("ARI: non-trivial 6-element case, hand-computed",
   // ARI = (4 - 2.8) / (6.5 - 2.8) = 1.2 / 3.7
   const double expected_ari = 1.2 / 3.7;
 
-  std::vector<int> labels = {0, 0, 0, 1, 1, 1};
-  std::vector<int> pred   = {0, 0, 1, 1, 1, 1};
+  std::vector<index_t> labels = {0, 0, 0, 1, 1, 1};
+  std::vector<index_t> pred   = {0, 0, 1, 1, 1, 1};
   double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE_THAT(ari, WithinAbs(expected_ari, 1e-10));
 }
@@ -687,8 +701,8 @@ TEST_CASE("ARI: non-trivial 6-element case, hand-computed",
 TEST_CASE("NMI: perfect agreement gives 1.0",
           "[scores][nmi][adversarial]")
 {
-  std::vector<int> labels = {0, 0, 1, 1};
-  std::vector<int> pred   = {0, 0, 1, 1};
+  std::vector<index_t> labels = {0, 0, 1, 1};
+  std::vector<index_t> pred   = {0, 0, 1, 1};
   double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
@@ -696,8 +710,8 @@ TEST_CASE("NMI: perfect agreement gives 1.0",
 TEST_CASE("NMI: perfect agreement with permuted labels gives 1.0",
           "[scores][nmi][adversarial]")
 {
-  std::vector<int> labels = {0, 0, 1, 1};
-  std::vector<int> pred   = {1, 1, 0, 0};
+  std::vector<index_t> labels = {0, 0, 1, 1};
+  std::vector<index_t> pred   = {1, 1, 0, 0};
   double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
@@ -707,8 +721,8 @@ TEST_CASE("NMI: all-same labels — degenerate, H=0",
 {
   // Both labelings are constant => H_true = H_pred = 0, MI = 0.
   // denom = 0 => implementation returns 1.0.
-  std::vector<int> labels = {0, 0, 0, 0};
-  std::vector<int> pred   = {0, 0, 0, 0};
+  std::vector<index_t> labels = {0, 0, 0, 0};
+  std::vector<index_t> pred   = {0, 0, 0, 0};
   double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE(std::isfinite(nmi));
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
@@ -718,7 +732,7 @@ TEST_CASE("NMI: result is always in [0, 1]",
           "[scores][nmi][adversarial]")
 {
   // Several input configurations; NMI must be in [0,1]
-  using VI = std::vector<int>;
+  using VI = std::vector<index_t>;
   std::vector<std::pair<VI, VI>> cases = {
     {{0,0,1,1}, {0,1,0,1}},   // worst case (fully anti-correlated for 2-cluster)
     {{0,1,2,0,1,2}, {0,0,1,1,2,2}},
@@ -737,8 +751,8 @@ TEST_CASE("NMI: result is always in [0, 1]",
 TEST_CASE("NMI: symmetry — NMI(a,b) == NMI(b,a)",
           "[scores][nmi][adversarial]")
 {
-  std::vector<int> a = {0, 0, 1, 1, 2, 2};
-  std::vector<int> b = {0, 1, 1, 2, 2, 0};
+  std::vector<index_t> a = {0, 0, 1, 1, 2, 2};
+  std::vector<index_t> b = {0, 1, 1, 2, 2, 0};
   double nmi_ab = dtwc::scores::normalized_mutual_info(a, b);
   double nmi_ba = dtwc::scores::normalized_mutual_info(b, a);
   REQUIRE_THAT(nmi_ab, WithinAbs(nmi_ba, 1e-12));
@@ -747,8 +761,8 @@ TEST_CASE("NMI: symmetry — NMI(a,b) == NMI(b,a)",
 TEST_CASE("NMI: mismatched sizes throw",
           "[scores][nmi][adversarial]")
 {
-  std::vector<int> a = {0, 1};
-  std::vector<int> b = {0, 1, 0};
+  std::vector<index_t> a = {0, 1};
+  std::vector<index_t> b = {0, 1, 0};
   REQUIRE_THROWS_AS(dtwc::scores::normalized_mutual_info(a, b),
                     dtwc::InvalidInput);
 }
@@ -756,8 +770,8 @@ TEST_CASE("NMI: mismatched sizes throw",
 TEST_CASE("NMI: single element — degenerate, must not crash",
           "[scores][nmi][adversarial]")
 {
-  std::vector<int> labels = {0};
-  std::vector<int> pred   = {0};
+  std::vector<index_t> labels = {0};
+  std::vector<index_t> pred   = {0};
   double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE(std::isfinite(nmi));
 }
@@ -769,7 +783,7 @@ TEST_CASE("NMI: large random labels — stays finite and in range",
   const int K = 10;
   std::mt19937 rng(1337);
   std::uniform_int_distribution<int> dist(0, K - 1);
-  std::vector<int> labels(N), pred(N);
+  std::vector<index_t> labels(N), pred(N);
   for (int i = 0; i < N; ++i) {
     labels[i] = dist(rng);
     pred[i]   = dist(rng);
@@ -785,8 +799,8 @@ TEST_CASE("NMI: hand-computed 3-class balanced case",
           "[scores][nmi][adversarial]")
 {
   // labels = pred = {0,0,1,1,2,2} => perfect, NMI = 1.0
-  std::vector<int> labels = {0, 0, 1, 1, 2, 2};
-  std::vector<int> pred   = {0, 0, 1, 1, 2, 2};
+  std::vector<index_t> labels = {0, 0, 1, 1, 2, 2};
+  std::vector<index_t> pred   = {0, 0, 1, 1, 2, 2};
   double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }

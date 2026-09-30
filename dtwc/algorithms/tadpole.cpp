@@ -88,7 +88,7 @@ double diagonal_ub_l1(std::span<const double> x, std::span<const double> y)
 /// Strict total order that makes "higher density" well-defined under ρ-ties:
 /// a ranks above b iff ρ_a > ρ_b, or (ρ_a == ρ_b and a < b). Deterministic, so
 /// pruned / brute / oracle agree on δ, parents, γ-ranking and labels.
-inline bool higher_density(index_t a, index_t b, const std::vector<int> &rho)
+inline bool higher_density(index_t a, index_t b, const std::vector<index_t> &rho)
 {
   return rho[a] > rho[b] || (rho[a] == rho[b] && a < b);
 }
@@ -178,7 +178,7 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
   const int n_threads = get_max_threads();
   const auto threads = static_cast<std::size_t>(n_threads);
   const auto points = static_cast<std::size_t>(N);
-  std::vector<int> rho_rows(threads * points, 0);
+  std::vector<index_t> rho_rows(threads * points, 0);
   std::vector<std::size_t> plb_by_thread(threads, 0), pub_by_thread(threads, 0);
 
   #pragma omp parallel num_threads(n_threads)
@@ -188,7 +188,7 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
 #else
     const std::size_t thread = 0;
 #endif
-    int *const rho_local = rho_rows.data() + thread * points;
+    index_t *const rho_local = rho_rows.data() + thread * points;
     std::size_t loc_plb = 0, loc_pub = 0;
 
     // `can_prune` is loop-invariant, so it selects the whole i-body once rather
@@ -229,7 +229,7 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
     pub_by_thread[thread] = loc_pub;
   }
 
-  std::vector<int> rho(N, 0);
+  std::vector<index_t> rho(N, 0);
   for (std::size_t t = 0; t < threads; ++t)
     for (std::size_t i = 0; i < points; ++i) rho[i] += rho_rows[t * points + i];
   const std::size_t plb = std::accumulate(plb_by_thread.begin(), plb_by_thread.end(), std::size_t{ 0 });
@@ -239,7 +239,7 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
   //    parent = that nearest higher-density neighbour (with LB pruning) ──
   constexpr double kInf = std::numeric_limits<double>::max();
   std::vector<double> delta(N, kInf);
-  std::vector<int> parent(N, -1);
+  std::vector<index_t> parent(N, -1);
 
   #pragma omp parallel for schedule(dynamic, 8)
   for (index_t i = 0; i < N; ++i) {
@@ -285,15 +285,15 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
   std::vector<double> gamma(N);
   for (index_t i = 0; i < N; ++i) gamma[i] = static_cast<double>(rho[i]) * delta[i];
 
-  std::vector<int> by_gamma(N);
-  std::iota(by_gamma.begin(), by_gamma.end(), 0);
-  std::sort(by_gamma.begin(), by_gamma.end(), [&](int a, int b) {
+  std::vector<index_t> by_gamma(N);
+  std::iota(by_gamma.begin(), by_gamma.end(), index_t{ 0 });
+  std::sort(by_gamma.begin(), by_gamma.end(), [&](index_t a, index_t b) {
     return gamma[a] != gamma[b] ? gamma[a] > gamma[b] : a < b;
   });
 
   std::vector<char> is_center(N, 0);
-  std::vector<int> label(N, -1);
-  std::vector<int> center_of_label(k);
+  std::vector<index_t> label(N, -1);
+  std::vector<index_t> center_of_label(k);
   for (index_t c = 0; c < k; ++c) {
     const index_t ci = by_gamma[c];
     is_center[ci] = 1;
@@ -303,9 +303,9 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
 
   // ── Assignment · descending density; each non-center inherits its parent's
   //    (higher-density, already-labelled) cluster (single non-iterative pass) ──
-  std::vector<int> order(N);
-  std::iota(order.begin(), order.end(), 0);
-  std::sort(order.begin(), order.end(), [&](int a, int b) {
+  std::vector<index_t> order(N);
+  std::iota(order.begin(), order.end(), index_t{ 0 });
+  std::sort(order.begin(), order.end(), [&](index_t a, index_t b) {
     return rho[a] != rho[b] ? rho[a] > rho[b] : a < b;
   });
   for (index_t r = 0; r < N; ++r) {

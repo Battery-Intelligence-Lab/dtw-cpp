@@ -143,13 +143,13 @@ TEST_CASE("The MIP warm start (seeded FastPAM) ignores the legacy RNG",
   CHECK(first.medoid_indices == second.medoid_indices);
   CHECK(first.labels == second.labels);
   CHECK(first.total_cost == second.total_cost);
-  CHECK(first.medoid_indices == std::vector<int>{6, 2, 5});
+  CHECK(first.medoid_indices == std::vector<dtwc::index_t>{6, 2, 5});
   CHECK(first.total_cost == 24.0);
 
   auto override_problem = make_seed_sensitive_problem();
   const auto override_result = dtwc::fast_pam_seeded(
     override_problem, 3, 43, dtwc::settings::DEFAULT_MAX_ITER);
-  CHECK(override_result.medoid_indices == std::vector<int>{6, 4, 1});
+  CHECK(override_result.medoid_indices == std::vector<dtwc::index_t>{6, 4, 1});
   CHECK(override_result.total_cost == 20.0);
 
   dtwc::randGenerator = legacy_rng_original;
@@ -161,8 +161,8 @@ TEST_CASE("decode_assignment reads both solver matrix layouts", "[mip][decode]")
     INFO("point_major=" << point_major);
     const auto decoded = dtwc::mip::decode_assignment(
       exact_assignment_fixture(point_major), 4, 2, point_major, "test backend");
-    CHECK(decoded.medoid_indices == std::vector<int>{1, 3});
-    CHECK(decoded.labels == std::vector<int>{0, 0, 1, 1});
+    CHECK(decoded.medoid_indices == std::vector<dtwc::index_t>{1, 3});
+    CHECK(decoded.labels == std::vector<dtwc::index_t>{0, 0, 1, 1});
 
     auto problem = make_small_problem(4, 8);
     problem.set_result(decoded);

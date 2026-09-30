@@ -46,7 +46,7 @@ namespace {
 const std::string kCaller = "unit::d_sampling_probe";
 
 dtwc::core::DistanceSamplingWeights weigh(const std::vector<double> &distances,
-                                          const std::vector<int> &selected)
+                                          const std::vector<dtwc::index_t> &selected)
 {
   return dtwc::core::distance_sampling_weights(distances, selected, kCaller);
 }
@@ -76,7 +76,7 @@ TEST_CASE("distance_sampling_weights zeroes selected entries and drops them from
           "[core][distance_sampling][f10]")
 {
   const std::vector<double> distances{ 1.0, 2.0, 4.0, 8.0 };
-  const std::vector<int> selected{ 1, 3 };
+  const std::vector<dtwc::index_t> selected{ 1, 3 };
   const auto weights = weigh(distances, selected);
 
   // Selected slots keep the value-initialised 0.0; their input value never leaks.
@@ -125,7 +125,7 @@ TEST_CASE("distance_sampling_weights computes the shift from unselected entries 
   SECTION("a selected outlier far below zero must not translate a nonnegative vector")
   {
     const std::vector<double> distances{ -1000.0, 2.0, 3.0 };
-    const std::vector<int> selected{ 0 };
+    const std::vector<dtwc::index_t> selected{ 0 };
     const auto weights = weigh(distances, selected);
 
     // min over unselected is 2.0, so shift = min(0.0, 2.0) = 0.0 and nothing moves.
@@ -139,7 +139,7 @@ TEST_CASE("distance_sampling_weights computes the shift from unselected entries 
   SECTION("a selected outlier must not set the shift in the negative regime")
   {
     const std::vector<double> distances{ -100.0, -3.0, -1.0 };
-    const std::vector<int> selected{ 0 };
+    const std::vector<dtwc::index_t> selected{ 0 };
     const auto weights = weigh(distances, selected);
 
     // shift = -3.0 (the min over unselected), not -100.0.
@@ -233,7 +233,7 @@ TEST_CASE("distance_sampling_weights rejects a non-finite selected distance",
   // PLAN R3-F10 requires every non-finite input to fail closed. Selected slots
   // are excluded from the distribution, but accepting poison there would make
   // the seam's validity depend on caller-specific overwrites.
-  const std::vector<int> selected{ 0 };
+  const std::vector<dtwc::index_t> selected{ 0 };
 
   SECTION("NaN")
   {
@@ -264,7 +264,7 @@ TEST_CASE("distance_sampling_weights rejects an out-of-range selected index",
 
   SECTION("index at or past the end")
   {
-    const std::vector<int> selected{ 3 };
+    const std::vector<dtwc::index_t> selected{ 3 };
     CHECK_THROWS_AS(weigh(distances, selected), std::logic_error);
     CHECK_THROWS_WITH(weigh(distances, selected),
                       ContainsSubstring("selected index is out of range"));
@@ -273,14 +273,14 @@ TEST_CASE("distance_sampling_weights rejects an out-of-range selected index",
 
   SECTION("negative index")
   {
-    const std::vector<int> selected{ -1 };
+    const std::vector<dtwc::index_t> selected{ -1 };
     CHECK_THROWS_AS(weigh(distances, selected), std::logic_error);
     CHECK_THROWS_WITH(weigh(distances, selected), ContainsSubstring(kCaller));
   }
 
   SECTION("any selected index against an empty distance vector")
   {
-    const std::vector<int> selected{ 0 };
+    const std::vector<dtwc::index_t> selected{ 0 };
     CHECK_THROWS_AS(weigh({}, selected), std::logic_error);
   }
 }

@@ -10,13 +10,19 @@
 #include <algorithms/detail/fast_clara_plan.hpp>
 #include <algorithms/tadpole.hpp>
 #include <core/medoid_assignment_policy.hpp>
+#include <mip/decode_assignment.hpp>
+#include <mip/lagrangian_root.hpp>
+#include <mip/nearest_medoid.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <span>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -80,6 +86,44 @@ static_assert(same<decltype(&dtwc::core::detail::require_finite_medoid_distance)
 static_assert(same<decltype(&dtwc::core::detail::require_finite_candidate_distance),
                    double (*)(double, std::string_view, std::size_t, index_t)>);
 
+// Labels and medoids: one container type from every producer to every reader.
+using indices = std::vector<index_t>;
+static_assert(same<decltype(ClusteringResult::labels), indices>);
+static_assert(same<decltype(ClusteringResult::medoid_indices), indices>);
+static_assert(same<decltype(Problem::clusters_ind), indices>);
+static_assert(same<decltype(Problem::centroids_ind), indices>);
+static_assert(same<decltype(std::declval<const Problem &>().labels()), const indices &>);
+static_assert(same<decltype(std::declval<const Problem &>().medoids()), const indices &>);
+static_assert(same<decltype(std::declval<const dtwc::Result &>().labels()), const indices &>);
+static_assert(same<decltype(std::declval<const dtwc::Result &>().medoids()), const indices &>);
+static_assert(same<decltype(alg::BarycenterClusteringResult::labels), indices>);
+static_assert(same<decltype(&alg::dtw_barycenter),
+                   std::vector<dtwc::data_t> (*)(const Problem &, const indices &, std::size_t,
+                                                 const alg::BarycenterOptions &)>);
+static_assert(same<decltype(&dtwc::scores::adjusted_rand), double (*)(const indices &, const indices &)>);
+static_assert(same<decltype(&dtwc::scores::normalized_mutual_info),
+                   double (*)(const indices &, const indices &)>);
+static_assert(same<decltype(dtwc::mip::LagrangianResult::medoids), indices>);
+static_assert(same<decltype(dtwc::mip::LagrangianResult::labels), indices>);
+static_assert(same<decltype(dtwc::mip::LagrangianResult::core), indices>);
+static_assert(same<decltype(dtwc::mip::LagrangianResult::n_core), index_t>);
+static_assert(same<decltype(&dtwc::mip::decode_assignment),
+                   ClusteringResult (*)(std::span<const double>, std::size_t, index_t, bool,
+                                        std::string_view)>);
+static_assert(same<decltype(dtwc::mip::NearestMedoid::position), index_t>);
+static_assert(same<decltype(&dtwc::mip::lagrangian_root),
+                   dtwc::mip::LagrangianResult (*)(const double *, index_t, index_t, double)>);
+
+// set_clusters: the index_t overload takes a braced list; v1's non-const
+// std::vector<int>& overload cannot bind one, so the call is not ambiguous.
+static_assert(requires(Problem &p) { p.set_clusters({ 0, 2 }); });
+
+// The break W11a makes on purpose: a std::vector<int> no longer assigns to the
+// public outputs (CHANGELOG: declare the vector as std::vector<dtwc::index_t>).
+static_assert(!std::is_assignable_v<indices &, const std::vector<int> &>);
+static_assert(!std::is_assignable_v<decltype((std::declval<Problem &>().clusters_ind)),
+                                    const std::vector<int> &>);
+
 } // namespace
 
 TEST_CASE("Option counts hold values above INT_MAX", "[index_t]")
@@ -98,4 +142,32 @@ TEST_CASE("Option counts hold values above INT_MAX", "[index_t]")
   CHECK(one_batch.n_clusters == big);
   CHECK(one_batch.batch_size == big);
   CHECK(hierarchical.max_points == big);
+}
+
+TEST_CASE("set_clusters takes an index_t list and v1's std::vector<int>", "[index_t]")
+{
+  std::vector<std::vector<dtwc::data_t>> series{ { 0.0 }, { 1.0 }, { 2.0 }, { 3.0 } };
+  std::vector<std::string> names{ "a", "b", "c", "d" };
+  Problem prob;
+  prob.set_data(dtwc::Data(std::move(series), std::move(names)));
+  prob.set_n_clusters(2);
+
+  prob.set_clusters({ 1, 3 });
+  CHECK(prob.medoids() == std::vector<index_t>{ 1, 3 });
+
+  std::vector<int> v1_medoids{ 0, 2 };
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+  prob.set_clusters(v1_medoids);
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+  CHECK(prob.medoids() == std::vector<index_t>{ 0, 2 });
 }

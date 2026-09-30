@@ -55,16 +55,16 @@ constexpr double kInf = std::numeric_limits<double>::infinity();
 struct OracleResult
 {
   double cost = kInf;
-  std::vector<int> medoids;
+  std::vector<index_t> medoids;
 };
 
 /// Exact p-median optimum by enumerating every C(N,k) medoid subset (N ≤ 14).
 OracleResult brute_force_pmedian(const std::vector<double> &D, int N, int k)
 {
-  std::vector<int> comb(static_cast<std::size_t>(k));
+  std::vector<index_t> comb(static_cast<std::size_t>(k));
   std::iota(comb.begin(), comb.end(), 0);
 
-  auto eval = [&](const std::vector<int> &S) {
+  auto eval = [&](const std::vector<index_t> &S) {
     double c = 0.0;
     for (int j = 0; j < N; ++j) {
       double best = kInf;
@@ -92,7 +92,7 @@ OracleResult brute_force_pmedian(const std::vector<double> &D, int N, int k)
 }
 
 /// Raw p-median cost of a medoid set on a dense D.
-double cost_of(const std::vector<int> &medoids, const std::vector<double> &D, int N)
+double cost_of(const std::vector<index_t> &medoids, const std::vector<double> &D, int N)
 {
   double c = 0.0;
   for (int j = 0; j < N; ++j) {

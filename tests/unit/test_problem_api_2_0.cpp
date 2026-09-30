@@ -628,8 +628,8 @@ TEST_CASE("F22 asymmetric compatibility oracle is non-degenerate",
         problem.dist_by_ind(static_cast<int>(i), static_cast<int>(j)),
         f22_distance_oracle[i][j]));
 
-  const std::vector<int> expected_labels{ 0, 0, 0, 1, 1, 1 };
-  const std::vector<int> expected_medoids{ 1, 4 };
+  const std::vector<index_t> expected_labels{ 0, 0, 0, 1, 1, 1 };
+  const std::vector<index_t> expected_medoids{ 1, 4 };
   problem.clusters_ind.assign(f22_point_count, -1);
   problem.assign_clusters();
   CHECK(problem.labels() == expected_labels);
@@ -1079,7 +1079,7 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
 
   // 16. Problem::assignClusters()
   {
-    const std::vector<int> expected{ 0, 0, 0, 1, 1, 1 };
+    const std::vector<index_t> expected{ 0, 0, 0, 1, 1, 1 };
     Problem legacy = make_f22_problem();
     Problem canonical = make_f22_problem();
     legacy.clusters_ind.assign(f22_point_count, -1);
@@ -1097,7 +1097,7 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
 
   // 17. Problem::calculateMedoids()
   {
-    const std::vector<int> expected{ 1, 4 };
+    const std::vector<index_t> expected{ 1, 4 };
     Problem legacy = make_f22_problem();
     Problem canonical = make_f22_problem();
     legacy.fill_distance_matrix();
@@ -1147,8 +1147,8 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
 
     bool route_ok = false;
     if (highs_solver_available()) {
-      const std::vector<int> expected_labels{ 0, 0, 0, 1, 1, 1 };
-      const std::vector<int> expected_medoids{ 1, 4 };
+      const std::vector<index_t> expected_labels{ 0, 0, 0, 1, 1, 1 };
+      const std::vector<index_t> expected_medoids{ 1, 4 };
       route_ok =
         legacy_outcome.kind == f22_exception_kind::none
         && canonical_outcome.kind == f22_exception_kind::none
