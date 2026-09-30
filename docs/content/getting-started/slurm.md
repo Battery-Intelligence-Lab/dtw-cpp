@@ -93,10 +93,19 @@ The `scripts/slurm/build-arc.sh` script supports multiple hardware targets:
 |---------|----------|-----|----------|
 | `arc` | AVX-512 | No | ARC cluster (Cascade Lake + Turin) |
 | `htc-cpu` | AVX2 | No | HTC CPU-only, portable across all nodes |
-| `htc-gpu` | AVX2 | All CUDA archs | HTC with any GPU (P100 through H100) |
+| `htc-gpu` | AVX2 | sm_80, sm_86, sm_89 | HTC A100, RTX A6000 and L40S nodes (for H100 use `h100`) |
 | `htc-v4` | AVX-512 | No | HTC nodes with AVX-512 (excludes Broadwell/Rome) |
 | `h100` | AVX-512 | sm_90 only | H100 nodes, fastest compile |
 | `grace` | AArch64 native | No | Grace Hopper (ARM), CPU only |
+
+### Building on the target node
+
+Run `htc-gpu` or `h100` on a GPU node, where `nvidia-smi` lists a GPU of compute capability 8.0 or newer,
+and the script builds for that node: `CMAKE_CUDA_ARCHITECTURES=native` and `-march=native`, the most
+specialised binary. Such a build runs only on that node type, so build again for each GPU type you use.
+Anywhere else (a node without a GPU, or one whose GPU is below 8.0) the profile's portable lists above
+apply. `slurm_remote.sh build` submits to the `interactive` partition without a GPU request, so it always
+takes the portable route.
 
 ## Test Datasets
 
@@ -131,22 +140,31 @@ DTWC++ was developed and tested on Oxford's [Advanced Research Computing (ARC)](
 
 ### GPU Resources (HTC cluster only)
 
-GPUs are requested with an `#SBATCH --gres` directive:
+GPUs are requested with an `#SBATCH --gres` directive. ARC's [job scheduling guide](https://arc-user-guide.readthedocs.io/en/latest/job-scheduling.html#gpu-resources) documents these forms:
 
 ```bash
-#SBATCH --gres=gpu:1              # Any available GPU
-#SBATCH --gres=gpu:v100:1         # Specific type
-#SBATCH --gres=gpu:a100:1         # A100
+#SBATCH --gres=gpu:1                                 # Any GPU
+#SBATCH --gres=gpu:a100:1                            # A100
+#SBATCH --gres=gpu:1 --constraint='gpu_gen:Ampere'   # By generation
 ```
 
-Or via constraints:
+It documents the types P100, V100, RTX (Titan RTX), RTX8000 and A100 and the constraints `gpu_sku:`, `gpu_gen:`,
+`gpu_cc:`, `gpu_mem:` and `nvlink:`. It names no type for the RTX A6000, H100 and L40S nodes, and the
+[systems page](https://arc-user-guide.readthedocs.io/en/latest/arc-systems.html#gpu-resources) that lists the hardware does not say
+how to request a node type. `slurm_remote.sh submit-benchmark-gpu` passes `gpu:l40s:1` and `gpu:h100:1` for those two;
+ask ARC support for the others, or read `Gres` and `AvailableFeatures` from `scontrol show node <node>` for a node that
+the systems page lists.
 
-```bash
-#SBATCH --gres=gpu:1 --constraint='gpu_sku:V100'
-#SBATCH --gres=gpu:1 --constraint='gpu_gen:Ampere'
-```
+GPUs on the htc cluster, from the systems page: P100, V100, RTX8000, Titan RTX, A100, RTX A6000, H100 and L40S, plus one
+MI210 node and one GH200 (Grace Hopper) node. Co-investment GPU nodes are limited to the **short** partition (12-hour maximum).
 
-Available GPUs: P100, V100, RTX (Titan RTX), RTX8000, A100, H100 (co-investment), L40S (co-investment).
+#### GPUs DTWC++ can use
+
+DTWC++ needs CUDA compute capability 8.0 (Ampere) or newer. On ARC that is the A100 (8.0), RTX A6000 (8.6),
+L40S (8.9) and H100 (9.0). The P100 (6.0), V100 (7.0), RTX8000 and Titan RTX (7.5) are refused with a
+`DeviceError` when the GPU is selected; nothing falls back to the CPU. A request for any GPU (`gpu:1`) may be
+given one of the refused types, so name an A100, or an Ampere-or-newer node type, when you need the GPU. The MI210 is not a CUDA device,
+and the GH200 node is AArch64 (the `grace` profile builds without CUDA).
 
 Co-investment GPU nodes are limited to the **short** partition (12-hour maximum).
 
@@ -176,4 +194,5 @@ SLURM jobs should use `$SCRATCH` (or `$TMPDIR`) for I/O and copy results back to
 | SSH connection refused | Check VPN connection; ARC login nodes require university network |
 | `$SCRATCH` not set | Your cluster may not set this; the job scripts fall back to `$TMPDIR` or `/tmp` |
 | GPU not detected in job | Verify the job script has `#SBATCH --gres=gpu:1` |
+| `DeviceError` naming a compute capability below 8.0 | The job was given a P100, V100, RTX8000 or Titan RTX; request an A100, RTX A6000, L40S or H100 |
 | `dos2unix: command not found` | Use `sed -i 's/\r$//' script.sh` as alternative |

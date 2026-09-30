@@ -54,10 +54,15 @@ uv run benchmarks/verify_results.py \
 |---------|-----|-----|-----------------|
 | `arc` | AVX-512 | -- | ARC cluster (Cascade Lake + Turin) |
 | `htc-cpu` | AVX2 | -- | HTC all CPU nodes (portable) |
-| `htc-gpu` | AVX2 | All archs | HTC any GPU (P100--H100) |
+| `htc-gpu` | AVX2 | sm_80;86;89 | HTC A100, RTX A6000, L40S (H100: use `h100`) |
 | `htc-v4` | AVX-512 | -- | HTC AVX-512 nodes only |
 | `h100` | AVX-512 | sm_90 | H100 nodes (fastest compile) |
 | `grace` | AArch64 | -- | Grace Hopper (ARM, CPU only) |
+
+`htc-gpu` and `h100` run on a GPU node (`nvidia-smi` lists a GPU of compute capability 8.0 or newer) build for
+that node: `CMAKE_CUDA_ARCHITECTURES=native` and `-march=native`. That binary runs only on that node type.
+Elsewhere the profile's portable lists above apply. `slurm_remote.sh build` submits to the `interactive`
+partition without a GPU request, so it always builds the portable binary.
 
 ## .env Configuration
 
@@ -92,12 +97,24 @@ advisory `.env` entries are not consumed by this wrapper.
 ### GPU Access (HTC cluster only)
 
 ```bash
-#SBATCH --gres=gpu:1                     # Any GPU
-#SBATCH --gres=gpu:v100:1               # Specific type
-#SBATCH --gres=gpu:1 --constraint='gpu_sku:H100'  # Via constraint
+#SBATCH --gres=gpu:1                                 # Any GPU
+#SBATCH --gres=gpu:a100:1                            # A100
+#SBATCH --gres=gpu:1 --constraint='gpu_gen:Ampere'   # By generation
 ```
 
-Available: P100, V100, RTX, RTX8000, A100, H100 (co-invest), L40S (co-invest).
+ARC's [job scheduling guide](https://arc-user-guide.readthedocs.io/en/latest/job-scheduling.html#gpu-resources)
+documents type names for P100, V100, RTX (Titan RTX), RTX8000 and A100, and the constraints `gpu_sku:`, `gpu_gen:`,
+`gpu_cc:`, `gpu_mem:`, `nvlink:`. It names nothing for the RTX A6000, H100 and L40S nodes, and the
+[systems page](https://arc-user-guide.readthedocs.io/en/latest/arc-systems.html#gpu-resources) that lists the hardware
+does not say how to request a node type. `slurm_remote.sh submit-benchmark-gpu` passes `gpu:l40s:1` and `gpu:h100:1`;
+ask ARC support for the rest, or read `Gres` and `AvailableFeatures` from `scontrol show node <node>`.
+
+GPUs on htc (systems page): P100, V100, RTX8000, Titan RTX, A100, RTX A6000, H100, L40S, one MI210 node and one
+GH200 node. DTWC++ needs CUDA compute capability 8.0 (Ampere) or newer: A100, RTX A6000, L40S and H100 qualify.
+P100, V100, RTX8000 and Titan RTX are refused with a `DeviceError` (no CPU fallback), and a request for any GPU
+(`gpu:1`) may be given one of them. The MI210 is not CUDA; the GH200 node is AArch64 (`grace` profile, no CUDA).
+
+Co-investment GPU nodes are limited to the **short** partition (12 h).
 
 ### Storage
 
