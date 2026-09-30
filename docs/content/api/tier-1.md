@@ -121,8 +121,8 @@ Canonical class name is **`Result`** in all three languages.
 
 | Member | C++ `dtwc::Result` `[live]` | Python `dtwcpp.Result` `[live]` | MATLAB `dtwc.Result` `[live]` |
 |---|---|---|---|
-| `labels` | `const std::vector<int>& labels() const` | `res.labels` → `np.ndarray[int]` | `res.labels` → int32 row (1-based) |
-| `medoids` | `const std::vector<int>& medoids() const` | `res.medoids` → `np.ndarray[int]` | `res.medoids` → int32 row (1-based) |
+| `labels` | `const std::vector<index_t>& labels() const` (`index_t` = `std::int64_t`) | `res.labels` → `np.ndarray[int]` | `res.labels` → int32 row (1-based) |
+| `medoids` | `const std::vector<index_t>& medoids() const` | `res.medoids` → `np.ndarray[int]` | `res.medoids` → int32 row (1-based) |
 | `score(name)` | `double score(std::string_view name) const`; fills the retained `Problem` on demand after a matrix-free run | `res.score(name: str) -> float`; same lazy fill, so `onebatch`/`clara`/`tadpole` results are scoreable and `save()` writes all four CSVs | `s = res.score(name)` |
 | `distance_matrix` | `std::vector<double> distance_matrix() const` `[introduced-2.0]` — dense **row-major N x N**; fills the retained `Problem` on demand exactly as `score()` does, so a matrix-free run is still readable | `res.distance_matrix` → dense N x N `np.ndarray`; a matrix-free `onebatch`/`clara`/`tadpole` run leaves it unmaterialised and the property fills the retained `Problem` on first read, exactly as `score()`/`save()` do (`_api.py:160-172`). `None` only for an `hpc` run, which has no local `Problem` | private helper `Result.distance_matrix()` (`Result.m:107-121`), used by `plot()` |
 | `save(dir)` | `void save(const std::filesystem::path& dir) const` | `res.save(dir)`; writes the loader's series names (not ordinals), C++'s line endings (the platform one for the three text-mode files, LF for the binary-mode distance matrix), `setprecision(8)` silhouettes and `to_chars(general, max_digits10)` matrix values, so a Python run and a CLI run on one file are byte-identical; an undefined silhouette warns (`RuntimeWarning`, stderr) and skips the file | `res.save(dir)` |

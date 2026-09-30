@@ -105,8 +105,8 @@ Both external functions require label vectors of equal length.
 
 ```cpp
 double dtwc::scores::adjusted_rand(
-    const std::vector<int> &labels_true,
-    const std::vector<int> &labels_pred);
+    const std::vector<dtwc::index_t> &labels_true,
+    const std::vector<dtwc::index_t> &labels_pred);
 ```
 
 The Adjusted Rand score compares the pair-count contingency table after its
@@ -117,8 +117,8 @@ denominator-zero case also returns `1` in the current implementation.
 
 ```cpp
 double dtwc::scores::normalized_mutual_info(
-    const std::vector<int> &labels_true,
-    const std::vector<int> &labels_pred);
+    const std::vector<dtwc::index_t> &labels_true,
+    const std::vector<dtwc::index_t> &labels_pred);
 ```
 
 The implemented arithmetic-mean normalization is
@@ -145,7 +145,7 @@ double di = dtwc::scores::dunn(prob);
 double ine = dtwc::scores::inertia(prob);
 double ch = dtwc::scores::calinski_harabasz(prob);
 
-std::vector<int> true_labels{0, 0, 1, 1, 2, 2};
+std::vector<dtwc::index_t> true_labels{0, 0, 1, 1, 2, 2};
 const auto &pred_labels = prob.labels();
 double ari = dtwc::scores::adjusted_rand(true_labels, pred_labels);
 double nmi = dtwc::scores::normalized_mutual_info(true_labels, pred_labels);

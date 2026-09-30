@@ -46,20 +46,19 @@ int main(int argc, char **argv)
   const auto result = dtwc::cluster(data, 3, &quot;pam&quot;, 3, &quot;cpu&quot;, 100);
 
   // Canonicalise cluster IDs so the printed answer is independent of medoid order.
-  std::vector&lt;int&gt; medoids = result.medoids();
+  std::vector&lt;dtwc::index_t&gt; medoids = result.medoids();
   std::sort(medoids.begin(), medoids.end());
-  std::vector&lt;int&gt; labels(result.labels().size());
+  std::vector&lt;dtwc::index_t&gt; labels(result.labels().size());
   for (std::size_t i = 0; i &lt; labels.size(); ++i) {
-    const int assigned = result.medoids().at(
+    const dtwc::index_t assigned = result.medoids().at(
       static_cast&lt;std::size_t&gt;(result.labels().at(i)));
-    labels[i] = static_cast&lt;int&gt;(
-      std::lower_bound(medoids.begin(), medoids.end(), assigned) - medoids.begin());
+    labels[i] = std::lower_bound(medoids.begin(), medoids.end(), assigned) - medoids.begin();
   }
 
-  const std::vector&lt;int&gt; expected = {
+  const std::vector&lt;dtwc::index_t&gt; expected = {
     0,0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1,1, 2,2,2,2,2,2,2,2,2
   };
-  if (labels != expected || medoids != std::vector&lt;int&gt;{4, 13, 22})
+  if (labels != expected || medoids != std::vector&lt;dtwc::index_t&gt;{4, 13, 22})
     throw std::runtime_error(&quot;quickstart result differs from the conformance fixture&quot;);
 
   std::cout &lt;&lt; &quot;labels: 0x9 1x9 2x9\nmedoids: 4 13 22\n&quot;;

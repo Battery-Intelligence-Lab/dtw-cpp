@@ -185,9 +185,9 @@ void bind(CLI::App &app, Config &config)
 
   // Clustering
   CLI::Option *n_clusters = key(app, "-k,--n-clusters", config.k, "Number of clusters")->check(CLI::PositiveNumber);
-  app.add_option_function<int>(
+  app.add_option_function<index_t>(
        "--clusters",
-       [&config, n_clusters](int k) {
+       [&config, n_clusters](index_t k) {
          warn_deprecated("--clusters", "--n-clusters");
          if (n_clusters->count() == 0) config.k = k; // the canonical spelling wins
        },

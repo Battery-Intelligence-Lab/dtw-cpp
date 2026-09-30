@@ -9,6 +9,7 @@
 #include <dtwc.hpp>
 #include <algorithms/detail/fast_clara_plan.hpp>
 #include <algorithms/tadpole.hpp>
+#include <cli/config.hpp>
 #include <core/medoid_assignment_policy.hpp>
 #include <mip/decode_assignment.hpp>
 #include <mip/lagrangian_root.hpp>
@@ -117,6 +118,29 @@ static_assert(same<decltype(&dtwc::mip::lagrangian_root),
 // set_clusters: the index_t overload takes a braced list; v1's non-const
 // std::vector<int>& overload cannot bind one, so the call is not ambiguous.
 static_assert(requires(Problem &p) { p.set_clusters({ 0, 2 }); });
+
+// Loaders, the Tier-1 surface and the CLI Config: row, column and series counts
+// are index_t, tuning values int, the seed uint64_t.
+static_assert(same<decltype(dtwc::LoadOptions::Ndata), index_t>);
+static_assert(same<decltype(dtwc::LoadOptions::start_row), index_t>);
+static_assert(same<decltype(dtwc::LoadOptions::start_col), index_t>);
+static_assert(same<decltype(dtwc::LoadOptions::verbose), int>);
+static_assert(same<decltype(std::declval<const dtwc::Dataset &>().skip_cols()), index_t>);
+static_assert(same<decltype(std::declval<const dtwc::Dataset &>().skip_rows()), index_t>);
+static_assert(same<decltype(dtwc::Config::k), index_t>);
+static_assert(same<decltype(dtwc::Config::sample_size), index_t>);
+static_assert(same<decltype(dtwc::Config::batch_size), index_t>);
+static_assert(same<decltype(dtwc::Config::skip_rows), index_t>);
+static_assert(same<decltype(dtwc::Config::skip_cols), index_t>);
+static_assert(same<decltype(dtwc::Config::seed), std::uint64_t>);
+static_assert(same<decltype(dtwc::Config::max_iter), int>);
+static_assert(same<decltype(dtwc::Config::n_init), int>);
+static_assert(same<decltype(dtwc::Config::n_samples), int>);
+static_assert(same<decltype(dtwc::Config::band), int>);
+// Two int skips still bind the skips: the deleted (source, n, char) trap admits
+// only a char, since an int converts to index_t and to char alike.
+static_assert(requires(const std::filesystem::path &p) { dtwc::load(p, 0, 1); });
+static_assert(requires(dtwc::Dataset::series_type s) { dtwc::load(s, 0, 1); });
 
 // The break W11a makes on purpose: a std::vector<int> no longer assigns to the
 // public outputs (CHANGELOG: declare the vector as std::vector<dtwc::index_t>).

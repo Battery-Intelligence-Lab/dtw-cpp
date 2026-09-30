@@ -7,6 +7,7 @@
 
 #include "Data.hpp"
 
+#include <concepts>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -34,18 +35,18 @@ public:
   bool is_path() const noexcept;
   const std::filesystem::path &path() const;
   const std::string &name() const noexcept { return name_; }
-  int skip_cols() const noexcept { return skip_cols_; }
-  int skip_rows() const noexcept { return skip_rows_; }
+  index_t skip_cols() const noexcept { return skip_cols_; }
+  index_t skip_rows() const noexcept { return skip_rows_; }
   char delimiter() const noexcept { return delimiter_; }
 
 private:
-  friend Dataset load(const std::filesystem::path &, int, int, char, std::string_view);
-  friend Dataset load(series_type, int, int, char, std::string_view);
-  friend Result cluster(Dataset &&, int, std::string_view, int, std::string_view, int);
+  friend Dataset load(const std::filesystem::path &, index_t, index_t, char, std::string_view);
+  friend Dataset load(series_type, index_t, index_t, char, std::string_view);
+  friend Result cluster(Dataset &&, index_t, std::string_view, int, std::string_view, int);
 
-  explicit Dataset(std::filesystem::path source, int skip_cols, int skip_rows,
+  explicit Dataset(std::filesystem::path source, index_t skip_cols, index_t skip_rows,
                    char delimiter, std::string name);
-  explicit Dataset(series_type source, int skip_cols, int skip_rows,
+  explicit Dataset(series_type source, index_t skip_cols, index_t skip_rows,
                    char delimiter, std::string name);
 
   /// The in-memory series, moved out, with skip_rows / skip_cols applied (a path
@@ -53,26 +54,30 @@ private:
   Data materialize_local() &&;
 
   std::variant<std::filesystem::path, series_type> source_;
-  int skip_cols_ = 0;
-  int skip_rows_ = 0;
+  index_t skip_cols_ = 0;
+  index_t skip_rows_ = 0;
   char delimiter_ = 0;
   std::string name_ = "dataset";
 };
 
 /** Wrap a path lazily.  No file is opened until cluster() is called.
  *  `skip_rows` drops that many leading LINES of the file, as `--skip-rows` does. */
-Dataset load(const std::filesystem::path &source, int skip_cols = 0,
-             int skip_rows = 0, char delimiter = 0, std::string_view name = "");
+Dataset load(const std::filesystem::path &source, index_t skip_cols = 0,
+             index_t skip_rows = 0, char delimiter = 0, std::string_view name = "");
 
 /** Wrap an in-memory row-per-series array.  `skip_rows` drops that many leading
  *  SERIES — one memory row is one file line. */
-Dataset load(Dataset::series_type source, int skip_cols = 0, int skip_rows = 0,
+Dataset load(Dataset::series_type source, index_t skip_cols = 0, index_t skip_rows = 0,
              char delimiter = 0, std::string_view name = "");
 
 /** `load(src, skip_cols, delimiter)` does not compile: without these,
- *  `load(p, 0, ',')` would bind the char to `skip_rows` (',' == 44). */
-Dataset load(const std::filesystem::path &, int, char, std::string_view = "") = delete;
-Dataset load(Dataset::series_type, int, char, std::string_view = "") = delete;
+ *  `load(p, 0, ',')` would bind the char to `skip_rows` (',' == 44). Only a
+ *  char matches: an int literal converts to index_t and to char alike, so a
+ *  plain char parameter would make `load(p, 0, 1)` ambiguous. */
+Dataset load(const std::filesystem::path &, index_t, std::same_as<char> auto,
+             std::string_view = "") = delete;
+Dataset load(Dataset::series_type, index_t, std::same_as<char> auto,
+             std::string_view = "") = delete;
 
 /** Set the process-wide device and return its canonical name. */
 std::string device(std::string_view name);
@@ -124,9 +129,9 @@ private:
  * An in-memory Dataset passed as an rvalue hands its series to the run; an lvalue
  * one is copied.
  */
-Result cluster(const Dataset &data, int k, std::string_view method = "pam",
+Result cluster(const Dataset &data, index_t k, std::string_view method = "pam",
                int band = -1, std::string_view device = "", int max_iter = 100);
-Result cluster(Dataset &&data, int k, std::string_view method = "pam",
+Result cluster(Dataset &&data, index_t k, std::string_view method = "pam",
                int band = -1, std::string_view device = "", int max_iter = 100);
 
 } // namespace dtwc

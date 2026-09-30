@@ -109,7 +109,7 @@ inline void ignoreBOM(std::istream &in, const fs::path &path = {})
  * for `Ndata == 0`): `Ndata == -1` means "all", otherwise stop at exactly
  * `Ndata`. Anything below -1 is rejected.
  */
-inline void validate_ndata(int Ndata, const char *ctx)
+inline void validate_ndata(index_t Ndata, const char *ctx)
 {
   if (Ndata < -1)
     throw InvalidInput(
@@ -118,7 +118,7 @@ inline void validate_ndata(int Ndata, const char *ctx)
 }
 
 /// True while another series may still be produced.
-inline bool ndata_wants_more(int Ndata, std::size_t produced)
+inline bool ndata_wants_more(index_t Ndata, std::size_t produced)
 {
   return Ndata < 0 || produced < static_cast<std::size_t>(Ndata);
 }
@@ -246,7 +246,7 @@ T parse_numeric_field(std::string_view raw_token, const fs::path &path,
 
 template <typename T, typename Consumer>
 std::size_t parse_numeric_row(std::string_view line, const fs::path &path,
-                              std::size_t row, int start_column,
+                              std::size_t row, index_t start_column,
                               char delimiter, Consumer &&consume)
 {
   if (start_column < 0)
@@ -274,7 +274,7 @@ std::size_t parse_numeric_row(std::string_view line, const fs::path &path,
 template <typename T>
 std::optional<T> parse_series_value_row(std::string_view line,
                                         const fs::path &path,
-                                        std::size_t row, int start_column,
+                                        std::size_t row, index_t start_column,
                                         char delimiter,
                                         bool allow_legacy_empty_header)
 {
@@ -316,13 +316,13 @@ std::optional<T> parse_series_value_row(std::string_view line,
 /// vanish, shifting every later value, in a folder file.
 template <typename OnLine>
 std::size_t for_each_data_line(std::istream &in, const fs::path &path,
-                               int start_row, int Ndata, OnLine &&on_line)
+                               index_t start_row, index_t Ndata, OnLine &&on_line)
 {
   std::string line;
   std::size_t row = 0, produced = 0, blank_row = 0;
   while (ndata_wants_more(Ndata, produced) && std::getline(in, line)) {
     ++row;
-    if (static_cast<long long>(row) <= start_row) continue; // a header row
+    if (static_cast<index_t>(row) <= start_row) continue; // a header row
     if (trim_ascii(line).empty()) {
       if (blank_row == 0) blank_row = row;
       continue;
@@ -362,7 +362,7 @@ inline std::ifstream open_text_file(const fs::path &path, std::string_view reade
  * @return std::vector<data_t> A vector containing the read data.
  */
 template <typename data_t>
-auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char delimiter = ',')
+auto readFile(const fs::path &name, index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
   auto in = text_io_detail::open_text_file(name, "readFile");
 
@@ -418,10 +418,10 @@ inline std::vector<fs::path> sorted_directory_files(const fs::path &folder_path)
  * delegate to the struct-based form.
  */
 struct LoadOptions {
-  int Ndata = -1;       //!< Max number of series to read; -1 = all.
-  int verbose = 1;      //!< Verbosity level for logging.
-  int start_row = 0;    //!< First row to read (skip headers).
-  int start_col = 0;    //!< First column to read (skip ID columns).
+  index_t Ndata = -1;     //!< Max number of series to read; -1 = all.
+  int verbose = 1;        //!< Verbosity level for logging.
+  index_t start_row = 0;  //!< First row to read (skip headers).
+  index_t start_col = 0;  //!< First column to read (skip ID columns).
   char delimiter = ','; //!< Field delimiter character.
 };
 
@@ -468,8 +468,8 @@ auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
 /// Positional-arg overload retained for backwards compatibility; delegates to
 /// the LoadOptions-based form.
 template <typename data_t, typename Tpath>
-auto load_folder(Tpath &folder_path, int Ndata, int verbose = 1,
-                 int start_row = 0, int start_col = 0, char delimiter = ',')
+auto load_folder(Tpath &folder_path, index_t Ndata, int verbose = 1,
+                 index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
   return load_folder<data_t>(folder_path,
     LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
@@ -522,8 +522,8 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
 /// Positional-arg overload retained for backwards compatibility; delegates to
 /// the LoadOptions-based form.
 template <typename data_t>
-auto load_batch_file(fs::path &file_path, int Ndata, int verbose = 1,
-                     int start_row = 0, int start_col = 0, char delimiter = ',')
+auto load_batch_file(fs::path &file_path, index_t Ndata, int verbose = 1,
+                     index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
   return load_batch_file<data_t>(file_path,
     LoadOptions{Ndata, verbose, start_row, start_col, delimiter});

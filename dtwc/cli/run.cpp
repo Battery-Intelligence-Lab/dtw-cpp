@@ -551,7 +551,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
   // ---- 5. Cluster; the matrix methods fill through the Problem, on its device ----
   core::ClusteringResult result;
-  const int k = config.k;
+  const index_t k = config.k;
   switch (method) {
   case ClusterMethod::PAM:
     if (config.verbose) std::cout << "Running FastPAM (k=" << k << ") ...\n";
@@ -560,7 +560,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     result = fast_pam_seeded(prob, k, config.seed, config.max_iter);
     for (int restart = 1; restart < config.n_init; ++restart) {
       auto candidate =
-        fast_pam_seeded(prob, k, std::uint64_t{ config.seed } + static_cast<std::uint64_t>(restart), config.max_iter);
+        fast_pam_seeded(prob, k, config.seed + static_cast<std::uint64_t>(restart), config.max_iter);
       if (candidate.total_cost < result.total_cost) result = std::move(candidate);
     }
     if (config.verbose)

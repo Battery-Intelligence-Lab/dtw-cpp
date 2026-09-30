@@ -131,7 +131,7 @@ The eight same-name reads for encapsulated state are `method()`, `random_seed()`
 
 | Live C++ member | Source | 2.0 fate |
 |---|---|---|
-| `set_clusters(std::vector<int>&)` | `Problem.hpp` | **stays C++-only**, canonical `set_clusters` (already snake_case); seeds candidate medoids. Not bound (internal seeding hook). |
+| `set_clusters(const std::vector<index_t>&)` | `Problem.hpp` | **stays C++-only**, canonical `set_clusters` (already snake_case); seeds candidate medoids. Not bound (internal seeding hook). v1's `set_clusters(std::vector<int>&)` stays `[[deprecated]]` and converts. |
 | `cluster_and_process()` | `Problem.hpp` | **stays C++-only** convenience (cluster + write outputs). The Tier-1 `cluster()` free function (§1.3) is its cross-language successor; not bound. |
 | `resize()` | `Problem.hpp` | private invariant maintenance, as frozen |
 | `init()` | `Problem.hpp` | **stays C++-only**, canonical `init` (runs `init_fun`); not bound. |
