@@ -14,7 +14,7 @@ classdef Result < handle
 %   labels  : int32 row vector (1-based cluster assignment per series).
 %   medoids : int32 row vector (1-based medoid series index per cluster).
 %   cost    : double, sum of intra-cluster DTW distances.
-%   device  : char, normalised device name the run used ('cpu'/'gpu'/'hpc').
+%   device  : char, normalised device name the run used ('cpu'/'gpu').
 %
 %   See also dtwc.cluster, dtwc.silhouette
 

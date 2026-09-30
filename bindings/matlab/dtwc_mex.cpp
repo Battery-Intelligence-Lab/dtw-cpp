@@ -40,7 +40,7 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/warping_missing.hpp"
 #include "../../dtwc/warping_missing_arow.hpp"
 #include "../../dtwc/soft_dtw.hpp"
-#include "../../dtwc/base/env.hpp"     // dtwc::Env / device() (contract §1.1, §6)
+#include "../../dtwc/base/env.hpp"     // detail::parse_device: the device-name grammar
 #include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
@@ -519,20 +519,12 @@ static dtwc::Solver parse_solver(const std::string &s) {
   throw std::invalid_argument("Unknown solver: '" + s + "'. Valid: 'highs', 'gurobi'.");
 }
 
-/// Parse storage policy string -> enum (contract §2.1 set_storage_policy).
-static dtwc::core::StoragePolicy parse_storage_policy(const std::string &s) {
-  if (s == "auto") return dtwc::core::StoragePolicy::Auto;
-  if (s == "heap") return dtwc::core::StoragePolicy::Heap;
-  if (s == "mmap") return dtwc::core::StoragePolicy::Mmap;
-  throw std::invalid_argument("Unknown storage_policy: '" + s + "'. "
-    "Valid: 'auto', 'heap', 'mmap'.");
-}
-
 // =========================================================================
 //  Problem lifecycle commands
 // =========================================================================
 
-/// Problem::set_device from a device name, parsed by the grammar dtwc::Env uses.
+/// Problem::set_device from a device name, parsed by dtwc::detail::parse_device,
+/// the grammar behind dtwc::device(name) and the CLI's --device.
 static void set_problem_device(dtwc::Problem &prob, const mxArray *device) {
   require_char(device, "device");
   const auto [selected, index] = dtwc::detail::parse_device(get_string(device));
@@ -780,7 +772,7 @@ static void cmd_Problem_get_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   if (nrhs < 2) throw std::invalid_argument("Problem_get_distance_matrix requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
-  const auto &dm = prob.dense_distance_matrix();
+  const auto &dm = prob.distance_matrix();
   size_t N = dm.size();
   mxArray *result = mxCreateDoubleMatrix(N, N, mxREAL);
   double *out = mxGetDoubles(result);
@@ -803,7 +795,7 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   if (N != prob.size())
     throw std::invalid_argument("Distance matrix size does not match problem size.");
 
-  auto &dm = prob.dense_distance_matrix();
+  auto &dm = prob.distance_matrix();
   dm.resize(N);
   const double *data = mxGetDoubles(prhs[2]);
   for (size_t i = 0; i < N; ++i)
@@ -813,13 +805,13 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
 }
 
 // =========================================================================
-//  Device / Env commands (contract §1.1, §6 — delegate to dtwc::Env)
+//  Device commands (contract §1.1, §6 — delegate to dtwc::device)
 // =========================================================================
 
-/// set_device(name) -> canonical name ("cpu"/"gpu"/"gpu:N"/"hpc"), exactly as
-/// C++ dtwc::device(name) returns it. Env::set_device throws dtwc::DeviceError
-/// (mapped to dtwc:deviceError) on any unknown name / gpu-without-backend / hpc
-/// .env failure — NEVER a silent fallback.
+/// set_device(name) -> canonical name ("cpu"/"gpu"/"gpu:N"), exactly as C++
+/// dtwc::device(name) returns it. It throws dtwc::DeviceError (mapped to
+/// dtwc:deviceError) on an unknown name, on hpc (which C++ and MATLAB do not
+/// have) and on gpu without a backend — NEVER a silent fallback.
 static void cmd_set_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("set_device requires a device-name string.");
   require_char(prhs[1], "device");   // validate BEFORE mxArrayToString deref
@@ -887,14 +879,6 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
   plhs[0] = mxCreateLogicalScalar(ok);  // false => requested solver not compiled in
 }
 
-static void cmd_Problem_set_storage_policy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("Problem_set_storage_policy requires handle and policy string.");
-  require_char(prhs[2], "storage_policy");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  const auto candidate = parse_storage_policy(get_string(prhs[2]));
-  prob.set_storage_policy(candidate);
-}
-
 static void cmd_Problem_set_output_folder(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_output_folder requires handle and folder string.");
   require_char(prhs[2], "output_folder");
@@ -941,8 +925,6 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   plhs[0] = s;
 }
 
-/// set_cuda_settings(device_id, precision) — CUDA dispatch passthrough (contract §2.1).
-/// precision: 0 = Auto, 1 = FP32, 2 = FP64 (see CUDASettings docs).
 /// set_checkpoint(handle, struct) -- writes Problem::checkpoint, which
 /// fill_distance_matrix() consumes (contract 2.7). Fields are optional; the
 /// current value is kept for any field the struct omits.
@@ -981,12 +963,14 @@ static void cmd_Problem_get_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
   plhs[0] = s;
 }
 
+/// set_cuda_settings(device_id, precision) — CUDA dispatch passthrough (contract §2.1).
+/// precision: 0 = Auto, 1 = FP32, 2 = FP64, the values of dtwc::GpuPrecision.
 static void cmd_Problem_set_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_cuda_settings requires handle and device_id.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   auto settings = prob.cuda_settings;
   settings.device_id = get_exact_int(prhs[2], "device_id");
-  if (nrhs > 3) settings.precision = get_cuda_precision(prhs[3]);
+  if (nrhs > 3) settings.precision = static_cast<dtwc::GpuPrecision>(get_cuda_precision(prhs[3]));
   prob.set_cuda_settings(settings);
 }
 
@@ -1030,26 +1014,6 @@ static void cmd_Problem_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mx
 //  Checkpoint / resume commands (contract §2.7)
 // =========================================================================
 
-/// Reconstruct a core::ClusteringResult from a MATLAB result struct.
-/// Converts 1-based labels/medoid_indices back to 0-based at the MEX boundary.
-static dtwc::core::ClusteringResult mx_to_clustering_result(const mxArray *mx) {
-  if (!mxIsStruct(mx))
-    throw std::invalid_argument("result must be a struct with fields labels, medoid_indices, "
-      "total_cost, iterations, converged.");
-  dtwc::core::ClusteringResult r;
-
-  const mxArray *lab = mxGetField(mx, 0, "labels");
-  const mxArray *med = mxGetField(mx, 0, "medoid_indices");
-  if (!lab || !med)
-    throw std::invalid_argument("result struct is missing 'labels' or 'medoid_indices'.");
-  r.labels = label_vector_to_0based(lab, "result.labels");
-  r.medoid_indices = label_vector_to_0based(med, "result.medoid_indices");
-  if (mxArray *f = mxGetField(mx, 0, "total_cost")) r.total_cost = get_scalar(f, "total_cost");
-  if (mxArray *f = mxGetField(mx, 0, "iterations")) r.iterations = static_cast<int>(get_scalar(f, "iterations"));
-  if (mxArray *f = mxGetField(mx, 0, "converged")) r.converged = (get_scalar(f, "converged") != 0.0);
-  return r;
-}
-
 static void cmd_save_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("save_checkpoint requires handle and directory path.");
   require_char(prhs[2], "path");
@@ -1066,24 +1030,6 @@ static void cmd_load_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArr
   const bool ok = dtwc::load_checkpoint(prob, get_string(prhs[2]),
                                        optional_metric(nrhs, prhs, 3));
   plhs[0] = mxCreateLogicalScalar(ok);
-}
-
-static void cmd_save_binary_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("save_binary_checkpoint requires a result struct and a file path.");
-  require_char(prhs[2], "path");
-  const auto result = mx_to_clustering_result(prhs[1]);
-  dtwc::save_binary_checkpoint(result, std::filesystem::path(get_string(prhs[2])));
-}
-
-static void cmd_load_binary_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("load_binary_checkpoint requires a file path.");
-  require_char(prhs[1], "path");
-  dtwc::core::ClusteringResult result;
-  const bool ok = dtwc::load_binary_checkpoint(result, std::filesystem::path(get_string(prhs[1])));
-  if (!ok)
-    throw std::runtime_error("load_binary_checkpoint: file not found or invalid header: "
-      + get_string(prhs[1]));
-  plhs[0] = clustering_result_to_mx(result);  // 0-based -> 1-based inside
 }
 
 // =========================================================================
@@ -1541,7 +1487,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
   // longjmp-safe: catch C++ exceptions, exit scope, THEN call mexErrMsgIdAndTxt
   std::string error_id, error_msg;
   try {
-    // Device / Env (contract §1.1, §6)
+    // Device (contract §1.1, §6)
     if (cmd == "version") {
       if (nlhs > 0) plhs[0] = mxCreateString(DTWC_VERSION_STRING);
     }
@@ -1580,7 +1526,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Problem: 2.0 config setters (method / solver / strategies / output / MIP / CUDA)
     else if (cmd == "Problem_set_method") cmd_Problem_set_method(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_solver") cmd_Problem_set_solver(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_set_storage_policy") cmd_Problem_set_storage_policy(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_output_folder") cmd_Problem_set_output_folder(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_mip_settings") cmd_Problem_set_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_mip_settings") cmd_Problem_get_mip_settings(nlhs, plhs, nrhs, prhs);
@@ -1602,8 +1547,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Checkpoint / resume (contract §2.7)
     else if (cmd == "save_checkpoint") cmd_save_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "load_checkpoint") cmd_load_checkpoint(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "save_binary_checkpoint") cmd_save_binary_checkpoint(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "load_binary_checkpoint") cmd_load_binary_checkpoint(nlhs, plhs, nrhs, prhs);
     // Stateless DTW functions
     else if (cmd == "dtw_distance") cmd_dtw_distance(nlhs, plhs, nrhs, prhs);
     else if (cmd == "ddtw_distance") cmd_ddtw_distance(nlhs, plhs, nrhs, prhs);

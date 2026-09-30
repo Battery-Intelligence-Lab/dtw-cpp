@@ -292,9 +292,9 @@ function test_checkpoint_options_round_trip(testCase)
 end
 
 function test_checkpoint_mid_fill_publishes_and_resumes(testCase)
-%   fill_distance_matrix() consumes Problem::checkpoint (contract 2.7). A
-%   directory retains one generation per successful save, whose manifest must
-%   record the complete pair count after a complete fill.
+%   fill_distance_matrix() consumes Problem::checkpoint (contract 2.7). The
+%   checkpoint is the one file <directory>/<name>.dtwm, saved after every
+%   save_interval rows and complete after a complete fill.
     X = [0 0 0 0; 0 1 0 1; 20 20 20 20; 20 21 20 21];
     ckdir = [tempname '_ck'];
     cleanupDir = onCleanup(@() remove_directory(ckdir));
@@ -304,22 +304,15 @@ function test_checkpoint_mid_fill_publishes_and_resumes(testCase)
         'directory', ckdir, 'save_interval', 1, 'enabled', true));
     prob.fill_distance_matrix();
 
-    gens = dir(fullfile(ckdir, 'generations'));
-    gens = gens([gens.isdir] & ~ismember({gens.name}, {'.', '..'}));
-    verifyGreaterThanOrEqual(testCase, numel(gens), 1, ...
-        'an enabled mid-fill checkpoint must publish at least one generation');
-
-    current = strtrim(fileread(fullfile(ckdir, 'CURRENT')));
-    manifest = fileread(fullfile(ckdir, 'generations', current, 'metadata.txt'));
-    pairs = regexp(manifest, 'pairs_computed=(\d+)', 'tokens', 'once');
-    verifyNotEmpty(testCase, pairs, 'manifest must record pairs_computed');
-    % pairs_computed counts packed cells, i.e. the lower triangle WITH the
-    % diagonal (core::packed_size(n) = n(n+1)/2), so a complete fill is n(n+1)/2.
-    n = size(X, 1);
-    verifyEqual(testCase, str2double(pairs{1}), n * (n + 1) / 2);
+    files = dir(ckdir);
+    files = {files(~[files.isdir]).name};
+    verifyEqual(testCase, files, {'ckpt_midfill.dtwm'}, ...
+        'an enabled mid-fill checkpoint is the one <name>.dtwm file, nothing else');
 
     fresh = problem_with(X, 'ckpt_midfill');
     verifyTrue(testCase, dtwc.load_checkpoint(fresh, ckdir));
+    verifyTrue(testCase, fresh.is_distance_matrix_filled(), ...
+        'a completed fill must leave a complete checkpoint');
     verifyEqual(testCase, fresh.distance_matrix(), prob.distance_matrix());
 end
 
@@ -360,13 +353,21 @@ function test_checkpoint_metric_is_part_of_the_identity(testCase)
     dtwc.save_checkpoint(prob, ckdir, 'squared_euclidean');
 
     fresh = problem_with(X, 'ckpt_metric');
-    verifyFalse(testCase, dtwc.load_checkpoint(fresh, ckdir, 'l1'), ...
-        'an L1 load must reject a SquaredL2 checkpoint');
+    verifyError(testCase, @() dtwc.load_checkpoint(fresh, ckdir, 'l1'), ...
+        'dtwc:invalidArgument', 'an L1 load must reject a SquaredL2 checkpoint');
     verifyTrue(testCase, dtwc.load_checkpoint(fresh, ckdir, 'squared_euclidean'));
 
     verifyError(testCase, ...
         @() dtwc.load_checkpoint(fresh, ckdir, 'not_a_metric'), ...
         'dtwc:invalidArgument');
+end
+
+function test_checkpoint_absent_file_is_false_not_an_error(testCase)
+%   C++ load_checkpoint returns false, with the Problem unchanged, only when
+%   there is no such file; every other failure is an exception.
+    prob = problem_with(testCase.TestData.X, 'ckpt_absent');
+    verifyFalse(testCase, dtwc.load_checkpoint(prob, [tempname '_absent']));
+    verifyFalse(testCase, prob.is_distance_matrix_filled());
 end
 
 % -------------------------------------------------------------------------
