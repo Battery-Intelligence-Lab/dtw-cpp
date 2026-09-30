@@ -476,6 +476,25 @@ TEST_CASE("test_gpu_long_series_wavefront_banded", "[cuda][long][banded]")
   CHECK(max_abs_diff <= 1e-9);
 }
 
+// The three FP32 diagonal buffers of L = 4095 and 4096 fit the 48 KiB default
+// shared-memory limit on their own, but not with the kernel's static shared
+// memory, so the launch must opt in to the larger limit.
+TEST_CASE("FP32 wavefront at L = 4095 and 4096 matches the host kernel",
+          "[cuda][long][fp32]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  const size_t L = GENERATE(size_t{4095}, size_t{4096});
+  CAPTURE(L);
+  const auto series = generate_random_walks(3, L, /*seed=*/20260930);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  const auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  REQUIRE(gpu_result.kernel_used == "wavefront");
+  REQUIRE(gpu_result.matrix == cpu_fp32_distance_matrix(series));
+}
+
 // ---------------------------------------------------------------------------
 // Structural properties of the distance matrix
 // ---------------------------------------------------------------------------

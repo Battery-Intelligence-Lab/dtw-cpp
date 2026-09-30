@@ -1008,10 +1008,13 @@ std::vector<double> launch_dtw_kernel(
     // Block size heuristic tuned for the anti-diagonal wavefront pattern.
     constexpr int block_size = 256;
 
-    require_shared_mem_fits(shared_mem, device_id, "dtw_wavefront_kernel");
-
-    // Request extended shared memory if needed (>48 KB)
-    if (shared_mem > 48 * 1024) {
+    // A block's shared memory is these buffers plus the kernel's static
+    // variables; beyond the 48 KiB any block may use, it must be opted in.
+    cudaFuncAttributes kernel_attributes{};
+    CUDA_CHECK(cudaFuncGetAttributes(&kernel_attributes, dtw_wavefront_kernel<T>));
+    const size_t block_shared_mem = shared_mem + kernel_attributes.sharedSizeBytes;
+    require_shared_mem_fits(block_shared_mem, device_id, "dtw_wavefront_kernel");
+    if (block_shared_mem > 48 * 1024) {
       CUDA_CHECK(cudaFuncSetAttribute(dtw_wavefront_kernel<T>,
                            cudaFuncAttributeMaxDynamicSharedMemorySize,
                            static_cast<int>(shared_mem)));
