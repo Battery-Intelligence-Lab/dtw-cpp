@@ -49,7 +49,6 @@ std::string trim(std::string_view s)
 
 std::string to_string(Device d)
 {
-  validate_device(d);
   switch (d) {
   case Device::CPU: return "cpu";
   case Device::GPU: return "gpu";

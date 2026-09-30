@@ -233,15 +233,6 @@ TEST_CASE("FX-19 dispatcher and dtw_runtime refuse a metric the variant's kernel
     REQUIRE(dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), l1_options)
             == c.l1);
   }
-
-  // Every selector is validated before the variant/metric cross-product.
-  dtwc::core::DTWOptions bad_constraint;
-  bad_constraint.variant_params.variant = DTWVariant::WDTW;
-  bad_constraint.metric = MetricType::SquaredL2;
-  bad_constraint.constraint = static_cast<ConstraintType>(2);
-  require_semantic_error([&] {
-    (void)dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), bad_constraint);
-  }, "Invalid ConstraintType value.");
 }
 
 TEST_CASE("FX-19 dispatcher keeps the metric where the kernel takes one",

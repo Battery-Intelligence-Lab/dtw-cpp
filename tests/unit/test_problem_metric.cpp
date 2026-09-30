@@ -178,14 +178,6 @@ TEST_CASE("set_metric: a metric the kernels cannot take is refused before any pa
 {
   const auto series = random_series(4, 8, 1, 3);
 
-  SECTION("an invalid value")
-  {
-    auto prob = make_problem(series);
-    REQUIRE_THROWS_WITH(prob.set_metric(static_cast<MetricType>(99)),
-                        "Invalid MetricType value.");
-    CHECK(prob.metric() == MetricType::L1);
-  }
-
   SECTION("another variant, or a missing-data strategy, keeps the Problem unchanged")
   {
     for (const auto variant : { dtwc::core::DTWVariant::DDTW, dtwc::core::DTWVariant::WDTW,

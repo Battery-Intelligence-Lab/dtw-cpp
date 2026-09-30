@@ -18,7 +18,6 @@
 #include "../base/settings.hpp"
 #include "../warping.hpp"        // existing DTW implementations
 #include "dtw_options.hpp"
-#include "selector_validation.hpp"
 
 #include <vector>
 #include <cstddef>
@@ -41,7 +40,6 @@ template <typename T = dtwc::settings::default_data_t>
 T dtw_distance(const std::vector<T>& x, const std::vector<T>& y,
                int band = -1, MetricType metric = MetricType::L1)
 {
-  validate_metric_type(metric);
   if (band < 0)
     return dtwFull_L<T>(x, y, static_cast<T>(-1), metric);
   else
@@ -57,7 +55,6 @@ template <typename T = dtwc::settings::default_data_t>
 T dtw_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
                int band = -1, MetricType metric = MetricType::L1)
 {
-  validate_metric_type(metric);
   if (band < 0)
     return dtwFull_L<T>(x, nx, y, ny, static_cast<T>(-1), metric);
   else

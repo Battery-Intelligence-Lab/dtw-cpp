@@ -325,7 +325,6 @@ void Problem::set_result(const core::ClusteringResult &result)
  */
 bool Problem::set_solver(Solver solver_)
 {
-  validate_solver(solver_);
   if (solver_ == Solver::Gurobi) {
 #ifdef DTWC_ENABLE_GUROBI
     mipSolver = Solver::Gurobi;
@@ -449,7 +448,7 @@ void Problem::set_variant(core::DTWVariant v)
   auto candidate = variant_params;
   candidate.variant = v;
   preflight_distance_semantics(
-    candidate, missing_strategy, metric_, data_, distance_strategy, cuda_settings);
+    candidate, missing_strategy, metric_, data_);
   if (variant_params.variant == v) return;
   variant_params.variant = v;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -458,7 +457,7 @@ void Problem::set_variant(core::DTWVariant v)
 void Problem::set_variant(core::DTWVariantParams params)
 {
   preflight_distance_semantics(
-    params, missing_strategy, metric_, data_, distance_strategy, cuda_settings);
+    params, missing_strategy, metric_, data_);
   if (variant_params_equal(variant_params, params)) return;
   variant_params = params;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -466,7 +465,6 @@ void Problem::set_variant(core::DTWVariantParams params)
 
 void Problem::set_device(Device device, int index)
 {
-  validate_device(device);
   if (index < 0)
     throw InvalidInput("Problem::set_device: the GPU index must be >= 0; got "
                        + std::to_string(index) + ".");
@@ -498,7 +496,6 @@ void Problem::set_device(Device device, int index)
 Problem::cache_fingerprint_t
 Problem::distance_cache_configuration_fingerprint(core::MetricType metric) const
 {
-  core::validate_metric_type(metric);
   FingerprintHash hash;
   static constexpr char domain[] = "dtwc-distance-cache-configuration-v1";
   hash.update(domain, sizeof(domain) - 1);
@@ -532,7 +529,6 @@ Problem::distance_cache_configuration_fingerprint(core::MetricType metric) const
 Problem::DistanceCacheConfiguration
 Problem::distance_cache_configuration(core::MetricType metric) const
 {
-  core::validate_metric_type(metric);
   return {
     metric,
     band,
@@ -567,13 +563,8 @@ void Problem::preflight_distance_semantics(
   core::MissingStrategy missing,
   core::MetricType metric,
   const Data &candidate_data,
-  DistanceMatrixStrategy candidate_distance_strategy,
-  const CUDASettings &, // its precision is a GpuPrecision: nothing to check
   bool force_float32)
 {
-  core::validate_precision(candidate_data.precision);
-  core::validate_metric_type(metric);
-  validate_distance_matrix_strategy(candidate_distance_strategy);
   core::validate_problem_distance_semantics(
     params, missing, candidate_data.ndim,
     force_float32 || candidate_data.is_f32());
@@ -593,13 +584,13 @@ void Problem::preflight_distance_semantics(
 void Problem::preflight_current_distance_semantics() const
 {
   preflight_distance_semantics(
-    variant_params, missing_strategy, metric_, data_, distance_strategy, cuda_settings);
+    variant_params, missing_strategy, metric_, data_);
 }
 
 void Problem::preflight_float32_distance_semantics() const
 {
   preflight_distance_semantics(
-    variant_params, missing_strategy, metric_, data_, distance_strategy, cuda_settings,
+    variant_params, missing_strategy, metric_, data_,
     true);
 }
 
@@ -696,7 +687,6 @@ void Problem::validate_dtw_function_configuration() const
 Problem::DistanceCacheIdentity
 Problem::distance_cache_identity(core::MetricType metric) const
 {
-  core::validate_metric_type(metric);
   if (distance_strategy == DistanceMatrixStrategy::CUDA
       && cuda_settings.precision == GpuPrecision::Auto) {
     throw InvalidInput(
@@ -815,7 +805,7 @@ void Problem::use_mmap_distance_matrix(
   // Every check, the identity and the mapping come before any change: a bind
   // that fails leaves this Problem's metric and matrix as they were.
   preflight_distance_semantics(
-    variant_params, missing_strategy, metric, data_, distance_strategy, cuda_settings);
+    variant_params, missing_strategy, metric, data_);
   // Reconcile dispatcher semantics before publishing a new mapped identity.
   // Without this generic guard, replacing an already-bound mmap after a raw
   // configuration mutation could label Standard-DTW writes with an ADTW (or
@@ -1190,10 +1180,6 @@ void Problem::fill_distance_matrix()
   case DistanceMatrixStrategy::Auto:
     throw std::logic_error(
       "Problem::fill_distance_matrix: unresolved Auto strategy");
-  default:
-    validate_distance_matrix_strategy(effective);
-    throw std::logic_error(
-      "Problem::fill_distance_matrix: unreachable distance strategy");
   }
 
   // BruteForce already saved after its last row block; every other backend fills
@@ -1210,7 +1196,6 @@ void Problem::fill_distance_matrix()
  */
 void Problem::cluster()
 {
-  validate_method(method_);
   switch (method_) {
   case Method::Kmedoids:
     cluster_by_kmedoids_lloyd();
@@ -1228,8 +1213,6 @@ void Problem::cluster()
     algorithms::tadpole(*this, Nc, dc);
     break;
   }
-  default:
-    throw std::logic_error("Problem::cluster: unreachable Method");
   }
 }
 
@@ -1260,7 +1243,6 @@ void Problem::cluster_and_process()
  */
 void Problem::cluster_by_mip()
 {
-  validate_solver(mipSolver);
   // A negative `mip_gap` would otherwise reach HiGHS as an out-of-domain option
   // value, reported as a solver failure rather than as bad input.
   validate_mip_settings(mip_settings);
@@ -1274,8 +1256,6 @@ void Problem::cluster_by_mip()
   case Solver::HiGHS:
     MIP_clustering_byHiGHS(*this);
     break;
-  default:
-    throw std::logic_error("Problem::cluster_by_mip: unreachable Solver");
   }
 }
 

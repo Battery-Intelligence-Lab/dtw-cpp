@@ -30,16 +30,6 @@ enum class Device {
   GPU  ///< Local GPU execution (CUDA on NVIDIA, Metal on macOS).
 };
 
-inline void validate_device(Device value)
-{
-  switch (value) {
-  case Device::CPU:
-  case Device::GPU:
-    return;
-  }
-  throw InvalidInput("Invalid Device value.");
-}
-
 /// @brief Canonical lower-case name of a Device ("cpu" / "gpu").
 std::string to_string(Device d);
 

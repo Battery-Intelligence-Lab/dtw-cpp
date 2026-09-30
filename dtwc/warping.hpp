@@ -32,7 +32,6 @@
 #include "base/settings.hpp"           // for DEFAULT_BAND
 #include "core/scratch_matrix.hpp"
 #include "core/dtw_options.hpp"    // for core::MetricType
-#include "core/selector_validation.hpp"
 #include "core/dtw_kernel.hpp"     // unified DTW kernels
 #include "core/dtw_cost.hpp"       // cost functors + dispatch_metric
 
@@ -298,7 +297,6 @@ struct MVL2Dist {
 template <typename Fn>
 auto dispatch_metric(core::MetricType m, Fn&& fn) -> decltype(fn(L1Dist{}))
 {
-  core::validate_metric_type(m);
   switch (m) {
   case core::MetricType::SquaredL2: return fn(SquaredL2Dist{});
   // Univariate L2 IS L1: the pointwise Euclidean cost sqrt((a-b)^2) == |a-b|,
@@ -315,7 +313,6 @@ auto dispatch_metric(core::MetricType m, Fn&& fn) -> decltype(fn(L1Dist{}))
 template <typename Fn>
 auto dispatch_mv_metric(core::MetricType m, Fn&& fn) -> decltype(fn(MVL1Dist{}))
 {
-  core::validate_metric_type(m);
   switch (m) {
   case core::MetricType::SquaredL2: return fn(MVSquaredL2Dist{});
   case core::MetricType::L2:        return fn(MVL2Dist{});
@@ -345,7 +342,6 @@ template <typename data_t>
 data_t dtwFull(const data_t* x, size_t nx, const data_t* y, size_t ny,
                core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   return detail::dispatch_metric(metric, [&](auto dist) {
     return detail::dtwFull_impl(x, nx, y, ny, dist);
   });
@@ -368,7 +364,6 @@ data_t dtwFull_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   return detail::dispatch_metric(metric, [&](auto dist) {
     return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, dist);
   });
@@ -400,7 +395,6 @@ data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   if (band < 0) return dtwFull_L<data_t>(x, nx, y, ny, early_abandon, metric);
 
   const size_t min_sz = std::min(nx, ny);
@@ -500,7 +494,6 @@ data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
                     size_t ndim, data_t early_abandon = -1,
                     core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   if (ndim == 1) return dtwFull_L(x, nx_steps, y, ny_steps, early_abandon, metric);
   return detail::dispatch_mv_metric(metric, [&](auto dist) {
     return detail::dtwFull_L_mv_impl(x, nx_steps, y, ny_steps, ndim, early_abandon, dist);
@@ -537,7 +530,6 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
                     data_t early_abandon = -1,
                     core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   if (band < 0) return dtwFull_L_mv(x, nx_steps, y, ny_steps, ndim, early_abandon, metric);
   if (ndim == 1) return dtwBanded(x, nx_steps, y, ny_steps, band, early_abandon, metric);
 
@@ -591,7 +583,6 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
                           size_t ndim, int band = settings::DEFAULT_BAND,
                           core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   if (ndim == 1) return dtwBanded<data_t>(x, nx_steps, y, ny_steps, band, -1, metric);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
   if (band >= 0) {

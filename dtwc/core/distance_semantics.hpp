@@ -6,7 +6,6 @@
 #pragma once
 
 #include "dtw_options.hpp"
-#include "selector_validation.hpp"
 #include "variant_validation.hpp"
 #include "../base/error.hpp"
 
@@ -32,8 +31,6 @@ inline MetricType parse_metric_token(std::string_view token)
 inline void validate_variant_missing_semantics(
   DTWVariant variant, MissingStrategy missing_strategy)
 {
-  validate_dtw_variant(variant);
-  validate_missing_strategy(missing_strategy);
   if (variant != DTWVariant::Standard
       && missing_strategy != MissingStrategy::Error) {
     throw InvalidInput(
@@ -64,8 +61,7 @@ inline void require_univariate(std::size_t ndim, const char *feature)
  * Ordering is part of the public diagnostic contract and mirrors the legacy
  * resolver: whole-object parameter domains, variant/missing compatibility,
  * optional active-float32 narrowing, multivariate-mode compatibility, then
- * variant dimensionality. Selector membership is validated before any
- * cross-product comparison so invalid values cannot resemble a valid branch.
+ * variant dimensionality.
  */
 inline void validate_problem_distance_semantics(
   const DTWVariantParams &params,

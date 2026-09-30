@@ -1115,7 +1115,6 @@ CUDADistMatResult compute_distance_matrix_cuda(
     const std::vector<std::vector<double>> &series,
     const CUDADistMatOptions &opts)
 {
-  validate_cuda_precision(opts.precision);
   const size_t N = series.size();
   // Both guards run before the N*N allocation: a missing device must not
   // answer with a zero matrix, and a pair count that does not fit the launch

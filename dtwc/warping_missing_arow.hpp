@@ -46,7 +46,6 @@
 #include "core/dtw_kernel.hpp"   // dtw_kernel_full / _linear / _banded, AROWCell
 #include "core/dtw_cost.hpp"     // SpanAROWL1Cost / SpanAROWSquaredL2Cost
 #include "core/dtw_options.hpp"  // core::MetricType
-#include "core/selector_validation.hpp"
 
 #include <algorithm>   // std::min, std::max
 #include <cstddef>     // size_t
@@ -99,7 +98,6 @@ template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW_L(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
                  core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   const auto o = detail::arow_orient(x, nx, y, ny);
   if (metric == core::MetricType::SquaredL2) {
     core::SpanAROWSquaredL2Cost<data_t> cost{o.short_ptr, o.long_ptr};
@@ -125,7 +123,6 @@ template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
                core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   const auto o = detail::arow_orient(x, nx, y, ny);
   if (metric == core::MetricType::SquaredL2) {
     core::SpanAROWSquaredL2Cost<data_t> cost{o.short_ptr, o.long_ptr};
@@ -157,7 +154,6 @@ data_t dtwAROW_banded(const data_t* x, std::size_t nx, const data_t* y, std::siz
                       int band = settings::DEFAULT_BAND,
                       core::MetricType metric = core::MetricType::L1)
 {
-  core::validate_metric_type(metric);
   if (band < 0) return dtwAROW_L<data_t>(x, nx, y, ny, metric);
   const auto m_short = std::min(nx, ny);
   const auto m_long  = std::max(nx, ny);

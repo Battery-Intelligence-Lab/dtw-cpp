@@ -32,17 +32,6 @@ enum class CUDAPrecision {
   FP64   ///< Always use double precision (bit-identical to CPU path)
 };
 
-inline void validate_cuda_precision(CUDAPrecision value)
-{
-  switch (value) {
-  case CUDAPrecision::Auto:
-  case CUDAPrecision::FP32:
-  case CUDAPrecision::FP64:
-    return;
-  }
-  throw InvalidInput("Invalid CUDAPrecision value.");
-}
-
 struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   int device_id = 0;                             ///< CUDA device to use
   CUDAPrecision precision = CUDAPrecision::Auto; ///< Compute precision

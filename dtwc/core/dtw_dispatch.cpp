@@ -348,9 +348,6 @@ resolve_dtw_fn(const Problem &p)
   case MissingStrategy::Interpolate: return make_interpolate<T>(p);
   case MissingStrategy::AROW:        return make_arow<T>(p);
   case MissingStrategy::Error:       break; // fall through to variant switch
-  default:
-    validate_missing_strategy(p.missing_strategy);
-    throw std::logic_error("resolve_dtw_fn: unreachable MissingStrategy");
   }
 
   switch (p.variant_params.variant) {
@@ -361,10 +358,8 @@ resolve_dtw_fn(const Problem &p)
   case DTWVariant::MSM:     return make_msm<T>(p);
   case DTWVariant::TWE:     return make_twe<T>(p);
   case DTWVariant::Standard: return make_standard<T>(p);
-  default:
-    validate_dtw_variant(p.variant_params.variant);
-    throw std::logic_error("resolve_dtw_fn: unreachable DTWVariant");
   }
+  throw std::logic_error("resolve_dtw_fn: unreachable DTWVariant");
 }
 
 // Explicit instantiations.

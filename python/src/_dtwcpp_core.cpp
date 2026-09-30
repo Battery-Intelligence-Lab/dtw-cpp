@@ -378,12 +378,7 @@ NB_MODULE(_dtwcpp_core, m) {
 
   nb::class_<dtwc::core::DTWVariantParams>(m, "DTWVariantParams")
     .def(nb::init<>())
-    .def_prop_rw("variant",
-      [](const dtwc::core::DTWVariantParams &p) { return p.variant; },
-      [](dtwc::core::DTWVariantParams &p, dtwc::core::DTWVariant value) {
-        dtwc::core::validate_dtw_variant(value);
-        p.variant = value;
-      })
+    .def_rw("variant", &dtwc::core::DTWVariantParams::variant)
     .def_prop_rw("wdtw_g",
       [](const dtwc::core::DTWVariantParams &p) { return p.wdtw_g; },
       [](dtwc::core::DTWVariantParams &p, double value) {
@@ -420,12 +415,7 @@ NB_MODULE(_dtwcpp_core, m) {
         dtwc::core::validate_twe_lambda(value);
         p.twe_lambda = value;
       })
-    .def_prop_rw("mv_mode",
-      [](const dtwc::core::DTWVariantParams &p) { return p.mv_mode; },
-      [](dtwc::core::DTWVariantParams &p, dtwc::core::MVMode value) {
-        dtwc::core::validate_mv_mode(value);
-        p.mv_mode = value;
-      });
+    .def_rw("mv_mode", &dtwc::core::DTWVariantParams::mv_mode);
 
   // =========================================================================
   // MIPSettings

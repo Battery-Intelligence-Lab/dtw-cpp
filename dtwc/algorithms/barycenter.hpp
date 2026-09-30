@@ -6,7 +6,6 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
-#include "../base/error.hpp"
 #include "../base/settings.hpp"
 
 #include <cstddef>
@@ -23,17 +22,6 @@ enum class BarycenterMethod {
   DBA,      ///< Classic majorize-minimize DTW Barycenter Averaging.
   SoftDTW  ///< Gradient descent on squared-cost soft-DTW (Cuturi & Blondel 2017).
 };
-
-inline void validate_barycenter_method(BarycenterMethod value)
-{
-  switch (value) {
-  case BarycenterMethod::SSG:
-  case BarycenterMethod::DBA:
-  case BarycenterMethod::SoftDTW:
-    return;
-  }
-  throw InvalidInput("Invalid BarycenterMethod value.");
-}
 
 struct BarycenterOptions {
   BarycenterMethod method = BarycenterMethod::SSG;

@@ -38,17 +38,6 @@ inline constexpr Name<Linkage> linkage_names[]{
   { "average", Linkage::Average },
 };
 
-inline void validate_linkage(Linkage value)
-{
-  switch (value) {
-  case Linkage::Single:
-  case Linkage::Complete:
-  case Linkage::Average:
-    return;
-  }
-  throw InvalidInput("Invalid Linkage value.");
-}
-
 /// A single merge step recorded in the dendrogram.
 struct DendrogramStep {
   int cluster_a;  ///< First merged cluster (always < cluster_b for determinism)
