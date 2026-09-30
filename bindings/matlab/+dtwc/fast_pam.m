@@ -18,7 +18,8 @@ function result = fast_pam(prob, k, varargin)
 %   k : positive integer
 %       Number of clusters.
 %   MaxIter : int, optional (default 100)
-%       Maximum SWAP iterations.
+%       Maximum SWAP iterations. 0 returns the BUILD medoids without a SWAP
+%       (converged is false); a negative value is an error raised by the C++ core.
 %   Seed : non-negative integer, optional
 %       Invocation-local BUILD seed. When omitted, the legacy mutable Tier-2
 %       RNG is preserved for compatibility. dtwc.cluster always supplies the
@@ -43,7 +44,7 @@ function result = fast_pam(prob, k, varargin)
     p = inputParser;
     addRequired(p, 'prob');
     addRequired(p, 'k', @(v) isnumeric(v) && isscalar(v) && v > 0);
-    addParameter(p, 'MaxIter', 100, @(v) isnumeric(v) && isscalar(v) && v > 0);
+    addParameter(p, 'MaxIter', 100, @(v) isnumeric(v) && isscalar(v));
     addParameter(p, 'Seed', [], @(v) isempty(v) || ...
         (isnumeric(v) && isscalar(v) && isfinite(v) && v >= 0 ...
          && v <= flintmax && v == fix(v)));

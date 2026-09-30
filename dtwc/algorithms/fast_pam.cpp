@@ -212,9 +212,14 @@ void fasterpam_swap_impl(Problem& prob, int N, int k,
   }
 }
 
-/// Point count of a Problem that can hold `n_clusters` medoids.
-int checked_point_count(const Problem& prob, int n_clusters, const char* caller)
+/// Point count of a Problem that can hold `n_clusters` medoids, after the arguments
+/// are checked. max_iter = 0 is meaningful (BUILD only, no SWAP); a negative count
+/// is not, and every binding inherits this refusal.
+int checked_point_count(const Problem& prob, int n_clusters, int max_iter, const char* caller)
 {
+  if (max_iter < 0)
+    throw InvalidInput(std::string(caller) + ": max_iter must be at least 0 (0 returns the BUILD "
+                       "medoids without a SWAP); got " + std::to_string(max_iter) + ".");
   const int n = static_cast<int>(prob.size());
   if (n == 0)
     throw InvalidInput(std::string(caller) + ": Problem has no data points.");
@@ -282,7 +287,7 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<int> medoids, int m
 
 core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
 {
-  (void)checked_point_count(prob, n_clusters, "fast_pam");
+  (void)checked_point_count(prob, n_clusters, max_iter, "fast_pam");
   prob.fill_distance_matrix();
 
   // -------------------------------------------------------------------------
@@ -307,7 +312,7 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
 core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
                                        std::uint64_t random_seed, int max_iter)
 {
-  const int N = checked_point_count(prob, n_clusters, "fast_pam_seeded");
+  const int N = checked_point_count(prob, n_clusters, max_iter, "fast_pam_seeded");
   prob.fill_distance_matrix();
 
   std::mt19937_64 rng(random_seed);

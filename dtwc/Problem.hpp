@@ -289,7 +289,8 @@ public:
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
 
   /// Empty until a clustering writes them (set_result, set_clusters for the
-  /// medoids, the algorithms); set_n_clusters and set_data size neither.
+  /// medoids, the algorithms); set_n_clusters sizes neither, and set_data and
+  /// set_view_data empty both (the labels describe the old series).
   /// require_clustered() tells a clustering from a sizing.
   std::vector<int> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Nc)
   std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
@@ -499,6 +500,8 @@ public:
     preflight_distance_semantics(
       variant_params, missing_strategy, metric_, candidate);
     data_ = std::move(candidate);
+    clusters_ind.clear(); // a clustering describes the series it was computed on
+    centroids_ind.clear();
     refresh_distance_matrix();
   }
 
@@ -510,6 +513,8 @@ public:
     preflight_distance_semantics(
       variant_params, missing_strategy, metric_, candidate);
     data_ = std::move(candidate);
+    clusters_ind.clear();
+    centroids_ind.clear();
     refresh_distance_matrix();
   }
 

@@ -615,6 +615,26 @@ function test_find_total_cost_before_clustering_is_an_error(testCase)
     verifyError(testCase, @() dtwc_mex('Problem_find_total_cost', h), 'dtwc:invalidArgument');
 end
 
+function test_replacing_the_series_with_as_many_drops_the_clustering(testCase)
+%   The old labels describe the old series: a Problem_set_data with the same N left
+%   them counting as a clustering, so the cost of the new series was read from them.
+    h = int_problem(testCase);   % N = 4
+    dtwc_mex('Problem_set_n_clusters', h, 2);
+    dtwc_mex('Problem_cluster', h);
+    verifyGreaterThan(testCase, dtwc_mex('Problem_find_total_cost', h), 0);
+    dtwc_mex('Problem_set_data', h, [1 2 3 4 5; 2 3 4 5 6; 7 7 7 7 7; 8 7 6 5 4]);
+    err = [];
+    try
+        dtwc_mex('Problem_find_total_cost', h);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'the stale clustering was costed');
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifySubstring(testCase, err.message, 'cluster it first');
+    dtwc_mex('Problem_cluster', h);   % the control: a clustering of the new series
+    verifyGreaterThan(testCase, dtwc_mex('Problem_find_total_cost', h), 0);
+end
+
 function test_set_n_clusters_and_set_band_refuse_values_with_no_meaning(testCase)
 %   set_n_clusters(-1) was an untyped "vector too long" (dtwc:internal), and
 %   set_n_clusters(0) and set_band(-5) were accepted (a band below -1 ran as
@@ -645,29 +665,63 @@ function test_set_n_clusters_and_set_band_refuse_values_with_no_meaning(testCase
     verifyError(testCase, @() dtwc_mex('Problem_cluster', h), 'dtwc:invalidArgument');
 end
 
-function test_fast_pam_max_iter_and_cuda_device_id_have_minimums(testCase)
-%   fast_pam took max_iter 0 (no SWAP: the BUILD medoids came back as an unconverged
-%   result) and -1, though MATLAB's MaxIter, Problem.set_max_iter and every other
-%   max_iter here refuse them; Problem_set_cuda_settings took device_id -1, which
-%   only a later fill refused.
-    h = int_problem(testCase);   % N = 4
-    for bad = {0, -1}
-        verifyError(testCase, @() dtwc_mex('fast_pam', h, 2, bad{1}), ...
-            'dtwc:invalidArgument', sprintf('max_iter = %g', bad{1}));
-        verifyError(testCase, @() dtwc_mex('fast_pam', h, 2, bad{1}, 42), ...
-            'dtwc:invalidArgument', sprintf('seeded max_iter = %g', bad{1}));
-    end
-    err = [];
-    try
-        dtwc_mex('fast_pam', h, 2, 0);
-    catch err
-    end
-    verifyNotEmpty(testCase, err, 'max_iter = 0 was accepted');
-    verifySubstring(testCase, err.message, 'max_iter');
-    verifySubstring(testCase, err.message, 'got 0');
-    result = dtwc_mex('fast_pam', h, 2, 1);   % the smallest valid count still runs
-    verifyNumElements(testCase, result.labels, 4);
+function test_fast_pam_max_iter_zero_is_the_build_only_oracle(testCase)
+%   max_iter = 0 is what the C++ reads as "BUILD only": the seeded start, no SWAP
+%   (converged = false). Every binding accepts it; the medoids are those of
+%   unit_test_fast_pam.cpp and tests/python/test_clustering.py, here 1-based.
+    X = [0 0.01 -0.02 0.03] + (0:7)';
+    prob = dtwc.Problem('max_iter_oracle');
+    testCase.addTeardown(@() delete(prob));
+    prob.set_data(X);
+    build_29 = dtwc.fast_pam(prob, 3, 'MaxIter', 0, 'Seed', 29);
+    verifyEqual(testCase, build_29.medoid_indices, int32([5 3 8]));
+    verifyEqual(testCase, build_29.iterations, int32(0));
+    verifyFalse(testCase, build_29.converged);
+    verifyEqual(testCase, dtwc.fast_pam(prob, 3, 'MaxIter', 0, 'Seed', 42).medoid_indices, ...
+        int32([7 3 6]));
+    unseeded = dtwc.fast_pam(prob, 3, 'MaxIter', 0);
+    verifyEqual(testCase, unseeded.iterations, int32(0));
+    verifyFalse(testCase, unseeded.converged);
+    verifyEqual(testCase, dtwc.fast_pam(prob, 3, 'MaxIter', 100, 'Seed', 29).medoid_indices, ...
+        int32([5 2 8]));
 
+    h = int_problem(testCase);   % the raw command reads 0 the same way
+    verifyFalse(testCase, dtwc_mex('fast_pam', h, 2, 0).converged);
+    verifyFalse(testCase, dtwc_mex('fast_pam', h, 2, 0, 42).converged);
+end
+
+function test_fast_pam_refuses_a_negative_max_iter_with_the_cpp_error(testCase)
+%   A negative count has no meaning. The C++ refuses it once (InvalidInput), so the
+%   command and the wrapper raise the message Python and C++ callers read.
+    h = int_problem(testCase);   % N = 4
+    X = [0 0.01 -0.02 0.03] + (0:7)';
+    prob = dtwc.Problem('max_iter_negative');
+    testCase.addTeardown(@() delete(prob));
+    prob.set_data(X);
+    for bad = {-1, -100}
+        calls = { ...
+            @() dtwc_mex('fast_pam', h, 2, bad{1}), 'fast_pam: max_iter'
+            @() dtwc_mex('fast_pam', h, 2, bad{1}, 42), 'fast_pam_seeded: max_iter'
+            @() dtwc.fast_pam(prob, 3, 'MaxIter', bad{1}), 'fast_pam: max_iter'
+            @() dtwc.fast_pam(prob, 3, 'MaxIter', bad{1}, 'Seed', 29), 'fast_pam_seeded: max_iter' };
+        for i = 1:size(calls, 1)
+            err = [];
+            try
+                calls{i, 1}();
+            catch err
+            end
+            verifyNotEmpty(testCase, err, sprintf('max_iter = %g was accepted', bad{1}));
+            verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+            verifySubstring(testCase, err.message, calls{i, 2});
+            verifySubstring(testCase, err.message, sprintf('got %d', bad{1}));
+        end
+    end
+    verifyNumElements(testCase, dtwc_mex('fast_pam', h, 2, 1).labels, 4);   % 1 still swaps
+end
+
+function test_cuda_device_id_has_a_minimum(testCase)
+%   Problem_set_cuda_settings took device_id -1, which only a later fill refused.
+    h = int_problem(testCase);
     verifyError(testCase, @() dtwc_mex('Problem_set_cuda_settings', h, -1), 'dtwc:invalidArgument');
     verifyError(testCase, @() dtwc_mex('Problem_set_cuda_settings', h, -1, 0), 'dtwc:invalidArgument');
     dtwc_mex('Problem_set_cuda_settings', h, 0);
