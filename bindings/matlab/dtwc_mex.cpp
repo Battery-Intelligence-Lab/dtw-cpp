@@ -1164,6 +1164,11 @@ static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prh
   int k = get_exact_int(prhs[2], "k");
   int max_iter = 100;
   if (nrhs > 3) max_iter = get_exact_int(prhs[3], "max_iter");
+  // The C++ core reads 0 as "BUILD only", the seeded start without SWAP; MATLAB's
+  // MaxIter, Problem.set_max_iter and every other max_iter here refuse it.
+  if (max_iter < 1)
+    throw std::invalid_argument("fast_pam: max_iter must be at least 1; got "
+                                + std::to_string(max_iter) + ".");
 
   // Omitted seed preserves the mutable legacy Tier-2 behaviour. MATLAB Tier-1
   // passes the shared default explicitly, so it never consumes global RNG state.

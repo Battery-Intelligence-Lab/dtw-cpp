@@ -482,8 +482,12 @@ public:
   /// @throws DeviceError for `gpu` on a build with no GPU backend;
   ///         InvalidInput for a negative index.
   void set_device(Device device, int index = 0);
+  /// @throws InvalidInput for a negative device_id, as set_device refuses the same index.
   void set_cuda_settings(CUDASettings settings)
   {
+    if (settings.device_id < 0)
+      throw InvalidInput("Problem::set_cuda_settings: device_id must be >= 0; got "
+                         + std::to_string(settings.device_id) + ".");
     preflight_distance_semantics(
       variant_params, missing_strategy, metric_, data_, distance_strategy, settings);
     if (cuda_settings.device_id == settings.device_id

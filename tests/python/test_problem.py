@@ -297,6 +297,16 @@ class TestSetterRanges:
         p.set_band(good)
         assert p.band == good
 
+    @pytest.mark.parametrize("bad", [-1, -(2**31)])
+    def test_a_negative_cuda_device_id_raises_and_keeps_the_settings(self, bad):
+        p = self._problem()
+        settings = dtwcpp.CUDASettings()
+        settings.device_id = bad
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"set_cuda_settings: device_id must be >= 0; got {bad}\b"):
+            p.cuda_settings = settings
+        assert p.cuda_settings.device_id == 0
+        p.cuda_settings = dtwcpp.CUDASettings()  # index 0 is valid on every build
+
 
 class TestClusteringIsWrittenThroughSetResult:
     """`clusters_ind` and `centroids_ind` are read-only (v1.0.0's Python never bound

@@ -645,6 +645,35 @@ function test_set_n_clusters_and_set_band_refuse_values_with_no_meaning(testCase
     verifyError(testCase, @() dtwc_mex('Problem_cluster', h), 'dtwc:invalidArgument');
 end
 
+function test_fast_pam_max_iter_and_cuda_device_id_have_minimums(testCase)
+%   fast_pam took max_iter 0 (no SWAP: the BUILD medoids came back as an unconverged
+%   result) and -1, though MATLAB's MaxIter, Problem.set_max_iter and every other
+%   max_iter here refuse them; Problem_set_cuda_settings took device_id -1, which
+%   only a later fill refused.
+    h = int_problem(testCase);   % N = 4
+    for bad = {0, -1}
+        verifyError(testCase, @() dtwc_mex('fast_pam', h, 2, bad{1}), ...
+            'dtwc:invalidArgument', sprintf('max_iter = %g', bad{1}));
+        verifyError(testCase, @() dtwc_mex('fast_pam', h, 2, bad{1}, 42), ...
+            'dtwc:invalidArgument', sprintf('seeded max_iter = %g', bad{1}));
+    end
+    err = [];
+    try
+        dtwc_mex('fast_pam', h, 2, 0);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'max_iter = 0 was accepted');
+    verifySubstring(testCase, err.message, 'max_iter');
+    verifySubstring(testCase, err.message, 'got 0');
+    result = dtwc_mex('fast_pam', h, 2, 1);   % the smallest valid count still runs
+    verifyNumElements(testCase, result.labels, 4);
+
+    verifyError(testCase, @() dtwc_mex('Problem_set_cuda_settings', h, -1), 'dtwc:invalidArgument');
+    verifyError(testCase, @() dtwc_mex('Problem_set_cuda_settings', h, -1, 0), 'dtwc:invalidArgument');
+    dtwc_mex('Problem_set_cuda_settings', h, 0);
+    verifyEqual(testCase, dtwc_mex('Problem_get_cuda_settings', h).device_id, 0);   % nothing changed
+end
+
 function test_a_double_handle_must_be_an_exact_integer(testCase)
     h = int_problem(testCase);
     verifyEqual(testCase, dtwc_mex('Problem_get_size', double(h)), 4);
