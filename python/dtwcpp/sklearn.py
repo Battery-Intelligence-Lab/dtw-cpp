@@ -224,8 +224,8 @@ class DTWCKMedoids(ClusterMixin, TransformerMixin, BaseEstimator):
                 problem, int(self.n_clusters), seed, int(self.max_iter)
             )
 
-        self.labels_ = np.asarray(result.labels, dtype=np.intp)
-        self.medoid_indices_ = np.asarray(result.medoid_indices, dtype=np.intp)
+        self.labels_ = result.labels
+        self.medoid_indices_ = result.medoid_indices
         self.inertia_ = float(result.total_cost)
         self.n_iter_ = int(result.iterations)
         self.n_samples_fit_ = n_samples

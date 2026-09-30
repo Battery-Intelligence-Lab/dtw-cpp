@@ -71,18 +71,23 @@ namespace {
 /// unique_ptr still owns it (so a throwing capsule allocation frees it), and
 /// only then is ownership released to the capsule. Callers hold the GIL, so no
 /// `gil_scoped_acquire` is nested inside a live release.
-nb::ndarray<nb::numpy, double> adopt_as_ndarray(
-  std::vector<double> &&values, std::initializer_list<size_t> shape) {
+///
+/// `T` is double for the distance matrices and `index_t` (int64) for labels and
+/// medoids; a getter that hands out a Problem's or a result's indices passes a
+/// copy, so the array never aliases state C++ goes on to change.
+template <class T>
+nb::ndarray<nb::numpy, T> adopt_as_ndarray(
+  std::vector<T> &&values, std::initializer_list<size_t> shape) {
   // numpy never dereferences a zero-sized array, but nanobind still wants a
   // real address; an empty vector may report data() == nullptr.
   if (values.empty()) values.reserve(1);
-  auto owned = std::make_unique<std::vector<double>>(std::move(values));
-  double *ptr = owned->data();
+  auto owned = std::make_unique<std::vector<T>>(std::move(values));
+  T *ptr = owned->data();
   nb::capsule owner(owned.get(), [](void *p) noexcept {
-    std::unique_ptr<std::vector<double>>(static_cast<std::vector<double> *>(p));
+    std::unique_ptr<std::vector<T>>(static_cast<std::vector<T> *>(p));
   });
   owned.release(); // the capsule owns the buffer from here on
-  return nb::ndarray<nb::numpy, double>(ptr, shape, owner);
+  return nb::ndarray<nb::numpy, T>(ptr, shape, owner);
 }
 
 /// The matrix bindings' input check: every series once, before any pair is
@@ -206,8 +211,8 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   m.def("_read_data",
-        [](const std::filesystem::path &source, int skip_cols, int skip_rows,
-           const std::string &delimiter) {
+        [](const std::filesystem::path &source, dtwc::index_t skip_cols,
+           dtwc::index_t skip_rows, const std::string &delimiter) {
     if (skip_cols < 0) throw dtwc::InvalidInput("load: skip_cols must be non-negative.");
     if (skip_rows < 0) throw dtwc::InvalidInput("load: skip_rows must be non-negative.");
     if (delimiter.size() > 1)
@@ -353,7 +358,9 @@ NB_MODULE(_dtwcpp_core, m) {
 
   nb::class_<dtwc::algorithms::BarycenterClusteringResult>(m, "BarycenterClusteringResult")
     .def(nb::init<>())
-    .def_ro("labels", &dtwc::algorithms::BarycenterClusteringResult::labels)
+    .def_prop_ro("labels", [](const dtwc::algorithms::BarycenterClusteringResult &r) {
+      return adopt_as_ndarray(std::vector<dtwc::index_t>(r.labels), {r.labels.size()});
+    }, nb::rv_policy::move)
     .def_ro("barycenters", &dtwc::algorithms::BarycenterClusteringResult::barycenters)
     .def_ro("total_cost", &dtwc::algorithms::BarycenterClusteringResult::total_cost)
     .def_ro("iterations", &dtwc::algorithms::BarycenterClusteringResult::iterations)
@@ -497,8 +504,21 @@ NB_MODULE(_dtwcpp_core, m) {
 
   nb::class_<dtwc::core::ClusteringResult>(m, "ClusteringResult")
     .def(nb::init<>())
-    .def_rw("labels", &dtwc::core::ClusteringResult::labels)
-    .def_rw("medoid_indices", &dtwc::core::ClusteringResult::medoid_indices)
+    .def_prop_rw("labels",
+      [](const dtwc::core::ClusteringResult &r) {
+        return adopt_as_ndarray(std::vector<dtwc::index_t>(r.labels), {r.labels.size()});
+      },
+      [](dtwc::core::ClusteringResult &r, std::vector<dtwc::index_t> labels) {
+        r.labels = std::move(labels);
+      }, nb::rv_policy::move)
+    .def_prop_rw("medoid_indices",
+      [](const dtwc::core::ClusteringResult &r) {
+        return adopt_as_ndarray(std::vector<dtwc::index_t>(r.medoid_indices),
+                                {r.medoid_indices.size()});
+      },
+      [](dtwc::core::ClusteringResult &r, std::vector<dtwc::index_t> medoids) {
+        r.medoid_indices = std::move(medoids);
+      }, nb::rv_policy::move)
     .def_rw("total_cost", &dtwc::core::ClusteringResult::total_cost)
     .def_rw("iterations", &dtwc::core::ClusteringResult::iterations)
     .def_rw("converged", &dtwc::core::ClusteringResult::converged)
@@ -723,6 +743,15 @@ NB_MODULE(_dtwcpp_core, m) {
   // Problem class
   // =========================================================================
 
+  // Labels and medoids leave as int64 copies: clusters_ind / labels() and
+  // centroids_ind / medoids() are the same data under two spellings.
+  const auto labels_of = [](const dtwc::Problem &p) {
+    return adopt_as_ndarray(std::vector<dtwc::index_t>(p.labels()), {p.labels().size()});
+  };
+  const auto medoids_of = [](const dtwc::Problem &p) {
+    return adopt_as_ndarray(std::vector<dtwc::index_t>(p.medoids()), {p.medoids().size()});
+  };
+
   nb::class_<dtwc::Problem>(m, "Problem",
     "A clustering problem: data, configuration, distance matrix and results.\n\n"
     "Threading: a Problem instance must not be used concurrently from multiple\n"
@@ -807,10 +836,10 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_prop_rw("output_folder", &dtwc::Problem::output_folder,
                  &dtwc::Problem::set_output_folder,
                  "Output folder for results written by the write_* methods.")
-    .def_ro("clusters_ind", &dtwc::Problem::clusters_ind,
-            "Cluster label of each series. Read-only: set_result is the write route.")
-    .def_ro("centroids_ind", &dtwc::Problem::centroids_ind,
-            "Medoid series indices. Read-only: set_result is the write route.")
+    .def_prop_ro("clusters_ind", labels_of, nb::rv_policy::move,
+            "Cluster label of each series, an int64 array. Read-only: set_result is the write route.")
+    .def_prop_ro("centroids_ind", medoids_of, nb::rv_policy::move,
+            "Medoid series indices, an int64 array. Read-only: set_result is the write route.")
     .def("set_result", &dtwc::Problem::set_result, "result"_a,
          "Publish a ClusteringResult on this Problem: k is the number of medoids,\n"
          "which are distinct indices in [0, N), and every series has one label in\n"
@@ -820,10 +849,12 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("n_clusters", &dtwc::Problem::n_clusters, "Number of clusters.")
     .def("cluster_size", &dtwc::Problem::n_clusters,
          "Number of clusters: the v1.0.0 spelling of n_clusters().")
-    .def("labels", &dtwc::Problem::labels,
-         "Cluster label of each series (reads clusters_ind; parity with Result.labels).")
-    .def("medoids", &dtwc::Problem::medoids,
-         "Medoid series indices (reads centroids_ind; parity with Result.medoids).")
+    .def("labels", labels_of,
+         "Cluster label of each series, an int64 array (reads clusters_ind; parity with\n"
+         "Result.labels).")
+    .def("medoids", medoids_of,
+         "Medoid series indices, an int64 array (reads centroids_ind; parity with\n"
+         "Result.medoids).")
     .def("series", [](const dtwc::Problem &p, std::int64_t i) {
       require_index("series", "i", i, p.size());
       auto s = p.series(static_cast<size_t>(i));
@@ -840,13 +871,13 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("centroid_of", [](const dtwc::Problem &p, std::int64_t i) {
       require_index("centroid_of", "i", i, p.size());
       p.require_clustered("centroid_of"); // Problem::centroid_of reads both vectors unchecked
-      return p.centroid_of(static_cast<int>(i));
+      return p.centroid_of(i);
     }, "i"_a,
        "Medoid index of the cluster that series i belongs to.\n\n"
        "Raises InvalidInput if i is outside [0, N) or the Problem holds no clustering.")
     .def("is_distance_matrix_filled", &dtwc::Problem::is_distance_matrix_filled)
     .def("max_distance", &dtwc::Problem::max_distance)
-    .def("dist_by_ind", [](dtwc::Problem &p, int i, int j) {
+    .def("dist_by_ind", [](dtwc::Problem &p, dtwc::index_t i, dtwc::index_t j) {
       // Problem::dist_by_ind is the unchecked hot path: this boundary owns the range check.
       require_index("dist_by_ind", "i", i, p.size());
       require_index("dist_by_ind", "j", j, p.size());
@@ -1019,7 +1050,7 @@ NB_MODULE(_dtwcpp_core, m) {
       #ifdef _OPENMP
       #pragma omp parallel for schedule(dynamic, 16) num_threads(n_error_slots)
       #endif
-      for (int i = 0; i < static_cast<int>(n); ++i) {
+      for (dtwc::index_t i = 0; i < static_cast<dtwc::index_t>(n); ++i) {
 #ifdef _OPENMP
           const size_t slot = static_cast<size_t>(omp_get_thread_num());
 #else
@@ -1058,7 +1089,7 @@ NB_MODULE(_dtwcpp_core, m) {
   // FastPAM
   // =========================================================================
 
-  m.def("fast_pam", [](dtwc::Problem &prob, int n_clusters, int max_iter) {
+  m.def("fast_pam", [](dtwc::Problem &prob, dtwc::index_t n_clusters, int max_iter) {
     nb::gil_scoped_release release;
     return dtwc::fast_pam(prob, n_clusters, max_iter);
   }, "prob"_a, "n_clusters"_a, "max_iter"_a = 100,
@@ -1070,7 +1101,7 @@ NB_MODULE(_dtwcpp_core, m) {
      "(converged is False); a negative count raises InvalidInput.");
 
   m.def("fast_pam_seeded",
-        [](dtwc::Problem &prob, int n_clusters, std::uint64_t seed, int max_iter) {
+        [](dtwc::Problem &prob, dtwc::index_t n_clusters, std::uint64_t seed, int max_iter) {
     nb::gil_scoped_release release;
     return dtwc::fast_pam_seeded(prob, n_clusters, seed, max_iter);
   }, "prob"_a, "n_clusters"_a, "seed"_a, "max_iter"_a = 100,
@@ -1097,8 +1128,9 @@ NB_MODULE(_dtwcpp_core, m) {
              + ", seed=" + std::to_string(o.random_seed) + ")";
     });
 
-  m.def("fast_clara", [](dtwc::Problem &prob, int n_clusters, int sample_size,
-                           int n_samples, int max_iter, unsigned seed) {
+  m.def("fast_clara", [](dtwc::Problem &prob, dtwc::index_t n_clusters,
+                           dtwc::index_t sample_size, int n_samples, int max_iter,
+                           std::uint64_t seed) {
     dtwc::algorithms::CLARAOptions opts;
     opts.n_clusters = n_clusters;
     opts.sample_size = sample_size;
@@ -1127,8 +1159,8 @@ NB_MODULE(_dtwcpp_core, m) {
   // OneBatchPAM
   // =========================================================================
 
-  m.def("one_batch_pam", [](dtwc::Problem &prob, int n_clusters, int batch_size,
-                              int max_iter, std::uint64_t seed) {
+  m.def("one_batch_pam", [](dtwc::Problem &prob, dtwc::index_t n_clusters,
+                              dtwc::index_t batch_size, int max_iter, std::uint64_t seed) {
     dtwc::algorithms::OneBatchPAMOptions options;
     options.n_clusters = n_clusters;
     options.batch_size = batch_size;
@@ -1278,7 +1310,7 @@ NB_MODULE(_dtwcpp_core, m) {
      "Raises InvalidInput (a ValueError) if N > opts.max_points (default 2000).");
 
   m.def("cut_dendrogram", [](const dtwc::algorithms::Dendrogram &dend,
-                               dtwc::Problem &prob, int k) {
+                               dtwc::Problem &prob, dtwc::index_t k) {
     nb::gil_scoped_release release;
     return dtwc::algorithms::cut_dendrogram(dend, prob, k);
   }, "dendrogram"_a, "prob"_a, "k"_a,

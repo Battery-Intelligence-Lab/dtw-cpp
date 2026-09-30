@@ -417,8 +417,8 @@ class DTWClustering(BaseEstimator, ClusterMixin):
                 "the selected distance parameters."
             )
 
-        self.labels_ = np.array(best_result.labels)
-        self.medoid_indices_ = np.array(best_result.medoid_indices)
+        self.labels_ = best_result.labels
+        self.medoid_indices_ = best_result.medoid_indices
         self.inertia_ = best_result.total_cost
         self.n_iter_ = best_result.iterations
         self._fit_semantics_ = semantics
@@ -452,7 +452,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
             self._validate_semantics(getattr(self, "_fit_backend_", None))
 
         series = self._prepare_data(X)
-        labels = np.empty(len(series), dtype=int)
+        labels = np.empty(len(series), dtype=np.int64)
         for i, s in enumerate(series):
             dists = [
                 self._dtw_fn(s, c, semantics=semantics)

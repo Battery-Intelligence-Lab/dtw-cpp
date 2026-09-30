@@ -196,7 +196,7 @@ class TestIndexBoundary:
     def test_centroid_of_after_the_cluster_count_shrinks_raises(self):
         """The clustering held 2 medoids; k = 1 leaves a series in cluster 1 with
         no medoid to name, so the Problem no longer holds a clustering."""
-        setup = self._CLUSTERED + "\n        i = p.labels().index(1)\n        p.set_n_clusters(1)"
+        setup = self._CLUSTERED + "\n        i = p.labels().tolist().index(1)\n        p.set_n_clusters(1)"
         outcome = _outcome_in_child(setup, "p.centroid_of(i)")
         assert re.match(r"InvalidInput: centroid_of: .*holds no clustering.*2 medoids for k = 1", outcome), outcome
 
@@ -348,15 +348,15 @@ class TestClusteringIsWrittenThroughSetResult:
     @pytest.mark.parametrize("name", ["clusters_ind", "centroids_ind"])
     def test_the_fields_are_read_only(self, name):
         p = self._problem()
-        assert getattr(p, name) == []
+        assert getattr(p, name).tolist() == []
         with pytest.raises(AttributeError):
             setattr(p, name, [0])
 
     def test_set_result_publishes_the_clustering(self):
         p = self._problem()
         p.set_result(self._result([0, 0, 0, 1], [1, 3]))
-        assert (p.n_clusters(), p.labels(), p.medoids()) == (2, [0, 0, 0, 1], [1, 3])
-        assert (p.clusters_ind, p.centroids_ind) == ([0, 0, 0, 1], [1, 3])
+        assert (p.n_clusters(), p.labels().tolist(), p.medoids().tolist()) == (2, [0, 0, 0, 1], [1, 3])
+        assert (p.clusters_ind.tolist(), p.centroids_ind.tolist()) == ([0, 0, 0, 1], [1, 3])
         assert [p.centroid_of(i) for i in range(4)] == [1, 1, 1, 3]
 
     @pytest.mark.parametrize(
@@ -374,7 +374,7 @@ class TestClusteringIsWrittenThroughSetResult:
         p.set_result(self._result([0, 0, 1, 1], [0, 2]))
         with pytest.raises(dtwcpp.InvalidInput, match="set_result"):
             p.set_result(self._result(labels, medoids))
-        assert (p.n_clusters(), p.labels(), p.medoids()) == (2, [0, 0, 1, 1], [0, 2]), why
+        assert (p.n_clusters(), p.labels().tolist(), p.medoids().tolist()) == (2, [0, 0, 1, 1], [0, 2]), why
 
 
 class TestDenseSemanticMutation:

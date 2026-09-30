@@ -180,16 +180,17 @@ def _validate_remote_configuration(
     }
 
 
-def _normalize_cli_int(name, value, *, minimum):
+def _normalize_cli_int(name, value, *, minimum, maximum=None):
+    """Normalize one integer for dtwc_cl; ``maximum`` only for what it reads as an ``int``."""
     if isinstance(value, (bool, np.bool_)) or not isinstance(
         value, (int, np.integer)
     ):
         raise TypeError(f"{name} must be an integer")
     value = int(value)
-    if not minimum <= value <= _CLI_INT_MAX:
-        raise ValueError(
-            f"{name} must be in [{minimum}, {_CLI_INT_MAX}] for dtwc_cl"
-        )
+    if value < minimum or (maximum is not None and value > maximum):
+        bound = (f"at least {minimum}" if maximum is None
+                 else f"in [{minimum}, {maximum}]")
+        raise ValueError(f"{name} must be {bound} for dtwc_cl")
     return value
 
 
@@ -219,7 +220,7 @@ def _validate_submission_envelope(
 ):
     """Normalize fields that cross the local-shell/SSH/Slurm boundary."""
     n_clusters = _normalize_cli_int("n_clusters", n_clusters, minimum=1)
-    band = _normalize_cli_int("band", band, minimum=-1)
+    band = _normalize_cli_int("band", band, minimum=-1, maximum=_CLI_INT_MAX)
     skip_cols = _normalize_cli_int("skip_cols", skip_cols, minimum=0)
     method = _normalize_choice("method", method, _METHOD_ALIASES)
 
@@ -303,7 +304,7 @@ def parse_labels_csv(path, n=None):
             mapping[str(row["name"]).strip()] = int(row["cluster"])
     if n is None:
         n = len(mapping)
-    labels = np.empty(n, dtype=int)
+    labels = np.empty(n, dtype=np.int64)
     for i in range(n):
         labels[i] = mapping[str(i + 1)]          # KeyError if a series is missing
     return labels

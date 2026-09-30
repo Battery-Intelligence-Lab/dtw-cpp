@@ -77,7 +77,7 @@ def test_cpu_squared_metric_controls_training_objective():
     oracle = dtwcpp.fast_pam_seeded(
         oracle_problem, 2, dtwcpp.DEFAULT_RANDOM_SEED, 100
     )
-    assert oracle.medoid_indices == [4, 1]
+    assert oracle.medoid_indices.tolist() == [4, 1]
     assert oracle.total_cost == 5.0
 
     estimator = dtwcpp.DTWClustering(
