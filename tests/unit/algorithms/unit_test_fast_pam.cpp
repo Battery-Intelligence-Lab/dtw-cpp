@@ -216,6 +216,7 @@ TEST_CASE("seeded FastPAM translates negative Soft-DTW sampling weights",
 
   // Raw Soft-DTW may be negative off diagonal. That is valid objective input,
   // but cannot be passed directly to a weighted random sampler.
+  prob.fill_distance_matrix();
   REQUIRE(prob.dist_by_ind(0, 1) < 0.0);
   const auto result = fast_pam_seeded(prob, 2, 42, 20);
   CHECK(result.labels.size() == 4);

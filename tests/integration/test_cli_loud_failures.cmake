@@ -29,6 +29,10 @@ cmake_minimum_required(VERSION 3.26)
 #                        after <name>_labels.csv was opened: the stream must be
 #                        checked after closing, not only after opening
 #   clusters_zero        --clusters 0: the error names -k/--n-clusters
+#   variant_domain       a variant parameter outside its domain is refused before
+#                        the input is read: the output folder is never made
+#   nan_error_strategy   --missing-strategy error on a NaN input names the series
+#                        and the strategies that accept it; no result is written
 foreach(required_var IN ITEMS CLI WORK_ROOT)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "missing required -D${required_var}=...")
@@ -225,6 +229,26 @@ expect_loud_failure(max_iter_zero
             --max-iter 0 --n-init 1 --method pam --name loud
             -o "${WORK_ROOT}/out_max_iter")
 
+# The domain check comes before any data or file effect: the input does not
+# exist, and the output folder must not appear.
+expect_loud_failure(variant_domain
+    NAMES "ADTW penalty must be finite and non-negative"
+    COMMAND "${cli}" -i "${WORK_ROOT}/no_such_input" -k 1 --variant adtw
+            --adtw-penalty -1 --name loud -o "${WORK_ROOT}/out_domain")
+if(EXISTS "${WORK_ROOT}/out_domain")
+    message(FATAL_ERROR "variant_domain: the refused run made its output folder")
+endif()
+
+# The Error strategy refuses a NaN by name, before any clustering.
+file(WRITE "${WORK_ROOT}/nan_series.tsv" "0\t0\tnan\n0\t0\t0\n0\t0\t0\n")
+expect_loud_failure(nan_error_strategy
+    NAMES "series '1' (index 0)[2] is NaN" "ZeroCost, AROW or Interpolate"
+    COMMAND "${cli}" -i "${WORK_ROOT}/nan_series.tsv" -k 1 --method pam --max-iter 1
+            --missing-strategy error --name loud -o "${WORK_ROOT}/out_nan")
+if(EXISTS "${WORK_ROOT}/out_nan/loud_labels.csv")
+    message(FATAL_ERROR "nan_error_strategy: a result was written for refused input")
+endif()
+
 # FX-3: --solver gurobi must not solve with HiGHS. A build without Gurobi fails
 # naming the flag and the fix; a build with it runs, which is accepted only when
 # no fallback notice was printed.
@@ -324,9 +348,9 @@ if(skip_match)
     message(FATAL_ERROR "dtwc_cl emitted skip text:\n${all_output}")
 endif()
 
-set(expected 12)
+set(expected 14)
 if(efbig STREQUAL "ran")
-    set(expected 13)
+    set(expected 15)
 endif()
 message(STATUS
     "CLI_LOUD_FAILURES subject=real_dtwc_cl cases=${cases}/${expected} "

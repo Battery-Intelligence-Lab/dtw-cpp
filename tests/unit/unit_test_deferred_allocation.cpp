@@ -54,7 +54,7 @@ TEST_CASE("Deferred allocation: fill_distance_matrix allocates and fills", "[pro
   REQUIRE(prob.dist_by_ind(0, 0) == 0.0);
 }
 
-TEST_CASE("Deferred allocation: dist_by_ind works without fill", "[problem][deferred]")
+TEST_CASE("Deferred allocation: dist_by_ind reads the matrix the fill stored", "[problem][deferred]")
 {
   dtwc::Data data;
   data.p_vec = { { 1, 2, 3 }, { 4, 5, 6 } };
@@ -64,10 +64,14 @@ TEST_CASE("Deferred allocation: dist_by_ind works without fill", "[problem][defe
   prob.set_data(std::move(data));
   prob.set_verbose(false);
 
-  // No fill_distance_matrix() called — dist_by_ind should still work
-  double d = prob.dist_by_ind(0, 1);
+  prob.fill_distance_matrix();
+  const double d = prob.dist_by_ind(0, 1);
   REQUIRE(d > 0.0);
-  REQUIRE_THAT(d, WithinAbs(prob.dist_by_ind(1, 0), 1e-12)); // symmetry
+  REQUIRE(prob.dist_by_ind(1, 0) == d); // one slot per unordered pair
+
+  // A read of the matrix, never a computation.
+  prob.distance_matrix().set(0, 1, 123.0);
+  REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
 }
 
 TEST_CASE("Deferred allocation: FastPAM still works", "[problem][deferred]")
@@ -101,7 +105,7 @@ TEST_CASE("Deferred allocation: set_variant works after set_data", "[problem][de
   prob.set_variant(dtwc::core::DTWVariant::WDTW);
   prob.set_verbose(false);
 
-  // Should work — rebind_dtw_fn was called by set_variant
+  prob.fill_distance_matrix();
   double d = prob.dist_by_ind(0, 1);
   REQUIRE(d > 0.0);
 }

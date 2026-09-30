@@ -162,3 +162,15 @@ TEST_CASE("TimeSeries::view() univariate unchanged", "[TimeSeries][mv]")
   REQUIRE(view.length == 4);
   REQUIRE(view.flat_size() == 4);
 }
+
+// A multivariate view spans length * ndim elements, and the same buffer read
+// with another (length, ndim) split is a different series.
+TEST_CASE("TimeSeriesView: end() spans the flat buffer and equality compares ndim", "[TimeSeries][mv]")
+{
+  double buffer[] = { 1, 2, 3, 4 };
+  const TimeSeriesView<double> two_by_two{ buffer, 2, 2 };
+  const TimeSeriesView<double> four_by_one{ buffer, 4, 1 };
+
+  REQUIRE(two_by_two.end() == buffer + 4);
+  REQUIRE(two_by_two != four_by_one);
+}

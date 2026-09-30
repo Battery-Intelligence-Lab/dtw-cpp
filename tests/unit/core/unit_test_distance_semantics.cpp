@@ -106,15 +106,14 @@ TEST_CASE("M36 runtime and Problem resolver reject before selecting a kernel",
       x.data(), x.size(), y.data(), y.size(), options);
   });
 
+  // A Problem refuses the combination at the setter, so no kernel is ever
+  // resolved for it.
   dtwc::Problem problem("m36");
-  problem.variant_params.variant = dtwc::core::DTWVariant::ADTW;
-  problem.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  problem.set_variant(dtwc::core::DTWVariant::ADTW);
   require_semantic_error([&] {
-    (void)dtwc::core::resolve_dtw_fn<double>(problem);
+    problem.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   });
-  require_semantic_error([&] {
-    (void)dtwc::core::resolve_dtw_fn<float>(problem);
-  });
+  REQUIRE(problem.missing_strategy() == dtwc::core::MissingStrategy::Error);
 }
 
 TEST_CASE("M36 accepted semantic fingerprints remain exact",
@@ -291,8 +290,8 @@ TEST_CASE("CPU float32 DTW normalizes its finite no-path sentinel",
   dtwc::Problem problem("f13_f32_public_distance");
   problem.band = 0;
 
-  const auto f32_distance = dtwc::core::resolve_dtw_fn<float>(problem);
-  const auto f64_distance = dtwc::core::resolve_dtw_fn<double>(problem);
+  const auto f32_distance = dtwc::core::resolve_dtw_fn<float>(problem.distance(), problem.data());
+  const auto f64_distance = dtwc::core::resolve_dtw_fn<double>(problem.distance(), problem.data());
   const std::vector<float> short_f32{0.0f};
   const std::vector<float> long_f32{0.0f, 0.0f, 0.0f};
   const std::vector<double> short_f64{0.0};

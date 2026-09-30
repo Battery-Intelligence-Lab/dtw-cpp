@@ -126,7 +126,7 @@ void require_finite_series(
 
 void validate_problem_configuration(const Problem& prob, const char* entry_point)
 {
-  if (prob.variant_params.variant != core::DTWVariant::Standard)
+  if (prob.variant_params().variant != core::DTWVariant::Standard)
     throw InvalidInput(
       std::string(entry_point) + ": only DTWVariant::Standard is supported; "
       "set the Problem variant to DTWVariant::Standard.");

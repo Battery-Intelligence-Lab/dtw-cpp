@@ -214,3 +214,23 @@ CHANGELOG rule.
   (each deleted test names the kept test that covers its subject). CPU floor for release archives and wheels:
   x86-64-v3 (AVX2+FMA; every ARC/HTC node has it). HPC builds the most specialised code for the target: detected
   on the node when the build runs there (native CPU flags, CUDA arch native), else named with `gpu_device=`.
+- 2026-09-30 — E1 (W7a+W7b): `dist_by_ind` is a read of the packed matrix; a method that needs the matrix fills it
+  serially at entry, the rest call the bound DTW function directly. No lock or atomic remains in `dtwc/`. PAM swap
+  5.6–5.9× faster (inferred under load; counters identical). `resolve_dtw_fn` takes the Data so the WDTW weights are
+  bound by value (part of W7e, done early).
+- 2026-09-30 — Volkan: trivial tests go (duplicates, existence lists, source greps, wall-clock, vacuous or
+  never-run cases), each deletion naming the oracle that stays; a unit adds a test only where a contract has
+  none. Agents may delete under this approval; a refused deletion is listed and applied by the orchestrator.
+- 2026-09-30 — W6f: `unit_test_invalid_distance_enums` and `_public_selectors` are deleted (the X3b line's "keep
+  their names until W12b" is moot).
+- 2026-10-01 — Volkan: FP contraction stays on every compiler (GCC's default `fast`, clang's `on`, MSVC
+  `/fp:contract`; the open "drop /fp:contract" question is closed). Distances may differ between compilers and
+  between the SIMD lanes and per-pair routes at the epsilon level; clustering results (conformance labels and
+  medoids) may not. Cross-route tests compare within a bound scaled to the path length; bitwise only where both
+  sides run the same code.
+- 2026-10-01 — V3: the lanes fill at x86-64-v3 is ~1.0× unbanded and 1.17× banded against SSE2, not 2×: the
+  8-lane double kernel waits on its min-then-add chain (inferred); lead: 16 double lanes.
+- 2026-10-01 — V4: a symlinked checkpoint root is followed like any path (W5d removed the rejection; checkpoint is
+  2.0-born and no page promised it); the POSIX-only row that expected the rejection goes.
+- 2026-10-01 — F2: `DTWC_CL_PATH` names the dtwc_cl the Python wrapper and tests run; set but not a file (or
+  empty) is an error.

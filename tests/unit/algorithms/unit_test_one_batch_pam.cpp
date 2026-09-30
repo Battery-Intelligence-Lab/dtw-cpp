@@ -7,9 +7,6 @@
  *              distance matrix remains unfilled.
  *   HARD-QUALITY: on separated synthetic data, objective <= 1.05 * FasterPAM.
  *   HARD-STATE: deterministic for a fixed seed; result is written to Problem.
- *   ADVISORY-50K [.] bench: N=50,000 genuinely warped series of lengths
- *              64..128, calls <=0.52198956% of N^2 and objective within 5%
- *              of an exhaustive exact 100-profile medoid oracle.
  */
 
 #include <dtwc.hpp>
@@ -20,9 +17,9 @@
 #include <catch2/matchers/catch_matchers_exception.hpp>
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -80,30 +77,6 @@ std::vector<data_t> warped_profile(int variant, int group = 0)
   return series;
 }
 
-Problem make_warped_problem(int replicas)
-{
-  std::vector<std::vector<data_t>> series;
-  std::vector<std::string> names;
-  const int n = warped_groups * warped_variants * replicas;
-  series.reserve(static_cast<std::size_t>(n));
-  names.reserve(static_cast<std::size_t>(n));
-  for (int group = 0; group < warped_groups; ++group) {
-    for (int variant = 0; variant < warped_variants; ++variant) {
-      const auto profile = warped_profile(variant, group);
-      for (int replica = 0; replica < replicas; ++replica) {
-        series.push_back(profile);
-        names.push_back("g" + std::to_string(group) + "_v"
-                        + std::to_string(variant) + "_r"
-                        + std::to_string(replica));
-      }
-    }
-  }
-  Problem problem("one_batch_warped_scaling");
-  problem.set_band(warped_band);
-  problem.set_data(Data(std::move(series), std::move(names)));
-  return problem;
-}
-
 struct WarpedOracle
 {
   int best_variant = -1;
@@ -140,16 +113,6 @@ WarpedOracle warped_oracle()
   return oracle;
 }
 
-constexpr std::uint64_t one_batch_max_evaluations(int n)
-{
-  // The N*m table omits its m self-pairs. If no selected medoid belongs to
-  // the batch, exact labeling adds k*(N-1); any in-batch medoid removes a
-  // complete labeling column. This is a tight implementation-independent
-  // upper bound for the registered m and k.
-  return static_cast<std::uint64_t>(n) * warped_batch - warped_batch
-         + static_cast<std::uint64_t>(warped_groups) * (n - 1);
-}
-
 void require_warped_fixture_contract()
 {
   std::set<int> lengths;
@@ -162,29 +125,6 @@ void require_warped_fixture_contract()
   REQUIRE(*lengths.begin() == warped_min_length);
   REQUIRE(*lengths.rbegin() == warped_max_length);
   REQUIRE(lengths.size() == 65);
-}
-
-void require_warped_result(const core::ClusteringResult &result,
-                           const algorithms::OneBatchPAMStats &stats,
-                           int replicas, const WarpedOracle &oracle)
-{
-  const int group_size = warped_variants * replicas;
-  const int n = warped_groups * group_size;
-  require_valid(result, n, warped_groups);
-
-  std::set<int> represented_groups;
-  for (int medoid : result.medoid_indices)
-    represented_groups.insert(medoid / group_size);
-  REQUIRE(represented_groups.size() == warped_groups);
-
-  const double exact_oracle = oracle.best_cost_per_replica * replicas;
-  REQUIRE(result.total_cost <= exact_oracle * 1.05 + 1e-9);
-  REQUIRE(stats.batch_size == warped_batch);
-  REQUIRE(stats.distance_evaluations <= one_batch_max_evaluations(n));
-  REQUIRE(stats.full_matrix_fraction
-          <= static_cast<double>(one_batch_max_evaluations(n))
-               / (static_cast<double>(n) * n));
-  REQUIRE_FALSE(result.total_cost == 0.0);
 }
 
 Problem make_problem(int n, int groups, int length = 8)
@@ -238,7 +178,8 @@ std::string capture_stderr(Function&& function)
 // <random> distribution). Steps are multiples of 0.001, which binary64 cannot
 // hold, so the DTW sums are inexact and a reduction whose order followed the
 // thread count would change the last bits of the cost.
-Problem make_walk_problem(int n, int length)
+template <typename T>
+Data walk_data(const std::vector<std::size_t> &lengths)
 {
   std::uint64_t state = 0x9E3779B97F4A7C15ull;
   const auto next = [&state] {
@@ -248,20 +189,26 @@ Problem make_walk_problem(int n, int length)
     z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
     return z ^ (z >> 31);
   };
-  std::vector<std::vector<data_t>> series;
+  std::vector<std::vector<T>> series;
   std::vector<std::string> names;
-  for (int i = 0; i < n; ++i) {
-    std::vector<data_t> walk(static_cast<std::size_t>(length));
+  for (std::size_t i = 0; i < lengths.size(); ++i) {
+    std::vector<T> walk(lengths[i]);
     double x = 0.0;
-    for (double &value : walk) {
+    for (T &value : walk) {
       x += (static_cast<double>(next() % 2001) - 1000.0) / 1000.0;
-      value = x;
+      value = static_cast<T>(x);
     }
     series.push_back(std::move(walk));
     names.push_back("w" + std::to_string(i));
   }
+  return Data(std::move(series), std::move(names));
+}
+
+Problem make_walk_problem(int n, int length)
+{
   Problem problem("one_batch_walks");
-  problem.set_data(Data(std::move(series), std::move(names)));
+  problem.set_data(walk_data<data_t>(std::vector<std::size_t>(static_cast<std::size_t>(n),
+                                                              static_cast<std::size_t>(length))));
   return problem;
 }
 
@@ -293,10 +240,10 @@ int workers_granted()
 /// The scan the final assignment replaced: each point against the medoids in
 /// slot order, the first strictly nearest wins, a medoid tied with another
 /// serves itself, the objective is point-ordered.
-core::ClusteringResult serial_assignment(Problem &problem, const std::vector<index_t> &medoids)
+template <typename Distance>
+core::ClusteringResult serial_assignment(std::size_t n, const std::vector<index_t> &medoids,
+                                         Distance &&distance)
 {
-  const auto &dtw = problem.dtw_function();
-  const std::size_t n = problem.size();
   core::ClusteringResult result;
   result.medoid_indices = medoids;
   result.labels.assign(n, 0);
@@ -305,7 +252,7 @@ core::ClusteringResult serial_assignment(Problem &problem, const std::vector<ind
     double best = std::numeric_limits<double>::infinity();
     for (std::size_t slot = 0; slot < medoids.size(); ++slot) {
       const auto medoid = static_cast<std::size_t>(medoids[slot]);
-      const double d = point == medoid ? 0.0 : dtw(problem.series(point), problem.series(medoid));
+      const double d = point == medoid ? 0.0 : distance(point, medoid);
       if (d < best) { best = d; result.labels[point] = static_cast<index_t>(slot); }
     }
     cost[point] = best;
@@ -316,6 +263,14 @@ core::ClusteringResult serial_assignment(Problem &problem, const std::vector<ind
   }
   result.total_cost = core::detail::ordered_medoid_objective(cost, "serial_assignment");
   return result;
+}
+
+core::ClusteringResult serial_assignment(Problem &problem, const std::vector<index_t> &medoids)
+{
+  const auto &dtw = problem.dtw_function();
+  return serial_assignment(problem.size(), medoids, [&](std::size_t point, std::size_t medoid) {
+    return dtw(problem.series(point), problem.series(medoid));
+  });
 }
 
 } // namespace
@@ -344,8 +299,8 @@ TEST_CASE("OneBatchPAM stays within its fixed-batch distance budget",
   REQUIRE(problem.medoids() == result.medoid_indices);
 }
 
-TEST_CASE("OneBatchPAM reconciles a raw dispatcher mutation before OpenMP",
-          "[one_batch_pam][dtw_function][semantic_mutation][m37]")
+TEST_CASE("OneBatchPAM computes with the Problem's variant in every worker",
+          "[one_batch_pam][dtw_function][m37]")
 {
   constexpr int replicas = 33; // N=66 takes the OpenMP table-build path.
   std::vector<std::vector<data_t>> series;
@@ -361,8 +316,10 @@ TEST_CASE("OneBatchPAM reconciles a raw dispatcher mutation before OpenMP",
 
   Problem problem{"one_batch_raw_dispatch_mutation"};
   problem.set_data(Data{std::move(series), std::move(names)});
-  problem.variant_params.variant = core::DTWVariant::ADTW;
-  problem.variant_params.adtw_penalty = 1.0;
+  core::DTWVariantParams adtw;
+  adtw.variant = core::DTWVariant::ADTW;
+  adtw.adtw_penalty = 1.0;
+  problem.set_variant(adtw);
 
   algorithms::OneBatchPAMOptions options;
   options.n_clusters = 1;
@@ -371,8 +328,8 @@ TEST_CASE("OneBatchPAM reconciles a raw dispatcher mutation before OpenMP",
   options.random_seed = 17;
 
   // Every medoid has 33 opposite-shape replicas at ADTW distance 4. Standard
-  // DTW would report 33*3=99, so 132 pins both the serial rebind and its use by
-  // all workers without relying on a scheduler-specific race manifestation.
+  // DTW would report 33*3=99, so 132 pins the variant's use by all workers
+  // without relying on a scheduler-specific race manifestation.
   const auto result = algorithms::one_batch_pam(problem, options);
   REQUIRE(result.total_cost == 132.0);
   REQUIRE_FALSE(problem.is_distance_matrix_filled());
@@ -612,96 +569,6 @@ TEST_CASE("OneBatchPAM warped scaling oracle is non-degenerate and discriminatin
             << '\n';
 }
 
-TEST_CASE("OneBatchPAM warped scaling preflight",
-          "[.][one_batch_pam][bench][preflight]")
-{
-  constexpr int replicas = 10;
-  constexpr int n = warped_groups * warped_variants * replicas;
-  const auto oracle = warped_oracle();
-  auto problem = make_warped_problem(replicas);
-  algorithms::OneBatchPAMOptions options;
-  options.n_clusters = warped_groups;
-  options.batch_size = warped_batch;
-  options.random_seed = 42;
-  algorithms::OneBatchPAMStats stats;
-
-  const auto start = std::chrono::steady_clock::now();
-  const auto result = algorithms::one_batch_pam(problem, options, &stats);
-  const double seconds = std::chrono::duration<double>(
-                           std::chrono::steady_clock::now() - start)
-                           .count();
-  require_warped_result(result, stats, replicas, oracle);
-
-  std::cout << std::setprecision(17)
-            << "M6_PREFLIGHT n=" << n
-            << " variants=" << warped_variants
-            << " replicas=" << replicas
-            << " lengths=64..128 band=" << warped_band
-            << " batch=" << stats.batch_size
-            << " wall_s=" << seconds
-            << " evaluations=" << stats.distance_evaluations
-            << " max_evaluations=" << one_batch_max_evaluations(n)
-            << " fraction=" << stats.full_matrix_fraction
-            << " cost=" << result.total_cost
-            << " exact_oracle=" << oracle.best_cost_per_replica * replicas
-            << " ratio=" << result.total_cost / (oracle.best_cost_per_replica * replicas)
-            << " accepted_swaps=" << stats.accepted_swaps << " medoids=";
-  for (std::size_t i = 0; i < result.medoid_indices.size(); ++i)
-    std::cout << (i == 0 ? "" : ",") << result.medoid_indices[i];
-  std::cout << '\n';
-}
-
-TEST_CASE("OneBatchPAM 50k registered warped scaling and quality band",
-          "[.][one_batch_pam][bench][50k]")
-{
-  constexpr int replicas = 100;
-  constexpr int n = warped_groups * warped_variants * replicas;
-  static_assert(n == 50000);
-  static_assert(one_batch_max_evaluations(n) == 13049739);
-
-  // Registered before execution:
-  //   memory: N*m doubles = 102,400,000 B (97.65625 MiB) for the only table;
-  //           series payload = 4,815,000 doubles (36.7355 MiB).
-  //   work:   <=13,049,739 DTWs = 0.52198956% of N^2; with <=128 band
-  //           cells per short-side row and lengths <=128, <=213,806,923,776
-  //           scalar DP-cell updates (a conservative upper bound).
-  //   quality: all five groups represented and cost <=1.05* the exact oracle.
-  // Runtime is advisory on a shared host and is predicted from the separately
-  // run, structurally identical replicas=10 preflight before this test starts.
-  const auto oracle = warped_oracle();
-  auto problem = make_warped_problem(replicas);
-  algorithms::OneBatchPAMOptions options;
-  options.n_clusters = warped_groups;
-  options.batch_size = warped_batch;
-  options.random_seed = 42;
-  algorithms::OneBatchPAMStats stats;
-
-  const auto start = std::chrono::steady_clock::now();
-  const auto result = algorithms::one_batch_pam(problem, options, &stats);
-  const double seconds = std::chrono::duration<double>(
-                           std::chrono::steady_clock::now() - start)
-                           .count();
-  require_warped_result(result, stats, replicas, oracle);
-
-  std::cout << std::setprecision(17)
-            << "M6_50K n=" << n
-            << " variants=" << warped_variants
-            << " replicas=" << replicas
-            << " lengths=64..128 band=" << warped_band
-            << " batch=" << stats.batch_size
-            << " wall_s=" << seconds
-            << " evaluations=" << stats.distance_evaluations
-            << " max_evaluations=" << one_batch_max_evaluations(n)
-            << " fraction=" << stats.full_matrix_fraction
-            << " cost=" << result.total_cost
-            << " exact_oracle=" << oracle.best_cost_per_replica * replicas
-            << " ratio=" << result.total_cost / (oracle.best_cost_per_replica * replicas)
-            << " accepted_swaps=" << stats.accepted_swaps << " medoids=";
-  for (std::size_t i = 0; i < result.medoid_indices.size(); ++i)
-    std::cout << (i == 0 ? "" : ",") << result.medoid_indices[i];
-  std::cout << '\n';
-}
-
 TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
           "[one_batch_pam][nonfinite]")
 {
@@ -839,4 +706,76 @@ TEST_CASE("OneBatchPAM's parallel final assignment reports the failure a serial 
     if (serial.find("nearest-medoid distance at point") != std::string::npos) ++failed_in_assignment;
   }
   REQUIRE(failed_in_assignment > 0);
+}
+
+namespace {
+
+bool same_bits(double a, double b)
+{
+  return std::memcmp(&a, &b, sizeof(double)) == 0;
+}
+
+} // namespace
+
+TEST_CASE("OneBatchPAM's batch table through the lanes is bitwise the per-pair table",
+          "[one_batch_pam][lanes]")
+{
+  // The table fill takes W columns of a row at a time through the lane function
+  // (W = 8 for float64, 16 for float32) where they are as long as the row's
+  // series, and every other column pair by pair. With the batch the whole data
+  // set, every selected medoid is a table column and the final labels and cost
+  // read N x k entries of the table: each must be the bits of the per-pair
+  // function, whichever lane its column fell in. The batch order is the seed's,
+  // so the seeds move the columns across the lanes and the blocks.
+  struct FillCase
+  {
+    const char *name;
+    bool f32;
+    std::vector<std::size_t> lengths; // one per series
+    int band;
+    core::MetricType metric;
+  };
+  constexpr std::size_t n = 70; // above the 64-row threshold of the OpenMP path
+  std::vector<std::size_t> alternating, mostly_one;
+  for (std::size_t i = 0; i < n; ++i) alternating.push_back(i % 2 ? 53 : 50);
+  for (std::size_t i = 0; i < n; ++i) mostly_one.push_back(i % 9 == 4 ? 53 : 50);
+  const std::vector<FillCase> cases{
+    { "float64, equal lengths, full", false, std::vector<std::size_t>(n, 50), -1, core::MetricType::L1 },
+    { "float64, equal lengths, band 6, squared L2", false, std::vector<std::size_t>(n, 50), 6,
+      core::MetricType::SquaredL2 },
+    { "float32, equal lengths, full", true, std::vector<std::size_t>(n, 50), -1, core::MetricType::L1 },
+    { "float32, equal lengths, band 4, squared L2", true, std::vector<std::size_t>(n, 50), 4,
+      core::MetricType::SquaredL2 },
+    { "float64, two lengths half and half", false, alternating, 3, core::MetricType::L1 },
+    { "float64, two lengths, some blocks of one length", false, mostly_one, -1, core::MetricType::L1 },
+    { "float32, two lengths, some blocks of one length", true, mostly_one, 5,
+      core::MetricType::SquaredL2 },
+  };
+
+  for (const auto &c : cases) {
+    for (std::uint64_t seed = 1; seed <= 4; ++seed) {
+      CAPTURE(c.name, seed);
+      Problem problem("one_batch_lanes");
+      problem.set_data(c.f32 ? walk_data<float>(c.lengths) : walk_data<data_t>(c.lengths));
+      problem.set_band(c.band);
+      problem.set_metric(c.metric);
+      algorithms::OneBatchPAMOptions options;
+      options.n_clusters = 10;
+      options.batch_size = static_cast<index_t>(n);
+      options.random_seed = seed;
+      algorithms::OneBatchPAMStats stats;
+      const auto result = algorithms::one_batch_pam(problem, options, &stats);
+
+      const auto oracle = serial_assignment(n, result.medoid_indices,
+        [&](std::size_t point, std::size_t medoid) {
+          return c.f32 ? problem.dtw_function_f32()(problem.data().series_f32(point),
+                                                    problem.data().series_f32(medoid))
+                       : problem.dtw_function()(problem.series(point), problem.series(medoid));
+        });
+      CHECK(result.labels == oracle.labels);
+      CHECK(same_bits(result.total_cost, oracle.total_cost));
+      // The N x N table minus its diagonal; every medoid is in the batch.
+      CHECK(stats.distance_evaluations == n * (n - 1));
+    }
+  }
 }

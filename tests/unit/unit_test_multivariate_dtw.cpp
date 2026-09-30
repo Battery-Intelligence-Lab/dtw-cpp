@@ -18,9 +18,7 @@
 
 #include <vector>
 #include <cmath>
-#include <chrono>
 #include <random>
-#include <iostream>
 
 using Catch::Matchers::WithinAbs;
 
@@ -240,45 +238,6 @@ TEST_CASE("MV DTW banded: negative band falls back to full", "[mv][dtw][edge]")
 // =========================================================================
 //  D=1 performance parity (informational, not a hard timing assertion)
 // =========================================================================
-
-TEST_CASE("MV DTW: D=1 performance parity", "[mv][dtw][perf]")
-{
-  std::mt19937 rng(42);
-  std::uniform_real_distribution<double> dist_rng(0.0, 100.0);
-  const size_t N = 200;
-  std::vector<double> x(N), y(N);
-  for (auto &v : x) v = dist_rng(rng);
-  for (auto &v : y) v = dist_rng(rng);
-
-  // Warmup
-  for (int i = 0; i < 100; ++i) {
-    dtwc::dtwFull_L(x.data(), N, y.data(), N);
-    dtwc::dtwFull_L_mv(x.data(), N, y.data(), N, 1);
-  }
-
-  const int ITERS = 1000;
-
-  auto t0 = std::chrono::high_resolution_clock::now();
-  double sum_std = 0;
-  for (int i = 0; i < ITERS; ++i)
-    sum_std += dtwc::dtwFull_L(x.data(), N, y.data(), N);
-  auto t1 = std::chrono::high_resolution_clock::now();
-  double sum_mv = 0;
-  for (int i = 0; i < ITERS; ++i)
-    sum_mv += dtwc::dtwFull_L_mv(x.data(), N, y.data(), N, 1);
-  auto t2 = std::chrono::high_resolution_clock::now();
-
-  // Results must match (ndim=1 dispatches to existing scalar path)
-  REQUIRE_THAT(sum_mv, WithinAbs(sum_std, 1e-6));
-
-  auto ms_std = std::chrono::duration<double, std::milli>(t1 - t0).count();
-  auto ms_mv  = std::chrono::duration<double, std::milli>(t2 - t1).count();
-  std::cout << "[perf] Standard dtwFull_L: " << ms_std << " ms, "
-            << "MV dtwFull_L_mv(D=1): " << ms_mv << " ms  "
-            << "(ratio: " << ms_mv / ms_std << "x)\n";
-  // MV(D=1) dispatches to existing scalar path, so timing should be ~1x.
-  // We don't assert on timing — just print for observation.
-}
 
 // =========================================================================
 //  Task 4: Problem multivariate DTW integration

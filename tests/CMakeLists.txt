@@ -80,8 +80,7 @@ endforeach()
 # F22: every retained C++ compatibility surface forwards to its canonical name
 # (test_deprecated_shims_warn above proves the shims still warn).
 dtwc_add_test(NAME test_problem_api_2_0 SOURCE ${_dtwc_test_source_test_problem_api_2_0}
-    FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-compat" FIXTURE_DEFINE DTWC_F22_TEST_ROOT
-    SERIAL)
+    FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-compat" FIXTURE_DEFINE DTWC_F22_TEST_ROOT)
 
 # F13: nearest-medoid assignment through a multi-worker OpenMP region.
 dtwc_add_test(NAME unit_test_nearest_medoid_assignment SOURCE ${_dtwc_test_source_unit_test_nearest_medoid_assignment}
@@ -103,8 +102,7 @@ dtwc_add_test(NAME unit_test_problem_encapsulation SOURCE ${_dtwc_test_source_un
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f19-problem-api" FIXTURE_DEFINE DTWC_F19_TEST_ROOT)
 
 # F15: the three portable deterministic generator schedules.
-dtwc_add_test(NAME unit_test_deterministic_series SOURCE ${_dtwc_test_source_unit_test_deterministic_series}
-    COMPILE_DEFINITIONS DTWC_F15_SOURCE_ROOT="${CMAKE_SOURCE_DIR}")
+dtwc_add_test(NAME unit_test_deterministic_series SOURCE ${_dtwc_test_source_unit_test_deterministic_series})
 
 # F6: the Arrow/Parquet readers must RUN when the build publishes Arrow, and
 # are not registered at all when it does not (no green stub).
@@ -133,9 +131,6 @@ foreach(_dtwc_device_test IN ITEMS
         test_metal_correctness test_metal_mmap)
     dtwc_add_test(NAME ${_dtwc_device_test} SOURCE ${_dtwc_test_source_${_dtwc_device_test}} MAY_SKIP)
 endforeach()
-
-# The scalar-vs-ndim=1 wall-clock parity assertion must not share the machine.
-dtwc_add_test(NAME test_multivariate_adversarial SOURCE ${_dtwc_test_source_test_multivariate_adversarial} SERIAL)
 
 # Pass 2: everything else, strict. A name already handled above stays handled
 # even when REQUIRES declined to register it.
@@ -228,9 +223,9 @@ endif()
 # so the expected case count is pinned per platform.
 if(TARGET dtwc_cl)
     if(WIN32)
-        set(_dtwc_cl_loud_marker "cases=12/12 efbig=unavailable")
+        set(_dtwc_cl_loud_marker "cases=14/14 efbig=unavailable")
     else()
-        set(_dtwc_cl_loud_marker "cases=13/13 efbig=ran")
+        set(_dtwc_cl_loud_marker "cases=15/15 efbig=ran")
     endif()
     dtwc_add_script_test(NAME test_cli_loud_failures
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_loud_failures.cmake"
