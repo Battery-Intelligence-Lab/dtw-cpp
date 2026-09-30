@@ -211,7 +211,6 @@ class TestClusterCommonValidation:
             ("max_iter", "1", TypeError),
             ("max_iter", 0, ValueError),
             ("max_iter", -1, ValueError),
-            ("max_iter", (1 << 31), ValueError),
         ],
     )
     def test_invalid_k_and_max_iter_precede_every_effect(
@@ -262,7 +261,7 @@ class TestClusterCommonValidation:
         touched = self._poison_effects(monkeypatch)
 
         with pytest.raises(
-            ValueError, match=r"\bmax_iter\b.*must be in",
+            ValueError, match=r"\bmax_iter\b.*must be at least 1",
         ) as caught:
             dtwcpp.cluster(
                 source, k=1, max_iter=0, method=method, device=device,

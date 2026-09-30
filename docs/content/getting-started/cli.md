@@ -106,7 +106,7 @@ Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias
 
 The default seed is identical across the C++, Python, MATLAB, sklearn, and CLI
 seed-aware routes. Supplying `--seed` does not consume the legacy process-global
-FastPAM engine. Valid CLI seeds are integers from 0 through `UINT_MAX`.
+FastPAM engine. Valid CLI seeds are integers from 0 through `UINT64_MAX`.
 
 ### RAM-limited Parquet FastCLARA
 
