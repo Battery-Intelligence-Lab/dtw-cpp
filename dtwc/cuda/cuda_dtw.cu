@@ -1023,14 +1023,23 @@ void launch_dtw_kernel(
     persistent_grid = device_limits(device_id).sm_count * std::max(blocks_per_sm, 1);
   }
 
+  // The launches take the matrix from the top down, each the range of slots
+  // [first_slot, end): its pairs' slots and the diagonal slots among and above
+  // them; the last range starts at slot 0. The ranges tile the matrix and the
+  // copies are the only writes to it. The device buffer is zeroed first, so
+  // every slot a copy writes is a distance or a diagonal 0: a fill that stops
+  // between launches leaves copied ranges that are right and the rest untouched.
+  std::int64_t end = n * (n + 1) / 2;
   for (std::int64_t first = 0; first < num_pairs; first += chunk) {
     const int count = static_cast<int>(std::min(chunk, num_pairs - first));
-    // The launch's span: from its last pair's slot up to its first pair's.
-    std::int64_t si = 0, sj = 0;
-    decode_pair(first + count - 1, n, si, sj);
-    const std::int64_t first_slot = packed_slot(si, sj, n);
-    decode_pair(first, n, si, sj);
-    const auto span = static_cast<size_t>(packed_slot(si, sj, n) + 1 - first_slot);
+    std::int64_t first_slot = 0;
+    if (first + count < num_pairs) {
+      std::int64_t si = 0, sj = 0;
+      decode_pair(first + count - 1, n, si, sj);
+      first_slot = packed_slot(si, sj, n);
+    }
+    const auto span = static_cast<size_t>(end - first_slot);
+    CUDA_CHECK(cudaMemsetAsync(workspace.d_out.get(), 0, span * sizeof(double), stream));
 
     if (kernel_path == detail::KernelPath::Warp) {
       launch_warp_family(dtw_warp_kernel<T>, 32, first, count, first_slot);
@@ -1058,6 +1067,7 @@ void launch_dtw_kernel(
 
     CUDA_CHECK(cudaMemcpyAsync(out.raw() + first_slot, workspace.d_out.get(),
                                 span * sizeof(double), cudaMemcpyDeviceToHost, stream));
+    end = first_slot;
   }
 
   CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), stream));
@@ -1068,8 +1078,6 @@ void launch_dtw_kernel(
                                   workspace.evt_start.get(),
                                   workspace.evt_end.get()));
   gpu_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
-
-  for (size_t i = 0; i < N; ++i) out.set(i, i, 0.0);
 }
 
 } // anonymous namespace

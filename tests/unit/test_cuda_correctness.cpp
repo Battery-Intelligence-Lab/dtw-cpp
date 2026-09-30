@@ -21,6 +21,7 @@
 
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
+#include <cuda/launch_prep.hpp>
 #include <cuda_runtime.h>
 #endif
 
@@ -1670,6 +1671,59 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
     CAPTURE(first_bad - mismatches.begin());
     REQUIRE(std::accumulate(mismatches.begin(), mismatches.end(), size_t{ 0 }) == 0);
   }
+}
+
+// Two launches in the register-tile and the wavefront families: 16,385 is the
+// first N whose pair count needs a second launch. The kernel follows the
+// longest series, so every 64th series has the family's length (33:
+// regtile_w4; 257: the wavefront, persistent in both launches) and the rest 1
+// to 4 samples, which keeps the fill and the host oracle cheap. Every pair is
+// checked against the host kernel, bit for bit, and every diagonal entry is 0;
+// the matrix is written only by the launches' copies, the first launch leaves
+// distances in the device buffer where the second has diagonal slots, and so
+// the check covers each launch's whole copied range.
+TEST_CASE("CUDA fills over two launches match the host kernel in the regtile and wavefront families",
+          "[cuda][launches]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  struct Family {
+    size_t long_length;
+    const char *kernel;
+  };
+  const auto family = GENERATE(values<Family>({ { 33, "regtile_w4" }, { 257, "wavefront" } }));
+  CAPTURE(family.kernel);
+
+  constexpr size_t N = 16385;
+  REQUIRE(dtwc::cuda::detail::upper_triangle_pairs(N)
+          > static_cast<size_t>(dtwc::cuda::detail::kMaxPairsPerLaunch));
+  std::vector<std::vector<double>> series(N);
+  std::mt19937 rng(16385);
+  std::uniform_real_distribution<double> value(-1.0, 1.0);
+  for (size_t i = 0; i < N; ++i) {
+    series[i].resize(i % 64 == 0 ? family.long_length : 1 + i % 4);
+    for (auto &v : series[i]) v = value(rng);
+  }
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  dtwc::core::DistanceMatrix matrix;
+  const auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
+  REQUIRE(result.kernel_used == family.kernel);
+  REQUIRE(matrix.size() == N);
+
+  // One mismatch count per row: each row has one writer.
+  std::vector<size_t> mismatches(N, 0);
+  auto check_row = [&](size_t i) {
+    for (size_t j = 0; j < i; ++j)
+      mismatches[i] += matrix.get(i, j) != dtwc::dtwFull_L<double>(series[i], series[j]);
+    mismatches[i] += matrix.get(i, i) != 0.0;
+  };
+  dtwc::run_openmp(check_row, N);
+  const auto first_bad =
+      std::find_if(mismatches.begin(), mismatches.end(), [](size_t m) { return m != 0; });
+  CAPTURE(first_bad - mismatches.begin());
+  REQUIRE(std::accumulate(mismatches.begin(), mismatches.end(), size_t{ 0 }) == 0);
 }
 
 // ---------------------------------------------------------------------------
