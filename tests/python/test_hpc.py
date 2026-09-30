@@ -168,22 +168,49 @@ class TestBuildCommand:
 
 
 # ---------------------------------------------------------------------------
+# Binary lookup: DTWC_CL_PATH names the binary; otherwise the newest under root
+# ---------------------------------------------------------------------------
+class TestFindDtwcBinary:
+    @staticmethod
+    def _tree(tmp_path):
+        """A repo-like tree whose NEWEST build is build-arrow, plus an older build/."""
+        older = tmp_path / "build" / "bin" / "dtwc_cl.exe"
+        newer = tmp_path / "build-arrow" / "bin" / "dtwc_cl.exe"
+        for stamp, binary in enumerate((older, newer)):
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b"")
+            os.utime(binary, (1_000_000 + stamp, 1_000_000 + stamp))
+        return older, newer
+
+    def test_without_the_variable_the_newest_build_wins(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("DTWC_CL_PATH", raising=False)
+        _, newer = self._tree(tmp_path)
+        assert Path(_hpc.find_dtwc_binary(str(tmp_path))) == newer
+
+    def test_the_variable_beats_a_newer_build(self, tmp_path, monkeypatch):
+        self._tree(tmp_path)
+        pinned = tmp_path / "pinned" / "dtwc_cl.exe"
+        pinned.parent.mkdir()
+        pinned.write_bytes(b"")
+        os.utime(pinned, (500_000, 500_000))
+        monkeypatch.setenv("DTWC_CL_PATH", str(pinned))
+        assert _hpc.find_dtwc_binary(str(tmp_path)) == str(pinned)
+
+    def test_a_missing_path_is_an_error_naming_it(self, tmp_path, monkeypatch):
+        self._tree(tmp_path)
+        missing = tmp_path / "nowhere" / "dtwc_cl.exe"
+        monkeypatch.setenv("DTWC_CL_PATH", str(missing))
+        with pytest.raises(FileNotFoundError, match="DTWC_CL_PATH") as caught:
+            _hpc.find_dtwc_binary(str(tmp_path))
+        assert str(missing) in str(caught.value)
+
+
+# ---------------------------------------------------------------------------
 # Real end-to-end contract: serialize -> run LOCAL dtwc_cl -> parse.
 # This is the cluster job minus the ssh/rsync transport. Skips if no binary.
 # ---------------------------------------------------------------------------
 def _local_binary():
-    """The canonical gate binary, else the newest built dtwc_cl under the repo.
-
-    find_dtwc_binary picks the most recently built binary, which on a machine
-    with several configured build trees can be one that cannot start (the
-    Arrow tree needs the pyarrow DLL directories on PATH). Prefer the gate's
-    own binary, exactly as tests/python/test_api.py does.
-    """
-    root = Path(__file__).resolve().parents[2]
-    canonical = root / "build" / "highs-1151" / "bin" / "dtwc_cl.exe"
-    if canonical.is_file():
-        return str(canonical)
-    return _hpc.find_dtwc_binary(str(root))
+    return _hpc.find_dtwc_binary(str(Path(__file__).resolve().parents[2]))
 
 
 def _bash_path(path):
