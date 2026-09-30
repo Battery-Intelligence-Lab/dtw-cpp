@@ -330,14 +330,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("random_seed", &dtwc::algorithms::OneBatchPAMOptions::random_seed)
     .def_rw("relative_tolerance", &dtwc::algorithms::OneBatchPAMOptions::relative_tolerance);
 
-  nb::class_<dtwc::algorithms::OneBatchPAMStats>(m, "OneBatchPAMStats")
-    .def(nb::init<>())
-    .def_ro("batch_size", &dtwc::algorithms::OneBatchPAMStats::batch_size)
-    .def_ro("distance_evaluations", &dtwc::algorithms::OneBatchPAMStats::distance_evaluations)
-    .def_ro("full_matrix_fraction", &dtwc::algorithms::OneBatchPAMStats::full_matrix_fraction)
-    .def_ro("estimated_objective", &dtwc::algorithms::OneBatchPAMStats::estimated_objective)
-    .def_ro("accepted_swaps", &dtwc::algorithms::OneBatchPAMStats::accepted_swaps);
-
   nb::class_<dtwc::algorithms::BarycenterOptions>(m, "BarycenterOptions")
     .def(nb::init<>())
     .def_rw("method", &dtwc::algorithms::BarycenterOptions::method)
@@ -878,14 +870,6 @@ NB_MODULE(_dtwcpp_core, m) {
        "Set time series data (ndim>1 for multivariate interleaved layout).")
     .def("set_data", [](dtwc::Problem &p, dtwc::Data d) { p.set_data(std::move(d)); },
          "data"_a, "Set time series data from a Data object (enables f32 storage).")
-    .def("set_view_data", [](dtwc::Problem &p, std::vector<std::vector<double>> series,
-                              std::vector<std::string> names, size_t ndim) {
-      dtwc::Data d(std::move(series), std::move(names), ndim);
-      p.set_view_data(std::move(d));
-    }, "series"_a, "names"_a, "ndim"_a = 1,
-       "Set data via the light/view path (sizes the distance matrix, skips the mmap\n"
-       "cache). Python builds an owning Data (safe lifetime); the zero-copy span\n"
-       "mode is a C++/CLARA-internal optimisation.")
     // ---- distance matrix ----
     .def("fill_distance_matrix", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
@@ -1140,18 +1124,6 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "prob"_a, "n_clusters"_a, "batch_size"_a = -1, "max_iter"_a = 100,
      "seed"_a = dtwc::settings::DEFAULT_RANDOM_SEED,
      "Run OneBatchPAM using one fixed N-by-m distance table (AAAI 2025).");
-
-  m.def("one_batch_pam_with_stats",
-        [](dtwc::Problem &prob, const dtwc::algorithms::OneBatchPAMOptions &options) {
-    dtwc::algorithms::OneBatchPAMStats stats;
-    dtwc::core::ClusteringResult result;
-    {
-      nb::gil_scoped_release release;
-      result = dtwc::algorithms::one_batch_pam(prob, options, &stats);
-    }
-    return nb::make_tuple(std::move(result), std::move(stats));
-  }, "prob"_a, "options"_a,
-     "Run OneBatchPAM and return (ClusteringResult, OneBatchPAMStats).");
 
   // =========================================================================
   // DTW barycenters

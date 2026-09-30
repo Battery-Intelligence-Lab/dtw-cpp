@@ -46,10 +46,7 @@ a field does not.
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
 | problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |
 | data (owning) | `data() const` / `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | read-only C++ accessor plus live setters |
-| data (view) | `set_view_data(Data)` | `set_view_data(...)` `[introduced-2.0; gap F26: owning copy]` | — | C++ view path is live; Python name is live but not non-owning |
-
-Python `Problem.set_view_data` currently constructs owning nested-vector
-storage before calling C++; it is not a non-owning ndarray view (F26).
+| data (view) | `set_view_data(Data)` | — | — | C++ only: the view path CLARA uses; no binding exposes it |
 
 ### 2.2 `Problem` — distance-matrix & clustering methods `[rename: camelCase → snake_case]`
 

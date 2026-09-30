@@ -306,10 +306,7 @@ a field does not.
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
 | problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |
 | data (owning) | `data() const` / `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | read-only C++ accessor plus live setters |
-| data (view) | `set_view_data(Data)` | `set_view_data(...)` `[introduced-2.0; gap F26: owning copy]` | — | C++ view path is live; Python name is live but not non-owning |
-
-Python `Problem.set_view_data` currently constructs owning nested-vector
-storage before calling C++; it is not a non-owning ndarray view (F26).
+| data (view) | `set_view_data(Data)` | — | — | C++ only: the view path CLARA uses; no binding exposes it |
 
 ### 2.2 `Problem` — distance-matrix & clustering methods `[rename: camelCase → snake_case]`
 
@@ -914,8 +911,7 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    and release the GIL on long calls; Data view-mode spans and interleaved
    multivariate layout
    (`[t0f0,t0f1,t1f0,…]`); lock-free row-partitioned matrix fill
-   are preserved. Python `Problem.set_view_data` currently constructs owning
-   storage rather than a view (F26).
+   are preserved.
 7. **Determinism.** Seed-aware Tier-1 PAM/OneBatchPAM/CLARA entry points use the
    invocation-local cross-language default 42 (§1.3); estimator restart `i` uses
    `42+i`. The unseeded Tier-2 FastPAM overload retains the legacy mutable
