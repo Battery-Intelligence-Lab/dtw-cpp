@@ -281,3 +281,5 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A new Arrow build tree on Windows needs both `-DArrow_DIR` and `-DParquet_DIR`** at the pyarrow shim
   (`build/arrow-pyarrow-23/pyarrow-config`): with `Arrow_DIR` alone Parquet is silently off and `test_io_readers` skips
   its Parquet case. At run time put pyarrow and `pyarrow.libs` on PATH, else exit 0xc0000135 (F1, 2026-09-30).
+- **A CUDA error check must consume the error it reports** (`cudaGetLastError`): otherwise the sticky error fails the
+  thread's next, valid call with the same message (C1 `13246cb`: a refused fill poisoned the next fill).

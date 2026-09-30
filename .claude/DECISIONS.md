@@ -207,3 +207,6 @@ CHANGELOG rule.
 - 2026-09-30 — Volkan: the CUDA floor is the A30's generation — compute capability 8.0 (Ampere, 2021). Default
   architectures 80;86;89;90 with PTX of the newest for later GPUs; a device below 8.0 is a typed `DeviceError` at
   selection; code for older architectures goes (C1).
+- 2026-09-30 — C1 merged (`ceb7f91`): the CUDA toolkit floor stays 12.0 (ARC loads CUDA 12.4), so the shared-memory
+  carveout (−17–20 % at FP32 L 2049–2644, its band passed) is dropped — its launch attribute needs CUDA 12.5. The
+  global-memory wavefront removes every length limit on the GPU.
