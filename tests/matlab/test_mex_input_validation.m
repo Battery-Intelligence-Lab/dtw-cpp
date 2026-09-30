@@ -674,16 +674,16 @@ function test_fast_pam_max_iter_zero_is_the_build_only_oracle(testCase)
     testCase.addTeardown(@() delete(prob));
     prob.set_data(X);
     build_29 = dtwc.fast_pam(prob, 3, 'MaxIter', 0, 'Seed', 29);
-    verifyEqual(testCase, build_29.medoid_indices, int32([5 3 8]));
-    verifyEqual(testCase, build_29.iterations, int32(0));
+    verifyEqual(testCase, build_29.medoid_indices, [5 3 8]);
+    verifyEqual(testCase, build_29.iterations, 0);
     verifyFalse(testCase, build_29.converged);
     verifyEqual(testCase, dtwc.fast_pam(prob, 3, 'MaxIter', 0, 'Seed', 42).medoid_indices, ...
-        int32([7 3 6]));
+        [7 3 6]);
     unseeded = dtwc.fast_pam(prob, 3, 'MaxIter', 0);
-    verifyEqual(testCase, unseeded.iterations, int32(0));
+    verifyEqual(testCase, unseeded.iterations, 0);
     verifyFalse(testCase, unseeded.converged);
     verifyEqual(testCase, dtwc.fast_pam(prob, 3, 'MaxIter', 100, 'Seed', 29).medoid_indices, ...
-        int32([5 2 8]));
+        [5 2 8]);
 
     h = int_problem(testCase);   % the raw command reads 0 the same way
     verifyFalse(testCase, dtwc_mex('fast_pam', h, 2, 0).converged);
@@ -717,6 +717,89 @@ function test_fast_pam_refuses_a_negative_max_iter_with_the_cpp_error(testCase)
         end
     end
     verifyNumElements(testCase, dtwc_mex('fast_pam', h, 2, 1).labels, 4);   % 1 still swaps
+end
+
+function test_labels_and_medoids_come_back_as_one_based_doubles(testCase)
+%   Every route that returns labels, medoids, an iteration count or a dendrogram's
+%   n_points returns a double (they were int32, which is not index_t), and labels
+%   and medoids are 1-based: the smallest value is 1.
+    X = [0 0.01 -0.02 0.03] + (0:7)';
+    prob = dtwc.Problem('double_pins');
+    testCase.addTeardown(@() delete(prob));
+    prob.set_data(X);
+    pam = dtwc.fast_pam(prob, 2, 'Seed', 42);
+    clara = dtwc.fast_clara(prob, 2, 'SampleSize', 4, 'NSamples', 2);
+    dend = dtwc.build_dendrogram(prob, 'MaxPoints', 8);
+    cut = dtwc.cut_dendrogram(dend, prob, 2);
+    estimator = dtwc.DTWClustering('NClusters', 2);
+    estimator = estimator.fit(X);
+    tier1 = dtwc.cluster(X, 2);
+    [legacy_labels, legacy_medoids] = dtwc_mex('cluster', X, 2);
+    routes = {
+        'fast_pam labels',           pam.labels
+        'fast_pam medoids',          pam.medoid_indices
+        'fast_clara labels',         clara.labels
+        'fast_clara medoids',        clara.medoid_indices
+        'cut_dendrogram labels',     cut.labels
+        'cut_dendrogram medoids',    cut.medoid_indices
+        'Problem.labels',            prob.labels()
+        'Problem.medoids',           prob.medoids()
+        'DTWClustering Labels',      estimator.Labels
+        'DTWClustering MedoidIndices', estimator.MedoidIndices
+        'Result.labels',             tier1.labels
+        'Result.medoids',            tier1.medoids
+        'cluster labels',            legacy_labels
+        'cluster medoids',           legacy_medoids
+    };
+    for i = 1:size(routes, 1)
+        verifyClass(testCase, routes{i, 2}, 'double', routes{i, 1});
+        verifyGreaterThanOrEqual(testCase, min(routes{i, 2}), 1, routes{i, 1});
+        verifyEqual(testCase, routes{i, 2}, fix(routes{i, 2}), routes{i, 1});
+    end
+    verifyClass(testCase, pam.iterations, 'double');
+    verifyClass(testCase, cut.iterations, 'double');
+    verifyClass(testCase, dend.n_points, 'double');
+    verifyEqual(testCase, dend.n_points, 8);
+end
+
+function test_counts_and_indices_are_read_as_64_bit(testCase)
+%   k, sample_size, max_points, the skip counts and dist_by_ind's indices are
+%   index_t in C++. A value past int32 must reach C++ and be judged there (k or an
+%   index against N), where the parser used to refuse it as out of the int range.
+%   2^63 is the first double past index_t: the parser refuses it, since a bound
+%   that compared with double(INT64_MAX), which is 2^63, would cast it (undefined).
+    h = int_problem(testCase);   % N = 4
+    big = 2^40;
+    dtwc_mex('Problem_set_n_clusters', h, big);
+    verifyEqual(testCase, dtwc_mex('Problem_n_clusters', h), big);
+    dend = dtwc_mex('build_dendrogram', h, 'average', big);   % max_points
+    verifyEqual(testCase, size(dend.merges, 1), 3);
+    X = [1 2 3 4 5; 2 3 4 5 6; 9 8 7 6 5; 8 7 6 5 4];
+    cpp_refusals = {
+        @() dtwc_mex('Problem_dist_by_ind', h, big, 1), sprintf('i = %d is outside 1..N', big)
+        @() dtwc_mex('fast_pam', h, big),               sprintf('n_clusters=%d', big)
+        @() dtwc_mex('fast_clara', h, big),             sprintf('n_clusters=%d', big)
+        @() dtwc_mex('cut_dendrogram', dend, h, big),   sprintf('k=%d', big)
+        @() dtwc_mex('cluster', X, big),                sprintf('n_clusters=%d', big)
+        @() dtwc_mex('tier1_cluster', X, big),          'k must not exceed'
+    };
+    for i = 1:size(cpp_refusals, 1)
+        err = [];
+        try
+            cpp_refusals{i, 1}();
+        catch err
+        end
+        verifyNotEmpty(testCase, err, sprintf('site %d accepted k = 2^40', i));
+        verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+        verifySubstring(testCase, err.message, cpp_refusals{i, 2});
+    end
+    verifyError(testCase, @() dtwc_mex('Problem_set_n_clusters', h, 2^63), ...
+        'dtwc:invalidArgument');
+    verifyError(testCase, @() dtwc_mex('tier1_cluster', X, 2, 'pam', -1, '', 100, 2^63), ...
+        'dtwc:invalidArgument');
+    % A fast_clara seed is a uint64: 2^33 does not fit the unsigned int it was read as.
+    clara = dtwc_mex('fast_clara', h, 2, 3, 2, 5, 2^33);
+    verifyNumElements(testCase, clara.labels, 4);
 end
 
 function test_cuda_device_id_has_a_minimum(testCase)

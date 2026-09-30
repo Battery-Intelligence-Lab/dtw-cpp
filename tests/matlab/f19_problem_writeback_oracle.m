@@ -9,9 +9,9 @@ function summary = f19_problem_writeback_oracle(route, profile, version)
 %   and k are first poisoned by a deterministic k=3 FastPAM result. The
 %   target k=2 command must replace that state. Each execution performs the
 %   registered minimum of eight exact vector assertions:
-%     - poison returned labels and medoids match literal int32 oracles;
+%     - poison returned labels and medoids match literal oracles;
 %     - poison stored labels and medoids equal the returned state;
-%     - target returned labels and medoids match literal int32 oracles;
+%     - target returned labels and medoids match literal oracles;
 %     - target stored labels and medoids equal the returned state.
 %
 %   PROFILE and VERSION are provenance labels printed in the route markers.
@@ -89,22 +89,22 @@ function summary = f19_problem_writeback_oracle(route, profile, version)
 end
 
 function routeSummary = run_route(route, X, profile, version)
-    poisonLabels = int32([2 2 2 2 1 1 1 3]);
-    poisonMedoids = int32([6 2 8]);
+    poisonLabels = [2 2 2 2 1 1 1 3];
+    poisonMedoids = [6 2 8];
     poisonCost = 53;
 
     switch route
         case 'fast_pam'
-            expectedLabels = int32([2 2 2 2 1 1 1 1]);
-            expectedMedoids = int32([7 2]);
+            expectedLabels = [2 2 2 2 1 1 1 1];
+            expectedMedoids = [7 2];
             expectedCost = 87;
         case 'fast_clara'
-            expectedLabels = int32([2 2 2 2 1 1 1 1]);
-            expectedMedoids = int32([7 4]);
+            expectedLabels = [2 2 2 2 1 1 1 1];
+            expectedMedoids = [7 4];
             expectedCost = 98;
         case 'cut_dendrogram'
-            expectedLabels = int32([1 1 1 1 2 2 2 2]);
-            expectedMedoids = int32([2 7]);
+            expectedLabels = [1 1 1 1 2 2 2 2];
+            expectedMedoids = [2 7];
             expectedCost = 87;
         otherwise
             error('dtwc:f19WritebackOracle', ...

@@ -56,6 +56,7 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include <memory>
 #include <unordered_map>
 #include <cstdint>
+#include <iterator>
 #include <stdexcept>
 #include <algorithm>
 
@@ -231,12 +232,13 @@ static std::vector<std::string> cell_to_names(const mxArray *mx, size_t expected
   return names;
 }
 
-/// std::vector<index_t> -> MATLAB 1xN int32 row vector (1-based indexing)
+/// std::vector<index_t> -> MATLAB 1xN double row vector (1-based indexing). MATLAB's
+/// own numbers are doubles, and a double holds every index exactly up to 2^53.
 static mxArray *ivec_to_mx_1based(const std::vector<dtwc::index_t> &v) {
-  mxArray *mx = mxCreateNumericMatrix(1, v.size(), mxINT32_CLASS, mxREAL);
-  int32_t *out = static_cast<int32_t *>(mxGetData(mx));
+  mxArray *mx = mxCreateDoubleMatrix(1, v.size(), mxREAL);
+  double *out = mxGetDoubles(mx);
   for (size_t i = 0; i < v.size(); ++i)
-    out[i] = static_cast<int32_t>(v[i] + 1);  // 0-based -> 1-based
+    out[i] = static_cast<double>(v[i] + 1);  // 0-based -> 1-based
   return mx;
 }
 
@@ -262,30 +264,33 @@ static int get_cuda_precision(const mxArray *mx) {
   return static_cast<int>(value);
 }
 
-/// Convert one MATLAB double to int without ever invoking an out-of-range or
-/// non-integral float-to-int conversion (both are undefined behaviour, and a
+/// Convert one MATLAB double to `Int` (`int` for the parameters C++ still takes as
+/// an int, `index_t` for counts and indices) without ever invoking an out-of-range
+/// or non-integral float-to-int conversion (both are undefined behaviour, and a
 /// NaN/Inf label silently produced a garbage cluster id before this guard).
-static int exact_int_from_double(double value, const char *arg_name) {
-  constexpr double int_min = static_cast<double>(
-    std::numeric_limits<int>::min());
-  constexpr double int_max = static_cast<double>(
-    std::numeric_limits<int>::max());
+/// The smallest `Int` is minus a power of two, exact as a double, and the largest
+/// `Int` + 1 is its negation, so `value >= -lowest` is the exact upper bound.
+template <class Int = int>
+static Int exact_int_from_double(double value, const char *arg_name) {
+  constexpr double lowest = static_cast<double>(std::numeric_limits<Int>::min());
   if (!std::isfinite(value) || std::floor(value) != value
-      || value < int_min || value > int_max) {
+      || value < lowest || value >= -lowest) {
     throw std::invalid_argument(
-      std::string(arg_name) + " must be a finite integer in the C++ int range.");
+      std::string(arg_name) + " must be a finite integer in the C++ "
+      + (sizeof(Int) == sizeof(int) ? "int" : "index_t") + " range.");
   }
-  return static_cast<int>(value);
+  return static_cast<Int>(value);
 }
 
-static int get_exact_int(const mxArray *mx, const char *arg_name) {
-  return exact_int_from_double(get_scalar(mx, arg_name), arg_name);
+template <class Int = int>
+static Int get_exact_int(const mxArray *mx, const char *arg_name) {
+  return exact_int_from_double<Int>(get_scalar(mx, arg_name), arg_name);
 }
 
 /// Shift a validated 1-based MATLAB index down to 0-based. The first index is 1:
 /// a smaller value is no index (0 would address the element before the first,
-/// and INT_MIN - 1 is signed overflow), so it is an error, not a shift.
-static int to_0based(int value, const char *arg_name) {
+/// and the lowest index_t - 1 is signed overflow), so it is an error, not a shift.
+static dtwc::index_t to_0based(dtwc::index_t value, const char *arg_name) {
   if (value < 1)
     throw std::invalid_argument(
       std::string(arg_name) + " = " + std::to_string(value)
@@ -293,14 +298,15 @@ static int to_0based(int value, const char *arg_name) {
   return value - 1;
 }
 
-static int exact_int_1based_to_0based(double value, const char *arg_name) {
-  return to_0based(exact_int_from_double(value, arg_name), arg_name);
+static dtwc::index_t exact_int_1based_to_0based(double value, const char *arg_name) {
+  return to_0based(exact_int_from_double<dtwc::index_t>(value, arg_name), arg_name);
 }
 
-/// Decode a MATLAB label vector (int32 or double) to ints. A label is a name,
-/// not a position: any integer is one (0 and negatives included), unshifted.
-/// Every double element goes through exact_int_from_double, so NaN/Inf/fractional
-/// entries are rejected instead of being cast with undefined behaviour.
+/// Decode a MATLAB label vector (double, as the results return them, or int32) to
+/// index_t. A label is a name, not a position: any integer is one (0 and negatives
+/// included), unshifted. Every double element goes through exact_int_from_double,
+/// so NaN/Inf/fractional entries are rejected instead of being cast with undefined
+/// behaviour.
 static std::vector<dtwc::index_t> label_vector(const mxArray *mx, const char *arg_name) {
   require_label_vector(mx, arg_name);
   const size_t n = mxGetNumberOfElements(mx);
@@ -310,17 +316,17 @@ static std::vector<dtwc::index_t> label_vector(const mxArray *mx, const char *ar
     for (size_t i = 0; i < n; ++i) out[i] = p[i];
   } else {
     const double *p = mxGetDoubles(mx);
-    for (size_t i = 0; i < n; ++i) out[i] = exact_int_from_double(p[i], arg_name);
+    for (size_t i = 0; i < n; ++i)
+      out[i] = exact_int_from_double<dtwc::index_t>(p[i], arg_name);
   }
   return out;
 }
 
 /// Decode a MATLAB double seed without invoking an out-of-range float-to-int
-/// conversion. MATLAB represents every integer exactly only through flintmax.
-static std::uint64_t get_random_seed(
-  const mxArray *mx,
-  std::uint64_t max_seed = (std::uint64_t{1} << 53) - 1)
-{
+/// conversion. MATLAB represents every integer exactly only through flintmax, so
+/// that is the largest seed a double can carry into the C++ uint64.
+static std::uint64_t get_random_seed(const mxArray *mx) {
+  constexpr std::uint64_t max_seed = (std::uint64_t{1} << 53) - 1;
   const double seed = get_scalar(mx, "seed");
   if (!std::isfinite(seed) || seed < 0.0 || std::floor(seed) != seed
       || seed > static_cast<double>(max_seed)) {
@@ -363,10 +369,11 @@ static std::string optional_string(int nrhs, const mxArray *prhs[], int index,
 }
 
 /// Optional trailing integer argument, validated exactly (no UB cast).
-static int optional_int(int nrhs, const mxArray *prhs[], int index,
-                        const char *arg_name, int fallback) {
+template <class Int = int>
+static Int optional_int(int nrhs, const mxArray *prhs[], int index,
+                        const char *arg_name, Int fallback) {
   if (nrhs <= index || mxIsEmpty(prhs[index])) return fallback;
-  return get_exact_int(prhs[index], arg_name);
+  return get_exact_int<Int>(prhs[index], arg_name);
 }
 
 /// One delimiter character; 0 keeps the extension-derived default.
@@ -394,10 +401,7 @@ static mxArray *clustering_result_to_mx(const dtwc::core::ClusteringResult &resu
   mxSetField(s, 0, "medoid_indices", ivec_to_mx_1based(result.medoid_indices));
   mxSetField(s, 0, "total_cost", mxCreateDoubleScalar(result.total_cost));
 
-  // iterations as int32
-  mxArray *iter_mx = mxCreateNumericMatrix(1, 1, mxINT32_CLASS, mxREAL);
-  *static_cast<int32_t *>(mxGetData(iter_mx)) = static_cast<int32_t>(result.iterations);
-  mxSetField(s, 0, "iterations", iter_mx);
+  mxSetField(s, 0, "iterations", mxCreateDoubleScalar(result.iterations));
 
   // converged as logical
   mxArray *conv_mx = mxCreateLogicalScalar(result.converged);
@@ -424,9 +428,7 @@ static mxArray *dendrogram_to_mx(const dtwc::algorithms::Dendrogram &dend) {
   }
   mxSetField(s, 0, "merges", merges_mx);
 
-  mxArray *np_mx = mxCreateNumericMatrix(1, 1, mxINT32_CLASS, mxREAL);
-  *static_cast<int32_t *>(mxGetData(np_mx)) = static_cast<int32_t>(dend.n_points);
-  mxSetField(s, 0, "n_points", np_mx);
+  mxSetField(s, 0, "n_points", mxCreateDoubleScalar(static_cast<double>(dend.n_points)));
 
   return s;
 }
@@ -455,7 +457,7 @@ static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx) {
       "[cluster_a, cluster_b, distance, new_size] (got "
       + std::to_string(n_merge_cols) + ").");
 
-  dend.n_points = get_exact_int(np_mx, "dendrogram.n_points");
+  dend.n_points = get_exact_int<dtwc::index_t>(np_mx, "dendrogram.n_points");
 
   size_t n_merges = mxIsEmpty(merges_mx) ? 0 : mxGetM(merges_mx);
   const double *data = mxGetDoubles(merges_mx);
@@ -466,7 +468,7 @@ static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx) {
     dend.merges[i].cluster_b = exact_int_1based_to_0based(
       data[i + 1 * n_merges], "dendrogram.merges(:,2)");
     dend.merges[i].distance = data[i + 2 * n_merges];
-    dend.merges[i].new_size = exact_int_from_double(
+    dend.merges[i].new_size = exact_int_from_double<dtwc::index_t>(
       data[i + 3 * n_merges], "dendrogram.merges(:,4)");
   }
 
@@ -618,7 +620,7 @@ static void cmd_Problem_set_n_repetition(int nlhs, mxArray *plhs[], int nrhs, co
 static void cmd_Problem_set_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_n_clusters requires handle and k.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_n_clusters(get_exact_int(prhs[2], "k"));
+  prob.set_n_clusters(get_exact_int<dtwc::index_t>(prhs[2], "k"));
 }
 
 static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -704,16 +706,16 @@ static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const m
   if (nrhs < 4) throw std::invalid_argument("Problem_dist_by_ind requires handle, i, j.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   // Problem::dist_by_ind is the unchecked hot path: this boundary owns the range check.
-  const auto n = static_cast<int>(prob.size());
+  const auto n = prob.size();
   const auto index = [&](int arg, const char *name) {
-    const int i = to_0based(get_exact_int(prhs[arg], name), name);
+    const dtwc::index_t i = to_0based(get_exact_int<dtwc::index_t>(prhs[arg], name), name);
     if (i >= n)
       throw std::invalid_argument(std::string(name) + " = " + std::to_string(i + 1)
         + " is outside 1..N (N = " + std::to_string(n) + ").");
     return i;
   };
-  const int i = index(2, "i");
-  const int j = index(3, "j");
+  const dtwc::index_t i = index(2, "i");
+  const dtwc::index_t j = index(3, "j");
   plhs[0] = mxCreateDoubleScalar(prob.dist_by_ind(i, j));
 }
 
@@ -1109,13 +1111,13 @@ static void cmd_dtw_arow_distance(int nlhs, mxArray *plhs[], int nrhs, const mxA
 static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("compute_distance_matrix requires a data matrix.");
   auto series = matrix_to_series(prhs[1]);
-  const size_t N = series.size();
+  const dtwc::index_t N = std::ssize(series);
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 2) band = get_exact_int(prhs[2], "band");
 
   // Use Problem + fill_distance_matrix() for OpenMP parallelism and LB pruning
   std::vector<std::string> names(N);
-  for (size_t i = 0; i < N; ++i) names[i] = std::to_string(i);
+  for (dtwc::index_t i = 0; i < N; ++i) names[i] = std::to_string(i);
 
   dtwc::Problem prob("matlab_distmat");
   prob.band = band;
@@ -1127,9 +1129,9 @@ static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, con
   // Copy from Problem's distance matrix to MATLAB output (column-major)
   mxArray *result = mxCreateDoubleMatrix(N, N, mxREAL);
   double *out = mxGetDoubles(result);
-  for (size_t i = 0; i < N; ++i)
-    for (size_t j = 0; j < N; ++j)
-      out[i + j * N] = prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j));
+  for (dtwc::index_t i = 0; i < N; ++i)
+    for (dtwc::index_t j = 0; j < N; ++j)
+      out[i + j * N] = prob.dist_by_ind(i, j);
 
   plhs[0] = result;
 }
@@ -1161,7 +1163,7 @@ static void cmd_z_normalize(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
 static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("fast_pam requires handle and k.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  int k = get_exact_int(prhs[2], "k");
+  const auto k = get_exact_int<dtwc::index_t>(prhs[2], "k");
   int max_iter = 100;
   if (nrhs > 3) max_iter = get_exact_int(prhs[3], "max_iter");
 
@@ -1180,13 +1182,11 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
   dtwc::algorithms::CLARAOptions opts;
-  opts.n_clusters = get_exact_int(prhs[2], "k");
-  if (nrhs > 3) opts.sample_size = get_exact_int(prhs[3], "sample_size");
+  opts.n_clusters = get_exact_int<dtwc::index_t>(prhs[2], "k");
+  if (nrhs > 3) opts.sample_size = get_exact_int<dtwc::index_t>(prhs[3], "sample_size");
   if (nrhs > 4) opts.n_samples = get_exact_int(prhs[4], "n_samples");
   if (nrhs > 5) opts.max_iter = get_exact_int(prhs[5], "max_iter");
-  if (nrhs > 6)
-    opts.random_seed = static_cast<unsigned>(
-      get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
+  if (nrhs > 6) opts.random_seed = get_random_seed(prhs[6]);
 
   auto result = dtwc::algorithms::fast_clara(prob, opts);
   plhs[0] = clustering_result_to_mx(result);
@@ -1199,7 +1199,7 @@ static void cmd_build_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   dtwc::algorithms::HierarchicalOptions opts;
   if (nrhs > 2)
     opts.linkage = dtwc::parse_name(dtwc::algorithms::linkage_names, get_string(prhs[2]), "linkage");
-  if (nrhs > 3) opts.max_points = get_exact_int(prhs[3], "max_points");
+  if (nrhs > 3) opts.max_points = get_exact_int<dtwc::index_t>(prhs[3], "max_points");
 
   auto dend = dtwc::algorithms::build_dendrogram(prob, opts);
   plhs[0] = dendrogram_to_mx(dend);
@@ -1210,7 +1210,7 @@ static void cmd_cut_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArra
 
   auto dend = mx_to_dendrogram(prhs[1]);
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[2]));
-  int k = get_exact_int(prhs[3], "k");
+  const auto k = get_exact_int<dtwc::index_t>(prhs[3], "k");
 
   auto result = dtwc::algorithms::cut_dendrogram(dend, prob, k);
   plhs[0] = clustering_result_to_mx(result);
@@ -1290,13 +1290,13 @@ static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, cons
 static void cmd_tier1_cluster(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3)
     throw std::invalid_argument("tier1_cluster requires a data source and k.");
-  const int k = get_exact_int(prhs[2], "k");
+  const auto k = get_exact_int<dtwc::index_t>(prhs[2], "k");
   const std::string method = optional_string(nrhs, prhs, 3, "method");
   const int band = optional_int(nrhs, prhs, 4, "band", dtwc::settings::DEFAULT_BAND);
   const std::string device = optional_string(nrhs, prhs, 5, "device");
   const int max_iter = optional_int(nrhs, prhs, 6, "max_iter", 100);
-  const int skip_cols = optional_int(nrhs, prhs, 7, "skip_cols", 0);
-  const int skip_rows = optional_int(nrhs, prhs, 8, "skip_rows", 0);
+  const auto skip_cols = optional_int<dtwc::index_t>(nrhs, prhs, 7, "skip_cols", 0);
+  const auto skip_rows = optional_int<dtwc::index_t>(nrhs, prhs, 8, "skip_rows", 0);
   const char delimiter = parse_delimiter(optional_string(nrhs, prhs, 9, "delimiter"));
   const std::string name = optional_string(nrhs, prhs, 10, "name");
 
@@ -1404,7 +1404,7 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
     throw std::invalid_argument("cluster requires data matrix and k.");
 
   auto series = matrix_to_series(prhs[1]);
-  int k = get_exact_int(prhs[2], "k");
+  const auto k = get_exact_int<dtwc::index_t>(prhs[2], "k");
 
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = get_exact_int(prhs[3], "band");
