@@ -282,15 +282,14 @@ static int get_exact_int(const mxArray *mx, const char *arg_name) {
   return exact_int_from_double(get_scalar(mx, arg_name), arg_name);
 }
 
-/// Shift a validated 1-based MATLAB index down to 0-based. INT_MIN is exactly
-/// representable as a double and therefore passes exact_int_from_double, so the
-/// callers' bare `- 1` was signed overflow (undefined behaviour) at exactly the
-/// boundary these helpers exist to make safe.
+/// Shift a validated 1-based MATLAB index down to 0-based. The first index is 1:
+/// a smaller value is no index (0 would address the element before the first,
+/// and INT_MIN - 1 is signed overflow), so it is an error, not a shift.
 static int to_0based(int value, const char *arg_name) {
-  if (value == std::numeric_limits<int>::min())
+  if (value < 1)
     throw std::invalid_argument(
       std::string(arg_name) + " = " + std::to_string(value)
-      + " has no 0-based representation in the C++ int range.");
+      + " is not a 1-based index (the first index is 1).");
   return value - 1;
 }
 
@@ -341,8 +340,9 @@ static uint64_t get_handle(const mxArray *mx) {
     uint64_t *p = static_cast<uint64_t *>(mxGetData(mx));
     return p[0];
   }
-  // Accept double as well (MATLAB defaults to double)
-  return static_cast<uint64_t>(get_scalar(mx, "handle"));
+  // Accept double as well (MATLAB defaults to double). A negative id wraps to a
+  // value no handle has, so the lookup fails with "Invalid handle".
+  return static_cast<uint64_t>(get_exact_int(mx, "handle"));
 }
 
 /// Extract string from mxArray (char array or string)
@@ -606,8 +606,8 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   // Data::validate_ndim() throws if any series flat-size is not divisible by ndim.
   size_t ndim = 1;
   if (nrhs > 4 && !mxIsEmpty(prhs[4])) {
-    const double nd = get_scalar(prhs[4], "ndim");
-    if (nd < 1.0) throw std::invalid_argument("ndim must be a positive integer.");
+    const int nd = get_exact_int(prhs[4], "ndim");
+    if (nd < 1) throw std::invalid_argument("ndim must be a positive integer.");
     ndim = static_cast<size_t>(nd);
   }
 
@@ -618,7 +618,7 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 static void cmd_Problem_set_band(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_band requires handle and band value.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_band(static_cast<int>(get_scalar(prhs[2])));
+  prob.set_band(get_exact_int(prhs[2], "band"));
 }
 
 static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -632,19 +632,19 @@ static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const m
 static void cmd_Problem_set_max_iter(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_max_iter requires handle and value.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_max_iter(static_cast<int>(get_scalar(prhs[2])));
+  prob.set_max_iter(get_exact_int(prhs[2], "max_iter"));
 }
 
 static void cmd_Problem_set_n_repetition(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_n_repetition requires handle and value.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_n_repetitions(static_cast<int>(get_scalar(prhs[2])));
+  prob.set_n_repetitions(get_exact_int(prhs[2], "n_repetitions"));
 }
 
 static void cmd_Problem_set_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_n_clusters requires handle and k.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_n_clusters(static_cast<int>(get_scalar(prhs[2])));
+  prob.set_n_clusters(get_exact_int(prhs[2], "k"));
 }
 
 static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -739,8 +739,8 @@ static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const m
   if (nrhs < 4) throw std::invalid_argument("Problem_dist_by_ind requires handle, i, j.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   // Convert from MATLAB 1-based to C++ 0-based
-  int i = static_cast<int>(get_scalar(prhs[2])) - 1;
-  int j = static_cast<int>(get_scalar(prhs[3])) - 1;
+  int i = to_0based(get_exact_int(prhs[2], "i"), "i");
+  int j = to_0based(get_exact_int(prhs[3], "j"), "j");
   double d = prob.dist_by_ind(i, j);
   plhs[0] = mxCreateDoubleScalar(d);
 }
@@ -887,13 +887,13 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap"))        m.mip_gap        = get_scalar(f, "mip_gap");
-  if (mxArray *f = mxGetField(s, 0, "time_limit_sec")) m.time_limit_sec = static_cast<int>(get_scalar(f, "time_limit_sec"));
+  if (mxArray *f = mxGetField(s, 0, "time_limit_sec")) m.time_limit_sec = get_exact_int(f, "time_limit_sec");
   if (mxArray *f = mxGetField(s, 0, "warm_start"))     m.warm_start     = (get_scalar(f, "warm_start") != 0.0);
-  if (mxArray *f = mxGetField(s, 0, "numeric_focus"))  m.numeric_focus  = static_cast<int>(get_scalar(f, "numeric_focus"));
-  if (mxArray *f = mxGetField(s, 0, "mip_focus"))      m.mip_focus      = static_cast<int>(get_scalar(f, "mip_focus"));
+  if (mxArray *f = mxGetField(s, 0, "numeric_focus"))  m.numeric_focus  = get_exact_int(f, "numeric_focus");
+  if (mxArray *f = mxGetField(s, 0, "mip_focus"))      m.mip_focus      = get_exact_int(f, "mip_focus");
   if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = (get_scalar(f, "verbose_solver") != 0.0);
   if (mxArray *f = mxGetField(s, 0, "lr_max_nodes"))
-    m.lr_max_nodes = exact_int_from_double(get_scalar(f, "lr_max_nodes"), "lr_max_nodes");
+    m.lr_max_nodes = get_exact_int(f, "lr_max_nodes");
   prob.mip_settings = m;
 }
 
@@ -934,7 +934,7 @@ static void cmd_Problem_set_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
   }
   if (mxArray *f = mxGetField(s, 0, "save_interval"))
     options.save_interval =
-      exact_int_from_double(get_scalar(f, "save_interval"), "checkpoint.save_interval");
+      get_exact_int(f, "checkpoint.save_interval");
   if (mxArray *f = mxGetField(s, 0, "enabled"))
     options.enabled = (get_scalar(f, "enabled") != 0.0);
   prob.checkpoint = options;
@@ -1041,7 +1041,7 @@ static void cmd_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray 
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::dtw<double>(
     std::span<const double>(x, nx), std::span<const double>(y, ny), band));
 }
@@ -1055,7 +1055,7 @@ static void cmd_ddtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::ddtw<double>(
     std::span<const double>(x, nx), std::span<const double>(y, ny), band));
 }
@@ -1069,7 +1069,7 @@ static void cmd_wdtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   double g = 0.05;
   if (nrhs > 4) g = get_scalar(prhs[4]);
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::wdtw<double>(
@@ -1085,7 +1085,7 @@ static void cmd_adtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   double penalty = 1.0;
   if (nrhs > 4) penalty = get_scalar(prhs[4]);
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::adtw<double>(
@@ -1120,7 +1120,7 @@ static void cmd_dtw_distance_missing(int nlhs, mxArray *plhs[], int nrhs, const 
   auto x = to_std_vector(prhs[1], "x");
   auto y = to_std_vector(prhs[2], "y");
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::missing<double>(x, y, band));
 }
 
@@ -1129,7 +1129,7 @@ static void cmd_dtw_arow_distance(int nlhs, mxArray *plhs[], int nrhs, const mxA
   auto x = to_std_vector(prhs[1], "x");
   auto y = to_std_vector(prhs[2], "y");
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::arow<double>(x, y, band));
 }
 
@@ -1138,7 +1138,7 @@ static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, con
   auto series = matrix_to_series(prhs[1]);
   const size_t N = series.size();
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 2) band = static_cast<int>(get_scalar(prhs[2]));
+  if (nrhs > 2) band = get_exact_int(prhs[2], "band");
 
   // Use Problem + fill_distance_matrix() for OpenMP parallelism and LB pruning
   std::vector<std::string> names(N);
@@ -1188,9 +1188,9 @@ static void cmd_z_normalize(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
 static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("fast_pam requires handle and k.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  int k = static_cast<int>(get_scalar(prhs[2]));
+  int k = get_exact_int(prhs[2], "k");
   int max_iter = 100;
-  if (nrhs > 3) max_iter = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) max_iter = get_exact_int(prhs[3], "max_iter");
 
   // Omitted seed preserves the mutable legacy Tier-2 behaviour. MATLAB Tier-1
   // passes the shared default explicitly, so it never consumes global RNG state.
@@ -1207,10 +1207,10 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
   dtwc::algorithms::CLARAOptions opts;
-  opts.n_clusters = static_cast<int>(get_scalar(prhs[2]));
-  if (nrhs > 3) opts.sample_size = static_cast<int>(get_scalar(prhs[3]));
-  if (nrhs > 4) opts.n_samples = static_cast<int>(get_scalar(prhs[4]));
-  if (nrhs > 5) opts.max_iter = static_cast<int>(get_scalar(prhs[5]));
+  opts.n_clusters = get_exact_int(prhs[2], "k");
+  if (nrhs > 3) opts.sample_size = get_exact_int(prhs[3], "sample_size");
+  if (nrhs > 4) opts.n_samples = get_exact_int(prhs[4], "n_samples");
+  if (nrhs > 5) opts.max_iter = get_exact_int(prhs[5], "max_iter");
   if (nrhs > 6)
     opts.random_seed = static_cast<unsigned>(
       get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
@@ -1225,7 +1225,7 @@ static void cmd_build_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 
   dtwc::algorithms::HierarchicalOptions opts;
   if (nrhs > 2) opts.linkage = parse_linkage(get_string(prhs[2]));
-  if (nrhs > 3) opts.max_points = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) opts.max_points = get_exact_int(prhs[3], "max_points");
 
   auto dend = dtwc::algorithms::build_dendrogram(prob, opts);
   plhs[0] = dendrogram_to_mx(dend);
@@ -1236,7 +1236,7 @@ static void cmd_cut_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArra
 
   auto dend = mx_to_dendrogram(prhs[1]);
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[2]));
-  int k = static_cast<int>(get_scalar(prhs[3]));
+  int k = get_exact_int(prhs[3], "k");
 
   auto result = dtwc::algorithms::cut_dendrogram(dend, prob, k);
   plhs[0] = clustering_result_to_mx(result);
@@ -1414,13 +1414,13 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
     throw std::invalid_argument("cluster requires data matrix and k.");
 
   auto series = matrix_to_series(prhs[1]);
-  int k = static_cast<int>(get_scalar(prhs[2]));
+  int k = get_exact_int(prhs[2], "k");
 
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
 
   int max_iter = 100;
-  if (nrhs > 5) max_iter = static_cast<int>(get_scalar(prhs[5]));
+  if (nrhs > 5) max_iter = get_exact_int(prhs[5], "max_iter");
 
   const size_t N = series.size();
   std::vector<std::string> names(N);

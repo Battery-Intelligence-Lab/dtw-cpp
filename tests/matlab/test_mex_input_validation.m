@@ -499,3 +499,86 @@ function test_deleted_problem_handle_is_invalid(testCase)
     verifyError(testCase, @() dtwc_mex('Problem_get_size', uint64(h)), ...
         'dtwc:invalidArgument');
 end
+
+% -------------------------------------------------------------------------
+%  Integer arguments are read exactly. A fractional, NaN or Inf value, and an
+%  index below 1, is dtwc:invalidArgument; each was truncated or cast with
+%  undefined behaviour.
+% -------------------------------------------------------------------------
+
+function test_integer_arguments_reject_fractions_nan_and_inf(testCase)
+    h = int_problem(testCase);
+    h2 = dtwc_mex('Problem_new', 'exact_int_ndim');
+    testCase.addTeardown(@() dtwc_mex('Problem_delete', h2));
+    x = [1 2 3 4 5];
+    y = [2 3 4 5 6];
+    X = [1 2 3 4 5; 2 3 4 5 6; 9 8 7 6 5; 8 7 6 5 4];
+    dend = dtwc_mex('build_dendrogram', h, 'average', 100);
+    sites = {
+        'Problem_set_band',       @(v) dtwc_mex('Problem_set_band', h, v),                3
+        'Problem_set_max_iter',   @(v) dtwc_mex('Problem_set_max_iter', h, v),            5
+        'Problem_set_n_repetition', @(v) dtwc_mex('Problem_set_n_repetition', h, v),      1
+        'Problem_set_n_clusters', @(v) dtwc_mex('Problem_set_n_clusters', h, v),          2
+        'Problem_set_data ndim',  @(v) dtwc_mex('Problem_set_data', h2, X(1:2, 1:4), {}, v), 2
+        'time_limit_sec',         @(v) dtwc_mex('Problem_set_mip_settings', h, struct('time_limit_sec', v)), 30
+        'numeric_focus',          @(v) dtwc_mex('Problem_set_mip_settings', h, struct('numeric_focus', v)), 0
+        'mip_focus',              @(v) dtwc_mex('Problem_set_mip_settings', h, struct('mip_focus', v)), 0
+        'dtw_distance band',      @(v) dtwc_mex('dtw_distance', x, y, v),                 3
+        'ddtw_distance band',     @(v) dtwc_mex('ddtw_distance', x, y, v),                3
+        'wdtw_distance band',     @(v) dtwc_mex('wdtw_distance', x, y, v),                3
+        'adtw_distance band',     @(v) dtwc_mex('adtw_distance', x, y, v),                3
+        'dtw_distance_missing band', @(v) dtwc_mex('dtw_distance_missing', x, y, v),      3
+        'dtw_arow_distance band', @(v) dtwc_mex('dtw_arow_distance', x, y, v),            3
+        'compute_distance_matrix band', @(v) dtwc_mex('compute_distance_matrix', X, v),   3
+        'fast_pam k',             @(v) dtwc_mex('fast_pam', h, v),                        2
+        'fast_pam max_iter',      @(v) dtwc_mex('fast_pam', h, 2, v),                     5
+        'fast_clara k',           @(v) dtwc_mex('fast_clara', h, v),                      2
+        'fast_clara sample_size', @(v) dtwc_mex('fast_clara', h, 2, v),                   3
+        'fast_clara n_samples',   @(v) dtwc_mex('fast_clara', h, 2, 3, v),                2
+        'fast_clara max_iter',    @(v) dtwc_mex('fast_clara', h, 2, 3, 2, v),             5
+        'build_dendrogram max_points', @(v) dtwc_mex('build_dendrogram', h, 'average', v), 100
+        'cut_dendrogram k',       @(v) dtwc_mex('cut_dendrogram', dend, h, v),            2
+        'cluster k',              @(v) dtwc_mex('cluster', X, v),                         2
+        'cluster band',           @(v) dtwc_mex('cluster', X, 2, v),                      3
+        'cluster max_iter',       @(v) dtwc_mex('cluster', X, 2, -1, 0, v),               5
+    };
+    for i = 1:size(sites, 1)
+        call = sites{i, 2};
+        call(sites{i, 3});   % an exact integer passes
+        for bad = {2.5, NaN, Inf, -Inf}
+            verifyError(testCase, @() call(bad{1}), 'dtwc:invalidArgument', ...
+                sprintf('%s accepted %g', sites{i, 1}, bad{1}));
+        end
+    end
+end
+
+function test_index_arguments_must_be_at_least_one(testCase)
+    h = int_problem(testCase);
+    for bad = {0, -1, 2.5, NaN, Inf}
+        verifyError(testCase, @() dtwc_mex('Problem_dist_by_ind', h, bad{1}, 1), ...
+            'dtwc:invalidArgument', sprintf('i = %g', bad{1}));
+        verifyError(testCase, @() dtwc_mex('Problem_dist_by_ind', h, 1, bad{1}), ...
+            'dtwc:invalidArgument', sprintf('j = %g', bad{1}));
+    end
+    verifyGreaterThan(testCase, dtwc_mex('Problem_dist_by_ind', h, 1, 3), 0);
+    verifyError(testCase, @() dtwc_mex('adjusted_rand', [0 1 1], [1 1 2]), ...
+        'dtwc:invalidArgument');
+end
+
+function test_a_double_handle_must_be_an_exact_integer(testCase)
+    h = int_problem(testCase);
+    verifyEqual(testCase, dtwc_mex('Problem_get_size', double(h)), 4);
+    for bad = {double(h) + 0.5, NaN, Inf, -1}
+        verifyError(testCase, @() dtwc_mex('Problem_get_size', bad{1}), ...
+            'dtwc:invalidArgument', sprintf('handle %g', bad{1}));
+    end
+end
+
+function h = int_problem(testCase)
+%   A filled four-series Problem the integer-argument sites can be called on.
+    h = dtwc_mex('Problem_new', 'exact_int');
+    testCase.addTeardown(@() dtwc_mex('Problem_delete', h));
+    dtwc_mex('Problem_set_data', h, ...
+        [1 2 3 4 5; 2 3 4 5 6; 9 8 7 6 5; 8 7 6 5 4]);
+    dtwc_mex('Problem_fill_distance_matrix', h);
+end
