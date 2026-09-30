@@ -253,6 +253,26 @@ function test_result_save_writes_dataset_series_names(testCase)
     verifyEqual(testCase, written, ["1"; "2"; "3"; "4"]);
 end
 
+function test_result_distance_matrix_is_returned_directly(testCase)
+%   Result.plot() reads the matrix from the C++ Result: no scratch save. It is
+%   the matrix Result::save writes (the CSV is max_digits10, so exact) and the
+%   one the Tier-2 route computes.
+    X = testCase.TestData.X;
+    out = dtwc_mex('tier1_cluster', X, 2, 'pam', -1, '', 100, 0, 0, '', '');
+    testCase.addTeardown(@() dtwc_mex('Result_delete', out.handle));
+    D = dtwc_mex('Result_distance_matrix', out.handle);
+
+    verifyEqual(testCase, D, dtwc.compute_distance_matrix(X), 'AbsTol', 1e-12);
+    verifyEqual(testCase, D, D.');
+
+    outdir = [tempname '_dm'];
+    cleanupDir = onCleanup(@() remove_directory(outdir));
+    dtwc_mex('Result_save', out.handle, outdir);
+    saved = readmatrix(fullfile(outdir, [out.name '_distance_matrix.csv']), ...
+                       'Delimiter', ',', 'NumHeaderLines', 0);
+    verifyEqual(testCase, D, saved);
+end
+
 % =========================================================================
 %  Drift 2: device is a per-call override, never a global mutation
 % =========================================================================

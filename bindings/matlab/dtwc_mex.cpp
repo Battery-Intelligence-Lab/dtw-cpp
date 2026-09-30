@@ -1342,6 +1342,22 @@ static void cmd_Result_save(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
   res.save(std::filesystem::path(get_string(prhs[2])));
 }
 
+/// Result_distance_matrix(handle) -> N x N matrix: dtwc::Result::distance_matrix
+/// (row-major) unpacked into MATLAB's column-major layout.
+static void cmd_Result_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2)
+    throw std::invalid_argument("Result_distance_matrix requires a handle.");
+  const auto &res = *HandleManager<dtwc::Result>::get(get_handle(prhs[1]));
+  const std::vector<double> flat = res.distance_matrix();
+  const size_t n = res.labels().size();
+  mxArray *out = mxCreateDoubleMatrix(n, n, mxREAL);
+  double *dst = mxGetDoubles(out);
+  for (size_t i = 0; i < n; ++i)
+    for (size_t j = 0; j < n; ++j)
+      dst[i + j * n] = flat[i * n + j];
+  plhs[0] = out;
+}
+
 /// DTWClustering_compute_distance_matrix(X, band, metric) -> N x N matrix.
 /// The estimator's non-L1 route: the same exact builder the Python estimator
 /// uses when metric != 'l1' (Problem's lazy matrix is intrinsically L1).
@@ -1531,6 +1547,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "tier1_cluster") cmd_tier1_cluster(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_score") cmd_Result_score(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_save") cmd_Result_save(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Result_distance_matrix") cmd_Result_distance_matrix(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_delete") cmd_Result_delete(nlhs, plhs, nrhs, prhs);
     else if (cmd == "DTWClustering_compute_distance_matrix")
       cmd_DTWClustering_compute_distance_matrix(nlhs, plhs, nrhs, prhs);

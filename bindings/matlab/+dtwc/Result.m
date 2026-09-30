@@ -28,7 +28,6 @@ classdef Result < handle
     properties (Access = private)
         Handle uint64 = uint64(0)  % C++ dtwc::Result (owns the clustered Problem)
         DatasetName char = 'dataset'
-        Dmat = []                  % cached distance matrix for plot()
     end
 
     methods
@@ -82,7 +81,7 @@ classdef Result < handle
         %
         %   Uses a manual classical MDS (double-centred squared-distance eigen-
         %   decomposition) so no toolbox dependency is required.
-            D = obj.distance_matrix();
+            D = dtwc_mex('Result_distance_matrix', obj.Handle);
             n = size(D, 1);
             J = eye(n) - ones(n) / n;
             B = -0.5 * (J * (D.^2) * J);
@@ -101,29 +100,5 @@ classdef Result < handle
             xlabel(ax, 'MDS-1'); ylabel(ax, 'MDS-2');
             if nargout > 0, varargout{1} = ax; end
         end
-    end
-
-    methods (Access = private)
-        function D = distance_matrix(obj)
-        %DISTANCE_MATRIX Distance matrix of the clustered Problem, cached.
-        %   dtwc::Result owns its Problem privately and publishes the matrix
-        %   only through save() (api.hpp), so the matrix is read back from a
-        %   scratch save rather than recomputed.
-            if isempty(obj.Dmat)
-                scratch = [tempname '_dtwc_mds'];
-                cleaner = onCleanup(@() remove_directory(scratch));
-                dtwc_mex('Result_save', obj.Handle, scratch);
-                obj.Dmat = readmatrix( ...
-                    fullfile(scratch, [obj.DatasetName '_distance_matrix.csv']), ...
-                    'Delimiter', ',', 'NumHeaderLines', 0);
-            end
-            D = obj.Dmat;
-        end
-    end
-end
-
-function remove_directory(d)
-    if exist(d, 'dir')
-        rmdir(d, 's');
     end
 end
