@@ -186,7 +186,7 @@ this value; `auto` inherits the resolved method. `DTWClustering` restart `i`
 uses `DEFAULT_RANDOM_SEED + i` and retains the lowest-cost result, with the
 schedule range-checked. `DTWCKMedoids(random_state=None)` means the same default.
 CLI `--seed` defaults to 42, applies to PAM, OneBatchPAM, and CLARA, and accepts
-`[0, UINT_MAX]`. Lloyd k-medoids uses the same invocation-local default and a
+`[0, UINT64_MAX]`. Lloyd k-medoids uses the same invocation-local default and a
 checked `base_seed + i` schedule for its repetitions, restoring the actual
 lowest-cost repetition rather than leaving the final run in `Problem`. Direct
 HiGHS and Gurobi MIP warm starts use a shared seed-aware FastPAM incumbent;

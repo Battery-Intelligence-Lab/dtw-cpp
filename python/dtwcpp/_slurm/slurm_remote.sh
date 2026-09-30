@@ -468,9 +468,8 @@ cmd_submit_cluster() {
         echo "ERROR: input path must not start with '-' (transfer option ambiguity): ${INPUT}" >&2
         exit 1
     }
-    [[ "${K}" =~ ^[1-9][0-9]*$ ]] \
-        && decimal_leq "${K}" "2147483647" || {
-        echo "ERROR: n_clusters must fit the dtwc_cl positive int range: ${K}" >&2
+    [[ "${K}" =~ ^[1-9][0-9]*$ ]] || {
+        echo "ERROR: n_clusters must be a positive integer: ${K}" >&2
         exit 1
     }
     [[ "${METHOD}" =~ ^(auto|pam|onebatch|clara|kmedoids|mip|lrcore|hierarchical|tadpole)$ ]] || {
@@ -490,9 +489,8 @@ cmd_submit_cluster() {
         echo "ERROR: job name must be 1-128 ASCII letters, digits, '.', '_', or '-': ${NAME}" >&2
         exit 1
     }
-    [[ "${SKIP_COLS}" =~ ^[0-9]+$ ]] \
-        && decimal_leq "${SKIP_COLS}" "2147483647" || {
-        echo "ERROR: skip_cols must fit the dtwc_cl non-negative int range: ${SKIP_COLS}" >&2
+    [[ "${SKIP_COLS}" =~ ^[0-9]+$ ]] || {
+        echo "ERROR: skip_cols must be a non-negative integer: ${SKIP_COLS}" >&2
         exit 1
     }
     [[ "${UPLOAD}" == "0" || "${UPLOAD}" == "1" ]] || {
@@ -519,10 +517,6 @@ cmd_submit_cluster() {
         echo "ERROR: seed must be a non-negative integer: ${SEED}" >&2
         exit 1
     }
-    if [[ -n "${SEED}" ]] && ! decimal_leq "${SEED}" "4294967295"; then
-        echo "ERROR: seed exceeds the dtwc_cl unsigned range: ${SEED}" >&2
-        exit 1
-    fi
     [[ "${MAX_ITER}" =~ ^[1-9][0-9]*$ ]] \
         && decimal_leq "${MAX_ITER}" "2147483647" || {
         echo "ERROR: max_iter must fit the dtwc_cl positive int range: ${MAX_ITER}" >&2
