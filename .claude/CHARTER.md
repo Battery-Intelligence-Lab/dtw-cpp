@@ -14,6 +14,12 @@ Later the same day, on keeping `Nb` as `size_t` in the MIP backends to protect o
 
 > You are overthiking about simple things. Just keep the code simple, we think about it when it overflows
 
+Later the same day, on build targets:
+
+> We don't have to compile for each and every computer. We can put a border somewhere that is not too new.
+
+> So for CUDA we can put some limits. Let's put the limit to A30, when it was relesed and same year ones
+
 ## 2026-09-29 — continue
 
 > Please go through what was done and try to continue. Don't forget our principles of no unnecessary

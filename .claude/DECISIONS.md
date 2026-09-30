@@ -204,3 +204,6 @@ CHANGELOG rule.
   k < 1 and band < −1. The per-element accessors stay unchecked (hot path); the bindings check indices.
 - 2026-09-30 — X3b: `-Werror=switch` / C4062 cover C++ sources only; `.cu` and `.mm` switches are not gated (OBJCXX
   cannot be verified here). `unit_test_invalid_distance_enums` / `_public_selectors` keep their names until W12b.
+- 2026-09-30 — Volkan: the CUDA floor is the A30's generation — compute capability 8.0 (Ampere, 2021). Default
+  architectures 80;86;89;90 with PTX of the newest for later GPUs; a device below 8.0 is a typed `DeviceError` at
+  selection; code for older architectures goes (C1).
