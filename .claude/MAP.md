@@ -20,7 +20,7 @@ Python  nanobind _dtwcpp_core + dtwcpp package                     MATLAB  dtwc_
 | Layer | Where | Lines | What |
 | --- | --- | --- | --- |
 | base | `base/` (+ forwarders at `dtwc/` root), `types/`, `enums/` | 1.7k | errors (`Error` → `InvalidInput`, `DeviceError`, `IOError`, `SolverError`, `UndefinedScore`), settings (`index_t`), OpenMP helpers (`run_openmp`: per-thread failure slots), `device()`, names tables, `Index` / `Range` |
-| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 9k | `dtw_kernel.hpp` (full, linear, EAP, banded recurrences × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio only in `distance_matrix.cpp`), SHA-256, portable RNG |
+| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 9k | `dtw_kernel.hpp` (full, linear, lanes, banded recurrences × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio only in `distance_matrix.cpp`), SHA-256, portable RNG |
 | io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.6k | CSV/TSV/folder text readers (fast_float via `io/parse_number`), Parquet eager + chunked, Arrow IPC, nanoarrow C-Data ingest |
 | backends | `cuda/`, `metal/` | 4k | GPU fills (MPI deleted, Z1) |
 | algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4.9k | FastPAM, FastCLARA, OneBatchPAM, CLARANS, hierarchical, TADPole, barycenter; seeding; seven scores |
@@ -131,7 +131,7 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
   `test_codegen_no_calls` fails a clang build whose DP inner loop calls anything.
 - `decode_pair` is the single pair decoder on host and device, with its integer corrections.
 - FP model: `-fassociative-math` **without** `-ffinite-math-only`, and the `#error` under finite-math-only. NaN
-  means missing or not computed; the EAP slack `ub·(1+n·16ε)` is regression-tested, not derived.
+  means missing or not computed.
 - The kernels' `numeric_limits::max()` is the DP's unreachable value and must never leave a kernel as a
   distance; NaN is the only "not a distance" outside kernels.
 - `find_best_swap` and the FasterPAM sweep are sequential on purpose; the nearest-medoid scans stay separate at
