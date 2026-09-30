@@ -65,14 +65,6 @@ using namespace nb::literals; // for _a arg names
 
 namespace {
 
-void warn_deprecated_alias(const char *old_name, const char *new_name) {
-  std::string message(old_name);
-  message += " is deprecated; use ";
-  message += new_name;
-  if (PyErr_WarnEx(PyExc_DeprecationWarning, message.c_str(), 1) < 0)
-    throw nb::python_error();
-}
-
 /// Hand an owning buffer to numpy with no leak window and no nested GIL scope.
 ///
 /// The vector is moved onto the heap, the capsule is constructed while a
@@ -120,7 +112,6 @@ void require_finite_series(const std::vector<std::vector<double>> &series,
 
 NB_MODULE(_dtwcpp_core, m) {
   m.attr("__version__") = DTWC_VERSION_STRING;
-  m.attr("_F22_DEPRECATION_POLICY") = true;
   m.attr("DEFAULT_RANDOM_SEED") = dtwc::settings::DEFAULT_RANDOM_SEED;
   m.attr("HIGHS_AVAILABLE") = dtwc::highs_solver_available();
   m.doc() = "DTWC++ — Fast Dynamic Time Warping and Clustering (C++ core)";
@@ -752,46 +743,6 @@ NB_MODULE(_dtwcpp_core, m) {
   // Problem class
   // =========================================================================
 
-  // Shared read accessor: fill (if needed) and expand packed triangular → NxN.
-  // Named `distance_matrix()` in 2.0 (was `distance_matrix_numpy()`); always a
-  // COPY because the C++ store keeps only the upper triangle, so a zero-copy view
-  // into a full NxN layout is structurally impossible (§2.2 ‡).
-  auto read_distance_matrix_np = [](dtwc::Problem &prob) {
-    // Size is only known after the fill, so both happen inside one release.
-    std::vector<double> values;
-    size_t n = 0;
-    {
-      nb::gil_scoped_release release;
-      prob.fill_distance_matrix();
-      const auto &dm = prob.distance_matrix(); // on the heap or mapped
-      n = dm.size();
-      // Row-major std::vector<double> straight from to_full_matrix (X-27).
-      values = dtwc::io::to_full_matrix(dm);
-    }
-    return adopt_as_ndarray(std::move(values), {n, n});
-  };
-  // Shared writer: load a precomputed NxN matrix (e.g. from a GPU compute).
-  auto write_distance_matrix_np =
-    [](dtwc::Problem &p, nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
-      const size_t n = dm.shape(0);
-      if (dm.shape(1) != n)
-        throw dtwc::InvalidInput("Expected square distance matrix");
-      if (n != p.size())
-        throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
-      auto &mat = p.distance_matrix();
-      // Values written into a mapped matrix would persist in its file under the
-      // Problem's fingerprint, whatever they were computed from.
-      if (mat.is_mapped())
-        throw dtwc::InvalidInput("Problem.set_distance_matrix: this Problem's distance matrix is "
-                                 "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
-                                 "kept in RAM only; call refresh_distance_matrix() first.");
-      mat.resize(n);
-      const double *data = dm.data();
-      for (size_t i = 0; i < n; ++i)
-        for (size_t j = i; j < n; ++j)
-          mat.set(i, j, data[i * n + j]);
-    };
-
   nb::class_<dtwc::Problem>(m, "Problem",
     "A clustering problem: data, configuration, distance matrix and results.\n\n"
     "Threading: a Problem instance must not be used concurrently from multiple\n"
@@ -828,18 +779,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_prop_rw("n_repetitions", &dtwc::Problem::n_repetitions,
                  &dtwc::Problem::set_n_repetitions,
                  "Repetitions for iterative methods.")
-    .def_prop_rw("n_repetition",
-                 [](const dtwc::Problem &p) {
-                   warn_deprecated_alias("Problem.n_repetition",
-                                         "Problem.n_repetitions");
-                   return p.n_repetitions();
-                 },
-                 [](dtwc::Problem &p, int value) {
-                   warn_deprecated_alias("Problem.n_repetition",
-                                         "Problem.n_repetitions");
-                   p.set_n_repetitions(value);
-                 },
-                 "Deprecated alias for n_repetitions (kept one cycle, §4).")
     .def_prop_rw("random_seed", &dtwc::Problem::random_seed,
                  &dtwc::Problem::set_random_seed,
                  "Invocation-local seed for Lloyd and MIP warm starts.")
@@ -892,13 +831,9 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("centroids_ind", &dtwc::Problem::centroids_ind)
     // ---- read accessors ----
     .def_prop_ro("size", &dtwc::Problem::size)
-    .def("n_clusters", &dtwc::Problem::n_clusters, "Number of clusters (was cluster_size()).")
-    .def_prop_ro("cluster_size", [](const dtwc::Problem &p) {
-                   warn_deprecated_alias("Problem.cluster_size",
-                                         "Problem.n_clusters");
-                   return p.n_clusters();
-                 },
-                 "Deprecated alias for n_clusters() (kept one cycle, §4).")
+    .def("n_clusters", &dtwc::Problem::n_clusters, "Number of clusters.")
+    .def("cluster_size", &dtwc::Problem::n_clusters,
+         "Number of clusters: the v1.0.0 spelling of n_clusters().")
     .def("labels", &dtwc::Problem::labels,
          "Cluster label of each series (reads clusters_ind; parity with Result.labels).")
     .def("medoids", &dtwc::Problem::medoids,
@@ -924,12 +859,6 @@ NB_MODULE(_dtwcpp_core, m) {
        "Problem class docstring).")
     // ---- config setters ----
     .def("set_n_clusters", &dtwc::Problem::set_n_clusters, "n_clusters"_a)
-    .def("set_number_of_clusters", [](dtwc::Problem &p, int n) {
-           warn_deprecated_alias("Problem.set_number_of_clusters",
-                                 "Problem.set_n_clusters");
-           p.set_n_clusters(n);
-         },
-         "n_clusters"_a, "Deprecated alias for set_n_clusters (kept one cycle, §4).")
     .def("set_method", &dtwc::Problem::set_method, "method"_a)
     .def("set_band", &dtwc::Problem::set_band, "band"_a)
     .def("set_max_iter", &dtwc::Problem::set_max_iter, "max_iter"_a)
@@ -962,26 +891,45 @@ NB_MODULE(_dtwcpp_core, m) {
       nb::gil_scoped_release release;
       p.fill_distance_matrix();
     }, "Compute all pairwise DTW distances.")
-    .def("distance_matrix", read_distance_matrix_np,
+    // Always a COPY: the C++ store keeps only the upper triangle, so a zero-copy
+    // view into a full NxN layout is structurally impossible (§2.2 ‡).
+    .def("distance_matrix", [](dtwc::Problem &prob) {
+           // Size is only known after the fill, so both happen inside one release.
+           std::vector<double> values;
+           size_t n = 0;
+           {
+             nb::gil_scoped_release release;
+             prob.fill_distance_matrix();
+             const auto &dm = prob.distance_matrix(); // on the heap or mapped
+             n = dm.size();
+             values = dtwc::io::to_full_matrix(dm); // row-major, expanded from the triangle
+           }
+           return adopt_as_ndarray(std::move(values), {n, n});
+         },
          "Fill (if needed) and return the full NxN distance matrix as a numpy\n"
          "array (independent copy; use set_distance_matrix to write).")
-    .def("distance_matrix_numpy", [read_distance_matrix_np](dtwc::Problem &p) {
-           warn_deprecated_alias("Problem.distance_matrix_numpy",
-                                 "Problem.distance_matrix");
-           return read_distance_matrix_np(p);
-         },
-         "Deprecated alias for distance_matrix() (kept one cycle, §4).")
-    .def("set_distance_matrix", write_distance_matrix_np, "dm"_a,
-         "Load a precomputed NxN distance matrix (e.g. from a GPU compute).")
-    .def("set_distance_matrix_from_numpy",
-         [write_distance_matrix_np](
-           dtwc::Problem &p,
-           nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
-           warn_deprecated_alias("Problem.set_distance_matrix_from_numpy",
-                                 "Problem.set_distance_matrix");
-           write_distance_matrix_np(p, dm);
+    .def("set_distance_matrix",
+         [](dtwc::Problem &p,
+            nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
+           const size_t n = dm.shape(0);
+           if (dm.shape(1) != n)
+             throw dtwc::InvalidInput("Expected square distance matrix");
+           if (n != p.size())
+             throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
+           auto &mat = p.distance_matrix();
+           // Values written into a mapped matrix would persist in its file under the
+           // Problem's fingerprint, whatever they were computed from.
+           if (mat.is_mapped())
+             throw dtwc::InvalidInput("Problem.set_distance_matrix: this Problem's distance matrix is "
+                                      "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
+                                      "kept in RAM only; call refresh_distance_matrix() first.");
+           mat.resize(n);
+           const double *data = dm.data();
+           for (size_t i = 0; i < n; ++i)
+             for (size_t j = i; j < n; ++j)
+               mat.set(i, j, data[i * n + j]);
          }, "dm"_a,
-         "Deprecated alias for set_distance_matrix() (kept one cycle, §4).")
+         "Load a precomputed NxN distance matrix (e.g. from a GPU compute).")
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
     .def("read_distance_matrix", [](dtwc::Problem &p, const std::filesystem::path &path) {
       nb::gil_scoped_release release;

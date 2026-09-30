@@ -499,8 +499,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `cluster()` enforces `k <= N` and rejects an empty dataset with the C++
   messages; `Result.score`/`save` work after matrix-free methods by filling the
   matrix lazily as C++ does; `Problem.checkpoint` is bound (in-place mutation
-  works); `get_device()` is a deprecated alias of `device()`;
-  `dtwcpp.UndefinedScore` is bound (subclass of `InvalidInput`) and
+  works); `dtwcpp.UndefinedScore` is bound (subclass of `InvalidInput`) and
   `Result.save` warns and skips the silhouettes file on it as C++ does; ragged
   in-memory sources load; series names come from the C++ loader, so all four
   `Result.save` CSVs are byte-identical to the CLI's (UTF-8 names included).
@@ -980,10 +979,6 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   legacy Problem I/O overloads now emit their registered replacement
   diagnostics while remaining behavior-identical; canonical I/O names own the
   implementations and canonical Problem moves remain warning-silent.
-- Enforced the frozen Python deprecation policy for all 13 retained alias
-  operations. Each now emits one caller-attributed `DeprecationWarning` before
-  effects while canonical operations stay silent; `ClusterResult` remains an
-  uncached, identity-preserving alias of `Result`.
 - Enforced the frozen MATLAB deprecation policy for all 15 retained alias
   operations. Each now emits one exact `dtwc:deprecatedAlias` warning while
   canonical operations stay silent; rejected configuration values leave the
