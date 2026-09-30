@@ -1104,7 +1104,10 @@ CUDADistMatResult compute_distance_matrix_cuda(
   std::vector<int> lengths;
   const size_t max_L = detail::scan_series_lengths(series, lengths);
 
-  if (max_L == 0) return result;
+  // An all-zero matrix would read as N identical series.
+  if (max_L == 0)
+    throw dtwc::InvalidInput("compute_distance_matrix_cuda: every series is "
+                             "empty, so there is no distance to compute.");
 
   const auto kernel_path = detail::select_kernel(max_L);
   result.kernel_used = std::string(detail::kernel_path_name(kernel_path));

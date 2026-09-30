@@ -848,7 +848,10 @@ MetalDistMatResult compute_distance_matrix_metal(
     lengths[s] = static_cast<int>(series[s].size());
     if (lengths[s] > max_L) max_L = lengths[s];
   }
-  if (max_L == 0) return result;
+  // An all-zero matrix would read as N identical series.
+  if (max_L == 0)
+    throw dtwc::InvalidInput("compute_distance_matrix_metal: every series is "
+                             "empty, so there is no distance to compute.");
 
   const size_t num_pairs = N * (N - 1) / 2;
   result.pairs_computed = num_pairs;

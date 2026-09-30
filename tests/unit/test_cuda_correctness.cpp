@@ -577,6 +577,16 @@ TEST_CASE("test_gpu_two_identical", "[cuda]")
   REQUIRE(gpu_result.matrix[1 * 2 + 0] == 0.0);
 }
 
+// Series that are all empty have no distance to compute; an all-zero matrix
+// would read as N identical series.
+TEST_CASE("CUDA fill of all-empty series is InvalidInput and no zero matrix", "[cuda]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  const std::vector<std::vector<double>> empty(3);
+  REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(empty), dtwc::InvalidInput);
+}
+
 // ---------------------------------------------------------------------------
 // Banded DTW: GPU vs CPU comparison
 // ---------------------------------------------------------------------------
