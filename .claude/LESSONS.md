@@ -278,3 +278,6 @@ Append new entries at the end of their section; keep each to a few lines.
 - **`schedule(dynamic)` is nonmonotonic since OpenMP 5.0**: libomp hands a thread a lower index after a higher one
   (8 threads × 300 runs, R1). Never assume a thread's indices increase; MSVC `/openmp:experimental` rejects the
   `monotonic:` modifier (C3022). `run_openmp` skips only indices above a thread's own failure.
+- **A new Arrow build tree on Windows needs both `-DArrow_DIR` and `-DParquet_DIR`** at the pyarrow shim
+  (`build/arrow-pyarrow-23/pyarrow-config`): with `Arrow_DIR` alone Parquet is silently off and `test_io_readers` skips
+  its Parquet case. At run time put pyarrow and `pyarrow.libs` on PATH, else exit 0xc0000135 (F1, 2026-09-30).

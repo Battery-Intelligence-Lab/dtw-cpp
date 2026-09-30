@@ -48,7 +48,9 @@ grep them for the symbol or finding id you need.
   behaviour is proven by driving the real binary.
 - Stash and re-run before calling a failure "pre-existing". Disagreement → a third computation.
 - Numbers go to `.claude/baselines/` verbatim, tagged `[confirmed]` or `[inferred]`.
-- Full test runs are serial evidence (`ctest -j1`): concurrent runs collide on test artefacts.
+- Full test runs are serial evidence (`ctest -j1`). Every C++ test writes to its own scratch directory
+  (`tests/support/scratch_directory.hpp`), so runs of different build trees may overlap; two runs of the same build
+  tree may not (the `FIXTURE_ROOT` and `cmake -P` CLI tests keep one directory inside it).
 
 ## Build and gates (macOS; other platforms in `MAP.md` §3)
 
