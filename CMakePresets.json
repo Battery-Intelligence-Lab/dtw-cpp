@@ -42,14 +42,13 @@
     {
       "name": "msvc",
       "displayName": "MSVC (Visual Studio)",
-      "description": "Visual Studio generator with MSVC compiler. OpenMP is auto-detected.",
+      "description": "Visual Studio generator with MSVC compiler. No generator is named, so CMake picks the newest installed Visual Studio; an exported CMAKE_GENERATOR overrides that, so unset it. OpenMP is auto-detected.",
       "inherits": "default",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       },
-      "generator": "Visual Studio 17 2022",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
