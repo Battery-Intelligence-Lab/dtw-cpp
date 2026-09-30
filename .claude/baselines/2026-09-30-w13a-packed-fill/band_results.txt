@@ -57,3 +57,7 @@ N:330/L:2000/fp64:0/iterations:1/real_time      1426.7    1447.2    1.0144   0.0
 N:2700/L:100/fp64:1/iterations:1/real_time      1381.4    1397.9    1.0119   0.09%, 0.61%    26.38,  26.07  yes
 N:520/L:500/fp64:1/iterations:1/real_time       1385.2    1404.4    1.0139   0.00%, 0.50%    24.35,  24.02  yes
 N:140/L:2000/fp64:1/iterations:1/real_time      1311.3    1324.9    1.0103   0.08%, 0.11%    29.68,  29.38  yes
+
+# Run 3: FP32 L 100 only at 1affff2 (per-launch memset), base then head, 17:36-17:37 BST, CPU load 3-8 %
+case                                           base ms   head ms head/base   cv base,head  Gcell/s base,head  pass
+N:9000/L:100/fp64:0/iterations:1/real_time      1529.3    1155.9    0.7558   1.61%, 0.25%   264.80, 350.35  yes

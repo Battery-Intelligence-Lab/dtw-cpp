@@ -116,3 +116,12 @@ rem SASS
 cuobjdump -sass build-cuda\bin\CMakeFiles\dtwc++.dir\cuda\cuda_dtw.cu.obj > sass.txt
 uv run --no-project python sass_loops.py sass_base.txt sass_head.txt
 ```
+
+## After the review fixes: FP32, L 100 only [confirmed]
+
+The review (5.1) had each launch copy only slots it defines: the ranges tile the matrix and the device buffer is
+zeroed per launch (`cudaMemsetAsync`, 324 MB here), with no diagonal pass after the last. That memset is the new cost,
+so the FP32 L = 100 case was re-run at `1affff2`, base then head back to back, 2026-09-30 17:36–17:37 BST, CPU load
+3–8 %: base 1529.3 ms, head 1155.9 ms, head/base **0.756** (cv 1.6 %, 0.3 %). Against the recorded run-2 base
+(1504.1 ms): 0.769. Against the run-2 head without the memset (1166.7 ms): 0.991. The kernels are byte-identical to
+`c67dd3f`'s.
