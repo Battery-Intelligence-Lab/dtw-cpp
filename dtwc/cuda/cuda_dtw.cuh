@@ -16,7 +16,6 @@
 
 #ifdef DTWC_HAS_CUDA
 
-#include "../enums/KernelOverride.hpp"
 #include "../base/error.hpp"
 #include "../core/gpu_dtw_common.hpp"
 
@@ -48,14 +47,10 @@ struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   int device_id = 0;                             ///< CUDA device to use
   CUDAPrecision precision = CUDAPrecision::Auto; ///< Compute precision
 
-  // Inherited from DistMatOptionsBase:
-  //   band, use_squared_l2, verbose, max_length_hint, kernel_override
+  // Inherited from DistMatOptionsBase: band, use_squared_l2, verbose
 };
 
-struct CUDADistMatResult : public dtwc::gpu::DistMatResultBase {
-  /// True only when a valid but unsupported CUDA override used Auto instead.
-  bool kernel_override_fell_back = false;
-};
+struct CUDADistMatResult : public dtwc::gpu::DistMatResultBase {};
 
 /// Check if CUDA is available (device count > 0).
 bool cuda_available();

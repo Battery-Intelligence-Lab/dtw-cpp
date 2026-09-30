@@ -15,7 +15,7 @@
 #include <memory>
 #include <string>
 
-#define CUDA_CHECK_ALLOC(call)                                               \
+#define CUDA_CHECK(call)                                                     \
   do {                                                                       \
     cudaError_t err = (call);                                                \
     if (err != cudaSuccess) {                                                \
@@ -43,7 +43,7 @@ template <typename T>
 CudaPtr<T> cuda_alloc(size_t count)
 {
   T *ptr = nullptr;
-  CUDA_CHECK_ALLOC(cudaMalloc(&ptr, count * sizeof(T)));
+  CUDA_CHECK(cudaMalloc(&ptr, count * sizeof(T)));
   return CudaPtr<T>(ptr);
 }
 
@@ -61,15 +61,6 @@ struct PinnedDeleter {
 /// RAII smart pointer for CUDA pinned host memory.
 template <typename T>
 using PinnedPtr = std::unique_ptr<T, PinnedDeleter>;
-
-/// Allocate pinned host memory and return an owning PinnedPtr.
-template <typename T>
-PinnedPtr<T> pinned_alloc(size_t count)
-{
-  T *ptr = nullptr;
-  CUDA_CHECK_ALLOC(cudaMallocHost(&ptr, count * sizeof(T)));
-  return PinnedPtr<T>(ptr);
-}
 
 /// Try to allocate pinned host memory; returns nullptr on failure (no throw).
 template <typename T>
@@ -103,7 +94,7 @@ using CudaStream = std::unique_ptr<CUstream_st, StreamDeleter>;
 inline CudaStream make_cuda_stream()
 {
   cudaStream_t s = nullptr;
-  CUDA_CHECK_ALLOC(cudaStreamCreate(&s));
+  CUDA_CHECK(cudaStreamCreate(&s));
   return CudaStream(s);
 }
 
@@ -125,7 +116,7 @@ using CudaEvent = std::unique_ptr<CUevent_st, EventDeleter>;
 inline CudaEvent make_cuda_event()
 {
   cudaEvent_t e = nullptr;
-  CUDA_CHECK_ALLOC(cudaEventCreate(&e));
+  CUDA_CHECK(cudaEventCreate(&e));
   return CudaEvent(e);
 }
 

@@ -8,7 +8,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <dtwc.hpp>
 
@@ -17,18 +20,22 @@
 
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
-// gpu_config.cuh is an internal header — tested indirectly via compute_distance_matrix_cuda()
+#include <cuda_runtime.h>
 #endif
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
 #include <random>
+#include <thread>
 #include <vector>
 
+using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::MessageMatches;
 using Catch::Matchers::WithinRel;
 
 #ifndef DTWC_HAS_CUDA
@@ -56,6 +63,25 @@ std::vector<double> cpu_distance_matrix(
     });
 }
 
+/// The host kernel in FP32 on the float-rounded series: the same operations in
+/// the same precision as the CUDA FP32 fill, so the two agree bit for bit.
+std::vector<double> cpu_fp32_distance_matrix(
+    const std::vector<std::vector<double>> &series)
+{
+  std::vector<std::vector<float>> rounded;
+  for (const auto &s : series) {
+    std::vector<float> r(s.size());
+    std::transform(s.begin(), s.end(), r.begin(),
+                   [](double v) { return static_cast<float>(v); });
+    rounded.push_back(std::move(r));
+  }
+  return dtwc::test_support::symmetric_zero_diagonal_matrix(
+    rounded,
+    [](const auto &left, const auto &right) {
+      return static_cast<double>(dtwc::dtwFull_L<float>(left, right));
+    });
+}
+
 /// Compute the NxN CPU banded distance matrix using dtwBanded (L1 metric).
 std::vector<double> cpu_banded_distance_matrix(
     const std::vector<std::vector<double>> &series, int band)
@@ -67,17 +93,18 @@ std::vector<double> cpu_banded_distance_matrix(
     });
 }
 
+/// The principal pair alone takes the warp kernel; a filler series raises the
+/// batch's longest length into another kernel's range.
 struct F12CUDARoute {
-  dtwc::KernelOverride requested;
   const char *expected_kernel;
-  bool needs_filler_129;
+  size_t filler_length; // 0: no filler
 };
 
 constexpr std::array<F12CUDARoute, 4> f12_cuda_routes{{
-    {dtwc::KernelOverride::Auto, "warp", false},
-    {dtwc::KernelOverride::RegTile, "regtile_w4", false},
-    {dtwc::KernelOverride::RegTile, "regtile_w8", true},
-    {dtwc::KernelOverride::Wavefront, "wavefront", false}
+    {"warp", 0},
+    {"regtile_w4", 64},
+    {"regtile_w8", 129},
+    {"wavefront", 257}
 }};
 
 std::vector<std::vector<double>> f12_pairwise_inventory(
@@ -87,7 +114,8 @@ std::vector<std::vector<double>> f12_pairwise_inventory(
   std::vector<std::vector<double>> series{
       oracle::principal_x(), oracle::principal_y()
   };
-  if (route.needs_filler_129) series.push_back(oracle::filler_129());
+  if (route.filler_length > 0)
+    series.push_back(oracle::filler(route.filler_length));
   return series;
 }
 
@@ -101,7 +129,6 @@ double f12_expected_public_cost(
 }
 
 dtwc::cuda::CUDADistMatOptions f12_cuda_options(
-    const F12CUDARoute &route,
     const dtwc::test::gpu_fixed_band::LedgerRow &row,
     bool squared,
     dtwc::cuda::CUDAPrecision precision =
@@ -111,7 +138,6 @@ dtwc::cuda::CUDADistMatOptions f12_cuda_options(
   opts.band = row.band;
   opts.use_squared_l2 = squared;
   opts.precision = precision;
-  opts.kernel_override = route.requested;
   return opts;
 }
 
@@ -196,7 +222,7 @@ TEST_CASE("F12 CUDA pairwise kernels use canonical fixed-band geometry",
     for (const bool squared : {false, true}) {
       for (const auto &row : oracle::ledger) {
         CAPTURE(route.expected_kernel, squared, row.band);
-        const auto opts = f12_cuda_options(route, row, squared);
+        const auto opts = f12_cuda_options(row, squared);
         const auto result =
             dtwc::cuda::compute_distance_matrix_cuda(series, opts);
         const auto expected = f12_expected_public_cost(row, squared);
@@ -204,7 +230,6 @@ TEST_CASE("F12 CUDA pairwise kernels use canonical fixed-band geometry",
         REQUIRE(result.n == n);
         REQUIRE(result.matrix.size() == n * n);
         REQUIRE(result.kernel_used == route.expected_kernel);
-        REQUIRE_FALSE(result.kernel_override_fell_back);
         REQUIRE(result.matrix[1] == expected);
         REQUIRE(result.matrix[n] == expected);
       }
@@ -218,7 +243,6 @@ TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
   namespace oracle = dtwc::test::gpu_fixed_band;
-  const auto &route = f12_cuda_routes.front();
   const std::vector<std::vector<double>> pairwise_series{
       oracle::singleton_x(), oracle::singleton_y()
   };
@@ -226,7 +250,7 @@ TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
   for (const bool squared : {false, true}) {
     for (const auto &row : oracle::singleton_ledger) {
       CAPTURE(squared, row.band);
-      const auto opts = f12_cuda_options(route, row, squared);
+      const auto opts = f12_cuda_options(row, squared);
       const auto expected = f12_expected_public_cost(row, squared);
 
       const auto pairwise =
@@ -234,7 +258,6 @@ TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
       REQUIRE(pairwise.n == 2);
       REQUIRE(pairwise.matrix.size() == 4);
       REQUIRE(pairwise.kernel_used == "warp");
-      REQUIRE_FALSE(pairwise.kernel_override_fell_back);
       REQUIRE(pairwise.matrix[1] == expected);
       REQUIRE(pairwise.matrix[2] == expected);
     }
@@ -250,13 +273,44 @@ TEST_CASE("F12 CUDA FP32 results translate no-path to the public double sentinel
   const auto &below_gap = oracle::ledger.front();
   const auto &route = f12_cuda_routes.front();
   auto opts = f12_cuda_options(
-      route, below_gap, false, dtwc::cuda::CUDAPrecision::FP32);
+      below_gap, false, dtwc::cuda::CUDAPrecision::FP32);
 
   const auto pairwise = dtwc::cuda::compute_distance_matrix_cuda(
       f12_pairwise_inventory(route), opts);
   REQUIRE(pairwise.kernel_used == "warp");
   REQUIRE(pairwise.matrix[1] == oracle::public_no_path_sentinel);
   REQUIRE(pairwise.matrix[2] == oracle::public_no_path_sentinel);
+}
+
+// Every range of the automatic kernel choice, at its edges, in both precisions:
+// warp (L <= 32), regtile<4> (<= 128), regtile<8> (<= 256), and the wavefront's
+// preload (<= 512), three-buffer (<= 1024), double-buffer (<= 2048) and long
+// three-buffer modes. The oracle is the host kernel in the fill's precision.
+TEST_CASE("CUDA fill matches the host kernel in every automatic kernel range",
+          "[cuda][regime]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  struct Regime {
+    size_t L;
+    const char *kernel;
+  };
+  const auto regime = GENERATE(values<Regime>({
+      {16, "warp"}, {32, "warp"}, {128, "regtile_w4"}, {256, "regtile_w8"},
+      {257, "wavefront"}, {512, "wavefront"}, {1024, "wavefront"},
+      {1025, "wavefront"}, {2048, "wavefront"}, {2049, "wavefront"}}));
+  const bool fp32 = GENERATE(true, false);
+  CAPTURE(regime.L, fp32);
+
+  const auto series = generate_random_series(6, regime.L, /*seed=*/7);
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = fp32 ? dtwc::cuda::CUDAPrecision::FP32
+                        : dtwc::cuda::CUDAPrecision::FP64;
+  const auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+
+  REQUIRE(gpu_result.kernel_used == regime.kernel);
+  REQUIRE(gpu_result.matrix == (fp32 ? cpu_fp32_distance_matrix(series)
+                                     : cpu_distance_matrix(series)));
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +482,89 @@ TEST_CASE("test_gpu_long_series_wavefront_banded", "[cuda][long][banded]")
   CHECK(max_abs_diff <= 1e-9);
 }
 
+// The three FP32 diagonal buffers of L = 4095 and 4096 fit the 48 KiB default
+// shared-memory limit on their own, but not with the kernel's static shared
+// memory, so the launch must opt in to the larger limit.
+TEST_CASE("FP32 wavefront at L = 4095 and 4096 matches the host kernel",
+          "[cuda][long][fp32]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  const size_t L = GENERATE(size_t{4095}, size_t{4096});
+  CAPTURE(L);
+  const auto series = generate_random_walks(3, L, /*seed=*/20260930);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  const auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  REQUIRE(gpu_result.kernel_used == "wavefront");
+  REQUIRE(gpu_result.matrix == cpu_fp32_distance_matrix(series));
+}
+
+// A wavefront block that needs more shared memory than the device offers is
+// refused with the typed error before anything is allocated or copied, and the
+// same thread's next fill is unaffected. Above L = 2048 a block holds three
+// diagonals of L values plus the kernel's 16 static bytes, so the first refused
+// L is FP32 8447 and FP64 4224 on the RTX 4000 Ada (101,376 bytes).
+TEST_CASE("CUDA refuses a wavefront beyond the device's shared memory before filling",
+          "[cuda][long]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  int max_shared = 0;
+  REQUIRE(cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, 0)
+          == cudaSuccess);
+  const auto precision =
+      GENERATE(dtwc::cuda::CUDAPrecision::FP32, dtwc::cuda::CUDAPrecision::FP64);
+  const bool fp32 = precision == dtwc::cuda::CUDAPrecision::FP32;
+  const size_t first_refused =
+      (static_cast<size_t>(max_shared) - 16) / (3 * (fp32 ? 4 : 8)) + 1;
+  CAPTURE(fp32, first_refused);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = precision;
+  REQUIRE_NOTHROW(dtwc::cuda::compute_distance_matrix_cuda(
+      generate_random_walks(2, first_refused - 1, /*seed=*/41), opts));
+  REQUIRE_THROWS_MATCHES(
+      dtwc::cuda::compute_distance_matrix_cuda(
+          generate_random_walks(2, first_refused, /*seed=*/41), opts),
+      dtwc::DeviceError, MessageMatches(ContainsSubstring("bytes of shared memory per block")));
+
+  const auto series = generate_random_series(4, 300, /*seed=*/9);
+  REQUIRE(dtwc::cuda::compute_distance_matrix_cuda(series, opts).matrix
+          == (fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series)));
+}
+
+// The wavefront's dynamic shared-memory limit is one value per kernel and
+// device, shared by every host thread. Set on each launch, a thread at L = 4096
+// lowered it under another thread's L = 8000 launch ("invalid argument").
+TEST_CASE("Two host threads filling at different long lengths do not fail each other",
+          "[cuda][long][threads]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  const auto long_pair = generate_random_series(2, 8000, /*seed=*/31);
+  const auto short_pair = generate_random_series(2, 4096, /*seed=*/32);
+  std::array<int, 2> failures{}; // one slot per thread
+  const auto fill = [&](size_t slot, const std::vector<std::vector<double>> &series) {
+    for (int round = 0; round < 50; ++round) {
+      try {
+        (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+      } catch (const std::exception &) {
+        ++failures[slot];
+      }
+    }
+  };
+  std::thread first(fill, size_t{0}, std::cref(long_pair));
+  std::thread second(fill, size_t{1}, std::cref(short_pair));
+  first.join();
+  second.join();
+  CHECK(failures[0] == 0);
+  CHECK(failures[1] == 0);
+}
+
 // ---------------------------------------------------------------------------
 // Structural properties of the distance matrix
 // ---------------------------------------------------------------------------
@@ -485,6 +622,7 @@ TEST_CASE("test_gpu_single_series", "[cuda]")
   REQUIRE(gpu_result.n == 1);
   REQUIRE(gpu_result.matrix.size() == 1);
   REQUIRE(gpu_result.matrix[0] == 0.0);
+  REQUIRE(gpu_result.kernel_used == "none");
 }
 
 TEST_CASE("test_gpu_two_identical", "[cuda]")
@@ -507,6 +645,16 @@ TEST_CASE("test_gpu_two_identical", "[cuda]")
   // Off-diagonal: identical series should have zero distance.
   REQUIRE(gpu_result.matrix[0 * 2 + 1] == 0.0);
   REQUIRE(gpu_result.matrix[1 * 2 + 0] == 0.0);
+}
+
+// Series that are all empty have no distance to compute; an all-zero matrix
+// would read as N identical series.
+TEST_CASE("CUDA fill of all-empty series is InvalidInput and no zero matrix", "[cuda]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  const std::vector<std::vector<double>> empty(3);
+  REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(empty), dtwc::InvalidInput);
 }
 
 // ---------------------------------------------------------------------------
@@ -1039,12 +1187,35 @@ TEST_CASE("test_gpu_fp32_banded_matches_cpu", "[cuda][fp32][banded]")
 }
 
 // ---------------------------------------------------------------------------
-// GPU config detection
+// Auto precision
 // ---------------------------------------------------------------------------
 
-// GPU config (query_gpu_config) is an internal API tested indirectly
-// through compute_distance_matrix_cuda's precision auto-detection.
-// Direct testing would require linking cudart to the test binary.
+// Auto computes in FP64 only on a device that runs FP64 at least half as fast
+// as FP32 (the HPC parts). A compute-capability table once gave consumer
+// Blackwell (sm_120, FP64 at 1/64) FP64; the runtime's own ratio decides now.
+TEST_CASE("CUDA Auto precision follows the device's FP32:FP64 throughput",
+          "[cuda][precision]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  int fp32_per_fp64 = 0;
+  REQUIRE(cudaDeviceGetAttribute(&fp32_per_fp64,
+                                 cudaDevAttrSingleToDoublePrecisionPerfRatio, 0)
+          == cudaSuccess);
+  CAPTURE(fp32_per_fp64);
+
+  const auto series = generate_random_series(6, 40, /*seed=*/11);
+  const auto fill = [&](dtwc::cuda::CUDAPrecision precision) {
+    dtwc::cuda::CUDADistMatOptions opts;
+    opts.precision = precision;
+    return dtwc::cuda::compute_distance_matrix_cuda(series, opts).matrix;
+  };
+  const auto fp32 = fill(dtwc::cuda::CUDAPrecision::FP32);
+  const auto fp64 = fill(dtwc::cuda::CUDAPrecision::FP64);
+  REQUIRE(fp32 != fp64); // this input tells the two precisions apart
+  REQUIRE(fill(dtwc::cuda::CUDAPrecision::Auto)
+          == (fp32_per_fp64 > 2 ? fp32 : fp64));
+}
 
 // ---------------------------------------------------------------------------
 // Squared-L2 metric: GPU vs CPU

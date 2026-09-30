@@ -13,7 +13,6 @@
 
 #include <core/distance_semantics.hpp>
 #include <core/dtw_dispatch.hpp>
-#include <enums/KernelOverride.hpp>
 
 #include "../../support/scratch_directory.hpp"
 
@@ -46,8 +45,6 @@ constexpr std::string_view constraint_error = "Invalid ConstraintType value.";
 constexpr std::string_view matrix_strategy_error =
   "Invalid DistanceMatrixStrategy value.";
 constexpr std::string_view precision_error = "Invalid Precision value.";
-constexpr std::string_view kernel_override_error =
-  "Invalid KernelOverride value.";
 constexpr std::string_view cuda_precision_error =
   "Invalid CUDAPrecision value.";
 constexpr std::string_view metal_precision_error =
@@ -844,21 +841,13 @@ TEST_CASE("M47 rejects every invalid storage policy and active precision",
   }
 }
 
-TEST_CASE("M47 conditionally rejects invalid GPU kernel and precision selectors",
+TEST_CASE("M47 conditionally rejects invalid GPU precision selectors",
           "[m47][enum][gpu]")
 {
 #if defined(DTWC_HAS_CUDA)
   SECTION("CUDA selectors")
   {
     const std::vector<std::vector<double>> series{{0.0}, {1.0}};
-    for_each_invalid_enum<KernelOverride, KernelOverride::RegTile>(
-      [&](KernelOverride invalid) {
-        cuda::CUDADistMatOptions options;
-        options.kernel_override = invalid;
-        check_invalid_input("CUDA KernelOverride", kernel_override_error, [&] {
-          (void)cuda::compute_distance_matrix_cuda(series, options);
-        });
-      });
     for_each_invalid_enum<cuda::CUDAPrecision, cuda::CUDAPrecision::FP64>(
       [&](cuda::CUDAPrecision invalid) {
         cuda::CUDADistMatOptions options;
@@ -874,14 +863,6 @@ TEST_CASE("M47 conditionally rejects invalid GPU kernel and precision selectors"
   SECTION("Metal selectors")
   {
     const std::vector<std::vector<double>> series{{0.0}, {1.0}};
-    for_each_invalid_enum<KernelOverride, KernelOverride::RegTile>(
-      [&](KernelOverride invalid) {
-        metal::MetalDistMatOptions options;
-        options.kernel_override = invalid;
-        check_invalid_input("Metal KernelOverride", kernel_override_error, [&] {
-          (void)metal::compute_distance_matrix_metal(series, options);
-        });
-      });
     for_each_invalid_enum<metal::MetalPrecision, metal::MetalPrecision::FP64>(
       [&](metal::MetalPrecision invalid) {
         metal::MetalDistMatOptions options;
@@ -984,16 +965,6 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
     settings.precision = precision;
     CHECK_NOTHROW(problem.set_cuda_settings(settings));
   }
-
-  constexpr std::array<KernelOverride, 5> kernel_overrides{
-    KernelOverride::Auto,
-    KernelOverride::Wavefront,
-    KernelOverride::WavefrontGlobal,
-    KernelOverride::BandedRow,
-    KernelOverride::RegTile
-  };
-  for (std::size_t i = 0; i < kernel_overrides.size(); ++i)
-    CHECK(static_cast<int>(kernel_overrides[i]) == static_cast<int>(i));
 
 #if defined(DTWC_HAS_CUDA)
   constexpr std::array<cuda::CUDAPrecision, 3> cuda_precisions{

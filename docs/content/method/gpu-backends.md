@@ -13,9 +13,7 @@ DTW is embarrassingly parallel across pairs but **sequential within** each pair 
 Both inherit a shared option/result base, then add backend-specific fields and
 defaults. Through `Problem`, an unavailable or uncompiled requested backend
 raises `DeviceError` rather than changing to CPU. A Metal buffer allocation or
-kernel that fails raises `DeviceError` too, and an explicit kernel override
-the chosen backend lacks currently degrades without a universally visible
-signal on Metal (F30).
+kernel that fails raises `DeviceError` too.
 
 ## What a `Problem` can run on a GPU
 
@@ -66,9 +64,9 @@ DTWC++ uses both, plus a third row-major scheme for tight Sakoe-Chiba bands.
 
 ## Kernel dispatch tables
 
-The two dispatchers use different inputs. CUDA auto-selection uses the scanned
-actual maximum length. Metal uses the scanned length, band, a larger
-`max_length_hint` when provided, and the runtime device threadgroup-memory cap.
+Each backend chooses its kernel itself; no option forces one. CUDA chooses by
+the longest series length. Metal chooses by that length, the band, and the
+device's threadgroup-memory cap.
 
 ### Metal — five kernels
 
@@ -77,7 +75,7 @@ actual maximum length. Metal uses the scanned length, band, a larger
 | `band > 0` and `band·20 < max_L` and `band ≤ 512` | `dtw_banded_row` | Row-major, one thread / pair, no barriers |
 | `band == -1` and `max_L ≤ 128` | `dtw_regtile_w4` | Register-tile, `TILE_W=4`, `simd_shuffle_up` |
 | `band == -1` and `128 < max_L ≤ 256` | `dtw_regtile_w8` | Register-tile, `TILE_W=8` |
-| `3·heuristic_L·sizeof(float)` exceeds the device cap | `dtw_wavefront_global` | Anti-diagonals in device memory |
+| `3·max_L·sizeof(float)` exceeds the device cap | `dtw_wavefront_global` | Anti-diagonals in device memory |
 | otherwise | `dtw_wavefront` | Anti-diagonals in threadgroup memory |
 
 ### CUDA — three kernels
@@ -88,26 +86,15 @@ actual maximum length. Metal uses the scanned length, band, a larger
 | `32 < max_L ≤ 256` | `dtw_regtile_kernel<TILE_W>` | `TILE_W=4` for `≤128`, `TILE_W=8` for `≤256` |
 | otherwise | `dtw_wavefront_kernel` | Anti-diagonals in shared memory |
 
-### User hints
+On an RTX 4000 Ada each CUDA kernel is the fastest of those that accept its
+length range, FP32 and FP64 alike.
 
-Both option structs inherit shared fields, including the common
-`dtwc::KernelOverride` enum:
+### Options
 
-```cpp
-dtwc::metal::MetalDistMatOptions metal_opts;
-dtwc::cuda::CUDADistMatOptions cuda_opts;
-metal_opts.kernel_override = dtwc::KernelOverride::Wavefront;
-cuda_opts.kernel_override = dtwc::KernelOverride::RegTile;
-```
-
-- Actual series lengths are always scanned. Metal lets a positive hint larger
-  than the scan influence its heuristic; CUDA currently ignores the hint.
-- `kernel_override` requests a path. Unsupported requests silently use Auto:
-  CUDA exposes `kernel_override_fell_back`, while Metal exposes no matching
-  flag. That violates the explicit-option rule and is tracked as F30.
-- CUDA adds `device_id` and `CUDAPrecision`; Metal adds `MetalPrecision`.
-  Metal's kernels are FP32: `MetalPrecision::FP64` raises `DeviceError` at
-  every Metal entry point.
+Both option structs inherit `band`, `use_squared_l2` and `verbose`. CUDA adds
+`device_id` and `CUDAPrecision`; Metal adds `MetalPrecision`. Metal's kernels
+are FP32: `MetalPrecision::FP64` raises `DeviceError` at every Metal entry
+point.
 
 ## Historical measurements (Apple M2 Max, 38-core GPU)
 

@@ -3,7 +3,7 @@
  * @brief Shared base structs for CUDA/Metal distance matrix options + results.
  *
  * @details Both backends historically duplicated the common fields (band,
- *          verbose, max_length_hint, kernel_override, etc.).
+ *          use_squared_l2, verbose).
  *          This header factors those into `DistMatOptionsBase` and
  *          `DistMatResultBase`; `CUDADistMatOptions` / `MetalDistMatOptions`
  *          inherit and append backend-specific fields. Designated aggregate
@@ -15,7 +15,6 @@
 #pragma once
 
 #include "public_distance.hpp"
-#include "../enums/KernelOverride.hpp"
 
 #include <cstddef>
 #include <string>
@@ -23,21 +22,11 @@
 
 namespace dtwc::gpu {
 
-namespace detail {
-
-// Preserve the F12 GPU detail seam while sharing the compute/public boundary
-// with CPU Float32 dispatch.
-using dtwc::core::normalize_public_distance;
-
-} // namespace detail
-
 /// Common options fields shared by CUDA and Metal distance-matrix entry points.
 struct DistMatOptionsBase {
   int band = -1;                  ///< Sakoe-Chiba band width (-1 = full DTW).
   bool use_squared_l2 = false;    ///< Squared L2 metric instead of L1.
   bool verbose = false;           ///< Print timing info.
-  int max_length_hint = 0;        ///< Hint for expected max series length (0 = scan).
-  dtwc::KernelOverride kernel_override = dtwc::KernelOverride::Auto;
 };
 
 /// Common result fields shared by CUDA and Metal distance-matrix entry points.

@@ -21,7 +21,6 @@
 
 #include "cuda_dtw.cuh"
 #include "cuda_memory.cuh"
-#include "gpu_config.cuh"
 #include "kernel_selection.hpp"
 #include "launch_prep.hpp"
 #include "../detail/decode_pair.hpp"
@@ -32,23 +31,15 @@
 #include <device_launch_parameters.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
-
-#define CUDA_CHECK(call)                                                     \
-  do {                                                                       \
-    cudaError_t err = (call);                                                \
-    if (err != cudaSuccess) {                                                \
-      throw dtwc::DeviceError(std::string("CUDA error at ") + __FILE__ +    \
-                              ":" + std::to_string(__LINE__) + ": " +       \
-                              cudaGetErrorString(err));                      \
-    }                                                                        \
-  } while (0)
+#include <vector>
 
 namespace dtwc::cuda {
 
@@ -61,6 +52,13 @@ namespace dtwc::cuda {
 // int64 correction, fixing the int32 overflow of the retired local copy.
 using dtwc::detail::decode_pair;
 
+// Declared for the device setup below; defined with the other kernels.
+template <typename T>
+__global__ void dtw_wavefront_kernel(
+    const T *__restrict__ all_series, const int *__restrict__ lengths,
+    T *__restrict__ result_matrix, int N_series, int max_L, int num_pairs,
+    bool use_squared_l2, int band, int *__restrict__ work_counter);
+
 namespace {
 
 __device__ __forceinline__ bool fixed_band_contains(int i, int j, int band)
@@ -69,6 +67,74 @@ __device__ __forceinline__ bool fixed_band_contains(int i, int j, int band)
   return (i >= j) ? (i - j <= band) : (j - i <= band);
 }
 
+/// What the fill needs to know about a device, and the device's one-time setup.
+struct DeviceLimits {
+  bool slow_fp64 = false;                ///< FP32 runs more than twice as fast as FP64
+  int sm_count = 0;                      ///< multiprocessors, for the persistent grid
+  size_t max_shared_per_block = 0;       ///< opt-in maximum, static + dynamic
+  size_t wavefront_static_bytes[2] = {}; ///< the FP32 and FP64 wavefront kernels' own
+  cudaError_t setup_error = cudaSuccess;
+  std::once_flag set_up;
+};
+
+/// Opens the whole opt-in shared memory of a block to the wavefront kernel in
+/// T on the current device, and records the kernel's static part.
+template <typename T>
+cudaError_t open_wavefront_shared_memory(DeviceLimits &device)
+{
+  cudaFuncAttributes attributes{};
+  const cudaError_t error = cudaFuncGetAttributes(&attributes, dtw_wavefront_kernel<T>);
+  if (error != cudaSuccess) return error;
+  device.wavefront_static_bytes[std::is_same_v<T, double>] = attributes.sharedSizeBytes;
+  return cudaFuncSetAttribute(
+      dtw_wavefront_kernel<T>, cudaFuncAttributeMaxDynamicSharedMemorySize,
+      static_cast<int>(device.max_shared_per_block - attributes.sharedSizeBytes));
+}
+
+/// Every device's limits, read once per process, and each device's setup, run
+/// once on its first fill. The wavefront kernels' dynamic shared-memory limit is
+/// one value per kernel and device, shared by every host thread: opened fully
+/// once, it is never set per launch, where one thread lowered it under another's
+/// launch. Read-only afterwards. Neither callable throws: where call_once runs on
+/// glibc's pthread_once, a throw can hang the next caller on non-x86 targets
+/// such as aarch64 (GCC PR 66146). @p device_id must have passed cudaSetDevice.
+const DeviceLimits &device_limits(int device_id)
+{
+  static std::unique_ptr<DeviceLimits[]> limits;
+  static cudaError_t read_error = cudaSuccess;
+  static std::once_flag read_once;
+  std::call_once(read_once, [] {
+    const auto read = [](cudaDeviceAttr attribute, int device) {
+      int value = 0;
+      if (read_error == cudaSuccess)
+        read_error = cudaDeviceGetAttribute(&value, attribute, device);
+      return value;
+    };
+    int count = 0;
+    read_error = cudaGetDeviceCount(&count);
+    if (read_error != cudaSuccess) return;
+    limits = std::make_unique<DeviceLimits[]>(static_cast<size_t>(count));
+    for (int d = 0; d < count; ++d) {
+      DeviceLimits &device = limits[static_cast<size_t>(d)];
+      device.slow_fp64 = read(cudaDevAttrSingleToDoublePrecisionPerfRatio, d) > 2;
+      device.sm_count = read(cudaDevAttrMultiProcessorCount, d);
+      device.max_shared_per_block =
+          static_cast<size_t>(read(cudaDevAttrMaxSharedMemoryPerBlockOptin, d));
+    }
+  });
+  CUDA_CHECK(read_error);
+  DeviceLimits &device = limits[static_cast<size_t>(device_id)];
+  std::call_once(device.set_up, [&device] {
+    device.setup_error = open_wavefront_shared_memory<float>(device);
+    if (device.setup_error == cudaSuccess)
+      device.setup_error = open_wavefront_shared_memory<double>(device);
+  });
+  CUDA_CHECK(device.setup_error);
+  return device;
+}
+
+/// Auto takes FP64 only where it runs at least half as fast as FP32 (the HPC
+/// parts); a compute-capability table misread consumer Blackwell (sm_120).
 bool resolve_fp32(CUDAPrecision precision, int device_id)
 {
   switch (precision) {
@@ -77,7 +143,7 @@ bool resolve_fp32(CUDAPrecision precision, int device_id)
   case CUDAPrecision::FP64:
     return false;
   case CUDAPrecision::Auto:
-    return query_gpu_config(device_id).fp64_rate == FP64Rate::Slow;
+    return device_limits(device_id).slow_fp64;
   }
   throw std::logic_error("resolve_fp32: unreachable CUDAPrecision");
 }
@@ -86,7 +152,7 @@ bool resolve_fp32(CUDAPrecision precision, int device_id)
 /// over-large request surfaced as a bare "invalid argument" from CUDA.
 void require_shared_mem_fits(size_t shared_mem, int device_id, const char *what)
 {
-  const size_t cap = query_gpu_config(device_id).max_shared_per_block;
+  const size_t cap = device_limits(device_id).max_shared_per_block;
   if (cap > 0 && shared_mem > cap)
     throw dtwc::DeviceError(
         std::string(what) + ": needs " + std::to_string(shared_mem)
@@ -881,11 +947,11 @@ std::vector<double> convert_result_matrix(
       const size_t row_offset = i * N;
       for (size_t j = 0; j < i; ++j)
         result[row_offset + j] =
-            dtwc::gpu::detail::normalize_public_distance(src[row_offset + j]);
+            dtwc::core::normalize_public_distance(src[row_offset + j]);
       result[row_offset + i] = 0.0;
       for (size_t j = i + 1; j < N; ++j)
         result[row_offset + j] =
-            dtwc::gpu::detail::normalize_public_distance(src[row_offset + j]);
+            dtwc::core::normalize_public_distance(src[row_offset + j]);
     }
   }
   return result;
@@ -913,6 +979,18 @@ std::vector<double> launch_dtw_kernel(
   // Last line of defence. The public entry point applies the same guard
   // before it allocates the NxN result.
   detail::require_pair_count_fits(num_pairs, "launch_dtw_kernel");
+
+  // A wavefront block's shared memory is its diagonal buffers (how many is
+  // wavefront_buffer_count's) plus the kernel's static variables; device_limits
+  // opened the whole opt-in maximum once. A block that cannot fit is refused
+  // here, before anything is allocated or copied.
+  const size_t wavefront_shared_mem =
+      detail::wavefront_buffer_count(max_L) * max_L * sizeof(T);
+  if (kernel_path == detail::KernelPath::Wavefront)
+    require_shared_mem_fits(
+        wavefront_shared_mem
+            + device_limits(device_id).wavefront_static_bytes[std::is_same_v<T, double>],
+        device_id, "dtw_wavefront_kernel");
 
   const size_t series_bytes = N * max_L * sizeof(T);
   const size_t matrix_elems = N * N;
@@ -951,78 +1029,35 @@ std::vector<double> launch_dtw_kernel(
   // ---------------------------------------------------------------------------
   // Kernel launch (on the same stream -- automatically waits for H2D)
   // ---------------------------------------------------------------------------
+  // The warp-family kernels run one pair per warp, PAIRS_PER_BLOCK warps per
+  // block; each warp stages its pair's two series, `staged` samples apiece, in
+  // shared memory.
+  const auto launch_warp_family = [&](auto kernel, size_t staged) {
+    const int grid_size = static_cast<int>(
+        (num_pairs + PAIRS_PER_BLOCK - 1) / PAIRS_PER_BLOCK);
+    const size_t shared_mem = PAIRS_PER_BLOCK * 2 * staged * sizeof(T);
+    kernel<<<grid_size, PAIRS_PER_BLOCK * 32, shared_mem, stream>>>(
+        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
+        N_series, static_cast<int>(max_L),
+        static_cast<int>(num_pairs), use_squared_l2, band);
+  };
+
   if (kernel_path == detail::KernelPath::Warp) {
-    // Warp-level kernel: 8 pairs per block, 256 threads (8 warps)
-    constexpr int pairs_per_block = PAIRS_PER_BLOCK;  // 8
-    const int grid_size = static_cast<int>(
-        (num_pairs + pairs_per_block - 1) / pairs_per_block);
-    constexpr int block_size = pairs_per_block * 32;  // 256
-    const size_t shared_mem = pairs_per_block * 2 * 32 * sizeof(T);
-
-    dtw_warp_kernel<T><<<grid_size, block_size, shared_mem, stream>>>(
-        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
-        N_series, static_cast<int>(max_L),
-        static_cast<int>(num_pairs), use_squared_l2, band);
+    launch_warp_family(dtw_warp_kernel<T>, 32);
   } else if (kernel_path == detail::KernelPath::RegTileW4) {
-    // Register-tiled kernel with TILE_W=4: 32 threads * 4 = 128 columns max
-    constexpr int pairs_per_block = PAIRS_PER_BLOCK;
-    constexpr int TILE_W = 4;
-    const int grid_size = static_cast<int>(
-        (num_pairs + pairs_per_block - 1) / pairs_per_block);
-    constexpr int block_size = pairs_per_block * 32;
-    const size_t shared_mem = pairs_per_block * 2 * max_L * sizeof(T);
-
-    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
-        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
-        N_series, static_cast<int>(max_L),
-        static_cast<int>(num_pairs), use_squared_l2, band);
+    launch_warp_family(dtw_regtile_kernel<T, 4>, max_L); // 32 lanes x 4 = 128 columns
   } else if (kernel_path == detail::KernelPath::RegTileW8) {
-    // Register-tiled kernel with TILE_W=8: 32 threads * 8 = 256 columns max
-    constexpr int pairs_per_block = PAIRS_PER_BLOCK;
-    constexpr int TILE_W = 8;
-    const int grid_size = static_cast<int>(
-        (num_pairs + pairs_per_block - 1) / pairs_per_block);
-    constexpr int block_size = pairs_per_block * 32;
-    const size_t shared_mem = pairs_per_block * 2 * max_L * sizeof(T);
-
-    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
-        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
-        N_series, static_cast<int>(max_L),
-        static_cast<int>(num_pairs), use_squared_l2, band);
+    launch_warp_family(dtw_regtile_kernel<T, 8>, max_L); // 32 lanes x 8 = 256 columns
   } else if (kernel_path == detail::KernelPath::Wavefront) {
-    // Wavefront kernel: shared memory and block size configuration
-    // Buffer-count policy (incl. the Task 0.1 cap at L>2048) lives in
-    // detail::wavefront_buffer_count so both dispatch paths share it.
-    const size_t n_bufs = detail::wavefront_buffer_count(max_L);
-    if (max_L > 2048) {
-      // Lock-free warn-once: exchange() is a single RMW, never a mutex.
-      static std::atomic<bool> logged{ false };
-      if (!logged.exchange(true, std::memory_order_relaxed)) {
-        std::cerr << "[CUDA] max_L=" << max_L
-                  << " > 2048: using the 3-buffer wavefront path "
-                     "(the double-buffer register cache would drop cells).\n";
-      }
-    }
-    const size_t shared_mem = n_bufs * max_L * sizeof(T);
-
     // Block size heuristic tuned for the anti-diagonal wavefront pattern.
     constexpr int block_size = 256;
 
-    require_shared_mem_fits(shared_mem, device_id, "dtw_wavefront_kernel");
-
-    // Request extended shared memory if needed (>48 KB)
-    if (shared_mem > 48 * 1024) {
-      CUDA_CHECK(cudaFuncSetAttribute(dtw_wavefront_kernel<T>,
-                           cudaFuncAttributeMaxDynamicSharedMemorySize,
-                           static_cast<int>(shared_mem)));
-    }
-
     // Determine whether to use persistent mode
-    const auto &gpu_cfg = query_gpu_config(device_id);
     int blocks_per_sm = 0;
     cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-        &blocks_per_sm, dtw_wavefront_kernel<T>, block_size, shared_mem);
-    const int persistent_grid = gpu_cfg.sm_count * std::max(blocks_per_sm, 1);
+        &blocks_per_sm, dtw_wavefront_kernel<T>, block_size, wavefront_shared_mem);
+    const int persistent_grid =
+        device_limits(device_id).sm_count * std::max(blocks_per_sm, 1);
     const bool use_persistent =
         (static_cast<int>(num_pairs) > persistent_grid * 4);
 
@@ -1033,14 +1068,15 @@ std::vector<double> launch_dtw_kernel(
       }
       CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
 
-      dtw_wavefront_kernel<T><<<persistent_grid, block_size, shared_mem, stream>>>(
+      dtw_wavefront_kernel<T><<<persistent_grid, block_size, wavefront_shared_mem, stream>>>(
           workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
           N_series, static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
           workspace.d_counter.get());
     } else {
       // Non-persistent: one block per pair (original behavior)
-      dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, shared_mem, stream>>>(
+      dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, wavefront_shared_mem,
+                                stream>>>(
           workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
           N_series, static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
@@ -1080,7 +1116,6 @@ CUDADistMatResult compute_distance_matrix_cuda(
     const CUDADistMatOptions &opts)
 {
   validate_cuda_precision(opts.precision);
-  validate_kernel_override(opts.kernel_override);
   const size_t N = series.size();
   // Both guards run before the N*N allocation: a missing device must not
   // answer with a zero matrix, and a pair count that does not fit the launch
@@ -1092,9 +1127,10 @@ CUDADistMatResult compute_distance_matrix_cuda(
   CUDADistMatResult result;
   result.kernel_used = "none";
   result.n = N;
-  result.matrix.resize(N * N, 0.0);
-
-  if (N <= 1) return result;
+  if (N <= 1) {
+    result.matrix.assign(N * N, 0.0);
+    return result;
+  }
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
@@ -1102,14 +1138,13 @@ CUDADistMatResult compute_distance_matrix_cuda(
   std::vector<int> lengths;
   const size_t max_L = detail::scan_series_lengths(series, lengths);
 
-  if (max_L == 0) return result;
+  // An all-zero matrix would read as N identical series.
+  if (max_L == 0)
+    throw dtwc::InvalidInput("compute_distance_matrix_cuda: every series is "
+                             "empty, so there is no distance to compute.");
 
-  const auto kernel_selection = detail::select_kernel(
-      detail::kernel_selection_length(max_L, opts.max_length_hint),
-      opts.kernel_override);
-  result.kernel_used = std::string(
-      detail::kernel_path_name(kernel_selection.path));
-  result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;
+  const auto kernel_path = detail::select_kernel(max_L);
+  result.kernel_used = std::string(detail::kernel_path_name(kernel_path));
 
   // Fix 1: No pair index arrays — pairs are decoded on-device via decode_pair().
   // This eliminates 2 * num_pairs * sizeof(int) host allocation + H2D transfer.
@@ -1121,10 +1156,10 @@ CUDADistMatResult compute_distance_matrix_cuda(
   result.matrix = use_fp32
       ? launch_dtw_kernel<float>(series, lengths, N, max_L, num_pairs,
                                  opts.use_squared_l2, opts.band, opts.device_id,
-                                 result.gpu_time_sec, kernel_selection.path)
+                                 result.gpu_time_sec, kernel_path)
       : launch_dtw_kernel<double>(series, lengths, N, max_L, num_pairs,
                                   opts.use_squared_l2, opts.band, opts.device_id,
-                                  result.gpu_time_sec, kernel_selection.path);
+                                  result.gpu_time_sec, kernel_path);
 
   if (opts.verbose) {
     std::cout << "CUDA DTW: " << num_pairs << " pairs"

@@ -61,9 +61,8 @@ inline void require_cuda_device(bool available, const char *entry)
 {
   if (!available)
     throw dtwc::DeviceError(
-      std::string(entry) + ": no CUDA device is available. DTWC++ was built "
-      "with CUDA support but no usable device was found; no CPU fallback was "
-      "attempted.");
+      std::string(entry) + ": DTWC++ was built with CUDA support, but no "
+      "usable CUDA GPU was detected. No CPU fallback was attempted.");
 }
 
 /// @brief Fill @p lengths with each series' length and return the maximum.
@@ -79,20 +78,6 @@ inline std::size_t scan_series_lengths(
     if (series[i].size() > max_L) max_L = series[i].size();
   }
   return max_L;
-}
-
-/// @brief Series length that drives kernel selection.
-///
-/// `max_length_hint` lets a caller steer the choice without round-tripping the
-/// real lengths (e.g. later rows will be longer). It only ever raises the
-/// heuristic input: buffer sizing must keep using the scanned maximum. Metal
-/// has always honoured it (metal_dtw.mm); CUDA silently ignored it until now.
-inline constexpr std::size_t kernel_selection_length(
-  std::size_t scanned_max_L, int max_length_hint) noexcept
-{
-  const std::size_t hint = (max_length_hint > 0)
-    ? static_cast<std::size_t>(max_length_hint) : std::size_t{ 0 };
-  return (hint > scanned_max_L) ? hint : scanned_max_L;
 }
 
 /// @brief Shared-memory buffer count for the anti-diagonal wavefront kernels.

@@ -1136,11 +1136,6 @@ void Problem::fill_distance_matrix()
     for (size_t i = 0; i < result.n; ++i)
       for (size_t j = i; j < result.n; ++j)
         distMat.set(i, j, result.matrix[i * result.n + j]);
-    if (verbose_) {
-      std::cout << backend << " distance matrix: " << result.pairs_computed
-                << " pairs in " << std::setprecision(3)
-                << result.gpu_time_sec * 1000 << " ms\n";
-    }
     return true;
   };
 #endif
@@ -1149,12 +1144,6 @@ void Problem::fill_distance_matrix()
   case DistanceMatrixStrategy::CUDA:
 #ifdef DTWC_HAS_CUDA
   {
-    if (!dtwc::cuda::cuda_available()) {
-      throw DeviceError(
-        "CUDA distance strategy requested but no CUDA GPU was detected. "
-        "No CPU fallback was attempted.");
-    }
-
     dtwc::cuda::CUDADistMatOptions cuda_opts;
     cuda_opts.band = band;
     cuda_opts.device_id = cuda_settings.device_id;
@@ -1179,12 +1168,6 @@ void Problem::fill_distance_matrix()
   case DistanceMatrixStrategy::Metal:
 #ifdef DTWC_HAS_METAL
   {
-    if (!dtwc::metal::metal_available()) {
-      throw DeviceError(
-        "Metal distance strategy requested but no Metal GPU was detected. "
-        "No CPU fallback was attempted.");
-    }
-
     dtwc::metal::MetalDistMatOptions metal_opts;
     metal_opts.band = band;
     metal_opts.precision = metal_precision(cuda_settings.precision);

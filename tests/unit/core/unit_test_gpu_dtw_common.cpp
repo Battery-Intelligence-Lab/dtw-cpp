@@ -13,7 +13,7 @@
 TEST_CASE("GPU public distance normalization preserves values and exact sentinel",
           "[gpu][host][F12]")
 {
-  using dtwc::gpu::detail::normalize_public_distance;
+  using dtwc::core::normalize_public_distance;
   constexpr auto float_max = std::numeric_limits<float>::max();
   constexpr auto double_max = std::numeric_limits<double>::max();
 
