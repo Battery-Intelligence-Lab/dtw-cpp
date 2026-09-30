@@ -60,6 +60,8 @@ jobs:
 
           # Release build with bundled open-source HiGHS and header-only llfio
           # (the memory-mapped distance matrix); Gurobi stays external.
+          # DTWC_BUILD_PYTHON=ON makes DTWC_ARCH_LEVEL default to v3, the CPU floor
+          # of every x86-64 wheel (AVX2 and FMA); arm64 wheels get no level flag.
           CIBW_CONFIG_SETTINGS: >-
             cmake.args=-DDTWC_BUILD_PYTHON=ON
             cmake.args=-DDTWC_ENABLE_GUROBI=OFF

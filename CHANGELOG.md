@@ -291,12 +291,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   the default) or `strict` (none of them, `/fp:strict` on MSVC). It is a cache variable, so it is
   recorded in machine and benchmark records rather than being invisible to them. An unrecognised
   value is a configure error.
-- **Fixed (packaging, all platforms):** the published CLI archives were compiled `-march=native`,
-  tuning each released binary for whichever ephemeral CI runner produced it; a user whose CPU lacks
-  an instruction the runner had would get SIGILL. `DTWC_ENABLE_NATIVE_ARCH` defaults on, and the
-  release workflow met every condition for it to apply. The Python wheels were never affected —
-  they opt out through the `DTWC_BUILD_PYTHON` guard, and the same reasoning had simply never been
-  extended to the native archives. The release configure now sets `-DDTWC_ENABLE_NATIVE_ARCH=OFF`.
+- **Changed (packaging):** Release archives and wheels require an x86-64-v3 CPU (AVX2 and FMA: Intel 2013+,
+  AMD 2015+). They are compiled for that level (`-march=x86-64-v3`, MSVC `/arch:AVX2`) and never for the CPU of
+  the CI runner that built them. Apple Silicon and Linux arm64 wheels and archives are unchanged.
+  `DTWC_ARCH_LEVEL` is the one build option for the level: `native` (the default for C++ builds), `v3` (the
+  default for Python builds) or `v4` (AVX-512); `DTWC_ENABLE_NATIVE_ARCH` is gone.
 - **Changed (headers):** the foundation headers moved into `dtwc/base/` — `error.hpp`,
   `settings.hpp`, `missing_utils.hpp`, `parallelisation.hpp`, `timing.hpp`, `env.hpp`,
   `system_memory.hpp` and `random_engine.hpp`. The old paths still work for one release and now emit
