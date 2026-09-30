@@ -39,6 +39,19 @@ inline constexpr std::size_t upper_triangle_pairs(std::size_t n) noexcept
   return (n < 2) ? std::size_t{ 0 } : n * (n - 1) / 2;
 }
 
+/// @brief Reject a GPU older than compute capability 8.0 (Ampere, 2021), the
+/// oldest the kernels are built and tuned for.
+/// @throws dtwc::DeviceError naming device @p device_id's compute capability.
+inline void require_compute_capability(int major, int minor, int device_id)
+{
+  if (major < 8)
+    throw dtwc::DeviceError(
+      "CUDA device " + std::to_string(device_id) + " has compute capability "
+      + std::to_string(major) + "." + std::to_string(minor)
+      + "; DTWC++ needs 8.0 or newer (Ampere, 2021: A30, A100, RTX 30 and later). "
+        "No CPU fallback was attempted.");
+}
+
 /// @brief Reject a CUDA call on a host with no usable device.
 /// @throws dtwc::DeviceError when @p available is false.
 inline void require_cuda_device(bool available, const char *entry)

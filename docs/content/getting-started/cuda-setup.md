@@ -11,8 +11,8 @@ DTWC++ supports an optional CUDA backend for GPU acceleration. It is **optional*
 
 | Feature | Minimum Version | Notes |
 |---------|----------------|-------|
-| CUDA | 11.0+ | Requires NVIDIA GPU with compute capability 6.0 or newer |
-| GPU | NVIDIA Kepler or newer | AMD ROCm support is planned for future releases |
+| CUDA | 12.0+ | The CUDA Toolkit that builds the backend |
+| GPU | NVIDIA compute capability 8.0 or newer (Ampere, 2021: A30/A100/RTX 30 and later) | An older GPU is refused with `DeviceError`; AMD ROCm support is planned for future releases |
 
 ---
 
@@ -125,13 +125,13 @@ cmake --build build --config Release
 | `nvcc --version` works but CMake still fails | CMake too old to detect your CUDA version | Upgrade CMake to 3.26+ (required by DTWC++). |
 | `nvidia-smi` shows driver but `nvcc` is missing | Only the GPU driver is installed, not the toolkit | Install the full CUDA Toolkit (the driver alone is not enough for compilation). |
 | `no CUDA-capable device is detected` | No NVIDIA GPU, or driver not loaded | Check `lspci | grep -i nvidia`. Install or update the NVIDIA driver. |
-| Compilation error: `unsupported gpu architecture` | GPU compute capability too old for the CUDA version | Either use an older CUDA Toolkit or set `-DCMAKE_CUDA_ARCHITECTURES=60` (or your GPU's compute capability). |
+| `DeviceError: CUDA device 0 has compute capability 7.5; DTWC++ needs 8.0 or newer` | The GPU predates Ampere | Use a GPU of compute capability 8.0 or newer, or `--device cpu`. |
 | CUDA not available on macOS | Apple does not ship NVIDIA drivers | No fix -- use Linux or Windows with an NVIDIA GPU. |
 | `undefined reference to cudaXxx` | CUDA libraries not linked | Ensure `LD_LIBRARY_PATH` includes `/usr/local/cuda/lib64`. |
 
 ### General Tips
 
-- **Check your GPU's compute capability** at [https://developer.nvidia.com/cuda-gpus](https://developer.nvidia.com/cuda-gpus). DTWC++ requires compute capability 6.0 or higher.
+- **Check your GPU's compute capability** at [https://developer.nvidia.com/cuda-gpus](https://developer.nvidia.com/cuda-gpus). DTWC++ requires compute capability 8.0 or higher.
 - **Driver vs Toolkit**: The NVIDIA driver and CUDA Toolkit are separate installs. You need both. `nvidia-smi` shows the driver; `nvcc --version` shows the toolkit.
 - **Multiple CUDA versions**: If you have multiple CUDA versions installed, set `CMAKE_CUDA_COMPILER` explicitly:
   ```bash

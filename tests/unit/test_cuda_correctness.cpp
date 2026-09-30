@@ -555,8 +555,9 @@ namespace {
 /// The first length whose wavefront block does not fit the device's opt-in
 /// shared memory: above L = 2048 a block holds three anti-diagonals of L values
 /// plus the kernel's 16 static bytes, so FP32 8447 and FP64 4224 on the RTX 4000
-/// Ada (101,376 bytes). From there the wavefront keeps its anti-diagonals in
-/// global memory.
+/// Ada (101,376 bytes). Every supported GPU (compute capability 8.0 or newer)
+/// offers at least 99 KB, so the limit lies above 2048. From there the wavefront
+/// keeps its anti-diagonals in global memory.
 size_t first_global_length(bool fp32)
 {
   int max_shared = 0;

@@ -91,6 +91,7 @@ __device__ __forceinline__ bool fixed_band_contains(int i, int j, int band)
 
 /// What the fill needs to know about a device, and the device's one-time setup.
 struct DeviceLimits {
+  int compute_major = 0, compute_minor = 0; ///< compute capability, 8.0 at least
   bool slow_fp64 = false;                ///< FP32 runs more than twice as fast as FP64
   int sm_count = 0;                      ///< multiprocessors, for the persistent grid
   size_t max_shared_per_block = 0;       ///< opt-in maximum, static + dynamic
@@ -142,6 +143,8 @@ const DeviceLimits &device_limits(int device_id)
     limits = std::make_unique<DeviceLimits[]>(static_cast<size_t>(count));
     for (int d = 0; d < count; ++d) {
       DeviceLimits &device = limits[static_cast<size_t>(d)];
+      device.compute_major = read(cudaDevAttrComputeCapabilityMajor, d);
+      device.compute_minor = read(cudaDevAttrComputeCapabilityMinor, d);
       device.slow_fp64 = read(cudaDevAttrSingleToDoublePrecisionPerfRatio, d) > 2;
       device.sm_count = read(cudaDevAttrMultiProcessorCount, d);
       device.max_shared_per_block =
@@ -155,6 +158,8 @@ const DeviceLimits &device_limits(int device_id)
   });
   CUDA_CHECK(read_error);
   DeviceLimits &device = limits[static_cast<size_t>(device_id)];
+  // Before the device's setup, which needs a kernel image the device can run.
+  detail::require_compute_capability(device.compute_major, device.compute_minor, device_id);
   std::call_once(device.set_up, [&device] {
     device.setup_error = open_wavefront_shared_memory<float>(device);
     if (device.setup_error == cudaSuccess)

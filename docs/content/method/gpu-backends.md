@@ -7,7 +7,8 @@ weight: 6
 
 DTW is embarrassingly parallel across pairs but **sequential within** each pair (the DP recurrence has a diagonal dependency). DTWC++ exploits the parallelism with two GPU backends:
 
-- **CUDA** (NVIDIA) — targets consumer and HPC discrete GPUs.
+- **CUDA** (NVIDIA) — consumer and HPC discrete GPUs of compute capability 8.0 or newer (Ampere, 2021: A30/A100/RTX 30
+  and later). An older GPU is refused with `DeviceError` naming its compute capability, before anything is allocated.
 - **Metal** (Apple Silicon) — targets M-series integrated GPUs.
 
 Both inherit a shared option/result base, then add backend-specific fields and

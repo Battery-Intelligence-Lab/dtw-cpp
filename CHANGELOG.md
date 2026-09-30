@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (GPU):** the CUDA backend needs an NVIDIA GPU of compute capability 8.0 or newer (Ampere, 2021: A30/A100/RTX 30
+  and later). An older GPU is refused with `DeviceError` naming its compute capability when a fill first reads the device,
+  before anything is allocated. The default `DTWC_CUDA_ARCH_LIST` is `80-real;86-real;89-real;90` (was
+  `60;70;75;80;86;89;90`): machine code for compute capability 8.0 to 9.0 and PTX that later GPUs compile at load.
 - **Changed (GPU):** the CUDA distance-matrix fill accepts series of any length. A series whose wavefront buffers (three
   anti-diagonals) did not fit a block's shared memory was refused with `DeviceError`: on an RTX 4000 Ada any series longer
   than 8,446 samples in FP32 or 4,223 in FP64, so `data/dummy` (up to 9,405 samples) could not run with `--device gpu`.
