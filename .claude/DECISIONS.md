@@ -214,3 +214,7 @@ CHANGELOG rule.
   (each deleted test names the kept test that covers its subject). CPU floor for release archives and wheels:
   x86-64-v3 (AVX2+FMA; every ARC/HTC node has it). HPC builds the most specialised code for the target: detected
   on the node when the build runs there (native CPU flags, CUDA arch native), else named with `gpu_device=`.
+- 2026-09-30 — E1 (W7a+W7b): `dist_by_ind` is a read of the packed matrix; a method that needs the matrix fills it
+  serially at entry, the rest call the bound DTW function directly. No lock or atomic remains in `dtwc/`. PAM swap
+  5.6–5.9× faster (inferred under load; counters identical). `resolve_dtw_fn` takes the Data so the WDTW weights are
+  bound by value (part of W7e, done early).

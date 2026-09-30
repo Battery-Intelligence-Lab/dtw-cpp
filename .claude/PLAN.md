@@ -150,7 +150,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   needs the matrix prepares it serially at entry
 - ☐ W7c one `validate(DistanceConfig)`; `core/dtw.*`, `DTWOptions`, selector validation go
 - ☐ W7d one orientation helper replaces the copied preambles
-- ☐ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers
+- ☐ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers (WDTW weights at bind done in E1); the mutable
+  `distance_matrix()` overload gets its own name, so a reader cannot clear `filled_` by accident (E1)
 - ☐ W7f dead NaN functors and public helpers go
 - ☐ W7g one `distance::dtw` per language
 - ☐ W13b one finite scan at each matrix intake; read-only loops lose per-lookup checks
@@ -158,7 +159,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W8b one writer (`write_result_files`); `Result::save` after streaming fixed
 - ☐ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1)
 - ☐ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases
-- ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
+- ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
+  silently editing a copy (E1) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
 - ☐ W9c `hpc` → `job.toml`; the positional transport goes; `device=hpc` takes `gpu_device=` (a100, a6000, l40s, h100, …) to pick the
   SLURM GPU and the build's CUDA arch; a build on the target node detects both itself (Volkan 09-30)
 - ☐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
