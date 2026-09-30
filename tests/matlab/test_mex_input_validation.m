@@ -467,17 +467,19 @@ function test_valid_double_dendrogram_still_cuts(testCase)
     verifyNumElements(testCase, res.labels, 3);
 end
 
-function test_int_min_label_rejected(testCase)
-%   exact_int_from_double accepts INT_MIN (it is exactly representable as a
-%   double), so the caller's 1-based `- 1` shift evaluated INT_MIN - 1: signed
-%   overflow, i.e. undefined behaviour, inside the helper added to remove UB.
-%   Both the double and the int32 element paths had it.
-    verifyError(testCase, ...
-        @() dtwc_mex('adjusted_rand', [1 -2147483648 2 1], [1 2 2 1]), ...
-        'dtwc:invalidArgument');
-    verifyError(testCase, ...
-        @() dtwc_mex('adjusted_rand', int32([1 -2147483648 2 1]), int32([1 2 2 1])), ...
-        'dtwc:invalidArgument');
+function test_labels_are_values_not_indices(testCase)
+%   A cluster label is a name, not a position: 0, negative and INT_MIN labels
+%   are labels (C++ and Python take them), and a relabelling never changes the
+%   score. Only a non-integer (NaN, Inf, fractional) is refused, above.
+    verifyEqual(testCase, dtwc_mex('adjusted_rand', [0 0 1 1], [1 1 2 2]), 1, 'AbsTol', 1e-12);
+    verifyEqual(testCase, dtwc_mex('normalized_mutual_info', [0 0 1 1], [1 1 2 2]), 1, 'AbsTol', 1e-12);
+    verifyEqual(testCase, dtwc_mex('adjusted_rand', [-3 -3 7 7], [5 5 -1 -1]), 1, 'AbsTol', 1e-12);
+    verifyEqual(testCase, dtwc.adjusted_rand([0 0 1 1], [1 1 2 2]), 1, 'AbsTol', 1e-12);
+    int_min = -2147483648;
+    expected = dtwc_mex('adjusted_rand', [1 3 2 1], [1 2 2 1]);
+    verifyEqual(testCase, dtwc_mex('adjusted_rand', [1 int_min 2 1], [1 2 2 1]), expected, 'AbsTol', 1e-12);
+    verifyEqual(testCase, dtwc_mex('adjusted_rand', int32([1 int_min 2 1]), int32([1 2 2 1])), ...
+        expected, 'AbsTol', 1e-12);
 end
 
 % -------------------------------------------------------------------------
@@ -561,7 +563,11 @@ function test_index_arguments_must_be_at_least_one(testCase)
             'dtwc:invalidArgument', sprintf('j = %g', bad{1}));
     end
     verifyGreaterThan(testCase, dtwc_mex('Problem_dist_by_ind', h, 1, 3), 0);
-    verifyError(testCase, @() dtwc_mex('adjusted_rand', [0 1 1], [1 1 2]), ...
+    % A dendrogram merge id is an index too.
+    dend = dtwc_mex('build_dendrogram', h, 'average', 100);
+    verifyNumElements(testCase, dtwc_mex('cut_dendrogram', dend, h, 2).labels, 4);
+    dend.merges(1, 1) = 0;
+    verifyError(testCase, @() dtwc_mex('cut_dendrogram', dend, h, 2), ...
         'dtwc:invalidArgument');
 end
 

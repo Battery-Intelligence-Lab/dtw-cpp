@@ -297,20 +297,20 @@ static int exact_int_1based_to_0based(double value, const char *arg_name) {
   return to_0based(exact_int_from_double(value, arg_name), arg_name);
 }
 
-/// Decode a 1-based MATLAB label/index vector (int32 or double) to 0-based ints.
+/// Decode a MATLAB label vector (int32 or double) to ints. A label is a name,
+/// not a position: any integer is one (0 and negatives included), unshifted.
 /// Every double element goes through exact_int_from_double, so NaN/Inf/fractional
 /// entries are rejected instead of being cast with undefined behaviour.
-static std::vector<int> label_vector_to_0based(const mxArray *mx, const char *arg_name) {
+static std::vector<int> label_vector(const mxArray *mx, const char *arg_name) {
   require_label_vector(mx, arg_name);
   const size_t n = mxGetNumberOfElements(mx);
   std::vector<int> out(n);
   if (mxIsInt32(mx)) {
     const int32_t *p = static_cast<const int32_t *>(mxGetData(mx));
-    for (size_t i = 0; i < n; ++i) out[i] = to_0based(static_cast<int>(p[i]), arg_name);
+    for (size_t i = 0; i < n; ++i) out[i] = static_cast<int>(p[i]);
   } else {
     const double *p = mxGetDoubles(mx);
-    for (size_t i = 0; i < n; ++i)
-      out[i] = exact_int_1based_to_0based(p[i], arg_name);
+    for (size_t i = 0; i < n; ++i) out[i] = exact_int_from_double(p[i], arg_name);
   }
   return out;
 }
@@ -1250,8 +1250,8 @@ static void cmd_calinski_harabasz(int nlhs, mxArray *plhs[], int nrhs, const mxA
 
 static void cmd_adjusted_rand(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("adjusted_rand requires two label vectors.");
-  const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
-  const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
+  const std::vector<int> labels1 = label_vector(prhs[1], "labels_1");
+  const std::vector<int> labels2 = label_vector(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
     throw std::invalid_argument("Label vectors must have the same length.");
 
@@ -1260,8 +1260,8 @@ static void cmd_adjusted_rand(int nlhs, mxArray *plhs[], int nrhs, const mxArray
 
 static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("normalized_mutual_info requires two label vectors.");
-  const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
-  const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
+  const std::vector<int> labels1 = label_vector(prhs[1], "labels_1");
+  const std::vector<int> labels2 = label_vector(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
     throw std::invalid_argument("Label vectors must have the same length.");
 
