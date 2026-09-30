@@ -6,7 +6,9 @@ function ari = adjusted_rand(labels_true, labels_pred)
 %
 %   ari = dtwc.adjusted_rand(labels_true, labels_pred)
 %
-%   Both label vectors accept int32 or double, must be the same length.
+%   Both label vectors accept int32 or double and must be the same length. A
+%   label is a value, not an index: any integer is one, 0 and negatives
+%   included. NaN, Inf or a fractional value raises dtwc:invalidArgument.
 %
 %   See also dtwc.normalized_mutual_info
     ari = dtwc_mex('adjusted_rand', labels_true, labels_pred);

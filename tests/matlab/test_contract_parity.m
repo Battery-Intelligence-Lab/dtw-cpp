@@ -75,25 +75,26 @@ function test_tier1_load_matrix_and_options(testCase)
     ds = dtwc.load(testCase.TestData.X, 'skip_cols', 0, 'delimiter', '', 'name', 'ptest');
     verifyClass(testCase, ds, 'dtwc.Dataset');
     verifyEqual(testCase, ds.Name, 'ptest');
-    [Xm, ~] = ds.materialize();
-    verifySize(testCase, Xm, size(testCase.TestData.X));
 end
 
 function test_tier1_load_skip_rows(testCase)
 %   §1.2 skip_rows: header LINES for a path, leading SERIES for a matrix.
     ds = dtwc.load(testCase.TestData.X, 'skip_rows', 2);
     verifyEqual(testCase, ds.SkipRows, 2);
-    [Xm, ~] = ds.materialize();
-    verifySize(testCase, Xm, size(testCase.TestData.X) - [2 0]);
 
+    % The path is read by C++ inside dtwc.cluster: two header lines and the id
+    % column are dropped, leaving the four series below (cost 0.2 pins values).
     f = [tempname '.csv'];
     fid = fopen(f, 'w');
-    fprintf(fid, 'id,t0,t1\nunit,s,s\na,0,0\nb,10,11\n');
+    fprintf(fid, 'id,t0,t1\nunit,s,s\na,0,0\nb,0.1,0\nc,10,11\nd,10,10.9\n');
     fclose(fid);
     c = onCleanup(@() delete(f));
     hdr = dtwc.load(f, 'skip_cols', 1, 'skip_rows', 2, 'delimiter', ',');
-    [Xh, ~] = hdr.materialize();
-    verifyEqual(testCase, Xh, [0 0; 10 11]);
+    fromFile = dtwc.cluster(hdr, 2);
+    fromMemory = dtwc.cluster([0 0; 0.1 0; 10 11; 10 10.9], 2);
+    verifyEqual(testCase, fromFile.labels, fromMemory.labels);
+    verifyEqual(testCase, fromFile.cost, fromMemory.cost, 'AbsTol', 1e-12);
+    verifyEqual(testCase, fromFile.cost, 0.2, 'AbsTol', 1e-12);
 end
 
 function test_tier1_load_negative_skip_rows_rejected(testCase)
@@ -547,7 +548,7 @@ function test_problem_methods_all_callable(testCase)
     prob.fill_distance_matrix();
     verifyTrue(testCase, prob.is_distance_matrix_filled());
 
-    D = prob.distance_matrix();                 % canonical (rename of get_distance_matrix)
+    D = prob.distance_matrix();
     verifySize(testCase, D, [6 6]);
     verifyEqual(testCase, prob.dist_by_ind(1, 2), D(1, 2), 'AbsTol', 1e-10);
     verifyGreaterThanOrEqual(testCase, prob.max_distance(), 0);
@@ -681,167 +682,8 @@ function test_checkpoint_dir_roundtrip(testCase)
 end
 
 % =========================================================================
-%  F22 - retained MATLAB aliases warn once and forward
+%  Helpers
 % =========================================================================
-
-function test_f22_matlab_deprecation_policy(testCase)
-%   F22: drive every frozen MATLAB compatibility alias through its public
-%   +dtwc entry point. Each old operation must issue exactly one stable
-%   warning, its canonical twin must remain silent, and results must match.
-    import matlab.unittest.constraints.IssuesNoWarnings
-    import matlab.unittest.constraints.IssuesWarnings
-
-    warningId = 'dtwc:deprecatedAlias';
-    warningState = warning;
-    warningCleanup = onCleanup(@() warning(warningState)); %#ok<NASGU>
-    warning('on', warningId);
-
-    X = testCase.TestData.X;
-    D = [0 2 5 9 14 20; ...
-         2 0 4 8 13 19; ...
-         5 4 0 3  7 12; ...
-         9 8 3 0  2  6; ...
-        14 13 7 2 0  3; ...
-        20 19 12 6 3 0];
-
-    rows = {
-        'dtwc.Problem.Band', ...
-            'dtwc.Problem.set_band', ...
-            @() f22_config_operation(X, 'Band', 3, false), ...
-            @() f22_config_operation(X, 'Band', 3, true);
-        'dtwc.Problem.Verbose', ...
-            'dtwc.Problem.set_verbose', ...
-            @() f22_config_operation(X, 'Verbose', true, false), ...
-            @() f22_config_operation(X, 'Verbose', true, true);
-        'dtwc.Problem.MaxIter', ...
-            'dtwc.Problem.set_max_iter', ...
-            @() f22_config_operation(X, 'MaxIter', 7, false), ...
-            @() f22_config_operation(X, 'MaxIter', 7, true);
-        'dtwc.Problem.NRepetition', ...
-            'dtwc.Problem.set_n_repetitions', ...
-            @() f22_config_operation(X, 'NRepetition', 3, false), ...
-            @() f22_config_operation(X, 'NRepetition', 3, true);
-        'dtwc.Problem.get_distance_matrix', ...
-            'dtwc.Problem.distance_matrix', ...
-            @() f22_distance_read_operation(X, D, false), ...
-            @() f22_distance_read_operation(X, D, true);
-        'dtwc.Problem.Size', ...
-            'dtwc.Problem.size', ...
-            @() f22_read_property_operation(X, 'Size', false), ...
-            @() f22_read_property_operation(X, 'Size', true);
-        'dtwc.Problem.ClusterSize', ...
-            'dtwc.Problem.n_clusters', ...
-            @() f22_read_property_operation(X, 'ClusterSize', false), ...
-            @() f22_read_property_operation(X, 'ClusterSize', true);
-        'dtwc.Problem.Name', ...
-            'dtwc.Problem.name', ...
-            @() f22_read_property_operation(X, 'Name', false), ...
-            @() f22_read_property_operation(X, 'Name', true);
-        'dtwc.Problem.CentroidsInd', ...
-            'dtwc.Problem.medoids', ...
-            @() f22_read_property_operation(X, 'CentroidsInd', false), ...
-            @() f22_read_property_operation(X, 'CentroidsInd', true);
-        'dtwc.Problem.ClustersInd', ...
-            'dtwc.Problem.labels', ...
-            @() f22_read_property_operation(X, 'ClustersInd', false), ...
-            @() f22_read_property_operation(X, 'ClustersInd', true)
-    };
-
-    verifyEqual(testCase, size(rows, 1), 10, ...
-        'F22 frozen MATLAB alias inventory changed.');
-    nRows = size(rows, 1);
-
-    warningProfiles = 0;
-    messages = 0;
-    canonicalSilent = 0;
-    equivalent = 0;
-
-    for i = 1:size(rows, 1)
-        oldName = rows{i, 1};
-        newName = rows{i, 2};
-        aliasOperation = rows{i, 3};
-        canonicalOperation = rows{i, 4};
-        expectedMessage = sprintf( ...
-            '''%s'' is deprecated; use ''%s'' instead.', oldName, newName);
-
-        warningConstraint = IssuesWarnings( ...
-            {warningId}, 'Exactly', true, 'WhenNargoutIs', 3);
-        warningProfileOk = warningConstraint.satisfiedBy( ...
-            @() f22_invoke_and_capture_warning(aliasOperation));
-        warningOutputs = warningConstraint.FunctionOutputs;
-        aliasValue = warningOutputs{1};
-        actualMessage = warningOutputs{2};
-        actualId = warningOutputs{3};
-
-        warningProfiles = warningProfiles + double(warningProfileOk);
-        messageOk = strcmp(actualId, warningId) && ...
-                    strcmp(actualMessage, expectedMessage);
-        messages = messages + double(messageOk);
-        verifyTrue(testCase, warningProfileOk, sprintf( ...
-            'F22 warning ID/count mismatch for %s.', oldName));
-        verifyTrue(testCase, messageOk, sprintf( ...
-            'F22 warning message mismatch for %s.', oldName));
-
-        noWarningConstraint = IssuesNoWarnings('WhenNargoutIs', 1);
-        canonicalIsSilent = noWarningConstraint.satisfiedBy(canonicalOperation);
-        canonicalValue = noWarningConstraint.FunctionOutputs{1};
-        canonicalSilent = canonicalSilent + double(canonicalIsSilent);
-        verifyTrue(testCase, canonicalIsSilent, sprintf( ...
-            'F22 canonical operation warned for %s.', newName));
-
-        valuesMatch = isequaln(aliasValue, canonicalValue);
-        equivalent = equivalent + double(valuesMatch);
-        verifyTrue(testCase, valuesMatch, sprintf( ...
-            'F22 behavior mismatch: %s versus %s.', oldName, newName));
-        f22_verify_nondegenerate_value(testCase, oldName, aliasValue, D);
-    end
-
-    f22_verify_config_setter_atomicity(testCase);
-    f22_verify_warning_precedes_config_effect(testCase, warningId);
-
-    constructorConstraint = IssuesNoWarnings('WhenNargoutIs', 1);
-    constructorSilent = constructorConstraint.satisfiedBy( ...
-        @() dtwc.Problem('f22_constructor_silent'));
-    constructed = constructorConstraint.FunctionOutputs{1};
-    verifyTrue(testCase, constructorSilent, ...
-        'dtwc.Problem construction emitted a deprecation warning.');
-    assertClass(testCase, constructed, 'dtwc.Problem');
-    assertEqual(testCase, constructed.name(), 'f22_constructor_silent');
-
-    writerConstraint = IssuesNoWarnings('WhenNargoutIs', 1);
-    writerSilent = writerConstraint.satisfiedBy( ...
-        @() f22_silent_distance_writer(X, D));
-    verifyTrue(testCase, writerSilent, ...
-        'Canonical Problem.set_distance_matrix emitted a warning.');
-    assertEqual(testCase, writerConstraint.FunctionOutputs{1}, D);
-
-    tier1Constraint = IssuesNoWarnings('WhenNargoutIs', 1);
-    tier1Silent = tier1Constraint.satisfiedBy(@() f22_silent_tier1_fit(X));
-    fitted = tier1Constraint.FunctionOutputs{1};
-    verifyTrue(testCase, tier1Silent, ...
-        'Canonical DTWClustering.fit emitted a deprecation warning.');
-    assertClass(testCase, fitted, 'dtwc.DTWClustering');
-    assertNumElements(testCase, fitted.Labels, size(X, 1));
-    assertNumElements(testCase, fitted.MedoidIndices, 2);
-
-    allPass = warningProfiles == nRows && messages == nRows && ...
-              canonicalSilent == nRows && equivalent == nRows && ...
-              constructorSilent && writerSilent && tier1Silent;
-    verdict = 'FAIL';
-    if allPass
-        verdict = 'PASS';
-    end
-    fprintf(['F22_MATLAB_DEPRECATION aliases=%d/%d ' ...
-             'warning_profiles=%d/%d messages=%d/%d ' ...
-             'canonical_silent=%d/%d equivalence=%d/%d ' ...
-             'constructor_silent=%d/1 tier1_silent=%d/1 ' ...
-             'skips=0 verdict=%s\n'], ...
-            nRows, nRows, warningProfiles, nRows, messages, nRows, ...
-            canonicalSilent, nRows, equivalent, nRows, ...
-            constructorSilent, tier1Silent, verdict);
-    verifyTrue(testCase, allPass, ...
-        'F22 MATLAB deprecation contract is incomplete.');
-end
 
 function err = capture_error(fn)
 %CAPTURE_ERROR Run fn and return the MException it must raise.
@@ -852,212 +694,4 @@ function err = capture_error(fn)
         err = caught;
     end
     assert(~isempty(err), 'expected an error, none was raised');
-end
-
-function [value, message, identifier] = f22_invoke_and_capture_warning(operation)
-    lastwarn('');
-    value = operation();
-    [message, identifier] = lastwarn;
-end
-
-function value = f22_config_operation(X, propertyName, candidate, canonical)
-    prob = dtwc.Problem(['f22_config_' lower(propertyName)]);
-    prob.set_data(X);
-
-    if canonical
-        switch propertyName
-            case 'Band'
-                prob.set_band(candidate);
-            case 'Verbose'
-                prob.set_verbose(candidate);
-            case 'MaxIter'
-                prob.set_max_iter(candidate);
-            case 'NRepetition'
-                prob.set_n_repetitions(candidate);
-            otherwise
-                error('dtwc:f22TestOracle', ...
-                    'Unknown canonical configuration property: %s.', propertyName);
-        end
-    else
-        prob.(propertyName) = candidate;
-    end
-
-    switch propertyName
-        case 'Band'
-            info = dtwc_mex('Problem_get_info', prob.get_handle());
-            value = struct('cached', prob.Band, 'native', info.band);
-        case 'Verbose'
-            info = dtwc_mex('Problem_get_info', prob.get_handle());
-            value = struct('cached', prob.Verbose, 'native', info.verbose);
-        case 'MaxIter'
-            info = dtwc_mex('Problem_get_info', prob.get_handle());
-            value = struct('cached', prob.MaxIter, ...
-                           'native', info.max_iter);
-        case 'NRepetition'
-            info = dtwc_mex('Problem_get_info', prob.get_handle());
-            value = struct('cached', prob.NRepetition, ...
-                           'native', info.n_repetitions);
-        otherwise
-            error('dtwc:f22TestOracle', ...
-                'Unknown configuration observation: %s.', propertyName);
-    end
-end
-
-function value = f22_distance_read_operation(X, D, canonical)
-    prob = dtwc.Problem('f22_distance_read');
-    prob.set_data(X);
-    prob.set_distance_matrix(D);
-    if canonical
-        value = prob.distance_matrix();
-    else
-        value = prob.get_distance_matrix();
-    end
-end
-
-function value = f22_read_property_operation(X, propertyName, canonical)
-    prob = f22_clustered_problem(X, 'f22_read_alias');
-    if canonical
-        switch propertyName
-            case 'Size'
-                value = prob.size();
-            case 'ClusterSize'
-                value = prob.n_clusters();
-            case 'Name'
-                value = prob.name();
-            case 'CentroidsInd'
-                value = prob.medoids();
-            case 'ClustersInd'
-                value = prob.labels();
-            otherwise
-                error('dtwc:f22TestOracle', ...
-                    'Unknown canonical read property: %s.', propertyName);
-        end
-    else
-        value = prob.(propertyName);
-    end
-end
-
-function prob = f22_clustered_problem(X, name)
-    prob = dtwc.Problem(name);
-    prob.set_data(X);
-    dtwc.fast_pam(prob, 2, 'MaxIter', 20, 'Seed', 42);
-end
-
-function D = f22_silent_distance_writer(X, D)
-    prob = dtwc.Problem('f22_canonical_writer');
-    prob.set_data(X);
-    prob.set_distance_matrix(D);
-    D = prob.distance_matrix();
-end
-
-function fitted = f22_silent_tier1_fit(X)
-    estimator = dtwc.DTWClustering( ...
-        'NClusters', 2, 'Metric', 'l1', 'Device', 'cpu', 'NInit', 1);
-    fitted = estimator.fit(X);
-end
-
-function f22_verify_nondegenerate_value(testCase, oldName, value, D)
-    switch oldName
-        case 'dtwc.Problem.Band'
-            assertEqual(testCase, value.cached, 3);
-            assertEqual(testCase, value.native, 3);
-        case 'dtwc.Problem.Verbose'
-            assertTrue(testCase, value.cached);
-            assertTrue(testCase, value.native);
-        case 'dtwc.Problem.MaxIter'
-            assertEqual(testCase, value.cached, 7);
-            assertEqual(testCase, value.native, 7);
-        case 'dtwc.Problem.NRepetition'
-            assertEqual(testCase, value.cached, 3);
-            assertEqual(testCase, value.native, 3);
-        case 'dtwc.Problem.get_distance_matrix'
-            assertEqual(testCase, value, D);
-        case 'dtwc.Problem.Size'
-            assertEqual(testCase, value, 6);
-        case 'dtwc.Problem.ClusterSize'
-            assertEqual(testCase, value, 2);
-        case 'dtwc.Problem.Name'
-            assertEqual(testCase, value, 'f22_read_alias');
-        case 'dtwc.Problem.CentroidsInd'
-            assertNumElements(testCase, value, 2);
-            assertTrue(testCase, all(value >= 1 & value <= 6));
-        case 'dtwc.Problem.ClustersInd'
-            assertNumElements(testCase, value, 6);
-            assertTrue(testCase, all(value >= 1 & value <= 2));
-        otherwise
-            error('dtwc:f22TestOracle', ...
-                'Unknown F22 non-degenerate observation: %s.', oldName);
-    end
-end
-
-function f22_verify_config_setter_atomicity(testCase)
-%   A rejected canonical value must not update MATLAB's cached observation
-%   ahead of the native setter. These asymmetric vector candidates expose
-%   any scalar-boundary bug that consumes only the first native element.
-    prob = dtwc.Problem('f22_config_atomicity');
-
-    prob.set_band(3);
-    assertError(testCase, @() prob.set_band([4 5]), ...
-        'dtwc:invalidArgument');
-    info = dtwc_mex('Problem_get_info', prob.get_handle());
-    assertEqual(testCase, prob.Band, 3);
-    assertEqual(testCase, info.band, 3);
-
-    prob.set_verbose(true);
-    assertError(testCase, @() prob.set_verbose([false true]), ...
-        'dtwc:invalidArgument');
-    info = dtwc_mex('Problem_get_info', prob.get_handle());
-    assertTrue(testCase, prob.Verbose);
-    assertTrue(testCase, info.verbose);
-
-    prob.set_max_iter(7);
-    assertError(testCase, @() prob.set_max_iter([8 9]), ...
-        'dtwc:invalidArgument');
-    info = dtwc_mex('Problem_get_info', prob.get_handle());
-    assertEqual(testCase, prob.MaxIter, 7);
-    assertEqual(testCase, info.max_iter, 7);
-
-    prob.set_n_repetitions(3);
-    assertError(testCase, @() prob.set_n_repetitions([4 5]), ...
-        'dtwc:invalidArgument');
-    info = dtwc_mex('Problem_get_info', prob.get_handle());
-    assertEqual(testCase, prob.NRepetition, 3);
-    assertEqual(testCase, info.n_repetitions, 3);
-end
-
-function f22_verify_warning_precedes_config_effect(testCase, warningId)
-%   Escalating the compatibility warning to an error must stop each
-%   mutating alias before either the MATLAB cache or native state changes.
-    prob = dtwc.Problem('f22_config_warning_order');
-    prob.set_band(3);
-    prob.set_verbose(true);
-    prob.set_max_iter(7);
-    prob.set_n_repetitions(3);
-
-    warningState = warning;
-    warningCleanup = onCleanup(@() warning(warningState)); %#ok<NASGU>
-    warning('error', warningId);
-
-    assertError(testCase, @() f22_assign_config_alias(prob, 'Band', 4), ...
-        warningId);
-    assertError(testCase, ...
-        @() f22_assign_config_alias(prob, 'Verbose', false), warningId);
-    assertError(testCase, @() f22_assign_config_alias(prob, 'MaxIter', 8), ...
-        warningId);
-    assertError(testCase, ...
-        @() f22_assign_config_alias(prob, 'NRepetition', 4), warningId);
-
-    info = dtwc_mex('Problem_get_info', prob.get_handle());
-    assertEqual(testCase, prob.Band, 3);
-    assertTrue(testCase, prob.Verbose);
-    assertEqual(testCase, prob.MaxIter, 7);
-    assertEqual(testCase, prob.NRepetition, 3);
-    assertEqual(testCase, info.band, 3);
-    assertTrue(testCase, info.verbose);
-    assertEqual(testCase, info.max_iter, 7);
-    assertEqual(testCase, info.n_repetitions, 3);
-end
-
-function f22_assign_config_alias(prob, propertyName, value)
-    prob.(propertyName) = value;
 end

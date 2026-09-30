@@ -6,7 +6,9 @@ function nmi = normalized_mutual_info(labels_true, labels_pred)
 %
 %   nmi = dtwc.normalized_mutual_info(labels_true, labels_pred)
 %
-%   Both label vectors accept int32 or double, same length.
+%   Both label vectors accept int32 or double and must be the same length. A
+%   label is a value, not an index: any integer is one, 0 and negatives
+%   included. NaN, Inf or a fractional value raises dtwc:invalidArgument.
 %
 %   See also dtwc.adjusted_rand
     nmi = dtwc_mex('normalized_mutual_info', labels_true, labels_pred);

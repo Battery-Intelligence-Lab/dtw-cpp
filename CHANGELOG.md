@@ -100,6 +100,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   grammar (its own ordinal parser and the MEX's second canonicaliser are gone).
 - **Fixed (Python, hpc):** a file `Dataset` with a `delimiter` raises `InvalidInput`, because the SLURM transport does not carry
   it (it was dropped silently); an in-memory dataset's `skip_cols` is applied once, not twice.
+- **Fixed (Python):** `Problem.dist_by_ind(i, j)` raises `InvalidInput` for an index outside `[0, N)`, naming the index and N;
+  v1.0.0's `distByInd` read past the distance matrix (undefined behaviour). C++ `Problem::dist_by_ind` stays unchecked.
 - **Fixed (CLI):** `--dtype float32 --device cuda` raises `DeviceError`; the CUDA fill received no series. Parquet / Arrow IPC
   input on a build without Arrow is `IOError`, like `.dtws` input without llfio. The documented `--method` default is `auto`.
 - **Fixed (load):** Tier-1 `load` read errors again start `load: failed to read '<path>': ` and stay `IOError`; the partial
@@ -485,8 +487,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   the process device. `Result.score`/`save` are the C++ members, so the output
   CSVs carry the dataset's series names and match the CLI byte for byte.
 - **Changed (MATLAB):** `dtwc.DTWClustering` executes `Metric` and `Device`
-  instead of only storing them (closes F18/F40); `dtwc.Dataset.materialize`
-  honours `skip_cols` for in-memory sources; `save_checkpoint`/`load_checkpoint`
+  instead of only storing them (closes F18/F40); `save_checkpoint`/`load_checkpoint`
   take the optional `metric` token C++ and Python already had, so a SquaredL2
   matrix is no longer stamped and reloaded as L1. `dtwc.cluster`/`dtwc.load`
   accept a cell array of numeric vectors as a ragged in-memory source;
@@ -979,10 +980,6 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   legacy Problem I/O overloads now emit their registered replacement
   diagnostics while remaining behavior-identical; canonical I/O names own the
   implementations and canonical Problem moves remain warning-silent.
-- Enforced the frozen MATLAB deprecation policy for all 15 retained alias
-  operations. Each now emits one exact `dtwc:deprecatedAlias` warning while
-  canonical operations stay silent; rejected configuration values leave the
-  MATLAB cache and native `Problem` state unchanged.
 - Fixed LLFIO-enabled public headers so third-party pragmas no longer suppress
   downstream Clang deprecation diagnostics.
 - Added the frozen C++ `DataLoader::start_column`/`start_row` and

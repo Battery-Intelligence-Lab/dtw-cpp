@@ -19,25 +19,6 @@ classdef Problem < handle
 
     properties (Access = private)
         Handle uint64 = uint64(0)
-        BandValue double = -1
-        VerboseValue logical = false
-        MaxIterValue double = 100
-        NRepetitionValue double = 1
-    end
-
-    properties (Dependent)
-        Band double
-        Verbose logical
-        MaxIter double
-        NRepetition double
-    end
-
-    properties (SetAccess = private, Dependent)
-        Size
-        ClusterSize
-        Name
-        CentroidsInd
-        ClustersInd
     end
 
     methods
@@ -99,50 +80,6 @@ classdef Problem < handle
             end
         end
 
-        function val = get.Band(obj)
-            val = obj.BandValue;
-        end
-
-        function set.Band(obj, val)
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.Band'' is deprecated; use ' ...
-                 '''dtwc.Problem.set_band'' instead.']);
-            obj.set_band(val);
-        end
-
-        function val = get.Verbose(obj)
-            val = obj.VerboseValue;
-        end
-
-        function set.Verbose(obj, val)
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.Verbose'' is deprecated; use ' ...
-                 '''dtwc.Problem.set_verbose'' instead.']);
-            obj.set_verbose(val);
-        end
-
-        function val = get.MaxIter(obj)
-            val = obj.MaxIterValue;
-        end
-
-        function set.MaxIter(obj, val)
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.MaxIter'' is deprecated; use ' ...
-                 '''dtwc.Problem.set_max_iter'' instead.']);
-            obj.set_max_iter(val);
-        end
-
-        function val = get.NRepetition(obj)
-            val = obj.NRepetitionValue;
-        end
-
-        function set.NRepetition(obj, val)
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.NRepetition'' is deprecated; use ' ...
-                 '''dtwc.Problem.set_n_repetitions'' instead.']);
-            obj.set_n_repetitions(val);
-        end
-
         function fill_distance_matrix(obj)
         %FILL_DISTANCE_MATRIX Compute all pairwise DTW distances.
         %   prob.fill_distance_matrix()
@@ -168,6 +105,9 @@ classdef Problem < handle
         %   prob.set_variant('wdtw', 0.1)      % g parameter
         %   prob.set_variant('adtw', 2.0)       % penalty
         %   prob.set_variant('softdtw', 0.5)    % gamma
+        %   prob.set_variant('msm')             % also 'twe': default parameters
+        %
+        %   Names are the C++ table's (the CLI's), ignoring case.
             if nargin > 2
                 dtwc_mex('Problem_set_variant', obj.Handle, variant, double(varargin{1}));
             else
@@ -210,15 +150,6 @@ classdef Problem < handle
             cost = dtwc_mex('Problem_find_total_cost', obj.Handle);
         end
 
-        function D = get_distance_matrix(obj)
-        %GET_DISTANCE_MATRIX Get the full NxN distance matrix.
-        %   D = prob.get_distance_matrix()
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.get_distance_matrix'' is deprecated; use ' ...
-                 '''dtwc.Problem.distance_matrix'' instead.']);
-            D = obj.distance_matrix();
-        end
-
         function set_distance_matrix(obj, D)
         %SET_DISTANCE_MATRIX Set a precomputed distance matrix.
         %   prob.set_distance_matrix(D) where D is NxN symmetric double.
@@ -232,49 +163,31 @@ classdef Problem < handle
         end
 
         % =================================================================
-        %  Canonical 2.0 config setters (snake_case; api-contract-2.0.md §2.1).
-        %  The historical PascalCase properties (Band/Verbose/MaxIter/NRepetition)
-        %  remain functional as deprecated aliases; these setters are canonical.
+        %  Config setters (snake_case; api-contract-2.0.md §2.1).
         % =================================================================
 
         function set_band(obj, b)
-        %SET_BAND Set the Sakoe-Chiba band (-1 = full DTW). Canonical for `Band`.
-            value = double(b);
-            if obj.Handle > 0
-                dtwc_mex('Problem_set_band', obj.Handle, value);
-            end
-            obj.BandValue = value;
+        %SET_BAND Set the Sakoe-Chiba band (-1 = full DTW).
+            dtwc_mex('Problem_set_band', obj.Handle, double(b));
         end
 
         function set_verbose(obj, tf)
-        %SET_VERBOSE Enable/disable progress messages. Canonical for `Verbose`.
-            value = logical(tf);
-            if obj.Handle > 0
-                dtwc_mex('Problem_set_verbose', obj.Handle, value);
-            end
-            obj.VerboseValue = value;
+        %SET_VERBOSE Enable/disable progress messages.
+            dtwc_mex('Problem_set_verbose', obj.Handle, logical(tf));
         end
 
         function set_max_iter(obj, n)
-        %SET_MAX_ITER Set the maximum iteration count. Canonical for `MaxIter`.
-            value = double(n);
-            if obj.Handle > 0
-                dtwc_mex('Problem_set_max_iter', obj.Handle, value);
-            end
-            obj.MaxIterValue = value;
+        %SET_MAX_ITER Set the maximum iteration count.
+            dtwc_mex('Problem_set_max_iter', obj.Handle, double(n));
         end
 
         function set_n_repetitions(obj, n)
-        %SET_N_REPETITIONS Set the number of random restarts. Canonical for `NRepetition`.
-            value = double(n);
-            if obj.Handle > 0
-                dtwc_mex('Problem_set_n_repetition', obj.Handle, value);
-            end
-            obj.NRepetitionValue = value;
+        %SET_N_REPETITIONS Set the number of random restarts.
+            dtwc_mex('Problem_set_n_repetition', obj.Handle, double(n));
         end
 
         function set_method(obj, m)
-        %SET_METHOD Set the clustering method ('kmedoids' or 'mip').
+        %SET_METHOD Set the Problem's method: 'kmedoids', 'mip', 'lrcore' or 'tadpole'.
             dtwc_mex('Problem_set_method', obj.Handle, char(m));
         end
 
@@ -339,7 +252,7 @@ classdef Problem < handle
         end
 
         % =================================================================
-        %  Canonical 2.0 distance-matrix & clustering methods (§2.2).
+        %  Distance-matrix & clustering methods (§2.2).
         % =================================================================
 
         function refresh_distance_matrix(obj)
@@ -358,7 +271,7 @@ classdef Problem < handle
         end
 
         function D = distance_matrix(obj)
-        %DISTANCE_MATRIX Get the full NxN distance matrix (canonical for get_distance_matrix).
+        %DISTANCE_MATRIX Get the full NxN distance matrix.
             D = dtwc_mex('Problem_get_distance_matrix', obj.Handle);
         end
 
@@ -368,8 +281,7 @@ classdef Problem < handle
         end
 
         % =================================================================
-        %  Canonical 2.0 read accessors (§2.2). PascalCase dependent props
-        %  (Size/ClusterSize/Name/CentroidsInd/ClustersInd) remain as aliases.
+        %  Read accessors (§2.2).
         % =================================================================
 
         function n = size(obj)
@@ -395,42 +307,6 @@ classdef Problem < handle
         function m = medoids(obj)
         %MEDOIDS Medoid series index per cluster (int32, 1-based).
             m = dtwc_mex('Problem_get_centroids', obj.Handle);
-        end
-
-        % Dependent property getters
-        function val = get.Size(obj)
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.Size'' is deprecated; use ' ...
-                 '''dtwc.Problem.size'' instead.']);
-            val = obj.size();
-        end
-
-        function val = get.ClusterSize(obj)
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.ClusterSize'' is deprecated; use ' ...
-                 '''dtwc.Problem.n_clusters'' instead.']);
-            val = obj.n_clusters();
-        end
-
-        function val = get.Name(obj)
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.Name'' is deprecated; use ' ...
-                 '''dtwc.Problem.name'' instead.']);
-            val = obj.name();
-        end
-
-        function val = get.CentroidsInd(obj)
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.CentroidsInd'' is deprecated; use ' ...
-                 '''dtwc.Problem.medoids'' instead.']);
-            val = obj.medoids();
-        end
-
-        function val = get.ClustersInd(obj)
-            warning('dtwc:deprecatedAlias', ...
-                ['''dtwc.Problem.ClustersInd'' is deprecated; use ' ...
-                 '''dtwc.Problem.labels'' instead.']);
-            val = obj.labels();
         end
 
         function disp(obj)

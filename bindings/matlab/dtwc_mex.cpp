@@ -46,7 +46,7 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
-#include "../../dtwc/core/distance_semantics.hpp" // parse_metric_token (checkpoint + metric routes)
+#include "../../dtwc/base/names.hpp"   // parse_name over the C++ name tables
 
 #include <string>
 #include <vector>
@@ -282,15 +282,14 @@ static int get_exact_int(const mxArray *mx, const char *arg_name) {
   return exact_int_from_double(get_scalar(mx, arg_name), arg_name);
 }
 
-/// Shift a validated 1-based MATLAB index down to 0-based. INT_MIN is exactly
-/// representable as a double and therefore passes exact_int_from_double, so the
-/// callers' bare `- 1` was signed overflow (undefined behaviour) at exactly the
-/// boundary these helpers exist to make safe.
+/// Shift a validated 1-based MATLAB index down to 0-based. The first index is 1:
+/// a smaller value is no index (0 would address the element before the first,
+/// and INT_MIN - 1 is signed overflow), so it is an error, not a shift.
 static int to_0based(int value, const char *arg_name) {
-  if (value == std::numeric_limits<int>::min())
+  if (value < 1)
     throw std::invalid_argument(
       std::string(arg_name) + " = " + std::to_string(value)
-      + " has no 0-based representation in the C++ int range.");
+      + " is not a 1-based index (the first index is 1).");
   return value - 1;
 }
 
@@ -298,20 +297,20 @@ static int exact_int_1based_to_0based(double value, const char *arg_name) {
   return to_0based(exact_int_from_double(value, arg_name), arg_name);
 }
 
-/// Decode a 1-based MATLAB label/index vector (int32 or double) to 0-based ints.
+/// Decode a MATLAB label vector (int32 or double) to ints. A label is a name,
+/// not a position: any integer is one (0 and negatives included), unshifted.
 /// Every double element goes through exact_int_from_double, so NaN/Inf/fractional
 /// entries are rejected instead of being cast with undefined behaviour.
-static std::vector<int> label_vector_to_0based(const mxArray *mx, const char *arg_name) {
+static std::vector<int> label_vector(const mxArray *mx, const char *arg_name) {
   require_label_vector(mx, arg_name);
   const size_t n = mxGetNumberOfElements(mx);
   std::vector<int> out(n);
   if (mxIsInt32(mx)) {
     const int32_t *p = static_cast<const int32_t *>(mxGetData(mx));
-    for (size_t i = 0; i < n; ++i) out[i] = to_0based(static_cast<int>(p[i]), arg_name);
+    for (size_t i = 0; i < n; ++i) out[i] = static_cast<int>(p[i]);
   } else {
     const double *p = mxGetDoubles(mx);
-    for (size_t i = 0; i < n; ++i)
-      out[i] = exact_int_1based_to_0based(p[i], arg_name);
+    for (size_t i = 0; i < n; ++i) out[i] = exact_int_from_double(p[i], arg_name);
   }
   return out;
 }
@@ -341,8 +340,9 @@ static uint64_t get_handle(const mxArray *mx) {
     uint64_t *p = static_cast<uint64_t *>(mxGetData(mx));
     return p[0];
   }
-  // Accept double as well (MATLAB defaults to double)
-  return static_cast<uint64_t>(get_scalar(mx, "handle"));
+  // Accept double as well (MATLAB defaults to double). A negative id wraps to a
+  // value no handle has, so the lookup fails with "Invalid handle".
+  return static_cast<uint64_t>(get_exact_int(mx, "handle"));
 }
 
 /// Extract string from mxArray (char array or string)
@@ -377,12 +377,12 @@ static char parse_delimiter(const std::string &value) {
   return value[0];
 }
 
-/// Optional metric token; absent means L1, matching C++/Python defaults.
+/// Optional metric name; absent means L1, matching C++/Python defaults.
 static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
                                               int index) {
   const std::string token = optional_string(nrhs, prhs, index, "metric");
   if (token.empty()) return dtwc::core::MetricType::L1;
-  return dtwc::core::parse_metric_token(token);
+  return dtwc::parse_name(dtwc::core::metric_names, token, "metric");
 }
 
 /// Build a ClusteringResult MATLAB struct from a C++ ClusteringResult
@@ -473,17 +473,8 @@ static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx) {
   return dend;
 }
 
-/// Parse missing strategy string -> enum
-static dtwc::core::MissingStrategy parse_missing_strategy(const std::string &s) {
-  if (s == "error") return dtwc::core::MissingStrategy::Error;
-  if (s == "zero_cost") return dtwc::core::MissingStrategy::ZeroCost;
-  if (s == "arow") return dtwc::core::MissingStrategy::AROW;
-  if (s == "interpolate") return dtwc::core::MissingStrategy::Interpolate;
-  throw std::invalid_argument("Unknown missing strategy: '" + s + "'. "
-    "Valid: 'error', 'zero_cost', 'arow', 'interpolate'.");
-}
-
-/// Parse distance strategy string -> enum
+/// Parse distance strategy string -> enum. C++ has no name table for
+/// DistanceMatrixStrategy (the CLI and Python select devices, not strategies).
 static dtwc::DistanceMatrixStrategy parse_distance_strategy(const std::string &s) {
   if (s == "auto") return dtwc::DistanceMatrixStrategy::Auto;
   if (s == "brute_force") return dtwc::DistanceMatrixStrategy::BruteForce;
@@ -493,32 +484,15 @@ static dtwc::DistanceMatrixStrategy parse_distance_strategy(const std::string &s
     "Valid: 'auto', 'brute_force', 'cuda', 'metal'.");
 }
 
-/// Parse linkage string -> enum
-static dtwc::algorithms::Linkage parse_linkage(const std::string &s) {
-  if (s == "single") return dtwc::algorithms::Linkage::Single;
-  if (s == "complete") return dtwc::algorithms::Linkage::Complete;
-  if (s == "average") return dtwc::algorithms::Linkage::Average;
-  throw std::invalid_argument("Unknown linkage: '" + s + "'. Valid: 'single', 'complete', 'average'.");
-}
-
-/// Parse clustering method string -> enum (contract §2.1 set_method).
-/// 'pam' and 'auto' are not Problem methods: they used to run Lloyd k-medoids.
+/// Parse a Problem method name (contract §2.1 set_method). 'pam' and 'auto' are
+/// dtwc.cluster methods, not Problem methods: they used to run Lloyd k-medoids.
 static dtwc::Method parse_method(const std::string &s) {
-  if (s == "kmedoids") return dtwc::Method::Kmedoids;
-  if (s == "mip") return dtwc::Method::MIP;
   if (s == "pam" || s == "auto")
     throw dtwc::InvalidInput(
-      "set_method('" + s + "'): a Problem runs 'kmedoids' (Lloyd) or 'mip' only. "
-      "Use dtwc.fast_pam(prob, k) for PAM, or dtwc.cluster(data, k, 'method', '"
-      + s + "').");
-  throw std::invalid_argument("Unknown method: '" + s + "'. Valid: 'kmedoids', 'mip'.");
-}
-
-/// Parse MIP solver string -> enum (contract §2.1 set_solver).
-static dtwc::Solver parse_solver(const std::string &s) {
-  if (s == "highs") return dtwc::Solver::HiGHS;
-  if (s == "gurobi") return dtwc::Solver::Gurobi;
-  throw std::invalid_argument("Unknown solver: '" + s + "'. Valid: 'highs', 'gurobi'.");
+      "set_method('" + s + "'): a Problem runs kmedoids (Lloyd), mip, lrcore or "
+      "tadpole only. Use dtwc.fast_pam(prob, k) for PAM, or dtwc.cluster(data, k, "
+      "'method', '" + s + "').");
+  return dtwc::parse_name(dtwc::method_names, s, "method");
 }
 
 // =========================================================================
@@ -606,8 +580,8 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   // Data::validate_ndim() throws if any series flat-size is not divisible by ndim.
   size_t ndim = 1;
   if (nrhs > 4 && !mxIsEmpty(prhs[4])) {
-    const double nd = get_scalar(prhs[4], "ndim");
-    if (nd < 1.0) throw std::invalid_argument("ndim must be a positive integer.");
+    const int nd = get_exact_int(prhs[4], "ndim");
+    if (nd < 1) throw std::invalid_argument("ndim must be a positive integer.");
     ndim = static_cast<size_t>(nd);
   }
 
@@ -618,13 +592,7 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 static void cmd_Problem_set_band(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_band requires handle and band value.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_band(static_cast<int>(get_scalar(prhs[2])));
-}
-
-static void cmd_Problem_get_band(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("Problem_get_band requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.band));
+  prob.set_band(get_exact_int(prhs[2], "band"));
 }
 
 static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -638,26 +606,26 @@ static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const m
 static void cmd_Problem_set_max_iter(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_max_iter requires handle and value.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_max_iter(static_cast<int>(get_scalar(prhs[2])));
+  prob.set_max_iter(get_exact_int(prhs[2], "max_iter"));
 }
 
 static void cmd_Problem_set_n_repetition(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_n_repetition requires handle and value.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_n_repetitions(static_cast<int>(get_scalar(prhs[2])));
+  prob.set_n_repetitions(get_exact_int(prhs[2], "n_repetitions"));
 }
 
 static void cmd_Problem_set_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_n_clusters requires handle and k.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_n_clusters(static_cast<int>(get_scalar(prhs[2])));
+  prob.set_n_clusters(get_exact_int(prhs[2], "k"));
 }
 
 static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_missing_strategy requires handle and string.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  std::string s = get_string(prhs[2]);
-  prob.set_missing_strategy(parse_missing_strategy(s));
+  prob.set_missing_strategy(dtwc::parse_name(
+    dtwc::core::missing_strategy_names, get_string(prhs[2]), "missing strategy"));
 }
 
 static void cmd_Problem_set_distance_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -675,27 +643,18 @@ static void cmd_Problem_set_device(int nlhs, mxArray *plhs[], int nrhs, const mx
 static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_variant requires handle and variant string.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  std::string variant = get_string(prhs[2]);
+  using dtwc::core::DTWVariant;
+  const DTWVariant variant = dtwc::parse_name(
+    dtwc::core::variant_names, get_string(prhs[2]), "variant");
 
   dtwc::core::DTWVariantParams params = prob.variant_params;
-
-  if (variant == "standard") params.variant = dtwc::core::DTWVariant::Standard;
-  else if (variant == "ddtw") params.variant = dtwc::core::DTWVariant::DDTW;
-  else if (variant == "wdtw") {
-    params.variant = dtwc::core::DTWVariant::WDTW;
-    if (nrhs > 3) params.wdtw_g = get_scalar(prhs[3]);
-  }
-  else if (variant == "adtw") {
-    params.variant = dtwc::core::DTWVariant::ADTW;
-    if (nrhs > 3) params.adtw_penalty = get_scalar(prhs[3]);
-  }
-  else if (variant == "softdtw") {
-    params.variant = dtwc::core::DTWVariant::SoftDTW;
-    if (nrhs > 3) params.sdtw_gamma = get_scalar(prhs[3]);
-  }
-  else {
-    throw std::invalid_argument("Unknown variant: '" + variant + "'. "
-      "Valid: 'standard', 'ddtw', 'wdtw', 'adtw', 'softdtw'.");
+  params.variant = variant;
+  // The one optional scalar is the parameter of WDTW, ADTW and Soft-DTW; the
+  // other variants (MSM and TWE keep their defaults) take none here.
+  if (nrhs > 3) {
+    if (variant == DTWVariant::WDTW) params.wdtw_g = get_scalar(prhs[3]);
+    else if (variant == DTWVariant::ADTW) params.adtw_penalty = get_scalar(prhs[3]);
+    else if (variant == DTWVariant::SoftDTW) params.sdtw_gamma = get_scalar(prhs[3]);
   }
 
   prob.set_variant(params);
@@ -705,12 +664,6 @@ static void cmd_Problem_get_size(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   if (nrhs < 2) throw std::invalid_argument("Problem_get_size requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.size()));
-}
-
-static void cmd_Problem_get_cluster_size(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("Problem_get_cluster_size requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.n_clusters()));
 }
 
 static void cmd_Problem_get_name(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -750,11 +703,18 @@ static void cmd_Problem_fill_distance_matrix(int nlhs, mxArray *plhs[], int nrhs
 static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 4) throw std::invalid_argument("Problem_dist_by_ind requires handle, i, j.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  // Convert from MATLAB 1-based to C++ 0-based
-  int i = static_cast<int>(get_scalar(prhs[2])) - 1;
-  int j = static_cast<int>(get_scalar(prhs[3])) - 1;
-  double d = prob.dist_by_ind(i, j);
-  plhs[0] = mxCreateDoubleScalar(d);
+  // Problem::dist_by_ind is the unchecked hot path: this boundary owns the range check.
+  const auto n = static_cast<int>(prob.size());
+  const auto index = [&](int arg, const char *name) {
+    const int i = to_0based(get_exact_int(prhs[arg], name), name);
+    if (i >= n)
+      throw std::invalid_argument(std::string(name) + " = " + std::to_string(i + 1)
+        + " is outside 1..N (N = " + std::to_string(n) + ").");
+    return i;
+  };
+  const int i = index(2, "i");
+  const int j = index(3, "j");
+  plhs[0] = mxCreateDoubleScalar(prob.dist_by_ind(i, j));
 }
 
 static void cmd_Problem_cluster(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -877,7 +837,8 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
   if (nrhs < 3) throw std::invalid_argument("Problem_set_solver requires handle and solver string.");
   require_char(prhs[2], "solver");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  const bool ok = prob.set_solver(parse_solver(get_string(prhs[2])));
+  const bool ok = prob.set_solver(
+    dtwc::parse_name(dtwc::solver_names, get_string(prhs[2]), "solver"));
   plhs[0] = mxCreateLogicalScalar(ok);  // false => requested solver not compiled in
 }
 
@@ -899,13 +860,13 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap"))        m.mip_gap        = get_scalar(f, "mip_gap");
-  if (mxArray *f = mxGetField(s, 0, "time_limit_sec")) m.time_limit_sec = static_cast<int>(get_scalar(f, "time_limit_sec"));
+  if (mxArray *f = mxGetField(s, 0, "time_limit_sec")) m.time_limit_sec = get_exact_int(f, "time_limit_sec");
   if (mxArray *f = mxGetField(s, 0, "warm_start"))     m.warm_start     = (get_scalar(f, "warm_start") != 0.0);
-  if (mxArray *f = mxGetField(s, 0, "numeric_focus"))  m.numeric_focus  = static_cast<int>(get_scalar(f, "numeric_focus"));
-  if (mxArray *f = mxGetField(s, 0, "mip_focus"))      m.mip_focus      = static_cast<int>(get_scalar(f, "mip_focus"));
+  if (mxArray *f = mxGetField(s, 0, "numeric_focus"))  m.numeric_focus  = get_exact_int(f, "numeric_focus");
+  if (mxArray *f = mxGetField(s, 0, "mip_focus"))      m.mip_focus      = get_exact_int(f, "mip_focus");
   if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = (get_scalar(f, "verbose_solver") != 0.0);
   if (mxArray *f = mxGetField(s, 0, "lr_max_nodes"))
-    m.lr_max_nodes = exact_int_from_double(get_scalar(f, "lr_max_nodes"), "lr_max_nodes");
+    m.lr_max_nodes = get_exact_int(f, "lr_max_nodes");
   prob.mip_settings = m;
 }
 
@@ -946,7 +907,7 @@ static void cmd_Problem_set_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
   }
   if (mxArray *f = mxGetField(s, 0, "save_interval"))
     options.save_interval =
-      exact_int_from_double(get_scalar(f, "save_interval"), "checkpoint.save_interval");
+      get_exact_int(f, "checkpoint.save_interval");
   if (mxArray *f = mxGetField(s, 0, "enabled"))
     options.enabled = (get_scalar(f, "enabled") != 0.0);
   prob.checkpoint = options;
@@ -1053,7 +1014,7 @@ static void cmd_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray 
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::dtw<double>(
     std::span<const double>(x, nx), std::span<const double>(y, ny), band));
 }
@@ -1067,7 +1028,7 @@ static void cmd_ddtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::ddtw<double>(
     std::span<const double>(x, nx), std::span<const double>(y, ny), band));
 }
@@ -1081,7 +1042,7 @@ static void cmd_wdtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   double g = 0.05;
   if (nrhs > 4) g = get_scalar(prhs[4]);
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::wdtw<double>(
@@ -1097,7 +1058,7 @@ static void cmd_adtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   double penalty = 1.0;
   if (nrhs > 4) penalty = get_scalar(prhs[4]);
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::adtw<double>(
@@ -1132,7 +1093,7 @@ static void cmd_dtw_distance_missing(int nlhs, mxArray *plhs[], int nrhs, const 
   auto x = to_std_vector(prhs[1], "x");
   auto y = to_std_vector(prhs[2], "y");
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::missing<double>(x, y, band));
 }
 
@@ -1141,7 +1102,7 @@ static void cmd_dtw_arow_distance(int nlhs, mxArray *plhs[], int nrhs, const mxA
   auto x = to_std_vector(prhs[1], "x");
   auto y = to_std_vector(prhs[2], "y");
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::arow<double>(x, y, band));
 }
 
@@ -1150,7 +1111,7 @@ static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, con
   auto series = matrix_to_series(prhs[1]);
   const size_t N = series.size();
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 2) band = static_cast<int>(get_scalar(prhs[2]));
+  if (nrhs > 2) band = get_exact_int(prhs[2], "band");
 
   // Use Problem + fill_distance_matrix() for OpenMP parallelism and LB pruning
   std::vector<std::string> names(N);
@@ -1200,9 +1161,9 @@ static void cmd_z_normalize(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
 static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("fast_pam requires handle and k.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  int k = static_cast<int>(get_scalar(prhs[2]));
+  int k = get_exact_int(prhs[2], "k");
   int max_iter = 100;
-  if (nrhs > 3) max_iter = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) max_iter = get_exact_int(prhs[3], "max_iter");
 
   // Omitted seed preserves the mutable legacy Tier-2 behaviour. MATLAB Tier-1
   // passes the shared default explicitly, so it never consumes global RNG state.
@@ -1219,10 +1180,10 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
   dtwc::algorithms::CLARAOptions opts;
-  opts.n_clusters = static_cast<int>(get_scalar(prhs[2]));
-  if (nrhs > 3) opts.sample_size = static_cast<int>(get_scalar(prhs[3]));
-  if (nrhs > 4) opts.n_samples = static_cast<int>(get_scalar(prhs[4]));
-  if (nrhs > 5) opts.max_iter = static_cast<int>(get_scalar(prhs[5]));
+  opts.n_clusters = get_exact_int(prhs[2], "k");
+  if (nrhs > 3) opts.sample_size = get_exact_int(prhs[3], "sample_size");
+  if (nrhs > 4) opts.n_samples = get_exact_int(prhs[4], "n_samples");
+  if (nrhs > 5) opts.max_iter = get_exact_int(prhs[5], "max_iter");
   if (nrhs > 6)
     opts.random_seed = static_cast<unsigned>(
       get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
@@ -1236,8 +1197,9 @@ static void cmd_build_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
   dtwc::algorithms::HierarchicalOptions opts;
-  if (nrhs > 2) opts.linkage = parse_linkage(get_string(prhs[2]));
-  if (nrhs > 3) opts.max_points = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 2)
+    opts.linkage = dtwc::parse_name(dtwc::algorithms::linkage_names, get_string(prhs[2]), "linkage");
+  if (nrhs > 3) opts.max_points = get_exact_int(prhs[3], "max_points");
 
   auto dend = dtwc::algorithms::build_dendrogram(prob, opts);
   plhs[0] = dendrogram_to_mx(dend);
@@ -1248,7 +1210,7 @@ static void cmd_cut_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArra
 
   auto dend = mx_to_dendrogram(prhs[1]);
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[2]));
-  int k = static_cast<int>(get_scalar(prhs[3]));
+  int k = get_exact_int(prhs[3], "k");
 
   auto result = dtwc::algorithms::cut_dendrogram(dend, prob, k);
   plhs[0] = clustering_result_to_mx(result);
@@ -1295,8 +1257,8 @@ static void cmd_calinski_harabasz(int nlhs, mxArray *plhs[], int nrhs, const mxA
 
 static void cmd_adjusted_rand(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("adjusted_rand requires two label vectors.");
-  const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
-  const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
+  const std::vector<int> labels1 = label_vector(prhs[1], "labels_1");
+  const std::vector<int> labels2 = label_vector(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
     throw std::invalid_argument("Label vectors must have the same length.");
 
@@ -1305,8 +1267,8 @@ static void cmd_adjusted_rand(int nlhs, mxArray *plhs[], int nrhs, const mxArray
 
 static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("normalized_mutual_info requires two label vectors.");
-  const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
-  const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
+  const std::vector<int> labels1 = label_vector(prhs[1], "labels_1");
+  const std::vector<int> labels2 = label_vector(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
     throw std::invalid_argument("Label vectors must have the same length.");
 
@@ -1387,6 +1349,22 @@ static void cmd_Result_save(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
   res.save(std::filesystem::path(get_string(prhs[2])));
 }
 
+/// Result_distance_matrix(handle) -> N x N matrix: dtwc::Result::distance_matrix
+/// (row-major) unpacked into MATLAB's column-major layout.
+static void cmd_Result_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2)
+    throw std::invalid_argument("Result_distance_matrix requires a handle.");
+  const auto &res = *HandleManager<dtwc::Result>::get(get_handle(prhs[1]));
+  const std::vector<double> flat = res.distance_matrix();
+  const size_t n = res.labels().size();
+  mxArray *out = mxCreateDoubleMatrix(n, n, mxREAL);
+  double *dst = mxGetDoubles(out);
+  for (size_t i = 0; i < n; ++i)
+    for (size_t j = 0; j < n; ++j)
+      dst[i + j * n] = flat[i * n + j];
+  plhs[0] = out;
+}
+
 /// DTWClustering_compute_distance_matrix(X, band, metric) -> N x N matrix.
 /// The estimator's non-L1 route: the same exact builder the Python estimator
 /// uses when metric != 'l1' (Problem's lazy matrix is intrinsically L1).
@@ -1426,13 +1404,13 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
     throw std::invalid_argument("cluster requires data matrix and k.");
 
   auto series = matrix_to_series(prhs[1]);
-  int k = static_cast<int>(get_scalar(prhs[2]));
+  int k = get_exact_int(prhs[2], "k");
 
   int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
+  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
 
   int max_iter = 100;
-  if (nrhs > 5) max_iter = static_cast<int>(get_scalar(prhs[5]));
+  if (nrhs > 5) max_iter = get_exact_int(prhs[5], "max_iter");
 
   const size_t N = series.size();
   std::vector<std::string> names(N);
@@ -1510,7 +1488,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Problem properties
     else if (cmd == "Problem_set_data") cmd_Problem_set_data(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_band") cmd_Problem_set_band(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_get_band") cmd_Problem_get_band(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_verbose") cmd_Problem_set_verbose(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_max_iter") cmd_Problem_set_max_iter(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_n_repetition") cmd_Problem_set_n_repetition(nlhs, plhs, nrhs, prhs);
@@ -1520,7 +1497,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_set_device") cmd_Problem_set_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_variant") cmd_Problem_set_variant(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_size") cmd_Problem_get_size(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_get_cluster_size") cmd_Problem_get_cluster_size(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_name") cmd_Problem_get_name(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_centroids") cmd_Problem_get_centroids(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_clusters") cmd_Problem_get_clusters(nlhs, plhs, nrhs, prhs);
@@ -1578,6 +1554,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "tier1_cluster") cmd_tier1_cluster(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_score") cmd_Result_score(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_save") cmd_Result_save(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Result_distance_matrix") cmd_Result_distance_matrix(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_delete") cmd_Result_delete(nlhs, plhs, nrhs, prhs);
     else if (cmd == "DTWClustering_compute_distance_matrix")
       cmd_DTWClustering_compute_distance_matrix(nlhs, plhs, nrhs, prhs);
