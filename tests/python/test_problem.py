@@ -242,6 +242,23 @@ class TestClusterFirst:
         outcome = self._outcome(tmp_path, setup, "p.find_total_cost()")
         assert re.match(r"InvalidInput: find_total_cost: .*2 medoids for k = 3", outcome), outcome
 
+    @pytest.mark.parametrize(
+        "call, who",
+        [("p.find_total_cost()", "find_total_cost"),
+         ("dtwcpp.silhouette(p)", "silhouette"),
+         ("dtwcpp.inertia(p)", "inertia")],
+    )
+    def test_replacing_the_series_with_as_many_drops_the_clustering(self, tmp_path, call, who):
+        """The old labels describe the old series, so a same-N set_data must not leave them counting."""
+        setup = "\n".join([
+            "p.set_n_clusters(2)",
+            "p.cluster()",
+            "p.find_total_cost()",
+            "p.set_data([[7.0, 7.5, 8.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]], ['a', 'b', 'c'])",
+        ])
+        outcome = self._outcome(tmp_path, setup, call)
+        assert re.match(rf"InvalidInput: {who}: .*holds no clustering.*cluster it first", outcome), outcome
+
     def test_after_clustering_the_readers_work(self, tmp_path):
         p = dtwcpp.Problem("first")
         p.set_data(self._DATA, ["a", "b", "c"])

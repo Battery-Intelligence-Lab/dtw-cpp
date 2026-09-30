@@ -86,6 +86,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W6e never-released Python and MATLAB aliases and the bindings of deleted surface go (Python half: W6e 6f5048c, 7f6a46a; merged fe1bf9b; MATLAB half W6m 8cde5c1, fef03d7, 289cc0f, dcc6c9a, 7cb8cf8, 4ee4d19, 883e5cd; merged e053594)
 - ☑ B1 the Python binding checks every index it passes into unchecked C++ (`series`, `series_name`, `centroid_of`); `clusters_ind` / `centroids_ind` read-only, `set_result` bound as the write route (B1 2f8dc96; merged 4968d44)
 - ☑ B2 the clustering outputs stay empty until a clustering writes them and one `require_clustered` guards every whole-result reader (a crash before); `set_n_clusters(k < 1)` and `set_band(b < -1)` are refused (B2 0765ec7, 974a4a4, d64c1d1, 463d642, 03fc6a3; merged e0085fd)
+- ☑ B3 `fast_pam` `max_iter = 0` is BUILD only in every language, a negative count refused once in C++; `set_data` / `set_view_data` clear the clustering; dead `Nc` guards go (B3 049126e, bb2db4c, c814845; merged 65edcf7)
 - ☐ W6f C++ tests of deleted surface trimmed
 - ☑ `test_run_resolution` runs MIP and LR-core on the CPU without a HiGHS guard: 2 of 7 cases fail in a build with
   `DTWC_ENABLE_HIGHS=OFF` (as `build/arrow-pyarrow-23`); guard them (Y3 merge report) (G1 `0c695c6`; merged 1bb9413; only MIP needs HiGHS — LR-core is exact without it; the GPU branch of the test is unproven without a CUDA build lacking HiGHS)
@@ -116,8 +117,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W4d CUDA: `KernelOverride` and fallback flags go; `gpu_config.cuh` reads attributes once at bind (sm_120 FP64
   fixed; its mutex and atomics go); FP32 L = 4095–4096 "invalid argument" fixed (the 48 KiB check ignores static
   shared memory; W4a) (W4d 4479ec0, 3a1e54e, e4a1d77, d46ac35, f22155f, 6b83682, d62c417, c3e24ae, 350ae39, a14454b; merged febd25f)
-- ☐ W4e Metal: one pipeline, one wavefront template, scratch failure → `DeviceError` (macOS CI)
-- ☐ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset
+- ☐ W4e Metal: one pipeline, one wavefront template, scratch failure → `DeviceError` (macOS CI) — a bad_alloc in Metal's out.resize leaks its released buffers (W13a review)
+- ☑ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset (W13a e9216f4, ccc07db, c67dd3f, 71a26b6, 08db34d, 1affff2, ace7f07; merged 62d5822; no fill.cpp — the fill was already one function; FP32 L 100 fill 0.756× base time, host memory at N 20,000 L 1000 6.2 → 1.6 GB)
   (the N ≤ 65,536 refusal goes); a backend refuses before the N×N matrix is allocated — today `Problem` resizes first,
   so a huge N on a host without a GPU hits bad_alloc before DeviceError (W4d review)
 - ☐ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C
@@ -139,7 +140,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 ## E — interface (W7 → W8 ‖ W9 + W10)
 
 - ☐ W7a `DistanceConfig`; `set_distance / set_band / set_metric / set_variant / set_missing_strategy`
-  invalidate the matrix; `bool filled_` — MATLAB cannot set `msm_c`, `twe_nu`, `twe_lambda` today (W6m)
+  invalidate the matrix; `bool filled_` — MATLAB cannot set `msm_c`, `twe_nu`, `twe_lambda` today (W6m); the same setters clear the clustering too (B3)
 - ☐ W7b `resolve_dtw_fn(const DistanceConfig&)`; O(1) `dist_by_ind`; the preflight machinery goes. Acceptance:
   `dist_by_ind`'s parallel read path has no critical, atomic, validation flag or lazy allocation; a method that
   needs the matrix prepares it serially at entry
@@ -153,7 +154,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W8b one writer (`write_result_files`); `Result::save` after streaming fixed
 - ☐ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1)
 - ☐ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases
-- ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits)
+- ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
 - ☐ W9c `hpc` → `job.toml`; the positional transport goes
 - ☐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
   regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists

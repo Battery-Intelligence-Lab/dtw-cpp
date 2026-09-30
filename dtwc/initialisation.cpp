@@ -62,8 +62,6 @@ void random_with(Problem &prob, Shuffle &shuffle)
 {
   const auto Nc = prob.n_clusters();
 
-  if (Nc <= 0)
-    throw InvalidInput("init::random has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
   if (prob.size() == 0 || static_cast<std::size_t>(Nc) > prob.size())
     throw InvalidInput("init::random requires 1 <= number of clusters <= number of series");
 
@@ -82,8 +80,6 @@ void kmeanspp_with(Problem &prob, FirstIndex &first_index,
   // First cluster is selected at random, others are selected based on distance.
   const auto Nc = prob.n_clusters();
 
-  if (Nc <= 0)
-    throw InvalidInput("init::Kmeanspp has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
   if (prob.size() == 0 || static_cast<std::size_t>(Nc) > prob.size())
     throw InvalidInput("init::Kmeanspp requires 1 <= number of clusters <= number of series");
 

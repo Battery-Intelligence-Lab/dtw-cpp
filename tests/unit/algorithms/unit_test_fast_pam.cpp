@@ -12,12 +12,16 @@
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <set>
 #include <string>
 #include <system_error>
@@ -27,6 +31,8 @@
 #define DTWC_TEST_DATA_DIR "./data"
 #endif
 
+using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::MessageMatches;
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 
@@ -385,6 +391,75 @@ TEST_CASE("FastPAM throws on invalid inputs", "[fast_pam][errors]")
     Problem prob("empty");
     REQUIRE_THROWS_AS(fast_pam(prob, 1), std::runtime_error);
   }
+}
+
+// ===========================================================================
+// max_iter: 0 is the BUILD-only oracle (the seeded start, no SWAP); a negative
+// count has no meaning and is refused here, once, for every binding.
+// ===========================================================================
+namespace {
+
+/// Eight series [i, i+0.01, i-0.02, i+0.03]: ambiguous enough that the seeded BUILD
+/// medoids differ from the SWAP optimum. The Python and MATLAB suites pin the same
+/// medoids on the same series.
+Problem make_offset_problem()
+{
+  std::vector<std::vector<data_t>> vecs;
+  std::vector<std::string> names;
+  for (int i = 0; i < 8; ++i) {
+    const double base = i;
+    vecs.push_back({ base, base + 0.01, base - 0.02, base + 0.03 });
+    names.push_back(std::to_string(i));
+  }
+  Problem prob("fast_pam_offset");
+  prob.set_data(Data(std::move(vecs), std::move(names)));
+  return prob;
+}
+
+} // namespace
+
+TEST_CASE("FastPAM max_iter = 0 returns the seeded BUILD medoids and runs no SWAP",
+          "[fast_pam][max_iter]")
+{
+  auto prob = make_offset_problem();
+
+  const auto build_29 = fast_pam_seeded(prob, 3, 29, 0);
+  CHECK(build_29.medoid_indices == std::vector<int>{ 4, 2, 7 });
+  CHECK(build_29.iterations == 0);
+  CHECK_FALSE(build_29.converged);
+
+  const auto build_42 = fast_pam_seeded(prob, 3, 42, 0);
+  CHECK(build_42.medoid_indices == std::vector<int>{ 6, 2, 5 });
+
+  const auto unseeded = fast_pam(prob, 3, 0);
+  CHECK(unseeded.medoid_indices.size() == 3);
+  CHECK(unseeded.iterations == 0);
+  CHECK_FALSE(unseeded.converged);
+
+  // With a SWAP budget seed 29 leaves {4, 2, 7} for {4, 1, 7}.
+  const auto swapped = fast_pam_seeded(prob, 3, 29, 100);
+  CHECK(swapped.medoid_indices == std::vector<int>{ 4, 1, 7 });
+  CHECK_THAT(swapped.total_cost, WithinAbs(20.0, 1e-9));
+  CHECK(swapped.converged);
+}
+
+TEST_CASE("FastPAM refuses a negative max_iter before it touches the Problem",
+          "[fast_pam][max_iter][errors]")
+{
+  const int bad = GENERATE(-1, -100, std::numeric_limits<int>::min());
+  CAPTURE(bad);
+  auto prob = make_offset_problem();
+  prob.set_n_clusters(2);
+
+  REQUIRE_THROWS_MATCHES(fast_pam(prob, 3, bad), InvalidInput,
+                         MessageMatches(ContainsSubstring("fast_pam: max_iter")
+                                        && ContainsSubstring("got " + std::to_string(bad))));
+  REQUIRE_THROWS_MATCHES(fast_pam_seeded(prob, 3, 29, bad), InvalidInput,
+                         MessageMatches(ContainsSubstring("fast_pam_seeded: max_iter")
+                                        && ContainsSubstring("got " + std::to_string(bad))));
+  CHECK_FALSE(prob.is_distance_matrix_filled()); // refused before any distance was computed
+  CHECK(prob.labels().empty());
+  CHECK(prob.n_clusters() == 2);
 }
 
 // ===========================================================================

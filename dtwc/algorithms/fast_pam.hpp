@@ -33,7 +33,10 @@ class Problem; // Forward declaration
  * @param prob      Problem instance with data loaded. fill_distance_matrix() will
  *                  be called if the distance matrix is not yet filled.
  * @param n_clusters Number of clusters (k).
- * @param max_iter  Maximum number of SWAP iterations (default: 100).
+ * @param max_iter  Maximum number of SWAP iterations (default: 100). 0 returns the
+ *                  BUILD medoids without a SWAP (`converged` false), which is how the
+ *                  BUILD phase is observed alone; k = 1 needs no SWAP and always
+ *                  returns the exact 1-median.
  * @return core::ClusteringResult containing labels, medoid indices, total cost, etc.
  *
  * @note 2.0 (Task 1.6): on return this WRITES the result back into `prob`
@@ -42,7 +45,8 @@ class Problem; // Forward declaration
  *       with no manual wiring. In 1.x it left prob untouched and the bindings
  *       wired the result in; that binding auto-wire moves into core here.
  * @note Requires prob to have data loaded (prob.size() > 0).
- * @throws InvalidInput if the problem is empty or `n_clusters` is outside `[1, N]`.
+ * @throws InvalidInput if the problem is empty, `n_clusters` is outside `[1, N]` or
+ *         `max_iter` is negative.
  */
 core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter = 100);
 
@@ -52,7 +56,9 @@ core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter 
  * BUILD uses k-median++ D-sampling because PAM minimizes the sum of DTW
  * distances. This intentionally differs from squared-objective barycenter
  * k-means initialization, whose weights are already squared local costs.
- * @throws InvalidInput if the problem is empty or `n_clusters` is outside `[1, N]`.
+ * `max_iter` reads as in fast_pam: 0 is BUILD only, a negative count is refused.
+ * @throws InvalidInput if the problem is empty, `n_clusters` is outside `[1, N]` or
+ *         `max_iter` is negative.
  */
 core::ClusteringResult fast_pam_seeded(Problem& prob, index_t n_clusters,
                                        std::uint64_t random_seed, int max_iter = 100);

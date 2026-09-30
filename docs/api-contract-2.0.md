@@ -294,7 +294,8 @@ in the MEX); it has no series, name or medoid accessor.
 A `Problem` holds a clustering when `clusters_ind` has one label per series and
 `centroids_ind` one medoid per cluster. Both stay empty until a clustering writes
 them (`set_result`, `set_clusters` for the medoids, the algorithms):
-`set_n_clusters` sizes neither. `find_total_cost`, `write_clusters`,
+`set_n_clusters` sizes neither, and `set_data` and `set_view_data` empty both (the
+labels describe the series they were computed on). `find_total_cost`, `write_clusters`,
 `print_clusters`, `write_medoid_members`, `calculate_medoids`, the scores and
 Python's `centroid_of` raise `InvalidInput` ("... cluster it first") on a
 `Problem` that holds none, one check per call; C++ `centroid_of(i)` stays
@@ -445,6 +446,11 @@ adjudicated in §10 item 1.
 | FastCLARA | `algorithms::fast_clara(Problem&, CLARAOptions)` | `fast_clara(prob, n_clusters, sample_size=-1, n_samples=5, max_iter=100, seed=42)` | `fast_clara(prob, k, ...)` |
 | dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` | `build_dendrogram(prob, ...)` |
 | dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, int k)` | `cut_dendrogram(dend, prob, k)` | `cut_dendrogram(dend, prob, k)` |
+
+**`max_iter` of `fast_pam`.** `0` returns the BUILD medoids without a SWAP
+(`converged` false) in all three languages; a negative count raises `InvalidInput`
+from the C++ core, and neither binding checks it again. `fast_clara`, the
+`Problem` setter and the Tier-1 `cluster` give `0` no meaning and refuse it.
 
 **Result write-back (implemented).** `fast_pam`/`fast_clara` and
 `cut_dendrogram` write `labels`/`medoids`/`k` back into `Problem` in C++.
