@@ -137,7 +137,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 - ☑ W11a `Problem`, `Data`, `ClusteringResult`, `Config`, algorithm signatures and loops; `[[deprecated]]`
   `set_clusters(std::vector<int>)` for one release (W11a 5cb6693, 28cb2eb, e84ef04, 77e4227; merged cfeac4b; CLI outputs and conformance byte-identical; PAM swap counters identical)
-- ☐ W11b Python `np.int64`, MATLAB double 1-based labels
+- ☑ W11b Python `np.int64`, MATLAB double 1-based labels (W11b d3f5aaf, 9d9233d, 07cbf78; merged 8a9db51)
 
 ## E — interface (W7 → W8 ‖ W9 + W10)
 
