@@ -265,6 +265,21 @@ TEST_CASE("F25: the Problem writers name series in every storage mode",
   CHECK_THAT(text, ContainsSubstring("gamma,gamma"));
 }
 
+TEST_CASE("B-05: an output folder that cannot be created is an IOError",
+          "[problem][b05][io]")
+{
+  // A child of a regular file cannot be created on any platform. The run
+  // artefacts are the first thing cluster_and_process writes, so it fails there.
+  ScratchDirectory dir{ "b05_uncreatable" };
+  const auto blocker = dir.path / "blocker";
+  write_text(blocker, "not a directory\n");
+  auto prob = six_series("b05_uncreatable");
+  prob.set_n_clusters(2);
+  prob.set_output_folder(blocker / "deep" / "nested" / "path");
+
+  REQUIRE_THROWS_AS(prob.cluster_and_process(), dtwc::IOError);
+}
+
 #ifndef _WIN32
 namespace {
 

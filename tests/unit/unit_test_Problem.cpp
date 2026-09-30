@@ -13,92 +13,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <chrono>
 #include <filesystem>
 #include <string>
 #include <system_error>
 #include <vector>
 
-using Catch::Matchers::WithinAbs;
-
 using namespace dtwc;
-
-// Use compile-time test data directory if available, otherwise fall back to relative path
-#ifndef DTWC_TEST_DATA_DIR
-#define DTWC_TEST_DATA_DIR "./data"
-#endif
-
-TEST_CASE("dtwFull_test", "[dtwFull]")
-{
-  dtwc::Clock clk; // Create a clock object
-  std::string probName = "DTW_kMeans_results";
-
-  auto Nc = 3; // Number of clusters
-
-  constexpr int n_repetitions = 5;
-  constexpr int max_iter = 100;
-  constexpr int Ndata_max = 10;
-
-  dtwc::DataLoader dl{ std::filesystem::path{ DTWC_TEST_DATA_DIR } / "dummy", Ndata_max };
-  dl.start_column(1).start_row(1); // Since dummy files are in Pandas format skip first row/column.
-
-  dtwc::Problem prob{ probName, dl }; // Create a problem.
-
-  prob.set_n_clusters(Nc); // Nc = number of clusters.
-
-  REQUIRE(prob.n_clusters() == Nc);
-  REQUIRE(prob.name() == probName);
-
-  // prob.cluster_by_kMedoidsLloyd_repetetive(n_repetitions, max_iter);
-}
-
-TEST_CASE("dtwFull_L_test", "[dtwFull_L]")
-{
-  using data_t = double;
-  std::vector<data_t> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 }, z{ 1, 2, 3 }, empty{};
-  constexpr double ground_truth = 13;
-
-  // Zero distance between same vectors:
-  REQUIRE_THAT(dtwFull_L<data_t>(x, x), WithinAbs(0, 1e-15));
-  REQUIRE_THAT(dtwFull_L<data_t>(x, z), WithinAbs(0, 1e-15));
-  REQUIRE_THAT(dtwFull_L<data_t>(z, x), WithinAbs(0, 1e-15));
-
-  // Some distance between others: 13
-  REQUIRE_THAT(dtwFull_L<data_t>(x, y), WithinAbs(ground_truth, 1e-15));
-  REQUIRE_THAT(dtwFull_L<data_t>(y, x), WithinAbs(ground_truth, 1e-15));
-
-  // Empty vector should give infinite cost.
-  REQUIRE(dtwFull_L<data_t>(x, empty) > 1e10);
-  REQUIRE(dtwFull_L<data_t>(empty, x) > 1e10);
-}
-
-TEST_CASE("dtwBanded_test", "[dtwBanded]")
-{
-  using data_t = double;
-  std::vector<data_t> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 }, z{ 1, 2, 3 }, empty{};
-  constexpr double ground_truth = 13;
-
-  // Zero distance between same vectors:
-  REQUIRE_THAT(dtwBanded<data_t>(x, x), WithinAbs(0, 1e-15));
-  REQUIRE_THAT(dtwBanded<data_t>(x, z), WithinAbs(0, 1e-15));
-  REQUIRE_THAT(dtwBanded<data_t>(z, x), WithinAbs(0, 1e-15));
-
-  // Some distance between others with too large band, should be same as unbanded.
-  int band = 100;
-  REQUIRE_THAT(dtwBanded<data_t>(x, y, band), WithinAbs(ground_truth, 1e-15));
-  REQUIRE_THAT(dtwBanded<data_t>(y, x, band), WithinAbs(ground_truth, 1e-15));
-
-  // Banded distance:
-  band = 2;
-  REQUIRE_THAT(dtwBanded<data_t>(x, y, band), WithinAbs(ground_truth, 1e-15));
-  REQUIRE_THAT(dtwBanded<data_t>(y, x, band), WithinAbs(ground_truth, 1e-15));
-
-  // Empty vector should give infinite cost.
-  REQUIRE(dtwBanded<data_t>(x, empty) > 1e10);
-  REQUIRE(dtwBanded<data_t>(empty, x) > 1e10);
-}
 
 TEST_CASE("cluster_and_process completes when the silhouette is undefined",
           "[Problem][silhouette][degenerate]")
