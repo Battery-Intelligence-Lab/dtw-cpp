@@ -1023,8 +1023,10 @@ void Problem::fillDistanceMatrix_BruteForce()
   //
   // Row i first takes its columns W at a time through the lane function, where
   // the block's series are as long as series i and not all its pairs are known;
-  // each of those distances is bitwise the per-pair one. The block at the row's
-  // end repeats its last column in the lanes past it, whose results are dropped.
+  // each of those distances is the per-pair one (bit for bit, unless the compiler
+  // contracts a multiply-add in one kernel and not the other). The block at the
+  // row's end repeats its last column in the lanes past it, whose results are
+  // dropped.
   // The per-pair loop then fills the rest: mixed-length blocks, every pair
   // without a lane function.
   auto fill_lanes = [&](size_t i, auto x, auto column, const auto &block) {

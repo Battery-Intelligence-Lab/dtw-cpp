@@ -48,8 +48,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   results are unchanged digit for digit.
 - **Changed (performance):** the CPU distance-matrix fill computes standard DTW (L1 or squared-L2 cost, univariate, no
   missing-data strategy) between a series and 8 others of its length at once (16 in `float32`), one pair per SIMD lane; every
-  distance is bit for bit what the one-pair kernel returns. On an Intel Core Ultra 9 285 (24 threads) the unbanded fill of
-  ECG5000's 4,500 series drops from 66 s to 3.9 s, and a band-50 fill of 50 series of length 1,000 runs 5.1× faster.
+  distance is what the one-pair kernel returns, bit for bit unless the compiler contracts a multiply-add into an FMA in one
+  kernel and not the other (GCC does by default), in which case the two differ in the last bits. On an Intel Core Ultra 9 285
+  (24 threads) the unbanded fill of ECG5000's 4,500 series drops from 66 s to 3.9 s, and a band-50 fill of 50 series of
+  length 1,000 runs 5.1× faster.
 - **Changed (performance):** OneBatchPAM's final exact assignment, each of the N series against the k medoids (N-1 DTW calls
   per medoid outside the batch), runs on all OpenMP threads instead of one. Labels, medoids, total cost and the distance count
   are bit for bit what the serial loop returned, at any thread count. On an Intel Core Ultra 9 285 (24 threads, shared
