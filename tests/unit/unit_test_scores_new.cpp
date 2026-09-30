@@ -104,6 +104,27 @@ TEST_CASE("Dunn Index: well-separated > poorly-separated", "[scores][dunn]")
 }
 
 // ---------------------------------------------------------------------------
+// Davies-Bouldin Index tests
+// ---------------------------------------------------------------------------
+TEST_CASE("Davies-Bouldin Index: known 4-point problem", "[scores][dbi]")
+{
+  // S_0 = (d(0,0) + d(1,0)) / 2 = 0.5, S_1 = (d(2,2) + d(3,2)) / 2 = 0.5,
+  // M_01 = d(0,2) = 5, R_01 = (0.5 + 0.5) / 5 = 0.2, DBI = (0.2 + 0.2) / 2 = 0.2.
+  auto prob = make_4point_problem();
+  REQUIRE_THAT(scores::davies_bouldin(prob), WithinAbs(0.2, 1e-12));
+}
+
+TEST_CASE("Davies-Bouldin Index: mixed clusters score worse than separated ones", "[scores][dbi]")
+{
+  // Clusters {0,2} and {1,3}, medoids 0 and 1: S_0 = S_1 = (0 + 5) / 2 = 2.5,
+  // M_01 = d(0,1) = 1, R_01 = 5 / 1 = 5, DBI = 5 (lower is better; separated: 0.2).
+  auto prob = make_4point_problem();
+  prob.clusters_ind = { 0, 1, 0, 1 };
+  prob.centroids_ind = { 0, 1 };
+  REQUIRE_THAT(scores::davies_bouldin(prob), WithinAbs(5.0, 1e-12));
+}
+
+// ---------------------------------------------------------------------------
 // Inertia tests
 // ---------------------------------------------------------------------------
 TEST_CASE("Inertia: known 4-point problem", "[scores][inertia]")
