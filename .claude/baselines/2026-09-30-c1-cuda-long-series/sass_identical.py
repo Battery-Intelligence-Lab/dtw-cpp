@@ -1,21 +1,25 @@
 """Per kernel, are two cuobjdump -sass dumps byte-identical (instructions and
-encodings, addresses included)? Kernels are matched by kernel name and the
-leading template argument (T, TILE_W); a WavefrontBuffers argument of the head
-is matched to the base kernel without it when it is Shared (E0).
+encodings, addresses included)? Kernels are matched by kernel name and template
+arguments; the wavefront's second template argument is read as a mode, whether it
+is spelled WavefrontBuffers (Shared = 0, Global = 1) or Wavefront (Preload = 0,
+Shared = 1, Global = 2), and a wavefront without it (a7d3a8f) is the Shared one.
 Usage: sass_identical.py base.txt head.txt"""
 import re
 import sys
 
 FUNC = re.compile(r"^\s*Function : (\S+)\s*$", re.M)
+MODES = {"16WavefrontBuffers": ["Shared", "Global"], "9Wavefront": ["Preload", "Shared", "Global"]}
 
 
 def key(mangled):
-    m = re.match(r"_ZN4dtwc4cuda\d+(\w+?)I([fd])(Li\d+E|LNS0_16WavefrontBuffersE(\d)E)?E", mangled)
+    m = re.match(r"_ZN4dtwc4cuda\d+(\w+?)I([fd])(Li\d+E|LNS0_(\d+\w+?)E(\d)E)?E", mangled)
     if not m:
         return mangled
-    name, t, extra, buffers = m.groups()
-    if buffers is not None:
-        return f"{name}<{t}>" if buffers == "0" else f"{name}<{t},Global>"
+    name, t, extra, enum, value = m.groups()
+    if enum is not None:
+        return f"{name}<{t},{MODES[enum][int(value)]}>"
+    if name == "dtw_wavefront_kernel":
+        return f"{name}<{t},Shared>"
     return f"{name}<{t}{',' + extra if extra else ''}>"
 
 

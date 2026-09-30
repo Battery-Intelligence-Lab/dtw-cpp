@@ -49,6 +49,9 @@ inline void require_cuda_device(bool available, const char *entry)
       "usable CUDA GPU was detected. No CPU fallback was attempted.");
 }
 
+/// The wavefront stages both series in shared memory up to this length.
+inline constexpr std::size_t kPreloadMaxLength = 512;
+
 /// @brief Shared-memory buffer count for the anti-diagonal wavefront kernels.
 ///
 /// L<=512   : preload mode (2 series + 3 anti-diagonal buffers).
@@ -59,7 +62,7 @@ inline void require_cuda_device(bool available, const char *entry)
 ///            anti-diagonal cells beyond that (Task 0.1).
 inline constexpr std::size_t wavefront_buffer_count(std::size_t max_L) noexcept
 {
-  if (max_L <= 512) return 5;
+  if (max_L <= kPreloadMaxLength) return 5;
   if (max_L > 1024 && max_L <= 2048) return 2;
   return 3;
 }

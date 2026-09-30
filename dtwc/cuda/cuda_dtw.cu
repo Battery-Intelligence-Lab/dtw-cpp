@@ -67,11 +67,14 @@ __host__ __device__ inline std::int64_t packed_slot(std::int64_t si, std::int64_
   return row * (row + 1) / 2 + (N - 1 - sj);
 }
 
-/// Where a wavefront block keeps its anti-diagonal buffers.
-enum class WavefrontBuffers { Shared, Global };
+/// What a wavefront kernel compiles. Preload (L <= kPreloadMaxLength): both
+/// series and the three anti-diagonals in shared memory, and nothing else.
+/// Shared: every shared-memory mode, chosen at run time. Global: three
+/// anti-diagonals in global memory.
+enum class Wavefront { Preload, Shared, Global };
 
 // Declared for the device setup below; defined with the other kernels.
-template <typename T, WavefrontBuffers Buffers>
+template <typename T, Wavefront Mode>
 __global__ void dtw_wavefront_kernel(
     const T *__restrict__ all_series, const int *__restrict__ lengths,
     double *__restrict__ out, int N_series, int max_L, int num_pairs,
@@ -104,7 +107,7 @@ struct DeviceLimits {
 template <typename T>
 cudaError_t open_wavefront_shared_memory(DeviceLimits &device)
 {
-  const auto kernel = dtw_wavefront_kernel<T, WavefrontBuffers::Shared>;
+  const auto kernel = dtw_wavefront_kernel<T, Wavefront::Shared>;
   cudaFuncAttributes attributes{};
   const cudaError_t error = cudaFuncGetAttributes(&attributes, kernel);
   if (error != cudaSuccess) return error;
@@ -197,16 +200,18 @@ bool resolve_fp32(CUDAPrecision precision, int device_id)
 // Shared memory layout: 3 * max_L T's (rotating anti-diagonal buffers),
 // optionally preceded by 2 * max_L T's for preloaded series data.
 //
-// WavefrontBuffers::Global, for series whose buffers do not fit a block's shared
-// memory, keeps the same 3 * max_L T's in the block's own slice of `scratch`
-// (global memory, one slice per block of the grid) and runs only the 3-buffer
-// mode, persistent; the cells, and so the distances, are the shared kernel's.
+// Wavefront::Preload compiles the preload mode alone: fewer registers, more
+// blocks per SM. Wavefront::Global, for series whose buffers do not fit a
+// block's shared memory, keeps the same 3 * max_L T's in the block's own slice
+// of `scratch` (global memory, one slice per block of the grid) and runs only
+// the 3-buffer mode, persistent. Every instantiation computes the same cells,
+// and so the same distances.
 //
 // Every kernel computes the launch's pairs first_pair .. first_pair + num_pairs - 1
 // and writes each distance, widened to the public double, to its packed_slot in
 // `out`, which holds the launch's slots from first_slot on.
 
-template <typename T, WavefrontBuffers Buffers>
+template <typename T, Wavefront Mode>
 __global__ void dtw_wavefront_kernel(
     const T *__restrict__ all_series, // [N * max_L] padded, last series first
     const int *__restrict__ lengths,       // [N] actual lengths, same order
@@ -216,7 +221,7 @@ __global__ void dtw_wavefront_kernel(
     std::int64_t first_pair, std::int64_t first_slot,
     T *__restrict__ scratch)          // [gridDim.x * 3 * max_L], Global only
 {
-  constexpr bool global_buffers = Buffers == WavefrontBuffers::Global;
+  constexpr bool global_buffers = Mode == Wavefront::Global;
   const int tid = threadIdx.x;
   const int nthreads = blockDim.x;
 
@@ -226,8 +231,9 @@ __global__ void dtw_wavefront_kernel(
       : static_cast<T>(1.7976931348623157e+308); // DBL_MAX
 
   // Preload threshold: series shorter than this are loaded into shared memory
-  constexpr int PRELOAD_THRESHOLD = 512;
-  const bool preload = !global_buffers && (max_L <= PRELOAD_THRESHOLD);
+  constexpr int PRELOAD_THRESHOLD = static_cast<int>(detail::kPreloadMaxLength);
+  const bool preload = Mode == Wavefront::Preload
+      || (Mode == Wavefront::Shared && max_L <= PRELOAD_THRESHOLD);
 
   // Shared memory layout:
   //   Preload mode:  [0..max_L) row_buf, [max_L..2*max_L) col_buf,
@@ -977,25 +983,31 @@ void launch_dtw_kernel(
   // The wavefront loops persistent blocks over a launch that has many more
   // pairs than fit on the device at once, one block per pair otherwise. A
   // shared-memory block holds wavefront_buffer_count's diagonal buffers, which
-  // select_kernel fitted to the opt-in maximum that device_limits opened once.
-  // The global-memory wavefront always runs persistent, each block in its own
-  // slice of scratch, on at most one block per pair of a launch.
+  // select_kernel fitted to the opt-in maximum that device_limits opened once;
+  // up to kPreloadMaxLength its kernel is the preload mode compiled alone: 40
+  // registers instead of 68 (FP32) or 79 (FP64), so up to 6 blocks per SM
+  // instead of 3, and 11.5-18.5 % less time at L 257-512 in FP32 and FP64
+  // (.claude/baselines/2026-09-30-c1-cuda-long-series.md). The global-memory
+  // wavefront always runs persistent, each block in its own slice of scratch,
+  // on at most one block per pair of a launch.
   const bool global = kernel_path == detail::KernelPath::WavefrontGlobal;
   const bool wavefront = global || kernel_path == detail::KernelPath::Wavefront;
   constexpr int block_size = 256;
   const size_t wavefront_shared_mem =
       global ? 0 : detail::wavefront_buffer_count(max_L) * max_L * sizeof(T);
+  const auto shared_kernel = max_L <= detail::kPreloadMaxLength
+      ? dtw_wavefront_kernel<T, Wavefront::Preload>
+      : dtw_wavefront_kernel<T, Wavefront::Shared>;
   const auto &device = device_limits(device_id);
   int persistent_grid = 0;
   if (wavefront) {
     int blocks_per_sm = 0;
     if (global)
       cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-          &blocks_per_sm, dtw_wavefront_kernel<T, WavefrontBuffers::Global>, block_size, 0);
+          &blocks_per_sm, dtw_wavefront_kernel<T, Wavefront::Global>, block_size, 0);
     else
       cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-          &blocks_per_sm, dtw_wavefront_kernel<T, WavefrontBuffers::Shared>, block_size,
-          wavefront_shared_mem);
+          &blocks_per_sm, shared_kernel, block_size, wavefront_shared_mem);
     persistent_grid = device.sm_count * std::max(blocks_per_sm, 1);
   }
   // A global block's slice holds three anti-diagonals of max_L values. The grid
@@ -1106,13 +1118,13 @@ void launch_dtw_kernel(
       config.attrs = &carveout_attribute;
       config.numAttrs = carveout ? 1 : 0;
       CUDA_CHECK(cudaLaunchKernelEx(
-          &config, dtw_wavefront_kernel<T, WavefrontBuffers::Shared>,
+          &config, shared_kernel,
           workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
           N_series, static_cast<int>(max_L), count, use_squared_l2, band,
           persistent ? workspace.d_counter.get() : nullptr, first, first_slot, nullptr));
     } else if (global) {
       CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
-      dtw_wavefront_kernel<T, WavefrontBuffers::Global><<<global_grid, block_size, 0, stream>>>(
+      dtw_wavefront_kernel<T, Wavefront::Global><<<global_grid, block_size, 0, stream>>>(
           workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
           N_series, static_cast<int>(max_L), count, use_squared_l2, band,
           workspace.d_counter.get(), first, first_slot, workspace.d_scratch.get());

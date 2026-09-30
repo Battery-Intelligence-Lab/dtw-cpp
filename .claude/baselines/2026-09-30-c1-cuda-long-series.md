@@ -178,3 +178,48 @@ Confirmation of the R2 build against base, 19:57–19:59 (`step2_confirm_r2.txt`
 0.847, 2644 0.815, 2645 1.002 (not applied), 3000 0.999; FP64 2049 1.002. SASS byte-identical to step 1 (host change).
 CUDA tree ctest 121 / 0 failed, `test_cuda_correctness` 59 / 7169 (the regime test runs FP32 L = 2049 with the
 attribute, bit for bit). The clang tree compiles none of it (`ninja: no work to do`).
+
+## Step 3 — the preload wavefront compiled apart (W4a: −15–17 % at FP32 L 257–500)
+
+Change: a third instantiation, `dtw_wavefront_kernel<T, Preload>`, compiles only the preload mode (both series and the
+three anti-diagonals in shared memory); the host launches it for max_L ≤ 512, where the one kernel ran its preload mode.
+W4a's clone without the double-buffer branch needed 44 instead of 68 registers (FP32) and ran 5 instead of 3 blocks per
+SM. The `Shared` instantiation, used from L = 513, stays byte-identical (its preload branch is no longer reached);
+`kernel_used` stays `wavefront`.
+
+### Band — registered 2026-09-30 20:04 BST, before the first timed run of the head
+
+- Measure, base and head as in step 2: `long_fill`, one warm-up fill, median of 5, pinned, back to back per case. Base:
+  step 2 (`ffbede8`, sha256 `96705284…5a2d`).
+- Cases, FP32 (N): L 257 (1830), 384 (1280), 512 (1040) — the preload range; 513 (1040), 768 (750), 1024 (600).
+  FP64 (N): 257 (1000), 384 (700), 512 (520), 1024 (268).
+- Lands if every FP32 preload case has head ≤ 0.90 × base and every other case ≤ 1.05 × base (FP64 preload cases
+  included: W4a measured 0.944 at 257 and within ±5 % at 384 and 500).
+- Alternative, registered now: if only FP64 preload cases exceed 1.05, the preload kernel is used for FP32 only.
+- Noise and distances as in step 2. Neither lands: FALSIFIED, recorded, no code change. SASS: every existing kernel
+  byte-identical to step 2's.
+
+### Band results [inferred: CPU load 1–20 %; the fills are GPU-bound]
+
+Run 1, 20:07–20:11 BST (`step3_band.txt`); head sha256 `a5854726…1c54`:
+
+| case (N) | base median | head median | head / base | registered | verdict |
+| --- | --- | --- | --- | --- | --- |
+| FP32 L 257 (1830) | 1.5949 s | 1.3170 s | **0.826** | ≤ 0.90 | pass |
+| FP32 L 384 (1280) | 1.4335 s | 1.1688 s | **0.815** | ≤ 0.90 | pass |
+| FP32 L 512 (1040) | 1.4466 s | 1.2798 s | **0.885** | ≤ 0.90 | pass |
+| FP32 L 513 (1040) | 1.4660 s | 1.4643 s | 0.999 | ≤ 1.05 | pass |
+| FP32 L 768 (750) | 1.4462 s | 1.4457 s | 1.000 | ≤ 1.05 | pass |
+| FP32 L 1024 (600) | 1.5052 s | 1.5070 s | 1.001 | ≤ 1.05 | pass |
+| FP64 L 257 (1000) | 1.5140 s | 1.2494 s | **0.825** | ≤ 1.05 | pass |
+| FP64 L 384 (700) | 1.5484 s | 1.2974 s | **0.838** | ≤ 1.05 | pass |
+| FP64 L 512 (520) | 1.4635 s | 1.2514 s | **0.855** | ≤ 1.05 | pass |
+| FP64 L 1024 (268) | 1.5167 s | 1.5148 s | 0.999 | ≤ 1.05 | pass |
+
+Lands, in both precisions: 11.5–18.5 % less time at L 257–512; FP64 gains as much as FP32 (W4a's kernel-only clone,
+which still compiled the non-preload modes, measured 0.944 at FP64 257). Distances equal to base's. SASS
+(`step3_sass.txt`): every existing kernel byte-identical to a7d3a8f's (and step 2's); `Preload` has 40 registers in FP32
+and FP64 (the `Shared` kernel 68 / 79), its series loads are `LDS` and its cell is the shared kernel's (two FMNMX, one
+add). The regime test (L 257 and 512), the F12 route test (filler 257, banded, both metrics), the two-launch test (257,
+persistent) and `test_gpu_matches_cpu_large` (L 500) run it against their oracles. CUDA tree ctest 121 / 0 failed,
+`test_cuda_correctness` 59 / 7169; clang tree ctest 122 = 119 + 3 MAY_SKIP, `cpp_conformance` passed.
