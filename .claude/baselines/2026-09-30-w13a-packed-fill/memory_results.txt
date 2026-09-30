@@ -1,0 +1,17 @@
+# mem_probe <N=20000> <L=1000> <fp64=0>, base (e9fffed library) then head (c67dd3f library)
+## base, 03:53-04:20 BST (serial ctest of the clang tree ran for its first 40 s)
+03:53:27
+N=20000 L=1000 precision=FP32 fill_s=1628.531
+device: total_MB=20474.5 free_before_MB=19264.0 min_free_during_MB=17658.0 peak_fill_MB=1606.0
+host: private_before_MB=413.6 peak_private_MB=8217.5 peak_private_minus_before_MB=7804.0 working_set_before_MB=273.7 peak_working_set_MB=6456.9
+check: d(0,1)=26982.365234375 d(N-1,N-2)=6099.44482421875
+EXIT=0
+04:20:36
+## head, 14:23-14:50 BST (a Python wheel build and pytest ran alongside)
+14:23:15
+N=20000 L=1000 precision=FP32 fill_s=1649.345
+device: total_MB=20474.5 free_before_MB=19264.0 min_free_during_MB=18158.0 peak_fill_MB=1106.0
+host: private_before_MB=413.5 peak_private_MB=3129.7 peak_private_minus_before_MB=2716.3 working_set_before_MB=273.8 peak_working_set_MB=1879.3
+check: d(0,1)=26982.365234375 d(N-1,N-2)=6099.44482421875
+EXIT=0
+14:50:46
