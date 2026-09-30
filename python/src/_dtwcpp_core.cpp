@@ -969,9 +969,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("find_total_cost", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       return p.find_total_cost();
-    }, "Total cost of the current cluster assignment.
-
-"
+    }, "Total cost of the current cluster assignment.\n\n"
        "Raises InvalidInput if the Problem holds no clustering.")
     .def("assign_clusters", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
@@ -986,9 +984,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("write_clusters", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       p.write_clusters();
-    }, "Write the cluster-assignment CSV.
-
-"
+    }, "Write the cluster-assignment CSV.\n\n"
        "Raises InvalidInput if the Problem holds no clustering.")
     .def("write_medoid_members", &dtwc::Problem::write_medoid_members, "iter"_a, "rep"_a = 0)
     .def("write_distance_matrix", [](const dtwc::Problem &p) {
