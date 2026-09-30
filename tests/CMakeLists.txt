@@ -79,8 +79,7 @@ endforeach()
 # F22: every retained C++ compatibility surface forwards to its canonical name
 # (test_deprecated_shims_warn above proves the shims still warn).
 dtwc_add_test(NAME test_problem_api_2_0 SOURCE ${_dtwc_test_source_test_problem_api_2_0}
-    FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-compat" FIXTURE_DEFINE DTWC_F22_TEST_ROOT
-    SERIAL)
+    FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-compat" FIXTURE_DEFINE DTWC_F22_TEST_ROOT)
 
 # F13: nearest-medoid assignment through a multi-worker OpenMP region.
 dtwc_add_test(NAME unit_test_nearest_medoid_assignment SOURCE ${_dtwc_test_source_unit_test_nearest_medoid_assignment}
@@ -131,9 +130,6 @@ foreach(_dtwc_device_test IN ITEMS
         test_metal_correctness test_metal_mmap)
     dtwc_add_test(NAME ${_dtwc_device_test} SOURCE ${_dtwc_test_source_${_dtwc_device_test}} MAY_SKIP)
 endforeach()
-
-# The scalar-vs-ndim=1 wall-clock parity assertion must not share the machine.
-dtwc_add_test(NAME test_multivariate_adversarial SOURCE ${_dtwc_test_source_test_multivariate_adversarial} SERIAL)
 
 # Pass 2: everything else, strict. A name already handled above stays handled
 # even when REQUIRES declined to register it.
