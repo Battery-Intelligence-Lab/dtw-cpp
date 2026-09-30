@@ -235,7 +235,12 @@ __global__ void dtw_wavefront_kernel(
       ? static_cast<T>(3.402823466e+38f)    // FLT_MAX
       : static_cast<T>(1.7976931348623157e+308); // DBL_MAX
 
-  // Preload threshold: series shorter than this are loaded into shared memory
+  // Preload threshold: series shorter than this are loaded into shared memory.
+  // The host launches the Preload kernel up to it, so the Shared kernel never
+  // takes this branch, but keeps it: without it the FP32 Shared kernel needs 50
+  // registers instead of 68, runs five blocks per SM instead of three, and its
+  // fills at L 513-1024 and 2048 took 4-23 % more time on an RTX 4000 Ada
+  // (.claude/baselines/2026-09-30-c2-cuda-route.md).
   constexpr int PRELOAD_THRESHOLD = static_cast<int>(detail::kPreloadMaxLength);
   const bool preload = Mode == Wavefront::Preload
       || (Mode == Wavefront::Shared && max_L <= PRELOAD_THRESHOLD);
