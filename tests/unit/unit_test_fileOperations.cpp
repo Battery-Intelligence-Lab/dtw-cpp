@@ -8,6 +8,7 @@
  */
 
 #include <dtwc.hpp>
+#include "../support/scratch_directory.hpp"
 #include "../test_util.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -43,22 +44,19 @@ using Catch::Matchers::WithinAbs;
 using Catch::Matchers::ContainsSubstring;
 
 using namespace dtwc;
+using dtwc::test_support::ScratchDirectory;
 
 namespace {
 struct TemporaryBatchFile {
+  ScratchDirectory directory{ "batch_parser" };
   fs::path path;
 
   TemporaryBatchFile(std::string_view extension, std::string_view contents)
+    : path(directory.path / ("batch" + std::string(extension)))
   {
-    path = fs::temp_directory_path()
-         / ("dtwc_batch_parser_"
-            + std::to_string(reinterpret_cast<std::uintptr_t>(this))
-            + std::string(extension));
     std::ofstream out(path, std::ios::binary);
     out << contents;
   }
-
-  ~TemporaryBatchFile() { std::error_code ec; fs::remove(path, ec); }
 };
 
 /// The FX-6 reader fixtures in <repo>/tests/data/reader (DTWC_TEST_DATA_DIR is <repo>/data).
@@ -146,7 +144,8 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
   }
 
   // Write via Problem's write_distance_matrix mechanism (inline CSV).
-  fs::path tempFilePath = "test_distmat.csv";
+  const ScratchDirectory scratch{ "distmat_csv" };
+  const fs::path tempFilePath = scratch.path / "test_distmat.csv";
   {
     std::ofstream file(tempFilePath);
     for (size_t i = 0; i < static_cast<size_t>(N); ++i) {
@@ -179,9 +178,7 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
       ++row;
     }
     REQUIRE(row == static_cast<size_t>(N));
-  } // close inFile before removing
-
-  fs::remove(tempFilePath);
+  } // close inFile before the directory is removed
 }
 
 TEST_CASE("Problem::write_distance_matrix + read_distance_matrix end-to-end roundtrip",
@@ -212,8 +209,8 @@ TEST_CASE("Problem::write_distance_matrix + read_distance_matrix end-to-end roun
   }
   dtwc::Data data2 = data1; // deep copy — same content
 
-  const auto tmp = std::filesystem::temp_directory_path() / "dtwc_distmat_roundtrip_test";
-  std::filesystem::create_directories(tmp);
+  const ScratchDirectory scratch{ "distmat_roundtrip" };
+  const auto &tmp = scratch.path;
 
   dtwc::Problem prob1("rt");
   prob1.set_data(std::move(data1));
@@ -264,7 +261,8 @@ TEST_CASE("Write and Read Empty Matrix", "[fileOperations]")
 
 TEST_CASE("Load batch file", "[fileOperations]")
 {
-  std::string tempFileName = "test_matrix";
+  const ScratchDirectory scratch{ "batch_file" };
+  const std::string tempFileName = (scratch.path / "test_matrix").string();
 
   // Generate data:
   const int N_data = GENERATE(1, 2, 10, 1000); // Size of the outer vector
@@ -321,9 +319,6 @@ TEST_CASE("Load batch file", "[fileOperations]")
     REQUIRE_THROWS_WITH(load_batch_file<double>(pth, -1, false, 0, 0, ','),
                         ContainsSubstring("row 1 is empty"));
   }
-
-  fs::remove(tempFileName + ".csv"); // Clean up the test files
-  fs::remove(tempFileName + ".tsv"); // Clean up the test files
 }
 
 TEST_CASE("Batch loader preserves textual NaN and later fields",
@@ -437,9 +432,11 @@ TEST_CASE("Load folder", "[fileOperations]")
   const auto random_names = test_util::get_random_names(N_data, stringLength);
 
   // ----- now testing -----
+  const ScratchDirectory scratch{ "load_folder" };
+
   SECTION("csv batch load")
   {
-    std::string folder("CSV");
+    const std::string folder = (scratch.path / "CSV").string();
     test_util::write_data_to_folder(folder, random_data, random_names);
     fs::path pth = folder;
     int start_row{ 0 }, start_col{ 1 };
@@ -455,8 +452,6 @@ TEST_CASE("Load folder", "[fileOperations]")
       REQUIRE(p_vec[j] == random_data[i]);
     }
   }
-
-  fs::remove_all("CSV"); // Clean up the test files
 }
 
 TEST_CASE("Problem::read_distance_matrix propagates a failed read",
@@ -468,9 +463,8 @@ TEST_CASE("Problem::read_distance_matrix propagates a failed read",
   // matrix from <path>" straight after "Distance matrix could not be read!".
   // The failure must reach the caller; the CLI already owns the handler that
   // decides to continue without a precomputed matrix.
-  const auto tmp =
-    std::filesystem::temp_directory_path() / "dtwc_read_distmat_failure_test";
-  std::filesystem::create_directories(tmp);
+  const ScratchDirectory scratch{ "read_distmat_failure" };
+  const auto &tmp = scratch.path;
 
   SECTION("absent file")
   {
@@ -503,10 +497,8 @@ TEST_CASE("Directory-source series names are UTF-8 on every platform",
   const std::u8string stem = u8"caf\u00e9";
   const std::string expected_utf8 = "caf\xc3\xa9";
 
-  const auto folder = fs::temp_directory_path()
-                    / ("dtwc_utf8_names_"
-                       + std::to_string(reinterpret_cast<std::uintptr_t>(&stem)));
-  fs::create_directories(folder);
+  const ScratchDirectory scratch{ "utf8_names" };
+  const fs::path &folder = scratch.path;
   const auto file = folder / fs::path(stem + u8".csv");
   {
     std::ofstream out(file);
@@ -529,9 +521,6 @@ TEST_CASE("Directory-source series names are UTF-8 on every platform",
   CHECK(utf8_to_path("plain.csv").string() == "plain.csv");
   const std::string native_ansi = "caf\xe9.csv"; // lone 0xE9: not valid UTF-8
   CHECK(utf8_to_path(native_ansi).string() == native_ansi);
-
-  std::error_code ec;
-  fs::remove_all(folder, ec);
 }
 
 // ---------------------------------------------------------------------------
@@ -601,10 +590,8 @@ TEST_CASE("FX-6 the legacy ,0 header is skipped only when no row is skipped",
 TEST_CASE("FX-6 dot-files in a series folder are not series",
           "[fileOperations][fx6][folder]")
 {
-  const auto folder = fs::temp_directory_path() / "dtwc_fx6_dot_files";
-  std::error_code ec;
-  fs::remove_all(folder, ec);
-  fs::create_directories(folder);
+  const ScratchDirectory scratch{ "fx6_dot_files" };
+  const fs::path &folder = scratch.path;
   std::ofstream(folder / "a.csv") << "1\n2\n3\n";
   std::ofstream(folder / "b.csv") << "4\n5\n6\n";
   std::ofstream(folder / ".gitkeep").close(); // was an empty series named ".gitkeep"
@@ -613,7 +600,6 @@ TEST_CASE("FX-6 dot-files in a series folder are not series",
   const Data loaded = load_path(folder);
   CHECK(loaded.p_names == std::vector<std::string>{ "a", "b" });
   CHECK(loaded.p_vec == Series{ { 1, 2, 3 }, { 4, 5, 6 } });
-  fs::remove_all(folder, ec);
 }
 
 TEST_CASE("FX-6 ignoreBOM never seeks, so a pipe keeps its first row",
@@ -828,17 +814,15 @@ TEST_CASE("FX-6 the rest of the reader audit's input matrix",
   }
 
   // A series folder: a missing value mid-file is an error, and so is a file that is not data.
-  const auto folder = fs::temp_directory_path() / "dtwc_fx6_matrix_folder";
+  const ScratchDirectory scratch{ "fx6_matrix_folder" };
+  const fs::path &folder = scratch.path;
   std::error_code ec;
-  fs::remove_all(folder, ec);
-  fs::create_directories(folder);
   std::ofstream(folder / "a.csv", std::ios::binary) << ",0\n0,0.5\n1,\n2,0.7\n";
   CHECK_THROWS_WITH(load_path(folder, 1, 1), ContainsSubstring("row 3, column 2: empty numeric field"));
   fs::remove(folder / "a.csv", ec);
   std::ofstream(folder / "a.csv", std::ios::binary) << "1\n2\n3\n";
   std::ofstream(folder / "README.md", std::ios::binary) << "# notes\r\nsee a.csv\r\n";
   CHECK_THROWS_WITH(load_path(folder), ContainsSubstring("README.md' row 1, column 1: invalid numeric field"));
-  fs::remove_all(folder, ec);
 }
 
 TEST_CASE("FX-6 Problem rejects an empty series from any source",
@@ -862,10 +846,8 @@ TEST_CASE("FX-6 Problem rejects an empty series from any source",
   CHECK_THROWS_WITH(problem.set_view_data(view), ContainsSubstring("series 1 ('y') is empty"));
 
   // A zero-byte (non-dot) file in a folder is an empty series too.
-  const auto folder = fs::temp_directory_path() / "dtwc_fx6_empty_file";
-  std::error_code ec;
-  fs::remove_all(folder, ec);
-  fs::create_directories(folder);
+  const ScratchDirectory scratch{ "fx6_empty_file" };
+  const fs::path &folder = scratch.path;
   std::ofstream(folder / "a.csv") << "1\n2\n";
   std::ofstream(folder / "b.csv").close();
   DataLoader loader(folder);
@@ -873,7 +855,6 @@ TEST_CASE("FX-6 Problem rejects an empty series from any source",
   CHECK_THROWS_WITH((Problem{ "fx6_loader", loader }),
                     ContainsSubstring("series 1 ('b') is empty"));
   CHECK_THROWS_AS(problem.set_data(loader.load()), InvalidInput);
-  fs::remove_all(folder, ec);
 
   // Non-empty data is still accepted.
   problem.set_data(Data(Series{ { 1.0 }, { 2.0, 3.0 } }, std::vector<std::string>{ "u", "v" }));
@@ -893,12 +874,9 @@ TEST_CASE("GT-4b skip_cols wider than a row is InvalidInput, from a file as from
   CHECK_THROWS_AS(load_path(batch.path, 0, 5), InvalidInput);
 
   // A one-series-per-file folder reads one value per line from column skip_cols + 1.
-  const auto folder = fs::temp_directory_path() / "dtwc_gt4b_skip_cols_folder";
-  std::error_code ec;
-  fs::remove_all(folder, ec);
-  fs::create_directories(folder);
+  const ScratchDirectory scratch{ "gt4b_skip_cols_folder" };
+  const fs::path &folder = scratch.path;
   std::ofstream(folder / "a.csv") << "1\n2\n";
   CHECK_THROWS_AS(load_path(folder, 0, 1), InvalidInput);
   CHECK_THROWS_AS(readFile<double>(folder / "a.csv", 0, 1), InvalidInput);
-  fs::remove_all(folder, ec);
 }

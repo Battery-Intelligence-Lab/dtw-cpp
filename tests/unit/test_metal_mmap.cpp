@@ -18,6 +18,8 @@
 #include <dtwc.hpp>
 #include <algorithms/fast_clara.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #ifdef DTWC_HAS_METAL
 #include <metal/metal_dtw.hpp>
 #endif
@@ -96,8 +98,8 @@ TEST_CASE("Metal strategy via Problem::fill_distance_matrix (mmap)", "[metal][mm
   const size_t N = 6;
   const size_t L = 64;
 
-  auto tmpdir = std::filesystem::temp_directory_path() / "dtwc_metal_mmap_test";
-  std::filesystem::create_directories(tmpdir);
+  const dtwc::test_support::ScratchDirectory scratch{ "metal_mmap" };
+  const auto &tmpdir = scratch.path;
 
   auto prob_cpu = make_problem(N, L, 777);
   prob_cpu.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
@@ -131,9 +133,8 @@ TEST_CASE("Metal squared-L2 cache via Problem::fill_distance_matrix", "[metal][m
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in");
 #else
-  const auto tmpdir =
-    std::filesystem::temp_directory_path() / "dtwc_metal_mmap_test";
-  std::filesystem::create_directories(tmpdir);
+  const dtwc::test_support::ScratchDirectory scratch{ "metal_sql2_mmap" };
+  const auto &tmpdir = scratch.path;
 
   std::vector<std::vector<double>> series;
   for (size_t i = 0; i < 6; ++i) series.push_back(gen(1, 60 + i, 31 + i).front());

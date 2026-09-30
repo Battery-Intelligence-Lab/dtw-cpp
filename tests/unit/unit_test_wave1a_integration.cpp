@@ -21,6 +21,8 @@
 
 #include <dtwc.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -71,18 +73,11 @@ static std::vector<std::vector<double>> make_gaussian_series(
   return out;
 }
 
-/// A temporary directory for test output (created once, cleaned on test exit).
-/// The tests call cluster() which writes CSV files; we redirect them here so
-/// they don't fail trying to create ".\results\" in the working directory.
+/// The output directory of every Problem below: unique to this process, removed at exit.
 static fs::path g_tmp_output_dir()
 {
-  static fs::path dir = fs::temp_directory_path() / "dtwc_wave1a_test_output";
-  static bool created = [&] {
-    fs::create_directories(dir);
-    return true;
-  }();
-  (void)created;
-  return dir;
+  static const dtwc::test_support::ScratchDirectory dir{ "wave1a_output" };
+  return dir.path;
 }
 
 /// Build a Problem from a flat list of series.  No NaN assumed unless you pass

@@ -20,6 +20,8 @@
 
 #include <dtwc.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -73,17 +75,12 @@ static std::vector<double> make_mv_series_nan(std::size_t n_steps, std::size_t n
 }
 
 // ---------------------------------------------------------------------------
-// Temporary output directory for Problem-based tests
+// Output directory of the Problem-based tests: unique to this process, removed at exit
 // ---------------------------------------------------------------------------
 static fs::path g_tmp_dir()
 {
-  static fs::path dir = fs::temp_directory_path() / "dtwc_wave2b_integration_test";
-  static bool created = [] {
-    fs::create_directories(dir);
-    return true;
-  }();
-  (void)created;
-  return dir;
+  static const dtwc::test_support::ScratchDirectory dir{ "wave2b_output" };
+  return dir.path;
 }
 
 // ---------------------------------------------------------------------------

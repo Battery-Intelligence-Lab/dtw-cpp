@@ -13,6 +13,8 @@
 
 #include <dtwc.hpp>
 
+#include "../../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -43,7 +45,8 @@ static Problem make_synthetic_problem(
 
   Problem prob(name);
   prob.set_data(Data(std::move(vecs), std::move(names)));
-  prob.set_output_folder(std::filesystem::temp_directory_path());
+  static const dtwc::test_support::ScratchDirectory output{ "fast_pam_adversarial" };
+  prob.set_output_folder(output.path);
   prob.refresh_distance_matrix();
   return prob;
 }

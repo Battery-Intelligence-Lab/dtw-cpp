@@ -11,6 +11,8 @@
 
 #include <dtwc.hpp>
 
+#include "../../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -44,26 +46,9 @@ using dtwc::core::DistanceMatrix;
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::MessageMatches;
 namespace fs = std::filesystem;
+using dtwc::test_support::ScratchDirectory;
 
 namespace {
-
-/// A fresh path under the test temp directory, removed on scope exit.
-struct TempFile
-{
-  fs::path path;
-  explicit TempFile(const std::string &name)
-    : path(fs::temp_directory_path() / ("dtwc_mmap_test_" + name + ".dtwm"))
-  {
-    fs::remove(path);
-  }
-  ~TempFile()
-  {
-    std::error_code ignored;
-    fs::remove(path, ignored);
-  }
-  TempFile(const TempFile &) = delete;
-  TempFile &operator=(const TempFile &) = delete;
-};
 
 std::vector<char> file_bytes(const fs::path &path)
 {
@@ -106,25 +91,27 @@ TEST_CASE("tri_index is symmetric and packs the lower triangle row by row", "[Di
 
 TEST_CASE("map() on a build without llfio is IOError naming the build option", "[DistanceMatrix][mmap]")
 {
-  TempFile tmp("no_llfio");
-  REQUIRE_THROWS_MATCHES(DistanceMatrix::map(tmp.path, 3, {}), dtwc::IOError,
+  const ScratchDirectory tmp_dir{ "mmap_no_llfio" };
+  const fs::path tmp = tmp_dir.path / "no_llfio.dtwm";
+  REQUIRE_THROWS_MATCHES(DistanceMatrix::map(tmp, 3, {}), dtwc::IOError,
                          MessageMatches(ContainsSubstring("DTWC_ENABLE_LLFIO=ON")));
-  REQUIRE_FALSE(fs::exists(tmp.path));
+  REQUIRE_FALSE(fs::exists(tmp));
 }
 
 #else
 
 TEST_CASE("A new mapped matrix is every entry NaN under its header", "[DistanceMatrix][mmap]")
 {
-  TempFile tmp("create");
+  const ScratchDirectory tmp_dir{ "mmap_create" };
+  const fs::path tmp = tmp_dir.path / "create.dtwm";
   const auto fingerprint = fingerprint_of(0x5a);
   {
-    auto m = DistanceMatrix::map(tmp.path, 10, fingerprint);
+    auto m = DistanceMatrix::map(tmp, 10, fingerprint);
     REQUIRE(m.is_mapped());
     REQUIRE(m.size() == 10);
     REQUIRE(m.count_computed() == 0);
   }
-  const auto bytes = file_bytes(tmp.path);
+  const auto bytes = file_bytes(tmp);
   REQUIRE(bytes.size() == 48 + 55 * sizeof(double));
   REQUIRE(std::string(bytes.data(), 4) == "DTWM");
   REQUIRE(read_at<std::uint32_t>(bytes, 4) == 4);
@@ -136,24 +123,25 @@ TEST_CASE("A new mapped matrix is every entry NaN under its header", "[DistanceM
 
 TEST_CASE("A mapped matrix persists bit for bit and reopens with its values", "[DistanceMatrix][mmap]")
 {
-  TempFile tmp("persist");
+  const ScratchDirectory tmp_dir{ "mmap_persist" };
+  const fs::path tmp = tmp_dir.path / "persist.dtwm";
   const auto fingerprint = fingerprint_of(0x11);
   const std::vector<double> values{ 0.0, -0.0, 1.5, -2.25, 1e300, 5e-324, 7.0 };
   const std::size_t n = 5;
   {
-    auto m = DistanceMatrix::map(tmp.path, n, fingerprint);
+    auto m = DistanceMatrix::map(tmp, n, fingerprint);
     for (std::size_t k = 0; k < values.size(); ++k) m.raw()[k] = values[k];
     m.set(4, 3, 42.0);
   }
-  const auto bytes = file_bytes(tmp.path);
+  const auto bytes = file_bytes(tmp);
   for (std::size_t k = 0; k < values.size(); ++k)
     REQUIRE(std::bit_cast<std::uint64_t>(read_at<double>(bytes, 48 + k * sizeof(double)))
             == std::bit_cast<std::uint64_t>(values[k]));
 
   // One layout, two routes. The stream read comes first: Windows refuses a
   // second open that does not share delete access while llfio holds the file.
-  const auto streamed = DistanceMatrix::read(tmp.path, n, fingerprint);
-  const auto reopened = DistanceMatrix::map(tmp.path, n, fingerprint);
+  const auto streamed = DistanceMatrix::read(tmp, n, fingerprint);
+  const auto reopened = DistanceMatrix::map(tmp, n, fingerprint);
   REQUIRE_FALSE(streamed.is_mapped());
   for (std::size_t k = 0; k < reopened.packed_count(); ++k) {
     REQUIRE(std::bit_cast<std::uint64_t>(reopened.raw()[k]) == std::bit_cast<std::uint64_t>(streamed.raw()[k]));
@@ -167,25 +155,27 @@ TEST_CASE("A mapped matrix persists bit for bit and reopens with its values", "[
 TEST_CASE("Writing a matrix over the file it maps flushes it in place", "[DistanceMatrix][mmap]")
 {
   // A rename over a mapped file fails on Windows and would orphan the map on POSIX.
-  TempFile tmp("write_self");
+  const ScratchDirectory tmp_dir{ "mmap_write_self" };
+  const fs::path tmp = tmp_dir.path / "write_self.dtwm";
   const auto fingerprint = fingerprint_of(0x22);
   {
-    auto m = DistanceMatrix::map(tmp.path, 3, fingerprint);
+    auto m = DistanceMatrix::map(tmp, 3, fingerprint);
     m.set(2, 0, 9.5);
-    REQUIRE_NOTHROW(m.write(tmp.path, fingerprint));
+    REQUIRE_NOTHROW(m.write(tmp, fingerprint));
     REQUIRE(m.is_mapped());
-    REQUIRE_FALSE(fs::exists(fs::path(tmp.path).concat(".tmp")));
+    REQUIRE_FALSE(fs::exists(fs::path(tmp).concat(".tmp")));
     m.set(2, 1, 3.0); // still the same mapping
   }
-  const auto read_back = DistanceMatrix::read(tmp.path, 3, fingerprint);
+  const auto read_back = DistanceMatrix::read(tmp, 3, fingerprint);
   REQUIRE(read_back.get(0, 2) == 9.5);
   REQUIRE(read_back.get(1, 2) == 3.0);
 }
 
 TEST_CASE("A moved or resized matrix lets go of its file", "[DistanceMatrix][mmap]")
 {
-  TempFile tmp("release");
-  auto m = DistanceMatrix::map(tmp.path, 4, {});
+  const ScratchDirectory tmp_dir{ "mmap_release" };
+  const fs::path tmp = tmp_dir.path / "release.dtwm";
+  auto m = DistanceMatrix::map(tmp, 4, {});
   m.set(1, 0, 2.0);
   DistanceMatrix moved(std::move(m));
   REQUIRE(moved.is_mapped());
@@ -199,41 +189,44 @@ TEST_CASE("A moved or resized matrix lets go of its file", "[DistanceMatrix][mma
   REQUIRE(moved.count_computed() == 0);
   // With the handle closed the file can go on every platform.
   std::error_code ec;
-  REQUIRE(fs::remove(tmp.path, ec));
+  REQUIRE(fs::remove(tmp, ec));
   REQUIRE_FALSE(ec);
 }
 
 TEST_CASE("Zero and one series map and reopen", "[DistanceMatrix][mmap]")
 {
-  TempFile zero("n0");
-  TempFile one("n1");
-  { auto m = DistanceMatrix::map(zero.path, 0, {}); }
+  const ScratchDirectory zero_dir{ "mmap_n0" };
+  const fs::path zero = zero_dir.path / "n0.dtwm";
+  const ScratchDirectory one_dir{ "mmap_n1" };
+  const fs::path one = one_dir.path / "n1.dtwm";
+  { auto m = DistanceMatrix::map(zero, 0, {}); }
   {
-    auto m = DistanceMatrix::map(one.path, 1, {});
+    auto m = DistanceMatrix::map(one, 1, {});
     m.set(0, 0, 0.0);
   }
-  REQUIRE(fs::file_size(zero.path) == 48);
-  REQUIRE(fs::file_size(one.path) == 56);
-  REQUIRE(DistanceMatrix::map(zero.path, 0, {}).size() == 0);
-  REQUIRE(DistanceMatrix::map(one.path, 1, {}).get(0, 0) == 0.0);
+  REQUIRE(fs::file_size(zero) == 48);
+  REQUIRE(fs::file_size(one) == 56);
+  REQUIRE(DistanceMatrix::map(zero, 0, {}).size() == 0);
+  REQUIRE(DistanceMatrix::map(one, 1, {}).get(0, 0) == 0.0);
 }
 
 // A crafted N whose packed size wraps in 64 bits (2^62: N(N+1)/2 * 8 == 0 mod
 // 2^64) must not pass the length check on a header-only file.
 TEST_CASE("open rejects N that overflows packed size", "[DistanceMatrix][mmap][security]")
 {
-  TempFile tmp("overflow");
+  const ScratchDirectory tmp_dir{ "mmap_overflow" };
+  const fs::path tmp = tmp_dir.path / "overflow.dtwm";
   std::array<char, 48> header{};
   std::memcpy(header.data(), "DTWM", 4);
   const std::uint32_t version = 4;
   std::memcpy(header.data() + 4, &version, sizeof version);
   const std::uint64_t bad_n = std::uint64_t{ 1 } << 62;
   std::memcpy(header.data() + 8, &bad_n, sizeof bad_n);
-  std::ofstream(tmp.path, std::ios::binary).write(header.data(), header.size());
+  std::ofstream(tmp, std::ios::binary).write(header.data(), header.size());
 
-  REQUIRE_THROWS_MATCHES(DistanceMatrix::map(tmp.path, 3, {}), dtwc::IOError,
+  REQUIRE_THROWS_MATCHES(DistanceMatrix::map(tmp, 3, {}), dtwc::IOError,
                          MessageMatches(ContainsSubstring("not the size")));
-  REQUIRE_THROWS_AS(DistanceMatrix::read(tmp.path, 3, {}), dtwc::IOError);
+  REQUIRE_THROWS_AS(DistanceMatrix::read(tmp, 3, {}), dtwc::IOError);
 }
 
 TEST_CASE("A distance matrix stored for other data is InvalidInput, CSV and cache alike",
@@ -248,21 +241,22 @@ TEST_CASE("A distance matrix stored for other data is InvalidInput, CSV and cach
     prob.set_data(dtwc::Data(std::move(series), std::move(names)));
     return prob;
   };
-  TempFile cache("other_data");
-  const fs::path csv = fs::path(cache.path).replace_extension(".csv");
+  const ScratchDirectory cache_dir{ "mmap_other_data" };
+  const fs::path cache = cache_dir.path / "other_data.dtwm";
+  const fs::path csv = fs::path(cache).replace_extension(".csv");
   {
     auto writer = problem({ { 0, 1 }, { 1, 2 }, { 2, 4 }, { 9, 9 } });
-    writer.use_mmap_distance_matrix(cache.path);
+    writer.use_mmap_distance_matrix(cache);
     writer.fill_distance_matrix();
   }
   std::ofstream(csv) << "0,1,2,3\n1,0,1,2\n2,1,0,1\n3,2,1,0\n";
 
   auto reader = problem({ { 0, 1, 2 }, { 1, 2, 3 }, { 5, 6, 7 } });
   REQUIRE_THROWS_AS(reader.read_distance_matrix(csv), dtwc::InvalidInput);
-  REQUIRE_THROWS_AS(reader.use_mmap_distance_matrix(cache.path), dtwc::InvalidInput);
+  REQUIRE_THROWS_AS(reader.use_mmap_distance_matrix(cache), dtwc::InvalidInput);
   REQUIRE_FALSE(reader.distance_matrix().is_mapped());
   auto same_n = problem({ { 0, 1 }, { 1, 2 }, { 2, 4 }, { 9, 8 } }); // one value differs
-  REQUIRE_THROWS_MATCHES(same_n.use_mmap_distance_matrix(cache.path), dtwc::InvalidInput,
+  REQUIRE_THROWS_MATCHES(same_n.use_mmap_distance_matrix(cache), dtwc::InvalidInput,
                          MessageMatches(ContainsSubstring("fingerprint mismatch")));
   fs::remove(csv);
 }
@@ -272,16 +266,17 @@ TEST_CASE("A new mapped matrix is not a sparse file on Windows", "[DistanceMatri
 {
   // llfio's default sets FILE_ATTRIBUTE_SPARSE_FILE, and random reads from a
   // filled sparse file measured 1.9x slower.
-  TempFile tmp("sparse");
+  const ScratchDirectory tmp_dir{ "mmap_sparse" };
+  const fs::path tmp = tmp_dir.path / "sparse.dtwm";
   {
-    auto m = DistanceMatrix::map(tmp.path, 50, {});
+    auto m = DistanceMatrix::map(tmp, 50, {});
     m.set(3, 7, 42.0);
     m.sync();
   }
-  const DWORD attributes = GetFileAttributesW(tmp.path.c_str());
+  const DWORD attributes = GetFileAttributesW(tmp.c_str());
   REQUIRE(attributes != INVALID_FILE_ATTRIBUTES);
   REQUIRE((attributes & FILE_ATTRIBUTE_SPARSE_FILE) == 0);
-  REQUIRE(DistanceMatrix::map(tmp.path, 50, {}).get(7, 3) == 42.0);
+  REQUIRE(DistanceMatrix::map(tmp, 50, {}).get(7, 3) == 42.0);
 }
 #else
 namespace {
@@ -319,10 +314,11 @@ TEST_CASE("Creating a cache over a file-size quota is IOError naming the path",
 {
   // llfio's own error is no dtwc::Error: Python saw RuntimeError and MATLAB
   // dtwc:runtime (contract §5: IOError).
-  TempFile tmp("quota");
+  const ScratchDirectory tmp_dir{ "mmap_quota" };
+  const fs::path tmp = tmp_dir.path / "quota.dtwm";
   const FileSizeLimit limit(64 * 1024);
-  CHECK_THROWS_MATCHES(DistanceMatrix::map(tmp.path, 200, {}), dtwc::IOError, // about 160 KB
-                       MessageMatches(ContainsSubstring(tmp.path.filename().string())));
+  CHECK_THROWS_MATCHES(DistanceMatrix::map(tmp, 200, {}), dtwc::IOError, // about 160 KB
+                       MessageMatches(ContainsSubstring(tmp.filename().string())));
 }
 #endif
 

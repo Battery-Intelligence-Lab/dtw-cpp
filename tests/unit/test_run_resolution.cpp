@@ -22,6 +22,8 @@
 #include <metal/metal_dtw.hpp>
 #include <mip/mip.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -233,7 +235,8 @@ TEST_CASE("--device hpc is a DeviceError naming the Python and SLURM routes", "[
 TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any series is read",
           "[run][device][gpu][fx1]")
 {
-  const auto missing = (std::filesystem::temp_directory_path() / "dtwc_run_never_created.csv").string();
+  const dtwc::test_support::ScratchDirectory scratch{ "run_never_created" };
+  const auto missing = (scratch.path / "never_created.csv").string();
   REQUIRE_FALSE(std::filesystem::exists(missing));
   const auto from_file = [&](Device device, auto &&set) {
     auto config = config_for(ClusterMethod::PAM, device);

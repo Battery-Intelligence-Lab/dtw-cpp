@@ -9,6 +9,8 @@
 
 #include <dtwc.hpp>
 
+#include "../../support/scratch_directory.hpp"
+
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -27,6 +29,7 @@
 namespace {
 
 namespace fs = std::filesystem;
+using dtwc::test_support::ScratchDirectory;
 
 template <typename T>
 dtwc::Data two_series()
@@ -106,29 +109,6 @@ constexpr const char *cross_product_error =
   "Non-Standard DTW variants require MissingStrategy::Error.";
 
 #ifdef DTWC_HAS_MMAP
-struct ScratchCache
-{
-  fs::path directory;
-  fs::path path;
-
-  explicit ScratchCache(std::string_view stem)
-    : directory(fs::temp_directory_path()
-                / (std::string(stem) + "_"
-                   + std::to_string(reinterpret_cast<std::uintptr_t>(this)))),
-      path(directory / "distances.dtwcache")
-  {
-    std::error_code ec;
-    fs::remove_all(directory, ec);
-    fs::create_directories(directory);
-  }
-
-  ~ScratchCache()
-  {
-    std::error_code ec;
-    fs::remove_all(directory, ec);
-  }
-};
-
 void inject_complete_mmap_cache(dtwc::Problem &problem, double sentinel)
 {
   auto &storage = problem.distance_matrix();
@@ -426,12 +406,13 @@ TEMPLATE_TEST_CASE(
 #else
   SECTION("missing-strategy setter from ADTW/Error")
   {
-    ScratchCache cache{"m48-missing-mmap"};
+    const ScratchDirectory cache_dir{ "m48-missing-mmap" };
+    const fs::path cache = cache_dir.path / "distances.dtwcache";
     {
       dtwc::Problem problem("m48-missing-mmap");
       set_two_series<TestType>(problem);
       problem.set_variant(dtwc::core::DTWVariant::ADTW);
-      problem.use_mmap_distance_matrix(cache.path);
+      problem.use_mmap_distance_matrix(cache);
       inject_complete_mmap_cache(problem, 135.0);
       REQUIRE(mapped_cache_matches(problem, 135.0));
 
@@ -449,18 +430,19 @@ TEMPLATE_TEST_CASE(
     dtwc::Problem reopened("m48-missing-mmap-reopen");
     set_two_series<TestType>(reopened);
     reopened.set_variant(dtwc::core::DTWVariant::ADTW);
-    CHECK_NOTHROW(reopened.use_mmap_distance_matrix(cache.path));
+    CHECK_NOTHROW(reopened.use_mmap_distance_matrix(cache));
     CHECK(mapped_cache_matches(reopened, 135.0));
   }
 
   SECTION("enum variant setter from Standard/ZeroCost")
   {
-    ScratchCache cache{"m48-variant-mmap"};
+    const ScratchDirectory cache_dir{ "m48-variant-mmap" };
+    const fs::path cache = cache_dir.path / "distances.dtwcache";
     {
       dtwc::Problem problem("m48-variant-mmap");
       set_two_series<TestType>(problem);
       problem.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
-      problem.use_mmap_distance_matrix(cache.path);
+      problem.use_mmap_distance_matrix(cache);
       inject_complete_mmap_cache(problem, 864.0);
       REQUIRE(mapped_cache_matches(problem, 864.0));
 
@@ -478,7 +460,7 @@ TEMPLATE_TEST_CASE(
     dtwc::Problem reopened("m48-variant-mmap-reopen");
     set_two_series<TestType>(reopened);
     reopened.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
-    CHECK_NOTHROW(reopened.use_mmap_distance_matrix(cache.path));
+    CHECK_NOTHROW(reopened.use_mmap_distance_matrix(cache));
     CHECK(mapped_cache_matches(reopened, 864.0));
   }
 #endif

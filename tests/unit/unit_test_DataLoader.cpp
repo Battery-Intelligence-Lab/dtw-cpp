@@ -10,6 +10,8 @@
 #include <DataLoader.hpp>
 #include <base/settings.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -30,6 +32,7 @@
 using Catch::Matchers::WithinAbs;
 
 using namespace dtwc;
+using dtwc::test_support::ScratchDirectory;
 
 // This fixture deliberately compiles and executes the retained 1.x names.
 // Keep those calls local and warning-suppressed; ordinary repository code uses
@@ -219,28 +222,14 @@ TEST_CASE("F21 canonical C++ loader names preserve legacy state",
 
 namespace {
 
-/// RAII folder of N single-column CSV files with deterministic names.
-struct SeriesFolder
+/// N single-column CSV files with deterministic names in `directory`.
+void write_series_files(const std::filesystem::path &directory, int n_files)
 {
-  std::filesystem::path root;
-
-  SeriesFolder(std::string_view name, int n_files)
-    : root(std::filesystem::temp_directory_path() / std::string(name))
-  {
-    std::error_code ec;
-    std::filesystem::remove_all(root, ec);
-    std::filesystem::create_directories(root);
-    for (int i = 0; i < n_files; ++i) {
-      std::ofstream out(root / ("s" + std::to_string(i) + ".csv"));
-      out << (i + 1) << "\n" << (i + 2) << "\n";
-    }
+  for (int i = 0; i < n_files; ++i) {
+    std::ofstream out(directory / ("s" + std::to_string(i) + ".csv"));
+    out << (i + 1) << "\n" << (i + 2) << "\n";
   }
-  ~SeriesFolder()
-  {
-    std::error_code ec;
-    std::filesystem::remove_all(root, ec);
-  }
-};
+}
 
 /// Capture everything written to std::cout while alive.
 struct CoutCapture
@@ -258,7 +247,8 @@ TEST_CASE("Loaders agree on one Ndata contract and reject Ndata < -1",
   // Audit 2026-09-02 A11: for Ndata == 0 the loaders disagreed -- the
   // folder load returned ALL series, and the batch load returned 0. Ndata < -1 was never rejected anywhere. One predicate:
   // a negative Ndata means "all", otherwise stop at exactly Ndata series.
-  SeriesFolder folder{ "dtwc_ndata_contract", 4 };
+  const ScratchDirectory folder{ "ndata_contract" };
+  write_series_files(folder.path, 4);
 
   for (const int requested : { 0, 1, 3, 4, 7, -1 }) {
     CAPTURE(requested);
@@ -266,7 +256,7 @@ TEST_CASE("Loaders agree on one Ndata contract and reject Ndata < -1",
       ? 4u : std::min<std::size_t>(static_cast<std::size_t>(requested), 4u);
 
     DataLoader loader;
-    loader.path(folder.root).n_data(requested).verbosity(0);
+    loader.path(folder.path).n_data(requested).verbosity(0);
     CHECK(loader.load().size() == expect);
   }
 
@@ -295,15 +285,16 @@ TEST_CASE("Folder and batch loaders honour verbosity(0)",
   // Audit 2026-09-02: fileOperations printed "Reading data:" and
   // "N time-series data are read." unconditionally, so verbosity(0) (and
   // api.cpp's verbosity(0)) could not silence the loader.
-  SeriesFolder folder{ "dtwc_verbosity_contract", 2 };
+  const ScratchDirectory folder{ "verbosity_contract" };
+  write_series_files(folder.path, 2);
   {
     CoutCapture capture;
     DataLoader loader;
-    loader.path(folder.root).verbosity(0).load();
+    loader.path(folder.path).verbosity(0).load();
     CHECK(capture.sink.str().empty());
   }
 
-  const auto batch = folder.root / "batch.csv";
+  const auto batch = folder.path / "batch.csv";
   {
     std::ofstream out(batch);
     out << "1,2,3\n4,5,6\n";

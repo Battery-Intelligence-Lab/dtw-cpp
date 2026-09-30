@@ -16,6 +16,8 @@
 #include <dtwc.hpp>
 #include <algorithms/hierarchical.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -41,17 +43,12 @@ using namespace dtwc;
 static constexpr double NaN_val = std::numeric_limits<double>::quiet_NaN();
 
 // ---------------------------------------------------------------------------
-// Temporary output directory (avoids creating stray result CSVs)
+// Output directory of every Problem below: unique to this process, removed at exit
 // ---------------------------------------------------------------------------
 static fs::path g_tmp_dir()
 {
-  static fs::path dir = fs::temp_directory_path() / "dtwc_wave2a_integration_test";
-  static bool created = [] {
-    fs::create_directories(dir);
-    return true;
-  }();
-  (void)created;
-  return dir;
+  static const dtwc::test_support::ScratchDirectory dir{ "wave2a_output" };
+  return dir.path;
 }
 
 // ---------------------------------------------------------------------------

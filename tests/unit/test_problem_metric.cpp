@@ -15,6 +15,8 @@
 #include <algorithms/tadpole.hpp>
 #include <base/error.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -31,6 +33,7 @@ using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::WithinRel;
 using dtwc::core::MetricType;
 namespace fs = std::filesystem;
+using dtwc::test_support::ScratchDirectory;
 
 // The Problem's fill and the checked free function reach the same squared-L2
 // recurrence through different call paths; MSVC /fp:contract may fuse a
@@ -69,24 +72,6 @@ dtwc::Problem make_problem(const std::vector<std::vector<double>> &series,
                             names_for(series.size()), ndim });
   return prob;
 }
-
-struct Scratch
-{
-  fs::path root;
-  explicit Scratch(const std::string &stem)
-    : root(fs::temp_directory_path()
-           / (stem + "_" + std::to_string(reinterpret_cast<std::uintptr_t>(this))))
-  {
-    std::error_code ec;
-    fs::remove_all(root, ec);
-    fs::create_directories(root);
-  }
-  ~Scratch()
-  {
-    std::error_code ec;
-    fs::remove_all(root, ec);
-  }
-};
 
 } // namespace
 
@@ -257,8 +242,8 @@ TEST_CASE("set_metric: the metric is part of refresh and of the checkpoint ident
   CHECK(squared.distance_checkpoint_identity()
         != squared.distance_checkpoint_identity(MetricType::L1));
 
-  Scratch scratch("dtwc_if2_metric_checkpoint");
-  const std::string dir = (scratch.root / "ckpt").string();
+  ScratchDirectory scratch("if2_metric_checkpoint");
+  const std::string dir = (scratch.path / "ckpt").string();
   dtwc::save_checkpoint(squared, dir); // tagged with squared.metric()
 
   auto l1 = make_problem(series);
@@ -285,10 +270,10 @@ TEST_CASE("set_metric: automatic checkpoints are tagged with the metric",
           "[problem][metric][checkpoint][if2]")
 {
   const auto series = random_series(5, 9, 1, 17);
-  Scratch scratch("dtwc_if2_metric_autosave");
+  ScratchDirectory scratch("if2_metric_autosave");
   auto prob = make_problem(series);
   prob.set_metric(MetricType::SquaredL2);
-  prob.checkpoint.directory = (scratch.root / "auto").string();
+  prob.checkpoint.directory = (scratch.path / "auto").string();
   prob.checkpoint.save_interval = 2;
   prob.checkpoint.enabled = true;
   prob.fill_distance_matrix();
@@ -309,10 +294,10 @@ TEST_CASE("set_metric: an mmap cache takes the metric, and the CPU fills it",
           "[problem][metric][mmap][if2]")
 {
   const auto series = random_series(6, 30, 1, 7);
-  Scratch scratch("dtwc_if2_metric_mmap");
+  ScratchDirectory scratch("if2_metric_mmap");
   for (const int band : { -1, 3 }) {
     CAPTURE(band);
-    const auto cache = scratch.root / ("sq_" + std::to_string(band) + ".cache");
+    const auto cache = scratch.path / ("sq_" + std::to_string(band) + ".cache");
     {
       // The two-argument form is set_metric + bind. On the synced base the
       // CPU fill refused it ("a non-L1 cache is external-fill-only").
@@ -349,8 +334,8 @@ TEST_CASE("use_mmap_distance_matrix(path, metric) changes nothing when the bind 
           "[problem][metric][mmap][if2]")
 {
   const auto series = random_series(5, 9, 1, 19);
-  Scratch scratch("dtwc_if2_metric_bind");
-  const auto cache = scratch.root / "l1.cache";
+  ScratchDirectory scratch("if2_metric_bind");
+  const auto cache = scratch.path / "l1.cache";
   {
     auto writer = make_problem(series);
     writer.use_mmap_distance_matrix(cache); // an L1 cache

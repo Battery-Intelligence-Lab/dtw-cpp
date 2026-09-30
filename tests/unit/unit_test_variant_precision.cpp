@@ -7,6 +7,8 @@
 #include <core/dtw_dispatch.hpp>
 #include <base/error.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
@@ -24,6 +26,7 @@
 #include <vector>
 
 using namespace dtwc;
+using dtwc::test_support::ScratchDirectory;
 
 namespace {
 
@@ -136,27 +139,6 @@ constexpr std::array<NarrowingCase, 12> narrowing_cases{{
    +[](core::DTWVariantParams &p) { p.twe_lambda = std::numeric_limits<double>::max(); },
    "TWE lambda cannot be represented in float32 without becoming zero or non-finite."},
 }};
-
-struct ScratchCache
-{
-  std::filesystem::path directory;
-  std::filesystem::path path;
-
-  explicit ScratchCache(std::string_view stem)
-    : directory(std::filesystem::temp_directory_path()
-                / (std::string(stem) + "_"
-                   + std::to_string(reinterpret_cast<std::uintptr_t>(this)))),
-      path(directory / "distances.dtwcache")
-  {
-    std::filesystem::create_directories(directory);
-  }
-
-  ~ScratchCache()
-  {
-    std::error_code error;
-    std::filesystem::remove_all(directory, error);
-  }
-};
 
 struct RawOperation
 {
@@ -325,7 +307,8 @@ TEST_CASE("float32 narrowing preflight preserves mmap and bind transactions",
 #else
   SECTION("binding a new mmap does not clear dense state or create a file")
   {
-    ScratchCache cache{"dtwc_m45_bind_preflight"};
+    const ScratchDirectory cache_dir{ "m45_bind_preflight" };
+    const std::filesystem::path cache = cache_dir.path / "distances.dtwcache";
     Problem problem{"m45_mmap_bind"};
     problem.set_data(make_f32_data());
     problem.fill_distance_matrix();
@@ -335,10 +318,10 @@ TEST_CASE("float32 narrowing preflight preserves mmap and bind transactions",
     problem.variant_params.variant = core::DTWVariant::SoftDTW;
     problem.variant_params.sdtw_gamma = std::numeric_limits<double>::min();
     const bool caught = catches_exact(
-      [&] { problem.use_mmap_distance_matrix(cache.path); },
+      [&] { problem.use_mmap_distance_matrix(cache); },
       "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite.");
     CHECK(caught);
-    CHECK_FALSE(std::filesystem::exists(cache.path));
+    CHECK_FALSE(std::filesystem::exists(cache));
 
     problem.variant_params = original_params;
     if (caught) require_dense_unchanged(problem, original_cache);
@@ -346,10 +329,11 @@ TEST_CASE("float32 narrowing preflight preserves mmap and bind transactions",
 
   SECTION("public refresh does not detach an existing mmap")
   {
-    ScratchCache cache{"dtwc_m45_refresh_preflight"};
+    const ScratchDirectory cache_dir{ "m45_refresh_preflight" };
+    const std::filesystem::path cache = cache_dir.path / "distances.dtwcache";
     Problem problem{"m45_mmap_refresh"};
     problem.set_data(make_f32_data());
-    problem.use_mmap_distance_matrix(cache.path);
+    problem.use_mmap_distance_matrix(cache);
     problem.fill_distance_matrix();
     const auto original_params = problem.variant_params;
 

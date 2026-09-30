@@ -5,6 +5,8 @@
 #include <dtwc.hpp>
 #include <cli/config.hpp> // ClusterMethod, which Result::method() reports
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -24,6 +26,7 @@
 #endif
 
 namespace fs = std::filesystem;
+using dtwc::test_support::ScratchDirectory;
 
 // The pre-2.0 shape `load(src, skip_cols, delimiter)` must not silently rebind
 // the delimiter to skip_rows (','==44); api.hpp poisons it with deleted
@@ -133,9 +136,8 @@ TEST_CASE("Tier-1 C++ conformance fixture clusters, scores, and saves", "[api][t
   REQUIRE(result.score("silhouette") > 0.96);
   REQUIRE_THROWS_AS(result.score("made_up"), dtwc::InvalidInput);
 
-  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-  const fs::path out = fs::temp_directory_path()
-                     / ("dtwc_tier1_" + std::to_string(nonce));
+  const ScratchDirectory scratch{ "tier1" };
+  const fs::path out = scratch.path / "out"; // save() creates it
   result.save(out);
   REQUIRE(first_line(out / "quickstart_labels.csv") == "name,cluster");
   REQUIRE(first_line(out / "quickstart_medoids.csv")
@@ -143,8 +145,6 @@ TEST_CASE("Tier-1 C++ conformance fixture clusters, scores, and saves", "[api][t
   REQUIRE(fs::exists(out / "quickstart_distance_matrix.csv"));
   REQUIRE(first_line(out / "quickstart_silhouettes.csv")
           == "name,cluster,silhouette");
-  std::error_code ec;
-  fs::remove_all(out, ec);
 }
 
 TEST_CASE("Tier-1 save() completes when the silhouette is undefined",
@@ -154,7 +154,7 @@ TEST_CASE("Tier-1 save() completes when the silhouette is undefined",
   // and save() called it after writing labels/medoids/matrix, so a legal run was
   // left with a half-populated directory plus an exception. save() must warn and
   // skip the silhouette file instead. score("silhouette") keeps throwing.
-  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+  const ScratchDirectory scratch{ "tier1_k1" };
 
   SECTION("k = 1 is a legal request") {
     const auto dataset = dtwc::load(
@@ -164,15 +164,12 @@ TEST_CASE("Tier-1 save() completes when the silhouette is undefined",
     REQUIRE(result.medoids().size() == 1);
     REQUIRE_THROWS_AS(result.score("silhouette"), dtwc::InvalidInput);
 
-    const fs::path out =
-      fs::temp_directory_path() / ("dtwc_tier1_k1_" + std::to_string(nonce));
+    const fs::path out = scratch.path / "out"; // save() creates it
     REQUIRE_NOTHROW(result.save(out));
     REQUIRE(first_line(out / "k1_labels.csv") == "name,cluster");
     REQUIRE(first_line(out / "k1_medoids.csv") == "cluster,medoid_index,medoid_name");
     REQUIRE(fs::exists(out / "k1_distance_matrix.csv"));
     REQUIRE_FALSE(fs::exists(out / "k1_silhouettes.csv"));
-    std::error_code ec;
-    fs::remove_all(out, ec);
   }
 }
 
@@ -239,10 +236,8 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
           "[api][tier1][seed][lloyd]")
 {
   auto problem = seed_sensitive_problem();
-  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-  const fs::path out = fs::temp_directory_path()
-                     / ("dtwc_lloyd_best_" + std::to_string(nonce));
-  fs::create_directories(out);
+  const ScratchDirectory scratch{ "lloyd_best" };
+  const fs::path &out = scratch.path;
   problem.set_output_folder(out);
   problem.set_n_clusters(3);
   problem.set_n_repetitions(2);
@@ -260,9 +255,6 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
   CHECK(problem.find_total_cost() == 20.0);
   CHECK(problem.medoids() == std::vector<int>{0, 3, 6});
   CHECK(first_line(out / "tier1_seed_fixture_bestRepetition_Nc_3.csv") == "0");
-
-  std::error_code ec;
-  fs::remove_all(out, ec);
 }
 
 TEST_CASE("Lloyd uses a wrapping seed schedule and preserves custom initializers",
@@ -357,9 +349,8 @@ TEST_CASE("Tier-1 auto method resolution is compatible with its execution target
 
 TEST_CASE("Tier-1 C++ load honours skip_rows", "[api][tier1][skip_rows]")
 {
-  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-  const fs::path csv =
-    fs::temp_directory_path() / ("dtwc_skip_rows_" + std::to_string(nonce) + ".csv");
+  const ScratchDirectory scratch{ "skip_rows" };
+  const fs::path csv = scratch.path / "skip_rows.csv";
   {
     std::ofstream out(csv);
     out << "id,t0,t1,t2\n"
@@ -398,9 +389,6 @@ TEST_CASE("Tier-1 C++ load honours skip_rows", "[api][tier1][skip_rows]")
       dtwc::load(dtwc::Dataset::series_type{{0.0, 1.0}}, 0, -1),
       dtwc::InvalidInput);
   }
-
-  std::error_code ec;
-  fs::remove(csv, ec);
 }
 
 TEST_CASE("Tier-1 C++ cluster() moves an rvalue in-memory dataset and copies an lvalue",
@@ -456,15 +444,6 @@ private:
   std::streambuf *previous_;
 };
 
-fs::path make_sandbox(const std::string &tag)
-{
-  const auto nonce =
-    std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-  const auto directory = fs::temp_directory_path() / (tag + nonce);
-  fs::create_directories(directory);
-  return directory;
-}
-
 dtwc::Dataset::series_type two_cluster_series()
 {
   return { { 0.0, 0.0, 0.0 }, { 0.1, 0.0, 0.1 },
@@ -479,7 +458,8 @@ TEST_CASE("Tier-1 C++ cluster() leaves the working directory untouched",
   // Problem::output_folder_ defaults to the CWD-relative "./results/",
   // so a Tier-1 route that wrote run artifacts failed (or littered) whenever the
   // caller ran from a directory without ./results/.
-  const auto sandbox = make_sandbox("dtwc_tier1_cwd_");
+  const ScratchDirectory scratch{ "tier1_cwd" };
+  const fs::path &sandbox = scratch.path;
   const auto series = two_cluster_series();
 
   {
@@ -494,8 +474,6 @@ TEST_CASE("Tier-1 C++ cluster() leaves the working directory untouched",
   }
 
   CHECK(fs::is_empty(sandbox));
-  std::error_code ec;
-  fs::remove_all(sandbox, ec);
 }
 
 TEST_CASE("Problem::cluster() prints to stdout only when verbose",
@@ -578,7 +556,8 @@ TEST_CASE("Tier-1 carries a non-ASCII name as UTF-8 end to end",
   // from a UTF-8 std::string would then write a mojibake filename. Both ends
   // go through path_to_utf8 / utf8_to_path.
   const std::string cafe = "caf\xc3\xa9"; // U+00E9 as UTF-8, source-encoding independent
-  const auto sandbox = make_sandbox("dtwc_utf8_e2e_");
+  const ScratchDirectory scratch{ "utf8_e2e" };
+  const fs::path &sandbox = scratch.path;
 
   SECTION("a file source names the Dataset, and save() names its files, in UTF-8")
   {
@@ -628,7 +607,4 @@ TEST_CASE("Tier-1 carries a non-ASCII name as UTF-8 end to end",
                              std::istreambuf_iterator<char>() };
     CHECK(bytes.find(cafe) != std::string::npos);
   }
-
-  std::error_code ec;
-  fs::remove_all(sandbox, ec);
 }
