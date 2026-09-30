@@ -196,3 +196,11 @@ CHANGELOG rule.
 - 2026-09-30 — W6m: MATLAB integers are read exactly (`get_exact_int`); an index is >= 1, a label is any integer (labels
   are values: ARI/NMI take 0 and negatives, as C++ and Python). `Problem::dist_by_ind` stays unchecked (hot path); the
   bindings check indices at the language boundary (MATLAB and Python returned 0 or read out of bounds).
+- 2026-09-30 — B1 merged (`4968d44`): Python's `clusters_ind` / `centroids_ind` are read-only (v1's Python never bound
+  them) and `set_result` is the bound write route; a `Result` with no medoids raises `InvalidInput` from `score()` and
+  `save()` instead of scoring against the zero-filled medoids `set_n_clusters` leaves.
+- 2026-09-30 — B2 (scope): "cluster first" is one C++ check per call — clustered means both outputs have the sizes N
+  and k — in the functions that read them wholesale; `set_n_clusters` stops pre-sizing them; the setters refuse
+  k < 1 and band < −1. The per-element accessors stay unchecked (hot path); the bindings check indices.
+- 2026-09-30 — X3b: `-Werror=switch` / C4062 cover C++ sources only; `.cu` and `.mm` switches are not gated (OBJCXX
+  cannot be verified here). `unit_test_invalid_distance_enums` / `_public_selectors` keep their names until W12b.
