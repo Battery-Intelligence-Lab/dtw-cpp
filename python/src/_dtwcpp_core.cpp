@@ -1323,7 +1323,7 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix_cuda",
         [](const std::vector<std::vector<double>> &, int, bool, int, bool) -> nb::object {
-          throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
+          throw dtwc::DeviceError("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
@@ -1375,7 +1375,7 @@ NB_MODULE(_dtwcpp_core, m) {
         "Get Metal device info string.");
   m.def("compute_distance_matrix_metal",
         [](const std::vector<std::vector<double>> &, int, bool, bool) -> nb::object {
-          throw std::runtime_error("Metal support not compiled. Rebuild on macOS with -DDTWC_ENABLE_METAL=ON");
+          throw dtwc::DeviceError("Metal support not compiled. Rebuild on macOS with -DDTWC_ENABLE_METAL=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
