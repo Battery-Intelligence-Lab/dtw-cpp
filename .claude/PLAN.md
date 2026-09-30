@@ -168,8 +168,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W12b `tests/unit/adversarial/` dissolved per subject
 - ☐ W12c repeated DTW property tests → one table-driven `core/test_dtw.cpp` against a new `tests/support/dtw_oracle.hpp`
 - ☐ W12d `test_contract_parity.py` existence lists → one table
-- ☐ every test writes to its own temp dir (a fixed `%TEMP%/dtwc_test` collides under concurrent runs:
-  `unit_test_variant_distmat`)
+- ☑ every test writes to its own temp dir (a fixed `%TEMP%/dtwc_test` collides under concurrent runs:
+  `unit_test_variant_distmat`) (F1 992d51f, 50d2c46; merged b5c7048; the 3 FIXTURE_ROOT tests and 6 cmake -P CLI tests keep one directory inside the build tree, so only two runs of the same build tree collide)
 - ☐ `test_hpc` and `test_api` honour `DTWC_CL_PATH`; today `find_dtwc_binary` takes the newest `dtwc_cl` under
   `build*/`, e.g. an Arrow build that cannot load its DLLs
 
