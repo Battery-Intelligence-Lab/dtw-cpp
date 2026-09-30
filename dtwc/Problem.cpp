@@ -201,18 +201,6 @@ void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strateg
 }
 
 /**
- * @brief Resizes data structures based on the current number of clusters.
- *
- * @details Adjusts the size of cluster_members, centroids_ind, and clusters_ind arrays based on the current
- * value of Nc (number of clusters).
- */
-void Problem::resize()
-{
-  clusters_ind.resize(size());
-  centroids_ind.resize(n_clusters());
-}
-
-/**
  * @brief Sets the number of clusters for the problem.
  *
  * @param Nc_ The number of clusters to set.
@@ -220,7 +208,15 @@ void Problem::resize()
 void Problem::set_n_clusters(int Nc_)
 {
   Nc = Nc_;
-  resize();
+}
+
+void Problem::require_clustered(std::string_view who) const
+{
+  if (clusters_ind.size() == size() && centroids_ind.size() == static_cast<std::size_t>(Nc)) return;
+  throw InvalidInput(std::string(who) + ": this Problem holds no clustering ("
+                     + std::to_string(clusters_ind.size()) + " labels for N = " + std::to_string(size())
+                     + ", " + std::to_string(centroids_ind.size()) + " medoids for k = "
+                     + std::to_string(Nc) + "); cluster it first.");
 }
 
 void Problem::require_owned_storage(std::string_view accessor, bool float64_values) const
@@ -1360,6 +1356,7 @@ void Problem::distanceInClusters()
  */
 void Problem::calculate_medoids()
 {
+  require_clustered("calculate_medoids");
   std::vector<double> pointCosts(size());
 
   auto findBetterMedoidTask = [&](size_t i_p) // i_p is point index.
@@ -1538,6 +1535,7 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
  */
 double Problem::find_total_cost()
 {
+  require_clustered("find_total_cost");
   core::detail::OrderedMedoidObjective total("kmedoids_lloyd");
   for (const auto idx : Range(size())) {
     const int i = static_cast<int>(idx);

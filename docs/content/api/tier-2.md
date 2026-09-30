@@ -34,6 +34,15 @@ and MATLAB boundaries own the range checks: `dist_by_ind(i, j)`, `series(i)`,
 that holds no clustering. MATLAB exposes `dist_by_ind` only (1-based, checked
 in the MEX); it has no series, name or medoid accessor.
 
+A `Problem` holds a clustering when `clusters_ind` has one label per series and
+`centroids_ind` one medoid per cluster. Both stay empty until a clustering writes
+them (`set_result`, `set_clusters` for the medoids, the algorithms):
+`set_n_clusters` sizes neither. `find_total_cost`, `write_clusters`,
+`print_clusters`, `write_medoid_members`, `calculate_medoids`, the scores and
+Python's `centroid_of` raise `InvalidInput` ("... cluster it first") on a
+`Problem` that holds none, one check per call; C++ `centroid_of(i)` stays
+unchecked, and `require_clustered(who)` is the check.
+
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
 | k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; the retained C++ `set_numberOfClusters` is a deprecated warning alias |

@@ -130,7 +130,7 @@ TEST_CASE("O-06: Lloyd refuses zero iterations held by the deprecated field",
   REQUIRE_THROWS_MATCHES(prob.cluster_by_kmedoids_lloyd(), dtwc::InvalidInput,
                          MessageMatches(ContainsSubstring(
                            "Lloyd k-medoids requires max_iter >= 1.")));
-  CHECK(prob.labels() == std::vector<int>(6, 0)); // resize()'s zeros, unpublished
+  CHECK(prob.labels().empty()); // the refused run published nothing
 
   // Control: the same Problem clusters once the field holds a valid count.
   DTWC_PUSH_NO_DEPRECATED

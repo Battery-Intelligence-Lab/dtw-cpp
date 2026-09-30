@@ -261,7 +261,6 @@ private:
   void require_owned_storage(std::string_view accessor, bool float64_values) const;
   void clear_mmap_cache_identity();
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
-  void resize();                        ///< Resize cluster/centroid buffers to size()/Nc. Private invariant maintenance.
 
   // Private functions:
   friend bool load_checkpoint(Problem &prob, const std::string &path,
@@ -303,6 +302,9 @@ public:
 
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
 
+  /// Empty until a clustering writes them (set_result, set_clusters for the
+  /// medoids, the algorithms); set_n_clusters and set_data size neither.
+  /// require_clustered() tells a clustering from a sizing.
   std::vector<int> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Nc)
   std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
@@ -377,7 +379,10 @@ public:
   [[deprecated("use refresh_distance_matrix")]] void refreshDistanceMatrix() { refresh_distance_matrix(); }
 
   // Getters and setters:
-  int centroid_of(int i_p) const { return centroids_ind[clusters_ind[i_p]]; } // [0, Np) Get the centroid of the cluster of i_p
+  /// The centroid of the cluster of i_p, i_p in [0, N). Unchecked like dist_by_ind:
+  /// write_clusters and the bindings call it per series, so a caller that cannot
+  /// vouch for the clustering calls require_clustered() once first.
+  int centroid_of(int i_p) const { return centroids_ind[clusters_ind[i_p]]; }
 
   void read_distance_matrix(const fs::path &distMat_path);
   [[deprecated("use read_distance_matrix")]]
@@ -386,6 +391,10 @@ public:
   void set_n_clusters(int Nc_);
   [[deprecated("use set_n_clusters")]] void set_numberOfClusters(int Nc_) { set_n_clusters(Nc_); }
 
+  /// A Problem is clustered when it holds one label per series and one medoid per
+  /// cluster. Every call that reads the whole clustering checks that once.
+  /// @throws InvalidInput ("<who>: ... cluster it first") when it is not.
+  void require_clustered(std::string_view who) const;
   void set_clusters(std::vector<int> &candidate_centroids);
   /// Publish a clustering: k = the number of medoids, which are distinct
   /// indices in [0, N), and one label in [0, k) per series. Anything else is
@@ -510,7 +519,6 @@ public:
       variant_params, missing_strategy, metric_, candidate, distance_strategy, cuda_settings);
     data_ = std::move(candidate);
     refresh_distance_matrix();
-    resize(); // sizes distance matrix for new N
   }
 
   /// Set DTW variant and rebind the distance function.

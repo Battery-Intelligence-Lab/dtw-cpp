@@ -592,6 +592,29 @@ function test_dist_by_ind_index_above_n_is_an_error(testCase)
     verifySubstring(testCase, err.message, 'N = 4');
 end
 
+function test_find_total_cost_before_clustering_is_an_error(testCase)
+%   find_total_cost read the label vector of a Problem that held no clustering:
+%   an access violation (R2024b, 0xc0000005) that ended the MATLAB session. Sizing
+%   the Problem with set_n_clusters is not clustering it.
+    h = int_problem(testCase);   % filled, never clustered
+    dtwc_mex('Problem_set_output_folder', h, tempdir);
+    verifyError(testCase, @() dtwc_mex('Problem_find_total_cost', h), 'dtwc:invalidArgument');
+    dtwc_mex('Problem_set_n_clusters', h, 2);
+    err = [];
+    try
+        dtwc_mex('Problem_find_total_cost', h);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'a sized Problem was costed');
+    verifySubstring(testCase, err.message, 'find_total_cost');
+    verifySubstring(testCase, err.message, 'cluster it first');
+
+    dtwc_mex('Problem_cluster', h);   % the control: clustered, the cost is a number
+    verifyGreaterThan(testCase, dtwc_mex('Problem_find_total_cost', h), 0);
+    dtwc_mex('Problem_set_n_clusters', h, 3);   % two medoids are not a 3-cluster clustering
+    verifyError(testCase, @() dtwc_mex('Problem_find_total_cost', h), 'dtwc:invalidArgument');
+end
+
 function test_a_double_handle_must_be_an_exact_integer(testCase)
     h = int_problem(testCase);
     verifyEqual(testCase, dtwc_mex('Problem_get_size', double(h)), 4);

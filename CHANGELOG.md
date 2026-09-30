@@ -43,6 +43,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   published the other cluster empty; LR-core refused the valid optimum with `SolverError`.
 - **Fixed (C++):** `scores::silhouette()` on a Problem that has not been clustered raises `InvalidInput`; v1.0.0 printed a
   line and returned one `-1` per series, a vector that reads as a (poor) score.
+- **Fixed (C++, Python, MATLAB):** `find_total_cost()` and `write_clusters()` on a Problem that holds no clustering raise
+  `InvalidInput` ("... cluster it first"); v1.0.0 read the empty label vector (an access violation in Python and in MATLAB
+  R2024b), or, after `set_n_clusters`, its zeros. `print_clusters`, `write_medoid_members`, `calculate_medoids` and the scores
+  refuse the same way. `set_n_clusters` no longer sizes `clusters_ind` and `centroids_ind`, which stay empty until a
+  clustering writes them; a Problem is clustered when it holds one label per series and one medoid per cluster
+  (`Problem::require_clustered`), so a clustering goes stale when `set_n_clusters` or the data change its shape.
 - **Changed (exact solvers):** `Method::MIP` and `Method::LRCore` publish through the new
   `Problem::set_result(ClusteringResult)`, which refuses a malformed clustering with `InvalidInput`. A solve that fails with
   `SolverError` leaves the Problem holding a valid clustering (the FastPAM warm start), not necessarily the one it held before

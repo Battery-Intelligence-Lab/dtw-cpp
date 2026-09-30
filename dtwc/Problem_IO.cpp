@@ -93,6 +93,7 @@ void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep
  */
 void Problem::print_clusters() const
 {
+  require_clustered("print_clusters");
   std::cout << "Clusters centroids: ";
   for (auto ind : centroids_ind)
     std::cout << series_name(ind) << ' ';
@@ -116,6 +117,7 @@ void Problem::print_clusters() const
  */
 void Problem::write_clusters()
 {
+  require_clustered("write_clusters"); // before the file is opened: a refusal leaves none behind
   const auto file_name = name_ + "_Nc_" + std::to_string(Nc) + ".csv";
   const auto path = output_folder_ / utf8_to_path(file_name);
   std::ofstream myFile = open_output(path);
@@ -179,6 +181,7 @@ void Problem::write_silhouettes()
  */
 void Problem::write_medoid_members(int iter, int rep) const
 {
+  require_clustered("write_medoid_members");
   const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
                                   + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 

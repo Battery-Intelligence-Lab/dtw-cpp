@@ -194,11 +194,63 @@ class TestIndexBoundary:
         assert re.match(rf"InvalidInput: centroid_of: .*{message}", outcome), outcome
 
     def test_centroid_of_after_the_cluster_count_shrinks_raises(self):
-        """set_n_clusters(1) truncates the medoid list, so a series left in
-        cluster 1 has no medoid to name."""
+        """The clustering held 2 medoids; k = 1 leaves a series in cluster 1 with
+        no medoid to name, so the Problem no longer holds a clustering."""
         setup = self._CLUSTERED + "\n        i = p.labels().index(1)\n        p.set_n_clusters(1)"
         outcome = _outcome_in_child(setup, "p.centroid_of(i)")
-        assert re.match(r"InvalidInput: centroid_of: series \d+ has label 1", outcome), outcome
+        assert re.match(r"InvalidInput: centroid_of: .*holds no clustering.*2 medoids for k = 1", outcome), outcome
+
+
+class TestClusterFirst:
+    """A Problem that was only sized holds no clustering. `find_total_cost()` and
+    `write_clusters()` read the label vector, and crashed the interpreter (an
+    access violation) on a Problem that had never been clustered; every call that
+    reads the whole clustering now raises InvalidInput naming the call."""
+
+    _DATA = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
+    _SETUP = f"""
+        p = dtwcpp.Problem("first")
+        p.set_data({_DATA}, ["a", "b", "c"])
+        p.output_folder = r"{{out}}"
+    """
+
+    def _outcome(self, tmp_path, extra_setup, call):
+        setup = textwrap.dedent(self._SETUP).replace("{out}", str(tmp_path)) + "\n" + extra_setup
+        return _outcome_in_child(setup, call)
+
+    @pytest.mark.parametrize("sized", ["", "p.set_n_clusters(2)"], ids=["never_sized", "sized"])
+    @pytest.mark.parametrize(
+        "call, who",
+        [("p.find_total_cost()", "find_total_cost"),
+         ("p.write_clusters()", "write_clusters"),
+         ("p.write_medoid_members(0)", "write_medoid_members"),
+         ("p.calculate_medoids()", "calculate_medoids"),
+         ("dtwcpp.silhouette(p)", "silhouette"),
+         ("dtwcpp.inertia(p)", "inertia")],
+    )
+    def test_reading_the_clustering_before_clustering_raises(self, tmp_path, sized, call, who):
+        outcome = self._outcome(tmp_path, sized, call)
+        assert re.match(rf"InvalidInput: {who}: .*holds no clustering.*cluster it first", outcome), outcome
+        assert list(tmp_path.iterdir()) == []  # the refusal comes before any file is opened
+
+    def test_the_refusal_names_the_counts_it_found(self, tmp_path):
+        outcome = self._outcome(tmp_path, "p.set_n_clusters(2)", "p.find_total_cost()")
+        assert "0 labels for N = 3, 0 medoids for k = 2" in outcome, outcome
+
+    def test_a_clustering_goes_stale_when_the_cluster_count_changes(self, tmp_path):
+        setup = "p.set_n_clusters(2)\np.fill_distance_matrix()\np.cluster()\np.set_n_clusters(3)"
+        outcome = self._outcome(tmp_path, setup, "p.find_total_cost()")
+        assert re.match(r"InvalidInput: find_total_cost: .*2 medoids for k = 3", outcome), outcome
+
+    def test_after_clustering_the_readers_work(self, tmp_path):
+        p = dtwcpp.Problem("first")
+        p.set_data(self._DATA, ["a", "b", "c"])
+        p.output_folder = str(tmp_path)
+        p.set_n_clusters(2)
+        p.cluster()
+        assert p.find_total_cost() >= 0.0
+        p.write_clusters()
+        assert [f.name for f in tmp_path.iterdir()] == ["first_Nc_2.csv"]
 
 
 class TestClusteringIsWrittenThroughSetResult:
