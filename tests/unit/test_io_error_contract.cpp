@@ -18,6 +18,8 @@
 #include "cli/run.hpp"
 #include "dtwc.hpp"
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -33,17 +35,10 @@
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::MessageMatches;
 using Catch::Matchers::StartsWith;
+using dtwc::test_support::ScratchDirectory;
 namespace fs = std::filesystem;
 
 namespace {
-
-struct Scratch
-{
-  fs::path path = fs::temp_directory_path()
-    / ("dtwc_io_error_contract_" + std::to_string(reinterpret_cast<std::uintptr_t>(this)));
-  Scratch() { fs::remove_all(path); fs::create_directories(path); }
-  ~Scratch() { std::error_code ec; fs::remove_all(path, ec); }
-};
 
 /// Holds one byte at a time, as a pipe's reader may: unget() cannot hand back
 /// a byte read before the current one.
@@ -71,7 +66,7 @@ public:
 TEST_CASE("Tier-1 load: a reader IOError keeps its type and names the load",
           "[io][error][load]")
 {
-  const Scratch dir;
+  const ScratchDirectory dir{ "io_error_contract" };
   const fs::path missing = dir.path / "missing.csv";
   const fs::path bad = dir.path / "bad.csv";
   std::ofstream(bad, std::ios::binary) << "1,2,x\n4,5,6\n";

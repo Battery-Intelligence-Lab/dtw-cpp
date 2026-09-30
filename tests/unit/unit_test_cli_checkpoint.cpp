@@ -18,6 +18,8 @@
  * @date 02 Sep 2026
  */
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
@@ -159,53 +161,46 @@ std::vector<std::string> cli_args(const fs::path &data, const fs::path &scratch,
 TEST_CASE("dtwc_cl --checkpoint-interval publishes and resumes a checkpoint",
           "[cli][checkpoint]")
 {
-  const fs::path scratch = fs::temp_directory_path() / "dtwc_test_cli_ckpt";
-  fs::remove_all(scratch);
-  fs::create_directories(scratch);
-  const fs::path data = scratch / "series";
-  const fs::path checkpoint_dir = scratch / "ckpt";
+  const dtwc::test_support::ScratchDirectory scratch{ "cli_ckpt" };
+  const fs::path data = scratch.path / "series";
+  const fs::path checkpoint_dir = scratch.path / "ckpt";
   const fs::path checkpoint = checkpoint_dir / "cli_ckpt.dtwm";
   write_fixture_series(data);
-  auto argv = cli_args(data, scratch, checkpoint_dir);
+  auto argv = cli_args(data, scratch.path, checkpoint_dir);
   argv.insert(argv.end(), { "--checkpoint-interval", "2" });
 
-  const CommandResult first = run(argv, scratch);
+  const CommandResult first = run(argv, scratch.path);
   INFO("stdout:\n" << first.out << "\nstderr:\n" << first.err);
   REQUIRE(first.exit_code == 0);
   REQUIRE(first.out.find("No checkpoint in") != std::string::npos);
   REQUIRE(fs::file_size(checkpoint) == checkpoint_bytes);
   REQUIRE_FALSE(fs::exists(fs::path(checkpoint).concat(".tmp")));
 
-  const CommandResult second = run(argv, scratch);
+  const CommandResult second = run(argv, scratch.path);
   INFO("stdout:\n" << second.out << "\nstderr:\n" << second.err);
   REQUIRE(second.exit_code == 0);
   REQUIRE(second.out.find("Resumed from checkpoint") != std::string::npos);
   REQUIRE(std::vector<fs::path>(fs::directory_iterator(checkpoint_dir), fs::directory_iterator())
           == std::vector<fs::path>{ checkpoint });
-
-  fs::remove_all(scratch);
 }
 
 
 TEST_CASE("dtwc_cl refuses a checkpoint of other data", "[cli][checkpoint]")
 {
   // It used to recompute every distance, exit 0, and overwrite the checkpoint.
-  const fs::path scratch = fs::temp_directory_path() / "dtwc_test_cli_ckpt_other";
-  fs::remove_all(scratch);
-  const fs::path checkpoint_dir = scratch / "ckpt";
-  write_fixture_series(scratch / "series");
-  write_fixture_series(scratch / "other", 1);
+  const dtwc::test_support::ScratchDirectory scratch{ "cli_ckpt_other" };
+  const fs::path checkpoint_dir = scratch.path / "ckpt";
+  write_fixture_series(scratch.path / "series");
+  write_fixture_series(scratch.path / "other", 1);
 
-  REQUIRE(run(cli_args(scratch / "series", scratch, checkpoint_dir), scratch).exit_code == 0);
+  REQUIRE(run(cli_args(scratch.path / "series", scratch.path, checkpoint_dir), scratch.path).exit_code == 0);
   const auto saved = read_text(checkpoint_dir / "cli_ckpt.dtwm");
 
-  const CommandResult other = run(cli_args(scratch / "other", scratch, checkpoint_dir), scratch);
+  const CommandResult other = run(cli_args(scratch.path / "other", scratch.path, checkpoint_dir), scratch.path);
   INFO("stdout:\n" << other.out << "\nstderr:\n" << other.err);
   REQUIRE(other.exit_code == 1);
   REQUIRE(other.err.find("fingerprint mismatch") != std::string::npos);
   REQUIRE(read_text(checkpoint_dir / "cli_ckpt.dtwm") == saved);
-
-  fs::remove_all(scratch);
 }
 
 
@@ -213,24 +208,21 @@ TEST_CASE("dtwc_cl refuses a checkpoint of other data", "[cli][checkpoint]")
 TEST_CASE("dtwc_cl maps its checkpoint above --mmap-threshold", "[cli][checkpoint][mmap]")
 {
   // One file for both storages: a checkpoint written in RAM is reopened mapped.
-  const fs::path scratch = fs::temp_directory_path() / "dtwc_test_cli_ckpt_mapped";
-  fs::remove_all(scratch);
-  const fs::path checkpoint_dir = scratch / "ckpt";
-  write_fixture_series(scratch / "series");
-  const auto in_ram = cli_args(scratch / "series", scratch, checkpoint_dir);
-  REQUIRE(run(in_ram, scratch).exit_code == 0);
+  const dtwc::test_support::ScratchDirectory scratch{ "cli_ckpt_mapped" };
+  const fs::path checkpoint_dir = scratch.path / "ckpt";
+  write_fixture_series(scratch.path / "series");
+  const auto in_ram = cli_args(scratch.path / "series", scratch.path, checkpoint_dir);
+  REQUIRE(run(in_ram, scratch.path).exit_code == 0);
 
   auto mapped = in_ram;
   mapped.insert(mapped.end(), { "--mmap-threshold", "0" });
-  const CommandResult result = run(mapped, scratch);
+  const CommandResult result = run(mapped, scratch.path);
   INFO("stdout:\n" << result.out << "\nstderr:\n" << result.err);
   REQUIRE(result.exit_code == 0);
   REQUIRE(result.out.find("Using memory-mapped distance matrix:") != std::string::npos);
   REQUIRE(result.out.find("cli_ckpt.dtwm") != std::string::npos);
   REQUIRE(fs::file_size(checkpoint_dir / "cli_ckpt.dtwm") == checkpoint_bytes);
-  REQUIRE_FALSE(fs::exists(scratch / "out" / "cli_ckpt.dtwm"));
-
-  fs::remove_all(scratch);
+  REQUIRE_FALSE(fs::exists(scratch.path / "out" / "cli_ckpt.dtwm"));
 }
 #endif
 
@@ -238,27 +230,23 @@ TEST_CASE("dtwc_cl maps its checkpoint above --mmap-threshold", "[cli][checkpoin
 TEST_CASE("dtwc_cl rejects --checkpoint-interval without --checkpoint",
           "[cli][checkpoint]")
 {
-  const fs::path scratch = fs::temp_directory_path() / "dtwc_test_cli_ckpt_bad";
-  fs::remove_all(scratch);
-  fs::create_directories(scratch);
-  const fs::path data = scratch / "series";
+  const dtwc::test_support::ScratchDirectory scratch{ "cli_ckpt_bad" };
+  const fs::path data = scratch.path / "series";
   write_fixture_series(data);
 
   const CommandResult result = run(
     { cli_executable().string(),
       "-i", data.string(),
       "-k", "2",
-      "-o", (scratch / "out").string(),
+      "-o", (scratch.path / "out").string(),
       "--name", "cli_ckpt",
       "--skip-rows", "1",
       "--skip-cols", "1",
       "--checkpoint-interval", "2" },
-    scratch);
+    scratch.path);
 
   INFO("stdout:\n" << result.out << "\nstderr:\n" << result.err);
   REQUIRE(result.exit_code == 1);
   REQUIRE(result.err.find("--checkpoint-interval requires --checkpoint")
           != std::string::npos);
-
-  fs::remove_all(scratch);
 }

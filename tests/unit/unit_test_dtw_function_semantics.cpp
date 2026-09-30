@@ -5,6 +5,8 @@
 
 #include <dtwc.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -18,6 +20,7 @@
 
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
+using dtwc::test_support::ScratchDirectory;
 
 namespace {
 
@@ -36,29 +39,6 @@ std::span<const T> as_span(const std::vector<T> &values)
 {
   return {values.data(), values.size()};
 }
-
-struct ScratchCaches
-{
-  std::filesystem::path directory;
-  std::filesystem::path first;
-  std::filesystem::path second;
-
-  explicit ScratchCaches(std::string_view stem)
-    : directory(std::filesystem::temp_directory_path()
-                / (std::string(stem) + "_"
-                   + std::to_string(reinterpret_cast<std::uintptr_t>(this)))),
-      first(directory / "first.dtwcache"),
-      second(directory / "second.dtwcache")
-  {
-    std::filesystem::create_directories(directory);
-  }
-
-  ~ScratchCaches()
-  {
-    std::error_code error;
-    std::filesystem::remove_all(directory, error);
-  }
-};
 
 } // namespace
 
@@ -165,9 +145,9 @@ TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
 #else
   SECTION("unchanged mutable and const getters retain mapped storage")
   {
-    ScratchCaches cache{"m37_unchanged_mmap"};
+    const ScratchDirectory cache{"m37_unchanged_mmap"};
     Problem problem = make_bound_problem();
-    problem.use_mmap_distance_matrix(cache.first);
+    problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
 
     const auto *function = &problem.dtw_function();
     REQUIRE(problem.distance_matrix().is_mapped());
@@ -179,9 +159,9 @@ TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
 
   SECTION("mutable stale getter detaches mmap and rebinds without rewriting it")
   {
-    ScratchCaches cache{"m37_mutable_mmap"};
+    const ScratchDirectory cache{"m37_mutable_mmap"};
     Problem problem = make_bound_problem();
-    problem.use_mmap_distance_matrix(cache.first);
+    problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
     problem.variant_params.variant = core::DTWVariant::ADTW;
 
     REQUIRE_THAT(
@@ -190,14 +170,14 @@ TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
     REQUIRE(!problem.distance_matrix().is_mapped());
 
     Problem original_semantics = make_bound_problem();
-    REQUIRE_NOTHROW(original_semantics.use_mmap_distance_matrix(cache.first));
+    REQUIRE_NOTHROW(original_semantics.use_mmap_distance_matrix(cache.path / "first.dtwcache"));
   }
 
   SECTION("const stale getter rejects without detaching mmap")
   {
-    ScratchCaches cache{"m37_const_mmap"};
+    const ScratchDirectory cache{"m37_const_mmap"};
     Problem problem = make_bound_problem();
-    problem.use_mmap_distance_matrix(cache.first);
+    problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
     problem.variant_params.variant = core::DTWVariant::ADTW;
 
     const Problem &stale_view = problem;
@@ -212,12 +192,12 @@ TEST_CASE("DTW function semantic guards preserve mapped-cache invariants",
 
   SECTION("mmap replacement reconciles dispatcher before publishing new identity")
   {
-    ScratchCaches cache{"m37_replace_mmap"};
+    const ScratchDirectory cache{"m37_replace_mmap"};
     Problem problem = make_bound_problem();
-    problem.use_mmap_distance_matrix(cache.first);
+    problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
     problem.variant_params.variant = core::DTWVariant::ADTW;
 
-    problem.use_mmap_distance_matrix(cache.second);
+    problem.use_mmap_distance_matrix(cache.path / "second.dtwcache");
     REQUIRE(problem.distance_matrix().is_mapped());
     REQUIRE_THAT(problem.dist_by_ind(0, 1), WithinAbs(4.0, 1e-12));
   }

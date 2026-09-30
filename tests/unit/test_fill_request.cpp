@@ -11,6 +11,8 @@
 
 #include <dtwc.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #ifdef DTWC_HAS_METAL
 #include <metal/metal_dtw.hpp>
 #endif
@@ -133,9 +135,7 @@ TEST_CASE("FX-1: a matrix holding every pair needs no feasible band; a new one r
 {
   // Lengths 4 and 10 under band 2: the pair has no warping path, but a matrix
   // that already holds it computes nothing. Oracle: the numbers put in.
-  const auto dir = std::filesystem::temp_directory_path() / "dtwc_fx1_known_pairs";
-  std::filesystem::remove_all(dir);
-  std::filesystem::create_directories(dir);
+  const dtwc::test_support::ScratchDirectory dir{ "fx1_known_pairs" };
   const auto band_error = [](dtwc::Problem &p) {
     return message_of<dtwc::InvalidInput>([&] { (void)p.dist_by_ind(0, 1); });
   };
@@ -149,31 +149,29 @@ TEST_CASE("FX-1: a matrix holding every pair needs no feasible band; a new one r
   matrix.resize(2);
   matrix.set(0, 0, 0.0);
   matrix.set(1, 1, 0.0);
-  dtwc::save_checkpoint(prob, (dir / "partial").string()); // pair uncomputed
+  dtwc::save_checkpoint(prob, (dir.path / "partial").string()); // pair uncomputed
   prob.distance_matrix().set(0, 1, 7.5);
   CHECK(prob.dist_by_ind(0, 1) == 7.5);
 
   // A checkpoint without the pair brings the check back, cached pair or not.
-  REQUIRE(dtwc::load_checkpoint(prob, (dir / "partial").string()));
+  REQUIRE(dtwc::load_checkpoint(prob, (dir.path / "partial").string()));
   CHECK_THAT(band_error(prob), ContainsSubstring("Problem::dist_by_ind: band = 2"));
 
   // So does a file without it; a file with it serves the pair.
   {
-    std::ofstream(dir / "full.csv") << "0,2.5\n2.5,0\n";
-    std::ofstream(dir / "hole.csv") << "0,\n,0\n";
+    std::ofstream(dir.path / "full.csv") << "0,2.5\n2.5,0\n";
+    std::ofstream(dir.path / "hole.csv") << "0,\n,0\n";
   }
-  prob.read_distance_matrix(dir / "full.csv");
+  prob.read_distance_matrix(dir.path / "full.csv");
   CHECK(prob.dist_by_ind(0, 1) == 2.5);
-  prob.read_distance_matrix(dir / "hole.csv");
+  prob.read_distance_matrix(dir.path / "hole.csv");
   CHECK_THAT(band_error(prob), ContainsSubstring("Problem::dist_by_ind: band = 2"));
 
   // And an edit through the matrix accessor (resize() NaN-wipes every entry).
-  prob.read_distance_matrix(dir / "full.csv");
+  prob.read_distance_matrix(dir.path / "full.csv");
   CHECK(prob.dist_by_ind(0, 1) == 2.5);
   prob.distance_matrix().resize(2);
   CHECK_THAT(band_error(prob), ContainsSubstring("Problem::dist_by_ind: band = 2"));
-
-  std::filesystem::remove_all(dir);
 }
 
 TEST_CASE("FX-1: the dtw_function accessors validate the request before any pair",

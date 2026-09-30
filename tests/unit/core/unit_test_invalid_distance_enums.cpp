@@ -15,6 +15,8 @@
 #include <core/dtw_dispatch.hpp>
 #include <enums/KernelOverride.hpp>
 
+#include "../../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
@@ -31,6 +33,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+using dtwc::test_support::ScratchDirectory;
 using namespace dtwc;
 
 namespace {
@@ -144,24 +147,6 @@ void check_dense_unallocated(const Problem &problem)
     FAIL_CHECK("matrix inspection threw: " << error.what());
   }
 }
-
-struct ScratchDirectory {
-  fs::path root;
-
-  explicit ScratchDirectory(std::string_view stem)
-    : root(fs::temp_directory_path()
-           / (std::string(stem) + "_"
-              + std::to_string(reinterpret_cast<std::uintptr_t>(this))))
-  {
-    fs::create_directories(root);
-  }
-
-  ~ScratchDirectory()
-  {
-    std::error_code error;
-    fs::remove_all(root, error);
-  }
-};
 
 } // namespace
 
@@ -455,7 +440,7 @@ TEST_CASE("M47 rejects every invalid MetricType at public distance boundaries",
       });
 
       ScratchDirectory scratch{"m47_metric_cache"};
-      const fs::path cache = scratch.root / "invalid.dtwcache";
+      const fs::path cache = scratch.path / "invalid.dtwcache";
       Problem problem{"m47_metric_cache"};
       problem.set_data(basic_f64_data());
       check_invalid_input("mmap cache identity", metric_error, [&] {
@@ -562,7 +547,7 @@ TEST_CASE("M47 rejects every invalid DTWVariant before dispatch or mutation",
       check_dense_unallocated(fill);
 
       ScratchDirectory cache_scratch{"m47_variant_cache"};
-      const fs::path cache = cache_scratch.root / "invalid.dtwcache";
+      const fs::path cache = cache_scratch.path / "invalid.dtwcache";
       Problem cache_problem{"m47_variant_cache"};
       cache_problem.set_data(basic_f64_data());
       cache_problem.variant_params = params;
@@ -574,7 +559,7 @@ TEST_CASE("M47 rejects every invalid DTWVariant before dispatch or mutation",
       check_dense_unallocated(cache_problem);
 
       ScratchDirectory scratch{"m47_variant_checkpoint"};
-      const fs::path checkpoint = scratch.root / "checkpoint";
+      const fs::path checkpoint = scratch.path / "checkpoint";
       Problem save{"m47_variant_checkpoint"};
       seed_dense_sentinel(save);
       save.variant_params = params;
@@ -660,7 +645,7 @@ TEST_CASE("M47 rejects every invalid MissingStrategy before dispatch or mutation
       check_dense_unallocated(fill);
 
       ScratchDirectory scratch{"m47_missing_cache"};
-      const fs::path cache = scratch.root / "invalid.dtwcache";
+      const fs::path cache = scratch.path / "invalid.dtwcache";
       Problem cache_problem{"m47_missing_cache"};
       cache_problem.set_data(basic_f64_data());
       cache_problem.missing_strategy = invalid;
@@ -749,7 +734,7 @@ TEST_CASE("M47 rejects every invalid MVMode in both resolver precisions",
       check_dense_unallocated(fill);
 
       ScratchDirectory scratch{"m47_mv_cache"};
-      const fs::path cache = scratch.root / "invalid.dtwcache";
+      const fs::path cache = scratch.path / "invalid.dtwcache";
       Problem cache_problem{"m47_mv_cache"};
       cache_problem.set_data(basic_f64_data(2));
       cache_problem.variant_params = params;
@@ -805,7 +790,7 @@ TEST_CASE("M47 rejects every invalid distance-matrix and lower-bound strategy",
         check_dense_unallocated(fill);
 
         ScratchDirectory scratch{"m47_matrix_strategy_cache"};
-        const fs::path cache = scratch.root / "invalid.dtwcache";
+        const fs::path cache = scratch.path / "invalid.dtwcache";
         Problem cache_problem{"m47_matrix_strategy_cache"};
         seed_dense_sentinel(cache_problem);
         cache_problem.distance_strategy = invalid;

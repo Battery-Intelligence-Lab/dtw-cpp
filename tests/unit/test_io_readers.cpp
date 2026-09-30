@@ -33,6 +33,8 @@
 #include <string>
 #include <vector>
 
+#include "../support/scratch_directory.hpp"
+
 #if !defined(DTWC_HAS_ARROW)
 
 TEST_CASE("I/O reader hardening tests skipped", "[io]")
@@ -69,11 +71,11 @@ T unwrap(arrow::Result<T> r)
   return r.ValueOrDie(); // reference, copied out (cheap for shared_ptr)
 }
 
+/// The directory of every file this binary writes: unique to the process, removed at exit.
 std::filesystem::path tmpdir()
 {
-  auto d = std::filesystem::temp_directory_path() / "dtwc_io_reader_test";
-  std::filesystem::create_directories(d);
-  return d;
+  static const dtwc::test_support::ScratchDirectory dir{ "io_reader_test" };
+  return dir.path;
 }
 
 // Build a List<Float32> array from ragged series.

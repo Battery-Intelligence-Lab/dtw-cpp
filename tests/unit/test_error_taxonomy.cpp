@@ -45,6 +45,8 @@
 #include <scores.hpp>
 #include <soft_dtw.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
@@ -188,26 +190,19 @@ dtwc::Problem three_series()
   return prob;
 }
 
-struct GT4Scratch
+fs::path write_file(const fs::path &directory, const std::string &name, const std::string &text)
 {
-  fs::path path = fs::temp_directory_path()
-    / ("dtwc_gt4_typed_throws_" + std::to_string(reinterpret_cast<std::uintptr_t>(this)));
-  GT4Scratch() { fs::remove_all(path); fs::create_directories(path); }
-  ~GT4Scratch() { std::error_code ec; fs::remove_all(path, ec); }
-  fs::path write(const std::string &name, const std::string &text) const
-  {
-    std::ofstream(path / name, std::ios::binary) << text;
-    return path / name;
-  }
-};
+  std::ofstream(directory / name, std::ios::binary) << text;
+  return directory / name;
+}
 
 } // namespace
 
 TEST_CASE("GT-4: each converted file raises its contract type from a live site", "[error][gt4]")
 {
-  const GT4Scratch dir;
-  const fs::path bad_csv = dir.write("bad.csv", "1,2,3\n4,abc,6\n");
-  const fs::path garbage = dir.write("garbage.bin", "not a cache");
+  const dtwc::test_support::ScratchDirectory dir{ "gt4_typed_throws" };
+  const fs::path bad_csv = write_file(dir.path, "bad.csv", "1,2,3\n4,abc,6\n");
+  const fs::path garbage = write_file(dir.path, "garbage.bin", "not a cache");
   const double nan = std::numeric_limits<double>::quiet_NaN();
   const double inf = std::numeric_limits<double>::infinity();
 

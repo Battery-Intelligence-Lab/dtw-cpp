@@ -27,6 +27,8 @@
 #include "base/error.hpp"
 #include "cli/config.hpp"
 
+#include "../support/scratch_directory.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
@@ -59,6 +61,7 @@
 #endif
 
 namespace fs = std::filesystem;
+using dtwc::test_support::ScratchDirectory;
 
 namespace {
 
@@ -184,14 +187,6 @@ CommandResult run(const std::vector<std::string> &argv, const fs::path &scratch)
   const int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 #endif
   return { exit_code, read_text(out_path), read_text(err_path) };
-}
-
-fs::path fresh_scratch(const std::string &name)
-{
-  const fs::path scratch = fs::temp_directory_path() / name;
-  fs::remove_all(scratch);
-  fs::create_directories(scratch);
-  return scratch;
 }
 
 std::string trimmed(const std::string &text)
@@ -408,8 +403,8 @@ TEST_CASE("the deprecated spellings warn and yield to the canonical ones", "[con
 
 TEST_CASE("bind() reads every option, alias and choice dtwc_cl --help lists", "[config][cli]")
 {
-  const fs::path scratch = fresh_scratch("dtwc_test_config_spellings_help");
-  const CommandResult help = run({ cli_executable().string(), "--help" }, scratch);
+  const ScratchDirectory scratch{ "config_spellings_help" };
+  const CommandResult help = run({ cli_executable().string(), "--help" }, scratch.path);
   INFO("dtwc_cl --help:\n" << help.out << help.err);
   REQUIRE(help.exit_code == 0);
   const std::vector<HelpOption> listed = help_options(help.out);
@@ -453,19 +448,18 @@ TEST_CASE("bind() reads every option, alias and choice dtwc_cl --help lists", "[
   for (const auto &entry : values_of(dtwc::to_config_text(dtwc::Config{})))
     if (keys_listed.count(entry.first) == 0) unlisted.insert(entry.first);
   CHECK(unlisted.empty());
-  fs::remove_all(scratch);
 }
 
 TEST_CASE("Config{} holds the defaults dtwc_cl reports", "[config][cli]")
 {
-  const fs::path scratch = fresh_scratch("dtwc_test_config_spellings_defaults");
+  const ScratchDirectory scratch{ "config_spellings_defaults" };
   const fs::path input = conformance_dir() / "data" / "conformance_series.csv";
   // The "  Label: value" lines dtwc_cl -v prints before it reads the data.
   const auto echo = [&](const std::vector<std::string> &extra) {
     std::vector<std::string> argv{ cli_executable().string(), "-i", input.string(),
-                                   "-o", (scratch / "out").string(), "-v" };
+                                   "-o", (scratch.path / "out").string(), "-v" };
     argv.insert(argv.end(), extra.begin(), extra.end());
-    const CommandResult result = run(argv, scratch);
+    const CommandResult result = run(argv, scratch.path);
     INFO("stdout:\n" << result.out << "\nstderr:\n" << result.err);
     REQUIRE(result.exit_code == 0);
     std::map<std::string, std::string> settings;
@@ -502,5 +496,4 @@ TEST_CASE("Config{} holds the defaults dtwc_cl reports", "[config][cli]")
 
   const auto hierarchical = echo({ "-m", "hierarchical" });
   CHECK(hierarchical.at("Linkage") == defaults.at("linkage"));
-  fs::remove_all(scratch);
 }

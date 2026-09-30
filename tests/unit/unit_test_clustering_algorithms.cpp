@@ -14,6 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include "../support/scratch_directory.hpp"
 #include "../test_util.hpp"
 
 #include <chrono>
@@ -28,6 +29,7 @@
 #endif
 
 using Catch::Matchers::WithinAbs;
+using dtwc::test_support::ScratchDirectory;
 using namespace dtwc;
 
 namespace {
@@ -52,29 +54,12 @@ Problem make_dummy_problem(int N_data, int Nc)
   prob.set_n_clusters(Nc);
   prob.set_max_iter(100);
   prob.set_n_repetitions(1);
-  // Write test output CSVs to the system temp dir, not the project root/CWD.
-  // Without this, tests pollute the working directory with test_clustering*.csv.
-  prob.set_output_folder(std::filesystem::temp_directory_path().string());
+  // Result files go to a directory of this process, not the project root/CWD
+  // and not a name shared with other test processes.
+  static const ScratchDirectory output{ "test_clustering" };
+  prob.set_output_folder(output.path);
   return prob;
 }
-
-struct TemporaryOutputDirectory {
-  std::filesystem::path path;
-
-  TemporaryOutputDirectory()
-  {
-    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    path = std::filesystem::temp_directory_path()
-         / ("dtwc_capped_lloyd_" + std::to_string(nonce));
-    std::filesystem::create_directories(path);
-  }
-
-  ~TemporaryOutputDirectory()
-  {
-    std::error_code ec;
-    std::filesystem::remove_all(path, ec);
-  }
-};
 
 Problem make_capped_lloyd_problem(
   const std::filesystem::path &output, std::string name, int max_iter)
@@ -370,7 +355,7 @@ TEST_CASE("After assign_clusters, each medoid belongs to its own cluster", "[Pha
 TEST_CASE("Capped Lloyd returns labels assigned to its final medoids",
           "[Phase1][clustering][lloyd][capped][m29]")
 {
-  TemporaryOutputDirectory output;
+  const ScratchDirectory output{ "capped_lloyd" };
   auto capped = make_capped_lloyd_problem(output.path, "capped", 1);
   auto converged = make_capped_lloyd_problem(output.path, "converged", 100);
 

@@ -17,6 +17,8 @@
 #include "cli/config.hpp"
 #include "cli/run.hpp"
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -34,26 +36,9 @@ using dtwc::ClusterMethod;
 using dtwc::Device;
 using dtwc::detail::ParquetLayout;
 using dtwc::detail::plan_parquet_load;
+using dtwc::test_support::ScratchDirectory;
 
 namespace {
-
-struct ScratchDirectory
-{
-  fs::path path;
-
-  explicit ScratchDirectory(std::string_view name) : path(fs::temp_directory_path() / std::string(name))
-  {
-    std::error_code ec;
-    fs::remove_all(path, ec);
-    fs::create_directories(path);
-  }
-
-  ~ScratchDirectory()
-  {
-    std::error_code ec;
-    fs::remove_all(path, ec);
-  }
-};
 
 std::size_t ram_limit(const std::string &text) { return dtwc::parse_config({ { "ram_limit", text } }).ram_limit; }
 
@@ -260,7 +245,7 @@ bool cache_exists(const ScratchDirectory &scratch, const std::string &name)
 
 TEST_CASE("run's TADPole threshold uses mmap or fails before dense allocation", "[cli][storage][mmap][tadpole]")
 {
-  const ScratchDirectory scratch{ "dtwc_cli_tadpole_storage" };
+  const ScratchDirectory scratch{ "cli_tadpole_storage" };
   auto config = mapped_config(ClusterMethod::TADPole, scratch, "tadpole");
   config.tadpole_dc = 3.0;
 #ifdef DTWC_HAS_MMAP
@@ -278,14 +263,14 @@ TEST_CASE("run's TADPole threshold uses mmap or fails before dense allocation", 
 
 TEST_CASE("run's OneBatch keeps its own O(Nm) storage when the mmap threshold fires", "[cli][storage][onebatch]")
 {
-  const ScratchDirectory scratch{ "dtwc_cli_onebatch_storage" };
+  const ScratchDirectory scratch{ "cli_onebatch_storage" };
   CHECK(dtwc::run(mapped_config(ClusterMethod::OneBatch, scratch, "onebatch"), tiny_series()).labels().size() == 3);
   CHECK_FALSE(cache_exists(scratch, "onebatch"));
 }
 
 TEST_CASE("run's non-full FastCLARA does not open an unused parent matrix", "[cli][storage][clara]")
 {
-  const ScratchDirectory scratch{ "dtwc_cli_clara_storage" };
+  const ScratchDirectory scratch{ "cli_clara_storage" };
   auto config = mapped_config(ClusterMethod::CLARA, scratch, "clara");
   config.sample_size = 2; // < N = 3
   CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
@@ -304,7 +289,7 @@ TEST_CASE("run's mmap storage binds the pointwise metric", "[cli][storage][mmap]
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
 #else
-  const ScratchDirectory scratch{ "dtwc_cli_metric_fingerprint" };
+  const ScratchDirectory scratch{ "cli_metric_fingerprint" };
   auto config = mapped_config(ClusterMethod::PAM, scratch, "metric");
   config.metric = dtwc::core::MetricType::SquaredL2;
   CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
@@ -318,7 +303,7 @@ TEST_CASE("run's mmap storage binds the pointwise metric", "[cli][storage][mmap]
 TEST_CASE("run's mmap storage with --checkpoint maps the checkpoint file", "[cli][storage][mmap][checkpoint]")
 {
   // One file: the mapped matrix is the checkpoint, <checkpoint>/<name>.dtwm.
-  const ScratchDirectory scratch{ "dtwc_cli_checkpoint_mmap" };
+  const ScratchDirectory scratch{ "cli_checkpoint_mmap" };
   auto config = mapped_config(ClusterMethod::PAM, scratch, "checkpoint");
   config.checkpoint = (scratch.path / "ckpt").string();
 #ifdef DTWC_HAS_MMAP
@@ -332,7 +317,7 @@ TEST_CASE("run's mmap storage with --checkpoint maps the checkpoint file", "[cli
 
 TEST_CASE("run rejects a legacy precomputed CSV plus mmap before false success", "[cli][storage][mmap][dist-matrix]")
 {
-  const ScratchDirectory scratch{ "dtwc_cli_precomputed_mmap" };
+  const ScratchDirectory scratch{ "cli_precomputed_mmap" };
   auto config = mapped_config(ClusterMethod::PAM, scratch, "precomputed");
   config.dist_matrix = (scratch.path / "never_read.csv").string();
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),

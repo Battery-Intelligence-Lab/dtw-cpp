@@ -16,6 +16,8 @@
 #include <core/matrix_io.hpp>
 #include <dtwc.hpp>
 
+#include "../../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -28,6 +30,7 @@
 #include <string>
 
 using Catch::Matchers::WithinAbs;
+using dtwc::test_support::ScratchDirectory;
 using namespace dtwc::core;
 
 // ============================================================================
@@ -255,16 +258,6 @@ TEST_CASE("Adversarial: Large indices boundary", "[adversarial][DistanceMatrix]"
 // Area 2: Distance Matrix I/O Round-Trip
 // ============================================================================
 
-// Helper: creates a temp file path that auto-cleans
-struct TempFile {
-  std::filesystem::path path;
-  TempFile(const std::string &name)
-    : path(std::filesystem::temp_directory_path() / ("dtwc_test_" + name + ".csv"))
-  {
-  }
-  ~TempFile() { std::filesystem::remove(path); }
-};
-
 TEST_CASE("Adversarial: Full matrix CSV round-trip", "[adversarial][DistanceMatrix][IO]")
 {
   constexpr size_t N = 10;
@@ -275,11 +268,12 @@ TEST_CASE("Adversarial: Full matrix CSV round-trip", "[adversarial][DistanceMatr
     for (size_t j = i; j < N; ++j)
       dm.set(i, j, static_cast<double>(i * N + j) * 0.1);
 
-  TempFile tmp("full_roundtrip");
-  dtwc::io::write_csv(dm,tmp.path);
+  const ScratchDirectory scratch("full_roundtrip");
+  const auto csv = scratch.path / "matrix.csv";
+  dtwc::io::write_csv(dm,csv);
 
   DistanceMatrix dm2;
-  dtwc::io::read_csv(dm2,tmp.path);
+  dtwc::io::read_csv(dm2,csv);
 
   REQUIRE(dm2.size() == N);
   for (size_t i = 0; i < N; ++i)
@@ -298,11 +292,12 @@ TEST_CASE("Adversarial: Partial matrix CSV round-trip (empty-field preservation)
   dm.set(2, 3, 2.0);
   dm.set(4, 4, 0.0);
 
-  TempFile tmp("partial_roundtrip");
-  dtwc::io::write_csv(dm,tmp.path);
+  const ScratchDirectory scratch("partial_roundtrip");
+  const auto csv = scratch.path / "matrix.csv";
+  dtwc::io::write_csv(dm,csv);
 
   DistanceMatrix dm2;
-  dtwc::io::read_csv(dm2,tmp.path);
+  dtwc::io::read_csv(dm2,csv);
 
   REQUIRE(dm2.size() == N);
 
@@ -325,11 +320,12 @@ TEST_CASE("Adversarial: Small values in distance matrix roundtrip", "[adversaria
   dm.set(0, 1, 42.5);
   dm.set(1, 2, 0.001);
 
-  TempFile tmp("small_roundtrip");
-  dtwc::io::write_csv(dm,tmp.path);
+  const ScratchDirectory scratch("small_roundtrip");
+  const auto csv = scratch.path / "matrix.csv";
+  dtwc::io::write_csv(dm,csv);
 
   DistanceMatrix dm2;
-  dtwc::io::read_csv(dm2,tmp.path);
+  dtwc::io::read_csv(dm2,csv);
 
   REQUIRE_THAT(dm2.get(0, 1), WithinAbs(42.5, 1e-12));
   REQUIRE_THAT(dm2.get(1, 0), WithinAbs(42.5, 1e-12));
@@ -341,11 +337,12 @@ TEST_CASE("Adversarial: Very large values (1e300)", "[adversarial][DistanceMatri
   DistanceMatrix dm(2);
   dm.set(0, 1, 1e300);
 
-  TempFile tmp("large_roundtrip");
-  dtwc::io::write_csv(dm,tmp.path);
+  const ScratchDirectory scratch("large_roundtrip");
+  const auto csv = scratch.path / "matrix.csv";
+  dtwc::io::write_csv(dm,csv);
 
   DistanceMatrix dm2;
-  dtwc::io::read_csv(dm2,tmp.path);
+  dtwc::io::read_csv(dm2,csv);
 
   // Relative tolerance for very large values
   REQUIRE_THAT(dm2.get(0, 1), WithinAbs(1e300, 1e287));
@@ -357,11 +354,12 @@ TEST_CASE("Adversarial: Very small values (1e-300)", "[adversarial][DistanceMatr
   DistanceMatrix dm(2);
   dm.set(0, 1, 1e-300);
 
-  TempFile tmp("small_roundtrip");
-  dtwc::io::write_csv(dm,tmp.path);
+  const ScratchDirectory scratch("small_roundtrip");
+  const auto csv = scratch.path / "matrix.csv";
+  dtwc::io::write_csv(dm,csv);
 
   DistanceMatrix dm2;
-  dtwc::io::read_csv(dm2,tmp.path);
+  dtwc::io::read_csv(dm2,csv);
 
   // Must not underflow to zero
   REQUIRE(dm2.get(0, 1) != 0.0);
@@ -378,10 +376,11 @@ TEST_CASE("Adversarial: operator<< matches write_csv output",
       dm.set(i, j, static_cast<double>(i * 10 + j) * 1.1);
 
   // write_csv output
-  TempFile tmp("operator_vs_csv");
-  dtwc::io::write_csv(dm,tmp.path);
+  const ScratchDirectory scratch("operator_vs_csv");
+  const auto csv = scratch.path / "matrix.csv";
+  dtwc::io::write_csv(dm,csv);
 
-  std::ifstream file(tmp.path);
+  std::ifstream file(csv);
   std::string csv_content((std::istreambuf_iterator<char>(file)),
     std::istreambuf_iterator<char>());
   file.close();
@@ -398,14 +397,15 @@ TEST_CASE("Adversarial: operator<< matches write_csv output",
 TEST_CASE("Adversarial: read_csv with trailing newline", "[adversarial][DistanceMatrix][IO]")
 {
   // Write a symmetric CSV manually with a trailing blank line
-  TempFile tmp("trailing_newline");
+  const ScratchDirectory scratch("trailing_newline");
+  const auto csv = scratch.path / "matrix.csv";
   {
-    std::ofstream f(tmp.path);
+    std::ofstream f(csv);
     f << "0.0,2.5\n2.5,0.0\n\n"; // trailing blank line
   }
 
   DistanceMatrix dm;
-  dtwc::io::read_csv(dm,tmp.path);
+  dtwc::io::read_csv(dm,csv);
 
   // Should have 2 rows, not 3 — trailing blank line must be ignored
   REQUIRE(dm.size() == 2);
@@ -419,21 +419,22 @@ TEST_CASE("Adversarial: Empty matrix write/read", "[adversarial][DistanceMatrix]
 {
   DistanceMatrix dm(0);
 
-  TempFile tmp("empty_roundtrip");
+  const ScratchDirectory scratch("empty_roundtrip");
+  const auto csv = scratch.path / "matrix.csv";
 
   SECTION("write_csv on empty matrix does not crash")
   {
-    REQUIRE_NOTHROW(dtwc::io::write_csv(dm,tmp.path));
+    REQUIRE_NOTHROW(dtwc::io::write_csv(dm,csv));
   }
 
   SECTION("read_csv of empty file does not crash")
   {
     {
-      std::ofstream f(tmp.path);
+      std::ofstream f(csv);
       // write nothing
     }
     DistanceMatrix dm2;
-    REQUIRE_NOTHROW(dtwc::io::read_csv(dm2,tmp.path));
+    REQUIRE_NOTHROW(dtwc::io::read_csv(dm2,csv));
     REQUIRE(dm2.size() == 0);
   }
 }
@@ -445,28 +446,29 @@ TEST_CASE("Adversarial: read_csv of asymmetric CSV is rejected, not overwritten"
   // reader used to let the later of the two values win (0,1) = 10, (0,2) = 20,
   // (1,2) = 30, silently discarding 1, 2 and 3 (FX-11). It now throws before
   // touching the destination.
-  TempFile tmp("asymmetric_csv");
+  const ScratchDirectory scratch("asymmetric_csv");
+  const auto csv = scratch.path / "matrix.csv";
   {
-    std::ofstream f(tmp.path);
+    std::ofstream f(csv);
     f << "0.0,1.0,2.0\n"
       << "10.0,0.0,3.0\n"
       << "20.0,30.0,0.0\n";
   }
 
   DistanceMatrix dm;
-  REQUIRE_THROWS_AS(dtwc::io::read_csv(dm, tmp.path), dtwc::InvalidInput);
-  REQUIRE_THROWS_WITH(dtwc::io::read_csv(dm, tmp.path),
+  REQUIRE_THROWS_AS(dtwc::io::read_csv(dm, csv), dtwc::InvalidInput);
+  REQUIRE_THROWS_WITH(dtwc::io::read_csv(dm, csv),
     Catch::Matchers::ContainsSubstring("row 2, column 1 is 10 but row 1, column 2 is 1"));
   REQUIRE(dm.size() == 0);
 
   // The same file made symmetric reads every pair.
   {
-    std::ofstream f(tmp.path);
+    std::ofstream f(csv);
     f << "0.0,10.0,20.0\n"
       << "10.0,0.0,30.0\n"
       << "20.0,30.0,0.0\n";
   }
-  dtwc::io::read_csv(dm, tmp.path);
+  dtwc::io::read_csv(dm, csv);
   REQUIRE(dm.size() == 3);
   REQUIRE_THAT(dm.get(0, 1), WithinAbs(10.0, 1e-12));
   REQUIRE_THAT(dm.get(1, 0), WithinAbs(10.0, 1e-12));

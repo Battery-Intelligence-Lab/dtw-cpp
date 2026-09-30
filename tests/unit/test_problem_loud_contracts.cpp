@@ -19,6 +19,8 @@
 
 #include <dtwc.hpp>
 
+#include "../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -57,6 +59,7 @@
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::MessageMatches;
 namespace fs = std::filesystem;
+using dtwc::test_support::ScratchDirectory;
 
 namespace {
 
@@ -75,24 +78,6 @@ dtwc::Problem six_series(std::string name)
   prob.set_verbose(false);
   return prob;
 }
-
-/// A fresh directory under the system temporary directory, removed at scope exit.
-struct ScratchDir
-{
-  fs::path path;
-  explicit ScratchDir(std::string_view stem)
-    : path(fs::temp_directory_path()
-           / (std::string(stem) + "_" + std::to_string(reinterpret_cast<std::uintptr_t>(this))))
-  {
-    fs::remove_all(path);
-    fs::create_directories(path);
-  }
-  ~ScratchDir()
-  {
-    std::error_code ec;
-    fs::remove_all(path, ec);
-  }
-};
 
 void write_text(const fs::path &path, std::string_view text)
 {
@@ -158,7 +143,7 @@ TEST_CASE("O-06: Lloyd refuses zero iterations held by the deprecated field",
 TEST_CASE("FX-3: read_distance_matrix refuses a matrix of another size and an empty file",
           "[problem][fx3][io]")
 {
-  ScratchDir dir{ "dtwc_fx3_read_matrix" };
+  ScratchDirectory dir{ "fx3_read_matrix" };
   auto prob = six_series("fx3_read");
   prob.fill_distance_matrix();
   const double before = prob.dist_by_ind(0, 3);
@@ -246,7 +231,7 @@ TEST_CASE("F25: the Problem writers name series in every storage mode",
 {
   // They read names through get_name, which a view does not own: the writers
   // read past an empty vector for a view (set_view_data, an mmap store).
-  ScratchDir dir{ "dtwc_f25_writers" };
+  ScratchDirectory dir{ "f25_writers" };
   const std::vector<std::vector<double>> owner{ { 0, 1, 2 }, { 0, 1, 3 }, { 9, 8, 9 } };
   std::vector<std::span<const double>> spans(owner.begin(), owner.end());
   dtwc::Problem view("f25_writer");
@@ -300,7 +285,7 @@ TEST_CASE("B-05: Result::save reports a write that fails after the file opened",
   // Six series named by 200-character file stems: labels.csv (> 1.2 kB) and
   // silhouettes.csv overflow a 1024-byte limit; medoids.csv and the 6 x 6
   // matrix fit. An open-only check returned normally with both truncated.
-  ScratchDir dir{ "dtwc_b05_save" };
+  ScratchDirectory dir{ "b05_save" };
   const auto input = dir.path / "series";
   fs::create_directories(input);
   const std::string stem(200, 'x');
@@ -331,7 +316,7 @@ TEST_CASE("B-05: a run artefact write that fails after the file opened is an IOE
   // cluster_and_process() writes the per-repetition medoids first; its writer
   // checked only the open, so the truncation went unnoticed. 600-character
   // names put one medoid line above the 1024-byte limit.
-  ScratchDir dir{ "dtwc_b05_artefacts" };
+  ScratchDirectory dir{ "b05_artefacts" };
   auto prob = six_series("b05");
   for (int i = 0; i < 6; ++i)
     prob.get_name(static_cast<std::size_t>(i)) = std::string(600, 'n') + std::to_string(i);
