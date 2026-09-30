@@ -102,8 +102,7 @@ dtwc_add_test(NAME unit_test_problem_encapsulation SOURCE ${_dtwc_test_source_un
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f19-problem-api" FIXTURE_DEFINE DTWC_F19_TEST_ROOT)
 
 # F15: the three portable deterministic generator schedules.
-dtwc_add_test(NAME unit_test_deterministic_series SOURCE ${_dtwc_test_source_unit_test_deterministic_series}
-    COMPILE_DEFINITIONS DTWC_F15_SOURCE_ROOT="${CMAKE_SOURCE_DIR}")
+dtwc_add_test(NAME unit_test_deterministic_series SOURCE ${_dtwc_test_source_unit_test_deterministic_series})
 
 # F6: the Arrow/Parquet readers must RUN when the build publishes Arrow, and
 # are not registered at all when it does not (no green stub).
