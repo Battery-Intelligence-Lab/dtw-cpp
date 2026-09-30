@@ -88,9 +88,9 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
   // CPU rolling-buffer implementation.
   //
   // The principal pair alone takes the threadgroup wavefront. A 64-sample
-  // filler makes bands 1-3 tight enough (band * 20 < max_L) for banded_row. A
-  // 4096-sample filler overflows the 32 KB threadgroup memory of Apple GPUs, so
-  // the unbounded band runs on the device-memory wavefront.
+  // filler makes bands 1-3 tight enough (band * 20 < max_L) for banded_row. An
+  // 8192-sample filler needs 96 KB of threadgroup memory, more than any Apple
+  // GPU has (32 KB), so the unbounded band runs on the device-memory wavefront.
   struct Route {
     const char *kernel_name;
     std::size_t filler_length; // 0: no filler
@@ -100,7 +100,7 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
   constexpr std::array routes{
       Route{"wavefront", 0, true, true},
       Route{"banded_row", 64, true, false},
-      Route{"wavefront_global", 4096, false, true},
+      Route{"wavefront_global", 8192, false, true},
   };
 
   for (const auto &route : routes) {
@@ -458,6 +458,30 @@ TEST_CASE("Metal wavefront NxN banded matches CPU dtwBanded", "[metal][banded]")
       CAPTURE(i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
       REQUIRE_THAT(gpu.matrix[i * N + j],
                    WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1e-2));
+    }
+  }
+}
+
+TEST_CASE("Metal global-memory wavefront honours a finite band", "[metal][banded]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  // Series too long for threadgroup memory and a band too wide for banded_row
+  // (band * 20 >= max_L) take the device-memory wavefront with the band intact.
+  const size_t N = 3;
+  const size_t L = 8192;
+  const int band = 500;
+  auto series = generate_random_series(N, L, 2718);
+
+  auto cpu = cpu_banded_matrix(series, band);
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.band = band;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  REQUIRE(gpu.kernel_used == "wavefront_global");
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      CAPTURE(i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
+      REQUIRE_THAT(gpu.matrix[i * N + j],
+                   WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1.0));
     }
   }
 }

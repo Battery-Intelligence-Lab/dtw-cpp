@@ -552,6 +552,7 @@ TEST_CASE("test_gpu_single_series", "[cuda]")
   REQUIRE(gpu_result.n == 1);
   REQUIRE(gpu_result.matrix.size() == 1);
   REQUIRE(gpu_result.matrix[0] == 0.0);
+  REQUIRE(gpu_result.kernel_used == "none");
 }
 
 TEST_CASE("test_gpu_two_identical", "[cuda]")

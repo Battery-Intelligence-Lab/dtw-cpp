@@ -15,6 +15,9 @@
  *         zeros (a valid-looking wrong answer). The entry-point case runs only
  *         when the process sees no device: on a GPU host, execute this binary
  *         with CUDA_VISIBLE_DEVICES=-1 to exercise it.
+ *
+ * The automatic kernel choice (`cuda/kernel_selection.hpp`, also free of CUDA
+ * headers) is pinned here too, so a build without a GPU checks its ranges.
  */
 
 #include <catch2/catch_test_macros.hpp>
@@ -23,6 +26,7 @@
 #include <base/error.hpp>
 
 #if __has_include(<cuda/launch_prep.hpp>)
+#include <cuda/kernel_selection.hpp>
 #include <cuda/launch_prep.hpp>
 #define DTWC_HAS_CUDA_LAUNCH_PREP_SEAM 1
 #else
@@ -89,6 +93,32 @@ TEST_CASE("A16 missing CUDA device is a typed error, never a zero matrix",
   REQUIRE_THROWS_AS(require_cuda_device(false, "probe"), dtwc::DeviceError);
   // DeviceError, not InvalidInput: the input was fine, the device was not.
   REQUIRE_THROWS_AS(require_cuda_device(false, "probe"), dtwc::Error);
+#endif
+}
+
+TEST_CASE("CUDA kernel choice follows the longest series length",
+          "[cuda][launch_guard][host]")
+{
+#if !DTWC_HAS_CUDA_LAUNCH_PREP_SEAM
+  FAIL("CUDA launch preconditions must be exposed through a host-testable seam");
+#else
+  using dtwc::cuda::detail::KernelPath;
+  using dtwc::cuda::detail::kernel_path_name;
+  using dtwc::cuda::detail::select_kernel;
+
+  // Each range's kernel beats every other kernel that accepts the range by at
+  // least 15 % on the RTX 4000 Ada (.claude/baselines/2026-09-29-w4a-cuda-kernel-ab.md).
+  CHECK(select_kernel(1) == KernelPath::Warp);
+  CHECK(select_kernel(32) == KernelPath::Warp);
+  CHECK(select_kernel(33) == KernelPath::RegTileW4);
+  CHECK(select_kernel(128) == KernelPath::RegTileW4);
+  CHECK(select_kernel(129) == KernelPath::RegTileW8);
+  CHECK(select_kernel(256) == KernelPath::RegTileW8);
+  CHECK(select_kernel(257) == KernelPath::Wavefront);
+  CHECK(kernel_path_name(KernelPath::Warp) == "warp");
+  CHECK(kernel_path_name(KernelPath::RegTileW4) == "regtile_w4");
+  CHECK(kernel_path_name(KernelPath::RegTileW8) == "regtile_w8");
+  CHECK(kernel_path_name(KernelPath::Wavefront) == "wavefront");
 #endif
 }
 

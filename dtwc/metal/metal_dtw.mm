@@ -823,20 +823,21 @@ MetalDistMatResult compute_distance_matrix_metal(
     const MetalDistMatOptions &opts)
 {
   validate_metal_precision(opts.precision);
-  MetalDistMatResult result;
-  const size_t N = series.size();
-  result.n = N;
-  result.matrix.assign(N * N, 0.0);
-
   auto &ctx = context();
   // A16 parity with CUDA: an unavailable backend is a typed DeviceError, for
-  // every N, never a zero-filled result that reads as a valid answer.
+  // every N and before the result is allocated, never a zero-filled result
+  // that reads as a valid answer.
   if (!ctx.initialized)
     throw dtwc::DeviceError("Metal backend unavailable ("
                             + (ctx.init_error.empty()
                                  ? std::string("unknown") : ctx.init_error)
                             + "): no usable Metal GPU was detected. No CPU "
                               "fallback was attempted.");
+
+  MetalDistMatResult result;
+  const size_t N = series.size();
+  result.n = N;
+  result.matrix.assign(N * N, 0.0);
 
   if (N <= 1) return result;
 

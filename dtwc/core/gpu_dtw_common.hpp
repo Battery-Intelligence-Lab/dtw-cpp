@@ -3,7 +3,7 @@
  * @brief Shared base structs for CUDA/Metal distance matrix options + results.
  *
  * @details Both backends historically duplicated the common fields (band,
- *          metric, verbose).
+ *          use_squared_l2, verbose).
  *          This header factors those into `DistMatOptionsBase` and
  *          `DistMatResultBase`; `CUDADistMatOptions` / `MetalDistMatOptions`
  *          inherit and append backend-specific fields. Designated aggregate

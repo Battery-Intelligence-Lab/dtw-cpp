@@ -72,24 +72,27 @@ struct DeviceLimits {
 const DeviceLimits &device_limits(int device_id)
 {
   static std::vector<DeviceLimits> limits;
+  static cudaError_t read_error = cudaSuccess;
   static std::once_flag read_once;
+  // The callable records an error rather than throwing it: where call_once
+  // runs on glibc's pthread_once, a throw can hang the next caller on non-x86
+  // targets such as aarch64 (GCC PR 66146).
   std::call_once(read_once, [] {
+    const auto read = [](cudaDeviceAttr attribute, int device) {
+      int value = 0;
+      if (read_error == cudaSuccess)
+        read_error = cudaDeviceGetAttribute(&value, attribute, device);
+      return value;
+    };
     int count = 0;
-    CUDA_CHECK(cudaGetDeviceCount(&count));
-    std::vector<DeviceLimits> read(static_cast<size_t>(count));
-    for (int d = 0; d < count; ++d) {
-      int fp32_per_fp64 = 0, sm_count = 0, max_shared = 0;
-      CUDA_CHECK(cudaDeviceGetAttribute(
-          &fp32_per_fp64, cudaDevAttrSingleToDoublePrecisionPerfRatio, d));
-      CUDA_CHECK(cudaDeviceGetAttribute(
-          &sm_count, cudaDevAttrMultiProcessorCount, d));
-      CUDA_CHECK(cudaDeviceGetAttribute(
-          &max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, d));
-      read[static_cast<size_t>(d)] = {
-          fp32_per_fp64 > 2, sm_count, static_cast<size_t>(max_shared)};
-    }
-    limits = std::move(read);
+    read_error = cudaGetDeviceCount(&count);
+    for (int d = 0; d < count; ++d)
+      limits.push_back({
+          read(cudaDevAttrSingleToDoublePrecisionPerfRatio, d) > 2,
+          read(cudaDevAttrMultiProcessorCount, d),
+          static_cast<size_t>(read(cudaDevAttrMaxSharedMemoryPerBlockOptin, d))});
   });
+  CUDA_CHECK(read_error);
   return limits[static_cast<size_t>(device_id)];
 }
 
