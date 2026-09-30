@@ -315,3 +315,12 @@ TEST_CASE("CPU float32 DTW normalizes its finite no-path sentinel",
     std::vector<float>{0.0f},
     std::vector<float>{std::numeric_limits<float>::quiet_NaN()})));
 }
+
+TEST_CASE("parse_metric_token maps each accepted spelling to the metric it names",
+          "[distance-semantics][metric][token]")
+{
+  using dtwc::core::MetricType;
+  CHECK(dtwc::core::parse_metric_token("l1") == MetricType::L1);
+  CHECK(dtwc::core::parse_metric_token("squared_euclidean") == MetricType::SquaredL2);
+  CHECK(dtwc::core::parse_metric_token("sqeuclidean") == MetricType::SquaredL2);
+}

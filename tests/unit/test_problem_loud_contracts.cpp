@@ -137,6 +137,20 @@ TEST_CASE("set_cuda_settings refuses a negative device index and keeps the setti
   REQUIRE_NOTHROW(prob.set_cuda_settings(dtwc::CUDASettings{}));
 }
 
+TEST_CASE("set_cuda_settings stores every declared GpuPrecision",
+          "[problem][cuda-settings]")
+{
+  auto prob = six_series("cuda_settings_precision");
+  // Auto is the default, so end on it: each value differs from the one before.
+  for (const auto precision : { dtwc::GpuPrecision::FP32, dtwc::GpuPrecision::FP64,
+                                dtwc::GpuPrecision::Auto }) {
+    dtwc::CUDASettings settings;
+    settings.precision = precision;
+    REQUIRE_NOTHROW(prob.set_cuda_settings(settings));
+    CHECK(prob.cuda_settings.precision == precision);
+  }
+}
+
 TEST_CASE("O-06: Lloyd refuses zero iterations held by the deprecated field",
           "[problem][o06][lloyd]")
 {

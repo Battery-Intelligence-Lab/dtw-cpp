@@ -485,3 +485,25 @@ TEST_CASE("barycenter entry points reject unsupported Problem DTW configuration"
       "barycenter_kmeans: banded DTW is not supported; set the Problem band to -1.");
   }
 }
+
+TEST_CASE("barycenter k-means with soft-DTW centres finds the scalar optimum",
+          "[barycenter][kmeans][soft_dtw]")
+{
+  // One cluster of {0} and {2}. The soft-DTW of two scalars is their squared
+  // difference, so the centre is the mean, 1, and the assignment cost is 1 + 1.
+  auto problem = make_problem({{0.0}, {2.0}});
+  algorithms::BarycenterClusteringOptions options;
+  options.n_clusters = 1;
+  options.method = algorithms::BarycenterMethod::SoftDTW;
+  options.barycenter_max_iter = 100;
+  options.learning_rate = 0.5;
+  options.gamma = 0.5;
+
+  const auto result = algorithms::barycenter_kmeans(problem, options);
+
+  CHECK(result.labels == std::vector<index_t>{0, 0});
+  REQUIRE(result.barycenters.size() == 1);
+  REQUIRE(result.barycenters[0].size() == 1);
+  CHECK_THAT(result.barycenters[0][0], WithinAbs(1.0, 1e-3));
+  CHECK_THAT(result.total_cost, WithinAbs(2.0, 1e-3));
+}
