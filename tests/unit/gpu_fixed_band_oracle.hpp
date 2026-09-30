@@ -46,18 +46,17 @@ inline const std::vector<double> &singleton_y()
   return value;
 }
 
-/// Non-degenerate route-selection payload; it is never an oracle operand.
-inline const std::vector<double> &filler_129()
+/// Non-degenerate payload of @p length samples; it is never an oracle operand.
+/// Added to a batch, it raises the longest length, which routes the batch to
+/// another GPU kernel.
+inline std::vector<double> filler(std::size_t length)
 {
-  static const std::vector<double> value = [] {
-    std::vector<double> series(129);
-    for (std::size_t i = 0; i < series.size(); ++i) {
-      const auto centred = static_cast<int>((i * 17U) % 23U) - 11;
-      series[i] = static_cast<double>(centred);
-    }
-    return series;
-  }();
-  return value;
+  std::vector<double> series(length);
+  for (std::size_t i = 0; i < series.size(); ++i) {
+    const auto centred = static_cast<int>((i * 17U) % 23U) - 11;
+    series[i] = static_cast<double>(centred);
+  }
+  return series;
 }
 
 inline constexpr double public_no_path_sentinel =

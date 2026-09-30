@@ -81,20 +81,6 @@ inline std::size_t scan_series_lengths(
   return max_L;
 }
 
-/// @brief Series length that drives kernel selection.
-///
-/// `max_length_hint` lets a caller steer the choice without round-tripping the
-/// real lengths (e.g. later rows will be longer). It only ever raises the
-/// heuristic input: buffer sizing must keep using the scanned maximum. Metal
-/// has always honoured it (metal_dtw.mm); CUDA silently ignored it until now.
-inline constexpr std::size_t kernel_selection_length(
-  std::size_t scanned_max_L, int max_length_hint) noexcept
-{
-  const std::size_t hint = (max_length_hint > 0)
-    ? static_cast<std::size_t>(max_length_hint) : std::size_t{ 0 };
-  return (hint > scanned_max_L) ? hint : scanned_max_L;
-}
-
 /// @brief Shared-memory buffer count for the anti-diagonal wavefront kernels.
 ///
 /// L<=512   : preload mode (2 series + 3 anti-diagonal buffers).

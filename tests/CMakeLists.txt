@@ -130,7 +130,7 @@ dtwc_add_test(NAME unit_test_parallelisation SOURCE ${_dtwc_test_source_unit_tes
 # Device tests: no CUDA/Metal device in any CI matrix, so each may skip; its
 # SKIP message names the missing device.
 foreach(_dtwc_device_test IN ITEMS
-        test_cuda_correctness test_cuda_kernel_override test_cuda_launch_guards
+        test_cuda_correctness test_cuda_launch_guards
         test_metal_correctness test_metal_mmap)
     dtwc_add_test(NAME ${_dtwc_device_test} SOURCE ${_dtwc_test_source_${_dtwc_device_test}} MAY_SKIP)
 endforeach()

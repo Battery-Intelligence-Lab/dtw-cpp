@@ -1,15 +1,12 @@
 /**
  * @file kernel_selection.hpp
- * @brief Host-only selection of the CUDA DTW kernel family.
+ * @brief Host-only choice of the CUDA DTW kernel family.
  *
- * Keeping this policy free of CUDA headers makes every boundary and fallback
- * independently testable in ordinary CPU builds.  Device launchers consume
- * the returned path verbatim and report the same path to callers.
+ * The launcher runs the returned path and reports it to the caller as
+ * `kernel_used`.
  */
 
 #pragma once
-
-#include "../enums/KernelOverride.hpp"
 
 #include <cstddef>
 #include <stdexcept>
@@ -24,38 +21,15 @@ enum class KernelPath {
   Wavefront
 };
 
-struct KernelSelection {
-  KernelPath path;
-  bool fell_back_to_auto{false};
-};
-
-inline KernelPath auto_kernel(std::size_t max_length) noexcept
+/// The kernel for a batch whose longest series has @p max_length samples. Each
+/// path is the fastest one that accepts its range, by more than 5 % on the RTX
+/// 4000 Ada (.claude/baselines/2026-09-29-w4a-cuda-kernel-ab.md).
+inline KernelPath select_kernel(std::size_t max_length) noexcept
 {
   if (max_length <= 32) return KernelPath::Warp;
   if (max_length <= 128) return KernelPath::RegTileW4;
   if (max_length <= 256) return KernelPath::RegTileW8;
   return KernelPath::Wavefront;
-}
-
-inline KernelSelection select_kernel(
-    std::size_t max_length, dtwc::KernelOverride requested)
-{
-  dtwc::validate_kernel_override(requested);
-  switch (requested) {
-  case dtwc::KernelOverride::Auto:
-    return {auto_kernel(max_length), false};
-  case dtwc::KernelOverride::Wavefront:
-    return {KernelPath::Wavefront, false};
-  case dtwc::KernelOverride::RegTile:
-    if (max_length <= 128) return {KernelPath::RegTileW4, false};
-    if (max_length <= 256) return {KernelPath::RegTileW8, false};
-    return {auto_kernel(max_length), true};
-  case dtwc::KernelOverride::WavefrontGlobal:
-  case dtwc::KernelOverride::BandedRow:
-    // CUDA has no distinct global-wavefront or row-major banded kernel.
-    return {auto_kernel(max_length), true};
-  }
-  throw std::logic_error("select_kernel: unreachable KernelOverride");
 }
 
 inline std::string_view kernel_path_name(KernelPath path)

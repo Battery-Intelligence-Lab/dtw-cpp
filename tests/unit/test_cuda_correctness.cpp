@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <dtwc.hpp>
@@ -56,6 +57,25 @@ std::vector<double> cpu_distance_matrix(
     });
 }
 
+/// The host kernel in FP32 on the float-rounded series: the same operations in
+/// the same precision as the CUDA FP32 fill, so the two agree bit for bit.
+std::vector<double> cpu_fp32_distance_matrix(
+    const std::vector<std::vector<double>> &series)
+{
+  std::vector<std::vector<float>> rounded;
+  for (const auto &s : series) {
+    std::vector<float> r(s.size());
+    std::transform(s.begin(), s.end(), r.begin(),
+                   [](double v) { return static_cast<float>(v); });
+    rounded.push_back(std::move(r));
+  }
+  return dtwc::test_support::symmetric_zero_diagonal_matrix(
+    rounded,
+    [](const auto &left, const auto &right) {
+      return static_cast<double>(dtwc::dtwFull_L<float>(left, right));
+    });
+}
+
 /// Compute the NxN CPU banded distance matrix using dtwBanded (L1 metric).
 std::vector<double> cpu_banded_distance_matrix(
     const std::vector<std::vector<double>> &series, int band)
@@ -67,17 +87,18 @@ std::vector<double> cpu_banded_distance_matrix(
     });
 }
 
+/// The principal pair alone takes the warp kernel; a filler series raises the
+/// batch's longest length into another kernel's range.
 struct F12CUDARoute {
-  dtwc::KernelOverride requested;
   const char *expected_kernel;
-  bool needs_filler_129;
+  size_t filler_length; // 0: no filler
 };
 
 constexpr std::array<F12CUDARoute, 4> f12_cuda_routes{{
-    {dtwc::KernelOverride::Auto, "warp", false},
-    {dtwc::KernelOverride::RegTile, "regtile_w4", false},
-    {dtwc::KernelOverride::RegTile, "regtile_w8", true},
-    {dtwc::KernelOverride::Wavefront, "wavefront", false}
+    {"warp", 0},
+    {"regtile_w4", 64},
+    {"regtile_w8", 129},
+    {"wavefront", 257}
 }};
 
 std::vector<std::vector<double>> f12_pairwise_inventory(
@@ -87,7 +108,8 @@ std::vector<std::vector<double>> f12_pairwise_inventory(
   std::vector<std::vector<double>> series{
       oracle::principal_x(), oracle::principal_y()
   };
-  if (route.needs_filler_129) series.push_back(oracle::filler_129());
+  if (route.filler_length > 0)
+    series.push_back(oracle::filler(route.filler_length));
   return series;
 }
 
@@ -101,7 +123,6 @@ double f12_expected_public_cost(
 }
 
 dtwc::cuda::CUDADistMatOptions f12_cuda_options(
-    const F12CUDARoute &route,
     const dtwc::test::gpu_fixed_band::LedgerRow &row,
     bool squared,
     dtwc::cuda::CUDAPrecision precision =
@@ -111,7 +132,6 @@ dtwc::cuda::CUDADistMatOptions f12_cuda_options(
   opts.band = row.band;
   opts.use_squared_l2 = squared;
   opts.precision = precision;
-  opts.kernel_override = route.requested;
   return opts;
 }
 
@@ -196,7 +216,7 @@ TEST_CASE("F12 CUDA pairwise kernels use canonical fixed-band geometry",
     for (const bool squared : {false, true}) {
       for (const auto &row : oracle::ledger) {
         CAPTURE(route.expected_kernel, squared, row.band);
-        const auto opts = f12_cuda_options(route, row, squared);
+        const auto opts = f12_cuda_options(row, squared);
         const auto result =
             dtwc::cuda::compute_distance_matrix_cuda(series, opts);
         const auto expected = f12_expected_public_cost(row, squared);
@@ -204,7 +224,6 @@ TEST_CASE("F12 CUDA pairwise kernels use canonical fixed-band geometry",
         REQUIRE(result.n == n);
         REQUIRE(result.matrix.size() == n * n);
         REQUIRE(result.kernel_used == route.expected_kernel);
-        REQUIRE_FALSE(result.kernel_override_fell_back);
         REQUIRE(result.matrix[1] == expected);
         REQUIRE(result.matrix[n] == expected);
       }
@@ -218,7 +237,6 @@ TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
   namespace oracle = dtwc::test::gpu_fixed_band;
-  const auto &route = f12_cuda_routes.front();
   const std::vector<std::vector<double>> pairwise_series{
       oracle::singleton_x(), oracle::singleton_y()
   };
@@ -226,7 +244,7 @@ TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
   for (const bool squared : {false, true}) {
     for (const auto &row : oracle::singleton_ledger) {
       CAPTURE(squared, row.band);
-      const auto opts = f12_cuda_options(route, row, squared);
+      const auto opts = f12_cuda_options(row, squared);
       const auto expected = f12_expected_public_cost(row, squared);
 
       const auto pairwise =
@@ -234,7 +252,6 @@ TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
       REQUIRE(pairwise.n == 2);
       REQUIRE(pairwise.matrix.size() == 4);
       REQUIRE(pairwise.kernel_used == "warp");
-      REQUIRE_FALSE(pairwise.kernel_override_fell_back);
       REQUIRE(pairwise.matrix[1] == expected);
       REQUIRE(pairwise.matrix[2] == expected);
     }
@@ -250,13 +267,44 @@ TEST_CASE("F12 CUDA FP32 results translate no-path to the public double sentinel
   const auto &below_gap = oracle::ledger.front();
   const auto &route = f12_cuda_routes.front();
   auto opts = f12_cuda_options(
-      route, below_gap, false, dtwc::cuda::CUDAPrecision::FP32);
+      below_gap, false, dtwc::cuda::CUDAPrecision::FP32);
 
   const auto pairwise = dtwc::cuda::compute_distance_matrix_cuda(
       f12_pairwise_inventory(route), opts);
   REQUIRE(pairwise.kernel_used == "warp");
   REQUIRE(pairwise.matrix[1] == oracle::public_no_path_sentinel);
   REQUIRE(pairwise.matrix[2] == oracle::public_no_path_sentinel);
+}
+
+// Every range of the automatic kernel choice, at its edges, in both precisions:
+// warp (L <= 32), regtile<4> (<= 128), regtile<8> (<= 256), and the wavefront's
+// preload (<= 512), three-buffer (<= 1024), double-buffer (<= 2048) and long
+// three-buffer modes. The oracle is the host kernel in the fill's precision.
+TEST_CASE("CUDA fill matches the host kernel in every automatic kernel range",
+          "[cuda][regime]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  struct Regime {
+    size_t L;
+    const char *kernel;
+  };
+  const auto regime = GENERATE(values<Regime>({
+      {16, "warp"}, {32, "warp"}, {128, "regtile_w4"}, {256, "regtile_w8"},
+      {257, "wavefront"}, {512, "wavefront"}, {1024, "wavefront"},
+      {1025, "wavefront"}, {2048, "wavefront"}, {2049, "wavefront"}}));
+  const bool fp32 = GENERATE(true, false);
+  CAPTURE(regime.L, fp32);
+
+  const auto series = generate_random_series(6, regime.L, /*seed=*/7);
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = fp32 ? dtwc::cuda::CUDAPrecision::FP32
+                        : dtwc::cuda::CUDAPrecision::FP64;
+  const auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+
+  REQUIRE(gpu_result.kernel_used == regime.kernel);
+  REQUIRE(gpu_result.matrix == (fp32 ? cpu_fp32_distance_matrix(series)
+                                     : cpu_distance_matrix(series)));
 }
 
 // ---------------------------------------------------------------------------

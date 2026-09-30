@@ -21,7 +21,6 @@
 
 #ifdef DTWC_HAS_METAL
 
-#include "../enums/KernelOverride.hpp"
 #include "../base/error.hpp"
 #include "../core/gpu_dtw_common.hpp"
 
@@ -57,8 +56,7 @@ inline void validate_metal_precision(MetalPrecision value)
 struct MetalDistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   MetalPrecision precision = MetalPrecision::Auto;
 
-  // Inherited from DistMatOptionsBase:
-  //   band, use_squared_l2, verbose, max_length_hint, kernel_override
+  // Inherited from DistMatOptionsBase: band, use_squared_l2, verbose
 };
 
 struct MetalDistMatResult : public dtwc::gpu::DistMatResultBase {

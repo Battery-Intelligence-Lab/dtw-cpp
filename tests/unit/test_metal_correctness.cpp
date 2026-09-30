@@ -86,29 +86,36 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
   // .claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md. The literal
   // costs and sentinel come from the test-only full-matrix oracle, never the
   // CPU rolling-buffer implementation.
-  const std::vector<std::vector<double>> series{
-      fixed_band::principal_x(),
-      fixed_band::principal_y(),
-  };
+  //
+  // The principal pair alone takes the threadgroup wavefront. A 64-sample
+  // filler makes bands 1-3 tight enough (band * 20 < max_L) for banded_row. A
+  // 4096-sample filler overflows the 32 KB threadgroup memory of Apple GPUs, so
+  // the unbounded band runs on the device-memory wavefront.
   struct Route {
-    dtwc::KernelOverride kernel_override;
     const char *kernel_name;
-    bool supports_int_max;
+    std::size_t filler_length; // 0: no filler
+    bool takes_narrow_bands;   // the rows with band <= 3
+    bool takes_int_max;        // the row with band = INT_MAX
   };
   constexpr std::array routes{
-      Route{dtwc::KernelOverride::Wavefront, "wavefront", true},
-      Route{dtwc::KernelOverride::WavefrontGlobal, "wavefront_global", true},
-      // The public override intentionally limits BandedRow to band <= 512.
-      Route{dtwc::KernelOverride::BandedRow, "banded_row", false},
+      Route{"wavefront", 0, true, true},
+      Route{"banded_row", 64, true, false},
+      Route{"wavefront_global", 4096, false, true},
   };
 
   for (const auto &route : routes) {
+    std::vector<std::vector<double>> series{
+        fixed_band::principal_x(),
+        fixed_band::principal_y(),
+    };
+    if (route.filler_length > 0)
+      series.push_back(fixed_band::filler(route.filler_length));
+    const std::size_t n = series.size();
     for (const bool squared : {false, true}) {
       for (const auto &row : fixed_band::ledger) {
-        if (!route.supports_int_max
-            && row.band == std::numeric_limits<int>::max()) {
+        const bool int_max = row.band == std::numeric_limits<int>::max();
+        if (int_max ? !route.takes_int_max : !route.takes_narrow_bands)
           continue;
-        }
 
         const double oracle = fixed_band::full_matrix_oracle(
             series[0], series[1], row.band, squared);
@@ -134,18 +141,17 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
         dtwc::metal::MetalDistMatOptions opts;
         opts.band = row.band;
         opts.use_squared_l2 = squared;
-        opts.kernel_override = route.kernel_override;
         const auto gpu =
             dtwc::metal::compute_distance_matrix_metal(series, opts);
 
         REQUIRE(gpu.kernel_used == route.kernel_name);
-        REQUIRE(gpu.n == 2);
-        REQUIRE(gpu.pairs_computed == 1);
-        REQUIRE(gpu.matrix.size() == 4);
+        REQUIRE(gpu.n == n);
+        REQUIRE(gpu.pairs_computed == n * (n - 1) / 2);
+        REQUIRE(gpu.matrix.size() == n * n);
         REQUIRE(gpu.matrix[0] == 0.0);
-        REQUIRE(gpu.matrix[3] == 0.0);
+        REQUIRE(gpu.matrix[n + 1] == 0.0);
         REQUIRE(gpu.matrix[1] == cpu);
-        REQUIRE(gpu.matrix[2] == cpu);
+        REQUIRE(gpu.matrix[n] == cpu);
       }
     }
   }
@@ -481,28 +487,6 @@ TEST_CASE("Metal handles long series via global-memory kernel", "[metal]")
                    WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1.0));
     }
   }
-}
-
-TEST_CASE("Metal KernelOverride forces requested pipeline", "[metal][kernel_override]")
-{
-  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
-  const size_t N = 4;
-  const size_t L = 400; // would auto-pick wavefront
-  auto series = generate_random_series(N, L, 0x7777);
-
-  dtwc::metal::MetalDistMatOptions opts;
-  opts.kernel_override = dtwc::KernelOverride::WavefrontGlobal;
-  auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
-  INFO("kernel_used=" << r.kernel_used);
-  REQUIRE(r.kernel_used == "wavefront_global");
-
-  // Unsupported override (BandedRow with band=-1) must silently fall back.
-  dtwc::metal::MetalDistMatOptions opts2;
-  opts2.kernel_override = dtwc::KernelOverride::BandedRow;
-  opts2.band = -1; // BandedRow requires band > 0; should fall back to Auto.
-  auto r2 = dtwc::metal::compute_distance_matrix_metal(series, opts2);
-  INFO("fallback kernel_used=" << r2.kernel_used);
-  REQUIRE(r2.kernel_used != "banded_row");
 }
 
 #endif // DTWC_HAS_METAL

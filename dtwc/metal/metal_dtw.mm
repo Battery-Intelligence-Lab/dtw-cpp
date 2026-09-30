@@ -822,7 +822,6 @@ MetalDistMatResult compute_distance_matrix_metal(
     const std::vector<std::vector<double>> &series,
     const MetalDistMatOptions &opts)
 {
-  validate_kernel_override(opts.kernel_override);
   validate_metal_precision(opts.precision);
   MetalDistMatResult result;
   const size_t N = series.size();
@@ -897,63 +896,30 @@ MetalDistMatResult compute_distance_matrix_metal(
     //                      barriers than wavefront on the same work.
     //   threadgroup kernel: 3 * max_L * 4 <= device cap (32KB on M1/M2/M3 -> max_L <= 2730)
     //   global kernel:     uses device memory for the 3 anti-diagonal buffers
-    // max_length_hint lets callers influence kernel selection without
-    // round-tripping the actual lengths. We use the hint as the heuristic
-    // input when it's bigger than the scanned max (e.g. future rows may be
-    // longer), and otherwise fall back to the scanned value.
-    const int heuristic_L =
-        (opts.max_length_hint > 0 && opts.max_length_hint > max_L)
-          ? opts.max_length_hint : max_L;
-
-    const NSUInteger tg_mem_len = 3 * (NSUInteger)heuristic_L * sizeof(float);
+    const NSUInteger tg_mem_len = 3 * (NSUInteger)max_L * sizeof(float);
     const NSUInteger tg_mem_cap = ctx.device.maxThreadgroupMemoryLength;
     // Row-major one-thread-per-pair wins only when the band is tight enough
     // that wavefront barrier overhead dominates. Empirically (M2 Max), a
     // ~5%-of-length band is the crossover: at band/L < 1/20 the row-major
     // kernel beats the wavefront; wider bands put too much sequential work
     // on a single thread. Cap at 512 to avoid huge per-thread scratch.
-    bool use_banded_row =
+    const bool use_banded_row =
         (requested_band > 0) && (requested_band <= 512)
         && (static_cast<std::int64_t>(requested_band) * 20
-            < static_cast<std::int64_t>(heuristic_L));
+            < static_cast<std::int64_t>(max_L));
     // Register-tile path: unbanded only for this pass. TILE_W=4 covers
     // max_L in [1, 128] (32 lanes * 4 cols = 128), TILE_W=8 covers (128, 256].
-    bool use_regtile =
+    const bool use_regtile =
         !use_banded_row && (requested_band == -1)
-        && (heuristic_L > 0) && (heuristic_L <= 256);
+        && (max_L > 0) && (max_L <= 256);
     const int regtile_tile_w = (max_L <= 128) ? 4 : 8;
-    bool use_global =
+    const bool use_global =
         !use_banded_row && !use_regtile && (tg_mem_len > tg_mem_cap);
-
-    // Honour KernelOverride when the user explicitly picks a path. Unsupported
-    // overrides (e.g. RegTile with band != -1 or max_L > 256) silently fall
-    // back to the heuristic choice to preserve correctness.
-    switch (opts.kernel_override) {
-      case dtwc::KernelOverride::Wavefront:
-        use_banded_row = false; use_regtile = false; use_global = false;
-        break;
-      case dtwc::KernelOverride::WavefrontGlobal:
-        use_banded_row = false; use_regtile = false; use_global = true;
-        break;
-      case dtwc::KernelOverride::BandedRow:
-        if (requested_band > 0 && requested_band <= 512) {
-          use_banded_row = true; use_regtile = false; use_global = false;
-        }
-        break;
-      case dtwc::KernelOverride::RegTile:
-        if (requested_band == -1 && max_L > 0 && max_L <= 256) {
-          use_banded_row = false; use_regtile = true; use_global = false;
-        }
-        break;
-      case dtwc::KernelOverride::Auto:
-      default:
-        break;
-    }
 
     // A non-negative band covering the largest possible |i-j| in the batch is
     // exactly unbounded. Normalize wavefront dispatches before device
-    // arithmetic (making INT_MAX safe), but preserve a forced BandedRow's
-    // positive strip width and the requested-band kernel routing semantics.
+    // arithmetic (making INT_MAX safe), but preserve banded_row's positive
+    // strip width and the requested-band kernel routing semantics.
     const int band =
         (!use_banded_row && requested_band >= 0
          && requested_band >= max_L - 1)
@@ -1192,7 +1158,7 @@ MetalDistMatResult compute_distance_matrix_metal(
     std::cout << " on " << metal_device_info() << std::endl;
   }
   // kernel_used is set during dispatch (inside the autoreleasepool) to reflect
-  // the actual pipeline chosen (including any KernelOverride).
+  // the actual pipeline chosen.
 
   return result;
 }

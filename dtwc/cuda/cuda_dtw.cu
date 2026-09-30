@@ -1080,7 +1080,6 @@ CUDADistMatResult compute_distance_matrix_cuda(
     const CUDADistMatOptions &opts)
 {
   validate_cuda_precision(opts.precision);
-  validate_kernel_override(opts.kernel_override);
   const size_t N = series.size();
   // Both guards run before the N*N allocation: a missing device must not
   // answer with a zero matrix, and a pair count that does not fit the launch
@@ -1104,12 +1103,8 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
   if (max_L == 0) return result;
 
-  const auto kernel_selection = detail::select_kernel(
-      detail::kernel_selection_length(max_L, opts.max_length_hint),
-      opts.kernel_override);
-  result.kernel_used = std::string(
-      detail::kernel_path_name(kernel_selection.path));
-  result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;
+  const auto kernel_path = detail::select_kernel(max_L);
+  result.kernel_used = std::string(detail::kernel_path_name(kernel_path));
 
   // Fix 1: No pair index arrays — pairs are decoded on-device via decode_pair().
   // This eliminates 2 * num_pairs * sizeof(int) host allocation + H2D transfer.
@@ -1121,10 +1116,10 @@ CUDADistMatResult compute_distance_matrix_cuda(
   result.matrix = use_fp32
       ? launch_dtw_kernel<float>(series, lengths, N, max_L, num_pairs,
                                  opts.use_squared_l2, opts.band, opts.device_id,
-                                 result.gpu_time_sec, kernel_selection.path)
+                                 result.gpu_time_sec, kernel_path)
       : launch_dtw_kernel<double>(series, lengths, N, max_L, num_pairs,
                                   opts.use_squared_l2, opts.band, opts.device_id,
-                                  result.gpu_time_sec, kernel_selection.path);
+                                  result.gpu_time_sec, kernel_path);
 
   if (opts.verbose) {
     std::cout << "CUDA DTW: " << num_pairs << " pairs"
