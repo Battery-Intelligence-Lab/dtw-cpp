@@ -94,10 +94,10 @@ inline std::vector<std::vector<double>> gpu_probe_series()
   };
 }
 
-/// @brief Max abs deviation of a GPU N*N (row-major) matrix from the CPU oracle.
+/// @brief Max abs deviation of a GPU-filled matrix from the CPU oracle.
 ///        CPU oracle = full (band=-1) L1 DTW via the LIVE public `dtwc::dtwFull_L`.
 inline double gpu_matrix_max_abs_error(const std::vector<std::vector<double>> &series,
-                                       const std::vector<double> &gpu_matrix)
+                                       const dtwc::core::DistanceMatrix &gpu_matrix)
 {
   const std::size_t N = series.size();
   double max_abs = 0.0;
@@ -105,8 +105,7 @@ inline double gpu_matrix_max_abs_error(const std::vector<std::vector<double>> &s
     for (std::size_t j = i + 1; j < N; ++j) {
       const double oracle =
         dtwc::dtwFull_L<double>(series[i], series[j], -1.0, dtwc::core::MetricType::L1);
-      const double got = gpu_matrix[i * N + j];
-      max_abs = std::max(max_abs, std::abs(got - oracle));
+      max_abs = std::max(max_abs, std::abs(gpu_matrix.get(i, j) - oracle));
     }
   return max_abs;
 }
@@ -208,18 +207,18 @@ inline GpuReport gpu()
   opts.device_id = 0;
   opts.verbose = false;
 
-  dtwc::cuda::CUDADistMatResult res;
+  dtwc::core::DistanceMatrix matrix;
   try {
-    res = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+    (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
   } catch (const std::exception &e) {
     r.reason = std::string("CUDA kernel execution failed: ") + e.what();
     return r;
   }
-  if (res.n != N || res.matrix.size() != N * N) {
+  if (matrix.size() != N) {
     r.reason = "CUDA kernel returned an unexpected matrix shape; validation could not run.";
     return r;
   }
-  const double max_abs = detail::gpu_matrix_max_abs_error(series, res.matrix);
+  const double max_abs = detail::gpu_matrix_max_abs_error(series, matrix);
   r.validated = (max_abs <= detail::kGpuOracleTol);
   r.pass = r.validated;
   if (!r.validated)
@@ -245,19 +244,19 @@ inline GpuReport gpu()
   opts.use_squared_l2 = false;  // L1 (matches CPU oracle)
   opts.verbose = false;
 
-  dtwc::metal::MetalDistMatResult res;
+  dtwc::core::DistanceMatrix matrix;
   try {
-    res = dtwc::metal::compute_distance_matrix_metal(series, opts);
+    (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
   } catch (const std::exception &e) {
     r.reason = std::string("Metal kernel execution failed: ") + e.what();
     return r;
   }
-  if (res.n != N || res.matrix.size() != N * N) {
+  if (matrix.size() != N) {
     r.reason = "Metal kernel returned an unexpected matrix shape; validation could not run.";
     return r;
   }
   // Metal accumulates in FP32 (no FP64), so the oracle bound is FP32-appropriate.
-  const double max_abs = detail::gpu_matrix_max_abs_error(series, res.matrix);
+  const double max_abs = detail::gpu_matrix_max_abs_error(series, matrix);
   r.validated = (max_abs <= detail::kMetalOracleTol);
   r.pass = r.validated;
   if (!r.validated)

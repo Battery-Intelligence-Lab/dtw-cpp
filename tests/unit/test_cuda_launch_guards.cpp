@@ -141,8 +141,10 @@ TEST_CASE("A15 CUDA entry points reject an over-large N before allocating",
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = 4;
 
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, opts),
+  dtwc::core::DistanceMatrix out;
+  REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, opts, out),
                     dtwc::InvalidInput);
+  CHECK(out.size() == 0);
 }
 
 TEST_CASE("A16 CUDA entry points refuse to answer without a device",
@@ -159,8 +161,10 @@ TEST_CASE("A16 CUDA entry points refuse to answer without a device",
   const std::vector<std::vector<double>> series{ { 1.0, 2.0, 3.0 },
                                                  { 2.0, 3.0, 4.0 } };
 
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, {}),
+  dtwc::core::DistanceMatrix out;
+  REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, {}, out),
                     dtwc::DeviceError);
+  CHECK(out.size() == 0);
 }
 
 TEST_CASE("A16 CUDA entry points still answer normally on a real device",
@@ -174,11 +178,12 @@ TEST_CASE("A16 CUDA entry points still answer normally on a real device",
   const std::vector<std::vector<double>> series{
     { 1.0, 2.0, 3.0, 4.0 }, { 1.0, 2.0, 3.0, 5.0 }, { 4.0, 3.0, 2.0, 1.0 }
   };
-  const auto result = dtwc::cuda::compute_distance_matrix_cuda(series, {});
+  dtwc::core::DistanceMatrix out;
+  const auto result = dtwc::cuda::compute_distance_matrix_cuda(series, {}, out);
   REQUIRE(result.n == 3u);
-  REQUIRE(result.matrix.size() == 9u);
+  REQUIRE(out.size() == 3u);
   CHECK(result.kernel_used != "none");
-  CHECK(result.matrix[1] > 0.0);
+  CHECK(out.get(0, 1) > 0.0);
 }
 
 #else

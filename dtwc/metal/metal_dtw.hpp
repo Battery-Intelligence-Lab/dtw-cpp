@@ -22,6 +22,7 @@
 #ifdef DTWC_HAS_METAL
 
 #include "../base/error.hpp"
+#include "../core/distance_matrix.hpp"
 #include "../core/gpu_dtw_common.hpp"
 
 #include <cstddef>
@@ -60,7 +61,7 @@ struct MetalDistMatOptions : public dtwc::gpu::DistMatOptionsBase {
 };
 
 struct MetalDistMatResult : public dtwc::gpu::DistMatResultBase {
-  // All fields (matrix, n, gpu_time_sec, pairs_computed, kernel_used) come
+  // All fields (n, gpu_time_sec, pairs_computed, kernel_used) come
   // from DistMatResultBase. `kernel_used`
   // strings for Metal: "wavefront" / "wavefront_global" / "banded_row" /
   // "regtile_w4" / "regtile_w8".
@@ -72,12 +73,14 @@ bool metal_available();
 /// Get Metal device info string (GPU name, core count, unified memory size).
 std::string metal_device_info();
 
-/// Compute NxN DTW distance matrix on the default Metal device.
-/// Series are uploaded (zero-copy under unified memory where possible), all
-/// pairs computed in parallel, result matrix returned on host.
+/// Fill @p out with the DTW distance of every pair of @p series on the default
+/// Metal device. Every refusal (FP64, no device, all series empty, a scratch
+/// buffer that cannot be allocated) comes before @p out is touched; then @p out
+/// is resized to series.size() unless it already has that size (a mapped
+/// matrix keeps its file), and every entry is written.
 MetalDistMatResult compute_distance_matrix_metal(
     const std::vector<std::vector<double>> &series,
-    const MetalDistMatOptions &opts = {});
+    const MetalDistMatOptions &opts, core::DistanceMatrix &out);
 
 } // namespace dtwc::metal
 

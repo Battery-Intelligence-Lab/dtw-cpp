@@ -15,6 +15,12 @@ defaults. Through `Problem`, an unavailable or uncompiled requested backend
 raises `DeviceError` rather than changing to CPU. A Metal buffer allocation or
 kernel that fails raises `DeviceError` too.
 
+Both write the matrix the CPU fill writes, `DistanceMatrix`'s packed lower
+triangle, in place, whether it is on the heap or memory-mapped; the result
+structs report what ran (kernel, pair count, GPU time), not the distances. A
+backend that refuses a request (no device, a series too long for the GPU's
+shared memory) does so before the matrix is allocated.
+
 ## What a `Problem` can run on a GPU
 
 `Problem::set_device(Device::GPU)` (Python `Problem(device="gpu")`, MATLAB

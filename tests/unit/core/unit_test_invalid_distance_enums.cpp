@@ -868,7 +868,8 @@ TEST_CASE("M47 conditionally rejects invalid GPU precision selectors",
         cuda::CUDADistMatOptions options;
         options.precision = invalid;
         check_invalid_input("CUDAPrecision", cuda_precision_error, [&] {
-          (void)cuda::compute_distance_matrix_cuda(series, options);
+          core::DistanceMatrix out;
+          (void)cuda::compute_distance_matrix_cuda(series, options, out);
         });
       });
   }
@@ -883,7 +884,8 @@ TEST_CASE("M47 conditionally rejects invalid GPU precision selectors",
         metal::MetalDistMatOptions options;
         options.precision = invalid;
         check_invalid_input("MetalPrecision", metal_precision_error, [&] {
-          (void)metal::compute_distance_matrix_metal(series, options);
+          core::DistanceMatrix out;
+          (void)metal::compute_distance_matrix_metal(series, options, out);
         });
       });
   }

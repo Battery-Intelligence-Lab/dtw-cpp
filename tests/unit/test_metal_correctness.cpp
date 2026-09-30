@@ -45,6 +45,21 @@ namespace fixed_band = dtwc::test::gpu_fixed_band;
 constexpr auto generate_random_series =
   &dtwc::test_support::accelerator_series_set;
 
+/// The Metal fill of `series` into a fresh packed matrix, and its distances as
+/// the N x N row-major matrix the oracles below build.
+struct GpuFill : dtwc::metal::MetalDistMatResult {
+  std::vector<double> matrix;
+};
+
+GpuFill gpu_fill(const std::vector<std::vector<double>> &series,
+                 const dtwc::metal::MetalDistMatOptions &opts)
+{
+  dtwc::core::DistanceMatrix packed;
+  GpuFill fill{ dtwc::metal::compute_distance_matrix_metal(series, opts, packed), {} };
+  fill.matrix = dtwc::io::to_full_matrix(packed);
+  return fill;
+}
+
 std::vector<double> cpu_distance_matrix(
     const std::vector<std::vector<double>> &series)
 {
@@ -142,7 +157,7 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
         opts.band = row.band;
         opts.use_squared_l2 = squared;
         const auto gpu =
-            dtwc::metal::compute_distance_matrix_metal(series, opts);
+            gpu_fill(series, opts);
 
         REQUIRE(gpu.kernel_used == route.kernel_name);
         REQUIRE(gpu.n == n);
@@ -169,7 +184,7 @@ TEST_CASE("Metal unbanded DTW matches CPU on small random series", "[metal]")
 
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = -1;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
 
   REQUIRE(gpu.n == N);
   REQUIRE(gpu.matrix.size() == N * N);
@@ -196,7 +211,7 @@ TEST_CASE("Metal handles N=2 smallest possible matrix", "[metal]")
   };
 
   dtwc::metal::MetalDistMatOptions opts;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
 
   REQUIRE(gpu.n == 2);
   // Two shifted ramps: DTW L1 distance should be small (aligned by warping).
@@ -216,7 +231,7 @@ TEST_CASE("Metal unbanded DTW on longer series", "[metal]")
   auto cpu = cpu_distance_matrix(series);
 
   dtwc::metal::MetalDistMatOptions opts;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
 
   REQUIRE(gpu.n == N);
   // With L=200 and ~O(L^2) FP32 ops per pair, accumulated error can be
@@ -242,7 +257,7 @@ TEST_CASE("Metal regtile_w4 kernel matches CPU for max_L <= 128", "[metal][regti
 
     dtwc::metal::MetalDistMatOptions opts;
     opts.band = -1;
-    auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+    auto gpu = gpu_fill(series, opts);
 
     INFO("L=" << L << " kernel_used=" << gpu.kernel_used);
     REQUIRE(gpu.kernel_used == "regtile_w4");
@@ -268,7 +283,7 @@ TEST_CASE("Metal regtile_w8 kernel matches CPU for max_L in (128, 256]", "[metal
 
     dtwc::metal::MetalDistMatOptions opts;
     opts.band = -1;
-    auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+    auto gpu = gpu_fill(series, opts);
 
     INFO("L=" << L << " kernel_used=" << gpu.kernel_used);
     REQUIRE(gpu.kernel_used == "regtile_w8");
@@ -294,7 +309,7 @@ TEST_CASE("Metal regtile handles uneven tile cover (N_len not multiple of TILE_W
     auto cpu = cpu_distance_matrix(series);
 
     dtwc::metal::MetalDistMatOptions opts;
-    auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+    auto gpu = gpu_fill(series, opts);
     INFO("L=" << L << " kernel_used=" << gpu.kernel_used);
     REQUIRE((gpu.kernel_used == "regtile_w4" || gpu.kernel_used == "regtile_w8"));
     for (size_t i = 0; i < N; ++i) {
@@ -326,7 +341,7 @@ TEST_CASE("Metal regtile with asymmetric (variable-length) series", "[metal][reg
   auto cpu = cpu_distance_matrix(series);
 
   dtwc::metal::MetalDistMatOptions opts;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
   INFO("kernel_used=" << gpu.kernel_used);
   REQUIRE(gpu.kernel_used == "regtile_w4");
   const size_t N = series.size();
@@ -350,7 +365,7 @@ TEST_CASE("Metal pushes max_L towards the threadgroup memory cap", "[metal]")
   auto series = generate_random_series(N, L, 123);
 
   dtwc::metal::MetalDistMatOptions opts;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
 
   REQUIRE(gpu.n == N);
   REQUIRE(gpu.pairs_computed == N * (N - 1) / 2);
@@ -378,7 +393,7 @@ TEST_CASE("Metal row-major banded kernel matches CPU banded reference", "[metal]
 
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = band;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
 
   INFO("kernel_used=" << gpu.kernel_used);
   REQUIRE(gpu.kernel_used == "banded_row");
@@ -408,7 +423,7 @@ TEST_CASE("Metal row-major banded kernel handles long series tight band", "[meta
 
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = band;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
 
   INFO("kernel_used=" << gpu.kernel_used);
   REQUIRE(gpu.kernel_used == "banded_row");
@@ -433,7 +448,7 @@ TEST_CASE("Metal wide band still routes to wavefront kernel", "[metal][banded]")
 
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = band;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
   INFO("kernel_used=" << gpu.kernel_used);
   REQUIRE(gpu.kernel_used == "wavefront");
 }
@@ -450,7 +465,7 @@ TEST_CASE("Metal wavefront NxN banded matches CPU dtwBanded", "[metal][banded]")
   auto cpu = cpu_banded_matrix(series, band);
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = band;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
   INFO("kernel_used=" << gpu.kernel_used);
   REQUIRE(gpu.kernel_used == "wavefront");
   for (size_t i = 0; i < N; ++i) {
@@ -475,7 +490,7 @@ TEST_CASE("Metal global-memory wavefront honours a finite band", "[metal][banded
   auto cpu = cpu_banded_matrix(series, band);
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = band;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
   REQUIRE(gpu.kernel_used == "wavefront_global");
   for (size_t i = 0; i < N; ++i) {
     for (size_t j = i + 1; j < N; ++j) {
@@ -499,7 +514,7 @@ TEST_CASE("Metal handles long series via global-memory kernel", "[metal]")
 
   dtwc::metal::MetalDistMatOptions opts;
   opts.verbose = false;
-  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  auto gpu = gpu_fill(series, opts);
   REQUIRE(gpu.n == N);
   REQUIRE(gpu.pairs_computed == N * (N - 1) / 2);
 

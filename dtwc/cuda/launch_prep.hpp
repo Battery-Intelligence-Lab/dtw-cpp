@@ -65,7 +65,8 @@ inline void require_cuda_device(bool available, const char *entry)
       "usable CUDA GPU was detected. No CPU fallback was attempted.");
 }
 
-/// @brief Fill @p lengths with each series' length and return the maximum.
+/// @brief Fill @p lengths with the series' lengths in upload order, the last
+/// series first (cuda_dtw.cu's packed_slot says why), and return the maximum.
 inline std::size_t scan_series_lengths(
   const std::vector<std::vector<double>> &series,
   std::vector<int> &lengths)
@@ -73,9 +74,10 @@ inline std::size_t scan_series_lengths(
   const std::size_t n = series.size();
   lengths.resize(n);
   std::size_t max_L = 0;
-  for (std::size_t i = 0; i < n; ++i) {
-    lengths[i] = static_cast<int>(series[i].size());
-    if (series[i].size() > max_L) max_L = series[i].size();
+  for (std::size_t d = 0; d < n; ++d) {
+    const std::size_t length = series[n - 1 - d].size();
+    lengths[d] = static_cast<int>(length);
+    if (length > max_L) max_L = length;
   }
   return max_L;
 }

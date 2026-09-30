@@ -77,11 +77,12 @@ static void BM_cuda_distanceMatrix(benchmark::State &state)
   opts.verbose = false;
 
   // Warm-up: first CUDA call has driver overhead
-  { auto warmup = dtwc::cuda::compute_distance_matrix_cuda(series, opts); }
+  dtwc::core::DistanceMatrix matrix;
+  (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix); // warm-up
 
   for (auto _ : state) {
-    auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-    benchmark::DoNotOptimize(result.matrix.data());
+    (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
+    benchmark::DoNotOptimize(matrix.raw());
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);
@@ -150,11 +151,12 @@ static void BM_cuda_scaling_N(benchmark::State &state)
   const int64_t num_pairs = static_cast<int64_t>(N) * (N - 1) / 2;
 
   dtwc::cuda::CUDADistMatOptions opts;
-  { auto warmup = dtwc::cuda::compute_distance_matrix_cuda(series, opts); }
+  dtwc::core::DistanceMatrix matrix;
+  (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix); // warm-up
 
   for (auto _ : state) {
-    auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-    benchmark::DoNotOptimize(result.matrix.data());
+    (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
+    benchmark::DoNotOptimize(matrix.raw());
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);
@@ -182,11 +184,12 @@ static void BM_cuda_scaling_L(benchmark::State &state)
   const int64_t num_pairs = static_cast<int64_t>(N) * (N - 1) / 2;
 
   dtwc::cuda::CUDADistMatOptions opts;
-  { auto warmup = dtwc::cuda::compute_distance_matrix_cuda(series, opts); }
+  dtwc::core::DistanceMatrix matrix;
+  (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix); // warm-up
 
   for (auto _ : state) {
-    auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-    benchmark::DoNotOptimize(result.matrix.data());
+    (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
+    benchmark::DoNotOptimize(matrix.raw());
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);
@@ -222,11 +225,12 @@ static void BM_cuda_structuredDistanceMatrix(benchmark::State &state)
   opts.band = 10;
   opts.verbose = false;
 
-  { auto warmup = dtwc::cuda::compute_distance_matrix_cuda(series, opts); }
+  dtwc::core::DistanceMatrix matrix;
+  (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix); // warm-up
 
   for (auto _ : state) {
-    auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-    benchmark::DoNotOptimize(result.matrix.data());
+    (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
+    benchmark::DoNotOptimize(matrix.raw());
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);

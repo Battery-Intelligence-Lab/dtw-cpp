@@ -396,8 +396,9 @@ TEST_CASE("FX-1: Metal rejects a GPU index and a precision it cannot honour",
   // The backend entry point states the same limit.
   dtwc::metal::MetalDistMatOptions opts;
   opts.precision = dtwc::metal::MetalPrecision::FP64;
+  dtwc::core::DistanceMatrix out;
   CHECK(message_of<dtwc::DeviceError>([&] {
-          (void)dtwc::metal::compute_distance_matrix_metal({ { 0.0, 1.0 }, { 1.0 } }, opts);
+          (void)dtwc::metal::compute_distance_matrix_metal({ { 0.0, 1.0 }, { 1.0 } }, opts, out);
         }) == fp64);
 #else
   CHECK_THAT(fp64, ContainsSubstring("Metal is not compiled in"));
