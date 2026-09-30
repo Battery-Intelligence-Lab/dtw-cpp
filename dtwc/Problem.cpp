@@ -217,7 +217,7 @@ void Problem::resize()
  *
  * @param Nc_ The number of clusters to set.
  */
-void Problem::set_n_clusters(int Nc_)
+void Problem::set_n_clusters(index_t Nc_)
 {
   Nc = Nc_;
   resize();
@@ -839,7 +839,7 @@ void Problem::use_mmap_distance_matrix(
  *      session flag; perform fill_distance_matrix() or
  *      is_distance_matrix_filled() once serially before parallel lookups.
  */
-double Problem::dist_by_ind(int i, int j)
+double Problem::dist_by_ind(index_t i, index_t j)
 {
   // Exactly ONE preflight per call: the SWAP kernel issues N^2 of these per
   // iteration. Order (preflight → mmap identity → dense-cache) is load-bearing.

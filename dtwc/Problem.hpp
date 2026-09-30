@@ -126,7 +126,7 @@ public:
   using dtw_fn_f32_t = std::function<double(std::span<const float>, std::span<const float>)>;
 
 private:
-  int Nc{ 1 };                                      /*!< Number of clusters. */
+  index_t Nc{ 1 };                                  /*!< Number of clusters. */
   core::DistanceMatrix distMat;                     /*!< Distance matrix, on the heap or mapped (use_mmap_distance_matrix). */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
   mutable dtw_fn_t dtw_fn_;                         /*!< Derived DTW dispatcher for float64. */
@@ -363,13 +363,13 @@ public:
   [[deprecated("use refresh_distance_matrix")]] void refreshDistanceMatrix() { refresh_distance_matrix(); }
 
   // Getters and setters:
-  int centroid_of(int i_p) const { return centroids_ind[clusters_ind[i_p]]; } // [0, Np) Get the centroid of the cluster of i_p
+  index_t centroid_of(index_t i_p) const { return centroids_ind[clusters_ind[i_p]]; } // [0, Np) Get the centroid of the cluster of i_p
 
   void read_distance_matrix(const fs::path &distMat_path);
   [[deprecated("use read_distance_matrix")]]
   void readDistanceMatrix(const fs::path &p) { read_distance_matrix(p); }
 
-  void set_n_clusters(int Nc_);
+  void set_n_clusters(index_t Nc_);
   [[deprecated("use set_n_clusters")]] void set_numberOfClusters(int Nc_) { set_n_clusters(Nc_); }
 
   void set_clusters(std::vector<int> &candidate_centroids);
@@ -508,7 +508,7 @@ public:
   }
   [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
 
-  data_t dist_by_ind(int i, int j);
+  data_t dist_by_ind(index_t i, index_t j);
   [[deprecated("use dist_by_ind")]] data_t distByInd(int i, int j) { return dist_by_ind(i, j); }
 
   /// Access the bound DTW distance function (float64). Mutable access repairs

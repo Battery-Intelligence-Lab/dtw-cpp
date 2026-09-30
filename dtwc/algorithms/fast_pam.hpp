@@ -44,7 +44,7 @@ class Problem; // Forward declaration
  * @note Requires prob to have data loaded (prob.size() > 0).
  * @throws InvalidInput if the problem is empty or `n_clusters` is outside `[1, N]`.
  */
-core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter = 100);
+core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter = 100);
 
 /**
  * Deterministic FastPAM entry point with an invocation-local BUILD seed.
@@ -54,7 +54,7 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter = 10
  * k-means initialization, whose weights are already squared local costs.
  * @throws InvalidInput if the problem is empty or `n_clusters` is outside `[1, N]`.
  */
-core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
+core::ClusteringResult fast_pam_seeded(Problem& prob, index_t n_clusters,
                                        std::uint64_t random_seed, int max_iter = 100);
 
 } // namespace dtwc

@@ -104,7 +104,7 @@ struct TADPoleStats {
  * @note Writes the result back into `prob` (clusters_ind / centroids_ind /
  *       n_clusters), matching fast_pam's Task-1.6 write-back contract.
  */
-core::ClusteringResult tadpole(Problem& prob, int n_clusters, double dc,
+core::ClusteringResult tadpole(Problem& prob, index_t n_clusters, double dc,
                                bool prune = true, TADPoleStats* stats = nullptr);
 
 /**

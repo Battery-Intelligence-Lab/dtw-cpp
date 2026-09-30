@@ -40,22 +40,22 @@ inline constexpr Name<Linkage> linkage_names[]{
 
 /// A single merge step recorded in the dendrogram.
 struct DendrogramStep {
-  int cluster_a;  ///< First merged cluster (always < cluster_b for determinism)
-  int cluster_b;  ///< Second merged cluster
-  double distance; ///< Merge distance
-  int new_size;   ///< Size of the merged cluster
+  index_t cluster_a; ///< First merged cluster (always < cluster_b for determinism)
+  index_t cluster_b; ///< Second merged cluster
+  double distance;   ///< Merge distance
+  index_t new_size;  ///< Size of the merged cluster
 };
 
 /// Full dendrogram produced by build_dendrogram().
 struct Dendrogram {
   std::vector<DendrogramStep> merges; ///< N-1 merge steps in merge order
-  int n_points = 0;
+  index_t n_points = 0;
 };
 
 /// Options for build_dendrogram().
 struct HierarchicalOptions {
   Linkage linkage = Linkage::Average;
-  int max_points = 2000; ///< Hard guard — throws InvalidInput if N exceeds this
+  index_t max_points = 2000; ///< Hard guard — throws InvalidInput if N exceeds this
 };
 
 /**
@@ -91,7 +91,7 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts = {})
  *       centroids_ind, n_clusters) so scores work with no manual wiring. 1.x
  *       left prob untouched (and the bindings did not wire cut_dendrogram).
  */
-core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int k);
+core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, index_t k);
 
 } // namespace algorithms
 } // namespace dtwc

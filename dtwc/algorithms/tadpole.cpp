@@ -88,7 +88,7 @@ double diagonal_ub_l1(std::span<const double> x, std::span<const double> y)
 /// Strict total order that makes "higher density" well-defined under ρ-ties:
 /// a ranks above b iff ρ_a > ρ_b, or (ρ_a == ρ_b and a < b). Deterministic, so
 /// pruned / brute / oracle agree on δ, parents, γ-ranking and labels.
-inline bool higher_density(int a, int b, const std::vector<int> &rho)
+inline bool higher_density(index_t a, index_t b, const std::vector<int> &rho)
 {
   return rho[a] > rho[b] || (rho[a] == rho[b] && a < b);
 }
@@ -98,18 +98,18 @@ inline bool higher_density(int a, int b, const std::vector<int> &rho)
 
 double tadpole_auto_dc(Problem &prob, double percentile)
 {
-  const int N = static_cast<int>(prob.size());
+  const index_t N = prob.size();
   if (N < 2) return 1.0; // degenerate: any positive dc
   if (percentile <= 0.0 || percentile >= 100.0)
     throw InvalidInput("tadpole_auto_dc: percentile must be in (0, 100).");
 
   // Deterministic subsample: all pairs among the first min(N, cap) series (no
   // RNG → reproducible). Rodriguez & Laio pick dc so avg neighbours ≈ 1–2% of N.
-  const int cap = std::min(N, 64);
+  const index_t cap = std::min<index_t>(N, 64);
   std::vector<double> sample;
-  sample.reserve(static_cast<std::size_t>(cap) * (cap - 1) / 2);
-  for (int i = 0; i < cap; ++i)
-    for (int j = i + 1; j < cap; ++j)
+  sample.reserve(static_cast<std::size_t>(cap * (cap - 1) / 2));
+  for (index_t i = 0; i < cap; ++i)
+    for (index_t j = i + 1; j < cap; ++j)
       sample.push_back(prob.dist_by_ind(i, j));
 
   std::size_t idx = static_cast<std::size_t>(percentile / 100.0 * (sample.size() - 1));
@@ -127,10 +127,10 @@ double tadpole_auto_dc(Problem &prob, double percentile)
 }
 
 
-core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool prune, TADPoleStats *stats)
+core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, bool prune, TADPoleStats *stats)
 {
-  const int N = static_cast<int>(prob.size());
-  const int k = n_clusters;
+  const index_t N = prob.size();
+  const index_t k = n_clusters;
   if (N <= 0) throw InvalidInput("tadpole: Problem has no data points.");
   if (k <= 0 || k > N)
     throw InvalidInput("tadpole: n_clusters must be in [1, N]. Got k="
@@ -147,7 +147,7 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
   // (each unordered pair is visited by a single owner in every stage, and the
   // stages are barrier-separated), so no lock is needed. prob.dist_by_ind caches
   // internally, so a pair touched twice recomputes zero times.
-  auto exact = [&](int i, int j) -> double {
+  auto exact = [&](index_t i, index_t j) -> double {
     computed[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))] = 1;
     return prob.dist_by_ind(i, j);
   };
@@ -164,9 +164,9 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
   // over-estimate the LB (invalid), so pass the series length as the window then.
   std::vector<core::Envelope> envs;
   if (can_prune) {
-    envs.resize(N);
-    for (int i = 0; i < N; ++i) {
-      auto s = prob.series(i);
+    envs.resize(static_cast<std::size_t>(N));
+    for (index_t i = 0; i < N; ++i) {
+      auto s = prob.series(static_cast<std::size_t>(i));
       const int env_band = (band < 0) ? static_cast<int>(s.size()) : band;
       envs[i] = core::compute_envelope(s, env_band);
     }
@@ -195,11 +195,11 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
     // than being retested per pair, and keeps prob.series() — which throws under
     // Float32 — strictly inside the pruning branch.
     #pragma omp for schedule(dynamic, 8) nowait
-    for (int i = 0; i < N; ++i) {
+    for (index_t i = 0; i < N; ++i) {
       if (can_prune) {
-        const auto si = prob.series(i);
-        for (int j = i + 1; j < N; ++j) {
-          const auto sj = prob.series(j);
+        const auto si = prob.series(static_cast<std::size_t>(i));
+        for (index_t j = i + 1; j < N; ++j) {
+          const auto sj = prob.series(static_cast<std::size_t>(j));
           bool neighbour;
           if (si.size() == sj.size()) {
             const double lb = core::lb_keogh_symmetric(si, envs[i], sj, envs[j]);
@@ -221,7 +221,7 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
           if (neighbour) { ++rho_local[i]; ++rho_local[j]; }
         }
       } else {
-        for (int j = i + 1; j < N; ++j)
+        for (index_t j = i + 1; j < N; ++j)
           if (exact(i, j) < dc) { ++rho_local[i]; ++rho_local[j]; }
       }
     }
@@ -242,14 +242,14 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
   std::vector<int> parent(N, -1);
 
   #pragma omp parallel for schedule(dynamic, 8)
-  for (int i = 0; i < N; ++i) {
+  for (index_t i = 0; i < N; ++i) {
     double best = kInf;
-    int best_parent = -1;
+    index_t best_parent = -1;
     if (can_prune) { // prob.series() only on the pruning path — see above
-      const auto si = prob.series(i);
-      for (int q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
+      const auto si = prob.series(static_cast<std::size_t>(i));
+      for (index_t q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
         if (q == i || !higher_density(q, i, rho)) continue;
-        const auto sq = prob.series(q);
+        const auto sq = prob.series(static_cast<std::size_t>(q));
         if (si.size() == sq.size()) {
           const double lb = core::lb_keogh_symmetric(si, envs[i], sq, envs[q]);
           if (lb >= best) continue; // d ≥ LB ≥ best ⇒ q cannot lower the min (nor tie-win)
@@ -258,7 +258,7 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
         if (d < best) { best = d; best_parent = q; }
       }
     } else {
-      for (int q = 0; q < N; ++q) {
+      for (index_t q = 0; q < N; ++q) {
         if (q == i || !higher_density(q, i, rho)) continue;
         const double d = exact(i, q);
         if (d < best) { best = d; best_parent = q; }
@@ -271,19 +271,19 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
   // Global densest point (unique under the strict order: no higher-density
   // neighbour ⇒ parent == -1): δ = max of all other points' δ (Begum's
   // convention δ(sortIndex(1)) = max(δ(2:n))).
-  int densest = -1;
-  for (int i = 0; i < N; ++i)
+  index_t densest = -1;
+  for (index_t i = 0; i < N; ++i)
     if (parent[i] < 0) { densest = i; break; }
   if (densest >= 0) {
     double mx = 0.0;
-    for (int i = 0; i < N; ++i)
+    for (index_t i = 0; i < N; ++i)
       if (i != densest && delta[i] < kInf) mx = std::max(mx, delta[i]);
     delta[densest] = mx;
   }
 
   // ── Cluster centers = top-k by γ_i = ρ_i · δ_i (descending, ties by index) ──
   std::vector<double> gamma(N);
-  for (int i = 0; i < N; ++i) gamma[i] = static_cast<double>(rho[i]) * delta[i];
+  for (index_t i = 0; i < N; ++i) gamma[i] = static_cast<double>(rho[i]) * delta[i];
 
   std::vector<int> by_gamma(N);
   std::iota(by_gamma.begin(), by_gamma.end(), 0);
@@ -294,8 +294,8 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
   std::vector<char> is_center(N, 0);
   std::vector<int> label(N, -1);
   std::vector<int> center_of_label(k);
-  for (int c = 0; c < k; ++c) {
-    const int ci = by_gamma[c];
+  for (index_t c = 0; c < k; ++c) {
+    const index_t ci = by_gamma[c];
     is_center[ci] = 1;
     label[ci] = c;
     center_of_label[c] = ci;
@@ -308,10 +308,10 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
   std::sort(order.begin(), order.end(), [&](int a, int b) {
     return rho[a] != rho[b] ? rho[a] > rho[b] : a < b;
   });
-  for (int r = 0; r < N; ++r) {
-    const int p = order[r];
+  for (index_t r = 0; r < N; ++r) {
+    const index_t p = order[r];
     if (is_center[p]) continue; // keeps its center label
-    const int par = parent[p];
+    const index_t par = parent[p];
     // parent ranks strictly higher ⇒ already labelled; the densest point is always
     // a center (γ maximal), so a non-center always has a valid parent — guard anyway.
     label[p] = (par >= 0 && label[par] >= 0) ? label[par] : 0;
@@ -319,15 +319,15 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
 
   // Objective: Σ_i d(i, its cluster's center).
   double total_cost = 0.0;
-  for (int i = 0; i < N; ++i) {
-    const int c = center_of_label[label[i]];
+  for (index_t i = 0; i < N; ++i) {
+    const index_t c = center_of_label[label[i]];
     if (i != c) total_cost += exact(i, c);
   }
 
   if (stats) {
     std::size_t uniq = 0;
     for (char c : computed) uniq += (c != 0); // diagonal slots never set
-    stats->total_pairs = static_cast<std::size_t>(N) * (N - 1) / 2;
+    stats->total_pairs = static_cast<std::size_t>(N * (N - 1) / 2);
     stats->dtw_calls = uniq;
     stats->pruned_by_lb = plb;
     stats->pruned_by_ub = pub;

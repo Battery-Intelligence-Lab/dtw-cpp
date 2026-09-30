@@ -143,7 +143,7 @@ struct FixedBatchDistances {
     return (raw[candidate * m + batch_column] / scale) * weights[batch_column];
   }
 
-  double exact(std::size_t point, int medoid)
+  double exact(std::size_t point, index_t medoid)
   {
     const int column = sample_position[static_cast<std::size_t>(medoid)];
     if (column >= 0)
@@ -166,12 +166,12 @@ void nearest_two(const FixedBatchDistances& distances,
                  std::vector<double>& second_distance)
 {
   const std::size_t m = distances.m;
-  const int k = static_cast<int>(medoids.size());
+  const auto k = static_cast<index_t>(medoids.size());
   nearest.assign(m, 0);
   nearest_distance.assign(m, std::numeric_limits<double>::infinity());
   second_distance.assign(m, std::numeric_limits<double>::infinity());
   for (std::size_t j = 0; j < m; ++j) {
-    for (int slot = 0; slot < k; ++slot) {
+    for (index_t slot = 0; slot < k; ++slot) {
       const double d = distances.estimate(static_cast<std::size_t>(medoids[slot]), j);
       if (d < nearest_distance[j]) {
         second_distance[j] = nearest_distance[j];
@@ -197,9 +197,9 @@ core::ClusteringResult one_batch_pam(Problem& prob,
 {
   const std::size_t n = prob.size();
   validate_options(n, options);
-  const int k = options.n_clusters;
+  const index_t k = options.n_clusters;
 
-  if (k == static_cast<int>(n)) {
+  if (k == static_cast<index_t>(n)) {
     core::ClusteringResult result;
     result.labels.resize(n);
     result.medoid_indices.resize(n);
@@ -242,13 +242,13 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   bool converged = false;
 
   if (k == 1) {
-    int best = medoids[0];
+    index_t best = medoids[0];
     double best_cost = std::numeric_limits<double>::infinity();
     for (std::size_t candidate = 0; candidate < n; ++candidate) {
       double cost = 0.0;
       for (std::size_t j = 0; j < m; ++j) cost += distances.estimate(candidate, j);
-      if (cost < best_cost || (cost == best_cost && static_cast<int>(candidate) < best)) {
-        best = static_cast<int>(candidate);
+      if (cost < best_cost || (cost == best_cost && static_cast<index_t>(candidate) < best)) {
+        best = static_cast<index_t>(candidate);
         best_cost = cost;
       }
     }
@@ -296,7 +296,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
         }
 
         const auto best_it = std::max_element(removal_gain.begin(), removal_gain.end());
-        const int slot = static_cast<int>(std::distance(removal_gain.begin(), best_it));
+        const auto slot = static_cast<index_t>(std::distance(removal_gain.begin(), best_it));
         const double gain = add_gain + *best_it;
         if (gain > tolerance) {
           is_medoid[static_cast<std::size_t>(medoids[slot])] = false;
@@ -328,8 +328,8 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   // wrong partition where fast_pam and fast_clara throw.
   for (std::size_t point = 0; point < n; ++point) {
     double best = std::numeric_limits<double>::infinity();
-    int label = 0;
-    for (int slot = 0; slot < k; ++slot) {
+    index_t label = 0;
+    for (index_t slot = 0; slot < k; ++slot) {
       const double d = core::detail::require_finite_medoid_distance(
         distances.exact(point, medoids[slot]), "one_batch_pam", point, slot, medoids[slot]);
       if (d < best) { best = d; label = slot; }
@@ -340,7 +340,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   // A medoid tied with another medoid (a duplicate series) serves itself, or its
   // own cluster would be published empty. Its own distance is exactly 0, so a
   // best of 0 is that tie. After the scan, so the scan's min stays branch-free.
-  for (int slot = 0; slot < k; ++slot) {
+  for (index_t slot = 0; slot < k; ++slot) {
     const auto medoid = static_cast<std::size_t>(medoids[slot]);
     if (point_cost[medoid] == 0.0) result.labels[medoid] = slot;
   }

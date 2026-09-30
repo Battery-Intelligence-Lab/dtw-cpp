@@ -515,13 +515,13 @@ Series compute_barycenter(const std::vector<Series>& series, std::size_t target_
   throw std::logic_error("compute_barycenter: unreachable BarycenterMethod");
 }
 
-std::vector<int> kmeanspp(const std::vector<Series>& data, int k,
+std::vector<int> kmeanspp(const std::vector<Series>& data, index_t k,
                           std::mt19937_64& rng, AlignmentWorkspace& workspace)
 {
   std::vector<int> centers{static_cast<int>(
     core::portable_bounded(rng, static_cast<std::uint64_t>(data.size())))};
   std::vector<double> closest(data.size(), std::numeric_limits<double>::infinity());
-  while (static_cast<int>(centers.size()) < k) {
+  while (static_cast<index_t>(centers.size()) < k) {
     for (std::size_t i = 0; i < data.size(); ++i)
       closest[i] = std::min(closest[i],
         align_squared(data[i], data[static_cast<std::size_t>(centers.back())],
@@ -704,7 +704,7 @@ BarycenterClusteringResult barycenter_kmeans(
     std::vector<Series> next_centers = centers;
     std::vector<bool> needs_update(
       static_cast<std::size_t>(options.n_clusters), true);
-    for (int cluster = 0; cluster < options.n_clusters; ++cluster) {
+    for (index_t cluster = 0; cluster < options.n_clusters; ++cluster) {
       const auto cluster_index = static_cast<std::size_t>(cluster);
       if (members[cluster_index].empty()) {
         // Deterministic empty-cluster repair: use the currently worst-represented
@@ -727,7 +727,7 @@ BarycenterClusteringResult barycenter_kmeans(
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) num_threads(update_workers) if(parallel_updates)
 #endif
-    for (int cluster = 0; cluster < options.n_clusters; ++cluster) {
+    for (index_t cluster = 0; cluster < options.n_clusters; ++cluster) {
       const auto cluster_index = static_cast<std::size_t>(cluster);
       if (!needs_update[cluster_index]) continue;
       try {

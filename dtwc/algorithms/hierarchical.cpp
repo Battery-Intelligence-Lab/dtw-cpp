@@ -27,7 +27,7 @@ namespace dtwc::algorithms {
 
 Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
 {
-  const int N = static_cast<int>(prob.size());
+  const index_t N = prob.size();
 
   if (N > opts.max_points)
     throw InvalidInput(
@@ -41,9 +41,9 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
   // We only maintain the upper-triangle in spirit but access both (i,j) and
   // (j,i) for simplicity; the matrix is symmetric.
   // -------------------------------------------------------------------------
-  std::vector<double> work(static_cast<size_t>(N) * N, 0.0);
-  for (int i = 0; i < N; ++i)
-    for (int j = 0; j < N; ++j)
+  std::vector<double> work(static_cast<size_t>(N * N), 0.0);
+  for (index_t i = 0; i < N; ++i)
+    for (index_t j = 0; j < N; ++j)
       work[static_cast<size_t>(i) * N + j] = prob.dist_by_ind(i, j);
 
   // active[i] == true  →  cluster i is still alive.
@@ -59,15 +59,15 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
   // -------------------------------------------------------------------------
   // N-1 merge steps
   // -------------------------------------------------------------------------
-  for (int step = 0; step < N - 1; ++step) {
+  for (index_t step = 0; step < N - 1; ++step) {
     // Find the minimum distance among all pairs of active clusters.
     // Tie-breaking: lexicographically smallest (a, b) with a < b.
     double best_dist = std::numeric_limits<double>::infinity();
-    int best_a = -1, best_b = -1;
+    index_t best_a = -1, best_b = -1;
 
-    for (int i = 0; i < N; ++i) {
+    for (index_t i = 0; i < N; ++i) {
       if (!active[i]) continue;
-      for (int j = i + 1; j < N; ++j) {
+      for (index_t j = i + 1; j < N; ++j) {
         if (!active[j]) continue;
         double d = work[static_cast<size_t>(i) * N + j];
         if (d < best_dist ||
@@ -87,7 +87,7 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
     const int sz_a = sz[best_a];
     const int sz_b = sz[best_b];
 
-    for (int c = 0; c < N; ++c) {
+    for (index_t c = 0; c < N; ++c) {
       if (!active[c] || c == best_a || c == best_b) continue;
 
       double d_ac = work[static_cast<size_t>(best_a) * N + c];
@@ -160,14 +160,14 @@ struct UF {
 // cut_dendrogram
 // ---------------------------------------------------------------------------
 
-core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int k)
+core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, index_t k)
 {
-  const int N = dend.n_points;
+  const index_t N = dend.n_points;
 
   // `Dendrogram` is a public, default-constructible aggregate exported to
   // Python, so a hand-built one must be validated, not trusted: otherwise it
   // reads dend.merges out of bounds and indexes UF::parent with arbitrary ids.
-  if (N != static_cast<int>(prob.size()))
+  if (N != prob.size())
     throw InvalidInput(
       "cut_dendrogram: dendrogram n_points=" + std::to_string(N) +
       " does not match Problem size=" + std::to_string(prob.size()) + ".");
@@ -194,10 +194,10 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
 
   // Replay only the first (N-k) merges — the last k-1 merges produce the
   // final k clusters (we skip those k-1 merges, keeping them separate).
-  const int n_merges_to_apply = N - k;
+  const index_t n_merges_to_apply = N - k;
 
   UF uf(N);
-  for (int i = 0; i < n_merges_to_apply; ++i) {
+  for (index_t i = 0; i < n_merges_to_apply; ++i) {
     const auto &step = dend.merges[static_cast<size_t>(i)];
     uf.unite(step.cluster_a, step.cluster_b);
   }
@@ -208,7 +208,7 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
   int next_label = 0;
   std::vector<int> labels(N);
 
-  for (int i = 0; i < N; ++i) {
+  for (index_t i = 0; i < N; ++i) {
     int root = uf.find(i);
     if (root_to_label[root] == -1)
       root_to_label[root] = next_label++;
@@ -225,7 +225,7 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
 
   // Collect members per cluster.
   std::vector<std::vector<int>> members(k);
-  for (int i = 0; i < N; ++i)
+  for (index_t i = 0; i < N; ++i)
     members[static_cast<size_t>(labels[i])].push_back(i);
 
   // Find medoid per cluster: point minimising sum of distances to cluster peers.
@@ -233,7 +233,7 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
   std::vector<int> medoid_indices(k, -1);
   double total_cost = 0.0;
 
-  for (int cl = 0; cl < k; ++cl) {
+  for (index_t cl = 0; cl < k; ++cl) {
     const auto &mem = members[static_cast<size_t>(cl)];
     double best_cost = std::numeric_limits<double>::infinity();
     int best_idx = mem[0]; // fallback (smallest index in cluster)
@@ -262,7 +262,7 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
   result.medoid_indices = std::move(medoid_indices);
   result.total_cost = total_cost;
   result.converged = true;
-  result.iterations = N - 1; // dendrogram always completes in N-1 steps
+  result.iterations = static_cast<int>(N - 1); // dendrogram always completes in N-1 steps
 
   prob.set_result(result); // scores::silhouette(prob) etc. read it back
 

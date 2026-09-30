@@ -11,7 +11,8 @@
 
 #pragma once
 
-#include <cstddef>
+#include "../base/settings.hpp" // index_t
+
 #include <vector>
 
 namespace dtwc::core {
@@ -25,10 +26,10 @@ struct ClusteringResult {
   bool converged = false;           ///< Whether the algorithm converged.
 
   /// Returns the number of clusters.
-  int n_clusters() const { return static_cast<int>(medoid_indices.size()); }
+  index_t n_clusters() const { return static_cast<index_t>(medoid_indices.size()); }
 
   /// Returns the number of data points.
-  size_t n_points() const { return labels.size(); }
+  index_t n_points() const { return static_cast<index_t>(labels.size()); }
 };
 
 } // namespace dtwc::core

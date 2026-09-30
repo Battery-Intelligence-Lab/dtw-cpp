@@ -36,7 +36,7 @@ struct BarycenterOptions {
 };
 
 struct BarycenterClusteringOptions {
-  int n_clusters = 3;
+  index_t n_clusters = 3;
   int max_iter = 50;
   int barycenter_max_iter = 30;
   int target_length = -1; ///< -1 keeps each initial centre's length.

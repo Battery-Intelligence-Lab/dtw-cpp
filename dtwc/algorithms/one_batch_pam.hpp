@@ -21,8 +21,8 @@ class Problem;
 namespace algorithms {
 
 struct OneBatchPAMOptions {
-  int n_clusters = 3;
-  int batch_size = -1;       ///< -1: max(k, min(N, max(64, 20*ceil(log2(N+1))))); an explicit value must be >= k.
+  index_t n_clusters = 3;
+  index_t batch_size = -1;   ///< -1: max(k, min(N, max(64, 20*ceil(log2(N+1))))); an explicit value must be >= k.
   int max_iter = 100;        ///< Maximum eager-swap sweeps.
   std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED;
   double relative_tolerance = 1e-9; ///< Accept gain > tolerance * current estimate.

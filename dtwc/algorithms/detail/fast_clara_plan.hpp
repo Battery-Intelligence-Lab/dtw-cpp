@@ -14,8 +14,8 @@ namespace dtwc::algorithms::detail {
 
 struct ClaraPlan
 {
-  int n_points;
-  int sample_size;
+  index_t n_points;
+  index_t sample_size;
 };
 
 /** Validate controls that do not depend on the dataset size. */
@@ -24,7 +24,7 @@ void validate_clara_controls(
 
 /** Resolve and validate dimensions before any sample or result allocation. */
 [[nodiscard]] ClaraPlan resolve_clara_plan(
-  std::int64_t n_points, const CLARAOptions &options,
+  index_t n_points, const CLARAOptions &options,
   std::string_view caller);
 
 /** Reject a full-data sample on the RAM-limited streaming route. */

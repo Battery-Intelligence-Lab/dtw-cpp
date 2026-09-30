@@ -23,6 +23,7 @@
 #include "../base/settings.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -35,11 +36,11 @@ namespace algorithms {
   /// Options for the FastCLARA algorithm.
   struct CLARAOptions
   {
-    int n_clusters = 3;                                   ///< Number of clusters (k).
-    int sample_size = -1;                                 ///< Subsample size. -1 = overflow-safe auto policy.
-    int n_samples = 5;                                    ///< Number of subsamples to try.
-    int max_iter = 100;                                   ///< Max PAM iterations per subsample.
-    unsigned random_seed = settings::DEFAULT_RANDOM_SEED; ///< Reproducible RNG seed.
+    index_t n_clusters = 3;                                    ///< Number of clusters (k).
+    index_t sample_size = -1;                                  ///< Subsample size. -1 = auto policy.
+    int n_samples = 5;                                         ///< Number of subsamples to try.
+    int max_iter = 100;                                        ///< Max PAM iterations per subsample.
+    std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED; ///< Reproducible RNG seed.
 
     // RAM-aware chunked processing
     size_t ram_limit_bytes = 0;         ///< 0 = no limit (all data in RAM).
