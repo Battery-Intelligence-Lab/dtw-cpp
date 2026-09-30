@@ -126,27 +126,32 @@ TEST_CASE("CUDA kernel choice follows the longest series length and the shared m
 
   // Each range's kernel beats every other kernel that accepts the range by at
   // least 15 % on the RTX 4000 Ada (.claude/baselines/2026-09-29-w4a-cuda-kernel-ab.md).
-  // That device gives a wavefront block 101,376 bytes of shared memory, 16 of
-  // them the kernel's own: a block's anti-diagonals (three of L samples above
-  // L = 2048) leave shared memory for global memory from FP32 L = 8447 and
-  // FP64 L = 4224.
-  constexpr std::size_t shared = 101376 - 16;
+  // Above L = 2048 the wavefront keeps its three anti-diagonals in shared memory
+  // only while three blocks fit an SM, each also taking the kernel's 16 static
+  // bytes and the runtime's 1,024 reserved ones. The RTX 4000 Ada's SM has
+  // 102,400 bytes: FP32 L = 2757 fits three blocks, 2758 does not, and FP64 none
+  // above 2048. An H100's has 233,472: FP32 up to 6398, FP64 up to 3199.
+  constexpr std::size_t ada = 102400;
+  constexpr std::size_t hopper = 233472;
+  constexpr std::size_t overhead = 16 + 1024;
   for (const std::size_t sample : { std::size_t{ 4 }, std::size_t{ 8 } }) {
-    CHECK(select_kernel(1, sample, shared) == KernelPath::Warp);
-    CHECK(select_kernel(32, sample, shared) == KernelPath::Warp);
-    CHECK(select_kernel(33, sample, shared) == KernelPath::RegTileW4);
-    CHECK(select_kernel(128, sample, shared) == KernelPath::RegTileW4);
-    CHECK(select_kernel(129, sample, shared) == KernelPath::RegTileW8);
-    CHECK(select_kernel(256, sample, shared) == KernelPath::RegTileW8);
-    CHECK(select_kernel(257, sample, shared) == KernelPath::Wavefront);
-    CHECK(select_kernel(2048, sample, shared) == KernelPath::Wavefront);
-    CHECK(select_kernel(2049, sample, shared) == KernelPath::Wavefront);
+    CHECK(select_kernel(1, sample, ada, overhead) == KernelPath::Warp);
+    CHECK(select_kernel(32, sample, ada, overhead) == KernelPath::Warp);
+    CHECK(select_kernel(33, sample, ada, overhead) == KernelPath::RegTileW4);
+    CHECK(select_kernel(128, sample, ada, overhead) == KernelPath::RegTileW4);
+    CHECK(select_kernel(129, sample, ada, overhead) == KernelPath::RegTileW8);
+    CHECK(select_kernel(256, sample, ada, overhead) == KernelPath::RegTileW8);
+    CHECK(select_kernel(257, sample, ada, overhead) == KernelPath::Wavefront);
+    CHECK(select_kernel(2048, sample, ada, overhead) == KernelPath::Wavefront);
+    CHECK(select_kernel(100000000, sample, ada, overhead) == KernelPath::WavefrontGlobal);
   }
-  CHECK(select_kernel(8446, 4, shared) == KernelPath::Wavefront);
-  CHECK(select_kernel(8447, 4, shared) == KernelPath::WavefrontGlobal);
-  CHECK(select_kernel(4223, 8, shared) == KernelPath::Wavefront);
-  CHECK(select_kernel(4224, 8, shared) == KernelPath::WavefrontGlobal);
-  CHECK(select_kernel(100000000, 4, shared) == KernelPath::WavefrontGlobal);
+  CHECK(select_kernel(2757, 4, ada, overhead) == KernelPath::Wavefront);
+  CHECK(select_kernel(2758, 4, ada, overhead) == KernelPath::WavefrontGlobal);
+  CHECK(select_kernel(2049, 8, ada, overhead) == KernelPath::WavefrontGlobal);
+  CHECK(select_kernel(6398, 4, hopper, overhead) == KernelPath::Wavefront);
+  CHECK(select_kernel(6399, 4, hopper, overhead) == KernelPath::WavefrontGlobal);
+  CHECK(select_kernel(3199, 8, hopper, overhead) == KernelPath::Wavefront);
+  CHECK(select_kernel(3200, 8, hopper, overhead) == KernelPath::WavefrontGlobal);
   CHECK(kernel_path_name(KernelPath::Warp) == "warp");
   CHECK(kernel_path_name(KernelPath::RegTileW4) == "regtile_w4");
   CHECK(kernel_path_name(KernelPath::RegTileW8) == "regtile_w8");

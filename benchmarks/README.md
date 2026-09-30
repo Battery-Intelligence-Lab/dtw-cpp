@@ -39,7 +39,7 @@ Peak: **75 Gcells/sec** at L=250. Sustained >60 Gcells/sec across all lengths.
 | 128 < L <= 256 | `dtw_regtile_kernel<8>` | 8 warps/block | TILE_W=8 register tiling |
 | 256 < L <= 1024 | `dtw_wavefront_kernel` | Block (256) | Shared-mem 3-buffer (series preloaded up to 512), persistent |
 | 1024 < L <= 2048 | `dtw_wavefront_kernel` | Block (256) | Double-buffer for occupancy |
-| L > 2048 | `dtw_wavefront_kernel` | Block (256) | Shared-mem 3-buffer; in global memory where the 3 buffers do not fit a block's shared memory |
+| L > 2048 | `dtw_wavefront_kernel` | Block (256) | Shared-mem 3-buffer where three blocks fit an SM's shared memory; global memory otherwise |
 
 ## Running Benchmarks
 

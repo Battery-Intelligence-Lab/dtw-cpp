@@ -190,6 +190,23 @@ dtwc::cuda::CUDADistMatOptions f12_cuda_options(
   return opts;
 }
 
+/// The first length that takes the global-memory wavefront on device 0. Up to
+/// L = 2048 the wavefront keeps its anti-diagonals in shared memory; above it,
+/// only while three blocks fit an SM's shared memory, each three anti-diagonals
+/// of L values, the kernel's 16 static bytes and the runtime's reserved bytes:
+/// on the RTX 4000 Ada (100 KB per SM, 1 KB reserved) FP32 2758 and FP64 2049.
+size_t first_global_length(bool fp32)
+{
+  int sm_shared = 0;
+  int reserved = 0;
+  REQUIRE(cudaDeviceGetAttribute(&sm_shared, cudaDevAttrMaxSharedMemoryPerMultiprocessor, 0)
+          == cudaSuccess);
+  REQUIRE(cudaDeviceGetAttribute(&reserved, cudaDevAttrReservedSharedMemoryPerBlock, 0)
+          == cudaSuccess);
+  const size_t block_room = static_cast<size_t>(sm_shared) / 3 - 16 - static_cast<size_t>(reserved);
+  return std::max<size_t>(2049, block_room / (3 * (fp32 ? 4 : 8)) + 1);
+}
+
 } // anonymous namespace
 
 TEST_CASE("F12 independent fixed-band arbiters reproduce the registered ledger",
@@ -334,7 +351,8 @@ TEST_CASE("F12 CUDA FP32 results translate no-path to the public double sentinel
 // Every range of the automatic kernel choice, at its edges, in both precisions:
 // warp (L <= 32), regtile<4> (<= 128), regtile<8> (<= 256), and the wavefront's
 // preload (<= 512), three-buffer (<= 1024), double-buffer (<= 2048) and long
-// three-buffer modes. The oracle is the host kernel in the fill's precision.
+// three-buffer modes, the last in global memory where three shared blocks do not
+// fit an SM. The oracle is the host kernel in the fill's precision.
 TEST_CASE("CUDA fill matches the host kernel in every automatic kernel range",
           "[cuda][regime]")
 {
@@ -357,7 +375,8 @@ TEST_CASE("CUDA fill matches the host kernel in every automatic kernel range",
                         : dtwc::cuda::CUDAPrecision::FP64;
   const auto gpu_result = gpu_fill(series, opts);
 
-  REQUIRE(gpu_result.kernel_used == regime.kernel);
+  REQUIRE(gpu_result.kernel_used
+          == (regime.L < first_global_length(fp32) ? regime.kernel : "wavefront_global"));
   REQUIRE(gpu_result.matrix == (fp32 ? cpu_fp32_distance_matrix(series)
                                      : cpu_distance_matrix(series)));
 }
@@ -533,7 +552,9 @@ TEST_CASE("test_gpu_long_series_wavefront_banded", "[cuda][long][banded]")
 
 // The three FP32 diagonal buffers of L = 4095 and 4096 fit the 48 KiB default
 // shared-memory limit on their own, but not with the kernel's static shared
-// memory, so the launch must opt in to the larger limit.
+// memory, so a shared-memory launch must opt in to the larger limit. That route
+// takes these lengths where three such blocks fit an SM (an A100 or H100); an
+// RTX 4000 Ada runs them in global memory.
 TEST_CASE("FP32 wavefront at L = 4095 and 4096 matches the host kernel",
           "[cuda][long][fp32]")
 {
@@ -546,32 +567,15 @@ TEST_CASE("FP32 wavefront at L = 4095 and 4096 matches the host kernel",
   dtwc::cuda::CUDADistMatOptions opts;
   opts.precision = dtwc::cuda::CUDAPrecision::FP32;
   const auto gpu_result = gpu_fill(series, opts);
-  REQUIRE(gpu_result.kernel_used == "wavefront");
+  REQUIRE(gpu_result.kernel_used
+          == (L < first_global_length(true) ? "wavefront" : "wavefront_global"));
   REQUIRE(gpu_result.matrix == cpu_fp32_distance_matrix(series));
 }
 
-namespace {
-
-/// The first length whose wavefront block does not fit the device's opt-in
-/// shared memory: above L = 2048 a block holds three anti-diagonals of L values
-/// plus the kernel's 16 static bytes, so FP32 8447 and FP64 4224 on the RTX 4000
-/// Ada (101,376 bytes). Every supported GPU (compute capability 8.0 or newer)
-/// offers at least 99 KB, so the limit lies above 2048. From there the wavefront
-/// keeps its anti-diagonals in global memory.
-size_t first_global_length(bool fp32)
-{
-  int max_shared = 0;
-  REQUIRE(cudaDeviceGetAttribute(&max_shared, cudaDevAttrMaxSharedMemoryPerBlockOptin, 0)
-          == cudaSuccess);
-  return (static_cast<size_t>(max_shared) - 16) / (3 * (fp32 ? 4 : 8)) + 1;
-}
-
-} // anonymous namespace
-
-// One length below the limit the anti-diagonals stay in shared memory, at the
-// limit they go to global memory; both fills are the host kernel's bit for bit,
-// and the same thread's next shared-memory fill is too.
-TEST_CASE("CUDA wavefront keeps its anti-diagonals in global memory from the shared-memory limit",
+// One length below the first global length the anti-diagonals stay in shared
+// memory, from it they go to global memory; both fills are the host kernel's
+// bit for bit, and the same thread's next shared-memory fill is too.
+TEST_CASE("CUDA wavefront keeps its anti-diagonals in global memory where three shared blocks do not fit an SM",
           "[cuda][long]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
@@ -628,16 +632,17 @@ TEST_CASE("CUDA fill of series beyond the shared-memory limit matches the host k
 
 // More pairs than the grid has blocks, so each block runs several pairs in its
 // own slice of the global scratch: one long series and 63 of 1 to 300 samples,
-// which keeps the host oracle cheap. At FP64 twice the limit the slices of the
-// resident blocks pass the L2 (40 MB on the RTX 4000 Ada), so the grid is cut to
-// the slices the L2 holds.
+// which keeps the host oracle cheap. At FP64 L = 8448 the slices of the resident
+// blocks pass the L2 (40 MB on the RTX 4000 Ada), so the grid is cut to the
+// slices the L2 holds.
 TEST_CASE("CUDA global-memory wavefront runs many pairs per block",
           "[cuda][long]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
   const bool fp32 = GENERATE(true, false);
-  const size_t L = fp32 ? first_global_length(true) : 2 * first_global_length(false);
+  const size_t L = fp32 ? first_global_length(true)
+                         : std::max<size_t>(8448, first_global_length(false));
   CAPTURE(fp32, L);
   auto series = generate_random_walks(64, L, /*seed=*/20261002);
   for (size_t k = 1; k < series.size(); ++k) series[k].resize(1 + (k * 37) % 300);
@@ -701,7 +706,9 @@ TEST_CASE("A refused CUDA fill leaves the Problem's matrix unallocated", "[cuda]
 
 // The wavefront's dynamic shared-memory limit is one value per kernel and
 // device, shared by every host thread. Set on each launch, a thread at L = 4096
-// lowered it under another thread's L = 8000 launch ("invalid argument").
+// lowered it under another thread's L = 8000 launch ("invalid argument"). Where
+// three shared blocks do not fit an SM (an RTX 4000 Ada) both lengths take the
+// global-memory wavefront; the threads must still not fail each other.
 TEST_CASE("Two host threads filling at different long lengths do not fail each other",
           "[cuda][long][threads]")
 {

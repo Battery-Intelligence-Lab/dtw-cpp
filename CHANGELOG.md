@@ -32,7 +32,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   than 8,446 samples in FP32 or 4,223 in FP64, so `data/dummy` (up to 9,405 samples) could not run with `--device gpu`.
   Those buffers now live in global memory, with the shared-memory kernel's arithmetic: the tests find every L1 distance,
   with and without a band, the host kernel's bit for bit (in FP32, the host FP32 kernel's), and `data/dummy` clusters on
-  the GPU with the labels and medoids of `--device cpu`.
+  the GPU with the labels and medoids of `--device cpu`. Above 2,048 samples the fill keeps the anti-diagonals in shared
+  memory only where three blocks fit an SM, which is where that is the faster route.
 - **Changed (GPU):** the CUDA distance-matrix fill runs for any number of series; it refused more than 65,536. It
   computes at most 2^27 pairs per launch and copies each launch's share of the packed matrix straight into the
   `Problem`'s matrix, on the heap or memory-mapped, where it built an N×N matrix on the GPU and two more on the host

@@ -96,14 +96,17 @@ device's threadgroup-memory cap.
 |---|---|---|
 | `max_L ≤ 32` | `dtw_warp_kernel` | One warp per pair, full series in registers |
 | `32 < max_L ≤ 256` | `dtw_regtile_kernel<TILE_W>` | `TILE_W=4` for `≤128`, `TILE_W=8` for `≤256` |
-| `3·max_L·sizeof(T)` plus the kernel's 16 static bytes exceeds the device's opt-in shared memory per block | `dtw_wavefront_kernel` (global) | Anti-diagonals in global memory, one slice per resident block |
+| `max_L > 2048` and three blocks of `3·max_L·sizeof(T)` bytes (plus the kernel's static and the runtime's reserved shared memory each) do not fit an SM's shared memory | `dtw_wavefront_kernel` (global) | Anti-diagonals in global memory, one slice per resident block |
 | otherwise | `dtw_wavefront_kernel` | Anti-diagonals in shared memory |
 
 On an RTX 4000 Ada the warp and register-tile kernels are the fastest of those
-that accept their length ranges, FP32 and FP64 alike. Its 101,376 bytes of shared
-memory per block hold the anti-diagonals up to `max_L` = 8,446 in FP32 and 4,223
-in FP64; the global-memory wavefront runs the same cells, so its distances are
-the shared kernel's.
+that accept their length ranges, FP32 and FP64 alike. Its SM (100 KB of shared
+memory) holds three shared-memory wavefront blocks up to `max_L` = 2,757 in FP32
+and none above 2,048 in FP64; beyond that the global-memory wavefront, which runs
+up to six blocks per SM with its anti-diagonals in the L2 cache, takes 0.64–0.68
+of the shared one's time at FP32 `max_L` 6,000–8,446 and 0.76–0.84 at FP64
+`max_L` 2,049–4,223. It runs the same cells, so its distances are the shared
+kernel's.
 
 ### Options
 
