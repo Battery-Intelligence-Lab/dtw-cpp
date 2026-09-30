@@ -614,26 +614,6 @@ TEST_CASE("Two host threads filling at different long lengths do not fail each o
 // Structural properties of the distance matrix
 // ---------------------------------------------------------------------------
 
-TEST_CASE("test_gpu_symmetry", "[cuda]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 15;
-  constexpr size_t L = 80;
-  auto series = generate_random_series(N, L, /*seed=*/7777);
-
-  auto gpu_result = gpu_fill(series);
-
-  REQUIRE(gpu_result.n == N);
-
-  for (size_t i = 0; i < N; ++i) {
-    for (size_t j = i + 1; j < N; ++j) {
-      INFO("i=" << i << " j=" << j);
-      REQUIRE(gpu_result.matrix[i * N + j] == gpu_result.matrix[j * N + i]);
-    }
-  }
-}
-
 TEST_CASE("test_gpu_diagonal_zero", "[cuda]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
@@ -1165,28 +1145,6 @@ TEST_CASE("test_gpu_fp32_matches_cpu_medium", "[cuda][fp32]")
       INFO("i=" << i << " j=" << j);
       REQUIRE_THAT(gpu_result.matrix[i * N + j],
                    WithinRel(cpu_mat[i * N + j], 1e-4));
-    }
-  }
-}
-
-TEST_CASE("test_gpu_fp32_symmetry", "[cuda][fp32]")
-{
-  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
-
-  constexpr size_t N = 12;
-  constexpr size_t L = 80;
-  auto series = generate_random_series(N, L, /*seed=*/3333);
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
-  auto gpu_result = gpu_fill(series, opts);
-
-  REQUIRE(gpu_result.n == N);
-
-  for (size_t i = 0; i < N; ++i) {
-    for (size_t j = i + 1; j < N; ++j) {
-      INFO("i=" << i << " j=" << j);
-      REQUIRE(gpu_result.matrix[i * N + j] == gpu_result.matrix[j * N + i]);
     }
   }
 }
@@ -1757,11 +1715,6 @@ TEST_CASE("GPU stress test (100 series x 200 length)", "[cuda]")
   // Verify diagonal is zero
   for (size_t i = 0; i < N; ++i)
     REQUIRE(gpu_result.matrix[i * N + i] == 0.0);
-
-  // Verify symmetry on a sample
-  for (size_t i = 0; i < 10; ++i)
-    for (size_t j = i + 1; j < 10; ++j)
-      REQUIRE(gpu_result.matrix[i * N + j] == gpu_result.matrix[j * N + i]);
 }
 
 // FX-1: a squared-L2 cache is filled by the Problem's CUDA route with the

@@ -20,7 +20,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 namespace dtwc::cuda::detail {
 
@@ -48,23 +47,6 @@ inline void require_cuda_device(bool available, const char *entry)
     throw dtwc::DeviceError(
       std::string(entry) + ": DTWC++ was built with CUDA support, but no "
       "usable CUDA GPU was detected. No CPU fallback was attempted.");
-}
-
-/// @brief Fill @p lengths with the series' lengths in upload order, the last
-/// series first (cuda_dtw.cu's packed_slot says why), and return the maximum.
-inline std::size_t scan_series_lengths(
-  const std::vector<std::vector<double>> &series,
-  std::vector<int> &lengths)
-{
-  const std::size_t n = series.size();
-  lengths.resize(n);
-  std::size_t max_L = 0;
-  for (std::size_t d = 0; d < n; ++d) {
-    const std::size_t length = series[n - 1 - d].size();
-    lengths[d] = static_cast<int>(length);
-    if (length > max_L) max_L = length;
-  }
-  return max_L;
 }
 
 /// @brief Shared-memory buffer count for the anti-diagonal wavefront kernels.

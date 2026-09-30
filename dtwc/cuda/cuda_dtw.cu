@@ -907,19 +907,21 @@ void ensure_dtw_device_capacity(
   }
 }
 
-/// Pads every series to max_L in @p dst, in upload order: the last series
-/// first (see packed_slot).
+/// The series in upload order, the last first (see packed_slot): each padded
+/// to max_L in @p dst, and its length in @p lengths.
 template <typename T>
 void flatten_series_buffer(
-    T *dst,
+    T *dst, std::vector<int> &lengths,
     const std::vector<std::vector<double>> &series,
     size_t max_L)
 {
   const size_t N = series.size();
+  lengths.resize(N);
   for (size_t d = 0; d < N; ++d) {
     const auto &src = series[N - 1 - d];
     T *row_dst = dst + d * max_L;
     const size_t len = src.size();
+    lengths[d] = static_cast<int>(len);
 
     if constexpr (std::is_same_v<T, double>) {
       if (len > 0)
@@ -947,7 +949,6 @@ void flatten_series_buffer(
 template <typename T>
 void launch_dtw_kernel(
     const std::vector<std::vector<double>> &series,
-    const std::vector<int> &lengths,
     size_t N, size_t max_L,
     bool use_squared_l2, int band, int device_id, double &gpu_time_sec,
     detail::KernelPath kernel_path, core::DistanceMatrix &out)
@@ -984,7 +985,8 @@ void launch_dtw_kernel(
   const size_t series_bytes = N * max_L * sizeof(T);
   T *h_flat_series = workspace.host_series.ensure(
       N * max_L, series_bytes >= PINNED_THRESHOLD);
-  flatten_series_buffer(h_flat_series, series, max_L);
+  std::vector<int> lengths;
+  flatten_series_buffer(h_flat_series, lengths, series, max_L);
 
   // Every refusal is behind us and every buffer is allocated: size the
   // caller's matrix. One already N x N, as a mapped one is, keeps its storage.
@@ -1102,8 +1104,8 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
-  std::vector<int> lengths;
-  const size_t max_L = detail::scan_series_lengths(series, lengths);
+  size_t max_L = 0;
+  for (const auto &s : series) max_L = std::max(max_L, s.size());
 
   // An all-zero matrix would read as N identical series.
   if (max_L == 0)
@@ -1116,10 +1118,10 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
   const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
   if (use_fp32)
-    launch_dtw_kernel<float>(series, lengths, N, max_L, opts.use_squared_l2, opts.band,
+    launch_dtw_kernel<float>(series, N, max_L, opts.use_squared_l2, opts.band,
                              opts.device_id, result.gpu_time_sec, kernel_path, out);
   else
-    launch_dtw_kernel<double>(series, lengths, N, max_L, opts.use_squared_l2, opts.band,
+    launch_dtw_kernel<double>(series, N, max_L, opts.use_squared_l2, opts.band,
                               opts.device_id, result.gpu_time_sec, kernel_path, out);
 
   if (opts.verbose) {

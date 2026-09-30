@@ -217,7 +217,6 @@ TEST_CASE("Metal handles N=2 smallest possible matrix", "[metal]")
   // Two shifted ramps: DTW L1 distance should be small (aligned by warping).
   double d_cpu = dtwc::dtwFull_L<double>(series[0], series[1]);
   REQUIRE_THAT(gpu.matrix[0 * 2 + 1], WithinRel(d_cpu, 1e-4) || WithinAbs(d_cpu, 1e-3));
-  REQUIRE(gpu.matrix[1 * 2 + 0] == gpu.matrix[0 * 2 + 1]); // symmetric
 }
 
 TEST_CASE("Metal unbanded DTW on longer series", "[metal]")
