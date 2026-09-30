@@ -1,0 +1,29 @@
+# sass_loops.py base/sass_base.txt c2/sass_c2.txt (cuobjdump -sass of cuda_dtw.cu.obj, sm_89)
+== dtw_regtile_kernel<dLi4E>: 1 DP loops vs 1
+   505 vs 503 instructions; same sequence False; head adds {}; head drops {'IMAD.MOV.U32 R, RZ, RZ, R': 2}
+== dtw_regtile_kernel<dLi8E>: 1 DP loops vs 1
+   963 vs 963 instructions; same sequence False; same instructions, reordered
+== dtw_regtile_kernel<fLi4E>: 1 DP loops vs 1
+   244 vs 242 instructions; same sequence False; head adds {}; head drops {'IADD3 R, R, 0x3, RZ': 1, 'IADD3 R, R, -0x1, R': 1}
+== dtw_regtile_kernel<fLi8E>: 1 DP loops vs 1
+   488 vs 491 instructions; same sequence False; head adds {'IMAD R, R, 0x9, RZ': 1, 'IADD3 R, R, 0x6, RZ': 1, 'IADD3 R, R, 0x7, RZ': 1}; head drops {}
+== dtw_warp_kernel<d>: 2 DP loops vs 2
+   241 vs 241 instructions; same sequence False; same instructions, reordered
+   66 vs 66 instructions; same sequence True
+== dtw_warp_kernel<f>: 6 DP loops vs 6
+   153 vs 153 instructions; same sequence True
+   45 vs 44 instructions; same sequence False; head adds {}; head drops {'IMAD.MOV.U32 R, RZ, RZ, R': 1}
+   100 vs 100 instructions; same sequence True
+   31 vs 31 instructions; same sequence True
+   100 vs 100 instructions; same sequence True
+   30 vs 30 instructions; same sequence True
+== dtw_wavefront_kernel<d>: 2 DP loops vs 2
+   79 vs 80 instructions; same sequence False; head adds {'IMAD.MOV.U32 R, RZ, RZ, R': 1}; head drops {}
+   741 vs 739 instructions; same sequence False; head adds {}; head drops {'IADD3 R, R, c[0x0][0x0], RZ': 1, 'SHF.R.S32.HI R, RZ, 0x1f, R': 1}
+== dtw_wavefront_kernel<f>: 2 DP loops vs 2
+   64 vs 64 instructions; same sequence True
+   589 vs 589 instructions; same sequence True
+total DP-loop instructions: 4439 vs 4436
+
+# c1 against c2 (sass_by_function.py of W4d): the kernels did not change in the chunking commit
+functions: 8 vs 8; identical 8; different 0; only in first []; only in second []

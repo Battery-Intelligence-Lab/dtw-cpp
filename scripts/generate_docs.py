@@ -223,13 +223,19 @@ def main() -> int:
     args = parser.parse_args()
 
     stale: list[str] = []
+    written = 0
     for path, expected in generated_outputs().items():
+        # read_text folds CRLF to LF, so a CRLF checkout (Windows core.autocrlf)
+        # counts as current and is left untouched.
+        if path.exists() and path.read_text(encoding="utf-8") == expected:
+            continue
         if args.check:
-            if not path.exists() or path.read_text(encoding="utf-8") != expected:
-                stale.append(str(path.relative_to(ROOT)))
-        else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(expected, encoding="utf-8", newline="\n")
+            stale.append(str(path.relative_to(ROOT)))
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        crlf = path.exists() and b"\r\n" in path.read_bytes()
+        path.write_text(expected, encoding="utf-8", newline="\r\n" if crlf else "\n")
+        written += 1
 
     if stale:
         print("stale or missing generated documentation:", file=sys.stderr)
@@ -238,7 +244,7 @@ def main() -> int:
         print("run: python scripts/generate_docs.py", file=sys.stderr)
         return 1
     print("generated documentation is current" if args.check else
-          "generated documentation updated")
+          f"generated documentation updated ({written} page(s) written)")
     return 0
 
 

@@ -201,26 +201,27 @@ void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strateg
 }
 
 /**
- * @brief Resizes data structures based on the current number of clusters.
- *
- * @details Adjusts the size of cluster_members, centroids_ind, and clusters_ind arrays based on the current
- * value of Nc (number of clusters).
- */
-void Problem::resize()
-{
-  clusters_ind.resize(size());
-  centroids_ind.resize(n_clusters());
-}
-
-/**
  * @brief Sets the number of clusters for the problem.
  *
  * @param Nc_ The number of clusters to set.
+ * @throws InvalidInput for Nc_ < 1. Nc_ > N is accepted: the data may change
+ *         after this call, so cluster() checks it against the series it finds.
  */
 void Problem::set_n_clusters(index_t Nc_)
 {
+  if (Nc_ < 1)
+    throw InvalidInput("Problem::set_n_clusters: n_clusters must be at least 1; got "
+                       + std::to_string(Nc_) + ".");
   Nc = Nc_;
-  resize();
+}
+
+void Problem::require_clustered(std::string_view who) const
+{
+  if (clusters_ind.size() == size() && centroids_ind.size() == static_cast<std::size_t>(Nc)) return;
+  throw InvalidInput(std::string(who) + ": this Problem holds no clustering ("
+                     + std::to_string(clusters_ind.size()) + " labels for N = " + std::to_string(size())
+                     + ", " + std::to_string(centroids_ind.size()) + " medoids for k = "
+                     + std::to_string(Nc) + "); cluster it first.");
 }
 
 void Problem::require_owned_storage(std::string_view accessor, bool float64_values) const
@@ -1094,9 +1095,9 @@ void Problem::fill_distance_matrix()
   validate_fill_request("Problem::fill_distance_matrix");
   fill_request_validated_ = true; // the same request needs no lazy re-check
 
-  // Allocate the heap N×N matrix on first call (deferred from set_data /
-  // refresh_distance_matrix); a mapped matrix is sized when it is bound.
-  if (distMat.size() != data_.size()) distMat.resize(data_.size());
+  // Each fill below sizes the matrix (deferred from set_data /
+  // refresh_distance_matrix) only after its own refusals; a mapped matrix is
+  // sized when it is bound.
 
   // Re-bind the DTW function in case missing_strategy was changed after construction
   // (e.g., user sets prob.missing_strategy = ZeroCost after prob.set_data(...)).
@@ -1112,24 +1113,8 @@ void Problem::fill_distance_matrix()
   if (effective == DistanceMatrixStrategy::Auto)
     effective = DistanceMatrixStrategy::BruteForce;
 
-  // Shared post-GPU handler. Templated on the backend's result type (both
-  // CUDADistMatResult and MetalDistMatResult derive from gpu::DistMatResultBase,
-  // so any base accessor works). Returns true on success; false signals the
-  // caller to continue. An explicitly requested backend never changes to CPU.
-#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-  auto dispatch_gpu_backend = [&](const auto &result, const char *backend) -> bool {
-    if (result.pairs_computed == 0 && data_.size() > 1) {
-      throw DeviceError(std::string(backend)
-                        + " returned no distance pairs. No CPU fallback was attempted.");
-    }
-    if (distMat.size() != result.n) distMat.resize(result.n);
-    for (size_t i = 0; i < result.n; ++i)
-      for (size_t j = i; j < result.n; ++j)
-        distMat.set(i, j, result.matrix[i * result.n + j]);
-    return true;
-  };
-#endif
-
+  // A GPU backend writes every entry of distMat in place; an explicitly
+  // requested backend never changes to CPU.
   switch (effective) {
   case DistanceMatrixStrategy::CUDA:
 #ifdef DTWC_HAS_CUDA
@@ -1145,9 +1130,7 @@ void Problem::fill_distance_matrix()
     cuda_opts.use_squared_l2 = metric_ == core::MetricType::SquaredL2;
     cuda_opts.verbose = verbose_;
 
-    auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(
-      data_.p_vec, cuda_opts);
-    (void)dispatch_gpu_backend(cuda_result, "CUDA");
+    (void)dtwc::cuda::compute_distance_matrix_cuda(data_.p_vec, cuda_opts, distMat);
     break;
   }
 #else
@@ -1164,9 +1147,7 @@ void Problem::fill_distance_matrix()
     metal_opts.use_squared_l2 = metric_ == core::MetricType::SquaredL2;
     metal_opts.verbose = verbose_;
 
-    auto metal_result = dtwc::metal::compute_distance_matrix_metal(
-      data_.p_vec, metal_opts);
-    (void)dispatch_gpu_backend(metal_result, "Metal");
+    (void)dtwc::metal::compute_distance_matrix_metal(data_.p_vec, metal_opts, distMat);
     break;
   }
 #else
@@ -1323,6 +1304,7 @@ void Problem::distanceInClusters()
  */
 void Problem::calculate_medoids()
 {
+  require_clustered("calculate_medoids");
   std::vector<double> pointCosts(size());
 
   auto findBetterMedoidTask = [&](size_t i_p) // i_p is point index.
@@ -1501,6 +1483,7 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
  */
 double Problem::find_total_cost()
 {
+  require_clustered("find_total_cost");
   core::detail::OrderedMedoidObjective total("kmedoids_lloyd");
   for (const auto idx : Range(size())) {
     const int i = static_cast<int>(idx);

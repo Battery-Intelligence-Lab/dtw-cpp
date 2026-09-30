@@ -694,14 +694,15 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
     legacy.set_numberOfClusters(2);
     DTWC_POP_NO_DEPRECATED
     canonical.set_n_clusters(2);
+    // Sizing sets the count and nothing else: no clustering exists yet.
     ledger.behavior(
       f22_entity::set_number_of_clusters,
       legacy.n_clusters() == 2
         && canonical.n_clusters() == 2
-        && legacy.labels().size() == f22_point_count
-        && legacy.labels().size() == canonical.labels().size()
-        && legacy.medoids().size() == 2
-        && legacy.medoids().size() == canonical.medoids().size());
+        && legacy.labels().empty()
+        && canonical.labels().empty()
+        && legacy.medoids().empty()
+        && canonical.medoids().empty());
   }
 
   // 02. Problem::refreshDistanceMatrix()

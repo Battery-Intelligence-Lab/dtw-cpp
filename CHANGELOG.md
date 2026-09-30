@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (GPU):** the CUDA distance-matrix fill runs for any number of series; it refused more than 65,536. It
+  computes at most 2^27 pairs per launch and copies each launch's share of the packed matrix straight into the
+  `Problem`'s matrix, on the heap or memory-mapped, where it built an N×N matrix on the GPU and two more on the host
+  and copied them element by element. On an RTX 4000 Ada at N = 20,000 (FP32) one fill's memory above its input fell
+  from 6.0 to 1.6 GiB on the host and from 1.6 to 1.1 GiB on the GPU, and 9,000 series of length 100 fill in 1.17 s
+  instead of 1.50 s. A fill its backend refuses (no device, a series too long for the GPU's shared memory) no longer
+  leaves a matrix allocated.
 - **Changed (performance, Windows):** a DTW cell no longer makes a library call. The MSVC STL compiles `std::min({…})` to an
   out-of-line helper (`__std_min_d` under clang, `__std_min_element_d` under cl), which full, banded, ADTW, AROW, MSM, TWE and
   the DBA alignment called once per cell; they now nest two-argument `std::min` and keep the value a cell stores in a register.
@@ -43,6 +50,17 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   published the other cluster empty; LR-core refused the valid optimum with `SolverError`.
 - **Fixed (C++):** `scores::silhouette()` on a Problem that has not been clustered raises `InvalidInput`; v1.0.0 printed a
   line and returned one `-1` per series, a vector that reads as a (poor) score.
+- **Fixed (C++, Python, MATLAB):** `find_total_cost()` and `write_clusters()` on a Problem that holds no clustering raise
+  `InvalidInput` ("... cluster it first"); v1.0.0 read the empty label vector (an access violation in Python and in MATLAB
+  R2024b), or, after `set_n_clusters`, its zeros. `print_clusters`, `write_medoid_members`, `calculate_medoids` and the scores
+  refuse the same way. `set_n_clusters` no longer sizes `clusters_ind` and `centroids_ind`, which stay empty until a
+  clustering writes them; a Problem is clustered when it holds one label per series and one medoid per cluster
+  (`Problem::require_clustered`), so a clustering goes stale when `set_n_clusters` or the data change its shape.
+- **Changed (C++, Python, MATLAB):** `set_n_clusters(k)` with k < 1 raises `InvalidInput` naming the value; v1.0.0
+  (`set_numberOfClusters`) accepted k = 0, which `cluster()` refused later, and failed on k = -1 with an untyped "vector too
+  long" from a resize. `set_band(b)` with b < -1 raises the same, so `dtwc_cl --band -5` stops with that error where v1.0.0
+  ran full DTW (a band below -1 has always run as full DTW, and a direct write to the `band` field still does). k above N is
+  still refused by `cluster()`, since the data may change after the setter.
 - **Changed (exact solvers):** `Method::MIP` and `Method::LRCore` publish through the new
   `Problem::set_result(ClusteringResult)`, which refuses a malformed clustering with `InvalidInput`. A solve that fails with
   `SolverError` leaves the Problem holding a valid clustering (the FastPAM warm start), not necessarily the one it held before

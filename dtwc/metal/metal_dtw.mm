@@ -36,7 +36,6 @@
 #include <stdexcept>
 
 #include "../detail/decode_pair.hpp"
-#include "detail/chunk_dispatch.hpp"
 
 namespace dtwc::metal {
 
@@ -54,12 +53,19 @@ namespace dtwc::metal {
 // inline copy used an FP32 sqrt + int32 arithmetic (wrong / OOB for N > ~4096;
 // overflow at N >= 46341).
 static NSString *const kDTWMetalKernelSource = @R"METAL(
+// The slot of pair (i, j), i < j, in the packed lower triangle the kernels
+// write: DistanceMatrix's layout, row j holding columns 0..j.
+static inline long packed_slot(long i, long j)
+{
+  return j * (j + 1) / 2 + i;
+}
+
 // Anti-diagonal wavefront DTW (one threadgroup per pair).
 //
 // Buffers:
 //   0: all_series  — N_series * max_L FP32, padded; row s starts at s*max_L
 //   1: lengths     — N_series int32
-//   2: out_matrix  — N_series * N_series FP32 (row-major, symmetric)
+//   2: out_matrix  — N_series * (N_series + 1) / 2 FP32, the packed lower triangle
 //   3: N_series    — int32
 //   4: max_L       — int32 (row pitch of all_series)
 //   5: band        — int32 (Sakoe-Chiba band width; -1 = unbounded)
@@ -172,13 +178,11 @@ kernel void dtw_wavefront(
   }
 
   // Final answer: cell (La-1, Lb-1) lives on the last anti-diagonal,
-  // written to d[(K-1) % 3][La-1]. Thread 0 stores the result (symmetric).
+  // written to d[(K-1) % 3][La-1]. Thread 0 stores the result.
   if (tid == 0) {
     const int last = K - 1;
     threadgroup float *cur = (last % 3 == 0) ? d0 : ((last % 3 == 1) ? d1 : d2);
-    float result = cur[La - 1];
-    out_matrix[a_idx * N_series + b_idx] = result;
-    out_matrix[b_idx * N_series + a_idx] = result;
+    out_matrix[packed_slot(a_idx, b_idx)] = cur[La - 1];
   }
 }
 
@@ -285,9 +289,7 @@ kernel void dtw_wavefront_global(
   if (tid == 0) {
     const int last = K - 1;
     device float *cur = (last % 3 == 0) ? d0 : ((last % 3 == 1) ? d1 : d2);
-    float result = cur[La - 1];
-    out_matrix[a_idx * N_series + b_idx] = result;
-    out_matrix[b_idx * N_series + a_idx] = result;
+    out_matrix[packed_slot(a_idx, b_idx)] = cur[La - 1];
   }
 }
 
@@ -415,9 +417,8 @@ kernel void dtw_banded_row(
   // After the final iteration we swapped; the completed row is now `prev`.
   // Target cell (La-1, Lb-1) lives at relative index (Lb-1)-(La-1)+band.
   const int r_final = (Lb - 1) - (La - 1) + band;
-  float result = (r_final >= 0 && r_final < W) ? prev[r_final * stride] : INF;
-  out_matrix[a_idx * N_series + b_idx] = result;
-  out_matrix[b_idx * N_series + a_idx] = result;
+  out_matrix[packed_slot(a_idx, b_idx)] =
+      (r_final >= 0 && r_final < W) ? prev[r_final * stride] : INF;
 }
 
 // ---------------------------------------------------------------------------
@@ -571,10 +572,7 @@ static void dtw_regtile_kernel_body(
   const float INF = 3.402823466e+38f;
 
   if (M == 0 || N_len == 0) {
-    if (simd_lane == 0) {
-      out_matrix[si * N_series + sj] = INF;
-      out_matrix[sj * N_series + si] = INF;
-    }
+    if (simd_lane == 0) out_matrix[packed_slot(si, sj)] = INF;
     return;
   }
 
@@ -591,10 +589,7 @@ static void dtw_regtile_kernel_body(
   const float final_result =
       dtw_regtile_compute<TILE_W>(my_row, my_col, M, N_len, simd_lane, use_sq_l2);
 
-  if (simd_lane == 0) {
-    out_matrix[si * N_series + sj] = final_result;
-    out_matrix[sj * N_series + si] = final_result;
-  }
+  if (simd_lane == 0) out_matrix[packed_slot(si, sj)] = final_result;
 }
 
 kernel void dtw_regtile_w4(
@@ -820,7 +815,7 @@ std::string metal_device_info()
 // ---------------------------------------------------------------------------
 MetalDistMatResult compute_distance_matrix_metal(
     const std::vector<std::vector<double>> &series,
-    const MetalDistMatOptions &opts)
+    const MetalDistMatOptions &opts, core::DistanceMatrix &out)
 {
   validate_metal_precision(opts.precision);
   auto &ctx = context();
@@ -837,9 +832,11 @@ MetalDistMatResult compute_distance_matrix_metal(
   MetalDistMatResult result;
   const size_t N = series.size();
   result.n = N;
-  result.matrix.assign(N * N, 0.0);
-
-  if (N <= 1) return result;
+  if (N <= 1) {
+    if (out.size() != N) out.resize(N);
+    if (N == 1) out.set(0, 0, 0.0);
+    return result;
+  }
 
   // Find max length and build padded FP32 input buffer.
   int max_L = 0;
@@ -880,12 +877,14 @@ MetalDistMatResult compute_distance_matrix_metal(
                    options:MTLResourceStorageModeShared];
     if (!buf_lengths) throw dtwc::DeviceError("Metal: lengths buffer allocation failed");
 
-    // Output matrix (FP32 on device; promoted to double on host).
+    // Output: the packed lower triangle in FP32, widened into `out` on the
+    // host. Zeroed, so the diagonal slots, which no kernel writes, read 0.
+    const size_t slots = core::packed_size(N);
     id<MTLBuffer> buf_out = [ctx.device
-        newBufferWithLength:N * N * sizeof(float)
+        newBufferWithLength:slots * sizeof(float)
                     options:MTLResourceStorageModeShared];
     if (!buf_out) throw dtwc::DeviceError("Metal: output buffer allocation failed");
-    std::memset([buf_out contents], 0, N * N * sizeof(float));
+    std::memset([buf_out contents], 0, slots * sizeof(float));
 
     // Scalar args
     const int N_int = static_cast<int>(N);
@@ -980,15 +979,10 @@ MetalDistMatResult compute_distance_matrix_metal(
         [buf_out release];
         [buf_lengths release];
         [buf_series release];
-        if (opts.verbose) {
-          std::cerr << "[Metal] scratch allocation failed (" << scratch_bytes
-                    << " bytes for max_L=" << max_L
-                    << ", chunk=" << chunk << "); falling back to CPU.\n";
-        }
-        result.matrix.clear();
-        result.matrix.resize(N * N, 0.0);
-        result.pairs_computed = 0;
-        return result;
+        throw dtwc::DeviceError(
+            "Metal: scratch allocation failed (" + std::to_string(scratch_bytes)
+            + " bytes for max_L=" + std::to_string(max_L) + ", chunk="
+            + std::to_string(chunk) + "). No CPU fallback was attempted.");
       }
     }
 
@@ -1032,14 +1026,9 @@ MetalDistMatResult compute_distance_matrix_metal(
         [buf_out release];
         [buf_lengths release];
         [buf_series release];
-        if (opts.verbose) {
-          std::cerr << "[Metal] banded-row scratch alloc failed ("
-                    << scratch_bytes << " bytes); CPU fallback.\n";
-        }
-        result.matrix.clear();
-        result.matrix.resize(N * N, 0.0);
-        result.pairs_computed = 0;
-        return result;
+        throw dtwc::DeviceError(
+            "Metal: banded-row scratch allocation failed ("
+            + std::to_string(scratch_bytes) + " bytes). No CPU fallback was attempted.");
       }
     }
 
@@ -1066,7 +1055,8 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     id<MTLCommandBuffer> last_cmd = nil;
     for (size_t off = 0; off < effective_pairs; off += chunk) {
-      const auto pair_offset = detail::pair_chunk_offset(off);
+      // The kernels read buffer(8) as a 64-bit `long`: typed here, never narrowed.
+      const std::int64_t pair_offset = static_cast<std::int64_t>(off);
       const size_t this_chunk = std::min(chunk, effective_pairs - off);
 
       id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
@@ -1138,14 +1128,14 @@ MetalDistMatResult compute_distance_matrix_metal(
       }
     }
 
-    // Copy result back (FP32 -> FP64 for API compatibility with CUDA path).
-    const float *out_ptr = static_cast<const float *>([buf_out contents]);
-    for (size_t i = 0; i < N; ++i) {
-      for (size_t j = 0; j < N; ++j) {
-        result.matrix[i * N + j] =
-            dtwc::core::normalize_public_distance(out_ptr[i * N + j]);
-      }
-    }
+    // Every refusal is behind us: size the caller's matrix (one already N x N,
+    // as a mapped one is, keeps its storage) and widen the packed FP32
+    // triangle into it, slot for slot.
+    if (out.size() != N) out.resize(N);
+    const float *packed = static_cast<const float *>([buf_out contents]);
+    double *dst = out.raw();
+    for (size_t t = 0; t < slots; ++t)
+      dst[t] = dtwc::core::normalize_public_distance(packed[t]);
 
     [buf_out release];
     [buf_lengths release];

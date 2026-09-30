@@ -2,17 +2,13 @@
  * @file launch_prep.hpp
  * @brief Host-only preconditions and geometry for every CUDA entry point.
  *
- * @details Deliberately free of CUDA headers, for two reasons:
- *   1. The guards must be assertable on a build with `DTWC_ENABLE_CUDA=OFF`
- *      (repository convention: a guard that must fire without an optional
- *      dependency lives OUTSIDE that dependency's `#ifdef`).
- *   2. Neither guard needs a GPU to be tested. The pair-count limit fires at
- *      N >= 65536, whose series data cannot be allocated in a unit test, so the
- *      size-only helper is the only testable form of the check.
+ * @details Deliberately free of CUDA headers, so its rules can be asserted on a
+ * build with `DTWC_ENABLE_CUDA=OFF` (repository convention: a guard that must
+ * fire without an optional dependency lives OUTSIDE that dependency's
+ * `#ifdef`), and none needs a GPU to be tested.
  *
- * Both are hard errors, never fallbacks: a truncated pair count silently drops
- * or over-runs work, and a missing device previously produced an all-zero N*N
- * matrix — a valid-looking wrong answer.
+ * A missing device is a hard error, never a fallback: it previously produced an
+ * all-zero N*N matrix — a valid-looking wrong answer.
  *
  * @date 02 Sep 2026
  */
@@ -22,37 +18,25 @@
 #include "../base/error.hpp"
 
 #include <cstddef>
-#include <limits>
+#include <cstdint>
 #include <string>
-#include <vector>
 
 namespace dtwc::cuda::detail {
 
-/// CUDA caps grid.x at 2^31-1 blocks and every pair-indexed kernel carries its
-/// pair count as `int`; both limits are the same number.
-inline constexpr std::size_t kMaxPairsPerLaunch =
-    static_cast<std::size_t>(std::numeric_limits<int>::max());
+/// A launch covers at most this many consecutive pairs. Its span of packed
+/// slots, at most this many plus one per row it crosses (1 GiB of doubles and
+/// a row), is the one output buffer the device holds whatever N is; and the
+/// count stays far below INT_MAX, in which a launch counts its pairs (grid.x,
+/// and the persistent wavefront's work counter, which overshoots the count by
+/// up to one per block).
+inline constexpr std::int64_t kMaxPairsPerLaunch = std::int64_t{ 1 } << 27;
 
 /// Upper-triangle pair count for @p n series, evaluated in 64 bits throughout.
 /// At the project's 100M-series target this is ~5e15 — representable only as
-/// `size_t`, which is exactly why the count must never be narrowed before the
-/// guard below has run.
+/// `size_t`; the fill splits it into launches, never narrows it.
 inline constexpr std::size_t upper_triangle_pairs(std::size_t n) noexcept
 {
   return (n < 2) ? std::size_t{ 0 } : n * (n - 1) / 2;
-}
-
-/// @brief Reject a workload whose pair count cannot be indexed by a CUDA launch.
-/// @throws dtwc::InvalidInput when @p num_pairs exceeds kMaxPairsPerLaunch.
-inline void require_pair_count_fits(std::size_t num_pairs, const char *entry)
-{
-  if (num_pairs > kMaxPairsPerLaunch)
-    throw dtwc::InvalidInput(
-      std::string(entry) + ": too many DTW pairs (" + std::to_string(num_pairs)
-      + ") for a single CUDA kernel launch. Maximum: "
-      + std::to_string(kMaxPairsPerLaunch)
-      + ". Reduce N, or cluster on device cpu with method onebatch or clara,"
-        " which never build the N*N matrix.");
 }
 
 /// @brief Reject a CUDA call on a host with no usable device.
@@ -63,21 +47,6 @@ inline void require_cuda_device(bool available, const char *entry)
     throw dtwc::DeviceError(
       std::string(entry) + ": DTWC++ was built with CUDA support, but no "
       "usable CUDA GPU was detected. No CPU fallback was attempted.");
-}
-
-/// @brief Fill @p lengths with each series' length and return the maximum.
-inline std::size_t scan_series_lengths(
-  const std::vector<std::vector<double>> &series,
-  std::vector<int> &lengths)
-{
-  const std::size_t n = series.size();
-  lengths.resize(n);
-  std::size_t max_L = 0;
-  for (std::size_t i = 0; i < n; ++i) {
-    lengths[i] = static_cast<int>(series[i].size());
-    if (series[i].size() > max_L) max_L = series[i].size();
-  }
-  return max_L;
 }
 
 /// @brief Shared-memory buffer count for the anti-diagonal wavefront kernels.
