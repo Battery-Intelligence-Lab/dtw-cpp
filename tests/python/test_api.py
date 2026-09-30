@@ -598,9 +598,10 @@ class TestSaveUndefinedSilhouette:
         prob = dtwcpp.Problem("one")
         prob.set_data(self._SERIES, [str(i) for i in range(len(self._SERIES))])
         prob.set_distance_matrix(dtwcpp.compute_distance_matrix(self._SERIES))
-        prob.set_n_clusters(1)
-        prob.clusters_ind = [0] * len(self._SERIES)
-        prob.centroids_ind = [0]
+        result = dtwcpp.ClusteringResult()
+        result.labels = [0] * len(self._SERIES)
+        result.medoid_indices = [0]
+        prob.set_result(result)
         with pytest.raises(dtwcpp.UndefinedScore, match="at least 2 non-empty"):
             dtwcpp.silhouette(prob)
 

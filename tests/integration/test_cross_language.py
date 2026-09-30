@@ -460,9 +460,7 @@ class TestEndToEndPipeline:
         assert result.total_cost > 0
 
         # Apply clustering result for scoring
-        prob.set_n_clusters(3)
-        prob.clusters_ind = result.labels
-        prob.centroids_ind = result.medoid_indices
+        prob.set_result(result)
 
         # Evaluate
         sil = dtwcpp.silhouette(prob)

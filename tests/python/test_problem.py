@@ -5,6 +5,10 @@
 """
 
 import math
+import re
+import subprocess
+import sys
+import textwrap
 
 import numpy as np
 import pytest
@@ -119,6 +123,134 @@ class TestDistanceMatrix:
         assert p.dist_by_ind(2, 0) == pytest.approx(
             dtwcpp.distance.dtw(data[2], data[0]))
         assert p.dist_by_ind(2, 2) == 0.0
+
+
+def _outcome_in_child(setup, call):
+    """Run `setup`, then evaluate `call`, in a fresh interpreter, so a crash fails
+    one test instead of ending pytest. Returns "Type: message" for the exception
+    raised, "returned <value>", or "crashed with exit code <n>"."""
+    code = ("import dtwcpp\n" + textwrap.dedent(setup)
+            + f"\ntry:\n    print('returned', {call})\n"
+              "except Exception as e:\n    print(type(e).__name__ + ':', e)\n")
+    run = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    return run.stdout.strip() if run.returncode == 0 else f"crashed with exit code {run.returncode}"
+
+
+class TestIndexBoundary:
+    """`series`, `series_name` and `centroid_of` read unchecked C++ (`Data::series`,
+    `Data::name`, `centroids_ind[clusters_ind[i]]`), so the binding owns the range
+    check: an index outside [0, N) raises InvalidInput naming it and N, and
+    `centroid_of` refuses a Problem that holds no clustering."""
+
+    _DATA = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
+    _NAMES = ["a", "b", "c"]
+    _UNCLUSTERED = f"""
+        p = dtwcpp.Problem("idx")
+        p.set_data({_DATA}, {_NAMES})
+    """
+    _CLUSTERED = _UNCLUSTERED + """
+        p.set_n_clusters(2)
+        p.fill_distance_matrix()
+        p.cluster()
+    """
+
+    def _problem(self):
+        p = dtwcpp.Problem("idx")
+        p.set_data(self._DATA, self._NAMES)
+        return p
+
+    @pytest.mark.parametrize("bad", [3, 100, -1])
+    def test_series_index_outside_the_problem_raises(self, bad):
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"series: i = {bad}\b.*N = 3"):
+            self._problem().series(bad)
+
+    @pytest.mark.parametrize("bad", [3, 100, -1])
+    def test_series_name_index_outside_the_problem_raises(self, bad):
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"series_name: i = {bad}\b.*N = 3"):
+            self._problem().series_name(bad)
+
+    @pytest.mark.parametrize("bad", [3, 100, -1])
+    def test_centroid_of_index_outside_the_problem_raises(self, bad):
+        outcome = _outcome_in_child(self._CLUSTERED, f"p.centroid_of({bad})")
+        assert re.match(rf"InvalidInput: centroid_of: i = {bad}\b.*N = 3", outcome), outcome
+
+    @pytest.mark.parametrize("accessor", ["series", "series_name", "centroid_of"])
+    def test_every_index_is_outside_an_empty_problem(self, accessor):
+        outcome = _outcome_in_child('p = dtwcpp.Problem("empty")', f"p.{accessor}(0)")
+        assert re.match(rf"InvalidInput: {accessor}: i = 0\b.*N = 0", outcome), outcome
+
+    def test_last_index_is_valid(self):
+        p = self._problem()
+        assert p.series(2) == self._DATA[2]
+        assert p.series_name(2) == "c"
+        p.set_n_clusters(2)
+        p.fill_distance_matrix()
+        p.cluster()
+        assert p.centroid_of(2) == p.medoids()[p.labels()[2]]
+
+    @pytest.mark.parametrize("i, message", [(0, r"holds no clustering"), (-1, r"i = -1 is outside")])
+    def test_centroid_of_before_any_clustering_raises(self, i, message):
+        outcome = _outcome_in_child(self._UNCLUSTERED, f"p.centroid_of({i})")
+        assert re.match(rf"InvalidInput: centroid_of: .*{message}", outcome), outcome
+
+    def test_centroid_of_after_the_cluster_count_shrinks_raises(self):
+        """set_n_clusters(1) truncates the medoid list, so a series left in
+        cluster 1 has no medoid to name."""
+        setup = self._CLUSTERED + "\n        i = p.labels().index(1)\n        p.set_n_clusters(1)"
+        outcome = _outcome_in_child(setup, "p.centroid_of(i)")
+        assert re.match(r"InvalidInput: centroid_of: series \d+ has label 1", outcome), outcome
+
+
+class TestClusteringIsWrittenThroughSetResult:
+    """`clusters_ind` and `centroids_ind` are read-only (v1.0.0's Python never bound
+    them), so a clustering reaches a Problem, and the scores that read it, only
+    through `set_result`, which validates it as the C++ `Problem::set_result` does."""
+
+    _DATA = [[0.0, 0.1], [0.5, 0.4], [1.0, 1.1], [8.0, 8.2]]
+
+    def _problem(self):
+        p = dtwcpp.Problem("res")
+        p.set_data(self._DATA, [str(i) for i in range(len(self._DATA))])
+        p.set_distance_matrix(dtwcpp.compute_distance_matrix(self._DATA))
+        return p
+
+    @staticmethod
+    def _result(labels, medoids):
+        r = dtwcpp.ClusteringResult()
+        r.labels = labels
+        r.medoid_indices = medoids
+        return r
+
+    @pytest.mark.parametrize("name", ["clusters_ind", "centroids_ind"])
+    def test_the_fields_are_read_only(self, name):
+        p = self._problem()
+        assert getattr(p, name) == []
+        with pytest.raises(AttributeError):
+            setattr(p, name, [0])
+
+    def test_set_result_publishes_the_clustering(self):
+        p = self._problem()
+        p.set_result(self._result([0, 0, 0, 1], [1, 3]))
+        assert (p.n_clusters(), p.labels(), p.medoids()) == (2, [0, 0, 0, 1], [1, 3])
+        assert (p.clusters_ind, p.centroids_ind) == ([0, 0, 0, 1], [1, 3])
+        assert [p.centroid_of(i) for i in range(4)] == [1, 1, 1, 3]
+
+    @pytest.mark.parametrize(
+        "labels, medoids, why",
+        [([0, 0, 1], [0, 3], "labels of the wrong length"),
+         ([0, 0, 0, 1], [0, 4], "a medoid above N"),
+         ([0, 0, 0, 1], [-1, 3], "a negative medoid"),
+         ([0, 0, 0, 1], [3, 3], "a repeated medoid"),
+         ([0, 0, 0, 2], [0, 3], "a label with no medoid"),
+         ([0, 0, 0, -1], [0, 3], "a negative label"),
+         ([0, 0, 0, 0], [], "no medoid")],
+    )
+    def test_an_invalid_result_raises_and_leaves_the_problem_unchanged(self, labels, medoids, why):
+        p = self._problem()
+        p.set_result(self._result([0, 0, 1, 1], [0, 2]))
+        with pytest.raises(dtwcpp.InvalidInput, match="set_result"):
+            p.set_result(self._result(labels, medoids))
+        assert (p.n_clusters(), p.labels(), p.medoids()) == (2, [0, 0, 1, 1], [0, 2]), why
 
 
 class TestDenseSemanticMutation:

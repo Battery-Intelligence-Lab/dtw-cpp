@@ -108,6 +108,17 @@ void require_finite_series(const std::vector<std::vector<double>> &series,
       series[i], "series[" + std::to_string(i) + "]", where);
 }
 
+/// The range check every binding runs before it hands an index to C++ that does
+/// not check it (Data::series, Data::name, Problem::dist_by_ind and
+/// centroids_ind[clusters_ind[i]] sit in hot loops): an index outside [0, n) is
+/// InvalidInput naming the index and n, not a read past the storage.
+void require_index(const char *who, const char *name, std::int64_t index, size_t n) {
+  if (index < 0 || static_cast<std::uint64_t>(index) >= n)
+    throw dtwc::InvalidInput(
+      std::string(who) + ": " + name + " = " + std::to_string(index)
+      + " is outside [0, N) with N = " + std::to_string(n) + ".");
+}
+
 } // namespace
 
 NB_MODULE(_dtwcpp_core, m) {
@@ -819,8 +830,14 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_prop_rw("output_folder", &dtwc::Problem::output_folder,
                  &dtwc::Problem::set_output_folder,
                  "Output folder for results written by the write_* methods.")
-    .def_rw("clusters_ind", &dtwc::Problem::clusters_ind)
-    .def_rw("centroids_ind", &dtwc::Problem::centroids_ind)
+    .def_ro("clusters_ind", &dtwc::Problem::clusters_ind,
+            "Cluster label of each series. Read-only: set_result is the write route.")
+    .def_ro("centroids_ind", &dtwc::Problem::centroids_ind,
+            "Medoid series indices. Read-only: set_result is the write route.")
+    .def("set_result", &dtwc::Problem::set_result, "result"_a,
+         "Publish a ClusteringResult on this Problem: k is the number of medoids,\n"
+         "which are distinct indices in [0, N), and every series has one label in\n"
+         "[0, k). Anything else raises InvalidInput and leaves the Problem unchanged.")
     // ---- read accessors ----
     .def_prop_ro("size", &dtwc::Problem::size)
     .def("n_clusters", &dtwc::Problem::n_clusters, "Number of clusters.")
@@ -830,27 +847,42 @@ NB_MODULE(_dtwcpp_core, m) {
          "Cluster label of each series (reads clusters_ind; parity with Result.labels).")
     .def("medoids", &dtwc::Problem::medoids,
          "Medoid series indices (reads centroids_ind; parity with Result.medoids).")
-    .def("series", [](const dtwc::Problem &p, size_t i) {
-      auto s = p.series(i);
+    .def("series", [](const dtwc::Problem &p, std::int64_t i) {
+      require_index("series", "i", i, p.size());
+      auto s = p.series(static_cast<size_t>(i));
       return std::vector<double>(s.begin(), s.end());
-    }, "i"_a, "Copy of series i as a list of doubles.")
-    .def("series_name", [](const dtwc::Problem &p, size_t i) {
-      return std::string(p.series_name(i));
-    }, "i"_a, "Name of series i.")
-    .def("centroid_of", &dtwc::Problem::centroid_of, "i"_a,
-         "Medoid index of the cluster that series i belongs to.")
+    }, "i"_a,
+       "Copy of series i as a list of doubles.\n\n"
+       "Raises InvalidInput if i is outside [0, N).")
+    .def("series_name", [](const dtwc::Problem &p, std::int64_t i) {
+      require_index("series_name", "i", i, p.size());
+      return std::string(p.series_name(static_cast<size_t>(i)));
+    }, "i"_a,
+       "Name of series i.\n\n"
+       "Raises InvalidInput if i is outside [0, N).")
+    .def("centroid_of", [](const dtwc::Problem &p, std::int64_t i) {
+      require_index("centroid_of", "i", i, p.size());
+      // The label is read from clusters_ind and indexes centroids_ind, and
+      // neither read is checked in C++.
+      if (p.clusters_ind.size() != p.size() || p.centroids_ind.empty())
+        throw dtwc::InvalidInput(
+          "centroid_of: this Problem holds no clustering; cluster it first.");
+      const int label = p.clusters_ind[static_cast<size_t>(i)];
+      if (label < 0 || static_cast<size_t>(label) >= p.centroids_ind.size())
+        throw dtwc::InvalidInput(
+          "centroid_of: series " + std::to_string(i) + " has label " + std::to_string(label)
+          + " but the Problem holds " + std::to_string(p.centroids_ind.size())
+          + " medoids; cluster it again.");
+      return p.centroid_of(static_cast<int>(i));
+    }, "i"_a,
+       "Medoid index of the cluster that series i belongs to.\n\n"
+       "Raises InvalidInput if i is outside [0, N) or the Problem holds no clustering.")
     .def("is_distance_matrix_filled", &dtwc::Problem::is_distance_matrix_filled)
     .def("max_distance", &dtwc::Problem::max_distance)
     .def("dist_by_ind", [](dtwc::Problem &p, int i, int j) {
       // Problem::dist_by_ind is the unchecked hot path: this boundary owns the range check.
-      const std::size_t n = p.size();
-      const auto check = [n](const char *name, int index) {
-        if (index < 0 || static_cast<std::size_t>(index) >= n)
-          throw dtwc::InvalidInput(std::string("dist_by_ind: ") + name + " = "
-            + std::to_string(index) + " is outside [0, N) with N = " + std::to_string(n) + ".");
-      };
-      check("i", i);
-      check("j", j);
+      require_index("dist_by_ind", "i", i, p.size());
+      require_index("dist_by_ind", "j", j, p.size());
       nb::gil_scoped_release release;
       return p.dist_by_ind(i, j);
     }, "i"_a, "j"_a,

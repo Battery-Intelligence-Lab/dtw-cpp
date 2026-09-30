@@ -93,7 +93,7 @@ _PROBLEM_CANON = [
     # config setters (§2.1)
     "set_n_clusters", "set_method", "set_band", "set_max_iter",
     "set_n_repetitions", "set_variant", "set_variant_params", "set_solver",
-    "set_data",
+    "set_data", "set_result",
     # config attributes (§2.1)
     "method", "max_iter", "n_repetitions", "band", "variant_params",
     "missing_strategy", "distance_strategy",
