@@ -852,17 +852,7 @@ NB_MODULE(_dtwcpp_core, m) {
        "Raises InvalidInput if i is outside [0, N).")
     .def("centroid_of", [](const dtwc::Problem &p, std::int64_t i) {
       require_index("centroid_of", "i", i, p.size());
-      // The label is read from clusters_ind and indexes centroids_ind, and
-      // neither read is checked in C++.
-      if (p.clusters_ind.size() != p.size() || p.centroids_ind.empty())
-        throw dtwc::InvalidInput(
-          "centroid_of: this Problem holds no clustering; cluster it first.");
-      const int label = p.clusters_ind[static_cast<size_t>(i)];
-      if (label < 0 || static_cast<size_t>(label) >= p.centroids_ind.size())
-        throw dtwc::InvalidInput(
-          "centroid_of: series " + std::to_string(i) + " has label " + std::to_string(label)
-          + " but the Problem holds " + std::to_string(p.centroids_ind.size())
-          + " medoids; cluster it again.");
+      p.require_clustered("centroid_of"); // Problem::centroid_of reads both vectors unchecked
       return p.centroid_of(static_cast<int>(i));
     }, "i"_a,
        "Medoid index of the cluster that series i belongs to.\n\n"
@@ -969,7 +959,8 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("find_total_cost", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       return p.find_total_cost();
-    }, "Total cost of the current cluster assignment.")
+    }, "Total cost of the current cluster assignment.\n\n"
+       "Raises InvalidInput if the Problem holds no clustering.")
     .def("assign_clusters", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       p.assign_clusters();
@@ -983,7 +974,8 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("write_clusters", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       p.write_clusters();
-    }, "Write the cluster-assignment CSV.")
+    }, "Write the cluster-assignment CSV.\n\n"
+       "Raises InvalidInput if the Problem holds no clustering.")
     .def("write_medoid_members", &dtwc::Problem::write_medoid_members, "iter"_a, "rep"_a = 0)
     .def("write_distance_matrix", [](const dtwc::Problem &p) {
       nb::gil_scoped_release release;

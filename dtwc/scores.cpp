@@ -46,10 +46,6 @@ std::vector<int> cluster_counts_checked(const Problem &prob, const char *who)
 {
   const auto N = prob.size();
   const int Nc = prob.n_clusters();
-  if (prob.clusters_ind.size() != N)
-    throw InvalidInput(std::string(who) + ": clusters_ind holds "
-                             + std::to_string(prob.clusters_ind.size()) + " labels for "
-                             + std::to_string(N) + " points.");
 
   std::vector<int> counts(static_cast<std::size_t>(std::max(Nc, 0)), 0);
   for (auto i : Range(N)) {
@@ -107,8 +103,7 @@ std::vector<double> silhouette(Problem &prob)
   const auto Nc = prob.n_clusters(); //!< Number of clusters
 
   // v1.0.0 printed a line and returned N copies of -1, a valid-looking score.
-  if (prob.centroids_ind.empty())
-    throw InvalidInput("Cluster before calculating silhouette");
+  prob.require_clustered("silhouette");
 
   std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
 
@@ -175,9 +170,7 @@ double davies_bouldin(Problem &prob)
 {
   const auto Nc = prob.n_clusters(); //!< Number of clusters
 
-  if (prob.centroids_ind.empty()) {
-    throw InvalidInput("Cluster before calculating DBI");
-  }
+  prob.require_clustered("davies_bouldin");
 
   // The Davies-Bouldin index is undefined for a single cluster: R_ij needs a
   // second cluster (j != i) to form any similarity ratio, so the max_{j!=i}
@@ -247,8 +240,7 @@ double davies_bouldin(Problem &prob)
  */
 double dunn(Problem &prob)
 {
-  if (prob.centroids_ind.empty())
-    throw InvalidInput("Cluster before calculating Dunn Index");
+  prob.require_clustered("dunn");
 
   // The Dunn index is min(inter-cluster distance) / max(intra-cluster diameter).
   // With a single cluster there are no inter-cluster pairs, so min_inter stays
@@ -294,8 +286,7 @@ double dunn(Problem &prob)
  */
 double inertia(Problem &prob)
 {
-  if (prob.centroids_ind.empty())
-    throw InvalidInput("Cluster before calculating inertia");
+  prob.require_clustered("inertia");
 
   prob.fill_distance_matrix();
 
@@ -320,8 +311,7 @@ double inertia(Problem &prob)
  */
 double calinski_harabasz(Problem &prob)
 {
-  if (prob.centroids_ind.empty())
-    throw InvalidInput("Cluster before calculating Calinski-Harabasz Index");
+  prob.require_clustered("calinski_harabasz");
 
   const auto N = static_cast<int>(prob.size());
   const auto Nc = prob.n_clusters();

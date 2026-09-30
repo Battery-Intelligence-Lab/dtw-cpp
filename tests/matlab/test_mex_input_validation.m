@@ -592,6 +592,88 @@ function test_dist_by_ind_index_above_n_is_an_error(testCase)
     verifySubstring(testCase, err.message, 'N = 4');
 end
 
+function test_find_total_cost_before_clustering_is_an_error(testCase)
+%   find_total_cost read the label vector of a Problem that held no clustering:
+%   an access violation (R2024b, 0xc0000005) that ended the MATLAB session. Sizing
+%   the Problem with set_n_clusters is not clustering it.
+    h = int_problem(testCase);   % filled, never clustered
+    dtwc_mex('Problem_set_output_folder', h, tempdir);
+    verifyError(testCase, @() dtwc_mex('Problem_find_total_cost', h), 'dtwc:invalidArgument');
+    dtwc_mex('Problem_set_n_clusters', h, 2);
+    err = [];
+    try
+        dtwc_mex('Problem_find_total_cost', h);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'a sized Problem was costed');
+    verifySubstring(testCase, err.message, 'find_total_cost');
+    verifySubstring(testCase, err.message, 'cluster it first');
+
+    dtwc_mex('Problem_cluster', h);   % the control: clustered, the cost is a number
+    verifyGreaterThan(testCase, dtwc_mex('Problem_find_total_cost', h), 0);
+    dtwc_mex('Problem_set_n_clusters', h, 3);   % two medoids are not a 3-cluster clustering
+    verifyError(testCase, @() dtwc_mex('Problem_find_total_cost', h), 'dtwc:invalidArgument');
+end
+
+function test_set_n_clusters_and_set_band_refuse_values_with_no_meaning(testCase)
+%   set_n_clusters(-1) was an untyped "vector too long" (dtwc:internal), and
+%   set_n_clusters(0) and set_band(-5) were accepted (a band below -1 ran as
+%   full DTW). k above N is not the setter's to judge: cluster() refuses it.
+    h = int_problem(testCase);   % N = 4, band -1
+    dtwc_mex('Problem_set_n_clusters', h, 2);
+    for bad = {0, -1}
+        verifyError(testCase, @() dtwc_mex('Problem_set_n_clusters', h, bad{1}), ...
+            'dtwc:invalidArgument', sprintf('k = %g', bad{1}));
+    end
+    for bad = {-2, -5}
+        verifyError(testCase, @() dtwc_mex('Problem_set_band', h, bad{1}), ...
+            'dtwc:invalidArgument', sprintf('band = %g', bad{1}));
+    end
+    err = [];
+    try
+        dtwc_mex('Problem_set_band', h, -5);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'band -5 was accepted');
+    verifySubstring(testCase, err.message, 'got -5');
+    verifyEqual(testCase, dtwc_mex('Problem_n_clusters', h), 2);   % a refused call changes nothing
+    verifyEqual(testCase, dtwc_mex('Problem_get_info', h).band, -1);
+
+    dtwc_mex('Problem_set_band', h, 0);   % the smallest band, and -1 (full DTW), stay valid
+    dtwc_mex('Problem_set_band', h, -1);
+    dtwc_mex('Problem_set_n_clusters', h, 5);   % above N: accepted here
+    verifyError(testCase, @() dtwc_mex('Problem_cluster', h), 'dtwc:invalidArgument');
+end
+
+function test_fast_pam_max_iter_and_cuda_device_id_have_minimums(testCase)
+%   fast_pam took max_iter 0 (no SWAP: the BUILD medoids came back as an unconverged
+%   result) and -1, though MATLAB's MaxIter, Problem.set_max_iter and every other
+%   max_iter here refuse them; Problem_set_cuda_settings took device_id -1, which
+%   only a later fill refused.
+    h = int_problem(testCase);   % N = 4
+    for bad = {0, -1}
+        verifyError(testCase, @() dtwc_mex('fast_pam', h, 2, bad{1}), ...
+            'dtwc:invalidArgument', sprintf('max_iter = %g', bad{1}));
+        verifyError(testCase, @() dtwc_mex('fast_pam', h, 2, bad{1}, 42), ...
+            'dtwc:invalidArgument', sprintf('seeded max_iter = %g', bad{1}));
+    end
+    err = [];
+    try
+        dtwc_mex('fast_pam', h, 2, 0);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'max_iter = 0 was accepted');
+    verifySubstring(testCase, err.message, 'max_iter');
+    verifySubstring(testCase, err.message, 'got 0');
+    result = dtwc_mex('fast_pam', h, 2, 1);   % the smallest valid count still runs
+    verifyNumElements(testCase, result.labels, 4);
+
+    verifyError(testCase, @() dtwc_mex('Problem_set_cuda_settings', h, -1), 'dtwc:invalidArgument');
+    verifyError(testCase, @() dtwc_mex('Problem_set_cuda_settings', h, -1, 0), 'dtwc:invalidArgument');
+    dtwc_mex('Problem_set_cuda_settings', h, 0);
+    verifyEqual(testCase, dtwc_mex('Problem_get_cuda_settings', h).device_id, 0);   % nothing changed
+end
+
 function test_a_double_handle_must_be_an_exact_integer(testCase)
     h = int_problem(testCase);
     verifyEqual(testCase, dtwc_mex('Problem_get_size', double(h)), 4);

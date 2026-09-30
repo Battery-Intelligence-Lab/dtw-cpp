@@ -387,6 +387,7 @@ TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
     medoids, labels, expected);
 
   auto lloyd = scalar_problem<double>(values);
+  lloyd.set_n_clusters(static_cast<int>(medoids.size())); // a clustering holds one medoid per cluster
   lloyd.centroids_ind = medoids;
   lloyd.assign_clusters();
   REQUIRE(lloyd.clusters_ind == labels);
@@ -448,6 +449,7 @@ TEST_CASE("F13 finite assignment distances cannot overflow the objective",
     "fast_clara: nearest-medoid objective became non-finite after point 2.");
 
   auto lloyd = scalar_problem<double>(values);
+  lloyd.set_n_clusters(2);
   lloyd.centroids_ind = {0, 3};
   lloyd.assign_clusters();
   require_invalid_input(

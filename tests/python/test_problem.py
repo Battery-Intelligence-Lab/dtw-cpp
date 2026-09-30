@@ -194,11 +194,118 @@ class TestIndexBoundary:
         assert re.match(rf"InvalidInput: centroid_of: .*{message}", outcome), outcome
 
     def test_centroid_of_after_the_cluster_count_shrinks_raises(self):
-        """set_n_clusters(1) truncates the medoid list, so a series left in
-        cluster 1 has no medoid to name."""
+        """The clustering held 2 medoids; k = 1 leaves a series in cluster 1 with
+        no medoid to name, so the Problem no longer holds a clustering."""
         setup = self._CLUSTERED + "\n        i = p.labels().index(1)\n        p.set_n_clusters(1)"
         outcome = _outcome_in_child(setup, "p.centroid_of(i)")
-        assert re.match(r"InvalidInput: centroid_of: series \d+ has label 1", outcome), outcome
+        assert re.match(r"InvalidInput: centroid_of: .*holds no clustering.*2 medoids for k = 1", outcome), outcome
+
+
+class TestClusterFirst:
+    """A Problem that was only sized holds no clustering. `find_total_cost()` and
+    `write_clusters()` read the label vector, and crashed the interpreter (an
+    access violation) on a Problem that had never been clustered; every call that
+    reads the whole clustering now raises InvalidInput naming the call."""
+
+    _DATA = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
+    _SETUP = f"""
+        p = dtwcpp.Problem("first")
+        p.set_data({_DATA}, ["a", "b", "c"])
+        p.output_folder = r"{{out}}"
+    """
+
+    def _outcome(self, tmp_path, extra_setup, call):
+        setup = textwrap.dedent(self._SETUP).replace("{out}", str(tmp_path)) + "\n" + extra_setup
+        return _outcome_in_child(setup, call)
+
+    @pytest.mark.parametrize("sized", ["", "p.set_n_clusters(2)"], ids=["never_sized", "sized"])
+    @pytest.mark.parametrize(
+        "call, who",
+        [("p.find_total_cost()", "find_total_cost"),
+         ("p.write_clusters()", "write_clusters"),
+         ("p.write_medoid_members(0)", "write_medoid_members"),
+         ("p.calculate_medoids()", "calculate_medoids"),
+         ("dtwcpp.silhouette(p)", "silhouette"),
+         ("dtwcpp.inertia(p)", "inertia")],
+    )
+    def test_reading_the_clustering_before_clustering_raises(self, tmp_path, sized, call, who):
+        outcome = self._outcome(tmp_path, sized, call)
+        assert re.match(rf"InvalidInput: {who}: .*holds no clustering.*cluster it first", outcome), outcome
+        assert list(tmp_path.iterdir()) == []  # the refusal comes before any file is opened
+
+    def test_the_refusal_names_the_counts_it_found(self, tmp_path):
+        outcome = self._outcome(tmp_path, "p.set_n_clusters(2)", "p.find_total_cost()")
+        assert "0 labels for N = 3, 0 medoids for k = 2" in outcome, outcome
+
+    def test_a_clustering_goes_stale_when_the_cluster_count_changes(self, tmp_path):
+        setup = "p.set_n_clusters(2)\np.fill_distance_matrix()\np.cluster()\np.set_n_clusters(3)"
+        outcome = self._outcome(tmp_path, setup, "p.find_total_cost()")
+        assert re.match(r"InvalidInput: find_total_cost: .*2 medoids for k = 3", outcome), outcome
+
+    def test_after_clustering_the_readers_work(self, tmp_path):
+        p = dtwcpp.Problem("first")
+        p.set_data(self._DATA, ["a", "b", "c"])
+        p.output_folder = str(tmp_path)
+        p.set_n_clusters(2)
+        p.cluster()
+        assert p.find_total_cost() >= 0.0
+        p.write_clusters()
+        assert [f.name for f in tmp_path.iterdir()] == ["first_Nc_2.csv"]
+
+
+class TestSetterRanges:
+    """A cluster count below 1 and a band below -1 have no meaning, so the setters
+    refuse them (k = -1 was an untyped "vector too long" from a resize, and a band
+    of -5 ran as full DTW). k above N is not the setter's to judge: the data may
+    change after it, so `cluster()` refuses it."""
+
+    _DATA = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
+
+    def _problem(self):
+        p = dtwcpp.Problem("ranges")
+        p.set_data(self._DATA, ["a", "b", "c"])
+        return p
+
+    @pytest.mark.parametrize("bad", [0, -1, -(2**31)])
+    def test_set_n_clusters_below_one_raises_and_keeps_the_count(self, bad):
+        p = self._problem()
+        p.set_n_clusters(2)
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"set_n_clusters: n_clusters must be at least 1; got {bad}\b"):
+            p.set_n_clusters(bad)
+        assert p.n_clusters() == 2
+
+    def test_k_above_n_is_refused_when_clustering(self):
+        p = self._problem()
+        p.set_n_clusters(4)  # N = 3
+        assert p.n_clusters() == 4
+        with pytest.raises(dtwcpp.InvalidInput):
+            p.cluster()
+
+    @pytest.mark.parametrize("bad", [-2, -5, -(2**31)])
+    def test_set_band_below_minus_one_raises_and_keeps_the_band(self, bad):
+        p = self._problem()
+        p.set_band(2)
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"set_band: band must be -1 .* got {bad}\b"):
+            p.set_band(bad)
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"set_band: .* got {bad}\b"):
+            p.band = bad
+        assert p.band == 2
+
+    @pytest.mark.parametrize("good", [-1, 0, 5])
+    def test_full_dtw_and_every_non_negative_band_stay_valid(self, good):
+        p = self._problem()
+        p.set_band(good)
+        assert p.band == good
+
+    @pytest.mark.parametrize("bad", [-1, -(2**31)])
+    def test_a_negative_cuda_device_id_raises_and_keeps_the_settings(self, bad):
+        p = self._problem()
+        settings = dtwcpp.CUDASettings()
+        settings.device_id = bad
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"set_cuda_settings: device_id must be >= 0; got {bad}\b"):
+            p.cuda_settings = settings
+        assert p.cuda_settings.device_id == 0
+        p.cuda_settings = dtwcpp.CUDASettings()  # index 0 is valid on every build
 
 
 class TestClusteringIsWrittenThroughSetResult:
