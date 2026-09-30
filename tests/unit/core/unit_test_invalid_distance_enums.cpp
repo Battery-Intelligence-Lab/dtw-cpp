@@ -193,14 +193,6 @@ TEST_CASE("M47 rejects every invalid MetricType at public distance boundaries",
         (void)dtwFull_L<float>(
           xf.data(), xf.size(), yf.data(), yf.size(), -1.0f, invalid);
       });
-      check_invalid_input("dtwFull_eap f64", metric_error, [&] {
-        (void)dtwFull_eap<double>(
-          x.data(), x.size(), y.data(), y.size(), invalid);
-      });
-      check_invalid_input("dtwFull_eap f32", metric_error, [&] {
-        (void)dtwFull_eap<float>(
-          xf.data(), xf.size(), yf.data(), yf.size(), invalid);
-      });
       check_invalid_input("dtwBanded f64", metric_error, [&] {
         (void)dtwBanded<double>(
           x.data(), x.size(), y.data(), y.size(), 0, -1.0, invalid);

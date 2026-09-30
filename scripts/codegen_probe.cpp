@@ -75,7 +75,7 @@ float dtwc_probe_dtwFull_L_f32(
   return dtwc::detail::dtwFull_L_impl<float>(x, nx, y, ny, early_abandon, AbsDiff{});
 }
 
-// The remaining cells and kernels: ADTW, AROW, banded, EAPruned, MSM, TWE.
+// The remaining cells and kernels: ADTW, AROW, banded, MSM, TWE.
 double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, std::size_t ny)
 {
   namespace core = dtwc::core;
@@ -83,7 +83,6 @@ double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, 
   return core::dtw_kernel_linear<double>(nx, ny, cost, core::ADTWCell<double>{0.5})
          + core::dtw_kernel_banded<double>(nx, ny, 8, cost, core::AROWCell{})
          + dtwc::detail::dtwBanded_impl<double>(x, nx, y, ny, 8, -1.0, AbsDiff{})
-         + core::dtw_kernel_eap<double>(nx, ny, cost)
          + core::msm_distance<double>(x, nx, y, ny) + core::twe_distance<double>(x, nx, y, ny);
 }
 
