@@ -5,16 +5,16 @@
  *        which runs the lanes, is bitwise the per-pair fill.
  *
  * @details The oracle is the per-pair path the brute-force fill ran before the
- *          lanes: dtwFull_eap for band < 0, dtwBanded otherwise, plus dtwFull_L
- *          (the recurrence the lanes mirror) for band < 0. Bits, not tolerances:
- *          a lane that differs in one ulp would make a matrix depend on how its
- *          columns fall into blocks.
+ *          lanes: dtwBanded, plus dtwFull_L (the recurrence the lanes mirror,
+ *          and what dtwBanded runs for band < 0) called directly for band < 0.
+ *          Bits, not tolerances: a lane that differs in one ulp would make a
+ *          matrix depend on how its columns fall into blocks.
  */
 
 #include "Problem.hpp"
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_options.hpp" // core::MetricType
-#include "warping.hpp"          // dtwFull_eap, dtwFull_L, dtwBanded, detail::dispatch_metric
+#include "warping.hpp"          // dtwFull_L, dtwBanded, detail::dispatch_metric
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -68,7 +68,7 @@ int lane_mismatches(std::size_t n, int band, MetricType metric, bool ties)
   int bad = 0;
   for (std::size_t w = 0; w < W; ++w) {
     bad += !same_bits(lanes[w], dtwc::dtwBanded<T>(x, y[w], band, T(-1), metric));
-    if (band < 0) bad += !same_bits(lanes[w], dtwc::dtwFull_eap<T>(x, y[w], metric));
+    if (band < 0) bad += !same_bits(lanes[w], dtwc::dtwFull_L<T>(x, y[w], T(-1), metric));
   }
   return bad;
 }
