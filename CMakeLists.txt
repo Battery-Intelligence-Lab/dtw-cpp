@@ -303,8 +303,7 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
     set_target_properties(dtwc_cl PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
   endif()
 
-  # macOS: bundle LLVM's OpenMP runtime beside the CLI. Two traps here, both of
-  # which previously made this branch dead code:
+  # macOS: bundle LLVM's OpenMP runtime beside the CLI. Two traps here:
   #   1. CMake names the cache variable after the entry in OpenMP_CXX_LIB_NAMES
   #      — `libomp` for AppleClang, `omp` only for the WIN32 branch in
   #      dtwc/CMakeLists.txt — so the name must be looked up, not assumed.

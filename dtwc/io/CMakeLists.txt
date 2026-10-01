@@ -1,0 +1,10 @@
+target_sources(dtwc++
+  PRIVATE
+    arrow_c_data.cpp
+    read_data.cpp
+    parse_number.cpp
+  PUBLIC
+    arrow_c_data.hpp
+    read_data.hpp
+    parse_number.hpp
+  )
