@@ -4,7 +4,7 @@ Volkan's instructions, verbatim. Agents do not edit the quoted text; new instruc
 with a date. The target they lead to is in `MAP.md` and `DECISIONS.md`; how it is scheduled is in
 `PLAN.md`.
 
-## 2026-10-01 — FP contraction
+## 2026-10-01
 
 On whether GCC's FMA contraction should be turned off (at x86-64-v3 the SIMD lanes and per-pair kernels differ
 in the last bits):
@@ -12,6 +12,18 @@ in the last bits):
 > We don't need bit-by-bit equivalence between compilers. So they could differ minimally like 1e-9 epsilon or
 > something. However, this shouldn't change the clustering results. So as long as we have robust clustering
 > accuracy, and only lose an epsilon level of accuracy then go for the speed of course.
+
+On Parquet in the bindings:
+
+> Btw, I think Python and MATLAB shouldn't deliver with their own parquet reader, is it too large library to bind?
+> Because if we don't put this inside compiled bit, we could add into Python dependencies. So they could use the
+> installed version so our python library would be somewhat more lightweight. Or would it increase the complexity.
+> Think about it
+
+> Great. If you consider other libraries we use for csv reading etc. Maybe it would be nicer to seperate some of the
+> things so we can deliver lighter libraries for matlab and python. So our python and matlab things come with the
+> essentials not libraries we use to read things. So we shouldn't just be like the bloated software who brings extra
+> copies of the same things.
 
 ## 2026-09-30 — continue
 

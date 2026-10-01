@@ -126,7 +126,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   FP32 measured); a 64 KB carveout above L = 2048 (−18 % at L = 2049) (preload landed, C1 15b9143: FP32/FP64 L 257–512 at 0.82–0.89 of base; the carveout passed its band but needs the CUDA 12.5 API and the floor stays CUDA 12.0 — ARC loads 12.4 — so it was reverted, b803e47)
 - ☑ CUDA: the global wavefront above L 2048 where fewer than 3 blocks fit an SM (C1's probe: FP32 L 6000/8000 at 0.64/0.66 of the shared route, FP64 L 2049–4000 at 0.76–0.84) — its own band; the Shared kernel's unreachable preload branch goes with it (C1) (C2 63d5d0a; merged dd33a0e; FP32 L 6000–8446 at 0.64–0.68 of base, FP64 L 2049–4223 at 0.76–0.84; deleting the Shared kernel's preload branch FALSIFIED — it raises occupancy and slows FP32 L 513–2757 by 3–23 %, so the branch stays)
 - ☑ CUDA: the FP64 Shared kernel at 4 blocks per SM (C2 lead) — its own band (C3 f8093c6; merged 370c991; FP64 Shared 79 → 62 registers; FP64 L 513/768/1024 at 0.843/0.885/0.881 of base; FP32 SASS byte-identical)
-- ☐ CUDA: C2's route rule ignores shared memory's 128-byte allocation unit, so FP32 L 2751–2757 take the shared route at two blocks per SM (C3 lead) — its own band
+- ☑ CUDA: C2's route rule ignores shared memory's 128-byte allocation unit, so FP32 L 2751–2757 take the shared route at two blocks per SM (C3 lead) — its own band — FALSIFIED (C4 76c4542, 667bbc3; merged 52fb6ce: L 2751–2757 at 0.945–0.963 of base against ≤ 0.95; the patch is kept)
 - ☑ CUDA floor: compute capability 8.0 (the A30's generation, Volkan 09-30); older devices get a typed DeviceError before any allocation (C1 c445089)
 - ☑ CPU floor x86-64-v3 for release archives and wheels (Volkan 09-30); one `DTWC_ARCH_LEVEL` (native | v3 | v4) (V3) (V3 165e48d, 41a1be1; merged 169db40)
 - ☑ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
@@ -165,6 +165,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W8a one reader entry (`read_data`); Parquet names and IPC nulls fixed; `load('x.parquet')` in Python
 - ☐ W8b one writer (`write_result_files`); `Result::save` after streaming fixed
 - ☐ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1)
+- ☐ L1 measure what the wheel and the MEX link (linker maps) → L2 split `dtwc_core` (no file formats, no CLI) from
+  `dtwc_io` and the CLI; the bindings link the core; Python reads and writes files with numpy/pandas/pyarrow, MATLAB
+  with its built-ins; v1 Python `DataLoader` / `write*` stay as thin Python (Volkan 10-01)
 - ☐ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases
 - ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
   silently editing a copy (E1) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
@@ -177,6 +180,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
   regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
   (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m)
+- W9b/W9e note (Volkan 10-01, lighter bindings): Python and MATLAB share the Config names, not the CLI's file
+  pipeline — `run(Config)` reads and writes files, which stays with the CLI (L2)
 - ☐ W9f Python test and example trims
 - ☐ W10a `DistanceMatrixStrategy`, `CUDASettings` → `set_device` + `set_gpu_precision`; the fingerprint
   hashes the resolved backend

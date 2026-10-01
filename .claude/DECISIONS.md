@@ -234,3 +234,17 @@ CHANGELOG rule.
   2.0-born and no page promised it); the POSIX-only row that expected the rejection goes.
 - 2026-10-01 — F2: `DTWC_CL_PATH` names the dtwc_cl the Python wrapper and tests run; set but not a file (or
   empty) is an error.
+- 2026-10-01 — W13b: a distance matrix is scanned for ±inf once where it enters (an accessor write, a CSV load, a
+  checkpoint, a mapped .dtwm, Python/MATLAB `set_distance_matrix`); loops that only read a filled matrix read it
+  unchecked. A fill of finite series can still give ±inf (±DBL_MAX series, soft-DTW at γ = DBL_MAX): no fill-end
+  scan, and Lloyd's assignment keeps its check (overflow is not guarded, Volkan 09-30).
+- 2026-10-01 — C3: the Shared wavefront compiles its preload branch for FP32 only (FP64 79 → 62 registers; FP64
+  L 513–1024 at 0.84–0.89 of base); the gain is probably fewer FP64 instructions per cell, not occupancy (inferred).
+- 2026-10-01 — C4 FALSIFIED: rounding each block's shared memory to the 128-byte unit makes the route rule match the
+  driver's occupancy at every L 2049–10000 and moves FP32 L 2751–2757 to the global route at 0.945–0.963 of base,
+  against the registered ≤ 0.95; not landed (the patch is kept in the C2 baseline folder).
+- 2026-10-01 — Volkan (Parquet, file formats): the bindings ship the essentials, not file readers. The wheel and the
+  MEX link no Arrow C++ (arrow.dll 21.4 MB + parquet.dll 6.4 MB on Windows, and a second libarrow beside the user's
+  pyarrow); Python reads Parquet through the installed pyarrow (the `parquet` extra) into the Arrow C stream that the
+  compiled-in nanoarrow reads zero-copy; MATLAB uses its own `parquetread`. The C++ readers serve the CLI and C++
+  users (`DTWC_ENABLE_ARROW` opt-in). Next: L1 measures what the bindings link, L2 splits the library.
