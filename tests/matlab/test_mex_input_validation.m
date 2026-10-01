@@ -226,34 +226,43 @@ function prob = m48_problem()
 end
 
 % -------------------------------------------------------------------------
-%  Matrix entry points: matrix_to_series path (set_data / distance matrix)
+%  Matrix entry point: the matrix_to_series path of Problem_set_data
 % -------------------------------------------------------------------------
 
-function test_distance_matrix_int32_rejected(testCase)
+function h = empty_problem(testCase)
+    h = dtwc_mex('Problem_new', 'matrix_to_series');
+    testCase.addTeardown(@() dtwc_mex('Problem_delete', h));
+end
+
+function test_set_data_int32_rejected(testCase)
+    h = empty_problem(testCase);
     verifyError(testCase, ...
-        @() dtwc_mex('compute_distance_matrix', int32([1 2 3; 4 5 6])), ...
+        @() dtwc_mex('Problem_set_data', h, int32([1 2 3; 4 5 6])), ...
         'dtwc:invalidArgument');
 end
 
-function test_distance_matrix_complex_rejected(testCase)
+function test_set_data_complex_rejected(testCase)
+    h = empty_problem(testCase);
     verifyError(testCase, ...
-        @() dtwc_mex('compute_distance_matrix', complex(ones(2,3), ones(2,3))), ...
+        @() dtwc_mex('Problem_set_data', h, complex(ones(2,3), ones(2,3))), ...
         'dtwc:invalidArgument');
 end
 
-function test_distance_matrix_ndarray_rejected(testCase)
+function test_set_data_ndarray_rejected(testCase)
 %   3-D double array: unfixed matrix_to_series would silently misread it;
 %   the dimension guard now rejects any N-D (ndim != 2) input.
+    h = empty_problem(testCase);
     verifyError(testCase, ...
-        @() dtwc_mex('compute_distance_matrix', ones(2, 3, 2)), ...
+        @() dtwc_mex('Problem_set_data', h, ones(2, 3, 2)), ...
         'dtwc:invalidArgument');
 end
 
-function test_distance_matrix_sparse_rejected(testCase)
+function test_set_data_sparse_rejected(testCase)
 %   Sparse double: mxGetDoubles returns the compressed-column nonzeros with a
 %   layout matrix_to_series misinterprets -> silent-wrong / OOB on unfixed code.
+    h = empty_problem(testCase);
     verifyError(testCase, ...
-        @() dtwc_mex('compute_distance_matrix', sparse(eye(3))), ...
+        @() dtwc_mex('Problem_set_data', h, sparse(eye(3))), ...
         'dtwc:invalidArgument');
 end
 
@@ -317,12 +326,6 @@ end
 function test_valid_double_vector_still_works(testCase)
     d = dtwc_mex('dtw', [1 2 3 4], [1 2 3 4]);
     verifyEqual(testCase, d, 0, 'AbsTol', 1e-12);   % self-distance == 0
-end
-
-function test_valid_double_matrix_still_works(testCase)
-    D = dtwc_mex('compute_distance_matrix', [1 2 3; 4 5 6]);
-    verifySize(testCase, D, [2 2]);
-    verifyEqual(testCase, diag(D), zeros(2, 1), 'AbsTol', 1e-12);
 end
 
 function test_valid_int32_labels_still_work(testCase)
@@ -463,7 +466,6 @@ function test_integer_arguments_reject_fractions_nan_and_inf(testCase)
         'numeric_focus',          @(v) dtwc_mex('Problem_set_mip_settings', h, struct('numeric_focus', v)), 0
         'mip_focus',              @(v) dtwc_mex('Problem_set_mip_settings', h, struct('mip_focus', v)), 0
         'dtw Band',               @(v) dtwc_mex('dtw', x, y, 'Band', v),                  3
-        'compute_distance_matrix band', @(v) dtwc_mex('compute_distance_matrix', X, v),   3
         'fast_pam k',             @(v) dtwc_mex('fast_pam', h, v),                        2
         'fast_pam max_iter',      @(v) dtwc_mex('fast_pam', h, 2, v),                     5
         'fast_clara k',           @(v) dtwc_mex('fast_clara', h, v),                      2

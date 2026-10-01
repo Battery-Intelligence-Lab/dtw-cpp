@@ -62,8 +62,6 @@ from dtwcpp._dtwcpp_core import (
     # Utils
     derivative_transform,
     z_normalize,
-    # Distance matrix
-    compute_distance_matrix as _compute_distance_matrix_cpu,
     # Checkpointing
     save_checkpoint,
     load_checkpoint,
@@ -174,13 +172,15 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
     Returns
     -------
     numpy.ndarray of shape (N, N)
-    """
-    _valid_metrics = {"l1", "squared_euclidean", "sqeuclidean"}
-    if metric not in _valid_metrics:
-        raise ValueError(
-            f"Unknown metric '{metric}'. Expected one of: {sorted(_valid_metrics)}"
-        )
 
+    Raises
+    ------
+    InvalidInput
+        For an unknown metric, a NaN or +-inf value, an empty series, a band below
+        -1, or a band narrower than the length difference between the shortest and
+        longest series (no warping path fits that pair); the same checks as
+        ``Problem.fill_distance_matrix``, which computes the matrix on every device.
+    """
     if device is None:
         device = _current_device()
     backend, _ = _resolve_device(device)
@@ -190,14 +190,12 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
             "not a local compute backend. Use DTWClustering(device='hpc').fit(X) "
             "or examples/python/09_device_clustering.py hpc."
         )
-    if backend == "gpu":
-        # A Problem's GPU fill: this build's backend (CUDA, else Metal), the GPU
-        # index of `device`, and the checks of every fill; never the CPU.
-        prob = Problem("compute_distance_matrix", device=device)
-        prob.set_distance(band=band, metric=metric)
-        prob.set_data(series, [str(i) for i in range(len(series))])
-        return prob.distance_matrix()
-    return _compute_distance_matrix_cpu(series, band, metric)
+    # A Problem's fill on `device`: the CPU, or for 'gpu' this build's backend
+    # (CUDA, else Metal) and the GPU index of `device`, never the CPU.
+    prob = Problem("compute_distance_matrix", device=device)
+    prob.set_distance(band=band, metric=metric)
+    prob.set_data(series, [str(i) for i in range(len(series))])
+    return prob.distance_matrix()
 
 
 # Pure-Python sklearn-compatible layer

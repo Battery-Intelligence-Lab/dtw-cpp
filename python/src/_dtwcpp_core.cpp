@@ -28,7 +28,6 @@
 #include <base/error.hpp>
 #include <io/arrow_c_data.hpp>
 #include <checkpoint.hpp>
-#include <warping.hpp>
 #include <warping_ddtw.hpp>
 #include <soft_dtw.hpp>
 #include <algorithms/fast_pam.hpp>
@@ -83,16 +82,6 @@ nb::ndarray<nb::numpy, T> adopt_as_ndarray(
   });
   owned.release(); // the capsule owns the buffer from here on
   return nb::ndarray<nb::numpy, T>(ptr, shape, owner);
-}
-
-/// The matrix bindings' input check: every series once, before any pair is
-/// computed, since the per-pair kernels do not check (warping.hpp). NaN or
-/// ±inf raises InvalidInput naming the series index and the position.
-void require_finite_series(const std::vector<std::vector<double>> &series,
-                           const char *where) {
-  for (size_t i = 0; i < series.size(); ++i)
-    dtwc::detail::require_finite<double>(
-      series[i], "series[" + std::to_string(i) + "]", where);
 }
 
 /// The range check every binding runs before it hands an index to C++ that does
@@ -924,83 +913,6 @@ NB_MODULE(_dtwcpp_core, m) {
     });
 
   // =========================================================================
-  // Distance matrix convenience function
-  // =========================================================================
-
-  m.def("compute_distance_matrix", [](const std::vector<std::vector<double>> &series,
-                                        int band, const std::string &metric) {
-    const auto mt = dtwc::parse_name(dtwc::core::metric_names, metric, "metric");
-    require_finite_series(series, "compute_distance_matrix");
-
-    // Warn once under OMP_NUM_THREADS=1, deterministically, before either branch
-    // (the pruned branch also warns via get_max_threads; this covers the
-    // unpruned one).
-    dtwc::warn_if_single_threaded();
-
-    const size_t n = series.size();
-    // Owned buffer instead of a raw new[]: anything throwing between the
-    // allocation and the capsule used to leak the whole N^2 matrix.
-    std::vector<double> values(n * n, 0.0);
-    double *ptr = values.data();
-
-    // One exception_ptr slot per OpenMP thread. Each thread writes only its
-    // own slot, so the error path stays lock-free: an `omp critical` around a
-    // shared flag would serialise the hot loop and is the wrong fix.
-#ifdef _OPENMP
-    const int n_error_slots = std::max(1, omp_get_max_threads());
-#else
-    const int n_error_slots = 1;
-#endif
-    std::vector<std::exception_ptr> errors(static_cast<size_t>(n_error_slots));
-
-    // Release GIL only for the compute-heavy section
-    {
-      nb::gil_scoped_release release;
-
-      // Lock-free by design: each thread owns a disjoint set of rows (outer loop i).
-      // Writes to ptr[i*n+j] and ptr[j*n+i] never collide across threads because
-      // no two threads share the same i value.
-      // num_threads pins the team to the number of slots sized above, so
-      // omp_get_thread_num() can never index past `errors`.
-      #ifdef _OPENMP
-      #pragma omp parallel for schedule(dynamic, 16) num_threads(n_error_slots)
-      #endif
-      for (dtwc::index_t i = 0; i < static_cast<dtwc::index_t>(n); ++i) {
-#ifdef _OPENMP
-          const size_t slot = static_cast<size_t>(omp_get_thread_num());
-#else
-          const size_t slot = 0;
-#endif
-          // The input was checked above and the kernels do not check it, but
-          // an exception escaping an OpenMP region is undefined behaviour and
-          // terminates the process — a hard interpreter crash instead of a
-          // Python exception — so any that does throw is carried out per thread.
-          if (errors[slot]) continue;
-          try {
-            for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
-                double d = (band >= 0)
-                    ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
-                    : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
-                ptr[i * n + j] = d;
-                ptr[j * n + i] = d;
-            }
-          } catch (...) {
-            errors[slot] = std::current_exception();
-          }
-      }
-    }  // GIL re-acquired here
-
-    for (const auto &error : errors)
-      if (error) std::rethrow_exception(error);
-
-    return adopt_as_ndarray(std::move(values), {n, n});
-  }, "series"_a, "band"_a = -1, "metric"_a = "l1",
-     "Compute pairwise DTW distance matrix entirely in C++.\n\n"
-     "Returns NxN numpy array. Uses OpenMP parallelism when available.\n"
-     "This avoids a Python-level pair loop.\n"
-     "NaN or +-inf in a series raises InvalidInput.");
-
-  // =========================================================================
   // FastPAM
   // =========================================================================
 
@@ -1245,77 +1157,6 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("gpu_info", &dtwc::gpu_info,
         "One line naming this build's GPU backend and the GPU device='gpu'\n"
         "computes on ('CUDA: <device>', 'Metal: <device>'), or why there is none.");
-
-#ifdef DTWC_HAS_CUDA
-  m.def("compute_distance_matrix_cuda",
-        [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, int device_id, bool verbose) {
-          dtwc::cuda::CUDADistMatOptions opts;
-          opts.band = band;
-          opts.use_squared_l2 = use_squared_l2;
-          opts.device_id = device_id;
-          opts.verbose = verbose;
-          require_finite_series(series, "compute_distance_matrix_cuda");
-          std::vector<double> matrix;
-          const size_t n = series.size();
-          {
-            nb::gil_scoped_release release;
-            dtwc::core::DistanceMatrix packed;
-            dtwc::cuda::compute_distance_matrix_cuda(series, opts, packed);
-            matrix = dtwc::io::to_full_matrix(packed); // row-major, expanded from the triangle
-          }
-          return adopt_as_ndarray(std::move(matrix), {n, n});
-        },
-        "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
-        "device_id"_a = 0, "verbose"_a = false,
-        "Compute NxN DTW distance matrix on CUDA GPU.\n\n"
-        "Returns NxN numpy array of DTW distances. A pair with no warping\n"
-        "path under `band` reads the finite double-max sentinel, not IEEE\n"
-        "infinity.\n"
-        "NaN or +-inf in a series raises InvalidInput.");
-#else
-  m.def("compute_distance_matrix_cuda",
-        [](const std::vector<std::vector<double>> &, int, bool, int, bool) -> nb::object {
-          throw dtwc::DeviceError("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
-        },
-        "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
-        "device_id"_a = 0, "verbose"_a = false,
-        "Compute NxN DTW distance matrix on CUDA GPU (requires CUDA build).");
-#endif
-
-#ifdef DTWC_HAS_METAL
-  m.def("compute_distance_matrix_metal",
-        [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, bool verbose) {
-          dtwc::metal::MetalDistMatOptions opts;
-          opts.band = band;
-          opts.use_squared_l2 = use_squared_l2;
-          opts.verbose = verbose;
-          require_finite_series(series, "compute_distance_matrix_metal");
-          std::vector<double> matrix;
-          const size_t n = series.size();
-          {
-            nb::gil_scoped_release release;
-            dtwc::core::DistanceMatrix packed;
-            dtwc::metal::compute_distance_matrix_metal(series, opts, packed);
-            matrix = dtwc::io::to_full_matrix(packed); // row-major, expanded from the triangle
-          }
-          return adopt_as_ndarray(std::move(matrix), {n, n});
-        },
-        "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
-        "verbose"_a = false,
-        "Compute NxN DTW distance matrix on Apple GPU via Metal.\n\n"
-        "Returns NxN numpy array of DTW distances.\n"
-        "NaN or +-inf in a series raises InvalidInput.");
-#else
-  m.def("compute_distance_matrix_metal",
-        [](const std::vector<std::vector<double>> &, int, bool, bool) -> nb::object {
-          throw dtwc::DeviceError("Metal support not compiled. Rebuild on macOS with -DDTWC_ENABLE_METAL=ON");
-        },
-        "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
-        "verbose"_a = false,
-        "Compute NxN DTW distance matrix on Apple GPU (requires Metal build).");
-#endif
 
   // =========================================================================
   // Capability detection: OpenMP

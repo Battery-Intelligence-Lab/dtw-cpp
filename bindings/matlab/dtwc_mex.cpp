@@ -1022,34 +1022,6 @@ static void cmd_soft_dtw_gradient(int nlhs, mxArray *plhs[], int nrhs, const mxA
   plhs[0] = result;
 }
 
-static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("compute_distance_matrix requires a data matrix.");
-  auto series = matrix_to_series(prhs[1]);
-  const dtwc::index_t N = std::ssize(series);
-  int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 2) band = get_exact_int(prhs[2], "band");
-
-  // Use Problem + fill_distance_matrix() for OpenMP parallelism and LB pruning
-  std::vector<std::string> names(N);
-  for (dtwc::index_t i = 0; i < N; ++i) names[i] = std::to_string(i);
-
-  dtwc::Problem prob("matlab_distmat");
-  prob.set_band(band);
-  prob.set_verbose(false);
-  dtwc::Data data(std::move(series), std::move(names));
-  prob.set_data(std::move(data));
-  prob.fill_distance_matrix();
-
-  // Copy from Problem's distance matrix to MATLAB output (column-major)
-  mxArray *result = mxCreateDoubleMatrix(N, N, mxREAL);
-  double *out = mxGetDoubles(result);
-  for (dtwc::index_t i = 0; i < N; ++i)
-    for (dtwc::index_t j = 0; j < N; ++j)
-      out[i + j * N] = prob.dist_by_ind(i, j);
-
-  plhs[0] = result;
-}
-
 static void cmd_derivative_transform(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("derivative_transform requires a vector.");
   auto x = to_std_vector(prhs[1]);
@@ -1413,7 +1385,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Stateless DTW functions
     else if (cmd == "dtw") cmd_dtw(nlhs, plhs, nrhs, prhs);
     else if (cmd == "soft_dtw_gradient") cmd_soft_dtw_gradient(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "compute_distance_matrix") cmd_compute_distance_matrix(nlhs, plhs, nrhs, prhs);
     else if (cmd == "derivative_transform") cmd_derivative_transform(nlhs, plhs, nrhs, prhs);
     else if (cmd == "z_normalize") cmd_z_normalize(nlhs, plhs, nrhs, prhs);
     // Algorithms

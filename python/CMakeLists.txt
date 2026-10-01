@@ -34,9 +34,9 @@ endif()
 target_link_libraries(_dtwcpp_core PRIVATE dtwc++ project_options)
 # The MSVC `/openmp:experimental` flag (and `-fopenmp`/libomp on Clang/GCC) is
 # now attached DIRECTLY to dtwc++ as a PUBLIC usage requirement
-# (dtwc/CMakeLists.txt), so linking `dtwc++` alone is enough for this module's
-# own `#pragma omp parallel for` TUs (e.g. in `compute_distance_matrix`) to
-# compile against the OpenMP runtime. `project_options` is kept in the link for
+# (dtwc/CMakeLists.txt), so linking `dtwc++` alone is enough for this module to
+# compile against the OpenMP runtime (`_OPENMP`, `omp_get_max_threads`).
+# `project_options` is kept in the link for
 # its other usage requirements and as belt-and-suspenders; the OpenMP behaviour
 # no longer depends on it. Previously the flag rode ONLY on the project_options
 # INTERFACE — dropping it silently serialised every parallel loop on MSVC and

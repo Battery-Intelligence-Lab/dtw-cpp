@@ -255,8 +255,17 @@ class TestCheckpointMetricFingerprint:
         assert dtwcpp.load_checkpoint(self._problem(), str(tmp_path / "nothing")) is False
 
 
-def test_raw_matrix_binding_reads_the_metric_from_the_cpp_table():
+def test_compute_distance_matrix_reads_the_metric_from_the_cpp_table():
     """An unknown metric is refused, never run as L1."""
     with pytest.raises(dtwcpp.InvalidInput,
                        match=r"^unknown metric 'bogus'\. Valid: l1, squared_euclidean\.$"):
-        dtwcpp._dtwcpp_core.compute_distance_matrix([[0.0, 3.0], [0.0, 1.0]], -1, "bogus")
+        dtwcpp.compute_distance_matrix([[0.0, 3.0], [0.0, 1.0]], metric="bogus")
+
+
+def test_a_band_narrower_than_the_length_difference_is_refused():
+    """No warping path fits the pair: InvalidInput naming the smallest feasible band,
+    not the 1.8e308 sentinel in the matrix."""
+    series = [[0.0, 1.0, 2.0, 3.0], [0.0] * 10, [1.0] * 6]
+    with pytest.raises(dtwcpp.InvalidInput, match="smallest feasible band is 6"):
+        dtwcpp.compute_distance_matrix(series, band=2)
+    assert dtwcpp.compute_distance_matrix(series, band=6).max() < 1e300

@@ -32,7 +32,9 @@ function D = compute_distance_matrix(X, varargin)
     addParameter(p, 'Band', -1, @(v) isnumeric(v) && isscalar(v));
     parse(p, X, varargin{:});
 
-    D = dtwc_mex('compute_distance_matrix', ...
-                  double(p.Results.X), ...
-                  double(p.Results.Band));
+    prob = dtwc.Problem('compute_distance_matrix');
+    prob.set_band(p.Results.Band);
+    prob.set_data(p.Results.X);
+    prob.fill_distance_matrix();
+    D = prob.distance_matrix();
 end

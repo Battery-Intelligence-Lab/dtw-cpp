@@ -530,28 +530,6 @@ class TestMatrixFreeBand:
         assert banded.cost == pytest.approx(63.85, abs=1e-12)
 
 
-class TestCpuMatrixRoute:
-    """cluster() fills the matrix through the Problem the CLI itself uses.
-
-    Tier-1 no longer materialises a Python list to hand to
-    compute_distance_matrix; the two routes must stay digit-identical, banded
-    and unbanded.
-    """
-
-    _X = [0.2, -0.1, 1.4, 3.2, 7.1, 12.3, 9.2, 4.4,
-          1.1, -0.3, 0.5, -0.8, 0.2, 0.7, -0.4, 0.9,
-          -0.2, 0.3, -0.7, 0.4, -0.1, 0.6, -0.5, 0.8]
-    _Y = [-0.4, -0.2, 0.1, -0.3, 0.4, -0.1, 0.2, 0.0,
-          0.35, 0.05, 1.55, 3.35, 7.25, 12.45, 9.35, 4.55,
-          1.25, -0.15, 0.65, -0.65, 0.35, 0.85, -0.25, 1.05]
-
-    @pytest.mark.parametrize("band", [-1, 5])
-    def test_matrix_is_digit_identical_to_compute_distance_matrix(self, band):
-        res = dtwcpp.cluster([self._X, self._Y], k=1, method="pam", band=band)
-        oracle = dtwcpp.compute_distance_matrix([self._X, self._Y], band=band)
-        assert res.distance_matrix.tolist() == oracle.tolist()
-
-
 class TestMatrixFreeScoring:
     """C++ Result::score/save fill the retained Problem lazily (api.cpp)."""
 
