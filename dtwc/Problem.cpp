@@ -585,6 +585,8 @@ void Problem::use_mmap_distance_matrix(
   // before any of its distances can be read.
   auto mapped = core::DistanceMatrix::map(cache_path, data_.size(),
                                           distance_checkpoint_identity(metric));
+  // A warm start holds every pair.
+  const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix");
   if (distance_.metric != metric) { // new semantics, as in set_metric
     distance_.metric = metric;
     clusters_ind.clear();
@@ -592,7 +594,7 @@ void Problem::use_mmap_distance_matrix(
     rebind_dtw_fn();
   }
   distMat = std::move(mapped);
-  filled_ = distMat.size() > 0 && distMat.all_computed(); // a warm start holds every pair
+  filled_ = distMat.size() > 0 && complete;
 }
 
 /// Reject automatic-checkpoint settings that fill_distance_matrix cannot honour,
@@ -783,7 +785,8 @@ void Problem::fill_distance_matrix()
   validate_checkpoint_settings();
   sync_band();
   // A matrix installed through distance_matrix() or read whole needs no pair.
-  if (!filled_ && data_.size() > 0 && distMat.size() == data_.size() && distMat.all_computed())
+  if (!filled_ && data_.size() > 0 && distMat.size() == data_.size()
+      && distMat.all_computed("Problem::fill_distance_matrix"))
     filled_ = true;
   if (filled_) return;
   validate_fill_request("Problem::fill_distance_matrix");

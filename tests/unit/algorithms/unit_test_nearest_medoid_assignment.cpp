@@ -13,6 +13,8 @@
 #include <algorithms/one_batch_pam.hpp>
 #include <base/error.hpp>
 
+#include "../../support/scratch_directory.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -20,6 +22,8 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <fstream>
+#include <functional>
 #include <limits>
 #include <span>
 #include <stdexcept>
@@ -151,20 +155,6 @@ Problem no_path_problem(const std::string &name)
   Problem problem(name);
   problem.set_data(dtwc::Data(std::move(series), std::move(names)));
   problem.band = 0;
-  return problem;
-}
-
-Problem poisoned_matrix_problem(double poison)
-{
-  auto problem = scalar_problem<double>({0.0, 1.0, 2.0}, "f13_poison");
-  auto &matrix = problem.distance_matrix();
-  matrix.resize(3);
-  matrix.set(0, 0, 0.0);
-  matrix.set(0, 1, poison);
-  matrix.set(0, 2, 2.0);
-  matrix.set(1, 1, 0.0);
-  matrix.set(1, 2, 1.0);
-  matrix.set(2, 2, 0.0);
   return problem;
 }
 
@@ -395,20 +385,78 @@ TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
           == UINT64_C(0x4340000000000000));
 }
 
-TEST_CASE("F13 public assignments reject non-winning infinities",
+TEST_CASE("Every matrix intake refuses a distance that is not finite, naming the pair",
+          "[medoid-assignment][nonfinite][intake]")
+{
+  // The clustering loops read a filled matrix unchecked, so every way a matrix
+  // enters a Problem from outside its fill scans it once. The bad matrix holds a
+  // hole (pair 0-1, NaN: computed later) before +inf (pair 1-2): the scan passes
+  // the hole and names the infinity.
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  const auto write_bad = [](dtwc::core::DistanceMatrix &matrix) {
+    matrix.set(0, 0, 0.0);
+    matrix.set(1, 1, 0.0);
+    matrix.set(2, 2, 0.0);
+    matrix.set(0, 2, 2.0);
+    matrix.set(1, 2, inf);
+  };
+  const std::string bad =
+    ": the distance between series 1 and 2 is +inf; a distance must be finite.";
+  const dtwc::test_support::ScratchDirectory scratch("medoid_intake");
+  const auto three = [] { return scalar_problem<double>({0.0, 1.0, 2.0}, "intake"); };
+
+  struct Row
+  {
+    std::string expected;
+    std::function<void(Problem &)> install;
+  };
+  const std::vector<Row> rows{
+    { "Problem::fill_distance_matrix" + bad, // the commit point of distance_matrix()
+      [&](Problem &problem) {
+        auto &matrix = problem.distance_matrix();
+        matrix.resize(3);
+        write_bad(matrix);
+        problem.fill_distance_matrix();
+      } },
+    { "Problem::read_distance_matrix" + bad,
+      [&](Problem &problem) {
+        const auto path = scratch.path / "bad.csv";
+        std::ofstream(path) << "0,,2\n,0,inf\n2,inf,0\n";
+        problem.read_distance_matrix(path);
+      } },
+    { "load_checkpoint" + bad,
+      [&](Problem &problem) {
+        auto writer = three();
+        auto &matrix = writer.distance_matrix();
+        matrix.resize(3);
+        write_bad(matrix);
+        dtwc::save_checkpoint(writer, scratch.path.string());
+        (void)dtwc::load_checkpoint(problem, scratch.path.string());
+      } },
+#ifdef DTWC_HAS_MMAP
+    { "Problem::use_mmap_distance_matrix" + bad,
+      [&](Problem &problem) {
+        const auto path = scratch.path / "bad.dtwm";
+        {
+          auto writer = three();
+          writer.use_mmap_distance_matrix(path);
+          write_bad(writer.distance_matrix());
+        } // unmapped; the file keeps the values
+        problem.use_mmap_distance_matrix(path);
+      } },
+#endif
+  };
+  for (const auto &row : rows) {
+    CAPTURE(row.expected);
+    auto problem = three();
+    require_invalid_input([&] { row.install(problem); }, row.expected);
+    CHECK_FALSE(problem.is_distance_matrix_filled());
+  }
+}
+
+TEST_CASE("F13 FastCLARA's assignment, which calls the DTW function, rejects a non-winning infinity",
           "[F13][medoid-assignment][nonfinite][distance]")
 {
-  for (const double poison : {
-         std::numeric_limits<double>::infinity(),
-         -std::numeric_limits<double>::infinity()}) {
-    auto lloyd = poisoned_matrix_problem(poison);
-    lloyd.centroids_ind = {0, 2};
-    require_invalid_input(
-      [&] { lloyd.assign_clusters(); },
-      "kmedoids_lloyd: non-finite nearest-medoid distance at point 1, "
-      "medoid slot 0 (index 0).");
-  }
-
   std::vector<double> f64_values(65, std::numeric_limits<double>::max());
   f64_values[0] = -std::numeric_limits<double>::max();
   auto clara_f64 = scalar_problem<double>(

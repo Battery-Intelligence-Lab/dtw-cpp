@@ -952,9 +952,10 @@ NB_MODULE(_dtwcpp_core, m) {
              for (size_t j = i; j < n; ++j)
                mat.set(i, j, data[i * n + j]);
            // A complete matrix is filled; NaN entries are computed on first use.
-           if (mat.all_computed()) p.fill_distance_matrix();
+           if (mat.all_computed("Problem.set_distance_matrix")) p.fill_distance_matrix();
          }, "dm"_a,
-         "Load a precomputed NxN distance matrix (e.g. from a GPU compute).")
+         "Load a precomputed NxN distance matrix (e.g. from a GPU compute). NaN marks\n"
+         "a pair to compute; a ±inf entry raises InvalidInput naming the pair.")
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
     .def("read_distance_matrix", [](dtwc::Problem &p, const std::filesystem::path &path) {
       nb::gil_scoped_release release;

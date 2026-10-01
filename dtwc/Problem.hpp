@@ -485,7 +485,8 @@ public:
   const core::DistanceMatrix &distance_matrix() const { return distMat; }
   /// The distance matrix (mutable). The caller may change which pairs are
   /// known, so the Problem no longer calls it filled: the next
-  /// fill_distance_matrix() computes the pairs left NaN, none when all are set.
+  /// fill_distance_matrix() refuses a pair set to ±inf (InvalidInput) and
+  /// computes the pairs left NaN, none when all are set.
   core::DistanceMatrix &distance_matrix()
   {
     sync_band();
@@ -504,8 +505,8 @@ public:
   /// Map the distance matrix to the `.dtwm` file `cache_path`, bound to this
   /// Problem's exact data and distance settings, metric() included. An existing
   /// file is reopened with the distances it holds (InvalidInput if they are for
-  /// other series or settings, IOError if it is not a whole `.dtwm` file); an
-  /// absent one is created. IOError on a build without llfio.
+  /// other series or settings or one is ±inf, IOError if it is not a whole
+  /// `.dtwm` file); an absent one is created. IOError on a build without llfio.
   /// The fingerprint of the data and the settings is checked here, once; every
   /// setter and set_data detach the file. Call refresh_distance_matrix() before
   /// editing series values in place.

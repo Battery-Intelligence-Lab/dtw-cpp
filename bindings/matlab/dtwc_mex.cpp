@@ -768,7 +768,7 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
     for (size_t j = i; j < N; ++j)
       dm.set(i, j, data[i + j * N]);  // column-major
   // A complete matrix is filled; NaN entries are computed on first use.
-  if (dm.all_computed()) prob.fill_distance_matrix();
+  if (dm.all_computed("Problem.set_distance_matrix")) prob.fill_distance_matrix();
 
 }
 

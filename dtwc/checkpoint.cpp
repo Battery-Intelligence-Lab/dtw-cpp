@@ -67,8 +67,10 @@ bool load_checkpoint(Problem &prob, const std::string &path, core::MetricType me
   if (ec) throw IOError("Cannot inspect the checkpoint in '" + path + "': " + ec.message());
   if (!exists) return false;
 
-  prob.distMat = core::DistanceMatrix::read(file, prob.size(), identity);
-  prob.filled_ = prob.distMat.size() > 0 && prob.distMat.all_computed();
+  auto loaded = core::DistanceMatrix::read(file, prob.size(), identity);
+  const bool complete = loaded.all_computed("load_checkpoint");
+  prob.distMat = std::move(loaded);
+  prob.filled_ = prob.distMat.size() > 0 && complete;
   return true;
 }
 

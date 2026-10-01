@@ -233,7 +233,8 @@ void Problem::writeBestRep(int best_rep)
  *  @param distMat_path The file path of the distance matrix.
  *  @throws IOError if the file cannot be opened or holds a non-numeric field;
  *          InvalidInput if it is not square and symmetric, if its size is not
- *          this Problem's series count, or if the matrix is memory-mapped.
+ *          this Problem's series count, if a distance is ±inf, or if the matrix
+ *          is memory-mapped.
  */
 void Problem::read_distance_matrix(const fs::path &distMat_path)
 {
@@ -258,9 +259,10 @@ void Problem::read_distance_matrix(const fs::path &distMat_path)
       + std::to_string(size()) + " series; a distance matrix has one row and "
         "one column per series, in input order. Load the matrix computed for "
         "these series, or omit it to compute the distances.");
+  const bool complete = loaded.all_computed("Problem::read_distance_matrix");
   if (loaded.size() != 0) {
     distMat = std::move(loaded);
-    filled_ = distMat.all_computed();
+    filled_ = complete;
   }
 }
 

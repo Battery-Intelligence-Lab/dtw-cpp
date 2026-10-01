@@ -126,7 +126,12 @@ copy. The language-specific semantics are retained.
 only a matrix of this `Problem`'s size: a file whose row count is not the series
 count, an empty file included, raises `InvalidInput` and leaves the matrix
 untouched (a `Problem` without series takes any matrix); a non-square or
-asymmetric file raises `InvalidInput` naming the row. `write_clusters`,
+asymmetric file raises `InvalidInput` naming the row. A distance is finite:
+`read_distance_matrix`, `load_checkpoint`, `use_mmap_distance_matrix` and
+`set_distance_matrix` raise `InvalidInput` naming the first pair that holds
+±inf (NaN marks a pair still to compute), as does the next
+`fill_distance_matrix()` after a write through C++ `distance_matrix()`; the
+clustering loops read the matrix unchecked. `write_clusters`,
 `write_silhouettes`, `write_medoid_members`, `write_distance_matrix` and Tier-1
 `Result::save` check each file after closing as well as after opening, so a
 write lost after a successful open (a full disk, a file-size quota) raises
@@ -282,7 +287,7 @@ are snake_case; current availability and gaps are explicit below.
 |---|---|---|---|
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
 | save checkpoint | `save_checkpoint(const Problem&, path)` writes `checkpoint_path(prob, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
-| load checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` only when the file is absent; other series or settings `InvalidInput`, a file that is not a whole `.dtwm` file `IOError`, neither changing the `Problem` | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
+| load checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` only when the file is absent; other series or settings, or a ±inf distance, `InvalidInput`, a file that is not a whole `.dtwm` file `IOError`, neither changing the `Problem` | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
 
 A checkpoint is one `.dtwm` file, `checkpoint_path(prob, dir)` =
 `<dir>/<name>.dtwm` (`distances.dtwm` for an unnamed `Problem`): the layout of a
