@@ -169,8 +169,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `dtwc_io` and the CLI; the bindings link the core; Python reads and writes files with numpy/pandas/pyarrow, MATLAB
   with its built-ins; v1 Python `DataLoader` / `write*` stay as thin Python (Volkan 10-01) (L1 1f951e1, record:
   HiGHS 75–78 % of each binding, CLI + readers ~2 %, two edges pull them in). L2a: each dtwc/ source folder lists its
-  own files (Volkan 10-01; L2a 87b8e88, 15d87f2; merged 1110fe10; compile commands and link lines identical in every
-  tree); Python reads `.arrow` through pyarrow too
+  own files (Volkan 10-01; L2a 87b8e88, 15d87f2; merged 1110fe10; compile commands and executable link lines identical in
+  every tree; dtwc++.lib's member order follows the folders); Python reads `.arrow` through pyarrow too
 - ☐ M1 Python solves the MIP with the user's highspy (optional extra; the wheel drops HiGHS); the MEX keeps HiGHS
   linked (CI MEX: HiGHS ON, Gurobi OFF); the model leaves C++ as arrays for Python (Volkan 10-01)
 - ☐ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds
@@ -185,7 +185,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   H100 or L40S
 - ☐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
   regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
-  (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m)
+  (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m) (done in W7g)
+- W9e note (W7g): MATLAB key naming is decided here for every key at once — DTWClustering and `distance.dtw` spell
+  CamelCase (`WdtwG`, `MissingStrategy`), `dtwc.cluster` snake_case (`band`, `max_iter`); `parse_name` folds case but
+  not `_`, so MATLAB refuses `wdtw_g`; IF-2 and the same-names rule point at the Python names (ask Volkan)
 - W9b/W9e note (Volkan 10-01, lighter bindings): Python and MATLAB share the Config names, not the CLI's file
   pipeline — `run(Config)` reads and writes files, which stays with the CLI (L2)
 - ☐ W9f Python test and example trims
@@ -206,6 +209,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `build*/`, e.g. an Arrow build that cannot load its DLLs (F2 2a3ae53; merged a965ad5)
 - ☐ `.github/workflows/python-tests.yml` runs pytest with no dtwc_cl and no `DTWC_CL_PATH`; `test_api`'s two
   CLI-parity cases assert a binary exists (F2 note; CI not run here)
+- ☐ tests narrow `index_t` to `int` (`std::set<int>` built from `centroids_ind` / `medoid_indices`, `for (int m :
+  prob.centroids_ind)`; MSVC C4244 in the CUDA tree): unit_test_clustering_algorithms.cpp, algorithms/
+  unit_test_duplicate_series.cpp, unit_test_fast_clara.cpp, unit_test_fast_pam.cpp, unit_test_one_batch_pam.cpp — use
+  `index_t`, with the comment sweep
 
 ## G — docs and release prep (W14)
 

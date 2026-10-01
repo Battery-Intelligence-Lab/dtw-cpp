@@ -285,3 +285,10 @@ Append new entries at the end of their section; keep each to a few lines.
   thread's next, valid call with the same message (C1 `13246cb`: a refused fill poisoned the next fill).
 - **A mutable accessor overload wins for any non-const object, even through `const auto &`**: `Problem::distance_matrix()`
   (mutable) clears `filled_`, so a reader must call it through `std::as_const` (E1, 2026-09-30).
+- **A relative tolerance passes anything against infinity**: |a−b| ≤ k·max(|a|,|b|) is inf ≤ inf when b = inf.
+  Guard infinities first (an infinity agrees only with itself); `dtw_routes_agree` had this hole until 6fb95f4.
+- **A band sweep proves the band only if some band binds**: on shifted-by-one or iid pairs the best path stays near
+  the diagonal and bands ≥ 2 never bind. Make the oracle ignore the band; the sweep must fail (W12b, band 0).
+- **`-S` without LTO cannot see what ThinLTO inlines**: moving a kernel's only call left it out of line, and on
+  Win64 a by-value struct over 8 bytes arrives by pointer, so the DP loop reloaded its fields every cell (+2–7 %).
+  Check the shipped binary's post-LTO assembly (`lld -lldsavetemps`) or time the real closure (W7d ab72231).

@@ -267,3 +267,19 @@ CHANGELOG rule.
   cost (highspy's HiGHS version may differ). M1, after L2.
 - 2026-10-01 — Volkan (build files): each source folder of dtwc/ lists its own files in its own CMakeLists.txt
   (as mip/ does); dtwc/CMakeLists.txt keeps the targets, options and links (L2).
+- 2026-10-01 — W7g: one `distance.dtw` per language over `dtwc::distance::dtw` (Python zero-copy with the GIL
+  released; MATLAB `dtwc_mex('dtw', x, y, Name, Value…)`); the per-variant helpers and MATLAB's own metric list go
+  (none in v1.0.0); keywords take the dtwc_cl names (Python `wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`,
+  `twe_nu`, `twe_lambda`; MATLAB the same in CamelCase, as its DTWClustering spelled them, until W9e);
+  `Problem.set_distance` in both bindings; both DTWClusterings validate in fit through C++; contract §10 item 8 is
+  superseded (`dtw(x, y)` is Standard DTW in every language).
+- 2026-10-01 — W7d: `core::orient` + `core::run_dtw` replace 26 orientation preambles. ab72231 kept (orchestrator):
+  each kernel copies its Cost into a local, so no build reloads x and y per cell (shipped ThinLTO dtwc_cl: 63 such
+  DP loops at base, 0 after); values unchanged (conformance, 31 CLI runs). An out-of-range MetricType now computes
+  L1 where it threw per pair, so core::validate refuses an out-of-range enum (rule 3; W7ef).
+- 2026-10-01 — W12b closed: tests/unit/adversarial/ is gone; the missing-data rules have one oracle
+  (tests/support/missing_dtw_oracle.hpp); `dtw_routes_agree` lets an infinity agree only with itself (it passed any
+  value against inf).
+- 2026-10-01 — L2a: each dtwc/ folder lists its own sources in its own CMakeLists.txt; a source property set from a
+  folder file names `TARGET_DIRECTORY dtwc++`; compile commands and executable link lines are identical in every tree
+  (dtwc++.lib's member order follows the folders). 41 headers are listed nowhere, as before: L2b decides.
