@@ -39,7 +39,9 @@ option(DTWC_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
 option(DTWC_BUILD_MATLAB "Build MATLAB MEX bindings" OFF)
 option(DTWC_DEV_MODE "Enable developer-only warnings, analyzers, and sanitizer options" OFF)
 
-option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
+# Gurobi defaults OFF: a binary linked with it needs the Gurobi DLL to load, and HiGHS
+# solves the MIP without it.
+option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver (needs a Gurobi install, see GUROBI_HOME)" OFF)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 # Metal defaults ON on Apple (zero extra toolchain — ships with Xcode CLT).
@@ -227,7 +229,16 @@ if(DTWC_ENABLE_METAL)
 endif()
 
 include(cmake/Dependencies.cmake) # Include external projects
-include(cmake/FindGUROBI.cmake)
+if(DTWC_ENABLE_GUROBI)
+  include(cmake/FindGUROBI.cmake)
+  if(NOT TARGET Gurobi::GurobiCXX)
+    message(FATAL_ERROR
+      "DTWC_ENABLE_GUROBI=ON but Gurobi was not found.\n"
+      "  Set GUROBI_HOME to the Gurobi installation (for example C:/gurobi1301/win64, "
+      "/opt/gurobi1301/linux64 or /Library/gurobi1301/macos_universal2); "
+      "to build without Gurobi, pass -DDTWC_ENABLE_GUROBI=OFF (HiGHS then solves the MIP).")
+  endif()
+endif()
 include(cmake/ProjectOptions.cmake)
 
 include(cmake/PreventInSourceBuilds.cmake)
@@ -405,10 +416,8 @@ if(PROJECT_IS_TOP_LEVEL)
   endif()
 
   set(_gurobi_status "OFF")
-  if(DTWC_ENABLE_GUROBI AND TARGET Gurobi::GurobiCXX)
+  if(TARGET Gurobi::GurobiCXX)
     set(_gurobi_status "ON (${GUROBI_HOME})")
-  elseif(DTWC_ENABLE_GUROBI)
-    set(_gurobi_status "REQUESTED BUT NOT FOUND")
   endif()
 
   set(_highs_status "OFF")
@@ -441,17 +450,6 @@ if(PROJECT_IS_TOP_LEVEL)
   message(STATUS "║  Testing:   ${DTWC_BUILD_TESTING}")
   message(STATUS "╚══════════════════════════════════════════════════╝")
   message(STATUS "")
-
-  # Warn about missing optional deps that were requested
-  if(DTWC_ENABLE_GUROBI AND NOT TARGET Gurobi::GurobiCXX)
-    message(WARNING
-      "Gurobi requested (DTWC_ENABLE_GUROBI=ON) but not found.\n"
-      "  MIP-based clustering will fall back to HiGHS (if available).\n"
-      "  To fix: set GUROBI_HOME env-var to your Gurobi installation,\n"
-      "  e.g., GUROBI_HOME=C:/gurobi1301/win64, /opt/gurobi1301/linux64,\n"
-      "  or /Library/gurobi1301/macos_universal2\n"
-      "  Or pass -DDTWC_ENABLE_GUROBI=OFF to silence this warning.")
-  endif()
 
   if(NOT TARGET Gurobi::GurobiCXX AND NOT TARGET highs::highs)
     message(WARNING

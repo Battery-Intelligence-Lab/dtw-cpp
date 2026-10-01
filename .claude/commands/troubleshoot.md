@@ -44,7 +44,7 @@ which dtwc_cl && dtwc_cl --version
 
 **Gurobi not found**
 - Set env var: `export GUROBI_HOME=/Library/gurobi1301/macos_universal2` (macOS) or equivalent
-- Or disable: `-DDTWC_ENABLE_GUROBI=OFF` (MIP falls back to HiGHS)
+- Or build without it: `-DDTWC_ENABLE_GUROBI=OFF` (the default; HiGHS solves the MIP)
 
 **OpenMP not found**
 - Mac: `brew install libomp && brew link --force libomp`

@@ -26,7 +26,7 @@ There are several pre-requisite installations required to compile and run DTW-C+
 The following dependencies need to be manually installed by the user if they do not already exist:
 - [CMake](https://cmake.org/)
 - A suitable compiler (Clang, GCC, MSVC, etc.)
-- Gurobi (optional, if not installed then HiGHS will be used as the MIP solver)
+- Gurobi (optional and off by default: HiGHS is the MIP solver unless you configure with `-DDTWC_ENABLE_GUROBI=ON`, which stops with an error when Gurobi is not found)
 - [OpenMP](https://www.openmp.org/) this should come with GCC and MSVC libraries; however to install it with Clang, you may install `libomp-xx-dev` where `xx` is your clang version. 
 
 The following dependencies are installed by the CPM package manager:

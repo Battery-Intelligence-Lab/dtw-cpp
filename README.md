@@ -187,7 +187,7 @@ export OMP_PLACES=cores
 | `DTWC_ENABLE_ARROW` | OFF | Enable Apache Arrow IPC + Parquet I/O (system packages or CPM) |
 | `DTWC_ENABLE_LLFIO` | ON | Enable llfio-backed memory-mapped distance matrices |
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
-| `DTWC_ENABLE_GUROBI` | ON | Enable Gurobi MIP solver (optional) |
+| `DTWC_ENABLE_GUROBI` | OFF | Link the Gurobi MIP solver (needs an install, see `GUROBI_HOME`; the binary then needs the Gurobi library to load). v1.0.0 linked Gurobi when it found it |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
 | `DTWC_REPRODUCIBLE_BUILD` | OFF | Strip source/build paths from supported compiler outputs |
 | `DTWC_ARCH_LEVEL` | `""` | CPU target of x86-64 builds: `native` (`-march=native`; the default for C++ builds), `v3` (x86-64-v3: AVX2+FMA, the default for Python builds and the floor of released wheels and archives), `v4` (AVX-512). arm64 takes no flag from `v3` |
