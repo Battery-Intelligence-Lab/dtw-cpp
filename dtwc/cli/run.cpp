@@ -12,7 +12,6 @@
 
 #include "run.hpp"
 
-#include "../DataLoader.hpp"
 #include "../Problem.hpp"
 #include "../algorithms/detail/fast_clara_plan.hpp"
 #include "../algorithms/fast_clara.hpp"
@@ -23,18 +22,13 @@
 #include "../base/timing.hpp"
 #include "../checkpoint.hpp"
 #include "../fileOperations.hpp"
+#include "../io/read_data.hpp"
 #include "../scores.hpp"
-#ifdef DTWC_HAS_ARROW
-#include "../io/arrow_ipc_reader.hpp"
-#endif
 #ifdef DTWC_HAS_PARQUET
 #include "../io/parquet_chunk_reader.hpp"
-#include "../io/parquet_reader.hpp"
 #endif
 
-#include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -91,135 +85,20 @@ std::pair<Method, const char *> problem_route(ClusterMethod method)
   throw std::logic_error("run: method " + method_name(method) + " is not a Problem::cluster() route");
 }
 
-/// Where the series come from.
-enum class Source { Text, ParquetFile, ParquetDirectory, ArrowIPC, Memory };
-
-struct Input
-{
-  Source source = Source::Memory;
-  fs::path path;
-  std::vector<fs::path> parquet_files; ///< a Parquet directory's files, sorted
-  bool parquet() const { return source == Source::ParquetFile || source == Source::ParquetDirectory; }
-};
-
-std::string lower_extension(const fs::path &path)
-{
-  std::string ext = path.extension().string();
-  std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return ext;
-}
-
-/// Classify the input by filesystem inspection alone, before any reader runs.
-Input classify(const std::string &input_text)
-{
-  Input input;
-  input.path = utf8_to_path(input_text);
-  std::error_code ec;
-  if (fs::is_directory(input.path, ec)) {
-    fs::directory_iterator entries(input.path, ec);
-    if (ec) throw IOError("load: cannot list '" + input_text + "': " + ec.message());
-    for (const auto &entry : entries) {
-      const auto ext = lower_extension(entry.path());
-      if (ext == ".parquet" || ext == ".pq") input.parquet_files.push_back(entry.path());
-    }
-    std::sort(input.parquet_files.begin(), input.parquet_files.end());
-    input.source = input.parquet_files.empty() ? Source::Text : Source::ParquetDirectory;
-    return input;
-  }
-  const auto ext = lower_extension(input.path);
-  if (ext == ".parquet" || ext == ".pq") input.source = Source::ParquetFile;
-  else if (ext == ".arrow" || ext == ".ipc" || ext == ".feather") input.source = Source::ArrowIPC;
-  else input.source = Source::Text; // anything a typed reader does not claim goes to the CSV/TSV DataLoader
-  return input;
-}
-
-/// Reject an input format whose reader this binary does not contain: IOError
-/// (api-contract-2.0.md §5). The rejection must
-/// exist in the build that LACKS the capability, so it sits under `#ifndef`:
-/// inside `#ifdef DTWC_HAS_PARQUET` it would be absent from the
-/// `DTWC_ENABLE_ARROW=OFF` build, and a Parquet file would reach the CSV
-/// DataLoader, parsed as text (LESSONS F9).
-void require_input_format_is_built([[maybe_unused]] Source source)
-{
-#ifndef DTWC_HAS_PARQUET
-  if (source == Source::ParquetFile || source == Source::ParquetDirectory)
-    throw IOError(
-      "Parquet input (.parquet/.pq) requires a build with Arrow/Parquet "
-      "(-DDTWC_ENABLE_ARROW=ON). This binary was built without Parquet "
-      "support; convert the input to CSV/TSV or use an Arrow-enabled build.");
-#endif
-#ifndef DTWC_HAS_ARROW
-  if (source == Source::ArrowIPC)
-    throw IOError(
-      "Arrow IPC input (.arrow/.ipc/.feather) requires a build with Arrow "
-      "(-DDTWC_ENABLE_ARROW=ON). This binary was built without Arrow support; "
-      "convert the input to CSV/TSV or use an Arrow-enabled build.");
-#endif
-}
-
 /// Reject a reader option the input cannot honour: accepting and then ignoring
 /// it would be a silent deceit. `--ram-limit` is the Parquet materialisation cap.
-void require_input_options_apply(const Config &config, const Input &input)
+/// `format` is empty for series passed in memory.
+void require_input_options_apply(const Config &config, std::optional<InputFormat> format)
 {
-  if (input.source == Source::Memory && !config.input.empty())
+  if (!format && !config.input.empty())
     throw InvalidInput("run: the series are passed in memory, so --input '" + config.input
                        + "' would not be read; leave input empty.");
-  if (config.ram_limit != 0 && !input.parquet())
+  if (config.ram_limit != 0 && format != InputFormat::Parquet)
     throw InvalidInput(
       "--ram-limit caps Parquet series materialisation and cannot be honoured "
       "for this input; drop --ram-limit, or convert the series to a "
       "list-per-row Parquet file to stream them under the cap.");
-  if (!config.column.empty() && !input.parquet())
-    throw InvalidInput(
-      "--column selects a Parquet column and cannot be honoured for this "
-      "input; drop --column, or pass a .parquet/.pq file or directory.");
-  if ((config.skip_rows != 0 || config.skip_cols != 0 || config.delimiter != '\0') && input.source != Source::Text)
-    throw InvalidInput(
-      "--skip-rows, --skip-cols and --delimiter are CSV/TSV parsing options and "
-      "cannot be honoured for this input; drop them, or pass a text input.");
-}
-
-/// Read the series a path names. A read failure is an IOError naming the file;
-/// other typed errors pass unchanged.
-Data read_series(const Config &config, const Input &input, std::string &from)
-{
-  try {
-    switch (input.source) {
-#ifdef DTWC_HAS_PARQUET
-    case Source::ParquetDirectory:
-      from = " from Parquet directory";
-      return io::load_parquet_directory(input.path, config.column);
-    case Source::ParquetFile:
-      from = " from Parquet";
-      return io::load_parquet_file(input.path, config.column);
-#endif
-#ifdef DTWC_HAS_ARROW
-    case Source::ArrowIPC: { // copied out of the map
-      from = " from Arrow IPC";
-      auto source = io::ArrowIPCDataSource::open(input.path);
-      std::vector<std::vector<data_t>> series(source.size());
-      for (std::size_t i = 0; i < series.size(); ++i) {
-        const auto values = source.series(i);
-        series[i].assign(values.begin(), values.end());
-      }
-      return Data(std::move(series), source.all_names(), source.ndim());
-    }
-#endif
-    default: { // Text; require_input_format_is_built() refused the rest
-      from.clear();
-      DataLoader loader{ input.path };
-      loader.start_column(config.skip_cols).start_row(config.skip_rows).verbosity(config.verbose ? 1 : 0);
-      if (config.delimiter != '\0') loader.delimiter(config.delimiter);
-      return loader.load();
-    }
-    }
-  } catch (const IOError &e) {
-    throw IOError("load: failed to read '" + config.input + "': " + e.what());
-  } catch (const Error &) {
-    throw;
-  } catch (const std::exception &e) {
-    throw IOError("load: failed to read '" + config.input + "': " + e.what());
-  }
+  require_reader_options(format, config.skip_cols, config.skip_rows, config.delimiter, config.column);
 }
 
 /// An owning Float32 copy of Float64 series.
@@ -398,9 +277,10 @@ Outcome execute(const Config &config, std::optional<Data> data)
   clara.random_seed = config.seed;
   if (config.method == ClusterMethod::CLARA) algorithms::detail::validate_clara_controls(clara, "run");
 
-  const Input input = data ? Input{} : classify(config.input);
-  require_input_format_is_built(input.source);
-  require_input_options_apply(config, input);
+  const fs::path input = utf8_to_path(config.input);
+  std::optional<InputFormat> format; // empty: the series are in memory
+  if (!data) format = input_format(input);
+  require_input_options_apply(config, format);
 
   // A --checkpoint that cannot hold a checkpoint stops the run here, before any
   // work: the save comes after clustering, so a typo cost the whole run.
@@ -440,29 +320,26 @@ Outcome execute(const Config &config, std::optional<Data> data)
 #ifdef DTWC_HAS_PARQUET
   // A cap changes the load decision, so only the metadata is read here: the
   // readers map the file and its footer; no row group is decoded.
-  if (input.parquet()
+  if (format == InputFormat::Parquet
       && (config.ram_limit > 0 || method == ClusterMethod::Auto || method == ClusterMethod::CLARA)) {
     const bool f32 = config.dtype == core::Precision::Float32;
+    std::error_code ec;
+    const bool folder = fs::is_directory(input, ec);
     auto layout = detail::ParquetLayout::Directory;
     std::size_t resident_bytes = 0;
-    if (input.source == Source::ParquetFile) {
-      io::ParquetChunkReader metadata(input.path, config.column);
-      layout = metadata.is_list_layout() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
-      n_series = static_cast<std::size_t>(metadata.logical_series_count());
-      resident_bytes = metadata.estimated_materialization_peak_bytes(f32);
-    } else {
-      for (const auto &path : input.parquet_files) {
-        io::ParquetChunkReader metadata(path, config.column);
-        n_series += static_cast<std::size_t>(metadata.logical_series_count());
-        resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
-      }
+    for (const auto &file : parquet_files(input)) {
+      const io::ParquetChunkReader metadata(file, config.column);
+      if (!folder)
+        layout = metadata.is_list_layout() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
+      n_series += static_cast<std::size_t>(metadata.logical_series_count());
+      resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
     }
     const auto plan = detail::plan_parquet_load(method, config.device, n_series, resident_bytes, config.ram_limit, layout);
     method = plan.method;
     stream_payload = plan.stream_payload;
     if (stream_payload) {
       clara.ram_limit_bytes = config.ram_limit;
-      clara.parquet_path = input.path;
+      clara.parquet_path = input;
       clara.parquet_column = config.column;
       clara.use_float32 = f32;
       clara.force_parquet_streaming = true;
@@ -486,9 +363,13 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
   // ---- 3. Load the series into RAM ----
   if (!stream_payload) {
-    std::string from = " in memory";
-    Data series = data ? std::move(*data) : read_series(config, input, from);
+    Data series = data ? std::move(*data)
+                       : read_data(input, config.skip_cols, config.skip_rows, config.delimiter, config.column);
     if (config.verbose) {
+      const char *from = !format                            ? " in memory"
+                         : format == InputFormat::Parquet  ? " from Parquet"
+                         : format == InputFormat::ArrowIPC ? " from Arrow IPC"
+                                                           : "";
       std::cout << "Data loaded" << from << ": " << series.size() << " series [" << clk << "]\n";
       if (series.size() > 0) {
         std::size_t elements = 0;

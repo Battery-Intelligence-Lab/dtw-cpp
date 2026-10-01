@@ -10,7 +10,8 @@
  *  - `dtwc_cl`: Parquet / Arrow IPC input on a build without Arrow was
  *    `InvalidInput`. A format this build cannot read is `IOError`.
  *
- * dtwc_cl's pipeline is dtwc::run (IF-2 S3), which the third case drives.
+ * dtwc_cl's pipeline is dtwc::run (IF-2 S3), which the third case drives; both
+ * it and Python's load() read through dtwc::read_data, which the last case drives.
  *
  * @date 24 Sep 2026
  */
@@ -100,17 +101,35 @@ TEST_CASE("dtwc_cl: an input format this build cannot read is IOError",
     config.output.clear();
     (void)dtwc::run(config);
   };
-  // Control: a format every build reads fails in its reader, naming the file.
-  CHECK_THROWS_MATCHES(run_on("missing.csv"), dtwc::IOError,
-                       MessageMatches(StartsWith("load: failed to read 'missing.csv': ")));
+  // Python's load() calls read_data directly, without run().
+  const auto read_on = [](const char *input) { (void)dtwc::read_data(input); };
+  const auto check = [](const auto &reach) {
+    // Control: a format every build reads fails in its reader, naming the file.
+    CHECK_THROWS_MATCHES(reach("missing.csv"), dtwc::IOError,
+                         MessageMatches(StartsWith("load: failed to read 'missing.csv': ")));
 #ifndef DTWC_HAS_PARQUET
-  CHECK_THROWS_MATCHES(run_on("missing.parquet"), dtwc::IOError,
-                       MessageMatches(ContainsSubstring("Parquet input")
-                                      && ContainsSubstring("-DDTWC_ENABLE_ARROW=ON")));
+    CHECK_THROWS_MATCHES(reach("missing.parquet"), dtwc::IOError,
+                         MessageMatches(ContainsSubstring("Parquet input")
+                                        && ContainsSubstring("-DDTWC_ENABLE_ARROW=ON")));
 #endif
 #ifndef DTWC_HAS_ARROW
-  CHECK_THROWS_MATCHES(run_on("missing.arrow"), dtwc::IOError,
-                       MessageMatches(ContainsSubstring("Arrow IPC input")
-                                      && ContainsSubstring("-DDTWC_ENABLE_ARROW=ON")));
+    CHECK_THROWS_MATCHES(reach("missing.arrow"), dtwc::IOError,
+                         MessageMatches(ContainsSubstring("Arrow IPC input")
+                                        && ContainsSubstring("-DDTWC_ENABLE_ARROW=ON")));
+#endif
+  };
+  check(run_on);
+  check(read_on);
+}
+
+TEST_CASE("read_data: a reader option the format cannot honour is InvalidInput",
+          "[io][error]")
+{
+  // Refused before any file is opened (none exists): ignoring it would be silent.
+  CHECK_THROWS_MATCHES(dtwc::read_data("missing.csv", 0, 0, '\0', "v"), dtwc::InvalidInput,
+                       MessageMatches(ContainsSubstring("--column selects a Parquet column")));
+#ifdef DTWC_HAS_PARQUET
+  CHECK_THROWS_MATCHES(dtwc::read_data("missing.parquet", 0, 1), dtwc::InvalidInput,
+                       MessageMatches(ContainsSubstring("skip_rows")));
 #endif
 }

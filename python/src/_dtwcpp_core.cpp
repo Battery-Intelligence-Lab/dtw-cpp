@@ -221,29 +221,16 @@ NB_MODULE(_dtwcpp_core, m) {
     // File I/O and parsing touch no Python object, so the GIL is released for
     // the whole read exactly as every other I/O binding here does.
     nb::gil_scoped_release release;
-    dtwc::DataLoader loader(source);
-    loader.start_column(skip_cols).start_row(skip_rows).verbosity(0);
-    if (!delimiter.empty()) loader.delimiter(delimiter[0]);
-    // A read failure names the file, as C++ dtwc::load does (api.cpp).
-    try {
-      return loader.load();
-    } catch (const dtwc::IOError &e) {
-      throw dtwc::IOError("load: failed to read '" + source.string() + "': " + e.what());
-    } catch (const dtwc::Error &) {
-      throw;
-    } catch (const std::exception &e) {
-      throw dtwc::IOError("load: failed to read '" + source.string() + "': " + e.what());
-    }
+    return dtwc::read_data(source, skip_cols, skip_rows, delimiter.empty() ? '\0' : delimiter[0]);
   }, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
-     "Read a batch file or folder with the C++ DataLoader and return the owning\n"
-     "dtwc::Data (series + names) with no intermediate Python objects. Backs\n"
-     "dtwcpp.Dataset, whose handle is handed straight to Problem.set_data(Data),\n"
-     "so Python and C++ parse a path with one implementation: skip_cols drops\n"
-     "leading FIELDS before numeric parsing, skip_rows drops leading LINES, an\n"
-     "empty delimiter means infer from the extension, and variable-length rows\n"
-     "are preserved. The names are the loader's own -- file stem per file for a\n"
-     "folder, 1-based row number for a batch file -- so Tier-1 output carries\n"
-     "the same series names the CLI writes.");
+     "Read a path with dtwc::read_data, the reader dtwc_cl and C++ dtwc::load\n"
+     "use (CSV/TSV, a folder, and Parquet / Arrow IPC in a build with Arrow), and\n"
+     "return the owning dtwc::Data (series + names) with no intermediate Python\n"
+     "objects. Backs dtwcpp.Dataset, whose handle is handed straight to\n"
+     "Problem.set_data(Data): skip_cols drops leading FIELDS before numeric\n"
+     "parsing, skip_rows drops leading LINES, an empty delimiter means infer from\n"
+     "the extension, and variable-length rows are preserved. The names are the\n"
+     "reader's own, so Tier-1 output carries the series names the CLI writes.");
 
   // =========================================================================
   // Enums
