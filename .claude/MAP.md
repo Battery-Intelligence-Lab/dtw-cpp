@@ -37,11 +37,12 @@ Bindings: `python/` (6.7k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
 - Targets: `dtwc++` (static library), `mip-solvers` (object), `dtwc_options` / `dtwc_warnings` (interface),
   `dtwc_cl` (installed CLI), examples, benchmarks, `_dtwcpp_core` (Python), `dtwc_mex`.
 - Presets: `clang-win`, `clang-win-debug`, `msvc`, `gcc-linux`, `clang-macos`. `build/` on the Windows box is
-  clang + Ninja Release with HiGHS, Gurobi, llfio and benchmarks; Arrow is ON but not found there, so
-  `test_io_readers` is not registered (`build/arrow-pyarrow-23` has it, through the shim in its `pyarrow-config/`).
+  clang + Ninja Release with HiGHS, Gurobi, llfio and benchmarks; Arrow OFF there (Parquet tests run in
+  `build/arrow-pyarrow-23`, which has `test_io_readers` through the shim in its `pyarrow-config/`).
   `build/cuda-verify-0928` is the CUDA dir.
-- Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,GUROBI,LLFIO,YAML,METAL}`
-  (ON), `DTWC_ENABLE_{ARROW,CUDA}` (OFF), `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error),
+- Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,LLFIO,YAML}`
+  (ON), `DTWC_ENABLE_METAL` (ON on Apple only), `DTWC_ENABLE_{GUROBI,ARROW,CUDA}` (OFF); an `ON` that cannot be
+  honoured stops the configure. `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error),
   `DTWC_FP_MODEL` (`fast` | `strict`), `DTWC_ARCH_LEVEL` (`native` | `v3` | `v4`; default `native`, `v3` for Python builds),
   `DTWC_DEV_MODE`.
 - Dependencies (`cmake/Dependencies.cmake`, all pinned to a commit or SHA, checked by `check_pins.py`): CLI11,

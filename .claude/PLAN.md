@@ -45,10 +45,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ Q3 OneBatchPAM and CLARA both stay: a measured trade-off (DECISIONS §3, 2026-09-28)
 - ☑ llfio header-only spike: pinned header downloads, no quickcpplib bootstrap; wheel build with llfio ON — `78af336`
   (lands with W5d; DECISIONS §3)
-- ☐ `build/` reports Arrow ON but builds without it (Arrow not found with clang on Windows): Parquet tests run only in
+- ☑ `build/` reports Arrow ON but builds without it (Arrow not found with clang on Windows): Parquet tests run only in
   `build/arrow-pyarrow-23` until W14b makes an unhonoured `ON` a configure error. That tree finds Arrow through the
   shim `build/arrow-pyarrow-23/pyarrow-config` over `.venv`'s pyarrow 23.0.1; an Arrow gate counts only if
-  `ctest -N` lists `test_io_readers`
+  `ctest -N` lists `test_io_readers` (W14b: an unhonoured ON stops the configure; build/ now configures ARROW=OFF)
 
 ## B — deletions (W2, W3, W5, W6)
 
@@ -173,7 +173,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   every tree; dtwc++.lib's member order follows the folders); Python reads `.arrow` through pyarrow too
 - ☐ M1 Python solves the MIP with the user's highspy (optional extra; the wheel drops HiGHS); the MEX keeps HiGHS
   linked (CI MEX: HiGHS ON, Gurobi OFF); the model leaves C++ as arrays for Python (Volkan 10-01)
-- ☐ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds
+- ☑ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds (W14b: Gurobi defaults OFF; the default MEX imports no Gurobi DLL; an explicit ON needs Gurobi's bin on PATH)
 - ☐ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases
 - ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
   silently editing a copy (E1) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
@@ -207,8 +207,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `unit_test_variant_distmat`) (F1 992d51f, 50d2c46; merged b5c7048; the 3 FIXTURE_ROOT tests and 6 cmake -P CLI tests keep one directory inside the build tree, so only two runs of the same build tree collide)
 - ☑ `test_hpc` and `test_api` honour `DTWC_CL_PATH`; today `find_dtwc_binary` takes the newest `dtwc_cl` under
   `build*/`, e.g. an Arrow build that cannot load its DLLs (F2 2a3ae53; merged a965ad5)
-- ☐ `.github/workflows/python-tests.yml` runs pytest with no dtwc_cl and no `DTWC_CL_PATH`; `test_api`'s two
-  CLI-parity cases assert a binary exists (F2 note; CI not run here)
+- ☑ `.github/workflows/python-tests.yml` runs pytest with no dtwc_cl and no `DTWC_CL_PATH`; `test_api`'s two
+  CLI-parity cases assert a binary exists (F2 note; CI not run here) (W14b 015dc71: the job builds dtwc_cl, sets DTWC_CL_PATH and runs test_conformance.py; CI not run here)
 - ☐ tests narrow `index_t` to `int` (`std::set<int>` built from `centroids_ind` / `medoid_indices`, `for (int m :
   prob.centroids_ind)`; MSVC C4244 in the CUDA tree): unit_test_clustering_algorithms.cpp, algorithms/
   unit_test_duplicate_series.cpp, unit_test_fast_clara.cpp, unit_test_fast_pam.cpp, unit_test_one_batch_pam.cpp — use
@@ -217,8 +217,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 ## G — docs and release prep (W14)
 
 - ☐ W14a hand-written tier pages and a v1.0.0 → 2.0 migration page; `api-contract-2.0.md` deleted
-- ☐ W14b CMake `FATAL_ERROR` for an explicit `ON` it cannot honour; CUDA CI asserts CUDA built;
-  `test_conformance.py` collected
+- ☑ W14b CMake `FATAL_ERROR` for an explicit `ON` it cannot honour; CUDA CI asserts CUDA built;
+  `test_conformance.py` collected (W14b 9d56aab, e7354b9, 015dc71, 836bddc, d99b15d; merged 9056fcb9; Gurobi defaults OFF; Arrow without Parquet is an IPC-only build that says so)
 - ☐ W14c CHANGELOG → one `2.0.0 (unreleased)` section vs v1.0.0; MAP regenerated; audit folder deleted
 - ☑ `scripts/generate_docs.py` keeps each page's line endings: on Windows it rewrites untouched pages with LF, so `git status` shows them modified (W6e) (H1 e5c7436; merged 1a079cd; the msvc preset names no generator either, f010a9a)
 
