@@ -641,9 +641,9 @@ class TestSaveUndefinedSilhouette:
         with pytest.raises(dtwcpp.UndefinedScore, match="at least 2 non-empty"):
             dtwcpp.silhouette(prob)
 
-    def test_save_with_one_cluster_warns_on_stderr_and_skips_the_file(
+    def test_save_with_one_cluster_skips_the_silhouettes_file_silently(
             self, tmp_path, capsys):
-        """C++ Result::save writes to std::cerr and returns (api.cpp:284-289).
+        """C++ Result::save and the CLI skip the file for one cluster, silently.
 
         A Python ``warnings.warn`` here would turn a *successful* save into an
         exception under ``-W error``; the CLI does not fail, so neither may we.
@@ -654,10 +654,7 @@ class TestSaveUndefinedSilhouette:
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             res.save(tmp_path)
-        err = capsys.readouterr().err
-        assert err.startswith("Warning: silhouettes skipped: silhouette "
-                              "requires at least 2 non-empty clusters;")
-        assert err.endswith("\n")
+        assert capsys.readouterr().err == ""
         for suffix in ("_labels.csv", "_medoids.csv", "_distance_matrix.csv"):
             assert (tmp_path / f"{res.name}{suffix}").is_file()
         assert not (tmp_path / f"{res.name}_silhouettes.csv").exists()

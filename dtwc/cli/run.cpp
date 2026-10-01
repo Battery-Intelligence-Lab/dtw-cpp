@@ -531,15 +531,14 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
                          "silhouettes to save; its labels and medoids are written, with series_<i> names.");
     return;
   }
-  // A matrix-free run does not fill an O(N^2) matrix merely to write these files
-  // (api-contract-2.0.md, approved addendum 3).
+  // A matrix-free run does not fill an O(N^2) matrix merely to write these files.
   if (!prob.is_distance_matrix_filled()) return;
   const auto matrix_path = file_in_directory("_distance_matrix.csv");
-  io::write_csv(prob.distance_matrix(), matrix_path);
+  io::write_csv(std::as_const(prob).distance_matrix(), matrix_path); // the mutable overload clears filled_
   if (progress) *progress << "Distance matrix written to " << matrix_path << "\n";
 
   // s(i) is undefined for one cluster, which is no reason to fail a clustering that succeeded; a
-  // computed score that cannot be written is an error like any other file (B-05).
+  // computed score that cannot be written is an error like any other file.
   if (medoids.size() < 2) return;
   std::vector<double> silhouettes;
   try {

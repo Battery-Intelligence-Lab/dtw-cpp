@@ -294,12 +294,13 @@ class Result:
         the platform one C++'s text-mode ``ofstream`` writes, and the
         silhouettes carry C++'s ``setprecision(8)``.
 
-        With fewer than two realised clusters the silhouette is undefined: this
-        prints ``Warning: silhouettes skipped: ...`` to ``stderr`` and skips
-        ``<name>_silhouettes.csv`` instead of failing a clustering that
-        succeeded — the same stream and the same text as C++ ``Result::save``,
-        so a ``-W error`` caller is not broken by a successful save. Asking for
-        the number — ``score("silhouette")`` — still raises ``UndefinedScore``.
+        With one cluster the silhouette is undefined and ``<name>_silhouettes.csv``
+        is not written, silently, as C++ ``Result::save`` and the CLI do. A
+        partition with fewer than two realised clusters prints ``Warning:
+        silhouettes skipped: ...`` to ``stderr`` instead of failing a clustering
+        that succeeded — the same stream and text as C++, so a ``-W error``
+        caller is not broken by a successful save. Asking for the number —
+        ``score("silhouette")`` — still raises ``UndefinedScore``.
         """
         import sys
 
@@ -347,6 +348,8 @@ class Result:
                         "" if value != value else f"{value:.17g}"
                         for value in row) + "\n"
                     f.write(line.encode("ascii"))
+            if self.medoids is None or len(self.medoids) < 2:
+                return directory
             try:
                 sil = dtwcpp.silhouette(prob)
             except dtwcpp.UndefinedScore as e:
