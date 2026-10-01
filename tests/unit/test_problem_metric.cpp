@@ -3,11 +3,12 @@
  * @brief IF-2 S2: the pointwise metric is part of a Problem's distance
  *        semantics (Problem::set_metric), and FastCLARA's samples inherit it.
  *
- * @details Oracles are the checked free functions (distance::dtw) and the
- *          multivariate kernels, never the Problem under test. Registered band:
- *          exact (==) — the CPU fill calls the same kernel with the same
- *          metric. The Metal cases live in test_metal_mmap.cpp and the CUDA case
- *          in test_cuda_correctness.cpp, which may skip without a device.
+ * @details Oracles are the checked free functions (distance::dtw), never the
+ *          Problem under test: exact (==) where the same kernel runs, else within
+ *          kCrossPathRel (the fill may take the SIMD lanes, which round differently).
+ *          The fill-versus-oracle distance table is core/test_dtw.cpp. The Metal
+ *          cases live in test_metal_mmap.cpp and the CUDA case in
+ *          test_cuda_correctness.cpp, which may skip without a device.
  */
 
 #include <dtwc.hpp>
