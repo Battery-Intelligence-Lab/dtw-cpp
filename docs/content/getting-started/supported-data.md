@@ -134,7 +134,7 @@ resident list-column route.
 
 ## Arrow IPC (Feather v2)
 
-Arrow IPC (`.arrow` / `.feather`) provides **zero-copy memory-mapped** access — the file is mapped directly into address space with no deserialization overhead. Preferred for repeated clustering runs on the same dataset.
+Arrow IPC (`.arrow` / `.ipc` / `.feather`) is **memory-mapped**: the file's buffers are read in place, with no decoding step, and each series is copied once into memory. Preferred for repeated clustering runs on the same dataset.
 
 Requires `-DDTWC_ENABLE_ARROW=ON`.
 
@@ -147,9 +147,7 @@ dtwc_cl -i data.arrow -k 10
 C++:
 
 ```cpp
-dtwc::DataLoader loader;
-loader.setFile("data.arrow");
-problem.set_data(loader.load());
+problem.set_data(dtwc::read_data("data.arrow"));
 ```
 
 Python:
@@ -162,7 +160,7 @@ with ipc.open_file("data.arrow") as f:
     table = f.read_all()
 ```
 
-**Schema:** `LargeList<Float64>` for series data (supports >2 billion elements per list); an optional `name` column of `Utf8` or `LargeUtf8` (Polars' default) names the series, and a `name` column of any other type is an error. Create Arrow IPC files with the `dtwc-convert` tool — see [Data formats and conversion](../../guides/data-formats/).
+**Schema:** a `data` column of `List` or `LargeList` (more than 2 billion values) of `Float32`/`Float64` holds one series per row, across every record batch; an optional `name` column of `Utf8` or `LargeUtf8` (Polars' default) names the series (without one, or for a null name, a series is `series_<i>`), and a `name` column of any other type is an error. The schema metadata `ndim` gives the features per time step (default 1). A null series or value is an error. Create Arrow IPC files with the `dtwc-convert` tool — see [Data formats and conversion](../../guides/data-formats/).
 
 ---
 

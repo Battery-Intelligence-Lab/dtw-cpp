@@ -31,6 +31,7 @@
 
 #include "../Data.hpp"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -62,17 +63,21 @@ Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
 
 /**
  * @brief Build a Data object from an Arrow C stream (the `__arrow_c_stream__`
- *        PyCapsule protocol, as exported by polars and pandas).
+ *        PyCapsule protocol, as exported by polars and pandas, and the stream
+ *        read_data exports from an Arrow IPC file).
  *
- * Consumes every batch, concatenating the list elements into one series set
- * (names default to "series_<global i>"). The stream is FULLY CONSUMED and its
- * release callback is called before returning (including on error), so the
- * caller must not touch it afterwards.
+ * Consumes every batch, concatenating the list elements into one series set,
+ * named as data_from_arrow names them with "series_<global i>" numbered across
+ * the batches. The stream is FULLY CONSUMED and its release callback is called
+ * before returning (including on error), so the caller must not touch it
+ * afterwards.
  *
  * @param stream Borrowed-then-consumed ArrowArrayStream*.
- * @throws dtwc::InvalidInput on stream error, unsupported schema, or nulls.
+ * @param ndim   Features per time step: each series holds ndim values per step.
+ * @throws dtwc::InvalidInput on stream error, unsupported schema, nulls, list
+ *         offsets outside the values, or a series length not divisible by ndim.
  */
-Data data_from_arrow_stream(ArrowArrayStream *stream);
+Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim = 1);
 
 /**
  * @brief Release a borrowed Arrow schema/array pair (calls their C release

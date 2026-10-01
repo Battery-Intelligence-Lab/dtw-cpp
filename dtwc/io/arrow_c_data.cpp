@@ -33,14 +33,12 @@ bool is_string(ArrowType t)
   return t == NANOARROW_TYPE_STRING || t == NANOARROW_TYPE_LARGE_STRING;
 }
 
-} // namespace
-
-Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
-                     std::vector<std::string> names)
+/// Append the series of one (schema, array) pair to `series`, and a name for each
+/// to `names`: the struct's string child where it has one, else series_<index in
+/// `series`>, so the batches of a stream number on.
+void append_series(const ArrowSchema *schema, const ArrowArray *array,
+                   std::vector<std::vector<data_t>> &series, std::vector<std::string> &names)
 {
-  if (schema == nullptr || array == nullptr)
-    fail("data_from_arrow: null Arrow schema/array pointer.");
-
   ArrowError error;
   ArrowArrayView view;
   if (ArrowArrayViewInitFromSchema(&view, schema, &error) != NANOARROW_OK)
@@ -79,54 +77,63 @@ Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
 
   const ArrowArrayView *values = list_view->children[0];
   const int64_t n = list_view->length;
-
-  std::vector<std::vector<data_t>> series;
-  series.reserve(static_cast<size_t>(n));
+  if (name_view != nullptr && name_view->length != n) name_view = nullptr;
+  const int64_t first = static_cast<int64_t>(series.size());
 
   for (int64_t i = 0; i < n; ++i) {
     if (ArrowArrayViewIsNull(list_view, i))
-      fail("data_from_arrow: null series at row " + std::to_string(i) +
+      fail("data_from_arrow: null series at row " + std::to_string(first + i) +
            " (drop or fill nulls before clustering).");
 
+    // The offsets come from the producer (a file, for Arrow IPC) and index the
+    // values directly; validation checks only the first and the last.
     const int64_t start = ArrowArrayViewListChildOffset(list_view, i);
     const int64_t end = ArrowArrayViewListChildOffset(list_view, i + 1);
+    if (start < 0 || end < start || end > values->length)
+      fail("data_from_arrow: list offset [" + std::to_string(start) + ", " + std::to_string(end) +
+           ") of the series at row " + std::to_string(first + i) + " is outside the values [0, " +
+           std::to_string(values->length) + ").");
 
     std::vector<data_t> s;
     s.reserve(static_cast<size_t>(end - start));
     for (int64_t j = start; j < end; ++j) {
       if (ArrowArrayViewIsNull(values, j))
-        fail("data_from_arrow: null value inside series at row " + std::to_string(i) +
+        fail("data_from_arrow: null value inside series at row " + std::to_string(first + i) +
              " (drop or fill nulls before clustering).");
       s.push_back(static_cast<data_t>(ArrowArrayViewGetDoubleUnsafe(values, j)));
     }
     series.push_back(std::move(s));
-  }
 
-  // Names: caller-supplied wins; else the struct's utf8 child; else series_<i>.
-  if (!names.empty()) {
-    if (static_cast<int64_t>(names.size()) != n)
-      fail("data_from_arrow: names count (" + std::to_string(names.size()) +
-           ") does not match series count (" + std::to_string(n) + ").");
-  } else if (name_view != nullptr && name_view->length == n) {
-    names.reserve(static_cast<size_t>(n));
-    for (int64_t i = 0; i < n; ++i) {
-      if (ArrowArrayViewIsNull(name_view, i)) {
-        names.emplace_back("series_" + std::to_string(i));
-      } else {
-        const ArrowStringView sv = ArrowArrayViewGetStringUnsafe(name_view, i);
-        names.emplace_back(sv.data, static_cast<size_t>(sv.size_bytes));
-      }
+    if (name_view != nullptr && !ArrowArrayViewIsNull(name_view, i)) {
+      const ArrowStringView sv = ArrowArrayViewGetStringUnsafe(name_view, i);
+      names.emplace_back(sv.data, static_cast<size_t>(sv.size_bytes));
+    } else {
+      names.emplace_back("series_" + std::to_string(first + i));
     }
-  } else {
-    names.reserve(static_cast<size_t>(n));
-    for (int64_t i = 0; i < n; ++i)
-      names.emplace_back("series_" + std::to_string(i));
   }
-
-  return Data(std::move(series), std::move(names), 1);
 }
 
-Data data_from_arrow_stream(ArrowArrayStream *stream)
+} // namespace
+
+Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
+                     std::vector<std::string> names)
+{
+  if (schema == nullptr || array == nullptr)
+    fail("data_from_arrow: null Arrow schema/array pointer.");
+
+  std::vector<std::vector<data_t>> series;
+  std::vector<std::string> own_names;
+  append_series(schema, array, series, own_names);
+  if (!names.empty()) { // caller-supplied names win
+    if (names.size() != series.size())
+      fail("data_from_arrow: names count (" + std::to_string(names.size()) +
+           ") does not match series count (" + std::to_string(series.size()) + ").");
+    own_names = std::move(names);
+  }
+  return Data(std::move(series), std::move(own_names), 1);
+}
+
+Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim)
 {
   if (stream == nullptr || stream->release == nullptr)
     fail("data_from_arrow_stream: null or already-released Arrow stream.");
@@ -147,7 +154,8 @@ Data data_from_arrow_stream(ArrowArrayStream *stream)
     ~SchemaGuard() { if (s->release != nullptr) s->release(s); }
   } scguard{ &schema };
 
-  std::vector<std::vector<data_t>> all;
+  std::vector<std::vector<data_t>> series;
+  std::vector<std::string> names;
   while (true) {
     ArrowArray batch;
     batch.release = nullptr;
@@ -159,22 +167,14 @@ Data data_from_arrow_stream(ArrowArrayStream *stream)
       break; // end of stream
 
     try {
-      Data d = data_from_arrow(&schema, &batch, {});
-      for (auto &s : d.p_vec)
-        all.push_back(std::move(s));
+      append_series(&schema, &batch, series, names);
     } catch (...) {
       release_arrow(nullptr, &batch);
       throw;
     }
     release_arrow(nullptr, &batch);
   }
-
-  std::vector<std::string> names;
-  names.reserve(all.size());
-  for (size_t i = 0; i < all.size(); ++i)
-    names.emplace_back("series_" + std::to_string(i));
-
-  return Data(std::move(all), std::move(names), 1);
+  return Data(std::move(series), std::move(names), ndim);
 }
 
 void release_arrow(ArrowSchema *schema, ArrowArray *array) noexcept

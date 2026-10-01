@@ -10,7 +10,15 @@
 #include "../fileOperations.hpp"
 
 #ifdef DTWC_HAS_ARROW
-#include "arrow_ipc_reader.hpp"
+#include "arrow_c_data.hpp"
+
+#include <arrow/c/bridge.h>
+#include <arrow/io/api.h>
+#include <arrow/ipc/api.h>
+#include <arrow/table.h>
+#include <arrow/util/key_value_metadata.h>
+
+#include <charconv>
 #endif
 #ifdef DTWC_HAS_PARQUET
 #include "parquet_chunk_reader.hpp"
@@ -34,6 +42,60 @@ bool is_parquet_file(const fs::path &path)
   const auto ext = lower_extension(path);
   return ext == ".parquet" || ext == ".pq";
 }
+
+#ifdef DTWC_HAS_ARROW
+void check_arrow(const arrow::Status &status, const char *what)
+{
+  if (!status.ok()) throw IOError(std::string(what) + ": " + status.ToString());
+}
+
+/// Arrow C++ maps the file and exports its 'data' and 'name' columns, every record
+/// batch, as one C stream, which the one Arrow converter reads: the values are
+/// copied once, into the Data.
+Data read_arrow_ipc(const fs::path &path)
+{
+  // Arrow takes a UTF-8 path on every platform; path::string() is the ANSI code page on Windows.
+  auto file = arrow::io::MemoryMappedFile::Open(path_to_utf8(path), arrow::io::FileMode::READ);
+  check_arrow(file.status(), "Arrow IPC open");
+  auto reader = arrow::ipc::RecordBatchFileReader::Open(*file);
+  check_arrow(reader.status(), "Arrow IPC footer");
+  const auto schema = (*reader)->schema();
+
+  // Features per time step: a whole positive integer, nothing else ("2x" is not
+  // 2, "-1" does not wrap, and 0 would divide every series length by zero).
+  std::size_t ndim = 1;
+  if (const auto &metadata = schema->metadata(); metadata != nullptr) {
+    if (const int key = metadata->FindKey("ndim"); key >= 0) {
+      const std::string &text = metadata->value(key);
+      const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), ndim);
+      if (ec != std::errc{} || end != text.data() + text.size() || ndim == 0)
+        throw IOError("schema metadata 'ndim' must be a positive integer, got '" + text
+                      + "'. Set it to the number of features per timestep (1 for univariate data).");
+    }
+  }
+
+  // The series are the 'data' column, named by the 'name' column when there is one.
+  std::vector<int> columns{ schema->GetFieldIndex("data") };
+  if (columns.front() < 0)
+    throw IOError("no 'data' column; write the series as a List or LargeList of Float32/Float64 named 'data'.");
+  if (const int name = schema->GetFieldIndex("name"); name >= 0) {
+    const auto &type = schema->field(name)->type();
+    if (type->id() != arrow::Type::STRING && type->id() != arrow::Type::LARGE_STRING)
+      throw IOError("the 'name' column must be Utf8 or LargeUtf8, got " + type->ToString()
+                    + ". Write the names as strings, or drop the column.");
+    columns.push_back(name);
+  }
+
+  auto table = (*reader)->ToTable();
+  check_arrow(table.status(), "Arrow IPC read");
+  auto selected = (*table)->SelectColumns(columns);
+  check_arrow(selected.status(), "Arrow IPC columns");
+  ArrowArrayStream stream;
+  check_arrow(arrow::ExportRecordBatchReader(std::make_shared<arrow::TableBatchReader>(*selected), &stream),
+              "Arrow IPC export");
+  return io::data_from_arrow_stream(&stream, ndim);
+}
+#endif
 
 } // namespace
 
@@ -102,15 +164,7 @@ Data read_data(const fs::path &path, index_t skip_cols, index_t skip_rows, char 
     }
 #endif
 #ifdef DTWC_HAS_ARROW
-    if (format == InputFormat::ArrowIPC) { // copied out of the map
-      auto source = io::ArrowIPCDataSource::open(path);
-      std::vector<std::vector<data_t>> series(source.size());
-      for (std::size_t i = 0; i < series.size(); ++i) {
-        const auto values = source.series(i);
-        series[i].assign(values.begin(), values.end());
-      }
-      return Data(std::move(series), source.all_names(), source.ndim());
-    }
+    if (format == InputFormat::ArrowIPC) return read_arrow_ipc(path);
 #endif
     DataLoader loader{ path }; // text: input_format() refused every format this build has no reader for
     loader.start_column(skip_cols).start_row(skip_rows).verbosity(0);

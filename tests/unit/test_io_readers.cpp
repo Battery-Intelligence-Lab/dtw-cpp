@@ -1,15 +1,7 @@
 /**
  * @file test_io_readers.cpp
- * @brief Regression tests for Arrow IPC + Parquet reader hardening (Task 0.8).
- *
- * Targets three confirmed audit findings (2026-06-01, "io-security"):
- *   1. arrow_ipc_reader / parquet_reader cast list/scalar values to DoubleArray
- *      with NO Float64 check -> a Float32 file is reinterpreted as doubles
- *      (garbage values + out-of-bounds read of the trailing element).
- *   2. list offsets are used to index the values buffer with NO bounds check ->
- *      a crafted file whose offset exceeds the values length reads OOB.
- *   3. ArrowIPCDataSource reads `ndim` from schema metadata with no lower bound;
- *      series_length() divides by ndim_, so ndim=0 is a division by zero.
+ * @brief The Arrow IPC and Parquet routes of dtwc::read_data, and the Parquet
+ *        reader's streaming entries: names, values, nulls, offsets, metadata.
  *
  * Each test builds an Arrow/Parquet fixture with the Arrow C++ API in a temp
  * directory, then exercises the reader. The tests are gated on DTWC_HAS_ARROW /
@@ -51,7 +43,6 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 
 #include <base/error.hpp>
 #include <fileOperations.hpp>
-#include <io/arrow_ipc_reader.hpp>
 #include <io/read_data.hpp>
 
 #if defined(DTWC_HAS_PARQUET)
@@ -79,21 +70,6 @@ std::filesystem::path tmpdir()
   return dir.path;
 }
 
-// Build a List<Float32> array from ragged series.
-std::shared_ptr<arrow::Array> make_list_f32(const std::vector<std::vector<float>> &series)
-{
-  auto pool = arrow::default_memory_pool();
-  auto vb = std::make_shared<arrow::FloatBuilder>(pool);
-  arrow::ListBuilder lb(pool, vb);
-  for (const auto &s : series) {
-    REQUIRE(lb.Append().ok());
-    REQUIRE(vb->AppendValues(s).ok());
-  }
-  std::shared_ptr<arrow::Array> out;
-  REQUIRE(lb.Finish(&out).ok());
-  return out;
-}
-
 // Build a List<Float64> array from ragged series.
 std::shared_ptr<arrow::Array> make_list_f64(const std::vector<std::vector<double>> &series)
 {
@@ -109,144 +85,100 @@ std::shared_ptr<arrow::Array> make_list_f64(const std::vector<std::vector<double
   return out;
 }
 
-// Write an Arrow IPC (Feather v2) file holding one record batch.
-void write_ipc_columns(const std::filesystem::path &path,
-                       const std::shared_ptr<arrow::Schema> &schema,
-                       const std::vector<std::shared_ptr<arrow::Array>> &columns)
+// Write an Arrow IPC (Feather v2) file, one record batch per column set.
+void write_ipc(const std::filesystem::path &path,
+               const std::shared_ptr<arrow::Schema> &schema,
+               const std::vector<std::vector<std::shared_ptr<arrow::Array>>> &batches)
 {
-  auto batch = arrow::RecordBatch::Make(schema, columns.front()->length(), columns);
   auto out = unwrap(arrow::io::FileOutputStream::Open(path.string()));
   auto writer = unwrap(arrow::ipc::MakeFileWriter(out, schema));
-  REQUIRE(writer->WriteRecordBatch(*batch).ok());
+  for (const auto &columns : batches)
+    REQUIRE(writer->WriteRecordBatch(*arrow::RecordBatch::Make(schema, columns.front()->length(), columns)).ok());
   REQUIRE(writer->Close().ok());
   REQUIRE(out->Close().ok());
 }
 
-// Write a single-column Arrow IPC (Feather v2) file.
-void write_ipc(const std::filesystem::path &path,
-               const std::shared_ptr<arrow::Schema> &schema,
-               const std::shared_ptr<arrow::Array> &arr)
+// A list column holding a null cell, and one holding a null inside a cell.
+std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>> null_lists()
 {
-  write_ipc_columns(path, schema, { arr });
+  auto pool = arrow::default_memory_pool();
+  std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>> out;
+  for (const bool null_cell : { true, false }) {
+    auto vb = std::make_shared<arrow::DoubleBuilder>(pool);
+    arrow::ListBuilder lb(pool, vb);
+    REQUIRE(lb.Append().ok());
+    if (null_cell) {
+      REQUIRE(vb->AppendValues(std::vector<double>{ 1.0, 2.0 }).ok());
+      REQUIRE(lb.AppendNull().ok());
+    } else {
+      REQUIRE(vb->Append(1.0).ok());
+      REQUIRE(vb->AppendNull().ok());
+      REQUIRE(vb->Append(3.0).ok());
+    }
+    std::shared_ptr<arrow::Array> arr;
+    REQUIRE(lb.Finish(&arr).ok());
+    out.emplace_back(null_cell ? "null cell" : "null element", arr);
+  }
+  return out;
 }
 
 } // namespace
 
-// -------------------------- Arrow IPC reader --------------------------
+// --------------------- Arrow IPC (read_data, via a C stream) ---------------------
 
-TEST_CASE("ArrowIPC: valid Float64 file reads with ndim>1", "[io][arrow]")
+TEMPLATE_TEST_CASE("ArrowIPC: every record batch, its names and ndim reach the Data", "[io][arrow]",
+                   arrow::StringBuilder, arrow::LargeStringBuilder)
 {
-  // Positive control: proves the new value-type / offset / ndim guards do NOT
-  // over-reject a well-formed multivariate Float64 file.
-  auto arr = make_list_f64({ { 1.0, 2.0, 3.0, 4.0 } }); // one series, 4 flat values
-  auto meta = arrow::key_value_metadata({ "ndim" }, { "2" });
-  auto schema = arrow::schema({ arrow::field("data", arr->type()) }, meta);
-  auto tmp = tmpdir() / "valid_ndim2.arrow";
-  write_ipc(tmp, schema, arr);
+  // The C stream path dropped the 'name' column for series_<i>, and the IPC
+  // reader refused a second record batch. LargeUtf8 is Polars' default string type.
+  const auto names = [](const std::vector<std::string> &values) {
+    TestType builder;
+    REQUIRE(builder.AppendValues(values).ok());
+    std::shared_ptr<arrow::Array> out;
+    REQUIRE(builder.Finish(&out).ok());
+    return out;
+  };
+  const auto first_names = names({ "first", "second" });
+  const auto first_data = make_list_f64({ { 1.0, 2.0, 3.0, 4.0 }, { 5.0, 6.0 } });
+  const auto schema = arrow::schema(
+    { arrow::field("name", first_names->type()), arrow::field("data", first_data->type()) },
+    arrow::key_value_metadata({ "ndim" }, { "2" }));
+  const auto tmp = tmpdir() / (first_names->type()->ToString() + "_batches.arrow");
+  write_ipc(tmp, schema, { { first_names, first_data }, { names({ "third" }), make_list_f64({ { 7.0, 8.0 } }) } });
 
-  {
-    auto src = dtwc::io::ArrowIPCDataSource::open(tmp);
-    REQUIRE(src.size() == 1);
-    REQUIRE(src.ndim() == 2);
-    REQUIRE(src.series_length(0) == 2); // 4 flat values / ndim 2
-    auto sp = src.series(0);
-    REQUIRE(sp.size() == 4);
-    CHECK_THAT(sp[0], WithinAbs(1.0, 1e-12));
-    CHECK_THAT(sp[3], WithinAbs(4.0, 1e-12));
-  } // Windows cannot unlink an Arrow file while the reader still owns its mmap.
+  const auto data = dtwc::read_data(tmp);
+  CHECK(data.ndim == 2);
+  CHECK(data.series_length(0) == 2); // 4 flat values / ndim 2
+  CHECK(data.p_names == std::vector<std::string>{ "first", "second", "third" });
+  CHECK(data.p_vec == std::vector<std::vector<double>>{ { 1.0, 2.0, 3.0, 4.0 }, { 5.0, 6.0 }, { 7.0, 8.0 } });
   std::filesystem::remove(tmp);
 }
 
-TEST_CASE("ArrowIPC: Float32 list values rejected by name", "[io][arrow]")
+TEST_CASE("ArrowIPC: out-of-bounds list offset rejected", "[io][arrow][security]")
 {
-  // Bug 1: open() cast list values to DoubleArray with no Float64 check, so a
-  // List<Float32> file was reinterpreted as doubles (garbage + OOB). The fix
-  // rejects non-Float64 values by name. PRE-FIX open() succeeds (no throw) so
-  // this REQUIRE_THROWS_AS fails; POST-FIX open() throws.
-  auto arr = make_list_f32({ { 1.5f, 2.5f, 3.5f }, { 4.5f, 5.5f } });
-  auto schema = arrow::schema({ arrow::field("data", arr->type()) });
-  auto tmp = tmpdir() / "f32_list.arrow";
-  write_ipc(tmp, schema, arr);
-
-  REQUIRE_THROWS_AS(dtwc::io::ArrowIPCDataSource::open(tmp), std::runtime_error);
-  std::filesystem::remove(tmp);
-}
-
-TEST_CASE("ArrowIPC: ndim=0 metadata rejected", "[io][arrow]")
-{
-  // Bug 3: ndim read from schema metadata with no lower bound; series_length()
-  // divides the flat size by ndim_, so ndim=0 is a division by zero. PRE-FIX
-  // open() succeeds with ndim_==0 (and series_length() later divides by zero);
-  // POST-FIX open() throws.
-  auto arr = make_list_f64({ { 1.0, 2.0, 3.0 } });
-  auto meta = arrow::key_value_metadata({ "ndim" }, { "0" });
-  auto schema = arrow::schema({ arrow::field("data", arr->type()) }, meta);
-  auto tmp = tmpdir() / "ndim0.arrow";
-  write_ipc(tmp, schema, arr);
-
-  REQUIRE_THROWS_AS(dtwc::io::ArrowIPCDataSource::open(tmp), std::runtime_error);
-  std::filesystem::remove(tmp);
-}
-
-TEST_CASE("ArrowIPC: out-of-bounds list offset rejected", "[io][arrow]")
-{
-  // Bug 2: offsets were used to index the mmap'd values buffer with no bounds
-  // check, so a crafted file whose offset exceeds the values length makes
-  // series() read OOB. We construct a ListArray directly from raw buffers with a
-  // corrupt offset (6) that exceeds the values length (5). The IPC writer only
-  // reads offsets[0] and offsets[length] (=3) to slice the values it emits, so
-  // the file writes cleanly, but offset 6 exceeds the values length however the
-  // writer slices. PRE-FIX open() succeeds (series() would read OOB); POST-FIX
-  // open() throws at the offset-validation loop.
+  // A crafted file: int32 offsets [0, 6, 3] over 5 values. The IPC writer keeps
+  // values [offsets[0], offsets[length]) = 3 of them, so the middle offset, 6,
+  // points past the mapped values; reading it would run off the buffer.
   auto pool = arrow::default_memory_pool();
   arrow::DoubleBuilder vb(pool);
   REQUIRE(vb.AppendValues(std::vector<double>{ 1.0, 2.0, 3.0, 4.0, 5.0 }).ok());
   std::shared_ptr<arrow::Array> values;
   REQUIRE(vb.Finish(&values).ok());
-
-  // Corrupt int32 offsets for a length-2 list: [0, 6, 3]. offset 6 is OOB.
   auto offsets = arrow::Buffer::FromVector(std::vector<int32_t>{ 0, 6, 3 });
   auto list_type = arrow::list(arrow::float64());
   auto list = std::static_pointer_cast<arrow::Array>(
     std::make_shared<arrow::ListArray>(list_type, /*length=*/2, offsets, values));
-
-  auto schema = arrow::schema({ arrow::field("data", list_type) });
   auto tmp = tmpdir() / "oob_offsets.arrow";
-  write_ipc(tmp, schema, list);
+  write_ipc(tmp, arrow::schema({ arrow::field("data", list_type) }), { { list } });
 
-  REQUIRE_THROWS_AS(dtwc::io::ArrowIPCDataSource::open(tmp), std::runtime_error);
-  std::filesystem::remove(tmp);
-}
-
-TEMPLATE_TEST_CASE("ArrowIPC: a Utf8 or LargeUtf8 name column is read", "[io][arrow]",
-                   arrow::StringBuilder, arrow::LargeStringBuilder)
-{
-  // Positive control for the name-column type check below. LargeUtf8 is
-  // Polars' default string type: it must be read, with its 64-bit offsets.
-  auto data = make_list_f64({ { 1.0, 2.0 }, { 3.0, 4.0 } });
-  TestType sb;
-  REQUIRE(sb.AppendValues(std::vector<std::string>{ "first", "second" }).ok());
-  std::shared_ptr<arrow::Array> names;
-  REQUIRE(sb.Finish(&names).ok());
-  auto schema = arrow::schema(
-    { arrow::field("data", data->type()), arrow::field("name", names->type()) });
-  auto tmp = tmpdir() / (names->type()->ToString() + "_names.arrow");
-  write_ipc_columns(tmp, schema, { data, names });
-
-  {
-    auto src = dtwc::io::ArrowIPCDataSource::open(tmp);
-    REQUIRE(src.size() == 2);
-    REQUIRE(src.name(0) == "first");
-    REQUIRE(src.name(1) == "second");
-  } // Windows cannot unlink an Arrow file while the reader still owns its mmap.
+  CHECK_THROWS_WITH(dtwc::read_data(tmp), Catch::Matchers::ContainsSubstring("offset"));
   std::filesystem::remove(tmp);
 }
 
 TEST_CASE("ArrowIPC: a non-string name column is rejected by type", "[io][arrow]")
 {
-  // B-08: the 'name' column was static_cast to StringArray with no type check,
-  // so an Int64 name column was undefined behaviour. It is now an IOError (a
-  // bad Arrow type, contract §5) naming the file and the column.
+  // An Int64 'name' column is an IOError (a bad Arrow type) naming the file and
+  // the column, not series silently named series_<i>.
   auto data = make_list_f64({ { 1.0, 2.0 }, { 3.0, 4.0 } });
   arrow::Int64Builder nb;
   REQUIRE(nb.AppendValues(std::vector<int64_t>{ 7, 8 }).ok());
@@ -255,10 +187,10 @@ TEST_CASE("ArrowIPC: a non-string name column is rejected by type", "[io][arrow]
   auto schema = arrow::schema(
     { arrow::field("data", data->type()), arrow::field("name", names->type()) });
   auto tmp = tmpdir() / "int64_names.arrow";
-  write_ipc_columns(tmp, schema, { data, names });
+  write_ipc(tmp, schema, { { data, names } });
 
-  REQUIRE_THROWS_AS(dtwc::io::ArrowIPCDataSource::open(tmp), dtwc::IOError);
-  REQUIRE_THROWS_WITH(dtwc::io::ArrowIPCDataSource::open(tmp),
+  REQUIRE_THROWS_AS(dtwc::read_data(tmp), dtwc::IOError);
+  REQUIRE_THROWS_WITH(dtwc::read_data(tmp),
                       Catch::Matchers::ContainsSubstring("'name'")
                         && Catch::Matchers::ContainsSubstring("int64_names.arrow"));
   std::filesystem::remove(tmp);
@@ -266,21 +198,35 @@ TEST_CASE("ArrowIPC: a non-string name column is rejected by type", "[io][arrow]
 
 TEST_CASE("ArrowIPC: ndim metadata must be a whole positive integer", "[io][arrow]")
 {
-  // B-08: ndim was parsed with an unguarded std::stoul, so "abc" escaped as a
-  // context-free std::invalid_argument, "-1" wrapped to 2^64 - 1 and "2x" read
-  // as 2. Each is now an IOError naming the file and the value.
-  for (const std::string text : { "abc", "-1", "2x", "", "99999999999999999999999" }) {
+  // An unguarded std::stoul let "abc" escape as a context-free
+  // std::invalid_argument, wrapped "-1" to 2^64 - 1 and read "2x" as 2; 0 would
+  // divide every series length by zero. Each is an IOError naming the file.
+  for (const std::string text : { "0", "abc", "-1", "2x", "", "99999999999999999999999" }) {
     INFO("ndim metadata '" << text << "'");
     auto arr = make_list_f64({ { 1.0, 2.0, 3.0, 4.0 } });
     auto meta = arrow::key_value_metadata({ "ndim" }, { text });
     auto schema = arrow::schema({ arrow::field("data", arr->type()) }, meta);
     auto tmp = tmpdir() / "ndim_text.arrow";
-    write_ipc(tmp, schema, arr);
+    write_ipc(tmp, schema, { { arr } });
 
-    REQUIRE_THROWS_AS(dtwc::io::ArrowIPCDataSource::open(tmp), dtwc::IOError);
-    REQUIRE_THROWS_WITH(dtwc::io::ArrowIPCDataSource::open(tmp),
+    REQUIRE_THROWS_AS(dtwc::read_data(tmp), dtwc::IOError);
+    REQUIRE_THROWS_WITH(dtwc::read_data(tmp),
                         Catch::Matchers::ContainsSubstring("ndim")
                           && Catch::Matchers::ContainsSubstring("ndim_text.arrow"));
+    std::filesystem::remove(tmp);
+  }
+}
+
+TEST_CASE("ArrowIPC: a null series or a null value is rejected", "[io][arrow][security]")
+{
+  // The IPC reader never looked at the validity bitmap: a null slot became
+  // whatever bytes the values buffer held, straight into the distances.
+  for (const auto &[label, arr] : null_lists()) {
+    CAPTURE(label);
+    auto tmp = tmpdir() / ("ipc_" + label.substr(5) + ".arrow");
+    write_ipc(tmp, arrow::schema({ arrow::field("data", arr->type()) }), { { arr } });
+    CHECK_THROWS_AS(dtwc::read_data(tmp), dtwc::InvalidInput);
+    CHECK_THROWS_WITH(dtwc::read_data(tmp), Catch::Matchers::ContainsSubstring("null"));
     std::filesystem::remove(tmp);
   }
 }
@@ -297,6 +243,21 @@ void write_parquet(const std::filesystem::path &path,
   auto out = unwrap(arrow::io::FileOutputStream::Open(dtwc::path_to_utf8(path))); // Arrow paths are UTF-8
   REQUIRE(parquet::arrow::WriteTable(*table, arrow::default_memory_pool(), out, 1024).ok());
   REQUIRE(out->Close().ok());
+}
+
+// Build a List<Float32> array from ragged series.
+std::shared_ptr<arrow::Array> make_list_f32(const std::vector<std::vector<float>> &series)
+{
+  auto pool = arrow::default_memory_pool();
+  auto vb = std::make_shared<arrow::FloatBuilder>(pool);
+  arrow::ListBuilder lb(pool, vb);
+  for (const auto &s : series) {
+    REQUIRE(lb.Append().ok());
+    REQUIRE(vb->AppendValues(s).ok());
+  }
+  std::shared_ptr<arrow::Array> out;
+  REQUIRE(lb.Finish(&out).ok());
+  return out;
 }
 
 } // namespace
@@ -596,34 +557,7 @@ TEST_CASE("Parquet: a null list cell or null list element is rejected",
 {
   // A null LIST cell used to yield a wrong (empty or shifted) series; a null
   // element inside an otherwise valid cell used to yield raw buffer bytes.
-  auto pool = arrow::default_memory_pool();
-
-  auto null_cell = [&] {
-    auto vb = std::make_shared<arrow::DoubleBuilder>(pool);
-    arrow::ListBuilder lb(pool, vb);
-    REQUIRE(lb.Append().ok());
-    REQUIRE(vb->AppendValues(std::vector<double>{ 1.0, 2.0 }).ok());
-    REQUIRE(lb.AppendNull().ok());
-    std::shared_ptr<arrow::Array> out;
-    REQUIRE(lb.Finish(&out).ok());
-    return out;
-  }();
-
-  auto null_element = [&] {
-    auto vb = std::make_shared<arrow::DoubleBuilder>(pool);
-    arrow::ListBuilder lb(pool, vb);
-    REQUIRE(lb.Append().ok());
-    REQUIRE(vb->Append(1.0).ok());
-    REQUIRE(vb->AppendNull().ok());
-    REQUIRE(vb->Append(3.0).ok());
-    std::shared_ptr<arrow::Array> out;
-    REQUIRE(lb.Finish(&out).ok());
-    return out;
-  }();
-
-  for (const auto &[label, arr] :
-       std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>>{
-         { "null cell", null_cell }, { "null element", null_element } }) {
+  for (const auto &[label, arr] : null_lists()) {
     CAPTURE(label);
     auto schema = arrow::schema({ arrow::field("series", arr->type()) });
     auto tmp = tmpdir() / ("list_" + label.substr(5) + ".parquet");
