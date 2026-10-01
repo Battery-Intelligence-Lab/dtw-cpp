@@ -175,3 +175,35 @@ TEST_CASE("interpolate_linear: empty vector returns empty", "[missing_utils]")
   auto result = dtwc::interpolate_linear(v);
   REQUIRE(result.empty());
 }
+
+TEST_CASE("interpolate_linear: leading, interior and trailing gaps in one series", "[missing_utils]")
+{
+  double nan = std::numeric_limits<double>::quiet_NaN();
+  // NOCB fills the first two, the midpoint of 1 and 3 fills the third, LOCF the last.
+  std::vector<double> v = { nan, 1.0, nan, 3.0, nan };
+  auto result = dtwc::interpolate_linear(v);
+  REQUIRE(result.size() == 5u);
+  REQUIRE_THAT(result[0], WithinAbs(1.0, 1e-15));
+  REQUIRE_THAT(result[1], WithinAbs(1.0, 1e-15));
+  REQUIRE_THAT(result[2], WithinAbs(2.0, 1e-15));
+  REQUIRE_THAT(result[3], WithinAbs(3.0, 1e-15));
+  REQUIRE_THAT(result[4], WithinAbs(3.0, 1e-15));
+}
+
+TEST_CASE("interpolate_linear: a single observed value fills both sides", "[missing_utils]")
+{
+  double nan = std::numeric_limits<double>::quiet_NaN();
+  std::vector<double> v = { nan, nan, 7.0, nan, nan };
+  auto result = dtwc::interpolate_linear(v);
+  REQUIRE(result.size() == 5u);
+  for (auto x : result) REQUIRE_THAT(x, WithinAbs(7.0, 1e-15));
+}
+
+TEST_CASE("interpolate_linear: float", "[missing_utils]")
+{
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  std::vector<float> v = { 0.0f, nan, 4.0f };
+  auto result = dtwc::interpolate_linear(v);
+  REQUIRE(result.size() == 3u);
+  REQUIRE_THAT(static_cast<double>(result[1]), WithinAbs(2.0, 1e-6));
+}
