@@ -519,7 +519,8 @@ TEST_CASE("ZeroCost kernels equal the recurrence for every NaN pattern, in both 
         const auto& b = swapped ? x : y;
         CHECK(dtwMissing_L<double>(a, b, -1, metric) == want(-1));
         CHECK(dtwMissing<double>(a, b, metric) == want(-1));
-        for (const int band : { -1, 2, 100 })
+        // The masked pairs' best paths stay within one step of the diagonal: only band 0 binds.
+        for (const int band : { -1, 0, 2, 100 })
           CHECK(ts::same_distance(dtwMissing_banded<double>(a, b, band, -1, metric), want(band)));
       }
     }

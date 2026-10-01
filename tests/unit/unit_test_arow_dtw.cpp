@@ -848,7 +848,8 @@ TEST_CASE("DTW-AROW kernels equal the recurrence for every NaN pattern, in both 
         CHECK(arow == want(-1));
         CHECK(arow >= zero_cost);
         CHECK(dtwAROW<double>(a, b, metric) == want(-1));
-        for (const int band : { -1, 2, 100 })
+        // The masked pairs' best paths stay within one step of the diagonal: only band 0 binds.
+        for (const int band : { -1, 0, 2, 100 })
           CHECK(ts::same_distance(dtwAROW_banded<double>(a, b, band, metric), want(band)));
       }
     }

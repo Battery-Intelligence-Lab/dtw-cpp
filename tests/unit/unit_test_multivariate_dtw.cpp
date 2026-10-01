@@ -22,6 +22,7 @@
 
 #include <vector>
 #include <cmath>
+#include <limits>
 #include <random>
 
 using Catch::Matchers::WithinAbs;
@@ -340,7 +341,8 @@ TEST_CASE("MV DTW: ndim 2, 5, 10 and 50 equal the oracle, full and banded", "[mv
     for (const auto metric : { MetricType::L1, MetricType::L2, MetricType::SquaredL2 })
       for (const auto [nx, ny] : shapes) {
         const auto x = ts::benchmark_series(nx * ndim, 31), y = ts::benchmark_series(ny * ndim, 32);
-        for (const int band : { -1, 5, 100 }) { // 5 is the longest length difference
+        // 0 binds on 9x9 and leaves the unequal shapes no path; 5 is the longest length difference.
+        for (const int band : { -1, 0, 5, 100 }) {
           ts::OracleSpec spec;
           spec.metric = metric == MetricType::L1   ? ts::OracleMetric::L1
                         : metric == MetricType::L2 ? ts::OracleMetric::L2
@@ -352,9 +354,11 @@ TEST_CASE("MV DTW: ndim 2, 5, 10 and 50 equal the oracle, full and banded", "[mv
                                       : dtwc::dtwBanded_mv(x.data(), nx, y.data(), ny, ndim, band, -1.0, metric);
           INFO("ndim " << ndim << ", band " << band << ", " << nx << "x" << ny << ": got " << got
                        << ", oracle " << want);
-          CHECK(ts::dtw_routes_agree<double>(got, want, nx, ny));
+          // The library's sentinel for no path is max(); the oracle's is infinity.
+          CHECK((std::isinf(want) ? got == std::numeric_limits<double>::max()
+                                  : ts::dtw_routes_agree<double>(got, want, nx, ny)));
           ++checks;
         }
       }
-  CHECK(checks == 4 * 3 * 3 * 3);
+  CHECK(checks == 4 * 3 * 3 * 4);
 }
