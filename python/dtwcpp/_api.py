@@ -39,6 +39,32 @@ def _float_rows(source):
     return [list(row) for row in rectangular]
 
 
+def _read_parquet(source, files, skip_cols, skip_rows, delimiter):
+    """Parquet through the installed pyarrow: the wheel links no Arrow C++.
+
+    The table reaches C++ as an Arrow C stream, through the converter every
+    Arrow source takes, so each row of the first list column is a series,
+    named by the first string column (else ``series_<i>``).
+    """
+    from dtwcpp import InvalidInput, IOError as DtwcIOError, _dtwcpp_core
+    if skip_cols or skip_rows or delimiter:
+        raise InvalidInput(
+            "load: skip_cols, skip_rows and delimiter parse CSV/TSV text and "
+            "cannot be honoured for a Parquet input; drop them.")
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        raise ImportError(
+            "Reading Parquet needs pyarrow: install dtwcpp[parquet].") from None
+    try:
+        table = pa.concat_tables([pq.read_table(os.fspath(f)) for f in files])
+    except (OSError, pa.ArrowException) as error:
+        raise DtwcIOError(
+            f"load: failed to read '{os.fspath(source)}': {error}") from error
+    return _dtwcpp_core.data_from_arrow_c_array(table)
+
+
 class Dataset:
     """A lazy handle to time-series data — a local array or a file path.
 
@@ -68,9 +94,10 @@ class Dataset:
     def _as_data(self):
         """Read the source once, caching the owning C++ ``dtwc::Data``.
 
-        The handle holds the C++ object, not a ``list[list[float]]``: a path is
-        parsed by the C++ ``DataLoader`` — the reader C++ and the CLI use — and
-        the result is handed straight to ``Problem.set_data(Data)``, so a
+        The handle holds the C++ object, not a ``list[list[float]]``: a text
+        path is parsed by the C++ ``dtwc::read_data`` — the reader C++ and the
+        CLI use — and a Parquet file or folder by the installed pyarrow; either
+        way the result is handed straight to ``Problem.set_data(Data)``, so a
         Tier-1 run creates no Python floats at all. ``skip_cols`` therefore
         drops leading FIELDS before numeric parsing (an id column may be text),
         variable-length rows are preserved, and the names are the loader's own
@@ -83,9 +110,14 @@ class Dataset:
         if self._data is None:
             from dtwcpp import _dtwcpp_core
             if self.is_path:
-                self._data = _dtwcpp_core._read_data(
-                    os.fspath(self.source), self.skip_cols, self.skip_rows,
-                    self.delimiter or "")
+                path = os.fspath(self.source)
+                parquet = _dtwcpp_core._parquet_files(path)
+                self._data = (
+                    _read_parquet(path, parquet, self.skip_cols, self.skip_rows,
+                                  self.delimiter)
+                    if parquet else
+                    _dtwcpp_core._read_data(path, self.skip_cols, self.skip_rows,
+                                            self.delimiter or ""))
             else:
                 from dtwcpp import InvalidInput
                 rows = _float_rows(self.source)[self.skip_rows:]

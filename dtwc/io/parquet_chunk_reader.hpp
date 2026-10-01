@@ -1,8 +1,8 @@
-/// @file parquet_chunk_reader.hpp — Row-group streaming reader for Parquet files.
+/// @file parquet_chunk_reader.hpp — The Parquet reader.
 ///
-/// Provides chunked access to Parquet data for RAM-aware processing.
-/// Each row group can be read independently, enabling streaming CLARA
-/// assignment without loading the entire dataset into memory.
+/// read_data() reads a file whole; streaming CLARA reads row groups and
+/// sparse rows, each row group independently, without loading the entire
+/// dataset into memory.
 ///
 /// Requires DTWC_HAS_PARQUET (Apache Arrow + Parquet, Apache-2.0 license).
 ///
@@ -17,6 +17,7 @@
 #include "../Data.hpp"
 #include "../base/error.hpp"
 #include "../base/settings.hpp"
+#include "../fileOperations.hpp"
 #include "parquet_schema.hpp"
 
 #include <arrow/api.h>
@@ -63,17 +64,14 @@ inline void extract_list_element(const std::shared_ptr<ListArrayT> &list,
   copy_arrow_numeric<T>(values, start, sz, out.data());
 }
 
-/// Extract series from an Arrow table column into vectors of `T`.
-/// Handles scalar (one column = one series), list, and large-list columns, for
-/// Float32 and Float64 source values alike. One definition serves the double
-/// and float destinations that previously had two hand-copied bodies each.
+/// Append the series of an Arrow table column to `vecs` as `T`: a scalar
+/// column is one series, a list or large-list column one series per cell, for
+/// Float32 and Float64 source values alike.
 template <typename T>
-inline void extract_series_from_column_as(
+inline void extract_series_from_column(
   const std::shared_ptr<arrow::ChunkedArray> &col,
   const std::shared_ptr<arrow::DataType> &col_type,
-  std::vector<std::vector<T>> &vecs,
-  std::vector<std::string> &names,
-  int64_t name_offset = 0)
+  std::vector<std::vector<T>> &vecs)
 {
   const bool is_list = col_type->id() == arrow::Type::LIST
     || col_type->id() == arrow::Type::LARGE_LIST;
@@ -88,8 +86,6 @@ inline void extract_series_from_column_as(
         std::vector<T> series;
         extract_list_element(list, i, series);
         vecs.push_back(std::move(series));
-        names.push_back("series_" + std::to_string(
-          name_offset + static_cast<int64_t>(vecs.size()) - 1));
       }
     };
 
@@ -114,38 +110,16 @@ inline void extract_series_from_column_as(
     copy_arrow_numeric<T>(*chunk, 0, n, series.data() + offset);
   }
   vecs.push_back(std::move(series));
-  names.push_back("series_" + std::to_string(name_offset));
-}
-
-/// Float64 destination (the default resident representation).
-inline void extract_series_from_column(
-  const std::shared_ptr<arrow::ChunkedArray> &col,
-  const std::shared_ptr<arrow::DataType> &col_type,
-  std::vector<std::vector<data_t>> &vecs,
-  std::vector<std::string> &names,
-  int64_t name_offset = 0)
-{
-  extract_series_from_column_as<data_t>(col, col_type, vecs, names, name_offset);
-}
-
-/// Float32 destination: keeps a Float32 column at half the resident footprint.
-inline void extract_series_from_column_f32(
-  const std::shared_ptr<arrow::ChunkedArray> &col,
-  const std::shared_ptr<arrow::DataType> &col_type,
-  std::vector<std::vector<float>> &vecs,
-  std::vector<std::string> &names,
-  int64_t name_offset = 0)
-{
-  extract_series_from_column_as<float>(col, col_type, vecs, names, name_offset);
 }
 
 } // namespace detail
 
 
-/// Row-group streaming reader for Parquet files.
+/// The Parquet reader: the whole file, row groups, or sparse rows.
 ///
-/// Opens the file once (via mmap), reads metadata eagerly, and provides
-/// methods to read individual row groups or sparse row subsets on demand.
+/// Opens the file once (via mmap), reads metadata eagerly, and reads the
+/// selected column on demand. A scalar column is one series named by the
+/// file's stem; a list column is one series per row, named series_<row>.
 ///
 /// @note NOT thread-safe. The underlying parquet::arrow::FileReader does not
 ///       support concurrent ReadRowGroups calls. Use one reader per thread or
@@ -159,8 +133,11 @@ public:
   /// @param col_name   Column to extract (empty = auto-detect first numeric/list).
   explicit ParquetChunkReader(const std::filesystem::path &path,
                               const std::string &col_name = "")
+    : name_(path_to_utf8(path.stem()))
   {
-    auto mmap_result = arrow::io::MemoryMappedFile::Open(path.string(), arrow::io::FileMode::READ);
+    // Arrow takes a UTF-8 path on every platform; path::string() is the ANSI
+    // code page on Windows, where a non-ASCII name failed to open.
+    auto mmap_result = arrow::io::MemoryMappedFile::Open(path_to_utf8(path), arrow::io::FileMode::READ);
     detail::check_arrow_chunk(mmap_result.status(), "ParquetChunkReader mmap");
     file_ = *mmap_result;
 
@@ -263,78 +240,33 @@ public:
     return std::max(decode_peak, conversion_peak);
   }
 
-  /// Read a contiguous batch of row groups [rg_start, rg_start+count).
+  /// Append every series of the file to `series` and `names`. A list column's
+  /// names number on from series.size(), so a folder's files never repeat one.
+  void read_all(std::vector<std::vector<data_t>> &series, std::vector<std::string> &names) const
+  {
+    append_row_groups(0, num_row_groups_, series, names, series.size());
+  }
+
+  /// Read a contiguous batch of row groups [rg_start, rg_start+count) as `T`:
+  /// data_t, or float at half the resident footprint.
   ///
   /// @param rg_start  First row group index.
   /// @param count     Number of row groups to read.
   /// @return Owning Data with all series from the batch.
+  template <typename T = data_t>
   Data read_row_groups(int rg_start, int count) const
   {
     // fast_clara walks [0, num_row_groups()) in batches.
     assert(rg_start >= 0 && count >= 0 && count <= num_row_groups_ && rg_start <= num_row_groups_ - count);
 
-    std::vector<int> rg_indices(count);
-    std::iota(rg_indices.begin(), rg_indices.end(), rg_start);
-
-    std::shared_ptr<arrow::Table> table;
-    detail::check_arrow_chunk(
-      reader_->ReadRowGroups(rg_indices, {col_idx_}, &table),
-      "read_row_groups");
-
-    auto col = table->column(0);
-    std::vector<std::vector<data_t>> vecs;
+    const auto rows = static_cast<size_t>(std::accumulate(
+      rg_row_counts_.begin() + rg_start, rg_row_counts_.begin() + rg_start + count, int64_t{ 0 }));
+    std::vector<std::vector<T>> vecs;
     std::vector<std::string> names;
-    vecs.reserve(static_cast<size_t>(table->num_rows()));
-    names.reserve(static_cast<size_t>(table->num_rows()));
-
-    detail::extract_series_from_column(col, col_type_, vecs, names, rg_row_offsets_[rg_start]);
+    vecs.reserve(rows);
+    names.reserve(rows);
+    append_row_groups(rg_start, count, vecs, names, static_cast<size_t>(rg_row_offsets_[rg_start]));
     return Data(std::move(vecs), std::move(names));
-  }
-
-  /// Read a contiguous batch of row groups as float32 Data (2x memory saving).
-  Data read_row_groups_f32(int rg_start, int count) const
-  {
-    assert(rg_start >= 0 && count >= 0 && count <= num_row_groups_ && rg_start <= num_row_groups_ - count);
-
-    std::vector<int> rg_indices(count);
-    std::iota(rg_indices.begin(), rg_indices.end(), rg_start);
-
-    std::shared_ptr<arrow::Table> table;
-    detail::check_arrow_chunk(
-      reader_->ReadRowGroups(rg_indices, {col_idx_}, &table),
-      "read_row_groups_f32");
-
-    auto col = table->column(0);
-    std::vector<std::vector<float>> vecs;
-    std::vector<std::string> names;
-    vecs.reserve(static_cast<size_t>(table->num_rows()));
-    names.reserve(static_cast<size_t>(table->num_rows()));
-
-    detail::extract_series_from_column_f32(col, col_type_, vecs, names, rg_row_offsets_[rg_start]);
-    return Data(std::move(vecs), std::move(names));
-  }
-
-  /// Read specific rows by global index (sparse access for subsampling).
-  ///
-  /// Groups the requested indices by row group, reads only the needed
-  /// row groups, and filters to the requested rows.
-  ///
-  /// @param indices  Sorted global row indices to read.
-  /// @return Data with series in the same order as indices.
-  Data read_rows(
-    std::vector<int64_t> indices,
-    size_t ram_budget = std::numeric_limits<size_t>::max()) const
-  {
-    return read_rows_impl<data_t>(std::move(indices), ram_budget);
-  }
-
-  /// Float32 sparse-row counterpart; avoids a Float64 sample/medoid copy and
-  /// keeps the complete FastCLARA route in the requested precision.
-  Data read_rows_f32(
-    std::vector<int64_t> indices,
-    size_t ram_budget = std::numeric_limits<size_t>::max()) const
-  {
-    return read_rows_impl<float>(std::move(indices), ram_budget);
   }
 
   /// Compute a conservative fixed batch count that fits every row-group batch
@@ -372,10 +304,18 @@ public:
     return static_cast<int>(std::max<size_t>(1, capacity));
   }
 
-private:
-  template <typename T>
-  Data read_rows_impl(
-    std::vector<int64_t> indices, size_t ram_budget) const
+  /// Read specific rows by global index (sparse access for subsampling) as
+  /// `T`: data_t, or float to keep FastCLARA's Float32 route in Float32.
+  ///
+  /// Groups the requested indices by row group, reads only the needed
+  /// row groups, and filters to the requested rows.
+  ///
+  /// @param indices  Global row indices to read.
+  /// @return Data with series in the same order as indices.
+  template <typename T = data_t>
+  Data read_rows(
+    std::vector<int64_t> indices,
+    size_t ram_budget = std::numeric_limits<size_t>::max()) const
   {
     static_assert(std::is_same_v<T, data_t> || std::is_same_v<T, float>);
     if (indices.empty()) return Data{};
@@ -433,18 +373,8 @@ private:
         reader_->ReadRowGroups({rg}, {col_idx_}, &table),
         "read_rows ReadRowGroups");
       std::vector<std::vector<T>> row_group_series;
-      std::vector<std::string> row_group_names;
       row_group_series.reserve(static_cast<size_t>(table->num_rows()));
-      row_group_names.reserve(static_cast<size_t>(table->num_rows()));
-      if constexpr (std::is_same_v<T, float>) {
-        detail::extract_series_from_column_f32(
-          table->column(0), col_type_, row_group_series,
-          row_group_names, row_group_start);
-      } else {
-        detail::extract_series_from_column(
-          table->column(0), col_type_, row_group_series,
-          row_group_names, row_group_start);
-      }
+      detail::extract_series_from_column(table->column(0), col_type_, row_group_series);
 
       size_t selected_payload = 0;
       for (const auto local_index : local_indices) {
@@ -469,6 +399,32 @@ private:
       retained_bytes += selected_payload;
     }
     return Data(std::move(result_vecs), std::move(result_names));
+  }
+
+private:
+  /// Append the series of row groups [rg_start, rg_start+count) with their
+  /// names: the file's stem for a scalar column, series_<first_name + i> for
+  /// the i-th row of a list column.
+  template <typename T>
+  void append_row_groups(int rg_start, int count, std::vector<std::vector<T>> &vecs,
+                         std::vector<std::string> &names, size_t first_name) const
+  {
+    std::vector<int> rg_indices(count);
+    std::iota(rg_indices.begin(), rg_indices.end(), rg_start);
+
+    std::shared_ptr<arrow::Table> table;
+    detail::check_arrow_chunk(
+      reader_->ReadRowGroups(rg_indices, {col_idx_}, &table),
+      "read_row_groups");
+
+    const size_t first = vecs.size();
+    detail::extract_series_from_column(table->column(0), col_type_, vecs);
+    if (!list_layout_) {
+      names.push_back(name_);
+      return;
+    }
+    for (size_t i = first; i < vecs.size(); ++i)
+      names.push_back("series_" + std::to_string(first_name + (i - first)));
   }
 
   size_t estimated_payload_bytes(bool use_float32) const
@@ -497,6 +453,7 @@ private:
     return source + target + objects;
   }
 
+  std::string name_; ///< the file's stem in UTF-8: a scalar column's series name
   std::shared_ptr<arrow::io::RandomAccessFile> file_;
   std::unique_ptr<parquet::arrow::FileReader> reader_;
   std::shared_ptr<arrow::Schema> schema_;

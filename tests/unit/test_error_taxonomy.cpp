@@ -40,8 +40,7 @@
 #include <core/distance_sampling_weights.hpp>
 #include <core/matrix_io.hpp>
 #include <initialisation.hpp>
-#include <io/arrow_ipc_reader.hpp>
-#include <io/parquet_reader.hpp>
+#include <io/read_data.hpp>
 #include <scores.hpp>
 #include <soft_dtw.hpp>
 
@@ -264,12 +263,12 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
       } },
 #endif
 #ifdef DTWC_HAS_ARROW
-    { "arrow_ipc_reader.hpp: a file that does not exist", "IOError",
-      [&dir] { (void)dtwc::io::ArrowIPCDataSource::open(dir.path / "missing.arrow"); } },
+    { "read_data.cpp: an Arrow IPC file that does not exist", "IOError",
+      [&dir] { (void)dtwc::read_data(dir.path / "missing.arrow"); } },
 #endif
 #ifdef DTWC_HAS_PARQUET
-    { "parquet_reader.hpp: a directory without Parquet files", "IOError",
-      [&dir] { (void)dtwc::io::load_parquet_directory(dir.path); } },
+    { "read_data.cpp: a Parquet file that does not exist", "IOError",
+      [&dir] { (void)dtwc::read_data(dir.path / "missing.parquet"); } },
 #endif
   };
 

@@ -55,7 +55,7 @@ Produces an `evaluation.json` and a recommendation ("silhouette < 0.25 — try d
 
 ```text
 /convert data.csv data.parquet           # 5-20× smaller
-/convert data.parquet data.arrow         # zero-copy mmap
+/convert data.parquet data.arrow         # memory-mapped
 ```
 
 Uses the `dtwc-convert` Python CLI if available, otherwise falls back to `dtwcpp.io` Python APIs.

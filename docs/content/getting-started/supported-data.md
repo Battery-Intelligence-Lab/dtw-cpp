@@ -71,20 +71,17 @@ dtwc_cl -i data.parquet --column Voltage -k 5
 C++:
 
 ```cpp
-problem.set_data(dtwc::io::load_parquet_file("data.parquet", "Voltage"));
-```
-
-Python:
-
-```python
-data, names = dtwcpp.io.load_parquet("data.parquet", column="Voltage")
+problem.set_data(dtwc::read_data("data.parquet", 0, 0, '\0', "Voltage"));
 ```
 
 ### Directory of Parquet files
 
-Directory input eagerly concatenates the selected column from each sorted
-`.parquet`/`.pq` file. With scalar columns this is one series per file, named
-from the filename. List columns contribute one series per list row.
+Directory input eagerly concatenates the selected column from each
+`.parquet`/`.pq` file, in the order a folder of CSV files is read (sorted, hidden
+files skipped). With scalar columns this is one series per file, named from the
+filename. List columns contribute one series per list row, named `series_<i>`
+and numbered on across the files, so the files of a folder never repeat a
+`series_<i>` name.
 
 CLI:
 
@@ -101,6 +98,15 @@ name `series_0`, `series_1`, and so on. This layout is produced by
 
 ```bash
 dtwc_cl -i data.parquet --column series -k 5
+```
+
+Python reads this layout, from a file or a folder of them, with the installed
+pyarrow (the `dtwcpp[parquet]` extra; the wheel links no Arrow C++): each row of
+the first list column is a series, named by the first string column, else
+`series_<i>`. Without pyarrow, reading raises `ImportError` naming the extra.
+
+```python
+data = dtwcpp.load("data.parquet").as_data()
 ```
 
 ### Metadata-first RAM-limited streaming
@@ -132,7 +138,7 @@ resident list-column route.
 
 ## Arrow IPC (Feather v2)
 
-Arrow IPC (`.arrow` / `.feather`) provides **zero-copy memory-mapped** access — the file is mapped directly into address space with no deserialization overhead. Preferred for repeated clustering runs on the same dataset.
+Arrow IPC (`.arrow` / `.ipc` / `.feather`) is **memory-mapped**: the file's buffers are read in place, with no decoding step, and each series is copied once into memory. Preferred for repeated clustering runs on the same dataset.
 
 Requires `-DDTWC_ENABLE_ARROW=ON`.
 
@@ -145,9 +151,7 @@ dtwc_cl -i data.arrow -k 10
 C++:
 
 ```cpp
-dtwc::DataLoader loader;
-loader.setFile("data.arrow");
-problem.set_data(loader.load());
+problem.set_data(dtwc::read_data("data.arrow"));
 ```
 
 Python:
@@ -160,7 +164,7 @@ with ipc.open_file("data.arrow") as f:
     table = f.read_all()
 ```
 
-**Schema:** `LargeList<Float64>` for series data (supports >2 billion elements per list); an optional `name` column of `Utf8` or `LargeUtf8` (Polars' default) names the series, and a `name` column of any other type is an error. Create Arrow IPC files with the `dtwc-convert` tool — see [Data formats and conversion](../../guides/data-formats/).
+**Schema:** a `data` column of `List` or `LargeList` (more than 2 billion values) of `Float32`/`Float64` holds one series per row, across every record batch; an optional `name` column of `Utf8` or `LargeUtf8` (Polars' default) names the series (without one, or for a null name, a series is `series_<i>`), and a `name` column of any other type is an error. The schema metadata `ndim` gives the features per time step (default 1). A null series or value is an error. Create Arrow IPC files with the `dtwc-convert` tool — see [Data formats and conversion](../../guides/data-formats/).
 
 ---
 

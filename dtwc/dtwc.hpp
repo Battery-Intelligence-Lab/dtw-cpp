@@ -22,6 +22,7 @@
 #include "Problem.hpp"
 #include "checkpoint.hpp"
 #include "DataLoader.hpp"
+#include "io/read_data.hpp"
 #include "distance.hpp"
 #include "scores.hpp"
 #include "utility.hpp"

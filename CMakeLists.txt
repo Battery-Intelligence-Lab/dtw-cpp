@@ -45,7 +45,7 @@ option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 # Metal defaults ON on Apple (zero extra toolchain — ships with Xcode CLT).
 # Silently ignored on non-Apple platforms.
 option(DTWC_ENABLE_METAL "Enable Metal GPU acceleration (Apple only)" ON)
-option(DTWC_ENABLE_ARROW "Enable Apache Arrow IPC for zero-copy data loading" OFF)
+option(DTWC_ENABLE_ARROW "Enable Apache Arrow: Parquet and Arrow IPC input" OFF)
 option(DTWC_ENABLE_YAML "Accept YAML (as well as TOML) files for dtwc_cl --config" ON)
 
 # Parallelism is a hard requirement, not a silent-optional: if OpenMP is not

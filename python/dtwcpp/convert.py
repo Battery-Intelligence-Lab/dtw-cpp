@@ -3,7 +3,7 @@
 @brief CLI tool to convert time series data between formats.
 
 Converts Parquet/CSV/HDF5 to Arrow IPC (.arrow).
-Arrow IPC files can be memory-mapped for zero-copy access by the C++ CLI.
+The C++ reader (dtwc_cl, dtwc::read_data) memory-maps Arrow IPC files.
 
 Usage::
 
@@ -146,7 +146,7 @@ def _write_arrow_ipc(
     Metadata:
       - "ndim": str(ndim)
 
-    Written uncompressed for zero-copy mmap from C++.
+    Written uncompressed, so the C++ reader maps the buffers without decoding.
     """
     try:
         import pyarrow as pa

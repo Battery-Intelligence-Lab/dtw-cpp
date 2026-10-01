@@ -247,7 +247,7 @@ namespace {
 
     for (int rg = 0; rg < total_rg; rg += rg_per_batch) {
       int batch_count = std::min(rg_per_batch, total_rg - rg);
-      Data chunk = F32 ? reader.read_row_groups_f32(rg, batch_count)
+      Data chunk = F32 ? reader.read_row_groups<float>(rg, batch_count)
                        : reader.read_row_groups(rg, batch_count);
 
       const index_t chunk_size = chunk.size();
@@ -325,7 +325,7 @@ namespace {
         std::vector<int64_t> sample_rows(
           sample_indices.begin(), sample_indices.end());
         Data sample_data = opts.use_float32
-          ? reader.read_rows_f32(std::move(sample_rows), opts.ram_limit_bytes)
+          ? reader.read_rows<float>(std::move(sample_rows), opts.ram_limit_bytes)
           : reader.read_rows(std::move(sample_rows), opts.ram_limit_bytes);
 
         Problem sub_prob("clara_chunked_" + std::to_string(s));
@@ -351,7 +351,7 @@ namespace {
 
       // 6. Load medoid series from Parquet (k series — tiny)
       Data medoid_data = opts.use_float32
-        ? reader.read_rows_f32(std::move(medoid_rows), opts.ram_limit_bytes)
+        ? reader.read_rows<float>(std::move(medoid_rows), opts.ram_limit_bytes)
         : reader.read_rows(std::move(medoid_rows), opts.ram_limit_bytes);
 
       // 7. Chunked assignment: stream row groups, compute DTW to medoids
