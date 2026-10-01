@@ -130,8 +130,8 @@ gpu_node_supported() {
 
 if [[ "${PROFILE}" == htc-gpu || "${PROFILE}" == h100 ]] && gpu_node_supported; then
     echo "GPU node: native CUDA architecture and CPU tuning"
-    # An empty ARCH_LEVEL also clears a v3/v4 cached by an earlier portable build in this directory.
-    CMAKE_ARGS+=(-DCMAKE_CUDA_ARCHITECTURES=native -DDTWC_ENABLE_NATIVE_ARCH=ON -DDTWC_ARCH_LEVEL=)
+    # ARCH_LEVEL=native also replaces a v3/v4 cached by an earlier portable build in this directory.
+    CMAKE_ARGS+=(-DCMAKE_CUDA_ARCHITECTURES=native -DDTWC_ARCH_LEVEL=native)
 fi
 
 echo "Build directory: ${BUILD_DIR}"
