@@ -299,6 +299,84 @@ TEST_CASE("run with in-memory series refuses the options only a file reader appl
   refuses([](dtwc::Config &c) { c.k = 7; }, "cluster: k must not exceed the number of series.");
 }
 
+TEST_CASE("Problem::cluster() runs each method with its settings, as run() does", "[run][problem]")
+{
+  // Thirty series with no clear grouping, so each setting below changes the result.
+  const auto scattered = [] {
+    std::vector<std::vector<double>> series;
+    for (int i = 0; i < 30; ++i) {
+      series.emplace_back();
+      for (int t = 0; t < 6; ++t) series.back().push_back(double((i * 7 + t * 13 + i * t) % 17));
+    }
+    return dtwc::Data(std::move(series), std::vector<std::string>(30));
+  };
+  using dtwc::core::ClusteringResult;
+  const auto same = [](const ClusteringResult &a, const ClusteringResult &b) {
+    return a.labels == b.labels && a.medoid_indices == b.medoid_indices && a.total_cost == b.total_cost
+           && a.iterations == b.iterations && a.converged == b.converged;
+  };
+  // Each row: a setting the method reads, at a value that is not its default, and
+  // the method's own function as the oracle.
+  struct Row
+  {
+    Method method;
+    void (*set)(dtwc::Config &);
+    ClusteringResult (*oracle)(dtwc::Problem &, const dtwc::Config &);
+  };
+  const Row rows[]{
+    { Method::Auto, [](dtwc::Config &) {}, // pam at N = 30
+      [](dtwc::Problem &p, const dtwc::Config &c) { return dtwc::fast_pam_seeded(p, c.k, c.seed, c.max_iter); } },
+    { Method::PAM, [](dtwc::Config &c) { c.seed = 7; },
+      [](dtwc::Problem &p, const dtwc::Config &c) { return dtwc::fast_pam_seeded(p, c.k, c.seed, c.max_iter); } },
+    { Method::OneBatch, [](dtwc::Config &c) { c.batch_size = 3; },
+      [](dtwc::Problem &p, const dtwc::Config &c) {
+        return dtwc::algorithms::one_batch_pam(p, { .n_clusters = c.k, .batch_size = c.batch_size,
+                                                    .max_iter = c.max_iter, .random_seed = c.seed });
+      } },
+    { Method::CLARA, [](dtwc::Config &c) { c.sample_size = 8; c.n_samples = 2; },
+      [](dtwc::Problem &p, const dtwc::Config &c) {
+        return dtwc::algorithms::fast_clara(p, { .n_clusters = c.k, .sample_size = c.sample_size,
+                                                 .n_samples = c.n_samples, .max_iter = c.max_iter,
+                                                 .random_seed = c.seed });
+      } },
+    { Method::Hierarchical, [](dtwc::Config &c) { c.linkage = dtwc::algorithms::Linkage::Single; },
+      [](dtwc::Problem &p, const dtwc::Config &c) {
+        return dtwc::algorithms::cut_dendrogram(dtwc::algorithms::build_dendrogram(p, { .linkage = c.linkage }), p,
+                                                c.k);
+      } },
+  };
+  for (const Row &row : rows) {
+    CAPTURE(name(row.method));
+    auto config = config_for(row.method, Device::CPU);
+    config.k = 3;
+    const auto oracle = [&](const dtwc::Config &c) {
+      dtwc::Problem p;
+      p.set_data(scattered());
+      return row.oracle(p, c);
+    };
+    const auto by_default = oracle(config);
+    row.set(config);
+    const auto expected = oracle(config);
+    if (row.method != Method::Auto) CHECK_FALSE(same(expected, by_default)); // the setting bites here
+
+    dtwc::Problem prob;
+    prob.set_data(scattered());
+    prob.set_n_clusters(config.k);
+    prob.set_method(row.method);
+    prob.set_random_seed(config.seed);
+    prob.set_sample_size(config.sample_size);
+    prob.set_n_samples(config.n_samples);
+    prob.set_batch_size(config.batch_size);
+    prob.set_linkage(config.linkage);
+    CHECK(same(prob.cluster(), expected));
+    CHECK(prob.labels() == expected.labels); // published, as set_result does
+
+    const auto run = dtwc::run(config, scattered());
+    CHECK(run.method() == resolved(row.method));
+    CHECK(same({ run.labels(), run.medoids(), run.cost(), run.iterations(), run.converged() }, expected));
+  }
+}
+
 TEST_CASE("Result reports the method, iterations and convergence the run had", "[run][result]")
 {
   // Oracle: FastPAM called directly on the same series and seed.

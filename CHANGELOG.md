@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Added (C++, Python, MATLAB):** `Method` gains `Auto`, `PAM`, `OneBatch`, `CLARA` and `Hierarchical` (v1.0.0's
+  `Kmedoids` and `MIP` keep their values), and `Problem::cluster()` runs any of the nine `--method` names: it publishes the
+  labels and medoids as before and now returns them as a `ClusteringResult` with the cost, the iterations and whether the
+  method converged. `Problem` gains `set_sample_size`, `set_n_samples` (CLARA), `set_batch_size` (OneBatchPAM) and
+  `set_linkage` (hierarchical); `dtwc::run` and `dtwc_cl` cluster through `Problem::cluster()`, with unchanged results.
 - **Changed:** a distance matrix that enters a `Problem` from outside its fill is checked once, where it enters, and a
   ±inf distance raises `InvalidInput` naming the first such pair: `read_distance_matrix`, `load_checkpoint`,
   `use_mmap_distance_matrix`, Python and MATLAB `set_distance_matrix`, and the next `fill_distance_matrix()` after a
@@ -175,9 +180,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `dtwc_cl`'s reader; `to_config_text` and `parse_config`. One string↔enum table beside each enum (`dtwc/base/names.hpp`:
   `parse_name`, `name_of`). `dtwc_cl` is unchanged for now. The library links CLI11 and, when YAML is enabled, fkYAML, and
   publishes `DTWC_HAS_YAML`.
-- **Fixed (MATLAB):** `Problem.set_method('pam')` / `('auto')` raise `dtwc:invalidArgument` naming `dtwc.fast_pam` and
-  `dtwc.cluster(…, 'method', 'pam')`; they ran Lloyd k-medoids. MATLAB reads and reports device names only through the C++
-  grammar (its own ordinal parser and the MEX's second canonicaliser are gone).
+- **Fixed (MATLAB):** `Problem.set_method('pam')` / `('auto')` run PAM and `auto`; they ran Lloyd k-medoids. MATLAB reads
+  and reports device names only through the C++ grammar (its own ordinal parser and the MEX's second canonicaliser are
+  gone).
 - **Fixed (Python, hpc):** a file `Dataset` with a `delimiter` raises `InvalidInput`, because the SLURM transport does not carry
   it (it was dropped silently); an in-memory dataset's `skip_cols` is applied once, not twice.
 - **Fixed (Python):** `Problem.dist_by_ind(i, j)` raises `InvalidInput` for an index outside `[0, N)`, naming the index and N;

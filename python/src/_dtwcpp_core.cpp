@@ -259,7 +259,12 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("Kmedoids", dtwc::Method::Kmedoids)
     .value("MIP", dtwc::Method::MIP)
     .value("LRCore", dtwc::Method::LRCore)
-    .value("TADPole", dtwc::Method::TADPole);
+    .value("TADPole", dtwc::Method::TADPole)
+    .value("Auto", dtwc::Method::Auto)
+    .value("PAM", dtwc::Method::PAM)
+    .value("OneBatch", dtwc::Method::OneBatch)
+    .value("CLARA", dtwc::Method::CLARA)
+    .value("Hierarchical", dtwc::Method::Hierarchical);
 
   nb::enum_<dtwc::Solver>(m, "Solver")
     .value("Gurobi", dtwc::Solver::Gurobi)
@@ -913,7 +918,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("cluster", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       p.cluster();
-    }, "Run clustering (Lloyd k-medoids or MIP).")
+    }, "Cluster the series by Problem.method (any Method; Auto picks PAM or CLARA).")
     .def("find_total_cost", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       return p.find_total_cost();

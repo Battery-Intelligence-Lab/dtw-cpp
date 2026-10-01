@@ -489,25 +489,6 @@ function test_problem_setters_all_callable(testCase)
     verifyEqual(testCase, prob.size(), 6);
 end
 
-function test_problem_set_method_refuses_pam_and_auto(testCase)
-%   FX-17: set_method('pam'|'auto') selected Lloyd k-medoids, so a request for
-%   PAM silently ran another algorithm. A Problem runs 'kmedoids' or 'mip'; the
-%   error names the routes that run PAM and auto.
-    prob = dtwc.Problem('set_method');
-    for m = {'pam', 'auto'}
-        verifyError(testCase, @() prob.set_method(m{1}), 'dtwc:invalidArgument');
-        try
-            prob.set_method(m{1});
-        catch err
-            verifySubstring(testCase, err.message, 'dtwc.fast_pam(prob, k)');
-            verifySubstring(testCase, err.message, ...
-                ['dtwc.cluster(data, k, ''method'', ''' m{1} ''')']);
-        end
-    end
-    prob.set_method('kmedoids');
-    prob.set_method('mip');
-end
-
 function test_problem_set_mip_settings_roundtrip(testCase)
 %   §2.1 set_mip_settings(struct) + get_mip_settings (MIPSettings).
     prob = dtwc.Problem('mip');

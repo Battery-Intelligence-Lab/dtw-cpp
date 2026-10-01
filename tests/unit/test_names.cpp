@@ -90,7 +90,7 @@ void check_table(const dtwc::Name<E> (&table)[N], const std::vector<std::pair<st
 TEST_CASE("Method and Solver tables", "[names]")
 {
   using dtwc::Method;
-  // MATLAB's parse_method once read 'pam' and 'auto' as Kmedoids (Lloyd); they name PAM and Auto.
+  // MATLAB once read 'pam' and 'auto' as Kmedoids (Lloyd); they name PAM and Auto.
   check_table(dtwc::method_names,
               { { "auto", Method::Auto }, { "pam", Method::PAM }, { "onebatch", Method::OneBatch },
                 { "clara", Method::CLARA }, { "kmedoids", Method::Kmedoids }, { "mip", Method::MIP },

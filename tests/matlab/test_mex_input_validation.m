@@ -798,7 +798,8 @@ end
 function test_every_spelling_in_the_cpp_name_tables_is_accepted(testCase)
     h = dtwc_mex('Problem_new', 'names');
     testCase.addTeardown(@() dtwc_mex('Problem_delete', h));
-    for name = {'kmedoids', 'mip', 'lrcore', 'tadpole', 'LRCore'}
+    for name = {'auto', 'pam', 'onebatch', 'obp', 'clara', 'kmedoids', 'mip', ...
+                'lrcore', 'lr', 'tadpole', 'hierarchical', 'hclust', 'LRCore'}
         dtwc_mex('Problem_set_method', h, name{1});
     end
     for name = {'standard', 'ddtw', 'wdtw', 'adtw', 'softdtw', 'soft-dtw', 'msm', ...

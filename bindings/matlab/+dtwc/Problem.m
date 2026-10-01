@@ -197,7 +197,7 @@ classdef Problem < handle
         end
 
         function set_method(obj, m)
-        %SET_METHOD Set the Problem's method: 'kmedoids', 'mip', 'lrcore' or 'tadpole'.
+        %SET_METHOD Set the Problem's method, any dtwc.cluster method name ('auto', 'pam', 'kmedoids', ...).
             dtwc_mex('Problem_set_method', obj.Handle, char(m));
         end
 

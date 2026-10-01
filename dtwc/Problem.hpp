@@ -24,6 +24,7 @@
 #include "core/storage.hpp"     // for Precision
 #include "core/distance_matrix.hpp" // for DistanceMatrix
 #include "core/clustering_result.hpp" // for set_result
+#include "algorithms/hierarchical.hpp" // for Linkage
 
 #include <cstddef>     // for size_t
 #include <cstdint>     // for uint64_t, int64_t
@@ -105,6 +106,10 @@ void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strateg
                           const core::DTWVariantParams &variant, core::MissingStrategy missing,
                           core::Precision precision, const CUDASettings &gpu);
 
+/// The method `auto` stands for: pam on a GPU, and on the CPU pam for up to 5000
+/// series, clara above. Any other method is itself.
+Method resolve_method(Method method, Device device, std::size_t n_series);
+
 /**
  * @class Problem
  * @brief Class representing a problem in DTWC.
@@ -155,6 +160,10 @@ private:
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
   int last_iterations_{ 0 };
   double tadpole_dc_{ -1.0 };
+  index_t sample_size_{ -1 }; ///< CLARA's subsample size; -1: its automatic size
+  int n_samples_{ 5 };        ///< CLARA's subsamples
+  index_t batch_size_{ -1 };  ///< OneBatchPAM's batch size; -1: its automatic size
+  algorithms::Linkage linkage_{ algorithms::Linkage::Average };
   bool verbose_{ false };
   /// Run-artifact files (per-repetition medoids, best-repetition record) belong
   /// to cluster_and_process(); cluster() itself is side-effect free.
@@ -331,6 +340,10 @@ public:
   std::uint64_t random_seed() const { return random_seed_; }
   int last_iterations() const { return last_iterations_; }
   double tadpole_dc() const { return tadpole_dc_; }
+  index_t sample_size() const { return sample_size_; }
+  int n_samples() const { return n_samples_; }
+  index_t batch_size() const { return batch_size_; }
+  algorithms::Linkage linkage() const { return linkage_; }
   bool verbose() const { return verbose_; }
   const path_t &output_folder() const { return output_folder_; }
   const std::string &name() const { return name_; }
@@ -370,6 +383,12 @@ public:
   int n_repetitions() const;
   void set_random_seed(std::uint64_t seed) { random_seed_ = seed; }
   void set_tadpole_dc(double dc) { tadpole_dc_ = dc; }
+  /// CLARA's subsample size and count, OneBatchPAM's batch size and the hierarchical
+  /// linkage. cluster() checks them, as the method it runs takes them.
+  void set_sample_size(index_t n) { sample_size_ = n; }
+  void set_n_samples(int n) { n_samples_ = n; }
+  void set_batch_size(index_t n) { batch_size_ = n; }
+  void set_linkage(algorithms::Linkage linkage) { linkage_ = linkage; }
   void set_missing_strategy(core::MissingStrategy strategy);
   /// Pointwise cost of every distance this Problem computes: the CPU fill and
   /// lazy lookups, the GPU routes, the mmap cache and checkpoint identities.
@@ -563,7 +582,11 @@ public:
   void init() { init_fun(*this); }
 
   // Clustering functions:
-  void cluster();
+  /// Cluster the series into n_clusters() by method() (`auto` resolved for this
+  /// Problem's device and series). The labels and medoids are published as by
+  /// set_result(); they are returned with the cost, the iterations and whether the
+  /// method converged within max_iter().
+  core::ClusteringResult cluster();
   void cluster_by_mip();
   [[deprecated("use cluster_by_mip")]] void cluster_by_MIP() { cluster_by_mip(); }
   void cluster_by_kmedoids_lloyd();

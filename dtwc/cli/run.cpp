@@ -15,9 +15,6 @@
 #include "../Problem.hpp"
 #include "../algorithms/detail/fast_clara_plan.hpp"
 #include "../algorithms/fast_clara.hpp"
-#include "../algorithms/fast_pam.hpp"
-#include "../algorithms/hierarchical.hpp"
-#include "../algorithms/one_batch_pam.hpp"
 #include "../base/error.hpp"
 #include "../base/timing.hpp"
 #include "../checkpoint.hpp"
@@ -47,16 +44,7 @@ namespace {
 namespace fs = std::filesystem;
 using algorithms::detail::resolve_clara_plan;
 
-constexpr std::size_t auto_pam_max_series = 5000; ///< `auto` on the CPU: pam up to here, clara above.
-
 std::string method_name(Method method) { return std::string(name_of(method_names, method)); }
-
-/// `auto` for the device and the series count; any other method as asked.
-Method resolve_method(Method method, Device device, std::size_t n_series)
-{
-  if (method != Method::Auto) return method;
-  return device == Device::GPU || n_series <= auto_pam_max_series ? Method::PAM : Method::CLARA;
-}
 
 [[noreturn]] void refuse_gpu_method(Method method)
 {
@@ -183,9 +171,14 @@ Outcome execute(const Config &config, std::optional<Data> data)
   prob.set_missing_strategy(config.missing);
   prob.set_metric(config.metric);
   prob.set_band(config.band);
+  prob.set_n_clusters(config.k);
   prob.set_max_iter(config.max_iter);
   prob.set_n_repetitions(config.n_init);
   prob.set_random_seed(config.seed);
+  prob.set_sample_size(config.sample_size);
+  prob.set_n_samples(config.n_samples);
+  prob.set_batch_size(config.batch_size);
+  prob.set_linkage(config.linkage);
   prob.set_tadpole_dc(config.tadpole_dc); // < 0: auto-select from a DTW subsample
   prob.set_verbose(config.verbose);
   validate_mip_settings(config.mip);
@@ -329,6 +322,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   if (config.method == Method::Auto && config.verbose)
     std::cout << "Auto-selected method: " << method_name(method) << " (N=" << n_series << ")\n";
   plan_clara();
+  prob.set_method(method);
 
   // ---- 4. Distance storage, once every distance setting is in place ----
   // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
@@ -365,83 +359,21 @@ Outcome execute(const Config &config, std::optional<Data> data)
   }
 
   // ---- 5. Cluster; the matrix methods fill through the Problem, on its device ----
-  core::ClusteringResult result;
-  const index_t k = config.k;
-  switch (method) {
-  case Method::PAM:
-    if (config.verbose) std::cout << "Running FastPAM (k=" << k << ") ...\n";
-    // Restart r uses seed + r, invocation-local; the strictly lowest cost is
-    // kept, so a tie keeps the earlier restart.
-    result = fast_pam_seeded(prob, k, config.seed, config.max_iter);
-    for (int restart = 1; restart < config.n_init; ++restart) {
-      auto candidate =
-        fast_pam_seeded(prob, k, config.seed + static_cast<std::uint64_t>(restart), config.max_iter);
-      if (candidate.total_cost < result.total_cost) result = std::move(candidate);
-    }
-    if (config.verbose)
-      std::cout << "FastPAM " << (result.converged ? "converged" : "did not converge") << " in "
-                << result.iterations << " iterations, cost=" << std::setprecision(6) << result.total_cost
-                << " [" << clk << "]\n";
-    break;
-  case Method::OneBatch: {
-    algorithms::OneBatchPAMOptions options;
-    options.n_clusters = k;
-    options.batch_size = config.batch_size;
-    options.max_iter = config.max_iter;
-    options.random_seed = config.seed;
-    algorithms::OneBatchPAMStats stats;
-    result = algorithms::one_batch_pam(prob, options, &stats);
-    if (config.verbose)
-      std::cout << "OneBatchPAM finished, cost=" << std::setprecision(6) << result.total_cost
-                << ", batch=" << stats.batch_size << ", distance-matrix fraction=" << std::setprecision(3)
-                << stats.full_matrix_fraction << " [" << clk << "]\n";
-    break;
-  }
-  case Method::CLARA:
-    if (config.verbose) std::cout << "Running FastCLARA (k=" << k << ") ...\n";
-    result = algorithms::fast_clara(prob, clara);
-    if (config.verbose)
-      std::cout << "FastCLARA finished, cost=" << std::setprecision(6) << result.total_cost << " [" << clk << "]\n";
-    break;
-  case Method::Hierarchical: {
-    if (config.verbose)
-      std::cout << "Running hierarchical clustering (k=" << k
-                << ", linkage=" << name_of(algorithms::linkage_names, config.linkage) << ") ...\n";
-    algorithms::HierarchicalOptions options;
-    options.linkage = config.linkage;
-    prob.fill_distance_matrix(); // the dendrogram reads every pair
-    result = algorithms::cut_dendrogram(algorithms::build_dendrogram(prob, options), prob, k);
-    if (config.verbose)
-      std::cout << "Hierarchical clustering finished, cost=" << std::setprecision(6) << result.total_cost
-                << " [" << clk << "]\n";
-    break;
-  }
-  // Problem::cluster()'s four: Lloyd, the exact MIP and LR-core, and
-  // TADPole density-peaks with conditionally admissible LB/UB DTW pruning.
-  case Method::Kmedoids:
-  case Method::MIP:
-  case Method::LRCore:
-  case Method::TADPole: {
-    prob.set_n_clusters(k);
-    prob.set_method(method);
-    prob.cluster();
-    result.labels = prob.clusters_ind;
-    result.medoid_indices = prob.centroids_ind;
-    result.total_cost = prob.find_total_cost();
-    // Lloyd reports its iterations; the exact methods and TADPole finish.
-    result.iterations = method == Method::Kmedoids ? prob.last_iterations() : 0;
-    result.converged = method != Method::Kmedoids || prob.last_iterations() < config.max_iter;
-    if (config.verbose)
-      std::cout << progress_label(method) << " finished, cost=" << result.total_cost << " [" << clk << "]\n";
-    break;
-  }
-  case Method::Auto: // resolved above
-    throw std::logic_error("run: unresolved method auto");
+  // A RAM-limited Parquet run is the one whose series the Problem does not hold:
+  // FastCLARA streams them.
+  if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
+  core::ClusteringResult result = stream_payload ? algorithms::fast_clara(prob, clara) : prob.cluster();
+  if (config.verbose) {
+    std::cout << progress_label(method);
+    if (method == Method::PAM)
+      std::cout << (result.converged ? " converged" : " did not converge") << " in " << result.iterations
+                << " iterations";
+    else
+      std::cout << " finished";
+    std::cout << ", cost=" << std::setprecision(6) << result.total_cost << " [" << clk << "]\n";
   }
 
   // ---- 6. Checkpoints first, then the outputs ----
-  prob.set_result(result); // the kept result, in every route
-
   // Before the results, so a result write that
   // fails cannot lose the distance matrix. A save that fails is kept and raised
   // once the results are on disk, so it cannot lose them either (S-04).
