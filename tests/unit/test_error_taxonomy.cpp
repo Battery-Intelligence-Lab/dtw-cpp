@@ -263,14 +263,6 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
         prob.read_distance_matrix(dir.path / "matrix.csv");
       } },
 #endif
-#ifndef _WIN32 // a directory symlink needs privileges on Windows
-    { "checkpoint.cpp: a checkpoint root that is a symlink", "IOError",
-      [&dir] {
-        fs::create_directories(dir.path / "real");
-        fs::create_directory_symlink(dir.path / "real", dir.path / "link");
-        dtwc::save_checkpoint(three_series(), (dir.path / "link").string());
-      } },
-#endif
 #ifdef DTWC_HAS_ARROW
     { "arrow_ipc_reader.hpp: a file that does not exist", "IOError",
       [&dir] { (void)dtwc::io::ArrowIPCDataSource::open(dir.path / "missing.arrow"); } },

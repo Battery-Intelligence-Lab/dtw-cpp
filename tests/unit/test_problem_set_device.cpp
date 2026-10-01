@@ -10,6 +10,8 @@
 
 #include <dtwc.hpp>
 
+#include "../support/dtw_route_bound.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -87,7 +89,10 @@ TEST_CASE("IF-1: set_device(cpu) leaves a CPU strategy alone and moves a GPU one
     CHECK(prob.distance_strategy() == DistanceMatrixStrategy::Auto);
   }
   prob.fill_distance_matrix();
-  CHECK(prob.dist_by_ind(0, 1) == dtwc::dtwFull_L<double>(prob.series(0), prob.series(1)));
+  // The fill runs the SIMD lanes; dtwFull_L is the per-pair kernel.
+  const double per_pair = dtwc::dtwFull_L<double>(prob.series(0), prob.series(1));
+  CHECK(dtwc::test_support::dtw_routes_agree<double>(
+    prob.dist_by_ind(0, 1), per_pair, prob.series(0).size(), prob.series(1).size()));
 }
 
 TEST_CASE("IF-1: set_device(gpu) selects this build's backend and records the index",

@@ -404,8 +404,10 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
 // The pairs (x, ys[w]) share x. Every lane evaluates dtw_kernel_linear's cells
 // with its arithmetic in its order; with a band, dtw_kernel_banded's cells,
 // transposed (outer y, not outer x), each from the same three neighbours. So
-// each lane is bitwise the per-pair result for a Cell that treats `up` and
-// `left` alike, as StandardCell does. The loop over the lanes is the one that
+// each lane is the per-pair result for a Cell that treats `up` and `left`
+// alike, as StandardCell does: bit for bit, unless the compiler contracts
+// `d * d + m` into an FMA in one kernel and not the other (GCC does by default;
+// the two then differ in the last bits). The loop over the lanes is the one that
 // vectorises: one cache line of T per DP row, W dependency chains side by side
 // where the per-pair kernel runs one.
 // ===========================================================================

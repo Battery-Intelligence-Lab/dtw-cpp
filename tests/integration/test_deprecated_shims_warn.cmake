@@ -12,6 +12,9 @@ foreach(required_var IN ITEMS BUILD_DIR TARGET OBJECT FAMILY SHIMS)
 endforeach()
 
 file(REMOVE "${OBJECT}")
+# GCC quotes a name with the locale's quote marks (U+2018 and U+2019 under UTF-8,
+# which the patterns below do not match); the C locale gives ASCII quotes.
+set(ENV{LC_ALL} C)
 set(build_command "${CMAKE_COMMAND}" --build "${BUILD_DIR}" --target "${TARGET}")
 if(NOT "${CONFIG}" STREQUAL "")
     list(APPEND build_command --config "${CONFIG}")
