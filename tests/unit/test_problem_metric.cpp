@@ -1,6 +1,6 @@
 /**
  * @file test_problem_metric.cpp
- * @brief IF-2 S2: the pointwise metric is part of a Problem's distance
+ * @brief The pointwise metric is part of a Problem's distance
  *        semantics (Problem::set_metric), and FastCLARA's samples inherit it.
  *
  * @details Oracles are the checked free functions (distance::dtw), never the
@@ -95,8 +95,8 @@ TEST_CASE("set_metric: the metric is part of refresh and of the checkpoint ident
 
   auto l1 = make_problem(series);
   CHECK_THROWS_AS(dtwc::load_checkpoint(l1, dir), dtwc::InvalidInput); // another metric's matrix
-  // The three-argument form keeps its explicit tag: the CLI's own CUDA fill
-  // (squared L2 into an L1 Problem) relies on it until IF-2 S3.
+  // The three-argument form keeps its explicit tag, for a matrix filled in
+  // another metric than the Problem's (squared L2 into an L1 Problem).
   CHECK(dtwc::load_checkpoint(l1, dir, MetricType::SquaredL2));
 
   auto resumed = make_problem(series);

@@ -198,7 +198,7 @@ TEST_CASE("MV DTW banded: negative band falls back to full", "[mv][dtw][edge]")
 // =========================================================================
 
 // =========================================================================
-//  Task 4: Problem multivariate DTW integration
+//  Problem multivariate DTW integration
 // =========================================================================
 
 TEST_CASE("Problem: multivariate DTW distance matrix", "[mv][problem]")
@@ -241,7 +241,7 @@ TEST_CASE("Problem: ndim=1 backward compat", "[mv][problem]")
 }
 
 // =========================================================================
-//  Task 5: derivative_transform_mv tests
+//  derivative_transform_mv tests
 // =========================================================================
 
 TEST_CASE("derivative_transform_mv: ndim=1 unchanged", "[mv][ddtw]")

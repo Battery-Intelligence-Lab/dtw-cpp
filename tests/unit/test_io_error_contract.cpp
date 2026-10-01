@@ -1,16 +1,16 @@
 /**
  * @file test_io_error_contract.cpp
- * @brief api-contract-2.0.md §5's file rule at three seams where it had slipped.
+ * @brief The file-error rule (a file failure is an IOError) at three seams where it had slipped.
  *
  * @details
- *  - Tier-1 load: GT-4 made every reader error an `IOError`, and `load` added its
+ *  - Tier-1 load: every reader error became an `IOError`, and `load` added its
  *    `load: failed to read '<path>': ` prefix only to other exceptions, so the
  *    prefix vanished. The type stays `IOError`; the prefix is back.
  *  - `ignoreBOM`: a partial byte-order mark that cannot be handed back named no file.
  *  - `dtwc_cl`: Parquet / Arrow IPC input on a build without Arrow was
  *    `InvalidInput`. A format this build cannot read is `IOError`.
  *
- * dtwc_cl's pipeline is dtwc::run (IF-2 S3), which the third case drives; both
+ * dtwc_cl's pipeline is dtwc::run, which the third case drives; both
  * it and Python's load() read through dtwc::read_data, which the last case drives.
  *
  * @date 24 Sep 2026

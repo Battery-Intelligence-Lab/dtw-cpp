@@ -573,7 +573,7 @@ TEST_CASE("OneBatchPAM warped scaling oracle is non-degenerate and discriminatin
 TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
           "[one_batch_pam][nonfinite]")
 {
-  // A6: `FixedBatchDistances::exact` was the only distance read in the algorithm
+  // `FixedBatchDistances::exact` was the only distance read in the algorithm
   // layer that skipped `require_finite_medoid_distance`, and the objective used
   // a plain std::accumulate instead of `ordered_medoid_objective`. `exact()` is
   // only reached for a medoid that is NOT in the fixed batch — the one path the

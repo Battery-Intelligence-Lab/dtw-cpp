@@ -2,7 +2,7 @@
  * @file settings.hpp
  * @brief Compatibility forwarder — this header moved to dtwc/base/settings.hpp.
  *
- * @details The foundation layer now lives in its own directory (ledger C-11), so
+ * @details The foundation layer now lives in its own directory, so
  * that the folder a header sits in matches the layer the dependency checker
  * assigns it. This forwarder keeps the old path working for one release.
  *

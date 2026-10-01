@@ -1,6 +1,6 @@
 /**
  * @file test_test_api.cpp
- * @brief Unit tests for the header-only `dtwc::test` introspection API (Task 3.3).
+ * @brief Unit tests for the header-only `dtwc::test` introspection API.
  *
  * @details Every test drives the LIVE public entry points
  * `dtwc::test::parallelisation()` and `dtwc::test::gpu()` (dtwc/test_api.hpp) —
@@ -8,11 +8,11 @@
  * (`dtwc_mex('test_parallelisation'|'test_gpu')`) surfaces bind to.
  *
  * Registered expectations (written BEFORE the run, judged after):
- *   - Baseline build here is OpenMP-ON + CUDA-OFF (build/baseline-2026-07-06):
+ *   - Baseline build here is OpenMP-ON + CUDA-OFF:
  *       parallelisation() -> available, pass, threads_engaged >= 2 (24-core host);
  *       gpu()             -> unavailable branch, reason non-empty, never throws.
  *   - The SAME test is correct under a sequential build (DTWC_SEQUENTIAL_BUILD)
- *     and under Task 3.5's CUDA-ON build: it branches on the reported `available`
+ *     and under a CUDA-ON build: it branches on the reported `available`
  *     flag so both the available and unavailable paths are asserted honestly.
  *
  * @author Volkan Kumtepeli
@@ -74,7 +74,7 @@ TEST_CASE("dtwc::test::gpu validates against a CPU oracle or names what is missi
        << " pass=" << r.pass << " reason=" << r.reason);
 
   if (r.available) {
-    // GPU backend compiled AND a device present (Task 3.5's CUDA build): the
+    // GPU backend compiled AND a device present (a CUDA build): the
     // tiny kernel MUST match the CPU oracle within tolerance.
     REQUIRE_FALSE(r.backend.empty());
     REQUIRE_FALSE(r.device_name.empty());

@@ -464,8 +464,8 @@ TEST_CASE("FastPAM refuses a negative max_iter before it touches the Problem",
 }
 
 // ===========================================================================
-// Test 11: 2.0 (Task 1.6) write-back — fast_pam stores the result INTO prob.
-// (1.x asserted non-mutation; API contract §2.5 moves the binding auto-wire into
+// Test 11: 2.0 write-back — fast_pam stores the result INTO prob.
+// (1.x asserted non-mutation; the binding auto-wire moved into
 //  core, so pure-C++ users get prob.centroids_ind/clusters_ind/n_clusters set.)
 // ===========================================================================
 TEST_CASE("FastPAM writes result back into Problem", "[fast_pam][write_back]")

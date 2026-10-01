@@ -123,7 +123,7 @@ TEST_CASE("Metal device via Problem::fill_distance_matrix (mmap)", "[metal][mmap
 #endif
 }
 
-// FX-1: a squared-L2 cache is filled by the Problem's Metal route with the
+// A squared-L2 cache is filled by the Problem's Metal route with the
 // squared-L2 kernel (it used to be refused as external-fill-only), and matches
 // the CPU squared-L2 kernels, banded and full, on variable-length series.
 TEST_CASE("Metal squared-L2 cache via Problem::fill_distance_matrix", "[metal][mmap][fx1]")
@@ -166,7 +166,7 @@ TEST_CASE("Metal squared-L2 cache via Problem::fill_distance_matrix", "[metal][m
 #endif
 }
 
-// IF-2 S2: the metric is the Problem's (set_metric), so a dense Metal fill
+// The metric is the Problem's (set_metric), so a dense Metal fill
 // computes squared L2 without a cache, within the FP32 band above.
 TEST_CASE("set_metric: the Metal fill computes squared L2", "[metal][metric][if2]")
 {
@@ -196,7 +196,7 @@ TEST_CASE("set_metric: the Metal fill computes squared L2", "[metal][metric][if2
   }
 }
 
-// IF-2 S2: FastCLARA's samples take the parent's device. An in-memory sample is
+// FastCLARA's samples take the parent's device. An in-memory sample is
 // a view of the parent's series, which the GPU fill refuses before any pair; a
 // sample covering every series is FastPAM on the parent, which runs on the GPU.
 TEST_CASE("FastCLARA on a GPU device: a view sample is refused, a full sample runs",

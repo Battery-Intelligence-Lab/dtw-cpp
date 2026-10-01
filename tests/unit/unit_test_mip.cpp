@@ -334,7 +334,7 @@ TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
 }
 
 // ---------------------------------------------------------------------------
-// Task 0.5 regression: MIP status handling — assert() → real error path.
+// Regression: MIP status handling — assert() → real error path.
 //
 // mip_Highs.cpp guarded the HiGHS model status with
 //     assert(model_status == HighsModelStatus::kOptimal);

@@ -1,17 +1,17 @@
 /**
  * @file test_lagrangian_root.cpp
  * @brief Correctness gate + solver comparison for the Lagrangian root bound
- *        (PLAN.md Phase 4, Task 4.1; UNIMODULAR.md §8.3).
+ *        (derivation: UNIMODULAR.md §8.3).
  *
  * @details Four registered checks (bands stated BEFORE the runs):
  *
  *   ORACLE   the brute-force IP oracle is validated on a hand-computed,
- *            NON-degenerate instance (CLAUDE.md §4: never trust an oracle on a
+ *            NON-degenerate instance (never trust an oracle on a
  *            symmetric/uniform case only).
  *   BAND-LB  VALID BOUNDS on every instance (uniform + clustered, many seeds):
  *            lower_bound ≤ opt ≤ upper_bound. This is the fundamental
  *            correctness property of a Lagrangian bound + primal repair.
- *   BAND-P1  ROOT EXACTNESS on well-separated clustered data (prediction P1):
+ *   BAND-P1  ROOT EXACTNESS on well-separated clustered data:
  *            ≥ 90% of instances have the root bound closed to the optimum and
  *            certified_optimal true. Falsified below 70%.
  *   BAND-CMP THREE-WAY AGREEMENT: LR upper_bound == brute-force optimum ==
@@ -233,7 +233,7 @@ TEST_CASE("Lagrangian root brackets the optimum (valid bounds)", "[lagrangian][b
 }
 
 // ===========================================================================
-// BAND-P1 — root exactness on well-separated clustered data (prediction P1):
+// BAND-P1 — root exactness on well-separated clustered data:
 //           ≥ 90% certified optimal with LB closed to the optimum.
 // ===========================================================================
 TEST_CASE("Lagrangian root certifies optimum on clustered data (P1)", "[lagrangian][P1]")
@@ -254,7 +254,7 @@ TEST_CASE("Lagrangian root certifies optimum on clustered data (P1)", "[lagrangi
     // Relative optimality gap of the ROOT BOUND vs the true optimum.
     const double rel_gap = (orc.cost - r.lower_bound) / std::max(std::abs(orc.cost), 1e-12);
     max_gap = std::max(max_gap, rel_gap);
-    if (rel_gap <= 1e-3) ++within_1em3; // P1 metric: gap ≤ 0.1%
+    if (rel_gap <= 1e-3) ++within_1em3; // BAND-P1 metric: gap ≤ 0.1%
     if (rel_gap <= 1e-6) ++within_1em6;
     if (std::abs(r.upper_bound - orc.cost) <= 1e-6 * std::max(1.0, std::abs(orc.cost)))
       ++ub_opt; // primal repair found the optimum
@@ -264,7 +264,7 @@ TEST_CASE("Lagrangian root certifies optimum on clustered data (P1)", "[lagrangi
        << " within_1e-6=" << within_1em6 << "/" << trials
        << " ub_optimal=" << ub_opt << "/" << trials
        << " max_root_gap=" << max_gap);
-  // Registered P1 band: root gap ≤ 0.1% on ≥ 90% (falsified below 70% = 28/40).
+  // Registered BAND-P1: root gap ≤ 0.1% on ≥ 90% (falsified below 70% = 28/40).
   REQUIRE(within_1em3 >= 36);
   // Primal repair should find the optimum on well-separated clusters.
   REQUIRE(ub_opt >= 36);
@@ -310,8 +310,8 @@ TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][comp
 }
 
 // ===========================================================================
-// EXACT (Task 4.3) — LR-bounded branch-and-bound on y over the core certifies
-// the TRUE optimum on every instance (the primary 4.3 gate: matches proven
+// EXACT — LR-bounded branch-and-bound on y over the core certifies
+// the TRUE optimum on every instance (the primary gate: matches proven
 // optima 1e-6 rel), and the tree engages on the adversarial regime.
 // ===========================================================================
 TEST_CASE("Exact LR-core B&B certifies the optimum on clustered data", "[lagrangian][exact]")
@@ -444,8 +444,8 @@ TEST_CASE("BENCH LR-core vs compact MIP", "[.][lagrangian][bench]")
 }
 
 // ===========================================================================
-// BENCH (Task 4.3 gate) — EXACT LR-core B&B vs compact MIP wall-time. Hidden [.]
-// ADVISORY. The 4.3 gate asks "beats their wall-time at N≥2000 OR FALSIFIED";
+// BENCH — EXACT LR-core B&B vs compact MIP wall-time. Hidden [.]
+// ADVISORY. The gate asks "beats their wall-time at N≥2000 OR FALSIFIED";
 // this records the number. On well-separated (real-world) data the root certifies
 // so the exact solve is a single node ≈ the LR root time.
 // ===========================================================================
@@ -482,7 +482,7 @@ TEST_CASE("BENCH exact LR-core vs compact MIP", "[.][lagrangian][bench]")
 }
 
 // ===========================================================================
-// API (Task 4.4) — Method::LRCore drives Problem::cluster() to the exact optimum.
+// API — Method::LRCore drives Problem::cluster() to the exact optimum.
 // ===========================================================================
 TEST_CASE("Method::LRCore clusters a Problem to the proven optimum", "[lagrangian][lrcore][api]")
 {

@@ -1,6 +1,6 @@
 /**
  * @file test_lb_keogh_derivation.cpp
- * @brief D2 executable oracle for scalar envelopes and LB_Keogh.
+ * @brief Executable oracle for scalar envelopes and LB_Keogh.
  *
  * The acceptance bands and exact inventories in this file were registered in
  * .claude/baselines/2026-07-30-d2-lb-keogh.md before the first execution.
@@ -303,7 +303,7 @@ TEST_CASE(
     production_bounds(Series{ 0.5 }, Series{ 0.0 }, 0, 1);
   REQUIRE(singleton.symmetric_l1 == 0.5);
 
-  // Full DTW: a negative radius builds the global envelope (FX-13). It was
+  // Full DTW: a negative radius builds the global envelope. It was
   // coerced to radius zero, whose bound 2 exceeded the true distance 0.
   const Series x = { 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 };
   const Series y = { 0, 0, 0, 0, 0, 0, 1, 1, 1, 1 };

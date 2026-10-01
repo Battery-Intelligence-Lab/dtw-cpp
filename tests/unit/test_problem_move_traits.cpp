@@ -1,6 +1,6 @@
 /**
  * @file test_problem_move_traits.cpp
- * @brief S-13: Problem's move assignment makes no noexcept promise.
+ * @brief Problem's move assignment makes no noexcept promise.
  *
  * @details Moving Problem's members — the distance-matrix variant, the bound
  * dispatchers, the WDTW weight map — may throw. A move assignment declared

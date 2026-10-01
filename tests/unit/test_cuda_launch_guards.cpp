@@ -1,17 +1,17 @@
 /**
  * @file test_cuda_launch_guards.cpp
- * @brief A15/A16 contract: CUDA launch preconditions are typed, loud, and
+ * @brief CUDA launch preconditions are typed, loud, and
  *        assertable without a GPU.
  *
  * The host seam (`cuda/launch_prep.hpp`) is deliberately free of CUDA headers,
  * so these cases compile and RUN in the CUDA-OFF canonical gate as well as in
  * build/cuda-verify. Two properties are under test:
  *
- *   A15 — the pair count `N*(N-1)/2` is evaluated in 64 bits and never
+ *   PAIRS   — the pair count `N*(N-1)/2` is evaluated in 64 bits and never
  *         narrowed: a fill splits it into launches of at most
  *         kMaxPairsPerLaunch pairs, a count an int holds. N = 65,537, the first
  *         N whose pair count passes INT_MAX, fills (test_cuda_correctness).
- *   A16 — a missing CUDA device is a typed DeviceError, never an N*N matrix of
+ *   DEVICE  — a missing CUDA device is a typed DeviceError, never an N*N matrix of
  *         zeros (a valid-looking wrong answer). The entry-point case runs only
  *         when the process sees no device: on a GPU host, execute this binary
  *         with CUDA_VISIBLE_DEVICES=-1 to exercise it.

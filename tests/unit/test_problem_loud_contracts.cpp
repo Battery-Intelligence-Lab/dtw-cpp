@@ -1,17 +1,17 @@
 /**
  * @file test_problem_loud_contracts.cpp
- * @brief FX-3 / FX-4 residue: Problem requests that were silently wrong, or
+ * @brief Problem requests that were silently wrong, or
  *        unsound, now fail with a typed error that names what to change.
  *
  * @details
- *   - O-06: set_max_iter / set_n_repetitions below 1 reported a clustering after
+ *   - set_max_iter / set_n_repetitions below 1 reported a clustering after
  *     zero iterations; the setters now refuse, and Lloyd refuses the value the
  *     deprecated public fields can still hold.
- *   - FX-3: read_distance_matrix kept a matrix of another size (later discarded
+ *   - read_distance_matrix kept a matrix of another size (later discarded
  *     and recomputed at the first lookup) and loaded nothing from an empty file.
- *   - F25: get_name / p_vec guarded storage they do not own only with assert, so
+ *   - get_name / p_vec guarded storage they do not own only with assert, so
  *     a Release build read past an empty vector.
- *   - B-05 (POSIX): a write that fails after the file was opened (full disk,
+ *   - (POSIX) a write that fails after the file was opened (full disk,
  *     quota) left a truncated Tier-1 or run artefact behind a reported success.
  *     RLIMIT_FSIZE reproduces it in-process, restored on scope exit: a forked
  *     child would enter OpenMP again, which libgomp does not support after fork.

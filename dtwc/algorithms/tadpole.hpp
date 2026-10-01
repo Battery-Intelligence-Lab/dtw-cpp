@@ -31,9 +31,9 @@
  *   univariate DTW with integer-representable lengths; unsupported variants
  *   and unequal-length pairs take the exact route. Exact arithmetic preserves
  *   the brute-force result, and the exactly representable regression confirms
- *   that regime. Floating bit-level identity at a threshold remains D17.
- *   Empty series are a known exception (F48); the configuration predicate does
- *   not yet validate finiteness or integer length representability (F46).
+ *   that regime. Floating bit-level identity at a threshold is not proved.
+ *   Empty series are a known exception; the configuration predicate does
+ *   not yet validate finiteness or integer length representability.
  *
  * @author Volkan Kumtepeli
  * @date 8 Jul 2026
@@ -95,7 +95,7 @@ struct TADPoleStats {
  *                    Exact-arithmetic identity is proved for finite, nonempty,
  *                    equal-length Standard-L1 univariate inputs with
  *                    integer-representable lengths. Floating threshold identity
- *                    remains D17; empty-series identity is open under F48.
+ *                    is not proved; empty-series identity is open.
  * @param stats       If non-null, receives the pruning ledger.
  * @return core::ClusteringResult: labels[i] ∈ [0,k), medoid_indices = the k
  *         density-peak centers, total_cost = Σ_i d(i, its center).

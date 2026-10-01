@@ -143,7 +143,7 @@ private:
     collect(docs.front(), {}, items);
     return items;
 #else
-    // A format this build cannot read is an IOError (DECISIONS 2026-09-24).
+    // A format this build cannot read is an IOError.
     throw IOError(source() + ": built without YAML support; use TOML, or rebuild with -DDTWC_ENABLE_YAML=ON");
 #endif
   }

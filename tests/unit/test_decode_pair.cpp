@@ -3,11 +3,11 @@
  * @brief Regression tests for the SSOT upper-triangle pair decode and the
  *        64-bit index arithmetic that depends on it.
  *
- * Targets audit 2026-06-01 Criticals #2/#3 and PLAN Tasks 0.2 & 0.7:
- *   - Critical #2: the Metal decode_pair used an FP32 sqrt, over-estimating the
+ * Targets two defects of the pair decode:
+ *   - FP32 sqrt: the Metal decode_pair used an FP32 sqrt, over-estimating the
  *     row near row boundaries so the last pair of most rows decoded WRONG for
  *     large N (the single upward `if` could not recover an over-estimate).
- *   - Critical #3 / Task 0.7: every int32 copy overflowed the i*(2N-i-1)
+ *   - int32 overflow: every int32 copy overflowed the i*(2N-i-1)
  *     intermediate (and the si*N+sj matrix index) at N >= 46341.
  *
  * The shared dtwc::detail::decode_pair (FP64 seed + int64 correction) must
@@ -18,9 +18,9 @@
  * WHY THE UNFIXED CODE FAILS THESE:
  *   - old_metal_fp32_decode() (a verbatim copy of the retired Metal decode) is
  *     asserted to be WRONG for ~5000 of the ~8191 row-boundary indices at
- *     N = 8192 — that assertion pins Critical #2.
+ *     N = 8192 — that assertion pins the FP32-sqrt defect.
  *   - The int32 matrix index for the last pair at N = 46342 is shown to exceed
- *     INT32_MAX — that pins Critical #3 / Task 0.7; the shared decode returns
+ *     INT32_MAX — that pins the int32-overflow defect; the shared decode returns
  *     int64, so the index arithmetic built on it (the retired N*N `si * N + sj`,
  *     now the CUDA packed slot) computes in 64-bit.
  */
@@ -39,7 +39,7 @@ namespace {
 
 /// Oracle A: the audited-correct MPI reference formula (FP64 seed + `while`),
 /// reproduced as it stood in mpi_distance_matrix.cpp before the SSOT extraction.
-/// This is the "correct copy" the plan says the shared decode must match.
+/// This is the "correct copy" the shared decode must match.
 std::pair<std::int64_t, std::int64_t> mpi_reference_decode(std::int64_t k, std::int64_t N)
 {
   const double Nd = static_cast<double>(N);
@@ -55,7 +55,7 @@ std::pair<std::int64_t, std::int64_t> mpi_reference_decode(std::int64_t k, std::
 }
 
 /// Oracle B: the OLD Metal FP32 decode (int32 + single `if`), reproduced to
-/// PIN Critical #2. It must produce WRONG (i, j) for many k at N = 8192.
+/// PIN the FP32-sqrt defect. It must produce WRONG (i, j) for many k at N = 8192.
 void old_metal_fp32_decode(int k, int N, int &i, int &j)
 {
   float Nf = static_cast<float>(N);
@@ -157,7 +157,7 @@ void msl_isqrt_decode(std::int64_t k, std::int64_t N, std::int64_t &i, std::int6
 } // namespace
 
 // ---------------------------------------------------------------------------
-// Task 0.2 — decode correctness
+// Decode correctness
 // ---------------------------------------------------------------------------
 
 TEST_CASE("decode_pair matches brute-force enumeration for small N", "[decode_pair]")
@@ -181,7 +181,7 @@ TEST_CASE("decode_pair matches brute-force enumeration for small N", "[decode_pa
 
 TEST_CASE("decode_pair is correct at N=8192", "[decode_pair]")
 {
-  // Critical #2 threshold: FP32 loses integer precision above 2^24 ~ 1.68e7,
+  // FP32-sqrt threshold: FP32 loses integer precision above 2^24 ~ 1.68e7,
   // and num_pairs = 8192*8191/2 ~ 3.35e7 exceeds that, so the retired FP32
   // decode went wrong in the upper half of the index range.
   constexpr std::int64_t N = 8192;
@@ -199,7 +199,7 @@ TEST_CASE("decode_pair is correct at N=8192", "[decode_pair]")
 
 TEST_CASE("decode_pair is correct at N=50000", "[decode_pair]")
 {
-  // Critical #3 threshold: i*(2N-i-1) overflows int32 near N=46341; N=50000 is
+  // int32-overflow threshold: i*(2N-i-1) overflows int32 near N=46341; N=50000 is
   // safely past it. num_pairs ~ 1.25e9 is too large to sweep fully, so we test
   // a coarse global stride plus dense row boundaries around the overflow point.
   constexpr std::int64_t N = 50000;
@@ -242,7 +242,7 @@ TEST_CASE("retired Metal FP32 decode is wrong at N=8192 (pins Critical #2)", "[d
 }
 
 // ---------------------------------------------------------------------------
-// Task 0.7 — 64-bit matrix-index arithmetic
+// 64-bit matrix-index arithmetic
 // ---------------------------------------------------------------------------
 
 TEST_CASE("last-pair matrix index overflows int32 at N=46342 (pins Task 0.7)", "[decode_pair][index]")
@@ -276,7 +276,7 @@ TEST_CASE("last-pair matrix index overflows int32 at N=46342 (pins Task 0.7)", "
 }
 
 // ---------------------------------------------------------------------------
-// Task R2 — Metal kDecodePairMSL algorithm equivalence
+// Metal kDecodePairMSL algorithm equivalence
 // ---------------------------------------------------------------------------
 
 TEST_CASE("kDecodePairMSL integer-isqrt algorithm matches SSOT decode_pair",
@@ -350,7 +350,7 @@ TEST_CASE("kDecodePairMSL integer-isqrt algorithm matches SSOT decode_pair",
 }
 
 // =========================================================================
-//  Degenerate N (audit 2026-09-02, item 4). The low clamp used to run BEFORE
+//  Degenerate N. The low clamp used to run BEFORE
 //  the high clamp, so for N < 2 the high clamp `row = N - 2` re-introduced a
 //  negative row after the low clamp had already removed it; the caller then
 //  indexed a series array at -1. The clamps are now ordered high-then-low, and

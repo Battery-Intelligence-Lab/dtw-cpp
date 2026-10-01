@@ -3,12 +3,12 @@
  * @brief dtwc_cl's run-time contracts, pinned where they now live: cli::bind()
  *        (through parse_config), dtwc::run() and its Parquet metadata planner.
  *
- * @details Until IF-2 S3 this file compiled dtwc_cl.cpp with DTWC_CL_NO_MAIN to
+ * @details This file used to compile dtwc_cl.cpp with DTWC_CL_NO_MAIN to
  * reach its file-local helpers. Those helpers are gone: the device grammar is
  * detail::parse_device, the selectors are types, and the pipeline is run(). The
  * contracts they carried are asserted here through the production entry points;
  * the device matrix is test_run_resolution.cpp's, and the streamed Parquet
- * names F8 / F13's (real binary, Arrow builds).
+ * names are checked by the real-binary tests of Arrow builds.
  *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026
@@ -222,7 +222,7 @@ TEST_CASE("run's PAM n_init retains the best deterministic restart", "[cli][seed
 }
 
 // ---------------------------------------------------------------------------
-// Distance-matrix storage routing (Task 8.1 M11): --mmap-threshold 0 always maps
+// Distance-matrix storage routing: --mmap-threshold 0 always maps
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -277,7 +277,7 @@ TEST_CASE("run's non-full FastCLARA does not open an unused parent matrix", "[cl
   CHECK_FALSE(cache_exists(scratch, "clara"));
 
   config.checkpoint = (scratch.path / "ckpt").string();
-  CHECK_THROWS_MATCHES(dtwc::run(config, tiny_series()), dtwc::InvalidInput, // bad input, not a runtime_error (GT-4)
+  CHECK_THROWS_MATCHES(dtwc::run(config, tiny_series()), dtwc::InvalidInput, // bad input, not a runtime_error
                        Catch::Matchers::MessageMatches(ContainsSubstring("unused O(N^2) state")));
   config.checkpoint.clear();
   config.dist_matrix = (scratch.path / "never_read.csv").string();

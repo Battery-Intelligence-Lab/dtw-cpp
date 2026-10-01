@@ -2,8 +2,8 @@ file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE
 
 include("${CMAKE_SOURCE_DIR}/cmake/DtwcTest.cmake")
 
-# B-19: the 1.x [[deprecated]] shims that docs/api-contract-2.0.md §3 keeps until
-# 3.0 must still compile, and must warn (test_problem_api_2_0 proves they forward).
+# The 1.x [[deprecated]] shims, kept until 3.0,
+# must still compile, and must warn (test_problem_api_2_0 proves they forward).
 # One use of each shim kind stands in for all 22, plus v1's std::vector<int>
 # set_clusters overload beside the index_t one. The probe is an EXCLUDE_FROM_ALL
 # object built by the configured compiler with dtwc++'s usage requirements; the
@@ -77,16 +77,16 @@ endforeach()
 # Explicit registrations: subject markers, fixture roots, capability gating.
 # Everything not listed here is registered by pass 2 with the defaults (strict).
 
-# F22: every retained C++ compatibility surface forwards to its canonical name
+# Every retained C++ compatibility surface forwards to its canonical name
 # (test_deprecated_shims_warn above proves the shims still warn).
 dtwc_add_test(NAME test_problem_api_2_0 SOURCE ${_dtwc_test_source_test_problem_api_2_0}
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-compat" FIXTURE_DEFINE DTWC_F22_TEST_ROOT)
 
-# F13: nearest-medoid assignment through a multi-worker OpenMP region.
+# Nearest-medoid assignment through a multi-worker OpenMP region.
 dtwc_add_test(NAME unit_test_nearest_medoid_assignment SOURCE ${_dtwc_test_source_unit_test_nearest_medoid_assignment}
     ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4)
 
-# F14 (focused): native distance-matrix CSV bytes; mmap is a required subject
+# Native distance-matrix CSV bytes; mmap is a required subject
 # only in a build that publishes it.
 if(_dtwc_has_mmap)
     set(_f14_marker "F14_CSV_CONTRACT dense=ran mmap=ran skips=0")
@@ -97,14 +97,14 @@ dtwc_add_test(NAME unit_test_distance_matrix_csv SOURCE ${_dtwc_test_source_unit
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f14-distance-matrix-csv-unit" FIXTURE_DEFINE DTWC_F14_TEST_ROOT
     MARKER "${_f14_marker}")
 
-# F19: executed public-API gate; Lloyd's artifacts stay inside the build tree.
+# Executed public-API gate; Lloyd's artifacts stay inside the build tree.
 dtwc_add_test(NAME unit_test_problem_encapsulation SOURCE ${_dtwc_test_source_unit_test_problem_encapsulation}
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f19-problem-api" FIXTURE_DEFINE DTWC_F19_TEST_ROOT)
 
-# F15: the three portable deterministic generator schedules.
+# The three portable deterministic generator schedules.
 dtwc_add_test(NAME unit_test_deterministic_series SOURCE ${_dtwc_test_source_unit_test_deterministic_series})
 
-# F6: the Arrow/Parquet readers must RUN when the build publishes Arrow, and
+# The Arrow/Parquet readers must RUN when the build publishes Arrow, and
 # are not registered at all when it does not (no green stub).
 dtwc_add_test(NAME test_io_readers SOURCE ${_dtwc_test_source_test_io_readers}
     REQUIRES DTWC_HAS_ARROW)
@@ -148,7 +148,7 @@ if(TARGET test_arrow_c_data)
     target_include_directories(test_arrow_c_data PRIVATE ${CMAKE_SOURCE_DIR}/dtwc/extern)
 endif()
 
-# Public F14 reachability: compare a real native Result::save with resident CLI
+# Public reachability: compare a real native Result::save with resident CLI
 # output in every build, and with forced-mmap CLI output when llfio is linked.
 # The .cc suffix deliberately keeps the helper out of the automatic *.cpp CTest
 # glob above.
@@ -218,7 +218,7 @@ if(TARGET dtwc_cl)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 180)
 endif()
 
-# FX-3: a failed checkpoint save, --dist-matrix load or output write exits
+# A failed checkpoint save, --dist-matrix load or output write exits
 # non-zero and names what failed. The EFBIG case needs a POSIX shell's ulimit,
 # so the expected case count is pinned per platform.
 if(TARGET dtwc_cl)
@@ -251,7 +251,7 @@ if(TARGET dtwc_cl)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 120)
 endif()
 
-# IF-2 S3: dtwc::run's method x device table on the real binary, per build
+# dtwc::run's method x device table on the real binary, per build
 # flavour, and --print-config against the golden files (48 keys: every value
 # and every default). A GPU build on a machine without the device must refuse.
 if(TARGET dtwc_cl)
@@ -279,7 +279,7 @@ if(TARGET dtwc_cl)
         LABELS integration cli SERIAL TIMEOUT 300)
 endif()
 
-# F8 is a real-CLI Parquet integration contract, not an Arrow-OFF capability
+# This is a real-CLI Parquet integration contract, not an Arrow-OFF capability
 # probe. Add no CTest target at all unless the linked library actually publishes
 # Parquet support; a passing stub or SKIP_RETURN_CODE would hide the subject.
 if(TARGET dtwc_cl AND "DTWC_HAS_PARQUET" IN_LIST _dtwc_public_defs)
@@ -351,7 +351,7 @@ endif()
 
 # ── MATLAB .m suites ───────────────────────────────────────────────────────
 # One CTest entry drives tests/matlab through the freshly built MEX and passes as
-# a dtwc_add_test does (GT-1): at least one case passed, none failed and none was
+# a dtwc_add_test does: at least one case passed, none failed and none was
 # Incomplete (MATLAB's "filtered by assumption", green in its own summary). The
 # registered skip is the parallelisation pair, which prints its reason: an OpenMP
 # MEX filters the serial case, a sequential MEX the runtime case.

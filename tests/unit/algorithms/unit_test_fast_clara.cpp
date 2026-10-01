@@ -430,7 +430,7 @@ TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",
 #ifndef DTWC_HAS_PARQUET
   SECTION("the missing capability is loud, as an IOError")
   {
-    // A build that cannot read the format raises IOError (IF-2 S2); it was
+    // A build that cannot read the format raises IOError; it was
     // InvalidInput, which names a bad argument.
     Problem settings_only{"clara_missing_parquet"};
     REQUIRE_THROWS_AS(algorithms::fast_clara(settings_only, opts), dtwc::IOError);
@@ -706,12 +706,12 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
 }
 
 // ===========================================================================
-// Task 0.11 / Phase 8: both paths use the portable seeded selection map.
+// Both paths use the portable seeded selection map.
 //
-// Bug (2026-06-01 audit): the in-RAM subsample used std::mt19937 + std::shuffle
+// Bug: the in-RAM subsample used std::mt19937 + std::shuffle
 // while the chunked (Parquet) path uses std::mt19937_64 + std::sample, so for the
 // same seed the two paths drew DIFFERENT subsamples and returned DIFFERENT
-// medoids. The Phase-8 map also removes the standard-library dependence from
+// medoids. The portable map also removes the standard-library dependence from
 // both paths while retaining their shared sorted-sample contract.
 //
 // This test pins that contract WITHOUT needing Parquet, using a deterministic
@@ -730,7 +730,7 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
 //
 // Both historical vendor schedules (mt19937+shuffle and mt19937_64+std::sample)
 // select different medians, so this literal portable-v1 oracle fails before the
-// Phase-8 repair. Six seeds make an accidental collision negligible (~1e-10).
+// portable map. Six seeds make an accidental collision negligible (~1e-10).
 // ===========================================================================
 TEST_CASE("FastCLARA in-RAM uses the portable seeded sample contract",
           "[fast_clara][task0_11][seed]")
@@ -775,7 +775,7 @@ TEST_CASE("FastCLARA in-RAM uses the portable seeded sample contract",
 }
 
 // ===========================================================================
-// Task 0.11 — Test B: parallel in-RAM assignment stays deterministic + correct.
+// Parallel in-RAM assignment stays deterministic + correct.
 //
 // assign_all_points() is OpenMP-parallel over N points and calls the serially
 // bound DTW dispatcher directly, so workers share no parent-cache writes. A

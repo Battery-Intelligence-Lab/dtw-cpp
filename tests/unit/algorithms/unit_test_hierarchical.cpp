@@ -272,14 +272,14 @@ TEST_CASE("Hierarchical: merge sizes are correct", "[hierarchical]")
 }
 
 // ---------------------------------------------------------------------------
-// A2: cut_dendrogram must not trust a caller-supplied Dendrogram
+// cut_dendrogram must not trust a caller-supplied Dendrogram
 // ---------------------------------------------------------------------------
 
 TEST_CASE("Hierarchical: cut_dendrogram rejects a malformed Dendrogram", "[hierarchical][validation]")
 {
   // `Dendrogram` is default-constructible with both fields publicly writable and
   // is exported to Python, so cut_dendrogram is reachable with a hand-built
-  // struct. Before A2 it read dend.merges[i] and indexed UF::parent with
+  // struct. It used to read dend.merges[i] and indexed UF::parent with
   // unvalidated cluster ids — an out-of-bounds read from pure Python.
   auto prob = make_4point_problem();
 

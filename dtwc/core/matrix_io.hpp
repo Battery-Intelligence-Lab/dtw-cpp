@@ -91,7 +91,8 @@ inline std::string_view distance_matrix_csv_token(
 
 /// Emit the full N x N CSV. Assumes preflight_distance_matrix_csv() has
 /// ALREADY run on @p dm: it is the only part of the write that can throw, and
-/// the F14 contract requires it to run before the destination is truncated.
+/// a failed write must leave the destination untouched, so it runs before the
+/// destination is truncated.
 inline std::ostream &write_distance_matrix_csv_preflighted(std::ostream &os,
                                                            const DistanceMatrix &dm)
 {
@@ -211,7 +212,7 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
 /// Expand packed triangular storage to a full N×N matrix, in row-major order.
 /// Useful for numpy/MATLAB export from the binding layer.
 ///
-/// Returned as a flat `std::vector<double>` rather than an Eigen matrix (X-27).
+/// Returned as a flat `std::vector<double>` rather than an Eigen matrix.
 /// The matrix is symmetric, so row- and column-major layouts are byte-identical
 /// and every caller already copied it straight into a `std::vector<double>` —
 /// returning one removes an N×N copy instead of adding one.

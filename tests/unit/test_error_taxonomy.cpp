@@ -8,8 +8,7 @@
  *   - catchability as dtwc::Error and as std::runtime_error/std::exception, and
  *   - that sibling types are distinct (an InvalidInput is not a SolverError).
  *
- * LIVE code-path coverage (see .claude/LESSONS.md "Tests must pin the LIVE code
- * path"): the taxonomy types are thrown by the sites migrated in Task 1.2. The
+ * LIVE code-path coverage: the taxonomy types are thrown by the sites they were migrated to. The
  * migrated site exercised here is the public, core (no HiGHS/Gurobi/CUDA needed)
  * entry point dtwc::soft_dtw_gradient() in dtwc/soft_dtw.hpp. Its former
  * `assert(mx > 0 && my > 0)` was a no-op under NDEBUG that let an empty span
@@ -20,9 +19,9 @@
  * mip_Gurobi.cpp — also throw dtwc::SolverError, but they require an optional
  * solver dependency, so the core path is exercised here instead.)
  *
- * GT-4 (the typed-throw sweep) adds one table: for every file whose bare
+ * One more table (the typed-throw sweep): for every file whose bare
  * `throw std::` sites became typed errors, a live, user-reachable site in it must
- * raise the type api-contract-2.0.md §5 names. Arrow/Parquet rows run only in a
+ * raise the type the error contract names. Arrow/Parquet rows run only in a
  * build with those readers; CUDA is pinned in test_cuda_correctness.cpp.
  *
  * @author Volkan Kumtepeli
@@ -151,8 +150,8 @@ TEST_CASE("soft_dtw_gradient: empty series throws dtwc::InvalidInput (live path)
 }
 
 // ===========================================================================
-// GT-4: one live site per converted file raises its contract type. The oracle
-// is api-contract-2.0.md §5 — bad input or configuration is InvalidInput, a
+// One live site per converted file raises its contract type. The oracle
+// is the error contract — bad input or configuration is InvalidInput, a
 // file, stream or filesystem failure is IOError — not the old bare std:: type.
 // ===========================================================================
 

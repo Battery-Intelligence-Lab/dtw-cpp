@@ -516,10 +516,8 @@ TEST_CASE("Problem: AROW gives finite distance with leading NaN", "[arow_dtw][pr
 }
 
 // ===========================================================================
-//  Phase 3.2: cross-validate the unified-kernel AROW (SpanAROWL1Cost +
+//  Cross-validate the unified-kernel AROW (SpanAROWL1Cost +
 //  AROWCell via dtw_kernel_banded) against the existing dtwAROW_banded.
-//  Used as a gate before migrating Problem::rebind_dtw_fn's AROW path to
-//  the unified kernel.
 // ===========================================================================
 
 namespace {
@@ -588,7 +586,7 @@ TEST_CASE("AROW kernel-policy: all NaN both sides = 0", "[arow_dtw][phase3]")
 }
 
 // ===========================================================================
-//  MV AROW (Phase 3.4) — per-channel skip for cost, trigger AROW diagonal
+//  MV AROW — per-channel skip for cost, trigger AROW diagonal
 //  carry only when a pair has no comparable channels. Verified via the
 //  Problem-level dispatch so ndim > 1 exercises the new make_arow MV branch.
 // ===========================================================================

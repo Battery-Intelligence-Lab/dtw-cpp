@@ -44,7 +44,7 @@ Problem make_problem(int N_data)
 }
 
 /// The dummy series cut to their shortest length: a band narrower than their
-/// length differences has no warping path, which the fill rejects (FX-1).
+/// length differences has no warping path, which the fill rejects.
 Problem make_equal_length_problem(int N_data)
 {
   const auto loaded = make_problem(N_data);

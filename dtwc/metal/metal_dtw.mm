@@ -819,7 +819,7 @@ MetalDistMatResult compute_distance_matrix_metal(
 {
   validate_metal_precision(opts.precision);
   auto &ctx = context();
-  // A16 parity with CUDA: an unavailable backend is a typed DeviceError, for
+  // As on CUDA: an unavailable backend is a typed DeviceError, for
   // every N and before the result is allocated, never a zero-filled result
   // that reads as a valid answer.
   if (!ctx.initialized)

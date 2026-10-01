@@ -7,7 +7,7 @@
  *   Its Theorem 1 guarantees the clustering labels are EXACTLY those of brute-force
  *   density-peaks (all DTW computed). We test that guarantee three ways:
  *     (1) an INDEPENDENT brute-force density-peaks oracle re-implemented here from
- *         the documented conventions (CLAUDE.md §4 — a second implementation);
+ *         the documented conventions (a second implementation);
  *     (2) prune ON vs prune OFF from the SAME call — the pruning flag toggles only
  *         whether a DTW is skipped, so any label/medoid/cost difference falsifies
  *         admissibility;
@@ -364,7 +364,7 @@ TEST_CASE("TADPole: >=50% of brute-force DTW calls pruned", "[.][tadpole][bench]
 
 TEST_CASE("TADPole: Float32 data disables LB/UB pruning (A1)", "[tadpole][float32]")
 {
-  // A1 regression. `bounds_valid` gated on variant/ndim/missing_strategy only, so
+  // Regression: `bounds_valid` gated on variant/ndim/missing_strategy only, so
   // under Precision::Float32 LB/UB came from float64 storage while exact() routes
   // through Problem::dist_by_ind, which does branch on is_f32(): different data on
   // the two sides of the bound, so the prune stops being admissible.

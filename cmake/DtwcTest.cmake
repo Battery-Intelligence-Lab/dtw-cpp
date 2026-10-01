@@ -2,7 +2,7 @@ include_guard(GLOBAL)
 
 option(DTWC_ENABLE_COVERAGE "Enable coverage reporting for GCC or Clang" OFF)
 
-# The one skip regex for the tree (tests taxonomy §2.3 variant B): anchored at a
+# The one skip regex for the tree: anchored at a
 # line start, matches SKIP / SKIPPED / SKIPPING as a word, never the marker
 # substring "skips=0".
 set(DTWC_TEST_SKIP_REGEX

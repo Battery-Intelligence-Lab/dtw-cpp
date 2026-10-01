@@ -49,7 +49,7 @@ TEST_CASE("cluster_and_process completes when the silhouette is undefined",
 TEST_CASE("write_silhouettes propagates a corrupt labelling",
           "[Problem][silhouette][taxonomy]")
 {
-  // Audit 2026-09-02, D2: the skip-and-warn guard caught every InvalidInput, so
+  // The skip-and-warn guard caught every InvalidInput, so
   // a clusters_ind that disagrees with the data ("labels disagree") was
   // downgraded to a warning and the caller reported success with no file.
   // Only the undefined-score case (UndefinedScore) may be skipped.

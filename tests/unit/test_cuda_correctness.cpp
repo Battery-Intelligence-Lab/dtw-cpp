@@ -46,7 +46,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h> // GlobalMemoryStatusEx: A15's host-memory check
+#include <windows.h> // GlobalMemoryStatusEx: the host-memory check
 #else
 #include <fstream>
 #endif
@@ -461,7 +461,7 @@ TEST_CASE("test_gpu_matches_cpu_large", "[cuda]")
 }
 
 // ---------------------------------------------------------------------------
-// Task 0.1 regression: long series (max_L > 2048) must not drop anti-diagonal
+// Regression: long series (max_L > 2048) must not drop anti-diagonal
 // cells. The retired double-buffer wavefront path cached each thread's cost-
 // diagonal in a fixed MAX_SI=8 register array (256 threads * 8 = 2048), so any
 // anti-diagonal longer than 2048 was silently truncated -> wrong DTW. The fix
@@ -1726,7 +1726,7 @@ TEST_CASE("test_regtile_kernel_squared_l2_L80", "[cuda][regtile]")
   }
 }
 
-// A15: at N = 65,537 the pair count passes INT_MAX, so the fill runs in several
+// At N = 65,537 the pair count passes INT_MAX, so the fill runs in several
 // launches of consecutive pairs, each streaming its span of the packed matrix to
 // the host; the CUDA fill used to refuse any N above 65,536. Series of 4 to 8
 // samples keep the host oracle cheap enough to check every pair, so every launch
@@ -1878,7 +1878,7 @@ TEST_CASE("GPU stress test (100 series x 200 length)", "[cuda]")
     REQUIRE(gpu_result.matrix[i * N + i] == 0.0);
 }
 
-// FX-1: a squared-L2 cache is filled by the Problem's CUDA route with the
+// A squared-L2 cache is filled by the Problem's CUDA route with the
 // squared-L2 kernel (it used to be refused as external-fill-only) and matches
 // the CPU squared-L2 kernels. FP64 is explicit: a persistent cache refuses Auto.
 TEST_CASE("FX-1 CUDA squared-L2 cache via Problem::fill_distance_matrix",
@@ -1916,7 +1916,7 @@ TEST_CASE("FX-1 CUDA squared-L2 cache via Problem::fill_distance_matrix",
 #endif
 }
 
-// IF-2 S2: the metric is the Problem's (set_metric), so a dense CUDA fill
+// The metric is the Problem's (set_metric), so a dense CUDA fill
 // computes squared L2 without a cache; FP64 matches the CPU kernels to 1e-9,
 // FP32 to the Metal tests' FP32 band.
 TEST_CASE("IF-2 CUDA dense squared-L2 via Problem::set_metric",

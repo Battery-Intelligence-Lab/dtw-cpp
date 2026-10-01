@@ -264,7 +264,7 @@ __global__ void dtw_wavefront_kernel(
   // for long series at the cost of an extra sync + register pressure per anti-diag.
   // For medium series the 3-buffer mode is faster (no extra sync overhead).
   constexpr int DOUBLE_BUF_THRESHOLD = 1024;
-  // Task 0.1: the double-buffer path caches each thread's cost-diagonal in a
+  // The double-buffer path caches each thread's cost-diagonal in a
   // fixed MAX_SI(8)-element register array, so an anti-diagonal longer than
   // blockDim.x(256)*MAX_SI = 2048 silently drops cells -> wrong DTW. Cap the
   // double-buffer path at 2048; longer series take the 3-buffer path (which
