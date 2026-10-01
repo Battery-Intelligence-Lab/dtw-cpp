@@ -57,7 +57,7 @@ Bindings: `python/` (6.7k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
 - Every test is registered through `dtwc_add_test` (`cmake/DtwcTest.cmake`): it passes on Catch2's summary
   with ≥ 1 assertion in ≥ 1 case, no failure, and no skip unless `MAY_SKIP`; `REQUIRES` unregisters a test
   whose subject is not built.
-- `tests/unit` (flat, plus `core/`, `algorithms/`, `mip/`, `io/`, `types/`, `adversarial/`), `tests/integration`
+- `tests/unit` (flat, plus `core/`, `algorithms/`, `mip/`, `io/`, `types/`), `tests/integration`
   (real-binary CLI scripts driven by `cmake -P`, the deprecated-shim compile probe), `tests/conformance`
   (one tracked reference for C++, Python, MATLAB and the CLI; `DTWC_CONFORMANCE_REGEN=1` rewrites it),
   `tests/python` (pytest; not run by ctest), `tests/matlab` (`matlab_suite`), `tests/data/reader` (reader inputs).
