@@ -1,72 +1,65 @@
-# Handoff — 2026-09-30 — phase B nearly closed, phase C under way (Windows)
+# Handoff — 2026-09-30/10-01 — phases B–D nearly closed, E and F under way (Windows)
 
 ## Base
 
-Branch `design-2.0`, HEAD after this file's commit (on `218127d`). Session base `a073113`; first commit `cf0cf4a`.
-Interim version (updated 09-30 evening): W11a (index_t, Opus) and C1 (long-series CUDA kernel, Opus) were running.
-Agent briefs and inventories: session scratchpad `…/79bd8991-b0e9-441b-bc55-95584dcfaf55/scratchpad/`
-(`brief_*.md`, `gates_*.md`, `y4_inventory.md`, `w11_inventory.md`, `brief_w11a.md`, `brief_w12a.md`, `brief_b1.md`).
+Branch `design-2.0`, HEAD after this file's commit (on `5ff4320`). Session base `a073113`; first commit `cf0cf4a`.
+Interim version (10-01 ~02:30): W13b, C3, W8a (Opus) and W12c-sync (Sonnet) were running. Agent briefs and gates:
+session scratchpad `…/79bd8991-b0e9-441b-bc55-95584dcfaf55/scratchpad/` (`brief_*.md`, `gates_*.md`, inventories).
 
 ## Done (merged into design-2.0, one gated merge each)
 
-- X2 `4de2ce9` (W3a–g): Benders, PDLP, CLARANS, the OneBatch weightings go; `decode_assignment` + `set_result`.
-- P3 `5e15459`: unbanded per-pair Standard DTW runs `dtwFull_L`; EAPruned deleted (−573/+15); no CHANGELOG line.
-- Y4 `93eefe1`: the MEX compiles again; a clang MEX on Windows links MATLAB's `libiomp5md`; F43 did not reproduce.
-- G1 `1bb9413`: `test_run_resolution` asserts `SolverError` for `mip` without HiGHS (LR-core needs no solver).
-- R1 `1ea8327`: no critical, atomic or mutex in `dtwc/algorithms`; `run_openmp` rethrows the lowest-index failure.
-- W6e `fe1bf9b` (Python) and W6m `e053594` (MATLAB): never-released aliases go; exact MEX integers; labels are
-  values; `dist_by_ind` bounds-checked at both language boundaries.
-- F1 `b5c7048`: every C++ test writes to its own scratch directory; `ctest -j 8` passes.
-- W4d `febd25f`: `KernelOverride` gone; FP32 L 4095–4096 fixed; shared memory opened once per device (a
-  two-thread race, now tested) and checked before any allocation; typed stubs; empty series → `InvalidInput`.
-- B1 `4968d44`, B2 `e0085fd`, B3 `65edcf7`: the bindings check indices; outputs stay empty until a clustering; one
-  `require_clustered`; `set_data` clears it; `fast_pam` `max_iter = 0` is BUILD only everywhere (crashes before).
-- X3b `6e346a7`: validator tails gone; `-Werror=switch` and MSVC C4062 both bite. H1 `1a079cd`: msvc preset, docs tool.
-- W13a `62d5822`: GPU writes the packed matrix; int64 chunks (N > 65,536); FP32 L 100 fill 0.756×; host memory −74 %.
-- Records: DECISIONS §3 (09-30 rulings), LESSONS (+3), MAP, runbook (overlapping test runs), PLAN marks.
+- 09-30 morning: X2 `4de2ce9`, P3 `5e15459`, Y4 `93eefe1`, G1 `1bb9413`, R1 `1ea8327`, W6e `fe1bf9b`, W6m `e053594`,
+  F1 `b5c7048`, W4d `febd25f` (see the 09-30 rulings in DECISIONS §3).
+- Bindings and outputs: B1 `4968d44`, B2 `e0085fd`, B3 `65edcf7`; X3b `6e346a7` (-Werror=switch, C4062); H1 `1a079cd`.
+- Counts: W11a `cfeac4b` (index_t), W11b `8a9db51` (np.int64 / exact doubles), W11c `d8d831d` (last 32-bit guards).
+- GPU: W13a `62d5822` (packed output, int64 chunks), C1 `ceb7f91` (any L; global wavefront), C2 `dd33a0e` (route rule).
+- Speed: P4 `69be49c` (OneBatch assignment 21.9×), P5 `bac9120` (OneBatch table on lanes 4.61×), E1 `770816e`
+  (DistanceConfig; dist_by_ind an O(1) read; PAM swap 5.6–5.9×; no lock or atomic left in dtwc/).
+- Tests: W12a `6c6f3d4` (−4,217), W6f `ce34bf8` (Problem API table; 3 probe files), W12d `eeea331` (parity table).
+- Build/HPC: V3 `169db40` (x86-64-v3 wheels/archives; one DTWC_ARCH_LEVEL), S1 `c54e375` (ARC scripts: CUDA floor,
+  native GPU-node build), F2 `a965ad5` (DTWC_CL_PATH), V4 `d6a9d54` (cross-route checks within a path-length bound).
+- Records: CHARTER (09-30 and 10-01 quotes), DECISIONS §3 rulings, LESSONS, runbook rule 2, PLAN marks.
 
 ## Verified by me
 
-- X2's sync merge kept its `cli/run.cpp` edits; every X2-deleted name has the same count as its pre-sync tip.
-- Integrator logs for X2: ctest 123 / 0 failed; `ctest -N` diff = the 4 registered removals + 1 addition;
-  pytest 1116 / 19 / 0. Read P3's routing diff, R1's `run_openmp` (the per-slot minimum is the global lowest
-  failing index under any schedule), Y4's OpenMP CMake branch.
-- `stress_test_cli.sh`'s failing `p1_pam_standard_band5` is a stale expectation: the binary refuses with the typed
-  "smallest feasible band is 4257".
-- Workflow agents ran on `claude-sonnet-5-5` (the Y4 inventory's progress record).
+- W6f deletions applied by me (`88c4a73`, `78b27ef`): the final test file differs from the agent's verified copy only by
+  its header; branch build warning-free, 120 registered, the 5 affected tests pass.
+- W12c deletions applied by me (`8d75fde`, −2,717): the oracle table covers the v1 entry points, DTW/ADTW early abandon
+  (off, above, at, below), hand values; tree builds, 110 registered. S1's native line fixed by me (`0268df1`, dry run).
+- Integrator logs: last green at `5ff4320` — clang ctest 111 = 108 + 3 MAY_SKIP; CUDA tree 110 / 0 (test_cuda_correctness
+  60 cases, 7202 assertions); pytest 1183 / 19 / 0 (at W12d); matlab_suite 149 / 148 / 1 incomplete (at V3); Arrow 5 / 5.
 
 ## Reported by agents, unverified
 
-- Last green (B3 merge `1cc4fcc`): clang ctest 122 = 119 + 3 MAY_SKIP; pytest 1172 / 19 / 0; `matlab_suite` 147 run /
-  146 passed / 1 allowed incomplete; CUDA tree 121 / 0 failed (W13a merge; llfio-ON tree 7145 assertions);
-  conformance digit-identical at every merge.
-- R1: TSan with LLVM libomp 18 + Archer (WSL, user space, `~/tsan`): 0 reports at base and head; controls bite.
-- W4d: band within 1 % on a quiet machine (cv ≤ 0.6 %); SASS byte-identical.
+- V3: conformance digit-identical on clang, MSVC and GCC 13.3 at v3; lanes at v3 ~1.0× unbanded, 1.17× banded vs SSE2
+  (under load). V4: GCC 13.3 v3 ctest 113 / 0 failed after the sync; worst route-bound ratio 0.0043 (double), 0.33 (float).
+- E1 integrator: CLI GPU vs CPU on data/dummy, labels and medoids byte-identical.
 
 ## Decisions
 
-- Volkan 09-30: "Please continue but don't call fable, for delegating simpler tasks use Sonnet 5.5 xhigh".
-  Later: "It is fine, we will never cluster as many as Nb^2 more than int64"; "You are overthiking about simple
-  things. Just keep the code simple, we think about it when it overflows" (CHARTER).
-  Sonnet units run as one-agent workflows (`model: sonnet`, `effort: xhigh`); harder ones on the default model.
-- Awaiting Volkan: (1) clang-cl Windows wheels (libomp shipped); (2) drop `/fp:contract` from MSVC `fast`;
-  (3) VERSIONINFO for `dtwc_cl.exe`; (4) NEW — the permission system refused W12a's `git rm` of tests ("Security
-  Test Removal"); W12a's deletions (~3,700 lines, each with its kept oracle named) and W6f's trims need his OK.
+- Volkan 09-30: "Yes, all three" (W11c/W12a/W6f deletions); CPU floor "x86-64-v3 (Recommended)"; ARC: `device=hpc` with
+  `gpu_device=`, or detect on the node; "Yes, please delete the trivial tests, we don't need to write tests just for
+  writing tests."
+- Volkan 10-01 (FP): "We don't need bit-by-bit equivalence between compilers. So they could differ minimally like 1e-9
+  epsilon or something. However, this shouldn't change the clustering results. … then go for the speed of course."
+  Contraction stays on every compiler; the MSVC `/fp:contract` question is closed.
+- Awaiting Volkan: clang-cl Windows wheels; VERSIONINFO for `dtwc_cl.exe`; whether the CI python job should build dtwc_cl.
 
 ## Next steps (PLAN)
 
-1. B: W12a's additive half (`pb/W12a`, 3 commits) with or without its deletions (Volkan's OK needed).
-2. C: C1 (global-memory wavefront for long series; carveout; preload wavefront — each behind its band), then W4e
-   (macOS CI).
-3. D: W11a (in flight) → W11b (Python `np.int64`, MATLAB double labels, drop `_CPP_INT_MAX`).
-4. B/F: W6f after X3b (permission); W12b–d; the tracker-id comment sweep when no code unit is in flight.
+1. F: W12c merge after its sync (folds its inline bound into `dtw_routes_agree`); W12b after W13b.
+2. E: W13b (finite scan at intake) → merge; W8a (one reader) → merge; then W7c (brief ready: `brief_w7c.md`), W7d–g,
+   W8b–c, W9 (after W7), W10.
+3. C: C3 (FP64 Shared kernel at 4 blocks/SM, own band); lead: 16 double lanes; W4e Metal (macOS CI).
+4. The tracker-id comment sweep when no code unit is in flight; HEAD baseline on a quiet machine.
 
 ## Open questions
 
-- Metal edits (W4d, W13a) are compiled blind here; macOS CI after a push is their gate.
-- Do ld.lld / ld64 LTO keep the lanes' SLP packing, and do llfio-ON wheels build on manylinux / macOS?
+- Metal edits (W4d, W13a) compiled blind here; macOS CI after a push is their gate. GCC failures fixed by V4 were never
+  seen by CI (Linux CI builds Debug, without the arch flag).
+- `.github/workflows/python-tests.yml` runs pytest with no dtwc_cl (F2 note); CI not run here.
 
 ## Status honesty
 
-Windows only (clang, MSVC for the MEX/CUDA). Not run: macOS/Metal, Linux, the full MATLAB suite on the MSVC MEX
-with HiGHS. Timing under load is [inferred]; W4d's final band ran on a quiet machine.
+Windows only (clang, MSVC for the MEX/CUDA), plus GCC 13.3 in WSL for V3/V4. Not run: macOS/Metal, native Linux, CI.
+Timing under load is [inferred]. A weekly API limit stopped three agents once (10-01); they were relaunched.
