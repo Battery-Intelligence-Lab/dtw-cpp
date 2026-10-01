@@ -157,9 +157,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   needs the matrix prepares it serially at entry (E1 2645fbc, 3c15a4e; merged 770816e; PAM swap 5.6–5.9× faster, no lock or atomic left in dtwc/)
 - ☑ W7c one `validate(DistanceConfig)`; `core/dtw.*`, `DTWOptions`, selector validation go (W7c 5bcd7bd, 78dd73f, 1afa573, 143f138; merged 6a44e4d; +517 / −1,927; the metric rule is the facade's)
 - ☑ W7d one orientation helper replaces the copied preambles (W7d 23b1978, a031ea1, 9e15eb4, ab72231, 243a715; merged 1ae4a30; −972 / +377; 26 preambles → core::orient + core::run_dtw; no per-cell Cost reloads in any build)
-- ☐ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers (WDTW weights at bind done in E1); the mutable
-  `distance_matrix()` overload gets its own name, so a reader cannot clear `filled_` by accident (E1)
-- ☐ W7f dead NaN functors and public helpers go
+- ☑ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers (WDTW weights at bind done in E1); the mutable
+  `distance_matrix()` overload gets its own name, so a reader cannot clear `filled_` by accident (E1) (W7ef cb0e20a, c275534, a09302a, fb8f1e6; merged c37e267; Soft-DTW peak 3,431 → 14 MB at 8 × 8,000 samples; Interpolate allocates nothing per pair; the mutable accessor is writable_distance_matrix())
+- ☑ W7f dead NaN functors and public helpers go (W7ef ac248dd, 441e64a, 1f7ce19; merged c37e267; TimeSeries/View, softmin_gamma, the DDTW pointer overloads and the full-matrix kernel gone; core::validate refuses an out-of-range enum)
 - ☑ W7g one `distance::dtw` per language (W7g fdb005d, f2f48bf, e597f19; merged 601748f; −1,672 / +685; both DTWClusterings ask C++; Problem.set_distance in both bindings)
 - ☑ W13b one finite scan at each matrix intake; read-only loops lose per-lookup checks (W13b 5605f4e, 3599ebc, a7f5af1, 8895c95, 7821cd7; merged 6605829; find_best_swap 27 → 21.5 instructions per lookup; Lloyd's assignment keeps its check: a fill of ±DBL_MAX series gives +inf)
 - ☑ W8a one reader entry (`read_data`); Parquet names and IPC nulls fixed; `load('x.parquet')` in Python (W8a 3dfbffe, 8b5bc1c, 34b031b, fcf6911, 292acc9; merged 761346a; −996/+749; Python reads Parquet through the installed pyarrow, Volkan 10-01)
