@@ -27,70 +27,6 @@ using Catch::Matchers::WithinAbs;
 static const double NaN = std::numeric_limits<double>::quiet_NaN();
 
 // =========================================================================
-//  MissingMVL1Dist functor tests
-// =========================================================================
-
-TEST_CASE("MissingMVL1Dist: no NaN matches MVL1Dist", "[mv][missing][functor]")
-{
-  double a[] = {1.0, 2.0, 3.0};
-  double b[] = {4.0, 1.0, 6.0};
-  // |1-4| + |2-1| + |3-6| = 3 + 1 + 3 = 7
-  REQUIRE(dtwc::detail::MissingMVL1Dist{}(a, b, 3) == 7.0);
-}
-
-TEST_CASE("MissingMVL1Dist: NaN in a skips that channel", "[mv][missing][functor]")
-{
-  double a[] = {NaN, 2.0};
-  double b[] = {4.0, 1.0};
-  // channel 0: NaN -> skip; channel 1: |2-1| = 1
-  REQUIRE(dtwc::detail::MissingMVL1Dist{}(a, b, 2) == 1.0);
-}
-
-TEST_CASE("MissingMVL1Dist: NaN in b skips that channel", "[mv][missing][functor]")
-{
-  double a[] = {1.0, 2.0};
-  double b[] = {NaN, 5.0};
-  // channel 0: NaN -> skip; channel 1: |2-5| = 3
-  REQUIRE(dtwc::detail::MissingMVL1Dist{}(a, b, 2) == 3.0);
-}
-
-TEST_CASE("MissingMVL1Dist: all NaN returns 0", "[mv][missing][functor]")
-{
-  double a[] = {NaN, NaN};
-  double b[] = {1.0, 2.0};
-  REQUIRE(dtwc::detail::MissingMVL1Dist{}(a, b, 2) == 0.0);
-}
-
-TEST_CASE("MissingMVL1Dist: symmetry with NaN", "[mv][missing][functor]")
-{
-  double a[] = {NaN, 3.0};
-  double b[] = {2.0, NaN};
-  // channel 0: a is NaN -> 0; channel 1: b is NaN -> 0; total = 0
-  REQUIRE(dtwc::detail::MissingMVL1Dist{}(a, b, 2) == 0.0);
-  REQUIRE(dtwc::detail::MissingMVL1Dist{}(b, a, 2) == 0.0);
-}
-
-// =========================================================================
-//  MissingMVSquaredL2Dist functor tests
-// =========================================================================
-
-TEST_CASE("MissingMVSquaredL2Dist: no NaN matches MVSquaredL2Dist", "[mv][missing][functor]")
-{
-  double a[] = {1.0, 2.0};
-  double b[] = {3.0, 5.0};
-  // (1-3)^2 + (2-5)^2 = 4 + 9 = 13
-  REQUIRE(dtwc::detail::MissingMVSquaredL2Dist{}(a, b, 2) == 13.0);
-}
-
-TEST_CASE("MissingMVSquaredL2Dist: NaN skips channel", "[mv][missing][functor]")
-{
-  double a[] = {NaN, 2.0};
-  double b[] = {3.0, 5.0};
-  // channel 0: NaN -> skip; channel 1: (2-5)^2 = 9
-  REQUIRE(dtwc::detail::MissingMVSquaredL2Dist{}(a, b, 2) == 9.0);
-}
-
-// =========================================================================
 //  dtwMissing_L_mv: no NaN matches standard MV DTW
 // =========================================================================
 
@@ -197,7 +133,7 @@ TEST_CASE("MV Missing: hand-computed L1 (ndim=2, 2 steps)", "[mv][missing]")
   // ndim=2, nx=ny=2
   // x = [(1,NaN), (3,4)], y = [(2,100), (3,5)]
   //
-  // Pointwise costs (L1, MissingMVL1Dist):
+  // Pointwise costs (L1, NaN channels skipped):
   //   cost(x[0], y[0]) = |1-2| + skip(NaN) = 1
   //   cost(x[0], y[1]) = |1-3| + skip(NaN) = 2
   //   cost(x[1], y[0]) = |3-2| + |4-100| = 1 + 96 = 97
@@ -221,7 +157,7 @@ TEST_CASE("MV Missing: hand-computed SquaredL2 (ndim=2, 2 steps)", "[mv][missing
   // ndim=2, nx=ny=2
   // x = [(1,NaN), (3,4)], y = [(2,100), (3,5)]
   //
-  // Pointwise costs (SquaredL2, MissingMVSquaredL2Dist):
+  // Pointwise costs (SquaredL2, NaN channels skipped):
   //   cost(x[0], y[0]) = (1-2)^2 + skip(NaN) = 1
   //   cost(x[0], y[1]) = (1-3)^2 + skip(NaN) = 4
   //   cost(x[1], y[0]) = (3-2)^2 + (4-100)^2 = 1 + 9216 = 9217

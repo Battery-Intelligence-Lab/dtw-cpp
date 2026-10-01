@@ -125,10 +125,9 @@ The Standard wrappers select these cost functors from `core/dtw_cost.hpp`:
 | `core::SpanMVL2Cost` | $$\sqrt{\sum_d (a_d-b_d)^2}$$ |
 
 The Euclidean implementation is `SpanMVL2Cost`.
-The missing-data wrappers use the index-based
-`SpanMVNanAwareL1Cost`, `SpanMVNanAwareSquaredL2Cost`, and
-`SpanMVNanAwareL2Cost` implementations. The similarly named legacy missing
-functors remain direct-call compatibility helpers, not the wrapper dispatch.
+The missing-data wrappers use `SpanMVNanAwareL1Cost`,
+`SpanMVNanAwareSquaredL2Cost`, and `SpanMVNanAwareL2Cost`, which skip the
+channels where either value is NaN.
 
 ## `Problem` dispatch
 

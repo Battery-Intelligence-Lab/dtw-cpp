@@ -14,7 +14,7 @@
 #include "../warping_missing_arow.hpp" // dtwAROW_banded
 #include "../warping_wdtw.hpp"       // wdtwBanded, wdtwBanded_mv, wdtw_weights
 #include "dtw_cost.hpp"              // SpanMVAROW*Cost
-#include "dtw_kernel.hpp"            // dtw_kernel_banded, AROWCell
+#include "dtw_kernel.hpp"            // run_dtw, AROWCell
 #include "dtw_options.hpp"           // DistanceConfig, variant_names
 #include "msm.hpp"                   // msm_distance
 #include "public_distance.hpp"       // normalize_public_distance
@@ -90,16 +90,11 @@ auto make_arow(const DistanceConfig &c)
     return [band, metric, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
       const auto x_steps = x.size() / ndim;
       const auto y_steps = y.size() / ndim;
-      const bool swap = x_steps > y_steps;
-      const T* a_data = swap ? y.data() : x.data();
-      const T* b_data = swap ? x.data() : y.data();
-      const auto a_steps = swap ? y_steps : x_steps;
-      const auto b_steps = swap ? x_steps : y_steps;
       if (metric == MetricType::SquaredL2)
-        return normalize_public_distance(dtw_kernel_banded<T>(
-          a_steps, b_steps, band, SpanMVAROWSquaredL2Cost<T>{a_data, b_data, ndim}, AROWCell{}));
-      return normalize_public_distance(dtw_kernel_banded<T>(
-        a_steps, b_steps, band, SpanMVAROWL1Cost<T>{a_data, b_data, ndim}, AROWCell{}));
+        return normalize_public_distance(run_dtw<SpanMVAROWSquaredL2Cost>(
+          x.data(), x_steps, y.data(), y_steps, band, AROWCell{}, T(-1), ndim));
+      return normalize_public_distance(run_dtw<SpanMVAROWL1Cost>(
+        x.data(), x_steps, y.data(), y_steps, band, AROWCell{}, T(-1), ndim));
     };
   }
   return [band, metric](std::span<const T> x, std::span<const T> y) -> double {
