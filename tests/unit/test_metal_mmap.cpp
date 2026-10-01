@@ -106,7 +106,6 @@ TEST_CASE("Metal device via Problem::fill_distance_matrix (mmap)", "[metal][mmap
   auto prob_gpu = make_problem(N, L, 777);
   prob_gpu.set_output_folder(tmpdir);
   prob_gpu.set_device(dtwc::Device::GPU);
-  prob_gpu.set_gpu_precision(dtwc::GpuPrecision::FP32); // a cache records its precision: Auto is refused
   // A cache left by an earlier run would reopen filled and skip the GPU.
   std::filesystem::remove(tmpdir / "metal_mmap_distmat.bin");
   prob_gpu.use_mmap_distance_matrix(tmpdir / "metal_mmap_distmat.bin");
@@ -148,7 +147,6 @@ TEST_CASE("Metal squared-L2 cache via Problem::fill_distance_matrix", "[metal][m
                               { "s0", "s1", "s2", "s3", "s4", "s5" } });
     prob.set_band(band);
     prob.set_device(dtwc::Device::GPU);
-    prob.set_gpu_precision(dtwc::GpuPrecision::FP32); // a cache records its precision: Auto is refused
     prob.use_mmap_distance_matrix(cache, dtwc::core::MetricType::SquaredL2);
     prob.fill_distance_matrix();
 

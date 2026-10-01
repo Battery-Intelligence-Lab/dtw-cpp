@@ -419,20 +419,21 @@ TEST_CASE("Problem non-L1 mmap identity is filled by the CPU in that metric",
 #endif
 }
 
-#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-// The identity is computed before the file is mapped, so the refusal needs no llfio.
-TEST_CASE("Problem rejects GPU Auto precision for persistent mmap identity",
-          "[variant][distmat][mmap][fingerprint][gpu]")
+#if defined(DTWC_HAS_CUDA)
+// CUDA's Auto resolves on the GPU a fill meets, so a cache cannot record it. The
+// identity is computed before the file is mapped, so the refusal needs no llfio.
+TEST_CASE("Problem rejects CUDA Auto precision for a persistent cache",
+          "[variant][distmat][mmap][fingerprint][cuda]")
 {
-  const ScratchDirectory cache_dir{ "mmap_gpu_auto_precision" };
+  const ScratchDirectory cache_dir{ "mmap_cuda_auto_precision" };
   const fs::path cache = cache_dir.path / "distances.dtwcache";
-  Problem prob{"cache_gpu_auto"};
+  Problem prob{"cache_cuda_auto"};
   prob.set_data(make_data({{0.0, 1.0}, {1.0, 2.0}}));
   prob.set_device(Device::GPU); // precision stays Auto, the default
 
   REQUIRE_THROWS_WITH(
     prob.use_mmap_distance_matrix(cache),
-    Catch::Matchers::ContainsSubstring("GPU precision Auto")
+    Catch::Matchers::ContainsSubstring("CUDA precision Auto")
       && Catch::Matchers::ContainsSubstring("explicit FP32 or FP64"));
   REQUIRE_FALSE(fs::exists(cache));
 
@@ -440,9 +441,26 @@ TEST_CASE("Problem rejects GPU Auto precision for persistent mmap identity",
   prob.checkpoint.enabled = true;
   prob.checkpoint.directory = cache_dir.path.string();
   REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
-                      Catch::Matchers::ContainsSubstring("GPU precision Auto"));
+                      Catch::Matchers::ContainsSubstring("CUDA precision Auto"));
   CHECK(std::as_const(prob).distance_matrix().size() == 0);
 }
+#elif defined(DTWC_HAS_METAL)
+// Metal has no FP64, so its Auto is FP32: the same identity, and a cache binds.
+TEST_CASE("Auto on Metal is FP32's identity", "[variant][distmat][fingerprint][metal]")
+{
+  const auto problem = [](GpuPrecision precision) {
+    Problem prob{ "metal_auto" };
+    prob.set_data(make_data({ { 0.0, 1.0 }, { 1.0, 2.0 } }));
+    prob.set_device(Device::GPU);
+    prob.set_gpu_precision(precision);
+    return prob;
+  };
+  CHECK(problem(GpuPrecision::Auto).distance_checkpoint_identity()
+        == problem(GpuPrecision::FP32).distance_checkpoint_identity());
+}
+#endif
+
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
 
 // A cache is keyed by the precision its distances were computed in, not by the
 // device: FP64 on the CPU and on a GPU differ by rounding only, so one's cache

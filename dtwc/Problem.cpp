@@ -130,6 +130,13 @@ constexpr std::string_view gpu_backend = "CUDA";
 constexpr std::string_view gpu_backend = "Metal";
 #endif
 
+/// What Device::GPU computes in for `precision`: Metal has no FP64, so its Auto
+/// is FP32; CUDA's Auto stays open until a fill meets a GPU (FP64 where it is fast).
+constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
+{
+  return gpu_backend == "Metal" && precision == GpuPrecision::Auto ? GpuPrecision::FP32 : precision;
+}
+
 /// A GPU request its backend cannot honour: every FX-1 rule words it so.
 [[noreturn]] void reject_gpu_request(std::string_view where, const std::string &request, const std::string &fix)
 {
@@ -487,19 +494,20 @@ Problem::distance_checkpoint_identity() const
 core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity(core::MetricType metric) const
 {
-  if (device_ == Device::GPU && gpu_precision_ == GpuPrecision::Auto)
-    throw InvalidInput(
-      "A persistent distance cache (a mapped .dtwm or a checkpoint) records the precision "
-      "its distances are computed in, but GPU precision Auto resolves to FP32 or FP64 on the "
-      "GPU a fill meets. Select explicit FP32 or FP64 (set_gpu_precision, --gpu-precision) "
-      "before binding or saving the cache.");
   // The precision the distances are computed in: the series' on the CPU, the
   // GPU's on a GPU. Not the device: FP64 on a CPU and on a GPU differ by
   // rounding, so either's cache serves the other (and GPU 0's serves GPU 1),
   // while FP32 distances in an FP64 run are a loss of precision.
+  const GpuPrecision gpu = resolve_gpu_precision(gpu_precision_);
+  if (device_ == Device::GPU && gpu == GpuPrecision::Auto)
+    throw InvalidInput(
+      "A persistent distance cache (a mapped .dtwm or a checkpoint) records the precision "
+      "its distances are computed in, but CUDA precision Auto resolves to FP32 or FP64 on the "
+      "GPU a fill meets. Select explicit FP32 or FP64 (set_gpu_precision, --gpu-precision) "
+      "before binding or saving the cache.");
   const core::Precision computed = device_ == Device::CPU ? data_.precision
-                                 : gpu_precision_ == GpuPrecision::FP32 ? core::Precision::Float32
-                                                                        : core::Precision::Float64;
+                                 : gpu == GpuPrecision::FP32 ? core::Precision::Float32
+                                                             : core::Precision::Float64;
 
   // The settings the stored distances were computed with, the metric among
   // them: without it a SquaredL2 run writes the same fingerprint as an L1 run
@@ -592,8 +600,8 @@ void Problem::validate_checkpoint_settings() const
       "Problem::fill_distance_matrix: checkpoint.enabled requires a non-empty "
       "checkpoint.directory.");
   // The autosave records the precision its distances were computed in, which
-  // Auto on a GPU leaves open: the identity refuses it here, before any pair.
-  if (device_ == Device::GPU && gpu_precision_ == GpuPrecision::Auto)
+  // CUDA's Auto leaves open: the identity refuses it here, before any pair.
+  if (device_ == Device::GPU && resolve_gpu_precision(gpu_precision_) == GpuPrecision::Auto)
     (void)distance_checkpoint_identity();
 }
 
@@ -805,7 +813,7 @@ void Problem::fill_distance_matrix()
 #endif
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
     opts.band = distance_.band;
-    opts.precision = gpu_precision_;
+    opts.precision = resolve_gpu_precision(gpu_precision_);
     // L2 is L1 on the univariate series the GPU routes take.
     opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
     opts.verbose = verbose_;
