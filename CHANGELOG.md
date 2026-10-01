@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fixed (CLI):** v1.0.0's option names work again, hidden from `--help`, each printing one warning that names its 2.0
+  flag: `--Nc`, `--clusters` and `--number_of_clusters` (`-k`), `--probName` (`--name`), `--in` (`--input`), `--out`
+  (`--output`), `--skipRows` (`--skip-rows`), `--skipCols` and `--skipColumns` (`--skip-cols`), `--maxIter` and `--iter`
+  (`--max-iter`), `--repeat`, `--Nrepeat`, `--Nrepetition` and `--Nrep` (`--n-init`), `--mip_solver` and `--mipSolver`
+  (`--solver`), `--bandwidth`, `--bandw` and `--bandlength` (`--band`), `--distMat`, `--distance_matrix` and
+  `--distances` (`--dist-matrix`). The 2.0 previews refused them as unknown options. v1.0.0's `--Nc i..j`, which
+  clustered once per k in the range, is refused with `InvalidInput` naming the replacement: one run per k.
 - **Changed (CLI, breaks a v1.0.0 command line without `--Nc`):** `-k/--n-clusters` is required. `dtwc_cl` without it
   exits 1 naming the flag, before any file is read or written. v1.0.0 printed an `Error processing input` line for a
   missing `--Nc` and exited 0 having clustered nothing; the 2.0 previews clustered with k = 3. `--print-config` writes

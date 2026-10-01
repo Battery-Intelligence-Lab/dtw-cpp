@@ -382,23 +382,41 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
         == "1610612736");
 }
 
-TEST_CASE("the deprecated spellings warn and yield to the canonical ones", "[config][spellings]")
+TEST_CASE("v1.0.0's spellings warn once and read as the canonical ones", "[config][spellings]")
 {
-  std::map<std::string, std::string> alone;
-  std::map<std::string, std::string> both;
-  std::string warnings;
-  {
-    CapturedStderr captured;
-    alone = values_of(dtwc::to_config_text(parse_args({ "--clusters", "6" })));
-    both = values_of(dtwc::to_config_text(parse_args({ "--clusters", "6", "-k", "2" })));
-    warnings = captured.text.str();
+  // v1.0.0 dtwc_cl's option block (git show v1.0.0:dtwc/dtwc_cl.cpp): each name with the key it sets now.
+  const std::pair<std::string, std::string> v1[]{
+    { "--Nc", "n-clusters" },        { "--clusters", "n-clusters" },        { "--number_of_clusters", "n-clusters" },
+    { "--probName", "name" },        { "--in", "input" },                   { "--out", "output" },
+    { "--skipRows", "skip-rows" },   { "--skipCols", "skip-cols" },         { "--skipColumns", "skip-cols" },
+    { "--maxIter", "max-iter" },     { "--iter", "max-iter" },              { "--repeat", "n-init" },
+    { "--Nrepeat", "n-init" },       { "--Nrepetition", "n-init" },         { "--Nrep", "n-init" },
+    { "--mip_solver", "solver" },    { "--mipSolver", "solver" },           { "--bandwidth", "band" },
+    { "--bandw", "band" },           { "--bandlength", "band" },            { "--distMat", "dist-matrix" },
+    { "--distance_matrix", "dist-matrix" }, { "--distances", "dist-matrix" },
+  };
+  const auto golden = values_of(golden_text()); // a value no default equals, for every key
+  for (const auto &[spelling, key] : v1) {
+    CAPTURE(spelling);
+    std::string text;
+    std::string warnings;
+    {
+      CapturedStderr captured;
+      text = dtwc::to_config_text(parse_args({ spelling, golden.at(key) }));
+      warnings = captured.text.str();
+    }
+    CHECK(text == dtwc::to_config_text(parse_args({ "--" + key, golden.at(key) })));
+    CHECK(warnings == "[dtwc] warning: '" + spelling + "' is deprecated, use '--" + key + "' instead\n");
   }
-  CHECK(alone.at("n-clusters") == "6");
-  CHECK(both.at("n-clusters") == "2");
-  CHECK(warnings
-        == "[dtwc] warning: '--clusters' is deprecated, use '--n-clusters' instead\n"
-           "[dtwc] warning: '--clusters' is deprecated, use '--n-clusters' instead\n");
-  CHECK(alone.count("clusters") == 0); // the text form never writes a deprecated key
+
+  CapturedStderr quiet;
+  // The canonical spelling wins, wherever it stands.
+  CHECK(values_of(dtwc::to_config_text(parse_args({ "--Nc", "6", "-k", "2" }))).at("n-clusters") == "2");
+  CHECK(values_of(dtwc::to_config_text(parse_args({ "-k", "2", "--Nc", "6" }))).at("n-clusters") == "2");
+  // v1.0.0 ran each k of `--Nc i..j`; a run takes one.
+  for (const char *spelling : { "--Nc", "-k" })
+    CHECK_THROWS_MATCHES(parse_args({ spelling, "3..5" }), dtwc::InvalidInput,
+                         Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("-k 3, ..., -k 5")));
 }
 
 TEST_CASE("bind() reads every option, alias and choice dtwc_cl --help lists", "[config][cli]")
@@ -497,4 +515,30 @@ TEST_CASE("Config{} holds the defaults dtwc_cl reports", "[config][cli]")
 
   const auto hierarchical = echo({ "-m", "hierarchical" });
   CHECK(hierarchical.at("Linkage") == defaults.at("linkage"));
+}
+
+TEST_CASE("dtwc_cl runs a v1.0.0 command line and refuses its range of k", "[config][cli]")
+{
+  const ScratchDirectory scratch{ "config_spellings_v1" };
+  const fs::path input = conformance_dir() / "data" / "conformance_series.csv";
+  const CommandResult v1 = run({ cli_executable().string(), "--Nc", "3", "--in", input.string(), "--out",
+                                 (scratch.path / "out").string(), "--probName", "v1", "--method", "kMedoids",
+                                 "--maxIter", "50", "--Nrep", "2", "--bandwidth", "4" },
+                               scratch.path);
+  INFO("stdout:\n" << v1.out << "\nstderr:\n" << v1.err);
+  CHECK(v1.exit_code == 0);
+  CHECK(fs::is_regular_file(scratch.path / "out" / "v1_labels.csv"));
+  std::size_t warnings = 0;
+  for (const std::string &line : lines_of(v1.err)) warnings += line.rfind("[dtwc] warning: '--", 0) == 0;
+  CHECK(warnings == 7); // once per v1.0.0 spelling; kMedoids is a value, read case-blind
+  for (const char *spelling : { "--Nc", "--in", "--out", "--probName", "--maxIter", "--Nrep", "--bandwidth" })
+    CHECK(v1.err.find(std::string("'") + spelling + "' is deprecated") != std::string::npos);
+
+  const CommandResult range = run({ cli_executable().string(), "--Nc", "3..5", "--in", input.string(), "--out",
+                                    (scratch.path / "range").string() },
+                                  scratch.path);
+  INFO("stderr:\n" << range.err);
+  CHECK(range.exit_code != 0);
+  CHECK(range.err.find("Run dtwc_cl once per k instead: -k 3, ..., -k 5.") != std::string::npos);
+  CHECK_FALSE(fs::exists(scratch.path / "range"));
 }

@@ -56,6 +56,10 @@ two agree on every default, check and method choice.
 | `--dtype <string>` | Data type for in-memory storage. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
 | `--ram-limit <size>` | Conservative Parquet series-materialization budget, e.g. `2GiB`, `500M`, `1.5G`; see below | unlimited |
 
+The option names of DTW-C++ 1.0 (Nc, probName, in, out, skipRows, skipCols, maxIter, Nrep, bandwidth, distMat and
+their other spellings) still work, hidden from `--help`: each prints one warning naming its 2.0 flag. Its range of
+cluster counts, i..j, is refused: run `dtwc_cl` once per k.
+
 ### Clustering Method
 
 | Flag | Description | Default |

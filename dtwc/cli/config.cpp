@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <initializer_list>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -151,6 +152,39 @@ void warn_deprecated(std::string_view old_flag, std::string_view new_flag)
   std::cerr << "[dtwc] warning: '" << old_flag << "' is deprecated, use '" << new_flag << "' instead\n";
 }
 
+/// v1.0.0's `--Nc i..j` clustered once per number of clusters in a range; a run takes one.
+std::string one_number_of_clusters(std::string &text)
+{
+  if (const auto dots = text.find(".."); dots != std::string::npos)
+    throw InvalidInput("-k/--n-clusters takes one number of clusters; '" + text
+                       + "' is v1.0.0's range form (--Nc i..j), which ran once per k. Run dtwc_cl once per k instead: -k "
+                       + text.substr(0, dots) + ", ..., -k " + text.substr(dots + 2) + ".");
+  return {};
+}
+
+/// v1.0.0's spellings of the option `canonical`, hidden from --help. Each warns
+/// and hands its value to that option, through its conversion and checks, unless
+/// the option was given itself: the canonical spelling wins.
+void v1_spellings(CLI::App &app, const std::string &canonical, std::initializer_list<const char *> spellings)
+{
+  CLI::Option *option = app.get_option(canonical);
+  for (const std::string spelling : spellings)
+    app
+      .add_option_function<std::string>(
+        spelling,
+        [option, spelling](const std::string &value) {
+          warn_deprecated(spelling, option->get_name());
+          if (option->count() > 0) return;
+          option->add_result(value);
+          option->run_callback();
+          // Still "not given": a config file applies a key only to an option no
+          // one gave, so its canonical key, read after this one, must still win.
+          option->clear();
+        },
+        "v1.0.0 spelling of " + option->get_name())
+      ->group("");
+}
+
 } // namespace
 
 std::string device_text(const Config &config)
@@ -185,15 +219,8 @@ void bind(CLI::App &app, Config &config)
 
   // Clustering
   // 0, the default, is "not given": the run refuses it, and to_config_text() writes it.
-  CLI::Option *n_clusters = key(app, "-k,--n-clusters", config.k, "Number of clusters (required)");
-  app.add_option_function<index_t>(
-       "--clusters",
-       [&config, n_clusters](index_t k) {
-         warn_deprecated("--clusters", "--n-clusters");
-         if (n_clusters->count() == 0) config.k = k; // the canonical spelling wins
-       },
-       "DEPRECATED alias of --n-clusters")
-    ->group("");
+  key(app, "-k,--n-clusters", config.k, "Number of clusters (required)")
+    ->check(CLI::Validator(one_number_of_clusters, ""));
   key(app, "-m,--method", config.method, method_names, "method",
       "Clustering method: auto, pam, onebatch, clara, kmedoids, mip, lrcore, hierarchical, tadpole");
   key(app, "-b,--band", config.band, "Sakoe-Chiba band width (-1 = full DTW)");
@@ -275,6 +302,19 @@ void bind(CLI::App &app, Config &config)
       "GPU kernel precision: auto (default), float32/f32/fp32, float64/f64/fp64/double");
 
   key(app, "-v,--verbose", config.verbose, "Verbose output");
+
+  // v1.0.0's spellings (its --method values kMedoids and MIP read already, case aside).
+  v1_spellings(app, "--n-clusters", { "--Nc", "--clusters", "--number_of_clusters" });
+  v1_spellings(app, "--name", { "--probName" });
+  v1_spellings(app, "--input", { "--in" });
+  v1_spellings(app, "--output", { "--out" });
+  v1_spellings(app, "--skip-rows", { "--skipRows" });
+  v1_spellings(app, "--skip-cols", { "--skipCols", "--skipColumns" });
+  v1_spellings(app, "--max-iter", { "--maxIter", "--iter" });
+  v1_spellings(app, "--n-init", { "--repeat", "--Nrepeat", "--Nrepetition", "--Nrep" });
+  v1_spellings(app, "--solver", { "--mip_solver", "--mipSolver" });
+  v1_spellings(app, "--band", { "--bandwidth", "--bandw", "--bandlength" });
+  v1_spellings(app, "--dist-matrix", { "--distMat", "--distance_matrix", "--distances" });
 }
 
 } // namespace cli

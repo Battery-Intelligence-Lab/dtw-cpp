@@ -83,11 +83,12 @@ namespace cli {
 
 /// Adds every Config key to `app`, bound to `config`, plus `--config <file>`
 /// (TOML or YAML, the same keys; flags beat the file; an unknown key is an error).
-/// `--help` shows `config`'s values as the defaults. `--clusters` stays a hidden
-/// spelling that warns on stderr and yields to `--n-clusters`.
+/// `--help` shows `config`'s values as the defaults. v1.0.0's option spellings
+/// (`--Nc`, `--probName`, `--skipRows`, ...) are hidden ones that each warn once
+/// on stderr and yield to the canonical spelling.
 /// A value no spelling reads raises during the parse: CLI11's error for a bad
-/// choice or number, InvalidInput for `--ram-limit` / `--delimiter`, DeviceError
-/// for `--device`.
+/// choice or number, InvalidInput for `--ram-limit` / `--delimiter` and for
+/// v1.0.0's `-k`/`--Nc` range `i..j`, DeviceError for `--device`.
 void bind(CLI::App &app, Config &config);
 
 } // namespace cli
