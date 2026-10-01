@@ -1,9 +1,9 @@
 /**
  * @file unit_test_variant_distmat.cpp
- * @brief Integration tests for the Problem's distance matrix, on the heap and mapped.
- *
- * Tests that Problem works correctly with its distance matrix on the heap
- * (default) and mapped to a `.dtwm` file (use_mmap_distance_matrix()).
+ * @brief The Problem's distance matrix, on the heap and mapped: what drops a dense
+ *        cache, and what the identity of a mapped cache (use_mmap_distance_matrix())
+ *        covers. The distances themselves are checked against the oracle in
+ *        core/test_dtw.cpp.
  *
  * @date 08 Apr 2026
  */
@@ -14,7 +14,6 @@
 #include "../support/scratch_directory.hpp"
 
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <filesystem>
@@ -28,21 +27,7 @@ using namespace dtwc;
 namespace fs = std::filesystem;
 using dtwc::test_support::ScratchDirectory;
 
-#ifndef DTWC_TEST_DATA_DIR
-#define DTWC_TEST_DATA_DIR "./data"
-#endif
-
 namespace {
-fs::path dummy_data_path() { return fs::path{DTWC_TEST_DATA_DIR} / "dummy"; }
-
-/// data/dummy holds pandas `index,value` files: skip the `,0` header and the
-/// index column, which a default read now rejects rather than clusters (FX-6).
-DataLoader dummy_loader()
-{
-  DataLoader dl(dummy_data_path());
-  dl.start_column(1).start_row(1);
-  return dl;
-}
 
 Data make_data(std::vector<std::vector<data_t>> series, size_t ndim = 1)
 {
@@ -61,20 +46,6 @@ Data make_data_f32(std::vector<std::vector<float>> series, size_t ndim = 1)
     names.push_back("s" + std::to_string(i));
   return Data(std::move(series), std::move(names), ndim);
 }
-}
-
-TEST_CASE("Problem keeps its distance matrix on the heap by default", "[variant][distmat]")
-{
-  DataLoader dl = dummy_loader();
-  Problem prob("test_variant", dl);
-  REQUIRE(prob.size() == 25);
-
-  prob.fill_distance_matrix();
-  REQUIRE(prob.is_distance_matrix_filled());
-
-  double d = prob.dist_by_ind(0, 1);
-  REQUIRE(d >= 0.0);
-  REQUIRE(d == prob.dist_by_ind(1, 0)); // symmetry
 }
 
 TEST_CASE("Problem dense cache never survives a semantic configuration change",
@@ -176,62 +147,6 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   REQUIRE_FALSE(prob.is_distance_matrix_filled());
   prob.fill_distance_matrix();
   REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
-}
-
-TEST_CASE("Problem maps its distance matrix when asked", "[variant][distmat][mmap]")
-{
-#ifndef DTWC_HAS_MMAP
-  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
-#else
-  const ScratchDirectory scratch{ "variant_mmap" };
-  const auto cache_path = scratch.path / "variant_mmap.dtwcache";
-
-  DataLoader dl = dummy_loader();
-  Problem prob("test_mmap", dl);
-
-  // Force mmap mode
-  prob.use_mmap_distance_matrix(cache_path);
-
-  prob.fill_distance_matrix();
-  REQUIRE(prob.is_distance_matrix_filled());
-
-  double d = prob.dist_by_ind(0, 1);
-  REQUIRE(d >= 0.0);
-  REQUIRE(d == prob.dist_by_ind(1, 0));
-
-  REQUIRE(fs::exists(cache_path));
-  REQUIRE(fs::file_size(cache_path) > 0);
-#endif
-}
-
-TEST_CASE("A mapped distance matrix warm-starts through Problem", "[variant][distmat][mmap]")
-{
-#ifndef DTWC_HAS_MMAP
-  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
-#else
-  const ScratchDirectory scratch{ "warmstart_prob" };
-  const auto cache_path = scratch.path / "warmstart_prob.dtwcache";
-
-  double d01_original;
-
-  // First run: fill distance matrix
-  {
-    DataLoader dl = dummy_loader();
-    Problem prob("test_warmstart", dl);
-    prob.use_mmap_distance_matrix(cache_path);
-    prob.fill_distance_matrix();
-    d01_original = prob.dist_by_ind(0, 1);
-  }
-
-  // Second run: reopen - distances should persist
-  {
-    DataLoader dl = dummy_loader();
-    Problem prob("test_warmstart", dl);
-    prob.use_mmap_distance_matrix(cache_path);
-    REQUIRE(prob.is_distance_matrix_filled());
-    REQUIRE(prob.dist_by_ind(0, 1) == d01_original);
-  }
-#endif
 }
 
 TEST_CASE("Problem mmap warmstart rejects a same-N data fingerprint mismatch",

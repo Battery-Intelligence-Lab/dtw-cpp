@@ -3,11 +3,12 @@
  * @brief IF-2 S2: the pointwise metric is part of a Problem's distance
  *        semantics (Problem::set_metric), and FastCLARA's samples inherit it.
  *
- * @details Oracles are the checked free functions (distance::dtw) and the
- *          multivariate kernels, never the Problem under test. Registered band:
- *          exact (==) — the CPU fill calls the same kernel with the same
- *          metric. The Metal cases live in test_metal_mmap.cpp and the CUDA case
- *          in test_cuda_correctness.cpp, which may skip without a device.
+ * @details Oracles are the checked free functions (distance::dtw), never the
+ *          Problem under test: exact (==) where the same kernel runs, else within
+ *          kCrossPathRel (the fill may take the SIMD lanes, which round differently).
+ *          The fill-versus-oracle distance table is core/test_dtw.cpp. The Metal
+ *          cases live in test_metal_mmap.cpp and the CUDA case in
+ *          test_cuda_correctness.cpp, which may skip without a device.
  */
 
 #include <dtwc.hpp>
@@ -74,104 +75,6 @@ dtwc::Problem make_problem(const std::vector<std::vector<double>> &series,
 }
 
 } // namespace
-
-TEST_CASE("set_metric: the CPU fill computes squared L2 exactly",
-          "[problem][metric][if2]")
-{
-  const auto series = random_series(6, 30, 1, 7);
-  for (const int band : { -1, 3 }) {
-    CAPTURE(band);
-    auto prob = make_problem(series);
-    prob.set_band(band);
-    REQUIRE(prob.metric() == MetricType::L1); // the default
-    prob.set_metric(MetricType::SquaredL2);
-    REQUIRE(prob.metric() == MetricType::SquaredL2);
-    prob.fill_distance_matrix();
-
-    auto l1 = make_problem(series);
-    l1.set_band(band);
-    l1.fill_distance_matrix();
-    for (std::size_t i = 0; i < series.size(); ++i)
-      for (std::size_t j = i + 1; j < series.size(); ++j) {
-        CAPTURE(i, j);
-        CHECK_THAT(prob.dist_by_ind(int(i), int(j)),
-                   WithinRel(dtwc::distance::dtw<double>(
-                               series[i], series[j], band, MetricType::SquaredL2),
-                             kCrossPathRel));
-        CHECK(l1.dist_by_ind(int(i), int(j))
-              == dtwc::distance::dtw<double>(series[i], series[j], band));
-      }
-  }
-}
-
-TEST_CASE("set_metric: Auto fills a squared-L2 matrix exactly",
-          "[problem][metric][if2]")
-{
-  const auto series = random_series(64, 12, 1, 23);
-  auto prob = make_problem(series);
-  prob.set_band(4);
-  prob.set_metric(MetricType::SquaredL2);
-  prob.fill_distance_matrix();
-  int mismatches = 0;
-  for (std::size_t i = 0; i < series.size(); ++i)
-    for (std::size_t j = i + 1; j < series.size(); ++j)
-      if (!WithinRel(dtwc::distance::dtw<double>(series[i], series[j], 4,
-                                                 MetricType::SquaredL2),
-                     kCrossPathRel)
-             .match(prob.dist_by_ind(int(i), int(j))))
-        ++mismatches;
-  CHECK(mismatches == 0);
-}
-
-TEST_CASE("Auto fill of multivariate series equals the multivariate kernel",
-          "[problem][metric][multivariate][if2]")
-{
-  constexpr std::size_t N = 64, ndim = 2;
-  const auto series = random_series(N, 12, ndim, 11);
-  auto prob = make_problem(series, ndim);
-  prob.set_band(2);
-  prob.fill_distance_matrix();
-  int mismatches = 0;
-  for (std::size_t i = 0; i < N; ++i)
-    for (std::size_t j = i + 1; j < N; ++j)
-      if (prob.dist_by_ind(int(i), int(j))
-          != dtwc::dtwBanded_mv<double>(series[i].data(), series[i].size() / ndim,
-                                        series[j].data(), series[j].size() / ndim,
-                                        ndim, 2))
-        ++mismatches;
-  CHECK(mismatches == 0);
-}
-
-TEST_CASE("set_metric: multivariate Standard DTW takes the metric, dependent and independent",
-          "[problem][metric][multivariate][if2]")
-{
-  constexpr std::size_t ndim = 3;
-  const auto series = random_series(5, 10, ndim, 5);
-  for (const auto metric : { MetricType::L2, MetricType::SquaredL2 })
-    for (const int band : { -1, 2 })
-      for (const auto mode : { dtwc::core::MVMode::Dependent,
-                               dtwc::core::MVMode::Independent }) {
-        CAPTURE(static_cast<int>(metric), band, static_cast<int>(mode));
-        auto prob = make_problem(series, ndim);
-        prob.set_band(band);
-        auto params = prob.variant_params();
-        params.mv_mode = mode;
-        prob.set_variant(params);
-        prob.set_metric(metric);
-        prob.fill_distance_matrix();
-        for (std::size_t i = 0; i < series.size(); ++i)
-          for (std::size_t j = i + 1; j < series.size(); ++j) {
-            const auto nx = series[i].size() / ndim, ny = series[j].size() / ndim;
-            const double oracle = mode == dtwc::core::MVMode::Dependent
-              ? dtwc::dtwBanded_mv<double>(series[i].data(), nx, series[j].data(),
-                                           ny, ndim, band, -1.0, metric)
-              : dtwc::dtw_independent_mv<double>(series[i].data(), nx,
-                                                 series[j].data(), ny, ndim, band,
-                                                 metric);
-            CHECK(prob.dist_by_ind(int(i), int(j)) == oracle);
-          }
-      }
-}
 
 TEST_CASE("set_metric: a metric the kernels cannot take is refused before any pair",
           "[problem][metric][errors][if2]")
