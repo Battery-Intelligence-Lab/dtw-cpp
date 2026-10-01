@@ -237,13 +237,15 @@ __global__ void dtw_wavefront_kernel(
 
   // Preload threshold: series shorter than this are loaded into shared memory.
   // The host launches the Preload kernel up to it, so the Shared kernel never
-  // takes this branch, but keeps it: without it the FP32 Shared kernel needs 50
-  // registers instead of 68, runs five blocks per SM instead of three, and its
-  // fills at L 513-1024 and 2048 took 4-23 % more time on an RTX 4000 Ada
+  // takes this branch, yet compiling it still changes the kernel. FP32 keeps
+  // it: its registers (68 instead of 50) hold the kernel at three blocks per SM
+  // instead of four, and without it the FP32 fills at L 513-1024 and 2048 took
+  // 4-23 % more time. FP64 compiles it out: 62 registers instead of 79, and its
+  // fills at L 513-1024 took 0.84-0.89 of the time. On an RTX 4000 Ada
   // (.claude/baselines/2026-09-30-c2-cuda-route.md).
   constexpr int PRELOAD_THRESHOLD = static_cast<int>(detail::kPreloadMaxLength);
   const bool preload = Mode == Wavefront::Preload
-      || (Mode == Wavefront::Shared && max_L <= PRELOAD_THRESHOLD);
+      || (Mode == Wavefront::Shared && std::is_same_v<T, float> && max_L <= PRELOAD_THRESHOLD);
 
   // Shared memory layout:
   //   Preload mode:  [0..max_L) row_buf, [max_L..2*max_L) col_buf,
@@ -996,8 +998,8 @@ void launch_dtw_kernel(
   // select_kernel sized so that three fit an SM above L = 2048, within the
   // opt-in maximum that device_limits opened once;
   // up to kPreloadMaxLength its kernel is the preload mode compiled alone: 40
-  // registers instead of 68 (FP32) or 79 (FP64), so up to 6 blocks per SM
-  // instead of 3, and 11.5-18.5 % less time at L 257-512 in FP32 and FP64
+  // registers instead of 68 (FP32), so up to 6 blocks per SM instead of 3, and
+  // 11.5-18.5 % less time at L 257-512 in FP32 and FP64
   // (.claude/baselines/2026-09-30-c1-cuda-long-series.md). The global-memory
   // wavefront always runs persistent, each block in its own slice of scratch,
   // on at most one block per pair of a launch.
