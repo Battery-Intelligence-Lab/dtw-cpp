@@ -17,11 +17,14 @@
 #include "../support/scratch_directory.hpp"
 #include "../test_util.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <random>
 #include <set>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #ifndef DTWC_TEST_DATA_DIR
@@ -396,4 +399,111 @@ TEST_CASE("Capped Lloyd returns labels assigned to its final medoids",
   CHECK(capped.labels() == nearest_labels);
   CHECK_THAT(capped.find_total_cost(), WithinAbs(nearest_cost, 1e-12));
   CHECK(capped.labels() == converged.labels());
+}
+
+// ---------------------------------------------------------------------------
+// k-medoids through Problem::cluster() on series built to have a known answer
+// ---------------------------------------------------------------------------
+namespace {
+
+/// Method::Kmedoids over `series`, keeping the best of `repetitions` starts.
+Problem cluster_series(const std::vector<std::vector<data_t>> &series, int k, int repetitions = 1)
+{
+  auto vecs = series;
+  std::vector<std::string> names;
+  for (std::size_t i = 0; i < series.size(); ++i)
+    names.push_back("s" + std::to_string(i));
+
+  Problem prob("known_answer");
+  prob.set_data(Data(std::move(vecs), std::move(names)));
+  prob.set_n_clusters(k);
+  prob.set_max_iter(100);
+  prob.set_n_repetitions(repetitions);
+  prob.set_method(Method::Kmedoids);
+  prob.cluster();
+  return prob;
+}
+
+/// Three groups of `per_group` length-10 series around 0, 100 and 200 (noise sd 0.5).
+std::vector<std::vector<data_t>> three_separated_groups(int per_group)
+{
+  std::vector<std::vector<data_t>> series;
+  std::mt19937 rng(42);
+  std::normal_distribution<data_t> noise(0.0, 0.5);
+  for (int group = 0; group < 3; ++group)
+    for (int i = 0; i < per_group; ++i) {
+      std::vector<data_t> s(10);
+      for (auto &v : s)
+        v = group * 100.0 + noise(rng);
+      series.push_back(std::move(s));
+    }
+  return series;
+}
+
+} // anonymous namespace
+
+TEST_CASE("k-medoids with k=1 returns the series of least total distance", "[Phase1][clustering]")
+{
+  const auto series = three_separated_groups(5);
+  const auto prob = cluster_series(series, 1);
+  const auto n = static_cast<index_t>(prob.size());
+
+  for (const auto label : prob.labels())
+    REQUIRE(label == 0);
+
+  // Brute force over every candidate medoid: the one k=1 returns attains the minimum.
+  const auto total_distance = [&](index_t candidate) {
+    double sum = 0.0;
+    for (index_t j = 0; j < n; ++j)
+      sum += prob.dist_by_ind(candidate, j);
+    return sum;
+  };
+  double best = total_distance(0);
+  for (index_t c = 1; c < n; ++c)
+    best = std::min(best, total_distance(c));
+  REQUIRE(prob.medoids().size() == 1);
+  REQUIRE_THAT(total_distance(prob.medoids()[0]), WithinAbs(best, 1e-9));
+}
+
+TEST_CASE("k-medoids recovers three well-separated groups", "[Phase1][clustering]")
+{
+  // Groups sit ~100 apart with noise ~0.5, so the minimum-cost 3-clustering is
+  // the generating one: indices [0,5), [5,10), [10,15) each share a label and
+  // the three labels differ. The best of five starts (seeded from the
+  // Problem's random_seed) removes the dependence on one initialisation.
+  constexpr int per_group = 5;
+  const auto prob = cluster_series(three_separated_groups(per_group), 3, 5);
+  const auto labels = prob.labels();
+
+  std::set<index_t> group_labels;
+  for (int group = 0; group < 3; ++group) {
+    const index_t first = labels[group * per_group];
+    group_labels.insert(first);
+    for (int i = 1; i < per_group; ++i)
+      REQUIRE(labels[group * per_group + i] == first);
+  }
+  REQUIRE(group_labels.size() == 3);
+}
+
+TEST_CASE("k-medoids of a single series is that series at zero cost", "[Phase1][clustering]")
+{
+  auto prob = cluster_series({ { 5.0, 10.0, 15.0 } }, 1);
+  REQUIRE(prob.labels() == std::vector<index_t>{ 0 });
+  REQUIRE(prob.medoids() == std::vector<index_t>{ 0 });
+  REQUIRE_THAT(prob.find_total_cost(), WithinAbs(0.0, 1e-10));
+}
+
+TEST_CASE("k-medoids groups series of different lengths by shape", "[Phase1][clustering]")
+{
+  // DTW compares series of different lengths; two short ramps near 1..5 and two
+  // near 100..400 form the two groups.
+  const auto prob = cluster_series({ { 1.0, 2.0, 3.0 },
+                                     { 1.0, 2.0, 3.0, 4.0, 5.0 },
+                                     { 100.0, 200.0 },
+                                     { 100.0, 200.0, 300.0, 400.0 } },
+                                   2, 5);
+  const auto labels = prob.labels();
+  REQUIRE(labels[0] == labels[1]);
+  REQUIRE(labels[2] == labels[3]);
+  REQUIRE(labels[0] != labels[2]);
 }

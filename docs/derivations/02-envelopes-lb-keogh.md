@@ -417,7 +417,7 @@ since-deleted CPU squared, multivariate and pruned-matrix routes) are in
 | Symmetric maximum, equation (14) | `lb_keogh_symmetric` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** (L1) |
 | Prefix truncation, equation (15) | `Envelope` `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | Math **CONFIRMED** for feasible fixed windows |
 | TADPole global-envelope conversion | `dtwc/algorithms/tadpole.cpp:149-160,178-190,219-224` | **CONFIRMED** for finite, nonempty, equal-length Standard-L1 with integer-representable lengths; empty case is F48 and radius narrowing is F46 |
-| Exhaustive independent oracle | `tests/unit/adversarial/test_lb_keogh_derivation.cpp` | **CONFIRMED**, non-skippable |
+| Exhaustive independent oracle | `tests/unit/core/test_lb_keogh_derivation.cpp` | **CONFIRMED**, non-skippable |
 | Public envelope shape/window contract | `Envelope`, `envelope_covers` and the `lb_keogh` overloads in `dtwc/core/lower_bound_impl.hpp` | **DISCREPANCY** F46: unchecked read/truncation and no provenance |
 
 ## Scope verdicts
