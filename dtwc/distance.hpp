@@ -45,6 +45,7 @@ T dtw(std::span<const T> x, std::span<const T> y,
       int band = settings::DEFAULT_BAND,
       core::MetricType metric = core::MetricType::L1)
 {
+  core::validate({ .metric = metric, .band = band }, std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::dtw");
   return dtwBanded<T>(x, y, band, static_cast<T>(-1), metric);
 }
@@ -54,6 +55,8 @@ T ddtw(std::span<const T> x, std::span<const T> y,
        int band = settings::DEFAULT_BAND,
        core::MetricType metric = core::MetricType::L1)
 {
+  core::validate({ .variant = { .variant = core::DTWVariant::DDTW }, .metric = metric, .band = band },
+                 std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::ddtw");
   return ddtwBanded<T>(x, y, band, metric);
 }
@@ -94,6 +97,8 @@ T missing(std::span<const T> x, std::span<const T> y,
           int band = settings::DEFAULT_BAND,
           core::MetricType metric = core::MetricType::L1)
 {
+  core::validate({ .metric = metric, .missing = core::MissingStrategy::ZeroCost, .band = band },
+                 std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::missing", /*nan_is_missing=*/true);
   return dtwMissing_banded<T>(x, y, band, static_cast<T>(-1), metric);
 }
@@ -103,6 +108,8 @@ T arow(std::span<const T> x, std::span<const T> y,
        int band = settings::DEFAULT_BAND,
        core::MetricType metric = core::MetricType::L1)
 {
+  core::validate({ .metric = metric, .missing = core::MissingStrategy::AROW, .band = band },
+                 std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::arow", /*nan_is_missing=*/true);
   return dtwAROW_banded<T>(x, y, band, metric);
 }

@@ -325,7 +325,7 @@ lives in the named F12 artifact rather than being inferred from source.
 | Claim | Live implementation | Evidence and verdict |
 |---|---|---|
 | One local cost plus the minimum of diagonal/up/left | `dtwc/core/dtw_kernel.hpp:54-66` | `StandardCell::combine` implements (1), and `seed` implements $D_{00}=c_{00}$. **CONFIRMED**. |
-| Full-matrix boundary conditions and dependency order | `dtwc/core/dtw_kernel.hpp:215-240` | Origin, first column, first row, interior sweep, and terminal cell match the derivation. **CONFIRMED** for representable allocated dimensions. |
+| Boundary conditions and dependency order | `dtw_kernel_linear` in `dtwc/core/dtw_kernel.hpp` | Origin (`seed`), first column, first row of each new column, interior sweep, and terminal cell match the derivation; `dtwFull` runs here since the full-matrix kernel went. **CONFIRMED**: `test_dtw`'s oracle rows. |
 | Linear-space state is the same recurrence | `dtwc/core/dtw_kernel.hpp:249-287` | The saved diagonal, old slot, and updated prior slot are exactly the three predecessors. **CONFIRMED**. |
 | Scalar local-cost definitions and dispatch | `dtwc/warping.hpp:210-220`, `dtwc/warping.hpp:261-272` | L1 is $\lvert a-b\rvert$; SquaredL2 is $(a-b)^2$; scalar L2 correctly reduces to L1. **CONFIRMED**. |
 | Short/long orientation preserves the symmetric objective | `dtwc/warping.hpp:133-150` | The shorter input becomes the first cost index; both supported scalar costs are symmetric. **CONFIRMED**. |

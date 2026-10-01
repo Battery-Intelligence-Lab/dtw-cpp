@@ -166,7 +166,8 @@ auto make_wdtw(const DistanceConfig &c, const Data &data)
   for (std::size_t i = 0; i < data.size(); ++i) {
     const std::size_t steps = data.series_flat_size(i) / ndim;
     if (steps == 0) continue;
-    weights.try_emplace(steps - 1, wdtw_weights<T>(static_cast<int>(steps - 1), g));
+    const auto [it, fresh] = weights.try_emplace(steps - 1); // one table per length
+    if (fresh) it->second = wdtw_weights<T>(static_cast<int>(steps - 1), g);
   }
   return [band, g, ndim, weights = std::move(weights)](std::span<const T> x, std::span<const T> y) -> double {
     const auto x_steps = x.size() / ndim;
@@ -201,8 +202,8 @@ template <typename T>
 auto make_soft_dtw(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  // Soft-DTW (Cuturi & Blondel 2017): soft_dtw(), the unified full-matrix
-  // kernel with SoftCell (log-sum-exp with max-subtract stabilisation).
+  // Soft-DTW (Cuturi & Blondel 2017): soft_dtw(), the linear-space kernel
+  // with SoftCell (log-sum-exp with max-subtract stabilisation).
   //
   // Univariate (validate() refuses ndim > 1), like soft_dtw_gradient() and
   // distance::soft_dtw. The band is intentionally ignored: soft-DTW is a full

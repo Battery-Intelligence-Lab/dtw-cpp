@@ -135,13 +135,15 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
 
   // The cost matrix C (forward pass) and the alignment matrix E (backward
   // pass), column-major: the backward pass reads C at every successor and the
-  // gradient sums each row of E, so both are kept whole. Grown, never shrunk:
-  // a warmed thread allocates nothing.
+  // gradient sums each row of E, so both are kept whole. Grown to the exact
+  // size (reserve: resize alone may overshoot), never shrunk: a warmed thread
+  // allocates nothing.
   thread_local std::vector<T> c_buf, e_buf;
-  if (c_buf.size() < mx * my) {
-    c_buf.resize(mx * my);
-    e_buf.resize(mx * my);
-  }
+  for (auto *buffer : { &c_buf, &e_buf })
+    if (buffer->size() < mx * my) {
+      buffer->reserve(mx * my);
+      buffer->resize(mx * my);
+    }
   const auto C = [c = c_buf.data(), mx](std::size_t i, std::size_t j) -> T & { return c[i + j * mx]; };
   const auto E = [e = e_buf.data(), mx](std::size_t i, std::size_t j) -> T & { return e[i + j * mx]; };
 

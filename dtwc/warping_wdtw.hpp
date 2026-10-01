@@ -54,7 +54,7 @@ std::vector<data_t> wdtw_weights(int max_dev, data_t g = 0.05, data_t w_max = 1.
 {
   std::vector<data_t> weights(max_dev + 1);
   const data_t half_dev = static_cast<data_t>(max_dev) / data_t(2);
-  // The sum and the quotient are double for float32 too: a weight rounds once.
+  // The sum and the quotient are double for float32 too, as the table has always been built.
   for (int d = 0; d <= max_dev; ++d) {
     weights[d] = static_cast<data_t>(w_max / (1.0 + std::exp(-g * (d - half_dev))));
   }
