@@ -86,7 +86,7 @@ cmake --preset clang-macos \
   -DOpenMP_omp_LIBRARY="$(brew --prefix libomp)/lib/libomp.dylib"
 ```
 
-Gurobi on macOS installs to `/Library/gurobi<version>/macos_universal2/` — `FindGUROBI.cmake` auto-detects this location, or set `GUROBI_HOME` explicitly.
+Gurobi is off by default; configure with `-DDTWC_ENABLE_GUROBI=ON` to link it. On macOS it installs to `/Library/gurobi<version>/macos_universal2/` — `FindGUROBI.cmake` auto-detects this location, or set `GUROBI_HOME` explicitly.
 
 ### Python
 

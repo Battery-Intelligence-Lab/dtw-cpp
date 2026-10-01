@@ -11,7 +11,7 @@ Common: `cmake -S . -B build-probe-<n> -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DC
 
 | Option | Extra arguments | First FATAL line |
 |---|---|---|
-| CUDA, no nvcc | `-DDTWC_ENABLE_CUDA=ON` | `DTWC_ENABLE_CUDA=ON but nvcc was not found.` |
+| CUDA, no usable compiler (nvcc exists here; the clang host cannot drive it) | `-DDTWC_ENABLE_CUDA=ON` | `DTWC_ENABLE_CUDA=ON but there is no usable CUDA compiler (nvcc is missing, or it cannot compile with this host compiler).` |
 | CUDA, macOS (simulated on Windows) | `-DDTWC_ENABLE_CUDA=ON -DAPPLE=ON` | `DTWC_ENABLE_CUDA=ON: CUDA is not supported on macOS.` |
 | Metal off Apple | `-DDTWC_ENABLE_METAL=ON` | `DTWC_ENABLE_METAL=ON: Metal exists only on Apple platforms, and this is Windows.` |
 | Arrow not found | `-DDTWC_ENABLE_ARROW=ON -DDTWC_ENABLE_HIGHS=OFF` | `DTWC_ENABLE_ARROW=ON: Arrow was not found, and the CPM build is not supported with Windows+Clang ...` |
@@ -20,6 +20,15 @@ Common: `cmake -S . -B build-probe-<n> -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DC
 | HiGHS, empty CPM dir | `-DDTWC_ENABLE_HIGHS=ON`, `CPM_SOURCE_CACHE` with an empty `highs/<hash>` | `DTWC_ENABLE_HIGHS=ON but HiGHS made no highs::highs target` |
 | HiGHS not downloadable | same, cache without highs, `HTTPS_PROXY=http://127.0.0.1:9` | CMake's own: `Each download failed!` ... `Build step for highs failed: 1`; the line before it is `HiGHS: fetching (DTWC_ENABLE_HIGHS=ON; ... -DDTWC_ENABLE_HIGHS=OFF)` |
 | YAML, llfio not downloadable | as HiGHS, `-DDTWC_ENABLE_YAML=ON` / `-DDTWC_ENABLE_LLFIO=ON` | the same two CMake lines; a status line names the option |
+| Arrow found, no `Arrow::arrow_shared` (a config defining only `Arrow::arrow_static`) | `-DDTWC_ENABLE_ARROW=ON -DArrow_DIR=<dir with that config>` | `DTWC_ENABLE_ARROW=ON: Arrow was found but it defines no Arrow::arrow_shared target to link.` |
+| MATLAB not found | `-DDTWC_BUILD_MATLAB=ON -DCMAKE_DISABLE_FIND_PACKAGE_Matlab=ON`, with and without `-DDTWC_BUILD_TESTING=ON` | `DTWC_BUILD_MATLAB=ON but MATLAB was not found.` (`bindings/matlab/CMakeLists.txt:9`); with testing on, tests/CMakeLists.txt:376 stops first: `DTWC_BUILD_MATLAB=ON but MATLAB (with its executable) was not found, so matlab_suite cannot be registered.` |
+
+`-DMatlab_ROOT_DIR=C:/does-not-exist` alone is not a probe on this machine: it is only a hint, MATLAB R2025b is on PATH
+and the configure exits 0 having found it. Arrow through the shim prints `Arrow + Parquet linked` and compiles with both
+`DTWC_HAS_ARROW` and `DTWC_HAS_PARQUET`; with `-DArrow_DIR` alone it prints `Arrow linked, IPC only: Parquet not found
+— reading a Parquet file raises`, configures, and compiles with `DTWC_HAS_ARROW` only. The shim defines
+`Arrow::arrow_shared` and `Parquet::parquet_shared` (Parquet linking Arrow). The MEX recipe (clang, R2024b) configures
+with testing off and on (`ctest -N` lists `matlab_suite`).
 
 Before the change the empty-`highs/<hash>` probe exited 0 with `HiGHS: OFF` and a "No MIP solver" warning. Arrow found
 through the shim (`-DArrow_DIR`, `-DParquet_DIR` = `build/arrow-pyarrow-23/pyarrow-config`) configures and
@@ -65,7 +74,6 @@ grep fails (mutation reverted).
 ## Not established
 
 The workflows ran nowhere (CI is not run here): the macOS libomp step, the CLI build step and the `DTWC_CL_PATH` path on
-Windows/macOS are untested. CUDA on a real macOS is simulated with `-DAPPLE=ON`. Arrow found but without
-`Arrow::arrow_shared` (a static-only install) still configures and links nothing; Arrow found without Parquet still
-builds IPC only (Parquet reads raise at run time). `DTWC_BUILD_MATLAB=ON` without MATLAB still warns and skips
-(`bindings/matlab/CMakeLists.txt:9`).
+Windows/macOS are untested. CUDA on a real macOS is simulated with `-DAPPLE=ON`. Arrow found without
+Parquet builds IPC only (Parquet reads raise at run time), by design. The static-only Arrow stop was shown with a
+hand-made config, not a real static Arrow install.

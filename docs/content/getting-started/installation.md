@@ -40,7 +40,7 @@ The following dependencies are installed by the CPM package manager:
 
 ### Gurobi
 
-Gurobi is a powerful optimisation solver that is free for academic use. If you do not wish to use Gurobi, HiGHS will be used instead. Please see the following guidelines for installation on [Ubuntu](https://www.youtube.com/watch?v=yNmeG6Wom1o), [macOS](https://www.youtube.com/watch?v=ZcL-NmckTxQ), [Windows](https://www.youtube.com/watch?v=z7t0p5J9YcQ), and [further information](https://support.gurobi.com/hc/en-us/sections/360010017231-Platforms-and-Installation)
+Gurobi is a powerful optimisation solver that is free for academic use. Gurobi is off by default and HiGHS is the MIP solver; to link Gurobi configure with `-DDTWC_ENABLE_GUROBI=ON`, which stops with an error if Gurobi is not found. Please see the following guidelines for installation on [Ubuntu](https://www.youtube.com/watch?v=yNmeG6Wom1o), [macOS](https://www.youtube.com/watch?v=ZcL-NmckTxQ), [Windows](https://www.youtube.com/watch?v=z7t0p5J9YcQ), and [further information](https://support.gurobi.com/hc/en-us/sections/360010017231-Platforms-and-Installation)
 
 
 ## Building from the source

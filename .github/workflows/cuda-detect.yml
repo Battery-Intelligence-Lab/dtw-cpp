@@ -21,6 +21,7 @@ jobs:
       # The summary line reads the DTWC_HAS_CUDA definition the code is compiled with,
       # so a build that came out CPU-only fails this job even if the configure passed.
       - name: CMake configure with CUDA
+        shell: bash
         run: |
           set -euo pipefail
           cmake -S . -B build \

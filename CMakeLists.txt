@@ -212,7 +212,7 @@ if(DTWC_ENABLE_CUDA)
     endif()
   else()
     message(FATAL_ERROR
-      "DTWC_ENABLE_CUDA=ON but nvcc was not found.\n"
+      "DTWC_ENABLE_CUDA=ON but there is no usable CUDA compiler (nvcc is missing, or it cannot compile with this host compiler).\n"
       "  Set the CUDA_PATH env-var, or pass -DCMAKE_CUDA_COMPILER=<path-to-nvcc>; "
       "to build without CUDA, pass -DDTWC_ENABLE_CUDA=OFF.")
   endif()
