@@ -15,10 +15,6 @@
 #include "mex.h"
 #include "matrix.h"
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
 #ifdef DTWC_MEX_MATLAB_LIBOMP
 // On macOS this MEX runs on the libomp MATLAB ships, and on Windows with clang on
 // its libiomp5md (bindings/matlab/CMakeLists.txt). Neither has
@@ -811,7 +807,7 @@ static void cmd_get_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
 // =========================================================================
 //  dtwc.test introspection API (Task 3.3) — struct with the SAME field names
 //  as C++ dtwc::test::* and Python dtwcpp.test.*. Both take no data arguments
-//  (like get_device / system_check), so there is nothing to require_*-validate.
+//  (like get_device / gpu_info), so there is nothing to require_*-validate.
 // =========================================================================
 
 /// test_parallelisation() -> struct {available, max_threads, threads_engaged, pass, reason}.
@@ -1377,6 +1373,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     }
     else if (cmd == "set_device") cmd_set_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "get_device") cmd_get_device(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "gpu_available") plhs[0] = mxCreateLogicalScalar(dtwc::gpu_available());
+    else if (cmd == "gpu_info") plhs[0] = mxCreateString(dtwc::gpu_info().c_str());
     // dtwc.test introspection API (Task 3.3)
     else if (cmd == "test_parallelisation") cmd_test_parallelisation(nlhs, plhs, nrhs, prhs);
     else if (cmd == "test_gpu") cmd_test_gpu(nlhs, plhs, nrhs, prhs);
@@ -1450,36 +1448,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Result_delete") cmd_Result_delete(nlhs, plhs, nrhs, prhs);
     // Legacy backward-compatible command
     else if (cmd == "cluster") cmd_cluster_legacy(nlhs, plhs, nrhs, prhs);
-    // System capability check
-    else if (cmd == "system_check") {
-      const char *fields[] = {"openmp", "openmp_threads", "cuda", "cuda_info",
-                              "metal", "metal_info"};
-      mxArray *info = mxCreateStructMatrix(1, 1, 6, fields);
-#ifdef _OPENMP
-      mxSetField(info, 0, "openmp", mxCreateLogicalScalar(true));
-      mxSetField(info, 0, "openmp_threads", mxCreateDoubleScalar(omp_get_max_threads()));
-#else
-      mxSetField(info, 0, "openmp", mxCreateLogicalScalar(false));
-      mxSetField(info, 0, "openmp_threads", mxCreateDoubleScalar(1));
-#endif
-#ifdef DTWC_HAS_CUDA
-      mxSetField(info, 0, "cuda", mxCreateLogicalScalar(dtwc::cuda::cuda_available()));
-      std::string ci = dtwc::cuda::cuda_device_info(0);
-      mxSetField(info, 0, "cuda_info", mxCreateString(ci.c_str()));
-#else
-      mxSetField(info, 0, "cuda", mxCreateLogicalScalar(false));
-      mxSetField(info, 0, "cuda_info", mxCreateString("not compiled (rebuild with -DDTWC_ENABLE_CUDA=ON)"));
-#endif
-#ifdef DTWC_HAS_METAL
-      mxSetField(info, 0, "metal", mxCreateLogicalScalar(dtwc::metal::metal_available()));
-      std::string mi = dtwc::metal::metal_device_info();
-      mxSetField(info, 0, "metal_info", mxCreateString(mi.c_str()));
-#else
-      mxSetField(info, 0, "metal", mxCreateLogicalScalar(false));
-      mxSetField(info, 0, "metal_info", mxCreateString("not compiled (macOS only)"));
-#endif
-      plhs[0] = info;
-    }
     else {
       throw std::invalid_argument("Unknown command: '" + cmd + "'.");
     }

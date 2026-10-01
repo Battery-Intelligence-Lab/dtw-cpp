@@ -74,6 +74,13 @@ class Problem;
 /// @throws DeviceError naming `where`, the backend and the axis.
 void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision);
 
+/// True when this build's GPU backend (CUDA, else Metal) finds a GPU, so
+/// Device::GPU can compute here.
+bool gpu_available();
+/// One line naming this build's GPU backend and the GPU that Device::GPU (index
+/// 0) computes on — "CUDA: <device>", "Metal: <device>" — or why there is none.
+std::string gpu_info();
+
 /**
  * @class Problem
  * @brief Class representing a problem in DTWC.

@@ -432,12 +432,11 @@ function test_dtwclustering_forwards_the_gpu_ordinal(testCase)
 %   has GPU 0 only, refuses it. Capability-branched rather than
 %   assumption-filtered: an Incomplete is a silent skip that the matlab_suite
 %   gate rejects, so every build must assert something here.
-    info = dtwc_mex('system_check');
-    if info.cuda || info.metal
+    if dtwc.gpu_available()
         prob = dtwc.Problem('gpu_ordinal');
         prob.set_data(testCase.TestData.X);
         apply = @() dtwc.DTWClustering.apply_device_strategy(prob, 'gpu:1');
-        if info.metal
+        if startsWith(dtwc.gpu_info(), 'Metal:')
             verifyError(testCase, apply, 'dtwc:deviceError');
         else
             verifyWarningFree(testCase, apply);

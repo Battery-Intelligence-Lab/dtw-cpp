@@ -48,7 +48,7 @@ ENTRY_POINTS = {
         lambda x, y, b: core.compute_distance_matrix(
             [x.tolist(), y.tolist()], b, "l1"), False),
 }
-if core.METAL_AVAILABLE and core.metal_available():
+if core.gpu_available() and core.gpu_info().startswith("Metal:"):
     # Before FX-15 Metal returned finite numbers for some non-finite input.
     ENTRY_POINTS["compute_distance_matrix_metal"] = (
         lambda x, y, b: core.compute_distance_matrix_metal(

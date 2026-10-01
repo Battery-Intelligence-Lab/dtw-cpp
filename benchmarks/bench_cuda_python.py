@@ -31,7 +31,7 @@ def bench(n_series, length, band=-1, n_repeats=3):
     # CUDA
     times_gpu = []
     dm_gpu = None
-    if dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available():
+    if dtwcpp.gpu_available():
         # Warm-up
         _ = dtwcpp.compute_distance_matrix(series, band=band, device="cuda")
         for _ in range(n_repeats):
@@ -62,10 +62,8 @@ def main():
     print("=" * 60)
     print("DTWC++ Python Benchmark: CPU vs CUDA")
     print("=" * 60)
-    print(f"CUDA compiled: {dtwcpp.CUDA_AVAILABLE}")
-    if dtwcpp.CUDA_AVAILABLE:
-        print(f"CUDA device:   {dtwcpp.cuda_device_info()}")
-        print(f"GPU available: {dtwcpp.cuda_available()}")
+    print(f"GPU:           {dtwcpp.gpu_info()}")
+    print(f"GPU available: {dtwcpp.gpu_available()}")
     print()
 
     configs = [

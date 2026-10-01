@@ -163,6 +163,29 @@ void validate_gpu_request(std::string_view where, const Problem &prob, core::Pre
 #endif
 }
 
+bool gpu_available()
+{
+#if defined(DTWC_HAS_CUDA)
+  return cuda::cuda_available();
+#elif defined(DTWC_HAS_METAL)
+  return metal::metal_available();
+#else
+  return false;
+#endif
+}
+
+std::string gpu_info()
+{
+#if defined(DTWC_HAS_CUDA)
+  return "CUDA: " + cuda::cuda_device_info(0);
+#elif defined(DTWC_HAS_METAL)
+  return "Metal: " + metal::metal_device_info();
+#else
+  return "no GPU backend compiled in (rebuild with -DDTWC_ENABLE_CUDA=ON, or on macOS "
+         "-DDTWC_ENABLE_METAL=ON)";
+#endif
+}
+
 /**
  * @brief Sets the number of clusters for the problem.
  *

@@ -157,14 +157,8 @@ TEST_CASE("IF-1: Tier-1 cluster(device=gpu) runs through Problem::set_device",
   };
   const auto cpu = dtwc::cluster(dataset, 2, "pam", -1, "cpu");
   CHECK(sorted(cpu.medoids()) == std::vector<dtwc::index_t>{ 1, 4 });
-#if defined(DTWC_HAS_METAL)
-  if (!dtwc::metal::metal_available()) {
-    CHECK_THROWS_AS(dtwc::cluster(dataset, 2, "pam", -1, "gpu"), dtwc::DeviceError);
-    return;
-  }
-#endif
-#if defined(DTWC_HAS_CUDA)
-  if (!dtwc::cuda::cuda_available()) {
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
+  if (!dtwc::gpu_available()) {
     CHECK_THROWS_AS(dtwc::cluster(dataset, 2, "pam", -1, "gpu"), dtwc::DeviceError);
     return;
   }

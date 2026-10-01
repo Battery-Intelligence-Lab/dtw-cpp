@@ -76,18 +76,11 @@ from dtwcpp._dtwcpp_core import device as _core_device
 from dtwcpp._dtwcpp_core import parse_device as _parse_device
 
 from dtwcpp._dtwcpp_core import (
-    CUDA_AVAILABLE,
-    cuda_available,
-    cuda_device_info,
-    compute_distance_matrix_cuda as _compute_distance_matrix_cuda,
-    METAL_AVAILABLE,
-    metal_available,
-    metal_device_info,
-    compute_distance_matrix_metal as _compute_distance_matrix_metal,
+    gpu_available,
+    gpu_info,
     OPENMP_AVAILABLE,
     openmp_max_threads,
     HIGHS_AVAILABLE,
-    system_info as _system_info_raw,
     __version__,
 )
 
@@ -95,25 +88,18 @@ from dtwcpp._dtwcpp_core import (
 def _resolve_device(device):
     """Resolve a requested device to ``(backend, ordinal)``, failing loudly.
 
-    ``backend`` is ``"cpu"``, ``"cuda"``, ``"metal"`` or ``"hpc"``. The name is
-    parsed by the C++ grammar, where ``cuda`` is a spelling of ``gpu`` (§6.1):
-    either selects this build's live GPU, and raises ``DeviceError`` without one.
+    ``backend`` is ``"cpu"``, ``"gpu"`` or ``"hpc"``. The name is parsed by the
+    C++ grammar, where ``cuda`` is a spelling of ``gpu`` (§6.1); ``gpu`` needs a
+    GPU this build's backend finds, and raises ``DeviceError`` without one.
     """
     if not isinstance(device, str):
         raise InvalidInput(f"device must be a string, got {type(device).__name__}")
     if device.strip().lower() in _HPC_NAMES:
         return ("hpc", 0)
     backend, device_id = _parse_device(device)
-    if backend == "gpu":
-        if CUDA_AVAILABLE and cuda_available():
-            return ("cuda", device_id)
-        if METAL_AVAILABLE and metal_available():
-            return ("metal", device_id)
-        compiled = CUDA_AVAILABLE or METAL_AVAILABLE
-        detail = ("no compatible GPU device was detected"
-                  if compiled else "this build has no GPU backend compiled in")
+    if backend == "gpu" and not gpu_available():
         raise DeviceError(
-            f"[dtwc] device='gpu' requested but {detail}. "
+            f"[dtwc] device='gpu' requested but no GPU is available ({gpu_info()}). "
             "This request will not silently fall back to CPU."
         )
     return (backend, device_id)
@@ -197,24 +183,20 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
 
     if device is None:
         device = _current_device()
-    backend, device_id = _resolve_device(device)
+    backend, _ = _resolve_device(device)
     if backend == "hpc":
         raise ValueError(
             "device='hpc' offloads the entire clustering job to a cluster and is "
             "not a local compute backend. Use DTWClustering(device='hpc').fit(X) "
             "or examples/python/09_device_clustering.py hpc."
         )
-    if backend == "cuda":
-        use_squared_l2 = metric in ("squared_euclidean", "sqeuclidean")
-        return _compute_distance_matrix_cuda(
-            series, band=band, use_squared_l2=use_squared_l2,
-            device_id=device_id, verbose=False,
-        )
-    if backend == "metal":
-        use_squared_l2 = metric in ("squared_euclidean", "sqeuclidean")
-        return _compute_distance_matrix_metal(
-            series, band=band, use_squared_l2=use_squared_l2, verbose=False,
-        )
+    if backend == "gpu":
+        # A Problem's GPU fill: this build's backend (CUDA, else Metal), the GPU
+        # index of `device`, and the checks of every fill; never the CPU.
+        prob = Problem("compute_distance_matrix", device=device)
+        prob.set_distance(band=band, metric=metric)
+        prob.set_data(series, [str(i) for i in range(len(series))])
+        return prob.distance_matrix()
     return _compute_distance_matrix_cpu(series, band, metric)
 
 
@@ -240,54 +222,6 @@ from . import preprocess
 from . import diagnose
 from . import features
 from . import test
-
-def check_system():
-    """Print a diagnostic summary of available DTWC++ backends.
-
-    Usage::
-
-        import dtwcpp
-        dtwcpp.check_system()
-    """
-    import sys
-    _utf8 = sys.stdout.encoding and 'utf' in sys.stdout.encoding.lower()
-    _ok = "\u2705" if _utf8 else "[OK]"
-    _no = "\u274c" if _utf8 else "[--]"
-
-    print("DTWC++ System Check")
-    print("=" * 40)
-
-    # OpenMP
-    if OPENMP_AVAILABLE:
-        print(f"  {_ok} OpenMP: {openmp_max_threads()} threads")
-    else:
-        print(f"  {_no} OpenMP: not available")
-        print("     Rebuild with OpenMP support enabled.")
-        print("     CMake: compiler should support /openmp (MSVC) or -fopenmp (GCC/Clang)")
-
-    # CUDA
-    if CUDA_AVAILABLE:
-        if cuda_available():
-            print(f"  {_ok} CUDA:   {cuda_device_info(0)}")
-        else:
-            print(f"  {_no} CUDA:   compiled but no GPU detected")
-            print("     Check nvidia-smi and CUDA driver installation.")
-    else:
-        print(f"  {_no} CUDA:   not compiled")
-        print("     Rebuild with: cmake -DDTWC_ENABLE_CUDA=ON ...")
-
-    # Metal (Apple GPU) — metal_available/metal_device_info are bound in the core
-    # extension; surface them here for parity with the MATLAB check_system report.
-    if METAL_AVAILABLE:
-        if metal_available():
-            print(f"  {_ok} Metal:  {metal_device_info()}")
-        else:
-            print(f"  {_no} Metal:  compiled but no GPU detected")
-    else:
-        print(f"  {_no} Metal:  not compiled (macOS only)")
-
-    print("=" * 40)
-
 
 __all__ = [
     "Method", "Solver", "MetricType", "DTWVariant",
@@ -315,10 +249,8 @@ __all__ = [
     "device",
     "Dataset", "load", "cluster", "Result", "plot",
     "distance",
-    "CUDA_AVAILABLE", "cuda_available", "cuda_device_info",
-    "METAL_AVAILABLE", "metal_available", "metal_device_info",
+    "gpu_available", "gpu_info",
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",
-    "check_system",
     "save_checkpoint", "load_checkpoint",
     "CheckpointOptions",
     "DTWClustering", "DTWCKMedoids",

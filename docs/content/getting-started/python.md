@@ -257,15 +257,17 @@ nmi = normalized_mutual_info(labels_true, labels_pred)
 
 ## GPU acceleration
 
-If DTWC++ was built with CUDA support, GPU-accelerated distance matrix computation is available.
+If DTWC++ was built with a GPU backend (CUDA on NVIDIA, Metal on macOS), GPU-accelerated
+distance matrix computation is available.
 
 ### Check availability
 
 ```python
-print(dtwcpp.CUDA_AVAILABLE)      # True if compiled with CUDA
-print(dtwcpp.cuda_available())    # True if a CUDA GPU is detected
-print(dtwcpp.cuda_device_info())  # Device name and properties
+print(dtwcpp.gpu_available())  # True if this build's backend finds a GPU
+print(dtwcpp.gpu_info())       # e.g. "CUDA: <device name and properties>", or why there is none
 ```
+
+`dtwcpp.test.gpu()` runs a small distance matrix on the GPU and checks it against the CPU.
 
 ### Use GPU for distance matrix
 

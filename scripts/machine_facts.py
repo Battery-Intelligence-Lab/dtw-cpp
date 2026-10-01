@@ -138,8 +138,8 @@ def gpus() -> list[str]:
             found.append(f"{name} ({mem}, compute {cap}{driver})")
     if platform.system() == "Darwin" and not found:
         # Apple Silicon: the GPU is part of the SoC, and the working-set limit is the
-        # number that matters for our Metal backend.  dtwc::metal::metal_device_info()
-        # reports it exactly; use it when the module is importable (see --with-dtwcpp).
+        # number that matters for our Metal backend.  dtwcpp.gpu_info() reports it
+        # exactly; use it when the module is importable (see --with-dtwcpp).
         chip = _sysctl("machdep.cpu.brand_string")
         if chip:
             found.append(f"{chip} integrated GPU (Metal)")
@@ -226,9 +226,10 @@ def dtwcpp_probes() -> dict[str, object]:
     except ImportError as exc:
         return {"importable": False, "reason": str(exc)}
     out: dict[str, object] = {"importable": True, "version": getattr(dtwcpp, "__version__", UNKNOWN)}
-    for flag in ("OPENMP_AVAILABLE", "CUDA_AVAILABLE", "METAL_AVAILABLE",
-                 "HIGHS_AVAILABLE"):
+    for flag in ("OPENMP_AVAILABLE", "HIGHS_AVAILABLE"):
         out[flag.lower()] = getattr(dtwcpp, flag, None)
+    for probe in ("gpu_available", "gpu_info"):  # this build's GPU backend, CUDA or Metal
+        out[probe] = getattr(dtwcpp, probe, lambda: None)()
     try:
         out["parallelisation"] = dtwcpp.test.parallelisation()
     except Exception as exc:  # noqa: BLE001 - a probe must never fail the record

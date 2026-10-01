@@ -19,7 +19,6 @@
 
 #include <dtwc.hpp>
 #include <cli/run.hpp>
-#include <metal/metal_dtw.hpp>
 #include <mip/mip.hpp>
 
 #include "../support/scratch_directory.hpp"
@@ -115,17 +114,6 @@ std::string device_error(F &&f)
   return "(no DeviceError)";
 }
 
-[[maybe_unused]] bool gpu_present()
-{
-#if defined(DTWC_HAS_CUDA)
-  return dtwc::cuda::cuda_available();
-#elif defined(DTWC_HAS_METAL)
-  return dtwc::metal::metal_available();
-#else
-  return false;
-#endif
-}
-
 } // namespace
 
 TEST_CASE("run on cpu: every method runs; auto is pam up to 5000 series, clara above", "[run][device][cpu]")
@@ -188,7 +176,7 @@ TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes method
   for (const auto method : kMatrix) {
     CAPTURE(name(method));
     if (mip_refused_without_highs(method, Device::GPU)) continue;
-    if (!gpu_present()) { // the backend's own refusal; nothing ran on the CPU instead
+    if (!dtwc::gpu_available()) { // the backend's own refusal; nothing ran on the CPU instead
       CHECK_THAT(device_error([&] { (void)dtwc::run(config_for(method, Device::GPU), levels()); }),
                  ContainsSubstring("GPU was detected") && ContainsSubstring("No CPU fallback was attempted"));
       continue;
@@ -206,7 +194,7 @@ TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes method
     CHECK(float_exact(result.distance_matrix())); // Metal computes in FP32: it ran
 #  endif
   }
-  if (gpu_present()) { // auto stays pam above N = 5000 (it failed there before)
+  if (dtwc::gpu_available()) { // auto stays pam above N = 5000 (it failed there before)
     std::vector<std::vector<double>> many;
     for (int i = 0; i < 5001; ++i) many.push_back({ double(i % 97), double(i % 89) });
     auto config = config_for(ClusterMethod::Auto, Device::GPU);

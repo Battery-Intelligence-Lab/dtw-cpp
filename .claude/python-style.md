@@ -13,8 +13,8 @@ Follow PEP 8. Use `ruff` for linting and formatting.
 
 - Modules: `snake_case` (`_clustering.py`, `__init__.py`)
 - Classes: `PascalCase` (`DTWClustering`, `Problem`)
-- Functions: `snake_case` (`dtw_distance`, `fast_pam`, `check_system`)
-- Constants: `UPPER_SNAKE_CASE` (`CUDA_AVAILABLE`, `OPENMP_AVAILABLE`)
+- Functions: `snake_case` (`fast_pam`, `gpu_available`)
+- Constants: `UPPER_SNAKE_CASE` (`OPENMP_AVAILABLE`, `HIGHS_AVAILABLE`)
 
 ## Docstrings
 
@@ -57,7 +57,7 @@ def dtw_distance(x, y, band=-1, metric="l1"):
 ```
 python/
   dtwcpp/
-    __init__.py       # Public API re-exports, check_system()
+    __init__.py       # Public API re-exports, device(), compute_distance_matrix()
     _api.py           # Dataset, load(), cluster(), Result, plot()
     _clustering.py    # DTWClustering sklearn-compatible class
     _hpc.py           # SLURM device backend

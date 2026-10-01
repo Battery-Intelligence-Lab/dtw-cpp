@@ -96,54 +96,33 @@ class TestGpuAlias:
         if cpp_ordinal is not None:
             assert ordinal == cpp_ordinal
 
-    @pytest.mark.parametrize(
-        ("cuda_available", "metal_available", "expected_backend"),
-        [(True, True, "cuda"), (False, True, "metal")],
-    )
-    def test_gpu_ordinal_survives_backend_resolution(
-        self, monkeypatch, cuda_available, metal_available, expected_backend
-    ):
-        """The friendly alias keeps N after resolving to either GPU backend."""
-        monkeypatch.setattr(dtwcpp, "CUDA_AVAILABLE", cuda_available)
-        monkeypatch.setattr(dtwcpp, "cuda_available", lambda: cuda_available)
-        monkeypatch.setattr(dtwcpp, "METAL_AVAILABLE", metal_available)
-        monkeypatch.setattr(dtwcpp, "metal_available", lambda: metal_available)
+    def test_cuda_is_gpu_keeps_its_ordinal_and_never_falls_back_to_cpu(self, monkeypatch):
+        """§6.1: ``cuda`` is an alias of ``gpu`` (this build's backend, CUDA else
+        Metal); the ordinal survives, and with no GPU the request raises a loud
+        DeviceError, never the CPU."""
+        monkeypatch.setattr(dtwcpp, "gpu_available", lambda: True)
+        assert dtwcpp._resolve_device("cuda:7") == ("gpu", 7)
 
-        assert dtwcpp._resolve_device("gpu:7") == (expected_backend, 7)
-
-    def test_cuda_is_gpu_and_never_falls_back_to_cpu(self, monkeypatch):
-        """§6.1: ``cuda`` is an alias of ``gpu`` — Metal on a Metal-only build,
-        and with no GPU the same loud DeviceError, never the CPU."""
-        monkeypatch.setattr(dtwcpp, "CUDA_AVAILABLE", False)
-        monkeypatch.setattr(dtwcpp, "cuda_available", lambda: False)
-        monkeypatch.setattr(dtwcpp, "METAL_AVAILABLE", True)
-        monkeypatch.setattr(dtwcpp, "metal_available", lambda: True)
-
-        assert dtwcpp._resolve_device("cuda:7") == ("metal", 7)
-
-        monkeypatch.setattr(dtwcpp, "METAL_AVAILABLE", False)
+        monkeypatch.setattr(dtwcpp, "gpu_available", lambda: False)
         with pytest.raises(dtwcpp.DeviceError, match="not silently fall back"):
             dtwcpp._resolve_device("cuda:7")
 
     def test_gpu_alias_resolves_like_cuda(self):
         """device='gpu' selects an available CUDA or Metal backend."""
-        if not ((dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available()) or
-                (dtwcpp.METAL_AVAILABLE and dtwcpp.metal_available())):
+        if not dtwcpp.gpu_available():
             pytest.skip("no GPU available")
         dm = dtwcpp.compute_distance_matrix(_series(), device="gpu")
         assert dm.shape == (5, 5)
 
     def test_gpu_fails_loudly_when_no_gpu(self):
         """With no GPU present, 'gpu' raises instead of changing the backend."""
-        if ((dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available()) or
-                (dtwcpp.METAL_AVAILABLE and dtwcpp.metal_available())):
+        if dtwcpp.gpu_available():
             pytest.skip("GPU present; unavailable-device path not exercised")
         with pytest.raises(dtwcpp.DeviceError, match="not silently fall back"):
             dtwcpp.compute_distance_matrix(_series(), device="gpu")
 
     def test_gpu_is_case_insensitive(self):
-        if not ((dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available()) or
-                (dtwcpp.METAL_AVAILABLE and dtwcpp.metal_available())):
+        if not dtwcpp.gpu_available():
             with pytest.raises(dtwcpp.DeviceError):
                 dtwcpp.compute_distance_matrix(_series(), device="GPU")
         else:
@@ -155,8 +134,7 @@ class TestGlobalDevice:
         assert dtwcpp.device() == "cpu"
 
     def test_set_and_get_device(self):
-        if not ((dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available()) or
-                (dtwcpp.METAL_AVAILABLE and dtwcpp.metal_available())):
+        if not dtwcpp.gpu_available():
             with pytest.raises(dtwcpp.DeviceError):
                 dtwcpp.device("gpu")
             assert dtwcpp.device() == "cpu"
@@ -226,11 +204,7 @@ class TestCanonicalDeviceName:
         # The getter is a live read of dtwc::device(), not a stored string.
         assert dtwcpp.device() == _dtwcpp_core.device() == "cpu"
 
-    @pytest.mark.skipif(
-        not ((dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available())
-             or (dtwcpp.METAL_AVAILABLE and dtwcpp.metal_available())),
-        reason="no GPU device available",
-    )
+    @pytest.mark.skipif(not dtwcpp.gpu_available(), reason="no GPU device available")
     @pytest.mark.parametrize(
         ("requested", "canonical"),
         [("cuda", "gpu"), ("cuda:0", "gpu"), ("gpu:0", "gpu"), ("GPU", "gpu")],
@@ -275,10 +249,10 @@ class TestHpcDevice:
 # IF-1 / FX-1: Problem(device=...) and Problem.set_device(name)
 # ---------------------------------------------------------------------------
 
-_GPU_BACKEND = dtwcpp.CUDA_AVAILABLE or dtwcpp.METAL_AVAILABLE
-_METAL_BUILD = dtwcpp.METAL_AVAILABLE and not dtwcpp.CUDA_AVAILABLE
-_GPU_LIVE = ((dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available())
-             or (dtwcpp.METAL_AVAILABLE and dtwcpp.metal_available()))
+# gpu_info() names this build's backend: "CUDA: ...", "Metal: ...", or none.
+_GPU_BACKEND = dtwcpp.gpu_info().startswith(("CUDA:", "Metal:"))
+_METAL_BUILD = dtwcpp.gpu_info().startswith("Metal:")
+_GPU_LIVE = dtwcpp.gpu_available()
 _METAL_LIVE = _METAL_BUILD and _GPU_LIVE
 
 

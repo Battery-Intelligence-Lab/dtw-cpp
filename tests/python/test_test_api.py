@@ -64,10 +64,3 @@ def test_gpu_schema_and_validation_or_reason():
         assert r["reason"] != ""
         assert r["validated"] is False
         assert r["pass"] is False
-
-
-def test_check_system_reports_metal(capsys):
-    """check_system() surfaces Metal (metal_available was bound but unreported)."""
-    dtwcpp.check_system()
-    out = capsys.readouterr().out
-    assert "Metal:" in out

@@ -10,42 +10,9 @@ import dtwcpp
 
 
 requires_cuda = pytest.mark.skipif(
-    not getattr(dtwcpp, "CUDA_AVAILABLE", False)
-    or not dtwcpp.cuda_available(),
+    not (dtwcpp.gpu_available() and dtwcpp.gpu_info().startswith("CUDA")),
     reason="CUDA not available",
 )
-
-
-# ---------------------------------------------------------------------------
-# Introspection (always runs, even without CUDA)
-# ---------------------------------------------------------------------------
-class TestCUDAIntrospection:
-    def test_cuda_available_is_bool(self):
-        assert isinstance(dtwcpp.CUDA_AVAILABLE, bool)
-
-    def test_cuda_available_function_returns_bool(self):
-        result = dtwcpp.cuda_available()
-        assert isinstance(result, bool)
-
-    def test_cuda_device_info_returns_string(self):
-        info = dtwcpp.cuda_device_info()
-        assert isinstance(info, str)
-        assert len(info) > 0
-
-
-class TestGpuEntriesWithoutBackend:
-    """A core GPU entry of a build without that backend raises the library's
-    DeviceError, as Problem does, not a bare RuntimeError."""
-
-    @pytest.mark.skipif(dtwcpp.CUDA_AVAILABLE, reason="this build has CUDA")
-    def test_cuda_entry_raises_device_error(self):
-        with pytest.raises(dtwcpp.DeviceError, match="DTWC_ENABLE_CUDA"):
-            dtwcpp._dtwcpp_core.compute_distance_matrix_cuda([[0.0, 1.0], [1.0, 2.0]])
-
-    @pytest.mark.skipif(dtwcpp.METAL_AVAILABLE, reason="this build has Metal")
-    def test_metal_entry_raises_device_error(self):
-        with pytest.raises(dtwcpp.DeviceError, match="DTWC_ENABLE_METAL"):
-            dtwcpp._dtwcpp_core.compute_distance_matrix_metal([[0.0, 1.0], [1.0, 2.0]])
 
 
 # ---------------------------------------------------------------------------
