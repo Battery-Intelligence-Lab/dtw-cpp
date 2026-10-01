@@ -13,35 +13,10 @@ X = np.array([0.0], dtype=np.float64)
 Y = np.array([0.0, 0.0], dtype=np.float64)
 
 
-@pytest.mark.parametrize(
-    ("call", "message"),
-    [
-        (lambda: dtwcpp.distance.wdtw(X, Y, g=-1.0),
-         "WDTW g must be finite and non-negative."),
-        (lambda: dtwcpp.distance.wdtw(X, Y, g=np.nan),
-         "WDTW g must be finite and non-negative."),
-        (lambda: dtwcpp.distance.adtw(X, Y, penalty=-1.0),
-         "ADTW penalty must be finite and non-negative."),
-        (lambda: dtwcpp.distance.adtw(X, Y, penalty=np.inf),
-         "ADTW penalty must be finite and non-negative."),
-        (lambda: dtwcpp.distance.soft_dtw(X, Y, gamma=0.0),
-         "Soft-DTW gamma must be finite and positive."),
-        (lambda: dtwcpp.distance.soft_dtw(X, Y, gamma=np.nan),
-         "Soft-DTW gamma must be finite and positive."),
-        (lambda: dtwcpp.soft_dtw_gradient(X, Y, gamma=-1.0),
-         "Soft-DTW gamma must be finite and positive."),
-    ],
-)
-def test_direct_bindings_raise_typed_exact_errors(call, message):
-    with pytest.raises(dtwcpp.InvalidInput, match=f"^{re.escape(message)}$"):
-        call()
-
-
-def test_direct_binding_zero_and_near_zero_boundaries_remain_valid():
-    assert dtwcpp.distance.wdtw(X, Y, g=0.0) == pytest.approx(0.0, abs=0.0)
-    assert dtwcpp.distance.adtw(X, Y, penalty=0.0) == pytest.approx(0.0, abs=0.0)
-    near_zero = np.finfo(np.float64).tiny
-    assert np.isfinite(dtwcpp.distance.soft_dtw(X, Y, gamma=near_zero))
+def test_soft_dtw_gradient_raises_the_typed_domain_error():
+    with pytest.raises(dtwcpp.InvalidInput,
+                       match=r"^Soft-DTW gamma must be finite and positive\.$"):
+        dtwcpp.soft_dtw_gradient(X, Y, gamma=-1.0)
 
 
 @pytest.mark.parametrize(

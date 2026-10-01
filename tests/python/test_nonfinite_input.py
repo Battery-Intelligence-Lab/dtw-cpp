@@ -1,12 +1,13 @@
-"""FX-15: the raw distance bindings reject NaN and +-inf, naming the series and
-position; finite answers are unchanged.
+"""FX-15: the bindings that take series reject NaN and +-inf, naming the series
+and position; finite answers are unchanged.
 
 A property test over random finite pairs with one NaN, +inf or -inf injected at a
-random position of x or y. Every raw binding (and the ``dtwcpp.distance``
-functions over them) must raise ``dtwcpp.InvalidInput`` saying
-"<series>[<position>] is <value>". The missing-data distances read NaN as a
-missing value and reject only +-inf. Before FX-15 each of these returned NaN,
-the unreachable double max or an ordinary-looking number.
+random position of x or y. ``dtwcpp.distance.dtw``, ``soft_dtw_gradient`` and
+``compute_distance_matrix`` must raise ``dtwcpp.InvalidInput`` saying
+"<series>[<position>] is <value>"; under a missing-data strategy NaN is a
+missing value and only +-inf is refused. Before FX-15 each of these returned NaN,
+the unreachable double max or an ordinary-looking number. Each variant's scan is
+C++'s (tests/unit/core/unit_test_nonfinite_input.cpp).
 
 Oracles: the injected position for the diagnostic, and pure-Python recurrences
 (standard, ZeroCost and AROW DTW) for the answers, which the kernels must match
@@ -36,20 +37,8 @@ def _pairs(seed):
 
 # name -> (call(x, y, band), NaN is a missing value)
 ENTRY_POINTS = {
-    "dtw_distance l1": (lambda x, y, b: core.dtw_distance(x, y, b, "l1"), False),
-    "dtw_distance squared": (
-        lambda x, y, b: core.dtw_distance(x, y, b, "squared_euclidean"), False),
-    "ddtw_distance": (lambda x, y, b: core.ddtw_distance(x, y, b), False),
-    "wdtw_distance": (lambda x, y, b: core.wdtw_distance(x, y, b, 0.05), False),
-    "adtw_distance": (lambda x, y, b: core.adtw_distance(x, y, b, 1.0), False),
-    "soft_dtw_distance": (lambda x, y, b: core.soft_dtw_distance(x, y, 1.0), False),
+    "distance.dtw": (lambda x, y, b: dtwcpp.distance.dtw(x, y, band=b), False),
     "soft_dtw_gradient": (lambda x, y, b: core.soft_dtw_gradient(x, y, 1.0), False),
-    "dtw_distance_missing": (
-        lambda x, y, b: core.dtw_distance_missing(x, y, b, "l1"), True),
-    "dtw_arow_distance": (lambda x, y, b: core.dtw_arow_distance(x, y, b, "l1"), True),
-    "distance.standard": (lambda x, y, b: dtwcpp.distance.standard(x, y, band=b), False),
-    "distance.dtw ddtw": (
-        lambda x, y, b: dtwcpp.distance.dtw(x, y, variant="ddtw", band=b), False),
     "distance.dtw zero_cost": (
         lambda x, y, b: dtwcpp.distance.dtw(x, y, band=b, missing_strategy="zero_cost"),
         True),
@@ -155,8 +144,7 @@ def test_missing_data_distances_read_nan_as_missing(name):
 
 @pytest.mark.parametrize(
     "name",
-    ["dtw_distance l1", "dtw_distance_missing", "dtw_arow_distance",
-     "distance.standard", "distance.dtw zero_cost", "distance.dtw arow"])
+    ["distance.dtw", "distance.dtw zero_cost", "distance.dtw arow"])
 def test_finite_input_matches_the_recurrence_bit_for_bit(name):
     call, _ = ENTRY_POINTS[name]
     for _, x, y, band in _pairs(17):

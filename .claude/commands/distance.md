@@ -19,13 +19,18 @@ Compute DTW distance(s). `$ARGUMENTS` describes: two series, or a dataset (pairw
 
 ## Step 1: Parse variant and params
 
-| Flag | Variant | Params |
-|------|---------|--------|
-| standard | `dtw_distance` | `band` |
-| ddtw | `ddtw_distance` | `band` |
-| wdtw | `wdtw_distance` | `band`, `g` (default 0.05) |
-| adtw | `adtw_distance` | `band`, `penalty` (default 1.0) |
-| softdtw | `soft_dtw_distance` | `gamma` (default 1.0) |
+Every variant is `dc.distance.dtw(x, y, variant=..., ...)`; the keywords are the
+`dtwc_cl` names.
+
+| Variant | Params |
+|---------|--------|
+| standard | `band`, `metric` (`l1` or `squared_euclidean`) |
+| ddtw | `band`, `metric` |
+| wdtw | `band`, `wdtw_g` (default 0.05) |
+| adtw | `band`, `adtw_penalty` (default 1.0) |
+| softdtw | `sdtw_gamma` (default 1.0) |
+| msm | `msm_c` (default 1.0) |
+| twe | `twe_nu` (default 0.001), `twe_lambda` (default 1.0) |
 
 Also ask: `device` (cpu/cuda), `metric` (l1/l2/squared_l2).
 
@@ -44,11 +49,11 @@ print(f"Series X: len={len(x)}, Y: len={len(y)}")
 
 # Compare variants
 variants = {
-    "Standard DTW":       dc.dtw_distance(x, y, band=BAND),
-    "DDTW":               dc.ddtw_distance(x, y, band=BAND),
-    "WDTW (g=0.05)":      dc.wdtw_distance(x, y, g=0.05, band=BAND),
-    "ADTW (penalty=1.0)": dc.adtw_distance(x, y, penalty=1.0, band=BAND),
-    "Soft-DTW (γ=1.0)":   dc.soft_dtw_distance(x, y, gamma=1.0),
+    "Standard DTW":       dc.distance.dtw(x, y, band=BAND),
+    "DDTW":               dc.distance.dtw(x, y, variant="ddtw", band=BAND),
+    "WDTW (g=0.05)":      dc.distance.dtw(x, y, variant="wdtw", wdtw_g=0.05, band=BAND),
+    "ADTW (penalty=1.0)": dc.distance.dtw(x, y, variant="adtw", adtw_penalty=1.0, band=BAND),
+    "Soft-DTW (γ=1.0)":   dc.distance.dtw(x, y, variant="softdtw", sdtw_gamma=1.0),
 }
 
 print(f"\n{'Variant':<24}  Distance")

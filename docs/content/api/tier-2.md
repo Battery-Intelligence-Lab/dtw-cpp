@@ -222,19 +222,23 @@ route; neither name is reserved future work.
 
 ### 2.6 Distance free functions (Tier-2, all languages)
 
-Canonical namespace is `dtwc::distance::*` (`distance.hpp:33`), mirrored by
-Python `dtwcpp.distance.*` (`distance.py`) and MATLAB `+dtwc/+distance/`.
+Canonical namespace is `dtwc::distance::*` (`distance.hpp`), mirrored by
+Python `dtwcpp.distance.dtw` (one binding over the C++ dispatcher) and MATLAB
+`+dtwc/+distance/`. Python's keywords are the `dtwc_cl` names, read with the C++
+name tables; C++ checks the configuration (`core::validate`).
 
-| Variant | C++ `dtwc::distance::` | Python `dtwcpp.distance.` | MATLAB `dtwc.distance.` |
+| Variant | C++ `dtwc::distance::` | Python `dtwcpp.distance.dtw(x,y,…)` | MATLAB `dtwc.distance.` |
 |---|---|---|---|
-| standard | `dtw(x,y,band=-1,metric=L1)` | `standard(x,y,band=-1,metric='l1')` | `standard(x,y,'Band',-1,'Metric','l1')` |
-| derivative | `ddtw(x,y,band=-1,metric=L1)` | `ddtw(x,y,band=-1)` | `ddtw(...)` |
-| weighted | `wdtw(x,y,band=-1,g=0.05)` | `wdtw(x,y,band=-1,g=0.05)` | `wdtw(...)` |
-| amerced | `adtw(x,y,band=-1,penalty=1.0)` | `adtw(x,y,band=-1,penalty=1.0)` | `adtw(...)` |
-| soft | `soft_dtw(x,y,gamma=1.0)` | `soft_dtw(x,y,gamma=1.0)` | `soft_dtw(...)` |
-| missing | `missing(x,y,band=-1,metric=L1)` | `missing(...)` | `missing(...)` |
-| AROW | `arow(x,y,band=-1,metric=L1)` | `arow(...)` | `arow(...)` |
-| dispatcher | `dtw(x,y,DTWVariantParams,band=-1,metric=L1,missing_strategy=Error)` | `dtw(x,y,*,variant='standard',band=-1,metric='l1',g=,penalty=,gamma=,missing_strategy='error')` | `dtw(x,y,'Variant',...,'Band',...,...)` |
+| standard | `dtw(x,y,band=-1,metric=L1)` | the defaults | `standard(x,y,'Band',-1,'Metric','l1')` |
+| derivative | `ddtw(x,y,band=-1,metric=L1)` | `variant='ddtw'` | `ddtw(...)` |
+| weighted | `wdtw(x,y,band=-1,g=0.05)` | `variant='wdtw',wdtw_g=0.05` | `wdtw(...)` |
+| amerced | `adtw(x,y,band=-1,penalty=1.0)` | `variant='adtw',adtw_penalty=1.0` | `adtw(...)` |
+| soft | `soft_dtw(x,y,gamma=1.0)` | `variant='softdtw',sdtw_gamma=1.0` | `soft_dtw(...)` |
+| MSM | `msm(x,y,c=1.0)` | `variant='msm',msm_c=1.0` | — |
+| TWE | `twe(x,y,nu=0.001,lambda=1.0)` | `variant='twe',twe_nu=0.001,twe_lambda=1.0` | — |
+| missing | `missing(x,y,band=-1,metric=L1)` | `missing_strategy='zero_cost'` | `missing(...)` |
+| AROW | `arow(x,y,band=-1,metric=L1)` | `missing_strategy='arow'` | `arow(...)` |
+| dispatcher | `dtw(x,y,DTWVariantParams,band=-1,metric=L1,missing_strategy=Error)` | `dtw(x,y,*,variant='standard',band=-1,metric='l1',missing_strategy='error',wdtw_g,adtw_penalty,sdtw_gamma,msm_c,twe_nu,twe_lambda)` | `dtw(x,y,'Variant',...,'Band',...,...)` |
 
 **Naming-law carve-out for `dtw` (explicit exception to §0).** The token `dtw`
 is **overloaded by design** and this is the one sanctioned break from "one name
@@ -244,9 +248,10 @@ per concept":
   (`distance.hpp:35-42`, no `DTWVariantParams` arg) *and* the variant dispatcher
   (`distance.hpp:94-144`, with `DTWVariantParams`). The two are C++ overloads resolved
   by argument list, so there is no `dtwc::distance::standard`.
-- In **Python/MATLAB**, the standard single-pair call is named `standard(x,y,…)`
-  (there is no argument overloading), and `dtw(x,y,variant=…)` is the dispatcher
-  only (`distance.py`).
+- In **Python**, `dtw(x,y,…)` is the dispatcher alone; its defaults are Standard
+  DTW, so `dtw(x,y)` means what it means in C++. In **MATLAB**, the standard
+  single-pair call is named `standard(x,y,…)` (there is no argument overloading),
+  and `dtw(x,y,'Variant',…)` is the dispatcher.
 
 Net: `dtw` = "standard DTW" in C++ but "dispatcher" in Python/MATLAB. This is
 accepted rather than unified because C++ overloading and the Python/MATLAB
@@ -258,7 +263,7 @@ and `soft_dtw_gradient` checks `x` and `y` once per call,
 before any distance work, and raises `InvalidInput` naming the series, the
 position and the fix for a NaN or ±inf value. `missing`, `arow` and the
 dispatcher under a ZeroCost, AROW or Interpolate missing strategy read NaN as a
-missing value and reject only ±inf. Python's distance functions and
+missing value and reject only ±inf. Python's `distance.dtw` and
 `compute_distance_matrix`, and MATLAB's `dtwc.distance.*`, apply the same
 check. The per-pair wrappers in `warping*.hpp` (with `soft_dtw()` and
 `core::msm_distance` / `twe_distance`) are the documented unchecked layer the
@@ -272,8 +277,9 @@ computes (§6.4), and its distance settings, like the checked functions, with
 **Precision default.** All `dtwc::distance::*` templates default to
 `T = settings::default_data_t`, which is `double`. An explicit `<float>`
 instantiation computes and returns `float`; `Problem`/`Result`/matrix routes
-return `double` as detailed in §8. Python's single-pair functions uniformly
-accept contiguous NumPy array views; MATLAB's public numeric boundary is double.
+return `double` as detailed in §8. Python's `distance.dtw` reads a contiguous
+float64 array in place (anything else array-like is converted first); MATLAB's
+public numeric boundary is double.
 
 ### 2.7 Checkpoint / resume (Tier-2, implements invariant #4)
 

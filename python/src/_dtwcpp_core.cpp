@@ -30,10 +30,6 @@
 #include <checkpoint.hpp>
 #include <warping.hpp>
 #include <warping_ddtw.hpp>
-#include <warping_wdtw.hpp>
-#include <warping_adtw.hpp>
-#include <warping_missing.hpp>
-#include <warping_missing_arow.hpp>
 #include <soft_dtw.hpp>
 #include <algorithms/fast_pam.hpp>
 #include <algorithms/fast_clara.hpp>
@@ -108,6 +104,25 @@ void require_index(const char *who, const char *name, std::int64_t index, size_t
     throw dtwc::InvalidInput(
       std::string(who) + ": " + name + " = " + std::to_string(index)
       + " is outside [0, N) with N = " + std::to_string(n) + ".");
+}
+
+/// A distance configuration by the names dtwc_cl takes, read with the C++ name
+/// tables; core::validate checks it where it is used (distance::dtw, Problem).
+dtwc::core::DistanceConfig distance_config(const std::string &variant, int band, const std::string &metric,
+                                           const std::string &missing_strategy, double wdtw_g,
+                                           double adtw_penalty, double sdtw_gamma, double msm_c, double twe_nu,
+                                           double twe_lambda) {
+  using namespace dtwc::core;
+  return { .variant = { .variant = dtwc::parse_name(variant_names, variant, "variant"),
+                        .wdtw_g = wdtw_g,
+                        .adtw_penalty = adtw_penalty,
+                        .sdtw_gamma = sdtw_gamma,
+                        .msm_c = msm_c,
+                        .twe_nu = twe_nu,
+                        .twe_lambda = twe_lambda },
+           .metric = dtwc::parse_name(metric_names, metric, "metric"),
+           .missing = dtwc::parse_name(missing_strategy_names, missing_strategy, "missing_strategy"),
+           .band = band };
 }
 
 } // namespace
@@ -507,68 +522,38 @@ NB_MODULE(_dtwcpp_core, m) {
     });
 
   // =========================================================================
-  // DTW distance functions
+  // DTW distance
   // =========================================================================
 
-  // Every function here calls the checked dtwc::distance::* boundary (or
-  // soft_dtw_gradient, which checks itself), never an unchecked wrapper: NaN or
-  // ±inf raises InvalidInput naming x or y and the position. The missing-data
-  // functions read NaN as missing and reject only ±inf.
-  m.def("dtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
-                            nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
-                            int band, const std::string &metric) {
-    const auto mt = dtwc::parse_name(dtwc::core::metric_names, metric, "metric");
+  // dtwc::distance::dtw, the checked boundary: core::validate refuses a
+  // configuration no kernel implements, then x and y are scanned once (NaN or
+  // ±inf raises InvalidInput naming x or y and the position; a missing-data
+  // strategy reads NaN as missing). The arrays are read in place, and the GIL
+  // is released for the computation.
+  const dtwc::core::DTWVariantParams defaults{};
+  m.def("dtw", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
+                  nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y, const std::string &variant, int band,
+                  const std::string &metric, const std::string &missing_strategy, double wdtw_g,
+                  double adtw_penalty, double sdtw_gamma, double msm_c, double twe_nu, double twe_lambda) {
+    const auto c = distance_config(variant, band, metric, missing_strategy, wdtw_g, adtw_penalty, sdtw_gamma,
+                                   msm_c, twe_nu, twe_lambda);
     nb::gil_scoped_release release;
     return dtwc::distance::dtw<double>(std::span<const double>(x.data(), x.size()),
-                                       std::span<const double>(y.data(), y.size()), band, mt);
-  }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
-     "Compute DTW distance (zero-copy from numpy).\n\n"
-     "metric: 'l1' (default) or 'squared_euclidean'.\n"
-     "band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.\n"
-     "NaN or +-inf in x or y raises InvalidInput.");
-
-  // Arg-type parity (api-contract-2.0.md §2.6): every distance fn takes a
-  // zero-copy c-contiguous float64 ndarray (previously ddtw/wdtw/adtw/soft took
-  // std::vector, forcing a copy). The C++ span/pointer overloads make this exact.
-  m.def("ddtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
-                              nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
-                              int band) {
-    nb::gil_scoped_release release;
-    return dtwc::distance::ddtw<double>(std::span<const double>(x.data(), x.size()),
-                                        std::span<const double>(y.data(), y.size()), band);
-  }, "x"_a, "y"_a, "band"_a = -1,
-     "Compute Derivative DTW distance (zero-copy from numpy).\n\n"
-     "NaN or +-inf in x or y raises InvalidInput.");
-
-  m.def("wdtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
-                              nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
-                              int band, double g) {
-    nb::gil_scoped_release release;
-    return dtwc::distance::wdtw<double>(std::span<const double>(x.data(), x.size()),
-                                        std::span<const double>(y.data(), y.size()), band, g);
-  }, "x"_a, "y"_a, "band"_a = -1, "g"_a = 0.05,
-     "Compute Weighted DTW distance with logistic weight steepness g (zero-copy).\n\n"
-     "NaN or +-inf in x or y raises InvalidInput.");
-
-  m.def("adtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
-                              nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
-                              int band, double penalty) {
-    nb::gil_scoped_release release;
-    return dtwc::distance::adtw<double>(std::span<const double>(x.data(), x.size()),
-                                        std::span<const double>(y.data(), y.size()), band, penalty);
-  }, "x"_a, "y"_a, "band"_a = -1, "penalty"_a = 1.0,
-     "Compute Amerced DTW distance with non-diagonal step penalty (zero-copy).\n\n"
-     "NaN or +-inf in x or y raises InvalidInput.");
-
-  m.def("soft_dtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
-                                 nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
-                                 double gamma) {
-    nb::gil_scoped_release release;
-    return dtwc::distance::soft_dtw<double>(std::span<const double>(x.data(), x.size()),
-                                            std::span<const double>(y.data(), y.size()), gamma);
-  }, "x"_a, "y"_a, "gamma"_a = 1.0,
-     "Compute Soft-DTW distance (differentiable, zero-copy from numpy).\n\n"
-     "NaN or +-inf in x or y raises InvalidInput.");
+                                       std::span<const double>(y.data(), y.size()), c.variant, c.band,
+                                       c.metric, c.missing);
+  }, "x"_a, "y"_a, nb::kw_only(), "variant"_a = "standard", "band"_a = dtwc::settings::DEFAULT_BAND,
+     "metric"_a = "l1", "missing_strategy"_a = "error", "wdtw_g"_a = defaults.wdtw_g,
+     "adtw_penalty"_a = defaults.adtw_penalty, "sdtw_gamma"_a = defaults.sdtw_gamma, "msm_c"_a = defaults.msm_c,
+     "twe_nu"_a = defaults.twe_nu, "twe_lambda"_a = defaults.twe_lambda,
+     "DTW-family distance of two float64 series (dtwc::distance::dtw).\n\n"
+     "variant: standard, ddtw, wdtw, adtw, softdtw, msm or twe; each reads its own\n"
+     "parameter (wdtw_g, adtw_penalty, sdtw_gamma, msm_c, twe_nu and twe_lambda).\n"
+     "band: -1 for full DTW, b >= 0 for a Sakoe-Chiba half-width.\n"
+     "metric: l1 or squared_euclidean (Standard DTW and DDTW).\n"
+     "missing_strategy: error, zero_cost, arow or interpolate (Standard DTW); NaN\n"
+     "is a missing value under the last three.\n"
+     "Raises InvalidInput for an unknown name, a parameter outside its domain, a\n"
+     "combination no kernel implements, or a value the strategy does not take.");
 
   m.def("soft_dtw_gradient", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                  nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
@@ -579,36 +564,6 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "x"_a, "y"_a, "gamma"_a = 1.0,
      "Compute Soft-DTW gradient w.r.t. first series x (zero-copy from numpy).\n\n"
      "NaN or +-inf in x or y raises InvalidInput.");
-
-  m.def("dtw_distance_missing", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
-                                    nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
-                                    int band, const std::string &metric) {
-    const auto mt = dtwc::parse_name(dtwc::core::metric_names, metric, "metric");
-    nb::gil_scoped_release release;
-    return dtwc::distance::missing<double>(std::span<const double>(x.data(), x.size()),
-                                           std::span<const double>(y.data(), y.size()), band, mt);
-  }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
-     "DTW distance with missing data support (NaN = missing).\n\n"
-     "NaN values in either series are treated as missing; pairs where\n"
-     "one or both values are NaN contribute zero cost. +-inf raises InvalidInput.\n"
-     "metric: 'l1' (default) or 'squared_euclidean'.\n"
-     "band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.");
-
-  m.def("dtw_arow_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
-                                  nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
-                                  int band, const std::string &metric) {
-    const auto mt = dtwc::parse_name(dtwc::core::metric_names, metric, "metric");
-    nb::gil_scoped_release release;
-    return dtwc::distance::arow<double>(std::span<const double>(x.data(), x.size()),
-                                        std::span<const double>(y.data(), y.size()), band, mt);
-  }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
-     "DTW-AROW distance with diagonal-only alignment for missing values.\n\n"
-     "When x[i] or y[j] is NaN, the warping path is restricted to the\n"
-     "diagonal direction only (one-to-one alignment), preventing free\n"
-     "stretching through missing regions. +-inf raises InvalidInput.\n"
-     "Reference: Yurtman et al. (ECML-PKDD 2023).\n"
-     "metric: 'l1' (default) or 'squared_euclidean'.\n"
-     "band=-1 for full DTW-AROW, band>0 for Sakoe-Chiba banded DTW-AROW.");
 
   // =========================================================================
   // Utility functions
@@ -873,6 +828,22 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("set_variant_params",
          nb::overload_cast<dtwc::core::DTWVariantParams>(&dtwc::Problem::set_variant), "params"_a,
          "Set the DTW variant + parameters and rebind the distance function.")
+    .def("set_distance",
+         [](dtwc::Problem &p, const std::string &variant, int band, const std::string &metric,
+            const std::string &missing_strategy, const std::string &mv_mode, double wdtw_g, double adtw_penalty,
+            double sdtw_gamma, double msm_c, double twe_nu, double twe_lambda) {
+           auto c = distance_config(variant, band, metric, missing_strategy, wdtw_g, adtw_penalty, sdtw_gamma,
+                                    msm_c, twe_nu, twe_lambda);
+           c.variant.mv_mode = dtwc::parse_name(dtwc::core::mv_mode_names, mv_mode, "mv_mode");
+           p.set_distance(c);
+         }, nb::kw_only(), "variant"_a = "standard", "band"_a = dtwc::settings::DEFAULT_BAND, "metric"_a = "l1",
+         "missing_strategy"_a = "error", "mv_mode"_a = "dependent", "wdtw_g"_a = defaults.wdtw_g,
+         "adtw_penalty"_a = defaults.adtw_penalty, "sdtw_gamma"_a = defaults.sdtw_gamma,
+         "msm_c"_a = defaults.msm_c, "twe_nu"_a = defaults.twe_nu, "twe_lambda"_a = defaults.twe_lambda,
+         "Set every distance setting at once, by the names distance.dtw takes plus\n"
+         "mv_mode (dependent or independent, for multivariate series); a setting not\n"
+         "given takes its default. A change drops the distance matrix and the\n"
+         "clustering. An invalid configuration raises InvalidInput and changes nothing.")
     .def("set_solver", &dtwc::Problem::set_solver, "solver"_a,
          "Select the MIP solver (Gurobi/HiGHS). Returns True if the solver is available.")
     .def("set_data", [](dtwc::Problem &p, std::vector<std::vector<double>> series,

@@ -18,7 +18,7 @@ The handling of NaN values is controlled by the `MissingStrategy` enum (defined 
 | `AROW` | Diagonal-only alignment when NaN is encountered | Prevents free stretching through gaps |
 | `Interpolate` | Linear interpolation preprocessing, then standard DTW | Smooth gap filling before comparison |
 
-NaN is the only missing-value marker; ±inf never is. The checked entry points — `dtwc::distance::*` (including `distance::missing` and `distance::arow`), the Python single-pair distance functions and MATLAB's `dtwc.distance.*` — reject ±inf under every strategy, raising `InvalidInput` naming the series and the 0-based position, for example `distance::missing: x[2] is +inf`. The `dtwMissing_*` and `dtwAROW_*` wrappers below are the unchecked per-pair layer (see [DTW](../dtw/)): pass them finite values and NaN only.
+NaN is the only missing-value marker; ±inf never is. The checked entry points — `dtwc::distance::*` (including `distance::missing` and `distance::arow`), Python's `dtwcpp.distance.dtw` and MATLAB's `dtwc.distance.*` — reject ±inf under every strategy, raising `InvalidInput` naming the series and the 0-based position, for example `distance::missing: x[2] is +inf`. The `dtwMissing_*` and `dtwAROW_*` wrappers below are the unchecked per-pair layer (see [DTW](../dtw/)): pass them finite values and NaN only.
 
 ## ZeroCost DTW
 
@@ -170,13 +170,13 @@ x = np.array([1.0, np.nan, 3.0, 4.0])
 y = np.array([1.0, 2.0, 3.0, 4.0])
 
 # ZeroCost DTW
-dist = dtwcpp.distance.missing(x, y, band=-1)
+dist = dtwcpp.distance.dtw(x, y, missing_strategy="zero_cost")
 
 # DTW-AROW
-dist_arow = dtwcpp.distance.arow(x, y, band=-1)
+dist_arow = dtwcpp.distance.dtw(x, y, missing_strategy="arow")
 
 # With squared Euclidean metric
-dist_sq = dtwcpp.distance.missing(x, y, metric="squared_euclidean")
+dist_sq = dtwcpp.distance.dtw(x, y, missing_strategy="zero_cost", metric="squared_euclidean")
 
 # Via Problem (for clustering with missing data)
 prob = dtwcpp.Problem()

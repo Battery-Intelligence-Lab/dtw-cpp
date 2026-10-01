@@ -11,8 +11,8 @@ import dtwcpp
 # Create two time series
 np.random.seed(42)
 t = np.linspace(0, 4 * np.pi, 200)
-x = np.sin(t).tolist()
-y = np.sin(t + 0.5).tolist()  # phase-shifted version
+x = np.sin(t)
+y = np.sin(t + 0.5)  # phase-shifted version
 
 print("=== DTW Variant Comparison ===")
 print(f"Series length: {len(x)}")
@@ -27,24 +27,24 @@ d_banded = dtwcpp.distance.dtw(x, y, band=20)
 print(f"Banded DTW (b=20): {d_banded:.4f}")
 
 # DDTW â€” Derivative DTW (shape-based, ignores amplitude)
-d_ddtw = dtwcpp.distance.ddtw(x, y, band=-1)
+d_ddtw = dtwcpp.distance.dtw(x, y, variant="ddtw")
 print(f"DDTW (derivative): {d_ddtw:.4f}")
 
 # WDTW â€” Weighted DTW (penalizes off-diagonal alignment)
-d_wdtw_lo = dtwcpp.distance.wdtw(x, y, band=-1, g=0.01)
-d_wdtw_hi = dtwcpp.distance.wdtw(x, y, band=-1, g=0.5)
+d_wdtw_lo = dtwcpp.distance.dtw(x, y, variant="wdtw", wdtw_g=0.01)
+d_wdtw_hi = dtwcpp.distance.dtw(x, y, variant="wdtw", wdtw_g=0.5)
 print(f"WDTW (g=0.01):    {d_wdtw_lo:.4f}  (lenient)")
 print(f"WDTW (g=0.50):    {d_wdtw_hi:.4f}  (strict)")
 
 # ADTW â€” Amerced DTW (penalizes non-diagonal steps)
-d_adtw_lo = dtwcpp.distance.adtw(x, y, band=-1, penalty=0.1)
-d_adtw_hi = dtwcpp.distance.adtw(x, y, band=-1, penalty=5.0)
+d_adtw_lo = dtwcpp.distance.dtw(x, y, variant="adtw", adtw_penalty=0.1)
+d_adtw_hi = dtwcpp.distance.dtw(x, y, variant="adtw", adtw_penalty=5.0)
 print(f"ADTW (p=0.1):     {d_adtw_lo:.4f}  (lenient)")
 print(f"ADTW (p=5.0):     {d_adtw_hi:.4f}  (strict)")
 
 # Soft-DTW â€” Differentiable (for gradient-based optimization)
-d_soft_lo = dtwcpp.distance.soft_dtw(x, y, gamma=0.01)
-d_soft_hi = dtwcpp.distance.soft_dtw(x, y, gamma=10.0)
+d_soft_lo = dtwcpp.distance.dtw(x, y, variant="softdtw", sdtw_gamma=0.01)
+d_soft_hi = dtwcpp.distance.dtw(x, y, variant="softdtw", sdtw_gamma=10.0)
 print(f"Soft-DTW (g=0.01): {d_soft_lo:.4f}  (~ hard DTW)")
 print(f"Soft-DTW (g=10):  {d_soft_hi:.4f}  (smooth)")
 

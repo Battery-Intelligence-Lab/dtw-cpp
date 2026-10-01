@@ -7,6 +7,7 @@ import pytest
 
 import dtwcpp
 from dtwcpp import _clustering
+from dtwcpp._dtwcpp_core import MVMode
 
 
 SQUARED_FIXTURE = np.asarray(
@@ -50,9 +51,7 @@ def _configured_problem(estimator, series):
     params.twe_nu = estimator.twe_nu
     params.twe_lambda = estimator.twe_lambda
     params.mv_mode = (
-        _clustering.MVMode.Independent
-        if estimator.mv_mode == "independent"
-        else _clustering.MVMode.Dependent
+        MVMode.Independent if estimator.mv_mode == "independent" else MVMode.Dependent
     )
     problem.set_variant_params(params)
     return problem
@@ -152,9 +151,7 @@ def test_gpu_precompute_receives_requested_metric(monkeypatch, backend):
         ),
     ],
 )
-def test_predict_uses_msm_and_twe_problem_dispatch(
-    variant, params, x, center_1, center_2
-):
+def test_predict_uses_msm_and_twe(variant, params, x, center_1, center_2):
     estimator = dtwcpp.DTWClustering(n_clusters=2, variant=variant, **params)
     estimator.cluster_centers_ = [
         np.asarray(center_1, dtype=float),
@@ -165,7 +162,7 @@ def test_predict_uses_msm_and_twe_problem_dispatch(
         for center in estimator.cluster_centers_
     ]
     standard_distances = [
-        dtwcpp.distance.standard(x, center)
+        dtwcpp.distance.dtw(x, center)
         for center in estimator.cluster_centers_
     ]
     assert int(np.argmin(oracle_distances)) == 0
@@ -271,23 +268,7 @@ def test_training_predict_matches_configured_problem_nearest(kwargs, series):
         (
             {"variant": "msm", "missing_strategy": "zero_cost"},
             None,
-            "missing_strategy",
-        ),
-        ({"variant": "msm", "mv_mode": "independent"}, None, "mv_mode"),
-        (
-            {"missing_strategy": "zero_cost", "mv_mode": "independent"},
-            None,
-            "mv_mode",
-        ),
-        (
-            {"metric": "squared_euclidean", "mv_mode": "independent"},
-            None,
-            "metric",
-        ),
-        (
-            {"metric": "squared_euclidean", "missing_strategy": "arow"},
-            None,
-            "metric",
+            "MissingStrategy",
         ),
         ({"device": "cuda", "missing_strategy": "zero_cost"}, "cuda", "missing"),
         ({"device": "cuda", "mv_mode": "independent"}, "cuda", "mv_mode"),
@@ -311,6 +292,31 @@ def test_invalid_semantics_fail_before_distance_compute(
 
     with pytest.raises(ValueError, match=message):
         dtwcpp.DTWClustering(n_clusters=2, **kwargs).fit(SQUARED_FIXTURE)
+
+
+@pytest.mark.parametrize(
+    ("settings", "series"),
+    [
+        (
+            {"variant": "ddtw", "metric": "squared_euclidean"},
+            [[0, 1, 3, 6], [0, 1, 2, 4], [5, 5, 6, 6], [5, 6, 6, 7]],
+        ),
+        (
+            {"missing_strategy": "zero_cost", "metric": "squared_euclidean"},
+            [[0, np.nan, 1, 0], [0, 1, 1, 0], [9, 9, np.nan, 8], [9, 8, 8, 8]],
+        ),
+    ],
+)
+def test_fit_computes_every_metric_cpp_computes(settings, series):
+    """DDTW and the missing-data strategies take a metric in C++, so the fitted
+    cost is the sum of each series' distance.dtw to its medoid."""
+    estimator = dtwcpp.DTWClustering(n_clusters=2, **settings).fit(series)
+    medoids = [series[m] for m in estimator.medoid_indices_]
+    cost = sum(
+        dtwcpp.distance.dtw(s, medoids[label], **settings)
+        for s, label in zip(series, estimator.labels_)
+    )
+    assert estimator.inertia_ == pytest.approx(cost, rel=1e-12)
 
 
 def test_all_nonfinite_restart_results_raise_numeric_error(monkeypatch):

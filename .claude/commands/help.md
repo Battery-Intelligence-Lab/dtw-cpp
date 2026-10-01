@@ -94,7 +94,7 @@ prob.set_n_clusters(3)
 prob.cluster()
 
 # Raw DTW distance
-d = dc.dtw_distance(x, y, band=10)
+d = dc.distance.dtw(x, y, band=10)
 ```
 
 ## CLI quick reference

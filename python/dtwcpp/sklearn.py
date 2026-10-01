@@ -245,7 +245,7 @@ class DTWCKMedoids(ClusterMixin, TransformerMixin, BaseEstimator):
             matrix = _precomputed_matrix(X, n_train=self.n_samples_fit_)
             return matrix[:, self.medoid_indices_]
 
-        from dtwcpp._dtwcpp_core import dtw_distance
+        from dtwcpp import distance
         queries = _series_list(X)
         if self.n_features_in_ is not None and any(
             row.size != self.n_features_in_ for row in queries
@@ -258,7 +258,7 @@ class DTWCKMedoids(ClusterMixin, TransformerMixin, BaseEstimator):
         transformed = np.empty((len(queries), self.n_clusters), dtype=np.float64)
         for i, query in enumerate(queries):
             for cluster, center in enumerate(self.cluster_centers_):
-                transformed[i, cluster] = dtw_distance(query, center, int(self.band))
+                transformed[i, cluster] = distance.dtw(query, center, band=int(self.band))
         return transformed
 
     def predict(self, X):

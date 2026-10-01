@@ -62,14 +62,13 @@ _SURFACE = {
         "adjusted_rand", "normalized_mutual_info",
     ],
     # §2.6 distance namespace
-    "distance": [
-        "standard", "ddtw", "wdtw", "adtw", "soft_dtw", "missing", "arow", "dtw",
-    ],
+    "distance": ["dtw"],
     # §2.1/§2.2 Problem canonical setters / accessors / methods
     "Problem": [
         # config setters (§2.1)
         "set_n_clusters", "set_method", "set_band", "set_max_iter",
-        "set_n_repetitions", "set_variant", "set_variant_params", "set_solver",
+        "set_n_repetitions", "set_variant", "set_variant_params", "set_distance",
+        "set_solver",
         "set_data", "set_result", "set_device", "set_random_seed",
         # config attributes (§2.1)
         "method", "max_iter", "n_repetitions", "band", "variant_params",
@@ -244,19 +243,3 @@ def test_dtwclustering_constructor_param_set():
     assert p["metric"].default == "l1"     # Python GAINS metric (§1.5)
     assert p["device"].default is None
 
-
-def test_distance_standard_signature_defaults():
-    """§2.6: standard(x, y, band=-1, metric='l1')."""
-    p = inspect.signature(dtwcpp.distance.standard).parameters
-    assert p["band"].default == -1
-    assert p["metric"].default == "l1"
-
-
-def test_distance_dispatcher_signature():
-    """§2.6: dtw dispatcher is keyword-only variant/band/metric/g/penalty/gamma."""
-    p = inspect.signature(dtwcpp.distance.dtw).parameters
-    assert p["variant"].default == "standard"
-    assert p["metric"].default == "l1"
-    assert p["g"].default == 0.05
-    assert p["penalty"].default == 1.0
-    assert p["gamma"].default == 1.0
