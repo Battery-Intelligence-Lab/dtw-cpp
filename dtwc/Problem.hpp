@@ -145,6 +145,10 @@ private:
   /// load or bind; cleared by any change of series or distance settings and by
   /// the mutable distance_matrix() accessor.
   bool filled_{ false };
+  /// A caller may have written into distMat through the mutable
+  /// distance_matrix(): the next fill scans it, where those writes commit.
+  /// Every other way a matrix enters scans it there.
+  bool written_{ false };
 
   Method method_{ Method::Kmedoids };
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
@@ -491,6 +495,7 @@ public:
   {
     sync_band();
     filled_ = false;
+    written_ = true;
     return distMat;
   }
 

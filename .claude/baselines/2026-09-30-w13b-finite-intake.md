@@ -59,6 +59,14 @@ Median ms, base | head, runs alternating:
 
 The unpinned (2000, 50) head medians came with maxima of 193–277 ms; pinned, head is below base in all three pairs.
 
+## Cost of one intake scan [inferred: machine under load]
+
+`all_computed(where)` on a filled heap matrix, min of 5, against the fill it would precede (sine series):
+N 4000, L 16: 4.6 ms vs fill 149.9 ms (3.0 %); N 4000, L 100: 6.7 vs 1306.8 ms (0.5 %); N 20000, L 16: 251.6 vs
+2578.8 ms (9.8 %). The fill's commit-point scan therefore runs only after a write through the mutable
+`distance_matrix()` (commit after 8895c95): fill of a freshly mapped matrix, N 10000, L 1, 6 runs each, accessor
+untouched 66.1–86.9 ms, touched 95.8–143.8 ms.
+
 Conclusion: results identical; the swap is no slower and mostly a little faster. Open: a fill of finite series can
 overflow (±DBL_MAX series give +inf; soft-DTW at gamma = DBL_MAX gives −inf) and is not scanned, so Lloyd's
 assign_clusters keeps its check.

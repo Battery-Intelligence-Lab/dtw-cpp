@@ -784,10 +784,12 @@ void Problem::fill_distance_matrix()
 {
   validate_checkpoint_settings();
   sync_band();
-  // A matrix installed through distance_matrix() or read whole needs no pair.
-  if (!filled_ && data_.size() > 0 && distMat.size() == data_.size()
-      && distMat.all_computed("Problem::fill_distance_matrix"))
-    filled_ = true;
+  // Writes through distance_matrix() commit here: one scan refuses ±inf, and a
+  // matrix they made complete needs no pair.
+  if (written_ && !filled_ && data_.size() > 0 && distMat.size() == data_.size()) {
+    filled_ = distMat.all_computed("Problem::fill_distance_matrix");
+    written_ = false;
+  }
   if (filled_) return;
   validate_fill_request("Problem::fill_distance_matrix");
 
