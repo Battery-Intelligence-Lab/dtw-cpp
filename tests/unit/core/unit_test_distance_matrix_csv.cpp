@@ -654,6 +654,43 @@ TEST_CASE("FX-11 the matrix reader rejects a non-square, asymmetric or short fil
   CHECK(nan_cell.get(0, 1) == 7.0);
 }
 
+TEST_CASE("FX-11 the matrix reader ignores a trailing blank line and reads an empty file as empty",
+          "[fx11][csv][dense][read]")
+{
+  const auto path = fresh_path("fx11-blank-line.csv");
+  seed_binary(path, "0.0,2.5\n2.5,0.0\n\n"); // the blank line is not a third row
+  dtwc::core::DistanceMatrix loaded;
+  dtwc::io::read_csv(loaded, path);
+  REQUIRE(loaded.size() == 2);
+  CHECK(loaded.get(0, 0) == 0.0);
+  CHECK(loaded.get(0, 1) == 2.5);
+  CHECK(loaded.get(1, 0) == 2.5);
+  CHECK(loaded.get(1, 1) == 0.0);
+
+  const auto empty = fresh_path("fx11-empty.csv");
+  seed_binary(empty, "");
+  dtwc::core::DistanceMatrix none;
+  REQUIRE_NOTHROW(dtwc::io::read_csv(none, empty));
+  CHECK(none.size() == 0);
+}
+
+TEST_CASE("FX-11 a refused matrix file leaves the destination matrix as it was",
+          "[fx11][csv][dense][read]")
+{
+  dtwc::core::DistanceMatrix destination(2);
+  destination.set(0, 1, 9.0);
+  const auto path = fresh_path("fx11-refused.csv");
+  // A ragged file fails the shape check, an asymmetric one the symmetry check.
+  for (const std::string_view bytes : {"0,1,5\n1,0,6\n", "0,1,2\n10,0,3\n20,30,0\n"}) {
+    CAPTURE(bytes);
+    seed_binary(path, bytes);
+    REQUIRE_THROWS_AS(dtwc::io::read_csv(destination, path), dtwc::InvalidInput);
+    REQUIRE(destination.size() == 2);
+    CHECK(destination.get(0, 1) == 9.0);
+    CHECK_FALSE(destination.is_computed(0, 0));
+  }
+}
+
 TEST_CASE("F14 focused route marker", "[f14][csv][marker]")
 {
   CHECK(true);
