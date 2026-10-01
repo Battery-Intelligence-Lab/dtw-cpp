@@ -156,7 +156,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `dist_by_ind`'s parallel read path has no critical, atomic, validation flag or lazy allocation; a method that
   needs the matrix prepares it serially at entry (E1 2645fbc, 3c15a4e; merged 770816e; PAM swap 5.6–5.9× faster, no lock or atomic left in dtwc/)
 - ☑ W7c one `validate(DistanceConfig)`; `core/dtw.*`, `DTWOptions`, selector validation go (W7c 5bcd7bd, 78dd73f, 1afa573, 143f138; merged 6a44e4d; +517 / −1,927; the metric rule is the facade's)
-- ☐ W7d one orientation helper replaces the copied preambles
+- ☑ W7d one orientation helper replaces the copied preambles (W7d 23b1978, a031ea1, 9e15eb4, ab72231, 243a715; merged 1ae4a30; −972 / +377; 26 preambles → core::orient + core::run_dtw; no per-cell Cost reloads in any build)
 - ☐ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers (WDTW weights at bind done in E1); the mutable
   `distance_matrix()` overload gets its own name, so a reader cannot clear `filled_` by accident (E1)
 - ☐ W7f dead NaN functors and public helpers go
