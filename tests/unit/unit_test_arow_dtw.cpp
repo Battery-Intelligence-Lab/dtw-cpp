@@ -798,3 +798,24 @@ TEST_CASE("MV AROW: all channels NaN at a step triggers diagonal carry", "[arow_
   // step 3 even after AROW skips step 2, so the distance must be strictly > 0.
   REQUIRE(d_with_missing > 0.0);
 }
+
+TEST_CASE("Problem::set_missing_strategy(AROW) selects the AROW kernel for the fill",
+          "[arow_dtw][problem][setter]")
+{
+  const std::vector<double> x{ 1.0, 2.0, 3.0 };
+  const std::vector<double> y_nan{ 1.0, NaN, 3.0 };
+
+  dtwc::Data data;
+  data.p_vec   = { x, y_nan };
+  data.p_names = { "x", "y_nan" };
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.set_verbose(false);
+  REQUIRE_NOTHROW(prob.set_missing_strategy(dtwc::core::MissingStrategy::AROW));
+  CHECK(prob.missing_strategy() == dtwc::core::MissingStrategy::AROW);
+  prob.fill_distance_matrix();
+
+  // The Problem's bound kernel and the free function are separate code paths.
+  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(dtwAROW_L<double>(x, y_nan), 1e-12));
+}

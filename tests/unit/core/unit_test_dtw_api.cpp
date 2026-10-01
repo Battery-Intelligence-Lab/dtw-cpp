@@ -317,3 +317,37 @@ TEST_CASE("dtwBanded_mv L2 is Euclidean, distinct from L1 (live path)",
   const double b[2] = {3.0, 4.0};
   REQUIRE_THAT(dtwc::detail::MVL2Dist{}(a, b, std::size_t{2}), WithinAbs(5.0, 1e-12));
 }
+
+// ----- Metric and constraint selectors, hand oracles ----------------------
+
+// Hand oracle, x = {1,2,3}, y = {3,4,5,6,7} (the same pair as the SquaredL2 cases
+// above): L1 = 13. In one dimension the Euclidean step cost is |a - b|, so the
+// L2 selector must give the L1 value.
+TEST_CASE("dtwFull: a scalar L2 step cost is |a - b|, so L2 equals L1",
+          "[dtw_api][warping][L2]")
+{
+  const std::vector<double> x{1, 2, 3};
+  const std::vector<double> y{3, 4, 5, 6, 7};
+  for (const MetricType metric : {MetricType::L1, MetricType::L2}) {
+    CAPTURE(static_cast<int>(metric));
+    REQUIRE_THAT(dtwc::dtwFull<double>(x.data(), x.size(), y.data(), y.size(), metric),
+                 WithinAbs(13.0, 1e-15));
+  }
+}
+
+// Hand oracle, x = {0,0,10}, y = {0,10,10}: unconstrained DTW aligns 0-0, 0-0,
+// 10-10, 10-10 for cost 0; band 0 forces the diagonal, |0-0| + |0-10| + |10-10| = 10.
+// dtw_runtime must read the band only when the constraint is SakoeChibaBand.
+TEST_CASE("dtw_runtime applies the band only under SakoeChibaBand",
+          "[dtw_api][dtw_runtime][constraint]")
+{
+  const std::vector<double> x{0.0, 0.0, 10.0};
+  const std::vector<double> y{0.0, 10.0, 10.0};
+
+  DTWOptions options;
+  options.band = 0;
+  options.constraint = ConstraintType::None;
+  REQUIRE(dtw_runtime(x.data(), x.size(), y.data(), y.size(), options) == 0.0);
+  options.constraint = ConstraintType::SakoeChibaBand;
+  REQUIRE(dtw_runtime(x.data(), x.size(), y.data(), y.size(), options) == 10.0);
+}
