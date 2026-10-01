@@ -169,14 +169,7 @@ std::vector<double> Result::distance_matrix() const
   // Matrix-free methods leave the matrix unmaterialised; asking for it is an
   // explicit request for the full N*N, as score() and save() already treat it.
   problem_->fill_distance_matrix();
-  const std::size_t n = problem_->size();
-  std::vector<double> flat(n * n);
-  for (std::size_t i = 0; i < n; ++i)
-    for (std::size_t j = 0; j < n; ++j)
-      flat[i * n + j] =
-        problem_->dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j));
-
-  return flat;
+  return io::to_full_matrix(std::as_const(*problem_).distance_matrix());
 }
 
 void Result::save(const std::filesystem::path &directory) const
