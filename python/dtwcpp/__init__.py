@@ -11,7 +11,6 @@ from dtwcpp._dtwcpp_core import (
     MetricType,
     DTWVariant,
     MissingStrategy,
-    DistanceMatrixStrategy,
     GpuPrecision,
     Linkage,
     Device,
@@ -20,7 +19,6 @@ from dtwcpp._dtwcpp_core import (
     ClusteringResult,
     Data,
     MIPSettings,
-    CUDASettings,
     DendrogramStep,
     Dendrogram,
     HierarchicalOptions,
@@ -293,10 +291,10 @@ def check_system():
 
 __all__ = [
     "Method", "Solver", "MetricType", "DTWVariant",
-    "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision",
+    "MissingStrategy", "GpuPrecision",
     "Linkage", "Device",
     "DTWVariantParams", "ClusteringResult", "Data",
-    "MIPSettings", "CUDASettings", "DendrogramStep", "Dendrogram",
+    "MIPSettings", "DendrogramStep", "Dendrogram",
     "HierarchicalOptions",
     "OneBatchPAMOptions",
     "BarycenterMethod", "BarycenterOptions", "BarycenterClusteringOptions",

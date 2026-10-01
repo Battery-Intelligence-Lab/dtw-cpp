@@ -289,30 +289,10 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("AROW", dtwc::core::MissingStrategy::AROW)
     .value("Interpolate", dtwc::core::MissingStrategy::Interpolate);
 
-  nb::enum_<dtwc::DistanceMatrixStrategy>(m, "DistanceMatrixStrategy")
-    .value("Auto", dtwc::DistanceMatrixStrategy::Auto)
-    .value("BruteForce", dtwc::DistanceMatrixStrategy::BruteForce)
-    .value("CUDA", dtwc::DistanceMatrixStrategy::CUDA)
-    .value("Metal", dtwc::DistanceMatrixStrategy::Metal);
-
-  // =========================================================================
-  // CUDASettings
-  // =========================================================================
-
   nb::enum_<dtwc::GpuPrecision>(m, "GpuPrecision")
     .value("Auto", dtwc::GpuPrecision::Auto)
     .value("FP32", dtwc::GpuPrecision::FP32)
     .value("FP64", dtwc::GpuPrecision::FP64);
-
-  nb::class_<dtwc::CUDASettings>(m, "CUDASettings")
-    .def(nb::init<>())
-    .def_rw("device_id", &dtwc::CUDASettings::device_id, "CUDA device index (default 0).")
-    .def_rw("precision", &dtwc::CUDASettings::precision,
-            "Compute precision: GpuPrecision.Auto (default), FP32 or FP64.")
-    .def("__repr__", [](const dtwc::CUDASettings &s) {
-      return "CUDASettings(device_id=" + std::to_string(s.device_id) + ", precision="
-             + std::string(dtwc::name_of(dtwc::gpu_precision_names, s.precision)) + ")";
-    });
 
   // =========================================================================
   // Linkage (hierarchical clustering)
@@ -699,11 +679,14 @@ NB_MODULE(_dtwcpp_core, m) {
       const auto [selected, index] = dtwc::detail::parse_device(device);
       p.set_device(selected, index);
     }, "device"_a,
-       "Compute on `device` (the names dtwcpp.device() accepts). 'cpu' keeps a\n"
-       "CPU distance_strategy you chose and moves a GPU one to Auto; 'gpu' selects\n"
-       "this build's GPU backend (CUDA, else Metal). A request the device cannot\n"
-       "honour (a variant, missing-data strategy, multivariate data or precision\n"
-       "its kernels lack) raises DeviceError when distances are computed.")
+       "Compute on `device` (the names dtwcpp.device() accepts): 'gpu:N' is GPU N\n"
+       "of this build's GPU backend (CUDA, else Metal, which has GPU 0 only). A\n"
+       "request the device cannot honour (a variant, missing-data strategy,\n"
+       "multivariate data or precision its kernels lack) raises DeviceError when\n"
+       "distances are computed.")
+    .def("set_gpu_precision", &dtwc::Problem::set_gpu_precision, "precision"_a,
+         "What a GPU computes in: GpuPrecision.Auto (the default; FP32 on consumer\n"
+         "CUDA GPUs and on Metal), FP32 or FP64. A change drops the distance matrix.")
     // ---- config properties (canonical names) ----
     .def_prop_rw("method", &dtwc::Problem::method, &dtwc::Problem::set_method)
     .def_prop_rw("max_iter", &dtwc::Problem::max_iter,
@@ -728,19 +711,6 @@ NB_MODULE(_dtwcpp_core, m) {
                    p.set_missing_strategy(value);
                  },
                  "Strategy for handling NaN values (Error, ZeroCost, AROW, Interpolate).")
-    .def_prop_rw("distance_strategy",
-                 [](const dtwc::Problem &p) { return p.distance_strategy(); },
-                 [](dtwc::Problem &p, dtwc::DistanceMatrixStrategy value) {
-                   p.set_distance_strategy(value);
-                 },
-                 "Distance matrix computation strategy (Auto, BruteForce, CUDA, Metal).")
-    .def_prop_rw("cuda_settings",
-                 [](const dtwc::Problem &p) { return p.cuda_settings(); },
-                 [](dtwc::Problem &p, dtwc::CUDASettings value) {
-                   p.set_cuda_settings(value);
-                 },
-                 "GPU compute options (device_id, precision), read by the CUDA and\n"
-                 "Metal routes; set_device('gpu:N') sets device_id.")
     .def_rw("mip_settings", &dtwc::Problem::mip_settings,
             "MIP solver tuning parameters.")
     .def_rw("checkpoint", &dtwc::Problem::checkpoint,

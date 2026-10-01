@@ -262,12 +262,12 @@ Outcome execute(const Config &config, std::optional<Data> data)
     throw SolverError("--solver " + std::string(name_of(solver_names, config.solver))
                       + " is not available: this dtwc_cl was built without Gurobi. Use --solver highs, or "
                         "rebuild with -DDTWC_ENABLE_GUROBI=ON and GUROBI_HOME set.");
-  prob.set_cuda_settings(config.gpu);
-  prob.set_device(config.device, config.gpu.device_id); // gpu without a GPU backend: §6.1's DeviceError
+  prob.set_gpu_precision(config.gpu_precision);
+  prob.set_device(config.device, config.device_index); // gpu without a GPU backend: §6.1's DeviceError
   if (config.device == Device::GPU
       && (config.method == ClusterMethod::OneBatch || config.method == ClusterMethod::TADPole))
     refuse_gpu_method(config.method);
-  validate_gpu_request("run", prob.distance_strategy(), config.variant, config.missing, config.dtype, config.gpu);
+  validate_gpu_request("run", prob, config.dtype);
 
   algorithms::CLARAOptions clara;
   clara.n_clusters = config.k;

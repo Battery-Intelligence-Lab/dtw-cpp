@@ -47,8 +47,8 @@ _SURFACE = {
         # enums, structs, Tier-2 classes: the types behind the contract's fields and
         # arguments (several have no table row of their own)
         "Method", "Solver", "MetricType", "DTWVariant",
-        "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision", "Linkage",
-        "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",
+        "MissingStrategy", "GpuPrecision", "Linkage",
+        "DTWVariantParams", "MIPSettings", "Data",
         "DendrogramStep", "Dendrogram", "HierarchicalOptions",
         "CLARAOptions", "ClusteringResult", "Problem",
         # §2.5 algorithm free functions
@@ -72,8 +72,8 @@ _SURFACE = {
         "set_data", "set_result", "set_device", "set_random_seed",
         # config attributes (§2.1)
         "method", "max_iter", "n_repetitions", "band", "variant_params",
-        "missing_strategy", "distance_strategy", "random_seed",
-        "cuda_settings", "mip_settings", "verbose", "name", "output_folder",
+        "missing_strategy", "random_seed",
+        "mip_settings", "verbose", "name", "output_folder",
         "clusters_ind", "centroids_ind", "checkpoint",
         # read accessors (§2.2)
         "size", "n_clusters", "labels", "medoids", "series", "series_name",

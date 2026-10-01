@@ -39,10 +39,11 @@ prob.set_device(dtwc::Device::GPU);        // index: prob.set_device(dtwc::Devic
 prob = dtwc.Problem('run', 'Device', 'gpu');   % or prob.set_device('gpu')
 ```
 
-`cpu` keeps a CPU `distance_strategy` you chose (`BruteForce`) and
-moves a GPU one back to `Auto`; `gpu` selects this build's GPU backend (CUDA,
-else Metal) and records the index. `gpu` on a build without a GPU backend
-raises a device error at the call; `hpc` raises an invalid-argument error,
+`gpu` selects this build's GPU backend (CUDA, else Metal) and records the
+index; Metal has GPU 0 only, so `gpu:1` there is a device error, never GPU 0.
+`set_gpu_precision` chooses what the GPU computes in (`auto`, `fp32`, `fp64`).
+`gpu` on a build without a GPU backend raises a device error at the call; `hpc`
+raises an invalid-argument error,
 because it submits a whole run (`dtwc.cluster(..., device="hpc")` in Python)
 rather than computing a `Problem` locally.
 

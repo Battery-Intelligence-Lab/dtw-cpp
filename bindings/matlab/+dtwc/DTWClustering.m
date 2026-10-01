@@ -197,8 +197,9 @@ classdef DTWClustering
         function apply_device_strategy(prob, activeDevice)
         %APPLY_DEVICE_STRATEGY Make the Problem execute on the selected device.
         %   Problem::set_device (C++): the GPU ordinal of a 'gpu:N' selection
-        %   reaches cuda_settings.device_id, so 'gpu:1' does not run on GPU 0,
-        %   and a build without a GPU backend raises dtwc:deviceError. Without
+        %   reaches the Problem, so 'gpu:1' does not run on GPU 0 (Metal, which
+        %   has GPU 0 only, refuses it), and a build without a GPU backend
+        %   raises dtwc:deviceError. Without
         %   this the Problem kept its CPU default and a 'gpu' request was
         %   silently honoured on the CPU (gap F40).
             prob.set_device(activeDevice);

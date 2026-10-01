@@ -44,7 +44,6 @@
 #include <iostream>  // for cout
 #include <limits>    // for numeric_limits
 #include <cassert>
-#include <stdexcept> // for logic_error
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
 #include <utility>   // for pair
@@ -123,55 +122,44 @@ const char *missing_strategy_name(core::MissingStrategy m)
   return "?";
 }
 
-#ifdef DTWC_HAS_METAL
-/// The Metal selector for `precision`; validate_metal_precision() then rejects
-/// FP64, which Metal cannot run.
-metal::MetalPrecision metal_precision(GpuPrecision precision)
-{
-  return precision == GpuPrecision::FP32 ? metal::MetalPrecision::FP32
-       : precision == GpuPrecision::FP64 ? metal::MetalPrecision::FP64
-                                         : metal::MetalPrecision::Auto;
-}
+/// The backend Device::GPU resolves to: CUDA if built, else Metal (a build
+/// with neither refuses Device::GPU in set_device).
+#ifdef DTWC_HAS_CUDA
+constexpr std::string_view gpu_backend = "CUDA";
+#else
+constexpr std::string_view gpu_backend = "Metal";
 #endif
 
 /// A GPU request its backend cannot honour: every FX-1 rule words it so.
-[[noreturn]] void reject_gpu_request(std::string_view where, bool cuda, const std::string &request,
-                                     const std::string &fix)
+[[noreturn]] void reject_gpu_request(std::string_view where, const std::string &request, const std::string &fix)
 {
-  throw DeviceError(std::string(where) + (cuda ? ": CUDA " : ": Metal ") + request
+  throw DeviceError(std::string(where) + ": " + std::string(gpu_backend) + " " + request
                     + "; no backend call or CPU fallback was attempted. " + fix);
 }
 
 } // namespace
 
-void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strategy,
-                          const core::DTWVariantParams &variant, core::MissingStrategy missing,
-                          core::Precision precision, const CUDASettings &gpu)
+void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision)
 {
   // The GPU routes upload owned Float64 series (data_.p_vec) and run Standard
   // DTW with no missing-data strategy, in L1 or squared L2.
-  const bool cuda = strategy == DistanceMatrixStrategy::CUDA;
-  if (!cuda && strategy != DistanceMatrixStrategy::Metal) return;
-  if (precision == core::Precision::Float32)
-    reject_gpu_request(where, cuda, "computes from Float64 series, but precision = Float32 was requested",
+  if (prob.device().first != Device::GPU) return;
+  if (series_precision == core::Precision::Float32)
+    reject_gpu_request(where, "computes from Float64 series, but precision = Float32 was requested",
                        "Load the series as Float64, or use device cpu.");
-  if (variant.variant != core::DTWVariant::Standard)
-    reject_gpu_request(where, cuda,
-                       std::string("implements Standard DTW only, but variant = ")
-                         + variant_name(variant.variant) + " was requested",
-                       "Use device cpu for this variant.");
-  if (missing != core::MissingStrategy::Error)
-    reject_gpu_request(where, cuda,
-                       std::string("has no missing-data strategy, but missing_strategy = ")
-                         + missing_strategy_name(missing) + " was requested",
-                       "Use device cpu, or missing_strategy Error for data without NaN.");
-  if (!cuda && gpu.device_id != 0)
-    reject_gpu_request(where, cuda,
-                       "runs on the system default GPU, but GPU index = " + std::to_string(gpu.device_id)
+  const auto variant = prob.variant_params().variant;
+  if (variant != core::DTWVariant::Standard)
+    reject_gpu_request(where,
+                       std::string("implements Standard DTW only, but variant = ") + variant_name(variant)
                          + " was requested",
-                       "Use gpu (index 0).");
-#ifdef DTWC_HAS_METAL
-  if (!cuda) metal::validate_metal_precision(metal_precision(gpu.precision));
+                       "Use device cpu for this variant.");
+  if (prob.missing_strategy() != core::MissingStrategy::Error)
+    reject_gpu_request(where,
+                       std::string("has no missing-data strategy, but missing_strategy = ")
+                         + missing_strategy_name(prob.missing_strategy()) + " was requested",
+                       "Use device cpu, or missing_strategy Error for data without NaN.");
+#if !defined(DTWC_HAS_CUDA) && defined(DTWC_HAS_METAL)
+  metal::validate_metal_precision(prob.gpu_precision());
 #endif
 }
 
@@ -427,29 +415,22 @@ void Problem::set_device(Device device, int index)
   if (index < 0)
     throw InvalidInput("Problem::set_device: the GPU index must be >= 0; got "
                        + std::to_string(index) + ".");
-  switch (device) {
-  case Device::CPU:
-    // Auto is the CPU brute-force fill, never a GPU.
-    if (distance_strategy_ == DistanceMatrixStrategy::CUDA
-        || distance_strategy_ == DistanceMatrixStrategy::Metal)
-      set_distance_strategy(DistanceMatrixStrategy::Auto);
-    return;
-  case Device::GPU: {
-#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-    auto settings = cuda_settings_;
-    settings.device_id = index;
-    set_cuda_settings(settings);
-#  if defined(DTWC_HAS_CUDA)
-    set_distance_strategy(DistanceMatrixStrategy::CUDA);
-#  else
-    set_distance_strategy(DistanceMatrixStrategy::Metal);
-#  endif
-    return;
-#else
+  if (device == Device::GPU) {
+#if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
     throw DeviceError(detail::gpu_not_built_message());
+#elif !defined(DTWC_HAS_CUDA)
+    if (index != 0)
+      reject_gpu_request("Problem::set_device",
+                         "runs on the system default GPU, but GPU index = " + std::to_string(index)
+                           + " was requested",
+                         "Use gpu (index 0).");
 #endif
   }
-  }
+  const int gpu_index = device == Device::GPU ? index : 0; // the CPU has no index
+  if (device_ == device && device_index_ == gpu_index) return;
+  device_ = device;
+  device_index_ = gpu_index;
+  refresh_distance_matrix();
 }
 
 void Problem::validate_distance(core::DistanceConfig config, const Data &data)
@@ -483,8 +464,7 @@ Problem::distance_checkpoint_identity() const
 core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity(core::MetricType metric) const
 {
-  if (distance_strategy_ == DistanceMatrixStrategy::CUDA
-      && cuda_settings_.precision == GpuPrecision::Auto) {
+  if (device_ == Device::GPU && gpu_backend == "CUDA" && gpu_precision_ == GpuPrecision::Auto) {
     throw InvalidInput(
       "use_mmap_distance_matrix: CUDA precision=Auto is not safe for persistent "
       "warm-start caches because its resolved FP32/FP64 semantics depend on the "
@@ -512,9 +492,9 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
   hash_enum(configuration, distance_.missing);
   // Backend/precision can change the stored numeric result even when the
   // mathematical recurrence is the same (notably GPU FP32 versus CPU FP64).
-  hash_enum(configuration, distance_strategy_);
-  hash_u64(configuration, static_cast<std::uint64_t>(static_cast<std::int64_t>(cuda_settings_.device_id)));
-  hash_u64(configuration, static_cast<std::uint64_t>(static_cast<std::int64_t>(cuda_settings_.precision)));
+  hash_enum(configuration, device_);
+  hash_u64(configuration, static_cast<std::uint64_t>(static_cast<std::int64_t>(device_index_)));
+  hash_enum(configuration, gpu_precision_);
 
   FingerprintHash hash;
   static constexpr char domain[] = "dtwc-distance-cache-fingerprint-v1";
@@ -653,19 +633,20 @@ void Problem::validate_fill_request(std::string_view where) const
     }
   }
 
-  // The GPU routes also need owned, resident, univariate series.
-  const bool cuda = distance_strategy_ == DistanceMatrixStrategy::CUDA;
-  if (!cuda && distance_strategy_ != DistanceMatrixStrategy::Metal) return;
+  // The GPU routes also need owned, resident, univariate series, none of them
+  // empty: a kernel would read before an empty series' start (p_vec edits in
+  // place can empty one after set_data).
+  if (device_ != Device::GPU) return;
   if (data_.is_view())
-    reject_gpu_request(at, cuda,
+    reject_gpu_request(at,
                        "needs owned series in RAM, but this Problem's series are a non-owning "
                        "view (set_view_data, as FastCLARA's in-memory subsamples are)",
                        "Install owning series with set_data, or use device cpu.");
-  validate_gpu_request(at, distance_strategy_, distance_.variant, distance_.missing, data_.precision,
-                       cuda_settings_);
+  validate_gpu_request(at, *this, data_.precision);
   if (data_.ndim > 1)
-    reject_gpu_request(at, cuda, "is univariate only, but ndim = " + std::to_string(data_.ndim) + " was requested",
+    reject_gpu_request(at, "is univariate only, but ndim = " + std::to_string(data_.ndim) + " was requested",
                        "Use device cpu for multivariate series.");
+  reject_empty_series(data_, at);
 }
 
 /**
@@ -753,8 +734,8 @@ void Problem::fillDistanceMatrix_BruteForce()
 
 /**
  * @brief Fills the distance matrix by computing distances between all pairs of points.
- * @details Auto and BruteForce run the parallel exact CPU fill (all variants);
- *          CUDA and Metal are selected by set_device(gpu) or explicitly.
+ * @details The CPU runs the parallel exact fill (all variants); set_device(gpu)
+ *          selects this build's GPU backend.
  */
 void Problem::fill_distance_matrix()
 {
@@ -779,64 +760,34 @@ void Problem::fill_distance_matrix()
   // The serial missing-data pre-scan is part of validate_fill_request (FX-15),
   // above: it runs before any pair, here and on every other entry point.
 
-  DistanceMatrixStrategy effective = distance_strategy_;
-  if (effective == DistanceMatrixStrategy::Auto)
-    effective = DistanceMatrixStrategy::BruteForce;
-
-  // A GPU backend writes every entry of distMat in place; an explicitly
-  // requested backend never changes to CPU.
-  switch (effective) {
-  case DistanceMatrixStrategy::CUDA:
-#ifdef DTWC_HAS_CUDA
-  {
-    dtwc::cuda::CUDADistMatOptions cuda_opts;
-    cuda_opts.band = distance_.band;
-    cuda_opts.device_id = cuda_settings_.device_id;
-    if (cuda_settings_.precision == GpuPrecision::FP32)
-      cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP32;
-    else if (cuda_settings_.precision == GpuPrecision::FP64)
-      cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  if (device_ == Device::CPU) {
+    fillDistanceMatrix_BruteForce(); // saves a checkpoint after each row block
+  } else {
+    // Device::GPU is this build's backend: CUDA, else Metal. It writes every
+    // entry of distMat in place, and never hands a pair to the CPU.
+#if defined(DTWC_HAS_CUDA)
+    cuda::CUDADistMatOptions opts;
+    opts.device_id = device_index_;
+#elif defined(DTWC_HAS_METAL)
+    metal::MetalDistMatOptions opts; // the system default GPU: set_device refused any other
+#else
+    throw DeviceError(detail::gpu_not_built_message()); // set_device refused it first
+#endif
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
+    opts.band = distance_.band;
+    opts.precision = gpu_precision_;
     // L2 is L1 on the univariate series the GPU routes take.
-    cuda_opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
-    cuda_opts.verbose = verbose_;
-
-    (void)dtwc::cuda::compute_distance_matrix_cuda(data_.p_vec, cuda_opts, distMat);
-    break;
-  }
-#else
-    throw DeviceError(
-      "CUDA distance strategy requested but CUDA is not compiled in. "
-      "Rebuild with -DDTWC_ENABLE_CUDA=ON. No CPU fallback was attempted.");
+    opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
+    opts.verbose = verbose_;
+#  if defined(DTWC_HAS_CUDA)
+    (void)cuda::compute_distance_matrix_cuda(data_.p_vec, opts, distMat);
+#  else
+    (void)metal::compute_distance_matrix_metal(data_.p_vec, opts, distMat);
+#  endif
+    // One call fills every pair, so the only automatic save is here.
+    if (checkpoint.enabled) save_checkpoint(*this, checkpoint.directory);
 #endif
-  case DistanceMatrixStrategy::Metal:
-#ifdef DTWC_HAS_METAL
-  {
-    dtwc::metal::MetalDistMatOptions metal_opts;
-    metal_opts.band = distance_.band;
-    metal_opts.precision = metal_precision(cuda_settings_.precision);
-    metal_opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
-    metal_opts.verbose = verbose_;
-
-    (void)dtwc::metal::compute_distance_matrix_metal(data_.p_vec, metal_opts, distMat);
-    break;
   }
-#else
-    throw DeviceError(
-      "Metal distance strategy requested but Metal is not compiled in. "
-      "Rebuild on macOS with -DDTWC_ENABLE_METAL=ON. No CPU fallback was attempted.");
-#endif
-  case DistanceMatrixStrategy::BruteForce:
-    fillDistanceMatrix_BruteForce();
-    break;
-  case DistanceMatrixStrategy::Auto:
-    throw std::logic_error(
-      "Problem::fill_distance_matrix: unresolved Auto strategy");
-  }
-
-  // BruteForce already saved after its last row block; every other backend fills
-  // in one call, so its only automatic save is here.
-  if (checkpoint.enabled && effective != DistanceMatrixStrategy::BruteForce)
-    save_checkpoint(*this, checkpoint.directory);
   filled_ = data_.size() > 0; // an empty Problem has no matrix to call filled
 
   if (verbose_)

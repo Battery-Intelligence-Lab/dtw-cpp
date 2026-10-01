@@ -250,17 +250,6 @@ static double get_scalar(const mxArray *mx, const char *arg_name = "argument") {
   return mxGetScalar(mx);
 }
 
-/// Decode the public CUDA precision selector without any out-of-range or
-/// non-integral floating-to-integer conversion.
-static int get_cuda_precision(const mxArray *mx) {
-  const double value = get_scalar(mx, "precision");
-  if (!std::isfinite(value) || std::floor(value) != value
-      || value < 0.0 || value > 2.0) {
-    throw dtwc::InvalidInput("Invalid CUDA precision value.");
-  }
-  return static_cast<int>(value);
-}
-
 /// Convert one MATLAB double to `Int` (`int` for the parameters C++ still takes as
 /// an int, `index_t` for counts and indices) without ever invoking an out-of-range
 /// or non-integral float-to-int conversion (both are undefined behaviour, and a
@@ -517,17 +506,6 @@ static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx) {
   return dend;
 }
 
-/// Parse distance strategy string -> enum. C++ has no name table for
-/// DistanceMatrixStrategy (the CLI and Python select devices, not strategies).
-static dtwc::DistanceMatrixStrategy parse_distance_strategy(const std::string &s) {
-  if (s == "auto") return dtwc::DistanceMatrixStrategy::Auto;
-  if (s == "brute_force") return dtwc::DistanceMatrixStrategy::BruteForce;
-  if (s == "cuda") return dtwc::DistanceMatrixStrategy::CUDA;
-  if (s == "metal") return dtwc::DistanceMatrixStrategy::Metal;
-  throw std::invalid_argument("Unknown distance strategy: '" + s + "'. "
-    "Valid: 'auto', 'brute_force', 'cuda', 'metal'.");
-}
-
 /// Parse a Problem method name (contract §2.1 set_method). 'pam' and 'auto' are
 /// dtwc.cluster methods, not Problem methods: they used to run Lloyd k-medoids.
 static dtwc::Method parse_method(const std::string &s) {
@@ -670,13 +648,6 @@ static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   prob.set_missing_strategy(dtwc::parse_name(
     dtwc::core::missing_strategy_names, get_string(prhs[2]), "missing strategy"));
-}
-
-static void cmd_Problem_set_distance_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("Problem_set_distance_strategy requires handle and string.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  std::string s = get_string(prhs[2]);
-  prob.set_distance_strategy(parse_distance_strategy(s));
 }
 
 static void cmd_Problem_set_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -978,26 +949,12 @@ static void cmd_Problem_get_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
   plhs[0] = s;
 }
 
-/// set_cuda_settings(device_id, precision) — CUDA dispatch passthrough (contract §2.1).
-/// precision: 0 = Auto, 1 = FP32, 2 = FP64, the values of dtwc::GpuPrecision.
-static void cmd_Problem_set_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("Problem_set_cuda_settings requires handle and device_id.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  auto settings = prob.cuda_settings();
-  settings.device_id = get_exact_int(prhs[2], "device_id");
-  if (nrhs > 3) settings.precision = static_cast<dtwc::GpuPrecision>(get_cuda_precision(prhs[3]));
-  prob.set_cuda_settings(settings);
-}
-
-/// get_cuda_settings() -> struct mirroring CUDASettings (round-trip).
-static void cmd_Problem_get_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("Problem_get_cuda_settings requires a handle.");
-  const auto &settings = HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->cuda_settings();
-  const char *fields[] = { "device_id", "precision" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 2, fields);
-  mxSetField(s, 0, "device_id", mxCreateDoubleScalar(static_cast<double>(settings.device_id)));
-  mxSetField(s, 0, "precision", mxCreateDoubleScalar(static_cast<double>(settings.precision)));
-  plhs[0] = s;
+/// set_gpu_precision(name) — what a GPU computes in, by the `--gpu-precision` names.
+static void cmd_Problem_set_gpu_precision(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("Problem_set_gpu_precision requires handle and precision name.");
+  require_char(prhs[2], "precision");
+  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))
+    ->set_gpu_precision(dtwc::parse_name(dtwc::gpu_precision_names, get_string(prhs[2]), "gpu precision"));
 }
 
 static void cmd_Problem_refresh_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1435,7 +1392,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_set_n_repetition") cmd_Problem_set_n_repetition(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_n_clusters") cmd_Problem_set_n_clusters(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_missing_strategy") cmd_Problem_set_missing_strategy(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_set_distance_strategy") cmd_Problem_set_distance_strategy(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_device") cmd_Problem_set_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_variant") cmd_Problem_set_variant(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_distance") cmd_Problem_set_distance(nlhs, plhs, nrhs, prhs);
@@ -1444,14 +1400,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_get_centroids") cmd_Problem_get_centroids(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_clusters") cmd_Problem_get_clusters(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_is_distance_matrix_filled") cmd_Problem_is_distance_matrix_filled(nlhs, plhs, nrhs, prhs);
-    // Problem: 2.0 config setters (method / solver / strategies / output / MIP / CUDA)
+    // Problem: 2.0 config setters (method / solver / output / MIP / GPU precision)
     else if (cmd == "Problem_set_method") cmd_Problem_set_method(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_solver") cmd_Problem_set_solver(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_output_folder") cmd_Problem_set_output_folder(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_mip_settings") cmd_Problem_set_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_mip_settings") cmd_Problem_get_mip_settings(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_set_cuda_settings") cmd_Problem_set_cuda_settings(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_get_cuda_settings") cmd_Problem_get_cuda_settings(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Problem_set_gpu_precision") cmd_Problem_set_gpu_precision(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_checkpoint") cmd_Problem_set_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_checkpoint") cmd_Problem_get_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_n_clusters") cmd_Problem_n_clusters(nlhs, plhs, nrhs, prhs);

@@ -134,16 +134,10 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
 
   load_precomputed();
-  prob.set_distance_strategy(DistanceMatrixStrategy::BruteForce);
-  REQUIRE_FALSE(prob.is_distance_matrix_filled());
-  prob.fill_distance_matrix();
-  REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
+  prob.set_device(Device::CPU); // already the CPU: nothing to drop
+  REQUIRE(prob.is_distance_matrix_filled());
 
-  load_precomputed();
-  CUDASettings settings;
-  settings.device_id = 7;
-  settings.precision = GpuPrecision::FP64;
-  prob.set_cuda_settings(settings);
+  prob.set_gpu_precision(GpuPrecision::FP64);
   REQUIRE_FALSE(prob.is_distance_matrix_filled());
   prob.fill_distance_matrix();
   REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
@@ -425,22 +419,21 @@ TEST_CASE("Problem non-L1 mmap identity is filled by the CPU in that metric",
 #endif
 }
 
+#ifdef DTWC_HAS_CUDA
+// The identity is computed before the file is mapped, so the refusal needs no llfio.
 TEST_CASE("Problem rejects CUDA Auto precision for persistent mmap identity",
           "[variant][distmat][mmap][fingerprint][cuda]")
 {
-#ifndef DTWC_HAS_MMAP
-  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
-#else
   const ScratchDirectory cache_dir{ "mmap_cuda_auto_precision" };
   const fs::path cache = cache_dir.path / "distances.dtwcache";
   Problem prob{"cache_cuda_auto"};
   prob.set_data(make_data({{0.0, 1.0}, {1.0, 2.0}}));
-  prob.set_distance_strategy(DistanceMatrixStrategy::CUDA); // precision stays Auto, the default
+  prob.set_device(Device::GPU); // precision stays Auto, the default
 
   REQUIRE_THROWS_WITH(
     prob.use_mmap_distance_matrix(cache),
     Catch::Matchers::ContainsSubstring("CUDA precision=Auto")
       && Catch::Matchers::ContainsSubstring("explicit FP32 or FP64"));
   REQUIRE_FALSE(fs::exists(cache));
-#endif
 }
+#endif

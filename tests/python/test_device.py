@@ -276,9 +276,10 @@ class TestHpcDevice:
 # ---------------------------------------------------------------------------
 
 _GPU_BACKEND = dtwcpp.CUDA_AVAILABLE or dtwcpp.METAL_AVAILABLE
-_GPU_STRATEGY = (dtwcpp.DistanceMatrixStrategy.CUDA if dtwcpp.CUDA_AVAILABLE
-                 else dtwcpp.DistanceMatrixStrategy.Metal)
-_METAL_LIVE = dtwcpp.METAL_AVAILABLE and dtwcpp.metal_available()
+_METAL_BUILD = dtwcpp.METAL_AVAILABLE and not dtwcpp.CUDA_AVAILABLE
+_GPU_LIVE = ((dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available())
+             or (dtwcpp.METAL_AVAILABLE and dtwcpp.metal_available()))
+_METAL_LIVE = _METAL_BUILD and _GPU_LIVE
 
 
 def _problem(device="cpu", series=None):
@@ -294,10 +295,14 @@ def _float32_exact(matrix):
 
 class TestProblemDevice:
     def test_a_problem_computes_on_the_cpu_and_ignores_the_global_device(self):
-        if (dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available()) or _METAL_LIVE:
+        if _GPU_LIVE:
             dtwcpp.device("gpu")
-        assert dtwcpp.Problem().distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
-        assert dtwcpp.Problem("named").distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
+        series = _series(6, 40, seed=3)
+        prob = dtwcpp.Problem("named")
+        prob.set_data(series, [f"s{i}" for i in range(len(series))])
+        # A GPU computes in FP32 (Auto on a consumer GPU), so each of its distances
+        # is a float32 value; the CPU's FP64 distances are not.
+        assert not _float32_exact(prob.distance_matrix())
 
     @pytest.mark.parametrize("name", _GPU_ALIAS_CANDIDATES + ("cpu", " CPU ", "tpu", ""))
     def test_set_device_accepts_exactly_the_env_grammar(self, name):
@@ -311,32 +316,23 @@ class TestProblemDevice:
             with pytest.raises(dtwcpp.DeviceError) as caught:
                 prob.set_device(name)
             assert str(caught.value) == cpp_error
-            assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
+            return
+        if _METAL_BUILD and cpp_ordinal:  # Metal runs on GPU 0 only
+            with pytest.raises(dtwcpp.DeviceError, match=f"GPU index = {cpp_ordinal} "):
+                prob.set_device(name)
             return
         prob.set_device(name)
-        if cpp_ordinal is None:
-            assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
-        else:
-            assert prob.distance_strategy == _GPU_STRATEGY
-            assert prob.cuda_settings.device_id == cpp_ordinal
 
     def test_device_keyword_selects_this_builds_gpu_backend(self):
         if not _GPU_BACKEND:
             with pytest.raises(dtwcpp.DeviceError, match="no GPU backend compiled in"):
                 dtwcpp.Problem("p", device="gpu")
             return
-        prob = dtwcpp.Problem("p", device="gpu:2")
-        assert prob.distance_strategy == _GPU_STRATEGY
-        assert prob.cuda_settings.device_id == 2
-
-    def test_cpu_keeps_a_chosen_cpu_strategy_and_leaves_a_gpu_one(self):
-        prob = dtwcpp.Problem()
-        prob.distance_strategy = dtwcpp.DistanceMatrixStrategy.BruteForce
-        prob.set_device("cpu")
-        assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.BruteForce
-        prob.distance_strategy = dtwcpp.DistanceMatrixStrategy.Metal
-        prob.set_device("cpu")
-        assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
+        if _METAL_BUILD:  # Metal runs on GPU 0 only
+            with pytest.raises(dtwcpp.DeviceError, match="GPU index = 2 "):
+                dtwcpp.Problem("p", device="gpu:2")
+        else:
+            dtwcpp.Problem("p", device="gpu:2")  # C++ test_problem_set_device pins the index
 
     def test_hpc_is_a_run_option_not_a_problem_device(self):
         with pytest.raises(dtwcpp.DeviceError, match="slurm_remote.sh"):
@@ -344,7 +340,6 @@ class TestProblemDevice:
         prob = dtwcpp.Problem()
         with pytest.raises(dtwcpp.DeviceError, match="slurm_remote.sh"):
             prob.set_device("hpc")
-        assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
 
     @pytest.mark.skipif(not _METAL_LIVE, reason="needs a live Metal device")
     def test_gpu_problem_fills_through_metal(self):

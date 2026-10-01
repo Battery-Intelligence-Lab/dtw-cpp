@@ -156,7 +156,7 @@ void warn_deprecated(std::string_view old_flag, std::string_view new_flag)
 std::string device_text(const Config &config)
 {
   std::string text = to_string(config.device);
-  if (config.device == Device::GPU && config.gpu.device_id != 0) text += ':' + std::to_string(config.gpu.device_id);
+  if (config.device == Device::GPU && config.device_index != 0) text += ':' + std::to_string(config.device_index);
   return text;
 }
 
@@ -265,12 +265,12 @@ void bind(CLI::App &app, Config &config)
        [&config](const std::string &text) {
          const auto [device, index] = dtwc::detail::parse_device(text);
          config.device = device;
-         config.gpu.device_id = index;
+         config.device_index = index;
        },
        "Compute device: cpu, gpu, gpu:N (cuda and cuda:N are the same)")
     ->default_function([&config] { return device_text(config); })
     ->capture_default_str();
-  key(app, "--gpu-precision,--gpu-dtype", config.gpu.precision, gpu_precision_names, "gpu precision",
+  key(app, "--gpu-precision,--gpu-dtype", config.gpu_precision, gpu_precision_names, "gpu precision",
       "GPU kernel precision: auto (default), float32/f32/fp32, float64/f64/fp64/double");
 
   key(app, "-v,--verbose", config.verbose, "Verbose output");

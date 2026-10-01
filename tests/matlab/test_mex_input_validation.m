@@ -205,35 +205,6 @@ function test_valid_semantic_setters_publish_and_invalidate_matlab_cache(testCas
     verifyFalse(testCase, variant.is_distance_matrix_filled());
 end
 
-function test_invalid_cuda_precision_values_are_typed(testCase)
-%   M47: validate the exact integer selector before static_cast<int>, Problem
-%   publication, cache invalidation, or backend capability selection.
-    invalid = {-1, 3, NaN, Inf, 1.5, double(intmax('int32')) + 1};
-    for i = 1:numel(invalid)
-        h = dtwc_mex('Problem_new', 'm47_cuda_precision');
-        guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
-        dtwc_mex('Problem_set_data', h, [0; 1]);
-        verifyError(testCase, ...
-            @() dtwc_mex('Problem_set_cuda_settings', h, 0, invalid{i}), ...
-            'dtwc:invalidArgument');
-        clear guard;
-    end
-end
-
-function test_invalid_cuda_device_id_conversion_is_typed(testCase)
-%   M47: reject values with no defined C++ int conversion. Negative exact
-%   integers remain backend-policy inputs and are intentionally not covered.
-    invalid = {NaN, Inf, 1.5, double(intmax('int32')) + 1};
-    for i = 1:numel(invalid)
-        h = dtwc_mex('Problem_new', 'm47_cuda_device_id');
-        guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
-        verifyError(testCase, ...
-            @() dtwc_mex('Problem_set_cuda_settings', h, invalid{i}, 0), ...
-            'dtwc:invalidArgument');
-        clear guard;
-    end
-end
-
 function test_unknown_problem_selector_tokens_remain_typed(testCase)
 %   Text parsers are an independent first boundary; M47 must not weaken their
 %   established invalidArgument behavior while hardening raw C++ enum values.
@@ -242,7 +213,7 @@ function test_unknown_problem_selector_tokens_remain_typed(testCase)
     calls = {
         @() dtwc_mex('Problem_set_variant', h, 'bogus'), ...
         @() dtwc_mex('Problem_set_missing_strategy', h, 'bogus'), ...
-        @() dtwc_mex('Problem_set_distance_strategy', h, 'bogus')
+        @() dtwc_mex('Problem_set_gpu_precision', h, 'bogus')
     };
     for i = 1:numel(calls)
         verifyError(testCase, calls{i}, 'dtwc:invalidArgument');
@@ -761,15 +732,6 @@ function test_counts_and_indices_are_read_as_64_bit(testCase)
     % A fast_clara seed is a uint64: 2^33 does not fit the unsigned int it was read as.
     clara = dtwc_mex('fast_clara', h, 2, 3, 2, 5, 2^33);
     verifyNumElements(testCase, clara.labels, 4);
-end
-
-function test_cuda_device_id_has_a_minimum(testCase)
-%   Problem_set_cuda_settings took device_id -1, which only a later fill refused.
-    h = int_problem(testCase);
-    verifyError(testCase, @() dtwc_mex('Problem_set_cuda_settings', h, -1), 'dtwc:invalidArgument');
-    verifyError(testCase, @() dtwc_mex('Problem_set_cuda_settings', h, -1, 0), 'dtwc:invalidArgument');
-    dtwc_mex('Problem_set_cuda_settings', h, 0);
-    verifyEqual(testCase, dtwc_mex('Problem_get_cuda_settings', h).device_id, 0);   % nothing changed
 end
 
 function test_a_double_handle_must_be_an_exact_integer(testCase)

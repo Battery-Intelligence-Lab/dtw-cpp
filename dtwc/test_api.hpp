@@ -203,7 +203,7 @@ inline GpuReport gpu()
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = -1;                                       // full DTW
   opts.use_squared_l2 = false;                          // L1 (matches CPU oracle)
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;     // FP64 => bit-close to CPU (≤1e-12)
+  opts.precision = dtwc::GpuPrecision::FP64;            // FP64 => bit-close to CPU (≤1e-12)
   opts.device_id = 0;
   opts.verbose = false;
 

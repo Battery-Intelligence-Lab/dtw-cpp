@@ -226,7 +226,7 @@ static void BM_cpu_distanceMatrix(benchmark::State &state)
     dtwc::Problem prob;
     prob.set_data(std::move(data));
     prob.band = -1;
-    prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
+    prob.set_device(dtwc::Device::CPU);
     prob.fill_distance_matrix();
     benchmark::ClobberMemory();
   }
@@ -268,7 +268,7 @@ static void BM_cpu_distanceMatrix_b100(benchmark::State &state)
     dtwc::Problem prob;
     prob.set_data(std::move(data));
     prob.band = band;
-    prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
+    prob.set_device(dtwc::Device::CPU);
     prob.fill_distance_matrix();
     benchmark::ClobberMemory();
   }
@@ -305,7 +305,7 @@ static void BM_cpu_distanceMatrix_banded(benchmark::State &state)
     dtwc::Problem prob;
     prob.set_data(std::move(data));
     prob.band = band;
-    prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
+    prob.set_device(dtwc::Device::CPU);
     prob.fill_distance_matrix();
     benchmark::ClobberMemory();
   }

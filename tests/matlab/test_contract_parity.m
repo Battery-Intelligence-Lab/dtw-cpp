@@ -425,20 +425,24 @@ function test_hpc_is_a_device_error_as_in_cpp(testCase)
     verifyEqual(testCase, dtwc.device(), previous);
 end
 
-function test_dtwclustering_forwards_the_gpu_ordinal_to_cuda_settings(testCase)
+function test_dtwclustering_forwards_the_gpu_ordinal(testCase)
 %   S3: DTWClustering.fit set the CUDA strategy but never the device id, so
-%   'gpu:1' silently executed on GPU 0 -- C++ configure_device (dtwc/api.cpp)
-%   sets cuda_settings.device_id = index. Capability-branched rather than
+%   'gpu:1' silently executed on GPU 0. Problem::set_device takes the ordinal:
+%   CUDA records it (C++ test_problem_set_device pins that), and Metal, which
+%   has GPU 0 only, refuses it. Capability-branched rather than
 %   assumption-filtered: an Incomplete is a silent skip that the matlab_suite
-%   gate rejects, so BOTH builds must assert something here.
+%   gate rejects, so every build must assert something here.
     info = dtwc_mex('system_check');
     if info.cuda || info.metal
         prob = dtwc.Problem('gpu_ordinal');
         prob.set_data(testCase.TestData.X);
-        dtwc.DTWClustering.apply_device_strategy(prob, 'gpu:1');
-        verifyEqual(testCase, prob.get_cuda_settings().device_id, 1);
-        fprintf('S3_GPU_ORDINAL branch=gpu observed_device_id=%d\n', ...
-                prob.get_cuda_settings().device_id);
+        apply = @() dtwc.DTWClustering.apply_device_strategy(prob, 'gpu:1');
+        if info.metal
+            verifyError(testCase, apply, 'dtwc:deviceError');
+        else
+            verifyWarningFree(testCase, apply);
+        end
+        fprintf('S3_GPU_ORDINAL branch=gpu\n');
     else
         % No GPU backend: dtwc::device() must reject the request before fit() creates a
         % Problem, and the process device must be left untouched.
@@ -448,19 +452,6 @@ function test_dtwclustering_forwards_the_gpu_ordinal_to_cuda_settings(testCase)
         verifyEqual(testCase, dtwc.device(), 'cpu');
         fprintf('S3_GPU_ORDINAL branch=no-gpu rejected-before-effect\n');
     end
-end
-
-function test_problem_cuda_settings_round_trip(testCase)
-%   §2.1 set_cuda_settings/get_cuda_settings; omitting precision keeps it.
-    prob = dtwc.Problem('cuda_roundtrip');
-    verifyEqual(testCase, prob.get_cuda_settings(), ...
-        struct('device_id', 0, 'precision', 0));
-    prob.set_cuda_settings(2, 1);
-    verifyEqual(testCase, prob.get_cuda_settings(), ...
-        struct('device_id', 2, 'precision', 1));
-    prob.set_cuda_settings(3);
-    verifyEqual(testCase, prob.get_cuda_settings(), ...
-        struct('device_id', 3, 'precision', 1));
 end
 
 % =========================================================================
@@ -480,12 +471,11 @@ function test_problem_setters_all_callable(testCase)
     prob.set_variant('standard');
     prob.set_missing_strategy('error');
     prob.set_distance('Variant', 'ddtw', 'Metric', 'squared_euclidean');
-    prob.set_distance_strategy('auto');
     ok = prob.set_solver('highs');
     verifyTrue(testCase, islogical(ok));
     prob.set_output_folder(tempdir);
     prob.set_verbose(false);
-    prob.set_cuda_settings(0, 0);
+    prob.set_gpu_precision('auto');
     verifyEqual(testCase, prob.size(), 6);
 end
 
@@ -599,11 +589,7 @@ function test_problem_semantic_setters_invalidate_dense_cache(testCase)
 
     D = [0 123; 123 0];
     prob.set_distance_matrix(D);
-    prob.set_distance_strategy('brute_force');
-    verifyFalse(testCase, prob.is_distance_matrix_filled());
-
-    prob.set_distance_matrix(D);
-    prob.set_cuda_settings(3, 2);
+    prob.set_gpu_precision('fp64');
     verifyFalse(testCase, prob.is_distance_matrix_filled());
 end
 

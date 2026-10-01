@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "../Problem.hpp" // CUDASettings, MIPSettings
+#include "../Problem.hpp" // MIPSettings
 #include "../algorithms/hierarchical.hpp"
 #include "../algorithms/one_batch_pam.hpp"
 #include "../base/env.hpp"
@@ -85,7 +85,8 @@ struct Config
   core::MissingStrategy missing = core::MissingStrategy::Error; ///< `--missing-strategy`
   // Device
   Device device = Device::CPU;           ///< `--device`
-  CUDASettings gpu;                      ///< device_id from `--device gpu:N`; `--gpu-precision`
+  int device_index = 0;                  ///< N of `--device gpu:N`
+  GpuPrecision gpu_precision = GpuPrecision::Auto; ///< `--gpu-precision`
   // Solver
   Solver solver = Solver::HiGHS;         ///< `--solver`
   MIPSettings mip;                       ///< `--mip-gap`, `--time-limit`, `--lr-max-nodes`, ...
