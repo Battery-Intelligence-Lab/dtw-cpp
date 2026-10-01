@@ -13,7 +13,7 @@
 #include "arrow_ipc_reader.hpp"
 #endif
 #ifdef DTWC_HAS_PARQUET
-#include "parquet_reader.hpp"
+#include "parquet_chunk_reader.hpp"
 #endif
 
 #include <exception>
@@ -94,8 +94,12 @@ Data read_data(const fs::path &path, index_t skip_cols, index_t skip_rows, char 
   require_reader_options(format, skip_cols, skip_rows, delimiter, column);
   try {
 #ifdef DTWC_HAS_PARQUET
-    if (format == InputFormat::Parquet)
-      return fs::is_directory(path) ? io::load_parquet_directory(path, column) : io::load_parquet_file(path, column);
+    if (format == InputFormat::Parquet) {
+      std::vector<std::vector<data_t>> series;
+      std::vector<std::string> names;
+      for (const auto &file : parquet_files(path)) io::ParquetChunkReader(file, column).read_all(series, names);
+      return Data(std::move(series), std::move(names));
+    }
 #endif
 #ifdef DTWC_HAS_ARROW
     if (format == InputFormat::ArrowIPC) { // copied out of the map

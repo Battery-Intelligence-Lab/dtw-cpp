@@ -71,7 +71,7 @@ dtwc_cl -i data.parquet --column Voltage -k 5
 C++:
 
 ```cpp
-problem.set_data(dtwc::io::load_parquet_file("data.parquet", "Voltage"));
+problem.set_data(dtwc::read_data("data.parquet", 0, 0, '\0', "Voltage"));
 ```
 
 Python:
@@ -82,9 +82,11 @@ data, names = dtwcpp.io.load_parquet("data.parquet", column="Voltage")
 
 ### Directory of Parquet files
 
-Directory input eagerly concatenates the selected column from each sorted
-`.parquet`/`.pq` file. With scalar columns this is one series per file, named
-from the filename. List columns contribute one series per list row.
+Directory input eagerly concatenates the selected column from each
+`.parquet`/`.pq` file, in the order a folder of CSV files is read (sorted, hidden
+files skipped). With scalar columns this is one series per file, named from the
+filename. List columns contribute one series per list row, named `series_<i>`
+and numbered on across the files, so no two series share a name.
 
 CLI:
 
