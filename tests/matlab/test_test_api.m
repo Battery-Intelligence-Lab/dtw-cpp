@@ -119,12 +119,11 @@ end
 function test_gpu_validates_or_names_what_is_missing(testCase)
 %TEST_GPU_VALIDATES_OR_NAMES_WHAT_IS_MISSING Pins dtwc_mex('test_gpu').
 %   The C++ and Python suites branch the same way. The branch is chosen by
-%   system_check, not by the report itself, so a present GPU the probe calls
-%   unavailable fails. With a GPU the probe kernel must match the CPU oracle;
+%   dtwc.gpu_available, not by the report itself, so a present GPU the probe
+%   calls unavailable fails. With a GPU the probe kernel must match the CPU oracle;
 %   without one, no throw and no silent degrade -- a reason naming what is missing.
-    info = dtwc_mex('system_check');
     r = dtwc_mex('test_gpu');
-    verifyEqual(testCase, r.available, info.cuda || info.metal);
+    verifyEqual(testCase, r.available, dtwc.gpu_available());
     if r.available
         verifyTrue(testCase, any(strcmp(r.backend, {'cuda', 'metal'})));
         verifyNotEmpty(testCase, r.device_name);

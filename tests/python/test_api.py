@@ -932,10 +932,8 @@ class TestClusterMethodDispatch:
         [
             ("cpu", 5000, "pam"),
             ("cpu", 5001, "clara"),
-            ("cuda", 5000, "pam"),
-            ("cuda", 5001, "pam"),
-            ("metal", 5000, "pam"),
-            ("metal", 5001, "pam"),
+            ("gpu", 5000, "pam"),
+            ("gpu", 5001, "pam"),
             ("hpc", 5000, "auto"),
             ("hpc", 5001, "auto"),
         ],
@@ -978,7 +976,7 @@ class TestClusterMethodDispatch:
         def poison_clara(*args, **kwargs):
             raise AssertionError("GPU-compatible auto must not resolve to CLARA")
 
-        monkeypatch.setattr(dtwcpp, "_resolve_device", lambda device: ("cuda", 3))
+        monkeypatch.setattr(dtwcpp, "_resolve_device", lambda device: ("gpu", 3))
         monkeypatch.setattr(dtwcpp, "Problem", FakeProblem)
         monkeypatch.setattr(dtwcpp, "compute_distance_matrix", lambda *a, **k: matrix)
         monkeypatch.setattr(dtwcpp, "fast_pam_seeded", fake_pam)
@@ -988,7 +986,7 @@ class TestClusterMethodDispatch:
         result = dtwcpp.cluster(series, k=1, method="auto", device="gpu:3", max_iter=7)
 
         assert calls == [("pam", 1, dtwcpp.DEFAULT_RANDOM_SEED, 7, matrix)]
-        assert result.device == "cuda"
+        assert result.device == "gpu"
         assert result.distance_matrix is matrix
 
     def test_unknown_method_raises(self):

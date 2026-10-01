@@ -222,8 +222,9 @@ fingerprint of the data and distance settings match; a file of other data or
 settings is `InvalidInput` and a damaged or earlier-layout one `IOError`, both
 before any cached distance is read. When the threshold selects mmap,
 `--dist-matrix` (a CSV matrix) is rejected before either path is opened. CUDA
-mmap runs must select explicit `--gpu-precision fp32` or `fp64`; the
-hardware-dependent `auto` setting is not a stable cache identity.
+mmap and checkpoint runs must select explicit `--gpu-precision fp32` or `fp64`:
+CUDA's `auto` depends on the GPU, so it is not a stable cache identity (Metal's
+`auto` is FP32).
 
 ### GPU Options
 

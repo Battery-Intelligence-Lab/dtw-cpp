@@ -289,30 +289,10 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("AROW", dtwc::core::MissingStrategy::AROW)
     .value("Interpolate", dtwc::core::MissingStrategy::Interpolate);
 
-  nb::enum_<dtwc::DistanceMatrixStrategy>(m, "DistanceMatrixStrategy")
-    .value("Auto", dtwc::DistanceMatrixStrategy::Auto)
-    .value("BruteForce", dtwc::DistanceMatrixStrategy::BruteForce)
-    .value("CUDA", dtwc::DistanceMatrixStrategy::CUDA)
-    .value("Metal", dtwc::DistanceMatrixStrategy::Metal);
-
-  // =========================================================================
-  // CUDASettings
-  // =========================================================================
-
   nb::enum_<dtwc::GpuPrecision>(m, "GpuPrecision")
     .value("Auto", dtwc::GpuPrecision::Auto)
     .value("FP32", dtwc::GpuPrecision::FP32)
     .value("FP64", dtwc::GpuPrecision::FP64);
-
-  nb::class_<dtwc::CUDASettings>(m, "CUDASettings")
-    .def(nb::init<>())
-    .def_rw("device_id", &dtwc::CUDASettings::device_id, "CUDA device index (default 0).")
-    .def_rw("precision", &dtwc::CUDASettings::precision,
-            "Compute precision: GpuPrecision.Auto (default), FP32 or FP64.")
-    .def("__repr__", [](const dtwc::CUDASettings &s) {
-      return "CUDASettings(device_id=" + std::to_string(s.device_id) + ", precision="
-             + std::string(dtwc::name_of(dtwc::gpu_precision_names, s.precision)) + ")";
-    });
 
   // =========================================================================
   // Linkage (hierarchical clustering)
@@ -699,11 +679,14 @@ NB_MODULE(_dtwcpp_core, m) {
       const auto [selected, index] = dtwc::detail::parse_device(device);
       p.set_device(selected, index);
     }, "device"_a,
-       "Compute on `device` (the names dtwcpp.device() accepts). 'cpu' keeps a\n"
-       "CPU distance_strategy you chose and moves a GPU one to Auto; 'gpu' selects\n"
-       "this build's GPU backend (CUDA, else Metal). A request the device cannot\n"
-       "honour (a variant, missing-data strategy, multivariate data or precision\n"
-       "its kernels lack) raises DeviceError when distances are computed.")
+       "Compute on `device` (the names dtwcpp.device() accepts): 'gpu:N' is GPU N\n"
+       "of this build's GPU backend (CUDA, else Metal, which has GPU 0 only). A\n"
+       "request the device cannot honour (a variant, missing-data strategy,\n"
+       "multivariate data or precision its kernels lack) raises DeviceError when\n"
+       "distances are computed.")
+    .def("set_gpu_precision", &dtwc::Problem::set_gpu_precision, "precision"_a,
+         "What a GPU computes in: GpuPrecision.Auto (the default; FP32 on consumer\n"
+         "CUDA GPUs and on Metal), FP32 or FP64. A change drops the distance matrix.")
     // ---- config properties (canonical names) ----
     .def_prop_rw("method", &dtwc::Problem::method, &dtwc::Problem::set_method)
     .def_prop_rw("max_iter", &dtwc::Problem::max_iter,
@@ -728,19 +711,6 @@ NB_MODULE(_dtwcpp_core, m) {
                    p.set_missing_strategy(value);
                  },
                  "Strategy for handling NaN values (Error, ZeroCost, AROW, Interpolate).")
-    .def_prop_rw("distance_strategy",
-                 [](const dtwc::Problem &p) { return p.distance_strategy(); },
-                 [](dtwc::Problem &p, dtwc::DistanceMatrixStrategy value) {
-                   p.set_distance_strategy(value);
-                 },
-                 "Distance matrix computation strategy (Auto, BruteForce, CUDA, Metal).")
-    .def_prop_rw("cuda_settings",
-                 [](const dtwc::Problem &p) { return p.cuda_settings(); },
-                 [](dtwc::Problem &p, dtwc::CUDASettings value) {
-                   p.set_cuda_settings(value);
-                 },
-                 "GPU compute options (device_id, precision), read by the CUDA and\n"
-                 "Metal routes; set_device('gpu:N') sets device_id.")
     .def_rw("mip_settings", &dtwc::Problem::mip_settings,
             "MIP solver tuning parameters.")
     .def_rw("checkpoint", &dtwc::Problem::checkpoint,
@@ -1261,17 +1231,17 @@ NB_MODULE(_dtwcpp_core, m) {
 
 
   // =========================================================================
-  // CUDA (optional)
+  // GPU discovery: this build's backend, CUDA else Metal
   // =========================================================================
 
+  m.def("gpu_available", &dtwc::gpu_available,
+        "True when this build's GPU backend (CUDA, else Metal) finds a GPU, so\n"
+        "device='gpu' can compute here.");
+  m.def("gpu_info", &dtwc::gpu_info,
+        "One line naming this build's GPU backend and the GPU device='gpu'\n"
+        "computes on ('CUDA: <device>', 'Metal: <device>'), or why there is none.");
+
 #ifdef DTWC_HAS_CUDA
-  m.def("cuda_available", &dtwc::cuda::cuda_available,
-        "Check if a CUDA-capable GPU is available.");
-
-  m.def("cuda_device_info", &dtwc::cuda::cuda_device_info,
-        "device_id"_a = 0,
-        "Get a human-readable string describing the CUDA device.");
-
   m.def("compute_distance_matrix_cuda",
         [](const std::vector<std::vector<double>> &series,
            int band, bool use_squared_l2, int device_id, bool verbose) {
@@ -1298,16 +1268,7 @@ NB_MODULE(_dtwcpp_core, m) {
         "path under `band` reads the finite double-max sentinel, not IEEE\n"
         "infinity.\n"
         "NaN or +-inf in a series raises InvalidInput.");
-
-  m.attr("CUDA_AVAILABLE") = true;
 #else
-  m.def("cuda_available", []() { return false; },
-        "Check if CUDA GPU is available.");
-
-  m.def("cuda_device_info", [](int) { return std::string("CUDA not available (not compiled)"); },
-        "device_id"_a = 0,
-        "Get CUDA device info string.");
-
   m.def("compute_distance_matrix_cuda",
         [](const std::vector<std::vector<double>> &, int, bool, int, bool) -> nb::object {
           throw dtwc::DeviceError("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
@@ -1315,21 +1276,9 @@ NB_MODULE(_dtwcpp_core, m) {
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
         "Compute NxN DTW distance matrix on CUDA GPU (requires CUDA build).");
-
-  m.attr("CUDA_AVAILABLE") = false;
 #endif
 
-  // =========================================================================
-  // Metal (optional, Apple GPU)
-  // =========================================================================
-
 #ifdef DTWC_HAS_METAL
-  m.def("metal_available", &dtwc::metal::metal_available,
-        "Check if a Metal-capable GPU is available (macOS only).");
-
-  m.def("metal_device_info", &dtwc::metal::metal_device_info,
-        "Get a human-readable string describing the Metal device.");
-
   m.def("compute_distance_matrix_metal",
         [](const std::vector<std::vector<double>> &series,
            int band, bool use_squared_l2, bool verbose) {
@@ -1353,13 +1302,7 @@ NB_MODULE(_dtwcpp_core, m) {
         "Compute NxN DTW distance matrix on Apple GPU via Metal.\n\n"
         "Returns NxN numpy array of DTW distances.\n"
         "NaN or +-inf in a series raises InvalidInput.");
-
-  m.attr("METAL_AVAILABLE") = true;
 #else
-  m.def("metal_available", []() { return false; },
-        "Check if Metal GPU is available.");
-  m.def("metal_device_info", []() { return std::string("Metal not available (not compiled)"); },
-        "Get Metal device info string.");
   m.def("compute_distance_matrix_metal",
         [](const std::vector<std::vector<double>> &, int, bool, bool) -> nb::object {
           throw dtwc::DeviceError("Metal support not compiled. Rebuild on macOS with -DDTWC_ENABLE_METAL=ON");
@@ -1367,7 +1310,6 @@ NB_MODULE(_dtwcpp_core, m) {
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
         "Compute NxN DTW distance matrix on Apple GPU (requires Metal build).");
-  m.attr("METAL_AVAILABLE") = false;
 #endif
 
   // =========================================================================
@@ -1384,33 +1326,6 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("openmp_max_threads", []() { return 1; },
         "Return 1 (OpenMP not compiled in).");
 #endif
-
-  m.def("system_info", []() {
-    std::string info;
-    info += "DTWC++ System Information\n";
-#ifdef _OPENMP
-    info += "  OpenMP: available (" + std::to_string(omp_get_max_threads()) + " threads)\n";
-#else
-    info += "  OpenMP: not available\n";
-#endif
-#ifdef DTWC_HAS_CUDA
-    if (dtwc::cuda::cuda_available())
-      info += "  CUDA:   available (" + dtwc::cuda::cuda_device_info(0) + ")\n";
-    else
-      info += "  CUDA:   compiled but no GPU detected\n";
-#else
-    info += "  CUDA:   not compiled (rebuild with -DDTWC_ENABLE_CUDA=ON)\n";
-#endif
-#ifdef DTWC_HAS_METAL
-    if (dtwc::metal::metal_available())
-      info += "  Metal:  available (" + dtwc::metal::metal_device_info() + ")\n";
-    else
-      info += "  Metal:  compiled but no GPU detected\n";
-#else
-    info += "  Metal:  not compiled (macOS only)\n";
-#endif
-    return info;
-  }, "Return a string summarizing available backends and capabilities.");
 
   // =========================================================================
   // dtwc.test introspection API (Task 3.3) — SAME schema/field names as the C++

@@ -171,17 +171,17 @@ const DeviceLimits &device_limits(int device_id)
 
 /// Auto takes FP64 only where it runs at least half as fast as FP32 (the HPC
 /// parts); a compute-capability table misread consumer Blackwell (sm_120).
-bool resolve_fp32(CUDAPrecision precision, int device_id)
+bool resolve_fp32(GpuPrecision precision, int device_id)
 {
   switch (precision) {
-  case CUDAPrecision::FP32:
+  case GpuPrecision::FP32:
     return true;
-  case CUDAPrecision::FP64:
+  case GpuPrecision::FP64:
     return false;
-  case CUDAPrecision::Auto:
+  case GpuPrecision::Auto:
     return device_limits(device_id).slow_fp64;
   }
-  throw std::logic_error("resolve_fp32: unreachable CUDAPrecision");
+  throw std::logic_error("resolve_fp32: unreachable GpuPrecision");
 }
 
 } // namespace

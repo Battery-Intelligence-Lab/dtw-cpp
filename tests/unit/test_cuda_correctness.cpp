@@ -180,8 +180,8 @@ double f12_expected_public_cost(
 dtwc::cuda::CUDADistMatOptions f12_cuda_options(
     const dtwc::test::gpu_fixed_band::LedgerRow &row,
     bool squared,
-    dtwc::cuda::CUDAPrecision precision =
-        dtwc::cuda::CUDAPrecision::FP64)
+    dtwc::GpuPrecision precision =
+        dtwc::GpuPrecision::FP64)
 {
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = row.band;
@@ -339,7 +339,7 @@ TEST_CASE("F12 CUDA FP32 results translate no-path to the public double sentinel
   const auto &below_gap = oracle::ledger.front();
   const auto &route = f12_cuda_routes.front();
   auto opts = f12_cuda_options(
-      below_gap, false, dtwc::cuda::CUDAPrecision::FP32);
+      below_gap, false, dtwc::GpuPrecision::FP32);
 
   const auto pairwise = gpu_fill(
       f12_pairwise_inventory(route), opts);
@@ -371,8 +371,8 @@ TEST_CASE("CUDA fill matches the host kernel in every automatic kernel range",
 
   const auto series = generate_random_series(6, regime.L, /*seed=*/7);
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = fp32 ? dtwc::cuda::CUDAPrecision::FP32
-                        : dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = fp32 ? dtwc::GpuPrecision::FP32
+                        : dtwc::GpuPrecision::FP64;
   const auto gpu_result = gpu_fill(series, opts);
 
   REQUIRE(gpu_result.kernel_used
@@ -394,7 +394,7 @@ TEST_CASE("test_gpu_matches_cpu_small", "[cuda]")
   auto series = generate_random_series(N, L, /*seed=*/42);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -419,7 +419,7 @@ TEST_CASE("test_gpu_matches_cpu_medium", "[cuda]")
   auto series = generate_random_series(N, L, /*seed=*/123);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -444,7 +444,7 @@ TEST_CASE("test_gpu_matches_cpu_large", "[cuda]")
   auto series = generate_random_series(N, L, /*seed=*/9999);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -499,7 +499,7 @@ TEST_CASE("test_gpu_long_series_wavefront_full", "[cuda][long]")
   auto series = generate_random_walks(N, L, /*seed=*/20240701);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -533,7 +533,7 @@ TEST_CASE("test_gpu_long_series_wavefront_banded", "[cuda][long][banded]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_banded_distance_matrix(series, band);
 
@@ -565,7 +565,7 @@ TEST_CASE("FP32 wavefront at L = 4095 and 4096 matches the host kernel",
   const auto series = generate_random_walks(3, L, /*seed=*/20260930);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  opts.precision = dtwc::GpuPrecision::FP32;
   const auto gpu_result = gpu_fill(series, opts);
   REQUIRE(gpu_result.kernel_used
           == (L < first_global_length(true) ? "wavefront" : "wavefront_global"));
@@ -585,7 +585,7 @@ TEST_CASE("CUDA wavefront keeps its anti-diagonals in global memory where three 
   CAPTURE(fp32, first_global);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = fp32 ? dtwc::cuda::CUDAPrecision::FP32 : dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = fp32 ? dtwc::GpuPrecision::FP32 : dtwc::GpuPrecision::FP64;
   const auto host = [fp32](const auto &series) {
     return fp32 ? cpu_fp32_distance_matrix(series) : cpu_distance_matrix(series);
   };
@@ -622,7 +622,7 @@ TEST_CASE("CUDA fill of series beyond the shared-memory limit matches the host k
   for (size_t k = 0; k < series.size(); ++k) series[k].resize(lengths[k]);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = c.fp32 ? dtwc::cuda::CUDAPrecision::FP32 : dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = c.fp32 ? dtwc::GpuPrecision::FP32 : dtwc::GpuPrecision::FP64;
   const auto gpu_result = gpu_fill(series, opts);
   CHECK(gpu_result.kernel_used
         == (c.L < first_global_length(c.fp32) ? "wavefront" : "wavefront_global"));
@@ -648,7 +648,7 @@ TEST_CASE("CUDA global-memory wavefront runs many pairs per block",
   for (size_t k = 1; k < series.size(); ++k) series[k].resize(1 + (k * 37) % 300);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = fp32 ? dtwc::cuda::CUDAPrecision::FP32 : dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = fp32 ? dtwc::GpuPrecision::FP32 : dtwc::GpuPrecision::FP64;
   const auto gpu_result = gpu_fill(series, opts);
   CHECK(gpu_result.kernel_used == "wavefront_global");
   REQUIRE(gpu_result.matrix
@@ -666,7 +666,7 @@ TEST_CASE("CUDA global-memory wavefront matches the host kernel with a band and 
 
   const auto series = generate_random_walks(4, first_global_length(false), /*seed=*/20261003);
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
 
   opts.band = 64;
   const auto banded = gpu_fill(series, opts);
@@ -715,7 +715,7 @@ TEST_CASE("Two host threads filling at different long lengths do not fail each o
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  opts.precision = dtwc::GpuPrecision::FP32;
   const auto long_pair = generate_random_series(2, 8000, /*seed=*/31);
   const auto short_pair = generate_random_series(2, 4096, /*seed=*/32);
   std::array<int, 2> failures{}; // one slot per thread
@@ -850,7 +850,7 @@ TEST_CASE("test_gpu_banded_matches_cpu_small", "[cuda][banded]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
 
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_banded_distance_matrix(series, band);
@@ -878,7 +878,7 @@ TEST_CASE("test_gpu_banded_matches_cpu_medium", "[cuda][banded]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
 
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_banded_distance_matrix(series, band);
@@ -905,7 +905,7 @@ TEST_CASE("test_gpu_banded_narrow_band", "[cuda][banded]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
 
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_banded_distance_matrix(series, band);
@@ -961,7 +961,7 @@ TEST_CASE("test_gpu_banded_wide_band_equals_full", "[cuda][banded]")
 
   dtwc::cuda::CUDADistMatOptions opts_banded;
   opts_banded.band = band;
-  opts_banded.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts_banded.precision = dtwc::GpuPrecision::FP64;
 
   auto gpu_banded = gpu_fill(series, opts_banded);
   auto cpu_full   = cpu_distance_matrix(series);
@@ -997,7 +997,7 @@ TEST_CASE("test_gpu_banded_unequal_lengths", "[cuda][banded]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
 
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_banded_distance_matrix(series, band);
@@ -1026,7 +1026,7 @@ TEST_CASE("test_warp_kernel_short_series_L8", "[cuda][warp]")
   auto series = generate_random_series(N, L, /*seed=*/1001);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1049,7 +1049,7 @@ TEST_CASE("test_warp_kernel_short_series_L16", "[cuda][warp]")
   auto series = generate_random_series(N, L, /*seed=*/2002);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1072,7 +1072,7 @@ TEST_CASE("test_warp_kernel_short_series_L32", "[cuda][warp]")
   auto series = generate_random_series(N, L, /*seed=*/3003);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1093,7 +1093,7 @@ TEST_CASE("test_warp_kernel_short_series_L1", "[cuda][warp]")
 
   std::vector<std::vector<double>> series = {{3.0}, {7.0}, {1.0}, {5.0}};
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
 
   const size_t N = series.size();
@@ -1124,7 +1124,7 @@ TEST_CASE("test_warp_kernel_variable_short_lengths", "[cuda][warp]")
   }
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1150,7 +1150,7 @@ TEST_CASE("test_warp_kernel_banded_short_series", "[cuda][warp][banded]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
 
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_banded_distance_matrix(series, band);
@@ -1174,7 +1174,7 @@ TEST_CASE("test_warp_kernel_fp32_short_series", "[cuda][warp][fp32]")
   auto series = generate_random_series(N, L, /*seed=*/6006);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  opts.precision = dtwc::GpuPrecision::FP32;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1198,7 +1198,7 @@ TEST_CASE("test_warp_kernel_many_pairs_short_series", "[cuda][warp]")
   auto series = generate_random_series(N, L, /*seed=*/7007);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
 
   REQUIRE(gpu_result.n == N);
@@ -1230,7 +1230,7 @@ TEST_CASE("test_warp_kernel_squared_l2_short_series", "[cuda][warp]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.use_squared_l2 = true;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
 
   REQUIRE(gpu_result.n == N);
@@ -1258,7 +1258,7 @@ TEST_CASE("test_gpu_fp32_matches_cpu_small", "[cuda][fp32]")
   auto series = generate_random_series(N, L, /*seed=*/42);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  opts.precision = dtwc::GpuPrecision::FP32;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1284,7 +1284,7 @@ TEST_CASE("test_gpu_fp32_matches_cpu_medium", "[cuda][fp32]")
   auto series = generate_random_series(N, L, /*seed=*/123);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  opts.precision = dtwc::GpuPrecision::FP32;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1307,7 +1307,7 @@ TEST_CASE("test_gpu_fp32_identical_series_zero_distance", "[cuda][fp32]")
   series.push_back(series[0]);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  opts.precision = dtwc::GpuPrecision::FP32;
   auto gpu_result = gpu_fill(series, opts);
 
   REQUIRE(gpu_result.n == 2);
@@ -1326,7 +1326,7 @@ TEST_CASE("test_gpu_fp32_banded_matches_cpu", "[cuda][fp32][banded]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  opts.precision = dtwc::GpuPrecision::FP32;
 
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_banded_distance_matrix(series, band);
@@ -1361,15 +1361,15 @@ TEST_CASE("CUDA Auto precision follows the device's FP32:FP64 throughput",
   CAPTURE(fp32_per_fp64);
 
   const auto series = generate_random_series(6, 40, /*seed=*/11);
-  const auto fill = [&](dtwc::cuda::CUDAPrecision precision) {
+  const auto fill = [&](dtwc::GpuPrecision precision) {
     dtwc::cuda::CUDADistMatOptions opts;
     opts.precision = precision;
     return gpu_fill(series, opts).matrix;
   };
-  const auto fp32 = fill(dtwc::cuda::CUDAPrecision::FP32);
-  const auto fp64 = fill(dtwc::cuda::CUDAPrecision::FP64);
+  const auto fp32 = fill(dtwc::GpuPrecision::FP32);
+  const auto fp64 = fill(dtwc::GpuPrecision::FP64);
   REQUIRE(fp32 != fp64); // this input tells the two precisions apart
-  REQUIRE(fill(dtwc::cuda::CUDAPrecision::Auto)
+  REQUIRE(fill(dtwc::GpuPrecision::Auto)
           == (fp32_per_fp64 > 2 ? fp32 : fp64));
 }
 
@@ -1388,7 +1388,7 @@ TEST_CASE("GPU matches CPU with squared-L2 metric", "[cuda]")
   // GPU with squared L2
   dtwc::cuda::CUDADistMatOptions opts;
   opts.use_squared_l2 = true;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
 
   REQUIRE(gpu_result.n == N);
@@ -1427,7 +1427,7 @@ TEST_CASE("GPU handles variable-length series", "[cuda]")
   }
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   const size_t N = series.size();
 
@@ -1459,7 +1459,7 @@ TEST_CASE("GPU single pair (N=2)", "[cuda]")
 
   std::vector<std::vector<double>> series = {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}};
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto result = gpu_fill(series, opts);
 
   double cpu_d = dtwc::dtwFull_L<double>(series[0], series[1]);
@@ -1480,7 +1480,7 @@ TEST_CASE("GPU length-1 series", "[cuda]")
 
   std::vector<std::vector<double>> series = {{3.0}, {7.0}, {1.0}};
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto result = gpu_fill(series, opts);
 
   REQUIRE(result.n == 3);
@@ -1512,7 +1512,7 @@ TEST_CASE("test_regtile_kernel_L33", "[cuda][regtile]")
   auto series = generate_random_series(N, L, /*seed=*/10001);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1535,7 +1535,7 @@ TEST_CASE("test_regtile_kernel_L64", "[cuda][regtile]")
   auto series = generate_random_series(N, L, /*seed=*/10002);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1559,7 +1559,7 @@ TEST_CASE("test_regtile_kernel_L128", "[cuda][regtile]")
   auto series = generate_random_series(N, L, /*seed=*/10003);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1583,7 +1583,7 @@ TEST_CASE("test_regtile_kernel_L129", "[cuda][regtile]")
   auto series = generate_random_series(N, L, /*seed=*/10004);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1607,7 +1607,7 @@ TEST_CASE("test_regtile_kernel_L256", "[cuda][regtile]")
   auto series = generate_random_series(N, L, /*seed=*/10005);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1637,7 +1637,7 @@ TEST_CASE("test_regtile_kernel_variable_lengths", "[cuda][regtile]")
   }
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1663,7 +1663,7 @@ TEST_CASE("test_regtile_kernel_banded_L100", "[cuda][regtile][banded]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = band;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
 
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_banded_distance_matrix(series, band);
@@ -1687,7 +1687,7 @@ TEST_CASE("test_regtile_kernel_fp32_L100", "[cuda][regtile][fp32]")
   auto series = generate_random_series(N, L, /*seed=*/10008);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  opts.precision = dtwc::GpuPrecision::FP32;
   auto gpu_result = gpu_fill(series, opts);
   auto cpu_mat    = cpu_distance_matrix(series);
 
@@ -1711,7 +1711,7 @@ TEST_CASE("test_regtile_kernel_squared_l2_L80", "[cuda][regtile]")
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.use_squared_l2 = true;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
 
   REQUIRE(gpu_result.n == N);
@@ -1768,8 +1768,7 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
   prob.set_device(dtwc::Device::GPU);
   for (const bool fp64 : { true, false }) {
     CAPTURE(fp64);
-    prob.set_cuda_settings(
-        dtwc::CUDASettings{ 0, fp64 ? dtwc::GpuPrecision::FP64 : dtwc::GpuPrecision::FP32 });
+    prob.set_gpu_precision(fp64 ? dtwc::GpuPrecision::FP64 : dtwc::GpuPrecision::FP32);
     prob.fill_distance_matrix();
     const auto &matrix = std::as_const(prob).distance_matrix();
     REQUIRE(matrix.size() == N);
@@ -1826,7 +1825,7 @@ TEST_CASE("CUDA fills over two launches match the host kernel in the regtile and
   }
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   dtwc::core::DistanceMatrix matrix;
   const auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
   REQUIRE(result.kernel_used == family.kernel);
@@ -1859,7 +1858,7 @@ TEST_CASE("GPU stress test (100 series x 200 length)", "[cuda]")
   auto series = generate_random_series(N, L, /*seed=*/700);
 
   dtwc::cuda::CUDADistMatOptions opts;
-  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   auto gpu_result = gpu_fill(series, opts);
   REQUIRE(gpu_result.n == N);
   REQUIRE(gpu_result.pairs_computed == N * (N - 1) / 2);
@@ -1899,8 +1898,8 @@ TEST_CASE("FX-1 CUDA squared-L2 cache via Problem::fill_distance_matrix",
     prob.set_data(dtwc::Data{ std::vector<std::vector<double>>(series),
                               { "s0", "s1", "s2", "s3", "s4", "s5" } });
     prob.set_band(band);
-    prob.set_cuda_settings(dtwc::CUDASettings{ 0, dtwc::GpuPrecision::FP64 });
-    prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::CUDA);
+    prob.set_gpu_precision(dtwc::GpuPrecision::FP64);
+    prob.set_device(dtwc::Device::GPU);
     prob.use_mmap_distance_matrix(cache, dtwc::core::MetricType::SquaredL2);
     prob.fill_distance_matrix();
     for (size_t i = 0; i < series.size(); ++i)
@@ -1932,7 +1931,7 @@ TEST_CASE("IF-2 CUDA dense squared-L2 via Problem::set_metric",
       prob.set_data(dtwc::Data{ std::vector<std::vector<double>>(series),
                                 { "s0", "s1", "s2", "s3", "s4", "s5" } });
       prob.set_band(band);
-      prob.set_cuda_settings(dtwc::CUDASettings{ 0, precision });
+      prob.set_gpu_precision(precision);
       prob.set_device(dtwc::Device::GPU);
       prob.set_metric(dtwc::core::MetricType::SquaredL2);
       prob.fill_distance_matrix();

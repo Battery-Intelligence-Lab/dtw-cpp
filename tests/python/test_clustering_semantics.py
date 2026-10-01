@@ -101,7 +101,7 @@ def test_default_cpu_l1_keeps_lazy_matrix_path(monkeypatch):
     assert estimator.inertia_ == 4.0
 
 
-@pytest.mark.parametrize("backend", ["cuda", "metal"])
+@pytest.mark.parametrize("backend", ["gpu"])
 def test_gpu_precompute_receives_requested_metric(monkeypatch, backend):
     real_compute = dtwcpp.compute_distance_matrix
     cpu_squared = real_compute(
@@ -270,10 +270,8 @@ def test_training_predict_matches_configured_problem_nearest(kwargs, series):
             None,
             "MissingStrategy",
         ),
-        ({"device": "cuda", "missing_strategy": "zero_cost"}, "cuda", "missing"),
-        ({"device": "cuda", "mv_mode": "independent"}, "cuda", "mv_mode"),
-        ({"device": "metal", "missing_strategy": "arow"}, "metal", "missing"),
-        ({"device": "metal", "mv_mode": "independent"}, "metal", "mv_mode"),
+        ({"device": "gpu", "missing_strategy": "zero_cost"}, "gpu", "missing"),
+        ({"device": "gpu", "mv_mode": "independent"}, "gpu", "mv_mode"),
     ],
 )
 def test_invalid_semantics_fail_before_distance_compute(

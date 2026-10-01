@@ -31,8 +31,8 @@ host memory.
 
 `Problem::set_device(Device::GPU)` (Python `Problem(device="gpu")`, MATLAB
 `dtwc.Problem(name, 'Device', 'gpu')`) selects the build's backend, CUDA else
-Metal; `DistanceMatrixStrategy::CUDA` and `Metal` are the same request spelled
-per backend. Before any pair is computed, one validator checks the request
+Metal, and `Problem::set_gpu_precision(GpuPrecision)` what it computes in. Before
+any pair is computed, one validator checks the request
 against what the kernels implement — Standard DTW on univariate Float64 series
 held in RAM, L1 or squared L2, `MissingStrategy::Error` — and anything else
 raises `DeviceError` naming the setting and its value:
@@ -42,7 +42,7 @@ raises `DeviceError` naming the setting and its value:
 | a variant other than Standard, a missing-data strategy, `ndim > 1` | `DeviceError` |
 | Float32, mmap-backed or view-mode series | `DeviceError` |
 | squared L2 (`Problem::set_metric(MetricType::SquaredL2)`, dense or mapped) | computed with `use_squared_l2` |
-| Metal: precision FP64, or a GPU index other than 0 | `DeviceError` |
+| Metal: precision FP64, or a GPU index other than 0 (refused by `set_device`) | `DeviceError` |
 | CUDA: precision Auto, FP32 or FP64; any device index | honoured |
 | a band narrower than the longest-minus-shortest series length (every device) | `InvalidInput` naming both series and the smallest feasible band |
 
@@ -54,8 +54,7 @@ GPU.
 > **Compile-time flags.** CUDA defaults OFF and is enabled with
 > `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON but is built only on
 > Apple platforms; non-Apple configuration disables it. With neither backend,
-> explicit GPU requests error, while an ordinary CPU `Problem` uses its selected
-> CPU distance strategy.
+> explicit GPU requests error, while an ordinary `Problem` computes on the CPU.
 
 ## The DTW recurrence on a GPU
 
@@ -110,10 +109,9 @@ kernel's.
 
 ### Options
 
-Both option structs inherit `band`, `use_squared_l2` and `verbose`. CUDA adds
-`device_id` and `CUDAPrecision`; Metal adds `MetalPrecision`. Metal's kernels
-are FP32: `MetalPrecision::FP64` raises `DeviceError` at every Metal entry
-point.
+Both option structs inherit `band`, `use_squared_l2` and `verbose`, and take a
+`GpuPrecision`; CUDA adds `device_id`. Metal's kernels are FP32:
+`GpuPrecision::FP64` raises `DeviceError` at every Metal entry point.
 
 ## Historical measurements (Apple M2 Max, 38-core GPU)
 
@@ -138,10 +136,9 @@ with `set_device(Device::GPU)`. Apple unified memory reduces
 transfer overhead, but the implementation still converts input into padded
 Metal buffers and copies the result back to host storage.
 
-`DistanceMatrixStrategy::Auto` is CPU-only: it resolves to the CPU brute-force
-fill. Tier-1 `device="gpu"` chooses a compiled GPU backend
-explicitly and raises if that request cannot be delivered; it does not use Auto
-as a CUDA→Metal→CPU fallback chain.
+A `Problem` computes on the CPU until `set_device` says otherwise. Tier-1
+`device="gpu"` chooses a compiled GPU backend explicitly and raises if that
+request cannot be delivered; there is no CUDA→Metal→CPU fallback chain.
 
 ## Citations
 

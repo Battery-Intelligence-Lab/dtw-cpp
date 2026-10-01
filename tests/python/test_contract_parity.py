@@ -41,14 +41,14 @@ _SURFACE = {
         "DTWClustering", "compute_distance_matrix",
         "DEFAULT_RANDOM_SEED",
         # §6 device
-        "device_to_string", "Device",
+        "device_to_string", "Device", "gpu_available", "gpu_info",
         # §5 error taxonomy
         "DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError",
         # enums, structs, Tier-2 classes: the types behind the contract's fields and
         # arguments (several have no table row of their own)
         "Method", "Solver", "MetricType", "DTWVariant",
-        "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision", "Linkage",
-        "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",
+        "MissingStrategy", "GpuPrecision", "Linkage",
+        "DTWVariantParams", "MIPSettings", "Data",
         "DendrogramStep", "Dendrogram", "HierarchicalOptions",
         "CLARAOptions", "ClusteringResult", "Problem",
         # §2.5 algorithm free functions
@@ -69,11 +69,11 @@ _SURFACE = {
         "set_n_clusters", "set_method", "set_band", "set_max_iter",
         "set_n_repetitions", "set_variant", "set_variant_params", "set_distance",
         "set_solver",
-        "set_data", "set_result", "set_device", "set_random_seed",
+        "set_data", "set_result", "set_device", "set_gpu_precision", "set_random_seed",
         # config attributes (§2.1)
         "method", "max_iter", "n_repetitions", "band", "variant_params",
-        "missing_strategy", "distance_strategy", "random_seed",
-        "cuda_settings", "mip_settings", "verbose", "name", "output_folder",
+        "missing_strategy", "random_seed",
+        "mip_settings", "verbose", "name", "output_folder",
         "clusters_ind", "centroids_ind", "checkpoint",
         # read accessors (§2.2)
         "size", "n_clusters", "labels", "medoids", "series", "series_name",

@@ -39,10 +39,11 @@ prob.set_device(dtwc::Device::GPU);        // index: prob.set_device(dtwc::Devic
 prob = dtwc.Problem('run', 'Device', 'gpu');   % or prob.set_device('gpu')
 ```
 
-`cpu` keeps a CPU `distance_strategy` you chose (`BruteForce`) and
-moves a GPU one back to `Auto`; `gpu` selects this build's GPU backend (CUDA,
-else Metal) and records the index. `gpu` on a build without a GPU backend
-raises a device error at the call; `hpc` raises an invalid-argument error,
+`gpu` selects this build's GPU backend (CUDA, else Metal) and records the
+index; Metal has GPU 0 only, so `gpu:1` there is a device error, never GPU 0.
+`set_gpu_precision` chooses what the GPU computes in (`auto`, `fp32`, `fp64`).
+`gpu` on a build without a GPU backend raises a device error at the call; `hpc`
+raises an invalid-argument error,
 because it submits a whole run (`dtwc.cluster(..., device="hpc")` in Python)
 rather than computing a `Problem` locally.
 
@@ -52,8 +53,9 @@ The GPU kernels compute Standard DTW on univariate Float64 series held in RAM,
 in L1 or squared L2, with no missing-data strategy; anything else on a GPU raises
 a device error that names the setting and its value (`variant = WDTW`,
 `missing_strategy = ZeroCost`, `ndim = 3`, `precision = Float32`, mmap-backed or
-view-mode series). Metal also rejects precision FP64 (its kernels are FP32) and
-a GPU index other than 0 (it runs on the system default GPU). On every device, a
+view-mode series). Metal also rejects precision FP64 (its kernels are FP32);
+`set_device` already refused a GPU index other than 0 there (Metal runs on the
+system default GPU). On every device, a
 Sakoe-Chiba band narrower than the length difference between the shortest and
 longest series is an invalid-argument error naming both series and the smallest
 feasible band: such a pair has no warping path, and its distance would otherwise

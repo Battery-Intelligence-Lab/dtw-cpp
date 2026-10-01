@@ -4,10 +4,10 @@
  *        computes a pair and in the dtw_function accessors, and names the axis
  *        it rejects.
  *
- * @details Every case runs in every build. The validator's GPU checks run before
- * any backend is called — compiled or not, device present or not — so a CPU-only
- * build and a Metal build without a GPU pin them too. Oracles: the length
- * difference is computed here from the input; distances come from the CPU kernels.
+ * @details The validator's GPU checks run before any backend is called, device
+ * present or not, in every build with a GPU backend (a build without one refuses
+ * Device::GPU in set_device). Oracles: the length difference is computed here
+ * from the input; distances come from the CPU kernels.
  */
 
 #include <dtwc.hpp>
@@ -32,7 +32,6 @@
 #include <vector>
 
 using Catch::Matchers::ContainsSubstring;
-using dtwc::DistanceMatrixStrategy;
 
 namespace {
 
@@ -64,11 +63,6 @@ std::string message_of(F &&f)
   }
   FAIL("the expected exception was not thrown");
   return {};
-}
-
-std::string backend_name(DistanceMatrixStrategy s)
-{
-  return s == DistanceMatrixStrategy::CUDA ? "CUDA" : "Metal";
 }
 
 } // namespace
@@ -304,97 +298,107 @@ TEST_CASE("FX-1: Tier-1 cluster() rejects an infeasible band instead of summing 
   CHECK(result.cost() < 1e300);
 }
 
-TEST_CASE("FX-1: a GPU strategy rejects what its kernels do not implement",
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
+TEST_CASE("FX-1: a GPU device rejects what its kernels do not implement",
           "[fx1][gpu]")
 {
   const std::vector<std::vector<double>> equal{ ramp(8, 0.0), ramp(8, 1.0),
                                                 ramp(8, 2.0) };
+#  if defined(DTWC_HAS_CUDA)
+  const std::string backend = "CUDA";
+#  else
+  const std::string backend = "Metal";
+#  endif
+  const auto rejects = [&](dtwc::Problem &prob, std::string_view axis) {
+    const auto msg = message_of<dtwc::DeviceError>(
+      [&] { prob.fill_distance_matrix(); });
+    CHECK_THAT(msg, ContainsSubstring("Problem::fill_distance_matrix: " + backend));
+    CHECK_THAT(msg, ContainsSubstring(std::string(axis)));
+    CHECK_THAT(msg, ContainsSubstring("no backend call or CPU fallback"));
+    CHECK_FALSE(prob.is_distance_matrix_filled());
+  };
 
-  for (const auto strategy : { DistanceMatrixStrategy::CUDA,
-                               DistanceMatrixStrategy::Metal }) {
-    const std::string backend = backend_name(strategy);
-    CAPTURE(backend);
-    const auto rejects = [&](dtwc::Problem &prob, std::string_view axis) {
-      const auto msg = message_of<dtwc::DeviceError>(
-        [&] { prob.fill_distance_matrix(); });
-      CHECK_THAT(msg, ContainsSubstring("Problem::fill_distance_matrix: " + backend));
-      CHECK_THAT(msg, ContainsSubstring(std::string(axis)));
-      CHECK_THAT(msg, ContainsSubstring("no backend call or CPU fallback"));
-      CHECK_FALSE(prob.is_distance_matrix_filled());
-    };
-
-    {
-      dtwc::Problem prob("gpu_variant");
-      prob.set_data(named(equal));
-      prob.set_variant(dtwc::core::DTWVariant::WDTW);
-      prob.set_distance_strategy(strategy);
-      rejects(prob, "variant = WDTW");
-      // The accessor makes the same check.
-      const auto accessor = message_of<dtwc::DeviceError>(
-        [&] { (void)prob.dtw_function(); });
-      CHECK_THAT(accessor, ContainsSubstring("Problem::dtw_function: " + backend));
-    }
-    {
-      dtwc::Problem prob("gpu_missing");
-      prob.set_data(named(equal));
-      prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
-      prob.set_distance_strategy(strategy);
-      rejects(prob, "missing_strategy = ZeroCost");
-    }
-    {
-      dtwc::Problem prob("gpu_ndim");
-      prob.set_data(named(equal, 2));
-      prob.set_distance_strategy(strategy);
-      rejects(prob, "ndim = 2");
-    }
-    {
-      // A Float32 store leaves the Float64 upload buffer empty.
-      dtwc::Problem prob("gpu_f32");
-      prob.set_data(dtwc::Data(std::vector<std::vector<float>>{
-                                 { 0.f, 1.f, 2.f }, { 1.f, 2.f, 3.f } },
-                               std::vector<std::string>{ "a", "b" }));
-      prob.set_distance_strategy(strategy);
-      rejects(prob, "precision = Float32");
-    }
-    {
-      // A view-mode store leaves it empty too.
-      const auto owner = equal;
-      std::vector<std::span<const double>> spans;
-      std::vector<std::string_view> names{ "a", "b", "c" };
-      for (const auto &s : owner) spans.emplace_back(s);
-      dtwc::Problem prob("gpu_view");
-      prob.set_view_data(dtwc::Data(std::move(spans), std::move(names), 1));
-      prob.set_distance_strategy(strategy);
-      rejects(prob, "a non-owning view");
-    }
+  {
+    dtwc::Problem prob("gpu_variant");
+    prob.set_data(named(equal));
+    prob.set_variant(dtwc::core::DTWVariant::WDTW);
+    prob.set_device(dtwc::Device::GPU);
+    rejects(prob, "variant = WDTW");
+    // The accessor makes the same check.
+    const auto accessor = message_of<dtwc::DeviceError>(
+      [&] { (void)prob.dtw_function(); });
+    CHECK_THAT(accessor, ContainsSubstring("Problem::dtw_function: " + backend));
+  }
+  {
+    dtwc::Problem prob("gpu_missing");
+    prob.set_data(named(equal));
+    prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
+    prob.set_device(dtwc::Device::GPU);
+    rejects(prob, "missing_strategy = ZeroCost");
+  }
+  {
+    dtwc::Problem prob("gpu_ndim");
+    prob.set_data(named(equal, 2));
+    prob.set_device(dtwc::Device::GPU);
+    rejects(prob, "ndim = 2");
+  }
+  {
+    // A Float32 store leaves the Float64 upload buffer empty.
+    dtwc::Problem prob("gpu_f32");
+    prob.set_data(dtwc::Data(std::vector<std::vector<float>>{
+                               { 0.f, 1.f, 2.f }, { 1.f, 2.f, 3.f } },
+                             std::vector<std::string>{ "a", "b" }));
+    prob.set_device(dtwc::Device::GPU);
+    rejects(prob, "precision = Float32");
+  }
+  {
+    // A view-mode store leaves it empty too.
+    const auto owner = equal;
+    std::vector<std::span<const double>> spans;
+    std::vector<std::string_view> names{ "a", "b", "c" };
+    for (const auto &s : owner) spans.emplace_back(s);
+    dtwc::Problem prob("gpu_view");
+    prob.set_view_data(dtwc::Data(std::move(spans), std::move(names), 1));
+    prob.set_device(dtwc::Device::GPU);
+    rejects(prob, "a non-owning view");
+  }
+  {
+    // set_data refuses an empty series, but an edit in place can empty one; a
+    // kernel would read before its start (Metal did).
+    dtwc::Problem prob("gpu_empty");
+    prob.set_data(named(equal));
+    prob.set_device(dtwc::Device::GPU);
+    prob.p_vec(1).clear();
+    prob.refresh_distance_matrix();
+    CHECK_THAT(message_of<dtwc::InvalidInput>([&] { prob.fill_distance_matrix(); }),
+               ContainsSubstring("Problem::fill_distance_matrix: series 1 ('b') is empty"));
+    CHECK_FALSE(prob.is_distance_matrix_filled());
   }
 }
 
+#endif
+
+#if defined(DTWC_HAS_METAL) && !defined(DTWC_HAS_CUDA)
 TEST_CASE("FX-1: Metal rejects a GPU index and a precision it cannot honour",
           "[fx1][gpu][metal]")
 {
   dtwc::Problem prob("metal_limits");
   prob.set_data(named({ ramp(8, 0.0), ramp(8, 1.0) }));
-  prob.set_distance_strategy(DistanceMatrixStrategy::Metal);
-
-  prob.set_cuda_settings(dtwc::CUDASettings{ 1, dtwc::GpuPrecision::Auto });
-  CHECK_THAT(message_of<dtwc::DeviceError>([&] { prob.fill_distance_matrix(); }),
+  CHECK_THAT(message_of<dtwc::DeviceError>([&] { prob.set_device(dtwc::Device::GPU, 1); }),
              ContainsSubstring("GPU index = 1"));
 
-  prob.set_cuda_settings(dtwc::CUDASettings{ 0, dtwc::GpuPrecision::FP64 });
+  prob.set_device(dtwc::Device::GPU);
+  prob.set_gpu_precision(dtwc::GpuPrecision::FP64);
   const auto fp64 =
     message_of<dtwc::DeviceError>([&] { prob.fill_distance_matrix(); });
-#ifdef DTWC_HAS_METAL
   CHECK_THAT(fp64, ContainsSubstring("precision FP64 is not implemented"));
   // The backend entry point states the same limit.
   dtwc::metal::MetalDistMatOptions opts;
-  opts.precision = dtwc::metal::MetalPrecision::FP64;
+  opts.precision = dtwc::GpuPrecision::FP64;
   dtwc::core::DistanceMatrix out;
   CHECK(message_of<dtwc::DeviceError>([&] {
           (void)dtwc::metal::compute_distance_matrix_metal({ { 0.0, 1.0 }, { 1.0 } }, opts, out);
         }) == fp64);
-#else
-  CHECK_THAT(fp64, ContainsSubstring("Metal is not compiled in"));
-#endif
   CHECK_FALSE(prob.is_distance_matrix_filled());
 }
+#endif

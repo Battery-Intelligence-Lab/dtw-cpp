@@ -259,7 +259,7 @@ static void BM_cuda_fill(benchmark::State &state)
   dtwc::Problem prob("bench");
   prob.set_data(make_random_data(N, L));
   prob.set_device(dtwc::Device::GPU);
-  prob.set_cuda_settings({ 0, fp64 ? dtwc::GpuPrecision::FP64 : dtwc::GpuPrecision::FP32 });
+  prob.set_gpu_precision(fp64 ? dtwc::GpuPrecision::FP64 : dtwc::GpuPrecision::FP32);
   prob.fill_distance_matrix(); // warm-up: the CUDA context and this thread's buffers
 
   for (auto _ : state) {

@@ -120,7 +120,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
     def _check_device(self, backend):
         """The GPU fills compute Standard DTW of complete series only."""
-        if backend not in ("cuda", "metal"):
+        if backend != "gpu":
             return
         if self.variant.lower() != "standard":
             raise ValueError(
@@ -225,7 +225,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         # The GPU routes compute the matrix up front; on the CPU each Problem
         # fills its own under the estimator's distance settings.
         dm_precomputed = None
-        if backend in ("cuda", "metal"):
+        if backend == "gpu":
             dm_precomputed = compute_distance_matrix(
                 series, band=self.band, metric=self.metric, device=eff_device,
             )

@@ -53,7 +53,7 @@ void print_settings(const dtwc::Config &config)
             << "  N-init:   " << config.n_init << "\n"
             << "  Device:   " << dtwc::device_text(config) << "\n"
             << "  Dtype:    " << name_of(dtwc::core::precision_names, config.dtype) << "\n"
-            << "  GPU Prec: " << name_of(dtwc::gpu_precision_names, config.gpu.precision) << "\n";
+            << "  GPU Prec: " << name_of(dtwc::gpu_precision_names, config.gpu_precision) << "\n";
   if (config.method == dtwc::ClusterMethod::CLARA)
     std::cout << "  CLARA sample_size: " << (config.sample_size < 0 ? "auto" : std::to_string(config.sample_size))
               << "\n"

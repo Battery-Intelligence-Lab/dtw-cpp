@@ -21,7 +21,7 @@ Canonical config setters are snake_case. Seven expert/result fields remain
 public: the v1.0.0 `int` fields `maxIter` and `N_repetition`, plus
 `band`, `mip_settings`, `init_fun`, `clusters_ind`, and `centroids_ind`. The
 setters check what they are given; a direct write to a field does not. The
-device settings are read with `distance_strategy()` and `cuda_settings()`. The distance settings (variant and parameters,
+device settings are read with `device()` and `gpu_precision()`. The distance settings (variant and parameters,
 metric, missing-data strategy, band) are one private `DistanceConfig`, read with
 `distance()`, `variant_params()`, `missing_strategy()` and `metric()` and changed
 with `set_distance()` or the per-setting setters; a change drops the distance
@@ -74,12 +74,11 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | missing strategy | `missing_strategy()` / `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | private state (`Problem.hpp`) |
 | distance settings | `distance()` / `set_distance(core::DistanceConfig)` `[introduced-2.0]` | — | — | private state: variant and parameters, metric, missing-data strategy and band in one struct; `ndim` is the series' |
 | metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill, the bound function, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW (any missing-data strategy) or DDTW, else `InvalidInput` (`core::validate`, the facade's rule too) |
-| distance strategy | `distance_strategy()` / `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | private state (`Problem.hpp`) |
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
-| CUDA settings | `cuda_settings()` / `set_cuda_settings(CUDASettings)` | `cuda_settings` prop (a copy) `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
+| GPU precision | `gpu_precision()` / `set_gpu_precision(GpuPrecision)` `[introduced-2.0]` | `set_gpu_precision(GpuPrecision)` `[introduced-2.0]` | `set_gpu_precision(name)` `[introduced-2.0]` | private state, default `Auto`; names as `--gpu-precision` |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
 | problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |

@@ -475,7 +475,7 @@ def _resolve_tier1_method(method, n, backend):
     """
     if method != "auto" or backend == "hpc":
         return method
-    if backend in ("cuda", "metal"):
+    if backend == "gpu":
         return "pam"
     return "pam" if n <= _AUTO_PAM_SERIES_LIMIT else "clara"
 
@@ -619,11 +619,11 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
     # distances. Treating it as a matrix method here defeated its O(Ns)
     # scaling contract by materialising N^2 distances before dispatch.
     matrix_free = method in ("onebatch", "clara", "tadpole")
-    if matrix_free and backend in ("cuda", "metal"):
+    if matrix_free and backend == "gpu":
         from dtwcpp import DeviceError
         raise DeviceError(
             f"method='{method}' uses its own matrix-free CPU distance schedule; "
-            "CUDA execution is not implemented for that schedule. Use device='cpu'."
+            "GPU execution is not implemented for that schedule. Use device='cpu'."
         )
     if matrix_free:
         D = None
@@ -632,7 +632,7 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
         # series is created, and the matrix the scores read is the same object.
         D = prob.distance_matrix()
     else:
-        # GPU backends take their own series buffer; materialise it transiently.
+        # The GPU fill runs in its own Problem (compute_distance_matrix).
         D = compute_distance_matrix(series_data.p_vec, band=band, device=eff)
         prob.set_distance_matrix(D)
     labels, medoid_indices, cost = _run_local_method(prob, method, k, max_iter)

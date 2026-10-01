@@ -28,10 +28,11 @@ Check what this installation can actually do, and say so:
 
 ```python
 import dtwcpp
-dtwcpp.check_system()          # OpenMP threads, CUDA / Metal device, HiGHS
+print(dtwcpp.openmp_max_threads(), dtwcpp.HIGHS_AVAILABLE)  # OpenMP threads, HiGHS
+print(dtwcpp.gpu_available(), dtwcpp.gpu_info())            # the GPU, CUDA or Metal
 ```
 
-The flags are compile-time; `dtwcpp.test.parallelisation()` and `dtwcpp.test.gpu()` prove
+These are what the build and the machine offer; `dtwcpp.test.parallelisation()` and `dtwcpp.test.gpu()` prove
 engagement — threads that really ran, and a GPU result validated against the CPU oracle. Use them
 before promising a device will be used.
 

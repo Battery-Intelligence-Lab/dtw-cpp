@@ -21,6 +21,7 @@
 
 #ifdef DTWC_HAS_METAL
 
+#include "../base/env.hpp"
 #include "../base/error.hpp"
 #include "../core/distance_matrix.hpp"
 #include "../core/gpu_dtw_common.hpp"
@@ -31,17 +32,11 @@
 
 namespace dtwc::metal {
 
-/// Precision selection for Metal DTW kernels.
-/// Apple GPUs have fast FP32 but emulated (slow) FP64 — default to FP32.
-enum class MetalPrecision {
-  Auto, ///< Always FP32 on Apple GPUs (FP64 is emulated).
-  FP32, ///< Single precision.
-  FP64  ///< Not implemented: every Metal entry point throws DeviceError.
-};
-
-inline void validate_metal_precision(MetalPrecision value)
+/// The Metal kernels compute in FP32 (Apple GPUs emulate FP64), so Auto is FP32
+/// and FP64 is refused at every Metal entry point.
+inline void validate_metal_precision(GpuPrecision value)
 {
-  if (value == MetalPrecision::FP64)
+  if (value == GpuPrecision::FP64)
     throw DeviceError(
       "Metal: precision FP64 is not implemented (the Metal kernels compute in "
       "FP32); no backend call or CPU fallback was attempted. Use precision Auto "
@@ -49,7 +44,7 @@ inline void validate_metal_precision(MetalPrecision value)
 }
 
 struct MetalDistMatOptions : public dtwc::gpu::DistMatOptionsBase {
-  MetalPrecision precision = MetalPrecision::Auto;
+  GpuPrecision precision = GpuPrecision::Auto;
 
   // Inherited from DistMatOptionsBase: band, use_squared_l2, verbose
 };

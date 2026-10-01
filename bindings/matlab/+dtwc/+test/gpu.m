@@ -19,7 +19,7 @@ function report = gpu()
 %   is false and `reason` names exactly what is missing. Never errors, never
 %   silently degrades (2.0 no-silent-fallback rule).
 %
-%   See also dtwc.test.parallelisation, dtwc.check_system
+%   See also dtwc.test.parallelisation, dtwc.gpu_available, dtwc.gpu_info
 
     report = dtwc_mex('test_gpu');
 end

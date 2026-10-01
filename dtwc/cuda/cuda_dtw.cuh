@@ -13,6 +13,7 @@
 
 #ifdef DTWC_HAS_CUDA
 
+#include "../base/env.hpp"
 #include "../base/error.hpp"
 #include "../core/distance_matrix.hpp"
 #include "../core/gpu_dtw_common.hpp"
@@ -23,16 +24,9 @@
 
 namespace dtwc::cuda {
 
-/// Precision selection for CUDA DTW kernels
-enum class CUDAPrecision {
-  Auto,  ///< FP32 on consumer GPUs (slow FP64), FP64 on HPC GPUs
-  FP32,  ///< Always use single precision (fastest, ~1e-7 relative error)
-  FP64   ///< Always use double precision (bit-identical to CPU path)
-};
-
 struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
-  int device_id = 0;                             ///< CUDA device to use
-  CUDAPrecision precision = CUDAPrecision::Auto; ///< Compute precision
+  int device_id = 0;                           ///< CUDA device to use
+  GpuPrecision precision = GpuPrecision::Auto; ///< Auto: FP32 where FP64 is slow (consumer GPUs)
 
   // Inherited from DistMatOptionsBase: band, use_squared_l2, verbose
 };

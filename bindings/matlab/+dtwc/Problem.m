@@ -134,24 +134,22 @@ classdef Problem < handle
             dtwc_mex('Problem_set_missing_strategy', obj.Handle, strategy);
         end
 
-        function set_distance_strategy(obj, strategy)
-        %SET_DISTANCE_STRATEGY Set distance matrix computation strategy.
-        %   prob.set_distance_strategy('auto')
-        %   prob.set_distance_strategy('brute_force')
-        %   prob.set_distance_strategy('cuda')  % NVIDIA CUDA
-        %   prob.set_distance_strategy('metal') % Apple GPU (macOS)
-            dtwc_mex('Problem_set_distance_strategy', obj.Handle, strategy);
-        end
-
         function set_device(obj, device)
         %SET_DEVICE Compute on a device: 'cpu', 'gpu', 'gpu:N', 'cuda', 'cuda:N'.
         %   prob.set_device('gpu')
-        %   'cpu' keeps a CPU distance strategy you chose and moves a GPU one to
-        %   'auto'; 'gpu' selects this build's GPU backend (CUDA, else Metal).
-        %   A request the device cannot honour (a variant, missing-data
-        %   strategy, multivariate data or precision its kernels lack) raises
-        %   dtwc:deviceError when distances are computed.
+        %   'gpu:N' is GPU N of this build's GPU backend (CUDA, else Metal,
+        %   which has GPU 0 only). A request the device cannot honour (a
+        %   variant, missing-data strategy, multivariate data or precision its
+        %   kernels lack) raises dtwc:deviceError when distances are computed.
             dtwc_mex('Problem_set_device', obj.Handle, char(device));
+        end
+
+        function set_gpu_precision(obj, precision)
+        %SET_GPU_PRECISION What a GPU computes in: 'auto' (the default), 'fp32', 'fp64'.
+        %   prob.set_gpu_precision('fp64')
+        %   'auto' is FP32 on consumer CUDA GPUs and on Metal. A change drops
+        %   the distance matrix.
+            dtwc_mex('Problem_set_gpu_precision', obj.Handle, char(precision));
         end
 
         function cost = find_total_cost(obj)
@@ -241,24 +239,6 @@ classdef Problem < handle
         function opts = get_checkpoint(obj)
         %GET_CHECKPOINT Return the current checkpoint options as a struct.
             opts = dtwc_mex('Problem_get_checkpoint', obj.Handle);
-        end
-
-        function set_cuda_settings(obj, device_id, precision)
-        %SET_CUDA_SETTINGS Configure CUDA dispatch (device_id, precision).
-        %   precision: 0 = Auto, 1 = FP32, 2 = FP64. Omitting precision keeps
-        %   the Problem's current value, as set_device does when it sets only
-        %   cuda_settings.device_id.
-            if nargin < 3
-                dtwc_mex('Problem_set_cuda_settings', obj.Handle, double(device_id));
-            else
-                dtwc_mex('Problem_set_cuda_settings', obj.Handle, double(device_id), double(precision));
-            end
-        end
-
-        function s = get_cuda_settings(obj)
-        %GET_CUDA_SETTINGS Return CUDA dispatch settings as a struct.
-        %   Fields: device_id, precision (0 = Auto, 1 = FP32, 2 = FP64).
-            s = dtwc_mex('Problem_get_cuda_settings', obj.Handle);
         end
 
         % =================================================================

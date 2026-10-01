@@ -15,9 +15,8 @@
 #include "Data.hpp"           // for Data
 #include "DataLoader.hpp"     // for DataLoader
 #include "base/settings.hpp"       // for data_t, DEFAULT_BAND
-#include "base/env.hpp"            // for Device
+#include "base/env.hpp"            // for Device, GpuPrecision
 #include "base/error.hpp"          // for InvalidInput
-#include "base/names.hpp"          // for Name
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
@@ -40,28 +39,6 @@
 #include "checkpoint.hpp" // for CheckpointOptions, load_checkpoint
 
 namespace dtwc {
-
-/// GPU compute precision, on every GPU backend. `Auto` is FP32 on consumer CUDA
-/// GPUs and FP64 on HPC ones; Metal computes in FP32 and rejects FP64. The values
-/// are hashed into the distance-matrix identity, so they never change.
-enum class GpuPrecision { Auto = 0, FP32 = 1, FP64 = 2 };
-
-/// The spellings of `--gpu-precision`.
-inline constexpr Name<GpuPrecision> gpu_precision_names[]{
-  { "auto", GpuPrecision::Auto },
-  { "fp32", GpuPrecision::FP32 }, { "float32", GpuPrecision::FP32 }, { "f32", GpuPrecision::FP32 },
-  { "float", GpuPrecision::FP32 },
-  { "fp64", GpuPrecision::FP64 }, { "float64", GpuPrecision::FP64 }, { "f64", GpuPrecision::FP64 },
-  { "double", GpuPrecision::FP64 },
-};
-
-/// GPU compute settings, read by the CUDA and Metal routes. Metal runs on the
-/// system default device in FP32: a device_id other than 0, or precision FP64,
-/// is rejected on Metal rather than ignored.
-struct CUDASettings {
-  int device_id = 0;  ///< GPU index (Problem::set_device(Device::GPU, index)).
-  GpuPrecision precision = GpuPrecision::Auto; ///< Compute precision.
-};
 
 /// MIP solver tuning parameters.
 struct MIPSettings {
@@ -87,23 +64,22 @@ inline void validate_mip_settings(const MIPSettings &s)
   if (s.lr_max_nodes < 1) reject("lr_max_nodes", ">= 1", std::to_string(s.lr_max_nodes));
 }
 
-/// Strategy for computing the pairwise distance matrix.
-enum class DistanceMatrixStrategy {
-  Auto,       ///< BruteForce; set_device(gpu) selects CUDA or Metal instead
-  BruteForce, ///< Parallel exact fill on the CPU
-  CUDA,       ///< NVIDIA CUDA GPU (requires DTWC_HAS_CUDA)
-  Metal       ///< Apple Metal GPU (requires DTWC_HAS_METAL)
-};
+class Problem;
 
-/// FX-1's GPU rules that need no series: Float32 values, a variant or a
-/// missing-data strategy the GPU kernels do not implement, and a GPU index or
-/// precision Metal cannot honour. A fill applies them to its Problem
-/// (validate_fill_request); dtwc::run applies them to a configuration before
-/// it reads a series. A CPU strategy passes.
+/// FX-1's GPU rules that need no series: `prob`'s variant or missing-data
+/// strategy the GPU kernels do not implement, Float32 series
+/// (`series_precision`) and a precision Metal cannot honour. A fill applies them
+/// with its series' precision (validate_fill_request); dtwc::run applies them
+/// with the configured one before it reads a series. A CPU Problem passes.
 /// @throws DeviceError naming `where`, the backend and the axis.
-void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strategy,
-                          const core::DTWVariantParams &variant, core::MissingStrategy missing,
-                          core::Precision precision, const CUDASettings &gpu);
+void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision);
+
+/// True when this build's GPU backend (CUDA, else Metal) finds a GPU, so
+/// Device::GPU can compute here.
+bool gpu_available();
+/// One line naming this build's GPU backend and the GPU that Device::GPU (index
+/// 0) computes on — "CUDA: <device>", "Metal: <device>" — or why there is none.
+std::string gpu_info();
 
 /**
  * @class Problem
@@ -130,8 +106,9 @@ private:
   /// What every distance of this Problem means. Only the setters change it;
   /// `band` is the v1 field's value when it was bound, and `ndim` the series'.
   core::DistanceConfig distance_{};
-  DistanceMatrixStrategy distance_strategy_{ DistanceMatrixStrategy::Auto };
-  CUDASettings cuda_settings_{};
+  Device device_{ Device::CPU };
+  int device_index_{ 0 }; ///< The GPU ordinal of Device::GPU.
+  GpuPrecision gpu_precision_{ GpuPrecision::Auto };
   /// Bound from distance_ (and, for WDTW, the series lengths) whenever either
   /// changes; each holds copies of the settings it reads. The float32 one is
   /// bound then for float32 series, else by dtw_function_f32() (rebind_dtw_fn).
@@ -379,35 +356,25 @@ public:
   /// @throws InvalidInput for a metric other than L1 with WDTW, ADTW, Soft-DTW,
   ///         MSM or TWE, whose kernels compute L1 (core::validate).
   void set_metric(core::MetricType metric);
-  DistanceMatrixStrategy distance_strategy() const noexcept { return distance_strategy_; }
-  void set_distance_strategy(DistanceMatrixStrategy strategy)
-  {
-    if (distance_strategy_ == strategy) return;
-    distance_strategy_ = strategy;
-    refresh_distance_matrix();
-  }
-  /// Where this Problem computes distances. `cpu` keeps a CPU strategy you
-  /// chose (BruteForce) and moves a GPU one to Auto; `gpu` selects
-  /// this build's GPU backend (CUDA, else Metal) and records `index`, the GPU
-  /// ordinal. A Problem never reads the process-wide default (dtwc::device());
-  /// until told otherwise it computes on the CPU.
-  /// @throws DeviceError for `gpu` on a build with no GPU backend;
-  ///         InvalidInput for a negative index.
+  /// Where this Problem computes distances: the CPU, or GPU `index` of this
+  /// build's GPU backend (CUDA, else Metal), which the fill resolves. A Problem
+  /// never reads the process-wide default (dtwc::device()); until told
+  /// otherwise it computes on the CPU. A change drops the distance matrix.
+  /// @throws DeviceError for `gpu` on a build with no GPU backend, and for a
+  ///         GPU index other than 0 on Metal, which runs on the system default
+  ///         GPU; InvalidInput for a negative index.
   void set_device(Device device, int index = 0);
-  /// GPU options (the device index and precision), read by the CUDA and Metal routes.
-  const CUDASettings &cuda_settings() const noexcept { return cuda_settings_; }
-  /// @throws InvalidInput for a negative device_id, as set_device refuses the same index.
-  void set_cuda_settings(CUDASettings settings)
+  /// The device and GPU index set_device recorded.
+  std::pair<Device, int> device() const noexcept { return { device_, device_index_ }; }
+  /// What a GPU computes in (the CPU computes in the series' precision). A
+  /// change drops the distance matrix.
+  void set_gpu_precision(GpuPrecision precision)
   {
-    if (settings.device_id < 0)
-      throw InvalidInput("Problem::set_cuda_settings: device_id must be >= 0; got "
-                         + std::to_string(settings.device_id) + ".");
-    if (cuda_settings_.device_id == settings.device_id
-        && cuda_settings_.precision == settings.precision)
-      return;
-    cuda_settings_ = settings;
+    if (gpu_precision_ == precision) return;
+    gpu_precision_ = precision;
     refresh_distance_matrix();
   }
+  GpuPrecision gpu_precision() const noexcept { return gpu_precision_; }
 
   void set_verbose(bool value) { verbose_ = value; }
   void set_output_folder(path_t folder)
@@ -474,7 +441,7 @@ public:
   /// parallel loop; the function itself only reads what it holds.
   /// @throws InvalidInput for a band no pair's warping path fits, a ±inf
   ///         series value, or a NaN under MissingStrategy::Error; DeviceError
-  ///         for a GPU strategy the kernels cannot honour.
+  ///         for a GPU device the kernels cannot honour.
   const dtw_fn_t &dtw_function();
   /// Float32 counterpart of dtw_function(), with the same checks.
   /// @throws InvalidInput also for an active variant parameter float32 cannot represent.

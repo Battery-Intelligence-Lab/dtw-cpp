@@ -19,7 +19,7 @@ function report = parallelisation()
 %   (configured with -DDTWC_ALLOW_SEQUENTIAL=ON) `available` is false and
 %   `reason` names the sequential build — the honest loud answer, never faked.
 %
-%   See also dtwc.test.gpu, dtwc.check_system
+%   See also dtwc.test.gpu, dtwc.gpu_info
 
     report = dtwc_mex('test_parallelisation');
 end

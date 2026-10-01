@@ -167,8 +167,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   Standard DTW (with any missing-data strategy) or DDTW, else `InvalidInput`, the rule `dtwc::distance::dtw` applies too.
   L1 stays the default and computes as before.
   `use_mmap_distance_matrix(path, metric)` adopts the metric, so the CPU fills a squared-L2 cache instead of refusing it.
-- **Fixed (multivariate, breaking):** `DistanceMatrixStrategy::Auto` (at least 64 series and a band) or `Pruned` on multivariate
-  series read the channels as one interleaved series, so every pair was wrong; they now fill with the multivariate kernel.
+- **Fixed (multivariate, breaking):** the pruned CPU fill (by default at 64 series or more with a band) on multivariate
+  series read the channels as one interleaved series, so every pair was wrong; it now fills with the multivariate kernel.
   A direct `fill_distance_matrix_pruned` call on multivariate or non-L1 data raises `InvalidInput`.
 - **Removed (C++, pre-tag):** `settings::paths` and its four path setters (2.0-born; v1.0.0 had none). A `Problem` writes to
   `output_folder()`, `./results/` by default; pass data paths explicitly.
@@ -227,12 +227,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `Problem`'s writers check each file after closing and raise `IOError` for a write that failed after opening.
 - **Added (devices):** `Problem::set_device(Device, index = 0)`; in Python `Problem(name="", *, device="cpu")` and
   `Problem.set_device(name)`, in MATLAB `dtwc.Problem(name, 'Device', d)` and `set_device`, taking the names `dtwcpp.device()`
-  takes. `cpu` keeps a CPU distance strategy you chose; `gpu` selects CUDA, else Metal. A Problem does not follow the
+  takes. `gpu` selects CUDA, else Metal. A Problem does not follow the
   process-wide device; Tier-1 `cluster()` now calls `set_device`.
 - **Breaking (GPU):** a CUDA or Metal fill with a DTW variant other than standard, a missing-data strategy, multivariate data,
   Float32 series or view / mmap series raises `DeviceError` naming the setting; before, the GPU silently computed standard
-  univariate DTW. On Metal, precision FP64 (`MetalPrecision::FP64`, or `cuda_settings.precision = GpuPrecision::FP64`)
-  and a GPU index other than 0 raise too, instead of silently running FP32 on the default GPU. A squared-L2 mapped cache now
+  univariate DTW. On Metal, precision FP64 (`set_gpu_precision(GpuPrecision::FP64)`) and a GPU index other than 0 raise
+  too, instead of silently running FP32 on the default GPU. A squared-L2 mapped cache now
   fills on the GPU instead of being refused.
 - **Breaking (band):** a band narrower than the length difference between the longest and shortest series raises
   `InvalidInput`, naming both series and the smallest feasible band, before any pair is computed; before, those pairs were
@@ -578,8 +578,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   take the optional `metric` token C++ and Python already had, so a SquaredL2
   matrix is no longer stamped and reloaded as L1. `dtwc.cluster`/`dtwc.load`
   accept a cell array of numeric vectors as a ragged in-memory source;
-  `DTWClustering` with `Device='gpu:N'` forwards the ordinal to
-  `cuda_settings.device_id`; `Problem.get_cuda_settings` added.
+  `DTWClustering` with `Device='gpu:N'` forwards the ordinal to the
+  Problem's device.
 - **Changed (Python):** `dtwcpp.device()` returns the canonical name from
   `dtwc::device` and `Env` is the only device store; path sources are parsed by
   the C++ `DataLoader` (non-numeric id columns and ragged rows now load; no
@@ -993,7 +993,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   of a local copy of the retired single-`if` correction.
 - Float32 and `Pruned` no longer interact silently: `Auto` never resolves to
   `Pruned` for Float32 data, and an explicitly requested
-  `DistanceMatrixStrategy::Pruned` on a dense Float32 `Problem` is a typed
+  pruned fill on a dense Float32 `Problem` is a typed
   `dtwc::InvalidInput` raised at strategy resolution. The pruned summaries,
   envelopes and kernels are f64-only and read through `Problem::series()`, so
   the combination previously surfaced as a `Data::series` precision error

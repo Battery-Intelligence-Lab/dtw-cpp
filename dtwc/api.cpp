@@ -197,7 +197,7 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
   config.max_iter = max_iter;
   config.output.clear(); // Result::save writes; cluster() does not
   config.name = dataset.name();
-  std::tie(config.device, config.gpu.device_id) =
+  std::tie(config.device, config.device_index) =
     device.empty() ? std::pair{ g_device.device, g_device.index } : detail::parse_device(device);
   if (!dataset.is_path()) return run(config, std::move(dataset).materialize_local());
   config.input = path_to_utf8(dataset.path());
