@@ -39,17 +39,6 @@ struct DeviceSelection
 };
 DeviceSelection g_device;
 
-std::string derive_name(const std::filesystem::path &path)
-{
-  if (path.has_filename()) {
-    // UTF-8 end to end: every writer turns this name back into a path
-    // component with utf8_to_path(), so the round trip is lossless.
-    const auto stem = path_to_utf8(path.stem());
-    if (!stem.empty()) return stem;
-  }
-  return "dataset";
-}
-
 void validate_skips(index_t skip_cols, index_t skip_rows)
 {
   if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
@@ -106,7 +95,7 @@ Dataset load(const std::filesystem::path &source, index_t skip_cols, index_t ski
              char delimiter, std::string_view name)
 {
   validate_skips(skip_cols, skip_rows);
-  std::string resolved = name.empty() ? derive_name(source) : std::string(name);
+  std::string resolved = name.empty() ? detail::default_name(source) : std::string(name);
   return Dataset(source, skip_cols, skip_rows, delimiter, std::move(resolved));
 }
 
@@ -136,7 +125,7 @@ std::string device()
 }
 
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
-               ClusterMethod method, int iterations, bool converged)
+               Method method, int iterations, bool converged)
   : problem_(std::move(problem)), cost_(cost), device_(std::move(device_name)), method_(method),
     iterations_(iterations), converged_(converged)
 {}
@@ -192,7 +181,7 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
 {
   Config config; // dtwc_cl's defaults for everything this signature does not name
   config.k = k;
-  config.method = parse_name(cluster_method_names, method, "method");
+  config.method = parse_name(method_names, method, "method");
   config.band = band;
   config.max_iter = max_iter;
   config.output.clear(); // Result::save writes; cluster() does not

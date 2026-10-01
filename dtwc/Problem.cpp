@@ -33,7 +33,10 @@
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
 #include "base/missing_utils.hpp"               // for all_missing
-#include "algorithms/tadpole.hpp"          // for Method::TADPole dispatch
+#include "algorithms/fast_clara.hpp"       // the methods cluster() dispatches
+#include "algorithms/fast_pam.hpp"
+#include "algorithms/one_batch_pam.hpp"
+#include "algorithms/tadpole.hpp"
 
 
 #include <algorithm> // for min
@@ -191,6 +194,13 @@ std::string gpu_info()
   return "no GPU backend compiled in (rebuild with -DDTWC_ENABLE_CUDA=ON, or on macOS "
          "-DDTWC_ENABLE_METAL=ON)";
 #endif
+}
+
+Method resolve_method(Method method, Device device, std::size_t n_series)
+{
+  constexpr std::size_t pam_max_series = 5000; // on the CPU; the GPU fills PAM's matrix at any N
+  if (method != Method::Auto) return method;
+  return device == Device::GPU || n_series <= pam_max_series ? Method::PAM : Method::CLARA;
 }
 
 /**
@@ -832,29 +842,50 @@ void Problem::fill_distance_matrix()
     std::cout << "Distance matrix has been filled!" << '\n';
 }
 /**
- * @brief Performs clustering based on the specified method.
- * @details Chooses between different clustering methods (K-medoids or MIP) and performs the clustering accordingly.
+ * @brief Clusters the series by method().
+ * @details PAM, OneBatchPAM, CLARA and the hierarchical cut return their own result.
+ * Lloyd, MIP, LR-core and TADPole leave their clustering in the Problem; its cost
+ * is then find_total_cost().
  */
-void Problem::cluster()
+core::ClusteringResult Problem::cluster()
 {
-  switch (method_) {
-  case Method::Kmedoids:
-    cluster_by_kmedoids_lloyd();
-    break;
-  case Method::MIP:
-    cluster_by_mip();
-    break;
-  case Method::LRCore:
-    LR_core_clustering(*this);
-    break;
-  case Method::TADPole: {
-    const double dc = (tadpole_dc_ > 0.0)
-                        ? tadpole_dc_
-                        : algorithms::tadpole_auto_dc(*this);
-    algorithms::tadpole(*this, Nc, dc);
-    break;
+  const Method method = resolve_method(method_, device_, size());
+  switch (method) {
+  case Method::PAM: {
+    // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie
+    // keeps the earlier restart.
+    auto best = fast_pam_seeded(*this, Nc, random_seed_, maxIter);
+    for (int restart = 1; restart < N_repetition; ++restart) {
+      auto candidate = fast_pam_seeded(*this, Nc, random_seed_ + static_cast<std::uint64_t>(restart), maxIter);
+      if (candidate.total_cost < best.total_cost) best = std::move(candidate);
+    }
+    set_result(best); // each restart published its own
+    return best;
   }
+  case Method::OneBatch:
+    return algorithms::one_batch_pam(
+      *this, { .n_clusters = Nc, .batch_size = batch_size_, .max_iter = maxIter, .random_seed = random_seed_ });
+  case Method::CLARA:
+    return algorithms::fast_clara(*this, { .n_clusters = Nc, .sample_size = sample_size_, .n_samples = n_samples_,
+                                           .max_iter = maxIter, .random_seed = random_seed_ });
+  case Method::Hierarchical:
+    return algorithms::cut_dendrogram(algorithms::build_dendrogram(*this, { .linkage = linkage_ }), *this, Nc);
+  case Method::Kmedoids: cluster_by_kmedoids_lloyd(); break;
+  case Method::MIP: cluster_by_mip(); break;
+  case Method::LRCore: LR_core_clustering(*this); break;
+  case Method::TADPole:
+    algorithms::tadpole(*this, Nc, tadpole_dc_ > 0.0 ? tadpole_dc_ : algorithms::tadpole_auto_dc(*this));
+    break;
+  case Method::Auto: break; // resolved above
   }
+  core::ClusteringResult result;
+  result.labels = clusters_ind;
+  result.medoid_indices = centroids_ind;
+  result.total_cost = find_total_cost();
+  // Lloyd counts its iterations; the exact methods and TADPole run to the end.
+  result.iterations = method == Method::Kmedoids ? last_iterations_ : 0;
+  result.converged = method != Method::Kmedoids || last_iterations_ < maxIter;
+  return result;
 }
 
 /**

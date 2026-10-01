@@ -12,6 +12,27 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   whenever it found an installation, and a MEX or binary built that way needed the Gurobi library to load); HiGHS
   solves the MIP by default. With the option ON and no installation found, the configure stops with an error that
   names the option.
+- **Fixed (CLI):** v1.0.0's option names work again, hidden from `--help`, each printing one warning that names its 2.0
+  flag: `--Nc`, `--clusters` and `--number_of_clusters` (`-k`), `--probName` (`--name`), `--in` (`--input`), `--out`
+  (`--output`), `--skipRows` (`--skip-rows`), `--skipCols` and `--skipColumns` (`--skip-cols`), `--maxIter` and `--iter`
+  (`--max-iter`), `--repeat`, `--Nrepeat`, `--Nrepetition` and `--Nrep` (`--n-init`), `--mip_solver` and `--mipSolver`
+  (`--solver`), `--bandwidth`, `--bandw` and `--bandlength` (`--band`), `--distMat`, `--distance_matrix` and
+  `--distances` (`--dist-matrix`). The 2.0 previews refused them as unknown options. v1.0.0's `--Nc i..j`, which
+  clustered once per k in the range, is refused with `InvalidInput` naming the replacement: one run per k.
+- **Changed (CLI, breaks a v1.0.0 command line without `--Nc`):** `-k/--n-clusters` is required. `dtwc_cl` without it
+  exits 1 naming the flag, before any file is read or written. v1.0.0 printed an `Error processing input` line for a
+  missing `--Nc` and exited 0 having clustered nothing; the 2.0 previews clustered with k = 3. `--print-config` writes
+  `n-clusters = 0` for a k not given.
+- **Changed (CLI):** a run's default name, the prefix of its output files and of its `.dtwm` cache, is its input's file
+  name without the extension, or its folder's name (`-i data/cycles.csv` writes `cycles_labels.csv`), where v1.0.0 named
+  every run `dtwc`; series passed in memory are `dataset`, as Tier-1 `load()` names them. `--name` still sets it.
+- **Changed (CLI):** the default `--method` is `auto`: FastPAM for up to 5,000 series and FastCLARA above on the CPU,
+  FastPAM on a GPU. v1.0.0 ran Lloyd k-medoids, which `--method kmedoids` (v1.0.0's `kMedoids`) still selects.
+- **Added (C++, Python, MATLAB):** `Method` gains `Auto`, `PAM`, `OneBatch`, `CLARA` and `Hierarchical` (v1.0.0's
+  `Kmedoids` and `MIP` keep their values), and `Problem::cluster()` runs any of the nine `--method` names: it publishes the
+  labels and medoids as before and now returns them as a `ClusteringResult` with the cost, the iterations and whether the
+  method converged. `Problem` gains `set_sample_size`, `set_n_samples` (CLARA), `set_batch_size` (OneBatchPAM) and
+  `set_linkage` (hierarchical); `dtwc::run` and `dtwc_cl` cluster through `Problem::cluster()`, with unchanged results.
 - **Changed:** a distance matrix that enters a `Problem` from outside its fill is checked once, where it enters, and a
   ±inf distance raises `InvalidInput` naming the first such pair: `read_distance_matrix`, `load_checkpoint`,
   `use_mmap_distance_matrix`, Python and MATLAB `set_distance_matrix`, and the next `fill_distance_matrix()` after a
@@ -184,9 +205,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `dtwc_cl`'s reader; `to_config_text` and `parse_config`. One string↔enum table beside each enum (`dtwc/base/names.hpp`:
   `parse_name`, `name_of`). `dtwc_cl` is unchanged for now. The library links CLI11 and, when YAML is enabled, fkYAML, and
   publishes `DTWC_HAS_YAML`.
-- **Fixed (MATLAB):** `Problem.set_method('pam')` / `('auto')` raise `dtwc:invalidArgument` naming `dtwc.fast_pam` and
-  `dtwc.cluster(…, 'method', 'pam')`; they ran Lloyd k-medoids. MATLAB reads and reports device names only through the C++
-  grammar (its own ordinal parser and the MEX's second canonicaliser are gone).
+- **Fixed (MATLAB):** `Problem.set_method('pam')` / `('auto')` run PAM and `auto`; they ran Lloyd k-medoids. MATLAB reads
+  and reports device names only through the C++ grammar (its own ordinal parser and the MEX's second canonicaliser are
+  gone).
 - **Fixed (Python, hpc):** a file `Dataset` with a `delimiter` raises `InvalidInput`, because the SLURM transport does not carry
   it (it was dropped silently); an in-memory dataset's `skip_cols` is applied once, not twice.
 - **Fixed (Python):** `Problem.dist_by_ind(i, j)` raises `InvalidInput` for an index outside `[0, N)`, naming the index and N;

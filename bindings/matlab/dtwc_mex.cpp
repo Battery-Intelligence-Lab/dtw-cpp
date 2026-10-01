@@ -502,17 +502,6 @@ static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx) {
   return dend;
 }
 
-/// Parse a Problem method name (contract §2.1 set_method). 'pam' and 'auto' are
-/// dtwc.cluster methods, not Problem methods: they used to run Lloyd k-medoids.
-static dtwc::Method parse_method(const std::string &s) {
-  if (s == "pam" || s == "auto")
-    throw dtwc::InvalidInput(
-      "set_method('" + s + "'): a Problem runs kmedoids (Lloyd), mip, lrcore or "
-      "tadpole only. Use dtwc.fast_pam(prob, k) for PAM, or dtwc.cluster(data, k, "
-      "'method', '" + s + "').");
-  return dtwc::parse_name(dtwc::method_names, s, "method");
-}
-
 // =========================================================================
 //  Problem lifecycle commands
 // =========================================================================
@@ -849,7 +838,7 @@ static void cmd_Problem_set_method(int nlhs, mxArray *plhs[], int nrhs, const mx
   if (nrhs < 3) throw std::invalid_argument("Problem_set_method requires handle and method string.");
   require_char(prhs[2], "method");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_method(parse_method(get_string(prhs[2])));
+  prob.set_method(dtwc::parse_name(dtwc::method_names, get_string(prhs[2]), "method"));
 }
 
 static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {

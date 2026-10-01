@@ -99,6 +99,7 @@ TEST_CASE("dtwc_cl: an input format this build cannot read is IOError",
   const auto run_on = [](const char *input) {
     dtwc::Config config;
     config.input = input;
+    config.k = 2;
     config.output.clear();
     (void)dtwc::run(config);
   };

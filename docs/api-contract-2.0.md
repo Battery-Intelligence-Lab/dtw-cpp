@@ -144,7 +144,7 @@ to the cluster and never read locally (preserves the 100M-series scaling story).
 
 | Parameter | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
-| signature | `dtwc::Result dtwc::cluster(const Dataset& data, index_t k, std::string_view method="pam", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100) -> Result` | `res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)` |
+| signature | `dtwc::Result dtwc::cluster(const Dataset& data, index_t k, std::string_view method="auto", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100) -> Result` | `res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)` |
 | `data` | `Dataset` (or path/array via `load`) | `Dataset`/path/array | `Dataset`/path/matrix/cell of numeric vectors (ragged) |
 | `k` | `index_t` clusters; `k > N` → `InvalidInput("cluster: k must not exceed the number of series.")`, empty dataset → `InvalidInput("cluster: dataset is empty.")` | same guards, same messages | same guards, same messages, raised by C++ as `dtwc:invalidArgument` |
 | `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (aliases `"hclust"`, `"obp"`, `"lr"`, as `dtwc_cl` reads them; ASCII case-insensitive) | same set | same set, routed by the same C++ code |
@@ -220,7 +220,7 @@ Canonical class name is **`Result`** in all three languages.
 | `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:330-367`) | `res.plot()` |
 | (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:153`) | `res.cost` |
 | (aux) `device` | `std::string device() const` | `res.device` | `res.device` |
-| (aux) run statistics | `ClusterMethod method() const` (`auto` resolved), `int iterations() const`, `bool converged() const` `[introduced-2.0]` (IF-2 S3; the first `RunStats` fields, IF-4) | — | — |
+| (aux) run statistics | `Method method() const` (`auto` resolved), `int iterations() const`, `bool converged() const` `[introduced-2.0]` (IF-2 S3; the first `RunStats` fields, IF-4) | — | — |
 
 *`score(name)` names* (accepted in every language; resolve to the Tier-2 `scores::*`
 functions in §2.4): `"silhouette"` (returns the **mean** silhouette),
@@ -332,7 +332,7 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
 | k | `set_n_clusters(index_t)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; the retained C++ `set_numberOfClusters` is a deprecated warning alias |
-| method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
+| method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes; `cluster()` runs any of the nine, `Auto` resolved for the device and N |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
 | max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | public `int maxIter` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
 | repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | public `int N_repetition` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
@@ -344,6 +344,7 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill, the bound function, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW (any missing-data strategy) or DDTW, else `InvalidInput` (`core::validate`, the facade's rule too) |
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
+| CLARA, OneBatchPAM and hierarchical settings | `sample_size()`, `n_samples()`, `batch_size()`, `linkage()` / `set_sample_size(index_t)`, `set_n_samples(int)`, `set_batch_size(index_t)`, `set_linkage(algorithms::Linkage)` `[introduced-2.0]` | — | — | private C++ state, read by `cluster()`; CLI exposes `--sample-size`, `--n-samples`, `--batch-size`, `--linkage` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
 | GPU precision | `gpu_precision()` / `set_gpu_precision(GpuPrecision)` `[introduced-2.0]` | `set_gpu_precision(GpuPrecision)` `[introduced-2.0]` | `set_gpu_precision(name)` `[introduced-2.0]` | private state, default `Auto`; names as `--gpu-precision` |

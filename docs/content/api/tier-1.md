@@ -55,7 +55,7 @@ to the cluster and never read locally (preserves the 100M-series scaling story).
 
 | Parameter | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
-| signature | `dtwc::Result dtwc::cluster(const Dataset& data, index_t k, std::string_view method="pam", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100) -> Result` | `res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)` |
+| signature | `dtwc::Result dtwc::cluster(const Dataset& data, index_t k, std::string_view method="auto", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100) -> Result` | `res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)` |
 | `data` | `Dataset` (or path/array via `load`) | `Dataset`/path/array | `Dataset`/path/matrix/cell of numeric vectors (ragged) |
 | `k` | `index_t` clusters; `k > N` → `InvalidInput("cluster: k must not exceed the number of series.")`, empty dataset → `InvalidInput("cluster: dataset is empty.")` | same guards, same messages | same guards, same messages, raised by C++ as `dtwc:invalidArgument` |
 | `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (aliases `"hclust"`, `"obp"`, `"lr"`, as `dtwc_cl` reads them; ASCII case-insensitive) | same set | same set, routed by the same C++ code |
@@ -131,7 +131,7 @@ Canonical class name is **`Result`** in all three languages.
 | `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:330-367`) | `res.plot()` |
 | (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:153`) | `res.cost` |
 | (aux) `device` | `std::string device() const` | `res.device` | `res.device` |
-| (aux) run statistics | `ClusterMethod method() const` (`auto` resolved), `int iterations() const`, `bool converged() const` `[introduced-2.0]` (IF-2 S3; the first `RunStats` fields, IF-4) | — | — |
+| (aux) run statistics | `Method method() const` (`auto` resolved), `int iterations() const`, `bool converged() const` `[introduced-2.0]` (IF-2 S3; the first `RunStats` fields, IF-4) | — | — |
 
 *`score(name)` names* (accepted in every language; resolve to the Tier-2 `scores::*`
 functions in §2.4): `"silhouette"` (returns the **mean** silhouette),

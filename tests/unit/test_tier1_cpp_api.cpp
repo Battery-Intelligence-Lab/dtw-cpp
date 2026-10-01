@@ -3,7 +3,6 @@
  */
 
 #include <dtwc.hpp>
-#include <cli/config.hpp> // ClusterMethod, which Result::method() reports
 
 #include "../support/scratch_directory.hpp"
 
@@ -341,9 +340,9 @@ TEST_CASE("Tier-1 auto method resolution is compatible with its execution target
   dtwc::Dataset::series_type many;
   for (int i = 0; i < 5001; ++i)
     many.push_back({ static_cast<double>(i % 97), static_cast<double>(i % 89) });
-  CHECK(dtwc::cluster(dtwc::load(many), 2, "auto", -1, "cpu").method() == dtwc::ClusterMethod::CLARA);
+  CHECK(dtwc::cluster(dtwc::load(many), 2, "auto", -1, "cpu").method() == dtwc::Method::CLARA);
   const auto few = dtwc::load(dtwc::Dataset::series_type{ { 0.0, 0.0 }, { 0.0, 1.0 }, { 9.0, 9.0 } });
-  CHECK(dtwc::cluster(few, 2, "auto", -1, "cpu").method() == dtwc::ClusterMethod::PAM);
+  CHECK(dtwc::cluster(few, 2, "auto", -1, "cpu").method() == dtwc::Method::PAM);
   CHECK_THROWS_AS(dtwc::cluster(few, 2, "auto", -1, "hpc"), dtwc::DeviceError);
 }
 

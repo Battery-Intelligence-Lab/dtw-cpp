@@ -53,20 +53,25 @@ Result run(const Config &config, Data data);
 
 namespace detail {
 
+/// The name of a run, or of a dataset, that was not given one: the input's file
+/// name without its extension, or its folder's name; "dataset" for series in
+/// memory (an empty path) and for a path that names neither.
+std::string default_name(const std::filesystem::path &input);
+
 /// How a Parquet input stores its series, as its metadata shows it.
 enum class ParquetLayout { ListColumn, ScalarColumn, Directory };
 
 /// What run() does with a Parquet input, decided from metadata alone.
 struct ParquetPlan
 {
-  ClusterMethod method;     ///< `auto` resolved for the device and the series count
+  Method method;            ///< `auto` resolved for the device and the series count
   bool stream_payload;      ///< the series exceed `ram_limit`, so FastCLARA streams them
 };
 
 /// Decide from Parquet metadata whether reading the payload is legal: only
 /// FastCLARA on a single list-per-row file streams under `ram_limit` (0 = no cap).
 /// @throws InvalidInput for no series, or a route that cannot honour the cap.
-ParquetPlan plan_parquet_load(ClusterMethod method, Device device, std::size_t series_count,
+ParquetPlan plan_parquet_load(Method method, Device device, std::size_t series_count,
                               std::size_t estimated_resident_bytes, std::size_t ram_limit,
                               ParquetLayout layout);
 

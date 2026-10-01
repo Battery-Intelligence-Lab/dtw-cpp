@@ -760,7 +760,8 @@ end
 function test_every_spelling_in_the_cpp_name_tables_is_accepted(testCase)
     h = dtwc_mex('Problem_new', 'names');
     testCase.addTeardown(@() dtwc_mex('Problem_delete', h));
-    for name = {'kmedoids', 'mip', 'lrcore', 'tadpole', 'LRCore'}
+    for name = {'auto', 'pam', 'onebatch', 'obp', 'clara', 'kmedoids', 'mip', ...
+                'lrcore', 'lr', 'tadpole', 'hierarchical', 'hclust', 'LRCore'}
         dtwc_mex('Problem_set_method', h, name{1});
     end
     for name = {'standard', 'ddtw', 'wdtw', 'adtw', 'softdtw', 'soft-dtw', 'msm', ...
@@ -800,7 +801,8 @@ function test_unknown_names_list_the_cpp_table(testCase)
     dtwc_mex('Problem_set_data', h, [1 2 3; 2 3 4; 9 8 7; 8 7 6]);
     cases = {
         @() dtwc_mex('Problem_set_method', h, 'bogus'), ...
-            'unknown method ''bogus''. Valid: kmedoids, mip, lrcore, tadpole.'
+            ['unknown method ''bogus''. Valid: auto, pam, onebatch, clara, kmedoids, ' ...
+             'mip, lrcore, tadpole, hierarchical.']
         @() dtwc_mex('Problem_set_solver', h, 'bogus'), ...
             'unknown solver ''bogus''. Valid: highs, gurobi.'
         @() dtwc_mex('build_dendrogram', h, 'bogus', 100), ...

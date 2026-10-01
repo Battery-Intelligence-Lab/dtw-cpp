@@ -15,9 +15,6 @@
 #include "../Problem.hpp"
 #include "../algorithms/detail/fast_clara_plan.hpp"
 #include "../algorithms/fast_clara.hpp"
-#include "../algorithms/fast_pam.hpp"
-#include "../algorithms/hierarchical.hpp"
-#include "../algorithms/one_batch_pam.hpp"
 #include "../base/error.hpp"
 #include "../base/timing.hpp"
 #include "../checkpoint.hpp"
@@ -47,18 +44,9 @@ namespace {
 namespace fs = std::filesystem;
 using algorithms::detail::resolve_clara_plan;
 
-constexpr std::size_t auto_pam_max_series = 5000; ///< `auto` on the CPU: pam up to here, clara above.
+std::string method_name(Method method) { return std::string(name_of(method_names, method)); }
 
-std::string method_name(ClusterMethod method) { return std::string(name_of(cluster_method_names, method)); }
-
-/// `auto` for the device and the series count; any other method as asked.
-ClusterMethod resolve_method(ClusterMethod method, Device device, std::size_t n_series)
-{
-  if (method != ClusterMethod::Auto) return method;
-  return device == Device::GPU || n_series <= auto_pam_max_series ? ClusterMethod::PAM : ClusterMethod::CLARA;
-}
-
-[[noreturn]] void refuse_gpu_method(ClusterMethod method)
+[[noreturn]] void refuse_gpu_method(Method method)
 {
   throw DeviceError(
     "run: method '" + method_name(method)
@@ -67,21 +55,21 @@ ClusterMethod resolve_method(ClusterMethod method, Device device, std::size_t n_
       "every series). Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
 }
 
-/// The Problem::cluster() route of a method, and its progress label.
-std::pair<Method, const char *> problem_route(ClusterMethod method)
+/// What --verbose calls a method in its progress lines.
+const char *progress_label(Method method)
 {
   switch (method) {
-  case ClusterMethod::Kmedoids: return { Method::Kmedoids, "kMedoids Lloyd" };
-  case ClusterMethod::MIP: return { Method::MIP, "MIP clustering" };
-  case ClusterMethod::LRCore: return { Method::LRCore, "LR-core clustering" };
-  case ClusterMethod::TADPole: return { Method::TADPole, "TADPole clustering" };
-  case ClusterMethod::Auto:
-  case ClusterMethod::PAM:
-  case ClusterMethod::OneBatch:
-  case ClusterMethod::CLARA:
-  case ClusterMethod::Hierarchical: break;
+  case Method::Auto: break; // resolved before it runs
+  case Method::PAM: return "FastPAM";
+  case Method::OneBatch: return "OneBatchPAM";
+  case Method::CLARA: return "FastCLARA";
+  case Method::Hierarchical: return "Hierarchical clustering";
+  case Method::Kmedoids: return "kMedoids Lloyd";
+  case Method::MIP: return "MIP clustering";
+  case Method::LRCore: return "LR-core clustering";
+  case Method::TADPole: return "TADPole clustering";
   }
-  throw std::logic_error("run: method " + method_name(method) + " is not a Problem::cluster() route");
+  return "auto";
 }
 
 /// Reject a reader option the input cannot honour: accepting and then ignoring
@@ -118,12 +106,12 @@ Data convert_to_f32(const Data &data_f64)
 /// O(Nm) table and reads no parent matrix; nor does non-full FastCLARA. TADPole
 /// reads the matrix when it is complete (a file or a cache from an earlier run)
 /// and otherwise computes the pairs it needs.
-std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &config, ClusterMethod method,
+std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &config, Method method,
                                                    bool clara_uses_full_sample, const fs::path &cache_path)
 {
   const bool checkpoint = !config.checkpoint.empty();
   const bool dist_matrix = !config.dist_matrix.empty();
-  if (method == ClusterMethod::CLARA && !clara_uses_full_sample) {
+  if (method == Method::CLARA && !clara_uses_full_sample) {
     if (checkpoint || dist_matrix)
       throw InvalidInput(
         "Non-full FastCLARA does not consume a parent distance matrix; "
@@ -131,7 +119,7 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
         "state. Omit those options, or request a full sample deliberately.");
     return std::nullopt;
   }
-  if (method == ClusterMethod::OneBatch) return std::nullopt;
+  if (method == Method::OneBatch) return std::nullopt;
   if (config.mmap_threshold != 0 && prob.size() < config.mmap_threshold) return std::nullopt;
   if (dist_matrix)
     throw InvalidInput(
@@ -158,7 +146,7 @@ struct Outcome
 {
   std::shared_ptr<Problem> problem;
   core::ClusteringResult result;
-  ClusterMethod method;
+  Method method;
 };
 
 /// The run itself; `data` holds in-memory series, else config.input is read.
@@ -167,6 +155,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // ---- 1. Every check that needs no series, before any file is touched ----
   if (!data && config.input.empty())
     throw InvalidInput("--input is required via CLI or config file (TOML or YAML)");
+  if (config.k == 0) throw InvalidInput("-k/--n-clusters, the number of clusters, is required.");
   if (config.k < 1)
     throw InvalidInput("-k/--n-clusters must be a positive integer, got " + std::to_string(config.k));
   if (config.n_init < 1) throw InvalidInput("--n-init must be a positive integer");
@@ -175,7 +164,8 @@ Outcome execute(const Config &config, std::optional<Data> data)
   if (config.checkpoint_interval != 0 && config.checkpoint.empty())
     throw InvalidInput("--checkpoint-interval requires --checkpoint <dir>.");
 
-  auto problem = std::make_shared<Problem>(config.name);
+  auto problem =
+    std::make_shared<Problem>(config.name.empty() ? detail::default_name(utf8_to_path(config.input)) : config.name);
   Problem &prob = *problem;
   // The Problem validates every distance setting as it takes it: parameter
   // domains, variant x missing strategy x metric, the MIP settings, the GPU.
@@ -183,9 +173,14 @@ Outcome execute(const Config &config, std::optional<Data> data)
   prob.set_missing_strategy(config.missing);
   prob.set_metric(config.metric);
   prob.set_band(config.band);
+  prob.set_n_clusters(config.k);
   prob.set_max_iter(config.max_iter);
   prob.set_n_repetitions(config.n_init);
   prob.set_random_seed(config.seed);
+  prob.set_sample_size(config.sample_size);
+  prob.set_n_samples(config.n_samples);
+  prob.set_batch_size(config.batch_size);
+  prob.set_linkage(config.linkage);
   prob.set_tadpole_dc(config.tadpole_dc); // < 0: auto-select from a DTW subsample
   prob.set_verbose(config.verbose);
   validate_mip_settings(config.mip);
@@ -199,7 +194,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   prob.set_gpu_precision(config.gpu_precision);
   prob.set_device(config.device, config.device_index); // gpu without a GPU backend: §6.1's DeviceError
   if (config.device == Device::GPU
-      && (config.method == ClusterMethod::OneBatch || config.method == ClusterMethod::TADPole))
+      && (config.method == Method::OneBatch || config.method == Method::TADPole))
     refuse_gpu_method(config.method);
   validate_gpu_request("run", prob, config.dtype);
 
@@ -209,7 +204,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   clara.n_samples = config.n_samples;
   clara.max_iter = config.max_iter;
   clara.random_seed = config.seed;
-  if (config.method == ClusterMethod::CLARA) algorithms::detail::validate_clara_controls(clara, "run");
+  if (config.method == Method::CLARA) algorithms::detail::validate_clara_controls(clara, "run");
 
   const fs::path input = utf8_to_path(config.input);
   std::optional<InputFormat> format; // empty: the series are in memory
@@ -237,13 +232,13 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
   // ---- 2. The method and, from Parquet metadata when it has them, N ----
   const Clock clk;
-  ClusterMethod method = config.method;
+  Method method = config.method;
   bool stream_payload = false;
   std::size_t n_series = 0;
   bool clara_uses_full_sample = false;
   bool clara_planned = false;
   const auto plan_clara = [&] {
-    if (method != ClusterMethod::CLARA || clara_planned) return;
+    if (method != Method::CLARA || clara_planned) return;
     const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
     clara_uses_full_sample = plan.sample_size == plan.n_points;
     if (stream_payload) algorithms::detail::validate_streaming_clara_plan(plan, "run");
@@ -255,7 +250,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // A cap changes the load decision, so only the metadata is read here: the
   // readers map the file and its footer; no row group is decoded.
   if (format == InputFormat::Parquet
-      && (config.ram_limit > 0 || method == ClusterMethod::Auto || method == ClusterMethod::CLARA)) {
+      && (config.ram_limit > 0 || method == Method::Auto || method == Method::CLARA)) {
     const bool f32 = config.dtype == core::Precision::Float32;
     std::error_code ec;
     const bool folder = fs::is_directory(input, ec);
@@ -326,9 +321,10 @@ Outcome execute(const Config &config, std::optional<Data> data)
     throw InvalidInput("cluster: k must not exceed the number of series.");
 
   method = resolve_method(method, config.device, n_series);
-  if (config.method == ClusterMethod::Auto && config.verbose)
+  if (config.method == Method::Auto && config.verbose)
     std::cout << "Auto-selected method: " << method_name(method) << " (N=" << n_series << ")\n";
   plan_clara();
+  prob.set_method(method);
 
   // ---- 4. Distance storage, once every distance setting is in place ----
   // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
@@ -365,83 +361,21 @@ Outcome execute(const Config &config, std::optional<Data> data)
   }
 
   // ---- 5. Cluster; the matrix methods fill through the Problem, on its device ----
-  core::ClusteringResult result;
-  const index_t k = config.k;
-  switch (method) {
-  case ClusterMethod::PAM:
-    if (config.verbose) std::cout << "Running FastPAM (k=" << k << ") ...\n";
-    // Restart r uses seed + r, invocation-local; the strictly lowest cost is
-    // kept, so a tie keeps the earlier restart.
-    result = fast_pam_seeded(prob, k, config.seed, config.max_iter);
-    for (int restart = 1; restart < config.n_init; ++restart) {
-      auto candidate =
-        fast_pam_seeded(prob, k, config.seed + static_cast<std::uint64_t>(restart), config.max_iter);
-      if (candidate.total_cost < result.total_cost) result = std::move(candidate);
-    }
-    if (config.verbose)
-      std::cout << "FastPAM " << (result.converged ? "converged" : "did not converge") << " in "
-                << result.iterations << " iterations, cost=" << std::setprecision(6) << result.total_cost
-                << " [" << clk << "]\n";
-    break;
-  case ClusterMethod::OneBatch: {
-    algorithms::OneBatchPAMOptions options;
-    options.n_clusters = k;
-    options.batch_size = config.batch_size;
-    options.max_iter = config.max_iter;
-    options.random_seed = config.seed;
-    algorithms::OneBatchPAMStats stats;
-    result = algorithms::one_batch_pam(prob, options, &stats);
-    if (config.verbose)
-      std::cout << "OneBatchPAM finished, cost=" << std::setprecision(6) << result.total_cost
-                << ", batch=" << stats.batch_size << ", distance-matrix fraction=" << std::setprecision(3)
-                << stats.full_matrix_fraction << " [" << clk << "]\n";
-    break;
-  }
-  case ClusterMethod::CLARA:
-    if (config.verbose) std::cout << "Running FastCLARA (k=" << k << ") ...\n";
-    result = algorithms::fast_clara(prob, clara);
-    if (config.verbose)
-      std::cout << "FastCLARA finished, cost=" << std::setprecision(6) << result.total_cost << " [" << clk << "]\n";
-    break;
-  case ClusterMethod::Hierarchical: {
-    if (config.verbose)
-      std::cout << "Running hierarchical clustering (k=" << k
-                << ", linkage=" << name_of(algorithms::linkage_names, config.linkage) << ") ...\n";
-    algorithms::HierarchicalOptions options;
-    options.linkage = config.linkage;
-    prob.fill_distance_matrix(); // the dendrogram reads every pair
-    result = algorithms::cut_dendrogram(algorithms::build_dendrogram(prob, options), prob, k);
-    if (config.verbose)
-      std::cout << "Hierarchical clustering finished, cost=" << std::setprecision(6) << result.total_cost
-                << " [" << clk << "]\n";
-    break;
-  }
-  // Problem::cluster()'s four: Lloyd, the exact MIP and LR-core, and
-  // TADPole density-peaks with conditionally admissible LB/UB DTW pruning.
-  case ClusterMethod::Kmedoids:
-  case ClusterMethod::MIP:
-  case ClusterMethod::LRCore:
-  case ClusterMethod::TADPole: {
-    const auto [problem_method, label] = problem_route(method);
-    prob.set_n_clusters(k);
-    prob.set_method(problem_method);
-    prob.cluster();
-    result.labels = prob.clusters_ind;
-    result.medoid_indices = prob.centroids_ind;
-    result.total_cost = prob.find_total_cost();
-    // Lloyd reports its iterations; the exact methods and TADPole finish.
-    result.iterations = method == ClusterMethod::Kmedoids ? prob.last_iterations() : 0;
-    result.converged = method != ClusterMethod::Kmedoids || prob.last_iterations() < config.max_iter;
-    if (config.verbose) std::cout << label << " finished, cost=" << result.total_cost << " [" << clk << "]\n";
-    break;
-  }
-  case ClusterMethod::Auto: // resolved above
-    throw std::logic_error("run: unresolved method auto");
+  // A RAM-limited Parquet run is the one whose series the Problem does not hold:
+  // FastCLARA streams them.
+  if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
+  core::ClusteringResult result = stream_payload ? algorithms::fast_clara(prob, clara) : prob.cluster();
+  if (config.verbose) {
+    std::cout << progress_label(method);
+    if (method == Method::PAM)
+      std::cout << (result.converged ? " converged" : " did not converge") << " in " << result.iterations
+                << " iterations";
+    else
+      std::cout << " finished";
+    std::cout << ", cost=" << std::setprecision(6) << result.total_cost << " [" << clk << "]\n";
   }
 
   // ---- 6. Checkpoints first, then the outputs ----
-  prob.set_result(result); // the kept result, in every route
-
   // Before the results, so a result write that
   // fails cannot lose the distance matrix. A save that fails is kept and raised
   // once the results are on disk, so it cannot lose them either (S-04).
@@ -467,14 +401,22 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
 } // namespace
 
-detail::ParquetPlan detail::plan_parquet_load(ClusterMethod method, Device device, std::size_t series_count,
+std::string detail::default_name(const fs::path &input)
+{
+  // "data/" names its folder; "." and ".." name nothing a file could be called after.
+  // UTF-8, which every writer turns back into a path with utf8_to_path(), losslessly.
+  const std::string stem = path_to_utf8((input.has_filename() ? input : input.parent_path()).stem());
+  return stem.empty() || stem == "." || stem == ".." ? "dataset" : stem;
+}
+
+detail::ParquetPlan detail::plan_parquet_load(Method method, Device device, std::size_t series_count,
                                               std::size_t estimated_resident_bytes, std::size_t ram_limit,
                                               ParquetLayout layout)
 {
   if (series_count == 0) throw InvalidInput("Parquet input contains no time series.");
   const ParquetPlan plan{ resolve_method(method, device, series_count), false };
   if (ram_limit == 0 || estimated_resident_bytes <= ram_limit) return plan;
-  if (plan.method != ClusterMethod::CLARA)
+  if (plan.method != Method::CLARA)
     throw InvalidInput("Parquet input needs approximately " + std::to_string(estimated_resident_bytes)
                        + " bytes of resident series storage, exceeding --ram-limit=" + std::to_string(ram_limit)
                        + "; method '" + method_name(plan.method)

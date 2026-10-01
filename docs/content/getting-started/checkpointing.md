@@ -154,7 +154,7 @@ With `--checkpoint <dir>` the CLI
 
 1. creates the directory before any data is read, and stops with exit status 1
    if the path is not a directory;
-2. loads `<dir>/<name>.dtwm` if it exists (`--name`, default `dtwc`); a file for
+2. loads `<dir>/<name>.dtwm` if it exists (`--name`, default the input's file or folder name); a file for
    other data or settings, or a damaged one, stops the run with exit status 1 and
    the reason, before anything is computed;
 3. saves the matrix there after the result files are written, and every

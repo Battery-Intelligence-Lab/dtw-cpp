@@ -36,25 +36,6 @@ class App;
 
 namespace dtwc {
 
-/// The algorithm `--method` selects. Method keeps the four values Problem::cluster()
-/// dispatches; this enum spells what a run can be asked for.
-enum class ClusterMethod { Auto, PAM, OneBatch, CLARA, Kmedoids, MIP, LRCore, TADPole, Hierarchical };
-
-inline constexpr Name<ClusterMethod> cluster_method_names[]{
-  { "auto", ClusterMethod::Auto },
-  { "pam", ClusterMethod::PAM },
-  { "onebatch", ClusterMethod::OneBatch },
-  { "obp", ClusterMethod::OneBatch },
-  { "clara", ClusterMethod::CLARA },
-  { "kmedoids", ClusterMethod::Kmedoids },
-  { "mip", ClusterMethod::MIP },
-  { "lrcore", ClusterMethod::LRCore },
-  { "lr", ClusterMethod::LRCore },
-  { "tadpole", ClusterMethod::TADPole },
-  { "hierarchical", ClusterMethod::Hierarchical },
-  { "hclust", ClusterMethod::Hierarchical },
-};
-
 struct Config
 {
   // Input and storage
@@ -68,8 +49,8 @@ struct Config
   std::size_t mmap_threshold = 50000;    ///< `--mmap-threshold`
   std::string dist_matrix;               ///< `--dist-matrix`: precomputed distance-matrix CSV.
   // Method
-  ClusterMethod method = ClusterMethod::Auto; ///< `--method`
-  index_t k = 3;                         ///< `--n-clusters`
+  Method method = Method::Auto;          ///< `--method`
+  index_t k = 0;                         ///< `--n-clusters`, required: 0 = not given
   int max_iter = 100;                    ///< `--max-iter`
   int n_init = 1;                        ///< `--n-init`
   std::uint64_t seed = settings::DEFAULT_RANDOM_SEED; ///< `--seed`
@@ -95,7 +76,7 @@ struct Config
   int checkpoint_interval = 0;           ///< `--checkpoint-interval` (0 = at the end only)
   // Output
   std::string output = "./results";      ///< `--output` ("" = write nothing)
-  std::string name = "dtwc";             ///< `--name`
+  std::string name;                      ///< `--name` ("" = the input's file or folder name)
   bool verbose = false;                  ///< `--verbose`
 };
 
@@ -103,11 +84,12 @@ namespace cli {
 
 /// Adds every Config key to `app`, bound to `config`, plus `--config <file>`
 /// (TOML or YAML, the same keys; flags beat the file; an unknown key is an error).
-/// `--help` shows `config`'s values as the defaults. `--clusters` stays a hidden
-/// spelling that warns on stderr and yields to `--n-clusters`.
+/// `--help` shows `config`'s values as the defaults. v1.0.0's option spellings
+/// (`--Nc`, `--probName`, `--skipRows`, ...) are hidden ones that each warn once
+/// on stderr and yield to the canonical spelling.
 /// A value no spelling reads raises during the parse: CLI11's error for a bad
-/// choice or number, InvalidInput for `--ram-limit` / `--delimiter`, DeviceError
-/// for `--device`.
+/// choice or number, InvalidInput for `--ram-limit` / `--delimiter` and for
+/// v1.0.0's `-k`/`--Nc` range `i..j`, DeviceError for `--device`.
 void bind(CLI::App &app, Config &config);
 
 } // namespace cli

@@ -32,7 +32,7 @@
 
 namespace fs = std::filesystem;
 using Catch::Matchers::ContainsSubstring;
-using dtwc::ClusterMethod;
+using dtwc::Method;
 using dtwc::Device;
 using dtwc::detail::ParquetLayout;
 using dtwc::detail::plan_parquet_load;
@@ -43,7 +43,7 @@ namespace {
 std::size_t ram_limit(const std::string &text) { return dtwc::parse_config({ { "ram_limit", text } }).ram_limit; }
 
 /// A run that writes nothing unless a test names an output directory.
-dtwc::Config quiet_config(int k, ClusterMethod method)
+dtwc::Config quiet_config(int k, Method method)
 {
   dtwc::Config config;
   config.k = k;
@@ -106,7 +106,7 @@ TEST_CASE("--ram-limit reads a size and rejects anything else", "[cli][parquet][
 // --ram-limit for CSV / Arrow, printed the cap and loaded everything.
 TEST_CASE("--ram-limit is rejected where no reader can honour it", "[cli][parquet][ram]")
 {
-  auto config = quiet_config(2, ClusterMethod::PAM);
+  auto config = quiet_config(2, Method::PAM);
   config.ram_limit = 1ULL << 30;
   CHECK_THROWS_MATCHES(dtwc::run(config, tiny_series()), dtwc::InvalidInput,
                        Catch::Matchers::MessageMatches(ContainsSubstring("cannot be honoured for this input")));
@@ -124,43 +124,43 @@ TEST_CASE("--ram-limit is rejected where no reader can honour it", "[cli][parque
 
 TEST_CASE("Parquet plan selects streaming before payload materialization", "[cli][parquet][ram][streaming]")
 {
-  const auto plan = plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 6001, /*bytes=*/4097, /*cap=*/4096,
+  const auto plan = plan_parquet_load(Method::CLARA, Device::CPU, 6001, /*bytes=*/4097, /*cap=*/4096,
                                       ParquetLayout::ListColumn);
-  CHECK(plan.method == ClusterMethod::CLARA);
+  CHECK(plan.method == Method::CLARA);
   CHECK(plan.stream_payload);
 
   const auto boundary =
-    plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 6001, 4096, 4096, ParquetLayout::ListColumn);
+    plan_parquet_load(Method::CLARA, Device::CPU, 6001, 4096, 4096, ParquetLayout::ListColumn);
   CHECK_FALSE(boundary.stream_payload);
 }
 
 TEST_CASE("Parquet plan resolves auto from metadata, for the device", "[cli][parquet][ram][auto]")
 {
-  const auto pam = plan_parquet_load(ClusterMethod::Auto, Device::CPU, 5000, 100, 1000, ParquetLayout::ListColumn);
-  CHECK(pam.method == ClusterMethod::PAM);
+  const auto pam = plan_parquet_load(Method::Auto, Device::CPU, 5000, 100, 1000, ParquetLayout::ListColumn);
+  CHECK(pam.method == Method::PAM);
   CHECK_FALSE(pam.stream_payload);
 
-  const auto clara = plan_parquet_load(ClusterMethod::Auto, Device::CPU, 5001, 1001, 1000, ParquetLayout::ListColumn);
-  CHECK(clara.method == ClusterMethod::CLARA);
+  const auto clara = plan_parquet_load(Method::Auto, Device::CPU, 5001, 1001, 1000, ParquetLayout::ListColumn);
+  CHECK(clara.method == Method::CLARA);
   CHECK(clara.stream_payload);
 
   // On a GPU `auto` is pam, whose matrix the GPU fills, at any N: over the cap
   // that is the loud "cannot stream", never a CPU-only CLARA.
-  CHECK(plan_parquet_load(ClusterMethod::Auto, Device::GPU, 5001, 100, 1000, ParquetLayout::ListColumn).method
-        == ClusterMethod::PAM);
-  CHECK_THROWS_WITH(plan_parquet_load(ClusterMethod::Auto, Device::GPU, 5001, 1001, 1000, ParquetLayout::ListColumn),
+  CHECK(plan_parquet_load(Method::Auto, Device::GPU, 5001, 100, 1000, ParquetLayout::ListColumn).method
+        == Method::PAM);
+  CHECK_THROWS_WITH(plan_parquet_load(Method::Auto, Device::GPU, 5001, 1001, 1000, ParquetLayout::ListColumn),
                     ContainsSubstring("method 'pam' cannot stream"));
 }
 
 TEST_CASE("Parquet RAM limit rejects every route that cannot honor it", "[cli][parquet][ram][loudness]")
 {
-  CHECK_THROWS_WITH(plan_parquet_load(ClusterMethod::PAM, Device::CPU, 20, 1001, 1000, ParquetLayout::ListColumn),
+  CHECK_THROWS_WITH(plan_parquet_load(Method::PAM, Device::CPU, 20, 1001, 1000, ParquetLayout::ListColumn),
                     ContainsSubstring("method 'pam' cannot stream"));
-  CHECK_THROWS_WITH(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 1, 1001, 1000, ParquetLayout::ScalarColumn),
+  CHECK_THROWS_WITH(plan_parquet_load(Method::CLARA, Device::CPU, 1, 1001, 1000, ParquetLayout::ScalarColumn),
                     ContainsSubstring("list-per-row"));
-  CHECK_THROWS_WITH(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 100, 1001, 1000, ParquetLayout::Directory),
+  CHECK_THROWS_WITH(plan_parquet_load(Method::CLARA, Device::CPU, 100, 1001, 1000, ParquetLayout::Directory),
                     ContainsSubstring("single Parquet file"));
-  CHECK_THROWS_AS(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 0, 1001, 1000, ParquetLayout::ListColumn),
+  CHECK_THROWS_AS(plan_parquet_load(Method::CLARA, Device::CPU, 0, 1001, 1000, ParquetLayout::ListColumn),
                   dtwc::InvalidInput);
 }
 
@@ -169,10 +169,10 @@ TEST_CASE("Parquet plan treats a zero RAM limit as uncapped", "[cli][parquet][ra
   // `ram_limit == 0` means "no cap", never "a cap of zero bytes"; it returns
   // before the method and layout rejections.
   constexpr auto huge = std::numeric_limits<std::size_t>::max();
-  CHECK_FALSE(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 6001, huge, 0, ParquetLayout::ListColumn)
+  CHECK_FALSE(plan_parquet_load(Method::CLARA, Device::CPU, 6001, huge, 0, ParquetLayout::ListColumn)
                 .stream_payload);
-  CHECK_NOTHROW(plan_parquet_load(ClusterMethod::PAM, Device::CPU, 20, huge, 0, ParquetLayout::ScalarColumn));
-  CHECK_NOTHROW(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 20, huge, 0, ParquetLayout::Directory));
+  CHECK_NOTHROW(plan_parquet_load(Method::PAM, Device::CPU, 20, huge, 0, ParquetLayout::ScalarColumn));
+  CHECK_NOTHROW(plan_parquet_load(Method::CLARA, Device::CPU, 20, huge, 0, ParquetLayout::Directory));
 }
 
 // ---------------------------------------------------------------------------
@@ -182,12 +182,12 @@ TEST_CASE("Parquet plan treats a zero RAM limit as uncapped", "[cli][parquet][ra
 TEST_CASE("run's PAM honors default seed 42 and explicit seed override 29", "[cli][seed][pam]")
 {
   REQUIRE(dtwc::Config{}.seed == 42);
-  const auto default_result = dtwc::run(quiet_config(3, ClusterMethod::PAM), seed_sensitive_series());
+  const auto default_result = dtwc::run(quiet_config(3, Method::PAM), seed_sensitive_series());
   CHECK(default_result.medoids() == std::vector<dtwc::index_t>{ 6, 2, 5 });
   CHECK(default_result.labels() == std::vector<dtwc::index_t>{ 1, 1, 1, 1, 2, 2, 0, 0 });
   CHECK(default_result.cost() == 24.0);
 
-  auto seed_29 = quiet_config(3, ClusterMethod::PAM);
+  auto seed_29 = quiet_config(3, Method::PAM);
   seed_29.seed = 29;
   const auto override_result = dtwc::run(seed_29, seed_sensitive_series());
   CHECK(override_result.medoids() == std::vector<dtwc::index_t>{ 4, 1, 7 });
@@ -197,7 +197,7 @@ TEST_CASE("run's PAM honors default seed 42 and explicit seed override 29", "[cl
 
 TEST_CASE("run's PAM n_init retains the best deterministic restart", "[cli][seed][pam][n_init]")
 {
-  auto improving_config = quiet_config(3, ClusterMethod::PAM);
+  auto improving_config = quiet_config(3, Method::PAM);
   improving_config.seed = 43;
   const auto improving = dtwc::run(improving_config, seed_sensitive_series());
   CHECK(improving.cost() == 20.0);
@@ -205,7 +205,7 @@ TEST_CASE("run's PAM n_init retains the best deterministic restart", "[cli][seed
   // --n-init 2 tries seeds 42 and 43 and keeps the lower cost, not the first or
   // the last restart (the Problem holds the last one's labels until run() sets
   // the kept result).
-  auto config = quiet_config(3, ClusterMethod::PAM);
+  auto config = quiet_config(3, Method::PAM);
   config.n_init = 2;
   for (int repetition = 0; repetition < 3; ++repetition) {
     const auto result = dtwc::run(config, seed_sensitive_series());
@@ -227,7 +227,7 @@ TEST_CASE("run's PAM n_init retains the best deterministic restart", "[cli][seed
 
 namespace {
 
-dtwc::Config mapped_config(ClusterMethod method, const ScratchDirectory &scratch, const std::string &name)
+dtwc::Config mapped_config(Method method, const ScratchDirectory &scratch, const std::string &name)
 {
   auto config = quiet_config(2, method);
   config.output = scratch.path.string();
@@ -246,7 +246,7 @@ bool cache_exists(const ScratchDirectory &scratch, const std::string &name)
 TEST_CASE("run's TADPole threshold uses mmap or fails before dense allocation", "[cli][storage][mmap][tadpole]")
 {
   const ScratchDirectory scratch{ "cli_tadpole_storage" };
-  auto config = mapped_config(ClusterMethod::TADPole, scratch, "tadpole");
+  auto config = mapped_config(Method::TADPole, scratch, "tadpole");
   config.tadpole_dc = 3.0;
 #ifdef DTWC_HAS_MMAP
   // TADPole is not exempt: it reads the matrix when a complete one is there.
@@ -264,14 +264,14 @@ TEST_CASE("run's TADPole threshold uses mmap or fails before dense allocation", 
 TEST_CASE("run's OneBatch keeps its own O(Nm) storage when the mmap threshold fires", "[cli][storage][onebatch]")
 {
   const ScratchDirectory scratch{ "cli_onebatch_storage" };
-  CHECK(dtwc::run(mapped_config(ClusterMethod::OneBatch, scratch, "onebatch"), tiny_series()).labels().size() == 3);
+  CHECK(dtwc::run(mapped_config(Method::OneBatch, scratch, "onebatch"), tiny_series()).labels().size() == 3);
   CHECK_FALSE(cache_exists(scratch, "onebatch"));
 }
 
 TEST_CASE("run's non-full FastCLARA does not open an unused parent matrix", "[cli][storage][clara]")
 {
   const ScratchDirectory scratch{ "cli_clara_storage" };
-  auto config = mapped_config(ClusterMethod::CLARA, scratch, "clara");
+  auto config = mapped_config(Method::CLARA, scratch, "clara");
   config.sample_size = 2; // < N = 3
   CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
   CHECK_FALSE(cache_exists(scratch, "clara"));
@@ -290,7 +290,7 @@ TEST_CASE("run's mmap storage binds the pointwise metric", "[cli][storage][mmap]
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
 #else
   const ScratchDirectory scratch{ "cli_metric_fingerprint" };
-  auto config = mapped_config(ClusterMethod::PAM, scratch, "metric");
+  auto config = mapped_config(Method::PAM, scratch, "metric");
   config.metric = dtwc::core::MetricType::SquaredL2;
   CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
   REQUIRE(cache_exists(scratch, "metric"));
@@ -304,7 +304,7 @@ TEST_CASE("run's mmap storage with --checkpoint maps the checkpoint file", "[cli
 {
   // One file: the mapped matrix is the checkpoint, <checkpoint>/<name>.dtwm.
   const ScratchDirectory scratch{ "cli_checkpoint_mmap" };
-  auto config = mapped_config(ClusterMethod::PAM, scratch, "checkpoint");
+  auto config = mapped_config(Method::PAM, scratch, "checkpoint");
   config.checkpoint = (scratch.path / "ckpt").string();
 #ifdef DTWC_HAS_MMAP
   CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
@@ -318,7 +318,7 @@ TEST_CASE("run's mmap storage with --checkpoint maps the checkpoint file", "[cli
 TEST_CASE("run rejects a legacy precomputed CSV plus mmap before false success", "[cli][storage][mmap][dist-matrix]")
 {
   const ScratchDirectory scratch{ "cli_precomputed_mmap" };
-  auto config = mapped_config(ClusterMethod::PAM, scratch, "precomputed");
+  auto config = mapped_config(Method::PAM, scratch, "precomputed");
   config.dist_matrix = (scratch.path / "never_read.csv").string();
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
                     ContainsSubstring("--dist-matrix") && ContainsSubstring("cannot be combined")
