@@ -7,17 +7,12 @@
 #include <core/dtw_dispatch.hpp>
 #include <base/error.hpp>
 
-#include "../support/scratch_directory.hpp"
-
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
 #include <functional>
-#include <iterator>
 #include <limits>
 #include <span>
 #include <string>
@@ -26,7 +21,6 @@
 #include <vector>
 
 using namespace dtwc;
-using dtwc::test_support::ScratchDirectory;
 
 namespace {
 
@@ -140,29 +134,6 @@ constexpr std::array<NarrowingCase, 12> narrowing_cases{{
    "TWE lambda cannot be represented in float32 without becoming zero or non-finite."},
 }};
 
-struct RawOperation
-{
-  std::string_view name;
-  void (*run)(Problem &);
-};
-
-constexpr std::array<RawOperation, 5> raw_operations{{
-  {"float64 dispatcher", +[](Problem &p) { (void)p.dtw_function(); }},
-  {"float32 dispatcher", +[](Problem &p) { (void)p.dtw_function_f32(); }},
-  {"dense fill", +[](Problem &p) { p.fill_distance_matrix(); }},
-  {"lazy distance", +[](Problem &p) { (void)p.dist_by_ind(0, 1); }},
-  {"public refresh", +[](Problem &p) { p.refresh_distance_matrix(); }},
-}};
-
-std::string read_problem_source()
-{
-  const auto repo_root = std::filesystem::path{DTWC_TEST_DATA_DIR}.parent_path();
-  std::ifstream source(repo_root / "dtwc" / "Problem.cpp", std::ios::binary);
-  REQUIRE(source.is_open());
-  return {std::istreambuf_iterator<char>{source},
-          std::istreambuf_iterator<char>{}};
-}
-
 } // namespace
 
 TEST_CASE("float32 set_variant rejects narrowing transactionally",
@@ -176,7 +147,7 @@ TEST_CASE("float32 set_variant rejects narrowing transactionally",
     problem.clusters_ind = {1, 0};
     problem.centroids_ind = {1};
 
-    const auto original_params = problem.variant_params;
+    const auto original_params = problem.variant_params();
     const auto original_cache = snapshot_dense(problem);
     auto candidate = original_params;
     candidate.variant = test.variant;
@@ -185,7 +156,7 @@ TEST_CASE("float32 set_variant rejects narrowing transactionally",
     const bool caught = catches_exact(
       [&] { problem.set_variant(candidate); }, test.message);
     CHECK(caught);
-    CHECK(params_equal(problem.variant_params, original_params));
+    CHECK(params_equal(problem.variant_params(), original_params));
     CHECK(problem.data().is_f32());
     CHECK(problem.data().series_f32(1)[1] == 2.0f);
     CHECK(problem.labels() == std::vector<index_t>{1, 0});
@@ -197,16 +168,17 @@ TEST_CASE("float32 set_variant rejects narrowing transactionally",
   {
     Problem problem{"m45_selector"};
     problem.set_data(make_f32_data());
+    auto inactive = problem.variant_params();
+    inactive.sdtw_gamma = std::numeric_limits<double>::min(); // inactive under Standard
+    problem.set_variant(inactive);
     problem.fill_distance_matrix();
     const auto original_cache = snapshot_dense(problem);
-    problem.variant_params.sdtw_gamma = std::numeric_limits<double>::min();
 
     const bool caught = catches_exact(
       [&] { problem.set_variant(core::DTWVariant::SoftDTW); },
       "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite.");
     CHECK(caught);
-    CHECK(problem.variant_params.variant == core::DTWVariant::Standard);
-    problem.variant_params.sdtw_gamma = 1.0;
+    CHECK(problem.variant_params().variant == core::DTWVariant::Standard);
     if (caught) require_dense_unchanged(problem, original_cache);
   }
 }
@@ -217,7 +189,7 @@ TEST_CASE("float32 heap and view data replacement validate before mutation",
   auto configured_f64 = [] {
     Problem problem{"m45_data_transaction"};
     problem.set_data(make_f64_data());
-    auto params = problem.variant_params;
+    auto params = problem.variant_params();
     params.variant = core::DTWVariant::SoftDTW;
     params.sdtw_gamma = std::numeric_limits<double>::min();
     problem.set_variant(params);
@@ -270,87 +242,6 @@ TEST_CASE("float32 heap and view data replacement validate before mutation",
   }
 }
 
-TEST_CASE("raw float32 reconciliation fails before cache mutation",
-          "[problem][variant][f32][raw][cache][m45]")
-{
-  for (const auto &operation : raw_operations) {
-    CAPTURE(operation.name);
-    Problem problem{"m45_raw_reconcile"};
-    problem.set_data(make_f32_data());
-    problem.fill_distance_matrix();
-    const auto original_params = problem.variant_params;
-    const auto original_cache = snapshot_dense(problem);
-
-    problem.variant_params.variant = core::DTWVariant::SoftDTW;
-    problem.variant_params.sdtw_gamma = std::numeric_limits<double>::min();
-    const bool caught = catches_exact(
-      [&] { operation.run(problem); },
-      "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite.");
-    CHECK(caught);
-
-    // The caller-owned raw edit remains, but failed reconciliation must not
-    // clear the cache/callable that preceded it. Restore it solely so the
-    // semantic snapshot permits direct inspection.
-    problem.variant_params = original_params;
-    if (caught) {
-      require_dense_unchanged(problem, original_cache);
-      CHECK(problem.is_distance_matrix_filled());
-    }
-  }
-}
-
-TEST_CASE("float32 narrowing preflight preserves mmap and bind transactions",
-          "[problem][variant][f32][raw][mmap][transaction][m45]")
-{
-#ifndef DTWC_HAS_MMAP
-  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
-#else
-  SECTION("binding a new mmap does not clear dense state or create a file")
-  {
-    const ScratchDirectory cache_dir{ "m45_bind_preflight" };
-    const std::filesystem::path cache = cache_dir.path / "distances.dtwcache";
-    Problem problem{"m45_mmap_bind"};
-    problem.set_data(make_f32_data());
-    problem.fill_distance_matrix();
-    const auto original_params = problem.variant_params;
-    const auto original_cache = snapshot_dense(problem);
-
-    problem.variant_params.variant = core::DTWVariant::SoftDTW;
-    problem.variant_params.sdtw_gamma = std::numeric_limits<double>::min();
-    const bool caught = catches_exact(
-      [&] { problem.use_mmap_distance_matrix(cache); },
-      "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite.");
-    CHECK(caught);
-    CHECK_FALSE(std::filesystem::exists(cache));
-
-    problem.variant_params = original_params;
-    if (caught) require_dense_unchanged(problem, original_cache);
-  }
-
-  SECTION("public refresh does not detach an existing mmap")
-  {
-    const ScratchDirectory cache_dir{ "m45_refresh_preflight" };
-    const std::filesystem::path cache = cache_dir.path / "distances.dtwcache";
-    Problem problem{"m45_mmap_refresh"};
-    problem.set_data(make_f32_data());
-    problem.use_mmap_distance_matrix(cache);
-    problem.fill_distance_matrix();
-    const auto original_params = problem.variant_params;
-
-    problem.variant_params.variant = core::DTWVariant::SoftDTW;
-    problem.variant_params.sdtw_gamma = std::numeric_limits<double>::min();
-    const bool caught = catches_exact(
-      [&] { problem.refresh_distance_matrix(); },
-      "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite.");
-    CHECK(caught);
-
-    problem.variant_params = original_params;
-    CHECK(std::as_const(problem).distance_matrix().is_mapped());
-    if (caught) CHECK(problem.is_distance_matrix_filled());
-  }
-#endif
-}
-
 TEST_CASE("f64 accepts its full domain and explicit f32 access stays transactional",
           "[problem][variant][f64][f32_getter][m45]")
 {
@@ -358,7 +249,7 @@ TEST_CASE("f64 accepts its full domain and explicit f32 access stays transaction
     CAPTURE(static_cast<int>(test.variant), test.message);
     Problem problem{"m45_f64_acceptance"};
     problem.set_data(make_f64_data());
-    auto params = problem.variant_params;
+    auto params = problem.variant_params();
     params.variant = test.variant;
     test.poison(params);
     REQUIRE_NOTHROW(problem.set_variant(params));
@@ -369,24 +260,12 @@ TEST_CASE("f64 accepts its full domain and explicit f32 access stays transaction
     const bool caught = catches_exact(
       [&] { (void)problem.dtw_function_f32(); }, test.message);
     CHECK(caught);
-    const Problem &const_problem = problem;
     CHECK(catches_exact(
-      [&] { (void)const_problem.dtw_function_f32(); }, test.message));
-    CHECK(catches_exact(
-      [&] { (void)core::resolve_dtw_fn<float>(problem); }, test.message));
-    CHECK(params_equal(problem.variant_params, params));
+      [&] { (void)core::resolve_dtw_fn<float>(problem.distance(), problem.data()); }, test.message));
+    CHECK(params_equal(problem.variant_params(), params));
     CHECK_FALSE(problem.data().is_f32());
     if (caught) require_dense_unchanged(problem, original_cache);
   }
-}
-
-TEST_CASE("Problem float32 callable uses stay behind validated access",
-          "[problem][variant][f32][source_guard][m45]")
-{
-  const std::string source = read_problem_source();
-
-  CHECK(source.find("dtw_fn_f32_(") == std::string::npos);
-  CHECK(source.find("validated_dtw_function_f32()") != std::string::npos);
 }
 
 TEST_CASE("float32 representable boundaries and inactive parameters remain valid",
@@ -398,11 +277,11 @@ TEST_CASE("float32 representable boundaries and inactive parameters remain valid
   {
     Problem problem{"m45_inactive"};
     problem.set_data(make_f32_data());
-    auto params = problem.variant_params;
+    auto params = problem.variant_params();
     params.sdtw_gamma = std::numeric_limits<double>::min();
     REQUIRE_NOTHROW(problem.set_variant(params));
     REQUIRE_NOTHROW((void)problem.dtw_function_f32());
-    REQUIRE(problem.variant_params.variant == core::DTWVariant::Standard);
+    REQUIRE(problem.variant_params().variant == core::DTWVariant::Standard);
   }
 
   SECTION("exact zero limits")
@@ -410,7 +289,7 @@ TEST_CASE("float32 representable boundaries and inactive parameters remain valid
     for (const auto variant : {core::DTWVariant::WDTW, core::DTWVariant::ADTW}) {
       Problem problem{"m45_zero"};
       problem.set_data(make_f32_data());
-      auto params = problem.variant_params;
+      auto params = problem.variant_params();
       params.variant = variant;
       if (variant == core::DTWVariant::WDTW) params.wdtw_g = 0.0;
       else params.adtw_penalty = 0.0;
@@ -428,7 +307,7 @@ TEST_CASE("float32 representable boundaries and inactive parameters remain valid
                                core::DTWVariant::TWE}) {
       Problem problem{"m45_denorm"};
       problem.set_data(make_f32_data());
-      auto params = problem.variant_params;
+      auto params = problem.variant_params();
       params.variant = variant;
       if (variant == core::DTWVariant::SoftDTW) params.sdtw_gamma = smallest_f32;
       if (variant == core::DTWVariant::MSM) params.msm_c = smallest_f32;

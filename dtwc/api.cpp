@@ -241,7 +241,7 @@ void Result::save(const std::filesystem::path &directory) const
   // retain their scaling until this explicitly requested operation.
   problem_->fill_distance_matrix();
   {
-    const core::DistanceMatrix &matrix = problem_->distance_matrix();
+    const core::DistanceMatrix &matrix = std::as_const(*problem_).distance_matrix();
     core::detail::preflight_distance_matrix_csv(matrix);
     auto out = open_output(
       matrix_path, std::ios::out | std::ios::binary | std::ios::trunc);

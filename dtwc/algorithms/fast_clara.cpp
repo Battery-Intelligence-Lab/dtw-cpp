@@ -329,14 +329,11 @@ namespace {
           : reader.read_rows(std::move(sample_rows), opts.ram_limit_bytes);
 
         Problem sub_prob("clara_chunked_" + std::to_string(s));
-        sub_prob.band = prob_template.band;
-        sub_prob.variant_params = prob_template.variant_params;
-        sub_prob.missing_strategy = prob_template.missing_strategy;
-        sub_prob.set_metric(prob_template.metric());
+        sub_prob.set_distance(prob_template.distance());
         // Device, GPU index and precision: the sample fill honours them, or
         // validate_fill_request refuses them (e.g. a Float32 sample on a GPU).
-        sub_prob.distance_strategy = prob_template.distance_strategy;
-        sub_prob.cuda_settings = prob_template.cuda_settings;
+        sub_prob.set_distance_strategy(prob_template.distance_strategy());
+        sub_prob.set_cuda_settings(prob_template.cuda_settings());
         sub_prob.set_verbose(false);
         sub_prob.set_data(std::move(sample_data));
         sub_result = fast_pam_seeded(
@@ -472,14 +469,11 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 
     Problem sub_prob("clara_subsample_" + std::to_string(s));
     // Copy all relevant settings from the original problem.
-    sub_prob.band = prob.band;
-    sub_prob.variant_params = prob.variant_params;
-    sub_prob.missing_strategy = prob.missing_strategy;
-    sub_prob.set_metric(prob.metric());
+    sub_prob.set_distance(prob.distance());
     // The sample is a view, so a GPU device is refused by the sample fill
     // (validate_fill_request) rather than computed on the CPU.
-    sub_prob.distance_strategy = prob.distance_strategy;
-    sub_prob.cuda_settings = prob.cuda_settings;
+    sub_prob.set_distance_strategy(prob.distance_strategy());
+    sub_prob.set_cuda_settings(prob.cuda_settings());
     sub_prob.set_verbose(prob.verbose());
 
     if (prob.data().is_f32()) {

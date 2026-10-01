@@ -1,0 +1,72 @@
+== 400 5 60 0 0 0 -1 -1
+OBP table_hash=673e1da9840ddab1 evals=71820
+hash=2bb301abeec7a5ab cost=26902.174669100605 evals=73815 m=180
+== 400 5 60 0 1 0 -1 -1
+OBP table_hash=dd47d3d89636b608 evals=71820
+hash=cb7ace970106bcec cost=46102.65050112945 evals=73815 m=180
+== 400 5 60 1 0 0 -1 -1
+OBP table_hash=b0ea9c8f22271e37 evals=71820
+hash=2f890b8226ce4659 cost=26902.174825668335 evals=73815 m=180
+== 400 5 60 1 1 0 -1 -1
+OBP table_hash=3cb732e8cf442d16 evals=71820
+hash=4c79d18825007042 cost=46102.650217056274 evals=73815 m=180
+== 400 5 60 0 0 1 -1 -1
+OBP table_hash=6979b9755f0cfbf2 evals=71820
+hash=2af04e4284b4b40c cost=28217.600481400379 evals=73017 m=180
+== 400 5 60 0 1 2 -1 -1
+OBP table_hash=4843ad2f34eaa1ab evals=71820
+hash=a5375a73beacd236 cost=48411.003541141392 evals=73815 m=180
+== 400 5 60 1 0 1 -1 -1
+OBP table_hash=ab50ce97d5bc8ed1 evals=71820
+hash=ee799c2699c6e189 cost=28217.600757598877 evals=73017 m=180
+== 400 5 60 1 1 4 -1 -1
+OBP table_hash=6956bf4a413b58ba evals=71820
+hash=024b2d9825ffaa75 cost=49161.218505859375 evals=73416 m=180
+== 400 5 60 0 0 0 6 -1
+OBP table_hash=a0e8c05cf8339055 evals=71820
+hash=6c3c1615deeb5983 cost=41231.603828349369 evals=73815 m=180
+== 400 5 60 1 1 0 6 -1
+OBP table_hash=d885ca4d68ca68fe evals=71820
+hash=e8e75000f5282d0a cost=121018.98860549927 evals=73017 m=180
+== 400 5 60 0 0 1 6 -1
+OBP table_hash=6de6108e6d6ec2f7 evals=71820
+hash=9e184f87c2016fd3 cost=41043.929947840792 evals=73815 m=180
+== 400 5 60 0 0 8 -1 -1
+OBP table_hash=8ed167bbe61b00e0 evals=71820
+hash=0a9f2a3da5f8888d cost=29419.776071669698 evals=73416 m=180
+== 400 5 60 0 0 0 -1 13
+OBP table_hash=75c538deed2c82a9 evals=5187
+hash=b1f31b54b54682e1 cost=31854.117243347762 evals=7182 m=13
+== 400 5 60 1 0 0 -1 100
+OBP table_hash=a9313f57fd55ef3a evals=39900
+hash=5e13ad7f6683ee8d cost=27094.265522003174 evals=41895 m=100
+== 400 5 60 1 0 0 -1 17
+OBP table_hash=0f8ad0937316487e evals=6783
+hash=158fe888847142df cost=31729.926944732666 evals=8778 m=17
+== 37 3 40 0 0 0 -1 -1
+OBP table_hash=b6a1fa55a20b36df evals=1332
+hash=c2bc90baa1f195f7 cost=1672.0171379371111 evals=1332 m=37
+== 37 3 40 1 0 0 -1 -1
+OBP table_hash=940e1f0ec9baeabb evals=1332
+hash=08bf0d9fcd4eb451 cost=1672.0171527862549 evals=1332 m=37
+== 70 4 50 0 1 1 -1 -1
+OBP table_hash=82a8e1aff8d56713 evals=4830
+hash=835d0ec598a7a8f8 cost=8865.1936075624963 evals=4830 m=70
+== 70 4 50 1 1 1 -1 9
+OBP table_hash=e5ae34d8ed792d53 evals=621
+hash=fe96262943bb08ba cost=11309.626453399658 evals=897 m=9
+== 65 2 30 0 0 0 0 -1
+OBP table_hash=6e804f7fdb75b3fb evals=4160
+hash=33657b138563a5e4 cost=4285.761782290153 evals=4160 m=65
+== 300 5 1 0 0 0 -1 -1
+OBP table_hash=5abc890424bdb13a evals=53820
+hash=73a59e903609c312 cost=59.805806425159602 evals=55315 m=180
+== 300 5 2 1 0 0 -1 -1
+OBP table_hash=a4fdf0e85f81fe21 evals=53820
+hash=5c05c9c8fbeb3f85 cost=251.36047345399857 evals=54717 m=180
+== 2000 10 200 0 0 0 -1 -1
+OBP table_hash=a00eefb248cb87ec evals=439780
+hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+== 2000 10 200 1 0 0 -1 -1
+OBP table_hash=990d41be5f520620 evals=439780
+hash=df8b36eba6ed1ff9 cost=560855.35897827148 evals=459770 m=220

@@ -205,8 +205,6 @@ void Problem::write_medoid_members(int iter, int rep) const
  */
 void Problem::write_distance_matrix(const std::string &name_) const
 {
-  validate_mmap_cache_identity();
-  validate_dense_cache_configuration();
   const auto path = output_folder_ / utf8_to_path(name_);
   ensure_output_directory(path);
   io::write_csv(distMat, path);
@@ -239,7 +237,7 @@ void Problem::writeBestRep(int best_rep)
  */
 void Problem::read_distance_matrix(const fs::path &distMat_path)
 {
-  ensure_dense_cache_configuration_current();
+  sync_band(); // the matrix is read for the band the Problem computes with
   // Values read into a mapped matrix would persist in its file under this
   // Problem's fingerprint, whatever they were computed from.
   if (distMat.is_mapped())
@@ -260,8 +258,10 @@ void Problem::read_distance_matrix(const fs::path &distMat_path)
       + std::to_string(size()) + " series; a distance matrix has one row and "
         "one column per series, in input order. Load the matrix computed for "
         "these series, or omit it to compute the distances.");
-  if (loaded.size() != 0) distMat = std::move(loaded);
-  fill_request_validated_ = false; // other pairs known: re-check lazily
+  if (loaded.size() != 0) {
+    distMat = std::move(loaded);
+    filled_ = distMat.all_computed();
+  }
 }
 
 } // namespace dtwc

@@ -88,6 +88,7 @@ Problem make_clusters(int N, int k_true, int len, int band, unsigned seed = 1)
 core::ClusteringResult oracle_dp(Problem& prob, int k, double dc)
 {
   const int N = static_cast<int>(prob.size());
+  prob.fill_distance_matrix();
   auto D = [&](int i, int j) { return prob.dist_by_ind(i, j); };
 
   std::vector<index_t> rho(N, 0);
@@ -223,6 +224,7 @@ TEST_CASE("TADPole: LB_Keogh <= DTW <= Euclidean UB on equal-length pairs", "[ta
   // BAND-BOUNDS [HARD]: the case-B upper bound and case-C lower bound are valid.
   const int len = 40, band = pct_band(len, 0.1);
   Problem prob = make_clusters(50, 3, len, band);
+  prob.fill_distance_matrix();
   std::vector<core::Envelope> envs(prob.size());
   for (std::size_t i = 0; i < prob.size(); ++i)
     envs[i] = core::compute_envelope(prob.series(i), band);

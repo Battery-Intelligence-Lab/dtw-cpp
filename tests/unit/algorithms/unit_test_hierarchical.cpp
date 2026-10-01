@@ -324,3 +324,60 @@ TEST_CASE("Hierarchical: cut_dendrogram rejects a malformed Dendrogram", "[hiera
     REQUIRE_NOTHROW(dtwc::algorithms::cut_dendrogram(good, prob, 2));
   }
 }
+
+// ---------------------------------------------------------------------------
+// Properties of a dendrogram on more points than the hand-computed example
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// 1-D points with no equal gaps, so a merge order that is wrong cannot hide behind ties.
+dtwc::Problem make_uneven_line_problem()
+{
+  dtwc::Data data;
+  for (const double x : { 0.0, 1.0, 3.0, 7.0, 12.0, 20.0, 21.0, 35.0, 50.0, 52.0, 70.0, 71.0, 90.0, 113.0, 140.0 }) {
+    data.p_vec.push_back({ x });
+    data.p_names.push_back("p" + std::to_string(data.p_vec.size()));
+  }
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.set_verbose(false);
+  prob.fill_distance_matrix();
+  return prob;
+}
+
+} // anonymous namespace
+
+TEST_CASE("Hierarchical: merge distances never decrease", "[hierarchical][monotone]")
+{
+  // Single, complete and average linkage are monotone: a later merge cannot join
+  // clusters closer than an earlier one did (no inversions).
+  auto prob = make_uneven_line_problem();
+  for (const auto linkage : { dtwc::algorithms::Linkage::Single, dtwc::algorithms::Linkage::Complete,
+                              dtwc::algorithms::Linkage::Average }) {
+    dtwc::algorithms::HierarchicalOptions opts;
+    opts.linkage = linkage;
+    const auto dend = dtwc::algorithms::build_dendrogram(prob, opts);
+    REQUIRE(dend.merges.size() == 14u);
+    for (size_t i = 1; i < dend.merges.size(); ++i)
+      REQUIRE(dend.merges[i].distance >= dend.merges[i - 1].distance);
+  }
+}
+
+TEST_CASE("Hierarchical: every cut has k non-empty clusters, each medoid in its own", "[hierarchical]")
+{
+  auto prob = make_uneven_line_problem();
+  const auto dend = dtwc::algorithms::build_dendrogram(prob);
+  const int n = static_cast<int>(prob.size());
+  for (int k = 1; k <= n; ++k) {
+    const auto cut = dtwc::algorithms::cut_dendrogram(dend, prob, k);
+    REQUIRE(cut.labels.size() == static_cast<size_t>(n));
+    REQUIRE(cut.medoid_indices.size() == static_cast<size_t>(k));
+    const std::set<int> labels(cut.labels.begin(), cut.labels.end());
+    REQUIRE(labels.size() == static_cast<size_t>(k));
+    REQUIRE(*labels.begin() == 0);
+    REQUIRE(*labels.rbegin() == k - 1);
+    for (int c = 0; c < k; ++c)
+      REQUIRE(cut.labels[static_cast<size_t>(cut.medoid_indices[static_cast<size_t>(c)])] == c);
+  }
+}

@@ -263,7 +263,7 @@ TEST_CASE("Independent MV mode rejects non-Standard variant / missing strategy",
   {
     dtwc::Problem prob;
     prob.set_data(dtwc::Data(base));
-    prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+    prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
     dtwc::core::DTWVariantParams vp;
     vp.variant = dtwc::core::DTWVariant::Standard;
     vp.mv_mode = dtwc::core::MVMode::Independent;

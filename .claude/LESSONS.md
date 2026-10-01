@@ -283,3 +283,5 @@ Append new entries at the end of their section; keep each to a few lines.
   its Parquet case. At run time put pyarrow and `pyarrow.libs` on PATH, else exit 0xc0000135 (F1, 2026-09-30).
 - **A CUDA error check must consume the error it reports** (`cudaGetLastError`): otherwise the sticky error fails the
   thread's next, valid call with the same message (C1 `13246cb`: a refused fill poisoned the next fill).
+- **A mutable accessor overload wins for any non-const object, even through `const auto &`**: `Problem::distance_matrix()`
+  (mutable) clears `filled_`, so a reader must call it through `std::as_const` (E1, 2026-09-30).

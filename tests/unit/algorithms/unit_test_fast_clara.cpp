@@ -551,6 +551,48 @@ TEST_CASE("FastCLARA: propagates ndim to sub-problem", "[clara][mv]")
   REQUIRE(result.total_cost >= 0.0);
 }
 
+// The reported cost is the parent's multivariate distance to each point's
+// medoid. The channels differ in scale, so reading the flat buffer as one
+// univariate series (the failure this pins) gives another number.
+TEST_CASE("FastCLARA: total_cost of a multivariate parent is its multivariate distance",
+          "[clara][mv]")
+{
+  constexpr int N = 12;
+  dtwc::Data data;
+  data.ndim = 2;
+  for (int i = 0; i < N; ++i) {
+    std::vector<data_t> flat;
+    for (int t = 0; t < 4; ++t) {
+      flat.push_back(i + 0.5 * t);
+      flat.push_back(10.0 * ((i * 7) % 5) + 3.0 * t);
+    }
+    data.p_vec.push_back(std::move(flat));
+    data.p_names.push_back("s" + std::to_string(i));
+  }
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.set_verbose(false);
+
+  dtwc::algorithms::CLARAOptions opts;
+  opts.n_clusters = 2;
+  opts.n_samples = 2;
+  opts.sample_size = 8;
+  opts.random_seed = 5;
+  const auto result = dtwc::algorithms::fast_clara(prob, opts);
+
+  // fast_clara fills no matrix on its parent; the bound function is the multivariate distance.
+  const auto &distance = prob.dtw_function();
+  double multivariate = 0.0, flat_univariate = 0.0;
+  for (int p = 0; p < N; ++p) {
+    const int medoid = result.medoid_indices[static_cast<size_t>(result.labels[static_cast<size_t>(p)])];
+    multivariate += distance(prob.series(p), prob.series(medoid));
+    flat_univariate += dtwc::dtwFull_L<data_t>(prob.series(p), prob.series(medoid));
+  }
+  REQUIRE_THAT(result.total_cost, WithinAbs(multivariate, 1e-9));
+  REQUIRE(std::abs(multivariate - flat_univariate) > 1.0);
+}
+
 // ===========================================================================
 // Test 13: FastCLARA propagates missing_strategy to sub-problem.
 // ===========================================================================
@@ -567,7 +609,7 @@ TEST_CASE("FastCLARA: propagates missing_strategy", "[clara][missing]")
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   prob.set_verbose(false);
 
   dtwc::algorithms::CLARAOptions opts;

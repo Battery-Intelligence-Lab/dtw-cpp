@@ -1,0 +1,30 @@
+base [DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.
+base   Distance-matrix computation will be extremely slow for large datasets.
+base   Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.
+base OBP fill_s=19.513016 table_hash=a00eefb248cb87ec evals=439780
+base call_s=20.350749 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head [DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.
+head   Distance-matrix computation will be extremely slow for large datasets.
+head   Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.
+head OBP fill_s=2.954390 table_hash=a00eefb248cb87ec evals=439780
+head call_s=3.861064 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base [DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.
+base   Distance-matrix computation will be extremely slow for large datasets.
+base   Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.
+base OBP fill_s=19.486715 table_hash=a00eefb248cb87ec evals=439780
+base call_s=20.403839 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head [DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.
+head   Distance-matrix computation will be extremely slow for large datasets.
+head   Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.
+head OBP fill_s=3.014405 table_hash=a00eefb248cb87ec evals=439780
+head call_s=3.929545 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+base [DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.
+base   Distance-matrix computation will be extremely slow for large datasets.
+base   Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.
+base OBP fill_s=19.596989 table_hash=a00eefb248cb87ec evals=439780
+base call_s=20.437563 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220
+head [DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.
+head   Distance-matrix computation will be extremely slow for large datasets.
+head   Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.
+head OBP fill_s=3.268741 table_hash=a00eefb248cb87ec evals=439780
+head call_s=4.128402 hash=db63c95b8a23b53b cost=560855.36730926076 evals=459770 m=220

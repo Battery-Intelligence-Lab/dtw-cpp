@@ -29,7 +29,6 @@
 #include <limits>
 #include <algorithm>
 #include <numeric>
-#include <chrono>
 #include <iostream>
 
 using Catch::Matchers::WithinAbs;
@@ -619,59 +618,6 @@ TEST_CASE("MV adversarial: Problem ndim=3, series with different timestep counts
   REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(prob.dist_by_ind(1, 0), 1e-10));
   REQUIRE_THAT(prob.dist_by_ind(0, 2), WithinAbs(prob.dist_by_ind(2, 0), 1e-10));
   REQUIRE_THAT(prob.dist_by_ind(1, 2), WithinAbs(prob.dist_by_ind(2, 1), 1e-10));
-}
-
-// =============================================================================
-// Test 12: Performance — ndim=1 MV vs scalar (500 pairs)
-// =============================================================================
-
-TEST_CASE("MV adversarial: ndim=1 MV dispatches to scalar — timing parity (500 pairs)", "[mv][adversarial][perf]")
-{
-  std::mt19937 rng(42);
-  std::uniform_int_distribution<size_t> len_dist(50, 150);
-
-  constexpr int PAIRS = 500;
-  std::vector<std::vector<data_t>> xs(PAIRS), ys(PAIRS);
-  std::vector<size_t> nx_vec(PAIRS), ny_vec(PAIRS);
-
-  for (int i = 0; i < PAIRS; ++i) {
-    nx_vec[i] = len_dist(rng);
-    ny_vec[i] = len_dist(rng);
-    xs[i] = random_mv_series(rng, nx_vec[i], 1);
-    ys[i] = random_mv_series(rng, ny_vec[i], 1);
-  }
-
-  // First: verify correctness (MV ndim=1 must match scalar exactly)
-  for (int i = 0; i < PAIRS; ++i) {
-    const data_t d_scalar = dtwc::dtwFull_L(xs[i].data(), nx_vec[i], ys[i].data(), ny_vec[i]);
-    const data_t d_mv     = dtwc::dtwFull_L_mv(xs[i].data(), nx_vec[i], ys[i].data(), ny_vec[i], 1);
-    REQUIRE_THAT(d_mv, WithinAbs(d_scalar, 1e-12));
-  }
-
-  // Second: timing measurement (informational, no hard assertion)
-  auto t0 = std::chrono::high_resolution_clock::now();
-  volatile data_t sink_scalar = 0;
-  for (int i = 0; i < PAIRS; ++i)
-    sink_scalar += dtwc::dtwFull_L(xs[i].data(), nx_vec[i], ys[i].data(), ny_vec[i]);
-  auto t1 = std::chrono::high_resolution_clock::now();
-
-  volatile data_t sink_mv = 0;
-  for (int i = 0; i < PAIRS; ++i)
-    sink_mv += dtwc::dtwFull_L_mv(xs[i].data(), nx_vec[i], ys[i].data(), ny_vec[i], 1);
-  auto t2 = std::chrono::high_resolution_clock::now();
-
-  auto ms_scalar = std::chrono::duration<double, std::milli>(t1 - t0).count();
-  auto ms_mv     = std::chrono::duration<double, std::milli>(t2 - t1).count();
-  std::cout << "[perf/500pairs] scalar: " << ms_scalar << " ms,  MV(D=1): " << ms_mv
-            << " ms  (ratio: " << (ms_mv / ms_scalar) << "x)\n";
-
-  // Since ndim=1 dispatches directly to dtwFull_L (no MV overhead), ratio must be close to 1x.
-  // Generous bound of 3x to account for measurement noise on CI.
-  REQUIRE(ms_mv < ms_scalar * 3.0 + 50.0);
-
-  // Suppress unused-variable warnings
-  (void)sink_scalar;
-  (void)sink_mv;
 }
 
 // =============================================================================

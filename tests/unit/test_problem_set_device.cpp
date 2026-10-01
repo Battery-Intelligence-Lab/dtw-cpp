@@ -77,16 +77,16 @@ TEST_CASE("IF-1: set_device(cpu) leaves a CPU strategy alone and moves a GPU one
 {
   auto prob = problem_with_data();
   prob.set_device(Device::CPU);
-  CHECK(prob.distance_strategy == DistanceMatrixStrategy::Auto);
+  CHECK(prob.distance_strategy() == DistanceMatrixStrategy::Auto);
 
   prob.set_distance_strategy(DistanceMatrixStrategy::BruteForce);
   prob.set_device(Device::CPU);
-  CHECK(prob.distance_strategy == DistanceMatrixStrategy::BruteForce);
+  CHECK(prob.distance_strategy() == DistanceMatrixStrategy::BruteForce);
   for (const auto gpu : { DistanceMatrixStrategy::CUDA,
                           DistanceMatrixStrategy::Metal }) {
     prob.set_distance_strategy(gpu);
     prob.set_device(Device::CPU);
-    CHECK(prob.distance_strategy == DistanceMatrixStrategy::Auto);
+    CHECK(prob.distance_strategy() == DistanceMatrixStrategy::Auto);
   }
   prob.fill_distance_matrix();
   // The fill runs the SIMD lanes; dtwFull_L is the per-pair kernel.
@@ -102,17 +102,17 @@ TEST_CASE("IF-1: set_device(gpu) selects this build's backend and records the in
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
   prob.set_device(Device::GPU, 2);
 #  if defined(DTWC_HAS_CUDA)
-  CHECK(prob.distance_strategy == DistanceMatrixStrategy::CUDA);
+  CHECK(prob.distance_strategy() == DistanceMatrixStrategy::CUDA);
 #  else
-  CHECK(prob.distance_strategy == DistanceMatrixStrategy::Metal);
+  CHECK(prob.distance_strategy() == DistanceMatrixStrategy::Metal);
 #  endif
-  CHECK(prob.cuda_settings.device_id == 2);
+  CHECK(prob.cuda_settings().device_id == 2);
   prob.set_device(Device::GPU);
-  CHECK(prob.cuda_settings.device_id == 0);
+  CHECK(prob.cuda_settings().device_id == 0);
 #else
   CHECK(message_of<dtwc::DeviceError>([&] { prob.set_device(Device::GPU); })
         == kMsgGpuNotBuilt);
-  CHECK(prob.distance_strategy == DistanceMatrixStrategy::Auto);
+  CHECK(prob.distance_strategy() == DistanceMatrixStrategy::Auto);
 #endif
 }
 
@@ -121,8 +121,8 @@ TEST_CASE("IF-1: set_device rejects a negative index", "[if1][device]")
   auto prob = problem_with_data();
   CHECK_THAT(message_of<dtwc::InvalidInput>([&] { prob.set_device(Device::GPU, -1); }),
              ContainsSubstring("got -1"));
-  CHECK(prob.distance_strategy == DistanceMatrixStrategy::Auto);
-  CHECK(prob.cuda_settings.device_id == 0);
+  CHECK(prob.distance_strategy() == DistanceMatrixStrategy::Auto);
+  CHECK(prob.cuda_settings().device_id == 0);
 }
 
 TEST_CASE("IF-1: a Problem does not read the process-wide device", "[if1][device]")
@@ -131,7 +131,7 @@ TEST_CASE("IF-1: a Problem does not read the process-wide device", "[if1][device
   (void)dtwc::device("gpu");
 #endif
   const dtwc::Problem prob("fresh");
-  CHECK(prob.distance_strategy == DistanceMatrixStrategy::Auto);
+  CHECK(prob.distance_strategy() == DistanceMatrixStrategy::Auto);
   CHECK(dtwc::device("cpu") == "cpu");
 }
 

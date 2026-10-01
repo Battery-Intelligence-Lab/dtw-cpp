@@ -154,7 +154,7 @@ TEST_CASE("set_metric: multivariate Standard DTW takes the metric, dependent and
         CAPTURE(static_cast<int>(metric), band, static_cast<int>(mode));
         auto prob = make_problem(series, ndim);
         prob.set_band(band);
-        auto params = prob.variant_params;
+        auto params = prob.variant_params();
         params.mv_mode = mode;
         prob.set_variant(params);
         prob.set_metric(metric);
@@ -196,7 +196,7 @@ TEST_CASE("set_metric: a metric the kernels cannot take is refused before any pa
       auto squared = make_problem(series);
       squared.set_metric(MetricType::SquaredL2);
       REQUIRE_THROWS_AS(squared.set_variant(variant), dtwc::InvalidInput);
-      CHECK(squared.variant_params.variant == dtwc::core::DTWVariant::Standard);
+      CHECK(squared.variant_params().variant == dtwc::core::DTWVariant::Standard);
     }
     for (const auto missing : { dtwc::core::MissingStrategy::ZeroCost,
                                 dtwc::core::MissingStrategy::AROW,
@@ -205,18 +205,8 @@ TEST_CASE("set_metric: a metric the kernels cannot take is refused before any pa
       auto squared = make_problem(series);
       squared.set_metric(MetricType::SquaredL2);
       REQUIRE_THROWS_AS(squared.set_missing_strategy(missing), dtwc::InvalidInput);
-      CHECK(squared.missing_strategy == dtwc::core::MissingStrategy::Error);
+      CHECK(squared.missing_strategy() == dtwc::core::MissingStrategy::Error);
     }
-  }
-
-  SECTION("a raw field edit is refused by the fill, which computes nothing")
-  {
-    auto prob = make_problem(series);
-    prob.set_metric(MetricType::SquaredL2);
-    prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
-    REQUIRE_THROWS_AS(prob.fill_distance_matrix(), dtwc::InvalidInput);
-    prob.missing_strategy = dtwc::core::MissingStrategy::Error;
-    CHECK_FALSE(prob.is_distance_matrix_filled());
   }
 }
 

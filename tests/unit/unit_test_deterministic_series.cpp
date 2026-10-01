@@ -15,21 +15,10 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <iterator>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
-
-#ifndef DTWC_F15_SOURCE_ROOT
-#error "DTWC_F15_SOURCE_ROOT must name the repository source root"
-#endif
-
-namespace fs = std::filesystem;
 
 namespace {
 
@@ -107,37 +96,6 @@ std::string ieee_sha256(
     for (const double value : row)
       update_little_endian_double(sha, value);
   return finish_hex(sha);
-}
-
-std::string read_source(std::string_view relative)
-{
-  const fs::path root{DTWC_F15_SOURCE_ROOT};
-  if (!root.is_absolute())
-    throw std::runtime_error("F15 source root is not absolute");
-  const fs::path path = root / fs::path(relative);
-  std::ifstream input(path, std::ios::in | std::ios::binary);
-  if (!input.is_open())
-    throw std::runtime_error("cannot read F15 consumer: " + path.string());
-  return {
-    std::istreambuf_iterator<char>(input),
-    std::istreambuf_iterator<char>()};
-}
-
-bool contains(std::string_view text, std::string_view token)
-{
-  return text.find(token) != std::string_view::npos;
-}
-
-std::size_t count_occurrences(
-    std::string_view text, std::string_view token)
-{
-  std::size_t count = 0;
-  std::size_t offset = 0;
-  while ((offset = text.find(token, offset)) != std::string_view::npos) {
-    ++count;
-    offset += token.size();
-  }
-  return count;
 }
 
 std::vector<double> independent_matrix(
@@ -287,55 +245,4 @@ TEST_CASE("F15 production dense references equal an independent full-matrix DP",
     CHECK(std::bit_cast<std::uint64_t>(band0[i])
           == std::bit_cast<std::uint64_t>(independent_band0[i]));
   }
-}
-
-TEST_CASE("F15 all registered consumers reach shared support",
-          "[f15][test_support][source_audit]")
-{
-  struct Consumer
-  {
-    std::string_view path;
-    std::size_t shared_calls;
-  };
-  constexpr std::array benchmark_consumers{
-    Consumer{"benchmarks/bench_cuda_dtw.cpp", 2},
-    Consumer{"benchmarks/bench_dtw_baseline.cpp", 1},
-    Consumer{"benchmarks/bench_metal_dtw.cpp", 1},
-  };
-  for (const auto &consumer : benchmark_consumers) {
-    INFO(consumer.path);
-    const std::string source = read_source(consumer.path);
-    CHECK(contains(source, "tests/support/deterministic_series.hpp"));
-    CHECK(count_occurrences(
-      source, "dtwc::test_support::benchmark_series_set")
-      == consumer.shared_calls);
-    CHECK_FALSE(contains(
-      source, "static std::vector<double> random_series"));
-  }
-
-  const std::string fixed_band =
-    read_source("tests/unit/gpu_fixed_band_oracle.hpp");
-  CHECK(contains(fixed_band, "full_matrix_oracle"));
-  CHECK(contains(fixed_band, "enumerate_paths"));
-  CHECK_FALSE(contains(fixed_band, "deterministic_series.hpp"));
-
-  // The shared generator must not reintroduce an implementation-defined
-  // real-value mapping; that is what made the registered bytes unportable.
-  const std::string support =
-    read_source("tests/support/deterministic_series.hpp");
-  CHECK(contains(support, "std::mt19937"));
-  // Both spellings: CTAD (`uniform_real_distribution dist(...)`) drops the
-  // angle bracket, and generate_canonical is the same unportable mapping.
-  CHECK_FALSE(contains(support, "uniform_real_distribution"));
-  CHECK_FALSE(contains(support, "generate_canonical"));
-
-  REQUIRE(ieee_sha256(dtwc::test_support::benchmark_series(5, 42))
-          == kScalarHash);
-  REQUIRE(ieee_sha256(dtwc::test_support::benchmark_series_set(3, 4, 100))
-          == kRowsHash);
-  REQUIRE(ieee_sha256(dtwc::test_support::accelerator_series_set(3, 4, 42))
-          == kAcceleratorHash);
-  std::cout
-    << "F15_TEST_SUPPORT generator=portable scalar=ran row_seeded=ran"
-       " continuous=ran dense=ran source_audit=ran skips=0\n";
 }

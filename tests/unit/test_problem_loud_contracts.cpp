@@ -131,7 +131,7 @@ TEST_CASE("set_cuda_settings refuses a negative device index and keeps the setti
       prob.set_cuda_settings(settings), dtwc::InvalidInput,
       MessageMatches(ContainsSubstring("Problem::set_cuda_settings: device_id must be >= 0; got "
                                        + std::to_string(bad))));
-    CHECK(prob.cuda_settings.device_id == 0);
+    CHECK(prob.cuda_settings().device_id == 0);
   }
   // Control: index 0 is valid on every build.
   REQUIRE_NOTHROW(prob.set_cuda_settings(dtwc::CUDASettings{}));
@@ -263,6 +263,21 @@ TEST_CASE("F25: the Problem writers name series in every storage mode",
   CHECK_THAT(text, ContainsSubstring("alpha,gamma"));
   CHECK_THAT(text, ContainsSubstring("beta,alpha"));
   CHECK_THAT(text, ContainsSubstring("gamma,gamma"));
+}
+
+TEST_CASE("B-05: an output folder that cannot be created is an IOError",
+          "[problem][b05][io]")
+{
+  // A child of a regular file cannot be created on any platform. The run
+  // artefacts are the first thing cluster_and_process writes, so it fails there.
+  ScratchDirectory dir{ "b05_uncreatable" };
+  const auto blocker = dir.path / "blocker";
+  write_text(blocker, "not a directory\n");
+  auto prob = six_series("b05_uncreatable");
+  prob.set_n_clusters(2);
+  prob.set_output_folder(blocker / "deep" / "nested" / "path");
+
+  REQUIRE_THROWS_AS(prob.cluster_and_process(), dtwc::IOError);
 }
 
 #ifndef _WIN32

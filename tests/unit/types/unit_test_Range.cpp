@@ -1,9 +1,10 @@
 /**
  * @file unit_test_Range.cpp
- * @brief Unit tests for the dtwc::Range class.
+ * @brief Unit tests for the dtwc::Range class and its dtwc::Index.
  *
  * Covers default construction, single- and double-parameter construction,
- * and range-based iteration correctness.
+ * range-based iteration correctness, and the Index arithmetic that iteration
+ * does not use (decrement, difference, offsets, subscript, equality).
  *
  * @date 31 Dec 2023
  * @authors Volkan Kumtepeli, Becky Perriment
@@ -50,4 +51,15 @@ TEST_CASE("Range class functionality", "[Range]")
 
     REQUIRE(sum == 3); // 0 + 1 + 2
   }
+}
+
+TEST_CASE("Index arithmetic and comparison", "[Index]")
+{
+  REQUIRE(*(--Index(3)) == 2);
+  REQUIRE((Index(10) - Index(5)) == 5);
+  REQUIRE(*(Index(5) + 5) == 10);
+  REQUIRE(*(Index(10) - 5) == 5);
+  REQUIRE(Index(10)[2] == 12);
+  REQUIRE(Index(5) == Index(5));
+  REQUIRE_FALSE(Index(5) == Index(10));
 }

@@ -127,6 +127,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ CUDA: the global wavefront above L 2048 where fewer than 3 blocks fit an SM (C1's probe: FP32 L 6000/8000 at 0.64/0.66 of the shared route, FP64 L 2049–4000 at 0.76–0.84) — its own band; the Shared kernel's unreachable preload branch goes with it (C1) (C2 63d5d0a; merged dd33a0e; FP32 L 6000–8446 at 0.64–0.68 of base, FP64 L 2049–4223 at 0.76–0.84; deleting the Shared kernel's preload branch FALSIFIED — it raises occupancy and slows FP32 L 513–2757 by 3–23 %, so the branch stays)
 - ☐ CUDA: the FP64 Shared kernel at 4 blocks per SM (C2 lead) — its own band
 - ☑ CUDA floor: compute capability 8.0 (the A30's generation, Volkan 09-30); older devices get a typed DeviceError before any allocation (C1 c445089)
+- ☑ CPU floor x86-64-v3 for release archives and wheels (Volkan 09-30); one `DTWC_ARCH_LEVEL` (native | v3 | v4) (V3) (V3 165e48d, 41a1be1; merged 169db40)
+- ☐ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
+  10-01); the GCC-only test failures explained (V4)
+- ☐ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1)
+- ☐ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
+  its own band
 - ☑ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
   L can shrink it under each other's launch; set it once to the opt-in maximum less the static bytes, behind a band (W4d) (350ae39)
 - ☑ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
@@ -139,17 +145,19 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W11a `Problem`, `Data`, `ClusteringResult`, `Config`, algorithm signatures and loops; `[[deprecated]]`
   `set_clusters(std::vector<int>)` for one release (W11a 5cb6693, 28cb2eb, e84ef04, 77e4227; merged cfeac4b; CLI outputs and conformance byte-identical; PAM swap counters identical)
 - ☑ W11b Python `np.int64`, MATLAB double 1-based labels (W11b d3f5aaf, 9d9233d, 07cbf78; merged 8a9db51)
+- ☑ W11c the last 32-bit guards go — Python `_CLI_INT_MAX` / `_CLI_UINT_MAX` / `_CPP_INT_MAX` and the slurm_remote.sh range checks; nanobind and dtwc_cl's parser refuse what they cannot hold (W11c 8a0d5e4, 35d9de7, 9ca7ecd, 8e39b96; merged d8d831d)
 
 ## E — interface (W7 → W8 ‖ W9 + W10)
 
-- ☐ W7a `DistanceConfig`; `set_distance / set_band / set_metric / set_variant / set_missing_strategy`
-  invalidate the matrix; `bool filled_` — MATLAB cannot set `msm_c`, `twe_nu`, `twe_lambda` today (W6m); the same setters clear the clustering too (B3)
-- ☐ W7b `resolve_dtw_fn(const DistanceConfig&)`; O(1) `dist_by_ind`; the preflight machinery goes. Acceptance:
+- ☑ W7a `DistanceConfig`; `set_distance / set_band / set_metric / set_variant / set_missing_strategy`
+  invalidate the matrix; `bool filled_` — MATLAB cannot set `msm_c`, `twe_nu`, `twe_lambda` today (W6m); the same setters clear the clustering too (B3) (E1 2645fbc, 3c15a4e; merged 770816e)
+- ☑ W7b `resolve_dtw_fn(const DistanceConfig&)`; O(1) `dist_by_ind`; the preflight machinery goes. Acceptance:
   `dist_by_ind`'s parallel read path has no critical, atomic, validation flag or lazy allocation; a method that
-  needs the matrix prepares it serially at entry
+  needs the matrix prepares it serially at entry (E1 2645fbc, 3c15a4e; merged 770816e; PAM swap 5.6–5.9× faster, no lock or atomic left in dtwc/)
 - ☐ W7c one `validate(DistanceConfig)`; `core/dtw.*`, `DTWOptions`, selector validation go
 - ☐ W7d one orientation helper replaces the copied preambles
-- ☐ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers
+- ☐ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers (WDTW weights at bind done in E1); the mutable
+  `distance_matrix()` overload gets its own name, so a reader cannot clear `filled_` by accident (E1)
 - ☐ W7f dead NaN functors and public helpers go
 - ☐ W7g one `distance::dtw` per language
 - ☐ W13b one finite scan at each matrix intake; read-only loops lose per-lookup checks
@@ -157,9 +165,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W8b one writer (`write_result_files`); `Result::save` after streaming fixed
 - ☐ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1)
 - ☐ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases
-- ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
+- ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
+  silently editing a copy (E1) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
 - ☐ W9c `hpc` → `job.toml`; the positional transport goes; `device=hpc` takes `gpu_device=` (a100, a6000, l40s, h100, …) to pick the
-  SLURM GPU and the build's CUDA arch; a build on the target node detects both itself (Volkan 09-30)
+  SLURM GPU and the build's CUDA arch; a build on the target node detects both itself (Volkan 09-30). S1 notes:
+  `slurm_remote.sh build` submits with no `--gres` (always portable); `jobs/gpu_test.slurm` and
+  `ucr_benchmark_gpu.slurm` ask for any GPU and can land on a refused V100; ARC documents `gpu:<type>:<n>` (P100,
+  V100, RTX, RTX8000, A100) and constraints `gpu_sku`/`gpu_gen`/`gpu_cc`/`gpu_mem`/`nvlink`, no type for RTX A6000,
+  H100 or L40S
 - ☐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
   regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
   (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m)
@@ -171,7 +184,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## F — tests to their oracles (W12)
 
-- ☐ W12a unrun and wave/phase test files go (rescued cases named)
+- ☑ W12a unrun and wave/phase test files go (rescued cases named) (W12a 3368bc9, 4c0a163, 1be6b73, 0dc3480, 58568f9, ed61a1a, 7b99ce1, da1739d, 11a468a, c7111cf, cce3398, 2d02451; merged 6c6f3d4; −4,217/+243; the hidden benches that records cite stay)
 - ☐ W12b `tests/unit/adversarial/` dissolved per subject
 - ☐ W12c repeated DTW property tests → one table-driven `core/test_dtw.cpp` against a new `tests/support/dtw_oracle.hpp`
 - ☐ W12d `test_contract_parity.py` existence lists → one table
@@ -179,6 +192,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `unit_test_variant_distmat`) (F1 992d51f, 50d2c46; merged b5c7048; the 3 FIXTURE_ROOT tests and 6 cmake -P CLI tests keep one directory inside the build tree, so only two runs of the same build tree collide)
 - ☐ `test_hpc` and `test_api` honour `DTWC_CL_PATH`; today `find_dtwc_binary` takes the newest `dtwc_cl` under
   `build*/`, e.g. an Arrow build that cannot load its DLLs
+- ☐ `.github/workflows/python-tests.yml` runs pytest with no dtwc_cl and no `DTWC_CL_PATH`; `test_api`'s two
+  CLI-parity cases assert a binary exists (F2 note; CI not run here)
 
 ## G — docs and release prep (W14)
 
@@ -192,7 +207,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 - ☐ one `kmedoids_pp` (W13c) · ☐ HiGHS model built row-wise (W13d) · ☐ barycenter workspace (W13e)
 - ☑ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel (P4 9168ed9; merged 69be49c; that step 21.9× at 24 threads, the whole call 1.89× at N 2000, k 10, L 200 — identical labels, medoids, cost)
-- ☐ OneBatchPAM's batch table fill (m·(N−1) DTW calls, 95 % of the call after P4) on the P1 lanes kernel
+- ☑ OneBatchPAM's batch table fill (m·(N−1) DTW calls, 95 % of the call after P4) on the P1 lanes kernel (P5 1b69614; merged bac9120; table fill 4.61×, whole call 3.87× at N 2000, k 10, L 200, 24 threads; bitwise identical over 24 configurations)
 - ☐ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
 - ☑ PF-5 probe: SIMD lanes across pairs PASS, 3.7–7.9× single-thread f64, bit-identical (2026-09-29; P1 in phase B
   integrates it)

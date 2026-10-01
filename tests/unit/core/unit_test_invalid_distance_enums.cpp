@@ -99,7 +99,7 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
     Problem problem{"m47_valid_variant"};
     problem.set_data(basic_f64_data());
     CHECK_NOTHROW(problem.set_variant(params));
-    CHECK_NOTHROW((void)core::resolve_dtw_fn<double>(problem));
+    CHECK_NOTHROW((void)core::resolve_dtw_fn<double>(problem.distance(), problem.data()));
   }
 
   for (const auto missing : {
@@ -114,11 +114,11 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
 
   Problem dependent{"m47_valid_dependent"};
   dependent.set_data(basic_f64_data(2));
-  CHECK_NOTHROW((void)core::resolve_dtw_fn<double>(dependent));
+  CHECK_NOTHROW((void)core::resolve_dtw_fn<double>(dependent.distance(), dependent.data()));
   core::DTWVariantParams independent_params;
   independent_params.mv_mode = core::MVMode::Independent;
   dependent.set_variant(independent_params);
-  CHECK_NOTHROW((void)core::resolve_dtw_fn<double>(dependent));
+  CHECK_NOTHROW((void)core::resolve_dtw_fn<double>(dependent.distance(), dependent.data()));
 
   for (const auto strategy : {
          DistanceMatrixStrategy::Auto,

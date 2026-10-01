@@ -4,6 +4,15 @@ Volkan's instructions, verbatim. Agents do not edit the quoted text; new instruc
 with a date. The target they lead to is in `MAP.md` and `DECISIONS.md`; how it is scheduled is in
 `PLAN.md`.
 
+## 2026-10-01 — FP contraction
+
+On whether GCC's FMA contraction should be turned off (at x86-64-v3 the SIMD lanes and per-pair kernels differ
+in the last bits):
+
+> We don't need bit-by-bit equivalence between compilers. So they could differ minimally like 1e-9 epsilon or
+> something. However, this shouldn't change the clustering results. So as long as we have robust clustering
+> accuracy, and only lose an epsilon level of accuracy then go for the speed of course.
+
 ## 2026-09-30 — continue
 
 > Please continue but don't call fable, for delegating simpler tasks use Sonnet 5.5 xhigh
@@ -30,6 +39,10 @@ Answers of the same evening (to the orchestrator's questions):
 > hardware in slurm. We could definitely   device=hpc  and  gpu_device=...  name here. So that we could deploy the
 > most specialised code if checking and automatically deploying the most high performance code was not available.
 > If it is, then we could just internally detect it.
+
+Later that evening, on the test deletions:
+
+> Yes, please delete the trivial tests, we don't need to write tests just for writing tests.
 
 ## 2026-09-29 — continue
 

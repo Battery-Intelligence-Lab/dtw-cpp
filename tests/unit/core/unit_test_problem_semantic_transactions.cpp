@@ -79,6 +79,7 @@ void inject_complete_dense_cache(dtwc::Problem &problem, double sentinel)
   matrix.set(0, 0, 0.0);
   matrix.set(0, 1, sentinel);
   matrix.set(1, 1, 0.0);
+  problem.fill_distance_matrix(); // every pair is set: marks it complete, computes nothing
 }
 
 void require_complete_dense_cache(dtwc::Problem &problem, double sentinel)
@@ -117,6 +118,7 @@ void inject_complete_mmap_cache(dtwc::Problem &problem, double sentinel)
   matrix.set(0, 1, sentinel);
   matrix.set(1, 1, 0.0);
   matrix.sync();
+  problem.fill_distance_matrix(); // every pair is set: marks it complete, computes nothing
 }
 
 bool mapped_cache_matches(const dtwc::Problem &problem, double sentinel)
@@ -150,8 +152,8 @@ TEMPLATE_TEST_CASE(
       problem.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost),
       Catch::Matchers::Equals(cross_product_error));
 
-    CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::ADTW);
-    CHECK(problem.missing_strategy == dtwc::core::MissingStrategy::Error);
+    CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::ADTW);
+    CHECK(problem.missing_strategy() == dtwc::core::MissingStrategy::Error);
     check_complete_dense_cache(problem, 123.0);
   }
 
@@ -167,8 +169,8 @@ TEMPLATE_TEST_CASE(
       problem.set_variant(dtwc::core::DTWVariant::ADTW),
       Catch::Matchers::Equals(cross_product_error));
 
-    CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::Standard);
-    CHECK(problem.missing_strategy == dtwc::core::MissingStrategy::ZeroCost);
+    CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::Standard);
+    CHECK(problem.missing_strategy() == dtwc::core::MissingStrategy::ZeroCost);
     check_complete_dense_cache(problem, 456.0);
   }
 
@@ -180,16 +182,16 @@ TEMPLATE_TEST_CASE(
     inject_complete_dense_cache(problem, 789.0);
     require_complete_dense_cache(problem, 789.0);
 
-    auto candidate = problem.variant_params;
+    auto candidate = problem.variant_params();
     candidate.variant = dtwc::core::DTWVariant::ADTW;
     candidate.adtw_penalty = 7.5;
     CHECK_THROWS_WITH(
       problem.set_variant(candidate),
       Catch::Matchers::Equals(cross_product_error));
 
-    CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::Standard);
-    CHECK(problem.variant_params.adtw_penalty == 1.0);
-    CHECK(problem.missing_strategy == dtwc::core::MissingStrategy::ZeroCost);
+    CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::Standard);
+    CHECK(problem.variant_params().adtw_penalty == 1.0);
+    CHECK(problem.missing_strategy() == dtwc::core::MissingStrategy::ZeroCost);
     check_complete_dense_cache(problem, 789.0);
   }
 }
@@ -211,7 +213,7 @@ TEMPLATE_TEST_CASE(
     check_complete_dense_cache(problem, 321.0);
     CHECK_NOTHROW(problem.set_variant(dtwc::core::DTWVariant::ADTW));
     check_complete_dense_cache(problem, 321.0);
-    const auto same = problem.variant_params;
+    const auto same = problem.variant_params();
     CHECK_NOTHROW(problem.set_variant(same));
     check_complete_dense_cache(problem, 321.0);
   }
@@ -225,7 +227,7 @@ TEMPLATE_TEST_CASE(
 
     CHECK_NOTHROW(
       problem.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost));
-    CHECK(problem.missing_strategy == dtwc::core::MissingStrategy::ZeroCost);
+    CHECK(problem.missing_strategy() == dtwc::core::MissingStrategy::ZeroCost);
     CHECK_FALSE(problem.is_distance_matrix_filled());
   }
 
@@ -237,7 +239,7 @@ TEMPLATE_TEST_CASE(
     require_complete_dense_cache(problem, 987.0);
 
     CHECK_NOTHROW(problem.set_variant(dtwc::core::DTWVariant::ADTW));
-    CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::ADTW);
+    CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::ADTW);
     CHECK_FALSE(problem.is_distance_matrix_filled());
   }
 
@@ -248,12 +250,12 @@ TEMPLATE_TEST_CASE(
     inject_complete_dense_cache(problem, 246.0);
     require_complete_dense_cache(problem, 246.0);
 
-    auto candidate = problem.variant_params;
+    auto candidate = problem.variant_params();
     candidate.variant = dtwc::core::DTWVariant::WDTW;
     candidate.wdtw_g = 0.2;
     CHECK_NOTHROW(problem.set_variant(candidate));
-    CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::WDTW);
-    CHECK(problem.variant_params.wdtw_g == 0.2);
+    CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::WDTW);
+    CHECK(problem.variant_params().wdtw_g == 0.2);
     CHECK_FALSE(problem.is_distance_matrix_filled());
   }
 }
@@ -308,11 +310,11 @@ TEST_CASE("M48 rejected capability mutations preserve multivariate state and cac
           Catch::Matchers::Equals(test.message));
       }
 
-      CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::Standard);
-      CHECK(problem.variant_params.mv_mode == dtwc::core::MVMode::Dependent);
-      CHECK(problem.variant_params.twe_lambda == 1.0);
-      CHECK(problem.variant_params.adtw_penalty == 1.0);
-      CHECK(problem.missing_strategy == dtwc::core::MissingStrategy::Error);
+      CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::Standard);
+      CHECK(problem.variant_params().mv_mode == dtwc::core::MVMode::Dependent);
+      CHECK(problem.variant_params().twe_lambda == 1.0);
+      CHECK(problem.variant_params().adtw_penalty == 1.0);
+      CHECK(problem.missing_strategy() == dtwc::core::MissingStrategy::Error);
       check_complete_dense_cache(problem, test.sentinel);
     }
   }
@@ -334,7 +336,7 @@ TEST_CASE("M48 data candidates validate dimensional capabilities before publicat
       problem.set_data(std::move(candidate)),
       Catch::Matchers::Equals(
         "MSM distance is univariate in this release (ndim must be 1)"));
-    CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::MSM);
+    CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::MSM);
     check_original_univariate_data(problem);
     check_candidate_rejection_cache(problem, 444.0);
   }
@@ -357,7 +359,7 @@ TEST_CASE("M48 data candidates validate dimensional capabilities before publicat
       problem.set_view_data(std::move(candidate)),
       Catch::Matchers::Equals(
         "TWE distance is univariate in this release (ndim must be 1)"));
-    CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::TWE);
+    CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::TWE);
     check_original_univariate_data(problem);
     check_candidate_rejection_cache(problem, 555.0);
   }
@@ -419,8 +421,8 @@ TEMPLATE_TEST_CASE(
       CHECK_THROWS_WITH(
         problem.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost),
         Catch::Matchers::Equals(cross_product_error));
-      CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::ADTW);
-      CHECK(problem.missing_strategy == dtwc::core::MissingStrategy::Error);
+      CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::ADTW);
+      CHECK(problem.missing_strategy() == dtwc::core::MissingStrategy::Error);
       CHECK(problem.is_distance_matrix_filled());
       bool preserved = false;
       CHECK_NOTHROW(preserved = mapped_cache_matches(problem, 135.0));
@@ -449,8 +451,8 @@ TEMPLATE_TEST_CASE(
       CHECK_THROWS_WITH(
         problem.set_variant(dtwc::core::DTWVariant::ADTW),
         Catch::Matchers::Equals(cross_product_error));
-      CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::Standard);
-      CHECK(problem.missing_strategy == dtwc::core::MissingStrategy::ZeroCost);
+      CHECK(problem.variant_params().variant == dtwc::core::DTWVariant::Standard);
+      CHECK(problem.missing_strategy() == dtwc::core::MissingStrategy::ZeroCost);
       CHECK(problem.is_distance_matrix_filled());
       bool preserved = false;
       CHECK_NOTHROW(preserved = mapped_cache_matches(problem, 864.0));

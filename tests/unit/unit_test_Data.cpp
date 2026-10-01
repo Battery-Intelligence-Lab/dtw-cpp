@@ -260,6 +260,7 @@ TEST_CASE("Float32 DTW via Problem", "[Problem][float32]")
   REQUIRE(prob.size() == 3);
 
   // DTW distances should reflect grouping
+  prob.fill_distance_matrix();
   double d_close = prob.dist_by_ind(0, 1); // a1 vs a2 — should be small
   double d_far = prob.dist_by_ind(0, 2);   // a1 vs b1 — should be large
 
@@ -300,5 +301,25 @@ TEST_CASE("Data rejects a precision-mismatched accessor and ndim == 0",
       Data(std::vector<std::vector<data_t>>{ { 1.0, 2.0 } },
            std::vector<std::string>{ "a" }, 0),
       std::runtime_error);
+  }
+}
+
+TEST_CASE("Data rejects a flat size that ndim does not divide", "[Data][validation]")
+{
+  const auto bad = [] { return std::vector<std::vector<data_t>>{ { 1, 2, 3, 4, 5 } }; };
+  const auto names = [] { return std::vector<std::string>{ "a" }; };
+
+  SECTION("the constructor validates")
+  {
+    REQUIRE_THROWS_AS(Data(bad(), names(), 3), std::runtime_error);
+    REQUIRE_NOTHROW(Data(std::vector<std::vector<data_t>>{ { 1, 2, 3, 4 } }, names(), 2));
+  }
+
+  SECTION("validate_ndim catches a later edit of ndim")
+  {
+    Data data(bad(), names());
+    REQUIRE_NOTHROW(data.validate_ndim());
+    data.ndim = 3;
+    REQUIRE_THROWS_AS(data.validate_ndim(), std::runtime_error);
   }
 }

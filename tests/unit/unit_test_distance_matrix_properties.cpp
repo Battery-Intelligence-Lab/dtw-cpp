@@ -145,12 +145,13 @@ TEST_CASE("fill_distance_matrix matches individual pair computation", "[Phase1][
 {
   constexpr int N = 8;
 
-  // Method A: compute individual pairs before fill_distance_matrix.
+  // Method A: compute individual pairs with the bound function.
   auto probA = make_problem(N);
+  const auto &distance = probA.dtw_function();
   std::vector<std::vector<double>> pairwise(N, std::vector<double>(N, 0.0));
   for (int i = 0; i < N; ++i)
-    for (int j = i; j < N; ++j)
-      pairwise[i][j] = pairwise[j][i] = probA.dist_by_ind(i, j);
+    for (int j = i + 1; j < N; ++j)
+      pairwise[i][j] = pairwise[j][i] = distance(probA.series(i), probA.series(j));
 
   // Method B: use fill_distance_matrix.
   auto probB = make_problem(N);
