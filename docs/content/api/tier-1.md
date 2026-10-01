@@ -169,13 +169,13 @@ not prove execution:
 | Parameter | Python | MATLAB | Current status |
 |---|---|---|---|
 | `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validated through `dtwc::device` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s distance strategy |
-| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit | `Metric='l1'` or `'squared_euclidean'`, consumed by fit: a non-L1 metric builds the exact matrix through `dtwc_mex('DTWClustering_compute_distance_matrix', X, band, metric)` and sets it on the `Problem`, as `_clustering.py` does |
+| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit through `Problem.set_distance` | `Metric='l1'` or `'squared_euclidean'`, consumed by fit through `Problem.set_distance` |
 
 Both estimators converge on the shared constructor set `{n_clusters, variant, band,
 max_iter, n_init, wdtw_g, adtw_penalty, missing_strategy, metric, device}`.
-Both are now executed, not merely exposed: `Metric` is normalised and
-validated (including the `Variant`/`MissingStrategy` cross-products) before any
-input, device, or `Problem` effect, and an unknown value raises
+Both are now executed, not merely exposed: C++ reads and checks the distance
+settings (the name tables and `core::validate`) before any input, device or
+`Problem` effect, and an invalid one raises `InvalidInput` /
 `dtwc:invalidArgument`. This closes F18.
 
 ---

@@ -258,13 +258,13 @@ not prove execution:
 | Parameter | Python | MATLAB | Current status |
 |---|---|---|---|
 | `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validated through `dtwc::device` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s distance strategy |
-| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit | `Metric='l1'` or `'squared_euclidean'`, consumed by fit: a non-L1 metric builds the exact matrix through `dtwc_mex('DTWClustering_compute_distance_matrix', X, band, metric)` and sets it on the `Problem`, as `_clustering.py` does |
+| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit through `Problem.set_distance` | `Metric='l1'` or `'squared_euclidean'`, consumed by fit through `Problem.set_distance` |
 
 Both estimators converge on the shared constructor set `{n_clusters, variant, band,
 max_iter, n_init, wdtw_g, adtw_penalty, missing_strategy, metric, device}`.
-Both are now executed, not merely exposed: `Metric` is normalised and
-validated (including the `Variant`/`MissingStrategy` cross-products) before any
-input, device, or `Problem` effect, and an unknown value raises
+Both are now executed, not merely exposed: C++ reads and checks the distance
+settings (the name tables and `core::validate`) before any input, device or
+`Problem` effect, and an invalid one raises `InvalidInput` /
 `dtwc:invalidArgument`. This closes F18.
 
 ---
@@ -485,41 +485,35 @@ route; neither name is reserved future work.
 
 ### 2.6 Distance free functions (Tier-2, all languages)
 
-Canonical namespace is `dtwc::distance::*` (`distance.hpp`), mirrored by
-Python `dtwcpp.distance.dtw` (one binding over the C++ dispatcher) and MATLAB
-`+dtwc/+distance/`. Python's keywords are the `dtwc_cl` names, read with the C++
-name tables; C++ checks the configuration (`core::validate`).
+Canonical namespace is `dtwc::distance::*` (`distance.hpp`), mirrored by one
+binding per language over the C++ dispatcher: Python `dtwcpp.distance.dtw` and
+MATLAB `dtwc.distance.dtw`. Their settings are the `dtwc_cl` names (MATLAB's in
+CamelCase), read with the C++ name tables; C++ checks the configuration
+(`core::validate`).
 
-| Variant | C++ `dtwc::distance::` | Python `dtwcpp.distance.dtw(x,y,…)` | MATLAB `dtwc.distance.` |
+| Variant | C++ `dtwc::distance::` | Python `dtwcpp.distance.dtw(x,y,…)` | MATLAB `dtwc.distance.dtw(x,y,…)` |
 |---|---|---|---|
-| standard | `dtw(x,y,band=-1,metric=L1)` | the defaults | `standard(x,y,'Band',-1,'Metric','l1')` |
-| derivative | `ddtw(x,y,band=-1,metric=L1)` | `variant='ddtw'` | `ddtw(...)` |
-| weighted | `wdtw(x,y,band=-1,g=0.05)` | `variant='wdtw',wdtw_g=0.05` | `wdtw(...)` |
-| amerced | `adtw(x,y,band=-1,penalty=1.0)` | `variant='adtw',adtw_penalty=1.0` | `adtw(...)` |
-| soft | `soft_dtw(x,y,gamma=1.0)` | `variant='softdtw',sdtw_gamma=1.0` | `soft_dtw(...)` |
-| MSM | `msm(x,y,c=1.0)` | `variant='msm',msm_c=1.0` | — |
-| TWE | `twe(x,y,nu=0.001,lambda=1.0)` | `variant='twe',twe_nu=0.001,twe_lambda=1.0` | — |
-| missing | `missing(x,y,band=-1,metric=L1)` | `missing_strategy='zero_cost'` | `missing(...)` |
-| AROW | `arow(x,y,band=-1,metric=L1)` | `missing_strategy='arow'` | `arow(...)` |
-| dispatcher | `dtw(x,y,DTWVariantParams,band=-1,metric=L1,missing_strategy=Error)` | `dtw(x,y,*,variant='standard',band=-1,metric='l1',missing_strategy='error',wdtw_g,adtw_penalty,sdtw_gamma,msm_c,twe_nu,twe_lambda)` | `dtw(x,y,'Variant',...,'Band',...,...)` |
+| standard | `dtw(x,y,band=-1,metric=L1)` | the defaults | the defaults |
+| derivative | `ddtw(x,y,band=-1,metric=L1)` | `variant='ddtw'` | `'Variant','ddtw'` |
+| weighted | `wdtw(x,y,band=-1,g=0.05)` | `variant='wdtw',wdtw_g=0.05` | `'Variant','wdtw','WdtwG',0.05` |
+| amerced | `adtw(x,y,band=-1,penalty=1.0)` | `variant='adtw',adtw_penalty=1.0` | `'Variant','adtw','AdtwPenalty',1` |
+| soft | `soft_dtw(x,y,gamma=1.0)` | `variant='softdtw',sdtw_gamma=1.0` | `'Variant','softdtw','SdtwGamma',1` |
+| MSM | `msm(x,y,c=1.0)` | `variant='msm',msm_c=1.0` | `'Variant','msm','MsmC',1` |
+| TWE | `twe(x,y,nu=0.001,lambda=1.0)` | `variant='twe',twe_nu=0.001,twe_lambda=1.0` | `'Variant','twe','TweNu',0.001,'TweLambda',1` |
+| missing | `missing(x,y,band=-1,metric=L1)` | `missing_strategy='zero_cost'` | `'MissingStrategy','zero_cost'` |
+| AROW | `arow(x,y,band=-1,metric=L1)` | `missing_strategy='arow'` | `'MissingStrategy','arow'` |
+| dispatcher | `dtw(x,y,DTWVariantParams,band=-1,metric=L1,missing_strategy=Error)` | `dtw(x,y,*,variant='standard',band=-1,metric='l1',missing_strategy='error',wdtw_g,adtw_penalty,sdtw_gamma,msm_c,twe_nu,twe_lambda)` | `dtw(x,y,'Variant',…,'Band',…,'Metric',…,'MissingStrategy',…,'WdtwG',…,'AdtwPenalty',…,'SdtwGamma',…,'MsmC',…,'TweNu',…,'TweLambda',…)` |
 
-**Naming-law carve-out for `dtw` (explicit exception to §0).** The token `dtw`
-is **overloaded by design** and this is the one sanctioned break from "one name
-per concept":
+**One name, `dtw`.** `dtw(x,y)` is Standard DTW in every language, and
+`dtw(x,y,…)` with a variant is that variant:
 
 - In **C++**, `dtwc::distance::dtw` names *both* the standard single-pair function
   (`distance.hpp:35-42`, no `DTWVariantParams` arg) *and* the variant dispatcher
   (`distance.hpp:94-144`, with `DTWVariantParams`). The two are C++ overloads resolved
   by argument list, so there is no `dtwc::distance::standard`.
-- In **Python**, `dtw(x,y,…)` is the dispatcher alone; its defaults are Standard
-  DTW, so `dtw(x,y)` means what it means in C++. In **MATLAB**, the standard
-  single-pair call is named `standard(x,y,…)` (there is no argument overloading),
-  and `dtw(x,y,'Variant',…)` is the dispatcher.
-
-Net: `dtw` = "standard DTW" in C++ but "dispatcher" in Python/MATLAB. This is
-accepted rather than unified because C++ overloading and the Python/MATLAB
-keyword-dispatch idiom cannot share one signature; unifying would force an
-un-idiomatic name on one side. Section 10 item 8 adjudicates this carve-out.
+- In **Python and MATLAB**, `dtw(x,y,…)` is the dispatcher alone, and its
+  defaults are Standard DTW, so no `standard` function is needed. Section 10
+  item 8 records the change.
 
 **Input domain (2026-09-24, FX-15).** Every `dtwc::distance::*` function
 and `soft_dtw_gradient` checks `x` and `y` once per call,
@@ -527,7 +521,7 @@ before any distance work, and raises `InvalidInput` naming the series, the
 position and the fix for a NaN or ±inf value. `missing`, `arow` and the
 dispatcher under a ZeroCost, AROW or Interpolate missing strategy read NaN as a
 missing value and reject only ±inf. Python's `distance.dtw` and
-`compute_distance_matrix`, and MATLAB's `dtwc.distance.*`, apply the same
+`compute_distance_matrix`, and MATLAB's `dtwc.distance.dtw`, apply the same
 check. The per-pair wrappers in `warping*.hpp` (with `soft_dtw()` and
 `core::msm_distance` / `twe_distance`) are the documented unchecked layer the
 matrix fills call: they require finite input (the missing-data wrappers also
@@ -1033,9 +1027,10 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
 7. **Resolved:** retain `Problem::init_fun` as a public C++-only callable
    extension point. No `set_init_strategy` enum is introduced; arbitrary
    callbacks own their RNG policy.
-8. **Resolved:** retain the `dtw` naming carve-out. C++ overloads `dtw` for
-   standard DTW and variant dispatch; Python/MATLAB expose `standard` for the
-   direct call and `dtw` for dispatch.
+8. **Resolved, then superseded (2026-10-01):** C++ overloads `dtw` for standard
+   DTW and variant dispatch; Python and MATLAB expose the dispatcher alone,
+   whose defaults are standard DTW, so `dtw(x,y)` means the same everywhere and
+   the per-variant functions (`standard`, `ddtw`, …) are gone.
 
 ---
 

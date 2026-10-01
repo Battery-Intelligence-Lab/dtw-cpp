@@ -37,10 +37,6 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/scores.hpp"
 #include "../../dtwc/core/z_normalize.hpp"
 #include "../../dtwc/warping_ddtw.hpp"
-#include "../../dtwc/warping_wdtw.hpp"
-#include "../../dtwc/warping_adtw.hpp"
-#include "../../dtwc/warping_missing.hpp"
-#include "../../dtwc/warping_missing_arow.hpp"
 #include "../../dtwc/soft_dtw.hpp"
 #include "../../dtwc/base/env.hpp"     // detail::parse_device: the device-name grammar
 #include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
@@ -393,6 +389,51 @@ static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
   return dtwc::parse_name(dtwc::core::metric_names, token, "metric");
 }
 
+/// The distance settings a caller names: the dtwc_cl keys, in MATLAB's case.
+enum class DistanceKey { Variant, Band, Metric, MissingStrategy, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda };
+
+constexpr dtwc::Name<DistanceKey> distance_keys[]{
+  { "Variant", DistanceKey::Variant },     { "Band", DistanceKey::Band },
+  { "Metric", DistanceKey::Metric },       { "MissingStrategy", DistanceKey::MissingStrategy },
+  { "WdtwG", DistanceKey::WdtwG },         { "AdtwPenalty", DistanceKey::AdtwPenalty },
+  { "SdtwGamma", DistanceKey::SdtwGamma }, { "MsmC", DistanceKey::MsmC },
+  { "TweNu", DistanceKey::TweNu },         { "TweLambda", DistanceKey::TweLambda },
+};
+
+/// The distance configuration the name-value pairs prhs[first..nrhs) name, over the
+/// C++ defaults and read with the C++ name tables; core::validate checks it where it
+/// is used (distance::dtw, Problem::set_distance).
+static dtwc::core::DistanceConfig distance_config(int nrhs, const mxArray *prhs[], int first) {
+  if ((nrhs - first) % 2 != 0)
+    throw std::invalid_argument("distance settings come in name-value pairs.");
+  using namespace dtwc::core;
+  DistanceConfig c;
+  for (int i = first; i < nrhs; i += 2) {
+    require_char(prhs[i], "a distance setting's name");
+    const std::string name = get_string(prhs[i]);
+    const mxArray *value = prhs[i + 1];
+    const auto text = [&] {
+      require_char(value, name.c_str());
+      return get_string(value);
+    };
+    switch (dtwc::parse_name(distance_keys, name, "distance setting")) {
+    case DistanceKey::Variant: c.variant.variant = dtwc::parse_name(variant_names, text(), "variant"); break;
+    case DistanceKey::Band: c.band = get_exact_int(value, "Band"); break;
+    case DistanceKey::Metric: c.metric = dtwc::parse_name(metric_names, text(), "metric"); break;
+    case DistanceKey::MissingStrategy:
+      c.missing = dtwc::parse_name(missing_strategy_names, text(), "missing strategy");
+      break;
+    case DistanceKey::WdtwG: c.variant.wdtw_g = get_scalar(value, "WdtwG"); break;
+    case DistanceKey::AdtwPenalty: c.variant.adtw_penalty = get_scalar(value, "AdtwPenalty"); break;
+    case DistanceKey::SdtwGamma: c.variant.sdtw_gamma = get_scalar(value, "SdtwGamma"); break;
+    case DistanceKey::MsmC: c.variant.msm_c = get_scalar(value, "MsmC"); break;
+    case DistanceKey::TweNu: c.variant.twe_nu = get_scalar(value, "TweNu"); break;
+    case DistanceKey::TweLambda: c.variant.twe_lambda = get_scalar(value, "TweLambda"); break;
+    }
+  }
+  return c;
+}
+
 /// Build a ClusteringResult MATLAB struct from a C++ ClusteringResult
 static mxArray *clustering_result_to_mx(const dtwc::core::ClusteringResult &result) {
   const char *field_names[] = { "labels", "medoid_indices", "total_cost", "iterations", "converged" };
@@ -661,6 +702,11 @@ static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const m
   }
 
   prob.set_variant(params);
+}
+
+static void cmd_Problem_set_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("Problem_set_distance requires a handle.");
+  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->set_distance(distance_config(nrhs, prhs, 2));
 }
 
 static void cmd_Problem_get_size(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1002,82 +1048,22 @@ static void cmd_load_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArr
 }
 
 // =========================================================================
-//  Stateless DTW distance functions
-//
-//  The single-pair commands call the checked dtwc::distance::* boundary
-//  (soft_dtw_gradient checks itself), never an unchecked wrapper: NaN or ±inf
-//  raises InvalidInput (dtwc:invalidArgument) naming x or y and the 0-based
-//  position; missing and arow read NaN as missing and reject only ±inf.
-//  compute_distance_matrix goes through Problem's fill and its checks.
+//  DTW distance
 // =========================================================================
 
-static void cmd_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("dtw_distance requires x and y.");
+/// dtw(x, y, name, value, ...): dtwc::distance::dtw, the checked boundary. The
+/// configuration is checked first (core::validate), then x and y: NaN or ±inf is
+/// dtwc:invalidArgument naming x or y and the 0-based position, and a missing-data
+/// strategy reads NaN as missing.
+static void cmd_dtw(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("dtw requires x and y.");
   require_real_double(prhs[1], "x");
   require_real_double(prhs[2], "y");
-  const double *x = mxGetDoubles(prhs[1]);
-  size_t nx = mxGetNumberOfElements(prhs[1]);
-  const double *y = mxGetDoubles(prhs[2]);
-  size_t ny = mxGetNumberOfElements(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
+  const auto c = distance_config(nrhs, prhs, 3);
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::dtw<double>(
-    std::span<const double>(x, nx), std::span<const double>(y, ny), band));
-}
-
-static void cmd_ddtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("ddtw_distance requires x and y.");
-  require_real_double(prhs[1], "x");
-  require_real_double(prhs[2], "y");
-  const double *x = mxGetDoubles(prhs[1]);
-  size_t nx = mxGetNumberOfElements(prhs[1]);
-  const double *y = mxGetDoubles(prhs[2]);
-  size_t ny = mxGetNumberOfElements(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
-  plhs[0] = mxCreateDoubleScalar(dtwc::distance::ddtw<double>(
-    std::span<const double>(x, nx), std::span<const double>(y, ny), band));
-}
-
-static void cmd_wdtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("wdtw_distance requires x and y.");
-  require_real_double(prhs[1], "x");
-  require_real_double(prhs[2], "y");
-  const double *x = mxGetDoubles(prhs[1]);
-  size_t nx = mxGetNumberOfElements(prhs[1]);
-  const double *y = mxGetDoubles(prhs[2]);
-  size_t ny = mxGetNumberOfElements(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
-  double g = 0.05;
-  if (nrhs > 4) g = get_scalar(prhs[4]);
-  plhs[0] = mxCreateDoubleScalar(dtwc::distance::wdtw<double>(
-    std::span<const double>(x, nx), std::span<const double>(y, ny), band, g));
-}
-
-static void cmd_adtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("adtw_distance requires x and y.");
-  require_real_double(prhs[1], "x");
-  require_real_double(prhs[2], "y");
-  const double *x = mxGetDoubles(prhs[1]);
-  size_t nx = mxGetNumberOfElements(prhs[1]);
-  const double *y = mxGetDoubles(prhs[2]);
-  size_t ny = mxGetNumberOfElements(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
-  double penalty = 1.0;
-  if (nrhs > 4) penalty = get_scalar(prhs[4]);
-  plhs[0] = mxCreateDoubleScalar(dtwc::distance::adtw<double>(
-    std::span<const double>(x, nx), std::span<const double>(y, ny), band, penalty));
-}
-
-static void cmd_soft_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("soft_dtw_distance requires x and y.");
-  auto x = to_std_vector(prhs[1], "x");
-  auto y = to_std_vector(prhs[2], "y");
-  double gamma = 1.0;
-  if (nrhs > 3) gamma = get_scalar(prhs[3]);
-  plhs[0] = mxCreateDoubleScalar(dtwc::distance::soft_dtw<double>(x, y, gamma));
+    std::span<const double>(mxGetDoubles(prhs[1]), mxGetNumberOfElements(prhs[1])),
+    std::span<const double>(mxGetDoubles(prhs[2]), mxGetNumberOfElements(prhs[2])), c.variant, c.band,
+    c.metric, c.missing));
 }
 
 static void cmd_soft_dtw_gradient(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1092,24 +1078,6 @@ static void cmd_soft_dtw_gradient(int nlhs, mxArray *plhs[], int nrhs, const mxA
   double *out = mxGetDoubles(result);
   for (size_t i = 0; i < grad.size(); ++i) out[i] = grad[i];
   plhs[0] = result;
-}
-
-static void cmd_dtw_distance_missing(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("dtw_distance_missing requires x and y.");
-  auto x = to_std_vector(prhs[1], "x");
-  auto y = to_std_vector(prhs[2], "y");
-  int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
-  plhs[0] = mxCreateDoubleScalar(dtwc::distance::missing<double>(x, y, band));
-}
-
-static void cmd_dtw_arow_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("dtw_arow_distance requires x and y.");
-  auto x = to_std_vector(prhs[1], "x");
-  auto y = to_std_vector(prhs[2], "y");
-  int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
-  plhs[0] = mxCreateDoubleScalar(dtwc::distance::arow<double>(x, y, band));
 }
 
 static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1369,36 +1337,6 @@ static void cmd_Result_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, cons
   plhs[0] = out;
 }
 
-/// DTWClustering_compute_distance_matrix(X, band, metric) -> N x N matrix.
-/// The estimator's non-L1 route: the same exact builder the Python estimator
-/// uses when metric != 'l1' (Problem's lazy matrix is intrinsically L1).
-static void cmd_DTWClustering_compute_distance_matrix(
-  int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2)
-    throw std::invalid_argument(
-      "DTWClustering_compute_distance_matrix requires a data matrix.");
-  const auto series = matrix_to_series(prhs[1]);
-  const int band = optional_int(nrhs, prhs, 2, "band", dtwc::settings::DEFAULT_BAND);
-  const dtwc::core::MetricType metric = optional_metric(nrhs, prhs, 3);
-
-  // Every pair exactly, into the column-major output (created zero, so the
-  // diagonal is already 0); rows are disjoint, so the fill needs no locks.
-  const size_t N = series.size();
-  mxArray *out = mxCreateDoubleMatrix(N, N, mxREAL);
-  double *dst = mxGetDoubles(out);
-  auto fill_row = [&](size_t i) {
-    for (size_t j = i + 1; j < N; ++j) {
-      const double d = (band >= 0)
-        ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, metric)
-        : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, metric);
-      dst[i + j * N] = d;
-      dst[j + i * N] = d;
-    }
-  };
-  dtwc::run_openmp(fill_row, N, true, 8);
-  plhs[0] = out;
-}
-
 // =========================================================================
 //  Legacy "cluster" command (stateless, backward-compatible)
 // =========================================================================
@@ -1500,6 +1438,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_set_distance_strategy") cmd_Problem_set_distance_strategy(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_device") cmd_Problem_set_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_variant") cmd_Problem_set_variant(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Problem_set_distance") cmd_Problem_set_distance(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_size") cmd_Problem_get_size(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_name") cmd_Problem_get_name(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_centroids") cmd_Problem_get_centroids(nlhs, plhs, nrhs, prhs);
@@ -1530,14 +1469,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "save_checkpoint") cmd_save_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "load_checkpoint") cmd_load_checkpoint(nlhs, plhs, nrhs, prhs);
     // Stateless DTW functions
-    else if (cmd == "dtw_distance") cmd_dtw_distance(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "ddtw_distance") cmd_ddtw_distance(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "wdtw_distance") cmd_wdtw_distance(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "adtw_distance") cmd_adtw_distance(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "soft_dtw_distance") cmd_soft_dtw_distance(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "dtw") cmd_dtw(nlhs, plhs, nrhs, prhs);
     else if (cmd == "soft_dtw_gradient") cmd_soft_dtw_gradient(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "dtw_distance_missing") cmd_dtw_distance_missing(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "dtw_arow_distance") cmd_dtw_arow_distance(nlhs, plhs, nrhs, prhs);
     else if (cmd == "compute_distance_matrix") cmd_compute_distance_matrix(nlhs, plhs, nrhs, prhs);
     else if (cmd == "derivative_transform") cmd_derivative_transform(nlhs, plhs, nrhs, prhs);
     else if (cmd == "z_normalize") cmd_z_normalize(nlhs, plhs, nrhs, prhs);
@@ -1560,8 +1493,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Result_save") cmd_Result_save(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_distance_matrix") cmd_Result_distance_matrix(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_delete") cmd_Result_delete(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "DTWClustering_compute_distance_matrix")
-      cmd_DTWClustering_compute_distance_matrix(nlhs, plhs, nrhs, prhs);
     // Legacy backward-compatible command
     else if (cmd == "cluster") cmd_cluster_legacy(nlhs, plhs, nrhs, prhs);
     // System capability check

@@ -59,104 +59,61 @@ end
 function test_dtw_int32_rejected(testCase)
 %   int32 -> mxGetDoubles returns NULL on unfixed code -> NULL-deref crash.
     verifyError(testCase, ...
-        @() dtwc_mex('dtw_distance', int32([1 2 3]), int32([1 2 3])), ...
+        @() dtwc_mex('dtw', int32([1 2 3]), int32([1 2 3])), ...
         'dtwc:invalidArgument');
 end
 
 function test_dtw_complex_rejected(testCase)
 %   complex double survives even the +dtwc double() cast; mxGetDoubles->NULL.
     verifyError(testCase, ...
-        @() dtwc_mex('dtw_distance', complex([1 2 3], [1 1 1]), [1 2 3]), ...
+        @() dtwc_mex('dtw', complex([1 2 3], [1 1 1]), [1 2 3]), ...
         'dtwc:invalidArgument');
 end
 
 function test_dtw_single_rejected(testCase)
     verifyError(testCase, ...
-        @() dtwc_mex('dtw_distance', single([1 2 3]), single([4 5 6])), ...
+        @() dtwc_mex('dtw', single([1 2 3]), single([4 5 6])), ...
         'dtwc:invalidArgument');
 end
 
 function test_dtw_logical_rejected(testCase)
     verifyError(testCase, ...
-        @() dtwc_mex('dtw_distance', logical([1 0 1]), [1 2 3]), ...
+        @() dtwc_mex('dtw', logical([1 0 1]), [1 2 3]), ...
         'dtwc:invalidArgument');
 end
 
 function test_dtw_empty_rejected(testCase)
     verifyError(testCase, ...
-        @() dtwc_mex('dtw_distance', [], [1 2 3]), ...
+        @() dtwc_mex('dtw', [], [1 2 3]), ...
         'dtwc:invalidArgument');
 end
 
 function test_dtw_struct_rejected(testCase)
 %   Non-numeric struct: mxGetDoubles(struct)->NULL on unfixed code.
     verifyError(testCase, ...
-        @() dtwc_mex('dtw_distance', struct('a', 1), [1 2 3]), ...
+        @() dtwc_mex('dtw', struct('a', 1), [1 2 3]), ...
         'dtwc:invalidArgument');
 end
 
 function test_dtw_nonnumeric_scalar_rejected(testCase)
 %   Valid x,y but a char passed where a numeric band is expected (get_scalar).
     verifyError(testCase, ...
-        @() dtwc_mex('dtw_distance', [1 2 3], [1 2 3], 'ten'), ...
+        @() dtwc_mex('dtw', [1 2 3], [1 2 3], 'Band', 'ten'), ...
         'dtwc:invalidArgument');
 end
 
-function test_soft_dtw_int32_rejected(testCase)
-%   Covers the to_std_vector() guard used by soft_dtw / missing / arow.
+function test_soft_dtw_gradient_int32_rejected(testCase)
+%   Covers the to_std_vector() guard used by soft_dtw_gradient.
     verifyError(testCase, ...
-        @() dtwc_mex('soft_dtw_distance', int32([1 2 3]), int32([1 2 3])), ...
+        @() dtwc_mex('soft_dtw_gradient', int32([1 2 3]), int32([1 2 3])), ...
         'dtwc:invalidArgument');
 end
 
-function test_variant_parameter_domains_are_typed(testCase)
-%   M34: malformed recurrence parameters must fail at the MEX boundary rather
-%   than entering arithmetic (or taking an identity/empty shortcut).
-    badCalls = {
-        @() dtwc_mex('wdtw_distance', [0], [0 0], -1, -1), ...
-        @() dtwc_mex('adtw_distance', [0], [0 0], -1, -1), ...
-        @() dtwc_mex('soft_dtw_distance', [0], [0 0], 0), ...
-        @() dtwc_mex('soft_dtw_gradient', [0], [0 0], NaN)
-    };
-    for i = 1:numel(badCalls)
-        verifyError(testCase, badCalls{i}, 'dtwc:invalidArgument');
-    end
-end
-
-function test_variant_wrappers_preserve_dtwc_error_type(testCase)
-%   Wrapper-side validation uses the same public identifier as the raw MEX
-%   gateway, so callers do not see inputParser-specific error types.
-    verifyError(testCase, ...
-        @() dtwc.distance.wdtw([0], [0 0], 'G', -1), ...
+function test_soft_dtw_gradient_gamma_domain_is_typed(testCase)
+%   M34: a malformed gamma fails at the MEX boundary rather than entering
+%   arithmetic; dtwc.distance.dtw's parameters are test_distance.m's.
+    verifyError(testCase, @() dtwc_mex('soft_dtw_gradient', [0], [0 0], NaN), ...
         'dtwc:invalidArgument');
-    verifyError(testCase, ...
-        @() dtwc.distance.adtw([0], [0 0], 'Penalty', -1), ...
-        'dtwc:invalidArgument');
-    verifyError(testCase, ...
-        @() dtwc.distance.soft_dtw([0], [0 0], 'Gamma', 0), ...
-        'dtwc:invalidArgument');
-end
-
-function test_variant_zero_and_near_zero_boundaries_are_valid(testCase)
-    verifyEqual(testCase, dtwc.distance.wdtw([0], [0 0], 'G', 0), 0, ...
-        'AbsTol', 0);
-    verifyEqual(testCase, dtwc.distance.adtw([0], [0 0], 'Penalty', 0), 0, ...
-        'AbsTol', 0);
-    d = dtwc.distance.soft_dtw([0], [0 0], 'Gamma', realmin('double'));
-    verifyTrue(testCase, isfinite(d));
-end
-
-function test_unknown_metric_tokens_are_invalid_arguments(testCase)
-%   M36: wrappers must distinguish an unknown token from a known-but-
-%   unsupported metric and must never run the L1 kernel as a substitute.
-    calls = {
-        @() dtwc.distance.standard([0 3], [0 1], 'Metric', 'bogus'), ...
-        @() dtwc.distance.missing([0 3], [0 1], 'Metric', 'bogus'), ...
-        @() dtwc.distance.arow([0 3], [0 1], 'Metric', 'bogus')
-    };
-    for i = 1:numel(calls)
-        verifyError(testCase, calls{i}, 'dtwc:invalidArgument');
-    end
 end
 
 function test_problem_rejects_variant_missing_cross_product(testCase)
@@ -166,13 +123,6 @@ function test_problem_rejects_variant_missing_cross_product(testCase)
     dtwc_mex('Problem_set_variant', h, 'adtw', 0.75);
     verifyError(testCase, ...
         @() dtwc_mex('Problem_set_missing_strategy', h, 'zero_cost'), ...
-        'dtwc:invalidArgument');
-end
-
-function test_matlab_dispatch_rejects_variant_missing_cross_product(testCase)
-    verifyError(testCase, ...
-        @() dtwc.distance.dtw([0], [0 0], ...
-            'Variant', 'adtw', 'MissingStrategy', 'zero_cost'), ...
         'dtwc:invalidArgument');
 end
 
@@ -378,7 +328,7 @@ end
 % -------------------------------------------------------------------------
 
 function test_valid_double_vector_still_works(testCase)
-    d = dtwc_mex('dtw_distance', [1 2 3 4], [1 2 3 4]);
+    d = dtwc_mex('dtw', [1 2 3 4], [1 2 3 4]);
     verifyEqual(testCase, d, 0, 'AbsTol', 1e-12);   % self-distance == 0
 end
 
@@ -525,12 +475,7 @@ function test_integer_arguments_reject_fractions_nan_and_inf(testCase)
         'time_limit_sec',         @(v) dtwc_mex('Problem_set_mip_settings', h, struct('time_limit_sec', v)), 30
         'numeric_focus',          @(v) dtwc_mex('Problem_set_mip_settings', h, struct('numeric_focus', v)), 0
         'mip_focus',              @(v) dtwc_mex('Problem_set_mip_settings', h, struct('mip_focus', v)), 0
-        'dtw_distance band',      @(v) dtwc_mex('dtw_distance', x, y, v),                 3
-        'ddtw_distance band',     @(v) dtwc_mex('ddtw_distance', x, y, v),                3
-        'wdtw_distance band',     @(v) dtwc_mex('wdtw_distance', x, y, v),                3
-        'adtw_distance band',     @(v) dtwc_mex('adtw_distance', x, y, v),                3
-        'dtw_distance_missing band', @(v) dtwc_mex('dtw_distance_missing', x, y, v),      3
-        'dtw_arow_distance band', @(v) dtwc_mex('dtw_arow_distance', x, y, v),            3
+        'dtw Band',               @(v) dtwc_mex('dtw', x, y, 'Band', v),                  3
         'compute_distance_matrix band', @(v) dtwc_mex('compute_distance_matrix', X, v),   3
         'fast_pam k',             @(v) dtwc_mex('fast_pam', h, v),                        2
         'fast_pam max_iter',      @(v) dtwc_mex('fast_pam', h, 2, v),                     5
@@ -861,14 +806,13 @@ end
 
 function test_metric_names_share_one_meaning(testCase)
 %   'l2sq' and 'SqEuclidean' were unknown to MATLAB; the table spells them.
-    X = [1 2 3; 2 3 5; 9 8 7; 8 7 5];
-    squared = dtwc_mex('DTWClustering_compute_distance_matrix', X, -1, 'squared_euclidean');
+    x = [1 2 3];
+    y = [2 3 5];
+    squared = dtwc_mex('dtw', x, y, 'Metric', 'squared_euclidean');
     for name = {'sqeuclidean', 'l2sq', 'SqEuclidean'}
-        verifyEqual(testCase, ...
-            dtwc_mex('DTWClustering_compute_distance_matrix', X, -1, name{1}), squared);
+        verifyEqual(testCase, dtwc_mex('dtw', x, y, 'Metric', name{1}), squared);
     end
-    verifyNotEqual(testCase, ...
-        dtwc_mex('DTWClustering_compute_distance_matrix', X, -1, 'l1'), squared);
+    verifyNotEqual(testCase, dtwc_mex('dtw', x, y, 'Metric', 'l1'), squared);
 end
 
 function test_unknown_names_list_the_cpp_table(testCase)
@@ -886,7 +830,7 @@ function test_unknown_names_list_the_cpp_table(testCase)
         @() dtwc_mex('Problem_set_missing_strategy', h, 'bogus'), ...
             ['unknown missing strategy ''bogus''. Valid: error, zero_cost, arow, ' ...
              'interpolate.']
-        @() dtwc_mex('DTWClustering_compute_distance_matrix', [1 2; 3 4], -1, 'bogus'), ...
+        @() dtwc_mex('dtw', 0, 0, 'Metric', 'bogus'), ...
             'unknown metric ''bogus''. Valid: l1, squared_euclidean.'
     };
     for i = 1:size(cases, 1)

@@ -191,10 +191,8 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
                  26 40 0 5; 45 25 5 0];
 
     dtwc.device('cpu');
-    routed_l1 = dtwc_mex('DTWClustering_compute_distance_matrix', ...
-                         double(X), -1, 'l1');
-    routed_squared = dtwc_mex('DTWClustering_compute_distance_matrix', ...
-                              double(X), -1, 'squared_euclidean');
+    routed_l1 = routed_matrix(X, 'l1');
+    routed_squared = routed_matrix(X, 'squared_euclidean');
     assertEqual(testCase, routed_l1, D_l1);
     assertEqual(testCase, routed_squared, D_squared);
 
@@ -273,8 +271,7 @@ function test_dtwclustering_metric_validation_precedes_effects(testCase)
                 'Unknown Metric must fail before empty-data/device handling.');
     assertEqual(testCase, unknown_error.identifier, 'dtwc:invalidArgument');
     assertEqual(testCase, unknown_error.message, ...
-        ['Unknown Metric ''not_a_metric''. Expected one of: ' ...
-         'l1, squared_euclidean.']);
+        'unknown metric ''not_a_metric''. Valid: l1, squared_euclidean.');
     assertEqual(testCase, dtwc.device(), 'cpu');
 
     variant_error = [];
@@ -293,8 +290,7 @@ function test_dtwclustering_metric_validation_precedes_effects(testCase)
 
     missing_error = [];
     bad_missing = dtwc.DTWClustering( ...
-        'NClusters', 2, 'Metric', 'squared_euclidean', ...
-        'Device', 'cpu', 'NInit', 2);
+        'NClusters', 2, 'Variant', 'ddtw', 'Device', 'cpu', 'NInit', 2);
     bad_missing.MissingStrategy = 'zero_cost';
     try
         bad_missing.fit(X);
@@ -302,12 +298,33 @@ function test_dtwclustering_metric_validation_precedes_effects(testCase)
         missing_error = caught;
     end
     assertFalse(testCase, isempty(missing_error), ...
-                'SquaredL2 plus zero_cost must fail loudly.');
+                'DDTW plus zero_cost must fail loudly.');
     assertEqual(testCase, missing_error.identifier, 'dtwc:invalidArgument');
 
     fprintf(['F18_MATLAB_VALIDATION unknown_metric=1/1 ' ...
         'unknown_precedence=1/1 squared_variant=1/1 ' ...
-        'squared_missing=1/1 skips=0\n']);
+        'variant_missing=1/1 skips=0\n']);
+end
+
+function test_dtwclustering_computes_every_metric_cpp_computes(testCase)
+%   DDTW and the missing-data strategies take a metric in C++, so the fitted
+%   cost is the sum of each series' dtwc.distance.dtw to its medoid.
+    cases = {
+        {'Variant', 'ddtw', 'Metric', 'squared_euclidean'}, ...
+            [0 1 3 6; 0 1 2 4; 5 5 6 6; 5 6 6 7]
+        {'MissingStrategy', 'zero_cost', 'Metric', 'squared_euclidean'}, ...
+            [0 NaN 1 0; 0 1 1 0; 9 9 NaN 8; 9 8 8 8]
+    };
+    for i = 1:size(cases, 1)
+        [settings, X] = cases{i, :};
+        c = dtwc.DTWClustering('NClusters', 2, 'Device', 'cpu', settings{:}).fit(X);
+        cost = 0;
+        for s = 1:size(X, 1)
+            cost = cost + dtwc.distance.dtw(X(s, :), X(c.MedoidIndices(c.Labels(s)), :), ...
+                                            settings{:});
+        end
+        verifyEqual(testCase, c.TotalCost, cost, 'RelTol', 1e-12, sprintf('case %d', i));
+    end
 end
 
 function test_fast_pam_mex_rejects_invalid_seed_before_cast(testCase)
@@ -462,6 +479,7 @@ function test_problem_setters_all_callable(testCase)
     prob.set_variant('wdtw', 0.1);
     prob.set_variant('standard');
     prob.set_missing_strategy('error');
+    prob.set_distance('Variant', 'ddtw', 'Metric', 'squared_euclidean');
     prob.set_distance_strategy('auto');
     ok = prob.set_solver('highs');
     verifyTrue(testCase, islogical(ok));
@@ -641,25 +659,6 @@ function test_algorithms_all_callable(testCase)
 end
 
 % =========================================================================
-%  Tier 2 — distance free functions (contract §2.6)
-% =========================================================================
-
-function test_distance_functions_all_callable(testCase)
-%   §2.6 dtwc.distance.{standard,ddtw,wdtw,adtw,soft_dtw,missing,arow,dtw}.
-    x = [1 2 3 4 5];
-    y = [2 3 4 5 6];
-    verifyGreaterThanOrEqual(testCase, dtwc.distance.standard(x, y), 0);
-    verifyGreaterThanOrEqual(testCase, dtwc.distance.ddtw(x, y), 0);
-    verifyGreaterThanOrEqual(testCase, dtwc.distance.wdtw(x, y), 0);
-    verifyGreaterThanOrEqual(testCase, dtwc.distance.adtw(x, y), 0);
-    verifyTrue(testCase, isscalar(dtwc.distance.soft_dtw(x, y, 'Gamma', 1.0)));
-    verifyGreaterThanOrEqual(testCase, dtwc.distance.missing([1 NaN 3 4 5], y), 0);
-    verifyGreaterThanOrEqual(testCase, dtwc.distance.arow([1 NaN 3 4 5], y), 0);
-    verifyGreaterThanOrEqual(testCase, dtwc.distance.dtw(x, y), 0);
-    verifyGreaterThanOrEqual(testCase, dtwc.distance.dtw(x, y, 'Variant', 'wdtw', 'G', 0.1), 0);
-end
-
-% =========================================================================
 %  Tier 2 — checkpoint / resume (contract §2.7)
 % =========================================================================
 
@@ -684,6 +683,15 @@ end
 % =========================================================================
 %  Helpers
 % =========================================================================
+
+function D = routed_matrix(X, metric)
+%ROUTED_MATRIX The matrix DTWClustering's Problem fills under `metric`.
+    prob = dtwc.Problem('F18_routed');
+    prob.set_data(X);
+    prob.set_distance('Metric', metric);
+    prob.fill_distance_matrix();
+    D = prob.distance_matrix();
+end
 
 function err = capture_error(fn)
 %CAPTURE_ERROR Run fn and return the MException it must raise.

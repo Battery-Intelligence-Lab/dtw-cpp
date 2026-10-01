@@ -21,8 +21,9 @@ classdef DTWClustering
 %   Band : int (default -1)
 %       Sakoe-Chiba band width. -1 for full DTW.
 %   Metric : char (default 'l1')
-%       Pointwise cost metric: 'l1' or 'squared_euclidean'. A non-L1 metric
-%       requires Variant 'standard' and MissingStrategy 'error'.
+%       Pointwise cost metric: 'l1' or 'squared_euclidean' (Variant 'standard'
+%       or 'ddtw'). C++ reads and checks the distance settings, as
+%       dtwc.distance.dtw does.
 %   MaxIter : int (default 100)
 %       Maximum iterations for the clustering algorithm.
 %   NInit : int (default 1)
@@ -98,7 +99,6 @@ classdef DTWClustering
             obj.AdtwPenalty = p.Results.AdtwPenalty;
             obj.MissingStrategy = p.Results.MissingStrategy;
             obj.Device = char(p.Results.Device);
-            obj.validate_variant_parameters();
         end
 
         function obj = fit(obj, X)
@@ -109,10 +109,10 @@ classdef DTWClustering
         %   ----------
         %   X : double matrix (N x L)
         %       Each row is a time series of length L.
-            % Validate the executable distance contract before input/device or
-            % Problem effects, including values changed after construction.
-            obj.validate_variant_parameters();
-            metric = obj.resolve_metric();
+            % C++ checks the distance settings before the data or the device is
+            % touched: the distance of two one-sample series runs that check.
+            settings = obj.distance_settings();
+            dtwc.distance.dtw(0, 0, settings{:});
             validateattributes(X, {'numeric'}, {'2d', 'nonempty'}, 'fit', 'X');
 
             % Per-call device override (contract §1.5): resolved through C++
@@ -125,15 +125,6 @@ classdef DTWClustering
                 previousDevice = dtwc.device();
                 deviceCleanup = onCleanup(@() dtwc.device(previousDevice));
                 activeDevice = dtwc.device(obj.Device);
-            end
-
-            % Problem's lazy matrix is intrinsically L1, so a non-L1 metric needs
-            % the exact matrix built up front -- the same rule the Python
-            % estimator follows (dtwcpp/_clustering.py).
-            precomputed = [];
-            if ~strcmp(metric, 'l1')
-                precomputed = dtwc_mex('DTWClustering_compute_distance_matrix', ...
-                    double(X), double(obj.Band), metric);
             end
 
             bestCost = Inf;
@@ -149,31 +140,10 @@ classdef DTWClustering
                 % Create a Problem for each repetition
                 prob = dtwc.Problem('DTWClustering');
                 prob.set_data(double(X));
-                prob.set_band(obj.Band);
+                prob.set_distance(settings{:});
                 prob.set_max_iter(obj.MaxIter);
                 prob.set_verbose(false);
                 dtwc.DTWClustering.apply_device_strategy(prob, activeDevice);
-
-                % Set DTW variant
-                if ~strcmp(obj.Variant, 'standard')
-                    switch obj.Variant
-                        case 'wdtw'
-                            prob.set_variant('wdtw', obj.WdtwG);
-                        case 'adtw'
-                            prob.set_variant('adtw', obj.AdtwPenalty);
-                        otherwise
-                            prob.set_variant(obj.Variant);
-                    end
-                end
-
-                % Set missing strategy
-                if ~strcmp(obj.MissingStrategy, 'error')
-                    prob.set_missing_strategy(obj.MissingStrategy);
-                end
-
-                if ~isempty(precomputed)
-                    prob.set_distance_matrix(precomputed);
-                end
 
                 % Run FastPAM
                 result = dtwc.fast_pam(prob, obj.NClusters, ...
@@ -214,39 +184,12 @@ classdef DTWClustering
     end
 
     methods (Access = private)
-        function metric = resolve_metric(obj)
-        %RESOLVE_METRIC Normalise and validate Metric before any other effect.
-        %   Returns the canonical token. The accepted set and the incompatible
-        %   cross-products mirror the Python estimator (dtwcpp/_clustering.py).
-            metric = lower(strtrim(char(obj.Metric)));
-            if ~ismember(metric, {'l1', 'squared_euclidean'})
-                error('dtwc:invalidArgument', ...
-                      'Unknown Metric ''%s''. Expected one of: l1, squared_euclidean.', ...
-                      char(obj.Metric));
-            end
-            if strcmp(metric, 'l1'), return; end
-            if ~strcmp(obj.Variant, 'standard')
-                error('dtwc:invalidArgument', ...
-                      ['Metric ''%s'' is implemented only for Variant ''standard''; ' ...
-                       'Variant ''%s'' has its intrinsic L1 cost.'], ...
-                      metric, obj.Variant);
-            end
-            if ~strcmp(obj.MissingStrategy, 'error')
-                error('dtwc:invalidArgument', ...
-                      'Metric ''%s'' is not implemented with MissingStrategy ''%s''.', ...
-                      metric, obj.MissingStrategy);
-            end
-        end
-
-        function validate_variant_parameters(obj)
-            if ~isfinite(obj.WdtwG) || obj.WdtwG < 0
-                error('dtwc:invalidArgument', ...
-                      'WDTW g must be finite and non-negative.');
-            end
-            if ~isfinite(obj.AdtwPenalty) || obj.AdtwPenalty < 0
-                error('dtwc:invalidArgument', ...
-                      'ADTW penalty must be finite and non-negative.');
-            end
+        function settings = distance_settings(obj)
+        %DISTANCE_SETTINGS The distance settings, as dtwc.distance.dtw and
+        %   Problem.set_distance take them.
+            settings = {'Variant', obj.Variant, 'Band', obj.Band, ...
+                        'Metric', obj.Metric, 'MissingStrategy', obj.MissingStrategy, ...
+                        'WdtwG', obj.WdtwG, 'AdtwPenalty', obj.AdtwPenalty};
         end
     end
 
