@@ -99,11 +99,6 @@ class TestEnums:
         """Method enum has Kmedoids."""
         assert hasattr(dtwcpp.Method, "Kmedoids")
 
-    def test_constraint_type_enum(self):
-        """ConstraintType enum has expected members."""
-        assert hasattr(dtwcpp.ConstraintType, "NONE")
-        assert hasattr(dtwcpp.ConstraintType, "SakoeChibaBand")
-
     def test_metric_type_enum(self):
         """MetricType enum has expected members."""
         assert hasattr(dtwcpp.MetricType, "L1")

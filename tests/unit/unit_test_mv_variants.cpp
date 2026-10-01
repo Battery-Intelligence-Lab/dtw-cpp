@@ -354,47 +354,6 @@ TEST_CASE("WDTW MV banded actually restricts the warping path", "[mv][wdtw][band
 }
 
 // =========================================================================
-//  dtw_runtime() variant dispatch regression — previously silently dropped
-//  opts.variant_params.variant. ADTW with a non-zero penalty must differ
-//  from Standard DTW.
-// =========================================================================
-
-TEST_CASE("dtw_runtime honours DTWVariant::ADTW", "[dtw_runtime][adtw]")
-{
-  std::vector<double> x = {1, 3, 4, 2, 5, 4, 3, 2, 1};
-  std::vector<double> y = {2, 4, 3, 5, 1, 2, 4, 3, 2};
-
-  dtwc::core::DTWOptions opts_std;
-  opts_std.variant_params.variant = dtwc::core::DTWVariant::Standard;
-  const double d_std = dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts_std);
-
-  dtwc::core::DTWOptions opts_adtw;
-  opts_adtw.variant_params.variant = dtwc::core::DTWVariant::ADTW;
-  opts_adtw.variant_params.adtw_penalty = 2.0;
-  const double d_adtw = dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts_adtw);
-
-  INFO("d_std=" << d_std << " d_adtw=" << d_adtw);
-  REQUIRE(d_adtw > d_std); // ADTW with penalty > 0 must be >= Standard DTW.
-}
-
-TEST_CASE("dtw_runtime honours DTWVariant::WDTW", "[dtw_runtime][wdtw]")
-{
-  std::vector<double> x = {1, 3, 4, 2, 5, 4, 3, 2, 1};
-  std::vector<double> y = {2, 4, 3, 5, 1, 2, 4, 3, 2};
-
-  dtwc::core::DTWOptions opts_std;
-  const double d_std = dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts_std);
-
-  dtwc::core::DTWOptions opts_wdtw;
-  opts_wdtw.variant_params.variant = dtwc::core::DTWVariant::WDTW;
-  opts_wdtw.variant_params.wdtw_g = 0.05;
-  const double d_wdtw = dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts_wdtw);
-
-  INFO("d_std=" << d_std << " d_wdtw=" << d_wdtw);
-  REQUIRE(d_wdtw != d_std); // WDTW applies per-cell weights -> different result.
-}
-
-// =========================================================================
 //  Problem::dtw_function_f32() dispatch regressions.
 //
 //  Previously (pre-resolve_dtw_fn), the f32 path silently ran Standard DTW

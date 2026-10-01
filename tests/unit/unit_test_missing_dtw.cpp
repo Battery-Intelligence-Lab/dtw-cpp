@@ -494,24 +494,3 @@ TEST_CASE("distance::dtw honours MissingStrategy::Error",
   REQUIRE_NOTHROW(distance::dtw<double>(y, y, params, -1, core::MetricType::L1,
                                         core::MissingStrategy::Error));
 }
-
-TEST_CASE("core::dtw_runtime honours MissingStrategy::Error",
-          "[missing_dtw][error_strategy][regression]")
-{
-  const std::vector<double> x{ 1, 2, NaN, 4 };
-  const std::vector<double> y{ 1, 2, 3, 4 };
-
-  core::DTWOptions opts;
-  opts.missing_strategy = core::MissingStrategy::Error;
-
-  REQUIRE_THROWS_AS(
-    core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts),
-    InvalidInput);
-  REQUIRE_THROWS_AS(
-    core::dtw_runtime(y.data(), y.size(), x.data(), x.size(), opts),
-    InvalidInput);
-
-  // A NaN-free call returns the ordinary distance, unchanged.
-  REQUIRE_THAT(core::dtw_runtime(y.data(), y.size(), y.data(), y.size(), opts),
-               WithinAbs(0.0, 1e-12));
-}

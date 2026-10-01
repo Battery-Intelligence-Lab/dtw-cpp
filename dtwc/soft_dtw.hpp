@@ -9,8 +9,8 @@
  * Note: Soft-DTW can be NEGATIVE for identical series when gamma > 0.
  *
  * Input checks (warping.hpp explains the layering): soft_dtw() is the
- * unchecked per-pair value, reached checked through distance::soft_dtw and
- * core::dtw_runtime. soft_dtw_gradient() has no such twin and no per-pair
+ * unchecked per-pair value, reached checked through distance::soft_dtw.
+ * soft_dtw_gradient() has no such twin and no per-pair
  * caller, so it checks its own input and rejects NaN and ±inf.
  *
  * Reference: Cuturi & Blondel (2017), "Soft-DTW: a Differentiable Loss

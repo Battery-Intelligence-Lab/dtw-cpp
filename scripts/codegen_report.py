@@ -170,7 +170,7 @@ def main() -> int:
     ap.add_argument("--build-dir", type=Path, default=ROOT / "build")
     ap.add_argument(
         "--match",
-        default=r"dtwc/core/dtw\.cpp",
+        default=r"dtwc/core/dtw_dispatch\.cpp",
         help="regex picking the translation unit whose flags the probe borrows",
     )
     ap.add_argument(

@@ -10,7 +10,6 @@
  */
 
 #include <Problem.hpp>
-#include <core/dtw.hpp>
 #include <core/msm.hpp>
 #include <core/twe.hpp>
 #include <distance.hpp>
@@ -151,15 +150,11 @@ TEST_CASE("M34 aggregate dispatch validates every stored variant parameter",
 {
   const std::vector<double> x{0.0};
   const std::vector<double> y{0.0, 0.0};
-  dtwc::core::DTWOptions options;
-  options.variant_params.variant = dtwc::core::DTWVariant::Standard;
-  options.variant_params.adtw_penalty = -1.0; // inactive must not poison stored state
+  dtwc::core::DTWVariantParams params;
+  params.adtw_penalty = -1.0; // inactive must not poison stored state
 
   require_invalid_input(
-    [&] { (void)dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), options); },
-    "ADTW penalty must be finite and non-negative.");
-  require_invalid_input(
-    [&] { (void)dtwc::distance::dtw<double>(x, y, options.variant_params); },
+    [&] { (void)dtwc::distance::dtw<double>(x, y, params); },
     "ADTW penalty must be finite and non-negative.");
 }
 

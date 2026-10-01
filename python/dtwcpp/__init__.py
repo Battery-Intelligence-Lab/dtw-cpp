@@ -8,7 +8,6 @@ from dtwcpp._dtwcpp_core import (
     # Enums
     Method,
     Solver,
-    ConstraintType,
     MetricType,
     DTWVariant,
     MissingStrategy,
@@ -301,7 +300,7 @@ def check_system():
 
 
 __all__ = [
-    "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
+    "Method", "Solver", "MetricType", "DTWVariant",
     "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision",
     "Linkage", "Device",
     "DTWVariantParams", "ClusteringResult", "Data",

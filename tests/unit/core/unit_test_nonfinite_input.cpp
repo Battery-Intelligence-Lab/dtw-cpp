@@ -6,7 +6,7 @@
  * @details A property test over random finite pairs with one NaN, +inf or -inf
  * injected at a random position of x or y. The checked boundary is
  * dtwc::distance::* (each variant, and the dispatcher under every missing-data
- * strategy), core::dtw_runtime and soft_dtw_gradient. Each must throw
+ * strategy) and soft_dtw_gradient. Each must throw
  * dtwc::InvalidInput whose message says "<series>[<position>] is <value>". The
  * missing-data distances read NaN as a missing value, so there a NaN must give
  * what the unchanged wrapper gives, while ±inf is still rejected.
@@ -21,7 +21,6 @@
 
 #include <base/error.hpp>
 #include <base/missing_utils.hpp>
-#include <core/dtw.hpp>
 #include <core/msm.hpp>
 #include <core/twe.hpp>
 #include <distance.hpp>
@@ -169,16 +168,6 @@ double interpolate_wrapper(Span x, Span y, int band)
   return dtwc::dtwBanded<double>(fill(x), fill(y), band, -1.0, MetricType::L1);
 }
 
-double runtime(Span x, Span y, int band, DTWVariant variant, MissingStrategy strategy)
-{
-  dtwc::core::DTWOptions options;
-  options.constraint = dtwc::core::ConstraintType::SakoeChibaBand;
-  options.band = band;
-  options.variant_params.variant = variant;
-  options.missing_strategy = strategy;
-  return dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), options);
-}
-
 std::vector<float> narrow(Span s) { return {s.begin(), s.end()}; }
 
 using Fn = std::function<double(Span, Span, int)>;
@@ -266,9 +255,6 @@ std::vector<Entry> checked_entry_points()
                                          MissingStrategy::Error);
                  },
                  variant_wrapper(v)});
-    e.push_back({std::string("dtw_runtime ") + variant_names[i] + " / Error", false,
-                 [v](Span x, Span y, int b) { return runtime(x, y, b, v, MissingStrategy::Error); },
-                 variant_wrapper(v)});
   }
 
   const struct
@@ -285,11 +271,6 @@ std::vector<Entry> checked_entry_points()
                  [strategy](Span x, Span y, int b) {
                    return d::dtw<double>(x, y, params_for(DTWVariant::Standard), b,
                                          MetricType::L1, strategy);
-                 },
-                 s.oracle});
-    e.push_back({std::string("dtw_runtime Standard / ") + s.name, true,
-                 [strategy](Span x, Span y, int b) {
-                   return runtime(x, y, b, DTWVariant::Standard, strategy);
                  },
                  s.oracle});
   }

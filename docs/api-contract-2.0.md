@@ -516,8 +516,8 @@ accepted rather than unified because C++ overloading and the Python/MATLAB
 keyword-dispatch idiom cannot share one signature; unifying would force an
 un-idiomatic name on one side. Section 10 item 8 adjudicates this carve-out.
 
-**Input domain (2026-09-24, FX-15).** Every `dtwc::distance::*` function,
-`core::dtw_runtime` and `soft_dtw_gradient` checks `x` and `y` once per call,
+**Input domain (2026-09-24, FX-15).** Every `dtwc::distance::*` function
+and `soft_dtw_gradient` checks `x` and `y` once per call,
 before any distance work, and raises `InvalidInput` naming the series, the
 position and the fix for a NaN or ±inf value. `missing`, `arow` and the
 dispatcher under a ZeroCost, AROW or Interpolate missing strategy read NaN as a

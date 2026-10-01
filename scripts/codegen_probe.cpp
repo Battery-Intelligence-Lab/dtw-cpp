@@ -8,9 +8,8 @@
 //
 // It has to exist because the kernels are function templates in dtwc/warping.hpp.
 // A template that nobody instantiates generates no code, so no library
-// translation unit reports on them: dtwc/core/dtw.cpp contains zero loops. The
-// explicit instantiations below are what force the loops into existence where a
-// compiler can be asked about them.
+// translation unit reports on them. The explicit instantiations below are what
+// force the loops into existence where a compiler can be asked about them.
 //
 // Add an instantiation here when a kernel joins the hot path.
 

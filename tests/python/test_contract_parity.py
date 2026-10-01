@@ -46,7 +46,7 @@ _SURFACE = {
         "DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError",
         # enums, structs, Tier-2 classes: the types behind the contract's fields and
         # arguments (several have no table row of their own)
-        "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
+        "Method", "Solver", "MetricType", "DTWVariant",
         "MissingStrategy", "DistanceMatrixStrategy", "GpuPrecision", "Linkage",
         "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",
         "DendrogramStep", "Dendrogram", "HierarchicalOptions",

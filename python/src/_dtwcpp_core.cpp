@@ -259,10 +259,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("Gurobi", dtwc::Solver::Gurobi)
     .value("HiGHS", dtwc::Solver::HiGHS);
 
-  nb::enum_<dtwc::core::ConstraintType>(m, "ConstraintType")
-    .value("NONE", dtwc::core::ConstraintType::None)
-    .value("SakoeChibaBand", dtwc::core::ConstraintType::SakoeChibaBand);
-
   nb::enum_<dtwc::core::MetricType>(m, "MetricType")
     .value("L1", dtwc::core::MetricType::L1)
     .value("L2", dtwc::core::MetricType::L2)

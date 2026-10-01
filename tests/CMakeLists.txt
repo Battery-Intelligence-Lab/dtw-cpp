@@ -37,7 +37,7 @@ dtwc_add_script_test(NAME test_deprecated_shims_warn
     MARKER "DEPRECATED_SHIMS family=${_dtwc_shim_family} exit=0 warned=${_dtwc_shim_count}/${_dtwc_shim_count}"
     LABELS compat b19 SERIAL TIMEOUT 300)
 
-# A DP cell makes no call: codegen_report.py compiles the probe to assembly with dtw.cpp's
+# A DP cell makes no call: codegen_report.py compiles the probe to assembly with dtw_dispatch.cpp's
 # flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU"
