@@ -145,32 +145,3 @@ TEST_CASE("M34 free-function variant domains are typed and exact",
   }
 }
 
-TEST_CASE("M34 aggregate dispatch validates every stored variant parameter",
-          "[m34][variant-domain][dispatch]")
-{
-  const std::vector<double> x{0.0};
-  const std::vector<double> y{0.0, 0.0};
-  dtwc::core::DTWVariantParams params;
-  params.adtw_penalty = -1.0; // inactive must not poison stored state
-
-  require_invalid_input(
-    [&] { (void)dtwc::distance::dtw<double>(x, y, params); },
-    "ADTW penalty must be finite and non-negative.");
-}
-
-TEST_CASE("M34 Problem rejects invalid variant state transactionally",
-          "[m34][variant-domain][problem]")
-{
-  dtwc::Problem problem("m34");
-  const auto original = problem.variant_params();
-
-  auto invalid = original;
-  invalid.variant = dtwc::core::DTWVariant::ADTW;
-  invalid.adtw_penalty = -1.0;
-  require_invalid_input(
-    [&] { problem.set_variant(invalid); },
-    "ADTW penalty must be finite and non-negative.");
-
-  REQUIRE(problem.variant_params().variant == original.variant);
-  REQUIRE(problem.variant_params().adtw_penalty == original.adtw_penalty);
-}

@@ -133,7 +133,8 @@ private:
   DistanceMatrixStrategy distance_strategy_{ DistanceMatrixStrategy::Auto };
   CUDASettings cuda_settings_{};
   /// Bound from distance_ (and, for WDTW, the series lengths) whenever either
-  /// changes; each holds copies of the settings it reads.
+  /// changes; each holds copies of the settings it reads. The float32 one is
+  /// bound then for float32 series, else by dtw_function_f32() (rebind_dtw_fn).
   dtw_fn_t dtw_fn_;
   dtw_fn_f32_t dtw_fn_f32_;
   /// The fill's lane functions (core::resolve_dtw_block_fn); empty where none applies.
@@ -161,10 +162,9 @@ private:
   void rebind_dtw_fn(); ///< Resolve the distance functions from distance_ and the series.
   /// A direct write to the v1 field `band` takes effect here, as set_band(band).
   void sync_band();
-  /// The rules a distance configuration must meet on `data`, checked before a
-  /// setter or set_data changes anything.
-  static void validate_distance(
-    const core::DistanceConfig &config, const Data &data, bool force_float32 = false);
+  /// core::validate(config) for `data`'s channels and precision, before a setter
+  /// or set_data changes anything.
+  static void validate_distance(core::DistanceConfig config, const Data &data);
   void validate_checkpoint_settings() const;
   /// FX-1: the one check of a distance request — every device axis, band
   /// feasibility and (FX-15) the series values the missing-data strategy
@@ -369,11 +369,11 @@ public:
   void set_missing_strategy(core::MissingStrategy strategy);
   /// Pointwise cost of every distance this Problem computes: the CPU fill and
   /// lazy lookups, the GPU routes, the mmap cache and checkpoint identities.
-  /// L1 by default. A metric other than L1 is implemented for Standard DTW with
-  /// MissingStrategy::Error (univariate or multivariate): the Problem passes the
-  /// metric to the Standard kernels only.
-  /// @throws InvalidInput for a metric other than L1 with a variant other than
-  ///         Standard or a missing-data strategy.
+  /// L1 by default. A metric other than L1 is implemented for Standard DTW, with
+  /// or without a missing-data strategy, and for DDTW (univariate or
+  /// multivariate; L2 with AROW univariate only).
+  /// @throws InvalidInput for a metric other than L1 with WDTW, ADTW, Soft-DTW,
+  ///         MSM or TWE, whose kernels compute L1 (core::validate).
   void set_metric(core::MetricType metric);
   DistanceMatrixStrategy distance_strategy() const noexcept { return distance_strategy_; }
   void set_distance_strategy(DistanceMatrixStrategy strategy)

@@ -20,14 +20,15 @@ implemented.
 The C++ runtime API selects among all three. `Problem::set_metric` makes the
 metric part of a `Problem`'s distance semantics — its CPU and GPU fills, its
 bound distance function, mmap cache and checkpoint identities, and FastCLARA's
-samples. A metric
-other than L1 is implemented for Standard DTW with `MissingStrategy::Error`
-(univariate or multivariate); with another variant or a missing-data strategy
-it raises `InvalidInput`, because the `Problem` passes the metric to the
-Standard kernels only. The CLI's `--metric` is the same `Problem`
-setting: `l1` or `squared_euclidean` on `--device cpu` and `--device gpu` alike.
-A combination the kernels do not implement fails before computation rather than
-silently using another metric.
+samples. A metric other than L1 is implemented for Standard DTW, with or
+without a missing-data strategy, and for DDTW (univariate or multivariate; L2
+with AROW univariate only). WDTW, ADTW, Soft-DTW, MSM and TWE compute L1, so
+another metric with them raises `InvalidInput`. `dtwc::distance::dtw` and a
+`Problem` apply this one rule (`core::validate`). The CLI's `--metric` is the
+same `Problem` setting: `l1` or `squared_euclidean` on `--device cpu` and
+`--device gpu` alike (the GPU runs Standard DTW only). A combination the
+kernels do not implement fails before computation rather than silently using
+another metric.
 
 ## Lower bounds and pruning
 

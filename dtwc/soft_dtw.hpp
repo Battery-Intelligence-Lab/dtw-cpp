@@ -32,11 +32,13 @@
 #include <limits>
 #include <algorithm>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 #include "core/scratch_matrix.hpp"
 #include "core/dtw_kernel.hpp"   // dtw_kernel_full, SoftCell
 #include "core/dtw_cost.hpp"     // SpanL1Cost
+#include "core/dtw_options.hpp"  // core::validate
 #include "core/variant_validation.hpp"
 #include "warping.hpp"           // detail::require_finite
 
@@ -164,7 +166,8 @@ T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 template <typename T = dtwc::settings::default_data_t>
 std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
-  core::validate_sdtw_gamma(gamma);
+  core::validate({ .variant = { .variant = core::DTWVariant::SoftDTW, .sdtw_gamma = gamma } },
+                 std::is_same_v<T, float>);
 
   const auto mx = static_cast<int>(x.size());
   const auto my = static_cast<int>(y.size());

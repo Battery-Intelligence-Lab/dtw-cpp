@@ -1,6 +1,6 @@
 /**
  * @file dtw_dispatch.cpp
- * @brief Implementation of resolve_dtw_fn<T> (see dtw_dispatch.hpp).
+ * @brief validate(DistanceConfig) and resolve_dtw_fn<T> (see dtw_dispatch.hpp).
  */
 
 #include "dtw_dispatch.hpp"
@@ -11,11 +11,11 @@
 #include "../warping_adtw.hpp"       // adtwBanded, adtwBanded_mv
 #include "../warping_ddtw.hpp"       // ddtwBanded, derivative_transform_mv_inplace
 #include "../warping_missing.hpp"    // dtwMissing_banded, dtwMissing_banded_mv
+#include "../warping_missing_arow.hpp" // dtwAROW_banded
 #include "../warping_wdtw.hpp"       // wdtwBanded, wdtwBanded_mv, wdtw_weights
-#include "dtw_cost.hpp"              // SpanAROWL1Cost
+#include "dtw_cost.hpp"              // SpanMVAROW*Cost
 #include "dtw_kernel.hpp"            // dtw_kernel_banded, AROWCell
-#include "dtw_options.hpp"           // DTWVariant, MissingStrategy
-#include "distance_semantics.hpp"    // validate_problem_distance_semantics
+#include "dtw_options.hpp"           // DistanceConfig, variant_names
 #include "msm.hpp"                   // msm_distance
 #include "public_distance.hpp"       // normalize_public_distance
 #include "twe.hpp"                   // twe_distance
@@ -24,8 +24,10 @@
 #include <stdexcept>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <span>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -35,7 +37,8 @@ namespace dtwc::core {
 namespace {
 
 // Every function below captures what it reads by value: the resolved function
-// outlives and outmoves the configuration it was built from.
+// outlives and outmoves the configuration it was built from. validate() has
+// accepted the configuration, so none of them checks it again.
 
 // ----------------------------------------------------------------------------
 // Missing-strategy lambdas. These are strategy-specific; the variant axis is
@@ -48,30 +51,27 @@ auto make_zero_cost(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   const int band = c.band;
+  const MetricType metric = c.metric;
   if (c.ndim > 1) {
-    return [band, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
+    return [band, metric, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
       return normalize_public_distance(dtwMissing_banded_mv<T>(
-        x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, band));
+        x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, band, T(-1), metric));
     };
   }
-  return [band](std::span<const T> x, std::span<const T> y) -> double {
-    return normalize_public_distance(dtwMissing_banded<T>(x, y, band));
+  return [band, metric](std::span<const T> x, std::span<const T> y) -> double {
+    return normalize_public_distance(dtwMissing_banded<T>(x, y, band, T(-1), metric));
   };
 }
 
+// Univariate: validate() refuses it on ndim > 1.
 template <typename T>
 auto make_interpolate(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  // interpolate_linear() is univariate: on an interleaved MV buffer it would
-  // fill a gap from the neighbouring channel's values and the band would count
-  // flat elements, not timesteps. Rejected at bind time (serial — before the
-  // parallel fill), mirroring make_msm/make_twe.
-  require_univariate(c.ndim, "MissingStrategy::Interpolate");
-  return [band = c.band](std::span<const T> x, std::span<const T> y) -> double {
+  return [band = c.band, metric = c.metric](std::span<const T> x, std::span<const T> y) -> double {
     auto xi = has_missing(x) ? interpolate_linear(x) : std::vector<T>(x.begin(), x.end());
     auto yi = has_missing(y) ? interpolate_linear(y) : std::vector<T>(y.begin(), y.end());
-    return normalize_public_distance(dtwBanded<T>(xi, yi, band));
+    return normalize_public_distance(dtwBanded<T>(xi, yi, band, T(-1), metric));
   };
 }
 
@@ -79,18 +79,15 @@ template <typename T>
 auto make_arow(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  // AROW (Yurtman 2023) via the unified kernel: NaN-propagating L1 Cost +
-  // AROWCell that carries the diagonal predecessor when the cost is NaN.
-  // Cross-validated bit-for-bit against the legacy dtwAROW_banded on
-  // {no-NaN, interior-NaN, leading-NaN, trailing-NaN, all-NaN} x bands 1..4
-  // (unit_test_arow_dtw.cpp [phase3]).
-  //
-  // MV extension (SpanMVAROWL1Cost): per-channel skip for cost; AROW is
-  // triggered only when a pair has no comparable channels. Reduces to
-  // scalar AROW when ndim = 1.
+  // AROW (Yurtman 2023) via the unified kernel: a NaN-propagating cost and
+  // AROWCell, which carries the diagonal predecessor when the cost is NaN.
   const int band = c.band;
+  const MetricType metric = c.metric;
   if (c.ndim > 1) {
-    return [band, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
+    // Per-channel skip for the cost; AROW only when a pair has no comparable
+    // channel, so one channel is scalar AROW. L1 or squared L2: validate()
+    // refuses L2, which has no multivariate AROW cost.
+    return [band, metric, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
       const auto x_steps = x.size() / ndim;
       const auto y_steps = y.size() / ndim;
       const bool swap = x_steps > y_steps;
@@ -98,20 +95,15 @@ auto make_arow(const DistanceConfig &c)
       const T* b_data = swap ? x.data() : y.data();
       const auto a_steps = swap ? y_steps : x_steps;
       const auto b_steps = swap ? x_steps : y_steps;
-      SpanMVAROWL1Cost<T> cost{a_data, b_data, ndim};
-      return normalize_public_distance(
-        dtw_kernel_banded<T, SpanMVAROWL1Cost<T>, AROWCell>(
-          a_steps, b_steps, band, cost, AROWCell{}));
+      if (metric == MetricType::SquaredL2)
+        return normalize_public_distance(dtw_kernel_banded<T>(
+          a_steps, b_steps, band, SpanMVAROWSquaredL2Cost<T>{a_data, b_data, ndim}, AROWCell{}));
+      return normalize_public_distance(dtw_kernel_banded<T>(
+        a_steps, b_steps, band, SpanMVAROWL1Cost<T>{a_data, b_data, ndim}, AROWCell{}));
     };
   }
-  return [band](std::span<const T> x, std::span<const T> y) -> double {
-    const bool swap = x.size() > y.size();
-    const auto a = swap ? y : x;
-    const auto b = swap ? x : y;
-    SpanAROWL1Cost<T> cost{a.data(), b.data()};
-    return normalize_public_distance(
-      dtw_kernel_banded<T, SpanAROWL1Cost<T>, AROWCell>(
-        a.size(), b.size(), band, cost, AROWCell{}));
+  return [band, metric](std::span<const T> x, std::span<const T> y) -> double {
+    return normalize_public_distance(dtwAROW_banded<T>(x, y, band, metric));
   };
 }
 
@@ -119,8 +111,9 @@ auto make_arow(const DistanceConfig &c)
 // Variant lambdas (for MissingStrategy::Error or unsupported strategies).
 // ----------------------------------------------------------------------------
 
-// The Standard kernels are the only ones that take the metric; a Problem
-// refuses another metric for every other variant and missing strategy.
+// Standard, DDTW and the missing-data strategies take the metric; validate()
+// refuses another one for WDTW, ADTW, Soft-DTW, MSM and TWE, whose kernels
+// compute L1.
 template <typename T>
 auto make_standard(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
@@ -144,17 +137,18 @@ auto make_ddtw(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   const int band = c.band;
+  const MetricType metric = c.metric;
   if (c.ndim > 1) {
-    return [band, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
+    return [band, metric, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
       thread_local std::vector<T> dx, dy;
       derivative_transform_mv_inplace(x, ndim, dx);
       derivative_transform_mv_inplace(y, ndim, dy);
       return normalize_public_distance(dtwBanded_mv<T>(
-        dx.data(), dx.size() / ndim, dy.data(), dy.size() / ndim, ndim, band));
+        dx.data(), dx.size() / ndim, dy.data(), dy.size() / ndim, ndim, band, T(-1), metric));
     };
   }
-  return [band](std::span<const T> x, std::span<const T> y) -> double {
-    return normalize_public_distance(ddtwBanded<T>(x, y, band));
+  return [band, metric](std::span<const T> x, std::span<const T> y) -> double {
+    return normalize_public_distance(ddtwBanded<T>(x, y, band, metric));
   };
 }
 
@@ -257,13 +251,9 @@ auto make_soft_dtw(const DistanceConfig &c)
   // identical, and swap-symmetric inputs across gamma {0.1..10.0}
   // (unit_test_soft_dtw.cpp [phase3]).
   //
-  // Univariate only: multivariate channels aren't part of the soft_dtw
-  // contract (soft_dtw_gradient() and distance::soft_dtw are univariate too),
-  // and the flat-vector treatment this used to inherit ran the recurrence over
-  // the interleaved channel stream. Rejected at bind time (serial — before the
-  // parallel fill), mirroring make_msm/make_twe. The band is intentionally
-  // ignored: soft-DTW is a full O(n·m) recurrence here.
-  require_univariate(c.ndim, "Soft-DTW");
+  // Univariate (validate() refuses ndim > 1), like soft_dtw_gradient() and
+  // distance::soft_dtw. The band is intentionally ignored: soft-DTW is a full
+  // O(n·m) recurrence here.
   return [gamma = static_cast<T>(c.variant.sdtw_gamma)](std::span<const T> x,
                                                          std::span<const T> y) -> double {
     const bool swap = x.size() > y.size();
@@ -285,15 +275,12 @@ auto make_wdtw(const DistanceConfig &c, const Data &data)
   else                                     return make_wdtw_f32(c);
 }
 
-// MSM / TWE (Task 5.5). Univariate + unbanded only (v1); a multivariate request
-// is rejected at bind time (serial — before the parallel fill) rather than
-// silently collapsing channels. The band is intentionally ignored: these are
-// full O(n·m) elastic metrics here (the default build is unbanded).
+// MSM / TWE. Univariate (validate() refuses ndim > 1) and unbanded: the band is
+// intentionally ignored, these are full O(n·m) elastic metrics here.
 template <typename T>
 auto make_msm(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  require_univariate(c.ndim, "MSM distance");
   const T cost = static_cast<T>(c.variant.msm_c);
   return [cost](std::span<const T> x, std::span<const T> y) -> double {
     return normalize_public_distance(msm_distance<T>(x, y, cost));
@@ -304,7 +291,6 @@ template <typename T>
 auto make_twe(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  require_univariate(c.ndim, "TWE distance");
   const T nu  = static_cast<T>(c.variant.twe_nu);
   const T lam = static_cast<T>(c.variant.twe_lambda);
   return [nu, lam](std::span<const T> x, std::span<const T> y) -> double {
@@ -314,20 +300,12 @@ auto make_twe(const DistanceConfig &c)
 
 // Independent multivariate DTW (DTW_I; Shokoohi-Yekta et al., DMKD 2017).
 // Runs an independent univariate DTW per channel and sums (dtw_independent_mv).
-// v1 scope: Standard variant only, MissingStrategy::Error only. Any other
-// combination is rejected at bind time (serial — before the parallel fill)
-// rather than silently collapsing to dependent mode. `ndim > 1` is guaranteed
-// by the caller (resolve_dtw_fn only takes this path when ndim > 1).
+// Standard DTW with MissingStrategy::Error only (validate() refuses the rest);
+// resolve_dtw_fn takes this path only when ndim > 1.
 template <typename T>
 auto make_independent(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (c.variant.variant != DTWVariant::Standard)
-    throw InvalidInput("Independent multivariate mode is implemented for the Standard "
-                       "DTW variant only in this release");
-  if (c.missing != MissingStrategy::Error)
-    throw InvalidInput("Independent multivariate mode does not support a missing-data "
-                       "strategy in this release (set missing_strategy = Error)");
   return [band = c.band, metric = c.metric, ndim = c.ndim](std::span<const T> x,
                                                            std::span<const T> y) -> double {
     return normalize_public_distance(dtw_independent_mv<T>(
@@ -338,6 +316,81 @@ auto make_independent(const DistanceConfig &c)
 } // unnamed namespace
 
 // ----------------------------------------------------------------------------
+// validate
+// ----------------------------------------------------------------------------
+
+void validate(const DistanceConfig &c, bool f32)
+{
+  const auto &p = c.variant;
+  // Each parameter, the variant that reads it, and whether 0 is in its domain:
+  // WDTW's g = 0 (constant half weights) and ADTW's penalty = 0 (Standard DTW)
+  // are valid limits.
+  const struct
+  {
+    DTWVariant variant;
+    const char *name;
+    double value;
+    bool zero_allowed;
+  } parameters[]{
+    { DTWVariant::WDTW, "WDTW g", p.wdtw_g, true },
+    { DTWVariant::ADTW, "ADTW penalty", p.adtw_penalty, true },
+    { DTWVariant::SoftDTW, "Soft-DTW gamma", p.sdtw_gamma, false },
+    { DTWVariant::MSM, "MSM c", p.msm_c, false },
+    { DTWVariant::TWE, "TWE nu", p.twe_nu, false },
+    { DTWVariant::TWE, "TWE lambda", p.twe_lambda, false },
+  };
+  // Every parameter, the inactive ones too: a later change of variant must not
+  // activate a value outside its domain.
+  for (const auto &q : parameters)
+    if (!std::isfinite(q.value) || q.value < 0 || (q.value == 0 && !q.zero_allowed))
+      throw InvalidInput(std::string(q.name)
+                         + (q.zero_allowed ? " must be finite and non-negative." : " must be finite and positive."));
+
+  if (p.variant != DTWVariant::Standard && c.missing != MissingStrategy::Error)
+    throw InvalidInput("Non-Standard DTW variants require MissingStrategy::Error.");
+
+  // A float32 kernel reads the active parameters as floats: one that became 0
+  // or inf there would change the recurrence (1/gamma = inf turns Soft-DTW into
+  // NaN, the matrix's "not computed"). The range test comes first: casting a
+  // value beyond float's range is undefined.
+  if (f32)
+    for (const auto &q : parameters)
+      if (q.variant == p.variant
+          && (q.value > std::numeric_limits<float>::max() || (q.value != 0 && static_cast<float>(q.value) == 0)))
+        throw InvalidInput(std::string(q.name)
+                           + " cannot be represented in float32 without becoming zero or non-finite.");
+
+  if (c.ndim > 1) {
+    if (p.mv_mode == MVMode::Independent) {
+      if (p.variant != DTWVariant::Standard)
+        throw InvalidInput("Independent multivariate mode is implemented for the Standard DTW variant only in "
+                           "this release");
+      if (c.missing != MissingStrategy::Error)
+        throw InvalidInput("Independent multivariate mode does not support a missing-data strategy in this "
+                           "release (set missing_strategy = Error)");
+    }
+    // No multivariate kernel; interpolation would fill a gap from the
+    // neighbouring channel of the interleaved series.
+    const char *feature = p.variant == DTWVariant::MSM       ? "MSM distance"
+                        : p.variant == DTWVariant::TWE       ? "TWE distance"
+                        : p.variant == DTWVariant::SoftDTW   ? "Soft-DTW"
+                        : c.missing == MissingStrategy::Interpolate ? "MissingStrategy::Interpolate"
+                        : c.missing == MissingStrategy::AROW && c.metric == MetricType::L2
+                          ? "metric L2 with MissingStrategy::AROW"
+                          : nullptr;
+    if (feature) throw InvalidInput(std::string(feature) + " is univariate in this release (ndim must be 1)");
+  }
+
+  // WDTW, ADTW, Soft-DTW, MSM and TWE compute an L1 cost: another metric is
+  // refused, never answered with the L1 distance.
+  if (c.metric != MetricType::L1 && p.variant != DTWVariant::Standard && p.variant != DTWVariant::DDTW)
+    throw InvalidInput(std::string("metric ") + (c.metric == MetricType::SquaredL2 ? "SquaredL2" : "L2")
+                       + " is implemented for Standard DTW and DDTW only, but variant = "
+                       + std::string(name_of(variant_names, p.variant))
+                       + " was requested. Use metric L1 for this configuration.");
+}
+
+// ----------------------------------------------------------------------------
 // resolve_dtw_fn<T>
 // ----------------------------------------------------------------------------
 
@@ -345,8 +398,6 @@ template <typename T>
 std::function<double(std::span<const T>, std::span<const T>)>
 resolve_dtw_fn(const DistanceConfig &c, const Data &data)
 {
-  validate_problem_distance_semantics(c.variant, c.missing, c.ndim, std::is_same_v<T, float>);
-
   // Independent multivariate mode intercepts before every other axis: it is a
   // per-channel decomposition, not a cell-cost or missing-data choice.
   if (c.variant.mv_mode == MVMode::Independent && c.ndim > 1)

@@ -9,9 +9,9 @@
  * one-off calls and examples.
  *
  * This namespace is the checked boundary (warping.hpp explains the layering):
- * every function here validates its parameters, then checks x and y before any
- * distance work, in O(n + m), throwing InvalidInput that names the series and
- * position of a NaN or ±inf.
+ * every function here checks its configuration (core::validate), then x and y
+ * before any distance work, in O(n + m), throwing InvalidInput that names the
+ * series and position of a NaN or ±inf.
  * `missing`, `arow` and the ZeroCost / AROW / Interpolate strategies read NaN
  * as a missing value and reject only ±inf. The unchecked per-pair wrappers
  * they call are unchanged.
@@ -21,9 +21,7 @@
 
 #include "base/error.hpp"
 #include "base/settings.hpp"
-#include "core/distance_semantics.hpp"
 #include "core/dtw_options.hpp"
-#include "core/variant_validation.hpp"
 #include "core/msm.hpp"
 #include "core/twe.hpp"
 #include "base/missing_utils.hpp"
@@ -37,40 +35,8 @@
 
 #include <span>
 #include <stdexcept>
-#include <string>
-#include <string_view>
+#include <type_traits>
 #include <vector>
-
-namespace dtwc::detail {
-
-/// WDTW, ADTW, Soft-DTW, MSM and TWE take no metric: their kernels compute an
-/// L1 cost, so asking one of them for another metric is InvalidInput, never the
-/// L1 distance. Standard and DDTW pass the metric to their kernels, as do the
-/// missing-data strategies, which run with Standard only. Problem::set_metric
-/// is stricter: its resolver passes the metric to the Standard kernels only.
-inline void require_metric_supported(core::DTWVariant variant,
-                                     core::MetricType metric,
-                                     std::string_view where)
-{
-  if (metric == core::MetricType::L1) return;
-  const char *name = nullptr;
-  switch (variant) {
-  case core::DTWVariant::WDTW: name = "WDTW"; break;
-  case core::DTWVariant::ADTW: name = "ADTW"; break;
-  case core::DTWVariant::SoftDTW: name = "SoftDTW"; break;
-  case core::DTWVariant::MSM: name = "MSM"; break;
-  case core::DTWVariant::TWE: name = "TWE"; break;
-  case core::DTWVariant::Standard:
-  case core::DTWVariant::DDTW: return; // they take the metric
-  }
-  throw InvalidInput(
-    std::string(where) + ": metric "
-    + (metric == core::MetricType::SquaredL2 ? "SquaredL2" : "L2")
-    + " is implemented for Standard DTW and DDTW only, but variant = " + name
-    + " was requested. Use metric L1 for this configuration.");
-}
-
-} // namespace dtwc::detail
 
 namespace dtwc::distance {
 
@@ -97,7 +63,7 @@ T wdtw(std::span<const T> x, std::span<const T> y,
        int band = settings::DEFAULT_BAND,
        T g = static_cast<T>(0.05))
 {
-  core::validate_wdtw_g(g);
+  core::validate({ .variant = { .variant = core::DTWVariant::WDTW, .wdtw_g = g } }, std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::wdtw");
   return wdtwBanded<T>(x, y, band, g);
 }
@@ -107,7 +73,8 @@ T adtw(std::span<const T> x, std::span<const T> y,
        int band = settings::DEFAULT_BAND,
        T penalty = static_cast<T>(1.0))
 {
-  core::validate_adtw_penalty(penalty);
+  core::validate({ .variant = { .variant = core::DTWVariant::ADTW, .adtw_penalty = penalty } },
+                 std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::adtw");
   return adtwBanded<T>(x, y, band, penalty);
 }
@@ -116,7 +83,8 @@ template <typename T = dtwc::settings::default_data_t>
 T soft_dtw(std::span<const T> x, std::span<const T> y,
            T gamma = static_cast<T>(1.0))
 {
-  core::validate_sdtw_gamma(gamma);
+  core::validate({ .variant = { .variant = core::DTWVariant::SoftDTW, .sdtw_gamma = gamma } },
+                 std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::soft_dtw");
   return dtwc::soft_dtw<T>(x, y, gamma);
 }
@@ -143,7 +111,7 @@ T arow(std::span<const T> x, std::span<const T> y,
 template <typename T = dtwc::settings::default_data_t>
 T msm(std::span<const T> x, std::span<const T> y, T c = static_cast<T>(1.0))
 {
-  core::validate_msm_c(c);
+  core::validate({ .variant = { .variant = core::DTWVariant::MSM, .msm_c = c } }, std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::msm");
   return core::msm_distance<T>(x, y, c);
 }
@@ -153,15 +121,15 @@ template <typename T = dtwc::settings::default_data_t>
 T twe(std::span<const T> x, std::span<const T> y,
       T nu = static_cast<T>(0.001), T lambda = static_cast<T>(1.0))
 {
-  core::validate_twe_nu(nu);
-  core::validate_twe_lambda(lambda);
+  core::validate({ .variant = { .variant = core::DTWVariant::TWE, .twe_nu = nu, .twe_lambda = lambda } },
+                 std::is_same_v<T, float>);
   dtwc::detail::require_finite<T>(x, y, "distance::twe");
   return core::twe_distance<T>(x, y, nu, lambda);
 }
 
 /// The variant dispatcher. `metric` reaches Standard, DDTW and the missing-data
 /// strategies; WDTW, ADTW, Soft-DTW, MSM and TWE throw InvalidInput for a
-/// metric other than L1 (require_metric_supported).
+/// metric other than L1 (core::validate).
 template <typename T = dtwc::settings::default_data_t>
 T dtw(std::span<const T> x, std::span<const T> y,
       const core::DTWVariantParams &params,
@@ -169,9 +137,7 @@ T dtw(std::span<const T> x, std::span<const T> y,
       core::MetricType metric = core::MetricType::L1,
       core::MissingStrategy missing_strategy = core::MissingStrategy::Error)
 {
-  core::validate_variant_params(params);
-  core::validate_variant_missing_semantics(params, missing_strategy);
-  dtwc::detail::require_metric_supported(params.variant, metric, "distance::dtw");
+  core::validate({ params, metric, missing_strategy, band }, std::is_same_v<T, float>);
   // Each branch ends in a checked function above, which scans the input.
   // Interpolate first rejects ±inf, which interpolate_linear() would spread
   // into the gaps it fills.

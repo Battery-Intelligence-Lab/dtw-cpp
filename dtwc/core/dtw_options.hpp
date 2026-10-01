@@ -114,4 +114,15 @@ struct DistanceConfig
   bool operator==(const DistanceConfig &) const = default;
 };
 
+/// The one check of a DistanceConfig, run where one is set or bound (a Problem's
+/// setters, the checked dtwc::distance functions), never per pair: the kernels
+/// below it take their parameters unchecked.
+/// @param f32 the distance runs in float32, which must hold the active parameters.
+/// @throws InvalidInput for a parameter outside its domain (every parameter, the
+///         inactive ones too), a missing-data strategy with a variant other than
+///         Standard, a metric other than L1 with a variant whose kernel computes L1,
+///         a univariate feature on ndim > 1, and, under `f32`, an active parameter
+///         float32 turns into zero or infinity.
+void validate(const DistanceConfig &config, bool f32);
+
 } // namespace dtwc::core

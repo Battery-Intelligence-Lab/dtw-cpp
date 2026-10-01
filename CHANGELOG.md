@@ -150,7 +150,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   Python ones do, so a Metal build checks its GPU against the CPU.
 - **Added (metric):** `Problem::set_metric` / `metric()`. The metric is now part of a Problem's distances — the CPU fill and
   lookups, CUDA / Metal, the mmap and checkpoint identities, autosave and FastCLARA's samples. A metric other than L1 needs
-  standard DTW with `MissingStrategy::Error`, else `InvalidInput`. L1 stays the default and computes as before.
+  Standard DTW (with any missing-data strategy) or DDTW, else `InvalidInput`, the rule `dtwc::distance::dtw` applies too.
+  L1 stays the default and computes as before.
   `use_mmap_distance_matrix(path, metric)` adopts the metric, so the CPU fills a squared-L2 cache instead of refusing it.
 - **Fixed (multivariate, breaking):** `DistanceMatrixStrategy::Auto` (at least 64 series and a band) or `Pruned` on multivariate
   series read the channels as one interleaved series, so every pair was wrong; they now fill with the multivariate kernel.

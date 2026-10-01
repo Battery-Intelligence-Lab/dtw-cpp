@@ -70,7 +70,8 @@ std::vector<Config> configs()
     out.push_back({ "standard independent", { .mv_mode = MVMode::Independent }, metric, 3 });
   }
   for (const std::size_t ndim : { 1, 3 }) {
-    out.push_back({ "ddtw", { .variant = DTWVariant::DDTW }, MetricType::L1, ndim });
+    for (const auto metric : { MetricType::L1, MetricType::L2, MetricType::SquaredL2 })
+      out.push_back({ "ddtw", { .variant = DTWVariant::DDTW }, metric, ndim });
     for (const double g : { 0.0, 0.3 })
       out.push_back({ "wdtw g=" + std::to_string(g), { .variant = DTWVariant::WDTW, .wdtw_g = g },
                       MetricType::L1, ndim });
