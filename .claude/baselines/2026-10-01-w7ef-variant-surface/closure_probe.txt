@@ -1,0 +1,54 @@
+== base run 1
+interp: no NaN             allocations per call: 2.000  ns per call: 3184.0
+interp: one gappy          allocations per call: 2.000  ns per call: 3251.7
+interp: two gappy          allocations per call: 2.000  ns per call: 3285.7
+wdtw f64: bound length     allocations per call: 0.000  ns per call: 3323.1
+wdtw f64: other length     allocations per call: 1.000  ns per call: 4435.7
+wdtw f32: bound length     allocations per call: 0.000  ns per call: 3287.5
+wdtw f32: other length     allocations per call: 0.000  ns per call: 4172.2
+checksum 12469744.942036184
+== head run 1
+interp: no NaN             allocations per call: 0.000  ns per call: 3136.5
+interp: one gappy          allocations per call: 0.000  ns per call: 3212.5
+interp: two gappy          allocations per call: 0.000  ns per call: 3263.4
+wdtw f64: bound length     allocations per call: 0.000  ns per call: 3313.2
+wdtw f64: other length     allocations per call: 0.000  ns per call: 4181.6
+wdtw f32: bound length     allocations per call: 0.000  ns per call: 3293.0
+wdtw f32: other length     allocations per call: 0.000  ns per call: 4187.9
+checksum 12469744.942036184
+== base run 2
+interp: no NaN             allocations per call: 2.000  ns per call: 3161.2
+interp: one gappy          allocations per call: 2.000  ns per call: 3249.7
+interp: two gappy          allocations per call: 2.000  ns per call: 3264.5
+wdtw f64: bound length     allocations per call: 0.000  ns per call: 3314.2
+wdtw f64: other length     allocations per call: 1.000  ns per call: 4427.2
+wdtw f32: bound length     allocations per call: 0.000  ns per call: 3358.9
+wdtw f32: other length     allocations per call: 0.000  ns per call: 4186.3
+checksum 12469744.942036184
+== head run 2
+interp: no NaN             allocations per call: 0.000  ns per call: 3119.9
+interp: one gappy          allocations per call: 0.000  ns per call: 3216.6
+interp: two gappy          allocations per call: 0.000  ns per call: 3241.2
+wdtw f64: bound length     allocations per call: 0.000  ns per call: 3308.0
+wdtw f64: other length     allocations per call: 0.000  ns per call: 4207.7
+wdtw f32: bound length     allocations per call: 0.000  ns per call: 3281.7
+wdtw f32: other length     allocations per call: 0.000  ns per call: 4167.7
+checksum 12469744.942036184
+== base run 3
+interp: no NaN             allocations per call: 2.000  ns per call: 3168.0
+interp: one gappy          allocations per call: 2.000  ns per call: 3260.0
+interp: two gappy          allocations per call: 2.000  ns per call: 3308.1
+wdtw f64: bound length     allocations per call: 0.000  ns per call: 3297.9
+wdtw f64: other length     allocations per call: 1.000  ns per call: 4403.2
+wdtw f32: bound length     allocations per call: 0.000  ns per call: 3289.1
+wdtw f32: other length     allocations per call: 0.000  ns per call: 4179.7
+checksum 12469744.942036184
+== head run 3
+interp: no NaN             allocations per call: 0.000  ns per call: 3124.6
+interp: one gappy          allocations per call: 0.000  ns per call: 3194.1
+interp: two gappy          allocations per call: 0.000  ns per call: 3222.9
+wdtw f64: bound length     allocations per call: 0.000  ns per call: 3302.1
+wdtw f64: other length     allocations per call: 0.000  ns per call: 4175.2
+wdtw f32: bound length     allocations per call: 0.000  ns per call: 3288.3
+wdtw f32: other length     allocations per call: 0.000  ns per call: 4169.6
+checksum 12469744.942036184
