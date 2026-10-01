@@ -168,8 +168,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ◐ L1 measure what the wheel and the MEX link (linker maps) → L2 split `dtwc_core` (no file formats, no CLI) from
   `dtwc_io` and the CLI; the bindings link the core; Python reads and writes files with numpy/pandas/pyarrow, MATLAB
   with its built-ins; v1 Python `DataLoader` / `write*` stay as thin Python (Volkan 10-01) (L1 1f951e1, record:
-  HiGHS 75–78 % of each binding, CLI + readers ~2 %, two edges pull them in). L2 also: each dtwc/ source folder gets
-  its own CMakeLists.txt (Volkan 10-01); Python reads `.arrow` through pyarrow too
+  HiGHS 75–78 % of each binding, CLI + readers ~2 %, two edges pull them in). L2a: each dtwc/ source folder lists its
+  own files (Volkan 10-01; L2a 87b8e88, 15d87f2; merged 1110fe10; compile commands and link lines identical in every
+  tree); Python reads `.arrow` through pyarrow too
 - ☐ M1 Python solves the MIP with the user's highspy (optional extra; the wheel drops HiGHS); the MEX keeps HiGHS
   linked (CI MEX: HiGHS ON, Gurobi OFF); the model leaves C++ as arrays for Python (Volkan 10-01)
 - ☐ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds
