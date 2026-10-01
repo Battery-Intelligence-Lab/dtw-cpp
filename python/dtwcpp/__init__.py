@@ -176,10 +176,10 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
     Raises
     ------
     InvalidInput
-        For an unknown metric, a NaN or +-inf value, or a band narrower than the
-        length difference between the shortest and longest series (no warping
-        path fits that pair); the same checks as ``Problem.fill_distance_matrix``,
-        which computes the matrix on every device.
+        For an unknown metric, a NaN or +-inf value, an empty series, a band below
+        -1, or a band narrower than the length difference between the shortest and
+        longest series (no warping path fits that pair); the same checks as
+        ``Problem.fill_distance_matrix``, which computes the matrix on every device.
     """
     if device is None:
         device = _current_device()

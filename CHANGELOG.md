@@ -869,9 +869,6 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   raw `new double[n*n]`, so a throw between the allocation and the capsule no
   longer leaks the whole N^2 matrix; a GPU backend returning the wrong number
   of distances is now a `DeviceError` rather than a zero-padded matrix.
-- Python: an exception thrown inside `compute_distance_matrix`'s OpenMP region
-  is captured per thread and rethrown after it, instead of escaping the region
-  (undefined behaviour: a hard interpreter crash).
 - Dense checkpoints fingerprint the pointwise metric, so a matrix computed with
   `--metric squared_euclidean` is no longer accepted by a later `--metric l1`
   run. `save_checkpoint` / `load_checkpoint` /
