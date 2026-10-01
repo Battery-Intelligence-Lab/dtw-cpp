@@ -139,35 +139,12 @@ def test_accepted_valid_routes_publish_and_invalidate(route):
     assert not problem.is_distance_matrix_filled()
 
 
-@pytest.mark.parametrize("observable", ("filled", "matrix"))
-def test_nested_variant_write_rejects_at_guard_without_destroying_cache(observable):
-    """Nested writes bypass the setter; the next compute boundary must be atomic."""
+def test_a_nested_variant_write_edits_a_copy():
+    """variant_params returns a copy: only a setter changes the Problem."""
     problem = _problem()
-    problem.missing_strategy = dtwcpp.MissingStrategy.ZeroCost
     before_matrix = _inject(problem, 987.0)
 
     problem.variant_params.variant = dtwcpp.DTWVariant.ADTW
-    with pytest.raises(
-        dtwcpp.InvalidInput, match=f"^{re.escape(CROSS_PRODUCT)}$"
-    ):
-        problem.fill_distance_matrix()
-    assert problem.variant_params.variant == dtwcpp.DTWVariant.ADTW
-
-    # Raw nested state is caller-owned. Restore it without invoking a setter so
-    # the assertion observes whether the rejecting boundary touched the cache.
-    problem.variant_params.variant = dtwcpp.DTWVariant.Standard
-    if observable == "filled":
-        assert problem.is_distance_matrix_filled()
-    else:
-        np.testing.assert_array_equal(problem.distance_matrix(), before_matrix)
-
-
-def test_nested_valid_write_still_reconciles_at_compute_boundary():
-    problem = _problem()
-    before_matrix = _inject(problem, 999.0)
-    problem.variant_params.variant = dtwcpp.DTWVariant.ADTW
-
-    after = problem.distance_matrix()
-    assert problem.variant_params.variant == dtwcpp.DTWVariant.ADTW
+    assert problem.variant_params.variant == dtwcpp.DTWVariant.Standard
     assert problem.is_distance_matrix_filled()
-    assert not np.array_equal(after, before_matrix)
+    np.testing.assert_array_equal(problem.distance_matrix(), before_matrix)

@@ -189,9 +189,8 @@ export OMP_PLACES=cores
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
 | `DTWC_ENABLE_GUROBI` | ON | Enable Gurobi MIP solver (optional) |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
-| `DTWC_ENABLE_NATIVE_ARCH` | ON | Tune for host CPU (`-march=native`); disable for portable binaries |
 | `DTWC_REPRODUCIBLE_BUILD` | OFF | Strip source/build paths from supported compiler outputs |
-| `DTWC_ARCH_LEVEL` | `""` | Override native arch: `v3` (AVX2+FMA, all modern HPC CPUs), `v4` (AVX-512) |
+| `DTWC_ARCH_LEVEL` | `""` | CPU target of x86-64 builds: `native` (`-march=native`; the default for C++ builds), `v3` (x86-64-v3: AVX2+FMA, the default for Python builds and the floor of released wheels and archives), `v4` (AVX-512). arm64 takes no flag from `v3` |
 | `DTWC_CUDA_ARCH_LIST` | `80-real;86-real;89-real;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set (compute capability 8.0 is the floor) |
 
 AI-assisted workflow (Claude Code)

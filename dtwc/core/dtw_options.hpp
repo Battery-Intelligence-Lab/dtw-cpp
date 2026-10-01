@@ -12,6 +12,9 @@
 #pragma once
 
 #include "../base/names.hpp"
+#include "../base/settings.hpp" // DEFAULT_BAND
+
+#include <cstddef>
 
 namespace dtwc::core {
 
@@ -103,6 +106,21 @@ struct DTWVariantParams
   double twe_nu = 0.001;      ///< TWE: stiffness ν, > 0 (Marteau 2009; aeon default 0.001)
   double twe_lambda = 1.0;    ///< TWE: finite edit penalty λ, > 0 (aeon default 1.0)
   MVMode mv_mode = MVMode::Dependent;  ///< Multivariate mode (ndim>1); default keeps DTW_D
+
+  bool operator==(const DTWVariantParams &) const = default;
+};
+
+/// Everything that decides what a distance between two series means. A Problem
+/// holds one, changed only through its setters, and takes `ndim` from its series.
+struct DistanceConfig
+{
+  DTWVariantParams variant{};                        ///< Variant, its parameters and the multivariate mode
+  MetricType metric = MetricType::L1;                ///< Pointwise cost
+  MissingStrategy missing = MissingStrategy::Error;  ///< How NaN values are treated
+  int band = settings::DEFAULT_BAND;                 ///< Sakoe-Chiba half-width; -1 = full DTW
+  std::size_t ndim = 1;                              ///< Channels per time step
+
+  bool operator==(const DistanceConfig &) const = default;
 };
 
 /// Runtime DTW configuration.

@@ -229,7 +229,9 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, ind
     members[static_cast<size_t>(labels[i])].push_back(i);
 
   // Find medoid per cluster: point minimising sum of distances to cluster peers.
-  // Tie-breaking: smallest original index wins.
+  // Tie-breaking: smallest original index wins. The pairs within each cluster
+  // come from the matrix, which build_dendrogram filled.
+  prob.fill_distance_matrix();
   std::vector<index_t> medoid_indices(k, -1);
   double total_cost = 0.0;
 

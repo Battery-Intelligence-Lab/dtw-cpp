@@ -110,7 +110,7 @@ case "${PROFILE}" in
         echo "═══ Profile: grace (Grace Hopper AArch64, CPU only) ═══"
         CMAKE_ARGS=(
             "${CMAKE_COMMON[@]}"
-            -DDTWC_ENABLE_NATIVE_ARCH=ON   # Let -march=native pick up NEON/SVE
+            -DDTWC_ARCH_LEVEL=native       # Let -march=native pick up NEON/SVE
             -DDTWC_ENABLE_CUDA=OFF         # CUDA kernel not yet ported to AArch64
         )
         ;;

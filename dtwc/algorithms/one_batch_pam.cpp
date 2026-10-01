@@ -98,8 +98,8 @@ struct FixedBatchDistances {
     // dropped, and a block holding series i computes that self-pair and drops it.
     std::vector<std::uint64_t> row_evaluations(n, 0);
     std::vector<double> row_maxima(n, 0.0);
-    const auto block_f32 = core::resolve_dtw_block_fn<float>(problem);
-    const auto block_f64 = core::resolve_dtw_block_fn<data_t>(problem);
+    const auto block_f32 = core::resolve_dtw_block_fn<float>(problem.distance());
+    const auto block_f64 = core::resolve_dtw_block_fn<data_t>(problem.distance());
     auto fill_row = [&](std::size_t i) {
       double row_max = 0.0;
       std::uint64_t calls = 0;

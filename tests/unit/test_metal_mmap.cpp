@@ -72,11 +72,11 @@ TEST_CASE("Metal strategy via Problem::fill_distance_matrix (dense)", "[metal][d
   const size_t L = 64;
 
   auto prob_cpu = make_problem(N, L, 999);
-  prob_cpu.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+  prob_cpu.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
   prob_cpu.fill_distance_matrix();
 
   auto prob_gpu = make_problem(N, L, 999);
-  prob_gpu.distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
+  prob_gpu.set_distance_strategy(dtwc::DistanceMatrixStrategy::Metal);
   prob_gpu.fill_distance_matrix();
 
   for (size_t i = 0; i < N; ++i) {
@@ -102,12 +102,12 @@ TEST_CASE("Metal strategy via Problem::fill_distance_matrix (mmap)", "[metal][mm
   const auto &tmpdir = scratch.path;
 
   auto prob_cpu = make_problem(N, L, 777);
-  prob_cpu.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+  prob_cpu.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
   prob_cpu.fill_distance_matrix();
 
   auto prob_gpu = make_problem(N, L, 777);
   prob_gpu.set_output_folder(tmpdir);
-  prob_gpu.distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
+  prob_gpu.set_distance_strategy(dtwc::DistanceMatrixStrategy::Metal);
   // A cache left by an earlier run would reopen filled and skip the GPU.
   std::filesystem::remove(tmpdir / "metal_mmap_distmat.bin");
   prob_gpu.use_mmap_distance_matrix(tmpdir / "metal_mmap_distmat.bin");
@@ -182,7 +182,7 @@ TEST_CASE("set_metric: the Metal fill computes squared L2", "[metal][metric][if2
                               { "s0", "s1", "s2", "s3", "s4", "s5" } });
     prob.set_band(band);
     prob.set_device(dtwc::Device::GPU);
-    REQUIRE(prob.distance_strategy == dtwc::DistanceMatrixStrategy::Metal);
+    REQUIRE(prob.distance_strategy() == dtwc::DistanceMatrixStrategy::Metal);
     prob.set_metric(dtwc::core::MetricType::SquaredL2);
     prob.fill_distance_matrix();
     for (size_t i = 0; i < series.size(); ++i)

@@ -721,6 +721,8 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
     const bool empty_after =
       !legacy.is_distance_matrix_filled()
       && !canonical.is_distance_matrix_filled();
+    legacy.fill_distance_matrix();
+    canonical.fill_distance_matrix();
     const double legacy_value = legacy.dist_by_ind(2, 5);
     const double canonical_value = canonical.dist_by_ind(2, 5);
     ledger.behavior(
@@ -821,13 +823,17 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
     Problem legacy = make_f22_problem();
     Problem canonical = make_f22_problem();
     double legacy_value = 0.0;
+    // The v1 spelling computed on demand: it fills the matrix on its first
+    // call. The 2.0 one reads a matrix a fill prepared.
     DTWC_PUSH_NO_DEPRECATED
     legacy_value = legacy.distByInd(2, 5);
     DTWC_POP_NO_DEPRECATED
+    canonical.fill_distance_matrix();
     const double canonical_value = canonical.dist_by_ind(2, 5);
     ledger.behavior(
       f22_entity::dist_by_ind,
-      f22_same_bits(legacy_value, 91.0)
+      legacy.is_distance_matrix_filled()
+        && f22_same_bits(legacy_value, 91.0)
         && f22_same_bits(legacy_value, canonical_value));
   }
 

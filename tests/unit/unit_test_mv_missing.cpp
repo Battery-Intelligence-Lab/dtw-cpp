@@ -322,7 +322,7 @@ TEST_CASE("Problem ZeroCost ndim=2: distances are finite and non-negative", "[mv
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   prob.set_verbose(false);
   prob.fill_distance_matrix();
 
@@ -354,7 +354,7 @@ TEST_CASE("Problem ZeroCost ndim=2: NaN reduces distance vs clean", "[mv][missin
 
   dtwc::Problem prob_clean;
   prob_clean.set_data(std::move(data_clean));
-  prob_clean.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob_clean.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   prob_clean.set_verbose(false);
   prob_clean.fill_distance_matrix();
   double d_clean = prob_clean.dist_by_ind(0, 1);
@@ -369,7 +369,7 @@ TEST_CASE("Problem ZeroCost ndim=2: NaN reduces distance vs clean", "[mv][missin
 
   dtwc::Problem prob_nan;
   prob_nan.set_data(std::move(data_nan));
-  prob_nan.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob_nan.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   prob_nan.set_verbose(false);
   prob_nan.fill_distance_matrix();
   double d_nan = prob_nan.dist_by_ind(0, 1);
@@ -390,7 +390,7 @@ TEST_CASE("Problem ZeroCost ndim=2: identical series gives 0", "[mv][missing][pr
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   prob.set_verbose(false);
   prob.fill_distance_matrix();
 
@@ -408,7 +408,7 @@ TEST_CASE("Problem ZeroCost ndim=1 still works correctly", "[mv][missing][proble
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   prob.set_verbose(false);
   prob.fill_distance_matrix();
 
@@ -535,8 +535,5 @@ TEST_CASE("MV + Interpolate is rejected at bind time, not silently flattened",
   prob.set_verbose(false);
   REQUIRE_THROWS_AS(prob.set_missing_strategy(dtwc::core::MissingStrategy::Interpolate),
                     dtwc::InvalidInput);
-
-  // The direct assignment path (public member) is still caught by the fill preflight.
-  prob.missing_strategy = dtwc::core::MissingStrategy::Interpolate;
-  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), dtwc::InvalidInput);
+  CHECK(prob.missing_strategy() == dtwc::core::MissingStrategy::Error);
 }

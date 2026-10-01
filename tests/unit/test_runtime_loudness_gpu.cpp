@@ -47,7 +47,7 @@ static dtwc::Problem make_tiny_problem()
 TEST_CASE("fill_distance_matrix(strategy=Metal) never changes to CPU", "[loudness][gpu]")
 {
   auto prob = make_tiny_problem();
-  prob.distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
+  prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::Metal);
   prob.set_verbose(false);
 
 #if defined(DTWC_HAS_METAL)
@@ -66,7 +66,7 @@ TEST_CASE("fill_distance_matrix(strategy=Metal) never changes to CPU", "[loudnes
 TEST_CASE("fill_distance_matrix(strategy=CUDA) never changes to CPU", "[loudness][gpu]")
 {
   auto prob = make_tiny_problem();
-  prob.distance_strategy = dtwc::DistanceMatrixStrategy::CUDA;
+  prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::CUDA);
   prob.set_verbose(false);
 
 #if defined(DTWC_HAS_CUDA)

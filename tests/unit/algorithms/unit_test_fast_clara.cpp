@@ -581,10 +581,12 @@ TEST_CASE("FastCLARA: total_cost of a multivariate parent is its multivariate di
   opts.random_seed = 5;
   const auto result = dtwc::algorithms::fast_clara(prob, opts);
 
+  // fast_clara fills no matrix on its parent; the bound function is the multivariate distance.
+  const auto &distance = prob.dtw_function();
   double multivariate = 0.0, flat_univariate = 0.0;
   for (int p = 0; p < N; ++p) {
     const int medoid = result.medoid_indices[static_cast<size_t>(result.labels[static_cast<size_t>(p)])];
-    multivariate += prob.dist_by_ind(p, medoid);
+    multivariate += distance(prob.series(p), prob.series(medoid));
     flat_univariate += dtwc::dtwFull_L<data_t>(prob.series(p), prob.series(medoid));
   }
   REQUIRE_THAT(result.total_cost, WithinAbs(multivariate, 1e-9));
@@ -607,7 +609,7 @@ TEST_CASE("FastCLARA: propagates missing_strategy", "[clara][missing]")
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob.set_missing_strategy(dtwc::core::MissingStrategy::ZeroCost);
   prob.set_verbose(false);
 
   dtwc::algorithms::CLARAOptions opts;

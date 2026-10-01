@@ -299,8 +299,8 @@ TEST_CASE("OneBatchPAM stays within its fixed-batch distance budget",
   REQUIRE(problem.medoids() == result.medoid_indices);
 }
 
-TEST_CASE("OneBatchPAM reconciles a raw dispatcher mutation before OpenMP",
-          "[one_batch_pam][dtw_function][semantic_mutation][m37]")
+TEST_CASE("OneBatchPAM computes with the Problem's variant in every worker",
+          "[one_batch_pam][dtw_function][m37]")
 {
   constexpr int replicas = 33; // N=66 takes the OpenMP table-build path.
   std::vector<std::vector<data_t>> series;
@@ -316,8 +316,10 @@ TEST_CASE("OneBatchPAM reconciles a raw dispatcher mutation before OpenMP",
 
   Problem problem{"one_batch_raw_dispatch_mutation"};
   problem.set_data(Data{std::move(series), std::move(names)});
-  problem.variant_params.variant = core::DTWVariant::ADTW;
-  problem.variant_params.adtw_penalty = 1.0;
+  core::DTWVariantParams adtw;
+  adtw.variant = core::DTWVariant::ADTW;
+  adtw.adtw_penalty = 1.0;
+  problem.set_variant(adtw);
 
   algorithms::OneBatchPAMOptions options;
   options.n_clusters = 1;
@@ -326,8 +328,8 @@ TEST_CASE("OneBatchPAM reconciles a raw dispatcher mutation before OpenMP",
   options.random_seed = 17;
 
   // Every medoid has 33 opposite-shape replicas at ADTW distance 4. Standard
-  // DTW would report 33*3=99, so 132 pins both the serial rebind and its use by
-  // all workers without relying on a scheduler-specific race manifestation.
+  // DTW would report 33*3=99, so 132 pins the variant's use by all workers
+  // without relying on a scheduler-specific race manifestation.
   const auto result = algorithms::one_batch_pam(problem, options);
   REQUIRE(result.total_cost == 132.0);
   REQUIRE_FALSE(problem.is_distance_matrix_filled());

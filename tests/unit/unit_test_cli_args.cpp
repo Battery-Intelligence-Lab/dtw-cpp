@@ -249,7 +249,7 @@ TEST_CASE("run's TADPole threshold uses mmap or fails before dense allocation", 
   auto config = mapped_config(ClusterMethod::TADPole, scratch, "tadpole");
   config.tadpole_dc = 3.0;
 #ifdef DTWC_HAS_MMAP
-  // TADPole's exact distances go through dist_by_ind(), so it is NOT exempt.
+  // TADPole is not exempt: it reads the matrix when a complete one is there.
   const auto result = dtwc::run(config, tiny_series());
   CHECK(result.labels().size() == 3);
   CHECK(cache_exists(scratch, "tadpole"));
