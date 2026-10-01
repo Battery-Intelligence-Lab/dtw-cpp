@@ -283,3 +283,24 @@ CHANGELOG rule.
 - 2026-10-01 — L2a: each dtwc/ folder lists its own sources in its own CMakeLists.txt; a source property set from a
   folder file names `TARGET_DIRECTORY dtwc++`; compile commands and executable link lines are identical in every tree
   (dtwc++.lib's member order follows the folders). 41 headers are listed nowhere, as before: L2b decides.
+- 2026-10-01 — W8b: one `open_output` / `close_output` (it creates the parent directory) and one
+  `detail::write_result_files` for Result::save and the CLI. A RAM-limited (streamed) Parquet result writes
+  `series_<i>` labels and medoids and no matrix or silhouettes (Result::save asked for them: InvalidInput; it read
+  an empty Data). Silhouettes: UndefinedScore is a warning; k = 1 writes no file, silently, in C++, the CLI, MATLAB
+  and Python. `--name sub/x` writes into a subdirectory of the output directory (accepted).
+- 2026-10-01 — W7ef: Soft-DTW and v1's dtwFull run on the linear kernel (Soft-DTW peak working set 3,431 → 14 MB at
+  8 × 8,000 samples; values digit-identical: SoftCell sums diag, left, up as the full kernel did); Interpolate fills
+  thread_local buffers; Problem's mutable matrix accessor is `writable_distance_matrix()`; TimeSeries/View,
+  softmin_gamma, the DDTW pointer overloads and the full-matrix kernel go; core::validate refuses an out-of-range
+  enum. SoftGammaScale stays: a subnormal gamma is valid and pinned.
+- 2026-10-01 — W10: `set_device` + `set_gpu_precision` are a Problem's device surface (DistanceMatrixStrategy,
+  CUDASettings and their mappers gone); `gpu_available()` / `gpu_info()` are the discovery functions in Python and
+  MATLAB. A distance cache is keyed by its computed precision, not its device (orchestrator, applying Volkan 10-01
+  on epsilon-level FP): a CPU FP64 cache serves a CUDA FP64 run, GPU 0 and GPU 1 agree, FP32 is refused by an FP64
+  run. Metal's Auto is FP32; CUDA's Auto is refused for a persistent cache (it depends on the GPU). Python
+  Result.device is "gpu"; `gpu_precision_names` stays (the GpuPrecision name table).
+- 2026-10-01 — W14b: an explicit build option that cannot be honoured stops the configure (CUDA without a usable
+  compiler or on macOS, Metal off Apple, Arrow found but unlinkable, Gurobi or HiGHS absent, MATLAB not found);
+  Gurobi defaults OFF (CHANGELOG; the default MEX imports no gurobi130.dll); Arrow without Parquet is an IPC-only
+  build that says so. Build trees that cached the old defaults need -DDTWC_ENABLE_METAL=OFF (and ARROW=OFF where
+  Arrow is absent) once. A MATLAB without its executable needs DTWC_BUILD_TESTING=OFF.

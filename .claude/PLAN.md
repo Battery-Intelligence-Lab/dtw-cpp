@@ -212,7 +212,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ tests narrow `index_t` to `int` (`std::set<int>` built from `centroids_ind` / `medoid_indices`, `for (int m :
   prob.centroids_ind)`; MSVC C4244 in the CUDA tree): unit_test_clustering_algorithms.cpp, algorithms/
   unit_test_duplicate_series.cpp, unit_test_fast_clara.cpp, unit_test_fast_pam.cpp, unit_test_one_batch_pam.cpp — use
-  `index_t`, with the comment sweep
+  `index_t`, with the comment sweep; also dtwc/cli/run.cpp's `std::as_const(prob).distance_matrix()` and its comment
+  (redundant since `writable_distance_matrix()`, W7ef)
 
 ## G — docs and release prep (W14)
 
