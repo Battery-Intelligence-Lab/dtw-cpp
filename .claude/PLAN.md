@@ -130,7 +130,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ CPU floor x86-64-v3 for release archives and wheels (Volkan 09-30); one `DTWC_ARCH_LEVEL` (native | v3 | v4) (V3) (V3 165e48d, 41a1be1; merged 169db40)
 - ☐ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
   10-01); the GCC-only test failures explained (V4)
-- ☐ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1)
+- ☑ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1) (S1 5cc52a0, 0268df1; merged c54e375; htc-gpu 80;86;89)
 - ☐ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
   its own band
 - ☑ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
