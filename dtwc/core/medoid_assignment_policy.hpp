@@ -3,8 +3,11 @@
  * @brief Shared finite-state and ordered-sum policy for medoid assignment.
  *
  * Full assignment scans are owned by their algorithms; this header centralizes
- * only the numerical contract they must all enforce (finiteness and the
- * point-ordered published objective).
+ * only the numerical contract they must all enforce. A matrix is checked once
+ * where it enters a Problem (DistanceMatrix::all_computed), so a loop that only
+ * reads a filled matrix checks nothing; a loop that calls the DTW function
+ * checks each distance it computes; every published objective is the
+ * point-ordered sum, checked once.
  *
  * The scans are NOT candidates for a single shared loop: they differ in
  * parallel-vs-serial execution, index space, distance signature and per-element
@@ -47,26 +50,6 @@ inline double require_finite_medoid_distance(
   return value;
 }
 
-[[noreturn]] inline void throw_nonfinite_candidate_distance(
-  std::string_view caller, std::size_t point, index_t candidate_index)
-{
-  throw InvalidInput(
-    std::string(caller)
-    + ": non-finite candidate distance at point "
-    + std::to_string(point) + ", candidate index "
-    + std::to_string(candidate_index) + ".");
-}
-
-inline double require_finite_candidate_distance(
-  double value, std::string_view caller, std::size_t point,
-  index_t candidate_index)
-{
-  if (!std::isfinite(value))
-    throw_nonfinite_candidate_distance(
-      caller, point, candidate_index);
-  return value;
-}
-
 /**
  * Point-ordered binary64 accumulator for a published medoid objective.
  *
@@ -78,34 +61,9 @@ inline double require_finite_candidate_distance(
 class OrderedMedoidObjective
 {
 public:
-  explicit OrderedMedoidObjective(
-    std::string_view caller, std::size_t first_point = 0) noexcept
-    : caller_(caller), next_point_(first_point)
-  {
-  }
+  void add(double value) noexcept { total_ = total_ + value; }
 
-  void add(double value)
-  {
-    if (!std::isfinite(value)) {
-      throw InvalidInput(
-        std::string(caller_)
-        + ": non-finite nearest-medoid distance at point "
-        + std::to_string(next_point_) + ".");
-    }
-
-    const double current = total_;
-    const double next = current + value;
-    if (!std::isfinite(next)) {
-      throw InvalidInput(
-        std::string(caller_)
-        + ": nearest-medoid objective became non-finite after point "
-        + std::to_string(next_point_) + ".");
-    }
-    total_ = next;
-    ++next_point_;
-  }
-
-  void add(std::span<const double> values)
+  void add(std::span<const double> values) noexcept
   {
     for (const double value : values) add(value);
   }
@@ -117,17 +75,26 @@ public:
   }
 
 private:
-  std::string_view caller_;
-  std::size_t next_point_;
   volatile double total_ = 0.0;
 };
+
+/// The objective `caller` publishes. A sum is finite exactly when every
+/// distance it adds is finite and no partial sum overflows, so this one check
+/// stands for one per distance.
+inline double finite_objective(double total, std::string_view caller)
+{
+  if (!std::isfinite(total))
+    throw InvalidInput(std::string(caller)
+                       + ": the nearest-medoid objective is not finite (a distance or their sum overflowed).");
+  return total;
+}
 
 inline double ordered_medoid_objective(
   std::span<const double> values, std::string_view caller)
 {
-  OrderedMedoidObjective total(caller);
+  OrderedMedoidObjective total;
   total.add(values);
-  return total.value();
+  return finite_objective(total.value(), caller);
 }
 
 } // namespace dtwc::core::detail

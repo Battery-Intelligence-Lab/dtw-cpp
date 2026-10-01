@@ -585,6 +585,8 @@ void Problem::use_mmap_distance_matrix(
   // before any of its distances can be read.
   auto mapped = core::DistanceMatrix::map(cache_path, data_.size(),
                                           distance_checkpoint_identity(metric));
+  // A warm start holds every pair.
+  const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix");
   if (distance_.metric != metric) { // new semantics, as in set_metric
     distance_.metric = metric;
     clusters_ind.clear();
@@ -592,7 +594,7 @@ void Problem::use_mmap_distance_matrix(
     rebind_dtw_fn();
   }
   distMat = std::move(mapped);
-  filled_ = distMat.size() > 0 && distMat.all_computed(); // a warm start holds every pair
+  filled_ = distMat.size() > 0 && complete;
 }
 
 /// Reject automatic-checkpoint settings that fill_distance_matrix cannot honour,
@@ -784,9 +786,12 @@ void Problem::fill_distance_matrix()
 {
   validate_checkpoint_settings();
   sync_band();
-  // A matrix installed through distance_matrix() or read whole needs no pair.
-  if (!filled_ && data_.size() > 0 && distMat.size() == data_.size() && distMat.all_computed())
-    filled_ = true;
+  // Writes through distance_matrix() commit here: one scan refuses ±inf, and a
+  // matrix they made complete needs no pair.
+  if (written_ && !filled_ && data_.size() > 0 && distMat.size() == data_.size()) {
+    filled_ = distMat.all_computed("Problem::fill_distance_matrix");
+    written_ = false;
+  }
   if (filled_) return;
   validate_fill_request("Problem::fill_distance_matrix");
 
@@ -949,6 +954,9 @@ void Problem::assign_clusters()
     bool has_best = false;
     for (std::size_t slot = 0; slot < centroids_ind.size(); ++slot) {
       const index_t medoid = centroids_ind[slot];
+      // Not the matrix's intake check: a fill of finite series can overflow
+      // (values near DBL_MAX give +inf), and Lloyd refuses that before it
+      // publishes labels.
       const double distance = core::detail::require_finite_medoid_distance(
         dist_by_ind(ip, medoid), "kmedoids_lloyd", i_p,
         static_cast<index_t>(slot), medoid);
@@ -1171,22 +1179,8 @@ double Problem::find_total_cost()
     };
     run_openmp(point_distance, size());
   }
-  core::detail::OrderedMedoidObjective total("kmedoids_lloyd");
-  for (const auto idx : Range(size())) {
-    const auto i = static_cast<index_t>(idx);
-    const index_t medoid_slot = clusters_ind[i];
-    const index_t medoid_index = centroids_ind[medoid_slot];
-    const double distance = core::detail::require_finite_medoid_distance(
-      distances[idx], "kmedoids_lloyd", idx, medoid_slot, medoid_index);
-    if constexpr (settings::isDebug)
-      std::cout << "Distance between " << i << " and closest cluster " << clusters_ind[i]
-                << " which is: " << distance << "\n";
-
-    // k-medoids objective: sum of raw DTW distances (not squared, unlike k-means).
-    total.add(distance);
-  }
-
-  return total.value();
+  // k-medoids objective: sum of raw DTW distances (not squared, unlike k-means).
+  return core::detail::ordered_medoid_objective(distances, "kmedoids_lloyd");
 }
 
 } // namespace dtwc

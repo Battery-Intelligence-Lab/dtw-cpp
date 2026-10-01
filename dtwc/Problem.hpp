@@ -145,6 +145,10 @@ private:
   /// load or bind; cleared by any change of series or distance settings and by
   /// the mutable distance_matrix() accessor.
   bool filled_{ false };
+  /// A caller may have written into distMat through the mutable
+  /// distance_matrix(): the next fill scans it, where those writes commit.
+  /// Every other way a matrix enters scans it there.
+  bool written_{ false };
 
   Method method_{ Method::Kmedoids };
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
@@ -485,11 +489,13 @@ public:
   const core::DistanceMatrix &distance_matrix() const { return distMat; }
   /// The distance matrix (mutable). The caller may change which pairs are
   /// known, so the Problem no longer calls it filled: the next
-  /// fill_distance_matrix() computes the pairs left NaN, none when all are set.
+  /// fill_distance_matrix() refuses a pair set to ±inf (InvalidInput) and
+  /// computes the pairs left NaN, none when all are set.
   core::DistanceMatrix &distance_matrix()
   {
     sync_band();
     filled_ = false;
+    written_ = true;
     return distMat;
   }
 
@@ -504,8 +510,8 @@ public:
   /// Map the distance matrix to the `.dtwm` file `cache_path`, bound to this
   /// Problem's exact data and distance settings, metric() included. An existing
   /// file is reopened with the distances it holds (InvalidInput if they are for
-  /// other series or settings, IOError if it is not a whole `.dtwm` file); an
-  /// absent one is created. IOError on a build without llfio.
+  /// other series or settings or one is ±inf, IOError if it is not a whole
+  /// `.dtwm` file); an absent one is created. IOError on a build without llfio.
   /// The fingerprint of the data and the settings is checked here, once; every
   /// setter and set_data detach the file. Call refresh_distance_matrix() before
   /// editing series values in place.

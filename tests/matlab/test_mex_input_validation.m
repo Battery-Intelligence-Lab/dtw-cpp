@@ -350,6 +350,22 @@ function test_set_distance_matrix_complex_rejected(testCase)
         'dtwc:invalidArgument');
 end
 
+function test_set_distance_matrix_infinity_rejected(testCase)
+%   A distance is finite: the matrix is scanned where it enters, since the
+%   clustering loops read it unchecked. The error names the pair.
+    prob = m48_problem();
+    err = [];
+    try
+        prob.set_distance_matrix([0 Inf; Inf 0]);
+    catch err
+    end
+    verifyNotEmpty(testCase, err, 'an infinite distance was accepted');
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifySubstring(testCase, err.message, ...
+        'Problem.set_distance_matrix: the distance between series 0 and 1 is +inf');
+    verifyFalse(testCase, prob.is_distance_matrix_filled());
+end
+
 % -------------------------------------------------------------------------
 %  Label entry points: ARI / NMI accept int32 OR double, reject anything else
 % -------------------------------------------------------------------------

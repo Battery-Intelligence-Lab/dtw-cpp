@@ -790,9 +790,10 @@ class TestNonFiniteDistanceMatrixCsv:
     """F8: save() must mirror dtwc/core/matrix_io.hpp exactly.
 
     NaN is an uncomputed cell and is written as an EMPTY field; +/-inf is
-    refused by preflight_distance_matrix_csv BEFORE the file is opened. The
-    oracle is the C++ writer itself (Problem.write_distance_matrix), not a
-    transcription of the rule.
+    refused BEFORE the file is opened, where the matrix enters the Problem
+    (set_distance_matrix). The oracle is the C++ route itself
+    (Problem.set_distance_matrix + write_distance_matrix), not a transcription
+    of the rule.
     """
 
     _SERIES = [[0.0], [1.0], [2.0], [3.0]]
@@ -838,7 +839,8 @@ class TestNonFiniteDistanceMatrixCsv:
             self._cpp_matrix_csv(D, tmp_path / "cpp")
         assert str(py_err.value) == str(cpp_err.value)
         assert str(py_err.value) == (
-            "distance-matrix CSV: computed non-finite value at row 0, column 1.")
+            "Problem.set_distance_matrix: the distance between series 0 and 1 is "
+            f"{'+inf' if value > 0 else '-inf'}; a distance must be finite.")
         # Labels/medoids are already on disk, as in C++ Result::save.
         assert (tmp_path / "nonfinite_labels.csv").is_file()
         assert not (tmp_path / "nonfinite_distance_matrix.csv").exists()

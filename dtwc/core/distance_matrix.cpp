@@ -197,9 +197,19 @@ size_t DistanceMatrix::count_computed() const
   return static_cast<size_t>(std::count_if(data_, data_ + packed_count(), [](double d) { return !std::isnan(d); }));
 }
 
-bool DistanceMatrix::all_computed() const
+bool DistanceMatrix::all_computed(std::string_view where) const
 {
-  return std::none_of(data_, data_ + packed_count(), [](double d) { return std::isnan(d); });
+  bool all = true;
+  for (size_t i = 0, k = 0; i < n_; ++i)
+    for (size_t j = 0; j <= i; ++j, ++k) {
+      const double d = data_[k];
+      if (std::isnan(d))
+        all = false;
+      else if (std::isinf(d))
+        throw InvalidInput(std::string(where) + ": the distance between series " + std::to_string(j) + " and "
+                           + std::to_string(i) + " is " + (d > 0 ? "+inf" : "-inf") + "; a distance must be finite.");
+    }
+  return all;
 }
 
 DistanceMatrix DistanceMatrix::map(const fs::path &path, size_t n, const fingerprint_type &fingerprint)

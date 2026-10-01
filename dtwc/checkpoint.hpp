@@ -65,8 +65,9 @@ void save_checkpoint(const Problem &prob, const std::string &path, core::MetricT
 /// (a mapped matrix is let go of; its file is left as it is).
 /// @return false, with the Problem unchanged, only when there is no such file.
 /// @throws InvalidInput if the file holds distances of other series or other
-///         distance settings, prob.metric() included; IOError if it is not a
-///         whole `.dtwm` file (short, foreign, another version, wrong length).
+///         distance settings, prob.metric() included, or a distance that is
+///         ±inf; IOError if it is not a whole `.dtwm` file (short, foreign,
+///         another version, wrong length).
 [[nodiscard]] bool load_checkpoint(Problem &prob, const std::string &path);
 
 /// As above, but expecting distances computed with `metric`, which may differ

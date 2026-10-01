@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -111,7 +112,11 @@ public:
 
   double max() const; ///< Largest computed distance; 0 when none is computed.
   size_t count_computed() const;
-  bool all_computed() const;
+  /// Whether every pair is computed (none is NaN), in one pass that also refuses
+  /// a distance that is ±inf: InvalidInput, after `where`, names the first such
+  /// pair. Every matrix that enters a Problem from outside its fill passes this
+  /// scan, so the clustering loops read the matrix unchecked.
+  bool all_computed(std::string_view where) const;
 
 private:
   struct Mapping; // the llfio file handle and its map, in distance_matrix.cpp
