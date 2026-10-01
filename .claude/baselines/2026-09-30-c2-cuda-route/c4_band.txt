@@ -1,0 +1,108 @@
+C4 band run 1: base = long_fill_base.exe (bf2992d), head = long_fill_head.exe (the change)
+start 02:56:06
+gpu before: 1 %, 1954 MiB; waited 0s; foreign: []
+== base gpu 2751 208
+run,gpu,208,2751,0,1.8222
+run,gpu,208,2751,1,1.8344
+run,gpu,208,2751,2,1.8338
+run,gpu,208,2751,3,1.8193
+run,gpu,208,2751,4,1.8295
+median,gpu,208,2751,1.8295 s,89.1 Gcell/s,min 1.8193,max 1.8344,d(0,1)=845.56768798828125,d(N-1,N-2)=843.26361083984375
+matrix,gpu,208,2751,slots 21736,fnv1a64 12b7f9f64965c2b0
+PINNED_EXIT=0
+== head gpu 2751 208
+run,gpu,208,2751,0,1.7276
+run,gpu,208,2751,1,1.7284
+run,gpu,208,2751,2,1.7357
+run,gpu,208,2751,3,1.7276
+run,gpu,208,2751,4,1.7351
+median,gpu,208,2751,1.7284 s,94.3 Gcell/s,min 1.7276,max 1.7357,d(0,1)=845.56768798828125,d(N-1,N-2)=843.26361083984375
+matrix,gpu,208,2751,slots 21736,fnv1a64 12b7f9f64965c2b0
+PINNED_EXIT=0
+foreign after: []
+cpu load 93
+gpu before: 7 %, 1960 MiB; waited 0s; foreign: []
+== base gpu 2754 208
+run,gpu,208,2754,0,1.8245
+run,gpu,208,2754,1,1.8522
+run,gpu,208,2754,2,1.8509
+run,gpu,208,2754,3,1.8441
+run,gpu,208,2754,4,1.8351
+median,gpu,208,2754,1.8441 s,88.5 Gcell/s,min 1.8245,max 1.8522,d(0,1)=845.1226806640625,d(N-1,N-2)=843.70428466796875
+matrix,gpu,208,2754,slots 21736,fnv1a64 8cb0ee96372c54f1
+PINNED_EXIT=0
+== head gpu 2754 208
+run,gpu,208,2754,0,1.7365
+run,gpu,208,2754,1,1.7428
+run,gpu,208,2754,2,1.7411
+run,gpu,208,2754,3,1.7523
+run,gpu,208,2754,4,1.7484
+median,gpu,208,2754,1.7428 s,93.7 Gcell/s,min 1.7365,max 1.7523,d(0,1)=845.1226806640625,d(N-1,N-2)=843.70428466796875
+matrix,gpu,208,2754,slots 21736,fnv1a64 8cb0ee96372c54f1
+PINNED_EXIT=0
+foreign after: []
+cpu load 91
+gpu before: 8 %, 1948 MiB; waited 0s; foreign: []
+== base gpu 2757 208
+run,gpu,208,2757,0,1.8378
+run,gpu,208,2757,1,1.8427
+run,gpu,208,2757,2,1.8355
+run,gpu,208,2757,3,1.8385
+run,gpu,208,2757,4,1.8419
+median,gpu,208,2757,1.8385 s,89.0 Gcell/s,min 1.8355,max 1.8427,d(0,1)=846.76324462890625,d(N-1,N-2)=845.8919677734375
+matrix,gpu,208,2757,slots 21736,fnv1a64 972c489a9a6b0e5a
+PINNED_EXIT=0
+== head gpu 2757 208
+run,gpu,208,2757,0,1.7815
+run,gpu,208,2757,1,1.7711
+run,gpu,208,2757,2,1.7678
+run,gpu,208,2757,3,1.7700
+run,gpu,208,2757,4,1.7658
+median,gpu,208,2757,1.7700 s,92.4 Gcell/s,min 1.7658,max 1.7815,d(0,1)=846.76324462890625,d(N-1,N-2)=845.8919677734375
+matrix,gpu,208,2757,slots 21736,fnv1a64 972c489a9a6b0e5a
+PINNED_EXIT=0
+foreign after: []
+cpu load 100
+gpu before: 6 %, 1929 MiB; waited 0s; foreign: []
+== base gpu 2750 208
+run,gpu,208,2750,0,1.4878
+run,gpu,208,2750,1,1.4878
+run,gpu,208,2750,2,1.4898
+run,gpu,208,2750,3,1.5041
+run,gpu,208,2750,4,1.4885
+median,gpu,208,2750,1.4885 s,109.4 Gcell/s,min 1.4878,max 1.5041,d(0,1)=844.02459716796875,d(N-1,N-2)=843.77899169921875
+matrix,gpu,208,2750,slots 21736,fnv1a64 e883244f8a8bcba2
+PINNED_EXIT=0
+== head gpu 2750 208
+run,gpu,208,2750,0,1.4881
+run,gpu,208,2750,1,1.4923
+run,gpu,208,2750,2,1.4910
+run,gpu,208,2750,3,1.4887
+run,gpu,208,2750,4,1.4970
+median,gpu,208,2750,1.4910 s,109.2 Gcell/s,min 1.4881,max 1.4970,d(0,1)=844.02459716796875,d(N-1,N-2)=843.77899169921875
+matrix,gpu,208,2750,slots 21736,fnv1a64 e883244f8a8bcba2
+PINNED_EXIT=0
+foreign after: []
+cpu load 100
+gpu before: 3 %, 1946 MiB; waited 0s; foreign: []
+== base gpu 2400 240
+run,gpu,240,2400,0,1.5212
+run,gpu,240,2400,1,1.5274
+run,gpu,240,2400,2,1.5279
+run,gpu,240,2400,3,1.5271
+run,gpu,240,2400,4,1.5238
+median,gpu,240,2400,1.5271 s,108.2 Gcell/s,min 1.5212,max 1.5279,d(0,1)=735.18011474609375,d(N-1,N-2)=730.07763671875
+matrix,gpu,240,2400,slots 28920,fnv1a64 0719660d5117ee7e
+PINNED_EXIT=0
+== head gpu 2400 240
+run,gpu,240,2400,0,1.5333
+run,gpu,240,2400,1,1.5331
+run,gpu,240,2400,2,1.5370
+run,gpu,240,2400,3,1.5343
+run,gpu,240,2400,4,1.5370
+median,gpu,240,2400,1.5343 s,107.7 Gcell/s,min 1.5331,max 1.5370,d(0,1)=735.18011474609375,d(N-1,N-2)=730.07763671875
+matrix,gpu,240,2400,slots 28920,fnv1a64 0719660d5117ee7e
+PINNED_EXIT=0
+foreign after: []
+cpu load 100
+end 02:58:12

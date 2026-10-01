@@ -1,0 +1,6 @@
+FP32 L 2750: kernel_used wavefront
+FP32 L 2751: kernel_used wavefront_global
+FP32 L 2754: kernel_used wavefront_global
+FP32 L 2757: kernel_used wavefront_global
+FP32 L 2758: kernel_used wavefront_global
+FP32 L 2400: kernel_used wavefront
