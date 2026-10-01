@@ -196,7 +196,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 ## F — tests to their oracles (W12)
 
 - ☑ W12a unrun and wave/phase test files go (rescued cases named) (W12a 3368bc9, 4c0a163, 1be6b73, 0dc3480, 58568f9, ed61a1a, 7b99ce1, da1739d, 11a468a, c7111cf, cce3398, 2d02451; merged 6c6f3d4; −4,217/+243; the hidden benches that records cite stay)
-- ☐ W12b `tests/unit/adversarial/` dissolved per subject
+- ◐ W12b `tests/unit/adversarial/` dissolved per subject (part 1: W12b beaaff0, d9746f0, 8a9603a, 12d2940, 180c28c, 35eadcd; merged 65aadc75; five files, 3,007 → 865 lines; part 2: the arow, missing-utils and multivariate files after W7c)
 - ☑ W12c repeated DTW property tests → one table-driven `core/test_dtw.cpp` against a new `tests/support/dtw_oracle.hpp` (W12c f1b2d13, f6c7a14, 6cec77c, 8d75fde, 8162a11; merged b3f6219; +820 / −2,906; the table bites on every axis)
 - ☑ W12d `test_contract_parity.py` existence lists → one table (W12d 4d49609; merged eeea331; 129 rows)
 - ☑ every test writes to its own temp dir (a fixed `%TEMP%/dtwc_test` collides under concurrent runs:
