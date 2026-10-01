@@ -127,7 +127,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ CUDA: the global wavefront above L 2048 where fewer than 3 blocks fit an SM (C1's probe: FP32 L 6000/8000 at 0.64/0.66 of the shared route, FP64 L 2049–4000 at 0.76–0.84) — its own band; the Shared kernel's unreachable preload branch goes with it (C1) (C2 63d5d0a; merged dd33a0e; FP32 L 6000–8446 at 0.64–0.68 of base, FP64 L 2049–4223 at 0.76–0.84; deleting the Shared kernel's preload branch FALSIFIED — it raises occupancy and slows FP32 L 513–2757 by 3–23 %, so the branch stays)
 - ☐ CUDA: the FP64 Shared kernel at 4 blocks per SM (C2 lead) — its own band
 - ☑ CUDA floor: compute capability 8.0 (the A30's generation, Volkan 09-30); older devices get a typed DeviceError before any allocation (C1 c445089)
-- ☐ CPU floor x86-64-v3 for release archives and wheels (Volkan 09-30); one `DTWC_ARCH_LEVEL` (native | v3 | v4) (V3)
+- ☑ CPU floor x86-64-v3 for release archives and wheels (Volkan 09-30); one `DTWC_ARCH_LEVEL` (native | v3 | v4) (V3) (V3 165e48d, 41a1be1; merged 169db40)
 - ☐ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
   10-01); the GCC-only test failures explained (V4)
 - ☐ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1)
