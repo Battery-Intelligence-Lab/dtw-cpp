@@ -174,7 +174,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ M1 Python solves the MIP with the user's highspy (optional extra; the wheel drops HiGHS); the MEX keeps HiGHS
   linked (CI MEX: HiGHS ON, Gurobi OFF); the model leaves C++ as arrays for Python (Volkan 10-01)
 - ☑ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds (W14b: Gurobi defaults OFF; the default MEX imports no Gurobi DLL; an explicit ON needs Gurobi's bin on PATH)
-- ☐ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases
+- ☑ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases (W9a 2cabc18, adb9031, 6053239, 151f14e; merged 357d76e3; k required: v1.0.0 with no --Nc exited 0 having clustered nothing; name = the input stem; C++ method default auto; 23 v1 spellings warn once; --Nc i..j refused)
 - ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
   silently editing a copy (E1) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
 - ☐ W9c `hpc` → `job.toml`; the positional transport goes; `device=hpc` takes `gpu_device=` (a100, a6000, l40s, h100, …) to pick the
