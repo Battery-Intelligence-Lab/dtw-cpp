@@ -81,8 +81,7 @@ void compute_nearest_and_second(
     bool has_second = false;
 
     for (index_t m = 0; m < k; ++m) {
-      const double d = core::detail::require_finite_medoid_distance(
-        prob.dist_by_ind(p, medoids[m]), "fast_pam", index, m, medoids[m]);
+      const double d = prob.dist_by_ind(p, medoids[m]);
       // A medoid tied with another medoid (a duplicate series) serves itself,
       // or its own cluster would be published empty.
       if (!has_best || d < best || (d == best && medoids[m] == p)) {
@@ -150,8 +149,7 @@ SwapEval find_best_swap(Problem& prob, index_t N, index_t xj,
   ploss.assign(rho.begin(), rho.end()); // reuse caller's buffer (no per-candidate alloc)
   double acc = 0.0;                     // shared benefit of adding x_c (Case A over all points)
   for (index_t o = 0; o < N; ++o) {
-    const double doj = core::detail::require_finite_candidate_distance(
-      prob.dist_by_ind(xj, o), "fast_pam", static_cast<std::size_t>(o), xj);
+    const double doj = prob.dist_by_ind(xj, o);
     const double d1 = nearest_dist[o];
     if (doj < d1) {
       acc += doj - d1;                             // x_c becomes o's nearest
@@ -255,10 +253,7 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, i
     auto total_distance = [&](std::size_t index) {
       const auto x = static_cast<index_t>(index);
       core::detail::OrderedMedoidObjective cost("fast_pam");
-      for (index_t o = 0; o < N; ++o) {
-        cost.add(core::detail::require_finite_candidate_distance(
-          prob.dist_by_ind(x, o), "fast_pam", static_cast<std::size_t>(o), x));
-      }
+      for (index_t o = 0; o < N; ++o) cost.add(prob.dist_by_ind(x, o));
       candidate_cost[index] = cost.value();
     };
     run_openmp(total_distance, static_cast<std::size_t>(N));

@@ -84,8 +84,6 @@ static_assert(same<decltype(alg::HierarchicalOptions::max_points), index_t>);
 // The finite-distance policy reports medoid slots and indices as index_t.
 static_assert(same<decltype(&dtwc::core::detail::require_finite_medoid_distance),
                    double (*)(double, std::string_view, std::size_t, index_t, index_t)>);
-static_assert(same<decltype(&dtwc::core::detail::require_finite_candidate_distance),
-                   double (*)(double, std::string_view, std::size_t, index_t)>);
 
 // Labels and medoids: one container type from every producer to every reader.
 using indices = std::vector<index_t>;

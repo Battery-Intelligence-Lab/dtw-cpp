@@ -950,6 +950,9 @@ void Problem::assign_clusters()
     bool has_best = false;
     for (std::size_t slot = 0; slot < centroids_ind.size(); ++slot) {
       const index_t medoid = centroids_ind[slot];
+      // Not the matrix's intake check: a fill of finite series can overflow
+      // (values near DBL_MAX give +inf), and Lloyd refuses that before it
+      // publishes labels.
       const double distance = core::detail::require_finite_medoid_distance(
         dist_by_ind(ip, medoid), "kmedoids_lloyd", i_p,
         static_cast<index_t>(slot), medoid);

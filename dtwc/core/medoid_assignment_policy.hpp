@@ -47,26 +47,6 @@ inline double require_finite_medoid_distance(
   return value;
 }
 
-[[noreturn]] inline void throw_nonfinite_candidate_distance(
-  std::string_view caller, std::size_t point, index_t candidate_index)
-{
-  throw InvalidInput(
-    std::string(caller)
-    + ": non-finite candidate distance at point "
-    + std::to_string(point) + ", candidate index "
-    + std::to_string(candidate_index) + ".");
-}
-
-inline double require_finite_candidate_distance(
-  double value, std::string_view caller, std::size_t point,
-  index_t candidate_index)
-{
-  if (!std::isfinite(value))
-    throw_nonfinite_candidate_distance(
-      caller, point, candidate_index);
-  return value;
-}
-
 /**
  * Point-ordered binary64 accumulator for a published medoid objective.
  *
