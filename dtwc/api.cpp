@@ -10,15 +10,12 @@
 #include "core/matrix_io.hpp"
 #include "base/env.hpp"
 #include "base/error.hpp"
+#include "fileOperations.hpp"
 #include "scores.hpp"
 
 #include <algorithm>
 #include <cctype>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
 #include <numeric>
-#include <system_error>
 #include <tuple>
 #include <utility>
 
@@ -57,26 +54,6 @@ void validate_skips(index_t skip_cols, index_t skip_rows)
 {
   if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
   if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
-}
-
-std::ofstream open_output(const std::filesystem::path &path,
-                          std::ios::openmode mode = std::ios::out)
-{
-  std::ofstream stream(path, mode);
-  if (!stream.is_open()) throw IOError("Result::save: cannot open " + path.string());
-  return stream;
-}
-
-/// A full disk or a file-size quota fails the writes after a successful open,
-/// so the stream is checked after closing too: an open-only check left a
-/// truncated file behind a save that reported success (B-05).
-void close_output(std::ofstream &stream, const std::filesystem::path &path)
-{
-  stream.close();
-  if (!stream)
-    throw IOError("Result::save: cannot write " + path.string()
-                  + "; the file is incomplete (disk full or file-size quota?). "
-                    "Free space or save to another directory.");
 }
 
 } // namespace
@@ -192,83 +169,16 @@ std::vector<double> Result::distance_matrix() const
   // Matrix-free methods leave the matrix unmaterialised; asking for it is an
   // explicit request for the full N*N, as score() and save() already treat it.
   problem_->fill_distance_matrix();
-  const std::size_t n = problem_->size();
-  std::vector<double> flat(n * n);
-  for (std::size_t i = 0; i < n; ++i)
-    for (std::size_t j = 0; j < n; ++j)
-      flat[i * n + j] =
-        problem_->dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j));
-
-  return flat;
+  return io::to_full_matrix(std::as_const(*problem_).distance_matrix());
 }
 
 void Result::save(const std::filesystem::path &directory) const
 {
-  std::error_code ec;
-  std::filesystem::create_directories(directory, ec);
-  if (ec)
-    throw IOError("Result::save: cannot create '" + directory.string() + "': "
-                  + ec.message());
-
-  // problem_->name() is UTF-8 (api.cpp::derive_name); utf8_to_path keeps it so
-  // on the way back to the filesystem. path::string() would re-decode it as the
-  // native narrow encoding and write a mojibake filename on Windows.
-  const std::string &base = problem_->name();
-  const auto labels_path = directory / utf8_to_path(base + "_labels.csv");
-  const auto medoids_path = directory / utf8_to_path(base + "_medoids.csv");
-  const auto matrix_path = directory / utf8_to_path(base + "_distance_matrix.csv");
-  const auto silhouettes_path = directory / utf8_to_path(base + "_silhouettes.csv");
-
-  {
-    auto out = open_output(labels_path);
-    out << "name,cluster\n";
-    for (std::size_t i = 0; i < labels().size(); ++i)
-      out << problem_->series_name(i) << ',' << labels()[i] << '\n';
-    close_output(out, labels_path);
-  }
-  {
-    auto out = open_output(medoids_path);
-    out << "cluster,medoid_index,medoid_name\n";
-    for (std::size_t c = 0; c < medoids().size(); ++c) {
-      const index_t idx = medoids()[c];
-      out << c << ',' << idx << ','
-          << problem_->series_name(static_cast<std::size_t>(idx)) << '\n';
-    }
-    close_output(out, medoids_path);
-  }
-
-  // save() promises the complete matrix and silhouettes. Matrix-free methods
+  // save() promises the complete matrix and silhouettes: matrix-free methods
   // retain their scaling until this explicitly requested operation.
-  problem_->fill_distance_matrix();
-  {
-    const core::DistanceMatrix &matrix = std::as_const(*problem_).distance_matrix();
-    core::detail::preflight_distance_matrix_csv(matrix);
-    auto out = open_output(
-      matrix_path, std::ios::out | std::ios::binary | std::ios::trunc);
-    out << matrix;
-    close_output(out, matrix_path);
-  }
-
-  // s(i) is undefined with fewer than two realised clusters, where
-  // scores::silhouette() throws UndefinedScore. save() must not fail a
-  // clustering that succeeded: warn and skip the file, as the CLI does.
-  // Result::score("silhouette") still throws — asking for the number is a
-  // different contract. A corrupt labelling still propagates.
-  std::vector<double> silhouette_values;
-  try {
-    silhouette_values = scores::silhouette(*problem_);
-  } catch (const UndefinedScore &e) {
-    std::cerr << "Warning: silhouettes skipped: " << e.what() << '\n';
-    return;
-  }
-  {
-    auto out = open_output(silhouettes_path);
-    out << "name,cluster,silhouette\n";
-    for (std::size_t i = 0; i < silhouette_values.size(); ++i)
-      out << problem_->series_name(i) << ',' << labels()[i] << ','
-          << std::setprecision(8) << silhouette_values[i] << '\n';
-    close_output(out, silhouettes_path);
-  }
+  // Result::score("silhouette") still throws on one cluster; asking for the
+  // number is a different contract from skipping a file.
+  detail::write_result_files(*problem_, directory, true);
 }
 
 Result cluster(const Dataset &dataset, index_t k, std::string_view method, int band,

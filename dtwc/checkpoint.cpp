@@ -41,11 +41,8 @@ void save_checkpoint(const Problem &prob, const std::string &path, core::MetricT
     throw InvalidInput("save_checkpoint: the distance matrix has " + std::to_string(matrix.size())
                        + " rows, but the Problem holds " + std::to_string(n) + " series.");
 
-  const fs::path file = checkpoint_path(prob, path);
-  std::error_code ec;
-  fs::create_directories(file.parent_path(), ec); // an existing directory is no error
-  if (ec) throw IOError("Cannot create the checkpoint directory '" + path + "': " + ec.message());
   // A matrix not yet allocated has no pair computed: the fill allocates it.
+  const fs::path file = checkpoint_path(prob, path);
   if (matrix.size() == n)
     matrix.write(file, identity);
   else

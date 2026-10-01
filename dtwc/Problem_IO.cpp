@@ -12,57 +12,17 @@
 
 #include "Problem.hpp"
 #include "core/matrix_io.hpp"
+#include "fileOperations.hpp" // for open_output, close_output
 #include "scores.hpp"      // for silhouette
 #include "types/Range.hpp" // for Range
 
-#include <filesystem> // for create_directories
+#include <filesystem>
 #include <fstream>
 #include <iostream> // for cout
-#include <system_error> // for error_code
 #include <string>  // for allocator, char_traits, operator+
 #include <vector>  // for vector, operator==
 
 namespace dtwc {
-
-namespace {
-
-/// Create the destination directory before writing into it. output_folder_
-/// defaults to the CWD-relative "./results/", which need not exist:
-/// an ofstream on a missing directory just fails, so the writers created a
-/// runtime error out of a perfectly ordinary first run.
-void ensure_output_directory(const std::filesystem::path &path)
-{
-  const auto directory = path.parent_path();
-  if (directory.empty()) return;
-  std::error_code ec;
-  std::filesystem::create_directories(directory, ec);
-  if (ec && !std::filesystem::is_directory(directory))
-    throw IOError("Cannot create output directory: "
-                  + directory.string() + ": " + ec.message());
-}
-
-/// Open an output file, failing loudly: an unchecked ofstream silently produces
-/// no file at all when the output folder is unwritable.
-std::ofstream open_output(const std::filesystem::path &path)
-{
-  ensure_output_directory(path);
-  std::ofstream file(path, std::ios_base::out);
-  if (!file.good())
-    throw IOError("Cannot open file for writing: " + path.string());
-  return file;
-}
-
-/// Close an output file and report a write error instead of losing it: a full
-/// disk or a file-size quota fails the writes after a successful open (B-05).
-void close_output(std::ofstream &file, const std::filesystem::path &path)
-{
-  file.close();
-  if (!file.good())
-    throw IOError("Write error on file: " + path.string()
-                  + " (the file is incomplete: disk full or file-size quota?)");
-}
-
-} // namespace
 
 /**
  *  @brief Writes the medoids and their corresponding total cost to a CSV file.
@@ -205,9 +165,7 @@ void Problem::write_medoid_members(int iter, int rep) const
  */
 void Problem::write_distance_matrix(const std::string &name_) const
 {
-  const auto path = output_folder_ / utf8_to_path(name_);
-  ensure_output_directory(path);
-  io::write_csv(distMat, path);
+  io::write_csv(distMat, output_folder_ / utf8_to_path(name_));
 }
 
 /**

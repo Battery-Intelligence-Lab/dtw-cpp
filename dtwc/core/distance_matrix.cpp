@@ -9,6 +9,7 @@
 
 #include "distance_matrix.hpp"
 #include "../base/error.hpp"
+#include "../fileOperations.hpp" // open_output, close_output
 
 #include <algorithm>
 #include <cstring>
@@ -299,13 +300,11 @@ void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerp
   fs::path temporary = path;
   temporary += ".tmp";
   {
-    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-    if (!out) throw IOError("Cannot open " + shown(temporary) + " for writing.");
+    auto out = open_output(temporary, std::ios::binary | std::ios::trunc);
     const Header header = header_for(n_, fingerprint);
     out.write(reinterpret_cast<const char *>(&header), sizeof header);
     out.write(reinterpret_cast<const char *>(data_), static_cast<std::streamsize>(packed_count() * sizeof(double)));
-    out.close();
-    if (!out) throw IOError("Cannot write " + shown(temporary) + ".");
+    close_output(out, temporary);
   }
   flush_to_device(temporary);
   fs::rename(temporary, path, ec);

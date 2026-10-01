@@ -232,12 +232,15 @@ output contract, §7 item 2): writes `<name>_labels.csv` (`"name,cluster"`),
 `<name>_medoids.csv` (`"cluster,medoid_index,medoid_name"`),
 `<name>_distance_matrix.csv`, and `<name>_silhouettes.csv`
 (`"name,cluster,silhouette"`) into `dir`. These are exactly the corresponding
-CLI outputs when present. When fewer than two clusters are realised (k = 1, or a
-collapsed partition) the silhouette is undefined: `save` writes the other files,
-warns on stderr, and skips `<name>_silhouettes.csv`; `score("silhouette")`
-still raises `UndefinedScore`. A matrix-free CLI run emits labels and medoids without
-forcing the matrix-only files; this approved exception is specified in §7 item
-2.
+CLI outputs when present. For k = 1 there is no silhouette file. When a k >= 2
+partition realises fewer than two clusters (duplicate series) the silhouette is
+undefined: `save` writes the other files, warns on stderr, and skips
+`<name>_silhouettes.csv`; `score("silhouette")` still raises `UndefinedScore`.
+A matrix-free CLI run emits labels and medoids without forcing the matrix-only
+files; this approved exception is specified in §7 item 2. A result of a
+RAM-limited Parquet run (C++ `run()` only) holds no series: `save` writes labels
+and medoids under `series_<i>` names, then throws `InvalidInput` for the matrix
+and silhouettes it cannot make.
 
 *`plot()` is Python/MATLAB only.* It renders a classical-MDS 2D scatter of the
 distance matrix coloured by cluster (`_api.py:330-367`). **C++ has no `plot()`**:

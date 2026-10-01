@@ -24,6 +24,7 @@
 #pragma once
 
 #include "../base/error.hpp"
+#include "../fileOperations.hpp"  // open_output, close_output
 #include "../io/parse_number.hpp" // exact, locale-free floating-point parsing
 #include "distance_matrix.hpp"
 
@@ -118,13 +119,9 @@ namespace dtwc::io {
 inline void write_csv(const core::DistanceMatrix &dm, const std::filesystem::path &path)
 {
   core::detail::preflight_distance_matrix_csv(dm);
-  std::ofstream file(path, std::ios::out | std::ios::binary | std::ios::trunc);
-  if (!file.good())
-    throw IOError("Cannot open file for writing: " + path.string());
+  auto file = open_output(path, std::ios::out | std::ios::binary | std::ios::trunc);
   core::detail::write_distance_matrix_csv_preflighted(file, dm);
-  file.close();
-  if (!file.good())
-    throw IOError("Write error on file: " + path.string());
+  close_output(file, path);
 }
 
 /// Read a full N×N CSV file into the matrix.
