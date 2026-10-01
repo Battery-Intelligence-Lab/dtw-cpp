@@ -128,8 +128,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ CUDA: the FP64 Shared kernel at 4 blocks per SM (C2 lead) — its own band
 - ☑ CUDA floor: compute capability 8.0 (the A30's generation, Volkan 09-30); older devices get a typed DeviceError before any allocation (C1 c445089)
 - ☑ CPU floor x86-64-v3 for release archives and wheels (Volkan 09-30); one `DTWC_ARCH_LEVEL` (native | v3 | v4) (V3) (V3 165e48d, 41a1be1; merged 169db40)
-- ☐ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
-  10-01); the GCC-only test failures explained (V4)
+- ☑ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
+  10-01); the GCC-only test failures explained (V4) (V4 0721563, 52b557a, ba26ec9, cf03bd5, 499efdf; merged d6a9d54; GCC 13.3 v3: 113 / 0 failed, conformance identical)
 - ☑ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1) (S1 5cc52a0, 0268df1; merged c54e375; htc-gpu 80;86;89)
 - ☐ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
   its own band
