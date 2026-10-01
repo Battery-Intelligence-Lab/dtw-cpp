@@ -19,7 +19,6 @@ target_sources(dtwc++
   cli/config.cpp
   cli/run.cpp
   core/distance_matrix.cpp
-  core/dtw.cpp
   core/dtw_dispatch.cpp
   core/dtw_lanes.cpp
   algorithms/fast_pam.cpp
@@ -61,7 +60,6 @@ target_sources(dtwc++
   # Core types
   core/clustering_result.hpp
   core/distance_matrix.hpp
-  core/dtw.hpp
   core/dtw_options.hpp
   core/lower_bound_impl.hpp
   core/sha256.hpp

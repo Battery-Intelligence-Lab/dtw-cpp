@@ -12,13 +12,14 @@
  *
  * Unchecked input. These wrappers, those in warping_*.hpp, soft_dtw() and
  * core::msm_distance / twe_distance are the per-pair layer: the matrix fill
- * calls them once per pair, so they do not scan their input. They require
- * finite values (the missing-data wrappers in warping_missing*.hpp also take
- * NaN, as a missing value); NaN or ±inf here comes back as NaN, as the
- * unreachable max() or as an ordinary-looking number, so a caller must check
- * first — once per call or once per fill, never per pair. The checked boundary
- * is dtwc::distance::* (distance.hpp), core::dtw_runtime and
- * soft_dtw_gradient(): each runs detail::require_finite() below once per call.
+ * calls them once per pair, so they check neither their input nor their
+ * parameters. They require finite values (the missing-data wrappers in
+ * warping_missing*.hpp also take NaN, as a missing value) and parameters in
+ * their domains; anything else comes back as NaN, as the unreachable max() or
+ * as an ordinary-looking number, so a caller must check first — once per call
+ * or once per fill, never per pair. The checked boundary is dtwc::distance::*
+ * (distance.hpp) and soft_dtw_gradient(): each checks its configuration with
+ * core::validate and runs detail::require_finite() below once per call.
  * The Python and MATLAB single-pair distance functions call that boundary.
  *
  * @author Volkan Kumtepeli

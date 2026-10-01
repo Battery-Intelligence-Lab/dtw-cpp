@@ -19,7 +19,6 @@
 #include "../support/scratch_directory.hpp"
 
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -75,43 +74,6 @@ dtwc::Problem make_problem(const std::vector<std::vector<double>> &series,
 }
 
 } // namespace
-
-TEST_CASE("set_metric: a metric the kernels cannot take is refused before any pair",
-          "[problem][metric][errors][if2]")
-{
-  const auto series = random_series(4, 8, 1, 3);
-
-  SECTION("another variant, or a missing-data strategy, keeps the Problem unchanged")
-  {
-    for (const auto variant : { dtwc::core::DTWVariant::DDTW, dtwc::core::DTWVariant::WDTW,
-                                dtwc::core::DTWVariant::ADTW, dtwc::core::DTWVariant::SoftDTW,
-                                dtwc::core::DTWVariant::MSM, dtwc::core::DTWVariant::TWE }) {
-      CAPTURE(static_cast<int>(variant));
-      auto prob = make_problem(series);
-      prob.set_variant(variant);
-      prob.fill_distance_matrix();
-      REQUIRE_THROWS_MATCHES(prob.set_metric(MetricType::SquaredL2), dtwc::InvalidInput,
-                             Catch::Matchers::MessageMatches(ContainsSubstring(
-                               "metric SquaredL2 is implemented for Standard DTW")));
-      CHECK(prob.metric() == MetricType::L1);
-      CHECK(prob.is_distance_matrix_filled());
-
-      auto squared = make_problem(series);
-      squared.set_metric(MetricType::SquaredL2);
-      REQUIRE_THROWS_AS(squared.set_variant(variant), dtwc::InvalidInput);
-      CHECK(squared.variant_params().variant == dtwc::core::DTWVariant::Standard);
-    }
-    for (const auto missing : { dtwc::core::MissingStrategy::ZeroCost,
-                                dtwc::core::MissingStrategy::AROW,
-                                dtwc::core::MissingStrategy::Interpolate }) {
-      CAPTURE(static_cast<int>(missing));
-      auto squared = make_problem(series);
-      squared.set_metric(MetricType::SquaredL2);
-      REQUIRE_THROWS_AS(squared.set_missing_strategy(missing), dtwc::InvalidInput);
-      CHECK(squared.missing_strategy() == dtwc::core::MissingStrategy::Error);
-    }
-  }
-}
 
 TEST_CASE("set_metric: the metric is part of refresh and of the checkpoint identity",
           "[problem][metric][checkpoint][if2]")

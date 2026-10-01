@@ -35,6 +35,7 @@ namespace dtwc::core {
 /// The per-pair DTW distance function for `config`, templated on element type
 /// (T = data_t or float). `data` sizes the WDTW weight table (T = data_t) to the
 /// lengths of the series the function will meet; no other variant reads it.
+/// `config` must have passed validate(config, T is float): nothing here checks it.
 template <typename T>
 std::function<double(std::span<const T>, std::span<const T>)>
 resolve_dtw_fn(const DistanceConfig &config, const Data &data);

@@ -43,8 +43,6 @@
 #include <scores.hpp>
 #include <core/z_normalize.hpp>
 #include <core/dtw_options.hpp>
-#include <core/distance_semantics.hpp>
-#include <core/variant_validation.hpp>
 #include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
 #include <mip/mip.hpp>
@@ -252,10 +250,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("Gurobi", dtwc::Solver::Gurobi)
     .value("HiGHS", dtwc::Solver::HiGHS);
 
-  nb::enum_<dtwc::core::ConstraintType>(m, "ConstraintType")
-    .value("NONE", dtwc::core::ConstraintType::None)
-    .value("SakoeChibaBand", dtwc::core::ConstraintType::SakoeChibaBand);
-
   nb::enum_<dtwc::core::MetricType>(m, "MetricType")
     .value("L1", dtwc::core::MetricType::L1)
     .value("L2", dtwc::core::MetricType::L2)
@@ -364,46 +358,26 @@ NB_MODULE(_dtwcpp_core, m) {
   // DTWVariantParams
   // =========================================================================
 
-  nb::class_<dtwc::core::DTWVariantParams>(m, "DTWVariantParams")
+  using Params = dtwc::core::DTWVariantParams;
+  // A field takes a value only when the whole parameter set stays valid (core::validate).
+  const auto checked = [](double Params::*field) {
+    return [field](Params &p, double value) {
+      auto candidate = p;
+      candidate.*field = value;
+      dtwc::core::validate({ candidate }, false);
+      p = candidate;
+    };
+  };
+  nb::class_<Params>(m, "DTWVariantParams")
     .def(nb::init<>())
-    .def_rw("variant", &dtwc::core::DTWVariantParams::variant)
-    .def_prop_rw("wdtw_g",
-      [](const dtwc::core::DTWVariantParams &p) { return p.wdtw_g; },
-      [](dtwc::core::DTWVariantParams &p, double value) {
-        dtwc::core::validate_wdtw_g(value);
-        p.wdtw_g = value;
-      })
-    .def_prop_rw("adtw_penalty",
-      [](const dtwc::core::DTWVariantParams &p) { return p.adtw_penalty; },
-      [](dtwc::core::DTWVariantParams &p, double value) {
-        dtwc::core::validate_adtw_penalty(value);
-        p.adtw_penalty = value;
-      })
-    .def_prop_rw("sdtw_gamma",
-      [](const dtwc::core::DTWVariantParams &p) { return p.sdtw_gamma; },
-      [](dtwc::core::DTWVariantParams &p, double value) {
-        dtwc::core::validate_sdtw_gamma(value);
-        p.sdtw_gamma = value;
-      })
-    .def_prop_rw("msm_c",
-      [](const dtwc::core::DTWVariantParams &p) { return p.msm_c; },
-      [](dtwc::core::DTWVariantParams &p, double value) {
-        dtwc::core::validate_msm_c(value);
-        p.msm_c = value;
-      })
-    .def_prop_rw("twe_nu",
-      [](const dtwc::core::DTWVariantParams &p) { return p.twe_nu; },
-      [](dtwc::core::DTWVariantParams &p, double value) {
-        dtwc::core::validate_twe_nu(value);
-        p.twe_nu = value;
-      })
-    .def_prop_rw("twe_lambda",
-      [](const dtwc::core::DTWVariantParams &p) { return p.twe_lambda; },
-      [](dtwc::core::DTWVariantParams &p, double value) {
-        dtwc::core::validate_twe_lambda(value);
-        p.twe_lambda = value;
-      })
-    .def_rw("mv_mode", &dtwc::core::DTWVariantParams::mv_mode);
+    .def_rw("variant", &Params::variant)
+    .def_prop_rw("wdtw_g", [](const Params &p) { return p.wdtw_g; }, checked(&Params::wdtw_g))
+    .def_prop_rw("adtw_penalty", [](const Params &p) { return p.adtw_penalty; }, checked(&Params::adtw_penalty))
+    .def_prop_rw("sdtw_gamma", [](const Params &p) { return p.sdtw_gamma; }, checked(&Params::sdtw_gamma))
+    .def_prop_rw("msm_c", [](const Params &p) { return p.msm_c; }, checked(&Params::msm_c))
+    .def_prop_rw("twe_nu", [](const Params &p) { return p.twe_nu; }, checked(&Params::twe_nu))
+    .def_prop_rw("twe_lambda", [](const Params &p) { return p.twe_lambda; }, checked(&Params::twe_lambda))
+    .def_rw("mv_mode", &Params::mv_mode);
 
   // =========================================================================
   // MIPSettings
@@ -536,7 +510,7 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("dtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                             nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                             int band, const std::string &metric) {
-    const auto mt = dtwc::core::parse_metric_token(metric);
+    const auto mt = dtwc::parse_name(dtwc::core::metric_names, metric, "metric");
     nb::gil_scoped_release release;
     return dtwc::distance::dtw<double>(std::span<const double>(x.data(), x.size()),
                                        std::span<const double>(y.data(), y.size()), band, mt);
@@ -602,7 +576,7 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("dtw_distance_missing", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                     nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                                     int band, const std::string &metric) {
-    const auto mt = dtwc::core::parse_metric_token(metric);
+    const auto mt = dtwc::parse_name(dtwc::core::metric_names, metric, "metric");
     nb::gil_scoped_release release;
     return dtwc::distance::missing<double>(std::span<const double>(x.data(), x.size()),
                                            std::span<const double>(y.data(), y.size()), band, mt);
@@ -616,7 +590,7 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("dtw_arow_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                   nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                                   int band, const std::string &metric) {
-    const auto mt = dtwc::core::parse_metric_token(metric);
+    const auto mt = dtwc::parse_name(dtwc::core::metric_names, metric, "metric");
     nb::gil_scoped_release release;
     return dtwc::distance::arow<double>(std::span<const double>(x.data(), x.size()),
                                         std::span<const double>(y.data(), y.size()), band, mt);
@@ -1009,7 +983,7 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix", [](const std::vector<std::vector<double>> &series,
                                         int band, const std::string &metric) {
-    const auto mt = dtwc::core::parse_metric_token(metric);
+    const auto mt = dtwc::parse_name(dtwc::core::metric_names, metric, "metric");
     require_finite_series(series, "compute_distance_matrix");
 
     // Warn once under OMP_NUM_THREADS=1, deterministically, before either branch

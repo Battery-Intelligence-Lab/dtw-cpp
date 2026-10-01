@@ -73,7 +73,7 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | missing strategy | `missing_strategy()` / `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | private state (`Problem.hpp`) |
 | distance settings | `distance()` / `set_distance(core::DistanceConfig)` `[introduced-2.0]` | — | — | private state: variant and parameters, metric, missing-data strategy and band in one struct; `ndim` is the series' |
-| metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill, the bound function, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW with `MissingStrategy::Error`, else `InvalidInput` |
+| metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill, the bound function, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW (any missing-data strategy) or DDTW, else `InvalidInput` (`core::validate`, the facade's rule too) |
 | distance strategy | `distance_strategy()` / `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | private state (`Problem.hpp`) |
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
@@ -260,8 +260,8 @@ accepted rather than unified because C++ overloading and the Python/MATLAB
 keyword-dispatch idiom cannot share one signature; unifying would force an
 un-idiomatic name on one side. Section 10 item 8 adjudicates this carve-out.
 
-**Input domain (2026-09-24, FX-15).** Every `dtwc::distance::*` function,
-`core::dtw_runtime` and `soft_dtw_gradient` checks `x` and `y` once per call,
+**Input domain (2026-09-24, FX-15).** Every `dtwc::distance::*` function
+and `soft_dtw_gradient` checks `x` and `y` once per call,
 before any distance work, and raises `InvalidInput` naming the series, the
 position and the fix for a NaN or ±inf value. `missing`, `arow` and the
 dispatcher under a ZeroCost, AROW or Interpolate missing strategy read NaN as a
@@ -270,9 +270,11 @@ missing value and reject only ±inf. Python's distance functions and
 check. The per-pair wrappers in `warping*.hpp` (with `soft_dtw()` and
 `core::msm_distance` / `twe_distance`) are the documented unchecked layer the
 matrix fills call: they require finite input (the missing-data wrappers also
-take NaN) and return NaN, the unreachable `max()` or an ordinary-looking number
-otherwise, so their caller checks first, once per call or per fill. A `Problem`
-checks its series the same way before it computes (§6.4).
+take NaN) and parameters in their domains, and return NaN, the unreachable
+`max()` or an ordinary-looking number otherwise, so their caller checks first,
+once per call or per fill. A `Problem` checks its series the same way before it
+computes (§6.4), and its distance settings, like the checked functions, with
+`core::validate` when they are set.
 
 **Precision default.** All `dtwc::distance::*` templates default to
 `T = settings::default_data_t`, which is `double`. An explicit `<float>`

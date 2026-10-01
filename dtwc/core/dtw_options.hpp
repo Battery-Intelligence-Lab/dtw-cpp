@@ -1,9 +1,7 @@
 /**
  * @file dtw_options.hpp
- * @brief Runtime DTW configuration: constraint type, metric selection, etc.
- *
- * @details DTWOptions bundles every knob that can be set at runtime for the
- *          binding-friendly (non-template) DTW entry point.
+ * @brief The description of a distance: variant and parameters, metric,
+ *        missing-data strategy, band and channel count (DistanceConfig).
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026
@@ -18,14 +16,7 @@
 
 namespace dtwc::core {
 
-/// Warping-path constraint type.
-enum class ConstraintType
-{
-  None,            ///< Unconstrained (full cost matrix)
-  SakoeChibaBand   ///< Sakoe-Chiba band constraint
-};
-
-/// Runtime metric selector (used by the non-template dtw_runtime entry point).
+/// Pointwise cost of a DTW cell.
 enum class MetricType
 {
   L1,         ///< |a - b|
@@ -123,14 +114,15 @@ struct DistanceConfig
   bool operator==(const DistanceConfig &) const = default;
 };
 
-/// Runtime DTW configuration.
-struct DTWOptions
-{
-  ConstraintType constraint = ConstraintType::None;
-  MetricType metric = MetricType::L1;
-  int band = -1;  ///< Band width for Sakoe-Chiba; -1 means unconstrained
-  DTWVariantParams variant_params;  ///< Variant selection and parameters
-  MissingStrategy missing_strategy = MissingStrategy::Error;  ///< How to handle NaN values
-};
+/// The one check of a DistanceConfig, run where one is set or bound (a Problem's
+/// setters, the checked dtwc::distance functions), never per pair: the kernels
+/// below it take their parameters unchecked.
+/// @param f32 the distance runs in float32, which must hold the active parameters.
+/// @throws InvalidInput for a parameter outside its domain (every parameter, the
+///         inactive ones too), a missing-data strategy with a variant other than
+///         Standard, a metric other than L1 with a variant whose kernel computes L1,
+///         a univariate feature on ndim > 1, and, under `f32`, an active parameter
+///         float32 turns into zero or infinity.
+void validate(const DistanceConfig &config, bool f32);
 
 } // namespace dtwc::core

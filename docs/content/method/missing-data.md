@@ -18,7 +18,7 @@ The handling of NaN values is controlled by the `MissingStrategy` enum (defined 
 | `AROW` | Diagonal-only alignment when NaN is encountered | Prevents free stretching through gaps |
 | `Interpolate` | Linear interpolation preprocessing, then standard DTW | Smooth gap filling before comparison |
 
-NaN is the only missing-value marker; ±inf never is. The checked entry points — `dtwc::distance::*` (including `distance::missing` and `distance::arow`), `core::dtw_runtime`, the Python single-pair distance functions and MATLAB's `dtwc.distance.*` — reject ±inf under every strategy, raising `InvalidInput` naming the series and the 0-based position, for example `distance::missing: x[2] is +inf`. The `dtwMissing_*` and `dtwAROW_*` wrappers below are the unchecked per-pair layer (see [DTW](../dtw/)): pass them finite values and NaN only.
+NaN is the only missing-value marker; ±inf never is. The checked entry points — `dtwc::distance::*` (including `distance::missing` and `distance::arow`), the Python single-pair distance functions and MATLAB's `dtwc.distance.*` — reject ±inf under every strategy, raising `InvalidInput` naming the series and the 0-based position, for example `distance::missing: x[2] is +inf`. The `dtwMissing_*` and `dtwAROW_*` wrappers below are the unchecked per-pair layer (see [DTW](../dtw/)): pass them finite values and NaN only.
 
 ## ZeroCost DTW
 

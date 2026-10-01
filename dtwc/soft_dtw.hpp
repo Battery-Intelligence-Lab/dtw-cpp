@@ -9,8 +9,8 @@
  * Note: Soft-DTW can be NEGATIVE for identical series when gamma > 0.
  *
  * Input checks (warping.hpp explains the layering): soft_dtw() is the
- * unchecked per-pair value, reached checked through distance::soft_dtw and
- * core::dtw_runtime. soft_dtw_gradient() has no such twin and no per-pair
+ * unchecked per-pair value, reached checked through distance::soft_dtw.
+ * soft_dtw_gradient() has no such twin and no per-pair
  * caller, so it checks its own input and rejects NaN and ±inf.
  *
  * Reference: Cuturi & Blondel (2017), "Soft-DTW: a Differentiable Loss
@@ -32,12 +32,13 @@
 #include <limits>
 #include <algorithm>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 #include "core/scratch_matrix.hpp"
 #include "core/dtw_kernel.hpp"   // dtw_kernel_full, SoftCell
 #include "core/dtw_cost.hpp"     // SpanL1Cost
-#include "core/variant_validation.hpp"
+#include "core/dtw_options.hpp"  // core::validate
 #include "warping.hpp"           // detail::require_finite
 
 namespace dtwc {
@@ -92,13 +93,12 @@ T softmin_gamma_unchecked(T a, T b, T c, T gamma) noexcept
  * @param a First value.
  * @param b Second value.
  * @param c Third value.
- * @param gamma Smoothing parameter (must be > 0).
+ * @param gamma Smoothing parameter, > 0 (unchecked).
  * @return The soft minimum.
  */
 template <typename T>
 T softmin_gamma(T a, T b, T c, T gamma)
 {
-  core::validate_sdtw_gamma(gamma);
   return detail::softmin_gamma_unchecked(a, b, c, gamma);
 }
 
@@ -116,15 +116,13 @@ T softmin_gamma(T a, T b, T c, T gamma)
  * @tparam T Floating point type (default: `settings::default_data_t`, currently `double`).
  * @param x First time series.
  * @param y Second time series.
- * @param gamma Smoothing parameter (must be > 0). As gamma -> 0, result
+ * @param gamma Smoothing parameter, > 0 (unchecked). As gamma -> 0, result
  *              converges to standard DTW distance.
  * @return The Soft-DTW distance.
  */
 template <typename T = dtwc::settings::default_data_t>
 T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
-  core::validate_sdtw_gamma(gamma);
-
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (x.empty() || y.empty()) return maxValue;
 
@@ -164,7 +162,8 @@ T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 template <typename T = dtwc::settings::default_data_t>
 std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
-  core::validate_sdtw_gamma(gamma);
+  core::validate({ .variant = { .variant = core::DTWVariant::SoftDTW, .sdtw_gamma = gamma } },
+                 std::is_same_v<T, float>);
 
   const auto mx = static_cast<int>(x.size());
   const auto my = static_cast<int>(y.size());

@@ -31,8 +31,6 @@
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
-#include "core/distance_semantics.hpp"      // validate_problem_distance_semantics
-#include "core/variant_validation.hpp"     // validate_variant_params
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
 #include "base/missing_utils.hpp"               // for all_missing
 #include "algorithms/tadpole.hpp"          // for Method::TADPole dispatch
@@ -121,16 +119,6 @@ const char *missing_strategy_name(core::MissingStrategy m)
   case core::MissingStrategy::ZeroCost: return "ZeroCost";
   case core::MissingStrategy::AROW: return "AROW";
   case core::MissingStrategy::Interpolate: return "Interpolate";
-  }
-  return "?";
-}
-
-const char *metric_name(core::MetricType m)
-{
-  switch (m) {
-  case core::MetricType::L1: return "L1";
-  case core::MetricType::L2: return "L2";
-  case core::MetricType::SquaredL2: return "SquaredL2";
   }
   return "?";
 }
@@ -360,18 +348,19 @@ void Problem::refresh_distance_matrix()
 /**
  * @brief Resolve the distance functions from distance_ and the series, once.
  * @details Every function holds copies of the settings it reads, so it stays
- * valid when this Problem moves, and parallel callers only read it.
+ * valid when this Problem moves, and parallel callers only read it. The float32
+ * ones are bound here for float32 series, whose settings were validated for
+ * float32 when set; for other series dtw_function_f32() binds it after that check.
  */
 void Problem::rebind_dtw_fn()
 {
   dtw_fn_ = core::resolve_dtw_fn<data_t>(distance_, data_);
   dtw_block_fn_ = core::resolve_dtw_block_fn<data_t>(distance_);
-  if (core::active_variant_params_representable_f32(distance_.variant)) {
+  dtw_fn_f32_ = {};
+  dtw_block_fn_f32_ = {};
+  if (data_.is_f32()) {
     dtw_fn_f32_ = core::resolve_dtw_fn<float>(distance_, data_);
     dtw_block_fn_f32_ = core::resolve_dtw_block_fn<float>(distance_);
-  } else {
-    dtw_fn_f32_ = {};
-    dtw_block_fn_f32_ = {};
   }
 }
 
@@ -463,25 +452,10 @@ void Problem::set_device(Device device, int index)
   }
 }
 
-void Problem::validate_distance(
-  const core::DistanceConfig &config, const Data &data, bool force_float32)
+void Problem::validate_distance(core::DistanceConfig config, const Data &data)
 {
-  const auto &params = config.variant;
-  const auto missing = config.missing;
-  const auto metric = config.metric;
-  core::validate_problem_distance_semantics(
-    params, missing, data.ndim, force_float32 || data.is_f32());
-  // resolve_dtw_fn passes the metric to the Standard kernels only; every other
-  // variant and missing-data strategy would silently compute L1.
-  if (metric != core::MetricType::L1
-      && (params.variant != core::DTWVariant::Standard
-          || missing != core::MissingStrategy::Error))
-    throw InvalidInput(
-      std::string("Problem: metric ") + metric_name(metric)
-      + " is implemented for Standard DTW with MissingStrategy::Error only, but "
-        "variant = " + variant_name(params.variant) + " and missing_strategy = "
-      + missing_strategy_name(missing) + " were requested. Use metric L1 for "
-        "this configuration.");
+  config.ndim = data.ndim;
+  core::validate(config, data.is_f32());
 }
 
 const Problem::dtw_fn_t &Problem::dtw_function()
@@ -494,9 +468,9 @@ const Problem::dtw_fn_t &Problem::dtw_function()
 const Problem::dtw_fn_f32_t &Problem::dtw_function_f32()
 {
   sync_band();
-  // Bound whenever the active parameters are representable (rebind_dtw_fn).
-  core::validate_active_variant_params_f32(distance_.variant);
+  core::validate(distance_, true); // the series may be Float64: float32 must hold the parameters
   validate_fill_request("Problem::dtw_function_f32");
+  if (!dtw_fn_f32_) dtw_fn_f32_ = core::resolve_dtw_fn<float>(distance_, data_);
   return dtw_fn_f32_;
 }
 

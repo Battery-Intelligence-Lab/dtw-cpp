@@ -9,10 +9,7 @@ import dtwcpp
 from dtwcpp import _dtwcpp_core as core
 
 
-UNKNOWN_METRIC = (
-    "Unknown metric 'bogus'. Expected one of: "
-    "l1, squared_euclidean, sqeuclidean."
-)
+UNKNOWN_METRIC = "unknown metric 'bogus'. Valid: l1, squared_euclidean."
 CROSS_PRODUCT = (
     "Non-Standard DTW variants require MissingStrategy::Error."
 )

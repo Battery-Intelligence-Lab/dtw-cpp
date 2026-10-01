@@ -150,7 +150,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `-DDTWC_HIGHS_GPU=ON` raises `DeviceError` instead of warning and solving on the CPU.
 - **Fixed (distance, breaking):** `dtwc::distance::dtw(x, y, params, band, metric)` returned the L1 distance for another metric with
   WDTW, ADTW, Soft-DTW, MSM or TWE, whose kernels take none; it now raises `InvalidInput`. Standard DTW, DDTW and the missing-data
-  strategies keep the metric; `core::dtw_runtime` follows the same rule, and Python's `dtwcpp.distance.dtw` raises `ValueError`
+  strategies keep the metric, and Python's `dtwcpp.distance.dtw` raises `ValueError`
   for DDTW, WDTW, ADTW and Soft-DTW with a metric other than `"l1"` (its DDTW binding takes no metric yet). `examples/cpp/example_new_features.cpp` compiles (a most-vexing parse) and builds under
   `-DDTWC_BUILD_EXAMPLES=ON`; `example_project/main.cpp` checks `set_solver`.
 - **Fixed (MATLAB, macOS):** the MEX no longer aborts MATLAB ("OMP: Error #15") at its first parallel region: MATLAB loads its own
@@ -159,7 +159,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   Python ones do, so a Metal build checks its GPU against the CPU.
 - **Added (metric):** `Problem::set_metric` / `metric()`. The metric is now part of a Problem's distances — the CPU fill and
   lookups, CUDA / Metal, the mmap and checkpoint identities, autosave and FastCLARA's samples. A metric other than L1 needs
-  standard DTW with `MissingStrategy::Error`, else `InvalidInput`. L1 stays the default and computes as before.
+  Standard DTW (with any missing-data strategy) or DDTW, else `InvalidInput`, the rule `dtwc::distance::dtw` applies too.
+  L1 stays the default and computes as before.
   `use_mmap_distance_matrix(path, metric)` adopts the metric, so the CPU fills a squared-L2 cache instead of refusing it.
 - **Fixed (multivariate, breaking):** `DistanceMatrixStrategy::Auto` (at least 64 series and a band) or `Pruned` on multivariate
   series read the channels as one interleaved series, so every pair was wrong; they now fill with the multivariate kernel.
@@ -202,7 +203,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   GPU (CUDA, else Metal) and `device()` returns `"gpu"`; on a Metal build they raised `DeviceError`. With no GPU, `cuda` still
   raises. Python parses device names with the C++ grammar (`parse_device`); its own copy is gone.
 - **Fixed (distances, breaking):** NaN or ±inf passed to a distance function no longer reaches the kernels, which
-  returned NaN, the unreachable 1.8e308 or an ordinary-looking number. `dtwc::distance::*`, `core::dtw_runtime` and
+  returned NaN, the unreachable 1.8e308 or an ordinary-looking number. `dtwc::distance::*` and
   `soft_dtw_gradient` check x and y once and raise `InvalidInput` naming the series, the 0-based position and the fix;
   the Python distance functions and MATLAB `dtwc.distance.*` now call them, and Python's `compute_distance_matrix`
   (CPU, CUDA, Metal) and `compute_lb_keogh_cuda` check every series first. `missing`, `arow` and the ZeroCost / AROW /
@@ -955,7 +956,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `InvalidInput`, mirroring MSM/TWE.
 - Missing-data handling is enforced at every entry point.
   `MissingStrategy::Error` now applies to the pairwise API
-  (`dtwc::distance::dtw`, `dtwc::core::dtw_runtime`), where NaN input
+  (`dtwc::distance::dtw`), where NaN input
   previously returned NaN — which is also the distance matrix's "uncomputed"
   sentinel, so a computed result was indistinguishable from an unfilled entry.
   An all-NaN series under `MissingStrategy::Interpolate` is rejected by
