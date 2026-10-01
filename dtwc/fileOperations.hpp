@@ -496,7 +496,7 @@ auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
   if (opts.verbose > 0)
     std::cout << p_vec.size() << " time-series data are read.\n";
 
-  return std::pair(p_vec, p_names);
+  return std::pair(std::move(p_vec), std::move(p_names));
 }
 
 /// Positional-arg overload retained for backwards compatibility; delegates to
@@ -550,7 +550,7 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
   if (opts.verbose > 0)
     std::cout << p_vec.size() << " time-series data are read.\n";
 
-  return std::pair(p_vec, p_names);
+  return std::pair(std::move(p_vec), std::move(p_names));
 }
 
 /// Positional-arg overload retained for backwards compatibility; delegates to
