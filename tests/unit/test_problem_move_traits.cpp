@@ -10,6 +10,8 @@
 
 #include <dtwc.hpp>
 
+#include "../support/dtw_route_bound.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
@@ -37,5 +39,8 @@ TEST_CASE("S-13: Problem move assignment still transfers data and distances",
   CHECK(target.size() == 2);
   CHECK(target.is_distance_matrix_filled());
   CHECK(target.dist_by_ind(0, 1) == distance);
-  CHECK(target.dtw_function()(target.series(0), target.series(1)) == distance);
+  // The fill ran the SIMD lanes; the bound function is the per-pair kernel.
+  const double per_pair = target.dtw_function()(target.series(0), target.series(1));
+  CHECK(dtwc::test_support::dtw_routes_agree<double>(
+    distance, per_pair, target.series(0).size(), target.series(1).size()));
 }

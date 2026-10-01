@@ -4,10 +4,15 @@
 # Usage:   source scripts/slurm/build-arc.sh [profile]
 # Profiles: arc       — arc cluster (Cascade Lake + Turin), CPU only, AVX-512
 #           htc-cpu   — htc cluster CPU-only, AVX2 portable (covers Broadwell→Turin)
-#           htc-gpu   — htc cluster GPU build, all GPU archs, AVX2 portable
+#           htc-gpu   — htc cluster GPU build, compute capability 8.0+ (A100, RTX A6000, L40S), AVX2 portable
 #           htc-v4    — htc cluster, AVX-512 only (excludes Broadwell/Rome nodes)
 #           h100      — htc H100 nodes, AVX-512, sm_90 only (fastest compile)
 #           grace     — htc-g057 Grace Hopper (AArch64), no CUDA yet
+#
+# htc-gpu and h100 run on a GPU node build for that node: native CUDA architecture and native CPU
+# tuning, the most specialised binary, which then runs only on that node type. On any other node, or
+# on a GPU below compute capability 8.0 (the floor; the library refuses such a GPU), the profile's
+# portable lists apply.
 #
 # Prerequisites: module load CMake/3.27.6  (or any >= 3.26)
 #                module load GCC/13.2.0    (or any C++20-capable GCC/Clang)
@@ -56,17 +61,17 @@ case "${PROFILE}" in
         ;;
 
     # ════════════════════════════════════════════════════════════════════════
-    # htc GPU: all GPU architectures, portable CPU (AVX2)
-    # GPUs: P100(60), V100(70), RTX8000/TitanRTX(75), A100(80),
-    #       RTXA6000(86), L40S(89), H100/GH200(90)
+    # htc GPU: compute capability 8.0 and newer, portable CPU (AVX2)
+    # GPUs: A100(80), RTXA6000(86), L40S(89). H100 (90): use the h100 profile.
+    # P100, V100, RTX8000 and Titan RTX are below the floor and are refused at run time.
     # ════════════════════════════════════════════════════════════════════════
     htc-gpu)
-        echo "═══ Profile: htc-gpu (all GPUs, AVX2 portable) ═══"
+        echo "═══ Profile: htc-gpu (A100, RTX A6000, L40S, AVX2 portable) ═══"
         CMAKE_ARGS=(
             "${CMAKE_COMMON[@]}"
             -DDTWC_ARCH_LEVEL=v3           # Portable across all htc CPU nodes
             -DDTWC_ENABLE_CUDA=ON
-            -DCMAKE_CUDA_ARCHITECTURES="60;70;75;80;86;89;90"
+            -DCMAKE_CUDA_ARCHITECTURES="80;86;89"
         )
         ;;
 
@@ -105,7 +110,7 @@ case "${PROFILE}" in
         echo "═══ Profile: grace (Grace Hopper AArch64, CPU only) ═══"
         CMAKE_ARGS=(
             "${CMAKE_COMMON[@]}"
-            -DDTWC_ENABLE_NATIVE_ARCH=ON   # Let -march=native pick up NEON/SVE
+            -DDTWC_ARCH_LEVEL=native       # Let -march=native pick up NEON/SVE
             -DDTWC_ENABLE_CUDA=OFF         # CUDA kernel not yet ported to AArch64
         )
         ;;
@@ -116,6 +121,18 @@ case "${PROFILE}" in
         return 1 2>/dev/null || exit 1
         ;;
 esac
+
+# True when this node has GPUs and every one is at or above the compute capability 8.0 floor.
+gpu_node_supported() {
+    nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null |
+        awk '$1 < 8.0 { bad = 1 } END { exit !(NR > 0 && !bad) }'
+}
+
+if [[ "${PROFILE}" == htc-gpu || "${PROFILE}" == h100 ]] && gpu_node_supported; then
+    echo "GPU node: native CUDA architecture and CPU tuning"
+    # ARCH_LEVEL=native also replaces a v3/v4 cached by an earlier portable build in this directory.
+    CMAKE_ARGS+=(-DCMAKE_CUDA_ARCHITECTURES=native -DDTWC_ARCH_LEVEL=native)
+fi
 
 echo "Build directory: ${BUILD_DIR}"
 echo "CMake args: ${CMAKE_ARGS[*]}"

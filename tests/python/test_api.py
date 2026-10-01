@@ -690,13 +690,8 @@ class TestRaggedInMemorySource:
 # §1.4 series names — Tier-1 output carries the loader's names, as C++ does
 # ---------------------------------------------------------------------------
 def _dtwc_cl_binary():
-    """The canonical gate binary, else the newest built dtwc_cl under the repo."""
     from dtwcpp import _hpc
-    root = Path(__file__).resolve().parents[2]
-    canonical = root / "build" / "highs-1151" / "bin" / "dtwc_cl.exe"
-    if canonical.is_file():
-        return str(canonical)
-    return _hpc.find_dtwc_binary(str(root))
+    return _hpc.find_dtwc_binary(str(Path(__file__).resolve().parents[2]))
 
 
 class TestSeriesNames:

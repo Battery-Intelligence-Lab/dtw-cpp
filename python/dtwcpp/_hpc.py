@@ -346,12 +346,23 @@ def build_dtwc_command(binary, input_path, k, name, output_dir, *,
 
 
 def find_dtwc_binary(root):
-    """Return a path to a built dtwc_cl binary under ``root``, or ``None``.
+    """Return the dtwc_cl binary to run.
 
-    Prefers build-tree binaries (including nested ``build/*/bin`` verification
-    trees) over a possibly-stale top-level ``bin/``; within a group, the most
-    recently modified wins.
+    ``DTWC_CL_PATH`` decides when it is set. A value that is not a file raises
+    ``FileNotFoundError`` and never falls through to the search, because the
+    newest binary under ``root`` can be a build that cannot start (an Arrow
+    build whose DLLs are not on PATH).
+
+    The search returns a path under ``root``, or ``None``. It prefers build-tree
+    binaries (including nested ``build/*/bin`` verification trees) over a
+    possibly-stale top-level ``bin/``; within a group, the most recently
+    modified wins.
     """
+    override = os.environ.get("DTWC_CL_PATH")
+    if override is not None:
+        if not os.path.isfile(override):
+            raise FileNotFoundError(f'DTWC_CL_PATH="{override}" is not a file')
+        return override
     _skip = (".pdb", ".ipdb", ".iobj", ".recipe", ".idx", ".obj", ".lib")
     pattern_groups = (
         (

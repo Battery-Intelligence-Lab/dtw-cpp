@@ -106,44 +106,72 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
 endif()
 message(STATUS "Floating-point model: ${DTWC_FP_MODEL}")
 
-# Architecture tuning — unlocks AVX2/AVX-512/NEON auto-vectorization.
-# Disabled for Python wheels (DTWC_BUILD_PYTHON) to keep wheel binaries portable.
-# Disabled when consumed as a sub-project (PROJECT_IS_TOP_LEVEL=OFF) so the
-# parent project controls its own arch flags.
-#
-# DTWC_ARCH_LEVEL overrides -march=native with a specific x86-64 microarchitecture
-# level for HPC cross-compile scenarios where the build node differs from compute nodes:
-#   ""   (default) — -march=native / /arch:AVX2 as before
-#   "v3" — AVX2 + FMA baseline; safe for ALL modern HPC CPUs (Broadwell, Haswell,
-#           Cascade Lake, Sapphire/Emerald Rapids, Rome, Genoa, Turin).
-#   "v4" — AVX-512 baseline; Cascade Lake Xeon, Sapphire/Emerald Rapids, Genoa, Turin.
-#           NOT safe for Broadwell, Haswell, or Rome nodes.
-option(DTWC_ENABLE_NATIVE_ARCH "Tune for the host CPU architecture (-march=native / /arch:AVX2)" ON)
+# Architecture level: the CPU generation the compiled code may assume. AVX2 and
+# AVX-512 turn the SIMD lanes fill and the auto-vectorised loops from 128-bit SSE2
+# into 256- or 512-bit code. One variable, three values:
+#   native  the build machine's CPU: -march=native (MSVC has no such flag: /arch:AVX2).
+#           The default for a top-level C++ build, which runs where it was built.
+#   v3      x86-64-v3: AVX2 and FMA (Intel Haswell 2013 and later, AMD Excavator 2015
+#           and later). The default for Python builds (wheels), and what the release
+#           archives pass: it is the CPU floor of everything DTWC++ publishes.
+#   v4      x86-64-v4: AVX-512, for HPC nodes that have it.
+# "" (the cache default) picks the default above at every configure, so it follows
+# DTWC_BUILD_PYTHON and a build tree configured with "" keeps working.
+# v3 and v4 are x86-64 levels: an arm64 target takes no flag from v3 (its baseline is
+# already its floor), and v4 is an error there. A sub-project adds nothing: its parent
+# chooses its own flags.
+# FMA instructions are available from v3 on; whether a*b+c is fused is each compiler's
+# contraction setting (clang -ffp-contract=on: within one expression; GCC -ffp-contract=fast
+# in C++ whatever -std; MSVC /fp:contract in the fast model), which this block does not touch.
 set(DTWC_ARCH_LEVEL "" CACHE STRING
-    "Override native arch with x86-64 microarchitecture level for HPC: '' (native), 'v3' (AVX2+FMA), 'v4' (AVX-512)")
-set_property(CACHE DTWC_ARCH_LEVEL PROPERTY STRINGS "" "v3" "v4")
+    "CPU level: '' (native; v3 for Python builds), 'native', 'v3' (x86-64-v3: AVX2 + FMA) or 'v4' (AVX-512)")
+set_property(CACHE DTWC_ARCH_LEVEL PROPERTY STRINGS "" native v3 v4)
 
-if(DTWC_ENABLE_NATIVE_ARCH AND PROJECT_IS_TOP_LEVEL AND NOT DTWC_BUILD_PYTHON)
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    if(DTWC_ARCH_LEVEL STREQUAL "v4")
+set(_dtwc_arch_level "${DTWC_ARCH_LEVEL}")
+if(_dtwc_arch_level STREQUAL "")
+  if(DTWC_BUILD_PYTHON)
+    set(_dtwc_arch_level v3)
+  else()
+    set(_dtwc_arch_level native)
+  endif()
+endif()
+if(NOT _dtwc_arch_level MATCHES "^(native|v3|v4)$")
+  message(FATAL_ERROR
+    "DTWC_ARCH_LEVEL must be '', 'native', 'v3' or 'v4', not '${DTWC_ARCH_LEVEL}'.")
+endif()
+
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _dtwc_processor)
+if(_dtwc_processor MATCHES "^(x86_64|amd64)$" AND NOT "arm64" IN_LIST CMAKE_OSX_ARCHITECTURES)
+  set(_dtwc_x86_64 TRUE)
+else()
+  set(_dtwc_x86_64 FALSE)
+endif()
+
+set(_arch_flag "")
+if(PROJECT_IS_TOP_LEVEL)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND _dtwc_x86_64)
+    if(_dtwc_arch_level STREQUAL "v4")
       set(_arch_flag /arch:AVX512)
     else()
       set(_arch_flag /arch:AVX2)  # v3 and native both map to AVX2 on MSVC
     endif()
   elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    if(DTWC_ARCH_LEVEL STREQUAL "v3" OR DTWC_ARCH_LEVEL STREQUAL "v4")
-      set(_arch_flag -march=x86-64-${DTWC_ARCH_LEVEL})
-    else()
+    if(_dtwc_arch_level STREQUAL "native")
       set(_arch_flag -march=native)
+    elseif(_dtwc_x86_64)
+      set(_arch_flag -march=x86-64-${_dtwc_arch_level})
     endif()
   endif()
-  if(DEFINED _arch_flag)
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_arch_flag}>>)
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_arch_flag}>>)
-    message(STATUS "Architecture tuning: ${_arch_flag}")
+  if(_dtwc_arch_level STREQUAL "v4" AND NOT _dtwc_x86_64)
+    message(FATAL_ERROR "DTWC_ARCH_LEVEL=v4 is an x86-64 level; the target is ${CMAKE_SYSTEM_PROCESSOR}.")
   endif()
+endif()
+if(_arch_flag STREQUAL "")
+  message(STATUS "Architecture level: ${_dtwc_arch_level} — no compiler flag added")
 else()
-  message(STATUS "Architecture tuning disabled — portable binary mode")
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_arch_flag}>>)
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_arch_flag}>>)
+  message(STATUS "Architecture level: ${_dtwc_arch_level} (${_arch_flag})")
 endif()
 
 # Reproducible-build flags (opt-in).

@@ -1,14 +1,16 @@
 /**
  * @file unit_test_dtw_kernel_lanes.cpp
- * @brief dtw_kernel_lanes: each lane is bitwise the per-pair kernel it stands in
+ * @brief dtw_kernel_lanes: each lane agrees with the per-pair kernel it stands in
  *        for, over precision, length, band and metric; and the brute-force fill,
- *        which runs the lanes, is bitwise the per-pair fill.
+ *        which runs the lanes, agrees with the per-pair fill.
  *
  * @details The oracle is the per-pair path the brute-force fill ran before the
  *          lanes: dtwBanded, plus dtwFull_L (the recurrence the lanes mirror,
  *          and what dtwBanded runs for band < 0) called directly for band < 0.
- *          Bits, not tolerances: a lane that differs in one ulp would make a
- *          matrix depend on how its columns fall into blocks.
+ *          The lanes and the per-pair kernel are different code, so a compiler
+ *          that contracts a multiply-add into an FMA in one of them (GCC does by
+ *          default) moves the last bits: they agree within the route bound of
+ *          dtw_route_bound.hpp. A pair the fill was given stays bitwise.
  */
 
 #include "Problem.hpp"
@@ -16,11 +18,13 @@
 #include "core/dtw_options.hpp" // core::MetricType
 #include "warping.hpp"          // dtwFull_L, dtwBanded, detail::dispatch_metric
 
+#include "../../support/dtw_route_bound.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
-#include <cstring>
 #include <limits>
 #include <random>
 #include <string>
@@ -30,12 +34,7 @@
 namespace {
 
 using dtwc::core::MetricType;
-
-template <typename T>
-bool same_bits(T a, T b)
-{
-  return std::memcmp(&a, &b, sizeof(T)) == 0;
-}
+using dtwc::test_support::dtw_routes_agree;
 
 // Random walks, or small integers: the latter make exact ties in every min.
 template <typename T>
@@ -49,7 +48,7 @@ std::vector<T> series(std::mt19937_64 &rng, std::size_t n, bool ties)
   return v;
 }
 
-// Bitwise mismatches between the lanes and the per-pair path, over W pairs.
+// Lanes outside the route bound of the per-pair path, over W pairs.
 template <typename T>
 int lane_mismatches(std::size_t n, int band, MetricType metric, bool ties)
 {
@@ -67,8 +66,12 @@ int lane_mismatches(std::size_t n, int band, MetricType metric, bool ties)
   });
   int bad = 0;
   for (std::size_t w = 0; w < W; ++w) {
-    bad += !same_bits(lanes[w], dtwc::dtwBanded<T>(x, y[w], band, T(-1), metric));
-    if (band < 0) bad += !same_bits(lanes[w], dtwc::dtwFull_L<T>(x, y[w], T(-1), metric));
+    const T banded = dtwc::dtwBanded<T>(x, y[w], band, T(-1), metric);
+    bad += !dtw_routes_agree<T>(lanes[w], banded, n, n);
+    if (band < 0) {
+      const T full = dtwc::dtwFull_L<T>(x, y[w], T(-1), metric);
+      bad += !dtw_routes_agree<T>(lanes[w], full, n, n);
+    }
   }
   return bad;
 }
@@ -87,7 +90,7 @@ void check_every_configuration()
 
 } // namespace
 
-TEST_CASE("dtw_kernel_lanes: every lane is bitwise the per-pair kernel", "[lanes]")
+TEST_CASE("dtw_kernel_lanes: every lane agrees with the per-pair kernel", "[lanes]")
 {
   SECTION("double, 8 lanes") { check_every_configuration<double>(); }
   SECTION("float, 16 lanes") { check_every_configuration<float>(); }
@@ -127,9 +130,9 @@ dtwc::Data walks(const std::vector<std::size_t> &lengths)
   return dtwc::Data(std::move(rows), std::move(names));
 }
 
-// Entries (i < j) that differ in any bit from the per-pair function over the
+// Entries (i < j) outside the route bound of the per-pair function over the
 // pair, which the fill ran for every pair before the lanes; a pair set before
-// the fill must keep its value.
+// the fill must keep its value, bit for bit.
 int fill_mismatches(const FillCase &c)
 {
   const std::size_t N = c.lengths.size();
@@ -155,7 +158,14 @@ int fill_mismatches(const FillCase &c)
   const auto &m = prob.distance_matrix();
   int bad = 0;
   for (std::size_t i = 0; i < N; ++i)
-    for (std::size_t j = i + 1; j < N; ++j) bad += !same_bits(m.get(i, j), expected[i * N + j]);
+    for (std::size_t j = i + 1; j < N; ++j) {
+      const double got = m.get(i, j), want = expected[i * N + j];
+      const bool kept =
+        std::find(c.known.begin(), c.known.end(), std::pair{ i, j }) != c.known.end();
+      const bool agree = c.f32 ? dtw_routes_agree<float>(got, want, c.lengths[i], c.lengths[j])
+                               : dtw_routes_agree<double>(got, want, c.lengths[i], c.lengths[j]);
+      bad += !(kept ? got == want : agree);
+    }
   return bad;
 }
 
@@ -163,7 +173,7 @@ int fill_mismatches(const FillCase &c)
 
 // W = 8 (double) and 16 (float): 21 and 37 series give rows of two blocks and a
 // tail, of one block, and of a tail alone.
-TEST_CASE("fill_distance_matrix: the lanes fill is bitwise the per-pair fill", "[lanes][fill]")
+TEST_CASE("fill_distance_matrix: the lanes fill agrees with the per-pair fill", "[lanes][fill]")
 {
   std::vector<std::size_t> alternating, halves(12, 50);
   for (std::size_t i = 0; i < 21; ++i) alternating.push_back(i % 2 ? 53 : 50);

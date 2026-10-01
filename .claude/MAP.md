@@ -42,7 +42,8 @@ Bindings: `python/` (6.7k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
   `build/cuda-verify-0928` is the CUDA dir.
 - Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,GUROBI,LLFIO,YAML,METAL}`
   (ON), `DTWC_ENABLE_{ARROW,CUDA}` (OFF), `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error),
-  `DTWC_FP_MODEL` (`fast` | `strict`), `DTWC_ENABLE_NATIVE_ARCH`, `DTWC_DEV_MODE`.
+  `DTWC_FP_MODEL` (`fast` | `strict`), `DTWC_ARCH_LEVEL` (`native` | `v3` | `v4`; default `native`, `v3` for Python builds),
+  `DTWC_DEV_MODE`.
 - Dependencies (`cmake/Dependencies.cmake`, all pinned to a commit or SHA, checked by `check_pins.py`): CLI11,
   fkYAML, HiGHS, llfio + quickcpplib, Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP, Gurobi,
   CUDA and Metal from the system. The FP flags are `-fassociative-math` without `-ffinite-math-only`, on

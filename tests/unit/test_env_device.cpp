@@ -84,3 +84,9 @@ TEST_CASE("dtwc::device hpc names the Python and SLURM routes", "[env][hpc]")
   // The grammar behind --device and Problem::set_device refuses it the same way.
   REQUIRE_THROWS_AS(dtwc::detail::parse_device("hpc"), dtwc::DeviceError);
 }
+
+TEST_CASE("to_string(Device) gives the name dtwc::device accepts", "[env][device]")
+{
+  REQUIRE(dtwc::to_string(dtwc::Device::CPU) == "cpu");
+  REQUIRE(dtwc::to_string(dtwc::Device::GPU) == "gpu");
+}

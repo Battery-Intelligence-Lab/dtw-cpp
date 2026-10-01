@@ -58,8 +58,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   results are unchanged digit for digit.
 - **Changed (performance):** the CPU distance-matrix fill computes standard DTW (L1 or squared-L2 cost, univariate, no
   missing-data strategy) between a series and 8 others of its length at once (16 in `float32`), one pair per SIMD lane; every
-  distance is bit for bit what the one-pair kernel returns. On an Intel Core Ultra 9 285 (24 threads) the unbanded fill of
-  ECG5000's 4,500 series drops from 66 s to 3.9 s, and a band-50 fill of 50 series of length 1,000 runs 5.1× faster.
+  distance is what the one-pair kernel returns, bit for bit unless the compiler contracts a multiply-add into an FMA in one
+  kernel and not the other (GCC does by default), in which case the two differ in the last bits. On an Intel Core Ultra 9 285
+  (24 threads) the unbanded fill of ECG5000's 4,500 series drops from 66 s to 3.9 s, and a band-50 fill of 50 series of
+  length 1,000 runs 5.1× faster.
 - **Changed (performance):** OneBatchPAM's final exact assignment, each of the N series against the k medoids (N-1 DTW calls
   per medoid outside the batch), runs on all OpenMP threads instead of one. Labels, medoids, total cost and the distance count
   are bit for bit what the serial loop returned, at any thread count. On an Intel Core Ultra 9 285 (24 threads, shared
@@ -67,8 +69,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   whole call 0.96 s instead of 1.82 s (1.9×); the table fill before it was already parallel and now bounds the gain.
 - **Changed (performance):** OneBatchPAM fills its N x m batch table, m(N-1) DTW calls and nearly all of a call, with the same
   SIMD lanes as the distance-matrix fill: 8 batch series of the row's length per call (16 in `float32`), one pair per lane.
-  Pairs of other lengths, every DTW variant, missing-data strategy and multivariate input keep the one-pair path. The table,
-  labels, medoids, total cost and distance count are bit for bit what the one-pair fill returned. On an Intel Core Ultra 9 285
+  Pairs of other lengths, every DTW variant, missing-data strategy and multivariate input keep the one-pair path. Labels,
+  medoids and the distance count are what the one-pair fill returned; so are the table and the total cost, bit for bit unless
+  the compiler contracts a multiply-add into an FMA in one kernel and not the other (GCC does by default; squared L2 only),
+  in which case they differ in the last bits. On an Intel Core Ultra 9 285
   (24 threads, shared machine) with N = 2,000, k = 10 and 200-sample random walks the table fill takes 0.20 s instead of
   0.93 s (4.6×) and the whole call 0.25 s instead of 0.98 s (3.9×); on one thread, 3.0 s instead of 19.5 s (6.5×).
 - **Changed (build):** llfio is header-only, from SHA-256-pinned GitHub archives, behind one `llfio_hl` target:
@@ -307,12 +311,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   the default) or `strict` (none of them, `/fp:strict` on MSVC). It is a cache variable, so it is
   recorded in machine and benchmark records rather than being invisible to them. An unrecognised
   value is a configure error.
-- **Fixed (packaging, all platforms):** the published CLI archives were compiled `-march=native`,
-  tuning each released binary for whichever ephemeral CI runner produced it; a user whose CPU lacks
-  an instruction the runner had would get SIGILL. `DTWC_ENABLE_NATIVE_ARCH` defaults on, and the
-  release workflow met every condition for it to apply. The Python wheels were never affected —
-  they opt out through the `DTWC_BUILD_PYTHON` guard, and the same reasoning had simply never been
-  extended to the native archives. The release configure now sets `-DDTWC_ENABLE_NATIVE_ARCH=OFF`.
+- **Changed (packaging):** Release archives and wheels require an x86-64-v3 CPU (AVX2 and FMA: Intel 2013+,
+  AMD 2015+). They are compiled for that level (`-march=x86-64-v3`, MSVC `/arch:AVX2`) and never for the CPU of
+  the CI runner that built them. Apple Silicon and Linux arm64 wheels and archives are unchanged.
+  `DTWC_ARCH_LEVEL` is the one build option for the level: `native` (the default for C++ builds), `v3` (the
+  default for Python builds) or `v4` (AVX-512); `DTWC_ENABLE_NATIVE_ARCH` is gone.
 - **Changed (headers):** the foundation headers moved into `dtwc/base/` — `error.hpp`,
   `settings.hpp`, `missing_utils.hpp`, `parallelisation.hpp`, `timing.hpp`, `env.hpp`,
   `system_memory.hpp` and `random_engine.hpp`. The old paths still work for one release and now emit

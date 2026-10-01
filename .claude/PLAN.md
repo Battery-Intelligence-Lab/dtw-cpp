@@ -87,7 +87,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ B1 the Python binding checks every index it passes into unchecked C++ (`series`, `series_name`, `centroid_of`); `clusters_ind` / `centroids_ind` read-only, `set_result` bound as the write route (B1 2f8dc96; merged 4968d44)
 - ☑ B2 the clustering outputs stay empty until a clustering writes them and one `require_clustered` guards every whole-result reader (a crash before); `set_n_clusters(k < 1)` and `set_band(b < -1)` are refused (B2 0765ec7, 974a4a4, d64c1d1, 463d642, 03fc6a3; merged e0085fd)
 - ☑ B3 `fast_pam` `max_iter = 0` is BUILD only in every language, a negative count refused once in C++; `set_data` / `set_view_data` clear the clustering; dead `Nc` guards go (B3 049126e, bb2db4c, c814845; merged 65edcf7)
-- ☐ W6f C++ tests of deleted surface trimmed
+- ☑ W6f C++ tests of deleted surface trimmed (W6f f125189, 5958063, e9ad125, 88c4a73, 78b27ef, f2c959e; merged ce34bf8; test_problem_api_2_0 one 25-row table; three probe files deleted)
 - ☑ `test_run_resolution` runs MIP and LR-core on the CPU without a HiGHS guard: 2 of 7 cases fail in a build with
   `DTWC_ENABLE_HIGHS=OFF` (as `build/arrow-pyarrow-23`); guard them (Y3 merge report) (G1 `0c695c6`; merged 1bb9413; only MIP needs HiGHS — LR-core is exact without it; the GPU branch of the test is unproven without a CUDA build lacking HiGHS)
 - ☑ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
@@ -127,10 +127,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ CUDA: the global wavefront above L 2048 where fewer than 3 blocks fit an SM (C1's probe: FP32 L 6000/8000 at 0.64/0.66 of the shared route, FP64 L 2049–4000 at 0.76–0.84) — its own band; the Shared kernel's unreachable preload branch goes with it (C1) (C2 63d5d0a; merged dd33a0e; FP32 L 6000–8446 at 0.64–0.68 of base, FP64 L 2049–4223 at 0.76–0.84; deleting the Shared kernel's preload branch FALSIFIED — it raises occupancy and slows FP32 L 513–2757 by 3–23 %, so the branch stays)
 - ☐ CUDA: the FP64 Shared kernel at 4 blocks per SM (C2 lead) — its own band
 - ☑ CUDA floor: compute capability 8.0 (the A30's generation, Volkan 09-30); older devices get a typed DeviceError before any allocation (C1 c445089)
-- ☐ CPU floor x86-64-v3 for release archives and wheels (Volkan 09-30); one `DTWC_ARCH_LEVEL` (native | v3 | v4) (V3)
-- ☐ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
-  10-01); the GCC-only test failures explained (V4)
-- ☐ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1)
+- ☑ CPU floor x86-64-v3 for release archives and wheels (Volkan 09-30); one `DTWC_ARCH_LEVEL` (native | v3 | v4) (V3) (V3 165e48d, 41a1be1; merged 169db40)
+- ☑ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
+  10-01); the GCC-only test failures explained (V4) (V4 0721563, 52b557a, ba26ec9, cf03bd5, 499efdf; merged d6a9d54; GCC 13.3 v3: 113 / 0 failed, conformance identical)
+- ☑ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1) (S1 5cc52a0, 0268df1; merged c54e375; htc-gpu 80;86;89)
 - ☐ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
   its own band
 - ☑ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
@@ -187,11 +187,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W12a unrun and wave/phase test files go (rescued cases named) (W12a 3368bc9, 4c0a163, 1be6b73, 0dc3480, 58568f9, ed61a1a, 7b99ce1, da1739d, 11a468a, c7111cf, cce3398, 2d02451; merged 6c6f3d4; −4,217/+243; the hidden benches that records cite stay)
 - ☐ W12b `tests/unit/adversarial/` dissolved per subject
 - ☐ W12c repeated DTW property tests → one table-driven `core/test_dtw.cpp` against a new `tests/support/dtw_oracle.hpp`
-- ☐ W12d `test_contract_parity.py` existence lists → one table
+- ☑ W12d `test_contract_parity.py` existence lists → one table (W12d 4d49609; merged eeea331; 129 rows)
 - ☑ every test writes to its own temp dir (a fixed `%TEMP%/dtwc_test` collides under concurrent runs:
   `unit_test_variant_distmat`) (F1 992d51f, 50d2c46; merged b5c7048; the 3 FIXTURE_ROOT tests and 6 cmake -P CLI tests keep one directory inside the build tree, so only two runs of the same build tree collide)
-- ☐ `test_hpc` and `test_api` honour `DTWC_CL_PATH`; today `find_dtwc_binary` takes the newest `dtwc_cl` under
-  `build*/`, e.g. an Arrow build that cannot load its DLLs
+- ☑ `test_hpc` and `test_api` honour `DTWC_CL_PATH`; today `find_dtwc_binary` takes the newest `dtwc_cl` under
+  `build*/`, e.g. an Arrow build that cannot load its DLLs (F2 2a3ae53; merged a965ad5)
 - ☐ `.github/workflows/python-tests.yml` runs pytest with no dtwc_cl and no `DTWC_CL_PATH`; `test_api`'s two
   CLI-parity cases assert a binary exists (F2 note; CI not run here)
 
