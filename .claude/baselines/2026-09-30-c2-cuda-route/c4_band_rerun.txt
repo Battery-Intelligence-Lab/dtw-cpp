@@ -1,0 +1,24 @@
+C4 band re-run of the case outside (L 2757), registered noise rule: once, base and head back to back
+start 02:58:26
+gpu before: 4 %, 1955 MiB; waited 0s; foreign: []
+== base gpu 2757 208
+run,gpu,208,2757,0,1.8425
+run,gpu,208,2757,1,1.8448
+run,gpu,208,2757,2,1.8341
+run,gpu,208,2757,3,1.8426
+run,gpu,208,2757,4,1.8411
+median,gpu,208,2757,1.8425 s,88.8 Gcell/s,min 1.8341,max 1.8448,d(0,1)=846.76324462890625,d(N-1,N-2)=845.8919677734375
+matrix,gpu,208,2757,slots 21736,fnv1a64 972c489a9a6b0e5a
+PINNED_EXIT=0
+== head gpu 2757 208
+run,gpu,208,2757,0,1.7713
+run,gpu,208,2757,1,1.7697
+run,gpu,208,2757,2,1.7698
+run,gpu,208,2757,3,1.7811
+run,gpu,208,2757,4,1.7674
+median,gpu,208,2757,1.7698 s,92.5 Gcell/s,min 1.7674,max 1.7811,d(0,1)=846.76324462890625,d(N-1,N-2)=845.8919677734375
+matrix,gpu,208,2757,slots 21736,fnv1a64 972c489a9a6b0e5a
+PINNED_EXIT=0
+foreign after: []
+cpu load 100
+end 02:58:53

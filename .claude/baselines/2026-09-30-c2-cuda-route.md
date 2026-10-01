@@ -204,3 +204,89 @@ CHANGELOG line: CUDA is 2.0-born (v1.0.0 shipped no `dtwc/cuda`), and a faster F
 Open, not changed here: step 1's rule counts three blocks' bytes without shared memory's 128-byte allocation unit, so
 FP32 L 2751–2757 take the shared route at two blocks per SM (L 2750: three; `c3_kernels.txt`). Step 2's FP32 L 2757 base
 ran at 88.9 Gcell/s against 107.5 at L 2400. Rounding each block up to 128 bytes moves the boundary to 2750: its own band.
+
+## 2026-10-01 — C4: the route rule counts shared memory's allocation unit
+
+**Question:** with each block's shared memory rounded up to the allocation unit, so that "three blocks fit" is what the
+hardware grants, do FP32 L 2751–2757 on the global route (two shared blocks per SM at base) run in at most 0.95 of the
+time, with the other lengths unchanged?
+
+The change (not yet made when this section was registered): in `select_kernel`, `block_bytes` (three anti-diagonals,
+the kernel's static bytes, the runtime's reserved bytes) is rounded up to 128 bytes before `3 * block_bytes` is compared
+with the SM's shared memory. 128 bytes is the allocation unit of every supported GPU (compute capability 8.0 and newer):
+`cudaOccSMemAllocationGranularity` in the toolkit's `cuda_occupancy.h` returns 128 for compute major 8–12 (256 for 3–7)
+and `cudaOccMaxActiveBlocksPerMultiprocessor` computes `roundUp(static + reserved + dynamic, 128)` per block. The
+reserved 1,024 and the 16 static bytes are inside the rounded sum, as the driver counts them. Worktree `C:/D/git/wt/C4`,
+base `bf2992d` (design-2.0). Trees of this worktree: `build` (clang) and `build-cuda` (MSVC 14.50 + nvcc 13.0, sm_89;
+C1's recipe, llfio ON). Harness: C3's `c3_long_fill.cpp` and `c3_band.sh` unchanged in method (`c4_*` copies with the
+worktree id); raw output in `2026-09-30-c2-cuda-route/c4_*`.
+
+### Band — registered 2026-10-01 02:45 BST, before the change and before any timing
+
+- Predicted rule: FP32 shared route above 2048 up to L = 2750 (block 34,048 bytes after rounding, three = 102,144 of
+  102,400), global from 2751 (block 34,176, three = 102,528). FP64 never gets three blocks above 2048 (at L 2049 a block is
+  50,216 bytes), so its route is unchanged. H100 (233,472 bytes per SM): the boundaries stay FP32 6398/6399 and FP64
+  3199/3200 (the rounded blocks still straddle the same lengths; checked by arithmetic in the unit test, no GPU).
+- Predicted occupancy, from the driver's occupancy API on the extracted `Shared` kernel cubin with the fill's dynamic bytes
+  (`c4_boundary.cpp`: every L in 2049–10000, both precisions, the rule against the driver's `blocks >= 3`): base 7
+  mismatches (FP32 L 2751–2757: rule says shared, driver grants 2 blocks), head 0; FP32 L 2750 gets 3 blocks and L
+  2751–2758 get 2 (C3's finding).
+- Measure: `long_fill` (`gpu` = FP32), one warm-up fill, median of 5 fills, under `start /affinity 0xC03C03` (8 P-cores),
+  the FNV-1a 64 hash of the whole packed matrix after the timed fills. Base: `long_fill` linked against `bf2992d`; head:
+  the same source against the changed library; base and head back to back per case, one session (`c4_band.sh`: waits
+  for the GPU to be free of other trees' CUDA processes, marks a case with one there afterwards CONTENDED and re-runs it).
+- Cases (N): FP32 L 2751 (208), 2754 (208), 2757 (208) — move to the global route; FP32 L 2750 (208) and 2400 (240) —
+  same route (controls).
+- Pass: L 2751, 2754 and 2757 head ≤ 0.95 × base; L 2750 and 2400 head within 0.97–1.03 × base; in every case the matrix
+  hash, `d(0,1)` and `d(N−1,N−2)` equal to base's; every kernel's SASS byte-identical to base's (`cuobjdump -sass`,
+  C1's `sass_identical.py`; the change is host code only); the occupancy mismatch counts as predicted.
+- Noise: a case outside is re-run once, base and head back to back; still outside, FALSIFIED. The change has no knob,
+  so the code does not land and only this record does.
+
+### Band results [inferred: CPU load 91–100 % from other agents; GPU-bound fills, base and head back to back, no other tree's CUDA process on the GPU before or after any case] — FALSIFIED
+
+The section above was committed at 02:40 BST (`76c45421`), before the change and any timing; its "02:45" is a clock estimate
+written ahead of the commit. Run 1, 02:56–02:58 BST (`c4_band.txt`; base `long_fill` sha256 `ac04d8fa…`, head `d8a4b94e…`),
+and the registered re-run of the case outside, 02:58–02:59 (`c4_band_rerun.txt`); the noise control, base against itself,
+02:59–03:00 (`c4_band_aa.txt`; `c4_band_table.py` carries the registered limits):
+
+| case (N) | base median | head median | head / base | registered | verdict |
+| --- | --- | --- | --- | --- | --- |
+| FP32 L 2751 (208) | 1.8295 s | 1.7284 s | 0.945 | ≤ 0.95 | pass |
+| FP32 L 2754 (208) | 1.8441 s | 1.7428 s | 0.945 | ≤ 0.95 | pass |
+| FP32 L 2757 (208) | 1.8385 s | 1.7700 s | **0.963** | ≤ 0.95 | **outside** |
+| FP32 L 2757 (208), re-run | 1.8425 s | 1.7698 s | **0.961** | ≤ 0.95 | **outside** |
+| FP32 L 2750 (208) | 1.4885 s | 1.4910 s | 1.002 | 0.97–1.03 | pass |
+| FP32 L 2400 (240) | 1.5271 s | 1.5343 s | 1.005 | 0.97–1.03 | pass |
+
+**FALSIFIED by the registered rule:** L 2757 is outside twice (0.963, 0.961 against ≤ 0.95), and L 2751 and 2754 pass by
+0.005. The code does not land; it is saved as `c4_rule.patch` (the 128-byte rounding in `select_kernel`, the two test
+oracles that pin the boundary, one docs page). Everything else registered held:
+
+- Occupancy (`c4_boundary_base.txt`, `c4_boundary_head.txt`; the driver's occupancy API on the `Shared` kernel's cubin, the
+  fill's dynamic bytes, every L in 2049–10000, both precisions): the rule against "driver grants ≥ 3 blocks" had 7
+  mismatches at base (FP32 L 2751–2757, the driver grants 2) and 0 with the rounding; FP32 L 2750 gets 3 blocks, L
+  2751–2758 get 2, and the rule's first global FP32 length moves from 2758 to 2751; FP64 never gets three above 2048
+  (0 mismatches both ways). The library's own fill reports it (`c4_route_base.txt`, `c4_route_head.txt`, `kernel_used`):
+  L 2751, 2754, 2757 `wavefront` → `wavefront_global`; L 2750, 2400 `wavefront` both.
+- SASS (`c4_sass_identical.txt`): all 12 kernels byte-identical to base's, the whole `cuobjdump -sass` dump too
+  (sha256 `16ab0317…`), registers identical, the cubin byte-identical; the change is host code.
+- Distances: the matrix hash, `d(0,1)` and `d(N−1,N−2)` equal base's in all five cases.
+
+Reading [inferred]: the gain is real and the rule's direction is right. The harness repeats to ≤ 1 % (A/A: 1.000, 1.001,
+1.010 at L 2751, 2757, 2750); head's slowest fill beat base's fastest in all three moved cases (1.7357 against 1.8193,
+1.7523 against 1.8245, 1.7815 against 1.8355). Per cell, at these lengths: shared at three blocks 109.4 Gcell/s (L 2750),
+global 92.4–94.3, shared at two blocks 88.5–89.1. So the rounding moves L 2751–2757 from the slowest route to the middle
+one, 3.7–5.5 % of the time, short of the 5 % the brief registered at L 2757. Why L 2757 is 1.6–2.4 % slower on the global route
+than L 2754 and 2751 (expected from L²: +0.2–0.4 %) is unknown, not profiled.
+
+Gates with the change in place (not landed): CUDA tree ctest 106 / 0 failed (Skipped: `test_metal_correctness`,
+`test_metal_mmap`; base 106 / 0 failed, same skips); `test_cuda_correctness` 60 cases / 7232 assertions at base and head,
+its route tests derive `first_global` 2751 (FP32) and 2049 (FP64) and the fills at L 2750 and 2751 equal the host kernel's
+bit for bit; `test_cuda_launch_guards` 5 passed + 1 device skip, 54 assertions at base, 56 at head. The new unit test
+bites: against the base header it fails at `select_kernel(2751)` and `(2757)` (`3 == 4`). Clang tree: ctest 107 = 104 passed
++ 3 MAY_SKIP at base; with the change `cpp_conformance` and `test_cuda_launch_guards` pass. `check_docs`, `check_pins`,
+`generate_docs --check` not run: nothing lands.
+
+Ruling for the orchestrator: land `c4_rule.patch` only if a band of ≤ 0.97 at L 2751–2757 is accepted. That is a
+post-hoc band, set after these numbers; the registered one says no.

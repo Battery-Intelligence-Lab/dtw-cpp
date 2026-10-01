@@ -1,0 +1,12 @@
+dtw_regtile_kernel<d,Li4E>: 2240 vs 2240 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<d,Li8E>: 3232 vs 3232 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<f,Li4E>: 1680 vs 1680 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<f,Li8E>: 2224 vs 2224 lines; byte-identical True; differing lines 0
+dtw_warp_kernel<d>: 1392 vs 1392 lines; byte-identical True; differing lines 0
+dtw_warp_kernel<f>: 1872 vs 1872 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<d,Global>: 928 vs 928 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<d,Preload>: 1024 vs 1024 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<d,Shared>: 2528 vs 2528 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<f,Global>: 928 vs 928 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<f,Preload>: 944 vs 944 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<f,Shared>: 2176 vs 2176 lines; byte-identical True; differing lines 0

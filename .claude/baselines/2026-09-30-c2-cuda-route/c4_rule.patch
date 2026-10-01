@@ -1,0 +1,108 @@
+diff --git a/docs/content/method/gpu-backends.md b/docs/content/method/gpu-backends.md
+index b5afc1ed..baa46471 100644
+--- a/docs/content/method/gpu-backends.md
++++ b/docs/content/method/gpu-backends.md
+@@ -96,12 +96,12 @@ device's threadgroup-memory cap.
+ |---|---|---|
+ | `max_L ≤ 32` | `dtw_warp_kernel` | One warp per pair, full series in registers |
+ | `32 < max_L ≤ 256` | `dtw_regtile_kernel<TILE_W>` | `TILE_W=4` for `≤128`, `TILE_W=8` for `≤256` |
+-| `max_L > 2048` and three blocks of `3·max_L·sizeof(T)` bytes (plus the kernel's static and the runtime's reserved shared memory each) do not fit an SM's shared memory | `dtw_wavefront_kernel` (global) | Anti-diagonals in global memory, one slice per resident block |
++| `max_L > 2048` and three blocks of `3·max_L·sizeof(T)` bytes (plus the kernel's static and the runtime's reserved shared memory each, rounded up to the 128-byte allocation unit) do not fit an SM's shared memory | `dtw_wavefront_kernel` (global) | Anti-diagonals in global memory, one slice per resident block |
+ | otherwise | `dtw_wavefront_kernel` | Anti-diagonals in shared memory |
+ 
+ On an RTX 4000 Ada the warp and register-tile kernels are the fastest of those
+ that accept their length ranges, FP32 and FP64 alike. Its SM (100 KB of shared
+-memory) holds three shared-memory wavefront blocks up to `max_L` = 2,757 in FP32
++memory) holds three shared-memory wavefront blocks up to `max_L` = 2,750 in FP32
+ and none above 2,048 in FP64; beyond that the global-memory wavefront, which runs
+ up to six blocks per SM with its anti-diagonals in the L2 cache, takes 0.64–0.68
+ of the shared one's time at FP32 `max_L` 6,000–8,446 and 0.76–0.84 at FP64
+diff --git a/dtwc/cuda/kernel_selection.hpp b/dtwc/cuda/kernel_selection.hpp
+index 06cf4835..c48cc811 100644
+--- a/dtwc/cuda/kernel_selection.hpp
++++ b/dtwc/cuda/kernel_selection.hpp
+@@ -32,7 +32,8 @@ enum class KernelPath {
+ /// RTX 4000 Ada (.claude/baselines/2026-09-29-w4a-cuda-kernel-ab.md). Up to
+ /// L = 2048 a wavefront block's anti-diagonals (32 KB at most) fit any supported
+ /// GPU; above it they stay in shared memory only where three blocks fit an SM,
+-/// and go to global memory otherwise, which is faster there: 0.64-0.68 of the
++/// each counted as the hardware allocates it (rounded up to 128 bytes), and go
++/// to global memory otherwise, which is faster there: 0.64-0.68 of the
+ /// time at FP32 L 6000-8446 and 0.76-0.84 at FP64 L 2049-4223 on an RTX 4000
+ /// Ada (.claude/baselines/2026-09-30-c2-cuda-route.md).
+ inline KernelPath select_kernel(std::size_t max_length, std::size_t sample_bytes,
+@@ -42,9 +43,16 @@ inline KernelPath select_kernel(std::size_t max_length, std::size_t sample_bytes
+   if (max_length <= 32) return KernelPath::Warp;
+   if (max_length <= 128) return KernelPath::RegTileW4;
+   if (max_length <= 256) return KernelPath::RegTileW8;
++  // The driver allocates a block's shared memory in units of 128 bytes on every
++  // supported GPU (compute capability 8.0 and newer: cudaOccSMemAllocationGranularity
++  // in the CUDA toolkit's cuda_occupancy.h). An FP32 block at L = 2751 takes
++  // 34,052 bytes, allocated as 34,176: three do not fit an RTX 4000 Ada's SM.
++  constexpr std::size_t allocation_unit = 128;
+   const std::size_t block_bytes =
+       wavefront_buffer_count(max_length) * max_length * sample_bytes + block_overhead_bytes;
+-  if (max_length <= 2048 || 3 * block_bytes <= sm_shared_bytes) return KernelPath::Wavefront;
++  const std::size_t allocated_bytes =
++      (block_bytes + allocation_unit - 1) / allocation_unit * allocation_unit;
++  if (max_length <= 2048 || 3 * allocated_bytes <= sm_shared_bytes) return KernelPath::Wavefront;
+   return KernelPath::WavefrontGlobal;
+ }
+ 
+diff --git a/tests/unit/test_cuda_correctness.cpp b/tests/unit/test_cuda_correctness.cpp
+index 69759d42..271e4d82 100644
+--- a/tests/unit/test_cuda_correctness.cpp
++++ b/tests/unit/test_cuda_correctness.cpp
+@@ -193,8 +193,9 @@ dtwc::cuda::CUDADistMatOptions f12_cuda_options(
+ /// The first length that takes the global-memory wavefront on device 0. Up to
+ /// L = 2048 the wavefront keeps its anti-diagonals in shared memory; above it,
+ /// only while three blocks fit an SM's shared memory, each three anti-diagonals
+-/// of L values, the kernel's 16 static bytes and the runtime's reserved bytes:
+-/// on the RTX 4000 Ada (100 KB per SM, 1 KB reserved) FP32 2758 and FP64 2049.
++/// of L values, the kernel's 16 static bytes and the runtime's reserved bytes,
++/// rounded up to the 128-byte allocation unit: on the RTX 4000 Ada (100 KB per
++/// SM, 1 KB reserved) FP32 2751 and FP64 2049.
+ size_t first_global_length(bool fp32)
+ {
+   int sm_shared = 0;
+@@ -203,7 +204,9 @@ size_t first_global_length(bool fp32)
+           == cudaSuccess);
+   REQUIRE(cudaDeviceGetAttribute(&reserved, cudaDevAttrReservedSharedMemoryPerBlock, 0)
+           == cudaSuccess);
+-  const size_t block_room = static_cast<size_t>(sm_shared) / 3 - 16 - static_cast<size_t>(reserved);
++  // A block rounded up to a multiple of 128 fits a third of the SM exactly when the block fits
++  // the largest multiple of 128 within that third.
++  const size_t block_room = static_cast<size_t>(sm_shared) / 3 / 128 * 128 - 16 - static_cast<size_t>(reserved);
+   return std::max<size_t>(2049, block_room / (3 * (fp32 ? 4 : 8)) + 1);
+ }
+ 
+diff --git a/tests/unit/test_cuda_launch_guards.cpp b/tests/unit/test_cuda_launch_guards.cpp
+index 3cd0dbc8..13d31455 100644
+--- a/tests/unit/test_cuda_launch_guards.cpp
++++ b/tests/unit/test_cuda_launch_guards.cpp
+@@ -128,9 +128,11 @@ TEST_CASE("CUDA kernel choice follows the longest series length and the shared m
+   // least 15 % on the RTX 4000 Ada (.claude/baselines/2026-09-29-w4a-cuda-kernel-ab.md).
+   // Above L = 2048 the wavefront keeps its three anti-diagonals in shared memory
+   // only while three blocks fit an SM, each also taking the kernel's 16 static
+-  // bytes and the runtime's 1,024 reserved ones. The RTX 4000 Ada's SM has
+-  // 102,400 bytes: FP32 L = 2757 fits three blocks, 2758 does not, and FP64 none
+-  // above 2048. An H100's has 233,472: FP32 up to 6398, FP64 up to 3199.
++  // bytes and the runtime's 1,024 reserved ones, rounded up to the 128-byte
++  // allocation unit. The RTX 4000 Ada's SM has 102,400 bytes: FP32 L = 2750
++  // (34,040 bytes, allocated as 34,048) fits three blocks, 2751 (34,052, as
++  // 34,176) does not, and FP64 none above 2048. An H100's has 233,472: FP32 up
++  // to 6398 (77,816, as 77,824: exactly three), FP64 up to 3199.
+   constexpr std::size_t ada = 102400;
+   constexpr std::size_t hopper = 233472;
+   constexpr std::size_t overhead = 16 + 1024;
+@@ -145,7 +147,9 @@ TEST_CASE("CUDA kernel choice follows the longest series length and the shared m
+     CHECK(select_kernel(2048, sample, ada, overhead) == KernelPath::Wavefront);
+     CHECK(select_kernel(100000000, sample, ada, overhead) == KernelPath::WavefrontGlobal);
+   }
+-  CHECK(select_kernel(2757, 4, ada, overhead) == KernelPath::Wavefront);
++  CHECK(select_kernel(2750, 4, ada, overhead) == KernelPath::Wavefront);
++  CHECK(select_kernel(2751, 4, ada, overhead) == KernelPath::WavefrontGlobal);
++  CHECK(select_kernel(2757, 4, ada, overhead) == KernelPath::WavefrontGlobal);
+   CHECK(select_kernel(2758, 4, ada, overhead) == KernelPath::WavefrontGlobal);
+   CHECK(select_kernel(2049, 8, ada, overhead) == KernelPath::WavefrontGlobal);
+   CHECK(select_kernel(6398, 4, hopper, overhead) == KernelPath::Wavefront);

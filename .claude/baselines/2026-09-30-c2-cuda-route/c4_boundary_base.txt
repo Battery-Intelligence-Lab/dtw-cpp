@@ -1,0 +1,16 @@
+device: SM shared 102400 B, reserved per block 1024 B, opt-in per block 101376 B
+  FP32 L 2751: rule Wavefront, driver blocks/SM 2
+  FP32 L 2752: rule Wavefront, driver blocks/SM 2
+  FP32 L 2753: rule Wavefront, driver blocks/SM 2
+  FP32 L 2754: rule Wavefront, driver blocks/SM 2
+  FP32 L 2755: rule Wavefront, driver blocks/SM 2
+  FP32 L 2756: rule Wavefront, driver blocks/SM 2
+  FP32 L 2757: rule Wavefront, driver blocks/SM 2
+FP32: static 16 B; rule's last shared length 2757, first global 2758; L 2049..10000 mismatches with driver >= 3 blocks: 7
+  FP32 L 2749: driver blocks/SM 3
+  FP32 L 2750: driver blocks/SM 3
+  FP32 L 2751: driver blocks/SM 2
+  FP32 L 2754: driver blocks/SM 2
+  FP32 L 2757: driver blocks/SM 2
+  FP32 L 2758: driver blocks/SM 2
+FP64: static 16 B; rule's last shared length 0, first global 2049; L 2049..10000 mismatches with driver >= 3 blocks: 0
