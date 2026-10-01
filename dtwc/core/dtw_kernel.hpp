@@ -27,9 +27,9 @@
  *                  NaN (the "missing pair" sentinel) so the diagonal-carry
  *                  doesn't propagate NaN downstream.
  *
- *          @pre n_short <= n_long. Wrappers must swap (x, y) beforehand if
- *               needed and rebuild their Cost functor with the post-swap
- *               orientation (all current Cost functors are symmetric).
+ *          @pre n_short <= n_long: orient() puts a pair that way, and run_dtw()
+ *               is the per-pair entry that does it before building the Cost
+ *               (every Cost functor is symmetric).
  *
  *          dtw_kernel_lanes computes W equal-length pairs at once and packs
  *          the values itself, so it takes a pointwise distance instead of a
@@ -397,6 +397,35 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
   }
 
   return col[n_long - 1];
+}
+
+// ===========================================================================
+// The per-pair entry: orientation, empty input, a series against itself.
+// ===========================================================================
+
+/// Orients a pair as the kernels take it: the shorter series first (x on a tie).
+template <typename T>
+void orient(const T *&x, std::size_t &nx, const T *&y, std::size_t &ny) noexcept
+{
+  if (nx > ny) {
+    std::swap(x, y);
+    std::swap(nx, ny);
+  }
+}
+
+/// DTW of x and y under `cell`, the pointwise cost Cost<T>{x', y', extra...} on
+/// the oriented pair (x', y'): what every per-pair wrapper runs. An empty series
+/// has no path (max()); a series against itself is 0, the cost of the diagonal
+/// path, as no cost or penalty is negative; dtw_kernel_banded takes the band
+/// (negative: unconstrained) and the early-abandon threshold.
+template <template <typename> class Cost, typename T, typename Cell, typename... Extra>
+T run_dtw(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, Cell cell,
+          T early_abandon, Extra... extra)
+{
+  if (nx == 0 || ny == 0) return std::numeric_limits<T>::max();
+  if (x == y && nx == ny) return T(0);
+  orient(x, nx, y, ny);
+  return dtw_kernel_banded<T>(nx, ny, band, Cost<T>{ x, y, extra... }, cell, early_abandon);
 }
 
 // ===========================================================================

@@ -116,15 +116,15 @@ delegate to their scalar implementations.
 
 ## Multivariate point costs
 
-The Standard wrappers select these live functors from `warping.hpp`:
+The Standard wrappers select these cost functors from `core/dtw_cost.hpp`:
 
 | Functor | Pointwise formula |
 |---------|-------------------|
-| `detail::MVL1Dist` | $$\sum_d \lvert a_d-b_d\rvert$$ |
-| `detail::MVSquaredL2Dist` | $$\sum_d (a_d-b_d)^2$$ |
-| `detail::MVL2Dist` | $$\sqrt{\sum_d (a_d-b_d)^2}$$ |
+| `core::SpanMVL1Cost` | $$\sum_d \lvert a_d-b_d\rvert$$ |
+| `core::SpanMVSquaredL2Cost` | $$\sum_d (a_d-b_d)^2$$ |
+| `core::SpanMVL2Cost` | $$\sqrt{\sum_d (a_d-b_d)^2}$$ |
 
-The Euclidean implementation is `MVL2Dist`.
+The Euclidean implementation is `SpanMVL2Cost`.
 The missing-data wrappers use the index-based
 `SpanMVNanAwareL1Cost`, `SpanMVNanAwareSquaredL2Cost`, and
 `SpanMVNanAwareL2Cost` implementations. The similarly named legacy missing

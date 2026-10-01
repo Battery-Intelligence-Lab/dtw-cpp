@@ -6,9 +6,9 @@
 // clang's loop-vectorize remarks off it, or (--no-calls, test_codegen_no_calls)
 // fails when an innermost loop of these kernels makes a call.
 //
-// It has to exist because the kernels are function templates in dtwc/warping.hpp.
-// A template that nobody instantiates generates no code, so no library
-// translation unit reports on them. The explicit instantiations below are what
+// It has to exist because the kernels are function templates in dtwc/warping.hpp
+// and dtwc/core/. A template that nobody instantiates generates no code, so no
+// library translation unit reports on them. The exported wrappers below are what
 // force the loops into existence where a compiler can be asked about them.
 //
 // Add an instantiation here when a kernel joins the hot path.
@@ -25,9 +25,8 @@
 
 namespace {
 
-// The distance functor the library uses in its own hot paths: a plain absolute
-// difference, so nothing here is pessimised by an indirect call the real code
-// would not make.
+// A plain absolute difference for the kernels called directly, so nothing here
+// is pessimised by an indirect call the real code would not make.
 struct AbsDiff
 {
   template <typename data_t>
@@ -54,24 +53,24 @@ extern "C" {
 
 double dtwc_probe_dtwFull_f64(const double *x, std::size_t nx, const double *y, std::size_t ny)
 {
-  return dtwc::detail::dtwFull_impl<double>(x, nx, y, ny, AbsDiff{});
+  return dtwc::dtwFull<double>(x, nx, y, ny);
 }
 
 float dtwc_probe_dtwFull_f32(const float *x, std::size_t nx, const float *y, std::size_t ny)
 {
-  return dtwc::detail::dtwFull_impl<float>(x, nx, y, ny, AbsDiff{});
+  return dtwc::dtwFull<float>(x, nx, y, ny);
 }
 
 double dtwc_probe_dtwFull_L_f64(
   const double *x, std::size_t nx, const double *y, std::size_t ny, double early_abandon)
 {
-  return dtwc::detail::dtwFull_L_impl<double>(x, nx, y, ny, early_abandon, AbsDiff{});
+  return dtwc::dtwFull_L<double>(x, nx, y, ny, early_abandon);
 }
 
 float dtwc_probe_dtwFull_L_f32(
   const float *x, std::size_t nx, const float *y, std::size_t ny, float early_abandon)
 {
-  return dtwc::detail::dtwFull_L_impl<float>(x, nx, y, ny, early_abandon, AbsDiff{});
+  return dtwc::dtwFull_L<float>(x, nx, y, ny, early_abandon);
 }
 
 // The remaining cells and kernels: ADTW, AROW, banded, MSM, TWE.
@@ -81,7 +80,7 @@ double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, 
   const auto cost = [x, y](std::size_t i, std::size_t j) noexcept { return AbsDiff{}(x[i], y[j]); };
   return core::dtw_kernel_linear<double>(nx, ny, cost, core::ADTWCell<double>{0.5})
          + core::dtw_kernel_banded<double>(nx, ny, 8, cost, core::AROWCell{})
-         + dtwc::detail::dtwBanded_impl<double>(x, nx, y, ny, 8, -1.0, AbsDiff{})
+         + dtwc::dtwBanded<double>(x, nx, y, ny, 8, -1.0)
          + core::msm_distance<double>(x, nx, y, ny) + core::twe_distance<double>(x, nx, y, ny);
 }
 
@@ -89,7 +88,7 @@ double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, 
 double dtwc_probe_lanes_f64(const double *x, const double *const *ys, std::size_t n, int band)
 {
   double sum = 0;
-  for (const double d : dtwc::core::dtw_kernel_lanes<double>(x, ys, n, band, dtwc::detail::L1Dist{},
+  for (const double d : dtwc::core::dtw_kernel_lanes<double>(x, ys, n, band, AbsDiff{},
                                                              dtwc::core::StandardCell{}))
     sum += d;
   return sum;
@@ -98,8 +97,11 @@ double dtwc_probe_lanes_f64(const double *x, const double *const *ys, std::size_
 float dtwc_probe_lanes_f32(const float *x, const float *const *ys, std::size_t n, int band)
 {
   float sum = 0;
-  for (const float d : dtwc::core::dtw_kernel_lanes<float>(x, ys, n, band,
-                                                           dtwc::detail::SquaredL2Dist{},
+  const auto squared = [](float a, float b) noexcept {
+    const float d = a - b;
+    return d * d;
+  };
+  for (const float d : dtwc::core::dtw_kernel_lanes<float>(x, ys, n, band, squared,
                                                            dtwc::core::StandardCell{}))
     sum += d;
   return sum;
