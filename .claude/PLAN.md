@@ -162,7 +162,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W7f dead NaN functors and public helpers go
 - ☐ W7g one `distance::dtw` per language
 - ☑ W13b one finite scan at each matrix intake; read-only loops lose per-lookup checks (W13b 5605f4e, 3599ebc, a7f5af1, 8895c95, 7821cd7; merged 6605829; find_best_swap 27 → 21.5 instructions per lookup; Lloyd's assignment keeps its check: a fill of ±DBL_MAX series gives +inf)
-- ☐ W8a one reader entry (`read_data`); Parquet names and IPC nulls fixed; `load('x.parquet')` in Python
+- ☑ W8a one reader entry (`read_data`); Parquet names and IPC nulls fixed; `load('x.parquet')` in Python (W8a 3dfbffe, 8b5bc1c, 34b031b, fcf6911, 292acc9; merged 761346a; −996/+749; Python reads Parquet through the installed pyarrow, Volkan 10-01)
 - ☐ W8b one writer (`write_result_files`); `Result::save` after streaming fixed
 - ☐ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1)
 - ☐ L1 measure what the wheel and the MEX link (linker maps) → L2 split `dtwc_core` (no file formats, no CLI) from
