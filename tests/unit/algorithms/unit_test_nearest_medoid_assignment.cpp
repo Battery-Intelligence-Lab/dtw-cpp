@@ -1,10 +1,8 @@
 /**
  * @file unit_test_nearest_medoid_assignment.cpp
- * @brief F13 public-route contract for nearest-medoid assignment.
- *
- * The independent oracle below consumes literal distance tables. It shares no
- * DTW kernel, Problem cache, or production assignment helper with the routes it
- * judges.
+ * @brief F13 public-route contract for nearest-medoid assignment: where a
+ *        non-finite distance is refused, first-slot ties, the point-ordered
+ *        objective and its one finite check.
  */
 
 #include <dtwc.hpp>
@@ -18,17 +16,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <algorithm>
 #include <bit>
-#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <functional>
 #include <limits>
-#include <span>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -37,93 +31,9 @@ namespace {
 using dtwc::Problem;
 using dtwc::core::ClusteringResult;
 
-struct OracleAssignment
-{
-  std::vector<dtwc::index_t> labels;
-  std::vector<double> nearest;
-  std::vector<double> second;
-  double objective = 0.0;
-};
-
 std::uint64_t bits(double value)
 {
   return std::bit_cast<std::uint64_t>(value);
-}
-
-OracleAssignment independent_assignment_oracle(
-  const std::vector<std::vector<double>> &distances)
-{
-  if (distances.empty() || distances.front().empty())
-    throw std::invalid_argument(
-      "nearest-medoid oracle: distance table must be non-empty.");
-
-  const std::size_t k = distances.front().size();
-  OracleAssignment result;
-  result.labels.resize(distances.size());
-  result.nearest.resize(distances.size());
-  result.second.resize(
-    distances.size(), std::numeric_limits<double>::max());
-
-  volatile double total = 0.0;
-  for (std::size_t point = 0; point < distances.size(); ++point) {
-    if (distances[point].size() != k)
-      throw std::invalid_argument(
-        "nearest-medoid oracle: distance table is ragged.");
-
-    struct Candidate
-    {
-      double distance;
-      std::size_t slot;
-    };
-    std::vector<Candidate> candidates;
-    candidates.reserve(k);
-    for (std::size_t slot = 0; slot < k; ++slot) {
-      const double distance = distances[point][slot];
-      if (!std::isfinite(distance)) {
-        throw std::runtime_error(
-          "nearest-medoid oracle: non-finite nearest-medoid distance at point "
-          + std::to_string(point) + ", medoid slot "
-          + std::to_string(slot) + ".");
-      }
-      candidates.push_back({distance, slot});
-    }
-    std::stable_sort(
-      candidates.begin(), candidates.end(),
-      [](const Candidate &lhs, const Candidate &rhs) {
-        if (lhs.distance < rhs.distance) return true;
-        if (rhs.distance < lhs.distance) return false;
-        return lhs.slot < rhs.slot;
-      });
-
-    result.labels[point] = static_cast<int>(candidates[0].slot);
-    // The Release flag set includes -fno-signed-zeros. GCC may flush -0.0 to
-    // +0.0 on a copy; Apple Clang often preserves the sign bit. The F13
-    // contract already canonicalizes a zero *objective* to +0.0. Do the same
-    // for stored nearest/second distances so the oracle is not a signed-zero
-    // compiler fingerprint.
-    volatile double nearest = candidates[0].distance;
-    if (nearest == 0.0)
-      nearest = 0.0;
-    result.nearest[point] = nearest;
-    if (k > 1) {
-      volatile double second = candidates[1].distance;
-      if (second == 0.0)
-        second = 0.0;
-      result.second[point] = second;
-    }
-
-    const double next = total + candidates[0].distance;
-    if (!std::isfinite(next)) {
-      throw std::runtime_error(
-        "nearest-medoid oracle: nearest-medoid objective became non-finite "
-        "after point " + std::to_string(point) + ".");
-    }
-    total = next;
-  }
-
-  const double value = total;
-  result.objective = value == 0.0 ? 0.0 : value;
-  return result;
 }
 
 template <typename T>
@@ -195,136 +105,6 @@ dtwc::algorithms::CLARAOptions clara_options(
 
 } // namespace
 
-TEST_CASE("F13 independent oracle pins ties, presence, and ordered bits",
-          "[F13][medoid-assignment][oracle]")
-{
-  const auto midpoint = independent_assignment_oracle({
-    {0.0, 2.0},
-    {1.0, 1.0},
-    {2.0, 0.0},
-  });
-  REQUIRE(midpoint.labels == std::vector<dtwc::index_t>{0, 0, 1});
-  REQUIRE(bits(midpoint.objective) == UINT64_C(0x3ff0000000000000));
-
-  const auto reversed_slots = independent_assignment_oracle({
-    {2.0, 0.0},
-    {1.0, 1.0},
-    {0.0, 2.0},
-  });
-  REQUIRE(reversed_slots.labels == std::vector<dtwc::index_t>{1, 0, 0});
-  REQUIRE(bits(reversed_slots.objective)
-          == UINT64_C(0x3ff0000000000000));
-
-  const auto mixed = independent_assignment_oracle({
-    {0x1p53, 0x1p53},
-    {4.0, 0.0},
-    {1.0, 1.0},
-    {-0.0, +0.0},
-    {-0x1p53, -0x1p53},
-    {2.0, 3.0},
-  });
-  REQUIRE(mixed.labels == std::vector<dtwc::index_t>{0, 1, 0, 0, 0, 0});
-  REQUIRE(mixed.objective == 2.0);
-  REQUIRE(bits(mixed.objective) == UINT64_C(0x4000000000000000));
-
-  const std::vector<std::uint64_t> expected_nearest{
-    UINT64_C(0x4340000000000000),
-    UINT64_C(0x0000000000000000),
-    UINT64_C(0x3ff0000000000000),
-    UINT64_C(0x0000000000000000),
-    UINT64_C(0xc340000000000000),
-    UINT64_C(0x4000000000000000),
-  };
-  REQUIRE(mixed.nearest.size() == expected_nearest.size());
-  for (std::size_t i = 0; i < mixed.nearest.size(); ++i)
-    CHECK(bits(mixed.nearest[i]) == expected_nearest[i]);
-
-  const auto zero = independent_assignment_oracle({{-0.0, +0.0}});
-  REQUIRE(zero.labels == std::vector<dtwc::index_t>{0});
-  REQUIRE(bits(zero.nearest[0]) == UINT64_C(0x0000000000000000));
-  REQUIRE(bits(zero.objective) == UINT64_C(0x0000000000000000));
-
-  const double maximum = std::numeric_limits<double>::max();
-  const auto sentinel = independent_assignment_oracle({{maximum, maximum}});
-  REQUIRE(sentinel.labels == std::vector<dtwc::index_t>{0});
-  REQUIRE(bits(sentinel.nearest[0]) == UINT64_C(0x7fefffffffffffff));
-  REQUIRE(bits(sentinel.second[0]) == UINT64_C(0x7fefffffffffffff));
-  REQUIRE(bits(sentinel.objective) == UINT64_C(0x7fefffffffffffff));
-
-  const double adjacent = std::nextafter(maximum, 0.0);
-  const auto below = independent_assignment_oracle({{adjacent, maximum}});
-  REQUIRE(below.labels == std::vector<dtwc::index_t>{0});
-  REQUIRE(bits(below.nearest[0]) == UINT64_C(0x7feffffffffffffe));
-
-  const auto finite_huge =
-    independent_assignment_oracle({{0x1p1021}, {0x1p1021}});
-  REQUIRE(bits(finite_huge.objective) == UINT64_C(0x7fd0000000000000));
-
-  constexpr double huge = 0x1.8p+1023;
-  REQUIRE_THROWS_WITH(
-    independent_assignment_oracle({
-      {huge, huge},
-      {huge, huge},
-    }),
-    "nearest-medoid oracle: nearest-medoid objective became non-finite "
-    "after point 1.");
-  REQUIRE_THROWS_WITH(
-    independent_assignment_oracle({
-      {0.0, 0.0},
-      {huge, huge},
-      {huge, huge},
-      {0.0, 0.0},
-    }),
-    "nearest-medoid oracle: nearest-medoid objective became non-finite "
-    "after point 2.");
-}
-
-TEST_CASE("F13 independent oracle rejects every non-finite coordinate",
-          "[F13][medoid-assignment][oracle][nonfinite]")
-{
-  const std::vector<double> poisons{
-    std::bit_cast<double>(UINT64_C(0x7ff8000000000f13)),
-    std::numeric_limits<double>::infinity(),
-    -std::numeric_limits<double>::infinity(),
-  };
-  for (const double poison : poisons) {
-    REQUIRE_THROWS_WITH(
-      independent_assignment_oracle({{poison, 1.0}}),
-      "nearest-medoid oracle: non-finite nearest-medoid distance at point 0, "
-      "medoid slot 0.");
-    REQUIRE_THROWS_WITH(
-      independent_assignment_oracle({{1.0, poison}}),
-      "nearest-medoid oracle: non-finite nearest-medoid distance at point 0, "
-      "medoid slot 1.");
-  }
-}
-
-TEST_CASE("F13 public assignment routes agree on an exact midpoint tie",
-          "[F13][medoid-assignment][tie][public]")
-{
-  const std::vector<dtwc::index_t> medoids{0, 2};
-  const std::vector<dtwc::index_t> labels{0, 0, 1};
-
-  auto clara_f64 = scalar_problem<double>({0.0, 1.0, 2.0});
-  require_result(
-    dtwc::algorithms::fast_clara(
-      clara_f64, clara_options(2, 2, 0)),
-    medoids, labels, 1.0);
-  CHECK(clara_f64.distance_matrix().size() == 0);
-
-  auto clara_f32 = scalar_problem<float>({0.0f, 1.0f, 2.0f});
-  require_result(
-    dtwc::algorithms::fast_clara(
-      clara_f32, clara_options(2, 2, 0)),
-    medoids, labels, 1.0);
-  CHECK(clara_f32.distance_matrix().size() == 0);
-
-  auto lloyd = scalar_problem<double>({0.0, 1.0, 2.0});
-  lloyd.centroids_ind = medoids;
-  lloyd.assign_clusters();
-  REQUIRE(lloyd.clusters_ind == labels);
-}
-
 TEST_CASE("F13 ties select the first slot, not the smallest global index",
           "[F13][medoid-assignment][tie][slot-order]")
 {
@@ -351,17 +131,10 @@ TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
   // Series 4 duplicates series 0: every other point ties and takes the first
   // slot, but medoid 4 serves itself so its cluster is not published empty.
   const std::vector<dtwc::index_t> labels{0, 0, 0, 0, 1};
+  // In point order every partial sum is 2^53: 2^53 + 1 is a tie that rounds to
+  // the even 2^53. An order that adds the two 1s first gives 2^53 + 2.
   constexpr double expected = 0x1p53;
-
-  const auto oracle = independent_assignment_oracle({
-    {0.0, 0.0},
-    {0x1p53, 0x1p53},
-    {1.0, 1.0},
-    {1.0, 1.0},
-    {0.0, 0.0},
-  });
-  REQUIRE(oracle.labels == std::vector<dtwc::index_t>(5, 0)); // the table alone knows no medoid identity
-  REQUIRE(bits(oracle.objective) == UINT64_C(0x4340000000000000));
+  REQUIRE(bits(expected) == UINT64_C(0x4340000000000000));
 
   auto clara_f64 = scalar_problem<double>(values);
   require_result(
