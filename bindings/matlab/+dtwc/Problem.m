@@ -116,6 +116,15 @@ classdef Problem < handle
             end
         end
 
+        function set_distance(obj, varargin)
+        %SET_DISTANCE Set every distance setting at once, by the name-value pairs
+        %   dtwc.distance.dtw takes; a setting not named takes its default. A
+        %   change drops the distance matrix and the clustering; an invalid one
+        %   raises dtwc:invalidArgument and changes nothing.
+            [varargin{:}] = convertStringsToChars(varargin{:});
+            dtwc_mex('Problem_set_distance', obj.Handle, varargin{:});
+        end
+
         function set_missing_strategy(obj, strategy)
         %SET_MISSING_STRATEGY Set NaN handling strategy.
         %   prob.set_missing_strategy('error')

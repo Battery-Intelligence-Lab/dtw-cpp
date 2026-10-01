@@ -42,15 +42,7 @@ from dtwcpp._dtwcpp_core import (
     IOError,
     DEFAULT_RANDOM_SEED,
     device_to_string,
-    # DTW functions (raw C++ bindings — require numpy arrays)
-    dtw_distance as _dtw_distance_raw,
-    ddtw_distance as _ddtw_distance_raw,
-    wdtw_distance as _wdtw_distance_raw,
-    adtw_distance as _adtw_distance_raw,
-    soft_dtw_distance as _soft_dtw_distance_raw,
     soft_dtw_gradient,
-    dtw_distance_missing as _dtw_distance_missing_raw,
-    dtw_arow_distance as _dtw_arow_distance_raw,
     # Algorithms
     fast_pam,
     fast_pam_seeded,

@@ -2,8 +2,8 @@
 @file test_cross_validation.py
 @brief Cross-validation tests: verify C++ and Python interfaces give identical results.
 @details
-These tests compute DTW distances through both the direct C++ bindings and
-the Python sugar layer, ensuring they produce the same numerical results.
+The filled matrix against dtwcpp.distance.dtw pair by pair, and DTWClustering
+against the seeded FastPAM it wraps.
 @author Volkan Kumtepeli
 """
 
@@ -17,21 +17,6 @@ import dtwcpp
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def series_pair():
-    """A deterministic pair of time series for reproducibility."""
-    rng = np.random.RandomState(42)
-    x = rng.randn(100).tolist()
-    y = rng.randn(100).tolist()
-    return x, y
-
-
-@pytest.fixture
-def short_pair():
-    """Hand-crafted short series for exact verification."""
-    return [1.0, 2.0, 3.0, 4.0, 5.0], [2.0, 4.0, 6.0, 3.0, 1.0]
-
-
-@pytest.fixture
 def three_cluster_data():
     """Well-separated clusters for clustering cross-validation."""
     rng = np.random.RandomState(123)
@@ -39,98 +24,6 @@ def three_cluster_data():
     cluster_b = [(rng.randn(20) + 100).tolist() for _ in range(5)]   # near 100
     cluster_c = [(rng.randn(20) + 200).tolist() for _ in range(5)]   # near 200
     return cluster_a + cluster_b + cluster_c
-
-
-# ---------------------------------------------------------------------------
-# DTW distance cross-validation: direct C++ vs Problem.dist_by_ind
-# ---------------------------------------------------------------------------
-
-class TestDTWCrossValidation:
-    """Verify dtwcpp.distance.* matches Problem.dist_by_ind() for all variants."""
-
-    def test_standard_dtw_matches_problem(self, short_pair):
-        x, y = short_pair
-
-        # Direct C++ function
-        d_direct = dtwcpp.distance.dtw(x, y, band=-1)
-
-        # Via Problem class
-        prob = dtwcpp.Problem("xval")
-        prob.set_data([x, y], ["s0", "s1"])
-        prob.band = -1
-        prob.fill_distance_matrix()
-        d_problem = prob.dist_by_ind(0, 1)
-
-        assert d_direct == pytest.approx(d_problem, abs=1e-12), \
-            f"Direct DTW {d_direct} != Problem DTW {d_problem}"
-
-    def test_banded_dtw_matches_problem(self, series_pair):
-        x, y = series_pair
-
-        d_direct = dtwcpp.distance.dtw(x, y, band=10)
-
-        prob = dtwcpp.Problem("xval_banded")
-        prob.set_data([x, y], ["s0", "s1"])
-        prob.band = 10
-        prob.fill_distance_matrix()
-        d_problem = prob.dist_by_ind(0, 1)
-
-        assert d_direct == pytest.approx(d_problem, abs=1e-12)
-
-    def test_ddtw_matches_problem(self, short_pair):
-        x, y = short_pair
-
-        d_direct = dtwcpp.distance.ddtw(x, y, band=-1)
-
-        prob = dtwcpp.Problem("xval_ddtw")
-        prob.set_data([x, y], ["s0", "s1"])
-        prob.band = -1
-        prob.set_variant(dtwcpp.DTWVariant.DDTW)
-        prob.fill_distance_matrix()
-        d_problem = prob.dist_by_ind(0, 1)
-
-        assert d_direct == pytest.approx(d_problem, abs=1e-12), \
-            f"Direct DDTW {d_direct} != Problem DDTW {d_problem}"
-
-    def test_wdtw_matches_problem(self, short_pair):
-        x, y = short_pair
-        g = 0.1
-
-        d_direct = dtwcpp.distance.wdtw(x, y, band=-1, g=g)
-
-        prob = dtwcpp.Problem("xval_wdtw")
-        prob.set_data([x, y], ["s0", "s1"])
-        prob.band = -1
-        vp = dtwcpp.DTWVariantParams()
-        vp.variant = dtwcpp.DTWVariant.WDTW
-        vp.wdtw_g = g
-        prob.variant_params = vp
-        prob.refresh_distance_matrix()
-        prob.fill_distance_matrix()
-        d_problem = prob.dist_by_ind(0, 1)
-
-        assert d_direct == pytest.approx(d_problem, abs=1e-12), \
-            f"Direct WDTW {d_direct} != Problem WDTW {d_problem}"
-
-    def test_adtw_matches_problem(self, short_pair):
-        x, y = short_pair
-        penalty = 2.0
-
-        d_direct = dtwcpp.distance.adtw(x, y, band=-1, penalty=penalty)
-
-        prob = dtwcpp.Problem("xval_adtw")
-        prob.set_data([x, y], ["s0", "s1"])
-        prob.band = -1
-        vp = dtwcpp.DTWVariantParams()
-        vp.variant = dtwcpp.DTWVariant.ADTW
-        vp.adtw_penalty = penalty
-        prob.variant_params = vp
-        prob.refresh_distance_matrix()
-        prob.fill_distance_matrix()
-        d_problem = prob.dist_by_ind(0, 1)
-
-        assert d_direct == pytest.approx(d_problem, abs=1e-12), \
-            f"Direct ADTW {d_direct} != Problem ADTW {d_problem}"
 
 
 # ---------------------------------------------------------------------------
@@ -240,52 +133,4 @@ class TestClusteringCrossValidation:
             expected_label = int(np.argmin(dists))
             assert labels_predict[i] == expected_label, \
                 f"Point {i}: predict={labels_predict[i]}, expected={expected_label}"
-
-
-# ---------------------------------------------------------------------------
-# Variant consistency: same variant gives same result through different paths
-# ---------------------------------------------------------------------------
-
-class TestVariantConsistency:
-    """Verify that DTW variants are consistent across all calling paths."""
-
-    @pytest.mark.parametrize("band", [-1, 5, 20])
-    def test_dtw_banded_consistency(self, series_pair, band):
-        """Same band value gives same result via dtw_distance and Problem."""
-        x, y = series_pair
-
-        d1 = dtwcpp.distance.dtw(x, y, band=band)
-        d2 = dtwcpp.distance.dtw(x, y, band=band)
-        assert d1 == d2, "Same call twice gives different results!"
-
-    def test_derivative_then_dtw_equals_ddtw(self, short_pair):
-        """DDTW should equal manual derivative + standard DTW."""
-        x, y = short_pair
-
-        dx = dtwcpp.derivative_transform(x)
-        dy = dtwcpp.derivative_transform(y)
-        d_manual = dtwcpp.distance.dtw(dx, dy, band=-1)
-        d_ddtw = dtwcpp.distance.ddtw(x, y, band=-1)
-
-        assert d_manual == pytest.approx(d_ddtw, abs=1e-12), \
-            f"Manual deriv+DTW {d_manual} != DDTW {d_ddtw}"
-
-    def test_adtw_penalty_zero_equals_standard(self, series_pair):
-        """ADTW with penalty=0 should equal standard DTW."""
-        x, y = series_pair
-
-        d_std = dtwcpp.distance.dtw(x, y, band=-1)
-        d_adtw = dtwcpp.distance.adtw(x, y, band=-1, penalty=0.0)
-
-        assert d_std == pytest.approx(d_adtw, abs=1e-12)
-
-    def test_soft_dtw_approaches_dtw(self, short_pair):
-        """Soft-DTW with gammaâ†’0 should approach standard DTW."""
-        x, y = short_pair
-
-        d_hard = dtwcpp.distance.dtw(x, y, band=-1)
-        d_soft = dtwcpp.distance.soft_dtw(x, y, gamma=0.001)
-
-        assert d_soft == pytest.approx(d_hard, abs=0.1), \
-            f"Soft-DTW(gamma=0.001)={d_soft} not close to DTW={d_hard}"
 

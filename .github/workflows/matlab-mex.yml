@@ -49,6 +49,7 @@ jobs:
             addpath(fullfile(pwd,'bindings','matlab'));
             addpath(fullfile(pwd,'build','mex-ci','bin'));
             files={fullfile(pwd,'tests','matlab','test_dtwc.m'),
+            fullfile(pwd,'tests','matlab','test_distance.m'),
             fullfile(pwd,'tests','matlab','test_mex_input_validation.m'),
             fullfile(pwd,'tests','matlab','test_contract_parity.m'),
             fullfile(pwd,'tests','matlab','test_test_api.m'),

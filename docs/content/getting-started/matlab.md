@@ -41,22 +41,32 @@ fprintf('DTW distance: %.4f\n', d);
 d_banded = dtwc.distance.dtw(x, y, 'Band', 2);
 fprintf('DTW distance (band=2): %.4f\n', d_banded);
 
-% Variant dispatch convenience
-d_soft = dtwc.distance.dtw(x, y, 'Variant', 'soft_dtw', 'Gamma', 1.0);
+% Any variant, by the names dtwc_cl takes
+d_soft = dtwc.distance.dtw(x, y, 'Variant', 'softdtw', 'SdtwGamma', 1.0);
 fprintf('Soft-DTW distance: %.4f\n', d_soft);
 ```
 
-Pairwise distances now live under `dtwc.distance.*`. The old root-level
-helpers such as `dtwc.dtw_distance(...)` were removed in this breaking
-release.
+The distance of two series is `dtwc.distance.dtw`, for every variant. The old
+root-level helpers such as `dtwc.dtw_distance(...)` were removed in this
+breaking release.
 
-Parameters:
+Its settings are name-value pairs, the `dtwc_cl` keys in CamelCase; C++ reads
+and checks them, so an unknown name, a parameter outside its domain or a
+combination no kernel implements raises `dtwc:invalidArgument`:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `x` | numeric vector | required | First time series |
 | `y` | numeric vector | required | Second time series |
+| `Variant` | char | `'standard'` | `'standard'`, `'ddtw'`, `'wdtw'`, `'adtw'`, `'softdtw'`, `'msm'`, `'twe'` |
 | `Band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
+| `Metric` | char | `'l1'` | `'l1'` or `'squared_euclidean'` (Standard DTW and DDTW) |
+| `MissingStrategy` | char | `'error'` | `'error'`, `'zero_cost'`, `'arow'` or `'interpolate'` (Standard DTW; NaN is then a missing value) |
+| `WdtwG` | double | `0.05` | WDTW steepness |
+| `AdtwPenalty` | double | `1.0` | ADTW non-diagonal step penalty |
+| `SdtwGamma` | double | `1.0` | Soft-DTW smoothing |
+| `MsmC` | double | `1.0` | MSM split/merge cost |
+| `TweNu`, `TweLambda` | double | `0.001`, `1.0` | TWE stiffness and edit penalty |
 
 ## Distance matrix
 
@@ -103,7 +113,7 @@ disp(clust.MedoidIndices);
 |-----------|------|---------|-------------|
 | `NClusters` | int | `3` | Number of clusters |
 | `Band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
-| `Metric` | char | `'l1'` | Pointwise distance metric |
+| `Metric` | char | `'l1'` | Pointwise distance metric (`'l1'` or `'squared_euclidean'`) |
 | `MaxIter` | int | `100` | Maximum clustering iterations |
 | `NInit` | int | `1` | Number of random restarts (best result kept) |
 | `Variant` | char | `'standard'` | DTW variant: `'standard'`, `'ddtw'`, `'wdtw'`, `'adtw'`, `'softdtw'` |

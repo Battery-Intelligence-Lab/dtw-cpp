@@ -127,7 +127,7 @@ ax.plot(y, label=f"series {J}", linewidth=2)
 for (i, j) in path[::max(1, len(path)//50)]:  # subsample
     ax.plot([i, j], [x[i], y[j]], color="gray", alpha=0.3, linewidth=0.5)
 ax.legend()
-ax.set_title(f"DTW alignment: distance = {dc.dtw_distance(x, y):.3f}")
+ax.set_title(f"DTW alignment: distance = {dc.distance.dtw(x, y):.3f}")
 plt.tight_layout()
 plt.savefig("warping_path.png", dpi=150)
 ```

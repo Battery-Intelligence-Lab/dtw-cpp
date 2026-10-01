@@ -4,7 +4,7 @@
     tests = functiontests(localfunctions);
 end
 
-%% --- dtw_distance tests ---
+%% --- dtwc.distance.dtw tests ---
 
 function test_dtw_distance_basic(testCase)
 %TEST_DTW_DISTANCE_BASIC Verify DTW distance is positive for different series.
@@ -129,20 +129,6 @@ function test_clustering_constructor_defaults(testCase)
 end
 
 %% --- Distance, estimator, Problem and score properties ---
-
-function test_adtw_penalty_never_undercuts_dtw(testCase)
-%TEST_ADTW_PENALTY_NEVER_UNDERCUTS_DTW A penalty on off-diagonal steps cannot lower the cost.
-    x = [1 2 3 4 5];
-    y = [1 1 2 3 4 5];
-    verifyGreaterThanOrEqual(testCase, ...
-        dtwc.distance.adtw(x, y, 'Penalty', 1.0), dtwc.distance.dtw(x, y));
-end
-
-function test_zero_cost_missing_matches_the_filled_series(testCase)
-%TEST_ZERO_COST_MISSING_MATCHES_THE_FILLED_SERIES A NaN costs nothing under 'missing'.
-    y = [1 2 3 4 5];
-    verifyEqual(testCase, dtwc.distance.missing([1 2 NaN 4 5], y), 0);
-end
 
 function test_soft_dtw_gradient_has_the_length_of_x(testCase)
 %TEST_SOFT_DTW_GRADIENT_HAS_THE_LENGTH_OF_X One partial derivative per sample of x.

@@ -253,3 +253,10 @@ class TestCheckpointMetricFingerprint:
 
     def test_an_absent_checkpoint_is_false(self, tmp_path):
         assert dtwcpp.load_checkpoint(self._problem(), str(tmp_path / "nothing")) is False
+
+
+def test_raw_matrix_binding_reads_the_metric_from_the_cpp_table():
+    """An unknown metric is refused, never run as L1."""
+    with pytest.raises(dtwcpp.InvalidInput,
+                       match=r"^unknown metric 'bogus'\. Valid: l1, squared_euclidean\.$"):
+        dtwcpp._dtwcpp_core.compute_distance_matrix([[0.0, 3.0], [0.0, 1.0]], -1, "bogus")

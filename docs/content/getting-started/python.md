@@ -42,16 +42,16 @@ print(f"DTW distance: {d}")
 d_banded = dtwcpp.distance.dtw(x, y, band=2)
 print(f"DTW distance (band=2): {d_banded}")
 
-# Variant dispatch convenience
-d_soft = dtwcpp.distance.dtw(x, y, variant="soft_dtw", gamma=1.0)
+# Any variant, by the names dtwc_cl takes
+d_soft = dtwcpp.distance.dtw(x, y, variant="softdtw", sdtw_gamma=1.0)
 print(f"Soft-DTW distance: {d_soft}")
 ```
 
 Both plain Python lists and NumPy arrays are accepted. Lists are automatically converted to `float64` arrays.
 
-Pairwise distances live under `dtwcpp.distance.*`. The old root-level
-distance helpers such as `dtwcpp.dtw_distance(...)` were removed in this
-breaking release.
+The distance of two series is `dtwcpp.distance.dtw`, for every variant. The
+old root-level distance helpers such as `dtwcpp.dtw_distance(...)` were removed
+in this breaking release.
 
 ### Distance matrix
 
@@ -152,61 +152,33 @@ print(f"Predicted labels: {predicted}")
 
 ## DTW functions
 
-All DTW functions accept lists or NumPy arrays.
-
-### Standard DTW
-
-```python
-d = dtwcpp.distance.dtw(x, y, band=-1, metric="l1")
-```
-
-### Derivative DTW (DDTW)
-
-Applies a derivative transform before computing standard DTW:
+`dtwcpp.distance.dtw(x, y, ...)` computes every variant. Its settings are named as
+the `dtwc_cl` keys, and C++ reads and checks them: an unknown name, a parameter
+outside its domain or a combination no kernel implements raises `InvalidInput`.
+Lists and NumPy arrays are accepted.
 
 ```python
-d = dtwcpp.distance.ddtw(list(x), list(y), band=-1)
+d = dtwcpp.distance.dtw(x, y, band=-1, metric="l1")                   # Standard DTW
+d = dtwcpp.distance.dtw(x, y, variant="ddtw")                         # Derivative DTW
+d = dtwcpp.distance.dtw(x, y, variant="wdtw", wdtw_g=0.05)            # Weighted DTW
+d = dtwcpp.distance.dtw(x, y, variant="adtw", adtw_penalty=1.0)       # Amerced DTW
+d = dtwcpp.distance.dtw(x, y, variant="softdtw", sdtw_gamma=1.0)      # Soft-DTW
+d = dtwcpp.distance.dtw(x, y, variant="msm", msm_c=1.0)               # Move-Split-Merge
+d = dtwcpp.distance.dtw(x, y, variant="twe", twe_nu=0.001, twe_lambda=1.0)  # Time Warp Edit
 ```
 
-### Weighted DTW (WDTW)
-
-Applies logistic weights based on the warping step index:
-
-```python
-d = dtwcpp.distance.wdtw(list(x), list(y), band=-1, g=0.05)
-```
-
-### Amerced DTW (ADTW)
-
-Adds a penalty for non-diagonal warping steps:
-
-```python
-d = dtwcpp.distance.adtw(list(x), list(y), band=-1, penalty=1.0)
-```
-
-### Soft-DTW
-
-A differentiable relaxation of DTW using softmin:
-
-```python
-d = dtwcpp.distance.soft_dtw(list(x), list(y), gamma=1.0)
-```
+`metric` is `"l1"` or `"squared_euclidean"` for Standard DTW and DDTW; the other
+variants compute an L1 cost and refuse another metric.
 
 ### DTW with missing data
 
-NaN values contribute zero cost:
+Under a missing-data strategy (Standard DTW) NaN is a missing value:
 
 ```python
 x_missing = [1.0, float('nan'), 3.0, 4.0, 5.0]
-d = dtwcpp.distance.missing(x_missing, y, band=-1, metric="l1")
-```
-
-### DTW-AROW (diagonal-only alignment for missing values)
-
-When a value is NaN, the warping path is restricted to the diagonal direction only:
-
-```python
-d = dtwcpp.distance.arow(x_missing, y, band=-1, metric="l1")
+d = dtwcpp.distance.dtw(x_missing, y, missing_strategy="zero_cost")    # NaN pairs cost 0
+d = dtwcpp.distance.dtw(x_missing, y, missing_strategy="arow")         # diagonal-only at NaN
+d = dtwcpp.distance.dtw(x_missing, y, missing_strategy="interpolate")  # gaps filled linearly
 ```
 
 ## Clustering functions

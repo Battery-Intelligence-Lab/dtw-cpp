@@ -15,11 +15,11 @@ def bench_dtw_distance(N_pairs, L):
     series_b = [rng.standard_normal(L) for _ in range(N_pairs)]
 
     # Warm up
-    dtwcpp.dtw_distance(series_a[0], series_b[0])
+    dtwcpp.distance.dtw(series_a[0], series_b[0])
 
     start = time.perf_counter()
     for i in range(N_pairs):
-        dtwcpp.dtw_distance(series_a[i], series_b[i])
+        dtwcpp.distance.dtw(series_a[i], series_b[i])
     elapsed = time.perf_counter() - start
 
     return elapsed

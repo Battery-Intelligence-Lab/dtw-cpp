@@ -89,7 +89,7 @@ def random_dataset(n_series: int, length: int, base_seed: int = 100) -> np.ndarr
 
 def bench_dtwcpp_distance(x: np.ndarray, y: np.ndarray) -> float:
     import dtwcpp
-    return dtwcpp.dtw_distance(x, y)
+    return dtwcpp.distance.dtw(x, y)
 
 
 def bench_dtwcpp_distmat(data: np.ndarray, band: int = -1) -> np.ndarray:
@@ -99,9 +99,9 @@ def bench_dtwcpp_distmat(data: np.ndarray, band: int = -1) -> np.ndarray:
     for i in range(n):
         for j in range(i + 1, n):
             if band > 0:
-                d = dtwcpp.dtw_distance(data[i], data[j], band=band)
+                d = dtwcpp.distance.dtw(data[i], data[j], band=band)
             else:
-                d = dtwcpp.dtw_distance(data[i], data[j])
+                d = dtwcpp.distance.dtw(data[i], data[j])
             dm[i, j] = dm[j, i] = d
     return dm
 

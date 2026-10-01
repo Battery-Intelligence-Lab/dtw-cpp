@@ -46,8 +46,8 @@ auto dx = dtwc::derivative_transform_mv(flat_data, /*ndim=*/3);
 ```python
 import dtwcpp
 
-dist = dtwcpp.distance.ddtw(x, y, band=-1)  # full DDTW
-dist = dtwcpp.distance.ddtw(x, y, band=5)   # banded DDTW
+dist = dtwcpp.distance.dtw(x, y, variant="ddtw")          # full DDTW
+dist = dtwcpp.distance.dtw(x, y, variant="ddtw", band=5)  # banded DDTW
 ```
 
 ### CLI
@@ -96,8 +96,8 @@ double dist_mv_b = dtwc::wdtwBanded_mv(x_ptr, nx, y_ptr, ny, ndim, band, /*g=*/0
 ```python
 import dtwcpp
 
-dist = dtwcpp.distance.wdtw(x, y, band=-1, g=0.05)
-dist = dtwcpp.distance.wdtw(x, y, band=10, g=0.1)
+dist = dtwcpp.distance.dtw(x, y, variant="wdtw", wdtw_g=0.05)
+dist = dtwcpp.distance.dtw(x, y, variant="wdtw", band=10, wdtw_g=0.1)
 ```
 
 ### CLI
@@ -141,8 +141,8 @@ double dist_mv_b = dtwc::adtwBanded_mv(x_ptr, nx, y_ptr, ny, ndim, band, /*penal
 ```python
 import dtwcpp
 
-dist = dtwcpp.distance.adtw(x, y, band=-1, penalty=0.1)
-dist = dtwcpp.distance.adtw(x, y, band=10, penalty=0.5)
+dist = dtwcpp.distance.dtw(x, y, variant="adtw", adtw_penalty=0.1)
+dist = dtwcpp.distance.dtw(x, y, variant="adtw", band=10, adtw_penalty=0.5)
 ```
 
 ### CLI
@@ -188,7 +188,7 @@ std::vector<double> grad = dtwc::soft_dtw_gradient(x, y, /*gamma=*/1.0);
 ```python
 import dtwcpp
 
-dist = dtwcpp.distance.soft_dtw(x, y, gamma=1.0)
+dist = dtwcpp.distance.dtw(x, y, variant="softdtw", sdtw_gamma=1.0)
 grad = dtwcpp.soft_dtw_gradient(x, y, gamma=1.0)
 ```
 

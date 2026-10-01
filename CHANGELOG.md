@@ -150,8 +150,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `-DDTWC_HIGHS_GPU=ON` raises `DeviceError` instead of warning and solving on the CPU.
 - **Fixed (distance, breaking):** `dtwc::distance::dtw(x, y, params, band, metric)` returned the L1 distance for another metric with
   WDTW, ADTW, Soft-DTW, MSM or TWE, whose kernels take none; it now raises `InvalidInput`. Standard DTW, DDTW and the missing-data
-  strategies keep the metric, and Python's `dtwcpp.distance.dtw` raises `ValueError`
-  for DDTW, WDTW, ADTW and Soft-DTW with a metric other than `"l1"` (its DDTW binding takes no metric yet). `examples/cpp/example_new_features.cpp` compiles (a most-vexing parse) and builds under
+  strategies keep the metric. Python's `dtwcpp.distance.dtw` is one binding over this function, so it computes and
+  refuses the same configurations (`InvalidInput`, a `ValueError`). `examples/cpp/example_new_features.cpp` compiles (a most-vexing parse) and builds under
   `-DDTWC_BUILD_EXAMPLES=ON`; `example_project/main.cpp` checks `set_solver`.
 - **Fixed (MATLAB, macOS):** the MEX no longer aborts MATLAB ("OMP: Error #15") at its first parallel region: MATLAB loads its own
   libomp at start-up, and the MEX now runs on that copy (`@rpath/libomp.dylib`) instead of loading a second one, so MATLAB's

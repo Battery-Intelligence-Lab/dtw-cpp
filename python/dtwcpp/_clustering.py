@@ -4,13 +4,9 @@
 @author Volkan Kumtepeli
 """
 import numpy as np
-from dtwcpp._variant_validation import normalize_variant_parameters
+from dtwcpp import distance
 from dtwcpp._dtwcpp_core import (
-    DEFAULT_RANDOM_SEED, Problem, fast_pam_seeded, silhouette,
-    DTWVariant, DTWVariantParams,
-    MVMode, MissingStrategy,
-    dtw_distance, ddtw_distance, wdtw_distance, adtw_distance,
-    data_from_arrow_c_array,
+    DEFAULT_RANDOM_SEED, Problem, fast_pam_seeded, data_from_arrow_c_array,
 )
 
 try:
@@ -64,16 +60,14 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         Multivariate combination mode when ``ndim > 1`` (Shokoohi-Yekta et al.,
         DMKD 2017; ignored for univariate series). ``"dependent"`` (DTW_D: one
         shared warping path) or ``"independent"`` (DTW_I: per-channel DTW summed).
-        ``"independent"`` requires ``variant="standard"`` and
-        ``missing_strategy="error"`` in this release.
     missing_strategy : str, default="error"
         How to handle NaN values in time series. One of ``"error"`` (throw),
         ``"zero_cost"`` (NaN pairs contribute zero cost), ``"arow"``
         (diagonal-only alignment), or ``"interpolate"`` (linear interpolation).
     metric : str, default="l1"
-        Pointwise cost metric for the ``"standard"`` variant: ``"l1"`` (default)
-        or ``"squared_euclidean"``. Matches the ``metric`` argument of the
-        distance free functions (api-contract-2.0.md §1.5/§2.6).
+        Pointwise cost: ``"l1"`` (default) or ``"squared_euclidean"``, for the
+        ``"standard"`` and ``"ddtw"`` variants. The settings are read and checked
+        by C++, as :func:`dtwcpp.distance.dtw` reads them.
     device : str or None, default=None
         Computation device. ``"cpu"``, ``"gpu"`` (CUDA or Metal, requiring a
         live GPU), ``"cuda"``/``"cuda:N"``, or ``"hpc"`` (offload the
@@ -115,158 +109,33 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         self.metric = metric
         self.device = device
 
-    @staticmethod
-    def _normalize_choice(name, value, choices):
-        """Return a case-normalized public choice or reject it loudly."""
-        if not isinstance(value, str):
-            raise TypeError(f"{name} must be a string")
-        normalized = value.lower()
-        if normalized not in choices:
-            raise ValueError(
-                f"Unknown {name} '{value}'. Expected one of: {sorted(choices)}"
-            )
-        return normalized
-
-    def _validate_semantics(self, backend=None):
-        """Normalize one executable distance contract before any computation."""
-        variant = self._normalize_choice(
-            "variant", self.variant,
-            {"standard", "ddtw", "wdtw", "adtw", "msm", "twe"},
-        )
-        missing_strategy = self._normalize_choice(
-            "missing_strategy", self.missing_strategy,
-            {"error", "zero_cost", "arow", "interpolate"},
-        )
-        metric = self._normalize_choice(
-            "metric", self.metric, {"l1", "squared_euclidean"},
-        )
-        mv_mode = self._normalize_choice(
-            "mv_mode", self.mv_mode, {"dependent", "independent"},
-        )
-        parameters = normalize_variant_parameters(
-            wdtw_g=self.wdtw_g,
-            adtw_penalty=self.adtw_penalty,
-            msm_c=self.msm_c,
-            twe_nu=self.twe_nu,
-            twe_lambda=self.twe_lambda,
-        )
-
-        if variant != "standard" and metric != "l1":
-            raise ValueError(
-                f"metric='{metric}' is implemented only for variant='standard'; "
-                f"variant='{variant}' has its intrinsic L1 cost"
-            )
-        if variant != "standard" and missing_strategy != "error":
-            raise ValueError(
-                f"missing_strategy='{missing_strategy}' cannot be combined with "
-                f"variant='{variant}'; missing-data dispatch would replace the "
-                "requested variant"
-            )
-        if mv_mode == "independent":
-            if variant != "standard":
-                raise ValueError(
-                    "mv_mode='independent' requires variant='standard'"
-                )
-            if missing_strategy != "error":
-                raise ValueError(
-                    "mv_mode='independent' requires missing_strategy='error'"
-                )
-            if metric != "l1":
-                raise ValueError(
-                    "metric='squared_euclidean' is not implemented for "
-                    "mv_mode='independent'"
-                )
-        if missing_strategy != "error" and metric != "l1":
-            raise ValueError(
-                "metric='squared_euclidean' is not implemented with "
-                f"missing_strategy='{missing_strategy}'"
-            )
-
-        if backend in ("cuda", "metal"):
-            if variant != "standard":
-                raise ValueError(
-                    f"device='{backend}' only supports variant='standard', "
-                    f"got variant='{variant}'"
-                )
-            if missing_strategy != "error":
-                raise ValueError(
-                    f"device='{backend}' does not support "
-                    f"missing_strategy='{missing_strategy}'"
-                )
-            if mv_mode != "dependent":
-                raise ValueError(
-                    f"device='{backend}' does not support "
-                    "mv_mode='independent'"
-                )
-
+    def _distance(self):
+        """The distance settings, by the names distance.dtw and dtwc_cl take."""
         return {
-            "variant": variant,
-            "missing_strategy": missing_strategy,
-            "metric": metric,
-            "mv_mode": mv_mode,
-            **parameters,
+            "variant": self.variant, "band": self.band, "metric": self.metric,
+            "missing_strategy": self.missing_strategy, "wdtw_g": self.wdtw_g,
+            "adtw_penalty": self.adtw_penalty, "msm_c": self.msm_c,
+            "twe_nu": self.twe_nu, "twe_lambda": self.twe_lambda,
         }
 
-    def _variant_enum(self, variant=None):
-        """Map string variant name to C++ DTWVariant enum."""
-        mapping = {
-            "standard": DTWVariant.Standard,
-            "ddtw": DTWVariant.DDTW,
-            "wdtw": DTWVariant.WDTW,
-            "adtw": DTWVariant.ADTW,
-            "msm": DTWVariant.MSM,
-            "twe": DTWVariant.TWE,
-        }
-        key = variant or self._normalize_choice("variant", self.variant, mapping)
-        return mapping[key]
-
-    def _missing_strategy_enum(self, missing_strategy=None):
-        """Map string missing_strategy name to C++ MissingStrategy enum."""
-        mapping = {
-            "error": MissingStrategy.Error,
-            "zero_cost": MissingStrategy.ZeroCost,
-            "arow": MissingStrategy.AROW,
-            "interpolate": MissingStrategy.Interpolate,
-        }
-        key = missing_strategy or self._normalize_choice(
-            "missing_strategy", self.missing_strategy, mapping,
-        )
-        return mapping[key]
-
-    def _dtw_fn(self, x, y, semantics=None):
-        """Compute DTW distance between two series using current variant."""
-        semantics = semantics or self._validate_semantics()
-        variant = semantics["variant"]
-        # All raw distance bindings take zero-copy float64 ndarrays (§2.6).
-        xa = np.asarray(x, dtype=np.float64)
-        ya = np.asarray(y, dtype=np.float64)
-
-        # MSM/TWE and missing-data preprocessing have no complete free-function
-        # surface. Route those cases through the same production Problem
-        # dispatcher as fit(). Error+NaN also takes this path so its documented
-        # pre-scan is not bypassed by predict(). Finite Standard-L1 stays on the
-        # existing allocation-free fast path.
-        use_problem = (
-            variant in ("msm", "twe")
-            or semantics["missing_strategy"] != "error"
-            or semantics["mv_mode"] == "independent"
-            or np.isnan(xa).any()
-            or np.isnan(ya).any()
-        )
-        if use_problem:
-            problem = self._build_problem(
-                [xa.tolist(), ya.tolist()], semantics=semantics,
+    def _check_device(self, backend):
+        """The GPU fills compute Standard DTW of complete series only."""
+        if backend not in ("cuda", "metal"):
+            return
+        if self.variant.lower() != "standard":
+            raise ValueError(
+                f"device='{backend}' only supports variant='standard', "
+                f"got variant='{self.variant}'"
             )
-            problem.fill_distance_matrix()
-            return problem.dist_by_ind(0, 1)
-
-        if variant == "ddtw":
-            return ddtw_distance(xa, ya, self.band)
-        if variant == "wdtw":
-            return wdtw_distance(xa, ya, self.band, semantics["wdtw_g"])
-        if variant == "adtw":
-            return adtw_distance(xa, ya, self.band, semantics["adtw_penalty"])
-        return dtw_distance(xa, ya, self.band, semantics["metric"])
+        if self.missing_strategy.lower() != "error":
+            raise ValueError(
+                f"device='{backend}' does not support "
+                f"missing_strategy='{self.missing_strategy}'"
+            )
+        if self.mv_mode.lower() != "dependent":
+            raise ValueError(
+                f"device='{backend}' does not support mv_mode='{self.mv_mode}'"
+            )
 
     @staticmethod
     def _prepare_data(X):
@@ -292,29 +161,13 @@ class DTWClustering(BaseEstimator, ClusterMixin):
                 "X must be a 2D numpy array, list of 1D arrays, or an Arrow C "
                 "Data interface source (__arrow_c_array__)")
 
-    def _build_problem(self, series, semantics=None):
-        """Construct a C++ Problem object with current settings."""
-        semantics = semantics or self._validate_semantics()
-        names = [str(i) for i in range(len(series))]
+    def _problem(self, series=None):
+        """A Problem with this estimator's distance settings, read and checked by
+        C++ (an invalid one raises InvalidInput), and the series when given."""
         prob = Problem("dtw_clustering")
-        prob.set_data(series, names)
-        prob.set_band(self.band)
-        prob.missing_strategy = self._missing_strategy_enum(
-            semantics["missing_strategy"]
-        )
-
-        vp = DTWVariantParams()
-        vp.variant = self._variant_enum(semantics["variant"])
-        vp.wdtw_g = semantics["wdtw_g"]
-        vp.adtw_penalty = semantics["adtw_penalty"]
-        vp.msm_c = semantics["msm_c"]
-        vp.twe_nu = semantics["twe_nu"]
-        vp.twe_lambda = semantics["twe_lambda"]
-        vp.mv_mode = (MVMode.Independent if semantics["mv_mode"] == "independent"
-                      else MVMode.Dependent)
-        # Rebind after the raw missing-strategy field reaches Problem so fit and
-        # pairwise predict share the exact same production dispatcher.
-        prob.set_variant_params(vp)
+        prob.set_distance(mv_mode=self.mv_mode, **self._distance())
+        if series is not None:
+            prob.set_data(series, [str(i) for i in range(len(series))])
         return prob
 
     def fit(self, X, y=None):
@@ -330,7 +183,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         -------
         self
         """
-        semantics = self._validate_semantics()
+        self._problem()  # invalid settings fail before X or the device is touched
         series = self._prepare_data(X)
 
         if isinstance(self.n_init, (bool, np.bool_)) or not isinstance(
@@ -348,7 +201,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         from dtwcpp import compute_distance_matrix, _resolve_device, _hpc_remote_device
         eff_device = self.device if self.device is not None else dtwcpp.device()
         backend, _ = _resolve_device(eff_device)
-        semantics = self._validate_semantics(backend)
+        self._check_device(backend)
 
         # 'hpc' offloads the entire job to a SLURM cluster and returns labels.
         if backend == "hpc":
@@ -358,27 +211,23 @@ class DTWClustering(BaseEstimator, ClusterMixin):
                 device=_hpc_remote_device(eff_device),
                 name=f"dtwc_k{self.n_clusters}", n_init=restart_count,
                 seed=DEFAULT_RANDOM_SEED, max_iter=self.max_iter,
-                variant=semantics["variant"], wdtw_g=semantics["wdtw_g"],
-                adtw_penalty=semantics["adtw_penalty"],
-                msm_c=semantics["msm_c"], twe_nu=semantics["twe_nu"],
-                twe_lambda=semantics["twe_lambda"],
-                mv_mode=semantics["mv_mode"],
-                missing_strategy=semantics["missing_strategy"],
-                metric=semantics["metric"],
+                variant=self.variant, wdtw_g=self.wdtw_g,
+                adtw_penalty=self.adtw_penalty, msm_c=self.msm_c,
+                twe_nu=self.twe_nu, twe_lambda=self.twe_lambda,
+                mv_mode=self.mv_mode, missing_strategy=self.missing_strategy,
+                metric=self.metric,
             )
             self.medoid_indices_ = None
             self.inertia_ = None
             self.n_iter_ = None
             return self
 
-        # GPU backends require a precomputed matrix. Standard squared DTW also
-        # requires one on CPU because Problem's lazy matrix is intrinsically L1.
-        # Preserve the default CPU Standard-L1 lazy path and memory profile.
+        # The GPU routes compute the matrix up front; on the CPU each Problem
+        # fills its own under the estimator's distance settings.
         dm_precomputed = None
-        if backend in ("cuda", "metal") or semantics["metric"] != "l1":
+        if backend in ("cuda", "metal"):
             dm_precomputed = compute_distance_matrix(
-                series, band=self.band, metric=semantics["metric"],
-                device=eff_device,
+                series, band=self.band, metric=self.metric, device=eff_device,
             )
 
         best_result = None
@@ -386,7 +235,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         nonfinite_restarts = []
 
         for restart in range(restart_count):
-            prob = self._build_problem(series, semantics=semantics)
+            prob = self._problem(series)
             if dm_precomputed is not None:
                 prob.set_distance_matrix(dm_precomputed)
 
@@ -421,8 +270,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         self.medoid_indices_ = best_result.medoid_indices
         self.inertia_ = best_result.total_cost
         self.n_iter_ = best_result.iterations
-        self._fit_semantics_ = semantics
-        self._fit_backend_ = backend
+        self._fit_distance_ = self._distance()
 
         # Store medoid series for predict()
         self.cluster_centers_ = [np.array(series[i])
@@ -443,21 +291,13 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         if not hasattr(self, "cluster_centers_"):
             raise RuntimeError("Model has not been fitted. Call fit() first.")
 
-        semantics = getattr(self, "_fit_semantics_", None)
-        if semantics is None:
-            semantics = self._validate_semantics()
-        else:
-            # Reject post-fit mutations that would be incompatible with the
-            # backend used to construct the fitted medoids.
-            self._validate_semantics(getattr(self, "_fit_backend_", None))
-
+        # The distance the medoids were fitted under; medoids set by hand take
+        # the current settings.
+        settings = getattr(self, "_fit_distance_", None) or self._distance()
         series = self._prepare_data(X)
         labels = np.empty(len(series), dtype=np.int64)
         for i, s in enumerate(series):
-            dists = [
-                self._dtw_fn(s, c, semantics=semantics)
-                for c in self.cluster_centers_
-            ]
+            dists = [distance.dtw(s, c, **settings) for c in self.cluster_centers_]
             labels[i] = int(np.argmin(dists))
         return labels
 

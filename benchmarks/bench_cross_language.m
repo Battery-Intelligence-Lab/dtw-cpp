@@ -12,11 +12,11 @@ for L = [100, 500, 1000]
     series_b = randn(100, L);
 
     % Warm up
-    dtwc.dtw_distance(series_a(1,:), series_b(1,:));
+    dtwc.distance.dtw(series_a(1,:), series_b(1,:));
 
     tic;
     for i = 1:100
-        dtwc.dtw_distance(series_a(i,:), series_b(i,:));
+        dtwc.distance.dtw(series_a(i,:), series_b(i,:));
     end
     t = toc;
     fprintf('  DTW distance  100 pairs x L=%4d: %8.2f ms  (%.3f ms/pair)\n', L, t*1000, t/100*1000);
