@@ -7,6 +7,7 @@
 
 #include "../Data.hpp"
 #include "../base/missing_utils.hpp"      // has_missing, interpolate_linear
+#include "../soft_dtw.hpp"           // soft_dtw
 #include "../warping.hpp"            // dtwBanded, dtwBanded_mv
 #include "../warping_adtw.hpp"       // adtwBanded, adtwBanded_mv
 #include "../warping_ddtw.hpp"       // ddtwBanded, derivative_transform_mv_inplace
@@ -240,25 +241,15 @@ template <typename T>
 auto make_soft_dtw(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  // Soft-DTW (Cuturi & Blondel 2017) via the unified full-matrix kernel +
-  // SoftCell (log-sum-exp with max-subtract stabilisation). Cross-validated
-  // bit-for-bit against the legacy soft_dtw() on equal/different-length,
-  // identical, and swap-symmetric inputs across gamma {0.1..10.0}
-  // (unit_test_soft_dtw.cpp [phase3]).
+  // Soft-DTW (Cuturi & Blondel 2017): soft_dtw(), the unified full-matrix
+  // kernel with SoftCell (log-sum-exp with max-subtract stabilisation).
   //
   // Univariate (validate() refuses ndim > 1), like soft_dtw_gradient() and
   // distance::soft_dtw. The band is intentionally ignored: soft-DTW is a full
   // O(n·m) recurrence here.
   return [gamma = static_cast<T>(c.variant.sdtw_gamma)](std::span<const T> x,
                                                          std::span<const T> y) -> double {
-    const bool swap = x.size() > y.size();
-    const auto a = swap ? y : x;
-    const auto b = swap ? x : y;
-    SpanL1Cost<T> cost{a.data(), b.data()};
-    SoftCell<T> cell{gamma};
-    return normalize_public_distance(
-      dtw_kernel_full<T, SpanL1Cost<T>, SoftCell<T>>(
-        a.size(), b.size(), cost, cell));
+    return normalize_public_distance(soft_dtw<T>(x, y, gamma));
   };
 }
 
