@@ -149,75 +149,34 @@ auto make_ddtw(const DistanceConfig &c)
   };
 }
 
-// WDTW f64 path: the weights of every max_dev the series' lengths can give,
-// built here, serially, and held by the function, so parallel callers only
-// read them. max_dev = max(len_x, len_y) - 1 univariate (the canonical
-// wdtwBanded(x, y, band, g) convention, Jeong et al. 2011: weights are indexed
-// by |i-j| in [0, m-1]), max(steps_x, steps_y) - 1 multivariate.
-inline auto make_wdtw_f64(const DistanceConfig &c, const Data &data)
-  -> std::function<double(std::span<const data_t>, std::span<const data_t>)>
+// WDTW: the weights of every max_dev the series' lengths can give, built here,
+// serially, in the kernel's precision and held by the function, so parallel
+// callers only read them. max_dev = max(len_x, len_y) - 1 univariate (the
+// canonical wdtwBanded(x, y, band, g) convention, Jeong et al. 2011: weights are
+// indexed by |i-j| in [0, m-1]), max(steps_x, steps_y) - 1 multivariate. A
+// length the series do not have (a DBA centroid) takes the thread's cached table.
+template <typename T>
+auto make_wdtw(const DistanceConfig &c, const Data &data)
+  -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   const int band = c.band;
-  const auto g = static_cast<data_t>(c.variant.wdtw_g);
+  const auto g = static_cast<T>(c.variant.wdtw_g);
   const std::size_t ndim = c.ndim;
-  std::unordered_map<std::size_t, std::vector<data_t>> weights;
+  std::unordered_map<std::size_t, std::vector<T>> weights;
   for (std::size_t i = 0; i < data.size(); ++i) {
     const std::size_t steps = data.series_flat_size(i) / ndim;
     if (steps == 0) continue;
-    weights.try_emplace(steps - 1, wdtw_weights<data_t>(static_cast<int>(steps - 1), g));
+    weights.try_emplace(steps - 1, wdtw_weights<T>(static_cast<int>(steps - 1), g));
   }
-  if (ndim > 1) {
-    return [band, g, ndim, weights = std::move(weights)](
-             std::span<const data_t> x, std::span<const data_t> y) -> double {
-      const auto x_steps = x.size() / ndim;
-      const auto y_steps = y.size() / ndim;
-      if (x_steps == 0 || y_steps == 0) return std::numeric_limits<double>::max();
-      const auto max_dev = std::max(x_steps, y_steps) - std::size_t{1};
-      auto it = weights.find(max_dev);
-      if (it == weights.end()) {
-        // A length the series do not have (e.g. a DBA centroid): weights for this pair.
-        auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
-        return normalize_public_distance(
-          wdtwBanded_mv<data_t>(x.data(), x_steps, y.data(), y_steps, ndim, w, band));
-      }
-      return normalize_public_distance(
-        wdtwBanded_mv<data_t>(x.data(), x_steps, y.data(), y_steps, ndim, it->second, band));
-    };
-  }
-  return [band, g, weights = std::move(weights)](
-           std::span<const data_t> x, std::span<const data_t> y) -> double {
-    const auto max_len = std::max(x.size(), y.size());
-    if (max_len == 0)
-      return std::numeric_limits<double>::max();
-    const auto max_dev = max_len - 1;
-    auto it = weights.find(max_dev);
-    if (it == weights.end()) {
-      auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
-      return normalize_public_distance(wdtwBanded<data_t>(x, y, w, band));
-    }
-    return normalize_public_distance(wdtwBanded<data_t>(x, y, it->second, band));
-  };
-}
-
-// WDTW f32 path: a per-call materialisation of the f64 weights to float would
-// add hot-path overhead. f32 WDTW is an uncommon configuration (the primary f32
-// user is fast_clara's Parquet chunk reader which in practice runs Standard
-// DTW). Route through the warping_wdtw overload that takes `g` directly; it
-// uses its own thread-local cache at `detail::cached_wdtw_weights<float>`.
-inline auto make_wdtw_f32(const DistanceConfig &c)
-  -> std::function<double(std::span<const float>, std::span<const float>)>
-{
-  const int band = c.band;
-  const auto g = static_cast<float>(c.variant.wdtw_g);
-  if (c.ndim > 1) {
-    return [band, g, ndim = c.ndim](std::span<const float> x, std::span<const float> y) -> double {
-      return normalize_public_distance(wdtwBanded_mv<float>(
-        x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, band, g));
-    };
-  }
-  return [band, g](std::span<const float> x, std::span<const float> y) -> double {
-    return normalize_public_distance(
-      wdtwBanded<float>(x.data(), x.size(), y.data(), y.size(), band, g));
+  return [band, g, ndim, weights = std::move(weights)](std::span<const T> x, std::span<const T> y) -> double {
+    const auto x_steps = x.size() / ndim;
+    const auto y_steps = y.size() / ndim;
+    if (x_steps == 0 || y_steps == 0) return std::numeric_limits<double>::max();
+    const auto max_dev = std::max(x_steps, y_steps) - std::size_t{1};
+    const auto it = weights.find(max_dev);
+    const std::vector<T> &w = it != weights.end() ? it->second
+                                                  : dtwc::detail::cached_wdtw_weights<T>(static_cast<int>(max_dev), g);
+    return normalize_public_distance(wdtwBanded_mv<T>(x.data(), x_steps, y.data(), y_steps, ndim, w, band));
   };
 }
 
@@ -252,14 +211,6 @@ auto make_soft_dtw(const DistanceConfig &c)
                                                          std::span<const T> y) -> double {
     return normalize_public_distance(soft_dtw<T>(x, y, gamma));
   };
-}
-
-template <typename T>
-auto make_wdtw(const DistanceConfig &c, const Data &data)
-  -> std::function<double(std::span<const T>, std::span<const T>)>
-{
-  if constexpr (std::is_same_v<T, data_t>) return make_wdtw_f64(c, data);
-  else                                     return make_wdtw_f32(c);
 }
 
 // MSM / TWE. Univariate (validate() refuses ndim > 1) and unbanded: the band is
