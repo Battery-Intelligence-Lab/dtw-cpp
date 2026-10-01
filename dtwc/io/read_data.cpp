@@ -75,9 +75,17 @@ Data read_arrow_ipc(const fs::path &path)
   }
 
   // The series are the 'data' column, named by the 'name' column when there is one.
-  std::vector<int> columns{ schema->GetFieldIndex("data") };
-  if (columns.front() < 0)
+  // A column of another type is a bad file (IOError), as it is for Parquet.
+  const int data = schema->GetFieldIndex("data");
+  if (data < 0)
     throw IOError("no 'data' column; write the series as a List or LargeList of Float32/Float64 named 'data'.");
+  const auto &data_type = schema->field(data)->type();
+  const bool list = data_type->id() == arrow::Type::LIST || data_type->id() == arrow::Type::LARGE_LIST;
+  const auto value = list ? data_type->field(0)->type()->id() : arrow::Type::NA;
+  if (value != arrow::Type::FLOAT && value != arrow::Type::DOUBLE)
+    throw IOError("the 'data' column must be a List or LargeList of Float32/Float64, got " + data_type->ToString()
+                  + ".");
+  std::vector<int> columns{ data };
   if (const int name = schema->GetFieldIndex("name"); name >= 0) {
     const auto &type = schema->field(name)->type();
     if (type->id() != arrow::Type::STRING && type->id() != arrow::Type::LARGE_STRING)
@@ -107,7 +115,7 @@ std::vector<fs::path> parquet_files(const fs::path &path)
   try {
     files = sorted_directory_files(path);
   } catch (const fs::filesystem_error &e) {
-    throw IOError("load: cannot list '" + path_to_utf8(path) + "': " + e.what());
+    throw IOError("load: failed to read '" + path_to_utf8(path) + "': cannot list it: " + e.what());
   }
   std::erase_if(files, [](const fs::path &file) { return !is_parquet_file(file); });
   return files;
@@ -126,6 +134,8 @@ InputFormat input_format(const fs::path &path)
                   "build.");
 #endif
   }
+  std::error_code ec;
+  if (fs::is_directory(path, ec)) return InputFormat::Text; // a folder is text whatever its name
   const auto ext = lower_extension(path);
   if (ext == ".arrow" || ext == ".ipc" || ext == ".feather") {
 #ifdef DTWC_HAS_ARROW

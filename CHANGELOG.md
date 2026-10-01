@@ -123,7 +123,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `DeviceError` (submission is `slurm_remote.sh submit-cluster` / Python's `device="hpc"`). On `gpu`, `auto` runs pam at any N;
   onebatch, tadpole, a CLARA sample smaller than N, or a setting the GPU cannot honour raise `DeviceError` before the input is
   read. Squared L2 runs on the CPU; `--checkpoint-interval 0` saves once at the end; every check that needs no data, the MIP
-  settings included, runs before any I/O; the loader's progress lines print only with `-v`.
+  settings included, runs before any I/O; the loader prints no progress lines, and `-v` reports the series loaded.
 - **Added (CLI):** `--print-config` writes the parsed settings as a TOML config file; the binary now reads `--delimiter`,
   and `--lr-max-nodes`.
 - **Changed (C++ Tier-1):** `cluster()` wraps `run`, with results unchanged; path datasets read Parquet, Arrow and `.dtws`; the

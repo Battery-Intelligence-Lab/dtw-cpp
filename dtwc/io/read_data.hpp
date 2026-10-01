@@ -45,8 +45,8 @@ void require_reader_options(std::optional<InputFormat> format, index_t skip_cols
  *   by its stem.
  * - Parquet: `column` (empty: the first Float32/Float64 or list column). A scalar column is one series named by its
  *   file's stem; a list column is one series per row, named series_<index> and numbered across a folder's files.
- * - Arrow IPC: the series are the rows of the first list column, named by the first string column (else
- *   series_<index>); the schema metadata `ndim` gives the features per time step.
+ * - Arrow IPC: the series are the rows of the `data` column across every record batch, named by a Utf8/LargeUtf8
+ *   `name` column (else series_<index>); the schema metadata `ndim` gives the features per time step.
  *
  * A null is InvalidInput, an option the format cannot honour InvalidInput, and a read failure an IOError naming the file.
  */

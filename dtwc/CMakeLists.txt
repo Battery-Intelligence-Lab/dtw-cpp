@@ -212,7 +212,7 @@ if(TARGET llfio_hl)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()
 
-# Arrow + Parquet (optional) — IPC zero-copy + Parquet reading
+# Arrow + Parquet (optional) — Arrow IPC and Parquet reading
 if(DTWC_ENABLE_ARROW AND Arrow_FOUND)
   if(DTWC_ARROW_FROM_CPM)
     # CPM-built static Arrow + Parquet

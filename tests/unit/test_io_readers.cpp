@@ -90,7 +90,7 @@ void write_ipc(const std::filesystem::path &path,
                const std::shared_ptr<arrow::Schema> &schema,
                const std::vector<std::vector<std::shared_ptr<arrow::Array>>> &batches)
 {
-  auto out = unwrap(arrow::io::FileOutputStream::Open(path.string()));
+  auto out = unwrap(arrow::io::FileOutputStream::Open(dtwc::path_to_utf8(path))); // Arrow paths are UTF-8
   auto writer = unwrap(arrow::ipc::MakeFileWriter(out, schema));
   for (const auto &columns : batches)
     REQUIRE(writer->WriteRecordBatch(*arrow::RecordBatch::Make(schema, columns.front()->length(), columns)).ok());
@@ -168,17 +168,31 @@ TEST_CASE("ArrowIPC: out-of-bounds list offset rejected", "[io][arrow][security]
   auto list_type = arrow::list(arrow::float64());
   auto list = std::static_pointer_cast<arrow::Array>(
     std::make_shared<arrow::ListArray>(list_type, /*length=*/2, offsets, values));
-  auto tmp = tmpdir() / "oob_offsets.arrow";
+  auto tmp = tmpdir() / "crafted.arrow"; // a name the message matcher cannot match
   write_ipc(tmp, arrow::schema({ arrow::field("data", list_type) }), { { list } });
 
-  CHECK_THROWS_WITH(dtwc::read_data(tmp), Catch::Matchers::ContainsSubstring("offset"));
+  CHECK_THROWS_AS(dtwc::read_data(tmp), dtwc::IOError);
+  CHECK_THROWS_WITH(dtwc::read_data(tmp), Catch::Matchers::ContainsSubstring("is outside the values"));
   std::filesystem::remove(tmp);
 }
 
-TEST_CASE("ArrowIPC: a non-string name column is rejected by type", "[io][arrow]")
+TEST_CASE("ArrowIPC: a column of the wrong type is rejected by type", "[io][arrow]")
 {
-  // An Int64 'name' column is an IOError (a bad Arrow type) naming the file and
-  // the column, not series silently named series_<i>.
+  // A bad Arrow type is an IOError naming the file and the column: a scalar
+  // 'data' column, and an Int64 'name' column, which must not silently become
+  // series_<i>.
+  arrow::DoubleBuilder scalar_builder;
+  REQUIRE(scalar_builder.AppendValues(std::vector<double>{ 1.0, 2.0 }).ok());
+  std::shared_ptr<arrow::Array> scalar;
+  REQUIRE(scalar_builder.Finish(&scalar).ok());
+  const auto scalar_file = tmpdir() / "scalar_data.arrow";
+  write_ipc(scalar_file, arrow::schema({ arrow::field("data", scalar->type()) }), { { scalar } });
+  REQUIRE_THROWS_AS(dtwc::read_data(scalar_file), dtwc::IOError);
+  REQUIRE_THROWS_WITH(dtwc::read_data(scalar_file),
+                      Catch::Matchers::ContainsSubstring("'data'")
+                        && Catch::Matchers::ContainsSubstring("scalar_data.arrow"));
+  std::filesystem::remove(scalar_file);
+
   auto data = make_list_f64({ { 1.0, 2.0 }, { 3.0, 4.0 } });
   arrow::Int64Builder nb;
   REQUIRE(nb.AppendValues(std::vector<int64_t>{ 7, 8 }).ok());

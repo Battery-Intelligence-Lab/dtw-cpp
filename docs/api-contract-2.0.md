@@ -420,9 +420,11 @@ The eight same-name reads for encapsulated state are `method()`, `random_seed()`
 ### 2.3 `DataLoader` (C++ Tier-2 only) `[rename: camelCase → snake_case]`
 
 CSV/TSV builder. Bindings do **not** expose `DataLoader` — Tier-1 `load()`
-covers the binding use case; the multi-format (Parquet/Arrow) loading in
-`dtwc::run` (`cli/run.cpp`), which `dtwc_cl` and Tier-1 `cluster()` share, is the
-other path. Chained setters return `DataLoader&`.
+covers the binding use case. `dtwc::read_data(path, skip_cols, skip_rows,
+delimiter, column)` (`io/read_data.hpp`) is the one multi-format entry (CSV/TSV,
+a folder, Parquet, Arrow IPC) that `dtwc_cl`, Tier-1 `cluster()` and Python's
+`load()` share; its text branch is a `DataLoader`. Chained setters return
+`DataLoader&`.
 
 | C++ live (DataLoader.hpp) | C++ 2.0 canonical |
 |---|---|

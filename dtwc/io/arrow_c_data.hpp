@@ -56,7 +56,7 @@ namespace dtwc::io {
  *                equal the number of series.
  * @return Data (float64, ndim = 1) owning a copy of every series.
  * @throws dtwc::InvalidInput on unsupported schema, null elements, or a
- *         names-count mismatch.
+ *         names-count mismatch; dtwc::IOError on list offsets outside the values.
  */
 Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
                      std::vector<std::string> names = {});
@@ -74,8 +74,9 @@ Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
  *
  * @param stream Borrowed-then-consumed ArrowArrayStream*.
  * @param ndim   Features per time step: each series holds ndim values per step.
- * @throws dtwc::InvalidInput on stream error, unsupported schema, nulls, list
- *         offsets outside the values, or a series length not divisible by ndim.
+ * @throws dtwc::InvalidInput on stream error, unsupported schema, nulls, or a
+ *         series length not divisible by ndim; dtwc::IOError on list offsets
+ *         outside the values.
  */
 Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim = 1);
 

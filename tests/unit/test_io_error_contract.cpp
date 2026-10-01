@@ -31,6 +31,7 @@
 #include <istream>
 #include <streambuf>
 #include <string>
+#include <vector>
 #include <system_error>
 
 using Catch::Matchers::ContainsSubstring;
@@ -132,4 +133,18 @@ TEST_CASE("read_data: a reader option the format cannot honour is InvalidInput",
   CHECK_THROWS_MATCHES(dtwc::read_data("missing.parquet", 0, 1), dtwc::InvalidInput,
                        MessageMatches(ContainsSubstring("skip_rows")));
 #endif
+}
+
+TEST_CASE("read_data: a folder is text whatever its name", "[io][load]")
+{
+  // Only a file's extension names its format: a folder named runs.arrow that
+  // holds CSV files is not an Arrow file to open (or to refuse without Arrow).
+  const ScratchDirectory dir{ "read_data_folder" };
+  const fs::path folder = dir.path / "runs.arrow";
+  fs::create_directories(folder);
+  std::ofstream(folder / "a.csv", std::ios::binary) << "1\n2\n";
+  const auto data = dtwc::read_data(folder);
+  REQUIRE(data.size() == 1);
+  CHECK(data.p_names.front() == "a");
+  CHECK(data.p_vec.front() == std::vector<double>{ 1.0, 2.0 });
 }

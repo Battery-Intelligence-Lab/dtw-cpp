@@ -17,7 +17,7 @@ Convert data between formats. `$ARGUMENTS` has input path and output path/format
 |-----------|------|------|
 | `.csv` | CSV | Human-readable, portable |
 | `.parquet` | Parquet | Compressed, columnar, best for N > 10k |
-| `.arrow`, `.ipc` | Arrow IPC | Zero-copy mmap, fastest load |
+| `.arrow`, `.ipc` | Arrow IPC | Memory-mapped, fastest load |
 | `.h5`, `.hdf5` | HDF5 | With metadata |
 | `.dtws` | DTWC binary | Internal distance matrix cache |
 
@@ -32,7 +32,7 @@ ls -lh "INPUT_PATH"
 
 **`dtwc-convert` CLI** (if installed via Python package):
 - CSV ↔ Parquet ↔ Arrow IPC ↔ HDF5
-- Fastest for large datasets (zero-copy where possible)
+- Fastest for large datasets (memory-mapped)
 
 **Python I/O module** (`dtwcpp.io`):
 - Flexible, programmable
@@ -112,7 +112,7 @@ Show size ratio (compression effect).
 ## Tips
 
 - CSV → Parquet typically 5-20× smaller (depending on dtype)
-- Parquet → Arrow IPC: sub-second for 10k series, zero-copy reload
+- Parquet → Arrow IPC: sub-second for 10k series, memory-mapped reload
 - `.dtws` is an internal distance matrix format, not time series
 - For very wide dataframes, use `--column` to select only the series column
 

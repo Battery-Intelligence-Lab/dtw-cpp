@@ -54,7 +54,7 @@ CLI: `--variant standard|ddtw|wdtw|adtw|softdtw`, `--wdtw-g 0.05`, `--adtw-penal
 |--------|------|-----------|
 | CSV | Small, human-readable | `.csv` |
 | Parquet | Compressed, recommended for N > 10k | `.parquet` |
-| Arrow IPC | Fastest load (zero-copy mmap) | `.arrow`, `.ipc` |
+| Arrow IPC | Fastest load (memory-mapped) | `.arrow`, `.ipc` |
 | HDF5 | With metadata | `.h5`, `.hdf5` |
 | `.dtws` | Internal distance matrix cache | `.dtws` |
 

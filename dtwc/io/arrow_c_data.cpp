@@ -86,13 +86,14 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
            " (drop or fill nulls before clustering).");
 
     // The offsets come from the producer (a file, for Arrow IPC) and index the
-    // values directly; validation checks only the first and the last.
+    // values directly; validation checks only the first and the last. Corrupt
+    // offsets are IOError, as a Parquet file's are.
     const int64_t start = ArrowArrayViewListChildOffset(list_view, i);
     const int64_t end = ArrowArrayViewListChildOffset(list_view, i + 1);
     if (start < 0 || end < start || end > values->length)
-      fail("data_from_arrow: list offset [" + std::to_string(start) + ", " + std::to_string(end) +
-           ") of the series at row " + std::to_string(first + i) + " is outside the values [0, " +
-           std::to_string(values->length) + ").");
+      throw dtwc::IOError("data_from_arrow: list offset [" + std::to_string(start) + ", " + std::to_string(end) +
+                          ") of the series at row " + std::to_string(first + i) + " is outside the values [0, " +
+                          std::to_string(values->length) + ").");
 
     std::vector<data_t> s;
     s.reserve(static_cast<size_t>(end - start));

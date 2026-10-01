@@ -86,7 +86,8 @@ Directory input eagerly concatenates the selected column from each
 `.parquet`/`.pq` file, in the order a folder of CSV files is read (sorted, hidden
 files skipped). With scalar columns this is one series per file, named from the
 filename. List columns contribute one series per list row, named `series_<i>`
-and numbered on across the files, so no two series share a name.
+and numbered on across the files, so the files of a folder never repeat a
+`series_<i>` name.
 
 CLI:
 
