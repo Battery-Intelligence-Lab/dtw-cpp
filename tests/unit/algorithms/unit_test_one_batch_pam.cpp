@@ -13,13 +13,14 @@
 #include <algorithms/one_batch_pam.hpp>
 #include <core/medoid_assignment_policy.hpp>
 
+#include "../../support/dtw_route_bound.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -648,8 +649,9 @@ TEST_CASE("OneBatchPAM's final assignment is the serial scan at every thread cou
   // Both equal the serial scan over the published medoids.
   auto oracle_problem = make_walk_problem(n, 24);
   const auto oracle = serial_assignment(oracle_problem, one.medoid_indices);
+  // The table entries come from the lanes, the oracle's from the per-pair kernel.
   REQUIRE(one.labels == oracle.labels);
-  REQUIRE(one.total_cost == oracle.total_cost);
+  REQUIRE(test_support::dtw_routes_agree<data_t>(one.total_cost, oracle.total_cost, 24, 24));
 
   // The table costs m(N-1) calls and each medoid outside the batch (N-1) more:
   // at least one such medoid makes the exact-DTW branch the subject of this test.
@@ -708,25 +710,18 @@ TEST_CASE("OneBatchPAM's parallel final assignment reports the failure a serial 
   REQUIRE(failed_in_assignment > 0);
 }
 
-namespace {
-
-bool same_bits(double a, double b)
-{
-  return std::memcmp(&a, &b, sizeof(double)) == 0;
-}
-
-} // namespace
-
-TEST_CASE("OneBatchPAM's batch table through the lanes is bitwise the per-pair table",
+TEST_CASE("OneBatchPAM's batch table through the lanes agrees with the per-pair table within the route bound",
           "[one_batch_pam][lanes]")
 {
   // The table fill takes W columns of a row at a time through the lane function
   // (W = 8 for float64, 16 for float32) where they are as long as the row's
   // series, and every other column pair by pair. With the batch the whole data
   // set, every selected medoid is a table column and the final labels and cost
-  // read N x k entries of the table: each must be the bits of the per-pair
-  // function, whichever lane its column fell in. The batch order is the seed's,
-  // so the seeds move the columns across the lanes and the blocks.
+  // read N x k entries of the table: each must agree with the per-pair
+  // function within the route bound, whichever lane its column fell in, and the
+  // sum of N such distances within the bound of the longest pair. The batch
+  // order is the seed's, so the seeds move the columns across the lanes and the
+  // blocks.
   struct FillCase
   {
     const char *name;
@@ -773,7 +768,11 @@ TEST_CASE("OneBatchPAM's batch table through the lanes is bitwise the per-pair t
                        : problem.dtw_function()(problem.series(point), problem.series(medoid));
         });
       CHECK(result.labels == oracle.labels);
-      CHECK(same_bits(result.total_cost, oracle.total_cost));
+      const auto longest = *std::max_element(c.lengths.begin(), c.lengths.end());
+      const bool cost_agrees = c.f32
+        ? test_support::dtw_routes_agree<float>(result.total_cost, oracle.total_cost, longest, longest)
+        : test_support::dtw_routes_agree<data_t>(result.total_cost, oracle.total_cost, longest, longest);
+      CHECK(cost_agrees);
       // The N x N table minus its diagonal; every medoid is in the batch.
       CHECK(stats.distance_evaluations == n * (n - 1));
     }

@@ -157,9 +157,11 @@ TEST_CASE("fill_distance_matrix matches individual pair computation", "[Phase1][
   auto probB = make_problem(N);
   probB.fill_distance_matrix();
 
+  // The fill may run the SIMD lanes, the pairs above the per-pair kernel.
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
-      REQUIRE_THAT(probB.dist_by_ind(i, j), WithinAbs(pairwise[i][j], 1e-15));
+      REQUIRE(test_support::dtw_routes_agree<data_t>(
+        probB.dist_by_ind(i, j), pairwise[i][j], probB.series(i).size(), probB.series(j).size()));
     }
   }
 }

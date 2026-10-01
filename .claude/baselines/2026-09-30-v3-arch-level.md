@@ -99,3 +99,12 @@ unchanged. No FP flag changed; contraction stays on (GCC default, clang `on`, MS
   the symlink rejection with the generation directories it protected; `save_checkpoint` through a symlinked root now
   succeeds and writes into the target (probe `C:/D/git/wt/V4-symlink-probe.cpp`). The row asserted removed behaviour and was removed;
   rejecting a symlinked root again would be a product change.
+- **After the sync with design-2.0 (73e7c12: V3, P5, E1) [confirmed]:** P5's `unit_test_one_batch_pam` case compared the lanes table's
+  `total_cost` bit for bit with the per-pair scan. On the GCC tree (x86-64-v3, default contraction, 220 FMA instructions in the
+  linked test) the original check failed 6 assertions, all "float32, equal lengths, band 4, squared L2" (labels equal in every
+  case); it now uses `dtw_routes_agree` and passes (10638 assertions). The L1 `==` checks and the original
+  `unit_test_distance_matrix_properties` A/B check passed on GCC unchanged (L1 has no multiply to contract); they are moved onto
+  the bound anyway because the two sides are different code. GCC full serial ctest 113 = 110 passed + 3 skipped
+  (`test_cuda_correctness`, `test_metal_correctness`, `test_metal_mmap`), 0 failed; clang-win 114 = 111 + 3, 0 failed
+  (`test_codegen_no_calls` is clang-only). `cpp_conformance` passes on both and `DTWC_CONFORMANCE_REGEN=1` reproduces the tracked
+  reference with no difference on both (restored afterwards). `unit_test_variant_distmat` runs 3 of 12 cases on GCC (llfio OFF).
