@@ -160,12 +160,14 @@ if(TARGET llfio_hl)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()
 
-# Arrow + Parquet (optional) — Arrow IPC and Parquet reading
+# Arrow + Parquet (optional) — Arrow IPC and Parquet reading. Arrow without Parquet is a
+# legitimate IPC-only build; Arrow found with no target to link is an error, not a build that links nothing.
 if(DTWC_ENABLE_ARROW AND Arrow_FOUND)
   if(DTWC_ARROW_FROM_CPM)
     # CPM-built static Arrow + Parquet
     target_link_libraries(dtwc++ PUBLIC arrow_static parquet_static)
     target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_ARROW DTWC_HAS_PARQUET)
+    message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
   elseif(TARGET Arrow::arrow_shared)
     # System-installed Arrow (conda, apt, brew)
     target_link_libraries(dtwc++ PUBLIC Arrow::arrow_shared)
@@ -173,9 +175,15 @@ if(DTWC_ENABLE_ARROW AND Arrow_FOUND)
     if(Parquet_FOUND)
       target_link_libraries(dtwc++ PUBLIC Parquet::parquet_shared)
       target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_PARQUET)
+      message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
+    else()
+      message(STATUS "Arrow linked, IPC only: Parquet not found — reading a Parquet file raises")
     endif()
+  else()
+    message(FATAL_ERROR
+      "DTWC_ENABLE_ARROW=ON: Arrow was found but it defines no Arrow::arrow_shared target to link.\n"
+      "  Install a shared Arrow (conda install -c conda-forge arrow-cpp), or pass -DDTWC_ENABLE_ARROW=OFF.")
   endif()
-  message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
 endif()
 
 # GPU back ends (optional); each folder checks its own switch.

@@ -42,6 +42,9 @@ function(dtwc_setup_dependencies)
   if(DTWC_BUILD_PYTHON)
     set(BUILD_SHARED_LIBS OFF)
   endif()
+  # A fetch that fails stops the configure inside CPM, which names the package and
+  # not the option; this line is the one that does.
+  message(STATUS "  HiGHS:    fetching (DTWC_ENABLE_HIGHS=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_HIGHS=OFF)")
   CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
@@ -67,6 +70,13 @@ function(dtwc_setup_dependencies)
       target_compile_definitions(highs PRIVATE NDEBUG)
     endif()
   endif()
+  # CPM treats an existing source directory as a cache hit, and a download that failed
+  # earlier leaves one empty; HiGHS then adds no target and the MIP solver would vanish.
+  if(DTWC_ENABLE_HIGHS AND NOT TARGET highs::highs)
+    message(FATAL_ERROR "DTWC_ENABLE_HIGHS=ON but HiGHS made no highs::highs target "
+      "(source directory ${highs_SOURCE_DIR}; delete it if a download failed earlier).\n"
+      "  To build without HiGHS, pass -DDTWC_ENABLE_HIGHS=OFF.")
+  endif()
 
   if (NOT TARGET CLI11::CLI11)
   CPMAddPackage(
@@ -88,6 +98,7 @@ function(dtwc_setup_dependencies)
   # ConfigItems. With DTWC_ENABLE_YAML=OFF the CLI still builds and rejects YAML
   # config files with a typed error instead of parsing them.
   if(DTWC_ENABLE_YAML AND NOT TARGET fkYAML::fkYAML)
+    message(STATUS "  YAML:     fetching fkYAML (DTWC_ENABLE_YAML=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_YAML=OFF)")
     CPMAddPackage(
       NAME fkYAML
       URL "https://github.com/fktn-k/fkYAML/archive/refs/tags/v0.4.4.tar.gz"
@@ -195,6 +206,7 @@ function(dtwc_setup_dependencies)
   # quickcpplib 3c1d8cb5 record; GitHub archives leave submodules out.
   option(DTWC_ENABLE_LLFIO "Enable llfio memory-mapped distance matrices" ON)
   if(DTWC_ENABLE_LLFIO AND NOT TARGET llfio_hl)
+    message(STATUS "  llfio:    fetching (DTWC_ENABLE_LLFIO=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_LLFIO=OFF)")
     CPMAddPackage(NAME llfio DOWNLOAD_ONLY YES
       URL "https://github.com/ned14/llfio/archive/b17613fb2149a93b0cc7022c8e649dbf5a015b90.tar.gz"
       URL_HASH SHA256=f1dda54633647791101ffb21dc2311750aa5d39a0a017bced4383ffb66362913)
@@ -286,7 +298,7 @@ function(dtwc_setup_dependencies)
       # (snappy, zstd, thrift). On Windows+Clang, flags like "-Xclang --dependent-lib=msvcrt"
       # and "-D_DLL -D_MT" contain spaces that break CMake argument parsing in ExternalProject.
       # Strip these from ALL flag variables before Arrow configure, restore after.
-      # Flag stripping not needed — Windows+Clang skips CPM build (see guard above)
+      # Flag stripping not needed — Windows+Clang never reaches the CPM build (the guard below stops it)
       # NOTE: On Windows+Clang, Arrow's ExternalProject sub-builds fail because
       # CMake's platform module sets "-Xclang --dependent-lib=msvcrt" in default
       # flags, and the space breaks ExternalProject's semicolon-separated command.
@@ -295,14 +307,14 @@ function(dtwc_setup_dependencies)
       #   - Use conda: conda install -c conda-forge arrow-cpp (find_package path)
       #   - Use Linux (SLURM) where this issue doesn't exist
       if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        message(WARNING "Arrow CPM build is not supported with Windows+Clang due to "
-          "ExternalProject flag quoting issues. Use one of:\n"
-          "  1. conda install -c conda-forge arrow-cpp  (then find_package works)\n"
+        message(FATAL_ERROR "DTWC_ENABLE_ARROW=ON: Arrow was not found, and the CPM build "
+          "is not supported with Windows+Clang due to ExternalProject flag quoting issues. Use one of:\n"
+          "  1. conda install -c conda-forge arrow-cpp  (then find_package works), "
+          "or point -DArrow_DIR and -DParquet_DIR at an Arrow install\n"
           "  2. Build with MSVC instead of Clang\n"
           "  3. Use Linux (SLURM) where CPM build works\n"
-          "  4. Use dtwc-convert (Python) as a workaround")
-        set(DTWC_ENABLE_ARROW OFF PARENT_SCOPE)
-      else()
+          "  4. Pass -DDTWC_ENABLE_ARROW=OFF and convert the data with dtwc-convert (Python)")
+      endif()
 
       CPMAddPackage(
         NAME Arrow
@@ -356,12 +368,9 @@ function(dtwc_setup_dependencies)
         set(DTWC_HAS_PARQUET_LIB TRUE PARENT_SCOPE)
         message(STATUS "  Arrow:    built from source (static, IPC + Parquet)")
       else()
-        message(WARNING "Arrow CPM build failed.\n"
-          "  Install: conda install -c conda-forge arrow-cpp")
-        set(DTWC_ENABLE_ARROW OFF PARENT_SCOPE)
+        message(FATAL_ERROR "DTWC_ENABLE_ARROW=ON: the CPM build of Arrow made no arrow_static target.\n"
+          "  Install Arrow (conda install -c conda-forge arrow-cpp), or pass -DDTWC_ENABLE_ARROW=OFF.")
       endif()
-
-      endif() # Windows+Clang guard
     endif()
   endif()
 

@@ -26,7 +26,7 @@ There are several pre-requisite installations required to compile and run DTW-C+
 The following dependencies need to be manually installed by the user if they do not already exist:
 - [CMake](https://cmake.org/)
 - A suitable compiler (Clang, GCC, MSVC, etc.)
-- Gurobi (optional, if not installed then HiGHS will be used as the MIP solver)
+- Gurobi (optional and off by default: HiGHS is the MIP solver unless you configure with `-DDTWC_ENABLE_GUROBI=ON`, which stops with an error when Gurobi is not found)
 - [OpenMP](https://www.openmp.org/) this should come with GCC and MSVC libraries; however to install it with Clang, you may install `libomp-xx-dev` where `xx` is your clang version. 
 
 The following dependencies are installed by the CPM package manager:
@@ -40,7 +40,7 @@ The following dependencies are installed by the CPM package manager:
 
 ### Gurobi
 
-Gurobi is a powerful optimisation solver that is free for academic use. If you do not wish to use Gurobi, HiGHS will be used instead. Please see the following guidelines for installation on [Ubuntu](https://www.youtube.com/watch?v=yNmeG6Wom1o), [macOS](https://www.youtube.com/watch?v=ZcL-NmckTxQ), [Windows](https://www.youtube.com/watch?v=z7t0p5J9YcQ), and [further information](https://support.gurobi.com/hc/en-us/sections/360010017231-Platforms-and-Installation)
+Gurobi is a powerful optimisation solver that is free for academic use. Gurobi is off by default and HiGHS is the MIP solver; to link Gurobi configure with `-DDTWC_ENABLE_GUROBI=ON`, which stops with an error if Gurobi is not found. Please see the following guidelines for installation on [Ubuntu](https://www.youtube.com/watch?v=yNmeG6Wom1o), [macOS](https://www.youtube.com/watch?v=ZcL-NmckTxQ), [Windows](https://www.youtube.com/watch?v=z7t0p5J9YcQ), and [further information](https://support.gurobi.com/hc/en-us/sections/360010017231-Platforms-and-Installation)
 
 
 ## Building from the source

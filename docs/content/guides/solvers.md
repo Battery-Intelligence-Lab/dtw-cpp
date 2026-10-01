@@ -14,11 +14,16 @@ partially solved clustering as though it succeeded.
 
 ## Gurobi (optional, external)
 
-Gurobi remains available for licensed installations:
+Gurobi remains available for licensed installations. It is off by default, because
+a binary linked with it needs the Gurobi library to load:
 
 ```sh
 cmake -S . -B build -DDTWC_ENABLE_GUROBI=ON
 ```
+
+Point `GUROBI_HOME` at the installation; with the option on and no installation
+found, the configure stops with an error that names the option. v1.0.0 linked
+Gurobi whenever it found it.
 
 The Python wheels do not bundle Gurobi. Use a source build linked against your
 licensed SDK.

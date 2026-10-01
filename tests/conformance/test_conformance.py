@@ -18,13 +18,13 @@ point labelled by the rank of its assigned medoid) so RNG-dependent medoid array
 order / cluster-id numbering cannot make identical clusterings compare unequal.
 """
 import math
-import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
 import dtwcpp
+from dtwcpp import _hpc
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
@@ -80,18 +80,6 @@ def read_reference(path: Path):
     return ref
 
 
-def find_cli_binary():
-    env = os.environ.get("DTWC_CL_BIN")
-    if env and Path(env).exists():
-        return Path(env)
-    for base in (REPO / "build" / "bin", REPO / "bin", REPO / "build"):
-        for name in ("dtwc_cl.exe", "dtwc_cl"):
-            cand = base / name
-            if cand.exists():
-                return cand
-    return None
-
-
 @pytest.fixture(scope="module")
 def reference():
     assert REFERENCE.exists(), (
@@ -137,11 +125,13 @@ def test_python_route_matches_reference(reference):
 # CLI route — invokes the built dtwc_cl binary with the TOML fixture
 # ---------------------------------------------------------------------------
 def test_cli_route_matches_reference(reference, tmp_path):
-    binary = find_cli_binary()
+    # DTWC_CL_PATH, when set, names the binary and a wrong value raises, so a job that
+    # sets it cannot skip this route; unset, the newest build under the repo is used.
+    binary = _hpc.find_dtwc_binary(str(REPO))
     if binary is None:
         pytest.skip(
             "=" * 74 + "\nSKIPPING CLI conformance route: dtwc_cl binary not found.\n"
-            "Build with: cmake --build build --target dtwc_cl, or set DTWC_CL_BIN.\n" + "=" * 74
+            "Build with: cmake --build build --target dtwc_cl, or set DTWC_CL_PATH.\n" + "=" * 74
         )
 
     proc = subprocess.run(

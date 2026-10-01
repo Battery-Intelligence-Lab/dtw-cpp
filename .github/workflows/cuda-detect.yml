@@ -17,26 +17,36 @@ jobs:
         run: |
           apt-get update && apt-get install -y build-essential git python3-pip
           pip3 install cmake>=3.26
+      # Without nvcc the configure stops (DTWC_ENABLE_CUDA=ON is never dropped quietly).
+      # The summary line reads the DTWC_HAS_CUDA definition the code is compiled with,
+      # so a build that came out CPU-only fails this job even if the configure passed.
       - name: CMake configure with CUDA
+        shell: bash
         run: |
+          set -euo pipefail
           cmake -S . -B build \
             -DDTWC_ENABLE_CUDA=ON \
             -DDTWC_BUILD_TESTING=OFF \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CUDA_ARCHITECTURES=80
+            -DCMAKE_CUDA_ARCHITECTURES=80 2>&1 | tee configure.log
+          grep -Eq 'CUDA: +ON' configure.log
       - name: Build CUDA sources
         run: cmake --build build --parallel 2
 
-  macos-cuda-graceful-rejection:
-    name: macOS CUDA graceful rejection
+  macos-cuda-rejection:
+    name: macOS CUDA rejection
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install dependencies
         run: brew install libomp llvm && brew link --force libomp
-      - name: CMake configure with CUDA (should warn and disable)
+      - name: CMake configure with CUDA (must stop with an error)
         run: |
-          cmake -S . -B build \
+          if cmake -S . -B build \
             -DDTWC_ENABLE_CUDA=ON \
-            -DDTWC_BUILD_TESTING=OFF 2>&1 | tee cmake_output.txt
-          grep -q "not supported on macOS" cmake_output.txt
+            -DDTWC_BUILD_TESTING=OFF > cmake_output.txt 2>&1; then
+            cat cmake_output.txt
+            echo "::error::DTWC_ENABLE_CUDA=ON configured on macOS"
+            exit 1
+          fi
+          grep -q "DTWC_ENABLE_CUDA=ON: CUDA is not supported on macOS" cmake_output.txt

@@ -6,8 +6,9 @@
 find_package(Matlab COMPONENTS MX_LIBRARY)
 
 if(NOT Matlab_FOUND)
-    message(WARNING "MATLAB not found -- skipping MATLAB MEX bindings.")
-    return()
+    message(FATAL_ERROR
+        "DTWC_BUILD_MATLAB=ON but MATLAB was not found.\n"
+        "  Pass -DMatlab_ROOT_DIR=<MATLAB root>, or -DDTWC_BUILD_MATLAB=OFF to build without the MEX bindings.")
 endif()
 
 message(STATUS "MATLAB found: ${Matlab_ROOT_DIR}")

@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (build):** Gurobi is linked only when you configure with `-DDTWC_ENABLE_GUROBI=ON` (v1.0.0 linked it
+  whenever it found an installation, and a MEX or binary built that way needed the Gurobi library to load); HiGHS
+  solves the MIP by default. With the option ON and no installation found, the configure stops with an error that
+  names the option.
 - **Changed:** a distance matrix that enters a `Problem` from outside its fill is checked once, where it enters, and a
   ±inf distance raises `InvalidInput` naming the first such pair: `read_distance_matrix`, `load_checkpoint`,
   `use_mmap_distance_matrix`, Python and MATLAB `set_distance_matrix`, and the next `fill_distance_matrix()` after a

@@ -41,11 +41,27 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      - name: Install OpenMP (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libomp && brew link --force libomp
+
       - name: Install
         run: uv pip install ".[test]" --system -v
 
+      # The wheel carries no CLI. test_api, test_hpc and test_version_ssot drive dtwc_cl and
+      # tests/conformance/test_conformance.py runs its CLI route on it; DTWC_CL_PATH names it.
+      - name: Build dtwc_cl
+        run: |
+          cmake -S . -B build -DDTWC_BUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release --target dtwc_cl --parallel 2
+
+      # Both paths are job arguments, not pyproject testpaths: an explicit argument overrides
+      # testpaths, so the one place that can name tests outside tests/python is this line.
+      # DTWC_CL_PATH set to a missing file raises, so the CLI cases cannot skip here.
       - name: Test
-        run: uv run pytest tests/python/ -v --tb=short
+        env:
+          DTWC_CL_PATH: ${{ github.workspace }}/build/bin/dtwc_cl${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: uv run pytest tests/python/ tests/conformance/test_conformance.py -v --tb=short
 
       - name: System check
         run: uv run python -c "import dtwcpp; print(dtwcpp.test.parallelisation()); print(dtwcpp.gpu_info())"

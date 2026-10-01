@@ -373,7 +373,8 @@ if(DTWC_BUILD_MATLAB)
         set_tests_properties(matlab_suite PROPERTIES
             LABELS "matlab" RUN_SERIAL TRUE TIMEOUT 1800)
     else()
-        message(WARNING
-            "DTWC_BUILD_MATLAB=ON but MATLAB not found: matlab_suite not registered")
+        message(FATAL_ERROR
+            "DTWC_BUILD_MATLAB=ON but MATLAB (with its executable) was not found, so matlab_suite cannot be registered.\n"
+            "  Pass -DMatlab_ROOT_DIR=<MATLAB root>, or -DDTWC_BUILD_MATLAB=OFF to build without the MEX bindings.")
     endif()
 endif()
