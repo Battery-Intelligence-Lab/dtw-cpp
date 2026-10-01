@@ -36,7 +36,6 @@
 #pragma once
 
 #include "../base/settings.hpp"
-#include "variant_validation.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -48,13 +47,11 @@
 
 namespace dtwc::core {
 
-/// TWE distance (pointer + length). Univariate, unbanded, exact.
+/// TWE distance (pointer + length). Univariate, unbanded, exact; nu, lambda > 0, unchecked.
 template <typename T = dtwc::settings::default_data_t>
 T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
                T nu = T(0.001), T lambda = T(1))
 {
-  validate_twe_nu(nu);
-  validate_twe_lambda(lambda);
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (nx == 0 || ny == 0) return maxValue;
   if (x == y && nx == ny) return T(0);

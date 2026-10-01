@@ -526,9 +526,11 @@ missing value and reject only ±inf. Python's distance functions and
 check. The per-pair wrappers in `warping*.hpp` (with `soft_dtw()` and
 `core::msm_distance` / `twe_distance`) are the documented unchecked layer the
 matrix fills call: they require finite input (the missing-data wrappers also
-take NaN) and return NaN, the unreachable `max()` or an ordinary-looking number
-otherwise, so their caller checks first, once per call or per fill. A `Problem`
-checks its series the same way before it computes (§6.4).
+take NaN) and parameters in their domains, and return NaN, the unreachable
+`max()` or an ordinary-looking number otherwise, so their caller checks first,
+once per call or per fill. A `Problem` checks its series the same way before it
+computes (§6.4), and its distance settings, like the checked functions, with
+`core::validate` when they are set.
 
 **Precision default.** All `dtwc::distance::*` templates default to
 `T = settings::default_data_t`, which is `double`. An explicit `<float>`

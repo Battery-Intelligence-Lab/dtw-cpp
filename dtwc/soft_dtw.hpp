@@ -39,7 +39,6 @@
 #include "core/dtw_kernel.hpp"   // dtw_kernel_full, SoftCell
 #include "core/dtw_cost.hpp"     // SpanL1Cost
 #include "core/dtw_options.hpp"  // core::validate
-#include "core/variant_validation.hpp"
 #include "warping.hpp"           // detail::require_finite
 
 namespace dtwc {
@@ -94,13 +93,12 @@ T softmin_gamma_unchecked(T a, T b, T c, T gamma) noexcept
  * @param a First value.
  * @param b Second value.
  * @param c Third value.
- * @param gamma Smoothing parameter (must be > 0).
+ * @param gamma Smoothing parameter, > 0 (unchecked).
  * @return The soft minimum.
  */
 template <typename T>
 T softmin_gamma(T a, T b, T c, T gamma)
 {
-  core::validate_sdtw_gamma(gamma);
   return detail::softmin_gamma_unchecked(a, b, c, gamma);
 }
 
@@ -118,15 +116,13 @@ T softmin_gamma(T a, T b, T c, T gamma)
  * @tparam T Floating point type (default: `settings::default_data_t`, currently `double`).
  * @param x First time series.
  * @param y Second time series.
- * @param gamma Smoothing parameter (must be > 0). As gamma -> 0, result
+ * @param gamma Smoothing parameter, > 0 (unchecked). As gamma -> 0, result
  *              converges to standard DTW distance.
  * @return The Soft-DTW distance.
  */
 template <typename T = dtwc::settings::default_data_t>
 T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
-  core::validate_sdtw_gamma(gamma);
-
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (x.empty() || y.empty()) return maxValue;
 
