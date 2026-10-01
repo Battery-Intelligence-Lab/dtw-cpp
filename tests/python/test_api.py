@@ -123,6 +123,25 @@ class TestLoad:
         assert type(caught.value) is dtwcpp.IOError
         assert str(caught.value).startswith(f"load: failed to read '{path}': ")
 
+    def test_parquet_path_reads_like_the_same_csv(self, tmp_path):
+        """load('x.parquet') reads through the installed pyarrow (the wheel
+        links no Arrow C++; it used to parse the file as CSV): the same series
+        and names as the same data in CSV."""
+        pa = pytest.importorskip("pyarrow")
+        pq = pytest.importorskip("pyarrow.parquet")
+        rows = [[0.0, 0.5], [2.5, 1.0, 0.25], [9.0, 9.5]]
+        csv = tmp_path / "x.csv"
+        csv.write_text("".join(",".join(map(repr, row)) + "\n" for row in rows),
+                       encoding="utf-8")
+        from_csv = dtwcpp.load(csv)
+        parquet = tmp_path / "x.parquet"
+        pq.write_table(pa.table({
+            "series": pa.array(rows, type=pa.list_(pa.float64())),
+            "name": from_csv.series_names()}), parquet)
+        from_parquet = dtwcpp.load(parquet)
+        assert from_parquet.as_series() == from_csv.as_series() == rows
+        assert from_parquet.series_names() == from_csv.series_names() == ["1", "2", "3"]
+
     def test_path_source_parses_a_non_numeric_id_column(self, tmp_path):
         """§1.2: skip_cols drops FIELDS before numeric parsing, as C++ does."""
         csv = tmp_path / "named.csv"

@@ -74,12 +74,6 @@ C++:
 problem.set_data(dtwc::read_data("data.parquet", 0, 0, '\0', "Voltage"));
 ```
 
-Python:
-
-```python
-data, names = dtwcpp.io.load_parquet("data.parquet", column="Voltage")
-```
-
 ### Directory of Parquet files
 
 Directory input eagerly concatenates the selected column from each
@@ -104,6 +98,15 @@ name `series_0`, `series_1`, and so on. This layout is produced by
 
 ```bash
 dtwc_cl -i data.parquet --column series -k 5
+```
+
+Python reads this layout, from a file or a folder of them, with the installed
+pyarrow (the `dtwcpp[parquet]` extra; the wheel links no Arrow C++): each row of
+the first list column is a series, named by the first string column, else
+`series_<i>`. Without pyarrow, reading raises `ImportError` naming the extra.
+
+```python
+data = dtwcpp.load("data.parquet").as_data()
 ```
 
 ### Metadata-first RAM-limited streaming

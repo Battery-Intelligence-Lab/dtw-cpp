@@ -224,13 +224,19 @@ NB_MODULE(_dtwcpp_core, m) {
     return dtwc::read_data(source, skip_cols, skip_rows, delimiter.empty() ? '\0' : delimiter[0]);
   }, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
      "Read a path with dtwc::read_data, the reader dtwc_cl and C++ dtwc::load\n"
-     "use (CSV/TSV, a folder, and Parquet / Arrow IPC in a build with Arrow), and\n"
-     "return the owning dtwc::Data (series + names) with no intermediate Python\n"
-     "objects. Backs dtwcpp.Dataset, whose handle is handed straight to\n"
-     "Problem.set_data(Data): skip_cols drops leading FIELDS before numeric\n"
-     "parsing, skip_rows drops leading LINES, an empty delimiter means infer from\n"
-     "the extension, and variable-length rows are preserved. The names are the\n"
-     "reader's own, so Tier-1 output carries the series names the CLI writes.");
+     "use (CSV/TSV and a folder of them; the wheel links no Arrow C++, so\n"
+     "dtwcpp.load reads Parquet through pyarrow instead), and return the owning\n"
+     "dtwc::Data (series + names) with no intermediate Python objects. Backs\n"
+     "dtwcpp.Dataset, whose handle is handed straight to Problem.set_data(Data):\n"
+     "skip_cols drops leading FIELDS before numeric parsing, skip_rows drops\n"
+     "leading LINES, an empty delimiter means infer from the extension, and\n"
+     "variable-length rows are preserved. The names are the reader's own, so\n"
+     "Tier-1 output carries the series names the CLI writes.");
+
+  m.def("_parquet_files", &dtwc::parquet_files, "path"_a,
+        "The Parquet files a path names, listed as dtwc::read_data lists them:\n"
+        "the file itself, or a folder's .parquet/.pq files, sorted, hidden files\n"
+        "skipped; empty for any other input.");
 
   // =========================================================================
   // Enums
