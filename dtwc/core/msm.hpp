@@ -40,6 +40,7 @@
 #pragma once
 
 #include "../base/settings.hpp"
+#include "dtw_kernel.hpp" // orient
 
 #include <algorithm>
 #include <cmath>
@@ -66,9 +67,10 @@ T msm_distance(const T* x, std::size_t nx, const T* y, std::size_t ny, T c = T(1
   if (nx == 0 || ny == 0) return maxValue;
   if (x == y && nx == ny) return T(0);
 
-  // Orient so the rolling buffer spans the shorter axis (MSM is symmetric).
-  const T* a = x; const T* b = y; std::size_t na = nx, nb = ny;
-  if (nb > na) { std::swap(a, b); std::swap(na, nb); } // a = long (rows), b = short (cols)
+  // The rolling buffer spans the shorter series (MSM is symmetric).
+  const T *a = x, *b = y;
+  std::size_t na = nx, nb = ny;
+  orient(b, nb, a, na); // a = long (rows), b = short (cols); a tie keeps a = x
 
   thread_local std::vector<T> prev_buf, curr_buf;
   prev_buf.resize(nb);

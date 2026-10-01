@@ -1,10 +1,9 @@
 /**
  * @file unit_test_multivariate_dtw.cpp
- * @brief Unit tests for multivariate DTW functions and MV distance functors.
+ * @brief Unit tests for multivariate DTW functions.
  * @author Volkan Kumtepeli
  *
  * Tests cover:
- *   - MVL1Dist and MVSquaredL2Dist metric functors
  *   - dtwFull_L_mv: correctness, ndim=1 parity with scalar, symmetry, known values
  *   - dtwBanded_mv: correctness, ndim=1 parity with scalar, large-band matches unbanded
  *   - Edge cases: zero length, same-pointer identity, different lengths
@@ -26,52 +25,6 @@
 #include <random>
 
 using Catch::Matchers::WithinAbs;
-
-// =========================================================================
-//  Metric functor tests
-// =========================================================================
-
-TEST_CASE("MVL1Dist: ndim=1 matches scalar L1", "[mv][metric]")
-{
-  double a = 3.0, b = 7.0;
-  REQUIRE(dtwc::detail::MVL1Dist{}(&a, &b, 1) == std::abs(a - b));
-}
-
-TEST_CASE("MVL1Dist: ndim=3", "[mv][metric]")
-{
-  // |1-4| + |2-1| + |3-6| = 3 + 1 + 3 = 7
-  double a[] = {1.0, 2.0, 3.0};
-  double b[] = {4.0, 1.0, 6.0};
-  REQUIRE(dtwc::detail::MVL1Dist{}(a, b, 3) == 7.0);
-}
-
-TEST_CASE("MVL1Dist: ndim=2 symmetric", "[mv][metric]")
-{
-  double a[] = {1.0, 5.0};
-  double b[] = {3.0, 2.0};
-  REQUIRE(dtwc::detail::MVL1Dist{}(a, b, 2) == dtwc::detail::MVL1Dist{}(b, a, 2));
-}
-
-TEST_CASE("MVSquaredL2Dist: ndim=1 matches scalar", "[mv][metric]")
-{
-  double a = 3.0, b = 7.0;
-  // (3-7)^2 = 16
-  REQUIRE(dtwc::detail::MVSquaredL2Dist{}(&a, &b, 1) == 16.0);
-}
-
-TEST_CASE("MVSquaredL2Dist: ndim=3", "[mv][metric]")
-{
-  // (1-4)^2 + (2-1)^2 + (3-6)^2 = 9 + 1 + 9 = 19
-  double a[] = {1.0, 2.0, 3.0};
-  double b[] = {4.0, 1.0, 6.0};
-  REQUIRE(dtwc::detail::MVSquaredL2Dist{}(a, b, 3) == 19.0);
-}
-
-TEST_CASE("MVSquaredL2Dist: zero distance for identical points", "[mv][metric]")
-{
-  double a[] = {2.0, 3.0, 4.0};
-  REQUIRE(dtwc::detail::MVSquaredL2Dist{}(a, a, 3) == 0.0);
-}
 
 // =========================================================================
 //  MV DTW correctness — ndim=1 must match scalar DTW exactly

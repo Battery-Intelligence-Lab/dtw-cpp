@@ -7,6 +7,7 @@
 
 #include "../Data.hpp"
 #include "../base/missing_utils.hpp"      // has_missing, interpolate_linear
+#include "../soft_dtw.hpp"           // soft_dtw
 #include "../warping.hpp"            // dtwBanded, dtwBanded_mv
 #include "../warping_adtw.hpp"       // adtwBanded, adtwBanded_mv
 #include "../warping_ddtw.hpp"       // ddtwBanded, derivative_transform_mv_inplace
@@ -14,7 +15,7 @@
 #include "../warping_missing_arow.hpp" // dtwAROW_banded
 #include "../warping_wdtw.hpp"       // wdtwBanded, wdtwBanded_mv, wdtw_weights
 #include "dtw_cost.hpp"              // SpanMVAROW*Cost
-#include "dtw_kernel.hpp"            // dtw_kernel_banded, AROWCell
+#include "dtw_kernel.hpp"            // run_dtw, AROWCell
 #include "dtw_options.hpp"           // DistanceConfig, variant_names
 #include "msm.hpp"                   // msm_distance
 #include "public_distance.hpp"       // normalize_public_distance
@@ -90,16 +91,11 @@ auto make_arow(const DistanceConfig &c)
     return [band, metric, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
       const auto x_steps = x.size() / ndim;
       const auto y_steps = y.size() / ndim;
-      const bool swap = x_steps > y_steps;
-      const T* a_data = swap ? y.data() : x.data();
-      const T* b_data = swap ? x.data() : y.data();
-      const auto a_steps = swap ? y_steps : x_steps;
-      const auto b_steps = swap ? x_steps : y_steps;
       if (metric == MetricType::SquaredL2)
-        return normalize_public_distance(dtw_kernel_banded<T>(
-          a_steps, b_steps, band, SpanMVAROWSquaredL2Cost<T>{a_data, b_data, ndim}, AROWCell{}));
-      return normalize_public_distance(dtw_kernel_banded<T>(
-        a_steps, b_steps, band, SpanMVAROWL1Cost<T>{a_data, b_data, ndim}, AROWCell{}));
+        return normalize_public_distance(run_dtw<SpanMVAROWSquaredL2Cost>(
+          x.data(), x_steps, y.data(), y_steps, band, AROWCell{}, T(-1), ndim));
+      return normalize_public_distance(run_dtw<SpanMVAROWL1Cost>(
+        x.data(), x_steps, y.data(), y_steps, band, AROWCell{}, T(-1), ndim));
     };
   }
   return [band, metric](std::span<const T> x, std::span<const T> y) -> double {
@@ -245,25 +241,15 @@ template <typename T>
 auto make_soft_dtw(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  // Soft-DTW (Cuturi & Blondel 2017) via the unified full-matrix kernel +
-  // SoftCell (log-sum-exp with max-subtract stabilisation). Cross-validated
-  // bit-for-bit against the legacy soft_dtw() on equal/different-length,
-  // identical, and swap-symmetric inputs across gamma {0.1..10.0}
-  // (unit_test_soft_dtw.cpp [phase3]).
+  // Soft-DTW (Cuturi & Blondel 2017): soft_dtw(), the unified full-matrix
+  // kernel with SoftCell (log-sum-exp with max-subtract stabilisation).
   //
   // Univariate (validate() refuses ndim > 1), like soft_dtw_gradient() and
   // distance::soft_dtw. The band is intentionally ignored: soft-DTW is a full
   // O(n·m) recurrence here.
   return [gamma = static_cast<T>(c.variant.sdtw_gamma)](std::span<const T> x,
                                                          std::span<const T> y) -> double {
-    const bool swap = x.size() > y.size();
-    const auto a = swap ? y : x;
-    const auto b = swap ? x : y;
-    SpanL1Cost<T> cost{a.data(), b.data()};
-    SoftCell<T> cell{gamma};
-    return normalize_public_distance(
-      dtw_kernel_full<T, SpanL1Cost<T>, SoftCell<T>>(
-        a.size(), b.size(), cost, cell));
+    return normalize_public_distance(soft_dtw<T>(x, y, gamma));
   };
 }
 

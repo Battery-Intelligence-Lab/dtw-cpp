@@ -16,7 +16,7 @@
 #include "Problem.hpp"
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_options.hpp" // core::MetricType
-#include "warping.hpp"          // dtwFull_L, dtwBanded, detail::dispatch_metric
+#include "warping.hpp"          // dtwFull_L, dtwBanded
 
 #include "../../support/dtw_route_bound.hpp"
 
@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <random>
@@ -35,6 +36,13 @@ namespace {
 
 using dtwc::core::MetricType;
 using dtwc::test_support::dtw_routes_agree;
+
+// The pointwise costs of the per-pair path, SpanL1Cost and SpanSquaredL2Cost, on values.
+constexpr auto l1 = [](auto a, auto b) { return std::abs(a - b); };
+constexpr auto squared = [](auto a, auto b) {
+  const auto d = a - b;
+  return d * d;
+};
 
 // Random walks, or small integers: the latter make exact ties in every min.
 template <typename T>
@@ -60,10 +68,11 @@ int lane_mismatches(std::size_t n, int band, MetricType metric, bool ties)
   for (std::size_t w = 0; w < W; ++w) y.push_back(series<T>(rng, n, ties));
   for (std::size_t w = 0; w < W; ++w) ys[w] = y[w].data();
 
-  const auto lanes = dtwc::detail::dispatch_metric(metric, [&](auto dist) {
-    return dtwc::core::dtw_kernel_lanes<T>(x.data(), ys.data(), n, band, dist,
-                                           dtwc::core::StandardCell{});
-  });
+  const auto lanes = metric == MetricType::SquaredL2
+                       ? dtwc::core::dtw_kernel_lanes<T>(x.data(), ys.data(), n, band, squared,
+                                                         dtwc::core::StandardCell{})
+                       : dtwc::core::dtw_kernel_lanes<T>(x.data(), ys.data(), n, band, l1,
+                                                         dtwc::core::StandardCell{});
   int bad = 0;
   for (std::size_t w = 0; w < W; ++w) {
     const T banded = dtwc::dtwBanded<T>(x, y[w], band, T(-1), metric);
@@ -99,8 +108,7 @@ TEST_CASE("dtw_kernel_lanes: every lane agrees with the per-pair kernel", "[lane
 TEST_CASE("dtw_kernel_lanes: empty series are the no-path sentinel", "[lanes]")
 {
   const double *none[dtwc::core::dtw_lanes<double>] = {};
-  const auto d = dtwc::core::dtw_kernel_lanes<double>(nullptr, none, 0, -1,
-                                                      dtwc::detail::L1Dist{},
+  const auto d = dtwc::core::dtw_kernel_lanes<double>(nullptr, none, 0, -1, l1,
                                                       dtwc::core::StandardCell{});
   for (const double v : d) CHECK(v == std::numeric_limits<double>::max());
 }

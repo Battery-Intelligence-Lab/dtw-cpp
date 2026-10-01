@@ -10,10 +10,10 @@
  *                                         C(i,j-1) + penalty)
  *
  *          Implementation-wise, ADTW differs from Standard DTW only in the
- *          cell-recurrence rule â€” so every ADTW entry point is now a 5-line
- *          wrapper that calls `core::dtw_kernel_*` with `core::ADTWCell<T>`
- *          and an L1 / MV-L1 cost functor. The loop body itself lives in
- *          core/dtw_kernel.hpp (one copy, shared with Standard + WDTW).
+ *          cell-recurrence rule, so every ADTW entry point is a call of
+ *          `core::run_dtw` with `core::ADTWCell<T>` and an L1 / MV-L1 cost
+ *          functor. The loop body itself lives in core/dtw_kernel.hpp (one
+ *          copy, shared with Standard + WDTW).
  *
  *          Reference: Herrmann, M. & Shifaz, A. (2023), "Amercing: An intuitive
  *          and effective constraint for dynamic time warping." Pattern
@@ -31,7 +31,6 @@
 #include "core/dtw_cost.hpp"
 
 #include <cstddef>   // size_t
-#include <limits>    // numeric_limits
 #include <span>
 #include <vector>
 
@@ -41,24 +40,18 @@ namespace dtwc {
 // Scalar ADTW (univariate)
 // ---------------------------------------------------------------------------
 
+template <typename data_t = dtwc::settings::default_data_t>
+data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
+                  int band, data_t penalty, data_t early_abandon = data_t{-1})
+{
+  return core::run_dtw<core::SpanL1Cost>(x, nx, y, ny, band, core::ADTWCell<data_t>{penalty}, early_abandon);
+}
+
 template <typename data_t>
 data_t adtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   data_t penalty, data_t early_abandon = data_t{-1})
 {
-  if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
-  if (x == y && nx == ny) return 0;
-
-  const bool swap = nx > ny;
-  const data_t* xs = swap ? y : x;
-  const data_t* ys = swap ? x : y;
-  const size_t ns = swap ? ny : nx;
-  const size_t nl = swap ? nx : ny;
-
-  return core::dtw_kernel_linear<data_t>(
-      ns, nl,
-      core::SpanL1Cost<data_t>{xs, ys},
-      core::ADTWCell<data_t>{penalty},
-      early_abandon);
+  return adtwBanded<data_t>(x, nx, y, ny, -1, penalty, early_abandon);
 }
 
 template <typename data_t>
@@ -66,27 +59,6 @@ data_t adtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
                   data_t penalty, data_t early_abandon = data_t{-1})
 {
   return adtwFull_L(x.data(), x.size(), y.data(), y.size(), penalty, early_abandon);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                  int band, data_t penalty, data_t early_abandon = data_t{-1})
-{
-  if (band < 0) return adtwFull_L<data_t>(x, nx, y, ny, penalty, early_abandon);
-  if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
-  if (x == y && nx == ny) return 0;
-
-  const bool swap = nx > ny;
-  const data_t* xs = swap ? y : x;
-  const data_t* ys = swap ? x : y;
-  const size_t ns = swap ? ny : nx;
-  const size_t nl = swap ? nx : ny;
-
-  return core::dtw_kernel_banded<data_t>(
-      ns, nl, band,
-      core::SpanL1Cost<data_t>{xs, ys},
-      core::ADTWCell<data_t>{penalty},
-      early_abandon);
 }
 
 template <typename data_t = dtwc::settings::default_data_t>
@@ -115,47 +87,21 @@ data_t adtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
 // Multivariate ADTW (interleaved layout: x[t*ndim + d])
 // ---------------------------------------------------------------------------
 
-template <typename data_t = dtwc::settings::default_data_t>
-data_t adtwFull_L_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
-                     size_t ndim, data_t penalty = 1.0)
-{
-  if (ndim == 1) return adtwFull_L<data_t>(x, nx_steps, y, ny_steps, penalty);
-  if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
-  if (x == y && nx_steps == ny_steps) return 0;
-
-  const bool swap = nx_steps > ny_steps;
-  const data_t* xs = swap ? y : x;
-  const data_t* ys = swap ? x : y;
-  const size_t ns = swap ? ny_steps : nx_steps;
-  const size_t nl = swap ? nx_steps : ny_steps;
-
-  return core::dtw_kernel_linear<data_t>(
-      ns, nl,
-      core::SpanMVL1Cost<data_t>{xs, ys, ndim},
-      core::ADTWCell<data_t>{penalty});
-}
-
-/// Multivariate ADTW banded. With the unified kernel, banded MV is now a
-/// first-class path â€” no fallback to unbanded.
+/// Multivariate ADTW banded: the L1 cost summed over the channels.
 template <typename data_t = dtwc::settings::default_data_t>
 data_t adtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, int band = settings::DEFAULT_BAND, data_t penalty = 1.0)
 {
-  if (band < 0) return adtwFull_L_mv<data_t>(x, nx_steps, y, ny_steps, ndim, penalty);
   if (ndim == 1) return adtwBanded<data_t>(x, nx_steps, y, ny_steps, band, penalty);
-  if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
-  if (x == y && nx_steps == ny_steps) return 0;
+  return core::run_dtw<core::SpanMVL1Cost>(x, nx_steps, y, ny_steps, band, core::ADTWCell<data_t>{penalty},
+                                           data_t{-1}, ndim);
+}
 
-  const bool swap = nx_steps > ny_steps;
-  const data_t* xs = swap ? y : x;
-  const data_t* ys = swap ? x : y;
-  const size_t ns = swap ? ny_steps : nx_steps;
-  const size_t nl = swap ? nx_steps : ny_steps;
-
-  return core::dtw_kernel_banded<data_t>(
-      ns, nl, band,
-      core::SpanMVL1Cost<data_t>{xs, ys, ndim},
-      core::ADTWCell<data_t>{penalty});
+template <typename data_t = dtwc::settings::default_data_t>
+data_t adtwFull_L_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
+                     size_t ndim, data_t penalty = 1.0)
+{
+  return adtwBanded_mv<data_t>(x, nx_steps, y, ny_steps, ndim, -1, penalty);
 }
 
 } // namespace dtwc

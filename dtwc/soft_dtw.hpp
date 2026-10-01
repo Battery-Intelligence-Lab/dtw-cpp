@@ -123,23 +123,12 @@ T softmin_gamma(T a, T b, T c, T gamma)
 template <typename T = dtwc::settings::default_data_t>
 T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
-  constexpr T maxValue = std::numeric_limits<T>::max();
-  if (x.empty() || y.empty()) return maxValue;
-
-  // Unified kernel precondition: n_short <= n_long. L1 + SoftCell are both
-  // symmetric under (x, y) swap, so orienting here is a no-op on the result.
-  const T* xs = x.data();
-  const T* ys = y.data();
-  std::size_t n_short = x.size();
-  std::size_t n_long  = y.size();
-  if (n_short > n_long) {
-    std::swap(xs, ys);
-    std::swap(n_short, n_long);
-  }
-
-  core::SpanL1Cost<T> cost{xs, ys};
-  core::SoftCell<T> cell{gamma};
-  return core::dtw_kernel_full<T>(n_short, n_long, cost, cell);
+  // No shortcut for a series against itself: its Soft-DTW is not 0. An empty
+  // series has no path: dtw_kernel_full returns max().
+  const T *xs = x.data(), *ys = y.data();
+  std::size_t nx = x.size(), ny = y.size();
+  core::orient(xs, nx, ys, ny);
+  return core::dtw_kernel_full<T>(nx, ny, core::SpanL1Cost<T>{ xs, ys }, core::SoftCell<T>{ gamma });
 }
 
 /**

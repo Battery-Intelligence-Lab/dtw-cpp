@@ -18,8 +18,9 @@
  *          return `metric(a[row], b[col])`. Position-aware costs (WeightedL1
  *          for WDTW) additionally index a weight table by `|row - col|`.
  *
- *          `MetricType`→functor dispatch deliberately does NOT live here; see
- *          the note below.
+ *          The wrappers in warping*.hpp pick the Cost from the MetricType: a
+ *          univariate L2 cost is L1 (sqrt((a-b)^2) == |a-b|), a multivariate
+ *          one is SpanMVL2Cost, the Euclidean norm over the channels.
  *
  * @date 2026-04-12
  */
@@ -34,20 +35,6 @@
 
 namespace dtwc::core {
 
-// -----------------------------------------------------------------------------
-// Metric -> cost-functor dispatch lives in EXACTLY ONE place: dtwc::detail in
-// warping.hpp (both dispatch_metric and dispatch_mv_metric).
-//
-// Task R1: a duplicate `core::dispatch_mv_metric` (and the `core::MVL2Dist`
-// Euclidean functor it selected) used to live here. It had ZERO call sites and
-// had DIVERGED from the live dispatcher — it mapped MetricType::L2 to a true
-// Euclidean cost while the live warping.hpp dispatcher still aliased L2 -> L1,
-// so the "L2 is Euclidean" fix (task 0.6) was inert. Both were deleted and the
-// Euclidean functor was migrated to dtwc::detail::MVL2Dist (warping.hpp), which
-// the single live dispatcher now selects. A second dispatcher is precisely the
-// hazard that caused this bug, so this file intentionally hosts none.
-// -----------------------------------------------------------------------------
-
 // ===========================================================================
 // Cost functors for the unified DTW kernel — index-based (i, j)
 // ===========================================================================
@@ -59,6 +46,17 @@ struct SpanL1Cost {
   const T* y;
   T operator()(std::size_t row, std::size_t col) const noexcept {
     return std::abs(x[row] - y[col]);
+  }
+};
+
+/// Squared-L2 cost at cell (row, col): (x[row] - y[col])^2.
+template <typename T>
+struct SpanSquaredL2Cost {
+  const T* x;
+  const T* y;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T d = x[row] - y[col];
+    return d * d;
   }
 };
 
@@ -87,6 +85,42 @@ struct SpanMVL1Cost {
     T sum = T(0);
     for (std::size_t d = 0; d < ndim; ++d) sum += std::abs(a[d] - b[d]);
     return sum;
+  }
+};
+
+/// Multivariate squared L2 at (row, col): sum over d of (x[row*ndim+d] - y[col*ndim+d])^2.
+template <typename T>
+struct SpanMVSquaredL2Cost {
+  const T* x;
+  const T* y;
+  std::size_t ndim;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T* a = x + row * ndim;
+    const T* b = y + col * ndim;
+    T sum = T(0);
+    for (std::size_t d = 0; d < ndim; ++d) {
+      T diff = a[d] - b[d];
+      sum += diff * diff;
+    }
+    return sum;
+  }
+};
+
+/// Multivariate L2 (Euclidean) at (row, col): the square root of SpanMVSquaredL2Cost.
+template <typename T>
+struct SpanMVL2Cost {
+  const T* x;
+  const T* y;
+  std::size_t ndim;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T* a = x + row * ndim;
+    const T* b = y + col * ndim;
+    T sum = T(0);
+    for (std::size_t d = 0; d < ndim; ++d) {
+      T diff = a[d] - b[d];
+      sum += diff * diff;
+    }
+    return std::sqrt(sum);
   }
 };
 

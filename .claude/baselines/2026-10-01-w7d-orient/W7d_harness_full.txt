@@ -1,0 +1,12 @@
+base wdtw band -1: min 26941.94 ms median 26941.94 ms checksum 1.9102789890574569e-15
+base standard band -1: min 26872.01 ms median 26872.01 ms checksum 14634309.473090265
+head wdtw band -1: min 27596.50 ms median 27596.50 ms checksum 1.9102789890574569e-15
+head standard band -1: min 26621.21 ms median 26621.21 ms checksum 14634309.473090265
+fix wdtw band -1: min 26580.52 ms median 26580.52 ms checksum 1.9102789890574569e-15
+fix standard band -1: min 26501.31 ms median 26501.31 ms checksum 14634309.473090265
+fix wdtw band -1: min 26683.51 ms median 26683.51 ms checksum 1.9102789890574569e-15
+fix standard band -1: min 26870.87 ms median 26870.87 ms checksum 14634309.473090265
+head wdtw band -1: min 27163.28 ms median 27163.28 ms checksum 1.9102789890574569e-15
+head standard band -1: min 26774.50 ms median 26774.50 ms checksum 14634309.473090265
+base wdtw band -1: min 27105.79 ms median 27105.79 ms checksum 1.9102789890574569e-15
+base standard band -1: min 26698.78 ms median 26698.78 ms checksum 14634309.473090265
