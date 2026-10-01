@@ -44,15 +44,11 @@ ENTRY_POINTS = {
         True),
     "distance.dtw arow": (
         lambda x, y, b: dtwcpp.distance.dtw(x, y, band=b, missing_strategy="arow"), True),
+    # The fill refuses an infeasible band before it scans the values, so this
+    # entry runs at band -1: it is the scan that is under test.
     "compute_distance_matrix": (
-        lambda x, y, b: core.compute_distance_matrix(
-            [x.tolist(), y.tolist()], b, "l1"), False),
+        lambda x, y, b: dtwcpp.compute_distance_matrix([x.tolist(), y.tolist()]), False),
 }
-if core.gpu_available() and core.gpu_info().startswith("Metal:"):
-    # Before FX-15 Metal returned finite numbers for some non-finite input.
-    ENTRY_POINTS["compute_distance_matrix_metal"] = (
-        lambda x, y, b: core.compute_distance_matrix_metal(
-            [x.tolist(), y.tolist()], band=b), False)
 
 
 def _dtw_oracle(x, y, band, nan_costs_zero=False):
@@ -118,8 +114,9 @@ def test_nonfinite_input_raises_naming_series_and_position(name):
         index = int(rng.integers(0, target.size))
         target[index] = value
         series = "x" if in_x else "y"
-        if name.startswith("compute_distance_matrix"):
-            series = f"series[{0 if in_x else 1}]"
+        if name == "compute_distance_matrix":
+            k = 0 if in_x else 1
+            series = f"series '{k}' (index {k})"
         expected = f"{series}[{index}] is {label}"
         with pytest.raises(dtwcpp.InvalidInput, match=re.escape(expected)):
             call(x, y, band)
@@ -155,7 +152,9 @@ def test_finite_input_matches_the_recurrence_bit_for_bit(name):
 
 def test_finite_matrix_matches_the_recurrence_bit_for_bit():
     for _, x, y, band in _pairs(18):
+        if band >= 0 and abs(len(x) - len(y)) > band:
+            continue  # no warping path: the fill refuses the band (test_distance_matrix.py)
         want = _dtw_oracle(x, y, band)
-        got = core.compute_distance_matrix([x, y], band, "l1")
+        got = dtwcpp.compute_distance_matrix([x, y], band, "l1")
         assert got[0, 1].hex() == want.hex(), (x, y, band)
         assert got[1, 0].hex() == want.hex(), (x, y, band)
