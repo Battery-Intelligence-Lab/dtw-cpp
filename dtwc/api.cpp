@@ -10,6 +10,7 @@
 #include "core/matrix_io.hpp"
 #include "base/env.hpp"
 #include "base/error.hpp"
+#include "fileOperations.hpp"
 #include "scores.hpp"
 
 #include <algorithm>
@@ -57,26 +58,6 @@ void validate_skips(index_t skip_cols, index_t skip_rows)
 {
   if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
   if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
-}
-
-std::ofstream open_output(const std::filesystem::path &path,
-                          std::ios::openmode mode = std::ios::out)
-{
-  std::ofstream stream(path, mode);
-  if (!stream.is_open()) throw IOError("Result::save: cannot open " + path.string());
-  return stream;
-}
-
-/// A full disk or a file-size quota fails the writes after a successful open,
-/// so the stream is checked after closing too: an open-only check left a
-/// truncated file behind a save that reported success (B-05).
-void close_output(std::ofstream &stream, const std::filesystem::path &path)
-{
-  stream.close();
-  if (!stream)
-    throw IOError("Result::save: cannot write " + path.string()
-                  + "; the file is incomplete (disk full or file-size quota?). "
-                    "Free space or save to another directory.");
 }
 
 } // namespace

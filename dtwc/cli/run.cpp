@@ -165,26 +165,6 @@ std::string output_series_name(const Problem &prob, std::size_t index, std::opti
   return streamed_count ? "series_" + std::to_string(index) : std::string(prob.series_name(index));
 }
 
-std::ofstream open_output(const fs::path &path)
-{
-  std::ofstream out(path);
-  if (!out.is_open())
-    throw IOError("Cannot open output file '" + path.string()
-                  + "' for writing; check that the --output directory is writable.");
-  return out;
-}
-
-/// A full disk or a file-size quota fails the writes AFTER a successful open,
-/// so checking only is_open() left a truncated file behind a zero exit (B-05).
-void close_output(std::ofstream &out, const fs::path &path)
-{
-  out.close();
-  if (!out)
-    throw IOError("Write error on output file '" + path.string()
-                  + "': the file is incomplete (disk full or file-size quota?). Free space or choose "
-                    "another --output directory, then rerun.");
-}
-
 void write_labels_csv(const fs::path &path, const Problem &prob, const core::ClusteringResult &result,
                       std::optional<std::size_t> streamed_count)
 {

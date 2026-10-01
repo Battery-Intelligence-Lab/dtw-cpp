@@ -77,6 +77,40 @@ inline fs::path utf8_to_path(std::string_view name)
 }
 
 /**
+ * @brief Open `path` for writing, creating its parent directory first.
+ *
+ * @details An unchecked ofstream silently produces no file when the directory is
+ * missing or unwritable, so a failed open is an IOError naming the file. Pair
+ * every call with close_output().
+ */
+inline std::ofstream open_output(const fs::path &path, std::ios::openmode mode = std::ios::out)
+{
+  const auto directory = path.parent_path();
+  if (!directory.empty()) {
+    std::error_code ec;
+    fs::create_directories(directory, ec);
+    if (ec && !fs::is_directory(directory))
+      throw IOError("Cannot create the output directory '" + path_to_utf8(directory) + "': " + ec.message());
+  }
+  std::ofstream file(path, mode);
+  if (!file.is_open())
+    throw IOError("Cannot open '" + path_to_utf8(path) + "' for writing; check that its directory is writable.");
+  return file;
+}
+
+/// Close an output file and check it again: a full disk or a file-size quota
+/// fails the writes after a successful open, which an open-only check reports
+/// as success over a truncated file.
+inline void close_output(std::ofstream &file, const fs::path &path)
+{
+  file.close();
+  if (!file)
+    throw IOError("Write error on '" + path_to_utf8(path)
+                  + "': the file is incomplete (disk full or file-size quota?). Free space or choose another "
+                    "directory, then rerun.");
+}
+
+/**
  * @brief Ignores Byte Order Mark (BOM) in UTF-8 encoded files.
  *
  * @param in Reference to the input stream to process.
