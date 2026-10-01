@@ -265,8 +265,8 @@ The CLI writes the following files to the output directory:
 
 If an output file cannot be written in full (an unwritable directory, a full
 disk, a file-size quota), `dtwc_cl` exits 1 and names the file; a file named in
-that message is incomplete. A silhouette score that cannot be computed is only a
-warning.
+that message is incomplete. A silhouette that is undefined (fewer than two clusters
+realised) is only a warning; `-k 1` writes no silhouettes file.
 
 RAM-limited Parquet streaming writes labels and medoids, but deliberately does
 not materialise the dense matrix merely to produce distance or silhouette CSVs.

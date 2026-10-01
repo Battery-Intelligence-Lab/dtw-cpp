@@ -21,6 +21,7 @@
 #include "../base/error.hpp"
 #include "../base/timing.hpp"
 #include "../checkpoint.hpp"
+#include "../core/matrix_io.hpp"
 #include "../fileOperations.hpp"
 #include "../io/read_data.hpp"
 #include "../scores.hpp"
@@ -28,11 +29,9 @@
 #include "../io/parquet_chunk_reader.hpp"
 #endif
 
-#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -152,51 +151,6 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
                   "with -DDTWC_ENABLE_LLFIO=ON, raise --mmap-threshold only if the packed "
                   "heap matrix fits in RAM, or use --method onebatch.");
 #endif
-}
-
-// ---- outputs ---------------------------------------------------------------
-
-/// A series' name in the outputs. A streamed Parquet run holds no series, so
-/// its names are the readers' own synthetic `series_<i>`.
-std::string output_series_name(const Problem &prob, std::size_t index, std::optional<std::size_t> streamed_count)
-{
-  // A result comes from an algorithm run on this input.
-  assert(index < streamed_count.value_or(prob.size()));
-  return streamed_count ? "series_" + std::to_string(index) : std::string(prob.series_name(index));
-}
-
-void write_labels_csv(const fs::path &path, const Problem &prob, const core::ClusteringResult &result,
-                      std::optional<std::size_t> streamed_count)
-{
-  assert(result.labels.size() == streamed_count.value_or(prob.size()));
-  std::ofstream out = open_output(path);
-  out << "name,cluster\n";
-  for (std::size_t i = 0; i < result.labels.size(); ++i)
-    out << output_series_name(prob, i, streamed_count) << "," << result.labels[i] << "\n";
-  close_output(out, path);
-}
-
-void write_medoids_csv(const fs::path &path, const Problem &prob, const core::ClusteringResult &result,
-                       std::optional<std::size_t> streamed_count)
-{
-  std::ofstream out = open_output(path);
-  out << "cluster,medoid_index,medoid_name\n";
-  for (index_t c = 0; c < result.n_clusters(); ++c) {
-    const index_t index = result.medoid_indices[c];
-    out << c << "," << index << "," << output_series_name(prob, static_cast<std::size_t>(index), streamed_count)
-        << "\n";
-  }
-  close_output(out, path);
-}
-
-void write_silhouettes_csv(const fs::path &path, const std::vector<double> &silhouettes, const Problem &prob,
-                           const core::ClusteringResult &result)
-{
-  std::ofstream out = open_output(path);
-  out << "name,cluster,silhouette\n";
-  for (std::size_t i = 0; i < silhouettes.size(); ++i)
-    out << prob.series_name(i) << "," << result.labels[i] << "," << std::setprecision(8) << silhouettes[i] << "\n";
-  close_output(out, path);
 }
 
 /// What a run hands to its Result.
@@ -501,41 +455,8 @@ Outcome execute(const Config &config, std::optional<Data> data)
     }
   }
 
-  if (!config.output.empty()) {
-    const auto streamed_count = stream_payload ? std::optional<std::size_t>{ n_series } : std::nullopt;
-    const auto labels_path = output / utf8_to_path(config.name + "_labels.csv");
-    write_labels_csv(labels_path, prob, result, streamed_count);
-    if (config.verbose) std::cout << "Labels written to " << labels_path << "\n";
-    const auto medoids_path = output / utf8_to_path(config.name + "_medoids.csv");
-    write_medoids_csv(medoids_path, prob, result, streamed_count);
-    if (config.verbose) std::cout << "Medoids written to " << medoids_path << "\n";
-
-    // A matrix-free run does not fill an O(N^2) matrix merely to write these two
-    // (api-contract-2.0.md, approved addendum 3).
-    if (prob.is_distance_matrix_filled()) {
-      prob.write_distance_matrix(config.name + "_distance_matrix.csv");
-      if (config.verbose)
-        std::cout << "Distance matrix written to " << output / utf8_to_path(config.name + "_distance_matrix.csv")
-                  << "\n";
-      // A score that cannot be computed is a warning; a computed score that
-      // cannot be written is an error like any other file (B-05).
-      if (k > 1) {
-        std::optional<std::vector<double>> silhouettes;
-        try {
-          silhouettes = scores::silhouette(prob);
-        } catch (const std::exception &e) {
-          std::cerr << "Warning: Could not compute silhouette scores: " << e.what() << "\n";
-        }
-        if (silhouettes) {
-          write_silhouettes_csv(output / utf8_to_path(config.name + "_silhouettes.csv"), *silhouettes, prob, result);
-          const double mean = silhouettes->empty() ? 0.0
-                                                   : std::accumulate(silhouettes->begin(), silhouettes->end(), 0.0)
-                                                       / static_cast<double>(silhouettes->size());
-          if (config.verbose) std::cout << "Silhouette scores written, mean=" << std::setprecision(4) << mean << "\n";
-        }
-      }
-    }
-  }
+  if (!config.output.empty())
+    detail::write_result_files(prob, output, false, config.verbose ? &std::cout : nullptr);
   if (checkpoint_failure)
     throw IOError("--checkpoint '" + config.checkpoint + "': the distance checkpoint cannot be saved (the results are "
                   "written to '" + config.output + "'); free space or pass another directory to --checkpoint, or "
@@ -570,6 +491,77 @@ detail::ParquetPlan detail::plan_parquet_load(ClusterMethod method, Device devic
       "a Parquet directory exceeds --ram-limit. Convert it to one list-per-row "
       "Parquet file or raise --ram-limit.");
   return { plan.method, true };
+}
+
+void detail::write_result_files(Problem &prob, const fs::path &directory, bool complete, std::ostream *progress)
+{
+  const auto &labels = prob.labels();
+  const auto &medoids = prob.medoids();
+  // A RAM-limited Parquet run holds no series: its names are the readers' own `series_<i>`.
+  const bool streamed = prob.size() == 0;
+  const auto series_name = [&](std::size_t i) {
+    return streamed ? "series_" + std::to_string(i) : std::string(prob.series_name(i));
+  };
+  const auto file_in_directory = [&](const char *suffix) { return directory / utf8_to_path(prob.name() + suffix); };
+
+  if (complete && !streamed) prob.fill_distance_matrix();
+
+  const auto labels_path = file_in_directory("_labels.csv");
+  {
+    auto out = open_output(labels_path);
+    out << "name,cluster\n";
+    for (std::size_t i = 0; i < labels.size(); ++i) out << series_name(i) << ',' << labels[i] << '\n';
+    close_output(out, labels_path);
+  }
+  if (progress) *progress << "Labels written to " << labels_path << "\n";
+
+  const auto medoids_path = file_in_directory("_medoids.csv");
+  {
+    auto out = open_output(medoids_path);
+    out << "cluster,medoid_index,medoid_name\n";
+    for (std::size_t c = 0; c < medoids.size(); ++c)
+      out << c << ',' << medoids[c] << ',' << series_name(static_cast<std::size_t>(medoids[c])) << '\n';
+    close_output(out, medoids_path);
+  }
+  if (progress) *progress << "Medoids written to " << medoids_path << "\n";
+
+  if (streamed) {
+    if (complete)
+      throw InvalidInput("Result: a RAM-limited Parquet run holds no series, so it has no distance matrix or "
+                         "silhouettes to save; its labels and medoids are written, with series_<i> names.");
+    return;
+  }
+  // A matrix-free run does not fill an O(N^2) matrix merely to write these files
+  // (api-contract-2.0.md, approved addendum 3).
+  if (!prob.is_distance_matrix_filled()) return;
+  const auto matrix_path = file_in_directory("_distance_matrix.csv");
+  io::write_csv(prob.distance_matrix(), matrix_path);
+  if (progress) *progress << "Distance matrix written to " << matrix_path << "\n";
+
+  // s(i) is undefined for one cluster, which is no reason to fail a clustering that succeeded; a
+  // computed score that cannot be written is an error like any other file (B-05).
+  if (medoids.size() < 2) return;
+  std::vector<double> silhouettes;
+  try {
+    silhouettes = scores::silhouette(prob);
+  } catch (const UndefinedScore &e) {
+    std::cerr << "Warning: silhouettes skipped: " << e.what() << '\n';
+    return;
+  }
+  const auto silhouettes_path = file_in_directory("_silhouettes.csv");
+  {
+    auto out = open_output(silhouettes_path);
+    out << "name,cluster,silhouette\n";
+    for (std::size_t i = 0; i < silhouettes.size(); ++i)
+      out << series_name(i) << ',' << labels[i] << ',' << std::setprecision(8) << silhouettes[i] << '\n';
+    close_output(out, silhouettes_path);
+  }
+  if (progress) {
+    const double mean = silhouettes.empty() ? 0.0
+                                            : std::accumulate(silhouettes.begin(), silhouettes.end(), 0.0)
+                                                / static_cast<double>(silhouettes.size());
+    *progress << "Silhouette scores written, mean=" << std::setprecision(4) << mean << "\n";
+  }
 }
 
 Result run(const Config &config)

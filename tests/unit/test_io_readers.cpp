@@ -20,6 +20,7 @@
 #include <cstring>
 #include <utility>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -48,6 +49,8 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 #if defined(DTWC_HAS_PARQUET)
 #include <parquet/arrow/writer.h>
 #include <algorithms/fast_clara.hpp>
+#include <api.hpp>
+#include <cli/config.hpp>
 #include <io/parquet_chunk_reader.hpp>
 #include <Problem.hpp>
 #endif
@@ -252,10 +255,10 @@ TEST_CASE("ArrowIPC: a null series or a null value is rejected", "[io][arrow][se
 namespace {
 
 void write_parquet(const std::filesystem::path &path,
-                   const std::shared_ptr<arrow::Table> &table)
+                   const std::shared_ptr<arrow::Table> &table, std::int64_t rows_per_group = 1024)
 {
   auto out = unwrap(arrow::io::FileOutputStream::Open(dtwc::path_to_utf8(path))); // Arrow paths are UTF-8
-  REQUIRE(parquet::arrow::WriteTable(*table, arrow::default_memory_pool(), out, 1024).ok());
+  REQUIRE(parquet::arrow::WriteTable(*table, arrow::default_memory_pool(), out, rows_per_group).ok());
   REQUIRE(out->Close().ok());
 }
 
@@ -631,6 +634,60 @@ TEST_CASE("Parquet: streamed FastCLARA equals the in-RAM run",
   CHECK(streamed.labels == expected.labels);
   CHECK(streamed.total_cost == expected.total_cost);
   CHECK(streamed.labels.size() == series.size());
+}
+
+// A RAM-limited run holds no series, so Result::save used to read the names and
+// the distance matrix of an empty Data. It writes the labels and medoids under
+// the readers' series_<i> names and refuses the files it cannot make.
+TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses the matrix",
+          "[io][parquet][streaming]")
+{
+  std::vector<std::vector<double>> series;
+  for (int i = 0; i < 8; ++i) series.push_back(std::vector<double>(4, 10.0 * (i / 4) + 0.1 * i));
+  const auto input = tmpdir() / "streamed_save.parquet";
+  write_parquet(input, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
+                                          { make_list_f64(series) }),
+                2);
+
+  dtwc::Config config;
+  config.input = dtwc::path_to_utf8(input);
+  config.column = "series";
+  config.method = dtwc::ClusterMethod::CLARA;
+  config.k = 2;
+  config.sample_size = 4;
+  config.n_samples = 2;
+  config.ram_limit = 900; // below the file's resident estimate, above one row group: FastCLARA streams it
+  config.output.clear();
+  config.name = "streamed";
+  const auto result = dtwc::run(config);
+  std::filesystem::remove(input);
+
+  const auto out = tmpdir() / "streamed_save";
+  REQUIRE_THROWS_AS(result.save(out), dtwc::InvalidInput);
+
+  const auto lines = [&](const char *file) {
+    std::ifstream in(out / file);
+    REQUIRE(in.good());
+    std::vector<std::string> rows;
+    for (std::string row; std::getline(in, row);) {
+      if (!row.empty() && row.back() == '\r') row.pop_back();
+      rows.push_back(row);
+    }
+    return rows;
+  };
+  const auto labels = lines("streamed_labels.csv");
+  REQUIRE(labels.size() == series.size() + 1);
+  CHECK(labels.front() == "name,cluster");
+  for (std::size_t i = 0; i < series.size(); ++i)
+    CHECK(labels[i + 1] == "series_" + std::to_string(i) + "," + std::to_string(result.labels()[i]));
+  const auto medoids = lines("streamed_medoids.csv");
+  REQUIRE(medoids.size() == 3);
+  for (std::size_t c = 0; c < 2; ++c) {
+    const auto index = std::to_string(result.medoids()[c]);
+    CHECK(medoids[c + 1] == std::to_string(c) + "," + index + ",series_" + index);
+  }
+  CHECK_FALSE(std::filesystem::exists(out / "streamed_distance_matrix.csv"));
+  CHECK_FALSE(std::filesystem::exists(out / "streamed_silhouettes.csv"));
 }
 
 #else
