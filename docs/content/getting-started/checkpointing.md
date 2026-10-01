@@ -26,8 +26,13 @@ as a checkpoint:
 
 The fingerprint covers the exact series bits, their order, lengths, dtype and
 `ndim`; the band and every variant and multivariate parameter; the missing-data
-strategy; the pointwise metric; the backend and its precision. Series names are
-not part of it. Integers and doubles are in the host byte order, which is
+strategy; the pointwise metric; the precision the distances are computed in
+(the series' on the CPU, the GPU precision on a GPU). The device is not: FP64
+distances from the CPU and from a GPU differ by rounding only, so either one's
+file serves the other, and GPU 0's serves GPU 1; an FP32 file is refused by an
+FP64 run. A GPU with precision `auto` cannot write or read a file, since `auto`
+resolves on the GPU it meets: select `fp32` or `fp64`. Series names are not part
+of it. Integers and doubles are in the host byte order, which is
 little-endian on every supported platform.
 
 ## Loading: the outcomes

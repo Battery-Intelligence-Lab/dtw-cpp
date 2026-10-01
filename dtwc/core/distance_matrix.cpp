@@ -119,8 +119,8 @@ void check_header(const char *bytes, std::uint64_t length, size_t n,
   if (header.fingerprint != fingerprint)
     throw InvalidInput(shown(path) + " was computed for other data or other distance settings "
                        "(fingerprint mismatch): its distances are not this Problem's. Use the original "
-                       "data, band, variant, missing-data strategy, metric, precision and device, "
-                       "or another path.");
+                       "data, band, variant, missing-data strategy, metric and precision, or "
+                       "another path.");
 }
 
 /// Push a file's bytes to the device. A file renamed into place with its data

@@ -464,12 +464,19 @@ Problem::distance_checkpoint_identity() const
 core::DistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity(core::MetricType metric) const
 {
-  if (device_ == Device::GPU && gpu_backend == "CUDA" && gpu_precision_ == GpuPrecision::Auto) {
+  if (device_ == Device::GPU && gpu_precision_ == GpuPrecision::Auto)
     throw InvalidInput(
-      "use_mmap_distance_matrix: CUDA precision=Auto is not safe for persistent "
-      "warm-start caches because its resolved FP32/FP64 semantics depend on the "
-      "runtime GPU. Select explicit FP32 or FP64 before binding the cache.");
-  }
+      "A persistent distance cache (a mapped .dtwm or a checkpoint) records the precision "
+      "its distances are computed in, but GPU precision Auto resolves to FP32 or FP64 on the "
+      "GPU a fill meets. Select explicit FP32 or FP64 (set_gpu_precision, --gpu-precision) "
+      "before binding or saving the cache.");
+  // The precision the distances are computed in: the series' on the CPU, the
+  // GPU's on a GPU. Not the device: FP64 on a CPU and on a GPU differ by
+  // rounding, so either's cache serves the other (and GPU 0's serves GPU 1),
+  // while FP32 distances in an FP64 run are a loss of precision.
+  const core::Precision computed = device_ == Device::CPU ? data_.precision
+                                 : gpu_precision_ == GpuPrecision::FP32 ? core::Precision::Float32
+                                                                        : core::Precision::Float64;
 
   // The settings the stored distances were computed with, the metric among
   // them: without it a SquaredL2 run writes the same fingerprint as an L1 run
@@ -477,7 +484,7 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
   // variant parameters are included, even when inactive for the selected
   // variant: a harmless cache miss beats trusting an ambiguous configuration.
   FingerprintHash configuration;
-  static constexpr char configuration_domain[] = "dtwc-distance-cache-configuration-v1";
+  static constexpr char configuration_domain[] = "dtwc-distance-cache-configuration-v2";
   configuration.update(configuration_domain, sizeof(configuration_domain) - 1);
   hash_enum(configuration, metric);
   hash_u64(configuration, static_cast<std::uint64_t>(static_cast<std::int64_t>(distance_.band)));
@@ -490,11 +497,7 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
   hash_double(configuration, distance_.variant.twe_lambda);
   hash_enum(configuration, distance_.variant.mv_mode);
   hash_enum(configuration, distance_.missing);
-  // Backend/precision can change the stored numeric result even when the
-  // mathematical recurrence is the same (notably GPU FP32 versus CPU FP64).
-  hash_enum(configuration, device_);
-  hash_u64(configuration, static_cast<std::uint64_t>(static_cast<std::int64_t>(device_index_)));
-  hash_enum(configuration, gpu_precision_);
+  hash_enum(configuration, computed);
 
   FingerprintHash hash;
   static constexpr char domain[] = "dtwc-distance-cache-fingerprint-v1";
@@ -565,6 +568,10 @@ void Problem::validate_checkpoint_settings() const
     throw InvalidInput(
       "Problem::fill_distance_matrix: checkpoint.enabled requires a non-empty "
       "checkpoint.directory.");
+  // The autosave records the precision its distances were computed in, which
+  // Auto on a GPU leaves open: the identity refuses it here, before any pair.
+  if (device_ == Device::GPU && gpu_precision_ == GpuPrecision::Auto)
+    (void)distance_checkpoint_identity();
 }
 
 void Problem::validate_fill_request(std::string_view where) const

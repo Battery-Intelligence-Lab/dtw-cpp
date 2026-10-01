@@ -419,21 +419,63 @@ TEST_CASE("Problem non-L1 mmap identity is filled by the CPU in that metric",
 #endif
 }
 
-#ifdef DTWC_HAS_CUDA
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
 // The identity is computed before the file is mapped, so the refusal needs no llfio.
-TEST_CASE("Problem rejects CUDA Auto precision for persistent mmap identity",
-          "[variant][distmat][mmap][fingerprint][cuda]")
+TEST_CASE("Problem rejects GPU Auto precision for persistent mmap identity",
+          "[variant][distmat][mmap][fingerprint][gpu]")
 {
-  const ScratchDirectory cache_dir{ "mmap_cuda_auto_precision" };
+  const ScratchDirectory cache_dir{ "mmap_gpu_auto_precision" };
   const fs::path cache = cache_dir.path / "distances.dtwcache";
-  Problem prob{"cache_cuda_auto"};
+  Problem prob{"cache_gpu_auto"};
   prob.set_data(make_data({{0.0, 1.0}, {1.0, 2.0}}));
   prob.set_device(Device::GPU); // precision stays Auto, the default
 
   REQUIRE_THROWS_WITH(
     prob.use_mmap_distance_matrix(cache),
-    Catch::Matchers::ContainsSubstring("CUDA precision=Auto")
+    Catch::Matchers::ContainsSubstring("GPU precision Auto")
       && Catch::Matchers::ContainsSubstring("explicit FP32 or FP64"));
   REQUIRE_FALSE(fs::exists(cache));
+
+  // An autosaving fill refuses it before any pair, not after the GPU fill.
+  prob.checkpoint.enabled = true;
+  prob.checkpoint.directory = cache_dir.path.string();
+  REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
+                      Catch::Matchers::ContainsSubstring("GPU precision Auto"));
+  CHECK(std::as_const(prob).distance_matrix().size() == 0);
+}
+
+// A cache is keyed by the precision its distances were computed in, not by the
+// device: FP64 on the CPU and on a GPU differ by rounding only, so one's cache
+// serves the other, and GPU 0's serves GPU 1; FP32 distances in an FP64 run
+// would lose precision. A GPU build is enough: no pair is computed on a GPU.
+TEST_CASE("A distance cache is keyed by its computed precision, not its device",
+          "[variant][distmat][fingerprint][gpu]")
+{
+  const ScratchDirectory dir{ "fingerprint_precision" };
+  const auto problem = [](Device device, GpuPrecision precision) {
+    Problem prob{ "fingerprint" }; // one name: one checkpoint file
+    prob.set_data(make_data({ { 0.0, 1.0, 3.0 }, { 1.0, 2.0, 2.0 }, { 4.0, 0.5, 1.0 } }));
+    prob.set_device(device);
+    prob.set_gpu_precision(precision);
+    return prob;
+  };
+
+  auto cpu = problem(Device::CPU, GpuPrecision::Auto);
+  cpu.fill_distance_matrix();
+  save_checkpoint(cpu, dir.path.string());
+  auto gpu64 = problem(Device::GPU, GpuPrecision::FP64);
+  REQUIRE(load_checkpoint(gpu64, dir.path.string())); // a CPU FP64 cache serves a GPU FP64 run
+  REQUIRE(gpu64.is_distance_matrix_filled());
+  CHECK(gpu64.dist_by_ind(0, 2) == cpu.dist_by_ind(0, 2));
+
+  save_checkpoint(problem(Device::GPU, GpuPrecision::FP32), dir.path.string()); // no pair: its identity
+  auto cpu64 = problem(Device::CPU, GpuPrecision::Auto);
+  CHECK_THROWS_WITH(load_checkpoint(cpu64, dir.path.string()),
+                    Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
+#ifdef DTWC_HAS_CUDA
+  auto gpu1 = problem(Device::GPU, GpuPrecision::FP64);
+  gpu1.set_device(Device::GPU, 1);
+  CHECK(gpu1.distance_checkpoint_identity() == gpu64.distance_checkpoint_identity());
+#endif
 }
 #endif
