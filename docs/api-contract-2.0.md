@@ -367,7 +367,7 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
 | — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `distance_matrix()` |
-| — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
+| — (writer) | `writable_distance_matrix()` † | `set_distance_matrix(...)` (used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
 | `assignClusters()` | `assign_clusters()` | `assign_clusters()` (live) | — |
@@ -381,9 +381,12 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
 **† Name collision (adjudicated in §10 item 6).** C++
-`Problem::distance_matrix()` returns the `core::DistanceMatrix` by reference:
-the packed lower triangle, on the heap or mapped (`use_mmap_distance_matrix`),
-read and written through the same `get` / `set`. The Python/MATLAB spelling
+`Problem::distance_matrix()` returns the `core::DistanceMatrix` by const
+reference: the packed lower triangle, on the heap or mapped
+(`use_mmap_distance_matrix`), read through `get`. `writable_distance_matrix()`
+returns it for writing through `set`, and the `Problem` no longer calls it filled
+until the next `fill_distance_matrix()` scans what was written; a reader never
+changes that. The Python/MATLAB spelling
 returns an NxN numeric matrix of either storage; Python returns an independent
 copy. The language-specific semantics are retained.
 
@@ -398,7 +401,7 @@ asymmetric file raises `InvalidInput` naming the row. A distance is finite:
 `read_distance_matrix`, `load_checkpoint`, `use_mmap_distance_matrix` and
 `set_distance_matrix` raise `InvalidInput` naming the first pair that holds
 ±inf (NaN marks a pair still to compute), as does the next
-`fill_distance_matrix()` after a write through C++ `distance_matrix()`; the
+`fill_distance_matrix()` after a write through C++ `writable_distance_matrix()`; the
 clustering loops read the matrix unchecked. `write_clusters`,
 `write_silhouettes`, `write_medoid_members`, `write_distance_matrix` and Tier-1
 `Result::save` check each file after closing as well as after opening, so a

@@ -22,8 +22,7 @@
  * (NOT set to +inf, which would cascade and make the matrix unreachable).
  *
  * Implementation: these wrappers delegate to the unified DTW kernel
- * (`core::run_dtw`; the full-matrix dtwAROW to `core::dtw_kernel_full`)
- * parameterised on `SpanAROW*Cost` (NaN-propagating pointwise cost) +
+ * (`core::run_dtw`) parameterised on `SpanAROW*Cost` (NaN-propagating pointwise cost) +
  * `AROWCell` (diagonal-carry recurrence). The legacy hand-rolled AROW impls lived here pre-Phase 3;
  * they were folded into the unified kernel family with bit-for-bit cross-
  * validation on {no-NaN, interior-NaN, leading-NaN, trailing-NaN, all-NaN}
@@ -43,7 +42,7 @@
 #pragma once
 
 #include "base/settings.hpp"
-#include "core/dtw_kernel.hpp"   // run_dtw, dtw_kernel_full, AROWCell
+#include "core/dtw_kernel.hpp"   // run_dtw, AROWCell
 #include "core/dtw_cost.hpp"     // SpanAROWL1Cost / SpanAROWSquaredL2Cost
 #include "core/dtw_options.hpp"  // core::MetricType
 
@@ -105,28 +104,6 @@ data_t dtwAROW_L(const data_t* x, std::size_t nx, const data_t* y, std::size_t n
   return dtwAROW_banded<data_t>(x, nx, y, ny, -1, metric);
 }
 
-/**
- * @brief Computes DTW-AROW distance (full matrix, O(m*n) memory).
- *
- * @details Same recurrence as dtwAROW_L but stores the full cost matrix for
- * debugging and verification. The result is identical to dtwAROW_L.
- *
- * @tparam data_t Data type of the elements in the sequences.
- * @param x First sequence (may contain NaN for missing values).
- * @param y Second sequence (may contain NaN for missing values).
- * @param metric Pointwise distance metric (default: L1).
- * @return The DTW-AROW distance.
- */
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwAROW(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
-               core::MetricType metric = core::MetricType::L1)
-{
-  core::orient(x, nx, y, ny);
-  if (metric == core::MetricType::SquaredL2)
-    return core::dtw_kernel_full<data_t>(nx, ny, core::SpanAROWSquaredL2Cost<data_t>{ x, y }, core::AROWCell{});
-  return core::dtw_kernel_full<data_t>(nx, ny, core::SpanAROWL1Cost<data_t>{ x, y }, core::AROWCell{});
-}
-
 // =========================================================================
 //  Span + vector convenience overloads
 // =========================================================================
@@ -136,13 +113,6 @@ data_t dtwAROW_L(std::span<const data_t> x, std::span<const data_t> y,
                  core::MetricType metric = core::MetricType::L1)
 {
   return dtwAROW_L<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwAROW(std::span<const data_t> x, std::span<const data_t> y,
-               core::MetricType metric = core::MetricType::L1)
-{
-  return dtwAROW<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
 }
 
 template <typename data_t = dtwc::settings::default_data_t>
@@ -158,13 +128,6 @@ data_t dtwAROW_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
                  core::MetricType metric = core::MetricType::L1)
 {
   return dtwAROW_L<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
-}
-
-template <typename data_t = dtwc::settings::default_data_t>
-data_t dtwAROW(const std::vector<data_t> &x, const std::vector<data_t> &y,
-               core::MetricType metric = core::MetricType::L1)
-{
-  return dtwAROW<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
 }
 
 template <typename data_t = dtwc::settings::default_data_t>

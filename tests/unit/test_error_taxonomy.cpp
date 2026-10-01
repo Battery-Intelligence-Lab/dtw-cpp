@@ -232,7 +232,10 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
         (void)dtwc::algorithms::tadpole(prob, 0, 1.0);
       } },
     { "missing_utils.hpp: interpolate an all-NaN series", "InvalidInput",
-      [nan] { (void)dtwc::interpolate_linear(std::vector<double>{ nan, nan }); } },
+      [nan] {
+        std::vector<double> buffer;
+        (void)dtwc::interpolate_linear_into(std::vector<double>{ nan, nan }, buffer);
+      } },
     { "distance_sampling_weights.hpp: a non-finite distance", "InvalidInput",
       [inf] { (void)dtwc::core::distance_sampling_weights(std::vector<double>{ inf, 1.0 }, {}, "gt4"); } },
     { "initialisation.cpp: more clusters than series", "InvalidInput",

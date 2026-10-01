@@ -171,7 +171,7 @@ def plot_memory_efficiency(results_list, labels):
     # Memory usage per algorithm for n=4000
     n = 4000
     algorithms = {
-        "dtwFull\n(full matrix)": n * n * 8,  # O(n^2) doubles
+        "dtwFull\n(= dtwFull_L)": n * 8,  # the v1 name of dtwFull_L: one rolling column
         "dtwFull_L\n(rolling buffer)": n * 8,  # O(n) doubles
         "dtwBanded\n(band=50)": n * 8,  # O(n) rolling column
         "dtwBanded\n(band=100)": n * 8,  # O(n) rolling column

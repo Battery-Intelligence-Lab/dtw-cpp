@@ -2,7 +2,7 @@
  * @file unit_test_missing_dtw.cpp
  * @brief Unit tests for DTW with missing data (NaN-aware, DTW-AROW).
  *
- * @details Tests for dtwMissing, dtwMissing_L, and dtwMissing_banded functions
+ * @details Tests for dtwMissing_L and dtwMissing_banded
  * which handle NaN values in time series by treating missing pairs as zero cost.
  *
  * Reference: Yurtman, Soenen, Meert & Blockeel (2023), "Estimating DTW Distance
@@ -230,40 +230,6 @@ TEST_CASE("dtwMissing_L: early abandon triggers correctly", "[missing_dtw]")
 }
 
 // ===========================================================================
-// dtwMissing — full matrix version
-// ===========================================================================
-
-TEST_CASE("dtwMissing: matches dtwMissing_L for no NaN", "[missing_dtw]")
-{
-  std::vector<double> x{ 1, 2, 3, 4 };
-  std::vector<double> y{ 2, 4, 5 };
-
-  const auto full = dtwMissing<double>(x, y);
-  const auto light = dtwMissing_L<double>(x, y);
-
-  REQUIRE_THAT(full, WithinAbs(light, 1e-12));
-}
-
-TEST_CASE("dtwMissing: matches dtwMissing_L with NaN", "[missing_dtw]")
-{
-  std::vector<double> x{ 1, NaN, 3, 4 };
-  std::vector<double> y{ NaN, 2, 3 };
-
-  const auto full = dtwMissing<double>(x, y);
-  const auto light = dtwMissing_L<double>(x, y);
-
-  REQUIRE_THAT(full, WithinAbs(light, 1e-12));
-}
-
-TEST_CASE("dtwMissing: all NaN gives zero", "[missing_dtw]")
-{
-  std::vector<double> x{ NaN, NaN };
-  std::vector<double> y{ NaN, NaN, NaN };
-
-  REQUIRE_THAT(dtwMissing<double>(x, y), WithinAbs(0.0, 1e-15));
-}
-
-// ===========================================================================
 // dtwMissing_banded — banded version
 // ===========================================================================
 
@@ -429,7 +395,7 @@ TEST_CASE("dtwMissing_banded: SquaredL2 no NaN matches standard", "[missing_dtw]
 // ===========================================================================
 // A3: an all-NaN series under MissingStrategy::Interpolate must be rejected by
 // the SERIAL pre-scan, with a diagnostic naming the offending series — not by
-// interpolate_linear() throwing from inside the parallel per-pair lambda.
+// interpolate_linear_into() throwing from inside the parallel per-pair lambda.
 // ===========================================================================
 
 TEST_CASE("Interpolate: all-NaN series is rejected by the serial pre-scan",
@@ -518,7 +484,6 @@ TEST_CASE("ZeroCost kernels equal the recurrence for every NaN pattern, in both 
         const auto& a = swapped ? y : x;
         const auto& b = swapped ? x : y;
         CHECK(dtwMissing_L<double>(a, b, -1, metric) == want(-1));
-        CHECK(dtwMissing<double>(a, b, metric) == want(-1));
         // The masked pairs' best paths stay within one step of the diagonal: only band 0 binds.
         for (const int band : { -1, 0, 2, 100 })
           CHECK(ts::same_distance(dtwMissing_banded<double>(a, b, band, -1, metric), want(band)));
@@ -528,7 +493,7 @@ TEST_CASE("ZeroCost kernels equal the recurrence for every NaN pattern, in both 
   CHECK(pairs > 500);
 }
 
-TEST_CASE("dtwMissing SquaredL2: a missing last step costs nothing, hand-computed", "[missing_dtw]")
+TEST_CASE("dtwMissing_L SquaredL2: a missing last step costs nothing, hand-computed", "[missing_dtw]")
 {
   // x = {3, NaN}, y = {1, 2}
   // C(0,0) = (3-1)^2 = 4
@@ -537,15 +502,15 @@ TEST_CASE("dtwMissing SquaredL2: a missing last step costs nothing, hand-compute
   // C(1,1) = min(4, 4, 5) + 0 = 4   [x[1] is NaN]
   std::vector<double> x = { 3.0, NaN };
   std::vector<double> y = { 1.0, 2.0 };
-  REQUIRE_THAT(dtwMissing<double>(x, y, core::MetricType::SquaredL2), WithinAbs(4.0, 1e-12));
+  REQUIRE_THAT(dtwMissing_L<double>(x, y, -1, core::MetricType::SquaredL2), WithinAbs(4.0, 1e-12));
 }
 
-TEST_CASE("dtwMissing: an empty series gives the no-path sentinel", "[missing_dtw]")
+TEST_CASE("dtwMissing_L: an empty series gives the no-path sentinel", "[missing_dtw]")
 {
   std::vector<double> x{ 1.0, 2.0 };
   std::vector<double> empty{};
   constexpr double max_value = std::numeric_limits<double>::max();
 
-  REQUIRE(dtwMissing<double>(empty, x) == max_value);
-  REQUIRE(dtwMissing<double>(x, empty) == max_value);
+  REQUIRE(dtwMissing_L<double>(empty, x) == max_value);
+  REQUIRE(dtwMissing_L<double>(x, empty) == max_value);
 }

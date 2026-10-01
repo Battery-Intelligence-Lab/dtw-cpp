@@ -2,16 +2,15 @@
  * @file unit_test_arow_dtw.cpp
  * @brief Unit tests for DTW-AROW (diagonal-only alignment for missing values).
  *
- * @details Tests for dtwAROW, dtwAROW_L, and dtwAROW_banded covering:
+ * @details Tests for dtwAROW_L and dtwAROW_banded covering:
  *  1. No NaN -> matches standard DTW
  *  2. All NaN -> returns 0
- *  3. Symmetry: dtwAROW(x,y) == dtwAROW(y,x)
+ *  3. Symmetry: dtwAROW_L(x,y) == dtwAROW_L(y,x)
  *  4. AROW >= ZeroCost (stricter constraint -> higher or equal distance)
  *  5. Leading NaN is finite (NOT +inf)
  *  6. Trailing NaN is finite
  *  7. Non-negativity
  *  8. Banded with large band matches unbanded
- *  9. Full-matrix matches linear-space
  * Plus hand-computed verification tests.
  *
  * Reference: Yurtman, A., Soenen, J., Meert, W. & Blockeel, H. (2023).
@@ -74,14 +73,6 @@ TEST_CASE("dtwAROW_L: no NaN matches standard DTW (SquaredL2)", "[arow_dtw][prop
                WithinAbs(dtwFull_L<double>(x, y, -1, metric), 1e-12));
 }
 
-TEST_CASE("dtwAROW: no NaN matches standard dtwFull", "[arow_dtw][property]")
-{
-  std::vector<double> x{ 1, 2, 3, 4 };
-  std::vector<double> y{ 2, 3, 4, 5, 6 };
-
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(dtwFull_L<double>(x, y), 1e-12));
-}
-
 // ===========================================================================
 // Property 2: All NaN -> returns 0
 // ===========================================================================
@@ -105,16 +96,8 @@ TEST_CASE("dtwAROW_L: one series entirely NaN gives 0", "[arow_dtw][property]")
   REQUIRE_THAT(dtwAROW_L<double>(y_nan, x), WithinAbs(0.0, 1e-15));
 }
 
-TEST_CASE("dtwAROW: all NaN gives 0", "[arow_dtw][property]")
-{
-  std::vector<double> x{ NaN, NaN };
-  std::vector<double> y{ NaN, NaN, NaN };
-
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(0.0, 1e-15));
-}
-
 // ===========================================================================
-// Property 3: Symmetry dtwAROW(x,y) == dtwAROW(y,x)
+// Property 3: Symmetry dtwAROW_L(x,y) == dtwAROW_L(y,x)
 // ===========================================================================
 
 TEST_CASE("dtwAROW_L: symmetry with no NaN", "[arow_dtw][property]")
@@ -139,14 +122,6 @@ TEST_CASE("dtwAROW_L: symmetry with leading NaN in x", "[arow_dtw][property]")
   std::vector<double> y{ 1, 3, 5, 7 };
 
   REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(dtwAROW_L<double>(y, x), 1e-12));
-}
-
-TEST_CASE("dtwAROW: symmetry with NaN", "[arow_dtw][property]")
-{
-  std::vector<double> x{ 1, NaN, 3 };
-  std::vector<double> y{ 2, 4, NaN, 6 };
-
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(dtwAROW<double>(y, x), 1e-12));
 }
 
 // ===========================================================================
@@ -217,17 +192,6 @@ TEST_CASE("dtwAROW_L: multiple leading NaN gives finite result", "[arow_dtw][pro
   REQUIRE(result >= 0.0);
 }
 
-TEST_CASE("dtwAROW: leading NaN in both series gives finite result", "[arow_dtw][property]")
-{
-  std::vector<double> x{ NaN, 2, 3 };
-  std::vector<double> y{ NaN, 2, 3 };
-
-  // Both series have leading NaN: C(0,0)=0, subsequent cells should propagate fine.
-  const auto result = dtwAROW<double>(x, y);
-  REQUIRE(result < INF / 2.0);
-  REQUIRE(result >= 0.0);
-}
-
 // ===========================================================================
 // Property 6: Trailing NaN is finite
 // ===========================================================================
@@ -270,14 +234,6 @@ TEST_CASE("dtwAROW_L: non-negativity, all present", "[arow_dtw][property]")
   std::vector<double> y{ 1, 2, 3 };
 
   REQUIRE(dtwAROW_L<double>(x, y) >= 0.0);
-}
-
-TEST_CASE("dtwAROW: non-negativity with NaN", "[arow_dtw][property]")
-{
-  std::vector<double> x{ NaN, 5, NaN };
-  std::vector<double> y{ 1, NaN, 3 };
-
-  REQUIRE(dtwAROW<double>(x, y) >= 0.0);
 }
 
 // ===========================================================================
@@ -328,62 +284,10 @@ TEST_CASE("dtwAROW_banded: symmetry with band", "[arow_dtw][property]")
 }
 
 // ===========================================================================
-// Property 9: Full-matrix matches linear-space
-// ===========================================================================
-
-TEST_CASE("dtwAROW == dtwAROW_L (no NaN)", "[arow_dtw][property]")
-{
-  std::vector<double> x{ 1, 2, 3, 4 };
-  std::vector<double> y{ 2, 3, 4, 5, 6 };
-
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(dtwAROW_L<double>(x, y), 1e-12));
-}
-
-TEST_CASE("dtwAROW == dtwAROW_L (with NaN, equal length)", "[arow_dtw][property]")
-{
-  std::vector<double> x{ 1, NaN, 3, 4 };
-  std::vector<double> y{ NaN, 2, 3, 4 };
-
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(dtwAROW_L<double>(x, y), 1e-12));
-}
-
-TEST_CASE("dtwAROW == dtwAROW_L (with NaN, unequal length)", "[arow_dtw][property]")
-{
-  std::vector<double> x{ 1, NaN, 3 };
-  std::vector<double> y{ 2, 4, NaN, 6, 7 };
-
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(dtwAROW_L<double>(x, y), 1e-12));
-}
-
-TEST_CASE("dtwAROW == dtwAROW_L (leading NaN)", "[arow_dtw][property]")
-{
-  std::vector<double> x{ NaN, 2, 3 };
-  std::vector<double> y{ 1, 2, 3 };
-
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(dtwAROW_L<double>(x, y), 1e-12));
-}
-
-TEST_CASE("dtwAROW == dtwAROW_L (trailing NaN)", "[arow_dtw][property]")
-{
-  std::vector<double> x{ 1, 2, NaN };
-  std::vector<double> y{ 1, 2, 3 };
-
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(dtwAROW_L<double>(x, y), 1e-12));
-}
-
-TEST_CASE("dtwAROW == dtwAROW_L (all NaN)", "[arow_dtw][property]")
-{
-  std::vector<double> x{ NaN, NaN };
-  std::vector<double> y{ NaN, NaN, NaN };
-
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(dtwAROW_L<double>(x, y), 1e-15));
-}
-
-// ===========================================================================
 // Hand-computed verification tests
 // ===========================================================================
 
-TEST_CASE("dtwAROW: hand-computed, no NaN, 3x3", "[arow_dtw][handcomputed]")
+TEST_CASE("dtwAROW_L: hand-computed, no NaN, 3x3", "[arow_dtw][handcomputed]")
 {
   // x = {1, 2, 3}, y = {1, 2, 3}
   // AROW == standard DTW when no NaN.
@@ -393,11 +297,10 @@ TEST_CASE("dtwAROW: hand-computed, no NaN, 3x3", "[arow_dtw][handcomputed]")
   std::vector<double> x{ 1, 2, 3 };
   std::vector<double> y{ 1, 2, 3 };
 
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(0.0, 1e-12));
   REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("dtwAROW: hand-computed, leading NaN in x, equal length", "[arow_dtw][handcomputed]")
+TEST_CASE("dtwAROW_L: hand-computed, leading NaN in x, equal length", "[arow_dtw][handcomputed]")
 {
   // x = {NaN, 2, 3}, y = {1, 2, 3}
   // Full matrix (using AROW recurrence):
@@ -414,11 +317,10 @@ TEST_CASE("dtwAROW: hand-computed, leading NaN in x, equal length", "[arow_dtw][
   std::vector<double> x{ NaN, 2, 3 };
   std::vector<double> y{ 1, 2, 3 };
 
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(0.0, 1e-12));
   REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("dtwAROW: hand-computed, NaN in middle of x", "[arow_dtw][handcomputed]")
+TEST_CASE("dtwAROW_L: hand-computed, NaN in middle of x", "[arow_dtw][handcomputed]")
 {
   // x = {1, NaN, 3}, y = {1, 2, 3}
   // C(0,0): both present -> |1-1| = 0
@@ -434,11 +336,10 @@ TEST_CASE("dtwAROW: hand-computed, NaN in middle of x", "[arow_dtw][handcomputed
   std::vector<double> x{ 1, NaN, 3 };
   std::vector<double> y{ 1, 2, 3 };
 
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(0.0, 1e-12));
   REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("dtwAROW: hand-computed, trailing NaN in x", "[arow_dtw][handcomputed]")
+TEST_CASE("dtwAROW_L: hand-computed, trailing NaN in x", "[arow_dtw][handcomputed]")
 {
   // x = {1, 2, NaN}, y = {1, 2, 3}
   // C(0,0)=0, C(1,0)=1, C(2,0)=C(1,0)=1 (x[2]=NaN, boundary propagate)
@@ -450,11 +351,10 @@ TEST_CASE("dtwAROW: hand-computed, trailing NaN in x", "[arow_dtw][handcomputed]
   std::vector<double> x{ 1, 2, NaN };
   std::vector<double> y{ 1, 2, 3 };
 
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(0.0, 1e-12));
   REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("dtwAROW: hand-computed, nonzero with NaN", "[arow_dtw][handcomputed]")
+TEST_CASE("dtwAROW_L: hand-computed, nonzero with NaN", "[arow_dtw][handcomputed]")
 {
   // x = {1, 2}, y = {NaN, 5}
   // C(0,0): y[0]=NaN -> 0
@@ -465,11 +365,10 @@ TEST_CASE("dtwAROW: hand-computed, nonzero with NaN", "[arow_dtw][handcomputed]"
   std::vector<double> x{ 1, 2 };
   std::vector<double> y{ NaN, 5 };
 
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(3.0, 1e-12));
   REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(3.0, 1e-12));
 }
 
-TEST_CASE("dtwAROW: hand-computed, NaN forces diagonal cost accumulation", "[arow_dtw][handcomputed]")
+TEST_CASE("dtwAROW_L: hand-computed, NaN forces diagonal cost accumulation", "[arow_dtw][handcomputed]")
 {
   // x = {1, NaN, 10}, y = {1, 5, 10}
   // Without NaN: DTW would use x[1]->y[1]=5 path
@@ -487,11 +386,10 @@ TEST_CASE("dtwAROW: hand-computed, NaN forces diagonal cost accumulation", "[aro
   std::vector<double> x{ 1, NaN, 10 };
   std::vector<double> y{ 1, 5, 10 };
 
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(0.0, 1e-12));
   REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("dtwAROW: hand-computed, AROW > ZeroCost for specific case", "[arow_dtw][handcomputed]")
+TEST_CASE("dtwAROW_L: hand-computed, AROW > ZeroCost for specific case", "[arow_dtw][handcomputed]")
 {
   // x = {NaN, 10}, y = {1, 1}
   // AROW:
@@ -512,8 +410,8 @@ TEST_CASE("dtwAROW: hand-computed, AROW > ZeroCost for specific case", "[arow_dt
   std::vector<double> x{ NaN, 10 };
   std::vector<double> y{ 1, 1 };
 
-  const double arow = dtwAROW<double>(x, y);
-  const double zero = dtwMissing<double>(x, y);
+  const double arow = dtwAROW_L<double>(x, y);
+  const double zero = dtwMissing_L<double>(x, y);
 
   REQUIRE_THAT(arow, WithinAbs(9.0, 1e-12));
   REQUIRE(arow >= zero - 1e-12);
@@ -533,16 +431,6 @@ TEST_CASE("dtwAROW_L: empty vectors return maxValue", "[arow_dtw][edge]")
   REQUIRE(dtwAROW_L<double>(empty, x) == maxValue);
 }
 
-TEST_CASE("dtwAROW: empty vectors return maxValue", "[arow_dtw][edge]")
-{
-  std::vector<double> x{ 1, 2, 3 };
-  std::vector<double> empty{};
-  constexpr double maxValue = std::numeric_limits<double>::max();
-
-  REQUIRE(dtwAROW<double>(x, empty) == maxValue);
-  REQUIRE(dtwAROW<double>(empty, x) == maxValue);
-}
-
 TEST_CASE("dtwAROW_L: identical series gives zero", "[arow_dtw][edge]")
 {
   std::vector<double> x{ 1, 2, 3, 4, 5 };
@@ -555,7 +443,6 @@ TEST_CASE("dtwAROW_L: single-element series, no NaN", "[arow_dtw][edge]")
   std::vector<double> y{ 3.0 };
 
   REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(2.0, 1e-12));
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(2.0, 1e-12));
 }
 
 TEST_CASE("dtwAROW_L: single-element series, NaN", "[arow_dtw][edge]")
@@ -564,7 +451,6 @@ TEST_CASE("dtwAROW_L: single-element series, NaN", "[arow_dtw][edge]")
   std::vector<double> y{ NaN };
 
   REQUIRE_THAT(dtwAROW_L<double>(x, y), WithinAbs(0.0, 1e-15));
-  REQUIRE_THAT(dtwAROW<double>(x, y), WithinAbs(0.0, 1e-15));
 }
 
 TEST_CASE("dtwAROW_banded: no NaN matches standard dtwBanded with large band", "[arow_dtw][edge]")
@@ -847,7 +733,6 @@ TEST_CASE("DTW-AROW kernels equal the recurrence for every NaN pattern, in both 
         const double arow = dtwAROW_L<double>(a, b, metric);
         CHECK(arow == want(-1));
         CHECK(arow >= zero_cost);
-        CHECK(dtwAROW<double>(a, b, metric) == want(-1));
         // The masked pairs' best paths stay within one step of the diagonal: only band 0 binds.
         for (const int band : { -1, 0, 2, 100 })
           CHECK(ts::same_distance(dtwAROW_banded<double>(a, b, band, metric), want(band)));

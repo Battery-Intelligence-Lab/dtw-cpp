@@ -161,11 +161,9 @@ double arow_wrapper(Span x, Span y, int band)
 
 double interpolate_wrapper(Span x, Span y, int band)
 {
-  const auto fill = [](Span s) {
-    return dtwc::has_missing(s) ? dtwc::interpolate_linear(s)
-                                : std::vector<double>(s.begin(), s.end());
-  };
-  return dtwc::dtwBanded<double>(fill(x), fill(y), band, -1.0, MetricType::L1);
+  std::vector<double> x_buffer, y_buffer;
+  return dtwc::dtwBanded<double>(dtwc::interpolate_linear_into(x, x_buffer),
+                                 dtwc::interpolate_linear_into(y, y_buffer), band, -1.0, MetricType::L1);
 }
 
 std::vector<float> narrow(Span s) { return {s.begin(), s.end()}; }

@@ -11,8 +11,7 @@
  *
  *          where `cost(a, b) = 0` if either is NaN, else the regular L1 /
  *          squared-L2 distance. All entry points route through core::run_dtw
- *          (the full-matrix dtwMissing through dtw_kernel_full) with
- *          `core::SpanNanAwareL1Cost` (or its MV / SquaredL2 variants) +
+ *          with `core::SpanNanAwareL1Cost` (or its MV / SquaredL2 variants) +
  *          `core::StandardCell`.
  *
  *          Reference: Yurtman, A., Soenen, J., Meert, W. & Blockeel, H. (2023),
@@ -35,7 +34,6 @@
 #include "core/dtw_options.hpp"
 
 #include <cstddef>
-#include <limits>
 #include <span>
 #include <vector>
 
@@ -65,18 +63,6 @@ data_t dtwMissing_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
   return dtwMissing_banded<data_t>(x, nx, y, ny, -1, early_abandon, metric);
 }
 
-template <typename data_t>
-data_t dtwMissing(const data_t* x, size_t nx, const data_t* y, size_t ny,
-                  core::MetricType metric = core::MetricType::L1)
-{
-  if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
-  if (x == y && nx == ny) return 0;
-  core::orient(x, nx, y, ny);
-  if (metric == core::MetricType::SquaredL2)
-    return core::dtw_kernel_full<data_t>(nx, ny, core::SpanNanAwareSquaredL2Cost<data_t>{ x, y }, core::StandardCell{});
-  return core::dtw_kernel_full<data_t>(nx, ny, core::SpanNanAwareL1Cost<data_t>{ x, y }, core::StandardCell{});
-}
-
 // -------------------------------------------------------------------------
 // Span overloads
 // -------------------------------------------------------------------------
@@ -88,13 +74,6 @@ data_t dtwMissing_L(std::span<const data_t> x, std::span<const data_t> y,
 {
   return dtwMissing_L<data_t>(x.data(), x.size(), y.data(), y.size(),
                               early_abandon, metric);
-}
-
-template <typename data_t>
-data_t dtwMissing(std::span<const data_t> x, std::span<const data_t> y,
-                  core::MetricType metric = core::MetricType::L1)
-{
-  return dtwMissing<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
 }
 
 template <typename data_t = dtwc::settings::default_data_t>
@@ -118,13 +97,6 @@ data_t dtwMissing_L(const std::vector<data_t>& x, const std::vector<data_t>& y,
 {
   return dtwMissing_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y},
                               early_abandon, metric);
-}
-
-template <typename data_t>
-data_t dtwMissing(const std::vector<data_t>& x, const std::vector<data_t>& y,
-                  core::MetricType metric = core::MetricType::L1)
-{
-  return dtwMissing<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
 }
 
 template <typename data_t = dtwc::settings::default_data_t>

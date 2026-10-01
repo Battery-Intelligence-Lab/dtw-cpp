@@ -99,7 +99,7 @@ TEST_CASE("FX-1: a band narrower than the widest length difference is rejected",
   dtwc::Problem primed("band_primed");
   primed.set_data(named(series));
   primed.set_band(2);
-  auto &cache = primed.distance_matrix();
+  auto &cache = primed.writable_distance_matrix();
   cache.resize(3);
   cache.set(0, 1, 1.0);
   CHECK_THAT(message_of<dtwc::InvalidInput>([&] { primed.fill_distance_matrix(); }),
@@ -140,12 +140,12 @@ TEST_CASE("FX-1: a matrix holding every pair needs no feasible band; a new one r
   prob.set_band(2);
 
   // Through the matrix accessor: diagonal only, then the pair.
-  auto &matrix = prob.distance_matrix();
+  auto &matrix = prob.writable_distance_matrix();
   matrix.resize(2);
   matrix.set(0, 0, 0.0);
   matrix.set(1, 1, 0.0);
   dtwc::save_checkpoint(prob, (dir.path / "partial").string()); // pair uncomputed
-  prob.distance_matrix().set(0, 1, 7.5);
+  prob.writable_distance_matrix().set(0, 1, 7.5);
   CHECK_NOTHROW(prob.fill_distance_matrix());
   CHECK(prob.is_distance_matrix_filled());
   CHECK(prob.dist_by_ind(0, 1) == 7.5);
@@ -171,7 +171,7 @@ TEST_CASE("FX-1: a matrix holding every pair needs no feasible band; a new one r
   // And an edit through the matrix accessor (resize() NaN-wipes every entry).
   prob.read_distance_matrix(dir.path / "full.csv");
   CHECK(prob.dist_by_ind(0, 1) == 2.5);
-  prob.distance_matrix().resize(2);
+  prob.writable_distance_matrix().resize(2);
   CHECK_THAT(band_error(prob), ContainsSubstring("Problem::fill_distance_matrix: band = 2"));
 }
 

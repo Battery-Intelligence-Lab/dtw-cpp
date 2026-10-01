@@ -32,7 +32,6 @@
 
 #include "base/error.hpp"              // for InvalidInput
 #include "base/settings.hpp"           // for DEFAULT_BAND
-#include "core/scratch_matrix.hpp"
 #include "core/dtw_options.hpp"    // for core::MetricType
 #include "core/dtw_kernel.hpp"     // unified DTW kernels, orient, run_dtw
 #include "core/dtw_cost.hpp"       // Span*Cost functors
@@ -97,29 +96,6 @@ void require_finite(std::span<const data_t> x, std::span<const data_t> y,
 // =========================================================================
 
 /**
- * @brief Computes the full dynamic time warping distance (pointer + length).
- *
- * @tparam data_t Data type of the elements in the sequences.
- * @param x Pointer to first sequence.
- * @param nx Length of first sequence.
- * @param y Pointer to second sequence.
- * @param ny Length of second sequence.
- * @param metric Pointwise distance metric (default: L1).
- * @return The dynamic time warping distance.
- */
-template <typename data_t>
-data_t dtwFull(const data_t* x, size_t nx, const data_t* y, size_t ny,
-               core::MetricType metric = core::MetricType::L1)
-{
-  if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
-  if (x == y && nx == ny) return 0;
-  core::orient(x, nx, y, ny);
-  if (metric == core::MetricType::SquaredL2)
-    return core::dtw_kernel_full<data_t>(nx, ny, core::SpanSquaredL2Cost<data_t>{ x, y }, core::StandardCell{});
-  return core::dtw_kernel_full<data_t>(nx, ny, core::SpanL1Cost<data_t>{ x, y }, core::StandardCell{});
-}
-
-/**
  * @brief Computes the banded DTW distance (pointer + length).
  *
  * @details Uses the canonical fixed Sakoe-Chiba window `|i-j| <= band`.
@@ -171,11 +147,30 @@ data_t dtwFull_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
   return dtwBanded<data_t>(x, nx, y, ny, -1, early_abandon, metric);
 }
 
+/**
+ * @brief Computes the full dynamic time warping distance (pointer + length):
+ *        the v1 name of dtwFull_L, the same distance in linear space.
+ *
+ * @tparam data_t Data type of the elements in the sequences.
+ * @param x Pointer to first sequence.
+ * @param nx Length of first sequence.
+ * @param y Pointer to second sequence.
+ * @param ny Length of second sequence.
+ * @param metric Pointwise distance metric (default: L1).
+ * @return The dynamic time warping distance.
+ */
+template <typename data_t>
+data_t dtwFull(const data_t* x, size_t nx, const data_t* y, size_t ny,
+               core::MetricType metric = core::MetricType::L1)
+{
+  return dtwFull_L<data_t>(x, nx, y, ny, data_t(-1), metric);
+}
+
 // =========================================================================
 //  Public API â€” vector overloads (forward to pointer versions)
 // =========================================================================
 
-/// Full-matrix DTW (span overload).
+/// Full DTW, the v1 name of dtwFull_L (span overload).
 template <typename data_t>
 data_t dtwFull(std::span<const data_t> x, std::span<const data_t> y,
                core::MetricType metric = core::MetricType::L1)

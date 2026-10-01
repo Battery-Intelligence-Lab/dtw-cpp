@@ -831,7 +831,7 @@ TEST_CASE("FastCLARA leaves an existing parent cache byte-stable",
   Problem cached = make_clara_problem(N);
   Problem fresh = make_clara_problem(N);
 
-  auto &matrix = cached.distance_matrix();
+  auto &matrix = cached.writable_distance_matrix();
   matrix.resize(N);
   matrix.set(0, 1, 12345.0);
   matrix.set(2, 3, 67890.0);

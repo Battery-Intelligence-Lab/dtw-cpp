@@ -144,10 +144,10 @@ private:
                      std::span<double>)> dtw_block_fn_f32_;
   /// distMat holds every pair under distance_: set by a fill and by a complete
   /// load or bind; cleared by any change of series or distance settings and by
-  /// the mutable distance_matrix() accessor.
+  /// writable_distance_matrix().
   bool filled_{ false };
-  /// A caller may have written into distMat through the mutable
-  /// distance_matrix(): the next fill scans it, where those writes commit.
+  /// A caller may have written into distMat through
+  /// writable_distance_matrix(): the next fill scans it, where those writes commit.
   /// Every other way a matrix enters scans it there.
   bool written_{ false };
 
@@ -485,13 +485,14 @@ public:
   bool is_distance_matrix_filled() const { return filled_ && band == distance_.band; }
   [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
 
-  /// The distance matrix, on the heap or mapped (const).
+  /// The distance matrix, on the heap or mapped, to read.
   const core::DistanceMatrix &distance_matrix() const { return distMat; }
-  /// The distance matrix (mutable). The caller may change which pairs are
-  /// known, so the Problem no longer calls it filled: the next
+  /// The distance matrix, opened for writing. The caller may change which
+  /// pairs are known, so the Problem no longer calls it filled: the next
   /// fill_distance_matrix() refuses a pair set to ±inf (InvalidInput) and
-  /// computes the pairs left NaN, none when all are set.
-  core::DistanceMatrix &distance_matrix()
+  /// computes the pairs left NaN, none when all are set. A reader calls the
+  /// const distance_matrix(), which changes nothing.
+  core::DistanceMatrix &writable_distance_matrix()
   {
     sync_band();
     filled_ = false;

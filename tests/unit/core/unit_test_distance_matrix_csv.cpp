@@ -129,7 +129,7 @@ void configure_dense_problem(dtwc::Problem &problem)
   problem.set_data(dtwc::Data(
     std::vector<std::vector<double>>{{0.0}, {1.0}, {2.0}},
     std::vector<std::string>{"a", "b", "c"}));
-  auto &matrix = problem.distance_matrix();
+  auto &matrix = problem.writable_distance_matrix();
   matrix.resize(3);
   populate_contract_matrix(matrix);
   problem.set_output_folder(test_root());
@@ -143,7 +143,7 @@ void configure_mmap_problem(
     std::vector<std::vector<double>>{{0.0}, {1.0}, {2.0}},
     std::vector<std::string>{"a", "b", "c"}));
   problem.use_mmap_distance_matrix(cache_path);
-  auto &matrix = problem.distance_matrix();
+  auto &matrix = problem.writable_distance_matrix();
   populate_contract_matrix(matrix);
   problem.set_output_folder(test_root());
 }
@@ -367,7 +367,7 @@ TEST_CASE("F14 negative infinity rejects before dense Problem output",
 {
   dtwc::Problem problem("f14_negative");
   configure_dense_problem(problem);
-  problem.distance_matrix().set(
+  problem.writable_distance_matrix().set(
     1, 2, -std::numeric_limits<double>::infinity());
 
   const auto path = fresh_path("negative_existing.csv");
@@ -503,7 +503,7 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
 
   dtwc::Problem problem("f14_mmap_nonfinite");
   configure_mmap_problem(problem, fresh_path("nonfinite.dtwm"));
-  auto &matrix = problem.distance_matrix();
+  auto &matrix = problem.writable_distance_matrix();
   matrix.set(1, 2, -std::numeric_limits<double>::infinity());
 
   std::ostringstream stream;

@@ -169,7 +169,7 @@ $$C(i,j) = d(x[i], y[j]) + \text{softmin}_\gamma\big(C(i-1,j-1),\; C(i-1,j),\; C
 
 As $$\gamma \to 0$$, Soft-DTW converges to standard DTW.
 
-**Note:** Soft-DTW can return **negative** values for identical series when $$\gamma > 0$$. It also requires the full cost matrix (no rolling-buffer optimization), so memory usage is $$O(m \times n)$$.
+**Note:** Soft-DTW can return **negative** values for identical series when $$\gamma > 0$$. The distance keeps one rolling column, $$O(\min(m, n))$$ memory, as standard DTW does; `soft_dtw_gradient` keeps two $$m \times n$$ matrices, which its backward pass reads.
 
 ### C++ API
 

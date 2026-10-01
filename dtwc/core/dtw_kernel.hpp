@@ -2,12 +2,12 @@
  * @file dtw_kernel.hpp
  * @brief Unified scalar DTW kernel, parameterised on Cost + Cell policies.
  *
- * @details One kernel each for {Full matrix, Linear-space, Sakoe-Chiba banded}.
- *          Variants (Standard, ADTW, WDTW) pick a Cell policy + Cost functor and
- *          call the same kernel. The wavefront shape, rolling-buffer scratch,
- *          and early-abandon handling live here once — the old per-variant
- *          `_impl` helpers in warping.hpp / warping_adtw.hpp / warping_wdtw.hpp
- *          are collapsed into these three kernels.
+ * @details One kernel each for {Linear-space, Sakoe-Chiba banded}.
+ *          Variants (Standard, ADTW, WDTW, Soft-DTW, AROW) pick a Cell policy +
+ *          Cost functor and call the same kernel. The wavefront shape,
+ *          rolling-buffer scratch, and early-abandon handling live here once —
+ *          the old per-variant `_impl` helpers in warping.hpp / warping_adtw.hpp
+ *          / warping_wdtw.hpp are collapsed into these two kernels.
  *
  *          Contracts:
  *            Cost: T operator()(size_t short_idx, size_t long_idx) const noexcept
@@ -45,8 +45,6 @@
  */
 
 #pragma once
-
-#include "scratch_matrix.hpp"
 
 #include <algorithm>    // std::min, std::max
 #include <array>        // std::array
@@ -138,8 +136,8 @@ struct SoftGammaScale {
 /// `left + cost` (first col) or `up + cost` (first row), matching the hard
 /// accumulation used in `soft_dtw.hpp`.
 ///
-/// Soft-DTW is inherently O(n*m) full-matrix (gradient backward pass needs
-/// the full C); only `dtw_kernel_full` is meaningful for SoftCell.
+/// The value needs only dtw_kernel_linear's rolling column; soft_dtw_gradient
+/// keeps the full matrices its backward pass reads.
 template <typename T>
 struct SoftCell {
   T gamma;
@@ -160,10 +158,13 @@ struct SoftCell {
     const auto contribution = [&](T predecessor) noexcept {
       return std::exp(-scale.scaled(predecessor - m));
     };
+    // diag, left, up: on dtw_kernel_linear (up = dp[i, j-1], left = dp[i-1, j])
+    // the order soft_dtw has always summed in; another order moves a float32
+    // distance by an ulp.
     T acc = T(0);
     if (diag != maxValue) acc += contribution(diag);
-    if (up   != maxValue) acc += contribution(up);
     if (left != maxValue) acc += contribution(left);
+    if (up   != maxValue) acc += contribution(up);
     return m - gamma * std::log(acc) + cost;
   }
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -224,46 +225,7 @@ dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 }
 
 // ===========================================================================
-// Kernel 1: full matrix (O(n*m) space). For reference / correctness.
-// ===========================================================================
-
-template <typename T, typename Cost, typename Cell>
-T dtw_kernel_full(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell)
-{
-  const Cost cost = cost_in; // in registers: see the file comment
-  constexpr T maxValue = std::numeric_limits<T>::max();
-  if (n_short == 0 || n_long == 0) return maxValue;
-
-  thread_local core::ScratchMatrix<T> C;
-  C.resize(static_cast<int>(n_short), static_cast<int>(n_long));
-
-  C(0, 0) = cell.seed(cost(0, 0), 0, 0);
-  for (std::size_t i = 1; i < n_short; ++i)
-    C(static_cast<int>(i), 0) = cell.combine(
-        maxValue, C(static_cast<int>(i - 1), 0), maxValue, cost(i, 0), i, 0);
-  for (std::size_t j = 1; j < n_long; ++j)
-    C(0, static_cast<int>(j)) = cell.combine(
-        maxValue, maxValue, C(0, static_cast<int>(j - 1)), cost(0, j), 0, j);
-
-  // As in the rolling kernels below: C(i-1, j) is carried in a register rather
-  // than reloaded right after its store, and the column pointers are taken once
-  // per column.
-  for (std::size_t j = 1; j < n_long; ++j) {
-    const T *prev = &C(0, static_cast<int>(j - 1));
-    T *col = &C(0, static_cast<int>(j));
-    T up = col[0];
-    for (std::size_t i = 1; i < n_short; ++i) {
-      const T diag = prev[i - 1];
-      const T left = prev[i];
-      up = cell.combine(diag, up, left, cost(i, j), i, j); // C(i, j), the next cell's up
-      col[i] = up;
-    }
-  }
-  return C(static_cast<int>(n_short - 1), static_cast<int>(n_long - 1));
-}
-
-// ===========================================================================
-// Kernel 2: linear-space full-band DTW (outer = long, inner = short).
+// Kernel 1: linear-space full-band DTW (outer = long, inner = short).
 // Rolling buffer of size n_short. Optional early abandon.
 // ===========================================================================
 
@@ -277,7 +239,7 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
 
   thread_local static std::vector<T> short_buf;
   short_buf.resize(n_short);
-  T *short_side = short_buf.data(); // hoisted, as in dtw_kernel_full
+  T *short_side = short_buf.data(); // hoisted out of the loops
 
   // First column (long_idx = 0): accumulate along short axis, no diag/left.
   short_side[0] = cell.seed(cost(0, 0), 0, 0);
@@ -312,7 +274,7 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
 }
 
 // ===========================================================================
-// Kernel 3: Sakoe-Chiba banded DTW (outer = short, inner = long).
+// Kernel 2: Sakoe-Chiba banded DTW (outer = short, inner = long).
 // Rolling column of size n_long plus per-row band bounds. Optional early abandon.
 // ===========================================================================
 
@@ -337,7 +299,7 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
 
   thread_local std::vector<T> col_buf;
   col_buf.assign(n_long, maxValue);
-  T *col = col_buf.data(); // hoisted, as in dtw_kernel_full
+  T *col = col_buf.data(); // hoisted out of the loops
   thread_local std::vector<std::size_t> low_bounds, high_bounds;
   low_bounds.resize(n_short);
   high_bounds.resize(n_short);
@@ -438,7 +400,7 @@ T run_dtw(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, Cell
 }
 
 // ===========================================================================
-// Kernel 4: W equal-length pairs in SIMD lanes (outer = y, inner = x).
+// Kernel 3: W equal-length pairs in SIMD lanes (outer = y, inner = x).
 // The pairs (x, ys[w]) share x. Every lane evaluates dtw_kernel_linear's cells
 // with its arithmetic in its order; with a band, dtw_kernel_banded's cells,
 // transposed (outer y, not outer x), each from the same three neighbours. So

@@ -118,7 +118,8 @@ struct DistanceConfig
 /// setters, the checked dtwc::distance functions), never per pair: the kernels
 /// below it take their parameters unchecked.
 /// @param f32 the distance runs in float32, which must hold the active parameters.
-/// @throws InvalidInput for a parameter outside its domain (every parameter, the
+/// @throws InvalidInput for an enum value outside its set (an integer cast), a
+///         parameter outside its domain (every parameter, the
 ///         inactive ones too), a missing-data strategy with a variant other than
 ///         Standard, a metric other than L1 with a variant whose kernel computes L1,
 ///         a univariate feature on ndim > 1, and, under `f32`, an active parameter

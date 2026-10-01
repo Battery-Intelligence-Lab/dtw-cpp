@@ -9,8 +9,6 @@ target_sources(dtwc++
     dtw_options.hpp
     lower_bound_impl.hpp
     sha256.hpp
-    scratch_matrix.hpp
-    time_series.hpp
     z_normalize.hpp
   )
 

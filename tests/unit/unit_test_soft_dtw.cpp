@@ -11,8 +11,6 @@
 
 #include <dtwc.hpp>
 #include <soft_dtw.hpp>
-#include <core/dtw_cost.hpp>
-#include <core/dtw_kernel.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -27,7 +25,7 @@ using Catch::Matchers::WithinRel;
 using namespace dtwc;
 
 // ---------------------------------------------------------------------------
-// softmin_gamma tests
+// minimum-positive gamma
 // ---------------------------------------------------------------------------
 
 TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
@@ -37,15 +35,13 @@ TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
     const T gamma = std::numeric_limits<T>::denorm_min();
     REQUIRE(gamma > T(0));
 
-    const T expected_softmin = -gamma * std::log(T(3));
-    const T softmin = softmin_gamma(T(0), T(0), T(0), gamma);
-    CHECK(std::isfinite(softmin));
-    CHECK(softmin == expected_softmin);
-
+    // Every cost is 0 and the first row and column keep their one predecessor,
+    // so the value is the softmin of three zeros: -gamma ln 3.
     const std::vector<T> x{T(0), T(0)};
     const std::vector<T> y{T(0), T(0)};
     const T value = soft_dtw<T>(x, y, gamma);
     CHECK(std::isfinite(value));
+    CHECK(value == -gamma * std::log(T(3)));
 
     const auto gradient = soft_dtw_gradient<T>(x, y, gamma);
     REQUIRE(gradient.size() == x.size());
@@ -57,52 +53,6 @@ TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
 
   SECTION("float64") { check_precision.template operator()<double>(); }
   SECTION("float32") { check_precision.template operator()<float>(); }
-}
-
-TEST_CASE("softmin_gamma: three equal values", "[soft_dtw][softmin]")
-{
-  // softmin(a, a, a, gamma) = a - gamma * log(3)
-  const double a = 5.0;
-  const double gamma = 1.0;
-  const double expected = a - gamma * std::log(3.0);
-  REQUIRE_THAT(softmin_gamma(a, a, a, gamma), WithinAbs(expected, 1e-12));
-}
-
-TEST_CASE("softmin_gamma: three equal values, different gamma", "[soft_dtw][softmin]")
-{
-  const double a = 10.0;
-  const double gamma = 0.5;
-  const double expected = a - gamma * std::log(3.0);
-  REQUIRE_THAT(softmin_gamma(a, a, a, gamma), WithinAbs(expected, 1e-12));
-}
-
-TEST_CASE("softmin_gamma: approaches min as gamma -> 0", "[soft_dtw][softmin]")
-{
-  const double a = 3.0, b = 1.0, c = 5.0;
-  const double gamma = 0.001;
-  const double hard_min = 1.0;
-  // With very small gamma, softmin should be very close to min
-  REQUIRE_THAT(softmin_gamma(a, b, c, gamma), WithinAbs(hard_min, 1e-2));
-}
-
-TEST_CASE("softmin_gamma: always <= min(a,b,c)", "[soft_dtw][softmin]")
-{
-  // softmin is always <= hard min due to the log(sum(exp)) >= 0 term
-  const double a = 3.0, b = 7.0, c = 5.0;
-  for (double gamma : { 0.01, 0.1, 0.5, 1.0, 2.0, 10.0 }) {
-    const double result = softmin_gamma(a, b, c, gamma);
-    REQUIRE(result <= std::min({ a, b, c }) + 1e-12);
-  }
-}
-
-TEST_CASE("softmin_gamma: numerical stability with large values", "[soft_dtw][softmin]")
-{
-  // Large values should not cause overflow thanks to log-sum-exp trick
-  const double a = 1e10, b = 1e10 + 1.0, c = 1e10 + 2.0;
-  const double gamma = 1.0;
-  const double result = softmin_gamma(a, b, c, gamma);
-  REQUIRE(std::isfinite(result));
-  REQUIRE(result <= a + 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -313,73 +263,4 @@ TEST_CASE("soft_dtw_gradient: zero gradient at minimum for identical series", "[
   for (size_t i = 0; i < grad.size(); ++i) {
     REQUIRE(std::isfinite(grad[i]));
   }
-}
-
-// ===========================================================================
-//  Phase 3.3: cross-validate the unified-kernel Soft-DTW (SpanL1Cost +
-//  SoftCell via dtw_kernel_full) against the existing soft_dtw(). Used as a
-//  gate before migrating Problem::rebind_dtw_fn's SoftDTW path to the
-//  unified kernel.
-// ===========================================================================
-
-namespace {
-double softdtw_via_kernel(const std::vector<double>& x, const std::vector<double>& y, double gamma)
-{
-  // Full kernel contract: n_short <= n_long. Swap if needed — SoftDTW is
-  // symmetric over (x,y) because pointwise L1 and the log-sum-exp recurrence
-  // are both symmetric.
-  const bool swap = x.size() > y.size();
-  const auto& a = swap ? y : x;
-  const auto& b = swap ? x : y;
-  dtwc::core::SpanL1Cost<double> cost{a.data(), b.data()};
-  dtwc::core::SoftCell<double> cell{gamma};
-  return dtwc::core::dtw_kernel_full<double, dtwc::core::SpanL1Cost<double>, dtwc::core::SoftCell<double>>(
-    a.size(), b.size(), cost, cell);
-}
-} // anon namespace
-
-TEST_CASE("SoftDTW kernel-policy: matches soft_dtw on equal-length series", "[soft_dtw][phase3]")
-{
-  std::vector<double> x{ 1, 2, 3, 4, 5, 6 };
-  std::vector<double> y{ 2, 2, 4, 4, 6, 6 };
-  for (double gamma : {0.1, 0.5, 1.0, 2.0, 5.0}) {
-    INFO("gamma=" << gamma);
-    REQUIRE_THAT(softdtw_via_kernel(x, y, gamma),
-                 WithinRel(soft_dtw<double>(x, y, gamma), 1e-10));
-  }
-}
-
-TEST_CASE("SoftDTW kernel-policy: matches soft_dtw on different-length series", "[soft_dtw][phase3]")
-{
-  std::vector<double> x{ 1, 2, 3, 4, 5 };
-  std::vector<double> y{ 2, 3, 4 };
-  for (double gamma : {0.1, 0.5, 1.0, 2.0}) {
-    INFO("gamma=" << gamma);
-    REQUIRE_THAT(softdtw_via_kernel(x, y, gamma),
-                 WithinRel(soft_dtw<double>(x, y, gamma), 1e-10));
-  }
-}
-
-TEST_CASE("SoftDTW kernel-policy: matches soft_dtw on identical series", "[soft_dtw][phase3]")
-{
-  std::vector<double> x{ 1.5, 2.5, 3.5, 4.5, 5.5 };
-  for (double gamma : {0.1, 1.0, 10.0}) {
-    INFO("gamma=" << gamma);
-    const double legacy = soft_dtw<double>(x, x, gamma);
-    const double kernel = softdtw_via_kernel(x, x, gamma);
-    // Legacy result can be negative for identical series; WithinRel handles
-    // near-zero edge cases through the tolerance.
-    REQUIRE_THAT(kernel, WithinAbs(legacy, 1e-10));
-  }
-}
-
-TEST_CASE("SoftDTW kernel-policy: matches on symmetric/asymmetric swap", "[soft_dtw][phase3]")
-{
-  std::vector<double> x{ 0, 1, 3, 2, 1, 0, 1, 2 };
-  std::vector<double> y{ 1, 2, 2, 0 };
-  const double gamma = 1.0;
-  REQUIRE_THAT(softdtw_via_kernel(x, y, gamma),
-               WithinRel(soft_dtw<double>(x, y, gamma), 1e-10));
-  REQUIRE_THAT(softdtw_via_kernel(y, x, gamma),
-               WithinRel(soft_dtw<double>(y, x, gamma), 1e-10));
 }

@@ -84,7 +84,7 @@ TEST_CASE("Problem dense cache never survives a semantic configuration change",
       CAPTURE(name);
       Problem prob{"dense_variant_parameter_mutation"};
       prob.set_data(make_data({{0.0}, {2.0}}));
-      auto &matrix = prob.distance_matrix();
+      auto &matrix = prob.writable_distance_matrix();
       matrix.resize(2);
       matrix.set(0, 0, 0.0);
       matrix.set(0, 1, 123.0);
@@ -109,7 +109,7 @@ TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances
   Problem prob{"dense_semantic_setters"};
   prob.set_data(make_data({{0.0}, {2.0}}));
   const auto load_precomputed = [&] {
-    auto &matrix = prob.distance_matrix();
+    auto &matrix = prob.writable_distance_matrix();
     matrix.resize(2);
     matrix.set(0, 0, 0.0);
     matrix.set(0, 1, 123.0);
