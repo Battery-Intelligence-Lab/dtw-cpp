@@ -7,12 +7,12 @@
  * @details Bands, registered before the first run. Where the library and the oracle
  *          perform literally the same additions, minima and absolute values in the
  *          same order (double, one channel, L1 cost; Standard, ADTW, MSM) the two
- *          agree to the bit. Everywhere else they agree to
- *          2 (nx + ny - 1) eps(T) max(|a|, |b|): a warping path has at most
- *          nx + ny - 1 cells, each adding one rounded cost, so two evaluations of the
- *          recurrence differ by the rounding of one path's sum, and a different
- *          rounding can move a near-tie to the other path by no more. The routes
- *          differ in the last bit through contraction of x*y + z, reassociation and
+ *          agree to the bit. Everywhere else they agree within dtw_routes_agree
+ *          (tests/support/dtw_route_bound.hpp), 2 (nx + ny - 1) eps(T) max(|a|, |b|): a
+ *          warping path has at most nx + ny - 1 cells, each adding one rounded cost, so
+ *          two evaluations of the recurrence differ by the rounding of one path's sum, and
+ *          a different rounding can move a near-tie to the other path by no more. The
+ *          routes differ in the last bit through contraction of x*y + z, reassociation and
  *          SIMD lanes (epsilon-level, accepted: clusterings must not change, not bits);
  *          float rows run the library in float against the oracle on the same float
  *          values widened to double.
@@ -23,10 +23,12 @@
 
 #include "../../support/deterministic_series.hpp"
 #include "../../support/dtw_oracle.hpp"
+#include "../../support/dtw_route_bound.hpp"
 
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <functional>
@@ -143,14 +145,19 @@ double cancellation(const Config &config, std::size_t nx, std::size_t ny)
   return soft ? config.params.sdtw_gamma * static_cast<double>(nx + ny - 1) : 0.0;
 }
 
-/// `got` is the library.s value; `no_path` its sentinel for "no admissible path".
-bool agrees(double got, double want, double no_path, std::size_t nx, std::size_t ny, double eps, bool bitwise,
+/// `got` is the library's value; `no_path` its sentinel for "no admissible path". A nonzero
+/// `scale` replaces max(|a|, |b|) in the bound by max(|a|, |b|, scale), so that a result
+/// near zero between large cells is judged against those cells.
+template <typename T>
+bool agrees(double got, double want, double no_path, std::size_t nx, std::size_t ny, bool bitwise,
             double scale = 0)
 {
   if (std::isinf(want)) return got == no_path;
   if (bitwise) return got == want;
-  const double largest = std::max({ std::abs(got), std::abs(want), scale });
-  return std::abs(got - want) <= 2.0 * static_cast<double>(nx + ny - 1) * eps * largest;
+  if (scale == 0) return ts::dtw_routes_agree<T>(got, want, nx, ny);
+  const double largest = std::max(std::max(std::abs(got), std::abs(want)), scale);
+  return std::abs(got - want)
+         <= 2.0 * static_cast<double>(nx + ny - 1) * std::numeric_limits<T>::epsilon() * largest;
 }
 
 // ---- series: lengths in steps; the empty and one-step shapes have no or one cell per row
@@ -206,7 +213,6 @@ TEMPLATE_TEST_CASE("every variant, metric, band and channel count agrees with th
                    "[dtw][oracle]", double, float)
 {
   using T = TestType;
-  constexpr double eps = std::numeric_limits<T>::epsilon();
   std::size_t rows = 0;
   for (const auto &config : configs())
     for (std::size_t s = 0; s < std::size(kShapes); ++s) {
@@ -229,7 +235,7 @@ TEMPLATE_TEST_CASE("every variant, metric, band and channel count agrees with th
           ++rows;
           INFO(label(config) << ", band " << band << ", shape " << s << " (" << nx << "x" << ny << "), "
                              << route << ": got " << got << ", oracle " << want);
-          CHECK(agrees(got, want, no_path, nx, ny, eps, exact, cancellation(config, nx, ny)));
+          CHECK(agrees<T>(got, want, no_path, nx, ny, exact, cancellation(config, nx, ny)));
         };
 
         for (const auto &data : known)
@@ -358,12 +364,12 @@ TEST_CASE("the oracle and the library reproduce the hand-computed values", "[dtw
     const std::size_t nx = hand.x.size() / config.ndim, ny = hand.y.size() / config.ndim;
     INFO(label(config) << ", band " << hand.band << ", " << nx << "x" << ny << ", want " << hand.want);
     const double oracle = ts::dtw_oracle(oracle_spec(config, hand.band), hand.x, hand.y);
-    CHECK(agrees(oracle, hand.want, ts::kOracleNoPath, nx, ny, std::numeric_limits<double>::epsilon(), false));
+    CHECK(agrees<double>(oracle, hand.want, ts::kOracleNoPath, nx, ny, false));
 
     const Data none; // WDTW weighs on demand without the series
     const double library =
       dtwc::core::resolve_dtw_fn<double>(distance_config(config, hand.band), none)(hand.x, hand.y);
-    CHECK(agrees(library, hand.want, kNoPathPublic, nx, ny, std::numeric_limits<double>::epsilon(), false));
+    CHECK(agrees<double>(library, hand.want, kNoPathPublic, nx, ny, false));
   }
 }
 
@@ -427,7 +433,6 @@ TEMPLATE_TEST_CASE("the v1.0.0 entry points and the multivariate wrappers agree 
                    "[dtw][oracle][v1]", double, float)
 {
   using T = TestType;
-  constexpr double eps = std::numeric_limits<T>::epsilon();
   std::size_t rows = 0;
   for (const auto &route : v1_routes<T>())
     for (const auto metric : { MetricType::L1, MetricType::L2, MetricType::SquaredL2 })
@@ -445,8 +450,8 @@ TEMPLATE_TEST_CASE("the v1.0.0 entry points and the multivariate wrappers agree 
             ++rows;
             INFO(label(config) << ", band " << band << ", shape " << s << " (" << nx << "x" << ny
                                << "), got " << got << ", oracle " << want);
-            CHECK(agrees(got, want, static_cast<double>(std::numeric_limits<T>::max()), nx, ny, eps,
-                         same_arithmetic<T>(config)));
+            CHECK(agrees<T>(got, want, static_cast<double>(std::numeric_limits<T>::max()), nx, ny,
+                            same_arithmetic<T>(config)));
           }
         }
       }
@@ -461,7 +466,6 @@ TEMPLATE_TEST_CASE("Problem::fill_distance_matrix stores what the oracle compute
   std::vector<std::size_t> kSteps(17, 12);
   kSteps.insert(kSteps.end(), { 10, 14 });
   using T = TestType;
-  constexpr double eps = std::numeric_limits<T>::epsilon();
   std::size_t pairs = 0;
   for (const auto &config : configs())
     for (const int band : { -1, 4 }) { // 4 is the longest length difference
@@ -485,8 +489,8 @@ TEMPLATE_TEST_CASE("Problem::fill_distance_matrix stores what the oracle compute
           ++pairs;
           INFO(label(config) << ", band " << band << ", pair " << i << "," << j << ": got " << got
                              << ", oracle " << want);
-          CHECK(agrees(got, want, kNoPathPublic, kSteps[i], kSteps[j], eps, false,
-                       cancellation(config, kSteps[i], kSteps[j])));
+          CHECK(agrees<T>(got, want, kNoPathPublic, kSteps[i], kSteps[j], false,
+                          cancellation(config, kSteps[i], kSteps[j])));
         }
     }
   CHECK(pairs > 0);
