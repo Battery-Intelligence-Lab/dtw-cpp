@@ -1175,22 +1175,8 @@ double Problem::find_total_cost()
     };
     run_openmp(point_distance, size());
   }
-  core::detail::OrderedMedoidObjective total("kmedoids_lloyd");
-  for (const auto idx : Range(size())) {
-    const auto i = static_cast<index_t>(idx);
-    const index_t medoid_slot = clusters_ind[i];
-    const index_t medoid_index = centroids_ind[medoid_slot];
-    const double distance = core::detail::require_finite_medoid_distance(
-      distances[idx], "kmedoids_lloyd", idx, medoid_slot, medoid_index);
-    if constexpr (settings::isDebug)
-      std::cout << "Distance between " << i << " and closest cluster " << clusters_ind[i]
-                << " which is: " << distance << "\n";
-
-    // k-medoids objective: sum of raw DTW distances (not squared, unlike k-means).
-    total.add(distance);
-  }
-
-  return total.value();
+  // k-medoids objective: sum of raw DTW distances (not squared, unlike k-means).
+  return core::detail::ordered_medoid_objective(distances, "kmedoids_lloyd");
 }
 
 } // namespace dtwc

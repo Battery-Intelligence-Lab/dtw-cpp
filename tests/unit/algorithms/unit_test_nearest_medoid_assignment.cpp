@@ -494,7 +494,7 @@ TEST_CASE("F13 finite assignment distances cannot overflow the objective",
       (void)dtwc::algorithms::fast_clara(
         clara_problem, clara_options(2, 2, 8));
     },
-    "fast_clara: nearest-medoid objective became non-finite after point 2.");
+    "fast_clara: the nearest-medoid objective is not finite (a distance or their sum overflowed).");
 
   auto lloyd = scalar_problem<double>(values);
   lloyd.set_n_clusters(2);
@@ -502,7 +502,7 @@ TEST_CASE("F13 finite assignment distances cannot overflow the objective",
   lloyd.assign_clusters();
   require_invalid_input(
     [&] { (void)lloyd.find_total_cost(); },
-    "kmedoids_lloyd: nearest-medoid objective became non-finite after point 2.");
+    "kmedoids_lloyd: the nearest-medoid objective is not finite (a distance or their sum overflowed).");
 }
 
 TEST_CASE("F13 no-path requests are rejected on every route in both precisions",

@@ -252,7 +252,7 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, i
     std::vector<double> candidate_cost(static_cast<std::size_t>(N));
     auto total_distance = [&](std::size_t index) {
       const auto x = static_cast<index_t>(index);
-      core::detail::OrderedMedoidObjective cost("fast_pam");
+      core::detail::OrderedMedoidObjective cost;
       for (index_t o = 0; o < N; ++o) cost.add(prob.dist_by_ind(x, o));
       candidate_cost[index] = cost.value();
     };

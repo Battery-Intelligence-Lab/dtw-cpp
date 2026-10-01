@@ -241,7 +241,7 @@ namespace {
     int rg_per_batch = reader.row_groups_per_batch(chunk_budget, F32);
     int total_rg = reader.num_row_groups();
 
-    core::detail::OrderedMedoidObjective total_cost("fast_clara");
+    core::detail::OrderedMedoidObjective total_cost;
     std::vector<double> best_dists;
     int64_t global_offset = 0;
 
@@ -285,7 +285,7 @@ namespace {
       global_offset += chunk_size;
     }
 
-    return total_cost.value();
+    return core::detail::finite_objective(total_cost.value(), "fast_clara");
   }
 
   /**
