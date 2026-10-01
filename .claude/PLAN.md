@@ -163,7 +163,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W7g one `distance::dtw` per language (W7g fdb005d, f2f48bf, e597f19; merged 601748f; −1,672 / +685; both DTWClusterings ask C++; Problem.set_distance in both bindings)
 - ☑ W13b one finite scan at each matrix intake; read-only loops lose per-lookup checks (W13b 5605f4e, 3599ebc, a7f5af1, 8895c95, 7821cd7; merged 6605829; find_best_swap 27 → 21.5 instructions per lookup; Lloyd's assignment keeps its check: a fill of ±DBL_MAX series gives +inf)
 - ☑ W8a one reader entry (`read_data`); Parquet names and IPC nulls fixed; `load('x.parquet')` in Python (W8a 3dfbffe, 8b5bc1c, 34b031b, fcf6911, 292acc9; merged 761346a; −996/+749; Python reads Parquet through the installed pyarrow, Volkan 10-01)
-- ☐ W8b one writer (`write_result_files`); `Result::save` after streaming fixed
+- ☑ W8b one writer (`write_result_files`); `Result::save` after streaming fixed (W8b d17f498, e65d6e2, ec47aef, 5bf7422, 9cdea99, 26b0409; merged 862a08f; one open/close pair, one write_result_files; a streamed Result::save writes series_<i> labels and refuses the matrix with InvalidInput, where it read an empty Data)
 - ☐ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1)
 - ◐ L1 measure what the wheel and the MEX link (linker maps) → L2 split `dtwc_core` (no file formats, no CLI) from
   `dtwc_io` and the CLI; the bindings link the core; Python reads and writes files with numpy/pandas/pyarrow, MATLAB
