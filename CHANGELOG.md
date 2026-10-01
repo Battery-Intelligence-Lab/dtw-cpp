@@ -788,7 +788,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `Problem::write_silhouettes()` (hence `Problem::cluster_and_process()`) and
   `Result::save()` catch exactly that, warn on stderr and skip the silhouettes
   file when fewer than 2 clusters are realised — `k = 1`, or a `k >= 2` request
-  that collapses on duplicate series. They used to write labels, medoids and
+  that collapses on duplicate series (`Result::save()` and `dtwc_cl` write no
+  silhouettes file for `k = 1` and say nothing). They used to write labels, medoids and
   the distance matrix and only then throw, leaving a partially populated output
   directory; the CLI already behaved this way. A corrupt `clusters_ind`, an
   out-of-range label or bad data raise the plain `InvalidInput` of the other
