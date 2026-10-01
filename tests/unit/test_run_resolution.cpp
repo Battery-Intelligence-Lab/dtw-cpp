@@ -259,7 +259,9 @@ TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any
   rejects(float32, "precision = Float32");
 #  if defined(DTWC_HAS_METAL) && !defined(DTWC_HAS_CUDA)
   // Metal runs on the system default GPU in FP32; CUDA takes an index and FP64.
-  rejects(index_1, "GPU index = 1");
+  // The index is refused by set_device, which run calls first.
+  CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, index_1)); }),
+             StartsWith("Problem::set_device: Metal ") && ContainsSubstring("GPU index = 1"));
   CHECK_THAT(device_error([&] { (void)dtwc::run(from_file(Device::GPU, fp64)); }),
              ContainsSubstring("precision FP64 is not implemented"));
 #  else

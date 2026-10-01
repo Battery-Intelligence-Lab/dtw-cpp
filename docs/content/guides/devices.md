@@ -53,8 +53,9 @@ The GPU kernels compute Standard DTW on univariate Float64 series held in RAM,
 in L1 or squared L2, with no missing-data strategy; anything else on a GPU raises
 a device error that names the setting and its value (`variant = WDTW`,
 `missing_strategy = ZeroCost`, `ndim = 3`, `precision = Float32`, mmap-backed or
-view-mode series). Metal also rejects precision FP64 (its kernels are FP32) and
-a GPU index other than 0 (it runs on the system default GPU). On every device, a
+view-mode series). Metal also rejects precision FP64 (its kernels are FP32);
+`set_device` already refused a GPU index other than 0 there (Metal runs on the
+system default GPU). On every device, a
 Sakoe-Chiba band narrower than the length difference between the shortest and
 longest series is an invalid-argument error naming both series and the smallest
 feasible band: such a pair has no warping path, and its distance would otherwise

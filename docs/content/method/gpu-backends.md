@@ -54,8 +54,7 @@ GPU.
 > **Compile-time flags.** CUDA defaults OFF and is enabled with
 > `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON but is built only on
 > Apple platforms; non-Apple configuration disables it. With neither backend,
-> explicit GPU requests error, while an ordinary CPU `Problem` uses its selected
-> CPU distance strategy.
+> explicit GPU requests error, while an ordinary `Problem` computes on the CPU.
 
 ## The DTW recurrence on a GPU
 

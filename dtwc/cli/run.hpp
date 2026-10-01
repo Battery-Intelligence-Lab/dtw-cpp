@@ -21,8 +21,9 @@
  * run computes where it starts, and SLURM submission belongs to Python's
  * dtwcpp.device("hpc") and `slurm_remote.sh`. `gpu` on a build without a GPU backend
  * raises the api-contract-2.0.md §6.1 DeviceError; on a GPU a variant,
- * missing-data strategy, Float32 dtype, index or precision the backend does not
- * implement raises validate_gpu_request()'s DeviceError, all before any I/O.
+ * missing-data strategy, Float32 dtype or precision the backend does not
+ * implement raises validate_gpu_request()'s DeviceError, and a GPU index Metal
+ * cannot honour Problem::set_device's, all before any I/O.
  *
  * @date 24 Sep 2026
  */

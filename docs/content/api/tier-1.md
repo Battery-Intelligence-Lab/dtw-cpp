@@ -61,7 +61,7 @@ to the cluster and never read locally (preserves the 100M-series scaling story).
 | `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (aliases `"hclust"`, `"obp"`, `"lr"`, as `dtwc_cl` reads them; ASCII case-insensitive) | same set | same set, routed by the same C++ code |
 | `auto` resolution | local CPU: `pam` for N≤5000, else `clara`; local GPU: `pam` at any N; C++ HPC reaches the documented transport error before local resolution | same local rule; HPC forwards `auto` for resolution after remote materialisation | same local rule (the same `dtwc::run`) |
 | `band` | Sakoe-Chiba band, `-1` = full | `-1` | `-1` |
-| `device` | `""` = global default; else per-call override | `None` = global | `''` reads the process device (`dtwc.device()`); a non-empty value is a per-call override that configures the local `Problem`'s distance strategy (GPU ordinal included) and never mutates the process device |
+| `device` | `""` = global default; else per-call override | `None` = global | `''` reads the process device (`dtwc.device()`); a non-empty value is a per-call override that sets the local `Problem`'s device (GPU ordinal included) and never mutates the process device |
 | `max_iter` | `100` | `100` | `100` |
 | unknown `method` | `InvalidInput` (never silently PAM) | `ValueError` (`_normalize_method`, `_api.py:413-433`) | `dtwc:invalidArgument` |
 
@@ -170,7 +170,7 @@ not prove execution:
 
 | Parameter | Python | MATLAB | Current status |
 |---|---|---|---|
-| `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validated through `dtwc::device` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s distance strategy |
+| `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validated through `dtwc::device` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s device |
 | `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit through `Problem.set_distance` | `Metric='l1'` or `'squared_euclidean'`, consumed by fit through `Problem.set_distance` |
 
 Both estimators converge on the shared constructor set `{n_clusters, variant, band,

@@ -41,7 +41,7 @@ _SURFACE = {
         "DTWClustering", "compute_distance_matrix",
         "DEFAULT_RANDOM_SEED",
         # §6 device
-        "device_to_string", "Device",
+        "device_to_string", "Device", "gpu_available", "gpu_info",
         # §5 error taxonomy
         "DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError",
         # enums, structs, Tier-2 classes: the types behind the contract's fields and
@@ -69,7 +69,7 @@ _SURFACE = {
         "set_n_clusters", "set_method", "set_band", "set_max_iter",
         "set_n_repetitions", "set_variant", "set_variant_params", "set_distance",
         "set_solver",
-        "set_data", "set_result", "set_device", "set_random_seed",
+        "set_data", "set_result", "set_device", "set_gpu_precision", "set_random_seed",
         # config attributes (§2.1)
         "method", "max_iter", "n_repetitions", "band", "variant_params",
         "missing_strategy", "random_seed",
