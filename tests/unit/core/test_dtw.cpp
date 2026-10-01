@@ -189,12 +189,21 @@ struct Pair
   std::size_t steps_y(std::size_t ndim) const { return second().size() / ndim; }
 };
 
+/// `values` in precision T, rounded explicitly where T is float.
+template <typename T>
+std::vector<T> narrow(const std::vector<double> &values)
+{
+  std::vector<T> out;
+  out.reserve(values.size());
+  for (const double v : values) out.push_back(static_cast<T>(v));
+  return out;
+}
+
 template <typename T>
 Pair<T> draw(const Shape &shape, std::size_t ndim, unsigned seed)
 {
   const auto series = [&](std::size_t steps, unsigned s) {
-    const auto values = ts::benchmark_series(steps * ndim, s);
-    return std::vector<T>(values.begin(), values.end());
+    return narrow<T>(ts::benchmark_series(steps * ndim, s));
   };
   Pair<T> pair{ series(shape.nx, seed), {}, shape.alias == Alias::Same };
   if (shape.alias == Alias::Copy) pair.y = pair.x;
@@ -473,8 +482,7 @@ TEMPLATE_TEST_CASE("Problem::fill_distance_matrix stores what the oracle compute
       std::vector<std::vector<T>> series;
       std::vector<std::string> names;
       for (std::size_t i = 0; i < kSteps.size(); ++i) {
-        const auto values = ts::benchmark_series(kSteps[i] * config.ndim, 300 + static_cast<unsigned>(i));
-        series.emplace_back(values.begin(), values.end());
+        series.push_back(narrow<T>(ts::benchmark_series(kSteps[i] * config.ndim, 300 + static_cast<unsigned>(i))));
         names.push_back("s" + std::to_string(i));
       }
       const auto held = series;
