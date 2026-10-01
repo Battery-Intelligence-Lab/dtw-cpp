@@ -50,7 +50,7 @@ struct Config
   std::string dist_matrix;               ///< `--dist-matrix`: precomputed distance-matrix CSV.
   // Method
   Method method = Method::Auto;          ///< `--method`
-  index_t k = 3;                         ///< `--n-clusters`
+  index_t k = 0;                         ///< `--n-clusters`, required: 0 = not given
   int max_iter = 100;                    ///< `--max-iter`
   int n_init = 1;                        ///< `--n-init`
   std::uint64_t seed = settings::DEFAULT_RANDOM_SEED; ///< `--seed`
@@ -75,7 +75,7 @@ struct Config
   int checkpoint_interval = 0;           ///< `--checkpoint-interval` (0 = at the end only)
   // Output
   std::string output = "./results";      ///< `--output` ("" = write nothing)
-  std::string name = "dtwc";             ///< `--name`
+  std::string name;                      ///< `--name` ("" = the input's file or folder name)
   bool verbose = false;                  ///< `--verbose`
 };
 

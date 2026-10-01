@@ -124,14 +124,15 @@ private:
  * Cluster a lazy Dataset: run() with dtwc_cl's defaults for every other setting,
  * writing nothing. `device` "" means the process device (dtwc::device()).
  *
- * Methods: auto, pam, onebatch, clara, kmedoids, mip, lrcore, tadpole,
+ * Methods: auto (the default: pam on a GPU and for up to 5000 series on the CPU,
+ * clara above), pam, onebatch, clara, kmedoids, mip, lrcore, tadpole,
  * hierarchical, with dtwc_cl's aliases (hclust, obp, lr).  Unknown names fail loudly.
  * An in-memory Dataset passed as an rvalue hands its series to the run; an lvalue
  * one is copied.
  */
-Result cluster(const Dataset &data, index_t k, std::string_view method = "pam",
+Result cluster(const Dataset &data, index_t k, std::string_view method = "auto",
                int band = -1, std::string_view device = "", int max_iter = 100);
-Result cluster(Dataset &&data, index_t k, std::string_view method = "pam",
+Result cluster(Dataset &&data, index_t k, std::string_view method = "auto",
                int band = -1, std::string_view device = "", int max_iter = 100);
 
 } // namespace dtwc

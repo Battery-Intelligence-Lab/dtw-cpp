@@ -223,9 +223,9 @@ endif()
 # so the expected case count is pinned per platform.
 if(TARGET dtwc_cl)
     if(WIN32)
-        set(_dtwc_cl_loud_marker "cases=14/14 efbig=unavailable")
+        set(_dtwc_cl_loud_marker "cases=15/15 efbig=unavailable")
     else()
-        set(_dtwc_cl_loud_marker "cases=15/15 efbig=ran")
+        set(_dtwc_cl_loud_marker "cases=16/16 efbig=ran")
     endif()
     dtwc_add_script_test(NAME test_cli_loud_failures
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_loud_failures.cmake"

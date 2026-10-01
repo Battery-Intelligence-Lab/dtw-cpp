@@ -29,6 +29,8 @@ cmake_minimum_required(VERSION 3.26)
 #                        after <name>_labels.csv was opened: the stream must be
 #                        checked after closing, not only after opening
 #   clusters_zero        --clusters 0: the error names -k/--n-clusters
+#   k_missing            no -k: refused before the data is read (v1.0.0 exited 0
+#                        having clustered nothing)
 #   variant_domain       a variant parameter outside its domain is refused before
 #                        the input is read: the output folder is never made
 #   nan_error_strategy   --missing-strategy error on a NaN input names the series
@@ -222,6 +224,16 @@ endif()
 math(EXPR cases "${cases} + 1")
 message(STATUS "dist_matrix_known_pairs: exit=0 cost=3 (from the file)")
 
+# No -k: v1.0.0 printed "Error processing input" for its missing --Nc and exited 0
+# having clustered nothing; there is no default number of clusters to guess.
+expect_loud_failure(k_missing
+    NAMES "-k/--n-clusters, the number of clusters, is required"
+    COMMAND "${cli}" -i "${WORK_ROOT}/series" --skip-rows 1 --skip-cols 1 --name loud
+            -o "${WORK_ROOT}/out_k_missing")
+if(EXISTS "${WORK_ROOT}/out_k_missing")
+    message(FATAL_ERROR "k_missing: the refused run made its output folder")
+endif()
+
 # O-06: no iteration is no clustering. `common` already holds --max-iter.
 expect_loud_failure(max_iter_zero
     NAMES "--max-iter"
@@ -348,9 +360,9 @@ if(skip_match)
     message(FATAL_ERROR "dtwc_cl emitted skip text:\n${all_output}")
 endif()
 
-set(expected 14)
+set(expected 15)
 if(efbig STREQUAL "ran")
-    set(expected 15)
+    set(expected 16)
 endif()
 message(STATUS
     "CLI_LOUD_FAILURES subject=real_dtwc_cl cases=${cases}/${expected} "

@@ -368,7 +368,7 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
   CHECK_THROWS_AS(dtwc::parse_config({ { "k\nband", "3" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "config", "other.toml" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "method", "kmeans" } }), dtwc::InvalidInput);
-  CHECK_THROWS_AS(dtwc::parse_config({ { "k", "0" } }), dtwc::InvalidInput);
+  CHECK_THROWS_AS(dtwc::parse_config({ { "k", "three" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "seed", "-1" } }), dtwc::InvalidInput); // unsigned: the type says no
   CHECK_THROWS_AS(dtwc::parse_config({ { "mmap_threshold", "-1" } }), dtwc::InvalidInput);
   // Keys of deleted features are unknown keys, not silently ignored ones.
@@ -457,7 +457,7 @@ TEST_CASE("Config{} holds the defaults dtwc_cl reports", "[config][cli]")
   // The "  Label: value" lines dtwc_cl -v prints before it reads the data.
   const auto echo = [&](const std::vector<std::string> &extra) {
     std::vector<std::string> argv{ cli_executable().string(), "-i", input.string(),
-                                   "-o", (scratch.path / "out").string(), "-v" };
+                                   "-o", (scratch.path / "out").string(), "-k", "3", "-v" };
     argv.insert(argv.end(), extra.begin(), extra.end());
     const CommandResult result = run(argv, scratch.path);
     INFO("stdout:\n" << result.out << "\nstderr:\n" << result.err);
@@ -474,8 +474,9 @@ TEST_CASE("Config{} holds the defaults dtwc_cl reports", "[config][cli]")
   const auto defaults = values_of(dtwc::to_config_text(dtwc::Config{}));
 
   const auto plain = echo({});
-  CHECK(plain.at("Name") == defaults.at("name"));
-  CHECK(plain.at("Clusters") == defaults.at("n-clusters"));
+  CHECK(plain.at("Name") == "conformance_series"); // "" names a run after its input
+  CHECK(defaults.at("name").empty());
+  CHECK(defaults.at("n-clusters") == "0"); // not given: a run without -k is refused
   CHECK(plain.at("Method") == defaults.at("method"));
   CHECK(plain.at("Band") == "full"); // how dtwc_cl prints band -1
   CHECK(defaults.at("band") == "-1");

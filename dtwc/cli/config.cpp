@@ -172,7 +172,7 @@ void bind(CLI::App &app, Config &config)
   // Input and output
   key(app, "-i,--input", config.input, "Input file (CSV, Parquet, Arrow IPC) or folder");
   key(app, "-o,--output", config.output, "Output directory");
-  key(app, "--name", config.name, "Problem name (used in output filenames)");
+  key(app, "--name", config.name, "Problem name, used in output filenames (default: the input's file or folder name)");
   key(app, "--column", config.column, "Column name to use as time series (Parquet only)");
   key(app, "--dtype,--data-precision,--data-type", config.dtype, core::precision_names, "dtype",
       "Series data type: float64 (default, full precision) or float32 (2x memory saving) (aliases: f32, f64, "
@@ -184,7 +184,8 @@ void bind(CLI::App &app, Config &config)
     ->capture_default_str();
 
   // Clustering
-  CLI::Option *n_clusters = key(app, "-k,--n-clusters", config.k, "Number of clusters")->check(CLI::PositiveNumber);
+  // 0, the default, is "not given": the run refuses it, and to_config_text() writes it.
+  CLI::Option *n_clusters = key(app, "-k,--n-clusters", config.k, "Number of clusters (required)");
   app.add_option_function<index_t>(
        "--clusters",
        [&config, n_clusters](index_t k) {

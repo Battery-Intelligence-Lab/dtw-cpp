@@ -49,8 +49,8 @@ two agree on every default, check and method choice.
 | `--version` | Print the version from the repository `VERSION` source of truth | — |
 | `-i, --input <path>` | Input file or folder. CSV/TSV are core; Parquet/Arrow IPC/Feather require an Arrow-enabled build | — |
 | `-o, --output <path>` | Output directory (`""` writes no file) | `./results` |
-| `--name <string>` | Problem name (used in output filenames) | `dtwc` |
-| `-k, --n-clusters <int>` | Number of clusters | 3 |
+| `--name <string>` | Problem name (used in output filenames) | the input's file or folder name |
+| `-k, --n-clusters <int>` | Number of clusters (required) | — |
 | `-v, --verbose` | Verbose output | off |
 | `--column <name>` | Parquet scalar/list Float32 or Float64 column. If omitted, the first eligible top-level column is selected | — |
 | `--dtype <string>` | Data type for in-memory storage. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |

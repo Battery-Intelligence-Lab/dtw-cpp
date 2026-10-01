@@ -155,6 +155,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // ---- 1. Every check that needs no series, before any file is touched ----
   if (!data && config.input.empty())
     throw InvalidInput("--input is required via CLI or config file (TOML or YAML)");
+  if (config.k == 0) throw InvalidInput("-k/--n-clusters, the number of clusters, is required.");
   if (config.k < 1)
     throw InvalidInput("-k/--n-clusters must be a positive integer, got " + std::to_string(config.k));
   if (config.n_init < 1) throw InvalidInput("--n-init must be a positive integer");
@@ -163,7 +164,8 @@ Outcome execute(const Config &config, std::optional<Data> data)
   if (config.checkpoint_interval != 0 && config.checkpoint.empty())
     throw InvalidInput("--checkpoint-interval requires --checkpoint <dir>.");
 
-  auto problem = std::make_shared<Problem>(config.name);
+  auto problem =
+    std::make_shared<Problem>(config.name.empty() ? detail::default_name(utf8_to_path(config.input)) : config.name);
   Problem &prob = *problem;
   // The Problem validates every distance setting as it takes it: parameter
   // domains, variant x missing strategy x metric, the MIP settings, the GPU.
@@ -398,6 +400,14 @@ Outcome execute(const Config &config, std::optional<Data> data)
 }
 
 } // namespace
+
+std::string detail::default_name(const fs::path &input)
+{
+  // "data/" names its folder; "." and ".." name nothing a file could be called after.
+  // UTF-8, which every writer turns back into a path with utf8_to_path(), losslessly.
+  const std::string stem = path_to_utf8((input.has_filename() ? input : input.parent_path()).stem());
+  return stem.empty() || stem == "." || stem == ".." ? "dataset" : stem;
+}
 
 detail::ParquetPlan detail::plan_parquet_load(Method method, Device device, std::size_t series_count,
                                               std::size_t estimated_resident_bytes, std::size_t ram_limit,

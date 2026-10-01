@@ -8,6 +8,15 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (CLI, breaks a v1.0.0 command line without `--Nc`):** `-k/--n-clusters` is required. `dtwc_cl` without it
+  exits 1 naming the flag, before any file is read or written. v1.0.0 printed an `Error processing input` line for a
+  missing `--Nc` and exited 0 having clustered nothing; the 2.0 previews clustered with k = 3. `--print-config` writes
+  `n-clusters = 0` for a k not given.
+- **Changed (CLI):** a run's default name, the prefix of its output files and of its `.dtwm` cache, is its input's file
+  name without the extension, or its folder's name (`-i data/cycles.csv` writes `cycles_labels.csv`), where v1.0.0 named
+  every run `dtwc`; series passed in memory are `dataset`, as Tier-1 `load()` names them. `--name` still sets it.
+- **Changed (CLI):** the default `--method` is `auto`: FastPAM for up to 5,000 series and FastCLARA above on the CPU,
+  FastPAM on a GPU. v1.0.0 ran Lloyd k-medoids, which `--method kmedoids` (v1.0.0's `kMedoids`) still selects.
 - **Added (C++, Python, MATLAB):** `Method` gains `Auto`, `PAM`, `OneBatch`, `CLARA` and `Hierarchical` (v1.0.0's
   `Kmedoids` and `MIP` keep their values), and `Problem::cluster()` runs any of the nine `--method` names: it publishes the
   labels and medoids as before and now returns them as a `ClusteringResult` with the cost, the iterations and whether the
