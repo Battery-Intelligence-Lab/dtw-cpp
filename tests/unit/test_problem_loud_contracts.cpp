@@ -147,7 +147,7 @@ TEST_CASE("set_cuda_settings stores every declared GpuPrecision",
     dtwc::CUDASettings settings;
     settings.precision = precision;
     REQUIRE_NOTHROW(prob.set_cuda_settings(settings));
-    CHECK(prob.cuda_settings.precision == precision);
+    CHECK(prob.cuda_settings().precision == precision);
   }
 }
 

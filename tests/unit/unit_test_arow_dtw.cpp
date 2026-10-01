@@ -813,7 +813,7 @@ TEST_CASE("Problem::set_missing_strategy(AROW) selects the AROW kernel for the f
   prob.set_data(std::move(data));
   prob.set_verbose(false);
   REQUIRE_NOTHROW(prob.set_missing_strategy(dtwc::core::MissingStrategy::AROW));
-  CHECK(prob.missing_strategy == dtwc::core::MissingStrategy::AROW);
+  CHECK(prob.missing_strategy() == dtwc::core::MissingStrategy::AROW);
   prob.fill_distance_matrix();
 
   // The Problem's bound kernel and the free function are separate code paths.

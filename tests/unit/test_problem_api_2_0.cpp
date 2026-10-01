@@ -347,6 +347,7 @@ TEST_CASE("Problem 2.0 entry points match hand oracles, by 2.0 name and 1.x spel
           const bool filled = p.is_distance_matrix_filled();
           v1 ? p.refreshDistanceMatrix() : p.refresh_distance_matrix();
           const bool emptied = !p.is_distance_matrix_filled();
+          p.fill_distance_matrix(); // dist_by_ind reads a matrix a fill prepared
           return obs(filled, emptied, p.dist_by_ind(2, 5)); },
         "1 1 91 " },
       { "read_distance_matrix", true, true, [](Problem &p, const fs::path &dir, bool v1) {
@@ -367,8 +368,11 @@ TEST_CASE("Problem 2.0 entry points match hand oracles, by 2.0 name and 1.x spel
           return obs(v1 ? p.maxDistance() : p.max_distance()); },
         "100 " },
       { "dist_by_ind", true, true, [](Problem &p, const fs::path &, bool v1) {
-          return obs(v1 ? p.distByInd(2, 5) : p.dist_by_ind(2, 5)); },
-        "91 " },
+          // The 2.0 lookup reads a matrix a fill prepared; the 1.x one fills on its first call.
+          if (!v1) p.fill_distance_matrix();
+          const double d = v1 ? p.distByInd(2, 5) : p.dist_by_ind(2, 5);
+          return obs(d, p.is_distance_matrix_filled()); },
+        "91 1 " },
       { "is_distance_matrix_filled", true, true, [](Problem &p, const fs::path &, bool v1) {
           const bool before = v1 ? p.isDistanceMatrixFilled() : p.is_distance_matrix_filled();
           p.fill_distance_matrix();
