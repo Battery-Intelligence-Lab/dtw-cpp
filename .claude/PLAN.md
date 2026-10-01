@@ -192,10 +192,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - W9b/W9e note (Volkan 10-01, lighter bindings): Python and MATLAB share the Config names, not the CLI's file
   pipeline — `run(Config)` reads and writes files, which stays with the CLI (L2)
 - ☐ W9f Python test and example trims
-- ☐ W10a `DistanceMatrixStrategy`, `CUDASettings` → `set_device` + `set_gpu_precision`; the fingerprint
-  hashes the resolved backend
-- ☐ W10b `gpu_available()` / `gpu_info()`; `gpu:1` on Metal refused; `system_info`, `check_system`,
-  `*_AVAILABLE` go (`test.parallelisation()` / `test.gpu()` stay the diagnostics)
+- ☑ W10a `DistanceMatrixStrategy`, `CUDASettings` → `set_device` + `set_gpu_precision`; the fingerprint
+  hashes the resolved backend (W10 8124528, 373c039, d99734a; merged 73d7361; the cache identity hashes the computed precision, not the device: a CPU FP64 cache serves a CUDA FP64 run, GPU 0 and GPU 1 agree, FP32 is refused by FP64; Metal's Auto is FP32; CUDA's Auto is refused for a persistent cache)
+- ☑ W10b `gpu_available()` / `gpu_info()`; `gpu:1` on Metal refused; `system_info`, `check_system`,
+  `*_AVAILABLE` go (`test.parallelisation()` / `test.gpu()` stay the diagnostics) (W10 3d9e6c4, a75973c; merged 73d7361)
 
 ## F — tests to their oracles (W12)
 
