@@ -248,3 +248,22 @@ CHANGELOG rule.
   pyarrow); Python reads Parquet through the installed pyarrow (the `parquet` extra) into the Arrow C stream that the
   compiled-in nanoarrow reads zero-copy; MATLAB uses its own `parquetread`. The C++ readers serve the CLI and C++
   users (`DTWC_ENABLE_ARROW` opt-in). Next: L1 measures what the bindings link, L2 splits the library.
+- 2026-10-01 — W8a: one reader entry `dtwc::read_data`; Parquet folder names unique and UTF-8; Arrow IPC through
+  the C stream (nulls refused); `dtwc_cl -v` prints "Data loaded …" instead of the loader's own lines (CHANGELOG).
+  Python reads list-per-row Parquet through pyarrow; a `.arrow` file in Python moves to pyarrow with L2.
+- 2026-10-01 — W7c: one `core::validate(DistanceConfig, f32)` where a config is set or a facade entry runs; the
+  metric rule is the facade's (Standard with any missing strategy and DDTW take the non-L1 metrics; L2 + AROW
+  multivariate is refused: no such cost); `core/dtw.*`, `DTWOptions`, `ConstraintType`, `distance_semantics.hpp`,
+  `variant_validation.hpp` and 11 per-pair validate calls deleted. Python/MATLAB `DTWClustering` and Python
+  `distance.dtw` keep a copy of the old rule until W7g/W8c/W9b; three C4244 in wdtw_weights<float> go with W7e.
+- 2026-10-01 — L1 (record only): HiGHS is 75 % of the Python extension (4.6 of 6.1 MB) and 78 % of the local MEX
+  (6.2 of 7.9 MB); cli/ + CLI11 + fkYAML and the readers are ~2 %, pulled in by two edges (Python `device()` in
+  api.cpp beside `cluster()` → `run()`; MEX `tier1_cluster` → `run()`). The CI MEX ships without HiGHS (0.88 MB);
+  a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load.
+- 2026-10-01 — Volkan (MIP solver in the bindings): Python solves the MIP with the user's highspy (an optional
+  extra; the wheel drops HiGHS); MATLAB keeps HiGHS linked in the MEX (intlinprog would need the paid Optimization
+  Toolbox), and the shipped MEX turns HiGHS on and keeps Gurobi off. C++ builds the model as arrays, Python hands
+  them to highspy zero-copy, C++ decodes the solution; C++/CLI/MEX call linked HiGHS. Tests compare the optimal
+  cost (highspy's HiGHS version may differ). M1, after L2.
+- 2026-10-01 — Volkan (build files): each source folder of dtwc/ lists its own files in its own CMakeLists.txt
+  (as mip/ does); dtwc/CMakeLists.txt keeps the targets, options and links (L2).

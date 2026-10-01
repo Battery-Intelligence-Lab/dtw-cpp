@@ -25,6 +25,18 @@ On Parquet in the bindings:
 > essentials not libraries we use to read things. So we shouldn't just be like the bloated software who brings extra
 > copies of the same things.
 
+Asked whether the wheel and the MEX should keep HiGHS (75–78 % of each):
+
+> There is highspy for python, isn't there also a matlab interface?
+
+> Do you think it makes sense to remove it from python (so use highspy) and keep it in matlab?
+
+On the build files:
+
+> Also can you use CMakelists for folders like mip folder has one. And for algorithms folder you could have
+> another one so you don't have to spell everything inside the cmakelists outside. So a nice quality improvement
+> pass is needed here.
+
 ## 2026-09-30 — continue
 
 > Please continue but don't call fable, for delegating simpler tasks use Sonnet 5.5 xhigh
