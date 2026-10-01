@@ -31,6 +31,12 @@
  *               is the per-pair entry that does it before building the Cost
  *               (every Cost functor is symmetric).
  *
+ *          Each kernel copies its Cost into a local before its loops. On Win64 a
+ *          by-value Cost wider than 8 bytes arrives as a pointer to the caller's
+ *          copy, which the stores to the DP buffer might alias, so a kernel the
+ *          compiler does not inline would reload the series pointers through it
+ *          in every cell; the local copy stays in registers.
+ *
  *          dtw_kernel_lanes computes W equal-length pairs at once and packs
  *          the values itself, so it takes a pointwise distance instead of a
  *          Cost:  T operator()(T a, T b) const.
@@ -222,8 +228,9 @@ dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 // ===========================================================================
 
 template <typename T, typename Cost, typename Cell>
-T dtw_kernel_full(std::size_t n_short, std::size_t n_long, Cost cost, Cell cell)
+T dtw_kernel_full(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell)
 {
+  const Cost cost = cost_in; // in registers: see the file comment
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (n_short == 0 || n_long == 0) return maxValue;
 
@@ -262,8 +269,9 @@ T dtw_kernel_full(std::size_t n_short, std::size_t n_long, Cost cost, Cell cell)
 
 template <typename T, typename Cost, typename Cell>
 T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
-                    Cost cost, Cell cell, T early_abandon = T(-1))
+                    Cost cost_in, Cell cell, T early_abandon = T(-1))
 {
+  const Cost cost = cost_in; // in registers: see the file comment
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (n_short == 0 || n_long == 0) return maxValue;
 
@@ -310,8 +318,9 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
 
 template <typename T, typename Cost, typename Cell>
 T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
-                    Cost cost, Cell cell, T early_abandon = T(-1))
+                    Cost cost_in, Cell cell, T early_abandon = T(-1))
 {
+  const Cost cost = cost_in; // in registers: see the file comment
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (n_short == 0 || n_long == 0) return maxValue;
   if (band < 0)
