@@ -63,7 +63,6 @@ target_sources(dtwc++
   core/dtw_options.hpp
   core/lower_bound_impl.hpp
   core/sha256.hpp
-  core/scratch_matrix.hpp
   core/time_series.hpp
   core/z_normalize.hpp
   # Algorithm headers

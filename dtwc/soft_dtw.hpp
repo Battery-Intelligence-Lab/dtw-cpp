@@ -35,8 +35,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "core/scratch_matrix.hpp"
-#include "core/dtw_kernel.hpp"   // dtw_kernel_full, SoftCell
+#include "core/dtw_kernel.hpp"   // dtw_kernel_linear, SoftCell
 #include "core/dtw_cost.hpp"     // SpanL1Cost
 #include "core/dtw_options.hpp"  // core::validate
 #include "warping.hpp"           // detail::require_finite
@@ -105,13 +104,12 @@ T softmin_gamma(T a, T b, T c, T gamma)
 /**
  * @brief Compute Soft-DTW distance between two time series.
  *
- * Uses L1 (absolute difference) as the pointwise cost. Delegates to the
- * unified DTW kernel via `core::SpanL1Cost<T>` + `core::SoftCell<T>{gamma}`.
- * Out-of-bounds predecessors (`maxValue` sentinel) are excluded from the LSE
- * inside `SoftCell::combine`, so first-row/column cells reduce automatically
- * to `predecessor + cost` â€” matching the hard-accumulation boundary treatment
- * of the original implementation (cross-validated bit-for-bit in the Phase 3
- * fold and retained here).
+ * Uses L1 (absolute difference) as the pointwise cost. Runs dtw_kernel_linear
+ * (one rolling column, O(min(n, m)) memory) with `core::SpanL1Cost<T>` +
+ * `core::SoftCell<T>{gamma}`. Out-of-bounds predecessors (`maxValue` sentinel)
+ * are excluded from the LSE inside `SoftCell::combine`, so first-row/column
+ * cells reduce to `predecessor + cost`, the hard accumulation
+ * soft_dtw_gradient() uses there.
  *
  * @tparam T Floating point type (default: `settings::default_data_t`, currently `double`).
  * @param x First time series.
@@ -124,11 +122,11 @@ template <typename T = dtwc::settings::default_data_t>
 T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
   // No shortcut for a series against itself: its Soft-DTW is not 0. An empty
-  // series has no path: dtw_kernel_full returns max().
+  // series has no path: dtw_kernel_linear returns max().
   const T *xs = x.data(), *ys = y.data();
   std::size_t nx = x.size(), ny = y.size();
   core::orient(xs, nx, ys, ny);
-  return core::dtw_kernel_full<T>(nx, ny, core::SpanL1Cost<T>{ xs, ys }, core::SoftCell<T>{ gamma });
+  return core::dtw_kernel_linear<T>(nx, ny, core::SpanL1Cost<T>{ xs, ys }, core::SoftCell<T>{ gamma });
 }
 
 /**
@@ -154,32 +152,41 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   core::validate({ .variant = { .variant = core::DTWVariant::SoftDTW, .sdtw_gamma = gamma } },
                  std::is_same_v<T, float>);
 
-  const auto mx = static_cast<int>(x.size());
-  const auto my = static_cast<int>(y.size());
+  const std::size_t mx = x.size();
+  const std::size_t my = y.size();
 
   // Input validation (was assert(mx > 0 && my > 0), a no-op under NDEBUG that
   // let an empty span fall through to x[0]/y[0] below -> out-of-bounds read).
-  if (mx <= 0 || my <= 0)
+  if (mx == 0 || my == 0)
     throw InvalidInput("soft_dtw_gradient: input series must be non-empty");
   detail::require_finite<T>(x, y, "soft_dtw_gradient");
 
-  // Forward pass: compute cost matrix C
-  thread_local core::ScratchMatrix<T> C;
-  C.resize(mx, my);
+  // The cost matrix C (forward pass) and the alignment matrix E (backward
+  // pass), column-major: the backward pass reads C at every successor and the
+  // gradient sums each row of E, so both are kept whole. Grown, never shrunk:
+  // a warmed thread allocates nothing.
+  thread_local std::vector<T> c_buf, e_buf;
+  if (c_buf.size() < mx * my) {
+    c_buf.resize(mx * my);
+    e_buf.resize(mx * my);
+  }
+  const auto C = [c = c_buf.data(), mx](std::size_t i, std::size_t j) -> T & { return c[i + j * mx]; };
+  const auto E = [e = e_buf.data(), mx](std::size_t i, std::size_t j) -> T & { return e[i + j * mx]; };
 
+  // Forward pass: compute cost matrix C
   auto dist = [](T a, T b) -> T { return std::abs(a - b); };
   const core::detail::SoftGammaScale<T> gamma_scale{gamma};
 
   C(0, 0) = dist(x[0], y[0]);
 
-  for (int i = 1; i < mx; ++i)
+  for (std::size_t i = 1; i < mx; ++i)
     C(i, 0) = C(i - 1, 0) + dist(x[i], y[0]);
 
-  for (int j = 1; j < my; ++j)
+  for (std::size_t j = 1; j < my; ++j)
     C(0, j) = C(0, j - 1) + dist(x[0], y[j]);
 
-  for (int j = 1; j < my; ++j) {
-    for (int i = 1; i < mx; ++i) {
+  for (std::size_t j = 1; j < my; ++j) {
+    for (std::size_t i = 1; i < mx; ++i) {
       C(i, j) = dist(x[i], y[j]) +
                 detail::softmin_gamma_unchecked(
                   C(i - 1, j), C(i, j - 1), C(i - 1, j - 1), gamma_scale);
@@ -199,17 +206,15 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   //
   // Special cases: first row/col successors have only one predecessor each,
   // so the weight is 1.0 (the derivative of the identity).
-  thread_local core::ScratchMatrix<T> E;
-  E.resize(mx, my);
-  E.fill(T{0});
+  std::fill_n(e_buf.begin(), mx * my, T{0});
   E(mx - 1, my - 1) = T(1);
 
   const auto jacobian_weight = [&](T soft, T predecessor) noexcept {
     return std::exp(gamma_scale.scaled(soft - predecessor));
   };
 
-  for (int j = my - 1; j >= 0; --j) {
-    for (int i = mx - 1; i >= 0; --i) {
+  for (std::size_t j = my; j-- > 0;) {
+    for (std::size_t i = mx; i-- > 0;) {
       if (i == mx - 1 && j == my - 1) continue; // already set
 
       T val = T(0);
@@ -219,7 +224,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
         if (j == 0) {
           // First column: C(i+1,0) = C(i,0) + d(...), only one predecessor, weight = 1
           val += E(i + 1, j);
-        } else if (i + 1 >= 1) {
+        } else {
           const T S = C(i + 1, j) - dist(x[i + 1], y[j]); // softmin value at successor
           const T w = jacobian_weight(S, C(i, j));
           val += E(i + 1, j) * w;
@@ -231,7 +236,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
         if (i == 0) {
           // First row: C(0,j+1) = C(0,j) + d(...), only one predecessor, weight = 1
           val += E(i, j + 1);
-        } else if (j + 1 >= 1) {
+        } else {
           const T S = C(i, j + 1) - dist(x[i], y[j + 1]);
           const T w = jacobian_weight(S, C(i, j));
           val += E(i, j + 1) * w;
@@ -254,9 +259,9 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   // d/dx[i] soft_dtw = sum_j E(i,j) * d/dx[i] |x[i] - y[j]|
   //                   = sum_j E(i,j) * sign(x[i] - y[j])
   std::vector<T> grad(mx, T(0));
-  for (int i = 0; i < mx; ++i) {
+  for (std::size_t i = 0; i < mx; ++i) {
     T g = T(0);
-    for (int j = 0; j < my; ++j) {
+    for (std::size_t j = 0; j < my; ++j) {
       T diff = x[i] - y[j];
       T sign_val = (diff > T(0)) ? T(1) : ((diff < T(0)) ? T(-1) : T(0));
       g += E(i, j) * sign_val;

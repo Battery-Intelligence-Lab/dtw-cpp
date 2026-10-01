@@ -62,6 +62,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   the DBA alignment called once per cell; they now nest two-argument `std::min` and keep the value a cell stores in a register.
   On an Intel Core Ultra 9 285, pinned DTW of two 1000-sample series drops from 7.2 ms to 1.4 ms (band 100: 1.4 to 0.26 ms);
   results are unchanged digit for digit.
+- **Changed (memory):** `dtwFull` and Soft-DTW (the distance-matrix fill, `soft_dtw`, `distance::soft_dtw`) keep one
+  rolling column per thread, as `dtwFull_L` does, instead of a full n × m matrix that each thread kept for its lifetime:
+  512 MB per thread for two 8,000-sample series. A Soft-DTW fill of eight such series on 8 threads peaked at 3.4 GB and
+  now at 14 MB. The distances are unchanged digit for digit; `soft_dtw_gradient`, whose backward pass reads every cell,
+  keeps its two matrices.
 - **Changed (performance):** the CPU distance-matrix fill computes standard DTW (L1 or squared-L2 cost, univariate, no
   missing-data strategy) between a series and 8 others of its length at once (16 in `float32`), one pair per SIMD lane; every
   distance is what the one-pair kernel returns, bit for bit unless the compiler contracts a multiply-add into an FMA in one

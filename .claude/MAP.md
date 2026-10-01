@@ -20,7 +20,7 @@ Python  nanobind _dtwcpp_core + dtwcpp package                     MATLAB  dtwc_
 | Layer | Where | Lines | What |
 | --- | --- | --- | --- |
 | base | `base/` (+ forwarders at `dtwc/` root), `types/`, `enums/` | 1.7k | errors (`Error` → `InvalidInput`, `DeviceError`, `IOError`, `SolverError`, `UndefinedScore`), settings (`index_t`), OpenMP helpers (`run_openmp`: per-thread failure slots, the lowest-index failure rethrown), `device()`, names tables, `Index` / `Range` |
-| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 9k | `dtw_kernel.hpp` (full, linear, lanes, banded recurrences × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio only in `distance_matrix.cpp`), SHA-256, portable RNG |
+| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 9k | `dtw_kernel.hpp` (linear, lanes, banded recurrences × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio only in `distance_matrix.cpp`), SHA-256, portable RNG |
 | io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.6k | CSV/TSV/folder text readers (fast_float via `io/parse_number`), Parquet eager + chunked, Arrow IPC, nanoarrow C-Data ingest |
 | backends | `cuda/`, `metal/` | 4k | GPU fills (MPI deleted, Z1) |
 | algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4.9k | FastPAM, FastCLARA, OneBatchPAM, CLARANS, hierarchical, TADPole, barycenter; seeding; seven scores |

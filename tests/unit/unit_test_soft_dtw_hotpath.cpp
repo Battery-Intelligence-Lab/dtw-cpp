@@ -94,7 +94,7 @@ TEST_CASE("warmed Soft-DTW gradient reuses its large DP allocations",
   for (std::size_t i = 0; i < y.size(); ++i)
     y[i] = static_cast<double>((i * 11) % 31) / 31.0;
 
-  // Allocate the two thread-local ScratchMatrix buffers before probing.
+  // Allocate the two thread-local DP buffers before probing.
   const auto warm = dtwc::soft_dtw_gradient<double>(x, y, 0.7);
   REQUIRE(warm.size() == x.size());
 

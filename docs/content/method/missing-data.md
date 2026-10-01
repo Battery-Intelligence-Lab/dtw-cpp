@@ -91,9 +91,6 @@ double dist_checked = dtwc::distance::arow(x, y, /*band=*/-1);
 // Linear-space (O(min(m,n)) memory)
 double dist = dtwc::dtwAROW_L(x, y);
 
-// Full matrix (O(m*n) memory, useful for debugging)
-double dist_full = dtwc::dtwAROW(x, y);
-
 // Banded
 double dist_b = dtwc::dtwAROW_banded(x, y, /*band=*/3);
 

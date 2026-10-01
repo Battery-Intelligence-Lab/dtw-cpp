@@ -339,12 +339,9 @@ lives in the named F12 artifact rather than being inferred from source.
 | CUDA uses the same fixed geometry | `dtwc/cuda/cuda_dtw.cu:69`, used by the pairwise kernels at `:277`, `:307`, `:455`, `:645` (the one/K-vs-N kernels were deleted in 2.0) | One ordered-subtraction predicate implements $\lvert i-j\rvert\le w$ without signed `abs` overflow in every kernel family. The local RTX gate reproduces the independent path ledger in both singleton orientations: 515 assertions/6 F12 cases and 7,827 assertions/61 unfiltered cases. **CONFIRMED** by `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. |
 | Metal fixed geometry and public sentinel | `dtwc/metal/metal_dtw.mm:137-175`, `:250-287`, with public normalization at `:1759` (the K-vs-N kernels were deleted in 2.0) | Widened arithmetic clips all four fixed corridors and exact device `FLT_MAX` is translated to public `DBL_MAX`. Permanent independent-oracle cases cover the pairwise source routes. Three reviews found no remaining source defect, but this host has no Metal compiler/device and the binary executes zero assertions before capability skip. Source **CONFIRMED**; real-device parity remains **DISCREPANCY** F12 / `[BLOCKED-ENV]`. |
 
-The full reference kernel currently passes its `size_t` dimensions through
-`int` casts when indexing `ScratchMatrix` (`dtw_kernel.hpp:220-240`). D1 does
-not claim behavior above `INT_MAX` for that allocation-heavy route. This is
-**OPEN** under the R3 integer-width audit; a safe pre-allocation oversized
-probe would confirm whether a public guard or wider index conversion is
-required.
+The full-matrix reference kernel, which passed its `size_t` dimensions through
+`int` casts when indexing `ScratchMatrix`, is gone: `dtwFull` and Soft-DTW run
+on the linear kernel, whose indices are `size_t`.
 
 ## Decisive artifact
 
