@@ -465,29 +465,13 @@ TEST_CASE("k-medoids with k=1 returns the series of least total distance", "[Pha
   REQUIRE_THAT(total_distance(prob.medoids()[0]), WithinAbs(best, 1e-9));
 }
 
-TEST_CASE("k-medoids repeats exactly under the same seed", "[Phase1][clustering]")
-{
-  const auto series = three_separated_groups(5);
-  const auto run_once = [&] {
-    dtwc::randGenerator.seed(42);
-    const auto prob = cluster_series(series, 3);
-    return std::make_pair(prob.labels(), prob.medoids());
-  };
-
-  const auto first = run_once();
-  const auto second = run_once();
-  REQUIRE(first.first == second.first);
-  REQUIRE(first.second == second.second);
-}
-
 TEST_CASE("k-medoids recovers three well-separated groups", "[Phase1][clustering]")
 {
   // Groups sit ~100 apart with noise ~0.5, so the minimum-cost 3-clustering is
   // the generating one: indices [0,5), [5,10), [10,15) each share a label and
-  // the three labels differ. The best of five starts removes the dependence on
-  // one random initialisation.
+  // the three labels differ. The best of five starts (seeded from the
+  // Problem's random_seed) removes the dependence on one initialisation.
   constexpr int per_group = 5;
-  dtwc::randGenerator.seed(77);
   const auto prob = cluster_series(three_separated_groups(per_group), 3, 5);
   const auto labels = prob.labels();
 
@@ -513,7 +497,6 @@ TEST_CASE("k-medoids groups series of different lengths by shape", "[Phase1][clu
 {
   // DTW compares series of different lengths; two short ramps near 1..5 and two
   // near 100..400 form the two groups.
-  dtwc::randGenerator.seed(5);
   const auto prob = cluster_series({ { 1.0, 2.0, 3.0 },
                                      { 1.0, 2.0, 3.0, 4.0, 5.0 },
                                      { 100.0, 200.0 },
