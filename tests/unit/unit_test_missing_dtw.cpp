@@ -395,7 +395,7 @@ TEST_CASE("dtwMissing_banded: SquaredL2 no NaN matches standard", "[missing_dtw]
 // ===========================================================================
 // A3: an all-NaN series under MissingStrategy::Interpolate must be rejected by
 // the SERIAL pre-scan, with a diagnostic naming the offending series — not by
-// interpolate_linear() throwing from inside the parallel per-pair lambda.
+// interpolate_linear_into() throwing from inside the parallel per-pair lambda.
 // ===========================================================================
 
 TEST_CASE("Interpolate: all-NaN series is rejected by the serial pre-scan",

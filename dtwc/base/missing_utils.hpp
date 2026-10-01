@@ -49,7 +49,7 @@ bool has_missing(const std::vector<T> &v)
 }
 
 /// Returns true if the range is non-empty and every element is NaN.
-/// Such a series carries no observed value, so interpolate_linear() cannot
+/// Such a series carries no observed value, so interpolate_linear_into() cannot
 /// reconstruct it; callers reject it before dispatch rather than let the
 /// throw happen inside a per-pair (parallel) lambda.
 template <typename T>
@@ -61,49 +61,51 @@ bool all_missing(std::span<const T> v)
   return true;
 }
 
-/// Linear interpolation of NaN gaps.
+/// `v` with its NaN gaps filled by linear interpolation: `v` itself when it has
+/// no NaN (no copy), else `buffer`, resized and filled. Interpolation depends on
+/// the series alone, so a fill keeps one buffer per thread and series, and a
+/// reused buffer stops allocating once it has grown.
 /// Interior NaN: linearly interpolated between nearest observed neighbors.
 /// Leading NaN: filled with first observed value (NOCB).
 /// Trailing NaN: filled with last observed value (LOCF).
 /// Throws InvalidInput if ALL values are NaN.
 template <typename T>
-std::vector<T> interpolate_linear(std::span<const T> v)
+std::span<const T> interpolate_linear_into(std::type_identity_t<std::span<const T>> v, std::vector<T> &buffer)
 {
-  // Primary implementation — span overload.
-  // A vector convenience overload is below.
-
-  if (v.empty()) return {};
-
   size_t first_valid = v.size();
   size_t last_valid = 0;
+  bool gap = false;
   for (size_t i = 0; i < v.size(); ++i) {
-    if (!is_missing(v[i])) {
+    if (is_missing(v[i])) {
+      gap = true;
+    } else {
       if (first_valid == v.size()) first_valid = i;
       last_valid = i;
     }
   }
+  if (!gap) return v;
   if (first_valid == v.size())
-    throw InvalidInput("interpolate_linear: all values are NaN");
+    throw InvalidInput("interpolate_linear_into: all values are NaN");
 
-  std::vector<T> result(v.size());
+  buffer.resize(v.size());
 
   // NOCB: fill leading NaN with first observed value
   for (size_t i = 0; i < first_valid; ++i)
-    result[i] = v[first_valid];
+    buffer[i] = v[first_valid];
 
   // Interior: linear interpolation
   size_t prev_valid = first_valid;
-  result[first_valid] = v[first_valid];
+  buffer[first_valid] = v[first_valid];
   for (size_t i = first_valid + 1; i <= last_valid; ++i) {
     if (!is_missing(v[i])) {
-      result[i] = v[i];
+      buffer[i] = v[i];
       if (i - prev_valid > 1) {
         T start = v[prev_valid];
         T end = v[i];
         T gap_len = static_cast<T>(i - prev_valid);
         for (size_t j = prev_valid + 1; j < i; ++j) {
           T frac = static_cast<T>(j - prev_valid) / gap_len;
-          result[j] = start + frac * (end - start);
+          buffer[j] = start + frac * (end - start);
         }
       }
       prev_valid = i;
@@ -112,16 +114,9 @@ std::vector<T> interpolate_linear(std::span<const T> v)
 
   // LOCF: fill trailing NaN with last observed value
   for (size_t i = last_valid + 1; i < v.size(); ++i)
-    result[i] = v[last_valid];
+    buffer[i] = v[last_valid];
 
-  return result;
-}
-
-/// Convenience overload: vector -> span.
-template <typename T>
-std::vector<T> interpolate_linear(const std::vector<T> &v)
-{
-  return interpolate_linear(std::span<const T>{v});
+  return buffer;
 }
 
 } // namespace dtwc

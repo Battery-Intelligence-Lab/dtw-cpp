@@ -102,7 +102,8 @@ double dist_sq = dtwc::dtwAROW_L(x, y, dtwc::core::MetricType::SquaredL2);
 
 ## Interpolation
 
-The `interpolate_linear()` function fills NaN gaps before DTW computation:
+The `interpolate_linear_into()` function fills NaN gaps before DTW computation, into a buffer the caller keeps; a
+series without NaN comes back as itself, without a copy:
 
 - **Interior NaN:** linearly interpolated between the nearest observed neighbors on each side.
 - **Leading NaN:** filled with the first observed value (Next Observation Carried Backward, NOCB).
@@ -113,8 +114,9 @@ The `interpolate_linear()` function fills NaN gaps before DTW computation:
 #include <dtwc/base/missing_utils.hpp>
 
 std::vector<double> v = {NAN, 1.0, NAN, NAN, 4.0, NAN};
-auto filled = dtwc::interpolate_linear(v);
-// Result: {1.0, 1.0, 2.0, 3.0, 4.0, 4.0}
+std::vector<double> buffer;
+std::span<const double> filled = dtwc::interpolate_linear_into(v, buffer);
+// filled views buffer: {1.0, 1.0, 2.0, 3.0, 4.0, 4.0}
 ```
 
 When `MissingStrategy::Interpolate` is set on a `Problem`, interpolation is applied automatically as a preprocessing step before standard DTW.

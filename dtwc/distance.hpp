@@ -139,8 +139,8 @@ T dtw(std::span<const T> x, std::span<const T> y,
 {
   core::validate({ params, metric, missing_strategy, band }, std::is_same_v<T, float>);
   // Each branch ends in a checked function above, which scans the input.
-  // Interpolate first rejects ±inf, which interpolate_linear() would spread
-  // into the gaps it fills.
+  // Interpolate first rejects ±inf, which interpolate_linear_into() would
+  // spread into the gaps it fills.
   switch (missing_strategy) {
   case core::MissingStrategy::ZeroCost:
     return missing<T>(x, y, band, metric);
@@ -150,9 +150,8 @@ T dtw(std::span<const T> x, std::span<const T> y,
 
   case core::MissingStrategy::Interpolate: {
     dtwc::detail::require_finite<T>(x, y, "distance::dtw", /*nan_is_missing=*/true);
-    auto xi = has_missing(x) ? interpolate_linear(x) : std::vector<T>(x.begin(), x.end());
-    auto yi = has_missing(y) ? interpolate_linear(y) : std::vector<T>(y.begin(), y.end());
-    return dtw<T>(std::span<const T>{xi}, std::span<const T>{yi}, band, metric);
+    std::vector<T> x_buffer, y_buffer;
+    return dtw<T>(interpolate_linear_into(x, x_buffer), interpolate_linear_into(y, y_buffer), band, metric);
   }
 
   case core::MissingStrategy::Error:

@@ -6,7 +6,7 @@
 #include "dtw_dispatch.hpp"
 
 #include "../Data.hpp"
-#include "../base/missing_utils.hpp"      // has_missing, interpolate_linear
+#include "../base/missing_utils.hpp"      // interpolate_linear_into
 #include "../soft_dtw.hpp"           // soft_dtw
 #include "../warping.hpp"            // dtwBanded, dtwBanded_mv
 #include "../warping_adtw.hpp"       // adtwBanded, adtwBanded_mv
@@ -64,15 +64,16 @@ auto make_zero_cost(const DistanceConfig &c)
   };
 }
 
-// Univariate: validate() refuses it on ndim > 1.
+// Univariate: validate() refuses it on ndim > 1. A series without NaN is used as
+// it is; a gappy one is filled into this thread's buffer for its side.
 template <typename T>
 auto make_interpolate(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   return [band = c.band, metric = c.metric](std::span<const T> x, std::span<const T> y) -> double {
-    auto xi = has_missing(x) ? interpolate_linear(x) : std::vector<T>(x.begin(), x.end());
-    auto yi = has_missing(y) ? interpolate_linear(y) : std::vector<T>(y.begin(), y.end());
-    return normalize_public_distance(dtwBanded<T>(xi, yi, band, T(-1), metric));
+    thread_local std::vector<T> x_buffer, y_buffer;
+    return normalize_public_distance(dtwBanded<T>(interpolate_linear_into(x, x_buffer),
+                                                  interpolate_linear_into(y, y_buffer), band, T(-1), metric));
   };
 }
 

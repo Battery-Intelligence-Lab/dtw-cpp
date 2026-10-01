@@ -639,7 +639,7 @@ void Problem::validate_fill_request(std::string_view where) const
       detail::require_finite(series(i), name, at, nan_is_missing);
   }
   if (distance_.missing == core::MissingStrategy::Interpolate) {
-    // interpolate_linear() has no observed value to interpolate from when a
+    // interpolate_linear_into() has no observed value to interpolate from when a
     // series is entirely NaN, and used to throw from inside the per-pair lambda.
     for (std::size_t i = 0; i < data_.size(); ++i) {
       const bool all_nan = data_.is_f32() ? all_missing(data_.series_f32(i))

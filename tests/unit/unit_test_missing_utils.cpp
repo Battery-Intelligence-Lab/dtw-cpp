@@ -3,7 +3,7 @@
  * @brief Unit tests for missing_utils.hpp (bitwise NaN check, interpolation).
  *
  * @details Tests is_missing<T>(), has_missing() and
- * interpolate_linear() — all of which use bitwise NaN detection safe
+ * interpolate_linear_into() — all of which use bitwise NaN detection safe
  * under -ffast-math / /fp:fast.
  *
  * @author Volkan Kumtepeli
@@ -106,82 +106,91 @@ TEST_CASE("has_missing: all NaN returns true", "[missing_utils]")
 }
 
 // ===========================================================================
-// interpolate_linear
+// interpolate_linear_into
 // ===========================================================================
 
-TEST_CASE("interpolate_linear: no NaN returns unchanged values", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: no NaN returns the series itself", "[missing_utils]")
 {
   std::vector<double> v = { 1.0, 2.0, 3.0 };
-  auto result = dtwc::interpolate_linear(v);
+  std::vector<double> buffer;
+  const auto result = dtwc::interpolate_linear_into(v, buffer);
+  REQUIRE(result.data() == v.data());
   REQUIRE(result.size() == 3u);
   REQUIRE_THAT(result[0], WithinAbs(1.0, 1e-15));
   REQUIRE_THAT(result[1], WithinAbs(2.0, 1e-15));
   REQUIRE_THAT(result[2], WithinAbs(3.0, 1e-15));
 }
 
-TEST_CASE("interpolate_linear: single interior NaN is linearly interpolated", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: single interior NaN is linearly interpolated", "[missing_utils]")
 {
   double nan = std::numeric_limits<double>::quiet_NaN();
   std::vector<double> v = { 1.0, nan, 3.0 };
-  auto result = dtwc::interpolate_linear(v);
+  std::vector<double> buffer;
+  const auto result = dtwc::interpolate_linear_into(v, buffer);
   REQUIRE_THAT(result[0], WithinAbs(1.0, 1e-15));
   REQUIRE_THAT(result[1], WithinAbs(2.0, 1e-15));
   REQUIRE_THAT(result[2], WithinAbs(3.0, 1e-15));
 }
 
-TEST_CASE("interpolate_linear: multi-gap interior NaN is linearly interpolated", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: multi-gap interior NaN is linearly interpolated", "[missing_utils]")
 {
   double nan = std::numeric_limits<double>::quiet_NaN();
   std::vector<double> v = { 0.0, nan, nan, 6.0 };
-  auto result = dtwc::interpolate_linear(v);
+  std::vector<double> buffer;
+  const auto result = dtwc::interpolate_linear_into(v, buffer);
   REQUIRE_THAT(result[0], WithinAbs(0.0, 1e-15));
   REQUIRE_THAT(result[1], WithinAbs(2.0, 1e-15));
   REQUIRE_THAT(result[2], WithinAbs(4.0, 1e-15));
   REQUIRE_THAT(result[3], WithinAbs(6.0, 1e-15));
 }
 
-TEST_CASE("interpolate_linear: leading NaN filled with NOCB (first valid value)", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: leading NaN filled with NOCB (first valid value)", "[missing_utils]")
 {
   double nan = std::numeric_limits<double>::quiet_NaN();
   std::vector<double> v = { nan, nan, 3.0, 4.0 };
-  auto result = dtwc::interpolate_linear(v);
+  std::vector<double> buffer;
+  const auto result = dtwc::interpolate_linear_into(v, buffer);
   REQUIRE_THAT(result[0], WithinAbs(3.0, 1e-15));
   REQUIRE_THAT(result[1], WithinAbs(3.0, 1e-15));
   REQUIRE_THAT(result[2], WithinAbs(3.0, 1e-15));
   REQUIRE_THAT(result[3], WithinAbs(4.0, 1e-15));
 }
 
-TEST_CASE("interpolate_linear: trailing NaN filled with LOCF (last valid value)", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: trailing NaN filled with LOCF (last valid value)", "[missing_utils]")
 {
   double nan = std::numeric_limits<double>::quiet_NaN();
   std::vector<double> v = { 1.0, 2.0, nan, nan };
-  auto result = dtwc::interpolate_linear(v);
+  std::vector<double> buffer;
+  const auto result = dtwc::interpolate_linear_into(v, buffer);
   REQUIRE_THAT(result[0], WithinAbs(1.0, 1e-15));
   REQUIRE_THAT(result[1], WithinAbs(2.0, 1e-15));
   REQUIRE_THAT(result[2], WithinAbs(2.0, 1e-15));
   REQUIRE_THAT(result[3], WithinAbs(2.0, 1e-15));
 }
 
-TEST_CASE("interpolate_linear: all NaN throws runtime_error", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: all NaN throws runtime_error", "[missing_utils]")
 {
   double nan = std::numeric_limits<double>::quiet_NaN();
   std::vector<double> v = { nan, nan, nan };
-  REQUIRE_THROWS_AS(dtwc::interpolate_linear(v), std::runtime_error);
+  std::vector<double> buffer;
+  REQUIRE_THROWS_AS(dtwc::interpolate_linear_into(v, buffer), std::runtime_error);
 }
 
-TEST_CASE("interpolate_linear: empty vector returns empty", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: empty vector returns empty", "[missing_utils]")
 {
   std::vector<double> v;
-  auto result = dtwc::interpolate_linear(v);
+  std::vector<double> buffer;
+  const auto result = dtwc::interpolate_linear_into(v, buffer);
   REQUIRE(result.empty());
 }
 
-TEST_CASE("interpolate_linear: leading, interior and trailing gaps in one series", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: leading, interior and trailing gaps in one series", "[missing_utils]")
 {
   double nan = std::numeric_limits<double>::quiet_NaN();
   // NOCB fills the first two, the midpoint of 1 and 3 fills the third, LOCF the last.
   std::vector<double> v = { nan, 1.0, nan, 3.0, nan };
-  auto result = dtwc::interpolate_linear(v);
+  std::vector<double> buffer;
+  const auto result = dtwc::interpolate_linear_into(v, buffer);
   REQUIRE(result.size() == 5u);
   REQUIRE_THAT(result[0], WithinAbs(1.0, 1e-15));
   REQUIRE_THAT(result[1], WithinAbs(1.0, 1e-15));
@@ -190,20 +199,22 @@ TEST_CASE("interpolate_linear: leading, interior and trailing gaps in one series
   REQUIRE_THAT(result[4], WithinAbs(3.0, 1e-15));
 }
 
-TEST_CASE("interpolate_linear: a single observed value fills both sides", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: a single observed value fills both sides", "[missing_utils]")
 {
   double nan = std::numeric_limits<double>::quiet_NaN();
   std::vector<double> v = { nan, nan, 7.0, nan, nan };
-  auto result = dtwc::interpolate_linear(v);
+  std::vector<double> buffer;
+  const auto result = dtwc::interpolate_linear_into(v, buffer);
   REQUIRE(result.size() == 5u);
   for (auto x : result) REQUIRE_THAT(x, WithinAbs(7.0, 1e-15));
 }
 
-TEST_CASE("interpolate_linear: float", "[missing_utils]")
+TEST_CASE("interpolate_linear_into: float", "[missing_utils]")
 {
   float nan = std::numeric_limits<float>::quiet_NaN();
   std::vector<float> v = { 0.0f, nan, 4.0f };
-  auto result = dtwc::interpolate_linear(v);
+  std::vector<float> buffer;
+  const auto result = dtwc::interpolate_linear_into(v, buffer);
   REQUIRE(result.size() == 3u);
   REQUIRE_THAT(static_cast<double>(result[1]), WithinAbs(2.0, 1e-6));
 }

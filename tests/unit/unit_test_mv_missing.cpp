@@ -447,7 +447,7 @@ TEST_CASE("MV Missing explicit L2 is NaN-aware Euclidean in f64 and f32",
 //  A1 regression: MV + MissingStrategy::Interpolate must not silently
 //  flatten channels.
 //
-//  interpolate_linear() is univariate: on an interleaved ndim=2 buffer it
+//  interpolate_linear_into() is univariate: on an interleaved ndim=2 buffer it
 //  fills a NaN by averaging its *neighbouring channel* values, and the band
 //  then counts flat elements rather than timesteps. There is no multivariate
 //  interpolation contract in this release, so — exactly like MSM/TWE — the
