@@ -33,6 +33,8 @@ namespace dtwc::test_support {
 template <typename T>
 bool dtw_routes_agree(double a, double b, std::size_t nx, std::size_t ny)
 {
+  // No path (infinity) agrees only with no path; the bound below is infinite there.
+  if (std::isinf(a) || std::isinf(b)) return a == b;
   constexpr double c = 2.0;
   const double path_length = static_cast<double>(nx + ny - 1);
   return std::abs(a - b)

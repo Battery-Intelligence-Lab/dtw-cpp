@@ -14,6 +14,8 @@
 
 #include <dtwc.hpp>
 
+#include "../support/missing_dtw_oracle.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -493,4 +495,57 @@ TEST_CASE("distance::dtw honours MissingStrategy::Error",
   // Clean input on the same path is untouched.
   REQUIRE_NOTHROW(distance::dtw<double>(y, y, params, -1, core::MetricType::L1,
                                         core::MissingStrategy::Error));
+}
+
+// ===========================================================================
+// ZeroCost against an independent oracle, for every NaN pattern
+// ===========================================================================
+
+TEST_CASE("ZeroCost kernels equal the recurrence for every NaN pattern, in both argument orders",
+          "[missing_dtw][oracle]")
+{
+  namespace ts = dtwc::test_support;
+  std::size_t pairs = 0;
+  ts::for_each_masked_pair([&](const std::vector<double>& x, const std::vector<double>& y) {
+    ++pairs;
+    CAPTURE(x, y);
+    for (const bool squared : { false, true }) {
+      const auto metric = squared ? core::MetricType::SquaredL2 : core::MetricType::L1;
+      const auto want = [&](int band) {
+        return ts::missing_dtw_oracle(ts::MissingRule::ZeroCost, x, y, squared, band);
+      };
+      for (const bool swapped : { false, true }) {
+        const auto& a = swapped ? y : x;
+        const auto& b = swapped ? x : y;
+        CHECK(dtwMissing_L<double>(a, b, -1, metric) == want(-1));
+        CHECK(dtwMissing<double>(a, b, metric) == want(-1));
+        // The masked pairs' best paths stay within one step of the diagonal: only band 0 binds.
+        for (const int band : { -1, 0, 2, 100 })
+          CHECK(ts::same_distance(dtwMissing_banded<double>(a, b, band, -1, metric), want(band)));
+      }
+    }
+  });
+  CHECK(pairs > 500);
+}
+
+TEST_CASE("dtwMissing SquaredL2: a missing last step costs nothing, hand-computed", "[missing_dtw]")
+{
+  // x = {3, NaN}, y = {1, 2}
+  // C(0,0) = (3-1)^2 = 4
+  // C(1,0) = 4 + 0 = 4      [x[1] is NaN]
+  // C(0,1) = 4 + (3-2)^2 = 5
+  // C(1,1) = min(4, 4, 5) + 0 = 4   [x[1] is NaN]
+  std::vector<double> x = { 3.0, NaN };
+  std::vector<double> y = { 1.0, 2.0 };
+  REQUIRE_THAT(dtwMissing<double>(x, y, core::MetricType::SquaredL2), WithinAbs(4.0, 1e-12));
+}
+
+TEST_CASE("dtwMissing: an empty series gives the no-path sentinel", "[missing_dtw]")
+{
+  std::vector<double> x{ 1.0, 2.0 };
+  std::vector<double> empty{};
+  constexpr double max_value = std::numeric_limits<double>::max();
+
+  REQUIRE(dtwMissing<double>(empty, x) == max_value);
+  REQUIRE(dtwMissing<double>(x, empty) == max_value);
 }

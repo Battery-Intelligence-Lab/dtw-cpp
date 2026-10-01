@@ -26,6 +26,8 @@
 #include <core/dtw_cost.hpp>
 #include <core/dtw_kernel.hpp>
 
+#include "../support/missing_dtw_oracle.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -818,4 +820,39 @@ TEST_CASE("Problem::set_missing_strategy(AROW) selects the AROW kernel for the f
 
   // The Problem's bound kernel and the free function are separate code paths.
   REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(dtwAROW_L<double>(x, y_nan), 1e-12));
+}
+
+// ===========================================================================
+//  The recurrence against an independent oracle, for every NaN pattern
+// ===========================================================================
+
+TEST_CASE("DTW-AROW kernels equal the recurrence for every NaN pattern, in both argument orders",
+          "[arow_dtw][oracle]")
+{
+  namespace ts = dtwc::test_support;
+  std::size_t pairs = 0;
+  ts::for_each_masked_pair([&](const std::vector<double>& x, const std::vector<double>& y) {
+    ++pairs;
+    CAPTURE(x, y);
+    for (const bool squared : { false, true }) {
+      const auto metric = squared ? core::MetricType::SquaredL2 : core::MetricType::L1;
+      const auto want = [&](int band) {
+        return ts::missing_dtw_oracle(ts::MissingRule::AROW, x, y, squared, band);
+      };
+      // AROW admits fewer paths than ZeroCost, so it is never below it.
+      const double zero_cost = ts::missing_dtw_oracle(ts::MissingRule::ZeroCost, x, y, squared);
+      for (const bool swapped : { false, true }) {
+        const auto& a = swapped ? y : x;
+        const auto& b = swapped ? x : y;
+        const double arow = dtwAROW_L<double>(a, b, metric);
+        CHECK(arow == want(-1));
+        CHECK(arow >= zero_cost);
+        CHECK(dtwAROW<double>(a, b, metric) == want(-1));
+        // The masked pairs' best paths stay within one step of the diagonal: only band 0 binds.
+        for (const int band : { -1, 0, 2, 100 })
+          CHECK(ts::same_distance(dtwAROW_banded<double>(a, b, band, metric), want(band)));
+      }
+    }
+  });
+  CHECK(pairs > 500);
 }

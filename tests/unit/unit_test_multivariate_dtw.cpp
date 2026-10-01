@@ -13,11 +13,16 @@
 
 #include <dtwc.hpp>
 
+#include "../support/deterministic_series.hpp"
+#include "../support/dtw_oracle.hpp"
+#include "../support/dtw_route_bound.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <vector>
 #include <cmath>
+#include <limits>
 #include <random>
 
 using Catch::Matchers::WithinAbs;
@@ -320,4 +325,40 @@ TEST_CASE("derivative_transform_mv: empty and single", "[mv][ddtw]")
   auto dx_single = dtwc::derivative_transform_mv(std::vector<double>{1,2,3}, 3);
   REQUIRE(dx_single.size() == 3);
   for (auto v : dx_single) CHECK(v == 0.0);
+}
+
+// =========================================================================
+//  Channel counts above the three of the oracle table, against the oracle
+// =========================================================================
+
+TEST_CASE("MV DTW: ndim 2, 5, 10 and 50 equal the oracle, full and banded", "[mv][dtw][oracle]")
+{
+  namespace ts = dtwc::test_support;
+  using dtwc::core::MetricType;
+  constexpr std::pair<std::size_t, std::size_t> shapes[] = { { 6, 11 }, { 11, 6 }, { 9, 9 } };
+  std::size_t checks = 0;
+  for (const std::size_t ndim : { 2, 5, 10, 50 })
+    for (const auto metric : { MetricType::L1, MetricType::L2, MetricType::SquaredL2 })
+      for (const auto [nx, ny] : shapes) {
+        const auto x = ts::benchmark_series(nx * ndim, 31), y = ts::benchmark_series(ny * ndim, 32);
+        // 0 binds on 9x9 and leaves the unequal shapes no path; 5 is the longest length difference.
+        for (const int band : { -1, 0, 5, 100 }) {
+          ts::OracleSpec spec;
+          spec.metric = metric == MetricType::L1   ? ts::OracleMetric::L1
+                        : metric == MetricType::L2 ? ts::OracleMetric::L2
+                                                   : ts::OracleMetric::SquaredL2;
+          spec.band = band;
+          spec.ndim = ndim;
+          const double want = ts::dtw_oracle(spec, x, y);
+          const double got = band < 0 ? dtwc::dtwFull_L_mv(x.data(), nx, y.data(), ny, ndim, -1.0, metric)
+                                      : dtwc::dtwBanded_mv(x.data(), nx, y.data(), ny, ndim, band, -1.0, metric);
+          INFO("ndim " << ndim << ", band " << band << ", " << nx << "x" << ny << ": got " << got
+                       << ", oracle " << want);
+          // The library's sentinel for no path is max(); the oracle's is infinity.
+          CHECK((std::isinf(want) ? got == std::numeric_limits<double>::max()
+                                  : ts::dtw_routes_agree<double>(got, want, nx, ny)));
+          ++checks;
+        }
+      }
+  CHECK(checks == 4 * 3 * 3 * 4);
 }
