@@ -279,8 +279,8 @@ if(TARGET dtwc_cl)
         LABELS integration cli SERIAL TIMEOUT 300)
 endif()
 
-# This is a real-CLI Parquet integration contract, not an Arrow-OFF capability
-# probe. Add no CTest target at all unless the linked library actually publishes
+# The poison-Parquet test below is a real-CLI integration contract, not an Arrow-OFF
+# capability probe. Add no CTest target at all unless the linked library actually publishes
 # Parquet support; a passing stub or SKIP_RETURN_CODE would hide the subject.
 if(TARGET dtwc_cl AND "DTWC_HAS_PARQUET" IN_LIST _dtwc_public_defs)
     add_executable(

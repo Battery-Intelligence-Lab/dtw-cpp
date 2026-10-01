@@ -11,7 +11,7 @@
  *     intermediate (and the si*N+sj matrix index) at N >= 46341.
  *
  * The shared dtwc::detail::decode_pair (FP64 seed + int64 correction) must
- * decode correctly at N = 8192 and N = 50000 and match the audited-correct MPI
+ * decode correctly at N = 8192 and N = 50000 and match the MPI
  * reference formula bit-for-bit. Pure host C++ — buildable with no CUDA or Metal
  * toolchain, so it runs everywhere.
  *
@@ -37,7 +37,7 @@
 
 namespace {
 
-/// Oracle A: the audited-correct MPI reference formula (FP64 seed + `while`),
+/// Oracle A: the MPI reference formula (FP64 seed + `while`),
 /// reproduced as it stood in mpi_distance_matrix.cpp before the SSOT extraction.
 /// This is the "correct copy" the shared decode must match.
 std::pair<std::int64_t, std::int64_t> mpi_reference_decode(std::int64_t k, std::int64_t N)
@@ -215,7 +215,7 @@ TEST_CASE("decode_pair is correct at N=50000", "[decode_pair]")
     CHECK(first_failing_row_boundary(N, i) == -1);
 }
 
-TEST_CASE("retired Metal FP32 decode is wrong at N=8192 (pins Critical #2)", "[decode_pair]")
+TEST_CASE("retired Metal FP32 decode is wrong at N=8192", "[decode_pair]")
 {
   // The retired FP32 decode over-estimates the row near row boundaries (its
   // single upward `if` cannot decrement), so the LAST pair of most rows decodes
@@ -245,7 +245,7 @@ TEST_CASE("retired Metal FP32 decode is wrong at N=8192 (pins Critical #2)", "[d
 // 64-bit matrix-index arithmetic
 // ---------------------------------------------------------------------------
 
-TEST_CASE("last-pair matrix index overflows int32 at N=46342 (pins Task 0.7)", "[decode_pair][index]")
+TEST_CASE("last-pair matrix index overflows int32 at N=46342", "[decode_pair][index]")
 {
   // The CUDA kernels indexed an NxN result matrix as result_matrix[si*N + sj]
   // (they now write a packed slot built from the same int64 pair). With int32

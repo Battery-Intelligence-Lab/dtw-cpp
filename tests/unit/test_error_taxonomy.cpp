@@ -8,9 +8,8 @@
  *   - catchability as dtwc::Error and as std::runtime_error/std::exception, and
  *   - that sibling types are distinct (an InvalidInput is not a SolverError).
  *
- * LIVE code-path coverage: the taxonomy types are thrown by the sites they were migrated to. The
- * migrated site exercised here is the public, core (no HiGHS/Gurobi/CUDA needed)
- * entry point dtwc::soft_dtw_gradient() in dtwc/soft_dtw.hpp. Its former
+ * LIVE code-path coverage: the site exercised here is the public, core (no HiGHS/Gurobi/CUDA
+ * needed) entry point dtwc::soft_dtw_gradient() in dtwc/soft_dtw.hpp. Its former
  * `assert(mx > 0 && my > 0)` was a no-op under NDEBUG that let an empty span
  * fall through to an out-of-bounds read of x[0]/y[0]; it is now
  * `throw dtwc::InvalidInput(...)`. The final TEST_CASE drives that function with

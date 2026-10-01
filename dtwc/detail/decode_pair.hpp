@@ -9,13 +9,11 @@
  *            k=N-1 -> (1,2), ...
  *          Row i starts at linear index  i*(2N - i - 1)/2.
  *
- *          Before 2026-07 three divergent copies of this decode existed
- *          (CUDA: int/if, MPI: size_t/while, Metal: float/sqrt). The Metal
- *          FP32 copy produced wrong / out-of-bounds pairs for N > ~4096, and
- *          every int32 copy overflowed the  i*(2N-i-1)  intermediate at
- *          N >= 46341. This header is the SSOT that fixes both:
+ *          A float32 seed gives wrong or out-of-bounds pairs for N > ~4096 and
+ *          an int32  i*(2N-i-1)  intermediate overflows at N >= 46341, so every
+ *          backend decodes here:
  *            - decode_pair(): host + CUDA device, FP64 seed + 64-bit integer
- *              correction loop (matches the audited-correct MPI copy).
+ *              correction loop.
  *            - kDecodePairMSL: Metal Shading Language source (integer-only,
  *              64-bit `long`). MSL has no FP64, so it uses an exact integer
  *              square-root seed instead; it produces bit-identical (i, j).
