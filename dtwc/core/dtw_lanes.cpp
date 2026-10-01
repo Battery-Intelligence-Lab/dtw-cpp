@@ -5,7 +5,7 @@
  * @details A translation unit of its own because lld-link's LTO backend runs the
  *          loop vectoriser but not the SLP vectoriser: under clang's ThinLTO on
  *          Windows the lane loop of dtw_kernel_lanes would compile to W scalar
- *          chains instead of W / 4 vector ones. dtwc/CMakeLists.txt compiles this
+ *          chains instead of W / 4 vector ones. dtwc/core/CMakeLists.txt compiles this
  *          file to native code there, where clang's own -O3 pipeline runs SLP.
  */
 

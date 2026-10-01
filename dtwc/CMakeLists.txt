@@ -5,7 +5,14 @@ add_library(dtwc++ STATIC)
 # Required for linking into the Python shared library (.so) on Linux
 set_target_properties(dtwc++ PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# Each folder lists its own files, and the settings that belong to them, on dtwc++.
 add_subdirectory(mip)
+add_subdirectory(algorithms)
+add_subdirectory(base)
+add_subdirectory(cli)
+add_subdirectory(core)
+add_subdirectory(io)
+add_subdirectory(extern/nanoarrow)
 
 target_sources(dtwc++
   PRIVATE
@@ -13,29 +20,9 @@ target_sources(dtwc++
   Problem_IO.cpp
   api.cpp
   checkpoint.cpp
-  base/env.cpp
   initialisation.cpp
   scores.cpp
-  cli/config.cpp
-  cli/run.cpp
-  core/distance_matrix.cpp
-  core/dtw_dispatch.cpp
-  core/dtw_lanes.cpp
-  algorithms/fast_pam.cpp
-  algorithms/fast_clara.cpp
-  algorithms/one_batch_pam.cpp
-  algorithms/barycenter.cpp
-  algorithms/hierarchical.cpp
-  algorithms/tadpole.cpp
-  algorithms/detail/fast_clara_plan.hpp
-  io/arrow_c_data.cpp
-  io/read_data.cpp
-  io/parse_number.cpp
-  extern/nanoarrow/nanoarrow.c
   PUBLIC
-  io/arrow_c_data.hpp
-  io/read_data.hpp
-  io/parse_number.hpp
   # Top-level headers
   Data.hpp
   DataLoader.hpp
@@ -57,42 +44,12 @@ target_sources(dtwc++
   warping_wdtw.hpp
   warping_adtw.hpp
   soft_dtw.hpp
-  # Core types
-  core/clustering_result.hpp
-  core/distance_matrix.hpp
-  core/dtw_options.hpp
-  core/lower_bound_impl.hpp
-  core/sha256.hpp
-  core/scratch_matrix.hpp
-  core/time_series.hpp
-  core/z_normalize.hpp
-  # Algorithm headers
-  algorithms/fast_pam.hpp
-  algorithms/fast_clara.hpp
-  algorithms/one_batch_pam.hpp
-  algorithms/barycenter.hpp
-  algorithms/hierarchical.hpp
-  algorithms/tadpole.hpp
 )
 
-# lld-link's LTO backend (LLVM 21) runs the loop vectoriser but not the SLP
-# vectoriser, which is what turns dtw_kernel_lanes' unrolled lane loop into
-# packed vminpd/vaddpd. Clang targeting the MSVC ABI links through lld-link, so
-# there the fill's lane binding is compiled to native code, not ThinLTO bitcode.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
-  set_source_files_properties(core/dtw_lanes.cpp PROPERTIES COMPILE_OPTIONS -fno-lto)
-endif()
-
 target_include_directories(dtwc++ PUBLIC .)
-# Vendored, dependency-free nanoarrow (dtwc/extern/nanoarrow) for Arrow C Data
-# interface ingest. Symbols are namespaced (NANOARROW_NAMESPACE=DtwcNanoarrow) to
-# avoid ODR clashes with any other Arrow library loaded in the same process.
-# PRIVATE: only io/arrow_c_data.cpp compiles against it; the public surface is the
-# forward-declared pointers in io/arrow_c_data.hpp, so nanoarrow never leaks to
-# consumers. The Python binding reaches it only through data_from_arrow /
-# release_arrow (see python/CMakeLists.txt, which does not add this path).
-# Vendored fast_float (dtwc/extern/fast_float, header only) likewise: only
-# io/parse_number.cpp includes it, behind a header that names no fast_float type.
+# The vendored nanoarrow and fast_float are PRIVATE: only io/arrow_c_data.cpp and
+# io/parse_number.cpp include them, behind headers that name none of their types,
+# so they never reach a consumer.
 target_include_directories(dtwc++ PRIVATE extern)
 
 target_link_libraries(dtwc++
@@ -101,9 +58,8 @@ target_link_libraries(dtwc++
   project_warnings
   project_options
   PUBLIC
-  # Header-only. cli/config.cpp is the only dtwc++ TU that includes it, and no
-  # public header does (cli/config.hpp forward-declares CLI::App). PUBLIC because
-  # cli::bind(CLI::App &, Config &) is public: whoever calls it builds the App.
+  # Header-only, included by cli/config.cpp alone. PUBLIC because the public
+  # cli::bind(CLI::App &, Config &) takes the caller's App.
   CLI11::CLI11
 )
 
@@ -148,19 +104,13 @@ if(OpenMP_CXX_FOUND)
   message(STATUS "OpenMP ${OpenMP_CXX_VERSION} found — parallel execution enabled")
   target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_OPENMP)
   if(MSVC)
-    # Attach the OpenMP flag DIRECTLY to dtwc++ (PUBLIC) so that ANY consumer
-    # linking dtwc++ gets /openmp:experimental for its own `#pragma omp` TUs —
-    # even if it drops project_options. Previously this rode ONLY on the
-    # project_options INTERFACE, so a consumer that linked dtwc++ but not
-    # project_options (e.g. the nanobind module) silently serialised its OMP
-    # loops on MSVC (build-state report §1 hole 5). Keep project_options
-    # carrying it too (intact) for consumers that link project_options WITHOUT
-    # dtwc++ (e.g. mip-solvers).
+    # PUBLIC on dtwc++, so a consumer that links dtwc++ but not project_options
+    # (the Python module) still compiles its `#pragma omp` loops in parallel.
+    # project_options carries it too, for mip-solvers, which links that alone.
     target_compile_options(dtwc++ PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
     target_compile_options(dtwc_options INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
   else()
-    # OpenMP::OpenMP_CXX carries -fopenmp + the libomp link PUBLIC-ly on dtwc++,
-    # so consumers of dtwc++ are covered directly — no project_options dependency.
+    # OpenMP::OpenMP_CXX carries -fopenmp and the libomp link, PUBLIC on dtwc++.
     target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
   endif()
 elseif(DTWC_ALLOW_SEQUENTIAL)
@@ -228,24 +178,6 @@ if(DTWC_ENABLE_ARROW AND Arrow_FOUND)
   message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
 endif()
 
-# CUDA (optional)
-if(DTWC_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
-  target_sources(dtwc++ PRIVATE cuda/cuda_dtw.cu)
-  target_link_libraries(dtwc++ PUBLIC CUDA::cudart)
-  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_CUDA)
-  set_source_files_properties(cuda/cuda_dtw.cu PROPERTIES LANGUAGE CUDA)
-  message(STATUS "CUDA enabled for GPU DTW acceleration")
-endif()
-
-# Metal (optional, Apple only)
-if(DTWC_ENABLE_METAL AND DTWC_HAS_METAL_DETECTED)
-  target_sources(dtwc++ PRIVATE metal/metal_dtw.mm)
-  # Compile the .mm with ARC disabled — we use manual retain/release via __bridge casts.
-  set_source_files_properties(metal/metal_dtw.mm PROPERTIES
-    COMPILE_FLAGS "-fno-objc-arc")
-  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_METAL)
-  target_link_libraries(dtwc++ PUBLIC
-    "-framework Foundation"
-    "-framework Metal")
-  message(STATUS "Metal enabled for Apple GPU DTW acceleration")
-endif()
+# GPU back ends (optional); each folder checks its own switch.
+add_subdirectory(cuda)
+add_subdirectory(metal)

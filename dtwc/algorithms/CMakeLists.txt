@@ -1,0 +1,17 @@
+target_sources(dtwc++
+  PRIVATE
+    fast_pam.cpp
+    fast_clara.cpp
+    one_batch_pam.cpp
+    barycenter.cpp
+    hierarchical.cpp
+    tadpole.cpp
+    detail/fast_clara_plan.hpp
+  PUBLIC
+    fast_pam.hpp
+    fast_clara.hpp
+    one_batch_pam.hpp
+    barycenter.hpp
+    hierarchical.hpp
+    tadpole.hpp
+  )
