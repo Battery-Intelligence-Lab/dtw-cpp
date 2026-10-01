@@ -304,3 +304,14 @@ CHANGELOG rule.
   Gurobi defaults OFF (CHANGELOG; the default MEX imports no gurobi130.dll); Arrow without Parquet is an IPC-only
   build that says so. Build trees that cached the old defaults need -DDTWC_ENABLE_METAL=OFF (and ARROW=OFF where
   Arrow is absent) once. A MATLAB without its executable needs DTWC_BUILD_TESTING=OFF.
+- 2026-10-01 — Volkan (key names across languages): "okay similar enough names are ok. camelcase and snake case can
+  change between languages." The same words in every language; Python and the Config / CLI keys use snake_case
+  (flags kebab-case), MATLAB CamelCase name-value keys (`WdtwG`, `MissingStrategy`, `NClusters`, `MaxIter`); one
+  convention within a language (W9e moves `dtwc.cluster`'s snake_case keys to CamelCase).
+- 2026-10-01 — W9a: one `Method` (nine values) and one name table; `Problem::cluster()` runs all nine and returns
+  its ClusteringResult; `run()` = apply the Config, load, `prob.cluster()`, write; `auto` = PAM on a GPU or at
+  N <= 5000, else CLARA (one `resolve_method` for the CLI and Problem). `k` is required (rule 10: v1.0.0 with no
+  `--Nc` exited 0 having clustered nothing); a run is named after its input; the C++ Tier-1 default method is
+  `auto`; v1.0.0's option names are hidden warn-once spellings and its `--Nc i..j` range is refused.
+- 2026-10-01 — W8c: Python and MATLAB `compute_distance_matrix` are one Problem fill on every device (byte-identical
+  matrices, about 3x faster); an infeasible band, a band below -1 and an empty series are InvalidInput there too.

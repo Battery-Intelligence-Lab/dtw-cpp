@@ -37,6 +37,10 @@ On the build files:
 > another one so you don't have to spell everything inside the cmakelists outside. So a nice quality improvement
 > pass is needed here.
 
+Asked whether MATLAB's name-value keys should be CamelCase (`WdtwG`) or the Python names (`wdtw_g`):
+
+> okay similar enough names are ok. camelcase and snake case can change between languages.
+
 ## 2026-09-30 — continue
 
 > Please continue but don't call fable, for delegating simpler tasks use Sonnet 5.5 xhigh

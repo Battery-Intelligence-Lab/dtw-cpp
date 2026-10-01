@@ -186,9 +186,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
   regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
   (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m) (done in W7g)
-- W9e note (W7g): MATLAB key naming is decided here for every key at once — DTWClustering and `distance.dtw` spell
-  CamelCase (`WdtwG`, `MissingStrategy`), `dtwc.cluster` snake_case (`band`, `max_iter`); `parse_name` folds case but
-  not `_`, so MATLAB refuses `wdtw_g`; IF-2 and the same-names rule point at the Python names (ask Volkan)
+- W9e note: MATLAB keys are CamelCase throughout, the same words as Python's snake_case (Volkan 10-01: "camelcase
+  and snake case can change between languages"); `dtwc.cluster`'s `band`, `max_iter` become `Band`, `MaxIter`
 - W9b/W9e note (Volkan 10-01, lighter bindings): Python and MATLAB share the Config names, not the CLI's file
   pipeline — `run(Config)` reads and writes files, which stays with the CLI (L2)
 - ☐ W9f Python test and example trims
