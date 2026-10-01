@@ -40,23 +40,6 @@ The `series_length(i)` method returns the number of timesteps (not the flat size
 size_t n_steps = data.series_length(0);  // 3 (not 9)
 ```
 
-### TimeSeriesView
-
-The `TimeSeriesView` struct provides a lightweight, non-owning reference to contiguous time series data:
-
-```cpp
-dtwc::core::TimeSeriesView<double> view;
-view.data = buffer_ptr;
-view.length = n_timesteps;
-view.ndim = 3;
-
-// Access timestep i (returns pointer to ndim elements)
-const double* step_i = view.at(i);
-
-// Total scalar count
-size_t flat = view.flat_size();  // length * ndim
-```
-
 ---
 
 ## Modes and implemented routes

@@ -65,10 +65,9 @@ void operator delete[](void* memory, std::size_t) noexcept { std::free(memory); 
 TEST_CASE("unchecked softmin cell is non-throwing and allocation-free",
           "[soft_dtw][softmin][allocation][m46]")
 {
+  const dtwc::core::detail::SoftGammaScale<double> scale{ 0.5 };
   static_assert(noexcept(dtwc::detail::softmin_gamma_unchecked(
-    1.0, 2.0, 3.0, 0.5)));
-  REQUIRE(dtwc::detail::softmin_gamma_unchecked(1.25, -2.0, 3.5, 0.75)
-          == dtwc::softmin_gamma(1.25, -2.0, 3.5, 0.75));
+    1.0, 2.0, 3.0, scale)));
 
   double checksum = 0.0;
   {
@@ -76,7 +75,7 @@ TEST_CASE("unchecked softmin cell is non-throwing and allocation-free",
     for (int iteration = 0; iteration < 100'000; ++iteration) {
       const double offset = static_cast<double>(iteration % 17) * 1e-6;
       checksum += dtwc::detail::softmin_gamma_unchecked(
-        1.0 + offset, 2.0 - offset, 3.0 + offset, 0.5);
+        1.0 + offset, 2.0 - offset, 3.0 + offset, scale);
     }
   }
 

@@ -25,7 +25,7 @@ using Catch::Matchers::WithinRel;
 using namespace dtwc;
 
 // ---------------------------------------------------------------------------
-// softmin_gamma tests
+// minimum-positive gamma
 // ---------------------------------------------------------------------------
 
 TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
@@ -35,15 +35,13 @@ TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
     const T gamma = std::numeric_limits<T>::denorm_min();
     REQUIRE(gamma > T(0));
 
-    const T expected_softmin = -gamma * std::log(T(3));
-    const T softmin = softmin_gamma(T(0), T(0), T(0), gamma);
-    CHECK(std::isfinite(softmin));
-    CHECK(softmin == expected_softmin);
-
+    // Every cost is 0 and the first row and column keep their one predecessor,
+    // so the value is the softmin of three zeros: -gamma ln 3.
     const std::vector<T> x{T(0), T(0)};
     const std::vector<T> y{T(0), T(0)};
     const T value = soft_dtw<T>(x, y, gamma);
     CHECK(std::isfinite(value));
+    CHECK(value == -gamma * std::log(T(3)));
 
     const auto gradient = soft_dtw_gradient<T>(x, y, gamma);
     REQUIRE(gradient.size() == x.size());
@@ -55,52 +53,6 @@ TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
 
   SECTION("float64") { check_precision.template operator()<double>(); }
   SECTION("float32") { check_precision.template operator()<float>(); }
-}
-
-TEST_CASE("softmin_gamma: three equal values", "[soft_dtw][softmin]")
-{
-  // softmin(a, a, a, gamma) = a - gamma * log(3)
-  const double a = 5.0;
-  const double gamma = 1.0;
-  const double expected = a - gamma * std::log(3.0);
-  REQUIRE_THAT(softmin_gamma(a, a, a, gamma), WithinAbs(expected, 1e-12));
-}
-
-TEST_CASE("softmin_gamma: three equal values, different gamma", "[soft_dtw][softmin]")
-{
-  const double a = 10.0;
-  const double gamma = 0.5;
-  const double expected = a - gamma * std::log(3.0);
-  REQUIRE_THAT(softmin_gamma(a, a, a, gamma), WithinAbs(expected, 1e-12));
-}
-
-TEST_CASE("softmin_gamma: approaches min as gamma -> 0", "[soft_dtw][softmin]")
-{
-  const double a = 3.0, b = 1.0, c = 5.0;
-  const double gamma = 0.001;
-  const double hard_min = 1.0;
-  // With very small gamma, softmin should be very close to min
-  REQUIRE_THAT(softmin_gamma(a, b, c, gamma), WithinAbs(hard_min, 1e-2));
-}
-
-TEST_CASE("softmin_gamma: always <= min(a,b,c)", "[soft_dtw][softmin]")
-{
-  // softmin is always <= hard min due to the log(sum(exp)) >= 0 term
-  const double a = 3.0, b = 7.0, c = 5.0;
-  for (double gamma : { 0.01, 0.1, 0.5, 1.0, 2.0, 10.0 }) {
-    const double result = softmin_gamma(a, b, c, gamma);
-    REQUIRE(result <= std::min({ a, b, c }) + 1e-12);
-  }
-}
-
-TEST_CASE("softmin_gamma: numerical stability with large values", "[soft_dtw][softmin]")
-{
-  // Large values should not cause overflow thanks to log-sum-exp trick
-  const double a = 1e10, b = 1e10 + 1.0, c = 1e10 + 2.0;
-  const double gamma = 1.0;
-  const double result = softmin_gamma(a, b, c, gamma);
-  REQUIRE(std::isfinite(result));
-  REQUIRE(result <= a + 1e-6);
 }
 
 // ---------------------------------------------------------------------------

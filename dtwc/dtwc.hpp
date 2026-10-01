@@ -46,7 +46,6 @@
 #include "core/matrix_io.hpp"
 #include "core/dtw_options.hpp"
 #include "core/lower_bound_impl.hpp"
-#include "core/time_series.hpp"
 #include "core/z_normalize.hpp"
 
 #ifdef DTWC_HAS_CUDA

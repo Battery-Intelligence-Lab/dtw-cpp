@@ -71,35 +71,7 @@ T softmin_gamma_unchecked(
                                    std::exp(-(c - minimum) * scale.inv_gamma));
 }
 
-template <typename T>
-T softmin_gamma_unchecked(T a, T b, T c, T gamma) noexcept
-{
-  return softmin_gamma_unchecked(
-    a, b, c, core::detail::SoftGammaScale<T>{gamma});
-}
-
 } // namespace detail
-
-/**
- * @brief Numerically stable softmin of three values using log-sum-exp trick.
- *
- * softmin_gamma(a, b, c, gamma) = -gamma * log(exp(-a/gamma) + exp(-b/gamma) + exp(-c/gamma))
- *
- * Rewritten as: M - gamma * log(exp(-(a-M)/gamma) + exp(-(b-M)/gamma) + exp(-(c-M)/gamma))
- * where M = min(a, b, c), to avoid overflow.
- *
- * @tparam T Floating point type.
- * @param a First value.
- * @param b Second value.
- * @param c Third value.
- * @param gamma Smoothing parameter, > 0 (unchecked).
- * @return The soft minimum.
- */
-template <typename T>
-T softmin_gamma(T a, T b, T c, T gamma)
-{
-  return detail::softmin_gamma_unchecked(a, b, c, gamma);
-}
 
 /**
  * @brief Compute Soft-DTW distance between two time series.

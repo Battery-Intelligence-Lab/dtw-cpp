@@ -9,7 +9,7 @@
  *     derivative series, WDTW scales c(i,j) by w(|i-j|) = 1 / (1 + exp(-g (|i-j| - m/2))),
  *     m = max(nx, ny) - 1 (docs/content/method/dtw-variants.md).
  *   - ADTW: the two non-diagonal predecessors carry the penalty.
- *   - Soft-DTW: min becomes softmin_gamma, with the L1 cost, as DTWC++ defines it.
+ *   - Soft-DTW: min becomes the gamma-softmin (softmin below), with the L1 cost, as DTWC++ defines it.
  *   - MSM (Stefan et al., IEEE TKDE 2013) and TWE (Marteau, IEEE TPAMI 2009): their
  *     own recurrences, written out below.
  *   - Multivariate: dependent mode sums the per-channel costs inside one cell;
