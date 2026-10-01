@@ -39,14 +39,16 @@ option(DTWC_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
 option(DTWC_BUILD_MATLAB "Build MATLAB MEX bindings" OFF)
 option(DTWC_DEV_MODE "Enable developer-only warnings, analyzers, and sanitizer options" OFF)
 
+# A dependency option set ON that cannot be honoured stops the configure; nothing
+# is turned off behind the user's back. So a default is one the platform can honour.
 # Gurobi defaults OFF: a binary linked with it needs the Gurobi DLL to load, and HiGHS
 # solves the MIP without it.
 option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver (needs a Gurobi install, see GUROBI_HOME)" OFF)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
-# Metal defaults ON on Apple (zero extra toolchain — ships with Xcode CLT).
-# Silently ignored on non-Apple platforms.
-option(DTWC_ENABLE_METAL "Enable Metal GPU acceleration (Apple only)" ON)
+# Metal ships with Xcode, so it defaults ON on Apple and OFF elsewhere (${APPLE} is
+# empty off Apple, so the default argument is then absent: OFF).
+option(DTWC_ENABLE_METAL "Enable Metal GPU acceleration (Apple only)" ${APPLE})
 option(DTWC_ENABLE_ARROW "Enable Apache Arrow: Parquet and Arrow IPC input" OFF)
 option(DTWC_ENABLE_YAML "Accept YAML (as well as TOML) files for dtwc_cl --config" ON)
 
@@ -75,11 +77,11 @@ endif()
 # inside a function). Do it here before dtwc_setup_dependencies().
 if(DTWC_ENABLE_CUDA)
   if(APPLE)
-    message(WARNING
-      "CUDA is not supported on macOS. Apple dropped NVIDIA driver support "
-      "in macOS 10.14 (Mojave). Disabling CUDA.\n"
-      "  For GPU acceleration, use Linux or Windows with an NVIDIA GPU.")
-    set(DTWC_ENABLE_CUDA OFF)
+    message(FATAL_ERROR
+      "DTWC_ENABLE_CUDA=ON: CUDA is not supported on macOS. Apple dropped NVIDIA "
+      "driver support in macOS 10.14 (Mojave).\n"
+      "  Configure with -DDTWC_ENABLE_CUDA=OFF. Metal (DTWC_ENABLE_METAL, ON by default "
+      "here) is the GPU backend on macOS; for CUDA use Linux or Windows with an NVIDIA GPU.")
   elseif(WIN32)
   # ── MSVC / Visual Studio generator CUDA fix ──────────────────────────────
   # MSBuild picks the latest CUDA .props/.targets in BuildCustomizations.
@@ -209,23 +211,25 @@ if(DTWC_ENABLE_CUDA)
       endif()
     endif()
   else()
-    message(WARNING "CUDA requested but nvcc not found — disabling.\n"
-      "  Hints: set CUDA_PATH env-var, or pass -DCMAKE_CUDA_COMPILER=<path-to-nvcc>")
-    set(DTWC_ENABLE_CUDA OFF)
+    message(FATAL_ERROR
+      "DTWC_ENABLE_CUDA=ON but nvcc was not found.\n"
+      "  Set the CUDA_PATH env-var, or pass -DCMAKE_CUDA_COMPILER=<path-to-nvcc>; "
+      "to build without CUDA, pass -DDTWC_ENABLE_CUDA=OFF.")
   endif()
 endif()
 
 # Metal (Apple GPU) — macOS/iOS only. Needs Objective-C++ language + framework linkage.
 if(DTWC_ENABLE_METAL)
-  if(APPLE)
-    enable_language(OBJCXX)
-    # Metal and Foundation frameworks ship with the base SDK; no find_package needed.
-    set(DTWC_HAS_METAL_DETECTED ON)
-    message(STATUS "Metal enabled — dtwc/metal will be built")
-  else()
-    # Silently disable on non-Apple — avoids CI noise on Linux/Windows checkouts.
-    set(DTWC_ENABLE_METAL OFF)
+  if(NOT APPLE)
+    message(FATAL_ERROR
+      "DTWC_ENABLE_METAL=ON: Metal exists only on Apple platforms, and this is ${CMAKE_SYSTEM_NAME}.\n"
+      "  Configure with -DDTWC_ENABLE_METAL=OFF (a build directory made before Metal "
+      "defaulted to Apple only has it cached ON); use CUDA (-DDTWC_ENABLE_CUDA=ON) for an NVIDIA GPU.")
   endif()
+  enable_language(OBJCXX)
+  # Metal and Foundation frameworks ship with the base SDK; no find_package needed.
+  set(DTWC_HAS_METAL_DETECTED ON)
+  message(STATUS "Metal enabled — dtwc/metal will be built")
 endif()
 
 include(cmake/Dependencies.cmake) # Include external projects
@@ -425,15 +429,15 @@ if(PROJECT_IS_TOP_LEVEL)
     set(_highs_status "ON")
   endif()
 
+  # CUDA and Metal read the definition the code is compiled with, not the request:
+  # a job that asserts "CUDA: ON" here proves the build has CUDA.
   set(_cuda_status "OFF")
-  if(DTWC_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
+  if(_dtwc_defs MATCHES "DTWC_HAS_CUDA")
     set(_cuda_status "ON (${CMAKE_CUDA_COMPILER_VERSION})")
-  elseif(DTWC_ENABLE_CUDA)
-    set(_cuda_status "REQUESTED BUT NOT FOUND")
   endif()
 
   set(_metal_status "OFF")
-  if(DTWC_ENABLE_METAL AND DTWC_HAS_METAL_DETECTED)
+  if(_dtwc_defs MATCHES "DTWC_HAS_METAL")
     set(_metal_status "ON (Apple GPU)")
   endif()
 

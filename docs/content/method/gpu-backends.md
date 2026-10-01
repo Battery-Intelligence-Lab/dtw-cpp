@@ -52,8 +52,9 @@ Known gap: those matrix-free schedules compute on the CPU when the device is a
 GPU.
 
 > **Compile-time flags.** CUDA defaults OFF and is enabled with
-> `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON but is built only on
-> Apple platforms; non-Apple configuration disables it. With neither backend,
+> `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON on Apple platforms and
+> OFF elsewhere. Asking for a backend the build cannot have (CUDA without `nvcc` or
+> on macOS, Metal off Apple) stops the configure with an error. With neither backend,
 > explicit GPU requests error, while an ordinary CPU `Problem` uses its selected
 > CPU distance strategy.
 

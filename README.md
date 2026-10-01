@@ -173,6 +173,9 @@ export OMP_PLACES=cores
 
 ### All CMake options
 
+A `DTWC_ENABLE_*` option set ON whose dependency is missing stops the configure with an error that names the
+option; nothing is turned off silently. Defaults are the ones every platform can honour.
+
 | Option | Default | Description |
 |--------|---------|-------------|
 | `DTWC_BUILD_EXAMPLES` | OFF | Build example programs |
@@ -182,8 +185,8 @@ export OMP_PLACES=cores
 | `DTWC_BUILD_MATLAB` | OFF | Build MATLAB MEX bindings |
 | `DTWC_DEV_MODE` | OFF | Enable developer-only warnings, analyzers, and expose sanitizer options |
 | `DTWC_ALLOW_SEQUENTIAL` | OFF | Explicitly permit a build without OpenMP; otherwise missing OpenMP is an error |
-| `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration |
-| `DTWC_ENABLE_METAL` | ON | Enable the Metal backend on Apple platforms |
+| `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration (an error without `nvcc`, and on macOS) |
+| `DTWC_ENABLE_METAL` | ON on Apple platforms, OFF elsewhere | Enable the Metal backend (an error off Apple platforms) |
 | `DTWC_ENABLE_ARROW` | OFF | Enable Apache Arrow IPC + Parquet I/O (system packages or CPM) |
 | `DTWC_ENABLE_LLFIO` | ON | Enable llfio-backed memory-mapped distance matrices |
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
