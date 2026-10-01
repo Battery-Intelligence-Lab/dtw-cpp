@@ -90,11 +90,15 @@ void check_table(const dtwc::Name<E> (&table)[N], const std::vector<std::pair<st
 TEST_CASE("Method and Solver tables", "[names]")
 {
   using dtwc::Method;
-  // MATLAB's parse_method also read 'pam' and 'auto' as Kmedoids, i.e. Lloyd: not names of it.
+  // MATLAB's parse_method once read 'pam' and 'auto' as Kmedoids (Lloyd); they name PAM and Auto.
   check_table(dtwc::method_names,
-              { { "kmedoids", Method::Kmedoids }, { "mip", Method::MIP }, { "lrcore", Method::LRCore },
-                { "tadpole", Method::TADPole } },
-              {});
+              { { "auto", Method::Auto }, { "pam", Method::PAM }, { "onebatch", Method::OneBatch },
+                { "clara", Method::CLARA }, { "kmedoids", Method::Kmedoids }, { "mip", Method::MIP },
+                { "lrcore", Method::LRCore }, { "tadpole", Method::TADPole }, { "hierarchical", Method::Hierarchical } },
+              { { "obp", "onebatch" }, { "lr", "lrcore" }, { "hclust", "hierarchical" } });
+  // v1.0.0's two values keep their numbers: a stored or hashed Method reads back the same.
+  CHECK(static_cast<int>(Method::Kmedoids) == 0);
+  CHECK(static_cast<int>(Method::MIP) == 1);
   check_table(dtwc::solver_names, { { "highs", dtwc::Solver::HiGHS }, { "gurobi", dtwc::Solver::Gurobi } }, {});
 }
 
@@ -130,15 +134,8 @@ TEST_CASE("dtype, linkage and OneBatchPAM weighting tables", "[names]")
               {});
 }
 
-TEST_CASE("config tables: cluster method and GPU precision", "[names]")
+TEST_CASE("config tables: GPU precision", "[names]")
 {
-  using dtwc::ClusterMethod;
-  check_table(dtwc::cluster_method_names,
-              { { "auto", ClusterMethod::Auto }, { "pam", ClusterMethod::PAM }, { "onebatch", ClusterMethod::OneBatch },
-                { "clara", ClusterMethod::CLARA }, { "kmedoids", ClusterMethod::Kmedoids },
-                { "mip", ClusterMethod::MIP }, { "lrcore", ClusterMethod::LRCore },
-                { "tadpole", ClusterMethod::TADPole }, { "hierarchical", ClusterMethod::Hierarchical } },
-              { { "obp", "onebatch" }, { "lr", "lrcore" }, { "hclust", "hierarchical" } });
   using dtwc::GpuPrecision;
   check_table(dtwc::gpu_precision_names,
               { { "auto", GpuPrecision::Auto }, { "fp32", GpuPrecision::FP32 }, { "fp64", GpuPrecision::FP64 } },
@@ -149,12 +146,12 @@ TEST_CASE("config tables: cluster method and GPU precision", "[names]")
 TEST_CASE("parse_name matches ASCII case only", "[names]")
 {
   // The Python and CLI error text both start "unknown method" (pytest matches on it).
-  CHECK_THROWS_MATCHES(dtwc::parse_name(dtwc::cluster_method_names, "k-means", "method"), dtwc::InvalidInput,
+  CHECK_THROWS_MATCHES(dtwc::parse_name(dtwc::method_names, "k-means", "method"), dtwc::InvalidInput,
                        Catch::Matchers::Message("unknown method 'k-means'. Valid: auto, pam, onebatch, clara, "
                                                 "kmedoids, mip, lrcore, tadpole, hierarchical."));
   // No trimming and no '-' / '_' folding: an alias exists only because a table lists it.
-  CHECK_THROWS_AS(dtwc::parse_name(dtwc::cluster_method_names, " pam", "method"), dtwc::InvalidInput);
-  CHECK_THROWS_AS(dtwc::parse_name(dtwc::cluster_method_names, "one_batch", "method"), dtwc::InvalidInput);
+  CHECK_THROWS_AS(dtwc::parse_name(dtwc::method_names, " pam", "method"), dtwc::InvalidInput);
+  CHECK_THROWS_AS(dtwc::parse_name(dtwc::method_names, "one_batch", "method"), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_name(dtwc::core::missing_strategy_names, "zero cost", "missing strategy"),
                   dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_name(dtwc::core::metric_names, "squared-euclidean", "metric"),

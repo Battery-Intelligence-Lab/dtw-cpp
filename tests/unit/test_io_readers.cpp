@@ -652,7 +652,7 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   dtwc::Config config;
   config.input = dtwc::path_to_utf8(input);
   config.column = "series";
-  config.method = dtwc::ClusterMethod::CLARA;
+  config.method = dtwc::Method::CLARA;
   config.k = 2;
   config.sample_size = 4;
   config.n_samples = 2;

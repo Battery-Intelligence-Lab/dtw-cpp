@@ -193,7 +193,7 @@ void bind(CLI::App &app, Config &config)
        },
        "DEPRECATED alias of --n-clusters")
     ->group("");
-  key(app, "-m,--method", config.method, cluster_method_names, "method",
+  key(app, "-m,--method", config.method, method_names, "method",
       "Clustering method: auto, pam, onebatch, clara, kmedoids, mip, lrcore, hierarchical, tadpole");
   key(app, "-b,--band", config.band, "Sakoe-Chiba band width (-1 = full DTW)");
   key(app, "--metric", config.metric, core::metric_names, "metric", "Distance metric: l1, squared_euclidean");

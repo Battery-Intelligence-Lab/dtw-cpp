@@ -865,6 +865,13 @@ void Problem::cluster()
     algorithms::tadpole(*this, Nc, dc);
     break;
   }
+  case Method::Auto:
+  case Method::PAM:
+  case Method::OneBatch:
+  case Method::CLARA:
+  case Method::Hierarchical:
+    throw InvalidInput("Problem::cluster: method '" + std::string(name_of(method_names, method_))
+                       + "' runs through dtwc::run or its algorithm function.");
   }
 }
 

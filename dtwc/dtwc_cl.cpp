@@ -44,7 +44,7 @@ void print_settings(const dtwc::Config &config)
             << "  Output:   " << config.output << "\n"
             << "  Name:     " << config.name << "\n"
             << "  Clusters: " << config.k << "\n"
-            << "  Method:   " << name_of(dtwc::cluster_method_names, config.method) << "\n"
+            << "  Method:   " << name_of(dtwc::method_names, config.method) << "\n"
             << "  Band:     " << (config.band < 0 ? "full" : std::to_string(config.band)) << "\n"
             << "  Metric:   " << name_of(dtwc::core::metric_names, config.metric) << "\n"
             << "  Variant:  " << name_of(dtwc::core::variant_names, config.variant.variant) << "\n"
@@ -54,12 +54,12 @@ void print_settings(const dtwc::Config &config)
             << "  Device:   " << dtwc::device_text(config) << "\n"
             << "  Dtype:    " << name_of(dtwc::core::precision_names, config.dtype) << "\n"
             << "  GPU Prec: " << name_of(dtwc::gpu_precision_names, config.gpu.precision) << "\n";
-  if (config.method == dtwc::ClusterMethod::CLARA)
+  if (config.method == dtwc::Method::CLARA)
     std::cout << "  CLARA sample_size: " << (config.sample_size < 0 ? "auto" : std::to_string(config.sample_size))
               << "\n"
               << "  CLARA n_samples:   " << config.n_samples << "\n"
               << "  CLARA seed:        " << config.seed << "\n";
-  if (config.method == dtwc::ClusterMethod::Hierarchical)
+  if (config.method == dtwc::Method::Hierarchical)
     std::cout << "  Linkage:   " << name_of(dtwc::algorithms::linkage_names, config.linkage) << "\n";
 
   std::cout << "\n=== System Diagnostics ===\n";
@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
     const char *cost_end = std::to_chars(cost.data(), cost.data() + cost.size(), result.cost()).ptr;
 
     std::cout << "\n=== Results ===\n"
-              << "  Method:     " << dtwc::name_of(dtwc::cluster_method_names, result.method()) << "\n";
+              << "  Method:     " << dtwc::name_of(dtwc::method_names, result.method()) << "\n";
     std::cout << "  Clusters:   " << config.k << "\n"
               << "  Total cost: " << std::string_view(cost.data(), cost_end - cost.data()) << "\n"
               << "  Converged:  " << (result.converged() ? "yes" : "no") << "\n"

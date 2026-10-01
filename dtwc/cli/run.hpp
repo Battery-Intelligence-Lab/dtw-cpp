@@ -58,14 +58,14 @@ enum class ParquetLayout { ListColumn, ScalarColumn, Directory };
 /// What run() does with a Parquet input, decided from metadata alone.
 struct ParquetPlan
 {
-  ClusterMethod method;     ///< `auto` resolved for the device and the series count
+  Method method;            ///< `auto` resolved for the device and the series count
   bool stream_payload;      ///< the series exceed `ram_limit`, so FastCLARA streams them
 };
 
 /// Decide from Parquet metadata whether reading the payload is legal: only
 /// FastCLARA on a single list-per-row file streams under `ram_limit` (0 = no cap).
 /// @throws InvalidInput for no series, or a route that cannot honour the cap.
-ParquetPlan plan_parquet_load(ClusterMethod method, Device device, std::size_t series_count,
+ParquetPlan plan_parquet_load(Method method, Device device, std::size_t series_count,
                               std::size_t estimated_resident_bytes, std::size_t ram_limit,
                               ParquetLayout layout);
 

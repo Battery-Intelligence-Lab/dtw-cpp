@@ -136,7 +136,7 @@ std::string device()
 }
 
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
-               ClusterMethod method, int iterations, bool converged)
+               Method method, int iterations, bool converged)
   : problem_(std::move(problem)), cost_(cost), device_(std::move(device_name)), method_(method),
     iterations_(iterations), converged_(converged)
 {}
@@ -192,7 +192,7 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
 {
   Config config; // dtwc_cl's defaults for everything this signature does not name
   config.k = k;
-  config.method = parse_name(cluster_method_names, method, "method");
+  config.method = parse_name(method_names, method, "method");
   config.band = band;
   config.max_iter = max_iter;
   config.output.clear(); // Result::save writes; cluster() does not

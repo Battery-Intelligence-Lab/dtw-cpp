@@ -37,18 +37,16 @@
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::MessageMatches;
 using Catch::Matchers::StartsWith;
-using dtwc::ClusterMethod;
+using dtwc::Method;
 using dtwc::Device;
 
 namespace {
 
-constexpr ClusterMethod kAll[]{ ClusterMethod::Auto,     ClusterMethod::PAM,   ClusterMethod::OneBatch,
-                                ClusterMethod::CLARA,    ClusterMethod::Kmedoids, ClusterMethod::MIP,
-                                ClusterMethod::LRCore,   ClusterMethod::TADPole,  ClusterMethod::Hierarchical };
+constexpr Method kAll[]{ Method::Auto,   Method::PAM,     Method::OneBatch, Method::CLARA,       Method::Kmedoids,
+                         Method::MIP,    Method::LRCore,  Method::TADPole,  Method::Hierarchical };
 /// The methods whose distance matrix a GPU fills (clara: its sample covers every series here).
-constexpr ClusterMethod kMatrix[]{ ClusterMethod::Auto,     ClusterMethod::PAM, ClusterMethod::CLARA,
-                                   ClusterMethod::Kmedoids, ClusterMethod::MIP, ClusterMethod::LRCore,
-                                   ClusterMethod::Hierarchical };
+constexpr Method kMatrix[]{ Method::Auto, Method::PAM,    Method::CLARA,       Method::Kmedoids,
+                            Method::MIP,  Method::LRCore, Method::Hierarchical };
 
 const std::string kCpuAsItGoes = "computes its distances on the CPU as it goes, so device 'gpu' would sit idle";
 
@@ -65,7 +63,7 @@ dtwc::Data levels()
   return dtwc::Data(std::move(series), std::move(names));
 }
 
-dtwc::Config config_for(ClusterMethod method, Device device)
+dtwc::Config config_for(Method method, Device device)
 {
   dtwc::Config config;
   config.k = 2;
@@ -76,9 +74,9 @@ dtwc::Config config_for(ClusterMethod method, Device device)
   return config;
 }
 
-std::string name(ClusterMethod method) { return std::string(dtwc::name_of(dtwc::cluster_method_names, method)); }
+std::string name(Method method) { return std::string(dtwc::name_of(dtwc::method_names, method)); }
 
-ClusterMethod resolved(ClusterMethod method) { return method == ClusterMethod::Auto ? ClusterMethod::PAM : method; }
+Method resolved(Method method) { return method == Method::Auto ? Method::PAM : method; }
 
 bool two_groups(const dtwc::Result &result)
 {
@@ -96,9 +94,9 @@ bool float_exact(const std::vector<double> &matrix)
 /// solve some other way, on either device and before a GPU is looked for. True
 /// once that refusal has been asserted, so the caller skips the checks that need
 /// a result; false on a build with HiGHS.
-bool mip_refused_without_highs(ClusterMethod method, Device device = Device::CPU)
+bool mip_refused_without_highs(Method method, Device device = Device::CPU)
 {
-  if (method != ClusterMethod::MIP || dtwc::highs_solver_available()) return false;
+  if (method != Method::MIP || dtwc::highs_solver_available()) return false;
   CHECK_THROWS_MATCHES(dtwc::run(config_for(method, device), levels()), dtwc::SolverError,
                        MessageMatches(ContainsSubstring("HiGHS solver is unavailable")));
   return true;
@@ -143,11 +141,11 @@ TEST_CASE("run on cpu: every method runs; auto is pam up to 5000 series, clara a
   // resolution; here run() applies it to the series it loaded.
   std::vector<std::vector<double>> many;
   for (int i = 0; i < 5001; ++i) many.push_back({ double(i % 97), double(i % 89) });
-  CHECK(dtwc::run(config_for(ClusterMethod::Auto, Device::CPU), dtwc::Data(std::move(many), std::vector<std::string>(5001)))
+  CHECK(dtwc::run(config_for(Method::Auto, Device::CPU), dtwc::Data(std::move(many), std::vector<std::string>(5001)))
           .method()
-        == ClusterMethod::CLARA);
+        == Method::CLARA);
   // A sample smaller than N is CLARA proper, still on the CPU.
-  auto partial = config_for(ClusterMethod::CLARA, Device::CPU);
+  auto partial = config_for(Method::CLARA, Device::CPU);
   partial.sample_size = 3;
   CHECK(two_groups(dtwc::run(partial, levels())));
 }
@@ -156,7 +154,7 @@ TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "
 {
   // dtwc_cl refused any metric but l1 on cpu (validate_metric_for_device); the
   // Problem's fill now takes it (IF-2 S2). Oracle: the checked free function.
-  auto config = config_for(ClusterMethod::PAM, Device::CPU);
+  auto config = config_for(Method::PAM, Device::CPU);
   config.metric = dtwc::core::MetricType::SquaredL2;
   const auto data = levels();
   const auto matrix = dtwc::run(config, levels()).distance_matrix();
@@ -173,10 +171,10 @@ TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "
 
 TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes methods raise", "[run][device][gpu]")
 {
-  auto partial = config_for(ClusterMethod::CLARA, Device::GPU);
+  auto partial = config_for(Method::CLARA, Device::GPU);
   partial.sample_size = 3; // < N = 6: the samples are views the GPU cannot upload
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-  for (const auto method : { ClusterMethod::OneBatch, ClusterMethod::TADPole }) {
+  for (const auto method : { Method::OneBatch, Method::TADPole }) {
     CAPTURE(name(method));
     CHECK_THAT(device_error([&] { (void)dtwc::run(config_for(method, Device::GPU), levels()); }),
                StartsWith("run: method '" + name(method) + "' ") && ContainsSubstring(kCpuAsItGoes));
@@ -184,7 +182,7 @@ TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes method
   CHECK_THAT(device_error([&] { (void)dtwc::run(partial, levels()); }),
              StartsWith("run: method 'clara' ") && ContainsSubstring(kCpuAsItGoes));
 
-  const auto cpu = dtwc::run(config_for(ClusterMethod::PAM, Device::CPU), levels());
+  const auto cpu = dtwc::run(config_for(Method::PAM, Device::CPU), levels());
   for (const auto method : kMatrix) {
     CAPTURE(name(method));
     if (mip_refused_without_highs(method, Device::GPU)) continue;
@@ -209,10 +207,10 @@ TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes method
   if (gpu_present()) { // auto stays pam above N = 5000 (it failed there before)
     std::vector<std::vector<double>> many;
     for (int i = 0; i < 5001; ++i) many.push_back({ double(i % 97), double(i % 89) });
-    auto config = config_for(ClusterMethod::Auto, Device::GPU);
+    auto config = config_for(Method::Auto, Device::GPU);
     config.max_iter = 1;
     CHECK(dtwc::run(config, dtwc::Data(std::move(many), std::vector<std::string>(5001))).method()
-          == ClusterMethod::PAM);
+          == Method::PAM);
   }
 #else
   // No GPU backend: every gpu cell is §6.1's refusal, before any method rule.
@@ -241,7 +239,7 @@ TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any
   const auto missing = (scratch.path / "never_created.csv").string();
   REQUIRE_FALSE(std::filesystem::exists(missing));
   const auto from_file = [&](Device device, auto &&set) {
-    auto config = config_for(ClusterMethod::PAM, device);
+    auto config = config_for(Method::PAM, device);
     config.input = missing;
     set(config);
     return config;
@@ -288,7 +286,7 @@ TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any
 TEST_CASE("run with in-memory series refuses the options only a file reader applies", "[run][input]")
 {
   const auto refuses = [](auto &&set, const std::string &what) {
-    auto config = config_for(ClusterMethod::PAM, Device::CPU);
+    auto config = config_for(Method::PAM, Device::CPU);
     set(config);
     CHECK_THROWS_MATCHES(dtwc::run(config, levels()), dtwc::InvalidInput, MessageMatches(ContainsSubstring(what)));
   };
@@ -307,16 +305,16 @@ TEST_CASE("Result reports the method, iterations and convergence the run had", "
   dtwc::Problem problem("oracle");
   problem.set_data(levels());
   const auto direct = dtwc::fast_pam_seeded(problem, 2, 42, 100);
-  const auto pam = dtwc::run(config_for(ClusterMethod::PAM, Device::CPU), levels());
+  const auto pam = dtwc::run(config_for(Method::PAM, Device::CPU), levels());
   CHECK(pam.iterations() == direct.iterations);
   CHECK(pam.converged() == direct.converged);
   CHECK(pam.cost() == direct.total_cost);
 
   // Lloyd reports its own count; the exact methods and TADPole finish.
-  const auto lloyd = dtwc::run(config_for(ClusterMethod::Kmedoids, Device::CPU), levels());
+  const auto lloyd = dtwc::run(config_for(Method::Kmedoids, Device::CPU), levels());
   CHECK(lloyd.iterations() >= 1);
   CHECK(lloyd.converged() == (lloyd.iterations() < 100));
-  for (const auto method : { ClusterMethod::MIP, ClusterMethod::LRCore, ClusterMethod::TADPole }) {
+  for (const auto method : { Method::MIP, Method::LRCore, Method::TADPole }) {
     CAPTURE(name(method));
     if (mip_refused_without_highs(method)) continue;
     const auto result = dtwc::run(config_for(method, Device::CPU), levels());

@@ -220,7 +220,7 @@ Canonical class name is **`Result`** in all three languages.
 | `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:330-367`) | `res.plot()` |
 | (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:153`) | `res.cost` |
 | (aux) `device` | `std::string device() const` | `res.device` | `res.device` |
-| (aux) run statistics | `ClusterMethod method() const` (`auto` resolved), `int iterations() const`, `bool converged() const` `[introduced-2.0]` (IF-2 S3; the first `RunStats` fields, IF-4) | — | — |
+| (aux) run statistics | `Method method() const` (`auto` resolved), `int iterations() const`, `bool converged() const` `[introduced-2.0]` (IF-2 S3; the first `RunStats` fields, IF-4) | — | — |
 
 *`score(name)` names* (accepted in every language; resolve to the Tier-2 `scores::*`
 functions in §2.4): `"silhouette"` (returns the **mean** silhouette),

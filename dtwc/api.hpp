@@ -20,7 +20,7 @@ namespace dtwc {
 class Problem;
 class Result;
 struct Config;
-enum class ClusterMethod; // cli/config.hpp
+enum class Method; // enums/Method.hpp
 
 // cli/run.hpp documents these; Result is built only by them.
 Result run(const Config &config);
@@ -99,8 +99,8 @@ public:
   void save(const std::filesystem::path &directory) const;
   double cost() const noexcept { return cost_; }
   const std::string &device() const noexcept { return device_; }
-  /** The method that ran, `auto` resolved (name_of(cluster_method_names, m) spells it). */
-  ClusterMethod method() const noexcept { return method_; }
+  /** The method that ran, `auto` resolved (name_of(method_names, m) spells it). */
+  Method method() const noexcept { return method_; }
   /** The method's iteration count, and whether it converged within max_iter. */
   int iterations() const noexcept { return iterations_; }
   bool converged() const noexcept { return converged_; }
@@ -110,12 +110,12 @@ private:
   friend Result run(const Config &, Data);
 
   Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
-         ClusterMethod method, int iterations, bool converged);
+         Method method, int iterations, bool converged);
 
   std::shared_ptr<Problem> problem_;
   double cost_ = 0.0;
   std::string device_ = "cpu";
-  ClusterMethod method_{};
+  Method method_{};
   int iterations_ = 0;
   bool converged_ = false;
 };

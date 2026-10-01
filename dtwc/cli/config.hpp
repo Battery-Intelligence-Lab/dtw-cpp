@@ -36,25 +36,6 @@ class App;
 
 namespace dtwc {
 
-/// The algorithm `--method` selects. Method keeps the four values Problem::cluster()
-/// dispatches; this enum spells what a run can be asked for.
-enum class ClusterMethod { Auto, PAM, OneBatch, CLARA, Kmedoids, MIP, LRCore, TADPole, Hierarchical };
-
-inline constexpr Name<ClusterMethod> cluster_method_names[]{
-  { "auto", ClusterMethod::Auto },
-  { "pam", ClusterMethod::PAM },
-  { "onebatch", ClusterMethod::OneBatch },
-  { "obp", ClusterMethod::OneBatch },
-  { "clara", ClusterMethod::CLARA },
-  { "kmedoids", ClusterMethod::Kmedoids },
-  { "mip", ClusterMethod::MIP },
-  { "lrcore", ClusterMethod::LRCore },
-  { "lr", ClusterMethod::LRCore },
-  { "tadpole", ClusterMethod::TADPole },
-  { "hierarchical", ClusterMethod::Hierarchical },
-  { "hclust", ClusterMethod::Hierarchical },
-};
-
 struct Config
 {
   // Input and storage
@@ -68,7 +49,7 @@ struct Config
   std::size_t mmap_threshold = 50000;    ///< `--mmap-threshold`
   std::string dist_matrix;               ///< `--dist-matrix`: precomputed distance-matrix CSV.
   // Method
-  ClusterMethod method = ClusterMethod::Auto; ///< `--method`
+  Method method = Method::Auto;          ///< `--method`
   index_t k = 3;                         ///< `--n-clusters`
   int max_iter = 100;                    ///< `--max-iter`
   int n_init = 1;                        ///< `--n-init`
