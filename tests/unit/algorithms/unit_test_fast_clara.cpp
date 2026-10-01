@@ -82,7 +82,7 @@ TEST_CASE("FastCLARA produces valid labels", "[fast_clara][labels]")
   auto result = algorithms::fast_clara(prob, opts);
 
   REQUIRE(result.labels.size() == static_cast<size_t>(N));
-  for (int label : result.labels) {
+  for (index_t label : result.labels) {
     REQUIRE(label >= 0);
     REQUIRE(label < k);
   }
@@ -107,13 +107,13 @@ TEST_CASE("FastCLARA medoid indices are valid", "[fast_clara][medoids]")
 
   REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
 
-  for (int m : result.medoid_indices) {
+  for (index_t m : result.medoid_indices) {
     REQUIRE(m >= 0);
     REQUIRE(m < N);
   }
 
   // All medoid indices must be distinct.
-  std::set<int> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
+  std::set<index_t> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
   REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
 }
 
@@ -135,7 +135,7 @@ TEST_CASE("FastCLARA medoids are assigned to their own cluster", "[fast_clara][s
   auto result = algorithms::fast_clara(prob, opts);
 
   for (int c = 0; c < k; ++c) {
-    int medoid_point = result.medoid_indices[c];
+    index_t medoid_point = result.medoid_indices[c];
     REQUIRE(result.labels[medoid_point] == c);
   }
 }
@@ -160,7 +160,7 @@ TEST_CASE("FastCLARA total_cost matches recomputed cost", "[fast_clara][cost_con
   // Recompute total cost from labels and medoid_indices.
   double recomputed_cost = 0.0;
   for (int p = 0; p < N; ++p) {
-    int medoid = result.medoid_indices[result.labels[p]];
+    index_t medoid = result.medoid_indices[result.labels[p]];
     recomputed_cost += prob.dist_by_ind(p, medoid);
   }
 
@@ -284,7 +284,7 @@ TEST_CASE("FastCLARA k=1 assigns all points to one cluster", "[fast_clara][k1]")
   auto result = algorithms::fast_clara(prob, opts);
 
   REQUIRE(result.medoid_indices.size() == 1);
-  for (int label : result.labels) {
+  for (index_t label : result.labels) {
     REQUIRE(label == 0);
   }
 }
@@ -585,7 +585,7 @@ TEST_CASE("FastCLARA: total_cost of a multivariate parent is its multivariate di
   const auto &distance = prob.dtw_function();
   double multivariate = 0.0, flat_univariate = 0.0;
   for (int p = 0; p < N; ++p) {
-    const int medoid = result.medoid_indices[static_cast<size_t>(result.labels[static_cast<size_t>(p)])];
+    const index_t medoid = result.medoid_indices[static_cast<size_t>(result.labels[static_cast<size_t>(p)])];
     multivariate += distance(prob.series(p), prob.series(medoid));
     flat_univariate += dtwc::dtwFull_L<data_t>(prob.series(p), prob.series(medoid));
   }
@@ -695,13 +695,13 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
   REQUIRE(prob.distance_matrix().packed_count() == 0);
 
   // All labels valid
-  for (int label : result.labels) {
+  for (index_t label : result.labels) {
     REQUIRE(label >= 0);
     REQUIRE(label < k);
   }
 
   // All medoids distinct and valid
-  std::set<int> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
+  std::set<index_t> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
   REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
 }
 
@@ -816,7 +816,7 @@ TEST_CASE("FastCLARA parallel in-RAM assignment is deterministic and consistent"
   for (int p = 0; p < N; ++p) {
     REQUIRE(r1.labels[p] >= 0);
     REQUIRE(r1.labels[p] < k);
-    const int medoid = r1.medoid_indices[r1.labels[p]];
+    const index_t medoid = r1.medoid_indices[r1.labels[p]];
     recomputed += p == medoid ? 0.0 : distance(prob1.series(p), prob1.series(medoid));
   }
   REQUIRE_THAT(r1.total_cost, WithinAbs(recomputed, 1e-9));

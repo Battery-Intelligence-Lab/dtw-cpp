@@ -62,7 +62,7 @@ OracleResult brute_force_pmedian(const std::vector<double> &D, int N, int k)
     double c = 0.0;
     for (int j = 0; j < N; ++j) {
       double best = kInf;
-      for (int s : S) best = std::min(best, D[static_cast<std::size_t>(s) * N + j]);
+      for (index_t s : S) best = std::min(best, D[static_cast<std::size_t>(s) * N + j]);
       c += best;
     }
     return c;

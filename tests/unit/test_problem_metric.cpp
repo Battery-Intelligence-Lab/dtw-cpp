@@ -217,7 +217,7 @@ TEST_CASE("FastCLARA samples compute with the parent's metric",
   opts.n_samples = 1;
   const auto result = dtwc::algorithms::fast_clara(prob, opts);
   REQUIRE(result.medoid_indices.size() == 1);
-  const int medoid = result.medoid_indices[0];
+  const dtwc::index_t medoid = result.medoid_indices[0];
   CHECK((values[medoid] == 8 || values[medoid] == 9));
 
   double expected_cost = 0.0;

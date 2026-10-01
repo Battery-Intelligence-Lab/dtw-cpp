@@ -275,9 +275,9 @@ TEST_CASE("barycenter k-means separates two waveform groups",
   REQUIRE(result.barycenters[0].size() == 5);
   REQUIRE(result.barycenters[1].size() == 5);
   REQUIRE(std::all_of(result.labels.begin(), result.labels.begin() + 8,
-                      [&](int label) { return label == result.labels[0]; }));
+                      [&](index_t label) { return label == result.labels[0]; }));
   REQUIRE(std::all_of(result.labels.begin() + 8, result.labels.end(),
-                      [&](int label) { return label == result.labels[8]; }));
+                      [&](index_t label) { return label == result.labels[8]; }));
   REQUIRE(result.labels[0] != result.labels[8]);
   REQUIRE(result.total_cost >= 0.0);
 }

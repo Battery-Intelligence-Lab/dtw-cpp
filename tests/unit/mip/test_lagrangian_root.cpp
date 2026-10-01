@@ -68,7 +68,7 @@ OracleResult brute_force_pmedian(const std::vector<double> &D, int N, int k)
     double c = 0.0;
     for (int j = 0; j < N; ++j) {
       double best = kInf;
-      for (int s : S) best = std::min(best, D[static_cast<std::size_t>(s) * N + j]);
+      for (index_t s : S) best = std::min(best, D[static_cast<std::size_t>(s) * N + j]);
       c += best;
     }
     return c;
@@ -97,7 +97,7 @@ double cost_of(const std::vector<index_t> &medoids, const std::vector<double> &D
   double c = 0.0;
   for (int j = 0; j < N; ++j) {
     double best = kInf;
-    for (int m : medoids) best = std::min(best, D[static_cast<std::size_t>(m) * N + j]);
+    for (index_t m : medoids) best = std::min(best, D[static_cast<std::size_t>(m) * N + j]);
     c += best;
   }
   return c;
@@ -170,7 +170,7 @@ bool has_solution(const Problem &prob)
   if (prob.centroids_ind.empty()) return false;
   if (prob.centroids_ind.size() > 1) {
     const bool all_zero = std::all_of(prob.centroids_ind.begin(), prob.centroids_ind.end(),
-                                      [](int v) { return v == 0; });
+                                      [](index_t v) { return v == 0; });
     if (all_zero) return false;
   }
   return true;
