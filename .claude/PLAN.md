@@ -87,7 +87,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ B1 the Python binding checks every index it passes into unchecked C++ (`series`, `series_name`, `centroid_of`); `clusters_ind` / `centroids_ind` read-only, `set_result` bound as the write route (B1 2f8dc96; merged 4968d44)
 - ☑ B2 the clustering outputs stay empty until a clustering writes them and one `require_clustered` guards every whole-result reader (a crash before); `set_n_clusters(k < 1)` and `set_band(b < -1)` are refused (B2 0765ec7, 974a4a4, d64c1d1, 463d642, 03fc6a3; merged e0085fd)
 - ☑ B3 `fast_pam` `max_iter = 0` is BUILD only in every language, a negative count refused once in C++; `set_data` / `set_view_data` clear the clustering; dead `Nc` guards go (B3 049126e, bb2db4c, c814845; merged 65edcf7)
-- ☐ W6f C++ tests of deleted surface trimmed
+- ☑ W6f C++ tests of deleted surface trimmed (W6f f125189, 5958063, e9ad125, 88c4a73, 78b27ef, f2c959e; merged ce34bf8; test_problem_api_2_0 one 25-row table; three probe files deleted)
 - ☑ `test_run_resolution` runs MIP and LR-core on the CPU without a HiGHS guard: 2 of 7 cases fail in a build with
   `DTWC_ENABLE_HIGHS=OFF` (as `build/arrow-pyarrow-23`); guard them (Y3 merge report) (G1 `0c695c6`; merged 1bb9413; only MIP needs HiGHS — LR-core is exact without it; the GPU branch of the test is unproven without a CUDA build lacking HiGHS)
 - ☑ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
