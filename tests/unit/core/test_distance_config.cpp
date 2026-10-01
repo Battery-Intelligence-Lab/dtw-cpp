@@ -178,6 +178,8 @@ std::vector<Refusal> refusals()
   using M = MissingStrategy;
   constexpr auto independent = dtwc::core::MVMode::Independent;
   return {
+    { "an enum value outside its set", { .metric = static_cast<MetricType>(7) }, false,
+      "7 is not a MetricType value." },
     { "WDTW g >= 0", { .variant = { .variant = V::WDTW, .wdtw_g = -1 } }, false,
       "WDTW g must be finite and non-negative." },
     { "ADTW penalty >= 0", { .variant = { .variant = V::ADTW, .adtw_penalty = nan } }, false,

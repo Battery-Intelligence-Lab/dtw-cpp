@@ -260,6 +260,30 @@ auto make_independent(const DistanceConfig &c)
 void validate(const DistanceConfig &c, bool f32)
 {
   const auto &p = c.variant;
+  // An enum value outside its set (an integer cast) is refused here, once: the
+  // kernels take the enums unchecked and would read it as one of the values.
+  const auto outside = [](const char *type, auto value) {
+    return InvalidInput(std::to_string(static_cast<int>(value)) + " is not a " + type + " value.");
+  };
+  switch (c.metric) {
+  case MetricType::L1: case MetricType::L2: case MetricType::SquaredL2: break;
+  default: throw outside("MetricType", c.metric);
+  }
+  switch (p.variant) {
+  case DTWVariant::Standard: case DTWVariant::DDTW: case DTWVariant::WDTW: case DTWVariant::ADTW:
+  case DTWVariant::SoftDTW: case DTWVariant::MSM: case DTWVariant::TWE: break;
+  default: throw outside("DTWVariant", p.variant);
+  }
+  switch (c.missing) {
+  case MissingStrategy::Error: case MissingStrategy::ZeroCost: case MissingStrategy::AROW:
+  case MissingStrategy::Interpolate: break;
+  default: throw outside("MissingStrategy", c.missing);
+  }
+  switch (p.mv_mode) {
+  case MVMode::Dependent: case MVMode::Independent: break;
+  default: throw outside("MVMode", p.mv_mode);
+  }
+
   // Each parameter, the variant that reads it, and whether 0 is in its domain:
   // WDTW's g = 0 (constant half weights) and ADTW's penalty = 0 (Standard DTW)
   // are valid limits.
