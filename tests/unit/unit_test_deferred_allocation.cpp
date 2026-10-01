@@ -70,7 +70,7 @@ TEST_CASE("Deferred allocation: dist_by_ind reads the matrix the fill stored", "
   REQUIRE(prob.dist_by_ind(1, 0) == d); // one slot per unordered pair
 
   // A read of the matrix, never a computation.
-  prob.distance_matrix().set(0, 1, 123.0);
+  prob.writable_distance_matrix().set(0, 1, 123.0);
   REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
 }
 

@@ -877,13 +877,13 @@ NB_MODULE(_dtwcpp_core, m) {
              throw dtwc::InvalidInput("Expected square distance matrix");
            if (n != p.size())
              throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
-           auto &mat = p.distance_matrix();
            // Values written into a mapped matrix would persist in its file under the
            // Problem's fingerprint, whatever they were computed from.
-           if (mat.is_mapped())
+           if (p.distance_matrix().is_mapped())
              throw dtwc::InvalidInput("Problem.set_distance_matrix: this Problem's distance matrix is "
                                       "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
                                       "kept in RAM only; call refresh_distance_matrix() first.");
+           auto &mat = p.writable_distance_matrix();
            mat.resize(n);
            const double *data = dm.data();
            for (size_t i = 0; i < n; ++i)

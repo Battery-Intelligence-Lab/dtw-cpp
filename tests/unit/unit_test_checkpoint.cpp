@@ -105,9 +105,9 @@ TEST_CASE("A checkpoint round trip is bit-exact, full and partial", "[checkpoint
   REQUIRE(fs::file_size(scratch.path / "full.dtwm") == 48 + 15 * sizeof(double));
 
   auto partial = make_problem("partial");
-  partial.distance_matrix().resize(5);
-  partial.distance_matrix().set(3, 1, -0.0);
-  partial.distance_matrix().set(4, 4, 5e-324);
+  partial.writable_distance_matrix().resize(5);
+  partial.writable_distance_matrix().set(3, 1, -0.0);
+  partial.writable_distance_matrix().set(4, 4, 5e-324);
   save_checkpoint(partial, scratch.path.string());
 
   for (const Problem *source : { &full, &partial }) {
@@ -227,9 +227,9 @@ TEST_CASE("A resumed fill computes only the missing cells", "[checkpoint][fill]"
 
   // A crash after two rows: those cells hold values no DTW kernel produces.
   auto crashed = make_problem("resume", N);
-  crashed.distance_matrix().resize(N);
+  crashed.writable_distance_matrix().resize(N);
   for (std::size_t i = 0; i < 2; ++i)
-    for (std::size_t j = i + 1; j < N; ++j) crashed.distance_matrix().set(i, j, 900.0 + 10.0 * i + j);
+    for (std::size_t j = i + 1; j < N; ++j) crashed.writable_distance_matrix().set(i, j, 900.0 + 10.0 * i + j);
   save_checkpoint(crashed, scratch.path.string());
 
   auto resumed = make_problem("resume", N);

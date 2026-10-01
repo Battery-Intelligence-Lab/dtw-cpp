@@ -807,7 +807,7 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   if (N != prob.size())
     throw std::invalid_argument("Distance matrix size does not match problem size.");
 
-  auto &dm = prob.distance_matrix();
+  auto &dm = prob.writable_distance_matrix();
   dm.resize(N);
   const double *data = mxGetDoubles(prhs[2]);
   for (size_t i = 0; i < N; ++i)

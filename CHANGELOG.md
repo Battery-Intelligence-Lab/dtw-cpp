@@ -11,7 +11,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - **Changed:** a distance matrix that enters a `Problem` from outside its fill is checked once, where it enters, and a
   ±inf distance raises `InvalidInput` naming the first such pair: `read_distance_matrix`, `load_checkpoint`,
   `use_mmap_distance_matrix`, Python and MATLAB `set_distance_matrix`, and the next `fill_distance_matrix()` after a
-  write through C++ `distance_matrix()` (NaN still marks a pair to compute). v1.0.0 clustered such a matrix; the 2.0
+  write through C++ `writable_distance_matrix()` (NaN still marks a pair to compute). v1.0.0 clustered such a matrix; the 2.0
   previews refused it only when FastPAM, Lloyd k-medoids, FastCLARA or OneBatchPAM read the value, with a check on
   every read.
 - **Changed (C++):** `Problem::dist_by_ind` reads the distance matrix and computes nothing: an inlined O(1) load, where

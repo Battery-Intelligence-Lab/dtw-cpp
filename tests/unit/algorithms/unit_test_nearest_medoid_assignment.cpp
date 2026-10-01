@@ -184,9 +184,9 @@ TEST_CASE("Every matrix intake refuses a distance that is not finite, naming the
     std::function<void(Problem &)> install;
   };
   const std::vector<Row> rows{
-    { "Problem::fill_distance_matrix" + bad, // the commit point of distance_matrix()
+    { "Problem::fill_distance_matrix" + bad, // the commit point of writable_distance_matrix()
       [&](Problem &problem) {
-        auto &matrix = problem.distance_matrix();
+        auto &matrix = problem.writable_distance_matrix();
         matrix.resize(3);
         write_bad(matrix);
         problem.fill_distance_matrix();
@@ -200,7 +200,7 @@ TEST_CASE("Every matrix intake refuses a distance that is not finite, naming the
     { "load_checkpoint" + bad,
       [&](Problem &problem) {
         auto writer = three();
-        auto &matrix = writer.distance_matrix();
+        auto &matrix = writer.writable_distance_matrix();
         matrix.resize(3);
         write_bad(matrix);
         dtwc::save_checkpoint(writer, scratch.path.string());
@@ -213,7 +213,7 @@ TEST_CASE("Every matrix intake refuses a distance that is not finite, naming the
         {
           auto writer = three();
           writer.use_mmap_distance_matrix(path);
-          write_bad(writer.distance_matrix());
+          write_bad(writer.writable_distance_matrix());
         } // unmapped; the file keeps the values
         problem.use_mmap_distance_matrix(path);
       } },

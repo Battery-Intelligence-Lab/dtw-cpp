@@ -74,7 +74,7 @@ void check_original_univariate_data(const dtwc::Problem &problem)
 
 void inject_complete_dense_cache(dtwc::Problem &problem, double sentinel)
 {
-  auto &matrix = problem.distance_matrix();
+  auto &matrix = problem.writable_distance_matrix();
   matrix.resize(2);
   matrix.set(0, 0, 0.0);
   matrix.set(0, 1, sentinel);
@@ -112,7 +112,7 @@ constexpr const char *cross_product_error =
 #ifdef DTWC_HAS_MMAP
 void inject_complete_mmap_cache(dtwc::Problem &problem, double sentinel)
 {
-  auto &storage = problem.distance_matrix();
+  auto &storage = problem.writable_distance_matrix();
   auto &matrix = storage;
   matrix.set(0, 0, 0.0);
   matrix.set(0, 1, sentinel);
