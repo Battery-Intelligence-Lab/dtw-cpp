@@ -1,0 +1,158 @@
+C3 kernel evidence. Base 9f4fcca, head = the change (C:/D/git/wt/C3/build-cuda, MSVC 14.50 + nvcc 13.0, sm_89).
+
+== Registers per instantiation (cuobjdump --dump-resource-usage cuda_dtw.cu.obj): base -> head
+_ZN4dtwc4cuda18dtw_regtile_kernelIdLi8EEEvPKT_PKiPdiiibixx 90 -> 90
+_ZN4dtwc4cuda18dtw_regtile_kernelIdLi4EEEvPKT_PKiPdiiibixx 64 -> 64
+_ZN4dtwc4cuda15dtw_warp_kernelIdEEvPKT_PKiPdiiibixx 37 -> 37
+_ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE2EEEvPKT_PKiPdiiibiPixxPS3_ 36 -> 36
+_ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE0EEEvPKT_PKiPdiiibiPixxPS3_ 40 -> 40
+_ZN4dtwc4cuda18dtw_regtile_kernelIfLi8EEEvPKT_PKiPdiiibixx 56 -> 56
+_ZN4dtwc4cuda18dtw_regtile_kernelIfLi4EEEvPKT_PKiPdiiibixx 48 -> 48
+_ZN4dtwc4cuda15dtw_warp_kernelIfEEvPKT_PKiPdiiibixx 32 -> 32
+_ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE2EEEvPKT_PKiPdiiibiPixxPS3_ 28 -> 28
+_ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE0EEEvPKT_PKiPdiiibiPixxPS3_ 40 -> 40
+_ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS3_ 79 -> 62
+_ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS3_ 68 -> 68
+
+== SASS base vs head (cuobjdump -sass; 2026-09-30-c1-cuda-long-series/sass_identical.py)
+dtw_regtile_kernel<d,Li4E>: 2240 vs 2240 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<d,Li8E>: 3232 vs 3232 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<f,Li4E>: 1680 vs 1680 lines; byte-identical True; differing lines 0
+dtw_regtile_kernel<f,Li8E>: 2224 vs 2224 lines; byte-identical True; differing lines 0
+dtw_warp_kernel<d>: 1392 vs 1392 lines; byte-identical True; differing lines 0
+dtw_warp_kernel<f>: 1872 vs 1872 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<d,Global>: 928 vs 928 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<d,Preload>: 1024 vs 1024 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<d,Shared>: 2496 vs 2528 lines; byte-identical False; differing lines 2480
+dtw_wavefront_kernel<f,Global>: 928 vs 928 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<f,Preload>: 944 vs 944 lines; byte-identical True; differing lines 0
+dtw_wavefront_kernel<f,Shared>: 2176 vs 2176 lines; byte-identical True; differing lines 0
+The final build (comment wording only after the band) dumps byte-identical SASS to the measured head.
+
+== Blocks per SM, 256 threads, the fill's dynamic shared memory (c3_occupancy.cpp, driver occupancy API, extracted cubin)
+-- base
+_ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS3_ REG 68 static_smem 16 blocks/SM(256 thr, no dyn smem) 3
+  L 513 dyn_smem 6156 blocks/SM 3
+  L 768 dyn_smem 9216 blocks/SM 3
+  L 1024 dyn_smem 12288 blocks/SM 3
+  L 1025 dyn_smem 8200 blocks/SM 3
+  L 1500 dyn_smem 12000 blocks/SM 3
+  L 2048 dyn_smem 16384 blocks/SM 3
+  L 2049 dyn_smem 24588 blocks/SM 3
+  L 2400 dyn_smem 28800 blocks/SM 3
+  L 2757 dyn_smem 33084 blocks/SM 2
+_ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS3_ REG 79 static_smem 16 blocks/SM(256 thr, no dyn smem) 3
+  L 513 dyn_smem 12312 blocks/SM 3
+  L 768 dyn_smem 18432 blocks/SM 3
+  L 1024 dyn_smem 24576 blocks/SM 3
+  L 1025 dyn_smem 16400 blocks/SM 3
+  L 1500 dyn_smem 24000 blocks/SM 3
+  L 2048 dyn_smem 32768 blocks/SM 3
+-- head
+_ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS3_ REG 68 static_smem 16 blocks/SM(256 thr, no dyn smem) 3
+  L 513 dyn_smem 6156 blocks/SM 3
+  L 768 dyn_smem 9216 blocks/SM 3
+  L 1024 dyn_smem 12288 blocks/SM 3
+  L 1025 dyn_smem 8200 blocks/SM 3
+  L 1500 dyn_smem 12000 blocks/SM 3
+  L 2048 dyn_smem 16384 blocks/SM 3
+  L 2049 dyn_smem 24588 blocks/SM 3
+  L 2400 dyn_smem 28800 blocks/SM 3
+  L 2757 dyn_smem 33084 blocks/SM 2
+_ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS3_ REG 62 static_smem 16 blocks/SM(256 thr, no dyn smem) 4
+  L 513 dyn_smem 12312 blocks/SM 4
+  L 768 dyn_smem 18432 blocks/SM 4
+  L 1024 dyn_smem 24576 blocks/SM 3
+  L 1025 dyn_smem 16400 blocks/SM 4
+  L 1500 dyn_smem 24000 blocks/SM 4
+  L 2048 dyn_smem 32768 blocks/SM 3
+-- step 2's code (no preload branch in either precision), cuda_dtw.cu compiled alone with build-cuda's device flags
+   (a check: the unchanged file compiled this way gives every kernel's SASS byte for byte); FP32 Shared kernel:
+_ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS3_ REG 50 static_smem 16 blocks/SM(256 thr, no dyn smem) 4
+  L 513 dyn_smem 6156 blocks/SM 4
+  L 768 dyn_smem 9216 blocks/SM 4
+  L 1024 dyn_smem 12288 blocks/SM 4
+  L 1025 dyn_smem 8200 blocks/SM 4
+  L 1500 dyn_smem 12000 blocks/SM 4
+  L 2048 dyn_smem 16384 blocks/SM 4
+  L 2049 dyn_smem 24588 blocks/SM 3
+  L 2400 dyn_smem 28800 blocks/SM 3
+  L 2757 dyn_smem 33084 blocks/SM 2
+(L > 2048 in FP64 needs more than 48 KB, which the probe does not open; the fill sends FP64 there to the global kernel.)
+
+== FP64 Shared kernel, 3-buffer cell loop: FP64, memory and branch instructions (cuobjdump -sass)
+-- base: series loads and the subtraction issued twice under complementary predicates (@P2 __ldg / @!P2 generic)
+1290 @!P4 BRA 0x1370 ;
+1350 @P0 ST.E.64 [R32.64], R50 ;
+1360 @P0 BRA 0x1710 ;
+1390 @P2 LDG.E.64.CONSTANT R52, [R58.64] ;
+13a0 @P2 LDG.E.64.CONSTANT R54, [R50.64] ;
+13b0 @!P2 LD.E.64 R56, [R58.64] ;
+13c0 @!P2 LD.E.64 R60, [R50.64] ;
+1400 @P2 DADD R52, R52, -R54 ;
+1410 @!P2 DADD R52, R56, -R60 ;
+1420 @P0 DMUL R54, R52, R52 ;
+1430 @!P0 DADD R54, -RZ, |R52| ;
+1440 @!P5 BRA 0x1700 ;
+1530 @P5 LD.E.64 R52, [R58.64] ;
+1550 @P0 LD.E.64 R56, [R50.64] ;
+15d0 DSETP.MIN.AND P5, P6, R52, R56, PT ;
+1630 @!P0 LD.E.64 R52, [R56.64] ;
+1640 FSEL R51, R59, R60, P5 ;
+1680 DSETP.MIN.AND P0, P5, R50, R52, PT ;
+16a0 FSEL R51, R51, R53, P0 ;
+16d0 DADD R50, R50, R54 ;
+16e0 ST.E.64 [R32.64], R50 ;
+16f0 BRA 0x1710 ;
+1700 ST.E.64 [R32.64], R54 ;
+1740 @!P0 BRA 0x1250 ;
+-- head
+1230 @!P0 BRA 0x12f0 ;
+12d0 @P0 ST.E.64 [R22.64], R24 ;
+12e0 @P0 BRA 0x1590 ;
+12f0 LDG.E.64.CONSTANT R42, [R16.64] ;
+1300 LDG.E.64.CONSTANT R24, [R14.64] ;
+1340 DADD R42, R42, -R24 ;
+1350 @P0 DMUL R24, R42, R42 ;
+1360 @!P0 DADD R24, -RZ, |R42| ;
+1370 @!P2 BRA 0x1580 ;
+1400 @P0 LD.E.64 R44, [R18.64] ;
+1420 @P2 LD.E.64 R42, [R48.64] ;
+1470 @!P0 LD.E.64 R46, [R48.64] ;
+1480 DSETP.MIN.AND P0, P2, R42, R44, PT ;
+14b0 FSEL R43, R43, R45, P0 ;
+14e0 DSETP.MIN.AND P0, P2, R42, R46, PT ;
+1510 FSEL R49, R44, R47, P0 ;
+1550 DADD R24, R42, R24 ;
+1560 ST.E.64 [R22.64], R24 ;
+1570 BRA 0x1590 ;
+1580 ST.E.64 [R22.64], R24 ;
+16e0 @!P5 BRA 0x1210 ;
+-- FP32 Shared kernel, base = head: the same duplication, in full-rate FADDs
+1350 @P4 ST.E [R12.64], R11 ;
+1390 @P2 LDG.E.CONSTANT R64, [R10.64] ;
+13a0 @P2 LDG.E.CONSTANT R63, [R54.64] ;
+13b0 @!P2 LD.E R57, [R10.64] ;
+13c0 @!P2 LD.E R62, [R54.64] ;
+1400 @P2 FADD R64, R64, -R63 ;
+1410 @!P2 FADD R64, R57, -R62 ;
+1420 @P4 FMUL R63, R64.reuse, R64 ;
+1430 @!P4 FADD R63, |R64|, -RZ ;
+1550 @P6 LD.E R62, [R54.64] ;
+1580 @P5 LD.E R65, [R56.64] ;
+15b0 @!P4 LD.E R61, [R10.64] ;
+15c0 FMNMX R62, R65, R62, PT ;
+15d0 FMNMX R62, R62, R61, PT ;
+15e0 FADD R63, R62, R63 ;
+15f0 ST.E [R12.64], R63 ;
+1610 ST.E [R12.64], R63 ;
+
+== SM clock during FP64 L 1024 (268) fills, head then base, 3 fills each (nvidia-smi every 100 ms, samples at >= 90 % busy)
+head median 1.3166 s (28.5 Gcell/s); base median 1.5074 s (24.9 Gcell/s)
+busy samples 97 SM clock mean 2310 MHz, min 2310 max 2310 ; max SM clock 3105 MHz
+
+== FP32 Shared kernel (head = base) near the route boundary: the 128-byte allocation unit
+  L 2749 dyn_smem 32988 blocks/SM 3
+  L 2750 dyn_smem 33000 blocks/SM 3
+  L 2751 dyn_smem 33012 blocks/SM 2
+  L 2757 dyn_smem 33084 blocks/SM 2
