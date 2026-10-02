@@ -18,6 +18,10 @@
  *      registers; inter-thread communication via __shfl_sync. Used for medium
  *      series (32 < max_L <= 256). TILE_W=4 covers up to 128 columns,
  *      TILE_W=8 covers up to 256 columns.
+ *
+ * Each kernel computes either every pair of one set of series (the packed
+ * triangle of compute_distance_matrix_cuda) or each series of one set against
+ * each of a few others (compute_medoid_distances_cuda): its Pairs parameter.
  */
 
 #include "cuda_dtw.cuh"
@@ -34,12 +38,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace dtwc::cuda {
@@ -52,6 +59,7 @@ namespace dtwc::cuda {
 // shared with the host and marked __host__ __device__. It uses an FP64 seed +
 // int64 correction, fixing the int32 overflow of the retired local copy.
 using dtwc::detail::decode_pair;
+using dtwc::detail::decode_rectangle_pair;
 using dtwc::core::normalize_public_distance;
 
 /// The slot of DistanceMatrix's packed lower triangle (row r holds columns
@@ -67,6 +75,38 @@ __host__ __device__ inline std::int64_t packed_slot(std::int64_t si, std::int64_
   return row * (row + 1) / 2 + (N - 1 - sj);
 }
 
+/// The pairs a launch computes, both on the same kernels. Triangle: every pair
+/// of the n uploaded series, into the packed triangle (the fill). Rectangle:
+/// each series uploaded after the first n against each of those n (CLARA's
+/// medoids), into n consecutive slots per series.
+enum class Pairs { Triangle, Rectangle };
+
+/// The uploaded series (si, sj) of pair `pair`: decode_pair's pair of n series,
+/// or for a rectangle of n columns, series n + i against series j where
+/// pair = i * n + j.
+template <Pairs P>
+__device__ __forceinline__ void pair_series(std::int64_t pair, std::int64_t n,
+                                            std::int64_t &si, std::int64_t &sj)
+{
+  if constexpr (P == Pairs::Triangle) {
+    decode_pair(pair, n, si, sj);
+  } else {
+    decode_rectangle_pair(pair, n, si, sj);
+    si += n;
+  }
+}
+
+/// The slot that takes the distance of pair_series' (si, sj): its packed slot
+/// in a triangle, the pair's own index in a rectangle.
+template <Pairs P>
+__device__ __forceinline__ std::int64_t pair_slot(std::int64_t si, std::int64_t sj, std::int64_t n)
+{
+  if constexpr (P == Pairs::Triangle)
+    return packed_slot(si, sj, n);
+  else
+    return (si - n) * n + sj;
+}
+
 /// What a wavefront kernel compiles. Preload (L <= kPreloadMaxLength): both
 /// series and the three anti-diagonals in shared memory, and nothing else.
 /// Shared: every shared-memory mode, chosen at run time. Global: three
@@ -74,10 +114,10 @@ __host__ __device__ inline std::int64_t packed_slot(std::int64_t si, std::int64_
 enum class Wavefront { Preload, Shared, Global };
 
 // Declared for the device setup below; defined with the other kernels.
-template <typename T, Wavefront Mode>
+template <typename T, Wavefront Mode, Pairs P>
 __global__ void dtw_wavefront_kernel(
     const T *__restrict__ all_series, const int *__restrict__ lengths,
-    double *__restrict__ out, int N_series, int max_L, int num_pairs,
+    double *__restrict__ out, int n, int max_L, int num_pairs,
     bool use_squared_l2, int band, int *__restrict__ work_counter,
     std::int64_t first_pair, std::int64_t first_slot, T *__restrict__ scratch);
 
@@ -104,11 +144,12 @@ struct DeviceLimits {
 };
 
 /// Opens the whole opt-in shared memory of a block to the wavefront kernel in
-/// T on the current device, and records the kernel's static part.
-template <typename T>
+/// T for pairs P on the current device, and records the kernel's static part,
+/// which one declaration gives both layouts.
+template <typename T, Pairs P>
 cudaError_t open_wavefront_shared_memory(DeviceLimits &device)
 {
-  const auto kernel = dtw_wavefront_kernel<T, Wavefront::Shared>;
+  const auto kernel = dtw_wavefront_kernel<T, Wavefront::Shared, P>;
   cudaFuncAttributes attributes{};
   const cudaError_t error = cudaFuncGetAttributes(&attributes, kernel);
   if (error != cudaSuccess) return error;
@@ -161,9 +202,13 @@ const DeviceLimits &device_limits(int device_id)
   // Before the device's setup, which needs a kernel image the device can run.
   detail::require_compute_capability(device.compute_major, device.compute_minor, device_id);
   std::call_once(device.set_up, [&device] {
-    device.setup_error = open_wavefront_shared_memory<float>(device);
-    if (device.setup_error == cudaSuccess)
-      device.setup_error = open_wavefront_shared_memory<double>(device);
+    using Open = cudaError_t (*)(DeviceLimits &);
+    const Open opens[] = { open_wavefront_shared_memory<float, Pairs::Triangle>,
+                           open_wavefront_shared_memory<double, Pairs::Triangle>,
+                           open_wavefront_shared_memory<float, Pairs::Rectangle>,
+                           open_wavefront_shared_memory<double, Pairs::Rectangle> };
+    for (const Open open : opens)
+      if (device.setup_error == cudaSuccess) device.setup_error = open(device);
   });
   CUDA_CHECK(device.setup_error);
   return device;
@@ -213,15 +258,15 @@ bool resolve_fp32(GpuPrecision precision, int device_id)
 // and so the same distances.
 //
 // Every kernel computes the launch's pairs first_pair .. first_pair + num_pairs - 1
-// and writes each distance, widened to the public double, to its packed_slot in
-// `out`, which holds the launch's slots from first_slot on.
+// (pair_series) and writes each distance, widened to the public double, to its
+// pair_slot in `out`, which holds the launch's slots from first_slot on.
 
-template <typename T, Wavefront Mode>
+template <typename T, Wavefront Mode, Pairs P>
 __global__ void dtw_wavefront_kernel(
-    const T *__restrict__ all_series, // [N * max_L] padded, last series first
+    const T *__restrict__ all_series, // [N * max_L] padded, in upload order
     const int *__restrict__ lengths,       // [N] actual lengths, same order
-    double *__restrict__ out,         // the launch's packed slots
-    int N_series, int max_L, int num_pairs, bool use_squared_l2, int band,
+    double *__restrict__ out,         // the launch's slots
+    int n, int max_L, int num_pairs, bool use_squared_l2, int band,
     int *__restrict__ work_counter,   // persistent mode when non-null
     std::int64_t first_pair, std::int64_t first_slot,
     T *__restrict__ scratch)          // [gridDim.x * 3 * max_L], Global only
@@ -315,7 +360,7 @@ __global__ void dtw_wavefront_kernel(
     }
 
     std::int64_t si, sj;
-    decode_pair(first_pair + pid, N_series, si, sj);
+    pair_series<P>(first_pair + pid, n, si, sj);
     const int ni = lengths[si];
     const int nj = lengths[sj];
 
@@ -331,7 +376,7 @@ __global__ void dtw_wavefront_kernel(
     // Guard: zero-length series produce INF distance
     if (M == 0 || N_len == 0) {
       if (tid == 0)
-        out[packed_slot(si, sj, N_series) - first_slot] = normalize_public_distance(INF);
+        out[pair_slot<P>(si, sj, n) - first_slot] = normalize_public_distance(INF);
       // In non-persistent mode, exit; in persistent mode, loop for next pair
       if (!work_counter) return;
       // Sync before next iteration so all threads agree before atomicAdd
@@ -440,7 +485,7 @@ __global__ void dtw_wavefront_kernel(
       int last_buf = use_double_buf ? ((total_diags - 1) & 1)
                                     : ((total_diags - 1) % 3);
       T dist = diag_buf[last_buf][0];
-      out[packed_slot(si, sj, N_series) - first_slot] = normalize_public_distance(dist);
+      out[pair_slot<P>(si, sj, n) - first_slot] = normalize_public_distance(dist);
     }
 
     // Non-persistent mode: exit after one pair
@@ -469,12 +514,12 @@ __global__ void dtw_wavefront_kernel(
 
 constexpr int PAIRS_PER_BLOCK = 8;   // 8 warps x 32 threads = 256 threads
 
-template <typename T>
+template <typename T, Pairs P>
 __global__ void dtw_warp_kernel(
     const T *__restrict__ all_series,
     const int *__restrict__ lengths,
     double *__restrict__ out,
-    int N_series, int max_L, int num_pairs, bool use_squared_l2, int band,
+    int n, int max_L, int num_pairs, bool use_squared_l2, int band,
     std::int64_t first_pair, std::int64_t first_slot)
 {
   const int warp_id = threadIdx.x / 32;       // which warp within block [0..7]
@@ -488,7 +533,7 @@ __global__ void dtw_warp_kernel(
   if (work_idx >= num_pairs) return;
 
   std::int64_t si, sj;
-  decode_pair(first_pair + work_idx, N_series, si, sj);
+  pair_series<P>(first_pair + work_idx, n, si, sj);
   const int ni = lengths[si];
   const int nj = lengths[sj];
 
@@ -504,7 +549,7 @@ __global__ void dtw_warp_kernel(
   // Guard: zero-length series
   if (M == 0 || N_len == 0) {
     if (lane == 0)
-      out[packed_slot(si, sj, N_series) - first_slot] = normalize_public_distance(INF);
+      out[pair_slot<P>(si, sj, n) - first_slot] = normalize_public_distance(INF);
     return;
   }
 
@@ -587,7 +632,7 @@ __global__ void dtw_warp_kernel(
   // The result is at cell (M-1, N_len-1), which is on the last anti-diagonal.
   // Thread lane = M-1 holds this value in prev_val.
   if (lane == M - 1)
-    out[packed_slot(si, sj, N_series) - first_slot] = normalize_public_distance(prev_val);
+    out[pair_slot<P>(si, sj, n) - first_slot] = normalize_public_distance(prev_val);
 }
 
 // =========================================================================
@@ -610,12 +655,12 @@ __global__ void dtw_warp_kernel(
 // Block structure: PAIRS_PER_BLOCK warps (=8), one pair per warp.
 // Shared memory: series data preloading only.
 
-template <typename T, int TILE_W>
+template <typename T, int TILE_W, Pairs P>
 __global__ void dtw_regtile_kernel(
     const T *__restrict__ all_series,
     const int *__restrict__ lengths,
     double *__restrict__ out,
-    int N_series, int max_L, int num_pairs, bool use_squared_l2, int band,
+    int n, int max_L, int num_pairs, bool use_squared_l2, int band,
     std::int64_t first_pair, std::int64_t first_slot)
 {
   constexpr int WARP_SIZE = 32;
@@ -633,7 +678,7 @@ __global__ void dtw_regtile_kernel(
 
   // Decode pair from flat upper-triangle index
   std::int64_t si, sj;
-  decode_pair(first_pair + work_idx, N_series, si, sj);
+  pair_series<P>(first_pair + work_idx, n, si, sj);
   const int ni = lengths[si];
   const int nj = lengths[sj];
   const T *x = all_series + static_cast<long long>(si) * max_L;
@@ -647,7 +692,7 @@ __global__ void dtw_regtile_kernel(
 
   if (M == 0 || N_len == 0) {
     if (lane == 0)
-      out[packed_slot(si, sj, N_series) - first_slot] = normalize_public_distance(INF_VAL);
+      out[pair_slot<P>(si, sj, n) - first_slot] = normalize_public_distance(INF_VAL);
     return;
   }
 
@@ -801,7 +846,7 @@ __global__ void dtw_regtile_kernel(
   T final_result = __shfl_sync(FULL_MASK, my_result, result_thread);
 
   if (lane == 0)
-    out[packed_slot(si, sj, N_series) - first_slot] = normalize_public_distance(final_result);
+    out[pair_slot<P>(si, sj, n) - first_slot] = normalize_public_distance(final_result);
 }
 
 // =========================================================================
@@ -873,7 +918,7 @@ struct DTWLaunchWorkspace {
   CachedHostBuffer<T> host_series;
   CudaPtr<T> d_series;
   CudaPtr<int> d_lengths;
-  CudaPtr<double> d_out; ///< one launch's packed slots
+  CudaPtr<double> d_out; ///< one launch's slots
   CudaPtr<int> d_counter;
   CudaPtr<T> d_scratch; ///< the global wavefront's anti-diagonals, a slice per block
   CudaStream stream;
@@ -922,7 +967,8 @@ void ensure_dtw_device_capacity(
     size_t series_elems,
     size_t length_elems,
     size_t out_elems,
-    size_t scratch_elems)
+    size_t scratch_elems,
+    size_t counter_elems)
 {
   if (workspace.series_capacity < series_elems) {
     workspace.d_series = cuda_alloc<T>(series_elems);
@@ -940,36 +986,136 @@ void ensure_dtw_device_capacity(
     workspace.d_scratch = cuda_alloc<T>(scratch_elems);
     workspace.scratch_capacity = scratch_elems;
   }
-}
-
-/// The series in upload order, the last first (see packed_slot): each padded
-/// to max_L in @p dst, and its length in @p lengths.
-template <typename T>
-void flatten_series_buffer(
-    T *dst, std::vector<int> &lengths,
-    const std::vector<std::vector<double>> &series,
-    size_t max_L)
-{
-  const size_t N = series.size();
-  lengths.resize(N);
-  for (size_t d = 0; d < N; ++d) {
-    const auto &src = series[N - 1 - d];
-    T *row_dst = dst + d * max_L;
-    const size_t len = src.size();
-    lengths[d] = static_cast<int>(len);
-
-    if constexpr (std::is_same_v<T, double>) {
-      if (len > 0)
-        std::memcpy(row_dst, src.data(), len * sizeof(double));
-    } else {
-      for (size_t k = 0; k < len; ++k)
-        row_dst[k] = static_cast<T>(src[k]);
-    }
-
-    if (len < max_L)
-      std::fill(row_dst + len, row_dst + max_L, T(0));
+  if (workspace.counter_capacity < counter_elems) {
+    workspace.d_counter = cuda_alloc<int>(counter_elems);
+    workspace.counter_capacity = counter_elems;
   }
 }
+
+/// @p src at @p dst, padded with zeros to max_L samples of T; returns its length.
+template <typename T>
+int pad_series(T *dst, const std::vector<double> &src, size_t max_L)
+{
+  const size_t len = src.size();
+  if constexpr (std::is_same_v<T, double>) {
+    if (len > 0)
+      std::memcpy(dst, src.data(), len * sizeof(double));
+  } else {
+    for (size_t k = 0; k < len; ++k)
+      dst[k] = static_cast<T>(src[k]);
+  }
+  std::fill(dst + len, dst + max_L, T(0));
+  return static_cast<int>(len);
+}
+
+/// The flattened series go through pinned memory where the budget allows, so
+/// an upload is a true asynchronous copy; pageable memory otherwise.
+constexpr size_t PINNED_THRESHOLD = 256 * 1024;
+
+/// The kernel launches of one batch of pairs P in T on its kernel path.
+///
+/// The wavefront loops persistent blocks over a launch that has many more
+/// pairs than fit on the device at once, one block per pair otherwise. A
+/// shared-memory block holds wavefront_buffer_count's diagonal buffers, which
+/// select_kernel sized so that three fit an SM above L = 2048, within the
+/// opt-in maximum that device_limits opened once;
+/// up to kPreloadMaxLength its kernel is the preload mode compiled alone: 40
+/// registers instead of 68 (FP32), so up to 6 blocks per SM instead of 3, and
+/// 11.5-18.5 % less time at L 257-512 in FP32 and FP64
+/// (.claude/baselines/2026-09-30-c1-cuda-long-series.md). The global-memory
+/// wavefront always runs persistent, each block in its own slice of scratch,
+/// on at most one block per pair of a launch.
+template <typename T, Pairs P>
+struct Launches {
+  static constexpr int block_size = 256;
+  detail::KernelPath path;
+  int max_L;
+  bool use_squared_l2;
+  int band;
+  decltype(&dtw_wavefront_kernel<T, Wavefront::Shared, P>) shared_kernel;
+  size_t shared_mem = 0;   ///< the shared-memory wavefront's dynamic bytes
+  int persistent_grid = 0; ///< the wavefront's blocks when persistent; 0 off the wavefront
+  int global_grid = 0;     ///< the global-memory wavefront's blocks
+
+  /// Launches of at most @p chunk pairs each.
+  Launches(detail::KernelPath kernel_path, size_t max_length, bool squared_l2, int band_width,
+           std::int64_t chunk, const DeviceLimits &device)
+      : path(kernel_path), max_L(static_cast<int>(max_length)), use_squared_l2(squared_l2),
+        band(band_width),
+        shared_kernel(max_length <= detail::kPreloadMaxLength
+                          ? dtw_wavefront_kernel<T, Wavefront::Preload, P>
+                          : dtw_wavefront_kernel<T, Wavefront::Shared, P>)
+  {
+    const bool global = path == detail::KernelPath::WavefrontGlobal;
+    if (!global && path != detail::KernelPath::Wavefront) return;
+    shared_mem = global ? 0 : detail::wavefront_buffer_count(max_length) * max_length * sizeof(T);
+    int blocks_per_sm = 0;
+    if (global)
+      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+          &blocks_per_sm, dtw_wavefront_kernel<T, Wavefront::Global, P>, block_size, 0));
+    else
+      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+          &blocks_per_sm, shared_kernel, block_size, shared_mem));
+    persistent_grid = device.sm_count * std::max(blocks_per_sm, 1);
+    if (!global) return;
+    // A global block's slice holds three anti-diagonals of max_L values. The
+    // grid holds no more slices than fit the L2 cache, and a block per SM at
+    // least: past the L2 their traffic goes to DRAM, which halved the FP32 fill
+    // at L = 20,000 on an RTX 4000 Ada (.claude/baselines/2026-09-30-c1-cuda-long-series.md).
+    const auto l2_slices =
+        static_cast<std::int64_t>(device.l2_bytes / (3 * max_length * sizeof(T)));
+    global_grid = static_cast<int>(std::min(std::min<std::int64_t>(chunk, persistent_grid),
+                                            std::max<std::int64_t>(device.sm_count, l2_slices)));
+  }
+
+  /// The device buffers beyond the series, lengths and distances: the global
+  /// wavefront's slices, and the persistent wavefront's work counter.
+  size_t scratch_elems() const { return static_cast<size_t>(global_grid) * 3 * max_L; }
+  size_t counter_elems() const { return persistent_grid > 0 ? 1 : 0; }
+
+  /// Pairs first .. first + count - 1 of the workspace's uploaded series (n:
+  /// pair_series'), their distances into its out buffer from first_slot on.
+  void operator()(DTWLaunchWorkspace<T> &workspace, int n, std::int64_t first, int count,
+                  std::int64_t first_slot, cudaStream_t stream) const
+  {
+    // The warp-family kernels run one pair per warp, PAIRS_PER_BLOCK warps per
+    // block; each warp stages its pair's two series, `staged` samples apiece,
+    // in shared memory.
+    const auto launch_warp_family = [&](auto kernel, size_t staged) {
+      const int grid_size = static_cast<int>(
+          (std::int64_t{ count } + PAIRS_PER_BLOCK - 1) / PAIRS_PER_BLOCK);
+      const size_t warp_shared_mem = PAIRS_PER_BLOCK * 2 * staged * sizeof(T);
+      kernel<<<grid_size, PAIRS_PER_BLOCK * 32, warp_shared_mem, stream>>>(
+          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
+          n, max_L, count, use_squared_l2, band, first, first_slot);
+    };
+
+    if (path == detail::KernelPath::Warp) {
+      launch_warp_family(dtw_warp_kernel<T, P>, 32);
+    } else if (path == detail::KernelPath::RegTileW4) {
+      launch_warp_family(dtw_regtile_kernel<T, 4, P>, max_L); // 32 lanes x 4 = 128 columns
+    } else if (path == detail::KernelPath::RegTileW8) {
+      launch_warp_family(dtw_regtile_kernel<T, 8, P>, max_L); // 32 lanes x 8 = 256 columns
+    } else if (path == detail::KernelPath::Wavefront) {
+      const bool persistent = count > persistent_grid * 4;
+      if (persistent)
+        CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
+      shared_kernel<<<persistent ? persistent_grid : count, block_size, shared_mem, stream>>>(
+          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
+          n, max_L, count, use_squared_l2, band,
+          persistent ? workspace.d_counter.get() : nullptr, first, first_slot, nullptr);
+    } else if (path == detail::KernelPath::WavefrontGlobal) {
+      CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
+      dtw_wavefront_kernel<T, Wavefront::Global, P><<<global_grid, block_size, 0, stream>>>(
+          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
+          n, max_L, count, use_squared_l2, band,
+          workspace.d_counter.get(), first, first_slot, workspace.d_scratch.get());
+    } else {
+      throw std::logic_error("Launches: unknown KernelPath");
+    }
+    CUDA_CHECK(cudaGetLastError());
+  }
+};
 
 /// Fill @p out with the distance of every pair, computed in T. The pairs run
 /// in launches of at most kMaxPairsPerLaunch consecutive pairs, whose first
@@ -991,73 +1137,28 @@ void launch_dtw_kernel(
   const auto n = static_cast<std::int64_t>(N);
   const std::int64_t num_pairs = n * (n - 1) / 2;
   const std::int64_t chunk = std::min(num_pairs, detail::kMaxPairsPerLaunch);
-
-  // The wavefront loops persistent blocks over a launch that has many more
-  // pairs than fit on the device at once, one block per pair otherwise. A
-  // shared-memory block holds wavefront_buffer_count's diagonal buffers, which
-  // select_kernel sized so that three fit an SM above L = 2048, within the
-  // opt-in maximum that device_limits opened once;
-  // up to kPreloadMaxLength its kernel is the preload mode compiled alone: 40
-  // registers instead of 68 (FP32), so up to 6 blocks per SM instead of 3, and
-  // 11.5-18.5 % less time at L 257-512 in FP32 and FP64
-  // (.claude/baselines/2026-09-30-c1-cuda-long-series.md). The global-memory
-  // wavefront always runs persistent, each block in its own slice of scratch,
-  // on at most one block per pair of a launch.
-  const bool global = kernel_path == detail::KernelPath::WavefrontGlobal;
-  const bool wavefront = global || kernel_path == detail::KernelPath::Wavefront;
-  constexpr int block_size = 256;
-  const size_t wavefront_shared_mem =
-      global ? 0 : detail::wavefront_buffer_count(max_L) * max_L * sizeof(T);
-  const auto shared_kernel = max_L <= detail::kPreloadMaxLength
-      ? dtw_wavefront_kernel<T, Wavefront::Preload>
-      : dtw_wavefront_kernel<T, Wavefront::Shared>;
-  const auto &device = device_limits(device_id);
-  int persistent_grid = 0;
-  if (wavefront) {
-    int blocks_per_sm = 0;
-    if (global)
-      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-          &blocks_per_sm, dtw_wavefront_kernel<T, Wavefront::Global>, block_size, 0));
-    else
-      CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-          &blocks_per_sm, shared_kernel, block_size, wavefront_shared_mem));
-    persistent_grid = device.sm_count * std::max(blocks_per_sm, 1);
-  }
-  // A global block's slice holds three anti-diagonals of max_L values. The grid
-  // holds no more slices than fit the L2 cache, and a block per SM at least:
-  // past the L2 their traffic goes to DRAM, which halved the FP32 fill at
-  // L = 20,000 on an RTX 4000 Ada (.claude/baselines/2026-09-30-c1-cuda-long-series.md).
-  const auto l2_slices = static_cast<std::int64_t>(device.l2_bytes / (3 * max_L * sizeof(T)));
-  const int global_grid =
-      global ? static_cast<int>(std::min(std::min<std::int64_t>(chunk, persistent_grid),
-                                         std::max<std::int64_t>(device.sm_count, l2_slices)))
-             : 0;
+  const Launches<T, Pairs::Triangle> launches(kernel_path, max_L, use_squared_l2, band, chunk,
+                                              device_limits(device_id));
 
   // Every device buffer the launches use is allocated before the caller's
   // matrix, so a device that cannot hold them refuses the fill first. A
   // launch's span holds its pairs and one diagonal slot per row it crosses.
   auto &workspace = get_dtw_launch_workspace<T>(device_id);
   ensure_dtw_device_capacity(workspace, N * max_L, N, static_cast<size_t>(chunk) + N,
-                             static_cast<size_t>(global_grid) * 3 * max_L);
-  if (wavefront && workspace.counter_capacity < 1) {
-    workspace.d_counter = cuda_alloc<int>(1);
-    workspace.counter_capacity = 1;
-  }
+                             launches.scratch_elems(), launches.counter_elems());
 
-  // The flattened series go through pinned memory where the budget allows, so
-  // the upload is a true asynchronous copy; pageable memory otherwise.
-  constexpr size_t PINNED_THRESHOLD = 256 * 1024;
+  // The series in upload order, the last first (see packed_slot).
   const size_t series_bytes = N * max_L * sizeof(T);
   T *h_flat_series = workspace.host_series.ensure(
       N * max_L, series_bytes >= PINNED_THRESHOLD);
-  std::vector<int> lengths;
-  flatten_series_buffer(h_flat_series, lengths, series, max_L);
+  std::vector<int> lengths(N);
+  for (size_t d = 0; d < N; ++d)
+    lengths[d] = pad_series(h_flat_series + d * max_L, series[N - 1 - d], max_L);
 
   // Every refusal is behind us and every buffer is allocated: size the
   // caller's matrix. One already N x N, as a mapped one is, keeps its storage.
   if (out.size() != N) out.resize(N);
 
-  const int N_series = static_cast<int>(N);
   auto stream = workspace.stream.get();
 
   CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), stream));
@@ -1065,19 +1166,6 @@ void launch_dtw_kernel(
                               series_bytes, cudaMemcpyHostToDevice, stream));
   CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get(), lengths.data(),
                               N * sizeof(int), cudaMemcpyHostToDevice, stream));
-
-  // The warp-family kernels run one pair per warp, PAIRS_PER_BLOCK warps per
-  // block; each warp stages its pair's two series, `staged` samples apiece, in
-  // shared memory.
-  const auto launch_warp_family = [&](auto kernel, size_t staged, std::int64_t first,
-                                      int count, std::int64_t first_slot) {
-    const int grid_size = static_cast<int>(
-        (std::int64_t{ count } + PAIRS_PER_BLOCK - 1) / PAIRS_PER_BLOCK);
-    const size_t shared_mem = PAIRS_PER_BLOCK * 2 * staged * sizeof(T);
-    kernel<<<grid_size, PAIRS_PER_BLOCK * 32, shared_mem, stream>>>(
-        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
-        N_series, static_cast<int>(max_L), count, use_squared_l2, band, first, first_slot);
-  };
 
   // The launches take the matrix from the top down, each the range of slots
   // [first_slot, end): its pairs' slots and the diagonal slots among and above
@@ -1096,33 +1184,7 @@ void launch_dtw_kernel(
     }
     const auto span = static_cast<size_t>(end - first_slot);
     CUDA_CHECK(cudaMemsetAsync(workspace.d_out.get(), 0, span * sizeof(double), stream));
-
-    if (kernel_path == detail::KernelPath::Warp) {
-      launch_warp_family(dtw_warp_kernel<T>, 32, first, count, first_slot);
-    } else if (kernel_path == detail::KernelPath::RegTileW4) {
-      launch_warp_family(dtw_regtile_kernel<T, 4>, max_L, first, count, first_slot); // 32 lanes x 4 = 128 columns
-    } else if (kernel_path == detail::KernelPath::RegTileW8) {
-      launch_warp_family(dtw_regtile_kernel<T, 8>, max_L, first, count, first_slot); // 32 lanes x 8 = 256 columns
-    } else if (kernel_path == detail::KernelPath::Wavefront) {
-      const bool persistent = count > persistent_grid * 4;
-      if (persistent)
-        CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
-      shared_kernel<<<persistent ? persistent_grid : count, block_size, wavefront_shared_mem,
-                      stream>>>(
-          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
-          N_series, static_cast<int>(max_L), count, use_squared_l2, band,
-          persistent ? workspace.d_counter.get() : nullptr, first, first_slot, nullptr);
-    } else if (global) {
-      CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
-      dtw_wavefront_kernel<T, Wavefront::Global><<<global_grid, block_size, 0, stream>>>(
-          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
-          N_series, static_cast<int>(max_L), count, use_squared_l2, band,
-          workspace.d_counter.get(), first, first_slot, workspace.d_scratch.get());
-    } else {
-      throw std::logic_error("launch_dtw_kernel: unknown KernelPath");
-    }
-    CUDA_CHECK(cudaGetLastError());
-
+    launches(workspace, static_cast<int>(N), first, count, first_slot, stream);
     CUDA_CHECK(cudaMemcpyAsync(out.raw() + first_slot, workspace.d_out.get(),
                                 span * sizeof(double), cudaMemcpyDeviceToHost, stream));
     end = first_slot;
@@ -1136,6 +1198,86 @@ void launch_dtw_kernel(
                                   workspace.evt_start.get(),
                                   workspace.evt_end.get()));
   gpu_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
+}
+
+/// Hand @p consume the distance of each of @p series to each of the k
+/// @p medoids, computed in T, a block of consecutive series at a time. The
+/// medoids go up once, first (pair_series' rectangle of k columns); each block
+/// goes up behind them and is one launch, whose distances come back whole. A
+/// block's samples and its distances are each at most kMaxPairsPerLaunch
+/// values, so the device and the host hold one block whatever the number of
+/// series. GPU timing is the CUDA-event time from each block's upload to its
+/// distances' download, summed.
+template <typename T>
+void launch_medoid_kernel(
+    const std::vector<std::vector<double>> &series,
+    const std::vector<std::vector<double>> &medoids, size_t max_L,
+    bool use_squared_l2, int band, int device_id, double &gpu_time_sec,
+    detail::KernelPath kernel_path,
+    const std::function<void(size_t, size_t, std::span<const double>)> &consume)
+{
+  const size_t N = series.size();
+  const size_t k = medoids.size();
+  const size_t block = std::clamp<size_t>(
+      static_cast<size_t>(detail::kMaxPairsPerLaunch) / std::max(k, max_L), 1, N);
+  const Launches<T, Pairs::Rectangle> launches(kernel_path, max_L, use_squared_l2, band,
+                                               static_cast<std::int64_t>(block * k),
+                                               device_limits(device_id));
+
+  // Every buffer is allocated before the first block is handed out.
+  auto &workspace = get_dtw_launch_workspace<T>(device_id);
+  ensure_dtw_device_capacity(workspace, (k + block) * max_L, k + block, block * k,
+                             launches.scratch_elems(), launches.counter_elems());
+  T *h_flat_series = workspace.host_series.ensure(
+      (k + block) * max_L, (k + block) * max_L * sizeof(T) >= PINNED_THRESHOLD);
+  std::vector<int> lengths(k + block);
+  std::vector<double> distances(block * k);
+
+  for (size_t m = 0; m < k; ++m)
+    lengths[m] = pad_series(h_flat_series + m * max_L, medoids[m], max_L);
+  auto stream = workspace.stream.get();
+  CUDA_CHECK(cudaMemcpyAsync(workspace.d_series.get(), h_flat_series,
+                              k * max_L * sizeof(T), cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get(), lengths.data(),
+                              k * sizeof(int), cudaMemcpyHostToDevice, stream));
+
+  gpu_time_sec = 0.0;
+  T *const h_block = h_flat_series + k * max_L;
+  for (size_t first = 0; first < N; first += block) {
+    const size_t count = std::min(block, N - first);
+    for (size_t i = 0; i < count; ++i)
+      lengths[k + i] = pad_series(h_block + i * max_L, series[first + i], max_L);
+
+    CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), stream));
+    CUDA_CHECK(cudaMemcpyAsync(workspace.d_series.get() + k * max_L, h_block,
+                                count * max_L * sizeof(T), cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get() + k, lengths.data() + k,
+                                count * sizeof(int), cudaMemcpyHostToDevice, stream));
+    launches(workspace, static_cast<int>(k), 0, static_cast<int>(count * k), 0, stream);
+    CUDA_CHECK(cudaMemcpyAsync(distances.data(), workspace.d_out.get(),
+                                count * k * sizeof(double), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    float elapsed_ms = 0.0f;
+    CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms,
+                                    workspace.evt_start.get(),
+                                    workspace.evt_end.get()));
+    gpu_time_sec += static_cast<double>(elapsed_ms) / 1000.0;
+    consume(first, count, std::span<const double>(distances.data(), count * k));
+  }
+}
+
+/// The precision and the kernel path of a batch whose longest series has
+/// @p max_L samples: the route rule of every CUDA entry.
+std::pair<bool, detail::KernelPath> select_route(size_t max_L, const CUDADistMatOptions &opts)
+{
+  const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
+  const auto &device = device_limits(opts.device_id);
+  return { use_fp32,
+           detail::select_kernel(
+               max_L, use_fp32 ? sizeof(float) : sizeof(double), device.shared_per_sm,
+               device.wavefront_static_bytes[use_fp32 ? 0 : 1] + device.reserved_shared_per_block) };
 }
 
 } // anonymous namespace
@@ -1167,11 +1309,7 @@ CUDADistMatResult compute_distance_matrix_cuda(
     throw dtwc::InvalidInput("compute_distance_matrix_cuda: every series is "
                              "empty, so there is no distance to compute.");
 
-  const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
-  const auto &device = device_limits(opts.device_id);
-  const auto kernel_path = detail::select_kernel(
-      max_L, use_fp32 ? sizeof(float) : sizeof(double), device.shared_per_sm,
-      device.wavefront_static_bytes[use_fp32 ? 0 : 1] + device.reserved_shared_per_block);
+  const auto [use_fp32, kernel_path] = select_route(max_L, opts);
   result.kernel_used = std::string(detail::kernel_path_name(kernel_path));
   result.pairs_computed = detail::upper_triangle_pairs(N);
 
@@ -1184,6 +1322,53 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
   if (opts.verbose) {
     std::cout << "CUDA DTW: " << result.pairs_computed << " pairs"
+              << (use_fp32 ? " [FP32]" : " [FP64]")
+              << " in " << result.gpu_time_sec * 1000 << "ms"
+              << " on " << cuda_device_info(opts.device_id) << std::endl;
+  }
+
+  return result;
+}
+
+CUDADistMatResult compute_medoid_distances_cuda(
+    const std::vector<std::vector<double>> &series,
+    const std::vector<std::vector<double>> &medoids,
+    const CUDADistMatOptions &opts,
+    const std::function<void(size_t, size_t, std::span<const double>)> &consume)
+{
+  // Before the first block: a missing device must not answer with zeros.
+  detail::require_cuda_device(cuda_available(), "compute_medoid_distances_cuda");
+
+  CUDADistMatResult result;
+  result.kernel_used = "none";
+  result.n = series.size();
+  if (series.empty() || medoids.empty()) return result;
+
+  CUDA_CHECK(cudaSetDevice(opts.device_id));
+
+  size_t max_L = 0;
+  for (const auto &s : series) max_L = std::max(max_L, s.size());
+  for (const auto &s : medoids) max_L = std::max(max_L, s.size());
+
+  // Zero distances would read as every series equal to every medoid.
+  if (max_L == 0)
+    throw dtwc::InvalidInput("compute_medoid_distances_cuda: every series is "
+                             "empty, so there is no distance to compute.");
+
+  const auto [use_fp32, kernel_path] = select_route(max_L, opts);
+  result.kernel_used = std::string(detail::kernel_path_name(kernel_path));
+  result.pairs_computed = series.size() * medoids.size();
+
+  if (use_fp32)
+    launch_medoid_kernel<float>(series, medoids, max_L, opts.use_squared_l2, opts.band,
+                                opts.device_id, result.gpu_time_sec, kernel_path, consume);
+  else
+    launch_medoid_kernel<double>(series, medoids, max_L, opts.use_squared_l2, opts.band,
+                                 opts.device_id, result.gpu_time_sec, kernel_path, consume);
+
+  if (opts.verbose) {
+    std::cout << "CUDA DTW: " << result.pairs_computed << " pairs (" << series.size()
+              << " series x " << medoids.size() << " medoids)"
               << (use_fp32 ? " [FP32]" : " [FP64]")
               << " in " << result.gpu_time_sec * 1000 << "ms"
               << " on " << cuda_device_info(opts.device_id) << std::endl;

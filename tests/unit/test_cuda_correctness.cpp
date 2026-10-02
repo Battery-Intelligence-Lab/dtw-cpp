@@ -18,6 +18,7 @@
 
 #include "gpu_fixed_band_oracle.hpp"
 #include "../support/deterministic_series.hpp"
+#include "../support/dtw_route_bound.hpp"
 
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
@@ -34,6 +35,7 @@
 #include <limits>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
 #include <random>
+#include <span>
 #include <string>
 #include <thread>
 #include <utility>
@@ -1947,6 +1949,127 @@ TEST_CASE("IF-2 CUDA dense squared-L2 via Problem::set_metric",
                            || Catch::Matchers::WithinAbs(oracle, 1e-3));
         }
     }
+}
+
+// compute_medoid_distances_cuda: each series against each of k medoid series
+// on the fill's kernels and route rule, in every automatic kernel range, both
+// precisions, without and with a band, against the host kernel in the same
+// precision within the route bound (dtw_route_bound.hpp). The series are
+// ragged and the longest picks the kernel. Series 4 is medoid 0, at exactly 0
+// from it; medoids 1 and 2 are both series 9, so every series is at exactly
+// equal distances from them: the ties the assignment breaks.
+TEST_CASE("CUDA medoid distances match the host kernel in every kernel range",
+          "[cuda][medoids]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  struct Regime {
+    size_t L;
+    const char *kernel;
+  };
+  const auto regime = GENERATE(values<Regime>({
+      {16, "warp"}, {128, "regtile_w4"}, {256, "regtile_w8"}, {512, "wavefront"},
+      {1024, "wavefront"}, {2048, "wavefront"}, {2049, "wavefront"}, {2758, "wavefront"}}));
+  const bool fp32 = GENERATE(true, false);
+  const int band = GENERATE_COPY(-1, static_cast<int>(regime.L / 4));
+  CAPTURE(regime.L, fp32, band);
+
+  // Lengths L - L/4 .. L, series 0 the longest: every band here has a path.
+  std::mt19937 rng(static_cast<unsigned>(regime.L));
+  std::uniform_real_distribution<double> value(-1.0, 1.0);
+  std::vector<std::vector<double>> series(13);
+  for (size_t i = 0; i < series.size(); ++i) {
+    series[i].resize(regime.L - (i * 7919) % (regime.L / 4 + 1));
+    for (auto &v : series[i]) v = value(rng);
+  }
+  const std::vector<std::vector<double>> medoids{ series[4], series[9], series[9] };
+  const size_t k = medoids.size();
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = fp32 ? dtwc::GpuPrecision::FP32 : dtwc::GpuPrecision::FP64;
+  opts.band = band;
+  std::vector<double> d(series.size() * k);
+  size_t next = 0;
+  const auto result = dtwc::cuda::compute_medoid_distances_cuda(
+      series, medoids, opts, [&](size_t first, size_t count, std::span<const double> block) {
+        REQUIRE(first == next);
+        REQUIRE(block.size() == count * k);
+        std::copy(block.begin(), block.end(), d.begin() + static_cast<std::ptrdiff_t>(first * k));
+        next = first + count;
+      });
+  REQUIRE(next == series.size());
+  REQUIRE(result.kernel_used
+          == (regime.L < first_global_length(fp32) ? regime.kernel : "wavefront_global"));
+  REQUIRE(result.pairs_computed == series.size() * k);
+
+  for (size_t i = 0; i < series.size(); ++i)
+    for (size_t m = 0; m < k; ++m) {
+      CAPTURE(i, m);
+      const auto &x = series[i];
+      const auto &y = medoids[m];
+      if (fp32) {
+        const std::vector<float> xf(x.begin(), x.end()), yf(y.begin(), y.end());
+        CHECK(dtwc::test_support::dtw_routes_agree<float>(
+            d[i * k + m], dtwc::dtwBanded<float>(xf, yf, band), x.size(), y.size()));
+      } else {
+        CHECK(dtwc::test_support::dtw_routes_agree<double>(
+            d[i * k + m], dtwc::dtwBanded<double>(x, y, band), x.size(), y.size()));
+      }
+    }
+  CHECK(d[4 * k + 0] == 0.0);
+  for (size_t i = 0; i < series.size(); ++i) {
+    CAPTURE(i);
+    CHECK(d[i * k + 1] == d[i * k + 2]);
+  }
+}
+
+// A block holds at most kMaxPairsPerLaunch distances (and samples): with 4096
+// medoids that is 32,768 series, so 32,769 take two blocks, handed over in
+// order, every distance the host kernel's. The refusals come first: all-empty
+// series hand over no block.
+TEST_CASE("CUDA medoid distances arrive in blocks of at most kMaxPairsPerLaunch",
+          "[cuda][medoids][blocks]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  bool handed = false;
+  const auto none_expected = [&](size_t, size_t, std::span<const double>) { handed = true; };
+  CHECK_THROWS_AS(dtwc::cuda::compute_medoid_distances_cuda({ {}, {} }, { {} }, {}, none_expected),
+                  dtwc::InvalidInput);
+  CHECK_FALSE(handed);
+
+  constexpr size_t k = 4096;
+  const size_t block = static_cast<size_t>(dtwc::cuda::detail::kMaxPairsPerLaunch) / k;
+  std::mt19937 rng(4096);
+  std::uniform_real_distribution<double> value(-1.0, 1.0);
+  const auto make = [&](size_t count) {
+    std::vector<std::vector<double>> made(count);
+    for (size_t i = 0; i < count; ++i) {
+      made[i].resize(1 + i % 2);
+      for (auto &v : made[i]) v = value(rng);
+    }
+    return made;
+  };
+  const auto series = make(block + 1);
+  const auto medoids = make(k);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::GpuPrecision::FP64;
+  std::vector<std::pair<size_t, size_t>> blocks;
+  std::vector<size_t> mismatches(series.size(), 0); // one slot per series: one writer each
+  (void)dtwc::cuda::compute_medoid_distances_cuda(
+      series, medoids, opts, [&](size_t first, size_t count, std::span<const double> d) {
+        blocks.emplace_back(first, count);
+        auto check = [&](size_t i) {
+          const auto &x = series[first + i];
+          for (size_t m = 0; m < k; ++m)
+            mismatches[first + i] += !dtwc::test_support::dtw_routes_agree<double>(
+                d[i * k + m], dtwc::dtwFull_L<double>(x, medoids[m]), x.size(), medoids[m].size());
+        };
+        dtwc::run_openmp(check, count);
+      });
+  CHECK(blocks == std::vector<std::pair<size_t, size_t>>{ { 0, block }, { block, 1 } });
+  REQUIRE(std::accumulate(mismatches.begin(), mismatches.end(), size_t{ 0 }) == 0);
 }
 
 #endif // DTWC_HAS_CUDA

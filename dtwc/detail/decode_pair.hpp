@@ -1,7 +1,8 @@
 /**
  * @file decode_pair.hpp
- * @brief Single source of truth (SSOT) for decoding a linear upper-triangle
- *        pair index into its (i, j) row/column coordinates.
+ * @brief Single source of truth (SSOT) for decoding a linear pair index into
+ *        its (i, j) row/column coordinates: the upper triangle of one set of
+ *        series (decode_pair) and the rectangle of two (decode_rectangle_pair).
  *
  * @details The upper triangle of an N x N matrix stores N*(N-1)/2 entries,
  *          enumerated row-major:
@@ -84,7 +85,23 @@ DTWC_DECODE_PAIR_HD inline void decode_pair(std::int64_t k, std::int64_t N,
 }
 
 /**
- * @brief Metal Shading Language source for the same decode.
+ * @brief Decode linear index @p k of a rectangle of pairs, taken row after row
+ *        with @p n_cols pairs to a row, into its row @p i and column @p j:
+ *        k = i * n_cols + j with 0 <= j < n_cols.
+ *
+ * Every series of one set against every series of another: CLARA's assignment
+ * pairs each series (a row) with each of its medoids (the columns), so a
+ * series' distances are consecutive.
+ */
+DTWC_DECODE_PAIR_HD inline void decode_rectangle_pair(std::int64_t k, std::int64_t n_cols,
+                                                      std::int64_t &i, std::int64_t &j)
+{
+  i = k / n_cols;
+  j = k - i * n_cols;
+}
+
+/**
+ * @brief Metal Shading Language source for decode_pair()'s decode.
  *
  * MSL supports neither `double` nor a wide-enough FP32 mantissa for large N,
  * so this uses an exact 64-bit integer square root (float seed + integer
