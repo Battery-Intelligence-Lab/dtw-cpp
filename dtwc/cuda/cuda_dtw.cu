@@ -138,14 +138,14 @@ struct DeviceLimits {
   size_t l2_bytes = 0;                   ///< L2 cache, which the global wavefront's slices fit
   size_t shared_per_sm = 0;              ///< an SM's shared memory, which picks the wavefront's route
   size_t reserved_shared_per_block = 0;  ///< the runtime's own shared memory in every block
-  size_t wavefront_static_bytes[2] = {}; ///< the FP32 and FP64 wavefront kernels' own
+  size_t wavefront_static_bytes[2][2] = {}; ///< each Pairs layout's FP32 and FP64 wavefront kernels' own
   cudaError_t setup_error = cudaSuccess;
   std::once_flag set_up;
 };
 
 /// Opens the whole opt-in shared memory of a block to the wavefront kernel in
 /// T for pairs P on the current device, and records the kernel's static part,
-/// which one declaration gives both layouts.
+/// which that layout's route rule reads.
 template <typename T, Pairs P>
 cudaError_t open_wavefront_shared_memory(DeviceLimits &device)
 {
@@ -153,7 +153,7 @@ cudaError_t open_wavefront_shared_memory(DeviceLimits &device)
   cudaFuncAttributes attributes{};
   const cudaError_t error = cudaFuncGetAttributes(&attributes, kernel);
   if (error != cudaSuccess) return error;
-  device.wavefront_static_bytes[std::is_same_v<T, double>] = attributes.sharedSizeBytes;
+  device.wavefront_static_bytes[static_cast<int>(P)][std::is_same_v<T, double>] = attributes.sharedSizeBytes;
   return cudaFuncSetAttribute(
       kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
       static_cast<int>(device.max_shared_per_block - attributes.sharedSizeBytes));
@@ -1268,16 +1268,18 @@ void launch_medoid_kernel(
   }
 }
 
-/// The precision and the kernel path of a batch whose longest series has
-/// @p max_L samples: the route rule of every CUDA entry.
-std::pair<bool, detail::KernelPath> select_route(size_t max_L, const CUDADistMatOptions &opts)
+/// The precision and the kernel path of a batch of pairs @p pairs whose longest
+/// series has @p max_L samples: the route rule of every CUDA entry.
+std::pair<bool, detail::KernelPath> select_route(size_t max_L, const CUDADistMatOptions &opts,
+                                                 Pairs pairs)
 {
   const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
   const auto &device = device_limits(opts.device_id);
   return { use_fp32,
            detail::select_kernel(
                max_L, use_fp32 ? sizeof(float) : sizeof(double), device.shared_per_sm,
-               device.wavefront_static_bytes[use_fp32 ? 0 : 1] + device.reserved_shared_per_block) };
+               device.wavefront_static_bytes[static_cast<int>(pairs)][use_fp32 ? 0 : 1]
+                   + device.reserved_shared_per_block) };
 }
 
 } // anonymous namespace
@@ -1309,7 +1311,7 @@ CUDADistMatResult compute_distance_matrix_cuda(
     throw dtwc::InvalidInput("compute_distance_matrix_cuda: every series is "
                              "empty, so there is no distance to compute.");
 
-  const auto [use_fp32, kernel_path] = select_route(max_L, opts);
+  const auto [use_fp32, kernel_path] = select_route(max_L, opts, Pairs::Triangle);
   result.kernel_used = std::string(detail::kernel_path_name(kernel_path));
   result.pairs_computed = detail::upper_triangle_pairs(N);
 
@@ -1355,7 +1357,7 @@ CUDADistMatResult compute_medoid_distances_cuda(
     throw dtwc::InvalidInput("compute_medoid_distances_cuda: every series is "
                              "empty, so there is no distance to compute.");
 
-  const auto [use_fp32, kernel_path] = select_route(max_L, opts);
+  const auto [use_fp32, kernel_path] = select_route(max_L, opts, Pairs::Rectangle);
   result.kernel_used = std::string(detail::kernel_path_name(kernel_path));
   result.pairs_computed = series.size() * medoids.size();
 

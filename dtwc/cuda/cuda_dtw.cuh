@@ -60,6 +60,7 @@ CUDADistMatResult compute_distance_matrix_cuda(
 /// (launch_prep.hpp) samples and as many distances, which bounds the device's
 /// and this call's memory whatever the number of series. The same refusals as
 /// compute_distance_matrix_cuda come before the first block.
+/// @pre @p medoids is not empty (k >= 1); with none, no block is handed over.
 CUDADistMatResult compute_medoid_distances_cuda(
     const std::vector<std::vector<double>> &series,
     const std::vector<std::vector<double>> &medoids,
