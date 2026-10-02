@@ -91,7 +91,7 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | C++ retained 1.x alias (Problem.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
 |---|---|---|---|
 | `refreshDistanceMatrix()` | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[introduced-2.0]` |
-| `readDistanceMatrix(path)` | `read_distance_matrix(path)` | — (`set_distance_matrix(numpy.genfromtxt(path, delimiter=","))`) | `read_distance_matrix(path)` `[introduced-2.0]` |
+| `readDistanceMatrix(path)` | `read_distance_matrix(path)` | — (removed: `set_distance_matrix(D)` takes a full N x N matrix) | `read_distance_matrix(path)` `[introduced-2.0]` |
 | `maxDistance()` | `max_distance()` | `max_distance()` (live) | `max_distance()` `[introduced-2.0]` |
 | `distByInd(i,j)` | `dist_by_ind(i,j)` | `dist_by_ind(i,j)` (live) | `dist_by_ind(i,j)` (1-based, live) |
 | `isDistanceMatrixFilled()` | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` (live) | `is_distance_matrix_filled()` (live) |
@@ -140,7 +140,8 @@ clustering loops read the matrix unchecked. `write_clusters`,
 write lost after a successful open (a full disk, a file-size quota) raises
 `IOError` instead of leaving a truncated file behind a success. In Python the
 four `write_*` methods and `Result.save` are Python (`dtwcpp.io`) writing the
-same files and bytes: the extension module holds no file reader or writer.
+same files and bytes: the extension module calls no text reader or result writer (the
+`.dtwm` checkpoint and the mapped cache stay C++).
 
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,

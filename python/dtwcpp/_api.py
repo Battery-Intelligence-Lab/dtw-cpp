@@ -287,17 +287,41 @@ _HPC_KEYS = frozenset({"method", "band", "max_iter", "n_init", "seed", "variant"
                        "mv_mode", "missing_strategy", "metric", "name"})
 
 
+def _set_key(config, key, value, name=None):
+    """Hand C++ one Config key. A value must be of the field's kind: the
+    binding's casters would read True or "3" as an integer and truncate a NumPy
+    float; C++ then checks the value itself."""
+    from dtwcpp import InvalidInput, _dtwcpp_core
+    if key.startswith("_") or not hasattr(_dtwcpp_core.Config, key):
+        valid = sorted(n for n in dir(_dtwcpp_core.Config) if not n.startswith("_"))
+        raise InvalidInput(f"cluster: unknown key '{key}'. Valid keys: device, "
+                           + ", ".join(valid) + ".")
+    current = getattr(config, key)
+    flag = isinstance(value, (bool, np.bool_))
+    if isinstance(current, bool):
+        kind, ok, value = "a bool", flag, bool(value) if flag else value
+    elif isinstance(current, int):
+        ok = not flag and isinstance(value, (int, np.integer))
+        kind, value = "an integer", int(value) if ok else value
+    elif isinstance(current, float):
+        ok = not flag and isinstance(value, (int, float, np.integer, np.floating))
+        kind, value = "a number", float(value) if ok else value
+    else:
+        kind, ok = "a string", isinstance(value, str)
+    if not ok:
+        raise TypeError(f"{name or key} must be {kind}, got {type(value).__name__}")
+    setattr(config, key, value)
+
+
 def _config(k, keys):
     """A C++ Config from cluster()'s keywords: C++ reads and checks each value."""
     from dtwcpp import InvalidInput, _dtwcpp_core
+    if "n_clusters" in keys:
+        raise InvalidInput("cluster: k is the number of clusters; drop n_clusters.")
     config = _dtwcpp_core.Config()
-    config.n_clusters = k
+    _set_key(config, "n_clusters", k, name="k")
     for key, value in keys.items():
-        if key.startswith("_") or not hasattr(_dtwcpp_core.Config, key):
-            valid = sorted(name for name in dir(_dtwcpp_core.Config) if not name.startswith("_"))
-            raise InvalidInput(f"cluster: unknown key '{key}'. Valid keys: device, "
-                               + ", ".join(valid) + ".")
-        setattr(config, key, value)
+        _set_key(config, key, value)
     return config
 
 

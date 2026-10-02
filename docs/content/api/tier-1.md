@@ -92,7 +92,7 @@ a folder, Parquet, Arrow IPC) through `dtwc::read_data`.
 `dtwc::Config` (the binding's `Config`), `apply(config, prob)` hands a `Problem` its
 settings before the series are read, and `Problem::cluster()` runs the method, so
 `method` defaults to `auto` there as in C++. Python reads and writes the files
-itself (`dtwcpp.io`; the extension module holds no file reader or writer): text and
+itself (`dtwcpp.io`; the extension module calls no text reader or result writer): text and
 folders by `dtwc_cl`'s rules — the same series, or the same error type, for every
 file of `tests/data/reader` — and Parquet and Arrow IPC through the installed pyarrow
 (the `parquet` extra; the wheel links no Arrow C++).

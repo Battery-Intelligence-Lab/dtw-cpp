@@ -2,8 +2,8 @@
 @file io.py
 @brief Reading series, writing results, and saving/loading datasets.
 @details
-dtwcpp reads and writes its files in Python; the compiled core holds no file
-reader or writer. The series readers follow dtwc_cl's (dtwc/fileOperations.hpp,
+dtwcpp reads and writes its text files in Python; the compiled core calls no
+text reader or result writer. The series readers follow dtwc_cl's (dtwc/fileOperations.hpp,
 dtwc/io/read_data.cpp), so a file reads to the same series in every language or
 is refused with the same error type, and the result writers write the CLI's
 bytes.
@@ -150,7 +150,13 @@ def _read_series_file(path, skip_rows, skip_cols, delimiter):
 
 def _folder_files(folder):
     """A folder's regular files without dot-files, sorted by name."""
-    return [os.path.join(folder, name) for name in sorted(os.listdir(folder))
+    from dtwcpp import IOError as DtwcIOError
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError as error:
+        raise DtwcIOError(f"load: failed to read '{folder}': cannot list it: "
+                          f"{error.strerror}.") from error
+    return [os.path.join(folder, name) for name in names
             if not name.startswith(".") and os.path.isfile(os.path.join(folder, name))]
 
 

@@ -19,7 +19,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   reads and checks them (an unknown key is `InvalidInput`) and `Problem::cluster()` runs the method, so `method`
   defaults to `auto` as in C++ and the CLI (the 2.0 previews defaulted to `pam` and took four keywords).
   `Problem.cluster()` returns its `ClusteringResult` in Python too.
-- **Changed (Python):** the extension module holds no file reader or writer. `dtwcpp.load()` reads CSV/TSV text and
+- **Changed (Python):** the extension module calls no text reader or result writer. `dtwcpp.load()` reads CSV/TSV text and
   folders in Python by `dtwc_cl`'s rules (the same series, or the same error type, for every file of
   `tests/data/reader`), and an Arrow IPC file (`.arrow`, `.ipc`, `.feather`: the `data` column, named by `name`) as well
   as Parquet through the installed pyarrow; `Problem.write_clusters`, `write_silhouettes`, `write_medoid_members`,

@@ -204,6 +204,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         """The C++ Config of this estimator; C++ reads and checks every value.
         ``device`` None leaves the CPU (an hpc fit computes remotely)."""
         from dtwcpp import _dtwcpp_core
+        from dtwcpp._api import _set_key
         config = _dtwcpp_core.Config()
         settings = {
             "n_clusters": self.n_clusters, "method": self.method, "max_iter": self.max_iter,
@@ -216,7 +217,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         if self._precomputed():
             del settings["metric"]  # the distances are given, not computed
         for key, value in settings.items():
-            setattr(config, key, value)
+            _set_key(config, key, value)
         return config
 
     def fit(self, X, y=None):
@@ -248,6 +249,10 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
                 raise dtwcpp.InvalidInput(
                     "DTWClustering(device='hpc') clusters raw series; a precomputed "
                     "matrix is clustered locally (device='cpu').")
+            if self.batch_size != -1:
+                raise dtwcpp.InvalidInput(
+                    "batch_size is not carried by the HPC transport; drop it, or use "
+                    "device='cpu'/'gpu'.")
             self.labels_ = _hpc.cluster_on_hpc(
                 [row.tolist() for row in series], self.n_clusters, method=config.method,
                 band=self.band, device=_hpc_remote_device(device),
@@ -259,7 +264,9 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
                 mv_mode=self.mv_mode, missing_strategy=self.missing_strategy,
                 metric=self.metric,
             )
+            # Labels only: predict and transform have no medoids to read.
             self.medoid_indices_ = None
+            self.cluster_centers_ = None
             self.inertia_ = None
             self.n_iter_ = None
             return self

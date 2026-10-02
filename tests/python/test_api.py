@@ -253,6 +253,15 @@ class TestClusterKeywords:
         assert result.k == 1
         assert type(result.k) is int
 
+    @pytest.mark.parametrize("bad", [True, np.bool_(True), "1", 1.5, np.float32(1.9)])
+    def test_a_value_of_another_kind_is_refused(self, bad):
+        """The binding's casters would read True or "1" as 1 and truncate a NumPy
+        float: an integer key takes an integer."""
+        with pytest.raises(TypeError, match=r"^k must be an integer"):
+            dtwcpp.cluster([[0.0], [1.0]], k=bad)
+        with pytest.raises(TypeError, match=r"^max_iter must be an integer"):
+            dtwcpp.cluster([[0.0], [1.0]], k=1, max_iter=bad)
+
     def test_unknown_method_still_fails_before_load_or_device(self, monkeypatch):
         from dtwcpp import _api
 
