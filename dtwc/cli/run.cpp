@@ -51,8 +51,8 @@ std::string method_name(Method method) { return std::string(name_of(method_names
   throw DeviceError(
     "run: method '" + method_name(method)
     + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
-      "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use (and clara when its sample covers "
-      "every series). Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
+      "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use, and clara's sample matrices. "
+      "Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
 }
 
 /// What --verbose calls a method in its progress lines.
@@ -242,7 +242,6 @@ Outcome execute(const Config &config, std::optional<Data> data)
     const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
     clara_uses_full_sample = plan.sample_size == plan.n_points;
     if (stream_payload) algorithms::detail::validate_streaming_clara_plan(plan, "run");
-    if (config.device == Device::GPU && !clara_uses_full_sample) refuse_gpu_method(method);
     clara_planned = true;
   };
 

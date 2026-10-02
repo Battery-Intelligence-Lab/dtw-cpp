@@ -1,0 +1,74 @@
+start 2026-10-02 01:21:25 GMTDT
+load,before fill32 1100 500 10 5,cpu 3 %,gpu 0 %, 210 MHz
+run,fill32,1100,500,10,0,wall 1.3407 s,gpu 1.3351 s
+run,fill32,1100,500,10,1,wall 1.3468 s,gpu 1.3412 s
+run,fill32,1100,500,10,2,wall 1.3516 s,gpu 1.3460 s
+run,fill32,1100,500,10,3,wall 1.3495 s,gpu 1.3440 s
+run,fill32,1100,500,10,4,wall 1.3597 s,gpu 1.3541 s
+median,fill32,N 1100,L 500,k 10,wall 1.3495 s,gpu 1.3440 s,449.7 kpairs/s,112.4 Gcell/s,min 1.3351,max 1.3541,fnv1a64 3d3b8fbb91268217
+load,after fill32 1100 500 10 5,cpu 4 %,gpu 0 %, 2310 MHz
+load,before rect32 20000 500 10 5,cpu 0 %,gpu 0 %, 330 MHz
+run,rect32,20000,500,10,0,wall 0.4261 s,gpu 0.4174 s
+run,rect32,20000,500,10,1,wall 0.4361 s,gpu 0.4277 s
+run,rect32,20000,500,10,2,wall 0.4320 s,gpu 0.4235 s
+run,rect32,20000,500,10,3,wall 0.4334 s,gpu 0.4253 s
+run,rect32,20000,500,10,4,wall 0.4310 s,gpu 0.4227 s
+median,rect32,N 20000,L 500,k 10,wall 0.4320 s,gpu 0.4235 s,472.2 kpairs/s,118.1 Gcell/s,min 0.4174,max 0.4277,fnv1a64 9a3f339a11054e2e
+load,after rect32 20000 500 10 5,cpu 16 %,gpu 1 %, 2310 MHz
+load,before fill64 520 500 10 5,cpu 3 %,gpu 1 %, 405 MHz
+run,fill64,520,500,10,0,wall 1.1842 s,gpu 1.1827 s
+run,fill64,520,500,10,1,wall 1.1842 s,gpu 1.1827 s
+run,fill64,520,500,10,2,wall 1.1917 s,gpu 1.1902 s
+run,fill64,520,500,10,3,wall 1.1928 s,gpu 1.1909 s
+run,fill64,520,500,10,4,wall 1.1882 s,gpu 1.1861 s
+median,fill64,N 520,L 500,k 10,wall 1.1882 s,gpu 1.1861 s,113.8 kpairs/s,28.4 Gcell/s,min 1.1827,max 1.1909,fnv1a64 f34ad0ab6de35cad
+load,after fill64 520 500 10 5,cpu 7 %,gpu 0 %, 2310 MHz
+load,before rect64 20000 500 10 5,cpu 1 %,gpu 0 %, 345 MHz
+run,rect64,20000,500,10,0,wall 1.7725 s,gpu 1.7643 s
+run,rect64,20000,500,10,1,wall 1.7640 s,gpu 1.7562 s
+run,rect64,20000,500,10,2,wall 1.7637 s,gpu 1.7557 s
+run,rect64,20000,500,10,3,wall 1.7629 s,gpu 1.7537 s
+run,rect64,20000,500,10,4,wall 1.7648 s,gpu 1.7553 s
+median,rect64,N 20000,L 500,k 10,wall 1.7640 s,gpu 1.7557 s,113.9 kpairs/s,28.5 Gcell/s,min 1.7537,max 1.7643,fnv1a64 635a683588bf157c
+load,after rect64 20000 500 10 5,cpu 5 %,gpu 1 %, 2310 MHz
+load,before cpu 20000 500 10 5,cpu 10 %,gpu 0 %, 315 MHz
+run,cpu,20000,500,10,0,wall 2.7953 s,gpu 0.0000 s
+run,cpu,20000,500,10,1,wall 2.7926 s,gpu 0.0000 s
+run,cpu,20000,500,10,2,wall 2.8179 s,gpu 0.0000 s
+run,cpu,20000,500,10,3,wall 2.9047 s,gpu 0.0000 s
+run,cpu,20000,500,10,4,wall 2.7526 s,gpu 0.0000 s
+median,cpu,N 20000,L 500,k 10,wall 2.7953 s,gpu 0.0000 s,71.5 kpairs/s,17.9 Gcell/s,min 2.7526,max 2.9047,fnv1a64 635a683588bf157c
+load,after cpu 20000 500 10 5,cpu 19 %,gpu 16 %, 210 MHz
+load,before fill32 600 1024 10 5,cpu 0 %,gpu 1 %, 210 MHz
+run,fill32,600,1024,10,0,wall 1.5082 s,gpu 1.5057 s
+run,fill32,600,1024,10,1,wall 1.5330 s,gpu 1.5305 s
+run,fill32,600,1024,10,2,wall 1.4778 s,gpu 1.4757 s
+run,fill32,600,1024,10,3,wall 1.4889 s,gpu 1.4868 s
+run,fill32,600,1024,10,4,wall 1.4782 s,gpu 1.4761 s
+median,fill32,N 600,L 1024,k 10,wall 1.4889 s,gpu 1.4868 s,120.9 kpairs/s,126.7 Gcell/s,min 1.4757,max 1.5305,fnv1a64 b894b2e824cbcaed
+load,after fill32 600 1024 10 5,cpu 4 %,gpu 0 %, 2310 MHz
+load,before rect32 10000 1024 10 5,cpu 5 %,gpu 0 %, 315 MHz
+run,rect32,10000,1024,10,0,wall 0.7848 s,gpu 0.7770 s
+run,rect32,10000,1024,10,1,wall 0.7873 s,gpu 0.7798 s
+run,rect32,10000,1024,10,2,wall 0.7896 s,gpu 0.7818 s
+run,rect32,10000,1024,10,3,wall 0.7909 s,gpu 0.7829 s
+run,rect32,10000,1024,10,4,wall 0.7935 s,gpu 0.7860 s
+median,rect32,N 10000,L 1024,k 10,wall 0.7896 s,gpu 0.7818 s,127.9 kpairs/s,134.1 Gcell/s,min 0.7770,max 0.7860,fnv1a64 f2dcc49146333277
+load,after rect32 10000 1024 10 5,cpu 10 %,gpu 0 %, 2310 MHz
+load,before fill32 184 3000 10 5,cpu 4 %,gpu 0 %, 345 MHz
+run,fill32,184,3000,10,0,wall 1.6022 s,gpu 1.6017 s
+run,fill32,184,3000,10,1,wall 1.6018 s,gpu 1.6012 s
+run,fill32,184,3000,10,2,wall 1.6172 s,gpu 1.6167 s
+run,fill32,184,3000,10,3,wall 1.6065 s,gpu 1.6060 s
+run,fill32,184,3000,10,4,wall 1.6115 s,gpu 1.6109 s
+median,fill32,N 184,L 3000,k 10,wall 1.6065 s,gpu 1.6060 s,10.5 kpairs/s,94.3 Gcell/s,min 1.6012,max 1.6167,fnv1a64 01a0091eee1910cb
+load,after fill32 184 3000 10 5,cpu 4 %,gpu 0 %, 2310 MHz
+load,before rect32 1000 3000 10 5,cpu 11 %,gpu 2 %, 300 MHz
+run,rect32,1000,3000,10,0,wall 0.9992 s,gpu 0.9969 s
+run,rect32,1000,3000,10,1,wall 1.0008 s,gpu 0.9986 s
+run,rect32,1000,3000,10,2,wall 1.0036 s,gpu 1.0010 s
+run,rect32,1000,3000,10,3,wall 1.0033 s,gpu 1.0008 s
+run,rect32,1000,3000,10,4,wall 1.0017 s,gpu 0.9995 s
+median,rect32,N 1000,L 3000,k 10,wall 1.0017 s,gpu 0.9995 s,10.0 kpairs/s,90.0 Gcell/s,min 0.9969,max 1.0010,fnv1a64 7fd9d94d214ade4e
+load,after rect32 1000 3000 10 5,cpu 9 %,gpu 0 %, 2295 MHz
+end 2026-10-02 01:23:33 GMTDT

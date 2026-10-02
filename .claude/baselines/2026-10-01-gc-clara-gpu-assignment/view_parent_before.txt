@@ -1,0 +1,5 @@
+Distance matrix is being filled!
+CUDA DTW: 45 pairs [FP32] in 0.14784ms on NVIDIA RTX 4000 Ada Generation (compute 8.9, 20474 MB)
+Distance matrix has been filled!
+DeviceError: Problem::dtw_function: CUDA needs owned series in RAM, but this Problem's series are a non-owning view (set_view_data, as FastCLARA's in-memory subsamples are); no backend call or CPU fallback was attempted. Install owning series with set_data, or use device cpu.
+RUN_EXIT=0

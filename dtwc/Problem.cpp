@@ -688,7 +688,7 @@ void Problem::validate_fill_request(std::string_view where) const
   if (data_.is_view())
     reject_gpu_request(at,
                        "needs owned series in RAM, but this Problem's series are a non-owning "
-                       "view (set_view_data, as FastCLARA's in-memory subsamples are)",
+                       "view (set_view_data)",
                        "Install owning series with set_data, or use device cpu.");
   validate_gpu_request(at, *this, data_.precision);
   if (data_.ndim > 1)

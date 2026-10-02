@@ -196,10 +196,11 @@ TEST_CASE("set_metric: the Metal fill computes squared L2", "[metal][metric][if2
   }
 }
 
-// FastCLARA's samples take the parent's device. An in-memory sample is
-// a view of the parent's series, which the GPU fill refuses before any pair; a
-// sample covering every series is FastPAM on the parent, which runs on the GPU.
-TEST_CASE("FastCLARA on a GPU device: a view sample is refused, a full sample runs",
+// FastCLARA's samples take the parent's device. On a GPU an in-memory
+// sample is a copy of its series, which the GPU fills (Metal has no kernel for
+// the assignment, which runs on the CPU); a sample covering every series is
+// FastPAM on the parent, which runs on the GPU.
+TEST_CASE("FastCLARA on a GPU device: a partial and a full sample run",
           "[metal][fast_clara][if2]")
 {
   if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
@@ -218,9 +219,9 @@ TEST_CASE("FastCLARA on a GPU device: a view sample is refused, a full sample ru
   opts.n_clusters = 2;
   opts.n_samples = 2;
   opts.sample_size = 8;
-  REQUIRE_THROWS_MATCHES(dtwc::algorithms::fast_clara(prob, opts), dtwc::DeviceError,
-                         Catch::Matchers::MessageMatches(
-                           Catch::Matchers::ContainsSubstring("non-owning view")));
+  const auto partial = dtwc::algorithms::fast_clara(prob, opts);
+  REQUIRE(partial.labels.size() == 12);
+  CHECK(partial.labels[0] != partial.labels[11]);
 
   opts.sample_size = 12;
   const auto result = dtwc::algorithms::fast_clara(prob, opts);

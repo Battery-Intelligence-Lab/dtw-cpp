@@ -1,0 +1,9 @@
+========= COMPUTE-SANITIZER
+Filters: [clara]
+Randomness seeded to: 2365128148
+===============================================================================
+All tests passed (6 assertions in 1 test case)
+
+========= LEAK SUMMARY: 0 bytes leaked in 0 allocations
+========= ERROR SUMMARY: 0 errors
+MEMCHECK_EXIT=0

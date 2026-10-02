@@ -5,8 +5,9 @@
  * @details In-memory series, so nothing is read or written. On `cpu` every
  * method runs and `auto` is pam up to N = 5000, clara above. On `gpu` the matrix
  * methods run with the GPU filling the matrix (on Metal every distance is then
- * FP32-exact, which the CPU's are not: proof the GPU ran), `auto` is pam at any
- * N, and the methods that compute on the CPU as they go raise DeviceError; a
+ * FP32-exact, which the CPU's are not: proof the GPU ran), as does clara with a
+ * sample smaller than N, `auto` is pam at any N, and the methods that compute
+ * on the CPU as they go raise DeviceError; a
  * build without a GPU raises the no-GPU DeviceError message in every gpu cell, a GPU build
  * without a device the backend's. `hpc` raises DeviceError for every method.
  * The GPU rules that need no series are raised before one is read: the input
@@ -157,18 +158,31 @@ TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "
                    1e-14));
 }
 
-TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes methods raise", "[run][device][gpu]")
+TEST_CASE("run on gpu: the matrix methods and clara run on the GPU; the as-it-goes methods raise",
+          "[run][device][gpu]")
 {
   auto partial = config_for(Method::CLARA, Device::GPU);
-  partial.sample_size = 3; // < N = 6: the samples are views the GPU cannot upload
+  partial.sample_size = 3; // < N = 6: clara proper
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
   for (const auto method : { Method::OneBatch, Method::TADPole }) {
     CAPTURE(name(method));
     CHECK_THAT(device_error([&] { (void)dtwc::run(config_for(method, Device::GPU), levels()); }),
                StartsWith("run: method '" + name(method) + "' ") && ContainsSubstring(kCpuAsItGoes));
   }
-  CHECK_THAT(device_error([&] { (void)dtwc::run(partial, levels()); }),
-             StartsWith("run: method 'clara' ") && ContainsSubstring(kCpuAsItGoes));
+  // clara on a sample runs: its sample matrices fill on the GPU, and on CUDA its
+  // assignment runs there too. Its medoids need not be the CPU's, since {0.3, 10.1}
+  // and {0.5, 10.3} tie at cost 5, which FP32 and FP64 break either way; its cost is the CPU's.
+  if (dtwc::gpu_available()) {
+    auto on_cpu = partial;
+    on_cpu.device = Device::CPU;
+    const auto result = dtwc::run(partial, levels());
+    CHECK(result.method() == Method::CLARA);
+    CHECK(two_groups(result));
+    CHECK_THAT(result.cost(), Catch::Matchers::WithinRel(dtwc::run(on_cpu, levels()).cost(), 1e-6));
+  } else {
+    CHECK_THAT(device_error([&] { (void)dtwc::run(partial, levels()); }),
+               ContainsSubstring("GPU was detected") && ContainsSubstring("No CPU fallback was attempted"));
+  }
 
   const auto cpu = dtwc::run(config_for(Method::PAM, Device::CPU), levels());
   for (const auto method : kMatrix) {
