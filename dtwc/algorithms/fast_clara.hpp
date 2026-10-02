@@ -66,12 +66,15 @@ namespace algorithms {
    * With force_parquet_streaming=true, `prob` must contain settings only (no
    * resident series); this prevents a hidden resident-plus-chunk memory peak.
    * Each sample Problem takes `prob`'s distance settings, metric and device
-   * (strategy, GPU index, precision). An in-memory sample is a view of `prob`'s
-   * series, which a GPU fill refuses: on a GPU device, clara with a sample
-   * smaller than N raises DeviceError.
+   * (GPU index, precision). An in-memory sample is a view of `prob`'s series on
+   * the CPU and a copy on a GPU, which uploads owned series. On a GPU device the
+   * sample matrices fill on the GPU, and so does the assignment where the GPU
+   * is CUDA's; Metal has no kernel for the assignment, which then runs on the
+   * CPU (a verbose line says so).
  * @throws InvalidInput for invalid dimensions/options;
  *         IOError for force_parquet_streaming on a build without Parquet;
- *         DeviceError as above.
+ *         DeviceError for a request the GPU cannot honour (Float32 series, a
+ *         variant or missing-data strategy its kernels lack).
  */
   core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);
 

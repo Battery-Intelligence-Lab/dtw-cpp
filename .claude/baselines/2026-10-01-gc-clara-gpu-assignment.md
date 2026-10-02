@@ -59,3 +59,31 @@ samples of T, block × k doubles and the global wavefront's slices (at most the 
 staging of the same samples and one block of distances: at L 500 and k 10 a block is 268,435 series, 512 MiB of FP32
 or 1 GiB of FP64 samples and 20.5 MiB of distances. The caller keeps O(N): FastCLARA's labels and nearest distances
 (16 bytes a series, 1.6 GB at N = 100M).
+
+## FastCLARA on the GPU through `dtwc_cl` [confirmed]
+
+`dtwc_cl -m clara` with the CUDA tree's binary (MSVC, the step-2 tree) on `data/dummy` (25 series, L up to 9406:
+the global wavefront) and on 2,000 ragged series of 4 groups (L 60–140, `make_groups.py` in the session scratchpad),
+`--device gpu` at FP64 and FP32 against `--device cpu` of the same binary:
+
+| run | FP64 labels, medoids | FP64 cost | FP32 labels, medoids | FP32 cost, relative to the CPU's |
+| --- | --- | --- | --- | --- |
+| dummy, full sample (k 3) | same | equal | same | 7.95e-7 |
+| dummy, sample 10 (k 3) | same | equal | same | 7.77e-7 |
+| dummy, sample 10, squared L2 | same | equal | same | 4.31e-6 |
+| dummy, sample 10, band 4300 | same | equal | same | 7.77e-7 |
+| dummy, sample 8, k 4, 3 samples | same | equal | same | 2.53e-7 |
+| groups, k 4, auto sample (140) | same | equal | same | 1.6e-8 |
+| groups, k 6, band 80, sample 120 | same | equal | same | 6.41e-8 |
+
+FP32 against the CPU in Float32 (`--dtype float32`, dummy, sample 10): labels, medoids and cost (153332.5966796875) equal.
+At the base every partial-sample run on the GPU was refused (`DeviceError`); the runs that ran at the base (the full
+samples on the GPU and every CPU run) are byte-identical to the base's: 9 of 9 with the CUDA binary, and 11 of 12 with
+the clang binary, whose twelfth differs only in the output folder its verbose line names. `-v` shows each sample's fill and
+assignment on the GPU: `CUDA DTW: 9730 pairs [FP32]`, then `CUDA DTW: 8000 pairs (2000 series x 4 medoids) [FP32]`.
+
+Streamed Parquet (`tests/fixtures/fast_clara_streaming_8x4.parquet`, `--ram-limit 900`, k 2, sample 4, 2 samples), in a
+CUDA + Arrow tree (`build-cuda-arrow`, the pyarrow 23 shim): each chunk's assignment on the GPU (`CUDA DTW: 8 pairs (4
+series x 2 medoids)`, four times); FP64 labels, medoids and cost (4.399999999999999) equal to the CPU's, FP32 labels
+equal (cost 4.400001227855682). That tree's `unit_test_fast_clara`, `test_io_readers`, `test_fast_clara_parquet_parity`
+and `test_fast_clara_assignment_contract` pass.

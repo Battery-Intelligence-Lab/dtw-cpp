@@ -3,12 +3,13 @@ cmake_minimum_required(VERSION 3.26)
 # IF-2 S3: dtwc::run's method x device table through the real dtwc_cl, and
 # --print-config against the golden files. Every cell asserts its outcome:
 #   cpu    every method runs; `auto` is pam at N = 27 (the summary's Method:)
-#   gpu    the matrix methods run (the GPU fills the matrix), or the backend's
-#          refusal on a machine without the device; onebatch, tadpole and clara
-#          with a sample smaller than N are refused; a variant the kernels lack
-#          and (Metal) a GPU index are refused before the input is read, which
-#          does not exist; `cuda` is `gpu`. A build without a GPU refuses every
-#          gpu cell with the api-contract-2.0.md §6.1 message.
+#   gpu    the matrix methods run (the GPU fills the matrix), and clara with a
+#          sample smaller than N (its samples and, on CUDA, its assignment on the
+#          GPU), or the backend refuses on a machine without the device;
+#          onebatch and tadpole are refused; a variant the kernels lack and
+#          (Metal) a GPU index are refused before the input is read, which does
+#          not exist; `cuda` is `gpu`. A build without a GPU refuses every gpu
+#          cell with the api-contract-2.0.md §6.1 message.
 #   hpc    refused for every method (D-10); an unknown device is refused
 #   --print-config  the golden file reads back to itself (45 keys, each at a
 #          value that is not its default) and a bare --print-config prints
@@ -144,7 +145,11 @@ else()
     foreach(method IN ITEMS onebatch tadpole)
         expect_refused(gpu_${method} "${as_it_goes}" -i "${INPUT}" --device gpu --method ${method})
     endforeach()
-    expect_refused(gpu_clara_sample "${as_it_goes}" -i "${INPUT}" --device gpu --method clara --sample-size 5)
+    if(device STREQUAL "present")
+        expect_ran(gpu_clara_sample clara --device gpu --method clara --sample-size 5)
+    else()
+        expect_refused(gpu_clara_sample "GPU was detected" -i "${INPUT}" --device gpu --method clara --sample-size 5)
+    endif()
     expect_refused(gpu_wdtw "variant = WDTW" -i "${missing_input}" --device gpu --variant wdtw)
     if(GPU STREQUAL "metal")
         expect_refused(gpu_index_1 "GPU index = 1" -i "${missing_input}" --device gpu:1)

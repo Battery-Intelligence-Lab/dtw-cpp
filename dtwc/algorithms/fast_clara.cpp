@@ -7,7 +7,8 @@
  *   2. Create a sub-Problem containing only the sampled series.
  *   3. Run FastPAM on the sub-Problem to find medoids.
  *   4. Map sub-Problem medoid indices back to original dataset indices.
- *   5. Assign ALL N points to the nearest medoid (computing only N*k distances).
+ *   5. Assign ALL N points to the nearest medoid (computing only N*k distances,
+ *      on the GPU when the device is CUDA's).
  *   6. Track the result with the lowest total cost across all subsamples.
  *
  * References:
@@ -29,6 +30,9 @@
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
 
+#ifdef DTWC_HAS_CUDA
+#include "../cuda/cuda_dtw.cuh"
+#endif
 #ifdef DTWC_HAS_PARQUET
 #include "../io/parquet_chunk_reader.hpp"
 #endif
@@ -40,6 +44,7 @@
 #include <random>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -123,27 +128,30 @@ namespace {
     return opts.random_seed + static_cast<std::uint64_t>(sample_index);
   }
 
-  template <typename Distance, typename SeriesAt>
-  double assign_all_points_direct(
-    index_t n_points, const std::vector<index_t> &medoid_indices,
-    std::vector<index_t> &labels, const Distance &distance, SeriesAt series_at)
+  /**
+   * Points first .. first + best.size() - 1 to their nearest medoid: labels[p]
+   * and best[p - first]. row_of(p)(m) is point p's distance to medoid slot m,
+   * whichever device computed it; a point is at 0 from itself. Each point
+   * writes its own slots.
+   */
+  template <typename RowOf>
+  void assign_points(
+    index_t first, std::span<double> best, const std::vector<index_t> &medoid_indices,
+    std::vector<index_t> &labels, const RowOf &row_of)
   {
     const auto k = static_cast<index_t>(medoid_indices.size());
-    labels.resize(static_cast<std::size_t>(n_points));
-    std::vector<double> best_dists(static_cast<std::size_t>(n_points));
-
     auto assign_point = [&](std::size_t index) {
-      const auto p = static_cast<index_t>(index);
+      const index_t p = first + static_cast<index_t>(index);
+      const auto distance = row_of(p);
       double best_dist = std::numeric_limits<double>::max();
       index_t best_label = 0;
       bool has_best = false;
-      const auto point = series_at(p);
 
       for (index_t m = 0; m < k; ++m) {
         const index_t medoid = medoid_indices[m];
         const double d = core::detail::require_finite_medoid_distance(
-          p == medoid ? 0.0 : distance(point, series_at(medoid)),
-          "fast_clara", index, m, medoid);
+          p == medoid ? 0.0 : distance(m),
+          "fast_clara", static_cast<std::size_t>(p), m, medoid);
         // A medoid tied with another medoid (a duplicate series) serves
         // itself, or its own cluster would be published empty.
         if (!has_best || d < best_dist || (d == best_dist && medoid == p)) {
@@ -153,33 +161,93 @@ namespace {
         }
       }
 
-      labels[p] = best_label;
-      best_dists[index] = best_dist;
+      labels[static_cast<std::size_t>(p)] = best_label;
+      best[index] = best_dist;
     };
-    run_openmp(assign_point, static_cast<std::size_t>(n_points), n_points > 64);
-
-    return core::detail::ordered_medoid_objective(
-      best_dists, "fast_clara");
+    run_openmp(assign_point, best.size(), best.size() > 64);
   }
 
-  /** Assign through the bound DTW function without allocating the parent cache. */
+#ifdef DTWC_HAS_CUDA
+  /**
+   * Points first .. of `series` against the k `medoids` (slot m is
+   * medoid_indices[m]) on `prob`'s GPU, with its band, metric and precision;
+   * each block of distances is assigned as it arrives.
+   */
+  void assign_on_gpu(
+    const Problem &prob, const std::vector<std::vector<double>> &series, index_t first,
+    const std::vector<std::vector<double>> &medoids, const std::vector<index_t> &medoid_indices,
+    std::vector<index_t> &labels, std::span<double> best)
+  {
+    const auto distance = prob.distance();
+    cuda::CUDADistMatOptions opts;
+    opts.device_id = prob.device().second;
+    opts.precision = prob.gpu_precision();
+    opts.band = distance.band;
+    opts.use_squared_l2 = distance.metric == core::MetricType::SquaredL2;
+    opts.verbose = prob.verbose();
+    const std::size_t k = medoids.size();
+    (void)cuda::compute_medoid_distances_cuda(
+      series, medoids, opts,
+      [&](std::size_t block_first, std::size_t count, std::span<const double> distances) {
+        const index_t block_point = first + static_cast<index_t>(block_first);
+        assign_points(
+          block_point, best.subspan(block_first, count), medoid_indices, labels, [&](index_t p) {
+            const double *row = distances.data() + static_cast<std::size_t>(p - block_point) * k;
+            return [row](index_t m) { return row[m]; };
+          });
+      });
+  }
+#else
+  /// Metal has no kernel for the assignment, so on a GPU device it runs on the
+  /// CPU (the sample matrices still fill on the GPU); verbose says so.
+  void say_cpu_assignment(const Problem &prob, std::size_t n_points, std::size_t k)
+  {
+    if (prob.verbose() && prob.device().first == Device::GPU)
+      std::cout << "FastCLARA: assigning " << n_points << " series to " << k
+                << " medoids on the CPU (Metal has no kernel for the assignment)\n";
+  }
+#endif
+
+  /**
+   * Assign through the bound DTW function without allocating the parent
+   * cache: on the GPU when the Problem's device is CUDA's, else on the CPU.
+   */
   double assign_all_points(
     Problem &prob, const std::vector<index_t> &medoid_indices,
     std::vector<index_t> &labels)
   {
-    const index_t n_points = prob.size();
+    const auto n_points = static_cast<std::size_t>(prob.size());
+    labels.resize(n_points);
+    std::vector<double> best(n_points);
     if (prob.data().is_f32()) {
       const auto &distance = prob.dtw_function_f32();
-      return assign_all_points_direct(
-        n_points, medoid_indices, labels, distance, [&prob](index_t index) {
-          return prob.data().series_f32(static_cast<std::size_t>(index));
-        });
-    }
-    const auto &distance = prob.dtw_function();
-    return assign_all_points_direct(
-      n_points, medoid_indices, labels, distance, [&prob](index_t index) {
-        return prob.series(static_cast<std::size_t>(index));
+      assign_points(0, best, medoid_indices, labels, [&](index_t p) {
+        return [&, point = prob.data().series_f32(static_cast<std::size_t>(p))](index_t m) {
+          return distance(
+            point, prob.data().series_f32(static_cast<std::size_t>(medoid_indices[m])));
+        };
       });
+    } else {
+      // The request's check, on every device: band, values, and what a GPU takes.
+      const auto &distance = prob.dtw_function();
+#ifdef DTWC_HAS_CUDA
+      if (prob.device().first == Device::GPU) {
+        std::vector<std::vector<double>> medoids;
+        for (const index_t medoid : medoid_indices)
+          medoids.push_back(prob.data().p_vec[static_cast<std::size_t>(medoid)]);
+        assign_on_gpu(prob, prob.data().p_vec, 0, medoids, medoid_indices, labels, best);
+        return core::detail::ordered_medoid_objective(best, "fast_clara");
+      }
+#else
+      say_cpu_assignment(prob, n_points, medoid_indices.size());
+#endif
+      assign_points(0, best, medoid_indices, labels, [&](index_t p) {
+        return [&, point = prob.series(static_cast<std::size_t>(p))](index_t m) {
+          return distance(point, prob.series(static_cast<std::size_t>(medoid_indices[m])));
+        };
+      });
+    }
+    return core::detail::ordered_medoid_objective(best, "fast_clara");
   }
 
 #ifdef DTWC_HAS_PARQUET
@@ -189,6 +257,7 @@ namespace {
    * Loads one batch of row groups at a time within the RAM budget.
    * Each chunk's DTW distances to medoids are computed and discarded.
    *
+   * @param prob         Settings-only Problem: its device computes the distances.
    * @param dtw_fn       Bound DTW function (float64).
    * @param medoid_data  Data containing only the k medoid series.
    * @param[out] labels  Cluster assignment per point [0, k) for all N points.
@@ -206,6 +275,7 @@ namespace {
    */
   template <bool F32, typename DtwFn>
   double assign_all_points_chunked(
+    const Problem &prob,
     const DtwFn &dtw_fn,
     const Data &medoid_data,
     const std::vector<index_t> &medoid_indices,
@@ -221,8 +291,10 @@ namespace {
     };
 
     const auto N = reader.logical_series_count();
-    const index_t k = medoid_data.size();
     labels.resize(static_cast<size_t>(N));
+#ifndef DTWC_HAS_CUDA
+    say_cpu_assignment(prob, static_cast<std::size_t>(N), medoid_indices.size());
+#endif
 
     const size_t medoid_bytes =
       resident_data_bytes(medoid_data, F32 ? sizeof(float) : sizeof(data_t));
@@ -253,34 +325,18 @@ namespace {
       const index_t chunk_size = chunk.size();
       best_dists.resize(static_cast<size_t>(chunk_size));
 
-// Inner loop is embarrassingly parallel: each point's DTW is independent.
-// Reader is NOT called here (chunk already loaded), so this is thread-safe.
-      auto assign_point = [&](std::size_t index) {
-        const auto p = static_cast<index_t>(index);
-        const auto global_index = global_offset + p;
-        double best_dist = std::numeric_limits<double>::max();
-        index_t best_label = 0;
-        bool has_best = false;
-        auto series_p = series_at(chunk, p);
-
-        for (index_t m = 0; m < k; ++m) {
-          const double d = core::detail::require_finite_medoid_distance(
-            global_index == medoid_indices[m]
-              ? 0.0 : dtw_fn(series_p, series_at(medoid_data, m)),
-            "fast_clara", static_cast<std::size_t>(global_index),
-            m, medoid_indices[m]);
-          if (!has_best || d < best_dist
-              || (d == best_dist && global_index == medoid_indices[m])) {
-            best_dist = d;
-            best_label = m;
-            has_best = true;
-          }
-        }
-
-        labels[static_cast<size_t>(global_index)] = best_label;
-        best_dists[index] = best_dist;
-      };
-      run_openmp(assign_point, static_cast<std::size_t>(chunk_size), chunk_size > 64);
+      // The chunk is loaded: the assignment reads it, never the reader.
+#ifdef DTWC_HAS_CUDA
+      if (!F32 && prob.device().first == Device::GPU)
+        assign_on_gpu(prob, chunk.p_vec, global_offset, medoid_data.p_vec, medoid_indices,
+                      labels, best_dists);
+      else
+#endif
+        assign_points(global_offset, best_dists, medoid_indices, labels, [&](index_t p) {
+          return [&, point = series_at(chunk, p - global_offset)](index_t m) {
+            return dtw_fn(point, series_at(medoid_data, m));
+          };
+        });
       total_cost.add(best_dists);
       global_offset += chunk_size;
     }
@@ -360,11 +416,11 @@ namespace {
       double total_cost;
       if (opts.use_float32) {
         total_cost = assign_all_points_chunked<true>(
-          prob_template.dtw_function_f32(), medoid_data, full_medoids, labels,
+          prob_template, prob_template.dtw_function_f32(), medoid_data, full_medoids, labels,
           reader, opts.ram_limit_bytes);
       } else {
         total_cost = assign_all_points_chunked<false>(
-          prob_template.dtw_function(), medoid_data, full_medoids, labels,
+          prob_template, prob_template.dtw_function(), medoid_data, full_medoids, labels,
           reader, opts.ram_limit_bytes);
       }
 
@@ -462,7 +518,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     // 1. Draw a sorted sample using the same map as the chunked path.
     auto sample_indices = core::portable_sample_indices<index_t>(N, sample_size, rng);
 
-    // 2. Create a sub-Problem with zero-copy span views into parent data.
+    // 2. Create a sub-Problem with zero-copy span views into parent data; a GPU
+    // uploads owned series (Data::p_vec), so there the sample is a copy.
     std::vector<std::string_view> sub_names;
     sub_names.reserve(sample_size);
     for (index_t idx : sample_indices)
@@ -471,8 +528,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     Problem sub_prob("clara_subsample_" + std::to_string(s));
     // Copy all relevant settings from the original problem.
     sub_prob.set_distance(prob.distance());
-    // The sample is a view, so a GPU device is refused by the sample fill
-    // (validate_fill_request) rather than computed on the CPU.
+    // Device, GPU index and precision: the sample fill honours them, or
+    // validate_fill_request refuses them (e.g. Float32 series, a view, on a GPU).
     const auto [device, index] = prob.device();
     sub_prob.set_device(device, index);
     sub_prob.set_gpu_precision(prob.gpu_precision());
@@ -485,6 +542,16 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
         sub_spans.push_back(prob.data().series_f32(static_cast<std::size_t>(idx)));
       sub_prob.set_view_data(
         Data(std::move(sub_spans), std::move(sub_names), prob.data().ndim));
+    } else if (device == Device::GPU) {
+      std::vector<std::vector<data_t>> sub_series;
+      sub_series.reserve(sample_size);
+      for (index_t idx : sample_indices) {
+        const auto series = prob.series(static_cast<std::size_t>(idx));
+        sub_series.emplace_back(series.begin(), series.end());
+      }
+      sub_prob.set_data(Data(std::move(sub_series),
+                             std::vector<std::string>(sub_names.begin(), sub_names.end()),
+                             prob.data().ndim));
     } else {
       std::vector<std::span<const data_t>> sub_spans;
       sub_spans.reserve(sample_size);

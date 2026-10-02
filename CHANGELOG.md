@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Added (FastCLARA, CUDA):** on a GPU device FastCLARA's sample matrices fill on the GPU and, with CUDA, so does its
+  assignment of every series to the k medoids (`cuda::compute_medoid_distances_cuda`: the fill's kernels, one launch per
+  block of series, the GPU's and the host's memory bounded whatever N); FP64 gives the CPU's labels, medoids and cost. A
+  Parquet file streamed under `--ram-limit` is assigned chunk by chunk the same way. `dtwc_cl --device gpu --method clara`
+  with a sample smaller than N runs instead of raising `DeviceError`. On Metal the assignment runs on the CPU, which `-v`
+  says.
 - **Changed (build):** Gurobi is linked only when you configure with `-DDTWC_ENABLE_GUROBI=ON` (v1.0.0 linked it
   whenever it found an installation, and a MEX or binary built that way needed the Gurobi library to load); HiGHS
   solves the MIP by default. With the option ON and no installation found, the configure stops with an error that
@@ -161,9 +167,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - **Changed (CLI):** `dtwc_cl` is `cli::bind` + `dtwc::run(Config)` (1,996 → 133 lines), with byte-identical outputs on every
   configuration compared. `--device` reads the one device grammar (`gpu`, `gpu:N`, Metal on macOS; `cuda` is `gpu`); `hpc` raises
   `DeviceError` (submission is `slurm_remote.sh submit-cluster` / Python's `device="hpc"`). On `gpu`, `auto` runs pam at any N;
-  onebatch, tadpole, a CLARA sample smaller than N, or a setting the GPU cannot honour raise `DeviceError` before the input is
-  read. Squared L2 runs on the CPU; `--checkpoint-interval 0` saves once at the end; every check that needs no data, the MIP
-  settings included, runs before any I/O; the loader prints no progress lines, and `-v` reports the series loaded.
+  onebatch, tadpole, or a setting the GPU cannot honour raise `DeviceError` before the input is read. Squared L2 runs on the
+  CPU; `--checkpoint-interval 0` saves once at the end; every check that needs no data, the MIP settings included, runs before
+  any I/O; the loader prints no progress lines, and `-v` reports the series loaded.
 - **Added (Python):** `dtwcpp.load()` reads a list-per-row Parquet file, or a folder of them, with the installed pyarrow (the
   `dtwcpp[parquet]` extra; the wheel links no Arrow C++): each row of the first list column is a series, named by the first
   string column. Without pyarrow it raises `ImportError` naming the extra.
@@ -197,8 +203,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   A direct `fill_distance_matrix_pruned` call on multivariate or non-L1 data raises `InvalidInput`.
 - **Removed (C++, pre-tag):** `settings::paths` and its four path setters (2.0-born; v1.0.0 had none). A `Problem` writes to
   `output_folder()`, `./results/` by default; pass data paths explicitly.
-- **Fixed (FastCLARA, TADPole):** CLARA's sub-samples use the parent's metric, GPU index and precision (in-memory samples are views,
-  which a GPU rejects with `DeviceError`); a missing Parquet build is `IOError`. TADPole under a non-L1 metric computes exactly
+- **Fixed (FastCLARA, TADPole):** CLARA's sub-samples use the parent's metric, GPU index and precision (in-memory samples are views
+  on the CPU and copies on a GPU); a missing Parquet build is `IOError`. TADPole under a non-L1 metric computes exactly
   instead of pruning with L1 bounds.
 - **Added (config):** `dtwc::Config` (`dtwc/cli/config.hpp`) — every setting of one run, keyed by the `dtwc_cl` long names,
   with `dtwc_cl`'s defaults; `cli::bind(CLI::App&, Config&)`, the one key table, reading TOML or YAML `--config` files through

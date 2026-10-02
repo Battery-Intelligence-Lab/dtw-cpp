@@ -2072,4 +2072,58 @@ TEST_CASE("CUDA medoid distances arrive in blocks of at most kMaxPairsPerLaunch"
   REQUIRE(std::accumulate(mismatches.begin(), mismatches.end(), size_t{ 0 }) == 0);
 }
 
+// FastCLARA on a CUDA device: its sample matrices fill on the GPU and its
+// assignment runs there (compute_medoid_distances_cuda), as on the CPU. FP64
+// against the CPU: the same labels and medoids, the cost within 1e-12
+// relative. FP32 against the CPU in Float32: the same labels and medoids on
+// these well-separated groups, the cost within the route bound. The data:
+// three groups of ragged noisy series and twelve exact duplicates.
+TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cuda][clara]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  std::mt19937 rng(20261001);
+  std::uniform_real_distribution<double> noise(-0.5, 0.5);
+  std::vector<std::vector<double>> series;
+  for (size_t i = 0; i < 240; ++i) {
+    std::vector<double> s(40 + i % 21);
+    for (auto &v : s) v = 6.0 * static_cast<double>(i % 3) + noise(rng);
+    series.push_back(std::move(s));
+  }
+  for (size_t i = 0; i < 12; ++i) series.push_back(series[i * 7]);
+
+  dtwc::algorithms::CLARAOptions clara;
+  clara.n_clusters = 3;
+  clara.sample_size = 40;
+  clara.n_samples = 3;
+  const auto run = [&](dtwc::Device device, dtwc::GpuPrecision precision, bool float32_series) {
+    std::vector<std::string> names(series.size());
+    dtwc::Problem prob("clara");
+    if (float32_series) {
+      std::vector<std::vector<float>> rounded;
+      for (const auto &s : series) rounded.emplace_back(s.begin(), s.end());
+      prob.set_data(dtwc::Data(std::move(rounded), std::move(names)));
+    } else {
+      prob.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::move(names)));
+    }
+    prob.set_gpu_precision(precision);
+    prob.set_device(device);
+    return dtwc::algorithms::fast_clara(prob, clara);
+  };
+
+  const auto cpu = run(dtwc::Device::CPU, dtwc::GpuPrecision::Auto, false);
+  const auto gpu = run(dtwc::Device::GPU, dtwc::GpuPrecision::FP64, false);
+  CHECK(gpu.labels == cpu.labels);
+  CHECK(gpu.medoid_indices == cpu.medoid_indices);
+  CHECK_THAT(gpu.total_cost, WithinRel(cpu.total_cost, 1e-12));
+
+  const auto cpu32 = run(dtwc::Device::CPU, dtwc::GpuPrecision::Auto, true);
+  const auto gpu32 = run(dtwc::Device::GPU, dtwc::GpuPrecision::FP32, false);
+  CHECK(gpu32.labels == cpu32.labels);
+  CHECK(gpu32.medoid_indices == cpu32.medoid_indices);
+  // Every point's distance agrees within the route bound of its pair, so the sum
+  // agrees within the bound of the longest pair (2 * 60 - 1 samples).
+  CHECK(dtwc::test_support::dtw_routes_agree<float>(gpu32.total_cost, cpu32.total_cost, 60, 60));
+}
+
 #endif // DTWC_HAS_CUDA
