@@ -208,11 +208,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `build*/`, e.g. an Arrow build that cannot load its DLLs (F2 2a3ae53; merged a965ad5)
 - ☑ `.github/workflows/python-tests.yml` runs pytest with no dtwc_cl and no `DTWC_CL_PATH`; `test_api`'s two
   CLI-parity cases assert a binary exists (F2 note; CI not run here) (W14b 015dc71: the job builds dtwc_cl, sets DTWC_CL_PATH and runs test_conformance.py; CI not run here)
-- ☐ tests narrow `index_t` to `int` (`std::set<int>` built from `centroids_ind` / `medoid_indices`, `for (int m :
+- ☑ tests narrow `index_t` to `int` (`std::set<int>` built from `centroids_ind` / `medoid_indices`, `for (int m :
   prob.centroids_ind)`; MSVC C4244 in the CUDA tree): unit_test_clustering_algorithms.cpp, algorithms/
   unit_test_duplicate_series.cpp, unit_test_fast_clara.cpp, unit_test_fast_pam.cpp, unit_test_one_batch_pam.cpp — use
   `index_t`, with the comment sweep; also dtwc/cli/run.cpp's `std::as_const(prob).distance_matrix()` and its comment
-  (redundant since `writable_distance_matrix()`, W7ef)
+  (redundant since `writable_distance_matrix()`, W7ef) (SW 88a6996, 79dcfc3, 1b6d3f6, d4e7f35; merged 6fd10ed1; tracker-citing comment lines 259 -> 17; C4244 in tests 2)
 
 ## G — docs and release prep (W14)
 
