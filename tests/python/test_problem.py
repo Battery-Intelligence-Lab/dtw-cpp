@@ -5,7 +5,6 @@
 """
 
 import math
-import os
 import re
 import subprocess
 import sys
@@ -270,34 +269,6 @@ class TestClusterFirst:
         p.write_clusters()
         assert [f.name for f in tmp_path.iterdir()] == ["first_Nc_2.csv"]
 
-    def test_v1_writers_write_the_bytes_cpp_wrote(self, tmp_path):
-        """v1.0.0's Problem writers are Python now; each file is the bytes C++
-        Problem::write_* wrote for this clustering (recorded from the 2.0 C++
-        writers; text files end lines as the platform does)."""
-        p = dtwcpp.Problem("w")
-        p.set_data([[0.0, 0.5, 1.0], [0.25, 0.75, 1.0], [9.0, 9.5, 8.0],
-                    [9.25, 9.0, 8.5], [4.0, 4.5, 3.75]], ["a", "b", "c", "d", "e"])
-        p.output_folder = str(tmp_path)
-        p.set_n_clusters(2)
-        p.method = dtwcpp.Method.PAM
-        p.cluster()
-        p.write_clusters()
-        p.write_silhouettes()
-        p.write_medoid_members(3, 1)
-        p.write_distance_matrix()
-        text = {
-            "w_Nc_2.csv": b"Cluster centroids:\nd,b\n\nData,its cluster\na,b\nb,b\nc,d\nd,d\n"
-                          b"e,b\nProcedure is completed with cost: 12\n",
-            "w_silhouettes_Nc_2.csv": b"Silhouettes:\na,0.776119\nb,0.781726\nc,0.941176\n"
-                                      b"d,0.94186\ne,0.269565\n",
-            "medoidMembers_Nc_2_rep_1_iter_3.csv": b"c,d,\na,b,e,\n",
-        }
-        for name, expected in text.items():
-            assert (tmp_path / name).read_bytes() == expected.replace(
-                b"\n", os.linesep.encode()), name
-        assert (tmp_path / "w_distanceMatrix.csv").read_bytes() == (
-            b"0,0.5,25,25.25,10.75\n0.5,0,24.5,24.75,10.25\n25,24.5,0,1.25,14.25\n"
-            b"25.25,24.75,1.25,0,14.5\n10.75,10.25,14.25,14.5,0\n")
 
 
 class TestSetterRanges:

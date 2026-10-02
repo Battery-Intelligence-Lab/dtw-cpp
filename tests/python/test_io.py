@@ -103,7 +103,8 @@ class TestCSV:
 
 
 # ---------------------------------------------------------------------------
-# The reader corpus: dtwcpp.load reads each file as dtwc_cl's reader does
+# The reader corpus: dtwcpp.load hands a text file to the C++ reader dtwc_cl
+# uses, with its options, and returns what it reads or raises
 # ---------------------------------------------------------------------------
 
 _CORPUS = Path(__file__).resolve().parents[1] / "data" / "reader"
@@ -131,6 +132,7 @@ _CORPUS = Path(__file__).resolve().parents[1] / "data" / "reader"
         ("nbsp_latin1.csv", 0, 0, dtwcpp.IOError),
         ("overflow.csv", 0, 0, dtwcpp.IOError),
         ("underflow.csv", 0, 0, dtwcpp.IOError),
+        ("ctrl_z.csv", 0, 0, dtwcpp.IOError),
     ],
 )
 def test_reader_corpus_reads_as_dtwc_cl(name, skip_rows, skip_cols, expected):

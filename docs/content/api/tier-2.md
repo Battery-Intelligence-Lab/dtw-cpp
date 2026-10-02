@@ -91,13 +91,13 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | C++ retained 1.x alias (Problem.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
 |---|---|---|---|
 | `refreshDistanceMatrix()` | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[introduced-2.0]` |
-| `readDistanceMatrix(path)` | `read_distance_matrix(path)` | — (removed: `set_distance_matrix(D)` takes a full N x N matrix) | `read_distance_matrix(path)` `[introduced-2.0]` |
+| `readDistanceMatrix(path)` | `read_distance_matrix(path)` | `read_distance_matrix(path)` `[introduced-2.0]` | `read_distance_matrix(path)` `[introduced-2.0]` |
 | `maxDistance()` | `max_distance()` | `max_distance()` (live) | `max_distance()` `[introduced-2.0]` |
 | `distByInd(i,j)` | `dist_by_ind(i,j)` | `dist_by_ind(i,j)` (live) | `dist_by_ind(i,j)` (1-based, live) |
 | `isDistanceMatrixFilled()` | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` (live) | `is_distance_matrix_filled()` (live) |
 | `fillDistanceMatrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
-| `printDistanceMatrix()` | `print_distance_matrix()` | — | — |
-| `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live, Python) | — |
+| `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
+| `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
 | — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `distance_matrix()` |
 | — (writer) | `writable_distance_matrix()` † | `set_distance_matrix(...)` (used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
@@ -108,9 +108,9 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | `cluster_by_MIP()` | `cluster_by_mip()` | — | — |
 | `cluster_by_kMedoidsPAM()` | `cluster_by_kmedoids_lloyd()` | — | — |
 | `printClusters()` | `print_clusters()` | `print_clusters()` (live) | — |
-| `writeClusters()` | `write_clusters()` | `write_clusters()` (live, Python) | — |
-| `writeMedoidMembers(iter,rep=0)` | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` (Python) `[introduced-2.0]` | — |
-| `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live, Python) | — |
+| `writeClusters()` | `write_clusters()` | `write_clusters()` (live) | — |
+| `writeMedoidMembers(iter,rep=0)` | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` `[introduced-2.0]` | — |
+| `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
 **† Name collision (adjudicated in §10 item 6).** C++
 `Problem::distance_matrix()` returns the `core::DistanceMatrix` by const
@@ -138,10 +138,7 @@ clustering loops read the matrix unchecked. `write_clusters`,
 `write_silhouettes`, `write_medoid_members`, `write_distance_matrix` and Tier-1
 `Result::save` check each file after closing as well as after opening, so a
 write lost after a successful open (a full disk, a file-size quota) raises
-`IOError` instead of leaving a truncated file behind a success. In Python the
-four `write_*` methods and `Result.save` are Python (`dtwcpp.io`) writing the
-same files and bytes: the extension module calls no text reader or result writer (the
-`.dtwm` checkpoint and the mapped cache stay C++).
+`IOError` instead of leaving a truncated file behind a success.
 
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,

@@ -23,21 +23,26 @@ import time
 import numpy as np
 
 
-def _float_rows(source):
-    """In-memory source -> ``list[list[float]]``, variable lengths preserved.
+def _series(source):
+    """Already-read series as C++ takes them: one ``list[float]`` per series and
+    the series' names.
 
-    C++ ``dtwc::load(series_type)`` takes a ``vector<vector<double>>``, so the
-    rows need not be the same length. A rectangular source keeps the NumPy fast
-    path; a ragged one (which ``np.asarray(..., dtype=float)`` rejects) is
-    converted row by row.
+    A 2-D array or a list of rows is one series per row, and the rows may differ
+    in length (a list of 1-D arrays); they are named by their ordinals. A pandas
+    DataFrame is one series per row, named by its index (no pandas import: the
+    frame is read through ``to_numpy``).
     """
+    if type(source).__module__.split(".")[0] == "pandas" and hasattr(source, "columns"):
+        return ([list(row) for row in source.to_numpy(dtype=float)],
+                [str(label) for label in source.index])
     if isinstance(source, np.ndarray):
-        return [list(row) for row in np.asarray(source, dtype=float)]
-    try:
-        rectangular = np.asarray(source, dtype=float)
-    except (ValueError, TypeError):
-        return [[float(value) for value in row] for row in source]
-    return [list(row) for row in rectangular]
+        rows = [list(row) for row in np.asarray(source, dtype=float)]
+    else:
+        try:
+            rows = [list(row) for row in np.asarray(source, dtype=float)]
+        except (ValueError, TypeError):  # ragged
+            rows = [[float(value) for value in row] for row in source]
+    return rows, [str(i) for i in range(len(rows))]
 
 
 class Dataset:
@@ -77,14 +82,13 @@ class Dataset:
     def _as_data(self):
         """Read the source once, caching the owning C++ ``dtwc::Data``.
 
-        A path is read by :mod:`dtwcpp.io` as dtwc_cl reads it: text with the
-        C++ reader's rules (``skip_cols`` drops leading FIELDS before numeric
-        parsing, ``skip_rows`` leading LINES, variable-length rows are kept,
-        a batch file names its series 1, 2, ... and a folder by file stem),
-        Parquet and Arrow IPC through the installed pyarrow. ``skip_rows``
-        drops leading SERIES of an in-memory source — one memory row is one
-        file line — which is named by its ordinal, as
-        ``Dataset::materialize_local`` names it (api.cpp).
+        A path is read as dtwc_cl reads it: text by the C++ reader
+        (``skip_cols`` drops leading FIELDS before numeric parsing, ``skip_rows``
+        leading LINES, variable-length rows are kept, a batch file names its
+        series 1, 2, ... and a folder by file stem), Parquet and Arrow IPC
+        through the installed pyarrow. ``skip_rows`` drops leading SERIES of an
+        in-memory source — one memory row is one file line — named as
+        :func:`_series` names them.
         """
         if self._data is None:
             from dtwcpp import _dtwcpp_core, io
@@ -93,7 +97,8 @@ class Dataset:
                                            self.skip_rows, self.delimiter)
             else:
                 from dtwcpp import InvalidInput
-                rows = _float_rows(self.source)[self.skip_rows:]
+                rows, names = _series(self.source)
+                rows, names = rows[self.skip_rows:], names[self.skip_rows:]
                 if self.skip_cols > 0:
                     for row in rows:
                         if self.skip_cols > len(row):
@@ -101,8 +106,7 @@ class Dataset:
                                 "load: skip_cols exceeds an in-memory series "
                                 "length.")
                     rows = [row[self.skip_cols:] for row in rows]
-                self._data = _dtwcpp_core.Data(
-                    rows, [str(i) for i in range(len(rows))])
+                self._data = _dtwcpp_core.Data(rows, names)
         return self._data
 
     def as_data(self):
@@ -140,8 +144,7 @@ class Result:
     """
 
     def __init__(self, labels, *, device, elapsed_s, k, n_series,
-                 medoid_indices=None, cost=None, name="dataset",
-                 series_names=None, problem=None):
+                 medoid_indices=None, cost=None, name="dataset", problem=None):
         self.labels = np.asarray(labels)
         self.device = device
         self.elapsed_s = elapsed_s
@@ -150,7 +153,6 @@ class Result:
         self.medoids = None if medoid_indices is None else np.asarray(medoid_indices)
         self.cost = cost
         self.name = name
-        self._series_names = series_names
         self._problem = problem
         self._distance_matrix = None
 
@@ -183,12 +185,6 @@ class Result:
         return (f"[device={self.device}] {self.n_series} series, k={self.k}  ->  "
                 f"{self.elapsed_s * 1e3:7.1f} ms{extra}")
 
-    def _names(self, n=None):
-        """Series names for output — the loader's, as C++ ``series_name(i)`` is."""
-        if self._series_names is not None:
-            return list(self._series_names)
-        return [str(i) for i in range(len(self.labels) if n is None else n)]
-
     def score(self, name):
         """The clustering-quality score ``name`` names, computed by C++.
 
@@ -200,45 +196,23 @@ class Result:
         return _dtwcpp_core.score(self._clustered(), name)
 
     def save(self, directory):
-        """Write the four result CSVs into ``directory``, as dtwc_cl writes them.
-
-        ``<name>_labels.csv`` (``name,cluster``), ``<name>_medoids.csv``
+        """Write the four result CSVs into ``directory`` with the C++ writer
+        ``dtwc_cl`` and C++ ``Result::save`` use: ``<name>_labels.csv``
+        (``name,cluster``), ``<name>_medoids.csv``
         (``cluster,medoid_index,medoid_name``), ``<name>_distance_matrix.csv``
-        and ``<name>_silhouettes.csv`` (``name,cluster,silhouette``), byte for
-        byte the CLI's files (``dtwcpp.io`` holds the formats). An ``hpc``
-        result writes the labels and an empty medoid table only.
+        and ``<name>_silhouettes.csv`` (``name,cluster,silhouette``).
 
         With one cluster the silhouette is undefined and no silhouettes file is
-        written, silently, as C++ ``Result::save`` and the CLI do. A partition
-        with fewer than two realised clusters prints ``Warning: silhouettes
-        skipped: ...`` on ``stderr`` instead of failing a clustering that
-        succeeded. ``score("silhouette")`` still raises ``UndefinedScore``.
+        written; a partition with fewer than two realised clusters prints
+        ``Warning: silhouettes skipped: ...`` on ``stderr``. An ``hpc`` result
+        holds labels only: the remote ``dtwc_cl`` wrote its files.
         """
-        import sys
-
-        import dtwcpp
-        from dtwcpp import io
-        # As C++ Result::save: the matrix is filled before any file is written.
-        matrix = self.distance_matrix
-        names = self._names()
-        base = os.path.join(directory, self.name)
-        io._write_text(base + "_labels.csv", "name,cluster\n" + "".join(
-            f"{nm},{int(lab)}\n" for nm, lab in zip(names, self.labels)))
-        medoids = [] if self.medoids is None else self.medoids
-        io._write_text(base + "_medoids.csv", "cluster,medoid_index,medoid_name\n" + "".join(
-            f"{c},{int(m)},{names[int(m)]}\n" for c, m in enumerate(medoids)))
-        if matrix is None:  # an hpc result: labels only
-            return directory
-        io._write_matrix_csv(matrix, base + "_distance_matrix.csv")
-        if len(medoids) < 2:
-            return directory
-        try:
-            silhouettes = dtwcpp.silhouette(self._problem)
-        except dtwcpp.UndefinedScore as e:
-            print(f"Warning: silhouettes skipped: {e}", file=sys.stderr)
-            return directory
-        io._write_text(base + "_silhouettes.csv", "name,cluster,silhouette\n" + "".join(
-            f"{nm},{int(lab)},{s:.8g}\n" for nm, lab, s in zip(names, self.labels, silhouettes)))
+        from dtwcpp import InvalidInput, _dtwcpp_core
+        if self._problem is None:
+            raise InvalidInput(
+                "save: this hpc result holds the labels only; dtwc_cl wrote the "
+                "result files on the cluster.")
+        _dtwcpp_core._write_result_files(self._problem, os.fspath(directory))
         return directory
 
     def plot(self, png="clusters_2d.png", show=True):
@@ -395,8 +369,7 @@ def cluster(data, k, **keys):
     return Result(result.labels, device=backend,
                   elapsed_s=time.perf_counter() - t0, k=config.n_clusters,
                   n_series=prob.size, medoid_indices=result.medoid_indices,
-                  cost=result.total_cost, name=prob.name,
-                  series_names=data.series_names(), problem=prob)
+                  cost=result.total_cost, name=prob.name, problem=prob)
 
 
 def plot(result, **kwargs):

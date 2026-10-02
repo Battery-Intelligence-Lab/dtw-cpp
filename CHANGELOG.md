@@ -22,12 +22,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   reads and checks them (an unknown key is `InvalidInput`) and `Problem::cluster()` runs the method, so `method`
   defaults to `auto` as in C++ and the CLI (the 2.0 previews defaulted to `pam` and took four keywords).
   `Problem.cluster()` returns its `ClusteringResult` in Python too.
-- **Changed (Python):** the extension module calls no text reader or result writer. `dtwcpp.load()` reads CSV/TSV text and
-  folders in Python by `dtwc_cl`'s rules (the same series, or the same error type, for every file of
-  `tests/data/reader`), and an Arrow IPC file (`.arrow`, `.ipc`, `.feather`: the `data` column, named by `name`) as well
-  as Parquet through the installed pyarrow; `Problem.write_clusters`, `write_silhouettes`, `write_medoid_members`,
-  `write_distance_matrix` and `Result.save` write the bytes C++ wrote. On Windows `_dtwcpp_core` shrinks from 6,136,832
-  to 6,063,104 bytes (no CLI11, CLI pipeline, text reader or result writers).
+- **Added (Python):** series already in memory go in as numpy, pandas or Python hold them: `cluster()`,
+  `DTWClustering.fit`, `load()` and `Problem.set_data` take a 2-D array, a list of 1-D arrays (any lengths) or a pandas
+  DataFrame (one series per row, named by its index), and `Problem.set_data`'s names are optional. `dtwcpp.load()` reads
+  an Arrow IPC file (`.arrow`, `.ipc`, `.feather`: the `data` column, named by `name`) through the installed pyarrow, as
+  it reads Parquet; text is read by the C++ reader `dtwc_cl` uses. The extension module no longer links the CLI's
+  pipeline or config code (CLI11, fkYAML).
 - **Changed (build):** Gurobi is linked only when you configure with `-DDTWC_ENABLE_GUROBI=ON` (v1.0.0 linked it
   whenever it found an installation, and a MEX or binary built that way needed the Gurobi library to load); HiGHS
   solves the MIP by default. With the option ON and no installation found, the configure stops with an error that

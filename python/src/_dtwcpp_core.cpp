@@ -97,6 +97,17 @@ void require_index(const char *who, const char *name, std::int64_t index, size_t
       + " is outside [0, N) with N = " + std::to_string(n) + ".");
 }
 
+/// Raise `type` with `what`: a reader's message quotes the token it refused,
+/// which need not be UTF-8 (a Latin-1 0xA0), so invalid bytes are replaced
+/// instead of turning the error into a UnicodeDecodeError.
+void set_error(PyObject *type, const char *what)
+{
+  PyObject *message = PyUnicode_DecodeUTF8(what, static_cast<Py_ssize_t>(std::strlen(what)), "replace");
+  if (message == nullptr) return; // the decoder's own error stays set
+  PyErr_SetObject(type, message);
+  Py_DECREF(message);
+}
+
 /// Problem.variant_params' type: its fields are bound read-only.
 struct FrozenParams : dtwc::core::DTWVariantParams
 {};
@@ -191,17 +202,17 @@ NB_MODULE(_dtwcpp_core, m) {
         std::rethrow_exception(p);
       } catch (const dtwc::UndefinedScore &e) {
         // Must precede InvalidInput: UndefinedScore derives from it.
-        PyErr_SetString(g_exc_undefined_score, e.what());
+        set_error(g_exc_undefined_score, e.what());
       } catch (const dtwc::InvalidInput &e) {
-        PyErr_SetString(g_exc_invalid, e.what());
+        set_error(g_exc_invalid, e.what());
       } catch (const dtwc::SolverError &e) {
-        PyErr_SetString(g_exc_solver, e.what());
+        set_error(g_exc_solver, e.what());
       } catch (const dtwc::DeviceError &e) {
-        PyErr_SetString(g_exc_device, e.what());
+        set_error(g_exc_device, e.what());
       } catch (const dtwc::IOError &e) {
-        PyErr_SetString(g_exc_io, e.what());
+        set_error(g_exc_io, e.what());
       } catch (const dtwc::Error &e) {
-        PyErr_SetString(g_exc_base, e.what());
+        set_error(g_exc_base, e.what());
       }
     });
 
@@ -232,6 +243,37 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("device", []() { return dtwc::device(); },
         "Canonical name of the process-wide device (dtwc::device()).");
+
+  // =========================================================================
+  // Tier-1 file parsing (api-contract-2.0.md §1.2)
+  // =========================================================================
+
+  m.def("_read_data",
+        [](const std::filesystem::path &source, dtwc::index_t skip_cols,
+           dtwc::index_t skip_rows, const std::string &delimiter) {
+    if (skip_cols < 0) throw dtwc::InvalidInput("load: skip_cols must be non-negative.");
+    if (skip_rows < 0) throw dtwc::InvalidInput("load: skip_rows must be non-negative.");
+    if (delimiter.size() > 1)
+      throw dtwc::InvalidInput("load: delimiter must be a single character.");
+    // File I/O and parsing touch no Python object, so the GIL is released for
+    // the whole read exactly as every other I/O binding here does.
+    nb::gil_scoped_release release;
+    return dtwc::read_data(source, skip_cols, skip_rows, delimiter.empty() ? '\0' : delimiter[0]);
+  }, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
+     "Read a path with dtwc::read_data, the reader dtwc_cl and C++ dtwc::load\n"
+     "use (CSV/TSV and a folder of them; the wheel links no Arrow C++, so\n"
+     "dtwcpp.load reads Parquet and Arrow IPC through pyarrow), and return the owning\n"
+     "dtwc::Data (series + names) with no intermediate Python objects. Backs\n"
+     "dtwcpp.Dataset, whose handle is handed straight to Problem.set_data(Data):\n"
+     "skip_cols drops leading FIELDS before numeric parsing, skip_rows drops\n"
+     "leading LINES, an empty delimiter means infer from the extension, and\n"
+     "variable-length rows are preserved. The names are the reader's own, so\n"
+     "Tier-1 output carries the series names the CLI writes.");
+
+  m.def("_parquet_files", &dtwc::parquet_files, "path"_a,
+        "The Parquet files a path names, listed as dtwc::read_data lists them:\n"
+        "the file itself, or a folder's .parquet/.pq files, sorted, hidden files\n"
+        "skipped; empty for any other input.");
 
   // =========================================================================
   // Enums
@@ -407,7 +449,7 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
   // Config: the settings of a clustering, keyed by the CLI long names in
   // snake_case, read and checked by C++ (dtwc/config.hpp). The file options
-  // are dtwc_cl's: Python reads and writes its own files.
+  // (input, output, checkpoint, ...) are dtwc_cl's.
   // =========================================================================
 
   using dtwc::Config;
@@ -884,22 +926,21 @@ NB_MODULE(_dtwcpp_core, m) {
     }, "Compute all pairwise DTW distances.")
     // Always a COPY: the C++ store keeps only the upper triangle, so a zero-copy
     // view into a full NxN layout is structurally impossible (§2.2 ‡).
-    .def("distance_matrix", [](dtwc::Problem &prob, bool fill) {
+    .def("distance_matrix", [](dtwc::Problem &prob) {
            // Size is only known after the fill, so both happen inside one release.
            std::vector<double> values;
            size_t n = 0;
            {
              nb::gil_scoped_release release;
-             if (fill) prob.fill_distance_matrix();
+             prob.fill_distance_matrix();
              const auto &dm = std::as_const(prob).distance_matrix(); // on the heap or mapped
              n = dm.size();
              values = dtwc::io::to_full_matrix(dm); // row-major, expanded from the triangle
            }
            return adopt_as_ndarray(std::move(values), {n, n});
-         }, nb::kw_only(), "fill"_a = true,
+         },
          "Fill (if needed) and return the full NxN distance matrix as a numpy\n"
-         "array (independent copy; use set_distance_matrix to write). fill=False\n"
-         "returns it as it is, NaN for a pair not computed.")
+         "array (independent copy; use set_distance_matrix to write).")
     .def("set_distance_matrix",
          [](dtwc::Problem &p,
             nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
@@ -926,6 +967,15 @@ NB_MODULE(_dtwcpp_core, m) {
          "Load a precomputed NxN distance matrix (e.g. from a GPU compute). NaN marks\n"
          "a pair to compute; a ±inf entry raises InvalidInput naming the pair.")
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
+    .def("read_distance_matrix", [](dtwc::Problem &p, const std::filesystem::path &path) {
+      nb::gil_scoped_release release;
+      p.read_distance_matrix(path);
+    }, "path"_a,
+         "Read a distance matrix from a CSV file (REPLACES this Problem's matrix).")
+    .def("print_distance_matrix", [](dtwc::Problem &p) {
+      nb::gil_scoped_release release;
+      p.print_distance_matrix();
+    })
     .def("use_mmap_distance_matrix",
          [](dtwc::Problem &p, const std::filesystem::path &cache_path) {
            p.use_mmap_distance_matrix(cache_path);
@@ -938,10 +988,6 @@ NB_MODULE(_dtwcpp_core, m) {
     }, "Cluster the series into n_clusters() by Problem.method (Auto: PAM on a GPU and\n"
        "for up to 5000 series, else CLARA) and return the ClusteringResult; the labels\n"
        "and medoids are published on the Problem too.")
-    .def("require_clustered", [](const dtwc::Problem &p, const std::string &who) { p.require_clustered(who); },
-         "who"_a,
-         "Raise InvalidInput naming `who` unless the Problem holds a clustering: one\n"
-         "label per series and one medoid per cluster.")
     .def("find_total_cost", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       return p.find_total_cost();
@@ -955,12 +1001,33 @@ NB_MODULE(_dtwcpp_core, m) {
       nb::gil_scoped_release release;
       p.calculate_medoids();
     })
-    // ---- output; the write_* files are written by dtwcpp.io in Python ----
+    // ---- I/O ----
     .def("print_clusters", &dtwc::Problem::print_clusters)
+    .def("write_clusters", [](dtwc::Problem &p) {
+      nb::gil_scoped_release release;
+      p.write_clusters();
+    }, "Write the cluster-assignment CSV.\n\n"
+       "Raises InvalidInput if the Problem holds no clustering.")
+    .def("write_medoid_members", &dtwc::Problem::write_medoid_members, "iter"_a, "rep"_a = 0)
+    .def("write_distance_matrix", [](const dtwc::Problem &p) {
+      nb::gil_scoped_release release;
+      p.write_distance_matrix();
+    })
+    .def("write_silhouettes", [](dtwc::Problem &p) {
+      nb::gil_scoped_release release;
+      p.write_silhouettes();
+    }, "Write per-series silhouette scores.")
     .def("__repr__", [](const dtwc::Problem &p) {
       return "Problem(name='" + p.name() + "', n=" + std::to_string(p.size())
              + ", k=" + std::to_string(p.n_clusters()) + ")";
     });
+
+  m.def("_write_result_files", [](dtwc::Problem &prob, const std::filesystem::path &directory) {
+    nb::gil_scoped_release release;
+    dtwc::detail::write_result_files(prob, directory, true);
+  }, "prob"_a, "directory"_a,
+     "Write a clustered Problem's four result files into directory, as\n"
+     "dtwc_cl and C++ Result::save write them (detail::write_result_files).");
 
   // =========================================================================
   // FastPAM

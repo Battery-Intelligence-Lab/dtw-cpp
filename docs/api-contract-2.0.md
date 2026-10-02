@@ -180,11 +180,12 @@ a folder, Parquet, Arrow IPC) through `dtwc::read_data`.
 **Python's `cluster()` is C++'s too, without the CLI's files.** Its keywords become a
 `dtwc::Config` (the binding's `Config`), `apply(config, prob)` hands a `Problem` its
 settings before the series are read, and `Problem::cluster()` runs the method, so
-`method` defaults to `auto` there as in C++. Python reads and writes the files
-itself (`dtwcpp.io`; the extension module calls no text reader or result writer): text and
-folders by `dtwc_cl`'s rules — the same series, or the same error type, for every
-file of `tests/data/reader` — and Parquet and Arrow IPC through the installed pyarrow
-(the `parquet` extra; the wheel links no Arrow C++).
+`method` defaults to `auto` there as in C++. Python reads text and folders
+with the bound C++ reader (`dtwc::read_data`, the one `dtwc_cl` uses) and Parquet and
+Arrow IPC through the installed pyarrow (the `parquet` extra; the wheel links no Arrow
+C++); `Result.save` and `Problem.write_*` write with the C++ writers. Series already in
+memory go in as numpy, pandas or Python hold them: a 2-D array, a list of 1-D arrays
+(any lengths) or a pandas DataFrame (rows, named by the index).
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as
@@ -223,7 +224,7 @@ Canonical class name is **`Result`** in all three languages.
 | `medoids` | `const std::vector<index_t>& medoids() const` | `res.medoids` → `np.ndarray[int64]` | `res.medoids` → double row (1-based) |
 | `score(name)` | `double score(std::string_view name) const`; fills the retained `Problem` on demand after a matrix-free run | `res.score(name: str) -> float`; same lazy fill, so `onebatch`/`clara`/`tadpole` results are scoreable and `save()` writes all four CSVs | `s = res.score(name)` |
 | `distance_matrix` | `std::vector<double> distance_matrix() const` `[introduced-2.0]` — dense **row-major N x N**; fills the retained `Problem` on demand exactly as `score()` does, so a matrix-free run is still readable | `res.distance_matrix` → dense N x N `np.ndarray`; a matrix-free `onebatch`/`clara`/`tadpole` run leaves it unmaterialised and the property fills the retained `Problem` on first read, exactly as `score()`/`save()` do (`_api.py:160-172`). `None` only for an `hpc` run, which has no local `Problem` | private helper `Result.distance_matrix()` (`Result.m:107-121`), used by `plot()` |
-| `save(dir)` | `void save(const std::filesystem::path& dir) const` | `res.save(dir)`; writes the loader's series names (not ordinals), C++'s line endings (the platform one for the three text-mode files, LF for the binary-mode distance matrix), `setprecision(8)` silhouettes and `to_chars(general, max_digits10)` matrix values, so a Python run and a CLI run on one file are byte-identical (`dtwcpp.io` writes them); an undefined silhouette prints a warning on stderr and skips the file | `res.save(dir)` |
+| `save(dir)` | `void save(const std::filesystem::path& dir) const` | `res.save(dir)`; writes the loader's series names (not ordinals), C++'s line endings (the platform one for the three text-mode files, LF for the binary-mode distance matrix), `setprecision(8)` silhouettes and `to_chars(general, max_digits10)` matrix values, so a Python run and a CLI run on one file are byte-identical (the C++ writer writes them); an undefined silhouette prints a warning on stderr and skips the file | `res.save(dir)` |
 | `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:330-367`) | `res.plot()` |
 | (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:153`) | `res.cost` |
 | (aux) `device` | `std::string device() const` | `res.device` | `res.device` |
@@ -374,13 +375,13 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | C++ retained 1.x alias (Problem.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
 |---|---|---|---|
 | `refreshDistanceMatrix()` | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[introduced-2.0]` |
-| `readDistanceMatrix(path)` | `read_distance_matrix(path)` | — (removed: `set_distance_matrix(D)` takes a full N x N matrix) | `read_distance_matrix(path)` `[introduced-2.0]` |
+| `readDistanceMatrix(path)` | `read_distance_matrix(path)` | `read_distance_matrix(path)` `[introduced-2.0]` | `read_distance_matrix(path)` `[introduced-2.0]` |
 | `maxDistance()` | `max_distance()` | `max_distance()` (live) | `max_distance()` `[introduced-2.0]` |
 | `distByInd(i,j)` | `dist_by_ind(i,j)` | `dist_by_ind(i,j)` (live) | `dist_by_ind(i,j)` (1-based, live) |
 | `isDistanceMatrixFilled()` | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` (live) | `is_distance_matrix_filled()` (live) |
 | `fillDistanceMatrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
-| `printDistanceMatrix()` | `print_distance_matrix()` | — | — |
-| `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live, Python) | — |
+| `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
+| `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
 | — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `distance_matrix()` |
 | — (writer) | `writable_distance_matrix()` † | `set_distance_matrix(...)` (used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
@@ -391,9 +392,9 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | `cluster_by_MIP()` | `cluster_by_mip()` | — | — |
 | `cluster_by_kMedoidsPAM()` | `cluster_by_kmedoids_lloyd()` | — | — |
 | `printClusters()` | `print_clusters()` | `print_clusters()` (live) | — |
-| `writeClusters()` | `write_clusters()` | `write_clusters()` (live, Python) | — |
-| `writeMedoidMembers(iter,rep=0)` | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` (Python) `[introduced-2.0]` | — |
-| `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live, Python) | — |
+| `writeClusters()` | `write_clusters()` | `write_clusters()` (live) | — |
+| `writeMedoidMembers(iter,rep=0)` | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` `[introduced-2.0]` | — |
+| `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
 **† Name collision (adjudicated in §10 item 6).** C++
 `Problem::distance_matrix()` returns the `core::DistanceMatrix` by const
@@ -421,10 +422,7 @@ clustering loops read the matrix unchecked. `write_clusters`,
 `write_silhouettes`, `write_medoid_members`, `write_distance_matrix` and Tier-1
 `Result::save` check each file after closing as well as after opening, so a
 write lost after a successful open (a full disk, a file-size quota) raises
-`IOError` instead of leaving a truncated file behind a success. In Python the
-four `write_*` methods and `Result.save` are Python (`dtwcpp.io`) writing the
-same files and bytes: the extension module calls no text reader or result writer (the
-`.dtwm` checkpoint and the mapped cache stay C++).
+`IOError` instead of leaving a truncated file behind a success.
 
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,

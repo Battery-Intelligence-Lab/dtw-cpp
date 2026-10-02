@@ -48,8 +48,11 @@ _READS_THE_MATRIX = ("pam", "kmedoids", "mip", "lrcore", "hierarchical")
 
 
 def _series_list(X, *, allow_nan):
-    """Raw series as a list of float64 rows; ragged rows are kept. An Arrow C
-    Data source (polars, DuckDB, pyarrow, pandas) is read by nanoarrow."""
+    """Raw series as a list of float64 rows; ragged rows are kept. A pandas
+    DataFrame is one series per row; another Arrow C Data source (polars,
+    DuckDB, pyarrow) is read by nanoarrow, one series per list element."""
+    if type(X).__module__.split(".")[0] == "pandas" and hasattr(X, "columns"):
+        X = X.to_numpy(dtype=np.float64)
     if hasattr(X, "__arrow_c_array__") or hasattr(X, "__arrow_c_stream__"):
         return [np.asarray(s, dtype=np.float64) for s in data_from_arrow_c_array(X).p_vec]
     if type(X).__module__.startswith("scipy.sparse"):

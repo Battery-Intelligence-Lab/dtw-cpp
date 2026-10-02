@@ -91,11 +91,12 @@ a folder, Parquet, Arrow IPC) through `dtwc::read_data`.
 **Python's `cluster()` is C++'s too, without the CLI's files.** Its keywords become a
 `dtwc::Config` (the binding's `Config`), `apply(config, prob)` hands a `Problem` its
 settings before the series are read, and `Problem::cluster()` runs the method, so
-`method` defaults to `auto` there as in C++. Python reads and writes the files
-itself (`dtwcpp.io`; the extension module calls no text reader or result writer): text and
-folders by `dtwc_cl`'s rules — the same series, or the same error type, for every
-file of `tests/data/reader` — and Parquet and Arrow IPC through the installed pyarrow
-(the `parquet` extra; the wheel links no Arrow C++).
+`method` defaults to `auto` there as in C++. Python reads text and folders
+with the bound C++ reader (`dtwc::read_data`, the one `dtwc_cl` uses) and Parquet and
+Arrow IPC through the installed pyarrow (the `parquet` extra; the wheel links no Arrow
+C++); `Result.save` and `Problem.write_*` write with the C++ writers. Series already in
+memory go in as numpy, pandas or Python hold them: a 2-D array, a list of 1-D arrays
+(any lengths) or a pandas DataFrame (rows, named by the index).
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as
@@ -134,7 +135,7 @@ Canonical class name is **`Result`** in all three languages.
 | `medoids` | `const std::vector<index_t>& medoids() const` | `res.medoids` → `np.ndarray[int64]` | `res.medoids` → double row (1-based) |
 | `score(name)` | `double score(std::string_view name) const`; fills the retained `Problem` on demand after a matrix-free run | `res.score(name: str) -> float`; same lazy fill, so `onebatch`/`clara`/`tadpole` results are scoreable and `save()` writes all four CSVs | `s = res.score(name)` |
 | `distance_matrix` | `std::vector<double> distance_matrix() const` `[introduced-2.0]` — dense **row-major N x N**; fills the retained `Problem` on demand exactly as `score()` does, so a matrix-free run is still readable | `res.distance_matrix` → dense N x N `np.ndarray`; a matrix-free `onebatch`/`clara`/`tadpole` run leaves it unmaterialised and the property fills the retained `Problem` on first read, exactly as `score()`/`save()` do (`_api.py:160-172`). `None` only for an `hpc` run, which has no local `Problem` | private helper `Result.distance_matrix()` (`Result.m:107-121`), used by `plot()` |
-| `save(dir)` | `void save(const std::filesystem::path& dir) const` | `res.save(dir)`; writes the loader's series names (not ordinals), C++'s line endings (the platform one for the three text-mode files, LF for the binary-mode distance matrix), `setprecision(8)` silhouettes and `to_chars(general, max_digits10)` matrix values, so a Python run and a CLI run on one file are byte-identical (`dtwcpp.io` writes them); an undefined silhouette prints a warning on stderr and skips the file | `res.save(dir)` |
+| `save(dir)` | `void save(const std::filesystem::path& dir) const` | `res.save(dir)`; writes the loader's series names (not ordinals), C++'s line endings (the platform one for the three text-mode files, LF for the binary-mode distance matrix), `setprecision(8)` silhouettes and `to_chars(general, max_digits10)` matrix values, so a Python run and a CLI run on one file are byte-identical (the C++ writer writes them); an undefined silhouette prints a warning on stderr and skips the file | `res.save(dir)` |
 | `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:330-367`) | `res.plot()` |
 | (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:153`) | `res.cost` |
 | (aux) `device` | `std::string device() const` | `res.device` | `res.device` |

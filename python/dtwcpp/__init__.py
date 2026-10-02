@@ -214,12 +214,22 @@ from dtwcpp.io import (
     load_dataset_parquet,
 )
 
-# v1.0.0's Problem file writers, written in Python (the compiled core writes no files).
-from dtwcpp import io as _io
-Problem.write_clusters = _io.write_clusters
-Problem.write_silhouettes = _io.write_silhouettes
-Problem.write_medoid_members = _io.write_medoid_members
-Problem.write_distance_matrix = _io.write_distance_matrix
+_set_data = Problem.set_data
+
+
+def _problem_set_data(self, series, names=None, ndim=1):
+    """Set the time series: a :class:`Data`, a 2-D array (one series per row), a
+    list of 1-D arrays or lists (series of any lengths), or a pandas DataFrame
+    (one series per row, named by its index). ``names`` default to the series'
+    ordinals; ``ndim > 1`` reads each row as interleaved multivariate steps."""
+    if isinstance(series, Data):
+        return _set_data(self, series)
+    from dtwcpp._api import _series
+    rows, ordinals = _series(series)
+    return _set_data(self, rows, ordinals if names is None else list(names), ndim)
+
+
+Problem.set_data = _problem_set_data
 
 from . import distance
 from . import preprocess

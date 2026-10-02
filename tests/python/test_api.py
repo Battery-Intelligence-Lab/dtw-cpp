@@ -599,6 +599,41 @@ class TestRaggedInMemorySource:
 
 
 # ---------------------------------------------------------------------------
+# Already-read data: as numpy, pandas or Python hold it
+# ---------------------------------------------------------------------------
+_TWO_GROUPS = [[0.0, 0.1, 0.2, 0.3], [0.05, 0.15, 0.1, 0.2], [9.0, 9.1, 9.2, 9.0],
+               [9.2, 9.05, 9.1, 9.3]]
+
+
+def _as(form):
+    if form == "2-D array":
+        return np.array(_TWO_GROUPS)
+    if form == "list of 1-D arrays":
+        return [np.array(row) for row in _TWO_GROUPS]
+    if form == "list of lists":
+        return _TWO_GROUPS
+    pd = pytest.importorskip("pandas")
+    return pd.DataFrame(_TWO_GROUPS, index=["a", "b", "c", "d"])
+
+
+@pytest.mark.parametrize("form", ["2-D array", "list of 1-D arrays", "list of lists",
+                                  "pandas DataFrame"])
+def test_already_read_data_goes_in_as_it_is(form):
+    """cluster(), DTWClustering.fit and Problem.set_data take each form, one
+    series per row; a DataFrame's rows are named by its index."""
+    data = _as(form)
+    expected = dtwcpp.cluster(_TWO_GROUPS, k=2)
+    np.testing.assert_array_equal(dtwcpp.cluster(data, k=2).labels, expected.labels)
+    np.testing.assert_array_equal(
+        dtwcpp.DTWClustering(n_clusters=2).fit(data).labels_, expected.labels)
+    prob = dtwcpp.Problem("forms")
+    prob.set_data(data)
+    assert [prob.series_name(i) for i in range(prob.size)] == (
+        ["a", "b", "c", "d"] if form == "pandas DataFrame" else ["0", "1", "2", "3"])
+    assert dtwcpp.load(data).series_names() == [prob.series_name(i) for i in range(prob.size)]
+
+
+# ---------------------------------------------------------------------------
 # §1.4 series names — Tier-1 output carries the loader's names, as C++ does
 # ---------------------------------------------------------------------------
 def _dtwc_cl_binary():
@@ -696,39 +731,6 @@ class TestNonAsciiSeriesNames:
                        "_distance_matrix.csv"):
             assert (py_out / f"uni{suffix}").read_bytes() == \
                 (cli_out / f"uni{suffix}").read_bytes(), suffix
-
-
-class TestDistanceMatrixCsv:
-    """dtwcpp.io writes the matrix as C++ io::write_csv does
-    (test_distance_matrix_csv_contract pins the C++ bytes): a NaN cell, a pair
-    not computed, is an EMPTY field, and +/-inf is refused before the file is
-    opened."""
-
-    def test_nan_is_written_as_an_empty_field(self, tmp_path):
-        D = np.array([[0.0, 1.0, np.nan, 3.0],
-                      [1.0, 0.0, 2.0, 3.0],
-                      [np.nan, 2.0, 0.0, 1.0],
-                      [3.0, 3.0, 1.0, 0.0]])
-        prob = dtwcpp.Problem("nan")
-        prob.set_data([[0.0], [1.0], [2.0], [3.0]], ["a", "b", "c", "d"])
-        prob.set_distance_matrix(D)
-        prob.output_folder = str(tmp_path)
-        prob.write_distance_matrix()
-        assert (tmp_path / "nan_distanceMatrix.csv").read_bytes() == (
-            b"0,1,,3\n1,0,2,3\n,2,0,1\n3,3,1,0\n")
-
-    def test_inf_raises_invalid_input_before_the_matrix_file_exists(self, tmp_path):
-        """+-DBL_MAX series fill an infinite distance, which no CSV holds."""
-        huge = np.finfo(float).max
-        prob = dtwcpp.Problem("inf")
-        prob.set_data([[huge], [-huge], [0.0]], ["a", "b", "c"])
-        prob.fill_distance_matrix()
-        prob.output_folder = str(tmp_path)
-        with pytest.raises(dtwcpp.InvalidInput,
-                           match=r"^distance-matrix CSV: computed non-finite value "
-                                 r"at row 0, column 1\.$"):
-            prob.write_distance_matrix()
-        assert not (tmp_path / "inf_distanceMatrix.csv").exists()
 
 
 # ---------------------------------------------------------------------------
