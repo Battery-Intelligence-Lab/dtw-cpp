@@ -152,12 +152,12 @@ void require_valid(const core::ClusteringResult& result, int n, int k)
 {
   REQUIRE(result.labels.size() == static_cast<std::size_t>(n));
   REQUIRE(result.medoid_indices.size() == static_cast<std::size_t>(k));
-  REQUIRE(std::set<int>(result.medoid_indices.begin(), result.medoid_indices.end()).size()
+  REQUIRE(std::set<index_t>(result.medoid_indices.begin(), result.medoid_indices.end()).size()
           == static_cast<std::size_t>(k));
-  for (int label : result.labels) REQUIRE(label >= 0); 
-  for (int label : result.labels) REQUIRE(label < k);
-  for (int medoid : result.medoid_indices) REQUIRE(medoid >= 0);
-  for (int medoid : result.medoid_indices) REQUIRE(medoid < n);
+  for (index_t label : result.labels) REQUIRE(label >= 0);
+  for (index_t label : result.labels) REQUIRE(label < k);
+  for (index_t medoid : result.medoid_indices) REQUIRE(medoid >= 0);
+  for (index_t medoid : result.medoid_indices) REQUIRE(medoid < n);
 }
 
 template <typename Function>
@@ -573,7 +573,7 @@ TEST_CASE("OneBatchPAM warped scaling oracle is non-degenerate and discriminatin
 TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
           "[one_batch_pam][nonfinite]")
 {
-  // A6: `FixedBatchDistances::exact` was the only distance read in the algorithm
+  // `FixedBatchDistances::exact` was the only distance read in the algorithm
   // layer that skipped `require_finite_medoid_distance`, and the objective used
   // a plain std::accumulate instead of `ordered_medoid_objective`. `exact()` is
   // only reached for a medoid that is NOT in the fixed batch — the one path the

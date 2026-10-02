@@ -1,6 +1,6 @@
 /**
  * @file unit_test_scores_single_cluster.cpp
- * @brief R4(a): Nc<2 guard for the Davies-Bouldin and Dunn indices.
+ * @brief Nc<2 guard for the Davies-Bouldin and Dunn indices.
  *
  * davies_bouldin and dunn lacked an Nc<2 guard. With a single cluster the results are
  * mathematically undefined and silently wrong rather than erroring:

@@ -1,6 +1,6 @@
 /**
  * @file unit_test_nearest_medoid_assignment.cpp
- * @brief F13 public-route contract for nearest-medoid assignment: where a
+ * @brief Public-route contract for nearest-medoid assignment: where a
  *        non-finite distance is refused, first-slot ties, the point-ordered
  *        objective and its one finite check.
  */
@@ -281,7 +281,7 @@ TEST_CASE("F13 finite assignment distances cannot overflow the objective",
 TEST_CASE("F13 no-path requests are rejected on every route in both precisions",
           "[F13][medoid-assignment][sentinel][presence]")
 {
-  // FX-1: a band narrower than a length difference is rejected before any pair
+  // A band narrower than a length difference is rejected before any pair
   // is computed: on the fill, the lazy dist_by_ind path and the dtw_function
   // accessors. The kernels' finite max() sentinel never becomes an objective.
   const std::string no_path =

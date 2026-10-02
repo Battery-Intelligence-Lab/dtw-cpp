@@ -1,13 +1,13 @@
 /**
  * @file test_run_resolution.cpp
- * @brief Every cell of dtwc::run's method x device table (IF-2 S3), in process.
+ * @brief Every cell of dtwc::run's method x device table, in process.
  *
  * @details In-memory series, so nothing is read or written. On `cpu` every
  * method runs and `auto` is pam up to N = 5000, clara above. On `gpu` the matrix
  * methods run with the GPU filling the matrix (on Metal every distance is then
  * FP32-exact, which the CPU's are not: proof the GPU ran), `auto` is pam at any
  * N, and the methods that compute on the CPU as they go raise DeviceError; a
- * build without a GPU raises §6.1's message in every gpu cell, a GPU build
+ * build without a GPU raises the no-GPU DeviceError message in every gpu cell, a GPU build
  * without a device the backend's. `hpc` raises DeviceError for every method.
  * The GPU rules that need no series are raised before one is read: the input
  * named does not exist. A CUDA build runs the CUDA branch blind here (V-row).
@@ -141,7 +141,7 @@ TEST_CASE("run on cpu: every method runs; auto is pam up to 5000 series, clara a
 TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "[run][device][cpu][metric]")
 {
   // dtwc_cl refused any metric but l1 on cpu (validate_metric_for_device); the
-  // Problem's fill now takes it (IF-2 S2). Oracle: the checked free function.
+  // Problem's fill now takes it. Oracle: the checked free function.
   auto config = config_for(Method::PAM, Device::CPU);
   config.metric = dtwc::core::MetricType::SquaredL2;
   const auto data = levels();
@@ -201,7 +201,7 @@ TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes method
           == Method::PAM);
   }
 #else
-  // No GPU backend: every gpu cell is §6.1's refusal, before any method rule.
+  // No GPU backend: every gpu cell is the no-GPU refusal, before any method rule.
   for (const auto method : kAll) {
     CAPTURE(name(method));
     CHECK(device_error([&] { (void)dtwc::run(config_for(method, Device::GPU), levels()); })

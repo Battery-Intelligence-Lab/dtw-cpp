@@ -315,7 +315,7 @@ TEST_CASE("Problem: DDTW MV different shape > 0", "[mv][ddtw][problem]")
 }
 
 // =========================================================================
-//  Phase 1 unified-kernel regressions: banded MV is now a first-class path.
+//  Unified-kernel regressions: banded MV is now a first-class path.
 //  Previously adtwBanded_mv / wdtwBanded_mv silently fell back to the
 //  unbanded MV variant (documented TODO). With the unified kernel, band
 //  restrictions are honoured and must produce different results from the
@@ -447,7 +447,7 @@ TEST_CASE("Problem::dtw_function_f32 honours MissingStrategy::ZeroCost", "[f32][
 }
 
 // =========================================================================
-//  A2 regression: MV + DTWVariant::SoftDTW must not silently flatten channels.
+//  Regression: MV + DTWVariant::SoftDTW must not silently flatten channels.
 //
 //  make_soft_dtw() has no ndim branch: it passed the *flat* buffer length
 //  (ndim * steps) to the full-matrix kernel with a univariate L1 cost, so an

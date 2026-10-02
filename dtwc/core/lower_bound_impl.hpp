@@ -34,9 +34,9 @@ namespace dtwc::core {
  *
  *          A negative band requests the full-DTW envelope: full DTW may align
  *          any two indices, so every position holds the global min and max,
- *          the only admissible Keogh envelope for it (FX-13). The input and two
+ *          the only admissible Keogh envelope for it. The input and two
  *          output ranges must not overlap; this unchecked pointer routine does
- *          not detect destructive aliasing (F46).
+ *          not detect destructive aliasing.
  *
  * @tparam T Numeric data type (float, double).
  * @param series Input time series pointer.
@@ -127,7 +127,7 @@ void compute_envelopes(const T *series, std::size_t n, int band,
  * @param lower_out Output lower envelope vector (resized to match series).
  *
  * @warning series, upper_out, and lower_out must be three distinct vectors;
- *          aliasing is not checked (F46).
+ *          aliasing is not checked.
  */
 template <typename T>
 void compute_envelopes(const std::vector<T> &series, int band,
@@ -150,11 +150,12 @@ void compute_envelopes(const std::vector<T> &series, int band,
  *          requires a global envelope. Inputs must be finite, lower[i] <=
  *          upper[i], and all three arrays must contain at least n elements.
  *          This unchecked kernel cannot validate shape, radius, or source
- *          provenance (F46). The result has the same units as an L1 DTW sum.
- *          For unequal lengths, D2 separately derives the admissibility of
- *          including the first min(query length, candidate length) rows when
- *          the fixed window is feasible and covered; that prefix result is a
- *          repository theorem, not part of the source paper's equal-length
+ *          provenance. The result has the same units as an L1 DTW sum.
+ *          For unequal lengths, this repository separately derives the
+ *          admissibility of including the first min(query length, candidate
+ *          length) rows when the fixed window is feasible and covered
+ *          (tests/unit/core/test_lb_keogh_derivation.cpp); that prefix result is
+ *          a repository theorem, not part of the source paper's equal-length
  *          proposition.
  *
  *          If query[i] lies within [lower[i], upper[i]], it contributes 0 to the
@@ -203,7 +204,7 @@ T lb_keogh(const T *query, std::size_t n,
  * @return Lower bound value.
  *
  * @warning The current overload does not validate either envelope length. Both
- *          vectors must contain at least query.size() elements (F46).
+ *          vectors must contain at least query.size() elements.
  */
 template <typename T>
 T lb_keogh(const std::vector<T> &query,
@@ -223,7 +224,7 @@ struct Envelope {
 };
 
 /// True when EVERY envelope array can be indexed over [0, n). LB_Keogh admits a
-/// shorter prefix (D2), so it needs coverage, not equality.
+/// shorter prefix, so it needs coverage, not equality.
 inline bool envelope_covers(const Envelope &env, std::size_t n) noexcept
 {
   return env.upper.size() >= n && env.lower.size() >= n;
@@ -249,7 +250,7 @@ inline Envelope compute_envelope(const std::vector<double> &series, int band)
 
 /// LB_Keogh from span + precomputed Envelope.
 ///
-/// Includes the first min(query.size(), env.upper.size()) rows: by D2's
+/// Includes the first min(query.size(), env.upper.size()) rows: by the
 /// unequal-length prefix theorem the dropped rows contribute only nonnegative
 /// terms, so the prefix bound stays admissible. A ragged envelope (a `lower`
 /// shorter than that prefix) would be read out of bounds, so 0 -- itself a

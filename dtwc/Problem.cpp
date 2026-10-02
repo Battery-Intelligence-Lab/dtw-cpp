@@ -140,7 +140,7 @@ constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
   return gpu_backend == "Metal" && precision == GpuPrecision::Auto ? GpuPrecision::FP32 : precision;
 }
 
-/// A GPU request its backend cannot honour: every FX-1 rule words it so.
+/// A GPU request its backend cannot honour: a DeviceError, never a CPU fallback.
 [[noreturn]] void reject_gpu_request(std::string_view where, const std::string &request, const std::string &fix)
 {
   throw DeviceError(std::string(where) + ": " + std::string(gpu_backend) + " " + request
@@ -621,9 +621,9 @@ void Problem::validate_fill_request(std::string_view where) const
 
   // A band narrower than a pair's length difference leaves that pair no warping
   // path: the banded kernels return the finite max() sentinel, which passes every
-  // isfinite() guard, so clustering would silently sum 1.8e308 (design §9,
-  // D-12). The widest gap is shortest vs longest. Soft-DTW, MSM and TWE ignore
-  // the band. Lengths are timesteps, as the multivariate kernels count them.
+  // isfinite() guard, so clustering would silently sum 1.8e308. The widest gap is
+  // shortest vs longest. Soft-DTW, MSM and TWE ignore the band. Lengths are
+  // timesteps, as the multivariate kernels count them.
   const auto variant = distance_.variant.variant;
   const int band = distance_.band;
   if (band >= 0 && data_.size() > 1 && variant != core::DTWVariant::SoftDTW
@@ -650,7 +650,7 @@ void Problem::validate_fill_request(std::string_view where) const
     }
   }
 
-  // FX-15: the kernels take NaN and ±inf as numbers. ±inf gives inf, or
+  // The kernels take NaN and ±inf as numbers. ±inf gives inf, or
   // inf − inf = NaN, under any strategy; NaN is a missing value only to a
   // missing-data strategy, and otherwise poisons the recurrence (NaN also marks
   // an uncomputed matrix entry). One check through the raw entry points' own
@@ -805,7 +805,7 @@ void Problem::fill_distance_matrix()
   if (verbose_)
     std::cout << "Distance matrix is being filled!" << '\n';
 
-  // The serial missing-data pre-scan is part of validate_fill_request (FX-15),
+  // The serial missing-data pre-scan is part of validate_fill_request,
   // above: it runs before any pair, here and on every other entry point.
 
   if (device_ == Device::CPU) {

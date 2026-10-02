@@ -292,7 +292,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
     converged = true;
     sweeps = 1;
   } else {
-    // C1: `base_removal_gain` and `tolerance` depend only on (nearest,
+    // `base_removal_gain` and `tolerance` depend only on (nearest,
     // nearest_distance, second_distance), so they change exactly when a swap is
     // accepted — not once per candidate. Hoisting them out of the candidate loop
     // removes one heap allocation and one O(m) pass per candidate (N of each per

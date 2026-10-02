@@ -313,7 +313,7 @@ TEST_CASE("Creating a cache over a file-size quota is IOError naming the path",
           "[DistanceMatrix][mmap][error][gt4b]")
 {
   // llfio's own error is no dtwc::Error: Python saw RuntimeError and MATLAB
-  // dtwc:runtime (contract §5: IOError).
+  // dtwc:runtime; the contract is IOError.
   const ScratchDirectory tmp_dir{ "mmap_quota" };
   const fs::path tmp = tmp_dir.path / "quota.dtwm";
   const FileSizeLimit limit(64 * 1024);

@@ -354,8 +354,8 @@ TEST_CASE("Problem ZeroCost ndim=1 still works correctly", "[mv][missing][proble
 }
 
 // =========================================================================
-//  Phase 2 regression: dtwMissing_banded_mv is now a first-class banded
-//  path (previously fell back to unbanded MV per the TODO on line 324).
+//  Regression: dtwMissing_banded_mv is now a first-class banded
+//  path (it used to fall back to unbanded MV).
 //  Tight band must produce a higher distance than unbanded for a shifted-peak
 //  pattern — proves the band is actually enforced.
 // =========================================================================
@@ -444,7 +444,7 @@ TEST_CASE("MV Missing explicit L2 is NaN-aware Euclidean in f64 and f32",
 }
 
 // =========================================================================
-//  A1 regression: MV + MissingStrategy::Interpolate must not silently
+//  Regression: MV + MissingStrategy::Interpolate must not silently
 //  flatten channels.
 //
 //  interpolate_linear_into() is univariate: on an interleaved ndim=2 buffer it

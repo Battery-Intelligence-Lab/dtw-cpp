@@ -272,7 +272,7 @@ TEST_CASE("Float32 DTW via Problem", "[Problem][float32]")
 TEST_CASE("Data rejects a precision-mismatched accessor and ndim == 0",
           "[Data][precision][validation]")
 {
-  // Audit 2026-09-02 A12: size() branches on precision but series() and
+  // size() branches on precision but series() and
   // series_f32() did not, so series() on Float32 data indexed the empty
   // p_vec (UB), and ndim == 0 was never rejected although
   // series_flat_size(i) % ndim divides by it.

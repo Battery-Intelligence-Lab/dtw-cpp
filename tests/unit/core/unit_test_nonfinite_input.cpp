@@ -1,6 +1,6 @@
 /**
  * @file unit_test_nonfinite_input.cpp
- * @brief FX-15: the checked distance boundary rejects NaN and ±inf once, naming
+ * @brief The checked distance boundary rejects NaN and ±inf once, naming
  *        the series and the position, and leaves every finite answer bit-identical.
  *
  * @details A property test over random finite pairs with one NaN, +inf or -inf
@@ -15,8 +15,8 @@
  * per-pair wrapper (warping*.hpp, msm.hpp, twe.hpp, soft_dtw.hpp) called
  * directly — the boundary check must not move a single bit of a result.
  *
- * Before FX-15 these entry points handed non-finite input straight to the
- * kernels and returned NaN, the unreachable max() or an ordinary-looking number.
+ * These entry points used to hand non-finite input straight to the
+ * kernels and return NaN, the unreachable max() or an ordinary-looking number.
  */
 
 #include <base/error.hpp>

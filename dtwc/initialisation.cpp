@@ -28,7 +28,7 @@
 #include "base/error.hpp"
 #include "core/portable_random.hpp"
 #include "core/distance_sampling_weights.hpp"
-#include "base/random_engine.hpp"   // for randGenerator (X-12)
+#include "base/random_engine.hpp"   // for randGenerator
 #include "base/settings.hpp"
 #include "base/parallelisation.hpp" // for run
 #include "Problem.hpp"

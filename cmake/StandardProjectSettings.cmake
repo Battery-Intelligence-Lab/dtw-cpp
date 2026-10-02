@@ -42,12 +42,12 @@ else()
 endif()
 
 
-# Selected floating-point relaxations for optimised builds (X-15).
+# Selected floating-point relaxations for optimised builds.
 #
 # These are computed here but NOT applied here. `add_compile_options()` is
 # directory-scope and is inherited by every subdirectory added afterwards —
-# including the ones CPM creates for fetched dependencies. That is ledger row
-# S-03, and it was real: before this change 146 dependency translation units
+# including the ones CPM creates for fetched dependencies. That leak was real:
+# before the flags moved, 146 dependency translation units
 # were compiled with -fassociative-math, 31 of them HiGHS, whose simplex and
 # interior-point code is exactly where reassociating a floating-point sum can
 # change a pivot or a tolerance comparison. Catch2 was affected too, so the
@@ -59,8 +59,8 @@ endif()
 # cannot pick these up even by accident.
 #
 # DTWC_FP_MODEL selects the policy. It is a CACHE variable so that it appears in
-# CMakeCache.txt and is harvested into machine records by scripts/machine_facts.py
-# (X-26) — a plain set() would be invisible to them.
+# CMakeCache.txt and is harvested into machine records by scripts/machine_facts.py,
+# which a plain set() would be invisible to.
 set(DTWC_FP_MODEL "fast" CACHE STRING
     "Floating-point policy for optimised builds: 'fast' (selected relaxations) or 'strict' (none)")
 set_property(CACHE DTWC_FP_MODEL PROPERTY STRINGS "fast" "strict")
@@ -95,7 +95,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
     # See missing_utils.hpp for NaN handling design notes.
     # -fno-rounding-math: assume default round-to-nearest (code never calls fesetround).
     # -fno-signaling-nans: treat SNaNs as quiet NaNs (only quiet NaN is used in this project).
-    #   GCC only: Clang does not implement it and warns once per translation unit (GT-7).
+    #   GCC only: Clang does not implement it and warns once per translation unit.
     list(APPEND DTWC_FP_FLAGS
       -fno-math-errno -fno-trapping-math -freciprocal-math -fassociative-math
       -fno-signed-zeros -fno-rounding-math)

@@ -20,7 +20,7 @@ function(dtwc_setup_dependencies)
     CPMAddPackage(
       NAME Catch2
       URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.13.0.tar.gz"
-      # SHA256 pinned (Task 0.12 supply-chain). Computed from the tarball CPM
+      # SHA256 pinned. Computed from the tarball CPM
       # downloaded, cached at build/_deps/catch2-subbuild/.../v3.13.0.tar.gz,
       # on 2026-07-07. Immutable release tag -> GitHub serves identical bytes.
       URL_HASH SHA256=650795f6501af514f806e78c554729847b98db6935e69076f36bb03ed2e985ef
@@ -35,9 +35,9 @@ function(dtwc_setup_dependencies)
   # force HiGHS shared on Windows and pull cudart/cublas/cusparse.
   set(CUPDLP_GPU OFF CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
   # HiGHS defaults to a shared libhighs on Linux and macOS. The CLI archive ships
-  # it under lib/ (X-29); a wheel cannot: wheel.exclude drops lib/ and the
+  # it under lib/; a wheel cannot: wheel.exclude drops lib/ and the
   # extension records no rpath, so delocate and auditwheel stop at the missing
-  # library (FX-16). Link it into the extension instead. A plain variable of this
+  # library. Link it into the extension instead. A plain variable of this
   # function: HiGHS's option() yields to it (CMP0077) and it goes no further.
   if(DTWC_BUILD_PYTHON)
     set(BUILD_SHARED_LIBS OFF)
@@ -48,7 +48,7 @@ function(dtwc_setup_dependencies)
   CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
-    # SHA256 pinned (Task 0.12). Computed 2026-07-08 from the GitHub release
+    # SHA256 pinned. Computed 2026-07-08 from the GitHub release
     # tarball for the immutable tag v1.15.1 (`curl -sL … | sha256sum`).
     URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
     SYSTEM
@@ -82,7 +82,7 @@ function(dtwc_setup_dependencies)
   CPMAddPackage(
     NAME CLI11
     URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.6.2.tar.gz"
-    # SHA256 pinned (Task 0.12). Computed 2026-07-07 from cached tarball
+    # SHA256 pinned. Computed 2026-07-07 from cached tarball
     # build/_deps/cli11-subbuild/.../v2.6.2.tar.gz. Immutable release tag.
     URL_HASH SHA256=c6ea6b2e5608b3ea8617999bd5f47420c71b2ebdb8dc4767c1034d1da5785711
     DOWNLOAD_ONLY YES
@@ -121,7 +121,7 @@ function(dtwc_setup_dependencies)
   # find_package(Python) and nanobind discovery are handled in python/CMakeLists.txt
   # to ensure scikit-build-core has configured paths first.
 
-  # Eigen was removed in X-27. It was the project's only copyleft dependency
+  # Eigen was removed. It was the project's only copyleft dependency
   # (MPL-2.0) and the only MPL obligation in the Python wheel, and it was carried
   # for exactly two uses: ScratchMatrix's base class and a to_full_matrix return
   # type that every caller immediately copied into a std::vector. Both are now
@@ -129,7 +129,7 @@ function(dtwc_setup_dependencies)
   # claimed "zero-copy Map" and dense distance-matrix internals, and there was no
   # Eigen::Map anywhere and the matrix was already std::vector<double>.
 
-  # PMU counters (X-24, D-17). Every route by which this could fail to deliver
+  # PMU counters. Every route by which this could fail to deliver
   # counters is a FATAL_ERROR, because Google Benchmark's own runtime guard cannot
   # be relied on: the BM_CHECK at v1.9.5 benchmark_runner.cc:323 is inverted (it
   # aborts when the counters *were* set up and stays silent when they were not),

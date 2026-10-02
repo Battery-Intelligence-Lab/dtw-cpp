@@ -91,7 +91,7 @@ kernel void dtw_wavefront(
     uint pid   [[threadgroup_position_in_grid]],
     uint ntids [[threads_per_threadgroup]])
 {
-  // 64-bit num_pairs/index math: int32 overflowed N*(N-1) at N >= 46341 (Task 0.2).
+  // 64-bit num_pairs/index math: int32 overflowed N*(N-1) at N >= 46341.
   const long num_pairs = (long)N_series * (N_series - 1) / 2;
   const long work_idx  = (long)pid + pair_offset;
   if (work_idx >= num_pairs) return;
@@ -207,7 +207,7 @@ kernel void dtw_wavefront_global(
     uint pid   [[threadgroup_position_in_grid]],
     uint ntids [[threads_per_threadgroup]])
 {
-  // 64-bit num_pairs/index math (Task 0.2).
+  // 64-bit num_pairs/index math.
   const long num_pairs = (long)N_series * (N_series - 1) / 2;
   const long work_idx  = (long)pid + pair_offset;
   if (work_idx >= num_pairs) return;
@@ -327,7 +327,7 @@ kernel void dtw_banded_row(
     constant int&         stride      [[buffer(9)]],
     uint gid [[thread_position_in_grid]])
 {
-  // 64-bit num_pairs/index math (Task 0.2).
+  // 64-bit num_pairs/index math.
   const long num_pairs = (long)N_series * (N_series - 1) / 2;
   const long real_pid = (long)gid + pair_offset;
   if (real_pid >= num_pairs) return;
@@ -550,7 +550,7 @@ static void dtw_regtile_kernel_body(
     uint simd_id,
     uint tg_idx)
 {
-  // 64-bit num_pairs/index math (Task 0.2).
+  // 64-bit num_pairs/index math.
   const long num_pairs = (long)N_series * (N_series - 1) / 2;
   const long work_idx  = (long)tg_idx * PAIRS_PER_TG + (long)simd_id;
   const long real_pid  = work_idx + pair_offset;
@@ -819,7 +819,7 @@ MetalDistMatResult compute_distance_matrix_metal(
 {
   validate_metal_precision(opts.precision);
   auto &ctx = context();
-  // A16 parity with CUDA: an unavailable backend is a typed DeviceError, for
+  // As on CUDA: an unavailable backend is a typed DeviceError, for
   // every N and before the result is allocated, never a zero-filled result
   // that reads as a valid answer.
   if (!ctx.initialized)

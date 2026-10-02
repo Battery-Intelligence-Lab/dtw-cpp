@@ -117,7 +117,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     model.optimize();
 
-    // Task 0.5 / audit finding #7: the old code read GRB_DoubleAttr_X with no
+    // The old code read GRB_DoubleAttr_X with no
     // status check. On a non-optimal solve (infeasible / unbounded / limit hit)
     // Gurobi has no solution, so .get(X) throws GRBException, which the catch
     // below swallowed — leaving empty centroids_ind and no error. Check the

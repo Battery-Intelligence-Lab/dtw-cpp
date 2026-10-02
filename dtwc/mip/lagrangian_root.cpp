@@ -1,6 +1,6 @@
 /**
  * @file lagrangian_root.cpp
- * @brief Implementation of the Lagrangian root bound (PLAN.md Phase 4, Task 4.1).
+ * @brief Implementation of the Lagrangian root bound.
  *
  * @details See lagrangian_root.hpp for the derivation. The hot loop streams the
  * dense distance matrix D once per subgradient iteration:
@@ -306,7 +306,7 @@ LagrangianResult finalize(const double *D, index_t N, index_t k, double best_lb,
     }
   }
   const double fix_ub = std::min(best_primal, seed_ub);
-  // Beasley reduced-cost fixing on the dual state at best_lb (Task 4.2). Uses the
+  // Beasley reduced-cost fixing on the dual state at best_lb. Uses the
   // RAW best_lb (not the display-clamped value below): with best_lb = -inf the
   // module correctly fixes nothing. rho_at_best/k determine S_k internally.
   FixingResult fix = reduced_cost_fixing(rho_at_best, k, best_lb, fix_ub);
@@ -353,14 +353,14 @@ LagrangianResult lagrangian_root(const double *D, index_t N, index_t k, double i
   std::vector<index_t> best_medoids, best_labels;
 
   // Snapshot of ρ at the μ that produced best_lb — the state reduced-cost fixing
-  // consumes (LB + (ρ_i − ρ_(k)) > UB ⇒ facility i cannot be open; Task 4.2).
+  // consumes (LB + (ρ_i − ρ_(k)) > UB ⇒ facility i cannot be open).
   std::vector<double> rho_at_best(Nz, 0.0);
 
   double lambda = params.lambda0;
   int stall = 0;
   int iter = 0;
 
-  // Trigger the shared single-thread loudness check once (Task 3.6) and get a
+  // Trigger the shared single-thread loudness check once and get a
   // scheduling hint; the reductions below are correct serial or parallel.
   const index_t chunk = omp_chunk_size(N, 8);
   (void)chunk;
@@ -471,7 +471,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, d
   std::vector<index_t> best_medoids, best_labels;
   std::vector<double> rho_at_best(Nz, 0.0);
 
-  (void)omp_chunk_size(N, 8); // Task 3.6 loudness.
+  (void)omp_chunk_size(N, 8); // the single-thread loudness check
 
   // Master LP: cols μ_0..μ_{N-1} ∈ [0,maxD] and θ (col N) ∈ [-inf, UB]; maximize θ.
   HighsModel model;
@@ -612,7 +612,7 @@ LagrangianResult lagrangian_root_exact(const double *D, index_t N, index_t k,
     rho[static_cast<std::size_t>(i)] = s;
   }
 
-  // 3. Reduced-cost fixing (Task 4.2): the optimum ⊆ core, and fixed_open ⊆ every
+  // 3. Reduced-cost fixing: the optimum ⊆ core, and fixed_open ⊆ every
   //    optimum. Pre-open the proven-open facilities; branch only over the rest.
   //    Use the dual value CONSISTENT with this ρ*, i.e. L(μ*) = Σμ* + Σ_{k
   //    smallest ρ*}, NOT root.lower_bound: the Kelley stability centre μ* can

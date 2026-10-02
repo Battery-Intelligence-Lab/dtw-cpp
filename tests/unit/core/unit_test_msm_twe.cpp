@@ -1,6 +1,6 @@
 /**
  * @file unit_test_msm_twe.cpp
- * @brief MSM + TWE elastic distances (Task 5.5): aeon oracle, metric props, bench.
+ * @brief MSM + TWE elastic distances: aeon oracle, metric props, bench.
  *
  * @details MSM (Stefan et al. 2013) and TWE (Marteau 2009) are metric elastic
  *          distances added as DTW variants — the 2024 KAIS clustering

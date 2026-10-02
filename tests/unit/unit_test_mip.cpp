@@ -87,11 +87,11 @@ static void require_valid_exact_clustering(
   std::sort(sorted_medoids.begin(), sorted_medoids.end());
   REQUIRE(std::adjacent_find(sorted_medoids.begin(), sorted_medoids.end())
           == sorted_medoids.end());
-  for (int medoid : problem.centroids_ind)
+  for (dtwc::index_t medoid : problem.centroids_ind)
     REQUIRE((medoid >= 0 && static_cast<std::size_t>(medoid) < problem.size()));
 
   REQUIRE(problem.clusters_ind.size() == problem.size());
-  for (int label : problem.clusters_ind)
+  for (dtwc::index_t label : problem.clusters_ind)
     REQUIRE((label >= 0 && label < n_clusters));
   for (std::size_t cluster = 0; cluster < problem.centroids_ind.size(); ++cluster) {
     const auto medoid = static_cast<std::size_t>(problem.centroids_ind[cluster]);
@@ -334,7 +334,7 @@ TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
 }
 
 // ---------------------------------------------------------------------------
-// Task 0.5 regression: MIP status handling — assert() → real error path.
+// Regression: MIP status handling — assert() → real error path.
 //
 // mip_Highs.cpp guarded the HiGHS model status with
 //     assert(model_status == HighsModelStatus::kOptimal);

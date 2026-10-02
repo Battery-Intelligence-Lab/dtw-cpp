@@ -15,7 +15,7 @@ macro(dtwc_supports_sanitizers)
   endif()
 endmacro()
 
-# B-14 (adopted 2026-09-07): the maintainer options carry the same `DTWC_` prefix
+# The maintainer options carry the same `DTWC_` prefix
 # as every other cache variable in the project. The lowercase `dtwc_` spellings
 # are still accepted for one release.
 #
@@ -87,7 +87,7 @@ macro(dtwc_local_options)
   add_library(dtwc_options INTERFACE)
   target_compile_features(dtwc_options INTERFACE cxx_std_20)
 
-  # Floating-point policy (X-15, closes S-03). DTWC_FP_FLAGS is computed in
+  # Floating-point policy. DTWC_FP_FLAGS is computed in
   # cmake/StandardProjectSettings.cmake from DTWC_FP_MODEL. Applying it here
   # rather than with a directory-scope add_compile_options() is the whole point:
   # this target is reached only by things that link it, so the flags cannot leak

@@ -1,6 +1,6 @@
 /**
  * @file unit_test_deterministic_series.cpp
- * @brief F15 byte and reachability contract for shared deterministic support.
+ * @brief Byte and reachability contract for shared deterministic support.
  */
 
 #include <dtwc.hpp>

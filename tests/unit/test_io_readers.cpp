@@ -538,7 +538,7 @@ TEST_CASE("Parquet folder: the text reader's file order, unique names, UTF-8 ste
 TEST_CASE("Parquet: a null in a scalar column is rejected, not read as garbage",
           "[io][parquet][security]")
 {
-  // Audit 2026-09-02 A3: neither Parquet reader looked at nulls. A null slot in
+  // Neither Parquet reader looked at nulls. A null slot in
   // a scalar column carries whatever the values buffer happens to hold, and
   // that value went straight into the DTW distances. arrow_c_data.cpp already
   // rejects nulls; the Parquet readers must match. PRE-FIX both calls below

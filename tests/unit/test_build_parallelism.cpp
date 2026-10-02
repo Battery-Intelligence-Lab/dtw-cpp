@@ -1,6 +1,6 @@
 /**
  * @file test_build_parallelism.cpp
- * @brief Build-time parallelism guarantee (Task 3.1).
+ * @brief Build-time parallelism guarantee.
  *
  * @details Pins the no-silent-serial build contract enforced by the OpenMP gate
  *          in dtwc/CMakeLists.txt. A successfully-built dtwc++ must be in EXACTLY
@@ -38,7 +38,7 @@
 #  error "Neither DTWC_HAS_OPENMP nor DTWC_SEQUENTIAL_BUILD is defined — this is a silent serial build, forbidden by the no-silent-fallback contract. Missing OpenMP must FATAL at configure unless -DDTWC_ALLOW_SEQUENTIAL=ON is given (which defines DTWC_SEQUENTIAL_BUILD)."
 #endif
 
-// Hole-5 propagation guard: dtwc++ carries the OpenMP flag as a PUBLIC usage
+// Propagation guard: dtwc++ carries the OpenMP flag as a PUBLIC usage
 // requirement, so a consumer that links dtwc++ (this TU) must be compiled with
 // the OpenMP flag whenever the library reports OpenMP.
 #if defined(DTWC_HAS_OPENMP) && !defined(_OPENMP)

@@ -1,6 +1,6 @@
 /**
  * @file unit_test_problem_semantic_transactions.cpp
- * @brief Phase 8 M48: semantic setters must provide a strong exception guarantee.
+ * @brief Semantic setters must provide a strong exception guarantee.
  *
  * Registered before production changes. A rejected variant/missing
  * cross-product must preserve the prior selectors, both active-precision

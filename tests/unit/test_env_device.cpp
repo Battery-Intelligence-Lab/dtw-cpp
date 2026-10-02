@@ -2,7 +2,7 @@
  * @file test_env_device.cpp
  * @brief The process-wide device: dtwc::device(name) / dtwc::device().
  *
- * @details Drives the live entry points. The messages are the §6.1 contract,
+ * @details Drives the live entry points. The messages are the frozen contract,
  * declared before any check:
  *   - an unknown name lists the valid names,
  *   - `gpu` on a build with no GPU backend names the CMake flag,

@@ -8,7 +8,7 @@
 
 #pragma once
 
-// NaN marks missing values and pruned or uncomputed distances (design §9).
+// NaN marks missing values and pruned or uncomputed distances.
 // Under -ffinite-math-only (implied by -ffast-math) the compiler may assume no
 // NaN exists and fold every such test away, so answers would be silently wrong.
 #if defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__
@@ -16,7 +16,7 @@
 #endif
 
 #include "base/settings.hpp"
-#include "base/random_engine.hpp" //!< dtwc::randGenerator, split out of settings.hpp (X-12)
+#include "base/random_engine.hpp" //!< dtwc::randGenerator, split out of settings.hpp
 #include "api.hpp"
 #include "fileOperations.hpp"
 #include "Problem.hpp"
@@ -40,7 +40,7 @@
 #include "algorithms/barycenter.hpp"
 #include "algorithms/hierarchical.hpp"
 
-// Phase 1: Core types (binding-friendly, Armadillo-independent headers)
+// Core types (binding-friendly, Armadillo-independent headers)
 #include "core/clustering_result.hpp"
 #include "core/distance_matrix.hpp"
 #include "core/matrix_io.hpp"

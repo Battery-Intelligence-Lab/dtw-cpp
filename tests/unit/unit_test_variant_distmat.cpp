@@ -398,7 +398,7 @@ TEST_CASE("Problem non-L1 mmap identity is filled by the CPU in that metric",
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
 #else
-  // IF-2 S2: binding a squared-L2 cache sets the Problem's metric, which the
+  // Binding a squared-L2 cache sets the Problem's metric, which the
   // CPU kernels take, so the fill computes in it (it was refused as
   // external-fill-only while the CPU computed L1 only).
   const ScratchDirectory cache_dir{ "mmap_external_metric" };

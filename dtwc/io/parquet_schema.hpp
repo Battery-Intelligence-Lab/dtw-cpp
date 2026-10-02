@@ -86,7 +86,7 @@ inline ParquetSeriesColumn find_parquet_series_column(
 
 /// Reject an Arrow array that carries nulls.
 ///
-/// @details Audit 2026-09-02 A3: neither Parquet reader inspected nulls at all
+/// @details Neither Parquet reader used to inspect nulls at all
 /// (`null_count`/`IsNull` appeared zero times in both). A null list cell
 /// produced a wrong series and a null element produced whatever bytes the
 /// values buffer happened to hold, straight into the DTW distances.
@@ -120,7 +120,7 @@ inline void require_list_range(std::int64_t start, std::int64_t end,
 ///
 /// @details One type dispatch per array, never per element. This single
 /// definition replaces the six near-identical extractor bodies that each
-/// re-implemented the Float32/Float64 branch (audit 2026-09-02, section C).
+/// re-implemented the Float32/Float64 branch.
 /// The caller has already validated the range and the null count.
 template <typename T>
 inline void copy_arrow_numeric(const arrow::Array &values, std::int64_t start,

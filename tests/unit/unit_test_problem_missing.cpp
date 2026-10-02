@@ -63,7 +63,7 @@ TEST_CASE("Problem: MissingStrategy::Error throws on the caller thread",
       REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
         ContainsSubstring("series 'b' (index 1)[1] is NaN"));
       CHECK_FALSE(prob.is_distance_matrix_filled());
-      // Rejected before the matrix is allocated (FX-15): no pair was computed.
+      // Rejected before the matrix is allocated: no pair was computed.
       CHECK(prob.distance_matrix().count_computed() == 0);
     }
   }

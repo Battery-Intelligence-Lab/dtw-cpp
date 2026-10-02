@@ -1,6 +1,6 @@
 /**
  * @file test_fill_request.cpp
- * @brief FX-1: Problem::validate_fill_request() runs before every fill that
+ * @brief Problem::validate_fill_request() runs before every fill that
  *        computes a pair and in the dtw_function accessors, and names the axis
  *        it rejects.
  *

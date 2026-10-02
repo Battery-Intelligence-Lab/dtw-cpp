@@ -1,11 +1,11 @@
 /**
  * @file test_problem_set_device.cpp
- * @brief IF-1: Problem::set_device and the one device-name grammar
+ * @brief Problem::set_device and the one device-name grammar
  *        (detail::parse_device) that dtwc::device() and the bindings share.
  *
  * @details Every case runs in every build: GPU builds check the selected
- * backend, a build without one checks the verbatim §6.1 DeviceError. Oracle for
- * the messages: the frozen strings of docs/api-contract-2.0.md §6.1.
+ * backend, a build without one checks the verbatim no-GPU DeviceError. Oracle for
+ * the messages: the frozen strings below.
  */
 
 #include <dtwc.hpp>
@@ -33,7 +33,7 @@ constexpr bool has_strategy_surface = requires { &P::distance_strategy; } || req
 template <class P>
 constexpr bool has_device_surface = requires { &P::set_device; &P::set_gpu_precision; &P::gpu_precision; };
 
-// docs/api-contract-2.0.md §6.1, verbatim.
+// The frozen DeviceError strings, verbatim.
 const std::string kMsgUnknownTpu =
   "[dtwc] unknown device 'tpu'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N).";
 [[maybe_unused]] const std::string kMsgGpuNotBuilt =
