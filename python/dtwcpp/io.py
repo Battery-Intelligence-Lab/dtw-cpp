@@ -103,22 +103,45 @@ def _data_lines(path, skip_rows):
         yield row, line
 
 
-def _fields(line, delimiter):
+def _fields(line, delimiter, maxsplit=-1):
     # A space delimiter splits at runs of blanks; any other at each occurrence.
-    return line.split() if delimiter == b" " else line.split(delimiter)
+    return line.split(None if delimiter == b" " else delimiter, maxsplit)
+
+
+def _row_pattern(delimiter):
+    """A row of numeric fields as one expression, so a row is checked in one
+    call: the blanks around a field are ASCII blanks other than the delimiter."""
+    number = rb"(?:[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?|[nN][aA][nN])"
+    if delimiter == b" ":
+        return re.compile(rb"[ \t\n\v\f\r]*" + number + rb"(?:[ \t\n\v\f\r]+" + number
+                          + rb")*[ \t\n\v\f\r]*")
+    blank = b"[" + b"".join(re.escape(bytes([c])) for c in _SPACE if c != delimiter[0]) + b"]*"
+    field = blank + number + blank
+    return re.compile(field + b"(?:" + re.escape(delimiter) + field + b")*")
 
 
 def _read_series_file(path, skip_rows, skip_cols, delimiter):
     """One series per row, named by its 1-based row count (load_batch_file)."""
     from dtwcpp import InvalidInput
+    row_pattern = _row_pattern(delimiter)
     series = []
     for row, line in _data_lines(path, skip_rows):
-        fields = _fields(line, delimiter)
-        if skip_cols > len(fields):
+        parts = _fields(line, delimiter, skip_cols) if skip_cols else [line]
+        if len(parts) < skip_cols:
             raise InvalidInput(f"Error in delimited text file: '{path}' row {row} has only "
-                               f"{len(fields)} fields, fewer than start_col={skip_cols}.")
-        series.append([_number(fields[i], path, row, i + 1)
-                       for i in range(skip_cols, len(fields))])
+                               f"{len(parts)} fields, fewer than start_col={skip_cols}.")
+        values = []
+        if len(parts) > skip_cols:  # the fields after the skipped ones
+            tail = parts[-1]
+            # The common row in one pass; a row with an error, a zero (which may
+            # be an underflow) or an overflow is read field by field.
+            if row_pattern.fullmatch(tail):
+                values = list(map(float, _fields(tail, delimiter)))
+            if not values or 0.0 in values or math.inf in values or -math.inf in values:
+                fields = _fields(line, delimiter)
+                values = [_number(fields[i], path, row, i + 1)
+                          for i in range(skip_cols, len(fields))]
+        series.append(values)
     return series, [str(i + 1) for i in range(len(series))]
 
 
