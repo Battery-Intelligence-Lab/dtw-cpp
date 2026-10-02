@@ -43,3 +43,5 @@ Serial ctest (5e710ba4; the later commits touch no C++ that `build/` compiles): 
 Python gate (fresh venv, `uv pip install --reinstall "W9b[test,dev,io]"`): 933 passed / 19 skipped / 0 failed (base
 1,094 / 19 / 0: 199 ids removed, 38 added, by name in the commit messages); its `.pyd` is 6,063,104 bytes, as the mapped
 build's. `tests/conformance/test_conformance.py` 2 passed; examples/python 01-09 exit 0.
+At d6129e1f (Python-only changes after that gate: the reader fallback and the review fixes, the changed `.py` files
+copied into the gate venv, the `.pyd` unchanged): pytest 938 passed / 19 skipped / 0 failed (5 new key-kind cases).
