@@ -292,3 +292,6 @@ Append new entries at the end of their section; keep each to a few lines.
 - **`-S` without LTO cannot see what ThinLTO inlines**: moving a kernel's only call left it out of line, and on
   Win64 a by-value struct over 8 bytes arrives by pointer, so the DP loop reloaded its fields every cell (+2–7 %).
   Check the shipped binary's post-LTO assembly (`lld -lldsavetemps`) or time the real closure (W7d ab72231).
+- **A session restart kills in-flight agents silently**: after a resume the harness still said "running" for agents
+  whose transcripts had stopped 40 minutes earlier. Check transcript times and processes before waiting; resume an
+  agent with SendMessage (context intact); a dead integrator is replaced by one told the exact staged state (10-02).
