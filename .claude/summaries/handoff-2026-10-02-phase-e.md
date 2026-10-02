@@ -4,8 +4,8 @@
 
 Branch `design-2.0`, HEAD after this file's commit (on GC's PLAN mark `a018b77d`). Session 79bd8991.
 Briefs, gates and the running record: session scratchpad `…/79bd8991-b0e9-441b-bc55-95584dcfaf55/scratchpad/`
-(`brief_*.md`, `gates_*.md`, `pending_records_1001d.md`). In flight at writing: W9b (agent `a108af97413032b42`, `pb/W9b`
-at `c689a4ac` on base `558e09a6`, revising per Volkan's reader ruling below). A session end kills it; its commits stay.
+(`brief_*.md`, `gates_*.md`, `pending_records_1001d.md`). W9b finished after this file's first commit: `pb/W9b` at
+`974ca3cc` on base `558e09a6`, done and unmerged, not yet reviewed.
 
 ## Done (merge sha; one gated merge each)
 
@@ -56,9 +56,11 @@ at `c689a4ac` on base `558e09a6`, revising per Volkan's reader ruling below). A 
 
 ## Next steps (PLAN)
 
-1. E: W9b's revision (bind the C++ text reader and writer; a Ctrl-Z byte refused, not a silent stop on Windows;
-   already-read data documented) → independent review → integrate (expect conflicts with SW's comments and GC's
-   `run.cpp`, docs, CHANGELOG). If the agent died, resume it with SendMessage to `a108af97413032b42`.
+1. E: W9b (`974ca3cc`): the bound C++ reader and writers, Ctrl-Z refused (binary mode, `ctrl_z.csv`), already-read
+   data (2-D array, ragged list, DataFrame); its report: ctest 95, CLI 25 identical, pytest 939/20/0 (pandas case
+   skips without pandas), `.pyd` 6,156,288 B, `load()` as fast as base. → independent review → integrate (conflicts
+   expected with SW's comments, GC's `run.cpp`, docs, CHANGELOG; devices.md / gpu-backends.md still name the deleted
+   Python GPU refusal). Then remove `W9b-base`, `venv/W9b*` (approved).
 2. E: W9e (`brief_w9e.md`, updated for the reader ruling) and M1 (`brief_m1.md`) after W9b; W9c; L2b after W9e (core vs
    io/CLI; bindings link core + the text reader/writer; `FILE_SET HEADERS`); W9f.
 3. G: W14a — proper docs of 2.0 first (Volkan 10-02); WM on a quiet machine; W14c.
