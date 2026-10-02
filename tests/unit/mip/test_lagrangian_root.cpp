@@ -33,6 +33,7 @@
 #include <base/timing.hpp> // dtwc::Clock
 
 #include <algorithm>
+#include <cinttypes> // PRId64
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -471,7 +472,7 @@ TEST_CASE("BENCH exact LR-core vs compact MIP", "[.][lagrangian][bench]")
     const double mip_cost = ok ? cost_of(prob.centroids_ind, D, N) : std::nan("");
     const bool agree = ok && std::abs(mip_cost - ex.upper_bound) <= 1e-6 * std::max(1.0, ex.upper_bound);
 
-    std::printf("  %4d  %2d | %8.1f %6ld  %s | %8.1f | %-5s | %-.5f\n",
+    std::printf("  %4d  %2d | %8.1f %6" PRId64 "  %s | %8.1f | %-5s | %-.5f\n",
                 N, k, ex_ms, ex.nodes, ex.certified_optimal ? "yes" : "NO ", mip_ms,
                 ok ? (agree ? "yes" : "NO") : "n/a", ex.upper_bound);
   }
