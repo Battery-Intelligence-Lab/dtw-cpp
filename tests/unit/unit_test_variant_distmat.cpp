@@ -381,7 +381,7 @@ TEST_CASE("Problem invalidates or rejects post-bind distance-semantic mutations"
     prob.band = 0; // the v1 field; the next fill takes it
     REQUIRE_FALSE(prob.is_distance_matrix_filled());
     prob.fill_distance_matrix();
-    REQUIRE(!std::as_const(prob).distance_matrix().is_mapped());
+    REQUIRE(!prob.distance_matrix().is_mapped());
 
     Problem reopened{"cache_mutation"};
     reopened.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
@@ -410,7 +410,7 @@ TEST_CASE("Problem non-L1 mmap identity is filled by the CPU in that metric",
   REQUIRE(prob.metric() == core::MetricType::SquaredL2);
 
   prob.fill_distance_matrix();
-  REQUIRE(std::as_const(prob).distance_matrix().is_mapped());
+  REQUIRE(prob.distance_matrix().is_mapped());
   // The fill may run the SIMD lanes, the free function the per-pair kernel.
   REQUIRE(test_support::dtw_routes_agree<data_t>(
     prob.dist_by_ind(0, 1), distance::dtw<data_t>(x, y, -1, core::MetricType::SquaredL2),
@@ -442,7 +442,7 @@ TEST_CASE("Problem rejects CUDA Auto precision for a persistent cache",
   prob.checkpoint.directory = cache_dir.path.string();
   REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
                       Catch::Matchers::ContainsSubstring("CUDA precision Auto"));
-  CHECK(std::as_const(prob).distance_matrix().size() == 0);
+  CHECK(prob.distance_matrix().size() == 0);
 }
 #elif defined(DTWC_HAS_METAL)
 // Metal has no FP64, so its Auto is FP32: the same identity, and a cache binds.
