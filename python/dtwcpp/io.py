@@ -136,7 +136,10 @@ def _read_series_file(path, skip_rows, skip_cols, delimiter):
             # The common row in one pass; a row with an error, a zero (which may
             # be an underflow) or an overflow is read field by field.
             if row_pattern.fullmatch(tail):
-                values = list(map(float, _fields(tail, delimiter)))
+                try:  # a delimiter that a number can hold may still split it badly
+                    values = list(map(float, _fields(tail, delimiter)))
+                except ValueError:
+                    values = []
             if not values or 0.0 in values or math.inf in values or -math.inf in values:
                 fields = _fields(line, delimiter)
                 values = [_number(fields[i], path, row, i + 1)
