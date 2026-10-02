@@ -1,12 +1,9 @@
 """Adversarial semantics tests for :class:`dtwcpp.DTWClustering`."""
 
-from types import SimpleNamespace
-
 import numpy as np
 import pytest
 
 import dtwcpp
-from dtwcpp import _clustering
 from dtwcpp._dtwcpp_core import MVMode
 
 
@@ -99,37 +96,6 @@ def test_default_cpu_l1_keeps_lazy_matrix_path(monkeypatch):
     )
     np.testing.assert_array_equal(estimator.medoid_indices_, [4, 2])
     assert estimator.inertia_ == 4.0
-
-
-@pytest.mark.parametrize("backend", ["gpu"])
-def test_gpu_precompute_receives_requested_metric(monkeypatch, backend):
-    real_compute = dtwcpp.compute_distance_matrix
-    cpu_squared = real_compute(
-        SQUARED_FIXTURE.tolist(), metric="squared_euclidean",
-        device="cpu",
-    )
-    captured = {}
-
-    monkeypatch.setattr(
-        dtwcpp, "_resolve_device", lambda device: (backend, 0)
-    )
-
-    def compute_spy(series, *, band, metric, device):
-        captured.update(band=band, metric=metric, device=device)
-        return cpu_squared
-
-    monkeypatch.setattr(dtwcpp, "compute_distance_matrix", compute_spy)
-    estimator = dtwcpp.DTWClustering(
-        n_clusters=2, metric="squared_euclidean", device=backend
-    ).fit(SQUARED_FIXTURE)
-
-    assert captured == {
-        "band": -1,
-        "metric": "squared_euclidean",
-        "device": backend,
-    }
-    np.testing.assert_array_equal(estimator.medoid_indices_, [4, 1])
-    assert estimator.inertia_ == 5.0
 
 
 @pytest.mark.parametrize(
@@ -258,36 +224,19 @@ def test_training_predict_matches_configured_problem_nearest(kwargs, series):
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "backend", "message"),
+    ("kwargs", "message"),
     [
-        ({"metric": "unknown"}, None, "metric"),
-        ({"mv_mode": "sideways"}, None, "mv_mode"),
-        ({"variant": "unknown"}, None, "variant"),
-        ({"missing_strategy": "unknown"}, None, "missing_strategy"),
-        ({"variant": "msm", "metric": "squared_euclidean"}, None, "metric"),
-        (
-            {"variant": "msm", "missing_strategy": "zero_cost"},
-            None,
-            "MissingStrategy",
-        ),
-        ({"device": "gpu", "missing_strategy": "zero_cost"}, "gpu", "missing"),
-        ({"device": "gpu", "mv_mode": "independent"}, "gpu", "mv_mode"),
+        ({"metric": "unknown"}, "metric"),
+        ({"mv_mode": "sideways"}, "mv_mode"),
+        ({"variant": "unknown"}, "variant"),
+        ({"missing_strategy": "unknown"}, "missing_strategy"),
+        ({"variant": "msm", "metric": "squared_euclidean"}, "metric"),
+        ({"variant": "msm", "missing_strategy": "zero_cost"}, "MissingStrategy"),
     ],
 )
-def test_invalid_semantics_fail_before_distance_compute(
-    monkeypatch, kwargs, backend, message
-):
-    if backend is not None:
-        monkeypatch.setattr(
-            dtwcpp, "_resolve_device", lambda device: (backend, 0)
-        )
-
-    def unexpected_compute(*args, **kwargs):
-        raise AssertionError("distance computation began before validation")
-
-    monkeypatch.setattr(dtwcpp, "compute_distance_matrix", unexpected_compute)
-    monkeypatch.setattr(_clustering, "fast_pam_seeded", unexpected_compute)
-
+def test_invalid_semantics_are_refused_by_cpp(kwargs, message):
+    """C++ reads the settings (the name tables, core::validate) before the
+    series reach the Problem."""
     with pytest.raises(ValueError, match=message):
         dtwcpp.DTWClustering(n_clusters=2, **kwargs).fit(SQUARED_FIXTURE)
 
@@ -315,47 +264,3 @@ def test_fit_computes_every_metric_cpp_computes(settings, series):
         for s, label in zip(series, estimator.labels_)
     )
     assert estimator.inertia_ == pytest.approx(cost, rel=1e-12)
-
-
-def test_all_nonfinite_restart_results_raise_numeric_error(monkeypatch):
-    costs = iter([np.inf, np.nan, -np.inf])
-
-    def fake_fast_pam(*args, **kwargs):
-        return SimpleNamespace(
-            total_cost=next(costs), labels=[0] * len(SQUARED_FIXTURE),
-            medoid_indices=[0, 1], iterations=1,
-        )
-
-    monkeypatch.setattr(_clustering, "fast_pam_seeded", fake_fast_pam)
-    with pytest.raises(FloatingPointError, match="3.*non-finite"):
-        dtwcpp.DTWClustering(n_clusters=2, n_init=3).fit(SQUARED_FIXTURE)
-
-
-def test_first_finite_restart_wins_strict_tie_after_nonfinite(monkeypatch):
-    results = iter(
-        [
-            SimpleNamespace(
-                total_cost=np.nan, labels=[0] * len(SQUARED_FIXTURE),
-                medoid_indices=[0, 1], iterations=1,
-            ),
-            SimpleNamespace(
-                total_cost=5.0, labels=[1] * len(SQUARED_FIXTURE),
-                medoid_indices=[1, 2], iterations=2,
-            ),
-            SimpleNamespace(
-                total_cost=5.0, labels=[2] * len(SQUARED_FIXTURE),
-                medoid_indices=[2, 3], iterations=3,
-            ),
-        ]
-    )
-    monkeypatch.setattr(
-        _clustering, "fast_pam_seeded", lambda *args, **kwargs: next(results)
-    )
-
-    estimator = dtwcpp.DTWClustering(n_clusters=2, n_init=3).fit(
-        SQUARED_FIXTURE
-    )
-    np.testing.assert_array_equal(estimator.medoid_indices_, [1, 2])
-    np.testing.assert_array_equal(estimator.labels_, [1] * len(SQUARED_FIXTURE))
-    assert estimator.inertia_ == 5.0
-    assert estimator.n_iter_ == 2

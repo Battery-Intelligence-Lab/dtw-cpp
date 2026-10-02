@@ -198,9 +198,8 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
     return prob.distance_matrix()
 
 
-# Pure-Python sklearn-compatible layer
+# The sklearn-compatible estimator
 from dtwcpp._clustering import DTWClustering
-from dtwcpp.sklearn import DTWCKMedoids
 
 # Unified high-level interface: device() -> load() -> cluster() -> result.plot()
 from dtwcpp._api import Dataset, load, cluster, Result, plot
@@ -258,7 +257,7 @@ __all__ = [
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",
     "save_checkpoint", "load_checkpoint",
     "CheckpointOptions",
-    "DTWClustering", "DTWCKMedoids",
+    "DTWClustering",
     "save_dataset_csv", "load_dataset_csv",
     "save_dataset_hdf5", "load_dataset_hdf5",
     "save_dataset_parquet", "load_dataset_parquet",

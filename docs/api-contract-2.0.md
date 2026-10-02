@@ -192,8 +192,8 @@ invocation-local default is 42, exposed as
 `dtwc.default_random_seed()`. The C++/Python/MATLAB Tier-1 PAM route and the
 seed-aware OneBatchPAM/CLARA routes construct or receive a local engine from
 this value; `auto` inherits the resolved method. `DTWClustering` restart `i`
-uses `DEFAULT_RANDOM_SEED + i` and retains the lowest-cost result, with the
-schedule range-checked. `DTWCKMedoids(random_state=None)` means the same default.
+uses `random_state + i` (`random_state=None` is `DEFAULT_RANDOM_SEED`) and
+retains the lowest-cost result: C++ `Problem::cluster()` runs the restarts.
 CLI `--seed` defaults to 42, applies to PAM, OneBatchPAM, and CLARA, and accepts
 `[0, UINT64_MAX]`. Lloyd k-medoids uses the same invocation-local default and a
 checked `base_seed + i` schedule for its repetitions, restoring the actual
@@ -259,8 +259,8 @@ it calls `save(dir)` to emit the plottable CSVs above, which any plotting tool
 
 A live public class exists in both bindings and 2.0 **retains it** (it is the
 scikit-learn-idiomatic entry point, distinct from the functional Tier-1 `cluster()`):
-Python `dtwcpp.DTWClustering` (`python/dtwcpp/_clustering.py:39`, `BaseEstimator,
-ClusterMixin`) and MATLAB `dtwc.DTWClustering` (`bindings/matlab/+dtwc/DTWClustering.m`).
+Python `dtwcpp.DTWClustering` (`python/dtwcpp/_clustering.py`, `BaseEstimator,
+ClusterMixin, TransformerMixin`) and MATLAB `dtwc.DTWClustering` (`bindings/matlab/+dtwc/DTWClustering.m`).
 It has no C++ twin (sklearn estimator idiom is language-specific) and stays
 Python/MATLAB-only.
 
@@ -269,8 +269,8 @@ not prove execution:
 
 | Parameter | Python | MATLAB | Current status |
 |---|---|---|---|
-| `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validated through `dtwc::device` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s device |
-| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit through `Problem.set_distance` | `Metric='l1'` or `'squared_euclidean'`, consumed by fit through `Problem.set_distance` |
+| `device` / `Device` | `device=None` `[introduced-2.0]`, the fit `Problem`'s device | `Device=''` `[introduced-2.0]`, validated through `dtwc::device` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s device |
+| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, `'squared_euclidean'`, or `'precomputed'`: X is an N x N distance matrix for fit and an M x N one for `predict`/`transform`/`score` | `Metric='l1'` or `'squared_euclidean'`, consumed by fit through `Problem.set_distance` |
 
 Both estimators converge on the shared constructor set `{n_clusters, variant, band,
 max_iter, n_init, wdtw_g, adtw_penalty, missing_strategy, metric, device}`.
@@ -278,6 +278,14 @@ Both are now executed, not merely exposed: C++ reads and checks the distance
 settings (the name tables and `core::validate`) before any input, device or
 `Problem` effect, and an invalid one raises `InvalidInput` /
 `dtwc:invalidArgument`. This closes F18.
+
+Python's is the one estimator (`DTWCKMedoids` folded into it): `fit` hands C++ one
+`Problem`, configured from a `Config` as `cluster()` is, and `Problem::cluster()` runs
+`method` (default `pam`; any `cluster()` method, those that compute their own distances
+refused with `metric='precomputed'`) and its `n_init` seeded restarts on one distance
+matrix. `max_iter = 0` and `n_init = 0` raise `InvalidInput`, as in MATLAB. `transform`
+gives the distances to the medoids, `predict` the nearest one, and `score(X)` the
+negative total distance of X to its nearest medoids; nothing is refitted.
 
 ---
 
