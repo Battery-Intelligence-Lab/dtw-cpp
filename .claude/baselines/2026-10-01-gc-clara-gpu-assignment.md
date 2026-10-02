@@ -87,3 +87,14 @@ CUDA + Arrow tree (`build-cuda-arrow`, the pyarrow 23 shim): each chunk's assign
 series x 2 medoids)`, four times); FP64 labels, medoids and cost (4.399999999999999) equal to the CPU's, FP32 labels
 equal (cost 4.400001227855682). That tree's `unit_test_fast_clara`, `test_io_readers`, `test_fast_clara_parquet_parity`
 and `test_fast_clara_assignment_contract` pass.
+
+## Unchanged fill, clean memory [confirmed]
+
+- SASS: `cuobjdump -sass` of `build-cuda`'s `cuda_dtw.cu.obj` (sm_89 only) at base `558e09a6` and at `af885643`, compared
+  by `sass_triangle_identical.py` (keyed by architecture and kernel): the fill's 12 kernels byte-identical to base, 12 of 12
+  (`sass_identical.txt`, verbatim). The 12 Rectangle kernels are the medoid entry's.
+- compute-sanitizer memcheck (`--tool memcheck --leak-check full`) of `test_cuda_correctness` at `af885643`: the kernel-range
+  case 1920 assertions, the two-block case 4, the FastCLARA case 6; each "ERROR SUMMARY: 0 errors" and "0 bytes leaked"
+  (`memcheck_kernel_ranges.txt`, `memcheck_blocks.txt`, `memcheck_fast_clara.txt`, verbatim).
+- A view parent on a GPU (`view_parent.cpp`): refused after the first sample's GPU fill before `ab6c1f08`
+  (`view_parent_before.txt`), refused before any work after it (`view_parent_after.txt`).

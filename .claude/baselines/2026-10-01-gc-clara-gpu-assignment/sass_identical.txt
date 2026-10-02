@@ -1,0 +1,25 @@
+sm_89 rectangle _ZN4dtwc4cuda15dtw_warp_kernelIdEEvPKT_PKiPdiiibixx: 1296 lines (triangle 1392)
+sm_89 rectangle _ZN4dtwc4cuda15dtw_warp_kernelIfEEvPKT_PKiPdiiibixx: 1776 lines (triangle 1872)
+sm_89 rectangle _ZN4dtwc4cuda18dtw_regtile_kernelIdLi4EEEvPKT_PKiPdiiibixx: 2160 lines (triangle 2240)
+sm_89 rectangle _ZN4dtwc4cuda18dtw_regtile_kernelIdLi8EEEvPKT_PKiPdiiibixx: 3168 lines (triangle 3232)
+sm_89 rectangle _ZN4dtwc4cuda18dtw_regtile_kernelIfLi4EEEvPKT_PKiPdiiibixx: 1584 lines (triangle 1680)
+sm_89 rectangle _ZN4dtwc4cuda18dtw_regtile_kernelIfLi8EEEvPKT_PKiPdiiibixx: 2112 lines (triangle 2224)
+sm_89 rectangle _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE0EEEvPKT_PKiPdiiibiPixxPS_: 864 lines (triangle 1024)
+sm_89 rectangle _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS_: 2304 lines (triangle 2528)
+sm_89 rectangle _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE2EEEvPKT_PKiPdiiibiPixxPS_: 832 lines (triangle 928)
+sm_89 rectangle _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE0EEEvPKT_PKiPdiiibiPixxPS_: 816 lines (triangle 944)
+sm_89 rectangle _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS_: 2064 lines (triangle 2176)
+sm_89 rectangle _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE2EEEvPKT_PKiPdiiibiPixxPS_: 736 lines (triangle 928)
+sm_89 triangle _ZN4dtwc4cuda15dtw_warp_kernelIdEEvPKT_PKiPdiiibixx: 1392 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda15dtw_warp_kernelIfEEvPKT_PKiPdiiibixx: 1872 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda18dtw_regtile_kernelIdLi4EEEvPKT_PKiPdiiibixx: 2240 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda18dtw_regtile_kernelIdLi8EEEvPKT_PKiPdiiibixx: 3232 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda18dtw_regtile_kernelIfLi4EEEvPKT_PKiPdiiibixx: 1680 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda18dtw_regtile_kernelIfLi8EEEvPKT_PKiPdiiibixx: 2224 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE0EEEvPKT_PKiPdiiibiPixxPS_: 1024 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS_: 2528 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda20dtw_wavefront_kernelIdLNS0_9WavefrontE2EEEvPKT_PKiPdiiibiPixxPS_: 928 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE0EEEvPKT_PKiPdiiibiPixxPS_: 944 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE1EEEvPKT_PKiPdiiibiPixxPS_: 2176 lines; byte-identical to base True
+sm_89 triangle _ZN4dtwc4cuda20dtw_wavefront_kernelIfLNS0_9WavefrontE2EEEvPKT_PKiPdiiibiPixxPS_: 928 lines; byte-identical to base True
+triangle kernels byte-identical: 12/12 (base: 12 kernels in 1 architecture(s))
