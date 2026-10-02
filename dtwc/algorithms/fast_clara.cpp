@@ -327,7 +327,10 @@ namespace {
 
       // The chunk is loaded: the assignment reads it, never the reader.
 #ifdef DTWC_HAS_CUDA
-      if (!F32 && prob.device().first == Device::GPU)
+      bool on_gpu = false;
+      if constexpr (!F32) // Float32 series never reach a GPU: the sample fill refuses them first
+        on_gpu = prob.device().first == Device::GPU;
+      if (on_gpu)
         assign_on_gpu(prob, chunk.p_vec, global_offset, medoid_data.p_vec, medoid_indices,
                       labels, best_dists);
       else
@@ -391,7 +394,7 @@ namespace {
         const auto [device, index] = prob_template.device();
         sub_prob.set_device(device, index);
         sub_prob.set_gpu_precision(prob_template.gpu_precision());
-        sub_prob.set_verbose(false);
+        sub_prob.set_verbose(prob_template.verbose());
         sub_prob.set_data(std::move(sample_data));
         sub_result = fast_pam_seeded(
           sub_prob, opts.n_clusters, clara_pam_seed(opts, s), opts.max_iter);
@@ -505,6 +508,11 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     return fast_pam_seeded(
       prob, opts.n_clusters, clara_pam_seed(opts, 0), opts.max_iter);
   }
+
+  // A GPU fills copies of the samples whatever the parent holds, but the
+  // assignment uploads the parent's own series: check those (a view, Float32,
+  // a band, the values) once, before any sample runs.
+  if (prob.device().first == Device::GPU) (void)prob.dtw_function();
 
   // One portable map and stable selection scan keep the in-RAM and streaming
   // paths bit-identical across standard-library implementations.
