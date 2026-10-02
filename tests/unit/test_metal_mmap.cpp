@@ -196,7 +196,7 @@ TEST_CASE("set_metric: the Metal fill computes squared L2", "[metal][metric][if2
   }
 }
 
-// IF-2 S2: FastCLARA's samples take the parent's device. On a GPU an in-memory
+// FastCLARA's samples take the parent's device. On a GPU an in-memory
 // sample is a copy of its series, which the GPU fills (Metal has no kernel for
 // the assignment, which runs on the CPU); a sample covering every series is
 // FastPAM on the parent, which runs on the GPU.

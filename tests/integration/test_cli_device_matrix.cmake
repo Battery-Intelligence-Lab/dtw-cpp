@@ -1,16 +1,18 @@
 cmake_minimum_required(VERSION 3.26)
 
-# IF-2 S3: dtwc::run's method x device table through the real dtwc_cl, and
+# dtwc::run's method x device table through the real dtwc_cl, and
 # --print-config against the golden files. Every cell asserts its outcome:
 #   cpu    every method runs; `auto` is pam at N = 27 (the summary's Method:)
 #   gpu    the matrix methods run (the GPU fills the matrix), and clara with a
-#          sample smaller than N (its samples and, on CUDA, its assignment on the
-#          GPU), or the backend refuses on a machine without the device;
-#          onebatch and tadpole are refused; a variant the kernels lack and
-#          (Metal) a GPU index are refused before the input is read, which does
-#          not exist; `cuda` is `gpu`. A build without a GPU refuses every gpu
-#          cell with the api-contract-2.0.md §6.1 message.
-#   hpc    refused for every method (D-10); an unknown device is refused
+#          sample smaller than N, whose -v names where its assignment ran: the
+#          CUDA entry's "series x k medoids" line, or Metal's CPU notice, so a
+#          silent CPU assignment fails here; or the backend refuses on a machine
+#          without the device; onebatch and tadpole are refused; a variant the
+#          kernels lack and (Metal) a GPU index are refused before the input is
+#          read, which does not exist; `cuda` is `gpu`. A build without a GPU
+#          refuses every gpu cell with the message naming the build flag.
+#   hpc    refused for every method, since it submits a whole run to a SLURM
+#          cluster, which dtwc_cl does not do; an unknown device is refused
 #   --print-config  the golden file reads back to itself (45 keys, each at a
 #          value that is not its default) and a bare --print-config prints
 #          config_defaults.toml: every default and spelling, pinned on the binary
@@ -146,7 +148,16 @@ else()
         expect_refused(gpu_${method} "${as_it_goes}" -i "${INPUT}" --device gpu --method ${method})
     endforeach()
     if(device STREQUAL "present")
-        expect_ran(gpu_clara_sample clara --device gpu --method clara --sample-size 5)
+        expect_ran(gpu_clara_sample clara --device gpu --method clara --sample-size 5 -v)
+        if(GPU STREQUAL "cuda")
+            set(assigned "series x 3 medoids)")
+        else()
+            set(assigned "medoids on the CPU (Metal has no kernel for the assignment)")
+        endif()
+        string(FIND "${out}" "${assigned}" assigned_at)
+        if(assigned_at EQUAL -1)
+            message(FATAL_ERROR "gpu_clara_sample: its -v has no assignment line '${assigned}'\nstdout:\n${out}")
+        endif()
     else()
         expect_refused(gpu_clara_sample "GPU was detected" -i "${INPUT}" --device gpu --method clara --sample-size 5)
     endif()
