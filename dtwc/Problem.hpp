@@ -86,6 +86,10 @@ std::string gpu_info();
 /// series, clara above. Any other method is itself.
 Method resolve_method(Method method, Device device, std::size_t n_series);
 
+/// What every method needs: at least one series, and no more clusters than series.
+/// @throws InvalidInput "cluster: dataset is empty." or "cluster: k must not exceed the number of series."
+void require_clusterable(index_t k, std::size_t n_series);
+
 /**
  * @class Problem
  * @brief Class representing a problem in DTWC.

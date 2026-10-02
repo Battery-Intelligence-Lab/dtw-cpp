@@ -20,6 +20,7 @@
 #include "api.hpp"
 #include "fileOperations.hpp"
 #include "Problem.hpp"
+#include "config.hpp" //!< dtwc::Config and apply()
 #include "checkpoint.hpp"
 #include "DataLoader.hpp"
 #include "io/read_data.hpp"

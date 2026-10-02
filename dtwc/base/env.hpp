@@ -4,8 +4,8 @@
  *
  * @details `Device` names where a run computes (`cpu` / `gpu`), `GpuPrecision`
  * what a GPU computes in. The process-wide default device is read and set
- * through `dtwc::device()` / `dtwc::device(name)` (api.hpp); a `Problem` never
- * reads it. `hpc` is not a C++ device: it submits a
+ * through `dtwc::device()` / `dtwc::device(name)`; a `Problem` never reads it.
+ * `hpc` is not a C++ device: it submits a
  * whole run to a SLURM cluster, which Python's `dtwcpp.device("hpc")` and
  * `slurm_remote.sh` do, so the grammar here refuses it with a `DeviceError`
  * naming them.
@@ -47,6 +47,15 @@ inline constexpr Name<GpuPrecision> gpu_precision_names[]{
 
 /// @brief Canonical lower-case name of a Device ("cpu" / "gpu").
 std::string to_string(Device d);
+
+/// @brief Set the process-wide default device and return its canonical name
+///        ("cpu", "gpu", "gpu:N"). A Problem never reads it; Tier-1 cluster() does.
+/// @throws DeviceError for a name detail::parse_device() refuses, and for `gpu`
+///         on a build with no GPU backend.
+std::string device(std::string_view name);
+
+/// @brief The canonical name of the process-wide default device ("cpu" until set).
+std::string device();
 
 namespace detail {
 

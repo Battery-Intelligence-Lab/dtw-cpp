@@ -480,4 +480,23 @@ double normalized_mutual_info(const std::vector<index_t> &labels_true,
   return MI / denom;
 }
 
+double score(Problem &prob, std::string_view name)
+{
+  std::string key(name);
+  std::transform(key.begin(), key.end(), key.begin(),
+                 [](unsigned char c) { return static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c); });
+  if (key == "silhouette") {
+    const auto values = silhouette(prob);
+    double sum = 0.0;
+    for (const double value : values) sum += value;
+    return values.empty() ? 0.0 : sum / static_cast<double>(values.size());
+  }
+  if (key == "davies_bouldin") return davies_bouldin(prob);
+  if (key == "dunn") return dunn(prob);
+  if (key == "calinski_harabasz") return calinski_harabasz(prob);
+  if (key == "inertia") return inertia(prob);
+  throw InvalidInput("Result::score: unknown score '" + std::string(name)
+                     + "'. Valid scores: silhouette, davies_bouldin, dunn, calinski_harabasz, inertia.");
+}
+
 } // namespace dtwc::scores

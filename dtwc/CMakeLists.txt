@@ -28,6 +28,7 @@ target_sources(dtwc++
   DataLoader.hpp
   api.hpp
   checkpoint.hpp
+  config.hpp
   dtwc.hpp
   distance.hpp
   fileOperations.hpp

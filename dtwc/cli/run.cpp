@@ -46,15 +46,6 @@ using algorithms::detail::resolve_clara_plan;
 
 std::string method_name(Method method) { return std::string(name_of(method_names, method)); }
 
-[[noreturn]] void refuse_gpu_method(Method method)
-{
-  throw DeviceError(
-    "run: method '" + method_name(method)
-    + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
-      "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use (and clara when its sample covers "
-      "every series). Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
-}
-
 /// What --verbose calls a method in its progress lines.
 const char *progress_label(Method method)
 {
@@ -167,35 +158,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   auto problem =
     std::make_shared<Problem>(config.name.empty() ? detail::default_name(utf8_to_path(config.input)) : config.name);
   Problem &prob = *problem;
-  // The Problem validates every distance setting as it takes it: parameter
-  // domains, variant x missing strategy x metric, the MIP settings, the GPU.
-  prob.set_variant(config.variant);
-  prob.set_missing_strategy(config.missing);
-  prob.set_metric(config.metric);
-  prob.set_band(config.band);
-  prob.set_n_clusters(config.k);
-  prob.set_max_iter(config.max_iter);
-  prob.set_n_repetitions(config.n_init);
-  prob.set_random_seed(config.seed);
-  prob.set_sample_size(config.sample_size);
-  prob.set_n_samples(config.n_samples);
-  prob.set_batch_size(config.batch_size);
-  prob.set_linkage(config.linkage);
-  prob.set_tadpole_dc(config.tadpole_dc); // < 0: auto-select from a DTW subsample
-  prob.set_verbose(config.verbose);
-  validate_mip_settings(config.mip);
-  prob.mip_settings = config.mip;
-  // A false set_solver means HiGHS: --solver gurobi on a build without Gurobi
-  // must not solve with HiGHS.
-  if (!prob.set_solver(config.solver))
-    throw SolverError("--solver " + std::string(name_of(solver_names, config.solver))
-                      + " is not available: this dtwc_cl was built without Gurobi. Use --solver highs, or "
-                        "rebuild with -DDTWC_ENABLE_GUROBI=ON and GUROBI_HOME set.");
-  prob.set_gpu_precision(config.gpu_precision);
-  prob.set_device(config.device, config.device_index); // gpu without a GPU backend: §6.1's DeviceError
-  if (config.device == Device::GPU
-      && (config.method == Method::OneBatch || config.method == Method::TADPole))
-    refuse_gpu_method(config.method);
+  apply(config, prob);
   validate_gpu_request("run", prob, config.dtype);
 
   algorithms::CLARAOptions clara;
@@ -242,7 +205,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
     clara_uses_full_sample = plan.sample_size == plan.n_points;
     if (stream_payload) algorithms::detail::validate_streaming_clara_plan(plan, "run");
-    if (config.device == Device::GPU && !clara_uses_full_sample) refuse_gpu_method(method);
+    if (config.device == Device::GPU && !clara_uses_full_sample) detail::refuse_gpu_method(method);
     clara_planned = true;
   };
 
@@ -316,9 +279,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     n_series = prob.size();
   }
   if (config.ram_limit > 0 && config.verbose) std::cout << "Series-data RAM limit: " << config.ram_limit << " bytes\n";
-  if (n_series == 0) throw InvalidInput("cluster: dataset is empty.");
-  if (static_cast<std::size_t>(config.k) > n_series)
-    throw InvalidInput("cluster: k must not exceed the number of series.");
+  require_clusterable(config.k, n_series); // before a cache or checkpoint is touched
 
   method = resolve_method(method, config.device, n_series);
   if (config.method == Method::Auto && config.verbose)

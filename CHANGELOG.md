@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Added (C++):** `dtwc::Config` is declared in `dtwc/config.hpp` with `apply(config, prob)`, which hands a `Problem`
+  the clustering settings of a Config (distance, method, solver, device) as `dtwc::run` does before it reads a file, and
+  `scores::score(prob, name)`, the score `Result::score(name)` returns.
+- **Changed (C++, Python):** `Problem::cluster()` raises `InvalidInput` for a `Problem` without series ("cluster: dataset
+  is empty.") or with more clusters than series ("cluster: k must not exceed the number of series."), as `dtwc_cl` and
+  Tier-1 `cluster()` do, before any method runs.
 - **Changed (build):** Gurobi is linked only when you configure with `-DDTWC_ENABLE_GUROBI=ON` (v1.0.0 linked it
   whenever it found an installation, and a MEX or binary built that way needed the Gurobi library to load); HiGHS
   solves the MIP by default. With the option ON and no installation found, the configure stops with an error that

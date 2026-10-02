@@ -36,7 +36,7 @@ complete record of the run. Enum values are written by their canonical name
 (`--metric sqeuclidean` is written `metric = "squared_euclidean"`) and a
 deprecated spelling by its canonical key. `dtwc_cl --print-config` alone prints
 the defaults. The same keys are the fields of the C++ `dtwc::Config` that
-`dtwc::run` takes (`dtwc/cli/config.hpp`).
+`dtwc::run` takes (`dtwc/config.hpp`).
 
 ## TOML
 

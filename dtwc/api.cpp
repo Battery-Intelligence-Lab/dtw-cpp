@@ -14,30 +14,11 @@
 #include "scores.hpp"
 
 #include <algorithm>
-#include <cctype>
-#include <numeric>
 #include <tuple>
 #include <utility>
 
 namespace dtwc {
 namespace {
-
-std::string lower(std::string_view value)
-{
-  std::string out(value);
-  std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return out;
-}
-
-/// The process-wide default device: what dtwc::device(name) set, CPU until then.
-struct DeviceSelection
-{
-  Device device = Device::CPU;
-  int index = 0;
-};
-DeviceSelection g_device;
 
 void validate_skips(index_t skip_cols, index_t skip_rows)
 {
@@ -107,23 +88,6 @@ Dataset load(Dataset::series_type source, index_t skip_cols, index_t skip_rows,
                  name.empty() ? "dataset" : std::string(name));
 }
 
-std::string device(std::string_view name)
-{
-  const auto [selected, index] = detail::parse_device(name);
-#if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
-  if (selected == Device::GPU) throw DeviceError(detail::gpu_not_built_message());
-#endif
-  g_device = { selected, index };
-  return device();
-}
-
-std::string device()
-{
-  std::string out = to_string(g_device.device);
-  if (g_device.device == Device::GPU && g_device.index != 0) out += ":" + std::to_string(g_device.index);
-  return out;
-}
-
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
                Method method, int iterations, bool converged)
   : problem_(std::move(problem)), cost_(cost), device_(std::move(device_name)), method_(method),
@@ -133,25 +97,7 @@ Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device
 const std::vector<index_t> &Result::labels() const noexcept { return problem_->labels(); }
 const std::vector<index_t> &Result::medoids() const noexcept { return problem_->medoids(); }
 
-double Result::score(std::string_view name) const
-{
-  const std::string key = lower(name);
-  if (key == "silhouette") {
-    const auto values = scores::silhouette(*problem_);
-    return values.empty()
-      ? 0.0
-      : std::accumulate(values.begin(), values.end(), 0.0)
-        / static_cast<double>(values.size());
-  }
-  if (key == "davies_bouldin") return scores::davies_bouldin(*problem_);
-  if (key == "dunn") return scores::dunn(*problem_);
-  if (key == "calinski_harabasz") return scores::calinski_harabasz(*problem_);
-  if (key == "inertia") return scores::inertia(*problem_);
-  throw InvalidInput(
-    "Result::score: unknown score '" + std::string(name)
-    + "'. Valid scores: silhouette, davies_bouldin, dunn, "
-      "calinski_harabasz, inertia.");
-}
+double Result::score(std::string_view name) const { return scores::score(*problem_, name); }
 
 std::vector<double> Result::distance_matrix() const
 {
@@ -186,8 +132,9 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
   config.max_iter = max_iter;
   config.output.clear(); // Result::save writes; cluster() does not
   config.name = dataset.name();
+  const std::string process_device = dtwc::device(); // used when `device` is ""
   std::tie(config.device, config.device_index) =
-    device.empty() ? std::pair{ g_device.device, g_device.index } : detail::parse_device(device);
+    detail::parse_device(device.empty() ? std::string_view(process_device) : device);
   if (!dataset.is_path()) return run(config, std::move(dataset).materialize_local());
   config.input = path_to_utf8(dataset.path());
   config.skip_cols = dataset.skip_cols();

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Data.hpp"
+#include "base/env.hpp" // device(), device(name)
 
 #include <concepts>
 #include <filesystem>
@@ -78,12 +79,6 @@ Dataset load(const std::filesystem::path &, index_t, std::same_as<char> auto,
              std::string_view = "") = delete;
 Dataset load(Dataset::series_type, index_t, std::same_as<char> auto,
              std::string_view = "") = delete;
-
-/** Set the process-wide device and return its canonical name. */
-std::string device(std::string_view name);
-
-/** Return the canonical process-wide device name. */
-std::string device();
 
 /** The owning result of a Tier-1 clustering call. */
 class Result

@@ -11,6 +11,7 @@
  */
 
 #include "Problem.hpp"
+#include "config.hpp"               // for Config, apply
 #include "base/error.hpp"           // for DeviceError
 #include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byHiGHS
 #include "base/parallelisation.hpp" // for run
@@ -201,6 +202,54 @@ Method resolve_method(Method method, Device device, std::size_t n_series)
   constexpr std::size_t pam_max_series = 5000; // on the CPU; the GPU fills PAM's matrix at any N
   if (method != Method::Auto) return method;
   return device == Device::GPU || n_series <= pam_max_series ? Method::PAM : Method::CLARA;
+}
+
+void require_clusterable(index_t k, std::size_t n_series)
+{
+  if (n_series == 0) throw InvalidInput("cluster: dataset is empty.");
+  if (static_cast<std::size_t>(k) > n_series) throw InvalidInput("cluster: k must not exceed the number of series.");
+}
+
+void detail::refuse_gpu_method(Method method)
+{
+  throw DeviceError(
+    "run: method '" + std::string(name_of(method_names, method))
+    + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
+      "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use (and clara when its sample covers "
+      "every series). Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
+}
+
+void apply(const Config &config, Problem &prob)
+{
+  // Each setter checks its value: parameter domains, variant x missing
+  // strategy x metric, the cluster count and the iteration limits.
+  prob.set_variant(config.variant);
+  prob.set_missing_strategy(config.missing);
+  prob.set_metric(config.metric);
+  prob.set_band(config.band);
+  prob.set_n_clusters(config.k);
+  prob.set_max_iter(config.max_iter);
+  prob.set_n_repetitions(config.n_init);
+  prob.set_random_seed(config.seed);
+  prob.set_method(config.method);
+  prob.set_sample_size(config.sample_size);
+  prob.set_n_samples(config.n_samples);
+  prob.set_batch_size(config.batch_size);
+  prob.set_linkage(config.linkage);
+  prob.set_tadpole_dc(config.tadpole_dc); // < 0: auto-select from a DTW subsample
+  prob.set_verbose(config.verbose);
+  validate_mip_settings(config.mip);
+  prob.mip_settings = config.mip;
+  // A false set_solver means HiGHS: gurobi on a build without Gurobi must not
+  // solve with HiGHS.
+  if (!prob.set_solver(config.solver))
+    throw SolverError("--solver " + std::string(name_of(solver_names, config.solver))
+                      + " is not available: this DTWC++ was built without Gurobi. Use --solver highs, or "
+                        "rebuild with -DDTWC_ENABLE_GUROBI=ON and GUROBI_HOME set.");
+  prob.set_gpu_precision(config.gpu_precision);
+  prob.set_device(config.device, config.device_index); // gpu without a GPU backend: §6.1's DeviceError
+  if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
+    detail::refuse_gpu_method(config.method);
 }
 
 /**
@@ -849,6 +898,7 @@ void Problem::fill_distance_matrix()
  */
 core::ClusteringResult Problem::cluster()
 {
+  require_clusterable(Nc, size());
   const Method method = resolve_method(method_, device_, size());
   switch (method) {
   case Method::PAM: {

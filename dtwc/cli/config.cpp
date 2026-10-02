@@ -187,13 +187,6 @@ void v1_spellings(CLI::App &app, const std::string &canonical, std::initializer_
 
 } // namespace
 
-std::string device_text(const Config &config)
-{
-  std::string text = to_string(config.device);
-  if (config.device == Device::GPU && config.device_index != 0) text += ':' + std::to_string(config.device_index);
-  return text;
-}
-
 namespace cli {
 
 void bind(CLI::App &app, Config &config)
