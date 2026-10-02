@@ -44,6 +44,7 @@
 
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -51,6 +52,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -93,6 +95,28 @@ void require_index(const char *who, const char *name, std::int64_t index, size_t
     throw dtwc::InvalidInput(
       std::string(who) + ": " + name + " = " + std::to_string(index)
       + " is outside [0, N) with N = " + std::to_string(n) + ".");
+}
+
+/// Problem.variant_params' type: its fields are bound read-only.
+struct FrozenParams : dtwc::core::DTWVariantParams
+{};
+
+/// A Config field reached through `ref`, read and written as itself.
+template <class T, class Ref>
+void def_field(nb::class_<dtwc::Config> &config, const char *key, Ref ref)
+{
+  config.def_prop_rw(key, [ref](dtwc::Config &c) -> T { return ref(c); },
+                     [ref](dtwc::Config &c, T value) { ref(c) = value; });
+}
+
+/// A Config enum reached through `ref`, read as its canonical name and written
+/// by any spelling `table` lists; an unknown name raises InvalidInput.
+template <class E, std::size_t N, class Ref>
+void def_named(nb::class_<dtwc::Config> &config, const char *key, Ref ref, const dtwc::Name<E> (&table)[N])
+{
+  config.def_prop_rw(
+    key, [ref, &table](dtwc::Config &c) { return std::string(dtwc::name_of(table, ref(c))); },
+    [ref, &table, key](dtwc::Config &c, const std::string &text) { ref(c) = dtwc::parse_name(table, text, key); });
 }
 
 /// A distance configuration by the names dtwc_cl takes, read with the C++ name
@@ -208,37 +232,6 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("device", []() { return dtwc::device(); },
         "Canonical name of the process-wide device (dtwc::device()).");
-
-  // =========================================================================
-  // Tier-1 file parsing (api-contract-2.0.md §1.2)
-  // =========================================================================
-
-  m.def("_read_data",
-        [](const std::filesystem::path &source, dtwc::index_t skip_cols,
-           dtwc::index_t skip_rows, const std::string &delimiter) {
-    if (skip_cols < 0) throw dtwc::InvalidInput("load: skip_cols must be non-negative.");
-    if (skip_rows < 0) throw dtwc::InvalidInput("load: skip_rows must be non-negative.");
-    if (delimiter.size() > 1)
-      throw dtwc::InvalidInput("load: delimiter must be a single character.");
-    // File I/O and parsing touch no Python object, so the GIL is released for
-    // the whole read exactly as every other I/O binding here does.
-    nb::gil_scoped_release release;
-    return dtwc::read_data(source, skip_cols, skip_rows, delimiter.empty() ? '\0' : delimiter[0]);
-  }, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
-     "Read a path with dtwc::read_data, the reader dtwc_cl and C++ dtwc::load\n"
-     "use (CSV/TSV and a folder of them; the wheel links no Arrow C++, so\n"
-     "dtwcpp.load reads Parquet through pyarrow instead), and return the owning\n"
-     "dtwc::Data (series + names) with no intermediate Python objects. Backs\n"
-     "dtwcpp.Dataset, whose handle is handed straight to Problem.set_data(Data):\n"
-     "skip_cols drops leading FIELDS before numeric parsing, skip_rows drops\n"
-     "leading LINES, an empty delimiter means infer from the extension, and\n"
-     "variable-length rows are preserved. The names are the reader's own, so\n"
-     "Tier-1 output carries the series names the CLI writes.");
-
-  m.def("_parquet_files", &dtwc::parquet_files, "path"_a,
-        "The Parquet files a path names, listed as dtwc::read_data lists them:\n"
-        "the file itself, or a folder's .parquet/.pq files, sorted, hidden files\n"
-        "skipped; empty for any other input.");
 
   // =========================================================================
   // Enums
@@ -368,6 +361,19 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_prop_rw("twe_lambda", [](const Params &p) { return p.twe_lambda; }, checked(&Params::twe_lambda))
     .def_rw("mv_mode", &Params::mv_mode);
 
+  // What Problem.variant_params returns: a DTWVariantParams whose fields cannot be
+  // written, so `prob.variant_params.wdtw_g = 0.1` raises instead of editing a copy
+  // the Problem never sees. Assigning it back to variant_params works.
+  nb::class_<FrozenParams, Params>(m, "FrozenDTWVariantParams")
+    .def_prop_ro("variant", [](const FrozenParams &p) { return p.variant; })
+    .def_prop_ro("wdtw_g", [](const FrozenParams &p) { return p.wdtw_g; })
+    .def_prop_ro("adtw_penalty", [](const FrozenParams &p) { return p.adtw_penalty; })
+    .def_prop_ro("sdtw_gamma", [](const FrozenParams &p) { return p.sdtw_gamma; })
+    .def_prop_ro("msm_c", [](const FrozenParams &p) { return p.msm_c; })
+    .def_prop_ro("twe_nu", [](const FrozenParams &p) { return p.twe_nu; })
+    .def_prop_ro("twe_lambda", [](const FrozenParams &p) { return p.twe_lambda; })
+    .def_prop_ro("mv_mode", [](const FrozenParams &p) { return p.mv_mode; });
+
   // =========================================================================
   // MIPSettings
   // =========================================================================
@@ -397,6 +403,64 @@ NB_MODULE(_dtwcpp_core, m) {
              + ", lr_max_nodes=" + std::to_string(s.lr_max_nodes)
              + ", verbose=" + (s.verbose_solver ? "True" : "False") + ")";
     });
+
+  // =========================================================================
+  // Config: the settings of a clustering, keyed by the CLI long names in
+  // snake_case, read and checked by C++ (dtwc/config.hpp). The file options
+  // are dtwc_cl's: Python reads and writes its own files.
+  // =========================================================================
+
+  using dtwc::Config;
+  nb::class_<Config> config(m, "Config");
+  config.def(nb::init<>())
+    .def_rw("n_clusters", &Config::k)
+    .def_rw("max_iter", &Config::max_iter)
+    .def_rw("n_init", &Config::n_init)
+    .def_rw("seed", &Config::seed)
+    .def_rw("sample_size", &Config::sample_size)
+    .def_rw("n_samples", &Config::n_samples)
+    .def_rw("batch_size", &Config::batch_size)
+    .def_rw("dc", &Config::tadpole_dc)
+    .def_rw("band", &Config::band)
+    .def_rw("name", &Config::name)
+    .def_rw("verbose", &Config::verbose)
+    .def_prop_rw("device", [](const Config &c) { return dtwc::device_text(c); },
+                 [](Config &c, const std::string &name) {
+                   std::tie(c.device, c.device_index) = dtwc::detail::parse_device(name);
+                 })
+    .def_prop_rw("no_warm_start", [](const Config &c) { return !c.mip.warm_start; },
+                 [](Config &c, bool value) { c.mip.warm_start = !value; });
+  def_named(config, "method", [](Config &c) -> dtwc::Method & { return c.method; }, dtwc::method_names);
+  def_named(config, "metric", [](Config &c) -> dtwc::core::MetricType & { return c.metric; },
+            dtwc::core::metric_names);
+  def_named(config, "variant", [](Config &c) -> dtwc::core::DTWVariant & { return c.variant.variant; },
+            dtwc::core::variant_names);
+  def_named(config, "mv_mode", [](Config &c) -> dtwc::core::MVMode & { return c.variant.mv_mode; },
+            dtwc::core::mv_mode_names);
+  def_named(config, "missing_strategy", [](Config &c) -> dtwc::core::MissingStrategy & { return c.missing; },
+            dtwc::core::missing_strategy_names);
+  def_named(config, "linkage", [](Config &c) -> dtwc::algorithms::Linkage & { return c.linkage; },
+            dtwc::algorithms::linkage_names);
+  def_named(config, "solver", [](Config &c) -> dtwc::Solver & { return c.solver; }, dtwc::solver_names);
+  def_named(config, "gpu_precision", [](Config &c) -> dtwc::GpuPrecision & { return c.gpu_precision; },
+            dtwc::gpu_precision_names);
+  def_field<double>(config, "wdtw_g", [](Config &c) -> double & { return c.variant.wdtw_g; });
+  def_field<double>(config, "adtw_penalty", [](Config &c) -> double & { return c.variant.adtw_penalty; });
+  def_field<double>(config, "sdtw_gamma", [](Config &c) -> double & { return c.variant.sdtw_gamma; });
+  def_field<double>(config, "msm_c", [](Config &c) -> double & { return c.variant.msm_c; });
+  def_field<double>(config, "twe_nu", [](Config &c) -> double & { return c.variant.twe_nu; });
+  def_field<double>(config, "twe_lambda", [](Config &c) -> double & { return c.variant.twe_lambda; });
+  def_field<double>(config, "mip_gap", [](Config &c) -> double & { return c.mip.mip_gap; });
+  def_field<int>(config, "time_limit", [](Config &c) -> int & { return c.mip.time_limit_sec; });
+  def_field<int>(config, "numeric_focus", [](Config &c) -> int & { return c.mip.numeric_focus; });
+  def_field<int>(config, "mip_focus", [](Config &c) -> int & { return c.mip.mip_focus; });
+  def_field<bool>(config, "verbose_solver", [](Config &c) -> bool & { return c.mip.verbose_solver; });
+  def_field<std::int64_t>(config, "lr_max_nodes", [](Config &c) -> std::int64_t & { return c.mip.lr_max_nodes; });
+
+  m.def("apply", &dtwc::apply, "config"_a, "prob"_a,
+        "Hand prob the clustering settings of config: the distance, the method and its\n"
+        "controls, the MIP solver, the device and verbose. The Problem checks each as\n"
+        "it takes it (InvalidInput, SolverError, DeviceError).");
 
   // =========================================================================
   // DendrogramStep
@@ -695,10 +759,12 @@ NB_MODULE(_dtwcpp_core, m) {
                  [](const dtwc::Problem &p) { return p.band; },
                  [](dtwc::Problem &p, int value) { p.set_band(value); })
     .def_prop_rw("variant_params",
-                 [](const dtwc::Problem &p) { return p.variant_params(); },
+                 [](const dtwc::Problem &p) { return FrozenParams{ p.variant_params() }; },
                  [](dtwc::Problem &p, dtwc::core::DTWVariantParams value) {
                    p.set_variant(value);
-                 })
+                 },
+                 "The DTW variant and its parameters, read-only: assign a DTWVariantParams\n"
+                 "(or call set_variant_params) to change them, which drops the matrix.")
     .def_prop_rw("missing_strategy",
                  [](const dtwc::Problem &p) { return p.missing_strategy(); },
                  [](dtwc::Problem &p, dtwc::core::MissingStrategy value) {
@@ -818,21 +884,22 @@ NB_MODULE(_dtwcpp_core, m) {
     }, "Compute all pairwise DTW distances.")
     // Always a COPY: the C++ store keeps only the upper triangle, so a zero-copy
     // view into a full NxN layout is structurally impossible (§2.2 ‡).
-    .def("distance_matrix", [](dtwc::Problem &prob) {
+    .def("distance_matrix", [](dtwc::Problem &prob, bool fill) {
            // Size is only known after the fill, so both happen inside one release.
            std::vector<double> values;
            size_t n = 0;
            {
              nb::gil_scoped_release release;
-             prob.fill_distance_matrix();
+             if (fill) prob.fill_distance_matrix();
              const auto &dm = std::as_const(prob).distance_matrix(); // on the heap or mapped
              n = dm.size();
              values = dtwc::io::to_full_matrix(dm); // row-major, expanded from the triangle
            }
            return adopt_as_ndarray(std::move(values), {n, n});
-         },
+         }, nb::kw_only(), "fill"_a = true,
          "Fill (if needed) and return the full NxN distance matrix as a numpy\n"
-         "array (independent copy; use set_distance_matrix to write).")
+         "array (independent copy; use set_distance_matrix to write). fill=False\n"
+         "returns it as it is, NaN for a pair not computed.")
     .def("set_distance_matrix",
          [](dtwc::Problem &p,
             nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
@@ -859,15 +926,6 @@ NB_MODULE(_dtwcpp_core, m) {
          "Load a precomputed NxN distance matrix (e.g. from a GPU compute). NaN marks\n"
          "a pair to compute; a ±inf entry raises InvalidInput naming the pair.")
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
-    .def("read_distance_matrix", [](dtwc::Problem &p, const std::filesystem::path &path) {
-      nb::gil_scoped_release release;
-      p.read_distance_matrix(path);
-    }, "path"_a,
-         "Read a distance matrix from a CSV file (REPLACES this Problem's matrix).")
-    .def("print_distance_matrix", [](dtwc::Problem &p) {
-      nb::gil_scoped_release release;
-      p.print_distance_matrix();
-    })
     .def("use_mmap_distance_matrix",
          [](dtwc::Problem &p, const std::filesystem::path &cache_path) {
            p.use_mmap_distance_matrix(cache_path);
@@ -876,8 +934,14 @@ NB_MODULE(_dtwcpp_core, m) {
     // ---- clustering ----
     .def("cluster", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
-      p.cluster();
-    }, "Cluster the series by Problem.method (any Method; Auto picks PAM or CLARA).")
+      return p.cluster();
+    }, "Cluster the series into n_clusters() by Problem.method (Auto: PAM on a GPU and\n"
+       "for up to 5000 series, else CLARA) and return the ClusteringResult; the labels\n"
+       "and medoids are published on the Problem too.")
+    .def("require_clustered", [](const dtwc::Problem &p, const std::string &who) { p.require_clustered(who); },
+         "who"_a,
+         "Raise InvalidInput naming `who` unless the Problem holds a clustering: one\n"
+         "label per series and one medoid per cluster.")
     .def("find_total_cost", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       return p.find_total_cost();
@@ -891,22 +955,8 @@ NB_MODULE(_dtwcpp_core, m) {
       nb::gil_scoped_release release;
       p.calculate_medoids();
     })
-    // ---- I/O ----
+    // ---- output; the write_* files are written by dtwcpp.io in Python ----
     .def("print_clusters", &dtwc::Problem::print_clusters)
-    .def("write_clusters", [](dtwc::Problem &p) {
-      nb::gil_scoped_release release;
-      p.write_clusters();
-    }, "Write the cluster-assignment CSV.\n\n"
-       "Raises InvalidInput if the Problem holds no clustering.")
-    .def("write_medoid_members", &dtwc::Problem::write_medoid_members, "iter"_a, "rep"_a = 0)
-    .def("write_distance_matrix", [](const dtwc::Problem &p) {
-      nb::gil_scoped_release release;
-      p.write_distance_matrix();
-    })
-    .def("write_silhouettes", [](dtwc::Problem &p) {
-      nb::gil_scoped_release release;
-      p.write_silhouettes();
-    }, "Write per-series silhouette scores.")
     .def("__repr__", [](const dtwc::Problem &p) {
       return "Problem(name='" + p.name() + "', n=" + std::to_string(p.size())
              + ", k=" + std::to_string(p.n_clusters()) + ")";
@@ -1109,6 +1159,13 @@ NB_MODULE(_dtwcpp_core, m) {
     nb::gil_scoped_release release;
     return dtwc::scores::calinski_harabasz(prob);
   }, "prob"_a, "Compute Calinski-Harabasz index (medoid-adapted; higher is better).");
+
+  m.def("score", [](dtwc::Problem &prob, const std::string &name) {
+    nb::gil_scoped_release release;
+    return dtwc::scores::score(prob, name);
+  }, "prob"_a, "name"_a,
+     "The score `name` names: silhouette (the mean over the series), davies_bouldin,\n"
+     "dunn, calinski_harabasz or inertia; any other name raises InvalidInput.");
 
   m.def("adjusted_rand", [](const std::vector<dtwc::index_t> &labels_true,
                             const std::vector<dtwc::index_t> &labels_pred) {

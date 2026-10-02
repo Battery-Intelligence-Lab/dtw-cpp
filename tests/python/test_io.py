@@ -7,10 +7,12 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 
 import numpy as np
 import pytest
 
+import dtwcpp
 from dtwcpp.io import (
     load_dataset_csv,
     load_dataset_hdf5,
@@ -98,6 +100,48 @@ class TestCSV:
         loaded, names = load_dataset_csv(p)
         np.testing.assert_array_equal(loaded, [[1.0, 2.0, 3.0]])
         assert names == ["a", "b", "c"]
+
+
+# ---------------------------------------------------------------------------
+# The reader corpus: dtwcpp.load reads each file as dtwc_cl's reader does
+# ---------------------------------------------------------------------------
+
+_CORPUS = Path(__file__).resolve().parents[1] / "data" / "reader"
+
+
+@pytest.mark.parametrize(
+    ("name", "skip_rows", "skip_cols", "expected"),
+    [
+        # The series the C++ reader reads (tests/unit/unit_test_fileOperations.cpp, FX-6)...
+        ("bom.csv", 0, 0, [[1, 2, 3], [4, 5, 6]]),
+        ("trailing_blank.csv", 0, 0, [[1, 2, 3], [4, 5, 6]]),
+        ("spaces.csv", 0, 0, [[1, 2, 3]]),
+        ("sci.csv", 0, 0, [[1e-3, 200, 0.5, 5, -0.0, 7]]),
+        ("denorm.csv", 0, 0, [[5e-324, 1]]),
+        ("folder_two_column", 0, 1, [[0.5, 0.6, 0.9]]),
+        # ...and the files it refuses, with the error type it raises.
+        ("folder_two_column", 0, 0, dtwcpp.IOError),
+        ("folder_decimal_comma", 0, 0, dtwcpp.IOError),
+        ("folder_blank_line", 0, 0, dtwcpp.IOError),
+        ("folder_leading_missing", 1, 1, dtwcpp.IOError),
+        ("interior_blank.csv", 0, 0, dtwcpp.IOError),
+        ("ws_line.csv", 0, 0, dtwcpp.IOError),
+        ("plusminus.csv", 0, 0, dtwcpp.IOError),
+        ("hexfloat.csv", 0, 0, dtwcpp.IOError),
+        ("nbsp_latin1.csv", 0, 0, dtwcpp.IOError),
+        ("overflow.csv", 0, 0, dtwcpp.IOError),
+        ("underflow.csv", 0, 0, dtwcpp.IOError),
+    ],
+)
+def test_reader_corpus_reads_as_dtwc_cl(name, skip_rows, skip_cols, expected):
+    dataset = dtwcpp.load(_CORPUS / name, skip_rows=skip_rows, skip_cols=skip_cols)
+    if isinstance(expected, type):
+        with pytest.raises(expected) as caught:
+            dataset.as_data()
+        assert type(caught.value) is expected
+    else:  # bit for bit: -0.0 and the smallest subnormal included
+        assert [[v.hex() for v in row] for row in dataset.as_series()] == \
+            [[float(v).hex() for v in row] for row in expected]
 
 
 # ---------------------------------------------------------------------------

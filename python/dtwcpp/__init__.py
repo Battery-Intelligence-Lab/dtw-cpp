@@ -215,6 +215,13 @@ from dtwcpp.io import (
     load_dataset_parquet,
 )
 
+# v1.0.0's Problem file writers, written in Python (the compiled core writes no files).
+from dtwcpp import io as _io
+Problem.write_clusters = _io.write_clusters
+Problem.write_silhouettes = _io.write_silhouettes
+Problem.write_medoid_members = _io.write_medoid_members
+Problem.write_distance_matrix = _io.write_distance_matrix
+
 from . import distance
 from . import preprocess
 from . import diagnose

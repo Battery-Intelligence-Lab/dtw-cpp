@@ -79,8 +79,8 @@ _SURFACE = {
         "size", "n_clusters", "labels", "medoids", "series", "series_name",
         "centroid_of", "is_distance_matrix_filled", "max_distance", "dist_by_ind",
         # distance-matrix methods (§2.2)
-        "fill_distance_matrix", "refresh_distance_matrix", "read_distance_matrix",
-        "print_distance_matrix", "write_distance_matrix", "distance_matrix",
+        "fill_distance_matrix", "refresh_distance_matrix", "write_distance_matrix",
+        "distance_matrix",
         "set_distance_matrix", "use_mmap_distance_matrix",
         # clustering (§2.2)
         "cluster", "find_total_cost", "assign_clusters", "calculate_medoids",
@@ -168,20 +168,14 @@ def test_error_hierarchy():
     assert issubclass(dtwcpp.IOError, OSError)
 
 
-# GT-4: a live C++ site raises the §5 leaf. Both used to be bare
-# std::runtime_error, so Python saw RuntimeError: `except ValueError` missed
-# the bad dendrogram and `except OSError` missed the missing file.
+# GT-4: a live C++ site raises the §5 leaf. It used to be a bare
+# std::runtime_error, so Python saw RuntimeError and `except ValueError` missed
+# the bad dendrogram (the IOError leaf: test_typed_errors.py).
 def test_cpp_bad_input_raises_invalid_input():
     prob = dtwcpp.Problem("gt4")
     prob.set_data([[0.0, 1.0], [1.0, 2.0], [5.0, 6.0]], ["a", "b", "c"])
     with pytest.raises(dtwcpp.InvalidInput, match="does not match Problem size"):
         dtwcpp.cut_dendrogram(dtwcpp.Dendrogram(), prob, 1)
-
-
-def test_cpp_file_failure_raises_io_error(tmp_path):
-    prob = dtwcpp.Problem("gt4")
-    with pytest.raises(dtwcpp.IOError, match="Cannot open file for reading"):
-        prob.read_distance_matrix(tmp_path / "missing.csv")
 
 
 # ===========================================================================
@@ -216,13 +210,11 @@ def test_mip_settings_lr_max_nodes_below_one_is_rejected():
 # Introspectable defaults (§1.2/§1.3/§1.5/§2.6)
 # ===========================================================================
 def test_cluster_signature_defaults():
-    """§1.3: cluster(data, k, *, method='pam', band=-1, device=None, max_iter=100)."""
-    sig = inspect.signature(dtwcpp.cluster)
-    p = sig.parameters
-    assert p["method"].default == "pam"
-    assert p["band"].default == -1
-    assert p["device"].default is None
-    assert p["max_iter"].default == 100
+    """§1.3: cluster(data, k, **keys); a key not given takes dtwc_cl's default,
+    the C++ Config's: method 'auto', band -1, max_iter 100."""
+    assert list(inspect.signature(dtwcpp.cluster).parameters) == ["data", "k", "keys"]
+    config = dtwcpp._dtwcpp_core.Config()
+    assert (config.method, config.band, config.max_iter) == ("auto", -1, 100)
 
 
 def test_load_signature_defaults():

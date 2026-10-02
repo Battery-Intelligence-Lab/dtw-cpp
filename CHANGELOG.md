@@ -14,6 +14,17 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - **Changed (C++, Python):** `Problem::cluster()` raises `InvalidInput` for a `Problem` without series ("cluster: dataset
   is empty.") or with more clusters than series ("cluster: k must not exceed the number of series."), as `dtwc_cl` and
   Tier-1 `cluster()` do, before any method runs.
+- **Changed (Python):** `dtwcpp.cluster(data, k, **keys)` takes every `dtwc_cl` key that is not about files, by its long
+  name in snake_case (`metric`, `variant`, `wdtw_g`, `n_init`, `seed`, `linkage`, `solver`, `gpu_precision`, ...): C++
+  reads and checks them (an unknown key is `InvalidInput`) and `Problem::cluster()` runs the method, so `method`
+  defaults to `auto` as in C++ and the CLI (the 2.0 previews defaulted to `pam` and took four keywords).
+  `Problem.cluster()` returns its `ClusteringResult` in Python too.
+- **Changed (Python):** the extension module holds no file reader or writer. `dtwcpp.load()` reads CSV/TSV text and
+  folders in Python by `dtwc_cl`'s rules (the same series, or the same error type, for every file of
+  `tests/data/reader`), and an Arrow IPC file (`.arrow`, `.ipc`, `.feather`: the `data` column, named by `name`) as well
+  as Parquet through the installed pyarrow; `Problem.write_clusters`, `write_silhouettes`, `write_medoid_members`,
+  `write_distance_matrix` and `Result.save` write the bytes C++ wrote. On Windows `_dtwcpp_core` shrinks from 6,136,832
+  to 6,063,104 bytes (no CLI11, CLI pipeline, text reader or result writers).
 - **Changed (build):** Gurobi is linked only when you configure with `-DDTWC_ENABLE_GUROBI=ON` (v1.0.0 linked it
   whenever it found an installation, and a MEX or binary built that way needed the Gurobi library to load); HiGHS
   solves the MIP by default. With the option ON and no installation found, the configure stops with an error that
