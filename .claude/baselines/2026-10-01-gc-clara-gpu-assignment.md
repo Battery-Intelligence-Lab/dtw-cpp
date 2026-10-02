@@ -33,6 +33,29 @@ library.
 - Noise: a case outside the band is re-run once, back to back with its fill; still outside, FALSIFIED (recorded, and the
   route is kept: its results are right, only its speed is in question). The load is recorded with each run.
 
-## Results
+## Results [inferred, timings; the machine was quiet: CPU load 0–19 %, the GPU idle at 210–405 MHz between cases and at 2310 MHz in them] — pass
 
-(to be filled)
+Registration committed 01:20:53 BST (`aa114aa9`), before the first timed run (01:21:25–01:23:33 BST, `band_run1.txt`,
+harness sha256 `2ab4443ff3f0e86e…`, linked against step 1 `870a3cde`; runner `run_band.sh`). Medians of 5, CUDA-event time:
+
+| case | fill (same session) | entry | entry / fill | entry / C1-derived | registered | verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| FP32 L 500 | 449.7 kpairs/s (N 1100, 1.3440 s) | 472.2 kpairs/s (0.4235 s) | **1.050** | 1.067 | ≥ 0.8, ≥ 0.8 | pass |
+| FP64 L 500 | 113.8 kpairs/s (N 520, 1.1861 s) | 113.9 kpairs/s (1.7557 s) | **1.001** | 1.008 | ≥ 0.8, ≥ 0.8 | pass |
+| FP32 L 1024 (Shared) | 120.9 kpairs/s (N 600, 1.4868 s) | 127.9 kpairs/s (N 10,000, 0.7818 s) | 1.058 | — | ≥ 0.8 | pass |
+| FP32 L 3000 (global) | 10.5 kpairs/s (N 184, 1.6060 s) | 10.0 kpairs/s (N 1,000, 0.9995 s) | 0.952 | — | ≥ 0.8 | pass |
+
+The entry runs the fill's kernels at the fill's rate: 118.1 Gcell/s against 112.4 (FP32) and 28.5 against 28.4 (FP64)
+at L 500, inside the predicted 0.95–1.05. The FP32 Shared kernel's fewer registers (63 against 68) did not cost the
+rectangle at L 1024 (1.058). The FP64 assignment's labels and nearest distances hash equal to the CPU's
+(`635a683588bf157c` both): the same distances bit for bit.
+
+Against the CPU assignment (24 threads, wall-clock 2.7953 s, 71.5 kpairs/s = 17.9 Gcell/s): the GPU takes 0.4235 s in FP32
+(**6.6×**) and 1.7557 s in FP64 (**1.59×**; this GPU runs FP64 at 1/64 of its FP32 rate). With the host's assignment of each
+block the wall times are 0.4320 and 1.7640 s.
+
+Memory, whatever N: a block holds at most 2^27 samples and 2^27 distances, so the device holds (k + block) × max_L
+samples of T, block × k doubles and the global wavefront's slices (at most the L2's worth), and the host its pinned
+staging of the same samples and one block of distances: at L 500 and k 10 a block is 268,435 series, 512 MiB of FP32
+or 1 GiB of FP64 samples and 20.5 MiB of distances. The caller keeps O(N): FastCLARA's labels and nearest distances
+(16 bytes a series, 1.6 GB at N = 100M).
