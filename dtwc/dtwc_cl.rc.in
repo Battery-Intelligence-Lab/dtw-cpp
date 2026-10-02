@@ -20,7 +20,7 @@ BEGIN
       VALUE "FileDescription",  "DTWC++ command-line time-series clustering"
       VALUE "FileVersion",      "@DTWC_VERSION_STRING@"
       VALUE "InternalName",     "dtwc_cl"
-      VALUE "LegalCopyright",   "Copyright (c) 2024, The Chancellor, Masters and Scholars of the University of Oxford"
+      VALUE "LegalCopyright",   "Copyright (c) 2024, The Chancellor, Masters and Scholars of the University of Oxford, Battery Intelligence Lab, and the 'DTW-C++' Developers. All rights reserved."
       VALUE "OriginalFilename", "dtwc_cl.exe"
       VALUE "ProductName",      "DTWC++"
       VALUE "ProductVersion",   "@DTWC_VERSION_STRING@"

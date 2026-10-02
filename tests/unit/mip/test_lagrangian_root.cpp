@@ -337,7 +337,7 @@ TEST_CASE("Exact LR-core B&B certifies the optimum on clustered data", "[lagrang
 TEST_CASE("Exact LR-core B&B matches the oracle on the adversarial regime", "[lagrangian][exact]")
 {
   int checked = 0, engaged = 0;
-  long total_nodes = 0;
+  std::int64_t total_nodes = 0;
   for (unsigned seed = 1; seed <= 24; ++seed) {
     const int N = 12 + static_cast<int>(seed % 3); // 12..14
     const int k = 3 + static_cast<int>(seed % 2);  // 3..4
@@ -355,7 +355,7 @@ TEST_CASE("Exact LR-core B&B matches the oracle on the adversarial regime", "[la
     if (ex.nodes > 0) ++engaged;
     ++checked;
   }
-  std::printf("[lagrangian][exact] adversarial: %d instances, tree engaged on %d, total nodes=%ld\n",
+  std::printf("[lagrangian][exact] adversarial: %d instances, tree engaged on %d, total nodes=%" PRId64 "\n",
               checked, engaged, total_nodes);
   REQUIRE(checked == 24);
   REQUIRE(engaged >= 1); // the branch-and-bound must actually run on the adversarial regime.
