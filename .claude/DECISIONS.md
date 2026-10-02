@@ -315,3 +315,11 @@ CHANGELOG rule.
   `auto`; v1.0.0's option names are hidden warn-once spellings and its `--Nc i..j` range is refused.
 - 2026-10-01 — W8c: Python and MATLAB `compute_distance_matrix` are one Problem fill on every device (byte-identical
   matrices, about 3x faster); an infeasible band, a band below -1 and an empty series are InvalidInput there too.
+- 2026-10-02 — Volkan (question tool) — Windows wheels: "Measure first": time an MSVC wheel against a clang-cl
+  wheel on the fill, quiet machine, before choosing (clang packs the lane loop, cl does not; a clang-cl wheel ships
+  libomp.dll, which can abort with OMP Error #15 beside Intel's OpenMP). `dtwc_cl.exe` gets a VERSIONINFO resource
+  ("Add it"). ARC builds keep Arrow ON and stop loudly if ARC's Arrow is unusable ("Keep ON, fail loudly"). Headers:
+  "whichever the best practices for modern CMake" — read as each folder listing its headers in a `FILE_SET HEADERS`
+  (CMake 3.23; the base directory is never the repo root), done in L2b. The cache rulings stand ("Keep as is": keyed
+  by the data, the distance settings and the computed precision; CUDA Auto refused with a persistent cache; Metal
+  Auto = FP32); `k` stays required. `9056fcb9` was his commit. Metal is noted for his next session on the Mac.

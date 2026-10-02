@@ -217,6 +217,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 ## G — docs and release prep (W14)
 
 - ☐ W14a hand-written tier pages and a v1.0.0 → 2.0 migration page; `api-contract-2.0.md` deleted
+- ☐ VI `dtwc_cl.exe` carries a VERSIONINFO resource: name, version, copyright (Volkan 10-02)
+- ☐ WM the Windows wheel's fill, MSVC against clang-cl, on a quiet machine with a registered band; Volkan then
+  decides the wheels' compiler (Volkan 10-02: measure first)
 - ☑ W14b CMake `FATAL_ERROR` for an explicit `ON` it cannot honour; CUDA CI asserts CUDA built;
   `test_conformance.py` collected (W14b 9d56aab, e7354b9, 015dc71, 836bddc, d99b15d; merged 9056fcb9; Gurobi defaults OFF; Arrow without Parquet is an IPC-only build that says so)
 - ☐ W14c CHANGELOG → one `2.0.0 (unreleased)` section vs v1.0.0; MAP regenerated; audit folder deleted
@@ -233,7 +236,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## Blocked on another machine or on Volkan
 
-- Metal: every Metal step runs on macOS CI (a push is Volkan's).
+- Metal (Volkan 10-02: "Take note of this so we don't forget when I went to macOS machine."): the Metal edits of
+  W4d, W13a and W10 have never been compiled. On the Mac: build design-2.0 (`clang-macos` preset), serial ctest
+  with test_metal_correctness and test_metal_mmap running (not skipped), fix what breaks, then W4e.
 - Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux and Windows (Windows needs a
   `dumpbin /dependents` leg).
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
