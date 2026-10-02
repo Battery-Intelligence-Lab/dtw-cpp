@@ -1,0 +1,33 @@
+// Windows VERSIONINFO of dtwc_cl.exe, configured by the root CMakeLists.txt.
+// The numeric FILEVERSION takes four integers (the prerelease tag has no place
+// in them); the strings carry the full version text, for example 2.0.0rc1.
+#include <winver.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    @DTWC_RC_VERSION@
+ PRODUCTVERSION @DTWC_RC_VERSION@
+ FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+ FILEFLAGS      0
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_APP
+ FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0" // US English, Unicode
+    BEGIN
+      VALUE "CompanyName",      "University of Oxford"
+      VALUE "FileDescription",  "DTWC++ command-line time-series clustering"
+      VALUE "FileVersion",      "@DTWC_VERSION_STRING@"
+      VALUE "InternalName",     "dtwc_cl"
+      VALUE "LegalCopyright",   "Copyright (c) 2024, The Chancellor, Masters and Scholars of the University of Oxford"
+      VALUE "OriginalFilename", "dtwc_cl.exe"
+      VALUE "ProductName",      "DTWC++"
+      VALUE "ProductVersion",   "@DTWC_VERSION_STRING@"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END
