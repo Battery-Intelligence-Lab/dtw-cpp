@@ -737,6 +737,16 @@ TEST_CASE("FX-6 parse_number keeps the std::from_chars contract",
   CHECK(single == 0x1p-149f);
 }
 
+TEST_CASE("FX-6 a Ctrl-Z byte is a non-numeric field, not the end of the file",
+          "[fileOperations][fx6][ctrl_z]")
+{
+  // "1,2,3\n4,5,6\n7,8,9\x1a\n10,11,12\n": a text-mode stream on Windows ended the
+  // file at the 0x1A, so three series were read and the fourth dropped silently.
+  CHECK_THROWS_AS(load_path(reader_fixture("ctrl_z.csv")), IOError);
+  CHECK_THROWS_WITH(load_path(reader_fixture("ctrl_z.csv")),
+                    ContainsSubstring("row 3, column 3: invalid numeric field"));
+}
+
 TEST_CASE("FX-6 the text reader parses through parse_number",
           "[fileOperations][fx6][number]")
 {

@@ -373,9 +373,12 @@ std::size_t for_each_data_line(std::istream &in, const fs::path &path,
 }
 
 /// Open a text file for reading, positioned after any UTF-8 byte-order mark.
+/// Binary, so every platform reads the same bytes: a text-mode stream on Windows
+/// ended the file at a 0x1A byte and dropped the rows after it silently. A CR
+/// before the LF is ASCII whitespace, which the field and blank-line rules trim.
 inline std::ifstream open_text_file(const fs::path &path, std::string_view reader)
 {
-  std::ifstream in(path, std::ios_base::in);
+  std::ifstream in(path, std::ios_base::in | std::ios_base::binary);
   if (!in.good())
     throw IOError("Error in " + std::string(reader) + ": File "
                   + path.string() + " could not be opened.");

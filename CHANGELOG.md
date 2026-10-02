@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fixed (CLI, C++, Python, MATLAB):** a CSV/TSV file holding a Ctrl-Z (0x1A) byte is refused with `IOError` naming the
+  row and column, as any non-numeric field is. v1.0.0 read text files in text mode, which on Windows ended the file at
+  that byte and silently dropped the rows after it.
 - **Added (C++):** `dtwc::Config` is declared in `dtwc/config.hpp` with `apply(config, prob)`, which hands a `Problem`
   the clustering settings of a Config (distance, method, solver, device) as `dtwc::run` does before it reads a file, and
   `scores::score(prob, name)`, the score `Result::score(name)` returns.

@@ -33,6 +33,7 @@
 #include <utility>     // for pair
 #include <vector>      // for vector, allocator
 #include <functional>  // std::function
+#include <iosfwd>      // std::ostream
 #include <span>        // std::span
 #include <memory>
 #include <stdexcept>
@@ -85,6 +86,28 @@ std::string gpu_info();
 /// The method `auto` stands for: pam on a GPU, and on the CPU pam for up to 5000
 /// series, clara above. Any other method is itself.
 Method resolve_method(Method method, Device device, std::size_t n_series);
+
+namespace detail {
+
+/**
+ * @brief Write a clustered Problem's result files into `directory`, which is created if missing.
+ *
+ * `<name>_labels.csv` and `<name>_medoids.csv`, then, when the distance matrix is filled,
+ * `<name>_distance_matrix.csv` and, for k > 1, `<name>_silhouettes.csv`. An undefined silhouette is a
+ * warning on stderr; any other failure propagates. A Problem without series (a RAM-limited Parquet run)
+ * names its series `series_<i>` and has no matrix or silhouettes to write.
+ *
+ * @param complete  true (Result::save): fill the matrix first, so all four files are written, and throw
+ *                  InvalidInput after the labels and medoids when there is no matrix to fill. false (the
+ *                  CLI): write the matrix and silhouettes only if the matrix is already filled, so a
+ *                  matrix-free run does not fill O(N^2) for them.
+ * @param progress  when set, one line per file written.
+ * @throws IOError for a file that cannot be written in full.
+ */
+void write_result_files(Problem &prob, const std::filesystem::path &directory, bool complete,
+                        std::ostream *progress = nullptr);
+
+} // namespace detail
 
 /// What every method needs: at least one series, and no more clusters than series.
 /// @throws InvalidInput "cluster: dataset is empty." or "cluster: k must not exceed the number of series."
