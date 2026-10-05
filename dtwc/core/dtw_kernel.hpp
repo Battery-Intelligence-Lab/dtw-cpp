@@ -434,6 +434,14 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(const T *x, const T *const *ys,
   // [n][W], one cache line per row: the W series interleaved, and the rolling
   // DP column (s[i].v[w] = dp[i, j] of pair w).
   struct alignas(64) Row { T v[W]; };
+  // maxValue in every lane. A row, or the lanes of `left`, is set by copying it whole:
+  // Apple clang turns a loop that stores a 64-byte constant (or reads this row lane
+  // by lane, which it folds to that constant) into a call of memset_pattern16.
+  static constexpr Row kUnreachable = [] {
+    Row r{};
+    for (T &e : r.v) e = maxValue;
+    return r;
+  }();
   thread_local std::vector<Row> y_buf, s_buf;
   if (y_buf.size() < n) {
     y_buf.resize(n);
@@ -453,8 +461,7 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(const T *x, const T *const *ys,
   for (std::size_t i = 1; i < hi0; ++i)
     for (std::size_t w = 0; w < W; ++w)
       s[i].v[w] = cell.combine(maxValue, s[i - 1].v[w], maxValue, dist(x[i], Y[0].v[w]), i, 0);
-  for (std::size_t i = hi0; i < n; ++i)
-    for (std::size_t w = 0; w < W; ++w) s[i].v[w] = maxValue;
+  for (std::size_t i = hi0; i < n; ++i) s[i] = kUnreachable;
 
   for (std::size_t j = 1; j < n; ++j) {
     const auto [lo, hi] = dtw_band_bounds(band, j, n);
@@ -471,10 +478,9 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(const T *x, const T *const *ys,
       }
       i = 1;
     } else {
-      for (std::size_t w = 0; w < W; ++w) {
-        diag[w] = s[lo - 1].v[w]; // dp[lo-1, j-1], inside the previous column's band
-        left[w] = maxValue;       // dp[lo-1, j], outside this column's band
-      }
+      for (std::size_t w = 0; w < W; ++w)
+        diag[w] = s[lo - 1].v[w];           // dp[lo-1, j-1], inside the previous column's band
+      std::copy_n(kUnreachable.v, W, left); // dp[lo-1, j], outside this column's band
     }
     for (; i < hi; ++i) {
       const T xi = x[i];
