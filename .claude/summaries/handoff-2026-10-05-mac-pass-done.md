@@ -51,7 +51,6 @@ commit (2026-10-06, past midnight). Volkan pushed `f5c58764` at 00:16 and pushes
 - Lanes agent: 38,928-value output hash identical before/after; x86-64 Darwin cross-compile had the same idiom.
 - Banded agent: 30.3 M-call sweep identical and equal to an independent reference; deliberate breaks detected; the
   `diag` guard and the bounds vectors provably removable (unit A); the probe lacked an f32 banded kernel (unit B).
-- W4e agent: all five pipelines through one helper; `-v` does not name the kernel (one-line change if wanted).
 - Gate agent: 274 calls in the probe's dtwc functions, all outside loops; the `BLOCK` regex misses x86-64 Darwin's
   `##  %bb.N:`. Bounds agent: cycles per column via `proc_pid_rusage` (band 1: 21.6 with the old call, 33.5 without).
 
