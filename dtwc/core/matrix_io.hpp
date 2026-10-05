@@ -138,7 +138,7 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
   // silently. The CR of a CRLF line end is dropped below.
   std::ifstream file(path, std::ios::in | std::ios::binary);
   if (!file.good())
-    throw IOError("Cannot open file for reading: " + path.string());
+    throw IOError("Cannot open file for reading: " + path_to_utf8(path));
 
   struct Cell { double value; bool valid; };
   std::vector<std::vector<Cell>> rows;
@@ -167,7 +167,7 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
         if (parsed.ec != std::errc{} || parsed.ptr != cell.data() + cell.size())
           throw IOError(
             "Invalid numeric field '" + std::string(cell) + "' in "
-            + path.string());
+            + path_to_utf8(path));
         row.push_back({ value, !std::isnan(value) }); // "nan" → uncomputed, as stored
       }
       if (comma == std::string_view::npos) break;
@@ -185,7 +185,7 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
     if (rows[i].size() == N + 1 && !rows[i].back().valid) rows[i].pop_back();
     if (rows[i].size() != N)
       throw InvalidInput(
-        "distance-matrix CSV '" + path.string() + "': row " + std::to_string(i + 1)
+        "distance-matrix CSV '" + path_to_utf8(path) + "': row " + std::to_string(i + 1)
         + " has " + std::to_string(rows[i].size()) + " fields but the file has "
         + std::to_string(N) + " rows; a distance matrix is square (write an "
           "uncomputed entry as an empty field).");
@@ -196,7 +196,7 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
       const Cell a = rows[i][j], b = rows[j][i];
       if (a.valid && b.valid && a.value != b.value)
         throw InvalidInput(
-          "distance-matrix CSV '" + path.string() + "': " + where(i, j) + " is "
+          "distance-matrix CSV '" + path_to_utf8(path) + "': " + where(i, j) + " is "
           + std::string(core::detail::distance_matrix_csv_token(a.value, a_text))
           + " but " + where(j, i) + " is "
           + std::string(core::detail::distance_matrix_csv_token(b.value, b_text))

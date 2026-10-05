@@ -214,7 +214,7 @@ void Problem::read_distance_matrix(const fs::path &distMat_path)
   io::read_csv(loaded, distMat_path);
   if (size() != 0 && loaded.size() != size())
     throw InvalidInput(
-      "Problem::read_distance_matrix: '" + distMat_path.string() + "' has "
+      "Problem::read_distance_matrix: '" + path_to_utf8(distMat_path) + "' has "
       + std::to_string(loaded.size()) + " rows, but this Problem holds "
       + std::to_string(size()) + " series; a distance matrix has one row and "
         "one column per series, in input order. Load the matrix computed for "

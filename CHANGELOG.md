@@ -16,6 +16,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   refused with `IOError` naming the row and column whatever the delimiter: with `--delimiter ' '` it was read as one
   series holding every value, as v1.0.0 read it. A CRLF line end reads as LF, a CR anywhere else is part of its field, and
   the space delimiter splits on spaces and tabs only.
+- **Fixed (CLI, C++, Python, MATLAB):** a text reader's error names its file in UTF-8 on Windows too. For a name outside
+  the code page (a folder's `δ.csv`) the error was lost to "No mapping for the Unicode character exists in the target
+  multi-byte code page" (from Python's `read_distance_matrix` an untyped `RuntimeError`), and a non-ASCII name inside it
+  (`café.csv`) reached Python garbled.
 - **Added (C++):** `dtwc::Config` is declared in `dtwc/config.hpp` with `apply(config, prob)`, which hands a `Problem`
   the clustering settings of a Config (distance, method, solver, device) as `dtwc::run` does before it reads a file, and
   `scores::score(prob, name)`, the score `Result::score(name)` returns.

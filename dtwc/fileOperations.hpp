@@ -132,7 +132,7 @@ inline void ignoreBOM(std::istream &in, const fs::path &path = {})
   while (matched-- > 0) in.unget();
   if (!in)
     throw IOError(
-      "Error in delimited text file: '" + path.string() + "': cannot re-read the "
+      "Error in delimited text file: '" + path_to_utf8(path) + "': cannot re-read the "
       "first bytes of a non-seekable stream after a partial UTF-8 byte-order mark.");
 }
 
@@ -237,7 +237,7 @@ inline bool equals_ascii_ci(std::string_view token, std::string_view lower)
   std::string shown(token.substr(0, max_token_chars));
   if (token.size() > max_token_chars) shown += "...";
   throw IOError(
-    "Error in delimited text file: '" + path.string() + "' row "
+    "Error in delimited text file: '" + path_to_utf8(path) + "' row "
     + std::to_string(row) + ", column " + std::to_string(column)
     + ": " + std::string(reason) + " '" + shown + "'.");
 }
@@ -296,7 +296,7 @@ std::size_t parse_numeric_row(std::string_view line, const fs::path &path,
   // source, not a failed read: InvalidInput.
   if (first > fields.size()) {
     throw InvalidInput(
-      "Error in delimited text file: '" + path.string() + "' row "
+      "Error in delimited text file: '" + path_to_utf8(path) + "' row "
       + std::to_string(row) + " has only " + std::to_string(fields.size())
       + " fields, fewer than start_col=" + std::to_string(start_column) + ".");
   }
@@ -322,7 +322,7 @@ std::optional<T> parse_series_value_row(std::string_view line,
   const auto column = static_cast<std::size_t>(start_column);
   if (column >= fields.size()) { // too wide a start_col: InvalidInput, as above
     throw InvalidInput(
-      "Error in delimited text file: '" + path.string() + "' row "
+      "Error in delimited text file: '" + path_to_utf8(path) + "' row "
       + std::to_string(row) + " has only " + std::to_string(fields.size())
       + " fields, fewer than required column " + std::to_string(column + 1)
       + ".");
@@ -337,7 +337,7 @@ std::optional<T> parse_series_value_row(std::string_view line,
   // two-column `index,value` file read without start_col=1 clustered the index.
   if (fields.size() > column + 1) {
     throw IOError(
-      "Error in delimited text file: '" + path.string() + "' row "
+      "Error in delimited text file: '" + path_to_utf8(path) + "' row "
       + std::to_string(row) + " has " + std::to_string(fields.size())
       + " fields; a file in a one-series-per-file folder holds one value per "
         "line, here in column " + std::to_string(column + 1)
@@ -368,7 +368,7 @@ std::size_t for_each_data_line(std::istream &in, const fs::path &path,
     }
     if (blank_row != 0)
       throw IOError(
-        "Error in delimited text file: '" + path.string() + "' row "
+        "Error in delimited text file: '" + path_to_utf8(path) + "' row "
         + std::to_string(blank_row) + " is empty; an empty line is neither a "
           "series nor a value (write a missing value as nan).");
     on_line(std::string_view(line), row);
@@ -386,7 +386,7 @@ inline std::ifstream open_text_file(const fs::path &path, std::string_view reade
   std::ifstream in(path, std::ios_base::in | std::ios_base::binary);
   if (!in.good())
     throw IOError("Error in " + std::string(reader) + ": File "
-                  + path.string() + " could not be opened.");
+                  + path_to_utf8(path) + " could not be opened.");
   ignoreBOM(in, path);
   return in;
 }

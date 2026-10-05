@@ -857,6 +857,17 @@ TEST_CASE("A CR ends a line only before its LF, whatever the delimiter", "[fileO
         == load_path(reader_fixture("trailing_blank.csv")).p_vec);
 }
 
+TEST_CASE("A reader error names its file in UTF-8, whatever the file is called", "[fileOperations][utf8]")
+{
+  // path::string() is the ANSI code page on Windows, where it threw for this
+  // name: the user saw "No mapping for the Unicode character exists" instead.
+  const ScratchDirectory scratch{ "utf8_names" };
+  const fs::path bad = scratch.path / fs::path(u8"\u03b4_bad.csv");
+  std::ofstream(bad, std::ios::binary) << "1,2,3\n4,x,6\n";
+  CHECK_THROWS_AS(load_path(bad), IOError);
+  CHECK_THROWS_WITH(load_path(bad), ContainsSubstring("\xCE\xB4_bad.csv' row 2, column 2: invalid numeric field"));
+}
+
 TEST_CASE("FX-6 Problem rejects an empty series from any source",
           "[fileOperations][fx6][problem]")
 {
