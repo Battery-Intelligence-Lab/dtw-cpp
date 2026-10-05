@@ -691,6 +691,28 @@ TEST_CASE("FX-11 a refused matrix file leaves the destination matrix as it was",
   }
 }
 
+TEST_CASE("The matrix reader reads the file's bytes: a Ctrl-Z is a field and a CRLF line an LF line",
+          "[csv][dense][read]")
+{
+  const auto read = [](std::string_view name, std::string_view bytes) {
+    const auto path = fresh_path(name);
+    seed_binary(path, bytes);
+    dtwc::core::DistanceMatrix loaded;
+    dtwc::io::read_csv(loaded, path);
+    return loaded;
+  };
+  // A text-mode stream on Windows ended the file at the 0x1A, so this read as
+  // the 2x2 matrix before it and the third row was dropped silently.
+  CHECK_THROWS_AS(read("ctrl-z.csv", "0,1.5\n1.5,0\n\x1a" "9,9,9\n"), dtwc::IOError);
+
+  const auto lf = read("lf.csv", "0,1.5,2.5\n1.5,0,3.5\n2.5,3.5,0\n");
+  const auto crlf = read("crlf.csv", "0,1.5,2.5\r\n1.5,0,3.5\r\n2.5,3.5,0\r\n");
+  REQUIRE(lf.size() == 3);
+  REQUIRE(crlf.size() == lf.size());
+  for (size_t i = 0; i < lf.size(); ++i)
+    for (size_t j = 0; j < lf.size(); ++j) CHECK(crlf.get(i, j) == lf.get(i, j));
+}
+
 TEST_CASE("F14 focused route marker", "[f14][csv][marker]")
 {
   CHECK(true);

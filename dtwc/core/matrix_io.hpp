@@ -133,7 +133,10 @@ inline void write_csv(const core::DistanceMatrix &dm, const std::filesystem::pat
 /// a pair may be empty (an upper- or lower-triangle file).
 inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path)
 {
-  std::ifstream file(path);
+  // Binary, so every platform reads the same bytes: a text-mode stream on
+  // Windows ended the file at a 0x1A byte and dropped the rows after it
+  // silently. The CR of a CRLF line end is dropped below.
+  std::ifstream file(path, std::ios::in | std::ios::binary);
   if (!file.good())
     throw IOError("Cannot open file for reading: " + path.string());
 
