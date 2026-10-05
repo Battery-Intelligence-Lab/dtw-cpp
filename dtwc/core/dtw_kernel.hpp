@@ -275,7 +275,7 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
 
 // ===========================================================================
 // Kernel 2: Sakoe-Chiba banded DTW (outer = short, inner = long).
-// Rolling column of size n_long plus per-row band bounds. Optional early abandon.
+// Rolling column of size n_long. Optional early abandon.
 // ===========================================================================
 
 template <typename T, typename Cost, typename Cell>
@@ -300,21 +300,13 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
   thread_local std::vector<T> col_buf;
   col_buf.assign(n_long, maxValue);
   T *col = col_buf.data(); // hoisted out of the loops
-  thread_local std::vector<std::size_t> low_bounds, high_bounds;
-  low_bounds.resize(n_short);
-  high_bounds.resize(n_short);
-  for (std::size_t row = 0; row < n_short; ++row) {
-    auto [lo, hi] = dtw_band_bounds(band, row, n_long);
-    low_bounds[row]  = lo;
-    high_bounds[row] = hi;
-  }
   const bool do_early_abandon = (early_abandon >= T(0));
 
   // First short-step (j_short = 0): fill col along long axis. Only `left`
   // (col[i-1]) is available — diag and up are out-of-bounds (maxValue).
   col[0] = cell.seed(cost(0, 0), 0, 0);
   {
-    const auto hi = high_bounds[0];
+    const auto hi = dtw_band_bounds(band, 0, n_long).second;
     for (std::size_t i = 1; i < hi; ++i) {
       col[i] = cell.combine(maxValue, maxValue, col[i - 1],
                             cost(0, i), 0, i);
@@ -323,33 +315,21 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
   if (do_early_abandon && col[0] > early_abandon) return maxValue;
 
   for (std::size_t j = 1; j < n_short; ++j) {
-    const auto low     = low_bounds[j];
-    const auto high    = high_bounds[j];
-    const auto prev_lo = low_bounds[j - 1];
-    const auto prev_hi = high_bounds[j - 1];
-
-    T diag    = maxValue;
-    T row_min = do_early_abandon ? maxValue : T(0);
-
+    // The band's bounds never decrease with j: dp[j-1, first_row-1] lies in the previous
+    // column's band, and a cell that left the band is never read again, so nothing is cleared.
+    const auto [low, high] = dtw_band_bounds(band, j, n_long);
     const auto first_row = std::max(low, std::size_t{1});
-    if (first_row - 1 >= prev_lo && first_row - 1 < prev_hi) {
-      diag = col[first_row - 1];
-    }
+    T diag    = col[first_row - 1];                 // dp[j-1, first_row-1]
+    T row_min = do_early_abandon ? maxValue : T(0);
 
     if (low == 0) {
       // Row 0 of new column: only `left` (col[0] from previous j-step).
-      // Also update `diag` to col[0] so the next iteration has a valid diag.
-      diag   = col[0];
       col[0] = cell.combine(maxValue, maxValue, col[0], cost(j, 0), j, 0);
       if (do_early_abandon) row_min = col[0];
     }
 
-    // Zero out cells that left the band on the low side (cells in the previous
-    // column that don't have corresponding entries in the current band).
-    for (std::size_t i = prev_lo; i < std::min(low, prev_hi); ++i)
-      col[i] = maxValue;
-
-    T left = col[first_row - 1];                    // dp[j, first_row-1]
+    // Below the band, dp[j, first_row-1] is unreachable: maxValue.
+    T left = (low == 0) ? col[0] : maxValue;        // dp[j, first_row-1]
     for (std::size_t i = first_row; i < high; ++i) {
       const T old_up = col[i];                      // dp[j-1, i]
       // dp[j, i]; carried as the next cell's left instead of reloaded.
@@ -357,11 +337,6 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
       col[i] = left;
       diag = old_up;
       if (do_early_abandon) row_min = std::min(row_min, left);
-    }
-
-    // Zero out cells that leave the band on the high side.
-    for (std::size_t i = std::max(high, prev_lo); i < prev_hi; ++i) {
-      col[i] = maxValue;
     }
 
     if (do_early_abandon && row_min > early_abandon) return maxValue;

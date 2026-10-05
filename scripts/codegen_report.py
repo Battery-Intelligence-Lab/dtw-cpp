@@ -21,7 +21,7 @@ then one line per loop: file:line:col and whether it was vectorised. A manual
 tool, not a gate: the answer depends on the compiler and the host. Exit 0 when a
 report was produced, 2 when it could not be (no clang, no compile_commands.json,
 no matching TU) -- never silently green. --no-calls (test_codegen_no_calls) fails
-instead, exit 1, when an innermost loop of a dtwc function makes a call.
+instead, exit 1, when a call sits inside any loop of a dtwc function, however deep.
 """
 
 from __future__ import annotations
@@ -62,11 +62,14 @@ DROP_PREFIXES = ("-o", "-MF", "-MT", "-MD", "-MMD", "-MQ", "-c")
 # is per-TU codegen of these kernels under the project's real flags -- which is
 # the question X-04 asks -- and not the final post-link code of an LTO build.
 LTO_PREFIX = "-flto"
-# --no-calls reads clang's loop comments: the header block of a loop without
-# sub-loops says "This Inner Loop Header"; other blocks name their innermost loop.
+# --no-calls reads clang's loop comments. A loop's header block says "This Loop Header", or
+# "This Inner Loop Header" when the loop has no sub-loop; every other block of a loop says
+# "in Loop: Header=BBn", naming the innermost loop it is in. Either is loop code, at any depth:
+# the banded kernel's column loop has a child loop, and a call there is a call per column.
 BLOCK = re.compile(r"^(?:\.?LBB(\w+):|\s*(?:#|;|//) %bb\.\d+:)")
 FUNCTION = re.compile(r'^(?![.Ll])("[^"]+"|\S+):')
 CALL = re.compile(r"^\s+(?:call|callq|bl|blr)\s")
+LOOP = re.compile(r"This (?:Inner )?Loop Header|in Loop: Header=BB")
 
 
 def compile_commands(build_dir: Path) -> list[dict]:
@@ -145,10 +148,10 @@ def key(rec: dict) -> str:
     return f"{rec['file']}:{rec['line']}:{rec['col']}"
 
 
-def inner_loop_calls(asm: str) -> tuple[int, list[str]]:
-    """Innermost loops of the dtwc functions in `asm`, and the calls inside them."""
+def loop_calls(asm: str) -> tuple[int, list[str]]:
+    """(innermost-loop count, calls inside any loop) over the dtwc functions in `asm`."""
     fn = block = ""
-    inner, owner, calls = set(), {}, []
+    inner, in_loop, calls = set(), set(), []
     for n, line in enumerate(asm.splitlines()):
         if m := FUNCTION.match(line):
             fn = m.group(1)
@@ -156,13 +159,13 @@ def inner_loop_calls(asm: str) -> tuple[int, list[str]]:
             block = m.group(1) or f"line{n}"
         if "dtwc" not in fn:
             continue
+        if LOOP.search(line):
+            in_loop.add(block)
         if "This Inner Loop Header" in line:
             inner.add(block)
-        if m := re.search(r"in Loop: Header=BB(\w+)", line):
-            owner[block] = m.group(1)
         if CALL.match(line):
             calls.append((block, f"{fn}: {line.strip()}"))
-    return len(inner), [c for b, c in calls if b in inner or owner.get(b) in inner]
+    return len(inner), [c for b, c in calls if b in in_loop]
 
 
 def main() -> int:
@@ -180,7 +183,7 @@ def main() -> int:
         help="the probe TU that instantiates the kernels (see its header comment)",
     )
     ap.add_argument("--no-calls", action="store_true",
-                    help="fail if an innermost loop of a probe kernel makes a call")
+                    help="fail if a call sits inside any loop of a probe kernel")
     args = ap.parse_args()
 
     try:
@@ -202,7 +205,8 @@ def main() -> int:
             argv = rebuild_argv(entries[0], out, args.probe, ("-S", "-fno-color-diagnostics"))
             proc = subprocess.run(argv, cwd=entries[0].get("directory", str(ROOT)),
                                   capture_output=True, text=True, errors="replace")
-            loops, bad = inner_loop_calls(out.read_text(errors="replace") if out.is_file() else "")
+            loops, bad = loop_calls(out.read_text(errors="replace") if out.is_file() else "")
+        # A listing with no loop proves nothing: loops > 0 shows the probe instantiated the kernels.
         ok = proc.returncode == 0 and loops > 0 and not bad
         print(f"CODEGEN_NO_CALLS tool={Path(argv[0]).name} inner_loops={loops} calls={len(bad)} "
               f"verdict={'PASS' if ok else 'FAIL'}", *bad, sep="\n  ")

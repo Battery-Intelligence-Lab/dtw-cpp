@@ -130,7 +130,8 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
 - No `omp critical`, mutex or atomic on a data path (DECISIONS §2 rule 6); region-local `num_threads`, never
   `omp_set_num_threads`.
 - No `std::min({…})`, `std::max({…})` or `std::min_element` in a hot loop: the MSVC STL makes them library calls.
-  `test_codegen_no_calls` fails a clang build whose DP inner loop calls anything.
+  `test_codegen_no_calls` fails a clang build in which any loop of a probe kernel calls anything (Apple clang's
+  `memset_pattern16` idiom sat one loop out from the innermost).
 - `decode_pair` is the single pair decoder on host and device, with its integer corrections.
 - FP model: `-fassociative-math` **without** `-ffinite-math-only`, and the `#error` under finite-math-only. NaN
   means missing or not computed.
