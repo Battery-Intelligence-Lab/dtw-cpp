@@ -108,7 +108,7 @@ new header with the library's flags, single thread, f64 L1, `StandardCell`, medi
 1.10.) Faster at every band from 2 up; slower only at band 1, three cells per column, where the per-column cost
 rose from 5.4 to 8.3 ns.
 
-### Follow-up unit (agent, Opus): the bounds as arithmetic — FALSIFIED, not merged; band 1 explained
+### Follow-up unit (agent, Opus): the bounds as arithmetic — FALSIFIED on the Mac, merged on Volkan's call; band 1 explained
 
 Branch `pb/banded-bounds-arith` (`a2d5e4e5`, +8/−25, bit-identical on both sweeps): the two thread_local bounds
 vectors, their fill loop and the `diag` guard go; each column calls `dtw_band_bounds` once (the guard was always true:
@@ -125,8 +125,11 @@ the agent's `bench2` builds, medians of 3 interleaved rounds, ratio `a2d5e4e5 / 
 
 FALSIFIED at bands 5–12 without early abandon (the unequal-length fill's regime for short series): fewer
 instructions per column (66 against 80) but more cycles; the agent's diagnosis is scheduling, not work (a copy whose
-column addresses wait on one load, as they waited on the vectors, is fast again). Kept unmerged for the Windows box
-to time on x86; if neutral there, the trade-off goes to Volkan. (Absolute ns in this run are about 1.5× the morning's:
+column addresses wait on one load, as they waited on the vectors, is fast again). Volkan merged it on 2026-10-06
+(`822225bc`, DECISIONS §3) for the simpler code; the Windows box times it on x86 and decides whether it stays.
+Verified by me on the merged tree: zero warnings; `CODEGEN_NO_CALLS … inner_loops=108 calls=0 verdict=PASS`; no
+`memset_pattern16` in the listing; ctest 95/95 + 1 CUDA skip; Metal 2168/16 and 169/5; conformance the same one ulp;
+GPU routes byte-identical; pytest 1102 passed / 11 skipped. (Absolute ns in this run are about 1.5× the morning's:
 the clock had dropped, 4.6 → 2.9 GHz per the agent's `proc_pid_rusage` cycles; interleaving keeps the ratios valid.)
 
 Band 1 `[agent, cycles via proc_pid_rusage]`: the old code's `memset_pattern16` call stored `col[low − 1]` right after

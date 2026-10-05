@@ -349,3 +349,6 @@ CHANGELOG rule.
   METAL and ARROW. The Mac's silhouette is one ulp off the Windows-recorded conformance reference with identical
   labels and medoids: accepted under D-19 and Volkan 10-01, the reference stays as recorded. Apple clang's
   `memset_pattern16` idiom is fixed in the kernels' code, not by a flag (the targeted no-builtin flag does nothing).
+- 2026-10-06 — Volkan (chat, "sure also merge and commit"): the banded kernel's bounds-as-arithmetic simplification
+  (`pb/banded-bounds-arith`, 25 lines fewer, bit-identical) merges although the Mac timed it 1.08–1.20× slower at
+  bands 5–12 without early abandon (faster with it); the Windows box times it on x86 and the numbers decide if it stays.

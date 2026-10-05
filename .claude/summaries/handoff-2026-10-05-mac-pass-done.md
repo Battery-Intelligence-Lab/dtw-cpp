@@ -2,8 +2,8 @@
 
 ## Base
 
-Branch `design-2.0` on the Mac, base `4dd4dcaf` (the morning handoff); seven commits since, HEAD = this file's
-commit (written past midnight, 2026-10-06). Nothing pushed: Volkan pushes; the Windows machine then
+Branch `design-2.0` on the Mac, base `4dd4dcaf` (the morning handoff); nine commits since, HEAD = this file's
+commit (2026-10-06, past midnight). Volkan pushed `f5c58764` at 00:16 and pushes this one; the Windows machine then
 `git pull --no-rebase`. W9b was still unmerged (origin unchanged all day). Tree clean after this commit.
 
 ## Done (each a local commit on design-2.0, proven on the main tree before committing)
@@ -21,10 +21,10 @@ commit (written past midnight, 2026-10-06). Nothing pushed: Volkan pushes; the W
   the shipped code has one `fabd`); this commit also carries the old handoff's deletion (index was staged).
 - `98e986fc` the gate reads any loop of a probe kernel (the banded calls sat one loop out) and the probe gains the
   f32 per-pair kernels; bites on both old headers (12 and 8 calls), passes at HEAD (114 innermost loops, 0 calls).
-- NOT merged, branch `pb/banded-bounds-arith` (`a2d5e4e5`): the banded kernel's bounds vectors and `diag` guard
-  removed (bit-identical, −25 lines) — FALSIFIED on the quiet machine: 1.08–1.20× slower at bands 5–12 without early
-  abandon, faster with it (table in the baseline). Band 1 explained (store→load handoff through `col`); its only
-  fix is a dead store per column, not shipped.
+- `822225bc` merge of `pb/banded-bounds-arith` (`a2d5e4e5`): the banded kernel's bounds vectors and `diag` guard
+  removed (bit-identical, −25 lines). FALSIFIED on the Mac as a no-regression change (1.08–1.20× slower at bands
+  5–12 without early abandon, faster with it; table in the baseline); Volkan merged it anyway (DECISIONS §3, 10-06):
+  x86 timing on Windows decides. Band 1 explained (store→load handoff through `col`); its fix is a dead store, not shipped.
 - Records: `baselines/2026-10-05-macos-design-2-0.md` (every number of the pass), PLAN (W4e ☑, the Mac entry),
   DECISIONS §3 (10-05 Mac line), LESSONS (the memset_pattern16 idiom), CHANGELOG (Metal fixes); MAP §7, DECISIONS
   (K1 line) and LESSONS now say the gate reads any loop.
@@ -43,7 +43,8 @@ commit (written past midnight, 2026-10-06). Nothing pushed: Volkan pushes; the W
 - Leak probe run by me on base, the agent's build and the merged library: 191.8 / 0.0 / 0.0 MB.
 - ASan + UBSan (`build-asan/`, halt on error): 94/94 passed, 1 CUDA skip, no sanitizer report; the codegen gate
   excluded there by design. The first sanitizer run of design-2.0 on macOS.
-- pytest again, wheel rebuilt at `98e986fc` (every change of the day in): 1102 passed, 11 skipped, the same 11.
+- After the merge `822225bc`: gate PASS (108 innermost loops, 0 calls), ctest 95/95 + 1 skip, Metal counts unchanged,
+  conformance the same ulp, GPU routes byte-identical, pytest 1102 passed / 11 skipped (wheel rebuilt there).
 
 ## Reported by agents, unverified
 
@@ -65,9 +66,9 @@ commit (written past midnight, 2026-10-06). Nothing pushed: Volkan pushes; the W
    tree and pytest (the kernels changed: lanes, banded; `test_codegen_no_calls` under the hardened rule).
 2. Mac, when W9b reaches origin: pull, rebuild, pytest again (PLAN "Blocked on another machine").
 3. E: W9e, M1, W9c, L2b; the second short Mac pass after L2b; W9f. G: W14a, WM, W14c.
-4. Candidates noted, not done: time `pb/banded-bounds-arith` on x86 (merge only if neutral there, then Volkan's
-   call); `-v` naming the Metal kernel; the probe still lacks squared-L2, multivariate and Soft wrappers; Metal
-   `context()` retains the device twice (harmless).
+4. Windows: time the merged bounds change (`822225bc` vs its parent) on x86 with a registered band; revert
+   `a2d5e4e5` if it loses there too. Candidates: `-v` naming the Metal kernel; squared-L2, multivariate and Soft
+   wrappers in the probe; Metal `context()` retains the device twice (harmless).
 
 ## Open questions
 
@@ -76,5 +77,5 @@ commit (written past midnight, 2026-10-06). Nothing pushed: Volkan pushes; the W
 
 ## Status honesty
 
-Mac only: `build/` (clang-macos Release), `build-matlab/`, `build-asan/`, a fresh-venv wheel; pytest at base and at
-`98e986fc`. Not run here: CUDA, Linux, CI, the release archives, any x86 timing of `pb/banded-bounds-arith`.
+Mac only: `build/` (clang-macos Release), `build-matlab/`, `build-asan/` (at `98e986fc`), a fresh-venv wheel; pytest
+at base, `98e986fc` and `822225bc`. Not run here: CUDA, Linux, CI, the release archives, any x86 timing of `a2d5e4e5`.
