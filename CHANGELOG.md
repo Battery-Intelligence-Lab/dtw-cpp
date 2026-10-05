@@ -16,6 +16,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   Parquet file streamed under `--ram-limit` is assigned chunk by chunk the same way. `dtwc_cl --device gpu --method clara`
   with a sample smaller than N runs instead of raising `DeviceError`. On Metal the assignment runs on the CPU, which `-v`
   says.
+- **Fixed (Metal):** a fill that is refused or fails releases its Metal buffers (the series, lengths, output and
+  scratch buffers leaked on those paths), and a kernel that fails in any chunk of a chunked fill raises `DeviceError`
+  (only the last chunk was checked; an earlier failure left its pairs at distance 0).
 - **Changed (build):** Gurobi is linked only when you configure with `-DDTWC_ENABLE_GUROBI=ON` (v1.0.0 linked it
   whenever it found an installation, and a MEX or binary built that way needed the Gurobi library to load); HiGHS
   solves the MIP by default. With the option ON and no installation found, the configure stops with an error that

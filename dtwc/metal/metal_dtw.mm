@@ -922,7 +922,18 @@ MetalDistMatResult compute_distance_matrix_metal(
       }
     }
 
-    id<MTLCommandBuffer> last_cmd = nil;
+    // A command buffer that failed, whichever chunk it carried, is a typed
+    // error: its pairs would otherwise stay 0 in the output and read as
+    // identical series. The buffers are autoreleased; the pool in `owned`
+    // keeps them until the call returns.
+    auto check = [](id<MTLCommandBuffer> cmd) {
+      if (cmd.error) {
+        NSString *desc = [cmd.error localizedDescription];
+        throw dtwc::DeviceError(std::string("Metal kernel failed: ") +
+                                (desc ? [desc UTF8String] : "unknown"));
+      }
+    };
+    std::vector<id<MTLCommandBuffer>> in_flight;
     for (size_t off = 0; off < num_pairs; off += chunk) {
       // The kernels read buffer(8) as a 64-bit `long`: typed here, never narrowed.
       const std::int64_t pair_offset = static_cast<std::int64_t>(off);
@@ -970,27 +981,20 @@ MetalDistMatResult compute_distance_matrix_metal(
       [enc dispatchThreadgroups:grid threadsPerThreadgroup:tg];
       [enc endEncoding];
       [cmd commit];
-      last_cmd = cmd;
 
       // When scratch is reused across chunks we must wait for each chunk
       // before launching the next (otherwise the next chunk clobbers
       // in-flight scratch). Applies to both global and banded-row kernels.
       if (use_global || use_banded_row) {
         [cmd waitUntilCompleted];
-        if (cmd.error) {
-          NSString *desc = [cmd.error localizedDescription];
-          throw dtwc::DeviceError(std::string("Metal kernel failed: ") +
-                                  (desc ? [desc UTF8String] : "unknown"));
-        }
+        check(cmd);
+      } else {
+        in_flight.push_back(cmd);
       }
     }
-    if (last_cmd && !use_global && !use_banded_row) {
-      [last_cmd waitUntilCompleted];
-      if (last_cmd.error) {
-        NSString *desc = [last_cmd.error localizedDescription];
-        throw dtwc::DeviceError(std::string("Metal kernel failed: ") +
-                                (desc ? [desc UTF8String] : "unknown"));
-      }
+    for (id<MTLCommandBuffer> cmd : in_flight) {
+      [cmd waitUntilCompleted];
+      check(cmd);
     }
 
     // Every refusal is behind us: size the caller's matrix (one already N x N,
