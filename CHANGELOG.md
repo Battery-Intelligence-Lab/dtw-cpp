@@ -31,9 +31,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   reads and checks them (an unknown key is `InvalidInput`) and `Problem::cluster()` runs the method, so `method`
   defaults to `auto` as in C++ and the CLI (the 2.0 previews defaulted to `pam` and took four keywords).
   `Problem.cluster()` returns its `ClusteringResult` in Python too.
-- **Added (Python):** series already in memory go in as numpy, pandas or Python hold them: `cluster()`,
-  `DTWClustering.fit`, `load()` and `Problem.set_data` take a 2-D array, a list of 1-D arrays (any lengths) or a pandas
-  DataFrame (one series per row, named by its index), and `Problem.set_data`'s names are optional. `dtwcpp.load()` reads
+- **Added (Python):** series already in memory go in as numpy, pandas, pyarrow or Python hold them: `cluster()`,
+  `DTWClustering`, `load()`, `compute_distance_matrix` and `Problem.set_data` take a 2-D array, a list of 1-D arrays (any
+  lengths), a pandas DataFrame (one series per row, named by its index) or an Arrow array, through one conversion
+  (complex values are refused, never cast to their real part), and `Problem.set_data`'s names are optional. `dtwcpp.load()` reads
   an Arrow IPC file (`.arrow`, `.ipc`, `.feather`: the `data` column, named by `name`) through the installed pyarrow, as
   it reads Parquet; text is read by the C++ reader `dtwc_cl` uses. The extension module no longer links the CLI's
   pipeline or config code (CLI11, fkYAML).

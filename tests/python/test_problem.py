@@ -53,6 +53,18 @@ class TestProblemData:
         p.set_data(rows, names)
         assert p.size == len(synthetic_data)
 
+    def test_a_data_carries_its_own_names_and_ndim(self):
+        """set_data(Data, names=...) and set_data(Data, ndim=3) dropped the
+        names and ndim without a word, so ndim=3 computed univariate distances."""
+        data = dtwcpp.Data([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [6.0, 5.0, 4.0, 3.0, 2.0, 1.0]], ["a", "b"])
+        p = dtwcpp.Problem("test")
+        with pytest.raises(TypeError, match="names"):
+            p.set_data(data, ["x", "y"])
+        with pytest.raises(TypeError, match="ndim"):
+            p.set_data(data, ndim=3)
+        p.set_data(data)
+        assert [p.series_name(i) for i in range(p.size)] == ["a", "b"]
+
 
 class TestDistanceMatrix:
     """Tests for fill_distance_matrix and dist_by_ind."""

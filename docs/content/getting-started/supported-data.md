@@ -167,11 +167,14 @@ data = dtwcpp.load("data.arrow").as_data()
 
 ## Reading data directly
 
-Series you have already read, with numpy, pandas or plain Python, go in as they
-are. `dtwcpp.cluster`, `dtwcpp.DTWClustering.fit`, `dtwcpp.load` and
+Series you have already read, with numpy, pandas, pyarrow or plain Python, go in
+as they are. `dtwcpp.cluster`, `dtwcpp.DTWClustering` (`fit`, `predict`,
+`transform`, `score`), `dtwcpp.load`, `dtwcpp.compute_distance_matrix` and
 `Problem.set_data` take a 2-D array (one series per row), a list of 1-D arrays or
-lists (series of any lengths) and a pandas DataFrame (one series per row, named by
-its index; other inputs are named by their ordinals):
+lists (series of any lengths), a pandas DataFrame (one series per row, named by
+its index) and an Arrow array or stream (pyarrow, polars: one series per list
+element, named as the Arrow reader names them); other inputs are named by their
+ordinals. Complex values are an error, never cast to their real part:
 
 ```python
 import numpy as np

@@ -9,11 +9,9 @@
     transform an M x N one.
 @author Volkan Kumtepeli
 """
-import numbers
-
 import numpy as np
 from dtwcpp import distance
-from dtwcpp._dtwcpp_core import DEFAULT_RANDOM_SEED, data_from_arrow_c_array
+from dtwcpp._dtwcpp_core import DEFAULT_RANDOM_SEED
 
 try:  # scikit-learn is an optional dependency of the base wheel.
     from sklearn.base import BaseEstimator, ClusterMixin, TransformerMixin
@@ -45,52 +43,6 @@ except ImportError:
 # and tadpole compute the distances they need from the series (C++ chooses
 # auto's method by N, so auto is not among them).
 _READS_THE_MATRIX = ("pam", "kmedoids", "mip", "lrcore", "hierarchical")
-
-
-def _series_list(X, *, allow_nan):
-    """Raw series as a list of float64 rows; ragged rows are kept. A pandas
-    DataFrame is one series per row; another Arrow C Data source (polars,
-    DuckDB, pyarrow) is read by nanoarrow, one series per list element."""
-    if type(X).__module__.split(".")[0] == "pandas" and hasattr(X, "columns"):
-        X = X.to_numpy(dtype=np.float64)
-    if hasattr(X, "__arrow_c_array__") or hasattr(X, "__arrow_c_stream__"):
-        return [np.asarray(s, dtype=np.float64) for s in data_from_arrow_c_array(X).p_vec]
-    if type(X).__module__.startswith("scipy.sparse"):
-        raise TypeError("Sparse input is not supported; provide a dense array.")
-    if isinstance(X, np.ndarray):
-        if np.iscomplexobj(X):
-            raise ValueError("Complex data not supported")
-        if X.ndim != 2:
-            raise ValueError(
-                "Expected a 2D raw time-series array. Reshape your data to "
-                "(n_samples, n_timesteps).")
-        if X.shape[0] == 0:
-            raise ValueError(
-                f"Found array with 0 sample(s) (shape={X.shape}) while a minimum of 1 is required.")
-        if X.shape[1] == 0:
-            raise ValueError(f"0 feature(s) (shape={X.shape}) while a minimum of 1 is required.")
-        values = [np.asarray(row, dtype=np.float64) for row in X]
-    elif isinstance(X, (list, tuple)):
-        try:
-            rows = list(X)
-            if any(np.iscomplexobj(row) for row in rows):
-                raise ValueError("Complex data not supported")
-            values = [np.asarray(row, dtype=np.float64) for row in rows]
-        except TypeError as exc:
-            raise ValueError("raw input must be an iterable of one-dimensional series") from exc
-    else:
-        try:
-            return _series_list(np.asarray(X), allow_nan=allow_nan)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("raw input must be an array-like collection of series") from exc
-    if not values:
-        raise ValueError("X must contain at least one series")
-    for row in values:
-        if row.ndim != 1 or row.size == 0:
-            raise ValueError("each time series must be a non-empty one-dimensional array")
-        if not np.isfinite(row).all() and (not allow_nan or np.isinf(row).any()):
-            raise ValueError("Input contains NaN or inf")
-    return values
 
 
 def _precomputed_matrix(X, *, square=False, n_train=None):
@@ -227,6 +179,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         """Fit DTW k-medoids; ``y`` is accepted and ignored."""
         import dtwcpp
         from dtwcpp import _dtwcpp_core, _hpc_remote_device, _resolve_device
+        from dtwcpp._api import _series
         device = self.device if self.device is not None else dtwcpp.device()
         backend, _ = _resolve_device(device)
         # C++ takes and checks every setting before X is read, as dtwc::run does
@@ -243,8 +196,8 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
             matrix = _precomputed_matrix(X, square=True)
             # The series are never read: every pair is in the matrix.
             series = [np.zeros(1) for _ in range(matrix.shape[0])]
-        else:
-            series = _series_list(X, allow_nan=self.missing_strategy != "error")
+        else:  # NaN and inf are C++'s to judge, by the missing-data strategy
+            series, _ = _series(X)
 
         if backend == "hpc":
             from dtwcpp import _hpc
@@ -274,7 +227,7 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
             self.n_iter_ = None
             return self
 
-        prob.set_data([row.tolist() for row in series], [str(i) for i in range(len(series))])
+        prob.set_data(series)
         if self._precomputed():
             prob.set_distance_matrix(matrix)
         result = prob.cluster()
@@ -305,8 +258,9 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
             return matrix[:, self.medoid_indices_]
         # The distance the medoids were fitted under; medoids set by hand take
         # the current settings.
+        from dtwcpp._api import _series
         settings = getattr(self, "_fit_distance_", None) or self._distance()
-        queries = _series_list(X, allow_nan=settings["missing_strategy"] != "error")
+        queries, _ = _series(X)  # distance.dtw judges NaN and inf
         n_features = getattr(self, "n_features_in_", None)
         if n_features is not None and any(row.size != n_features for row in queries):
             raise ValueError(

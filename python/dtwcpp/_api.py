@@ -23,26 +23,69 @@ import time
 import numpy as np
 
 
-def _series(source):
-    """Already-read series as C++ takes them: one ``list[float]`` per series and
-    the series' names.
+class _NotSeries(TypeError, ValueError):
+    """Input that is not real-valued series: a TypeError, and a ValueError, which
+    scikit-learn's estimator checks require of DTWClustering for complex and 1-D
+    input."""
 
-    A 2-D array or a list of rows is one series per row, and the rows may differ
-    in length (a list of 1-D arrays); they are named by their ordinals. A pandas
-    DataFrame is one series per row, named by its index (no pandas import: the
-    frame is read through ``to_numpy``).
+
+_FORMS = ("series go in as a 2-D array (one series per row), a list of 1-D series "
+          "(any lengths), a pandas DataFrame or an Arrow array")
+
+
+def _float64(values):
+    """``values`` as float64, refusing complex values: numpy casts a complex
+    array to its real part with only a ComplexWarning. A list goes to numpy as
+    it is, which refuses a complex number in it and reads a None as NaN."""
+    if not isinstance(values, (list, tuple)):
+        values = np.asarray(values)  # through __array__: no copy, no array function
+        if values.dtype.kind == "c":
+            raise _NotSeries("Complex data not supported: " + _FORMS + " of real numbers.")
+    return np.asarray(values, dtype=np.float64)
+
+
+def _series(source):
+    """Already-read series as C++ takes them: one 1-D float64 array per series,
+    and their names. The one conversion behind cluster(), load(),
+    Problem.set_data, compute_distance_matrix and DTWClustering.
+
+    A 2-D array holds one series per row and a list or tuple one per element, of
+    any lengths; both are named by their ordinals. A pandas DataFrame holds one
+    series per row, named by its index (read through ``to_numpy``: pandas is not
+    imported), and an Arrow array or stream (pyarrow, polars, DuckDB) is read by
+    the compiled-in nanoarrow and named as it names them. Complex values, an
+    array of another dimension and an empty series are refused; NaN and inf are
+    C++'s to judge, by the missing-data strategy.
     """
+    from dtwcpp import InvalidInput
+    from dtwcpp._dtwcpp_core import data_from_arrow_c_array
+    names = None
     if type(source).__module__.split(".")[0] == "pandas" and hasattr(source, "columns"):
-        return ([list(row) for row in source.to_numpy(dtype=float)],
-                [str(label) for label in source.index])
-    if isinstance(source, np.ndarray):
-        rows = [list(row) for row in np.asarray(source, dtype=float)]
+        names = [str(label) for label in source.index]
+        source = source.to_numpy()
+    elif hasattr(source, "__arrow_c_array__") or hasattr(source, "__arrow_c_stream__"):
+        data = data_from_arrow_c_array(source)
+        return [np.asarray(row, dtype=np.float64) for row in data.p_vec], list(data.p_names)
+    elif type(source).__module__.startswith("scipy.sparse"):
+        raise TypeError("Sparse input is not supported; provide a dense array.")
+    if isinstance(source, (list, tuple)):
+        rows = [_float64(row) for row in source]
+        for i, row in enumerate(rows):
+            if row.ndim != 1:
+                raise _NotSeries(f"{_FORMS}; got a list whose element {i} is {row.ndim}-D.")
+            if row.size == 0:
+                raise InvalidInput(f"series {i} is empty; every series needs at least one value.")
     else:
-        try:
-            rows = [list(row) for row in np.asarray(source, dtype=float)]
-        except (ValueError, TypeError):  # ragged
-            rows = [[float(value) for value in row] for row in source]
-    return rows, [str(i) for i in range(len(rows))]
+        array = np.asarray(source)
+        if array.ndim != 2:  # "Reshape your data", as scikit-learn's checks expect
+            raise _NotSeries(f"{_FORMS}; got a {array.ndim}-D array of shape {array.shape}. "
+                             "Reshape your data to (n_series, n_timesteps).")
+        array = _float64(array)
+        if array.shape[0] and not array.shape[1]:  # scikit-learn's words, which its checks match
+            raise InvalidInput(f"every series needs at least one value: 0 feature(s) "
+                               f"(shape={array.shape}) while a minimum of 1 is required.")
+        rows = list(array)
+    return rows, names or [str(i) for i in range(len(rows))]
 
 
 class Dataset:
@@ -104,7 +147,7 @@ class Dataset:
                                 "load: skip_cols exceeds an in-memory series "
                                 "length.")
                     rows = [row[self.skip_cols:] for row in rows]
-                self._data = _dtwcpp_core.Data(rows, names)
+                self._data = _dtwcpp_core.Data([row.tolist() for row in rows], names)
         return self._data
 
     def as_data(self):

@@ -619,15 +619,19 @@ def _as(form):
         return [np.array(row) for row in _TWO_GROUPS]
     if form == "list of lists":
         return _TWO_GROUPS
+    if form == "Arrow array":
+        pa = pytest.importorskip("pyarrow")
+        return pa.array(_TWO_GROUPS, type=pa.list_(pa.float64()))
     pd = pytest.importorskip("pandas")
     return pd.DataFrame(_TWO_GROUPS, index=["a", "b", "c", "d"])
 
 
 @pytest.mark.parametrize("form", ["2-D array", "list of 1-D arrays", "list of lists",
-                                  "pandas DataFrame"])
+                                  "Arrow array", "pandas DataFrame"])
 def test_already_read_data_goes_in_as_it_is(form):
-    """cluster(), DTWClustering.fit and Problem.set_data take each form, one
-    series per row; a DataFrame's rows are named by its index."""
+    """cluster(), DTWClustering.fit, Problem.set_data and load take each form,
+    one series per row; a DataFrame's rows are named by its index, an Arrow
+    array's as the Arrow converter names them."""
     data = _as(form)
     expected = dtwcpp.cluster(_TWO_GROUPS, k=2)
     np.testing.assert_array_equal(dtwcpp.cluster(data, k=2).labels, expected.labels)
@@ -635,9 +639,34 @@ def test_already_read_data_goes_in_as_it_is(form):
         dtwcpp.DTWClustering(n_clusters=2).fit(data).labels_, expected.labels)
     prob = dtwcpp.Problem("forms")
     prob.set_data(data)
-    assert [prob.series_name(i) for i in range(prob.size)] == (
-        ["a", "b", "c", "d"] if form == "pandas DataFrame" else ["0", "1", "2", "3"])
+    assert [prob.series_name(i) for i in range(prob.size)] == {
+        "pandas DataFrame": ["a", "b", "c", "d"],
+        "Arrow array": ["series_0", "series_1", "series_2", "series_3"],
+    }.get(form, ["0", "1", "2", "3"])
     assert dtwcpp.load(data).series_names() == [prob.series_name(i) for i in range(prob.size)]
+
+
+_ENTRIES = {
+    "cluster": lambda x: dtwcpp.cluster(x, k=1),
+    "load": lambda x: dtwcpp.load(x).as_data(),
+    "Problem.set_data": lambda x: dtwcpp.Problem("p").set_data(x),
+    "DTWClustering.fit": lambda x: dtwcpp.DTWClustering(n_clusters=1).fit(x),
+    "DTWClustering.predict": lambda x: dtwcpp.DTWClustering(n_clusters=1).fit(_TWO_GROUPS).predict(x),
+    "compute_distance_matrix": lambda x: dtwcpp.compute_distance_matrix(x),
+}
+
+
+@pytest.mark.parametrize("entry", list(_ENTRIES))
+@pytest.mark.parametrize(("data", "message"), [
+    (np.array(_TWO_GROUPS) + 1j, "Complex data not supported"),
+    (np.array(_TWO_GROUPS[0]), "2-D array"),
+    (np.array(_TWO_GROUPS)[:, :, None], "2-D array"),
+], ids=["complex", "1-D", "3-D"])
+def test_what_is_not_series_is_refused_everywhere(entry, data, message):
+    """One conversion behind every entry: complex values are refused, never cast
+    to their real part, and a 1-D or 3-D array is refused naming the forms taken."""
+    with pytest.raises(TypeError, match=message):
+        _ENTRIES[entry](data)
 
 
 # ---------------------------------------------------------------------------

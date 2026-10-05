@@ -95,8 +95,8 @@ settings before the series are read, and `Problem::cluster()` runs the method, s
 with the bound C++ reader (`dtwc::read_data`, the one `dtwc_cl` uses) and Parquet and
 Arrow IPC through the installed pyarrow (the `parquet` extra; the wheel links no Arrow
 C++); `Result.save` and `Problem.write_*` write with the C++ writers. Series already in
-memory go in as numpy, pandas or Python hold them: a 2-D array, a list of 1-D arrays
-(any lengths) or a pandas DataFrame (rows, named by the index).
+memory go in as numpy, pandas, pyarrow or Python hold them: a 2-D array, a list of 1-D
+arrays (any lengths), a pandas DataFrame (rows, named by the index) or an Arrow array.
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as

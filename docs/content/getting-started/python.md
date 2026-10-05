@@ -134,7 +134,7 @@ Metal execution support Standard, dependent, Error mode with either metric.
 
 ### Methods
 
-- **`fit(X)`** -- Fit clustering on `X`: a 2-D array, a list of 1-D arrays (any lengths) or a pandas DataFrame, one series per row. Returns `self`.
+- **`fit(X)`** -- Fit clustering on `X`: a 2-D array, a list of 1-D arrays (any lengths), a pandas DataFrame or an Arrow array, one series per row. Returns `self`.
 - **`predict(X)`** -- Assign each series in `X` to the nearest medoid.
 - **`transform(X)`** -- Distances from each series in `X` to each medoid.
 - **`fit_predict(X)`** -- Fit and return cluster labels.

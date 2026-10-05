@@ -157,8 +157,9 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
 
     Parameters
     ----------
-    series : list of list of float
-        Input time series.
+    series : already-read series
+        Any form :func:`cluster` takes: a 2-D array, a list of 1-D series (any
+        lengths), a pandas DataFrame or an Arrow array.
     band : int, default=-1
         Sakoe-Chiba band width (-1 = full DTW).
     metric : str, default='l1'
@@ -194,7 +195,7 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
     # (CUDA, else Metal) and the GPU index of `device`, never the CPU.
     prob = Problem("compute_distance_matrix", device=device)
     prob.set_distance(band=band, metric=metric)
-    prob.set_data(series, [str(i) for i in range(len(series))])
+    prob.set_data(series)
     return prob.distance_matrix()
 
 
@@ -219,14 +220,19 @@ _set_data = Problem.set_data
 
 def _problem_set_data(self, series, names=None, ndim=1):
     """Set the time series: a :class:`Data`, a 2-D array (one series per row), a
-    list of 1-D arrays or lists (series of any lengths), or a pandas DataFrame
-    (one series per row, named by its index). ``names`` default to the series'
-    ordinals; ``ndim > 1`` reads each row as interleaved multivariate steps."""
+    list of 1-D arrays or lists (series of any lengths), a pandas DataFrame (one
+    series per row, named by its index) or an Arrow array. ``names`` default to
+    the series' ordinals; ``ndim > 1`` reads each row as interleaved
+    multivariate steps. A Data carries its own names and ndim."""
     if isinstance(series, Data):
+        if names is not None or ndim != 1:
+            raise TypeError("Problem.set_data: a Data carries its own names and ndim; "
+                            "pass names and ndim with raw series only.")
         return _set_data(self, series)
     from dtwcpp._api import _series
     rows, ordinals = _series(series)
-    return _set_data(self, rows, ordinals if names is None else list(names), ndim)
+    return _set_data(self, [row.tolist() for row in rows],
+                     ordinals if names is None else list(names), ndim)
 
 
 Problem.set_data = _problem_set_data
