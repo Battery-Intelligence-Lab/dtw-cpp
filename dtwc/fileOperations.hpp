@@ -159,11 +159,14 @@ inline bool ndata_wants_more(index_t Ndata, std::size_t produced)
 
 namespace text_io_detail {
 
-/// ASCII whitespace. Not std::isspace: that reads LC_CTYPE, so under a UTF-8
-/// locale byte 0xA0 was a space and one file parsed differently per process.
+/// ASCII whitespace but CR. Not std::isspace: that reads LC_CTYPE, so under a
+/// UTF-8 locale byte 0xA0 was a space and one file parsed differently per
+/// process. A CR ends a line only before its LF (for_each_data_line drops it
+/// there); anywhere else it is a byte of a field, which then fails to parse, so
+/// a CR-only file is refused rather than read as one line of numbers.
 constexpr bool is_ascii_space(char c) noexcept
 {
-  return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
+  return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f';
 }
 
 /// ASCII lowercase; like is_ascii_space, independent of the C locale.
@@ -183,12 +186,13 @@ inline std::vector<std::string_view> split_fields(std::string_view line,
                                                   char delimiter)
 {
   std::vector<std::string_view> fields;
-  if (delimiter == ' ') {
+  if (delimiter == ' ') { // runs of spaces and tabs separate the fields
+    const auto blank = [](char c) { return c == ' ' || c == '\t'; };
     std::size_t pos = 0;
     while (pos < line.size()) {
-      while (pos < line.size() && is_ascii_space(line[pos])) ++pos;
+      while (pos < line.size() && blank(line[pos])) ++pos;
       const std::size_t start = pos;
-      while (pos < line.size() && !is_ascii_space(line[pos])) ++pos;
+      while (pos < line.size() && !blank(line[pos])) ++pos;
       if (start != pos) fields.emplace_back(line.substr(start, pos - start));
     }
     return fields;
@@ -355,6 +359,7 @@ std::size_t for_each_data_line(std::istream &in, const fs::path &path,
   std::string line;
   std::size_t row = 0, produced = 0, blank_row = 0;
   while (ndata_wants_more(Ndata, produced) && std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back(); // CRLF reads as LF
     ++row;
     if (static_cast<index_t>(row) <= start_row) continue; // a header row
     if (trim_ascii(line).empty()) {
@@ -374,8 +379,8 @@ std::size_t for_each_data_line(std::istream &in, const fs::path &path,
 
 /// Open a text file for reading, positioned after any UTF-8 byte-order mark.
 /// Binary, so every platform reads the same bytes: a text-mode stream on Windows
-/// ended the file at a 0x1A byte and dropped the rows after it silently. A CR
-/// before the LF is ASCII whitespace, which the field and blank-line rules trim.
+/// ended the file at a 0x1A byte and dropped the rows after it silently. The CR
+/// of a CRLF line end is dropped by for_each_data_line.
 inline std::ifstream open_text_file(const fs::path &path, std::string_view reader)
 {
   std::ifstream in(path, std::ios_base::in | std::ios_base::binary);

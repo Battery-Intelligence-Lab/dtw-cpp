@@ -12,6 +12,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `read_distance_matrix`) holding a Ctrl-Z (0x1A) byte is refused with `IOError`, as any non-numeric field is (the series
   reader names the row and column). v1.0.0 read series files in text mode, which on Windows ended the file at that byte
   and silently dropped the rows after it.
+- **Fixed (CLI, C++, Python, MATLAB):** a series file whose lines end in a bare CR (no LF, as classic Mac OS wrote them) is
+  refused with `IOError` naming the row and column whatever the delimiter: with `--delimiter ' '` it was read as one
+  series holding every value, as v1.0.0 read it. A CRLF line end reads as LF, a CR anywhere else is part of its field, and
+  the space delimiter splits on spaces and tabs only.
 - **Added (C++):** `dtwc::Config` is declared in `dtwc/config.hpp` with `apply(config, prob)`, which hands a `Problem`
   the clustering settings of a Config (distance, method, solver, device) as `dtwc::run` does before it reads a file, and
   `scores::score(prob, name)`, the score `Result::score(name)` returns.

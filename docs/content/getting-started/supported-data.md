@@ -19,9 +19,9 @@ You can specify either a _file path_ or a _folder path_ for your data. The softw
 
 ### Specifying a file path
 
-A _file path_ points to a single file containing all of your data, represented in variable-length rows. The values might be separated by commas, tabs, or spaces. In this scenario, time-series names are allocated sequentially from 1 to N, row by row.
+A _file path_ points to a single file containing all of your data, represented in variable-length rows. The values might be separated by commas, tabs, or spaces (with the space delimiter, any run of spaces and tabs separates two values). In this scenario, time-series names are allocated sequentially from 1 to N, row by row.
 
-A blank line is not a series: blank lines at the end of the file are ignored, and a blank line followed by more data is an error naming its row. Write a missing value as `nan`; an empty field is an error. Numbers are read the same way on every platform and in every locale: `.` is the decimal separator, a UTF-8 byte-order mark at the start of the file is skipped, and a Ctrl-Z byte is a non-numeric field like any other, not the end of the file. `dtwc_cl`, C++ `dtwc::read_data`, Python `dtwcpp.load()` and MATLAB `dtwc.load()` read text with this one reader.
+A blank line is not a series: blank lines at the end of the file are ignored, and a blank line followed by more data is an error naming its row. Write a missing value as `nan`; an empty field is an error. Numbers are read the same way on every platform and in every locale: `.` is the decimal separator, a UTF-8 byte-order mark at the start of the file is skipped, and a Ctrl-Z byte is a non-numeric field like any other, not the end of the file. A line ends in LF or CRLF; a CR anywhere else is part of its field, so a file whose lines end in a bare CR is an error. `dtwc_cl`, C++ `dtwc::read_data`, Python `dtwcpp.load()` and MATLAB `dtwc.load()` read text with this one reader.
 
 **Example:** A file with 5 time-series of varying lengths:
 

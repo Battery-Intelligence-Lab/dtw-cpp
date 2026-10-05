@@ -116,6 +116,7 @@ _CORPUS = Path(__file__).resolve().parents[1] / "data" / "reader"
         # The series the C++ reader reads (tests/unit/unit_test_fileOperations.cpp, FX-6)...
         ("bom.csv", 0, 0, [[1, 2, 3], [4, 5, 6]]),
         ("trailing_blank.csv", 0, 0, [[1, 2, 3], [4, 5, 6]]),
+        ("trailing_blank_crlf.csv", 0, 0, [[1, 2, 3], [4, 5, 6]]),  # its CRLF twin
         ("spaces.csv", 0, 0, [[1, 2, 3]]),
         ("sci.csv", 0, 0, [[1e-3, 200, 0.5, 5, -0.0, 7]]),
         ("denorm.csv", 0, 0, [[5e-324, 1]]),

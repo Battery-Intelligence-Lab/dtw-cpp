@@ -7,3 +7,5 @@
 # these rules the tracked LF blobs arrive as CRLF there and nowhere else.
 tests/conformance/** text eol=lf
 *.csv text eol=lf
+# The CRLF twin of tests/data/reader/trailing_blank.csv: its CRs are what it tests.
+tests/data/reader/trailing_blank_crlf.csv -text

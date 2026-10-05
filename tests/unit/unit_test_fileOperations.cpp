@@ -835,6 +835,28 @@ TEST_CASE("FX-6 the rest of the reader audit's input matrix",
   CHECK_THROWS_WITH(load_path(folder), ContainsSubstring("README.md' row 1, column 1: invalid numeric field"));
 }
 
+TEST_CASE("A CR ends a line only before its LF, whatever the delimiter", "[fileOperations][crlf]")
+{
+  const auto load = [](std::string text, char delimiter) { // '|' stands for the delimiter
+    std::replace(text.begin(), text.end(), '|', delimiter);
+    TemporaryBatchFile file(".dat", text);
+    DataLoader loader(file.path);
+    loader.delimiter(delimiter).verbosity(0);
+    return loader.load().p_vec;
+  };
+  for (const char delimiter : { ' ', ',', '\t' }) {
+    CAPTURE(delimiter);
+    // A CR-only file is one line. The space delimiter split it at each CR, so it
+    // read as one series of nine values where ',' and '\t' refused it.
+    CHECK_THROWS_AS(load("1|2|3\r4|5|6.5\r7|8|9\r", delimiter), IOError);
+    CHECK_THROWS_AS(load("1|2|3 \r4|5|6 \r", delimiter), IOError);
+    CHECK(load("1|2|3 \r\n4|5|6\r\n\r\n", delimiter) == Series{ { 1, 2, 3 }, { 4, 5, 6 } });
+  }
+  // The corpus' CRLF twin (checked out byte for byte, .gitattributes) reads as its LF twin.
+  CHECK(load_path(reader_fixture("trailing_blank_crlf.csv")).p_vec
+        == load_path(reader_fixture("trailing_blank.csv")).p_vec);
+}
+
 TEST_CASE("FX-6 Problem rejects an empty series from any source",
           "[fileOperations][fx6][problem]")
 {
