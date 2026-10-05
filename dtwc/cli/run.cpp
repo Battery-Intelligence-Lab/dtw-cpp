@@ -46,15 +46,6 @@ using algorithms::detail::resolve_clara_plan;
 
 std::string method_name(Method method) { return std::string(name_of(method_names, method)); }
 
-[[noreturn]] void refuse_gpu_method(Method method)
-{
-  throw DeviceError(
-    "run: method '" + method_name(method)
-    + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
-      "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use, and clara's sample matrices. "
-      "Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
-}
-
 /// What --verbose calls a method in its progress lines.
 const char *progress_label(Method method)
 {
@@ -167,35 +158,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   auto problem =
     std::make_shared<Problem>(config.name.empty() ? detail::default_name(utf8_to_path(config.input)) : config.name);
   Problem &prob = *problem;
-  // The Problem validates every distance setting as it takes it: parameter
-  // domains, variant x missing strategy x metric, the MIP settings, the GPU.
-  prob.set_variant(config.variant);
-  prob.set_missing_strategy(config.missing);
-  prob.set_metric(config.metric);
-  prob.set_band(config.band);
-  prob.set_n_clusters(config.k);
-  prob.set_max_iter(config.max_iter);
-  prob.set_n_repetitions(config.n_init);
-  prob.set_random_seed(config.seed);
-  prob.set_sample_size(config.sample_size);
-  prob.set_n_samples(config.n_samples);
-  prob.set_batch_size(config.batch_size);
-  prob.set_linkage(config.linkage);
-  prob.set_tadpole_dc(config.tadpole_dc); // < 0: auto-select from a DTW subsample
-  prob.set_verbose(config.verbose);
-  validate_mip_settings(config.mip);
-  prob.mip_settings = config.mip;
-  // A false set_solver means HiGHS: --solver gurobi on a build without Gurobi
-  // must not solve with HiGHS.
-  if (!prob.set_solver(config.solver))
-    throw SolverError("--solver " + std::string(name_of(solver_names, config.solver))
-                      + " is not available: this dtwc_cl was built without Gurobi. Use --solver highs, or "
-                        "rebuild with -DDTWC_ENABLE_GUROBI=ON and GUROBI_HOME set.");
-  prob.set_gpu_precision(config.gpu_precision);
-  prob.set_device(config.device, config.device_index); // gpu without a GPU backend: the DeviceError
-  if (config.device == Device::GPU
-      && (config.method == Method::OneBatch || config.method == Method::TADPole))
-    refuse_gpu_method(config.method);
+  apply(config, prob);
   validate_gpu_request("run", prob, config.dtype);
 
   algorithms::CLARAOptions clara;
@@ -315,9 +278,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     n_series = prob.size();
   }
   if (config.ram_limit > 0 && config.verbose) std::cout << "Series-data RAM limit: " << config.ram_limit << " bytes\n";
-  if (n_series == 0) throw InvalidInput("cluster: dataset is empty.");
-  if (static_cast<std::size_t>(config.k) > n_series)
-    throw InvalidInput("cluster: k must not exceed the number of series.");
+  require_clusterable(config.k, n_series); // before a cache or checkpoint is touched
 
   method = resolve_method(method, config.device, n_series);
   if (config.method == Method::Auto && config.verbose)
@@ -400,14 +361,6 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
 } // namespace
 
-std::string detail::default_name(const fs::path &input)
-{
-  // "data/" names its folder; "." and ".." name nothing a file could be called after.
-  // UTF-8, which every writer turns back into a path with utf8_to_path(), losslessly.
-  const std::string stem = path_to_utf8((input.has_filename() ? input : input.parent_path()).stem());
-  return stem.empty() || stem == "." || stem == ".." ? "dataset" : stem;
-}
-
 detail::ParquetPlan detail::plan_parquet_load(Method method, Device device, std::size_t series_count,
                                               std::size_t estimated_resident_bytes, std::size_t ram_limit,
                                               ParquetLayout layout)
@@ -432,76 +385,6 @@ detail::ParquetPlan detail::plan_parquet_load(Method method, Device device, std:
       "a Parquet directory exceeds --ram-limit. Convert it to one list-per-row "
       "Parquet file or raise --ram-limit.");
   return { plan.method, true };
-}
-
-void detail::write_result_files(Problem &prob, const fs::path &directory, bool complete, std::ostream *progress)
-{
-  const auto &labels = prob.labels();
-  const auto &medoids = prob.medoids();
-  // A RAM-limited Parquet run holds no series: its names are the readers' own `series_<i>`.
-  const bool streamed = prob.size() == 0;
-  const auto series_name = [&](std::size_t i) {
-    return streamed ? "series_" + std::to_string(i) : std::string(prob.series_name(i));
-  };
-  const auto file_in_directory = [&](const char *suffix) { return directory / utf8_to_path(prob.name() + suffix); };
-
-  if (complete && !streamed) prob.fill_distance_matrix();
-
-  const auto labels_path = file_in_directory("_labels.csv");
-  {
-    auto out = open_output(labels_path);
-    out << "name,cluster\n";
-    for (std::size_t i = 0; i < labels.size(); ++i) out << series_name(i) << ',' << labels[i] << '\n';
-    close_output(out, labels_path);
-  }
-  if (progress) *progress << "Labels written to " << labels_path << "\n";
-
-  const auto medoids_path = file_in_directory("_medoids.csv");
-  {
-    auto out = open_output(medoids_path);
-    out << "cluster,medoid_index,medoid_name\n";
-    for (std::size_t c = 0; c < medoids.size(); ++c)
-      out << c << ',' << medoids[c] << ',' << series_name(static_cast<std::size_t>(medoids[c])) << '\n';
-    close_output(out, medoids_path);
-  }
-  if (progress) *progress << "Medoids written to " << medoids_path << "\n";
-
-  if (streamed) {
-    if (complete)
-      throw InvalidInput("Result: a RAM-limited Parquet run holds no series, so it has no distance matrix or "
-                         "silhouettes to save; its labels and medoids are written, with series_<i> names.");
-    return;
-  }
-  // A matrix-free run does not fill an O(N^2) matrix merely to write these files.
-  if (!prob.is_distance_matrix_filled()) return;
-  const auto matrix_path = file_in_directory("_distance_matrix.csv");
-  io::write_csv(prob.distance_matrix(), matrix_path);
-  if (progress) *progress << "Distance matrix written to " << matrix_path << "\n";
-
-  // s(i) is undefined for one cluster, which is no reason to fail a clustering that succeeded; a
-  // computed score that cannot be written is an error like any other file.
-  if (medoids.size() < 2) return;
-  std::vector<double> silhouettes;
-  try {
-    silhouettes = scores::silhouette(prob);
-  } catch (const UndefinedScore &e) {
-    std::cerr << "Warning: silhouettes skipped: " << e.what() << '\n';
-    return;
-  }
-  const auto silhouettes_path = file_in_directory("_silhouettes.csv");
-  {
-    auto out = open_output(silhouettes_path);
-    out << "name,cluster,silhouette\n";
-    for (std::size_t i = 0; i < silhouettes.size(); ++i)
-      out << series_name(i) << ',' << labels[i] << ',' << std::setprecision(8) << silhouettes[i] << '\n';
-    close_output(out, silhouettes_path);
-  }
-  if (progress) {
-    const double mean = silhouettes.empty() ? 0.0
-                                            : std::accumulate(silhouettes.begin(), silhouettes.end(), 0.0)
-                                                / static_cast<double>(silhouettes.size());
-    *progress << "Silhouette scores written, mean=" << std::setprecision(4) << mean << "\n";
-  }
 }
 
 Result run(const Config &config)

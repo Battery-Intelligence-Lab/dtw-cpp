@@ -72,10 +72,10 @@ class TestLoad:
         assert ds.as_series() == [[0.0, 1.0]]
 
     @pytest.mark.parametrize("bad,error", [(-1, ValueError), (1.0, TypeError)])
-    def test_invalid_skip_rows_is_rejected_by_cluster(self, bad, error):
-        ds = dtwcpp.Dataset([[0.0], [1.0]], skip_rows=bad)
+    def test_invalid_skip_rows_is_rejected_by_load(self, bad, error):
+        """As C++ dtwc::load: refused where the handle is made, before any read."""
         with pytest.raises(error, match="skip_rows"):
-            dtwcpp.cluster(ds, k=1, max_iter=1, device="cpu")
+            dtwcpp.load([[0.0], [1.0]], skip_rows=bad)
 
     def test_skip_rows_is_not_silently_dropped_on_hpc(self):
         ds = dtwcpp.Dataset("/remote/staged.tsv", skip_rows=2)
@@ -142,6 +142,21 @@ class TestLoad:
         assert from_parquet.as_series() == from_csv.as_series() == rows
         assert from_parquet.series_names() == from_csv.series_names() == ["1", "2", "3"]
 
+    def test_arrow_ipc_path_reads_its_data_and_name_columns(self, tmp_path):
+        """load('x.arrow') reads through pyarrow as dtwc_cl reads Arrow IPC: the
+        series are the 'data' column, named by 'name', 'ndim' features a step."""
+        pa = pytest.importorskip("pyarrow")
+        rows = [[0.0, 0.5, 1.0, 1.5], [2.5, 1.0]]
+        table = pa.table({"data": pa.array(rows, type=pa.list_(pa.float64())),
+                          "name": ["a", "b"]}).replace_schema_metadata({"ndim": "2"})
+        path = tmp_path / "x.arrow"
+        with pa.OSFile(str(path), "wb") as sink, pa.ipc.new_file(sink, table.schema) as writer:
+            writer.write_table(table)
+        data = dtwcpp.load(path).as_data()
+        assert data.p_vec == rows
+        assert data.p_names == ["a", "b"]
+        assert data.ndim == 2
+
     def test_path_source_parses_a_non_numeric_id_column(self, tmp_path):
         """§1.2: skip_cols drops FIELDS before numeric parsing, as C++ does."""
         csv = tmp_path / "named.csv"
@@ -168,125 +183,13 @@ class TestLoad:
 
 
 # ---------------------------------------------------------------------------
-# cluster() — C++ Tier-1 validate_common parity (M39)
+# cluster() keywords: read by C++ (a Config) before any data is read
 # ---------------------------------------------------------------------------
-class TestClusterCommonValidation:
-    """Parity with C++ Tier-1 ``validate_common`` (M39)."""
+class TestClusterKeywords:
+    """The keywords become a C++ Config: C++ reads and checks each name before
+    the series are read or a job is submitted."""
 
     _INT_MAX = (1 << 31) - 1
-    _METHODS = (
-        "auto", "pam", "onebatch", "clara", "kmedoids", "mip",
-        "lrcore", "tadpole", "hierarchical",
-    )
-
-    @staticmethod
-    def _source(kind, *, skip_cols=0):
-        if kind == "raw":
-            return [[0.0], [1.0]]
-        if kind == "path":
-            return "must_not_be_loaded.tsv"
-        return dtwcpp.Dataset([[0.0], [1.0]], skip_cols=skip_cols)
-
-    @staticmethod
-    def _poison_effects(monkeypatch):
-        """Make every operation after common validation observably forbidden."""
-        from dtwcpp import _api, _hpc
-
-        touched = []
-
-        def poison(name):
-            def fail(*args, **kwargs):
-                touched.append(name)
-                raise AssertionError(f"{name} ran before Tier-1 validation")
-            return fail
-
-        monkeypatch.setattr(_api, "load", poison("load"))
-        monkeypatch.setattr(_api.Dataset, "as_series", poison("as_series"))
-        monkeypatch.setattr(_api.Dataset, "as_data", poison("as_data"))
-        monkeypatch.setattr(_api, "_run_local_method", poison("local dispatch"))
-        monkeypatch.setattr(dtwcpp, "device", poison("device lookup"))
-        monkeypatch.setattr(dtwcpp, "_resolve_device", poison("device resolution"))
-        monkeypatch.setattr(
-            dtwcpp, "compute_distance_matrix", poison("distance compute"),
-        )
-        monkeypatch.setattr(dtwcpp, "Problem", poison("Problem construction"))
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", poison("HPC submission"))
-        return touched
-
-    @pytest.mark.parametrize("source_kind", ["raw", "path", "dataset"])
-    @pytest.mark.parametrize("device", ["cpu", "gpu", "hpc"])
-    @pytest.mark.parametrize(
-        ("field", "bad", "error"),
-        [
-            ("k", True, TypeError),
-            ("k", np.bool_(True), TypeError),
-            ("k", 1.0, TypeError),
-            ("k", "1", TypeError),
-            ("k", 0, ValueError),
-            ("k", -1, ValueError),
-            ("max_iter", True, TypeError),
-            ("max_iter", np.bool_(True), TypeError),
-            ("max_iter", 1.0, TypeError),
-            ("max_iter", "1", TypeError),
-            ("max_iter", 0, ValueError),
-            ("max_iter", -1, ValueError),
-        ],
-    )
-    def test_invalid_k_and_max_iter_precede_every_effect(
-        self, monkeypatch, source_kind, device, field, bad, error,
-    ):
-        source = self._source(source_kind)
-        touched = self._poison_effects(monkeypatch)
-        kwargs = {"k": 1, "max_iter": 1}
-        kwargs[field] = bad
-
-        with pytest.raises(
-            error, match=rf"\b{field}\b.*(?:integer|must be)",
-        ) as caught:
-            dtwcpp.cluster(source, method="pam", device=device, **kwargs)
-        assert type(caught.value) is error
-        assert touched == []
-
-    @pytest.mark.parametrize("device", ["cpu", "gpu", "hpc"])
-    @pytest.mark.parametrize(
-        ("bad", "error"),
-        [
-            (True, TypeError),
-            (np.bool_(True), TypeError),
-            (1.0, TypeError),
-            ("1", TypeError),
-            (-1, ValueError),
-        ],
-    )
-    def test_invalid_dataset_skip_cols_precedes_every_effect(
-        self, monkeypatch, device, bad, error,
-    ):
-        source = self._source("dataset", skip_cols=bad)
-        touched = self._poison_effects(monkeypatch)
-
-        with pytest.raises(
-            error, match=r"\bskip_cols\b.*(?:integer|must be)",
-        ) as caught:
-            dtwcpp.cluster(source, k=1, max_iter=1, device=device)
-        assert type(caught.value) is error
-        assert touched == []
-
-    @pytest.mark.parametrize("method", _METHODS)
-    @pytest.mark.parametrize("device", ["cpu", "gpu", "hpc"])
-    def test_nonpositive_limit_cannot_enter_any_method_or_backend(
-        self, monkeypatch, method, device,
-    ):
-        source = self._source("dataset")
-        touched = self._poison_effects(monkeypatch)
-
-        with pytest.raises(
-            ValueError, match=r"\bmax_iter\b.*must be at least 1",
-        ) as caught:
-            dtwcpp.cluster(
-                source, k=1, max_iter=0, method=method, device=device,
-            )
-        assert type(caught.value) is ValueError
-        assert touched == []
 
     def test_valid_signed_int_boundaries_are_normalized_for_hpc(self, monkeypatch):
         """The largest C++ int is valid and crosses HPC as a native int."""
@@ -349,6 +252,22 @@ class TestClusterCommonValidation:
         assert result.n_series == 2
         assert result.k == 1
         assert type(result.k) is int
+
+    @pytest.mark.parametrize("bad", [True, np.bool_(True), "1", 1.5, np.float32(1.9)])
+    def test_a_value_of_another_kind_is_refused(self, bad):
+        """The binding's casters would read True or "1" as 1 and truncate a NumPy
+        float: an integer key takes an integer."""
+        with pytest.raises(TypeError, match=r"^k must be an integer"):
+            dtwcpp.cluster([[0.0], [1.0]], k=bad)
+        with pytest.raises(TypeError, match=r"^max_iter must be an integer"):
+            dtwcpp.cluster([[0.0], [1.0]], k=1, max_iter=bad)
+
+    def test_an_unknown_key_lists_each_key_cluster_takes_once(self):
+        with pytest.raises(dtwcpp.InvalidInput, match="unknown key 'bogus'") as caught:
+            dtwcpp.cluster([[0.0], [1.0]], k=1, bogus=1)
+        keys = str(caught.value).split("Valid keys: ")[1].rstrip(".").split(", ")
+        assert len(keys) == len(set(keys))
+        assert "device" in keys and "n_clusters" not in keys  # k is the cluster count
 
     def test_unknown_method_still_fails_before_load_or_device(self, monkeypatch):
         from dtwcpp import _api
@@ -542,11 +461,17 @@ class TestMatrixFreeScoring:
         """The lazily filled matrix must score identically to an eager one."""
         res = dtwcpp.cluster(self._SERIES, k=2, method=method)
         assert res._distance_matrix is None
-        oracle = dtwcpp.Result(
-            res.labels, device="cpu", elapsed_s=0.0, k=2,
-            n_series=len(self._SERIES), medoid_indices=res.medoids,
-            distance_matrix=dtwcpp.compute_distance_matrix(self._SERIES))
-        assert res.score(score) == pytest.approx(oracle.score(score), abs=1e-12)
+        oracle = dtwcpp.Problem("eager")
+        oracle.set_data(self._SERIES, [str(i) for i in range(len(self._SERIES))])
+        oracle.set_distance_matrix(dtwcpp.compute_distance_matrix(self._SERIES))
+        clustering = dtwcpp.ClusteringResult()
+        clustering.labels = res.labels
+        clustering.medoid_indices = res.medoids
+        oracle.set_result(clustering)
+        expected = getattr(dtwcpp, score)(oracle)
+        if score == "silhouette":
+            expected = np.mean(expected)
+        assert res.score(score) == pytest.approx(expected, abs=1e-12)
 
     @pytest.mark.parametrize("method", ["onebatch", "clara", "tadpole"])
     def test_distance_matrix_fills_on_demand_after_a_matrix_free_run(self, method):
@@ -681,6 +606,70 @@ class TestRaggedInMemorySource:
 
 
 # ---------------------------------------------------------------------------
+# Already-read data: as numpy, pandas or Python hold it
+# ---------------------------------------------------------------------------
+_TWO_GROUPS = [[0.0, 0.1, 0.2, 0.3], [0.05, 0.15, 0.1, 0.2], [9.0, 9.1, 9.2, 9.0],
+               [9.2, 9.05, 9.1, 9.3]]
+
+
+def _as(form):
+    if form == "2-D array":
+        return np.array(_TWO_GROUPS)
+    if form == "list of 1-D arrays":
+        return [np.array(row) for row in _TWO_GROUPS]
+    if form == "list of lists":
+        return _TWO_GROUPS
+    if form == "Arrow array":
+        pa = pytest.importorskip("pyarrow")
+        return pa.array(_TWO_GROUPS, type=pa.list_(pa.float64()))
+    pd = pytest.importorskip("pandas")
+    return pd.DataFrame(_TWO_GROUPS, index=["a", "b", "c", "d"])
+
+
+@pytest.mark.parametrize("form", ["2-D array", "list of 1-D arrays", "list of lists",
+                                  "Arrow array", "pandas DataFrame"])
+def test_already_read_data_goes_in_as_it_is(form):
+    """cluster(), DTWClustering.fit, Problem.set_data and load take each form,
+    one series per row; a DataFrame's rows are named by its index, an Arrow
+    array's as the Arrow converter names them."""
+    data = _as(form)
+    expected = dtwcpp.cluster(_TWO_GROUPS, k=2)
+    np.testing.assert_array_equal(dtwcpp.cluster(data, k=2).labels, expected.labels)
+    np.testing.assert_array_equal(
+        dtwcpp.DTWClustering(n_clusters=2).fit(data).labels_, expected.labels)
+    prob = dtwcpp.Problem("forms")
+    prob.set_data(data)
+    assert [prob.series_name(i) for i in range(prob.size)] == {
+        "pandas DataFrame": ["a", "b", "c", "d"],
+        "Arrow array": ["series_0", "series_1", "series_2", "series_3"],
+    }.get(form, ["0", "1", "2", "3"])
+    assert dtwcpp.load(data).series_names() == [prob.series_name(i) for i in range(prob.size)]
+
+
+_ENTRIES = {
+    "cluster": lambda x: dtwcpp.cluster(x, k=1),
+    "load": lambda x: dtwcpp.load(x).as_data(),
+    "Problem.set_data": lambda x: dtwcpp.Problem("p").set_data(x),
+    "DTWClustering.fit": lambda x: dtwcpp.DTWClustering(n_clusters=1).fit(x),
+    "DTWClustering.predict": lambda x: dtwcpp.DTWClustering(n_clusters=1).fit(_TWO_GROUPS).predict(x),
+    "compute_distance_matrix": lambda x: dtwcpp.compute_distance_matrix(x),
+}
+
+
+@pytest.mark.parametrize("entry", list(_ENTRIES))
+@pytest.mark.parametrize(("data", "message"), [
+    (np.array(_TWO_GROUPS) + 1j, "Complex data not supported"),
+    (np.array(_TWO_GROUPS[0]), "2-D array"),
+    (np.array(_TWO_GROUPS)[:, :, None], "2-D array"),
+], ids=["complex", "1-D", "3-D"])
+def test_what_is_not_series_is_refused_everywhere(entry, data, message):
+    """One conversion behind every entry: complex values are refused, never cast
+    to their real part, and a 1-D or 3-D array is refused naming the forms taken."""
+    with pytest.raises(TypeError, match=message):
+        _ENTRIES[entry](data)
+
+
+# ---------------------------------------------------------------------------
 # §1.4 series names — Tier-1 output carries the loader's names, as C++ does
 # ---------------------------------------------------------------------------
 def _dtwc_cl_binary():
@@ -707,6 +696,18 @@ class TestSeriesNames:
 
     def test_in_memory_names_are_the_zero_based_ordinals(self):
         assert dtwcpp.load([[0.0], [1.0]]).series_names() == ["0", "1"]
+
+    def test_a_folder_given_with_a_trailing_separator_names_the_run(self, tmp_path):
+        """The run is named as dtwc_cl names it (C++ detail::default_name):
+        "data/" is "data", so save() writes data_labels.csv, not _labels.csv."""
+        folder = tmp_path / "data"
+        folder.mkdir()
+        (folder / "a.csv").write_text("0\n1\n", encoding="utf-8")
+        (folder / "b.csv").write_text("9\n8\n", encoding="utf-8")
+        source = str(folder) + "/"
+        assert dtwcpp.load(source).name == "data"
+        dtwcpp.cluster(source, k=1).save(tmp_path / "out")
+        assert (tmp_path / "out" / "data_labels.csv").is_file()
 
     def test_saved_labels_carry_the_file_names(self, tmp_path):
         csv = tmp_path / "named.csv"
@@ -780,66 +781,6 @@ class TestNonAsciiSeriesNames:
                 (cli_out / f"uni{suffix}").read_bytes(), suffix
 
 
-class TestNonFiniteDistanceMatrixCsv:
-    """F8: save() must mirror dtwc/core/matrix_io.hpp exactly.
-
-    NaN is an uncomputed cell and is written as an EMPTY field; +/-inf is
-    refused BEFORE the file is opened, where the matrix enters the Problem
-    (set_distance_matrix). The oracle is the C++ route itself
-    (Problem.set_distance_matrix + write_distance_matrix), not a transcription
-    of the rule.
-    """
-
-    _SERIES = [[0.0], [1.0], [2.0], [3.0]]
-
-    @staticmethod
-    def _cpp_matrix_csv(matrix, tmp_path):
-        prob = dtwcpp.Problem("oracle")
-        prob.set_data(TestNonFiniteDistanceMatrixCsv._SERIES,
-                      [str(i) for i in range(4)])
-        prob.set_distance_matrix(matrix)
-        prob.output_folder = str(tmp_path)
-        prob.write_distance_matrix()
-        return (tmp_path / "oracle_distanceMatrix.csv").read_bytes()
-
-    @staticmethod
-    def _result(matrix):
-        return dtwcpp.Result(
-            [0, 0, 1, 1], device="cpu", elapsed_s=0.0, k=2, n_series=4,
-            medoid_indices=[0, 2], distance_matrix=matrix, name="nonfinite")
-
-    def test_nan_is_written_as_an_empty_field_like_cpp(self, tmp_path):
-        D = np.array([[0.0, 1.0, np.nan, 3.0],
-                      [1.0, 0.0, 2.0, 3.0],
-                      [np.nan, 2.0, 0.0, 1.0],
-                      [3.0, 3.0, 1.0, 0.0]])
-        oracle = self._cpp_matrix_csv(D, tmp_path / "cpp")
-        py_out = tmp_path / "py"
-        self._result(D).save(py_out)
-        written = (py_out / "nonfinite_distance_matrix.csv").read_bytes()
-        assert written == oracle
-        assert written.startswith(b"0,1,,3\n")
-
-    @pytest.mark.parametrize("value", [np.inf, -np.inf])
-    def test_inf_raises_invalid_input_before_the_matrix_file_exists(
-            self, tmp_path, value):
-        D = np.array([[0.0, value, 1.0, 1.0],
-                      [value, 0.0, 1.0, 1.0],
-                      [1.0, 1.0, 0.0, 1.0],
-                      [1.0, 1.0, 1.0, 0.0]])
-        with pytest.raises(dtwcpp.InvalidInput) as py_err:
-            self._result(D).save(tmp_path)
-        with pytest.raises(dtwcpp.InvalidInput) as cpp_err:
-            self._cpp_matrix_csv(D, tmp_path / "cpp")
-        assert str(py_err.value) == str(cpp_err.value)
-        assert str(py_err.value) == (
-            "Problem.set_distance_matrix: the distance between series 0 and 1 is "
-            f"{'+inf' if value > 0 else '-inf'}; a distance must be finite.")
-        # Labels/medoids are already on disk, as in C++ Result::save.
-        assert (tmp_path / "nonfinite_labels.csv").is_file()
-        assert not (tmp_path / "nonfinite_distance_matrix.csv").exists()
-
-
 # ---------------------------------------------------------------------------
 # result.plot()
 # ---------------------------------------------------------------------------
@@ -905,68 +846,6 @@ class TestClusterHpc:
 # dispatches each documented method to its own algorithm.
 # ---------------------------------------------------------------------------
 class TestClusterMethodDispatch:
-    @pytest.mark.parametrize(
-        ("backend", "n_series", "expected"),
-        [
-            ("cpu", 5000, "pam"),
-            ("cpu", 5001, "clara"),
-            ("gpu", 5000, "pam"),
-            ("gpu", 5001, "pam"),
-            ("hpc", 5000, "auto"),
-            ("hpc", 5001, "auto"),
-        ],
-    )
-    def test_auto_resolution_is_device_compatible(
-        self, backend, n_series, expected
-    ):
-        """Only CPU crosses from PAM to CLARA above the 5,000-series limit."""
-        from dtwcpp import _api
-
-        assert _api._resolve_tier1_method("auto", n_series, backend) == expected
-        # Explicit requests are not substituted; cluster() owns the loud error.
-        assert _api._resolve_tier1_method("clara", n_series, backend) == "clara"
-
-    def test_large_auto_gpu_full_route_dispatches_pam(self, monkeypatch):
-        """The full wrapper resolves auto before matrix policy without a real GPU."""
-        class FakeProblem:
-            def __init__(self, name):
-                self.name = name
-
-            def set_band(self, band):
-                self.band = band
-
-            def set_data(self, data):
-                self.series = data.p_vec
-                self.names = data.p_names
-
-            def set_distance_matrix(self, matrix):
-                self.matrix = matrix
-
-        matrix = object()
-        calls = []
-
-        def fake_pam(prob, k, seed, max_iter):
-            calls.append(("pam", k, seed, max_iter, prob.matrix))
-            return SimpleNamespace(
-                labels=np.zeros(5001, dtype=int), medoid_indices=[0], total_cost=0.0
-            )
-
-        def poison_clara(*args, **kwargs):
-            raise AssertionError("GPU-compatible auto must not resolve to CLARA")
-
-        monkeypatch.setattr(dtwcpp, "_resolve_device", lambda device: ("gpu", 3))
-        monkeypatch.setattr(dtwcpp, "Problem", FakeProblem)
-        monkeypatch.setattr(dtwcpp, "compute_distance_matrix", lambda *a, **k: matrix)
-        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", fake_pam)
-        monkeypatch.setattr(dtwcpp, "fast_clara", poison_clara)
-
-        series = [[float(i)] for i in range(5001)]
-        result = dtwcpp.cluster(series, k=1, method="auto", device="gpu:3", max_iter=7)
-
-        assert calls == [("pam", 1, dtwcpp.DEFAULT_RANDOM_SEED, 7, matrix)]
-        assert result.device == "gpu"
-        assert result.distance_matrix is matrix
-
     def test_unknown_method_raises(self):
         """Unknown method must raise, not silently run FastPAM.
 
@@ -988,59 +867,6 @@ class TestClusterMethodDispatch:
         monkeypatch.setattr(_hpc, "cluster_on_hpc", boom)
         with pytest.raises(ValueError, match="unknown method"):
             dtwcpp.cluster("data.tsv", k=2, device="hpc", method="bogus")
-
-    def test_local_dispatch_routes_to_clara_not_fastpam(self, monkeypatch):
-        """method='clara' must call seeded fast_clara, NOT FastPAM.
-
-        Pre-fix: the clara branch did not exist and FastPAM ran instead, so
-        the fast_clara spy is never called (called['clara'] stays 0) -> fails.
-        Post-fix: fast_clara is invoked exactly once with the Tier-1 seed."""
-        import dtwcpp
-        called = {"pam": 0, "clara": 0}
-        real_clara = dtwcpp.fast_clara
-
-        def spy_clara(*a, **kw):
-            called["clara"] += 1
-            assert kw["seed"] == dtwcpp.DEFAULT_RANDOM_SEED
-            return real_clara(*a, **kw)
-
-        def poisoned_pam(*a, **kw):
-            called["pam"] += 1
-            raise AssertionError("method='clara' fell through to FastPAM")
-
-        monkeypatch.setattr(dtwcpp, "fast_clara", spy_clara)
-        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", poisoned_pam)
-        res = dtwcpp.cluster(_two_groups(), k=2, method="clara")
-        assert called["clara"] == 1
-        assert called["pam"] == 0
-        assert res.n_series == 12
-
-    def test_local_default_routes_to_invocation_local_fastpam(self, monkeypatch):
-        """Default PAM must use the seeded entry point and shared Tier-1 seed."""
-        import dtwcpp
-        called = {"pam": 0}
-        real_pam = dtwcpp.fast_pam_seeded
-
-        def spy_pam(*a, **kw):
-            called["pam"] += 1
-            assert a[2] == dtwcpp.DEFAULT_RANDOM_SEED
-            return real_pam(*a, **kw)
-
-        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", spy_pam)
-        dtwcpp.cluster(_two_groups(), k=2)          # default method="pam"
-        assert called["pam"] == 1
-
-    def test_local_onebatch_receives_shared_tier1_seed(self, monkeypatch):
-        real_onebatch = dtwcpp.one_batch_pam
-        seen = []
-
-        def spy_onebatch(*args, **kwargs):
-            seen.append(kwargs["seed"])
-            return real_onebatch(*args, **kwargs)
-
-        monkeypatch.setattr(dtwcpp, "one_batch_pam", spy_onebatch)
-        dtwcpp.cluster(_two_groups(), k=2, method="onebatch")
-        assert seen == [dtwcpp.DEFAULT_RANDOM_SEED]
 
     def test_local_clara_runs_end_to_end(self):
         """The clara branch must actually work end-to-end (no solver needed).
@@ -1092,247 +918,6 @@ class TestClusterMethodDispatch:
         dtwcpp.cluster([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]],
                        k=2, device="hpc", method="hclust")
         assert captured["method"] == "hierarchical"
-
-
-# ---------------------------------------------------------------------------
-# LOCAL dispatch binding names — Task 0.14 gap closed by R4(c)
-#
-# The prior wave only spied the clara/pam LOCAL routes (above). These tests pin
-# the remaining LOCAL routes — 'mip', 'kmedoids', 'hierarchical' — by exercising
-# the LIVE dispatch function dtwcpp._api._run_local_method directly and asserting
-# EXACTLY the binding names it calls. This is the class of bug the test exists to
-# catch: if _api.py names a binding that does not exist (e.g. a typo'd
-# build_dendrogram / cut_dendrogram / Method.MIP / Problem.cluster), these fail.
-#
-# All binding names below were verified present in python/src/_dtwcpp_core.cpp:
-#   build_dendrogram (m.def, prob + default opts), cut_dendrogram (dend, prob, k),
-#   Problem.set_n_clusters / .method / .cluster / .clusters_ind /
-#   .centroids_ind / .find_total_cost, Method.MIP / Method.Kmedoids.
-# _run_local_method calls Problem.set_n_clusters; the fakes below pin that name.
-# ---------------------------------------------------------------------------
-class TestLocalDispatchBindingNames:
-    @pytest.mark.parametrize(
-        ("method", "expected_method", "expects_seed"),
-        [
-            ("kmedoids", dtwcpp.Method.Kmedoids, True),
-            ("mip", dtwcpp.Method.MIP, False),
-            ("lrcore", dtwcpp.Method.LRCore, False),
-            ("tadpole", dtwcpp.Method.TADPole, False),
-        ],
-    )
-    def test_problem_cluster_methods_set_limit_before_dispatch(
-        self, method, expected_method, expects_seed,
-    ):
-        """Every Problem.cluster route must apply the public iteration cap."""
-        from dtwcpp import _api
-
-        class FakeProblem:
-            def __init__(self):
-                self.method = None
-                self.events = []
-                self.clusters_ind = [0, 1]
-                self.centroids_ind = [0]
-
-            def set_n_clusters(self, k):
-                self.events.append(("clusters", k))
-
-            def set_max_iter(self, limit):
-                self.events.append(("max_iter", limit))
-
-            def set_random_seed(self, seed):
-                self.events.append(("seed", seed))
-
-            def cluster(self):
-                self.events.append(("cluster", self.method))
-
-            def find_total_cost(self):
-                return 0.0
-
-        fake = FakeProblem()
-        _api._run_local_method(fake, method, k=2, max_iter=7)
-
-        expected = [("clusters", 2), ("max_iter", 7)]
-        if expects_seed:
-            expected.append(("seed", dtwcpp.DEFAULT_RANDOM_SEED))
-        expected.append(("cluster", expected_method))
-        assert fake.events == expected
-
-    def test_explicit_limit_methods_do_not_use_problem_setter(self, monkeypatch):
-        """PAM/OneBatch/CLARA receive max_iter directly, exactly once."""
-        from dtwcpp import _api
-
-        class FakeResult:
-            labels = [0, 1]
-            medoid_indices = [0]
-            total_cost = 0.0
-
-        class NoProblemLimitSetter:
-            pass
-
-        calls = []
-
-        def fake_pam(prob, k, seed, max_iter):
-            calls.append(("pam", max_iter))
-            return FakeResult()
-
-        def fake_onebatch(prob, k, **kwargs):
-            calls.append(("onebatch", kwargs["max_iter"]))
-            return FakeResult()
-
-        def fake_clara(prob, k, **kwargs):
-            calls.append(("clara", kwargs["max_iter"]))
-            return FakeResult()
-
-        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", fake_pam)
-        monkeypatch.setattr(dtwcpp, "one_batch_pam", fake_onebatch)
-        monkeypatch.setattr(dtwcpp, "fast_clara", fake_clara)
-
-        problem = NoProblemLimitSetter()
-        for method in ("pam", "onebatch", "clara"):
-            _api._run_local_method(problem, method, k=2, max_iter=7)
-        assert calls == [("pam", 7), ("onebatch", 7), ("clara", 7)]
-
-    def test_local_mip_sets_method_mip_and_calls_cluster(self):
-        """method='mip' -> Problem.method = Method.MIP, Problem.cluster(), then
-        read back clusters_ind / centroids_ind / find_total_cost().
-
-        No solver needed: a fake Problem stands in for the C++ binding, so this
-        isolates the dispatch (the binding NAMES) from the MIP solve."""
-        from dtwcpp import _api
-
-        class FakeProblem:
-            def __init__(self):
-                self.method = None
-                self.nc = None
-                self.cluster_calls = 0
-                self.clusters_ind = [0, 1, 0, 1]
-                self.centroids_ind = [0, 1]
-
-            def set_n_clusters(self, k):
-                self.nc = k
-
-            def set_max_iter(self, limit):
-                self.max_iter = limit
-
-            def cluster(self):
-                self.cluster_calls += 1
-
-            def find_total_cost(self):
-                return 7.5
-
-        fake = FakeProblem()
-        labels, medoids, cost = _api._run_local_method(
-            fake, "mip", k=2, max_iter=100)
-        assert fake.method == dtwcpp.Method.MIP        # NOT Kmedoids
-        assert fake.nc == 2
-        assert fake.max_iter == 100
-        assert fake.cluster_calls == 1
-        assert labels == [0, 1, 0, 1]
-        assert medoids == [0, 1]
-        assert cost == 7.5
-
-    def test_local_kmedoids_sets_method_kmedoids_and_calls_cluster(self):
-        """method='kmedoids' -> Problem.method = Method.Kmedoids, Problem.cluster()."""
-        from dtwcpp import _api
-
-        class FakeProblem:
-            def __init__(self):
-                self.method = None
-                self.nc = None
-                self.events = []
-                self.clusters_ind = [0, 0, 1]
-                self.centroids_ind = [0, 2]
-
-            def set_n_clusters(self, k):
-                self.nc = k
-
-            def set_max_iter(self, limit):
-                self.events.append(("max_iter", limit))
-
-            def set_random_seed(self, seed):
-                self.events.append(("seed", seed))
-
-            def cluster(self):
-                self.events.append(("cluster", None))
-
-            def find_total_cost(self):
-                return 1.0
-
-        fake = FakeProblem()
-        labels, medoids, cost = _api._run_local_method(
-            fake, "kmedoids", k=2, max_iter=100)
-        assert fake.method == dtwcpp.Method.Kmedoids   # NOT MIP
-        assert fake.nc == 2
-        assert fake.events == [
-            ("max_iter", 100),
-            ("seed", dtwcpp.DEFAULT_RANDOM_SEED),
-            ("cluster", None),
-        ]
-        assert (labels, medoids, cost) == ([0, 0, 1], [0, 2], 1.0)
-
-    def test_local_hierarchical_calls_build_then_cut(self, monkeypatch):
-        """method='hierarchical' -> build_dendrogram(prob) then
-        cut_dendrogram(dend, prob, k); read labels/medoid_indices/total_cost off
-        the cut result. Must NOT fall through to FastPAM."""
-        from dtwcpp import _api
-
-        calls = {"build": 0, "cut": 0}
-        sentinel_prob = object()
-        dend_token = object()
-
-        class FakeCut:
-            labels = [0, 0, 1, 1]
-            medoid_indices = [0, 2]
-            total_cost = 3.25
-
-        def spy_build(prob, *a, **kw):
-            calls["build"] += 1
-            assert prob is sentinel_prob
-            return dend_token
-
-        def spy_cut(dend, prob, k, *a, **kw):
-            calls["cut"] += 1
-            assert dend is dend_token        # build's output threaded into cut
-            assert prob is sentinel_prob
-            assert k == 3
-            return FakeCut()
-
-        def poison_pam(*a, **kw):
-            raise AssertionError("hierarchical must not fall through to FastPAM")
-
-        monkeypatch.setattr(dtwcpp, "build_dendrogram", spy_build)
-        monkeypatch.setattr(dtwcpp, "cut_dendrogram", spy_cut)
-        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", poison_pam)
-
-        labels, medoids, cost = _api._run_local_method(
-            sentinel_prob, "hierarchical", k=3, max_iter=100)
-        assert calls == {"build": 1, "cut": 1}
-        assert labels == [0, 0, 1, 1]
-        assert medoids == [0, 2]
-        assert cost == 3.25
-
-    def test_local_kmedoids_end_to_end_does_not_fall_through(self, monkeypatch):
-        """Through the LIVE full local cluster() path, method='kmedoids' runs
-        Lloyd via Problem.cluster() and must NOT call FastPAM/fast_clara/
-        build_dendrogram (the pre-0.14 bug ran FastPAM for every method).
-
-        Solver-free (Lloyd needs no MIP solver)."""
-        def poison(name):
-            def _p(*a, **kw):
-                raise AssertionError(f"kmedoids must not call {name}")
-            return _p
-
-        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", poison("fast_pam_seeded"))
-        monkeypatch.setattr(dtwcpp, "fast_clara", poison("fast_clara"))
-        monkeypatch.setattr(dtwcpp, "build_dendrogram", poison("build_dendrogram"))
-
-        res = dtwcpp.cluster(_two_groups(), k=2, method="kmedoids")
-        assert res.n_series == 12
-        assert res.cost is not None            # find_total_cost() was read back
-        assert res.distance_matrix is not None
-        # Valid k=2 labeling produced by the real Lloyd path (no fallthrough).
-        assert len(res.labels) == 12
-        assert set(res.labels).issubset({0, 1})
 
 
 # ---------------------------------------------------------------------------

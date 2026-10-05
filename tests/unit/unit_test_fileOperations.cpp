@@ -737,6 +737,16 @@ TEST_CASE("FX-6 parse_number keeps the std::from_chars contract",
   CHECK(single == 0x1p-149f);
 }
 
+TEST_CASE("FX-6 a Ctrl-Z byte is a non-numeric field, not the end of the file",
+          "[fileOperations][fx6][ctrl_z]")
+{
+  // "1,2,3\n4,5,6\n7,8,9\x1a\n10,11,12\n": a text-mode stream on Windows ended the
+  // file at the 0x1A, so three series were read and the fourth dropped silently.
+  CHECK_THROWS_AS(load_path(reader_fixture("ctrl_z.csv")), IOError);
+  CHECK_THROWS_WITH(load_path(reader_fixture("ctrl_z.csv")),
+                    ContainsSubstring("row 3, column 3: invalid numeric field"));
+}
+
 TEST_CASE("FX-6 the text reader parses through parse_number",
           "[fileOperations][fx6][number]")
 {
@@ -823,6 +833,39 @@ TEST_CASE("FX-6 the rest of the reader audit's input matrix",
   std::ofstream(folder / "a.csv", std::ios::binary) << "1\n2\n3\n";
   std::ofstream(folder / "README.md", std::ios::binary) << "# notes\r\nsee a.csv\r\n";
   CHECK_THROWS_WITH(load_path(folder), ContainsSubstring("README.md' row 1, column 1: invalid numeric field"));
+}
+
+TEST_CASE("A CR ends a line only before its LF, whatever the delimiter", "[fileOperations][crlf]")
+{
+  const auto load = [](std::string text, char delimiter) { // '|' stands for the delimiter
+    std::replace(text.begin(), text.end(), '|', delimiter);
+    TemporaryBatchFile file(".dat", text);
+    DataLoader loader(file.path);
+    loader.delimiter(delimiter).verbosity(0);
+    return loader.load().p_vec;
+  };
+  for (const char delimiter : { ' ', ',', '\t' }) {
+    CAPTURE(delimiter);
+    // A CR-only file is one line. The space delimiter split it at each CR, so it
+    // read as one series of nine values where ',' and '\t' refused it.
+    CHECK_THROWS_AS(load("1|2|3\r4|5|6.5\r7|8|9\r", delimiter), IOError);
+    CHECK_THROWS_AS(load("1|2|3 \r4|5|6 \r", delimiter), IOError);
+    CHECK(load("1|2|3 \r\n4|5|6\r\n\r\n", delimiter) == Series{ { 1, 2, 3 }, { 4, 5, 6 } });
+  }
+  // The corpus' CRLF twin (checked out byte for byte, .gitattributes) reads as its LF twin.
+  CHECK(load_path(reader_fixture("trailing_blank_crlf.csv")).p_vec
+        == load_path(reader_fixture("trailing_blank.csv")).p_vec);
+}
+
+TEST_CASE("A reader error names its file in UTF-8, whatever the file is called", "[fileOperations][utf8]")
+{
+  // path::string() is the ANSI code page on Windows, where it threw for this
+  // name: the user saw "No mapping for the Unicode character exists" instead.
+  const ScratchDirectory scratch{ "utf8_names" };
+  const fs::path bad = scratch.path / fs::path(u8"\u03b4_bad.csv");
+  std::ofstream(bad, std::ios::binary) << "1,2,3\n4,x,6\n";
+  CHECK_THROWS_AS(load_path(bad), IOError);
+  CHECK_THROWS_WITH(load_path(bad), ContainsSubstring("\xCE\xB4_bad.csv' row 2, column 2: invalid numeric field"));
 }
 
 TEST_CASE("FX-6 Problem rejects an empty series from any source",

@@ -6,6 +6,7 @@
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -689,6 +690,43 @@ TEST_CASE("FX-11 a refused matrix file leaves the destination matrix as it was",
     CHECK(destination.get(0, 1) == 9.0);
     CHECK_FALSE(destination.is_computed(0, 0));
   }
+}
+
+TEST_CASE("The matrix reader reads the file's bytes: a Ctrl-Z is a field and a CRLF line an LF line",
+          "[csv][dense][read]")
+{
+  const auto read = [](std::string_view name, std::string_view bytes) {
+    const auto path = fresh_path(name);
+    seed_binary(path, bytes);
+    dtwc::core::DistanceMatrix loaded;
+    dtwc::io::read_csv(loaded, path);
+    return loaded;
+  };
+  // A text-mode stream on Windows ended the file at the 0x1A, so this read as
+  // the 2x2 matrix before it and the third row was dropped silently.
+  CHECK_THROWS_AS(read("ctrl-z.csv", "0,1.5\n1.5,0\n\x1a" "9,9,9\n"), dtwc::IOError);
+
+  const auto lf = read("lf.csv", "0,1.5,2.5\n1.5,0,3.5\n2.5,3.5,0\n");
+  const auto crlf = read("crlf.csv", "0,1.5,2.5\r\n1.5,0,3.5\r\n2.5,3.5,0\r\n");
+  REQUIRE(lf.size() == 3);
+  REQUIRE(crlf.size() == lf.size());
+  for (size_t i = 0; i < lf.size(); ++i)
+    for (size_t j = 0; j < lf.size(); ++j) CHECK(crlf.get(i, j) == lf.get(i, j));
+}
+
+TEST_CASE("A matrix reader error names its file in UTF-8, whatever the file is called", "[csv][dense][read]")
+{
+  // path::string() is the ANSI code page on Windows, where it threw for this
+  // name: a missing file was an untyped std::system_error, not an IOError.
+  using Catch::Matchers::ContainsSubstring;
+  dtwc::core::DistanceMatrix loaded;
+  const auto missing = test_root() / fs::path(u8"\u03b4_missing.csv");
+  fs::remove(missing);
+  CHECK_THROWS_AS(dtwc::io::read_csv(loaded, missing), dtwc::IOError);
+  CHECK_THROWS_WITH(dtwc::io::read_csv(loaded, missing), ContainsSubstring("\xCE\xB4_missing.csv"));
+  const auto bad = test_root() / fs::path(u8"\u03b4_bad.csv");
+  seed_binary(bad, "0,x\nx,0\n");
+  CHECK_THROWS_WITH(dtwc::io::read_csv(loaded, bad), ContainsSubstring("\xCE\xB4_bad.csv"));
 }
 
 TEST_CASE("F14 focused route marker", "[f14][csv][marker]")

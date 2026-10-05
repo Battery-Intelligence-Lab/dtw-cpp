@@ -8,6 +8,36 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fixed (CLI, C++, Python, MATLAB):** a CSV/TSV series file or a distance-matrix CSV (`--dist-matrix`,
+  `read_distance_matrix`) holding a Ctrl-Z (0x1A) byte is refused with `IOError`, as any non-numeric field is (the series
+  reader names the row and column). v1.0.0 read series files in text mode, which on Windows ended the file at that byte
+  and silently dropped the rows after it.
+- **Fixed (CLI, C++, Python, MATLAB):** a series file whose lines end in a bare CR (no LF, as classic Mac OS wrote them) is
+  refused with `IOError` naming the row and column whatever the delimiter: with `--delimiter ' '` it was read as one
+  series holding every value, as v1.0.0 read it. A CRLF line end reads as LF, a CR anywhere else is part of its field, and
+  the space delimiter splits on spaces and tabs only.
+- **Fixed (CLI, C++, Python, MATLAB):** a text reader's error names its file in UTF-8 on Windows too. For a name outside
+  the code page (a folder's `δ.csv`) the error was lost to "No mapping for the Unicode character exists in the target
+  multi-byte code page" (from Python's `read_distance_matrix` an untyped `RuntimeError`), and a non-ASCII name inside it
+  (`café.csv`) reached Python garbled.
+- **Added (C++):** `dtwc::Config` is declared in `dtwc/config.hpp` with `apply(config, prob)`, which hands a `Problem`
+  the clustering settings of a Config (distance, method, solver, device) as `dtwc::run` does before it reads a file, and
+  `scores::score(prob, name)`, the score `Result::score(name)` returns.
+- **Changed (C++, Python):** `Problem::cluster()` raises `InvalidInput` for a `Problem` without series ("cluster: dataset
+  is empty.") or with more clusters than series ("cluster: k must not exceed the number of series."), as `dtwc_cl` and
+  Tier-1 `cluster()` do, before any method runs.
+- **Changed (Python):** `dtwcpp.cluster(data, k, **keys)` takes every `dtwc_cl` key that is not about files, by its long
+  name in snake_case (`metric`, `variant`, `wdtw_g`, `n_init`, `seed`, `linkage`, `solver`, `gpu_precision`, ...): C++
+  reads and checks them (an unknown key is `InvalidInput`) and `Problem::cluster()` runs the method, so `method`
+  defaults to `auto` as in C++ and the CLI (the 2.0 previews defaulted to `pam` and took four keywords).
+  `Problem.cluster()` returns its `ClusteringResult` in Python too.
+- **Added (Python):** series already in memory go in as numpy, pandas, pyarrow or Python hold them: `cluster()`,
+  `DTWClustering`, `load()`, `compute_distance_matrix` and `Problem.set_data` take a 2-D array, a list of 1-D arrays (any
+  lengths), a pandas DataFrame (one series per row, named by its index) or an Arrow array, through one conversion
+  (complex values are refused, never cast to their real part), and `Problem.set_data`'s names are optional. `dtwcpp.load()` reads
+  an Arrow IPC file (`.arrow`, `.ipc`, `.feather`: the `data` column, named by `name`) through the installed pyarrow, as
+  it reads Parquet; text is read by the C++ reader `dtwc_cl` uses. The extension module no longer links the CLI's
+  pipeline or config code (CLI11, fkYAML).
 - **Added (Windows):** `dtwc_cl.exe` states its name, version and copyright in its file properties (Details tab); v1.0.0's
   carried none.
 - **Added (FastCLARA, CUDA):** on a GPU device FastCLARA's sample matrices fill on the GPU and, with CUDA, so does its

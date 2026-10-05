@@ -12,7 +12,6 @@ import pytest
 
 import dtwcpp
 from dtwcpp import _hpc
-from dtwcpp.sklearn import DTWCKMedoids
 
 # Eight series of length four that three PAM medoids separate unambiguously.
 _X = np.array([0.0, 0.01, -0.02, 0.03])[None, :] + np.arange(8.0)[:, None]
@@ -120,11 +119,6 @@ def test_estimator_arrays_are_int64():
     _assert_int64(fitted.labels_, "DTWClustering.labels_")
     _assert_int64(fitted.medoid_indices_, "DTWClustering.medoid_indices_")
     _assert_int64(fitted.predict(_X), "DTWClustering.predict")
-
-    sklearn_fitted = DTWCKMedoids(n_clusters=3).fit(_X)
-    _assert_int64(sklearn_fitted.labels_, "DTWCKMedoids.labels_")
-    _assert_int64(sklearn_fitted.medoid_indices_, "DTWCKMedoids.medoid_indices_")
-    _assert_int64(sklearn_fitted.predict(_X), "DTWCKMedoids.predict")
 
 
 def test_barycenter_clustering_labels_are_int64():

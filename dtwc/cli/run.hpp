@@ -13,8 +13,8 @@
  * | auto          | pam for N <= 5000, else clara | pam                               |
  * | onebatch      | runs                          | DeviceError                       |
  * | tadpole       | runs                          | DeviceError                       |
- * | clara         | runs                          | runs when its sample covers every |
- * |               |                               | series, else DeviceError          |
+ * | clara         | runs                          | runs; the GPU fills the samples   |
+ * |               |                               | (and, on CUDA, assigns the series)|
  * | pam, kmedoids, mip, lrcore, hierarchical | run | run; the GPU fills the matrix     |
  *
  * `--device hpc` is refused while the configuration is parsed (DeviceError): a
@@ -53,11 +53,6 @@ Result run(const Config &config, Data data);
 
 namespace detail {
 
-/// The name of a run, or of a dataset, that was not given one: the input's file
-/// name without its extension, or its folder's name; "dataset" for series in
-/// memory (an empty path) and for a path that names neither.
-std::string default_name(const std::filesystem::path &input);
-
 /// How a Parquet input stores its series, as its metadata shows it.
 enum class ParquetLayout { ListColumn, ScalarColumn, Directory };
 
@@ -74,24 +69,6 @@ struct ParquetPlan
 ParquetPlan plan_parquet_load(Method method, Device device, std::size_t series_count,
                               std::size_t estimated_resident_bytes, std::size_t ram_limit,
                               ParquetLayout layout);
-
-/**
- * @brief Write a clustered Problem's result files into `directory`, which is created if missing.
- *
- * `<name>_labels.csv` and `<name>_medoids.csv`, then, when the distance matrix is filled,
- * `<name>_distance_matrix.csv` and, for k > 1, `<name>_silhouettes.csv`. An undefined silhouette is a
- * warning on stderr; any other failure propagates. A Problem without series (a RAM-limited Parquet run)
- * names its series `series_<i>` and has no matrix or silhouettes to write.
- *
- * @param complete  true (Result::save): fill the matrix first, so all four files are written, and throw
- *                  InvalidInput after the labels and medoids when there is no matrix to fill. false (the
- *                  CLI): write the matrix and silhouettes only if the matrix is already filled, so a
- *                  matrix-free run does not fill O(N^2) for them.
- * @param progress  when set, one line per file written.
- * @throws IOError for a file that cannot be written in full.
- */
-void write_result_files(Problem &prob, const std::filesystem::path &directory, bool complete,
-                        std::ostream *progress = nullptr);
 
 } // namespace detail
 } // namespace dtwc

@@ -79,7 +79,9 @@ Parameters:
 
 ## DTWClustering class
 
-`DTWClustering` provides an sklearn-compatible interface for k-medoids clustering with DTW distance. It implements FastPAM (Schubert & Rousseeuw, 2021).
+`DTWClustering` provides an sklearn-compatible interface for k-medoids clustering with DTW distance. Its fit is
+`dtwcpp.cluster`'s C++ run, FastPAM (Schubert & Rousseeuw, 2021) unless `method` says otherwise, with `n_init` seeded
+restarts on one distance matrix.
 
 ```python
 import numpy as np
@@ -105,10 +107,11 @@ print(f"Iterations:     {clf.n_iter_}")
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `n_clusters` | int | `3` | Number of clusters |
+| `method` | str | `"pam"` | Any `dtwcpp.cluster` method; with `metric="precomputed"` one that reads the matrix (`pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`) |
 | `variant` | str | `"standard"` | DTW variant: `"standard"`, `"ddtw"`, `"wdtw"`, `"adtw"`, `"msm"`, `"twe"` |
 | `band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
-| `max_iter` | int | `100` | Maximum FastPAM iterations |
-| `n_init` | int | `1` | Number of random restarts (best result kept) |
+| `max_iter` | int | `100` | Maximum iterations of the method (at least 1) |
+| `n_init` | int | `1` | Seeded restarts `random_state + i`, the best kept (at least 1) |
 | `wdtw_g` | float | `0.05` | WDTW logistic weight steepness (only for `variant="wdtw"`) |
 | `adtw_penalty` | float | `1.0` | ADTW non-diagonal step penalty (only for `variant="adtw"`) |
 | `msm_c` | float | `1.0` | MSM split/merge cost (only for `variant="msm"`) |
@@ -116,7 +119,9 @@ print(f"Iterations:     {clf.n_iter_}")
 | `twe_lambda` | float | `1.0` | TWE edit penalty (only for `variant="twe"`) |
 | `mv_mode` | str | `"dependent"` | Multivariate mode: `"dependent"` or `"independent"` |
 | `missing_strategy` | str | `"error"` | NaN handling: `"error"`, `"zero_cost"`, `"arow"`, `"interpolate"` |
-| `metric` | str | `"l1"` | Pointwise metric: `"l1"` or `"squared_euclidean"` |
+| `metric` | str | `"l1"` | Pointwise metric: `"l1"` or `"squared_euclidean"`; `"precomputed"`: `X` is an N x N distance matrix for `fit`, M x N for `predict`/`transform`/`score` |
+| `batch_size` | int | `-1` | OneBatchPAM's batch size (`-1`: automatic) |
+| `random_state` | int | `None` | The seed; `None` is `dtwcpp.DEFAULT_RANDOM_SEED` (42) |
 | `device` | str | `None` | Local `"cpu"`/`"gpu"`/`"cuda:N"`, or whole-job `"hpc"` offload |
 
 The estimator validates the complete distance contract before computing.
@@ -129,10 +134,11 @@ Metal execution support Standard, dependent, Error mode with either metric.
 
 ### Methods
 
-- **`fit(X)`** -- Fit clustering on `X` (2D array or list of 1D arrays). Returns `self`.
+- **`fit(X)`** -- Fit clustering on `X`: a 2-D array, a list of 1-D arrays (any lengths), a pandas DataFrame or an Arrow array, one series per row. Returns `self`.
 - **`predict(X)`** -- Assign each series in `X` to the nearest medoid.
+- **`transform(X)`** -- Distances from each series in `X` to each medoid.
 - **`fit_predict(X)`** -- Fit and return cluster labels.
-- **`score(X)`** -- Return negative inertia (for sklearn grid search compatibility).
+- **`score(X)`** -- Negative total distance of `X` to its nearest medoids (for sklearn grid search); nothing is refitted.
 
 ### Attributes (set after `fit`)
 

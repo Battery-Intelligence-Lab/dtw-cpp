@@ -239,10 +239,10 @@ CUDA's `auto` depends on the GPU, so it is not a stable cache identity (Metal's
 | `--gpu-precision <string>` | GPU kernel precision. Alias: `--gpu-dtype`. Values: `auto`, `fp32`/`f32`/`float32`, `fp64`/`f64`/`float64`/`double` | `auto` |
 
 On `--device gpu` the GPU fills the distance matrix, so the methods that read one
-run there: `pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara` when its
-sample covers every series. `onebatch`, `tadpole` and a `clara` sample smaller
-than N compute on the CPU as they go, so they exit 1 on `gpu` naming the methods
-that use it. A variant other than `standard`, a missing-data strategy, `--dtype
+run there: `pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara`, whose
+sample matrices fill on the GPU (with CUDA its assignment of every series runs
+there too). `onebatch` and `tadpole` compute on the CPU as they go, so they exit 1
+on `gpu` naming the methods that use it. A variant other than `standard`, a missing-data strategy, `--dtype
 float32`, and on Metal a GPU index other than 0 or `--gpu-precision fp64`, exit 1
 before the input is read; a build without a GPU backend refuses `gpu` naming the
 build flag. `--device hpc` exits 1: `dtwc_cl` computes where it runs, and a SLURM

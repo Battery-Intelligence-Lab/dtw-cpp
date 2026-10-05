@@ -17,6 +17,7 @@
 #include "base/timing.hpp"
 #include "cli/config.hpp"
 #include "cli/run.hpp"
+#include "io/read_data.hpp"
 
 #include <CLI/CLI.hpp>
 

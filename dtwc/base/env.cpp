@@ -55,6 +55,28 @@ std::string to_string(Device d)
   throw std::logic_error("to_string: unreachable Device");
 }
 
+namespace {
+/// The process-wide default device: what device(name) set, the CPU until then.
+std::pair<Device, int> g_device{ Device::CPU, 0 };
+} // namespace
+
+std::string device(std::string_view name)
+{
+  const auto selected = detail::parse_device(name);
+#if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
+  if (selected.first == Device::GPU) throw DeviceError(detail::gpu_not_built_message());
+#endif
+  g_device = selected;
+  return device();
+}
+
+std::string device()
+{
+  std::string out = to_string(g_device.first);
+  if (g_device.first == Device::GPU && g_device.second != 0) out += ":" + std::to_string(g_device.second);
+  return out;
+}
+
 namespace detail {
 
 std::pair<Device, int> parse_device(std::string_view name)

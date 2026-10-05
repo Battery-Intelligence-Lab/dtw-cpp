@@ -1,10 +1,10 @@
-"""Contract tests for the dedicated sklearn DTWCKMedoids estimator."""
+"""The sklearn contract of DTWClustering: raw series and metric="precomputed"."""
 
 import numpy as np
 import pytest
 
 import dtwcpp
-from dtwcpp.sklearn import DTWCKMedoids
+from dtwcpp import DTWClustering
 
 
 def separated_series():
@@ -15,7 +15,7 @@ def separated_series():
 
 def test_raw_fit_predict_transform_and_score():
     X = separated_series()
-    estimator = DTWCKMedoids(n_clusters=2, random_state=3)
+    estimator = DTWClustering(n_clusters=2, random_state=3)
     labels = estimator.fit_predict(X)
 
     assert labels.shape == (10,)
@@ -26,11 +26,21 @@ def test_raw_fit_predict_transform_and_score():
     assert len(estimator.cluster_centers_) == 2
 
 
+def test_score_reads_the_fitted_medoids_and_never_refits():
+    X = separated_series()
+    estimator = DTWClustering(n_clusters=2).fit(X)
+    medoids = estimator.medoid_indices_.copy()
+    other = X[:3] + 0.5
+    assert estimator.score(other) == pytest.approx(
+        -np.min(estimator.transform(other), axis=1).sum())
+    np.testing.assert_array_equal(estimator.medoid_indices_, medoids)
+
+
 def test_default_seed_matches_tier1_seed_contract():
     X = (np.array([0.0, 0.01, -0.02, 0.03])[None, :]
          + np.arange(8.0)[:, None])
     tier1 = dtwcpp.cluster(X, k=3, method="pam")
-    estimator = DTWCKMedoids(n_clusters=3).fit(X)
+    estimator = DTWClustering(n_clusters=3).fit(X)
 
     assert dtwcpp.DEFAULT_RANDOM_SEED == 42
     np.testing.assert_array_equal(estimator.medoid_indices_, tier1.medoids)
@@ -41,7 +51,7 @@ def test_default_seed_matches_tier1_seed_contract():
 def test_precomputed_fit_and_rectangular_query_both_work():
     X = separated_series()
     D = dtwcpp.compute_distance_matrix(X.tolist())
-    estimator = DTWCKMedoids(n_clusters=2, metric="precomputed").fit(D)
+    estimator = DTWClustering(n_clusters=2, metric="precomputed").fit(D)
 
     transformed = estimator.transform(D)
     assert transformed.shape == (10, 2)
@@ -58,7 +68,7 @@ def test_onebatch_raw_mode_and_sklearn_clone_contract():
     sklearn = pytest.importorskip("sklearn")
     from sklearn.base import clone
 
-    estimator = DTWCKMedoids(
+    estimator = DTWClustering(
         n_clusters=2, method="onebatch", batch_size=6, random_state=11
     )
     cloned = clone(estimator)
@@ -73,15 +83,15 @@ def test_sklearn_common_estimator_contract():
     pytest.importorskip("sklearn")
     from sklearn.utils.estimator_checks import check_estimator
 
-    check_estimator(DTWCKMedoids(n_clusters=2))
+    check_estimator(DTWClustering(n_clusters=2))
 
 
 def test_precomputed_native_pairwise_tag():
     pytest.importorskip("sklearn", minversion="1.6")
     from sklearn.utils import get_tags
 
-    precomputed = DTWCKMedoids(n_clusters=2, metric="precomputed")
-    raw = DTWCKMedoids(n_clusters=2, metric="dtw")
+    precomputed = DTWClustering(n_clusters=2, metric="precomputed")
+    raw = DTWClustering(n_clusters=2)
 
     assert precomputed.__sklearn_tags__().input_tags.pairwise is True
     assert get_tags(precomputed).input_tags.pairwise is True
@@ -96,7 +106,7 @@ def test_grid_search_slices_precomputed_matrix_on_both_axes():
     positions = np.array([0.0, 0.2, 0.4, 10.0, 10.2, 10.4])
     distances = np.abs(positions[:, None] - positions[None, :])
     search = GridSearchCV(
-        DTWCKMedoids(metric="precomputed", random_state=7),
+        DTWClustering(metric="precomputed", random_state=7),
         {"n_clusters": [2]},
         cv=KFold(n_splits=3, shuffle=True, random_state=11),
         error_score="raise",
@@ -119,11 +129,11 @@ def test_grid_search_slices_precomputed_matrix_on_both_axes():
 )
 def test_precomputed_validation(matrix, message):
     with pytest.raises(ValueError, match=message):
-        DTWCKMedoids(n_clusters=1, metric="precomputed").fit(matrix)
+        DTWClustering(n_clusters=1, metric="precomputed").fit(matrix)
 
 
 def test_precomputed_onebatch_is_rejected_loudly():
     with pytest.raises(ValueError, match="requires raw series"):
-        DTWCKMedoids(
+        DTWClustering(
             n_clusters=1, metric="precomputed", method="onebatch"
         ).fit(np.zeros((2, 2)))

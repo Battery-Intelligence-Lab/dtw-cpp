@@ -18,7 +18,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iomanip>  // for setprecision
 #include <iostream> // for cout
+#include <numeric>  // for accumulate
 #include <string>  // for allocator, char_traits, operator+
 #include <vector>  // for vector, operator==
 
@@ -212,7 +214,7 @@ void Problem::read_distance_matrix(const fs::path &distMat_path)
   io::read_csv(loaded, distMat_path);
   if (size() != 0 && loaded.size() != size())
     throw InvalidInput(
-      "Problem::read_distance_matrix: '" + distMat_path.string() + "' has "
+      "Problem::read_distance_matrix: '" + path_to_utf8(distMat_path) + "' has "
       + std::to_string(loaded.size()) + " rows, but this Problem holds "
       + std::to_string(size()) + " series; a distance matrix has one row and "
         "one column per series, in input order. Load the matrix computed for "
@@ -221,6 +223,76 @@ void Problem::read_distance_matrix(const fs::path &distMat_path)
   if (loaded.size() != 0) {
     distMat = std::move(loaded);
     filled_ = complete;
+  }
+}
+
+void detail::write_result_files(Problem &prob, const fs::path &directory, bool complete, std::ostream *progress)
+{
+  const auto &labels = prob.labels();
+  const auto &medoids = prob.medoids();
+  // A RAM-limited Parquet run holds no series: its names are the readers' own `series_<i>`.
+  const bool streamed = prob.size() == 0;
+  const auto series_name = [&](std::size_t i) {
+    return streamed ? "series_" + std::to_string(i) : std::string(prob.series_name(i));
+  };
+  const auto file_in_directory = [&](const char *suffix) { return directory / utf8_to_path(prob.name() + suffix); };
+
+  if (complete && !streamed) prob.fill_distance_matrix();
+
+  const auto labels_path = file_in_directory("_labels.csv");
+  {
+    auto out = open_output(labels_path);
+    out << "name,cluster\n";
+    for (std::size_t i = 0; i < labels.size(); ++i) out << series_name(i) << ',' << labels[i] << '\n';
+    close_output(out, labels_path);
+  }
+  if (progress) *progress << "Labels written to " << labels_path << "\n";
+
+  const auto medoids_path = file_in_directory("_medoids.csv");
+  {
+    auto out = open_output(medoids_path);
+    out << "cluster,medoid_index,medoid_name\n";
+    for (std::size_t c = 0; c < medoids.size(); ++c)
+      out << c << ',' << medoids[c] << ',' << series_name(static_cast<std::size_t>(medoids[c])) << '\n';
+    close_output(out, medoids_path);
+  }
+  if (progress) *progress << "Medoids written to " << medoids_path << "\n";
+
+  if (streamed) {
+    if (complete)
+      throw InvalidInput("Result: a RAM-limited Parquet run holds no series, so it has no distance matrix or "
+                         "silhouettes to save; its labels and medoids are written, with series_<i> names.");
+    return;
+  }
+  // A matrix-free run does not fill an O(N^2) matrix merely to write these files.
+  if (!prob.is_distance_matrix_filled()) return;
+  const auto matrix_path = file_in_directory("_distance_matrix.csv");
+  io::write_csv(prob.distance_matrix(), matrix_path);
+  if (progress) *progress << "Distance matrix written to " << matrix_path << "\n";
+
+  // s(i) is undefined for one cluster, which is no reason to fail a clustering that succeeded; a
+  // computed score that cannot be written is an error like any other file.
+  if (medoids.size() < 2) return;
+  std::vector<double> silhouettes;
+  try {
+    silhouettes = scores::silhouette(prob);
+  } catch (const UndefinedScore &e) {
+    std::cerr << "Warning: silhouettes skipped: " << e.what() << '\n';
+    return;
+  }
+  const auto silhouettes_path = file_in_directory("_silhouettes.csv");
+  {
+    auto out = open_output(silhouettes_path);
+    out << "name,cluster,silhouette\n";
+    for (std::size_t i = 0; i < silhouettes.size(); ++i)
+      out << series_name(i) << ',' << labels[i] << ',' << std::setprecision(8) << silhouettes[i] << '\n';
+    close_output(out, silhouettes_path);
+  }
+  if (progress) {
+    const double mean = silhouettes.empty() ? 0.0
+                                            : std::accumulate(silhouettes.begin(), silhouettes.end(), 0.0)
+                                                / static_cast<double>(silhouettes.size());
+    *progress << "Silhouette scores written, mean=" << std::setprecision(4) << mean << "\n";
   }
 }
 

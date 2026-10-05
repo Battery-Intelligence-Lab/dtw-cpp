@@ -1,11 +1,17 @@
 """
 @file io.py
-@brief I/O utilities for saving/loading time series data and distance matrices.
+@brief Reading series, and saving/loading datasets.
 @details
+A path reads as dtwc_cl reads it: CSV/TSV text and folders of text files through
+the bound C++ reader (dtwc::read_data), so a file reads to the same series in
+every language; Parquet and Arrow IPC through the installed pyarrow, into the
+Arrow C stream the compiled-in nanoarrow reads. The result files are C++'s too
+(Result.save, Problem.write_*).
+
 Supported formats:
-- CSV: always available (numpy only)
+- CSV/TSV text and a folder of them: always available
+- Parquet and Arrow IPC: require pyarrow (the ``parquet`` extra)
 - HDF5: requires h5py (optional)
-- Parquet: requires pyarrow (optional)
 
 HDF5 layout::
 
@@ -20,10 +26,97 @@ HDF5 layout::
 from __future__ import annotations
 
 import csv
+import os
+import re
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+
+# ---------------------------------------------------------------------------
+# Reading series (dtwcpp.load)
+# ---------------------------------------------------------------------------
+
+_ARROW_IPC = (".arrow", ".ipc", ".feather")
+
+
+def _read_arrow(path, parquet):
+    """Parquet (each row of the first list column a series, named by the first
+    string column) or an Arrow IPC file (the ``data`` column, named by ``name``,
+    ``ndim`` from the schema metadata) through the installed pyarrow, into the
+    Arrow C stream the compiled-in nanoarrow reads."""
+    from dtwcpp import IOError as DtwcIOError, _dtwcpp_core
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        raise ImportError(
+            "Reading Parquet or Arrow IPC needs pyarrow: install dtwcpp[parquet].") from None
+    ndim = 1
+    try:
+        if parquet:
+            table = pa.concat_tables([pq.read_table(os.fspath(f)) for f in parquet])
+        else:
+            with pa.OSFile(os.fspath(path), "rb") as f:
+                table = pa.ipc.open_file(f).read_all()
+            schema = table.schema
+            if "data" not in schema.names:
+                raise DtwcIOError("no 'data' column; write the series as a List or LargeList "
+                                  "of Float32/Float64 named 'data'.")
+            data_type = schema.field("data").type
+            if not ((pa.types.is_list(data_type) or pa.types.is_large_list(data_type))
+                    and (pa.types.is_float32(data_type.value_type)
+                         or pa.types.is_float64(data_type.value_type))):
+                raise DtwcIOError("the 'data' column must be a List or LargeList of "
+                                  f"Float32/Float64, got {data_type}.")
+            columns = ["data"]
+            if "name" in schema.names:
+                name_type = schema.field("name").type
+                if not (pa.types.is_string(name_type) or pa.types.is_large_string(name_type)):
+                    raise DtwcIOError(f"the 'name' column must be Utf8 or LargeUtf8, got {name_type}. "
+                                      "Write the names as strings, or drop the column.")
+                columns.append("name")
+            text = (schema.metadata or {}).get(b"ndim")
+            if text is not None:
+                if not re.fullmatch(rb"[0-9]+", text) or int(text) == 0:
+                    raise DtwcIOError(f"schema metadata 'ndim' must be a positive integer, got "
+                                      f"'{text.decode('utf-8', 'replace')}'. Set it to the number of "
+                                      "features per timestep (1 for univariate data).")
+                ndim = int(text)
+            table = table.select(columns)
+    except (OSError, pa.ArrowException) as error:
+        raise DtwcIOError(f"load: failed to read '{os.fspath(path)}': {error}") from error
+    data = _dtwcpp_core.data_from_arrow_c_array(table)
+    if ndim != 1:
+        data.ndim = ndim
+        data.validate_ndim()
+    return data
+
+
+def _read_data(source, skip_cols=0, skip_rows=0, delimiter=None):
+    """Every series ``source`` names, read as dtwc::read_data reads it.
+
+    A .parquet/.pq file, or a folder holding one, is Parquet and an
+    .arrow/.ipc/.feather file Arrow IPC, both read through pyarrow; anything
+    else is CSV/TSV text, one file (a series per row) or a folder (a series per
+    file), read by the C++ reader itself. ``skip_cols`` drops leading fields and
+    ``skip_rows`` leading lines of text; ``delimiter`` None infers it from the
+    extension (tab for .tsv/.txt, else comma). A read failure is
+    :class:`dtwcpp.IOError` naming the file, an option the input cannot honour
+    :class:`dtwcpp.InvalidInput`.
+    """
+    from dtwcpp import InvalidInput, _dtwcpp_core
+    path = os.fspath(source)
+    parquet = _dtwcpp_core._parquet_files(path)
+    arrow_ipc = os.path.splitext(path)[1].lower() in _ARROW_IPC and not os.path.isdir(path)
+    if parquet or arrow_ipc:
+        if skip_cols or skip_rows or delimiter:
+            raise InvalidInput(
+                "load: skip_cols, skip_rows and delimiter parse CSV/TSV text and "
+                "cannot be honoured for a Parquet or Arrow IPC input; drop them.")
+        return _read_arrow(path, parquet)
+    return _dtwcpp_core._read_data(path, skip_cols, skip_rows, delimiter or "")
 
 
 # ---------------------------------------------------------------------------
@@ -57,8 +150,8 @@ def load_dataset_csv(path: str | Path) -> tuple[np.ndarray, list[str]]:
     """Load a time-series dataset from CSV.
 
     Expects an optional header row followed by numeric rows. Only the header
-    detection is done here; the numeric rows are parsed by the C++
-    ``DataLoader`` — the one reader the CLI, C++ and :func:`dtwcpp.load` share.
+    detection is done here; the numeric rows are parsed by the C++ reader that
+    dtwc_cl and :func:`dtwcpp.load` use.
 
     Returns
     -------

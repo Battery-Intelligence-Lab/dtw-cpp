@@ -53,6 +53,18 @@ class TestProblemData:
         p.set_data(rows, names)
         assert p.size == len(synthetic_data)
 
+    def test_a_data_carries_its_own_names_and_ndim(self):
+        """set_data(Data, names=...) and set_data(Data, ndim=3) dropped the
+        names and ndim without a word, so ndim=3 computed univariate distances."""
+        data = dtwcpp.Data([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [6.0, 5.0, 4.0, 3.0, 2.0, 1.0]], ["a", "b"])
+        p = dtwcpp.Problem("test")
+        with pytest.raises(TypeError, match="names"):
+            p.set_data(data, ["x", "y"])
+        with pytest.raises(TypeError, match="ndim"):
+            p.set_data(data, ndim=3)
+        p.set_data(data)
+        assert [p.series_name(i) for i in range(p.size)] == ["a", "b"]
+
 
 class TestDistanceMatrix:
     """Tests for fill_distance_matrix and dist_by_ind."""
@@ -270,6 +282,7 @@ class TestClusterFirst:
         assert [f.name for f in tmp_path.iterdir()] == ["first_Nc_2.csv"]
 
 
+
 class TestSetterRanges:
     """A cluster count below 1 and a band below -1 have no meaning, so the setters
     refuse them (k = -1 was an untyped "vector too long" from a resize, and a band
@@ -402,8 +415,10 @@ class TestDenseSemanticMutation:
 
         p.set_variant(dtwcpp.DTWVariant.Standard)
         assert p.dist_by_ind(0, 1) == 2.0
-        # variant_params returns a copy: editing it leaves the Problem as it was.
-        p.variant_params.variant = dtwcpp.DTWVariant.WDTW
+        # variant_params is read-only: a nested write raises instead of editing
+        # a copy the Problem never sees.
+        with pytest.raises(AttributeError):
+            p.variant_params.variant = dtwcpp.DTWVariant.WDTW
         assert p.variant_params.variant == dtwcpp.DTWVariant.Standard
         assert p.dist_by_ind(0, 1) == 2.0
 
@@ -494,13 +509,17 @@ class TestVariant:
         assert p.variant_params.variant == dtwcpp.DTWVariant.WDTW
 
     def test_variant_params_fields(self):
-        """variant_params fields can be set via the property."""
+        """variant_params is set whole, and reads back as it can be assigned."""
         p = dtwcpp.Problem("test")
-        p.set_variant(dtwcpp.DTWVariant.WDTW)
-        vp = p.variant_params
-        vp.wdtw_g = 0.1
-        p.variant_params = vp
+        params = dtwcpp.DTWVariantParams()
+        params.variant = dtwcpp.DTWVariant.WDTW
+        params.wdtw_g = 0.1
+        p.variant_params = params
         assert p.variant_params.wdtw_g == pytest.approx(0.1)
+        q = dtwcpp.Problem("copy")
+        q.variant_params = p.variant_params
+        assert q.variant_params.variant == dtwcpp.DTWVariant.WDTW
+        assert q.variant_params.wdtw_g == pytest.approx(0.1)
 
     def test_variant_changes_distances(self):
         """Using WDTW variant produces different distances than standard."""

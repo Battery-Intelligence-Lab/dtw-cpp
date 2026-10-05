@@ -104,7 +104,7 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
 | `assignClusters()` | `assign_clusters()` | `assign_clusters()` (live) | — |
 | `calculateMedoids()` | `calculate_medoids()` | `calculate_medoids()` (live) | — |
-| `cluster()` | `cluster()` | `cluster()` (live) | `cluster()` `[introduced-2.0]` |
+| `cluster()` | `cluster()` | `cluster()` (live; returns the `ClusteringResult`) | `cluster()` `[introduced-2.0]` |
 | `cluster_by_MIP()` | `cluster_by_mip()` | — | — |
 | `cluster_by_kMedoidsPAM()` | `cluster_by_kmedoids_lloyd()` | — | — |
 | `printClusters()` | `print_clusters()` | `print_clusters()` (live) | — |

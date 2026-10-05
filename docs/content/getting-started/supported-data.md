@@ -19,9 +19,9 @@ You can specify either a _file path_ or a _folder path_ for your data. The softw
 
 ### Specifying a file path
 
-A _file path_ points to a single file containing all of your data, represented in variable-length rows. The values might be separated by commas, tabs, or spaces. In this scenario, time-series names are allocated sequentially from 1 to N, row by row.
+A _file path_ points to a single file containing all of your data, represented in variable-length rows. The values might be separated by commas, tabs, or spaces (with the space delimiter, any run of spaces and tabs separates two values). In this scenario, time-series names are allocated sequentially from 1 to N, row by row.
 
-A blank line is not a series: blank lines at the end of the file are ignored, and a blank line followed by more data is an error naming its row. Write a missing value as `nan`; an empty field is an error. Numbers are read the same way on every platform and in every locale: `.` is the decimal separator, and a UTF-8 byte-order mark at the start of the file is skipped.
+A blank line is not a series: blank lines at the end of the file are ignored, and a blank line followed by more data is an error naming its row. Write a missing value as `nan`; an empty field is an error. Numbers are read the same way on every platform and in every locale: `.` is the decimal separator, a UTF-8 byte-order mark at the start of the file is skipped, and a Ctrl-Z byte is a non-numeric field like any other, not the end of the file. A line ends in LF or CRLF; a CR anywhere else is part of its field, so a file whose lines end in a bare CR is an error. `dtwc_cl`, C++ `dtwc::read_data`, Python `dtwcpp.load()` and MATLAB `dtwc.load()` read text with this one reader.
 
 **Example:** A file with 5 time-series of varying lengths:
 
@@ -154,14 +154,11 @@ C++:
 problem.set_data(dtwc::read_data("data.arrow"));
 ```
 
-Python:
+Python reads it with the installed pyarrow (the `dtwcpp[parquet]` extra), the
+same columns and names:
 
 ```python
-import pyarrow as pa
-import pyarrow.ipc as ipc
-
-with ipc.open_file("data.arrow") as f:
-    table = f.read_all()
+data = dtwcpp.load("data.arrow").as_data()
 ```
 
 **Schema:** a `data` column of `List` or `LargeList` (more than 2 billion values) of `Float32`/`Float64` holds one series per row, across every record batch; an optional `name` column of `Utf8` or `LargeUtf8` (Polars' default) names the series (without one, or for a null name, a series is `series_<i>`), and a `name` column of any other type is an error. The schema metadata `ndim` gives the features per time step (default 1). A null series or value is an error. Create Arrow IPC files with the `dtwc-convert` tool — see [Data formats and conversion](../../guides/data-formats/).
@@ -169,6 +166,29 @@ with ipc.open_file("data.arrow") as f:
 ---
 
 ## Reading data directly
+
+Series you have already read, with numpy, pandas, pyarrow or plain Python, go in
+as they are. `dtwcpp.cluster`, `dtwcpp.DTWClustering` (`fit`, `predict`,
+`transform`, `score`), `dtwcpp.load`, `dtwcpp.compute_distance_matrix` and
+`Problem.set_data` take a 2-D array (one series per row), a list of 1-D arrays or
+lists (series of any lengths), a pandas DataFrame (one series per row, named by
+its index) and an Arrow array or stream (pyarrow, polars: one series per list
+element, named as the Arrow reader names them); other inputs are named by their
+ordinals. Complex values are an error, never cast to their real part:
+
+```python
+import numpy as np
+import dtwcpp
+
+X = np.loadtxt("series.csv", delimiter=",")              # 2-D: one series per row
+result = dtwcpp.cluster(X, k=3)
+ragged = [np.array([0.0, 1.0, 2.0]), np.array([5.0, 6.0])]  # lengths may differ
+labels = dtwcpp.DTWClustering(n_clusters=2).fit(ragged).labels_
+# a pandas DataFrame: dtwcpp.cluster(df, k=3), series named by df.index
+
+prob = dtwcpp.Problem("mine")
+prob.set_data(X)                                           # names "0", "1", ...
+```
 
 If you are using DTW-C++ directly (e.g., as a library within your software), you might prefer to read data independently or use pre-generated data. DTW-C++ employs the `Data` class to encapsulate a `std::vector<std::vector<data_type>>` data object and `std::vector<std::string>` for their corresponding names. The following example code snippet demonstrates how to input data into a Problem object.
 

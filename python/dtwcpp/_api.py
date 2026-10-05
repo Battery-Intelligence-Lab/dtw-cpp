@@ -12,8 +12,9 @@
         print(res.summary())
         res.plot()
 
-    All device resolution lives in the library (dtwcpp._parse_device /
-    _resolve_device); callers never map 'gpu'->'cuda' themselves.
+    A local cluster() is C++'s: the keywords become a dtwcpp Config, which C++
+    applies to a Problem holding the series, and Problem.cluster() runs the
+    method. Python reads and writes the files (dtwcpp.io).
 @author Volkan Kumtepeli
 """
 import os
@@ -22,47 +23,69 @@ import time
 import numpy as np
 
 
-def _float_rows(source):
-    """In-memory source -> ``list[list[float]]``, variable lengths preserved.
+class _NotSeries(TypeError, ValueError):
+    """Input that is not real-valued series: a TypeError, and a ValueError, which
+    scikit-learn's estimator checks require of DTWClustering for complex and 1-D
+    input."""
 
-    C++ ``dtwc::load(series_type)`` takes a ``vector<vector<double>>``, so the
-    rows need not be the same length. A rectangular source keeps the NumPy fast
-    path; a ragged one (which ``np.asarray(..., dtype=float)`` rejects) is
-    converted row by row.
+
+_FORMS = ("series go in as a 2-D array (one series per row), a list of 1-D series "
+          "(any lengths), a pandas DataFrame or an Arrow array")
+
+
+def _float64(values):
+    """``values`` as float64, refusing complex values: numpy casts a complex
+    array to its real part with only a ComplexWarning. A list goes to numpy as
+    it is, which refuses a complex number in it and reads a None as NaN."""
+    if not isinstance(values, (list, tuple)):
+        values = np.asarray(values)  # through __array__: no copy, no array function
+        if values.dtype.kind == "c":
+            raise _NotSeries("Complex data not supported: " + _FORMS + " of real numbers.")
+    return np.asarray(values, dtype=np.float64)
+
+
+def _series(source):
+    """Already-read series as C++ takes them: one 1-D float64 array per series,
+    and their names. The one conversion behind cluster(), load(),
+    Problem.set_data, compute_distance_matrix and DTWClustering.
+
+    A 2-D array holds one series per row and a list or tuple one per element, of
+    any lengths; both are named by their ordinals. A pandas DataFrame holds one
+    series per row, named by its index (read through ``to_numpy``: pandas is not
+    imported), and an Arrow array or stream (pyarrow, polars, DuckDB) is read by
+    the compiled-in nanoarrow and named as it names them. Complex values, an
+    array of another dimension and an empty series are refused; NaN and inf are
+    C++'s to judge, by the missing-data strategy.
     """
-    if isinstance(source, np.ndarray):
-        return [list(row) for row in np.asarray(source, dtype=float)]
-    try:
-        rectangular = np.asarray(source, dtype=float)
-    except (ValueError, TypeError):
-        return [[float(value) for value in row] for row in source]
-    return [list(row) for row in rectangular]
-
-
-def _read_parquet(source, files, skip_cols, skip_rows, delimiter):
-    """Parquet through the installed pyarrow: the wheel links no Arrow C++.
-
-    The table reaches C++ as an Arrow C stream, through the converter every
-    Arrow source takes, so each row of the first list column is a series,
-    named by the first string column (else ``series_<i>``).
-    """
-    from dtwcpp import InvalidInput, IOError as DtwcIOError, _dtwcpp_core
-    if skip_cols or skip_rows or delimiter:
-        raise InvalidInput(
-            "load: skip_cols, skip_rows and delimiter parse CSV/TSV text and "
-            "cannot be honoured for a Parquet input; drop them.")
-    try:
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-    except ImportError:
-        raise ImportError(
-            "Reading Parquet needs pyarrow: install dtwcpp[parquet].") from None
-    try:
-        table = pa.concat_tables([pq.read_table(os.fspath(f)) for f in files])
-    except (OSError, pa.ArrowException) as error:
-        raise DtwcIOError(
-            f"load: failed to read '{os.fspath(source)}': {error}") from error
-    return _dtwcpp_core.data_from_arrow_c_array(table)
+    from dtwcpp import InvalidInput
+    from dtwcpp._dtwcpp_core import data_from_arrow_c_array
+    names = None
+    if type(source).__module__.split(".")[0] == "pandas" and hasattr(source, "columns"):
+        names = [str(label) for label in source.index]
+        source = source.to_numpy()
+    elif hasattr(source, "__arrow_c_array__") or hasattr(source, "__arrow_c_stream__"):
+        data = data_from_arrow_c_array(source)
+        return [np.asarray(row, dtype=np.float64) for row in data.p_vec], list(data.p_names)
+    elif type(source).__module__.startswith("scipy.sparse"):
+        raise TypeError("Sparse input is not supported; provide a dense array.")
+    if isinstance(source, (list, tuple)):
+        rows = [_float64(row) for row in source]
+        for i, row in enumerate(rows):
+            if row.ndim != 1:
+                raise _NotSeries(f"{_FORMS}; got a list whose element {i} is {row.ndim}-D.")
+            if row.size == 0:
+                raise InvalidInput(f"series {i} is empty; every series needs at least one value.")
+    else:
+        array = np.asarray(source)
+        if array.ndim != 2:  # "Reshape your data", as scikit-learn's checks expect
+            raise _NotSeries(f"{_FORMS}; got a {array.ndim}-D array of shape {array.shape}. "
+                             "Reshape your data to (n_series, n_timesteps).")
+        array = _float64(array)
+        if array.shape[0] and not array.shape[1]:  # scikit-learn's words, which its checks match
+            raise InvalidInput(f"every series needs at least one value: 0 feature(s) "
+                               f"(shape={array.shape}) while a minimum of 1 is required.")
+        rows = list(array)
+    return rows, names or [str(i) for i in range(len(rows))]
 
 
 class Dataset:
@@ -75,16 +98,22 @@ class Dataset:
 
     def __init__(self, source, *, skip_cols=0, skip_rows=0, delimiter=None,
                  name=None):
+        from dtwcpp import InvalidInput
+        # Checked where the handle is made, as C++ dtwc::load does, so a bad
+        # count fails before any file is read or job submitted.
+        for key, value in (("skip_cols", skip_cols), ("skip_rows", skip_rows)):
+            if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                raise TypeError(f"load: {key} must be an integer")
+            if value < 0:
+                raise InvalidInput(f"load: {key} must be non-negative.")
+        from dtwcpp import _dtwcpp_core
         self.source = source
-        self.skip_cols = skip_cols
-        self.skip_rows = skip_rows
+        self.skip_cols = int(skip_cols)
+        self.skip_rows = int(skip_rows)
         self.delimiter = delimiter
-        if name is not None:
-            self.name = name
-        elif self.is_path:
-            self.name = os.path.splitext(os.path.basename(str(source)))[0]
-        else:
-            self.name = "dataset"
+        # dtwc_cl's rule, so a run of "data/" is named "data" in every language.
+        self.name = name if name is not None else _dtwcpp_core._default_name(
+            os.fspath(source) if self.is_path else "")
         self._data = None
 
     @property
@@ -94,33 +123,23 @@ class Dataset:
     def _as_data(self):
         """Read the source once, caching the owning C++ ``dtwc::Data``.
 
-        The handle holds the C++ object, not a ``list[list[float]]``: a text
-        path is parsed by the C++ ``dtwc::read_data`` — the reader C++ and the
-        CLI use — and a Parquet file or folder by the installed pyarrow; either
-        way the result is handed straight to ``Problem.set_data(Data)``, so a
-        Tier-1 run creates no Python floats at all. ``skip_cols`` therefore
-        drops leading FIELDS before numeric parsing (an id column may be text),
-        variable-length rows are preserved, and the names are the loader's own
-        (file stem per file for a folder, 1-based row number for a batch file).
-        ``skip_rows`` drops leading FILE LINES for a path source and leading
-        SERIES for an in-memory one — one memory row is one file line — and an
-        in-memory source is named by its ordinal, as
-        ``Dataset::materialize_local`` names it (api.cpp).
+        A path is read as dtwc_cl reads it: text by the C++ reader
+        (``skip_cols`` drops leading FIELDS before numeric parsing, ``skip_rows``
+        leading LINES, variable-length rows are kept, a batch file names its
+        series 1, 2, ... and a folder by file stem), Parquet and Arrow IPC
+        through the installed pyarrow. ``skip_rows`` drops leading SERIES of an
+        in-memory source — one memory row is one file line — named as
+        :func:`_series` names them.
         """
         if self._data is None:
-            from dtwcpp import _dtwcpp_core
+            from dtwcpp import _dtwcpp_core, io
             if self.is_path:
-                path = os.fspath(self.source)
-                parquet = _dtwcpp_core._parquet_files(path)
-                self._data = (
-                    _read_parquet(path, parquet, self.skip_cols, self.skip_rows,
-                                  self.delimiter)
-                    if parquet else
-                    _dtwcpp_core._read_data(path, self.skip_cols, self.skip_rows,
-                                            self.delimiter or ""))
+                self._data = io._read_data(self.source, self.skip_cols,
+                                           self.skip_rows, self.delimiter)
             else:
                 from dtwcpp import InvalidInput
-                rows = _float_rows(self.source)[self.skip_rows:]
+                rows, names = _series(self.source)
+                rows, names = rows[self.skip_rows:], names[self.skip_rows:]
                 if self.skip_cols > 0:
                     for row in rows:
                         if self.skip_cols > len(row):
@@ -128,8 +147,7 @@ class Dataset:
                                 "load: skip_cols exceeds an in-memory series "
                                 "length.")
                     rows = [row[self.skip_cols:] for row in rows]
-                self._data = _dtwcpp_core.Data(
-                    rows, [str(i) for i in range(len(rows))])
+                self._data = _dtwcpp_core.Data([row.tolist() for row in rows], names)
         return self._data
 
     def as_data(self):
@@ -157,36 +175,37 @@ def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None):
                    delimiter=delimiter, name=name)
 
 
-# score() names accepted by Result.score (api-contract-2.0.md §1.4). Each resolves
-# to the Tier-2 scores::* function; "silhouette" returns the MEAN silhouette.
-_SCORE_NAMES = ("silhouette", "davies_bouldin", "dunn", "calinski_harabasz", "inertia")
-
-
 class Result:
     """Outcome of :func:`cluster` — the canonical 2.0 ``Result`` (api-contract §1.4).
 
-    Members: ``labels``, ``medoids``, ``score(name)``, ``save(dir)``, ``plot()``,
-    plus ``cost`` and ``device``. ``distance_matrix`` fills on demand from the
-    retained ``Problem`` after a matrix-free OneBatchPAM/CLARA/TADPole run, and
-    is ``None`` only for an ``hpc`` run.
+    ``labels``, ``medoids`` and ``cost`` are values; ``score(name)``,
+    ``save(dir)`` and ``distance_matrix`` read the clustered ``Problem`` the
+    result keeps, which fills its matrix on demand after a matrix-free
+    OneBatchPAM/CLARA/TADPole run. An ``hpc`` run returns labels only.
     """
 
     def __init__(self, labels, *, device, elapsed_s, k, n_series,
-                 medoid_indices=None, distance_matrix=None, cost=None, name="dataset",
-                 series_names=None, problem=None):
+                 medoid_indices=None, cost=None, name="dataset", problem=None):
         self.labels = np.asarray(labels)
         self.device = device
         self.elapsed_s = elapsed_s
         self.k = k
         self.n_series = n_series
         self.medoids = None if medoid_indices is None else np.asarray(medoid_indices)
-        self._distance_matrix = distance_matrix
         self.cost = cost
         self.name = name
-        self._series_names = series_names
-        # C++ Result owns the Problem it clustered (api.cpp), so score() and
-        # save() can fill a matrix-free run's distance matrix on demand.
         self._problem = problem
+        self._distance_matrix = None
+
+    def _clustered(self):
+        """The Problem this result was clustered on; an hpc run has none."""
+        if self._problem is None:
+            import dtwcpp
+            raise dtwcpp.InvalidInput(
+                "no local distance matrix available to score (an hpc run "
+                "returns labels only; score()/save(silhouettes) need "
+                "cpu/gpu output).")
+        return self._problem
 
     @property
     def distance_matrix(self):
@@ -207,158 +226,34 @@ class Result:
         return (f"[device={self.device}] {self.n_series} series, k={self.k}  ->  "
                 f"{self.elapsed_s * 1e3:7.1f} ms{extra}")
 
-    def _names(self, n=None):
-        """Series names for output — the loader's, as C++ ``series_name(i)`` is."""
-        if self._series_names is not None:
-            return list(self._series_names)
-        return [str(i) for i in range(len(self.labels) if n is None else n)]
-
-    def _clustering(self):
-        """This result as the ``ClusteringResult`` that ``Problem.set_result`` validates."""
-        import dtwcpp
-        if self.medoids is None:
-            raise dtwcpp.InvalidInput(
-                "this Result carries no medoids, and the scores and save() read them "
-                "from a Problem (an hpc run returns labels only)."
-            )
-        result = dtwcpp.ClusteringResult()
-        result.labels = self.labels
-        result.medoid_indices = self.medoids
-        return result
-
-    def _scoring_problem(self):
-        """Rebuild a Tier-2 Problem carrying this result's distance matrix + labels.
-
-        Scores read state from a Problem (its distance matrix + clusters_ind +
-        centroids_ind, published through set_result), so score()/save()
-        reconstruct a minimal one. Dummy series
-        stand in — the scores use only the distance matrix and the labels.
-
-        A matrix-free run kept its own Problem instead of a matrix; filling it
-        here is what C++ ``Result::score()``/``save()`` do, so the O(N)
-        schedule survives until a score is explicitly asked for.
-        """
-        import dtwcpp
-        if self._distance_matrix is None:
-            if self._problem is None:
-                raise dtwcpp.InvalidInput(
-                    "no local distance matrix available to score (an hpc run "
-                    "returns labels only; score()/save(silhouettes) need "
-                    "cpu/gpu output)."
-                )
-            prob = self._problem
-            prob.fill_distance_matrix()
-            prob.set_result(self._clustering())
-            return prob
-        D = np.asarray(self._distance_matrix, dtype=float)
-        n = D.shape[0]
-        names = self._names(n)
-        prob = dtwcpp.Problem(self.name)
-        prob.set_data([[0.0] for _ in range(n)], names)
-        prob.set_distance_matrix(D)
-        prob.set_result(self._clustering())
-        return prob
-
     def score(self, name):
-        """Return a clustering-quality score by name (api-contract §1.4).
+        """The clustering-quality score ``name`` names, computed by C++.
 
-        ``name`` is one of ``"silhouette"`` (the MEAN silhouette),
-        ``"davies_bouldin"``, ``"dunn"``, ``"calinski_harabasz"``, ``"inertia"``.
-        An unknown name raises :class:`dtwcpp.InvalidInput`.
+        ``"silhouette"`` (the MEAN silhouette), ``"davies_bouldin"``,
+        ``"dunn"``, ``"calinski_harabasz"`` or ``"inertia"``; any other name
+        raises :class:`dtwcpp.InvalidInput`.
         """
-        import dtwcpp
-        key = str(name).strip().lower()
-        if key not in _SCORE_NAMES:
-            raise dtwcpp.InvalidInput(
-                f"unknown score {name!r}. Valid names: {', '.join(_SCORE_NAMES)}."
-            )
-        prob = self._scoring_problem()
-        if key == "silhouette":
-            return float(np.mean(dtwcpp.silhouette(prob)))
-        if key == "davies_bouldin":
-            return float(dtwcpp.davies_bouldin(prob))
-        if key == "dunn":
-            return float(dtwcpp.dunn(prob))
-        if key == "calinski_harabasz":
-            return float(dtwcpp.calinski_harabasz(prob))
-        return float(dtwcpp.inertia(prob))
+        from dtwcpp import _dtwcpp_core
+        return _dtwcpp_core.score(self._clustered(), name)
 
     def save(self, directory):
-        """Write the four human-readable result CSVs into ``directory`` (§1.4/§7).
+        """Write the four result CSVs into ``directory`` with the C++ writer
+        ``dtwc_cl`` and C++ ``Result::save`` use: ``<name>_labels.csv``
+        (``name,cluster``), ``<name>_medoids.csv``
+        (``cluster,medoid_index,medoid_name``), ``<name>_distance_matrix.csv``
+        and ``<name>_silhouettes.csv`` (``name,cluster,silhouette``).
 
-        Emits ``<name>_labels.csv`` (``name,cluster``), ``<name>_medoids.csv``
-        (``cluster,medoid_index,medoid_name``), ``<name>_distance_matrix.csv`` and
-        ``<name>_silhouettes.csv`` (``name,cluster,silhouette``). Byte-identity
-        with the CLI output is the Phase 2.4 conformance fixture's contract: the
-        names are the loader's (UTF-8, as C++ emits them), the line ending is
-        the platform one C++'s text-mode ``ofstream`` writes, and the
-        silhouettes carry C++'s ``setprecision(8)``.
-
-        With one cluster the silhouette is undefined and ``<name>_silhouettes.csv``
-        is not written, silently, as C++ ``Result::save`` and the CLI do. A
-        partition with fewer than two realised clusters prints ``Warning:
-        silhouettes skipped: ...`` to ``stderr`` instead of failing a clustering
-        that succeeded — the same stream and text as C++, so a ``-W error``
-        caller is not broken by a successful save. Asking for the number —
-        ``score("silhouette")`` — still raises ``UndefinedScore``.
+        With one cluster the silhouette is undefined and no silhouettes file is
+        written; a partition with fewer than two realised clusters prints
+        ``Warning: silhouettes skipped: ...`` on ``stderr``. An ``hpc`` result
+        holds labels only: the remote ``dtwc_cl`` wrote its files.
         """
-        import sys
-
-        import dtwcpp
-        os.makedirs(directory, exist_ok=True)
-        names = self._names()
-        base = os.path.join(directory, self.name)
-
-        # C++ writes the loader's bytes through a text-mode ofstream: UTF-8
-        # payload, platform line ending. open(..., "w") alone would use the
-        # locale encoding and mangle a non-ASCII series name.
-        def _text(path):
-            return open(path, "w", encoding="utf-8")
-
-        with _text(base + "_labels.csv") as f:
-            f.write("name,cluster\n")
-            for nm, lab in zip(names, self.labels):
-                f.write(f"{nm},{int(lab)}\n")
-
-        with _text(base + "_medoids.csv") as f:
-            f.write("cluster,medoid_index,medoid_name\n")
-            if self.medoids is not None:
-                for c, m in enumerate(self.medoids):
-                    f.write(f"{c},{int(m)},{names[int(m)]}\n")
-
-        if self._distance_matrix is not None or self._problem is not None:
-            prob = self._scoring_problem()
-            matrix = np.asarray(
-                self._distance_matrix if self._distance_matrix is not None
-                else prob.distance_matrix(), dtype=float)
-            # core::detail::preflight_distance_matrix_csv: +/-inf is refused
-            # BEFORE the file is opened, row-major, naming the first offender.
-            if np.isinf(matrix).any():
-                i, j = (int(x) for x in np.argwhere(np.isinf(matrix))[0])
-                raise dtwcpp.InvalidInput(
-                    f"distance-matrix CSV: computed non-finite value at row {i}, "
-                    f"column {j}.")
-            # core::detail::distance_matrix_csv_token: to_chars(general,
-            # max_digits10) into a stream opened in BINARY mode, so LF and
-            # 17 significant digits regardless of platform; a NaN cell is an
-            # uncomputed distance and is written as an EMPTY field.
-            with open(base + "_distance_matrix.csv", "wb") as f:
-                for row in matrix:
-                    line = ",".join(
-                        "" if value != value else f"{value:.17g}"
-                        for value in row) + "\n"
-                    f.write(line.encode("ascii"))
-            if self.medoids is None or len(self.medoids) < 2:
-                return directory
-            try:
-                sil = dtwcpp.silhouette(prob)
-            except dtwcpp.UndefinedScore as e:
-                print(f"Warning: silhouettes skipped: {e}", file=sys.stderr)
-                return directory
-            with _text(base + "_silhouettes.csv") as f:
-                f.write("name,cluster,silhouette\n")
-                for nm, lab, s in zip(names, self.labels, sil):
-                    f.write(f"{nm},{int(lab)},{s:.8g}\n")
+        from dtwcpp import InvalidInput, _dtwcpp_core
+        if self._problem is None:
+            raise InvalidInput(
+                "save: this hpc result holds the labels only; dtwc_cl wrote the "
+                "result files on the cluster.")
+        _dtwcpp_core._write_result_files(self._problem, os.fspath(directory))
         return directory
 
     def plot(self, png="clusters_2d.png", show=True):
@@ -401,174 +296,82 @@ class Result:
         return png
 
 
-# Canonical clustering methods. This is exactly the dtwc_cl CLI vocabulary
-# (dtwc_cl.cpp: "auto, pam, clara, kmedoids, mip, hierarchical"), so the SAME
-# name is valid on cpu/gpu (dispatched here) and on hpc (forwarded to
-# dtwc_cl --method). "hclust" is the CLI's alias for "hierarchical".
-_METHODS = ("auto", "pam", "onebatch", "clara", "kmedoids", "mip",
-            "lrcore", "hierarchical", "tadpole")
-_AUTO_PAM_SERIES_LIMIT = 5000
+# The keywords the SLURM transport carries to the remote dtwc_cl.
+_HPC_KEYS = frozenset({"method", "band", "max_iter", "n_init", "seed", "variant",
+                       "wdtw_g", "adtw_penalty", "msm_c", "twe_nu", "twe_lambda",
+                       "mv_mode", "missing_strategy", "metric", "name"})
 
 
-def _normalize_tier1_int(name, value, *, minimum):
-    """Normalize one public integer to a native ``int``.
-
-    There is no upper bound here: a value the C++ parameter cannot hold is
-    refused by nanobind's conversion or, on hpc, by dtwc_cl's parser.
-    """
-    if isinstance(value, (bool, np.bool_)) or not isinstance(
-        value, (int, np.integer)
-    ):
-        raise TypeError(f"{name} must be an integer")
-    value = int(value)
-    if value < minimum:
-        raise ValueError(f"{name} must be at least {minimum} for the C++ Tier-1 API")
-    return value
-
-
-def _validate_common(data, k, max_iter):
-    """Mirror C++ ``validate_common`` before any Python backend side effect.
-
-    A raw array or path has the implicit ``load(..., skip_cols=0)`` value.  An
-    existing :class:`Dataset` can carry a caller-supplied value, so inspect it
-    without materializing or mutating the handle.  The order matches C++:
-    ``k``, ``max_iter``, then ``skip_cols`` and ``skip_rows``.
-    """
-    k = _normalize_tier1_int("k", k, minimum=1)
-    max_iter = _normalize_tier1_int("max_iter", max_iter, minimum=1)
-    handle = data if isinstance(data, Dataset) else None
-    skip_cols = _normalize_tier1_int(
-        "skip_cols", handle.skip_cols if handle else 0, minimum=0)
-    skip_rows = _normalize_tier1_int(
-        "skip_rows", handle.skip_rows if handle else 0, minimum=0)
-    return k, max_iter, skip_cols, skip_rows
-
-
-def _normalize_method(method):
-    """Lower-case, alias-resolve, and validate a clustering method name.
-
-    Raises ``ValueError`` on anything outside the documented set. This enforces
-    the 2.0 no-silent-fallback rule: an unrecognised method must NEVER quietly
-    run a different algorithm. Before Task 0.14 the local path ran FastPAM for
-    *every* value of ``method`` (the argument was accepted but ignored).
-    """
-    m = str(method).strip().lower()
-    if m == "hclust":
-        m = "hierarchical"
-    if m == "lr":
-        m = "lrcore"
-    if m == "obp":
-        m = "onebatch"
-    if m not in _METHODS:
-        raise ValueError(
-            f"unknown method: {method!r}. Expected one of: {', '.join(_METHODS)} "
-            f"(aliases: 'obp', 'lr', 'hclust')."
-        )
-    return m
-
-
-def _resolve_tier1_method(method, n, backend):
-    """Resolve ``auto`` after the execution backend is known.
-
-    HPC keeps ``auto`` because the remote CLI owns data materialisation and the
-    final size-dependent decision. Explicit method requests are never changed.
-    """
-    if method != "auto" or backend == "hpc":
-        return method
-    if backend == "gpu":
-        return "pam"
-    return "pam" if n <= _AUTO_PAM_SERIES_LIMIT else "clara"
-
-
-def _run_local_method(prob, method, k, max_iter):
-    """Dispatch the local (cpu/gpu) clustering call for a validated ``method``.
-
-    ``prob`` already has its distance matrix loaded. Returns
-    ``(labels, medoid_indices, cost)``. Each documented method routes to its OWN
-    algorithm — Task 0.14: before this, the local path ran FastPAM for EVERY
-    method value. The kmedoids/mip/hierarchical branches mirror the verified CLI
-    dispatch (dtwc_cl.cpp:874-926).
-    """
-    import dtwcpp
-
-    if method == "pam":
-        res = dtwcpp.fast_pam_seeded(
-            prob, k, dtwcpp.DEFAULT_RANDOM_SEED, max_iter
-        )
-        return res.labels, res.medoid_indices, res.total_cost
-    if method == "onebatch":
-        res = dtwcpp.one_batch_pam(
-            prob, k, max_iter=max_iter, seed=dtwcpp.DEFAULT_RANDOM_SEED
-        )
-        return res.labels, res.medoid_indices, res.total_cost
-    if method == "clara":
-        res = dtwcpp.fast_clara(
-            prob, k, max_iter=max_iter, seed=dtwcpp.DEFAULT_RANDOM_SEED
-        )
-        return res.labels, res.medoid_indices, res.total_cost
-    if method == "hierarchical":
-        dend = dtwcpp.build_dendrogram(prob)
-        res = dtwcpp.cut_dendrogram(dend, prob, k)
-        return res.labels, res.medoid_indices, res.total_cost
-
-    # kmedoids (Lloyd) and mip run through Problem.cluster() and read back state.
-    prob.set_n_clusters(k)
-    # These branches do not receive max_iter as a direct function argument;
-    # configure the shared Problem before dispatch instead.
-    prob.set_max_iter(max_iter)
-    if method == "mip":
-        prob.method = dtwcpp.Method.MIP
-    elif method == "lrcore":
-        prob.method = dtwcpp.Method.LRCore
-    elif method == "tadpole":
-        prob.method = dtwcpp.Method.TADPole
+def _set_key(config, key, value, name=None):
+    """Hand C++ one Config key. A value must be of the field's kind: the
+    binding's casters would read True or "3" as an integer and truncate a NumPy
+    float; C++ then checks the value itself."""
+    from dtwcpp import InvalidInput, _dtwcpp_core
+    if key.startswith("_") or not hasattr(_dtwcpp_core.Config, key):
+        valid = sorted(n for n in dir(_dtwcpp_core.Config)
+                       if not n.startswith("_") and n != "n_clusters")  # k names it
+        raise InvalidInput(f"cluster: unknown key '{key}'. Valid keys: "
+                           + ", ".join(valid) + ".")
+    current = getattr(config, key)
+    flag = isinstance(value, (bool, np.bool_))
+    if isinstance(current, bool):
+        kind, ok, value = "a bool", flag, bool(value) if flag else value
+    elif isinstance(current, int):
+        ok = not flag and isinstance(value, (int, np.integer))
+        kind, value = "an integer", int(value) if ok else value
+    elif isinstance(current, float):
+        ok = not flag and isinstance(value, (int, float, np.integer, np.floating))
+        kind, value = "a number", float(value) if ok else value
     else:
-        # Tier-1 Lloyd owns an invocation-local default. Set it explicitly at
-        # this boundary so the standard initializer cannot inherit whatever
-        # state the deliberately mutable, unseeded Tier-2 engine last consumed.
-        # This does not replace init_fun, so custom Tier-2 callbacks retain
-        # their legacy invocation semantics.
-        prob.set_random_seed(dtwcpp.DEFAULT_RANDOM_SEED)
-        prob.method = dtwcpp.Method.Kmedoids
-    prob.cluster()
-    return prob.clusters_ind, prob.centroids_ind, prob.find_total_cost()
+        kind, ok = "a string", isinstance(value, str)
+    if not ok:
+        raise TypeError(f"{name or key} must be {kind}, got {type(value).__name__}")
+    setattr(config, key, value)
 
 
-def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
-    """Cluster a dataset with DTW, honoring the global/over-ridden device.
+def _config(k, keys):
+    """A C++ Config from cluster()'s keywords: C++ reads and checks each value."""
+    from dtwcpp import InvalidInput, _dtwcpp_core
+    if "n_clusters" in keys:
+        raise InvalidInput("cluster: k is the number of clusters; drop n_clusters.")
+    config = _dtwcpp_core.Config()
+    _set_key(config, "n_clusters", k, name="k")
+    for key, value in keys.items():
+        _set_key(config, key, value)
+    return config
 
-    ``data`` may be a :class:`Dataset`, a path, or an array. ``device=None`` uses
-    the global default (see :func:`dtwcpp.device`). For ``"hpc"`` the work is
-    offloaded to a SLURM cluster and the data is never read locally.
 
-    ``method`` selects the clustering algorithm: one of ``"pam"`` (default),
-    ``"onebatch"``, ``"clara"``, ``"kmedoids"``, ``"mip"``, ``"lrcore"``,
-    ``"tadpole"``, ``"hierarchical"``, or ``"auto"``.
-    Locally, ``"auto"`` selects PAM for GPU execution and for CPU datasets up
-    to 5,000 series, otherwise CPU CLARA. HPC forwards ``"auto"`` so the remote
-    process can resolve it after materialising the dataset.
-    An unrecognised method raises ``ValueError`` — it is NEVER silently ignored.
+def cluster(data, k, **keys):
+    """Cluster a dataset into ``k`` clusters with DTW, on the global or given device.
+
+    ``data`` may be a :class:`Dataset`, a path, or an array. ``keys`` are the
+    keys of a dtwc_cl run — its long names in snake_case: ``method``, ``band``,
+    ``metric``, ``variant`` and its parameters (``wdtw_g``, ``adtw_penalty``,
+    ``sdtw_gamma``, ``msm_c``, ``twe_nu``, ``twe_lambda``), ``mv_mode``,
+    ``missing_strategy``, ``max_iter``, ``n_init``, ``seed``, ``sample_size``,
+    ``n_samples``, ``batch_size``, ``linkage``, ``dc``, ``solver`` and the MIP
+    settings, ``gpu_precision``, ``name``, ``verbose`` — read and checked by
+    C++; an unknown key raises :class:`dtwcpp.InvalidInput`. ``method`` is
+    ``"auto"`` unless given: PAM on a GPU and for up to 5,000 series on the
+    CPU, CLARA above. ``device=None`` uses the global default (see
+    :func:`dtwcpp.device`); ``"hpc"`` offloads the run to a SLURM cluster and
+    never reads the data locally.
     """
-    # Match C++ validate_common before lazy loading, device lookup/resolution,
-    # remote submission, or local construction/compute.  Besides preventing
-    # partial side effects, normalization keeps NumPy integers from reaching
-    # nanobind or the CLI with backend-dependent conversion behavior.
-    k, max_iter, skip_cols, skip_rows = _validate_common(data, k, max_iter)
-    method = _normalize_method(method)
-
     import dtwcpp
-    from dtwcpp import _resolve_device, _hpc_remote_device
+    from dtwcpp import InvalidInput, _dtwcpp_core, _hpc_remote_device, _resolve_device
+    device = keys.pop("device", None)
+    config = _config(k, keys)
     eff = device if device is not None else dtwcpp.device()
     backend, _ = _resolve_device(eff)
     data = load(data)
 
     t0 = time.perf_counter()
     if backend == "hpc":
-        from dtwcpp import InvalidInput, _hpc
+        from dtwcpp import _hpc
         # The SLURM wrapper takes a fixed positional argument list with no
         # skip_rows slot, so the remote CLI cannot receive it. Refuse loudly
         # instead of clustering the header rows the caller asked to drop.
-        if skip_rows:
+        if data.skip_rows:
             raise InvalidInput(
                 "cluster: skip_rows is not carried by the HPC transport; strip "
                 "the header rows before staging, or use device='cpu'/'gpu'."
@@ -581,65 +384,34 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
                 ".tsv/.txt tab). Drop delimiter= for a file whose extension "
                 "matches, or use device='cpu'/'gpu'."
             )
+        dropped = sorted(set(keys) - _HPC_KEYS)
+        if dropped:
+            raise InvalidInput(
+                f"cluster: {', '.join(dropped)} is not carried by the HPC "
+                "transport; drop it, or use device='cpu'/'gpu'.")
+        options = {key: getattr(config, key) for key in keys if key != "name"}
+        options["method"] = config.method
         source = data.source if data.is_path else data.as_series()
         # as_series() has already dropped an in-memory source's skip_cols.
-        labels = _hpc.cluster_on_hpc(source, k, method=method, band=band,
+        labels = _hpc.cluster_on_hpc(source, config.n_clusters,
                                      device=_hpc_remote_device(eff),
-                                     skip_cols=skip_cols if data.is_path else 0,
-                                     name=f"dtwc_{data.name}",
-                                     max_iter=max_iter)
+                                     skip_cols=data.skip_cols if data.is_path else 0,
+                                     name=f"dtwc_{config.name or data.name}",
+                                     **options)
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
-                      k=k, n_series=len(labels), name=data.name)
+                      k=k, n_series=len(labels), name=config.name or data.name)
 
-    # Matrix-free methods must not accidentally pay the N^2 cost in this Tier-1
-    # wrapper. They currently execute on CPU; an explicit GPU request is rejected
-    # loudly instead of silently defeating their scaling contract.
-    from dtwcpp import compute_distance_matrix, InvalidInput, Problem
-    # The owning C++ Data, never a list[list[float]]: it is moved into the
-    # Problem, so a Tier-1 run holds one copy of the payload instead of the
-    # ~4x PyFloat+list expansion the old as_series() route retained.
-    series_data = data.as_data()
-    n_series = series_data.size
-    # Same guards, same messages, same order as C++ cluster() (api.cpp).
-    if not n_series:
-        raise InvalidInput("cluster: dataset is empty.")
-    if k > n_series:
-        raise InvalidInput("cluster: k must not exceed the number of series.")
-    method = _resolve_tier1_method(method, n_series, backend)
-    # The loader's names, so Tier-1 output carries what C++ series_name(i) does.
-    names = data.series_names()
-    prob = Problem(data.name)
-    # Configure the band before set_data() refreshes/rebinds the Problem's DTW
-    # callable.  Matrix-free methods query distances from Problem directly, so
-    # relying only on compute_distance_matrix(..., band=...) silently made them
-    # unbanded.
-    prob.set_band(band)
-    prob.set_data(series_data)
-    # CLARA is matrix-free too: it computes only sample and assignment
-    # distances. Treating it as a matrix method here defeated its O(Ns)
-    # scaling contract by materialising N^2 distances before dispatch.
-    matrix_free = method in ("onebatch", "clara", "tadpole")
-    if matrix_free and backend == "gpu":
-        from dtwcpp import DeviceError
-        raise DeviceError(
-            f"method='{method}' uses its own matrix-free CPU distance schedule; "
-            "GPU execution is not implemented for that schedule. Use device='cpu'."
-        )
-    if matrix_free:
-        D = None
-    elif backend == "cpu":
-        # Fill through the Problem the CLI itself uses: no Python list of the
-        # series is created, and the matrix the scores read is the same object.
-        D = prob.distance_matrix()
-    else:
-        # The GPU fill runs in its own Problem (compute_distance_matrix).
-        D = compute_distance_matrix(series_data.p_vec, band=band, device=eff)
-        prob.set_distance_matrix(D)
-    labels, medoid_indices, cost = _run_local_method(prob, method, k, max_iter)
-    return Result(labels, device=backend,
-                  elapsed_s=time.perf_counter() - t0, k=k, n_series=n_series,
-                  medoid_indices=medoid_indices, distance_matrix=D,
-                  cost=cost, name=data.name, series_names=names, problem=prob)
+    # As dtwc::run: the settings reach the Problem, and are checked, before
+    # the series are read.
+    config.device = eff
+    prob = _dtwcpp_core.Problem(config.name or data.name)
+    _dtwcpp_core.apply(config, prob)
+    prob.set_data(data.as_data())
+    result = prob.cluster()
+    return Result(result.labels, device=backend,
+                  elapsed_s=time.perf_counter() - t0, k=config.n_clusters,
+                  n_series=prob.size, medoid_indices=result.medoid_indices,
+                  cost=result.total_cost, name=prob.name, problem=prob)
 
 
 def plot(result, **kwargs):

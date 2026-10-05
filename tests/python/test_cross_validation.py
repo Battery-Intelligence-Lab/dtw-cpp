@@ -109,11 +109,13 @@ class TestClusteringCrossValidation:
         assert two.inertia_ == 20.0  # seed 43 improves the retained result
         assert two.inertia_ < one.inertia_
 
-    @pytest.mark.parametrize("n_init", [0, -1, 1.5, True, (1 << 64)])
-    def test_dtw_clustering_rejects_invalid_restart_schedule(self, n_init):
+    @pytest.mark.parametrize("setting", [{"max_iter": 0}, {"n_init": 0}])
+    def test_dtw_clustering_refuses_no_iteration_and_no_run(self, setting):
+        """As MATLAB's DTWClustering: max_iter = 0 would report the initial
+        medoids' cost as a clustering, n_init = 0 runs nothing."""
         X = np.arange(16.0).reshape(4, 4)
-        with pytest.raises((TypeError, ValueError), match="n_init"):
-            dtwcpp.DTWClustering(n_clusters=2, n_init=n_init).fit(X)
+        with pytest.raises(dtwcpp.InvalidInput, match="must be at least 1"):
+            dtwcpp.DTWClustering(n_clusters=2, **setting).fit(X)
 
     def test_predict_assigns_to_nearest_medoid(self, three_cluster_data):
         series = three_cluster_data
