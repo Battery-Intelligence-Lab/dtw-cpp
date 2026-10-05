@@ -7,7 +7,7 @@
  *   Its Theorem 1 guarantees the clustering labels are EXACTLY those of brute-force
  *   density-peaks (all DTW computed). We test that guarantee three ways:
  *     (1) an INDEPENDENT brute-force density-peaks oracle re-implemented here from
- *         the documented conventions (CLAUDE.md §4 — a second implementation);
+ *         the documented conventions (a second implementation);
  *     (2) prune ON vs prune OFF from the SAME call — the pruning flag toggles only
  *         whether a DTW is skipped, so any label/medoid/cost difference falsifies
  *         admissibility;
@@ -89,7 +89,7 @@ core::ClusteringResult oracle_dp(Problem& prob, int k, double dc)
 {
   const int N = static_cast<int>(prob.size());
   prob.fill_distance_matrix();
-  auto D = [&](int i, int j) { return prob.dist_by_ind(i, j); };
+  auto D = [&](index_t i, index_t j) { return prob.dist_by_ind(i, j); };
 
   std::vector<index_t> rho(N, 0);
   for (int i = 0; i < N; ++i)
@@ -125,7 +125,7 @@ core::ClusteringResult oracle_dp(Problem& prob, int k, double dc)
   for (int i = 0; i < N; ++i) g[i] = static_cast<double>(rho[i]) * delta[i];
   std::vector<index_t> bg(N);
   std::iota(bg.begin(), bg.end(), 0);
-  std::sort(bg.begin(), bg.end(), [&](int a, int b) { return g[a] != g[b] ? g[a] > g[b] : a < b; });
+  std::sort(bg.begin(), bg.end(), [&](index_t a, index_t b) { return g[a] != g[b] ? g[a] > g[b] : a < b; });
 
   std::vector<index_t> label(N, -1), col(k);
   std::vector<char> isc(N, 0);
@@ -133,11 +133,11 @@ core::ClusteringResult oracle_dp(Problem& prob, int k, double dc)
 
   std::vector<index_t> order(N);
   std::iota(order.begin(), order.end(), 0);
-  std::sort(order.begin(), order.end(), [&](int a, int b) { return rho[a] != rho[b] ? rho[a] > rho[b] : a < b; });
+  std::sort(order.begin(), order.end(), [&](index_t a, index_t b) { return rho[a] != rho[b] ? rho[a] > rho[b] : a < b; });
   for (int r = 0; r < N; ++r) {
-    const int p = order[r];
+    const index_t p = order[r];
     if (isc[p]) continue;
-    const int par = parent[p];
+    const index_t par = parent[p];
     label[p] = (par >= 0 && label[par] >= 0) ? label[par] : 0;
   }
 
@@ -257,8 +257,8 @@ TEST_CASE("TADPole: recovers well-separated cluster structure", "[tadpole][quali
   auto res = algorithms::tadpole(pt, 2, dc, /*prune=*/true);
 
   // All members of ground-truth group g (indices i with i%2==g) share one label.
-  const int lab_even = res.labels[0];
-  const int lab_odd = res.labels[1];
+  const index_t lab_even = res.labels[0];
+  const index_t lab_odd = res.labels[1];
   REQUIRE(lab_even != lab_odd);
   for (int i = 0; i < N; ++i)
     REQUIRE(res.labels[i] == (i % 2 == 0 ? lab_even : lab_odd));
@@ -270,7 +270,7 @@ TEST_CASE("TADPole: edge cases (k=1, k=N, N=1, identical series)", "[tadpole][ed
     Problem prob = make_clusters(30, 3, 24, 3);
     auto res = algorithms::tadpole(prob, 1, algorithms::tadpole_auto_dc(prob, 3.0), true);
     REQUIRE(res.medoid_indices.size() == 1);
-    for (int l : res.labels) REQUIRE(l == 0);
+    for (index_t l : res.labels) REQUIRE(l == 0);
   }
   SECTION("k = N gives each point its own cluster") {
     const int N = 12;
@@ -364,7 +364,7 @@ TEST_CASE("TADPole: >=50% of brute-force DTW calls pruned", "[.][tadpole][bench]
 
 TEST_CASE("TADPole: Float32 data disables LB/UB pruning (A1)", "[tadpole][float32]")
 {
-  // A1 regression. `bounds_valid` gated on variant/ndim/missing_strategy only, so
+  // Regression: `bounds_valid` gated on variant/ndim/missing_strategy only, so
   // under Precision::Float32 LB/UB came from float64 storage while exact() routes
   // through Problem::dist_by_ind, which does branch on is_f32(): different data on
   // the two sides of the bound, so the prune stops being admissible.

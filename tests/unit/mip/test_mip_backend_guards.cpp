@@ -1,10 +1,10 @@
 /**
  * @file test_mip_backend_guards.cpp
- * @brief Regression gate for the exact-MIP honesty guards added on 2026-09-02.
+ * @brief Regression gate for the exact-MIP honesty guards.
  *
  * Each case pins one guard that did not exist before:
  *
- *   A4  LR-core publishes through Problem::set_result, so its result satisfies
+ *   LR-core publishes through Problem::set_result, so its result satisfies
  *       the same invariants as the HiGHS/Gurobi backends.
  *   Method::MIP runs the selected solver at every N (a removed large-N route
  *       used to hand a Gurobi request to HiGHS).
@@ -61,7 +61,7 @@ const std::vector<double> kTwoGroups = { 0.0, 1.0, 2.0, 10.0, 11.0, 12.0 };
 
 
 // ---------------------------------------------------------------------------
-// A4 — LR-core publishes a validated exact result.
+// LR-core publishes a validated exact result.
 // ---------------------------------------------------------------------------
 TEST_CASE("LR-core publishes a transaction-validated clustering", "[lrcore][mip][guards]")
 {
@@ -143,7 +143,7 @@ TEST_CASE("The compact MIP refuses a model whose size does not fit int", "[mip][
 }
 
 // ---------------------------------------------------------------------------
-// A4' — Method::LRCore's "raise the node cap" error is only actionable because
+// Method::LRCore's "raise the node cap" error is only actionable because
 //       MIPSettings::lr_max_nodes exists and is forwarded. Cap the tree at one
 //       node on an instance whose root does NOT certify: the uncertified
 //       incumbent must be refused, and the same instance must certify under the
@@ -211,7 +211,7 @@ TEST_CASE("LR-core honours MIPSettings::lr_max_nodes", "[lrcore][mip][guards]")
 }
 
 // ---------------------------------------------------------------------------
-// A6' — a negative mip_gap is bad INPUT, not a HiGHS failure. It used to reach
+// A negative mip_gap is bad INPUT, not a HiGHS failure. It used to reach
 //       Highs::setOptionValue, be rejected as out-of-domain, and surface as
 //       "HiGHS rejected option 'mip_rel_gap'".
 // ---------------------------------------------------------------------------

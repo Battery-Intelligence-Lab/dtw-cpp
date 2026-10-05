@@ -133,8 +133,9 @@ The cap is fail-closed:
   groups or raise the limit;
 - a CLARA sample size that resolves to all N series is rejected while the file
   is over budget, because its full-data PAM fallback cannot stream;
-- non-full FastCLARA is a CPU matrix-free schedule, so `--device gpu` is
-  rejected before the Parquet payload is read; and
+- with `--device gpu` the samples fill on the GPU, and with CUDA each streamed
+  chunk's assignment runs there too (Metal assigns on the CPU, which `-v`
+  says); and
 - `--dtype f32` keeps the sample, medoid, and assignment chunks in Float32;
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.

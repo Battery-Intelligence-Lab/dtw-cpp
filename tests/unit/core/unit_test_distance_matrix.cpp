@@ -157,7 +157,7 @@ TEST_CASE("DistanceMatrix to_full_matrix", "[DistanceMatrix]")
   dm.set(0, 2, 3.0);
   dm.set(1, 2, 7.0);
 
-  // Flat row-major std::vector<double> since X-27 dropped Eigen; the matrix is
+  // Flat row-major std::vector<double> since Eigen was dropped; the matrix is
   // symmetric, so element (i, j) is at i * n + j and the layout question is moot.
   const auto full = dtwc::io::to_full_matrix(dm);
   REQUIRE(full.size() == 3 * 3);

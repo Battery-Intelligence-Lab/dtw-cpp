@@ -119,7 +119,7 @@ TEST_CASE("Cluster labels are in valid range [0, k)", "[Phase1][clustering]")
   auto prob = make_dummy_problem(N_data, Nc);
   prob.cluster_by_kmedoids_lloyd();
 
-  for (int label : prob.clusters_ind) {
+  for (index_t label : prob.clusters_ind) {
     REQUIRE(label >= 0);
     REQUIRE(label < Nc);
   }
@@ -136,13 +136,13 @@ TEST_CASE("Medoid indices are valid data-point indices", "[Phase1][clustering]")
   auto prob = make_dummy_problem(N_data, Nc);
   prob.cluster_by_kmedoids_lloyd();
 
-  for (int medoid : prob.centroids_ind) {
+  for (index_t medoid : prob.centroids_ind) {
     REQUIRE(medoid >= 0);
     REQUIRE(medoid < N_data);
   }
 
   // All medoid indices must be distinct.
-  std::set<int> unique_medoids(prob.centroids_ind.begin(), prob.centroids_ind.end());
+  std::set<index_t> unique_medoids(prob.centroids_ind.begin(), prob.centroids_ind.end());
   REQUIRE(unique_medoids.size() == static_cast<size_t>(Nc));
 }
 
@@ -197,7 +197,7 @@ TEST_CASE("k=1 puts all points in one cluster", "[Phase1][clustering]")
   prob.cluster_by_kmedoids_lloyd();
 
   // Every label should be 0.
-  for (int label : prob.clusters_ind) {
+  for (index_t label : prob.clusters_ind) {
     REQUIRE(label == 0);
   }
 
@@ -218,7 +218,7 @@ TEST_CASE("k=N makes each point a medoid", "[Phase1][clustering]")
   prob.cluster_by_kmedoids_lloyd();
 
   // Each label should be unique in [0, N).
-  std::set<int> unique_labels(prob.clusters_ind.begin(), prob.clusters_ind.end());
+  std::set<index_t> unique_labels(prob.clusters_ind.begin(), prob.clusters_ind.end());
   REQUIRE(unique_labels.size() == static_cast<size_t>(N_data));
 
   // Total cost should be zero when every point is its own medoid.
@@ -265,8 +265,8 @@ TEST_CASE("init::Kmeanspp selects distinct medoids when all weights are zero",
 
   REQUIRE_NOTHROW(init::Kmeanspp(prob));
   REQUIRE(prob.centroids_ind.size() == 3);
-  const std::set<int> unique(prob.centroids_ind.begin(),
-                             prob.centroids_ind.end());
+  const std::set<index_t> unique(prob.centroids_ind.begin(),
+                                 prob.centroids_ind.end());
   CHECK(unique.size() == 3);
 }
 
@@ -287,8 +287,8 @@ TEST_CASE("init::Kmeanspp_seeded selects distinct medoids when all weights are z
 
   REQUIRE_NOTHROW(init::Kmeanspp_seeded(prob, 42));
   REQUIRE(prob.centroids_ind.size() == 3);
-  const std::set<int> unique(prob.centroids_ind.begin(),
-                             prob.centroids_ind.end());
+  const std::set<index_t> unique(prob.centroids_ind.begin(),
+                                 prob.centroids_ind.end());
   CHECK(unique.size() == 3);
   // first_unselected fills upward from index 0, so whichever index the seed drew
   // first, both 0 and 1 must be completed into the set. This holds for all four
@@ -344,13 +344,13 @@ TEST_CASE("After assign_clusters, each medoid belongs to its own cluster", "[Pha
   prob.assign_clusters();
 
   // Each medoid should map to a distinct cluster label.
-  std::set<int> medoid_labels;
+  std::set<index_t> medoid_labels;
   for (size_t c = 0; c < prob.centroids_ind.size(); ++c) {
-    int medoid_idx = prob.centroids_ind[c];
-    int label = prob.clusters_ind[medoid_idx];
+    index_t medoid_idx = prob.centroids_ind[c];
+    index_t label = prob.clusters_ind[medoid_idx];
     // The medoid at position c should be assigned to cluster c,
     // because its distance to itself is zero.
-    REQUIRE(label == static_cast<int>(c));
+    REQUIRE(label == static_cast<index_t>(c));
     medoid_labels.insert(label);
   }
   REQUIRE(medoid_labels.size() == static_cast<size_t>(Nc));

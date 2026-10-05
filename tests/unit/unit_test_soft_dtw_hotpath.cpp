@@ -1,6 +1,6 @@
 /**
  * @file unit_test_soft_dtw_hotpath.cpp
- * @brief M46 allocation and unchecked-cell contract for Soft-DTW.
+ * @brief Allocation and unchecked-cell contract for Soft-DTW.
  */
 
 #include <soft_dtw.hpp>

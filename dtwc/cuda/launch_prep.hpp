@@ -72,7 +72,7 @@ inline constexpr std::size_t kPreloadMaxLength = 512;
 /// 1024<L<=2048: double-buffer mode (2 buffers, better occupancy).
 /// L>2048   : back to 3 buffers — the double-buffer register cache holds
 ///            blockDim.x(256) * MAX_SI(8) = 2048 cells and would drop
-///            anti-diagonal cells beyond that (Task 0.1).
+///            anti-diagonal cells beyond that.
 inline constexpr std::size_t wavefront_buffer_count(std::size_t max_L) noexcept
 {
   if (max_L <= kPreloadMaxLength) return 5;

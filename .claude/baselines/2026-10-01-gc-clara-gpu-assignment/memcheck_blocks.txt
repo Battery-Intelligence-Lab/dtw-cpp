@@ -1,0 +1,9 @@
+========= COMPUTE-SANITIZER
+Filters: [blocks]
+Randomness seeded to: 604835440
+===============================================================================
+All tests passed (4 assertions in 1 test case)
+
+========= LEAK SUMMARY: 0 bytes leaked in 0 allocations
+========= ERROR SUMMARY: 0 errors
+MEMCHECK_EXIT=0

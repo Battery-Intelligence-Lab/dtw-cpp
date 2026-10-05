@@ -121,7 +121,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset (W13a e9216f4, ccc07db, c67dd3f, 71a26b6, 08db34d, 1affff2, ace7f07; merged 62d5822; no fill.cpp — the fill was already one function; FP32 L 100 fill 0.756× base time, host memory at N 20,000 L 1000 6.2 → 1.6 GB)
   (the N ≤ 65,536 refusal goes); a backend refuses before the N×N matrix is allocated — today `Problem` resizes first,
   so a huge N on a host without a GPU hits bad_alloc before DeviceError (W4d review)
-- ☐ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C
+- ☑ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C (GC 870a3cde, 7a65d88c, be6a7999, ab6c1f08, af885643; records aa114aa9, 808cf182, fc5f387d; merged 63415b4f; entry at the fill's rate; 6.6x FP32 / 1.6x FP64 vs the 24-thread CPU assignment; FP64 equal to the CPU)
 - ☑ CUDA tuning, each behind its own band (W4a): a separately compiled preload wavefront for L 257–1024 (−15–17 %
   FP32 measured); a 64 KB carveout above L = 2048 (−18 % at L = 2049) (preload landed, C1 15b9143: FP32/FP64 L 257–512 at 0.82–0.89 of base; the carveout passed its band but needs the CUDA 12.5 API and the floor stays CUDA 12.0 — ARC loads 12.4 — so it was reverted, b803e47)
 - ☑ CUDA: the global wavefront above L 2048 where fewer than 3 blocks fit an SM (C1's probe: FP32 L 6000/8000 at 0.64/0.66 of the shared route, FP64 L 2049–4000 at 0.76–0.84) — its own band; the Shared kernel's unreachable preload branch goes with it (C1) (C2 63d5d0a; merged dd33a0e; FP32 L 6000–8446 at 0.64–0.68 of base, FP64 L 2049–4223 at 0.76–0.84; deleting the Shared kernel's preload branch FALSIFIED — it raises occupancy and slows FP32 L 513–2757 by 3–23 %, so the branch stays)
@@ -208,15 +208,18 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `build*/`, e.g. an Arrow build that cannot load its DLLs (F2 2a3ae53; merged a965ad5)
 - ☑ `.github/workflows/python-tests.yml` runs pytest with no dtwc_cl and no `DTWC_CL_PATH`; `test_api`'s two
   CLI-parity cases assert a binary exists (F2 note; CI not run here) (W14b 015dc71: the job builds dtwc_cl, sets DTWC_CL_PATH and runs test_conformance.py; CI not run here)
-- ☐ tests narrow `index_t` to `int` (`std::set<int>` built from `centroids_ind` / `medoid_indices`, `for (int m :
+- ☑ tests narrow `index_t` to `int` (`std::set<int>` built from `centroids_ind` / `medoid_indices`, `for (int m :
   prob.centroids_ind)`; MSVC C4244 in the CUDA tree): unit_test_clustering_algorithms.cpp, algorithms/
   unit_test_duplicate_series.cpp, unit_test_fast_clara.cpp, unit_test_fast_pam.cpp, unit_test_one_batch_pam.cpp — use
   `index_t`, with the comment sweep; also dtwc/cli/run.cpp's `std::as_const(prob).distance_matrix()` and its comment
-  (redundant since `writable_distance_matrix()`, W7ef)
+  (redundant since `writable_distance_matrix()`, W7ef) (SW 88a6996, 79dcfc3, 1b6d3f6, d4e7f35; merged 6fd10ed1; tracker-citing comment lines 259 -> 17; C4244 in tests 2)
 
 ## G — docs and release prep (W14)
 
 - ☐ W14a hand-written tier pages and a v1.0.0 → 2.0 migration page; `api-contract-2.0.md` deleted
+- ☑ VI `dtwc_cl.exe` carries a VERSIONINFO resource: name, version, copyright (Volkan 10-02) (VI 20579e0d, 45719487, e5456cc6, b63bc153; merged 96547a5a; rc.exe and llvm-rc .res byte-identical)
+- ☐ WM the Windows wheel's fill, MSVC against clang-cl, on a quiet machine with a registered band; Volkan then
+  decides the wheels' compiler (Volkan 10-02: measure first)
 - ☑ W14b CMake `FATAL_ERROR` for an explicit `ON` it cannot honour; CUDA CI asserts CUDA built;
   `test_conformance.py` collected (W14b 9d56aab, e7354b9, 015dc71, 836bddc, d99b15d; merged 9056fcb9; Gurobi defaults OFF; Arrow without Parquet is an IPC-only build that says so)
 - ☐ W14c CHANGELOG → one `2.0.0 (unreleased)` section vs v1.0.0; MAP regenerated; audit folder deleted
@@ -233,7 +236,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## Blocked on another machine or on Volkan
 
-- Metal: every Metal step runs on macOS CI (a push is Volkan's).
+- Metal and macOS (Volkan 10-02: "Take note of this so we don't forget when I went to macOS machine."; 10-05: after
+  W9b merges, before L2b): no macOS build on record after 2026-09-23; the Metal code and its CMake changed in 22
+  commits since 2026-09-28 (`git log --since=2026-09-28 -- dtwc/metal tests/unit/test_metal_*`), none compiled. On
+  the Mac: build design-2.0 (`clang-macos` preset), serial ctest with test_metal_correctness and test_metal_mmap
+  running (not skipped), `cpp_conformance`, the docs gates, pytest from a fresh venv, the MEX if MATLAB is there;
+  fix what breaks, then W4e. A second short pass after L2b, before G.
 - Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux and Windows (Windows needs a
   `dumpbin /dependents` leg).
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.

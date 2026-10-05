@@ -749,7 +749,7 @@ BarycenterClusteringResult barycenter_kmeans(
     centers = std::move(next_centers);
     result.iterations = iteration + 1;
   }
-  // D7: on the converged path the loop already stored `result.labels` and
+  // On the converged path the loop already stored `result.labels` and
   // `result.total_cost` from that iteration's assign(), and `centers` has not
   // changed since (the break precedes the centre update), so re-assigning would
   // repeat a full N*k DBA-DTW pass for an identical answer. Only the

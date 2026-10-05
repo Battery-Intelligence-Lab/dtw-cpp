@@ -94,11 +94,4 @@ inline std::string device_text(const Config &config)
 ///         onebatch or tadpole on a GPU (they compute on the CPU as they go).
 void apply(const Config &config, Problem &prob);
 
-namespace detail {
-
-/// The DeviceError for a method that computes its distances on the CPU as it
-/// goes, asked to run on a GPU.
-[[noreturn]] void refuse_gpu_method(Method method);
-
-} // namespace detail
 } // namespace dtwc

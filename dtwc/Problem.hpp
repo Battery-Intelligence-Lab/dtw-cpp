@@ -68,7 +68,7 @@ inline void validate_mip_settings(const MIPSettings &s)
 
 class Problem;
 
-/// FX-1's GPU rules that need no series: `prob`'s variant or missing-data
+/// The GPU rules that need no series: `prob`'s variant or missing-data
 /// strategy the GPU kernels do not implement, Float32 series
 /// (`series_precision`) and a precision Metal cannot honour. A fill applies them
 /// with its series' precision (validate_fill_request); dtwc::run applies them
@@ -183,14 +183,14 @@ private:
   /// or set_data changes anything.
   static void validate_distance(core::DistanceConfig config, const Data &data);
   void validate_checkpoint_settings() const;
-  /// FX-1: the one check of a distance request — every device axis, band
-  /// feasibility and (FX-15) the series values the missing-data strategy
+  /// The one check of a distance request — every device axis, band
+  /// feasibility and the series values the missing-data strategy
   /// cannot take — before any pair is computed. O(N·L): run once per fill and
   /// per dtw_function() call, never per pair.
   void validate_fill_request(std::string_view where) const;
   /// get_name / p_vec return references into owned heap storage. A view
   /// (set_view_data) has none, nor has a Float32 store Float64 values:
-  /// indexing would read past an empty vector in a Release build (F25).
+  /// indexing would read past an empty vector in a Release build.
   void require_owned_storage(std::string_view accessor, bool float64_values) const;
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
 
@@ -251,7 +251,7 @@ public:
   Problem &operator=(const Problem &) = delete;
   Problem(Problem &&);
   /// Not noexcept: moving the members (the dispatchers, the WDTW weights they
-  /// hold) may throw, and a noexcept promise would turn that into std::terminate (S-13).
+  /// hold) may throw, and a noexcept promise would turn that into std::terminate.
   Problem &operator=(Problem &&);
 
   auto size() const { return data_.size(); }
@@ -295,7 +295,7 @@ public:
   /// Name of series i as a string_view.
   std::string_view series_name(size_t i) const { return data_.name(i); }
 
-  /// Canonical read accessors (API contract §2.2): the raw fields
+  /// Canonical read accessors: the raw fields
   /// `clusters_ind`/`centroids_ind` stay public, but `labels()`/`medoids()` are
   /// the cross-language read path (parity with `Result::labels`/`Result::medoids`).
   const std::vector<index_t> &labels() const { return clusters_ind; }
@@ -379,10 +379,10 @@ public:
   ///         half-width; nothing lies between.
   void set_band(int b);
   /// @throws InvalidInput for n < 1: no iteration would report the initial
-  ///         medoids' cost as a clustering result (O-06).
+  ///         medoids' cost as a clustering result.
   void set_max_iter(int n);
   int max_iter() const;
-  /// @throws InvalidInput for n < 1: at least one run is needed (O-06).
+  /// @throws InvalidInput for n < 1: at least one run is needed.
   void set_n_repetitions(int n);
   int n_repetitions() const;
   void set_random_seed(std::uint64_t seed) { random_seed_ = seed; }

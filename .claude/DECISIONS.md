@@ -315,3 +315,31 @@ CHANGELOG rule.
   `auto`; v1.0.0's option names are hidden warn-once spellings and its `--Nc i..j` range is refused.
 - 2026-10-01 — W8c: Python and MATLAB `compute_distance_matrix` are one Problem fill on every device (byte-identical
   matrices, about 3x faster); an infeasible band, a band below -1 and an empty series are InvalidInput there too.
+- 2026-10-02 — Volkan (question tool) — Windows wheels: "Measure first": time an MSVC wheel against a clang-cl
+  wheel on the fill, quiet machine, before choosing (clang packs the lane loop, cl does not; a clang-cl wheel ships
+  libomp.dll, which can abort with OMP Error #15 beside Intel's OpenMP). `dtwc_cl.exe` gets a VERSIONINFO resource
+  ("Add it"). ARC builds keep Arrow ON and stop loudly if ARC's Arrow is unusable ("Keep ON, fail loudly"). Headers:
+  "whichever the best practices for modern CMake" — read as each folder listing its headers in a `FILE_SET HEADERS`
+  (CMake 3.23; the base directory is never the repo root), done in L2b. The cache rulings stand ("Keep as is": keyed
+  by the data, the distance settings and the computed precision; CUDA Auto refused with a persistent cache; Metal
+  Auto = FP32); `k` stays required. `9056fcb9` was his commit. Metal is noted for his next session on the Mac.
+- 2026-10-02 — SW: comments state their reason, never a tracker id (259 → 17 lines; the 17 name GPUs, kernel phases,
+  UNIMODULAR.md or test bands); `.claude/baselines` paths in comments stay (live records); tests keep `index_t`.
+- 2026-10-02 — VI: `dtwc_cl.exe` carries VERSIONINFO (LegalCopyright = the LICENSE's copyright line; FILEVERSION from
+  the project version, the text version in the strings); no prerelease flag; the wheel and the MEX get none.
+- 2026-10-02 — GC: on CUDA, FastCLARA's assignment runs on the fill's kernels (one rectangle decode beside
+  `decode_pair`, no second kernel family) and its host loop keeps the one tie rule and finite check; a test of an
+  exact tie checks the cost and the groups, not which tied medoids win; streamed samples print under `-v` like
+  in-memory ones; Metal still assigns on the CPU and says so.
+- 2026-10-02 — Volkan (question tool), v1 Python names: "nobody depends on them don't worry documenting the changes.
+  We just need to have a proper documentation of the latest version for now." No shims; v1.0.0's Python was never
+  published (README and CHANGELOG silent, no package name). W14a documents 2.0 first.
+- 2026-10-02 — Volkan, readers: "Pritorise reading the same file in the same way in all languages if possible. So you
+  can bind some reader and probably assume pyarrow reads things same I guess. Also there needs to be a way for python
+  and matlab users to pass their already-read data. Because they can read with numpy so they should be able to pass
+  it." The bindings bind the one C++ text reader and writer (not copies); Parquet and Arrow go through the installed
+  pyarrow (MATLAB: its own reader, checked against C++); every entry takes already-read data. Supersedes the 10-01
+  plan to move text reading into Python; Arrow, CLI11 and fkYAML stay out of the bindings.
+- 2026-10-02 — Volkan, clean-up: "Yes to both": a unit's worktree and build folder go once it has merged.
+- 2026-10-05 — Volkan (question tool), Mac timing: "Merge W9b, then Mac (Recommended)": W9b merges here first, then
+  the Mac pass (PLAN "Blocked on another machine") before L2b reshapes the CMake; a second short pass after L2b.

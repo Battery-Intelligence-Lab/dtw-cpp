@@ -1,0 +1,2 @@
+DeviceError: Problem::dtw_function: CUDA needs owned series in RAM, but this Problem's series are a non-owning view (set_view_data); no backend call or CPU fallback was attempted. Install owning series with set_data, or use device cpu.
+RUN_EXIT=0

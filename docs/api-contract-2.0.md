@@ -919,10 +919,12 @@ bullets below are kept for history.
   feasible band; Soft-DTW, MSM and TWE, which ignore the band, are exempt. A
   ±inf series value, or a NaN under `MissingStrategy::Error`, raises
   `InvalidInput` naming the series and position (§2.6), as does an
-  entirely-NaN series under `Interpolate`. The matrix-free schedules compute
-  on the CPU under a GPU device, so `dtwc::run` rejects that
-  combination: on `gpu`, `onebatch`, `tadpole` and a `clara` sample smaller than
-  N raise `DeviceError`, and the rules that need no series (variant, missing-data
+  entirely-NaN series under `Interpolate`. OneBatchPAM and TADPole compute
+  on the CPU as they go under a GPU device, so `dtwc::run` rejects that
+  combination: on `gpu`, `onebatch` and `tadpole` raise `DeviceError`. FastCLARA
+  runs there: its sample matrices fill on the GPU and, on CUDA, its assignment
+  runs there too (`compute_medoid_distances_cuda`; on Metal it runs on the CPU,
+  which a verbose run says). The rules that need no series (variant, missing-data
   strategy, Float32, Metal precision: `validate_gpu_request`, which the fill
   shares; the Metal index: `set_device`) are raised before a series is read.
 

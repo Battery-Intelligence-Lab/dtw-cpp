@@ -17,8 +17,9 @@ result = dtwc.cluster(data, 3, device="gpu:1")
 
 `gpu` resolves to CUDA where compiled and to Metal on macOS. A request that
 cannot be honoured raises a device error; DTWC++ does not silently run the same
-request on CPU. Matrix-free schedules (`onebatch`, `clara`, and `tadpole`) are
-currently CPU-only and reject a GPU request.
+request on CPU. `onebatch` and `tadpole` compute on the CPU as they go and
+reject a GPU request. `clara` runs on a GPU in `dtwc_cl` and C++ (below);
+Python's `cluster` still rejects it there.
 
 ## A Problem's device
 
@@ -61,12 +62,15 @@ longest series is an invalid-argument error naming both series and the smallest
 feasible band: such a pair has no warping path, and its distance would otherwise
 be the finite `1.8e308` sentinel.
 
-Not yet covered by that check: OneBatchPAM and FastCLARA's assignment step,
-which compute through `Problem::dtw_function()`. On-demand distances and the
-matrix-free schedules (`onebatch`, `clara`, `tadpole`) compute on the
-CPU even when a `Problem`'s device is a GPU; `dtwc_cl` and Tier-1 `cluster(...)`,
-which share `dtwc::run`, reject that combination instead (a `clara` sample that
-covers every series is PAM on the whole set, whose matrix the GPU fills).
+On-demand distances and the matrix-free schedules `onebatch` and `tadpole`
+compute through `Problem::dtw_function()`, on the CPU even when a `Problem`'s
+device is a GPU; `dtwc_cl` and Tier-1 `cluster(...)`, which share `dtwc::run`,
+reject `onebatch` and `tadpole` on a GPU instead. FastCLARA on a GPU fills its
+sample matrices there (each sample is a copy of its series, since the GPU
+uploads owned series) and, with CUDA, assigns every series to the medoids there
+too, a block of series at a time, so the GPU's and the host's memory stay bounded
+whatever the number of series. Metal has no kernel for the assignment, which then
+runs on the CPU; a verbose run says so.
 
 ## HPC setup (beta)
 

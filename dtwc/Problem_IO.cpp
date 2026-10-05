@@ -22,7 +22,6 @@
 #include <iostream> // for cout
 #include <numeric>  // for accumulate
 #include <string>  // for allocator, char_traits, operator+
-#include <utility> // for as_const
 #include <vector>  // for vector, operator==
 
 namespace dtwc {
@@ -268,7 +267,7 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
   // A matrix-free run does not fill an O(N^2) matrix merely to write these files.
   if (!prob.is_distance_matrix_filled()) return;
   const auto matrix_path = file_in_directory("_distance_matrix.csv");
-  io::write_csv(std::as_const(prob).distance_matrix(), matrix_path); // the mutable overload clears filled_
+  io::write_csv(prob.distance_matrix(), matrix_path);
   if (progress) *progress << "Distance matrix written to " << matrix_path << "\n";
 
   // s(i) is undefined for one cluster, which is no reason to fail a clustering that succeeded; a

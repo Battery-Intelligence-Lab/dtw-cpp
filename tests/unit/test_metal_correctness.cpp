@@ -146,7 +146,7 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
         const double expected =
             row.has_path ? registered : fixed_band::public_no_path_sentinel;
         // The CPU kernel on the same inputs is the reference for Metal's
-        // geometry and for its unreachable-value sentinel (F12, Metal half).
+        // geometry and for its unreachable-value sentinel (the Metal half of fixed-band GPU parity).
         const double cpu = dtwc::dtwBanded<double>(
             series[0], series[1], row.band, -1.0,
             squared ? dtwc::core::MetricType::SquaredL2

@@ -278,6 +278,15 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
     target_compile_definitions(dtwc_cl PRIVATE DTWC_HAS_YAML)
   endif()
 
+  # File properties (name, version, copyright) of dtwc_cl.exe. FILEVERSION takes
+  # four integers, so the prerelease tag stays out of them and in the text fields.
+  if(WIN32)
+    enable_language(RC)
+    set(DTWC_RC_VERSION "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
+    configure_file(dtwc/dtwc_cl.rc.in "${CMAKE_CURRENT_BINARY_DIR}/dtwc_cl.rc" @ONLY)
+    target_sources(dtwc_cl PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/dtwc_cl.rc")
+  endif()
+
   install(TARGETS dtwc_cl
     RUNTIME DESTINATION bin
     COMPONENT runtime)

@@ -1,9 +1,9 @@
 /**
  * @file test_index_types.cpp
- * @brief Pins the integer types of the public counts and indices (DECISIONS §2
- *        rule 2): counts of series and clusters, labels, medoids and
- *        dist_by_ind indices are index_t; band, max_iter, n_init and n_samples
- *        stay int; seeds are uint64_t.
+ * @brief Pins the integer types of the public counts and indices: counts of
+ *        series and clusters, labels, medoids and dist_by_ind indices are
+ *        index_t; band, max_iter, n_init and n_samples stay int; seeds are
+ *        uint64_t.
  */
 
 #include <dtwc.hpp>

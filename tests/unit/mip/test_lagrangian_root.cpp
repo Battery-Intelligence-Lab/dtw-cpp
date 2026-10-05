@@ -1,17 +1,17 @@
 /**
  * @file test_lagrangian_root.cpp
  * @brief Correctness gate + solver comparison for the Lagrangian root bound
- *        (PLAN.md Phase 4, Task 4.1; UNIMODULAR.md §8.3).
+ *        (derivation: UNIMODULAR.md §8.3).
  *
  * @details Four registered checks (bands stated BEFORE the runs):
  *
  *   ORACLE   the brute-force IP oracle is validated on a hand-computed,
- *            NON-degenerate instance (CLAUDE.md §4: never trust an oracle on a
+ *            NON-degenerate instance (never trust an oracle on a
  *            symmetric/uniform case only).
  *   BAND-LB  VALID BOUNDS on every instance (uniform + clustered, many seeds):
  *            lower_bound ≤ opt ≤ upper_bound. This is the fundamental
  *            correctness property of a Lagrangian bound + primal repair.
- *   BAND-P1  ROOT EXACTNESS on well-separated clustered data (prediction P1):
+ *   BAND-P1  ROOT EXACTNESS on well-separated clustered data:
  *            ≥ 90% of instances have the root bound closed to the optimum and
  *            certified_optimal true. Falsified below 70%.
  *   BAND-CMP THREE-WAY AGREEMENT: LR upper_bound == brute-force optimum ==
@@ -33,6 +33,7 @@
 #include <base/timing.hpp> // dtwc::Clock
 
 #include <algorithm>
+#include <cinttypes> // PRId64
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -68,7 +69,7 @@ OracleResult brute_force_pmedian(const std::vector<double> &D, int N, int k)
     double c = 0.0;
     for (int j = 0; j < N; ++j) {
       double best = kInf;
-      for (int s : S) best = std::min(best, D[static_cast<std::size_t>(s) * N + j]);
+      for (index_t s : S) best = std::min(best, D[static_cast<std::size_t>(s) * N + j]);
       c += best;
     }
     return c;
@@ -97,7 +98,7 @@ double cost_of(const std::vector<index_t> &medoids, const std::vector<double> &D
   double c = 0.0;
   for (int j = 0; j < N; ++j) {
     double best = kInf;
-    for (int m : medoids) best = std::min(best, D[static_cast<std::size_t>(m) * N + j]);
+    for (index_t m : medoids) best = std::min(best, D[static_cast<std::size_t>(m) * N + j]);
     c += best;
   }
   return c;
@@ -170,7 +171,7 @@ bool has_solution(const Problem &prob)
   if (prob.centroids_ind.empty()) return false;
   if (prob.centroids_ind.size() > 1) {
     const bool all_zero = std::all_of(prob.centroids_ind.begin(), prob.centroids_ind.end(),
-                                      [](int v) { return v == 0; });
+                                      [](index_t v) { return v == 0; });
     if (all_zero) return false;
   }
   return true;
@@ -233,7 +234,7 @@ TEST_CASE("Lagrangian root brackets the optimum (valid bounds)", "[lagrangian][b
 }
 
 // ===========================================================================
-// BAND-P1 — root exactness on well-separated clustered data (prediction P1):
+// BAND-P1 — root exactness on well-separated clustered data:
 //           ≥ 90% certified optimal with LB closed to the optimum.
 // ===========================================================================
 TEST_CASE("Lagrangian root certifies optimum on clustered data (P1)", "[lagrangian][P1]")
@@ -254,7 +255,7 @@ TEST_CASE("Lagrangian root certifies optimum on clustered data (P1)", "[lagrangi
     // Relative optimality gap of the ROOT BOUND vs the true optimum.
     const double rel_gap = (orc.cost - r.lower_bound) / std::max(std::abs(orc.cost), 1e-12);
     max_gap = std::max(max_gap, rel_gap);
-    if (rel_gap <= 1e-3) ++within_1em3; // P1 metric: gap ≤ 0.1%
+    if (rel_gap <= 1e-3) ++within_1em3; // BAND-P1 metric: gap ≤ 0.1%
     if (rel_gap <= 1e-6) ++within_1em6;
     if (std::abs(r.upper_bound - orc.cost) <= 1e-6 * std::max(1.0, std::abs(orc.cost)))
       ++ub_opt; // primal repair found the optimum
@@ -264,7 +265,7 @@ TEST_CASE("Lagrangian root certifies optimum on clustered data (P1)", "[lagrangi
        << " within_1e-6=" << within_1em6 << "/" << trials
        << " ub_optimal=" << ub_opt << "/" << trials
        << " max_root_gap=" << max_gap);
-  // Registered P1 band: root gap ≤ 0.1% on ≥ 90% (falsified below 70% = 28/40).
+  // Registered BAND-P1: root gap ≤ 0.1% on ≥ 90% (falsified below 70% = 28/40).
   REQUIRE(within_1em3 >= 36);
   // Primal repair should find the optimum on well-separated clusters.
   REQUIRE(ub_opt >= 36);
@@ -310,8 +311,8 @@ TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][comp
 }
 
 // ===========================================================================
-// EXACT (Task 4.3) — LR-bounded branch-and-bound on y over the core certifies
-// the TRUE optimum on every instance (the primary 4.3 gate: matches proven
+// EXACT — LR-bounded branch-and-bound on y over the core certifies
+// the TRUE optimum on every instance (the primary gate: matches proven
 // optima 1e-6 rel), and the tree engages on the adversarial regime.
 // ===========================================================================
 TEST_CASE("Exact LR-core B&B certifies the optimum on clustered data", "[lagrangian][exact]")
@@ -336,7 +337,7 @@ TEST_CASE("Exact LR-core B&B certifies the optimum on clustered data", "[lagrang
 TEST_CASE("Exact LR-core B&B matches the oracle on the adversarial regime", "[lagrangian][exact]")
 {
   int checked = 0, engaged = 0;
-  long total_nodes = 0;
+  std::int64_t total_nodes = 0;
   for (unsigned seed = 1; seed <= 24; ++seed) {
     const int N = 12 + static_cast<int>(seed % 3); // 12..14
     const int k = 3 + static_cast<int>(seed % 2);  // 3..4
@@ -354,7 +355,7 @@ TEST_CASE("Exact LR-core B&B matches the oracle on the adversarial regime", "[la
     if (ex.nodes > 0) ++engaged;
     ++checked;
   }
-  std::printf("[lagrangian][exact] adversarial: %d instances, tree engaged on %d, total nodes=%ld\n",
+  std::printf("[lagrangian][exact] adversarial: %d instances, tree engaged on %d, total nodes=%" PRId64 "\n",
               checked, engaged, total_nodes);
   REQUIRE(checked == 24);
   REQUIRE(engaged >= 1); // the branch-and-bound must actually run on the adversarial regime.
@@ -444,8 +445,8 @@ TEST_CASE("BENCH LR-core vs compact MIP", "[.][lagrangian][bench]")
 }
 
 // ===========================================================================
-// BENCH (Task 4.3 gate) — EXACT LR-core B&B vs compact MIP wall-time. Hidden [.]
-// ADVISORY. The 4.3 gate asks "beats their wall-time at N≥2000 OR FALSIFIED";
+// BENCH — EXACT LR-core B&B vs compact MIP wall-time. Hidden [.]
+// ADVISORY. The gate asks "beats their wall-time at N≥2000 OR FALSIFIED";
 // this records the number. On well-separated (real-world) data the root certifies
 // so the exact solve is a single node ≈ the LR root time.
 // ===========================================================================
@@ -471,7 +472,7 @@ TEST_CASE("BENCH exact LR-core vs compact MIP", "[.][lagrangian][bench]")
     const double mip_cost = ok ? cost_of(prob.centroids_ind, D, N) : std::nan("");
     const bool agree = ok && std::abs(mip_cost - ex.upper_bound) <= 1e-6 * std::max(1.0, ex.upper_bound);
 
-    std::printf("  %4d  %2d | %8.1f %6ld  %s | %8.1f | %-5s | %-.5f\n",
+    std::printf("  %4d  %2d | %8.1f %6" PRId64 "  %s | %8.1f | %-5s | %-.5f\n",
                 N, k, ex_ms, ex.nodes, ex.certified_optimal ? "yes" : "NO ", mip_ms,
                 ok ? (agree ? "yes" : "NO") : "n/a", ex.upper_bound);
   }
@@ -482,7 +483,7 @@ TEST_CASE("BENCH exact LR-core vs compact MIP", "[.][lagrangian][bench]")
 }
 
 // ===========================================================================
-// API (Task 4.4) — Method::LRCore drives Problem::cluster() to the exact optimum.
+// API — Method::LRCore drives Problem::cluster() to the exact optimum.
 // ===========================================================================
 TEST_CASE("Method::LRCore clusters a Problem to the proven optimum", "[lagrangian][lrcore][api]")
 {

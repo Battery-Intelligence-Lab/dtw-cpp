@@ -1,6 +1,6 @@
 /**
  * @file unit_test_distance_sampling_weights.cpp
- * @brief Direct contract tests for the signed/degenerate D-sampling seam (F10).
+ * @brief Direct contract tests for the signed/degenerate D-sampling seam.
  *
  * Public entry point exercised by every case in this file:
  * `dtwc::core::distance_sampling_weights` (dtwc/core/distance_sampling_weights.hpp:31).
@@ -104,7 +104,7 @@ TEST_CASE("distance_sampling_weights translates negative input preserving differ
 
   // A common shift preserves order and every pairwise difference. It does NOT
   // preserve proportional sampling probabilities: smaller weights gain more
-  // relative mass. R2-D13 owns the research decision on that tradeoff.
+  // relative mass. Whether that tradeoff is acceptable is an open research decision.
   CHECK(weights.values[3] - weights.values[1] == distances[3] - distances[1]);
   CHECK(weights.values[2] - weights.values[0] == distances[2] - distances[0]);
 
@@ -230,7 +230,7 @@ TEST_CASE("distance_sampling_weights rejects a non-finite unselected distance",
 TEST_CASE("distance_sampling_weights rejects a non-finite selected distance",
           "[core][distance_sampling][f10][validation]")
 {
-  // PLAN R3-F10 requires every non-finite input to fail closed. Selected slots
+  // Every non-finite input must fail closed. Selected slots
   // are excluded from the distribution, but accepting poison there would make
   // the seam's validity depend on caller-specific overwrites.
   const std::vector<dtwc::index_t> selected{ 0 };

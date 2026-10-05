@@ -1,6 +1,6 @@
 /**
  * @file test_reduced_cost_fixing.cpp
- * @brief Soundness + P2 band for the Beasley reduced-cost fixing inside the
+ * @brief Soundness + the BAND-P2 fixing rate for the Beasley reduced-cost fixing inside the
  *        Lagrangian root (its `core` is the fixing's survivor set).
  *
  * @details Registered checks (bands stated BEFORE the runs):
@@ -62,7 +62,7 @@ OracleResult brute_force_pmedian(const std::vector<double> &D, int N, int k)
     double c = 0.0;
     for (int j = 0; j < N; ++j) {
       double best = kInf;
-      for (int s : S) best = std::min(best, D[static_cast<std::size_t>(s) * N + j]);
+      for (index_t s : S) best = std::min(best, D[static_cast<std::size_t>(s) * N + j]);
       c += best;
     }
     return c;
@@ -188,9 +188,9 @@ TEST_CASE("reduced-cost fixing eliminates ≥80% of candidates when the gap is t
   const double mean_elim = qualifying > 0 ? sum_elim / qualifying : 0.0;
   std::printf("[fixing][P2] qualifying=%d met(≥80%%)=%d frac=%.3f min_elim=%.3f mean_elim=%.3f\n",
               qualifying, met, frac_met, min_elim, mean_elim);
-  // Strict registered P2 band (frac_met ≥ 0.90) FALSIFIED — see file header VERDICT.
+  // Strict registered BAND-P2 (frac_met ≥ 0.90) FALSIFIED — see file header VERDICT.
 
-  REQUIRE(qualifying >= 30);   // the clustered regime must certify (P1).
+  REQUIRE(qualifying >= 30);   // the clustered regime must certify (BAND-P1).
   REQUIRE(mean_elim >= 0.78);  // CONFIRMED: fixing eliminates ~80% of candidates in the mean.
   REQUIRE(min_elim >= 0.60);   // CONFIRMED floor: even the worst clustered instance sheds >60%.
 }

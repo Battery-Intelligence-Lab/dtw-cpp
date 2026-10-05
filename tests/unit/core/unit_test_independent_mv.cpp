@@ -1,6 +1,6 @@
 /**
  * @file unit_test_independent_mv.cpp
- * @brief Independent multivariate DTW (DTW_I, Task 5.6): aeon oracle, DTW_I<=DTW_D
+ * @brief Independent multivariate DTW (DTW_I): aeon oracle, DTW_I<=DTW_D
  *        arbiter, Problem wiring, bind-time rejection, univariate no-op.
  *
  * @details Independent-DTW (Shokoohi-Yekta et al., DMKD 2017) runs a separate

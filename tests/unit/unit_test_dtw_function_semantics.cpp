@@ -123,9 +123,9 @@ TEST_CASE("DTW function getters keep a mapped cache",
     problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
 
     const auto *function = &problem.dtw_function();
-    REQUIRE(std::as_const(problem).distance_matrix().is_mapped());
+    REQUIRE(problem.distance_matrix().is_mapped());
     REQUIRE(&problem.dtw_function() == function);
-    REQUIRE(std::as_const(problem).distance_matrix().is_mapped());
+    REQUIRE(problem.distance_matrix().is_mapped());
   }
 #endif
 }

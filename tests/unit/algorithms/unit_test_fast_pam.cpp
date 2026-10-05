@@ -162,13 +162,13 @@ TEST_CASE("FastPAM medoid indices are valid", "[fast_pam][medoids]")
   REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
 
   // All medoid indices must be in [0, N).
-  for (int m : result.medoid_indices) {
+  for (index_t m : result.medoid_indices) {
     REQUIRE(m >= 0);
     REQUIRE(m < N);
   }
 
   // All medoid indices must be distinct.
-  std::set<int> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
+  std::set<index_t> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
   REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
 }
 
@@ -243,8 +243,8 @@ TEST_CASE("seeded FastPAM completes the medoid set when all weights are zero",
   const auto result = fast_pam_seeded(prob, 3, 7, 0);
 
   REQUIRE(result.medoid_indices.size() == 3);
-  const std::set<int> unique(result.medoid_indices.begin(),
-                             result.medoid_indices.end());
+  const std::set<index_t> unique(result.medoid_indices.begin(),
+                                 result.medoid_indices.end());
   CHECK(unique.size() == 3);
   // The fallback fills upward from index 0, so whichever index the seed drew
   // first, both 0 and 1 must be completed into the set. This holds for all four
@@ -267,7 +267,7 @@ TEST_CASE("FastPAM labels are in valid range", "[fast_pam][labels]")
 
   REQUIRE(result.labels.size() == static_cast<size_t>(N));
 
-  for (int label : result.labels) {
+  for (index_t label : result.labels) {
     REQUIRE(label >= 0);
     REQUIRE(label < k);
   }
@@ -305,7 +305,7 @@ TEST_CASE("FastPAM k=1 assigns all points to one cluster", "[fast_pam][k1]")
   REQUIRE(result.medoid_indices.size() == 1);
   REQUIRE(result.labels.size() == static_cast<size_t>(N));
 
-  for (int label : result.labels) {
+  for (index_t label : result.labels) {
     REQUIRE(label == 0);
   }
 
@@ -327,7 +327,7 @@ TEST_CASE("FastPAM k=N makes every point a medoid", "[fast_pam][kN]")
   REQUIRE_THAT(result.total_cost, WithinAbs(0.0, 1e-10));
 
   // Every point should be a medoid.
-  std::set<int> medoid_set(result.medoid_indices.begin(), result.medoid_indices.end());
+  std::set<index_t> medoid_set(result.medoid_indices.begin(), result.medoid_indices.end());
   REQUIRE(medoid_set.size() == static_cast<size_t>(N));
 }
 
@@ -344,7 +344,7 @@ TEST_CASE("FastPAM medoids are assigned to their own cluster", "[fast_pam][self_
 
   // For each medoid m at index medoid_indices[c], its label should be c.
   for (int c = 0; c < k; ++c) {
-    int medoid_point = result.medoid_indices[c];
+    index_t medoid_point = result.medoid_indices[c];
     REQUIRE(result.labels[medoid_point] == c);
   }
 }
@@ -363,7 +363,7 @@ TEST_CASE("FastPAM total_cost matches recomputed cost", "[fast_pam][cost_consist
   // Recompute total cost from labels and medoid_indices.
   double recomputed_cost = 0.0;
   for (int p = 0; p < N; ++p) {
-    int medoid = result.medoid_indices[result.labels[p]];
+    index_t medoid = result.medoid_indices[result.labels[p]];
     recomputed_cost += prob.dist_by_ind(p, medoid);
   }
 
@@ -464,8 +464,8 @@ TEST_CASE("FastPAM refuses a negative max_iter before it touches the Problem",
 }
 
 // ===========================================================================
-// Test 11: 2.0 (Task 1.6) write-back — fast_pam stores the result INTO prob.
-// (1.x asserted non-mutation; API contract §2.5 moves the binding auto-wire into
+// Test 11: 2.0 write-back — fast_pam stores the result INTO prob.
+// (1.x asserted non-mutation; the binding auto-wire moved into
 //  core, so pure-C++ users get prob.centroids_ind/clusters_ind/n_clusters set.)
 // ===========================================================================
 TEST_CASE("FastPAM writes result back into Problem", "[fast_pam][write_back]")

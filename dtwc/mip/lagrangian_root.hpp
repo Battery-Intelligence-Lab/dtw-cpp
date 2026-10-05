@@ -1,7 +1,7 @@
 /**
  * @file lagrangian_root.hpp
  * @brief Lagrangian root bound for the p-median (k-medoids) problem — the bound
- *        engine of the "LR-core" exact solver (PLAN.md Phase 4, Task 4.1).
+ *        engine of the "LR-core" exact solver.
  *
  * @details Dualizing the assignment equalities `Σ_i x_ij = 1` with multipliers
  * μ ∈ R^N decouples the p-median inner problem per candidate medoid. Define the
@@ -20,7 +20,7 @@
  * forming the N²-column LP. We maximize L by subgradient ascent with Polyak
  * steps off a heuristic upper bound (FastPAM), repair a feasible primal each
  * iteration (assign to nearest open medoid), and report the gap. On clustered /
- * real data the root typically certifies the heuristic optimal (prediction P1).
+ * real data the root typically certifies the heuristic optimal.
  *
  * Full derivation and registered predictions: `.claude/UNIMODULAR.md` §8.3–8.5.
  *
@@ -92,12 +92,12 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k,
 
 /**
  * @brief EXACT p-median solve: LR-bounded branch-and-bound on y over the core —
- *        "core Benders with y-only branching" (PLAN.md Phase 4, Task 4.3).
+ *        "core Benders with y-only branching".
  *
- * @details The Lagrangian dual (Task 4.1) already equals the LP/Benders master
+ * @details The Lagrangian dual already equals the LP/Benders master
  * bound (Geoffrion), obtained matrix-free — so there is no N²-column master to
  * re-solve per round. This routine solves the root dual once, applies
- * reduced-cost fixing (Task 4.2) to obtain the candidate `core` and the facilities
+ * reduced-cost fixing to obtain the candidate `core` and the facilities
  * proven open in every optimum, then closes any residual integrality gap by
  * branch-and-bound that branches on the open/close (y) decision of a single
  * candidate at a time. Each node's lower bound is the fixed-root-dual value
@@ -107,7 +107,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k,
  * verified in tests), the tree is exact.
  *
  * On well-separated data the root certifies immediately and the tree is a single
- * node (the P1 regime). On the adversarial regime (uniform non-metric D, large
+ * node (the well-separated regime). On the adversarial regime (uniform non-metric D, large
  * integrality gap) the tree can grow; @p max_nodes caps it and the routine
  * then returns the best incumbent with `certified_optimal = false` (never a silent
  * wrong answer).

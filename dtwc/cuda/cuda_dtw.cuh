@@ -4,7 +4,8 @@
  *
  * @details The kernels write the packed lower triangle of the distance matrix,
  *          DistanceMatrix's own layout, in launches of consecutive pairs whose
- *          slots stream into the caller's matrix (cuda_dtw.cu).
+ *          slots stream into the caller's matrix (cuda_dtw.cu); or, on the same
+ *          kernels, each series' distances to a few medoids.
  *
  * @date 29 Mar 2026
  */
@@ -19,6 +20,8 @@
 #include "../core/gpu_dtw_common.hpp"
 
 #include <cstddef>
+#include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -47,6 +50,23 @@ std::string cuda_device_info(int device_id = 0);
 CUDADistMatResult compute_distance_matrix_cuda(
     const std::vector<std::vector<double>> &series,
     const CUDADistMatOptions &opts, core::DistanceMatrix &out);
+
+/// The DTW distance of each of @p series to each of the k @p medoids on the
+/// GPU, on the kernels, route rule and precision of compute_distance_matrix_cuda
+/// (the longest of all the series picks the kernel). @p consume takes them a
+/// block of consecutive series at a time, in order, each series once:
+/// consume(first, count, distances), where distances[i * k + m] is the distance
+/// of series first + i to medoid m. A block holds at most kMaxPairsPerLaunch
+/// (launch_prep.hpp) samples and as many distances, which bounds the device's
+/// and this call's memory whatever the number of series. The same refusals as
+/// compute_distance_matrix_cuda come before the first block.
+/// @pre @p medoids is not empty (k >= 1); with none, no block is handed over.
+CUDADistMatResult compute_medoid_distances_cuda(
+    const std::vector<std::vector<double>> &series,
+    const std::vector<std::vector<double>> &medoids,
+    const CUDADistMatOptions &opts,
+    const std::function<void(std::size_t first, std::size_t count,
+                             std::span<const double> distances)> &consume);
 
 }  // namespace dtwc::cuda
 

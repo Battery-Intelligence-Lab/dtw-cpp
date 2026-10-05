@@ -150,7 +150,7 @@ TEST_CASE("Hierarchical: cut(4) gives all different labels", "[hierarchical]")
 
   REQUIRE(result.labels.size() == 4);
 
-  std::set<int> unique_labels(result.labels.begin(), result.labels.end());
+  std::set<dtwc::index_t> unique_labels(result.labels.begin(), result.labels.end());
   REQUIRE(unique_labels.size() == 4);
   REQUIRE(result.medoid_indices.size() == 4);
 
@@ -176,8 +176,8 @@ TEST_CASE("Hierarchical: cut(2) medoids correct", "[hierarchical]")
   REQUIRE(result.labels[0] != result.labels[2]);
 
   // Medoids must be the two tie-breaking winners (smallest index).
-  const int label_01 = result.labels[0];
-  const int label_23 = result.labels[2];
+  const dtwc::index_t label_01 = result.labels[0];
+  const dtwc::index_t label_23 = result.labels[2];
   REQUIRE(result.medoid_indices[static_cast<size_t>(label_01)] == 0);
   REQUIRE(result.medoid_indices[static_cast<size_t>(label_23)] == 2);
 
@@ -272,14 +272,14 @@ TEST_CASE("Hierarchical: merge sizes are correct", "[hierarchical]")
 }
 
 // ---------------------------------------------------------------------------
-// A2: cut_dendrogram must not trust a caller-supplied Dendrogram
+// cut_dendrogram must not trust a caller-supplied Dendrogram
 // ---------------------------------------------------------------------------
 
 TEST_CASE("Hierarchical: cut_dendrogram rejects a malformed Dendrogram", "[hierarchical][validation]")
 {
   // `Dendrogram` is default-constructible with both fields publicly writable and
   // is exported to Python, so cut_dendrogram is reachable with a hand-built
-  // struct. Before A2 it read dend.merges[i] and indexed UF::parent with
+  // struct. It used to read dend.merges[i] and indexed UF::parent with
   // unvalidated cluster ids — an out-of-bounds read from pure Python.
   auto prob = make_4point_problem();
 
@@ -373,7 +373,7 @@ TEST_CASE("Hierarchical: every cut has k non-empty clusters, each medoid in its 
     const auto cut = dtwc::algorithms::cut_dendrogram(dend, prob, k);
     REQUIRE(cut.labels.size() == static_cast<size_t>(n));
     REQUIRE(cut.medoid_indices.size() == static_cast<size_t>(k));
-    const std::set<int> labels(cut.labels.begin(), cut.labels.end());
+    const std::set<dtwc::index_t> labels(cut.labels.begin(), cut.labels.end());
     REQUIRE(labels.size() == static_cast<size_t>(k));
     REQUIRE(*labels.begin() == 0);
     REQUIRE(*labels.rbegin() == k - 1);

@@ -195,7 +195,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
     throw SolverError("HiGHS failed to solve the MIP (run returned status "
                       + std::to_string(static_cast<int>(return_status)) + ").");
 
-  // Get the model status. Task 0.5 / audit finding #7: this guard used to be
+  // Get the model status. This guard used to be
   // assert(model_status == kOptimal), which is a no-op under NDEBUG (release
   // builds). A non-optimal solve (infeasible, unbounded, time/iteration limit)
   // then fell through to decoding an empty/invalid solution vector and returned

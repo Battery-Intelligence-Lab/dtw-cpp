@@ -1,0 +1,9 @@
+========= COMPUTE-SANITIZER
+Filters: [medoids] ~[blocks]
+Randomness seeded to: 1526627198
+===============================================================================
+All tests passed (1920 assertions in 1 test case)
+
+========= LEAK SUMMARY: 0 bytes leaked in 0 allocations
+========= ERROR SUMMARY: 0 errors
+MEMCHECK_EXIT=0

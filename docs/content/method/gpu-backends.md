@@ -48,8 +48,12 @@ raises `DeviceError` naming the setting and its value:
 
 The same validator runs in `Problem::dtw_function()`, through which
 OneBatchPAM, FastCLARA's assignment and TADPole compute the pairs they need.
-Known gap: those matrix-free schedules compute on the CPU when the device is a
-GPU.
+Known gap: OneBatchPAM and TADPole compute on the CPU when the device is a GPU.
+FastCLARA's assignment runs on the GPU with CUDA: `compute_medoid_distances_cuda`
+computes every series against the k medoids on the fill's kernels and route
+rule, one launch per block of series (a block holds at most 2^27 samples and as
+many distances), and the host keeps each series' nearest medoid as the CPU does.
+Metal has no such entry, so its assignment runs on the CPU.
 
 > **Compile-time flags.** CUDA defaults OFF and is enabled with
 > `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON on Apple platforms and

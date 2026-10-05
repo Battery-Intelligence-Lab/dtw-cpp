@@ -22,9 +22,9 @@
  *   the parent. In exact arithmetic those decisions preserve the brute-force
  *   result; the permanent exactly representable regression confirms that
  *   regime. Bit-level identity when a floating reduction lands near `dc` or
- *   `best` remains D17. Empty series are outside the guarantee (F48), and the
+ *   `best` is not proved. Empty series are outside the guarantee, and the
  *   configuration predicate does not yet validate finiteness or integer length
- *   representability (F46).
+ *   representability.
  *
  * @author Volkan Kumtepeli
  * @date 8 Jul 2026
@@ -58,7 +58,7 @@ namespace {
 /// upper bound can be valid: plain Standard DTW, univariate, float64, no NaN
 /// handling — the case where dispatch binds L1 `dtwBanded` (dtw_dispatch.cpp
 /// make_standard). It does not inspect samples for finiteness or check that a
-/// series length fits the integer envelope-radius API (F46).
+/// series length fits the integer envelope-radius API.
 ///
 /// Float32 is excluded because the prune would not be ADMISSIBLE: the bound path
 /// reads Data::series() (float64 storage) while the exact side computes on the

@@ -2,8 +2,7 @@
  * @file env.cpp
  * @brief The device grammar and the single-thread warning (see env.hpp).
  *
- * @details The DeviceError messages here are authored in
- * docs/api-contract-2.0.md §6.1 and asserted in tests/unit/test_env_device.cpp.
+ * @details The DeviceError messages here are asserted in tests/unit/test_env_device.cpp.
  *
  * @author Volkan Kumtepeli
  * @author Becky Perriment

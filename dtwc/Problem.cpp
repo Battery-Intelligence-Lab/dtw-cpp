@@ -141,7 +141,7 @@ constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
   return gpu_backend == "Metal" && precision == GpuPrecision::Auto ? GpuPrecision::FP32 : precision;
 }
 
-/// A GPU request its backend cannot honour: every FX-1 rule words it so.
+/// A GPU request its backend cannot honour: a DeviceError, never a CPU fallback.
 [[noreturn]] void reject_gpu_request(std::string_view where, const std::string &request, const std::string &fix)
 {
   throw DeviceError(std::string(where) + ": " + std::string(gpu_backend) + " " + request
@@ -210,15 +210,6 @@ void require_clusterable(index_t k, std::size_t n_series)
   if (static_cast<std::size_t>(k) > n_series) throw InvalidInput("cluster: k must not exceed the number of series.");
 }
 
-void detail::refuse_gpu_method(Method method)
-{
-  throw DeviceError(
-    "run: method '" + std::string(name_of(method_names, method))
-    + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
-      "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use (and clara when its sample covers "
-      "every series). Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
-}
-
 void apply(const Config &config, Problem &prob)
 {
   // Each setter checks its value: parameter domains, variant x missing
@@ -247,9 +238,13 @@ void apply(const Config &config, Problem &prob)
                       + " is not available: this DTWC++ was built without Gurobi. Use --solver highs, or "
                         "rebuild with -DDTWC_ENABLE_GUROBI=ON and GUROBI_HOME set.");
   prob.set_gpu_precision(config.gpu_precision);
-  prob.set_device(config.device, config.device_index); // gpu without a GPU backend: §6.1's DeviceError
+  prob.set_device(config.device, config.device_index); // gpu without a GPU backend: the DeviceError
   if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
-    detail::refuse_gpu_method(config.method);
+    throw DeviceError(
+      "run: method '" + std::string(name_of(method_names, config.method))
+      + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
+        "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use, and clara's sample matrices. "
+        "Choose one of those, or device 'cpu'. No CPU fallback was attempted.");
 }
 
 /**
@@ -670,9 +665,9 @@ void Problem::validate_fill_request(std::string_view where) const
 
   // A band narrower than a pair's length difference leaves that pair no warping
   // path: the banded kernels return the finite max() sentinel, which passes every
-  // isfinite() guard, so clustering would silently sum 1.8e308 (design §9,
-  // D-12). The widest gap is shortest vs longest. Soft-DTW, MSM and TWE ignore
-  // the band. Lengths are timesteps, as the multivariate kernels count them.
+  // isfinite() guard, so clustering would silently sum 1.8e308. The widest gap is
+  // shortest vs longest. Soft-DTW, MSM and TWE ignore the band. Lengths are
+  // timesteps, as the multivariate kernels count them.
   const auto variant = distance_.variant.variant;
   const int band = distance_.band;
   if (band >= 0 && data_.size() > 1 && variant != core::DTWVariant::SoftDTW
@@ -699,7 +694,7 @@ void Problem::validate_fill_request(std::string_view where) const
     }
   }
 
-  // FX-15: the kernels take NaN and ±inf as numbers. ±inf gives inf, or
+  // The kernels take NaN and ±inf as numbers. ±inf gives inf, or
   // inf − inf = NaN, under any strategy; NaN is a missing value only to a
   // missing-data strategy, and otherwise poisons the recurrence (NaN also marks
   // an uncomputed matrix entry). One check through the raw entry points' own
@@ -737,7 +732,7 @@ void Problem::validate_fill_request(std::string_view where) const
   if (data_.is_view())
     reject_gpu_request(at,
                        "needs owned series in RAM, but this Problem's series are a non-owning "
-                       "view (set_view_data, as FastCLARA's in-memory subsamples are)",
+                       "view (set_view_data)",
                        "Install owning series with set_data, or use device cpu.");
   validate_gpu_request(at, *this, data_.precision);
   if (data_.ndim > 1)
@@ -854,7 +849,7 @@ void Problem::fill_distance_matrix()
   if (verbose_)
     std::cout << "Distance matrix is being filled!" << '\n';
 
-  // The serial missing-data pre-scan is part of validate_fill_request (FX-15),
+  // The serial missing-data pre-scan is part of validate_fill_request,
   // above: it runs before any pair, here and on every other entry point.
 
   if (device_ == Device::CPU) {

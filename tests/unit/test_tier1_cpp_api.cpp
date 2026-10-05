@@ -91,9 +91,9 @@ std::pair<std::vector<dtwc::index_t>, std::vector<dtwc::index_t>> canonicalise(c
   std::sort(medoids.begin(), medoids.end());
   std::vector<dtwc::index_t> labels(result.labels().size());
   for (std::size_t i = 0; i < labels.size(); ++i) {
-    const int assigned = result.medoids().at(
+    const dtwc::index_t assigned = result.medoids().at(
       static_cast<std::size_t>(result.labels().at(i)));
-    labels[i] = static_cast<int>(
+    labels[i] = static_cast<dtwc::index_t>(
       std::lower_bound(medoids.begin(), medoids.end(), assigned) - medoids.begin());
   }
   return {labels, medoids};

@@ -8,7 +8,7 @@
  * @details These live in `mip/` because `mip/` is their only consumer. They
  * used to sit in `dtwc/types/` as `element_types.hpp` + `types_util.hpp`, which
  * `utility.hpp` pulls in, so every translation unit reaching the umbrella
- * header compiled them — 97 of 297 in the default configuration (C-12). No
+ * header compiled them — 97 of 297 in the default configuration. No
  * forwarding header is left at the old paths: `dtwc/types/` ranks `base` and
  * `mip/` is the top layer, so a forwarder there would be an upward include
  * edge, which is exactly the coupling this move removes.

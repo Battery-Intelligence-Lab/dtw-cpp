@@ -289,7 +289,7 @@ std::size_t parse_numeric_row(std::string_view line, const fs::path &path,
   const auto fields = split_fields(line, delimiter);
   const auto first = static_cast<std::size_t>(start_column);
   // Too wide a start_col is the request's mistake, as it is for an in-memory
-  // source (contract §1.2), not a failed read: InvalidInput.
+  // source, not a failed read: InvalidInput.
   if (first > fields.size()) {
     throw InvalidInput(
       "Error in delimited text file: '" + path.string() + "' row "

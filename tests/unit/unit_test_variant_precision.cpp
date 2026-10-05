@@ -1,6 +1,6 @@
 /**
  * @file unit_test_variant_precision.cpp
- * @brief Float32 representability at a Problem's data boundary (M45); the rule
+ * @brief Float32 representability at a Problem's data boundary; the rule
  *        itself, per parameter, is core/test_distance_config.cpp's table.
  */
 

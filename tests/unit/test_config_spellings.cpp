@@ -9,8 +9,8 @@
  * twin and parse_config() pairs must each render to it, and Config{} must differ
  * from it on every line, so a key the golden leaves at its default fails.
  *
- * The second half drives the real dtwc_cl, whose options are bind()'s since step
- * S3: every option, alias and choice its --help lists must read the same through
+ * The second half drives the real dtwc_cl, whose options are bind()'s: every
+ * option, alias and choice its --help lists must read the same through
  * bind(), and the defaults its --verbose echo reports must be Config{}'s (its
  * --print-config, against tests/conformance/config_defaults.toml and the golden
  * file, is test_cli_device_matrix's).
@@ -461,7 +461,7 @@ TEST_CASE("bind() reads every option, alias and choice dtwc_cl --help lists", "[
   }
   CHECK(choices >= 100);
 
-  // dtwc_cl lists every key bind() has: since IF-2 S3 its options are bind()'s.
+  // dtwc_cl lists every key bind() has: its options are bind()'s.
   std::set<std::string> unlisted;
   for (const auto &entry : values_of(dtwc::to_config_text(dtwc::Config{})))
     if (keys_listed.count(entry.first) == 0) unlisted.insert(entry.first);

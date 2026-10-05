@@ -1,6 +1,6 @@
 /**
  * @file test_api.hpp
- * @brief Header-only `dtwc::test` self-introspection API (Task 3.3).
+ * @brief Header-only `dtwc::test` self-introspection API.
  *
  * @details Two capability probes with an IDENTICAL result schema in C++, Python
  * (`dtwcpp.test.*`) and MATLAB (`dtwc_mex('test_parallelisation'|'test_gpu')`):
@@ -22,7 +22,7 @@
  * Header-only by design: it adds NO new source file to any CMake target list.
  * The SAME source compiles and works in both GPU-ON and GPU-OFF builds — the
  * branch is at compile time on `DTWC_HAS_CUDA` / `DTWC_HAS_METAL` and at RUNTIME
- * on `cuda_available()` / `metal_available()`, so Task 3.5's CUDA build exercises
+ * on `cuda_available()` / `metal_available()`, so a CUDA build exercises
  * the `available -> validated==true` path through this very header while the
  * baseline CUDA-OFF build exercises the `available==false, reason non-empty` path.
  *
@@ -71,9 +71,9 @@ struct GpuReport
 
 namespace detail {
 
-/// @brief Oracle tolerance for the CUDA FP64 path (the contract figure, §Task 3.3).
+/// @brief Oracle tolerance for the CUDA FP64 path (the contract figure).
 ///        CUDA is forced to FP64 below so this ≤1e-12 bound is meetable and is the
-///        band runtime-verified on the local RTX 4000 Ada in Task 3.5.
+///        band runtime-verified on an RTX 4000 Ada.
 inline constexpr double kGpuOracleTol = 1e-12;
 
 /// @brief Oracle tolerance for the Metal path. Metal has no FP64, so the kernel

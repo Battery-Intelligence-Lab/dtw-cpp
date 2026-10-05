@@ -39,7 +39,7 @@ class Problem; // Forward declaration
  *                  returns the exact 1-median.
  * @return core::ClusteringResult containing labels, medoid indices, total cost, etc.
  *
- * @note 2.0 (Task 1.6): on return this WRITES the result back into `prob`
+ * @note 2.0: on return this WRITES the result back into `prob`
  *       (prob.centroids_ind = medoids, prob.clusters_ind = labels,
  *       prob.n_clusters() = n_clusters), so scores::silhouette(prob) etc. work
  *       with no manual wiring. In 1.x it left prob untouched and the bindings

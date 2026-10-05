@@ -153,7 +153,7 @@ TEST_CASE("DataLoader class functionality", "[DataLoader]")
   SECTION("The index column of a two-column folder is not a series")
   {
     // Read with the defaults, every data/dummy series used to be its index
-    // column 0, 1, 2, ... (FX-6); now the extra field is an error naming the fix.
+    // column 0, 1, 2, ...; now the extra field is an error naming the fix.
     DataLoader defaults(dummy_data_path(), 1);
     defaults.verbosity(0);
     REQUIRE_THROWS_WITH(defaults.load(),
@@ -246,7 +246,7 @@ struct CoutCapture
 TEST_CASE("Loaders agree on one Ndata contract and reject Ndata < -1",
           "[DataLoader][fileOperations][Ndata]")
 {
-  // Audit 2026-09-02 A11: for Ndata == 0 the loaders disagreed -- the
+  // For Ndata == 0 the loaders disagreed -- the
   // folder load returned ALL series, and the batch load returned 0. Ndata < -1 was never rejected anywhere. One predicate:
   // a negative Ndata means "all", otherwise stop at exactly Ndata series.
   const ScratchDirectory folder{ "ndata_contract" };
@@ -269,7 +269,7 @@ TEST_CASE("Loaders agree on one Ndata contract and reject Ndata < -1",
 TEST_CASE("DataLoader extension matching is case-insensitive and keeps an "
           "explicit delimiter", "[DataLoader][delimiter]")
 {
-  // Audit 2026-09-02 A13: the extension comparison was case-sensitive, so
+  // The extension comparison was case-sensitive, so
   // "data.TSV" silently kept the ',' default; and path() overwrote a delimiter
   // the caller had just set explicitly.
   CHECK(DataLoader{}.path("a.TSV").delimiter() == '\t');
@@ -284,7 +284,7 @@ TEST_CASE("DataLoader extension matching is case-insensitive and keeps an "
 TEST_CASE("Folder and batch loaders honour verbosity(0)",
           "[DataLoader][verbosity]")
 {
-  // Audit 2026-09-02: fileOperations printed "Reading data:" and
+  // fileOperations printed "Reading data:" and
   // "N time-series data are read." unconditionally, so verbosity(0) (and
   // api.cpp's verbosity(0)) could not silence the loader.
   const ScratchDirectory folder{ "verbosity_contract" };

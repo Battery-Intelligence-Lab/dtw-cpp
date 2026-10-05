@@ -108,7 +108,7 @@ double assign_cost(Problem& prob, const std::vector<index_t>& medoids, int N)
   double total = 0.0;
   for (int p = 0; p < N; ++p) {
     double best = kInf;
-    for (int m : medoids) best = std::min(best, prob.dist_by_ind(p, m));
+    for (index_t m : medoids) best = std::min(best, prob.dist_by_ind(p, m));
     total += best;
   }
   return total;
@@ -120,12 +120,12 @@ double assign_cost(Problem& prob, const std::vector<index_t>& medoids, int N)
 double brute_force_best_delta(Problem& prob, const std::vector<index_t>& medoids, int N)
 {
   const double base = assign_cost(prob, medoids, N);
-  std::set<int> med_set(medoids.begin(), medoids.end());
+  std::set<index_t> med_set(medoids.begin(), medoids.end());
   const int k = static_cast<int>(medoids.size());
   double best = 0.0;
   std::vector<index_t> trial = medoids;
   for (int slot = 0; slot < k; ++slot) {
-    const int keep = trial[slot];
+    const index_t keep = trial[slot];
     for (int x = 0; x < N; ++x) {
       if (med_set.count(x)) continue;
       trial[slot] = x;
@@ -206,7 +206,7 @@ TEST_CASE("FasterPAM converges at k = 200 within the default iteration cap", "[f
   const auto res = fast_pam(prob, 200);
   REQUIRE(res.converged);
   REQUIRE(res.iterations < 100);
-  std::set<int> med(res.medoid_indices.begin(), res.medoid_indices.end());
+  std::set<index_t> med(res.medoid_indices.begin(), res.medoid_indices.end());
   REQUIRE(med.size() == 200);
 }
 
@@ -233,7 +233,7 @@ TEST_CASE("FasterPAM k=N gives zero cost", "[faster_pam][kN]")
   Problem prob = make_synthetic_problem(N);
   const auto res = fast_pam(prob, N);
   REQUIRE_THAT(res.total_cost, WithinAbs(0.0, 1e-10));
-  std::set<int> med(res.medoid_indices.begin(), res.medoid_indices.end());
+  std::set<index_t> med(res.medoid_indices.begin(), res.medoid_indices.end());
   REQUIRE(static_cast<int>(med.size()) == N);
 }
 

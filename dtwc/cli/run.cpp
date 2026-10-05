@@ -4,7 +4,7 @@
  *        distance storage, the dispatch and the outputs of one clustering run.
  *
  * @details Moved from dtwc_cl.cpp's main() and api.cpp's cluster(), which both
- * call it now (IF-2 S3), so each rule has one copy. Progress lines go to stdout
+ * call it now, so each rule has one copy. Progress lines go to stdout
  * under `verbose`.
  *
  * @date 24 Sep 2026
@@ -205,7 +205,6 @@ Outcome execute(const Config &config, std::optional<Data> data)
     const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
     clara_uses_full_sample = plan.sample_size == plan.n_points;
     if (stream_payload) algorithms::detail::validate_streaming_clara_plan(plan, "run");
-    if (config.device == Device::GPU && !clara_uses_full_sample) detail::refuse_gpu_method(method);
     clara_planned = true;
   };
 
@@ -298,7 +297,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
   }
   // A matrix the user supplied but that cannot be loaded is an error: going on
-  // without it silently recomputed every distance and exited 0 (S-04).
+  // without it silently recomputed every distance and exited 0.
   if (!config.dist_matrix.empty()) {
     try {
       prob.read_distance_matrix(utf8_to_path(config.dist_matrix));
@@ -339,7 +338,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // ---- 6. Checkpoints first, then the outputs ----
   // Before the results, so a result write that
   // fails cannot lose the distance matrix. A save that fails is kept and raised
-  // once the results are on disk, so it cannot lose them either (S-04).
+  // once the results are on disk, so it cannot lose them either.
   std::optional<std::string> checkpoint_failure;
   if (!config.checkpoint.empty()) {
     try {

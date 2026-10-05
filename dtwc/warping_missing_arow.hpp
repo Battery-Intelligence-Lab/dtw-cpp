@@ -23,7 +23,7 @@
  *
  * Implementation: these wrappers delegate to the unified DTW kernel
  * (`core::run_dtw`) parameterised on `SpanAROW*Cost` (NaN-propagating pointwise cost) +
- * `AROWCell` (diagonal-carry recurrence). The legacy hand-rolled AROW impls lived here pre-Phase 3;
+ * `AROWCell` (diagonal-carry recurrence). The legacy hand-rolled AROW impls lived here earlier;
  * they were folded into the unified kernel family with bit-for-bit cross-
  * validation on {no-NaN, interior-NaN, leading-NaN, trailing-NaN, all-NaN}
  * inputs over bands {1..4}.

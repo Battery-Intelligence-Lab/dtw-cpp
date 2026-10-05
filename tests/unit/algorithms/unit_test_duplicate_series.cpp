@@ -47,7 +47,7 @@ Problem duplicate_problem(const std::vector<double> &values)
 void require_self_labelled(const std::vector<index_t> &medoids, const std::vector<index_t> &labels, int k)
 {
   REQUIRE(medoids.size() == static_cast<std::size_t>(k));
-  REQUIRE(std::set<int>(medoids.begin(), medoids.end()).size() == static_cast<std::size_t>(k));
+  REQUIRE(std::set<index_t>(medoids.begin(), medoids.end()).size() == static_cast<std::size_t>(k));
   for (int slot = 0; slot < k; ++slot) {
     INFO("slot " << slot << " medoid " << medoids[static_cast<std::size_t>(slot)]);
     CHECK(labels[static_cast<std::size_t>(medoids[static_cast<std::size_t>(slot)])] == slot);
@@ -117,7 +117,7 @@ TEST_CASE("CLARA labels a duplicate medoid with its own slot", "[duplicates][cla
       options.n_samples = 1;
       options.random_seed = seed;
       const auto result = algorithms::fast_clara(prob, options);
-      const std::set<int> medoids(result.medoid_indices.begin(), result.medoid_indices.end());
+      const std::set<index_t> medoids(result.medoid_indices.begin(), result.medoid_indices.end());
       if (medoids.count(0) == 0 || medoids.count(1) == 0) continue;
       reached = true;
       INFO("seed " << seed);

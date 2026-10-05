@@ -3,7 +3,7 @@
  * @brief Every 2.0 Problem / DataLoader entry point, and the v1.0.0 spelling that
  *        forwards to it, against a hand oracle.
  *
- * @details One table (docs/api-contract-2.0.md): each row runs an entry point by
+ * @details One table: each row runs an entry point by
  *          its 2.0 name and by its 1.x name (which compiles with a deprecation
  *          warning, suppressed locally) and compares one observation with one
  *          hand-derived oracle. test_deprecated_shims_warn proves the 1.x names

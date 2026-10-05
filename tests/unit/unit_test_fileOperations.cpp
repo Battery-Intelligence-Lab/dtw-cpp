@@ -59,7 +59,7 @@ struct TemporaryBatchFile {
   }
 };
 
-/// The FX-6 reader fixtures in <repo>/tests/data/reader (DTWC_TEST_DATA_DIR is <repo>/data).
+/// The reader fixtures in <repo>/tests/data/reader (DTWC_TEST_DATA_DIR is <repo>/data).
 fs::path reader_fixture(std::string_view name)
 {
   return fs::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader"
@@ -269,7 +269,7 @@ TEST_CASE("Load batch file", "[fileOperations]")
   const int L_data = GENERATE(1, 2, 10, 1000); // Maximum size of the inner vectors
 
   // At least one value per series: a blank line is no longer the on-disk form
-  // of an empty series (FX-6). The last section pins what a blank line is now.
+  // of an empty series. The last section pins what a blank line is now.
   const auto random_data = test_util::get_random_data<double>(N_data, L_data, 1);
 
   // write the files
@@ -457,7 +457,7 @@ TEST_CASE("Load folder", "[fileOperations]")
 TEST_CASE("Problem::read_distance_matrix propagates a failed read",
           "[fileOperations][problem][io]")
 {
-  // A1 (2026-09-02 io/cli audit): the reader wrapped its whole body in
+  // The reader wrapped its whole body in
   // `catch (...)` and only printed a message, so no caller could distinguish a
   // failed load from a successful one. dtwc_cl then printed "Loaded distance
   // matrix from <path>" straight after "Distance matrix could not be read!".
@@ -524,8 +524,8 @@ TEST_CASE("Directory-source series names are UTF-8 on every platform",
 }
 
 // ---------------------------------------------------------------------------
-// FX-6: one case per reader defect, each against a hand-written expected value.
-// The fixtures are the 2026-09-23 reader audit's input matrix.
+// One case per reader defect, each against a hand-written expected value.
+// The fixtures are an input matrix of reader edge cases.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("FX-6 trailing blank lines are ignored, not read as an empty series",
@@ -673,7 +673,7 @@ TEST_CASE("FX-6 parse_number keeps the std::from_chars contract",
           "[fileOperations][fx6][number]")
 {
   // Expected bits written by hand as hexadecimal literals; each equals what
-  // libc++'s std::from_chars(general) returned on macOS 26 (2026-09-23).
+  // libc++'s std::from_chars(general) returned on macOS 26.
   struct Case
   {
     std::string_view text;
@@ -874,7 +874,7 @@ TEST_CASE("FX-6 Problem rejects an empty series from any source",
 TEST_CASE("GT-4b skip_cols wider than a row is InvalidInput, from a file as from memory",
           "[fileOperations][error][gt4b]")
 {
-  // The oracle is the in-memory source, whose InvalidInput contract §1.2 names:
+  // The oracle is the in-memory source, whose contract is InvalidInput:
   // the same request against a file is the same mistake, not a failed read.
   REQUIRE_THROWS_AS(dtwc::cluster(dtwc::load(Series{ { 1, 2, 3 }, { 4, 5, 6 } }, 5), 1),
                     InvalidInput);
