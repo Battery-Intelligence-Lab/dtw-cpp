@@ -262,6 +262,13 @@ class TestClusterKeywords:
         with pytest.raises(TypeError, match=r"^max_iter must be an integer"):
             dtwcpp.cluster([[0.0], [1.0]], k=1, max_iter=bad)
 
+    def test_an_unknown_key_lists_each_key_cluster_takes_once(self):
+        with pytest.raises(dtwcpp.InvalidInput, match="unknown key 'bogus'") as caught:
+            dtwcpp.cluster([[0.0], [1.0]], k=1, bogus=1)
+        keys = str(caught.value).split("Valid keys: ")[1].rstrip(".").split(", ")
+        assert len(keys) == len(set(keys))
+        assert "device" in keys and "n_clusters" not in keys  # k is the cluster count
+
     def test_unknown_method_still_fails_before_load_or_device(self, monkeypatch):
         from dtwcpp import _api
 
@@ -660,6 +667,18 @@ class TestSeriesNames:
 
     def test_in_memory_names_are_the_zero_based_ordinals(self):
         assert dtwcpp.load([[0.0], [1.0]]).series_names() == ["0", "1"]
+
+    def test_a_folder_given_with_a_trailing_separator_names_the_run(self, tmp_path):
+        """The run is named as dtwc_cl names it (C++ detail::default_name):
+        "data/" is "data", so save() writes data_labels.csv, not _labels.csv."""
+        folder = tmp_path / "data"
+        folder.mkdir()
+        (folder / "a.csv").write_text("0\n1\n", encoding="utf-8")
+        (folder / "b.csv").write_text("9\n8\n", encoding="utf-8")
+        source = str(folder) + "/"
+        assert dtwcpp.load(source).name == "data"
+        dtwcpp.cluster(source, k=1).save(tmp_path / "out")
+        assert (tmp_path / "out" / "data_labels.csv").is_file()
 
     def test_saved_labels_carry_the_file_names(self, tmp_path):
         csv = tmp_path / "named.csv"

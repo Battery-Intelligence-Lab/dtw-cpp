@@ -275,6 +275,11 @@ NB_MODULE(_dtwcpp_core, m) {
         "the file itself, or a folder's .parquet/.pq files, sorted, hidden files\n"
         "skipped; empty for any other input.");
 
+  m.def("_default_name", &dtwc::detail::default_name, "path"_a,
+        "The name dtwc_cl gives a run of `path` when none is given: the file's name\n"
+        "without its extension, or the folder's name (a trailing separator\n"
+        "included); 'dataset' for an empty path (series in memory).");
+
   // =========================================================================
   // Enums
   // =========================================================================

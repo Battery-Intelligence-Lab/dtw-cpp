@@ -361,14 +361,6 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
 } // namespace
 
-std::string detail::default_name(const fs::path &input)
-{
-  // "data/" names its folder; "." and ".." name nothing a file could be called after.
-  // UTF-8, which every writer turns back into a path with utf8_to_path(), losslessly.
-  const std::string stem = path_to_utf8((input.has_filename() ? input : input.parent_path()).stem());
-  return stem.empty() || stem == "." || stem == ".." ? "dataset" : stem;
-}
-
 detail::ParquetPlan detail::plan_parquet_load(Method method, Device device, std::size_t series_count,
                                               std::size_t estimated_resident_bytes, std::size_t ram_limit,
                                               ParquetLayout layout)

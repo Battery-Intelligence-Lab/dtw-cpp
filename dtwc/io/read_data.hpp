@@ -53,4 +53,13 @@ void require_reader_options(std::optional<InputFormat> format, index_t skip_cols
 Data read_data(const std::filesystem::path &path, index_t skip_cols = 0, index_t skip_rows = 0, char delimiter = '\0',
                const std::string &column = {});
 
+namespace detail {
+
+/// The name of a run, or of a dataset, that was not given one: the input's file
+/// name without its extension, or its folder's name; "dataset" for series in
+/// memory (an empty path) and for a path that names neither.
+std::string default_name(const std::filesystem::path &input);
+
+} // namespace detail
+
 } // namespace dtwc

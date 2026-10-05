@@ -63,16 +63,14 @@ class Dataset:
                 raise TypeError(f"load: {key} must be an integer")
             if value < 0:
                 raise InvalidInput(f"load: {key} must be non-negative.")
+        from dtwcpp import _dtwcpp_core
         self.source = source
         self.skip_cols = int(skip_cols)
         self.skip_rows = int(skip_rows)
         self.delimiter = delimiter
-        if name is not None:
-            self.name = name
-        elif self.is_path:
-            self.name = os.path.splitext(os.path.basename(str(source)))[0]
-        else:
-            self.name = "dataset"
+        # dtwc_cl's rule, so a run of "data/" is named "data" in every language.
+        self.name = name if name is not None else _dtwcpp_core._default_name(
+            os.fspath(source) if self.is_path else "")
         self._data = None
 
     @property
@@ -267,8 +265,9 @@ def _set_key(config, key, value, name=None):
     float; C++ then checks the value itself."""
     from dtwcpp import InvalidInput, _dtwcpp_core
     if key.startswith("_") or not hasattr(_dtwcpp_core.Config, key):
-        valid = sorted(n for n in dir(_dtwcpp_core.Config) if not n.startswith("_"))
-        raise InvalidInput(f"cluster: unknown key '{key}'. Valid keys: device, "
+        valid = sorted(n for n in dir(_dtwcpp_core.Config)
+                       if not n.startswith("_") and n != "n_clusters")  # k names it
+        raise InvalidInput(f"cluster: unknown key '{key}'. Valid keys: "
                            + ", ".join(valid) + ".")
     current = getattr(config, key)
     flag = isinstance(value, (bool, np.bool_))

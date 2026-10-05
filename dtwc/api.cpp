@@ -11,6 +11,7 @@
 #include "base/env.hpp"
 #include "base/error.hpp"
 #include "fileOperations.hpp"
+#include "io/read_data.hpp"
 #include "scores.hpp"
 
 #include <algorithm>

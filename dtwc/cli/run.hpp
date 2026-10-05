@@ -53,11 +53,6 @@ Result run(const Config &config, Data data);
 
 namespace detail {
 
-/// The name of a run, or of a dataset, that was not given one: the input's file
-/// name without its extension, or its folder's name; "dataset" for series in
-/// memory (an empty path) and for a path that names neither.
-std::string default_name(const std::filesystem::path &input);
-
 /// How a Parquet input stores its series, as its metadata shows it.
 enum class ParquetLayout { ListColumn, ScalarColumn, Directory };
 
