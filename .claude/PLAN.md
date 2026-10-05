@@ -236,9 +236,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## Blocked on another machine or on Volkan
 
-- Metal (Volkan 10-02: "Take note of this so we don't forget when I went to macOS machine."): the Metal edits of
-  W4d, W13a and W10 have never been compiled. On the Mac: build design-2.0 (`clang-macos` preset), serial ctest
-  with test_metal_correctness and test_metal_mmap running (not skipped), fix what breaks, then W4e.
+- Metal and macOS (Volkan 10-02: "Take note of this so we don't forget when I went to macOS machine."; 10-05: after
+  W9b merges, before L2b): no macOS build on record after 2026-09-23; the Metal code and its CMake changed in 22
+  commits since 2026-09-28 (`git log --since=2026-09-28 -- dtwc/metal tests/unit/test_metal_*`), none compiled. On
+  the Mac: build design-2.0 (`clang-macos` preset), serial ctest with test_metal_correctness and test_metal_mmap
+  running (not skipped), `cpp_conformance`, the docs gates, pytest from a fresh venv, the MEX if MATLAB is there;
+  fix what breaks, then W4e. A second short pass after L2b, before G.
 - Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux and Windows (Windows needs a
   `dumpbin /dependents` leg).
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.

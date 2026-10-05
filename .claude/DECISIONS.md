@@ -341,3 +341,5 @@ CHANGELOG rule.
   pyarrow (MATLAB: its own reader, checked against C++); every entry takes already-read data. Supersedes the 10-01
   plan to move text reading into Python; Arrow, CLI11 and fkYAML stay out of the bindings.
 - 2026-10-02 — Volkan, clean-up: "Yes to both": a unit's worktree and build folder go once it has merged.
+- 2026-10-05 — Volkan (question tool), Mac timing: "Merge W9b, then Mac (Recommended)": W9b merges here first, then
+  the Mac pass (PLAN "Blocked on another machine") before L2b reshapes the CMake; a second short pass after L2b.
