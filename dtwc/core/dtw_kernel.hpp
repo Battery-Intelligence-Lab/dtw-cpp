@@ -344,12 +344,9 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
       if (do_early_abandon) row_min = col[0];
     }
 
-    // Zero out cells that left the band on the low side (cells in the previous
-    // column that don't have corresponding entries in the current band).
-    for (std::size_t i = prev_lo; i < std::min(low, prev_hi); ++i)
-      col[i] = maxValue;
-
-    T left = col[first_row - 1];                    // dp[j, first_row-1]
+    // The band's bounds never decrease with j, so a cell that left it is never read again and
+    // nothing is cleared; below the band, dp[j, first_row-1] is unreachable: maxValue.
+    T left = (low == 0) ? col[0] : maxValue;        // dp[j, first_row-1]
     for (std::size_t i = first_row; i < high; ++i) {
       const T old_up = col[i];                      // dp[j-1, i]
       // dp[j, i]; carried as the next cell's left instead of reloaded.
@@ -357,11 +354,6 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
       col[i] = left;
       diag = old_up;
       if (do_early_abandon) row_min = std::min(row_min, left);
-    }
-
-    // Zero out cells that leave the band on the high side.
-    for (std::size_t i = std::max(high, prev_lo); i < prev_hi; ++i) {
-      col[i] = maxValue;
     }
 
     if (do_early_abandon && row_min > early_abandon) return maxValue;
