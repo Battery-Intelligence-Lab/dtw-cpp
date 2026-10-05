@@ -343,3 +343,5 @@ CHANGELOG rule.
 - 2026-10-02 — Volkan, clean-up: "Yes to both": a unit's worktree and build folder go once it has merged.
 - 2026-10-05 — Volkan (question tool), Mac timing: "Merge W9b, then Mac (Recommended)": W9b merges here first, then
   the Mac pass (PLAN "Blocked on another machine") before L2b reshapes the CMake; a second short pass after L2b.
+- 2026-10-05 — Volkan (question tool), W9b needing 2.5–4 more hours: "Go now; W9b finishes here (Recommended)": the
+  Mac pass runs on design-2.0 without W9b, W9b merges on Windows, and the Mac runs pytest again once W9b lands.

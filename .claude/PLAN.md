@@ -236,8 +236,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## Blocked on another machine or on Volkan
 
-- Metal and macOS (Volkan 10-02: "Take note of this so we don't forget when I went to macOS machine."; 10-05: after
-  W9b merges, before L2b): no macOS build on record after 2026-09-23; the Metal code and its CMake changed in 22
+- Metal and macOS (Volkan 10-02: "Take note of this so we don't forget when I went to macOS machine."; 10-05: now,
+  on design-2.0 without W9b, and before L2b; pytest again once W9b lands): no macOS build on record after 2026-09-23; the Metal code and its CMake changed in 22
   commits since 2026-09-28 (`git log --since=2026-09-28 -- dtwc/metal tests/unit/test_metal_*`), none compiled. On
   the Mac: build design-2.0 (`clang-macos` preset), serial ctest with test_metal_correctness and test_metal_mmap
   running (not skipped), `cpp_conformance`, the docs gates, pytest from a fresh venv, the MEX if MATLAB is there;
