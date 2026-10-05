@@ -41,6 +41,15 @@ detail::write_result_files 0 -> 0 -> 48 (moved from run.cpp to Problem_IO.cpp); 
   6,156,288 bytes, as the mapped build's): 939 passed / 20 skipped / 0 failed (the 20th skip is the pandas form: pandas is not installed;
   with pandas 3.0.6 in a scratch venv the 4 forms pass). Base 1,094 / 19 / 0; collected 1,113 -> 959: 199 ids removed,
   45 added, by name in the commit messages. `test_conformance.py` 2 passed; examples/python 01-09 exit 0.
+  98190ae4 deleted `TestDistanceMatrixCsv` (x2), which tested the Python matrix writer: the C++ writer the binding
+  now calls is covered by `tests/unit/core/unit_test_distance_matrix_csv.cpp`.
+
+## Last pass, 2026-10-05 (merge of design-2.0 89814d19; the review's findings)
+
+- Conversion of an already-read 20,000 x 1,000 float64 array, `dtwcpp.load(X).as_data()`, 3 reps each
+  [inferred, shared machine]: base `venv/int` 0.976 0.944 0.980 s and 0.922 0.885 0.896 s (two runs); W9b before
+  the one conversion 0.953 0.922 0.936 s; after it 0.692 0.734 0.722 s (`Problem.set_data(X)` 0.732 0.773 0.755 s).
+  Timed with `time.perf_counter` around each call, X = `np.random.default_rng(0).standard_normal((20000, 1000))`.
 
 ## Commands
 

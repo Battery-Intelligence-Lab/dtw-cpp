@@ -46,7 +46,7 @@ SLURM wrapper, but its current HPC errors violate the frozen taxonomy/messages
 | `skip_rows` | leading rows to drop, `>= 0`. Path source: header **lines** of the file (the `dtwc_cl --skip-rows` / `DataLoader::start_row` meaning). Directory source: the same count is applied **per file**, since `load_folder` forwards `start_row` to every `readFile` and one file is one series. In-memory source: leading **series**, since one memory row is one file line. Negative → `InvalidInput` | same; negative is `InvalidInput` and non-integer `TypeError`, raised by `load()` as C++ does; `device="hpc"` rejects a non-zero value (the SLURM wrapper has no `skip_rows` slot) | same; rejected by the `dtwc.load` input parser exactly as `skip_cols` is |
 | `delimiter` | `0` = auto from extension (`.tsv/.txt`→`\t` else `,`) | `None` = auto | `''` = auto |
 | `name` | `""` = derive from filename stem | `None` = filename stem, else `"dataset"` | `''` = stem |
-| result type | `dtwc::Dataset` (lazy; materialises only for local backends) | `dtwc.Dataset` (`_api.py:42`) | `dtwc.Dataset` handle |
+| result type | `dtwc::Dataset` (lazy; materialises only for local backends) | `dtwc.Dataset` (`_api.Dataset`) | `dtwc.Dataset` handle |
 
 *Contract:* `load()` performs **no I/O** — on `device="hpc"` the path is forwarded
 to the cluster and never read locally (preserves the 100M-series scaling story).
@@ -134,10 +134,10 @@ Canonical class name is **`Result`** in all three languages.
 | `labels` | `const std::vector<index_t>& labels() const` (`index_t` = `std::int64_t`) | `res.labels` → `np.ndarray[int64]` | `res.labels` → double row (1-based) |
 | `medoids` | `const std::vector<index_t>& medoids() const` | `res.medoids` → `np.ndarray[int64]` | `res.medoids` → double row (1-based) |
 | `score(name)` | `double score(std::string_view name) const`; fills the retained `Problem` on demand after a matrix-free run | `res.score(name: str) -> float`; same lazy fill, so `onebatch`/`clara`/`tadpole` results are scoreable and `save()` writes all four CSVs | `s = res.score(name)` |
-| `distance_matrix` | `std::vector<double> distance_matrix() const` `[introduced-2.0]` — dense **row-major N x N**; fills the retained `Problem` on demand exactly as `score()` does, so a matrix-free run is still readable | `res.distance_matrix` → dense N x N `np.ndarray`; a matrix-free `onebatch`/`clara`/`tadpole` run leaves it unmaterialised and the property fills the retained `Problem` on first read, exactly as `score()`/`save()` do (`_api.py:160-172`). `None` only for an `hpc` run, which has no local `Problem` | private helper `Result.distance_matrix()` (`Result.m:107-121`), used by `plot()` |
+| `distance_matrix` | `std::vector<double> distance_matrix() const` `[introduced-2.0]` — dense **row-major N x N**; fills the retained `Problem` on demand exactly as `score()` does, so a matrix-free run is still readable | `res.distance_matrix` → dense N x N `np.ndarray`; a matrix-free `onebatch`/`clara`/`tadpole` run leaves it unmaterialised and the property fills the retained `Problem` on first read, exactly as `score()`/`save()` do (`Result.distance_matrix`). `None` only for an `hpc` run, which has no local `Problem` | private helper `Result.distance_matrix()` (`Result.m:107-121`), used by `plot()` |
 | `save(dir)` | `void save(const std::filesystem::path& dir) const` | `res.save(dir)`; writes the loader's series names (not ordinals), C++'s line endings (the platform one for the three text-mode files, LF for the binary-mode distance matrix), `setprecision(8)` silhouettes and `to_chars(general, max_digits10)` matrix values, so a Python run and a CLI run on one file are byte-identical (the C++ writer writes them); an undefined silhouette prints a warning on stderr and skips the file | `res.save(dir)` |
-| `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:330-367`) | `res.plot()` |
-| (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:153`) | `res.cost` |
+| `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`Result.plot`) | `res.plot()` |
+| (aux) `cost` | `double cost() const` | `res.cost` (set by `Result.__init__`) | `res.cost` |
 | (aux) `device` | `std::string device() const` | `res.device` | `res.device` |
 | (aux) run statistics | `Method method() const` (`auto` resolved), `int iterations() const`, `bool converged() const` `[introduced-2.0]` (IF-2 S3; the first `RunStats` fields, IF-4) | — | — |
 
@@ -162,10 +162,10 @@ and medoids under `series_<i>` names, then throws `InvalidInput` for the matrix
 and silhouettes it cannot make.
 
 *`plot()` is Python/MATLAB only.* It renders a classical-MDS 2D scatter of the
-distance matrix coloured by cluster (`_api.py:330-367`). **C++ has no `plot()`**:
+distance matrix coloured by cluster (`Result.plot`). **C++ has no `plot()`**:
 it calls `save(dir)` to emit the plottable CSVs above, which any plotting tool
 (or the `dtwc.visualize` skill) consumes. On an `hpc` run only labels return, so
-`plot()` prints cluster sizes and returns nothing (`_api.py:336-340`).
+`plot()` prints cluster sizes and returns nothing.
 
 ### 1.5 `DTWClustering` — sklearn-style estimator (Python + MATLAB)
 

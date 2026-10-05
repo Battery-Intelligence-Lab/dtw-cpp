@@ -13,8 +13,8 @@
  * | auto          | pam for N <= 5000, else clara | pam                               |
  * | onebatch      | runs                          | DeviceError                       |
  * | tadpole       | runs                          | DeviceError                       |
- * | clara         | runs                          | runs when its sample covers every |
- * |               |                               | series, else DeviceError          |
+ * | clara         | runs                          | runs; the GPU fills the samples   |
+ * |               |                               | (and, on CUDA, assigns the series)|
  * | pam, kmedoids, mip, lrcore, hierarchical | run | run; the GPU fills the matrix     |
  *
  * `--device hpc` is refused while the configuration is parsed (DeviceError): a
