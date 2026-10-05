@@ -4,7 +4,7 @@
 // project's real flags -- taken from compile_commands.json, so the same -O level,
 // floating-point model and architecture tuning the library ships with -- and reads
 // clang's loop-vectorize remarks off it, or (--no-calls, test_codegen_no_calls)
-// fails when an innermost loop of these kernels makes a call.
+// fails when a call sits inside any loop of these kernels, however deep.
 //
 // It has to exist because the kernels are function templates in dtwc/warping.hpp
 // and dtwc/core/. A template that nobody instantiates generates no code, so no
@@ -75,7 +75,8 @@ float dtwc_probe_dtwFull_L_f32(
   return dtwc::dtwFull_L<float>(x, nx, y, ny, early_abandon);
 }
 
-// The remaining cells and kernels: ADTW, AROW, banded, MSM, TWE.
+// The remaining cells and kernels: ADTW, AROW, banded, MSM, TWE. The dtwFull_* wrappers above
+// pass band -1, so no banded loop reaches the listing from them: each precision needs its own.
 double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, std::size_t ny)
 {
   namespace core = dtwc::core;
@@ -84,6 +85,16 @@ double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, 
          + core::dtw_kernel_banded<double>(nx, ny, 8, cost, core::AROWCell{})
          + dtwc::dtwBanded<double>(x, nx, y, ny, 8, -1.0)
          + core::msm_distance<double>(x, nx, y, ny) + core::twe_distance<double>(x, nx, y, ny);
+}
+
+float dtwc_probe_kernels_f32(const float *x, std::size_t nx, const float *y, std::size_t ny)
+{
+  namespace core = dtwc::core;
+  const auto cost = [x, y](std::size_t i, std::size_t j) noexcept { return AbsDiff{}(x[i], y[j]); };
+  return core::dtw_kernel_linear<float>(nx, ny, cost, core::ADTWCell<float>{0.5f})
+         + core::dtw_kernel_banded<float>(nx, ny, 8, cost, core::AROWCell{})
+         + dtwc::dtwBanded<float>(x, nx, y, ny, 8, -1.0f)
+         + core::msm_distance<float>(x, nx, y, ny) + core::twe_distance<float>(x, nx, y, ny);
 }
 
 // The fill's lane kernel: W pairs per call, f64 under L1 and f32 under squared L2.
