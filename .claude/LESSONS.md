@@ -63,6 +63,9 @@ Append new entries at the end of their section; keep each to a few lines.
   `__std_min_element_d`), under cl and under clang on Windows; libc++ inlines both, so a Mac benchmark cannot see it.
   One call per DP cell cost 7.2 ns against 1.36 with a nested, register-carried min. Read the Windows assembly;
   `test_codegen_no_calls` guards the kernels (`baselines/2026-09-29-k1-dp-cell-no-call.md`).
+- **Apple clang turns a constant store loop into a `memset_pattern16` call** (Darwin only; x86 clang and GCC never
+  do): per row in the lanes kernel, per column in the banded one, a loop out from the innermost, which was all the gate
+  read. Copy a constant row or seed from the constant; no flag stops it. *`baselines/2026-10-05-macos-design-2-0.md`*
 - **clang's Windows driver passes `-relaxed-aliasing`** (no TBAA, as MSVC): a store through a `double *` makes the
   compiler reload every pointer it cannot prove distinct. Copy what a hot loop reads into locals.
 - **Float32 is opt-in.** It halves the payload and measured 1.57–1.90× faster; Float64 stays the default.

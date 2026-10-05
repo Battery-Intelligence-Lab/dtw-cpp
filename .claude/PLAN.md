@@ -117,7 +117,13 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W4d CUDA: `KernelOverride` and fallback flags go; `gpu_config.cuh` reads attributes once at bind (sm_120 FP64
   fixed; its mutex and atomics go); FP32 L = 4095–4096 "invalid argument" fixed (the 48 KiB check ignores static
   shared memory; W4a) (W4d 4479ec0, 3a1e54e, e4a1d77, d46ac35, f22155f, 6b83682, d62c417, c3e24ae, 350ae39, a14454b; merged febd25f)
-- ☐ W4e Metal: one pipeline, one wavefront template, scratch failure → `DeviceError` (macOS CI) — a bad_alloc in Metal's out.resize leaks its released buffers (W13a review)
+- ☑ W4e Metal: one pipeline helper, one wavefront body, the dead pair-index plumbing gone, every buffer and the
+  autorelease pool owned by one holder so each exit releases once (the out.resize bad_alloc and five other throw paths
+  leaked; a leak probe went from 192 MB to 0); scratch failure was already `DeviceError` (W13a). Merged `6cb0c3c1`
+  on the Mac (test_metal_* 2168/16 and 169/5 assertions unchanged; CLI outputs byte-identical on every kernel route;
+  `baselines/2026-10-05-macos-design-2-0.md`). Its review found the regtile and threadgroup-wavefront routes checking
+  only the last chunk's command buffer, so a failed earlier chunk left its pairs at 0: every chunk is checked since
+  `bc9469fd` (CHANGELOG)
 - ☑ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset (W13a e9216f4, ccc07db, c67dd3f, 71a26b6, 08db34d, 1affff2, ace7f07; merged 62d5822; no fill.cpp — the fill was already one function; FP32 L 100 fill 0.756× base time, host memory at N 20,000 L 1000 6.2 → 1.6 GB)
   (the N ≤ 65,536 refusal goes); a backend refuses before the N×N matrix is allocated — today `Problem` resizes first,
   so a huge N on a host without a GPU hits bad_alloc before DeviceError (W4d review)
@@ -236,12 +242,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## Blocked on another machine or on Volkan
 
-- Metal and macOS (Volkan 10-02: "Take note of this so we don't forget when I went to macOS machine."; 10-05: now,
-  on design-2.0 without W9b, and before L2b; pytest again once W9b lands): no macOS build on record after 2026-09-23; the Metal code and its CMake changed in 22
-  commits since 2026-09-28 (`git log --since=2026-09-28 -- dtwc/metal tests/unit/test_metal_*`), none compiled. On
-  the Mac: build design-2.0 (`clang-macos` preset), serial ctest with test_metal_correctness and test_metal_mmap
-  running (not skipped), `cpp_conformance`, the docs gates, pytest from a fresh venv, the MEX if MATLAB is there;
-  fix what breaks, then W4e. A second short pass after L2b, before G.
+- Metal and macOS: first pass done 2026-10-05 on `4dd4dcaf` (`baselines/2026-10-05-macos-design-2-0.md`): the
+  22 Metal commits built first time; ctest 95 with the Metal tests running; conformance digit-identical but one ulp of
+  silhouette; docs gates, pytest 1102/11/0, MEX + matlab_suite 139/140 (one registered filter) green. Fixed there:
+  Apple clang's `memset_pattern16` idiom in the lanes kernel (`a332d671`, failed `test_codegen_no_calls`) and the
+  banded kernel (`55911b2a`, two calls per column the gate cannot see); W4e merged; the Metal chunk check `bc9469fd`. Still to do on the Mac: a second short pass after L2b, before G,
+  and pytest again once W9b lands (W9b rewrote Python's reading, writing and conversion).
 - Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux and Windows (Windows needs a
   `dumpbin /dependents` leg).
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.

@@ -157,8 +157,8 @@ CHANGELOG rule.
 - 2026-09-29 — K1 merged (`4441969`): no DP cell makes a library call; the linear kernel 7.0× and the banded 5.6× faster
   on Windows (pinned P-core), digit-identical. The fill band (≥ 2×) FALSIFIED at 1.36×: the unbanded fill runs the
   EAPruned kernel, which made no call; P1 measures lanes against it. `test_codegen_no_calls` (clang builds) fails a
-  build whose DP inner loop calls; registered with `add_test` because it runs a Python script, its PASS regex requires
-  `inner_loops` ≥ 1.
+  build whose DP inner loop calls (since 2026-10-05, any loop of a probe kernel); registered with `add_test` because it
+  runs a Python script, its PASS regex requires `inner_loops` ≥ 1.
 - 2026-09-29 — Y2 merged (`959dc5b`): heap and mapped matrices are one `core::DistanceMatrix`; get/set index a raw
   `double *`. The mapped file's fingerprint is checked once, when it is mapped; a matrix assigned through the mutable
   accessor is the caller's (review point 4: a per-lookup compare to catch deliberate C++ misuse is the defensive design
@@ -345,3 +345,7 @@ CHANGELOG rule.
   the Mac pass (PLAN "Blocked on another machine") before L2b reshapes the CMake; a second short pass after L2b.
 - 2026-10-05 — Volkan (question tool), W9b needing 2.5–4 more hours: "Go now; W9b finishes here (Recommended)": the
   Mac pass runs on design-2.0 without W9b, W9b merges on Windows, and the Mac runs pytest again once W9b lands.
+- 2026-10-05 — Mac pass (orchestrator): a build tree cached before W14b needs `-DDTWC_ENABLE_GUROBI=OFF` once, like
+  METAL and ARROW. The Mac's silhouette is one ulp off the Windows-recorded conformance reference with identical
+  labels and medoids: accepted under D-19 and Volkan 10-01, the reference stays as recorded. Apple clang's
+  `memset_pattern16` idiom is fixed in the kernels' code, not by a flag (the targeted no-builtin flag does nothing).
