@@ -60,7 +60,12 @@ static inline long packed_slot(long i, long j)
   return j * (j + 1) / 2 + i;
 }
 
-// Anti-diagonal wavefront DTW (one threadgroup per pair).
+// Anti-diagonal wavefront DTW, one threadgroup per pair, in two kernels that
+// differ only in where the three rotating diagonals live: dtw_wavefront keeps
+// them in threadgroup memory, dtw_wavefront_global in device memory for series
+// whose 3*max_L*sizeof(float) exceeds the threadgroup-memory cap (32 KB on
+// M1/M2/M3 -> max_L ~2730). Both run this body: Ptr is the diagonals' pointer
+// type and Scope the memory its barriers order.
 //
 // Buffers:
 //   0: all_series  — N_series * max_L FP32, padded; row s starts at s*max_L
@@ -70,36 +75,23 @@ static inline long packed_slot(long i, long j)
 //   4: max_L       — int32 (row pitch of all_series)
 //   5: band        — int32 (Sakoe-Chiba band width; -1 = unbounded)
 //   6: use_sq_l2   — int32 (0 = |a-b|, 1 = (a-b)^2)
+//   7: scratch     — dtw_wavefront_global: 3 * max_L FP32 per threadgroup
 //   8: pair_offset — int64 (base for chunked dispatch)
-//  10: pair_indices — int32 buffer, unused: the host binds a 1-int dummy
-//  11: has_pair_indices — int32 flag, always 0
 // Threadgroup memory:
-//   0: smem        — 3 * max_L float (3 rotating anti-diagonal buffers)
-kernel void dtw_wavefront(
-    device const float*   all_series [[buffer(0)]],
-    device const int*     lengths    [[buffer(1)]],
-    device float*         out_matrix [[buffer(2)]],
-    constant int&         N_series   [[buffer(3)]],
-    constant int&         max_L      [[buffer(4)]],
-    constant int&         band       [[buffer(5)]],
-    constant int&         use_sq_l2  [[buffer(6)]],
-    constant long&        pair_offset [[buffer(8)]],
-    device const int*     pair_indices [[buffer(10)]],
-    constant int&         has_pair_indices [[buffer(11)]],
-    threadgroup float*    smem       [[threadgroup(0)]],
-    uint tid   [[thread_position_in_threadgroup]],
-    uint pid   [[threadgroup_position_in_grid]],
-    uint ntids [[threads_per_threadgroup]])
+//   0: smem        — dtw_wavefront: 3 * max_L float
+template <mem_flags Scope, typename Ptr>
+static inline void dtw_wavefront_body(
+    device const float *all_series, device const int *lengths,
+    device float *out_matrix, int N_series, int max_L, int band, int use_sq_l2,
+    long pair_offset, Ptr diagonals, uint tid, uint pid, uint ntids)
 {
   // 64-bit num_pairs/index math: int32 overflowed N*(N-1) at N >= 46341.
   const long num_pairs = (long)N_series * (N_series - 1) / 2;
-  const long work_idx  = (long)pid + pair_offset;
-  if (work_idx >= num_pairs) return;
-  // has_pair_indices is always 0: the host binds a dummy pair-index buffer.
-  const long real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
+  const long pair_idx  = (long)pid + pair_offset;
+  if (pair_idx >= num_pairs) return;
 
   long a_idx, b_idx;
-  decode_pair(real_pid, N_series, a_idx, b_idx);
+  decode_pair(pair_idx, N_series, a_idx, b_idx);
 
   const int La = lengths[a_idx];
   const int Lb = lengths[b_idx];
@@ -111,9 +103,9 @@ kernel void dtw_wavefront(
 
   // Three rotating buffers, each of length max_L:
   //   d[k % 3][i]  -> DTW cost on anti-diagonal k, row i
-  threadgroup float *d0 = smem + 0 * max_L;
-  threadgroup float *d1 = smem + 1 * max_L;
-  threadgroup float *d2 = smem + 2 * max_L;
+  Ptr d0 = diagonals + 0 * max_L;
+  Ptr d1 = diagonals + 1 * max_L;
+  Ptr d2 = diagonals + 2 * max_L;
 
   // Initialize the three buffers so boundary reads are INF before any
   // anti-diagonal has been written.
@@ -122,13 +114,13 @@ kernel void dtw_wavefront(
     d1[i] = INF;
     d2[i] = INF;
   }
-  threadgroup_barrier(mem_flags::mem_threadgroup);
+  threadgroup_barrier(Scope);
 
   for (int k = 0; k < K; ++k) {
     // Rotate: current = d[k%3], prev = d[(k-1)%3], prev2 = d[(k-2)%3].
-    threadgroup float *cur  = (k % 3 == 0) ? d0 : ((k % 3 == 1) ? d1 : d2);
-    threadgroup float *prev = (k % 3 == 0) ? d2 : ((k % 3 == 1) ? d0 : d1);
-    threadgroup float *prev2 = (k % 3 == 0) ? d1 : ((k % 3 == 1) ? d2 : d0);
+    Ptr cur   = (k % 3 == 0) ? d0 : ((k % 3 == 1) ? d1 : d2);
+    Ptr prev  = (k % 3 == 0) ? d2 : ((k % 3 == 1) ? d0 : d1);
+    Ptr prev2 = (k % 3 == 0) ? d1 : ((k % 3 == 1) ? d2 : d0);
 
     int i_lo = max(0, k - Lb + 1);
     int i_hi = min(La - 1, k);
@@ -174,23 +166,37 @@ kernel void dtw_wavefront(
       if (i_hi + 1 >= 0 && i_hi + 1 < max_L) cur[i_hi + 1] = INF;
     }
 
-    threadgroup_barrier(mem_flags::mem_threadgroup);
+    threadgroup_barrier(Scope);
   }
 
   // Final answer: cell (La-1, Lb-1) lives on the last anti-diagonal,
   // written to d[(K-1) % 3][La-1]. Thread 0 stores the result.
   if (tid == 0) {
     const int last = K - 1;
-    threadgroup float *cur = (last % 3 == 0) ? d0 : ((last % 3 == 1) ? d1 : d2);
+    Ptr cur = (last % 3 == 0) ? d0 : ((last % 3 == 1) ? d1 : d2);
     out_matrix[packed_slot(a_idx, b_idx)] = cur[La - 1];
   }
 }
 
-// Anti-diagonal wavefront DTW with device-memory scratch buffers.
-// For series whose 3*max_L*sizeof(float) exceeds the threadgroup-memory cap
-// (32 KB on M1/M2/M3 -> max_L ~2730). Same algorithm, just reading/writing
-// to `scratch` (unified memory on Apple Silicon) instead of threadgroup memory.
-// Layout: scratch[pid * 3 * max_L + band_idx * max_L + row_idx].
+kernel void dtw_wavefront(
+    device const float*   all_series [[buffer(0)]],
+    device const int*     lengths    [[buffer(1)]],
+    device float*         out_matrix [[buffer(2)]],
+    constant int&         N_series   [[buffer(3)]],
+    constant int&         max_L      [[buffer(4)]],
+    constant int&         band       [[buffer(5)]],
+    constant int&         use_sq_l2  [[buffer(6)]],
+    constant long&        pair_offset [[buffer(8)]],
+    threadgroup float*    smem       [[threadgroup(0)]],
+    uint tid   [[thread_position_in_threadgroup]],
+    uint pid   [[threadgroup_position_in_grid]],
+    uint ntids [[threads_per_threadgroup]])
+{
+  dtw_wavefront_body<mem_flags::mem_threadgroup>(
+      all_series, lengths, out_matrix, N_series, max_L, band, use_sq_l2,
+      pair_offset, smem, tid, pid, ntids);
+}
+
 kernel void dtw_wavefront_global(
     device const float*   all_series [[buffer(0)]],
     device const int*     lengths    [[buffer(1)]],
@@ -201,96 +207,15 @@ kernel void dtw_wavefront_global(
     constant int&         use_sq_l2  [[buffer(6)]],
     device float*         scratch    [[buffer(7)]],
     constant long&        pair_offset [[buffer(8)]],
-    device const int*     pair_indices [[buffer(10)]],
-    constant int&         has_pair_indices [[buffer(11)]],
     uint tid   [[thread_position_in_threadgroup]],
     uint pid   [[threadgroup_position_in_grid]],
     uint ntids [[threads_per_threadgroup]])
 {
-  // 64-bit num_pairs/index math.
-  const long num_pairs = (long)N_series * (N_series - 1) / 2;
-  const long work_idx  = (long)pid + pair_offset;
-  if (work_idx >= num_pairs) return;
-  const long real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
-
-  long a_idx, b_idx;
-  decode_pair(real_pid, N_series, a_idx, b_idx);
-
-  const int La = lengths[a_idx];
-  const int Lb = lengths[b_idx];
-  const device float *a = all_series + a_idx * max_L;
-  const device float *b = all_series + b_idx * max_L;
-
-  const float INF = 3.402823466e+38f;
-  const int K = La + Lb - 1;
-
-  // Per-threadgroup slice of scratch: 3 buffers of max_L floats each.
-  // Indexed by local threadgroup position (not real_pid) so that chunked
-  // dispatches can reuse the same scratch region.
-  device float *my_scratch = scratch + (size_t)pid * 3 * max_L;
-  device float *d0 = my_scratch + 0 * max_L;
-  device float *d1 = my_scratch + 1 * max_L;
-  device float *d2 = my_scratch + 2 * max_L;
-
-  for (int i = (int)tid; i < max_L; i += (int)ntids) {
-    d0[i] = INF;
-    d1[i] = INF;
-    d2[i] = INF;
-  }
-  threadgroup_barrier(mem_flags::mem_device);
-
-  for (int k = 0; k < K; ++k) {
-    device float *cur   = (k % 3 == 0) ? d0 : ((k % 3 == 1) ? d1 : d2);
-    device float *prev  = (k % 3 == 0) ? d2 : ((k % 3 == 1) ? d0 : d1);
-    device float *prev2 = (k % 3 == 0) ? d1 : ((k % 3 == 1) ? d2 : d0);
-
-    int i_lo = max(0, k - Lb + 1);
-    int i_hi = min(La - 1, k);
-    if (band >= 0) {
-      const long band_lo = ((long)k - (long)band + 1L) / 2L;
-      const long band_hi = ((long)k + (long)band) / 2L;
-      if (band_lo > (long)i_lo) i_lo = (int)band_lo;
-      if (band_hi < (long)i_hi) i_hi = (int)band_hi;
-    }
-    const int diag_len = i_hi - i_lo + 1;
-
-    if (diag_len > 0) {
-      for (int idx = (int)tid; idx < diag_len; idx += (int)ntids) {
-        const int i = i_lo + idx;
-        const int j = k - i;
-
-        float diff = a[i] - b[j];
-        float cost = use_sq_l2 ? (diff * diff) : fabs(diff);
-
-        float best;
-        if (i == 0 && j == 0) {
-          best = 0.0f;
-        } else {
-          float cdiag = (i > 0 && j > 0) ? prev2[i - 1] : INF;
-          float cup   = (i > 0)          ? prev[i - 1]  : INF;
-          float cleft = (j > 0)          ? prev[i]      : INF;
-          best = min(cdiag, min(cup, cleft));
-        }
-
-        cur[i] = cost + best;
-      }
-    }
-
-    // INF-fill band-adjacent cells to prevent stale-data reads on subsequent
-    // diagonals (see dtw_wavefront comment).
-    if ((int)tid == 0 && band >= 0) {
-      if (i_lo - 1 >= 0 && i_lo - 1 < max_L) cur[i_lo - 1] = INF;
-      if (i_hi + 1 >= 0 && i_hi + 1 < max_L) cur[i_hi + 1] = INF;
-    }
-
-    threadgroup_barrier(mem_flags::mem_device);
-  }
-
-  if (tid == 0) {
-    const int last = K - 1;
-    device float *cur = (last % 3 == 0) ? d0 : ((last % 3 == 1) ? d1 : d2);
-    out_matrix[packed_slot(a_idx, b_idx)] = cur[La - 1];
-  }
+  // The slice is indexed by threadgroup position, not by pair, so every chunk
+  // of a chunked dispatch reuses the same scratch.
+  dtw_wavefront_body<mem_flags::mem_device>(
+      all_series, lengths, out_matrix, N_series, max_L, band, use_sq_l2,
+      pair_offset, scratch + (size_t)pid * 3 * max_L, tid, pid, ntids);
 }
 
 // Row-major banded DTW: one thread per pair, no intra-threadgroup barriers.
@@ -329,11 +254,11 @@ kernel void dtw_banded_row(
 {
   // 64-bit num_pairs/index math.
   const long num_pairs = (long)N_series * (N_series - 1) / 2;
-  const long real_pid = (long)gid + pair_offset;
-  if (real_pid >= num_pairs) return;
+  const long pair_idx = (long)gid + pair_offset;
+  if (pair_idx >= num_pairs) return;
 
   long a_idx, b_idx;
-  decode_pair(real_pid, N_series, a_idx, b_idx);
+  decode_pair(pair_idx, N_series, a_idx, b_idx);
 
   const int La = lengths[a_idx];
   const int Lb = lengths[b_idx];
@@ -552,12 +477,11 @@ static void dtw_regtile_kernel_body(
 {
   // 64-bit num_pairs/index math.
   const long num_pairs = (long)N_series * (N_series - 1) / 2;
-  const long work_idx  = (long)tg_idx * PAIRS_PER_TG + (long)simd_id;
-  const long real_pid  = work_idx + pair_offset;
-  if (real_pid >= num_pairs) return;
+  const long pair_idx  = (long)tg_idx * PAIRS_PER_TG + (long)simd_id + pair_offset;
+  if (pair_idx >= num_pairs) return;
 
   long si, sj;
-  decode_pair(real_pid, N_series, si, sj);
+  decode_pair(pair_idx, N_series, si, sj);
   const int ni = lengths[si];
   const int nj = lengths[sj];
   const device float *x = all_series + si * max_L;
@@ -684,98 +608,39 @@ static MetalContext &context()
         return;
       }
 
-      id<MTLFunction> fn = [lib newFunctionWithName:@"dtw_wavefront"];
-      if (!fn) {
-        ctx.init_failed = true;
-        ctx.init_error = "kernel function dtw_wavefront not found";
-        [lib release];
-        return;
-      }
-
-      ctx.pipeline = [ctx.device newComputePipelineStateWithFunction:fn
-                                                               error:&err];
-      [fn release];
-      if (!ctx.pipeline) {
-        ctx.init_failed = true;
-        ctx.init_error = err ? [[err localizedDescription] UTF8String]
-                             : "newComputePipelineStateWithFunction failed";
-        [lib release];
-        return;
-      }
-
-      // Second pipeline: device-memory variant for long series.
-      id<MTLFunction> fn_global =
-          [lib newFunctionWithName:@"dtw_wavefront_global"];
-      if (!fn_global) {
-        ctx.init_failed = true;
-        ctx.init_error = "kernel function dtw_wavefront_global not found";
-        [lib release];
-        return;
-      }
-      ctx.pipeline_global =
-          [ctx.device newComputePipelineStateWithFunction:fn_global error:&err];
-      [fn_global release];
-      if (!ctx.pipeline_global) {
-        ctx.init_failed = true;
-        ctx.init_error = err ? [[err localizedDescription] UTF8String]
-                             : "newComputePipelineStateWithFunction (global) failed";
-        [lib release];
-        return;
-      }
-
-      // Third pipeline: row-major banded kernel for tight Sakoe-Chiba bands.
-      id<MTLFunction> fn_banded_row =
-          [lib newFunctionWithName:@"dtw_banded_row"];
-      if (!fn_banded_row) {
-        ctx.init_failed = true;
-        ctx.init_error = "kernel function dtw_banded_row not found";
-        [lib release];
-        return;
-      }
-      ctx.pipeline_banded_row =
-          [ctx.device newComputePipelineStateWithFunction:fn_banded_row error:&err];
-      [fn_banded_row release];
-      if (!ctx.pipeline_banded_row) {
-        ctx.init_failed = true;
-        ctx.init_error = err ? [[err localizedDescription] UTF8String]
-                             : "newComputePipelineStateWithFunction (banded_row) failed";
-        [lib release];
-        return;
-      }
-
-      // Register-tile pipelines (unbanded, max_L <= 256).
-      {
-        auto make_pipeline = [&](NSString *name,
-                                 id<MTLComputePipelineState> &out) -> bool {
-          id<MTLFunction> fn = [lib newFunctionWithName:name];
-          if (!fn) {
-            ctx.init_failed = true;
-            ctx.init_error = std::string("kernel function ") +
-                             [name UTF8String] + " not found";
-            return false;
-          }
-          out = [ctx.device newComputePipelineStateWithFunction:fn error:&err];
-          [fn release];
-          if (!out) {
-            ctx.init_failed = true;
-            ctx.init_error = err ? [[err localizedDescription] UTF8String]
-                                 : "newComputePipelineStateWithFunction failed";
-            return false;
-          }
-          return true;
-        };
-
-        if (!make_pipeline(@"dtw_regtile_w4", ctx.pipeline_regtile_w4)) {
-          [lib release];
-          return;
+      // Every pipeline is built by this one helper, so each failure names
+      // its kernel function.
+      auto make_pipeline = [&](NSString *name,
+                               id<MTLComputePipelineState> &out) -> bool {
+        id<MTLFunction> fn = [lib newFunctionWithName:name];
+        if (!fn) {
+          ctx.init_failed = true;
+          ctx.init_error = std::string("kernel function ") +
+                           [name UTF8String] + " not found";
+          return false;
         }
-        if (!make_pipeline(@"dtw_regtile_w8", ctx.pipeline_regtile_w8)) {
-          [lib release];
-          return;
+        out = [ctx.device newComputePipelineStateWithFunction:fn error:&err];
+        [fn release];
+        if (!out) {
+          ctx.init_failed = true;
+          ctx.init_error = std::string("kernel function ") + [name UTF8String] + ": "
+                           + (err ? [[err localizedDescription] UTF8String]
+                                  : "newComputePipelineStateWithFunction failed");
+          return false;
         }
-      }
+        return true;
+      };
 
+      // In order, stopping at the first failure; the library is released
+      // either way.
+      const bool built =
+          make_pipeline(@"dtw_wavefront", ctx.pipeline)
+          && make_pipeline(@"dtw_wavefront_global", ctx.pipeline_global)
+          && make_pipeline(@"dtw_banded_row", ctx.pipeline_banded_row)
+          && make_pipeline(@"dtw_regtile_w4", ctx.pipeline_regtile_w4)
+          && make_pipeline(@"dtw_regtile_w8", ctx.pipeline_regtile_w8);
       [lib release];
+      if (!built) return;
 
       ctx.initialized = true;
     }
@@ -813,6 +678,37 @@ std::string metal_device_info()
 // ---------------------------------------------------------------------------
 // Main entry: pairwise distance matrix.
 // ---------------------------------------------------------------------------
+namespace {
+
+// The Objective-C objects one compute_distance_matrix_metal call creates. This
+// file is built without ARC: the destructor releases each, so every exit, a
+// throw included, releases each exactly once (a message to nil does nothing).
+// The pool replaces @autoreleasepool, which is not drained when an exception
+// leaves it and so would strand the command buffers and encoders the chunk
+// loop autoreleases; releasing a pool drains it.
+struct CallObjects
+{
+  NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+  id<MTLBuffer> series = nil;
+  id<MTLBuffer> lengths = nil;
+  id<MTLBuffer> out = nil;
+  id<MTLBuffer> scratch = nil;
+
+  CallObjects() = default;
+  CallObjects(const CallObjects &) = delete;
+  CallObjects &operator=(const CallObjects &) = delete;
+  ~CallObjects()
+  {
+    [scratch release];
+    [out release];
+    [lengths release];
+    [series release];
+    [pool release];
+  }
+};
+
+} // namespace
+
 MetalDistMatResult compute_distance_matrix_metal(
     const std::vector<std::vector<double>> &series,
     const MetalDistMatOptions &opts, core::DistanceMatrix &out)
@@ -853,16 +749,17 @@ MetalDistMatResult compute_distance_matrix_metal(
   const size_t num_pairs = N * (N - 1) / 2;
   result.pairs_computed = num_pairs;
 
-  @autoreleasepool {
+  {
+    CallObjects owned;
     auto t0 = std::chrono::steady_clock::now();
 
     // Upload series (FP32, padded)
     const size_t series_bytes = N * max_L * sizeof(float);
-    id<MTLBuffer> buf_series = [ctx.device
+    owned.series = [ctx.device
         newBufferWithLength:series_bytes
                     options:MTLResourceStorageModeShared];
-    if (!buf_series) throw dtwc::DeviceError("Metal: series buffer allocation failed");
-    float *series_ptr = static_cast<float *>([buf_series contents]);
+    if (!owned.series) throw dtwc::DeviceError("Metal: series buffer allocation failed");
+    float *series_ptr = static_cast<float *>([owned.series contents]);
     std::memset(series_ptr, 0, series_bytes);
     for (size_t s = 0; s < N; ++s) {
       for (int k = 0; k < lengths[s]; ++k) {
@@ -871,20 +768,20 @@ MetalDistMatResult compute_distance_matrix_metal(
     }
 
     // Upload lengths
-    id<MTLBuffer> buf_lengths = [ctx.device
+    owned.lengths = [ctx.device
         newBufferWithBytes:lengths.data()
                     length:N * sizeof(int)
                    options:MTLResourceStorageModeShared];
-    if (!buf_lengths) throw dtwc::DeviceError("Metal: lengths buffer allocation failed");
+    if (!owned.lengths) throw dtwc::DeviceError("Metal: lengths buffer allocation failed");
 
     // Output: the packed lower triangle in FP32, widened into `out` on the
     // host. Zeroed, so the diagonal slots, which no kernel writes, read 0.
     const size_t slots = core::packed_size(N);
-    id<MTLBuffer> buf_out = [ctx.device
+    owned.out = [ctx.device
         newBufferWithLength:slots * sizeof(float)
                     options:MTLResourceStorageModeShared];
-    if (!buf_out) throw dtwc::DeviceError("Metal: output buffer allocation failed");
-    std::memset([buf_out contents], 0, slots * sizeof(float));
+    if (!owned.out) throw dtwc::DeviceError("Metal: output buffer allocation failed");
+    std::memset([owned.out contents], 0, slots * sizeof(float));
 
     // Scalar args
     const int N_int = static_cast<int>(N);
@@ -962,7 +859,6 @@ MetalDistMatResult compute_distance_matrix_metal(
     if (chunk > num_pairs) chunk = num_pairs;
 
     // Allocate scratch sized for one chunk (reused across chunks).
-    id<MTLBuffer> buf_scratch = nil;
     size_t scratch_bytes = 0;
     if (use_global) {
       scratch_bytes = chunk * 3ULL * (size_t)max_L * sizeof(float);
@@ -973,12 +869,9 @@ MetalDistMatResult compute_distance_matrix_metal(
       scratch_bytes = 0;
     }
     if (scratch_bytes > 0) {
-      buf_scratch = [ctx.device newBufferWithLength:scratch_bytes
-                                            options:MTLResourceStorageModePrivate];
-      if (!buf_scratch) {
-        [buf_out release];
-        [buf_lengths release];
-        [buf_series release];
+      owned.scratch = [ctx.device newBufferWithLength:scratch_bytes
+                                              options:MTLResourceStorageModePrivate];
+      if (!owned.scratch) {
         throw dtwc::DeviceError(
             "Metal: scratch allocation failed (" + std::to_string(scratch_bytes)
             + " bytes for max_L=" + std::to_string(max_L) + ", chunk="
@@ -1020,57 +913,33 @@ MetalDistMatResult compute_distance_matrix_metal(
       banded_stride = static_cast<int>(ntgs * tg_size);
       scratch_bytes =
           2ULL * (size_t)(2 * band + 1) * (size_t)banded_stride * sizeof(float);
-      buf_scratch = [ctx.device newBufferWithLength:scratch_bytes
-                                            options:MTLResourceStorageModePrivate];
-      if (!buf_scratch) {
-        [buf_out release];
-        [buf_lengths release];
-        [buf_series release];
+      owned.scratch = [ctx.device newBufferWithLength:scratch_bytes
+                                              options:MTLResourceStorageModePrivate];
+      if (!owned.scratch) {
         throw dtwc::DeviceError(
             "Metal: banded-row scratch allocation failed ("
             + std::to_string(scratch_bytes) + " bytes). No CPU fallback was attempted.");
       }
     }
 
-    const bool pipeline_uses_pair_indices = !use_banded_row && !use_regtile;
-    id<MTLBuffer> buf_pair_indices = nil;
-    const int has_pair_indices = 0;
-    const size_t effective_pairs = num_pairs;
-
-    // The wavefront kernels take a pair-index buffer; bind a 1-int dummy.
-    if (pipeline_uses_pair_indices && !buf_pair_indices) {
-      buf_pair_indices = [ctx.device
-          newBufferWithLength:sizeof(int)
-                      options:MTLResourceStorageModePrivate];
-      if (!buf_pair_indices) {
-        throw dtwc::DeviceError(
-            "Metal: pair_indices dummy buffer allocation failed");
-      }
-    }
-
-    // Trim chunk to effective_pairs so the final chunk never overshoots.
-    if (chunk > effective_pairs && effective_pairs > 0) {
-      chunk = effective_pairs;
-    }
-
     id<MTLCommandBuffer> last_cmd = nil;
-    for (size_t off = 0; off < effective_pairs; off += chunk) {
+    for (size_t off = 0; off < num_pairs; off += chunk) {
       // The kernels read buffer(8) as a 64-bit `long`: typed here, never narrowed.
       const std::int64_t pair_offset = static_cast<std::int64_t>(off);
-      const size_t this_chunk = std::min(chunk, effective_pairs - off);
+      const size_t this_chunk = std::min(chunk, num_pairs - off);
 
       id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
       id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
       [enc setComputePipelineState:pipeline];
-      [enc setBuffer:buf_series  offset:0 atIndex:0];
-      [enc setBuffer:buf_lengths offset:0 atIndex:1];
-      [enc setBuffer:buf_out     offset:0 atIndex:2];
+      [enc setBuffer:owned.series  offset:0 atIndex:0];
+      [enc setBuffer:owned.lengths offset:0 atIndex:1];
+      [enc setBuffer:owned.out     offset:0 atIndex:2];
       [enc setBytes:&N_int     length:sizeof(int) atIndex:3];
       [enc setBytes:&max_L     length:sizeof(int) atIndex:4];
       [enc setBytes:&band      length:sizeof(int) atIndex:5];
       [enc setBytes:&use_sq_l2 length:sizeof(int) atIndex:6];
       if (use_global || use_banded_row) {
-        [enc setBuffer:buf_scratch offset:0 atIndex:7];
+        [enc setBuffer:owned.scratch offset:0 atIndex:7];
       } else if (use_regtile) {
         [enc setThreadgroupMemoryLength:regtile_smem_len atIndex:0];
       } else {
@@ -1079,10 +948,6 @@ MetalDistMatResult compute_distance_matrix_metal(
       [enc setBytes:&pair_offset length:sizeof(pair_offset) atIndex:8];
       if (use_banded_row) {
         [enc setBytes:&banded_stride length:sizeof(int) atIndex:9];
-      }
-      if (pipeline_uses_pair_indices) {
-        [enc setBuffer:buf_pair_indices offset:0 atIndex:10];
-        [enc setBytes:&has_pair_indices length:sizeof(int) atIndex:11];
       }
 
       // Grid geometry:
@@ -1132,16 +997,10 @@ MetalDistMatResult compute_distance_matrix_metal(
     // as a mapped one is, keeps its storage) and widen the packed FP32
     // triangle into it, slot for slot.
     if (out.size() != N) out.resize(N);
-    const float *packed = static_cast<const float *>([buf_out contents]);
+    const float *packed = static_cast<const float *>([owned.out contents]);
     double *dst = out.raw();
     for (size_t t = 0; t < slots; ++t)
       dst[t] = dtwc::core::normalize_public_distance(packed[t]);
-
-    [buf_out release];
-    [buf_lengths release];
-    [buf_series release];
-    if (buf_scratch) [buf_scratch release];
-    if (buf_pair_indices) [buf_pair_indices release];
 
     auto t1 = std::chrono::steady_clock::now();
     result.gpu_time_sec =
@@ -1153,8 +1012,7 @@ MetalDistMatResult compute_distance_matrix_metal(
               << (result.gpu_time_sec * 1000.0) << " ms";
     std::cout << " on " << metal_device_info() << std::endl;
   }
-  // kernel_used is set during dispatch (inside the autoreleasepool) to reflect
-  // the actual pipeline chosen.
+  // kernel_used is set during dispatch to reflect the actual pipeline chosen.
 
   return result;
 }
