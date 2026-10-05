@@ -170,13 +170,16 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   with its built-ins; v1 Python `DataLoader` / `write*` stay as thin Python (Volkan 10-01) (L1 1f951e1, record:
   HiGHS 75–78 % of each binding, CLI + readers ~2 %, two edges pull them in). L2a: each dtwc/ source folder lists its
   own files (Volkan 10-01; L2a 87b8e88, 15d87f2; merged 1110fe10; compile commands and executable link lines identical in
-  every tree; dtwc++.lib's member order follows the folders); Python reads `.arrow` through pyarrow too
+  every tree; dtwc++.lib's member order follows the folders); Python reads `.arrow` through pyarrow too. Python half done
+  by W9b (5e710ba4 … 8ec61075, row W9b; merged 4265e3a6): the wheel's link map (W9b record) holds no `run`, `api` or `config`
+  object (CLI11, fkYAML), and Python reads text through the bound C++ reader and writes through the C++ writer (Volkan
+  10-02, not numpy/pandas), Parquet and Arrow IPC through pyarrow; the MATLAB half and L2b stay open
 - ☐ M1 Python solves the MIP with the user's highspy (optional extra; the wheel drops HiGHS); the MEX keeps HiGHS
   linked (CI MEX: HiGHS ON, Gurobi OFF); the model leaves C++ as arrays for Python (Volkan 10-01)
 - ☑ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds (W14b: Gurobi defaults OFF; the default MEX imports no Gurobi DLL; an explicit ON needs Gurobi's bin on PATH)
 - ☑ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases (W9a 2cabc18, adb9031, 6053239, 151f14e; merged 357d76e3; k required: v1.0.0 with no --Nc exited 0 having clustered nothing; name = the input stem; C++ method default auto; 23 v1 spellings warn once; --Nc i..j refused)
-- ☐ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
-  silently editing a copy (E1) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3)
+- ☑ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
+  silently editing a copy (E1) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3) (W9b 5e710ba4, 4b0c6710, da4fdb09, 7ab98ce0, 7a00b225, d6129e1f, 55f2d3eb, 98190ae4, 29c7507b, f3a552d4, 49e443f6, 004d9b38, 9d186b46, 8ec61075; records 7b397a95, c689a4ac, 974ca3cc; merged 4265e3a6; `cluster()`, `DTWClustering`, `load()` and `set_data` run Config → apply() → `Problem::cluster()`; Python reads text through the bound C++ reader and writes through the C++ writer (Volkan 10-02), so a Ctrl-Z is refused, not an end of file; pytest 962 / 20 skipped / 0 failed against base 1094 / 19 / 0 (199 ids removed, 68 added); the CLI outputs byte-identical to base)
 - ☐ W9c `hpc` → `job.toml`; the positional transport goes; `device=hpc` takes `gpu_device=` (a100, a6000, l40s, h100, …) to pick the
   SLURM GPU and the build's CUDA arch; a build on the target node detects both itself (Volkan 09-30). S1 notes:
   `slurm_remote.sh build` submits with no `--gres` (always portable); `jobs/gpu_test.slurm` and
