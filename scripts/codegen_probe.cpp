@@ -20,19 +20,21 @@
 #include "core/msm.hpp"
 #include "core/twe.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <span>
 
 namespace {
 
-// A plain absolute difference for the kernels called directly, so nothing here
-// is pessimised by an indirect call the real code would not make.
+// The library's absolute difference (dtw_cost.hpp: std::abs(a - b), one fabd or
+// andpd), called directly, so nothing here is pessimised by an indirect call or
+// a compare-and-select the real code would not make.
 struct AbsDiff
 {
   template <typename data_t>
   data_t operator()(data_t a, data_t b) const noexcept
   {
-    return a < b ? b - a : a - b;
+    return std::abs(a - b);
   }
 };
 
