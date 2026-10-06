@@ -66,7 +66,8 @@ Bindings: `python/` (6.7k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
 - Full run: `ctest --test-dir build -C Release -j1 --output-on-failure` — 125 tests, 3 `MAY_SKIP` (CUDA,
   Metal) on the Windows box (2026-09-29, after Y3).
 - Gates: `scripts/check_docs.py --cli <dtwc_cl>` (every flag the docs, README and `.claude/commands` show is
-  in the live `--help`; the harness still fails an unregistered skip), `scripts/check_pins.py`,
+  in the live `--help`, and every flag the help prints has a row in `getting-started/cli.md`; the harness still
+  fails an unregistered skip), `scripts/check_pins.py`,
   `scripts/generate_docs.py --check`, gitleaks in CI. Manual tools: `codegen_report.py`, `machine_facts.py`,
   `smoke_release_archive.py`, `check_ipo_inlining.py`, `repo_map.py`, `run_bench.sh`.
 - CI (`.github/workflows/`): ubuntu, windows and macOS unit jobs, documentation (docs gates, Hugo, Doxygen),
