@@ -41,6 +41,7 @@
 #include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
 #include <mip/mip.hpp>
+#include <mip/decode_assignment.hpp>
 
 
 #include <algorithm>
@@ -53,6 +54,7 @@
 #include <memory>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -794,6 +796,8 @@ NB_MODULE(_dtwcpp_core, m) {
          "CUDA GPUs and on Metal), FP32 or FP64. A change drops the distance matrix.")
     // ---- config properties (canonical names) ----
     .def_prop_rw("method", &dtwc::Problem::method, &dtwc::Problem::set_method)
+    .def_prop_ro("solver", &dtwc::Problem::solver,
+                 "The MIP solver of Method.MIP: Solver.HiGHS unless set_solver chose another.")
     .def_prop_rw("max_iter", &dtwc::Problem::max_iter,
                  &dtwc::Problem::set_max_iter)
     .def_prop_rw("n_repetitions", &dtwc::Problem::n_repetitions,
@@ -1033,6 +1037,60 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "prob"_a, "directory"_a,
      "Write a clustered Problem's four result files into directory, as\n"
      "dtwc_cl and C++ Result::save write them (detail::write_result_files).");
+
+  // =========================================================================
+  // Method.MIP without linked HiGHS (the wheel): dtwcpp._mip hands the model's
+  // arrays to highspy as read-only NumPy views of the C++ model, which each
+  // view keeps alive, and _mip_set_solution decodes highspy's solution.
+  // =========================================================================
+
+  using dtwc::mip::PMedianModel;
+  const auto view = [](auto member) {
+    return [member](const PMedianModel &model) {
+      const auto &values = model.*member;
+      using T = typename std::remove_cvref_t<decltype(values)>::value_type;
+      return nb::ndarray<nb::numpy, const T, nb::ndim<1>>(values.data(), { values.size() });
+    };
+  };
+  constexpr auto internal = nb::rv_policy::reference_internal;
+  nb::class_<PMedianModel>(m, "_MIPModel",
+                           "The compact p-median MIP of a Problem as the arrays HiGHS takes\n"
+                           "(dtwc::mip::PMedianModel); start is empty without a warm start.")
+    .def_ro("num_col", &PMedianModel::num_col)
+    .def_ro("num_row", &PMedianModel::num_row)
+    .def_prop_ro("col_cost", view(&PMedianModel::col_cost), internal)
+    .def_prop_ro("col_lower", view(&PMedianModel::col_lower), internal)
+    .def_prop_ro("col_upper", view(&PMedianModel::col_upper), internal)
+    .def_prop_ro("row_lower", view(&PMedianModel::row_lower), internal)
+    .def_prop_ro("row_upper", view(&PMedianModel::row_upper), internal)
+    .def_prop_ro("a_start", view(&PMedianModel::a_start), internal)
+    .def_prop_ro("a_index", view(&PMedianModel::a_index), internal)
+    .def_prop_ro("a_value", view(&PMedianModel::a_value), internal)
+    .def_prop_ro("integrality", view(&PMedianModel::integrality), internal)
+    .def_prop_ro("start", view(&PMedianModel::start), internal);
+
+  m.def("_mip_model", [](dtwc::Problem &prob) {
+    dtwc::require_clusterable(prob.n_clusters(), static_cast<std::size_t>(prob.size())); // as Problem::cluster()
+    dtwc::validate_mip_settings(prob.mip_settings);                                       // and its MIP route
+    nb::gil_scoped_release release;
+    return dtwc::mip::build_p_median_model(prob);
+  }, "prob"_a,
+     "Fill prob's distance matrix and return its compact p-median MIP as arrays\n"
+     "(dtwc::mip::build_p_median_model), the model linked HiGHS solves.");
+
+  m.def("_mip_set_solution", [](dtwc::Problem &prob, nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x) {
+    const auto n = static_cast<std::size_t>(prob.size());
+    if (x.size() != n * n)
+      throw dtwc::InvalidInput("_mip_set_solution: expected N * N = " + std::to_string(n * n)
+                               + " values, got " + std::to_string(x.size()) + ".");
+    auto result = dtwc::mip::decode_assignment({ x.data(), x.size() }, n, prob.n_clusters(), false, "highspy");
+    prob.set_result(result);
+    result.total_cost = prob.find_total_cost();
+    result.converged = true; // as Problem::cluster() returns an exact method's result
+    return result;
+  }, "prob"_a, "x"_a,
+     "Decode a solution of prob's _mip_model (dtwc::mip::decode_assignment), publish\n"
+     "it on prob and return the ClusteringResult Problem.cluster() returns.");
 
   // =========================================================================
   // FastPAM

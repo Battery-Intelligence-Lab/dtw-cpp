@@ -186,6 +186,11 @@ Arrow IPC through the installed pyarrow (the `parquet` extra; the wheel links no
 C++); `Result.save` and `Problem.write_*` write with the C++ writers. Series already in
 memory go in as numpy, pandas, pyarrow or Python hold them: a 2-D array, a list of 1-D
 arrays (any lengths), a pandas DataFrame (rows, named by the index) or an Arrow array.
+An extension that links no HiGHS solves `method="mip"` with the installed highspy (the `mip`
+extra): C++ builds the model's arrays (`dtwc::mip::build_p_median_model`, what linked HiGHS
+solves), highspy reads them as NumPy views, and C++ decodes its solution into the labels and
+medoids `Problem::cluster()` publishes. Without highspy, `SolverError` names
+`pip install dtwcpp[mip]`.
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as
@@ -361,7 +366,7 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | CLARA, OneBatchPAM and hierarchical settings | `sample_size()`, `n_samples()`, `batch_size()`, `linkage()` / `set_sample_size(index_t)`, `set_n_samples(int)`, `set_batch_size(index_t)`, `set_linkage(algorithms::Linkage)` `[introduced-2.0]` | — | — | private C++ state, read by `cluster()`; CLI exposes `--sample-size`, `--n-samples`, `--batch-size`, `--linkage` |
-| solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
+| solver | `solver()` `[introduced-2.0]` / `[[nodiscard]] set_solver(Solver) -> bool` | `solver` prop (read-only) / `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
 | GPU precision | `gpu_precision()` / `set_gpu_precision(GpuPrecision)` `[introduced-2.0]` | `set_gpu_precision(GpuPrecision)` `[introduced-2.0]` | `set_gpu_precision(name)` `[introduced-2.0]` | private state, default `Auto`; names as `--gpu-precision` |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |

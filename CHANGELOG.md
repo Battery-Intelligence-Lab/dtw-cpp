@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Added (Python):** an extension built without HiGHS (`-DDTWC_ENABLE_HIGHS=OFF`) solves `method="mip"` with the
+  installed highspy, the new `mip` extra (`pip install dtwcpp[mip]`): C++ builds the model's arrays
+  (`dtwc::mip::build_p_median_model`), highspy reads them as NumPy views and C++ decodes its solution. `mip_gap`,
+  `time_limit_sec`, `verbose_solver` and the FastPAM warm start apply as they do to linked HiGHS, and HiGHS runs on
+  the OpenMP thread count dtwcpp uses. Without highspy, `SolverError` names the extra.
+- **Added (C++, Python):** `Problem::solver()` and the read-only `Problem.solver` return the MIP solver `set_solver`
+  chose.
 - **Fixed (CLI, C++, Python, MATLAB):** a CSV/TSV series file or a distance-matrix CSV (`--dist-matrix`,
   `read_distance_matrix`) holding a Ctrl-Z (0x1A) byte is refused with `IOError`, as any non-numeric field is (the series
   reader names the row and column). v1.0.0 read series files in text mode, which on Windows ended the file at that byte

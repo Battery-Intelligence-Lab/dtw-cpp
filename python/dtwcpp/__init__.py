@@ -237,6 +237,22 @@ def _problem_set_data(self, series, names=None, ndim=1):
 
 Problem.set_data = _problem_set_data
 
+_cluster = Problem.cluster
+
+
+def _problem_cluster(self):
+    """Cluster the series into n_clusters() by Problem.method (Auto: PAM on a GPU and
+    for up to 5000 series, else CLARA) and return the ClusteringResult; the labels
+    and medoids are published on the Problem too. An extension that links no HiGHS
+    (the wheel) solves Method.MIP on the HiGHS solver with the installed highspy."""
+    if self.method == Method.MIP and self.solver == Solver.HiGHS and not HIGHS_AVAILABLE:
+        from dtwcpp import _mip
+        return _mip.cluster(self)
+    return _cluster(self)
+
+
+Problem.cluster = _problem_cluster
+
 from . import distance
 from . import preprocess
 from . import diagnose
