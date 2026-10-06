@@ -168,51 +168,9 @@ class TestBuildCommand:
 
 
 # ---------------------------------------------------------------------------
-# Binary lookup: DTWC_CL_PATH names the binary; otherwise the newest under root
-# ---------------------------------------------------------------------------
-class TestFindDtwcBinary:
-    @staticmethod
-    def _tree(tmp_path):
-        """A repo-like tree whose NEWEST build is build-arrow, plus an older build/."""
-        older = tmp_path / "build" / "bin" / "dtwc_cl.exe"
-        newer = tmp_path / "build-arrow" / "bin" / "dtwc_cl.exe"
-        for stamp, binary in enumerate((older, newer)):
-            binary.parent.mkdir(parents=True)
-            binary.write_bytes(b"")
-            os.utime(binary, (1_000_000 + stamp, 1_000_000 + stamp))
-        return older, newer
-
-    def test_without_the_variable_the_newest_build_wins(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("DTWC_CL_PATH", raising=False)
-        _, newer = self._tree(tmp_path)
-        assert Path(_hpc.find_dtwc_binary(str(tmp_path))) == newer
-
-    def test_the_variable_beats_a_newer_build(self, tmp_path, monkeypatch):
-        self._tree(tmp_path)
-        pinned = tmp_path / "pinned" / "dtwc_cl.exe"
-        pinned.parent.mkdir()
-        pinned.write_bytes(b"")
-        os.utime(pinned, (500_000, 500_000))
-        monkeypatch.setenv("DTWC_CL_PATH", str(pinned))
-        assert _hpc.find_dtwc_binary(str(tmp_path)) == str(pinned)
-
-    def test_a_missing_path_is_an_error_naming_it(self, tmp_path, monkeypatch):
-        self._tree(tmp_path)
-        missing = tmp_path / "nowhere" / "dtwc_cl.exe"
-        monkeypatch.setenv("DTWC_CL_PATH", str(missing))
-        with pytest.raises(FileNotFoundError, match="DTWC_CL_PATH") as caught:
-            _hpc.find_dtwc_binary(str(tmp_path))
-        assert str(missing) in str(caught.value)
-
-
-# ---------------------------------------------------------------------------
 # Real end-to-end contract: serialize -> run LOCAL dtwc_cl -> parse.
 # This is the cluster job minus the ssh/rsync transport. Skips if no binary.
 # ---------------------------------------------------------------------------
-def _local_binary():
-    return _hpc.find_dtwc_binary(str(Path(__file__).resolve().parents[2]))
-
-
 def _bash_path(path):
     """Translate an absolute Windows path for Git Bash or WSL bash."""
     path = Path(path).resolve().as_posix()
@@ -1400,11 +1358,10 @@ class TestPackagedWrapper:
         assert not called.exists()
 
 
-@pytest.mark.skipif(_local_binary() is None, reason="no local dtwc_cl binary built")
 class TestLocalRoundTrip:
-    def test_required_input_message_names_toml_first(self):
+    def test_required_input_message_names_toml_first(self, dtwc_cl):
         completed = subprocess.run(
-            [_local_binary(), "--n-clusters", "2"],
+            [dtwc_cl, "--n-clusters", "2"],
             check=False, capture_output=True, text=True,
         )
         assert completed.returncode != 0
@@ -1412,7 +1369,7 @@ class TestLocalRoundTrip:
             "Error: --input is required via CLI or config file (TOML or YAML)\n"
         )
 
-    def test_two_groups_recovered(self, tmp_path):
+    def test_two_groups_recovered(self, tmp_path, dtwc_cl):
         rng = np.random.default_rng(7)
         series = [list(rng.standard_normal(8) * 0.1 + (0.0 if i < 5 else 9.0))
                   for i in range(10)]
@@ -1422,7 +1379,7 @@ class TestLocalRoundTrip:
         out = tmp_path / "out"
         out.mkdir()
         cmd = _hpc.build_dtwc_command(
-            _local_binary(), str(tsv), k=2, name="rt", output_dir=str(out),
+            dtwc_cl, str(tsv), k=2, name="rt", output_dir=str(out),
             method="pam", device="cpu",
         )
         subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -1433,7 +1390,7 @@ class TestLocalRoundTrip:
         assert len(set(labels[5:])) == 1
         assert labels[0] != labels[9]
 
-    def test_seeded_restart_improves_registered_fixture(self, tmp_path):
+    def test_seeded_restart_improves_registered_fixture(self, tmp_path, dtwc_cl):
         base = np.array([0.0, 0.01, -0.02, 0.03])
         series = [base + offset for offset in range(8)]
         tsv = tmp_path / "restart_input.tsv"
@@ -1444,7 +1401,7 @@ class TestLocalRoundTrip:
             out = tmp_path / f"restart_{n_init}"
             out.mkdir()
             cmd = _hpc.build_dtwc_command(
-                _local_binary(), str(tsv), k=3, name="restart",
+                dtwc_cl, str(tsv), k=3, name="restart",
                 output_dir=str(out), method="pam", device="cpu",
                 n_init=n_init, seed=42,
             )
@@ -1457,11 +1414,11 @@ class TestLocalRoundTrip:
         assert "cost=24" in observed[0]
         assert "cost=20" in observed[1]
 
-    def test_cli_rejects_zero_restart_count(self, tmp_path):
+    def test_cli_rejects_zero_restart_count(self, tmp_path, dtwc_cl):
         tsv = tmp_path / "invalid_restart.tsv"
         _hpc.write_series_tsv([[0.0, 1.0], [1.0, 2.0]], tsv)
         cmd = _hpc.build_dtwc_command(
-            _local_binary(), str(tsv), k=2, name="invalid_restart",
+            dtwc_cl, str(tsv), k=2, name="invalid_restart",
             output_dir=str(tmp_path), n_init=1,
         )
         cmd[cmd.index("--n-init") + 1] = "0"
@@ -1472,7 +1429,7 @@ class TestLocalRoundTrip:
         assert completed.returncode != 0
         assert "n-init" in completed.stderr
 
-    def test_cli_missing_strategy_is_honored(self, tmp_path):
+    def test_cli_missing_strategy_is_honored(self, tmp_path, dtwc_cl):
         tsv = tmp_path / "series.tsv"
         _hpc.write_series_tsv(
             [[0.0, 0.5, 1.0], [0.0, 0.6, 1.0], [9.0, 9.5, 10.0]],
@@ -1482,7 +1439,7 @@ class TestLocalRoundTrip:
         accepted_dir = tmp_path / "accepted"
         accepted_dir.mkdir()
         accepted_cmd = _hpc.build_dtwc_command(
-            _local_binary(), str(tsv), k=2, name="missing_zero_cost",
+            dtwc_cl, str(tsv), k=2, name="missing_zero_cost",
             output_dir=str(accepted_dir), missing_strategy="zero_cost",
         )
         completed = subprocess.run(

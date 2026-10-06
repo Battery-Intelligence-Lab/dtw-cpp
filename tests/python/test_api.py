@@ -4,7 +4,6 @@
 @author Volkan Kumtepeli
 """
 import subprocess
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -672,11 +671,6 @@ def test_what_is_not_series_is_refused_everywhere(entry, data, message):
 # ---------------------------------------------------------------------------
 # §1.4 series names — Tier-1 output carries the loader's names, as C++ does
 # ---------------------------------------------------------------------------
-def _dtwc_cl_binary():
-    from dtwcpp import _hpc
-    return _hpc.find_dtwc_binary(str(Path(__file__).resolve().parents[2]))
-
-
 class TestSeriesNames:
     """``Problem::series_name(i)`` comes from the loader, not from ``range(N)``."""
 
@@ -717,16 +711,14 @@ class TestSeriesNames:
         lines = (tmp_path / "named_labels.csv").read_text().splitlines()
         assert [line.split(",")[0] for line in lines[1:]] == ["1", "2", "3", "4"]
 
-    def test_save_is_byte_identical_to_the_cli(self, tmp_path):
+    def test_save_is_byte_identical_to_the_cli(self, tmp_path, dtwc_cl):
         """A CLI run and a Python run on one file must write the same bytes."""
-        binary = _dtwc_cl_binary()
-        assert binary is not None, "no dtwc_cl binary found; build one first"
         csv = tmp_path / "parity.csv"
         np.savetxt(csv, _two_groups(), delimiter=",")
         cli_out = tmp_path / "cli"
         py_out = tmp_path / "py"
         run = subprocess.run(
-            [binary, "-i", str(csv), "-o", str(cli_out), "--name", "parity",
+            [dtwc_cl, "-i", str(csv), "-o", str(cli_out), "--name", "parity",
              "-k", "2", "-m", "pam"],
             capture_output=True, text=True)
         assert run.returncode == 0, run.stderr
@@ -757,20 +749,18 @@ class TestNonAsciiSeriesNames:
         assert "caf\u00e9" in names
 
     def test_save_is_byte_identical_to_the_cli_for_a_non_ascii_folder(
-            self, tmp_path):
+            self, tmp_path, dtwc_cl):
         """The four CSVs must be cmp-identical to dtwc_cl on a non-ASCII name.
 
         C++ emits the loader name as UTF-8 bytes through a text-mode ofstream;
         Result.save must therefore write UTF-8 with the platform line ending,
         not the locale encoding.
         """
-        binary = _dtwc_cl_binary()
-        assert binary is not None, "no dtwc_cl binary found; build one first"
         folder = self._folder(tmp_path)
         cli_out = tmp_path / "cli"
         py_out = tmp_path / "py"
         run = subprocess.run(
-            [binary, "-i", str(folder), "-o", str(cli_out), "--name", "uni",
+            [dtwc_cl, "-i", str(folder), "-o", str(cli_out), "--name", "uni",
              "-k", "2", "-m", "pam"],
             capture_output=True, text=True)
         assert run.returncode == 0, run.stderr

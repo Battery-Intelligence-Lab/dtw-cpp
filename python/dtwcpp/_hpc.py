@@ -10,14 +10,13 @@
       2. drive the wrapper (submit -> poll -> download),
       3. parse the downloaded NAME_labels.csv back into per-series cluster labels.
 
-    The pure helpers (serialize, parse, command build, binary discovery) are unit
+    The pure helpers (serialize, parse, command build) are unit
     tested AND validated end-to-end against a local dtwc_cl binary in
     tests/python/test_hpc.py. The remote submission itself cannot be exercised on a
     dev laptop — it must be verified on the actual cluster.
 @author Volkan Kumtepeli
 """
 import csv
-import glob
 import importlib.resources
 import os
 import re
@@ -343,46 +342,6 @@ def build_dtwc_command(binary, input_path, k, name, output_dir, *,
     if seed is not None:
         command.extend(["--seed", str(seed)])
     return command
-
-
-def find_dtwc_binary(root):
-    """Return the dtwc_cl binary to run.
-
-    ``DTWC_CL_PATH`` decides when it is set. A value that is not a file raises
-    ``FileNotFoundError`` and never falls through to the search, because the
-    newest binary under ``root`` can be a build that cannot start (an Arrow
-    build whose DLLs are not on PATH).
-
-    The search returns a path under ``root``, or ``None``. It prefers build-tree
-    binaries (including nested ``build/*/bin`` verification trees) over a
-    possibly-stale top-level ``bin/``; within a group, the most recently
-    modified wins.
-    """
-    override = os.environ.get("DTWC_CL_PATH")
-    if override is not None:
-        if not os.path.isfile(override):
-            raise FileNotFoundError(f'DTWC_CL_PATH="{override}" is not a file')
-        return override
-    _skip = (".pdb", ".ipdb", ".iobj", ".recipe", ".idx", ".obj", ".lib")
-    pattern_groups = (
-        (
-            os.path.join(root, "build", "bin", "dtwc_cl*"),
-            os.path.join(root, "build", "*", "bin", "dtwc_cl*"),
-            os.path.join(root, "build*", "bin", "dtwc_cl*"),
-        ),
-        (os.path.join(root, "bin", "dtwc_cl*"),),
-    )
-    for patterns in pattern_groups:
-        cands = {
-            p
-            for pat in patterns
-            for p in glob.glob(pat)
-            if os.path.isfile(p) and not p.endswith(_skip)
-            and (p.endswith(".exe") or os.path.splitext(p)[1] == "")
-        }
-        if cands:
-            return max(cands, key=os.path.getmtime)
-    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────
