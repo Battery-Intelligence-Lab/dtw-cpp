@@ -37,7 +37,7 @@ A blank line is not a series: blank lines at the end of the file are ignored, an
 
 A _folder path_ can contain multiple individual files, each representing a _single_ time series. Each line of these files holds exactly one value, after the columns skipped with `--skip-cols`; a line with more fields is an error, not a line whose extra fields are dropped. The values may be separated by commas, tabs, or spaces. In this case, time-series names are derived from the individual file names. Hidden files (names starting with `.`, such as `.DS_Store` or `.gitkeep`) are not series and are skipped. Blank lines follow the single-file rule above: ignored at the end, an error before more data.
 
-**Example:** A `file.csv` is available, with two columns separated by a comma; the first column is just an index, and the second column is the actual data. The index column must be skipped; read without doing so, the file is rejected. Files written by pandas start with a `,0` header row. To read the data points in such files, pass `--skip-rows 1 --skip-cols 1` to `dtwc_cl` (`start_row(1).start_column(1)` on a C++ `DataLoader`, `skip_rows=1, skip_cols=1` in Python).
+**Example:** A `file.csv` is available, with two columns separated by a comma; the first column is just an index, and the second column is the actual data. The index column must be skipped; read without doing so, the file is rejected. Files written by pandas start with a `,0` header row. To read the data points in such files, pass `--skip-rows 1 --skip-cols 1` to `dtwc_cl` (`start_row(1).start_column(1)` on a C++ `DataLoader`, `skip_rows=1, skip_cols=1` in Python, `'SkipRows', 1, 'SkipCols', 1` in MATLAB's `dtwc.load`).
 
 |   | , | 0     |
 |---|---|-------|
@@ -109,6 +109,18 @@ the first list column is a series, named by the first string column, else
 data = dtwcpp.load("data.parquet").as_data()
 ```
 
+MATLAB reads Parquet with its own `parquetread` (R2019a or later; the MEX links no
+Arrow C++), from a file or a folder of them, and takes what the C++ reader takes:
+the first Float32/Float64 column is one series, named by its file, and the first
+list column of them one series per row, named `series_<i>`. A null series is
+refused in both; a null value inside one is refused by the C++ reader, while
+`parquetread` reads it as NaN, which DTWC++ takes as a missing value.
+
+```matlab
+data = dtwc.load('data.parquet');
+[series, names] = data.as_series();
+```
+
 ### Metadata-first RAM-limited streaming
 
 `--ram-limit` is checked from Parquet schema and row-group metadata before the
@@ -161,6 +173,10 @@ same columns and names:
 data = dtwcpp.load("data.arrow").as_data()
 ```
 
+MATLAB has no Arrow IPC reader (R2026a has no `featherread`), so `dtwc.load` of an
+`.arrow`, `.ipc` or `.feather` file raises `dtwc:invalidArgument` naming the format:
+read the series elsewhere and pass them in memory, or write them to Parquet or CSV.
+
 **Schema:** a `data` column of `List` or `LargeList` (more than 2 billion values) of `Float32`/`Float64` holds one series per row, across every record batch; an optional `name` column of `Utf8` or `LargeUtf8` (Polars' default) names the series (without one, or for a null name, a series is `series_<i>`), and a `name` column of any other type is an error. The schema metadata `ndim` gives the features per time step (default 1). A null series or value is an error. Create Arrow IPC files with the `dtwc-convert` tool — see [Data formats and conversion](../../guides/data-formats/).
 
 ---
@@ -188,6 +204,17 @@ labels = dtwcpp.DTWClustering(n_clusters=2).fit(ragged).labels_
 
 prob = dtwcpp.Problem("mine")
 prob.set_data(X)                                           # names "0", "1", ...
+```
+
+MATLAB's `dtwc.cluster`, `dtwc.DTWClustering` (`fit`, `predict`, `transform`,
+`score`), `dtwc.load`, `dtwc.compute_distance_matrix` and `Problem.set_data` take
+a numeric matrix (one series per row) or a cell of numeric vectors (series of any
+lengths), named by their ordinals; any other element is an error naming it:
+
+```matlab
+X = readmatrix('series.csv');                    % one series per row
+result = dtwc.cluster(X, 3);
+labels = dtwc.DTWClustering('NClusters', 2).fit_predict({[0 1 2], [5 6]});
 ```
 
 If you are using DTW-C++ directly (e.g., as a library within your software), you might prefer to read data independently or use pre-generated data. DTW-C++ employs the `Data` class to encapsulate a `std::vector<std::vector<data_type>>` data object and `std::vector<std::string>` for their corresponding names. The following example code snippet demonstrates how to input data into a Problem object.

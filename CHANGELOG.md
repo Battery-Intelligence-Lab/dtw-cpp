@@ -38,6 +38,25 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   an Arrow IPC file (`.arrow`, `.ipc`, `.feather`: the `data` column, named by `name`) through the installed pyarrow, as
   it reads Parquet; text is read by the C++ reader `dtwc_cl` uses. The extension module no longer links the CLI's
   pipeline or config code (CLI11, fkYAML).
+- **Changed (MATLAB):** `dtwc.cluster(data, k, Name, Value)` takes every `dtwc_cl` key that is not about files, by
+  Python's words in CamelCase (`Method`, `Band`, `Metric`, `Variant`, `WdtwG`, `MaxIter`, `NInit`, `Seed`, `Linkage`,
+  `Solver`, `GpuPrecision`, `Device`, `Name`, ...): C++ reads and checks them (an unknown key is `dtwc:invalidArgument`
+  naming the valid ones) and `Problem::cluster()` runs the method, so `Method` defaults to `auto` as in C++, Python and
+  the CLI. The 2.0 previews took four snake_case keys (`method`, `band`, `device`, `max_iter`) and defaulted to `pam`;
+  `dtwc.load` takes `SkipCols`, `SkipRows`, `Delimiter` and `Name`. The snake_case spellings are unknown keys.
+- **Changed (MATLAB):** `dtwc.DTWClustering` is Python's estimator: `fit` runs `Method` (default `pam`) and its `NInit`
+  seeded restarts on one distance matrix (the previews filled one per restart); its settable properties are Python's
+  parameters in CamelCase (it gains `Method`, `MsmC`, `TweNu`, `TweLambda`, `MvMode`, `BatchSize` and `RandomState`),
+  and one left empty takes the C++ default; `TotalCost` is `Inertia`; `predict` returns the nearest medoid (it raised
+  "not yet implemented") and `transform` and `score` are added; `fit` no longer sets and restores `dtwc.device()`.
+- **Added (MATLAB):** `dtwc.load` reads Parquet with MATLAB's `parquetread`, taking what the C++ reader takes, and
+  refuses an Arrow IPC file (`.arrow`, `.ipc`, `.feather`) with `dtwc:invalidArgument`: MATLAB has no reader for it.
+  Text is read by the C++ reader and results written by the C++ writer, as before. Every entry (`cluster`, `load`,
+  `DTWClustering`, `compute_distance_matrix`, `Problem.set_data`) takes a numeric matrix (one series per row) or a
+  cell of numeric vectors through one conversion; a cell element that is not a vector is refused (`Problem.set_data`
+  flattened it). `Dataset.as_series()` and `Result.distance_matrix()` are public, `Problem.cluster()` returns its
+  result, `Problem.distance_matrix()` fills the matrix first, and `Problem.Band`, `Verbose`, `MaxIter` and
+  `NRepetitions` read the settings. The MEX no longer links the CLI's run pipeline.
 - **Added (Windows):** `dtwc_cl.exe` states its name, version and copyright in its file properties (Details tab); v1.0.0's
   carried none.
 - **Added (FastCLARA, CUDA):** on a GPU device FastCLARA's sample matrices fill on the GPU and, with CUDA, so does its

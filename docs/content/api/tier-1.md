@@ -40,12 +40,12 @@ SLURM wrapper, but its current HPC errors violate the frozen taxonomy/messages
 
 | Parameter | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
-| signature | `dtwc::Dataset dtwc::load(source, index_t skip_cols=0, index_t skip_rows=0, char delimiter=0, std::string_view name="")` | `load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None) -> Dataset` | `ds = dtwc.load(source, 'skip_cols',0, 'skip_rows',0, 'delimiter','', 'name','')` |
-| `source` | `std::filesystem::path` **or** `std::vector<std::vector<double>>` (overloads) | path `str`/`os.PathLike` **or** array-like; a sequence of 1-D sequences may be RAGGED, matching the C++ `series_type` overload (a rectangular array keeps the NumPy fast path) | char path, N×L double matrix, **or** a cell array of numeric vectors (RAGGED, the same `series_type` overload) |
+| signature | `dtwc::Dataset dtwc::load(source, index_t skip_cols=0, index_t skip_rows=0, char delimiter=0, std::string_view name="")` | `load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None) -> Dataset` | `ds = dtwc.load(source, 'SkipCols',0, 'SkipRows',0, 'Delimiter','', 'Name','')` |
+| `source` | `std::filesystem::path` **or** `std::vector<std::vector<double>>` (overloads) | path `str`/`os.PathLike` **or** array-like; a sequence of 1-D sequences may be RAGGED, matching the C++ `series_type` overload (a rectangular array keeps the NumPy fast path) | char path, N×L numeric matrix, **or** a cell array of numeric vectors (RAGGED, the same `series_type` overload) |
 | `skip_cols` | leading columns to drop (id columns), dropped as FIELDS before numeric parsing for a path and erased from each row in memory | same: `dtwcpp.io` reads a path by `dtwc_cl`'s rules (text id columns and variable-length rows included) and erases leading in-memory columns, raising `InvalidInput` when `skip_cols` exceeds a series length | same |
-| `skip_rows` | leading rows to drop, `>= 0`. Path source: header **lines** of the file (the `dtwc_cl --skip-rows` / `DataLoader::start_row` meaning). Directory source: the same count is applied **per file**, since `load_folder` forwards `start_row` to every `readFile` and one file is one series. In-memory source: leading **series**, since one memory row is one file line. Negative → `InvalidInput` | same; negative is `InvalidInput` and non-integer `TypeError`, raised by `load()` as C++ does; `device="hpc"` rejects a non-zero value (the SLURM wrapper has no `skip_rows` slot) | same; rejected by the `dtwc.load` input parser exactly as `skip_cols` is |
+| `skip_rows` | leading rows to drop, `>= 0`. Path source: header **lines** of the file (the `dtwc_cl --skip-rows` / `DataLoader::start_row` meaning). Directory source: the same count is applied **per file**, since `load_folder` forwards `start_row` to every `readFile` and one file is one series. In-memory source: leading **series**, since one memory row is one file line. Negative → `InvalidInput` | same; negative is `InvalidInput` and non-integer `TypeError`, raised by `load()` as C++ does; `device="hpc"` rejects a non-zero value (the SLURM wrapper has no `skip_rows` slot) | same; a negative or fractional value is `dtwc:invalidArgument`, raised by `dtwc.load` as C++ does |
 | `delimiter` | `0` = auto from extension (`.tsv/.txt`→`\t` else `,`) | `None` = auto | `''` = auto |
-| `name` | `""` = derive from filename stem | `None` = filename stem, else `"dataset"` | `''` = stem |
+| `name` | `""` = derive from filename stem | `None` = filename stem, else `"dataset"` | `''` = the same C++ rule (`detail::default_name`) |
 | result type | `dtwc::Dataset` (lazy; materialises only for local backends) | `dtwc.Dataset` (`_api.Dataset`) | `dtwc.Dataset` handle |
 
 *Contract:* `load()` performs **no I/O** — on `device="hpc"` the path is forwarded
@@ -55,25 +55,15 @@ to the cluster and never read locally (preserves the 100M-series scaling story).
 
 | Parameter | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
-| signature | `dtwc::Result dtwc::cluster(const Dataset& data, index_t k, std::string_view method="auto", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, **keys) -> Result`: `keys` are the `dtwc_cl` keys that are not about files, by their long names in snake_case (`method`, `band`, `metric`, `variant`, `wdtw_g`, `max_iter`, `n_init`, `seed`, ...), read and checked by C++ into a `Config`; an unknown key is `InvalidInput` | `res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)` |
+| signature | `dtwc::Result dtwc::cluster(const Dataset& data, index_t k, std::string_view method="auto", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, **keys) -> Result`: `keys` are the `dtwc_cl` keys that are not about files, by their long names in snake_case (`method`, `band`, `metric`, `variant`, `wdtw_g`, `max_iter`, `n_init`, `seed`, ...), read and checked by C++ into a `Config`; an unknown key is `InvalidInput` | `res = dtwc.cluster(data, k, Name, Value, ...)`: the keys are Python's in CamelCase (`'Method'`, `'Band'`, `'Metric'`, `'Variant'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'Seed'`, ...), read and checked by C++ into a `Config`; an unknown key is `dtwc:invalidArgument` naming the valid ones |
 | `data` | `Dataset` (or path/array via `load`) | `Dataset`/path/array | `Dataset`/path/matrix/cell of numeric vectors (ragged) |
 | `k` | `index_t` clusters; `k > N` → `InvalidInput("cluster: k must not exceed the number of series.")`, empty dataset → `InvalidInput("cluster: dataset is empty.")` | same guards, same messages | same guards, same messages, raised by C++ as `dtwc:invalidArgument` |
 | `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (aliases `"hclust"`, `"obp"`, `"lr"`, as `dtwc_cl` reads them; ASCII case-insensitive) | same set | same set, routed by the same C++ code |
-| `auto` resolution | local CPU: `pam` for N≤5000, else `clara`; local GPU: `pam` at any N; C++ HPC reaches the documented transport error before local resolution | the same C++ rule (`Problem::cluster()`); HPC forwards `auto` for resolution after remote materialisation | same local rule (the same `dtwc::run`) |
+| `auto` resolution | local CPU: `pam` for N≤5000, else `clara`; local GPU: `pam` at any N; C++ HPC reaches the documented transport error before local resolution | the same C++ rule (`Problem::cluster()`); HPC forwards `auto` for resolution after remote materialisation | the same C++ rule (`Problem::cluster()`) |
 | `band` | Sakoe-Chiba band, `-1` = full | `-1` | `-1` |
-| `device` | `""` = global default; else per-call override | `None` = global | `''` reads the process device (`dtwc.device()`); a non-empty value is a per-call override that sets the local `Problem`'s device (GPU ordinal included) and never mutates the process device |
+| `device` | `""` = global default; else per-call override | `None` = global | not given: the process device (`dtwc.device()`); `'Device', d` sets the run's `Problem`'s device (GPU ordinal included) and never mutates the process device |
 | `max_iter` | `100` | `100` | `100` |
 | unknown `method` | `InvalidInput` (never silently PAM) | `InvalidInput` (a `ValueError`), from the C++ name table | `dtwc:invalidArgument` |
-
-**MATLAB routes through C++, it does not re-implement.** `dtwc.cluster`
-(`bindings/matlab/+dtwc/cluster.m`) parses arguments and makes one gateway call,
-`dtwc_mex('tier1_cluster', ...)`, which builds a `dtwc::Dataset` with
-`dtwc::load` and calls `dtwc::cluster`. Method routing, `auto` resolution, the
-`k <= N` and empty-dataset guards, `max_iter`, the per-call device override and
-the `skip_cols`/`skip_rows`/`delimiter`/`name` source semantics therefore have
-exactly one implementation. `dtwc.Result` holds the returned `dtwc::Result`, so
-`score()` and `save()` are the C++ members and the four CSVs carry the
-dataset's series names. This closes F40.
 
 **C++ `cluster()` is a `dtwc::run` call (IF-2 S3, `dtwc/cli/run.hpp`).** It builds
 a `dtwc::Config` holding `dtwc_cl`'s default for every setting its signature does
@@ -97,6 +87,18 @@ Arrow IPC through the installed pyarrow (the `parquet` extra; the wheel links no
 C++); `Result.save` and `Problem.write_*` write with the C++ writers. Series already in
 memory go in as numpy, pandas, pyarrow or Python hold them: a 2-D array, a list of 1-D
 arrays (any lengths), a pandas DataFrame (rows, named by the index) or an Arrow array.
+
+**MATLAB's `cluster()` is C++'s in the same way.** The MEX sets each name-value pair
+on a `dtwc::Config` (`dtwc_mex('apply', ...)`), `apply(config, prob)` hands a `Problem`
+its settings before the series are read, and `Problem::cluster()` runs the method, so
+`Method` defaults to `auto`; method routing, `auto` resolution and the guards have one
+implementation. `dtwc.load` reads text and folders with the bound C++ reader
+(`dtwc::read_data`) and Parquet with MATLAB's `parquetread`, taking what the C++ reader
+takes (the MEX links no Arrow C++); MATLAB has no Arrow IPC reader, so an `.arrow`,
+`.ipc` or `.feather` path is `dtwc:invalidArgument`. `dtwc.Result` keeps the clustered
+`Problem`: `score()` is `scores::score` and `save()` the C++ writer, so the four CSVs
+carry the dataset's series names. Series already in memory go in as a numeric matrix
+(one series per row) or a cell of numeric vectors (any lengths).
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as
@@ -134,7 +136,7 @@ Canonical class name is **`Result`** in all three languages.
 | `labels` | `const std::vector<index_t>& labels() const` (`index_t` = `std::int64_t`) | `res.labels` → `np.ndarray[int64]` | `res.labels` → double row (1-based) |
 | `medoids` | `const std::vector<index_t>& medoids() const` | `res.medoids` → `np.ndarray[int64]` | `res.medoids` → double row (1-based) |
 | `score(name)` | `double score(std::string_view name) const`; fills the retained `Problem` on demand after a matrix-free run | `res.score(name: str) -> float`; same lazy fill, so `onebatch`/`clara`/`tadpole` results are scoreable and `save()` writes all four CSVs | `s = res.score(name)` |
-| `distance_matrix` | `std::vector<double> distance_matrix() const` `[introduced-2.0]` — dense **row-major N x N**; fills the retained `Problem` on demand exactly as `score()` does, so a matrix-free run is still readable | `res.distance_matrix` → dense N x N `np.ndarray`; a matrix-free `onebatch`/`clara`/`tadpole` run leaves it unmaterialised and the property fills the retained `Problem` on first read, exactly as `score()`/`save()` do (`Result.distance_matrix`). `None` only for an `hpc` run, which has no local `Problem` | private helper `Result.distance_matrix()` (`Result.m:107-121`), used by `plot()` |
+| `distance_matrix` | `std::vector<double> distance_matrix() const` `[introduced-2.0]` — dense **row-major N x N**; fills the retained `Problem` on demand exactly as `score()` does, so a matrix-free run is still readable | `res.distance_matrix` → dense N x N `np.ndarray`; a matrix-free `onebatch`/`clara`/`tadpole` run leaves it unmaterialised and the property fills the retained `Problem` on first read, exactly as `score()`/`save()` do (`Result.distance_matrix`). `None` only for an `hpc` run, which has no local `Problem` | `res.distance_matrix()`, filled on demand as `score()` does; `plot()` reads it |
 | `save(dir)` | `void save(const std::filesystem::path& dir) const` | `res.save(dir)`; writes the loader's series names (not ordinals), C++'s line endings (the platform one for the three text-mode files, LF for the binary-mode distance matrix), `setprecision(8)` silhouettes and `to_chars(general, max_digits10)` matrix values, so a Python run and a CLI run on one file are byte-identical (the C++ writer writes them); an undefined silhouette prints a warning on stderr and skips the file | `res.save(dir)` |
 | `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`Result.plot`) | `res.plot()` |
 | (aux) `cost` | `double cost() const` | `res.cost` (set by `Result.__init__`) | `res.cost` |
@@ -181,8 +183,8 @@ not prove execution:
 
 | Parameter | Python | MATLAB | Current status |
 |---|---|---|---|
-| `device` / `Device` | `device=None` `[introduced-2.0]`, the fit `Problem`'s device | `Device=''` `[introduced-2.0]`, validated through `dtwc::device` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s device |
-| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, `'squared_euclidean'`, or `'precomputed'`: X is an N x N distance matrix for fit and an M x N one for `predict`/`transform`/`score` | `Metric='l1'` or `'squared_euclidean'`, consumed by fit through `Problem.set_distance` |
+| `device` / `Device` | `device=None` `[introduced-2.0]`, the fit `Problem`'s device | `Device` `[introduced-2.0]` (empty: the process device), the fit `Problem`'s device; the process device is never changed |
+| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, `'squared_euclidean'`, or `'precomputed'`: X is an N x N distance matrix for fit and an M x N one for `predict`/`transform`/`score` | `Metric` (empty: `'l1'`) or `'squared_euclidean'`, a key of the fit's `Config` |
 
 Both estimators converge on the shared constructor set `{n_clusters, variant, band,
 max_iter, n_init, wdtw_g, adtw_penalty, missing_strategy, metric, device}`.
@@ -198,5 +200,16 @@ refused with `metric='precomputed'`) and its `n_init` seeded restarts on one dis
 matrix. `max_iter = 0` and `n_init = 0` raise `InvalidInput`, as in MATLAB. `transform`
 gives the distances to the medoids, `predict` the nearest one, and `score(X)` the
 negative total distance of X to its nearest medoids; nothing is refitted.
+
+MATLAB's `dtwc.DTWClustering` is the same estimator. Its settable properties are
+Python's parameters in CamelCase (`NClusters`, `Method`, `Variant`, `Band`, `MaxIter`,
+`NInit`, `WdtwG`, `AdtwPenalty`, `MsmC`, `TweNu`, `TweLambda`, `MvMode`,
+`MissingStrategy`, `Metric`, `BatchSize`, `RandomState`, `Device`); one left empty takes
+the C++ default. `fit` sets up one `Problem` through `apply()` and `Problem::cluster()`
+runs `Method` (default `pam`) and its `NInit` restarts on one matrix; `MaxIter = 0` is
+`dtwc:invalidArgument`. The fitted `Labels`, `MedoidIndices`, `Inertia` and
+`ClusterCenters` are Python's `labels_`, `medoid_indices_`, `inertia_` and
+`cluster_centers_`; `transform`, `predict` and `score` read the fitted medoids
+through `dtwc.distance.dtw` and never refit. MATLAB has no `'precomputed'` metric.
 
 ---
