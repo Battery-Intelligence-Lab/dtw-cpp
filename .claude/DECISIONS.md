@@ -358,3 +358,11 @@ CHANGELOG rule.
   `_NotSeries(TypeError, ValueError)`, since scikit-learn's estimator checks need ValueError (numpy's AxisError has the
   same two-parent form); Volkan may veto. `refuse_gpu_method` is inlined into apply() (one caller after GC).
 - 2026-10-06 — Volkan (chat): "You can pull and merge the macos changes": origin's Mac pass merged on Windows.
+- 2026-10-06 — M1 (merged c0580948, Mac): the wheel links no HiGHS (an extension that links HiGHS exports its weak
+  symbols, and a user's own highspy MIP in the same process crashed on macOS, exit 139); `method="mip"` on the wheel
+  solves with the installed highspy, the `mip` extra (`highspy>=1.8`, the first with `Highs.resetGlobalScheduler`),
+  a missing highspy is SolverError naming the extra; the MEX links HiGHS statically (a MATLAB-on configure sets
+  `BUILD_SHARED_LIBS OFF` for HiGHS, so that tree's dtwc_cl and tests link it statically too); `Problem.solver` is
+  read-only in Python so a Gurobi request stays with C++; Gurobi's builder keeps its point-major model (little to
+  delete, not compilable on the Mac). The CI Python job installs `[test,dev,io,mip]` and pandas so the pyarrow,
+  pandas, scikit-learn and highspy cases run there instead of skipping (edited on the Mac, CI not run here).

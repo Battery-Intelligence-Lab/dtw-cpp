@@ -248,9 +248,9 @@ Append new entries at the end of their section; keep each to a few lines.
 - **The p-median matrix is totally unimodular only for N ≤ 2,** and fractional LP vertices are not
   half-integral (1/3, 1/4 occur): branching is mandatory. *`UNIMODULAR.md`*
 - **Two gaps, two tools.** The LR primal repair's gap and the root bound's gap are different quantities.
-- **HiGHS PDLP GPU is a build flag, not a runtime switch.**
-- **The two MIP adapters flatten differently** (HiGHS row-major, Gurobi column-major, diagonals at
-  `i·(N+1)`); equivalent only while D is symmetric.
+- **HiGHS PDLP GPU is a build flag, not a runtime switch;** the two MIP adapters flatten differently (HiGHS
+  `f·N+p` as row-wise arrays, Gurobi point-major), equivalent only while D is symmetric.
+- **A wheel links nothing the user's packages ship:** the HiGHS-linked extension's weak symbols crashed their highspy (M1).
 
 ## Process and records
 

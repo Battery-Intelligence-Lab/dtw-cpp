@@ -100,3 +100,15 @@ a6de1c71 +109 / −235 (8 files); 6aa7048c +220 / −4 (11 files); step 3 +68 / 
 
 The Gurobi build (mip_Gurobi.cpp is untouched); CI (the three workflows were read and parsed, not run); Linux and
 Windows (the MEX's static HiGHS there; the wheel on manylinux and Windows); MATLAB R2024b (CI's release).
+
+## Merged on the main tree (orchestrator, `c0580948` = `fed1f37d` + `pb/M1`), all `[confirmed]`
+
+`build/` (clang-macos Release, incremental): zero warnings. `ctest -j1`: 100 % of 95, `test_cuda_correctness`
+skipped, 41.71 s; `CODEGEN_NO_CALLS tool=clang++ inner_loops=108 calls=0 verdict=PASS`. Conformance regenerated:
+the one silhouette ulp only (D-19). `check_docs` PASS, `check_pins` 0 failures, `generate_docs --check` current.
+`build-matlab/` reconfigured by the merge (HiGHS now static for a MATLAB-on tree): zero warnings;
+`dtwc_mex.mexmaca64` 4,557,072 bytes, `otool -L` lists no libhighs; `matlab_suite: 140 run, 139 passed, 0 failed,
+1 incomplete` (the registered filter). Fresh venv, `uv pip install ".[test,dev,io,mip]" matplotlib pandas`:
+**974 passed, 11 skipped, 0 failed, 97.83 s** (the agent's 973/12 plus the pandas DataFrame case, now installed; skips:
+9 CUDA, 1 GPU present, 1 scipy present). The CI Python job now installs those extras too (`python-tests.yml`, edited
+here, not run here).

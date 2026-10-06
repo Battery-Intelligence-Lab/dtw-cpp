@@ -180,8 +180,13 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   by W9b (5e710ba4 … 8ec61075, row W9b; merged 4265e3a6): the wheel's link map (W9b record) holds no `run`, `api` or `config`
   object (CLI11, fkYAML), and Python reads text through the bound C++ reader and writes through the C++ writer (Volkan
   10-02, not numpy/pandas), Parquet and Arrow IPC through pyarrow; the MATLAB half and L2b stay open
-- ☐ M1 Python solves the MIP with the user's highspy (optional extra; the wheel drops HiGHS); the MEX keeps HiGHS
-  linked (CI MEX: HiGHS ON, Gurobi OFF); the model leaves C++ as arrays for Python (Volkan 10-01)
+- ☑ M1 Python solves the MIP with the user's highspy (optional extra; the wheel drops HiGHS); the MEX keeps HiGHS
+  linked (CI MEX: HiGHS ON, Gurobi OFF); the model leaves C++ as arrays for Python (Volkan 10-01) (M1 a6de1c71,
+  6aa7048c, caec354d; merged c0580948 on the Mac; one builder `dtwc::mip::build_p_median_model` (row-wise arrays,
+  solver_types.hpp and the triplet sort go) serves linked HiGHS and highspy, dtwc_cl's MIP outputs byte-identical; the
+  extension 5,034,320 → 1,203,728 bytes, the `mip` extra is highspy>=1.8 (the first with resetGlobalScheduler), a
+  missing highspy is SolverError naming `pip install dtwcpp[mip]`; the MEX links HiGHS statically (4,557,072 bytes);
+  Gurobi's builder untouched and not compiled on the Mac; pytest 973/12/0 with the extra, 969/16/0 without)
 - ☑ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds (W14b: Gurobi defaults OFF; the default MEX imports no Gurobi DLL; an explicit ON needs Gurobi's bin on PATH)
 - ☑ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases (W9a 2cabc18, adb9031, 6053239, 151f14e; merged 357d76e3; k required: v1.0.0 with no --Nc exited 0 having clustered nothing; name = the input stem; C++ method default auto; 23 v1 spellings warn once; --Nc i..j refused)
 - ☑ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
