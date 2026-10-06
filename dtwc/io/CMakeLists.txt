@@ -1,4 +1,4 @@
-target_sources(dtwc++
+target_sources(dtwc_core
   PRIVATE
     arrow_c_data.cpp
     read_data.cpp

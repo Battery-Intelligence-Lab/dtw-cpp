@@ -1,16 +1,30 @@
 cmake_minimum_required(VERSION 3.26)
 
-add_library(dtwc++ STATIC)
+# Two libraries and one name for consumers:
+#   dtwc_core  the algorithms, the session, the text reader and the result
+#              writers: everything the Python module and the MEX link;
+#   dtwc_cli   the command line: cli::bind and its config files (CLI11, fkYAML),
+#              dtwc::run and the Tier-1 facade (api.cpp) that runs it.
+# dtwc++ links both, so tests, examples, benchmarks and a parent project keep
+# their link line.
+add_library(dtwc_core STATIC)
+add_library(dtwc_cli STATIC)
+add_library(dtwc++ INTERFACE)
+target_link_libraries(dtwc_cli PUBLIC dtwc_core)
+target_link_libraries(dtwc++ INTERFACE dtwc_core dtwc_cli)
 
 # Required for linking into the Python shared library (.so) on Linux
-set_target_properties(dtwc++ PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(dtwc_core dtwc_cli PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# The headers: each folder lists its own in this set. Its base, dtwc/ (never the
-# repo root), is the include directory of dtwc++ and of everything that links it:
-# <core/...>, <mip/...>, "Problem.hpp".
-target_sources(dtwc++ PUBLIC FILE_SET HEADERS BASE_DIRS .)
+# The headers: each folder lists its own in its library's set. The base, dtwc/
+# (never the repo root), is the include directory of the library and of
+# everything that links it: <core/...>, <mip/...>, "Problem.hpp".
+target_sources(dtwc_core PUBLIC FILE_SET HEADERS BASE_DIRS .)
+target_sources(dtwc_cli PUBLIC FILE_SET HEADERS BASE_DIRS .)
+# The umbrella header includes both libraries' headers.
+target_sources(dtwc++ INTERFACE FILE_SET HEADERS BASE_DIRS . FILES dtwc.hpp)
 
-# Each folder lists its own files, and the settings that belong to them, on dtwc++.
+# Each folder lists its own files, and the settings that belong to them, on its library.
 add_subdirectory(mip)
 add_subdirectory(algorithms)
 add_subdirectory(base)
@@ -19,11 +33,10 @@ add_subdirectory(core)
 add_subdirectory(io)
 add_subdirectory(extern/nanoarrow)
 
-target_sources(dtwc++
+target_sources(dtwc_core
   PRIVATE
   Problem.cpp
   Problem_IO.cpp
-  api.cpp
   checkpoint.cpp
   initialisation.cpp
   scores.cpp
@@ -31,10 +44,8 @@ target_sources(dtwc++
   # Top-level headers
   Data.hpp
   DataLoader.hpp
-  api.hpp
   checkpoint.hpp
   config.hpp
-  dtwc.hpp
   distance.hpp
   fileOperations.hpp
   initialisation.hpp
@@ -62,29 +73,25 @@ target_sources(dtwc++
   types/Range.hpp
   types/types.hpp
 )
+# The facade the command line runs.
+target_sources(dtwc_cli PRIVATE api.cpp PUBLIC FILE_SET HEADERS FILES api.hpp)
 
 # The vendored nanoarrow and fast_float are PRIVATE: only io/arrow_c_data.cpp and
 # io/parse_number.cpp include them, behind headers that name none of their types,
 # so they never reach a consumer.
-target_include_directories(dtwc++ PRIVATE extern)
+target_include_directories(dtwc_core PRIVATE extern)
 
-target_link_libraries(dtwc++
-  PRIVATE
-  mip-solvers
-  project_warnings
-  project_options
-  PUBLIC
-  # Header-only, included by cli/config.cpp alone. PUBLIC because the public
-  # cli::bind(CLI::App &, Config &) takes the caller's App.
-  CLI11::CLI11
-)
+target_link_libraries(dtwc_core PRIVATE mip-solvers)
+# Header-only, included by cli/config.cpp alone. PUBLIC because the public
+# cli::bind(CLI::App &, Config &) takes the caller's App.
+target_link_libraries(dtwc_cli PUBLIC CLI11::CLI11)
 
 # cli/config.cpp reads --config files through cli/config_file.hpp, which takes
 # YAML only with fkYAML. The definition is PUBLIC, as every capability is, so a
 # consumer (and the tests) can tell whether a YAML config file will be read.
 if(TARGET fkYAML::fkYAML)
-  target_link_libraries(dtwc++ PRIVATE fkYAML::fkYAML)
-  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_YAML)
+  target_link_libraries(dtwc_cli PRIVATE fkYAML::fkYAML)
+  target_compile_definitions(dtwc_cli PUBLIC DTWC_HAS_YAML)
 endif()
 
 # ── OpenMP detection ──────────────────────────────────────────────────────────
@@ -118,16 +125,16 @@ endif()
 find_package(OpenMP COMPONENTS CXX)
 if(OpenMP_CXX_FOUND)
   message(STATUS "OpenMP ${OpenMP_CXX_VERSION} found — parallel execution enabled")
-  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_OPENMP)
+  target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_OPENMP)
   if(MSVC)
-    # PUBLIC on dtwc++, so a consumer that links dtwc++ but not project_options
+    # PUBLIC on dtwc_core, so a consumer that links dtwc_core but not project_options
     # (the Python module) still compiles its `#pragma omp` loops in parallel.
     # project_options carries it too, for mip-solvers, which links that alone.
-    target_compile_options(dtwc++ PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
+    target_compile_options(dtwc_core PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
     target_compile_options(dtwc_options INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
   else()
-    # OpenMP::OpenMP_CXX carries -fopenmp and the libomp link, PUBLIC on dtwc++.
-    target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
+    # OpenMP::OpenMP_CXX carries -fopenmp and the libomp link, PUBLIC on dtwc_core.
+    target_link_libraries(dtwc_core PUBLIC OpenMP::OpenMP_CXX)
   endif()
 elseif(DTWC_ALLOW_SEQUENTIAL)
   # Explicit opt-out of the parallelism requirement (keeps the "core builds
@@ -138,7 +145,7 @@ elseif(DTWC_ALLOW_SEQUENTIAL)
     "OpenMP NOT found and -DDTWC_ALLOW_SEQUENTIAL=ON given — building SEQUENTIAL.\n"
     "  DTWC++ will run SINGLE-THREADED; this is EXTREMELY slow for large datasets.\n"
     "  DTWC_SEQUENTIAL_BUILD is defined on the dtwc targets; the runtime will warn.")
-  target_compile_definitions(dtwc++ PUBLIC DTWC_SEQUENTIAL_BUILD)
+  target_compile_definitions(dtwc_core PUBLIC DTWC_SEQUENTIAL_BUILD)
 else()
   # No silent serial builds (global no-silent-fallback constraint). OpenMP is
   # required for shipped artifacts unless sequential is EXPLICITLY allowed.
@@ -151,28 +158,32 @@ else()
     "  or pass -DOpenMP_CXX_FLAGS / -DOpenMP_CXX_LIB_NAMES manually.")
 endif()
 
-# Guard against parent projects that use -ffast-math (which includes -ffinite-math-only).
-# This is target-scoped so it applies even when consumed as a subproject.
-if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  target_compile_options(dtwc++ PRIVATE -fno-finite-math-only)
-endif()
-
-# A switch over an enum names every enumerator, with no default: adding an
-# enumerator is then a compile error at each switch that misses it, instead of
-# a runtime throw. Values reach users only as names, which the name tables check.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-  target_compile_options(dtwc++ PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/we4062>)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  target_compile_options(dtwc++ PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Werror=switch>)
-endif()
+# What each library compiles with and passes to nothing that links it:
+# - the project's options and warnings;
+# - -fno-finite-math-only, against a parent project's -ffast-math (which includes
+#   -ffinite-math-only), target-scoped so it applies even in a subproject;
+# - a switch over an enum names every enumerator, with no default: adding an
+#   enumerator is then a compile error at each switch that misses it, instead of
+#   a runtime throw. Values reach users only as names, which the name tables check.
+foreach(_dtwc_lib IN ITEMS dtwc_core dtwc_cli)
+  target_link_libraries(${_dtwc_lib} PRIVATE project_warnings project_options)
+  if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(${_dtwc_lib} PRIVATE -fno-finite-math-only)
+  endif()
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    target_compile_options(${_dtwc_lib} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/we4062>)
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(${_dtwc_lib} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Werror=switch>)
+  endif()
+endforeach()
 
 # llfio (optional) — memory-mapped distance matrices. core/distance_matrix.cpp
 # is the one file that includes it, so the link is PRIVATE; DTWC_HAS_MMAP is
 # PUBLIC, as every capability is, so a consumer (and the tests) can tell whether
 # use_mmap_distance_matrix can map a file.
 if(TARGET llfio_hl)
-  target_link_libraries(dtwc++ PRIVATE llfio_hl)
-  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_MMAP)
+  target_link_libraries(dtwc_core PRIVATE llfio_hl)
+  target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_MMAP)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()
 
@@ -181,16 +192,16 @@ endif()
 if(DTWC_ENABLE_ARROW AND Arrow_FOUND)
   if(DTWC_ARROW_FROM_CPM)
     # CPM-built static Arrow + Parquet
-    target_link_libraries(dtwc++ PUBLIC arrow_static parquet_static)
-    target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_ARROW DTWC_HAS_PARQUET)
+    target_link_libraries(dtwc_core PUBLIC arrow_static parquet_static)
+    target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_ARROW DTWC_HAS_PARQUET)
     message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
   elseif(TARGET Arrow::arrow_shared)
     # System-installed Arrow (conda, apt, brew)
-    target_link_libraries(dtwc++ PUBLIC Arrow::arrow_shared)
-    target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_ARROW)
+    target_link_libraries(dtwc_core PUBLIC Arrow::arrow_shared)
+    target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_ARROW)
     if(Parquet_FOUND)
-      target_link_libraries(dtwc++ PUBLIC Parquet::parquet_shared)
-      target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_PARQUET)
+      target_link_libraries(dtwc_core PUBLIC Parquet::parquet_shared)
+      target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_PARQUET)
       message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
     else()
       message(STATUS "Arrow linked, IPC only: Parquet not found — reading a Parquet file raises")

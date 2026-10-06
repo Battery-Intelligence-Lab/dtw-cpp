@@ -1,4 +1,4 @@
-target_sources(dtwc++
+target_sources(dtwc_cli
   PRIVATE
     config.cpp
     run.cpp

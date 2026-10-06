@@ -65,7 +65,7 @@ option(DTWC_ALLOW_SEQUENTIAL "Allow configuring without OpenMP (single-threaded,
 # that older runtime's _Mtx_lock, so opt every TU here - including the fetched
 # HiGHS/llfio targets, which inline the ctor - back to the dynamic-init ctor.
 # Directory scope means EVERY target configured in a DTWC_BUILD_MATLAB=ON tree
-# gets it (dtwc++, mip-solvers, fetched HiGHS/llfio, dtwc_cl, tests, the Python
+# gets it (the dtwc libraries, mip-solvers, fetched HiGHS/llfio, dtwc_cl, tests, the Python
 # module) - deliberately, since mixing defining and non-defining TUs is IFNDR;
 # std::mutex layout is unchanged either way (MSVC STL <mutex> keeps the same
 # _Mtx_storage member), only the constexpr-ness of its constructor.
@@ -258,7 +258,7 @@ add_subdirectory(dtwc bin)
 
 # Runtime bindings and executables consume the full version through this
 # PUBLIC definition, avoiding hand-maintained Python/MATLAB/CLI literals.
-target_compile_definitions(dtwc++ PUBLIC DTWC_VERSION_STRING="${DTWC_VERSION_STRING}")
+target_compile_definitions(dtwc_core PUBLIC DTWC_VERSION_STRING="${DTWC_VERSION_STRING}")
 
 if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
   add_executable(dtwc_cl
@@ -267,7 +267,7 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
 
   target_link_libraries(dtwc_cl
     PRIVATE
-    dtwc++
+    dtwc_cli
     CLI11::CLI11
     project_warnings
     project_options
@@ -419,7 +419,7 @@ if(PROJECT_IS_TOP_LEVEL)
   set(_omp_status "OFF")
   # OpenMP is found inside dtwc/CMakeLists.txt — check the compile definition
   # or the imported target, which are visible in parent scope.
-  get_target_property(_dtwc_defs dtwc++ INTERFACE_COMPILE_DEFINITIONS)
+  get_target_property(_dtwc_defs dtwc_core INTERFACE_COMPILE_DEFINITIONS)
   if(_dtwc_defs MATCHES "DTWC_HAS_OPENMP")
     set(_omp_status "ON")
     # Try to extract version from cache (set by FindOpenMP)

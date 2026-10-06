@@ -1,4 +1,4 @@
-target_sources(dtwc++
+target_sources(dtwc_core
   PRIVATE
     env.cpp
   PUBLIC FILE_SET HEADERS FILES

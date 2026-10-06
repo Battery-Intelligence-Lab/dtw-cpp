@@ -32,7 +32,7 @@ matlab_add_mex(
     NAME dtwc_mex
     SRC dtwc_mex.cpp
     R2018a          # Use interleaved complex (mxGetDoubles); keeps legacy C API
-    LINK_TO dtwc++
+    LINK_TO dtwc_core   # the core alone: no command line and no file-format readers
 )
 
 target_compile_features(dtwc_mex PRIVATE cxx_std_20)

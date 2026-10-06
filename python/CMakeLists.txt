@@ -31,16 +31,17 @@ else()
   nanobind_add_module(_dtwcpp_core src/_dtwcpp_core.cpp)
 endif()
 
-target_link_libraries(_dtwcpp_core PRIVATE dtwc++ project_options)
+# The core alone: no command line (CLI11, fkYAML) and no file-format readers.
+target_link_libraries(_dtwcpp_core PRIVATE dtwc_core project_options)
 # The MSVC `/openmp:experimental` flag (and `-fopenmp`/libomp on Clang/GCC) is
-# now attached DIRECTLY to dtwc++ as a PUBLIC usage requirement
-# (dtwc/CMakeLists.txt), so linking `dtwc++` alone is enough for this module to
+# now attached DIRECTLY to dtwc_core as a PUBLIC usage requirement
+# (dtwc/CMakeLists.txt), so linking `dtwc_core` alone is enough for this module to
 # compile against the OpenMP runtime (`_OPENMP`, `omp_get_max_threads`).
 # `project_options` is kept in the link for
 # its other usage requirements and as belt-and-suspenders; the OpenMP behaviour
 # no longer depends on it. Previously the flag rode ONLY on the project_options
 # INTERFACE — dropping it silently serialised every parallel loop on MSVC and
 # left `_OPENMP` undefined, so `dtwcpp.OPENMP_AVAILABLE` reported False even when
-# the underlying dtwc++ static library was built with OpenMP.
+# the underlying static library was built with OpenMP.
 
 install(TARGETS _dtwcpp_core DESTINATION dtwcpp)

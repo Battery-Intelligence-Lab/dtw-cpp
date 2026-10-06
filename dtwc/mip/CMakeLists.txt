@@ -10,7 +10,7 @@ target_sources(mip-solvers
   )
 # The headers are the library's, included as <mip/...> through its set's base;
 # this folder's own sources and Problem.cpp include them as "mip.hpp".
-target_sources(dtwc++
+target_sources(dtwc_core
   PUBLIC FILE_SET HEADERS FILES
     mip.hpp
     highs_support.hpp

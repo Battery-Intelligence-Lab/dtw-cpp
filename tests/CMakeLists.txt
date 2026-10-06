@@ -49,7 +49,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT
 endif()
 
 # Capability flags, queried once (they select markers and skip tolerance).
-get_target_property(_dtwc_public_defs dtwc++ INTERFACE_COMPILE_DEFINITIONS)
+dtwc_public_definitions(_dtwc_public_defs)
 if("DTWC_HAS_MMAP" IN_LIST _dtwc_public_defs)
     set(_dtwc_has_mmap ON)
     set(_dtwc_mmap_skip "")
@@ -142,8 +142,8 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
 endforeach()
 
 # The Arrow C Data ingest test synthesises ArrowSchema/ArrowArray structs with the
-# vendored nanoarrow builder (the symbols are linked in via dtwc++). nanoarrow is
-# a PRIVATE include of dtwc++, so grant this one test target the include path.
+# vendored nanoarrow builder (the symbols are linked in via dtwc_core). nanoarrow is
+# a PRIVATE include of dtwc_core, so grant this one test target the include path.
 if(TARGET test_arrow_c_data)
     target_include_directories(test_arrow_c_data PRIVATE ${CMAKE_SOURCE_DIR}/dtwc/extern)
 endif()
