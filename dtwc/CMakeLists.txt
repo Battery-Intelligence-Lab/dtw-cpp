@@ -5,6 +5,11 @@ add_library(dtwc++ STATIC)
 # Required for linking into the Python shared library (.so) on Linux
 set_target_properties(dtwc++ PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# The headers: each folder lists its own in this set. Its base, dtwc/ (never the
+# repo root), is the include directory of dtwc++ and of everything that links it:
+# <core/...>, <mip/...>, "Problem.hpp".
+target_sources(dtwc++ PUBLIC FILE_SET HEADERS BASE_DIRS .)
+
 # Each folder lists its own files, and the settings that belong to them, on dtwc++.
 add_subdirectory(mip)
 add_subdirectory(algorithms)
@@ -22,7 +27,7 @@ target_sources(dtwc++
   checkpoint.cpp
   initialisation.cpp
   scores.cpp
-  PUBLIC
+  PUBLIC FILE_SET HEADERS FILES
   # Top-level headers
   Data.hpp
   DataLoader.hpp
@@ -37,6 +42,7 @@ target_sources(dtwc++
   Problem.hpp
   scores.hpp
   settings.hpp
+  test_api.hpp
   timing.hpp
   utility.hpp
   # DTW implementations
@@ -44,10 +50,19 @@ target_sources(dtwc++
   warping_ddtw.hpp
   warping_wdtw.hpp
   warping_adtw.hpp
+  warping_missing.hpp
+  warping_missing_arow.hpp
   soft_dtw.hpp
+  # The folders that hold headers only
+  detail/decode_pair.hpp
+  enums/Method.hpp
+  enums/Solver.hpp
+  enums/enums.hpp
+  types/Index.hpp
+  types/Range.hpp
+  types/types.hpp
 )
 
-target_include_directories(dtwc++ PUBLIC .)
 # The vendored nanoarrow and fast_float are PRIVATE: only io/arrow_c_data.cpp and
 # io/parse_number.cpp include them, behind headers that name none of their types,
 # so they never reach a consumer.

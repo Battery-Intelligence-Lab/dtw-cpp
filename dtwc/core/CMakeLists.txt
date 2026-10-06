@@ -3,12 +3,24 @@ target_sources(dtwc++
     distance_matrix.cpp
     dtw_dispatch.cpp
     dtw_lanes.cpp
-  PUBLIC
+  PUBLIC FILE_SET HEADERS FILES
     clustering_result.hpp
     distance_matrix.hpp
+    distance_sampling_weights.hpp
+    dtw_cost.hpp
+    dtw_dispatch.hpp
+    dtw_kernel.hpp
     dtw_options.hpp
+    gpu_dtw_common.hpp
     lower_bound_impl.hpp
+    matrix_io.hpp
+    medoid_assignment_policy.hpp
+    msm.hpp
+    portable_random.hpp
+    public_distance.hpp
     sha256.hpp
+    storage.hpp
+    twe.hpp
     z_normalize.hpp
   )
 

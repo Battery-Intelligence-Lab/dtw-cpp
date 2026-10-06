@@ -6,8 +6,8 @@ target_sources(dtwc++
     barycenter.cpp
     hierarchical.cpp
     tadpole.cpp
+  PUBLIC FILE_SET HEADERS FILES
     detail/fast_clara_plan.hpp
-  PUBLIC
     fast_pam.hpp
     fast_clara.hpp
     one_batch_pam.hpp

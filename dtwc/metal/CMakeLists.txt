@@ -1,3 +1,5 @@
+# The header is listed in every build, as every folder's are; the source needs the switch.
+target_sources(dtwc++ PUBLIC FILE_SET HEADERS FILES metal_dtw.hpp)
 if(DTWC_ENABLE_METAL AND DTWC_HAS_METAL_DETECTED)
   target_sources(dtwc++
     PRIVATE

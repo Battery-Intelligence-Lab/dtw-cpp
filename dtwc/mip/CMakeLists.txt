@@ -7,7 +7,11 @@ target_sources(mip-solvers
     mip_Gurobi.cpp
     mip_Highs.cpp
     lagrangian_root.cpp
-  PUBLIC
+  )
+# The headers are the library's, included as <mip/...> through its set's base;
+# this folder's own sources and Problem.cpp include them as "mip.hpp".
+target_sources(dtwc++
+  PUBLIC FILE_SET HEADERS FILES
     mip.hpp
     highs_support.hpp
     nearest_medoid.hpp
