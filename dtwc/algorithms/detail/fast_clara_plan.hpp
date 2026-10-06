@@ -22,6 +22,10 @@ struct ClaraPlan
 void validate_clara_controls(
   const CLARAOptions &options, std::string_view caller);
 
+/** fast_clara's and fast_clara_parquet's checks before any I/O: the controls,
+ *  and a forced stream's limit, path and settings-only Problem. */
+void validate_clara_request(const Problem &prob, const CLARAOptions &opts);
+
 /** Resolve and validate dimensions before any sample or result allocation. */
 [[nodiscard]] ClaraPlan resolve_clara_plan(
   index_t n_points, const CLARAOptions &options,

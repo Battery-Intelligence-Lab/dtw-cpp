@@ -3,7 +3,7 @@
 @brief CLI tool to convert time series data between formats.
 
 Converts Parquet/CSV/HDF5 to Arrow IPC (.arrow).
-The C++ reader (dtwc_cl, dtwc::read_data) memory-maps Arrow IPC files.
+The C++ Arrow reader (dtwc_cl, dtwc::io::read_arrow) memory-maps Arrow IPC files.
 
 Usage::
 

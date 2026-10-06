@@ -1,6 +1,6 @@
 /**
  * @file test_io_readers.cpp
- * @brief The Arrow IPC and Parquet routes of dtwc::read_data, and the Parquet
+ * @brief The Arrow IPC and Parquet routes of dtwc::io::read_arrow, and the Parquet
  *        reader's streaming entries: names, values, nulls, offsets, metadata.
  *
  * Each test builds an Arrow/Parquet fixture with the Arrow C++ API in a temp
@@ -44,7 +44,7 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 
 #include <base/error.hpp>
 #include <fileOperations.hpp>
-#include <io/read_data.hpp>
+#include <io/read_arrow.hpp>
 
 #if defined(DTWC_HAS_PARQUET)
 #include <parquet/arrow/writer.h>
@@ -149,7 +149,7 @@ TEMPLATE_TEST_CASE("ArrowIPC: every record batch, its names and ndim reach the D
   const auto tmp = tmpdir() / (first_names->type()->ToString() + "_batches.arrow");
   write_ipc(tmp, schema, { { first_names, first_data }, { names({ "third" }), make_list_f64({ { 7.0, 8.0 } }) } });
 
-  const auto data = dtwc::read_data(tmp);
+  const auto data = dtwc::io::read_arrow(tmp);
   CHECK(data.ndim == 2);
   CHECK(data.series_length(0) == 2); // 4 flat values / ndim 2
   CHECK(data.p_names == std::vector<std::string>{ "first", "second", "third" });
@@ -174,8 +174,8 @@ TEST_CASE("ArrowIPC: out-of-bounds list offset rejected", "[io][arrow][security]
   auto tmp = tmpdir() / "crafted.arrow"; // a name the message matcher cannot match
   write_ipc(tmp, arrow::schema({ arrow::field("data", list_type) }), { { list } });
 
-  CHECK_THROWS_AS(dtwc::read_data(tmp), dtwc::IOError);
-  CHECK_THROWS_WITH(dtwc::read_data(tmp), Catch::Matchers::ContainsSubstring("is outside the values"));
+  CHECK_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::IOError);
+  CHECK_THROWS_WITH(dtwc::io::read_arrow(tmp), Catch::Matchers::ContainsSubstring("is outside the values"));
   std::filesystem::remove(tmp);
 }
 
@@ -190,8 +190,8 @@ TEST_CASE("ArrowIPC: a column of the wrong type is rejected by type", "[io][arro
   REQUIRE(scalar_builder.Finish(&scalar).ok());
   const auto scalar_file = tmpdir() / "scalar_data.arrow";
   write_ipc(scalar_file, arrow::schema({ arrow::field("data", scalar->type()) }), { { scalar } });
-  REQUIRE_THROWS_AS(dtwc::read_data(scalar_file), dtwc::IOError);
-  REQUIRE_THROWS_WITH(dtwc::read_data(scalar_file),
+  REQUIRE_THROWS_AS(dtwc::io::read_arrow(scalar_file), dtwc::IOError);
+  REQUIRE_THROWS_WITH(dtwc::io::read_arrow(scalar_file),
                       Catch::Matchers::ContainsSubstring("'data'")
                         && Catch::Matchers::ContainsSubstring("scalar_data.arrow"));
   std::filesystem::remove(scalar_file);
@@ -206,8 +206,8 @@ TEST_CASE("ArrowIPC: a column of the wrong type is rejected by type", "[io][arro
   auto tmp = tmpdir() / "int64_names.arrow";
   write_ipc(tmp, schema, { { data, names } });
 
-  REQUIRE_THROWS_AS(dtwc::read_data(tmp), dtwc::IOError);
-  REQUIRE_THROWS_WITH(dtwc::read_data(tmp),
+  REQUIRE_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::IOError);
+  REQUIRE_THROWS_WITH(dtwc::io::read_arrow(tmp),
                       Catch::Matchers::ContainsSubstring("'name'")
                         && Catch::Matchers::ContainsSubstring("int64_names.arrow"));
   std::filesystem::remove(tmp);
@@ -226,8 +226,8 @@ TEST_CASE("ArrowIPC: ndim metadata must be a whole positive integer", "[io][arro
     auto tmp = tmpdir() / "ndim_text.arrow";
     write_ipc(tmp, schema, { { arr } });
 
-    REQUIRE_THROWS_AS(dtwc::read_data(tmp), dtwc::IOError);
-    REQUIRE_THROWS_WITH(dtwc::read_data(tmp),
+    REQUIRE_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::IOError);
+    REQUIRE_THROWS_WITH(dtwc::io::read_arrow(tmp),
                         Catch::Matchers::ContainsSubstring("ndim")
                           && Catch::Matchers::ContainsSubstring("ndim_text.arrow"));
     std::filesystem::remove(tmp);
@@ -242,8 +242,8 @@ TEST_CASE("ArrowIPC: a null series or a null value is rejected", "[io][arrow][se
     CAPTURE(label);
     auto tmp = tmpdir() / ("ipc_" + label.substr(5) + ".arrow");
     write_ipc(tmp, arrow::schema({ arrow::field("data", arr->type()) }), { { arr } });
-    CHECK_THROWS_AS(dtwc::read_data(tmp), dtwc::InvalidInput);
-    CHECK_THROWS_WITH(dtwc::read_data(tmp), Catch::Matchers::ContainsSubstring("null"));
+    CHECK_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::InvalidInput);
+    CHECK_THROWS_WITH(dtwc::io::read_arrow(tmp), Catch::Matchers::ContainsSubstring("null"));
     std::filesystem::remove(tmp);
   }
 }
@@ -319,7 +319,7 @@ TEST_CASE("Parquet: scalar Float64 column still reads", "[io][parquet]")
   auto tmp = tmpdir() / "scalar_f64.parquet";
   write_parquet(tmp, table);
 
-  auto data = dtwc::read_data(tmp, 0, 0, '\0', "v");
+  auto data = dtwc::io::read_arrow(tmp, "v");
   REQUIRE(data.size() == 1);
   CHECK(data.name(0) == "scalar_f64"); // one scalar column is one series, named by its file
   REQUIRE(data.p_vec[0].size() == 3);
@@ -356,7 +356,7 @@ TEST_CASE("Parquet chunk metadata preserves scalar-column series semantics",
   options.parquet_path = tmp;
   options.parquet_column = "v";
   CHECK_THROWS_WITH(
-    dtwc::algorithms::fast_clara(settings_only, options),
+    dtwc::algorithms::fast_clara_parquet(settings_only, options),
     Catch::Matchers::ContainsSubstring("scalar column is one time series"));
   std::filesystem::remove(tmp);
 }
@@ -378,7 +378,7 @@ TEST_CASE("Parquet: scalar Float32 column converted to double", "[io][parquet]")
   auto tmp = tmpdir() / "scalar_f32.parquet";
   write_parquet(tmp, table);
 
-  auto data = dtwc::read_data(tmp, 0, 0, '\0', "v");
+  auto data = dtwc::io::read_arrow(tmp, "v");
   REQUIRE(data.size() == 1);
   const auto &s = data.p_vec[0];
   REQUIRE(s.size() == 4);
@@ -399,7 +399,7 @@ TEST_CASE("Parquet: List<Float32> column converted to double", "[io][parquet]")
   auto tmp = tmpdir() / "list_f32.parquet";
   write_parquet(tmp, table);
 
-  auto data = dtwc::read_data(tmp, 0, 0, '\0', "data");
+  auto data = dtwc::io::read_arrow(tmp, "data");
   REQUIRE(data.size() == 2);
   REQUIRE(data.p_vec[0].size() == 3);
   REQUIRE(data.p_vec[1].size() == 2);
@@ -407,7 +407,7 @@ TEST_CASE("Parquet: List<Float32> column converted to double", "[io][parquet]")
   CHECK_THAT(data.p_vec[0][2], WithinAbs(3.5, 1e-6));
   CHECK_THAT(data.p_vec[1][1], WithinAbs(5.5, 1e-6));
 
-  auto auto_detected = dtwc::read_data(tmp);
+  auto auto_detected = dtwc::io::read_arrow(tmp);
   REQUIRE(auto_detected.size() == data.size());
   CHECK(auto_detected.p_vec == data.p_vec);
 
@@ -490,11 +490,11 @@ TEST_CASE("Parquet series selection maps Arrow fields to physical leaf columns",
   auto tmp = tmpdir() / "preceding_multi_leaf.parquet";
   write_parquet(tmp, arrow::Table::Make(schema, {metadata, series}));
 
-  auto eager = dtwc::read_data(tmp, 0, 0, '\0', "series");
+  auto eager = dtwc::io::read_arrow(tmp, "series");
   REQUIRE(eager.size() == 2);
   CHECK(eager.p_vec[0] == std::vector<double>{1.0, 2.0});
   CHECK(eager.p_vec[1] == std::vector<double>{3.0, 4.0, 5.0});
-  auto eager_auto = dtwc::read_data(tmp);
+  auto eager_auto = dtwc::io::read_arrow(tmp);
   CHECK(eager_auto.p_vec == eager.p_vec);
   {
     dtwc::io::ParquetChunkReader reader(tmp, "series");
@@ -528,7 +528,7 @@ TEST_CASE("Parquet folder: the text reader's file order, unique names, UTF-8 ste
   write_parquet(folder / dtwc::utf8_to_path("caf\xC3\xA9.parquet"),
                 arrow::Table::Make(arrow::schema({ arrow::field("v", arrow::float64()) }), { scalar }));
 
-  const auto data = dtwc::read_data(folder);
+  const auto data = dtwc::io::read_arrow(folder);
   CHECK(data.p_names
         == std::vector<std::string>{ "series_0", "series_1", "series_2", "series_3", "caf\xC3\xA9" });
   CHECK(data.p_vec == std::vector<std::vector<double>>{ { 1.0 }, { 2.0 }, { 3.0 }, { 4.0 }, { 5.0, 6.0 } });
@@ -554,7 +554,7 @@ TEST_CASE("Parquet: a null in a scalar column is rejected, not read as garbage",
   auto tmp = tmpdir() / "scalar_null.parquet";
   write_parquet(tmp, arrow::Table::Make(schema, { arr }));
 
-  CHECK_THROWS_WITH(dtwc::read_data(tmp, 0, 0, '\0', "v"),
+  CHECK_THROWS_WITH(dtwc::io::read_arrow(tmp, "v"),
                     Catch::Matchers::ContainsSubstring("null"));
 
   auto column = std::make_shared<arrow::ChunkedArray>(arr);
@@ -579,7 +579,7 @@ TEST_CASE("Parquet: a null list cell or null list element is rejected",
     auto schema = arrow::schema({ arrow::field("series", arr->type()) });
     auto tmp = tmpdir() / ("list_" + label.substr(5) + ".parquet");
     write_parquet(tmp, arrow::Table::Make(schema, { arr }));
-    CHECK_THROWS_WITH(dtwc::read_data(tmp, 0, 0, '\0', "series"),
+    CHECK_THROWS_WITH(dtwc::io::read_arrow(tmp, "series"),
                       Catch::Matchers::ContainsSubstring("null"));
 
     auto column = std::make_shared<arrow::ChunkedArray>(arr);
@@ -625,9 +625,11 @@ TEST_CASE("Parquet: streamed FastCLARA equals the in-RAM run",
   options.ram_limit_bytes = 1u << 20;
   options.parquet_path = tmp;
   options.parquet_column = "data";
+  // Series that fit the limit are the Problem's own: fast_clara_parquet is fast_clara then.
+  CHECK(dtwc::algorithms::fast_clara_parquet(in_ram, options).labels == expected.labels);
   options.force_parquet_streaming = true;
   dtwc::Problem settings_only{"clara_streamed"};
-  const auto streamed = dtwc::algorithms::fast_clara(settings_only, options);
+  const auto streamed = dtwc::algorithms::fast_clara_parquet(settings_only, options);
   std::filesystem::remove(tmp);
 
   CHECK(streamed.medoid_indices == expected.medoid_indices);

@@ -75,8 +75,9 @@ so the two share one method x device resolution: on `gpu` the matrix methods
 (`pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara` when its sample
 covers every series) run with the GPU filling the matrix, while `onebatch`,
 `tadpole` and a smaller `clara` sample, which compute on the CPU as they go,
-raise `DeviceError`. A path dataset reads every format `dtwc_cl` reads (CSV/TSV,
-a folder, Parquet, Arrow IPC) through `dtwc::read_data`.
+raise `DeviceError`. A path dataset reads every format `dtwc_cl` reads, with its
+reader: CSV/TSV and a folder through `dtwc::read_data`, Parquet and Arrow IPC through
+`dtwc::io::read_arrow` (`dtwc_io`, in a build with Arrow).
 
 **Python's `cluster()` is C++'s too, without the CLI's files.** Its keywords become a
 `dtwc::Config` (the binding's `Config`), `apply(config, prob)` hands a `Problem` its

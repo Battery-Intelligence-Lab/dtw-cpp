@@ -64,7 +64,7 @@ Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
 /**
  * @brief Build a Data object from an Arrow C stream (the `__arrow_c_stream__`
  *        PyCapsule protocol, as exported by polars and pandas, and the stream
- *        read_data exports from an Arrow IPC file).
+ *        read_arrow exports from an Arrow IPC file).
  *
  * Consumes every batch, concatenating the list elements into one series set,
  * named as data_from_arrow names them with "series_<global i>" numbered across

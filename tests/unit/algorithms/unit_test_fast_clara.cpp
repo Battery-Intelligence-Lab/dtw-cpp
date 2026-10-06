@@ -427,11 +427,25 @@ TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",
       "without resident series.");
   }
 
-#ifndef DTWC_HAS_PARQUET
+  SECTION("an unforced stream request is fast_clara_parquet's")
+  {
+    // It was ignored: a resident Problem ran on its series, a settings-only one
+    // failed with "Problem has no data points".
+    opts.force_parquet_streaming = false;
+    Problem resident = make_clara_problem(3);
+    REQUIRE_THROWS_AS(algorithms::fast_clara(resident, opts), dtwc::InvalidInput);
+    REQUIRE_THROWS_WITH(
+      algorithms::fast_clara(resident, opts),
+      "fast_clara: parquet_path with ram_limit_bytes asks to stream the series from "
+      "Parquet, which algorithms::fast_clara_parquet does (dtwc_cl --ram-limit, in a "
+      "build with Parquet); fast_clara clusters the Problem's own series. Clear "
+      "parquet_path, or call fast_clara_parquet.");
+  }
+
   SECTION("the missing capability is loud, as an IOError")
   {
-    // A build that cannot read the format raises IOError; it was
-    // InvalidInput, which names a bad argument.
+    // The core's FastCLARA reads no Parquet, in any build (fast_clara_parquet
+    // streams): IOError; it was InvalidInput, which names a bad argument.
     Problem settings_only{"clara_missing_parquet"};
     REQUIRE_THROWS_AS(algorithms::fast_clara(settings_only, opts), dtwc::IOError);
     REQUIRE_THROWS_WITH(
@@ -439,7 +453,6 @@ TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",
       "fast_clara: force_parquet_streaming requires a build with Parquet "
       "support.");
   }
-#endif
 }
 
 // ===========================================================================

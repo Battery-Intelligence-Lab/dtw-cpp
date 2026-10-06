@@ -8,6 +8,21 @@ option(DTWC_ENABLE_COVERAGE "Enable coverage reporting for GCC or Clang" OFF)
 set(DTWC_TEST_SKIP_REGEX
     "(^|[\r\n])[ \t]*[Ss][Kk][Ii][Pp]([Pp][Ee][Dd]|[Pp][Ii][Nn][Gg])?([ :]|$)")
 
+# dtwc_public_definitions(<var>): the definitions dtwc++ publishes, those of the
+# libraries it links (each publishes its own capabilities: DTWC_HAS_MMAP, ...).
+function(dtwc_public_definitions out)
+  set(_defs "")
+  foreach(_lib IN ITEMS dtwc_core dtwc_io dtwc_cli)
+    if(TARGET ${_lib})
+      get_target_property(_lib_defs ${_lib} INTERFACE_COMPILE_DEFINITIONS)
+      if(_lib_defs)
+        list(APPEND _defs ${_lib_defs})
+      endif()
+    endif()
+  endforeach()
+  set(${out} "${_defs}" PARENT_SCOPE)
+endfunction()
+
 # dtwc_add_test(NAME <target> SOURCE <file>
 #   [MARKER <regex>] [MAY_SKIP] [MARKER_ONLY]
 #   [REQUIRES <compile-definition>...] [LAUNCHER <command>...]
@@ -52,7 +67,7 @@ function(dtwc_add_test)
   list(APPEND DTWC_TEST_REGISTERED ${ARG_NAME})
   set(DTWC_TEST_REGISTERED "${DTWC_TEST_REGISTERED}" PARENT_SCOPE)
 
-  get_target_property(_public_defs dtwc++ INTERFACE_COMPILE_DEFINITIONS)
+  dtwc_public_definitions(_public_defs)
   foreach(req IN LISTS ARG_REQUIRES)
     if(NOT "${req}" IN_LIST _public_defs)
       message(STATUS "dtwc_add_test: ${ARG_NAME} not registered (dtwc++ does not publish ${req})")

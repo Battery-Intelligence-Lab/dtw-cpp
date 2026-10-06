@@ -22,6 +22,9 @@
 #include "../fileOperations.hpp"
 #include "../io/read_data.hpp"
 #include "../scores.hpp"
+#ifdef DTWC_HAS_ARROW
+#include "../io/read_arrow.hpp"
+#endif
 #ifdef DTWC_HAS_PARQUET
 #include "../io/parquet_chunk_reader.hpp"
 #endif
@@ -61,6 +64,26 @@ const char *progress_label(Method method)
   case Method::TADPole: return "TADPole clustering";
   }
   return "auto";
+}
+
+/// The input's format, judged from its name before any file is opened. In a
+/// build with Arrow, dtwc_io reads Parquet and Arrow IPC; the core's reader
+/// takes the rest, and refuses those formats in a build without them.
+InputFormat format_of(const fs::path &input)
+{
+#ifdef DTWC_HAS_ARROW
+  if (const auto format = io::arrow_format(input)) return *format;
+#endif
+  return input_format(input);
+}
+
+/// The series `input` names, read by the reader its format needs.
+Data read_input(const fs::path &input, [[maybe_unused]] InputFormat format, const Config &config)
+{
+#ifdef DTWC_HAS_ARROW
+  if (format != InputFormat::Text) return io::read_arrow(input, config.column);
+#endif
+  return read_data(input, config.skip_cols, config.skip_rows, config.delimiter, config.column);
 }
 
 /// Reject a reader option the input cannot honour: accepting and then ignoring
@@ -171,7 +194,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
   const fs::path input = utf8_to_path(config.input);
   std::optional<InputFormat> format; // empty: the series are in memory
-  if (!data) format = input_format(input);
+  if (!data) format = format_of(input);
   require_input_options_apply(config, format);
 
   // A --checkpoint that cannot hold a checkpoint stops the run here, before any
@@ -254,8 +277,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
   // ---- 3. Load the series into RAM ----
   if (!stream_payload) {
-    Data series = data ? std::move(*data)
-                       : read_data(input, config.skip_cols, config.skip_rows, config.delimiter, config.column);
+    Data series = data ? std::move(*data) : read_input(input, format.value_or(InputFormat::Text), config);
     if (config.verbose) {
       const char *from = !format                            ? " in memory"
                          : format == InputFormat::Parquet  ? " from Parquet"
@@ -324,7 +346,11 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // A RAM-limited Parquet run is the one whose series the Problem does not hold:
   // FastCLARA streams them.
   if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
-  core::ClusteringResult result = stream_payload ? algorithms::fast_clara(prob, clara) : prob.cluster();
+#ifdef DTWC_HAS_PARQUET
+  core::ClusteringResult result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : prob.cluster();
+#else
+  core::ClusteringResult result = prob.cluster(); // only a Parquet input streams
+#endif
   if (config.verbose) {
     std::cout << progress_label(method);
     if (method == Method::PAM)

@@ -9,7 +9,7 @@ DTW-C++ can be used as a C++ library, from the command line, or via its Python b
 
 - Write a C++ program against the library, starting from the programs in `examples/cpp` (built with `-DDTWC_BUILD_EXAMPLES=ON`).
 - Use DTW-C++ from the command line interface, by using the `dtwc_cl` executable after compilation. 
-- Use DTW-C++ as an external library in your C++ project by linking the `dtwc++` target in your project. Download the source code to your folder of preference, include the line `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library. Alternatively, you may also use [CPM](https://github.com/cpm-cmake/) to interactively download and include DTW-C++. DTW-C++ has no built-in data or results folder: pass your data paths to the loaders, and set a `Problem`'s output folder with `set_output_folder` (the default is `./results/`, relative to the working directory).
+- Use DTW-C++ as an external library in your C++ project by linking the `dtwc++` target in your project (it links `dtwc_core`, the algorithms and the CSV/TSV reader; `dtwc_cli`, `dtwc::run` and `dtwc::cluster`; and, in a build with `-DDTWC_ENABLE_ARROW=ON`, `dtwc_io`, the Parquet and Arrow IPC readers: link `dtwc_core` alone for the algorithms without the others). Download the source code to your folder of preference, include the line `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library. Alternatively, you may also use [CPM](https://github.com/cpm-cmake/) to interactively download and include DTW-C++. DTW-C++ has no built-in data or results folder: pass your data paths to the loaders, and set a `Problem`'s output folder with `set_output_folder` (the default is `./results/`, relative to the working directory).
 
 ## CPU requirement
 

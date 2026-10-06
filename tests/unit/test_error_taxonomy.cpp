@@ -39,6 +39,9 @@
 #include <core/matrix_io.hpp>
 #include <initialisation.hpp>
 #include <io/read_data.hpp>
+#ifdef DTWC_HAS_ARROW
+#include <io/read_arrow.hpp>
+#endif
 #include <scores.hpp>
 #include <soft_dtw.hpp>
 
@@ -264,12 +267,12 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
       } },
 #endif
 #ifdef DTWC_HAS_ARROW
-    { "read_data.cpp: an Arrow IPC file that does not exist", "IOError",
-      [&dir] { (void)dtwc::read_data(dir.path / "missing.arrow"); } },
+    { "read_arrow.cpp: an Arrow IPC file that does not exist", "IOError",
+      [&dir] { (void)dtwc::io::read_arrow(dir.path / "missing.arrow"); } },
 #endif
 #ifdef DTWC_HAS_PARQUET
-    { "read_data.cpp: a Parquet file that does not exist", "IOError",
-      [&dir] { (void)dtwc::read_data(dir.path / "missing.parquet"); } },
+    { "read_arrow.cpp: a Parquet file that does not exist", "IOError",
+      [&dir] { (void)dtwc::io::read_arrow(dir.path / "missing.parquet"); } },
 #endif
   };
 
