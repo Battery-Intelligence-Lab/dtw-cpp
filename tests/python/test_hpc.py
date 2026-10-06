@@ -1041,6 +1041,7 @@ class TestPackagedWrapper:
         assert res.labels[0] != res.labels[9]
         assert res.device == "hpc" and res.distance_matrix is None
         assert (project / "results/slurm/cluster_12345/café_labels.csv").is_file()
+        assert (remote / "src/logs").is_dir()  # SLURM opens the job's logs there
         package = Path(dtwcpp.__file__).resolve().parent
         scp = (tmp_path / "scp").read_text(encoding="utf-8").splitlines()
         assert Path(scp[-2]).resolve() == package / "_slurm/cluster_generic.slurm"

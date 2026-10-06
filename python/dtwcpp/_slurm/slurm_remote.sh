@@ -221,9 +221,10 @@ cmd_upload() {
     echo ""
 
     # Create remote directory structure
+    # Jobs submitted from src/ write their logs to src/logs/, which SLURM does not create.
     remote_argv mkdir -p \
         "${REMOTE}/src/dtwc" "${REMOTE}/src/cmake" \
-        "${REMOTE}/src/scripts/slurm/jobs" \
+        "${REMOTE}/src/scripts/slurm/jobs" "${REMOTE}/src/logs" \
         "${REMOTE}/data/Coffee" "${REMOTE}/data/Beef" \
         "${REMOTE}/results" "${REMOTE}/logs"
 
@@ -481,7 +482,7 @@ cmd_submit_job() {
     # script, so concurrent callers never publish through a shared pathname.
     local REMOTE_JOB_ROOT="${REMOTE}/data/userjobs"
     local MKDIR_COMMAND MKTEMP_COMMAND REMOTE_JOB_DIR REMOTE_JOB_BASENAME
-    shell_join MKDIR_COMMAND mkdir -p "${REMOTE_JOB_ROOT}"
+    shell_join MKDIR_COMMAND mkdir -p "${REMOTE_JOB_ROOT}" "${REMOTE}/src/logs"
     remote "${MKDIR_COMMAND}"
     shell_join MKTEMP_COMMAND mktemp -d "${REMOTE_JOB_ROOT}/job.XXXXXXXX"
     REMOTE_JOB_DIR="$(remote "${MKTEMP_COMMAND}")"
