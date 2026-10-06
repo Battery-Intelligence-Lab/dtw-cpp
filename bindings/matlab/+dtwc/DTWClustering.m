@@ -73,6 +73,9 @@ classdef DTWClustering
         function obj = DTWClustering(varargin)
         %DTWCLUSTERING obj = dtwc.DTWClustering('NClusters', 5, 'Band', 10)
         %   Name-value pairs set the properties of those names (ASCII case ignored).
+            if mod(numel(varargin), 2)
+                error('dtwc:invalidArgument', 'DTWClustering: properties come in name-value pairs.');
+            end
             mc = ?dtwc.DTWClustering;
             settable = {mc.PropertyList(strcmp({mc.PropertyList.SetAccess}, 'public')).Name};
             for i = 1:2:numel(varargin)

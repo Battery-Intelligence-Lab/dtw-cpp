@@ -6,7 +6,7 @@ function tests = test_tier1_route_parity
 %   AND behaviour in C++, Python and MATLAB, with C++ as the reference.
 %
 %   Each test names the drift item it closes. Oracles are the Tier-2 entry
-%   points dtwc::cluster() itself calls, so a MATLAB-side re-implementation
+%   points Problem::cluster() itself calls, so a MATLAB-side re-implementation
 %   cannot satisfy them by accident.
 %
 %   Run with: results = runtests('test_tier1_route_parity');
@@ -86,7 +86,7 @@ end
 function test_ragged_cell_source_matches_the_tier2_route(testCase)
 %   Contract 1.2/1.3: MATLAB Tier-1 must take the same ragged in-memory source
 %   C++ load(series_type) and the Python list route take. The oracle is the
-%   Tier-2 Problem + seeded FastPAM that dtwc::cluster() itself calls (mirrors
+%   Tier-2 Problem + seeded FastPAM that Problem::cluster() itself calls (mirrors
 %   tests/python/test_api.py::TestRaggedInMemorySource).
     ragged = {[0 0.1 0.2 0.3], [0.05 0.15], [9 9.1 9.2], [9.2 9.05 9.1 9.3 9.15]};
     res = dtwc.cluster(ragged, 2, 'Method', 'pam');
@@ -102,8 +102,8 @@ function test_ragged_cell_source_matches_the_tier2_route(testCase)
 end
 
 function test_ragged_cell_source_honours_skip_rows_and_skip_cols(testCase)
-%   The C++ in-memory branch drops leading SERIES and then leading elements of
-%   every row; a cell source must obey the same rule the matrix source does.
+%   In memory, SkipRows drops leading SERIES and SkipCols the leading values of
+%   every series, as C++ load(series_type) and Python do, for a cell as for a matrix.
     ragged = {[7 7], [1 0 1], [2 5]};
     res = dtwc.cluster(dtwc.load(ragged, 'SkipRows', 1, 'SkipCols', 1), 2);
     trimmed = dtwc.cluster({[0 1], 5}, 2);
@@ -169,7 +169,7 @@ end
 
 function test_clara_honours_max_iter(testCase)
 %   Drift 4: MATLAB forwarded only 'Seed', so fast_clara's own default of 100
-%   always won. The oracle is the same algorithm dtwc::cluster() calls.
+%   always won. The oracle is the same algorithm Problem::cluster() calls.
     X = testCase.TestData.Xbig;
     k = 3;
     for mi = [1 100]
@@ -211,8 +211,8 @@ function test_in_memory_skip_cols_is_honoured(testCase)
 end
 
 function test_in_memory_skip_cols_beyond_the_series_is_rejected(testCase)
-%   Drift 7, second half: C++ rejects a skip_cols longer than a series; the
-%   lazy handle has no reader of its own to disagree with it.
+%   Drift 7, second half: a SkipCols longer than a series is refused, as C++ and
+%   Python refuse it.
     X = testCase.TestData.X;
     err = capture_error(@() dtwc.cluster(dtwc.load(X, 'SkipCols', 99), 2));
     verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
