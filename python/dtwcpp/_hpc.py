@@ -86,20 +86,19 @@ def write_series_tsv(series, path):
 def parse_labels_csv(path, n=None):
     """Parse dtwc_cl's ``NAME_labels.csv`` into labels in INPUT order.
 
-    The file has header ``name,cluster``; dtwc_cl names batch-row series ``1..N``
-    (1-based). Row order is not guaranteed (it may be lexically sorted), so the
-    mapping is by name: ``labels[i] = cluster_of[str(i + 1)]``.
-
-    ``n`` is the expected number of series; when ``None`` (e.g. an HPC path source
-    whose length isn't known locally) it is inferred from the file row count.
-    Raises KeyError if any series ``1..n`` is absent from the file.
+    The file has header ``name,cluster`` and a row per series, in dtwc_cl's
+    series order. With ``n``, the series are input.tsv's ``n`` rows, which
+    dtwc_cl names ``1..n``: the mapping is by name, ``labels[i] =
+    cluster_of[str(i + 1)]``, whatever the row order, and a series absent from
+    the file raises KeyError. Without ``n`` (a file read on the cluster, whose
+    series a folder or Parquet file names its own way), the labels keep the
+    rows' order.
     """
-    mapping = {}
     with open(path, newline="") as f:
-        for row in csv.DictReader(f):
-            mapping[str(row["name"]).strip()] = int(row["cluster"])
+        rows = list(csv.DictReader(f))
     if n is None:
-        n = len(mapping)
+        return np.array([int(row["cluster"]) for row in rows], dtype=np.int64)
+    mapping = {str(row["name"]).strip(): int(row["cluster"]) for row in rows}
     labels = np.empty(n, dtype=np.int64)
     for i in range(n):
         labels[i] = mapping[str(i + 1)]          # KeyError if a series is missing

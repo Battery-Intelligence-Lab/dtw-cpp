@@ -76,6 +76,13 @@ class TestParseLabelsCSV:
         with pytest.raises((KeyError, ValueError)):
             _hpc.parse_labels_csv(p, n=3)
 
+    def test_a_file_read_on_the_cluster_keeps_the_row_order(self, tmp_path):
+        """A folder names its series by file stem, Parquet by its name column:
+        without n the labels are the rows', which dtwc_cl writes in series order."""
+        p = tmp_path / "j_labels.csv"
+        p.write_text("name,cluster\nb_series,1\na_series,0\nc_series,1\n")
+        np.testing.assert_array_equal(_hpc.parse_labels_csv(p), [1, 0, 1])
+
 
 # ---------------------------------------------------------------------------
 # job.toml: the run as one file, in the grammar dtwc_cl --config reads
