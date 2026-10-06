@@ -106,6 +106,7 @@ if [[ -n "${SLURM_EMAIL:-}" ]]; then
         && [[ "${SLURM_EMAIL}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]] \
         || transport_config_error SLURM_EMAIL "${SLURM_EMAIL}"
 fi
+[[ -z "${SLURM_GPU_GRES:-}" ]] || { echo "ERROR: SLURM_GPU_GRES in .env is no longer read: a run names its GPU with gpu_device= (Python) or --gpu-device (slurm_remote.sh); remove the line" >&2; exit 1; }
 
 SSH_TARGET="${SLURM_USER}@${SLURM_HOST}"
 REMOTE="${SLURM_REMOTE_BASE}"

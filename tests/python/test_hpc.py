@@ -713,6 +713,7 @@ class TestSlurmLastMile:
             ("SLURM_PARTITION", "short,long"),
             ("SLURM_CLUSTER", "arc;command"),
             ("SLURM_EMAIL", "not-an-email"),
+            ("SLURM_GPU_GRES", "gpu:1"),
         ],
     )
     def test_unsafe_transport_config_is_rejected_before_ssh(
