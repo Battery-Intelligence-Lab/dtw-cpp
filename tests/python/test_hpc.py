@@ -874,8 +874,9 @@ class TestSlurmLastMile:
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_safe_optional_config_reaches_sbatch_as_single_argv(self, tmp_path):
-        """The optional settings and the GPU request, its constraint's '|'
-        included, reach sbatch as single arguments; the job runs build-l40s."""
+        """The optional settings, the .env partition and the GPU request, its
+        constraint's '|' included, reach sbatch as single arguments; the job
+        runs build-l40s."""
         wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
         cluster = "arc-prod"
         email = "first.last+dtwc@eng.ox.ac.uk"
@@ -884,6 +885,7 @@ class TestSlurmLastMile:
             stream.write(
                 f"SLURM_CLUSTER={cluster}\n"
                 f"SLURM_EMAIL={email}\n"
+                "SLURM_PARTITION=medium\n"
             )
         binary = tmp_path / "remote/src/build-l40s/bin/dtwc_cl"
         binary.parent.mkdir(parents=True)
@@ -903,6 +905,7 @@ class TestSlurmLastMile:
         sbatch_args = capture.read_text(encoding="utf-8").splitlines()
         assert f"--clusters={cluster}" in sbatch_args
         assert f"--mail-user={email}" in sbatch_args
+        assert "--partition=medium" in sbatch_args
         assert [arg for arg in sbatch_args if arg.startswith(("--gres=", "--constraint="))] \
             == _hpc.gpu_request("l40s")
         assert sbatch_args[-2].endswith(",DTWC_BUILD=l40s")

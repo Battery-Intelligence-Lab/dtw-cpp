@@ -504,7 +504,8 @@ cmd_submit_job() {
     fi
     scp -- "${SCRIPT_DIR}/cluster_generic.slurm" "${SSH_TARGET}:${REMOTE_JOB_DIR}/cluster_generic.slurm"
 
-    local -a SBATCH_ARGS=(sbatch --parsable)
+    # The .env partition, which a GPU build (build --gpu-device) uses too.
+    local -a SBATCH_ARGS=(sbatch --parsable "--partition=${PARTITION}")
     [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
     if [[ -n "${SLURM_EMAIL:-}" ]]; then
         SBATCH_ARGS+=("--mail-type=BEGIN,END,FAIL" "--mail-user=${SLURM_EMAIL}")
