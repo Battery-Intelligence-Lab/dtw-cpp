@@ -475,9 +475,10 @@ cmd_submit_job() {
 
     banner "Submitting clustering job (${RUNDIR})"
 
-    local BIN="${REMOTE}/src/build-${BUILD}/bin/dtwc_cl"
+    local BIN="${REMOTE}/src/build-${BUILD}/bin/dtwc_cl" BUILD_COMMAND="build ${BUILD}"
+    [[ "${BUILD}" == htc-* ]] || BUILD_COMMAND="build htc-gpu --gpu-device ${BUILD}"
     remote_argv test -x "${BIN}" || {
-        echo "  ERROR: no dtwc_cl at ${BIN} (or ssh failed). Build it: bash scripts/slurm/slurm_remote.sh build ${BUILD}" >&2
+        echo "  ERROR: no dtwc_cl at ${BIN} (or ssh failed). Build it: bash scripts/slurm/slurm_remote.sh ${BUILD_COMMAND}" >&2
         exit 1
     }
 
