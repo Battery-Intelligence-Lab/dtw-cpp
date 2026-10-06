@@ -574,6 +574,7 @@ class TestSlurmLastMile:
             ("htc-gpu", None),
             ("htc-gpu --gpu-device p100", "below the 8.0"),
             ("htc-cpu --gpu-device a100", "needs a GPU profile"),
+            ("htc-gpu --gpu-device ''", "unknown GPU type"),
         ],
     )
     def test_a_gpu_build_runs_on_that_gpu(self, tmp_path, args, message):
@@ -607,6 +608,31 @@ class TestSlurmLastMile:
             assert gpu_args == []
             assert "--partition=interactive" in sbatch_args
             assert exports.endswith(",DTWC_BUILD_DIR=build-htc-gpu")
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_a_crlf_table_reads_as_the_lf_one(self, tmp_path):
+        """An editor that saves gpu_devices.txt with CRLF must not let bash take
+        a refused type's '-' as a request, nor pass a CR to sbatch."""
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        table = wrapper.parents[2] / "python/dtwcpp/_slurm/gpu_devices.txt"
+        table.write_bytes(table.read_bytes().replace(b"\n", b"\r\n"))
+        outcomes = []
+        for gpu_type in ("v100", "l40s"):
+            command = (
+                f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+                f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+                f"exec bash {shlex.quote(_bash_path(wrapper))} "
+                f"submit-benchmark-gpu {gpu_type}"
+            )
+            outcomes.append(subprocess.run(
+                ["bash", "-c", command], check=False, capture_output=True,
+                text=True, encoding="utf-8", errors="replace",
+            ))
+        assert outcomes[0].returncode != 0 and "below the 8.0" in outcomes[0].stderr
+        assert outcomes[1].returncode == 0, outcomes[1].stdout + outcomes[1].stderr
+        args = capture.read_text(encoding="utf-8").splitlines()
+        assert [arg for arg in args if arg.startswith(("--gres=", "--constraint="))] \
+            == _hpc.gpu_request("l40s")
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize("mode", ["cpu", "gpu", "bogus"])
@@ -768,6 +794,7 @@ class TestSlurmLastMile:
             ("run --bogus", "submit-job syntax"),
             ("run --gpu-device v100", "below the 8.0"),
             ("run --gpu-device '#'", "unknown GPU type"),
+            ("run --gpu-device ''", "unknown GPU type"),
         ],
     )
     def test_submit_job_rejects_an_unsafe_envelope_before_ssh(

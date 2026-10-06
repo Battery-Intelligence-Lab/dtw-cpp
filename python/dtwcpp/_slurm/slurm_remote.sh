@@ -166,24 +166,25 @@ shell_join() {
 }
 
 # GPU_REQUEST becomes the sbatch arguments that ask for a GPU of type $1, or,
-# with no type, for any GPU at or above the CUDA floor (the '*' line), as
-# gpu_devices.txt beside this script lists them; dtwcpp._hpc reads the same
-# table. A type below the floor, or one the table does not name, is refused
-# before any SSH.
+# called without an argument, for any GPU at or above the CUDA floor (the '*'
+# line), as gpu_devices.txt beside this script lists them; dtwcpp._hpc reads
+# the same table. A type below the floor, an empty one, or one the table does
+# not name, is refused before any SSH.
 gpu_request() {
     local NAME CAPABILITY REQUEST
-    if [[ -z "$1" || "$1" =~ ^[a-z0-9]+$ ]]; then
+    if (( $# == 0 )) || [[ "$1" =~ ^[a-z0-9]+$ ]]; then
         while read -r NAME CAPABILITY REQUEST; do
-            [[ "${NAME}" == "${1:-*}" ]] || continue
+            REQUEST="${REQUEST%$'\r'}"  # a CRLF copy of the table reads as the LF one
+            [[ "${NAME}" == "${1-*}" ]] || continue
             [[ "${REQUEST}" != - ]] || {
-                echo "ERROR: GPU type '$1' has CUDA compute capability ${CAPABILITY}, below the 8.0 DTWC++ needs" >&2
+                echo "ERROR: GPU type '${1-}' has CUDA compute capability ${CAPABILITY}, below the 8.0 DTWC++ needs" >&2
                 exit 1
             }
             read -r -a GPU_REQUEST <<< "${REQUEST}"
             return 0
         done < "${SCRIPT_DIR}/gpu_devices.txt"
     fi
-    echo "ERROR: unknown GPU type '$1'; gpu_devices.txt lists the types" >&2
+    echo "ERROR: unknown GPU type '${1-}'; gpu_devices.txt lists the types" >&2
     exit 1
 }
 
@@ -303,12 +304,12 @@ build_syntax_error() {
 }
 
 cmd_build() {
-    local PROFILE="" GPU_DEVICE=""
+    local PROFILE="" GPU_DEVICE="" GPU_GIVEN=""
     while (( $# )); do
         case "$1" in
             --profile|--gpu-device)
                 (( $# >= 2 )) || build_syntax_error
-                [[ "$1" == --profile ]] && PROFILE="$2" || GPU_DEVICE="$2"
+                if [[ "$1" == --profile ]]; then PROFILE="$2"; else GPU_DEVICE="$2" GPU_GIVEN=1; fi
                 shift 2
                 ;;
             *)
@@ -332,7 +333,7 @@ cmd_build() {
     # architecture and CPU) into build-<type>, the build that type's jobs run.
     local BUILD_PARTITION="interactive" BUILD_DIR="build-${PROFILE}"
     local -a GPU_REQUEST=()
-    if [[ -n "${GPU_DEVICE}" ]]; then
+    if [[ -n "${GPU_GIVEN}" ]]; then
         [[ "${PROFILE}" == htc-gpu || "${PROFILE}" == h100 ]] || {
             echo "ERROR: --gpu-device needs a GPU profile, htc-gpu or h100, not '${PROFILE}'" >&2
             exit 1
@@ -417,7 +418,7 @@ cmd_submit_smoke() {
     local -a GPU_REQUEST=()
     case "$#:${1:-}" in
         1:cpu|1:checkpoint|1:parquet) ;;
-        1:gpu) BUILD="htc-gpu"; gpu_request "" ;;
+        1:gpu) BUILD="htc-gpu"; gpu_request ;;
         *)
             echo "ERROR: submit-smoke syntax is 'submit-smoke cpu|gpu|checkpoint|parquet'" >&2
             exit 1
@@ -437,7 +438,7 @@ cmd_submit_benchmark_gpu() {
         exit 1
     }
     local -a GPU_REQUEST=()
-    gpu_request "${1:-}"
+    gpu_request ${1+"$1"}
     _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${1:+: $1})" "htc-gpu" "${GPU_REQUEST[@]}"
 }
 
@@ -453,7 +454,7 @@ cmd_submit_job() {
     local -a GPU_REQUEST=()
     case "$#:${2:-}" in
         1:) ;;
-        2:--gpu) BUILD="htc-gpu"; gpu_request "" ;;
+        2:--gpu) BUILD="htc-gpu"; gpu_request ;;
         3:--gpu-device) BUILD="$3"; gpu_request "$3" ;;
         *)
             echo "ERROR: submit-job syntax is 'submit-job <rundir> [--gpu | --gpu-device <type>]'" >&2
