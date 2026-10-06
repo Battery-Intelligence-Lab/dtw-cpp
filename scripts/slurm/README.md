@@ -64,7 +64,7 @@ Elsewhere the profile's portable lists above apply.
 | Command | Partition | GPU request | Builds into | Run by |
 |---|---|---|---|---|
 | `build htc-gpu` | `interactive` | none | `build-htc-gpu`, portable | `device="hpc:gpu"` |
-| `build htc-gpu --gpu-device <type>` | `.env`'s (`short`) | that type's (`gpu_devices.txt`) | `build-<type>`, native to that node | `gpu_device="<type>"` |
+| `build htc-gpu --gpu-device <type>` | `.env`'s (`short`) | that type's (`gpu_devices.txt`) | `build-<type>`: that GPU's CUDA architecture, portable CPU code (one type's nodes differ in CPU) | `gpu_device="<type>"` |
 | `build htc-cpu` | `interactive` | none | `build-htc-cpu` | `device="hpc"` |
 
 ## .env Configuration

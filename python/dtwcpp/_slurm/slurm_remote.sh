@@ -329,9 +329,10 @@ cmd_build() {
     esac
     # Without --gpu-device the build runs on an interactive node, without a GPU,
     # and is portable. With it, the build asks for that GPU as a job does, so
-    # build-arc.sh runs on such a node and builds for it (native CUDA
-    # architecture and CPU) into build-<type>, the build that type's jobs run.
-    local BUILD_PARTITION="interactive" BUILD_DIR="build-${PROFILE}"
+    # build-arc.sh runs on such a node and builds its CUDA architecture into
+    # build-<type>, the build that type's jobs run. The CPU code stays portable
+    # (DTWC_NATIVE_CPU=OFF): one GPU type's nodes have different CPUs.
+    local BUILD_PARTITION="interactive" BUILD_DIR="build-${PROFILE}" NATIVE_CPU="ON"
     local -a GPU_REQUEST=()
     if [[ -n "${GPU_GIVEN}" ]]; then
         [[ "${PROFILE}" == htc-gpu || "${PROFILE}" == h100 ]] || {
@@ -341,6 +342,7 @@ cmd_build() {
         gpu_request "${GPU_DEVICE}"
         BUILD_PARTITION="${PARTITION}"
         BUILD_DIR="build-${GPU_DEVICE}"
+        NATIVE_CPU="OFF"
     fi
     banner "Building on cluster (profile: ${PROFILE}${GPU_DEVICE:+, GPU ${GPU_DEVICE}}, into ${BUILD_DIR})"
 
@@ -358,7 +360,7 @@ source scripts/slurm/build-arc.sh "${DTWC_BUILD_PROFILE}"
 '
 
     echo "  Submitting build job..."
-    local EXPORTS="ALL,DTWC_REMOTE_BASE=${REMOTE},DTWC_BUILD_PROFILE=${PROFILE},DTWC_BUILD_DIR=${BUILD_DIR}"
+    local EXPORTS="ALL,DTWC_REMOTE_BASE=${REMOTE},DTWC_BUILD_PROFILE=${PROFILE},DTWC_BUILD_DIR=${BUILD_DIR},DTWC_NATIVE_CPU=${NATIVE_CPU}"
     local -a SBATCH_ARGS=(
         sbatch --parsable "--partition=${BUILD_PARTITION}" --time=01:00:00
         --cpus-per-task=8 --mem-per-cpu=4G --job-name=dtwc-build

@@ -129,8 +129,10 @@ specialised binary. Such a build runs only on that node type, so build again for
 Anywhere else (a node without a GPU, or one whose GPU is below 8.0) the profile's portable lists above
 apply. `slurm_remote.sh build htc-gpu --gpu-device <type>` asks for that GPU as its jobs do, on the
 `.env` partition, so the build runs on such a node and goes into `build-<type>`, the build a
-`gpu_device="<type>"` run uses. Without that flag, `build` submits to the `interactive` partition
-without a GPU request and takes the portable route.
+`gpu_device="<type>"` run uses: that GPU's CUDA architecture, with the profile's portable CPU code,
+since one GPU type sits on nodes of different CPUs (ARC's A100 nodes are Cascade Lake and AMD Rome, its
+H100 nodes Ice Lake and Sapphire Rapids) and a job may land on any of them. Without that flag, `build`
+submits to the `interactive` partition without a GPU request and takes the portable route.
 
 ## Test Datasets
 

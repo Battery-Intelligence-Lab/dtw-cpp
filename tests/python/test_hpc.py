@@ -579,8 +579,9 @@ class TestSlurmLastMile:
     )
     def test_a_gpu_build_runs_on_that_gpu(self, tmp_path, args, message):
         """build --gpu-device asks for that GPU as its jobs do, on the .env
-        partition, so build-arc.sh builds natively into build-<type>; without
-        it the build asks for no GPU, on an interactive node, and is portable."""
+        partition, so build-arc.sh builds that GPU's CUDA architecture into
+        build-<type>, CPU code portable; without it the build asks for no GPU,
+        on an interactive node, and is portable."""
         wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
@@ -603,11 +604,11 @@ class TestSlurmLastMile:
         if "--gpu-device" in args:
             assert gpu_args == _hpc.gpu_request("a6000")
             assert "--partition=short" in sbatch_args
-            assert exports.endswith(",DTWC_BUILD_DIR=build-a6000")
+            assert exports.endswith(",DTWC_BUILD_DIR=build-a6000,DTWC_NATIVE_CPU=OFF")
         else:
             assert gpu_args == []
             assert "--partition=interactive" in sbatch_args
-            assert exports.endswith(",DTWC_BUILD_DIR=build-htc-gpu")
+            assert exports.endswith(",DTWC_BUILD_DIR=build-htc-gpu,DTWC_NATIVE_CPU=ON")
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_a_crlf_table_reads_as_the_lf_one(self, tmp_path):
