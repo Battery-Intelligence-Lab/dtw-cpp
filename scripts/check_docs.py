@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Two documentation gates that compare what users read with what the code does.
+"""Three documentation gates that compare what users read with what the code does.
 
 1. Every dtwc_cl flag the user docs show exists in the live `dtwc_cl --help`.
    Scope: docs/content/**/*.md, README.md, .claude/commands/*.md. A flag "the
@@ -10,7 +10,15 @@
      c. an inline code span that starts `-x, --name` (an option-list row).
    Other programs' flags (cmake -D..., ctest -j1, #SBATCH --gres) sit in none
    of these, so prose and foreign commands cannot raise false positives.
-2. cmake/DtwcTest.cmake still fails a test that skips without MAY_SKIP.
+2. The other way: every flag the live `--help` prints, short forms and aliases
+   included, is named by a table row of the CLI reference, REFERENCE below (the
+   page with one row per flag; configuration.md calls it the source of truth).
+   A mention in prose or in an example does not stand in for the row. A hidden
+   flag (v1.0.0's spellings) is exempt because `--help` does not print it, not
+   because a list says so. `dtwc_cl` has no subcommands; if its help ever lists
+   some, this fails, because their flags are in their own help, which is not read.
+3. The gates still bite: cmake/DtwcTest.cmake fails a test that skips without
+   MAY_SKIP, and gate 2's reader names a flag that has no table row.
 """
 
 from __future__ import annotations
@@ -22,6 +30,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+REFERENCE = ROOT / "docs/content/getting-started/cli.md"
 FLAG = re.compile(r"(?<![\w-])--?[A-Za-z][\w-]*")
 DTWC_CL = re.compile(r"(?:^|[\s/\\\"'=])dtwc_cl(?:\.exe)?(?=[\s\"',\]]|$)")
 SEGMENT_END = re.compile(r"\|\||&&|[|;]|(?:^|\s)#")
@@ -46,11 +55,11 @@ def span_flags(span: str) -> list[str]:
     return command_flags(span)
 
 
-def documented_flags(path: Path) -> list[tuple[int, str]]:
-    """(line, flag) for every dtwc_cl flag the page shows."""
+def documented_flags(lines: list[str]) -> list[tuple[int, str]]:
+    """(line, flag) for every dtwc_cl flag the lines of a page show."""
     found: list[tuple[int, str]] = []
     in_block, pending, start = False, "", 0
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for number, line in enumerate(lines, 1):
         if FENCE.match(line):
             in_block, pending = not in_block, ""
             continue
@@ -69,6 +78,12 @@ def documented_flags(path: Path) -> list[tuple[int, str]]:
     return found
 
 
+def undocumented(live: set[str], page: list[str]) -> list[str]:
+    """The live flags that no table row of the page names (gate 2)."""
+    rows = {n for n, line in enumerate(page, 1) if line.lstrip().startswith("|")}
+    return sorted(live - {flag for n, flag in documented_flags(page) if n in rows})
+
+
 def check_cli_flags(binary: Path) -> list[str]:
     help_text = subprocess.run([str(binary), "--help"], capture_output=True, text=True,
                                encoding="utf-8", errors="replace", check=True).stdout
@@ -77,12 +92,20 @@ def check_cli_flags(binary: Path) -> list[str]:
              *sorted((ROOT / ".claude/commands").glob("*.md"))]
     errors, count = [], 0
     for page in pages:
-        for line, flag in documented_flags(page):
+        for line, flag in documented_flags(page.read_text(encoding="utf-8").splitlines()):
             count += 1
             if flag not in live:
                 errors.append(f"{page.relative_to(ROOT).as_posix()}:{line}: "
                               f"{flag} is not in `dtwc_cl --help`")
-    print(f"DOCS flags checked={count} pages={len(pages)} live={len(live)}")
+    reference = REFERENCE.relative_to(ROOT).as_posix()
+    missing = undocumented(live, REFERENCE.read_text(encoding="utf-8").splitlines())
+    errors += [f"{reference}: {flag} is in `dtwc_cl --help` "
+               f"but no table row of this page names it" for flag in missing]
+    if "SUBCOMMANDS:" in help_text:
+        errors.append("`dtwc_cl --help` lists SUBCOMMANDS: this gate reads the top-level help "
+                      "only, so their flags are in neither direction's check")
+    print(f"DOCS flags checked={count} pages={len(pages)} live={len(live)} "
+          f"undocumented={len(missing)}")
     return errors
 
 
@@ -100,11 +123,23 @@ def check_harness() -> list[str]:
             f"missing {text!r}" for text in required if text not in harness]
 
 
+def check_reverse_bites() -> list[str]:
+    """Gate 2 on a made-up page: a flag with a table row passes, and one that only prose
+    and an example name is reported."""
+    row = ["| `-a, --alpha <int>` | the flag in its row | 1 |"]
+    prose = ["Prose names `--beta`, and so does an example:", "```", "dtwc_cl --beta", "```"]
+    got = (undocumented({"-a", "--alpha"}, row),
+           undocumented({"-a", "--alpha", "--beta"}, row + prose))
+    if got == ([], ["--beta"]):
+        return []
+    return [f"scripts/check_docs.py reads a table row wrongly: {got}"]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cli", type=Path, required=True, help="built dtwc_cl binary")
     args = parser.parse_args()
-    errors = check_cli_flags(args.cli.resolve()) + check_harness()
+    errors = check_cli_flags(args.cli.resolve()) + check_reverse_bites() + check_harness()
     for error in errors:
         print(error, file=sys.stderr)
     print("VERDICT=" + ("FAIL" if errors else "PASS"))
