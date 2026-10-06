@@ -40,6 +40,12 @@
 #include <utility>
 #include <vector>
 
+// evaluate_dual's loops are `#pragma omp` behind `#ifdef _OPENMP`. This file compiled without the flag in a build that has OpenMP would
+// run the Lagrangian phase serial with no sign of it; dtwc/CMakeLists.txt gives mip-solvers the flag together with this definition.
+#if defined(DTWC_HAS_OPENMP) && !defined(_OPENMP)
+#error "DTWC_HAS_OPENMP is defined but lagrangian_root.cpp is compiled without the OpenMP flag: the Lagrangian dual would run serial."
+#endif
+
 namespace dtwc::mip {
 
 namespace {
