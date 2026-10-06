@@ -185,8 +185,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   6aa7048c, caec354d; merged c0580948 on the Mac; one builder `dtwc::mip::build_p_median_model` (row-wise arrays,
   solver_types.hpp and the triplet sort go) serves linked HiGHS and highspy, dtwc_cl's MIP outputs byte-identical; the
   extension 5,034,320 → 1,203,728 bytes, the `mip` extra is highspy>=1.8 (the first with resetGlobalScheduler), a
-  missing highspy is SolverError naming `pip install dtwcpp[mip]`; the MEX links HiGHS statically (4,557,072 bytes);
-  Gurobi's builder untouched and not compiled on the Mac; pytest 973/12/0 with the extra, 969/16/0 without)
+  missing highspy is SolverError naming `pip install "dtwcpp[mip]"`; the MEX links HiGHS statically (4,557,072 bytes);
+  Gurobi's builder untouched and not compiled on the Mac; pytest 973/12/0 with the extra, 969/16/0 without; its
+  adversarial review's five findings merged bb35d337: DTWC_REQUIRE_HIGHSPY fails a skipped highspy case in CI, the CI
+  MEX job asserts test_cluster_mip ran, THIRD_PARTY_LICENSES corrected; open: the wheel's lrcore runs the subgradient
+  root, not Kelley (needs linked HiGHS) — measured in `baselines/2026-10-06-lrcore-root-without-highs-mac.md`, Volkan rules)
 - ☑ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds (W14b: Gurobi defaults OFF; the default MEX imports no Gurobi DLL; an explicit ON needs Gurobi's bin on PATH)
 - ☑ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases (W9a 2cabc18, adb9031, 6053239, 151f14e; merged 357d76e3; k required: v1.0.0 with no --Nc exited 0 having clustered nothing; name = the input stem; C++ method default auto; 23 v1 spellings warn once; --Nc i..j refused)
 - ☑ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of

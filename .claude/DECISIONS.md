@@ -374,3 +374,9 @@ CHANGELOG rule.
   Parquet route is pinned against pyarrow, not the C++ Arrow reader (none on the Mac); `CheckpointOptions` keeps
   snake_case keys (outside the brief, MATLAB's last). Open for Volkan: the Windows R2024b matlab_suite run (the brief
   stays until it passes).
+- 2026-10-06 — M1's adversarial review (merged bb35d337): the wheel's `method="lrcore"` runs the subgradient root
+  because the Kelley cutting-plane root (`lagrangian_root.cpp:590`) needs linked HiGHS — the brief's "LR-core needs no
+  HiGHS" was false; documented in CHANGELOG and the solvers guide, measured on the Mac (`baselines/2026-10-06-lrcore-
+  root-without-highs-mac.md`); Volkan rules whether the wheel accepts it. A skipped highspy case fails the CI Python
+  job from inside pytest (`DTWC_REQUIRE_HIGHSPY`); the CI MEX job asserts `test_cluster_mip` ran. Extras are printed
+  quoted (`"dtwcpp[mip]"`: zsh). `.claude/CLAUDE.md`'s Python gate line should add `mip` to its extras (Volkan's file).

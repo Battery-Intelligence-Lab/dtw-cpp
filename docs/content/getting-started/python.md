@@ -29,7 +29,7 @@ pip install "dtwcpp[mip]"
 For GPU support, install the CUDA-enabled build:
 
 ```bash
-pip install dtwcpp[cuda]
+pip install "dtwcpp[cuda]"
 ```
 
 ## Quick start

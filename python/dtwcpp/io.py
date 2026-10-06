@@ -52,7 +52,7 @@ def _read_arrow(path, parquet):
         import pyarrow.parquet as pq
     except ImportError:
         raise ImportError(
-            "Reading Parquet or Arrow IPC needs pyarrow: install dtwcpp[parquet].") from None
+            "Reading Parquet or Arrow IPC needs pyarrow: install \"dtwcpp[parquet]\".") from None
     ndim = 1
     try:
         if parquet:
