@@ -2,7 +2,7 @@
 
 > **Freshness (2026-07-23): CURRENT for formulation/provenance and §8 computational verdicts through `85eabcd`; §§3.2–3.3 and 5–6 retain historical proposals corrected or superseded by §8 and the implemented LR-core chain (`fd49ff4`, `8375aef`, `789cc52`); PLAN R2-D15 owns current line-by-line code conformance.**
 >
-> **§8 (2026-07-06, corrected 2026-07-23) consolidates the computational verification of §§2–3 and the implemented exact solver ("LR-core").** It **confirms** the TU boundary (§2.2), **strengthens** the block-TU results to all N (§2.8 → §8.2), **FALSIFIES** the half-integrality claim (§3.3 → §8.1), and records the current Kelley/subgradient root, tolerance-guarded reduced-cost fixing, and capped y-only branch-and-bound finish (§8.3–8.5). `docs/sources/lr-core-derivation.md` is the tracked 2026-07-06 derivation; its implementation roadmap is historical where §8 and the current code supersede it.
+> **§8 (2026-07-06, corrected 2026-07-23) consolidates the computational verification of §§2–3 and the implemented exact solver ("LR-core").** It **confirms** the TU boundary (§2.2), **strengthens** the block-TU results to all N (§2.8 → §8.2), **FALSIFIES** the half-integrality claim (§3.3 → §8.1), and records the current Kelley/subgradient root, tolerance-guarded reduced-cost fixing, and capped y-only branch-and-bound finish (§8.3–8.5). `docs/content/math/lr-core.md` holds the tracked 2026-07-06 derivation; its implementation roadmap is historical where §8 and the current code supersede it.
 
 ## 1. The DTWC++ Formulation
 
@@ -449,7 +449,7 @@ O(Nk); there are no remaining coupling constraints and no LP solve is needed.
 For a current medoid set at round t, `d^t_j` is point j's nearest-open cost.
 The implemented disaggregated coefficient generation nevertheless scans all
 candidate rows and costs O(N²) per Benders round
-(`docs/sources/lr-core-derivation.md:77-78`).
+(`docs/content/math/lr-core.md` §2.3, item 6).
 
 Duran-Mateluna, Ales, and Elloumi (2023) report solving instances with up to
 238,025 clients and potential sites using their two-phase Benders approach.
@@ -601,7 +601,7 @@ run-logs with preregistered bands.
 
 This section records an independent computational re-derivation of the claims
 above and the exact-solver design that follows from them. The tracked analytical
-derivation is `docs/sources/lr-core-derivation.md`; its analytical work feeds
+derivation is in `docs/content/math/lr-core.md`; its analytical work feeds
 this durable digest, while its historical Benders-finish roadmap is superseded
 by the implementation record below. Method: hand re-derivation plus scratch
 experiments (NumPy + SciPy
