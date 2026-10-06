@@ -44,6 +44,13 @@ instead of publishing the uncertified incumbent. Raise the cap with
 `problem.mip_settings.lr_max_nodes` (default 2,000,000), or use
 `Method::Kmedoids` when a heuristic answer is what you want.
 
+Which root bound runs depends on the build. Where HiGHS is linked (`dtwc_cl`, C++ and
+the MATLAB MEX, `-DDTWC_ENABLE_HIGHS=ON`, the default) it is the Kelley cutting-plane
+root, which certifies to machine precision where the subgradient stalls, so far more
+instances close at the root with no branching. The Python wheel links no HiGHS, so its
+`method="lrcore"` starts from the solver-free subgradient root: the branch-and-bound
+closes the gap, with more nodes, and an instance can reach `lr_max_nodes`.
+
 The recorded claims are intentionally not polished after the fact:
 
 - Root exactness met its registered clustered-instance band (40/40 in the
