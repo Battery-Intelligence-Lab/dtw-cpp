@@ -42,10 +42,10 @@ resolve_dtw_fn(const DistanceConfig &config, const Data &data);
 
 /// The brute-force fill's block function: x and W = core::dtw_lanes<T> series
 /// of x's length in `ys`, their W distances out, each what resolve_dtw_fn's
-/// function returns for that pair (dtw_kernel_lanes), bit for bit unless the
-/// compiler contracts a multiply-add in one kernel and not the other. Empty
-/// unless Standard DTW, MissingStrategy::Error and univariate series; the fill
-/// then goes pair by pair.
+/// function returns for that pair (dtw_kernel_lanes) on series the fill admits
+/// (core::LanesCell), bit for bit unless the compiler contracts a multiply-add
+/// in one kernel and not the other. Empty unless Standard DTW,
+/// MissingStrategy::Error and univariate series; the fill then goes pair by pair.
 template <typename T>
 std::function<void(std::span<const T>, std::span<const std::span<const T>>, std::span<double>)>
 resolve_dtw_block_fn(const DistanceConfig &config);

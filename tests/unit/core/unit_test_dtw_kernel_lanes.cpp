@@ -10,7 +10,9 @@
  *          The lanes and the per-pair kernel are different code, so a compiler
  *          that contracts a multiply-add into an FMA in one of them (GCC does by
  *          default) moves the last bits: they agree within the route bound of
- *          dtw_route_bound.hpp. A pair the fill was given stays bitwise.
+ *          dtw_route_bound.hpp. A pair the fill was given stays bitwise. The
+ *          lanes run the fill's cell, core::LanesCell (an fminnm min on
+ *          AArch64), so the ties (equal values, zero costs) exercise that min.
  */
 
 #include "Problem.hpp"
@@ -70,9 +72,9 @@ int lane_mismatches(std::size_t n, int band, MetricType metric, bool ties)
 
   const auto lanes = metric == MetricType::SquaredL2
                        ? dtwc::core::dtw_kernel_lanes<T>(x.data(), ys.data(), n, band, squared,
-                                                         dtwc::core::StandardCell{})
+                                                         dtwc::core::LanesCell{})
                        : dtwc::core::dtw_kernel_lanes<T>(x.data(), ys.data(), n, band, l1,
-                                                         dtwc::core::StandardCell{});
+                                                         dtwc::core::LanesCell{});
   int bad = 0;
   for (std::size_t w = 0; w < W; ++w) {
     const T banded = dtwc::dtwBanded<T>(x, y[w], band, T(-1), metric);
@@ -101,15 +103,15 @@ void check_every_configuration()
 
 TEST_CASE("dtw_kernel_lanes: every lane agrees with the per-pair kernel", "[lanes]")
 {
-  SECTION("double, 8 lanes") { check_every_configuration<double>(); }
-  SECTION("float, 16 lanes") { check_every_configuration<float>(); }
+  SECTION("double") { check_every_configuration<double>(); }
+  SECTION("float") { check_every_configuration<float>(); }
 }
 
 TEST_CASE("dtw_kernel_lanes: empty series are the no-path sentinel", "[lanes]")
 {
   const double *none[dtwc::core::dtw_lanes<double>] = {};
   const auto d = dtwc::core::dtw_kernel_lanes<double>(nullptr, none, 0, -1, l1,
-                                                      dtwc::core::StandardCell{});
+                                                      dtwc::core::LanesCell{});
   for (const double v : d) CHECK(v == std::numeric_limits<double>::max());
 }
 
@@ -179,27 +181,29 @@ int fill_mismatches(const FillCase &c)
 
 } // namespace
 
-// W = 8 (double) and 16 (float): 21 and 37 series give rows of two blocks and a
-// tail, of one block, and of a tail alone.
+// 2W + 5 series (W = dtw_lanes: 21 double and 37 float on x86-64, 37 and 69 on
+// AArch64) give rows of two blocks and a tail, of one block, and of a tail alone.
 TEST_CASE("fill_distance_matrix: the lanes fill agrees with the per-pair fill", "[lanes][fill]")
 {
+  constexpr std::size_t W64 = dtwc::core::dtw_lanes<double>, n64 = 2 * W64 + 5;
+  constexpr std::size_t n32 = 2 * dtwc::core::dtw_lanes<float> + 5;
   std::vector<std::size_t> alternating, halves(12, 50);
   for (std::size_t i = 0; i < 21; ++i) alternating.push_back(i % 2 ? 53 : 50);
   halves.resize(24, 53); // blocks of one length, and blocks across the two
+  // Row 0's first block known (skipped), two pairs of row 1's first block
+  // (computed, not overwritten), and a pair of row 0's tail.
+  std::vector<std::pair<std::size_t, std::size_t>> known{ { 1, 3 }, { 1, 6 }, { 0, n64 - 1 } };
+  for (std::size_t j = 1; j <= W64; ++j) known.emplace_back(0, j);
   const std::vector<FillCase> cases{
-    { "equal lengths, full", false, std::vector<std::size_t>(21, 60), -1, MetricType::L1, {} },
-    { "equal lengths, band 6, squared L2", false, std::vector<std::size_t>(21, 60), 6,
+    { "equal lengths, full", false, std::vector<std::size_t>(n64, 60), -1, MetricType::L1, {} },
+    { "equal lengths, band 6, squared L2", false, std::vector<std::size_t>(n64, 60), 6,
       MetricType::SquaredL2, {} },
-    { "float32, full", true, std::vector<std::size_t>(37, 40), -1, MetricType::L1, {} },
-    { "float32, band 4, squared L2", true, std::vector<std::size_t>(37, 40), 4,
+    { "float32, full", true, std::vector<std::size_t>(n32, 40), -1, MetricType::L1, {} },
+    { "float32, band 4, squared L2", true, std::vector<std::size_t>(n32, 40), 4,
       MetricType::SquaredL2, {} },
     { "mixed lengths: every block falls back", false, alternating, -1, MetricType::L1, {} },
     { "two lengths: some blocks fall back", false, halves, 3, MetricType::L1, {} },
-    // Row 0's first block known (skipped), two pairs of row 1's first block
-    // (computed, not overwritten), and a pair of row 0's tail.
-    { "partially computed", false, std::vector<std::size_t>(21, 60), -1, MetricType::L1,
-      { { 0, 1 }, { 0, 2 }, { 0, 3 }, { 0, 4 }, { 0, 5 }, { 0, 6 }, { 0, 7 }, { 0, 8 },
-        { 1, 3 }, { 1, 6 }, { 0, 20 } } },
+    { "partially computed", false, std::vector<std::size_t>(n64, 60), -1, MetricType::L1, known },
   };
   for (const auto &c : cases) {
     CAPTURE(c.name);
