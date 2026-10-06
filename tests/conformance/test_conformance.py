@@ -1,6 +1,6 @@
 """Python + CLI routes of the cross-language conformance fixture (Task 2.4).
 
-The permanent parity gate for docs/api-contract-2.0.md §9. Two live routes assert
+The permanent cross-language parity gate. Two live routes assert
 against the SAME reference recorded by the C++ route
 (``conformance_reference.txt``):
 

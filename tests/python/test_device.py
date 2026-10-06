@@ -80,7 +80,7 @@ class TestGpuAlias:
     @pytest.mark.parametrize("name", _GPU_ALIAS_CANDIDATES)
     def test_python_gpu_alias_grammar_matches_live_cpp(self, name):
         """Python accepts/rejects the same GPU spellings as dtwc::device and
-        names each accepted one ``gpu``: ``cuda`` is an alias of ``gpu`` (§6.1)."""
+        names each accepted one ``gpu``: ``cuda`` is an alias of ``gpu``."""
         cpp_accepts, cpp_error, cpp_ordinal = _cpp_gpu_alias_result(name)
 
         if not cpp_accepts:
@@ -97,7 +97,7 @@ class TestGpuAlias:
             assert ordinal == cpp_ordinal
 
     def test_cuda_is_gpu_keeps_its_ordinal_and_never_falls_back_to_cpu(self, monkeypatch):
-        """§6.1: ``cuda`` is an alias of ``gpu`` (this build's backend, CUDA else
+        """``cuda`` is an alias of ``gpu`` (this build's backend, CUDA else
         Metal); the ordinal survives, and with no GPU the request raises a loud
         DeviceError, never the CPU."""
         monkeypatch.setattr(dtwcpp, "gpu_available", lambda: True)
@@ -187,7 +187,7 @@ class TestCanonicalDeviceName:
         assert dtwcpp.device(first) == first
 
     def test_no_python_side_copy_of_the_local_device(self):
-        """§6: C++ dtwc::device is the only registry for a local device selection.
+        """C++ dtwc::device is the only registry for a local device selection.
 
         This is the one case in this class that FAILS on the pre-change code
         on a CPU-only box: that implementation answered device() from a module

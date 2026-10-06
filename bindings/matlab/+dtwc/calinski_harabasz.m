@@ -1,5 +1,5 @@
 %> @file calinski_harabasz.m
-%> @brief Calinski-Harabasz index (api-contract-2.0.md §2.4 canonical name).
+%> @brief Calinski-Harabasz index.
 %> @author Volkan Kumtepeli
 function ch = calinski_harabasz(prob)
 %CALINSKI_HARABASZ Compute the Calinski-Harabasz index (higher is better).

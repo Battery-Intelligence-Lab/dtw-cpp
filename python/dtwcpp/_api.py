@@ -176,7 +176,7 @@ def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None):
 
 
 class Result:
-    """Outcome of :func:`cluster` — the canonical 2.0 ``Result`` (api-contract §1.4).
+    """Outcome of :func:`cluster` — the canonical 2.0 ``Result``.
 
     ``labels``, ``medoids`` and ``cost`` are values; ``score(name)``,
     ``save(dir)`` and ``distance_matrix`` read the clustered ``Problem`` the

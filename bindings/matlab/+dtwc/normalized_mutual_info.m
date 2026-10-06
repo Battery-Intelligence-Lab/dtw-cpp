@@ -1,5 +1,5 @@
 %> @file normalized_mutual_info.m
-%> @brief Normalized mutual information (api-contract-2.0.md §2.4 canonical name).
+%> @brief Normalized mutual information.
 %> @author Volkan Kumtepeli
 function nmi = normalized_mutual_info(labels_true, labels_pred)
 %NORMALIZED_MUTUAL_INFO Normalized mutual information between two labelings ([0,1]).

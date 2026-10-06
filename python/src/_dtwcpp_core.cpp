@@ -160,7 +160,7 @@ NB_MODULE(_dtwcpp_core, m) {
   m.doc() = "DTWC++ — Fast Dynamic Time Warping and Clustering (C++ core)";
 
   // =========================================================================
-  // Error taxonomy (api-contract-2.0.md §5)
+  // Error taxonomy
   // =========================================================================
   // One base (DtwcError) + four leaves. Each leaf subclasses BOTH DtwcError AND
   // the closest built-in (ValueError / RuntimeError / OSError) so idiomatic
@@ -219,7 +219,7 @@ NB_MODULE(_dtwcpp_core, m) {
     });
 
   // =========================================================================
-  // Device (api-contract-2.0.md §6)
+  // Device
   // =========================================================================
 
   nb::enum_<dtwc::Device>(m, "Device")
@@ -247,7 +247,7 @@ NB_MODULE(_dtwcpp_core, m) {
         "Canonical name of the process-wide device (dtwc::device()).");
 
   // =========================================================================
-  // Tier-1 file parsing (api-contract-2.0.md §1.2)
+  // Tier-1 file parsing
   // =========================================================================
 
   m.def("_read_data",
@@ -928,7 +928,7 @@ NB_MODULE(_dtwcpp_core, m) {
       p.fill_distance_matrix();
     }, "Compute all pairwise DTW distances.")
     // Always a COPY: the C++ store keeps only the upper triangle, so a zero-copy
-    // view into a full NxN layout is structurally impossible (§2.2 ‡).
+    // view into a full NxN layout is structurally impossible.
     .def("distance_matrix", [](dtwc::Problem &prob) {
            // Size is only known after the fill, so both happen inside one release.
            std::vector<double> values;
@@ -1099,7 +1099,7 @@ NB_MODULE(_dtwcpp_core, m) {
      "Run FastPAM k-medoids clustering (Schubert & Rousseeuw 2021).\n\n"
      "The C++ core writes labels/medoids/k back into prob (since 1.6), so\n"
      "silhouette(prob) and davies_bouldin(prob) work after this call with no\n"
-     "wrapper-side wiring (api-contract-2.0.md §2.5).\n\n"
+     "wrapper-side wiring.\n\n"
      "max_iter is the SWAP budget: 0 returns the BUILD medoids without a SWAP\n"
      "(converged is False); a negative count raises InvalidInput. seed is the\n"
      "BUILD (k-medoids++) seed: one seed gives one result on every platform.");
@@ -1141,7 +1141,7 @@ NB_MODULE(_dtwcpp_core, m) {
      "Runs FastPAM on random subsamples and assigns all points to the\n"
      "best medoids found. Avoids O(N^2) memory of full PAM.\n\n"
      "The C++ core writes labels/medoids/k back into prob (since 1.6), so\n"
-     "silhouette(prob) and davies_bouldin(prob) work after this call (§2.5).\n\n"
+     "silhouette(prob) and davies_bouldin(prob) work after this call.\n\n"
      "Parameters:\n"
      "  prob: Problem with data loaded.\n"
      "  n_clusters: Number of clusters (k).\n"
@@ -1250,7 +1250,7 @@ NB_MODULE(_dtwcpp_core, m) {
   // Scores
   // =========================================================================
 
-  // Score names drop the `Index`/`Information` noun (api-contract-2.0.md §2.4).
+  // Score names drop the `Index`/`Information` noun.
   m.def("silhouette", [](dtwc::Problem &prob) {
     nb::gil_scoped_release release;
     return dtwc::scores::silhouette(prob);
@@ -1319,7 +1319,7 @@ NB_MODULE(_dtwcpp_core, m) {
      "Cut a dendrogram to produce k flat clusters.\n\n"
      "Returns a ClusteringResult with labels, medoid_indices, and total_cost.\n"
      "The C++ core also writes labels/medoids/k back into prob (since 1.6), so\n"
-     "silhouette(prob) etc. work after this call with no wrapper wiring (§2.5).");
+     "silhouette(prob) etc. work after this call with no wrapper wiring.");
 
 
   // =========================================================================

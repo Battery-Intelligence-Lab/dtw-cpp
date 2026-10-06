@@ -1,5 +1,5 @@
 %> @file davies_bouldin.m
-%> @brief Davies-Bouldin index (api-contract-2.0.md §2.4 canonical name).
+%> @brief Davies-Bouldin index.
 %> @author Volkan Kumtepeli
 function db = davies_bouldin(prob)
 %DAVIES_BOULDIN Compute the Davies-Bouldin index (lower is better).

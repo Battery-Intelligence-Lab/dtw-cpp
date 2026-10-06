@@ -1,8 +1,8 @@
 %> @file Dataset.m
-%> @brief Lazy dataset handle returned by dtwc.load (api-contract-2.0.md §1.2).
+%> @brief Lazy dataset handle returned by dtwc.load.
 %> @author Volkan Kumtepeli
 classdef Dataset < handle
-%DATASET A lazy handle to time series: a path, or series already in memory (contract §1.2).
+%DATASET A lazy handle to time series: a path, or series already in memory.
 %
 %   Made by dtwc.load. A path is read once, when its series are first needed
 %   (dtwc.cluster, as_series), as dtwc_cl and Python read it: CSV/TSV text and
