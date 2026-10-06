@@ -11,7 +11,7 @@
         res.plot()
 
       cpu : local CPU.
-      gpu : local GPU (CUDA); auto-falls back to CPU if unavailable.
+      gpu : local GPU (CUDA, or Metal on macOS); without one, a DeviceError, never a CPU run.
       hpc : offload the whole job to a SLURM cluster (data never read locally).
 
     Works on Windows and macOS. Requires numpy + matplotlib; hpc also needs a
