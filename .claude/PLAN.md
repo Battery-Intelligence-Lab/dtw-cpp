@@ -189,7 +189,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   Gurobi's builder untouched and not compiled on the Mac; pytest 973/12/0 with the extra, 969/16/0 without; its
   adversarial review's five findings merged bb35d337: DTWC_REQUIRE_HIGHSPY fails a skipped highspy case in CI, the CI
   MEX job asserts test_cluster_mip ran, THIRD_PARTY_LICENSES corrected; open: the wheel's lrcore runs the subgradient
-  root, not Kelley (needs linked HiGHS) — measured in `baselines/2026-10-06-lrcore-root-without-highs-mac.md`, Volkan rules)
+  root, not Kelley (needs linked HiGHS) — measured `3cb49bc8`: same answers everywhere, the subgradient root certifies
+  more noisy-DTW roots and Kelley wins only on a line metric; recommendation accept, Volkan rules. Candidate: OpenMP on
+  `mip-solvers` (the LR phase is serial in every build; 3.6–5.6× at N ≥ 800 in a scratch build))
 - ☑ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds (W14b: Gurobi defaults OFF; the default MEX imports no Gurobi DLL; an explicit ON needs Gurobi's bin on PATH)
 - ☑ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases (W9a 2cabc18, adb9031, 6053239, 151f14e; merged 357d76e3; k required: v1.0.0 with no --Nc exited 0 having clustered nothing; name = the input stem; C++ method default auto; 23 v1 spellings warn once; --Nc i..j refused)
 - ☑ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of

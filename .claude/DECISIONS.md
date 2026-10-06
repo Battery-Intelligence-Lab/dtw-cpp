@@ -389,3 +389,12 @@ CHANGELOG rule.
   `SLURM_GPU_GRES` is refused; a missing `.env`, bash or wrapper is `DeviceError`. `build --gpu-device <type>` keeps
   the CPU code portable (`DTWC_NATIVE_CPU=OFF`: one GPU type sits on nodes of different CPUs on ARC), which narrows
   the 09-30 ruling's "native CPU flags" to builds run by hand on the node — Volkan to confirm. The ARC leg is his.
+- 2026-10-06 — lrcore without HiGHS measured (`3cb49bc8`, `baselines/2026-10-06-lrcore-root-without-highs-mac.md`):
+  the wheel's subgradient root and the Kelley root give the same cost, medoids and labels on every input both close
+  (19) and fail identically on 13 hard ones; on noisy DTW data the subgradient root certifies where Kelley does not
+  (X1, X3, X5, Z1, Z2: 0 nodes against 19–487,365) and is faster; Kelley wins only on constant level-shifted series
+  (a line metric: 43–230× on the LR phase, Y6 at N = 6400 295 s against 6.9 s). Orchestrator's recommendation: accept
+  (the wheel keeps no HiGHS); Volkan rules. Unasked finding: `mip-solvers` links no OpenMP, so the LR phase is serial
+  in every build (a scratch `-fopenmp` build: bit-identical, 3.6–5.6× faster root at N ≥ 800) — a candidate unit;
+  `lagrangian_root.cpp:585` and `docs/content/math/lr-core.md:231,245` claim Kelley closes more roots: true on the
+  line metric only.
