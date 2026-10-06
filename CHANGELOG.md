@@ -9,12 +9,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 # Unreleased
 
 - **Changed (Python, packaging):** the wheel links no HiGHS, which was three quarters of the extension: `method="mip"`
-  needs `pip install dtwcpp[mip]` (highspy) and raises `SolverError` naming it otherwise, and `dtwcpp.HIGHS_AVAILABLE`
-  is `False`. On macOS a process that had loaded the HiGHS-linked extension crashed in its own highspy MIP solve
-  (both HiGHS builds export the same weak symbols). `dtwc_cl`, C++ and the MATLAB MEX keep linked HiGHS; a MEX
-  links it statically, so the one file loads alone, and the CI MEX now has it (Gurobi stays off).
+  needs `pip install "dtwcpp[mip]"` (highspy) and raises `SolverError` naming it otherwise, and `dtwcpp.HIGHS_AVAILABLE`
+  is `False`. On macOS a process that had loaded the HiGHS-linked extension crashed (exit 139) in its own highspy MIP
+  solve (both HiGHS builds export the same weak symbols, the likely cause [inferred]). `dtwc_cl`, C++ and the MATLAB
+  MEX keep linked HiGHS; a MEX links it statically, so the one file loads alone, and the CI MEX now has it (Gurobi
+  stays off).
 - **Added (Python):** an extension built without HiGHS (`-DDTWC_ENABLE_HIGHS=OFF`) solves `method="mip"` with the
-  installed highspy, the new `mip` extra (`pip install dtwcpp[mip]`): C++ builds the model's arrays
+  installed highspy, the new `mip` extra (`pip install "dtwcpp[mip]"`): C++ builds the model's arrays
   (`dtwc::mip::build_p_median_model`), highspy reads them as NumPy views and C++ decodes its solution. `mip_gap`,
   `time_limit_sec`, `verbose_solver` and the FastPAM warm start apply as they do to linked HiGHS, and HiGHS runs on
   the OpenMP thread count dtwcpp uses. Without highspy, `SolverError` names the extra.

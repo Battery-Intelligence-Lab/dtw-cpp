@@ -23,7 +23,7 @@ Exact MIP clustering (`method="mip"`) solves with highspy, which the `mip` extra
 (the wheel links no MIP solver; without highspy, `method="mip"` raises `SolverError` naming it):
 
 ```bash
-pip install dtwcpp[mip]
+pip install "dtwcpp[mip]"
 ```
 
 For GPU support, install the CUDA-enabled build:

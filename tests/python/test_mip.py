@@ -45,5 +45,5 @@ def test_highspy_reaches_the_optimum_of_linked_highs(highspy_route, tmp_path, n,
 def test_mip_without_highspy_names_the_extra(monkeypatch):
     monkeypatch.setattr(dtwcpp, "HIGHS_AVAILABLE", False)
     monkeypatch.setitem(sys.modules, "highspy", None)  # `import highspy` raises ImportError
-    with pytest.raises(dtwcpp.SolverError, match=r"pip install dtwcpp\[mip\]"):
+    with pytest.raises(dtwcpp.SolverError, match=r'pip install "dtwcpp\[mip\]"'):
         dtwcpp.cluster([[0.0, 1.0], [5.0, 6.0], [0.5, 1.5]], 2, method="mip")

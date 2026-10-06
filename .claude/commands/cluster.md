@@ -54,7 +54,7 @@ If NaN detected, default `missing_strategy="arow"`.
 | ≤ 5000 | `fast_pam` | Exact k-medoids, fastest for small N |
 | 5000–50000 | `fast_clara` | Subsample-based, scales linearly |
 | > 50000 | `fast_clara` + `--ram-limit` | Chunked to fit memory |
-| MIP requested | `mip` (Gurobi preferred, HiGHS fallback) | Provable optimum |
+| MIP requested | `mip` (HiGHS; Gurobi only where the build links it) | Provable optimum |
 
 Announce the chosen method and reasoning in one sentence.
 
@@ -168,7 +168,10 @@ Parse stdout for cost and timing; report the same summary.
 - **OOM / bad_alloc**: retry with `--method clara --ram-limit 8G`
 - **NaN in distances**: retry with `--missing-strategy arow`
 - **CUDA fails**: retry on CPU
-- **No MIP solver**: fall back to `--method pam`
+- **`mip` raises `SolverError` naming highspy**: the wheel solves `mip` with the user's highspy, so
+  `pip install "dtwcpp[mip]"` and rerun. `lrcore` is also exact and needs no solver (in the wheel its
+  root is the subgradient one, so a hard instance can stop at `lr_max_nodes`). Do not swap in `pam`:
+  it is a heuristic, not the optimum the user asked for.
 
 ## Related
 

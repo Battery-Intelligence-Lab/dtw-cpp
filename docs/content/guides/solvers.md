@@ -10,7 +10,7 @@ weight: 30
 HiGHS is the default open-source MIP backend. `dtwc_cl`, C++ and the MATLAB MEX
 link it (`-DDTWC_ENABLE_HIGHS=ON`, the default). The Python wheel does not:
 `method="mip"` builds the same model in C++ and solves it with the installed
-highspy, the `mip` extra (`pip install dtwcpp[mip]`). If neither is there,
+highspy, the `mip` extra (`pip install "dtwcpp[mip]"`). If neither is there,
 requesting HiGHS raises `SolverError` naming the fix; it never returns an empty or
 partially solved clustering as though it succeeded.
 

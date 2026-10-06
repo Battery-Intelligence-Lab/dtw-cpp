@@ -22,9 +22,9 @@ def cluster(prob):
     from dtwcpp import SolverError, _dtwcpp_core
     try:
         import highspy
-    except ImportError:
-        raise SolverError("method 'mip' solves with highspy, which is not installed: "
-                          "pip install dtwcpp[mip]. Method 'lrcore' is exact without it.") from None
+    except ImportError as error:  # absent, or present and failing to import: the message says which
+        raise SolverError(f"method 'mip' solves with highspy, which cannot be imported ({error}): "
+                          "pip install \"dtwcpp[mip]\". Method 'lrcore' is exact without it.") from None
 
     model = _dtwcpp_core._mip_model(prob)  # checks k, N and the settings; fills the matrix
     settings = prob.mip_settings
