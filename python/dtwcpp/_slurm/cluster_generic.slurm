@@ -11,7 +11,8 @@
 # `slurm_remote.sh submit-job` uploads the directory, publishes this script in
 # it, adds the GPU request of a GPU run, and exports
 #   DTWC_JOB    the run directory: job.toml, and input.tsv for series sent from memory
-#   DTWC_BUILD  the build that runs it, build-${DTWC_BUILD}/bin/dtwc_cl (htc-cpu, htc-gpu)
+#   DTWC_BUILD  the build that runs it, build-${DTWC_BUILD}/bin/dtwc_cl: htc-cpu,
+#               htc-gpu, or the GPU type the run names (a100, l40s, ...)
 # The output directory, results/cluster_<job id>, is the one command-line value
 # (it beats the file); download-cluster fetches the labels from it.
 

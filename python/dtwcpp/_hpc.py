@@ -111,6 +111,28 @@ def slurm_wrapper_path():
     return str(importlib.resources.files("dtwcpp") / "_slurm" / "slurm_remote.sh")
 
 
+def gpu_request(gpu_device=None):
+    """The sbatch arguments that ask SLURM for a GPU of type ``gpu_device``
+    (``None``: any GPU of compute capability 8.0 or newer), from
+    _slurm/gpu_devices.txt, the table slurm_remote.sh reads too. A type below
+    the CUDA floor, or one the table does not name, is a DeviceError."""
+    from dtwcpp import DeviceError
+    text = (importlib.resources.files("dtwcpp") / "_slurm" / "gpu_devices.txt").read_text(
+        encoding="utf-8")
+    rows = {fields[0]: fields[1:] for fields in map(str.split, text.splitlines())
+            if len(fields) >= 3 and not fields[0].startswith("#")}
+    types = ", ".join(t for t, (_, *request) in rows.items() if t != "*" and request != ["-"])
+    name = "*" if gpu_device is None else str(gpu_device).lower()
+    if name not in rows or (name == "*") != (gpu_device is None):
+        raise DeviceError(f"gpu_device={gpu_device!r} is not a GPU type SLURM can be "
+                          f"asked for: {types}.")
+    capability, *request = rows[name]
+    if request == ["-"]:
+        raise DeviceError(f"gpu_device={gpu_device!r} has CUDA compute capability "
+                          f"{capability}, below the 8.0 DTWC++ needs: ask for {types}.")
+    return request
+
+
 class SlurmRemoteRunner:
     """Thin wrapper around the packaged slurm_remote.sh (ssh + rsync + sbatch).
 
@@ -151,10 +173,13 @@ class SlurmRemoteRunner:
                               env={**os.environ, "DTWC_REPO_ROOT": self.repo_root},
                               timeout=timeout)
 
-    def submit_job(self, rundir, *, device="cpu"):
+    def submit_job(self, rundir, *, device="cpu", gpu_device=None):
         """Submit the run directory ``rundir`` (relative to the project
-        directory) and return its SLURM job ID; ``device="gpu"`` asks for a GPU."""
-        res = self._run("submit-job", rundir, *(["--gpu"] if device == "gpu" else []))
+        directory) and return its SLURM job ID. ``device="gpu"`` asks for a GPU:
+        one of type ``gpu_device``, else any the CUDA floor allows."""
+        request = [] if device != "gpu" else (
+            ["--gpu-device", gpu_device] if gpu_device else ["--gpu"])
+        res = self._run("submit-job", rundir, *request)
         out = (res.stdout or "") + (res.stderr or "")
         if res.returncode != 0:
             raise RuntimeError(
@@ -238,8 +263,9 @@ class SlurmRemoteRunner:
         return labels
 
 
-def cluster_on_hpc(data, config, keys, *, device="hpc", poll_seconds=20,
-                   timeout_seconds=86400, repo_root=None, runner=None):
+def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
+                   poll_seconds=20, timeout_seconds=86400, repo_root=None,
+                   runner=None):
     """Cluster ``data`` by ``config`` on a SLURM cluster; return the labels in input order.
 
     ``data`` is a :class:`dtwcpp.Dataset`. A path names a file on the cluster,
@@ -248,7 +274,8 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", poll_seconds=20,
     (``gpu`` for ``"hpc:gpu"``), a path's ``skip-rows``, ``skip-cols`` and
     ``delimiter`` when set, and the Config keys named in ``keys``, the ones the
     caller gave: a key not given is not written, so the cluster's dtwc_cl
-    applies its own default.
+    applies its own default. An ``"hpc:gpu"`` run asks SLURM for a GPU of type
+    ``gpu_device`` (:func:`gpu_request`) and runs the build made for it.
 
     The project directory (``repo_root``, else ``$DTWC_REPO_ROOT``, else the
     working directory) holds ``.env`` and receives ``results/``. The cluster
@@ -257,6 +284,10 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", poll_seconds=20,
     """
     from dtwcpp import InvalidInput
     gpu = device.strip().lower() == "hpc:gpu"
+    if gpu_device is not None:
+        gpu_device = str(gpu_device).lower()
+    if gpu:
+        gpu_request(gpu_device)  # an unknown or too old type: refused here
     poll_seconds, timeout_seconds = _normalize_wait_controls(
         poll_seconds, timeout_seconds,
     )
@@ -297,7 +328,7 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", poll_seconds=20,
     # 'C:/...' as host:path.
     job_id = runner.submit_job(
         os.path.relpath(rundir, repo_root).replace(os.sep, "/"),
-        device="gpu" if gpu else "cpu")
+        device="gpu" if gpu else "cpu", gpu_device=gpu_device)
     runner.wait(job_id, poll_seconds=poll_seconds, timeout_seconds=timeout_seconds)
     labels = runner.download_labels(name, job_id)
     return parse_labels_csv(labels, None if series is None else len(series))

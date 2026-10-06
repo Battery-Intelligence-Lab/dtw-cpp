@@ -12,15 +12,15 @@
 # Usage:
 #   bash scripts/slurm/slurm_remote.sh test
 #   bash scripts/slurm/slurm_remote.sh upload
-#   bash scripts/slurm/slurm_remote.sh build [profile]
-#   bash scripts/slurm/slurm_remote.sh build --profile <profile>
+#   bash scripts/slurm/slurm_remote.sh build [profile] [--gpu-device <type>]
+#   bash scripts/slurm/slurm_remote.sh build --profile <profile> [--gpu-device <type>]
 #   bash scripts/slurm/slurm_remote.sh submit-cpu
 #   bash scripts/slurm/slurm_remote.sh submit-gpu
 #   bash scripts/slurm/slurm_remote.sh submit-checkpoint
 #   bash scripts/slurm/slurm_remote.sh submit-parquet
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-cpu
-#   bash scripts/slurm/slurm_remote.sh submit-benchmark-gpu [a100|l40s|h100]
-#   bash scripts/slurm/slurm_remote.sh submit-job <rundir> [--gpu]
+#   bash scripts/slurm/slurm_remote.sh submit-benchmark-gpu [type]
+#   bash scripts/slurm/slurm_remote.sh submit-job <rundir> [--gpu | --gpu-device <type>]
 #   bash scripts/slurm/slurm_remote.sh status
 #   bash scripts/slurm/slurm_remote.sh download
 #   bash scripts/slurm/slurm_remote.sh download-cluster <job-id>
@@ -109,10 +109,6 @@ if [[ -n "${SLURM_EMAIL:-}" ]]; then
         && [[ "${SLURM_EMAIL}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]] \
         || transport_config_error SLURM_EMAIL "${SLURM_EMAIL}"
 fi
-SLURM_GPU_GRES="${SLURM_GPU_GRES:-gpu:1}"
-(( ${#SLURM_GPU_GRES} <= 128 )) \
-    && [[ "${SLURM_GPU_GRES}" =~ ^gpu:([A-Za-z][A-Za-z0-9_.-]*:)?[1-9][0-9]*$ ]] \
-    || transport_config_error SLURM_GPU_GRES "${SLURM_GPU_GRES}"
 
 SSH_TARGET="${SLURM_USER}@${SLURM_HOST}"
 REMOTE="${SLURM_REMOTE_BASE}"
@@ -121,7 +117,6 @@ CLUSTER_FLAG=""
 if [[ -n "${SLURM_CLUSTER:-}" ]]; then
     CLUSTER_FLAG="--clusters=${SLURM_CLUSTER}"
 fi
-GPU_GRES="${SLURM_GPU_GRES}"
 
 # ── Helper ───────────────────────────────────────────────────────────────
 remote() {
@@ -171,6 +166,28 @@ shell_join() {
         RESULT+="${RESULT:+ }${QUOTED}"
     done
     printf -v "${DESTINATION}" '%s' "${RESULT}"
+}
+
+# GPU_REQUEST becomes the sbatch arguments that ask for a GPU of type $1, or,
+# with no type, for any GPU at or above the CUDA floor (the '*' line), as
+# gpu_devices.txt beside this script lists them; dtwcpp._hpc reads the same
+# table. A type below the floor, or one the table does not name, is refused
+# before any SSH.
+gpu_request() {
+    local NAME CAPABILITY REQUEST
+    if [[ -z "$1" || "$1" =~ ^[a-z0-9]+$ ]]; then
+        while read -r NAME CAPABILITY REQUEST; do
+            [[ "${NAME}" == "${1:-*}" ]] || continue
+            [[ "${REQUEST}" != - ]] || {
+                echo "ERROR: GPU type '$1' has CUDA compute capability ${CAPABILITY}, below the 8.0 DTWC++ needs" >&2
+                exit 1
+            }
+            read -r -a GPU_REQUEST <<< "${REQUEST}"
+            return 0
+        done < "${SCRIPT_DIR}/gpu_devices.txt"
+    fi
+    echo "ERROR: unknown GPU type '$1'; gpu_devices.txt lists the types" >&2
+    exit 1
 }
 
 remote_argv() {
@@ -282,23 +299,28 @@ cmd_upload() {
     echo "  Upload complete."
 }
 
+build_syntax_error() {
+    echo "ERROR: build profile syntax is 'build [--profile] <profile> [--gpu-device <type>]'" >&2
+    exit 1
+}
+
 cmd_build() {
-    local PROFILE
-    case "$#" in
-        0) PROFILE="htc-cpu" ;;
-        1) PROFILE="$1" ;;
-        2)
-            [[ "$1" == "--profile" ]] || {
-                echo "ERROR: build profile syntax is 'build [--profile] <profile>'" >&2
-                exit 1
-            }
-            PROFILE="$2"
-            ;;
-        *)
-            echo "ERROR: build profile syntax is 'build [--profile] <profile>'" >&2
-            exit 1
-            ;;
-    esac
+    local PROFILE="" GPU_DEVICE=""
+    while (( $# )); do
+        case "$1" in
+            --profile|--gpu-device)
+                (( $# >= 2 )) || build_syntax_error
+                [[ "$1" == --profile ]] && PROFILE="$2" || GPU_DEVICE="$2"
+                shift 2
+                ;;
+            *)
+                [[ -z "${PROFILE}" ]] || build_syntax_error
+                PROFILE="$1"
+                shift
+                ;;
+        esac
+    done
+    PROFILE="${PROFILE:-htc-cpu}"
     case "${PROFILE}" in
         arc|htc-cpu|htc-gpu|htc-v4|h100|grace) ;;
         *)
@@ -306,7 +328,22 @@ cmd_build() {
             exit 1
             ;;
     esac
-    banner "Building on cluster (profile: ${PROFILE})"
+    # Without --gpu-device the build runs on an interactive node, without a GPU,
+    # and is portable. With it, the build asks for that GPU as a job does, so
+    # build-arc.sh runs on such a node and builds for it (native CUDA
+    # architecture and CPU) into build-<type>, the build that type's jobs run.
+    local BUILD_PARTITION="interactive" BUILD_DIR="build-${PROFILE}"
+    local -a GPU_REQUEST=()
+    if [[ -n "${GPU_DEVICE}" ]]; then
+        [[ "${PROFILE}" == htc-gpu || "${PROFILE}" == h100 ]] || {
+            echo "ERROR: --gpu-device needs a GPU profile, htc-gpu or h100, not '${PROFILE}'" >&2
+            exit 1
+        }
+        gpu_request "${GPU_DEVICE}"
+        BUILD_PARTITION="${PARTITION}"
+        BUILD_DIR="build-${GPU_DEVICE}"
+    fi
+    banner "Building on cluster (profile: ${PROFILE}${GPU_DEVICE:+, GPU ${GPU_DEVICE}}, into ${BUILD_DIR})"
 
     # The script body is static. Dynamic values cross the boundary as individually
     # quoted sbatch argv/environment entries rather than executable shell text.
@@ -322,15 +359,16 @@ source scripts/slurm/build-arc.sh "${DTWC_BUILD_PROFILE}"
 '
 
     echo "  Submitting build job..."
-    local EXPORTS="ALL,DTWC_REMOTE_BASE=${REMOTE},DTWC_BUILD_PROFILE=${PROFILE}"
+    local EXPORTS="ALL,DTWC_REMOTE_BASE=${REMOTE},DTWC_BUILD_PROFILE=${PROFILE},DTWC_BUILD_DIR=${BUILD_DIR}"
     local -a SBATCH_ARGS=(
-        sbatch --parsable --partition=interactive --time=01:00:00
+        sbatch --parsable "--partition=${BUILD_PARTITION}" --time=01:00:00
         --cpus-per-task=8 --mem-per-cpu=4G --job-name=dtwc-build
         "--output=${REMOTE}/logs/build_%j.out"
         "--error=${REMOTE}/logs/build_%j.err"
         "--export=${EXPORTS}"
     )
     [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
+    SBATCH_ARGS+=(${GPU_REQUEST[@]+"${GPU_REQUEST[@]}"})
     local SBATCH_COMMAND JOB_ID
     shell_join SBATCH_COMMAND "${SBATCH_ARGS[@]}"
     JOB_ID=$(printf '%s\n' "${BUILD_SCRIPT}" | remote "${SBATCH_COMMAND}")
@@ -342,10 +380,12 @@ source scripts/slurm/build-arc.sh "${DTWC_BUILD_PROFILE}"
     echo "    bash scripts/slurm/slurm_remote.sh status"
 }
 
+# _submit_job <job file> <label> <binary pattern> [sbatch arguments...]
 _submit_job() {
     local SLURM_FILE="$1"
     local LABEL="$2"
     local BIN_PATTERN="${3:-}"
+    shift 3
 
     require_checkout
     banner "Submitting ${LABEL}"
@@ -366,14 +406,12 @@ _submit_job() {
     # Upload the latest job script
     scp -- "${SOURCE_ROOT}/${SLURM_FILE}" "${SSH_TARGET}:${REMOTE}/src/${SLURM_FILE}"
 
-    local EXTRA_GRES="${4:-}"
     local -a SBATCH_ARGS=(sbatch --parsable)
     [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
     if [[ -n "${SLURM_EMAIL:-}" ]]; then
         SBATCH_ARGS+=("--mail-type=BEGIN,END,FAIL" "--mail-user=${SLURM_EMAIL}")
     fi
-    [[ -n "${EXTRA_GRES}" ]] && SBATCH_ARGS+=("--gres=${EXTRA_GRES}")
-    SBATCH_ARGS+=("${SLURM_FILE}")
+    SBATCH_ARGS+=("$@" "${SLURM_FILE}")
     local JOB_ID
     JOB_ID=$(remote_argv_in_dir "${REMOTE}/src" "${SBATCH_ARGS[@]}")
     echo "  Job ID: ${JOB_ID}"
@@ -405,35 +443,27 @@ cmd_submit_benchmark_gpu() {
         echo "ERROR: benchmark GPU type accepts at most one value" >&2
         exit 1
     }
-    local gpu_type="${1:-}"
-    case "${gpu_type}" in
-        ""|a100|l40s|h100) ;;
-        *)
-            echo "ERROR: unsupported benchmark GPU type '${gpu_type}'; expected a100, l40s, or h100" >&2
-            exit 1
-            ;;
-    esac
-    local gres=""
-    if [[ -n "${gpu_type}" ]]; then
-        gres="gpu:${gpu_type}:1"
-        echo "  Requesting GPU type: ${gpu_type}"
-    fi
-    _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${gpu_type:+: ${gpu_type}})" "build-*/bin/dtwc_cl" "${gres}"
+    local -a GPU_REQUEST=()
+    gpu_request "${1:-}"
+    _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${1:+: $1})" "build-*/bin/dtwc_cl" "${GPU_REQUEST[@]}"
 }
 
 # Run a directory dtwcpp's device='hpc' wrote (job.toml, and input.tsv for
 # series sent from memory): upload it to a fresh directory on the cluster and
 # submit cluster_generic.slurm there, which runs dtwc_cl --config job.toml.
-# --gpu asks for a GPU and runs build-htc-gpu; without it, build-htc-cpu.
+# --gpu asks for any GPU at the CUDA floor and runs build-htc-gpu;
+# --gpu-device <type> asks for that GPU and runs build-<type>; neither, a CPU
+# job on build-htc-cpu.
 cmd_submit_job() {
     local RUNDIR="${1:-}"
     local BUILD="htc-cpu"
-    local -a GPU_ARGS=()
+    local -a GPU_REQUEST=()
     case "$#:${2:-}" in
         1:) ;;
-        2:--gpu) BUILD="htc-gpu"; GPU_ARGS=("--gres=${GPU_GRES}") ;;
+        2:--gpu) BUILD="htc-gpu"; gpu_request "" ;;
+        3:--gpu-device) BUILD="$3"; gpu_request "$3" ;;
         *)
-            echo "ERROR: submit-job syntax is 'submit-job <rundir> [--gpu]'" >&2
+            echo "ERROR: submit-job syntax is 'submit-job <rundir> [--gpu | --gpu-device <type>]'" >&2
             exit 1
             ;;
     esac
@@ -484,7 +514,7 @@ cmd_submit_job() {
         SBATCH_ARGS+=("--mail-type=BEGIN,END,FAIL" "--mail-user=${SLURM_EMAIL}")
     fi
     # ${A[@]+"${A[@]}"}: bash < 4.4 (macOS ships 3.2) calls an empty array unbound under set -u.
-    SBATCH_ARGS+=(${GPU_ARGS[@]+"${GPU_ARGS[@]}"}
+    SBATCH_ARGS+=(${GPU_REQUEST[@]+"${GPU_REQUEST[@]}"}
         "--export=ALL,DTWC_JOB=${REMOTE_JOB_DIR},DTWC_BUILD=${BUILD}"
         "${REMOTE_JOB_DIR}/cluster_generic.slurm")
 
@@ -600,15 +630,16 @@ case "${CMD}" in
         echo "Commands:"
         echo "  test              Test SSH connection"
         echo "  upload            Upload source + test data"
-        echo "  build [profile] | build --profile <profile>"
-        echo "                    Profiles: arc, htc-cpu, htc-gpu, htc-v4, h100, grace"
+        echo "  build [profile] | build --profile <profile>   [--gpu-device <type>]"
+        echo "                    Profiles: arc, htc-cpu, htc-gpu, htc-v4, h100, grace;"
+        echo "                    --gpu-device builds on that GPU's node into build-<type>"
         echo "  submit-cpu        Submit CPU test job"
         echo "  submit-gpu        Submit GPU test job"
         echo "  submit-checkpoint Submit distance-checkpoint test"
         echo "  submit-parquet    Submit Parquet I/O test"
         echo "  submit-benchmark-cpu  Submit full UCR benchmark (CPU, ~12h)"
-        echo "  submit-benchmark-gpu [type]  GPU type: a100, l40s, or h100"
-        echo "  submit-job <rundir> [--gpu]"
+        echo "  submit-benchmark-gpu [type]  GPU type from gpu_devices.txt (default: any of 8.0+)"
+        echo "  submit-job <rundir> [--gpu | --gpu-device <type>]"
         echo "                    Upload a run directory (job.toml) and cluster it (device='hpc' path)"
         echo "  status            Show SLURM queue"
         echo "  download          Download results + logs"

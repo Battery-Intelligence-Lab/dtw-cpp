@@ -2,6 +2,8 @@
 # Build DTWC++ on Oxford ARC SLURM clusters
 #
 # Usage:   source scripts/slurm/build-arc.sh [profile]
+#          DTWC_BUILD_DIR names the build directory (default build-<profile>);
+#          `slurm_remote.sh build htc-gpu --gpu-device <type>` sets build-<type>.
 # Profiles: arc       — arc cluster (Cascade Lake + Turin), CPU only, AVX-512
 #           htc-cpu   — htc cluster CPU-only, AVX2 portable (covers Broadwell→Turin)
 #           htc-gpu   — htc cluster GPU build, compute capability 8.0+ (A100, RTX A6000, L40S), AVX2 portable
@@ -22,7 +24,7 @@
 set -euo pipefail
 
 PROFILE="${1:-arc}"
-BUILD_DIR="build-${PROFILE}"
+BUILD_DIR="${DTWC_BUILD_DIR:-build-${PROFILE}}"
 NPROC=$(nproc)
 
 # ── Common flags ────────────────────────────────────────────────────────────

@@ -350,20 +350,28 @@ def cluster(data, k, **keys):
     CPU, CLARA above. ``device=None`` uses the global default (see
     :func:`dtwcpp.device`). ``"hpc"`` and ``"hpc:gpu"`` run the clustering on a
     SLURM cluster as one job.toml: the keys given and the data (a path is read
-    on the cluster, never here); the result holds the labels.
+    on the cluster, never here); the result holds the labels. ``gpu_device``
+    names the GPU of an ``"hpc:gpu"`` run (``"a100"``, ``"a6000"``, ``"l40s"``,
+    ``"h100"``); without it the run takes any GPU of compute capability 8.0 or
+    newer.
     """
     import dtwcpp
-    from dtwcpp import _dtwcpp_core, _resolve_device
+    from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
     device = keys.pop("device", None)
+    gpu_device = keys.pop("gpu_device", None)
     config = _config(k, keys)
     eff = device if device is not None else dtwcpp.device()
     backend, _ = _resolve_device(eff)
+    if gpu_device is not None and eff.strip().lower() != "hpc:gpu":
+        raise InvalidInput(f"cluster: gpu_device names the GPU of a device='hpc:gpu' "
+                           f"run, and the device is '{eff}'.")
     data = load(data)
 
     t0 = time.perf_counter()
     if backend == "hpc":
         from dtwcpp import _hpc
-        labels = _hpc.cluster_on_hpc(data, config, keys, device=eff)
+        labels = _hpc.cluster_on_hpc(data, config, keys, device=eff,
+                                     gpu_device=gpu_device)
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
                       k=k, n_series=len(labels), name=config.name or data.name)
 

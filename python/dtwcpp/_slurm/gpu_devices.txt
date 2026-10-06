@@ -1,0 +1,21 @@
+# The GPUs a device='hpc:gpu' run can ask SLURM for on Oxford ARC's htc cluster:
+# one line per gpu_device, its CUDA compute capability, and the sbatch arguments
+# that ask for it ("-": below the compute capability 8.0 DTWC++ needs, refused).
+# '*' is any GPU at or above that floor. dtwcpp._hpc and slurm_remote.sh both
+# read this table.
+#
+# Sources, arc-user-guide.readthedocs.io/en/latest/_sources/ (read 2026-10-06):
+#   job-scheduling.rst.txt, "GPU Resources": --gres=gpu:<type>:<n> types P100,
+#   V100, RTX (Titan RTX), RTX8000 and A100; --gres=gpu:1 with --constraint on
+#   gpu_sku:, gpu_gen:, gpu_cc:, gpu_mem: or nvlink:. It lists no type, SKU or
+#   generation for the RTX A6000, L40S or H100, which are asked for by gpu_cc:,
+#   their compute capability in arc-systems.rst.txt, "GPU Resources".
+*        8.0  --gres=gpu:1 --constraint=gpu_cc:8.0|gpu_cc:8.6|gpu_cc:8.9|gpu_cc:9.0
+a100     8.0  --gres=gpu:a100:1
+a6000    8.6  --gres=gpu:1 --constraint=gpu_cc:8.6
+l40s     8.9  --gres=gpu:1 --constraint=gpu_cc:8.9
+h100     9.0  --gres=gpu:1 --constraint=gpu_cc:9.0
+p100     6.0  -
+v100     7.0  -
+rtx8000  7.5  -
+rtx      7.5  -

@@ -131,7 +131,7 @@ class TestJobToml:
             "max-iter = 2147483647\n"
             'method = "hierarchical"\n'
             'metric = "squared_euclidean"\n')}
-        assert request == {"device": "cpu"}
+        assert request == {"device": "cpu", "gpu_device": None}
         # A relative path has no meaning on the cluster: refused before a run
         # directory is written.
         with pytest.raises(dtwcpp.InvalidInput, match="absolute path"):
@@ -140,11 +140,12 @@ class TestJobToml:
 
     def test_series_in_memory_travel_as_input_tsv(self, monkeypatch, tmp_path):
         """load() cut the columns, so the file is not cut again; hpc:gpu computes
-        on the cluster's GPU; two runs of one name never share a directory."""
+        on the GPU gpu_device names; two runs of one name never share a directory."""
         source = dtwcpp.load([[9.0, 0.1, 2.0], [9.0, 3.0, 4.0]], skip_cols=1)
 
         def run():
-            dtwcpp.cluster(source, k=2, device="hpc:gpu", name="café", wdtw_g=0.17)
+            dtwcpp.cluster(source, k=2, device="hpc:gpu", gpu_device="L40S",
+                           name="café", wdtw_g=0.17)
 
         first, files, request = _submit(monkeypatch, tmp_path, run)
         assert files == {
@@ -154,8 +155,44 @@ class TestJobToml:
                          'name = "café"\n'
                          'device = "gpu"\n'
                          "wdtw-g = 0.17\n")}
-        assert request == {"device": "gpu"}
+        assert request == {"device": "gpu", "gpu_device": "l40s"}
         assert _submit(monkeypatch, tmp_path, run)[0] != first
+
+    @pytest.mark.parametrize(("gpu_device", "expected"), [
+        (None, ["--gres=gpu:1",
+                "--constraint=gpu_cc:8.0|gpu_cc:8.6|gpu_cc:8.9|gpu_cc:9.0"]),
+        ("a100", ["--gres=gpu:a100:1"]),
+        ("a6000", ["--gres=gpu:1", "--constraint=gpu_cc:8.6"]),
+        ("L40S", ["--gres=gpu:1", "--constraint=gpu_cc:8.9"]),
+        ("h100", ["--gres=gpu:1", "--constraint=gpu_cc:9.0"]),
+        ("p100", "compute capability 6.0, below the 8.0"),
+        ("v100", "compute capability 7.0, below the 8.0"),
+        ("rtx8000", "compute capability 7.5, below the 8.0"),
+        ("rtx", "compute capability 7.5, below the 8.0"),
+        ("mi210", "not a GPU type"),
+        ("*", "not a GPU type"),
+    ])
+    def test_gpu_device_is_an_arc_request(self, gpu_device, expected):
+        """The table as data: ARC's gres type where it documents one (A100),
+        else any GPU of the type's compute capability (gpu_cc:); no type asks
+        for every capability at or above the floor, so the job cannot land on
+        a refused V100; a type below the floor is a DeviceError naming it."""
+        if isinstance(expected, list):
+            assert _hpc.gpu_request(gpu_device) == expected
+        else:
+            with pytest.raises(dtwcpp.DeviceError, match=expected):
+                _hpc.gpu_request(gpu_device)
+
+    def test_gpu_device_belongs_to_an_hpc_gpu_run(self, monkeypatch, tmp_path):
+        """A local device, or hpc (a CPU run), refuses it as InvalidInput; a type
+        the table refuses fails before anything is written."""
+        for device in ("cpu", "hpc"):
+            with pytest.raises(dtwcpp.InvalidInput, match="gpu_device"):
+                dtwcpp.cluster([[0.0], [1.0]], k=2, device=device, gpu_device="a100")
+        monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
+        with pytest.raises(dtwcpp.DeviceError, match="below the 8.0"):
+            dtwcpp.cluster([[0.0], [1.0]], k=2, device="hpc:gpu", gpu_device="v100")
+        assert not (tmp_path / "results").exists()
 
     def test_the_estimator_sends_its_parameters(self, monkeypatch, tmp_path):
         """DTWClustering(device='hpc') sends every parameter, its own defaults
@@ -502,6 +539,48 @@ class TestSlurmLastMile:
         assert "DTWC_BUILD_PROFILE=htc-cpu" in exports
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ("htc-gpu --gpu-device a6000", None),
+            ("htc-gpu", None),
+            ("htc-gpu --gpu-device p100", "below the 8.0"),
+            ("htc-cpu --gpu-device a100", "needs a GPU profile"),
+        ],
+    )
+    def test_a_gpu_build_runs_on_that_gpu(self, tmp_path, args, message):
+        """build --gpu-device asks for that GPU as its jobs do, on the .env
+        partition, so build-arc.sh builds natively into build-<type>; without
+        it the build asks for no GPU, on an interactive node, and is portable."""
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} build {args}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        if message is not None:
+            assert completed.returncode != 0
+            assert message in completed.stderr
+            assert not capture.exists()
+            return
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        sbatch_args = capture.read_text(encoding="utf-8").splitlines()
+        gpu_args = [arg for arg in sbatch_args if arg.startswith(("--gres=", "--constraint="))]
+        exports = next(arg for arg in sbatch_args if arg.startswith("--export="))
+        if "--gpu-device" in args:
+            assert gpu_args == _hpc.gpu_request("a6000")
+            assert "--partition=short" in sbatch_args
+            assert exports.endswith(",DTWC_BUILD_DIR=build-a6000")
+        else:
+            assert gpu_args == []
+            assert "--partition=interactive" in sbatch_args
+            assert exports.endswith(",DTWC_BUILD_DIR=build-htc-gpu")
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize("gpu_type", ["", "a100", "l40s", "h100"])
     def test_documented_benchmark_gpu_types_are_exact_argv(
         self, tmp_path, gpu_type,
@@ -520,8 +599,9 @@ class TestSlurmLastMile:
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
         args = capture.read_text(encoding="utf-8").splitlines()
-        gres_args = [arg for arg in args if arg.startswith("--gres=")]
-        assert gres_args == ([f"--gres=gpu:{gpu_type}:1"] if gpu_type else [])
+        # The wrapper reads the table _hpc.gpu_request reads: one table, two readers.
+        gpu_args = [arg for arg in args if arg.startswith(("--gres=", "--constraint="))]
+        assert gpu_args == _hpc.gpu_request(gpu_type or None)
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_commented_empty_optional_config_is_really_empty(self, tmp_path):
@@ -552,7 +632,6 @@ class TestSlurmLastMile:
             ("SLURM_PARTITION", "short,long"),
             ("SLURM_CLUSTER", "arc;command"),
             ("SLURM_EMAIL", "not-an-email"),
-            ("SLURM_GPU_GRES", "gpu:a100:1;command"),
         ],
     )
     def test_unsafe_transport_config_is_rejected_before_ssh(
@@ -633,6 +712,8 @@ class TestSlurmLastMile:
             ("C:/run", "run directory must be"),
             ("missing", "no job.toml"),
             ("run --bogus", "submit-job syntax"),
+            ("run --gpu-device v100", "below the 8.0"),
+            ("run --gpu-device '#'", "unknown GPU type"),
         ],
     )
     def test_submit_job_rejects_an_unsafe_envelope_before_ssh(
@@ -711,21 +792,26 @@ class TestSlurmLastMile:
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_safe_optional_config_reaches_sbatch_as_single_argv(self, tmp_path):
+        """The optional settings and the GPU request, its constraint's '|'
+        included, reach sbatch as single arguments; the job runs build-l40s."""
         wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
         cluster = "arc-prod"
         email = "first.last+dtwc@eng.ox.ac.uk"
-        gres = "gpu:a100:1"
         env_file = wrapper.parents[2] / ".env"
         with env_file.open("a", encoding="utf-8", newline="\n") as stream:
             stream.write(
                 f"SLURM_CLUSTER={cluster}\n"
                 f"SLURM_EMAIL={email}\n"
-                f"SLURM_GPU_GRES={gres}\n"
             )
+        binary = tmp_path / "remote/src/build-l40s/bin/dtwc_cl"
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\n", encoding="utf-8", newline="\n")
+        binary.chmod(0o755)
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
             f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
-            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-job run --gpu"
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-job run "
+            "--gpu-device l40s"
         )
         completed = subprocess.run(
             ["bash", "-c", command], cwd=wrapper.parents[2], check=False,
@@ -735,7 +821,9 @@ class TestSlurmLastMile:
         sbatch_args = capture.read_text(encoding="utf-8").splitlines()
         assert f"--clusters={cluster}" in sbatch_args
         assert f"--mail-user={email}" in sbatch_args
-        assert f"--gres={gres}" in sbatch_args
+        assert [arg for arg in sbatch_args if arg.startswith(("--gres=", "--constraint="))] \
+            == _hpc.gpu_request("l40s")
+        assert sbatch_args[-2].endswith(",DTWC_BUILD=l40s")
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_each_submission_uploads_its_run_to_a_fresh_directory(self, tmp_path):
