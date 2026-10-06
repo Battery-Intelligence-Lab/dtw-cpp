@@ -292,9 +292,9 @@ Append new entries at the end of their section; keep each to a few lines.
   Guard infinities first (an infinity agrees only with itself); `dtw_routes_agree` had this hole until 6fb95f4.
 - **A band sweep proves the band only if some band binds**: on shifted-by-one or iid pairs the best path stays near
   the diagonal and bands ≥ 2 never bind. Make the oracle ignore the band; the sweep must fail (W12b, band 0).
-- **`-S` without LTO cannot see what ThinLTO inlines**: moving a kernel's only call left it out of line, and on
-  Win64 a by-value struct over 8 bytes arrives by pointer, so the DP loop reloaded its fields every cell (+2–7 %).
-  Check the shipped binary's post-LTO assembly (`lld -lldsavetemps`) or time the real closure (W7d ab72231).
+- **`-S` without LTO sees neither what ThinLTO inlines nor which template copy it keeps**: moving a kernel's only
+  call left it out of line (Win64 then reloaded a by-value struct every cell, +2–7 %, W7d ab72231); the wheel ran
+  nanobind's `-Os` copy of the per-pair kernel, 1.5× slower (`NOMINSIZE`). Read the post-LTO loop of what ships.
 - **A session restart kills in-flight agents silently**: after a resume the harness still said "running" for agents
   whose transcripts had stopped 40 minutes earlier. Check transcript times and processes before waiting; resume an
   agent with SendMessage (context intact); a dead integrator is replaced by one told the exact staged state (10-02).

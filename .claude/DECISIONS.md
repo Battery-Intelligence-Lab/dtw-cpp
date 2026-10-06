@@ -410,3 +410,10 @@ CHANGELOG rule.
   pyarrow-23`) and GNU ld link order are still to run (commands in the L2b record). Seen: HiGHS caches
   `BUILD_SHARED_LIBS=ON`, so a re-configured tree builds Catch2 shared; in the Arrow-25 shim tree `test_io_readers`'s
   streamed `Result::save` case fails at base too (Windows's pyarrow 23 passes it; cause not found).
+- 2026-10-06 — Mac kernel assembly audit (`baselines/2026-10-06-mac-kernel-assembly.md`, Opus; the headline numbers
+  re-measured by the orchestrator): the CLI, the wheel and the MEX carry the same kernel loops, and `-march`/`-mcpu`
+  change none; the lanes kernel sits on its 7-cycle `fcmgt→bif→fadd` chain (AArch64 has no one-instruction
+  `b < a ? b : a`), the per-pair kernels on `fcmp→fcsel→fadd`. Fixed: nanobind compiled the binding file at `-Os` and
+  the whole module ran that copy of the per-pair kernel (`NOMINSIZE`, 659f889f). For Volkan: AArch64 lanes with
+  `fminnm` and 128-byte blocks (1.41–2.00×, fill 1.48–1.72×; exact on every input the checked paths admit) and
+  two-column per-pair kernels (1.44–1.98× unbanded); the recommendation is both, AArch64 only for the first.
