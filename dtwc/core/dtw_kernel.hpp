@@ -255,11 +255,12 @@ T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell, T
   // Columns j and j + 1 per pass: two chains of min-then-add side by side, where
   // one column is one chain whose latency, not the core, sets the pace. Each cell
   // gets the neighbours, in the same roles, that the one-column loop below gives
-  // it, so every Cell's result is unchanged bit for bit; the pair is abandoned iff
-  // some column's minimum exceeds the threshold, as it was column by column. A
-  // one-row matrix stays on the one-column loop: there a pass's two cells form a
-  // chain of adds that the library's -fassociative-math may regroup (ADTW's
-  // left + penalty moved a float result by an ulp).
+  // it, and the pair is abandoned iff some column's minimum exceeds the threshold.
+  // The library's -fassociative-math may still regroup a chain of adds: on a
+  // one-row matrix a pass's two cells form one, and clang moved ADTW's
+  // left + penalty by an ulp in float there, so a one-row matrix stays on the
+  // one-column loop. Elsewhere each cell's value also feeds the next row, and the
+  // results matched the one-column loop's bit for bit (Apple clang 21).
   std::size_t j = 1;
   for (; n_short > 1 && j + 1 < n_long; j += 2) {
     T diag = short_side[0];
