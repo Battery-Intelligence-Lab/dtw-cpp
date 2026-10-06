@@ -118,11 +118,6 @@ def _current_device():
     return _HPC_SELECTED or _core_device()
 
 
-def _hpc_remote_device(name):
-    """The device the cluster job computes on: ``cuda`` for ``hpc:gpu``."""
-    return "cuda" if name.strip().lower() == "hpc:gpu" else "cpu"
-
-
 def device(device=None):
     """Get or set the global default device, PyTorch-style.
 

@@ -20,10 +20,10 @@
 #   bash scripts/slurm/slurm_remote.sh submit-parquet
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-cpu
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-gpu [a100|l40s|h100]
-#   bash scripts/slurm/slurm_remote.sh submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed] [max_iter] [variant] [variant params...] [mv_mode] [missing_strategy] [metric]
+#   bash scripts/slurm/slurm_remote.sh submit-job <rundir> [--gpu]
 #   bash scripts/slurm/slurm_remote.sh status
 #   bash scripts/slurm/slurm_remote.sh download
-#   bash scripts/slurm/slurm_remote.sh download-cluster <name> <job-id>
+#   bash scripts/slurm/slurm_remote.sh download-cluster <job-id>
 #   bash scripts/slurm/slurm_remote.sh ssh "command"
 #   bash scripts/slurm/slurm_remote.sh interactive
 
@@ -158,14 +158,6 @@ decimal_leq() {
         (( ${#VALUE} == ${#LIMIT} )) \
             && [[ "${VALUE}" == "${LIMIT}" || "${VALUE}" < "${LIMIT}" ]]
     }
-}
-
-is_finite_number() {
-    [[ "$1" =~ ^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$ ]] \
-        && awk -v value="$1" 'BEGIN {
-            numeric = value + 0
-            exit !((numeric - numeric) == 0)
-        }'
 }
 
 shell_join() {
@@ -429,211 +421,72 @@ cmd_submit_benchmark_gpu() {
     _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${gpu_type:+: ${gpu_type}})" "build-*/bin/dtwc_cl" "${gres}"
 }
 
-# Generic clustering: submit cluster_generic.slurm on an arbitrary input.
-# Args: <input> <k> [method=pam] [device=cpu] [band=-1] [name=dtwc_job]
-#       [skip_cols=0] [upload=1] [n_init=1] [seed] [max_iter=100]
-#       [variant=standard] [wdtw_g=.05] [adtw_penalty=1] [msm_c=1]
-#       [twe_nu=.001] [twe_lambda=1] [mv_mode=dependent]
-#       [missing_strategy=error] [metric=l1]
-#   upload=1 : <input> is a local file -> rsync it to the cluster.
-#   upload=0 : <input> is a path ON the cluster (pre-staged) -> used as-is, no read/upload.
-# Used by the Python device='hpc' offload path (dtwcpp._hpc.cluster_on_hpc).
-cmd_submit_cluster() {
-    local INPUT="${1:?input required}"
-    local K="${2:?number of clusters required}"
-    local METHOD="${3:-pam}"
-    local DEVICE="${4:-cpu}"
-    local BAND="${5:--1}"
-    local NAME="${6:-dtwc_job}"
-    local SKIP_COLS="${7:-0}"
-    local UPLOAD="${8:-1}"
-    local N_INIT="${9:-1}"
-    local SEED="${10:-}"
-    local MAX_ITER="${11:-100}"
-    local VARIANT="${12:-standard}"
-    local WDTW_G="${13:-0.05}"
-    local ADTW_PENALTY="${14:-1.0}"
-    local MSM_C="${15:-1.0}"
-    local TWE_NU="${16:-0.001}"
-    local TWE_LAMBDA="${17:-1.0}"
-    local MV_MODE="${18:-dependent}"
-    local MISSING_STRATEGY="${19:-error}"
-    local METRIC="${20:-l1}"
-
-    [[ "${INPUT}" =~ ^[A-Za-z0-9_./:+@%=-]+$ ]] || {
-        echo "ERROR: input path contains bytes unsafe for SSH/Slurm export: ${INPUT}" >&2
-        exit 1
-    }
-    [[ "${INPUT}" != -* ]] || {
-        echo "ERROR: input path must not start with '-' (transfer option ambiguity): ${INPUT}" >&2
-        exit 1
-    }
-    [[ "${K}" =~ ^[1-9][0-9]*$ ]] || {
-        echo "ERROR: n_clusters must be a positive integer: ${K}" >&2
-        exit 1
-    }
-    [[ "${METHOD}" =~ ^(auto|pam|onebatch|clara|kmedoids|mip|lrcore|hierarchical|tadpole)$ ]] || {
-        echo "ERROR: unsupported method: ${METHOD}" >&2
-        exit 1
-    }
-    [[ "${BAND}" == "-1" || "${BAND}" =~ ^[0-9]+$ ]] || {
-        echo "ERROR: band must be -1 or a non-negative integer: ${BAND}" >&2
-        exit 1
-    }
-    (( ${#NAME} >= 1 && ${#NAME} <= 128 )) \
-        && [[ "${NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || {
-        echo "ERROR: job name must be 1-128 ASCII letters, digits, '.', '_', or '-': ${NAME}" >&2
-        exit 1
-    }
-    [[ "${SKIP_COLS}" =~ ^[0-9]+$ ]] || {
-        echo "ERROR: skip_cols must be a non-negative integer: ${SKIP_COLS}" >&2
-        exit 1
-    }
-    [[ "${UPLOAD}" == "0" || "${UPLOAD}" == "1" ]] || {
-        echo "ERROR: upload must be 0 or 1: ${UPLOAD}" >&2
-        exit 1
-    }
-    if [[ "${UPLOAD}" == "1" && "${INPUT}" == *:* ]]; then
-        echo "ERROR: local upload path must not contain ':' (remote-source ambiguity): ${INPUT}" >&2
-        exit 1
-    fi
-    if [[ "${UPLOAD}" == "1" && ! -f "${INPUT}" ]]; then
-        echo "ERROR: input not found or not a regular file: ${INPUT}" >&2
-        exit 1
-    fi
-    [[ "${N_INIT}" =~ ^[1-9][0-9]*$ ]] || {
-        echo "ERROR: n_init must be a positive integer: ${N_INIT}" >&2
-        exit 1
-    }
-    [[ -z "${SEED}" || "${SEED}" =~ ^[0-9]+$ ]] || {
-        echo "ERROR: seed must be a non-negative integer: ${SEED}" >&2
-        exit 1
-    }
-    [[ "${MAX_ITER}" =~ ^[1-9][0-9]*$ ]] || {
-        echo "ERROR: max_iter must be a positive integer: ${MAX_ITER}" >&2
-        exit 1
-    }
-    [[ "${DEVICE}" =~ ^(cpu|cuda(:[0-9]+)?)$ ]] || {
-        echo "ERROR: unsupported remote device: ${DEVICE}" >&2
-        exit 1
-    }
-    [[ "${VARIANT}" =~ ^(standard|ddtw|wdtw|adtw|msm|twe)$ ]] || {
-        echo "ERROR: unsupported variant: ${VARIANT}" >&2
-        exit 1
-    }
-    [[ "${MV_MODE}" =~ ^(dependent|independent)$ ]] || {
-        echo "ERROR: unsupported mv_mode: ${MV_MODE}" >&2
-        exit 1
-    }
-    [[ "${MISSING_STRATEGY}" =~ ^(error|zero_cost|arow|interpolate)$ ]] || {
-        echo "ERROR: unsupported missing_strategy: ${MISSING_STRATEGY}" >&2
-        exit 1
-    }
-    [[ "${METRIC}" =~ ^(l1|squared_euclidean)$ ]] || {
-        echo "ERROR: unsupported metric: ${METRIC}" >&2
-        exit 1
-    }
-    for VALUE in "${WDTW_G}" "${ADTW_PENALTY}" "${MSM_C}" \
-                 "${TWE_NU}" "${TWE_LAMBDA}"; do
-        is_finite_number "${VALUE}" || {
-            echo "ERROR: variant parameters must be finite numbers: ${VALUE}" >&2
+# Run a directory dtwcpp's device='hpc' wrote (job.toml, and input.tsv for
+# series sent from memory): upload it to a fresh directory on the cluster and
+# submit cluster_generic.slurm there, which runs dtwc_cl --config job.toml.
+# --gpu asks for a GPU and runs build-htc-gpu; without it, build-htc-cpu.
+cmd_submit_job() {
+    local RUNDIR="${1:-}"
+    local BUILD="htc-cpu"
+    local -a GPU_ARGS=()
+    case "$#:${2:-}" in
+        1:) ;;
+        2:--gpu) BUILD="htc-gpu"; GPU_ARGS=("--gres=${GPU_GRES}") ;;
+        *)
+            echo "ERROR: submit-job syntax is 'submit-job <rundir> [--gpu]'" >&2
             exit 1
-        }
-    done
-    if [[ "${MV_MODE}" == "independent" \
-          && ( "${VARIANT}" != "standard" || "${MISSING_STRATEGY}" != "error" ) ]]; then
-        echo "ERROR: mv_mode=independent requires variant=standard and missing_strategy=error" >&2
+            ;;
+    esac
+    # The run directory crosses rsync's argv and its host:path grammar.
+    [[ "${RUNDIR}" =~ ^[A-Za-z0-9_./+@%=-]+$ && "${RUNDIR}" != -* ]] || {
+        echo "ERROR: run directory must be ASCII letters, digits and _./+@%=-, not starting with '-': ${RUNDIR}" >&2
         exit 1
-    fi
-    if [[ "${VARIANT}" != "standard" && "${MISSING_STRATEGY}" != "error" ]]; then
-        echo "ERROR: unsupported variant/missing_strategy combination" >&2
+    }
+    [[ -f "${RUNDIR}/job.toml" ]] || {
+        echo "ERROR: no job.toml in run directory ${RUNDIR}" >&2
         exit 1
-    fi
-    if [[ "${DEVICE}" == cuda* ]]; then
-        [[ "${VARIANT}" == "standard" ]] || { echo "ERROR: remote CUDA supports variant=standard only" >&2; exit 1; }
-        [[ "${MISSING_STRATEGY}" == "error" ]] || { echo "ERROR: remote CUDA does not support missing_strategy" >&2; exit 1; }
-        [[ "${MV_MODE}" == "dependent" ]] || { echo "ERROR: remote CUDA does not support mv_mode=independent" >&2; exit 1; }
-    elif [[ "${METRIC}" != "l1" ]]; then
-        echo "ERROR: metric=${METRIC} is unsupported by the remote CPU CLI" >&2
-        exit 1
-    fi
+    }
 
-    banner "Submitting clustering job (${NAME}, k=${K}, device=${DEVICE})"
+    banner "Submitting clustering job (${RUNDIR})"
 
-    # Preflight: a build must exist on the cluster
-    local EXISTS
-    EXISTS=$(remote_argv find "${REMOTE}/src" \
-        -path "${REMOTE}/src/build-*/bin/dtwc_cl" -type f -print -quit || true)
-    if [[ -z "${EXISTS}" ]]; then
-        echo "  ERROR: no dtwc_cl build on cluster. Run 'slurm_remote.sh build' first." >&2
+    local BIN="${REMOTE}/src/build-${BUILD}/bin/dtwc_cl"
+    remote_argv test -x "${BIN}" || {
+        echo "  ERROR: no dtwc_cl at ${BIN} (or ssh failed). Build it: bash scripts/slurm/slurm_remote.sh build ${BUILD}" >&2
         exit 1
-    fi
+    }
 
-    # Allocate one immutable remote submission directory for both input and job
-    # script. Concurrent callers never publish through a shared pathname.
+    # One fresh remote directory per submission holds the run and its job
+    # script, so concurrent callers never publish through a shared pathname.
     local REMOTE_JOB_ROOT="${REMOTE}/data/userjobs"
     local MKDIR_COMMAND MKTEMP_COMMAND REMOTE_JOB_DIR REMOTE_JOB_BASENAME
     shell_join MKDIR_COMMAND mkdir -p "${REMOTE_JOB_ROOT}"
     remote "${MKDIR_COMMAND}"
-    shell_join MKTEMP_COMMAND mktemp -d \
-        "${REMOTE_JOB_ROOT}/${NAME}.XXXXXXXX"
+    shell_join MKTEMP_COMMAND mktemp -d "${REMOTE_JOB_ROOT}/job.XXXXXXXX"
     REMOTE_JOB_DIR="$(remote "${MKTEMP_COMMAND}")"
     REMOTE_JOB_DIR="${REMOTE_JOB_DIR%$'\r'}"
     REMOTE_JOB_BASENAME="${REMOTE_JOB_DIR##*/}"
-    local EXPECTED_PREFIX="${NAME}."
-    local ALLOCATOR_SUFFIX=""
-    if [[ "${REMOTE_JOB_BASENAME}" == "${EXPECTED_PREFIX}"* ]]; then
-        ALLOCATOR_SUFFIX="${REMOTE_JOB_BASENAME:${#EXPECTED_PREFIX}}"
-    fi
     [[ "${REMOTE_JOB_DIR}" == "${REMOTE_JOB_ROOT}/${REMOTE_JOB_BASENAME}" \
-       && "${ALLOCATOR_SUFFIX}" =~ ^[A-Za-z0-9]{8}$ ]] || {
+       && "${REMOTE_JOB_BASENAME}" =~ ^job\.[A-Za-z0-9]{8}$ ]] || {
         echo "ERROR: remote submission allocator returned an unsafe path: ${REMOTE_JOB_DIR}" >&2
         exit 1
     }
 
-    # Resolve the cluster-side input path (upload a local file, or use as-is).
-    local REMOTE_INPUT
-    if [[ "${UPLOAD}" == "1" ]]; then
-        local BASE; BASE="$(basename "${INPUT}")"
-        if command -v rsync &>/dev/null; then
-            rsync -az -- "${INPUT}" "${SSH_TARGET}:${REMOTE_JOB_DIR}/${BASE}"
-        else
-            scp -- "${INPUT}" "${SSH_TARGET}:${REMOTE_JOB_DIR}/${BASE}"
-        fi
-        REMOTE_INPUT="${REMOTE_JOB_DIR}/${BASE}"
+    if command -v rsync &>/dev/null; then
+        rsync -az -- "${RUNDIR}/" "${SSH_TARGET}:${REMOTE_JOB_DIR}/"
     else
-        REMOTE_INPUT="${INPUT}"          # pre-staged on the cluster
+        scp -r -- "${RUNDIR}/." "${SSH_TARGET}:${REMOTE_JOB_DIR}/"
     fi
-
-    # Publish this exact script beside this submission's input. The sbatch path
-    # below is immutable for this call rather than shared across callers.
-    local REMOTE_JOB_SCRIPT="${REMOTE_JOB_DIR}/cluster_generic.slurm"
-    scp -- "${SCRIPT_DIR}/cluster_generic.slurm" "${SSH_TARGET}:${REMOTE_JOB_SCRIPT}"
-
-    # GPU runs need a GRES request (the job file is partition-agnostic)
-    local GPU_FLAGS=""
-    if [[ "${DEVICE}" == cuda* || "${DEVICE}" == gpu ]]; then
-        GPU_FLAGS="--gres=${GPU_GRES}"
-    fi
-
-    local EXPORTS="ALL,DTWC_INPUT=${REMOTE_INPUT},DTWC_K=${K},DTWC_SKIP_COLS=${SKIP_COLS}"
-    EXPORTS+=",DTWC_METHOD=${METHOD},DTWC_DEVICE=${DEVICE},DTWC_BAND=${BAND},DTWC_NAME=${NAME},DTWC_N_INIT=${N_INIT}"
-    EXPORTS+=",DTWC_DTYPE=float64"
-    EXPORTS+=",DTWC_MAX_ITER=${MAX_ITER},DTWC_VARIANT=${VARIANT},DTWC_WDTW_G=${WDTW_G},DTWC_ADTW_PENALTY=${ADTW_PENALTY}"
-    EXPORTS+=",DTWC_MSM_C=${MSM_C},DTWC_TWE_NU=${TWE_NU},DTWC_TWE_LAMBDA=${TWE_LAMBDA},DTWC_MV_MODE=${MV_MODE}"
-    EXPORTS+=",DTWC_MISSING_STRATEGY=${MISSING_STRATEGY},DTWC_METRIC=${METRIC}"
-    # Always override an ambient login-shell value inherited through `ALL`.
-    # An empty export preserves the CLI as the single source of the default;
-    # an explicit value remains byte-for-byte unchanged.
-    EXPORTS+=",DTWC_SEED=${SEED}"
+    scp -- "${SCRIPT_DIR}/cluster_generic.slurm" "${SSH_TARGET}:${REMOTE_JOB_DIR}/cluster_generic.slurm"
 
     local -a SBATCH_ARGS=(sbatch --parsable)
     [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
     if [[ -n "${SLURM_EMAIL:-}" ]]; then
         SBATCH_ARGS+=("--mail-type=BEGIN,END,FAIL" "--mail-user=${SLURM_EMAIL}")
     fi
-    [[ -n "${GPU_FLAGS}" ]] && SBATCH_ARGS+=("${GPU_FLAGS}")
-    SBATCH_ARGS+=("--export=${EXPORTS}" "${REMOTE_JOB_SCRIPT}")
+    # ${A[@]+"${A[@]}"}: bash < 4.4 (macOS ships 3.2) calls an empty array unbound under set -u.
+    SBATCH_ARGS+=(${GPU_ARGS[@]+"${GPU_ARGS[@]}"}
+        "--export=ALL,DTWC_JOB=${REMOTE_JOB_DIR},DTWC_BUILD=${BUILD}"
+        "${REMOTE_JOB_DIR}/cluster_generic.slurm")
 
     local JOB_ID
     JOB_ID=$(remote_argv_in_dir "${REMOTE}/src" "${SBATCH_ARGS[@]}")
@@ -676,30 +529,25 @@ cmd_download() {
 }
 
 cmd_download_cluster() {
-    local NAME="${1:?job name required}"
-    local JOB_ID="${2:?job ID required}"
-    (( ${#NAME} >= 1 && ${#NAME} <= 128 )) \
-        && [[ "${NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || {
-        echo "ERROR: invalid cluster job name: ${NAME}" >&2
-        exit 1
-    }
+    local JOB_ID="${1:?job ID required}"
     [[ "${JOB_ID}" =~ ^[1-9][0-9]*$ ]] \
         && decimal_leq "${JOB_ID}" "18446744073709551615" || {
         echo "ERROR: job ID must be a positive uint64: ${JOB_ID}" >&2
         exit 1
     }
 
-    local LOCAL_DIR="${PROJECT_ROOT}/results/slurm/${NAME}_${JOB_ID}"
-    local LOCAL_TARGET="${LOCAL_DIR}/${NAME}_labels.csv"
-    local REMOTE_SOURCE="${REMOTE}/src/results/${NAME}_${JOB_ID}/${NAME}_labels.csv"
+    # A submit-job run writes results/cluster_<job id>/<name>_labels.csv;
+    # only the job ID crosses the shell, so a run's name may be any text.
+    local LOCAL_DIR="${PROJECT_ROOT}/results/slurm/cluster_${JOB_ID}"
+    local REMOTE_DIR="${REMOTE}/src/results/cluster_${JOB_ID}"
     mkdir -p "${LOCAL_DIR}"
-    rm -f -- "${LOCAL_TARGET}"
+    rm -f -- "${LOCAL_DIR}"/*_labels.csv
     if command -v rsync &>/dev/null; then
-        rsync -az -- "${SSH_TARGET}:${REMOTE_SOURCE}" "${LOCAL_TARGET}"
+        rsync -az --include='*_labels.csv' --exclude='*' -- "${SSH_TARGET}:${REMOTE_DIR}/" "${LOCAL_DIR}/"
     else
-        scp -- "${SSH_TARGET}:${REMOTE_SOURCE}" "${LOCAL_TARGET}"
+        scp -- "${SSH_TARGET}:${REMOTE_DIR}/*_labels.csv" "${LOCAL_DIR}/"
     fi
-    echo "  Labels downloaded: ${LOCAL_TARGET}"
+    echo "  Labels downloaded to: ${LOCAL_DIR}"
 }
 
 cmd_ssh() {
@@ -740,7 +588,7 @@ case "${CMD}" in
     submit-parquet)    cmd_submit_parquet ;;
     submit-benchmark-cpu) cmd_submit_benchmark_cpu ;;
     submit-benchmark-gpu) cmd_submit_benchmark_gpu "$@" ;;
-    submit-cluster)    cmd_submit_cluster "$@" ;;
+    submit-job)        cmd_submit_job "$@" ;;
     status)            cmd_status ;;
     download)          cmd_download ;;
     download-cluster)  cmd_download_cluster "$@" ;;
@@ -760,11 +608,11 @@ case "${CMD}" in
         echo "  submit-parquet    Submit Parquet I/O test"
         echo "  submit-benchmark-cpu  Submit full UCR benchmark (CPU, ~12h)"
         echo "  submit-benchmark-gpu [type]  GPU type: a100, l40s, or h100"
-        echo "  submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed] [max_iter] [variant] [variant params...] [mv_mode] [missing_strategy] [metric]"
-        echo "                    Upload an arbitrary input file + cluster it (device='hpc' path)"
+        echo "  submit-job <rundir> [--gpu]"
+        echo "                    Upload a run directory (job.toml) and cluster it (device='hpc' path)"
         echo "  status            Show SLURM queue"
         echo "  download          Download results + logs"
-        echo "  download-cluster <name> <job-id>  Download exact clustering labels"
+        echo "  download-cluster <job-id>  Download a submit-job run's labels"
         echo "  ssh \"command\"     Run arbitrary command on cluster"
         echo "  interactive       Print interactive session guide"
         echo ""

@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 
 import dtwcpp
-from dtwcpp import _hpc
 
 
 X = np.array([0.0], dtype=np.float64)
@@ -55,36 +54,3 @@ def test_estimator_rejects_domains_before_touching_input(kwargs, message):
     model = dtwcpp.DTWClustering(**kwargs)
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         model.fit(object())
-
-
-def _remote_config(**overrides):
-    config = {
-        "device": "cpu",
-        "max_iter": 10,
-        "variant": "standard",
-        "wdtw_g": 0.05,
-        "adtw_penalty": 1.0,
-        "msm_c": 1.0,
-        "twe_nu": 0.001,
-        "twe_lambda": 1.0,
-        "mv_mode": "dependent",
-        "missing_strategy": "error",
-        "metric": "l1",
-    }
-    config.update(overrides)
-    return config
-
-
-@pytest.mark.parametrize(
-    ("overrides", "message"),
-    [
-        ({"wdtw_g": -1.0}, "WDTW g must be finite and non-negative."),
-        ({"adtw_penalty": -1.0}, "ADTW penalty must be finite and non-negative."),
-        ({"msm_c": 0.0}, "MSM c must be finite and positive."),
-        ({"twe_nu": 0.0}, "TWE nu must be finite and positive."),
-        ({"twe_lambda": -1.0}, "TWE lambda must be finite and positive."),
-    ],
-)
-def test_hpc_serialization_boundary_uses_the_same_domains(overrides, message):
-    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-        _hpc._validate_remote_configuration(**_remote_config(**overrides))

@@ -76,39 +76,6 @@ class TestLoad:
         with pytest.raises(error, match="skip_rows"):
             dtwcpp.load([[0.0], [1.0]], skip_rows=bad)
 
-    def test_skip_rows_is_not_silently_dropped_on_hpc(self):
-        ds = dtwcpp.Dataset("/remote/staged.tsv", skip_rows=2)
-        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows"):
-            dtwcpp.cluster(ds, k=1, device="hpc")
-
-    def test_delimiter_is_not_silently_dropped_on_hpc(self, monkeypatch):
-        """FX-17: the HPC transport has no delimiter slot, so the remote reader
-        took the delimiter from the extension; refuse before submitting."""
-        from dtwcpp import _hpc
-        submitted = []
-        monkeypatch.setattr(_hpc, "cluster_on_hpc",
-                            lambda *args, **kwargs: submitted.append(args) or [0])
-        ds = dtwcpp.Dataset("/remote/staged.txt", delimiter=";")
-        with pytest.raises(dtwcpp.InvalidInput, match="delimiter"):
-            dtwcpp.cluster(ds, k=1, device="hpc")
-        assert submitted == []
-
-    def test_in_memory_skip_cols_is_applied_once_on_hpc(self, monkeypatch):
-        """as_series() already dropped the columns, so the remote CLI must not
-        drop them again from the staged file."""
-        from dtwcpp import _hpc
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured.update(source=source, **kwargs)
-            return np.zeros(len(source), dtype=int)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        ds = dtwcpp.load([[9.0, 1.0, 2.0], [9.0, 3.0, 4.0]], skip_cols=1)
-        dtwcpp.cluster(ds, k=2, device="hpc")
-        assert captured["source"] == [[1.0, 2.0], [3.0, 4.0]]
-        assert captured["skip_cols"] == 0
-
     @pytest.mark.parametrize("content", [None, "1,2,x\n4,5,6\n"])
     def test_reader_errors_name_the_load_and_keep_their_type(self, tmp_path,
                                                              content):
@@ -187,58 +154,6 @@ class TestLoad:
 class TestClusterKeywords:
     """The keywords become a C++ Config: C++ reads and checks each name before
     the series are read or a job is submitted."""
-
-    _INT_MAX = (1 << 31) - 1
-
-    def test_valid_signed_int_boundaries_are_normalized_for_hpc(self, monkeypatch):
-        """The largest C++ int is valid and crosses HPC as a native int."""
-        from dtwcpp import _hpc
-
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured.update(source=source, k=k, **kwargs)
-            return np.array([0], dtype=int)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        source = dtwcpp.Dataset(
-            "/remote/already_staged.tsv", skip_cols=np.int64(self._INT_MAX),
-        )
-        result = dtwcpp.cluster(
-            source,
-            k=np.int64(self._INT_MAX),
-            max_iter=np.int64(self._INT_MAX),
-            device="hpc",
-        )
-
-        assert result.device == "hpc"
-        assert captured["source"] == "/remote/already_staged.tsv"
-        assert captured["k"] == self._INT_MAX
-        assert captured["skip_cols"] == self._INT_MAX
-        assert captured["max_iter"] == self._INT_MAX
-        assert type(captured["k"]) is int
-        assert type(captured["skip_cols"]) is int
-        assert type(captured["max_iter"]) is int
-
-    def test_counts_past_int32_cross_to_hpc_as_native_ints(self, monkeypatch):
-        """k and skip_cols are index_t in C++ and in dtwc_cl; only max_iter is an int."""
-        from dtwcpp import _hpc
-
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured.update(source=source, k=k, **kwargs)
-            return np.array([0], dtype=np.int64)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        source = dtwcpp.Dataset(
-            "/remote/already_staged.tsv", skip_cols=np.int64(1 << 40),
-        )
-        dtwcpp.cluster(source, k=np.int64(1 << 40), device="hpc")
-
-        assert captured["k"] == captured["skip_cols"] == 1 << 40
-        assert type(captured["k"]) is int
-        assert type(captured["skip_cols"]) is int
 
     def test_valid_minimum_numpy_integers_run_locally(self):
         source = dtwcpp.Dataset(
@@ -792,40 +707,6 @@ class TestPlot:
 
 
 # ---------------------------------------------------------------------------
-# cluster() — hpc path must NOT read data locally
-# ---------------------------------------------------------------------------
-class TestClusterHpc:
-    def test_path_source_not_read_locally(self, monkeypatch):
-        from dtwcpp import _hpc
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured["source"] = source
-            captured["k"] = k
-            return np.array([0, 0, 1, 1])
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        ds = dtwcpp.load("missing_on_laptop.tsv")            # never read locally
-        res = dtwcpp.cluster(ds, k=2, device="hpc")
-        assert captured["source"] == "missing_on_laptop.tsv"  # path passed through
-        assert res.device == "hpc"
-        assert res.distance_matrix is None
-
-    def test_array_source_passed_as_series(self, monkeypatch):
-        from dtwcpp import _hpc
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured["source"] = source
-            return np.zeros(len(source), dtype=int)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        dtwcpp.device("hpc")
-        dtwcpp.cluster([[1.0, 2.0], [3.0, 4.0]], k=2)
-        assert captured["source"] == [[1.0, 2.0], [3.0, 4.0]]   # materialized series
-
-
-# ---------------------------------------------------------------------------
 # cluster(method=...) dispatch — Task 0.14
 #
 # BUG BEING PINNED: the local (cpu/gpu) path of cluster() accepted a ``method``
@@ -883,8 +764,8 @@ class TestClusterMethodDispatch:
         from dtwcpp import _hpc
         captured = {}
 
-        def fake(source, k, **kwargs):
-            captured["method"] = kwargs.get("method")
+        def fake(data, config, keys, **kwargs):
+            captured["method"] = config.method
             return np.zeros(4, dtype=int)
 
         monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
@@ -900,8 +781,8 @@ class TestClusterMethodDispatch:
         from dtwcpp import _hpc
         captured = {}
 
-        def fake(source, k, **kwargs):
-            captured["method"] = kwargs.get("method")
+        def fake(data, config, keys, **kwargs):
+            captured["method"] = config.method
             return np.zeros(4, dtype=int)
 
         monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
