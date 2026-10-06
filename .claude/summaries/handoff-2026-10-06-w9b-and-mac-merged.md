@@ -2,10 +2,10 @@
 
 ## Base
 
-Branch `design-2.0`, HEAD = this file's commit (Windows, session 79bd8991) on `bdc47410`: origin's Mac pass
-(`5d85fa6b`) merged into W9b's merge (`4265e3a6`, PLAN marks `03aad770`). Volkan pushes; the Mac then runs
-`git pull --no-rebase`. Read the Mac's own record too: `handoff-2026-10-05-mac-pass-done.md`. Running when this was
-written: TB, the x86 timing of the banded kernel's bounds change (next steps).
+Branch `design-2.0`, HEAD = this file's commit (Windows, session 79bd8991) on `75d1b7c3` and `bdc47410`: origin's Mac
+pass (`5d85fa6b`) merged into W9b's merge (`4265e3a6`, PLAN marks `03aad770`); 23 commits ahead of origin when this
+was written. Volkan pushes; the Mac then runs `git pull --no-rebase`. Read the Mac's own record too:
+`handoff-2026-10-05-mac-pass-done.md`. Nothing is running: TB (the x86 timing) was stopped on Volkan's request.
 
 ## Done
 
@@ -15,8 +15,12 @@ written: TB, the x86 timing of the banded kernel's bounds change (next steps).
   splits on spaces and tabs); reader messages name files in UTF-8; one conversion takes already-read data (2-D array,
   ragged list, DataFrame, Arrow array) for every entry; a run is named by C++'s rule.
 - `bdc47410`: origin's Mac pass merged on Windows (Volkan 10-06: "You can pull and merge the macos changes").
-- Records: this commit (DECISIONS §3, two 10-06 lines). Disk (approved 10-02): W9b's and W9b-base's worktrees, venvs
+- Records: `75d1b7c3` (DECISIONS §3, two 10-06 lines). Disk (approved 10-02): W9b's and W9b-base's worktrees, venvs
   and probe folders removed; the branch `pb/W9b` stays.
+- TB prepared, not timed (`baselines/2026-10-06-tb-banded-bounds-x86.md`): harness, four binaries (clang++ and MSVC,
+  old and new kernel) and driver in `C:/D/git/wt/tmp/TB/`; old and new give one hash over 170,625 calls on both
+  compilers (a broken copy changes it). Volkan's MATLAB job loaded the machine; a quiet-minute run started at 03:07
+  and was stopped at 03:08 ("leave this for another occasion"); its partial lines are set aside, not a result.
 
 ## Verified by me
 
@@ -47,8 +51,9 @@ written: TB, the x86 timing of the banded kernel's bounds change (next steps).
 
 ## Next steps
 
-1. Windows: TB (brief `brief_tb.md` in the Windows scratchpad): `822225bc` against `f5c58764` on x86, clang++ and MSVC;
-   registered band: no cell slower than 1.05×; a FALSIFIED result goes to Volkan before any revert.
+1. Windows, on a quiet machine (no MATLAB job, no COMSOL): TB's run, about 3 minutes, the command in the baseline's
+   "Rerun" section, then fill its tables. `822225bc` against `f5c58764`, clang++ and MSVC; registered band: no cell
+   slower than 1.05×; a FALSIFIED result goes to Volkan before any revert of `a2d5e4e5`.
 2. Mac: pull, rebuild, pytest again (W9b); the rest of the Mac's handoff stands.
 3. E: W9e and M1 (briefs `brief_w9e.md`, `brief_m1.md` in the Windows scratchpad), W9c, L2b, the second Mac pass,
    W9f. W9f also restores the contract rows `Problem.read_distance_matrix` and `Problem.print_distance_matrix` (W9b
@@ -68,4 +73,4 @@ written: TB, the x86 timing of the banded kernel's bounds change (next steps).
 ## Status honesty
 
 Windows, all at `bdc47410`: clang tree, CUDA tree (MSVC + nvcc, RTX 4000 Ada), Arrow tree, MEX (R2024b), wheel.
-The Mac, per its handoff: `822225bc`, without W9b. Never run: Linux, CI. TB had not finished when this was written.
+The Mac, per its handoff: `822225bc`, without W9b. Never run: Linux, CI. TB: bit identity checked, no timing.
