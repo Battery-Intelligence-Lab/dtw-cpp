@@ -194,12 +194,18 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases (W9a 2cabc18, adb9031, 6053239, 151f14e; merged 357d76e3; k required: v1.0.0 with no --Nc exited 0 having clustered nothing; name = the input stem; C++ method default auto; 23 v1 spellings warn once; --Nc i..j refused)
 - ☑ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
   silently editing a copy (E1) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3) (W9b 5e710ba4, 4b0c6710, da4fdb09, 7ab98ce0, 7a00b225, d6129e1f, 55f2d3eb, 98190ae4, 29c7507b, f3a552d4, 49e443f6, 004d9b38, 9d186b46, 8ec61075; records 7b397a95, c689a4ac, 974ca3cc; merged 4265e3a6; `cluster()`, `DTWClustering`, `load()` and `set_data` run Config → apply() → `Problem::cluster()`; Python reads text through the bound C++ reader and writes through the C++ writer (Volkan 10-02), so a Ctrl-Z is refused, not an end of file; pytest 962 / 20 skipped / 0 failed against base 1094 / 19 / 0 (199 ids removed, 68 added); the CLI outputs byte-identical to base)
-- ☐ W9c `hpc` → `job.toml`; the positional transport goes; `device=hpc` takes `gpu_device=` (a100, a6000, l40s, h100, …) to pick the
+- ☑ W9c `hpc` → `job.toml`; the positional transport goes; `device=hpc` takes `gpu_device=` (a100, a6000, l40s, h100, …) to pick the
   SLURM GPU and the build's CUDA arch; a build on the target node detects both itself (Volkan 09-30). S1 notes:
   `slurm_remote.sh build` submits with no `--gres` (always portable); `jobs/gpu_test.slurm` and
   `ucr_benchmark_gpu.slurm` ask for any GPU and can land on a refused V100; ARC documents `gpu:<type>:<n>` (P100,
   V100, RTX, RTX8000, A100) and constraints `gpu_sku`/`gpu_gen`/`gpu_cc`/`gpu_mem`/`nvlink`, no type for RTX A6000,
   H100 or L40S
+  (W9c e9d54d8b … 3514c7e8, 17 commits; merged 834b7904 on the Mac: Python writes job.toml (the keys given, in
+  dtwc_cl's config_value grammar; C++ apply() checks every value first), `submit-job <rundir> [--gpu | --gpu-device
+  <type>]`, one GPU table `_slurm/gpu_devices.txt` read by Python and bash (a100 by gres type; a6000/l40s/h100 by
+  `gpu_cc:` constraint [inferred]; below the 8.0 floor refused), `build --gpu-device <type>` (CUDA native, CPU
+  portable), `smoke.slurm MODE=`; pytest 970/12 → 922/12 reconciled by id, 53 bash-driven cases ran; the ARC leg is
+  Volkan's: six commands in `baselines/2026-10-06-w9c-hpc-job-toml-mac.md`)
 - ◐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
   regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
   (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m) (done in W7g) (W9e 9230bd5e,
@@ -264,6 +270,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   Apple clang's `memset_pattern16` idiom in the lanes kernel (`a332d671`, failed `test_codegen_no_calls`) and the
   banded kernel (`55911b2a`, two calls per column the gate cannot see); W4e merged; the Metal chunk check `bc9469fd`. Still to do on the Mac: a second short pass after L2b, before G,
   and pytest again once W9b lands (done 2026-10-06 at `33302535`: 970/12/0, `baselines/2026-10-06-macos-after-w9b.md`).
+- ARC (Volkan, rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres
+  type, `upload`, `build htc-cpu`, `build htc-gpu`, `build htc-gpu --gpu-device a100`, three `dtwcpp.cluster` runs
+  (`hpc`, `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`; exact commands in
+  `baselines/2026-10-06-w9c-hpc-job-toml-mac.md`. Windows: W9e's matlab_suite under R2024b (the brief stays until then).
 - Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux and Windows (Windows needs a
   `dumpbin /dependents` leg).
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.

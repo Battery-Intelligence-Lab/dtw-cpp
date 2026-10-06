@@ -380,3 +380,12 @@ CHANGELOG rule.
   root-without-highs-mac.md`); Volkan rules whether the wheel accepts it. A skipped highspy case fails the CI Python
   job from inside pytest (`DTWC_REQUIRE_HIGHSPY`); the CI MEX job asserts `test_cluster_mip` ran. Extras are printed
   quoted (`"dtwcpp[mip]"`: zsh). `.claude/CLAUDE.md`'s Python gate line should add `mip` to its extras (Volkan's file).
+- 2026-10-06 — W9c (merged 834b7904, Mac): `hpc` crosses as one `job.toml` written by Python (to_config_text renders
+  through CLI11, which the wheel no longer links; the grammar is `config_value`'s, round-tripped through the real
+  `dtwc_cl --print-config`); C++ `apply()` on a scratch Problem checks every value before anything is written, the
+  cluster's build judges only what its GPU must; the GPU table is a data file beside the wrapper (bash needs it
+  without Python); A6000, L40S and H100 are asked for by `gpu_cc:` constraint (ARC lists no gres type for them —
+  the node tags are inferred until the ARC leg runs); a pre-staged path is absolute; a `.env` that sets the removed
+  `SLURM_GPU_GRES` is refused; a missing `.env`, bash or wrapper is `DeviceError`. `build --gpu-device <type>` keeps
+  the CPU code portable (`DTWC_NATIVE_CPU=OFF`: one GPU type sits on nodes of different CPUs on ARC), which narrows
+  the 09-30 ruling's "native CPU flags" to builds run by hand on the node — Volkan to confirm. The ARC leg is his.

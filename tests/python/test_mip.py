@@ -9,23 +9,19 @@
 import re
 import subprocess
 import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
 
 import dtwcpp
-from dtwcpp import _hpc
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 # highspy_route (conftest.py) skips without highspy or beside linked HiGHS; the Python CI job
-# sets DTWC_REQUIRE_HIGHSPY, which makes that a failure.
+# sets DTWC_REQUIRE_HIGHSPY, which makes that a failure. dtwc_cl (conftest.py) is the binary
+# DTWC_CL_PATH names, the linked-HiGHS oracle.
 @pytest.mark.parametrize("n, length, k, seed", [(12, 20, 3, 20261006), (18, 16, 4, 7)])
-def test_highspy_reaches_the_optimum_of_linked_highs(highspy_route, tmp_path, n, length, k, seed):
-    cli = _hpc.find_dtwc_binary(str(ROOT))
-    assert cli is not None, "dtwc_cl executable not found; set DTWC_CL_PATH"
+def test_highspy_reaches_the_optimum_of_linked_highs(highspy_route, dtwc_cl, tmp_path, n, length, k, seed):
+    cli = dtwc_cl
     csv = tmp_path / "series.csv"
     np.savetxt(csv, np.random.default_rng(seed).standard_normal((n, length)), delimiter=",", fmt="%.17g")
     run = subprocess.run([cli, "-i", str(csv), "-k", str(k), "-m", "mip", "-o", str(tmp_path / "cli")],

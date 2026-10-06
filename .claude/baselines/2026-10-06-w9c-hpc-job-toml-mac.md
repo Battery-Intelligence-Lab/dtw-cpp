@@ -118,3 +118,14 @@ Expect three 10/10 splits (A100 on htc-g015..019), the unknown key refused, the 
    bash or wrapper: DeviceError (subclass of the old RuntimeError). Tests take DTWC_CL_PATH only (unset: CLI cases skip).
 4. A `--gpu-device` build keeps the CPU portable (DTWC_NATIVE_CPU=OFF), narrowing DECISIONS 09-30's "native CPU flags"
    to hand builds; submit-job and GPU builds use the `.env` partition; smoke jobs fail on a failed run.
+
+## Merged on the main tree (orchestrator, `834b7904` = `7ce98523` (M1, its review, W9e merged) + `pb/W9c`), all `[confirmed]`
+
+Conflicts resolved by hand: CHANGELOG (both entries kept), the contract's `skip_rows` row (W9c's Python cell, W9e's
+MATLAB cell), `tier-1.md` regenerated. `build/`: zero warnings; `ctest -j1` 100 % of 95, the CUDA skip, 34.91 s;
+conformance the one silhouette ulp (D-19); `check_docs` PASS, `check_pins` 0 failures, `generate_docs --check`
+current. Fresh venv (`.[test,dev,io,mip]`, matplotlib, pandas) with `DTWC_REQUIRE_HIGHSPY=1`: first **2 failed,
+924 passed, 11 skipped**: M1's `test_mip.py` (landed after W9c's base) called `_hpc.find_dtwc_binary`, which W9c
+deleted; it now takes the conftest `dtwc_cl` fixture (DTWC_CL_PATH). After that one edit: **926 passed, 11 skipped,
+0 failed, 81.41 s** (the targeted `test_mip` + `test_wheel_smoke` + `test_index_types` run: 34 passed).
+`python-wheels.yml`'s smoke now also asserts `gpu_devices.txt` ships in the wheel (not run here).
