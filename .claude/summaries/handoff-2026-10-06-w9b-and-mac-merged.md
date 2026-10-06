@@ -55,8 +55,8 @@ was written. Volkan pushes; the Mac then runs `git pull --no-rebase`. Read the M
    "Rerun" section, then fill its tables. `822225bc` against `f5c58764`, clang++ and MSVC; registered band: no cell
    slower than 1.05×; a FALSIFIED result goes to Volkan before any revert of `a2d5e4e5`.
 2. Mac: pull, rebuild, pytest again (W9b); the rest of the Mac's handoff stands.
-3. E: W9e and M1 (briefs `brief_w9e.md`, `brief_m1.md` in the Windows scratchpad), W9c, L2b, the second Mac pass,
-   W9f. W9f also restores the contract rows `Problem.read_distance_matrix` and `Problem.print_distance_matrix` (W9b
+3. E: W9e and M1 (briefs in `.claude/plans/2026-10-06-briefs/`, usable on the Mac: it has MATLAB R2026a; delete each
+   brief when its unit merges), W9c, L2b, the second Mac pass, W9f. W9f also restores the contract rows `Problem.read_distance_matrix` and `Problem.print_distance_matrix` (W9b
    deleted them with the methods and did not restore them when it bound the methods again), with a missing-file case.
 4. G: W14a, WM, W14c.
 5. Follow-ups: on Windows `dtwc_cl` gets argv in the ANSI code page, so `δ.csv` arrives as `d.csv` and can silently
