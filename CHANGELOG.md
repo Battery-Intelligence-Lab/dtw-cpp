@@ -11,7 +11,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - **Changed (Python, HPC):** `device="hpc"` and `"hpc:gpu"` send a run as one `job.toml`, the keys given in the format
   `dtwc_cl --config` reads, which the cluster's `dtwc_cl` checks as it checks any config file: every `cluster()` key
   crosses (`skip_rows`, `delimiter`, `batch_size` and CPU `squared_euclidean` too, which the 20-argument transport
-  refused), a run's name may be any text, a path on the cluster is absolute, and a key the cluster's build does not
+  refused), a run's name may be any file name (UTF-8 included), a path on the cluster is absolute, and a key the cluster's build does not
   know fails the job, naming it. `gpu_device="a100"` (`"a6000"`, `"l40s"`, `"h100"`) names the GPU of an `"hpc:gpu"`
   run, from one table of ARC requests (`dtwcpp/_slurm/gpu_devices.txt`); without it a run asks for any GPU of compute
   capability 8.0 or newer, never a refused V100. `slurm_remote.sh submit-job <dir>` replaces `submit-cluster`,

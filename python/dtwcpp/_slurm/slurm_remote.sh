@@ -559,7 +559,7 @@ cmd_download_cluster() {
     }
 
     # A submit-job run writes results/cluster_<job id>/<name>_labels.csv;
-    # only the job ID crosses the shell, so a run's name may be any text.
+    # only the job ID crosses the shell, so a run's name may be any file name.
     local LOCAL_DIR="${PROJECT_ROOT}/results/slurm/cluster_${JOB_ID}"
     local REMOTE_DIR="${REMOTE}/src/results/cluster_${JOB_ID}"
     mkdir -p "${LOCAL_DIR}"

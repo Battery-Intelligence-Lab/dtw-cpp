@@ -136,6 +136,10 @@ class TestJobToml:
         # directory is written.
         with pytest.raises(dtwcpp.InvalidInput, match="absolute path"):
             dtwcpp.cluster("data/series.tsv", k=2, device="hpc")
+        # The name names the files the run writes and the download reads.
+        for name in ("", "..", "a/b", "/tmp/x"):
+            with pytest.raises(dtwcpp.InvalidInput, match="must be a file name"):
+                dtwcpp.cluster(dtwcpp.load("/cluster/x.tsv", name=name), k=2, device="hpc")
         assert len(list((tmp_path / "results/hpc").iterdir())) == 1
 
     def test_series_in_memory_travel_as_input_tsv(self, monkeypatch, tmp_path):

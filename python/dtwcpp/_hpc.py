@@ -292,6 +292,12 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
         poll_seconds, timeout_seconds,
     )
     name = config.name or data.name
+    # The run's files on the cluster are <name>_labels.csv, ... in its results
+    # directory, downloaded by that file name: a name must stay a file name.
+    if name in ("", ".", "..") or "/" in name or "\\" in name:
+        raise InvalidInput(
+            f"cluster: device='hpc' names the run's files <name>_labels.csv, ..., so "
+            f"name must be a file name, without '/' or '\\'; got {name!r}.")
     series = None
     if data.is_path:
         source = os.fspath(data.source).replace("\\", "/")
