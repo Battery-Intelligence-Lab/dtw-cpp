@@ -139,6 +139,14 @@ def test_removed_name_is_gone(owner, name):
     assert not hasattr(owner, name), f"{owner!r}.{name} must not exist (§4)"
 
 
+def test_the_diagnostics_return_the_cpp_report_fields():
+    """The binding copies each C++ report into a dict by hand; what the fields say
+    is tests/unit/test_test_api.cpp's."""
+    assert (set(dtwcpp.test.parallelisation()), set(dtwcpp.test.gpu())) == (
+        {"available", "max_threads", "threads_engaged", "pass", "reason"},
+        {"available", "backend", "device_name", "validated", "pass", "reason"})
+
+
 def test_problem_cluster_size_is_the_v1_method():
     """v1.0.0 bound ``cluster_size`` as a method (python/py_main.cpp), so
     ``prob.cluster_size()`` must keep working, silently, and equal ``n_clusters()``."""

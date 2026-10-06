@@ -58,6 +58,13 @@ end
 %  Tier 1 (contract §1)
 % =========================================================================
 
+function test_version_matches_ssot(testCase)
+%   The MEX reports the repository's VERSION file.
+    repoRoot = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+    expected = strtrim(fileread(fullfile(repoRoot, 'VERSION')));
+    verifyEqual(testCase, dtwc_mex('version'), expected);
+end
+
 function test_tier1_device_get_set(testCase)
 %   §1.1 dtwc.device -> MEX set_device/get_device -> dtwc::device().
     name = dtwc.device('cpu');
