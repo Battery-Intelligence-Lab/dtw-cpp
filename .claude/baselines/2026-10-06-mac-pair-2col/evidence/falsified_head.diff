@@ -1,0 +1,8 @@
+264c264
+<   for (; n_short > 1 && j + 1 < n_long; j += 2) {
+---
+>   for (; j + 1 < n_long; j += 2) {
+286c286
+<   for (; j < n_long; ++j) { // the last column when n_long - 1 is odd; a one-row matrix
+---
+>   if (j < n_long) { // the last column, when n_long - 1 is odd

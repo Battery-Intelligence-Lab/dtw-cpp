@@ -1,0 +1,74 @@
+check f64 dtw L1                   outputs   270000  hash 10c35cac6dfd1967  max()   72149  non-finite   78525  abandoned       0
+check f64 dtw Sq                   outputs   270000  hash 18c32513aebd9fa2  max()   72159  non-finite   78543  abandoned       0
+check f64 dtw L1 abandon 0         outputs   270000  hash ed45278776058f90  max()  260251  non-finite    3318  abandoned  188102
+check f64 dtw L1 abandon d/2       outputs   270000  hash 2626ec4f4cde6f72  max()  173089  non-finite   78525  abandoned  100940
+check f64 dtw L1 abandon 3d/4      outputs   270000  hash 7b44fd353e799283  max()  166136  non-finite   78525  abandoned   93987
+check f64 dtw L1 abandon d         outputs   270000  hash 10c35cac6dfd1967  max()   72149  non-finite   78525  abandoned       0
+check f64 dtw Sq abandon d/2       outputs   270000  hash b5087b1195845276  max()  169484  non-finite   78543  abandoned   97325
+check f64 adtw L1 p0.5             outputs   270000  hash 569dba4456860c91  max()   72149  non-finite   78525  abandoned       0
+check f64 adtw abandon d/2         outputs   270000  hash 270346cfc0278104  max()  173929  non-finite   78525  abandoned  101780
+check f64 wdtw g0.1                outputs   270000  hash 6c7011450d3b6210  max()   75151  non-finite   63965  abandoned       0
+check f64 zero_cost L1             outputs   270000  hash ee324427247d7d90  max()   72107  non-finite   38916  abandoned       0
+check f64 zero_cost Sq             outputs   270000  hash 8d0a5c1c8ad3ae39  max()   72117  non-finite   38934  abandoned       0
+check f64 zero_cost abandon d/2    outputs   270000  hash 1a9b5280e4fb07fb  max()  192021  non-finite   38916  abandoned  119914
+check f64 arow L1                  outputs   270000  hash c8e8afb2d77d460d  max()  110997  non-finite      26  abandoned       0
+check f64 arow Sq                  outputs   270000  hash 9b79324203734d8b  max()  111021  non-finite      30  abandoned       0
+check f64 soft_dtw g1 (unbanded)   outputs    15000  hash 277a0558d140bc40  max()    5986  non-finite      10  abandoned       0
+check f32 dtw L1                   outputs   270000  hash 232de09efed5b443  max()   72149  non-finite   78525  abandoned       0
+check f32 dtw Sq                   outputs   270000  hash b575924d8e8644cb  max()   72159  non-finite   78543  abandoned       0
+check f32 dtw L1 abandon 0         outputs   270000  hash 5ce3ef42d029e847  max()  260251  non-finite    3318  abandoned  188102
+check f32 dtw L1 abandon d/2       outputs   270000  hash 64f887404ab0b494  max()  173089  non-finite   78525  abandoned  100940
+check f32 dtw L1 abandon 3d/4      outputs   270000  hash 3e13493d16284707  max()  166136  non-finite   78525  abandoned   93987
+check f32 dtw L1 abandon d         outputs   270000  hash 232de09efed5b443  max()   72149  non-finite   78525  abandoned       0
+check f32 dtw Sq abandon d/2       outputs   270000  hash e061d05a49d810f9  max()  169484  non-finite   78543  abandoned   97325
+check f32 adtw L1 p0.5             outputs   270000  hash 324063cd9a247fc0  max()   72149  non-finite   78525  abandoned       0
+check f32 adtw abandon d/2         outputs   270000  hash ea95bc19dedc45dc  max()  173929  non-finite   78525  abandoned  101780
+check f32 wdtw g0.1                outputs   270000  hash 29c0c68622cce19e  max()   80106  non-finite   59010  abandoned       0
+check f32 zero_cost L1             outputs   270000  hash afd9c69e4b1aaf90  max()   72107  non-finite   38916  abandoned       0
+check f32 zero_cost Sq             outputs   270000  hash cecd50aea2142e69  max()   72117  non-finite   38934  abandoned       0
+check f32 zero_cost abandon d/2    outputs   270000  hash 8d1e9be8ba010248  max()  192021  non-finite   38916  abandoned  119914
+check f32 arow L1                  outputs   270000  hash d36598189d615d57  max()  110997  non-finite      26  abandoned       0
+check f32 arow Sq                  outputs   270000  hash 0d1a66813d166412  max()  111021  non-finite      30  abandoned       0
+check f32 soft_dtw g1 (unbanded)   outputs    15000  hash 5e9966da2f1f1370  max()    5986  non-finite      10  abandoned       0
+check all hashes combined 7534663e7bf5f015
+check f64 ndim 2 dtw_mv L1             outputs    90000  hash f87af0db99445607  max()   23776  non-finite   26434  abandoned       0
+check f64 ndim 2 dtw_mv Sq             outputs    90000  hash 40714005a874d68b  max()   23776  non-finite   26434  abandoned       0
+check f64 ndim 2 dtw_mv L2             outputs    90000  hash 942e5c0bd04e3ec7  max()   23776  non-finite   26434  abandoned       0
+check f64 ndim 2 dtw_mv L1 abandon d/2 outputs    90000  hash ad6540438ac59081  max()   59514  non-finite   26434  abandoned   35738
+check f64 ndim 2 adtw_mv p0.5          outputs    90000  hash 5117ad4ba40abcbb  max()   23776  non-finite   26434  abandoned       0
+check f64 ndim 2 wdtw_mv g0.1          outputs    90000  hash 42faa84c45bb2da5  max()   24115  non-finite   26095  abandoned       0
+check f64 ndim 2 zero_cost_mv L1       outputs    90000  hash d2a22f1834079a52  max()   23764  non-finite   13240  abandoned       0
+check f64 ndim 2 zero_cost_mv L2       outputs    90000  hash 0d354847691b7ecc  max()   23764  non-finite   13240  abandoned       0
+check f64 ndim 2 arow_mv L1            outputs    90000  hash 13b2819d63f5177d  max()   36992  non-finite      12  abandoned       0
+check f64 ndim 2 arow_mv Sq            outputs    90000  hash 3ad63cd8bda51e9c  max()   36992  non-finite      12  abandoned       0
+check f64 ndim 3 dtw_mv L1             outputs    90000  hash d4ec62d6fad06bcf  max()   23810  non-finite   26475  abandoned       0
+check f64 ndim 3 dtw_mv Sq             outputs    90000  hash bbefe095b1a0e036  max()   23810  non-finite   26475  abandoned       0
+check f64 ndim 3 dtw_mv L2             outputs    90000  hash 13473925340d97a6  max()   23810  non-finite   26475  abandoned       0
+check f64 ndim 3 dtw_mv L1 abandon d/2 outputs    90000  hash c72a8f20eaf8cc81  max()   59615  non-finite   26475  abandoned   35805
+check f64 ndim 3 adtw_mv p0.5          outputs    90000  hash 14ff375279ce8878  max()   23810  non-finite   26475  abandoned       0
+check f64 ndim 3 wdtw_mv g0.1          outputs    90000  hash 79a5b689e2a5ba81  max()   23906  non-finite   26379  abandoned       0
+check f64 ndim 3 zero_cost_mv L1       outputs    90000  hash b7373ef460900a30  max()   23806  non-finite   13228  abandoned       0
+check f64 ndim 3 zero_cost_mv L2       outputs    90000  hash ab4bcf939c3033c0  max()   23806  non-finite   13228  abandoned       0
+check f64 ndim 3 arow_mv L1            outputs    90000  hash cb40eafc54171d2f  max()   37028  non-finite       6  abandoned       0
+check f64 ndim 3 arow_mv Sq            outputs    90000  hash bbc7236c6bb448fc  max()   37028  non-finite       6  abandoned       0
+check f32 ndim 2 dtw_mv L1             outputs    90000  hash 6c6f1913a2bd66b3  max()   23776  non-finite   26434  abandoned       0
+check f32 ndim 2 dtw_mv Sq             outputs    90000  hash a91f5a41cd4263c6  max()   23776  non-finite   26434  abandoned       0
+check f32 ndim 2 dtw_mv L2             outputs    90000  hash d054101e4892f402  max()   23776  non-finite   26434  abandoned       0
+check f32 ndim 2 dtw_mv L1 abandon d/2 outputs    90000  hash 2670e6c406e0edb6  max()   59514  non-finite   26434  abandoned   35738
+check f32 ndim 2 adtw_mv p0.5          outputs    90000  hash 7732bbd5f22d442d  max()   23776  non-finite   26434  abandoned       0
+check f32 ndim 2 wdtw_mv g0.1          outputs    90000  hash 0d765fe0255cf8ed  max()   24639  non-finite   25571  abandoned       0
+check f32 ndim 2 zero_cost_mv L1       outputs    90000  hash 4f8f1893dd3b6581  max()   23764  non-finite   13240  abandoned       0
+check f32 ndim 2 zero_cost_mv L2       outputs    90000  hash 9bd902a58585054d  max()   23764  non-finite   13240  abandoned       0
+check f32 ndim 2 arow_mv L1            outputs    90000  hash 6812e85fc4bc62d8  max()   36992  non-finite      12  abandoned       0
+check f32 ndim 2 arow_mv Sq            outputs    90000  hash e427fefb0b6e26c8  max()   36992  non-finite      12  abandoned       0
+check f32 ndim 3 dtw_mv L1             outputs    90000  hash 0294c93c5603bd7c  max()   23810  non-finite   26475  abandoned       0
+check f32 ndim 3 dtw_mv Sq             outputs    90000  hash 40241f4ab1ea631c  max()   23810  non-finite   26475  abandoned       0
+check f32 ndim 3 dtw_mv L2             outputs    90000  hash 79065787863d485f  max()   23810  non-finite   26475  abandoned       0
+check f32 ndim 3 dtw_mv L1 abandon d/2 outputs    90000  hash 75ab0b5e4bcb6359  max()   59615  non-finite   26475  abandoned   35805
+check f32 ndim 3 adtw_mv p0.5          outputs    90000  hash c91ba52a9423a867  max()   23810  non-finite   26475  abandoned       0
+check f32 ndim 3 wdtw_mv g0.1          outputs    90000  hash b08aba0ec20ab5ad  max()   24042  non-finite   26243  abandoned       0
+check f32 ndim 3 zero_cost_mv L1       outputs    90000  hash 361eee7289edadf9  max()   23806  non-finite   13228  abandoned       0
+check f32 ndim 3 zero_cost_mv L2       outputs    90000  hash be0c6cfa37fb8e23  max()   23806  non-finite   13228  abandoned       0
+check f32 ndim 3 arow_mv L1            outputs    90000  hash da94c3522cf517ce  max()   37028  non-finite       6  abandoned       0
+check f32 ndim 3 arow_mv Sq            outputs    90000  hash 76b7a13d62bd3e41  max()   37028  non-finite       6  abandoned       0
+check multivariate hashes combined 139f4c59f717903f
