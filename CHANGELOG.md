@@ -8,6 +8,15 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (Python):** series in memory are named as C++ names them after `skip_rows`: `dtwcpp.load(rows,
+  skip_rows=1)` names the series left `0`, `1`, ..., as C++ `dtwc::load` and MATLAB's `dtwc.load` do; they were
+  numbered from where they stood before the drop (`1`, `2`, ...). A DataFrame's index and an Arrow array's names stay
+  theirs.
+- **Changed (Python):** `dtwcpp.load()` reads Parquet as the C++ reader and MATLAB read it: in each file the first
+  Float32/Float64 column is one series, named by its file, or the first list column of them one series per row,
+  named `series_<i>` numbered on across a folder's files. Python named a list column's rows by the file's first
+  string column, read a list column where the C++ reader takes a scalar column before it, and refused a folder whose
+  files hold different columns.
 - **Docs/examples:** `examples/cpp/tier1.cpp` replaces `example_new_features.cpp`, which showed the 1.x free
   functions: one run described by a `dtwc::Config` and run on series in memory, which ctest runs as `example_tier1`
   when the examples and the tests are built (`-DDTWC_BUILD_EXAMPLES=ON -DDTWC_BUILD_TESTING=ON`). Each
