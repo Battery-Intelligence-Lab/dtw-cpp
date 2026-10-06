@@ -296,12 +296,6 @@ class Result:
         return png
 
 
-# The keywords the SLURM transport carries to the remote dtwc_cl.
-_HPC_KEYS = frozenset({"method", "band", "max_iter", "n_init", "seed", "variant",
-                       "wdtw_g", "adtw_penalty", "msm_c", "twe_nu", "twe_lambda",
-                       "mv_mode", "missing_strategy", "metric", "name"})
-
-
 def _set_key(config, key, value, name=None):
     """Hand C++ one Config key. A value must be of the field's kind: the
     binding's casters would read True or "3" as an integer and truncate a NumPy
@@ -354,50 +348,33 @@ def cluster(data, k, **keys):
     C++; an unknown key raises :class:`dtwcpp.InvalidInput`. ``method`` is
     ``"auto"`` unless given: PAM on a GPU and for up to 5,000 series on the
     CPU, CLARA above. ``device=None`` uses the global default (see
-    :func:`dtwcpp.device`); ``"hpc"`` offloads the run to a SLURM cluster and
-    never reads the data locally.
+    :func:`dtwcpp.device`). ``"hpc"`` and ``"hpc:gpu"`` run the clustering on a
+    SLURM cluster as one job.toml: the keys given and the data (a path is read
+    on the cluster, never here); the result holds the labels. ``gpu_device``
+    names the GPU of an ``"hpc:gpu"`` run (``"a100"``, ``"a6000"``, ``"l40s"``,
+    ``"h100"``); without it the run takes any GPU of compute capability 8.0 or
+    newer.
     """
     import dtwcpp
-    from dtwcpp import InvalidInput, _dtwcpp_core, _hpc_remote_device, _resolve_device
+    from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
     device = keys.pop("device", None)
+    gpu_device = keys.pop("gpu_device", None)
     config = _config(k, keys)
     eff = device if device is not None else dtwcpp.device()
     backend, _ = _resolve_device(eff)
+    if gpu_device is not None and eff.strip().lower() != "hpc:gpu":
+        raise InvalidInput(f"cluster: gpu_device names the GPU of a device='hpc:gpu' "
+                           f"run, and the device is '{eff}'.")
     data = load(data)
 
     t0 = time.perf_counter()
     if backend == "hpc":
         from dtwcpp import _hpc
-        # The SLURM wrapper takes a fixed positional argument list with no
-        # skip_rows slot, so the remote CLI cannot receive it. Refuse loudly
-        # instead of clustering the header rows the caller asked to drop.
-        if data.skip_rows:
-            raise InvalidInput(
-                "cluster: skip_rows is not carried by the HPC transport; strip "
-                "the header rows before staging, or use device='cpu'/'gpu'."
-            )
-        # Nor is delimiter: the remote reader takes it from the file extension.
-        if data.is_path and data.delimiter:
-            raise InvalidInput(
-                "cluster: delimiter is not carried by the HPC transport; the "
-                "remote reader takes it from the file extension (.csv comma, "
-                ".tsv/.txt tab). Drop delimiter= for a file whose extension "
-                "matches, or use device='cpu'/'gpu'."
-            )
-        dropped = sorted(set(keys) - _HPC_KEYS)
-        if dropped:
-            raise InvalidInput(
-                f"cluster: {', '.join(dropped)} is not carried by the HPC "
-                "transport; drop it, or use device='cpu'/'gpu'.")
-        options = {key: getattr(config, key) for key in keys if key != "name"}
-        options["method"] = config.method
-        source = data.source if data.is_path else data.as_series()
-        # as_series() has already dropped an in-memory source's skip_cols.
-        labels = _hpc.cluster_on_hpc(source, config.n_clusters,
-                                     device=_hpc_remote_device(eff),
-                                     skip_cols=data.skip_cols if data.is_path else 0,
-                                     name=f"dtwc_{config.name or data.name}",
-                                     **options)
+        # As a local run, C++ checks every value before anything is written or
+        # sent; the device stays the CPU here, since the GPU is the cluster's.
+        _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or data.name))
+        labels = _hpc.cluster_on_hpc(data, config, keys, device=eff,
+                                     gpu_device=gpu_device)
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
                       k=k, n_series=len(labels), name=config.name or data.name)
 

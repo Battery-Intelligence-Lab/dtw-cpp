@@ -1,8 +1,9 @@
 """
 @file test_hpc.py
-@brief Tests for the HPC offload helpers (data serialization, label parsing,
-       command construction). The remote SLURM transport itself is not exercised
-       here — only the local, verifiable contract with the dtwc_cl binary.
+@brief The device='hpc' route: job.toml, the wrapper's envelope, the job script.
+@details The cluster is out of reach here: the wrapper runs against local
+         stand-ins for ssh, rsync, scp and sbatch, and the job against the
+         local dtwc_cl (DTWC_CL_PATH), the oracle for the cluster's binary.
 @author Volkan Kumtepeli
 """
 import os
@@ -15,6 +16,7 @@ import types
 import numpy as np
 import pytest
 
+import dtwcpp
 from dtwcpp import _hpc
 
 
@@ -74,145 +76,188 @@ class TestParseLabelsCSV:
         with pytest.raises((KeyError, ValueError)):
             _hpc.parse_labels_csv(p, n=3)
 
+    def test_a_file_read_on_the_cluster_keeps_the_row_order(self, tmp_path):
+        """A folder names its series by file stem, Parquet by its name column:
+        without n the labels are the rows', which dtwc_cl writes in series order."""
+        p = tmp_path / "j_labels.csv"
+        p.write_text("name,cluster\nb_series,1\na_series,0\nc_series,1\n")
+        np.testing.assert_array_equal(_hpc.parse_labels_csv(p), [1, 0, 1])
+
 
 # ---------------------------------------------------------------------------
-# Command construction (pure — no execution)
+# job.toml: the run as one file, in the grammar dtwc_cl --config reads
 # ---------------------------------------------------------------------------
-class TestBuildCommand:
-    def test_has_core_flags(self):
-        cmd = _hpc.build_dtwc_command(
-            "dtwc_cl", "in.tsv", k=3, name="job", output_dir="out",
-            method="pam", device="cpu",
-        )
-        s = " ".join(cmd)
-        assert "in.tsv" in s and "-k 3" in s.replace("'", "")
-        assert "--method pam" in s and "--name job" in s
-        assert "--skip-cols 0" in s
+class _Submitted(Exception):
+    """What a stand-in for the wrapper received: the run directory, its files
+    and submit_job's keywords."""
 
-    def test_device_flag_passed_through(self):
-        cmd = _hpc.build_dtwc_command(
-            "dtwc_cl", "in.tsv", k=2, name="j", output_dir="o", device="cuda",
-        )
-        assert "cuda" in cmd
-        assert "-d" in cmd or "--device" in cmd
 
-    def test_restart_schedule_flags_passed_through(self):
-        cmd = _hpc.build_dtwc_command(
-            "dtwc_cl", "in.tsv", k=3, name="job", output_dir="out",
-            method="pam", device="cpu", n_init=2, seed=42,
-        )
-        assert "--n-init" in cmd
-        assert cmd[cmd.index("--n-init") + 1] == "2"
-        assert "--seed" in cmd
-        assert cmd[cmd.index("--seed") + 1] == "42"
+def _submit(monkeypatch, tmp_path, run):
+    """Call ``run``, a cluster() or fit() on device 'hpc', up to the submission."""
+    class Runner:
+        def __init__(self, repo_root):
+            pass
 
-    def test_default_restart_uses_cli_seed_single_source_of_truth(self):
-        cmd = _hpc.build_dtwc_command(
-            "dtwc_cl", "in.tsv", k=3, name="job", output_dir="out",
-        )
-        assert cmd[cmd.index("--n-init") + 1] == "1"
-        assert "--seed" not in cmd
+        def preflight(self):
+            pass
 
-    @pytest.mark.parametrize(
-        ("n_init", "seed", "error", "message"),
-        [
-            (0, None, ValueError, "at least 1"),
-            (True, None, TypeError, "integer"),
-            (1, True, TypeError, "integer or None"),
-            (2, (1 << 64) - 1, ValueError, "overflows uint64"),
-            (1, 1 << 64, ValueError, "fit in uint64"),
-        ],
-    )
-    def test_invalid_restart_schedule_rejected(
-        self, n_init, seed, error, message,
+        def submit_job(self, rundir, **request):
+            files = {path.name: path.read_text(encoding="utf-8")
+                     for path in (tmp_path / rundir).iterdir()}
+            raise _Submitted(rundir, files, request)
+
+    monkeypatch.setattr(_hpc, "SlurmRemoteRunner", Runner)
+    monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
+    with pytest.raises(_Submitted) as caught:
+        run()
+    return caught.value.args
+
+
+class TestJobToml:
+    def test_a_path_names_a_file_on_the_cluster(self, monkeypatch, tmp_path):
+        """The file is read there, never here, with load()'s reader keys; counts
+        cross as index_t; C++ canonicalised the keys (hclust is hierarchical),
+        and CPU squared_euclidean crosses, which the 2.0 previews refused."""
+        source = dtwcpp.load("/cluster/données.csv", skip_rows=2,
+                             skip_cols=np.int64(1 << 40), delimiter=";")
+
+        def run():
+            dtwcpp.cluster(source, k=np.int64(1 << 40), device="hpc",
+                           max_iter=np.int64((1 << 31) - 1), method="hclust",
+                           metric="squared_euclidean")
+
+        _, files, request = _submit(monkeypatch, tmp_path, run)
+        assert files == {"job.toml": (
+            'input = "/cluster/données.csv"\n'
+            "n-clusters = 1099511627776\n"
+            'name = "données"\n'
+            'device = "cpu"\n'
+            "skip-rows = 2\n"
+            "skip-cols = 1099511627776\n"
+            'delimiter = ";"\n'
+            "max-iter = 2147483647\n"
+            'method = "hierarchical"\n'
+            'metric = "squared_euclidean"\n')}
+        assert request == {"device": "cpu", "gpu_device": None}
+        # A relative path has no meaning on the cluster: refused before a run
+        # directory is written.
+        with pytest.raises(dtwcpp.InvalidInput, match="absolute path"):
+            dtwcpp.cluster("data/series.tsv", k=2, device="hpc")
+        # The name names the files the run writes and the download reads.
+        for name in ("", "..", "a/b", "/tmp/x"):
+            with pytest.raises(dtwcpp.InvalidInput, match="must be a file name"):
+                dtwcpp.cluster(dtwcpp.load("/cluster/x.tsv", name=name), k=2, device="hpc")
+        assert len(list((tmp_path / "results/hpc").iterdir())) == 1
+
+    def test_series_in_memory_travel_as_input_tsv(self, monkeypatch, tmp_path):
+        """load() cut the columns, so the file is not cut again; hpc:gpu computes
+        on the GPU gpu_device names; two runs of one name never share a directory."""
+        source = dtwcpp.load([[9.0, 0.1, 2.0], [9.0, 3.0, 4.0]], skip_cols=1)
+
+        def run():
+            dtwcpp.cluster(source, k=2, device="hpc:gpu", gpu_device="L40S",
+                           name="café", wdtw_g=0.17)
+
+        first, files, request = _submit(monkeypatch, tmp_path, run)
+        assert files == {
+            "input.tsv": "0.1\t2.0\n3.0\t4.0\n",
+            "job.toml": ('input = "input.tsv"\n'
+                         "n-clusters = 2\n"
+                         'name = "café"\n'
+                         'device = "gpu"\n'
+                         "wdtw-g = 0.17\n")}
+        assert request == {"device": "gpu", "gpu_device": "l40s"}
+        assert _submit(monkeypatch, tmp_path, run)[0] != first
+
+    @pytest.mark.parametrize(("gpu_device", "expected"), [
+        (None, ["--gres=gpu:1",
+                "--constraint=gpu_cc:8.0|gpu_cc:8.6|gpu_cc:8.9|gpu_cc:9.0"]),
+        ("a100", ["--gres=gpu:a100:1"]),
+        ("a6000", ["--gres=gpu:1", "--constraint=gpu_cc:8.6"]),
+        ("L40S", ["--gres=gpu:1", "--constraint=gpu_cc:8.9"]),
+        ("h100", ["--gres=gpu:1", "--constraint=gpu_cc:9.0"]),
+        ("p100", "compute capability 6.0, below the 8.0"),
+        ("v100", "compute capability 7.0, below the 8.0"),
+        ("rtx8000", "compute capability 7.5, below the 8.0"),
+        ("rtx", "compute capability 7.5, below the 8.0"),
+        ("mi210", "not a GPU type"),
+        ("*", "not a GPU type"),
+    ])
+    def test_gpu_device_is_an_arc_request(self, gpu_device, expected):
+        """The table as data: ARC's gres type where it documents one (A100),
+        else any GPU of the type's compute capability (gpu_cc:); no type asks
+        for every capability at or above the floor, so the job cannot land on
+        a refused V100; a type below the floor is a DeviceError naming it."""
+        if isinstance(expected, list):
+            assert _hpc.gpu_request(gpu_device) == expected
+        else:
+            with pytest.raises(dtwcpp.DeviceError, match=expected):
+                _hpc.gpu_request(gpu_device)
+
+    def test_gpu_device_belongs_to_an_hpc_gpu_run(self, monkeypatch, tmp_path):
+        """A local device, or hpc (a CPU run), refuses it as InvalidInput; a type
+        the table refuses fails before anything is written."""
+        for device in ("cpu", "hpc"):
+            with pytest.raises(dtwcpp.InvalidInput, match="gpu_device"):
+                dtwcpp.cluster([[0.0], [1.0]], k=2, device=device, gpu_device="a100")
+        monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
+        with pytest.raises(dtwcpp.DeviceError, match="below the 8.0"):
+            dtwcpp.cluster([[0.0], [1.0]], k=2, device="hpc:gpu", gpu_device="v100")
+        assert not (tmp_path / "results").exists()
+
+    @pytest.mark.parametrize(("keys", "message"), [
+        ({"wdtw_g": -1.0}, "WDTW g must be finite and non-negative"),
+        ({"max_iter": 0}, "max_iter"),
+        ({"k": 3}, "k must not exceed the number of series"),
+    ])
+    def test_a_value_cpp_refuses_fails_before_anything_is_written(
+        self, monkeypatch, tmp_path, keys, message,
     ):
-        with pytest.raises(error, match=message):
-            _hpc.build_dtwc_command(
-                "dtwc_cl", "in.tsv", k=3, name="job", output_dir="out",
-                n_init=n_init, seed=seed,
-            )
+        """As on the CPU, C++ checks every value (apply), and the series count,
+        before a run directory is written or the wrapper runs."""
+        monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
+        monkeypatch.setattr(_hpc, "SlurmRemoteRunner",
+                            lambda repo_root: pytest.fail("the wrapper was reached"))
+        with pytest.raises(dtwcpp.InvalidInput, match=message):
+            dtwcpp.cluster([[0.0, 1.0], [1.0, 0.0]], device="hpc", **{"k": 2, **keys})
+        assert not (tmp_path / "results").exists()
 
-    def test_full_remote_configuration_flags_passed_through(self):
-        cmd = _hpc.build_dtwc_command(
-            "dtwc_cl", "in.tsv", k=3, name="job", output_dir="out",
-            max_iter=17, variant="twe", wdtw_g=0.17,
-            adtw_penalty=2.5, msm_c=3.5, twe_nu=0.02,
-            twe_lambda=4.0, mv_mode="dependent",
-            missing_strategy="error", metric="l1",
-        )
-        expected = {
-            "--max-iter": "17",
-            "--variant": "twe",
-            "--wdtw-g": "0.17",
-            "--adtw-penalty": "2.5",
-            "--msm-c": "3.5",
-            "--twe-nu": "0.02",
-            "--twe-lambda": "4.0",
-            "--mv-mode": "dependent",
-            "--missing-strategy": "error",
-            "--metric": "l1",
-        }
-        for flag, value in expected.items():
-            assert cmd[cmd.index(flag) + 1] == value
+    def test_the_estimator_sends_its_parameters(self, monkeypatch, tmp_path):
+        """DTWClustering(device='hpc') sends every parameter, its own defaults
+        included (method pam; random_state None is seed 42), and batch_size,
+        which the positional transport refused."""
+        model = dtwcpp.DTWClustering(n_clusters=2, n_init=2, variant="twe",
+                                     twe_nu=0.02, batch_size=8, device="hpc")
 
-        independent = _hpc.build_dtwc_command(
-            "dtwc_cl", "in.tsv", k=3, name="job", output_dir="out",
-            mv_mode="independent",
-        )
-        assert independent[independent.index("--mv-mode") + 1] == "independent"
-        missing = _hpc.build_dtwc_command(
-            "dtwc_cl", "in.tsv", k=3, name="job", output_dir="out",
-            missing_strategy="zero_cost",
-        )
-        assert missing[missing.index("--missing-strategy") + 1] == "zero_cost"
+        def run():
+            model.fit([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
 
-
-# ---------------------------------------------------------------------------
-# Binary lookup: DTWC_CL_PATH names the binary; otherwise the newest under root
-# ---------------------------------------------------------------------------
-class TestFindDtwcBinary:
-    @staticmethod
-    def _tree(tmp_path):
-        """A repo-like tree whose NEWEST build is build-arrow, plus an older build/."""
-        older = tmp_path / "build" / "bin" / "dtwc_cl.exe"
-        newer = tmp_path / "build-arrow" / "bin" / "dtwc_cl.exe"
-        for stamp, binary in enumerate((older, newer)):
-            binary.parent.mkdir(parents=True)
-            binary.write_bytes(b"")
-            os.utime(binary, (1_000_000 + stamp, 1_000_000 + stamp))
-        return older, newer
-
-    def test_without_the_variable_the_newest_build_wins(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("DTWC_CL_PATH", raising=False)
-        _, newer = self._tree(tmp_path)
-        assert Path(_hpc.find_dtwc_binary(str(tmp_path))) == newer
-
-    def test_the_variable_beats_a_newer_build(self, tmp_path, monkeypatch):
-        self._tree(tmp_path)
-        pinned = tmp_path / "pinned" / "dtwc_cl.exe"
-        pinned.parent.mkdir()
-        pinned.write_bytes(b"")
-        os.utime(pinned, (500_000, 500_000))
-        monkeypatch.setenv("DTWC_CL_PATH", str(pinned))
-        assert _hpc.find_dtwc_binary(str(tmp_path)) == str(pinned)
-
-    def test_a_missing_path_is_an_error_naming_it(self, tmp_path, monkeypatch):
-        self._tree(tmp_path)
-        missing = tmp_path / "nowhere" / "dtwc_cl.exe"
-        monkeypatch.setenv("DTWC_CL_PATH", str(missing))
-        with pytest.raises(FileNotFoundError, match="DTWC_CL_PATH") as caught:
-            _hpc.find_dtwc_binary(str(tmp_path))
-        assert str(missing) in str(caught.value)
+        _, files, _ = _submit(monkeypatch, tmp_path, run)
+        assert files["job.toml"] == (
+            'input = "input.tsv"\n'
+            "n-clusters = 2\n"
+            'name = "dataset"\n'
+            'device = "cpu"\n'
+            'method = "pam"\n'
+            "max-iter = 100\n"
+            "n-init = 2\n"
+            "batch-size = 8\n"
+            "seed = 42\n"
+            'mv-mode = "dependent"\n'
+            'variant = "twe"\n'
+            "band = -1\n"
+            'metric = "l1"\n'
+            'missing-strategy = "error"\n'
+            "wdtw-g = 0.05\n"
+            "adtw-penalty = 1.0\n"
+            "msm-c = 1.0\n"
+            "twe-nu = 0.02\n"
+            "twe-lambda = 1.0\n")
 
 
 # ---------------------------------------------------------------------------
-# Real end-to-end contract: serialize -> run LOCAL dtwc_cl -> parse.
-# This is the cluster job minus the ssh/rsync transport. Skips if no binary.
+# The wrapper and the job script, behind local stand-ins for the cluster
 # ---------------------------------------------------------------------------
-def _local_binary():
-    return _hpc.find_dtwc_binary(str(Path(__file__).resolve().parents[2]))
-
-
 def _bash_path(path):
     """Translate an absolute Windows path for Git Bash or WSL bash."""
     path = Path(path).resolve().as_posix()
@@ -234,9 +279,10 @@ def _isolated_slurm_wrapper(tmp_path):
     """A checkout-shaped sandbox behind local SSH/transfer/sbatch executables.
 
     ``project`` holds the real scripts/slurm/ (forwarder and job files), a copy
-    of the packaged python/dtwcpp/_slurm/ and a dtwc/ tree, so the forwarder
-    runs as in a clone; ``wrapper.parents[2]`` is that checkout, whose .env and
-    results/ the wrapper uses.
+    of the packaged python/dtwcpp/_slurm/, a dtwc/ tree and a run directory
+    ``run/`` holding a job.toml, so the forwarder runs as in a clone;
+    ``wrapper.parents[2]`` is that checkout, whose .env and results/ the
+    wrapper uses. The remote holds the builds submit-job runs.
     """
     root = Path(__file__).resolve().parents[2]
     project = tmp_path / "project"
@@ -245,12 +291,16 @@ def _isolated_slurm_wrapper(tmp_path):
         Path(_hpc.slurm_wrapper_path()).parent, project / "python/dtwcpp/_slurm",
     )
     (project / "dtwc").mkdir()
+    (project / "run").mkdir()
+    (project / "run/job.toml").write_text("n-clusters = 2\n", encoding="utf-8")
     wrapper = project / "scripts/slurm/slurm_remote.sh"
 
     remote = tmp_path / "remote"
-    remote_binary = remote / "src/build-test/bin/dtwc_cl"
-    remote_binary.parent.mkdir(parents=True)
-    remote_binary.write_text("", encoding="utf-8")
+    for build in ("htc-cpu", "htc-gpu"):
+        remote_binary = remote / f"src/build-{build}/bin/dtwc_cl"
+        remote_binary.parent.mkdir(parents=True)
+        remote_binary.write_text("#!/bin/sh\n", encoding="utf-8", newline="\n")
+        remote_binary.chmod(0o755)
     (project / ".env").write_text(
         "SLURM_USER=test_user\n"
         "SLURM_HOST=test_host\n"
@@ -288,59 +338,26 @@ class TestSlurmRunner:
     """The Python orchestration glue around slurm_remote.sh (no real cluster)."""
 
     def test_submit_parses_job_id(self):
+        calls = []
         r = _hpc.SlurmRemoteRunner(".")
-        r._run = lambda *a: types.SimpleNamespace(stdout="  Job ID: 98765\n", stderr="", returncode=0)
-        assert r.submit_cluster("in.tsv", 3) == "98765"
+        r._run = lambda *a: calls.append(a) or types.SimpleNamespace(
+            stdout="  Job ID: 98765\n", stderr="", returncode=0)
+        assert r.submit_job("run", device="gpu") == "98765"
+        assert calls == [("submit-job", "run", "--gpu")]
 
     def test_submit_raises_without_job_id(self):
         r = _hpc.SlurmRemoteRunner(".")
         r._run = lambda *a: types.SimpleNamespace(stdout="kaboom", stderr="", returncode=0)
         with pytest.raises(RuntimeError, match="Job ID"):
-            r.submit_cluster("in.tsv", 3)
+            r.submit_job("run")
 
     def test_submit_rejects_nonzero_exit_even_with_job_id(self):
         r = _hpc.SlurmRemoteRunner(".")
         r._run = lambda *a: types.SimpleNamespace(
             stdout="Job ID: 98765\n", stderr="submission failed", returncode=1,
         )
-        with pytest.raises(RuntimeError, match=r"submit-cluster.*exit 1"):
-            r.submit_cluster("in.tsv", 3)
-
-    def test_submit_forwards_restart_schedule(self):
-        captured = {}
-        r = _hpc.SlurmRemoteRunner(".")
-
-        def fake_run(*args):
-            captured["args"] = args
-            return types.SimpleNamespace(
-                stdout="  Job ID: 98765\n", stderr="", returncode=0,
-            )
-
-        r._run = fake_run
-        assert r.submit_cluster("in.tsv", 3, n_init=2, seed=42) == "98765"
-        assert captured["args"][9:11] == ("2", "42")
-
-    def test_submit_forwards_full_remote_configuration(self):
-        captured = {}
-        r = _hpc.SlurmRemoteRunner(".")
-
-        def fake_run(*args):
-            captured["args"] = args
-            return types.SimpleNamespace(
-                stdout="Job ID: 98765\n", stderr="", returncode=0,
-            )
-
-        r._run = fake_run
-        r.submit_cluster(
-            "in.tsv", 3, max_iter=17, variant="twe", wdtw_g=0.17,
-            adtw_penalty=2.5, msm_c=3.5, twe_nu=0.02,
-            twe_lambda=4.0, mv_mode="dependent",
-            missing_strategy="error", metric="l1",
-        )
-        assert captured["args"][-10:] == (
-            "17", "twe", "0.17", "2.5", "3.5", "0.02", "4.0",
-            "dependent", "error", "l1",
-        )
+        with pytest.raises(RuntimeError, match=r"submit-job.*exit 1"):
+            r.submit_job("run")
 
     def test_wait_polls_until_job_absent(self):
         r = _hpc.SlurmRemoteRunner(".")
@@ -415,8 +432,8 @@ class TestSlurmRunner:
             r.wait("111", poll_seconds=0.1, timeout_seconds=1)
 
     def test_download_requires_success_and_exact_job_path(self, tmp_path):
-        exact = tmp_path / "results/slurm/safe_123/safe_labels.csv"
-        stale = tmp_path / "results/slurm/safe_999/safe_labels.csv"
+        exact = tmp_path / "results/slurm/cluster_123/safe_labels.csv"
+        stale = tmp_path / "results/slurm/cluster_999/safe_labels.csv"
         exact.parent.mkdir(parents=True)
         stale.parent.mkdir(parents=True)
         exact.write_text("exact", encoding="utf-8")
@@ -430,7 +447,7 @@ class TestSlurmRunner:
 
         runner._run = successful_download
         assert runner.download_labels("safe", "123") == str(exact)
-        assert calls == [("download-cluster", "safe", "123")]
+        assert calls == [("download-cluster", "123")]
 
         runner._run = lambda *a: types.SimpleNamespace(
             stdout="", stderr="transfer failed", returncode=23,
@@ -443,232 +460,9 @@ class TestSlurmRunner:
             return types.SimpleNamespace(stdout="", stderr="", returncode=0)
 
         runner._run = successful_but_missing
-        with pytest.raises(FileNotFoundError, match=r"exact labels.*123"):
+        with pytest.raises(FileNotFoundError, match=r"job 123 wrote no labels"):
             runner.download_labels("safe", "123")
         assert stale.read_text(encoding="utf-8") == "stale"
-
-    @pytest.mark.parametrize(
-        ("kwargs", "message"),
-        [
-            ({"k": 0}, "n_clusters"),
-            ({"method": "pam;touch"}, "method"),
-            ({"band": -2}, "band"),
-            ({"skip_cols": -1}, "skip_cols"),
-            ({"name": "../escape"}, "name"),
-            ({"input_tsv": "/cluster/input,other.tsv"}, "input"),
-            ({"input_tsv": "--delete"}, "must not start"),
-            ({"input_tsv": None}, "input_tsv"),
-            ({"input_tsv": "C:/data.tsv", "upload": True}, "must not contain"),
-        ],
-    )
-    def test_submit_rejects_unsafe_envelope_before_wrapper(
-        self, kwargs, message,
-    ):
-        values = {
-            "input_tsv": "/cluster/input.tsv", "k": 2, "method": "pam",
-            "band": -1, "skip_cols": 0, "name": "safe_job",
-        }
-        values.update(kwargs)
-        runner = _hpc.SlurmRemoteRunner(".")
-        runner._run = lambda *args: pytest.fail(f"wrapper invoked: {args}")
-        with pytest.raises((TypeError, ValueError), match=message):
-            runner.submit_cluster(**values)
-
-
-class TestDTWClusteringHpcDispatch:
-    """DTWClustering(device='hpc') offloads instead of computing locally."""
-
-    def test_fit_dispatches_to_cluster_on_hpc(self, monkeypatch):
-        import dtwcpp
-        from dtwcpp import _hpc
-
-        captured = {}
-
-        def fake_cluster_on_hpc(series, n_clusters, **kwargs):
-            captured["n"] = len(series)
-            captured["k"] = n_clusters
-            captured.update(kwargs)
-            return np.zeros(len(series), dtype=int)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake_cluster_on_hpc)
-        X = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
-        clf = dtwcpp.DTWClustering(
-            n_clusters=2, n_init=2, max_iter=17, variant="twe",
-            wdtw_g=0.17, adtw_penalty=2.5, msm_c=3.5, twe_nu=0.02,
-            twe_lambda=4.0, mv_mode="dependent", missing_strategy="error",
-            metric="l1", device="hpc",
-        )
-        labels = clf.fit_predict(X)
-
-        assert captured["k"] == 2 and captured["n"] == 3
-        assert captured["n_init"] == 2
-        assert captured["seed"] == dtwcpp.DEFAULT_RANDOM_SEED
-        assert captured["max_iter"] == 17
-        assert captured["variant"] == "twe"
-        assert captured["wdtw_g"] == 0.17
-        assert captured["adtw_penalty"] == 2.5
-        assert captured["msm_c"] == 3.5
-        assert captured["twe_nu"] == 0.02
-        assert captured["twe_lambda"] == 4.0
-        assert captured["mv_mode"] == "dependent"
-        assert captured["missing_strategy"] == "error"
-        assert captured["metric"] == "l1"
-        assert len(labels) == 3
-        assert clf.medoid_indices_ is None       # remote fit: only labels_ populated
-
-    def test_cluster_on_hpc_forwards_schedule_to_runner(self, tmp_path):
-        labels_path = tmp_path / "forwarded_labels.csv"
-        labels_path.write_text("name,cluster\n1,0\n2,1\n", encoding="utf-8")
-
-        class FakeRunner:
-            def preflight(self):
-                pass
-
-            def submit_cluster(self, *args, **kwargs):
-                self.submit_args = args
-                self.submit_kwargs = kwargs
-                return "123"
-
-            def wait(self, *args, **kwargs):
-                pass
-
-            def download_labels(self, name, job_id):
-                return labels_path
-
-        runner = FakeRunner()
-        labels = _hpc.cluster_on_hpc(
-            "/cluster/input.tsv", 2, repo_root=tmp_path, runner=runner,
-            n_init=2, seed=42, max_iter=17, variant="twe", wdtw_g=0.17,
-            adtw_penalty=2.5, msm_c=3.5, twe_nu=0.02,
-            twe_lambda=4.0, mv_mode="dependent",
-            missing_strategy="error", metric="l1",
-        )
-
-        assert runner.submit_kwargs["n_init"] == 2
-        assert runner.submit_kwargs["seed"] == 42
-        assert runner.submit_kwargs["max_iter"] == 17
-        assert runner.submit_kwargs["variant"] == "twe"
-        assert runner.submit_kwargs["wdtw_g"] == 0.17
-        assert runner.submit_kwargs["adtw_penalty"] == 2.5
-        assert runner.submit_kwargs["msm_c"] == 3.5
-        assert runner.submit_kwargs["twe_nu"] == 0.02
-        assert runner.submit_kwargs["twe_lambda"] == 4.0
-        assert runner.submit_kwargs["mv_mode"] == "dependent"
-        assert runner.submit_kwargs["missing_strategy"] == "error"
-        assert runner.submit_kwargs["metric"] == "l1"
-        np.testing.assert_array_equal(labels, [0, 1])
-
-    def test_same_name_in_memory_submissions_use_distinct_inputs(self, tmp_path):
-        labels_path = tmp_path / "labels.csv"
-        labels_path.write_text("name,cluster\n1,0\n2,1\n", encoding="utf-8")
-
-        class FakeRunner:
-            def __init__(self):
-                self.inputs = []
-
-            def preflight(self):
-                pass
-
-            def submit_cluster(self, input_tsv, *args, **kwargs):
-                path = tmp_path / input_tsv
-                self.inputs.append((path, path.read_text(encoding="utf-8")))
-                return str(100 + len(self.inputs))
-
-            def wait(self, *args, **kwargs):
-                pass
-
-            def download_labels(self, *args):
-                return labels_path
-
-        runner = FakeRunner()
-        _hpc.cluster_on_hpc(
-            [[0.0], [1.0]], 2, repo_root=tmp_path, runner=runner,
-            name="same",
-        )
-        _hpc.cluster_on_hpc(
-            [[10.0], [11.0]], 2, repo_root=tmp_path, runner=runner,
-            name="same",
-        )
-        assert runner.inputs[0][0] != runner.inputs[1][0]
-        assert runner.inputs[0][1] != runner.inputs[1][1]
-
-    @pytest.mark.parametrize(
-        ("kwargs", "error", "message"),
-        [
-            ({"device": "cpu", "metric": "squared_euclidean"},
-             ValueError, "metric"),
-            ({"device": "cuda:\u0661"}, ValueError, "device"),
-            ({"device": 1}, TypeError, "device"),
-            ({"device": "cuda", "variant": "twe"}, ValueError, "variant"),
-            ({"device": "cuda", "missing_strategy": "zero_cost"},
-             ValueError, "missing"),
-            ({"device": "cuda", "mv_mode": "independent"},
-             ValueError, "mv_mode"),
-            ({"variant": "twe", "missing_strategy": "zero_cost"},
-             ValueError, "combination"),
-            ({"variant": "twe", "mv_mode": "independent"},
-             ValueError, "mv_mode"),
-            ({"missing_strategy": "zero_cost", "mv_mode": "independent"},
-             ValueError, "mv_mode"),
-            ({"variant": "unknown"}, ValueError, "variant"),
-            ({"missing_strategy": "unknown"}, ValueError, "missing_strategy"),
-            ({"mv_mode": "unknown"}, ValueError, "mv_mode"),
-            ({"metric": "unknown"}, ValueError, "metric"),
-            ({"max_iter": 0}, ValueError, "max_iter"),
-            ({"max_iter": True}, TypeError, "max_iter"),
-            ({"wdtw_g": np.inf}, ValueError,
-             "WDTW g must be finite and non-negative"),
-            ({"adtw_penalty": -1.0}, ValueError,
-             "ADTW penalty must be finite and non-negative"),
-            ({"msm_c": 0.0}, ValueError,
-             "MSM c must be finite and positive"),
-            ({"twe_nu": 0.0}, ValueError,
-             "TWE nu must be finite and positive"),
-            ({"twe_lambda": np.nan}, ValueError,
-             "TWE lambda must be finite and positive"),
-            ({"msm_c": True}, TypeError, "msm_c"),
-            ({"poll_seconds": 0}, ValueError, "poll_seconds"),
-            ({"timeout_seconds": 0}, ValueError, "timeout_seconds"),
-            ({"timeout_seconds": True}, TypeError, "timeout_seconds"),
-        ],
-    )
-    def test_incompatible_remote_configuration_fails_before_side_effects(
-        self, tmp_path, kwargs, error, message,
-    ):
-        class UntouchedRunner:
-            def preflight(self):
-                raise AssertionError("preflight must not run")
-
-        run_dir = tmp_path / "results/hpc/rejected"
-        with pytest.raises(error, match=message):
-            _hpc.cluster_on_hpc(
-                "/cluster/input.tsv", 2, repo_root=tmp_path,
-                runner=UntouchedRunner(), name="rejected", **kwargs,
-            )
-        assert not run_dir.exists()
-
-    @pytest.mark.parametrize(
-        ("source", "kwargs", "message"),
-        [
-            ("/cluster/input.tsv", {"name": "../escape"}, "name"),
-            ("/cluster/input,other.tsv", {"name": "safe_job"}, "input"),
-            ("/cluster/input.tsv", {"name": "safe_job", "method": "pam;touch"},
-             "method"),
-        ],
-    )
-    def test_submission_envelope_fails_before_run_directory_or_runner(
-        self, tmp_path, source, kwargs, message,
-    ):
-        class UntouchedRunner:
-            def preflight(self):
-                raise AssertionError("preflight must not run")
-
-        with pytest.raises((TypeError, ValueError), match=message):
-            _hpc.cluster_on_hpc(
-                source, 2, repo_root=tmp_path, runner=UntouchedRunner(), **kwargs,
-            )
-        assert not (tmp_path / "results").exists()
-
 
 class TestSlurmLastMile:
     """Pin runner exports and job-script flags without contacting SLURM."""
@@ -773,6 +567,101 @@ class TestSlurmLastMile:
         assert "DTWC_BUILD_PROFILE=htc-cpu" in exports
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ("htc-gpu --gpu-device a6000", None),
+            ("htc-gpu", None),
+            ("htc-gpu --gpu-device p100", "below the 8.0"),
+            ("htc-cpu --gpu-device a100", "needs a GPU profile"),
+            ("htc-gpu --gpu-device ''", "unknown GPU type"),
+        ],
+    )
+    def test_a_gpu_build_runs_on_that_gpu(self, tmp_path, args, message):
+        """build --gpu-device asks for that GPU as its jobs do, on the .env
+        partition, so build-arc.sh builds that GPU's CUDA architecture into
+        build-<type>, CPU code portable; without it the build asks for no GPU,
+        on an interactive node, and is portable."""
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} build {args}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        if message is not None:
+            assert completed.returncode != 0
+            assert message in completed.stderr
+            assert not capture.exists()
+            return
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        sbatch_args = capture.read_text(encoding="utf-8").splitlines()
+        gpu_args = [arg for arg in sbatch_args if arg.startswith(("--gres=", "--constraint="))]
+        exports = next(arg for arg in sbatch_args if arg.startswith("--export="))
+        if "--gpu-device" in args:
+            assert gpu_args == _hpc.gpu_request("a6000")
+            assert "--partition=short" in sbatch_args
+            assert exports.endswith(",DTWC_BUILD_DIR=build-a6000,DTWC_NATIVE_CPU=OFF")
+        else:
+            assert gpu_args == []
+            assert "--partition=interactive" in sbatch_args
+            assert exports.endswith(",DTWC_BUILD_DIR=build-htc-gpu,DTWC_NATIVE_CPU=ON")
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_a_crlf_table_reads_as_the_lf_one(self, tmp_path):
+        """An editor that saves gpu_devices.txt with CRLF must not let bash take
+        a refused type's '-' as a request, nor pass a CR to sbatch."""
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        table = wrapper.parents[2] / "python/dtwcpp/_slurm/gpu_devices.txt"
+        table.write_bytes(table.read_bytes().replace(b"\n", b"\r\n"))
+        outcomes = []
+        for gpu_type in ("v100", "l40s"):
+            command = (
+                f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+                f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+                f"exec bash {shlex.quote(_bash_path(wrapper))} "
+                f"submit-benchmark-gpu {gpu_type}"
+            )
+            outcomes.append(subprocess.run(
+                ["bash", "-c", command], check=False, capture_output=True,
+                text=True, encoding="utf-8", errors="replace",
+            ))
+        assert outcomes[0].returncode != 0 and "below the 8.0" in outcomes[0].stderr
+        assert outcomes[1].returncode == 0, outcomes[1].stdout + outcomes[1].stderr
+        args = capture.read_text(encoding="utf-8").splitlines()
+        assert [arg for arg in args if arg.startswith(("--gres=", "--constraint="))] \
+            == _hpc.gpu_request("l40s")
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize("mode", ["cpu", "gpu", "bogus"])
+    def test_a_smoke_mode_reaches_sbatch(self, tmp_path, mode):
+        """submit-smoke <mode> runs smoke.slurm with MODE; the GPU mode asks for
+        a GPU at or above the CUDA floor, so it cannot land on a refused V100."""
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-smoke {mode}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        if mode == "bogus":
+            assert completed.returncode != 0
+            assert "submit-smoke syntax" in completed.stderr
+            return
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        args = capture.read_text(encoding="utf-8").splitlines()
+        assert args[-1] == "scripts/slurm/jobs/smoke.slurm"
+        assert f"--export=ALL,MODE={mode}" in args
+        gpu_args = [arg for arg in args if arg.startswith(("--gres=", "--constraint="))]
+        assert gpu_args == (_hpc.gpu_request() if mode == "gpu" else [])
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize("gpu_type", ["", "a100", "l40s", "h100"])
     def test_documented_benchmark_gpu_types_are_exact_argv(
         self, tmp_path, gpu_type,
@@ -791,8 +680,9 @@ class TestSlurmLastMile:
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
         args = capture.read_text(encoding="utf-8").splitlines()
-        gres_args = [arg for arg in args if arg.startswith("--gres=")]
-        assert gres_args == ([f"--gres=gpu:{gpu_type}:1"] if gpu_type else [])
+        # The wrapper reads the table _hpc.gpu_request reads: one table, two readers.
+        gpu_args = [arg for arg in args if arg.startswith(("--gres=", "--constraint="))]
+        assert gpu_args == _hpc.gpu_request(gpu_type or None)
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_commented_empty_optional_config_is_really_empty(self, tmp_path):
@@ -823,7 +713,7 @@ class TestSlurmLastMile:
             ("SLURM_PARTITION", "short,long"),
             ("SLURM_CLUSTER", "arc;command"),
             ("SLURM_EMAIL", "not-an-email"),
-            ("SLURM_GPU_GRES", "gpu:a100:1;command"),
+            ("SLURM_GPU_GRES", "gpu:1"),
         ],
     )
     def test_unsafe_transport_config_is_rejected_before_ssh(
@@ -876,93 +766,41 @@ class TestSlurmLastMile:
         assert "SLURM_REMOTE_BASE" in completed.stderr
         assert not injected.exists()
 
-    def test_restart_schedule_reaches_dtwc_cl(self):
-        wrapper = Path(_hpc.slurm_wrapper_path()).read_text(encoding="utf-8")
-        job = _packaged_job().read_text(encoding="utf-8")
-
-        assert "DTWC_N_INIT=${N_INIT}" in wrapper
-        assert "DTWC_SEED=${SEED}" in wrapper
-        assert 'DTWC_N_INIT="${DTWC_N_INIT:-1}"' in job
-        assert '--n-init "${DTWC_N_INIT}"' in job
-        assert 'SEED_ARGS=(--seed "${DTWC_SEED}")' in job
-        for name in (
-            "MAX_ITER", "VARIANT", "WDTW_G", "ADTW_PENALTY", "MSM_C",
-            "TWE_NU", "TWE_LAMBDA", "MV_MODE", "MISSING_STRATEGY", "METRIC",
-        ):
-            assert f"DTWC_{name}" in wrapper
-            assert f"DTWC_{name}" in job
-        for flag in (
-            "--max-iter", "--variant", "--wdtw-g", "--adtw-penalty",
-            "--msm-c", "--twe-nu", "--twe-lambda", "--mv-mode",
-            "--missing-strategy", "--metric",
-        ):
-            assert flag in job
-
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
-    @pytest.mark.parametrize(("seed_arg", "expected_export"), [("", ""), ("42", "42")])
-    def test_seed_export_overrides_inherited_slurm_environment(
-        self, tmp_path, seed_arg, expected_export,
-    ):
-        """``--export=ALL`` must not override omission or an explicit seed."""
-        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
-
-        command = (
-            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
-            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
-            "export DTWC_SEED=29; "
-            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
-            "/remote/input:v1+tag@host%=a.tsv 2 pam cpu -1 seed_export 0 0 1 "
-            f"{shlex.quote(seed_arg)}"
-        )
-        completed = subprocess.run(
-            ["bash", "-c", command], check=False, capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
-        )
-        assert completed.returncode == 0, completed.stdout + completed.stderr
-        sbatch_args = capture.read_text(encoding="utf-8").splitlines()
-        exports = next(arg for arg in sbatch_args if arg.startswith("--export="))
-        assert "DTWC_INPUT=/remote/input:v1+tag@host%=a.tsv" in exports
-        assert f",DTWC_SEED={expected_export}" in exports
-        assert ",DTWC_SEED=29" not in exports
-
-    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
-    def test_unsafe_job_name_is_rejected_before_remote_shell(self, tmp_path):
-        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+    def test_unsafe_job_id_is_rejected_before_remote_shell(self, tmp_path):
+        """download-cluster's one argument, the job ID, crosses the shell."""
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
         injected = tmp_path / "injected.txt"
-        malicious_name = f"safe;printf injected>{_bash_path(injected)};#"
+        malicious = f"123;printf injected>{_bash_path(injected)};#"
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
-            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
-            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
-            "/remote/input.tsv 2 pam cpu -1 "
-            f"{shlex.quote(malicious_name)} 0 0 1 ''"
+            f"exec bash {shlex.quote(_bash_path(wrapper))} download-cluster "
+            f"{shlex.quote(malicious)}"
         )
         completed = subprocess.run(
             ["bash", "-c", command], check=False, capture_output=True,
             text=True, encoding="utf-8", errors="replace",
         )
         assert completed.returncode != 0
-        assert "job name" in completed.stderr.lower()
+        assert "job ID" in completed.stderr
         assert not injected.exists()
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize(
-        ("overrides", "message"),
+        ("args", "message"),
         [
-            ({0: "/remote/input,other.tsv"}, "input path"),
-            ({0: "--delete"}, "must not start"),
-            ({1: "0"}, "n_clusters"),
-            ({2: "pam;true"}, "method"),
-            ({4: "-2"}, "band"),
-            ({5: "../escape"}, "job name"),
-            ({6: "-1"}, "skip_cols"),
-            ({7: "2"}, "upload"),
-            ({0: "C:/data.tsv", 7: "1"}, "must not contain"),
-            ({0: "definitely-missing-m28.tsv", 7: "1"}, "input not found"),
+            ("run,other", "run directory must be"),
+            ("-run", "run directory must be"),
+            ("C:/run", "run directory must be"),
+            ("missing", "no job.toml"),
+            ("run --bogus", "submit-job syntax"),
+            ("run --gpu-device v100", "below the 8.0"),
+            ("run --gpu-device '#'", "unknown GPU type"),
+            ("run --gpu-device ''", "unknown GPU type"),
         ],
     )
-    def test_wrapper_rejects_unsafe_envelope_before_ssh(
-        self, tmp_path, overrides, message,
+    def test_submit_job_rejects_an_unsafe_envelope_before_ssh(
+        self, tmp_path, args, message,
     ):
         wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
         ssh_called = tmp_path / "ssh-called.txt"
@@ -971,21 +809,14 @@ class TestSlurmLastMile:
             "#!/usr/bin/env bash\nprintf called > \"$SSH_CALLED\"\nexit 97\n",
             encoding="utf-8", newline="\n",
         )
-        args = [
-            "/remote/input.tsv", "2", "pam", "cpu", "-1", "safe_job",
-            "0", "0",
-        ]
-        for index, value in overrides.items():
-            args[index] = value
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
             f"export SSH_CALLED={shlex.quote(_bash_path(ssh_called))}; "
-            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
-            + " ".join(shlex.quote(value) for value in args)
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-job {args}"
         )
         completed = subprocess.run(
-            ["bash", "-c", command], check=False, capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
+            ["bash", "-c", command], cwd=wrapper.parents[2], check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         assert completed.returncode != 0
         assert message in completed.stderr
@@ -998,19 +829,18 @@ class TestSlurmLastMile:
         fake_mktemp = fake_bin / "mktemp"
         fake_mktemp.write_text(
             "#!/usr/bin/env bash\n"
-            f"echo {shlex.quote(remote + '/data/userjobs/safe.ABCDEFGH/../../src')}\n",
+            f"echo {shlex.quote(remote + '/data/userjobs/job.ABCDEFGH/../../src')}\n",
             encoding="utf-8", newline="\n",
         )
         fake_mktemp.chmod(0o755)
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
             f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
-            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
-            "/remote/input.tsv 2 pam cpu -1 safe 0 0"
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-job run"
         )
         completed = subprocess.run(
-            ["bash", "-c", command], check=False, capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
+            ["bash", "-c", command], cwd=wrapper.parents[2], check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         assert completed.returncode != 0
         assert "allocator returned an unsafe path" in completed.stderr
@@ -1045,110 +875,86 @@ class TestSlurmLastMile:
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_safe_optional_config_reaches_sbatch_as_single_argv(self, tmp_path):
+        """The optional settings, the .env partition and the GPU request, its
+        constraint's '|' included, reach sbatch as single arguments; the job
+        runs build-l40s."""
         wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
         cluster = "arc-prod"
         email = "first.last+dtwc@eng.ox.ac.uk"
-        gres = "gpu:a100:1"
         env_file = wrapper.parents[2] / ".env"
         with env_file.open("a", encoding="utf-8", newline="\n") as stream:
             stream.write(
                 f"SLURM_CLUSTER={cluster}\n"
                 f"SLURM_EMAIL={email}\n"
-                f"SLURM_GPU_GRES={gres}\n"
+                "SLURM_PARTITION=medium\n"
             )
+        binary = tmp_path / "remote/src/build-l40s/bin/dtwc_cl"
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\n", encoding="utf-8", newline="\n")
+        binary.chmod(0o755)
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
             f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
-            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
-            "/remote/input.tsv 2 pam cuda -1 quote_config 0 0"
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-job run "
+            "--gpu-device l40s"
         )
         completed = subprocess.run(
-            ["bash", "-c", command], check=False, capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
+            ["bash", "-c", command], cwd=wrapper.parents[2], check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
         sbatch_args = capture.read_text(encoding="utf-8").splitlines()
         assert f"--clusters={cluster}" in sbatch_args
         assert f"--mail-user={email}" in sbatch_args
-        assert f"--gres={gres}" in sbatch_args
+        assert "--partition=medium" in sbatch_args
+        assert [arg for arg in sbatch_args if arg.startswith(("--gres=", "--constraint="))] \
+            == _hpc.gpu_request("l40s")
+        assert sbatch_args[-2].endswith(",DTWC_BUILD=l40s")
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
-    def test_safe_upload_is_local_and_option_terminated(self, tmp_path):
+    def test_each_submission_uploads_its_run_to_a_fresh_directory(self, tmp_path):
+        """The run directory and the job script sbatch runs go to one new remote
+        directory per submission; the upload is local and option-terminated."""
         wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
-        project = wrapper.parents[2]
-        source = project / "input+tag%=a.tsv"
-        source.write_text("0\t1\n", encoding="utf-8")
         transfer_capture = tmp_path / "transfer-args.txt"
-        fake_rsync = fake_bin / "rsync"
-        fake_rsync.write_text(
-            "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"$CAPTURE_TRANSFER\"\n",
-            encoding="utf-8", newline="\n",
-        )
         script_capture = tmp_path / "script-transfer-args.txt"
-        fake_scp = fake_bin / "scp"
-        fake_scp.write_text(
-            "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"$CAPTURE_SCRIPT\"\n",
-            encoding="utf-8", newline="\n",
-        )
+        for tool, variable in (("rsync", "CAPTURE_TRANSFER"), ("scp", "CAPTURE_SCRIPT")):
+            (fake_bin / tool).write_text(
+                f"#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"${variable}\"\n",
+                encoding="utf-8", newline="\n",
+            )
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
             f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
             f"export CAPTURE_TRANSFER={shlex.quote(_bash_path(transfer_capture))}; "
             f"export CAPTURE_SCRIPT={shlex.quote(_bash_path(script_capture))}; "
-            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
-            "input+tag%=a.tsv 2 pam cpu -1 safe_upload 0 1"
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-job run"
         )
-        destinations = []
-        exported_inputs = []
-        submitted_scripts = []
-        sbatch_scripts = []
+        remote_dirs = []
         for _ in range(2):
             completed = subprocess.run(
-                ["bash", "-c", command], cwd=project, check=False,
-                capture_output=True, text=True, encoding="utf-8",
-                errors="replace",
+                ["bash", "-c", command], cwd=wrapper.parents[2], check=False,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
             )
             assert completed.returncode == 0, completed.stdout + completed.stderr
-            transfer_args = transfer_capture.read_text(
-                encoding="utf-8",
-            ).splitlines()
-            assert transfer_args[:3] == ["-az", "--", "input+tag%=a.tsv"]
-            destinations.append(transfer_args[3])
-            script_args = script_capture.read_text(
-                encoding="utf-8",
-            ).splitlines()
-            assert script_args[-2].endswith("/cluster_generic.slurm")
-            submitted_scripts.append(script_args[-1])
-            sbatch_args = capture.read_text(encoding="utf-8").splitlines()
-            exports = next(
-                arg for arg in sbatch_args if arg.startswith("--export=")
-            )
-            sbatch_scripts.append(sbatch_args[-1])
-            exported_inputs.append(
-                exports.split("DTWC_INPUT=", 1)[1].split(",", 1)[0]
-            )
-
-        assert destinations[0] != destinations[1]
-        assert exported_inputs == [
-            target.split(":", 1)[1] for target in destinations
-        ]
-        assert submitted_scripts[0] != submitted_scripts[1]
-        assert sbatch_scripts == [
-            target.split(":", 1)[1] for target in submitted_scripts
-        ]
-        assert sbatch_scripts[0] != sbatch_scripts[1]
-        assert [target.rsplit("/", 1)[0] for target in destinations] == [
-            target.rsplit("/", 1)[0] for target in submitted_scripts
-        ]
-        assert all(
-            target.endswith("/input+tag%=a.tsv") for target in destinations
-        )
+            transfer = transfer_capture.read_text(encoding="utf-8").splitlines()
+            assert transfer[:3] == ["-az", "--", "run/"]
+            host, remote_dir = transfer[3].rstrip("/").split(":", 1)
+            assert host == "test_user@test_host"
+            script = script_capture.read_text(encoding="utf-8").splitlines()
+            assert script[-1] == f"{host}:{remote_dir}/cluster_generic.slurm"
+            assert capture.read_text(encoding="utf-8").splitlines()[-2:] == [
+                f"--export=ALL,DTWC_JOB={remote_dir},DTWC_BUILD=htc-cpu",
+                f"{remote_dir}/cluster_generic.slurm",
+            ]
+            remote_dirs.append(remote_dir)
+        assert remote_dirs[0] != remote_dirs[1]
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_exact_download_cannot_fall_back_to_stale_labels(self, tmp_path):
         wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
         project = wrapper.parents[2]
-        stale = project / "results/slurm/safe_123/safe_labels.csv"
+        stale = project / "results/slurm/cluster_123/safe_labels.csv"
         stale.parent.mkdir(parents=True)
         stale.write_text("stale", encoding="utf-8")
         fake_rsync = fake_bin / "rsync"
@@ -1159,7 +965,7 @@ class TestSlurmLastMile:
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
             f"exec bash {shlex.quote(_bash_path(wrapper))} "
-            "download-cluster safe 123"
+            "download-cluster 123"
         )
         completed = subprocess.run(
             ["bash", "-c", command], cwd=project, check=False,
@@ -1169,94 +975,44 @@ class TestSlurmLastMile:
         assert not stale.exists()
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
-    @pytest.mark.parametrize(
-        ("seed", "expect_seed", "overrides"),
-        [
-            ("42", True, {}),
-            ("", False, {
-                "DTWC_MAX_ITER": "17",
-                "DTWC_VARIANT": "twe",
-                "DTWC_WDTW_G": "0.17",
-                "DTWC_ADTW_PENALTY": "2.5",
-                "DTWC_MSM_C": "3.5",
-                "DTWC_TWE_NU": "0.02",
-                "DTWC_TWE_LAMBDA": "4.0",
-            }),
-            ("", False, {
-                "DTWC_DEVICE": "cuda",
-                "DTWC_METRIC": "squared_euclidean",
-            }),
-            ("", False, {"DTWC_MISSING_STRATEGY": "zero_cost"}),
-            ("", False, {"DTWC_MV_MODE": "independent"}),
-        ],
-    )
-    def test_job_executes_final_restart_arguments(
-        self, tmp_path, seed, expect_seed, overrides,
-    ):
-        job = _packaged_job()
-        fake_bin = tmp_path / "build-fake/bin/dtwc_cl"
-        fake_bin.parent.mkdir(parents=True)
-        fake_bin.write_bytes(
-            b'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$CAPTURE_ARGS"\n'
+    @pytest.mark.parametrize("extra", ["", "newer-key = 1\n"])
+    def test_the_job_runs_job_toml_on_the_named_build(self, tmp_path, dtwc_cl, extra):
+        """cluster_generic.slurm runs build-$DTWC_BUILD's dtwc_cl on
+        $DTWC_JOB/job.toml into results/cluster_<job id>/. A key that binary
+        does not know (a newer wheel against an older build; the local binary
+        is the oracle) fails the job loudly, naming the key, with no labels."""
+        binary = tmp_path / "build-test/bin/dtwc_cl"
+        binary.parent.mkdir(parents=True)
+        binary.write_text(
+            f'#!/usr/bin/env bash\nexec {shlex.quote(_bash_path(dtwc_cl))} "$@"\n',
+            encoding="utf-8", newline="\n",
         )
-        fake_bin.chmod(0o755)
-
-        input_path = tmp_path / "input.tsv"
-        input_path.write_text("0\t1\n", encoding="utf-8")
-        capture_path = tmp_path / "args.txt"
+        binary.chmod(0o755)
+        run = tmp_path / "run"
+        run.mkdir()
+        _hpc.write_series_tsv([[0.0, 0.1], [0.1, 0.0], [9.0, 9.1], [9.1, 9.0]],
+                              run / "input.tsv")
+        (run / "job.toml").write_text(
+            'input = "input.tsv"\nn-clusters = 2\nname = "job"\n' + extra,
+            encoding="utf-8", newline="\n",
+        )
         job_env = {
-            "SLURM_SUBMIT_DIR": _bash_path(tmp_path),
-            "SLURM_JOB_ID": "123",
-            "SLURMD_NODENAME": "test-node",
-            "SLURM_CPUS_PER_TASK": "1",
-            "DTWC_INPUT": _bash_path(input_path),
-            "DTWC_K": "2",
-            "DTWC_NAME": "restart_test",
-            "DTWC_DEVICE": "cpu",
-            "DTWC_N_INIT": "2",
-            "DTWC_SEED": seed,
-            "DTWC_MAX_ITER": "100",
-            "DTWC_VARIANT": "standard",
-            "DTWC_WDTW_G": "0.05",
-            "DTWC_ADTW_PENALTY": "1.0",
-            "DTWC_MSM_C": "1.0",
-            "DTWC_TWE_NU": "0.001",
-            "DTWC_TWE_LAMBDA": "1.0",
-            "DTWC_MV_MODE": "dependent",
-            "DTWC_MISSING_STRATEGY": "error",
-            "DTWC_METRIC": "l1",
-            "CAPTURE_ARGS": _bash_path(capture_path),
+            "SLURM_SUBMIT_DIR": _bash_path(tmp_path), "SLURM_JOB_ID": "123",
+            "DTWC_JOB": _bash_path(run), "DTWC_BUILD": "test",
         }
-        job_env.update(overrides)
-        exports = " ".join(
-            f"{key}={shlex.quote(value)}" for key, value in job_env.items()
+        exports = " ".join(f"{key}={shlex.quote(value)}" for key, value in job_env.items())
+        completed = subprocess.run(
+            ["bash", "-c", f"export {exports}; exec bash {shlex.quote(_bash_path(_packaged_job()))}"],
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
-        command = f"export {exports}; exec bash {shlex.quote(_bash_path(job))}"
-
-        subprocess.run(
-            ["bash", "-c", command], check=True, cwd=tmp_path,
-            capture_output=True, text=True,
-        )
-        args = capture_path.read_text(encoding="utf-8").splitlines()
-        assert args[args.index("--n-init") + 1] == "2"
-        if expect_seed:
-            assert args[args.index("--seed") + 1] == seed
+        labels = tmp_path / "results/cluster_123/job_labels.csv"
+        if extra:
+            assert completed.returncode != 0
+            assert "newer-key" in completed.stderr
+            assert not labels.exists()
         else:
-            assert "--seed" not in args
-        expected = {
-            "--max-iter": "DTWC_MAX_ITER",
-            "--variant": "DTWC_VARIANT",
-            "--wdtw-g": "DTWC_WDTW_G",
-            "--adtw-penalty": "DTWC_ADTW_PENALTY",
-            "--msm-c": "DTWC_MSM_C",
-            "--twe-nu": "DTWC_TWE_NU",
-            "--twe-lambda": "DTWC_TWE_LAMBDA",
-            "--mv-mode": "DTWC_MV_MODE",
-            "--missing-strategy": "DTWC_MISSING_STRATEGY",
-            "--metric": "DTWC_METRIC",
-        }
-        for flag, variable in expected.items():
-            assert args[args.index(flag) + 1] == job_env[variable]
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            assert _hpc.parse_labels_csv(labels, 4).tolist() in ([0, 0, 1, 1], [1, 1, 0, 0])
 
 
 class TestPackagedWrapper:
@@ -1268,27 +1024,40 @@ class TestPackagedWrapper:
         reason="Git Bash started from Python puts its own ssh/scp ahead of the "
         "fakes on PATH; the bash -c tests below cover the wrapper there",
     )
-    def test_cluster_on_hpc_runs_outside_a_checkout(self, tmp_path, monkeypatch):
-        """Submit -> poll -> download through the real wrapper; only the
-        network tools are local fakes, and neither the working directory nor
-        the project directory holds a scripts/ tree."""
+    def test_cluster_runs_outside_a_checkout(self, tmp_path, monkeypatch, dtwc_cl):
+        """dtwcpp.cluster(..., device='hpc') through the real wrapper and job
+        script, the local dtwc_cl standing in for the cluster's: only ssh,
+        rsync, scp, sbatch and squeue are local stand-ins (sbatch runs the job
+        here), and neither the working directory nor the project directory holds
+        a scripts/ tree."""
         project, remote, fake_bin = (
             tmp_path / "project", tmp_path / "remote", tmp_path / "bin",
         )
-        for directory in (project, remote / "src/build-x/bin", fake_bin):
+        binary = remote / "src/build-htc-cpu/bin/dtwc_cl"
+        for directory in (project, binary.parent, fake_bin):
             directory.mkdir(parents=True)
-        (remote / "src/build-x/bin/dtwc_cl").write_text("", encoding="utf-8")
+        binary.write_text(
+            f'#!/usr/bin/env bash\nexec {shlex.quote(dtwc_cl)} "$@"\n', encoding="utf-8",
+        )
+        binary.chmod(0o755)
         (project / ".env").write_text(
             "SLURM_USER=u\nSLURM_HOST=h\n"
             f"SLURM_REMOTE_BASE={_bash_path(remote)}\n",
             encoding="utf-8",
         )
+        # The last two arguments, source and destination, host: dropped.
+        copy = 'src="${@: -2:1}"; src="${src#*:}"; dst="${@: -1}"; dst="${dst#*:}"\n'
         tools = {
             "ssh": 'exec sh -c "$2"',  # run the "remote" command right here
-            "scp": 'printf "%s\\n" "$@" > "$CAPTURE_DIR/scp"',
-            "rsync": 'last="${!#}"; case "$last" in *_labels.csv) '
-                     'printf "name,cluster\\n2,1\\n1,0\\n" > "$last" ;; esac',
-            "sbatch": 'printf "%s\\n" "$@" > "$CAPTURE_DIR/sbatch"; echo 12345',
+            "rsync": copy + 'mkdir -p "$dst" && cp -R "$src." "$dst"',
+            "scp": 'printf "%s\\n" "$@" > "$CAPTURE_DIR/scp"\n' + copy + 'cp "$src" "$dst"',
+            # Run the job here as SLURM would, with the --export values.
+            "sbatch": 'printf "%s\\n" "$@" > "$CAPTURE_DIR/sbatch"\n'
+                      'export_arg="${@: -2:1}"\n'
+                      'IFS=, read -r -a exports <<< "${export_arg#--export=ALL,}"\n'
+                      'env "${exports[@]}" SLURM_SUBMIT_DIR="$PWD" SLURM_JOB_ID=12345 '
+                      'bash "${@: -1}" > "$CAPTURE_DIR/job.log" 2>&1\n'
+                      "echo 12345",
             "squeue": "echo JOBID",
         }
         for name, body in tools.items():
@@ -1298,24 +1067,27 @@ class TestPackagedWrapper:
             )
             tool.chmod(0o755)
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("DTWC_REPO_ROOT", raising=False)
+        monkeypatch.setenv("DTWC_REPO_ROOT", str(project))
         monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
         monkeypatch.setenv("CAPTURE_DIR", str(tmp_path))
 
-        labels = _hpc.cluster_on_hpc(
-            [[0.0, 1.0], [5.0, 6.0]], 2, name="e2e", repo_root=project,
-            poll_seconds=0.01, timeout_seconds=60,
-        )
+        rng = np.random.default_rng(7)
+        series = [rng.standard_normal(8) * 0.1 + (0.0 if i < 5 else 9.0)
+                  for i in range(10)]
+        res = dtwcpp.cluster(series, k=2, device="hpc", name="café", method="pam")
 
-        assert labels.tolist() == [0, 1]
-        assert (project / "results/slurm/e2e_12345/e2e_labels.csv").is_file()
-        import dtwcpp
+        assert len(set(res.labels[:5])) == len(set(res.labels[5:])) == 1
+        assert res.labels[0] != res.labels[9]
+        assert res.device == "hpc" and res.distance_matrix is None
+        assert (project / "results/slurm/cluster_12345/café_labels.csv").is_file()
+        assert (remote / "src/logs").is_dir()  # SLURM opens the job's logs there
         package = Path(dtwcpp.__file__).resolve().parent
         scp = (tmp_path / "scp").read_text(encoding="utf-8").splitlines()
         assert Path(scp[-2]).resolve() == package / "_slurm/cluster_generic.slurm"
         sbatch = (tmp_path / "sbatch").read_text(encoding="utf-8").splitlines()
-        assert sbatch[-1] == scp[-1].split(":", 1)[1]
-        assert any(a.startswith("--export=") and ",DTWC_K=2," in a for a in sbatch)
+        run = sbatch[-1].rsplit("/", 1)[0]
+        assert run.startswith(f"{_bash_path(remote)}/data/userjobs/job.")
+        assert sbatch[-2] == f"--export=ALL,DTWC_JOB={run},DTWC_BUILD=htc-cpu"
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize("command", ["upload", "submit-benchmark-cpu"])
@@ -1367,7 +1139,7 @@ class TestPackagedWrapper:
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize(
-        "command", ["upload", "submit-cpu", "submit-benchmark-gpu"],
+        "command", ["upload", "submit-smoke cpu", "submit-benchmark-gpu"],
     )
     def test_source_commands_refuse_to_run_outside_a_checkout(
         self, tmp_path, command,
@@ -1400,11 +1172,10 @@ class TestPackagedWrapper:
         assert not called.exists()
 
 
-@pytest.mark.skipif(_local_binary() is None, reason="no local dtwc_cl binary built")
 class TestLocalRoundTrip:
-    def test_required_input_message_names_toml_first(self):
+    def test_required_input_message_names_toml_first(self, dtwc_cl):
         completed = subprocess.run(
-            [_local_binary(), "--n-clusters", "2"],
+            [dtwc_cl, "--n-clusters", "2"],
             check=False, capture_output=True, text=True,
         )
         assert completed.returncode != 0
@@ -1412,81 +1183,61 @@ class TestLocalRoundTrip:
             "Error: --input is required via CLI or config file (TOML or YAML)\n"
         )
 
-    def test_two_groups_recovered(self, tmp_path):
-        rng = np.random.default_rng(7)
-        series = [list(rng.standard_normal(8) * 0.1 + (0.0 if i < 5 else 9.0))
-                  for i in range(10)]
-        tsv = tmp_path / "input.tsv"
-        _hpc.write_series_tsv(series, tsv)
-
+    def test_the_local_binary_runs_job_toml(self, monkeypatch, tmp_path, dtwc_cl):
+        """The cluster's job minus the transport: the local dtwc_cl runs the run
+        directory as the job does (--config job.toml --output <dir>), and writes
+        back every line Python wrote (--print-config), a UTF-8 name and a float
+        among them."""
         out = tmp_path / "out"
-        out.mkdir()
-        cmd = _hpc.build_dtwc_command(
-            _local_binary(), str(tsv), k=2, name="rt", output_dir=str(out),
-            method="pam", device="cpu",
-        )
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
 
-        labels = _hpc.parse_labels_csv(out / "rt_labels.csv", n=10)
-        # two groups of 5; first 5 share a label, last 5 share the other
-        assert len(set(labels[:5])) == 1
-        assert len(set(labels[5:])) == 1
-        assert labels[0] != labels[9]
+        class Runner:
+            def __init__(self, repo_root):
+                pass
 
-    def test_seeded_restart_improves_registered_fixture(self, tmp_path):
-        base = np.array([0.0, 0.01, -0.02, 0.03])
-        series = [base + offset for offset in range(8)]
-        tsv = tmp_path / "restart_input.tsv"
-        _hpc.write_series_tsv(series, tsv)
+            def preflight(self):
+                pass
 
-        observed = []
-        for n_init in (1, 2):
-            out = tmp_path / f"restart_{n_init}"
-            out.mkdir()
-            cmd = _hpc.build_dtwc_command(
-                _local_binary(), str(tsv), k=3, name="restart",
-                output_dir=str(out), method="pam", device="cpu",
-                n_init=n_init, seed=42,
-            )
-            completed = subprocess.run(
-                cmd, check=True, capture_output=True, text=True,
-            )
-            observed.append(completed.stdout)
-            assert (out / "restart_labels.csv").is_file()
+            def submit_job(self, rundir, **request):
+                self.rundir = tmp_path / rundir
+                subprocess.run([dtwc_cl, "--config", "job.toml", "--output", str(out)],
+                               cwd=self.rundir, check=True, capture_output=True)
+                return "1"
 
-        assert "cost=24" in observed[0]
-        assert "cost=20" in observed[1]
+            def wait(self, job_id, **controls):
+                pass
 
-    def test_cli_rejects_zero_restart_count(self, tmp_path):
-        tsv = tmp_path / "invalid_restart.tsv"
-        _hpc.write_series_tsv([[0.0, 1.0], [1.0, 2.0]], tsv)
-        cmd = _hpc.build_dtwc_command(
-            _local_binary(), str(tsv), k=2, name="invalid_restart",
-            output_dir=str(tmp_path), n_init=1,
-        )
-        cmd[cmd.index("--n-init") + 1] = "0"
+            def download_labels(self, name, job_id):
+                return out / f"{name}_labels.csv"
 
-        completed = subprocess.run(
-            cmd, check=False, capture_output=True, text=True,
-        )
-        assert completed.returncode != 0
-        assert "n-init" in completed.stderr
+        runner = Runner(tmp_path)
+        monkeypatch.setattr(_hpc, "SlurmRemoteRunner", lambda repo_root: runner)
+        monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
+        rng = np.random.default_rng(7)
+        series = [rng.standard_normal(8) * 0.1 + (0.0 if i < 5 else 9.0)
+                  for i in range(10)]
+        res = dtwcpp.cluster(series, k=2, device="hpc", name="café", method="pam",
+                             variant="wdtw", wdtw_g=0.17)
 
-    def test_cli_missing_strategy_is_honored(self, tmp_path):
-        tsv = tmp_path / "series.tsv"
-        _hpc.write_series_tsv(
-            [[0.0, 0.5, 1.0], [0.0, 0.6, 1.0], [9.0, 9.5, 10.0]],
-            tsv,
-        )
+        assert len(set(res.labels[:5])) == len(set(res.labels[5:])) == 1
+        assert res.labels[0] != res.labels[9]
+        written = (runner.rundir / "job.toml").read_text(encoding="utf-8").splitlines()
+        printed = subprocess.run(
+            [dtwc_cl, "--config", "job.toml", "--print-config"],
+            cwd=runner.rundir, check=True, capture_output=True,
+        ).stdout.decode("utf-8").splitlines()
+        assert 'name = "café"' in written and "wdtw-g = 0.17" in written
+        assert set(written) <= set(printed)
 
-        accepted_dir = tmp_path / "accepted"
-        accepted_dir.mkdir()
-        accepted_cmd = _hpc.build_dtwc_command(
-            _local_binary(), str(tsv), k=2, name="missing_zero_cost",
-            output_dir=str(accepted_dir), missing_strategy="zero_cost",
-        )
-        completed = subprocess.run(
-            accepted_cmd, check=True, capture_output=True, text=True,
-        )
-        assert "Missing:  zero_cost" in completed.stdout
-        assert (accepted_dir / "missing_zero_cost_labels.csv").is_file()
+    def test_a_string_crosses_as_dtwc_cl_writes_it(self, tmp_path, dtwc_cl):
+        """job.toml quotes a string as dtwc_cl's own writer does (quotes,
+        backslashes and control bytes escaped, UTF-8 kept), so dtwc_cl reads
+        it and writes the same line back."""
+        line = "name = " + _hpc._toml_value('q"b\\s\t\x01\x7f é#,[x]')
+        job = tmp_path / "job.toml"
+        job.write_text(line + "\n", encoding="utf-8", newline="\n")
+        printed = subprocess.run(
+            [dtwc_cl, "--config", str(job), "--print-config"],
+            check=True, capture_output=True,
+        ).stdout.decode("utf-8").splitlines()
+        assert line == 'name = "q\\"b\\\\s\\t\\u0001\\u007f é#,[x]"'
+        assert line in printed

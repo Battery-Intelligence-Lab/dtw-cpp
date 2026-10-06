@@ -10,6 +10,16 @@ import numpy as np
 import pytest
 
 
+@pytest.fixture(scope="session")
+def dtwc_cl():
+    """The dtwc_cl the CLI cases run: the one DTWC_CL_PATH names (F2). Unset,
+    they skip; set to anything but the binary, they fail where they run it."""
+    path = os.environ.get("DTWC_CL_PATH")
+    if path is None:
+        pytest.skip("DTWC_CL_PATH names no dtwc_cl")
+    return path
+
+
 @pytest.fixture
 def synthetic_data():
     """Return a small dataset: 10 series of length 20."""

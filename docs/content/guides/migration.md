@@ -79,10 +79,11 @@ bindings").
   silent, beside `n_clusters()`.
 - **MATLAB.** No alias survives: MATLAB was not in v1.0.0, so `Problem` has the
   snake_case methods only. The 1-based boundary conversion is untouched.
-- **CLI.** Old flag spellings are accepted with a deprecation warning; the SLURM
-  callers (`cluster_generic.slurm`, `_hpc.build_dtwc_command`) are updated in the
-  same change that renames a flag. The CLI flag set is a de-facto API (§7 item
-  3).
+- **CLI.** Old flag spellings are accepted with a deprecation warning. The SLURM
+  route writes the Config's keys into a `job.toml` (`_hpc.cluster_on_hpc`) for the
+  cluster's `dtwc_cl --config`: the old spellings keep an older wheel's file
+  readable, and a key an older build does not know fails the job, naming it. The CLI
+  flag set is a de-facto API (§7 item 3).
 - **Nothing silently disappears.** A removed binding name that a user calls must
   raise `AttributeError`/`Unknown command` — never resolve to a different
   behaviour.

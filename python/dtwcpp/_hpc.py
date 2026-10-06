@@ -1,23 +1,22 @@
 """
 @file _hpc.py
-@brief Offload a clustering job to a SLURM cluster (e.g. Oxford ARC) and bring labels back.
+@brief Run a clustering on a SLURM cluster (e.g. Oxford ARC) and bring the labels back.
 @details
-    The transport (ssh / rsync / sbatch) is delegated to the tested shell wrapper
-    _slurm/slurm_remote.sh, which ships inside this package (package data, found
-    with importlib.resources) so an installed wheel needs no source checkout.
-    This module owns the Python side:
-      1. serialize the series to a TSV the cluster's dtwc_cl reads,
-      2. drive the wrapper (submit -> poll -> download),
-      3. parse the downloaded NAME_labels.csv back into per-series cluster labels.
-
-    The pure helpers (serialize, parse, command build, binary discovery) are unit
-    tested AND validated end-to-end against a local dtwc_cl binary in
-    tests/python/test_hpc.py. The remote submission itself cannot be exercised on a
-    dev laptop — it must be verified on the actual cluster.
+    A run crosses as one file, job.toml: one ``key = value`` line per key, in the
+    grammar ``dtwc_cl --config`` reads, and C++ checks the keys on the cluster as
+    it checks any config file. The transport (ssh / rsync / sbatch) is the shell
+    wrapper _slurm/slurm_remote.sh, package data found with importlib.resources,
+    so an installed wheel needs no source checkout. This module
+      1. writes the run directory: job.toml and, for series in memory, input.tsv,
+      2. drives the wrapper: submit-job, then status until the job has left the
+         queue, then download-cluster,
+      3. parses the downloaded NAME_labels.csv into labels in input order.
+    The cluster is out of a laptop's reach: tests/python/test_hpc.py runs the
+    wrapper against local stand-ins for ssh, rsync and sbatch, and job.toml
+    through a local dtwc_cl.
 @author Volkan Kumtepeli
 """
 import csv
-import glob
 import importlib.resources
 import os
 import re
@@ -28,156 +27,23 @@ import time
 
 import numpy as np
 
-from dtwcpp._variant_validation import normalize_variant_parameters
+# A string as dtwc_cl's config writer quotes it (dtwc/cli/config.cpp
+# config_value): these escapes, any other control byte as \u00XX, UTF-8 kept.
+_ESCAPES = {"\b": "\\b", "\t": "\\t", "\n": "\\n", "\f": "\\f", "\r": "\\r",
+            '"': '\\"', "\\": "\\\\"}
 
 
-_UINT64_MAX = (1 << 64) - 1
-_SAFE_JOB_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
-_SAFE_REMOTE_PATH = re.compile(r"[A-Za-z0-9_./:+@%=-]+\Z")
-_METHOD_ALIASES = {
-    "auto": "auto", "pam": "pam", "onebatch": "onebatch",
-    "obp": "onebatch", "clara": "clara", "kmedoids": "kmedoids",
-    "mip": "mip", "lrcore": "lrcore", "lr": "lrcore",
-    "hierarchical": "hierarchical", "hclust": "hierarchical",
-    "tadpole": "tadpole",
-}
-
-
-def _validate_restart_schedule(n_init, seed):
-    """Validate and normalize the deterministic PAM restart schedule."""
-    if isinstance(n_init, (bool, np.bool_)) or not isinstance(
-        n_init, (int, np.integer)
-    ):
-        raise TypeError("n_init must be an integer")
-    n_init = int(n_init)
-    if n_init < 1:
-        raise ValueError("n_init must be at least 1")
-
-    if seed is None:
-        return n_init, None
-    if isinstance(seed, (bool, np.bool_)) or not isinstance(
-        seed, (int, np.integer)
-    ):
-        raise TypeError("seed must be an integer or None")
-    seed = int(seed)
-    if not 0 <= seed <= _UINT64_MAX:
-        raise ValueError("seed must fit in uint64")
-    if n_init - 1 > _UINT64_MAX - seed:
-        raise ValueError("seed + n_init - 1 overflows uint64")
-    return n_init, seed
-
-
-def _normalize_choice(name, value, aliases):
-    if not isinstance(value, str):
-        raise TypeError(f"{name} must be a string")
-    normalized = aliases.get(value.lower())
-    if normalized is None:
-        raise ValueError(
-            f"unsupported {name}={value!r}; expected one of "
-            f"{sorted(set(aliases.values()))}"
-        )
-    return normalized
-
-
-def _validate_remote_configuration(
-    *, device, max_iter, variant, wdtw_g, adtw_penalty, msm_c,
-    twe_nu, twe_lambda, mv_mode, missing_strategy, metric,
-):
-    """Normalize the exact CLI configuration and reject silent substitutions."""
-    if isinstance(max_iter, (bool, np.bool_)) or not isinstance(
-        max_iter, (int, np.integer)
-    ):
-        raise TypeError("max_iter must be an integer")
-    max_iter = int(max_iter)
-    if max_iter < 1:
-        raise ValueError("max_iter must be at least 1")
-
-    if isinstance(device, str) and re.fullmatch(r"cuda:[0-9]+", device.lower()):
-        device = device.lower()
-    else:
-        device = _normalize_choice(
-            "device", device, {"cpu": "cpu", "cuda": "cuda"},
-        )
-    variant = _normalize_choice(
-        "variant", variant,
-        {
-            "standard": "standard", "ddtw": "ddtw", "wdtw": "wdtw",
-            "adtw": "adtw", "msm": "msm", "twe": "twe",
-        },
-    )
-    mv_mode = _normalize_choice(
-        "mv_mode", mv_mode,
-        {"dependent": "dependent", "independent": "independent"},
-    )
-    missing_strategy = _normalize_choice(
-        "missing_strategy", missing_strategy,
-        {
-            "error": "error", "zero_cost": "zero_cost",
-            "zero-cost": "zero_cost", "zerocost": "zero_cost",
-            "arow": "arow", "interpolate": "interpolate",
-        },
-    )
-    metric = _normalize_choice(
-        "metric", metric,
-        {
-            "l1": "l1", "squared_euclidean": "squared_euclidean",
-            "sqeuclidean": "squared_euclidean", "l2sq": "squared_euclidean",
-        },
-    )
-    parameters = normalize_variant_parameters(
-        wdtw_g=wdtw_g,
-        adtw_penalty=adtw_penalty,
-        msm_c=msm_c,
-        twe_nu=twe_nu,
-        twe_lambda=twe_lambda,
-    )
-
-    if mv_mode == "independent" and (
-        variant != "standard" or missing_strategy != "error"
-    ):
-        raise ValueError(
-            "mv_mode='independent' requires variant='standard' and "
-            "missing_strategy='error'"
-        )
-    if variant != "standard" and missing_strategy != "error":
-        raise ValueError(
-            "variant/missing_strategy combination is unsupported: non-Error "
-            "missing handling would replace the requested variant"
-        )
-
-    is_cuda = device == "cuda" or device.startswith("cuda:")
-    if is_cuda and variant != "standard":
-        raise ValueError("remote CUDA supports variant='standard' only")
-    if is_cuda and missing_strategy != "error":
-        raise ValueError("remote CUDA does not support missing_strategy")
-    if is_cuda and mv_mode != "dependent":
-        raise ValueError("remote CUDA does not support mv_mode='independent'")
-    if not is_cuda and metric != "l1":
-        raise ValueError(
-            "metric='squared_euclidean' is unsupported by the remote CPU CLI"
-        )
-
-    return {
-        "device": device,
-        "max_iter": max_iter,
-        "variant": variant,
-        **parameters,
-        "mv_mode": mv_mode,
-        "missing_strategy": missing_strategy,
-        "metric": metric,
-    }
-
-
-def _normalize_cli_int(name, value, *, minimum):
-    """Normalize one integer for dtwc_cl."""
-    if isinstance(value, (bool, np.bool_)) or not isinstance(
-        value, (int, np.integer)
-    ):
-        raise TypeError(f"{name} must be an integer")
-    value = int(value)
-    if value < minimum:
-        raise ValueError(f"{name} must be at least {minimum} for dtwc_cl")
-    return value
+def _toml_value(value):
+    """A Config value as a job.toml token: a bool, an integer or a float bare
+    (``repr``, the shortest text that reads back to the same double), a string
+    quoted."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    return '"' + "".join(
+        _ESCAPES.get(c) or (f"\\u{ord(c):04x}" if c < " " or c == "\x7f" else c)
+        for c in value) + '"'
 
 
 def _normalize_wait_controls(poll_seconds, timeout_seconds):
@@ -201,62 +67,6 @@ def _normalize_wait_controls(poll_seconds, timeout_seconds):
     return tuple(normalized)
 
 
-def _validate_submission_envelope(
-    *, input_tsv, n_clusters, method, band, skip_cols, name, upload,
-):
-    """Normalize fields that cross the local-shell/SSH/Slurm boundary."""
-    n_clusters = _normalize_cli_int("n_clusters", n_clusters, minimum=1)
-    band = _normalize_cli_int("band", band, minimum=-1)
-    skip_cols = _normalize_cli_int("skip_cols", skip_cols, minimum=0)
-    method = _normalize_choice("method", method, _METHOD_ALIASES)
-
-    if not isinstance(name, str):
-        raise TypeError("name must be a string")
-    if _SAFE_JOB_NAME.fullmatch(name) is None:
-        raise ValueError(
-            "name must be 1-128 ASCII letters, digits, '.', '_', or '-', "
-            "starting with a letter or digit"
-        )
-    if not isinstance(upload, (bool, np.bool_)):
-        raise TypeError("upload must be a boolean")
-    normalized_upload = bool(upload)
-
-    normalized_input = None
-    if input_tsv is not None:
-        try:
-            normalized_input = os.fspath(input_tsv).replace("\\", "/")
-        except TypeError as exc:
-            raise TypeError("input path must be a string or path-like value") from exc
-        if not normalized_input or _SAFE_REMOTE_PATH.fullmatch(normalized_input) is None:
-            raise ValueError(
-                "input path contains bytes unsafe for SSH/Slurm export; use only "
-                "ASCII letters, digits, '/', '.', '_', '-', ':', '+', '@', '%', or '='"
-            )
-        if normalized_input.startswith("-"):
-            raise ValueError(
-                "input path must not start with '-' because transfer tools can "
-                "interpret it as an option"
-            )
-        if normalized_upload and ":" in normalized_input:
-            raise ValueError(
-                "local upload path must not contain ':' because rsync/scp can "
-                "interpret it as a remote host path; use a relative local path"
-            )
-
-    return {
-        "input_tsv": normalized_input,
-        "n_clusters": n_clusters,
-        "method": method,
-        "band": band,
-        "skip_cols": skip_cols,
-        "name": name,
-        "upload": normalized_upload,
-    }
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# Pure helpers (unit tested)
-# ─────────────────────────────────────────────────────────────────────────
 def write_series_tsv(series, path):
     """Write a list of 1-D series to a tab-delimited file, one series per row.
 
@@ -276,121 +86,50 @@ def write_series_tsv(series, path):
 def parse_labels_csv(path, n=None):
     """Parse dtwc_cl's ``NAME_labels.csv`` into labels in INPUT order.
 
-    The file has header ``name,cluster``; dtwc_cl names batch-row series ``1..N``
-    (1-based). Row order is not guaranteed (it may be lexically sorted), so the
-    mapping is by name: ``labels[i] = cluster_of[str(i + 1)]``.
-
-    ``n`` is the expected number of series; when ``None`` (e.g. an HPC path source
-    whose length isn't known locally) it is inferred from the file row count.
-    Raises KeyError if any series ``1..n`` is absent from the file.
+    The file has header ``name,cluster`` and a row per series, in dtwc_cl's
+    series order. With ``n``, the series are input.tsv's ``n`` rows, which
+    dtwc_cl names ``1..n``: the mapping is by name, ``labels[i] =
+    cluster_of[str(i + 1)]``, whatever the row order, and a series absent from
+    the file raises KeyError. Without ``n`` (a file read on the cluster, whose
+    series a folder or Parquet file names its own way), the labels keep the
+    rows' order.
     """
-    mapping = {}
     with open(path, newline="") as f:
-        for row in csv.DictReader(f):
-            mapping[str(row["name"]).strip()] = int(row["cluster"])
+        rows = list(csv.DictReader(f))
     if n is None:
-        n = len(mapping)
+        return np.array([int(row["cluster"]) for row in rows], dtype=np.int64)
+    mapping = {str(row["name"]).strip(): int(row["cluster"]) for row in rows}
     labels = np.empty(n, dtype=np.int64)
     for i in range(n):
         labels[i] = mapping[str(i + 1)]          # KeyError if a series is missing
     return labels
 
 
-def build_dtwc_command(binary, input_path, k, name, output_dir, *,
-                       method="pam", device="cpu", band=-1,
-                       dtype="float64", skip_cols=0, n_init=1, seed=None,
-                       max_iter=100, variant="standard", wdtw_g=0.05,
-                       adtw_penalty=1.0, msm_c=1.0, twe_nu=0.001,
-                       twe_lambda=1.0, mv_mode="dependent",
-                       missing_strategy="error", metric="l1"):
-    """Construct the dtwc_cl argument list (pure — does not execute).
-
-    ``seed=None`` deliberately omits ``--seed`` so the C++ CLI remains the
-    single source of truth for its default; explicit schedules use
-    ``seed, seed + 1, ...`` for ``n_init`` restarts.
-    """
-    n_init, seed = _validate_restart_schedule(n_init, seed)
-    config = _validate_remote_configuration(
-        device=device, max_iter=max_iter, variant=variant, wdtw_g=wdtw_g,
-        adtw_penalty=adtw_penalty, msm_c=msm_c, twe_nu=twe_nu,
-        twe_lambda=twe_lambda, mv_mode=mv_mode,
-        missing_strategy=missing_strategy, metric=metric,
-    )
-    command = [
-        str(binary),
-        "-i", str(input_path),
-        "-k", str(k),
-        "--skip-cols", str(skip_cols),
-        "--dtype", dtype,
-        "--method", method,
-        "-d", config["device"],
-        "-b", str(band),
-        "--max-iter", str(config["max_iter"]),
-        "--variant", config["variant"],
-        "--wdtw-g", str(config["wdtw_g"]),
-        "--adtw-penalty", str(config["adtw_penalty"]),
-        "--msm-c", str(config["msm_c"]),
-        "--twe-nu", str(config["twe_nu"]),
-        "--twe-lambda", str(config["twe_lambda"]),
-        "--mv-mode", config["mv_mode"],
-        "--missing-strategy", config["missing_strategy"],
-        "--metric", config["metric"],
-        "--name", name,
-        "-o", str(output_dir),
-        "--n-init", str(n_init),
-        "-v",
-    ]
-    if seed is not None:
-        command.extend(["--seed", str(seed)])
-    return command
-
-
-def find_dtwc_binary(root):
-    """Return the dtwc_cl binary to run.
-
-    ``DTWC_CL_PATH`` decides when it is set. A value that is not a file raises
-    ``FileNotFoundError`` and never falls through to the search, because the
-    newest binary under ``root`` can be a build that cannot start (an Arrow
-    build whose DLLs are not on PATH).
-
-    The search returns a path under ``root``, or ``None``. It prefers build-tree
-    binaries (including nested ``build/*/bin`` verification trees) over a
-    possibly-stale top-level ``bin/``; within a group, the most recently
-    modified wins.
-    """
-    override = os.environ.get("DTWC_CL_PATH")
-    if override is not None:
-        if not os.path.isfile(override):
-            raise FileNotFoundError(f'DTWC_CL_PATH="{override}" is not a file')
-        return override
-    _skip = (".pdb", ".ipdb", ".iobj", ".recipe", ".idx", ".obj", ".lib")
-    pattern_groups = (
-        (
-            os.path.join(root, "build", "bin", "dtwc_cl*"),
-            os.path.join(root, "build", "*", "bin", "dtwc_cl*"),
-            os.path.join(root, "build*", "bin", "dtwc_cl*"),
-        ),
-        (os.path.join(root, "bin", "dtwc_cl*"),),
-    )
-    for patterns in pattern_groups:
-        cands = {
-            p
-            for pat in patterns
-            for p in glob.glob(pat)
-            if os.path.isfile(p) and not p.endswith(_skip)
-            and (p.endswith(".exe") or os.path.splitext(p)[1] == "")
-        }
-        if cands:
-            return max(cands, key=os.path.getmtime)
-    return None
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# Remote orchestration (drives _slurm/slurm_remote.sh — NOT laptop-testable)
-# ─────────────────────────────────────────────────────────────────────────
 def slurm_wrapper_path():
     """The SLURM wrapper shipped in this package; ``cluster_generic.slurm`` is beside it."""
     return str(importlib.resources.files("dtwcpp") / "_slurm" / "slurm_remote.sh")
+
+
+def gpu_request(gpu_device=None):
+    """The sbatch arguments that ask SLURM for a GPU of type ``gpu_device``
+    (``None``: any GPU of compute capability 8.0 or newer), from
+    _slurm/gpu_devices.txt, the table slurm_remote.sh reads too. A type below
+    the CUDA floor, or one the table does not name, is a DeviceError."""
+    from dtwcpp import DeviceError
+    text = (importlib.resources.files("dtwcpp") / "_slurm" / "gpu_devices.txt").read_text(
+        encoding="utf-8")
+    rows = {fields[0]: fields[1:] for fields in map(str.split, text.splitlines())
+            if len(fields) >= 3 and not fields[0].startswith("#")}
+    types = ", ".join(t for t, (_, *request) in rows.items() if t != "*" and request != ["-"])
+    name = "*" if gpu_device is None else str(gpu_device).lower()
+    if name not in rows or (name == "*") != (gpu_device is None):
+        raise DeviceError(f"gpu_device={gpu_device!r} is not a GPU type SLURM can be "
+                          f"asked for: {types}.")
+    capability, *request = rows[name]
+    if request == ["-"]:
+        raise DeviceError(f"gpu_device={gpu_device!r} has CUDA compute capability "
+                          f"{capability}, below the 8.0 DTWC++ needs: ask for {types}.")
+    return request
 
 
 class SlurmRemoteRunner:
@@ -405,17 +144,20 @@ class SlurmRemoteRunner:
         self.wrapper = slurm_wrapper_path()
 
     def preflight(self):
+        """Refuse, before anything is written or sent, a device='hpc' this
+        machine cannot drive: no bash, no wrapper, or no .env."""
+        from dtwcpp import DeviceError
         if shutil.which("bash") is None:
-            raise RuntimeError(
-                "bash not found. On Windows install Git Bash (ships ssh + rsync)."
+            raise DeviceError(
+                "device='hpc' needs bash: on Windows install Git Bash (ships ssh + rsync)."
             )
         if not os.path.isfile(self.wrapper):
-            raise RuntimeError(
+            raise DeviceError(
                 f"SLURM wrapper not found: {self.wrapper}. The dtwcpp install is "
                 "incomplete; reinstall the package."
             )
         if not os.path.isfile(os.path.join(self.repo_root, ".env")):
-            raise RuntimeError(
+            raise DeviceError(
                 f"Missing .env in {self.repo_root} (the working directory, or "
                 "DTWC_REPO_ROOT). Create it with SLURM_USER, SLURM_HOST and "
                 "SLURM_REMOTE_BASE; scripts/slurm/env.example in a source "
@@ -430,47 +172,23 @@ class SlurmRemoteRunner:
                               env={**os.environ, "DTWC_REPO_ROOT": self.repo_root},
                               timeout=timeout)
 
-    def submit_cluster(self, input_tsv, k, *, method="pam", device="cpu",
-                       band=-1, skip_cols=0, name="dtwc_job", upload=True,
-                       n_init=1, seed=None, max_iter=100, variant="standard",
-                       wdtw_g=0.05, adtw_penalty=1.0, msm_c=1.0,
-                       twe_nu=0.001, twe_lambda=1.0, mv_mode="dependent",
-                       missing_strategy="error", metric="l1"):
-        envelope = _validate_submission_envelope(
-            input_tsv=input_tsv, n_clusters=k, method=method, band=band,
-            skip_cols=skip_cols, name=name, upload=upload,
-        )
-        if envelope["input_tsv"] is None:
-            raise TypeError("input_tsv must be a string or path-like value")
-        n_init, seed = _validate_restart_schedule(n_init, seed)
-        config = _validate_remote_configuration(
-            device=device, max_iter=max_iter, variant=variant, wdtw_g=wdtw_g,
-            adtw_penalty=adtw_penalty, msm_c=msm_c, twe_nu=twe_nu,
-            twe_lambda=twe_lambda, mv_mode=mv_mode,
-            missing_strategy=missing_strategy, metric=metric,
-        )
-        res = self._run("submit-cluster", envelope["input_tsv"],
-                        str(envelope["n_clusters"]), envelope["method"],
-                        config["device"],
-                        str(envelope["band"]), envelope["name"],
-                        str(envelope["skip_cols"]),
-                        "1" if envelope["upload"] else "0",
-                        str(n_init), "" if seed is None else str(seed),
-                        str(config["max_iter"]), config["variant"],
-                        str(config["wdtw_g"]), str(config["adtw_penalty"]),
-                        str(config["msm_c"]), str(config["twe_nu"]),
-                        str(config["twe_lambda"]), config["mv_mode"],
-                        config["missing_strategy"], config["metric"])
+    def submit_job(self, rundir, *, device="cpu", gpu_device=None):
+        """Submit the run directory ``rundir`` (relative to the project
+        directory) and return its SLURM job ID. ``device="gpu"`` asks for a GPU:
+        one of type ``gpu_device``, else any the CUDA floor allows."""
+        request = [] if device != "gpu" else (
+            ["--gpu-device", gpu_device] if gpu_device else ["--gpu"])
+        res = self._run("submit-job", rundir, *request)
         out = (res.stdout or "") + (res.stderr or "")
         if res.returncode != 0:
             raise RuntimeError(
-                f"submit-cluster failed (exit {res.returncode}).\n"
+                f"submit-job failed (exit {res.returncode}).\n"
                 f"Wrapper output:\n{out or '<empty>'}"
             )
         m = re.search(r"Job ID:\s*(\d+)", out)
         if not m:
             raise RuntimeError(
-                f"submit-cluster returned no Job ID (exit {res.returncode}). Check that "
+                f"submit-job returned no Job ID (exit {res.returncode}). Check that "
                 f".env has the right SLURM_USER/SLURM_HOST, that ssh to the cluster works, "
                 f"and that a build exists there ('slurm_remote.sh build').\n"
                 f"Wrapper output:\n{out or '<empty>'}"
@@ -521,103 +239,106 @@ class SlurmRemoteRunner:
             time.sleep(sleep_seconds)
 
     def download_labels(self, name, job_id):
-        if not isinstance(name, str) or _SAFE_JOB_NAME.fullmatch(name) is None:
-            raise ValueError("name is not a valid HPC job name")
+        """Download job ``job_id``'s labels; return the local ``<name>_labels.csv``."""
         job_id = str(job_id)
         if re.fullmatch(r"[1-9][0-9]*", job_id) is None:
             raise ValueError("job_id must be a positive decimal Slurm job ID")
-        result = self._run("download-cluster", name, job_id)
+        result = self._run("download-cluster", job_id)
         if result.returncode != 0:
             out = (result.stdout or "") + (result.stderr or "")
             raise RuntimeError(
                 f"download-cluster failed (exit {result.returncode}) for job "
                 f"{job_id}.\nWrapper output:\n{out or '<empty>'}"
             )
-        exact = os.path.join(
-            self.repo_root, "results", "slurm", f"{name}_{job_id}",
-            f"{name}_labels.csv",
-        )
-        if not os.path.isfile(exact):
+        labels = os.path.join(self.repo_root, "results", "slurm",
+                              f"cluster_{job_id}", f"{name}_labels.csv")
+        if not os.path.isfile(labels):
             raise FileNotFoundError(
-                f"exact labels for job {job_id} not found after download: {exact}"
+                f"job {job_id} wrote no labels ({labels} is missing after the "
+                f"download): dtwc_cl's messages are in logs/cluster_{job_id}.err "
+                "under SLURM_REMOTE_BASE/src on the cluster, which "
+                "'slurm_remote.sh download' fetches."
             )
-        return exact
+        return labels
 
 
-def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
-                   skip_cols=0, name="dtwc_job", poll_seconds=20,
-                   timeout_seconds=86400, repo_root=None, runner=None,
-                   n_init=1, seed=None, max_iter=100, variant="standard",
-                   wdtw_g=0.05, adtw_penalty=1.0, msm_c=1.0,
-                   twe_nu=0.001, twe_lambda=1.0, mv_mode="dependent",
-                   missing_strategy="error", metric="l1"):
-    """Offload clustering to a SLURM cluster and return labels in input order.
+def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
+                   poll_seconds=20, timeout_seconds=86400, repo_root=None,
+                   runner=None):
+    """Cluster ``data`` by ``config`` on a SLURM cluster; return the labels in input order.
 
-    ``source`` is either an in-memory list of series (serialized + uploaded) or a
-    path string interpreted **on the cluster** (pre-staged data — never read or
-    uploaded locally, so it scales to data too large to hold on a laptop).
+    ``data`` is a :class:`dtwcpp.Dataset`. A path names a file on the cluster,
+    read there and never here, so it is absolute; series in memory travel as
+    input.tsv. job.toml holds the input, ``n-clusters``, ``name``, ``device``
+    (``gpu`` for ``"hpc:gpu"``), a path's ``skip-rows``, ``skip-cols`` and
+    ``delimiter`` when set, and the Config keys named in ``keys``, the ones the
+    caller gave: a key not given is not written, so the cluster's dtwc_cl
+    applies its own default. An ``"hpc:gpu"`` run asks SLURM for a GPU of type
+    ``gpu_device`` (:func:`gpu_request`) and runs the build made for it.
 
-    ``n_init`` and ``seed`` are carried unchanged to the remote CLI. When seed is
-    omitted, the remote CLI's own default supplies the first restart seed.
-
-    Requires a configured ``.env`` in the project directory (``repo_root``, else
-    ``$DTWC_REPO_ROOT``, else the working directory) and ssh + rsync (Git Bash on
-    Windows); the wrapper ships inside this package. The build must already
-    exist on the cluster — once, from a source checkout,
-    ``bash scripts/slurm/slurm_remote.sh upload`` then ``build htc-cpu``.
-
-    NOTE: the remote submission cannot be verified on a dev laptop; run on ARC.
+    The project directory (``repo_root``, else ``$DTWC_REPO_ROOT``, else the
+    working directory) holds ``.env`` and receives ``results/``. The cluster
+    needs a build, made once from a source checkout with
+    ``bash scripts/slurm/slurm_remote.sh upload`` and then ``build``.
     """
-    source_is_path = isinstance(source, (str, os.PathLike))
-    envelope = _validate_submission_envelope(
-        input_tsv=source if source_is_path else None,
-        n_clusters=n_clusters, method=method, band=band,
-        skip_cols=skip_cols, name=name, upload=not source_is_path,
-    )
-    n_init, seed = _validate_restart_schedule(n_init, seed)
-    config = _validate_remote_configuration(
-        device=device, max_iter=max_iter, variant=variant, wdtw_g=wdtw_g,
-        adtw_penalty=adtw_penalty, msm_c=msm_c, twe_nu=twe_nu,
-        twe_lambda=twe_lambda, mv_mode=mv_mode,
-        missing_strategy=missing_strategy, metric=metric,
-    )
+    from dtwcpp import InvalidInput
+    gpu = device.strip().lower() == "hpc:gpu"
+    if gpu_device is not None:
+        gpu_device = str(gpu_device).lower()
+    if gpu:
+        gpu_request(gpu_device)  # an unknown or too old type: refused here
     poll_seconds, timeout_seconds = _normalize_wait_controls(
         poll_seconds, timeout_seconds,
     )
-    repo_root = repo_root or os.environ.get("DTWC_REPO_ROOT", os.getcwd())
-
-    if source_is_path:
-        # Cluster-side path: pass through, no local read, no upload.
-        input_arg, upload, n = envelope["input_tsv"], False, None
+    name = config.name or data.name
+    # The run's files on the cluster are <name>_labels.csv, ... in its results
+    # directory, downloaded by that file name: a name must stay a file name.
+    if name in ("", ".", "..") or "/" in name or "\\" in name:
+        raise InvalidInput(
+            f"cluster: device='hpc' names the run's files <name>_labels.csv, ..., so "
+            f"name must be a file name, without '/' or '\\'; got {name!r}.")
+    series = None
+    if data.is_path:
+        source = os.fspath(data.source).replace("\\", "/")
+        if not source.startswith("/"):
+            raise InvalidInput(
+                f"cluster: device='hpc' reads '{source}' on the cluster; give its "
+                "absolute path there.")
+        items = [("input", source)]
     else:
-        # In-memory series: serialize to a repo-relative TSV and upload it.
-        # (Repo-relative so Git Bash rsync doesn't read 'C:/...' as 'host:path'.)
-        run_root = os.path.join(repo_root, "results", "hpc", envelope["name"])
-        os.makedirs(run_root, exist_ok=True)
-        rundir = tempfile.mkdtemp(prefix="submission-", dir=run_root)
-        n = len(source)
-        tsv = write_series_tsv(source, os.path.join(rundir, "input.tsv"))
-        input_arg, upload = os.path.relpath(tsv, repo_root).replace(os.sep, "/"), True
+        series = data.as_series()  # load() has dropped skip_rows and skip_cols
+        # Problem::cluster()'s guards, which the cluster would meet only after the queue.
+        if not series:
+            raise InvalidInput("cluster: dataset is empty.")
+        if config.n_clusters > len(series):
+            raise InvalidInput("cluster: k must not exceed the number of series.")
+        items = [("input", "input.tsv")]
+    items += [("n-clusters", config.n_clusters), ("name", name),
+              ("device", "gpu" if gpu else "cpu")]
+    if data.is_path:
+        items += [(key, value) for key, value in (
+            ("skip-rows", data.skip_rows), ("skip-cols", data.skip_cols),
+            ("delimiter", data.delimiter)) if value]
+    items += [(key.replace("_", "-"), getattr(config, key))
+              for key in keys if key != "name"]
 
+    repo_root = repo_root or os.environ.get("DTWC_REPO_ROOT", os.getcwd())
     runner = runner or SlurmRemoteRunner(repo_root)
     runner.preflight()
-    job_id = runner.submit_cluster(input_arg, envelope["n_clusters"],
-                                   method=envelope["method"],
-                                   device=config["device"],
-                                   band=envelope["band"],
-                                   skip_cols=envelope["skip_cols"],
-                                   name=envelope["name"],
-                                   upload=upload, n_init=n_init, seed=seed,
-                                   max_iter=config["max_iter"],
-                                   variant=config["variant"],
-                                   wdtw_g=config["wdtw_g"],
-                                   adtw_penalty=config["adtw_penalty"],
-                                   msm_c=config["msm_c"],
-                                   twe_nu=config["twe_nu"],
-                                   twe_lambda=config["twe_lambda"],
-                                   mv_mode=config["mv_mode"],
-                                   missing_strategy=config["missing_strategy"],
-                                   metric=config["metric"])
+    runs = os.path.join(repo_root, "results", "hpc")
+    os.makedirs(runs, exist_ok=True)
+    rundir = tempfile.mkdtemp(prefix="job.", dir=runs)  # one per run: no shared path
+    if series is not None:
+        write_series_tsv(series, os.path.join(rundir, "input.tsv"))
+    with open(os.path.join(rundir, "job.toml"), "w", encoding="utf-8",
+              newline="\n") as f:
+        f.writelines(f"{key} = {_toml_value(value)}\n" for key, value in items)
+
+    # Relative to the project directory, so Git Bash's rsync cannot read
+    # 'C:/...' as host:path.
+    job_id = runner.submit_job(
+        os.path.relpath(rundir, repo_root).replace(os.sep, "/"),
+        device="gpu" if gpu else "cpu", gpu_device=gpu_device)
     runner.wait(job_id, poll_seconds=poll_seconds, timeout_seconds=timeout_seconds)
-    labels_csv = runner.download_labels(envelope["name"], job_id)
-    return parse_labels_csv(labels_csv, n)
+    labels = runner.download_labels(name, job_id)
+    return parse_labels_csv(labels, None if series is None else len(series))

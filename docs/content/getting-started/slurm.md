@@ -38,7 +38,6 @@ cp scripts/slurm/env.example .env
 |----------|-------------|---------|
 | `SLURM_PARTITION` | Single Slurm-name token | `short` |
 | `SLURM_CLUSTER` | Single target-cluster token | (empty) |
-| `SLURM_GPU_GRES` | `gpu:<count>` or `gpu:<ASCII-type>:<count>` | `gpu:1` |
 | `SLURM_EMAIL` | Conventional ASCII notification address | (empty) |
 
 The wrapper validates every consumed value before its first SSH or transfer
@@ -58,8 +57,8 @@ bash scripts/slurm/slurm_remote.sh upload
 # Build on an interactive node (batch job)
 bash scripts/slurm/slurm_remote.sh build --profile htc-cpu
 
-# Submit CPU test job
-bash scripts/slurm/slurm_remote.sh submit-cpu
+# Submit the CPU smoke test (modes: cpu, gpu, checkpoint, parquet)
+bash scripts/slurm/slurm_remote.sh submit-smoke cpu
 
 # Check job status
 bash scripts/slurm/slurm_remote.sh status
@@ -70,7 +69,7 @@ bash scripts/slurm/slurm_remote.sh download
 # Verify results against known answers
 uv run benchmarks/verify_results.py \
     --true data/benchmark/UCRArchive_2018/Coffee/Coffee_TRAIN.tsv \
-    --predicted results/coffee_k2/coffee_labels.csv -k 2
+    --predicted results/slurm/smoke_cpu_JOBID/coffee_k2/coffee_labels.csv -k 2
 ```
 
 ## From Python: `device="hpc"`
@@ -79,11 +78,35 @@ uv run benchmarks/verify_results.py \
 clustering job through the same wrapper, which ships inside the `dtwcpp` package, so an
 installed wheel needs no source checkout. Put `.env` in the directory you run Python from,
 or set `DTWC_REPO_ROOT` to the directory that holds it; the labels are downloaded to
-`results/slurm/` there. `DTWC_REPO_ROOT` steers only this Python route:
+`results/slurm/cluster_<job id>/` there. `DTWC_REPO_ROOT` steers only this Python route:
 `bash scripts/slurm/slurm_remote.sh` always reads the `.env` of, and uploads, its own
-checkout. The cluster still needs a `dtwc_cl` build, made once from a source checkout with
-`upload` and `build` as above — from the same release as the installed package, because
-the job script comes from the package and passes that release's flags.
+checkout.
+
+The run travels as one file, `job.toml`: the input, `n-clusters`, `name`, `device`, and every
+key you passed (`DTWClustering` passes all its parameters), in the format `dtwc_cl --config`
+reads; a key you did not pass is not written, so the cluster's `dtwc_cl` applies its own default. Series in memory travel beside
+it as `input.tsv`; a path names a file on the cluster, read there and never on your machine,
+so give its absolute path. `slurm_remote.sh submit-job <dir>` uploads the directory and the
+job runs `dtwc_cl --config job.toml --output results/cluster_<job id>`. The cluster needs a
+`dtwc_cl` build, made once from a source checkout with `upload` and `build` as above: CPU
+runs use `build-htc-cpu`, `device="hpc:gpu"` runs `build-htc-gpu`. A key that build does not
+know, say one a newer `dtwcpp` writes, fails the job and names the key in
+`logs/cluster_<job id>.err` under `SLURM_REMOTE_BASE/src`.
+
+`device="hpc:gpu"` asks SLURM for any GPU of compute capability 8.0 or newer.
+`gpu_device=` names one, and the run uses the build made for it:
+
+```python
+res = dtwcpp.cluster("/data/project/me/series.tsv", k=8, device="hpc:gpu", gpu_device="a100")
+```
+
+```bash
+bash scripts/slurm/slurm_remote.sh build htc-gpu --gpu-device a100   # once: build-a100
+```
+
+The types are those of `python/dtwcpp/_slurm/gpu_devices.txt` (below); a type below compute
+capability 8.0, or one the table does not name, raises `DeviceError` before anything is sent,
+and `gpu_device` with a device other than `"hpc:gpu"` raises `InvalidInput`.
 
 ## Build Profiles
 
@@ -104,8 +127,12 @@ Run `htc-gpu` or `h100` on a GPU node, where `nvidia-smi` lists a GPU of compute
 and the script builds for that node: `CMAKE_CUDA_ARCHITECTURES=native` and `-march=native`, the most
 specialised binary. Such a build runs only on that node type, so build again for each GPU type you use.
 Anywhere else (a node without a GPU, or one whose GPU is below 8.0) the profile's portable lists above
-apply. `slurm_remote.sh build` submits to the `interactive` partition without a GPU request, so it always
-takes the portable route.
+apply. `slurm_remote.sh build htc-gpu --gpu-device <type>` asks for that GPU as its jobs do, on the
+`.env` partition, so the build runs on such a node and goes into `build-<type>`, the build a
+`gpu_device="<type>"` run uses: that GPU's CUDA architecture, with the profile's portable CPU code,
+since one GPU type sits on nodes of different CPUs (ARC's A100 nodes are Cascade Lake and AMD Rome, its
+H100 nodes Ice Lake and Sapphire Rapids) and a job may land on any of them. Without that flag, `build`
+submits to the `interactive` partition without a GPU request and takes the portable route.
 
 ## Test Datasets
 
@@ -149,11 +176,21 @@ GPUs are requested with an `#SBATCH --gres` directive. ARC's [job scheduling gui
 ```
 
 It documents the types P100, V100, RTX (Titan RTX), RTX8000 and A100 and the constraints `gpu_sku:`, `gpu_gen:`,
-`gpu_cc:`, `gpu_mem:` and `nvlink:`. It names no type for the RTX A6000, H100 and L40S nodes, and the
-[systems page](https://arc-user-guide.readthedocs.io/en/latest/arc-systems.html#gpu-resources) that lists the hardware does not say
-how to request a node type. `slurm_remote.sh submit-benchmark-gpu` passes `gpu:l40s:1` and `gpu:h100:1` for those two;
-ask ARC support for the others, or read `Gres` and `AvailableFeatures` from `scontrol show node <node>` for a node that
-the systems page lists.
+`gpu_cc:`, `gpu_mem:` and `nvlink:`, and lists no type, SKU or generation for the RTX A6000, H100 and L40S nodes.
+DTWC++ keeps the requests in one table, `python/dtwcpp/_slurm/gpu_devices.txt`, which `gpu_device=` and
+`slurm_remote.sh` (`submit-job`, `build --gpu-device`, `submit-benchmark-gpu`, `submit-smoke gpu`) read:
+
+| `gpu_device` | Compute capability | sbatch request |
+|---|---|---|
+| (none) | 8.0 or newer | `sbatch --gres=gpu:1 --constraint='gpu_cc:8.0\|gpu_cc:8.6\|gpu_cc:8.9\|gpu_cc:9.0'` |
+| `a100` | 8.0 | `sbatch --gres=gpu:a100:1` |
+| `a6000` | 8.6 | `sbatch --gres=gpu:1 --constraint=gpu_cc:8.6` |
+| `l40s` | 8.9 | `sbatch --gres=gpu:1 --constraint=gpu_cc:8.9` |
+| `h100` | 9.0 | `sbatch --gres=gpu:1 --constraint=gpu_cc:9.0` |
+
+The compute capabilities are the [systems page](https://arc-user-guide.readthedocs.io/en/latest/arc-systems.html#gpu-resources)'s.
+That ARC tags those nodes with exactly these `gpu_cc:` values is inferred from its guide: check with
+`scontrol show node <node>` (`AvailableFeatures`) and correct the table if they differ.
 
 GPUs on the htc cluster, from the systems page: P100, V100, RTX8000, Titan RTX, A100, RTX A6000, H100 and L40S, plus one
 MI210 node and one GH200 (Grace Hopper) node. Co-investment GPU nodes are limited to the **short** partition (12-hour maximum).
@@ -162,9 +199,10 @@ MI210 node and one GH200 (Grace Hopper) node. Co-investment GPU nodes are limite
 
 DTWC++ needs CUDA compute capability 8.0 (Ampere) or newer. On ARC that is the A100 (8.0), RTX A6000 (8.6),
 L40S (8.9) and H100 (9.0). The P100 (6.0), V100 (7.0), RTX8000 and Titan RTX (7.5) are refused with a
-`DeviceError` when the GPU is selected; nothing falls back to the CPU. A request for any GPU (`gpu:1`) may be
-given one of the refused types, so name an A100, or an Ampere-or-newer node type, when you need the GPU. The MI210 is not a CUDA device,
-and the GH200 node is AArch64 (the `grace` profile builds without CUDA).
+`DeviceError` when the GPU is selected; nothing falls back to the CPU. `gpu_device=` refuses them before
+submitting, and the requests of the table above never land on them; a job script of your own that asks for
+`#SBATCH --gres=gpu:1` alone may be given one. The MI210 is not a CUDA device, and the GH200 node is AArch64 (the
+`grace` profile builds without CUDA).
 
 Co-investment GPU nodes are limited to the **short** partition (12-hour maximum).
 

@@ -4,7 +4,6 @@
 @author Volkan Kumtepeli
 """
 import subprocess
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -76,39 +75,6 @@ class TestLoad:
         """As C++ dtwc::load: refused where the handle is made, before any read."""
         with pytest.raises(error, match="skip_rows"):
             dtwcpp.load([[0.0], [1.0]], skip_rows=bad)
-
-    def test_skip_rows_is_not_silently_dropped_on_hpc(self):
-        ds = dtwcpp.Dataset("/remote/staged.tsv", skip_rows=2)
-        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows"):
-            dtwcpp.cluster(ds, k=1, device="hpc")
-
-    def test_delimiter_is_not_silently_dropped_on_hpc(self, monkeypatch):
-        """FX-17: the HPC transport has no delimiter slot, so the remote reader
-        took the delimiter from the extension; refuse before submitting."""
-        from dtwcpp import _hpc
-        submitted = []
-        monkeypatch.setattr(_hpc, "cluster_on_hpc",
-                            lambda *args, **kwargs: submitted.append(args) or [0])
-        ds = dtwcpp.Dataset("/remote/staged.txt", delimiter=";")
-        with pytest.raises(dtwcpp.InvalidInput, match="delimiter"):
-            dtwcpp.cluster(ds, k=1, device="hpc")
-        assert submitted == []
-
-    def test_in_memory_skip_cols_is_applied_once_on_hpc(self, monkeypatch):
-        """as_series() already dropped the columns, so the remote CLI must not
-        drop them again from the staged file."""
-        from dtwcpp import _hpc
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured.update(source=source, **kwargs)
-            return np.zeros(len(source), dtype=int)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        ds = dtwcpp.load([[9.0, 1.0, 2.0], [9.0, 3.0, 4.0]], skip_cols=1)
-        dtwcpp.cluster(ds, k=2, device="hpc")
-        assert captured["source"] == [[1.0, 2.0], [3.0, 4.0]]
-        assert captured["skip_cols"] == 0
 
     @pytest.mark.parametrize("content", [None, "1,2,x\n4,5,6\n"])
     def test_reader_errors_name_the_load_and_keep_their_type(self, tmp_path,
@@ -188,58 +154,6 @@ class TestLoad:
 class TestClusterKeywords:
     """The keywords become a C++ Config: C++ reads and checks each name before
     the series are read or a job is submitted."""
-
-    _INT_MAX = (1 << 31) - 1
-
-    def test_valid_signed_int_boundaries_are_normalized_for_hpc(self, monkeypatch):
-        """The largest C++ int is valid and crosses HPC as a native int."""
-        from dtwcpp import _hpc
-
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured.update(source=source, k=k, **kwargs)
-            return np.array([0], dtype=int)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        source = dtwcpp.Dataset(
-            "/remote/already_staged.tsv", skip_cols=np.int64(self._INT_MAX),
-        )
-        result = dtwcpp.cluster(
-            source,
-            k=np.int64(self._INT_MAX),
-            max_iter=np.int64(self._INT_MAX),
-            device="hpc",
-        )
-
-        assert result.device == "hpc"
-        assert captured["source"] == "/remote/already_staged.tsv"
-        assert captured["k"] == self._INT_MAX
-        assert captured["skip_cols"] == self._INT_MAX
-        assert captured["max_iter"] == self._INT_MAX
-        assert type(captured["k"]) is int
-        assert type(captured["skip_cols"]) is int
-        assert type(captured["max_iter"]) is int
-
-    def test_counts_past_int32_cross_to_hpc_as_native_ints(self, monkeypatch):
-        """k and skip_cols are index_t in C++ and in dtwc_cl; only max_iter is an int."""
-        from dtwcpp import _hpc
-
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured.update(source=source, k=k, **kwargs)
-            return np.array([0], dtype=np.int64)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        source = dtwcpp.Dataset(
-            "/remote/already_staged.tsv", skip_cols=np.int64(1 << 40),
-        )
-        dtwcpp.cluster(source, k=np.int64(1 << 40), device="hpc")
-
-        assert captured["k"] == captured["skip_cols"] == 1 << 40
-        assert type(captured["k"]) is int
-        assert type(captured["skip_cols"]) is int
 
     def test_valid_minimum_numpy_integers_run_locally(self):
         source = dtwcpp.Dataset(
@@ -672,11 +586,6 @@ def test_what_is_not_series_is_refused_everywhere(entry, data, message):
 # ---------------------------------------------------------------------------
 # §1.4 series names — Tier-1 output carries the loader's names, as C++ does
 # ---------------------------------------------------------------------------
-def _dtwc_cl_binary():
-    from dtwcpp import _hpc
-    return _hpc.find_dtwc_binary(str(Path(__file__).resolve().parents[2]))
-
-
 class TestSeriesNames:
     """``Problem::series_name(i)`` comes from the loader, not from ``range(N)``."""
 
@@ -717,16 +626,14 @@ class TestSeriesNames:
         lines = (tmp_path / "named_labels.csv").read_text().splitlines()
         assert [line.split(",")[0] for line in lines[1:]] == ["1", "2", "3", "4"]
 
-    def test_save_is_byte_identical_to_the_cli(self, tmp_path):
+    def test_save_is_byte_identical_to_the_cli(self, tmp_path, dtwc_cl):
         """A CLI run and a Python run on one file must write the same bytes."""
-        binary = _dtwc_cl_binary()
-        assert binary is not None, "no dtwc_cl binary found; build one first"
         csv = tmp_path / "parity.csv"
         np.savetxt(csv, _two_groups(), delimiter=",")
         cli_out = tmp_path / "cli"
         py_out = tmp_path / "py"
         run = subprocess.run(
-            [binary, "-i", str(csv), "-o", str(cli_out), "--name", "parity",
+            [dtwc_cl, "-i", str(csv), "-o", str(cli_out), "--name", "parity",
              "-k", "2", "-m", "pam"],
             capture_output=True, text=True)
         assert run.returncode == 0, run.stderr
@@ -757,20 +664,18 @@ class TestNonAsciiSeriesNames:
         assert "caf\u00e9" in names
 
     def test_save_is_byte_identical_to_the_cli_for_a_non_ascii_folder(
-            self, tmp_path):
+            self, tmp_path, dtwc_cl):
         """The four CSVs must be cmp-identical to dtwc_cl on a non-ASCII name.
 
         C++ emits the loader name as UTF-8 bytes through a text-mode ofstream;
         Result.save must therefore write UTF-8 with the platform line ending,
         not the locale encoding.
         """
-        binary = _dtwc_cl_binary()
-        assert binary is not None, "no dtwc_cl binary found; build one first"
         folder = self._folder(tmp_path)
         cli_out = tmp_path / "cli"
         py_out = tmp_path / "py"
         run = subprocess.run(
-            [binary, "-i", str(folder), "-o", str(cli_out), "--name", "uni",
+            [dtwc_cl, "-i", str(folder), "-o", str(cli_out), "--name", "uni",
              "-k", "2", "-m", "pam"],
             capture_output=True, text=True)
         assert run.returncode == 0, run.stderr
@@ -799,40 +704,6 @@ class TestPlot:
                             k=2, n_series=4)
         assert res.plot(show=False) is None
         assert "no local distance matrix" in capsys.readouterr().out
-
-
-# ---------------------------------------------------------------------------
-# cluster() — hpc path must NOT read data locally
-# ---------------------------------------------------------------------------
-class TestClusterHpc:
-    def test_path_source_not_read_locally(self, monkeypatch):
-        from dtwcpp import _hpc
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured["source"] = source
-            captured["k"] = k
-            return np.array([0, 0, 1, 1])
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        ds = dtwcpp.load("missing_on_laptop.tsv")            # never read locally
-        res = dtwcpp.cluster(ds, k=2, device="hpc")
-        assert captured["source"] == "missing_on_laptop.tsv"  # path passed through
-        assert res.device == "hpc"
-        assert res.distance_matrix is None
-
-    def test_array_source_passed_as_series(self, monkeypatch):
-        from dtwcpp import _hpc
-        captured = {}
-
-        def fake(source, k, **kwargs):
-            captured["source"] = source
-            return np.zeros(len(source), dtype=int)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        dtwcpp.device("hpc")
-        dtwcpp.cluster([[1.0, 2.0], [3.0, 4.0]], k=2)
-        assert captured["source"] == [[1.0, 2.0], [3.0, 4.0]]   # materialized series
 
 
 # ---------------------------------------------------------------------------
@@ -893,8 +764,8 @@ class TestClusterMethodDispatch:
         from dtwcpp import _hpc
         captured = {}
 
-        def fake(source, k, **kwargs):
-            captured["method"] = kwargs.get("method")
+        def fake(data, config, keys, **kwargs):
+            captured["method"] = config.method
             return np.zeros(4, dtype=int)
 
         monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
@@ -910,8 +781,8 @@ class TestClusterMethodDispatch:
         from dtwcpp import _hpc
         captured = {}
 
-        def fake(source, k, **kwargs):
-            captured["method"] = kwargs.get("method")
+        def fake(data, config, keys, **kwargs):
+            captured["method"] = config.method
             return np.zeros(4, dtype=int)
 
         monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)

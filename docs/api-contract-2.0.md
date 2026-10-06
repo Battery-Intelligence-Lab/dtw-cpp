@@ -43,8 +43,8 @@ The following post-freeze scope decisions are approved:
    `dtwc::run` (`dtwc_cl` and Tier-1 `cluster()`) raises the documented
    `DeviceError`, without reading `.env`: a run computes where it starts, and
    the C++ API has no authenticated remote-transport implementation. Python
-   (`dtwcpp.cluster(..., device="hpc")`) and `slurm_remote.sh submit-cluster`
-   remain the tested SLURM transport. A local CPU fallback would violate the no-silent-fallback
+   (`dtwcpp.cluster(..., device="hpc")`) and `slurm_remote.sh submit-job`, which runs a
+   `job.toml` with `dtwc_cl --config`, remain the tested SLURM transport. A local CPU fallback would violate the no-silent-fallback
    rule; enabling C++ submission is owned by the Oxford ARC / 2.1 HPC gate.
 3. The 2026-07-12 F7 decision corrects two CLI-specific invariants. First,
    `--ram-limit` is the Parquet series decode/materialisation cap; it does not
@@ -138,7 +138,7 @@ SLURM wrapper, but its current HPC errors violate the frozen taxonomy/messages
 | signature | `dtwc::Dataset dtwc::load(source, index_t skip_cols=0, index_t skip_rows=0, char delimiter=0, std::string_view name="")` | `load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None) -> Dataset` | `ds = dtwc.load(source, 'SkipCols',0, 'SkipRows',0, 'Delimiter','', 'Name','')` |
 | `source` | `std::filesystem::path` **or** `std::vector<std::vector<double>>` (overloads) | path `str`/`os.PathLike` **or** array-like; a sequence of 1-D sequences may be RAGGED, matching the C++ `series_type` overload (a rectangular array keeps the NumPy fast path) | char path, N×L numeric matrix, **or** a cell array of numeric vectors (RAGGED, the same `series_type` overload) |
 | `skip_cols` | leading columns to drop (id columns), dropped as FIELDS before numeric parsing for a path and erased from each row in memory | same: `dtwcpp.io` reads a path by `dtwc_cl`'s rules (text id columns and variable-length rows included) and erases leading in-memory columns, raising `InvalidInput` when `skip_cols` exceeds a series length | same |
-| `skip_rows` | leading rows to drop, `>= 0`. Path source: header **lines** of the file (the `dtwc_cl --skip-rows` / `DataLoader::start_row` meaning). Directory source: the same count is applied **per file**, since `load_folder` forwards `start_row` to every `readFile` and one file is one series. In-memory source: leading **series**, since one memory row is one file line. Negative → `InvalidInput` | same; negative is `InvalidInput` and non-integer `TypeError`, raised by `load()` as C++ does; `device="hpc"` rejects a non-zero value (the SLURM wrapper has no `skip_rows` slot) | same; a negative or fractional value is `dtwc:invalidArgument`, raised by `dtwc.load` as C++ does |
+| `skip_rows` | leading rows to drop, `>= 0`. Path source: header **lines** of the file (the `dtwc_cl --skip-rows` / `DataLoader::start_row` meaning). Directory source: the same count is applied **per file**, since `load_folder` forwards `start_row` to every `readFile` and one file is one series. In-memory source: leading **series**, since one memory row is one file line. Negative → `InvalidInput` | same; negative is `InvalidInput` and non-integer `TypeError`, raised by `load()` as C++ does; on `device="hpc"` a path's value travels in the run's `job.toml` (`skip-rows`) | same; a negative or fractional value is `dtwc:invalidArgument`, raised by `dtwc.load` as C++ does |
 | `delimiter` | `0` = auto from extension (`.tsv/.txt`→`\t` else `,`) | `None` = auto | `''` = auto |
 | `name` | `""` = derive from filename stem | `None` = filename stem, else `"dataset"` | `''` = the same C++ rule (`detail::default_name`) |
 | result type | `dtwc::Dataset` (lazy; materialises only for local backends) | `dtwc.Dataset` (`_api.Dataset`) | `dtwc.Dataset` handle |
@@ -726,10 +726,11 @@ bindings").
   silent, beside `n_clusters()`.
 - **MATLAB.** No alias survives: MATLAB was not in v1.0.0, so `Problem` has the
   snake_case methods only. The 1-based boundary conversion is untouched.
-- **CLI.** Old flag spellings are accepted with a deprecation warning; the SLURM
-  callers (`cluster_generic.slurm`, `_hpc.build_dtwc_command`) are updated in the
-  same change that renames a flag. The CLI flag set is a de-facto API (§7 item
-  3).
+- **CLI.** Old flag spellings are accepted with a deprecation warning. The SLURM
+  route writes the Config's keys into a `job.toml` (`_hpc.cluster_on_hpc`) for the
+  cluster's `dtwc_cl --config`: the old spellings keep an older wheel's file
+  readable, and a key an older build does not know fails the job, naming it. The CLI
+  flag set is a de-facto API (§7 item 3).
 - **Nothing silently disappears.** A removed binding name that a user calls must
   raise `AttributeError`/`Unknown command` — never resolve to a different
   behaviour.
@@ -836,52 +837,39 @@ front end. The user selects `cpu` explicitly if that is what they want.
 
 ### 6.2 `device="hpc"` — `.env` credential contract
 
-`hpc` reads SLURM credentials from a `.env` file at the repository root. Required
-keys (the names the live SLURM path already uses,
-`scripts/slurm/env.example`): **`SLURM_HOST`**, **`SLURM_USER`**,
-**`SLURM_REMOTE_BASE`**. The frozen contract requires each failure mode to
-produce the specific actionable `DeviceError` below, never a local fallback.
-C++/MATLAB follow Env's messages; Python currently raises wrapper-specific
-`RuntimeError` text instead (F24).
+`hpc` reads SLURM credentials from a `.env` file in the project directory
+(`DTWC_REPO_ROOT`, else the working directory). Required keys (the names the live
+SLURM path already uses, `scripts/slurm/env.example`): **`SLURM_HOST`**,
+**`SLURM_USER`**, **`SLURM_REMOTE_BASE`**. Each failure mode is an actionable
+error raised before anything is sent, never a local fallback.
 
-The C++/MATLAB tests assert these three messages verbatim. They are authored
-here as the exact C++ `DeviceError::what()` strings; F24 requires Python to
-reproduce them byte-for-byte.
-The recommended test fixture uses `SLURM_HOST=arc-login.arc.ox.ac.uk`,
-`SLURM_USER=abcd1234`.
+`SlurmRemoteRunner.preflight` (`python/dtwcpp/_hpc.py`) raises `DeviceError` with
+these texts, verbatim; `{dir}` is the project directory and `{wrapper}` the path of
+the packaged `slurm_remote.sh`.
 
-**(1) No `.env` file** — host-independent, fully verbatim:
+**(1) No `.env` file:**
 ```
-[dtwc] device='hpc' requires a .env file at the repository root, but none was found.
-Copy scripts/slurm/env.example to .env and set SLURM_HOST, SLURM_USER, and SLURM_REMOTE_BASE.
-Example .env:
-  SLURM_HOST=arc-login.arc.ox.ac.uk
-  SLURM_USER=abcd1234
-  SLURM_REMOTE_BASE=/data/coml-battery/dtwc-runs
+Missing .env in {dir} (the working directory, or DTWC_REPO_ROOT). Create it with SLURM_USER, SLURM_HOST and SLURM_REMOTE_BASE; scripts/slurm/env.example in a source checkout is a template.
 ```
 
-**(2) `.env` present but a required key is missing** — the `{key}` slot is the
-first missing key of `SLURM_HOST`/`SLURM_USER`/`SLURM_REMOTE_BASE`; the test pins
-the `SLURM_HOST` case, so the fully-substituted verbatim string is:
+**(2) No `bash` on `PATH`:**
 ```
-[dtwc] device='hpc': the .env file is missing required key 'SLURM_HOST'.
-Set it in .env at the repository root. Example .env:
-  SLURM_HOST=arc-login.arc.ox.ac.uk
-  SLURM_USER=abcd1234
-  SLURM_REMOTE_BASE=/data/coml-battery/dtwc-runs
+device='hpc' needs bash: on Windows install Git Bash (ships ssh + rsync).
 ```
 
-**(3) Host authentication failure** — names the host and user it tried; with the
-fixture values the fully-substituted verbatim string is:
+**(3) The install lacks the wrapper:**
 ```
-[dtwc] device='hpc': could not authenticate to SLURM host 'arc-login.arc.ox.ac.uk' as user 'abcd1234'.
-Check that your SSH key is authorized on that host (ssh abcd1234@arc-login.arc.ox.ac.uk must succeed without a password prompt) and that SLURM_HOST and SLURM_USER in .env are correct.
+SLURM wrapper not found: {wrapper}. The dtwcpp install is incomplete; reinstall the package.
 ```
 
-Message-template rule for (2) and (3) (so the implementation and the test agree
-on substitution): `{key}` = the missing key name; `{host}` = value of
-`SLURM_HOST`; `{user}` = value of `SLURM_USER`. Messages (1) and (2)'s example
-block are constant text.
+`slurm_remote.sh` refuses, before it connects, a required key missing from `.env`
+(`ERROR: SLURM_HOST is not set in .env`), a value unsafe to pass to `ssh`, `rsync`
+or `sbatch` (`ERROR: unsafe SLURM_USER in .env: <value>`) and `SLURM_GPU_GRES`, which
+is no longer read (a run names its GPU with `gpu_device=`). An SSH authentication
+failure is `ssh`'s own message. Python raises these as `RuntimeError` carrying the
+wrapper's output (`submit-job failed (exit 1).`), which F24 leaves open. The texts
+this section quoted until 2026-10-06, authored for the removed `dtwc::Env`, were
+raised by no code.
 
 ### 6.3 Lazy load & big-data policy (fixed decision, contract-level)
 
@@ -975,15 +963,15 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
      Parquet FastCLARA, do not create O(N²) state solely for the latter two.
      Streamed list rows retain the eager names `series_0`, `series_1`, and so on.
      The SLURM path machine-parses `<name>_labels.csv` and maps 1-based
-     lexically-sorted rows back to input order (`_hpc.py:284-304`).
+     lexically-sorted rows back to input order (`_hpc.parse_labels_csv`).
    - *Run-time persistence artifact — NOT part of the save() equal-bytes set.*
      `<name>.dtwm` is written when mapped distance storage is selected, or by
      `--checkpoint`, **during a run** for resume (invariant 4), **not** by
      `Result::save(dir)`, and is outside the `save()`↔CLI byte-identity claim.
 3. **CLI flag set + TOML/YAML config keys** (kebab-case, identical in both formats) are a de-facto API:
-   `cluster_generic.slurm` and `_hpc.build_dtwc_command` (`_hpc.py:307-353`)
-   compose `dtwc_cl` command lines. Renames go through the accept-old-name
-   deprecation path (§4) with those two callers updated in the same commit.
+   the SLURM route writes the keys into a `job.toml` (`_hpc.cluster_on_hpc`) for the
+   cluster's `dtwc_cl --config`, where a key it does not know fails the job naming it.
+   Renames go through the accept-old-name deprecation path (§4).
    The keys are `dtwc::Config`'s: `cli::bind` is the one key table, and
    `dtwc_cl --print-config` writes every key back as a file `--config` reads
    (tests/conformance/`config_all_fields.toml`, `config_defaults.toml`).

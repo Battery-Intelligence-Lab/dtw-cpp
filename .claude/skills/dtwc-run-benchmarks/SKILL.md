@@ -77,7 +77,8 @@ Records are **per machine**. Never put two machines in one table and call the ra
      a result** — record it with the same care as a win.
 
 7. **HPC.** `scripts/slurm/slurm_remote.sh submit-benchmark-cpu` and `submit-benchmark-gpu
-   [a100|l40s|h100]` exist, and `python/dtwcpp/_hpc.py` can generate the command line. **Generate
+   [type]` (a type of `python/dtwcpp/_slurm/gpu_devices.txt`) exist, and a run's `job.toml` is
+   `dtwc_cl --config` input (`dtwc_cl ... --print-config` writes one). **Generate
    and hand over — never submit, ssh or poll.** That is Volkan's action. The SLURM jobs write their
    own `benchmark_meta.json`; `benchmarks/aggregate_results.py` merges it with the timings.
 

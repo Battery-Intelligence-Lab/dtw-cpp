@@ -2,6 +2,8 @@
 # Build DTWC++ on Oxford ARC SLURM clusters
 #
 # Usage:   source scripts/slurm/build-arc.sh [profile]
+#          DTWC_BUILD_DIR names the build directory (default build-<profile>);
+#          `slurm_remote.sh build htc-gpu --gpu-device <type>` sets build-<type>.
 # Profiles: arc       — arc cluster (Cascade Lake + Turin), CPU only, AVX-512
 #           htc-cpu   — htc cluster CPU-only, AVX2 portable (covers Broadwell→Turin)
 #           htc-gpu   — htc cluster GPU build, compute capability 8.0+ (A100, RTX A6000, L40S), AVX2 portable
@@ -12,7 +14,9 @@
 # htc-gpu and h100 run on a GPU node build for that node: native CUDA architecture and native CPU
 # tuning, the most specialised binary, which then runs only on that node type. On any other node, or
 # on a GPU below compute capability 8.0 (the floor; the library refuses such a GPU), the profile's
-# portable lists apply.
+# portable lists apply. DTWC_NATIVE_CPU=OFF (slurm_remote.sh build --gpu-device) keeps the CPU code
+# portable: one GPU type sits on nodes of different CPUs (ARC's A100 nodes are Cascade Lake and AMD
+# Rome, its H100 nodes Ice Lake and Sapphire Rapids), and that type's jobs may land on any of them.
 #
 # Prerequisites: module load CMake/3.27.6  (or any >= 3.26)
 #                module load GCC/13.2.0    (or any C++20-capable GCC/Clang)
@@ -22,7 +26,7 @@
 set -euo pipefail
 
 PROFILE="${1:-arc}"
-BUILD_DIR="build-${PROFILE}"
+BUILD_DIR="${DTWC_BUILD_DIR:-build-${PROFILE}}"
 NPROC=$(nproc)
 
 # ── Common flags ────────────────────────────────────────────────────────────
@@ -129,9 +133,14 @@ gpu_node_supported() {
 }
 
 if [[ "${PROFILE}" == htc-gpu || "${PROFILE}" == h100 ]] && gpu_node_supported; then
-    echo "GPU node: native CUDA architecture and CPU tuning"
-    # ARCH_LEVEL=native also replaces a v3/v4 cached by an earlier portable build in this directory.
-    CMAKE_ARGS+=(-DCMAKE_CUDA_ARCHITECTURES=native -DDTWC_ARCH_LEVEL=native)
+    if [[ "${DTWC_NATIVE_CPU:-ON}" == OFF ]]; then
+        echo "GPU node: native CUDA architecture, portable CPU"
+        CMAKE_ARGS+=(-DCMAKE_CUDA_ARCHITECTURES=native)
+    else
+        echo "GPU node: native CUDA architecture and CPU tuning"
+        # ARCH_LEVEL=native also replaces a v3/v4 cached by an earlier portable build in this directory.
+        CMAKE_ARGS+=(-DCMAKE_CUDA_ARCHITECTURES=native -DDTWC_ARCH_LEVEL=native)
+    fi
 fi
 
 echo "Build directory: ${BUILD_DIR}"
