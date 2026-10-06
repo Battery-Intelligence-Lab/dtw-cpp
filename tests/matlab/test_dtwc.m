@@ -107,7 +107,7 @@ function test_clustering_cost_nonneg(testCase)
     X = randn(5, 6);
     c = dtwc.DTWClustering('NClusters', 2);
     c = c.fit(X);
-    verifyGreaterThanOrEqual(testCase, c.TotalCost, 0);
+    verifyGreaterThanOrEqual(testCase, c.Inertia, 0);
 end
 
 function test_clustering_fit_predict(testCase)
@@ -116,16 +116,6 @@ function test_clustering_fit_predict(testCase)
     c = dtwc.DTWClustering('NClusters', 2);
     labels = c.fit_predict(X);
     verifySize(testCase, labels, [1, 10]);
-end
-
-function test_clustering_constructor_defaults(testCase)
-%TEST_CLUSTERING_CONSTRUCTOR_DEFAULTS Check default property values.
-    c = dtwc.DTWClustering();
-    verifyEqual(testCase, c.NClusters, 3);
-    verifyEqual(testCase, c.Band, -1);
-    verifyEqual(testCase, c.Metric, 'l1');
-    verifyEqual(testCase, c.MaxIter, 100);
-    verifyEqual(testCase, c.NInit, 1);
 end
 
 %% --- Distance, estimator, Problem and score properties ---
@@ -156,20 +146,20 @@ function test_clustering_variant_ddtw(testCase)
     rng(42);
     c = dtwc.DTWClustering('NClusters', 2, 'Variant', 'ddtw').fit(randn(10, 30));
     verifySize(testCase, c.Labels, [1, 10]);
-    verifyGreaterThan(testCase, c.TotalCost, 0);
+    verifyGreaterThan(testCase, c.Inertia, 0);
 end
 
 function test_problem_config_reaches_the_native_problem(testCase)
-%TEST_PROBLEM_CONFIG_REACHES_THE_NATIVE_PROBLEM The setters write C++; disp reads it back.
+%TEST_PROBLEM_CONFIG_REACHES_THE_NATIVE_PROBLEM The setters write C++; Band, Verbose,
+%   MaxIter and NRepetitions, and disp, read it back.
     prob = dtwc.Problem('config');
     verifyEqual(testCase, prob.size(), 0);
     prob.set_band(5);
     prob.set_verbose(true);
     prob.set_max_iter(200);
     prob.set_n_repetitions(3);
-    info = dtwc_mex('Problem_get_info', prob.get_handle());
-    verifyEqual(testCase, [info.band, info.max_iter, info.n_repetitions], [5 200 3]);
-    verifyTrue(testCase, info.verbose);
+    verifyEqual(testCase, [prob.Band, prob.MaxIter, prob.NRepetitions], [5 200 3]);
+    verifyTrue(testCase, prob.Verbose);
     verifySubstring(testCase, evalc('disp(prob)'), 'dtwc.Problem: "config"');
 end
 

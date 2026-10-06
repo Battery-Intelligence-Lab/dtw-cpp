@@ -2,73 +2,36 @@
 %> @brief High-level clustering entry point (api-contract-2.0.md §1.3).
 %> @author Volkan Kumtepeli
 function res = cluster(data, k, varargin)
-%CLUSTER Cluster time series into k groups; returns a dtwc.Result (contract §1.3).
+%CLUSTER Cluster time series into k groups with DTW; returns a dtwc.Result (contract §1.3).
 %
 %   res = dtwc.cluster(data, k)
-%   res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)
+%   res = dtwc.cluster(data, k, 'Method', 'clara', 'Band', 10, 'MaxIter', 50)
 %
-%   Parameters
-%   ----------
-%   data : dtwc.Dataset, N x L numeric matrix, cell array of numeric vectors
-%          (ragged in-memory source, one series per cell), or file path.
-%   k : number of clusters (positive integer, at most the number of series).
-%   method : 'auto' | 'pam' | 'onebatch' | 'clara' | 'kmedoids' | 'mip' |
-%            'lrcore' | 'tadpole' | 'hierarchical' (alias 'hclust').
-%            Default 'pam'. Unknown method -> 'dtwc:invalidArgument'.
-%   band : Sakoe-Chiba band. -1 = full DTW. Default -1.
-%   device : per-call device override ('' = keep the process device). The
-%            override is local to this call and never mutates dtwc.device().
-%   max_iter : maximum iterations. Default 100.
+%   data : a dtwc.Dataset (dtwc.load), a file or folder path, an N x L numeric
+%          matrix (one series per row) or a cell of numeric vectors (one series
+%          each, any lengths).
+%   k    : the number of clusters.
 %
-%   This function parses arguments and makes ONE gateway call. Method routing,
-%   the k <= N guard, the device override and the source semantics
-%   (skip_cols/skip_rows/delimiter/name) are all decided by C++ dtwc::cluster(),
-%   so MATLAB cannot drift from the reference implementation.
+%   The name-value pairs are the dtwc_cl keys that are not about files, by
+%   their long names in CamelCase, the words of Python's cluster() keywords:
+%   Name, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG,
+%   AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda, MvMode, MissingStrategy,
+%   SampleSize, NSamples, Seed, BatchSize, Linkage, Solver, MipGap, TimeLimit,
+%   NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, Device,
+%   GpuPrecision, Verbose. C++ reads and checks them (dtwc::Config, then
+%   dtwc::apply) before the series are read; a key not given takes dtwc_cl's
+%   default, so Method is 'auto' (PAM on a GPU and for up to 5000 series on
+%   the CPU, CLARA above). Device is dtwc.device() unless given, and a Device
+%   given sets this run's device only. An unknown key or value raises
+%   dtwc:invalidArgument naming the valid ones.
 %
 %   See also dtwc.load, dtwc.Result, dtwc.device
 
-    p = inputParser;
-    addRequired(p, 'data');
-    addRequired(p, 'k', @(v) isnumeric(v) && isscalar(v) && v > 0);
-    addParameter(p, 'method', 'pam', @(v) ischar(v) || isstring(v));
-    addParameter(p, 'band', -1, @(v) isnumeric(v) && isscalar(v));
-    addParameter(p, 'device', '', @(v) ischar(v) || isstring(v));
-    addParameter(p, 'max_iter', 100, @(v) isnumeric(v) && isscalar(v) && v > 0);
-    parse(p, data, k, varargin{:});
-
-    if isa(data, 'dtwc.Dataset')
-        source    = data.Source;
-        skip_cols = data.SkipCols;
-        skip_rows = data.SkipRows;
-        delimiter = data.Delimiter;
-        name      = data.Name;
-    elseif isnumeric(data) || iscell(data) || ischar(data) || isstring(data)
-        source    = data;
-        skip_cols = 0;
-        skip_rows = 0;
-        delimiter = '';
-        name      = '';   % '' lets C++ derive the name (file stem / 'dataset')
-    else
-        error('dtwc:invalidArgument', ...
-              ['cluster: data must be a dtwc.Dataset, a numeric matrix, a cell ' ...
-               'array of numeric vectors, or a file path.']);
-    end
-
-    if ischar(source) || isstring(source)
-        source = char(source);
-    elseif iscell(source)
-        % Ragged in-memory source: one cell per series, matching the C++
-        % load(series_type) overload the Python list route already uses.
-        source = dtwc.Dataset.normalise_cell_series(source, 'cluster');
-    else
-        source = double(source);
-    end
-
-    out = dtwc_mex('tier1_cluster', source, double(k), ...
-                   char(p.Results.method), double(p.Results.band), ...
-                   char(p.Results.device), double(p.Results.max_iter), ...
-                   double(skip_cols), double(skip_rows), ...
-                   char(delimiter), char(name));
-
-    res = dtwc.Result(out);
+    [varargin{:}] = convertStringsToChars(varargin{:});
+    data = dtwc.load(data);
+    prob = dtwc.Problem(data.Name);
+    device = dtwc_mex('apply', prob.get_handle(), k, varargin{:});
+    [series, names] = data.as_series();
+    prob.set_data(series, names);
+    res = dtwc.Result(prob, prob.cluster(), device);
 end

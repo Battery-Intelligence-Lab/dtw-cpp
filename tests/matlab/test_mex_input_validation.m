@@ -456,6 +456,9 @@ function test_integer_arguments_reject_fractions_nan_and_inf(testCase)
     y = [2 3 4 5 6];
     X = [1 2 3 4 5; 2 3 4 5 6; 9 8 7 6 5; 8 7 6 5 4];
     dend = dtwc_mex('build_dendrogram', h, 'average', 100);
+    csv = [tempname '.csv'];
+    writematrix(X, csv);
+    testCase.addTeardown(@() delete(csv));
     sites = {
         'Problem_set_band',       @(v) dtwc_mex('Problem_set_band', h, v),                3
         'Problem_set_max_iter',   @(v) dtwc_mex('Problem_set_max_iter', h, v),            5
@@ -474,9 +477,10 @@ function test_integer_arguments_reject_fractions_nan_and_inf(testCase)
         'fast_clara max_iter',    @(v) dtwc_mex('fast_clara', h, 2, 3, 2, v),             5
         'build_dendrogram max_points', @(v) dtwc_mex('build_dendrogram', h, 'average', v), 100
         'cut_dendrogram k',       @(v) dtwc_mex('cut_dendrogram', dend, h, v),            2
-        'cluster k',              @(v) dtwc_mex('cluster', X, v),                         2
-        'cluster band',           @(v) dtwc_mex('cluster', X, 2, v),                      3
-        'cluster max_iter',       @(v) dtwc_mex('cluster', X, 2, -1, 0, v),               5
+        'apply k',                @(v) dtwc_mex('apply', h2, v),                          2
+        'apply Band',             @(v) dtwc_mex('apply', h2, 2, 'Band', v),               3
+        'apply MaxIter',          @(v) dtwc_mex('apply', h2, 2, 'MaxIter', v),            5
+        'read_data skip_cols',    @(v) dtwc_mex('read_data', csv, v, 0, ''),              0
     };
     for i = 1:size(sites, 1)
         call = sites{i, 2};
@@ -668,7 +672,6 @@ function test_labels_and_medoids_come_back_as_one_based_doubles(testCase)
     estimator = dtwc.DTWClustering('NClusters', 2);
     estimator = estimator.fit(X);
     tier1 = dtwc.cluster(X, 2);
-    [legacy_labels, legacy_medoids] = dtwc_mex('cluster', X, 2);
     routes = {
         'fast_pam labels',           pam.labels
         'fast_pam medoids',          pam.medoid_indices
@@ -682,8 +685,6 @@ function test_labels_and_medoids_come_back_as_one_based_doubles(testCase)
         'DTWClustering MedoidIndices', estimator.MedoidIndices
         'Result.labels',             tier1.labels
         'Result.medoids',            tier1.medoids
-        'cluster labels',            legacy_labels
-        'cluster medoids',           legacy_medoids
     };
     for i = 1:size(routes, 1)
         verifyClass(testCase, routes{i, 2}, 'double', routes{i, 1});
@@ -714,8 +715,7 @@ function test_counts_and_indices_are_read_as_64_bit(testCase)
         @() dtwc_mex('fast_pam', h, big),               sprintf('n_clusters=%d', big)
         @() dtwc_mex('fast_clara', h, big),             sprintf('n_clusters=%d', big)
         @() dtwc_mex('cut_dendrogram', dend, h, big),   sprintf('k=%d', big)
-        @() dtwc_mex('cluster', X, big),                sprintf('n_clusters=%d', big)
-        @() dtwc_mex('tier1_cluster', X, big),          'k must not exceed'
+        @() dtwc.cluster(X, big),                       'k must not exceed'
     };
     for i = 1:size(cpp_refusals, 1)
         err = [];
@@ -729,7 +729,7 @@ function test_counts_and_indices_are_read_as_64_bit(testCase)
     end
     verifyError(testCase, @() dtwc_mex('Problem_set_n_clusters', h, 2^63), ...
         'dtwc:invalidArgument');
-    verifyError(testCase, @() dtwc_mex('tier1_cluster', X, 2, 'pam', -1, '', 100, 2^63), ...
+    verifyError(testCase, @() dtwc_mex('read_data', 'unread.csv', 2^63, 0, ''), ...
         'dtwc:invalidArgument');
     % A fast_clara seed is a uint64: 2^33 does not fit the unsigned int it was read as.
     clara = dtwc_mex('fast_clara', h, 2, 3, 2, 5, 2^33);

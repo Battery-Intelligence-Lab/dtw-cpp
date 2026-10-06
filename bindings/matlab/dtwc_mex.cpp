@@ -51,6 +51,7 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include <iterator>
 #include <stdexcept>
 #include <algorithm>
+#include <tuple>
 #include <utility>
 
 // =========================================================================
@@ -195,6 +196,8 @@ static std::vector<std::vector<double>> cell_to_series(const mxArray *mx, const 
     const std::string elem = std::string(arg_name) + "{" + std::to_string(i + 1) + "}";
     // Full validation BEFORE mxGetDoubles: reject non-double/complex/sparse/empty/N-D.
     require_real_double(cell, elem.c_str());
+    if (mxGetM(cell) != 1 && mxGetN(cell) != 1)
+      throw std::invalid_argument(elem + " must be a vector: one series.");
     const double *data = mxGetDoubles(cell);
     const size_t n = mxGetNumberOfElements(cell);
     series.emplace_back(data, data + n);
@@ -342,20 +345,29 @@ static std::string get_string(const mxArray *mx) {
   return result;
 }
 
+/// A path argument, read as UTF-8, the encoding the C++ readers and writers name files in.
+static std::filesystem::path get_path(const mxArray *mx, const char *arg_name) {
+  require_char(mx, arg_name);
+  char *utf8 = mxArrayToUTF8String(mx);
+  if (utf8 == nullptr) throw std::invalid_argument(std::string(arg_name) + " is not a valid string.");
+  const std::string text(utf8);
+  mxFree(utf8);
+  return dtwc::utf8_to_path(text);
+}
+
+/// A logical scalar argument: true or false.
+static bool get_logical(const mxArray *mx, const char *arg_name) {
+  if (mx == nullptr || !mxIsLogical(mx) || mxGetNumberOfElements(mx) != 1)
+    throw std::invalid_argument(std::string(arg_name) + " must be a logical scalar (true or false).");
+  return mxIsLogicalScalarTrue(mx);
+}
+
 /// Optional trailing string argument; "" when absent or empty.
 static std::string optional_string(int nrhs, const mxArray *prhs[], int index,
                                    const char *arg_name) {
   if (nrhs <= index || mxIsEmpty(prhs[index])) return {};
   require_char(prhs[index], arg_name);
   return get_string(prhs[index]);
-}
-
-/// Optional trailing integer argument, validated exactly (no UB cast).
-template <class Int = int>
-static Int optional_int(int nrhs, const mxArray *prhs[], int index,
-                        const char *arg_name, Int fallback) {
-  if (nrhs <= index || mxIsEmpty(prhs[index])) return fallback;
-  return get_exact_int<Int>(prhs[index], arg_name);
 }
 
 /// One delimiter character; 0 keeps the extension-derived default.
@@ -374,49 +386,126 @@ static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
   return dtwc::parse_name(dtwc::core::metric_names, token, "metric");
 }
 
-/// The distance settings a caller names: the dtwc_cl keys, in MATLAB's case.
-enum class DistanceKey { Variant, Band, Metric, MissingStrategy, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda };
-
-constexpr dtwc::Name<DistanceKey> distance_keys[]{
-  { "Variant", DistanceKey::Variant },     { "Band", DistanceKey::Band },
-  { "Metric", DistanceKey::Metric },       { "MissingStrategy", DistanceKey::MissingStrategy },
-  { "WdtwG", DistanceKey::WdtwG },         { "AdtwPenalty", DistanceKey::AdtwPenalty },
-  { "SdtwGamma", DistanceKey::SdtwGamma }, { "MsmC", DistanceKey::MsmC },
-  { "TweNu", DistanceKey::TweNu },         { "TweLambda", DistanceKey::TweLambda },
+/// The settings a caller names: dtwc_cl's long names in CamelCase, the words of
+/// Python's cluster() keywords.
+enum class Key {
+  Name, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu,
+  TweLambda, MvMode, MissingStrategy, SampleSize, NSamples, Seed, BatchSize, Linkage, Solver, MipGap,
+  TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, Device, GpuPrecision, Verbose
 };
 
-/// The distance configuration the name-value pairs prhs[first..nrhs) name, over the
-/// C++ defaults and read with the C++ name tables; core::validate checks it where it
-/// is used (distance::dtw, Problem::set_distance).
-static dtwc::core::DistanceConfig distance_config(int nrhs, const mxArray *prhs[], int first) {
-  if ((nrhs - first) % 2 != 0)
-    throw std::invalid_argument("distance settings come in name-value pairs.");
+/// The distance settings: what dtwc.distance.dtw and Problem.set_distance take.
+constexpr dtwc::Name<Key> distance_keys[]{
+  { "Variant", Key::Variant },     { "Band", Key::Band },
+  { "Metric", Key::Metric },       { "MissingStrategy", Key::MissingStrategy },
+  { "WdtwG", Key::WdtwG },         { "AdtwPenalty", Key::AdtwPenalty },
+  { "SdtwGamma", Key::SdtwGamma }, { "MsmC", Key::MsmC },
+  { "TweNu", Key::TweNu },         { "TweLambda", Key::TweLambda },
+};
+
+/// The keys of a clustering: every dtwc::Config key that is not about files, in
+/// cli::bind's order (k is an argument of its own).
+constexpr dtwc::Name<Key> config_keys[]{
+  { "Name", Key::Name },
+  { "Method", Key::Method },
+  { "Band", Key::Band },
+  { "Metric", Key::Metric },
+  { "Variant", Key::Variant },
+  { "MaxIter", Key::MaxIter },
+  { "NInit", Key::NInit },
+  { "Dc", Key::Dc },
+  { "WdtwG", Key::WdtwG },
+  { "AdtwPenalty", Key::AdtwPenalty },
+  { "SdtwGamma", Key::SdtwGamma },
+  { "MsmC", Key::MsmC },
+  { "TweNu", Key::TweNu },
+  { "TweLambda", Key::TweLambda },
+  { "MvMode", Key::MvMode },
+  { "MissingStrategy", Key::MissingStrategy },
+  { "SampleSize", Key::SampleSize },
+  { "NSamples", Key::NSamples },
+  { "Seed", Key::Seed },
+  { "BatchSize", Key::BatchSize },
+  { "Linkage", Key::Linkage },
+  { "Solver", Key::Solver },
+  { "MipGap", Key::MipGap },
+  { "TimeLimit", Key::TimeLimit },
+  { "NoWarmStart", Key::NoWarmStart },
+  { "NumericFocus", Key::NumericFocus },
+  { "MipFocus", Key::MipFocus },
+  { "VerboseSolver", Key::VerboseSolver },
+  { "LrMaxNodes", Key::LrMaxNodes },
+  { "Device", Key::Device },
+  { "GpuPrecision", Key::GpuPrecision },
+  { "Verbose", Key::Verbose },
+};
+
+/// Set the Config field `key` names from `value`, read as its kind; C++ checks the
+/// value where it is used (apply(), core::validate).
+static void set_key(dtwc::Config &c, Key key, const std::string &name, const mxArray *value) {
   using namespace dtwc::core;
-  DistanceConfig c;
-  for (int i = first; i < nrhs; i += 2) {
-    require_char(prhs[i], "a distance setting's name");
-    const std::string name = get_string(prhs[i]);
-    const mxArray *value = prhs[i + 1];
-    const auto text = [&] {
-      require_char(value, name.c_str());
-      return get_string(value);
-    };
-    switch (dtwc::parse_name(distance_keys, name, "distance setting")) {
-    case DistanceKey::Variant: c.variant.variant = dtwc::parse_name(variant_names, text(), "variant"); break;
-    case DistanceKey::Band: c.band = get_exact_int(value, "Band"); break;
-    case DistanceKey::Metric: c.metric = dtwc::parse_name(metric_names, text(), "metric"); break;
-    case DistanceKey::MissingStrategy:
-      c.missing = dtwc::parse_name(missing_strategy_names, text(), "missing strategy");
-      break;
-    case DistanceKey::WdtwG: c.variant.wdtw_g = get_scalar(value, "WdtwG"); break;
-    case DistanceKey::AdtwPenalty: c.variant.adtw_penalty = get_scalar(value, "AdtwPenalty"); break;
-    case DistanceKey::SdtwGamma: c.variant.sdtw_gamma = get_scalar(value, "SdtwGamma"); break;
-    case DistanceKey::MsmC: c.variant.msm_c = get_scalar(value, "MsmC"); break;
-    case DistanceKey::TweNu: c.variant.twe_nu = get_scalar(value, "TweNu"); break;
-    case DistanceKey::TweLambda: c.variant.twe_lambda = get_scalar(value, "TweLambda"); break;
-    }
+  const char *key_name = name.c_str();
+  const auto text = [&] {
+    require_char(value, key_name);
+    return get_string(value);
+  };
+  switch (key) {
+  case Key::Name: c.name = text(); break;
+  case Key::Method: c.method = dtwc::parse_name(dtwc::method_names, text(), "method"); break;
+  case Key::Band: c.band = get_exact_int(value, key_name); break;
+  case Key::Metric: c.metric = dtwc::parse_name(metric_names, text(), "metric"); break;
+  case Key::Variant: c.variant.variant = dtwc::parse_name(variant_names, text(), "variant"); break;
+  case Key::MaxIter: c.max_iter = get_exact_int(value, key_name); break;
+  case Key::NInit: c.n_init = get_exact_int(value, key_name); break;
+  case Key::Dc: c.tadpole_dc = get_scalar(value, key_name); break;
+  case Key::WdtwG: c.variant.wdtw_g = get_scalar(value, key_name); break;
+  case Key::AdtwPenalty: c.variant.adtw_penalty = get_scalar(value, key_name); break;
+  case Key::SdtwGamma: c.variant.sdtw_gamma = get_scalar(value, key_name); break;
+  case Key::MsmC: c.variant.msm_c = get_scalar(value, key_name); break;
+  case Key::TweNu: c.variant.twe_nu = get_scalar(value, key_name); break;
+  case Key::TweLambda: c.variant.twe_lambda = get_scalar(value, key_name); break;
+  case Key::MvMode: c.variant.mv_mode = dtwc::parse_name(mv_mode_names, text(), "mv mode"); break;
+  case Key::MissingStrategy: c.missing = dtwc::parse_name(missing_strategy_names, text(), "missing strategy"); break;
+  case Key::SampleSize: c.sample_size = get_exact_int<dtwc::index_t>(value, key_name); break;
+  case Key::NSamples: c.n_samples = get_exact_int(value, key_name); break;
+  case Key::Seed: c.seed = get_random_seed(value); break;
+  case Key::BatchSize: c.batch_size = get_exact_int<dtwc::index_t>(value, key_name); break;
+  case Key::Linkage: c.linkage = dtwc::parse_name(dtwc::algorithms::linkage_names, text(), "linkage"); break;
+  case Key::Solver: c.solver = dtwc::parse_name(dtwc::solver_names, text(), "solver"); break;
+  case Key::MipGap: c.mip.mip_gap = get_scalar(value, key_name); break;
+  case Key::TimeLimit: c.mip.time_limit_sec = get_exact_int(value, key_name); break;
+  case Key::NoWarmStart: c.mip.warm_start = !get_logical(value, key_name); break;
+  case Key::NumericFocus: c.mip.numeric_focus = get_exact_int(value, key_name); break;
+  case Key::MipFocus: c.mip.mip_focus = get_exact_int(value, key_name); break;
+  case Key::VerboseSolver: c.mip.verbose_solver = get_logical(value, key_name); break;
+  case Key::LrMaxNodes: c.mip.lr_max_nodes = get_exact_int<std::int64_t>(value, key_name); break;
+  case Key::Device: std::tie(c.device, c.device_index) = dtwc::detail::parse_device(text()); break;
+  case Key::GpuPrecision: c.gpu_precision = dtwc::parse_name(dtwc::gpu_precision_names, text(), "gpu precision"); break;
+  case Key::Verbose: c.verbose = get_logical(value, key_name); break;
   }
-  return c;
+}
+
+/// `config` with the name-value pairs prhs[first..nrhs) set, each name read from
+/// `table` (ASCII case ignored); a name the table lacks is InvalidInput naming the valid ones.
+template <std::size_t N>
+static dtwc::Config read_keys(const dtwc::Name<Key> (&table)[N], const char *what, dtwc::Config config,
+                              int nrhs, const mxArray *prhs[], int first) {
+  if ((nrhs - first) % 2 != 0)
+    throw std::invalid_argument(std::string(what) + "s come in name-value pairs.");
+  for (int i = first; i < nrhs; i += 2) {
+    require_char(prhs[i], (std::string("a ") + what + "'s name").c_str());
+    const std::string name = get_string(prhs[i]);
+    set_key(config, dtwc::parse_name(table, name, what), name, prhs[i + 1]);
+  }
+  return config;
+}
+
+/// The distance configuration the name-value pairs prhs[first..nrhs) name, over the
+/// C++ defaults; core::validate checks it where it is used (distance::dtw,
+/// Problem::set_distance).
+static dtwc::core::DistanceConfig distance_config(int nrhs, const mxArray *prhs[], int first) {
+  const dtwc::Config c = read_keys(distance_keys, "distance setting", {}, nrhs, prhs, first);
+  return { .variant = c.variant, .metric = c.metric, .missing = c.missing, .band = c.band };
 }
 
 /// Build a ClusteringResult MATLAB struct from a C++ ClusteringResult
@@ -604,10 +693,8 @@ static void cmd_Problem_set_band(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 
 static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_verbose requires handle and bool.");
-  if (!mxIsLogical(prhs[2]) || mxGetNumberOfElements(prhs[2]) != 1)
-    throw std::invalid_argument("verbose must be a logical scalar.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_verbose(mxIsLogicalScalarTrue(prhs[2]));
+  const bool verbose = get_logical(prhs[2], "verbose");
+  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->set_verbose(verbose);
 }
 
 static void cmd_Problem_set_max_iter(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -723,10 +810,11 @@ static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const m
   plhs[0] = mxCreateDoubleScalar(prob.dist_by_ind(i, j));
 }
 
+/// Problem_cluster(handle) -> struct: Problem::cluster(), the method the Problem is set
+/// to (auto resolved), its labels and medoids published on the Problem too.
 static void cmd_Problem_cluster(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_cluster requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.cluster();
+  plhs[0] = clustering_result_to_mx(HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->cluster());
 }
 
 static void cmd_Problem_find_total_cost(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -739,8 +827,9 @@ static void cmd_Problem_find_total_cost(int nlhs, mxArray *plhs[], int nrhs, con
 static void cmd_Problem_get_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_distance_matrix requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  prob.fill_distance_matrix(); // a no-op once filled, as Python's distance_matrix()
 
-  const auto &dm = std::as_const(prob).distance_matrix();
+  const auto &dm = prob.distance_matrix();
   size_t N = dm.size();
   mxArray *result = mxCreateDoubleMatrix(N, N, mxREAL);
   double *out = mxGetDoubles(result);
@@ -852,9 +941,8 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
 
 static void cmd_Problem_set_output_folder(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_output_folder requires handle and folder string.");
-  require_char(prhs[2], "output_folder");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_output_folder(std::filesystem::path(get_string(prhs[2])));
+  prob.set_output_folder(get_path(prhs[2], "output_folder"));
 }
 
 /// set_mip_settings(struct): reads any subset of the MIPSettings fields present.
@@ -950,9 +1038,8 @@ static void cmd_Problem_refresh_distance_matrix(int nlhs, mxArray *plhs[], int n
 
 static void cmd_Problem_read_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_read_distance_matrix requires handle and path.");
-  require_char(prhs[2], "path");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.read_distance_matrix(std::filesystem::path(get_string(prhs[2])));
+  prob.read_distance_matrix(get_path(prhs[2], "path"));
 }
 
 static void cmd_Problem_max_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1162,129 +1249,88 @@ static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, cons
 }
 
 // =========================================================================
-//  Tier-1 API (contract 1.3 / 1.4): ONE C++ route
-//
-//  cluster.m parses arguments and calls tier1_cluster once. Method routing,
-//  the k <= N guard, the per-call device override, max_iter, and the
-//  skip_cols/skip_rows source semantics are all decided by dtwc::cluster(),
-//  so the MATLAB layer has no routing logic that can drift from C++.
+//  Tier-1 (contract 1.2 - 1.4): dtwc.cluster, dtwc.load and dtwc.Result are
+//  Python's cluster(), load() and Result: the keys set a dtwc::Config that
+//  dtwc::apply hands a Problem, the series reach it through Problem_set_data,
+//  and Problem::cluster() runs the method. Text is read by dtwc::read_data and
+//  results are written by detail::write_result_files, the reader and writer
+//  dtwc_cl and Python use; this MEX links neither run() nor the CLI's config.
 // =========================================================================
 
-/// tier1_cluster(source, k, method, band, device, max_iter,
-///               skip_cols, skip_rows, delimiter, name) -> struct.
-/// `source` is a char path, an N x L real double matrix, or a cell of series.
-static void cmd_tier1_cluster(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3)
-    throw std::invalid_argument("tier1_cluster requires a data source and k.");
-  const auto k = get_exact_int<dtwc::index_t>(prhs[2], "k");
-  const std::string method = optional_string(nrhs, prhs, 3, "method");
-  const int band = optional_int(nrhs, prhs, 4, "band", dtwc::settings::DEFAULT_BAND);
-  const std::string device = optional_string(nrhs, prhs, 5, "device");
-  const int max_iter = optional_int(nrhs, prhs, 6, "max_iter", 100);
-  const auto skip_cols = optional_int<dtwc::index_t>(nrhs, prhs, 7, "skip_cols", 0);
-  const auto skip_rows = optional_int<dtwc::index_t>(nrhs, prhs, 8, "skip_rows", 0);
-  const char delimiter = parse_delimiter(optional_string(nrhs, prhs, 9, "delimiter"));
-  const std::string name = optional_string(nrhs, prhs, 10, "name");
-
-  const dtwc::Dataset dataset = mxIsChar(prhs[1])
-    ? dtwc::load(std::filesystem::path(get_string(prhs[1])), skip_cols, skip_rows,
-                 delimiter, name)
-    : dtwc::load(mxIsCell(prhs[1]) ? cell_to_series(prhs[1], "data")
-                                   : matrix_to_series(prhs[1], "data"),
-                 skip_cols, skip_rows, delimiter, name);
-
-  auto result = std::make_shared<dtwc::Result>(dtwc::cluster(
-    dataset, k, method.empty() ? std::string("pam") : method, band, device, max_iter));
-  const uint64_t h = HandleManager<dtwc::Result>::create(result);
-
-  const char *fields[] = { "handle", "labels", "medoid_indices", "total_cost",
-                           "device", "name" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 6, fields);
-  mxArray *handle_mx = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
-  *static_cast<uint64_t *>(mxGetData(handle_mx)) = h;
-  mxSetField(s, 0, "handle", handle_mx);
-  mxSetField(s, 0, "labels", ivec_to_mx_1based(result->labels()));
-  mxSetField(s, 0, "medoid_indices", ivec_to_mx_1based(result->medoids()));
-  mxSetField(s, 0, "total_cost", mxCreateDoubleScalar(result->cost()));
-  mxSetField(s, 0, "device", mxCreateString(result->device().c_str()));
-  mxSetField(s, 0, "name", mxCreateString(dataset.name().c_str()));
-  plhs[0] = s;
+/// apply(handle, k, Name, Value, ...) -> device: a dtwc::Config from k and the
+/// keys (a key not given keeps dtwc_cl's default; the device is dtwc.device()'s
+/// unless Device names one), handed to the Problem by dtwc::apply, which checks
+/// each setting; Name, if given, names the Problem. Returns the device as
+/// device_text writes it ('cpu', 'gpu', 'gpu:N').
+static void cmd_apply(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("apply requires a handle and k.");
+  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  dtwc::Config defaults;
+  defaults.k = get_exact_int<dtwc::index_t>(prhs[2], "k");
+  std::tie(defaults.device, defaults.device_index) = dtwc::detail::parse_device(dtwc::device());
+  const dtwc::Config config = read_keys(config_keys, "key", defaults, nrhs, prhs, 3);
+  dtwc::apply(config, prob);
+  if (!config.name.empty()) prob.set_name(config.name);
+  plhs[0] = mxCreateString(dtwc::device_text(config).c_str());
 }
 
-static void cmd_Result_delete(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("Result_delete requires a handle.");
-  HandleManager<dtwc::Result>::destroy(get_handle(prhs[1]));
+/// read_data(path, skip_cols, skip_rows, delimiter) -> {series}, {names}:
+/// dtwc::read_data, for CSV/TSV text and folders of it, each series a double row.
+static void cmd_read_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 4) throw std::invalid_argument("read_data requires a path, skip_cols and skip_rows.");
+  const auto path = get_path(prhs[1], "path");
+  const auto skip_cols = get_exact_int<dtwc::index_t>(prhs[2], "skip_cols");
+  const auto skip_rows = get_exact_int<dtwc::index_t>(prhs[3], "skip_rows");
+  if (skip_cols < 0) throw dtwc::InvalidInput("load: skip_cols must be non-negative.");
+  if (skip_rows < 0) throw dtwc::InvalidInput("load: skip_rows must be non-negative.");
+  const char delimiter = parse_delimiter(optional_string(nrhs, prhs, 4, "delimiter"));
+  const dtwc::Data data = dtwc::read_data(path, skip_cols, skip_rows, delimiter);
+  const auto n = static_cast<size_t>(data.size());
+  plhs[0] = mxCreateCellMatrix(1, n);
+  mxArray *names = mxCreateCellMatrix(1, n);
+  for (size_t i = 0; i < n; ++i) {
+    const auto &series = data.p_vec[i];
+    mxArray *row = mxCreateDoubleMatrix(1, series.size(), mxREAL);
+    std::copy(series.begin(), series.end(), mxGetDoubles(row));
+    mxSetCell(plhs[0], i, row);
+    mxSetCell(names, i, mxCreateString(data.p_names[i].c_str()));
+  }
+  if (nlhs > 1) plhs[1] = names;
+  else mxDestroyArray(names);
 }
 
-/// Result_score(handle, name) -> scalar. dtwc::Result::score owns the name set.
-static void cmd_Result_score(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3)
-    throw std::invalid_argument("Result_score requires a handle and a score name.");
+/// parquet_files(path) -> {files}: the Parquet files a path names, as
+/// dtwc::read_data lists them (the file, or a folder's .parquet/.pq files, sorted,
+/// hidden ones skipped); {} for any other input.
+static void cmd_parquet_files(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("parquet_files requires a path.");
+  const auto files = dtwc::parquet_files(get_path(prhs[1], "path"));
+  plhs[0] = mxCreateCellMatrix(1, files.size());
+  for (size_t i = 0; i < files.size(); ++i)
+    mxSetCell(plhs[0], i, mxCreateString(dtwc::path_to_utf8(files[i]).c_str()));
+}
+
+/// default_name(path) -> char: the name dtwc_cl gives a run of `path` (its file name
+/// without the extension, or its folder's name); 'dataset' for '' (series in memory).
+static void cmd_default_name(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("default_name requires a path.");
+  plhs[0] = mxCreateString(dtwc::detail::default_name(get_path(prhs[1], "path")).c_str());
+}
+
+/// score(handle, name) -> scalar: scores::score, the score Result::score names.
+static void cmd_score(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("score requires a handle and a score name.");
   require_char(prhs[2], "score");
-  const auto &res = *HandleManager<dtwc::Result>::get(get_handle(prhs[1]));
-  plhs[0] = mxCreateDoubleScalar(res.score(get_string(prhs[2])));
+  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  plhs[0] = mxCreateDoubleScalar(dtwc::scores::score(prob, get_string(prhs[2])));
 }
 
-/// Result_save(handle, directory). The C++ writer owns the four CSVs, so the
-/// series names it emits are the dataset's, not MATLAB ordinals.
-static void cmd_Result_save(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3)
-    throw std::invalid_argument("Result_save requires a handle and a directory.");
-  require_char(prhs[2], "directory");
-  const auto &res = *HandleManager<dtwc::Result>::get(get_handle(prhs[1]));
-  res.save(std::filesystem::path(get_string(prhs[2])));
-}
-
-/// Result_distance_matrix(handle) -> N x N matrix: dtwc::Result::distance_matrix
-/// (row-major) unpacked into MATLAB's column-major layout.
-static void cmd_Result_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2)
-    throw std::invalid_argument("Result_distance_matrix requires a handle.");
-  const auto &res = *HandleManager<dtwc::Result>::get(get_handle(prhs[1]));
-  const std::vector<double> flat = res.distance_matrix();
-  const size_t n = res.labels().size();
-  mxArray *out = mxCreateDoubleMatrix(n, n, mxREAL);
-  double *dst = mxGetDoubles(out);
-  for (size_t i = 0; i < n; ++i)
-    for (size_t j = 0; j < n; ++j)
-      dst[i + j * n] = flat[i * n + j];
-  plhs[0] = out;
-}
-
-// =========================================================================
-//  Legacy "cluster" command (stateless, backward-compatible)
-// =========================================================================
-
-static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3)
-    throw std::invalid_argument("cluster requires data matrix and k.");
-
-  auto series = matrix_to_series(prhs[1]);
-  const auto k = get_exact_int<dtwc::index_t>(prhs[2], "k");
-
-  int band = dtwc::settings::DEFAULT_BAND;
-  if (nrhs > 3) band = get_exact_int(prhs[3], "band");
-
-  int max_iter = 100;
-  if (nrhs > 5) max_iter = get_exact_int(prhs[5], "max_iter");
-
-  const size_t N = series.size();
-  std::vector<std::string> names(N);
-  for (size_t i = 0; i < N; ++i) names[i] = std::to_string(i);
-
-  dtwc::Problem prob("matlab_clustering");
-  prob.set_band(band);
-  prob.set_max_iter(max_iter);
-  prob.set_verbose(false);
-
-  dtwc::Data data(std::move(series), std::move(names));
-  prob.set_data(std::move(data));
-
-  auto result = dtwc::fast_pam(prob, k, max_iter);
-
-  plhs[0] = ivec_to_mx_1based(result.labels);
-  if (nlhs > 1) plhs[1] = ivec_to_mx_1based(result.medoid_indices);
-  if (nlhs > 2) plhs[2] = mxCreateDoubleScalar(result.total_cost);
+/// write_result_files(handle, directory): a clustered Problem's four result files,
+/// written as dtwc_cl and Result::save write them.
+static void cmd_write_result_files(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("write_result_files requires a handle and a directory.");
+  const auto directory = get_path(prhs[2], "directory");
+  dtwc::detail::write_result_files(*HandleManager<dtwc::Problem>::get(get_handle(prhs[1])), directory, true);
 }
 
 // =========================================================================
@@ -1292,10 +1338,6 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
 // =========================================================================
 
 static void cleanup_at_exit() {
-  // Results own their Problem through a shared_ptr and are never registered in
-  // HandleManager<Problem>, so the two drains are independent; Results go first
-  // only so a Result's Problem is released before the Problem table is walked.
-  HandleManager<dtwc::Result>::drain();
   HandleManager<dtwc::Problem>::drain();
 }
 
@@ -1400,14 +1442,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "calinski_harabasz") cmd_calinski_harabasz(nlhs, plhs, nrhs, prhs);
     else if (cmd == "adjusted_rand") cmd_adjusted_rand(nlhs, plhs, nrhs, prhs);
     else if (cmd == "normalized_mutual_info") cmd_normalized_mutual_info(nlhs, plhs, nrhs, prhs);
-    // Tier-1 route (contract 1.3 / 1.4): dtwc::cluster owns every decision
-    else if (cmd == "tier1_cluster") cmd_tier1_cluster(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Result_score") cmd_Result_score(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Result_save") cmd_Result_save(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Result_distance_matrix") cmd_Result_distance_matrix(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Result_delete") cmd_Result_delete(nlhs, plhs, nrhs, prhs);
-    // Legacy backward-compatible command
-    else if (cmd == "cluster") cmd_cluster_legacy(nlhs, plhs, nrhs, prhs);
+    // Tier-1 (contract 1.2 - 1.4): a Config applied to a Problem, the C++ reader and writer
+    else if (cmd == "apply") cmd_apply(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "read_data") cmd_read_data(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "parquet_files") cmd_parquet_files(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "default_name") cmd_default_name(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "score") cmd_score(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "write_result_files") cmd_write_result_files(nlhs, plhs, nrhs, prhs);
     else {
       throw std::invalid_argument("Unknown command: '" + cmd + "'.");
     }

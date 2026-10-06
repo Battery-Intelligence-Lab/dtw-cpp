@@ -4,17 +4,17 @@
 classdef Result < handle
 %RESULT Clustering outcome (contract §1.4).
 %
-%   Returned by dtwc.cluster(). Carries the cluster assignment, medoid indices,
-%   total cost and the device the run used, plus score()/save()/plot() helpers.
-%   score() and save() are the C++ dtwc::Result members, so the scores and the
-%   four output CSVs (series names included) are byte-for-byte the CLI's.
+%   Returned by dtwc.cluster(). It keeps the clustered dtwc.Problem, so
+%   score(), save() and distance_matrix() are C++'s (scores::score and the
+%   writer dtwc_cl uses): the scores and the four result files, series names
+%   included, are the CLI's, byte for byte.
 %
 %   Properties
 %   ----------
-%   labels  : double row vector (1-based cluster assignment per series).
-%   medoids : double row vector (1-based medoid series index per cluster).
-%   cost    : double, sum of intra-cluster DTW distances.
-%   device  : char, normalised device name the run used ('cpu'/'gpu').
+%   labels  : double row vector, the 1-based cluster of each series.
+%   medoids : double row vector, the 1-based medoid series of each cluster.
+%   cost    : double, the total DTW distance of the series to their medoids.
+%   device  : char, the device the run computed on ('cpu', 'gpu' or 'gpu:N').
 %
 %   See also dtwc.cluster, dtwc.silhouette
 
@@ -26,53 +26,41 @@ classdef Result < handle
     end
 
     properties (Access = private)
-        Handle uint64 = uint64(0)  % C++ dtwc::Result (owns the clustered Problem)
-        DatasetName char = 'dataset'
+        Problem   % the clustered dtwc.Problem
     end
 
     methods
-        function obj = Result(info)
-        %RESULT Construct a Result from the tier1_cluster gateway struct.
-            obj.Handle      = info.handle;
-            obj.labels      = info.labels;
-            obj.medoids     = info.medoid_indices;
-            obj.cost        = info.total_cost;
-            obj.device      = info.device;
-            obj.DatasetName = info.name;
-        end
-
-        function delete(obj)
-        %DELETE Release the C++ Result (and the Problem it owns).
-            if obj.Handle > 0
-                try
-                    dtwc_mex('Result_delete', obj.Handle);
-                catch
-                    % MEX may be unloaded during MATLAB shutdown
-                end
-                obj.Handle = uint64(0);
-            end
+        function obj = Result(prob, result, device)
+        %RESULT Made by dtwc.cluster from its Problem and Problem.cluster's result.
+            obj.Problem = prob;
+            obj.labels = result.labels;
+            obj.medoids = result.medoid_indices;
+            obj.cost = result.total_cost;
+            obj.device = device;
         end
 
         function s = score(obj, name)
-        %SCORE Evaluate a clustering-quality score by name.
-        %   s = res.score('silhouette')        % returns the MEAN silhouette
-        %   s = res.score('davies_bouldin')
-        %   s = res.score('dunn')
-        %   s = res.score('calinski_harabasz')
-        %   s = res.score('inertia')
+        %SCORE A clustering-quality score by name, computed by C++.
+        %   s = res.score('silhouette')        % the MEAN silhouette
+        %   s = res.score('davies_bouldin')    % also 'dunn', 'calinski_harabasz', 'inertia'
         %
-        %   The accepted names and their definitions are C++ Result::score's.
-            s = dtwc_mex('Result_score', obj.Handle, char(name));
+        %   A matrix-free run (onebatch, clara, tadpole) fills the matrix first.
+            s = dtwc_mex('score', obj.Problem.get_handle(), char(name));
+        end
+
+        function D = distance_matrix(obj)
+        %DISTANCE_MATRIX The N x N DTW distances, filled first after a matrix-free run.
+            D = obj.Problem.distance_matrix();
         end
 
         function save(obj, dir)
-        %SAVE Write the four human-readable result CSVs into DIR (contract §1.4/§7).
+        %SAVE Write the four result CSVs into DIR (contract §1.4/§7).
         %   res.save(outdir)
         %
-        %   Emits <name>_labels.csv, <name>_medoids.csv, <name>_distance_matrix.csv
-        %   and <name>_silhouettes.csv through C++ Result::save, so the series
-        %   names are the dataset's and the bytes match the CLI's.
-            dtwc_mex('Result_save', obj.Handle, char(dir));
+        %   <name>_labels.csv, <name>_medoids.csv, <name>_distance_matrix.csv and
+        %   <name>_silhouettes.csv, written by the C++ writer dtwc_cl uses, so the
+        %   series names are the dataset's and the bytes are the CLI's.
+            dtwc_mex('write_result_files', obj.Problem.get_handle(), char(dir));
         end
 
         function varargout = plot(obj)
@@ -81,7 +69,7 @@ classdef Result < handle
         %
         %   Uses a manual classical MDS (double-centred squared-distance eigen-
         %   decomposition) so no toolbox dependency is required.
-            D = dtwc_mex('Result_distance_matrix', obj.Handle);
+            D = obj.distance_matrix();
             n = size(D, 1);
             J = eye(n) - ones(n) / n;
             B = -0.5 * (J * (D.^2) * J);
@@ -95,7 +83,7 @@ classdef Result < handle
             f = figure('Visible', 'off');
             ax = axes('Parent', f);
             scatter(ax, coords(:, 1), coords(:, 2), 36, double(obj.labels), 'filled');
-            title(ax, sprintf('%s: %d clusters (MDS)', obj.DatasetName, ...
+            title(ax, sprintf('%s: %d clusters (MDS)', obj.Problem.name(), ...
                               numel(obj.medoids)));
             xlabel(ax, 'MDS-1'); ylabel(ax, 'MDS-2');
             if nargout > 0, varargout{1} = ax; end

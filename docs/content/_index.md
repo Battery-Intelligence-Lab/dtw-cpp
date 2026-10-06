@@ -99,9 +99,9 @@ csv = &#x27;tests/conformance/data/conformance_series.csv&#x27;;
 if exist(&#x27;DTWC_QUICKSTART_CSV&#x27;, &#x27;var&#x27;); csv = DTWC_QUICKSTART_CSV; end
 
 dtwc.device(&#x27;cpu&#x27;);
-data = dtwc.load(csv, &#x27;delimiter&#x27;, &#x27;,&#x27;, &#x27;name&#x27;, &#x27;quickstart&#x27;);
-result = dtwc.cluster(data, 3, &#x27;method&#x27;, &#x27;pam&#x27;, &#x27;band&#x27;, 3, ...
-    &#x27;device&#x27;, &#x27;cpu&#x27;, &#x27;max_iter&#x27;, 100);
+data = dtwc.load(csv, &#x27;Delimiter&#x27;, &#x27;,&#x27;, &#x27;Name&#x27;, &#x27;quickstart&#x27;);
+result = dtwc.cluster(data, 3, &#x27;Method&#x27;, &#x27;pam&#x27;, &#x27;Band&#x27;, 3, ...
+    &#x27;Device&#x27;, &#x27;cpu&#x27;, &#x27;MaxIter&#x27;, 100);
 
 medoids = sort(double(result.medoids(:)&#x27;) - 1); % canonical 0-based output
 rawMedoids = double(result.medoids(:)&#x27;) - 1;

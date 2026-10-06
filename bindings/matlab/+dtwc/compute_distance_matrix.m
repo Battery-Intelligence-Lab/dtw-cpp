@@ -9,8 +9,8 @@ function D = compute_distance_matrix(X, varargin)
 %
 %   Parameters
 %   ----------
-%   X : double matrix (N x L)
-%       Each row is a time series of length L.
+%   X : N x L numeric matrix (a series per row), or a cell of numeric vectors
+%       (one series each, any lengths).
 %   Band : int, optional (default -1)
 %       Sakoe-Chiba band width. Use -1 for full DTW.
 %
@@ -28,7 +28,7 @@ function D = compute_distance_matrix(X, varargin)
 % @author Volkan Kumtepeli
 
     p = inputParser;
-    addRequired(p, 'X', @(v) isnumeric(v) && ismatrix(v));
+    addRequired(p, 'X');
     addParameter(p, 'Band', -1, @(v) isnumeric(v) && isscalar(v));
     parse(p, X, varargin{:});
 

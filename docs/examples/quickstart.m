@@ -3,9 +3,9 @@ csv = 'tests/conformance/data/conformance_series.csv';
 if exist('DTWC_QUICKSTART_CSV', 'var'); csv = DTWC_QUICKSTART_CSV; end
 
 dtwc.device('cpu');
-data = dtwc.load(csv, 'delimiter', ',', 'name', 'quickstart');
-result = dtwc.cluster(data, 3, 'method', 'pam', 'band', 3, ...
-    'device', 'cpu', 'max_iter', 100);
+data = dtwc.load(csv, 'Delimiter', ',', 'Name', 'quickstart');
+result = dtwc.cluster(data, 3, 'Method', 'pam', 'Band', 3, ...
+    'Device', 'cpu', 'MaxIter', 100);
 
 medoids = sort(double(result.medoids(:)') - 1); % canonical 0-based output
 rawMedoids = double(result.medoids(:)') - 1;
