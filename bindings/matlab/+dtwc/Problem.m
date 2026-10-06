@@ -21,6 +21,13 @@ classdef Problem < handle
         Handle uint64 = uint64(0)
     end
 
+    properties (Dependent, SetAccess = private)
+        Band          % Sakoe-Chiba band, -1 for full DTW (set_band)
+        Verbose       % progress messages (set_verbose)
+        MaxIter       % iteration limit of the methods (set_max_iter)
+        NRepetitions  % restarts of the iterative methods (set_n_repetitions)
+    end
+
     methods
         function obj = Problem(name, varargin)
         %PROBLEM Create a new DTWC++ Problem object.
@@ -54,29 +61,33 @@ classdef Problem < handle
 
         function set_data(obj, data, names, ndim)
         %SET_DATA Load time series data into the Problem.
-        %   prob.set_data(X)                    % X is N x L double matrix (rows = series)
-        %   prob.set_data(C)                    % C is a cell array of numeric row vectors
-        %                                       %   (ragged / variable-length series)
+        %   prob.set_data(X)                    % X: N x L numeric matrix, one series per row
+        %   prob.set_data(C)                    % C: cell of numeric vectors, one series each
+        %                                       %   (any lengths)
         %   prob.set_data(X, names)             % names: 1xN cell array of char labels
         %   prob.set_data(X, names, ndim)       % ndim: features per timestep (multivariate,
         %                                       %   interleaved [t0f0 t0f1 t1f0 ...] layout)
         %
-        %   Pass names = {} to auto-derive names "0".."N-1".
+        %   Pass names = {} to auto-derive names "0".."N-1". The one conversion of
+        %   series already in memory, behind dtwc.cluster, dtwc.load, DTWClustering
+        %   and compute_distance_matrix: numbers become doubles; anything else
+        %   (a non-numeric, complex, sparse, empty or N-D series) is refused by C++
+        %   with dtwc:invalidArgument naming it.
             if iscell(data)
-                % Ragged input: each cell must be a numeric vector. The MEX layer
-                % validates class/complexity/shape of every element before use.
-                celldata = cellfun(@(v) double(v(:)'), data, 'UniformOutput', false);
-                dataArg = celldata;
-            else
-                validateattributes(data, {'numeric'}, {'2d', 'nonempty'}, 'set_data', 'data');
-                dataArg = double(data);
+                for i = 1:numel(data)
+                    if isnumeric(data{i})
+                        data{i} = double(data{i});
+                    end
+                end
+            elseif isnumeric(data)
+                data = double(data);
             end
 
             if nargin < 3, names = {}; end
             if nargin < 4
-                dtwc_mex('Problem_set_data', obj.Handle, dataArg, names);
+                dtwc_mex('Problem_set_data', obj.Handle, data, names);
             else
-                dtwc_mex('Problem_set_data', obj.Handle, dataArg, names, double(ndim));
+                dtwc_mex('Problem_set_data', obj.Handle, data, names, double(ndim));
             end
         end
 
@@ -261,13 +272,15 @@ classdef Problem < handle
         end
 
         function D = distance_matrix(obj)
-        %DISTANCE_MATRIX Get the full NxN distance matrix.
+        %DISTANCE_MATRIX The full NxN distance matrix, filled first if it is not.
             D = dtwc_mex('Problem_get_distance_matrix', obj.Handle);
         end
 
-        function cluster(obj)
-        %CLUSTER Run the configured clustering method in-place (writes labels/medoids).
-            dtwc_mex('Problem_cluster', obj.Handle);
+        function result = cluster(obj)
+        %CLUSTER Run the configured clustering method (auto resolved) and return its
+        %   result, a struct of labels, medoid_indices, total_cost, iterations and
+        %   converged; the labels and medoids are published on the Problem too.
+            result = dtwc_mex('Problem_cluster', obj.Handle);
         end
 
         % =================================================================
@@ -316,6 +329,30 @@ classdef Problem < handle
         function h = get_handle(obj)
         %GET_HANDLE Return the internal C++ handle (for MEX calls).
             h = obj.Handle;
+        end
+
+        function v = get.Band(obj)
+            v = obj.setting('band');
+        end
+
+        function v = get.Verbose(obj)
+            v = obj.setting('verbose');
+        end
+
+        function v = get.MaxIter(obj)
+            v = obj.setting('max_iter');
+        end
+
+        function v = get.NRepetitions(obj)
+            v = obj.setting('n_repetitions');
+        end
+    end
+
+    methods (Access = private)
+        function v = setting(obj, field)
+        %SETTING One field of the C++ Problem's settings, as Problem_get_info reports them.
+            info = dtwc_mex('Problem_get_info', obj.Handle);
+            v = info.(field);
         end
     end
 end

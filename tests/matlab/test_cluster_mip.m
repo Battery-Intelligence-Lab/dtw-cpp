@@ -1,5 +1,5 @@
 function tests = test_cluster_mip
-%TEST_CLUSTER_MIP Regression test for dtwc.cluster(..., 'method','mip').
+%TEST_CLUSTER_MIP Regression test for dtwc.cluster(..., 'Method','mip').
 %
 %   Why:
 %   the 'mip' branch of +dtwc/cluster.m called prob.set_method('mip') and
@@ -72,14 +72,14 @@ end
 
 function test_mip_branch_returns_k_clusters(testCase)
 %   Unfixed cluster.m leaves Problem::Nc at its default 1 -> one medoid.
-    res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'method', 'mip');
+    res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'Method', 'mip');
     verifyNumElements(testCase, res.medoids, testCase.TestData.k);
     verifyNumElements(testCase, unique(res.labels), testCase.TestData.k);
 end
 
 function test_mip_branch_separates_the_three_groups(testCase)
 %   With k honoured, the three well-separated triples must not mix.
-    res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'method', 'mip');
+    res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'Method', 'mip');
     lab = double(res.labels(:));
     verifyEqual(testCase, lab(1), lab(2));
     verifyEqual(testCase, lab(2), lab(3));
@@ -93,7 +93,7 @@ end
 
 function test_mip_matches_pam_cluster_count(testCase)
 %   Cross-route parity: 'pam' already honours k; 'mip' must agree.
-    mip = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'method', 'mip');
-    pam = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'method', 'pam');
+    mip = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'Method', 'mip');
+    pam = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'Method', 'pam');
     verifyEqual(testCase, numel(unique(mip.labels)), numel(unique(pam.labels)));
 end

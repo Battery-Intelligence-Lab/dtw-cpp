@@ -2,207 +2,161 @@
 %> @brief K-medoids clustering with DTW distance via DTWC++.
 %> @author Volkan Kumtepeli
 classdef DTWClustering
-%DTWCLUSTERING K-medoids clustering with DTW distance via DTWC++.
+%DTWCLUSTERING K-medoids clustering with DTW distance, Python's dtwcpp.DTWClustering.
 %
-%   Mirrors the Python dtwcpp.DTWClustering API. Uses dtwc.Problem
-%   internally for handle-based C++ object management.
+%   c = dtwc.DTWClustering('NClusters', 3, 'Band', 10);
+%   c = c.fit(X);               % X: N x L numeric matrix (a series per row)
+%                               %    or a cell of numeric vectors (any lengths)
+%   c.Labels, c.MedoidIndices, c.Inertia
+%   labels = c.predict(Y);      % the nearest medoid of each series of Y
 %
-%   obj = dtwc.DTWClustering('NClusters', 3, 'Band', 10)
-%   obj = obj.fit(X);
-%   labels = obj.Labels;
+%   fit hands C++ one dtwc.Problem, set up from these properties as
+%   dtwc.cluster sets one up from its keys, and Problem.cluster runs Method
+%   and its NInit seeded restarts on one distance matrix. predict, transform
+%   and score read the fitted medoids; nothing is refitted.
 %
-%   % Or use fit_predict for convenience:
-%   labels = dtwc.DTWClustering('NClusters', 3).fit_predict(X);
+%   Properties: Python's parameters in CamelCase. One left empty takes the C++
+%   default (dtwc_cl's), and C++ checks every value when fit runs, so a value
+%   no run can take (MaxIter = 0, an unknown Metric) raises dtwc:invalidArgument.
+%     NClusters (3), Method ('pam'): any dtwc.cluster method.
+%     Variant, Band, Metric, MissingStrategy, WdtwG, AdtwPenalty, MsmC, TweNu,
+%     TweLambda: the distance, as dtwc.distance.dtw takes it.
+%     MaxIter, NInit, MvMode, BatchSize, Device: as dtwc.cluster's keys; Device
+%     empty is dtwc.device().
+%     RandomState: the seed of the first restart (restart i takes RandomState
+%     + i - 1); empty is dtwc.default_random_seed().
 %
-%   Properties (configurable)
-%   -------------------------
-%   NClusters : int (default 3)
-%       Number of clusters.
-%   Band : int (default -1)
-%       Sakoe-Chiba band width. -1 for full DTW.
-%   Metric : char (default 'l1')
-%       Pointwise cost metric: 'l1' or 'squared_euclidean' (Variant 'standard'
-%       or 'ddtw'). C++ reads and checks the distance settings, as
-%       dtwc.distance.dtw does.
-%   MaxIter : int (default 100)
-%       Maximum iterations for the clustering algorithm.
-%   NInit : int (default 1)
-%       Number of random restarts.
-%   Variant : char (default 'standard')
-%       DTW variant: 'standard', 'ddtw', 'wdtw', 'adtw', 'softdtw'.
-%   WdtwG : double (default 0.05)
-%       Steepness parameter for WDTW.
-%   AdtwPenalty : double (default 1.0)
-%       Penalty for non-diagonal steps in ADTW.
-%   MissingStrategy : char (default 'error')
-%       Strategy for NaN values: 'error', 'zero_cost', 'arow', 'interpolate'.
-%   Device : char (default '')
-%       Per-call device override ('' = the process device). Validated through
-%       dtwc.device and restored afterwards, so fit() never mutates it.
+%   Fitted (read-only): Labels (1-based cluster of each series), MedoidIndices
+%   (1-based), Inertia (the total distance of the series to their medoids) and
+%   ClusterCenters (the medoid series).
 %
-%   Properties (read-only, set after fit)
-%   -------------------------------------
-%   Labels : double row vector (1 x N)
-%       Cluster assignments (1-based).
-%   MedoidIndices : double row vector (1 x k)
-%       Indices of medoid series (1-based).
-%   TotalCost : double
-%       Sum of intra-cluster DTW distances.
-%
-%   See also dtwc.Problem, dtwc.fast_pam, dtwc.distance.dtw
-% @author Volkan Kumtepeli
+%   See also dtwc.cluster, dtwc.Problem, dtwc.distance.dtw
 
     properties
-        NClusters (1,1) {mustBePositive, mustBeInteger} = 3
-        Band (1,1) {mustBeInteger} = -1
-        Metric (1,:) char = 'l1'
-        MaxIter (1,1) {mustBePositive, mustBeInteger} = 100
-        NInit (1,1) {mustBePositive, mustBeInteger} = 1
-        Variant (1,:) char = 'standard'
-        WdtwG (1,1) double = 0.05
-        AdtwPenalty (1,1) double = 1.0
-        MissingStrategy (1,:) char = 'error'
-        Device (1,:) char = ''
+        NClusters = 3
+        Method = 'pam'
+        Variant = []
+        Band = []
+        MaxIter = []
+        NInit = []
+        WdtwG = []
+        AdtwPenalty = []
+        MsmC = []
+        TweNu = []
+        TweLambda = []
+        MvMode = []
+        MissingStrategy = []
+        Metric = []
+        BatchSize = []
+        RandomState = []
+        Device = []
     end
 
     properties (SetAccess = private)
-        Labels (:,:) double = double([])
-        MedoidIndices (:,:) double = double([])
-        TotalCost (1,1) double = NaN
+        Labels = []
+        MedoidIndices = []
+        Inertia = NaN
+        ClusterCenters = {}
+    end
+
+    properties (Access = private)
+        FitDistance = {}   % the distance settings the medoids were fitted under
+    end
+
+    properties (Constant, Access = private)
+        DistanceKeys = {'Variant', 'Band', 'Metric', 'MissingStrategy', 'WdtwG', 'AdtwPenalty', ...
+                        'MsmC', 'TweNu', 'TweLambda'}
+        RunKeys = {'Method', 'MaxIter', 'NInit', 'MvMode', 'BatchSize', 'Device'}
     end
 
     methods
         function obj = DTWClustering(varargin)
-        %DTWCLUSTERING Construct a DTWClustering object.
-        %   obj = dtwc.DTWClustering()
-        %   obj = dtwc.DTWClustering('NClusters', 5, 'Band', 10)
-            p = inputParser;
-            addParameter(p, 'NClusters', 3, @(v) isnumeric(v) && isscalar(v) && v > 0);
-            addParameter(p, 'Band', -1, @(v) isnumeric(v) && isscalar(v));
-            addParameter(p, 'Metric', 'l1', @ischar);
-            addParameter(p, 'MaxIter', 100, @(v) isnumeric(v) && isscalar(v) && v > 0);
-            addParameter(p, 'NInit', 1, @(v) isnumeric(v) && isscalar(v) && v > 0);
-            addParameter(p, 'Variant', 'standard', @ischar);
-            addParameter(p, 'WdtwG', 0.05, @(v) isnumeric(v) && isscalar(v));
-            addParameter(p, 'AdtwPenalty', 1.0, @(v) isnumeric(v) && isscalar(v));
-            addParameter(p, 'MissingStrategy', 'error', @ischar);
-            addParameter(p, 'Device', '', @(v) ischar(v) || isstring(v));
-            parse(p, varargin{:});
-
-            obj.NClusters = p.Results.NClusters;
-            obj.Band = p.Results.Band;
-            obj.Metric = p.Results.Metric;
-            obj.MaxIter = p.Results.MaxIter;
-            obj.NInit = p.Results.NInit;
-            obj.Variant = p.Results.Variant;
-            obj.WdtwG = p.Results.WdtwG;
-            obj.AdtwPenalty = p.Results.AdtwPenalty;
-            obj.MissingStrategy = p.Results.MissingStrategy;
-            obj.Device = char(p.Results.Device);
+        %DTWCLUSTERING obj = dtwc.DTWClustering('NClusters', 5, 'Band', 10)
+        %   Name-value pairs set the properties of those names (ASCII case ignored).
+            if mod(numel(varargin), 2)
+                error('dtwc:invalidArgument', 'DTWClustering: properties come in name-value pairs.');
+            end
+            mc = ?dtwc.DTWClustering;
+            settable = {mc.PropertyList(strcmp({mc.PropertyList.SetAccess}, 'public')).Name};
+            for i = 1:2:numel(varargin)
+                match = strcmpi(settable, varargin{i});
+                if ~any(match)
+                    error('dtwc:invalidArgument', 'DTWClustering: unknown property ''%s''. Valid: %s.', ...
+                          char(varargin{i}), strjoin(settable, ', '));
+                end
+                obj.(settable{match}) = varargin{i + 1};
+            end
         end
 
         function obj = fit(obj, X)
-        %FIT Run k-medoids clustering on the data matrix X.
-        %   obj = obj.fit(X)
-        %
-        %   Parameters
-        %   ----------
-        %   X : double matrix (N x L)
-        %       Each row is a time series of length L.
-            % C++ checks the distance settings before the data or the device is
-            % touched: the distance of two one-sample series runs that check.
-            settings = obj.distance_settings();
-            dtwc.distance.dtw(0, 0, settings{:});
-            validateattributes(X, {'numeric'}, {'2d', 'nonempty'}, 'fit', 'X');
-
-            % Per-call device override (contract §1.5): resolved through C++
-            % dtwc::device() for validation and normalisation, then restored,
-            % so fit() never leaves the process device changed. An unknown device
-            % / hpc / gpu-without-backend raises dtwc:deviceError (no silent fallback).
-            if isempty(obj.Device)
-                activeDevice = dtwc.device();
+        %FIT Cluster X: an N x L numeric matrix (a series per row) or a cell of
+        %   numeric vectors. obj = obj.fit(X)
+            prob = dtwc.Problem('dtw_clustering');
+            settings = obj.given([obj.DistanceKeys, obj.RunKeys]);
+            if ~isempty(obj.RandomState)
+                settings = [settings, {'Seed', obj.RandomState}];
+            end
+            [settings{:}] = convertStringsToChars(settings{:});
+            dtwc_mex('apply', prob.get_handle(), obj.NClusters, settings{:});
+            prob.set_data(X);
+            result = prob.cluster();
+            obj.Labels = result.labels;
+            obj.MedoidIndices = result.medoid_indices;
+            obj.Inertia = result.total_cost;
+            if iscell(X)
+                obj.ClusterCenters = reshape(X(result.medoid_indices), 1, []);
             else
-                previousDevice = dtwc.device();
-                deviceCleanup = onCleanup(@() dtwc.device(previousDevice));
-                activeDevice = dtwc.device(obj.Device);
+                obj.ClusterCenters = num2cell(X(result.medoid_indices, :), 2).';
             end
-
-            bestCost = Inf;
-            bestLabels = [];
-            bestMedoids = [];
-            baseSeed = dtwc.default_random_seed();
-            if obj.NInit - 1 > flintmax - baseSeed
-                error('dtwc:invalidArgument', ...
-                    'NInit is too large to assign distinct exact MATLAB seeds.');
-            end
-
-            for rep = 1:obj.NInit
-                % Create a Problem for each repetition
-                prob = dtwc.Problem('DTWClustering');
-                prob.set_data(double(X));
-                prob.set_distance(settings{:});
-                prob.set_max_iter(obj.MaxIter);
-                prob.set_verbose(false);
-                dtwc.DTWClustering.apply_device_strategy(prob, activeDevice);
-
-                % Run FastPAM
-                result = dtwc.fast_pam(prob, obj.NClusters, ...
-                    'MaxIter', obj.MaxIter, 'Seed', baseSeed + (rep - 1));
-
-                if result.total_cost < bestCost
-                    bestCost = result.total_cost;
-                    bestLabels = result.labels;
-                    bestMedoids = result.medoid_indices;
-                end
-            end
-
-            obj.Labels = bestLabels;
-            obj.MedoidIndices = bestMedoids;
-            obj.TotalCost = bestCost;
+            obj.FitDistance = obj.given(obj.DistanceKeys);
         end
 
         function labels = fit_predict(obj, X)
-        %FIT_PREDICT Fit and return cluster labels.
-        %   labels = obj.fit_predict(X)
+        %FIT_PREDICT Fit and return the cluster labels. labels = obj.fit_predict(X)
             obj = obj.fit(X);
             labels = obj.Labels;
         end
 
-        function labels = predict(obj, X)
-        %PREDICT Assign new data to nearest medoids (requires prior fit).
-        %   labels = obj.predict(X)
-        %
-        %   Assigns each row of X to the cluster of the nearest medoid
-        %   from the most recent fit() call.
-            if isempty(obj.MedoidIndices)
-                error('dtwc:notFitted', ...
-                      'Model has not been fitted. Call fit() first.');
+        function D = transform(obj, X)
+        %TRANSFORM The DTW distance of each series of X to each medoid (M x k),
+        %   under the distance settings the medoids were fitted with.
+            if isempty(obj.ClusterCenters)
+                error('dtwc:notFitted', 'DTWClustering is not fitted; call fit first.');
             end
-            error('dtwc:notImplemented', ...
-                  'predict() for new data is not yet implemented.');
+            dtwc.Problem('dtw_clustering').set_data(X);   % the one conversion: refuses what fit refuses
+            if ~iscell(X)
+                X = num2cell(X, 2);
+            end
+            D = zeros(numel(X), numel(obj.ClusterCenters));
+            for i = 1:numel(X)
+                for j = 1:numel(obj.ClusterCenters)
+                    D(i, j) = dtwc.distance.dtw(X{i}, obj.ClusterCenters{j}, obj.FitDistance{:});
+                end
+            end
+        end
+
+        function labels = predict(obj, X)
+        %PREDICT The cluster (1-based) of the nearest medoid of each series of X.
+            [~, labels] = min(obj.transform(X), [], 2);
+            labels = labels.';
+        end
+
+        function s = score(obj, X)
+        %SCORE Minus the total distance of the series of X to their nearest
+        %   medoids (larger is better).
+            s = -sum(min(obj.transform(X), [], 2));
         end
     end
 
     methods (Access = private)
-        function settings = distance_settings(obj)
-        %DISTANCE_SETTINGS The distance settings, as dtwc.distance.dtw and
-        %   Problem.set_distance take them.
-            settings = {'Variant', obj.Variant, 'Band', obj.Band, ...
-                        'Metric', obj.Metric, 'MissingStrategy', obj.MissingStrategy, ...
-                        'WdtwG', obj.WdtwG, 'AdtwPenalty', obj.AdtwPenalty};
-        end
-    end
-
-    methods (Static, Hidden)
-        function apply_device_strategy(prob, activeDevice)
-        %APPLY_DEVICE_STRATEGY Make the Problem execute on the selected device.
-        %   Problem::set_device (C++): the GPU ordinal of a 'gpu:N' selection
-        %   reaches the Problem, so 'gpu:1' does not run on GPU 0 (Metal, which
-        %   has GPU 0 only, refuses it), and a build without a GPU backend
-        %   raises dtwc:deviceError. Without
-        %   this the Problem kept its CPU default and a 'gpu' request was
-        %   silently honoured on the CPU (gap F40).
-            prob.set_device(activeDevice);
+        function pairs = given(obj, names)
+        %GIVEN The name-value pairs of the properties NAMES that are not empty.
+            pairs = {};
+            for i = 1:numel(names)
+                if ~isempty(obj.(names{i}))
+                    pairs(end + 1:end + 2) = {names{i}, obj.(names{i})};
+                end
+            end
         end
     end
 end

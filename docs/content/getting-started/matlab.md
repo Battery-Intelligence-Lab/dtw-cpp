@@ -9,7 +9,7 @@ DTWC++ provides MATLAB bindings through a MEX interface, wrapped in a clean `+dt
 
 ## Requirements
 
-- MATLAB R2018a or later (C++ MEX API with `mex.hpp`)
+- MATLAB R2018a or later (the C MEX API, interleaved complex); R2019a or later to read Parquet
 - A C++20 compiler supported by your MATLAB version
 - CMake 3.26+
 
@@ -68,6 +68,67 @@ combination no kernel implements raises `dtwc:invalidArgument`:
 | `MsmC` | double | `1.0` | MSM split/merge cost |
 | `TweNu`, `TweLambda` | double | `0.001`, `1.0` | TWE stiffness and edit penalty |
 
+## Clustering a dataset
+
+The Tier-1 flow is Python's: set the device once, load a dataset, cluster it,
+read the result.
+
+```matlab
+dtwc.device('cpu');                                   % or 'gpu', 'gpu:N'
+data = dtwc.load('cycles.csv', 'SkipCols', 1);        % nothing is read yet
+res = dtwc.cluster(data, 3, 'Band', 10, 'MaxIter', 50);
+res.labels                                            % 1-based cluster of each series
+res.medoids                                           % 1-based medoid of each cluster
+res.score('silhouette')                               % the mean silhouette
+res.save('out');                                      % the four CSVs dtwc_cl writes
+```
+
+`dtwc.cluster(data, k, Name, Value, ...)` takes the `dtwc_cl` keys that are not
+about files, by Python's words in CamelCase: `Method`, `Band`, `Metric`,
+`Variant` and its parameters (`WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`,
+`TweNu`, `TweLambda`), `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`,
+`SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver` and the MIP
+settings (`MipGap`, `TimeLimit`, `NoWarmStart`, `NumericFocus`, `MipFocus`,
+`VerboseSolver`, `LrMaxNodes`), `GpuPrecision`, `Device`, `Name` and `Verbose`.
+C++ reads and checks them before a series is read; a key not given takes
+`dtwc_cl`'s default, so `Method` is `'auto'` (PAM on a GPU and for up to 5,000
+series on the CPU, CLARA above), and an unknown key raises `dtwc:invalidArgument`
+naming the valid ones. `Device` defaults to `dtwc.device()`; naming one sets
+that run's device only.
+
+## Loading data
+
+A file goes through `dtwc.load`, which reads it as `dtwc_cl` and Python do; series
+you have already read go in as they are, to `dtwc.load`, `dtwc.cluster`,
+`DTWClustering.fit`, `compute_distance_matrix` or `Problem.set_data`:
+
+```matlab
+% A file or a folder: read by the same reader as dtwc_cl and Python
+data = dtwc.load('cycles.csv', 'SkipRows', 1, 'SkipCols', 1);
+data = dtwc.load('cycles/');                 % one series per file
+data = dtwc.load('cycles.parquet');          % a list column: one series per row
+
+% Already read: a numeric matrix (one series per row) or a cell (any lengths)
+X = readmatrix('cycles.csv', 'NumHeaderLines', 1);
+res = dtwc.cluster(X(:, 2:end), 3);
+res = dtwc.cluster({x1, x2, x3, x4}, 2);
+```
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `SkipCols` | `0` | leading fields of each line (a file) or values of each series (in memory) |
+| `SkipRows` | `0` | leading lines of a file, or leading series in memory |
+| `Delimiter` | `''` | the field delimiter of text; `''` infers it from the extension |
+| `Name` | `''` | the run's name: the file's name without its extension, the folder's name, or `'dataset'` |
+
+CSV/TSV text and folders of it are read by the C++ reader in the MEX, the one
+`dtwc_cl` and Python use. Parquet (`.parquet`, `.pq`, or a folder of them) is read
+by MATLAB's `parquetread` (R2019a or later; the MEX links no Arrow): the first
+Float32/Float64 column is one series named by its file, the first list column of
+them one series per row, named `series_<i>`, as the C++ reader takes them. MATLAB
+has no Arrow IPC reader, so an `.arrow`, `.ipc` or `.feather` file raises
+`dtwc:invalidArgument`: read it elsewhere and pass the series in memory.
+
 ## Distance matrix
 
 Compute the full NxN pairwise DTW distance matrix:
@@ -85,53 +146,57 @@ Parameters:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `X` | double matrix (N x L) | required | Each row is a time series of length L |
+| `X` | numeric matrix (N x L) or cell of vectors | required | One series per row, or per cell (any lengths) |
 | `Band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
 
 The returned matrix `D` is symmetric with zeros on the diagonal.
 
 ## DTWClustering class
 
-`dtwc.DTWClustering` is a handle class for k-medoids clustering with DTW distance, implementing FastPAM.
+`dtwc.DTWClustering` is Python's `dtwcpp.DTWClustering`: k-medoids clustering
+with DTW distance, FastPAM by default. It is a value class, so `fit` returns the
+fitted object.
 
 ### Basic usage
 
 ```matlab
 clust = dtwc.DTWClustering('NClusters', 3, 'Band', 10);
-labels = clust.fit_predict(X);
+clust = clust.fit(X);
 
-fprintf('Cluster labels:\n');
-disp(labels);
-fprintf('Total cost: %.2f\n', clust.TotalCost);
+fprintf('Total cost: %.2f\n', clust.Inertia);
 fprintf('Medoid indices: ');
 disp(clust.MedoidIndices);
+labels = clust.predict(Y);       % the nearest medoid of each series of Y
 ```
 
-### Constructor parameters
+### Properties
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `NClusters` | int | `3` | Number of clusters |
-| `Band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
-| `Metric` | char | `'l1'` | Pointwise distance metric (`'l1'` or `'squared_euclidean'`) |
-| `MaxIter` | int | `100` | Maximum clustering iterations |
-| `NInit` | int | `1` | Number of random restarts (best result kept) |
-| `Variant` | char | `'standard'` | DTW variant: `'standard'`, `'ddtw'`, `'wdtw'`, `'adtw'`, `'softdtw'` |
-| `WdtwG` | double | `0.05` | WDTW steepness parameter |
-| `AdtwPenalty` | double | `1.0` | ADTW non-diagonal step penalty |
-| `MissingStrategy` | char | `'error'` | NaN handling: `'error'`, `'zero_cost'`, `'arow'`, `'interpolate'` |
+The settable properties are Python's parameters in CamelCase. One left empty
+takes the C++ default, and C++ checks every value when `fit` runs: a value no run
+can take (`MaxIter` 0, an unknown `Metric`) raises `dtwc:invalidArgument`.
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `NClusters` | `3` | Number of clusters |
+| `Method` | `'pam'` | Any `dtwc.cluster` method |
+| `Variant`, `Band`, `Metric`, `MissingStrategy`, `WdtwG`, `AdtwPenalty`, `MsmC`, `TweNu`, `TweLambda` | empty | The distance, as `dtwc.distance.dtw` takes it |
+| `MaxIter`, `NInit`, `MvMode`, `BatchSize`, `Device` | empty | As the `dtwc.cluster` keys; `Device` empty is `dtwc.device()` |
+| `RandomState` | empty | Seed of the first restart (restart i uses `RandomState + i - 1`); empty is `dtwc.default_random_seed()` |
 
 ### Methods
 
-- **`fit(X)`** -- Run k-medoids clustering on the data matrix `X` (N x L). Returns the object with updated properties.
-- **`fit_predict(X)`** -- Fit and return cluster labels.
-- **`predict(X)`** -- Assign new data to nearest medoids (requires prior `fit`).
+- **`fit(X)`** -- Cluster `X` (an N x L numeric matrix, one series per row, or a cell of numeric vectors): one `Problem`, `NInit` seeded restarts on one distance matrix. Returns the fitted object.
+- **`fit_predict(X)`** -- Fit and return the cluster labels.
+- **`transform(X)`** -- The DTW distance of each series of `X` to each medoid (M x k).
+- **`predict(X)`** -- The cluster of the nearest medoid of each series of `X`.
+- **`score(X)`** -- Minus the total distance of the series of `X` to their nearest medoids. Neither `predict` nor `score` refits.
 
 ### Read-only properties (set after fit)
 
 - `Labels` -- `double` row vector of cluster assignments (**1-based**)
 - `MedoidIndices` -- `double` row vector of medoid indices (**1-based**)
-- `TotalCost` -- sum of intra-cluster DTW distances
+- `Inertia` -- sum of the DTW distances of the series to their medoids
+- `ClusterCenters` -- the medoid series, a cell
 
 ### Indexing note
 
@@ -139,7 +204,7 @@ All indices returned by the MATLAB bindings are **1-based**, consistent with MAT
 
 ## Complete example
 
-This example reproduces the workflow from `examples/example_quickstart.m`:
+This example reproduces the workflow from `examples/matlab/example_quickstart.m`:
 
 ```matlab
 %% 1. Pairwise DTW distance
@@ -165,7 +230,8 @@ fprintf('Max:          %.4f\n', max(dm(:)));
 
 %% 3. Clustering
 clust = dtwc.DTWClustering('NClusters', 3, 'Band', 10);
-labels = clust.fit_predict(data);
+clust = clust.fit(data);              % a value class: fit returns the fitted estimator
+labels = clust.Labels;
 
 fprintf('\nCluster labels (1-based):\n');
 disp(labels);
@@ -175,25 +241,27 @@ for k = 1:3
     fprintf('%d ', sum(labels == k));
 end
 fprintf('\n');
-fprintf('Total cost: %.2f\n', clust.TotalCost);
+fprintf('Total cost: %.2f\n', clust.Inertia);
 fprintf('Medoid indices: ');
 disp(clust.MedoidIndices);
 ```
 
 ## API correspondence with Python
 
-The MATLAB and Python APIs are designed to mirror each other where reasonable:
+The MATLAB and Python APIs are designed to mirror each other: the same words,
+snake_case in Python and CamelCase in MATLAB's name-value keys and properties.
 
 | Python | MATLAB | Notes |
 |--------|--------|-------|
+| `dtwcpp.load(path, skip_cols=1)` | `dtwc.load(path, 'SkipCols', 1)` | |
+| `dtwcpp.cluster(data, k=3, max_iter=50)` | `dtwc.cluster(data, 3, 'MaxIter', 50)` | Name-value pairs |
 | `dtwcpp.distance.dtw(x, y)` | `dtwc.distance.dtw(x, y)` | Preferred namespace |
 | `dtwcpp.compute_distance_matrix(X)` | `dtwc.compute_distance_matrix(X)` | |
 | `DTWClustering(n_clusters=3)` | `DTWClustering('NClusters', 3)` | Name-value pairs |
 | `clf.fit_predict(X)` | `clust.fit_predict(X)` | |
 | `clf.labels_` | `clust.Labels` | 0-based vs 1-based |
 | `clf.medoid_indices_` | `clust.MedoidIndices` | 0-based vs 1-based |
-| `clf.inertia_` | `clust.TotalCost` | |
+| `clf.inertia_` | `clust.Inertia` | |
+| `prob.band`, `prob.max_iter` | `prob.Band`, `prob.MaxIter` | Read-only in MATLAB: `set_band`, `set_max_iter` |
 | `Problem("p", device="gpu")` | `dtwc.Problem('p', 'Device', 'gpu')` | a `Problem`'s device; it does not follow `dtwc.device()` |
 | `prob.set_device("cpu")` | `prob.set_device('cpu')` | same names as `dtwc.device()`; `'hpc'` is Python's alone and is `dtwc:deviceError` here |
-
-

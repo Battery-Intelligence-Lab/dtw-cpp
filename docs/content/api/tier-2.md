@@ -65,10 +65,10 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 |---|---|---|---|---|
 | k | `set_n_clusters(index_t)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; the retained C++ `set_numberOfClusters` is a deprecated warning alias |
 | method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes; `cluster()` runs any of the nine, `Auto` resolved for the device and N |
-| band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
-| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | public `int maxIter` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
-| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | public `int N_repetition` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
-| random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
+| band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` / `Band` (read-only) | retained field `band` (`Problem.hpp`); MEX `set_band` |
+| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` / `MaxIter` (read-only) | public `int maxIter` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
+| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` / `NRepetitions` (read-only) | public `int N_repetition` field (v1.0.0) plus the canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
+| random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; the `Seed` key of `dtwc.cluster`, `DTWClustering`'s `RandomState`, and method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | missing strategy | `missing_strategy()` / `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | private state (`Problem.hpp`) |
@@ -81,9 +81,9 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
 | GPU precision | `gpu_precision()` / `set_gpu_precision(GpuPrecision)` `[introduced-2.0]` | `set_gpu_precision(GpuPrecision)` `[introduced-2.0]` | `set_gpu_precision(name)` `[introduced-2.0]` | private state, default `Auto`; names as `--gpu-precision` |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |
-| verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
-| problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |
-| data (owning) | `data() const` / `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | read-only C++ accessor plus live setters |
+| verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` / `Verbose` (read-only) | live in all three routes |
+| problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` | private C++ state with live binding reads |
+| data (owning) | `data() const` / `set_data(Data)` | `set_data(series, names)` | `set_data(X)`: a numeric matrix (one series per row) or a cell of numeric vectors | read-only C++ accessor plus live setters |
 | data (view) | `set_view_data(Data)` | — | — | C++ only: the view path CLARA uses; no binding exposes it |
 
 ### 2.2 `Problem` — distance-matrix & clustering methods `[rename: camelCase → snake_case]`
@@ -98,13 +98,13 @@ k < 1 and `set_band(b)` refuses b < -1 with `InvalidInput`; k > N is refused by
 | `fillDistanceMatrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
 | `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
-| — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `distance_matrix()` |
+| — (reader) | `distance_matrix()` † | `distance_matrix()` ‡ (independent NumPy copy) | `distance_matrix()` (filled first, as Python's) |
 | — (writer) | `writable_distance_matrix()` † | `set_distance_matrix(...)` (used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
 | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
 | `assignClusters()` | `assign_clusters()` | `assign_clusters()` (live) | — |
 | `calculateMedoids()` | `calculate_medoids()` | `calculate_medoids()` (live) | — |
-| `cluster()` | `cluster()` | `cluster()` (live; returns the `ClusteringResult`) | `cluster()` `[introduced-2.0]` |
+| `cluster()` | `cluster()` | `cluster()` (live; returns the `ClusteringResult`) | `cluster()` `[introduced-2.0]` (returns the result struct) |
 | `cluster_by_MIP()` | `cluster_by_mip()` | — | — |
 | `cluster_by_kMedoidsPAM()` | `cluster_by_kmedoids_lloyd()` | — | — |
 | `printClusters()` | `print_clusters()` | `print_clusters()` (live) | — |

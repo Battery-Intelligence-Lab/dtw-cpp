@@ -2,46 +2,43 @@
 %> @brief Lazy dataset loader (api-contract-2.0.md §1.2).
 %> @author Volkan Kumtepeli
 function ds = load(source, varargin)
-%LOAD Create a lazy dtwc.Dataset handle (contract §1.2).
+%LOAD A lazy dtwc.Dataset of a path or of series already in memory (contract §1.2).
 %
-%   ds = dtwc.load(source)
-%   ds = dtwc.load(source, 'skip_cols', 0, 'skip_rows', 0, 'delimiter', '', 'name', '')
+%   ds = dtwc.load('cycles.csv', 'SkipCols', 1, 'SkipRows', 1)
+%   ds = dtwc.load('cycles/')            % a folder: one series per file
+%   ds = dtwc.load('cycles.parquet')     % MATLAB's parquetread
+%   ds = dtwc.load(X)                    % N x L numeric matrix, one series per row
+%   ds = dtwc.load({x1, x2, x3})         % cell of numeric vectors, any lengths
 %
-%   Parameters
-%   ----------
-%   source : char/string path, N x L numeric matrix, OR cell array of numeric
-%       vectors. Each matrix row is one time series of length L; each cell is
-%       one series, so a cell source may be RAGGED (C++ load(series_type)).
-%   skip_cols : leading columns to drop (id columns). Default 0.
-%   skip_rows : leading rows to drop. Default 0. For a path source these are
-%       header LINES of the file; for a matrix or cell source they are leading
-%       SERIES (one matrix row is one file line).
-%   delimiter : field delimiter for path sources. '' = auto from extension.
-%   name : dataset name. '' = derive from the filename stem (or 'dataset').
+%   SkipCols : leading fields of each line (a path) or values of each series
+%              (in memory) dropped. Default 0.
+%   SkipRows : leading lines of a file, or leading series in memory (one
+%              memory row is one file line). Default 0.
+%   Delimiter: the field delimiter of text; '' (default) infers it from the
+%              extension (tab for .tsv and .txt, else comma).
+%   Name     : the name of the run and of its result files; '' (default) is
+%              dtwc_cl's: the file's name without its extension, the folder's
+%              name, or 'dataset' for series in memory.
 %
-%   Contract: load() performs NO file I/O. A path source is only read inside
-%   dtwc.cluster().
+%   Nothing is read here: dtwc.cluster (or ds.as_series()) reads a path once.
+%   A Dataset passes through unchanged; it keeps the options it was made with.
 %
 %   See also dtwc.Dataset, dtwc.cluster
 
-    p = inputParser;
-    addRequired(p, 'source');
-    addParameter(p, 'skip_cols', 0, @(v) isnumeric(v) && isscalar(v) && v >= 0);
-    addParameter(p, 'skip_rows', 0, @(v) isnumeric(v) && isscalar(v) && v >= 0);
-    addParameter(p, 'delimiter', '', @(v) ischar(v) || isstring(v));
-    addParameter(p, 'name', '', @(v) ischar(v) || isstring(v));
-    parse(p, source, varargin{:});
-
-    nm = char(p.Results.name);
-    if isempty(nm)
-        if ischar(source) || isstring(source)
-            [~, nm, ~] = fileparts(char(source));
-        else
-            nm = 'dataset';
+    if isa(source, 'dtwc.Dataset')
+        if ~isempty(varargin)
+            error('dtwc:invalidArgument', ['load: a dtwc.Dataset keeps the options it was ' ...
+                  'made with; load its Source with the options instead.']);
         end
+        ds = source;
+        return
     end
-
-    ds = dtwc.Dataset(source, double(p.Results.skip_cols), ...
-                      double(p.Results.skip_rows), ...
-                      char(p.Results.delimiter), nm);
+    p = inputParser;
+    addParameter(p, 'SkipCols', 0);
+    addParameter(p, 'SkipRows', 0);
+    addParameter(p, 'Delimiter', '');
+    addParameter(p, 'Name', '');
+    parse(p, varargin{:});
+    ds = dtwc.Dataset(source, p.Results.SkipCols, p.Results.SkipRows, ...
+                      char(p.Results.Delimiter), char(p.Results.Name));
 end

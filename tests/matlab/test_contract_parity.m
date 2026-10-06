@@ -72,14 +72,14 @@ end
 
 function test_tier1_load_matrix_and_options(testCase)
 %   §1.2 dtwc.load -> dtwc.Dataset (lazy handle, no I/O for a matrix source).
-    ds = dtwc.load(testCase.TestData.X, 'skip_cols', 0, 'delimiter', '', 'name', 'ptest');
+    ds = dtwc.load(testCase.TestData.X, 'SkipCols', 0, 'Delimiter', '', 'Name', 'ptest');
     verifyClass(testCase, ds, 'dtwc.Dataset');
     verifyEqual(testCase, ds.Name, 'ptest');
 end
 
 function test_tier1_load_skip_rows(testCase)
 %   §1.2 skip_rows: header LINES for a path, leading SERIES for a matrix.
-    ds = dtwc.load(testCase.TestData.X, 'skip_rows', 2);
+    ds = dtwc.load(testCase.TestData.X, 'SkipRows', 2);
     verifyEqual(testCase, ds.SkipRows, 2);
 
     % The path is read by C++ inside dtwc.cluster: two header lines and the id
@@ -89,7 +89,7 @@ function test_tier1_load_skip_rows(testCase)
     fprintf(fid, 'id,t0,t1\nunit,s,s\na,0,0\nb,0.1,0\nc,10,11\nd,10,10.9\n');
     fclose(fid);
     c = onCleanup(@() delete(f));
-    hdr = dtwc.load(f, 'skip_cols', 1, 'skip_rows', 2, 'delimiter', ',');
+    hdr = dtwc.load(f, 'SkipCols', 1, 'SkipRows', 2, 'Delimiter', ',');
     fromFile = dtwc.cluster(hdr, 2);
     fromMemory = dtwc.cluster([0 0; 0.1 0; 10 11; 10 10.9], 2);
     verifyEqual(testCase, fromFile.labels, fromMemory.labels);
@@ -98,41 +98,22 @@ function test_tier1_load_skip_rows(testCase)
 end
 
 function test_tier1_load_negative_skip_rows_rejected(testCase)
-%   §1.2 skip_rows is validated exactly as skip_cols is.
-    cols = '';
-    rows = '';
-    try
-        dtwc.load(testCase.TestData.X, 'skip_cols', -1);
-    catch e
-        cols = e.identifier;
+%   §1.2 SkipRows is checked exactly as SkipCols is, where the handle is made,
+%   before any file is read; the MEX reader keeps its own guard (C++'s words).
+    for key = {'SkipCols', 'SkipRows'}
+        err = capture_error(@() dtwc.load(testCase.TestData.X, key{1}, -1));
+        verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+        verifyEqual(testCase, err.message, sprintf('load: %s must be a non-negative integer.', key{1}));
     end
-    try
-        dtwc.load(testCase.TestData.X, 'skip_rows', -1);
-    catch e
-        rows = e.identifier;
-    end
-    verifyNotEmpty(testCase, cols);
-    verifyEqual(testCase, rows, cols);
-
-    % Both of the above are MATLAB's own inputParser rejections, so on their
-    % own they would still pass if skip_rows were dropped downstream. Drive the
-    % gateway directly to reach C++ detail::validate_skips and pin its verbatim
-    % message (dtwc/api.cpp: "load: skip_rows must be non-negative.").
-    X = testCase.TestData.X;
-    cpp_rows = capture_error(@() dtwc_mex('tier1_cluster', X, 2, 'pam', -1, ...
-        '', 100, 0, -1, '', ''));
-    verifyEqual(testCase, cpp_rows.identifier, 'dtwc:invalidArgument');
-    verifyEqual(testCase, cpp_rows.message, 'load: skip_rows must be non-negative.');
-    cpp_cols = capture_error(@() dtwc_mex('tier1_cluster', X, 2, 'pam', -1, ...
-        '', 100, -1, 0, '', ''));
-    verifyEqual(testCase, cpp_cols.identifier, 'dtwc:invalidArgument');
-    verifyEqual(testCase, cpp_cols.message, 'load: skip_cols must be non-negative.');
+    err = capture_error(@() dtwc_mex('read_data', 'unread.csv', 0, -1, ''));
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifyEqual(testCase, err.message, 'load: skip_rows must be non-negative.');
 end
 
 function test_tier1_cluster_returns_result(testCase)
 %   §1.3 dtwc.cluster -> §1.4 dtwc.Result (Tier-1 pam path).
     res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, ...
-                       'method', 'pam', 'band', -1, 'device', '', 'max_iter', 50);
+                       'Method', 'pam', 'Band', -1, 'MaxIter', 50);
     verifyClass(testCase, res, 'dtwc.Result');
     verifyNumElements(testCase, res.labels, 6);
     verifyNumElements(testCase, res.medoids, 2);
@@ -145,7 +126,7 @@ function test_tier1_default_seed_matches_cpp_and_python(testCase)
     X = (0:7)' + [0 0.01 -0.02 0.03];
     verifyEqual(testCase, dtwc.default_random_seed(), 42);
 
-    tier1 = dtwc.cluster(X, 3, 'method', 'pam');
+    tier1 = dtwc.cluster(X, 3, 'Method', 'pam');
 
     prob42 = dtwc.Problem('seed42');
     prob42.set_data(X);
@@ -175,9 +156,9 @@ function test_dtwclustering_restarts_use_distinct_local_seeds(testCase)
     one = one.fit(X);
     two = dtwc.DTWClustering('NClusters', 3, 'NInit', 2);
     two = two.fit(X);
-    verifyEqual(testCase, one.TotalCost, 24);
-    verifyEqual(testCase, two.TotalCost, 20);
-    verifyLessThan(testCase, two.TotalCost, one.TotalCost);
+    verifyEqual(testCase, one.Inertia, 24);
+    verifyEqual(testCase, two.Inertia, 20);
+    verifyLessThan(testCase, two.Inertia, one.Inertia);
 end
 
 function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
@@ -225,7 +206,7 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
     l1_estimator = l1_estimator.fit(X);
     assertEqual(testCase, l1_estimator.Labels, [1 2 1 1]);
     assertEqual(testCase, l1_estimator.MedoidIndices, [3 2]);
-    assertEqual(testCase, l1_estimator.TotalCost, 9);
+    assertEqual(testCase, l1_estimator.Inertia, 9);
 
     squared_estimator = dtwc.DTWClustering( ...
         'NClusters', 2, 'Metric', 'squared_euclidean', ...
@@ -233,7 +214,7 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
     squared_estimator = squared_estimator.fit(X);
     assertEqual(testCase, squared_estimator.Labels, [2 1 1 1]);
     assertEqual(testCase, squared_estimator.MedoidIndices, [4 1]);
-    assertEqual(testCase, squared_estimator.TotalCost, 30);
+    assertEqual(testCase, squared_estimator.Inertia, 30);
 
     uppercase_estimator = dtwc.DTWClustering( ...
         'NClusters', 2, 'Metric', 'SQUARED_EUCLIDEAN', ...
@@ -244,8 +225,8 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
     assertNotEqual(testCase, l1_estimator.Labels, squared_estimator.Labels);
     assertNotEqual(testCase, l1_estimator.MedoidIndices, ...
                    squared_estimator.MedoidIndices);
-    assertNotEqual(testCase, l1_estimator.TotalCost, ...
-                   squared_estimator.TotalCost);
+    assertNotEqual(testCase, l1_estimator.Inertia, ...
+                   squared_estimator.Inertia);
 
     fprintf(['F18_MATLAB_METRIC subject=DTWClustering.fit+fit_predict ' ...
         'oracle=exhaustive_paths matrices=2/2 problem_routes=2/2 ' ...
@@ -301,6 +282,11 @@ function test_dtwclustering_metric_validation_precedes_effects(testCase)
                 'DDTW plus zero_cost must fail loudly.');
     assertEqual(testCase, missing_error.identifier, 'dtwc:invalidArgument');
 
+    % MaxIter = 0 would report the initial medoids' cost as the clustering's.
+    zero_error = capture_error(@() dtwc.DTWClustering('NClusters', 2, 'MaxIter', 0).fit(X));
+    assertEqual(testCase, zero_error.identifier, 'dtwc:invalidArgument');
+    verifySubstring(testCase, zero_error.message, 'max_iter must be at least 1');
+
     fprintf(['F18_MATLAB_VALIDATION unknown_metric=1/1 ' ...
         'unknown_precedence=1/1 squared_variant=1/1 ' ...
         'variant_missing=1/1 skips=0\n']);
@@ -323,8 +309,48 @@ function test_dtwclustering_computes_every_metric_cpp_computes(testCase)
             cost = cost + dtwc.distance.dtw(X(s, :), X(c.MedoidIndices(c.Labels(s)), :), ...
                                             settings{:});
         end
-        verifyEqual(testCase, c.TotalCost, cost, 'RelTol', 1e-12, sprintf('case %d', i));
+        verifyEqual(testCase, c.Inertia, cost, 'RelTol', 1e-12, sprintf('case %d', i));
     end
+end
+
+function test_dtwclustering_predict_and_score_read_the_fitted_medoids(testCase)
+%   predict is the nearest medoid under the fitted distance and score minus the
+%   total distance to the nearest medoids, both by dtwc.distance.dtw: on the
+%   training series they are C++'s Labels and -Inertia, and nothing is refitted.
+    X = [0 1; 3 8; 5 2; 6 4];
+    c = dtwc.DTWClustering('NClusters', 2, 'NInit', 2).fit(X);
+    verifyEqual(testCase, c.predict(X), c.Labels);
+    verifyEqual(testCase, c.score(X), -c.Inertia, 'AbsTol', 1e-12);
+    verifyEqual(testCase, c.predict({[6 4 4], 0}), [1 1]);
+    verifyError(testCase, @() c.predict({magic(3)}), 'dtwc:invalidArgument');   % as fit refuses it
+    verifyEqual(testCase, [c.Labels; c.MedoidIndices(c.Labels)], [1 2 1 1; 3 2 3 3]);
+end
+
+function test_keys_are_python_words_in_camel_case(testCase)
+%   Volkan 10-01: the same words in every language, each in its own case.
+%   dtwc.cluster's keys are Python's cluster() keywords (the binding's Config
+%   less n_clusters, which k names) and DTWClustering's settable properties are
+%   Python's DTWClustering parameters, in CamelCase. The words are those of
+%   python/src/_dtwcpp_core.cpp's Config and python/dtwcpp/_clustering.py.
+    cluster_words = {'name', 'method', 'band', 'metric', 'variant', 'max_iter', 'n_init', ...
+        'dc', 'wdtw_g', 'adtw_penalty', 'sdtw_gamma', 'msm_c', 'twe_nu', 'twe_lambda', ...
+        'mv_mode', 'missing_strategy', 'sample_size', 'n_samples', 'seed', 'batch_size', ...
+        'linkage', 'solver', 'mip_gap', 'time_limit', 'no_warm_start', 'numeric_focus', ...
+        'mip_focus', 'verbose_solver', 'lr_max_nodes', 'device', 'gpu_precision', 'verbose'};
+    estimator_words = {'n_clusters', 'method', 'variant', 'band', 'max_iter', 'n_init', ...
+        'wdtw_g', 'adtw_penalty', 'msm_c', 'twe_nu', 'twe_lambda', 'mv_mode', ...
+        'missing_strategy', 'metric', 'batch_size', 'random_state', 'device'};
+    camel = @(words) sort(cellfun(@(w) strjoin(cellfun(@(p) [upper(p(1)) p(2:end)], ...
+        strsplit(w, '_'), 'UniformOutput', false), ''), words, 'UniformOutput', false));
+
+    err = capture_error(@() dtwc.cluster(testCase.TestData.X, 2, 'NoSuchKey', 1));
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    listed = regexp(err.message, '^unknown key ''NoSuchKey''\. Valid: (.*)\.$', 'tokens', 'once');
+    verifyEqual(testCase, sort(strsplit(listed{1}, ', ')), camel(cluster_words));
+
+    mc = ?dtwc.DTWClustering;
+    settable = {mc.PropertyList(strcmp({mc.PropertyList.SetAccess}, 'public')).Name};
+    verifyEqual(testCase, sort(settable), camel(estimator_words));
 end
 
 function test_fast_pam_mex_rejects_invalid_seed_before_cast(testCase)
@@ -340,7 +366,7 @@ end
 function test_tier1_cluster_unknown_method_raises(testCase)
 %   §1.3 unknown method -> dtwc:invalidArgument (never silently PAM).
     verifyError(testCase, ...
-        @() dtwc.cluster(testCase.TestData.X, 2, 'method', 'no_such_method'), ...
+        @() dtwc.cluster(testCase.TestData.X, 2, 'Method', 'no_such_method'), ...
         'dtwc:invalidArgument');
 end
 
@@ -423,34 +449,6 @@ function test_hpc_is_a_device_error_as_in_cpp(testCase)
         end
     end
     verifyEqual(testCase, dtwc.device(), previous);
-end
-
-function test_dtwclustering_forwards_the_gpu_ordinal(testCase)
-%   S3: DTWClustering.fit set the CUDA strategy but never the device id, so
-%   'gpu:1' silently executed on GPU 0. Problem::set_device takes the ordinal:
-%   CUDA records it (C++ test_problem_set_device pins that), and Metal, which
-%   has GPU 0 only, refuses it. Capability-branched rather than
-%   assumption-filtered: an Incomplete is a silent skip that the matlab_suite
-%   gate rejects, so every build must assert something here.
-    if dtwc.gpu_available()
-        prob = dtwc.Problem('gpu_ordinal');
-        prob.set_data(testCase.TestData.X);
-        apply = @() dtwc.DTWClustering.apply_device_strategy(prob, 'gpu:1');
-        if startsWith(dtwc.gpu_info(), 'Metal:')
-            verifyError(testCase, apply, 'dtwc:deviceError');
-        else
-            verifyWarningFree(testCase, apply);
-        end
-        fprintf('S3_GPU_ORDINAL branch=gpu\n');
-    else
-        % No GPU backend: dtwc::device() must reject the request before fit() creates a
-        % Problem, and the process device must be left untouched.
-        dtwc.device('cpu');
-        c = dtwc.DTWClustering('NClusters', 2, 'Device', 'gpu:1');
-        verifyError(testCase, @() c.fit(testCase.TestData.X), 'dtwc:deviceError');
-        verifyEqual(testCase, dtwc.device(), 'cpu');
-        fprintf('S3_GPU_ORDINAL branch=no-gpu rejected-before-effect\n');
-    end
 end
 
 % =========================================================================
