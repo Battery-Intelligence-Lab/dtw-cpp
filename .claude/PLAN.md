@@ -197,9 +197,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `ucr_benchmark_gpu.slurm` ask for any GPU and can land on a refused V100; ARC documents `gpu:<type>:<n>` (P100,
   V100, RTX, RTX8000, A100) and constraints `gpu_sku`/`gpu_gen`/`gpu_cc`/`gpu_mem`/`nvlink`, no type for RTX A6000,
   H100 or L40S
-- ☐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
+- ◐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
   regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
-  (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m) (done in W7g)
+  (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m) (done in W7g) (W9e 9230bd5e,
+  1000f8d0, d4c43410, 8dccdc68, bebcb149, 43fe390e; merged on the Mac: `dtwc.cluster(data, k, Name, Value)` and
+  `DTWClustering` set a dtwc::Config field by field, apply() checks it, Problem::cluster() runs; CamelCase keys are
+  Python's words; the MEX links no run() or api (link map), text through the bound C++ reader, Parquet through
+  parquetread, Arrow IPC refused; matlab_suite 140/139 → 142/141 reconciled by name, the 25 CLI runs byte-identical;
+  ◐ until Windows R2024b runs matlab_suite — the brief `plans/2026-10-06-briefs/W9e.md` stays until then)
 - W9e note: MATLAB keys are CamelCase throughout, the same words as Python's snake_case (Volkan 10-01: "camelcase
   and snake case can change between languages"); `dtwc.cluster`'s `band`, `max_iter` become `Band`, `MaxIter`
 - W9b/W9e note (Volkan 10-01, lighter bindings): Python and MATLAB share the Config names, not the CLI's file

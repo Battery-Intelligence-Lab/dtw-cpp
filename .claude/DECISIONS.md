@@ -366,3 +366,11 @@ CHANGELOG rule.
   read-only in Python so a Gurobi request stays with C++; Gurobi's builder keeps its point-major model (little to
   delete, not compilable on the Mac). The CI Python job installs `[test,dev,io,mip]` and pandas so the pyarrow,
   pandas, scikit-learn and highspy cases run there instead of skipping (edited on the Mac, CI not run here).
+- 2026-10-06 — W9e (merged on the Mac): MATLAB's refusals use `dtwc:invalidArgument` (contract §5's identifier for
+  InvalidInput; the brief's `dtwc:invalidInput` was wrong); `DTWClustering` gains Method, MsmC, TweNu, TweLambda,
+  MvMode, BatchSize and RandomState, `TotalCost` is `Inertia`, predict/transform/score read the fitted medoids, no
+  `'precomputed'` metric; in-memory SkipRows/SkipCols are applied in MATLAB as Python applies them (C++'s copy sits in
+  api.cpp, which the MEX no longer links); a logical reads as 1 for a numeric key (Python refuses a bool); the
+  Parquet route is pinned against pyarrow, not the C++ Arrow reader (none on the Mac); `CheckpointOptions` keeps
+  snake_case keys (outside the brief, MATLAB's last). Open for Volkan: the Windows R2024b matlab_suite run (the brief
+  stays until it passes).

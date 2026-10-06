@@ -32,12 +32,13 @@ a contract change and is not permitted without the same decision process.
 
 The following post-freeze scope decisions are approved:
 
-1. The original common Tier-1 MATLAB method set remains `auto`, `pam`, `clara`,
-   `kmedoids`, `mip`, and `hierarchical`/`hclust`. OneBatchPAM, LR-core, and
-   TADPole were added later to C++ and Python; MATLAB rejects those names at
-   Tier 1 rather than silently substituting another method. No previously
-   accepted MATLAB method was removed. Adding the three post-freeze methods to
-   MATLAB Tier 1 is owned by the 2.1 parity milestone.
+1. The original common Tier-1 MATLAB method set was `auto`, `pam`, `clara`,
+   `kmedoids`, `mip`, and `hierarchical`/`hclust`; OneBatchPAM, LR-core, and
+   TADPole were added later to C++ and Python, and MATLAB rejected those names
+   at Tier 1 rather than silently substituting another method. Since W9e
+   (PLAN, 2026-10-06) MATLAB's `dtwc.cluster` hands `Method` to `dtwc::Config`
+   and `Problem::cluster()` runs every C++ method, so the three names work in
+   all three languages. No previously accepted MATLAB method was removed.
 2. C++ continues to accept `device="hpc"` as a valid device name, but
    `dtwc::run` (`dtwc_cl` and Tier-1 `cluster()`) raises the documented
    `DeviceError`, without reading `.env`: a run computes where it starts, and

@@ -117,3 +117,12 @@ cmake --build build-matlab && ctest --test-dir build-matlab -C Release -R matlab
 # CLI: the 25 runs on data/dummy (--skip-rows 1 --skip-cols 1, -k 3 unless -k 1), one directory each with out/,
 # stdout (the "[m:s min:sec]" tokens and the Time: value stripped), stderr and the exit code; diff -r base new
 ```
+
+## Merged on the main tree (orchestrator, `bf82dc1b` = `b9839200` (M1 merged) + `pb/W9e`), all `[confirmed]`
+
+`build/`: zero warnings. `ctest -j1`: 100 % of 95, `test_cuda_correctness` skipped, 19.34 s (quiet machine).
+Conformance regenerated: the one silhouette ulp only (D-19). `check_docs` PASS, `check_pins` 0 failures,
+`generate_docs --check` current. `build-matlab/` (HiGHS static since M1): zero warnings; `dtwc_mex.mexmaca64`
+4,516,640 bytes (4,557,072 before W9e on the same static link); `matlab_suite: 142 run, 141 passed, 0 failed,
+1 incomplete` (the registered filter). Fresh venv (`.[test,dev,io,mip]`, matplotlib, pandas): **974 passed,
+11 skipped, 0 failed, 94.17 s**, as after M1 (W9e changes no Python file).
