@@ -12,8 +12,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   ones: `dtwc_core` (the algorithms, the `Problem`, the CSV/TSV reader and the result writers: what the Python module
   and the MEX link), `dtwc_cli` (`cli::bind`, `dtwc::run` and the Tier-1 facade, with CLI11 and fkYAML) and, in a
   build with Arrow, `dtwc_io` (the Arrow IPC and Parquet readers, the one library Arrow links, so an Arrow build's
-  Python module and MEX link no Arrow). `target_link_libraries(... dtwc++)` is unchanged; each library lists its
-  headers in a `FILE_SET HEADERS` based at `dtwc/`. In C++, `dtwc::read_data` reads text only and refuses Parquet and
+  Python module and MEX link no Arrow). `target_link_libraries(... dtwc++)` is unchanged, but a non-INTERFACE command
+  on it (`target_compile_options(dtwc++ PRIVATE …)`, `$<TARGET_FILE:dtwc++>`) now fails at configure; each library
+  lists its headers in a `FILE_SET HEADERS` based at `dtwc/`. In C++, `dtwc::read_data` reads text only and refuses Parquet and
   Arrow IPC as a build without Arrow did: read them with `dtwc::io::read_arrow` (`io/read_arrow.hpp`), and stream
   Parquet into FastCLARA with `algorithms::fast_clara_parquet`. `dtwc_cl`, `dtwc::load` with `dtwc::cluster`, Python
   and MATLAB read as before.

@@ -1,6 +1,6 @@
 /// @file parquet_chunk_reader.hpp — The Parquet reader.
 ///
-/// read_data() reads a file whole; streaming CLARA reads row groups and
+/// read_arrow() reads a file whole; streaming CLARA reads row groups and
 /// sparse rows, each row group independently, without loading the entire
 /// dataset into memory.
 ///

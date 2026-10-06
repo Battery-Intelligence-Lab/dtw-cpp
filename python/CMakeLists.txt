@@ -31,7 +31,7 @@ else()
   nanobind_add_module(_dtwcpp_core src/_dtwcpp_core.cpp)
 endif()
 
-# The core alone: no command line (CLI11, fkYAML) and no file-format readers.
+# The core alone: no command line (CLI11, fkYAML) and no Arrow (Parquet and Arrow IPC go through pyarrow).
 target_link_libraries(_dtwcpp_core PRIVATE dtwc_core project_options)
 # The MSVC `/openmp:experimental` flag (and `-fopenmp`/libomp on Clang/GCC) is
 # now attached DIRECTLY to dtwc_core as a PUBLIC usage requirement

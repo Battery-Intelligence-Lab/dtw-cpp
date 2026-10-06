@@ -17,7 +17,7 @@
 
 namespace dtwc {
 
-/// The readers behind read_data.
+/// The input formats: read_data reads Text; dtwc::io::read_arrow (dtwc_io) Parquet and Arrow IPC.
 enum class InputFormat { Text, Parquet, ArrowIPC };
 
 /**
