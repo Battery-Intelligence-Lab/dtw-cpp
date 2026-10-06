@@ -352,3 +352,9 @@ CHANGELOG rule.
 - 2026-10-06 — Volkan (chat, "sure also merge and commit"): the banded kernel's bounds-as-arithmetic simplification
   (`pb/banded-bounds-arith`, 25 lines fewer, bit-identical) merges although the Mac timed it 1.08–1.20× slower at
   bands 5–12 without early abandon (faster with it); the Windows box times it on x86 and the numbers decide if it stays.
+- 2026-10-06 — W9b (merged 4265e3a6): Python's cluster(), DTWClustering, load() and set_data run on the C++ core
+  (Config and apply() in the core); text and distance-matrix files are read as bytes (a Ctrl-Z is refused, a CR ends a
+  line only before its LF); one conversion takes already-read data for every entry and refuses what is not series with
+  `_NotSeries(TypeError, ValueError)`, since scikit-learn's estimator checks need ValueError (numpy's AxisError has the
+  same two-parent form); Volkan may veto. `refuse_gpu_method` is inlined into apply() (one caller after GC).
+- 2026-10-06 — Volkan (chat): "You can pull and merge the macos changes": origin's Mac pass merged on Windows.
