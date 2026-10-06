@@ -11,7 +11,6 @@ target_sources(mip-solvers
     mip.hpp
     highs_support.hpp
     nearest_medoid.hpp
-    solver_types.hpp
     decode_assignment.hpp
     lagrangian_root.hpp
   )

@@ -1,6 +1,6 @@
 /**
  * @file mip_Highs.cpp
- * @brief Encapsulating mixed-integer program functions using Highs solver.
+ * @brief The compact p-median model as arrays, and its solve by linked HiGHS.
  * @author Volkan Kumtepeli
  * @author Becky Perriment
  * @date 06 Nov 2022
@@ -10,25 +10,19 @@
 #include "highs_support.hpp"
 #include "decode_assignment.hpp"
 #include "../algorithms/fast_pam.hpp"
-#include "../Data.hpp"        // for Data
 #include "../base/error.hpp"       // for SolverError
-#include "solver_types.hpp" // for Triplet, RowMajor
 #include "../Problem.hpp"
 #include "../base/settings.hpp"
-#include "../base/timing.hpp"
 
 #ifdef DTWC_ENABLE_HIGHS
 #include <Highs.h>
 #endif
 
-#include <vector>
-#include <stdexcept> // for std::runtime_error
+#include <algorithm> // for max, fill_n
 #include <cstddef>   // for size_t
-#include <limits>    // for numeric_limits
-#include <algorithm> // for sort
 #include <iostream>  // for operator<<, basic_ostream, ost...
+#include <limits>    // for numeric_limits
 #include <string>    // for operator<<, std::to_string
-#include <utility>   // for move
 
 namespace dtwc {
 
@@ -41,117 +35,79 @@ bool highs_solver_available() noexcept
 #endif
 }
 
-void MIP_clustering_byHiGHS(Problem &prob)
+mip::PMedianModel mip::build_p_median_model(Problem &prob)
 {
-  if (prob.mip_settings.verbose_solver || prob.verbose())
-    std::cout << "HiGHS MIP solver starting." << '\n';
-  dtwc::Clock clk; // Create a clock object
+  const auto n = static_cast<std::size_t>(prob.size());
+  const auto k = prob.n_clusters();
 
-#ifdef DTWC_ENABLE_HIGHS
-  const auto Nb = prob.data().size();
-  const auto Nc = prob.n_clusters();
-
-  const auto Neq = Nb + 1;
-  const auto Nineq = Nb * (Nb - 1);
-  const auto Nconstraints = Neq + Nineq;
-
-  const auto Nvar = Nb * Nb;
-
-  // HiGHS and the triplets below index with `int`; the ~3N² nonzeros are the
-  // largest count (N ≈ 26,750), and a cast past INT_MAX builds a wrong model.
-  const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
-  if (numel > std::numeric_limits<int>::max())
-    throw SolverError("HiGHS: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX nonzeros; use Method::LRCore.");
-
-  HighsModel model;
-  model.lp_.num_col_ = Nvar;
-  model.lp_.num_row_ = Nconstraints;
-  model.lp_.sense_ = ObjSense::kMinimize;
-  model.lp_.offset_ = 0;
-
-  // Initialise q vector for cost.
-  model.lp_.col_cost_.resize(Nvar);
+  // HiGHS indexes with `int`; the ~3N² nonzeros are the largest count (N ≈ 26,750),
+  // and a cast past INT_MAX builds a wrong model.
+  const std::size_t nnz = n + n * n + 2 * n * (n - 1);
+  if (nnz > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    throw SolverError("HiGHS: the compact p-median model for N = " + std::to_string(n) + " has more than INT_MAX nonzeros; use Method::LRCore.");
 
   prob.fill_distance_matrix();                                           // We need full distance matrix before MIP clustering.
   const auto scaling_factor = std::max(prob.max_distance() / 2.0, 1.0); // In case no distance is set.
 
-  for (size_t j{ 0 }; j < Nb; j++)
-    for (size_t i{ 0 }; i < Nb; i++)
-      model.lp_.col_cost_[i + j * Nb] = prob.dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j)) / scaling_factor;
+  PMedianModel model;
+  const std::size_t rows = 1 + n + n * (n - 1);
+  model.num_col = static_cast<int>(n * n);
+  model.num_row = static_cast<int>(rows);
+  model.col_cost.resize(n * n);
+  for (std::size_t j{ 0 }; j < n; j++)
+    for (std::size_t i{ 0 }; i < n; i++)
+      model.col_cost[i + j * n] = prob.dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(j)) / scaling_factor;
+  model.col_lower.assign(n * n, 0.0);
+  model.col_upper.assign(n * n, 1.0);
+  model.integrality.assign(n * n, 1);
 
+  model.row_lower.assign(rows, -1.0);
+  model.row_upper.assign(rows, 0.0);
+  model.row_lower[0] = model.row_upper[0] = static_cast<double>(k);
+  std::fill_n(model.row_lower.begin() + 1, n, 1.0);
+  std::fill_n(model.row_upper.begin() + 1, n, 1.0);
 
-  model.lp_.col_lower_.clear();
-  model.lp_.col_lower_.resize(Nvar, 0.0);
-
-  model.lp_.col_upper_.clear();
-  model.lp_.col_upper_.resize(Nvar, 1.0);
-
-  model.lp_.row_lower_.clear();
-  model.lp_.row_lower_.resize(Nconstraints, -1.0);
-
-  model.lp_.row_upper_.clear();
-  model.lp_.row_upper_.resize(Nconstraints, 0.0);
-
-  model.lp_.row_upper_[0] = model.lp_.row_lower_[0] = Nc;
-
-  for (size_t i = 0; i < Nb; ++i)
-    model.lp_.row_upper_[i + 1] = model.lp_.row_lower_[i + 1] = 1;
-
-  model.lp_.a_matrix_.format_ = MatrixFormat::kColwise; // Here the orientation of the matrix is column-wise
-
-
-  model.lp_.a_matrix_.start_.clear();
-  model.lp_.a_matrix_.index_.clear();
-  model.lp_.a_matrix_.value_.clear();
-
-  model.lp_.a_matrix_.start_.reserve(numel + 1);
-  model.lp_.a_matrix_.index_.reserve(numel);
-  model.lp_.a_matrix_.value_.reserve(numel);
-
-  std::vector<solver::Triplet> triplets;
-
-  triplets.reserve(numel);
-
-  for (size_t i = 0; i < Nb; ++i) {
-    triplets.emplace_back(0, static_cast<int>(i * (Nb + 1)), 1.0); // Sum of diagonals is Nc
-
-    for (size_t j = 0; j < Nb; j++)
-      triplets.emplace_back(static_cast<int>(1 + j), static_cast<int>(Nb * i + j), 1.0); // Every element belongs to one cluster.
-
-    // ---------------
-    int shift = 0;
-    for (size_t j = 0; j < Nb; j++) {
-      const int block_begin_row = static_cast<int>(Nb + 1 + (Nb - 1) * i);
-      const int block_begin_col = static_cast<int>(Nb * i);
-      if (i == j) {
-        for (size_t k = 0; k < (Nb - 1); k++)
-          triplets.emplace_back(block_begin_row + static_cast<int>(k), block_begin_col + static_cast<int>(j), -1);
-        shift = 1;
-      } else
-        triplets.emplace_back(block_begin_row + static_cast<int>(j) - shift, block_begin_col + static_cast<int>(j), 1);
-    }
+  model.a_start.reserve(rows + 1);
+  model.a_index.reserve(nnz);
+  model.a_value.reserve(nnz);
+  model.a_start.push_back(0);
+  const auto add = [&model](std::size_t col, double value) {
+    model.a_index.push_back(static_cast<int>(col));
+    model.a_value.push_back(value);
+  };
+  const auto end_row = [&model] { model.a_start.push_back(static_cast<int>(model.a_index.size())); };
+  for (std::size_t f = 0; f < n; ++f) add(f * (n + 1), 1.0); // k medoids are open
+  end_row();
+  for (std::size_t p = 0; p < n; ++p) { // every point belongs to one cluster
+    for (std::size_t f = 0; f < n; ++f) add(f * n + p, 1.0);
+    end_row();
   }
-  std::sort(triplets.begin(), triplets.end(), solver::RowMajor{});
+  for (std::size_t f = 0; f < n; ++f) // ... whose medoid is open
+    for (std::size_t p = 0; p < n; ++p)
+      if (p != f) {
+        add(f * n + p, 1.0);
+        add(f * (n + 1), -1.0);
+        end_row();
+      }
 
-  int current{ -1 }, i_now{};
-
-  for (const auto triplet : triplets) {
-
-    if (current != triplet.col) {
-      model.lp_.a_matrix_.start_.push_back(i_now);
-      current = triplet.col;
-    }
-
-    model.lp_.a_matrix_.index_.push_back(triplet.row);
-    model.lp_.a_matrix_.value_.push_back(triplet.val);
-    i_now++;
+  if (prob.mip_settings.warm_start) { // FastPAM's clustering as the MIP start
+    const auto pam = fast_pam_seeded(prob, k, prob.random_seed(), settings::DEFAULT_MAX_ITER);
+    model.start.assign(n * n, 0.0);
+    for (const auto med : pam.medoid_indices)
+      model.start[static_cast<std::size_t>(med) * (n + 1)] = 1.0;
+    for (std::size_t p = 0; p < n; ++p)
+      model.start[static_cast<std::size_t>(pam.medoid_indices[static_cast<std::size_t>(pam.labels[p])]) * n + p] = 1.0;
   }
+  return model;
+}
 
-  model.lp_.a_matrix_.start_.push_back(i_now);
+void MIP_clustering_byHiGHS(Problem &prob)
+{
+  if (prob.mip_settings.verbose_solver || prob.verbose())
+    std::cout << "HiGHS MIP solver starting." << '\n';
 
-  // Now indicate that all the variables must take integer values
-  model.lp_.integrality_.clear();
-  model.lp_.integrality_.resize(model.lp_.num_col_, HighsVarType::kInteger);
+#ifdef DTWC_ENABLE_HIGHS
+  const auto model = mip::build_p_median_model(prob);
 
   // Create a Highs instance
   Highs highs;
@@ -165,28 +121,20 @@ void MIP_clustering_byHiGHS(Problem &prob)
   if (!prob.mip_settings.verbose_solver)
     mip::set_highs_option(highs, "output_flag", false, "HiGHS");
 
-  HighsStatus return_status = highs.passModel(model); // Pass the model to HiGHS
+  HighsStatus return_status = highs.passModel( // HiGHS stores it column-wise
+    model.num_col, model.num_row, static_cast<HighsInt>(model.a_value.size()),
+    static_cast<HighsInt>(MatrixFormat::kRowwise), static_cast<HighsInt>(ObjSense::kMinimize), 0.0,
+    model.col_cost.data(), model.col_lower.data(), model.col_upper.data(), model.row_lower.data(),
+    model.row_upper.data(), model.a_start.data(), model.a_index.data(), model.a_value.data(),
+    model.integrality.data());
   if (return_status != HighsStatus::kOk)
     throw SolverError("HiGHS rejected the MIP model (passModel returned status "
                       + std::to_string(static_cast<int>(return_status)) + ").");
 
-  // Warm start: run FastPAM and feed solution as MIP start
-  if (prob.mip_settings.warm_start) {
-    const auto pam_result = fast_pam_seeded(prob, Nc, prob.random_seed(), settings::DEFAULT_MAX_ITER);
-
+  if (!model.start.empty()) {
     HighsSolution sol;
-    sol.col_value.resize(Nvar, 0.0);
+    sol.col_value = model.start;
     sol.value_valid = true;
-
-    for (int med : pam_result.medoid_indices)
-      sol.col_value[static_cast<size_t>(med) * (Nb + 1)] = 1.0;
-
-    // HiGHS indexing: A[i,j] at flat index i * Nb + j (row-major)
-    for (size_t j = 0; j < Nb; ++j) {
-      int med = pam_result.medoid_indices[pam_result.labels[j]];
-      sol.col_value[static_cast<size_t>(med) * Nb + j] = 1.0;
-    }
-
     highs.setSolution(sol);
   }
 
@@ -216,7 +164,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
               << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
   }
 
-  prob.set_result(mip::decode_assignment(highs.getSolution().col_value, Nb, Nc, false, "HiGHS"));
+  prob.set_result(mip::decode_assignment(highs.getSolution().col_value, static_cast<std::size_t>(prob.size()),
+                                         prob.n_clusters(), false, "HiGHS"));
 #else
   throw SolverError(
       "HiGHS solver is unavailable; rebuild with -DDTWC_ENABLE_HIGHS=ON");
