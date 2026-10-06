@@ -250,7 +250,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   silhouette; docs gates, pytest 1102/11/0, MEX + matlab_suite 139/140 (one registered filter) green. Fixed there:
   Apple clang's `memset_pattern16` idiom in the lanes kernel (`a332d671`, failed `test_codegen_no_calls`) and the
   banded kernel (`55911b2a`, two calls per column the gate cannot see); W4e merged; the Metal chunk check `bc9469fd`. Still to do on the Mac: a second short pass after L2b, before G,
-  and pytest again once W9b lands (W9b rewrote Python's reading, writing and conversion).
+  and pytest again once W9b lands (done 2026-10-06 at `33302535`: 970/12/0, `baselines/2026-10-06-macos-after-w9b.md`).
 - Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux and Windows (Windows needs a
   `dumpbin /dependents` leg).
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
