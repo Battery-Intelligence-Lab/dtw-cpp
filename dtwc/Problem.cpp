@@ -378,7 +378,6 @@ bool Problem::set_solver(Solver solver_)
     mipSolver = Solver::Gurobi;
     return true;
 #else
-    std::cout << "Solver Gurobi is not available; therefore using default solver\n";
     mipSolver = settings::DEFAULT_MIP_SOLVER;
     return false;
 #endif

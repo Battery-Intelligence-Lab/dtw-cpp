@@ -20,6 +20,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - **Fixed (Python):** `dtwcpp.load(dataset, ...)` with an option (`skip_cols`, `skip_rows`, `delimiter`, `name`)
   raises `InvalidInput` naming it, as MATLAB's `dtwc.load` refuses it; it returned the `Dataset` and ignored the
   option.
+- **Fixed (C++):** `Problem::set_solver(Solver::Gurobi)` on a build without Gurobi prints nothing; it wrote "Solver
+  Gurobi is not available; therefore using default solver" to stdout, so `dtwc_cl --solver gurobi` printed it before
+  its `SolverError`, which names the remedy. It still returns `false` and leaves the solver HiGHS.
 - **Docs/examples:** `examples/cpp/tier1.cpp` replaces `example_new_features.cpp`, which showed the 1.x free
   functions: one run described by a `dtwc::Config` and run on series in memory, which ctest runs as `example_tier1`
   when the examples and the tests are built (`-DDTWC_BUILD_EXAMPLES=ON -DDTWC_BUILD_TESTING=ON`). Each
