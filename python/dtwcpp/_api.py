@@ -370,6 +370,9 @@ def cluster(data, k, **keys):
     t0 = time.perf_counter()
     if backend == "hpc":
         from dtwcpp import _hpc
+        # As a local run, C++ checks every value before anything is written or
+        # sent; the device stays the CPU here, since the GPU is the cluster's.
+        _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or data.name))
         labels = _hpc.cluster_on_hpc(data, config, keys, device=eff,
                                      gpu_device=gpu_device)
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,

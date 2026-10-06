@@ -194,6 +194,23 @@ class TestJobToml:
             dtwcpp.cluster([[0.0], [1.0]], k=2, device="hpc:gpu", gpu_device="v100")
         assert not (tmp_path / "results").exists()
 
+    @pytest.mark.parametrize(("keys", "message"), [
+        ({"wdtw_g": -1.0}, "WDTW g must be finite and non-negative"),
+        ({"max_iter": 0}, "max_iter"),
+        ({"k": 3}, "k must not exceed the number of series"),
+    ])
+    def test_a_value_cpp_refuses_fails_before_anything_is_written(
+        self, monkeypatch, tmp_path, keys, message,
+    ):
+        """As on the CPU, C++ checks every value (apply), and the series count,
+        before a run directory is written or the wrapper runs."""
+        monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
+        monkeypatch.setattr(_hpc, "SlurmRemoteRunner",
+                            lambda repo_root: pytest.fail("the wrapper was reached"))
+        with pytest.raises(dtwcpp.InvalidInput, match=message):
+            dtwcpp.cluster([[0.0, 1.0], [1.0, 0.0]], device="hpc", **{"k": 2, **keys})
+        assert not (tmp_path / "results").exists()
+
     def test_the_estimator_sends_its_parameters(self, monkeypatch, tmp_path):
         """DTWClustering(device='hpc') sends every parameter, its own defaults
         included (method pam; random_state None is seed 42), and batch_size,

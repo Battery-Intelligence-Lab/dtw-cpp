@@ -302,6 +302,11 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
         items = [("input", source)]
     else:
         series = data.as_series()  # load() has dropped skip_rows and skip_cols
+        # Problem::cluster()'s guards, which the cluster would meet only after the queue.
+        if not series:
+            raise InvalidInput("cluster: dataset is empty.")
+        if config.n_clusters > len(series):
+            raise InvalidInput("cluster: k must not exceed the number of series.")
         items = [("input", "input.tsv")]
     items += [("n-clusters", config.n_clusters), ("name", name),
               ("device", "gpu" if gpu else "cpu")]

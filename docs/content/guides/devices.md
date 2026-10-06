@@ -88,16 +88,20 @@ Passwordless `ssh $SLURM_USER@$SLURM_HOST` must succeed. Python owns the beta
 end-to-end submission route; C++ validates `hpc` selection but directs users to
 the Python or shell transport until a real Oxford ARC validation closes the beta.
 
-`dtwc.cluster(data, k, device="hpc", **keys)` checks the keys as a local run
-does, writes the run as one `job.toml`, which the cluster's `dtwc_cl --config`
-reads, and returns the labels. `device="hpc:gpu"` runs it on a GPU of compute
-capability 8.0 or newer; `gpu_device="a100"` (or `"a6000"`, `"l40s"`, `"h100"`)
-names one ([SLURM](../getting-started/slurm.md)). A request that cannot be
-honoured fails before anything is sent: no `.env` (or no `bash`) is a
-`DeviceError` naming the directory searched, a GPU type below compute capability
-8.0 a `DeviceError` naming it, and `gpu_device` with a device other than
-`"hpc:gpu"` an `InvalidInput`. A key missing from `.env`, or a value unsafe to
-pass to `ssh`, stops the wrapper before it connects, naming the key.
+`dtwc.cluster(data, k, device="hpc", **keys)` checks the keys and their values as a
+local run does, writes the run as one `job.toml`, which the cluster's
+`dtwc_cl --config` reads, and returns the labels. `device="hpc:gpu"` runs it on a
+GPU of compute capability 8.0 or newer; `gpu_device="a100"` (or `"a6000"`,
+`"l40s"`, `"h100"`) names one ([SLURM](../getting-started/slurm.md)). A request
+that cannot be honoured fails before anything is sent: a value outside its domain
+is an `InvalidInput`, as on the CPU; no `.env` (or no `bash`) is a `DeviceError`
+naming the directory searched, a GPU type below compute capability 8.0 a
+`DeviceError` naming it, and `gpu_device` with a device other than `"hpc:gpu"` an
+`InvalidInput`. A key missing from `.env`, or a value unsafe to pass to `ssh`,
+stops the wrapper before it connects, naming the key. What only the cluster's GPU
+can judge, a setting its kernels do not compute (a variant other than Standard, a
+missing-data strategy), fails the job with that `DeviceError` in its log
+(`logs/cluster_<job id>.err` under `SLURM_REMOTE_BASE/src`).
 
 ## Prove what this process can use
 
