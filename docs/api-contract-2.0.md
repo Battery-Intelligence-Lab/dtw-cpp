@@ -170,8 +170,9 @@ so the two share one method x device resolution: on `gpu` the matrix methods
 (`pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara` when its sample
 covers every series) run with the GPU filling the matrix, while `onebatch`,
 `tadpole` and a smaller `clara` sample, which compute on the CPU as they go,
-raise `DeviceError`. A path dataset reads every format `dtwc_cl` reads (CSV/TSV,
-a folder, Parquet, Arrow IPC) through `dtwc::read_data`.
+raise `DeviceError`. A path dataset reads every format `dtwc_cl` reads, with its
+reader: CSV/TSV and a folder through `dtwc::read_data`, Parquet and Arrow IPC through
+`dtwc::io::read_arrow` (`dtwc_io`, in a build with Arrow).
 
 **Python's `cluster()` is C++'s too, without the CLI's files.** Its keywords become a
 `dtwc::Config` (the binding's `Config`), `apply(config, prob)` hands a `Problem` its
@@ -474,10 +475,12 @@ The eight same-name reads for encapsulated state are `method()`, `random_seed()`
 
 CSV/TSV builder. Bindings do **not** expose `DataLoader` — Tier-1 `load()`
 covers the binding use case. `dtwc::read_data(path, skip_cols, skip_rows,
-delimiter, column)` (`io/read_data.hpp`) is the one multi-format entry (CSV/TSV,
-a folder, Parquet, Arrow IPC) that `dtwc_cl` and Tier-1 `cluster()` share, as
-Python's `load()` does for text; its text branch is a `DataLoader`. Chained
-setters return `DataLoader&`.
+delimiter, column)` (`io/read_data.hpp`, `dtwc_core`) is the text entry (CSV/TSV,
+a folder) that `dtwc_cl`, Tier-1 `cluster()` and Python's and MATLAB's `load()`
+share; it refuses Parquet and Arrow IPC, which `dtwc_cl` and Tier-1 `cluster()`
+read with `dtwc::io::read_arrow(path, column)` (`io/read_arrow.hpp`, `dtwc_io`,
+in a build with Arrow). Its text branch is a `DataLoader`. Chained setters return
+`DataLoader&`.
 
 | C++ live (DataLoader.hpp) | C++ 2.0 canonical |
 |---|---|

@@ -71,7 +71,7 @@ dtwc_cl -i data.parquet --column Voltage -k 5
 C++:
 
 ```cpp
-problem.set_data(dtwc::read_data("data.parquet", 0, 0, '\0', "Voltage"));
+problem.set_data(dtwc::io::read_arrow("data.parquet", "Voltage")); // io/read_arrow.hpp
 ```
 
 ### Directory of Parquet files
@@ -163,7 +163,7 @@ dtwc_cl -i data.arrow -k 10
 C++:
 
 ```cpp
-problem.set_data(dtwc::read_data("data.arrow"));
+problem.set_data(dtwc::io::read_arrow("data.arrow"));
 ```
 
 Python reads it with the installed pyarrow (the `dtwcpp[parquet]` extra), the
