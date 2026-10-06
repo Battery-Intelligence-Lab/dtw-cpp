@@ -245,9 +245,10 @@ there too). `onebatch` and `tadpole` compute on the CPU as they go, so they exit
 on `gpu` naming the methods that use it. A variant other than `standard`, a missing-data strategy, `--dtype
 float32`, and on Metal a GPU index other than 0 or `--gpu-precision fp64`, exit 1
 before the input is read; a build without a GPU backend refuses `gpu` naming the
-build flag. `--device hpc` exits 1: `dtwc_cl` computes where it runs, and a SLURM
-job is submitted with `bash scripts/slurm/slurm_remote.sh submit-cluster` or
-Python's `dtwcpp.cluster(..., device="hpc")` ([SLURM](slurm.md)).
+build flag. `--device hpc` exits 1: `dtwc_cl` computes where it runs. A SLURM job
+runs a `job.toml` with `dtwc_cl --config`: Python's `dtwcpp.cluster(..., device="hpc")`
+writes and submits one, through `bash scripts/slurm/slurm_remote.sh submit-job`
+([SLURM](slurm.md)).
 
 ### Configuration Files
 

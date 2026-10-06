@@ -75,7 +75,8 @@ runs on the CPU; a verbose run says so.
 
 ## HPC setup (beta)
 
-Copy `scripts/slurm/env.example` to `.env` at the repository root:
+Copy `scripts/slurm/env.example` to `.env` in the directory you run Python from (or
+set `DTWC_REPO_ROOT` to the directory that holds it):
 
 ```dotenv
 SLURM_HOST=arc-login.arc.ox.ac.uk
@@ -87,35 +88,16 @@ Passwordless `ssh $SLURM_USER@$SLURM_HOST` must succeed. Python owns the beta
 end-to-end submission route; C++ validates `hpc` selection but directs users to
 the Python or shell transport until a real Oxford ARC validation closes the beta.
 
-The following messages are copied verbatim from `dtwc/env.cpp`.
-
-Missing `.env`:
-
-```text
-[dtwc] device='hpc' requires a .env file at the repository root, but none was found.
-Copy scripts/slurm/env.example to .env and set SLURM_HOST, SLURM_USER, and SLURM_REMOTE_BASE.
-Example .env:
-  SLURM_HOST=arc-login.arc.ox.ac.uk
-  SLURM_USER=abcd1234
-  SLURM_REMOTE_BASE=/data/coml-battery/dtwc-runs
-```
-
-Missing key (the live key name replaces `<key>`):
-
-```text
-[dtwc] device='hpc': the .env file is missing required key '<key>'.
-Set it in .env at the repository root. Example .env:
-  SLURM_HOST=arc-login.arc.ox.ac.uk
-  SLURM_USER=abcd1234
-  SLURM_REMOTE_BASE=/data/coml-battery/dtwc-runs
-```
-
-Authentication failure (the configured values replace `<host>` and `<user>`):
-
-```text
-[dtwc] device='hpc': could not authenticate to SLURM host '<host>' as user '<user>'.
-Check that your SSH key is authorized on that host (ssh <user>@<host> must succeed without a password prompt) and that SLURM_HOST and SLURM_USER in .env are correct.
-```
+`dtwc.cluster(data, k, device="hpc", **keys)` checks the keys as a local run
+does, writes the run as one `job.toml`, which the cluster's `dtwc_cl --config`
+reads, and returns the labels. `device="hpc:gpu"` runs it on a GPU of compute
+capability 8.0 or newer; `gpu_device="a100"` (or `"a6000"`, `"l40s"`, `"h100"`)
+names one ([SLURM](../getting-started/slurm.md)). A request that cannot be
+honoured fails before anything is sent: no `.env` (or no `bash`) is a
+`DeviceError` naming the directory searched, a GPU type below compute capability
+8.0 a `DeviceError` naming it, and `gpu_device` with a device other than
+`"hpc:gpu"` an `InvalidInput`. A key missing from `.env`, or a value unsafe to
+pass to `ssh`, stops the wrapper before it connects, naming the key.
 
 ## Prove what this process can use
 
