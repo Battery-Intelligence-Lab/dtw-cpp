@@ -20,13 +20,10 @@ from dtwcpp import _hpc
 ROOT = Path(__file__).resolve().parents[2]
 
 
-# The Python CI job installs the mip extra and checks the extension links no HiGHS,
-# so neither skip can happen there.
-@pytest.mark.skipif(dtwcpp.HIGHS_AVAILABLE, reason="this extension links HiGHS, so method 'mip' "
-                    "never reaches highspy (and two HiGHS builds in one process crash)")
+# highspy_route (conftest.py) skips without highspy or beside linked HiGHS; the Python CI job
+# sets DTWC_REQUIRE_HIGHSPY, which makes that a failure.
 @pytest.mark.parametrize("n, length, k, seed", [(12, 20, 3, 20261006), (18, 16, 4, 7)])
-def test_highspy_reaches_the_optimum_of_linked_highs(tmp_path, n, length, k, seed):
-    pytest.importorskip("highspy")  # the mip extra
+def test_highspy_reaches_the_optimum_of_linked_highs(highspy_route, tmp_path, n, length, k, seed):
     cli = _hpc.find_dtwc_binary(str(ROOT))
     assert cli is not None, "dtwc_cl executable not found; set DTWC_CL_PATH"
     csv = tmp_path / "series.csv"
@@ -48,5 +45,5 @@ def test_highspy_reaches_the_optimum_of_linked_highs(tmp_path, n, length, k, see
 def test_mip_without_highspy_names_the_extra(monkeypatch):
     monkeypatch.setattr(dtwcpp, "HIGHS_AVAILABLE", False)
     monkeypatch.setitem(sys.modules, "highspy", None)  # `import highspy` raises ImportError
-    with pytest.raises(dtwcpp.SolverError, match=r"pip install dtwcpp\[mip\]"):
+    with pytest.raises(dtwcpp.SolverError, match=r'pip install "dtwcpp\[mip\]"'):
         dtwcpp.cluster([[0.0, 1.0], [5.0, 6.0], [0.5, 1.5]], 2, method="mip")

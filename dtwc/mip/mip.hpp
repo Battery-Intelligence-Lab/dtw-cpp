@@ -46,6 +46,8 @@ struct PMedianModel
 
 /// Fill prob's distance matrix and build its model. HiGHS indexes with `int`, so a
 /// model with more than INT_MAX nonzeros (3N² − N) is SolverError, before the fill.
+/// With MIPSettings::warm_start it also runs FastPAM, which publishes its clustering
+/// on @p prob (centroids_ind, clusters_ind, n_clusters).
 PMedianModel build_p_median_model(Problem &prob);
 
 } // namespace mip

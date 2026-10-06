@@ -182,7 +182,7 @@ The easiest way to use DTW-C++ from Python:
 pip install dtwcpp
 ```
 
-Exact MIP clustering (`method="mip"`) solves with highspy: `pip install dtwcpp[mip]`.
+Exact MIP clustering (`method="mip"`) solves with highspy: `pip install "dtwcpp[mip]"`.
 
 To build from source with GPU support:
 

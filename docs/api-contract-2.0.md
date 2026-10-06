@@ -186,7 +186,7 @@ The wheel links no HiGHS: an extension that links none solves `method="mip"` wit
 highspy (the `mip` extra): C++ builds the model's arrays (`dtwc::mip::build_p_median_model`, what linked HiGHS
 solves), highspy reads them as NumPy views, and C++ decodes its solution into the labels and
 medoids `Problem::cluster()` publishes. Without highspy, `SolverError` names
-`pip install dtwcpp[mip]`.
+`pip install "dtwcpp[mip]"`.
 
 **MATLAB's `cluster()` is C++'s in the same way.** The MEX sets each name-value pair
 on a `dtwc::Config` (`dtwc_mex('apply', ...)`), `apply(config, prob)` hands a `Problem`

@@ -29,7 +29,7 @@ Check what this installation can actually do, and say so:
 ```python
 import dtwcpp, importlib.util
 print(dtwcpp.openmp_max_threads(), dtwcpp.HIGHS_AVAILABLE)  # OpenMP threads, linked HiGHS (not the wheel)
-print(importlib.util.find_spec("highspy") is not None)      # the wheel's method="mip": pip install dtwcpp[mip]
+print(importlib.util.find_spec("highspy") is not None)      # the wheel's method="mip": pip install "dtwcpp[mip]"
 print(dtwcpp.gpu_available(), dtwcpp.gpu_info())            # the GPU, CUDA or Metal
 ```
 

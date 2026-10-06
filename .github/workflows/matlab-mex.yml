@@ -42,6 +42,8 @@ jobs:
       - name: Build MEX
         run: cmake --build build/mex-ci --config Release --target dtwc_mex --parallel 2
 
+      # test_cluster_mip filters its cases by assumption when the MEX has no MIP solver, and
+      # assertSuccess does not fail on a filtered case, so the command asserts they ran and passed.
       - name: Run complete MATLAB contract and OpenMP gate
         uses: matlab-actions/run-command@bcd446a219949c24051c1d04a4b4e0274c42f23b # v3
         with:
@@ -56,6 +58,8 @@ jobs:
             fullfile(pwd,'tests','matlab','test_test_api.m'),
             fullfile(pwd,'tests','conformance','test_conformance.m')};
             r=runtests(files); assertSuccess(r);
+            m=r(startsWith({r.Name},'test_cluster_mip'));
+            assert(~isempty(m) && all([m.Passed]), 'test_cluster_mip did not run: no MIP solver in the MEX, or its cases were filtered');
             DTWC_QUICKSTART_CSV=fullfile(pwd,'tests','conformance','data','conformance_series.csv');
             run(fullfile(pwd,'docs','examples','quickstart.m'));
             p=dtwc_mex('test_parallelisation');
