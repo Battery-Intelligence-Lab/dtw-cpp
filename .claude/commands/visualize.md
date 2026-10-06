@@ -35,7 +35,7 @@ python3 -c "import matplotlib, numpy" 2>/dev/null && echo "matplotlib: ok" || ec
 ```python
 import numpy as np, matplotlib.pyplot as plt, dtwcpp as dc
 
-data = dc.load_dataset_csv("DATA_PATH")
+data = dc.load("DATA_PATH").as_series()  # one list per series
 labels = np.loadtxt("LABELS_PATH", dtype=int, skiprows=1)
 medoids = np.loadtxt("MEDOIDS_PATH", dtype=int, skiprows=1) if MEDOIDS_PATH else None
 
@@ -91,7 +91,6 @@ print("Saved: silhouette.png")
 ### Distance matrix heatmap
 
 ```python
-import seaborn as sns  # or use plt.imshow if seaborn unavailable
 dm = np.loadtxt("DISTANCES_PATH", delimiter=",")
 labels = np.loadtxt("LABELS_PATH", dtype=int, skiprows=1)
 
@@ -118,8 +117,17 @@ print("Saved: distance_matrix.png")
 ```python
 x = np.asarray(data[I])
 y = np.asarray(data[J])
-# Compute path
-path = dc.dtw_path(x, y)  # returns list of (i, j) tuples
+# Compute path: dtwcpp returns the distance only, so trace the full L1 DTW path here
+D = np.full((len(x) + 1, len(y) + 1), np.inf)
+D[0, 0] = 0
+for i in range(len(x)):
+    for j in range(len(y)):
+        D[i + 1, j + 1] = abs(x[i] - y[j]) + min(D[i, j], D[i, j + 1], D[i + 1, j])
+path, i, j = [], len(x), len(y)
+while (i, j) != (0, 0):
+    path.append((i - 1, j - 1))
+    i, j = min((i - 1, j - 1), (i - 1, j), (i, j - 1), key=lambda c: D[c])
+path.reverse()  # list of (i, j) tuples
 fig, ax = plt.subplots(figsize=(10, 5))
 ax.plot(x, label=f"series {I}", linewidth=2)
 ax.plot(y, label=f"series {J}", linewidth=2)
@@ -137,11 +145,12 @@ plt.savefig("warping_path.png", dpi=150)
 ```python
 costs = []
 for k in range(2, 11):
-    prob = dc.Problem(data)
+    prob = dc.Problem("elbow")
+    prob.set_data(data)
     prob.set_method(dc.Method.Kmedoids)
     prob.set_n_clusters(k)
     prob.cluster()
-    costs.append((k, prob.get_cost()))
+    costs.append((k, prob.find_total_cost()))
 ks, cs = zip(*costs)
 fig, ax = plt.subplots(figsize=(7, 5))
 ax.plot(ks, cs, "o-", markersize=8)

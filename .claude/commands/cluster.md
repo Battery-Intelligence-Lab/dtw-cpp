@@ -38,10 +38,10 @@ Prefer Python (better error messages). Fall back to CLI for very large batch job
 Generate a short Python snippet to characterize the input:
 ```python
 import numpy as np, dtwcpp as dc
-data = dc.load_dataset_csv("INPUT")  # or load_dataset_parquet, load_dataset_hdf5
-print(f"Series: {data.size}, length: {data.max_length}, ndim: {data.ndim}")
+data = dc.load("INPUT").as_data()  # CSV/TSV (skip_rows=1 drops a header line), a folder, Parquet or Arrow IPC
+print(f"Series: {data.size}, length: {max(data.series_length(i) for i in range(data.size))}, ndim: {data.ndim}")
 # Check for NaN
-has_nan = any(np.any(np.isnan(data[i])) for i in range(min(data.size, 100)))
+has_nan = any(np.any(np.isnan(s)) for s in data.p_vec[:100])
 print(f"NaN detected: {has_nan}")
 ```
 
@@ -51,9 +51,9 @@ If NaN detected, default `missing_strategy="arow"`.
 
 | N | Method | Rationale |
 |---|--------|-----------|
-| ≤ 5000 | `fast_pam` | Exact k-medoids, fastest for small N |
+| ≤ 5000 | `fast_pam` | PAM swap on the full matrix (a local optimum), fastest for small N |
 | 5000–50000 | `fast_clara` | Subsample-based, scales linearly |
-| > 50000 | `fast_clara` + `--ram-limit` | Chunked to fit memory |
+| > 50000 | `fast_clara` + `--ram-limit` | Streams one list-per-row Parquet file under the cap (Parquet input only) |
 | MIP requested | `mip` (HiGHS; Gurobi only where the build links it) | Provable optimum |
 
 Announce the chosen method and reasoning in one sentence.
@@ -70,18 +70,18 @@ from pathlib import Path
 import json
 
 # Load
-data = dc.load_dataset_csv("INPUT_PATH")
-print(f"Loaded {data.size} series, max length {data.max_length}")
+data = dc.load("INPUT_PATH").as_data()
+print(f"Loaded {data.size} series, max length {max(data.series_length(i) for i in range(data.size))}")
 
 # Problem setup
-prob = dc.Problem(data)
-prob.set_distance_type(dc.DistanceType.DTW)
-prob.set_variant(dc.DTWVariant.STANDARD)  # or user choice
+prob = dc.Problem("cluster_run")
+prob.set_data(data)
+prob.set_variant(dc.DTWVariant.Standard)  # or user choice
 prob.set_band(BAND)
 prob.set_method(dc.Method.Kmedoids)
 prob.set_n_clusters(K)
 # Missing data?
-# prob.set_missing_strategy(dc.MissingStrategy.AROW)
+# prob.missing_strategy = dc.MissingStrategy.AROW
 
 # Run
 import time
@@ -92,10 +92,10 @@ elapsed = time.time() - t0
 # Collect
 labels = np.array(prob.clusters_ind)
 medoids = np.array(prob.centroids_ind)
-cost = prob.get_cost()
+cost = prob.find_total_cost()
 
 # Internal metrics
-sil = dc.silhouette(prob)
+sil = np.asarray(dc.silhouette(prob))  # per series
 dbi = dc.davies_bouldin(prob)
 ch = dc.calinski_harabasz(prob)
 
@@ -165,7 +165,7 @@ Parse stdout for cost and timing; report the same summary.
 
 ## Error handling
 
-- **OOM / bad_alloc**: retry with `--method clara --ram-limit 8G`
+- **OOM / bad_alloc**: retry with `--method clara`; on a list-per-row Parquet input, `--ram-limit 8G` also streams the series
 - **NaN in distances**: retry with `--missing-strategy arow`
 - **CUDA fails**: retry on CPU
 - **`mip` raises `SolverError` naming highspy**: the wheel solves `mip` with the user's highspy, so
