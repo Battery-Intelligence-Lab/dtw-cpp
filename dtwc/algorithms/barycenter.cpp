@@ -619,7 +619,7 @@ BarycenterClusteringResult barycenter_kmeans(
       cluster_options.random_seed = options.barycenter.random_seed
         + static_cast<std::uint64_t>(iteration)
           * static_cast<std::uint64_t>(options.n_clusters)
-        + static_cast<std::uint64_t>(cluster);
+        + cluster;
       next_centers[cluster] = compute_barycenter(
         members[cluster], centers[cluster].size(), cluster_options,
         centers[cluster], "barycenter_kmeans");

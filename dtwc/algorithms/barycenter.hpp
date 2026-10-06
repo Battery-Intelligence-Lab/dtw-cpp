@@ -40,9 +40,9 @@ struct BarycenterClusteringOptions {
   index_t n_clusters = 3;
   int max_iter = 50;      ///< Lloyd iterations (assign, then update each centre).
   int target_length = -1; ///< -1 keeps each initial centre's length.
-  /// Each centre update, as dtw_barycenter() takes it, here at 30 iterations.
-  /// Its tolerance also stops the Lloyd loop, and its random_seed also seeds
-  /// the k-means++ draw.
+  /// Each centre update, as dtw_barycenter() takes it, but at 30 iterations (a
+  /// BarycenterOptions assigned whole brings its own 50). Its tolerance also
+  /// stops the Lloyd loop, and its random_seed also seeds the k-means++ draw.
   BarycenterOptions barycenter{ .max_iter = 30 };
 };
 
