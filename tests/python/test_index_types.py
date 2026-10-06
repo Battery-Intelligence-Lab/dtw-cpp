@@ -7,6 +7,8 @@ vectors out as np.int64 arrays (a copy each time) and read the counts as 64-bit.
 @author Volkan Kumtepeli
 """
 
+import importlib.util
+
 import numpy as np
 import pytest
 
@@ -90,7 +92,8 @@ def test_clustering_result_takes_lists_and_arrays_and_returns_int64(make):
 
 _METHODS = ["pam", "onebatch", "clara", "kmedoids", "hierarchical", "tadpole", "lrcore",
             pytest.param("mip", marks=pytest.mark.skipif(
-                not dtwcpp.HIGHS_AVAILABLE, reason="needs the HiGHS solver"))]
+                not dtwcpp.HIGHS_AVAILABLE and importlib.util.find_spec("highspy") is None,
+                reason="needs linked HiGHS or highspy (the mip extra)"))]
 
 
 @pytest.mark.parametrize("method", _METHODS)

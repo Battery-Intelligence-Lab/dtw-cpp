@@ -7,9 +7,11 @@ weight: 30
 
 ## HiGHS (default)
 
-HiGHS is the default open-source MIP backend and is bundled in published Python
-wheels. Native builds enable it with `-DDTWC_ENABLE_HIGHS=ON`. If the backend is
-not compiled, requesting it raises `SolverError`; it never returns an empty or
+HiGHS is the default open-source MIP backend. `dtwc_cl`, C++ and the MATLAB MEX
+link it (`-DDTWC_ENABLE_HIGHS=ON`, the default). The Python wheel does not:
+`method="mip"` builds the same model in C++ and solves it with the installed
+highspy, the `mip` extra (`pip install dtwcpp[mip]`). If neither is there,
+requesting HiGHS raises `SolverError` naming the fix; it never returns an empty or
 partially solved clustering as though it succeeded.
 
 ## Gurobi (optional, external)

@@ -337,10 +337,11 @@ public:
   /// is then HiGHS, which a caller that asked for Gurobi must not ignore.
   [[nodiscard]] bool set_solver(dtwc::Solver solver_);
 
-  // Canonical configuration reads for the ten encapsulated fields.
+  // Canonical configuration reads for the encapsulated fields.
   // last_iterations() and data() are read-only; mutable configuration uses
   // the corresponding setters below.
   Method method() const { return method_; }
+  Solver solver() const { return mipSolver; }
   std::uint64_t random_seed() const { return random_seed_; }
   int last_iterations() const { return last_iterations_; }
   double tadpole_dc() const { return tadpole_dc_; }

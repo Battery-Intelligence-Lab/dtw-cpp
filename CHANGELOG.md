@@ -8,6 +8,18 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (Python, packaging):** the wheel links no HiGHS, which was three quarters of the extension: `method="mip"`
+  needs `pip install dtwcpp[mip]` (highspy) and raises `SolverError` naming it otherwise, and `dtwcpp.HIGHS_AVAILABLE`
+  is `False`. On macOS a process that had loaded the HiGHS-linked extension crashed in its own highspy MIP solve
+  (both HiGHS builds export the same weak symbols). `dtwc_cl`, C++ and the MATLAB MEX keep linked HiGHS; a MEX
+  links it statically, so the one file loads alone, and the CI MEX now has it (Gurobi stays off).
+- **Added (Python):** an extension built without HiGHS (`-DDTWC_ENABLE_HIGHS=OFF`) solves `method="mip"` with the
+  installed highspy, the new `mip` extra (`pip install dtwcpp[mip]`): C++ builds the model's arrays
+  (`dtwc::mip::build_p_median_model`), highspy reads them as NumPy views and C++ decodes its solution. `mip_gap`,
+  `time_limit_sec`, `verbose_solver` and the FastPAM warm start apply as they do to linked HiGHS, and HiGHS runs on
+  the OpenMP thread count dtwcpp uses. Without highspy, `SolverError` names the extra.
+- **Added (C++, Python):** `Problem::solver()` and the read-only `Problem.solver` return the MIP solver `set_solver`
+  chose.
 - **Fixed (CLI, C++, Python, MATLAB):** a CSV/TSV series file or a distance-matrix CSV (`--dist-matrix`,
   `read_distance_matrix`) holding a Ctrl-Z (0x1A) byte is refused with `IOError`, as any non-numeric field is (the series
   reader names the row and column). v1.0.0 read series files in text mode, which on Windows ended the file at that byte
@@ -402,17 +414,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `system_memory.hpp` and `random_engine.hpp`. The old paths still work for one release and now emit
   a compile-time message naming the new one; they will be removed in the next release. Every include
   inside this repository was updated, so the message only reaches code outside it.
-- **Changed (internal headers):** the MIP solvers' sparse-matrix helpers and tolerances —
+- **Removed (internal headers):** the MIP solvers' sparse-matrix helpers and tolerances —
   `dtwc::solver::{Element, Coordinate, Triplet, RowMajor, ColumnMajor, epsilon, isAround,
-  isFractional}` and the two comparators — moved from `dtwc/types/{element_types,types_util}.hpp`
-  into a single `dtwc/mip/solver_types.hpp`. They were in the base layer and reached by
-  `utility.hpp`, so 97 of 297 translation units compiled them; their only consumer in the library is
-  `mip_Highs.cpp`, which is now the only one that sees them. `dtwc/types/` keeps `Range` and
-  `Index`. Because these names arrived through `<dtwc/dtwc.hpp>` transitively, code that used them
-  without including a solver header must now include `<dtwc/mip/solver_types.hpp>`; the umbrella
-  header has never included anything from `mip/`, and no forwarding header is left behind, because
-  one at the old path would be a `base` → `mip` include — the coupling this removes. Also adds the
-  `<cmath>` that `isAround` and `isFractional` always needed and had been getting by accident.
+  isFractional}` and the two comparators, with `dtwc/types/{element_types,types_util}.hpp`. They were
+  in the base layer and reached by `utility.hpp`, so 97 of 297 translation units compiled them; their
+  only consumer, `mip_Highs.cpp`, now builds the HiGHS model row by row without them
+  (`dtwc::mip::build_p_median_model`: no triplets, no sort, the same model). `dtwc/types/` keeps
+  `Range` and `Index`. Code that used these names through `<dtwc/dtwc.hpp>` must define its own.
 - **Changed (internal headers):** `dtwc::randGenerator` now lives in `dtwc/random_engine.hpp`
   rather than `settings.hpp`, and `settings.hpp` no longer includes `<random>` or `<iostream>`. It
   is reached by around forty translation units and was pulling both in for things almost none of

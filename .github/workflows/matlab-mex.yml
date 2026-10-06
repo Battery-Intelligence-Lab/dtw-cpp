@@ -34,7 +34,7 @@ jobs:
           cmake -S . -B build/mex-ci
           -DDTWC_BUILD_MATLAB=ON
           -DDTWC_ENABLE_LLFIO=OFF
-          -DDTWC_ENABLE_HIGHS=OFF
+          -DDTWC_ENABLE_HIGHS=ON
           -DDTWC_ENABLE_GUROBI=OFF
           -DDTWC_BUILD_TESTING=OFF
           -DCMAKE_BUILD_TYPE=Release
@@ -49,6 +49,7 @@ jobs:
             addpath(fullfile(pwd,'bindings','matlab'));
             addpath(fullfile(pwd,'build','mex-ci','bin'));
             files={fullfile(pwd,'tests','matlab','test_dtwc.m'),
+            fullfile(pwd,'tests','matlab','test_cluster_mip.m'),
             fullfile(pwd,'tests','matlab','test_distance.m'),
             fullfile(pwd,'tests','matlab','test_mex_input_validation.m'),
             fullfile(pwd,'tests','matlab','test_contract_parity.m'),
