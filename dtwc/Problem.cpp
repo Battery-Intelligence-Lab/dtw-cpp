@@ -899,9 +899,9 @@ core::ClusteringResult Problem::cluster()
   case Method::PAM: {
     // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie
     // keeps the earlier restart.
-    auto best = fast_pam_seeded(*this, Nc, random_seed_, maxIter);
+    auto best = fast_pam(*this, Nc, maxIter, random_seed_);
     for (int restart = 1; restart < N_repetition; ++restart) {
-      auto candidate = fast_pam_seeded(*this, Nc, random_seed_ + static_cast<std::uint64_t>(restart), maxIter);
+      auto candidate = fast_pam(*this, Nc, maxIter, random_seed_ + static_cast<std::uint64_t>(restart));
       if (candidate.total_cost < best.total_cost) best = std::move(candidate);
     }
     set_result(best); // each restart published its own
@@ -1043,25 +1043,6 @@ void Problem::calculate_medoids()
       clusterCosts[clusters_ind[i]] = pointCosts[i];
       centroids_ind[clusters_ind[i]] = static_cast<index_t>(i);
     }
-}
-
-void Problem::init_with_seed(std::uint64_t seed)
-{
-  using initializer_t = void (*)(Problem &);
-  const auto target = init_fun.target<initializer_t>();
-  if (target != nullptr && *target == &init::random) {
-    init::random_seeded(*this, seed);
-    return;
-  }
-  if (target != nullptr && *target == &init::Kmeanspp) {
-    init::Kmeanspp_seeded(*this, seed);
-    return;
-  }
-
-  // `init_fun` is a public extension point. An arbitrary callback has no seed
-  // parameter, so retain its exact legacy invocation semantics rather than
-  // silently replacing it with the default initializer.
-  init();
 }
 
 /**

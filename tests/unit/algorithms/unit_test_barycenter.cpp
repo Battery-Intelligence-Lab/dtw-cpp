@@ -362,12 +362,12 @@ TEST_CASE("barycenters reject non-finite input and finite-input overflow loudly"
     "barycenter_kmeans: computed assignment cost is non-finite; "
     "rescale input values to a smaller magnitude.");
 
+  // The seeding is core::kmedoids_pp, whose weight step words its own refusal.
   auto initialization_overflow = make_problem({{largest}, {-largest}, {0.0}});
   clustering_options.n_clusters = 2;
   CHECK_THROWS_WITH(
     algorithms::barycenter_kmeans(initialization_overflow, clustering_options),
-    "barycenter_kmeans: computed initialization distance total is non-finite; "
-    "rescale input values to a smaller magnitude.");
+    "barycenter_kmeans: initialization distance must be finite");
 }
 
 TEST_CASE("barycenter k-means mixed-length no-op fingerprint",

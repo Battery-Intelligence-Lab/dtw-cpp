@@ -129,15 +129,15 @@ TEST_CASE("The MIP warm start (seeded FastPAM) ignores the legacy RNG",
   dtwc::randGenerator.seed(17);
   const auto legacy_rng_before_first = dtwc::randGenerator;
   auto first_problem = make_seed_sensitive_problem();
-  const auto first = dtwc::fast_pam_seeded(
-    first_problem, 3, dtwc::settings::DEFAULT_RANDOM_SEED, dtwc::settings::DEFAULT_MAX_ITER);
+  const auto first = dtwc::fast_pam(
+    first_problem, 3, dtwc::settings::DEFAULT_MAX_ITER, dtwc::settings::DEFAULT_RANDOM_SEED);
   CHECK(dtwc::randGenerator == legacy_rng_before_first);
 
   dtwc::randGenerator.seed(8675309);
   const auto legacy_rng_before_second = dtwc::randGenerator;
   auto second_problem = make_seed_sensitive_problem();
-  const auto second = dtwc::fast_pam_seeded(
-    second_problem, 3, dtwc::settings::DEFAULT_RANDOM_SEED, dtwc::settings::DEFAULT_MAX_ITER);
+  const auto second = dtwc::fast_pam(
+    second_problem, 3, dtwc::settings::DEFAULT_MAX_ITER, dtwc::settings::DEFAULT_RANDOM_SEED);
   CHECK(dtwc::randGenerator == legacy_rng_before_second);
 
   CHECK(first.medoid_indices == second.medoid_indices);
@@ -147,8 +147,8 @@ TEST_CASE("The MIP warm start (seeded FastPAM) ignores the legacy RNG",
   CHECK(first.total_cost == 24.0);
 
   auto override_problem = make_seed_sensitive_problem();
-  const auto override_result = dtwc::fast_pam_seeded(
-    override_problem, 3, 43, dtwc::settings::DEFAULT_MAX_ITER);
+  const auto override_result = dtwc::fast_pam(
+    override_problem, 3, dtwc::settings::DEFAULT_MAX_ITER, 43);
   CHECK(override_result.medoid_indices == std::vector<dtwc::index_t>{6, 4, 1});
   CHECK(override_result.total_cost == 20.0);
 

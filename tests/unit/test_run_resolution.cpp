@@ -330,9 +330,9 @@ TEST_CASE("Problem::cluster() runs each method with its settings, as run() does"
   };
   const Row rows[]{
     { Method::Auto, [](dtwc::Config &) {}, // pam at N = 30
-      [](dtwc::Problem &p, const dtwc::Config &c) { return dtwc::fast_pam_seeded(p, c.k, c.seed, c.max_iter); } },
+      [](dtwc::Problem &p, const dtwc::Config &c) { return dtwc::fast_pam(p, c.k, c.max_iter, c.seed); } },
     { Method::PAM, [](dtwc::Config &c) { c.seed = 7; },
-      [](dtwc::Problem &p, const dtwc::Config &c) { return dtwc::fast_pam_seeded(p, c.k, c.seed, c.max_iter); } },
+      [](dtwc::Problem &p, const dtwc::Config &c) { return dtwc::fast_pam(p, c.k, c.max_iter, c.seed); } },
     { Method::OneBatch, [](dtwc::Config &c) { c.batch_size = 3; },
       [](dtwc::Problem &p, const dtwc::Config &c) {
         return dtwc::algorithms::one_batch_pam(p, { .n_clusters = c.k, .batch_size = c.batch_size,
@@ -387,7 +387,7 @@ TEST_CASE("Result reports the method, iterations and convergence the run had", "
   // Oracle: FastPAM called directly on the same series and seed.
   dtwc::Problem problem("oracle");
   problem.set_data(levels());
-  const auto direct = dtwc::fast_pam_seeded(problem, 2, 42, 100);
+  const auto direct = dtwc::fast_pam(problem, 2, 100, 42);
   const auto pam = dtwc::run(config_for(Method::PAM, Device::CPU), levels());
   CHECK(pam.iterations() == direct.iterations);
   CHECK(pam.converged() == direct.converged);

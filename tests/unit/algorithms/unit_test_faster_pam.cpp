@@ -147,22 +147,19 @@ TEST_CASE("Every public FastPAM entry resolves dimensions before effects",
     CHECK_THROWS_WITH(
       (void)fast_pam(empty, 1),
       "fast_pam: Problem has no data points.");
-    CHECK_THROWS_WITH(
-      (void)fast_pam_seeded(empty, 1, 29),
-      "fast_pam_seeded: Problem has no data points.");
   }
 
   SECTION("invalid cluster counts do not materialise the distance matrix")
   {
-    auto unseeded = make_unfilled_problem();
-    REQUIRE_FALSE(unseeded.is_distance_matrix_filled());
-    CHECK_THROWS_AS((void)fast_pam(unseeded, 0), InvalidInput);
-    CHECK_FALSE(unseeded.is_distance_matrix_filled());
+    auto too_few = make_unfilled_problem();
+    REQUIRE_FALSE(too_few.is_distance_matrix_filled());
+    CHECK_THROWS_AS((void)fast_pam(too_few, 0), InvalidInput);
+    CHECK_FALSE(too_few.is_distance_matrix_filled());
 
-    auto seeded = make_unfilled_problem();
-    REQUIRE_FALSE(seeded.is_distance_matrix_filled());
-    CHECK_THROWS_AS((void)fast_pam_seeded(seeded, 3, 29), InvalidInput);
-    CHECK_FALSE(seeded.is_distance_matrix_filled());
+    auto too_many = make_unfilled_problem();
+    REQUIRE_FALSE(too_many.is_distance_matrix_filled());
+    CHECK_THROWS_AS((void)fast_pam(too_many, 3), InvalidInput);
+    CHECK_FALSE(too_many.is_distance_matrix_filled());
   }
 }
 
@@ -176,15 +173,15 @@ TEST_CASE("FasterPAM converges to a brute-force-verified local optimum", "[faste
 {
   for (int N : { 20, 30, 45 }) {
     for (int k : { 2, 3, 4 }) {
-      for (const bool seeded : { false, true }) {
+      for (const std::uint64_t seed : { 42ULL, 29ULL }) {
         Problem prob = make_synthetic_problem(N);
-        const auto res = seeded ? fast_pam_seeded(prob, k, 29) : fast_pam(prob, k);
+        const auto res = fast_pam(prob, k, 100, seed);
 
         // Result self-consistency: reported cost == recomputed from labels/medoids.
         double recomputed = 0.0;
         for (int p = 0; p < N; ++p)
           recomputed += prob.dist_by_ind(p, res.medoid_indices[res.labels[p]]);
-        INFO("seeded=" << seeded << " N=" << N << " k=" << k);
+        INFO("seed=" << seed << " N=" << N << " k=" << k);
         REQUIRE(res.converged);
         REQUIRE_THAT(res.total_cost, WithinAbs(recomputed, 1e-9));
 
@@ -217,8 +214,8 @@ TEST_CASE("FasterPAM is deterministic", "[faster_pam][determinism]")
 {
   Problem p1 = make_synthetic_problem(50);
   Problem p2 = make_synthetic_problem(50);
-  const auto r1 = fast_pam_seeded(p1, 4, 7);
-  const auto r2 = fast_pam_seeded(p2, 4, 7);
+  const auto r1 = fast_pam(p1, 4, 100, 7);
+  const auto r2 = fast_pam(p2, 4, 100, 7);
   REQUIRE(r1.medoid_indices == r2.medoid_indices);
   REQUIRE(r1.labels == r2.labels);
   REQUIRE_THAT(r1.total_cost, WithinAbs(r2.total_cost, 1e-12));
@@ -256,9 +253,9 @@ TEST_CASE("FasterPAM finds the true 1-medoid at k=1", "[faster_pam][k1]")
     if (c < best) { best = c; oracle = x; }
   }
 
-  for (const bool seeded : { false, true }) {
-    const auto res = seeded ? fast_pam_seeded(prob, 1, 3) : fast_pam(prob, 1);
-    INFO("seeded=" << seeded << " got=" << res.medoid_indices[0] << " oracle=" << oracle);
+  for (const std::uint64_t seed : { 42ULL, 3ULL }) {
+    const auto res = fast_pam(prob, 1, 100, seed);
+    INFO("seed=" << seed << " got=" << res.medoid_indices[0] << " oracle=" << oracle);
     REQUIRE(res.medoid_indices.size() == 1);
     REQUIRE(res.medoid_indices[0] == oracle);
     for (int p = 0; p < N; ++p) REQUIRE(res.labels[p] == 0);
@@ -275,9 +272,9 @@ TEST_CASE("FasterPAM k=1 breaks a cost tie by the lowest index", "[faster_pam][k
   Problem prob("faster_pam_tie");
   prob.set_data(Data(std::move(vecs), std::move(names)));
 
-  for (const bool seeded : { false, true }) {
-    const auto res = seeded ? fast_pam_seeded(prob, 1, 3) : fast_pam(prob, 1);
-    INFO("seeded=" << seeded);
+  for (const std::uint64_t seed : { 42ULL, 3ULL }) {
+    const auto res = fast_pam(prob, 1, 100, seed);
+    INFO("seed=" << seed);
     REQUIRE(res.medoid_indices == std::vector<index_t>{ 1 });
     REQUIRE(res.total_cost == 4.0);
   }

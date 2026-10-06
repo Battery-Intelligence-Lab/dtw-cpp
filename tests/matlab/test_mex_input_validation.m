@@ -617,9 +617,10 @@ function test_fast_pam_max_iter_zero_is_the_build_only_oracle(testCase)
     verifyFalse(testCase, build_29.converged);
     verifyEqual(testCase, dtwc.fast_pam(prob, 3, 'MaxIter', 0, 'Seed', 42).medoid_indices, ...
         [7 3 6]);
-    unseeded = dtwc.fast_pam(prob, 3, 'MaxIter', 0);
-    verifyEqual(testCase, unseeded.iterations, 0);
-    verifyFalse(testCase, unseeded.converged);
+    default_seed = dtwc.fast_pam(prob, 3, 'MaxIter', 0);   % the default seed is 42
+    verifyEqual(testCase, default_seed.medoid_indices, [7 3 6]);
+    verifyEqual(testCase, default_seed.iterations, 0);
+    verifyFalse(testCase, default_seed.converged);
     verifyEqual(testCase, dtwc.fast_pam(prob, 3, 'MaxIter', 100, 'Seed', 29).medoid_indices, ...
         [5 2 8]);
 
@@ -639,9 +640,9 @@ function test_fast_pam_refuses_a_negative_max_iter_with_the_cpp_error(testCase)
     for bad = {-1, -100}
         calls = { ...
             @() dtwc_mex('fast_pam', h, 2, bad{1}), 'fast_pam: max_iter'
-            @() dtwc_mex('fast_pam', h, 2, bad{1}, 42), 'fast_pam_seeded: max_iter'
+            @() dtwc_mex('fast_pam', h, 2, bad{1}, 42), 'fast_pam: max_iter'
             @() dtwc.fast_pam(prob, 3, 'MaxIter', bad{1}), 'fast_pam: max_iter'
-            @() dtwc.fast_pam(prob, 3, 'MaxIter', bad{1}, 'Seed', 29), 'fast_pam_seeded: max_iter' };
+            @() dtwc.fast_pam(prob, 3, 'MaxIter', bad{1}, 'Seed', 29), 'fast_pam: max_iter' };
         for i = 1:size(calls, 1)
             err = [];
             try

@@ -199,7 +199,7 @@ private:
                               core::MetricType metric);
   std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(
     int rep, bool persist_artifacts);
-  void init_with_seed(std::uint64_t seed);
+  void init_with_seed(std::uint64_t seed); // in initialisation.cpp, beside what it seeds
 
   void writeBestRep(int best_rep);
   void writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost);

@@ -11,16 +11,14 @@
 
 #pragma once
 
-#include <cstdint>
-
 namespace dtwc {
 class Problem;
 namespace init {
-  void random(Problem &prob);   //!< This function initializes the centroids randomly.
-  void Kmeanspp(Problem &prob); //!< This function initializes the centroids using the K-means++ algorithm.
-  /// Invocation-local counterpart to random(); does not consume randGenerator.
-  void random_seeded(Problem &prob, std::uint64_t random_seed);
-  /// Invocation-local counterpart to Kmeanspp(); does not consume randGenerator.
-  void Kmeanspp_seeded(Problem &prob, std::uint64_t random_seed);
+  /// Initialise the medoids randomly. Seeded by one draw of dtwc::randGenerator;
+  /// Lloyd's restarts seed it themselves (Problem::init_fun).
+  void random(Problem &prob);
+  /// Initialise the medoids by k-medoids++ (core::kmedoids_pp). Seeded by one draw
+  /// of dtwc::randGenerator; Lloyd's restarts seed it themselves (Problem::init_fun).
+  void Kmeanspp(Problem &prob);
 } // namespace init
 } // namespace dtwc

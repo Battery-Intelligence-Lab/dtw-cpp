@@ -11,8 +11,8 @@ parses byte-identically under C++ ``operator>>``, Python ``float()`` and MATLAB
 Design rationale (why this data makes the parity gate deterministic)
 --------------------------------------------------------------------
 FastPAM's medoid ARRAY order and cluster-id numbering depend on the k-means++
-initialisation, which draws from the global RNG — a state the Python/MATLAB/CLI
-routes cannot be forced to share. The gate therefore canonicalises the result
+initialisation's seed, which the C++, Python, MATLAB and CLI routes do not all
+share. The gate therefore canonicalises the result
 (sort the medoid SET; label each point by the rank of its assigned medoid) in
 every route, and the DATA is engineered so the canonical result is unique and
 init-independent:

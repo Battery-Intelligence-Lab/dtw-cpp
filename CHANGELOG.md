@@ -13,6 +13,17 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: about
   1.4–2.0× single thread on an Apple M5 Pro. Every distance is unchanged, bit for bit; x86-64, the one-pair kernels
   and the other DTW variants are unchanged.
+- **Changed (C++, Python, MATLAB):** `fast_pam` takes its BUILD seed last, `fast_pam(prob, k, max_iter = 100,
+  seed = 42)` (Python `seed=`, MATLAB `'Seed'`), and `fast_pam_seeded` is gone: `fast_pam_seeded(prob, k, seed,
+  max_iter)` is `fast_pam(prob, k, max_iter, seed)`. A call without a seed used to draw its BUILD from the global
+  `dtwc::randGenerator`, so its medoids depended on what ran before it; it now runs from seed 42, one result on every
+  platform. Its errors name `fast_pam`.
+- **Changed (C++):** the v1.0.0 one-argument `init::random(prob)` and `init::Kmeanspp(prob)` keep their signatures
+  but take one value of `dtwc::randGenerator` as the seed of the portable seeded initialisation Lloyd's restarts use,
+  so for a given engine state they choose other medoids than before (and the same ones on every platform);
+  `init::Kmeanspp` refuses an overflowed (infinite) distance with `InvalidInput`, as FastPAM does. The 2.0
+  `init::random_seeded` and `init::Kmeanspp_seeded` are gone: Lloyd seeds both initialisers itself, and
+  `fast_pam(prob, k, 0, seed)` returns the k-medoids++ medoids of a seed.
 - **Changed (performance, Python):** the extension's binding file compiles at `-O3`, not at nanobind's default `-Os`.
   Under LTO its `-Os` copy of the per-pair DTW kernel was the one the whole extension ran, with the early-abandon test
   inside every cell: on an Apple M5 Pro `dtwcpp.dtw` is 1.1–1.5× and a distance matrix of unequal-length series 1.5×

@@ -5,17 +5,16 @@
  * Public entry point exercised by every case in this file:
  * `dtwc::core::distance_sampling_weights` (dtwc/core/distance_sampling_weights.hpp:31).
  *
- * That function is the shared seam behind all three D-sampling callers --
- * `dtwc::init::Kmeanspp` and `dtwc::init::Kmeanspp_seeded`
- * (dtwc/initialisation.cpp:113) and `dtwc::fast_pam_seeded`
- * (dtwc/algorithms/fast_pam.cpp:492). Those routes are covered behaviourally in
+ * That function is the weight step of `dtwc::core::kmedoids_pp`, the one
+ * D-sampling loop behind `dtwc::init::Kmeanspp`, `dtwc::fast_pam` and barycenter
+ * k-means. Those routes are covered behaviourally in
  * unit_test_clustering_algorithms.cpp and unit_test_fast_pam.cpp, but they only
  * ever reach the seam through a distance matrix, so they cannot pin the
  * translation arithmetic or the rejection paths. This file pins the contract.
  *
  * Equality is asserted exactly, not within a tolerance, because exactness IS the
  * contract: nonnegative inputs must pass through unchanged, selected entries must
- * be exactly 0.0, and both callers branch on `total <= 0.0`. Every literal below
+ * be exactly 0.0, and kmedoids_pp branches on `total <= 0.0`. Every literal below
  * is chosen so that each running partial sum is exactly representable in binary64,
  * which keeps the totals reassociation-invariant under the project's
  * `-fassociative-math` build (cmake/StandardProjectSettings.cmake:59-70).

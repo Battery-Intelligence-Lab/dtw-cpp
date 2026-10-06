@@ -43,7 +43,6 @@ from dtwcpp._dtwcpp_core import (
     soft_dtw_gradient,
     # Algorithms
     fast_pam,
-    fast_pam_seeded,
     fast_clara,
     one_batch_pam,
     dtw_barycenter,
@@ -269,7 +268,7 @@ __all__ = [
     "IOError",
     "DEFAULT_RANDOM_SEED",
     "soft_dtw_gradient",
-    "fast_pam", "fast_pam_seeded", "fast_clara", "CLARAOptions", "one_batch_pam",
+    "fast_pam", "fast_clara", "CLARAOptions", "one_batch_pam",
     "dtw_barycenter", "barycenter_kmeans",
     "build_dendrogram", "cut_dendrogram",
     # Scores (canonical 2.0 names)

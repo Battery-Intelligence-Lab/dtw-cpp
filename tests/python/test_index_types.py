@@ -34,7 +34,6 @@ def _assert_int64(value, where):
 
 _CLUSTERING_ROUTES = {
     "fast_pam": lambda p: dtwcpp.fast_pam(p, 3),
-    "fast_pam_seeded": lambda p: dtwcpp.fast_pam_seeded(p, 3, 42),
     "fast_clara": lambda p: dtwcpp.fast_clara(p, 3, sample_size=6, n_samples=2),
     "one_batch_pam": lambda p: dtwcpp.one_batch_pam(p, 3),
     "cut_dendrogram": lambda p: dtwcpp.cut_dendrogram(dtwcpp.build_dendrogram(p), p, 3),
@@ -136,7 +135,6 @@ def test_barycenter_clustering_labels_are_int64():
 
 _PAST_INT32_COUNTS = {
     "fast_pam": lambda p: dtwcpp.fast_pam(p, _BIG),
-    "fast_pam_seeded": lambda p: dtwcpp.fast_pam_seeded(p, _BIG, 42),
     "fast_clara": lambda p: dtwcpp.fast_clara(p, _BIG),
     "one_batch_pam": lambda p: dtwcpp.one_batch_pam(p, _BIG),
     "cut_dendrogram": lambda p: dtwcpp.cut_dendrogram(dtwcpp.build_dendrogram(p), p, _BIG),

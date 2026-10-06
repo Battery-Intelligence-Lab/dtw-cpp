@@ -20,10 +20,9 @@ function result = fast_pam(prob, k, varargin)
 %   MaxIter : int, optional (default 100)
 %       Maximum SWAP iterations. 0 returns the BUILD medoids without a SWAP
 %       (converged is false); a negative value is an error raised by the C++ core.
-%   Seed : non-negative integer, optional
-%       Invocation-local BUILD seed. When omitted, the legacy mutable Tier-2
-%       RNG is preserved for compatibility. dtwc.cluster always supplies the
-%       cross-language Tier-1 default explicitly.
+%   Seed : non-negative integer, optional (default 42)
+%       BUILD (k-medoids++) seed: one seed gives one result on every
+%       platform. When omitted, the MEX uses the shared default 42.
 %
 %   Returns
 %   -------
