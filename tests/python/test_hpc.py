@@ -581,6 +581,32 @@ class TestSlurmLastMile:
             assert exports.endswith(",DTWC_BUILD_DIR=build-htc-gpu")
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize("mode", ["cpu", "gpu", "bogus"])
+    def test_a_smoke_mode_reaches_sbatch(self, tmp_path, mode):
+        """submit-smoke <mode> runs smoke.slurm with MODE; the GPU mode asks for
+        a GPU at or above the CUDA floor, so it cannot land on a refused V100."""
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-smoke {mode}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        if mode == "bogus":
+            assert completed.returncode != 0
+            assert "submit-smoke syntax" in completed.stderr
+            return
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        args = capture.read_text(encoding="utf-8").splitlines()
+        assert args[-1] == "scripts/slurm/jobs/smoke.slurm"
+        assert f"--export=ALL,MODE={mode}" in args
+        gpu_args = [arg for arg in args if arg.startswith(("--gres=", "--constraint="))]
+        assert gpu_args == (_hpc.gpu_request() if mode == "gpu" else [])
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize("gpu_type", ["", "a100", "l40s", "h100"])
     def test_documented_benchmark_gpu_types_are_exact_argv(
         self, tmp_path, gpu_type,
@@ -1052,7 +1078,7 @@ class TestPackagedWrapper:
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize(
-        "command", ["upload", "submit-cpu", "submit-benchmark-gpu"],
+        "command", ["upload", "submit-smoke cpu", "submit-benchmark-gpu"],
     )
     def test_source_commands_refuse_to_run_outside_a_checkout(
         self, tmp_path, command,

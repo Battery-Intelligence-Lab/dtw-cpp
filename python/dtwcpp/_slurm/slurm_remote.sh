@@ -14,10 +14,7 @@
 #   bash scripts/slurm/slurm_remote.sh upload
 #   bash scripts/slurm/slurm_remote.sh build [profile] [--gpu-device <type>]
 #   bash scripts/slurm/slurm_remote.sh build --profile <profile> [--gpu-device <type>]
-#   bash scripts/slurm/slurm_remote.sh submit-cpu
-#   bash scripts/slurm/slurm_remote.sh submit-gpu
-#   bash scripts/slurm/slurm_remote.sh submit-checkpoint
-#   bash scripts/slurm/slurm_remote.sh submit-parquet
+#   bash scripts/slurm/slurm_remote.sh submit-smoke cpu|gpu|checkpoint|parquet
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-cpu
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-gpu [type]
 #   bash scripts/slurm/slurm_remote.sh submit-job <rundir> [--gpu | --gpu-device <type>]
@@ -380,28 +377,22 @@ source scripts/slurm/build-arc.sh "${DTWC_BUILD_PROFILE}"
     echo "    bash scripts/slurm/slurm_remote.sh status"
 }
 
-# _submit_job <job file> <label> <binary pattern> [sbatch arguments...]
+# _submit_job <job file> <label> <build> [sbatch arguments...]: the job runs
+# build-<build>/bin/dtwc_cl, which must be on the cluster.
 _submit_job() {
     local SLURM_FILE="$1"
     local LABEL="$2"
-    local BIN_PATTERN="${3:-}"
+    local BIN="${REMOTE}/src/build-$3/bin/dtwc_cl"
     shift 3
 
     require_checkout
     banner "Submitting ${LABEL}"
 
-    # Preflight: check binary exists
-    if [[ -n "${BIN_PATTERN}" ]]; then
-        local EXISTS
-        EXISTS=$(remote_argv find "${REMOTE}/src" \
-            -path "${REMOTE}/src/${BIN_PATTERN}" -type f -print -quit || true)
-        if [[ -z "${EXISTS}" ]]; then
-            echo "  ERROR: Binary not found: ${REMOTE}/src/${BIN_PATTERN}"
-            echo "         Run 'bash scripts/slurm/slurm_remote.sh build' first."
-            exit 1
-        fi
-        echo "  Binary: ${EXISTS}"
-    fi
+    remote_argv test -x "${BIN}" || {
+        echo "  ERROR: no dtwc_cl at ${BIN} (or ssh failed). Build it first: bash scripts/slurm/slurm_remote.sh build" >&2
+        exit 1
+    }
+    echo "  Binary: ${BIN}"
 
     # Upload the latest job script
     scp -- "${SOURCE_ROOT}/${SLURM_FILE}" "${SSH_TARGET}:${REMOTE}/src/${SLURM_FILE}"
@@ -418,24 +409,25 @@ _submit_job() {
     echo "  Monitor: bash scripts/slurm/slurm_remote.sh status"
 }
 
-cmd_submit_cpu() {
-    _submit_job "scripts/slurm/jobs/cpu_test.slurm" "CPU test" "build-*/bin/dtwc_cl"
-}
-
-cmd_submit_gpu() {
-    _submit_job "scripts/slurm/jobs/gpu_test.slurm" "GPU test" "build-*/bin/dtwc_cl"
-}
-
-cmd_submit_checkpoint() {
-    _submit_job "scripts/slurm/jobs/checkpoint_test.slurm" "Checkpoint test" "build-*/bin/dtwc_cl"
-}
-
-cmd_submit_parquet() {
-    _submit_job "scripts/slurm/jobs/parquet_test.slurm" "Parquet test" "build-*/bin/dtwc_cl"
+# One smoke job, smoke.slurm, in the mode it is given; the GPU mode asks for a
+# GPU at or above the CUDA floor, so it never lands on a refused V100.
+cmd_submit_smoke() {
+    local BUILD="htc-cpu"
+    local -a GPU_REQUEST=()
+    case "$#:${1:-}" in
+        1:cpu|1:checkpoint|1:parquet) ;;
+        1:gpu) BUILD="htc-gpu"; gpu_request "" ;;
+        *)
+            echo "ERROR: submit-smoke syntax is 'submit-smoke cpu|gpu|checkpoint|parquet'" >&2
+            exit 1
+            ;;
+    esac
+    _submit_job "scripts/slurm/jobs/smoke.slurm" "smoke test ($1)" "${BUILD}" \
+        "--export=ALL,MODE=$1" ${GPU_REQUEST[@]+"${GPU_REQUEST[@]}"}
 }
 
 cmd_submit_benchmark_cpu() {
-    _submit_job "scripts/slurm/jobs/ucr_benchmark_cpu.slurm" "UCR benchmark (CPU)" "build-*/bin/dtwc_cl"
+    _submit_job "scripts/slurm/jobs/ucr_benchmark_cpu.slurm" "UCR benchmark (CPU)" "htc-cpu"
 }
 
 cmd_submit_benchmark_gpu() {
@@ -445,7 +437,7 @@ cmd_submit_benchmark_gpu() {
     }
     local -a GPU_REQUEST=()
     gpu_request "${1:-}"
-    _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${1:+: $1})" "build-*/bin/dtwc_cl" "${GPU_REQUEST[@]}"
+    _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${1:+: $1})" "htc-gpu" "${GPU_REQUEST[@]}"
 }
 
 # Run a directory dtwcpp's device='hpc' wrote (job.toml, and input.tsv for
@@ -612,10 +604,7 @@ case "${CMD}" in
     test)              cmd_test ;;
     upload)            cmd_upload ;;
     build)             cmd_build "$@" ;;
-    submit-cpu)        cmd_submit_cpu ;;
-    submit-gpu)        cmd_submit_gpu ;;
-    submit-checkpoint) cmd_submit_checkpoint ;;
-    submit-parquet)    cmd_submit_parquet ;;
+    submit-smoke)      cmd_submit_smoke "$@" ;;
     submit-benchmark-cpu) cmd_submit_benchmark_cpu ;;
     submit-benchmark-gpu) cmd_submit_benchmark_gpu "$@" ;;
     submit-job)        cmd_submit_job "$@" ;;
@@ -633,10 +622,8 @@ case "${CMD}" in
         echo "  build [profile] | build --profile <profile>   [--gpu-device <type>]"
         echo "                    Profiles: arc, htc-cpu, htc-gpu, htc-v4, h100, grace;"
         echo "                    --gpu-device builds on that GPU's node into build-<type>"
-        echo "  submit-cpu        Submit CPU test job"
-        echo "  submit-gpu        Submit GPU test job"
-        echo "  submit-checkpoint Submit distance-checkpoint test"
-        echo "  submit-parquet    Submit Parquet I/O test"
+        echo "  submit-smoke cpu|gpu|checkpoint|parquet"
+        echo "                    Submit the smoke test in that mode (scripts/slurm/jobs/smoke.slurm)"
         echo "  submit-benchmark-cpu  Submit full UCR benchmark (CPU, ~12h)"
         echo "  submit-benchmark-gpu [type]  GPU type from gpu_devices.txt (default: any of 8.0+)"
         echo "  submit-job <rundir> [--gpu | --gpu-device <type>]"

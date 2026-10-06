@@ -1,5 +1,7 @@
 *.sh text eol=lf
 *.slurm text eol=lf
+# slurm_remote.sh reads it with bash, which keeps a CR in the last field.
+python/dtwcpp/_slurm/gpu_devices.txt text eol=lf
 
 # Fixtures the tests read byte-for-byte, so any end-of-line translation on
 # checkout changes what they parse. Git for Windows ships core.autocrlf=true in its system
