@@ -123,6 +123,7 @@ classdef DTWClustering
             if isempty(obj.ClusterCenters)
                 error('dtwc:notFitted', 'DTWClustering is not fitted; call fit first.');
             end
+            dtwc.Problem('dtw_clustering').set_data(X);   % the one conversion: refuses what fit refuses
             if ~iscell(X)
                 X = num2cell(X, 2);
             end

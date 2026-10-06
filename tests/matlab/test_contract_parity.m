@@ -322,6 +322,7 @@ function test_dtwclustering_predict_and_score_read_the_fitted_medoids(testCase)
     verifyEqual(testCase, c.predict(X), c.Labels);
     verifyEqual(testCase, c.score(X), -c.Inertia, 'AbsTol', 1e-12);
     verifyEqual(testCase, c.predict({[6 4 4], 0}), [1 1]);
+    verifyError(testCase, @() c.predict({magic(3)}), 'dtwc:invalidArgument');   % as fit refuses it
     verifyEqual(testCase, [c.Labels; c.MedoidIndices(c.Labels)], [1 2 1 1; 3 2 3 3]);
 end
 

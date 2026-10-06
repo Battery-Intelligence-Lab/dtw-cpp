@@ -34,7 +34,8 @@ fprintf('Symmetric:    %d\n', issymmetric(dm));
 
 %% 3. Clustering -- k-medoids with FastPAM
 clust = dtwc.DTWClustering('NClusters', 3, 'Band', 10);
-labels = clust.fit_predict(data);
+clust = clust.fit(data);              % a value class: fit returns the fitted estimator
+labels = clust.Labels;
 
 fprintf('\nCluster labels (1-based):\n');
 disp(labels);

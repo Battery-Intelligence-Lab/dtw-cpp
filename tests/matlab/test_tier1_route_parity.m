@@ -121,6 +121,11 @@ function test_ragged_cell_rejects_a_non_numeric_element(testCase)
     verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
     verifyEqual(testCase, err.message, ['data{2} must be of class ''double'' ' ...
         '(got ''char''); convert with double(...) in MATLAB.']);
+    % A matrix is not one series, with SkipRows or without: never flattened.
+    for skip = 0:1
+        err = capture_error(@() dtwc.cluster(dtwc.load({1:3, magic(3), 1:4}, 'SkipRows', skip), 1));
+        verifyEqual(testCase, err.message, sprintf('data{%d} must be a vector: one series.', 2 - skip));
+    end
 end
 
 function test_kmedoids_routes_to_problem_cluster_not_fast_pam(testCase)
@@ -185,12 +190,17 @@ end
 %  Drift 6: the k <= N guard
 % =========================================================================
 
-function test_k_above_n_is_rejected_with_the_cpp_message(testCase)
-    err = capture_error(@() ...
-        dtwc.cluster(testCase.TestData.X, size(testCase.TestData.X, 1) + 1));
+function test_k_above_n_and_no_series_raise_the_cpp_messages(testCase)
+    X = testCase.TestData.X;
+    err = capture_error(@() dtwc.cluster(X, size(X, 1) + 1));
     verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
     verifyEqual(testCase, err.message, ...
         'cluster: k must not exceed the number of series.');
+    for none = {dtwc.load(X, 'SkipRows', size(X, 1)), {}}
+        err = capture_error(@() dtwc.cluster(none{1}, 2));
+        verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+        verifyEqual(testCase, err.message, 'cluster: dataset is empty.');
+    end
 end
 
 % =========================================================================
@@ -291,6 +301,8 @@ function test_parquet_reads_as_cpp_reads(testCase)
         [9.7 9.9 9.8 10]});
     verifyEqual(testCase, names, compose('series_%d', 0:7));
     verifyEqual(testCase, data.Name, 'fast_clara_streaming_8x4');
+    err = capture_error(@() dtwc.cluster([tempname '.parquet'], 2));   % no such file
+    verifyEqual(testCase, err.identifier, 'dtwc:ioError');
 end
 
 function test_arrow_ipc_is_refused_naming_the_format(testCase)

@@ -221,7 +221,7 @@ static std::vector<std::string> cell_to_names(const mxArray *mx, size_t expected
     if (cell == nullptr || !mxIsChar(cell))
       throw std::invalid_argument(std::string(arg_name) + "{" + std::to_string(i + 1)
         + "} must be a char row vector.");
-    char *s = mxArrayToString(cell);
+    char *s = mxArrayToUTF8String(cell);
     names[i] = (s ? std::string(s) : std::string());
     if (s) mxFree(s);
   }
@@ -336,23 +336,20 @@ static uint64_t get_handle(const mxArray *mx) {
   return static_cast<uint64_t>(get_exact_int(mx, "handle"));
 }
 
-/// Extract string from mxArray (char array or string)
+/// A char array as UTF-8, the encoding of every string in DTWC++ (names, paths,
+/// messages); mxArrayToString would give the local code page on Windows.
 static std::string get_string(const mxArray *mx) {
-  char *str = mxArrayToString(mx);
+  char *str = mxArrayToUTF8String(mx);
   if (!str) return "";
   std::string result(str);
   mxFree(str);
   return result;
 }
 
-/// A path argument, read as UTF-8, the encoding the C++ readers and writers name files in.
+/// A path argument: a char row vector, read as UTF-8 into a filesystem path.
 static std::filesystem::path get_path(const mxArray *mx, const char *arg_name) {
   require_char(mx, arg_name);
-  char *utf8 = mxArrayToUTF8String(mx);
-  if (utf8 == nullptr) throw std::invalid_argument(std::string(arg_name) + " is not a valid string.");
-  const std::string text(utf8);
-  mxFree(utf8);
-  return dtwc::utf8_to_path(text);
+  return dtwc::utf8_to_path(get_string(mx));
 }
 
 /// A logical scalar argument: true or false.
@@ -659,8 +656,11 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 
   // Ragged (cell array) vs rectangular (matrix). Both paths validate class /
   // complexity / shape BEFORE any mxGetDoubles() access (audit CRITICAL #6).
-  std::vector<std::vector<double>> series =
-    mxIsCell(prhs[2]) ? cell_to_series(prhs[2]) : matrix_to_series(prhs[2]);
+  // No series (an empty cell, a 0 x L matrix) is a dataset too: cluster() refuses
+  // it ("cluster: dataset is empty."), as in C++ and Python.
+  const bool none = mxIsCell(prhs[2]) ? mxIsEmpty(prhs[2]) : mxIsDouble(prhs[2]) && mxGetM(prhs[2]) == 0;
+  std::vector<std::vector<double>> series;
+  if (!none) series = mxIsCell(prhs[2]) ? cell_to_series(prhs[2]) : matrix_to_series(prhs[2]);
   const size_t N = series.size();
 
   // Optional series names (cell array of char). Empty ([]) => auto-derive "0..N-1".

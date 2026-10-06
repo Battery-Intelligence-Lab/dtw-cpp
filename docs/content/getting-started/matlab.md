@@ -230,7 +230,8 @@ fprintf('Max:          %.4f\n', max(dm(:)));
 
 %% 3. Clustering
 clust = dtwc.DTWClustering('NClusters', 3, 'Band', 10);
-labels = clust.fit_predict(data);
+clust = clust.fit(data);              % a value class: fit returns the fitted estimator
+labels = clust.Labels;
 
 fprintf('\nCluster labels (1-based):\n');
 disp(labels);
@@ -240,6 +241,9 @@ for k = 1:3
     fprintf('%d ', sum(labels == k));
 end
 fprintf('\n');
+fprintf('Total cost: %.2f\n', clust.Inertia);
+fprintf('Medoid indices: ');
+disp(clust.MedoidIndices);
 ```
 
 ## API correspondence with Python

@@ -84,7 +84,8 @@ classdef Dataset < handle
             end
             if iscell(series)
                 series = series(obj.SkipRows + 1:end);
-                lengths = cellfun(@numel, series);
+                vectors = cellfun(@isvector, series);   % any other element is C++'s to refuse
+                lengths = cellfun(@numel, series(vectors));
             else
                 series = series(obj.SkipRows + 1:end, :);
                 lengths = size(series, 2);
@@ -93,7 +94,8 @@ classdef Dataset < handle
                 error('dtwc:invalidArgument', 'load: SkipCols exceeds an in-memory series length.');
             end
             if iscell(series)
-                series = cellfun(@(s) s(obj.SkipCols + 1:end), series, 'UniformOutput', false);
+                series(vectors) = cellfun(@(s) s(obj.SkipCols + 1:end), series(vectors), ...
+                                          'UniformOutput', false);
             else
                 series = series(:, obj.SkipCols + 1:end);
             end
@@ -131,8 +133,15 @@ classdef Dataset < handle
         function [series, names] = read_parquet(file, first)
         %READ_PARQUET One Parquet file's series, as the C++ reader takes them: the first
         %   Float32/Float64 column is one series, named by the file; the first list column
-        %   of them is one series per row, named series_<FIRST + row - 1>.
-            columns = parquetread(file);
+        %   of them is one series per row, named series_<FIRST + row - 1>. Only those
+        %   columns are read, as C++ reads only the one it takes.
+            try
+                info = parquetinfo(file);
+                candidates = info.VariableNames(ismember(info.VariableTypes, ["double", "single", "cell"]));
+                columns = parquetread(file, 'SelectedVariableNames', candidates);
+            catch cause
+                error('dtwc:ioError', 'load: failed to read ''%s'': %s', file, cause.message);
+            end
             for name = columns.Properties.VariableNames
                 values = columns.(name{1});
                 if isfloat(values)

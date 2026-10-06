@@ -22,8 +22,9 @@ function res = cluster(data, k, varargin)
 %   dtwc::apply) before the series are read; a key not given takes dtwc_cl's
 %   default, so Method is 'auto' (PAM on a GPU and for up to 5000 series on
 %   the CPU, CLARA above). Device is dtwc.device() unless given, and a Device
-%   given sets this run's device only. An unknown key or value raises
-%   dtwc:invalidArgument naming the valid ones.
+%   given sets this run's device only. Keys and names match ignoring case. An
+%   unknown key, or a name no C++ table holds, raises dtwc:invalidArgument
+%   naming the valid ones (a device name: dtwc:deviceError).
 %
 %   See also dtwc.load, dtwc.Result, dtwc.device
 
