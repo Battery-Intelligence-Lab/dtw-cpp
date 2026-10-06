@@ -398,3 +398,15 @@ CHANGELOG rule.
   in every build (a scratch `-fopenmp` build: bit-identical, 3.6–5.6× faster root at N ≥ 800) — a candidate unit;
   `lagrangian_root.cpp:585` and `docs/content/math/lr-core.md:231,245` claim Kelley closes more roots: true on the
   line metric only.
+- 2026-10-06 — L2b (merged on the Mac): `dtwc_core`, `dtwc_cli` and `dtwc_io` (STATIC) behind an INTERFACE `dtwc++`
+  (consumers' link line unchanged; a non-INTERFACE command on `dtwc++` now fails at configure, CHANGELOG says so);
+  `dtwc_cli` is STATIC, not OBJECT (an object library through an INTERFACE target delivers no objects); `dtwc_io`
+  exists only in a build with Arrow; nanoarrow stays in the core (the brief's "no nanoarrow in the wheel" was wrong:
+  Python's `data_from_arrow_c_array` needs it and it links no Arrow); FastCLARA's Parquet streaming is `dtwc_io`'s
+  `algorithms::fast_clara_parquet`, and `fast_clara` refuses a stream request instead of ignoring `parquet_path`
+  (review finding; a silent fallback gap that predated the split for Arrow-off builds); the core's `read_data` keeps
+  the Arrow-off wording for Parquet in every build. Headers: 83 under dtwc/, each listed once in its folder's
+  FILE_SET (Volkan 10-01). The Arrow-ON proof ran on the Mac through a pyarrow-25 shim; Windows (`build/arrow-
+  pyarrow-23`) and GNU ld link order are still to run (commands in the L2b record). Seen: HiGHS caches
+  `BUILD_SHARED_LIBS=ON`, so a re-configured tree builds Catch2 shared; in the Arrow-25 shim tree `test_io_readers`'s
+  streamed `Result::save` case fails at base too (Windows's pyarrow 23 passes it; cause not found).

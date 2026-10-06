@@ -34,7 +34,8 @@ Bindings: `python/` (6.7k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
 
 ## 3. Build
 
-- Targets: `dtwc++` (static library), `mip-solvers` (object), `dtwc_options` / `dtwc_warnings` (interface),
+- Targets: `dtwc_core`, `dtwc_cli`, `dtwc_io` (static; the last in a build with Arrow) behind `dtwc++` (INTERFACE, the
+  consumers' link name; L2b), `mip-solvers` (object), `dtwc_options` / `dtwc_warnings` (interface),
   `dtwc_cl` (installed CLI), examples, benchmarks, `_dtwcpp_core` (Python), `dtwc_mex`.
 - Presets: `clang-win`, `clang-win-debug`, `msvc`, `gcc-linux`, `clang-macos`. `build/` on the Windows box is
   clang + Ninja Release with HiGHS, Gurobi, llfio and benchmarks; Arrow OFF there (Parquet tests run in

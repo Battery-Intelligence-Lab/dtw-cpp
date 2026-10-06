@@ -118,3 +118,17 @@ unset CMAKE_GENERATOR; CMAKE_ARGS="-DDTWC_ENABLE_ARROW=ON -DArrow_DIR=$P -DParqu
   uv build --wheel --python 3.12 --out-dir dist-l2b -C build-dir=C:/D/git/wt/tmp/l2b-py
 dumpbin /dependents C:/D/git/wt/tmp/l2b-py/python/Release/_dtwcpp_core.cp312-win_amd64.pyd   # no arrow.dll / parquet.dll
 ```
+
+## Merged on the main tree (orchestrator, `15b289be` = `ad081cdf` + `pb/L2b`, review fixes `c8e47e67`, `d33ed830` included), all `[confirmed]`
+
+The adversarial review did arrive (after the record above was written): nothing serious, four findings, closed in
+the two commits named. The merged tree, reconfigured from the split: `build/` zero warnings; `ctest -j1` 100 % of
+95, the CUDA skip, 52.70 s (the Metal tests inside it: `test_metal_correctness` 2168 assertions in 16 cases,
+`test_metal_mmap` 169 in 5, as on 10-05); conformance the one silhouette ulp (D-19); `check_docs` PASS,
+`check_pins` 0 failures, `generate_docs --check` current; `build-matlab/` zero warnings, the MEX linking
+`libdtwc_core.a`, `matlab_suite: 142 run, 141 passed, 0 failed, 1 incomplete` (the registered filter); fresh venv
+(`.[test,dev,io,mip]`, matplotlib, pandas, `DTWC_REQUIRE_HIGHSPY=1`): **926 passed, 11 skipped, 0 failed, 133 s**.
+The second short Mac pass (DECISIONS 10-05): the 12 GPU CLI routes of the W4e set (lanes W4/W8, wavefront, banded
+20/100/200, global, each L1 and squared L2; `--device gpu -k 3 -v`) run with the pre-L2b `dtwc_cl` (`ad081cdf`) and
+the merged one: **48 of 48 output files byte-identical, exit codes identical** (`w4e_run.sh`, `w4e_out/pre-l2b` and
+`post-l2b` in the session scratchpad).

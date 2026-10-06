@@ -171,7 +171,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W8a one reader entry (`read_data`); Parquet names and IPC nulls fixed; `load('x.parquet')` in Python (W8a 3dfbffe, 8b5bc1c, 34b031b, fcf6911, 292acc9; merged 761346a; −996/+749; Python reads Parquet through the installed pyarrow, Volkan 10-01)
 - ☑ W8b one writer (`write_result_files`); `Result::save` after streaming fixed (W8b d17f498, e65d6e2, ec47aef, 5bf7422, 9cdea99, 26b0409; merged 862a08f; one open/close pair, one write_result_files; a streamed Result::save writes series_<i> labels and refuses the matrix with InvalidInput, where it read an empty Data)
 - ☑ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1) (W8c 3c412c4, b79bbea, db49209, abfa711; merged 1f50070; matrices byte-identical in 23 configurations, about 3× faster; an infeasible band, a band below −1 and an empty series are InvalidInput on every device)
-- ◐ L1 measure what the wheel and the MEX link (linker maps) → L2 split `dtwc_core` (no file formats, no CLI) from
+- ☑ L1 measure what the wheel and the MEX link (linker maps) → L2 split `dtwc_core` (no file formats, no CLI) from
   `dtwc_io` and the CLI; the bindings link the core; Python reads and writes files with numpy/pandas/pyarrow, MATLAB
   with its built-ins; v1 Python `DataLoader` / `write*` stay as thin Python (Volkan 10-01) (L1 1f951e1, record:
   HiGHS 75–78 % of each binding, CLI + readers ~2 %, two edges pull them in). L2a: each dtwc/ source folder lists its
@@ -179,7 +179,16 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   every tree; dtwc++.lib's member order follows the folders); Python reads `.arrow` through pyarrow too. Python half done
   by W9b (5e710ba4 … 8ec61075, row W9b; merged 4265e3a6): the wheel's link map (W9b record) holds no `run`, `api` or `config`
   object (CLI11, fkYAML), and Python reads text through the bound C++ reader and writes through the C++ writer (Volkan
-  10-02, not numpy/pandas), Parquet and Arrow IPC through pyarrow; the MATLAB half and L2b stay open
+  10-02, not numpy/pandas), Parquet and Arrow IPC through pyarrow; the MATLAB half by W9e (merged bf82dc1b). L2b (12b3bce3, 2b1e384d,
+  95b10a20, acf86f93, 5b1d3cd0, c8e47e67, d33ed830; merged on the Mac): `dtwc_core` / `dtwc_cli` / `dtwc_io` (STATIC;
+  the last in a build with Arrow) behind an INTERFACE `dtwc++`; every folder lists its headers in a FILE_SET HEADERS
+  with dtwc/ as the base (40 unlisted headers listed, each with an includer); the core reads text only, dtwc::run
+  dispatches Parquet/Arrow IPC to `io::read_arrow` (one if) and streams through `algorithms::fast_clara_parquet`;
+  nanoarrow stays in the core (Python's Arrow C data interface); compile commands identical after the file sets
+  (254/254), the MEX and the extension byte-identical after the split, +704/+624 bytes after the reader move; with a
+  pyarrow-25 Arrow shim the MEX and the wheel link no Arrow (byte-identical to the Arrow-off ones) and 16
+  Parquet/Arrow CLI runs match base; `fast_clara` refuses a Parquet stream request (its review); Windows Arrow-ON and
+  Linux link order unproven
 - ☑ M1 Python solves the MIP with the user's highspy (optional extra; the wheel drops HiGHS); the MEX keeps HiGHS
   linked (CI MEX: HiGHS ON, Gurobi OFF); the model leaves C++ as arrays for Python (Volkan 10-01) (M1 a6de1c71,
   6aa7048c, caec354d; merged c0580948 on the Mac; one builder `dtwc::mip::build_p_median_model` (row-wise arrays,
@@ -270,8 +279,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   22 Metal commits built first time; ctest 95 with the Metal tests running; conformance digit-identical but one ulp of
   silhouette; docs gates, pytest 1102/11/0, MEX + matlab_suite 139/140 (one registered filter) green. Fixed there:
   Apple clang's `memset_pattern16` idiom in the lanes kernel (`a332d671`, failed `test_codegen_no_calls`) and the
-  banded kernel (`55911b2a`, two calls per column the gate cannot see); W4e merged; the Metal chunk check `bc9469fd`. Still to do on the Mac: a second short pass after L2b, before G,
-  and pytest again once W9b lands (done 2026-10-06 at `33302535`: 970/12/0, `baselines/2026-10-06-macos-after-w9b.md`).
+  banded kernel (`55911b2a`, two calls per column the gate cannot see); W4e merged; the Metal chunk check `bc9469fd`. The second short pass after L2b ran 2026-10-06 (`15b289be`: ctest 95 with the Metal tests,
+  the 12 GPU CLI routes byte-identical to the pre-L2b binary, `baselines/2026-10-06-l2b-core-io-cli-split-mac.md`);
+  pytest again once W9b lands (done 2026-10-06 at `33302535`: 970/12/0, `baselines/2026-10-06-macos-after-w9b.md`).
 - ARC (Volkan, rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres
   type, `upload`, `build htc-cpu`, `build htc-gpu`, `build htc-gpu --gpu-device a100`, three `dtwcpp.cluster` runs
   (`hpc`, `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`; exact commands in
