@@ -417,3 +417,13 @@ CHANGELOG rule.
   the whole module ran that copy of the per-pair kernel (`NOMINSIZE`, 659f889f). For Volkan: AArch64 lanes with
   `fminnm` and 128-byte blocks (1.41–2.00×, fill 1.48–1.72×; exact on every input the checked paths admit) and
   two-column per-pair kernels (1.44–1.98× unbanded); the recommendation is both, AArch64 only for the first.
+- 2026-10-06 — Volkan, asked whether to run the two kernel units: "okay run whatever is left sure". Run on the Mac:
+  the reverse `check_docs` gate, arm-lanes, W13c, then W13e, W9f, lr-omp, pair-2col, the PF follow-ups, W14a, W14c.
+- 2026-10-06 — arm-lanes (`e26d5680`): on `__aarch64__` the lanes' min is `std::fmin` (`LanesCell`, one `fminnm`)
+  and W is 128 bytes (16 doubles, 32 floats); x86 (`fmin` = 3 instructions) and the per-pair kernels keep
+  `std::min`. Exact: the fill refuses NaN and ±inf before any lane runs. MSVC ARM64 (no `__aarch64__`) keeps W 8.
+- 2026-10-06 — W13c (`b36fad43`): `fast_pam(prob, k, max_iter = 100, seed = 42)` absorbs `fast_pam_seeded` in C++,
+  Python and MATLAB; the unseeded-engine contract retires (chair.md:121, MAP §6). Only v1's one-argument
+  `init::random` / `init::Kmeanspp` read `randGenerator`, one draw each as their seed (the pre-registered sequence
+  change). `init::*_seeded` went rather than becoming overloads: an overload set breaks v1's
+  `prob.init_fun = init::Kmeanspp`, so `init_with_seed` keeps its function-identity check.

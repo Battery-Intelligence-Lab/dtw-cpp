@@ -266,7 +266,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## After G (each behind a registered benchmark band)
 
-- ☐ one `kmedoids_pp` (W13c) · ☐ HiGHS model built row-wise (W13d) · ☐ barycenter workspace (W13e)
+- ☑ one `kmedoids_pp` (W13c d6a771eb; merged b36fad43; −490/+291; conformance, CLI 25, matlab_suite 142/141 and
+  every seeded pin identical; the v1 one-argument `init::*` and unseeded `fast_pam` sequences changed as
+  pre-registered; pytest 923/11/0) · ☑ HiGHS model built row-wise (W13d: done by M1's `build_p_median_model`,
+  c0580948) · ☐ barycenter workspace (W13e)
 - ☑ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel (P4 9168ed9; merged 69be49c; that step 21.9× at 24 threads, the whole call 1.89× at N 2000, k 10, L 200 — identical labels, medoids, cost)
 - ☑ OneBatchPAM's batch table fill (m·(N−1) DTW calls, 95 % of the call after P4) on the P1 lanes kernel (P5 1b69614; merged bac9120; table fill 4.61×, whole call 3.87× at N 2000, k 10, L 200, 24 threads; bitwise identical over 24 configurations)
 - ☑ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
@@ -275,8 +278,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   integrates it)
 - ☑ the wheel's binding file at `-O3` (`NOMINSIZE`): LTO ran its `-Os` copy of the per-pair kernel in the whole module
   (659f889f; Python `dtw` 1.1–1.5×, ragged fill 1.5×; `baselines/2026-10-06-mac-kernel-assembly.md`)
-- ☐ AArch64 lanes: the min as `fminnm`, 128-byte blocks (16 doubles, 32 floats): 1.41–2.00× single thread, fill
-  1.48–1.72× at 18 threads, bitwise over the sweep, x86 untouched (same record; Volkan rules)
+- ◐ AArch64 lanes: the min as `fminnm`, 128-byte blocks (16 doubles, 32 floats): 1.41–2.00× single thread, fill
+  1.48–1.72× at 18 threads, bitwise over the sweep, x86 untouched (23c88336; merged e26d5680: bitwise — 15.36 M
+  lane outputs, 64 CLI files, conformance; x86 `.s` identical; f64 L1 loop = `v_fmin_w16`; speed waits for the
+  quiet run of its kit, `baselines/2026-10-06-mac-arm-lanes.md`)
 - ☐ per-pair kernels two columns per pass: kernel 1 1.44–1.98× unbanded, bitwise; kernel 2 not tried (Volkan rules)
 
 ## Blocked on another machine or on Volkan
