@@ -363,9 +363,61 @@ T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
   }
   if (abandons(col[0])) return maxValue;
 
-  for (std::size_t j = 1; j < n_short; ++j) {
-    // The band's bounds never decrease with j: dp[j-1, first_row-1] lies in the previous
-    // column's band, and a cell that left the band is never read again, so nothing is cleared.
+  // Columns j and j + 1 per pass, as in dtw_linear, each cell from the neighbours
+  // the one-column loop below gives it. The band's bounds never decrease with j:
+  // dp[j-1, first_row-1] lies in the previous column's band, and a cell that left
+  // the band is never read again, so nothing is cleared. Column j + 1's band is
+  // column j's moved up by at most one row at each end, so column j alone takes the
+  // row below the rows they share (once the band has left row 0) and column j + 1
+  // alone the row above them (until the band reaches n_long).
+  std::size_t j = 1;
+  for (; j + 1 < n_short; j += 2) {
+    const auto [low, high] = dtw_band_bounds(band, j, n_long);
+    const auto [next_low, next_high] = dtw_band_bounds(band, j + 1, n_long);
+    const auto first_row = std::max(low, std::size_t{1});
+    const auto next_first_row = std::max(next_low, std::size_t{1}); // first_row or first_row + 1
+    T diag = col[first_row - 1];                    // dp[j-1, first_row-1]
+    T row_min = maxValue, next_row_min = maxValue;
+
+    if (low == 0) {
+      col[0] = cell.combine(maxValue, maxValue, col[0], cost(j, 0), j, 0);
+      row_min = col[0];
+    }
+    T left = (low == 0) ? col[0] : maxValue;        // dp[j, first_row-1]
+    if (next_first_row > first_row) {               // row first_row: column j only
+      const T old_up = col[first_row];
+      left = cell.combine(diag, old_up, left, cost(j, first_row), j, first_row);
+      col[first_row] = left;
+      diag = old_up;
+      row_min = std::min(row_min, left);
+    }
+
+    if (next_low == 0) {
+      col[0] = cell.combine(maxValue, maxValue, col[0], cost(j + 1, 0), j + 1, 0);
+      next_row_min = col[0];
+    }
+    T next_left = (next_low == 0) ? col[0] : maxValue; // dp[j+1, next_first_row-1]
+    for (std::size_t i = next_first_row; i < high; ++i) {
+      const T old_up = col[i];                                              // dp[j-1, i]
+      const T here = cell.combine(diag, old_up, left, cost(j, i), j, i);    // dp[j, i]
+      next_left = cell.combine(left, here, next_left, cost(j + 1, i), j + 1, i); // dp[j+1, i]
+      col[i] = next_left;
+      diag = old_up;
+      left = here;
+      if constexpr (Abandon) {
+        row_min = std::min(row_min, here);
+        next_row_min = std::min(next_row_min, next_left);
+      }
+    }
+    if (next_high > high) {                         // row high: column j + 1 only
+      next_left = cell.combine(left, col[high], next_left, cost(j + 1, high), j + 1, high);
+      col[high] = next_left;
+      next_row_min = std::min(next_row_min, next_left);
+    }
+    if (abandons(row_min) || abandons(next_row_min)) return maxValue;
+  }
+
+  if (j < n_short) { // the last column, when n_short - 1 is odd
     const auto [low, high] = dtw_band_bounds(band, j, n_long);
     const auto first_row = std::max(low, std::size_t{1});
     T diag    = col[first_row - 1];                 // dp[j-1, first_row-1]
