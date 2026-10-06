@@ -122,6 +122,11 @@ TEST_CASE("dtwc_cl: an input format this build cannot read is IOError",
   };
   check(run_on);
   check(read_on);
+#ifdef DTWC_HAS_ARROW
+  // The core's reader has no Arrow in any build (dtwc_cl reads these through dtwc_io), so it refuses them here too.
+  CHECK_THROWS_MATCHES(read_on("missing.parquet"), dtwc::IOError, MessageMatches(ContainsSubstring("Parquet input")));
+  CHECK_THROWS_MATCHES(read_on("missing.arrow"), dtwc::IOError, MessageMatches(ContainsSubstring("Arrow IPC input")));
+#endif
 }
 
 TEST_CASE("read_data: a reader option the format cannot honour is InvalidInput",
@@ -131,8 +136,13 @@ TEST_CASE("read_data: a reader option the format cannot honour is InvalidInput",
   CHECK_THROWS_MATCHES(dtwc::read_data("missing.csv", 0, 0, '\0', "v"), dtwc::InvalidInput,
                        MessageMatches(ContainsSubstring("--column selects a Parquet column")));
 #ifdef DTWC_HAS_PARQUET
-  CHECK_THROWS_MATCHES(dtwc::read_data("missing.parquet", 0, 1), dtwc::InvalidInput,
-                       MessageMatches(ContainsSubstring("skip_rows")));
+  // A build that reads Parquet does so through dtwc_cl's reader, which refuses a text option for it.
+  dtwc::Config config;
+  config.input = "missing.parquet";
+  config.k = 2;
+  config.skip_rows = 1;
+  config.output.clear();
+  CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput, MessageMatches(ContainsSubstring("skip_rows")));
 #endif
 }
 

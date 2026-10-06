@@ -72,11 +72,26 @@ namespace algorithms {
    * is CUDA's; Metal has no kernel for the assignment, which then runs on the
    * CPU (a verbose line says so).
  * @throws InvalidInput for invalid dimensions/options;
- *         IOError for force_parquet_streaming on a build without Parquet;
+ *         IOError for force_parquet_streaming: the core's FastCLARA reads no
+ *         Parquet (fast_clara_parquet streams it, in a build with Parquet);
  *         DeviceError for a request the GPU cannot honour (Float32 series, a
  *         variant or missing-data strategy its kernels lack).
  */
   core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);
+
+#ifdef DTWC_HAS_PARQUET
+  /**
+   * @brief fast_clara, with the series streamed from opts.parquet_path when
+   *        opts.ram_limit_bytes asks for it: forced, or because the file's
+   *        resident estimate exceeds the limit (the RAM-limited route of
+   *        dtwc_cl --ram-limit). Otherwise it is fast_clara itself.
+   *
+   * A streamed run needs a settings-only `prob` and list-per-row Parquet. It is
+   * dtwc_io's (algorithms/fast_clara_parquet.cpp), which a build with Parquet
+   * links: the core reads no Parquet.
+   */
+  core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opts);
+#endif
 
 } // namespace algorithms
 } // namespace dtwc

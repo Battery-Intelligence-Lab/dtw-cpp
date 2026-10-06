@@ -12,7 +12,7 @@ set(DTWC_TEST_SKIP_REGEX
 # libraries it links (each publishes its own capabilities: DTWC_HAS_MMAP, ...).
 function(dtwc_public_definitions out)
   set(_defs "")
-  foreach(_lib IN ITEMS dtwc_core dtwc_cli)
+  foreach(_lib IN ITEMS dtwc_core dtwc_io dtwc_cli)
     if(TARGET ${_lib})
       get_target_property(_lib_defs ${_lib} INTERFACE_COMPILE_DEFINITIONS)
       if(_lib_defs)

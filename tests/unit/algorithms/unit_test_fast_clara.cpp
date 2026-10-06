@@ -427,11 +427,10 @@ TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",
       "without resident series.");
   }
 
-#ifndef DTWC_HAS_PARQUET
   SECTION("the missing capability is loud, as an IOError")
   {
-    // A build that cannot read the format raises IOError; it was
-    // InvalidInput, which names a bad argument.
+    // The core's FastCLARA reads no Parquet, in any build (fast_clara_parquet
+    // streams): IOError; it was InvalidInput, which names a bad argument.
     Problem settings_only{"clara_missing_parquet"};
     REQUIRE_THROWS_AS(algorithms::fast_clara(settings_only, opts), dtwc::IOError);
     REQUIRE_THROWS_WITH(
@@ -439,7 +438,6 @@ TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",
       "fast_clara: force_parquet_streaming requires a build with Parquet "
       "support.");
   }
-#endif
 }
 
 // ===========================================================================

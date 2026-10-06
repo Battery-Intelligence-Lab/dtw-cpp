@@ -24,6 +24,9 @@
 #include "checkpoint.hpp"
 #include "DataLoader.hpp"
 #include "io/read_data.hpp"
+#ifdef DTWC_HAS_ARROW
+#include "io/read_arrow.hpp" //!< Parquet and Arrow IPC (dtwc_io)
+#endif
 #include "distance.hpp"
 #include "scores.hpp"
 #include "utility.hpp"

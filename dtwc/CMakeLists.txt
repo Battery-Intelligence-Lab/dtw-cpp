@@ -1,27 +1,38 @@
 cmake_minimum_required(VERSION 3.26)
 
-# Two libraries and one name for consumers:
+# Three libraries and one name for consumers:
 #   dtwc_core  the algorithms, the session, the text reader and the result
 #              writers: everything the Python module and the MEX link;
+#   dtwc_io    the readers that need Arrow (Arrow IPC, Parquet, and FastCLARA
+#              streaming from Parquet), in a build with Arrow: the one library
+#              Arrow links;
 #   dtwc_cli   the command line: cli::bind and its config files (CLI11, fkYAML),
 #              dtwc::run and the Tier-1 facade (api.cpp) that runs it.
-# dtwc++ links both, so tests, examples, benchmarks and a parent project keep
+# dtwc++ links them all, so tests, examples, benchmarks and a parent project keep
 # their link line.
 add_library(dtwc_core STATIC)
 add_library(dtwc_cli STATIC)
 add_library(dtwc++ INTERFACE)
+set(_dtwc_libs dtwc_core dtwc_cli)
+if(DTWC_ENABLE_ARROW AND Arrow_FOUND)
+  add_library(dtwc_io STATIC)
+  target_link_libraries(dtwc_io PUBLIC dtwc_core)
+  target_link_libraries(dtwc_cli PUBLIC dtwc_io)
+  list(APPEND _dtwc_libs dtwc_io)
+endif()
 target_link_libraries(dtwc_cli PUBLIC dtwc_core)
-target_link_libraries(dtwc++ INTERFACE dtwc_core dtwc_cli)
+target_link_libraries(dtwc++ INTERFACE ${_dtwc_libs})
 
 # Required for linking into the Python shared library (.so) on Linux
-set_target_properties(dtwc_core dtwc_cli PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(${_dtwc_libs} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # The headers: each folder lists its own in its library's set. The base, dtwc/
 # (never the repo root), is the include directory of the library and of
 # everything that links it: <core/...>, <mip/...>, "Problem.hpp".
-target_sources(dtwc_core PUBLIC FILE_SET HEADERS BASE_DIRS .)
-target_sources(dtwc_cli PUBLIC FILE_SET HEADERS BASE_DIRS .)
-# The umbrella header includes both libraries' headers.
+foreach(_dtwc_lib IN LISTS _dtwc_libs)
+  target_sources(${_dtwc_lib} PUBLIC FILE_SET HEADERS BASE_DIRS .)
+endforeach()
+# The umbrella header includes the libraries' headers.
 target_sources(dtwc++ INTERFACE FILE_SET HEADERS BASE_DIRS . FILES dtwc.hpp)
 
 # Each folder lists its own files, and the settings that belong to them, on its library.
@@ -165,7 +176,7 @@ endif()
 # - a switch over an enum names every enumerator, with no default: adding an
 #   enumerator is then a compile error at each switch that misses it, instead of
 #   a runtime throw. Values reach users only as names, which the name tables check.
-foreach(_dtwc_lib IN ITEMS dtwc_core dtwc_cli)
+foreach(_dtwc_lib IN LISTS _dtwc_libs)
   target_link_libraries(${_dtwc_lib} PRIVATE project_warnings project_options)
   if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${_dtwc_lib} PRIVATE -fno-finite-math-only)
@@ -187,21 +198,21 @@ if(TARGET llfio_hl)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()
 
-# Arrow + Parquet (optional) — Arrow IPC and Parquet reading. Arrow without Parquet is a
+# Arrow + Parquet (optional) — Arrow IPC and Parquet reading, on dtwc_io alone. Arrow without Parquet is a
 # legitimate IPC-only build; Arrow found with no target to link is an error, not a build that links nothing.
-if(DTWC_ENABLE_ARROW AND Arrow_FOUND)
+if(TARGET dtwc_io)
   if(DTWC_ARROW_FROM_CPM)
     # CPM-built static Arrow + Parquet
-    target_link_libraries(dtwc_core PUBLIC arrow_static parquet_static)
-    target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_ARROW DTWC_HAS_PARQUET)
+    target_link_libraries(dtwc_io PUBLIC arrow_static parquet_static)
+    target_compile_definitions(dtwc_io PUBLIC DTWC_HAS_ARROW DTWC_HAS_PARQUET)
     message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
   elseif(TARGET Arrow::arrow_shared)
     # System-installed Arrow (conda, apt, brew)
-    target_link_libraries(dtwc_core PUBLIC Arrow::arrow_shared)
-    target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_ARROW)
+    target_link_libraries(dtwc_io PUBLIC Arrow::arrow_shared)
+    target_compile_definitions(dtwc_io PUBLIC DTWC_HAS_ARROW)
     if(Parquet_FOUND)
-      target_link_libraries(dtwc_core PUBLIC Parquet::parquet_shared)
-      target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_PARQUET)
+      target_link_libraries(dtwc_io PUBLIC Parquet::parquet_shared)
+      target_compile_definitions(dtwc_io PUBLIC DTWC_HAS_PARQUET)
       message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
     else()
       message(STATUS "Arrow linked, IPC only: Parquet not found — reading a Parquet file raises")
