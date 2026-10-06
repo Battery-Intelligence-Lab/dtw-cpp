@@ -18,7 +18,7 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | --- | --- | --- | --- | --- |
 | Apache Arrow nanoarrow | 0.8.0 | Apache-2.0 | yes — vendored, compiled in | yes |
 | fast_float | 8.3.0 | Apache-2.0 **OR** MIT **OR** BSL-1.0 | yes — vendored, compiled in | yes |
-| HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | yes — statically linked into the extension |
+| HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | no — the wheel links no HiGHS; `method="mip"` solves with the user's highspy (the `mip` extra) |
 | CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | no |
 | fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
@@ -74,6 +74,10 @@ file — in the CLI archive at `share/doc/dtwc/fast_float/`, and in the wheel un
 `dtwcpp-<version>.dist-info/licenses/dtwc/extern/fast_float/`.
 
 ## HiGHS 1.15.1 — MIT
+
+The CLI archive ships it as `lib/libhighs.*`, and the MATLAB MEX links it statically; the MIT
+licence below covers both. The Python wheel links no HiGHS: `method="mip"` solves with the user's
+own highspy (the `mip` extra), which is not redistributed here.
 
 ```
 MIT License
