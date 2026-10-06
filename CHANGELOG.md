@@ -17,6 +17,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   named `series_<i>` numbered on across a folder's files. Python named a list column's rows by the file's first
   string column, read a list column where the C++ reader takes a scalar column before it, and refused a folder whose
   files hold different columns.
+- **Fixed (Python):** `dtwcpp.load(dataset, ...)` with an option (`skip_cols`, `skip_rows`, `delimiter`, `name`)
+  raises `InvalidInput` naming it, as MATLAB's `dtwc.load` refuses it; it returned the `Dataset` and ignored the
+  option.
 - **Docs/examples:** `examples/cpp/tier1.cpp` replaces `example_new_features.cpp`, which showed the 1.x free
   functions: one run described by a `dtwc::Config` and run on series in memory, which ctest runs as `example_tier1`
   when the examples and the tests are built (`-DDTWC_BUILD_EXAMPLES=ON -DDTWC_BUILD_TESTING=ON`). Each

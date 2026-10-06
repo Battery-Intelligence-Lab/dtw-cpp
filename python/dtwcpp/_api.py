@@ -171,8 +171,18 @@ class Dataset:
 
 
 def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None):
-    """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it)."""
+    """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it).
+    A Dataset passes through unchanged: it keeps the options it was made with, so
+    an option given with one is refused, as MATLAB's dtwc.load refuses it."""
     if isinstance(source, Dataset):
+        ignored = [key for key, value, default in (
+            ("skip_cols", skip_cols, 0), ("skip_rows", skip_rows, 0),
+            ("delimiter", delimiter, None), ("name", name, None)) if value != default]
+        if ignored:
+            from dtwcpp import InvalidInput
+            raise InvalidInput(
+                f"load: a Dataset keeps the options it was made with, so {', '.join(ignored)} "
+                "would be ignored; load its source with the options instead.")
         return source
     return Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
                    delimiter=delimiter, name=name)
