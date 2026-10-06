@@ -517,6 +517,14 @@ void Problem::set_device(Device device, int index)
   refresh_distance_matrix();
 }
 
+void Problem::copy_distance_settings_from(const Problem &other)
+{
+  set_distance(other.distance());
+  set_device(other.device_, other.device_index_);
+  set_gpu_precision(other.gpu_precision_);
+  verbose_ = other.verbose_;
+}
+
 void Problem::validate_distance(core::DistanceConfig config, const Data &data)
 {
   config.ndim = data.ndim;

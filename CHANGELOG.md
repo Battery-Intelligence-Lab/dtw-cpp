@@ -8,6 +8,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Added (C++):** `Problem::copy_distance_settings_from(other)` gives a `Problem` another's distance settings,
+  device and GPU index, GPU precision and verbosity: what FastCLARA's sample Problems take from their parent.
 - **Changed (performance, AArch64):** on 64-bit Arm (Apple silicon, Arm Linux) the CPU distance-matrix fill and
   OneBatchPAM's batch table compute a series against 16 others of its length at once (32 in `float32`), not 8 (16),
   and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: about

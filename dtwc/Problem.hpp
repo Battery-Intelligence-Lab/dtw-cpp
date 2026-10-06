@@ -422,6 +422,10 @@ public:
     refresh_distance_matrix();
   }
   GpuPrecision gpu_precision() const noexcept { return gpu_precision_; }
+  /// Take `other`'s distance settings, device, GPU index, GPU precision and
+  /// verbosity: a sub-Problem's, before its series (its fill then honours the
+  /// parent's device, or validate_fill_request refuses it, e.g. Float32 on a GPU).
+  void copy_distance_settings_from(const Problem &other);
 
   void set_verbose(bool value) { verbose_ = value; }
   void set_output_folder(path_t folder)

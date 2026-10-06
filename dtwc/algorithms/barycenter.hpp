@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace dtwc {
@@ -37,17 +38,12 @@ struct BarycenterOptions {
 
 struct BarycenterClusteringOptions {
   index_t n_clusters = 3;
-  int max_iter = 50;
-  int barycenter_max_iter = 30;
+  int max_iter = 50;      ///< Lloyd iterations (assign, then update each centre).
   int target_length = -1; ///< -1 keeps each initial centre's length.
-  BarycenterMethod method = BarycenterMethod::SSG;
-  /// Initial SSG/soft-DTW step; SSG applies the same stability cap as
-  /// dtw_barycenter().
-  double learning_rate = 0.2;
-  double learning_rate_decay = 0.01;
-  double gamma = 1.0;
-  double tolerance = 1e-6;
-  std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED;
+  /// Each centre update, as dtw_barycenter() takes it, here at 30 iterations.
+  /// Its tolerance also stops the Lloyd loop, and its random_seed also seeds
+  /// the k-means++ draw.
+  BarycenterOptions barycenter{ .max_iter = 30 };
 };
 
 /** Barycentric clustering has sequence-valued centres, not medoid indices. */
@@ -68,7 +64,7 @@ struct SoftDtwValueGradient {
 };
 
 [[nodiscard]] SoftDtwValueGradient soft_dtw_squared_value_gradient(
-  const std::vector<data_t>& x, const std::vector<data_t>& y, double gamma);
+  std::span<const data_t> x, std::span<const data_t> y, double gamma);
 
 } // namespace detail
 

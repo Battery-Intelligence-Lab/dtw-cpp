@@ -14,76 +14,29 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <exception>
 #include <limits>
 #include <numeric>
 #include <random>
+#include <span>
 #include <string>
 #include <utility>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 namespace dtwc::algorithms {
 namespace {
 
 using Series = std::vector<data_t>;
+using SeriesView = std::span<const data_t>;
 
-struct AlignmentWorkspace {
-  std::vector<double> matrix;
-  std::vector<std::pair<std::size_t, std::size_t>> path;
-
-  static std::size_t checked_matrix_cells(std::size_t nx, std::size_t ny)
-  {
-    if (nx == 0 || ny == 0)
-      throw InvalidInput("dtw_barycenter: series must not be empty.");
-    return nx * ny;
-  }
-
-  static std::size_t checked_path_cells(std::size_t nx, std::size_t ny)
-  {
-    if (nx == 0 || ny == 0)
-      throw InvalidInput("dtw_barycenter: series must not be empty.");
-    return nx + ny - 1;
-  }
-
-  void reserve_for(std::size_t nx, std::size_t ny)
-  {
-    matrix.reserve(checked_matrix_cells(nx, ny));
-    path.reserve(checked_path_cells(nx, ny));
-  }
-
-  void prepare(std::size_t nx, std::size_t ny, bool need_path)
-  {
-    matrix.resize(checked_matrix_cells(nx, ny));
-    path.clear();
-    if (need_path) path.reserve(checked_path_cells(nx, ny));
-  }
+/// One squared-cost DTW alignment; `path` is empty unless it was asked for.
+struct Alignment {
+  double cost;
+  std::span<const std::pair<std::size_t, std::size_t>> path;
 };
 
-std::size_t current_worker_index() noexcept
-{
-#ifdef _OPENMP
-  return static_cast<std::size_t>(omp_get_thread_num());
-#else
-  return 0;
-#endif
-}
-
-bool openmp_region_active() noexcept
-{
-#ifdef _OPENMP
-  return omp_in_parallel() != 0;
-#else
-  return false;
-#endif
-}
-
-void validate_series(const std::vector<Series>& series)
+void validate_series(std::span<const SeriesView> series)
 {
   if (series.empty()) throw InvalidInput("dtw_barycenter: series set must not be empty.");
-  for (const auto& values : series) {
+  for (const auto values : series) {
     if (values.empty()) throw InvalidInput("dtw_barycenter: series must not be empty.");
     for (double value : values)
       if (!std::isfinite(value))
@@ -135,31 +88,40 @@ void validate_problem_configuration(const Problem& prob, const char* entry_point
     throw InvalidInput(
       std::string(entry_point) +
       ": banded DTW is not supported; set the Problem band to -1.");
-}
-
-std::vector<Series> copy_problem_series(const Problem& prob)
-{
   if (prob.data().ndim != 1)
     throw InvalidInput(
       "dtw_barycenter: multivariate barycenters are not implemented; ndim must be 1.");
-  std::vector<Series> result(prob.size());
-  for (std::size_t i = 0; i < prob.size(); ++i) {
-    if (prob.data().is_f32()) {
-      const auto values = prob.data().series_f32(i);
-      result[i].assign(values.begin(), values.end());
-    } else {
-      const auto values = prob.series(i);
-      result[i].assign(values.begin(), values.end());
-    }
-  }
-  validate_series(result);
-  return result;
 }
 
-Series resample_linear(const Series& input, std::size_t length)
+/// Series `indices` of `prob` as double views: Float64 storage is read in place,
+/// Float32 storage converted once (the barycenter arithmetic is double).
+struct SeriesSet {
+  std::vector<Series> converted; ///< Float32 storage only; `views` point into it.
+  std::vector<SeriesView> views;
+};
+
+SeriesSet problem_series(const Problem& prob, const std::vector<index_t>& indices)
+{
+  SeriesSet set;
+  set.views.reserve(indices.size());
+  if (prob.data().is_f32()) {
+    set.converted.reserve(indices.size());
+    for (const index_t index : indices) {
+      const auto values = prob.data().series_f32(static_cast<std::size_t>(index));
+      set.views.push_back(set.converted.emplace_back(values.begin(), values.end()));
+    }
+  } else {
+    for (const index_t index : indices)
+      set.views.push_back(prob.series(static_cast<std::size_t>(index)));
+  }
+  validate_series(set.views);
+  return set;
+}
+
+Series resample_linear(SeriesView input, std::size_t length)
 {
   if (length == 0) throw InvalidInput("dtw_barycenter: target_length must be positive.");
-  if (input.size() == length) return input;
+  if (input.size() == length) return Series(input.begin(), input.end());
   Series result(length, input.front());
   if (length == 1) {
     result[0] = std::accumulate(input.begin(), input.end(), 0.0)
@@ -178,15 +140,25 @@ Series resample_linear(const Series& input, std::size_t length)
   return result;
 }
 
-double align_squared(const Series& x, const Series& y, bool need_path,
-                     AlignmentWorkspace& workspace)
+/// Squared-cost DTW of x against y and, if asked, its optimal warping path. The
+/// DP matrix and the path are this thread's scratch, grown and never shrunk as
+/// the DTW kernels' is: a warmed thread allocates nothing. The path stays valid
+/// until the thread's next call.
+Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
 {
+  thread_local std::vector<double> matrix_buffer;
+  thread_local std::vector<std::pair<std::size_t, std::size_t>> path;
   const std::size_t nx = x.size();
   const std::size_t ny = y.size();
-  workspace.prepare(nx, ny, need_path);
+  if (matrix_buffer.size() < nx * ny) {
+    matrix_buffer.reserve(nx * ny); // exact: resize alone may overshoot
+    matrix_buffer.resize(nx * ny);
+  }
+  path.clear();
+  if (need_path) path.reserve(nx + ny - 1);
   // The matrix pointer is hoisted and at(i, j - 1) carried in a register: without
   // TBAA (the MSVC target) each store forced a reload of both.
-  double *const matrix = workspace.matrix.data();
+  double *const matrix = matrix_buffer.data();
   auto at = [matrix, ny](std::size_t i, std::size_t j) -> double& {
     return matrix[i * ny + j];
   };
@@ -206,11 +178,11 @@ double align_squared(const Series& x, const Series& y, bool need_path,
     }
   }
   const double cost = at(nx - 1, ny - 1);
-  if (!need_path) return cost;
+  if (!need_path) return { cost, {} };
 
   std::size_t i = nx - 1;
   std::size_t j = ny - 1;
-  workspace.path.emplace_back(i, j);
+  path.emplace_back(i, j);
   while (i > 0 || j > 0) {
     const double diagonal = (i > 0 && j > 0)
       ? at(i - 1, j - 1) : std::numeric_limits<double>::infinity();
@@ -220,18 +192,18 @@ double align_squared(const Series& x, const Series& y, bool need_path,
     if (diagonal <= up && diagonal <= left) { --i; --j; }
     else if (up <= left) { --i; }
     else { --j; }
-    workspace.path.emplace_back(i, j);
+    path.emplace_back(i, j);
   }
-  std::reverse(workspace.path.begin(), workspace.path.end());
-  return cost;
+  std::reverse(path.begin(), path.end());
+  return { cost, path };
 }
 
-double hard_objective(const Series& center, const std::vector<Series>& series,
-                      AlignmentWorkspace& workspace, const char* entry_point)
+double hard_objective(const Series& center, std::span<const SeriesView> series,
+                      const char* entry_point)
 {
   double objective = 0.0;
-  for (const auto& values : series) {
-    const double cost = align_squared(center, values, false, workspace);
+  for (const auto values : series) {
+    const double cost = align_squared(center, values, false).cost;
     require_finite(cost, entry_point, "squared-DTW cost");
     objective += cost;
     require_finite(objective, entry_point, "squared-DTW cost");
@@ -251,18 +223,17 @@ double relative_change(const Series& before, const Series& after)
   return numerator / std::max(1.0, denominator);
 }
 
-Series dba(const std::vector<Series>& series, Series center,
-           const BarycenterOptions& options, AlignmentWorkspace& workspace,
-           const char* entry_point)
+Series dba(std::span<const SeriesView> series, Series center,
+           const BarycenterOptions& options, const char* entry_point)
 {
-  double previous = hard_objective(center, series, workspace, entry_point);
+  double previous = hard_objective(center, series, entry_point);
   for (int iteration = 0; iteration < options.max_iter; ++iteration) {
     std::vector<double> sums(center.size(), 0.0);
     std::vector<std::size_t> counts(center.size(), 0);
-    for (const auto& values : series) {
-      const double cost = align_squared(center, values, true, workspace);
+    for (const auto values : series) {
+      const auto [cost, path] = align_squared(center, values, true);
       require_finite(cost, entry_point, "squared-DTW cost");
-      for (const auto [i, j] : workspace.path) {
+      for (const auto [i, j] : path) {
         sums[i] += values[j];
         ++counts[i];
       }
@@ -271,7 +242,7 @@ Series dba(const std::vector<Series>& series, Series center,
     for (std::size_t i = 0; i < next.size(); ++i)
       if (counts[i] > 0) next[i] = sums[i] / static_cast<double>(counts[i]);
     require_finite_series(next, entry_point, "barycenter update");
-    const double objective = hard_objective(next, series, workspace, entry_point);
+    const double objective = hard_objective(next, series, entry_point);
     const double change = relative_change(center, next);
     require_finite(change, entry_point, "convergence measure");
     center = std::move(next);
@@ -283,24 +254,23 @@ Series dba(const std::vector<Series>& series, Series center,
   return center;
 }
 
-Series ssg(const std::vector<Series>& series, Series center,
-           const BarycenterOptions& options, AlignmentWorkspace& workspace,
-           const char* entry_point)
+Series ssg(std::span<const SeriesView> series, Series center,
+           const BarycenterOptions& options, const char* entry_point)
 {
   std::mt19937_64 rng(options.random_seed);
   std::vector<std::size_t> order(series.size());
   std::iota(order.begin(), order.end(), std::size_t{ 0 });
   std::uint64_t step = 0;
-  double previous = hard_objective(center, series, workspace, entry_point);
+  double previous = hard_objective(center, series, entry_point);
   for (int epoch = 0; epoch < options.max_iter; ++epoch) {
     const Series before = center;
     core::portable_shuffle(order.begin(), order.end(), rng);
     for (std::size_t index : order) {
-      const double cost = align_squared(center, series[index], true, workspace);
+      const auto [cost, path] = align_squared(center, series[index], true);
       require_finite(cost, entry_point, "squared-DTW cost");
       std::vector<double> sums(center.size(), 0.0);
       std::vector<std::size_t> counts(center.size(), 0);
-      for (const auto [i, j] : workspace.path) {
+      for (const auto [i, j] : path) {
         sums[i] += series[index][j];
         ++counts[i];
       }
@@ -325,7 +295,7 @@ Series ssg(const std::vector<Series>& series, Series center,
       }
       require_finite_series(center, entry_point, "barycenter update");
     }
-    const double objective = hard_objective(center, series, workspace, entry_point);
+    const double objective = hard_objective(center, series, entry_point);
     const double change = relative_change(before, center);
     require_finite(change, entry_point, "convergence measure");
     if (change <= options.tolerance
@@ -349,7 +319,7 @@ double softmin3(double a, double b, double c, double gamma)
 namespace detail {
 
 SoftDtwValueGradient soft_dtw_squared_value_gradient(
-  const std::vector<data_t>& x, const std::vector<data_t>& y, double gamma)
+  std::span<const data_t> x, std::span<const data_t> y, double gamma)
 {
   const std::size_t nx = x.size();
   const std::size_t ny = y.size();
@@ -420,12 +390,12 @@ SoftDtwValueGradient soft_dtw_squared_value_gradient(
 namespace {
 
 detail::SoftDtwValueGradient soft_objective(const Series& center,
-                                            const std::vector<Series>& series,
+                                            std::span<const SeriesView> series,
                                             double gamma)
 {
   detail::SoftDtwValueGradient total;
   total.gradient.assign(center.size(), 0.0);
-  for (const auto& values : series) {
+  for (const auto values : series) {
     const auto current = detail::soft_dtw_squared_value_gradient(center, values, gamma);
     total.value += current.value;
     for (std::size_t i = 0; i < center.size(); ++i)
@@ -444,7 +414,7 @@ bool soft_state_is_finite(const detail::SoftDtwValueGradient& state)
                    [](double value) { return std::isfinite(value); });
 }
 
-Series soft_barycenter(const std::vector<Series>& series, Series center,
+Series soft_barycenter(std::span<const SeriesView> series, Series center,
                        const BarycenterOptions& options, const char* entry_point)
 {
   double learning_rate = options.learning_rate;
@@ -497,9 +467,9 @@ Series soft_barycenter(const std::vector<Series>& series, Series center,
   return center;
 }
 
-Series compute_barycenter(const std::vector<Series>& series, std::size_t target_length,
-                          const BarycenterOptions& options, const Series& initial,
-                          AlignmentWorkspace& workspace, const char* entry_point)
+Series compute_barycenter(std::span<const SeriesView> series, std::size_t target_length,
+                          const BarycenterOptions& options, SeriesView initial,
+                          const char* entry_point)
 {
   validate_series(series);
   validate_options(options);
@@ -507,39 +477,32 @@ Series compute_barycenter(const std::vector<Series>& series, std::size_t target_
   require_finite_series(center, entry_point, "barycenter initialization");
   switch (options.method) {
     case BarycenterMethod::SSG:
-      return ssg(series, std::move(center), options, workspace, entry_point);
+      return ssg(series, std::move(center), options, entry_point);
     case BarycenterMethod::DBA:
-      return dba(series, std::move(center), options, workspace, entry_point);
+      return dba(series, std::move(center), options, entry_point);
     case BarycenterMethod::SoftDTW:
       return soft_barycenter(series, std::move(center), options, entry_point);
   }
   throw std::logic_error("compute_barycenter: unreachable BarycenterMethod");
 }
 
-double assign(const std::vector<Series>& data, const std::vector<Series>& centers,
-              std::vector<index_t>& labels, std::vector<AlignmentWorkspace>& workspaces,
-              int worker_count, std::vector<double>* costs = nullptr)
+double assign(std::span<const SeriesView> data, const std::vector<Series>& centers,
+              std::vector<index_t>& labels, std::vector<double>* costs = nullptr)
 {
   labels.resize(data.size());
   std::vector<double> local_costs(data.size(), 0.0);
-  const std::int64_t end = static_cast<std::int64_t>(data.size());
-  const bool parallel_assignment = worker_count > 1 && !openmp_region_active();
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) num_threads(worker_count) if(parallel_assignment)
-#endif
-  for (std::int64_t raw_i = 0; raw_i < end; ++raw_i) {
-    const auto i = static_cast<std::size_t>(raw_i);
-    const auto worker = parallel_assignment ? current_worker_index() : 0;
-    auto& workspace = workspaces[worker];
+  auto nearest_center = [&](std::size_t i) {
     double best = std::numeric_limits<double>::infinity();
     index_t label = 0;
     for (std::size_t c = 0; c < centers.size(); ++c) {
-      const double distance = align_squared(data[i], centers[c], false, workspace);
+      const double distance = align_squared(data[i], centers[c], false).cost;
       if (distance < best) { best = distance; label = static_cast<index_t>(c); }
     }
     labels[i] = label;
     local_costs[i] = best;
-  }
+  };
+  // run_openmp carries a failure out of the region, a scratch bad_alloc included.
+  run_openmp(nearest_center, data.size());
   for (double cost : local_costs)
     require_finite(cost, "barycenter_kmeans", "assignment cost");
   const double total = std::accumulate(local_costs.begin(), local_costs.end(), 0.0);
@@ -556,84 +519,40 @@ std::vector<data_t> dtw_barycenter(const Problem& prob,
                                    const BarycenterOptions& options)
 {
   validate_problem_configuration(prob, "dtw_barycenter");
-  const auto all = copy_problem_series(prob);
   if (series_indices.empty())
     throw InvalidInput("dtw_barycenter: series_indices must not be empty.");
-  std::vector<Series> selected;
-  selected.reserve(series_indices.size());
-  for (index_t index : series_indices) {
-    if (index < 0 || static_cast<std::size_t>(index) >= all.size())
+  for (index_t index : series_indices)
+    if (index < 0 || index >= prob.size())
       throw InvalidInput("dtw_barycenter: series index out of range.");
-    selected.push_back(all[static_cast<std::size_t>(index)]);
-  }
-  AlignmentWorkspace workspace;
+  const auto selected = problem_series(prob, series_indices);
   return compute_barycenter(
-    selected, target_length, options, selected.front(), workspace,
-    "dtw_barycenter");
+    selected.views, target_length, options, selected.views.front(), "dtw_barycenter");
 }
 
 BarycenterClusteringResult barycenter_kmeans(
   const Problem& prob, const BarycenterClusteringOptions& options)
 {
   validate_problem_configuration(prob, "barycenter_kmeans");
-  const auto data = copy_problem_series(prob);
+  std::vector<index_t> every(static_cast<std::size_t>(prob.size()));
+  std::iota(every.begin(), every.end(), index_t{ 0 });
+  const auto series = problem_series(prob, every);
+  const auto& data = series.views;
   const std::size_t n = data.size();
   if (options.n_clusters <= 0 || static_cast<std::size_t>(options.n_clusters) > n)
     throw InvalidInput("barycenter_kmeans: n_clusters must be in [1, N].");
-  if (options.max_iter <= 0 || options.barycenter_max_iter <= 0)
+  if (options.max_iter <= 0 || options.barycenter.max_iter <= 0)
     throw InvalidInput("barycenter_kmeans: iteration limits must be positive.");
   if (options.target_length == 0 || options.target_length < -1)
     throw InvalidInput("barycenter_kmeans: target_length must be -1 or positive.");
-
-  BarycenterOptions barycenter_options;
-  barycenter_options.method = options.method;
-  barycenter_options.max_iter = options.barycenter_max_iter;
-  barycenter_options.learning_rate = options.learning_rate;
-  barycenter_options.learning_rate_decay = options.learning_rate_decay;
-  barycenter_options.gamma = options.gamma;
-  barycenter_options.tolerance = options.tolerance;
-  barycenter_options.random_seed = options.random_seed;
-  validate_options(barycenter_options);
-
-  // A caller may invoke clustering from its own OpenMP region. Do not create a
-  // nested team: nested parallelism can oversubscribe the host and makes a
-  // worker-indexed scratch pool unsafe.
-  const auto max_workers = openmp_region_active()
-    ? std::size_t{1} : static_cast<std::size_t>(get_max_threads());
-  const int assignment_workers = static_cast<int>(
-    std::max<std::size_t>(1, std::min(max_workers, n)));
-  const int update_workers = static_cast<int>(std::min(
-    max_workers, static_cast<std::size_t>(options.n_clusters)));
-  const auto workspace_count = static_cast<std::size_t>(assignment_workers);
-  // The pool is owned by the complete clustering call. Assignment borrows one
-  // workspace per OpenMP worker, and the later cluster-update region reuses the
-  // same worker-indexed pool. Its peak DP storage is bounded by
-  // assignment_workers * max(data_length, target_length) * max(data_length)
-  // doubles rather than growing with the number of clusters.
-  std::vector<AlignmentWorkspace> workspaces(workspace_count);
-
-  const auto max_data_length = std::max_element(
-    data.begin(), data.end(),
-    [](const Series& left, const Series& right) {
-      return left.size() < right.size();
-    })->size();
-  const auto max_center_length = options.target_length > 0
-    ? static_cast<std::size_t>(options.target_length) : max_data_length;
-  const auto max_alignment_length = std::max(
-    max_data_length, max_center_length);
-  // All allocation and overflow failure happens on the caller thread. Once a
-  // parallel region starts, resize/emplace stay within these capacities and no
-  // exception can escape an OpenMP iteration.
-  for (auto& workspace : workspaces)
-    workspace.reserve_for(max_alignment_length, max_data_length);
+  validate_options(options.barycenter);
 
   // D² sampling: align_squared is already the squared objective's cost.
-  std::mt19937_64 rng(options.random_seed);
+  std::mt19937_64 rng(options.barycenter.random_seed);
   const auto initial_indices = core::kmedoids_pp(
     static_cast<index_t>(n), options.n_clusters, rng,
-    [&data, &workspace = workspaces.front()](index_t c, index_t i) {
+    [&data](index_t c, index_t i) {
       return align_squared(data[static_cast<std::size_t>(i)],
-                           data[static_cast<std::size_t>(c)], false, workspace);
+                           data[static_cast<std::size_t>(c)], false).cost;
     },
     "barycenter_kmeans");
   std::vector<Series> centers;
@@ -650,15 +569,14 @@ BarycenterClusteringResult barycenter_kmeans(
   double previous_cost = std::numeric_limits<double>::infinity();
   for (int iteration = 0; iteration < options.max_iter; ++iteration) {
     std::vector<double> point_costs;
-    const double cost = assign(
-      data, centers, result.labels, workspaces, assignment_workers, &point_costs);
+    const double cost = assign(data, centers, result.labels, &point_costs);
     const bool has_previous_assignment = iteration > 0
       && std::isfinite(previous_cost);
     const bool labels_stable = has_previous_assignment
       && result.labels == previous_labels;
     const bool cost_stable = has_previous_assignment
       && std::abs(previous_cost - cost)
-           <= options.tolerance * std::max(1.0, previous_cost);
+           <= options.barycenter.tolerance * std::max(1.0, previous_cost);
     if (labels_stable || cost_stable) {
       result.converged = true;
       result.iterations = iteration;
@@ -668,7 +586,7 @@ BarycenterClusteringResult barycenter_kmeans(
     previous_labels = result.labels;
     previous_cost = cost;
 
-    std::vector<std::vector<Series>> members(
+    std::vector<std::vector<SeriesView>> members(
       static_cast<std::size_t>(options.n_clusters));
     for (std::size_t i = 0; i < n; ++i)
       members[static_cast<std::size_t>(result.labels[i])].push_back(data[i]);
@@ -694,33 +612,19 @@ BarycenterClusteringResult barycenter_kmeans(
       }
     }
 
-    // OpenMP cannot propagate C++ exceptions. Store one exception per cluster
-    // and rethrow in cluster order after the region, matching serial priority.
-    std::vector<std::exception_ptr> failures(
-      static_cast<std::size_t>(options.n_clusters));
-    const bool parallel_updates = update_workers > 1 && !openmp_region_active();
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) num_threads(update_workers) if(parallel_updates)
-#endif
-    for (index_t cluster = 0; cluster < options.n_clusters; ++cluster) {
-      const auto cluster_index = static_cast<std::size_t>(cluster);
-      if (!needs_update[cluster_index]) continue;
-      try {
-        const auto worker = parallel_updates ? current_worker_index() : 0;
-        auto cluster_options = barycenter_options;
-        cluster_options.random_seed = options.random_seed
-          + static_cast<std::uint64_t>(iteration)
-            * static_cast<std::uint64_t>(options.n_clusters)
-          + static_cast<std::uint64_t>(cluster);
-        next_centers[cluster_index] = compute_barycenter(
-          members[cluster_index], centers[cluster_index].size(), cluster_options,
-          centers[cluster_index], workspaces[worker], "barycenter_kmeans");
-      } catch (...) {
-        failures[cluster_index] = std::current_exception();
-      }
-    }
-    for (const auto& failure : failures)
-      if (failure) std::rethrow_exception(failure);
+    // run_openmp rethrows the lowest cluster's failure, the one a serial run raises.
+    auto update_center = [&](std::size_t cluster) {
+      if (!needs_update[cluster]) return;
+      auto cluster_options = options.barycenter;
+      cluster_options.random_seed = options.barycenter.random_seed
+        + static_cast<std::uint64_t>(iteration)
+          * static_cast<std::uint64_t>(options.n_clusters)
+        + static_cast<std::uint64_t>(cluster);
+      next_centers[cluster] = compute_barycenter(
+        members[cluster], centers[cluster].size(), cluster_options,
+        centers[cluster], "barycenter_kmeans");
+    };
+    run_openmp(update_center, static_cast<std::size_t>(options.n_clusters));
     centers = std::move(next_centers);
     result.iterations = iteration + 1;
   }
@@ -731,8 +635,7 @@ BarycenterClusteringResult barycenter_kmeans(
   // max_iter-exhausted path needs it: there the last iteration did update
   // `centers` after its assign().
   if (!result.converged)
-    result.total_cost = assign(
-      data, centers, result.labels, workspaces, assignment_workers);
+    result.total_cost = assign(data, centers, result.labels);
   result.barycenters = std::move(centers);
   return result;
 }
