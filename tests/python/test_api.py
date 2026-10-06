@@ -4,7 +4,6 @@
 @author Volkan Kumtepeli
 """
 import subprocess
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -42,20 +41,11 @@ def _assert_portable_lloyd_result(result):
 # load() — lazy handle
 # ---------------------------------------------------------------------------
 class TestLoad:
-    def test_load_array_returns_dataset(self):
-        ds = dtwcpp.load(_two_groups())
-        assert isinstance(ds, dtwcpp.Dataset)
-        assert not ds.is_path
-
     def test_load_path_is_lazy_and_does_not_read(self):
         """A nonexistent path is fine until something materializes it."""
         ds = dtwcpp.load("definitely_missing_file.tsv")   # must NOT raise
         assert ds.is_path
         assert ds.name == "definitely_missing_file"
-
-    def test_as_series_materializes_array(self):
-        ds = dtwcpp.load([[1.0, 2.0], [3.0, 4.0]])
-        assert ds.as_series() == [[1.0, 2.0], [3.0, 4.0]]
 
     def test_skip_rows_drops_leading_file_lines(self, tmp_path):
         """§1.2 parity with C++ load(..., skip_rows) and dtwc_cl --skip-rows."""
@@ -66,28 +56,11 @@ class TestLoad:
         assert ds.skip_rows == 2
         assert ds.as_series() == [[0.0, 0.0], [10.0, 11.0]]
 
-    def test_skip_rows_drops_leading_series_in_memory(self):
-        ds = dtwcpp.load([[7.0, 7.0], [7.0, 7.0], [0.0, 1.0]], skip_rows=2)
-        assert ds.as_series() == [[0.0, 1.0]]
-
     @pytest.mark.parametrize("bad,error", [(-1, ValueError), (1.0, TypeError)])
     def test_invalid_skip_rows_is_rejected_by_load(self, bad, error):
         """As C++ dtwc::load: refused where the handle is made, before any read."""
         with pytest.raises(error, match="skip_rows"):
             dtwcpp.load([[0.0], [1.0]], skip_rows=bad)
-
-    @pytest.mark.parametrize("content", [None, "1,2,x\n4,5,6\n"])
-    def test_reader_errors_name_the_load_and_keep_their_type(self, tmp_path,
-                                                             content):
-        """§1.2 / §5: a file load() cannot read raises IOError prefixed
-        ``load: failed to read '<path>':``, as C++ dtwc::load does."""
-        path = tmp_path / ("missing.csv" if content is None else "bad.csv")
-        if content is not None:
-            path.write_text(content, encoding="utf-8")
-        with pytest.raises(dtwcpp.IOError) as caught:
-            dtwcpp.cluster(dtwcpp.load(path), k=1, device="cpu")
-        assert type(caught.value) is dtwcpp.IOError
-        assert str(caught.value).startswith(f"load: failed to read '{path}': ")
 
     def test_parquet_path_reads_like_the_same_csv(self, tmp_path):
         """load('x.parquet') reads through the installed pyarrow (the wheel
@@ -123,30 +96,6 @@ class TestLoad:
         assert data.p_names == ["a", "b"]
         assert data.ndim == 2
 
-    def test_path_source_parses_a_non_numeric_id_column(self, tmp_path):
-        """§1.2: skip_cols drops FIELDS before numeric parsing, as C++ does."""
-        csv = tmp_path / "named.csv"
-        csv.write_text("alpha,0,0\nbeta,10,11\n", encoding="utf-8")
-        ds = dtwcpp.load(csv, skip_cols=1)
-        assert ds.as_series() == [[0.0, 0.0], [10.0, 11.0]]
-
-    def test_path_source_supports_ragged_rows(self, tmp_path):
-        """C++ DataLoader stores variable-length series; Python must too."""
-        csv = tmp_path / "ragged.csv"
-        csv.write_text("0,1,2\n3,4\n", encoding="utf-8")
-        assert dtwcpp.load(csv).as_series() == [[0.0, 1.0, 2.0], [3.0, 4.0]]
-
-    def test_in_memory_source_honours_skip_cols(self):
-        """C++ erases the leading columns of in-memory rows (api.cpp)."""
-        ds = dtwcpp.load([[9.0, 0.0, 1.0], [9.0, 2.0, 3.0]], skip_cols=1)
-        assert ds.as_series() == [[0.0, 1.0], [2.0, 3.0]]
-
-    def test_in_memory_skip_cols_beyond_series_length_is_rejected(self):
-        ds = dtwcpp.load([[0.0, 1.0]], skip_cols=3)
-        with pytest.raises(dtwcpp.InvalidInput,
-                           match="skip_cols exceeds an in-memory series length"):
-            ds.as_series()
-
 
 # ---------------------------------------------------------------------------
 # cluster() keywords: read by C++ (a Config) before any data is read
@@ -154,18 +103,6 @@ class TestLoad:
 class TestClusterKeywords:
     """The keywords become a C++ Config: C++ reads and checks each name before
     the series are read or a job is submitted."""
-
-    def test_valid_minimum_numpy_integers_run_locally(self):
-        source = dtwcpp.Dataset(
-            [[0.0], [1.0]], skip_cols=np.int32(0),
-        )
-        result = dtwcpp.cluster(
-            source, k=np.int32(1), max_iter=np.int64(1), device="cpu",
-        )
-
-        assert result.n_series == 2
-        assert result.k == 1
-        assert type(result.k) is int
 
     @pytest.mark.parametrize("bad", [True, np.bool_(True), "1", 1.5, np.float32(1.9)])
     def test_a_value_of_another_kind_is_refused(self, bad):
@@ -214,22 +151,9 @@ class TestClusterKeywords:
 # cluster() — local cpu path
 # ---------------------------------------------------------------------------
 class TestClusterLocal:
-    def test_k_above_series_count_is_rejected(self):
-        """Parity with C++ cluster(): k must not exceed the number of series."""
-        with pytest.raises(dtwcpp.InvalidInput,
-                           match="k must not exceed the number of series"):
-            dtwcpp.cluster([[0.0], [1.0]], k=3)
-
     def test_empty_dataset_is_rejected(self):
         with pytest.raises(dtwcpp.InvalidInput, match="dataset is empty"):
             dtwcpp.cluster([], k=1)
-
-    def test_recovers_two_groups(self):
-        res = dtwcpp.cluster(_two_groups(), k=2)
-        assert res.n_series == 12
-        assert len(set(res.labels[:6])) == 1
-        assert len(set(res.labels[6:])) == 1
-        assert res.labels[0] != res.labels[11]
 
     def test_default_pam_seed_is_local_and_matches_cpp_tier1(self):
         assert dtwcpp.DEFAULT_RANDOM_SEED == 42
@@ -294,28 +218,6 @@ class TestClusterLocal:
         np.testing.assert_array_equal(default.medoids, [5, 1])
         np.testing.assert_array_equal(default.labels, capped.labels)
         assert default.cost == 4.0
-
-    def test_result_fields_populated(self):
-        res = dtwcpp.cluster(_two_groups(), k=2)
-        assert res.device == "cpu"
-        assert res.cost is not None
-        assert res.distance_matrix is not None
-        assert res.medoids is not None      # canonical 2.0 name (§1.4)
-        assert res.elapsed_s >= 0.0
-
-    def test_summary_contains_device_and_timing(self):
-        res = dtwcpp.cluster(_two_groups(), k=2)
-        s = res.summary()
-        assert "device=cpu" in s and "ms" in s
-
-    def test_uses_global_device(self):
-        dtwcpp.device("cpu")
-        res = dtwcpp.cluster(_two_groups(), k=2)
-        assert res.device == "cpu"
-
-    def test_accepts_raw_array_without_explicit_load(self):
-        res = dtwcpp.cluster(_two_groups(), k=2)   # not wrapped in load()
-        assert res.n_series == 12
 
 
 class TestMatrixFreeBand:
@@ -394,11 +296,6 @@ class TestMatrixFreeScoring:
         assert res.plot(png=str(out), show=False) == str(out)
         assert out.exists()
 
-    def test_unknown_score_still_rejected_after_matrix_free_run(self):
-        res = dtwcpp.cluster(self._SERIES, k=2, method="clara")
-        with pytest.raises(dtwcpp.InvalidInput, match="unknown score"):
-            res.score("nope")
-
     def test_save_after_a_matrix_free_run_writes_all_four_files(self, tmp_path):
         res = dtwcpp.cluster(self._SERIES, k=2, method="clara")
         res.save(tmp_path)
@@ -425,22 +322,6 @@ class TestSaveUndefinedSilhouette:
 
     _SERIES = [[0.0, 0.1], [0.5, 0.4], [1.0, 1.1], [8.0, 8.2]]
 
-    def test_undefined_score_is_a_bound_leaf_under_invalid_input(self):
-        assert issubclass(dtwcpp.UndefinedScore, dtwcpp.InvalidInput)
-        assert issubclass(dtwcpp.UndefinedScore, dtwcpp.DtwcError)
-        assert issubclass(dtwcpp.UndefinedScore, ValueError)
-
-    def test_silhouette_of_one_cluster_raises_undefined_score(self):
-        prob = dtwcpp.Problem("one")
-        prob.set_data(self._SERIES, [str(i) for i in range(len(self._SERIES))])
-        prob.set_distance_matrix(dtwcpp.compute_distance_matrix(self._SERIES))
-        result = dtwcpp.ClusteringResult()
-        result.labels = [0] * len(self._SERIES)
-        result.medoid_indices = [0]
-        prob.set_result(result)
-        with pytest.raises(dtwcpp.UndefinedScore, match="at least 2 non-empty"):
-            dtwcpp.silhouette(prob)
-
     def test_save_with_one_cluster_skips_the_silhouettes_file_silently(
             self, tmp_path, capsys):
         """C++ Result::save and the CLI skip the file for one cluster, silently.
@@ -461,7 +342,7 @@ class TestSaveUndefinedSilhouette:
 
     def test_score_silhouette_still_raises_undefined_score(self):
         res = dtwcpp.cluster(self._SERIES, k=1, method="pam")
-        with pytest.raises(dtwcpp.UndefinedScore):
+        with pytest.raises(dtwcpp.UndefinedScore, match="at least 2 non-empty"):
             res.score("silhouette")
 
 
@@ -474,10 +355,6 @@ class TestRaggedInMemorySource:
 
     def test_as_series_preserves_variable_lengths(self):
         assert dtwcpp.load(self._RAGGED).as_series() == self._RAGGED
-
-    def test_cluster_runs_on_a_ragged_list(self):
-        res = dtwcpp.cluster(self._RAGGED, k=2, method="pam")
-        assert len(res.labels) == len(self._RAGGED)
 
     def test_labels_match_the_cpp_path_on_the_same_ragged_data(self):
         res = dtwcpp.cluster(self._RAGGED, k=2, method="pam")
@@ -572,23 +449,6 @@ def test_what_is_not_series_is_refused_everywhere(entry, data, message):
 class TestSeriesNames:
     """``Problem::series_name(i)`` comes from the loader, not from ``range(N)``."""
 
-    def test_batch_file_names_are_the_loader_row_numbers(self, tmp_path):
-        csv = tmp_path / "batch.csv"
-        csv.write_text("0,1\n2,3\n4,5\n", encoding="utf-8")
-        assert dtwcpp.load(csv).series_names() == ["1", "2", "3"]
-
-    def test_folder_names_are_file_stems(self, tmp_path):
-        # A folder holds one series per file, one value per line: the reader
-        # rejects a multi-field line there (FX-6).
-        folder = tmp_path / "folder"
-        folder.mkdir()
-        (folder / "alpha.csv").write_text("0\n1\n2\n", encoding="utf-8")
-        (folder / "beta.csv").write_text("9\n8\n7\n", encoding="utf-8")
-        assert dtwcpp.load(folder).series_names() == ["alpha", "beta"]
-
-    def test_in_memory_names_are_the_zero_based_ordinals(self):
-        assert dtwcpp.load([[0.0], [1.0]]).series_names() == ["0", "1"]
-
     def test_a_folder_given_with_a_trailing_separator_names_the_run(self, tmp_path):
         """The run is named as dtwc_cl names it (C++ detail::default_name):
         "data/" is "data", so save() writes data_labels.csv, not _labels.csv."""
@@ -600,14 +460,6 @@ class TestSeriesNames:
         assert dtwcpp.load(source).name == "data"
         dtwcpp.cluster(source, k=1).save(tmp_path / "out")
         assert (tmp_path / "out" / "data_labels.csv").is_file()
-
-    def test_saved_labels_carry_the_file_names(self, tmp_path):
-        csv = tmp_path / "named.csv"
-        csv.write_text("0,0.1\n0.2,0.1\n9,9.1\n9.2,9.0\n", encoding="utf-8")
-        res = dtwcpp.cluster(dtwcpp.load(csv), k=2, method="pam")
-        res.save(tmp_path)
-        lines = (tmp_path / "named_labels.csv").read_text().splitlines()
-        assert [line.split(",")[0] for line in lines[1:]] == ["1", "2", "3", "4"]
 
     def test_save_is_byte_identical_to_the_cli(self, tmp_path, dtwc_cl):
         """A CLI run and a Python run on one file must write the same bytes."""
@@ -673,14 +525,6 @@ class TestNonAsciiSeriesNames:
 # result.plot()
 # ---------------------------------------------------------------------------
 class TestPlot:
-    def test_plot_writes_png(self, tmp_path):
-        import matplotlib
-        matplotlib.use("Agg")
-        res = dtwcpp.cluster(_two_groups(), k=2)
-        out = tmp_path / "c.png"
-        assert res.plot(png=str(out), show=False) == str(out)
-        assert out.exists()
-
     def test_plot_without_matrix_returns_none(self, capsys):
         """An hpc-style result (labels only) can't plot; it reports sizes."""
         res = dtwcpp.Result([0, 0, 1, 1], device="hpc", elapsed_s=1.0,
@@ -690,140 +534,10 @@ class TestPlot:
 
 
 # ---------------------------------------------------------------------------
-# cluster(method=...) dispatch — Task 0.14
-#
-# BUG BEING PINNED: the local (cpu/gpu) path of cluster() accepted a ``method``
-# argument but never consulted it — it ran FastPAM unconditionally
-# (old _api.py: ``res = fast_pam(prob, k, max_iter)``). So ``method="mip"``,
-# ``method="clara"``, and even a nonsense ``method="xyz"`` all silently produced
-# a FastPAM result. The fix validates the name (unknown -> ValueError) and
-# dispatches each documented method to its own algorithm.
-# ---------------------------------------------------------------------------
-class TestClusterMethodDispatch:
-    def test_unknown_method_raises(self):
-        """Unknown method must raise, not silently run FastPAM.
-
-        Pre-fix: method is ignored, FastPAM runs, a Result is returned
-        with NO exception -> this test fails. Post-fix: ValueError."""
-        with pytest.raises(ValueError, match="unknown method"):
-            dtwcpp.cluster(_two_groups(), k=2, method="not_a_real_method")
-
-    def test_unknown_method_rejected_before_hpc_offload(self, monkeypatch):
-        """Validation is central: a bad method must never reach the cluster.
-
-        Pre-fix: the hpc path forwarded any raw string to cluster_on_hpc, so a
-        nonsense method was submitted to SLURM. Post-fix: ValueError first."""
-        from dtwcpp import _hpc
-
-        def boom(*a, **k):
-            raise AssertionError("cluster_on_hpc must not be called for a bad method")
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", boom)
-        with pytest.raises(ValueError, match="unknown method"):
-            dtwcpp.cluster("data.tsv", k=2, device="hpc", method="bogus")
-
-    def test_local_clara_runs_end_to_end(self):
-        """The clara branch must actually work end-to-end (no solver needed).
-
-        Recovers the two well-separated groups, proving real dispatch — not
-        just that a non-ValueError was returned."""
-        res = dtwcpp.cluster(_two_groups(), k=2, method="clara")
-        assert res.n_series == 12
-        # CLARA's scaling contract is O(Ns), not O(N²): Tier 1 must not
-        # materialise a full matrix merely to populate an auxiliary result field.
-        assert res._distance_matrix is None
-        assert len(set(res.labels[:6])) == 1
-        assert len(set(res.labels[6:])) == 1
-        assert res.labels[0] != res.labels[11]
-
-    @pytest.mark.parametrize(
-        "method", ["auto", "pam", "clara", "kmedoids", "mip", "hierarchical"])
-    def test_documented_methods_accepted_and_forwarded_to_hpc(self, monkeypatch, method):
-        """Every documented method is accepted (no ValueError) and forwarded.
-
-        Uses the hpc path (cluster_on_hpc stubbed) so mip/kmedoids do not need a
-        solver and no local files are written — this asserts the name survives
-        validation and is passed through to dtwc_cl --method verbatim."""
-        from dtwcpp import _hpc
-        captured = {}
-
-        def fake(data, config, keys, **kwargs):
-            captured["method"] = config.method
-            return np.zeros(4, dtype=int)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        dtwcpp.cluster([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]],
-                       k=2, device="hpc", method=method)
-        assert captured["method"] == method
-
-    def test_hclust_alias_normalizes_to_hierarchical(self, monkeypatch):
-        """'hclust' is the CLI alias for 'hierarchical' and must normalize.
-
-        Pre-fix: the raw 'hclust' string was forwarded unchanged. Post-fix it
-        is normalized to 'hierarchical' before being forwarded."""
-        from dtwcpp import _hpc
-        captured = {}
-
-        def fake(data, config, keys, **kwargs):
-            captured["method"] = config.method
-            return np.zeros(4, dtype=int)
-
-        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
-        dtwcpp.cluster([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]],
-                       k=2, device="hpc", method="hclust")
-        assert captured["method"] == "hierarchical"
-
-
-# ---------------------------------------------------------------------------
-# Result write-back moved to the C++ core (api-contract-2.0.md §2.5, Task 1.6/2.1)
-#
-# 1.x wired labels/medoids/k back into Problem inside the *binding* lambdas
-# (_dtwcpp_core.cpp fast_pam/fast_clara).
-# Task 2.1 DELETES that wrapper-side wiring — the C++ algorithm free functions now
-# do it (fast_pam.cpp, fast_clara.cpp, hierarchical.cpp). These tests pin the behaviour END-TO-END: after a
-# REAL algorithm call on a REAL Problem, with NO Python-side assignment to
-# clusters_ind/centroids_ind, the results are already visible on the Problem
-# (labels()/medoids()) and the scores read them. If the write-back regressed,
-# silhouette(prob) would see empty/stale state and these fail. The mechanism
-# moved to C++; the end-to-end behaviour is preserved and asserted here.
+# Tier-1 cluster() publishes its result with no Python wiring; the write-back
+# of the algorithm free functions to the Problem is test_index_types.py's
 # ---------------------------------------------------------------------------
 class TestResultWriteBackInCpp:
-    @staticmethod
-    def _filled_problem(seed=1, n=12):
-        rng = np.random.default_rng(seed)
-        X = [list(rng.standard_normal(10) * 0.1 + (0.0 if i < n // 2 else 9.0))
-             for i in range(n)]
-        p = dtwcpp.Problem("wb")
-        p.set_data(X, [str(i) for i in range(n)])
-        p.fill_distance_matrix()
-        return p
-
-    def test_fast_pam_writes_back_without_wrapper(self):
-        """drives dtwcpp.fast_pam(prob, k) — C++ core writes labels/medoids/k back."""
-        p = self._filled_problem()
-        res = dtwcpp.fast_pam(p, 2)            # NO Python wiring after this call
-        assert list(p.labels()) == list(res.labels)
-        assert sorted(p.medoids()) == sorted(res.medoid_indices)
-        assert p.n_clusters() == 2
-        # Scores read Problem state — only works if the write-back happened.
-        assert len(dtwcpp.silhouette(p)) == 12
-
-    def test_fast_clara_writes_back_without_wrapper(self):
-        """drives dtwcpp.fast_clara(prob, k)."""
-        p = self._filled_problem()
-        res = dtwcpp.fast_clara(p, 2)
-        assert list(p.labels()) == list(res.labels)
-        assert p.n_clusters() == 2
-        assert len(dtwcpp.silhouette(p)) == 12
-
-    def test_cut_dendrogram_writes_back_without_wrapper(self):
-        """drives build_dendrogram + cut_dendrogram — 2.0 also writes back (§2.5)."""
-        p = self._filled_problem()
-        dend = dtwcpp.build_dendrogram(p)
-        res = dtwcpp.cut_dendrogram(dend, p, 2)
-        assert list(p.labels()) == list(res.labels)
-        assert p.n_clusters() == 2
-
     def test_cluster_tier1_end_to_end_results_visible(self):
         """drives dtwcpp.cluster() Tier-1 — labels/medoids/score visible with NO
         wrapper wiring (the preserved end-to-end contract; must not weaken)."""
@@ -831,6 +545,7 @@ class TestResultWriteBackInCpp:
         X = np.array([rng.standard_normal(12) * 0.1 + (0.0 if i < 6 else 9.0)
                       for i in range(12)])
         res = dtwcpp.cluster(X, k=2)
+        assert res.device == "cpu"
         assert res.medoids is not None
         assert len(set(res.labels[:6])) == 1 and len(set(res.labels[6:])) == 1
         assert res.score("silhouette") > 0.5

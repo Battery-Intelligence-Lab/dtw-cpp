@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Docs/examples:** `examples/cpp/tier1.cpp` replaces `example_new_features.cpp`, which showed the 1.x free
+  functions: one run described by a `dtwc::Config` and run on series in memory, which ctest runs as `example_tier1`
+  when the examples and the tests are built (`-DDTWC_BUILD_EXAMPLES=ON -DDTWC_BUILD_TESTING=ON`). Each
+  `examples/python/*.py` now runs under pytest, and
+  `03_clustering_evaluation.py` prints its medoids' names (`Problem.series_name`) where it printed `N/A`.
 - **Changed (performance, AArch64):** on 64-bit Arm (Apple silicon, Arm Linux) the CPU distance-matrix fill and
   OneBatchPAM's batch table compute a series against 16 others of its length at once (32 in `float32`), not 8 (16),
   and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: about

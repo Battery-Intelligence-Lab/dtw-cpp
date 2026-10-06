@@ -58,6 +58,22 @@ end
 %  Tier 1 (contract §1)
 % =========================================================================
 
+function test_version_matches_ssot(testCase)
+%   The MEX reports the repository's VERSION file.
+    repoRoot = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+    expected = strtrim(fileread(fullfile(repoRoot, 'VERSION')));
+    verifyEqual(testCase, dtwc_mex('version'), expected);
+end
+
+function test_diagnostics_return_the_cpp_report_fields(testCase)
+%   The MEX copies each C++ report into a struct by hand; what the fields say
+%   is tests/unit/test_test_api.cpp's.
+    verifyEqual(testCase, ...
+        {sort(fieldnames(dtwc.test.parallelisation())'), sort(fieldnames(dtwc.test.gpu())')}, ...
+        {sort({'available', 'max_threads', 'threads_engaged', 'pass', 'reason'}), ...
+         sort({'available', 'backend', 'device_name', 'validated', 'pass', 'reason'})});
+end
+
 function test_tier1_device_get_set(testCase)
 %   §1.1 dtwc.device -> MEX set_device/get_device -> dtwc::device().
     name = dtwc.device('cpu');
