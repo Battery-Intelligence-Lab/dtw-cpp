@@ -56,9 +56,10 @@ squared-L2 value has unit $U^2$. Neither is divided by a path length.
 
 The derivation makes these assumptions where they are needed:
 
-1. Inputs and local costs are finite and non-negative. This supports the
-   early-abandon explanation; the recurrence itself only needs an ordered
-   additive cost domain.
+1. Inputs and local costs are finite and non-negative. Early abandoning
+   relies on this: a path crosses every column and its accumulated cost never
+   decreases, so once a whole column exceeds the cutoff, so does the result.
+   The recurrence itself only needs an ordered additive cost domain.
 2. A path starts at $(0,0)$, ends at $(n-1,m-1)$, and uses steps
    $(1,0)$, $(0,1)$, or $(1,1)$. Thus it is monotone and continuous.
 3. The exact-distance claims disable the API cutoff (`early_abandon < 0`).
@@ -237,7 +238,7 @@ $$
 \tag{3}
 $$
 
-In the repository's compact contract notation,
+Written compactly,
 `DTW_w(x,y) >= DTW_full(x,y)`, and the exact constrained value is
 non-increasing as the band widens. Equation (3) includes an infeasible narrow
 band by treating its value as $+\infty$.
@@ -312,36 +313,32 @@ This is a relative bound for the path's $L$ additions; its absolute unit is
 $U$ for L1 and $U^2$ for squared L2. The live build permits reassociation, and
 a rounding perturbation can also select a different path at a near tie, so
 this sequential bound is not claimed as a complete implementation error
-bound. D17 owns the rigorous live-build and cross-precision analysis. The
-decisive D1 fixtures use small integer-valued costs and exact equality, so
+bound. The rigorous live-build and cross-precision analysis is outside this
+note. The decisive D1 fixtures use small integer-valued costs and exact equality, so
 rounding does not enter their verdict.
 
 ## Code-conformance table
 
-The CPU line numbers refer to derivation commit `9f78212`. The GPU rows were
-reconciled after implementation commit `4583443`; their executable evidence
-lives in the named F12 artifact rather than being inferred from source.
+Each row names the live symbol and its file. The GPU rows' executable
+evidence lives in the named F12 tests and record rather than being inferred
+from source.
 
 | Claim | Live implementation | Evidence and verdict |
 |---|---|---|
-| One local cost plus the minimum of diagonal/up/left | `dtwc/core/dtw_kernel.hpp:54-66` | `StandardCell::combine` implements (1), and `seed` implements $D_{00}=c_{00}$. **CONFIRMED**. |
-| Boundary conditions and dependency order | `dtw_kernel_linear` in `dtwc/core/dtw_kernel.hpp` | Origin (`seed`), first column, first row of each new column, interior sweep, and terminal cell match the derivation; `dtwFull` runs here since the full-matrix kernel went. **CONFIRMED**: `test_dtw`'s oracle rows. |
-| Linear-space state is the same recurrence | `dtwc/core/dtw_kernel.hpp:249-287` | The saved diagonal, old slot, and updated prior slot are exactly the three predecessors. **CONFIRMED**. |
-| Scalar local-cost definitions and dispatch | `dtwc/warping.hpp:210-220`, `dtwc/warping.hpp:261-272` | L1 is $\lvert a-b\rvert$; SquaredL2 is $(a-b)^2$; scalar L2 correctly reduces to L1. **CONFIRMED**. |
-| Short/long orientation preserves the symmetric objective | `dtwc/warping.hpp:133-150` | The shorter input becomes the first cost index; both supported scalar costs are symmetric. **CONFIRMED**. |
-| Fixed allowed range $\lvert i-j\rvert\le w$ | `dtwc/core/dtw_kernel.hpp:190-207`, `dtwc/core/dtw_kernel.hpp:421-505` | Bounds are `[max(0,i-w), min(m,i+w+1))`, computed without signed overflow or `int` narrowing. **CONFIRMED**. |
-| Endpoint feasibility (2) | `dtwc/core/dtw_kernel.hpp:424-436`, `dtwc/warping.hpp:389-408` | Both the shared kernel and public scalar wrapper return the finite no-path sentinel below the endpoint gap. **CONFIRMED**. |
-| Negative band and full-coverage fallbacks | `dtwc/warping.hpp:394-405`, `dtwc/core/dtw_kernel.hpp:425-436` | Negative dispatches to full DTW; width at least `max_length-1` covers the complete rectangle. **CONFIRMED**. |
-| Dependent and independent MV wrappers preserve feasibility | `dtwc/warping.hpp:542-561`, `dtwc/warping.hpp:598-612` | Dependent MV applies the same bound; independent MV returns one finite sentinel before channel summation. **CONFIRMED**. |
-| Missing-data AROW wrapper does not bypass the fixed window | `dtwc/warping_missing_arow.hpp:153-172` | Endpoint feasibility precedes its singleton/full fallback. **CONFIRMED**. |
+| One local cost plus the minimum of diagonal/up/left | `StandardCell` in `dtwc/core/dtw_kernel.hpp` | `StandardCell::combine` implements (1), and `seed` implements $D_{00}=c_{00}$. **CONFIRMED**. |
+| Boundary conditions and dependency order | `dtw_kernel_linear` in `dtwc/core/dtw_kernel.hpp` | Origin (`seed`), first column, first row of each new column, interior sweep, and terminal cell match the derivation; `dtwFull` runs here. **CONFIRMED**: `test_dtw`'s oracle rows. |
+| Linear-space state is the same recurrence | `dtw_kernel_linear` in `dtwc/core/dtw_kernel.hpp` | The saved diagonal, old slot, and updated prior slot are exactly the three predecessors; `dtw_kernel_banded` rolls the same three over a column of the longer series. **CONFIRMED**. |
+| Scalar local-cost definitions and dispatch | `SpanL1Cost` and `SpanSquaredL2Cost` in `dtwc/core/dtw_cost.hpp`; `dtwBanded` in `dtwc/warping.hpp` | L1 is $\lvert a-b\rvert$; SquaredL2 is $(a-b)^2$; scalar L2 correctly reduces to L1. **CONFIRMED**. |
+| Short/long orientation preserves the symmetric objective | `orient` and `run_dtw` in `dtwc/core/dtw_kernel.hpp` | The shorter input becomes the first cost index; both supported scalar costs are symmetric. **CONFIRMED**. |
+| Fixed allowed range $\lvert i-j\rvert\le w$ | `dtw_band_bounds` in `dtwc/core/dtw_kernel.hpp`, used by `dtw_kernel_banded` and `dtw_kernel_lanes` | Bounds are `[max(0,i-w), min(m,i+w+1))`, computed without signed overflow or `int` narrowing. **CONFIRMED**. |
+| Endpoint feasibility (2) | `dtw_kernel_banded` in `dtwc/core/dtw_kernel.hpp`, which `dtwBanded` and the other per-pair wrappers reach through `run_dtw` | The shared kernel returns the finite no-path sentinel below the endpoint gap. **CONFIRMED**. |
+| Negative band and full-coverage fallbacks | `dtw_kernel_banded` in `dtwc/core/dtw_kernel.hpp` | Negative dispatches to full DTW; width at least `max_length-1` covers the complete rectangle. **CONFIRMED**. |
+| Dependent and independent MV wrappers preserve feasibility | `dtwBanded_mv` and `dtw_independent_mv` in `dtwc/warping.hpp` | Dependent MV runs the same banded kernel, so the same bound; independent MV returns one finite sentinel before channel summation. **CONFIRMED**. |
+| Missing-data AROW wrapper does not bypass the fixed window | `dtwAROW_banded` in `dtwc/warping_missing_arow.hpp` | It runs the shared banded kernel through `run_dtw`, whose endpoint feasibility precedes the singleton/full fallback. **CONFIRMED**. |
 | Independent DP oracle and hand-computed ledger | `tests/support/dtw_oracle.hpp`, `tests/unit/core/test_dtw.cpp` | A plain full-matrix DP written from this derivation reproduces by hand the registered unequal-length ledger of `.claude/baselines/2026-07-23-r2-d1-dtw.md` (L1 and squared L2; bands 1, 2, 3 and none; no path below the length difference), and the public routes (`dtwFull`, `dtwFull_L`, `dtwBanded`, the Problem's bound function and its fill) agree with it on every shape, band and precision of the table. The exhaustive path counts of the 2026-07-23 record (696, 1143 and 1289) are not re-run: the hand-computed ledger replaces them. **CONFIRMED**: `test_dtw` passes. |
 | Neither accumulated form is a metric | `tests/unit/core/test_dtw.cpp` (hand-computed values) | The identity and triangle counterexamples above are run through the oracle and through the library. **CONFIRMED**: `test_dtw` passes. |
-| CUDA uses the same fixed geometry | `dtwc/cuda/cuda_dtw.cu:69`, used by the pairwise kernels at `:277`, `:307`, `:455`, `:645` (the one/K-vs-N kernels were deleted in 2.0) | One ordered-subtraction predicate implements $\lvert i-j\rvert\le w$ without signed `abs` overflow in every kernel family. The local RTX gate reproduces the independent path ledger in both singleton orientations: 515 assertions/6 F12 cases and 7,827 assertions/61 unfiltered cases. **CONFIRMED** by `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. |
-| Metal fixed geometry and public sentinel | `dtwc/metal/metal_dtw.mm:137-175`, `:250-287`, with public normalization at `:1759` (the K-vs-N kernels were deleted in 2.0) | Widened arithmetic clips all four fixed corridors and exact device `FLT_MAX` is translated to public `DBL_MAX`. Permanent independent-oracle cases cover the pairwise source routes. Three reviews found no remaining source defect, but this host has no Metal compiler/device and the binary executes zero assertions before capability skip. Source **CONFIRMED**; real-device parity remains **DISCREPANCY** F12 / `[BLOCKED-ENV]`. |
-
-The full-matrix reference kernel, which passed its `size_t` dimensions through
-`int` casts when indexing `ScratchMatrix`, is gone: `dtwFull` and Soft-DTW run
-on the linear kernel, whose indices are `size_t`.
+| CUDA uses the same fixed geometry | `fixed_band_contains` in `dtwc/cuda/cuda_dtw.cu`, used by `dtw_wavefront_kernel`, `dtw_warp_kernel` and `dtw_regtile_kernel` | One ordered-subtraction predicate implements $\lvert i-j\rvert\le w$ without signed `abs` overflow in every kernel family. The `[F12]` cases of `tests/unit/test_cuda_correctness.cpp` reproduce the independent path ledger on a CUDA device. **CONFIRMED** on the local RTX by `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. |
+| Metal fixed geometry and public sentinel | `dtw_wavefront_body` and `dtw_banded_row` in `dtwc/metal/metal_dtw.mm`; `normalize_public_distance` in `dtwc/core/public_distance.hpp` | The wavefront clip widens to `long` before `k ± band`; the banded-row kernel, chosen only for `0 < band <= 512`, clips each row to $\lvert i-j\rvert\le w$; exact device `FLT_MAX` is translated to public `DBL_MAX`. The `[F12]` case of `tests/unit/test_metal_correctness.cpp` covers the wavefront, banded-row and device-memory wavefront routes. Source **CONFIRMED**; real-device parity **CONFIRMED** on an Apple M5 Pro (2026-09-23, FX-13). |
 
 ## Decisive artifact
 
@@ -356,6 +353,6 @@ cost semantics, fixed Sakoe–Chiba window, feasibility rule, and monotonicity
 claim are **CONFIRMED**. CUDA geometry and exact public no-path translation are
 also **CONFIRMED** on the local RTX. Metal source implements the same contract,
 and its real-device executable gate passed on an Apple M5 Pro on 2026-09-23
-(FX-13): 408/408 assertions in the two `[F12]` cases, which also compare every
-Metal value, including the no-path sentinel, with the CPU kernel on the same
+(FX-13). Its `[F12]` case compares every Metal pairwise value, including the
+no-path sentinel, with the independent oracle and the CPU kernel on the same
 inputs.
