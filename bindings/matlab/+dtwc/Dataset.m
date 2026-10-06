@@ -141,7 +141,12 @@ classdef Dataset < handle
                     names = {stem};
                     return
                 end
-                if iscell(values) && all(cellfun(@isfloat, values))
+                if iscell(values) && all(cellfun(@(v) isfloat(v) || isa(v, 'missing'), values))
+                    nulls = nnz(cellfun(@(v) isa(v, 'missing'), values));
+                    if nulls
+                        error('dtwc:invalidArgument', ['load: ''%s'': list column cell contains %d ' ...
+                              'null(s) (drop or fill nulls before clustering).'], file, nulls);
+                    end
                     series = cellfun(@(v) double(v(:).'), values(:).', 'UniformOutput', false);
                     names = arrayfun(@(i) sprintf('series_%d', i), first + (0:numel(values) - 1), ...
                                      'UniformOutput', false);
