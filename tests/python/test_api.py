@@ -342,7 +342,7 @@ class TestSaveUndefinedSilhouette:
 
     def test_score_silhouette_still_raises_undefined_score(self):
         res = dtwcpp.cluster(self._SERIES, k=1, method="pam")
-        with pytest.raises(dtwcpp.UndefinedScore):
+        with pytest.raises(dtwcpp.UndefinedScore, match="at least 2 non-empty"):
             res.score("silhouette")
 
 
@@ -545,6 +545,7 @@ class TestResultWriteBackInCpp:
         X = np.array([rng.standard_normal(12) * 0.1 + (0.0 if i < 6 else 9.0)
                       for i in range(12)])
         res = dtwcpp.cluster(X, k=2)
+        assert res.device == "cpu"
         assert res.medoids is not None
         assert len(set(res.labels[:6])) == 1 and len(set(res.labels[6:])) == 1
         assert res.score("silhouette") > 0.5
