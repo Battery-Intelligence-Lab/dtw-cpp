@@ -205,9 +205,16 @@ namespace {
 core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 {
   detail::validate_clara_request(prob, opts);
-  if (opts.force_parquet_streaming) // the core reads no Parquet: fast_clara_parquet (dtwc_io) streams it
+  // The core reads no Parquet: fast_clara_parquet (dtwc_io) streams it.
+  if (opts.force_parquet_streaming)
     throw IOError(
       "fast_clara: force_parquet_streaming requires a build with Parquet support.");
+  if (opts.ram_limit_bytes > 0 && !opts.parquet_path.empty())
+    throw InvalidInput(
+      "fast_clara: parquet_path with ram_limit_bytes asks to stream the series from "
+      "Parquet, which algorithms::fast_clara_parquet does (dtwc_cl --ram-limit, in a "
+      "build with Parquet); fast_clara clusters the Problem's own series. Clear "
+      "parquet_path, or call fast_clara_parquet.");
 
   const auto plan = detail::resolve_clara_plan(prob.size(), opts, "fast_clara");
   const index_t N = plan.n_points;

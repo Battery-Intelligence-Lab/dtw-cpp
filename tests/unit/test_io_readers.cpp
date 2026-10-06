@@ -625,6 +625,8 @@ TEST_CASE("Parquet: streamed FastCLARA equals the in-RAM run",
   options.ram_limit_bytes = 1u << 20;
   options.parquet_path = tmp;
   options.parquet_column = "data";
+  // Series that fit the limit are the Problem's own: fast_clara_parquet is fast_clara then.
+  CHECK(dtwc::algorithms::fast_clara_parquet(in_ram, options).labels == expected.labels);
   options.force_parquet_streaming = true;
   dtwc::Problem settings_only{"clara_streamed"};
   const auto streamed = dtwc::algorithms::fast_clara_parquet(settings_only, options);

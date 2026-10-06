@@ -277,7 +277,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
   // ---- 3. Load the series into RAM ----
   if (!stream_payload) {
-    Data series = data ? std::move(*data) : read_input(input, *format, config);
+    Data series = data ? std::move(*data) : read_input(input, format.value_or(InputFormat::Text), config);
     if (config.verbose) {
       const char *from = !format                            ? " in memory"
                          : format == InputFormat::Parquet  ? " from Parquet"

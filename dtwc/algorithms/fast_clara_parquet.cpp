@@ -270,7 +270,10 @@ core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opt
       return fast_clara_chunked(prob, opts, reader, stream_plan);
     }
   }
-  return fast_clara(prob, opts); // the series fit the limit, or no stream was asked for
+  // The series fit the limit, or no stream was asked for: the Problem's own series.
+  CLARAOptions in_ram = opts;
+  in_ram.parquet_path.clear();
+  return fast_clara(prob, in_ram);
 }
 
 } // namespace dtwc::algorithms
