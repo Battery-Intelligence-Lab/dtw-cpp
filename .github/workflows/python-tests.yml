@@ -49,8 +49,9 @@ jobs:
         run: uv pip install ".[test,dev,io,mip]" pandas --system -v
 
       # The extension links no HiGHS, so method="mip" solves with highspy (the mip extra).
-      # test_mip.py and test_wheel_smoke.py skip only without highspy or with linked HiGHS,
-      # so this step makes such a skip fail the job.
+      # test_mip.py and test_wheel_smoke.py skip only without highspy or with linked HiGHS; the
+      # Test step sets DTWC_REQUIRE_HIGHSPY, which makes such a skip fail the job, and this
+      # step fails earlier and names the cause.
       - name: The MIP tests run on highspy
         run: uv run python -c "import highspy, dtwcpp; assert not dtwcpp.HIGHS_AVAILABLE"
 
@@ -63,10 +64,12 @@ jobs:
 
       # Both paths are job arguments, not pyproject testpaths: an explicit argument overrides
       # testpaths, so the one place that can name tests outside tests/python is this line.
-      # DTWC_CL_PATH set to a missing file raises, so the CLI cases cannot skip here.
+      # DTWC_CL_PATH set to a missing file raises, so the CLI cases cannot skip here;
+      # DTWC_REQUIRE_HIGHSPY fails the cases that need highspy instead of skipping them.
       - name: Test
         env:
           DTWC_CL_PATH: ${{ github.workspace }}/build/bin/dtwc_cl${{ runner.os == 'Windows' && '.exe' || '' }}
+          DTWC_REQUIRE_HIGHSPY: "1"
         run: uv run pytest tests/python/ tests/conformance/test_conformance.py -v --tb=short
 
       - name: System check
