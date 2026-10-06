@@ -229,7 +229,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   and snake case can change between languages"); `dtwc.cluster`'s `band`, `max_iter` become `Band`, `MaxIter`
 - W9b/W9e note (Volkan 10-01, lighter bindings): Python and MATLAB share the Config names, not the CLI's file
   pipeline — `run(Config)` reads and writes files, which stays with the CLI (L2)
-- ☐ W9f Python test and example trims
+- ☑ W9f Python test and example trims (W9f 44af93de, e84679c1, 6246172f, 000e765f, b5ee6515; records 79bffcf8,
+  addde20a; merged 0e0f3056 on the Mac): test_api.py 836 → 551, test_hpc.py 1,243 → 1,222 (cases that re-checked another
+  Python or C++ pin, existence checks, stub captures); test_clustering_semantics folds into test_sklearn_estimator;
+  test_test_api.py/.m go (test_test_api.cpp owns the probes; one field line per binding); the nine examples/python
+  run under pytest; tier1.cpp (ctest `example_tier1`, examples on) replaces example_new_features.cpp; the contract
+  rows read/print_distance_matrix are back; matlab_suite's gate allows no incomplete; main tree: pytest 890/11/0
+  (923/11 before; 46 ids removed, 13 added, by id in `baselines/2026-10-06-w9f-test-trims-mac.md`), matlab_suite
+  136/136/0/0, ctest 95
 - ☑ W10a `DistanceMatrixStrategy`, `CUDASettings` → `set_device` + `set_gpu_precision`; the fingerprint
   hashes the resolved backend (W10 8124528, 373c039, d99734a; merged 73d7361; the cache identity hashes the computed precision, not the device: a CPU FP64 cache serves a CUDA FP64 run, GPU 0 and GPU 1 agree, FP32 is refused by FP64; Metal's Auto is FP32; CUDA's Auto is refused for a persistent cache)
 - ☑ W10b `gpu_available()` / `gpu_info()`; `gpu:1` on Metal refused; `system_info`, `check_system`,
@@ -269,7 +276,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ one `kmedoids_pp` (W13c d6a771eb; merged b36fad43; −490/+291; conformance, CLI 25, matlab_suite 142/141 and
   every seeded pin identical; the v1 one-argument `init::*` and unseeded `fast_pam` sequences changed as
   pre-registered; pytest 923/11/0) · ☑ HiGHS model built row-wise (W13d: done by M1's `build_p_median_model`,
-  c0580948) · ☐ barycenter workspace (W13e)
+  c0580948) · ☑ barycenter workspace (W13e 980709dd,
+  a9c18357; merged 32b219c6: thread_local alignment scratch through run_openmp, series read in place,
+  `BarycenterOptions` embedded as `barycenter`, `Problem::copy_distance_settings_from`; outputs identical (C++
+  399/400 hex-float probes — the one is a non-finite series dtw_barycenter does not select, no longer refused —,
+  Python 99/99, CLI 25; main tree: ctest 94 — the allocation test went —, matlab_suite 136/136, pytest 890/11/0);
+  each thread keeps its largest DP matrix after the call, as soft_dtw_gradient does)
 - ☑ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel (P4 9168ed9; merged 69be49c; that step 21.9× at 24 threads, the whole call 1.89× at N 2000, k 10, L 200 — identical labels, medoids, cost)
 - ☑ OneBatchPAM's batch table fill (m·(N−1) DTW calls, 95 % of the call after P4) on the P1 lanes kernel (P5 1b69614; merged bac9120; table fill 4.61×, whole call 3.87× at N 2000, k 10, L 200, 24 threads; bitwise identical over 24 configurations)
 - ☑ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
