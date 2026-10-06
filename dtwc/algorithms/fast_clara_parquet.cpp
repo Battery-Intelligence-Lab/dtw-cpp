@@ -180,13 +180,7 @@ namespace {
           : reader.read_rows(std::move(sample_rows), opts.ram_limit_bytes);
 
         Problem sub_prob("clara_chunked_" + std::to_string(s));
-        sub_prob.set_distance(prob_template.distance());
-        // Device, GPU index and precision: the sample fill honours them, or
-        // validate_fill_request refuses them (e.g. a Float32 sample on a GPU).
-        const auto [device, index] = prob_template.device();
-        sub_prob.set_device(device, index);
-        sub_prob.set_gpu_precision(prob_template.gpu_precision());
-        sub_prob.set_verbose(prob_template.verbose());
+        sub_prob.copy_distance_settings_from(prob_template);
         sub_prob.set_data(std::move(sample_data));
         sub_result = fast_pam(
           sub_prob, opts.n_clusters, opts.max_iter, detail::clara_pam_seed(opts, s));

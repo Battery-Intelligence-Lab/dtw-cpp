@@ -13,6 +13,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   when the examples and the tests are built (`-DDTWC_BUILD_EXAMPLES=ON -DDTWC_BUILD_TESTING=ON`). Each
   `examples/python/*.py` now runs under pytest, and
   `03_clustering_evaluation.py` prints its medoids' names (`Problem.series_name`) where it printed `N/A`.
+- **Changed (C++, Python):** `BarycenterClusteringOptions` holds a `BarycenterOptions` as `barycenter` instead of
+  copies of its fields (Python: `options.barycenter.max_iter`, not `options.barycenter_max_iter`), and each thread
+  keeps its alignment matrix between calls, as Soft-DTW's gradient does, instead of allocating one per call.
+- **Added (C++):** `Problem::copy_distance_settings_from(other)` gives a `Problem` another's distance settings,
+  device and GPU index, GPU precision and verbosity: what FastCLARA's sample Problems take from their parent.
 - **Changed (performance, AArch64):** on 64-bit Arm (Apple silicon, Arm Linux) the CPU distance-matrix fill and
   OneBatchPAM's batch table compute a series against 16 others of its length at once (32 in `float32`), not 8 (16),
   and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: about

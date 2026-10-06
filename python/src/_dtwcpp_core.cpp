@@ -366,14 +366,8 @@ NB_MODULE(_dtwcpp_core, m) {
     .def(nb::init<>())
     .def_rw("n_clusters", &dtwc::algorithms::BarycenterClusteringOptions::n_clusters)
     .def_rw("max_iter", &dtwc::algorithms::BarycenterClusteringOptions::max_iter)
-    .def_rw("barycenter_max_iter", &dtwc::algorithms::BarycenterClusteringOptions::barycenter_max_iter)
     .def_rw("target_length", &dtwc::algorithms::BarycenterClusteringOptions::target_length)
-    .def_rw("method", &dtwc::algorithms::BarycenterClusteringOptions::method)
-    .def_rw("learning_rate", &dtwc::algorithms::BarycenterClusteringOptions::learning_rate)
-    .def_rw("learning_rate_decay", &dtwc::algorithms::BarycenterClusteringOptions::learning_rate_decay)
-    .def_rw("gamma", &dtwc::algorithms::BarycenterClusteringOptions::gamma)
-    .def_rw("tolerance", &dtwc::algorithms::BarycenterClusteringOptions::tolerance)
-    .def_rw("random_seed", &dtwc::algorithms::BarycenterClusteringOptions::random_seed);
+    .def_rw("barycenter", &dtwc::algorithms::BarycenterClusteringOptions::barycenter);
 
   nb::class_<dtwc::algorithms::BarycenterClusteringResult>(m, "BarycenterClusteringResult")
     .def(nb::init<>())
