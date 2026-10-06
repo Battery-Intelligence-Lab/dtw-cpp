@@ -11,7 +11,7 @@
 
 #include "dtw_dispatch.hpp"
 
-#include "dtw_kernel.hpp"     // dtw_kernel_lanes, dtw_lanes, StandardCell
+#include "dtw_kernel.hpp"     // dtw_kernel_lanes, dtw_lanes, LanesCell
 #include "dtw_options.hpp"    // DTWVariant, MissingStrategy, MetricType
 #include "public_distance.hpp" // normalize_public_distance
 
@@ -31,7 +31,7 @@ block_fn(int band, Dist dist)
   return [band, dist](std::span<const T> x, std::span<const std::span<const T>> ys, std::span<double> out) {
     const T *y[dtw_lanes<T>];
     for (std::size_t w = 0; w < dtw_lanes<T>; ++w) y[w] = ys[w].data();
-    const auto d = dtw_kernel_lanes<T>(x.data(), y, x.size(), band, dist, StandardCell{});
+    const auto d = dtw_kernel_lanes<T>(x.data(), y, x.size(), band, dist, LanesCell{});
     for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
   };
 }

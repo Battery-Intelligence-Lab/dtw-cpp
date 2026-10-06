@@ -714,8 +714,9 @@ TEST_CASE("OneBatchPAM's batch table through the lanes agrees with the per-pair 
           "[one_batch_pam][lanes]")
 {
   // The table fill takes W columns of a row at a time through the lane function
-  // (W = 8 for float64, 16 for float32) where they are as long as the row's
-  // series, and every other column pair by pair. With the batch the whole data
+  // (W = core::dtw_lanes: 8 for float64 and 16 for float32, twice that on
+  // AArch64) where they are as long as the row's series, and every other column
+  // pair by pair. With the batch the whole data
   // set, every selected medoid is a table column and the final labels and cost
   // read N x k entries of the table: each must agree with the per-pair
   // function within the route bound, whichever lane its column fell in, and the

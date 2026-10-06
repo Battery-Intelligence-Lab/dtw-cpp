@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (performance, AArch64):** on 64-bit Arm (Apple silicon, Arm Linux) the CPU distance-matrix fill and
+  OneBatchPAM's batch table compute a series against 16 others of its length at once (32 in `float32`), not 8 (16),
+  and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: about
+  1.4–2.0× single thread on an Apple M5 Pro. Every distance is unchanged, bit for bit; x86-64, the one-pair kernels
+  and the other DTW variants are unchanged.
 - **Changed (performance, Python):** the extension's binding file compiles at `-O3`, not at nanobind's default `-Os`.
   Under LTO its `-Os` copy of the per-pair DTW kernel was the one the whole extension ran, with the early-abandon test
   inside every cell: on an Apple M5 Pro `dtwcpp.dtw` is 1.1–1.5× and a distance matrix of unequal-length series 1.5×

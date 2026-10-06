@@ -48,7 +48,7 @@
 
 #include <algorithm>    // std::min, std::max
 #include <array>        // std::array
-#include <cmath>        // std::ceil, std::floor, std::round
+#include <cmath>        // std::ceil, std::floor, std::round, std::fmin
 #include <cstddef>      // size_t
 #include <limits>       // std::numeric_limits
 #include <utility>      // std::pair
@@ -383,13 +383,45 @@ T run_dtw(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, Cell
 // alike, as StandardCell does: bit for bit, unless the compiler contracts
 // `d * d + m` into an FMA in one kernel and not the other (GCC does by default;
 // the two then differ in the last bits). The loop over the lanes is the one that
-// vectorises: one cache line of T per DP row, W dependency chains side by side
-// where the per-pair kernel runs one.
+// vectorises: W dependency chains side by side where the per-pair kernel runs
+// one, each a min then an add per row.
 // ===========================================================================
 
-/// Pairs per dtw_kernel_lanes call: one 64-byte cache line of T.
+/// The fill's Cell for dtw_kernel_lanes: StandardCell, but on AArch64 its min is
+/// std::fmin, one fminnm, where std::min is a compare and a select (fcmgt + bif)
+/// on the chain from one row's `left` to the next. fminnm differs from std::min
+/// only for NaN and for the sign of zero, and the fill's lanes meet neither:
+/// Problem::validate_fill_request refuses NaN and ±inf before any lane runs, a
+/// cost is |a - b| or d * d (never -0, and never NaN from finite values), and the
+/// boundary is max(). A cost that overflows is +inf, which both mins order alike.
+/// On input the fill refuses (NaN, ±inf) the lanes and the per-pair kernel can
+/// disagree. Elsewhere this is StandardCell: x86's fmin is three instructions (minpd,
+/// cmpunordpd, blendvpd) where its min is one. The per-pair kernels keep std::min
+/// on AArch64 too: their scalar fminnm chain measured slower.
+#if defined(__aarch64__)
+struct LanesCell : StandardCell {
+  template <typename T>
+  T combine(T diag, T up, T left, T cost,
+            std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return std::fmin(std::fmin(diag, up), left) + cost;
+  }
+};
+#else
+using LanesCell = StandardCell;
+#endif
+
+/// Pairs per dtw_kernel_lanes call: enough chains that the FP pipes, not one
+/// chain's min-then-add latency, set the pace. 128 bytes of T on AArch64 (16
+/// doubles, 32 floats; Apple silicon's cache line is 128 bytes), where 64 left
+/// the pipes waiting on LanesCell's chain; 64 bytes, one cache line, elsewhere.
+#if defined(__aarch64__)
+template <typename T>
+inline constexpr std::size_t dtw_lanes = 128 / sizeof(T);
+#else
 template <typename T>
 inline constexpr std::size_t dtw_lanes = 64 / sizeof(T);
+#endif
 
 /// DTW between x and each of ys[0 .. dtw_lanes<T>), all n samples long, with the
 /// pointwise distance dist(x[i], y[j]); band < 0 is unconstrained, else the
@@ -406,12 +438,12 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(const T *x, const T *const *ys,
     return out;
   }
 
-  // [n][W], one cache line per row: the W series interleaved, and the rolling
-  // DP column (s[i].v[w] = dp[i, j] of pair w).
+  // [n][W]: the W series interleaved, and the rolling DP column
+  // (s[i].v[w] = dp[i, j] of pair w).
   struct alignas(64) Row { T v[W]; };
   // maxValue in every lane. A row, or the lanes of `left`, is set by copying it whole:
-  // Apple clang turns a loop that stores a 64-byte constant (or reads this row lane
-  // by lane, which it folds to that constant) into a call of memset_pattern16.
+  // Apple clang turns a loop that stores a constant row (or reads this row lane by
+  // lane, which it folds to that constant) into a call of memset_pattern16.
   static constexpr Row kUnreachable = [] {
     Row r{};
     for (T &e : r.v) e = maxValue;
