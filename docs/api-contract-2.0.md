@@ -813,52 +813,39 @@ front end. The user selects `cpu` explicitly if that is what they want.
 
 ### 6.2 `device="hpc"` — `.env` credential contract
 
-`hpc` reads SLURM credentials from a `.env` file at the repository root. Required
-keys (the names the live SLURM path already uses,
-`scripts/slurm/env.example`): **`SLURM_HOST`**, **`SLURM_USER`**,
-**`SLURM_REMOTE_BASE`**. The frozen contract requires each failure mode to
-produce the specific actionable `DeviceError` below, never a local fallback.
-C++/MATLAB follow Env's messages; Python currently raises wrapper-specific
-`RuntimeError` text instead (F24).
+`hpc` reads SLURM credentials from a `.env` file in the project directory
+(`DTWC_REPO_ROOT`, else the working directory). Required keys (the names the live
+SLURM path already uses, `scripts/slurm/env.example`): **`SLURM_HOST`**,
+**`SLURM_USER`**, **`SLURM_REMOTE_BASE`**. Each failure mode is an actionable
+error raised before anything is sent, never a local fallback.
 
-The C++/MATLAB tests assert these three messages verbatim. They are authored
-here as the exact C++ `DeviceError::what()` strings; F24 requires Python to
-reproduce them byte-for-byte.
-The recommended test fixture uses `SLURM_HOST=arc-login.arc.ox.ac.uk`,
-`SLURM_USER=abcd1234`.
+`SlurmRemoteRunner.preflight` (`python/dtwcpp/_hpc.py`) raises `DeviceError` with
+these texts, verbatim; `{dir}` is the project directory and `{wrapper}` the path of
+the packaged `slurm_remote.sh`.
 
-**(1) No `.env` file** — host-independent, fully verbatim:
+**(1) No `.env` file:**
 ```
-[dtwc] device='hpc' requires a .env file at the repository root, but none was found.
-Copy scripts/slurm/env.example to .env and set SLURM_HOST, SLURM_USER, and SLURM_REMOTE_BASE.
-Example .env:
-  SLURM_HOST=arc-login.arc.ox.ac.uk
-  SLURM_USER=abcd1234
-  SLURM_REMOTE_BASE=/data/coml-battery/dtwc-runs
+Missing .env in {dir} (the working directory, or DTWC_REPO_ROOT). Create it with SLURM_USER, SLURM_HOST and SLURM_REMOTE_BASE; scripts/slurm/env.example in a source checkout is a template.
 ```
 
-**(2) `.env` present but a required key is missing** — the `{key}` slot is the
-first missing key of `SLURM_HOST`/`SLURM_USER`/`SLURM_REMOTE_BASE`; the test pins
-the `SLURM_HOST` case, so the fully-substituted verbatim string is:
+**(2) No `bash` on `PATH`:**
 ```
-[dtwc] device='hpc': the .env file is missing required key 'SLURM_HOST'.
-Set it in .env at the repository root. Example .env:
-  SLURM_HOST=arc-login.arc.ox.ac.uk
-  SLURM_USER=abcd1234
-  SLURM_REMOTE_BASE=/data/coml-battery/dtwc-runs
+device='hpc' needs bash: on Windows install Git Bash (ships ssh + rsync).
 ```
 
-**(3) Host authentication failure** — names the host and user it tried; with the
-fixture values the fully-substituted verbatim string is:
+**(3) The install lacks the wrapper:**
 ```
-[dtwc] device='hpc': could not authenticate to SLURM host 'arc-login.arc.ox.ac.uk' as user 'abcd1234'.
-Check that your SSH key is authorized on that host (ssh abcd1234@arc-login.arc.ox.ac.uk must succeed without a password prompt) and that SLURM_HOST and SLURM_USER in .env are correct.
+SLURM wrapper not found: {wrapper}. The dtwcpp install is incomplete; reinstall the package.
 ```
 
-Message-template rule for (2) and (3) (so the implementation and the test agree
-on substitution): `{key}` = the missing key name; `{host}` = value of
-`SLURM_HOST`; `{user}` = value of `SLURM_USER`. Messages (1) and (2)'s example
-block are constant text.
+`slurm_remote.sh` refuses, before it connects, a required key missing from `.env`
+(`ERROR: SLURM_HOST is not set in .env`), a value unsafe to pass to `ssh`, `rsync`
+or `sbatch` (`ERROR: unsafe SLURM_USER in .env: <value>`) and `SLURM_GPU_GRES`, which
+is no longer read (a run names its GPU with `gpu_device=`). An SSH authentication
+failure is `ssh`'s own message. Python raises these as `RuntimeError` carrying the
+wrapper's output (`submit-job failed (exit 1).`), which F24 leaves open. The texts
+this section quoted until 2026-10-06, authored for the removed `dtwc::Env`, were
+raised by no code.
 
 ### 6.3 Lazy load & big-data policy (fixed decision, contract-level)
 
