@@ -347,3 +347,24 @@ Python, the agent's wheel against its relink with the binding TU at `-O3` (`py_p
 [confirmed]: `dtw` L 100 1.0247 → 0.6588 ns/cell (1.56×), L 1000 1.2899 → 1.0618 (1.21×), L 1000 band 100 1.1943 →
 0.8545 (1.40×); the ragged fill (N 1000, L 90–110, 18 threads) 350.8 → 230.2 ms (1.52×), checksum 1.721431e+08 in
 both; the equal-length fill (N 2000, L 100, the lanes path) 300.3 → 303.0 ms, unchanged.
+
+## The fix: `NOMINSIZE` (orchestrator)
+
+`python/CMakeLists.txt` passes `NOMINSIZE` to both `nanobind_add_module` calls. A fresh venv,
+`SKBUILD_BUILD_VERBOSE=true CMAKE_ARGS="-DOpenMP_ROOT=/opt/homebrew/opt/libomp" uv pip install -v --python <venv>
+"<repo>[test,dev,io,mip]" matplotlib pandas`: the binding file's compile line carries `-O3 -flto=thin
+-fno-stack-protector` and no `-Os`; `_dtwcpp_core.cpython-312-darwin.so` 1,204,352 → 1,253,312 bytes (+4.1 %).
+pytest from that venv, `DTWC_REQUIRE_HIGHSPY=1`: 926 passed, 11 skipped, 0 failed, as after W9c and L2b [confirmed].
+`build/` and `build-matlab/` do not compile the module (`DTWC_BUILD_PYTHON=OFF`), so ctest and the conformance output
+cannot change.
+
+| Python (`py_pair_timing.py`, `py_fill_timing.py`; median of 7 or 5) | old wheel | fixed | gain |
+| --- | --- | --- | --- |
+| `dtw` L 100, L1 / squared (ns/cell) | 1.0218 / 1.0381 | 0.6957 / 0.6902 | 1.47× / 1.50× |
+| `dtw` L 100 band 10 | 1.0418 / 1.0680 | 0.9331 / 0.8489 | 1.12× / 1.26× |
+| `dtw` L 1000 | 1.2857 / 1.2884 | 1.0633 / 1.0510 | 1.21× / 1.23× |
+| `dtw` L 1000 band 100 | 1.1936 / 1.1972 | 0.8553 / 0.8743 | 1.40× / 1.37× |
+| fill, ragged N 1000 L 90–110, 18 threads (ms) | 350.1 | 230.1 | 1.52×, checksum equal |
+| fill, equal N 2000 L 100 (the lanes path), 18 threads (ms) | 300.2 | 303.3 | 0.99×, checksum equal |
+
+[confirmed; the old wheel is the agent's build of `33877edf`, run first, then the fixed one, same session]

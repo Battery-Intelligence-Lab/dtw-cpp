@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (performance, Python):** the extension's binding file compiles at `-O3`, not at nanobind's default `-Os`.
+  Under LTO its `-Os` copy of the per-pair DTW kernel was the one the whole extension ran, with the early-abandon test
+  inside every cell: on an Apple M5 Pro `dtwcpp.dtw` is 1.1–1.5× and a distance matrix of unequal-length series 1.5×
+  faster; equal-length matrices (the SIMD lanes) and every result are unchanged, and the extension grows about 4 %.
 - **Changed (C++, CMake):** `dtwc++`, the target a v1.0.0 project links, is an INTERFACE library over three static
   ones: `dtwc_core` (the algorithms, the `Problem`, the CSV/TSV reader and the result writers: what the Python module
   and the MEX link), `dtwc_cli` (`cli::bind`, `dtwc::run` and the Tier-1 facade, with CLI11 and fkYAML) and, in a

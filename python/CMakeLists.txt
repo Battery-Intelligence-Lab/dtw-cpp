@@ -24,11 +24,12 @@ if(NOT nanobind_FOUND)
   )
 endif()
 
-# STABLE_ABI requires Python >= 3.12
+# STABLE_ABI requires Python >= 3.12. NOMINSIZE: nanobind's default -Os also compiles the kernel templates this
+# file instantiates, and under LTO that copy can be the one the whole module runs.
 if(Python_VERSION VERSION_GREATER_EQUAL "3.12")
-  nanobind_add_module(_dtwcpp_core STABLE_ABI src/_dtwcpp_core.cpp)
+  nanobind_add_module(_dtwcpp_core STABLE_ABI NOMINSIZE src/_dtwcpp_core.cpp)
 else()
-  nanobind_add_module(_dtwcpp_core src/_dtwcpp_core.cpp)
+  nanobind_add_module(_dtwcpp_core NOMINSIZE src/_dtwcpp_core.cpp)
 endif()
 
 # The core alone: no command line (CLI11, fkYAML) and no Arrow (Parquet and Arrow IPC go through pyarrow).
