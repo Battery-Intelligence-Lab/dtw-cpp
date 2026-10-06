@@ -45,6 +45,10 @@ namespace dtwc::mip {
 namespace {
 constexpr double kEps = 1e-12; // relative-gap denominator floor.
 
+/// evaluate_dual forks its two loops over OpenMP threads from this N up; below it a fork and join (two per
+/// subgradient iteration) cost more than the loops they split. Placeholder: 1 forks at every N.
+[[maybe_unused]] constexpr index_t kParallelMinN = 1;
+
 /// Subgradient and Kelley tuning (safe defaults).
 struct LagrangianParams
 {
@@ -213,7 +217,7 @@ double evaluate_dual(const double *D, index_t N, std::size_t Nz, index_t k,
                      std::vector<double> &g, std::vector<index_t> &idx, double &rho_k)
 {
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static) if(N >= kParallelMinN)
 #endif
   for (index_t i = 0; i < N; ++i) {
     const double *Di = D + static_cast<std::size_t>(i) * Nz;
@@ -239,7 +243,7 @@ double evaluate_dual(const double *D, index_t N, std::size_t Nz, index_t k,
 
   // g_j = 1 − #{i ∈ S_k : D_ij < μ_j}  (a subgradient of the concave L at μ).
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static) if(N >= kParallelMinN)
 #endif
   for (index_t j = 0; j < N; ++j) {
     index_t served = 0;

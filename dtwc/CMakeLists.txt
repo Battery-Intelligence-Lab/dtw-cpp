@@ -137,6 +137,11 @@ find_package(OpenMP COMPONENTS CXX)
 if(OpenMP_CXX_FOUND)
   message(STATUS "OpenMP ${OpenMP_CXX_VERSION} found — parallel execution enabled")
   target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_OPENMP)
+  # mip-solvers is an object library compiled apart from dtwc_core, so it takes the definition
+  # and the OpenMP target itself, PRIVATE (its objects join dtwc_core, which carries both to
+  # consumers). Without them lagrangian_root.cpp's `#pragma omp` loops compile out and the
+  # Lagrangian dual runs serial.
+  target_compile_definitions(mip-solvers PRIVATE DTWC_HAS_OPENMP)
   if(MSVC)
     # PUBLIC on dtwc_core, so a consumer that links dtwc_core but not project_options
     # (the Python module) still compiles its `#pragma omp` loops in parallel.
@@ -146,6 +151,7 @@ if(OpenMP_CXX_FOUND)
   else()
     # OpenMP::OpenMP_CXX carries -fopenmp and the libomp link, PUBLIC on dtwc_core.
     target_link_libraries(dtwc_core PUBLIC OpenMP::OpenMP_CXX)
+    target_link_libraries(mip-solvers PRIVATE OpenMP::OpenMP_CXX)
   endif()
 elseif(DTWC_ALLOW_SEQUENTIAL)
   # Explicit opt-out of the parallelism requirement (keeps the "core builds
