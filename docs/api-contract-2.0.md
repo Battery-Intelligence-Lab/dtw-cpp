@@ -186,8 +186,8 @@ Arrow IPC through the installed pyarrow (the `parquet` extra; the wheel links no
 C++); `Result.save` and `Problem.write_*` write with the C++ writers. Series already in
 memory go in as numpy, pandas, pyarrow or Python hold them: a 2-D array, a list of 1-D
 arrays (any lengths), a pandas DataFrame (rows, named by the index) or an Arrow array.
-An extension that links no HiGHS solves `method="mip"` with the installed highspy (the `mip`
-extra): C++ builds the model's arrays (`dtwc::mip::build_p_median_model`, what linked HiGHS
+The wheel links no HiGHS: an extension that links none solves `method="mip"` with the installed
+highspy (the `mip` extra): C++ builds the model's arrays (`dtwc::mip::build_p_median_model`, what linked HiGHS
 solves), highspy reads them as NumPy views, and C++ decodes its solution into the labels and
 medoids `Problem::cluster()` publishes. Without highspy, `SolverError` names
 `pip install dtwcpp[mip]`.

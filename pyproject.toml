@@ -63,7 +63,7 @@ hdf5 = ["h5py>=3.0"]
 parquet = ["pyarrow>=12.0"]
 io = ["h5py>=3.0", "pyarrow>=12.0"]
 dev = ["pytest>=6.0", "scikit-learn>=1.0"]
-# method="mip" on an extension without HiGHS (dtwcpp._mip): highspy 1.8 is the first with
+# method="mip" on the wheel, which links no HiGHS (dtwcpp._mip): highspy 1.8 is the first with
 # Highs.resetGlobalScheduler, the newest call the route makes.
 mip = ["highspy>=1.8"]
 
@@ -73,7 +73,8 @@ dtwc-convert = "dtwcpp.convert:main"
 [tool.scikit-build]
 cmake.version = ">=3.26"
 ninja.version = ">=1.11"
-cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=ON", "-DDTWC_ENABLE_LLFIO=ON"]
+# No HiGHS: it was three quarters of the extension, and method="mip" solves with highspy (the mip extra).
+cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=OFF", "-DDTWC_ENABLE_LLFIO=ON"]
 wheel.packages = ["python/dtwcpp"]
 wheel.exclude = ["include/**", "lib/**", "bin/**", "share/**"]
 sdist.exclude = ["build/**", "build_*/**", "docs/public*/**"]

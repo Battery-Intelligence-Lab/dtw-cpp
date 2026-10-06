@@ -46,7 +46,13 @@ jobs:
         run: brew install libomp && brew link --force libomp
 
       - name: Install
-        run: uv pip install ".[test]" --system -v
+        run: uv pip install ".[test,mip]" --system -v
+
+      # The extension links no HiGHS, so method="mip" solves with highspy (the mip extra).
+      # test_mip.py and test_wheel_smoke.py skip only without highspy or with linked HiGHS,
+      # so this step makes such a skip fail the job.
+      - name: The MIP tests run on highspy
+        run: uv run python -c "import highspy, dtwcpp; assert not dtwcpp.HIGHS_AVAILABLE"
 
       # The wheel carries no CLI. test_api, test_hpc and test_version_ssot drive dtwc_cl and
       # tests/conformance/test_conformance.py runs its CLI route on it; DTWC_CL_PATH names it.

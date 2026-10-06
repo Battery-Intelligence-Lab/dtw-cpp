@@ -45,7 +45,8 @@ def _mapped_matrix_persists(dtwcpp):
 
 
 def run():
-    """Assert compiled parallelism, bundled HiGHS, a real MIP solve and a mapped matrix."""
+    """Assert compiled parallelism, a real MIP solve with highspy (the wheel links no
+    HiGHS; the mip extra) and a mapped matrix."""
     import dtwcpp
     import dtwcpp.test
 
@@ -54,7 +55,7 @@ def run():
     if os.cpu_count() is not None and os.cpu_count() >= 2:
         assert parallel["threads_engaged"] >= 2, parallel
 
-    assert dtwcpp.HIGHS_AVAILABLE, "wheel was built without bundled HiGHS"
+    assert not dtwcpp.HIGHS_AVAILABLE, "the wheel links HiGHS; method 'mip' should solve with highspy"
     result = dtwcpp.cluster(_SERIES, 3, method="mip", band=3, device="cpu")
     assert _canonical(result.labels) == [0, 0, 1, 1, 2, 2], result.labels
     mapped_bytes = _mapped_matrix_persists(dtwcpp)
@@ -62,7 +63,7 @@ def run():
         "dtwcpp wheel smoke OK:",
         dtwcpp.__version__,
         "OpenMP threads =", parallel["threads_engaged"],
-        "HiGHS MIP cost =", result.cost,
+        "highspy MIP cost =", result.cost,
         "mapped .dtwm bytes =", mapped_bytes,
     )
 

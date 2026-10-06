@@ -35,11 +35,12 @@ function(dtwc_setup_dependencies)
   # force HiGHS shared on Windows and pull cudart/cublas/cusparse.
   set(CUPDLP_GPU OFF CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
   # HiGHS defaults to a shared libhighs on Linux and macOS. The CLI archive ships
-  # it under lib/; a wheel cannot: wheel.exclude drops lib/ and the
-  # extension records no rpath, so delocate and auditwheel stop at the missing
-  # library. Link it into the extension instead. A plain variable of this
-  # function: HiGHS's option() yields to it (CMP0077) and it goes no further.
-  if(DTWC_BUILD_PYTHON)
+  # it under lib/; a Python extension or a MEX cannot: wheel.exclude drops lib/,
+  # the extension records no rpath (delocate and auditwheel stop at the missing
+  # library), and the MEX ships as one file. Link it into them instead. A plain
+  # variable of this function: HiGHS's option() yields to it (CMP0077) and it goes
+  # no further.
+  if(DTWC_BUILD_PYTHON OR DTWC_BUILD_MATLAB)
     set(BUILD_SHARED_LIBS OFF)
   endif()
   # A fetch that fails stops the configure inside CPM, which names the package and

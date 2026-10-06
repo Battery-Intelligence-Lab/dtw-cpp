@@ -465,8 +465,12 @@ if(PROJECT_IS_TOP_LEVEL)
   message(STATUS "")
 
   if(NOT TARGET Gurobi::GurobiCXX AND NOT TARGET highs::highs)
-    message(WARNING
-      "No MIP solver available — MIP-based clustering (Method::MIP) will fail at runtime.\n"
-      "  Enable at least one: -DDTWC_ENABLE_GUROBI=ON or -DDTWC_ENABLE_HIGHS=ON")
+    if(DTWC_BUILD_PYTHON)
+      message(STATUS "No linked MIP solver: Python's method='mip' solves with highspy (pip install dtwcpp[mip]).")
+    else()
+      message(WARNING
+        "No MIP solver available — MIP-based clustering (Method::MIP) will fail at runtime.\n"
+        "  Enable at least one: -DDTWC_ENABLE_GUROBI=ON or -DDTWC_ENABLE_HIGHS=ON")
+    endif()
   endif()
 endif()

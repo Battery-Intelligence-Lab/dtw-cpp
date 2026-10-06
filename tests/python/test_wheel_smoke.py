@@ -6,7 +6,8 @@ import dtwcpp
 from dtwcpp._wheel_smoke import run
 
 
-def test_wheel_smoke_on_highs_build():
-    if not dtwcpp.HIGHS_AVAILABLE:
-        pytest.skip("developer extension was built without HiGHS")
+def test_wheel_smoke_on_the_wheel_build():
+    if dtwcpp.HIGHS_AVAILABLE:
+        pytest.skip("developer extension links HiGHS; the wheel does not")
+    pytest.importorskip("highspy")  # the mip extra
     run()

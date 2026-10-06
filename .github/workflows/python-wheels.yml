@@ -58,14 +58,15 @@ jobs:
           # Re-add x86_64 ONLY behind a genuine x86_64 libomp on an Intel runner.
           CIBW_ARCHS_MACOS: "arm64"
 
-          # Release build with bundled open-source HiGHS and header-only llfio
-          # (the memory-mapped distance matrix); Gurobi stays external.
+          # Release build with header-only llfio (the memory-mapped distance
+          # matrix) and no MIP solver: method="mip" solves with the user's
+          # highspy (the mip extra); Gurobi stays external.
           # DTWC_BUILD_PYTHON=ON makes DTWC_ARCH_LEVEL default to v3, the CPU floor
           # of every x86-64 wheel (AVX2 and FMA); arm64 wheels get no level flag.
           CIBW_CONFIG_SETTINGS: >-
             cmake.args=-DDTWC_BUILD_PYTHON=ON
             cmake.args=-DDTWC_ENABLE_GUROBI=OFF
-            cmake.args=-DDTWC_ENABLE_HIGHS=ON
+            cmake.args=-DDTWC_ENABLE_HIGHS=OFF
             cmake.args=-DDTWC_ENABLE_LLFIO=ON
             cmake.args=-DDTWC_BUILD_TESTING=OFF
             cmake.args=-DDTWC_BUILD_BENCHMARK=OFF
@@ -90,9 +91,11 @@ jobs:
           CIBW_BUILD_VERBOSITY: 1
 
           # Execute a real OpenMP region, solve a compact conformance subset
-          # through the bundled HiGHS MIP path and map a distance matrix to a
-          # file and reopen it (llfio) in every produced wheel, and check the
-          # wheel carries the SLURM wrapper device='hpc' runs (FX-5).
+          # through the MIP path with highspy (the mip extra, installed for the
+          # test) and map a distance matrix to a file and reopen it (llfio) in
+          # every produced wheel, and check the wheel carries the SLURM wrapper
+          # device='hpc' runs (FX-5).
+          CIBW_TEST_EXTRAS: mip
           CIBW_TEST_COMMAND: >-
             python -c "from dtwcpp._wheel_smoke import run; run()" &&
             python -c "import os, dtwcpp._hpc as h; d = os.path.dirname(h.slurm_wrapper_path()); assert all(os.path.isfile(os.path.join(d, f)) for f in ('slurm_remote.sh', 'cluster_generic.slurm')), d"
