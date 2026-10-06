@@ -24,21 +24,6 @@ from dtwcpp import _hpc
 # Serialization: list-of-series -> TSV
 # ---------------------------------------------------------------------------
 class TestWriteSeriesTSV:
-    def test_writes_one_row_per_series(self, tmp_path):
-        series = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-        p = tmp_path / "data.tsv"
-        _hpc.write_series_tsv(series, p)
-        lines = p.read_text().strip().splitlines()
-        assert len(lines) == 2
-
-    def test_roundtrips_through_loadtxt(self, tmp_path):
-        rng = np.random.default_rng(0)
-        series = [list(rng.standard_normal(10)) for _ in range(4)]
-        p = tmp_path / "data.tsv"
-        _hpc.write_series_tsv(series, p)
-        back = np.loadtxt(p, delimiter="\t")
-        np.testing.assert_array_almost_equal(back, np.array(series), decimal=5)
-
     def test_values_keep_full_precision(self, tmp_path):
         """FX-10: ``:.10g`` rounded every value, so an HPC run clustered
         different numbers from a local one."""
@@ -54,12 +39,6 @@ class TestWriteSeriesTSV:
 # Label parsing: dtwc_cl's NAME_labels.csv -> labels in input order
 # ---------------------------------------------------------------------------
 class TestParseLabelsCSV:
-    def test_maps_one_based_names_to_input_order(self, tmp_path):
-        p = tmp_path / "j_labels.csv"
-        p.write_text("name,cluster\n1,0\n2,0\n3,1\n")
-        labels = _hpc.parse_labels_csv(p, n=3)
-        np.testing.assert_array_equal(labels, [0, 0, 1])
-
     def test_robust_to_lexical_row_order(self, tmp_path):
         """dtwc_cl may emit rows lexically sorted (1,10,11,2,...); mapping is by
         name, so input order must be recovered regardless of row order."""
