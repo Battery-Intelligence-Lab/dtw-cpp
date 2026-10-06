@@ -125,12 +125,12 @@ their exact model and optimum are unchanged. These calls do not consume
 shuffle, weighted, and selection maps rather than vendor-defined standard
 distributions, so one seed has the same schedule under MSVC STL and libstdc++.
 
-The unseeded Tier-2 `fast_pam` overload intentionally retains its legacy mutable
-`std::mt19937` engine, initially seeded 29; use `fast_pam_seeded` or MATLAB's
-`Seed` option for invocation-local reproducibility. The one-argument
-`init::random` and `init::Kmeanspp` functions retain the same legacy engine.
-Lloyd recognizes those standard function-pointer initializers and selects their
-seeded counterparts; an arbitrary user-supplied `Problem::init_fun` callback is
+Tier-2 `fast_pam` takes its BUILD seed last (default 42: C++ `seed`, Python
+`seed=`, MATLAB `'Seed'`) and never reads the legacy mutable `std::mt19937`
+engine `dtwc::randGenerator` (initially seeded 29). The v1 one-argument
+`init::random` and `init::Kmeanspp` draw one value of that engine as their seed.
+Lloyd runs those two standard function-pointer initializers from its own seed
+for each repetition; an arbitrary user-supplied `Problem::init_fun` callback is
 still invoked unchanged once per repetition and owns its own RNG policy.
 
 ### 1.4 `Result` — clustering outcome  `[live in C++/Python/MATLAB]`

@@ -1139,15 +1139,9 @@ static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prh
   const auto k = get_exact_int<dtwc::index_t>(prhs[2], "k");
   int max_iter = 100;
   if (nrhs > 3) max_iter = get_exact_int(prhs[3], "max_iter");
+  const std::uint64_t seed = nrhs > 4 ? get_random_seed(prhs[4]) : dtwc::settings::DEFAULT_RANDOM_SEED;
 
-  // Omitted seed preserves the mutable legacy Tier-2 behaviour. MATLAB Tier-1
-  // passes the shared default explicitly, so it never consumes global RNG state.
-  auto result = nrhs > 4
-    ? dtwc::fast_pam_seeded(
-        prob, k, get_random_seed(prhs[4]), max_iter)
-    : dtwc::fast_pam(prob, k, max_iter);
-
-  plhs[0] = clustering_result_to_mx(result);
+  plhs[0] = clustering_result_to_mx(dtwc::fast_pam(prob, k, max_iter, seed));
 }
 
 static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {

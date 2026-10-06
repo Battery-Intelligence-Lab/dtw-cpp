@@ -188,8 +188,8 @@ namespace {
         sub_prob.set_gpu_precision(prob_template.gpu_precision());
         sub_prob.set_verbose(prob_template.verbose());
         sub_prob.set_data(std::move(sample_data));
-        sub_result = fast_pam_seeded(
-          sub_prob, opts.n_clusters, detail::clara_pam_seed(opts, s), opts.max_iter);
+        sub_result = fast_pam(
+          sub_prob, opts.n_clusters, opts.max_iter, detail::clara_pam_seed(opts, s));
       }
 
       // 5. Map medoid indices back to global dataset indices

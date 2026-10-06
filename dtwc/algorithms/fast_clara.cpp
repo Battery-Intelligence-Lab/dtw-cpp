@@ -222,8 +222,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 
   // If sample_size >= N, just run FastPAM on the full dataset.
   if (sample_size >= N) {
-    return fast_pam_seeded(
-      prob, opts.n_clusters, detail::clara_pam_seed(opts, 0), opts.max_iter);
+    return fast_pam(
+      prob, opts.n_clusters, opts.max_iter, detail::clara_pam_seed(opts, 0));
   }
 
   // A GPU fills copies of the samples whatever the parent holds, but the
@@ -287,8 +287,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     }
 
     // 3. Run FastPAM on the sub-Problem.
-    auto sub_result = fast_pam_seeded(
-      sub_prob, opts.n_clusters, detail::clara_pam_seed(opts, s), opts.max_iter);
+    auto sub_result = fast_pam(
+      sub_prob, opts.n_clusters, opts.max_iter, detail::clara_pam_seed(opts, s));
 
     // 4. Map sub-Problem medoid indices back to full dataset indices.
     std::vector<index_t> full_medoids(opts.n_clusters);

@@ -51,9 +51,8 @@ static_assert(same<decltype(std::declval<const ClusteringResult &>().n_points())
 static_assert(same<decltype(ClusteringResult::iterations), int>);
 
 // Algorithm entry points and options: counts index_t, tuning int, seeds uint64_t.
-static_assert(same<decltype(&dtwc::fast_pam), ClusteringResult (*)(Problem &, index_t, int)>);
-static_assert(same<decltype(&dtwc::fast_pam_seeded),
-                   ClusteringResult (*)(Problem &, index_t, std::uint64_t, int)>);
+static_assert(same<decltype(&dtwc::fast_pam),
+                   ClusteringResult (*)(Problem &, index_t, int, std::uint64_t)>);
 static_assert(same<decltype(&alg::tadpole),
                    ClusteringResult (*)(Problem &, index_t, double, bool, alg::TADPoleStats *)>);
 static_assert(same<decltype(&alg::cut_dendrogram),

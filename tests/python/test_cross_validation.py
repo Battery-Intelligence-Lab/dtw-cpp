@@ -83,8 +83,8 @@ class TestClusteringCrossValidation:
         prob = dtwcpp.Problem("xval_pam")
         prob.set_data(series, names)
         prob.band = -1
-        result_raw = dtwcpp.fast_pam_seeded(
-            prob, k, dtwcpp.DEFAULT_RANDOM_SEED
+        result_raw = dtwcpp.fast_pam(
+            prob, k, seed=dtwcpp.DEFAULT_RANDOM_SEED
         )
 
         # Via DTWClustering sugar

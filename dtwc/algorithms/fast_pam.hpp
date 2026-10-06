@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "../base/settings.hpp" // DEFAULT_RANDOM_SEED
 #include "../core/clustering_result.hpp"
 
 #include <cstdint>
@@ -28,7 +29,11 @@ namespace dtwc {
 class Problem; // Forward declaration
 
 /**
- * @brief Run FasterPAM k-medoids clustering (BUILD via K-means++).
+ * @brief Run FasterPAM k-medoids clustering (BUILD via k-medoids++).
+ *
+ * BUILD is k-median++ D-sampling (core::kmedoids_pp): PAM minimizes a sum of DTW
+ * distances, so a point's sampling weight is its distance to the nearest medoid.
+ * Barycenter k-means samples D² instead, because its objective is squared.
  *
  * @param prob      Problem instance with data loaded. fill_distance_matrix() will
  *                  be called if the distance matrix is not yet filled.
@@ -37,6 +42,8 @@ class Problem; // Forward declaration
  *                  BUILD medoids without a SWAP (`converged` false), which is how the
  *                  BUILD phase is observed alone; k = 1 needs no SWAP and always
  *                  returns the exact 1-median.
+ * @param seed      BUILD seed (default settings::DEFAULT_RANDOM_SEED): one seed gives
+ *                  one result on every platform; dtwc::randGenerator is not read.
  * @return core::ClusteringResult containing labels, medoid indices, total cost, etc.
  *
  * @note 2.0: on return this WRITES the result back into `prob`
@@ -48,19 +55,7 @@ class Problem; // Forward declaration
  * @throws InvalidInput if the problem is empty, `n_clusters` is outside `[1, N]` or
  *         `max_iter` is negative.
  */
-core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter = 100);
-
-/**
- * Deterministic FastPAM entry point with an invocation-local BUILD seed.
- *
- * BUILD uses k-median++ D-sampling because PAM minimizes the sum of DTW
- * distances. This intentionally differs from squared-objective barycenter
- * k-means initialization, whose weights are already squared local costs.
- * `max_iter` reads as in fast_pam: 0 is BUILD only, a negative count is refused.
- * @throws InvalidInput if the problem is empty, `n_clusters` is outside `[1, N]` or
- *         `max_iter` is negative.
- */
-core::ClusteringResult fast_pam_seeded(Problem& prob, index_t n_clusters,
-                                       std::uint64_t random_seed, int max_iter = 100);
+core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter = 100,
+                                std::uint64_t seed = settings::DEFAULT_RANDOM_SEED);
 
 } // namespace dtwc

@@ -220,12 +220,12 @@ their exact model and optimum are unchanged. These calls do not consume
 shuffle, weighted, and selection maps rather than vendor-defined standard
 distributions, so one seed has the same schedule under MSVC STL and libstdc++.
 
-The unseeded Tier-2 `fast_pam` overload intentionally retains its legacy mutable
-`std::mt19937` engine, initially seeded 29; use `fast_pam_seeded` or MATLAB's
-`Seed` option for invocation-local reproducibility. The one-argument
-`init::random` and `init::Kmeanspp` functions retain the same legacy engine.
-Lloyd recognizes those standard function-pointer initializers and selects their
-seeded counterparts; an arbitrary user-supplied `Problem::init_fun` callback is
+Tier-2 `fast_pam` takes its BUILD seed last (default 42: C++ `seed`, Python
+`seed=`, MATLAB `'Seed'`) and never reads the legacy mutable `std::mt19937`
+engine `dtwc::randGenerator` (initially seeded 29). The v1 one-argument
+`init::random` and `init::Kmeanspp` draw one value of that engine as their seed.
+Lloyd runs those two standard function-pointer initializers from its own seed
+for each repetition; an arbitrary user-supplied `Problem::init_fun` callback is
 still invoked unchanged once per repetition and owns its own RNG policy.
 
 ### 1.4 `Result` — clustering outcome  `[live in C++/Python/MATLAB]`
@@ -522,7 +522,7 @@ adjudicated in §10 item 1.
 
 | Function | C++ | Python (`_dtwcpp_core.cpp`) | MATLAB (`+dtwc/`) |
 |---|---|---|---|
-| FastPAM | `fast_pam(Problem&, index_t k, int max_iter=100)` | `fast_pam(prob, n_clusters, max_iter=100)` | `fast_pam(prob, k, 'max_iter',100)` |
+| FastPAM | `fast_pam(Problem&, index_t k, int max_iter=100, uint64_t seed=42)` | `fast_pam(prob, n_clusters, max_iter=100, seed=42)` | `fast_pam(prob, k, 'MaxIter',100, 'Seed',42)` |
 | FastCLARA | `algorithms::fast_clara(Problem&, CLARAOptions)` | `fast_clara(prob, n_clusters, sample_size=-1, n_samples=5, max_iter=100, seed=42)` | `fast_clara(prob, k, ...)` |
 | dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` | `build_dendrogram(prob, ...)` |
 | dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, index_t k)` | `cut_dendrogram(dend, prob, k)` | `cut_dendrogram(dend, prob, k)` |
@@ -994,8 +994,9 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    are preserved.
 7. **Determinism.** Seed-aware Tier-1 PAM/OneBatchPAM/CLARA entry points use the
    invocation-local cross-language default 42 (§1.3); estimator restart `i` uses
-   `42+i`. The unseeded Tier-2 FastPAM overload retains the legacy mutable
-   `std::mt19937 randGenerator(29)`. Scores read state from `Problem`, so result write-back (now in
+   `42+i`; Tier-2 `fast_pam`'s seed defaults to 42 too. Only the v1 one-argument `init::random` and
+   `init::Kmeanspp` draw from the legacy mutable `std::mt19937 randGenerator(29)`. Scores read state from
+   `Problem`, so result write-back (now in
    C++, §2.5) must run before any `score()`.
 8. **MATLAB 1-based conversion at the MEX boundary only**; rectangular N×L
    matrix input still accepted. Optional deps (OpenMP/HiGHS/CUDA/Metal/Arrow)

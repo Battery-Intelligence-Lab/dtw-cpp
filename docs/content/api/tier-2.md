@@ -213,7 +213,7 @@ adjudicated in §10 item 1.
 
 | Function | C++ | Python (`_dtwcpp_core.cpp`) | MATLAB (`+dtwc/`) |
 |---|---|---|---|
-| FastPAM | `fast_pam(Problem&, index_t k, int max_iter=100)` | `fast_pam(prob, n_clusters, max_iter=100)` | `fast_pam(prob, k, 'max_iter',100)` |
+| FastPAM | `fast_pam(Problem&, index_t k, int max_iter=100, uint64_t seed=42)` | `fast_pam(prob, n_clusters, max_iter=100, seed=42)` | `fast_pam(prob, k, 'MaxIter',100, 'Seed',42)` |
 | FastCLARA | `algorithms::fast_clara(Problem&, CLARAOptions)` | `fast_clara(prob, n_clusters, sample_size=-1, n_samples=5, max_iter=100, seed=42)` | `fast_clara(prob, k, ...)` |
 | dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` | `build_dendrogram(prob, ...)` |
 | dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, index_t k)` | `cut_dendrogram(dend, prob, k)` | `cut_dendrogram(dend, prob, k)` |

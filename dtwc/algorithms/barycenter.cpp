@@ -6,6 +6,7 @@
 #include "barycenter.hpp"
 
 #include "../Problem.hpp"
+#include "../core/distance_sampling_weights.hpp" // kmedoids_pp
 #include "../core/portable_random.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
@@ -515,38 +516,6 @@ Series compute_barycenter(const std::vector<Series>& series, std::size_t target_
   throw std::logic_error("compute_barycenter: unreachable BarycenterMethod");
 }
 
-std::vector<index_t> kmeanspp(const std::vector<Series>& data, index_t k,
-                              std::mt19937_64& rng, AlignmentWorkspace& workspace)
-{
-  std::vector<index_t> centers{static_cast<index_t>(
-    core::portable_bounded(rng, static_cast<std::uint64_t>(data.size())))};
-  std::vector<double> closest(data.size(), std::numeric_limits<double>::infinity());
-  while (static_cast<index_t>(centers.size()) < k) {
-    for (std::size_t i = 0; i < data.size(); ++i)
-      closest[i] = std::min(closest[i],
-        align_squared(data[i], data[static_cast<std::size_t>(centers.back())],
-                      false, workspace));
-    double total = std::accumulate(closest.begin(), closest.end(), 0.0);
-    require_finite(
-      total, "barycenter_kmeans", "initialization distance total");
-    std::size_t chosen = 0;
-    if (total <= 0.0) {
-      while (std::find(centers.begin(), centers.end(), static_cast<index_t>(chosen)) != centers.end())
-        ++chosen;
-    } else {
-      chosen = core::portable_weighted_index(
-        closest.begin(), closest.end(), total, rng);
-      if (std::find(centers.begin(), centers.end(), static_cast<index_t>(chosen)) != centers.end()) {
-        chosen = 0;
-        while (std::find(centers.begin(), centers.end(), static_cast<index_t>(chosen)) != centers.end())
-          ++chosen;
-      }
-    }
-    centers.push_back(static_cast<index_t>(chosen));
-  }
-  return centers;
-}
-
 double assign(const std::vector<Series>& data, const std::vector<Series>& centers,
               std::vector<index_t>& labels, std::vector<AlignmentWorkspace>& workspaces,
               int worker_count, std::vector<double>* costs = nullptr)
@@ -658,9 +627,15 @@ BarycenterClusteringResult barycenter_kmeans(
   for (auto& workspace : workspaces)
     workspace.reserve_for(max_alignment_length, max_data_length);
 
+  // D² sampling: align_squared is already the squared objective's cost.
   std::mt19937_64 rng(options.random_seed);
-  const auto initial_indices = kmeanspp(
-    data, options.n_clusters, rng, workspaces.front());
+  const auto initial_indices = core::kmedoids_pp(
+    static_cast<index_t>(n), options.n_clusters, rng,
+    [&data, &workspace = workspaces.front()](index_t c, index_t i) {
+      return align_squared(data[static_cast<std::size_t>(i)],
+                           data[static_cast<std::size_t>(c)], false, workspace);
+    },
+    "barycenter_kmeans");
   std::vector<Series> centers;
   centers.reserve(static_cast<std::size_t>(options.n_clusters));
   for (index_t index : initial_indices) {

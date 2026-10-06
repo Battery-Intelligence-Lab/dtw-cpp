@@ -240,7 +240,7 @@ class TestClusterLocal:
         def seeded(seed, max_iter=100):
             problem = dtwcpp.Problem("seed_oracle")
             problem.set_data(series.tolist(), names)
-            return dtwcpp.fast_pam_seeded(problem, 3, seed, max_iter)
+            return dtwcpp.fast_pam(problem, 3, max_iter=max_iter, seed=seed)
 
         init_29 = seeded(29, max_iter=0)
         init_42 = seeded(42, max_iter=0)
@@ -256,10 +256,10 @@ class TestClusterLocal:
 
         first = dtwcpp.cluster(series, k=3, method="pam")
 
-        # Consume the mutable legacy engine through the unseeded Tier-2 API.
-        legacy_problem = dtwcpp.Problem("legacy_rng_consumer")
-        legacy_problem.set_data(series.tolist(), names)
-        dtwcpp.fast_pam(legacy_problem, 3)
+        # fast_pam's own default seed is the same 42.
+        default_problem = dtwcpp.Problem("default_seed")
+        default_problem.set_data(series.tolist(), names)
+        assert list(dtwcpp.fast_pam(default_problem, 3).medoid_indices) == [6, 2, 5]
 
         second = dtwcpp.cluster(series, k=3, method="pam")
         for result in (first, second):
@@ -275,23 +275,6 @@ class TestClusterLocal:
         _assert_portable_lloyd_result(first)
         _assert_portable_lloyd_result(second)
         assert dtwcpp.Problem().random_seed == dtwcpp.DEFAULT_RANDOM_SEED
-
-    def test_default_lloyd_seed_isolated_from_legacy_tier2_rng(self):
-        series = _seed_sensitive_series()
-        names = [str(i) for i in range(len(series))]
-
-        before = dtwcpp.cluster(series, k=3, method="kmedoids")
-
-        # The unseeded Tier-2 FastPAM entry point deliberately retains its
-        # mutable-global RNG contract. Consuming it must not perturb Tier-1
-        # Lloyd's invocation-local default.
-        legacy_problem = dtwcpp.Problem("legacy_rng_consumer")
-        legacy_problem.set_data(series.tolist(), names)
-        dtwcpp.fast_pam(legacy_problem, 3)
-
-        after = dtwcpp.cluster(series, k=3, method="kmedoids")
-        _assert_portable_lloyd_result(before)
-        _assert_portable_lloyd_result(after)
 
     def test_lloyd_honors_nondefault_iteration_cap_and_keeps_default(self):
         # Seed 42 starts at medoids [4,2]. One Lloyd update publishes [4,1];
@@ -503,7 +486,7 @@ class TestRaggedInMemorySource:
         prob.set_data(self._RAGGED,
                       [str(i) for i in range(len(self._RAGGED))])
         prob.set_distance_matrix(dtwcpp.compute_distance_matrix(self._RAGGED))
-        ref = dtwcpp.fast_pam_seeded(prob, 2, dtwcpp.DEFAULT_RANDOM_SEED, 100)
+        ref = dtwcpp.fast_pam(prob, 2, max_iter=100, seed=dtwcpp.DEFAULT_RANDOM_SEED)
         np.testing.assert_array_equal(res.labels, ref.labels)
         np.testing.assert_array_equal(res.medoids, ref.medoid_indices)
 

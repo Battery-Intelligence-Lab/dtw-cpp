@@ -764,8 +764,8 @@ void LR_core_clustering(Problem &prob)
   const index_t k = prob.n_clusters();
   if (N <= 0) throw InvalidInput("LR-core: the Problem has no data.");
 
-  // The FastPAM cost seeds the upper bound; fast_pam_seeded fills the matrix.
-  const double ub = fast_pam_seeded(prob, k, prob.random_seed(), settings::DEFAULT_MAX_ITER).total_cost;
+  // The FastPAM cost seeds the upper bound; fast_pam fills the matrix.
+  const double ub = fast_pam(prob, k, settings::DEFAULT_MAX_ITER, prob.random_seed()).total_cost;
   std::vector<double> D(static_cast<std::size_t>(N) * static_cast<std::size_t>(N));
   for (index_t i = 0; i < N; ++i)
     for (index_t j = 0; j < N; ++j)

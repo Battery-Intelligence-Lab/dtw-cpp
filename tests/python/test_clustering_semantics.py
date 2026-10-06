@@ -70,8 +70,8 @@ def test_cpu_squared_metric_controls_training_objective():
         SQUARED_FIXTURE.tolist(), [str(i) for i in range(len(SQUARED_FIXTURE))]
     )
     oracle_problem.set_distance_matrix(squared)
-    oracle = dtwcpp.fast_pam_seeded(
-        oracle_problem, 2, dtwcpp.DEFAULT_RANDOM_SEED, 100
+    oracle = dtwcpp.fast_pam(
+        oracle_problem, 2, max_iter=100, seed=dtwcpp.DEFAULT_RANDOM_SEED
     )
     assert oracle.medoid_indices.tolist() == [4, 1]
     assert oracle.total_cost == 5.0
