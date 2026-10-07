@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (performance):** the Lagrangian dual of `method="lrcore"` (`dtwc_cl -m lrcore`, `Method::LRCore`, Python's
+  `method="lrcore"`) runs on OpenMP threads from 280 series up. The library that holds it was compiled without the
+  OpenMP flag on AppleClang and GCC, so its O(N²) pass ran serial in every such build. On an Apple M5 Pro (18 threads)
+  the subgradient root of a build without HiGHS (the wheel) is 3.5–7.3× faster at 800 to 3,200 series and
+  `dtwc_cl -m lrcore` 1.4–4.7× faster end to end (3,200 series on a line metric: 45.9 s → 10.5 s); the Kelley root of
+  a build with HiGHS is 1.2–1.5× faster there. Below 280 series nothing changes. Every result is unchanged, bit for bit.
 - **Changed (performance, AArch64):** on 64-bit Arm (Apple silicon, Arm Linux) the CPU distance-matrix fill and
   OneBatchPAM's batch table compute a series against 16 others of its length at once (32 in `float32`), not 8 (16),
   and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: about

@@ -40,7 +40,7 @@
 #include <utility>
 #include <vector>
 
-// evaluate_dual's loops are `#pragma omp` behind `#ifdef _OPENMP`. This file compiled without the flag in a build that has OpenMP would
+// evaluate_dual's first loop is `#pragma omp` behind `#ifdef _OPENMP`. This file compiled without the flag in a build that has OpenMP would
 // run the Lagrangian phase serial with no sign of it; dtwc/CMakeLists.txt gives mip-solvers the flag together with this definition.
 // (cppcheck, a maintainer option, takes the target's -D but none of its compiler flags and so never sees _OPENMP: it stands aside.)
 #if defined(DTWC_HAS_OPENMP) && !defined(_OPENMP) && !defined(__CPPCHECK__)
@@ -52,9 +52,9 @@ namespace dtwc::mip {
 namespace {
 constexpr double kEps = 1e-12; // relative-gap denominator floor.
 
-/// evaluate_dual forks its two loops over OpenMP threads from this N up; below it a fork and join (two per
-/// subgradient iteration) cost more than the loops they split. Placeholder: 1 forks at every N.
-[[maybe_unused]] constexpr index_t kParallelMinN = 1;
+/// evaluate_dual forks its first loop (rho, N^2 work) over OpenMP threads from this N up; below it the fork and join (one per subgradient
+/// iteration, about 50 us with 18 threads on an Apple M5 Pro) cost more than the loop. Measured break-even there: between N = 240 and 280.
+[[maybe_unused]] constexpr index_t kParallelMinN = 280;
 
 /// Subgradient and Kelley tuning (safe defaults).
 struct LagrangianParams
@@ -248,10 +248,8 @@ double evaluate_dual(const double *D, index_t N, std::size_t Nz, index_t k,
   for (index_t t = 0; t < k; ++t) sum_rho_S += rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(t)])];
   const double L = sum_mu + sum_rho_S;
 
-  // g_j = 1 − #{i ∈ S_k : D_ij < μ_j}  (a subgradient of the concave L at μ).
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) if(N >= kParallelMinN)
-#endif
+  // g_j = 1 − #{i ∈ S_k : D_ij < μ_j}  (a subgradient of the concave L at μ). N·k work, left serial: forking it
+  // costs more than it saves at every k measured (3 to 64) and N (to 3200), and doubled the forks of an iteration.
   for (index_t j = 0; j < N; ++j) {
     index_t served = 0;
     const double muj = mu[static_cast<std::size_t>(j)];
