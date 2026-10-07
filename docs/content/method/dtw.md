@@ -105,7 +105,7 @@ For non-empty series, because the terminal cell is $$(n,m)$$, an endpoint-preser
 
 $$w \ge |n-m|.$$
 
-Below this threshold the CPU routes return the finite no-path sentinel `numeric_limits<T>::max()`. Empty input and an exceeded early-abandon cutoff use the same value, so a mere `isfinite(result)` check does not prove that a path was evaluated. A negative CPU API band requests unconstrained DTW.
+Below this threshold the CPU routes return the finite no-path sentinel `numeric_limits<T>::max()`. The unchecked per-pair kernels (`dtwBanded` and the like) return the same value for empty input and for an exceeded early-abandon cutoff, so a mere `isfinite(result)` check does not prove that a path was evaluated; `distance::dtw` refuses an empty series. A negative CPU API band requests unconstrained DTW.
 
 Widening the window only adds admissible paths. Therefore the exact banded value is non-increasing in $$w$$ and is always at least the full-DTW value. A narrower band can reduce work, but it can also increase the dissimilarity or eliminate every path; choose it from the timing variation allowed by the application. The fixed-window definition and endpoint conditions come from [Sakoe and Chiba (1978)](https://doi.org/10.1109/TASSP.1978.1163055).
 

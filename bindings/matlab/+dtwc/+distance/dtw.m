@@ -16,8 +16,8 @@ function d = dtw(x, y, varargin)
 %     WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda   the parameter of
 %                      WDTW, ADTW, Soft-DTW, MSM and TWE
 %   C++ reads and checks them: an unknown name, a parameter outside its domain,
-%   a combination no kernel implements, or a value the strategy does not take
-%   raises dtwc:invalidArgument.
+%   a combination no kernel implements, an empty series, or a value the
+%   strategy does not take raises dtwc:invalidArgument.
     if ~isnumeric(x) || ~isnumeric(y)
         error('dtwc:invalidArgument', 'x and y must be numeric.');
     end

@@ -1,6 +1,6 @@
 /**
  * @file cpp_conformance.cpp
- * @brief C++ route of the cross-language conformance fixture (Phase 2 Task 2.4).
+ * @brief C++ route of the cross-language conformance fixture.
  *
  * This is the PERMANENT cross-language parity gate. It drives
  * the LIVE Tier-2 public pipeline in-process:
@@ -126,8 +126,8 @@ CanonicalResult run_pipeline()
   prob.set_band(kBand);
   prob.fill_distance_matrix();
 
-  // Literal fixed seed. The data is init-independent, but the seed makes
-  // "fast_pam with a fixed seed" (Task 2.4) exact in this route.
+  // Literal fixed seed. The data is init-independent, but the seed makes the
+  // fixture's fast_pam with a fixed seed exact in this route.
   const auto raw = dtwc::fast_pam(prob, kNClusters, kMaxIter, kSeed);
 
   CanonicalResult r;
@@ -149,7 +149,7 @@ void write_reference(const CanonicalResult& r)
   if (!out)
     throw std::runtime_error("cannot write reference: " + reference_file().string());
 
-  out << "# DTWC++ 2.0 cross-language conformance reference (Phase 2 Task 2.4).\n"
+  out << "# DTWC++ 2.0 cross-language conformance reference.\n"
       << "# Recorded by the C++ route (tests/conformance/cpp_conformance.cpp) which\n"
       << "# runs the LIVE pipeline: DataLoader -> set_band(3) -> fill_distance_matrix\n"
       << "# -> fast_pam(k=3, seed=29) -> silhouette/davies_bouldin/dunn. The Python,\n"
@@ -223,7 +223,7 @@ TEST_CASE("Cross-language conformance: C++ route matches recorded reference",
     // re-running with the env var until the test goes green, so this run fails
     // on purpose. The planned end state is a separate regen program that shares
     // the pipeline header, leaving this binary with no way to write the
-    // reference at all (tooling plan Task 2).
+    // reference at all.
     write_reference(live);
     FAIL("Recorded conformance reference -> "
          << reference_file().string()

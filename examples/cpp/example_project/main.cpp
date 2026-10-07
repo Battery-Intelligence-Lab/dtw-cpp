@@ -1,7 +1,7 @@
 #include "dtwc.hpp"
 #include <cstdlib>
 #include <filesystem>
-#include <iostream> // was reaching this TU through settings.hpp (C-21a)
+#include <iostream> // for std::cout
 
 int main(int argc, char **argv)
 {

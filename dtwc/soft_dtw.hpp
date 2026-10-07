@@ -127,10 +127,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   const std::size_t mx = x.size();
   const std::size_t my = y.size();
 
-  // Input validation (was assert(mx > 0 && my > 0), a no-op under NDEBUG that
-  // let an empty span fall through to x[0]/y[0] below -> out-of-bounds read).
-  if (mx == 0 || my == 0)
-    throw InvalidInput("soft_dtw_gradient: input series must be non-empty");
+  // Refuses an empty x or y too, which x[0] and y[0] below would read past.
   detail::require_finite<T>(x, y, "soft_dtw_gradient");
 
   // The cost matrix C (forward pass) and the alignment matrix E (backward

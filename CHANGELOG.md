@@ -27,7 +27,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - `dtwc_cl` needs `-k` and `-i` (without `--Nc`, v1.0.0 exited 0 having clustered nothing) and refuses v1.0.0's range
   `--Nc i..j`: run once per k.
 - `dtwc_cl` stops with an error, a non-zero exit, on an unknown method or solver, an unreadable `--dist-matrix`,
-  `--solver gurobi` on a build without Gurobi, a `--band` below -1 and a failed write; v1.0.0 went on.
+  `--solver gurobi` on a build without Gurobi, a `--band` below -1, a negative `--skip-rows` or `--skip-cols` and a
+  failed write; v1.0.0 went on.
 - `dtwc_cl` writes `<name>_labels.csv` and `<name>_medoids.csv`, and `<name>_distance_matrix.csv` and
   `<name>_silhouettes.csv` when its method filled the matrix; v1.0.0 wrote `<name>_Nc_<k>.csv` and per-repetition files.
 - `set_n_clusters` (v1.0.0's `set_numberOfClusters`) below 1 is `InvalidInput`, and so is a band below -1, set or

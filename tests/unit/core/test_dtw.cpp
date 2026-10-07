@@ -251,6 +251,8 @@ TEMPLATE_TEST_CASE("every variant, metric, band and channel count agrees with th
         for (const auto &data : known)
           check("Problem's bound function",
                 dtwc::core::resolve_dtw_fn<T>(distance_config(config, band), data)(x, y), kNoPathPublic);
+        // The checked routes refuse an empty series (unit_test_nonfinite_input.cpp).
+        if (nx == 0 || ny == 0) continue;
         const auto sentinel = static_cast<double>(std::numeric_limits<T>::max());
         if (config.ndim == 1) check("distance::dtw", dtwc::distance::dtw<T>(x, y, config.params, band, config.metric), sentinel);
         if (config.ndim == 1 && config.params.variant == DTWVariant::Standard) {

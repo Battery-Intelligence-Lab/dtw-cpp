@@ -703,7 +703,7 @@ TEST_CASE("A refused CUDA fill leaves the Problem's matrix unallocated", "[cuda]
   prob.set_device(dtwc::Device::GPU, device_count);
   REQUIRE_THROWS_MATCHES(prob.fill_distance_matrix(), dtwc::DeviceError,
                          MessageMatches(ContainsSubstring("invalid device ordinal")));
-  CHECK(std::as_const(prob).distance_matrix().size() == 0);
+  CHECK(prob.distance_matrix().size() == 0);
 }
 
 // The wavefront's dynamic shared-memory limit is one value per kernel and
@@ -1772,7 +1772,7 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
     CAPTURE(fp64);
     prob.set_gpu_precision(fp64 ? dtwc::GpuPrecision::FP64 : dtwc::GpuPrecision::FP32);
     prob.fill_distance_matrix();
-    const auto &matrix = std::as_const(prob).distance_matrix();
+    const auto &matrix = prob.distance_matrix();
     REQUIRE(matrix.size() == N);
 
     // One mismatch count per row: each row has one writer.
@@ -2008,7 +2008,9 @@ TEST_CASE("CUDA medoid distances match the host kernel in every kernel range",
       const auto &x = series[i];
       const auto &y = medoids[m];
       if (fp32) {
-        const std::vector<float> xf(x.begin(), x.end()), yf(y.begin(), y.end());
+        std::vector<float> xf(x.size()), yf(y.size());
+        std::transform(x.begin(), x.end(), xf.begin(), [](double v) { return static_cast<float>(v); });
+        std::transform(y.begin(), y.end(), yf.begin(), [](double v) { return static_cast<float>(v); });
         CHECK(dtwc::test_support::dtw_routes_agree<float>(
             d[i * k + m], dtwc::dtwBanded<float>(xf, yf, band), x.size(), y.size()));
       } else {
@@ -2101,7 +2103,10 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
     dtwc::Problem prob("clara");
     if (float32_series) {
       std::vector<std::vector<float>> rounded;
-      for (const auto &s : series) rounded.emplace_back(s.begin(), s.end());
+      for (const auto &s : series) {
+        auto &r = rounded.emplace_back(s.size());
+        std::transform(s.begin(), s.end(), r.begin(), [](double v) { return static_cast<float>(v); });
+      }
       prob.set_data(dtwc::Data(std::move(rounded), std::move(names)));
     } else {
       prob.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::move(names)));

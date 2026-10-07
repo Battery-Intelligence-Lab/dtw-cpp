@@ -163,7 +163,7 @@ classdef Dataset < handle
             if isempty(column)
                 after = '';
                 if skipCols > 0
-                    after = sprintf(' after the %d columns --skip-cols drops', skipCols);
+                    after = sprintf(' after the %d columns SkipCols drops', skipCols);
                 end
                 error('dtwc:ioError', ['load: failed to read ''%s'': no Float32 or Float64 column, ' ...
                       'nor a list column of them%s.'], file, after);
@@ -194,8 +194,9 @@ classdef Dataset < handle
                     end
                     error('dtwc:ioError', ['load: failed to read ''%s'': Parquet column ''%s'' is %s, ' ...
                           'neither Float32/Float64 nor Utf8/LargeUtf8, so it cannot be a sample of the ' ...
-                          'series each row holds; drop the leading columns with --skip-cols (SkipCols), ' ...
-                          'or read one column with --column.'], file, samples{other}, kind);
+                          'series each row holds; drop the leading columns with SkipCols, or read ' ...
+                          'the column you want with parquetread(file, ''SelectedVariableNames'', name) ' ...
+                          'and pass its values to dtwc.load or dtwc.cluster.'], file, samples{other}, kind);
                 end
                 read = dtwc.Dataset.read_columns(file, [samples, label], skipRows);
                 rows = zeros(numel(read{1}), numel(samples));

@@ -9,7 +9,8 @@
  * strategy) and soft_dtw_gradient. Each must throw
  * dtwc::InvalidInput whose message says "<series>[<position>] is <value>". The
  * missing-data distances read NaN as a missing value, so there a NaN must give
- * what the unchanged wrapper gives, while ±inf is still rejected.
+ * what the unchanged wrapper gives, while ±inf is still rejected. An empty
+ * series is rejected too ("<series> is empty").
  *
  * Oracles: the injected position for the diagnostic, and for every answer the
  * per-pair wrapper (warping*.hpp, msm.hpp, twe.hpp, soft_dtw.hpp) called
@@ -166,7 +167,13 @@ double interpolate_wrapper(Span x, Span y, int band)
                                  dtwc::interpolate_linear_into(y, y_buffer), band, -1.0, MetricType::L1);
 }
 
-std::vector<float> narrow(Span s) { return {s.begin(), s.end()}; }
+std::vector<float> narrow(Span s)
+{
+  std::vector<float> out;
+  out.reserve(s.size());
+  for (const double v : s) out.push_back(static_cast<float>(v));
+  return out;
+}
 
 using Fn = std::function<double(Span, Span, int)>;
 
@@ -369,6 +376,22 @@ TEST_CASE("FX-15: a pair of one series with itself is checked too",
                         [&] { return table[k].call(p.x, p.x, p.band); }, at,
                         poison_name(poison)));
     }
+  }
+  tally.report(table);
+}
+
+TEST_CASE("every checked entry point refuses an empty series, as the matrix routes do",
+          "[nonfinite][empty]")
+{
+  // An empty series has no warping path: the kernels return max(), a finite
+  // number that passes for a distance. x is named first.
+  const auto table = checked_entry_points();
+  Tally tally(table.size());
+  const std::vector<double> empty, some{ 1.0, 2.0 };
+  for (std::size_t k = 0; k < table.size(); ++k) {
+    tally.record(k, rejection_problem([&] { return table[k].call(empty, some, -1); }, "x", "empty"));
+    tally.record(k, rejection_problem([&] { return table[k].call(some, empty, -1); }, "y", "empty"));
+    tally.record(k, rejection_problem([&] { return table[k].call(empty, empty, -1); }, "x", "empty"));
   }
   tally.report(table);
 }

@@ -201,8 +201,8 @@ needed; the last two compare two labellings.
 
 The keyword arguments and their defaults are `cluster()`'s distance settings.
 Each call checks its settings and both series first and raises `InvalidInput`
-for a NaN or ±inf value (NaN is a missing value under a missing-data strategy)
-or a parameter outside its domain. Python's
+for an empty series, a NaN or ±inf value (NaN is a missing value under a
+missing-data strategy) or a parameter outside its domain. Python's
 `compute_distance_matrix(series, band=-1, metric="l1", device=None)` and MATLAB's
 `dtwc.compute_distance_matrix(X, 'Band', b)` return the N×N matrix of a set of
 series.

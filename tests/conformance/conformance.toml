@@ -1,4 +1,4 @@
-# DTWC++ 2.0 cross-language conformance fixture (Phase 2 Task 2.4).
+# DTWC++ 2.0 cross-language conformance fixture.
 #
 # The CLI route of the permanent parity gate. Consumed by the built dtwc_cl
 # binary via `--config` (CLI11 reads these TOML keys as the canonical long-flag

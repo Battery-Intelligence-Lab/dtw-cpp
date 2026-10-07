@@ -400,8 +400,8 @@ constexpr dtwc::Name<Key> distance_keys[]{
   { "TweNu", Key::TweNu },         { "TweLambda", Key::TweLambda },
 };
 
-/// The keys of a clustering: every dtwc::Config key that is not about files, in
-/// cli::bind's order (k is an argument of its own).
+/// The keys dtwc.cluster takes, in cli::bind's order (k is an argument of its
+/// own): those dtwc::apply hands a Problem, and Name; not dtype nor the file options.
 constexpr dtwc::Name<Key> config_keys[]{
   { "Name", Key::Name },
   { "Method", Key::Method },
@@ -1275,8 +1275,6 @@ static void cmd_read_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *pr
   const auto path = get_path(prhs[1], "path");
   const auto skip_cols = get_exact_int<dtwc::index_t>(prhs[2], "skip_cols");
   const auto skip_rows = get_exact_int<dtwc::index_t>(prhs[3], "skip_rows");
-  if (skip_cols < 0) throw dtwc::InvalidInput("load: skip_cols must be non-negative.");
-  if (skip_rows < 0) throw dtwc::InvalidInput("load: skip_rows must be non-negative.");
   const char delimiter = parse_delimiter(optional_string(nrhs, prhs, 4, "delimiter"));
   const dtwc::Data data = dtwc::read_data(path, skip_cols, skip_rows, delimiter);
   const auto n = static_cast<size_t>(data.size());

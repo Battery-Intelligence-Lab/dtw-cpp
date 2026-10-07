@@ -1,6 +1,7 @@
 /**
  * @file f14_result_save_writer.cc
- * @brief Live native Result::save producer for the F14 public CSV gate.
+ * @brief Saves the conformance clustering with the C++ Result::save, for
+ *        test_distance_matrix_csv_contract.cmake to compare with dtwc_cl's files.
  */
 
 #include <dtwc.hpp>

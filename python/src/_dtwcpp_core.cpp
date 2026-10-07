@@ -253,8 +253,6 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("_read_data",
         [](const std::filesystem::path &source, dtwc::index_t skip_cols,
            dtwc::index_t skip_rows, const std::string &delimiter) {
-    if (skip_cols < 0) throw dtwc::InvalidInput("load: skip_cols must be non-negative.");
-    if (skip_rows < 0) throw dtwc::InvalidInput("load: skip_rows must be non-negative.");
     if (delimiter.size() > 1)
       throw dtwc::InvalidInput("load: delimiter must be a single character.");
     // File I/O and parsing touch no Python object, so the GIL is released for
@@ -600,10 +598,10 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   // dtwc::distance::dtw, the checked boundary: core::validate refuses a
-  // configuration no kernel implements, then x and y are scanned once (NaN or
-  // ±inf raises InvalidInput naming x or y and the position; a missing-data
-  // strategy reads NaN as missing). The arrays are read in place, and the GIL
-  // is released for the computation.
+  // configuration no kernel implements, then x and y are scanned once (an empty
+  // series, NaN or ±inf raises InvalidInput naming x or y and the position; a
+  // missing-data strategy reads NaN as missing). The arrays are read in place,
+  // and the GIL is released for the computation.
   const dtwc::core::DTWVariantParams defaults{};
   m.def("dtw", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                   nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y, const std::string &variant, int band,
@@ -627,7 +625,8 @@ NB_MODULE(_dtwcpp_core, m) {
      "missing_strategy: error, zero_cost, arow or interpolate (Standard DTW); NaN\n"
      "is a missing value under the last three.\n"
      "Raises InvalidInput for an unknown name, a parameter outside its domain, a\n"
-     "combination no kernel implements, or a value the strategy does not take.");
+     "combination no kernel implements, an empty series, or a value the strategy\n"
+     "does not take.");
 
   m.def("soft_dtw_gradient", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                  nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
@@ -937,7 +936,7 @@ NB_MODULE(_dtwcpp_core, m) {
            {
              nb::gil_scoped_release release;
              prob.fill_distance_matrix();
-             const auto &dm = std::as_const(prob).distance_matrix(); // on the heap or mapped
+             const auto &dm = prob.distance_matrix(); // on the heap or mapped
              n = dm.size();
              values = dtwc::io::to_full_matrix(dm); // row-major, expanded from the triangle
            }

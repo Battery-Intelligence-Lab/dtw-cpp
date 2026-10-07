@@ -2,11 +2,10 @@
  * @file fileOperations.hpp
  * @brief Functions for file operations
  *
- * @details This header file declares various functions for performing file operations such as
- * reading and writing data to/from files. It includes functions to handle comma-separated values (CSV) files,
- * read data into vectors or Armadillo matrices, and save matrices to files.
- * It provides the functionality to ignore Byte Order Marks (BOM) in text files,
- * read specific rows and columns from files, and handle data from directories or batch files.
+ * @details The text reader: delimited (CSV/TSV) series from one file (readFile), a folder of
+ * them (load_folder) or a batch file of one series per row (load_batch_file), skipping leading
+ * rows and columns and a Byte Order Mark. Also the UTF-8 path conversions and the checked
+ * output streams (open_output, close_output) that the writers use.
  *
  * @date 21 Jan 2022
  * @author Volkan Kumtepeli
@@ -16,7 +15,7 @@
 #pragma once
 
 #include "base/error.hpp"
-#include "base/settings.hpp" // for resultsPath
+#include "base/settings.hpp" // for index_t
 #include "io/parse_number.hpp" // exact, locale-free floating-point parsing
 
 #include <algorithm>  // for std::sort

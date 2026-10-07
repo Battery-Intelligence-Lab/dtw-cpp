@@ -36,9 +36,9 @@ std::vector<std::filesystem::path> parquet_files(const std::filesystem::path &pa
 /// Whether `path` is an Arrow IPC file: an .arrow/.ipc/.feather name that is not a folder.
 bool is_arrow_ipc(const std::filesystem::path &path);
 
-/// Refuse a reader option the input cannot honour, as InvalidInput: skip_cols and skip_rows drop the leading columns
-/// and rows of CSV/TSV text or Parquet, delimiter splits text, column selects a Parquet column. `format` is empty for
-/// series passed in memory, which no reader parses.
+/// Refuse a reader option the input cannot honour, as InvalidInput: a negative skip_cols or skip_rows for any input;
+/// skip_cols and skip_rows drop the leading columns and rows of CSV/TSV text or Parquet, delimiter splits text, column
+/// selects a Parquet column. `format` is empty for series passed in memory, which no reader parses.
 void require_reader_options(std::optional<InputFormat> format, index_t skip_cols, index_t skip_rows, char delimiter,
                             std::string_view column);
 

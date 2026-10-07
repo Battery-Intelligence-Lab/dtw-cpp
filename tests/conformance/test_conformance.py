@@ -1,4 +1,4 @@
-"""Python + CLI routes of the cross-language conformance fixture (Task 2.4).
+"""Python + CLI routes of the cross-language conformance fixture.
 
 The permanent cross-language parity gate. Two live routes assert
 against the SAME reference recorded by the C++ route

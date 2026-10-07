@@ -186,7 +186,10 @@ TEST_CASE("FX-1: the dtw_function accessors validate the request before any pair
 
   // Float32 data through the Float32 accessors.
   std::vector<std::vector<float>> narrow;
-  for (const auto &s : series) narrow.emplace_back(s.begin(), s.end());
+  for (const auto &s : series) {
+    auto &rounded = narrow.emplace_back();
+    for (const double v : s) rounded.push_back(static_cast<float>(v));
+  }
   dtwc::Problem f32("accessor_band_f32");
   f32.set_data(dtwc::Data(std::move(narrow), std::vector<std::string>{ "a", "b" }));
   f32.set_band(2);

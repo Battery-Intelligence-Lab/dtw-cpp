@@ -10,8 +10,8 @@
  *
  * This namespace is the checked boundary (warping.hpp explains the layering):
  * every function here checks its configuration (core::validate), then x and y
- * before any distance work, in O(n + m), throwing InvalidInput that names the
- * series and position of a NaN or ±inf.
+ * before any distance work, in O(n + m), throwing InvalidInput that names an
+ * empty series, or the series and position of a NaN or ±inf.
  * `missing`, `arow` and the ZeroCost / AROW / Interpolate strategies read NaN
  * as a missing value and reject only ±inf. The unchecked per-pair wrappers
  * they call are unchanged.

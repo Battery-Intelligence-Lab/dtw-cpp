@@ -141,10 +141,9 @@ Float32 through sample, medoid, and assignment payloads. The cap governs series
 decoding/materialisation rather than total process RSS.
 
 The streamed route keeps a settings-only `Problem` and does not build a parent
-distance matrix. It writes labels, medoids, and the binary clustering-result
-checkpoint; dense distance-matrix and silhouette CSVs are omitted. For the
-same seed and settings, those three emitted artifacts are byte-identical to the
-resident route.
+distance matrix. It writes the labels and medoids; dense distance-matrix and
+silhouette CSVs are omitted. For the same seed and settings, those two files are
+byte-identical to the resident route's.
 
 ---
 
