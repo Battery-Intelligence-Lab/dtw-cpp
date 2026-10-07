@@ -22,7 +22,12 @@ fresh-venv pytest 921/16/0 [confirmed]. The first attempt was **FALSIFIED** for 
 library's `-fassociative-math` regrouped `left + penalty`, moving 15 of 270,000 outputs by an ulp; a one-row matrix now
 stays on the one-column loop, and the sweep agrees [confirmed]. The early-abandon flag is a template argument of both
 kernels: clang unswitched the runtime test only at `-O3`, so at `-O2` and `-Os` base ran the column minimum in every
-cell; now no level does [confirmed]. Speed: phase 2.
+cell; now no level does [confirmed]. **Phase 2** (quiet machine, on battery; probe clock median 4.52 GHz): kernel 1
+passes its bands, unbanded single pair 1.14–1.98× in every placement (f64 L1 1.42–1.98×), the ragged fill 1.42–1.50×,
+the lanes fills 0.98–1.00×; kernel 2 is **FALSIFIED** by its band (head at 100 × 100 band 10 down to 0.85×, though
+1.11–2.52× elsewhere) and reverted (73519cd7) [confirmed]. The same instructions move by up to 40 % between
+placements; every banded shape k1 runs below 0.97× is base's kernel 2 loop with an `fcmp`/`fcsel` pair across a 64-byte
+boundary [confirmed].
 
 ## Registered before the runs
 
@@ -38,7 +43,7 @@ the pair loop is `v_skew2`'s (21 instructions per two cells, f64 L1); no `bl`/`b
 the two columns' own; no column minimum in a loop without a threshold at `-O3`, `-O2` or `-Os`; ctest as base (95: 94 +
 CUDA skip, `test_codegen_no_calls` runs); conformance, the sweep and the CLI outputs equal to base bit for bit.
 
-## The change (three commits on `pb/pair-2col`)
+## The change (commits on `pb/pair-2col`)
 
 - **463d2b52 (k1)**, `dtwc/core/dtw_kernel.hpp`: kernel 1's body is `detail::dtw_linear<Abandon>` (:232-308), behind the
   unchanged `dtw_kernel_linear` (:310-320), which picks `Abandon` from the threshold. The pass loop (:264-284) computes
@@ -53,6 +58,7 @@ CUDA skip, `test_codegen_no_calls` runs); conformance, the sweep and the CLI out
   band has left row 0 (:387-393), row 0 of either column is computed as before, the shared rows run two cells per row
   (:400-411), and column j + 1 alone takes row `high` until the band reaches n_long (:412-416), reading `col[high]` as the
   one-column loop would. An odd last column runs the one-column loop (:420-443).
+- **73519cd7**: reverts 00fb9c36 (phase 2: kernel 2 failed its band); the header is 463d2b52's plus 92a747d9's comment.
 - **92a747d9**: comment only. The pass loop's comment says that equal arguments give equal results only while the
   compiler keeps the adds as written (the one-row case), and that elsewhere the results matched on Apple clang 21;
   `dtwc_cl`'s and `cpp_conformance`'s `__text` byte-identical to 00fb9c36's (`otool -t`, the path line aside). The kit
@@ -241,10 +247,60 @@ one command: `./run.sh` (5 repeats; `./run.sh N` for N; `./run.sh dry` is the sm
   and head; its numbers (add-chain clock 2.5–2.9 GHz under a load average near 50; 50 shape/placement pairs flagged for
   clock spread) are not measurements.
 
-## Phase 2 (quiet machine): pending
+## Phase 2: the quiet-machine run [confirmed]
+
+2026-10-07 03:29–03:40 BST, `./run.sh` (5 repeats). Conditions: no other agent or build (the orchestrator); on battery
+(81 %, discharging); Sophos and Tanium about one core; load average 4.70 / 4.98 / 5.24 before, 6.00 / 5.35 / 5.16 after;
+no process above 8 % CPU before the run (`top`, two samples). Probe clock (add chain, around each measurement):
+3.94–4.59 GHz, median 4.52; per-row medians 4.28–4.50 GHz in the f64 rows, 4.46–4.58 in the f32 rows; in 21 of 168
+build/shape/placement comparisons a repeat's base and build clocks differed by more than 3 %, and the clock-normalised
+verdicts equal the wall-clock ones. 1,260 single-thread lines, 180 fills, no FAILED; every checksum and fill matrix
+equal across base, k1 and head. Raw: `2026-10-06-mac-pair-2col/phase2/results_20261007_032902.txt`; the summary
+verbatim: `phase2/summary.txt`.
+
+Speed-up against base by build and placement (median over repeats; single thread unless named; ranges over the
+shapes of the class):
+
+| build, placement | f64 L1 100 unb | f64 L1 1000 unb | unbanded all | band L/10 + ragged b20 | band 2 | ragged fill unbanded | ragged fill band 10 | lanes fills |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| k1 p0 | 1.46 | 1.98 | 1.46-1.98 | 0.71-1.17 | 0.85-1.00 | 1.50 | 1.03 | 0.99-1.00 |
+| k1 p1 | 1.51 | 1.97 | 1.15-1.97 | 0.99-1.01 | 1.00-1.01 | 1.49 | 1.02 | 0.98-0.99 |
+| k1 p2 | 1.42 | 1.97 | 1.14-1.97 | 0.71-1.03 | 0.87-1.04 | 1.42 | 0.89 | 0.99-0.99 |
+| head p0 | 1.46 | 1.98 | 1.15-1.98 | 0.90-2.49 | 1.27-1.89 | 1.50 | 1.31 | 1.00-1.02 |
+| head p1 | 1.51 | 1.98 | 1.15-1.98 | 0.85-2.52 | 1.16-1.89 | 1.50 | 1.19 | 1.02-1.02 |
+| head p2 | 1.45 | 1.98 | 1.09-1.98 | 0.90-2.37 | 1.11-1.97 | 1.49 | 1.26 | 1.00-1.01 |
+
+Verdicts (`summary.py`, wall clock):
+
+- kernel 1 unbanded f64 L1 at L 100 and L 1000 ≥ 1.3× in every placement: k1 min 1.417 → PASS (head 1.451 → PASS).
+- kernel 2: banded shapes (band L/10, ragged band 20) ≥ 1.15× in every placement: min 0.845 → **FAIL**; head none below
+  0.97×: min 0.845 → FAIL (the ragged band-10 fill 1.19–1.31 → PASS). **DROP**: 00fb9c36 reverted (73519cd7).
+- k1 no single-thread shape below 0.97× in any placement: min 0.708 (f64 L1 1000 × 1000 band 100, p2) → **FAIL by the
+  letter**; every shape below 0.97× is banded, run on base's kernel 2 instructions (same register-renamed digests at
+  other offsets), and k1's ragged band-10 fill at p2 (0.89×) runs the same loop. Kernel 1's own (unbanded) shapes:
+  min 1.14 → PASS.
+- k1 ragged unbanded fill ≥ 1.2×: 1.496 / 1.493 / 1.419 → PASS. k1 equal-length lanes fills within 0.97–1.03×:
+  0.980–0.998 → PASS.
+
+Kernel 2 at 100 × 100 band 10, head against base, p0 / p1 / p2: f32 L1 0.92 / 0.95 / 1.28, f32 squared 0.90 / 0.85 /
+1.06, f64 squared 1.25 / 0.98 / 0.90, f64 L1 1.26 / 1.24 / 1.28. In p1 every loop starts on a 64-byte boundary and the f32
+L1 pair loop has no split pair, yet runs 0.95×: at 21 rows per column the pass's own rows and two `dtw_band_bounds`
+calls take the gain [inferred]. Its other banded shapes: band 2 1.11–1.97, 1000 × 1000 band 100 1.18–1.70, the ragged
+pair at band 20 1.45–2.52.
+
+Placement (`phase2/split_pairs.txt`, from `kit/split_pairs.py`: for each probe's loops, whether an `fcmp`/`fcsel`
+pair straddles a 64-byte boundary, beside the speed-up of the shapes the loop serves): every k1 banded loop with a
+split pair is the slow one — p0 f64 squared (14 instructions at 32 mod 64, an `fcmp` at 60) 0.71–0.93×, p2 f64 L1 (at
+36) 0.71–0.89×, p2 f32 L1 (at 44) 0.86–1.00× — and without one the same code runs 0.99–1.17× of base. Kernel 1's
+squared pair loop: all 5 placements with a split pair run 1.14–1.41×; of the 7 without one, 4 run 1.46–1.93× and 3
+(k1 p2 f64, head p0 f32, head p2 f64) 1.14–1.41× [unexplained]. The shipped binary's placement is its own; this
+unit's claim is the kernel 1 speed-up, which holds in every placement measured.
 
 ## Not done
 
+- Placement: the per-pair loops move by up to 40 % with their address (above); aligning them (`-mllvm
+  -align-loops=64` for the kernels, or `[[clang::code_align(64)]]`) is untried; p1, which does it for the whole probe,
+  ran k1's unchanged banded loops at 0.99–1.01× of base.
 - GCC and MSVC are not built here (no GCC on this Mac): that their reassociation leaves the pass loop's ADTW, Soft-DTW and
   multivariate results equal to base rests on both passes linearising single-use chains only [inferred]; x86-64 and
   Linux-aarch64 CI are the first evidence. MSVC /W4 on the `if constexpr` and the lambda: not compiled [inferred clean].
