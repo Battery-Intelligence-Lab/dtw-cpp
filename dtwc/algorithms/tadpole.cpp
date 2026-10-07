@@ -186,8 +186,8 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
 
   // Per-series LB_Keogh envelopes, reused across ALL pairs (Begum's cached
   // envelope). For full DTW (band<0) the valid envelope is the GLOBAL min/max
-  // (window ≥ n); compute_envelopes' band-0 default would equal the series and
-  // over-estimate the LB (invalid), so pass the series length as the window then.
+  // (window ≥ n), which the series length as the window gives (compute_envelopes
+  // reads a negative band the same way).
   std::vector<core::Envelope> envs;
   if (can_prune) {
     envs.resize(static_cast<std::size_t>(N));

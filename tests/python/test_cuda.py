@@ -38,7 +38,7 @@ class TestDeviceParsing:
             dtwcpp.compute_distance_matrix(series, device="tpu")
 
     def test_cuda_request_is_a_gpu_request(self):
-        """'cuda' is a spelling of 'gpu' (§6.1): the same GPU result, or the same
+        """'cuda' is a spelling of 'gpu': the same GPU result, or the same
         loud DeviceError; an explicit request never silently computes on CPU."""
         series = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
         try:

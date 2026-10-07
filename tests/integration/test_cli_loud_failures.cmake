@@ -35,7 +35,7 @@ cmake_minimum_required(VERSION 3.26)
 #                        the input is read: the output folder is never made
 #   nan_error_strategy   --missing-strategy error on a NaN input names the series
 #                        and the strategies that accept it; no result is written
-foreach(required_var IN ITEMS CLI WORK_ROOT)
+foreach(required_var IN ITEMS CLI WORK_ROOT HAS_GUROBI)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "missing required -D${required_var}=...")
     endif()
@@ -262,8 +262,8 @@ if(EXISTS "${WORK_ROOT}/out_nan/loud_labels.csv")
 endif()
 
 # FX-3: --solver gurobi must not solve with HiGHS. A build without Gurobi fails
-# naming the flag and the fix; a build with it runs, which is accepted only when
-# no fallback notice was printed.
+# naming the flag and the fix; a build with it (HAS_GUROBI, from the configure)
+# runs. Exit 0 alone cannot tell them apart: the fallback prints nothing.
 execute_process(
     COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_solver" --solver gurobi
     RESULT_VARIABLE solver_result
@@ -271,13 +271,17 @@ execute_process(
     ERROR_VARIABLE solver_stderr
     ENCODING UTF-8)
 string(APPEND all_output "${solver_stdout}\n${solver_stderr}\n")
-if("${solver_result}" STREQUAL "0")
-    if("${solver_stdout}${solver_stderr}" MATCHES "Gurobi is not available")
+if(HAS_GUROBI)
+    if(NOT "${solver_result}" STREQUAL "0")
         message(FATAL_ERROR
-            "solver_gurobi: exited 0 after replacing Gurobi with HiGHS\n"
+            "solver_gurobi: a build with Gurobi exited ${solver_result}\n"
             "stdout:\n${solver_stdout}\nstderr:\n${solver_stderr}")
     endif()
     set(solver_case "gurobi_built")
+elseif("${solver_result}" STREQUAL "0")
+    message(FATAL_ERROR
+        "solver_gurobi: a build without Gurobi exited 0, so HiGHS solved in its place\n"
+        "stdout:\n${solver_stdout}\nstderr:\n${solver_stderr}")
 else()
     if(NOT "${solver_result}" MATCHES "^[0-9]+$")
         message(FATAL_ERROR

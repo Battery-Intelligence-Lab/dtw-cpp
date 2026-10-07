@@ -378,7 +378,6 @@ bool Problem::set_solver(Solver solver_)
     mipSolver = Solver::Gurobi;
     return true;
 #else
-    std::cout << "Solver Gurobi is not available; therefore using default solver\n";
     mipSolver = settings::DEFAULT_MIP_SOLVER;
     return false;
 #endif
@@ -515,6 +514,14 @@ void Problem::set_device(Device device, int index)
   device_ = device;
   device_index_ = gpu_index;
   refresh_distance_matrix();
+}
+
+void Problem::copy_distance_settings_from(const Problem &other)
+{
+  set_distance(other.distance());
+  set_device(other.device_, other.device_index_);
+  set_gpu_precision(other.gpu_precision_);
+  verbose_ = other.verbose_;
 }
 
 void Problem::validate_distance(core::DistanceConfig config, const Data &data)

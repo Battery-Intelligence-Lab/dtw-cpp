@@ -229,9 +229,11 @@ dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 // Rolling buffer of size n_short. Optional early abandon.
 // ===========================================================================
 
-template <typename T, typename Cost, typename Cell>
-T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
-                    Cost cost_in, Cell cell, T early_abandon = T(-1))
+namespace detail {
+
+/// dtw_kernel_linear with the early-abandon test known at compile time.
+template <bool Abandon, typename T, typename Cost, typename Cell>
+T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell, T early_abandon)
 {
   const Cost cost = cost_in; // in registers: see the file comment
   constexpr T maxValue = std::numeric_limits<T>::max();
@@ -247,16 +249,48 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
     short_side[i] = cell.combine(maxValue, short_side[i - 1], maxValue,
                                  cost(i, 0), i, 0);
 
-  const bool do_early_abandon = (early_abandon >= T(0));
+  // A column whose minimum exceeds the threshold abandons the pair.
+  const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
 
-  for (std::size_t j = 1; j < n_long; ++j) {
+  // Columns j and j + 1 per pass: two chains of min-then-add side by side, where
+  // one column is one chain whose latency, not the core, sets the pace. Each cell
+  // gets the neighbours, in the same roles, that the one-column loop below gives
+  // it, and the pair is abandoned iff some column's minimum exceeds the threshold.
+  // The library's -fassociative-math may still regroup a chain of adds: on a
+  // one-row matrix a pass's two cells form one, and clang moved ADTW's
+  // left + penalty by an ulp in float there, so a one-row matrix stays on the
+  // one-column loop. Elsewhere each cell's value also feeds the next row, and the
+  // results matched the one-column loop's bit for bit (Apple clang 21).
+  std::size_t j = 1;
+  for (; n_short > 1 && j + 1 < n_long; j += 2) {
+    T diag = short_side[0];
+    T left = cell.combine(maxValue, maxValue, short_side[0], cost(0, j), 0, j);
+    T next_left = cell.combine(maxValue, maxValue, left, cost(0, j + 1), 0, j + 1);
+    short_side[0] = next_left;
+    T row_min = left, next_row_min = next_left;
+
+    for (std::size_t i = 1; i < n_short; ++i) {
+      const T old_up = short_side[i];                                       // dp[i, j-1]
+      const T here = cell.combine(diag, old_up, left, cost(i, j), i, j);    // dp[i, j]
+      next_left = cell.combine(left, here, next_left, cost(i, j + 1), i, j + 1); // dp[i, j+1]
+      diag = old_up;
+      left = here;
+      short_side[i] = next_left;
+      if constexpr (Abandon) {
+        row_min = std::min(row_min, here);
+        next_row_min = std::min(next_row_min, next_left);
+      }
+    }
+    if (abandons(row_min) || abandons(next_row_min)) return maxValue;
+  }
+
+  for (; j < n_long; ++j) { // the last column when n_long - 1 is odd; a one-row matrix
     T diag = short_side[0];
     // First row of new column: no up, no diag (they'd be from out-of-bounds
     // previous column/row). Only `left` (short_side[0] == dp[0, j-1]) is valid.
     T left = cell.combine(maxValue, maxValue, short_side[0], cost(0, j), 0, j);
     short_side[0] = left;
-
-    T row_min = do_early_abandon ? left : T(0);
+    T row_min = left;
 
     for (std::size_t i = 1; i < n_short; ++i) {
       const T old_up = short_side[i]; // dp[i, j-1]
@@ -264,13 +298,26 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
       left = cell.combine(diag, old_up, left, cost(i, j), i, j);
       diag = old_up;
       short_side[i] = left;
-      if (do_early_abandon) row_min = std::min(row_min, left);
+      if constexpr (Abandon) row_min = std::min(row_min, left);
     }
-
-    if (do_early_abandon && row_min > early_abandon) return maxValue;
+    if (abandons(row_min)) return maxValue;
   }
 
   return short_side[n_short - 1];
+}
+
+} // namespace detail
+
+/// The early-abandon test is a template argument of the loops, so no build runs
+/// the column minimum in the loop that has no threshold: clang unswitches a
+/// runtime test only at -O3 (nanobind's -Os build was 1.5x slower for it).
+template <typename T, typename Cost, typename Cell>
+T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
+                    Cost cost, Cell cell, T early_abandon = T(-1))
+{
+  return early_abandon >= T(0)
+           ? detail::dtw_linear<true, T>(n_short, n_long, cost, cell, early_abandon)
+           : detail::dtw_linear<false, T>(n_short, n_long, cost, cell, early_abandon);
 }
 
 // ===========================================================================
@@ -278,15 +325,18 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
 // Rolling column of size n_long. Optional early abandon.
 // ===========================================================================
 
-template <typename T, typename Cost, typename Cell>
-T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
-                    Cost cost_in, Cell cell, T early_abandon = T(-1))
+namespace detail {
+
+/// dtw_kernel_banded with the early-abandon test known at compile time.
+template <bool Abandon, typename T, typename Cost, typename Cell>
+T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
+             Cost cost_in, Cell cell, T early_abandon)
 {
   const Cost cost = cost_in; // in registers: see the file comment
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (n_short == 0 || n_long == 0) return maxValue;
   if (band < 0)
-    return dtw_kernel_linear<T>(n_short, n_long, cost, cell, early_abandon);
+    return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
 
   const auto band_width = static_cast<std::size_t>(band);
 
@@ -295,12 +345,12 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
 
   // Degenerate length-one path, or a band covering the complete matrix.
   if (n_short == 1 || n_long == 1 || band_width >= n_long - 1)
-    return dtw_kernel_linear<T>(n_short, n_long, cost, cell, early_abandon);
+    return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
 
   thread_local std::vector<T> col_buf;
   col_buf.assign(n_long, maxValue);
   T *col = col_buf.data(); // hoisted out of the loops
-  const bool do_early_abandon = (early_abandon >= T(0));
+  const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
 
   // First short-step (j_short = 0): fill col along long axis. Only `left`
   // (col[i-1]) is available — diag and up are out-of-bounds (maxValue).
@@ -312,7 +362,7 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
                             cost(0, i), 0, i);
     }
   }
-  if (do_early_abandon && col[0] > early_abandon) return maxValue;
+  if (abandons(col[0])) return maxValue;
 
   for (std::size_t j = 1; j < n_short; ++j) {
     // The band's bounds never decrease with j: dp[j-1, first_row-1] lies in the previous
@@ -320,12 +370,12 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
     const auto [low, high] = dtw_band_bounds(band, j, n_long);
     const auto first_row = std::max(low, std::size_t{1});
     T diag    = col[first_row - 1];                 // dp[j-1, first_row-1]
-    T row_min = do_early_abandon ? maxValue : T(0);
+    T row_min = maxValue;
 
     if (low == 0) {
       // Row 0 of new column: only `left` (col[0] from previous j-step).
       col[0] = cell.combine(maxValue, maxValue, col[0], cost(j, 0), j, 0);
-      if (do_early_abandon) row_min = col[0];
+      row_min = col[0];
     }
 
     // Below the band, dp[j, first_row-1] is unreachable: maxValue.
@@ -336,13 +386,25 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
       left = cell.combine(diag, old_up, left, cost(j, i), j, i);
       col[i] = left;
       diag = old_up;
-      if (do_early_abandon) row_min = std::min(row_min, left);
+      if constexpr (Abandon) row_min = std::min(row_min, left);
     }
-
-    if (do_early_abandon && row_min > early_abandon) return maxValue;
+    if (abandons(row_min)) return maxValue;
   }
 
   return col[n_long - 1];
+}
+
+} // namespace detail
+
+/// The early-abandon test is a template argument of the loops, as in
+/// dtw_kernel_linear.
+template <typename T, typename Cost, typename Cell>
+T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
+                    Cost cost, Cell cell, T early_abandon = T(-1))
+{
+  return early_abandon >= T(0)
+           ? detail::dtw_banded<true, T>(n_short, n_long, band, cost, cell, early_abandon)
+           : detail::dtw_banded<false, T>(n_short, n_long, band, cost, cell, early_abandon);
 }
 
 // ===========================================================================

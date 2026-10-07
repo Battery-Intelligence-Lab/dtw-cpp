@@ -95,7 +95,8 @@ namespace detail {
  * `<name>_labels.csv` and `<name>_medoids.csv`, then, when the distance matrix is filled,
  * `<name>_distance_matrix.csv` and, for k > 1, `<name>_silhouettes.csv`. An undefined silhouette is a
  * warning on stderr; any other failure propagates. A Problem without series (a RAM-limited Parquet run)
- * names its series `series_<i>` and has no matrix or silhouettes to write.
+ * names its series by `streamed_names`, the reader's names (else `series_<i>`), and has no matrix or
+ * silhouettes to write.
  *
  * @param complete  true (Result::save): fill the matrix first, so all four files are written, and throw
  *                  InvalidInput after the labels and medoids when there is no matrix to fill. false (the
@@ -105,7 +106,7 @@ namespace detail {
  * @throws IOError for a file that cannot be written in full.
  */
 void write_result_files(Problem &prob, const std::filesystem::path &directory, bool complete,
-                        std::ostream *progress = nullptr);
+                        std::ostream *progress = nullptr, const std::vector<std::string> &streamed_names = {});
 
 } // namespace detail
 
@@ -422,6 +423,10 @@ public:
     refresh_distance_matrix();
   }
   GpuPrecision gpu_precision() const noexcept { return gpu_precision_; }
+  /// Take `other`'s distance settings, device, GPU index, GPU precision and
+  /// verbosity: a sub-Problem's, before its series (its fill then honours the
+  /// parent's device, or validate_fill_request refuses it, e.g. Float32 on a GPU).
+  void copy_distance_settings_from(const Problem &other);
 
   void set_verbose(bool value) { verbose_ = value; }
   void set_output_folder(path_t folder)

@@ -1,18 +1,16 @@
 %> @file Dataset.m
-%> @brief Lazy dataset handle returned by dtwc.load (api-contract-2.0.md §1.2).
+%> @brief Lazy dataset handle returned by dtwc.load.
 %> @author Volkan Kumtepeli
 classdef Dataset < handle
-%DATASET A lazy handle to time series: a path, or series already in memory (contract §1.2).
+%DATASET A lazy handle to time series: a path, or series already in memory.
 %
 %   Made by dtwc.load. A path is read once, when its series are first needed
 %   (dtwc.cluster, as_series), as dtwc_cl and Python read it: CSV/TSV text and
 %   folders of it by the C++ reader (dtwc::read_data, in the MEX); Parquet (a
-%   .parquet/.pq file, or a folder of them) by MATLAB's parquetread, taking
-%   what the C++ reader takes: the first Float32/Float64 column (one series,
-%   named by its file) or list column of them (one series per row, named
-%   series_<i>). MATLAB has no Arrow IPC reader, so an .arrow, .ipc or .feather
-%   file is refused with dtwc:invalidArgument: read it elsewhere and pass its
-%   series in memory.
+%   .parquet/.pq file, or a folder of them) by MATLAB's parquetread, by the C++
+%   reader's rule (read_parquet). MATLAB has no Arrow IPC reader, so an .arrow,
+%   .ipc or .feather file is refused with dtwc:invalidArgument: read it
+%   elsewhere and pass its series in memory.
 %
 %   See also dtwc.load, dtwc.cluster
 
@@ -112,9 +110,9 @@ classdef Dataset < handle
                 [series, names] = dtwc_mex('read_data', path, skipCols, skipRows, delimiter);
                 return
             end
-            if skipCols || skipRows || ~isempty(delimiter)
-                error('dtwc:invalidArgument', ['load: SkipCols, SkipRows and Delimiter parse ' ...
-                    'CSV/TSV text and cannot be honoured for a Parquet or Arrow IPC input; drop them.']);
+            if ~isempty(delimiter)
+                error('dtwc:invalidArgument', ['load: Delimiter splits CSV/TSV text into fields ' ...
+                    'and cannot be honoured for a Parquet or Arrow IPC input; drop it.']);
             end
             if arrow
                 error('dtwc:invalidArgument', ['load: ''%s'' is Arrow IPC, which MATLAB has no ' ...
@@ -124,46 +122,110 @@ classdef Dataset < handle
             series = {};
             names = {};
             for i = 1:numel(files)
-                [s, n] = dtwc.Dataset.read_parquet(files{i}, numel(series));
+                [s, n] = dtwc.Dataset.read_parquet(files{i}, numel(series), skipCols, skipRows);
                 series = [series, s]; %#ok<AGROW>
                 names = [names, n]; %#ok<AGROW>
             end
         end
 
-        function [series, names] = read_parquet(file, first)
-        %READ_PARQUET One Parquet file's series, as the C++ reader takes them: the first
-        %   Float32/Float64 column is one series, named by the file; the first list column
-        %   of them is one series per row, named series_<FIRST + row - 1>. Only those
-        %   columns are read, as C++ reads only the one it takes.
+        function [series, names] = read_parquet(file, first, skipCols, skipRows)
+        %READ_PARQUET One Parquet file's series, by the C++ reader's rule (dtwc/io/read_data.hpp).
+        %   SKIPCOLS drops its leading columns, which then name nothing, and SKIPROWS its leading
+        %   rows, which are not read. The first Float32/Float64 column or list column of them
+        %   decides: a list column is one series per row; a scalar column is one series, named by
+        %   the file, when it is the file's only Float32/Float64 column, and otherwise each row is
+        %   a series of its values in the file's columns, string columns aside (any other column
+        %   is refused, named). The first string column names the rows, a missing name as
+        %   series_<FIRST + row - 1>, as are the rows of a file without one. Only the columns
+        %   used are read.
             try
                 info = parquetinfo(file);
-                candidates = info.VariableNames(ismember(info.VariableTypes, ["double", "single", "cell"]));
-                columns = parquetread(file, 'SelectedVariableNames', candidates);
             catch cause
                 error('dtwc:ioError', 'load: failed to read ''%s'': %s', file, cause.message);
             end
-            for name = columns.Properties.VariableNames
-                values = columns.(name{1});
-                if isfloat(values)
-                    [~, stem] = fileparts(file);
-                    series = {double(values(:).')};
-                    names = {stem};
-                    return
-                end
-                if iscell(values) && all(cellfun(@(v) isfloat(v) || isa(v, 'missing'), values))
-                    nulls = nnz(cellfun(@(v) isa(v, 'missing'), values));
-                    if nulls
-                        error('dtwc:invalidArgument', ['load: ''%s'': list column cell contains %d ' ...
-                              'null(s) (drop or fill nulls before clustering).'], file, nulls);
+            vars = reshape(cellstr(info.VariableNames(min(skipCols, end) + 1:end)), 1, []);
+            types = reshape(string(info.VariableTypes(min(skipCols, end) + 1:end)), 1, []);
+            floats = ismember(types, ["double", "single"]);
+            label = vars(find(types == "string", 1));
+            column = '';
+            isList = false;
+            for i = find(floats | types == "cell")   % a row: vars and types are rows
+                if ~floats(i)   % a list column counts when its cells hold floats
+                    cells = dtwc.Dataset.read_columns(file, vars(i), 0);
+                    if ~all(cellfun(@(v) isfloat(v) || isa(v, 'missing'), cells{1}))
+                        continue
                     end
-                    series = cellfun(@(v) double(v(:).'), values(:).', 'UniformOutput', false);
-                    names = arrayfun(@(i) sprintf('series_%d', i), first + (0:numel(values) - 1), ...
-                                     'UniformOutput', false);
-                    return
+                    isList = true;
                 end
+                column = vars{i};
+                break
             end
-            error('dtwc:ioError', ['load: ''%s'' has no Float32 or Float64 column, nor a list ' ...
-                  'column of them.'], file);
+            if isempty(column)
+                after = '';
+                if skipCols > 0
+                    after = sprintf(' after the %d columns --skip-cols drops', skipCols);
+                end
+                error('dtwc:ioError', ['load: failed to read ''%s'': no Float32 or Float64 column, ' ...
+                      'nor a list column of them%s.'], file, after);
+            end
+            if ~isList && nnz(floats) == 1          % the file's one float column: one series
+                [~, stem] = fileparts(file);
+                read = dtwc.Dataset.read_columns(file, {column}, skipRows);
+                series = {double(read{1}(:).')};
+                names = {stem};
+                return
+            end
+            if isList                               % a series per row of the list column
+                read = dtwc.Dataset.read_columns(file, [{column}, label], skipRows);
+                nulls = nnz(cellfun(@(v) isa(v, 'missing'), read{1}));
+                if nulls
+                    error('dtwc:invalidArgument', ['load: ''%s'': list column cell contains %d ' ...
+                          'null(s) (drop or fill nulls before clustering).'], file, nulls);
+                end
+                series = cellfun(@(v) double(v(:).'), read{1}(:).', 'UniformOutput', false);
+            else                                    % a series per row of the float columns
+                samples = vars(types ~= "string");
+                sampleTypes = types(types ~= "string");
+                other = find(~ismember(sampleTypes, ["double", "single"]), 1);
+                if ~isempty(other)
+                    kind = sampleTypes(other);
+                    if ismissing(kind)
+                        kind = "of a type parquetread cannot read";
+                    end
+                    error('dtwc:ioError', ['load: failed to read ''%s'': Parquet column ''%s'' is %s, ' ...
+                          'neither Float32/Float64 nor Utf8/LargeUtf8, so it cannot be a sample of the ' ...
+                          'series each row holds; drop the leading columns with --skip-cols (SkipCols), ' ...
+                          'or read one column with --column.'], file, samples{other}, kind);
+                end
+                read = dtwc.Dataset.read_columns(file, [samples, label], skipRows);
+                rows = zeros(numel(read{1}), numel(samples));
+                for j = 1:numel(samples)
+                    rows(:, j) = double(read{j});
+                end
+                series = num2cell(rows, 2).';
+            end
+            names = arrayfun(@(i) sprintf('series_%d', i), first + (0:numel(series) - 1), ...
+                             'UniformOutput', false);
+            if ~isempty(label)
+                given = read{end}(:).';
+                named = ~ismissing(given);
+                names(named) = cellstr(given(named));
+            end
+        end
+
+        function values = read_columns(file, vars, skipRows)
+        %READ_COLUMNS The contents of FILE's columns VARS, in that order, less their first SKIPROWS
+        %   rows. Taken by position: parquetread renames a column that is no MATLAB identifier. A
+        %   read failure is dtwc:ioError naming the file.
+            try
+                columns = parquetread(file, 'SelectedVariableNames', vars);
+            catch cause
+                error('dtwc:ioError', 'load: failed to read ''%s'': %s', file, cause.message);
+            end
+            values = cell(1, numel(vars));
+            for k = 1:numel(vars)
+                values{k} = columns{min(skipRows, end) + 1:end, k};
+            end
         end
     end
 end

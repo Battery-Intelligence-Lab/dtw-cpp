@@ -1,5 +1,5 @@
 %> @file dunn.m
-%> @brief Dunn index (api-contract-2.0.md §2.4 canonical name).
+%> @brief Dunn index.
 %> @author Volkan Kumtepeli
 function di = dunn(prob)
 %DUNN Compute the Dunn index (higher is better).

@@ -1,5 +1,5 @@
 %> @file adjusted_rand.m
-%> @brief Adjusted Rand index (api-contract-2.0.md §2.4 canonical name).
+%> @brief Adjusted Rand index.
 %> @author Volkan Kumtepeli
 function ari = adjusted_rand(labels_true, labels_pred)
 %ADJUSTED_RAND Adjusted Rand index between two labelings (in [-1, 1]).

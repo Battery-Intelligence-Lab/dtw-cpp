@@ -2,8 +2,9 @@
  * @file test_env_device.cpp
  * @brief The process-wide device: dtwc::device(name) / dtwc::device().
  *
- * @details Drives the live entry points. The messages are the frozen contract,
- * declared before any check:
+ * @details Drives the live entry points. The messages are pinned verbatim (the
+ * bindings pass them through; the CLI and MATLAB tests quote them), declared
+ * before any check:
  *   - an unknown name lists the valid names,
  *   - `gpu` on a build with no GPU backend names the CMake flag,
  *   - `hpc` / `hpc:gpu` name Python's dtwcpp.device("hpc") and slurm_remote.sh.

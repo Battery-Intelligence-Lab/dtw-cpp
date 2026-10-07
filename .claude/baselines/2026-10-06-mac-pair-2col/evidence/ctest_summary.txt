@@ -1,0 +1,10 @@
+== ctest k1b
+18/95 Test #18: test_cuda_correctness .....................***Skipped   0.32 sec
+100% tests passed out of 95
+Total Test time (real) =  64.15 sec
+	 18 - test_cuda_correctness (Skipped)
+== ctest head2
+18/95 Test #18: test_cuda_correctness .....................***Skipped   0.48 sec
+100% tests passed out of 95
+Total Test time (real) =  67.18 sec
+	 18 - test_cuda_correctness (Skipped)

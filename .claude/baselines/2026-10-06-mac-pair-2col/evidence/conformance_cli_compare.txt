@@ -1,0 +1,14 @@
+== k1 against base
+conformance: regenerated reference byte-identical to base
+conformance vs tracked reference (base build): 2 differing lines
+< silhouette,0.9689497276433483
+> silhouette,0.96894972764334841
+dtwc_cl: 60 output files compared, 0 differing
+dtwc_cl logs (timing line and output path aside): 16 runs compared, 0 differing
+== head against base
+conformance: regenerated reference byte-identical to base
+conformance vs tracked reference (base build): 2 differing lines
+< silhouette,0.9689497276433483
+> silhouette,0.96894972764334841
+dtwc_cl: 60 output files compared, 0 differing
+dtwc_cl logs (timing line and output path aside): 16 runs compared, 0 differing

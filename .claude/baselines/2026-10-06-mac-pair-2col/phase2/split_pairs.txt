@@ -1,0 +1,72 @@
+base p0 dtw_banded f64 L1  13 insns at 56 mod 64, 0 split, 15 insns at 20 mod 64, 1 split  speed-up of its shapes against base: -
+base p0 dtw_banded f64 Sq  14 insns at 20 mod 64, 0 split, 16 insns at 52 mod 64, 0 split  speed-up of its shapes against base: -
+base p0 dtw_banded f32 L1  13 insns at 4 mod 64, 0 split, 15 insns at 32 mod 64, 0 split  speed-up of its shapes against base: -
+base p0 dtw_banded f32 Sq  14 insns at 16 mod 64, 0 split, 16 insns at 48 mod 64, 0 split  speed-up of its shapes against base: -
+base p0 dtw_linear f64 L1  13 insns at 52 mod 64, 0 split, 15 insns at 40 mod 64, 0 split  speed-up of its shapes against base: -
+base p0 dtw_linear f64 Sq  14 insns at 40 mod 64, 1 split, 16 insns at 36 mod 64, 0 split  speed-up of its shapes against base: -
+base p0 dtw_linear f32 L1  13 insns at 0 mod 64, 0 split, 15 insns at 52 mod 64, 0 split  speed-up of its shapes against base: -
+base p0 dtw_linear f32 Sq  14 insns at 36 mod 64, 0 split, 16 insns at 32 mod 64, 1 split  speed-up of its shapes against base: -
+base p1 dtw_banded f64 L1  13 insns at 0 mod 64, 0 split, 15 insns at 0 mod 64, 0 split  speed-up of its shapes against base: -
+base p1 dtw_banded f64 Sq  14 insns at 0 mod 64, 0 split, 16 insns at 0 mod 64, 0 split  speed-up of its shapes against base: -
+base p1 dtw_banded f32 L1  13 insns at 0 mod 64, 0 split, 15 insns at 0 mod 64, 0 split  speed-up of its shapes against base: -
+base p1 dtw_banded f32 Sq  14 insns at 0 mod 64, 0 split, 16 insns at 0 mod 64, 0 split  speed-up of its shapes against base: -
+base p1 dtw_linear f64 L1  13 insns at 0 mod 64, 0 split, 15 insns at 0 mod 64, 0 split  speed-up of its shapes against base: -
+base p1 dtw_linear f64 Sq  14 insns at 0 mod 64, 0 split, 16 insns at 0 mod 64, 0 split  speed-up of its shapes against base: -
+base p1 dtw_linear f32 L1  13 insns at 0 mod 64, 0 split, 15 insns at 0 mod 64, 0 split  speed-up of its shapes against base: -
+base p1 dtw_linear f32 Sq  14 insns at 0 mod 64, 0 split, 16 insns at 0 mod 64, 0 split  speed-up of its shapes against base: -
+base p2 dtw_banded f64 L1  13 insns at 60 mod 64, 0 split, 15 insns at 24 mod 64, 0 split  speed-up of its shapes against base: -
+base p2 dtw_banded f64 Sq  14 insns at 24 mod 64, 0 split, 16 insns at 56 mod 64, 0 split  speed-up of its shapes against base: -
+base p2 dtw_banded f32 L1  13 insns at 8 mod 64, 0 split, 15 insns at 36 mod 64, 1 split  speed-up of its shapes against base: -
+base p2 dtw_banded f32 Sq  14 insns at 20 mod 64, 0 split, 16 insns at 52 mod 64, 0 split  speed-up of its shapes against base: -
+base p2 dtw_linear f64 L1  13 insns at 56 mod 64, 0 split, 15 insns at 44 mod 64, 1 split  speed-up of its shapes against base: -
+base p2 dtw_linear f64 Sq  14 insns at 44 mod 64, 0 split, 16 insns at 40 mod 64, 1 split  speed-up of its shapes against base: -
+base p2 dtw_linear f32 L1  13 insns at 4 mod 64, 0 split, 15 insns at 56 mod 64, 0 split  speed-up of its shapes against base: -
+base p2 dtw_linear f32 Sq  14 insns at 40 mod 64, 1 split, 16 insns at 36 mod 64, 0 split  speed-up of its shapes against base: -
+k1   p0 dtw_banded f64 L1  13 insns at 32 mod 64, 0 split                                speed-up of its shapes against base: 1.00-1.17
+k1   p0 dtw_banded f64 Sq  14 insns at 32 mod 64, 1 split                                speed-up of its shapes against base: 0.71-0.93
+k1   p0 dtw_banded f32 L1  13 insns at 40 mod 64, 0 split                                speed-up of its shapes against base: 1.00-1.09
+k1   p0 dtw_banded f32 Sq  14 insns at 24 mod 64, 0 split                                speed-up of its shapes against base: 1.00-1.00
+k1   p0 dtw_linear f64 L1  21 insns at 12 mod 64, 0 split, 13 insns at 12 mod 64, 0 split  speed-up of its shapes against base: 1.46-1.98
+k1   p0 dtw_linear f64 Sq  23 insns at 52 mod 64, 0 split, 14 insns at 4 mod 64, 0 split  speed-up of its shapes against base: 1.47-1.92
+k1   p0 dtw_linear f32 L1  21 insns at 20 mod 64, 0 split, 13 insns at 20 mod 64, 0 split  speed-up of its shapes against base: 1.48-1.97
+k1   p0 dtw_linear f32 Sq  23 insns at 60 mod 64, 0 split, 14 insns at 12 mod 64, 0 split  speed-up of its shapes against base: 1.48-1.93
+k1   p1 dtw_banded f64 L1  13 insns at 0 mod 64, 0 split                                 speed-up of its shapes against base: 0.99-1.00
+k1   p1 dtw_banded f64 Sq  14 insns at 0 mod 64, 0 split                                 speed-up of its shapes against base: 1.00-1.01
+k1   p1 dtw_banded f32 L1  13 insns at 0 mod 64, 0 split                                 speed-up of its shapes against base: 1.00-1.01
+k1   p1 dtw_banded f32 Sq  14 insns at 0 mod 64, 0 split                                 speed-up of its shapes against base: 1.00-1.00
+k1   p1 dtw_linear f64 L1  21 insns at 0 mod 64, 0 split, 13 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.51-1.97
+k1   p1 dtw_linear f64 Sq  23 insns at 0 mod 64, 1 split, 14 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.15-1.40
+k1   p1 dtw_linear f32 L1  21 insns at 0 mod 64, 0 split, 13 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.51-1.96
+k1   p1 dtw_linear f32 Sq  23 insns at 0 mod 64, 1 split, 14 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.15-1.40
+k1   p2 dtw_banded f64 L1  13 insns at 36 mod 64, 1 split                                speed-up of its shapes against base: 0.71-0.89
+k1   p2 dtw_banded f64 Sq  14 insns at 36 mod 64, 0 split                                speed-up of its shapes against base: 0.93-1.04
+k1   p2 dtw_banded f32 L1  13 insns at 44 mod 64, 1 split                                speed-up of its shapes against base: 0.86-1.00
+k1   p2 dtw_banded f32 Sq  14 insns at 28 mod 64, 0 split                                speed-up of its shapes against base: 0.99-1.03
+k1   p2 dtw_linear f64 L1  21 insns at 16 mod 64, 1 split, 13 insns at 16 mod 64, 0 split  speed-up of its shapes against base: 1.42-1.97
+k1   p2 dtw_linear f64 Sq  23 insns at 56 mod 64, 0 split, 14 insns at 8 mod 64, 0 split  speed-up of its shapes against base: 1.15-1.41
+k1   p2 dtw_linear f32 L1  21 insns at 24 mod 64, 0 split, 13 insns at 24 mod 64, 0 split  speed-up of its shapes against base: 1.48-1.97
+k1   p2 dtw_linear f32 Sq  23 insns at 0 mod 64, 1 split, 14 insns at 16 mod 64, 0 split  speed-up of its shapes against base: 1.14-1.40
+head p0 dtw_banded f64 L1  25 insns at 60 mod 64, 0 split, 21 insns at 0 mod 64, 0 split, 13 insns at 48 mod 64, 0 split  speed-up of its shapes against base: 1.26-2.49
+head p0 dtw_banded f64 Sq  27 insns at 16 mod 64, 0 split, 23 insns at 28 mod 64, 0 split, 14 insns at 32 mod 64, 1 split  speed-up of its shapes against base: 1.25-1.92
+head p0 dtw_banded f32 L1  25 insns at 40 mod 64, 0 split, 21 insns at 44 mod 64, 1 split, 13 insns at 28 mod 64, 0 split  speed-up of its shapes against base: 0.92-2.36
+head p0 dtw_banded f32 Sq  27 insns at 44 mod 64, 0 split, 23 insns at 56 mod 64, 0 split, 14 insns at 60 mod 64, 0 split  speed-up of its shapes against base: 0.90-1.61
+head p0 dtw_linear f64 L1  21 insns at 52 mod 64, 0 split, 13 insns at 52 mod 64, 0 split  speed-up of its shapes against base: 1.46-1.98
+head p0 dtw_linear f64 Sq  23 insns at 12 mod 64, 0 split, 14 insns at 28 mod 64, 0 split  speed-up of its shapes against base: 1.46-1.92
+head p0 dtw_linear f32 L1  21 insns at 32 mod 64, 0 split, 13 insns at 32 mod 64, 0 split  speed-up of its shapes against base: 1.48-1.97
+head p0 dtw_linear f32 Sq  23 insns at 56 mod 64, 0 split, 14 insns at 8 mod 64, 0 split  speed-up of its shapes against base: 1.15-1.40
+head p1 dtw_banded f64 L1  38 insns at 12 mod 64, 0 split, 21 insns at 0 mod 64, 0 split, 13 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.24-2.52
+head p1 dtw_banded f64 Sq  39 insns at 12 mod 64, 0 split, 23 insns at 0 mod 64, 1 split, 14 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 0.98-1.57
+head p1 dtw_banded f32 L1  38 insns at 12 mod 64, 0 split, 21 insns at 0 mod 64, 0 split, 13 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 0.95-2.52
+head p1 dtw_banded f32 Sq  39 insns at 12 mod 64, 0 split, 23 insns at 0 mod 64, 1 split, 14 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 0.85-1.57
+head p1 dtw_linear f64 L1  21 insns at 0 mod 64, 0 split, 13 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.51-1.98
+head p1 dtw_linear f64 Sq  23 insns at 0 mod 64, 1 split, 14 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.15-1.40
+head p1 dtw_linear f32 L1  21 insns at 0 mod 64, 0 split, 13 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.51-1.97
+head p1 dtw_linear f32 Sq  23 insns at 0 mod 64, 1 split, 14 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.15-1.40
+head p2 dtw_banded f64 L1  25 insns at 0 mod 64, 0 split, 21 insns at 4 mod 64, 0 split, 13 insns at 52 mod 64, 0 split  speed-up of its shapes against base: 1.28-2.37
+head p2 dtw_banded f64 Sq  27 insns at 20 mod 64, 0 split, 23 insns at 32 mod 64, 1 split, 14 insns at 36 mod 64, 0 split  speed-up of its shapes against base: 0.90-1.45
+head p2 dtw_banded f32 L1  25 insns at 44 mod 64, 1 split, 21 insns at 48 mod 64, 0 split, 13 insns at 32 mod 64, 0 split  speed-up of its shapes against base: 1.28-2.22
+head p2 dtw_banded f32 Sq  27 insns at 48 mod 64, 0 split, 23 insns at 60 mod 64, 0 split, 14 insns at 0 mod 64, 0 split  speed-up of its shapes against base: 1.06-1.99
+head p2 dtw_linear f64 L1  21 insns at 56 mod 64, 0 split, 13 insns at 56 mod 64, 0 split  speed-up of its shapes against base: 1.45-1.98
+head p2 dtw_linear f64 Sq  23 insns at 16 mod 64, 0 split, 14 insns at 32 mod 64, 1 split  speed-up of its shapes against base: 1.14-1.41
+head p2 dtw_linear f32 L1  21 insns at 36 mod 64, 1 split, 13 insns at 36 mod 64, 1 split  speed-up of its shapes against base: 1.09-1.41
+head p2 dtw_linear f32 Sq  23 insns at 60 mod 64, 0 split, 14 insns at 12 mod 64, 0 split  speed-up of its shapes against base: 1.46-1.92

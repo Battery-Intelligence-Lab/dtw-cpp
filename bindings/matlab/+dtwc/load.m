@@ -1,8 +1,8 @@
 %> @file load.m
-%> @brief Lazy dataset loader (api-contract-2.0.md §1.2).
+%> @brief Lazy dataset loader.
 %> @author Volkan Kumtepeli
 function ds = load(source, varargin)
-%LOAD A lazy dtwc.Dataset of a path or of series already in memory (contract §1.2).
+%LOAD A lazy dtwc.Dataset of a path or of series already in memory.
 %
 %   ds = dtwc.load('cycles.csv', 'SkipCols', 1, 'SkipRows', 1)
 %   ds = dtwc.load('cycles/')            % a folder: one series per file
@@ -10,10 +10,10 @@ function ds = load(source, varargin)
 %   ds = dtwc.load(X)                    % N x L numeric matrix, one series per row
 %   ds = dtwc.load({x1, x2, x3})         % cell of numeric vectors, any lengths
 %
-%   SkipCols : leading fields of each line (a path) or values of each series
-%              (in memory) dropped. Default 0.
-%   SkipRows : leading lines of a file, or leading series in memory (one
-%              memory row is one file line). Default 0.
+%   SkipCols : leading fields of each line, or columns of a Parquet file (a
+%              path), or values of each series (in memory) dropped. Default 0.
+%   SkipRows : leading lines of a file, rows of a Parquet file, or leading
+%              series in memory (one memory row is one file line). Default 0.
 %   Delimiter: the field delimiter of text; '' (default) infers it from the
 %              extension (tab for .tsv and .txt, else comma).
 %   Name     : the name of the run and of its result files; '' (default) is

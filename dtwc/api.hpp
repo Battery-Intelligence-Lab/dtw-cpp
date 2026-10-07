@@ -105,7 +105,7 @@ private:
   friend Result run(const Config &, Data);
 
   Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
-         Method method, int iterations, bool converged);
+         Method method, int iterations, bool converged, std::vector<std::string> streamed_names);
 
   std::shared_ptr<Problem> problem_;
   double cost_ = 0.0;
@@ -113,6 +113,7 @@ private:
   Method method_{};
   int iterations_ = 0;
   bool converged_ = false;
+  std::vector<std::string> streamed_names_; ///< a RAM-limited run's series names, which its Problem cannot hold
 };
 
 /**

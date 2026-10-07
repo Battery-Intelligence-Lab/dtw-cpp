@@ -1,15 +1,16 @@
 function tests = test_contract_parity
-%TEST_CONTRACT_PARITY MATLAB-column parity gate for docs/api-contract-2.0.md.
+%TEST_CONTRACT_PARITY MATLAB parity gate for the documented Tier-1 and Tier-2 API.
 %
-%   Asserts that EVERY symbol in the MATLAB column of the FROZEN API contract
-%   (docs/api-contract-2.0.md) is present and callable through the +dtwc package
-%   / dtwc_mex gateway. This is the Phase 2 Task 2.2 parity gate: it drives the
-%   real public entry points (Tier-1 device/load/cluster/Result, Tier-2 Problem
-%   setters+methods, scores, algorithms, distance functions, and the §2.7
-%   checkpoint surface), not dead siblings.
+%   Asserts that every public name the Tier-1 and Tier-2 pages
+%   (docs/content/api/tier-1.md, tier-2.md) document for MATLAB is present and
+%   callable through the +dtwc package / dtwc_mex gateway. This is the Phase 2
+%   Task 2.2 parity gate: it drives the real public entry points (Tier-1
+%   device/load/cluster/Result, Tier-2 Problem setters+methods, scores,
+%   algorithms, distance functions, and the checkpoint surface), not dead
+%   siblings.
 %
-%   Each test comment names the contract section and the public entry point it
-%   exercises (LESSONS: tests pin the live code path).
+%   Each test comment names the public entry point it exercises (LESSONS: tests
+%   pin the live code path).
 %
 %   Run with: results = runtests('test_contract_parity');
 %   (Requires the compiled dtwc_mex on the path; otherwise every test is SKIPPED
@@ -55,30 +56,46 @@ function prob = make_filled_problem(testCase)
 end
 
 % =========================================================================
-%  Tier 1 (contract §1)
+%  Tier 1
 % =========================================================================
 
+function test_version_matches_ssot(testCase)
+%   The MEX reports the repository's VERSION file.
+    repoRoot = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+    expected = strtrim(fileread(fullfile(repoRoot, 'VERSION')));
+    verifyEqual(testCase, dtwc_mex('version'), expected);
+end
+
+function test_diagnostics_return_the_cpp_report_fields(testCase)
+%   The MEX copies each C++ report into a struct by hand; what the fields say
+%   is tests/unit/test_test_api.cpp's.
+    verifyEqual(testCase, ...
+        {sort(fieldnames(dtwc.test.parallelisation())'), sort(fieldnames(dtwc.test.gpu())')}, ...
+        {sort({'available', 'max_threads', 'threads_engaged', 'pass', 'reason'}), ...
+         sort({'available', 'backend', 'device_name', 'validated', 'pass', 'reason'})});
+end
+
 function test_tier1_device_get_set(testCase)
-%   §1.1 dtwc.device -> MEX set_device/get_device -> dtwc::device().
+%   dtwc.device -> MEX set_device/get_device -> dtwc::device().
     name = dtwc.device('cpu');
     verifyEqual(testCase, name, 'cpu');
     verifyEqual(testCase, dtwc.device(), 'cpu');
 end
 
 function test_tier1_device_unknown_raises_deviceError(testCase)
-%   §5/§6 no silent fallback: an unknown device name -> dtwc:deviceError.
+%   No silent fallback: an unknown device name -> dtwc:deviceError.
     verifyError(testCase, @() dtwc.device('definitely_not_a_device'), 'dtwc:deviceError');
 end
 
 function test_tier1_load_matrix_and_options(testCase)
-%   §1.2 dtwc.load -> dtwc.Dataset (lazy handle, no I/O for a matrix source).
+%   dtwc.load -> dtwc.Dataset (lazy handle, no I/O for a matrix source).
     ds = dtwc.load(testCase.TestData.X, 'SkipCols', 0, 'Delimiter', '', 'Name', 'ptest');
     verifyClass(testCase, ds, 'dtwc.Dataset');
     verifyEqual(testCase, ds.Name, 'ptest');
 end
 
 function test_tier1_load_skip_rows(testCase)
-%   §1.2 skip_rows: header LINES for a path, leading SERIES for a matrix.
+%   skip_rows: header LINES for a path, leading SERIES for a matrix.
     ds = dtwc.load(testCase.TestData.X, 'SkipRows', 2);
     verifyEqual(testCase, ds.SkipRows, 2);
 
@@ -98,7 +115,7 @@ function test_tier1_load_skip_rows(testCase)
 end
 
 function test_tier1_load_negative_skip_rows_rejected(testCase)
-%   §1.2 SkipRows is checked exactly as SkipCols is, where the handle is made,
+%   SkipRows is checked exactly as SkipCols is, where the handle is made,
 %   before any file is read; the MEX reader keeps its own guard (C++'s words).
     for key = {'SkipCols', 'SkipRows'}
         err = capture_error(@() dtwc.load(testCase.TestData.X, key{1}, -1));
@@ -111,7 +128,7 @@ function test_tier1_load_negative_skip_rows_rejected(testCase)
 end
 
 function test_tier1_cluster_returns_result(testCase)
-%   §1.3 dtwc.cluster -> §1.4 dtwc.Result (Tier-1 pam path).
+%   dtwc.cluster -> dtwc.Result (Tier-1 pam path).
     res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, ...
                        'Method', 'pam', 'Band', -1, 'MaxIter', 50);
     verifyClass(testCase, res, 'dtwc.Result');
@@ -364,14 +381,14 @@ function test_fast_pam_mex_rejects_invalid_seed_before_cast(testCase)
 end
 
 function test_tier1_cluster_unknown_method_raises(testCase)
-%   §1.3 unknown method -> dtwc:invalidArgument (never silently PAM).
+%   Unknown method -> dtwc:invalidArgument (never silently PAM).
     verifyError(testCase, ...
         @() dtwc.cluster(testCase.TestData.X, 2, 'Method', 'no_such_method'), ...
         'dtwc:invalidArgument');
 end
 
 function test_tier1_result_score_names(testCase)
-%   §1.4 Result.score(name) for every accepted score name.
+%   Result.score(name) for every accepted score name.
     res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k);
     for nm = {'silhouette', 'davies_bouldin', 'dunn', 'calinski_harabasz', 'inertia'}
         s = res.score(nm{1});
@@ -382,7 +399,7 @@ function test_tier1_result_score_names(testCase)
 end
 
 function test_tier1_result_save_and_plot(testCase)
-%   §1.4 Result.save(dir) writes the 4 CSVs; Result.plot() renders (headless).
+%   Result.save(dir) writes the 4 CSVs; Result.plot() renders (headless).
     res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k);
     outdir = fullfile(tempdir, ['dtwc_parity_' num2str(feature('getpid'))]);
     res.save(outdir);
@@ -397,7 +414,7 @@ function test_tier1_result_save_and_plot(testCase)
 end
 
 function test_tier1_dtwclustering_device_param(testCase)
-%   §1.5 DTWClustering gains a Device parameter (delegates to dtwc::device()).
+%   DTWClustering gains a Device parameter (delegates to dtwc::device()).
     c = dtwc.DTWClustering('NClusters', 2, 'Device', 'cpu');
     verifyEqual(testCase, c.Device, 'cpu');
     c = c.fit(testCase.TestData.X);
@@ -408,7 +425,7 @@ function test_device_names_are_read_by_the_cpp_grammar(testCase)
 %   FX-17: MATLAB has no device grammar of its own. dtwc.device and
 %   Problem.set_device read a name with C++ dtwc::detail::parse_device (it
 %   trims and ignores case) and report it as C++ dtwc::device() does, so a
-%   malformed ordinal is the §6.1 DeviceError, verbatim, on every build.
+%   malformed ordinal is C++'s DeviceError, verbatim, on every build.
 %   DTWClustering's str2double ordinal parser (gpu_index) is gone.
     previous = dtwc.device();
     restore = onCleanup(@() dtwc.device(previous)); %#ok<NASGU>
@@ -452,11 +469,11 @@ function test_hpc_is_a_device_error_as_in_cpp(testCase)
 end
 
 % =========================================================================
-%  Tier 2 — Problem config setters (contract §2.1)
+%  Tier 2 — Problem config setters
 % =========================================================================
 
 function test_problem_setters_all_callable(testCase)
-%   §2.1 every MATLAB-column setter on dtwc.Problem.
+%   Every MATLAB-column setter on dtwc.Problem.
     prob = dtwc.Problem('setters');
     prob.set_data(testCase.TestData.X);
     prob.set_n_clusters(2);
@@ -477,7 +494,7 @@ function test_problem_setters_all_callable(testCase)
 end
 
 function test_problem_set_mip_settings_roundtrip(testCase)
-%   §2.1 set_mip_settings(struct) + get_mip_settings (MIPSettings).
+%   set_mip_settings(struct) + get_mip_settings (MIPSettings).
     prob = dtwc.Problem('mip');
     s = struct('mip_gap', 1e-4, 'time_limit_sec', 30, 'warm_start', false);
     prob.set_mip_settings(s);
@@ -488,7 +505,7 @@ function test_problem_set_mip_settings_roundtrip(testCase)
 end
 
 function test_problem_set_mip_settings_lr_max_nodes(testCase)
-%   §2.1 lr_max_nodes round-trips and rejects a non-integer, as other int fields do.
+%   lr_max_nodes round-trips and rejects a non-integer, as other int fields do.
     prob = dtwc.Problem('lr_nodes');
     verifyEqual(testCase, prob.get_mip_settings().lr_max_nodes, 2000000);
     prob.set_mip_settings(struct('lr_max_nodes', 12345));
@@ -499,7 +516,7 @@ function test_problem_set_mip_settings_lr_max_nodes(testCase)
 end
 
 function test_problem_set_data_ragged(testCase)
-%   §2.1 data (owning): ragged input via a cell array of numeric vectors.
+%   Ragged input via a cell array of numeric vectors.
     prob = dtwc.Problem('ragged');
     C = {[1 2 3 4], [1 2 3 4 5 6], [9 9 9]};
     prob.set_data(C);
@@ -507,7 +524,7 @@ function test_problem_set_data_ragged(testCase)
 end
 
 function test_problem_set_data_names(testCase)
-%   §2.1 series names alongside the data matrix.
+%   Series names alongside the data matrix.
     prob = dtwc.Problem('named');
     names = {'a', 'b', 'c', 'd', 'e', 'f'};
     prob.set_data(testCase.TestData.X, names);
@@ -515,7 +532,7 @@ function test_problem_set_data_names(testCase)
 end
 
 function test_problem_set_data_ndim_multivariate(testCase)
-%   §2.1 ndim multivariate (interleaved layout); L must be divisible by ndim.
+%   ndim multivariate (interleaved layout); L must be divisible by ndim.
     prob = dtwc.Problem('mv');
     prob.set_data(testCase.TestData.X, {}, 2);   % 8 cols -> 4 timesteps x 2 features
     verifyEqual(testCase, prob.size(), 6);
@@ -524,11 +541,11 @@ function test_problem_set_data_ndim_multivariate(testCase)
 end
 
 % =========================================================================
-%  Tier 2 — Problem distance-matrix & clustering methods (contract §2.2)
+%  Tier 2 — Problem distance-matrix & clustering methods
 % =========================================================================
 
 function test_problem_methods_all_callable(testCase)
-%   §2.2 refresh/read/max_distance/dist_by_ind/fill/distance_matrix/set/cluster.
+%   refresh/read/max_distance/dist_by_ind/fill/distance_matrix/set/cluster.
     prob = dtwc.Problem('methods');
     prob.set_data(testCase.TestData.X);
     prob.fill_distance_matrix();
@@ -546,7 +563,7 @@ function test_problem_methods_all_callable(testCase)
     prob.cluster();
     verifyGreaterThanOrEqual(testCase, prob.find_total_cost(), 0);
 
-    % Remaining §2.2 methods exercised as isolated callable live paths.
+    % Remaining methods exercised as isolated callable live paths.
     prob.set_distance_matrix(D);
     prob.refresh_distance_matrix();             % clears cached matrix
     csvpath = fullfile(tempdir, 'dtwc_parity_D.csv');
@@ -572,7 +589,7 @@ function test_problem_semantic_setters_invalidate_dense_cache(testCase)
 end
 
 function test_problem_read_accessors(testCase)
-%   §2.2 read accessors: size / n_clusters / name / labels / medoids.
+%   Read accessors: size / n_clusters / name / labels / medoids.
     prob = make_filled_problem(testCase);
     verifyEqual(testCase, prob.size(), 6);
     verifyEqual(testCase, prob.n_clusters(), 2);
@@ -582,12 +599,12 @@ function test_problem_read_accessors(testCase)
 end
 
 % =========================================================================
-%  Tier 2 — scores (contract §2.4, canonical snake_case names)
+%  Tier 2 — scores (canonical snake_case names)
 % =========================================================================
 
 function test_scores_canonical_names(testCase)
-%   §2.4 silhouette/davies_bouldin/dunn/inertia/calinski_harabasz/adjusted_rand/
-%        normalized_mutual_info.
+%   silhouette/davies_bouldin/dunn/inertia/calinski_harabasz/adjusted_rand/
+%   normalized_mutual_info.
     prob = make_filled_problem(testCase);
     verifyNumElements(testCase, dtwc.silhouette(prob), 6);
     verifyTrue(testCase, isscalar(dtwc.davies_bouldin(prob)));
@@ -602,11 +619,11 @@ function test_scores_canonical_names(testCase)
 end
 
 % =========================================================================
-%  Tier 2 — algorithm free functions (contract §2.5)
+%  Tier 2 — algorithm free functions
 % =========================================================================
 
 function test_algorithms_all_callable(testCase)
-%   §2.5 fast_pam / fast_clara / build_dendrogram / cut_dendrogram.
+%   fast_pam / fast_clara / build_dendrogram / cut_dendrogram.
     prob = dtwc.Problem('algos');
     prob.set_data(testCase.TestData.X);
     prob.fill_distance_matrix();
@@ -623,11 +640,11 @@ function test_algorithms_all_callable(testCase)
 end
 
 % =========================================================================
-%  Tier 2 — checkpoint / resume (contract §2.7)
+%  Tier 2 — checkpoint / resume
 % =========================================================================
 
 function test_checkpoint_dir_roundtrip(testCase)
-%   §2.7 CheckpointOptions / save_checkpoint / load_checkpoint.
+%   CheckpointOptions / save_checkpoint / load_checkpoint.
     opts = dtwc.CheckpointOptions('directory', tempdir, 'enabled', true);
     verifyTrue(testCase, isstruct(opts) && islogical(opts.enabled));
 

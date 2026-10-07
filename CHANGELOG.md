@@ -14,10 +14,60 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   the subgradient root of a build without HiGHS (the wheel) is 3.5–7.3× faster at 800 to 3,200 series and
   `dtwc_cl -m lrcore` 1.4–4.7× faster end to end (3,200 series on a line metric: 45.9 s → 10.5 s); the Kelley root of
   a build with HiGHS is 1.2–1.5× faster there. Below 280 series nothing changes. Every result is unchanged, bit for bit.
+- **Changed (performance):** the one-pair DTW kernel without a band computes two columns of the cost matrix per
+  pass, two dependency chains where it ran one. It serves every pair of unequal length in a distance matrix, every
+  variant other than the equal-length Standard fill (ADTW, WDTW, Soft-DTW, the missing-data strategies) and
+  `dtwcpp.dtw`: on an Apple M5 Pro a single unbanded pair runs 1.14–1.98× faster (`float64` L1 1.42–1.98×) and the
+  distance matrix of 1000 series of lengths 90–110 1.42–1.50× faster (18 threads). The banded kernel and the
+  equal-length lanes keep their code, and every result is unchanged, bit for bit. The early-abandon test of both
+  one-pair kernels is now fixed at compile time, so no optimisation level leaves it in the inner loop.
+- **Docs:** the Tier-1 and Tier-2 API pages are written by hand from today's code, C++, Python and MATLAB side by
+  side, with the error types, the precision rules and the `.dtwm` cache; the migration page covers v1.0.0's C++
+  library and `dtwc_cl` (each v1 name and flag, the behaviour to check, a v1 distance-matrix CSV's `-1` entries) and
+  says the Python and MATLAB packages are new. `docs/api-contract-2.0.md`, the 2.0.0rc1 release page and the
+  generated LR-core page's sources are gone; the LR-core page says what was measured of the Kelley and subgradient
+  roots; the two derivation notes describe today's kernels and the L1 LB_Keogh only; the 2.1 page lists what 2.0
+  has not yet been shown to do.
+- **Changed (Python):** series in memory are named as C++ names them after `skip_rows`: `dtwcpp.load(rows,
+  skip_rows=1)` names the series left `0`, `1`, ..., as C++ `dtwc::load` and MATLAB's `dtwc.load` do; they were
+  numbered from where they stood before the drop (`1`, `2`, ...), and a dropped series was read and checked first (an
+  empty one was refused). A DataFrame's index and an Arrow array's names stay theirs.
+- **Changed (C++, CLI, Python, MATLAB):** a Parquet file holds many series, read by one rule in every language. The
+  first Float32/Float64 column or list of them decides: a list column is one series per row; a scalar column is one
+  series, named by its file, when it is the file's only Float32/Float64 column, and otherwise each row is a series of
+  its values in the file's columns, as a CSV row is read (string columns aside; any other column, an integer id say,
+  is an `IOError` naming it and the two ways out, `--skip-cols` and `--column`). `--column` reads one column. The
+  file's first string column names the rows, a null as `series_<i>`; without one they are `series_<i>`, numbered
+  across a folder's files. `--skip-cols` and `--skip-rows` (`skip_cols`, `skip_rows`; `SkipCols`, `SkipRows`), refused
+  for Parquet before, drop its leading columns and rows as they drop a CSV row's leading fields and a CSV file's
+  leading lines; a dropped column names nothing. The file `dtwcpp.io.save_dataset_parquet` writes (a column per time
+  step) reads back as its N series, named `series_<i>`, and RAM-limited FastCLARA streams the row layout too, its
+  result files carrying the reader's names. C++ and MATLAB read such a file as one series, its first column, and
+  named every list row `series_<i>`; Python took the first list column, named its rows by the first string column,
+  and refused a folder whose files hold different columns.
+- **Fixed (C++, Python):** an Arrow list array that is a slice (its offset set, as pyarrow exports `arr.slice(1)`) is
+  read from its offset by `dtwc::io::data_from_arrow` and so by Python's in-memory Arrow route; the array's first
+  rows were read instead.
+- **Fixed (Python):** `dtwcpp.load(dataset, ...)` with an option other than its default (`skip_cols`, `skip_rows`,
+  `delimiter`, `name`) raises `InvalidInput` naming it, as MATLAB's `dtwc.load` refuses it; it returned the
+  `Dataset` and ignored the option.
+- **Fixed (C++):** `Problem::set_solver(Solver::Gurobi)` on a build without Gurobi prints nothing; it wrote "Solver
+  Gurobi is not available; therefore using default solver" to stdout, so `dtwc_cl --solver gurobi` printed it before
+  its `SolverError`, which names the remedy. It still returns `false` and leaves the solver HiGHS.
+- **Docs/examples:** `examples/cpp/tier1.cpp` replaces `example_new_features.cpp`, which showed the 1.x free
+  functions: one run described by a `dtwc::Config` and run on series in memory, which ctest runs as `example_tier1`
+  when the examples and the tests are built (`-DDTWC_BUILD_EXAMPLES=ON -DDTWC_BUILD_TESTING=ON`). Each
+  `examples/python/*.py` now runs under pytest, and
+  `03_clustering_evaluation.py` prints its medoids' names (`Problem.series_name`) where it printed `N/A`.
+- **Changed (C++, Python):** `BarycenterClusteringOptions` holds a `BarycenterOptions` as `barycenter` instead of
+  copies of its fields (Python: `options.barycenter.max_iter`, not `options.barycenter_max_iter`), and each thread
+  keeps its alignment matrix between calls, as Soft-DTW's gradient does, instead of allocating one per call.
+- **Added (C++):** `Problem::copy_distance_settings_from(other)` gives a `Problem` another's distance settings,
+  device and GPU index, GPU precision and verbosity: what FastCLARA's sample Problems take from their parent.
 - **Changed (performance, AArch64):** on 64-bit Arm (Apple silicon, Arm Linux) the CPU distance-matrix fill and
   OneBatchPAM's batch table compute a series against 16 others of its length at once (32 in `float32`), not 8 (16),
-  and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: about
-  1.4–2.0× single thread on an Apple M5 Pro. Every distance is unchanged, bit for bit; x86-64, the one-pair kernels
+  and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: on an
+  Apple M5 Pro 1.41–2.00× single thread and 1.61–1.69× in an 18-thread fill of equal-length series. Every distance is unchanged, bit for bit; x86-64, the one-pair kernels
   and the other DTW variants are unchanged.
 - **Changed (C++, Python, MATLAB):** `fast_pam` takes its BUILD seed last, `fast_pam(prob, k, max_iter = 100,
   seed = 42)` (Python `seed=`, MATLAB `'Seed'`), and `fast_pam_seeded` is gone: `fast_pam_seeded(prob, k, seed,

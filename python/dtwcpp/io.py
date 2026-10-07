@@ -41,22 +41,100 @@ import numpy as np
 _ARROW_IPC = (".arrow", ".ipc", ".feather")
 
 
-def _read_arrow(path, parquet):
-    """Parquet (each row of the first list column a series, named by the first
-    string column) or an Arrow IPC file (the ``data`` column, named by ``name``,
-    ``ndim`` from the schema metadata) through the installed pyarrow, into the
-    Arrow C stream the compiled-in nanoarrow reads."""
+def _parquet_layout(schema, skip_cols):
+    """Where a Parquet file's series are, by the C++ reader's rule
+    (``resolve_parquet_layout``, dtwc/io/parquet_schema.hpp): ``"one"`` (its one
+    Float32/Float64 column is one series), ``"list"`` (a series per row of a list
+    column) or ``"rows"`` (each row a series of its values in the file's columns,
+    string columns aside), the sample fields, and the first string field, which
+    names the rows of the last two. ``skip_cols`` drops the leading columns."""
+    import pyarrow as pa
+    from dtwcpp import IOError as DtwcIOError
+
+    def is_float(kind):
+        return pa.types.is_float32(kind) or pa.types.is_float64(kind)
+
+    def is_string(kind):
+        return pa.types.is_string(kind) or pa.types.is_large_string(kind)
+
+    def is_list(kind):
+        return (pa.types.is_list(kind) or pa.types.is_large_list(kind)) and is_float(kind.value_type)
+
+    fields = list(schema)[skip_cols:]
+    label = next((field for field in fields if is_string(field.type)), None)
+    first = next((field for field in fields if is_float(field.type) or is_list(field.type)), None)
+    if first is None:
+        after = f" after the {skip_cols} columns --skip-cols drops" if skip_cols else ""
+        raise DtwcIOError(f"No scalar/list Float32 or Float64 column found in Parquet schema{after}. "
+                          "Use --column to specify one.")
+    if is_list(first.type):
+        return "list", [first], label
+    if sum(is_float(field.type) for field in fields) == 1:
+        return "one", [first], None
+    samples = [field for field in fields if not is_string(field.type)]
+    for field in samples:
+        if not is_float(field.type):
+            raise DtwcIOError(
+                f"Parquet column '{field.name}' is {field.type}, neither Float32/Float64 nor Utf8/LargeUtf8, "
+                "so it cannot be a sample of the series each row holds; drop the leading columns with "
+                "--skip-cols (skip_cols), or read one column with --column.")
+    return "rows", samples, label
+
+
+def _read_parquet(files, skip_cols, skip_rows):
+    """Parquet files as one ``data``/``name`` table for nanoarrow, each file by
+    the C++ reader's rule (:func:`_parquet_layout`): ``skip_rows`` drops its
+    leading rows (of its one series, the leading values). One series is named by
+    its file's stem; a row by the string field, a null or no field as
+    ``series_<i>``, numbered on across the files."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from dtwcpp import InvalidInput
+    chunks, names = [], []
+    for file in files:
+        kind, samples, label = _parquet_layout(pq.read_schema(os.fspath(file)), skip_cols)
+        table = pq.read_table(os.fspath(file),
+                              columns=[field.name for field in samples] + ([label.name] if label else []))
+        drop = min(skip_rows, table.num_rows)
+        if kind == "one":
+            values = table.column(samples[0].name).combine_chunks().cast(pa.float64()).slice(drop)
+            chunks.append(pa.LargeListArray.from_arrays([0, len(values)], values))
+            names.append(Path(file).stem)
+            continue
+        if kind == "list":  # chunk by chunk: combined, list<float> offsets overflow past 2**31 - 1 values
+            chunks += table.column(samples[0].name).slice(drop).cast(pa.large_list(pa.float64())).chunks
+        else:
+            columns = [table.column(field.name).slice(drop) for field in samples]
+            for field, column in zip(samples, columns):  # numpy would read a null as NaN; C++ refuses it
+                if column.null_count:
+                    raise InvalidInput(f"Parquet reader: column '{field.name}' contains {column.null_count} "
+                                       "null(s) (drop or fill nulls before clustering).")
+            rows = np.column_stack([column.to_numpy() for column in columns])
+            chunks.append(pa.LargeListArray.from_arrays(np.arange(0, rows.size + 1, len(samples)),
+                                                        pa.array(rows.ravel(), pa.float64())))
+        first = len(names)
+        labels = table.column(label.name).slice(drop).to_pylist() if label else [None] * (table.num_rows - drop)
+        names += [f"series_{first + i}" if name is None else name for i, name in enumerate(labels)]
+    return pa.table({"data": pa.chunked_array(chunks, pa.large_list(pa.float64())),
+                     "name": pa.array(names, pa.string())})
+
+
+def _read_arrow(path, parquet, skip_cols=0, skip_rows=0):
+    """Parquet files, read by the C++ reader's rule (:func:`_read_parquet`), or
+    an Arrow IPC file (the ``data`` column, named by ``name``, ``ndim`` from the
+    schema metadata) through the installed pyarrow, into the Arrow C stream the
+    compiled-in nanoarrow reads."""
     from dtwcpp import IOError as DtwcIOError, _dtwcpp_core
     try:
         import pyarrow as pa
-        import pyarrow.parquet as pq
+        import pyarrow.parquet  # noqa: F401 - _read_parquet's, missing here named with the extra
     except ImportError:
         raise ImportError(
             "Reading Parquet or Arrow IPC needs pyarrow: install \"dtwcpp[parquet]\".") from None
     ndim = 1
     try:
         if parquet:
-            table = pa.concat_tables([pq.read_table(os.fspath(f)) for f in parquet])
+            table = _read_parquet(parquet, skip_cols, skip_rows)
         else:
             with pa.OSFile(os.fspath(path), "rb") as f:
                 table = pa.ipc.open_file(f).read_all()
@@ -101,21 +179,25 @@ def _read_data(source, skip_cols=0, skip_rows=0, delimiter=None):
     .arrow/.ipc/.feather file Arrow IPC, both read through pyarrow; anything
     else is CSV/TSV text, one file (a series per row) or a folder (a series per
     file), read by the C++ reader itself. ``skip_cols`` drops leading fields and
-    ``skip_rows`` leading lines of text; ``delimiter`` None infers it from the
-    extension (tab for .tsv/.txt, else comma). A read failure is
-    :class:`dtwcpp.IOError` naming the file, an option the input cannot honour
-    :class:`dtwcpp.InvalidInput`.
+    ``skip_rows`` leading lines of text, and a Parquet file's leading columns and
+    rows; ``delimiter`` None infers it from the extension (tab for .tsv/.txt,
+    else comma). A read failure is :class:`dtwcpp.IOError` naming the file, an
+    option the input cannot honour :class:`dtwcpp.InvalidInput`, both with the
+    C++ reader's words.
     """
     from dtwcpp import InvalidInput, _dtwcpp_core
     path = os.fspath(source)
     parquet = _dtwcpp_core._parquet_files(path)
     arrow_ipc = os.path.splitext(path)[1].lower() in _ARROW_IPC and not os.path.isdir(path)
     if parquet or arrow_ipc:
-        if skip_cols or skip_rows or delimiter:
-            raise InvalidInput(
-                "load: skip_cols, skip_rows and delimiter parse CSV/TSV text and "
-                "cannot be honoured for a Parquet or Arrow IPC input; drop them.")
-        return _read_arrow(path, parquet)
+        if delimiter:
+            raise InvalidInput("--delimiter (delimiter) splits CSV/TSV text into fields and cannot be "
+                               "honoured for this input; drop it, or pass a text input.")
+        if arrow_ipc and (skip_cols or skip_rows):
+            raise InvalidInput("--skip-rows and --skip-cols (skip_rows, skip_cols) drop the leading rows "
+                               "and columns of CSV/TSV text or Parquet and cannot be honoured for this "
+                               "input; drop them.")
+        return _read_arrow(path, parquet, skip_cols, skip_rows)
     return _dtwcpp_core._read_data(path, skip_cols, skip_rows, delimiter or "")
 
 

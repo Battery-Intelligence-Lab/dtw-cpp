@@ -136,13 +136,13 @@ TEST_CASE("read_data: a reader option the format cannot honour is InvalidInput",
   CHECK_THROWS_MATCHES(dtwc::read_data("missing.csv", 0, 0, '\0', "v"), dtwc::InvalidInput,
                        MessageMatches(ContainsSubstring("--column selects a Parquet column")));
 #ifdef DTWC_HAS_PARQUET
-  // A build that reads Parquet does so through dtwc_cl's reader, which refuses a text option for it.
+  // A build that reads Parquet does so through dtwc_cl's reader, which refuses the text-only option for it.
   dtwc::Config config;
   config.input = "missing.parquet";
   config.k = 2;
-  config.skip_rows = 1;
+  config.delimiter = ';';
   config.output.clear();
-  CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput, MessageMatches(ContainsSubstring("skip_rows")));
+  CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput, MessageMatches(ContainsSubstring("--delimiter")));
 #endif
 }
 

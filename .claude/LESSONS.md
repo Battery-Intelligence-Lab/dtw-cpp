@@ -31,18 +31,15 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A lower bound cannot cut DTW calls on an exact matrix.** An exact matrix needs every pair; bounds help
   nearest-neighbour search and density pruning (TADPole), and exact-matrix savings come from EAP cell pruning.
   *`baselines/2026-07-08-lb-cascade.md`*
-- **Admissibility is a domain contract.** LB_Keogh is admissible for L1 and unrooted squared L2 with an
-  envelope whose radius covers the actual window; a negative band means unbanded, never radius 0.
-  `compute_envelopes(series, band < 0)` gives the band-0 envelope. *`docs/derivations/02-envelopes-lb-keogh.md`*
+- **Admissibility is a domain contract.** LB_Keogh is admissible for L1 and unrooted squared L2 with an envelope
+  whose radius covers the actual window; a negative band means unbanded, never radius 0. *`docs/derivations/02-…`*
 - **Carry a bound's provenance.** A bare upper/lower pair does not say which source, window or length made it;
   validate at the public boundary and keep unchecked kernels internal.
 - **Metric traits must test units, not family names.** `|a−b|` and `(a−b)²` are different bound units.
 - **Admissibility is not tightness, and a decision counter is not an avoided-work counter.** Claim a prune rate
   only from an executed count; reachability needs a case that must prune and one that must not.
-- **EAP needs a relaxed prune threshold under reassociation.** `ub·(1 + n·16ε)` is regression-tested, not
-  derived; relaxing a threshold only adds computed cells.
-- **EAP's exact-matrix speed-up depends on cohesion.** Near-diagonal pairs gain 6–12×, unrelated pairs ~1.5×;
-  the paper's 2.88× is a nearest-neighbour regime.
+- **EAP (deleted in P3) needed a relaxed prune threshold under reassociation** (`ub·(1 + n·16ε)`, tested, not
+  derived), and its speed-up depended on cohesion: 6–12× near-diagonal, ~1.5× unrelated pairs.
 - **Debug a floating-point failure from the exact failing bytes.** A 3-decimal copy of the input lost the
   ULPs that triggered the EAP bug.
 
@@ -52,20 +49,20 @@ Append new entries at the end of their section; keep each to a few lines.
   faster than the hand-copied kernels.
 - **The row recurrence does not vectorise.** Each cell reads the one written before it, and early abandon
   exits a loop that writes memory. *`baselines/2026-09-22-x04-codegen-report.md`*
-- **`-Rpass` is silent under ThinLTO, and a header template reports only where it is instantiated.** Compile
-  a probe without LTO to see vectorisation remarks. *`scripts/codegen_report.py`*
 - **lld-link's LTO backend runs no SLP vectoriser**, so on Windows a non-LTO listing is not what ships: code
   only SLP packs links as scalar chains. Read the linked binary (`llvm-objdump`). *`baselines/2026-09-29-p1-lanes-fill.md`*
 - **A large fill is latency-bound per pair; the PAM swap on a cached matrix is memory-bound.** FastPAM1 gives
   2.95–8.06×, not k×. *`baselines/2026-07-08-faster-pam-bench.md`*
-- **Benchmark the kernel you change, on each standard library.** A lookup table for the triangular index regressed 5 %.
-- **On the MSVC STL, `std::min({a,b,c})` and `std::min_element` are library calls** (`__std_min_d`,
+- **Benchmark the kernel you change, on each standard library** (a triangular-index lookup table regressed 5 %).
+  **On the MSVC STL, `std::min({a,b,c})` and `std::min_element` are library calls** (`__std_min_d`,
   `__std_min_element_d`), under cl and under clang on Windows; libc++ inlines both, so a Mac benchmark cannot see it.
   One call per DP cell cost 7.2 ns against 1.36 with a nested, register-carried min. Read the Windows assembly;
   `test_codegen_no_calls` guards the kernels (`baselines/2026-09-29-k1-dp-cell-no-call.md`).
 - **Apple clang turns a constant store loop into a `memset_pattern16` call** (Darwin only; x86 clang and GCC never
   do): per row in the lanes kernel, per column in the banded one, a loop out from the innermost, which was all the gate
   read. Copy a constant row or seed from the constant; no flag stops it. *`baselines/2026-10-05-macos-design-2-0.md`*
+- **A restructured DP loop can move an ulp under `-fassociative-math`** (clang regrouped ADTW's `left + penalty` on a
+  one-row copy: 15 f32 outputs): sweep every Cell and ndim before calling it bitwise. *`baselines/…-mac-pair-2col.md`*
 - **clang's Windows driver passes `-relaxed-aliasing`** (no TBAA, as MSVC): a store through a `double *` makes the
   compiler reload every pointer it cannot prove distinct. Copy what a hot loop reads into locals.
 - **Float32 is opt-in.** It halves the payload and measured 1.57–1.90× faster; Float64 stays the default.
@@ -101,8 +98,8 @@ Append new entries at the end of their section; keep each to a few lines.
   bands) and require agreement before switching.
 - **`catch (...)` without a rethrow manufactures success.** A swallowed read error printed "loaded" and then
   silently recomputed the matrix.
-- **Recount a suite; an old pass total is not a floor.**
-- **A zero count proves nothing ran.** Pair a disabled stage with a case that must trigger it.
+- **Recount a suite (an old total is not a floor); a zero count proves nothing ran.** A gate that spots a fallback by
+  its printed notice goes blind when the notice goes: key it to the configure (FX-3 reads `HAS_GUROBI`, PF).
 - **Poison external seams before testing a rejection.** Make the command or file a rejection path would reach
   unusable, so a pass cannot come from the wrong branch.
 - **An Arrow gate can pass while running nothing.** `test_io_readers` registers only when Arrow is found: check that
@@ -122,10 +119,8 @@ Append new entries at the end of their section; keep each to a few lines.
   will disagree; keep one.
 - **Validate every array you index, not the first one.** A size check on one member of an aggregate is not a
   check on the aggregate.
-- **A fingerprint takes every axis the caller controls as a parameter.** A literal L1 in the digest let an
-  L2 cache pass for an L1 one.
-- **Published caches bind every computation parameter.** A helper taking its own band can publish into a cache
-  labelled with another.
+- **A fingerprint and a published cache bind every axis the caller controls**: a literal L1 in the digest let an L2
+  cache pass for an L1 one; a helper taking its own band could publish into a cache labelled with another.
 - **Lambda captures by value go stale, and a moved `std::function` still points at the moved-from `this`.**
   Capture `this` and rebind after a move.
 - **`std::atomic<T>` makes a defaulted move ill-formed.**
@@ -138,6 +133,8 @@ Append new entries at the end of their section; keep each to a few lines.
 - **`long` is not a width, and `near` / `far` are Windows macros.** Use `std::int64_t` across bindings; name
   variables `nearest`.
 - **Public invalid states get typed errors, not `assert`.** Assertions vanish under `NDEBUG`.
+- **An overload of a v1 free function breaks `f = name;`**: a `std::function` cannot deduce from an overload set
+  (`prob.init_fun = init::Kmeanspp`, W13c); grep address-taking uses before adding one.
 - **An unreachable limit needs no check.** A guard on a count nobody can reach is code to maintain and a test
   to keep; widen the type instead.
 - **A "be honest, throw" change is a behaviour change on the default path.** Register it like one.
@@ -180,10 +177,12 @@ Append new entries at the end of their section; keep each to a few lines.
 
 - **"Configure exits 0" is not "builds without the dependency".** Compile a translation unit that includes the
   guarded header.
-- **Stale caches keep a removed option's value.** Reconfigure fresh, or pass the option, before trusting a gate.
+- **Stale caches keep a removed option's value, and a dependency's `option()` caches its default** (HiGHS's
+  `BUILD_SHARED_LIBS ON` built Catch2 shared on the next configure): reconfigure fresh; set the plain variable first.
 - **`find_package` results are directory-scoped;** only cache entries reach the parent.
 - **`add_compile_options()` reaches every fetched dependency.** Put project flags on `dtwc_options`.
-- **A PUBLIC compile definition on an OBJECT library does not reach test TUs.** Use a runtime capability query.
+- **An OBJECT library has only its own flags**: its PUBLIC definition misses test TUs, its parent's OpenMP misses it
+  (LR-core's `#pragma omp` ran serial). Read each target's line (`ninja -t commands`). *`baselines/…-mac-lr-omp.md`*
 - **MSVC flags leak into nvcc.** Wrap them in `$<$<COMPILE_LANGUAGE:C,CXX>:...>`.
 - **A Windows DLL linked PUBLIC reaches every test executable.** Attach the runtime directories to every test
   in that directory (and to the `PATH` of spawned CLI children).
@@ -292,9 +291,10 @@ Append new entries at the end of their section; keep each to a few lines.
   Guard infinities first (an infinity agrees only with itself); `dtw_routes_agree` had this hole until 6fb95f4.
 - **A band sweep proves the band only if some band binds**: on shifted-by-one or iid pairs the best path stays near
   the diagonal and bands ≥ 2 never bind. Make the oracle ignore the band; the sweep must fail (W12b, band 0).
-- **`-S` without LTO sees neither what ThinLTO inlines nor which template copy it keeps**: moving a kernel's only
-  call left it out of line (Win64 then reloaded a by-value struct every cell, +2–7 %, W7d ab72231); the wheel ran
-  nanobind's `-Os` copy of the per-pair kernel, 1.5× slower (`NOMINSIZE`). Read the post-LTO loop of what ships.
+- **`-S` without LTO sees neither what ThinLTO inlines nor which template copy it keeps** (and `-Rpass` is silent
+  under ThinLTO: `scripts/codegen_report.py` compiles a probe without it): moving a kernel's only call left it out of
+  line (Win64 reloaded a by-value struct every cell, +2–7 %, W7d); the wheel ran nanobind's `-Os` copy of the
+  per-pair kernel, 1.5× slower (`NOMINSIZE`). Read the post-LTO loop of what ships.
 - **A session restart kills in-flight agents silently**: after a resume the harness still said "running" for agents
   whose transcripts had stopped 40 minutes earlier. Check transcript times and processes before waiting; resume an
   agent with SendMessage (context intact); a dead integrator is replaced by one told the exact staged state (10-02).

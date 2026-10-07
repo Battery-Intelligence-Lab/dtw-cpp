@@ -106,7 +106,7 @@ you have already read go in as they are, to `dtwc.load`, `dtwc.cluster`,
 % A file or a folder: read by the same reader as dtwc_cl and Python
 data = dtwc.load('cycles.csv', 'SkipRows', 1, 'SkipCols', 1);
 data = dtwc.load('cycles/');                 % one series per file
-data = dtwc.load('cycles.parquet');          % a list column: one series per row
+data = dtwc.load('cycles.parquet');          % a series per row, or per file: see below
 
 % Already read: a numeric matrix (one series per row) or a cell (any lengths)
 X = readmatrix('cycles.csv', 'NumHeaderLines', 1);
@@ -116,16 +116,18 @@ res = dtwc.cluster({x1, x2, x3, x4}, 2);
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `SkipCols` | `0` | leading fields of each line (a file) or values of each series (in memory) |
-| `SkipRows` | `0` | leading lines of a file, or leading series in memory |
+| `SkipCols` | `0` | leading fields of each line or columns of a Parquet file (a file), or values of each series (in memory) |
+| `SkipRows` | `0` | leading lines of a file, rows of a Parquet file, or leading series in memory |
 | `Delimiter` | `''` | the field delimiter of text; `''` infers it from the extension |
 | `Name` | `''` | the run's name: the file's name without its extension, the folder's name, or `'dataset'` |
 
 CSV/TSV text and folders of it are read by the C++ reader in the MEX, the one
 `dtwc_cl` and Python use. Parquet (`.parquet`, `.pq`, or a folder of them) is read
-by MATLAB's `parquetread` (R2019a or later; the MEX links no Arrow): the first
-Float32/Float64 column is one series named by its file, the first list column of
-them one series per row, named `series_<i>`, as the C++ reader takes them. MATLAB
+by MATLAB's `parquetread` (R2019a or later; the MEX links no Arrow) by the C++
+reader's rule ([Supported data](../supported-data/)): a list column, or a row of
+several Float32/Float64 columns, is one series per row, named by the file's first
+string column, else `series_<i>`; the file's only Float32/Float64 column is one
+series, named by its file. MATLAB
 has no Arrow IPC reader, so an `.arrow`, `.ipc` or `.feather` file raises
 `dtwc:invalidArgument`: read it elsewhere and pass the series in memory.
 

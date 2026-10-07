@@ -1,5 +1,5 @@
 %> @file load_checkpoint.m
-%> @brief Load a Problem distance-matrix checkpoint (api-contract-2.0.md §2.7).
+%> @brief Load a Problem distance-matrix checkpoint.
 %> @author Volkan Kumtepeli
 function ok = load_checkpoint(prob, path, metric)
 %LOAD_CHECKPOINT Restore a distance matrix into the Problem from a checkpoint dir.

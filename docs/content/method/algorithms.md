@@ -175,7 +175,7 @@ integer-representable contract, exact arithmetic makes the bound decisions
 admissible and preserves the deterministic brute-force density-peaks result.
 The permanent exactly representable regression confirms that regime; it does
 not establish bit-level identity when floating reductions straddle `dc` or
-`best`. That threshold analysis remains D17. The proof and call-site oracle
+`best`; that threshold analysis has not been done. The proof and call-site oracle
 are in the
 [D2 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/02-envelopes-lb-keogh.md).
 
