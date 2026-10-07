@@ -262,7 +262,13 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## G — docs and release prep (W14)
 
-- ☐ W14a hand-written tier pages and a v1.0.0 → 2.0 migration page; `api-contract-2.0.md` deleted
+- ☑ W14a hand-written tier pages and a v1.0.0 → 2.0 migration page; `api-contract-2.0.md` deleted (W14a b73a1487,
+  5326fc20, 786fd99f, e4d26d08, 2f279c98; merged e7f6153a on the Mac: tier-1/tier-2 from the headers and bindings,
+  migration = v1.0.0's C++ library and CLI (Python and MATLAB are new, DECISIONS 10-02); lr-core.md by hand with
+  Kelley as measured; derivations 01/02 describe today's kernels; docs/sources and releases/2.0.0rc1.md gone;
+  contributor pages stay generated copies (Hugo mounts lose their order and Edit links); examples C++ 3 / Python 6 /
+  MATLAB 4 ran; Hugo builds, no new broken links; main tree: ctest 94, matlab_suite 136/136, pytest 890/11/0. Found: a v1.0.0 matrix CSV's −1 (uncomputed) entries read as
+  distances — the migration page warns; Volkan rules on a refusal)
 - ☑ VI `dtwc_cl.exe` carries a VERSIONINFO resource: name, version, copyright (Volkan 10-02) (VI 20579e0d, 45719487, e5456cc6, b63bc153; merged 96547a5a; rc.exe and llvm-rc .res byte-identical)
 - ☐ WM the Windows wheel's fill, MSVC against clang-cl, on a quiet machine with a registered band; Volkan then
   decides the wheels' compiler (Volkan 10-02: measure first)

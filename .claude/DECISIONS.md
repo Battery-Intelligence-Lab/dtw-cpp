@@ -44,7 +44,7 @@ needs a dated line in §3. Anything older or longer is in git history (`git log 
    Everything born during 2.0 is pre-tag: change it freely, no shims. No wire format is frozen before the tag.
    Breaking a frozen item needs a reason — R1 silently wrong, R2 unsound, R3 blocks the cross-language contract
    with no additive route, R4 unreachable and not in v1.0.0 — and one dated line in §3. "Cleaner" is not a
-   reason. `docs/api-contract-2.0.md` retires in phase G. A user-visible change against v1.0.0 gets a
+   reason. `docs/api-contract-2.0.md` retired with W14a (e7f6153a); the tier pages describe the 2.0 surface. A user-visible change against v1.0.0 gets a
    CHANGELOG line.
 2. **Integers.** `using index_t = std::int64_t;` counts of series, clusters and rows, labels, medoids and
    `dist_by_ind` indices are `index_t`; tuning values (`band`, `max_iter`, `n_init`, `n_samples`) are `int`;
