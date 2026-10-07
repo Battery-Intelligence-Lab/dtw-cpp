@@ -1,10 +1,9 @@
 # DTWC++ 2.0 — PLAN
 
 Branch `design-2.0`. The approved design review (`plans/2026-09-27-design-review.md`, Volkan 2026-09-28) is the
-plan: seven phases A–G. Step detail — files owned, dependencies, gates, LOC — is in
-`plans/2026-09-27-audit/advisor_exec.md` §2 (rows) and §3 (Windows gate commands) and `chair.md` §4 (waves);
-finding ids resolve in `plans/2026-09-27-audit/digest.md` (grep, never read whole). Where the audit files and the
-review disagree, the review wins (no `system_check()`, no index macro, the W13 items below).
+plan: seven phases A–G. The audit behind its rows (`plans/2026-09-27-audit/`: advisor_exec.md's step detail,
+chair.md's waves, digest.md's finding ids) was deleted after phase G (Volkan 10-07); read it with
+`git show 8a63cda3:.claude/plans/2026-09-27-audit/<file>`. Where it and the review disagreed, the review won.
 
 Marks: ☐ open · ◐ in progress · ☑ done (commit). One implementer per step, never two on the same files, at most
 four agents; each proven step is one local commit.
@@ -36,7 +35,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ◐ HEAD baseline: conformance digits and three benchmarks (CPU fill, GPU fill, PAM swap) → `baselines/` — waits for a
   quiet machine (COMSOL runs on this box; no timing under load)
 - ☑ CUDA build proven in `build/cuda-verify-0928`: vcvars64 + explicit `CMAKE_CUDA_COMPILER` + `-allow-unsupported-compiler`
-  (recipe in `plans/2026-09-27-audit/phaseA_measurements.md`); 4 / 4 CUDA tests pass; `--device gpu` byte-identical to
+  (recipe in MAP §3); 4 / 4 CUDA tests pass; `--device gpu` byte-identical to
   CPU on the fixture. MSVC findings: 9 squared-L2 cross-path `==` checks differ in the last bit
   (`test_problem_metric:109,322`, `test_run_resolution:148`) → compare with a tight relative tolerance;
   `bench_openmp_schedule` needs the OpenMP 3.0 API that `/openmp:experimental` lacks → delete it (W4); both done (Z1 `a238336`)
@@ -218,14 +217,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `gpu_cc:` constraint [inferred]; below the 8.0 floor refused), `build --gpu-device <type>` (CUDA native, CPU
   portable), `smoke.slurm MODE=`; pytest 970/12 → 922/12 reconciled by id, 53 bash-driven cases ran; the ARC leg is
   Volkan's: six commands in `baselines/2026-10-06-w9c-hpc-job-toml-mac.md`)
-- ◐ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
+- ☑ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
   regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
   (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m) (done in W7g) (W9e 9230bd5e,
   1000f8d0, d4c43410, 8dccdc68, bebcb149, 43fe390e; merged on the Mac: `dtwc.cluster(data, k, Name, Value)` and
   `DTWClustering` set a dtwc::Config field by field, apply() checks it, Problem::cluster() runs; CamelCase keys are
   Python's words; the MEX links no run() or api (link map), text through the bound C++ reader, Parquet through
   parquetread, Arrow IPC refused; matlab_suite 140/139 → 142/141 reconciled by name, the 25 CLI runs byte-identical;
-  ◐ until Windows R2024b runs matlab_suite — the brief `plans/2026-10-06-briefs/W9e.md` stays until then)
+  Windows R2024b at 8a63cda3: matlab_suite 138/138/0/0, the MEX built with HiGHS linked statically)
 - W9e note: MATLAB keys are CamelCase throughout, the same words as Python's snake_case (Volkan 10-01: "camelcase
   and snake case can change between languages"); `dtwc.cluster`'s `band`, `max_iter` become `Band`, `MaxIter`
 - W9b/W9e note (Volkan 10-01, lighter bindings): Python and MATLAB share the Config names, not the CLI's file

@@ -5,11 +5,10 @@
 0. The newest `.claude/summaries/handoff-*.md` — where the last session stopped.
 1. `.claude/CHARTER.md` — what Volkan asked for, verbatim.
 2. `.claude/MAP.md` — what is where today, the target interface, the invariants. **Read this instead of the tree.**
-3. `.claude/PLAN.md` — the phases A–G; read your step, then its row in
-   `.claude/plans/2026-09-27-audit/advisor_exec.md` §2 (or the wave in `chair.md` §4).
+3. `.claude/PLAN.md` — the phases A–G and what is left; read your step.
 
 On demand: `DECISIONS.md` (killed ideas, standing rules, rulings) and `LESSONS.md` (rules learned the hard
-way). Context is a budget: never bulk-read `baselines/`, `LESSONS.md`, `CHANGELOG.md` or the audit folder;
+way). Context is a budget: never bulk-read `baselines/`, `LESSONS.md` or `CHANGELOG.md`;
 grep them for the symbol or finding id you need.
 
 ## Non-negotiables
@@ -68,15 +67,15 @@ the Python suite from a fresh venv outside the repo (`$V` a scratch directory):
 
 ```sh
 uv venv $V/venv --python 3.12
-CMAKE_ARGS="-DOpenMP_ROOT=/opt/homebrew/opt/libomp" uv pip install --python $V/venv/bin/python ".[test,dev,io]" matplotlib
+CMAKE_ARGS="-DOpenMP_ROOT=/opt/homebrew/opt/libomp" uv pip install --python $V/venv/bin/python ".[test,dev,io,mip]" matplotlib pandas
 cd $V && DTWC_CL_PATH=<repo>/build/bin/dtwc_cl $V/venv/bin/python -m pytest <repo>/tests/python -q -p no:cacheprovider
 ```
 
 ## Key files
 
 - `.claude/cpp-style.md`, `.claude/python-style.md` — coding conventions.
-- `docs/api-contract-2.0.md` — the 2.0 surface as written; it retires in phase G. What is frozen is
-  `DECISIONS.md` §2 rule 1.
+- `docs/content/api/tier-1.md`, `tier-2.md` and `docs/content/guides/migration.md` — the 2.0 surface and what changed
+  against v1.0.0, as documented. What is frozen is `DECISIONS.md` §2 rule 1.
 - `cmake/DtwcTest.cmake` — `dtwc_add_test`: a test passes on Catch2's summary with ≥ 1 assertion in ≥ 1 case,
   no failure, and no skip unless registered `MAY_SKIP`.
 - `.claude/commands/` — the user-facing slash commands shipped with the repo.

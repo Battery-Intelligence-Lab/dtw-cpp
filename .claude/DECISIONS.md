@@ -453,3 +453,18 @@ CHANGELOG rule.
 - 2026-10-07 — TB (`baselines/2026-10-06-tb-banded-bounds-x86.md`, Windows, quiet): the banded kernel's bounds per
   column (`822225bc`) against `f5c58764` on x86, Core Ultra 9 285 P-core: new/old 0.79–1.00 (clang++), 0.85–1.02
   (MSVC), no cell above the registered 1.05×: by Volkan's 10-06 ruling the change stays.
+- 2026-10-07 — Volkan (question tool) on the wheel's lrcore root: "When highspy is not there use subgradient but when
+  highspy available then we should be able to use, but maybe default to subgradient for all like CLI etc. so default
+  behaviour is the same." So the subgradient root is the default in every language and build; Kelley's root is an
+  option, run by linked HiGHS (CLI, C++, MEX) or by the user's highspy (Python, the `mip` extra); asking for it
+  without either is a SolverError (unit LRK).
+- 2026-10-07 — Volkan (question tool): W9b's `_NotSeries(TypeError, ValueError)` stays ("Keep both parents").
+- 2026-10-07 — Volkan (question tool, "Fix both"): the runbook's stale lines (the deleted contract, the audit
+  pointer, the Python gate's extras) are fixed and `.claude/plans/2026-09-27-audit/` is deleted; read it with
+  `git show 8a63cda3:.claude/plans/2026-09-27-audit/<file>`; its Windows CUDA configure recipe moved to MAP §3.
+- 2026-10-08 — Volkan on v1.0.0's −1 matrix entries (question tool, three rounds): first "-1 should be uncomputed";
+  told that Soft-DTW can be negative, "use either -Inf or NaN or something else that is both easy to write and
+  read"; told that NaN already marks an uncomputed pair (the CSV writer leaves the field empty for spreadsheets),
+  "ask Fable max maybe if nan or negative values would make best? Then we could also have an option while reading
+  distance matrix notcomputer="negative" or "nan" or something else with some default behaviour". A Fable advisor
+  at max effort is consulted for this one question at his request; the 09-29/30 no-Fable rule stands otherwise.

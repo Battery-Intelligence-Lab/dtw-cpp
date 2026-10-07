@@ -54,6 +54,10 @@ Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
 - macOS needs `brew install libomp` and `-DOpenMP_ROOT=/opt/homebrew/opt/libomp`; Windows CUDA, nvcc 13.0 with a
   supported MSVC host. The wheel links no HiGHS (`mip` extra: highspy); the MEX links it statically; archives and
   wheels are x86-64-v3 or arm64, macOS ≥ 13.3.
+- Windows CUDA tree (`build/cuda-verify-0928`), under `vcvars64.bat`: `cmake -S . -B <dir> -G Ninja
+  -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl "-DCMAKE_CUDA_COMPILER=<CUDA 13.0>/bin/nvcc.exe"
+  -DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler -DCMAKE_CUDA_ARCHITECTURES=89 -DDTWC_ENABLE_CUDA=ON`. The
+  explicit compiler skips `check_language(CUDA)`, whose probe ignores `CMAKE_CUDA_FLAGS`, so nvcc refuses MSVC 19.50.
 
 ## 4. Tests and gates
 
