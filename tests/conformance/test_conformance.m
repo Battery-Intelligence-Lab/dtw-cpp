@@ -1,5 +1,5 @@
 function tests = test_conformance
-%TEST_CONFORMANCE MATLAB route of the cross-language conformance fixture (Task 2.4).
+%TEST_CONFORMANCE MATLAB route of the cross-language conformance fixture.
 %
 %   The permanent cross-language parity gate. Drives the LIVE
 %   +dtwc / dtwc_mex pipeline (Problem.set_band -> fill_distance_matrix ->

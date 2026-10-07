@@ -1,4 +1,4 @@
-# DTWC++ 2.0 cross-language conformance reference (Phase 2 Task 2.4).
+# DTWC++ 2.0 cross-language conformance reference.
 # Recorded by the C++ route (tests/conformance/cpp_conformance.cpp) which
 # runs the LIVE pipeline: DataLoader -> set_band(3) -> fill_distance_matrix
 # -> fast_pam(k=3, seed=29) -> silhouette/davies_bouldin/dunn. The Python,

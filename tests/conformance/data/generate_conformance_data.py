@@ -2,7 +2,7 @@
 """Deterministic generator for the cross-language conformance dataset.
 
 This script emits ``conformance_series.csv`` — the SMALL recorded dataset that
-the DTWC++ 2.0 cross-language conformance fixture (Phase 2 Task 2.4) loads in all
+the DTWC++ 2.0 cross-language conformance fixture loads in all
 four language routes (C++ / Python / MATLAB / CLI). It takes NO random input:
 every value is an explicit integer, so the CSV is stable committed text and
 parses byte-identically under C++ ``operator>>``, Python ``float()`` and MATLAB

@@ -235,10 +235,10 @@ function(check_f8_config config_id dtype variant gamma accepted_costs)
     set("${config_id}_cost" "${${config_id}_resident_cost}" PARENT_SCOPE)
 endfunction()
 
-# Accepted total costs are the shortest round-trip text of the IEEE-754 values
-# the binary result checkpoint pinned at offset 24 (big-endian hex):
+# Accepted total costs are the shortest round-trip text of these IEEE-754
+# values (big-endian hex):
 # 4011999999999998, 40119999EC000000, and for Soft-DTW C024B0200B5431CC
-# (MSVC / Apple Clang baseline, F8 2026-07-23) or C024B0200B5431CE (GCC 14 +
+# (the MSVC and Apple Clang baseline of 2026-07-23) or C024B0200B5431CE (GCC 14 +
 # -fassociative-math, 2 ULP; Arrhenius LastTest.log 2026-09-01).
 # Labels/medoids stay exact. Resident and stream stay byte-identical.
 check_f8_config(f64_standard float64 standard none "4.399999999999999")

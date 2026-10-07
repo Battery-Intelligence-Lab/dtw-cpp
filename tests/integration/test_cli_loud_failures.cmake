@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.26)
 
-# FX-3 (S-04, B-05, S-10): a failure must not exit 0. Drives the real dtwc_cl
+# A failure must not exit 0. Drives the real dtwc_cl
 # and asserts, per case, a non-zero exit AND an error that names what failed
 # (the option and/or the file), so the user can act on it. Control runs on the
 # same fixtures must succeed, so each failure is caused by its case alone.
@@ -114,7 +114,7 @@ if(NOT "${control_result}" STREQUAL "0"
         "stdout:\n${control_stdout}\nstderr:\n${control_stderr}")
 endif()
 
-# S-04: a checkpoint that cannot be saved. A path that is not a directory is
+# A checkpoint that cannot be saved. A path that is not a directory is
 # refused before the data is read: nothing read, nothing clustered or written.
 file(WRITE "${WORK_ROOT}/checkpoint_is_a_file" "not a directory\n")
 expect_loud_failure(checkpoint_save
@@ -163,7 +163,7 @@ if(NOT kept_size EQUAL 216)
         "distance checkpoint\nstderr:\n${loud_stderr}")
 endif()
 
-# S-04: a precomputed matrix that cannot be loaded.
+# A precomputed matrix that cannot be loaded.
 file(WRITE "${WORK_ROOT}/not_square.csv" "0,1\n1,0,5\n")
 expect_loud_failure(dist_matrix_bad
     NAMES "--dist-matrix" "not_square.csv"
@@ -174,7 +174,7 @@ expect_loud_failure(dist_matrix_missing
     COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_dm_missing"
             --dist-matrix "${WORK_ROOT}/no_such_matrix.csv")
 
-# FX-3: a matrix of another size describes other series, and an empty file
+# A matrix of another size describes other series, and an empty file
 # holds none; both used to be accepted and every distance recomputed.
 file(WRITE "${WORK_ROOT}/wrong_n.csv" "0,1,2,3\n1,0,1,2\n2,1,0,1\n3,2,1,0\n")
 expect_loud_failure(dist_matrix_n_mismatch
@@ -234,7 +234,7 @@ if(EXISTS "${WORK_ROOT}/out_k_missing")
     message(FATAL_ERROR "k_missing: the refused run made its output folder")
 endif()
 
-# O-06: no iteration is no clustering. `common` already holds --max-iter.
+# No iteration is no clustering. `common` already holds --max-iter.
 expect_loud_failure(max_iter_zero
     NAMES "--max-iter"
     COMMAND "${cli}" -i "${WORK_ROOT}/series" -k 2 --skip-rows 1 --skip-cols 1
@@ -261,7 +261,7 @@ if(EXISTS "${WORK_ROOT}/out_nan/loud_labels.csv")
     message(FATAL_ERROR "nan_error_strategy: a result was written for refused input")
 endif()
 
-# FX-3: --solver gurobi must not solve with HiGHS. A build without Gurobi fails
+# --solver gurobi must not solve with HiGHS. A build without Gurobi fails
 # naming the flag and the fix; a build with it (HAS_GUROBI, from the configure)
 # runs. Exit 0 alone cannot tell them apart: the fallback prints nothing.
 execute_process(
@@ -301,13 +301,13 @@ endif()
 math(EXPR cases "${cases} + 1")
 message(STATUS "solver_gurobi: exit=${solver_result} (${solver_case})")
 
-# B-05: an output artefact that cannot be written is an error, not a warning.
+# An output artefact that cannot be written is an error, not a warning.
 file(MAKE_DIRECTORY "${WORK_ROOT}/out_silhouettes/loud_silhouettes.csv")
 expect_loud_failure(silhouettes_blocked
     NAMES "loud_silhouettes.csv"
     COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_silhouettes")
 
-# B-05: a write that fails after the file was opened (full disk, quota). Under
+# A write that fails after the file was opened (full disk, quota). Under
 # `ulimit -f 1` a write past one block (512 bytes under dash, 1024 under macOS
 # /bin/sh) fails with EFBIG; SIGXFSZ is ignored so the write returns an error
 # instead of killing the process. The labels are the first artefact written and
@@ -343,7 +343,7 @@ if(NOT WIN32)
     set(efbig "ran")
 endif()
 
-# S-10: the post-parse -k check names the canonical flag, not the deprecated one.
+# The post-parse -k check names the canonical flag, not the deprecated one.
 execute_process(
     COMMAND "${cli}" -i "${WORK_ROOT}/series" --clusters 0 --skip-rows 1
             --skip-cols 1 -o "${WORK_ROOT}/out_k" --name loud

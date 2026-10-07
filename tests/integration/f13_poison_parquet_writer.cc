@@ -1,6 +1,8 @@
 /**
  * @file f13_poison_parquet_writer.cc
- * @brief Build-local Parquet fixture generator for the F13 streamed gate.
+ * @brief Writes, in the build tree, the Parquet file of extreme values (-max, then
+ *        +max: their distances overflow) that test_fast_clara_assignment_contract.cmake
+ *        streams through dtwc_cl.
  */
 
 #include <arrow/api.h>
