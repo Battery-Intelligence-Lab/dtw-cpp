@@ -327,7 +327,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   `resolve_parquet_layout` in C++, mirrored in Python and MATLAB, the stream included; a sliced Arrow list is read
   from its offset; the Arrow-25 `Result::save` failure was a fixed byte cap; Arrow tree ctest 97/97; main tree:
   ctest 94, pytest 895/11/0, matlab_suite 138/138; left: Python/MATLAB errors name the CLI's `--column`, `.claude/commands` say only
-  list files stream, a negative CSV `--skip-rows` reads as 0)
+  list files stream, a negative CSV `--skip-rows` reads as 0 — all three fixed by FU)
+- ☑ FU follow-ups the Windows handoff, PQ and W14c left (d1ab0c65 … af269ad8; merged 8d969203): per-pair `distance::*`
+  refuse an empty series (they returned max()); a negative skip is InvalidInput for every format; the Python/MATLAB
+  Parquet errors name their own way out; `std::as_const` leftovers; MSVC C4244 casts; tracker ids out of comments in
+  tests/integration, conformance, benchmarks, examples; stale texts (devices.md, run.cpp's checkpoint text, cluster's keys)
 
 ## Blocked on another machine or on Volkan
 

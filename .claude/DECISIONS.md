@@ -447,3 +447,6 @@ CHANGELOG rule.
 - 2026-10-07 — lr-omp (`57ad9ad2`): `mip-solvers` takes `DTWC_HAS_OPENMP` and `OpenMP::OpenMP_CXX` PRIVATE (a
   `#error` stops a build that would compile the dual serial); `evaluate_dual`'s first loop forks from N = 280, its
   second (N·k) stays serial — measured, against the brief's one constant for both.
+- 2026-10-07 — FU (`8d969203`): the per-pair `distance::*` functions refuse an empty series (InvalidInput, as every
+  matrix route); an infeasible band still returns the documented max(). A negative skip is refused where every
+  language's read enters (`read_data`), and the bindings' copies of that check went.
