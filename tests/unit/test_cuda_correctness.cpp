@@ -2008,7 +2008,9 @@ TEST_CASE("CUDA medoid distances match the host kernel in every kernel range",
       const auto &x = series[i];
       const auto &y = medoids[m];
       if (fp32) {
-        const std::vector<float> xf(x.begin(), x.end()), yf(y.begin(), y.end());
+        std::vector<float> xf(x.size()), yf(y.size());
+        std::transform(x.begin(), x.end(), xf.begin(), [](double v) { return static_cast<float>(v); });
+        std::transform(y.begin(), y.end(), yf.begin(), [](double v) { return static_cast<float>(v); });
         CHECK(dtwc::test_support::dtw_routes_agree<float>(
             d[i * k + m], dtwc::dtwBanded<float>(xf, yf, band), x.size(), y.size()));
       } else {
@@ -2101,7 +2103,10 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
     dtwc::Problem prob("clara");
     if (float32_series) {
       std::vector<std::vector<float>> rounded;
-      for (const auto &s : series) rounded.emplace_back(s.begin(), s.end());
+      for (const auto &s : series) {
+        auto &r = rounded.emplace_back(s.size());
+        std::transform(s.begin(), s.end(), r.begin(), [](double v) { return static_cast<float>(v); });
+      }
       prob.set_data(dtwc::Data(std::move(rounded), std::move(names)));
     } else {
       prob.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::move(names)));

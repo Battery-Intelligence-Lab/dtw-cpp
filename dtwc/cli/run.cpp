@@ -102,13 +102,14 @@ void require_input_options_apply(const Config &config, std::optional<InputFormat
   require_reader_options(format, config.skip_cols, config.skip_rows, config.delimiter, config.column);
 }
 
-/// An owning Float32 copy of Float64 series.
+/// An owning Float32 copy of Float64 series, each value rounded to float.
 Data convert_to_f32(const Data &data_f64)
 {
   std::vector<std::vector<float>> series(data_f64.size());
   for (std::size_t i = 0; i < series.size(); ++i) {
     const auto &source = data_f64.p_vec[i];
-    series[i].assign(source.begin(), source.end());
+    series[i].reserve(source.size());
+    for (const double value : source) series[i].push_back(static_cast<float>(value));
   }
   auto names = data_f64.p_names;
   return Data(std::move(series), std::move(names), data_f64.ndim);

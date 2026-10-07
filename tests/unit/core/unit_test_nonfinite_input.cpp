@@ -167,7 +167,13 @@ double interpolate_wrapper(Span x, Span y, int band)
                                  dtwc::interpolate_linear_into(y, y_buffer), band, -1.0, MetricType::L1);
 }
 
-std::vector<float> narrow(Span s) { return {s.begin(), s.end()}; }
+std::vector<float> narrow(Span s)
+{
+  std::vector<float> out;
+  out.reserve(s.size());
+  for (const double v : s) out.push_back(static_cast<float>(v));
+  return out;
+}
 
 using Fn = std::function<double(Span, Span, int)>;
 
