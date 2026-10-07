@@ -440,3 +440,7 @@ CHANGELOG rule.
   drop a CSV's fields / lines (Parquet refused them before): a dropped column is neither read nor a name, a dropped
   row is not read; `--column` picks among the columns left; a column that is neither float nor string among a row's
   samples is an IOError naming it.
+- 2026-10-07 — pair-2col (`0edc388b`): the unbanded per-pair kernel computes two columns per pass (1.42–1.98× f64 L1
+  in every placement); the banded kernel's two-column form FALSIFIED its band and was reverted. On the M5 a per-pair
+  loop's speed moves ±30 % with its code placement, and 64-byte loop alignment does not remove that (f64 squared runs
+  1.3× slower aligned): a single build's banded timing is not evidence about banded code.

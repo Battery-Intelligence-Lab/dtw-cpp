@@ -1,0 +1,24 @@
+== /private/tmp/claude-504/-Users-engs2321-git-dtw-cpp/11a5974a-eee8-48c6-bc97-994bfa954411/scratchpad/base-32b219c6/dtwc_cl
+== build/bin/dtwc_cl
+== /private/tmp/claude-504/-Users-engs2321-git-dtw-cpp/11a5974a-eee8-48c6-bc97-994bfa954411/scratchpad/base-32b219c6/dtwc_cl
+  dtw_banded double Sq                                         insns  14 start%64 44 split-pairs 0
+  dtw_linear double Sq                                         insns  14 start%64 48 split-pairs 0
+  dtw_banded double L1                                         insns  13 start%64 36 split-pairs 1
+  dtw_linear double L1                                         insns  13 start%64 24 split-pairs 0
+  dtw_banded float Sq                                          insns  14 start%64 16 split-pairs 0
+  dtw_linear float Sq                                          insns  14 start%64 16 split-pairs 0
+  dtw_banded float L1                                          insns  13 start%64 60 split-pairs 0
+  dtw_linear float L1                                          insns  13 start%64 44 split-pairs 1
+== build/bin/dtwc_cl
+  dtw_banded<false double Sq                                   insns  14 start%64 28 split-pairs 0
+  dtw_linear<false double Sq                                   insns  23 start%64 56 split-pairs 0
+  dtw_linear<false double Sq                                   insns  14 start%64  8 split-pairs 0
+  dtw_banded<false double L1                                   insns  13 start%64 60 split-pairs 0
+  dtw_linear<false double L1                                   insns  21 start%64  4 split-pairs 0
+  dtw_linear<false double L1                                   insns  13 start%64  4 split-pairs 0
+  dtw_banded<false float Sq                                    insns  14 start%64 40 split-pairs 1
+  dtw_linear<false float Sq                                    insns  23 start%64  0 split-pairs 1
+  dtw_linear<false float Sq                                    insns  14 start%64 16 split-pairs 0
+  dtw_banded<false float L1                                    insns  13 start%64 60 split-pairs 0
+  dtw_linear<false float L1                                    insns  21 start%64  0 split-pairs 0
+  dtw_linear<false float L1                                    insns  13 start%64  0 split-pairs 0

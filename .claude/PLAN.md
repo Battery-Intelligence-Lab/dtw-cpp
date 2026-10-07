@@ -301,10 +301,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   bitwise — 15.36 M lane outputs, 64 CLI files, conformance; x86 `.s` identical; f64 L1 loop = `v_fmin_w16`; the
   quiet run 2026-10-07: 1.41–2.00× single thread, 18-thread fill 1.61–1.69×, ragged fill 1.003×, every band PASS;
   `baselines/2026-10-06-mac-arm-lanes.md`)
-- ◐ per-pair kernels two columns per pass: kernel 1 1.44–1.98× unbanded, bitwise; kernel 2 not tried (Volkan 10-06: run it;
-  phase 1 on pb/pair-2col 463d2b52, 00fb9c36, 92a747d9: both kernels, the abandon test a template argument; bitwise
-  over 11.73 M outputs and every Cell; speed and the kernel 2 decision wait for the quiet run,
-  `baselines/2026-10-06-mac-pair-2col.md`)
+- ☑ per-pair kernels two columns per pass (Volkan 10-06: run it; 463d2b52, 92a747d9, 3d024308, 73519cd7, e95fb62c;
+  merged 0edc388b): kernel 1 (unbanded) two columns, bitwise over 11.73 M outputs and every Cell; quiet run 10-07:
+  f64 L1 1.42–1.98×, every unbanded shape 1.14–1.98×, ragged fill 1.42–1.50× in all three placements; kernel 2
+  (banded) FALSIFIED (min 0.85× against ≥ 1.15×), reverted; the abandon test is a template argument in both. The
+  M5's per-pair speed carries a ±30 % code-placement term, and 64-byte loop alignment is no cure
+  (`baselines/2026-10-06-mac-pair-2col.md`)
 - ◐ the LR-core dual on OpenMP: `mip-solvers` compiled without the OpenMP flags on clang/GCC, so `evaluate_dual`'s
   two loops ran serial (lrcore record finding 5); phase 1 on pb/lr-omp 54fe1150, 96de8de4, 3bc08848 (flags, an
   `if(N >= kParallelMinN)` clause, a `#error` guard; 330 result comparisons identical); the threshold waits for

@@ -296,6 +296,23 @@ squared pair loop: all 5 placements with a split pair run 1.14–1.41×; of the 
 (k1 p2 f64, head p0 f32, head p2 f64) 1.14–1.41× [unexplained]. The shipped binary's placement is its own; this
 unit's claim is the kernel 1 speed-up, which holds in every placement measured.
 
+## After the merge (orchestrator, 2026-10-07)
+
+Merged `0edc388b` (kernel 1's two columns, kernel 2 as base plus the abandon split). Main tree: build 0 warnings, ctest
+94/94 (CUDA skip), conformance identical (D-19's ulp only), docs gates PASS, matlab_suite 138/138, pytest 895/11/0
+[confirmed]. The agent's final serial ctest in its worktree was cut off (the agent stalled); the main-tree run stands
+in for it.
+
+Is aligning loops a cure for placement? No [confirmed, `phase2/align_effect.txt`, from the same quiet-run data]: for
+head, the 64-byte-aligned placement p1 against the default p0 and the shifted p2, the best of p0/p2 over p1 runs
+0.73–1.03: f64 squared runs 1.27–1.37× faster in the default placement than aligned (e.g. 1000 × 1000 unbanded 0.5766
+vs 0.7922 ns/cell), f32 squared fastest in p2. The fast placement differs per loop, so `-align-loops=64` is not a
+fix; the M5's per-pair speed carries a ±30 % placement term in every build.
+
+The shipped `build/bin/dtwc_cl` (`phase2/shipped_split_pairs.txt`, the kit's split-pair test): base 32b219c6 had a
+split `fcmp`/`fcsel` pair in the banded f64 L1 loop and the linear f32 L1 loop; head has one in the banded f32 squared
+loop and the two-column f32 squared loop, none in any f64 loop.
+
 ## Not done
 
 - Placement: the per-pair loops move by up to 40 % with their address (above); aligning them (`-mllvm
