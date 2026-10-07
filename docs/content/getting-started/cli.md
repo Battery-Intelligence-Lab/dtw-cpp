@@ -191,7 +191,8 @@ file to stream them under the cap.
 
 `--skip-rows` and `--skip-cols` apply to CSV/TSV and Parquet input, `--delimiter`
 to CSV/TSV only; one on an input it cannot apply to (Arrow IPC, or `--delimiter`
-on Parquet) is an error rather than an option silently ignored.
+on Parquet) is an error rather than an option silently ignored, and so is a
+negative `--skip-rows` or `--skip-cols`.
 
 ### Distance Matrix and Checkpointing
 

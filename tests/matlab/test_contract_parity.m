@@ -116,7 +116,8 @@ end
 
 function test_tier1_load_negative_skip_rows_rejected(testCase)
 %   SkipRows is checked exactly as SkipCols is, where the handle is made,
-%   before any file is read; the MEX reader keeps its own guard (C++'s words).
+%   before any file is read; the C++ reader behind the MEX refuses it too, in
+%   its own words, before it opens the file.
     for key = {'SkipCols', 'SkipRows'}
         err = capture_error(@() dtwc.load(testCase.TestData.X, key{1}, -1));
         verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
@@ -124,7 +125,8 @@ function test_tier1_load_negative_skip_rows_rejected(testCase)
     end
     err = capture_error(@() dtwc_mex('read_data', 'unread.csv', 0, -1, ''));
     verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
-    verifyEqual(testCase, err.message, 'load: skip_rows must be non-negative.');
+    verifyEqual(testCase, err.message, ['--skip-rows and --skip-cols (skip_rows, skip_cols) count leading ' ...
+        'rows and columns and must be non-negative, got -1 and 0.']);
 end
 
 function test_tier1_cluster_returns_result(testCase)

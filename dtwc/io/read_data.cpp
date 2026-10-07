@@ -70,6 +70,9 @@ InputFormat input_format(const fs::path &path)
 void require_reader_options(std::optional<InputFormat> format, index_t skip_cols, index_t skip_rows, char delimiter,
                             std::string_view column)
 {
+  if (skip_rows < 0 || skip_cols < 0) // here, for every format: the text reader would read skip_rows -1 as 0
+    throw InvalidInput("--skip-rows and --skip-cols (skip_rows, skip_cols) count leading rows and columns and must be "
+                       "non-negative, got " + std::to_string(skip_rows) + " and " + std::to_string(skip_cols) + ".");
   if (!column.empty() && format != InputFormat::Parquet)
     throw InvalidInput("--column selects a Parquet column and cannot be honoured for this input; drop --column, or "
                        "pass a .parquet/.pq file or directory.");

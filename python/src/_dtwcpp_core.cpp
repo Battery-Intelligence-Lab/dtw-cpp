@@ -253,8 +253,6 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("_read_data",
         [](const std::filesystem::path &source, dtwc::index_t skip_cols,
            dtwc::index_t skip_rows, const std::string &delimiter) {
-    if (skip_cols < 0) throw dtwc::InvalidInput("load: skip_cols must be non-negative.");
-    if (skip_rows < 0) throw dtwc::InvalidInput("load: skip_rows must be non-negative.");
     if (delimiter.size() > 1)
       throw dtwc::InvalidInput("load: delimiter must be a single character.");
     // File I/O and parsing touch no Python object, so the GIL is released for

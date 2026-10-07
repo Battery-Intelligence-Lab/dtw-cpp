@@ -1275,8 +1275,6 @@ static void cmd_read_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *pr
   const auto path = get_path(prhs[1], "path");
   const auto skip_cols = get_exact_int<dtwc::index_t>(prhs[2], "skip_cols");
   const auto skip_rows = get_exact_int<dtwc::index_t>(prhs[3], "skip_rows");
-  if (skip_cols < 0) throw dtwc::InvalidInput("load: skip_cols must be non-negative.");
-  if (skip_rows < 0) throw dtwc::InvalidInput("load: skip_rows must be non-negative.");
   const char delimiter = parse_delimiter(optional_string(nrhs, prhs, 4, "delimiter"));
   const dtwc::Data data = dtwc::read_data(path, skip_cols, skip_rows, delimiter);
   const auto n = static_cast<size_t>(data.size());

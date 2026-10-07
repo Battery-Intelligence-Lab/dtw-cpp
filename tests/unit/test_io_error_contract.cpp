@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <fstream>
 #include <istream>
+#include <optional>
 #include <streambuf>
 #include <string>
 #include <vector>
@@ -144,6 +145,30 @@ TEST_CASE("read_data: a reader option the format cannot honour is InvalidInput",
   config.output.clear();
   CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput, MessageMatches(ContainsSubstring("--delimiter")));
 #endif
+}
+
+TEST_CASE("read_data: a negative skip is InvalidInput for every input", "[io][error]")
+{
+  // One check where the counts enter the readers, whatever the format, before
+  // any file is opened (none exists): the text reader read skip_rows -1 as 0.
+  using dtwc::InputFormat;
+  for (const std::optional<InputFormat> format : { std::optional<InputFormat>{}, std::optional{ InputFormat::Text },
+                                                   std::optional{ InputFormat::Parquet },
+                                                   std::optional{ InputFormat::ArrowIPC } }) {
+    CHECK_THROWS_MATCHES(dtwc::require_reader_options(format, 0, -1, '\0', ""), dtwc::InvalidInput,
+                         MessageMatches(ContainsSubstring("must be non-negative, got -1 and 0.")));
+    CHECK_THROWS_MATCHES(dtwc::require_reader_options(format, -1, 0, '\0', ""), dtwc::InvalidInput,
+                         MessageMatches(ContainsSubstring("must be non-negative, got 0 and -1.")));
+  }
+  // dtwc_cl's pipeline, and C++ and Python reading text, reach it.
+  dtwc::Config config;
+  config.input = "missing.csv";
+  config.k = 2;
+  config.skip_rows = -1;
+  config.output.clear();
+  CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput, MessageMatches(ContainsSubstring("--skip-rows")));
+  CHECK_THROWS_MATCHES(dtwc::read_data("missing.csv", 0, -1), dtwc::InvalidInput,
+                       MessageMatches(ContainsSubstring("--skip-rows")));
 }
 
 TEST_CASE("read_data: a folder is text whatever its name", "[io][load]")
