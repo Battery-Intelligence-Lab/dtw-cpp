@@ -450,3 +450,6 @@ CHANGELOG rule.
 - 2026-10-07 — FU (`8d969203`): the per-pair `distance::*` functions refuse an empty series (InvalidInput, as every
   matrix route); an infeasible band still returns the documented max(). A negative skip is refused where every
   language's read enters (`read_data`), and the bindings' copies of that check went.
+- 2026-10-07 — TB (`baselines/2026-10-06-tb-banded-bounds-x86.md`, Windows, quiet): the banded kernel's bounds per
+  column (`822225bc`) against `f5c58764` on x86, Core Ultra 9 285 P-core: new/old 0.79–1.00 (clang++), 0.85–1.02
+  (MSVC), no cell above the registered 1.05×: by Volkan's 10-06 ruling the change stays.
