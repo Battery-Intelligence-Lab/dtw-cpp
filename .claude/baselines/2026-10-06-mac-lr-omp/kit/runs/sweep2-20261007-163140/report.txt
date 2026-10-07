@@ -1,0 +1,64 @@
+lr-omp timing kit sweep2-20261007-163140: Apple M5 Pro, 18 cores, macOS-26.6.2-arm64-arm-64bit-Mach-O, OMP_NUM_THREADS=18
+REPEATS=3 SIZES=[100, 200, 240, 280, 320, 400, 800, 1600, 3200] REGIMES=['noise', 'line'] FLAVORS=['off', 'on'] MIN_MS=300 E2E=1
+head probe object: kParallelMinN = 280 (HEAD_MIN_N unset: the value it was built with), loop 2 SERIAL (HEAD_LOOP2 unset); the head dtwc_cl has the product's compiled-in constant
+load average at start: (4.84521484375, 7.4892578125, 5.9990234375), system idle 92.69%
+power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	99%; finishing charge; 0:00 remaining present: true
+thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+busiest processes (%cpu command): 98.9 /System/Library/PrivateFrameworks/CoreSuggestions.framework/Versions/A/Support/suggestd | 2.8 /Library/SystemExtensions/E8126432-611F-4F93-8738-6D3A4A487D77/com.cisco.anyconnect.macos.acsockext.systemextension/Contents/MacOS/com.cisco.anyconnect.macos.acsockext | 2.3 /usr/sbin/mDNSResponder | 2.0 /Applications/WhatsApp.app/Contents/MacOS/WhatsApp
+
+flavor regime     N |           root ms (warm)            |         LR phase ms          |         cluster() ms         |        dtwc_cl s         | cert iters nodes | bits
+                    |      base     head       x   cold x |      base     head       x   |      base     head       x   |    base   head       x |
+off    noise    100 |      0.16     0.15    1.02     1.15 |      0.16     0.15    1.02   |      1.45     1.45    1.00   |    0.02   0.02    0.97 |    T    22     0 | same
+on     noise    100 |     32.38    32.82    0.99     0.97 |     32.27    32.73    0.99   |     33.62    34.45    0.98   |    0.05   0.06    0.97 |    T   159     0 | same
+off    noise    200 |      0.86     0.86    1.00     1.02 |      0.86     0.86    1.00   |      2.70     2.37    1.14   |    0.02   0.02    1.02 |    T    28     0 | same
+on     noise    200 |    286.57   295.88    0.97     0.97 |    285.59   291.92    0.98   |    290.22   293.15    0.99   |    0.31   0.32    0.97 |    F   501  2001 | same
+off    noise    240 |      0.78     0.78    1.00     1.01 |      0.78     0.78    1.00   |      2.54     2.81    0.90   |    0.02   0.02    1.00 |    T    16     0 | same
+on     noise    240 |    352.06   360.87    0.98     0.98 |    351.68   357.32    0.98   |    356.42   363.77    0.98   |    0.38   0.39    0.97 |    F   501  2987 | same
+off    noise    280 |      4.97     4.42    1.12     1.10 |      4.96     4.42    1.12   |      6.88     5.81    1.18   |    0.03   0.02    1.07 |    T    74     0 | same
+on     noise    280 |    373.40   391.76    0.95     0.95 |    368.85   382.95    0.96   |    370.22   385.10    0.96   |    0.40   0.42    0.96 |    F   501  1759 | same
+off    noise    320 |      1.80     1.23    1.46     1.38 |      1.80     1.22    1.47   |      3.54     2.75    1.29   |    0.02   0.02    1.08 |    T    19     0 | same
+on     noise    320 |    538.05   539.41    1.00     1.00 |    530.92   532.95    1.00   |    531.01   534.27    0.99   |    0.56   0.56    1.00 |    F   501  6119 | same
+off    noise    400 |      3.51     1.62    2.16     2.06 |      3.51     1.64    2.14   |      6.31     4.22    1.50   |    0.03   0.03    1.07 |    T    23     0 | same
+on     noise    400 |    535.14   510.95    1.05     1.05 |    530.52   505.24    1.05   |    531.84   507.30    1.05   |    0.57   0.54    1.05 |    F   501  1229 | same
+off    noise    800 |     43.34     8.88    4.88     4.98 |     43.22    10.69    4.04   |     49.26    15.78    3.12   |    0.11   0.07    1.53 |    T    64     0 | same
+on     noise    800 |   1676.57  1446.51    1.16     1.16 |   1665.59  1436.44    1.16   |   1673.96  1439.32    1.16   |    1.75   1.50    1.16 |    F   501  6071 | same
+off    noise   1600 |    192.45    30.09    6.40     6.48 |    191.10    30.19    6.33   |    211.93    51.17    4.14   |    0.40   0.23    1.72 |    T    67     0 | same
+on     noise   1600 |   4301.68  3212.42    1.34     1.34 |   4273.56  3192.07    1.34   |   4316.27  3217.49    1.34   |    4.53   3.43    1.32 |    F   501   989 | same
+off    noise   3200 |    357.58    48.75    7.34     7.03 |    339.05    47.94    7.07   |    408.35   124.64    3.28   |    1.13   0.80    1.41 |    T    28     0 | same
+on     noise   3200 |  15266.17 10375.22    1.47     1.47 |  15213.11 10406.33    1.46   |  15266.92 10451.19    1.46   |   16.06  11.19    1.44 |    F   501  7239 | same
+off    line     100 |      0.31     0.30    1.02     1.06 |      0.31     0.30    1.02   |      1.25     1.21    1.03   |    0.02   0.02    1.03 |    T    41     0 | same
+on     line     100 |      0.94     0.97    0.97     0.96 |      0.94     0.97    0.97   |      1.97     2.23    0.88   |    0.02   0.02    1.06 |    T    12     0 | same
+off    line     200 |    132.30   131.98    1.00     1.00 |    132.35   132.00    1.00   |    133.38   133.05    1.00   |    0.16   0.15    1.01 |    F  4000   111 | same
+on     line     200 |      2.50     2.50    1.00     0.99 |      2.47     2.47    1.00   |      3.33     3.42    0.97   |    0.02   0.02    1.03 |    T    13     0 | same
+off    line     240 |    197.23   196.56    1.00     1.00 |    196.89   197.01    1.00   |    198.42   197.99    1.00   |    0.22   0.22    1.00 |    F  4000   167 | same
+on     line     240 |      4.59     4.79    0.96     0.96 |      4.53     4.62    0.98   |      5.58     5.65    0.99   |    0.03   0.03    0.97 |    T    17     0 | same
+off    line     280 |     54.52    47.76    1.14     1.13 |     54.04    47.74    1.13   |     55.56    49.23    1.13   |    0.08   0.07    1.11 |    T   756     0 | same
+on     line     280 |      4.96     5.19    0.95     0.89 |      4.96     5.07    0.98   |      6.40     6.31    1.01   |    0.03   0.03    0.96 |    T    15     0 | same
+off    line     320 |    407.42   282.95    1.44     1.44 |    407.87   283.07    1.44   |    407.20   285.17    1.43   |    0.44   0.31    1.41 |    F  4000    67 | same
+on     line     320 |      4.98     4.84    1.03     0.96 |      4.91     4.77    1.03   |      6.39     6.04    1.06   |    0.03   0.03    1.00 |    T    12     0 | same
+off    line     400 |    640.86   299.37    2.14     2.14 |    641.58   299.97    2.14   |    640.70   301.29    2.13   |    0.67   0.33    2.06 |    F  4000   161 | same
+on     line     400 |     11.24     9.64    1.17     1.09 |     11.17     9.46    1.18   |     12.85    10.80    1.19   |    0.04   0.04    0.98 |    T    18     0 | same
+off    line     800 |   2920.63   836.13    3.49     3.49 |   2917.63   832.68    3.50   |   2911.82   835.25    3.49   |    3.00   0.89    3.37 |    F  4000  1855 | same
+on     line     800 |     28.08    20.64    1.36     1.31 |     27.97    20.53    1.36   |     31.20    23.94    1.30   |    0.10   0.09    1.09 |    T    13     0 | same
+off    line    1600 |  12052.12  2412.88    4.99     4.99 |  11963.95  2434.12    4.92   |  12058.95  2438.38    4.95   |   12.33   2.63    4.69 |    F  4000  3297 | same
+on     line    1600 |    132.85    93.78    1.42     1.42 |    131.92    93.27    1.41   |    143.95   102.50    1.40   |    0.34   0.30    1.13 |    T    17     0 | same
+off    line    3200 |  44377.97  9713.61    4.57     4.57 |  44036.41  9871.52    4.46   |  43827.42  9870.72    4.44   |   45.87  10.50    4.37 |    T  3430     0 | same
+on     line    3200 |    746.10   504.16    1.48     1.48 |    702.29   481.71    1.46   |    744.62   510.11    1.46   |    1.51   1.26    1.19 |    T    22     0 | same
+
+times are medians over the repeats; x = base / head (> 1: head faster); a pair of repeats ran base, head, then head, base, ...
+
+B1 HiGHS-OFF subgradient root >= 2x at N >= 800 (18 threads): lowest x3.49 (off line N=800)  -> PASS
+B2 no cell below 0.95x on the root: lowest x0.95 (on noise N=280)  -> PASS
+B3 HiGHS-ON Kelley root not below 0.95x: lowest x0.95 (on noise N=280)  -> PASS
+crossover off line : the root ratio is >= 1.0 at every swept N from N = 100
+crossover off noise: the root ratio is >= 1.0 at every swept N from N = 100
+crossover on  line : the root ratio is >= 1.0 at every swept N from N = 320   (not used: HiGHS-dominated)
+crossover on  noise: the root ratio is >= 1.0 at every swept N from N = 400   (not used: HiGHS-dominated)
+  (the head probe's threshold is above 1: below it the head ran serial, so these lines describe this run, not the fork alone)
+B4 bit-identical base / head pairs: 36 of 36 cells identical  -> PASS
+hygiene: system idle CPU sampled before each cell (nothing of the kit running): min 80%, median 92%  -> NOT QUIET: the bands are not evidence
+         1-min load average before each run (includes the kit's own threads): min 2.8, median 4.4, max 6.3
+conditions at the end:
+  power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	100%; charged; 0:00 remaining present: true
+  thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+  busiest processes (%cpu command): 99.0 /System/Library/PrivateFrameworks/CoreSuggestions.framework/Versions/A/Support/suggestd | 19.5 /System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow | 12.5 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer | 3.6 /System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/MacOS/WallpaperAerialsExtension

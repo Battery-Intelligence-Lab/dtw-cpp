@@ -444,3 +444,6 @@ CHANGELOG rule.
   in every placement); the banded kernel's two-column form FALSIFIED its band and was reverted. On the M5 a per-pair
   loop's speed moves ±30 % with its code placement, and 64-byte loop alignment does not remove that (f64 squared runs
   1.3× slower aligned): a single build's banded timing is not evidence about banded code.
+- 2026-10-07 — lr-omp (`57ad9ad2`): `mip-solvers` takes `DTWC_HAS_OPENMP` and `OpenMP::OpenMP_CXX` PRIVATE (a
+  `#error` stops a build that would compile the dual serial); `evaluate_dual`'s first loop forks from N = 280, its
+  second (N·k) stays serial — measured, against the brief's one constant for both.

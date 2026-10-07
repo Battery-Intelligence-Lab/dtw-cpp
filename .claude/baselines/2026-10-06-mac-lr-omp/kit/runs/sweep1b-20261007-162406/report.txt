@@ -1,0 +1,37 @@
+lr-omp timing kit sweep1b-20261007-162406: Apple M5 Pro, 18 cores, macOS-26.6.2-arm64-arm-64bit-Mach-O, OMP_NUM_THREADS=18
+REPEATS=3 SIZES=[200, 240, 280, 320, 360, 400] REGIMES=['noise', 'line'] FLAVORS=['off'] MIN_MS=300 E2E=0
+head probe object: kParallelMinN = 1 (HEAD_MIN_N = 1), loop 2 SERIAL (HEAD_LOOP2 = 0); the head dtwc_cl has the product's compiled-in constant
+load average at start: (2.3583984375, 2.95263671875, 3.90869140625), system idle 97.17%
+power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	99%; finishing charge; 0:08 remaining present: true
+thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+busiest processes (%cpu command): 28.1 /Users/engs2321/.vscode/extensions/anthropic.claude-code-2.1.289-darwin-arm64/resources/native-binary/claude | 16.6 /sbin/launchd | 3.7 /Library/SystemExtensions/C97F573D-60CA-42B1-AE72-59401C9F11C6/com.sophos.endpoint.scanextension.systemextension/Contents/MacOS/com.sophos.endpoint.scanextension | 2.8 SophosEventMonitor
+
+flavor regime     N |           root ms (warm)            |         LR phase ms          |         cluster() ms         |        dtwc_cl s         | cert iters nodes | bits
+                    |      base     head       x   cold x |      base     head       x   |      base     head       x   |    base   head       x |
+off    noise    200 |      0.86     1.52    0.57     0.49 |      0.86     1.50    0.57   |      2.36     2.85    0.83   |                      - |    T    28     0 | same
+off    noise    240 |      0.78     0.90    0.86     0.72 |      0.78     0.92    0.85   |      2.48     2.39    1.04   |                      - |    T    16     0 | same
+off    noise    280 |      4.97     4.35    1.14     1.08 |      4.97     4.38    1.13   |      6.95     5.89    1.18   |                      - |    T    74     0 | same
+off    noise    320 |      1.80     1.21    1.48     1.30 |      1.80     1.22    1.47   |      3.93     2.79    1.41   |                      - |    T    19     0 | same
+off    noise    360 |     10.87     6.08    1.79     1.70 |     10.86     6.03    1.80   |     13.50     8.14    1.66   |                      - |    T    91     0 | same
+off    noise    400 |      3.51     1.67    2.10     1.92 |      3.51     1.64    2.13   |      6.28     4.29    1.46   |                      - |    T    23     0 | same
+off    line     200 |    127.96   235.10    0.54     0.54 |    127.92   235.03    0.54   |    129.88   236.47    0.55   |                      - |    F  4000   111 | same
+off    line     240 |    193.02   237.48    0.81     0.81 |    192.84   238.75    0.81   |    194.00   240.54    0.81   |                      - |    F  4000   167 | same
+off    line     280 |     52.88    47.52    1.11     1.10 |     52.87    47.53    1.11   |     54.31    48.92    1.11   |                      - |    T   756     0 | same
+off    line     320 |    393.88   285.13    1.38     1.38 |    393.00   285.23    1.38   |    394.69   286.10    1.38   |                      - |    F  4000    67 | same
+off    line     360 |    489.92   280.10    1.75     1.74 |    487.81   280.52    1.74   |    489.91   281.62    1.74   |                      - |    F  4000   251 | same
+off    line     400 |    618.37   299.38    2.07     2.06 |    619.49   299.98    2.07   |    618.02   301.00    2.05   |                      - |    F  4000   161 | same
+
+times are medians over the repeats; x = base / head (> 1: head faster); a pair of repeats ran base, head, then head, base, ...
+
+B1 not evaluated (no flavor off at N >= 800 in this run)
+B2 no cell below 0.95x on the root: lowest x0.54 (off line N=200)  -> FAIL
+crossover off line : the root ratio is >= 1.0 at every swept N from N = 280
+crossover off noise: the root ratio is >= 1.0 at every swept N from N = 280
+  every N forked in this run: the smallest swept N from which every HiGHS-OFF cell gains = 280, the threshold's upper candidate (the true crossover lies between it and the swept N below it)
+B4 bit-identical base / head pairs: 12 of 12 cells identical  -> PASS
+hygiene: system idle CPU sampled before each cell (nothing of the kit running): min 93%, median 98%
+         1-min load average before each run (includes the kit's own threads): min 2.2, median 3.9, max 5.7
+conditions at the end:
+  power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	99%; finishing charge; 0:04 remaining present: true
+  thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+  busiest processes (%cpu command): 82.5 /System/Library/PrivateFrameworks/CoreSuggestions.framework/Versions/A/Support/suggestd | 1.1 /Applications/WhatsApp.app/Contents/MacOS/WhatsApp | 0.7 /usr/sbin/cfprefsd | 0.5 /Library/SystemExtensions/C97F573D-60CA-42B1-AE72-59401C9F11C6/com.sophos.endpoint.scanextension.systemextension/Contents/MacOS/com.sophos.endpoint.scanextension

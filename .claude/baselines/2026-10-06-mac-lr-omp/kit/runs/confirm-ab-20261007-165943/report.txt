@@ -1,0 +1,36 @@
+lr-omp timing kit confirm-ab-20261007-165943: Apple M5 Pro, 18 cores, macOS-26.6.2-arm64-arm-64bit-Mach-O, OMP_NUM_THREADS=18
+REPEATS=9 SIZES=[100, 200, 240, 280, 400] REGIMES=['noise', 'line'] FLAVORS=['on'] MIN_MS=300 E2E=0
+head probe object: kParallelMinN = 280 (HEAD_MIN_N unset: the value it was built with), loop 2 SERIAL (HEAD_LOOP2 unset); the head dtwc_cl has the product's compiled-in constant
+load average at start: (3.7021484375, 3.84765625, 4.22119140625), system idle 91.75%
+power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	100%; charged; 0:00 remaining present: true
+thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+busiest processes (%cpu command): 99.6 /System/Library/PrivateFrameworks/CoreSuggestions.framework/Versions/A/Support/suggestd | 7.5 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer | 6.3 /System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/MacOS/WallpaperAerialsExtension | 3.0 /Users/engs2321/.vscode/extensions/anthropic.claude-code-2.1.289-darwin-arm64/resources/native-binary/claude
+
+flavor regime     N |           root ms (warm)            |         LR phase ms          |         cluster() ms         |        dtwc_cl s         | cert iters nodes | bits
+                    |      base     head       x   cold x |      base     head       x   |      base     head       x   |    base   head       x |
+on     noise    100 |     32.56    33.03    0.99     1.00 |     32.53    32.77    0.99   |     34.00    34.63    0.98   |                      - |    T   159     0 | same
+on     noise    200 |    287.19   296.14    0.97     0.97 |    286.23   293.16    0.98   |    288.70   294.73    0.98   |                      - |    F   501  2001 | same
+on     noise    240 |    366.65   379.65    0.97     0.97 |    362.20   371.92    0.97   |    361.17   374.34    0.96   |                      - |    F   501  2987 | same
+on     noise    280 |    397.25   413.46    0.96     0.96 |    398.86   415.41    0.96   |    387.73   410.88    0.94   |                      - |    F   501  1759 | same
+on     noise    400 |    546.37   519.14    1.05     1.05 |    542.04   513.13    1.06   |    544.86   512.68    1.06   |                      - |    F   501  1229 | same
+on     line     100 |      0.95     0.95    0.99     0.99 |      0.95     0.95    0.99   |      1.90     2.02    0.94   |                      - |    T    12     0 | same
+on     line     200 |      2.48     2.54    0.98     1.00 |      2.47     2.49    0.99   |      3.42     3.44    0.99   |                      - |    T    13     0 | same
+on     line     240 |      4.60     4.62    1.00     0.97 |      4.60     4.57    1.01   |      5.69     5.78    0.98   |                      - |    T    17     0 | same
+on     line     280 |      4.99     5.15    0.97     0.91 |      4.96     5.08    0.98   |      6.51     6.32    1.03   |                      - |    T    15     0 | same
+on     line     400 |     10.89     9.53    1.14     1.07 |     10.89     9.45    1.15   |     12.42    10.90    1.14   |                      - |    T    18     0 | same
+
+times are medians over the repeats; x = base / head (> 1: head faster); a pair of repeats ran base, head, then head, base, ...
+
+B1 not evaluated (no flavor off at N >= 800 in this run)
+B2 no cell below 0.95x on the root: lowest x0.96 (on noise N=280)  -> PASS
+B3 HiGHS-ON Kelley root not below 0.95x: lowest x0.96 (on noise N=280)  -> PASS
+crossover on  line : the root ratio is >= 1.0 at every swept N from N = 400   (not used: HiGHS-dominated)
+crossover on  noise: the root ratio is >= 1.0 at every swept N from N = 400   (not used: HiGHS-dominated)
+  (the head probe's threshold is above 1: below it the head ran serial, so these lines describe this run, not the fork alone)
+B4 bit-identical base / head pairs: 10 of 10 cells identical  -> PASS
+hygiene: system idle CPU sampled before each cell (nothing of the kit running): min 74%, median 90%  -> NOT QUIET: the bands are not evidence
+         1-min load average before each run (includes the kit's own threads): min 3.3, median 3.7, max 6.7
+conditions at the end:
+  power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	100%; charged; 0:00 remaining present: true
+  thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+  busiest processes (%cpu command): 97.3 /System/Library/PrivateFrameworks/CoreSuggestions.framework/Versions/A/Support/suggestd | 3.6 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer | 1.9 /System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/MacOS/WallpaperAerialsExtension | 0.8 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTDecoderXPCService.xpc/Contents/MacOS/VTDecoderXPCService

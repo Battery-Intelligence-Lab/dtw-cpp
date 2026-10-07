@@ -1,0 +1,35 @@
+lr-omp timing kit confirm-aa-20261007-170242: Apple M5 Pro, 18 cores, macOS-26.6.2-arm64-arm-64bit-Mach-O, OMP_NUM_THREADS=18  *** AA: base against itself ***
+REPEATS=9 SIZES=[100, 200, 240, 280, 400] REGIMES=['noise', 'line'] FLAVORS=['on'] MIN_MS=300 E2E=0
+head probe object: kParallelMinN = -1 (HEAD_MIN_N unset: the value it was built with), loop 2 ? (HEAD_LOOP2 unset); the head dtwc_cl has the product's compiled-in constant
+load average at start: (6.08203125, 4.39013671875, 4.33935546875), system idle 91.73%
+power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	100%; charged; 0:00 remaining present: true
+thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+busiest processes (%cpu command): 99.3 /System/Library/PrivateFrameworks/CoreSuggestions.framework/Versions/A/Support/suggestd | 7.7 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer | 4.3 /Library/SystemExtensions/C97F573D-60CA-42B1-AE72-59401C9F11C6/com.sophos.endpoint.scanextension.systemextension/Contents/MacOS/com.sophos.endpoint.scanextension | 3.9 /System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/MacOS/WallpaperAerialsExtension
+
+flavor regime     N |           root ms (warm)            |         LR phase ms          |         cluster() ms         |        dtwc_cl s         | cert iters nodes | bits
+                    |      base     head       x   cold x |      base     head       x   |      base     head       x   |    base   head       x |
+on     noise    100 |     33.52    33.63    1.00     0.99 |     33.28    33.53    0.99   |     34.86    35.18    0.99   |                      - |    T   159     0 | same
+on     noise    200 |    295.03   294.28    1.00     1.00 |    293.27   293.31    1.00   |    295.00   294.77    1.00   |                      - |    F   501  2001 | same
+on     noise    240 |    361.02   360.86    1.00     1.00 |    357.49   355.86    1.00   |    357.13   358.10    1.00   |                      - |    F   501  2987 | same
+on     noise    280 |    378.94   379.68    1.00     1.00 |    374.76   375.82    1.00   |    375.61   375.84    1.00   |                      - |    F   501  1759 | same
+on     noise    400 |    539.66   537.09    1.00     1.00 |    534.94   533.23    1.00   |    535.83   534.63    1.00   |                      - |    F   501  1229 | same
+on     line     100 |      0.95     0.94    1.00     0.99 |      0.94     0.94    1.00   |      1.94     1.94    1.00   |                      - |    T    12     0 | same
+on     line     200 |      2.46     2.46    1.00     0.99 |      2.45     2.46    1.00   |      3.41     3.36    1.01   |                      - |    T    13     0 | same
+on     line     240 |      4.60     4.58    1.00     1.00 |      4.55     4.55    1.00   |      5.67     5.71    0.99   |                      - |    T    17     0 | same
+on     line     280 |      5.06     5.11    0.99     1.02 |      5.02     5.00    1.00   |      6.61     6.45    1.02   |                      - |    T    15     0 | same
+on     line     400 |     10.83    10.86    1.00     1.00 |     10.78    10.85    0.99   |     12.63    12.53    1.01   |                      - |    T    18     0 | same
+
+times are medians over the repeats; x = base / head (> 1: head faster); a pair of repeats ran base, head, then head, base, ...
+
+B1 not evaluated (no flavor off at N >= 800 in this run)
+B2 no cell below 0.95x on the root: lowest x0.99 (on line N=280)  -> PASS
+B3 HiGHS-ON Kelley root not below 0.95x: lowest x0.99 (on line N=280)  -> PASS
+crossover on  line : the root ratio is >= 1.0 at every swept N from N = none (not in this sweep)   (not used: HiGHS-dominated)
+crossover on  noise: the root ratio is >= 1.0 at every swept N from N = 400   (not used: HiGHS-dominated)
+B4 bit-identical base / head pairs: 10 of 10 cells identical  -> PASS
+hygiene: system idle CPU sampled before each cell (nothing of the kit running): min 84%, median 91%  -> NOT QUIET: the bands are not evidence
+         1-min load average before each run (includes the kit's own threads): min 3.1, median 3.7, max 5.7
+conditions at the end:
+  power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	100%; charged; 0:00 remaining present: true
+  thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+  busiest processes (%cpu command): 7.1 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer | 3.9 /Library/SystemExtensions/C97F573D-60CA-42B1-AE72-59401C9F11C6/com.sophos.endpoint.scanextension.systemextension/Contents/MacOS/com.sophos.endpoint.scanextension | 3.0 /Applications/Slack.app/Contents/MacOS/Slack | 2.9 SophosEventMonitor

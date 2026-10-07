@@ -1,0 +1,45 @@
+lr-omp timing kit sweep2on-20261007-171002: Apple M5 Pro, 18 cores, macOS-26.6.2-arm64-arm-64bit-Mach-O, OMP_NUM_THREADS=18
+REPEATS=3 SIZES=[100, 200, 240, 280, 320, 400, 800, 1600, 3200] REGIMES=['noise', 'line'] FLAVORS=['on'] MIN_MS=300 E2E=1
+head probe object: kParallelMinN = 280 (HEAD_MIN_N unset: the value it was built with), loop 2 SERIAL (HEAD_LOOP2 unset); the head dtwc_cl has the product's compiled-in constant
+HiGHS-ON runs load one libhighs for base and head: /private/tmp/claude-504/-Users-engs2321-git-dtw-cpp/11a5974a-eee8-48c6-bc97-994bfa954411/scratchpad/lr-omp/base-build/lib
+load average at start: (1.533203125, 2.4716796875, 3.404296875), system idle 98.22%
+power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	100%; charged; 0:00 remaining present: true
+thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+busiest processes (%cpu command): 2.5 /usr/libexec/dasd | 2.3 /Applications/WhatsApp.app/Contents/MacOS/WhatsApp | 1.3 /System/Library/PrivateFrameworks/CoreAnalytics.framework/Support/analyticsd | 0.9 /Library/SystemExtensions/C97F573D-60CA-42B1-AE72-59401C9F11C6/com.sophos.endpoint.scanextension.systemextension/Contents/MacOS/com.sophos.endpoint.scanextension
+
+flavor regime     N |           root ms (warm)            |         LR phase ms          |         cluster() ms         |        dtwc_cl s         | cert iters nodes | bits
+                    |      base     head       x   cold x |      base     head       x   |      base     head       x   |    base   head       x |
+on     noise    100 |     32.79    32.66    1.00     0.99 |     32.59    32.65    1.00   |     34.06    33.99    1.00   |    0.06   0.06    1.01 |    T   159     0 | same
+on     noise    200 |    285.45   287.32    0.99     1.00 |    284.67   286.41    0.99   |    286.54   288.26    0.99   |    0.32   0.32    0.99 |    F   501  2001 | same
+on     noise    240 |    356.78   351.36    1.02     1.02 |    355.38   347.24    1.02   |    355.50   348.02    1.02   |    0.38   0.38    1.00 |    F   501  2987 | same
+on     noise    280 |    371.02   385.15    0.96     0.96 |    366.83   379.20    0.97   |    368.12   379.12    0.97   |    0.40   0.41    0.97 |    F   501  1759 | same
+on     noise    320 |    522.26   535.19    0.98     0.98 |    519.49   527.82    0.98   |    522.07   528.38    0.99   |    0.56   0.56    0.99 |    F   501  6119 | same
+on     noise    400 |    527.99   506.41    1.04     1.04 |    526.23   496.46    1.06   |    528.12   498.28    1.06   |    0.56   0.54    1.04 |    F   501  1229 | same
+on     noise    800 |   1637.79  1400.84    1.17     1.17 |   1633.43  1398.48    1.17   |   1637.54  1402.78    1.17   |    1.71   1.48    1.16 |    F   501  6071 | same
+on     noise   1600 |   4250.03  3117.59    1.36     1.36 |   4239.95  3113.39    1.36   |   4218.70  3121.23    1.35   |    4.43   3.33    1.33 |    F   501   989 | same
+on     noise   3200 |  14894.74 10071.71    1.48     1.48 |  14882.32 10016.17    1.49   |  14906.40 10099.73    1.48   |   15.85  10.95    1.45 |    F   501  7239 | same
+on     line     100 |      0.94     0.94    1.00     0.98 |      0.94     0.94    1.00   |      1.96     2.25    0.87   |    0.02   0.02    1.15 |    T    12     0 | same
+on     line     200 |      2.50     2.46    1.01     1.00 |      2.48     2.46    1.01   |      3.39     3.40    1.00   |    0.03   0.03    1.01 |    T    13     0 | same
+on     line     240 |      4.62     4.63    1.00     1.00 |      4.54     4.59    0.99   |      5.53     5.62    0.98   |    0.03   0.03    1.09 |    T    17     0 | same
+on     line     280 |      5.00     5.07    0.99     0.91 |      4.96     4.97    1.00   |      6.22     6.29    0.99   |    0.03   0.03    0.98 |    T    15     0 | same
+on     line     320 |      4.88     4.69    1.04     0.94 |      4.87     4.67    1.04   |      6.36     5.99    1.06   |    0.03   0.03    1.04 |    T    12     0 | same
+on     line     400 |     10.66     9.40    1.13     1.05 |     10.66     9.34    1.14   |     12.34    10.83    1.14   |    0.04   0.04    1.01 |    T    18     0 | same
+on     line     800 |     27.36    20.27    1.35     1.31 |     27.06    19.88    1.36   |     30.39    23.11    1.32   |    0.09   0.09    1.07 |    T    13     0 | same
+on     line    1600 |    128.53    90.08    1.43     1.43 |    128.65    90.24    1.43   |    140.14    98.91    1.42   |    0.34   0.30    1.13 |    T    17     0 | same
+on     line    3200 |    699.67   468.26    1.49     1.49 |    681.81   454.10    1.50   |    713.32   493.44    1.45   |    1.44   1.21    1.19 |    T    22     0 | same
+
+times are medians over the repeats; x = base / head (> 1: head faster); a pair of repeats ran base, head, then head, base, ...
+
+B1 not evaluated (no flavor off at N >= 800 in this run)
+B2 no cell below 0.95x on the root: lowest x0.96 (on noise N=280)  -> PASS
+B3 HiGHS-ON Kelley root not below 0.95x: lowest x0.96 (on noise N=280)  -> PASS
+crossover on  line : the root ratio is >= 1.0 at every swept N from N = 320   (not used: HiGHS-dominated)
+crossover on  noise: the root ratio is >= 1.0 at every swept N from N = 400   (not used: HiGHS-dominated)
+  (the head probe's threshold is above 1: below it the head ran serial, so these lines describe this run, not the fork alone)
+B4 bit-identical base / head pairs: 18 of 18 cells identical  -> PASS
+hygiene: system idle CPU sampled before each cell (nothing of the kit running): min 87%, median 93%  -> NOT QUIET: the bands are not evidence
+         1-min load average before each run (includes the kit's own threads): min 1.5, median 3.9, max 5.5
+conditions at the end:
+  power: Now drawing from 'AC Power' | -InternalBattery-0 (id=23461987)	100%; charged; 0:00 remaining present: true
+  thermal: Note: No thermal warning level has been recorded | Note: No performance warning level has been recorded | Note: No CPU power status has been recorded
+  busiest processes (%cpu command): 100.0 /System/Library/PrivateFrameworks/CoreSuggestions.framework/Versions/A/Support/suggestd | 1.2 /Applications/WhatsApp.app/Contents/MacOS/WhatsApp | 0.6 /Users/engs2321/.vscode/extensions/anthropic.claude-code-2.1.289-darwin-arm64/resources/native-binary/claude | 0.6 /Library/SystemExtensions/C97F573D-60CA-42B1-AE72-59401C9F11C6/com.sophos.endpoint.scanextension.systemextension/Contents/MacOS/com.sophos.endpoint.scanextension

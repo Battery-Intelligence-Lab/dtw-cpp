@@ -307,10 +307,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   (banded) FALSIFIED (min 0.85× against ≥ 1.15×), reverted; the abandon test is a template argument in both. The
   M5's per-pair speed carries a ±30 % code-placement term, and 64-byte loop alignment is no cure
   (`baselines/2026-10-06-mac-pair-2col.md`)
-- ◐ the LR-core dual on OpenMP: `mip-solvers` compiled without the OpenMP flags on clang/GCC, so `evaluate_dual`'s
-  two loops ran serial (lrcore record finding 5); phase 1 on pb/lr-omp 54fe1150, 96de8de4, 3bc08848 (flags, an
-  `if(N >= kParallelMinN)` clause, a `#error` guard; 330 result comparisons identical); the threshold waits for
-  the quiet run (`baselines/2026-10-06-mac-lr-omp.md`)
+- ☑ the LR-core dual on OpenMP: `mip-solvers` compiled without the OpenMP flags on clang/GCC, so `evaluate_dual`'s
+  two loops ran serial (lrcore record finding 5) (54fe1150, 96de8de4, 3bc08848, 6afaafdd; merged 57ad9ad2): the
+  flags, a `#error` guard, the first loop forks from N = 280 (break-even 240–280), the second stays serial (forking
+  it never paid, k 3–64); quiet run 10-07: subgradient root (the wheel) 3.49–7.34× at N ≥ 800, Kelley 1.17–1.49×,
+  no cell below 0.963×, 54/54 bit-identical; main tree ctest 94, matlab_suite 138/138, pytest 895/11/0
+  (`baselines/2026-10-06-mac-lr-omp.md`, kit beside it)
 - ☑ PF follow-ups (8f45ea7a … 8585e6b9; merged 30284994): Python names series as C++ does (in memory after
   `skip_rows`; Parquet by C++'s column rule), `load(Dataset, options)` refuses, `set_solver` prints nothing (FX-3
   reads HAS_GUROBI), test_conformance.m in matlab_suite, a CLI build sets BUILD_SHARED_LIBS for HiGHS, CI installs
