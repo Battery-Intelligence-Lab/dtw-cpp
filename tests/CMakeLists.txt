@@ -227,9 +227,16 @@ if(TARGET dtwc_cl)
     else()
         set(_dtwc_cl_loud_marker "cases=16/16 efbig=ran")
     endif()
+    # ON without Gurobi stops the configure, so the option says whether dtwc_cl has it.
+    if(DTWC_ENABLE_GUROBI)
+        set(_dtwc_cl_gurobi 1)
+    else()
+        set(_dtwc_cl_gurobi 0)
+    endif()
     dtwc_add_script_test(NAME test_cli_loud_failures
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_loud_failures.cmake"
         ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>" "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-loud-failures"
+             "-DHAS_GUROBI=${_dtwc_cl_gurobi}"
         MARKER "CLI_LOUD_FAILURES subject=real_dtwc_cl ${_dtwc_cl_loud_marker} skips=0"
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 180)
 endif()
