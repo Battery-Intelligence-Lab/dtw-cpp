@@ -311,8 +311,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ PF follow-ups (8f45ea7a … 8585e6b9; merged 30284994): Python names series as C++ does (in memory after
   `skip_rows`; Parquet by C++'s column rule), `load(Dataset, options)` refuses, `set_solver` prints nothing (FX-3
   reads HAS_GUROBI), test_conformance.m in matlab_suite, a CLI build sets BUILD_SHARED_LIBS for HiGHS, CI installs
-  matplotlib; open: a Parquet file of scalar columns only (`save_dataset_parquet`'s layout) is read, in every
-  language, as one series of its first column — Volkan rules
+  matplotlib; main tree: ctest 94, matlab_suite 137/137, pytest 891/11/0, no cached BUILD_SHARED_LIBS after a
+  re-configure
+- ◐ PQ: a Parquet file holds many series — each row a series when its numeric columns are scalar, the first string
+  column names the rows (Volkan 10-07, DECISIONS)
 
 ## Blocked on another machine or on Volkan
 
