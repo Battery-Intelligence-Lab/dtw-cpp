@@ -39,8 +39,14 @@ function(dtwc_setup_dependencies)
   # the extension records no rpath (delocate and auditwheel stop at the missing
   # library), and the MEX ships as one file. Link it into them instead. A plain
   # variable of this function: HiGHS's option() yields to it (CMP0077) and it goes
-  # no further.
+  # no further. Unless the user set it, a CLI build sets it too, to HiGHS's own
+  # default, so option() makes no cache entry: a cached ON built Catch2 shared once
+  # the tree was configured again.
   if(DTWC_BUILD_PYTHON OR DTWC_BUILD_MATLAB)
+    set(BUILD_SHARED_LIBS OFF)
+  elseif(NOT DEFINED BUILD_SHARED_LIBS AND UNIX)
+    set(BUILD_SHARED_LIBS ON)
+  elseif(NOT DEFINED BUILD_SHARED_LIBS)
     set(BUILD_SHARED_LIBS OFF)
   endif()
   # A fetch that fails stops the configure inside CPM, which names the package and

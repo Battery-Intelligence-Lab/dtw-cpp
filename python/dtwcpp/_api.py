@@ -44,13 +44,15 @@ def _float64(values):
     return np.asarray(values, dtype=np.float64)
 
 
-def _series(source):
+def _series(source, skip_rows=0):
     """Already-read series as C++ takes them: one 1-D float64 array per series,
     and their names. The one conversion behind cluster(), load(),
     Problem.set_data, compute_distance_matrix and DTWClustering.
 
     A 2-D array holds one series per row and a list or tuple one per element, of
-    any lengths; both are named by their ordinals. A pandas DataFrame holds one
+    any lengths; both are named by their ordinals. The ``skip_rows`` leading series
+    a :class:`Dataset` drops go first, unread, and the ordinals count from 0 after
+    them, as C++ ``dtwc::load`` treats series in memory. A pandas DataFrame holds one
     series per row, named by its index (read through ``to_numpy``: pandas is not
     imported), and an Arrow array or stream (pyarrow, polars, DuckDB) is read by
     the compiled-in nanoarrow and named as it names them. Complex values, an
@@ -65,11 +67,12 @@ def _series(source):
         source = source.to_numpy()
     elif hasattr(source, "__arrow_c_array__") or hasattr(source, "__arrow_c_stream__"):
         data = data_from_arrow_c_array(source)
-        return [np.asarray(row, dtype=np.float64) for row in data.p_vec], list(data.p_names)
+        return ([np.asarray(row, dtype=np.float64) for row in data.p_vec[skip_rows:]],
+                list(data.p_names)[skip_rows:])
     elif type(source).__module__.startswith("scipy.sparse"):
         raise TypeError("Sparse input is not supported; provide a dense array.")
     if isinstance(source, (list, tuple)):
-        rows = [_float64(row) for row in source]
+        rows = [_float64(row) for row in source[skip_rows:]]
         for i, row in enumerate(rows):
             if row.ndim != 1:
                 raise _NotSeries(f"{_FORMS}; got a list whose element {i} is {row.ndim}-D.")
@@ -80,12 +83,12 @@ def _series(source):
         if array.ndim != 2:  # "Reshape your data", as scikit-learn's checks expect
             raise _NotSeries(f"{_FORMS}; got a {array.ndim}-D array of shape {array.shape}. "
                              "Reshape your data to (n_series, n_timesteps).")
-        array = _float64(array)
+        array = _float64(array[skip_rows:])
         if array.shape[0] and not array.shape[1]:  # scikit-learn's words, which its checks match
             raise InvalidInput(f"every series needs at least one value: 0 feature(s) "
                                f"(shape={array.shape}) while a minimum of 1 is required.")
         rows = list(array)
-    return rows, names or [str(i) for i in range(len(rows))]
+    return rows, names[skip_rows:] if names is not None else [str(i) for i in range(len(rows))]
 
 
 class Dataset:
@@ -128,8 +131,8 @@ class Dataset:
         leading LINES, variable-length rows are kept, a batch file names its
         series 1, 2, ... and a folder by file stem), Parquet and Arrow IPC
         through the installed pyarrow. ``skip_rows`` drops leading SERIES of an
-        in-memory source — one memory row is one file line — named as
-        :func:`_series` names them.
+        in-memory source — one memory row is one file line — and the series left
+        are named as :func:`_series` names them: ordinals count from 0, as in C++.
         """
         if self._data is None:
             from dtwcpp import _dtwcpp_core, io
@@ -138,8 +141,7 @@ class Dataset:
                                            self.skip_rows, self.delimiter)
             else:
                 from dtwcpp import InvalidInput
-                rows, names = _series(self.source)
-                rows, names = rows[self.skip_rows:], names[self.skip_rows:]
+                rows, names = _series(self.source, self.skip_rows)
                 if self.skip_cols > 0:
                     for row in rows:
                         if self.skip_cols > len(row):
@@ -168,8 +170,19 @@ class Dataset:
 
 
 def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None):
-    """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it)."""
+    """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it).
+    A Dataset passes through unchanged: it keeps the options it was made with, so
+    an option other than its default is refused, as MATLAB's dtwc.load refuses
+    any."""
     if isinstance(source, Dataset):
+        ignored = [key for key, value, default in (
+            ("skip_cols", skip_cols, 0), ("skip_rows", skip_rows, 0),
+            ("delimiter", delimiter, None), ("name", name, None)) if value != default]
+        if ignored:
+            from dtwcpp import InvalidInput
+            raise InvalidInput(
+                f"load: a Dataset keeps the options it was made with, so {', '.join(ignored)} "
+                "would be ignored; load its source with the options instead.")
         return source
     return Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
                    delimiter=delimiter, name=name)

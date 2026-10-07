@@ -100,10 +100,12 @@ name `series_0`, `series_1`, and so on. This layout is produced by
 dtwc_cl -i data.parquet --column series -k 5
 ```
 
-Python reads this layout, from a file or a folder of them, with the installed
-pyarrow (the `dtwcpp[parquet]` extra; the wheel links no Arrow C++): each row of
-the first list column is a series, named by the first string column, else
-`series_<i>`. Without pyarrow, reading raises `ImportError` naming the extra.
+Python reads Parquet, from a file or a folder of them, with the installed
+pyarrow (the `dtwcpp[parquet]` extra; the wheel links no Arrow C++), and takes
+what the C++ reader takes: the first column that is Float32/Float64 or a list of
+them, a scalar column as one series, named by its file, a list column as one
+series per row, named `series_<i>`; a string column names nothing. Without
+pyarrow, reading raises `ImportError` naming the extra.
 
 ```python
 data = dtwcpp.load("data.parquet").as_data()
@@ -111,8 +113,9 @@ data = dtwcpp.load("data.parquet").as_data()
 
 MATLAB reads Parquet with its own `parquetread` (R2019a or later; the MEX links no
 Arrow C++), from a file or a folder of them, and takes what the C++ reader takes:
-the first Float32/Float64 column is one series, named by its file, and the first
-list column of them one series per row, named `series_<i>`. A null series is
+the first column that is Float32/Float64 or a list of them, a scalar column as one
+series, named by its file, a list column as one series per row, named
+`series_<i>`. A null series is
 refused in both; a null value inside one is refused by the C++ reader, while
 `parquetread` reads it as NaN, which DTWC++ takes as a missing value.
 

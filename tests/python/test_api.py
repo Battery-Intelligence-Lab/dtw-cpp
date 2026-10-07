@@ -62,24 +62,14 @@ class TestLoad:
         with pytest.raises(error, match="skip_rows"):
             dtwcpp.load([[0.0], [1.0]], skip_rows=bad)
 
-    def test_parquet_path_reads_like_the_same_csv(self, tmp_path):
-        """load('x.parquet') reads through the installed pyarrow (the wheel
-        links no Arrow C++; it used to parse the file as CSV): the same series
-        and names as the same data in CSV."""
-        pa = pytest.importorskip("pyarrow")
-        pq = pytest.importorskip("pyarrow.parquet")
-        rows = [[0.0, 0.5], [2.5, 1.0, 0.25], [9.0, 9.5]]
-        csv = tmp_path / "x.csv"
-        csv.write_text("".join(",".join(map(repr, row)) + "\n" for row in rows),
-                       encoding="utf-8")
-        from_csv = dtwcpp.load(csv)
-        parquet = tmp_path / "x.parquet"
-        pq.write_table(pa.table({
-            "series": pa.array(rows, type=pa.list_(pa.float64())),
-            "name": from_csv.series_names()}), parquet)
-        from_parquet = dtwcpp.load(parquet)
-        assert from_parquet.as_series() == from_csv.as_series() == rows
-        assert from_parquet.series_names() == from_csv.series_names() == ["1", "2", "3"]
+    def test_a_dataset_refuses_the_options_it_would_ignore(self):
+        """load(Dataset, ...) returned the Dataset and dropped the options. A
+        Dataset keeps the options it was made with, so one given is refused by
+        name, as MATLAB's dtwc.load refuses it."""
+        ds = dtwcpp.load([[0.0], [1.0], [2.0]])
+        assert dtwcpp.load(ds) is ds
+        with pytest.raises(dtwcpp.InvalidInput, match=r"so skip_rows, name would be ignored"):
+            dtwcpp.load(ds, skip_rows=1, name="x")
 
     def test_arrow_ipc_path_reads_its_data_and_name_columns(self, tmp_path):
         """load('x.arrow') reads through pyarrow as dtwc_cl reads Arrow IPC: the
@@ -448,6 +438,31 @@ def test_what_is_not_series_is_refused_everywhere(entry, data, message):
 # ---------------------------------------------------------------------------
 class TestSeriesNames:
     """``Problem::series_name(i)`` comes from the loader, not from ``range(N)``."""
+
+    def test_series_are_named_as_cpp_names_them(self, tmp_path):
+        """One name per series in every language (Volkan 10-02). In memory,
+        skip_rows drops leading series before they are read, and the rest are
+        named 0, 1, ... as C++ dtwc::load names them (Dataset::materialize_local):
+        an empty series dropped is not refused, and no name counts it. Parquet is
+        read through pyarrow as the C++ reader (ParquetChunkReader) and MATLAB
+        read it: a file's first column that is Float32/Float64 or a list of them,
+        a list column's rows named series_<i> numbered on across a folder's files
+        whatever string column a file holds, a scalar column one series named by
+        its file (the folder of test_io_readers' Parquet case)."""
+        rows = [[0.0, 0.5], [2.5, 1.0, 0.25], [9.0, 9.5]]
+        assert dtwcpp.load([[]] + rows, skip_rows=1).series_names() == ["0", "1", "2"]
+        pa = pytest.importorskip("pyarrow")
+        pq = pytest.importorskip("pyarrow.parquet")
+        folder = tmp_path / "parquet"
+        folder.mkdir()
+        pq.write_table(pa.table({"id": ["a", "b", "c"],
+                                 "series": pa.array(rows, type=pa.list_(pa.float64()))}),
+                       folder / "a.parquet")
+        pq.write_table(pa.table({"id": ["d", "e"], "v": pa.array([5.0, 6.0], pa.float32())}),
+                       folder / "b.parquet")
+        data = dtwcpp.load(folder).as_data()
+        assert data.p_vec == rows + [[5.0, 6.0]]
+        assert data.p_names == ["series_0", "series_1", "series_2", "b"]
 
     def test_a_folder_given_with_a_trailing_separator_names_the_run(self, tmp_path):
         """The run is named as dtwc_cl names it (C++ detail::default_name):

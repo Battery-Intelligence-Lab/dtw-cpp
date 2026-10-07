@@ -56,7 +56,7 @@ class TestParseLabelsCSV:
             _hpc.parse_labels_csv(p, n=3)
 
     def test_a_file_read_on_the_cluster_keeps_the_row_order(self, tmp_path):
-        """A folder names its series by file stem, Parquet by its name column:
+        """A folder names its series by file stem, a Parquet list column series_<i>:
         without n the labels are the rows', which dtwc_cl writes in series order."""
         p = tmp_path / "j_labels.csv"
         p.write_text("name,cluster\nb_series,1\na_series,0\nc_series,1\n")

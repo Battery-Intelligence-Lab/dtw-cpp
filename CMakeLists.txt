@@ -317,10 +317,10 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
     COMPONENT runtime)
 
   # The archive is unpacked anywhere, so the CLI must resolve its bundled shared
-  # libraries relative to its own location. HiGHS builds SHARED by default (it
-  # sets BUILD_SHARED_LIBS itself), so `dtwc_cl` records @rpath/libhighs.*; with
-  # no INSTALL_RPATH the packed binary carries NO LC_RPATH and dyld/ld.so cannot
-  # find it at all. This must not be conditional on OpenMP.
+  # libraries relative to its own location. HiGHS builds SHARED on Unix (its own
+  # default, which cmake/Dependencies.cmake keeps), so `dtwc_cl` records
+  # @rpath/libhighs.*; with no INSTALL_RPATH the packed binary carries NO LC_RPATH
+  # and dyld/ld.so cannot find it at all. This must not be conditional on OpenMP.
   if(APPLE)
     set_target_properties(dtwc_cl PROPERTIES INSTALL_RPATH "@loader_path/../lib")
   elseif(UNIX)
