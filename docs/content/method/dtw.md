@@ -116,5 +116,5 @@ families, infeasible windows, and `INT_MAX`.
 Metal source implements the same fixed geometry and sentinel translation, and
 the permanent Metal gate, which holds the independent oracle and compares each
 Metal value with the CPU kernel on the same inputs, passed on an Apple M5 Pro
-on 2026-09-23 (FX-13). The contract above is executable evidence for CPU, CUDA,
+on 2026-09-23. The contract above is executable evidence for CPU, CUDA,
 and Metal.
