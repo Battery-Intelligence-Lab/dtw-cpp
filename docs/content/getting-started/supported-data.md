@@ -50,22 +50,51 @@ A _folder path_ can contain multiple individual files, each representing a _sing
 
 ## Parquet
 
-Parquet provides columnar, compressed storage. It requires
-`-DDTWC_ENABLE_ARROW=ON` at build time (which pulls in Apache Arrow). The eager
-and row-group readers use one shared schema rule: the selected top-level column
-must be Float32, Float64, `List<Float32/Float64>`, or
-`LargeList<Float32/Float64>`. `--column` selects it explicitly; when omitted,
-the first eligible top-level column is used.
+Parquet provides columnar, compressed storage. `dtwc_cl` and the C++ library read
+it in a build with `-DDTWC_ENABLE_ARROW=ON` (which pulls in Apache Arrow), Python
+with the installed pyarrow (the `dtwcpp[parquet]` extra; the wheel links no Arrow
+C++, and without pyarrow reading raises `ImportError` naming the extra), and
+MATLAB with its own `parquetread` (R2019a or later; the MEX links no Arrow C++).
+The three read a file by one rule, so a file gives the same series and names in
+every language; the eager and the row-group (streaming) readers share it.
 
-### Single file — one scalar column as one series
+### Which columns are series
 
-For a scalar Float32/Float64 column, all rows form one time series. The rows are
-not independent clustering points.
+`--column NAME` reads that column: a List/LargeList Float32/Float64 column is one
+series per row, a scalar Float32/Float64 column one series. Without it, the first
+top-level column that is Float32/Float64, or a list of them, decides:
+
+- **A list column** (list-per-row): each list cell is one variable-length series.
+  `dtwc-convert` writes this layout.
+- **A scalar column, with other scalar Float32/Float64 columns** (one row per
+  series): each row is a series of its values in the file's columns, in file
+  order, as a CSV row is read; string columns are not values. Any other column
+  among them (an integer id, say) is an error naming it: drop it with
+  `--skip-cols`, or read one column with `--column`.
+  `dtwcpp.io.save_dataset_parquet` writes this layout (a column per time step).
+- **The file's only Float32/Float64 column** (scalar): all its rows form one
+  time series, named by the file. The rows are not independent clustering
+  points; a folder of such files holds one series per file.
+
+The rows of a list column and of the row layout are named by the file's first
+string column (a null as `series_<i>`); without one they are `series_0`,
+`series_1`, ..., numbered on across the files of a folder, so its files never
+repeat a `series_<i>` name.
+
+`--skip-cols N` drops a file's first N columns and `--skip-rows N` its first N
+rows (of a one-column series, its first N values), as they drop a CSV row's
+leading fields and a CSV file's leading lines (`skip_cols`, `skip_rows` in
+Python, `'SkipCols'`, `'SkipRows'` in MATLAB): a dropped column is neither read
+nor a name, and the rows are numbered after the dropped ones. `--column` names one
+of the columns `--skip-cols` leaves; `--delimiter` is for text only.
 
 CLI:
 
 ```bash
-dtwc_cl -i data.parquet --column Voltage -k 5
+dtwc_cl -i rows.parquet -k 5                          # rows of the float columns
+dtwc_cl -i rows.parquet --skip-cols 1 -k 5            # the first column is an integer id
+dtwc_cl -i data.parquet --column series -k 5          # one list column
+dtwc_cl -i /path/to/parquet_folder/ --column Voltage -k 5
 ```
 
 C++:
@@ -74,69 +103,37 @@ C++:
 problem.set_data(dtwc::io::read_arrow("data.parquet", "Voltage")); // io/read_arrow.hpp
 ```
 
-### Directory of Parquet files
-
-Directory input eagerly concatenates the selected column from each
-`.parquet`/`.pq` file, in the order a folder of CSV files is read (sorted, hidden
-files skipped). With scalar columns this is one series per file, named from the
-filename. List columns contribute one series per list row, named `series_<i>`
-and numbered on across the files, so the files of a folder never repeat a
-`series_<i>` name.
-
-CLI:
-
-```bash
-dtwc_cl -i /path/to/parquet_folder/ --column Voltage -k 5
-```
-
-### List columns (list-per-row encoding)
-
-A Parquet file may store all series in one List/LargeList Float32/Float64
-column. Each list cell is one variable-length series and receives the stable
-name `series_0`, `series_1`, and so on. This layout is produced by
-`dtwc-convert`.
-
-```bash
-dtwc_cl -i data.parquet --column series -k 5
-```
-
-Python reads Parquet, from a file or a folder of them, with the installed
-pyarrow (the `dtwcpp[parquet]` extra; the wheel links no Arrow C++), and takes
-what the C++ reader takes: the first column that is Float32/Float64 or a list of
-them, a scalar column as one series, named by its file, a list column as one
-series per row, named `series_<i>`; a string column names nothing. Without
-pyarrow, reading raises `ImportError` naming the extra.
+Python and MATLAB:
 
 ```python
-data = dtwcpp.load("data.parquet").as_data()
+data = dtwcpp.load("rows.parquet", skip_cols=1).as_data()
 ```
-
-MATLAB reads Parquet with its own `parquetread` (R2019a or later; the MEX links no
-Arrow C++), from a file or a folder of them, and takes what the C++ reader takes:
-the first column that is Float32/Float64 or a list of them, a scalar column as one
-series, named by its file, a list column as one series per row, named
-`series_<i>`. A null series is
-refused in both; a null value inside one is refused by the C++ reader, while
-`parquetread` reads it as NaN, which DTWC++ takes as a missing value.
 
 ```matlab
-data = dtwc.load('data.parquet');
+data = dtwc.load('rows.parquet', 'SkipCols', 1);
 [series, names] = data.as_series();
 ```
+
+A folder reads each of its `.parquet`/`.pq` files by the rule, in the order a
+folder of CSV files is read (sorted, hidden files skipped). A null series or
+value in the rows read (the rows `--skip-rows` drops are not read) is refused by
+the C++ reader and Python; MATLAB's `parquetread` refuses a null series and reads
+a null value as NaN, which DTWC++ takes as a missing value, and a column of nulls
+as a Float64 column.
 
 ### Metadata-first RAM-limited streaming
 
 `--ram-limit` is checked from Parquet schema and row-group metadata before the
 selected payload is materialised. When the conservative decode/materialisation
-estimate exceeds the cap, the CLI can stream only a single list-per-row file
-through non-full FastCLARA:
+estimate exceeds the cap, the CLI can stream only a single file of one series
+per row (a list column, or the row layout) through non-full FastCLARA:
 
 ```bash
 dtwc_cl -i data.parquet --column series -k 5 --method clara \
   --sample-size 500 --ram-limit 2GiB
 ```
 
-Scalar-column input, directories, non-CLARA methods, a sample resolving to all
+A one-column file (one series), directories, non-CLARA methods, a sample resolving to all
 N series, and non-full CLARA with CUDA fail loudly while over budget. Parquet
 row groups are indivisible; rewrite the file with smaller row groups if one
 cannot fit beside retained sample/medoid data. Float32 streaming remains
@@ -147,7 +144,7 @@ The streamed route keeps a settings-only `Problem` and does not build a parent
 distance matrix. It writes labels, medoids, and the binary clustering-result
 checkpoint; dense distance-matrix and silhouette CSVs are omitted. For the
 same seed and settings, those three emitted artifacts are byte-identical to the
-resident list-column route.
+resident route.
 
 ---
 

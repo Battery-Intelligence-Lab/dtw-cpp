@@ -1,6 +1,6 @@
 /**
  * @file parquet_schema.hpp
- * @brief Shared Parquet time-series column selection.
+ * @brief Where a Parquet file's series are: the one column rule of every reader (read_data.hpp states it).
  */
 
 #pragma once
@@ -11,19 +11,34 @@
 
 #include <arrow/api.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace dtwc::io::detail {
 
-struct ParquetSeriesColumn
+/// A top-level column: its Arrow field, its first Parquet leaf, its type.
+struct ParquetColumn
 {
   int arrow_field_index;
   int parquet_leaf_index;
   std::shared_ptr<arrow::DataType> type;
+};
+
+/// Where a file's series are: one scalar column as one series (OneSeries), a list column as one series per row
+/// (List), or each row's values in its Float32/Float64 columns as one series (Rows). The first string column names
+/// the rows of the last two.
+struct ParquetSeriesLayout
+{
+  enum class Kind { OneSeries, List, Rows };
+  Kind kind = Kind::OneSeries;
+  std::vector<ParquetColumn> samples; ///< the column read, or (Rows) each row's sample columns in file order
+  std::optional<ParquetColumn> names; ///< the first string column (List and Rows)
 };
 
 inline int parquet_leaf_count(const std::shared_ptr<arrow::DataType> &type)
@@ -45,43 +60,96 @@ inline std::shared_ptr<arrow::DataType> parquet_series_value_type(
   return type;
 }
 
+inline bool is_parquet_float(const arrow::DataType &type)
+{
+  return type.id() == arrow::Type::FLOAT || type.id() == arrow::Type::DOUBLE;
+}
+
+inline bool is_parquet_string(const arrow::DataType &type)
+{
+  return type.id() == arrow::Type::STRING || type.id() == arrow::Type::LARGE_STRING;
+}
+
 inline bool is_parquet_series_column(
   const std::shared_ptr<arrow::DataType> &type)
 {
-  const auto value_type = parquet_series_value_type(type);
-  return value_type->id() == arrow::Type::FLOAT
-         || value_type->id() == arrow::Type::DOUBLE;
+  return is_parquet_float(*parquet_series_value_type(type));
 }
 
-/** Select a scalar/list Float32/Float64 column with identical eager/streaming rules. */
-inline ParquetSeriesColumn find_parquet_series_column(
+/**
+ * @brief Where a file's series are, with identical eager and streaming rules.
+ *
+ * `skip_cols` drops the file's first columns, as it drops a CSV row's first fields: a dropped column is neither read
+ * nor a name. `column_name` reads that column: a list is one series per row, a scalar one series. Otherwise the first
+ * Float32/Float64 column or list of them decides: a list is one series per row; a scalar is the one series when it is
+ * the file's only Float32/Float64 column, and otherwise each row is a series of the row's values in the file's
+ * columns, string columns aside, every one of which must then be Float32/Float64 (an IOError names the first that is
+ * not). The first string column names the rows of a list or of the rows.
+ */
+inline ParquetSeriesLayout resolve_parquet_layout(
   const std::shared_ptr<arrow::Schema> &schema,
-  const std::string &column_name)
+  const std::string &column_name, std::int64_t skip_cols = 0)
 {
+  std::vector<ParquetColumn> columns; // those skip_cols leaves
   int leaf_index = 0;
+  for (int index = 0; index < schema->num_fields(); ++index) {
+    const auto &type = schema->field(index)->type();
+    if (index >= skip_cols) columns.push_back({ index, leaf_index, type });
+    leaf_index += parquet_leaf_count(type);
+  }
+  const auto name_of = [&](const ParquetColumn &column) -> const std::string & {
+    return schema->field(column.arrow_field_index)->name();
+  };
+  const std::string after_skip = skip_cols > 0
+    ? " after the " + std::to_string(skip_cols) + " columns --skip-cols drops" : "";
+
+  ParquetSeriesLayout layout;
+  const auto first_string = std::find_if(columns.begin(), columns.end(),
+                                         [](const auto &column) { return is_parquet_string(*column.type); });
+  if (first_string != columns.end()) layout.names = *first_string;
+
   if (!column_name.empty()) {
-    const int index = schema->GetFieldIndex(column_name);
-    if (index < 0)
-      throw dtwc::InvalidInput(
-        "Column '" + column_name + "' not found in Parquet schema");
-    if (!is_parquet_series_column(schema->field(index)->type()))
+    const auto named = std::find_if(columns.begin(), columns.end(),
+                                    [&](const auto &column) { return name_of(column) == column_name; });
+    if (named == columns.end())
+      throw dtwc::InvalidInput("Column '" + column_name + "' not found in Parquet schema" + after_skip);
+    if (!is_parquet_series_column(named->type))
       throw dtwc::IOError(
         "Parquet column '" + column_name +
         "' must be Float32, Float64, List<Float32/Float64>, or "
         "LargeList<Float32/Float64>");
-    for (int preceding = 0; preceding < index; ++preceding)
-      leaf_index += parquet_leaf_count(schema->field(preceding)->type());
-    return { index, leaf_index, schema->field(index)->type() };
+    layout.samples = { *named };
+  } else {
+    const auto first = std::find_if(columns.begin(), columns.end(),
+                                    [](const auto &column) { return is_parquet_series_column(column.type); });
+    if (first == columns.end())
+      throw dtwc::IOError(
+        "No scalar/list Float32 or Float64 column found in Parquet schema" + after_skip
+        + ". Use --column to specify one.");
+    const auto scalars = std::count_if(columns.begin(), columns.end(),
+                                       [](const auto &column) { return is_parquet_float(*column.type); });
+    if (is_parquet_float(*first->type) && scalars > 1) {
+      layout.kind = ParquetSeriesLayout::Kind::Rows;
+      for (const auto &column : columns) {
+        if (is_parquet_string(*column.type)) continue;
+        if (!is_parquet_float(*column.type))
+          throw dtwc::IOError(
+            "Parquet column '" + name_of(column) + "' is " + column.type->ToString()
+            + ", neither Float32/Float64 nor Utf8/LargeUtf8, so it cannot be a sample of the series each row "
+              "holds; drop the leading columns with --skip-cols (skip_cols), or read one column with --column.");
+        layout.samples.push_back(column);
+      }
+      return layout;
+    }
+    layout.samples = { *first };
   }
-
-  for (int index = 0; index < schema->num_fields(); ++index) {
-    if (is_parquet_series_column(schema->field(index)->type()))
-      return { index, leaf_index, schema->field(index)->type() };
-    leaf_index += parquet_leaf_count(schema->field(index)->type());
+  if (is_parquet_float(*layout.samples.front().type)) {
+    layout.kind = ParquetSeriesLayout::Kind::OneSeries; // named by its file
+    layout.names.reset();
+  } else {
+    layout.kind = ParquetSeriesLayout::Kind::List;
   }
-  throw dtwc::IOError(
-    "No scalar/list Float32 or Float64 column found in Parquet schema. "
-    "Use --column to specify one.");
+  return layout;
 }
 
 /// Reject an Arrow array that carries nulls.

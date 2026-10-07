@@ -147,6 +147,27 @@ def test_reader_corpus_reads_as_dtwc_cl(name, skip_rows, skip_cols, expected):
             [[float(v).hex() for v in row] for row in expected]
 
 
+@pytest.mark.parametrize(
+    ("name", "skip_cols", "skip_rows", "series", "names"),
+    [
+        ("parquet_rows.parquet", 0, 0, [[0, 0.5, 0.25], [1, 1.5, 1.25], [10, 10.5, 10.25]], ["a", "b", "c"]),
+        ("parquet_rows.parquet", 1, 1, [[1, 1.5, 1.25], [10, 10.5, 10.25]], ["series_0", "series_1"]),
+        ("parquet_list.parquet", 0, 0, [[0, 0.5], [2.5, 1, 0.25], [9, 9.5]], ["x", "series_1", "z"]),
+        ("parquet_one_column.parquet", 0, 0, [[3, 1, 4, 1.5]], ["parquet_one_column"]),
+    ],
+)
+def test_parquet_layouts_read_as_cpp_and_matlab_read_them(name, skip_cols, skip_rows, series, names):
+    """One file per layout of the Parquet column rule (make_parquet_fixtures.py beside them): the
+    series and names tests/unit/test_io_readers.cpp (C++) and test_tier1_route_parity.m (MATLAB)
+    expect. Rows of Float32/Float64 columns are named by the string id, which --skip-cols drops;
+    a list column's rows by its string column, a null as series_<i>; one float column is one
+    series, named by its file."""
+    pytest.importorskip("pyarrow")
+    data = dtwcpp.load(_CORPUS / name, skip_cols=skip_cols, skip_rows=skip_rows).as_data()
+    assert data.p_vec == series
+    assert data.p_names == names
+
+
 # ---------------------------------------------------------------------------
 # HDF5 (skip if h5py is not installed)
 # ---------------------------------------------------------------------------

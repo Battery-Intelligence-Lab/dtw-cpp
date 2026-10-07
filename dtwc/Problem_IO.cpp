@@ -226,14 +226,16 @@ void Problem::read_distance_matrix(const fs::path &distMat_path)
   }
 }
 
-void detail::write_result_files(Problem &prob, const fs::path &directory, bool complete, std::ostream *progress)
+void detail::write_result_files(Problem &prob, const fs::path &directory, bool complete, std::ostream *progress,
+                                const std::vector<std::string> &streamed_names)
 {
   const auto &labels = prob.labels();
   const auto &medoids = prob.medoids();
-  // A RAM-limited Parquet run holds no series: its names are the readers' own `series_<i>`.
+  // A RAM-limited Parquet run holds no series: its names are the reader's, given here.
   const bool streamed = prob.size() == 0;
   const auto series_name = [&](std::size_t i) {
-    return streamed ? "series_" + std::to_string(i) : std::string(prob.series_name(i));
+    if (!streamed) return std::string(prob.series_name(i));
+    return i < streamed_names.size() ? streamed_names[i] : "series_" + std::to_string(i);
   };
   const auto file_in_directory = [&](const char *suffix) { return directory / utf8_to_path(prob.name() + suffix); };
 
@@ -261,7 +263,7 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
   if (streamed) {
     if (complete)
       throw InvalidInput("Result: a RAM-limited Parquet run holds no series, so it has no distance matrix or "
-                         "silhouettes to save; its labels and medoids are written, with series_<i> names.");
+                         "silhouettes to save; its labels and medoids are written, with the reader's names.");
     return;
   }
   // A matrix-free run does not fill an O(N^2) matrix merely to write these files.

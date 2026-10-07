@@ -52,7 +52,7 @@ two agree on every default, check and method choice.
 | `--name <string>` | Problem name (used in output filenames) | the input's file or folder name |
 | `-k, --n-clusters <int>` | Number of clusters (required) | — |
 | `-v, --verbose` | Verbose output | off |
-| `--column <name>` | Parquet scalar/list Float32 or Float64 column. If omitted, the first eligible top-level column is selected | — |
+| `--column <name>` | The Parquet scalar/list Float32 or Float64 column to read. If omitted, the first eligible top-level column decides: a list or several scalar columns are one series per row, the only scalar column one series ([Supported data](../supported-data/)) | — |
 | `--dtype <string>` | Data type for in-memory storage. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
 | `--ram-limit <size>` | Conservative Parquet series-materialization budget, e.g. `2GiB`, `500M`, `1.5G`; see below | unlimited |
 
@@ -180,16 +180,17 @@ file to stream them under the cap.
 | `--verbose-solver` | Show MIP solver log output | off |
 | `--lr-max-nodes <int>` | Branch-and-bound node cap of `--method lrcore` | 2000000 |
 
-### CSV Parsing
+### CSV and Parquet Parsing
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--skip-rows <int>` | Number of header rows to skip | 0 |
-| `--skip-cols <int>` | Number of leading columns to skip | 0 |
+| `--skip-rows <int>` | Number of header rows to skip: leading lines of text, leading rows of Parquet | 0 |
+| `--skip-cols <int>` | Number of leading columns to skip: fields of text, columns of Parquet | 0 |
 | `--delimiter <char>` | Field delimiter, one character | inferred: tab for `.tsv`/`.txt`, else `,` |
 
-These three apply to CSV/TSV input only; any of them on Parquet or Arrow IPC
-input is an error rather than an option silently ignored.
+`--skip-rows` and `--skip-cols` apply to CSV/TSV and Parquet input, `--delimiter`
+to CSV/TSV only; one on an input it cannot apply to (Arrow IPC, or `--delimiter`
+on Parquet) is an error rather than an option silently ignored.
 
 ### Distance Matrix and Checkpointing
 
@@ -310,7 +311,8 @@ dtwc_cl -i large_dataset.csv -k 20 --method clara --sample-size 500 --n-samples 
 ### RAM-limited Parquet FastCLARA
 
 ```bash
-# `series` is List<Float32/Float64> or LargeList<Float32/Float64>, one row per series
+# one row per series: `series` is List<Float32/Float64> or LargeList<Float32/Float64>
+# (a file of several Float32/Float64 columns streams too, without --column)
 dtwc_cl -i large_dataset.parquet --column series -k 20 --method clara \
   --sample-size 500 --n-samples 10 --ram-limit 2GiB
 ```

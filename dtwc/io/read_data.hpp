@@ -36,8 +36,9 @@ std::vector<std::filesystem::path> parquet_files(const std::filesystem::path &pa
 /// Whether `path` is an Arrow IPC file: an .arrow/.ipc/.feather name that is not a folder.
 bool is_arrow_ipc(const std::filesystem::path &path);
 
-/// Refuse a reader option the input cannot honour, as InvalidInput: skip_cols, skip_rows and delimiter parse CSV/TSV
-/// text, column selects a Parquet column. `format` is empty for series passed in memory, which no reader parses.
+/// Refuse a reader option the input cannot honour, as InvalidInput: skip_cols and skip_rows drop the leading columns
+/// and rows of CSV/TSV text or Parquet, delimiter splits text, column selects a Parquet column. `format` is empty for
+/// series passed in memory, which no reader parses.
 void require_reader_options(std::optional<InputFormat> format, index_t skip_cols, index_t skip_rows, char delimiter,
                             std::string_view column);
 
@@ -47,9 +48,12 @@ void require_reader_options(std::optional<InputFormat> format, index_t skip_cols
  * - Text: skip_cols leading fields and skip_rows leading lines are dropped; delimiter '\0' is inferred from the
  *   extension. A file holds one series per row, named by its 1-based row number; a folder one series per file, named
  *   by its stem.
- * - Parquet (dtwc::io::read_arrow): `column` (empty: the first Float32/Float64 or list column). A scalar column is one
- *   series named by its file's stem; a list column is one series per row, named series_<index> and numbered across a
- *   folder's files.
+ * - Parquet (dtwc::io::read_arrow), each file of a folder alike: skip_cols drops its leading columns and skip_rows its
+ *   leading rows. `column` reads one column: a list is one series per row, a scalar one series. Otherwise the first
+ *   Float32/Float64 column or list of them decides: a list is one series per row; a scalar the one series when it is
+ *   the file's only Float32/Float64 column, else each row is a series of its values in the file's columns, string
+ *   columns aside (any other column is an IOError naming it). One series is named by its file's stem; the rows by the
+ *   file's first string column (a null: series_<index>), else series_<index>, numbered across a folder's files.
  * - Arrow IPC (dtwc::io::read_arrow): the series are the rows of the `data` column across every record batch, named by
  *   a Utf8/LargeUtf8 `name` column (else series_<index>); the schema metadata `ndim` gives the features per time step.
  *

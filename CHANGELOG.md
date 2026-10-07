@@ -19,13 +19,19 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   skip_rows=1)` names the series left `0`, `1`, ..., as C++ `dtwc::load` and MATLAB's `dtwc.load` do; they were
   numbered from where they stood before the drop (`1`, `2`, ...), and a dropped series was read and checked first (an
   empty one was refused). A DataFrame's index and an Arrow array's names stay theirs.
-- **Changed (Python):** `dtwcpp.load()` reads Parquet as the C++ reader and MATLAB read it: in each file the first
-  column that is Float32/Float64 or a list of them, a scalar column as one series, named by its file, a list column
-  as one series per row, named `series_<i>` numbered on across a folder's files. Python named a list column's rows by
-  the file's first string column, read a list column where the C++ reader takes a scalar column before it, and refused
-  a folder whose files hold different columns and a file of scalar columns only. Such a file, as
-  `dtwcpp.io.save_dataset_parquet` writes it (a column per time step), is now one series, its first column, as in C++
-  and MATLAB; `dtwcpp.io.load_dataset_parquet` reads it as rows.
+- **Changed (C++, CLI, Python, MATLAB):** a Parquet file holds many series, read by one rule in every language. The
+  first Float32/Float64 column or list of them decides: a list column is one series per row; a scalar column is one
+  series, named by its file, when it is the file's only Float32/Float64 column, and otherwise each row is a series of
+  its values in the file's columns, as a CSV row is read (string columns aside; any other column, an integer id say,
+  is an `IOError` naming it and the two ways out, `--skip-cols` and `--column`). `--column` reads one column. The
+  file's first string column names the rows, a null as `series_<i>`; without one they are `series_<i>`, numbered
+  across a folder's files. `--skip-cols` and `--skip-rows` (`skip_cols`, `skip_rows`; `SkipCols`, `SkipRows`), refused
+  for Parquet before, drop its leading columns and rows as they drop a CSV row's leading fields and a CSV file's
+  leading lines; a dropped column names nothing. The file `dtwcpp.io.save_dataset_parquet` writes (a column per time
+  step) reads back as its N series, named `series_<i>`, and RAM-limited FastCLARA streams the row layout too, its
+  result files carrying the reader's names. C++ and MATLAB read such a file as one series, its first column, and
+  named every list row `series_<i>`; Python took the first list column, named its rows by the first string column,
+  and refused a folder whose files hold different columns.
 - **Fixed (C++, Python):** an Arrow list array that is a slice (its offset set, as pyarrow exports `arr.slice(1)`) is
   read from its offset by `dtwc::io::data_from_arrow` and so by Python's in-memory Arrow route; the array's first
   rows were read instead.

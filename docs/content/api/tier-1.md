@@ -86,10 +86,10 @@ every language. Parquet and Arrow IPC are read by C++ in a build with Arrow
 (`-DDTWC_ENABLE_ARROW=ON`), by Python through the installed `pyarrow`, and by
 MATLAB, Parquet only, through `parquetread`.
 
-- `skip_cols` drops the leading fields of each line (an id column), or the
-  leading values of each series in memory.
+- `skip_cols` drops the leading fields of each line (an id column), the leading
+  columns of a Parquet file, or the leading values of each series in memory.
 - `skip_rows` drops leading lines of a file (a header), of each file in a folder,
-  or leading series in memory.
+  the leading rows of a Parquet file, or leading series in memory.
 - The delimiter is inferred from the extension unless given: a tab for `.tsv`
   and `.txt`, else a comma.
 - `name` names the run and prefixes its result files. Without one it is the
@@ -99,7 +99,9 @@ MATLAB, Parquet only, through `parquetread`.
   without extension in a folder; `0`, `1`, ... for series in memory (in Python,
   a pandas DataFrame's index, or an Arrow array's own names, else `series_<i>`);
   Parquet and Arrow IPC files name theirs as
-  [Supported data](../../getting-started/supported-data/) describes.
+  [Supported data](../../getting-started/supported-data/) describes (a Parquet
+  file's rows by its first string column, else `series_<i>`; a file whose one
+  float column is one series, by the file).
 
 A negative `skip_cols` or `skip_rows` is `InvalidInput`. In C++,
 `load(path, 0, ',')` does not compile: give `skip_rows` before the delimiter,

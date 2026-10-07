@@ -129,8 +129,9 @@ class Dataset:
         A path is read as dtwc_cl reads it: text by the C++ reader
         (``skip_cols`` drops leading FIELDS before numeric parsing, ``skip_rows``
         leading LINES, variable-length rows are kept, a batch file names its
-        series 1, 2, ... and a folder by file stem), Parquet and Arrow IPC
-        through the installed pyarrow. ``skip_rows`` drops leading SERIES of an
+        series 1, 2, ... and a folder by file stem), Parquet (``skip_cols`` and
+        ``skip_rows`` drop leading columns and rows) and Arrow IPC through the
+        installed pyarrow. ``skip_rows`` drops leading SERIES of an
         in-memory source — one memory row is one file line — and the series left
         are named as :func:`_series` names them: ordinals count from 0, as in C++.
         """

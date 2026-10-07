@@ -53,7 +53,9 @@ Result run(const Config &config, Data data);
 
 namespace detail {
 
-/// How a Parquet input stores its series, as its metadata shows it.
+/// How a Parquet input stores its series, as its metadata shows it: one file of
+/// one series per row (a list column, or the row layout of several Float32/Float64
+/// columns: ListColumn), one file whose one scalar column is one series, or a folder.
 enum class ParquetLayout { ListColumn, ScalarColumn, Directory };
 
 /// What run() does with a Parquet input, decided from metadata alone.
