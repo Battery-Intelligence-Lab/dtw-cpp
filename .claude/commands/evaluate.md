@@ -29,7 +29,7 @@ import numpy as np
 import dtwcpp as dc
 from pathlib import Path
 
-data = dc.load_dataset_csv("DATA_PATH")
+data = dc.load("DATA_PATH").as_data()
 labels = np.loadtxt("LABELS_PATH", dtype=int, skiprows=1)
 assert len(labels) == data.size, f"Label count {len(labels)} != series count {data.size}"
 
@@ -37,24 +37,28 @@ k = int(labels.max() + 1)
 print(f"N = {data.size}, k = {k}")
 
 # Rebuild Problem with labels
-prob = dc.Problem(data)
+prob = dc.Problem("evaluate")
+prob.set_data(data)
+prob.set_band(BAND)
 prob.set_n_clusters(k)
 # Derive medoids: for each cluster, pick the series with lowest total intra-cluster distance
 # (or skip if user provided medoids)
-dm = dc.compute_distance_matrix(data, band=BAND)
-arr = np.asarray(dm)
+arr = prob.distance_matrix()
 medoids = []
 for c in range(k):
     members = np.where(labels == c)[0]
     sub = arr[np.ix_(members, members)]
     medoids.append(int(members[sub.sum(axis=1).argmin()]))
-prob.set_clusters_and_medoids(list(labels), medoids)
+result = dc.ClusteringResult()
+result.labels = labels
+result.medoid_indices = medoids
+prob.set_result(result)
 ```
 
 ## Step 2: Internal metrics
 
 ```python
-sil = dc.silhouette(prob)          # per-point
+sil = np.asarray(dc.silhouette(prob))  # per-point
 dbi = dc.davies_bouldin(prob)
 ch  = dc.calinski_harabasz(prob)
 dun = dc.dunn(prob)
@@ -112,7 +116,7 @@ report = {
     "mean_silhouette": float(sil.mean()),
     "davies_bouldin": float(dbi),
     "calinski_harabasz": float(ch),
-    "dunn_index": float(dun),
+    "dunn": float(dun),
     "inertia": float(inr),
     "cluster_sizes": counts.tolist(),
 }

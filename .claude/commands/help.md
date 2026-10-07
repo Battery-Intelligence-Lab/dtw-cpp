@@ -23,7 +23,7 @@ Match the question to one of these sections. If no match, read source files (`py
 | Need dendrogram | **Hierarchical** | Agglomerative; produces full tree |
 | Need provable optimum | **MIP** (Gurobi/HiGHS) | Integer programming; expensive but exact |
 | N > 50000 | **OneBatchPAM** | One fixed N×m distance batch; O(Nm) distances |
-| Very large, fits memory | **FastCLARA with chunking** | Use `--ram-limit` |
+| Series exceed RAM | **FastCLARA, streamed** | `--ram-limit` on one list-per-row Parquet file |
 
 Python: `fast_pam()`, `fast_clara()`, `one_batch_pam()`, `build_dendrogram()` + `cut_dendrogram()`.
 CLI: `--method pam|clara|onebatch|hierarchical|mip|lrcore`.
@@ -46,7 +46,7 @@ CLI: `--variant standard|ddtw|wdtw|adtw|softdtw`, `--wdtw-g 0.05`, `--adtw-penal
 
 - **`band`**: Start at `series_length / 10`. Narrower → faster but more constrained. Tune via silhouette.
 - **`k` (clusters)**: No ground truth? Try k=2..10, pick highest mean silhouette.
-- **`--dtype`**: `float32` is 2× faster, uses 2× less memory, max DTW error ≈ 0.003% (acceptable for clustering).
+- **`--dtype`**: `float32` stores the series and runs DTW in Float32: half the series memory (the distance matrix stays float64); distances can differ slightly from `float64`.
 
 ## Data formats
 
@@ -56,10 +56,10 @@ CLI: `--variant standard|ddtw|wdtw|adtw|softdtw`, `--wdtw-g 0.05`, `--adtw-penal
 | Parquet | Compressed, recommended for N > 10k | `.parquet` |
 | Arrow IPC | Fastest load (memory-mapped) | `.arrow`, `.ipc` |
 | HDF5 | With metadata | `.h5`, `.hdf5` |
-| `.dtws` | Internal distance matrix cache | `.dtws` |
+| `.dtwm` | Distance matrix of `--checkpoint`, not time series | `.dtwm` |
 
 Python I/O: `dtwcpp.load_dataset_csv`, `load_dataset_parquet`, `load_dataset_hdf5`.
-Convert: `dtwc-convert input.csv output.parquet`.
+Convert to Arrow IPC: `dtwc-convert input.csv -o output.arrow`.
 
 ## Evaluation metrics
 
@@ -80,15 +80,16 @@ Convert: `dtwc-convert input.csv output.parquet`.
 import dtwcpp as dc
 
 # Load data
-data = dc.load_dataset_csv("data.csv")
+data = dc.load("data.csv").as_data()
 
 # Simple sklearn-style
 clustering = dc.DTWClustering(n_clusters=3, method="pam")
-clustering.fit(data)
+clustering.fit(data.p_vec)
 labels = clustering.labels_
 
 # Advanced Problem API
-prob = dc.Problem(data)
+prob = dc.Problem("data")
+prob.set_data(data)
 prob.set_method(dc.Method.Kmedoids)
 prob.set_n_clusters(3)
 prob.cluster()

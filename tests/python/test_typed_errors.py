@@ -1,4 +1,4 @@
-"""docs/api-contract-2.0.md §5 at the seams the GT-4 sweep left (GT-4b).
+"""Typed errors (docs/content/api/tier-1.md) at the seams the GT-4 sweep left (GT-4b).
 
 Each case raised an untyped C++ error (Python ``RuntimeError``), the wrong
 leaf, or nothing: a checkpoint directory that cannot be created and
@@ -51,7 +51,7 @@ class TestSaveCheckpointPath:
 
 
 class TestSkipColsWiderThanARow:
-    """§1.2: ``skip_cols`` beyond a series is ``InvalidInput`` from memory; a file
+    """``skip_cols`` beyond a series is ``InvalidInput`` from memory; a file
     source is the same request, not a failed read."""
 
     def test_file_source_raises_what_the_in_memory_source_raises(self, tmp_path):

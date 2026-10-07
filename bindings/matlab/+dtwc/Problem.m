@@ -182,7 +182,7 @@ classdef Problem < handle
         end
 
         % =================================================================
-        %  Config setters (snake_case; api-contract-2.0.md §2.1).
+        %  Config setters (snake_case).
         % =================================================================
 
         function set_band(obj, b)
@@ -234,7 +234,7 @@ classdef Problem < handle
         end
 
         function set_checkpoint(obj, opts)
-        %SET_CHECKPOINT Configure automatic mid-fill checkpointing (contract §2.7).
+        %SET_CHECKPOINT Configure automatic mid-fill checkpointing.
         %   prob.set_checkpoint(dtwc.CheckpointOptions('directory', d, ...
         %                                              'save_interval', 100, ...
         %                                              'enabled', true))
@@ -253,7 +253,7 @@ classdef Problem < handle
         end
 
         % =================================================================
-        %  Distance-matrix & clustering methods (§2.2).
+        %  Distance-matrix & clustering methods.
         % =================================================================
 
         function refresh_distance_matrix(obj)
@@ -284,7 +284,7 @@ classdef Problem < handle
         end
 
         % =================================================================
-        %  Read accessors (§2.2).
+        %  Read accessors.
         % =================================================================
 
         function n = size(obj)

@@ -69,7 +69,7 @@ namespace detail {
 ///         Python's dtwcpp.device("hpc") and slurm_remote.sh.
 std::pair<Device, int> parse_device(std::string_view name);
 
-/// @brief The frozen message for `gpu` on a build with no GPU backend.
+/// @brief The message for `gpu` on a build with no GPU backend (tests pin it verbatim).
 std::string gpu_not_built_message();
 
 } // namespace detail

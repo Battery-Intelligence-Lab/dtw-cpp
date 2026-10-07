@@ -5,7 +5,7 @@
  *
  * @details Every case runs in every build: GPU builds check the selected
  * backend, a build without one checks the verbatim no-GPU DeviceError. Oracle for
- * the messages: the frozen strings below.
+ * the messages: the literal strings below.
  */
 
 #include <dtwc.hpp>
@@ -33,7 +33,7 @@ constexpr bool has_strategy_surface = requires { &P::distance_strategy; } || req
 template <class P>
 constexpr bool has_device_surface = requires { &P::set_device; &P::set_gpu_precision; &P::gpu_precision; };
 
-// The frozen DeviceError strings, verbatim.
+// The DeviceError strings, verbatim.
 const std::string kMsgUnknownTpu =
   "[dtwc] unknown device 'tpu'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N).";
 [[maybe_unused]] const std::string kMsgGpuNotBuilt =

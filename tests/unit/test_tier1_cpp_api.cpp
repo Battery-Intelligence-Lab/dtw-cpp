@@ -1,5 +1,5 @@
 /** @file test_tier1_cpp_api.cpp
- *  @brief Live C++ route for the frozen Tier-1 device/load/cluster/Result API.
+ *  @brief Live C++ route for the Tier-1 device/load/cluster/Result API.
  */
 
 #include <dtwc.hpp>

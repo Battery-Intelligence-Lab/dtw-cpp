@@ -1,8 +1,8 @@
 %> @file load.m
-%> @brief Lazy dataset loader (api-contract-2.0.md §1.2).
+%> @brief Lazy dataset loader.
 %> @author Volkan Kumtepeli
 function ds = load(source, varargin)
-%LOAD A lazy dtwc.Dataset of a path or of series already in memory (contract §1.2).
+%LOAD A lazy dtwc.Dataset of a path or of series already in memory.
 %
 %   ds = dtwc.load('cycles.csv', 'SkipCols', 1, 'SkipRows', 1)
 %   ds = dtwc.load('cycles/')            % a folder: one series per file

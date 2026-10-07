@@ -32,7 +32,7 @@ Every variant is `dc.distance.dtw(x, y, variant=..., ...)`; the keywords are the
 | msm | `msm_c` (default 1.0) |
 | twe | `twe_nu` (default 0.001), `twe_lambda` (default 1.0) |
 
-Also ask: `device` (cpu/cuda), `metric` (l1/l2/squared_l2).
+Also ask: `device` (cpu/cuda), `metric` (l1/squared_euclidean).
 
 ## Step 2a: Two-series mode
 
@@ -75,17 +75,15 @@ import numpy as np
 import dtwcpp as dc
 import time
 
-data = dc.load_dataset_csv("INPUT")  # or parquet/h5
+data = dc.load("INPUT").as_data()  # CSV/TSV, Parquet or Arrow IPC
 print(f"Loaded {data.size} series")
 
-# Compute pairwise
+# Compute pairwise: a Problem's matrix, set with the dc.distance.dtw keywords
 t0 = time.time()
-dm = dc.compute_distance_matrix(
-    data,
-    variant=dc.DTWVariant.STANDARD,
-    band=BAND,
-    device="cpu",  # or "cuda"
-)
+prob = dc.Problem("distances", device="cpu")  # or "cuda"
+prob.set_distance(variant="standard", band=BAND)
+prob.set_data(data)
+dm = prob.distance_matrix()
 elapsed = time.time() - t0
 
 print(f"Computed {data.size}x{data.size} matrix in {elapsed:.2f}s")

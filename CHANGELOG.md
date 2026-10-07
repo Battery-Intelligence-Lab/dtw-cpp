@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Docs:** the Tier-1 and Tier-2 API pages are written by hand from today's code, C++, Python and MATLAB side by
+  side, with the error types, the precision rules and the `.dtwm` cache; the migration page covers v1.0.0's C++
+  library and `dtwc_cl` (each v1 name and flag, the behaviour to check, a v1 distance-matrix CSV's `-1` entries) and
+  says the Python and MATLAB packages are new. `docs/api-contract-2.0.md`, the 2.0.0rc1 release page and the
+  generated LR-core page's sources are gone; the LR-core page says what was measured of the Kelley and subgradient
+  roots; the two derivation notes describe today's kernels and the L1 LB_Keogh only; the 2.1 page lists what 2.0
+  has not yet been shown to do.
 - **Docs/examples:** `examples/cpp/tier1.cpp` replaces `example_new_features.cpp`, which showed the 1.x free
   functions: one run described by a `dtwc::Config` and run on series in memory, which ctest runs as `example_tier1`
   when the examples and the tests are built (`-DDTWC_BUILD_EXAMPLES=ON -DDTWC_BUILD_TESTING=ON`). Each

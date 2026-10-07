@@ -84,7 +84,7 @@ end
 % =========================================================================
 
 function test_ragged_cell_source_matches_the_tier2_route(testCase)
-%   Contract 1.2/1.3: MATLAB Tier-1 must take the same ragged in-memory source
+%   MATLAB Tier-1 must take the same ragged in-memory source
 %   C++ load(series_type) and the Python list route take. The oracle is the
 %   Tier-2 Problem + seeded FastPAM that Problem::cluster() itself calls (mirrors
 %   tests/python/test_api.py::TestRaggedInMemorySource).
@@ -348,7 +348,7 @@ function test_checkpoint_options_round_trip(testCase)
 end
 
 function test_checkpoint_mid_fill_publishes_and_resumes(testCase)
-%   fill_distance_matrix() consumes Problem::checkpoint (contract 2.7). The
+%   fill_distance_matrix() consumes Problem::checkpoint. The
 %   checkpoint is the one file <directory>/<name>.dtwm, saved after every
 %   save_interval rows and complete after a complete fill.
     X = [0 0 0 0; 0 1 0 1; 20 20 20 20; 20 21 20 21];

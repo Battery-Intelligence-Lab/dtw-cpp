@@ -48,7 +48,7 @@ class TestLoad:
         assert ds.name == "definitely_missing_file"
 
     def test_skip_rows_drops_leading_file_lines(self, tmp_path):
-        """§1.2 parity with C++ load(..., skip_rows) and dtwc_cl --skip-rows."""
+        """Parity with C++ load(..., skip_rows) and dtwc_cl --skip-rows."""
         csv = tmp_path / "hdr.csv"
         csv.write_text(
             "id,t0,t1\nunit,s,s\n1,0,0\n2,10,11\n", encoding="utf-8")
@@ -311,13 +311,13 @@ class TestMatrixFreeScoring:
 
 
 # ---------------------------------------------------------------------------
-# §1.4 save() with an undefined silhouette — warn and skip, never propagate
+# save() with an undefined silhouette — warn and skip, never propagate
 # ---------------------------------------------------------------------------
 class TestSaveUndefinedSilhouette:
     """C++ ``Result::save`` catches ``UndefinedScore``, warns, skips the file.
 
     ``score("silhouette")`` keeps raising: asking for the number is a different
-    contract (api.cpp:281-299, api-contract-2.0.md §1.4).
+    contract (dtwc/api.cpp, Result::save).
     """
 
     _SERIES = [[0.0, 0.1], [0.5, 0.4], [1.0, 1.1], [8.0, 8.2]]
@@ -347,7 +347,7 @@ class TestSaveUndefinedSilhouette:
 
 
 # ---------------------------------------------------------------------------
-# §1.2 ragged in-memory sources — C++ load(series_type) takes variable lengths
+# Ragged in-memory sources — C++ load(series_type) takes variable lengths
 # ---------------------------------------------------------------------------
 class TestRaggedInMemorySource:
     _RAGGED = [[0.0, 0.1, 0.2, 0.3], [0.05, 0.15], [9.0, 9.1, 9.2],
@@ -444,7 +444,7 @@ def test_what_is_not_series_is_refused_everywhere(entry, data, message):
 
 
 # ---------------------------------------------------------------------------
-# §1.4 series names — Tier-1 output carries the loader's names, as C++ does
+# Series names — Tier-1 output carries the loader's names, as C++ does
 # ---------------------------------------------------------------------------
 class TestSeriesNames:
     """``Problem::series_name(i)`` comes from the loader, not from ``range(N)``."""
