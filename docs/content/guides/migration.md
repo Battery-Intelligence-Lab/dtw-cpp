@@ -7,8 +7,9 @@ description: "What v1.0.0's C++ library and dtwc_cl became in 2.0, and what to c
 # Migrating from v1.0.0 to 2.0
 
 This page is for C++ code and `dtwc_cl` scripts written against v1.0.0. The
-Python package `dtwcpp` and the MATLAB package `dtwc` are new in 2.0: start from
-[Tier 1](../../api/tier-1/).
+Python package `dtwcpp` and the MATLAB package `dtwc` are new in 2.0 (v1.0.0's
+source held an unpublished Python binding, which 2.0 does not carry over): start
+from [Tier 1](../../api/tier-1/).
 
 Most v1.0.0 code builds and runs unchanged. Every `Problem` and `DataLoader`
 method that 2.0 renamed keeps its v1.0.0 name as a `[[deprecated]]` alias that
@@ -45,7 +46,7 @@ with a warning. What needs attention is the behaviour listed further down.
 | `cluster_by_MIP()`, `cluster_by_kMedoidsPAM()` | `cluster_by_mip()`, `cluster_by_kmedoids_lloyd()` (Lloyd's k-medoids, as before) |
 | `set_clusters(std::vector<int>&)` | `set_clusters(const std::vector<index_t>&)` |
 | public fields `method`, `output_folder`, `name`, `data` | `method()` / `set_method`, `output_folder()` / `set_output_folder`, `name()` / `set_name`, `data()` / `set_data` |
-| public fields `maxIter`, `N_repetition`, `band`, `init_fun`, `clusters_ind`, `centroids_ind` | unchanged; also `set_max_iter`, `set_n_repetitions`, `set_band`, which check their value |
+| public fields `maxIter`, `N_repetition`, `band`, `init_fun`, `clusters_ind`, `centroids_ind` | still public (the last two now hold `index_t`); also `set_max_iter`, `set_n_repetitions`, `set_band`, which check their value |
 | `Problem::cluster()` returning `void` | returns the `core::ClusteringResult` (labels, medoids, cost, iterations, converged) |
 | `distMat`, `distMat_t` (Armadillo), `resize()` | `distance_matrix()`, a `core::DistanceMatrix` |
 | copying a `Problem` | not allowed; a `Problem` moves |
@@ -62,8 +63,9 @@ Counts of series and clusters, labels, medoids and indices are `index_t`
 `clusters_ind`, `centroids_ind`, `centroid_of`, `Data::size()`,
 `DataLoader::n_data`. `Method::Kmedoids`, `Method::MIP`, `Solver::Gurobi`,
 `Solver::HiGHS`, `init::random`, `init::Kmeanspp`, `scores::silhouette`,
-`MIP_clustering_byGurobi`, `MIP_clustering_byHiGHS`, `Range`, `Index` and
-`Clock` keep their names and signatures. The rest of 2.0's C++ surface is new;
+`MIP_clustering_byGurobi`, `MIP_clustering_byHiGHS`, `Range` and `Clock` keep
+their names and signatures; `Index` keeps its name, and its `difference_type`
+(what `operator-` returns) is `std::ptrdiff_t`, not `size_t`. The rest of 2.0's C++ surface is new;
 the [Tier 1](../../api/tier-1/) and [Tier 2](../../api/tier-2/) pages describe it.
 
 ## dtwc_cl
@@ -94,9 +96,10 @@ The v1.0.0 spellings still work: they are hidden from `--help` and print
   number of a range `i..j`; 2.0 refuses the range: run once per `k`.
 - The default method is `auto`: FastPAM for up to 5000 series and FastCLARA
   above. `--method kmedoids` runs v1.0.0's Lloyd k-medoids.
-- An unknown method or solver, a `--band` below -1, a `--dist-matrix` that
-  cannot be read, and `--solver gurobi` on a build without Gurobi stop the run
-  with an error. v1.0.0 printed a message and went on with a default.
+- An unknown method or solver, a `--dist-matrix` that cannot be read, and
+  `--solver gurobi` on a build without Gurobi stop the run with an error, where
+  v1.0.0 printed a message and went on with a default; so does a `--band` below
+  -1, which v1.0.0 ran as full DTW.
 
 | v1.0.0 output | 2.0 `dtwc_cl` output |
 |---|---|
@@ -126,9 +129,10 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   empty; a run that stops at `maxIter` assigns the series to its final medoids
   before its cost is taken.
 - The band is the window |i − j| ≤ band for every pair. v1.0.0 widened it along
-  the diagonal of two series of different lengths. A band narrower than the
-  difference in length of two series is `InvalidInput`, naming the smallest
-  band that works.
+  the diagonal of two series of different lengths. In a `Problem`, a band
+  narrower than the difference in length of two series is `InvalidInput`,
+  naming the smallest band that works; `dtwBanded` and `distance::dtw` return
+  the no-path value, `std::numeric_limits<T>::max()`, for such a pair.
 - The setters check their values: `set_n_clusters`, `set_max_iter` and
   `set_n_repetitions` below 1 and `set_band` below -1 are `InvalidInput`. A
   direct write to a public field is not checked.
@@ -159,8 +163,8 @@ The library's writers (`write_clusters`, `write_silhouettes`,
 
 ## Results that change
 
-These are the results 2.0 changes on purpose. Everything else gives the same
-digits as before.
+The behaviour above changes some results: distances between series of different
+lengths under a band, and Lloyd k-medoids runs. These change too:
 
 - **`dtwc_cl` with no `--method`** runs FastPAM from seed 42 where v1.0.0 ran
   Lloyd's k-medoids, so it can return other medoids. `--method kmedoids` runs

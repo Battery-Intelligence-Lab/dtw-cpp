@@ -92,9 +92,9 @@ for multivariate series). Multivariate series hold `ndim` values per time step,
 interleaved. A `Problem` computes on the CPU until its device is set; it does
 not follow the process device ([Devices](../../guides/devices/)).
 
-The C++ fields `band`, `maxIter`, `N_repetition`, `mip_settings`, `checkpoint`,
-`init_fun`, `clusters_ind` and `centroids_ind` stay public, as in v1.0.0; a
-direct write is not checked, where the setters are.
+The C++ fields `band`, `maxIter`, `N_repetition`, `init_fun`, `clusters_ind` and
+`centroids_ind` stay public, as in v1.0.0, beside the new `mip_settings` and
+`checkpoint`; a direct write is not checked, where the setters are.
 
 ### The distance matrix
 
@@ -131,8 +131,9 @@ of Lloyd's k-medoids. A method or score that needs a clustering raises
 
 ## Algorithms
 
-Each algorithm writes the labels, medoids and `k` back into the `Problem` and
-returns its result; `barycenter_kmeans` returns its own.
+The clustering algorithms write the labels, medoids and `k` back into the
+`Problem` and return their result; `dtw_barycenter` and `barycenter_kmeans`
+leave the `Problem` as it was and return theirs.
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
@@ -200,8 +201,8 @@ needed; the last two compare two labellings.
 
 The keyword arguments and their defaults are `cluster()`'s distance settings.
 Each call checks its settings and both series first and raises `InvalidInput`
-for a NaN or ±inf value (NaN is a missing value under a missing-data strategy),
-an empty series, or a parameter outside its domain. Python's
+for a NaN or ±inf value (NaN is a missing value under a missing-data strategy)
+or a parameter outside its domain. Python's
 `compute_distance_matrix(series, band=-1, metric="l1", device=None)` and MATLAB's
 `dtwc.compute_distance_matrix(X, 'Band', b)` return the N×N matrix of a set of
 series.
@@ -266,13 +267,15 @@ same file is the memory-mapped cache and the checkpoint.
 | load | `dtwc::load_checkpoint(prob, dir)` | `load_checkpoint(prob, dir)` | `dtwc.load_checkpoint(prob, dir)` |
 | save during a fill | `prob.checkpoint` (`CheckpointOptions`) | `prob.checkpoint` | `prob.set_checkpoint(dtwc.CheckpointOptions(...))` |
 
-Mapping a file reopens the distances it holds, and the next fill computes only
-the pairs still NaN; an absent file is created. A checkpoint is
+Mapping a file reopens the distances it holds, and the next CPU fill computes
+only the pairs still NaN (a GPU fill computes them all); an absent file is
+created. A checkpoint is
 `<dir>/<name>.dtwm`. `load_checkpoint` returns false only when there is no file;
 a file for other series or other distance settings is `InvalidInput`, and a
 file that is not a whole `.dtwm` file is `IOError`, neither changing the
-`Problem`. With `checkpoint.enabled`, `fill_distance_matrix()` saves after every
-`save_interval` rows (100) into `checkpoint.directory` (`./checkpoints`). On the
+`Problem`. With `checkpoint.enabled`, `fill_distance_matrix()` saves into
+`checkpoint.directory` (`./checkpoints`) after every `save_interval` rows (100)
+on the CPU, and once, at the end, on a GPU. On the
 command line, `--checkpoint dir` saves the matrix as `dir/<name>.dtwm` and
 resumes from it, and `--checkpoint-interval rows` also saves during the fill ([checkpointing](../../getting-started/checkpointing/)).
 
