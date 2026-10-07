@@ -80,11 +80,15 @@ void require_finite(std::span<const data_t> series, std::string_view name,
   }
 }
 
-/// Both series of a pair, x first.
+/// Both series of a pair, x first. Neither may be empty: an empty series has no
+/// warping path, which the kernels return as max(), a finite number.
 template <typename data_t>
 void require_finite(std::span<const data_t> x, std::span<const data_t> y,
                     std::string_view where, bool nan_is_missing = false)
 {
+  if (x.empty() || y.empty())
+    throw InvalidInput(std::string(where) + ": " + (x.empty() ? "x" : "y")
+                       + " is empty; every series needs at least one value.");
   require_finite(x, "x", where, nan_is_missing);
   require_finite(y, "y", where, nan_is_missing);
 }

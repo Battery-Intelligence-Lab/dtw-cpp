@@ -600,10 +600,10 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   // dtwc::distance::dtw, the checked boundary: core::validate refuses a
-  // configuration no kernel implements, then x and y are scanned once (NaN or
-  // ±inf raises InvalidInput naming x or y and the position; a missing-data
-  // strategy reads NaN as missing). The arrays are read in place, and the GIL
-  // is released for the computation.
+  // configuration no kernel implements, then x and y are scanned once (an empty
+  // series, NaN or ±inf raises InvalidInput naming x or y and the position; a
+  // missing-data strategy reads NaN as missing). The arrays are read in place,
+  // and the GIL is released for the computation.
   const dtwc::core::DTWVariantParams defaults{};
   m.def("dtw", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                   nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y, const std::string &variant, int band,
@@ -627,7 +627,8 @@ NB_MODULE(_dtwcpp_core, m) {
      "missing_strategy: error, zero_cost, arow or interpolate (Standard DTW); NaN\n"
      "is a missing value under the last three.\n"
      "Raises InvalidInput for an unknown name, a parameter outside its domain, a\n"
-     "combination no kernel implements, or a value the strategy does not take.");
+     "combination no kernel implements, an empty series, or a value the strategy\n"
+     "does not take.");
 
   m.def("soft_dtw_gradient", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                  nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,

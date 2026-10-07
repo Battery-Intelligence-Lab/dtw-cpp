@@ -140,14 +140,14 @@ TEST_CASE("soft_dtw_gradient: empty series throws dtwc::InvalidInput (live path)
   REQUIRE_THROWS_AS(dtwc::soft_dtw_gradient<double>(empty, y), dtwc::Error);
   REQUIRE_THROWS_AS(dtwc::soft_dtw_gradient<double>(y, empty), std::runtime_error);
 
-  // Message content: names the function and the reason (non-empty required).
+  // Message content: names the function, the series and the reason.
   try {
     (void)dtwc::soft_dtw_gradient<double>(empty, y);
     FAIL("soft_dtw_gradient did not throw on empty input");
   } catch (const dtwc::InvalidInput &e) {
     const std::string what = e.what();
     REQUIRE(what.find("soft_dtw_gradient") != std::string::npos);
-    REQUIRE(what.find("non-empty") != std::string::npos);
+    REQUIRE(what.find("x is empty") != std::string::npos);
   }
 }
 
