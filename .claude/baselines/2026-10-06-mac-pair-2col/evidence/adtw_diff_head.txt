@@ -1,0 +1,4 @@
+# adtw_diff: base e26d5680 against head 00fb9c36
+built diff
+f32 ADTW: 270000 outputs, 0 differ
+f64 ADTW: 270000 outputs, 0 differ

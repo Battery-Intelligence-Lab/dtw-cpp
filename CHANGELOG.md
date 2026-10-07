@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (performance):** the one-pair DTW kernel without a band computes two columns of the cost matrix per
+  pass, two dependency chains where it ran one. It serves every pair of unequal length in a distance matrix, every
+  variant other than the equal-length Standard fill (ADTW, WDTW, Soft-DTW, the missing-data strategies) and
+  `dtwcpp.dtw`: on an Apple M5 Pro a single unbanded pair runs 1.14–1.98× faster (`float64` L1 1.42–1.98×) and the
+  distance matrix of 1000 series of lengths 90–110 1.42–1.50× faster (18 threads). The banded kernel and the
+  equal-length lanes keep their code, and every result is unchanged, bit for bit. The early-abandon test of both
+  one-pair kernels is now fixed at compile time, so no optimisation level leaves it in the inner loop.
 - **Docs:** the Tier-1 and Tier-2 API pages are written by hand from today's code, C++, Python and MATLAB side by
   side, with the error types, the precision rules and the `.dtwm` cache; the migration page covers v1.0.0's C++
   library and `dtwc_cl` (each v1 name and flag, the behaviour to check, a v1 distance-matrix CSV's `-1` entries) and

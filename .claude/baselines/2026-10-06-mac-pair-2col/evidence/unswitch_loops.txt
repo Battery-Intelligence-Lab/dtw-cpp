@@ -1,0 +1,52 @@
+== base -O3
+1000006f8-1000007b8  49 insns  fcmp/fccmp  0  in _main
+100000a24-100000a74  21 insns  fcmp/fccmp  0  in double dtw_kernel_banded<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000aac-100000adc  13 insns  fcmp/fccmp  2  in double dtw_kernel_banded<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000b88-100000bc0  15 insns  fcmp/fccmp  3  in double dtw_kernel_banded<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000d30-100000d60  13 insns  fcmp/fccmp  2  in double dtw_kernel_linear<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+100000da4-100000ddc  15 insns  fcmp/fccmp  3  in double dtw_kernel_linear<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+100000e3c-100000e64  11 insns  fcmp/fccmp  1  in double dtw_kernel_linear<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+== base -O2
+1000006f8-1000007b8  49 insns  fcmp/fccmp  0  in _main
+100000adc-100000b18  16 insns  fcmp/fccmp  4  in double dtw_kernel_banded<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000cac-100000ce8  16 insns  fcmp/fccmp  4  in double dtw_kernel_linear<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+== base -Os
+100000b28-100000b64  16 insns  fcmp/fccmp  4  in double dtw_kernel_banded<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000cf0-100000d2c  16 insns  fcmp/fccmp  4  in double dtw_kernel_linear<double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+== headc -O3
+100000704-1000007c4  49 insns  fcmp/fccmp  0  in _main
+100000af0-100000b60  29 insns  fcmp/fccmp  3  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000b34-100000b78  18 insns  fcmp/fccmp  0  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000bbc-100000c1c  25 insns  fcmp/fccmp  6  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000d20-100000d58  15 insns  fcmp/fccmp  3  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000f5c-100000fbc  25 insns  fcmp/fccmp  2  in double detail::dtw_banded<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double
+100000fe0-100001030  21 insns  fcmp/fccmp  4  in double detail::dtw_banded<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double
+100001150-100001180  13 insns  fcmp/fccmp  2  in double detail::dtw_banded<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double
+1000012c4-100001324  25 insns  fcmp/fccmp  6  in double detail::dtw_linear<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+100001374-10000139c  11 insns  fcmp/fccmp  1  in double detail::dtw_linear<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+1000013f8-100001430  15 insns  fcmp/fccmp  3  in double detail::dtw_linear<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+1000018b8-100001908  21 insns  fcmp/fccmp  4  in double detail::dtw_linear<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+1000019b8-1000019e8  13 insns  fcmp/fccmp  2  in double detail::dtw_linear<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+== headc -O2
+100000704-1000007c4  49 insns  fcmp/fccmp  0  in _main
+100000abc-100000b2c  29 insns  fcmp/fccmp  3  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000b00-100000b68  27 insns  fcmp/fccmp  0  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000b7c-100000bdc  25 insns  fcmp/fccmp  6  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000d0c-100000d44  15 insns  fcmp/fccmp  3  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000f4c-100000fac  25 insns  fcmp/fccmp  2  in double detail::dtw_banded<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double
+100000fd0-100001020  21 insns  fcmp/fccmp  4  in double detail::dtw_banded<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double
+100001140-100001170  13 insns  fcmp/fccmp  2  in double detail::dtw_banded<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double
+1000012b8-100001318  25 insns  fcmp/fccmp  6  in double detail::dtw_linear<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+1000013b0-1000013e8  15 insns  fcmp/fccmp  3  in double detail::dtw_linear<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+100001840-100001890  21 insns  fcmp/fccmp  4  in double detail::dtw_linear<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+1000018dc-100001908  12 insns  fcmp/fccmp  0  in double detail::dtw_linear<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+10000191c-10000194c  13 insns  fcmp/fccmp  2  in double detail::dtw_linear<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+== headc -Os
+100000bd0-100000c30  25 insns  fcmp/fccmp  6  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100000d6c-100000da4  15 insns  fcmp/fccmp  3  in double detail::dtw_banded<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double)
+100001014-100001064  21 insns  fcmp/fccmp  4  in double detail::dtw_banded<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double
+100001168-100001198  13 insns  fcmp/fccmp  2  in double detail::dtw_banded<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, int, SpanL1Cost<double>, StandardCell, double
+1000012d8-100001338  25 insns  fcmp/fccmp  6  in double detail::dtw_linear<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+1000013c8-100001400  15 insns  fcmp/fccmp  3  in double detail::dtw_linear<true, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+100001770-1000017c0  21 insns  fcmp/fccmp  4  in double detail::dtw_linear<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)
+100001830-100001860  13 insns  fcmp/fccmp  2  in double detail::dtw_linear<false, double, SpanL1Cost<double>, StandardCell>(unsigned long, unsigned long, SpanL1Cost<double>, StandardCell, double)

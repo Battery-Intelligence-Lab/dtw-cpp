@@ -1,0 +1,14 @@
+# adtw_diff: base e26d5680 against the falsified head (00fb9c36 minus the one-row guard; falsified_head.diff)
+built diff
+  f32 mismatch: kind 0 seed 0 nx 1 ny 390 band -1: base 397.191162 candidate 397.191132
+  f32 mismatch: kind 0 seed 0 nx 1 ny 390 band 390: base 397.191162 candidate 397.191132
+  f32 mismatch: kind 0 seed 0 nx 1 ny 390 band 389: base 397.191162 candidate 397.191132
+  f32 mismatch: kind 0 seed 0 nx 7 ny 1 band -1: base 6.18410349 candidate 6.18410301
+  f32 mismatch: kind 0 seed 0 nx 7 ny 1 band 7: base 6.18410349 candidate 6.18410301
+  f32 mismatch: kind 0 seed 0 nx 7 ny 1 band 6: base 6.18410349 candidate 6.18410301
+f32 ADTW: 270000 outputs, 15 differ
+  shorter length 1: 15
+  band slot 0 (-1, 0, 1, L/10, L, |nx-ny|): 5
+  band slot 4 (-1, 0, 1, L/10, L, |nx-ny|): 5
+  band slot 5 (-1, 0, 1, L/10, L, |nx-ny|): 5
+f64 ADTW: 270000 outputs, 0 differ
