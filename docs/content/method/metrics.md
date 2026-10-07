@@ -45,7 +45,7 @@ other lies outside it. For a fixed DTW radius `w`, the envelope radius `r`
 must satisfy `r >= w`; a wider envelope is valid but weaker. Full DTW requires
 an envelope that repeats the candidate's global minimum and maximum; a
 negative band passed to the low-level envelope helpers requests exactly that
-envelope (FX-13).
+envelope.
 
 The admissibility statements in this section require finite input samples and
 ordered finite envelope bounds. Missing-value policies and non-finite data are

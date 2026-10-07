@@ -671,8 +671,9 @@ NB_MODULE(_dtwcpp_core, m) {
                   return dtwc::Data(std::move(series), std::move(names), ndim);
                 },
                 "series"_a, "names"_a, "ndim"_a = 1,
-                "Float32 heap-mode data (explicit opt-in; halves storage, distances\n"
-                "are still accumulated and returned in double).")
+                "Float32 heap-mode data (explicit opt-in; halves storage). The series\n"
+                "are rounded to float32 and the DTW recurrence runs in float32; the\n"
+                "distances are returned and stored as double.")
     .def_rw("p_vec", &dtwc::Data::p_vec)
     .def_rw("p_names", &dtwc::Data::p_names)
     .def_rw("ndim", &dtwc::Data::ndim,

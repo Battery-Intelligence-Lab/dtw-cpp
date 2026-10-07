@@ -4,7 +4,9 @@
 **CONFIRMED** for the L1 cost, the bound TADPole uses. The proof also confirms
 the `min(n,m)` prefix construction for feasible unequal-length paths under the
 current fixed window. The public envelope representation is
-**DISCREPANCY** F46, and TADPole's empty domain is **DISCREPANCY** F48.
+**DISCREPANCY**: an `Envelope` does not record the window it was built for.
+TADPole's empty domain is **DISCREPANCY** too: on an empty series its bounds
+are zero, where exact DTW returns the no-path sentinel.
 
 ## Primary-source scope
 
@@ -314,18 +316,18 @@ TADPole is the one caller. It can skip a pair because its density
 stage needs only a threshold decision. For supported finite, nonempty,
 equal-length, univariate Standard-L1 data whose series length is representable
 by the integer band API, it replaces a negative band by the series length and
-therefore builds the global envelope in (5). F46's radius-contract audit
-includes the unchecked `size_t`-to-`int` narrowing at this call site. An exact
-distance matrix needs every pair and uses no bound.
+therefore builds the global envelope in (5). The series length becomes that
+integer radius through an unchecked `size_t`-to-`int` narrowing at this call
+site, part of the envelope discrepancy below. An exact distance matrix needs
+every pair and uses no bound.
 
 The permanent test distinguishes a disabled TADPole LB, the unsafe radius-zero
 envelope, and the intended global envelope with two orthogonal fixtures. Their
 registered `pruned_by_lb` fingerprint is `(0,1)`: no false prune for a
 zero-DTW warped pair, and one real bound decision for a separated-range pair.
 
-This confirmation does not cover empty series. F48 records the independent
-case where an empty diagonal upper bound of zero disagrees with the exact
-no-path sentinel.
+This confirmation does not cover empty series: there the diagonal upper bound
+is zero, which disagrees with the exact no-path sentinel.
 
 ## The negative band
 
@@ -342,8 +344,8 @@ radius one, and 0 for the global envelope. The D2 gate pins `-1` to the global
 envelope and the bound 0.
 
 The mutable `Envelope` type still does not record its window: valid-shaped
-arrays can come from an unrelated or too-narrow window. F46 keeps an explicit
-full/radius descriptor, shape/coverage validation, and alias safety.
+arrays can come from an unrelated or too-narrow window. Still missing: an
+explicit full/radius descriptor, shape/coverage validation, and alias safety.
 
 ## Executable oracle
 
@@ -384,9 +386,9 @@ The preregistered bands and the first verbatim run are in
 | L1 projection sum, equations (6)–(11) | pointer `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** |
 | Symmetric maximum, equation (13) | `lb_keogh_symmetric` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** |
 | Prefix truncation, equation (14) | `Envelope` `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | Math **CONFIRMED** for feasible fixed windows |
-| TADPole global-envelope conversion | `bounds_valid` and `tadpole` in `dtwc/algorithms/tadpole.cpp` | **CONFIRMED** for finite, nonempty, equal-length Standard-L1 with integer-representable lengths; empty case is F48 and radius narrowing is F46 |
+| TADPole global-envelope conversion | `bounds_valid` and `tadpole` in `dtwc/algorithms/tadpole.cpp` | **CONFIRMED** for finite, nonempty, equal-length Standard-L1 with integer-representable lengths; not for empty series (zero bounds against the no-path sentinel), and the radius narrowing is unchecked |
 | Exhaustive independent oracle | `tests/unit/core/test_lb_keogh_derivation.cpp` | **CONFIRMED**, non-skippable |
-| Public envelope shape/window contract | `Envelope`, `envelope_covers` and the `lb_keogh` overloads in `dtwc/core/lower_bound_impl.hpp` | **DISCREPANCY** F46: unchecked read/truncation and no provenance |
+| Public envelope shape/window contract | `Envelope`, `envelope_covers` and the `lb_keogh` overloads in `dtwc/core/lower_bound_impl.hpp` | **DISCREPANCY**: unchecked read/truncation, and no record of the window an envelope was built for |
 
 ## Scope verdicts
 
@@ -395,8 +397,8 @@ The preregistered bands and the first verbatim run are in
   unequal fixed-window prefix theorem.
 - **CONFIRMED:** the nonempty TADPole full-DTW call site executes with the
   registered safety/reachability fingerprint.
-- **DISCREPANCY:** the F46 and F48 subjects named in the table. Neither is
-  hidden by the green scalar oracle.
+- **DISCREPANCY:** the envelope's unrecorded window and TADPole's empty-series
+  bounds, named in the table. Neither is hidden by the green scalar oracle.
 - **OPEN:** floating-point threshold safety, multivariate series, and all
   non-Standard objectives.
 

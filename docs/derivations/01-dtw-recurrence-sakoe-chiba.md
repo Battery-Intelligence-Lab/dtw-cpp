@@ -2,7 +2,7 @@
 
 **Verdict:** CPU and real-CUDA **CONFIRMED**; Metal source conformance
 **CONFIRMED**, and real-Metal execution **CONFIRMED** on an Apple M5 Pro
-(2026-09-23, FX-13; the F12 Metal half).
+(2026-09-23: the Metal half of the `[F12]` tests, run on the device).
 
 This note derives the scalar DTW objective implemented by DTWC++ and then
 checks it against the live code. Sakoe and Chiba are the primary source for
@@ -338,7 +338,7 @@ from source.
 | Independent DP oracle and hand-computed ledger | `tests/support/dtw_oracle.hpp`, `tests/unit/core/test_dtw.cpp` | A plain full-matrix DP written from this derivation reproduces by hand the registered unequal-length ledger of `.claude/baselines/2026-07-23-r2-d1-dtw.md` (L1 and squared L2; bands 1, 2, 3 and none; no path below the length difference), and the public routes (`dtwFull`, `dtwFull_L`, `dtwBanded`, the Problem's bound function and its fill) agree with it on every shape, band and precision of the table. The exhaustive path counts of the 2026-07-23 record (696, 1143 and 1289) are not re-run: the hand-computed ledger replaces them. **CONFIRMED**: `test_dtw` passes. |
 | Neither accumulated form is a metric | `tests/unit/core/test_dtw.cpp` (hand-computed values) | The identity and triangle counterexamples above are run through the oracle and through the library. **CONFIRMED**: `test_dtw` passes. |
 | CUDA uses the same fixed geometry | `fixed_band_contains` in `dtwc/cuda/cuda_dtw.cu`, used by `dtw_wavefront_kernel`, `dtw_warp_kernel` and `dtw_regtile_kernel` | One ordered-subtraction predicate implements $\lvert i-j\rvert\le w$ without signed `abs` overflow in every kernel family. The `[F12]` cases of `tests/unit/test_cuda_correctness.cpp` reproduce the independent path ledger on a CUDA device. **CONFIRMED** on the local RTX by `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. |
-| Metal fixed geometry and public sentinel | `dtw_wavefront_body` and `dtw_banded_row` in `dtwc/metal/metal_dtw.mm`; `normalize_public_distance` in `dtwc/core/public_distance.hpp` | The wavefront clip widens to `long` before `k ± band`; the banded-row kernel, chosen only for `0 < band <= 512`, clips each row to $\lvert i-j\rvert\le w$; exact device `FLT_MAX` is translated to public `DBL_MAX`. The `[F12]` case of `tests/unit/test_metal_correctness.cpp` covers the wavefront, banded-row and device-memory wavefront routes. Source **CONFIRMED**; real-device parity **CONFIRMED** on an Apple M5 Pro (2026-09-23, FX-13). |
+| Metal fixed geometry and public sentinel | `dtw_wavefront_body` and `dtw_banded_row` in `dtwc/metal/metal_dtw.mm`; `normalize_public_distance` in `dtwc/core/public_distance.hpp` | The wavefront clip widens to `long` before `k ± band`; the banded-row kernel, chosen only for `0 < band <= 512`, clips each row to $\lvert i-j\rvert\le w$; exact device `FLT_MAX` is translated to public `DBL_MAX`. The `[F12]` case of `tests/unit/test_metal_correctness.cpp` covers the wavefront, banded-row and device-memory wavefront routes. Source **CONFIRMED**; real-device parity **CONFIRMED** on an Apple M5 Pro (2026-09-23). |
 
 ## Decisive artifact
 
@@ -352,7 +352,7 @@ oracle, real-RTX outputs, and Metal environment probe are recorded in
 cost semantics, fixed Sakoe–Chiba window, feasibility rule, and monotonicity
 claim are **CONFIRMED**. CUDA geometry and exact public no-path translation are
 also **CONFIRMED** on the local RTX. Metal source implements the same contract,
-and its real-device executable gate passed on an Apple M5 Pro on 2026-09-23
-(FX-13). Its `[F12]` case compares every Metal pairwise value, including the
+and its real-device executable gate passed on an Apple M5 Pro on 2026-09-23.
+Its `[F12]` case compares every Metal pairwise value, including the
 no-path sentinel, with the independent oracle and the CPU kernel on the same
 inputs.

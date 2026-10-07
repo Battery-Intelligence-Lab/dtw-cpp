@@ -1,91 +1,90 @@
 # DTWC++ — MAP
 
-Where things are today (2026-09-29, phase B: X1, Z1, Y1, K1, Y2, Y3 merged), the target the phases A–G build
-(`PLAN.md`), and the invariants a refactor must keep. **Read this instead of the tree.** No line numbers:
-grep for the symbol. Sizes are `git ls-files | xargs cat | wc -l`, rounded.
+Where things are today (2026-10-07, phase G: W14a and W14b merged, W14c; the "After G" kernel units merged), the
+target the phases A–G build (`PLAN.md`), and the invariants a refactor must keep. **Read this instead of the tree.**
+No line numbers: grep for the symbol. Sizes are `git ls-files | xargs cat | wc -l`, rounded.
 
 ## 1. Pipeline today
 
 ```text
-file / folder / Parquet / Arrow ─▶ DataLoader, io/ readers ─▶ Data ─▶ Problem ─┬─ bind the DTW function once
-                                                                               ├─ fill_distance_matrix: CPU brute force | CUDA | Metal
-                                                                               ├─ dist_by_ind(i, j)  ◀── algorithms, MIP, scores, init
-                                                                               └─ cluster() or a free algorithm function ─▶ labels, medoids
-Tier-1  device() → load() → Dataset → cluster() → Result          CLI  dtwc_cl → cli::run(Config)
-Python  nanobind _dtwcpp_core + dtwcpp package                     MATLAB  dtwc_mex + +dtwc package
+text file / folder ──▶ io/read_data (dtwc_core) ───┐
+Parquet / Arrow IPC ──▶ io/read_arrow (dtwc_io) ───┴▶ Data ─▶ Problem ─┬─ bind the DTW function once (dtw_dispatch)
+                                                                       ├─ fill_distance_matrix: CPU lanes | per pair | CUDA | Metal
+                                                                       ├─ dist_by_ind(i, j): an O(1) read ◀── algorithms, MIP, scores
+                                                                       └─ cluster() ─▶ ClusteringResult, or a free algorithm function
+Tier-1  device() → load() → Dataset → cluster() → run(Config) → Result       CLI  dtwc_cl → cli::bind → Config → run()
+Python  _dtwcpp_core + dtwcpp: apply(Config) → Problem::cluster()          MATLAB  dtwc_mex + +dtwc: the same
 ```
 
 ## 2. Where the code is (`dtwc/`)
 
 | Layer | Where | Lines | What |
 | --- | --- | --- | --- |
-| base | `base/` (+ forwarders at `dtwc/` root), `types/`, `enums/` | 1.7k | errors (`Error` → `InvalidInput`, `DeviceError`, `IOError`, `SolverError`, `UndefinedScore`), settings (`index_t`), OpenMP helpers (`run_openmp`: per-thread failure slots, the lowest-index failure rethrown), `device()`, names tables, `Index` / `Range` |
-| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 9k | `dtw_kernel.hpp` (linear, lanes, banded recurrences × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio only in `distance_matrix.cpp`), SHA-256, portable RNG |
-| io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.6k | CSV/TSV/folder text readers (fast_float via `io/parse_number`), Parquet eager + chunked, Arrow IPC, nanoarrow C-Data ingest |
-| backends | `cuda/`, `metal/` | 4k | GPU fills (MPI deleted, Z1) |
-| algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4.9k | FastPAM, FastCLARA, OneBatchPAM, CLARANS, hierarchical, TADPole, barycenter; seeding; seven scores |
-| mip | `mip/` | 3k | HiGHS and Gurobi p-median, LR-core (`lagrangian_root`, `reduced_cost_fixing`), Benders, PDLP |
-| session | `Problem.{hpp,cpp}`, `Problem_IO.cpp`, `checkpoint.*` | 4k | the `Problem` session: data, distance binding, matrix cache, clustering state, checkpoints |
-| surface | `api.*`, `cli/`, `dtwc_cl.cpp`, `test_api.hpp`, `dtwc.hpp` | 2.5k | Tier-1 API; `cli::bind` (the one key table), `Config`, `run()`; diagnostics |
+| base | `base/` (+ forwarders at `dtwc/` root), `types/`, `enums/` | 1.1k | errors (`Error` → `InvalidInput`, `DeviceError`, `IOError`, `SolverError`, `UndefinedScore`), settings (`index_t`), OpenMP helpers (`run_openmp`: per-thread failure slots, the lowest-index failure rethrown), `device()` (`env`), names tables, `Index` / `Range` |
+| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 5.4k | `dtw_kernel.hpp` (linear: two columns per pass; lanes: 128 bytes on AArch64, 64 elsewhere; banded; × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio only in `distance_matrix.cpp`), SHA-256, portable RNG, `kmedoids_pp` |
+| io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet, Arrow IPC), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
+| backends | `cuda/`, `metal/` | 2.9k | GPU fills; CUDA also FastCLARA's assignment |
+| algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4k | FastPAM, FastCLARA (`fast_clara_parquet.cpp`: the stream, in `dtwc_io`), OneBatchPAM, hierarchical, TADPole, barycenter; seeding; seven scores |
+| mip | `mip/` | 1.5k | `mip-solvers`: HiGHS and Gurobi p-median (`build_p_median_model`), LR-core (`lagrangian_root`: dual, reduced-cost fixing, branch and bound) |
+| session | `Problem.{hpp,cpp}`, `Problem_IO.cpp`, `checkpoint.*` | 2.3k | the `Problem` session: data, distance binding, matrix cache, clustering state, checkpoints; `apply(Config, Problem&)` |
+| surface | `api.*`, `cli/`, `config.hpp`, `dtwc_cl.cpp`, `test_api.hpp`, `dtwc.hpp` | 2k | Tier-1 API; `Config` (`config.hpp`, in `dtwc_core`); `cli::bind` (the one key table), `run()`; diagnostics |
 | vendored | `extern/nanoarrow`, `extern/fast_float` | — | not ours; never edited |
 
-Bindings: `python/` (6.7k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clustering.py`, `_hpc.py` + `_slurm/`),
-`bindings/matlab/` (4.7k; `dtwc_mex.cpp`, `+dtwc/`). Tests: `tests/` (75k lines).
+Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clustering.py`, `_hpc.py` + `_slurm/`, `_mip.py`:
+`method="mip"` through highspy), `bindings/matlab/` (3.2k; `dtwc_mex.cpp`, `+dtwc/`). Tests: `tests/` (42k lines).
 
 ## 3. Build
 
-- Targets: `dtwc_core`, `dtwc_cli`, `dtwc_io` (static; the last in a build with Arrow) behind `dtwc++` (INTERFACE, the
-  consumers' link name; L2b), `mip-solvers` (object), `dtwc_options` / `dtwc_warnings` (interface),
-  `dtwc_cl` (installed CLI), examples, benchmarks, `_dtwcpp_core` (Python), `dtwc_mex`.
-- Presets: `clang-win`, `clang-win-debug`, `msvc`, `gcc-linux`, `clang-macos`. `build/` on the Windows box is
-  clang + Ninja Release with HiGHS, Gurobi, llfio and benchmarks; Arrow OFF there (Parquet tests run in
-  `build/arrow-pyarrow-23`, which has `test_io_readers` through the shim in its `pyarrow-config/`).
-  `build/cuda-verify-0928` is the CUDA dir.
-- Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,LLFIO,YAML}`
-  (ON), `DTWC_ENABLE_METAL` (ON on Apple only), `DTWC_ENABLE_{GUROBI,ARROW,CUDA}` (OFF); an `ON` that cannot be
-  honoured stops the configure. `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error),
-  `DTWC_FP_MODEL` (`fast` | `strict`), `DTWC_ARCH_LEVEL` (`native` | `v3` | `v4`; default `native`, `v3` for Python builds),
-  `DTWC_DEV_MODE`.
-- Dependencies (`cmake/Dependencies.cmake`, all pinned to a commit or SHA, checked by `check_pins.py`): CLI11,
-  fkYAML, HiGHS, llfio + quickcpplib, Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP, Gurobi,
-  CUDA and Metal from the system. The FP flags are `-fassociative-math` without `-ffinite-math-only`, on
-  `dtwc_options` only.
-- Per platform: macOS needs `brew install libomp` and `-DOpenMP_ROOT=/opt/homebrew/opt/libomp`
-  (`baselines/2026-09-21-macos-first-baseline.md`); Windows CUDA needs nvcc 13.0 with a supported MSVC host;
-  MATLAB and Python are built only when asked.
+- Targets (L2b): static `dtwc_core` (all of the above but `cli/` and `api.cpp`; what the Python module and the MEX
+  link), `dtwc_cli` (`cli/`, `api.cpp`; CLI11, fkYAML) and, with Arrow, `dtwc_io` (the Arrow readers and FastCLARA's
+  Parquet stream), behind `dtwc++` (INTERFACE, the consumers' link name; headers in `FILE_SET`s based at `dtwc/`);
+  `mip-solvers` (object, OpenMP), `dtwc_options` / `dtwc_warnings`, `dtwc_cl` (top-level project only, not under
+  scikit-build), examples, benchmarks, `_dtwcpp_core` (nanobind, `NOMINSIZE`), `dtwc_mex`.
+- Presets `clang-macos`, `clang-win`, `clang-win-debug`, `msvc`, `gcc-linux`, each into `build/`, tests ON. Mac:
+  `build/` (Ninja Release; HiGHS, llfio, Metal, YAML), `build-matlab/` (+ the MEX, `matlab_suite`), `build-asan/`
+  (ASan + UBSan). Windows box: `build/` (clang Release, benchmarks; Arrow OFF), `build/arrow-pyarrow-23` (Arrow via its
+  `pyarrow-config/` shim; counts only if `ctest -N` lists `test_io_readers`), `build/cuda-verify-0928` (CUDA).
+- Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,LLFIO,YAML}` (ON),
+  `DTWC_ENABLE_METAL` (ON on Apple only), `DTWC_ENABLE_{GUROBI,ARROW,CUDA}` (OFF); an `ON` that cannot be honoured
+  stops the configure. `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error), `DTWC_FP_MODEL` (`fast` | `strict`),
+  `DTWC_ARCH_LEVEL` (`native` | `v3` | `v4`; `v3` for Python), `DTWC_CUDA_ARCH_LIST` (8.0–9.0), `DTWC_DEV_MODE`.
+- Dependencies (`cmake/Dependencies.cmake`, pinned, checked by `check_pins.py`): CLI11, fkYAML, HiGHS, llfio
+  (header-only, with pinned quickcpplib and outcome), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
+  Gurobi, CUDA, Metal from the system. FP flags: `-fassociative-math` without `-ffinite-math-only`, on `dtwc_options`.
+- macOS needs `brew install libomp` and `-DOpenMP_ROOT=/opt/homebrew/opt/libomp`; Windows CUDA, nvcc 13.0 with a
+  supported MSVC host. The wheel links no HiGHS (`mip` extra: highspy); the MEX links it statically; archives and
+  wheels are x86-64-v3 or arm64, macOS ≥ 13.3.
 
 ## 4. Tests and gates
 
-- Every test is registered through `dtwc_add_test` (`cmake/DtwcTest.cmake`): it passes on Catch2's summary
-  with ≥ 1 assertion in ≥ 1 case, no failure, and no skip unless `MAY_SKIP`; `REQUIRES` unregisters a test
-  whose subject is not built.
-- `tests/unit` (flat, plus `core/`, `algorithms/`, `mip/`, `io/`, `types/`), `tests/integration`
-  (real-binary CLI scripts driven by `cmake -P`, the deprecated-shim compile probe), `tests/conformance`
-  (one tracked reference for C++, Python, MATLAB and the CLI; `DTWC_CONFORMANCE_REGEN=1` rewrites it),
-  `tests/python` (pytest; not run by ctest), `tests/matlab` (`matlab_suite`), `tests/data/reader` (reader inputs).
-- Full run: `ctest --test-dir build -C Release -j1 --output-on-failure` — 125 tests, 3 `MAY_SKIP` (CUDA,
-  Metal) on the Windows box (2026-09-29, after Y3).
-- Gates: `scripts/check_docs.py --cli <dtwc_cl>` (every flag the docs, README and `.claude/commands` show is
-  in the live `--help`, and every flag the help prints has a row in `getting-started/cli.md`; the harness still
-  fails an unregistered skip), `scripts/check_pins.py`,
-  `scripts/generate_docs.py --check`, gitleaks in CI. Manual tools: `codegen_report.py`, `machine_facts.py`,
-  `smoke_release_archive.py`, `check_ipo_inlining.py`, `repo_map.py`, `run_bench.sh`.
-- CI (`.github/workflows/`): ubuntu, windows and macOS unit jobs, documentation (docs gates, Hugo, Doxygen),
-  MATLAB MEX, Python tests and wheels, release artefacts, CUDA/MPI configure smoke, JOSS draft.
+- Every test is registered through `dtwc_add_test` (`cmake/DtwcTest.cmake`): it passes on Catch2's summary with ≥ 1
+  assertion in ≥ 1 case, no failure, and no skip unless `MAY_SKIP`; `REQUIRES` unregisters one whose subject is not built.
+- `tests/unit` (flat, plus `core/`, `algorithms/`, `mip/`, `io/`, `types/`), `tests/integration` (real-binary CLI
+  scripts driven by `cmake -P`, the deprecated-shim probe), `tests/conformance` (one tracked reference for C++,
+  Python, MATLAB and the CLI; `DTWC_CONFORMANCE_REGEN=1` rewrites it), `tests/python` (pytest; not run by ctest),
+  `tests/matlab`, `tests/data/reader`, `tests/support` (oracles, `scratch_directory.hpp`), `tests/fixtures`.
+- Full run: `ctest --test-dir build -C Release -j1` — 94 on the Mac's `build/` (CUDA's a `MAY_SKIP`); `build-matlab/`
+  adds `matlab_suite` (138/138; an Incomplete fails it); pytest from a fresh venv 895 / 11 skipped / 0 (2026-10-07).
+- Gates: `scripts/check_docs.py --cli <dtwc_cl>` (both directions: every flag the docs, README and `.claude/commands`
+  show is in the live `--help`; every flag the help prints has a row in `getting-started/cli.md`), `check_pins.py`,
+  `generate_docs.py --check`; in CI also `check_site_links.py` and gitleaks. Manual: `codegen_report.py`,
+  `machine_facts.py`, `smoke_release_archive.py`, `check_ipo_inlining.py`, `repo_map.py`, `run_bench.sh`.
+- CI (`.github/workflows/`): ubuntu, windows and macOS unit jobs, documentation (docs gates, Hugo, Doxygen,
+  coverage), MATLAB MEX, Python tests and wheels, release artefacts, CUDA configure smoke, JOSS draft.
 
 ## 5. Elsewhere
 
-`docs/` Hugo site (`content/`, `derivations/`, `api-contract-2.0.md` until phase G, `Doxyfile`) · `benchmarks/`
-· `examples/` (C++, Python, MATLAB) · `data/dummy` (sample series the tests use) · `scripts/slurm/` (HPC
-transport) · `develop/` (contributor-doc sources) · `.claude/commands/` (user slash commands) ·
+`docs/` Hugo site (`content/`, `derivations/`, `examples/`, `Doxyfile`) · `benchmarks/` · `examples/` (`cpp/`,
+`python/`, `matlab/`) · `data/dummy` (series the tests use) · `scripts/slurm/` (HPC transport; the package ships its
+own in `dtwcpp/_slurm/`) · `develop/` (contributor-doc sources) · `.claude/commands/` (user slash commands) ·
 `.claude/skills/` (`dtwc-verify`, `dtwc-run-benchmarks`, `dtwcpp`, `session-handoff`).
 
 ## 6. Target interface (design review §3)
 
 ```cpp
-dtwc::device("gpu");                                    // cpu | gpu | gpu:N (cuda[:N] alias); "hpc" throws, naming Python/CLI
-auto data = dtwc::load("cycles/", {.skip_cols = 1});    // CSV/TSV, folder, Parquet, Arrow by extension
-auto res  = dtwc::cluster(data, 8, {.band = 100});      // any Config key; method auto, seed 42
+dtwc::device("gpu");                                    // cpu | gpu | gpu:N (cuda[:N] alias); "hpc" throws, naming Python and slurm_remote.sh
+auto data = dtwc::load("cycles/", 1);                   // skip_cols, skip_rows, delimiter, name; CSV/TSV, folder, Parquet, Arrow
+auto res  = dtwc::cluster(data, 8, "auto", 100);        // method, band, device, max_iter; any other key: dtwc::run(Config)
 res.labels(); res.medoids(); res.cost(); res.score("silhouette"); res.save("out/");
 double d  = dtwc::distance::dtw(x, y, {.variant = DTWVariant::MSM, .msm_c = 0.5});
 ```
@@ -93,7 +92,7 @@ double d  = dtwc::distance::dtw(x, y, {.variant = DTWVariant::MSM, .msm_c = 0.5}
 ```python
 dtwc.device("hpc:gpu")                                   # cpu | gpu | gpu:N | hpc | hpc:gpu
 res = dtwc.cluster(dtwc.load("series.parquet"), k=50, band=400)          # kwargs == Config keys
-for k in range(3, 9): dtwc.cluster(data, k=k, dist_matrix=res.distance_matrix)   # a k-sweep fills once
+for k in range(3, 9): prob.set_n_clusters(k); prob.cluster()             # Tier 2: a k-sweep fills once
 est = dtwc.DTWClustering(n_clusters=3, n_init=3).fit(X)  # the one estimator
 ```
 
@@ -103,13 +102,14 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
 
 - `Config` is flat, keyed by the CLI long names; `cli::bind` is the one key table; TOML / YAML through CLI11.
   `k` is required, `method = auto` (cpu: `pam` for N ≤ 5000, else `clara`; gpu: `pam`).
-- `Result` in every language: `labels, medoids, cost, method, iterations, converged, device, config,
-  score(name), save(dir), distance_matrix`; Python and MATLAB add `plot()`.
+- `Result` in every language: `labels, medoids, cost, device, score(name), save(dir), distance_matrix`; C++ adds
+  `method, iterations, converged`, Python and MATLAB `plot()`.
 - Tier-2 (C++, Python, MATLAB alike): `Problem` with the v1 fields; `set_distance / set_band / set_metric /
   set_variant / set_missing_strategy / set_device / set_gpu_precision` each invalidate the matrix;
   `fill_distance_matrix`, O(1) `dist_by_ind`, `cluster()` over nine `Method` values, `set_result`; algorithms
   `fast_pam, fast_clara, one_batch_pam, tadpole, build_dendrogram / cut_dendrogram, dtw_barycenter,
-  barycenter_kmeans`; the seven scores. The `warping*.hpp` kernels stay public C++ and unchecked.
+  barycenter_kmeans` (each language's set on the Tier 2 page); the seven scores. The `warping*.hpp` kernels stay
+  public C++ and unchecked.
 - Devices: `cpu` (packed matrix in RAM, else the mapped `.dtwm`), `gpu[:N]` (CUDA, else Metal, else
   `DeviceError` naming the build flag and the artefact; never a zero matrix, never a CPU fallback),
   `hpc[:gpu]` in Python and `slurm_remote.sh` only, submitting `job.toml`.

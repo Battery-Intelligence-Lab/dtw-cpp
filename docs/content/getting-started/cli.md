@@ -120,12 +120,13 @@ column payload is loaded. The CLI reads schema and row-group metadata, resolves
 decode and materialise the selected column at the requested `--dtype`. If that
 estimate fits, the ordinary resident reader is used. If it does not fit, the
 only supported streaming route is non-full FastCLARA over one Parquet file
-whose selected column is `List<Float32/Float64>` or
-`LargeList<Float32/Float64>` with one list cell per series.
+of one series per row: a `List<Float32/Float64>` or
+`LargeList<Float32/Float64>` column with one list cell per series, or several
+Float32/Float64 columns.
 
 The cap is fail-closed:
 
-- over-budget scalar-column, Parquet-directory, and non-CLARA requests stop
+- over-budget one-column (one series), Parquet-directory, and non-CLARA requests stop
   before payload materialisation and explain how to convert the input or raise
   the limit;
 - Parquet row groups are indivisible. A sample or assignment row group that
@@ -278,7 +279,8 @@ realised) is only a warning; `-k 1` writes no silhouettes file.
 
 RAM-limited Parquet streaming writes labels and medoids, but deliberately does
 not materialise the dense matrix merely to produce distance or silhouette CSVs.
-List rows use the stable names `series_0`, `series_1`, and so on. For the same
+Rows take their names from the file's first string column, else `series_0`,
+`series_1`, and so on. For the same
 seed/configuration, streamed and resident list-column runs produce
 byte-identical label and medoid files.
 

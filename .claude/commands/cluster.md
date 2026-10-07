@@ -53,7 +53,7 @@ If NaN detected, default `missing_strategy="arow"`.
 |---|--------|-----------|
 | ≤ 5000 | `fast_pam` | PAM swap on the full matrix (a local optimum), fastest for small N |
 | 5000–50000 | `fast_clara` | Subsample-based, scales linearly |
-| > 50000 | `fast_clara` + `--ram-limit` | Streams one list-per-row Parquet file under the cap (Parquet input only) |
+| > 50000 | `fast_clara` + `--ram-limit` | Streams one Parquet file of a series per row (a list column, or several float columns) under the cap |
 | MIP requested | `mip` (HiGHS; Gurobi only where the build links it) | Provable optimum |
 
 Announce the chosen method and reasoning in one sentence.
@@ -165,7 +165,7 @@ Parse stdout for cost and timing; report the same summary.
 
 ## Error handling
 
-- **OOM / bad_alloc**: retry with `--method clara`; on a list-per-row Parquet input, `--ram-limit 8G` also streams the series
+- **OOM / bad_alloc**: retry with `--method clara`; on a Parquet file of a series per row, `--ram-limit 8G` also streams the series
 - **NaN in distances**: retry with `--missing-strategy arow`
 - **CUDA fails**: retry on CPU
 - **`mip` raises `SolverError` naming highspy**: the wheel solves `mip` with the user's highspy, so
