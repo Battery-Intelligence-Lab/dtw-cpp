@@ -68,8 +68,9 @@ inline fs::path utf8_to_path(std::string_view name)
                                   name.size()));
   } catch (const std::system_error &) {
     // Not valid UTF-8. The only producer of such a name is a native-encoded
-    // string that never went through a loader (a Windows ANSI `--name` from
-    // argv), so interpret it natively rather than failing the write: MSVC's
+    // string that never went through a loader (the ANSI argv of a Windows
+    // program without a UTF-8 manifest; dtwc_cl has one), so interpret it
+    // natively rather than failing the write: MSVC's
     // char8_t conversion THROWS on an unmappable sequence.
     return fs::path(std::string(name));
   }

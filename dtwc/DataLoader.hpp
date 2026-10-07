@@ -100,10 +100,12 @@ public:
   {
     data_path = data_path_;
     // An explicit delimiter() wins over extension inference; the extension
-    // match is case-insensitive so ".TSV" is not silently left on ','.
+    // match is case-insensitive so ".TSV" is not silently left on ','. The
+    // extension is read as UTF-8: path::string() converts to the Windows ANSI
+    // code page and throws for an extension it cannot map.
     if (delim_explicit_) return *this;
     const auto ext =
-      text_io_detail::lower_ascii(data_path_.extension().string());
+      text_io_detail::lower_ascii(path_to_utf8(data_path_.extension()));
     if (ext == ".csv")
       delim = ',';
     else if (ext == ".tsv" || ext == ".txt")

@@ -281,6 +281,23 @@ TEST_CASE("DataLoader extension matching is case-insensitive and keeps an "
   CHECK(explicit_delim.delimiter() == '|');
 }
 
+TEST_CASE("DataLoader::path takes the extension of a non-ANSI path without a "
+          "code-page conversion", "[DataLoader][delimiter]")
+{
+  // path::extension().string() converts to the ANSI code page and THROWS for
+  // a character it cannot map (cp1252: U+03B4 Greek delta, U+FF54.. fullwidth
+  // "tsv"), and a best-fit conversion would turn the fullwidth letters into
+  // ".tsv". Only the ASCII extension may select a delimiter.
+  const std::filesystem::path greek = u8"a.δ";
+  const std::filesystem::path fullwidth_tsv = u8"a.ｔｓｖ";
+  const std::filesystem::path non_ansi_stem = u8"δ.TSV";
+
+  CHECK_NOTHROW(DataLoader{}.path(greek));
+  CHECK_NOTHROW(DataLoader{}.path(fullwidth_tsv));
+  CHECK(DataLoader{}.path(fullwidth_tsv).delimiter() == ',');
+  CHECK(DataLoader{}.path(non_ansi_stem).delimiter() == '\t');
+}
+
 TEST_CASE("Folder and batch loaders honour verbosity(0)",
           "[DataLoader][verbosity]")
 {
