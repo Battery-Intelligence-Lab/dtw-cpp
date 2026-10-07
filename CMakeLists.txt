@@ -285,6 +285,11 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
     set(DTWC_RC_VERSION "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
     configure_file(dtwc/dtwc_cl.rc.in "${CMAKE_CURRENT_BINARY_DIR}/dtwc_cl.rc" @ONLY)
     target_sources(dtwc_cl PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/dtwc_cl.rc")
+    # The process code page becomes UTF-8, so argv and every narrow-string file API
+    # read the user's paths intact (Windows 10 1903+). A .manifest source is merged
+    # with the linker's own default manifest; the same resource in the .rc would
+    # clash with it ("duplicate resource: type MANIFEST" from lld-link).
+    target_sources(dtwc_cl PRIVATE dtwc/dtwc_cl.manifest)
   endif()
 
   install(TARGETS dtwc_cl

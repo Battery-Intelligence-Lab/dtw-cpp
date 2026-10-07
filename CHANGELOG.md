@@ -161,6 +161,8 @@ Soft-DTW, Python or CUDA), on the machine named.
   same on every machine; v1.0.0 took the directory's order and every entry.
 - Text is read in binary: on Windows a Ctrl-Z byte no longer ends a file early (it is refused, as any non-numeric field
   is), and a file whose lines end in a bare CR is refused instead of read as one line.
+- On Windows `dtwc_cl` reads its arguments and paths as UTF-8, and `DataLoader::path` accepts a non-ANSI extension;
+  v1.0.0 read arguments in the ANSI code page, so `δ.csv` could name `d.csv`, and threw for such an extension.
 - A direct write to the `band` field takes effect at the next `fill_distance_matrix()`; v1.0.0 kept the distances
   computed under the old band.
 
