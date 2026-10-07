@@ -26,6 +26,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   a folder whose files hold different columns and a file of scalar columns only. Such a file, as
   `dtwcpp.io.save_dataset_parquet` writes it (a column per time step), is now one series, its first column, as in C++
   and MATLAB; `dtwcpp.io.load_dataset_parquet` reads it as rows.
+- **Fixed (C++, Python):** an Arrow list array that is a slice (its offset set, as pyarrow exports `arr.slice(1)`) is
+  read from its offset by `dtwc::io::data_from_arrow` and so by Python's in-memory Arrow route; the array's first
+  rows were read instead.
 - **Fixed (Python):** `dtwcpp.load(dataset, ...)` with an option other than its default (`skip_cols`, `skip_rows`,
   `delimiter`, `name`) raises `InvalidInput` naming it, as MATLAB's `dtwc.load` refuses it; it returned the
   `Dataset` and ignored the option.

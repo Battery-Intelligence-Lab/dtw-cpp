@@ -87,9 +87,11 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
 
     // The offsets come from the producer (a file, for Arrow IPC) and index the
     // values directly; validation checks only the first and the last. Corrupt
-    // offsets are IOError, as a Parquet file's are.
-    const int64_t start = ArrowArrayViewListChildOffset(list_view, i);
-    const int64_t end = ArrowArrayViewListChildOffset(list_view, i + 1);
+    // offsets are IOError, as a Parquet file's are. A slice's offsets start at its
+    // offset, which ArrowArrayViewListChildOffset, unlike the other accessors, does
+    // not add.
+    const int64_t start = ArrowArrayViewListChildOffset(list_view, list_view->offset + i);
+    const int64_t end = ArrowArrayViewListChildOffset(list_view, list_view->offset + i + 1);
     if (start < 0 || end < start || end > values->length)
       throw dtwc::IOError("data_from_arrow: list offset [" + std::to_string(start) + ", " + std::to_string(end) +
                           ") of the series at row " + std::to_string(first + i) + " is outside the values [0, " +

@@ -84,6 +84,24 @@ TEST_CASE("Arrow ingest: large_list<double> round-trips to Data", "[arrow][oracl
   REQUIRE(data.p_names[2] == "series_2");
 }
 
+TEST_CASE("Arrow ingest: a sliced list is read from its offset", "[arrow][oracle]")
+{
+  // A producer's slice (pyarrow's arr.slice(1)) keeps its buffers and sets offset: the
+  // reader read the first rows, from offset 0.
+  const std::vector<std::vector<double>> series{ { 1.0 }, { 2.0, 3.0 }, { 10.0, 20.0, 30.0 } };
+  ArrowSchema schema;
+  ArrowArray array;
+  build_list(series, NANOARROW_TYPE_LARGE_LIST, NANOARROW_TYPE_DOUBLE, &schema, &array);
+  array.offset = 1;
+  array.length = 2;
+
+  dtwc::Data data = dtwc::io::data_from_arrow(&schema, &array);
+  release_both(&schema, &array);
+
+  REQUIRE(data.p_vec == std::vector<std::vector<double>>{ { 2.0, 3.0 }, { 10.0, 20.0, 30.0 } });
+  REQUIRE(data.p_names == std::vector<std::string>{ "series_0", "series_1" });
+}
+
 TEST_CASE("Arrow ingest: list<float32> converts to double", "[arrow][float32]")
 {
   const std::vector<std::vector<double>> series{ { 1.5, 2.5 }, { 3.5 } };
