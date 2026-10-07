@@ -45,10 +45,11 @@ def _read_arrow(path, parquet):
     """Parquet files, read as the C++ reader (ParquetChunkReader) reads them, or
     an Arrow IPC file (the ``data`` column, named by ``name``, ``ndim`` from the
     schema metadata) through the installed pyarrow, into the Arrow C stream the
-    compiled-in nanoarrow reads. In each Parquet file the first Float32/Float64
-    column is one series, named by the file's stem, or the first list column of
-    them one series per row, named ``series_<i>`` numbered on across the files;
-    no other column is read, so a string column names nothing."""
+    compiled-in nanoarrow reads. In each Parquet file the first column that is
+    Float32/Float64 or a list of them is read and no other, so a string column
+    names nothing: a scalar column is one series, named by the file's stem, a
+    list column one series per row, named ``series_<i>`` numbered on across the
+    files."""
     from dtwcpp import IOError as DtwcIOError, _dtwcpp_core
     try:
         import pyarrow as pa
@@ -59,7 +60,7 @@ def _read_arrow(path, parquet):
     ndim = 1
     try:
         if parquet:
-            columns, names = [], []
+            chunks, names = [], []
             for file in parquet:
                 for field in pq.read_schema(os.fspath(file)):
                     listed = pa.types.is_list(field.type) or pa.types.is_large_list(field.type)
@@ -70,14 +71,14 @@ def _read_arrow(path, parquet):
                     raise DtwcIOError(f"{Path(file).name} has no Float32 or Float64 column, nor a "
                                       "List or LargeList column of them.")
                 column = pq.read_table(os.fspath(file), columns=[field.name]).column(field.name)
-                column = column.combine_chunks()
-                if listed:
+                if listed:  # chunk by chunk: combined, list<float> offsets overflow past 2**31 - 1 values
+                    chunks += column.cast(pa.large_list(pa.float64())).chunks
                     names += [f"series_{i}" for i in range(len(names), len(names) + len(column))]
                 else:
-                    column = pa.LargeListArray.from_arrays([0, len(column)], column)
+                    values = column.combine_chunks().cast(pa.float64())
+                    chunks.append(pa.LargeListArray.from_arrays([0, len(values)], values))
                     names.append(Path(file).stem)
-                columns.append(column.cast(pa.large_list(pa.float64())))
-            table = pa.table({"data": pa.chunked_array(columns, pa.large_list(pa.float64())),
+            table = pa.table({"data": pa.chunked_array(chunks, pa.large_list(pa.float64())),
                               "name": pa.array(names, pa.string())})
         else:
             with pa.OSFile(os.fspath(path), "rb") as f:

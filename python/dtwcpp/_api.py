@@ -50,9 +50,9 @@ def _series(source, skip_rows=0):
     Problem.set_data, compute_distance_matrix and DTWClustering.
 
     A 2-D array holds one series per row and a list or tuple one per element, of
-    any lengths; both are named by their ordinals, counted from 0 after the
-    ``skip_rows`` leading series a :class:`Dataset` drops, as C++ ``dtwc::load``
-    names series in memory. A pandas DataFrame holds one
+    any lengths; both are named by their ordinals. The ``skip_rows`` leading series
+    a :class:`Dataset` drops go first, unread, and the ordinals count from 0 after
+    them, as C++ ``dtwc::load`` treats series in memory. A pandas DataFrame holds one
     series per row, named by its index (read through ``to_numpy``: pandas is not
     imported), and an Arrow array or stream (pyarrow, polars, DuckDB) is read by
     the compiled-in nanoarrow and named as it names them. Complex values, an
@@ -72,7 +72,7 @@ def _series(source, skip_rows=0):
     elif type(source).__module__.startswith("scipy.sparse"):
         raise TypeError("Sparse input is not supported; provide a dense array.")
     if isinstance(source, (list, tuple)):
-        rows = [_float64(row) for row in source]
+        rows = [_float64(row) for row in source[skip_rows:]]
         for i, row in enumerate(rows):
             if row.ndim != 1:
                 raise _NotSeries(f"{_FORMS}; got a list whose element {i} is {row.ndim}-D.")
@@ -83,12 +83,11 @@ def _series(source, skip_rows=0):
         if array.ndim != 2:  # "Reshape your data", as scikit-learn's checks expect
             raise _NotSeries(f"{_FORMS}; got a {array.ndim}-D array of shape {array.shape}. "
                              "Reshape your data to (n_series, n_timesteps).")
-        array = _float64(array)
+        array = _float64(array[skip_rows:])
         if array.shape[0] and not array.shape[1]:  # scikit-learn's words, which its checks match
             raise InvalidInput(f"every series needs at least one value: 0 feature(s) "
                                f"(shape={array.shape}) while a minimum of 1 is required.")
         rows = list(array)
-    del rows[:skip_rows]
     return rows, names[skip_rows:] if names is not None else [str(i) for i in range(len(rows))]
 
 
@@ -173,7 +172,8 @@ class Dataset:
 def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None):
     """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it).
     A Dataset passes through unchanged: it keeps the options it was made with, so
-    an option given with one is refused, as MATLAB's dtwc.load refuses it."""
+    an option other than its default is refused, as MATLAB's dtwc.load refuses
+    any."""
     if isinstance(source, Dataset):
         ignored = [key for key, value, default in (
             ("skip_cols", skip_cols, 0), ("skip_rows", skip_rows, 0),
