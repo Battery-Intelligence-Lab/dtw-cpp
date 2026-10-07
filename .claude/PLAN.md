@@ -138,8 +138,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
   10-01); the GCC-only test failures explained (V4) (V4 0721563, 52b557a, ba26ec9, cf03bd5, 499efdf; merged d6a9d54; GCC 13.3 v3: 113 / 0 failed, conformance identical)
 - ☑ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1) (S1 5cc52a0, 0268df1; merged c54e375; htc-gpu 80;86;89)
-- ☐ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
-  its own band; on the M5 alone 1.0–1.19×, with an `fminnm` min 1.41–2.00× (After G, AArch64 lanes)
+- ◐ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
+  its own band; on the M5 alone 1.0–1.19×, with an `fminnm` min 1.41–2.00× (AArch64 done: After G; x86 untried —
+  its fmin is three instructions, so x86 needs its own measurement on the Windows box)
 - ☑ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
   L can shrink it under each other's launch; set it once to the opt-in maximum less the static bytes, behind a band (W4d) (350ae39)
 - ☑ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
@@ -296,10 +297,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   integrates it)
 - ☑ the wheel's binding file at `-O3` (`NOMINSIZE`): LTO ran its `-Os` copy of the per-pair kernel in the whole module
   (659f889f; Python `dtw` 1.1–1.5×, ragged fill 1.5×; `baselines/2026-10-06-mac-kernel-assembly.md`)
-- ◐ AArch64 lanes: the min as `fminnm`, 128-byte blocks (16 doubles, 32 floats): 1.41–2.00× single thread, fill
-  1.48–1.72× at 18 threads, bitwise over the sweep, x86 untouched (23c88336; merged e26d5680: bitwise — 15.36 M
-  lane outputs, 64 CLI files, conformance; x86 `.s` identical; f64 L1 loop = `v_fmin_w16`; speed waits for the
-  quiet run of its kit, `baselines/2026-10-06-mac-arm-lanes.md`)
+- ☑ AArch64 lanes: the min as `fminnm`, 128-byte blocks (16 doubles, 32 floats) (23c88336; merged e26d5680:
+  bitwise — 15.36 M lane outputs, 64 CLI files, conformance; x86 `.s` identical; f64 L1 loop = `v_fmin_w16`; the
+  quiet run 2026-10-07: 1.41–2.00× single thread, 18-thread fill 1.61–1.69×, ragged fill 1.003×, every band PASS;
+  `baselines/2026-10-06-mac-arm-lanes.md`)
 - ◐ per-pair kernels two columns per pass: kernel 1 1.44–1.98× unbanded, bitwise; kernel 2 not tried (Volkan 10-06: run it;
   phase 1 on pb/pair-2col 463d2b52, 00fb9c36, 92a747d9: both kernels, the abandon test a template argument; bitwise
   over 11.73 M outputs and every Cell; speed and the kernel 2 decision wait for the quiet run,

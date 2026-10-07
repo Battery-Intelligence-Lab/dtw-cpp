@@ -1,0 +1,191 @@
+# arm-lanes kit, Wed Oct  7 03:25:37 BST 2026, Apple M5 Pro, repeats 5, mode 5
+r1 base time f64 L1 L 100  band -1   W 8  ns/cell 0.20077 (min 0.20017)  cycles/cell@4.59GHz 0.9215  cycles/cell@measured 0.9194  clock 4.566 GHz  Gcell/s 4.981  checksum 3237740.4965488482
+r1 head time f64 L1 L 100  band -1   W 16 ns/cell 0.10677 (min 0.10607)  cycles/cell@4.59GHz 0.4901  cycles/cell@measured 0.4879  clock 4.574 GHz  Gcell/s 9.366  checksum 1505550.8395972478
+r1 base time f64 L1 L 100  band 10   W 8  ns/cell 0.18693 (min 0.18686)  cycles/cell@4.59GHz 0.8580  cycles/cell@measured 0.8578  clock 4.588 GHz  Gcell/s 5.350  checksum 18655809.481433935
+r1 head time f64 L1 L 100  band 10   W 16 ns/cell 0.11384 (min 0.11379)  cycles/cell@4.59GHz 0.5225  cycles/cell@measured 0.5220  clock 4.585 GHz  Gcell/s 8.784  checksum 8805901.5328393709
+r1 base time f64 L1 L 1000 band -1   W 8  ns/cell 0.20451 (min 0.20355)  cycles/cell@4.59GHz 0.9387  cycles/cell@measured 0.9391  clock 4.586 GHz  Gcell/s 4.890  checksum 1103651.9641736674
+r1 head time f64 L1 L 1000 band -1   W 16 ns/cell 0.10318 (min 0.10253)  cycles/cell@4.59GHz 0.4736  cycles/cell@measured 0.4720  clock 4.581 GHz  Gcell/s 9.692  checksum 418365.41341673344
+r1 base time f64 L1 L 1000 band 100  W 8  ns/cell 0.20220 (min 0.20104)  cycles/cell@4.59GHz 0.9281  cycles/cell@measured 0.9244  clock 4.575 GHz  Gcell/s 4.945  checksum 5662325.4720484754
+r1 head time f64 L1 L 1000 band 100  W 16 ns/cell 0.10435 (min 0.10377)  cycles/cell@4.59GHz 0.4790  cycles/cell@measured 0.4778  clock 4.582 GHz  Gcell/s 9.583  checksum 2738937.3121385267
+r1 base time f64 Sq L 100  band -1   W 8  ns/cell 0.20948 (min 0.20864)  cycles/cell@4.59GHz 0.9615  cycles/cell@measured 0.9602  clock 4.586 GHz  Gcell/s 4.774  checksum 22165987.798932079
+r1 head time f64 Sq L 100  band -1   W 16 ns/cell 0.13472 (min 0.13447)  cycles/cell@4.59GHz 0.6184  cycles/cell@measured 0.6156  clock 4.560 GHz  Gcell/s 7.423  checksum 10371761.919710614
+r1 base time f64 Sq L 100  band 10   W 8  ns/cell 0.21444 (min 0.21385)  cycles/cell@4.59GHz 0.9843  cycles/cell@measured 0.9833  clock 4.578 GHz  Gcell/s 4.663  checksum 139364566.35085097
+r1 head time f64 Sq L 100  band 10   W 16 ns/cell 0.14148 (min 0.14137)  cycles/cell@4.59GHz 0.6494  cycles/cell@measured 0.6482  clock 4.585 GHz  Gcell/s 7.068  checksum 65896503.089176022
+r1 base time f64 Sq L 1000 band -1   W 8  ns/cell 0.20777 (min 0.20680)  cycles/cell@4.59GHz 0.9537  cycles/cell@measured 0.9522  clock 4.569 GHz  Gcell/s 4.813  checksum 34656988.917603835
+r1 head time f64 Sq L 1000 band -1   W 16 ns/cell 0.13072 (min 0.13021)  cycles/cell@4.59GHz 0.6000  cycles/cell@measured 0.6007  clock 4.578 GHz  Gcell/s 7.650  checksum 14634591.152599201
+r1 base time f64 Sq L 1000 band 100  W 8  ns/cell 0.20755 (min 0.20610)  cycles/cell@4.59GHz 0.9527  cycles/cell@measured 0.9492  clock 4.573 GHz  Gcell/s 4.818  checksum 146992599.41710925
+r1 head time f64 Sq L 1000 band 100  W 16 ns/cell 0.13199 (min 0.13177)  cycles/cell@4.59GHz 0.6058  cycles/cell@measured 0.6041  clock 4.576 GHz  Gcell/s 7.576  checksum 68694196.33171013
+r1 base time f32 L1 L 100  band -1   W 16 ns/cell 0.10200 (min 0.10134)  cycles/cell@4.59GHz 0.4682  cycles/cell@measured 0.4692  clock 4.583 GHz  Gcell/s 9.804  checksum 1505550.8875579834
+r1 head time f32 L1 L 100  band -1   W 32 ns/cell 0.05726 (min 0.05701)  cycles/cell@4.59GHz 0.2628  cycles/cell@measured 0.2624  clock 4.583 GHz  Gcell/s 17.463  checksum 764871.06845855713
+r1 base time f32 L1 L 100  band 10   W 16 ns/cell 0.09721 (min 0.09653)  cycles/cell@4.59GHz 0.4462  cycles/cell@measured 0.4472  clock 4.592 GHz  Gcell/s 10.287  checksum 8805901.6937255859
+r1 head time f32 L1 L 100  band 10   W 32 ns/cell 0.06871 (min 0.06811)  cycles/cell@4.59GHz 0.3154  cycles/cell@measured 0.3149  clock 4.577 GHz  Gcell/s 14.553  checksum 4574324.1126937866
+r1 base time f32 L1 L 1000 band -1   W 16 ns/cell 0.10225 (min 0.10178)  cycles/cell@4.59GHz 0.4693  cycles/cell@measured 0.4672  clock 4.569 GHz  Gcell/s 9.780  checksum 418365.45190429688
+r1 head time f32 L1 L 1000 band -1   W 32 ns/cell 0.05278 (min 0.05247)  cycles/cell@4.59GHz 0.2423  cycles/cell@measured 0.2415  clock 4.580 GHz  Gcell/s 18.946  checksum 262744.72778320312
+r1 base time f32 L1 L 1000 band 100  W 16 ns/cell 0.10127 (min 0.10124)  cycles/cell@4.59GHz 0.4648  cycles/cell@measured 0.4653  clock 4.591 GHz  Gcell/s 9.874  checksum 2738937.4350585938
+r1 head time f32 L1 L 1000 band 100  W 32 ns/cell 0.05456 (min 0.05411)  cycles/cell@4.59GHz 0.2504  cycles/cell@measured 0.2496  clock 4.569 GHz  Gcell/s 18.330  checksum 1301580.0183105469
+r1 base time f32 Sq L 100  band -1   W 16 ns/cell 0.10779 (min 0.10720)  cycles/cell@4.59GHz 0.4948  cycles/cell@measured 0.4942  clock 4.585 GHz  Gcell/s 9.277  checksum 10371762.134857178
+r1 head time f32 Sq L 100  band -1   W 32 ns/cell 0.06786 (min 0.06755)  cycles/cell@4.59GHz 0.3115  cycles/cell@measured 0.3107  clock 4.581 GHz  Gcell/s 14.735  checksum 6019921.7946395874
+r1 base time f32 Sq L 100  band 10   W 16 ns/cell 0.11075 (min 0.11023)  cycles/cell@4.59GHz 0.5083  cycles/cell@measured 0.5075  clock 4.584 GHz  Gcell/s 9.029  checksum 65896503.657989502
+r1 head time f32 Sq L 100  band 10   W 32 ns/cell 0.07851 (min 0.07809)  cycles/cell@4.59GHz 0.3604  cycles/cell@measured 0.3593  clock 4.578 GHz  Gcell/s 12.737  checksum 37492176.103019714
+r1 base time f32 Sq L 1000 band -1   W 16 ns/cell 0.10389 (min 0.10334)  cycles/cell@4.59GHz 0.4768  cycles/cell@measured 0.4763  clock 4.577 GHz  Gcell/s 9.626  checksum 14634592.775390625
+r1 head time f32 Sq L 1000 band -1   W 32 ns/cell 0.06387 (min 0.06334)  cycles/cell@4.59GHz 0.2931  cycles/cell@measured 0.2924  clock 4.571 GHz  Gcell/s 15.658  checksum 6563212.400390625
+r1 base time f32 Sq L 1000 band 100  W 16 ns/cell 0.10407 (min 0.10292)  cycles/cell@4.59GHz 0.4777  cycles/cell@measured 0.4776  clock 4.579 GHz  Gcell/s 9.609  checksum 68694199.6875
+r1 head time f32 Sq L 1000 band 100  W 32 ns/cell 0.06541 (min 0.06519)  cycles/cell@4.59GHz 0.3002  cycles/cell@measured 0.3001  clock 4.589 GHz  Gcell/s 15.289  checksum 31490552.604492188
+r1 base fill f64 L1 threads 18 N 2000  L 100  band -1   W 8  ms 285.74 (min 285.64)  Gcell/s 69.96  matrix hash fa485cbe1fa07d20
+r1 head fill f64 L1 threads 18 N 2000  L 100  band -1   W 16 ms 168.69 (min 167.30)  Gcell/s 118.50  matrix hash fa485cbe1fa07d20
+r1 base fill f64 L1 threads 18 N 500   L 1000 band 100  W 8  ms 348.08 (min 346.33)  Gcell/s 68.42  matrix hash 79637ca9e991a308
+r1 head fill f64 L1 threads 18 N 500   L 1000 band 100  W 16 ms 212.52 (min 211.80)  Gcell/s 112.06  matrix hash 79637ca9e991a308
+r1 base fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 8  ms 223.92 (min 223.31)  Gcell/s 22.19  matrix hash b28673ce59c47ce8
+r1 head fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 16 ms 221.82 (min 221.33)  Gcell/s 22.40  matrix hash b28673ce59c47ce8
+r2 head time f64 L1 L 100  band -1   W 16 ns/cell 0.11170 (min 0.11165)  cycles/cell@4.59GHz 0.5127  cycles/cell@measured 0.5098  clock 4.564 GHz  Gcell/s 8.952  checksum 1505550.8395972478
+r2 base time f64 L1 L 100  band -1   W 8  ns/cell 0.21148 (min 0.21047)  cycles/cell@4.59GHz 0.9707  cycles/cell@measured 0.9659  clock 4.574 GHz  Gcell/s 4.729  checksum 3237740.4965488482
+r2 head time f64 L1 L 100  band 10   W 16 ns/cell 0.11912 (min 0.11875)  cycles/cell@4.59GHz 0.5468  cycles/cell@measured 0.5443  clock 4.571 GHz  Gcell/s 8.395  checksum 8805901.5328393709
+r2 base time f64 L1 L 100  band 10   W 8  ns/cell 0.19581 (min 0.19560)  cycles/cell@4.59GHz 0.8988  cycles/cell@measured 0.8982  clock 4.583 GHz  Gcell/s 5.107  checksum 18655809.481433935
+r2 head time f64 L1 L 1000 band -1   W 16 ns/cell 0.10721 (min 0.10691)  cycles/cell@4.59GHz 0.4921  cycles/cell@measured 0.4913  clock 4.586 GHz  Gcell/s 9.327  checksum 418365.41341673344
+r2 base time f64 L1 L 1000 band -1   W 8  ns/cell 0.21442 (min 0.21437)  cycles/cell@4.59GHz 0.9842  cycles/cell@measured 0.9807  clock 4.573 GHz  Gcell/s 4.664  checksum 1103651.9641736674
+r2 head time f64 L1 L 1000 band 100  W 16 ns/cell 0.10888 (min 0.10864)  cycles/cell@4.59GHz 0.4998  cycles/cell@measured 0.4968  clock 4.564 GHz  Gcell/s 9.184  checksum 2738937.3121385267
+r2 base time f64 L1 L 1000 band 100  W 8  ns/cell 0.21159 (min 0.21134)  cycles/cell@4.59GHz 0.9712  cycles/cell@measured 0.9700  clock 4.584 GHz  Gcell/s 4.726  checksum 5662325.4720484754
+r2 head time f64 Sq L 100  band -1   W 16 ns/cell 0.14028 (min 0.14013)  cycles/cell@4.59GHz 0.6439  cycles/cell@measured 0.6412  clock 4.574 GHz  Gcell/s 7.128  checksum 10371761.919710614
+r2 base time f64 Sq L 100  band -1   W 8  ns/cell 0.21816 (min 0.21807)  cycles/cell@4.59GHz 1.0014  cycles/cell@measured 0.9982  clock 4.575 GHz  Gcell/s 4.584  checksum 22165987.798932079
+r2 head time f64 Sq L 100  band 10   W 16 ns/cell 0.14680 (min 0.14671)  cycles/cell@4.59GHz 0.6738  cycles/cell@measured 0.6726  clock 4.584 GHz  Gcell/s 6.812  checksum 65896503.089176022
+r2 base time f64 Sq L 100  band 10   W 8  ns/cell 0.22373 (min 0.22315)  cycles/cell@4.59GHz 1.0269  cycles/cell@measured 1.0255  clock 4.584 GHz  Gcell/s 4.470  checksum 139364566.35085097
+r2 head time f64 Sq L 1000 band -1   W 16 ns/cell 0.13579 (min 0.13536)  cycles/cell@4.59GHz 0.6233  cycles/cell@measured 0.6213  clock 4.575 GHz  Gcell/s 7.365  checksum 14634591.152599201
+r2 base time f64 Sq L 1000 band -1   W 8  ns/cell 0.21680 (min 0.21673)  cycles/cell@4.59GHz 0.9951  cycles/cell@measured 0.9931  clock 4.577 GHz  Gcell/s 4.612  checksum 34656988.917603835
+r2 head time f64 Sq L 1000 band 100  W 16 ns/cell 0.13754 (min 0.13706)  cycles/cell@4.59GHz 0.6313  cycles/cell@measured 0.6286  clock 4.580 GHz  Gcell/s 7.271  checksum 68694196.33171013
+r2 base time f64 Sq L 1000 band 100  W 8  ns/cell 0.21476 (min 0.21466)  cycles/cell@4.59GHz 0.9858  cycles/cell@measured 0.9818  clock 4.571 GHz  Gcell/s 4.656  checksum 146992599.41710925
+r2 head time f32 L1 L 100  band -1   W 32 ns/cell 0.05898 (min 0.05892)  cycles/cell@4.59GHz 0.2707  cycles/cell@measured 0.2704  clock 4.585 GHz  Gcell/s 16.955  checksum 764871.06845855713
+r2 base time f32 L1 L 100  band -1   W 16 ns/cell 0.10651 (min 0.10622)  cycles/cell@4.59GHz 0.4889  cycles/cell@measured 0.4885  clock 4.576 GHz  Gcell/s 9.388  checksum 1505550.8875579834
+r2 head time f32 L1 L 100  band 10   W 32 ns/cell 0.07096 (min 0.07054)  cycles/cell@4.59GHz 0.3257  cycles/cell@measured 0.3253  clock 4.579 GHz  Gcell/s 14.093  checksum 4574324.1126937866
+r2 base time f32 L1 L 100  band 10   W 16 ns/cell 0.10117 (min 0.10107)  cycles/cell@4.59GHz 0.4644  cycles/cell@measured 0.4626  clock 4.572 GHz  Gcell/s 9.884  checksum 8805901.6937255859
+r2 head time f32 L1 L 1000 band -1   W 32 ns/cell 0.05459 (min 0.05443)  cycles/cell@4.59GHz 0.2506  cycles/cell@measured 0.2503  clock 4.588 GHz  Gcell/s 18.320  checksum 262744.72778320312
+r2 base time f32 L1 L 1000 band -1   W 16 ns/cell 0.10682 (min 0.10633)  cycles/cell@4.59GHz 0.4903  cycles/cell@measured 0.4885  clock 4.567 GHz  Gcell/s 9.362  checksum 418365.45190429688
+r2 head time f32 L1 L 1000 band 100  W 32 ns/cell 0.05684 (min 0.05681)  cycles/cell@4.59GHz 0.2609  cycles/cell@measured 0.2599  clock 4.574 GHz  Gcell/s 17.594  checksum 1301580.0183105469
+r2 base time f32 L1 L 1000 band 100  W 16 ns/cell 0.10575 (min 0.10543)  cycles/cell@4.59GHz 0.4854  cycles/cell@measured 0.4827  clock 4.565 GHz  Gcell/s 9.456  checksum 2738937.4350585938
+r2 head time f32 Sq L 100  band -1   W 32 ns/cell 0.07040 (min 0.07023)  cycles/cell@4.59GHz 0.3231  cycles/cell@measured 0.3226  clock 4.582 GHz  Gcell/s 14.204  checksum 6019921.7946395874
+r2 base time f32 Sq L 100  band -1   W 16 ns/cell 0.11143 (min 0.11140)  cycles/cell@4.59GHz 0.5115  cycles/cell@measured 0.5094  clock 4.571 GHz  Gcell/s 8.974  checksum 10371762.134857178
+r2 head time f32 Sq L 100  band 10   W 32 ns/cell 0.08124 (min 0.08098)  cycles/cell@4.59GHz 0.3729  cycles/cell@measured 0.3717  clock 4.576 GHz  Gcell/s 12.310  checksum 37492176.103019714
+r2 base time f32 Sq L 100  band 10   W 16 ns/cell 0.11515 (min 0.11486)  cycles/cell@4.59GHz 0.5285  cycles/cell@measured 0.5273  clock 4.581 GHz  Gcell/s 8.684  checksum 65896503.657989502
+r2 head time f32 Sq L 1000 band -1   W 32 ns/cell 0.06631 (min 0.06593)  cycles/cell@4.59GHz 0.3044  cycles/cell@measured 0.3035  clock 4.577 GHz  Gcell/s 15.081  checksum 6563212.400390625
+r2 base time f32 Sq L 1000 band -1   W 16 ns/cell 0.10797 (min 0.10782)  cycles/cell@4.59GHz 0.4956  cycles/cell@measured 0.4949  clock 4.586 GHz  Gcell/s 9.261  checksum 14634592.775390625
+r2 head time f32 Sq L 1000 band 100  W 32 ns/cell 0.06824 (min 0.06795)  cycles/cell@4.59GHz 0.3132  cycles/cell@measured 0.3121  clock 4.581 GHz  Gcell/s 14.653  checksum 31490552.604492188
+r2 base time f32 Sq L 1000 band 100  W 16 ns/cell 0.10765 (min 0.10746)  cycles/cell@4.59GHz 0.4941  cycles/cell@measured 0.4931  clock 4.580 GHz  Gcell/s 9.289  checksum 68694199.6875
+r2 head fill f64 L1 threads 18 N 2000  L 100  band -1   W 16 ms 172.73 (min 171.36)  Gcell/s 115.73  matrix hash fa485cbe1fa07d20
+r2 base fill f64 L1 threads 18 N 2000  L 100  band -1   W 8  ms 294.18 (min 293.94)  Gcell/s 67.95  matrix hash fa485cbe1fa07d20
+r2 head fill f64 L1 threads 18 N 500   L 1000 band 100  W 16 ms 221.41 (min 218.30)  Gcell/s 107.56  matrix hash 79637ca9e991a308
+r2 base fill f64 L1 threads 18 N 500   L 1000 band 100  W 8  ms 357.42 (min 357.29)  Gcell/s 66.63  matrix hash 79637ca9e991a308
+r2 head fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 16 ms 223.28 (min 222.58)  Gcell/s 22.25  matrix hash b28673ce59c47ce8
+r2 base fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 8  ms 223.97 (min 223.92)  Gcell/s 22.18  matrix hash b28673ce59c47ce8
+r3 base time f64 L1 L 100  band -1   W 8  ns/cell 0.21252 (min 0.21153)  cycles/cell@4.59GHz 0.9755  cycles/cell@measured 0.9537  clock 4.487 GHz  Gcell/s 4.705  checksum 3237740.4965488482
+r3 head time f64 L1 L 100  band -1   W 16 ns/cell 0.11180 (min 0.11162)  cycles/cell@4.59GHz 0.5132  cycles/cell@measured 0.5041  clock 4.509 GHz  Gcell/s 8.945  checksum 1505550.8395972478
+r3 base time f64 L1 L 100  band 10   W 8  ns/cell 0.19683 (min 0.19670)  cycles/cell@4.59GHz 0.9035  cycles/cell@measured 0.8855  clock 4.496 GHz  Gcell/s 5.080  checksum 18655809.481433935
+r3 head time f64 L1 L 100  band 10   W 16 ns/cell 0.11912 (min 0.11883)  cycles/cell@4.59GHz 0.5468  cycles/cell@measured 0.5409  clock 4.541 GHz  Gcell/s 8.395  checksum 8805901.5328393709
+r3 base time f64 L1 L 1000 band -1   W 8  ns/cell 0.21611 (min 0.21596)  cycles/cell@4.59GHz 0.9920  cycles/cell@measured 0.9807  clock 4.541 GHz  Gcell/s 4.627  checksum 1103651.9641736674
+r3 head time f64 L1 L 1000 band -1   W 16 ns/cell 0.10794 (min 0.10770)  cycles/cell@4.59GHz 0.4955  cycles/cell@measured 0.4897  clock 4.539 GHz  Gcell/s 9.264  checksum 418365.41341673344
+r3 base time f64 L1 L 1000 band 100  W 8  ns/cell 0.21309 (min 0.21297)  cycles/cell@4.59GHz 0.9781  cycles/cell@measured 0.9684  clock 4.545 GHz  Gcell/s 4.693  checksum 5662325.4720484754
+r3 head time f64 L1 L 1000 band 100  W 16 ns/cell 0.10930 (min 0.10915)  cycles/cell@4.59GHz 0.5017  cycles/cell@measured 0.4959  clock 4.543 GHz  Gcell/s 9.149  checksum 2738937.3121385267
+r3 base time f64 Sq L 100  band -1   W 8  ns/cell 0.21910 (min 0.21828)  cycles/cell@4.59GHz 1.0056  cycles/cell@measured 0.9938  clock 4.538 GHz  Gcell/s 4.564  checksum 22165987.798932079
+r3 head time f64 Sq L 100  band -1   W 16 ns/cell 0.14101 (min 0.14091)  cycles/cell@4.59GHz 0.6473  cycles/cell@measured 0.6457  clock 4.581 GHz  Gcell/s 7.091  checksum 10371761.919710614
+r3 base time f64 Sq L 100  band 10   W 8  ns/cell 0.22495 (min 0.22464)  cycles/cell@4.59GHz 1.0325  cycles/cell@measured 1.0289  clock 4.580 GHz  Gcell/s 4.445  checksum 139364566.35085097
+r3 head time f64 Sq L 100  band 10   W 16 ns/cell 0.14794 (min 0.14773)  cycles/cell@4.59GHz 0.6790  cycles/cell@measured 0.6758  clock 4.560 GHz  Gcell/s 6.760  checksum 65896503.089176022
+r3 base time f64 Sq L 1000 band -1   W 8  ns/cell 0.21853 (min 0.21812)  cycles/cell@4.59GHz 1.0030  cycles/cell@measured 0.9873  clock 4.526 GHz  Gcell/s 4.576  checksum 34656988.917603835
+r3 head time f64 Sq L 1000 band -1   W 16 ns/cell 0.13633 (min 0.13594)  cycles/cell@4.59GHz 0.6258  cycles/cell@measured 0.6188  clock 4.536 GHz  Gcell/s 7.335  checksum 14634591.152599201
+r3 base time f64 Sq L 1000 band 100  W 8  ns/cell 0.21624 (min 0.21569)  cycles/cell@4.59GHz 0.9925  cycles/cell@measured 0.9833  clock 4.556 GHz  Gcell/s 4.625  checksum 146992599.41710925
+r3 head time f64 Sq L 1000 band 100  W 16 ns/cell 0.13803 (min 0.13774)  cycles/cell@4.59GHz 0.6335  cycles/cell@measured 0.6281  clock 4.550 GHz  Gcell/s 7.245  checksum 68694196.33171013
+r3 base time f32 L1 L 100  band -1   W 16 ns/cell 0.10780 (min 0.10761)  cycles/cell@4.59GHz 0.4948  cycles/cell@measured 0.4922  clock 4.564 GHz  Gcell/s 9.276  checksum 1505550.8875579834
+r3 head time f32 L1 L 100  band -1   W 32 ns/cell 0.05994 (min 0.05981)  cycles/cell@4.59GHz 0.2751  cycles/cell@measured 0.2742  clock 4.578 GHz  Gcell/s 16.682  checksum 764871.06845855713
+r3 base time f32 L1 L 100  band 10   W 16 ns/cell 0.10215 (min 0.10202)  cycles/cell@4.59GHz 0.4689  cycles/cell@measured 0.4660  clock 4.568 GHz  Gcell/s 9.790  checksum 8805901.6937255859
+r3 head time f32 L1 L 100  band 10   W 32 ns/cell 0.07196 (min 0.07190)  cycles/cell@4.59GHz 0.3303  cycles/cell@measured 0.3294  clock 4.561 GHz  Gcell/s 13.897  checksum 4574324.1126937866
+r3 base time f32 L1 L 1000 band -1   W 16 ns/cell 0.10822 (min 0.10809)  cycles/cell@4.59GHz 0.4967  cycles/cell@measured 0.4952  clock 4.579 GHz  Gcell/s 9.241  checksum 418365.45190429688
+r3 head time f32 L1 L 1000 band -1   W 32 ns/cell 0.05553 (min 0.05541)  cycles/cell@4.59GHz 0.2549  cycles/cell@measured 0.2543  clock 4.580 GHz  Gcell/s 18.008  checksum 262744.72778320312
+r3 base time f32 L1 L 1000 band 100  W 16 ns/cell 0.10718 (min 0.10707)  cycles/cell@4.59GHz 0.4920  cycles/cell@measured 0.4894  clock 4.568 GHz  Gcell/s 9.330  checksum 2738937.4350585938
+r3 head time f32 L1 L 1000 band 100  W 32 ns/cell 0.05734 (min 0.05723)  cycles/cell@4.59GHz 0.2632  cycles/cell@measured 0.2619  clock 4.569 GHz  Gcell/s 17.441  checksum 1301580.0183105469
+r3 base time f32 Sq L 100  band -1   W 16 ns/cell 0.11243 (min 0.11224)  cycles/cell@4.59GHz 0.5161  cycles/cell@measured 0.5144  clock 4.575 GHz  Gcell/s 8.894  checksum 10371762.134857178
+r3 head time f32 Sq L 100  band -1   W 32 ns/cell 0.07123 (min 0.07110)  cycles/cell@4.59GHz 0.3269  cycles/cell@measured 0.3250  clock 4.560 GHz  Gcell/s 14.040  checksum 6019921.7946395874
+r3 base time f32 Sq L 100  band 10   W 16 ns/cell 0.11622 (min 0.11616)  cycles/cell@4.59GHz 0.5335  cycles/cell@measured 0.5304  clock 4.563 GHz  Gcell/s 8.604  checksum 65896503.657989502
+r3 head time f32 Sq L 100  band 10   W 32 ns/cell 0.08232 (min 0.08226)  cycles/cell@4.59GHz 0.3778  cycles/cell@measured 0.3752  clock 4.558 GHz  Gcell/s 12.148  checksum 37492176.103019714
+r3 base time f32 Sq L 1000 band -1   W 16 ns/cell 0.10904 (min 0.10895)  cycles/cell@4.59GHz 0.5005  cycles/cell@measured 0.4999  clock 4.583 GHz  Gcell/s 9.171  checksum 14634592.775390625
+r3 head time f32 Sq L 1000 band -1   W 32 ns/cell 0.06706 (min 0.06689)  cycles/cell@4.59GHz 0.3078  cycles/cell@measured 0.3060  clock 4.563 GHz  Gcell/s 14.912  checksum 6563212.400390625
+r3 base time f32 Sq L 1000 band 100  W 16 ns/cell 0.10852 (min 0.10839)  cycles/cell@4.59GHz 0.4981  cycles/cell@measured 0.4959  clock 4.575 GHz  Gcell/s 9.215  checksum 68694199.6875
+r3 head time f32 Sq L 1000 band 100  W 32 ns/cell 0.06909 (min 0.06877)  cycles/cell@4.59GHz 0.3171  cycles/cell@measured 0.3157  clock 4.570 GHz  Gcell/s 14.474  checksum 31490552.604492188
+r3 base fill f64 L1 threads 18 N 2000  L 100  band -1   W 8  ms 299.25 (min 298.67)  Gcell/s 66.80  matrix hash fa485cbe1fa07d20
+r3 head fill f64 L1 threads 18 N 2000  L 100  band -1   W 16 ms 178.72 (min 176.07)  Gcell/s 111.85  matrix hash fa485cbe1fa07d20
+r3 base fill f64 L1 threads 18 N 500   L 1000 band 100  W 8  ms 371.59 (min 370.01)  Gcell/s 64.09  matrix hash 79637ca9e991a308
+r3 head fill f64 L1 threads 18 N 500   L 1000 band 100  W 16 ms 234.60 (min 233.31)  Gcell/s 101.51  matrix hash 79637ca9e991a308
+r3 base fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 8  ms 228.60 (min 227.78)  Gcell/s 21.73  matrix hash b28673ce59c47ce8
+r3 head fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 16 ms 229.55 (min 228.74)  Gcell/s 21.64  matrix hash b28673ce59c47ce8
+r4 head time f64 L1 L 100  band -1   W 16 ns/cell 0.11238 (min 0.11217)  cycles/cell@4.59GHz 0.5158  cycles/cell@measured 0.4855  clock 4.317 GHz  Gcell/s 8.898  checksum 1505550.8395972478
+r4 base time f64 L1 L 100  band -1   W 8  ns/cell 0.21212 (min 0.21109)  cycles/cell@4.59GHz 0.9737  cycles/cell@measured 0.9149  clock 4.313 GHz  Gcell/s 4.714  checksum 3237740.4965488482
+r4 head time f64 L1 L 100  band 10   W 16 ns/cell 0.11930 (min 0.11916)  cycles/cell@4.59GHz 0.5476  cycles/cell@measured 0.5155  clock 4.313 GHz  Gcell/s 8.382  checksum 8805901.5328393709
+r4 base time f64 L1 L 100  band 10   W 8  ns/cell 0.19652 (min 0.19627)  cycles/cell@4.59GHz 0.9020  cycles/cell@measured 0.8490  clock 4.320 GHz  Gcell/s 5.089  checksum 18655809.481433935
+r4 head time f64 L1 L 1000 band -1   W 16 ns/cell 0.10795 (min 0.10772)  cycles/cell@4.59GHz 0.4955  cycles/cell@measured 0.4698  clock 4.341 GHz  Gcell/s 9.263  checksum 418365.41341673344
+r4 base time f64 L1 L 1000 band -1   W 8  ns/cell 0.21631 (min 0.21605)  cycles/cell@4.59GHz 0.9929  cycles/cell@measured 0.9484  clock 4.384 GHz  Gcell/s 4.623  checksum 1103651.9641736674
+r4 head time f64 L1 L 1000 band 100  W 16 ns/cell 0.10933 (min 0.10926)  cycles/cell@4.59GHz 0.5018  cycles/cell@measured 0.4816  clock 4.405 GHz  Gcell/s 9.147  checksum 2738937.3121385267
+r4 base time f64 L1 L 1000 band 100  W 8  ns/cell 0.21372 (min 0.21341)  cycles/cell@4.59GHz 0.9810  cycles/cell@measured 0.9520  clock 4.454 GHz  Gcell/s 4.679  checksum 5662325.4720484754
+r4 head time f64 Sq L 100  band -1   W 16 ns/cell 0.14078 (min 0.14072)  cycles/cell@4.59GHz 0.6462  cycles/cell@measured 0.6273  clock 4.446 GHz  Gcell/s 7.103  checksum 10371761.919710614
+r4 base time f64 Sq L 100  band -1   W 8  ns/cell 0.21915 (min 0.21907)  cycles/cell@4.59GHz 1.0059  cycles/cell@measured 0.9690  clock 4.422 GHz  Gcell/s 4.563  checksum 22165987.798932079
+r4 head time f64 Sq L 100  band 10   W 16 ns/cell 0.14823 (min 0.14774)  cycles/cell@4.59GHz 0.6804  cycles/cell@measured 0.6602  clock 4.454 GHz  Gcell/s 6.746  checksum 65896503.089176022
+r4 base time f64 Sq L 100  band 10   W 8  ns/cell 0.22467 (min 0.22459)  cycles/cell@4.59GHz 1.0312  cycles/cell@measured 0.9952  clock 4.424 GHz  Gcell/s 4.451  checksum 139364566.35085097
+r4 head time f64 Sq L 1000 band -1   W 16 ns/cell 0.13626 (min 0.13601)  cycles/cell@4.59GHz 0.6254  cycles/cell@measured 0.6080  clock 4.456 GHz  Gcell/s 7.339  checksum 14634591.152599201
+r4 base time f64 Sq L 1000 band -1   W 8  ns/cell 0.21809 (min 0.21784)  cycles/cell@4.59GHz 1.0010  cycles/cell@measured 0.9698  clock 4.447 GHz  Gcell/s 4.585  checksum 34656988.917603835
+r4 head time f64 Sq L 1000 band 100  W 16 ns/cell 0.13812 (min 0.13796)  cycles/cell@4.59GHz 0.6340  cycles/cell@measured 0.6119  clock 4.434 GHz  Gcell/s 7.240  checksum 68694196.33171013
+r4 base time f64 Sq L 1000 band 100  W 8  ns/cell 0.21587 (min 0.21572)  cycles/cell@4.59GHz 0.9909  cycles/cell@measured 0.9707  clock 4.493 GHz  Gcell/s 4.632  checksum 146992599.41710925
+r4 head time f32 L1 L 100  band -1   W 32 ns/cell 0.06003 (min 0.05999)  cycles/cell@4.59GHz 0.2755  cycles/cell@measured 0.2699  clock 4.500 GHz  Gcell/s 16.658  checksum 764871.06845855713
+r4 base time f32 L1 L 100  band -1   W 16 ns/cell 0.10773 (min 0.10765)  cycles/cell@4.59GHz 0.4945  cycles/cell@measured 0.4871  clock 4.522 GHz  Gcell/s 9.282  checksum 1505550.8875579834
+r4 head time f32 L1 L 100  band 10   W 32 ns/cell 0.07220 (min 0.07198)  cycles/cell@4.59GHz 0.3314  cycles/cell@measured 0.3267  clock 4.518 GHz  Gcell/s 13.850  checksum 4574324.1126937866
+r4 base time f32 L1 L 100  band 10   W 16 ns/cell 0.10246 (min 0.10218)  cycles/cell@4.59GHz 0.4703  cycles/cell@measured 0.4628  clock 4.513 GHz  Gcell/s 9.760  checksum 8805901.6937255859
+r4 head time f32 L1 L 1000 band -1   W 32 ns/cell 0.05546 (min 0.05534)  cycles/cell@4.59GHz 0.2546  cycles/cell@measured 0.2508  clock 4.520 GHz  Gcell/s 18.031  checksum 262744.72778320312
+r4 base time f32 L1 L 1000 band -1   W 16 ns/cell 0.10810 (min 0.10801)  cycles/cell@4.59GHz 0.4962  cycles/cell@measured 0.4894  clock 4.531 GHz  Gcell/s 9.250  checksum 418365.45190429688
+r4 head time f32 L1 L 1000 band 100  W 32 ns/cell 0.05748 (min 0.05740)  cycles/cell@4.59GHz 0.2638  cycles/cell@measured 0.2620  clock 4.551 GHz  Gcell/s 17.399  checksum 1301580.0183105469
+r4 base time f32 L1 L 1000 band 100  W 16 ns/cell 0.10726 (min 0.10714)  cycles/cell@4.59GHz 0.4923  cycles/cell@measured 0.4880  clock 4.536 GHz  Gcell/s 9.323  checksum 2738937.4350585938
+r4 head time f32 Sq L 100  band -1   W 32 ns/cell 0.07132 (min 0.07127)  cycles/cell@4.59GHz 0.3274  cycles/cell@measured 0.3242  clock 4.519 GHz  Gcell/s 14.021  checksum 6019921.7946395874
+r4 base time f32 Sq L 100  band -1   W 16 ns/cell 0.11261 (min 0.11221)  cycles/cell@4.59GHz 0.5169  cycles/cell@measured 0.5084  clock 4.514 GHz  Gcell/s 8.880  checksum 10371762.134857178
+r4 head time f32 Sq L 100  band 10   W 32 ns/cell 0.08276 (min 0.08263)  cycles/cell@4.59GHz 0.3799  cycles/cell@measured 0.3750  clock 4.535 GHz  Gcell/s 12.083  checksum 37492176.103019714
+r4 base time f32 Sq L 100  band 10   W 16 ns/cell 0.11659 (min 0.11630)  cycles/cell@4.59GHz 0.5351  cycles/cell@measured 0.5245  clock 4.510 GHz  Gcell/s 8.577  checksum 65896503.657989502
+r4 head time f32 Sq L 1000 band -1   W 32 ns/cell 0.06723 (min 0.06684)  cycles/cell@4.59GHz 0.3086  cycles/cell@measured 0.3000  clock 4.462 GHz  Gcell/s 14.875  checksum 6563212.400390625
+r4 base time f32 Sq L 1000 band -1   W 16 ns/cell 0.10972 (min 0.10968)  cycles/cell@4.59GHz 0.5036  cycles/cell@measured 0.4720  clock 4.302 GHz  Gcell/s 9.115  checksum 14634592.775390625
+r4 head time f32 Sq L 1000 band 100  W 32 ns/cell 0.06914 (min 0.06889)  cycles/cell@4.59GHz 0.3173  cycles/cell@measured 0.3140  clock 4.551 GHz  Gcell/s 14.464  checksum 31490552.604492188
+r4 base time f32 Sq L 1000 band 100  W 16 ns/cell 0.10867 (min 0.10852)  cycles/cell@4.59GHz 0.4988  cycles/cell@measured 0.4930  clock 4.542 GHz  Gcell/s 9.202  checksum 68694199.6875
+r4 head fill f64 L1 threads 18 N 2000  L 100  band -1   W 16 ms 183.06 (min 181.27)  Gcell/s 109.20  matrix hash fa485cbe1fa07d20
+r4 base fill f64 L1 threads 18 N 2000  L 100  band -1   W 8  ms 314.33 (min 312.70)  Gcell/s 63.59  matrix hash fa485cbe1fa07d20
+r4 head fill f64 L1 threads 18 N 500   L 1000 band 100  W 16 ms 239.09 (min 238.50)  Gcell/s 99.61  matrix hash 79637ca9e991a308
+r4 base fill f64 L1 threads 18 N 500   L 1000 band 100  W 8  ms 394.88 (min 390.85)  Gcell/s 60.31  matrix hash 79637ca9e991a308
+r4 head fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 16 ms 232.65 (min 231.14)  Gcell/s 21.36  matrix hash b28673ce59c47ce8
+r4 base fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 8  ms 233.60 (min 232.37)  Gcell/s 21.27  matrix hash b28673ce59c47ce8
+r5 base time f64 L1 L 100  band -1   W 8  ns/cell 0.21232 (min 0.21104)  cycles/cell@4.59GHz 0.9745  cycles/cell@measured 0.9153  clock 4.310 GHz  Gcell/s 4.710  checksum 3237740.4965488482
+r5 head time f64 L1 L 100  band -1   W 16 ns/cell 0.11267 (min 0.11248)  cycles/cell@4.59GHz 0.5172  cycles/cell@measured 0.4860  clock 4.316 GHz  Gcell/s 8.875  checksum 1505550.8395972478
+r5 base time f64 L1 L 100  band 10   W 8  ns/cell 0.19728 (min 0.19680)  cycles/cell@4.59GHz 0.9055  cycles/cell@measured 0.8504  clock 4.308 GHz  Gcell/s 5.069  checksum 18655809.481433935
+r5 head time f64 L1 L 100  band 10   W 16 ns/cell 0.11940 (min 0.11921)  cycles/cell@4.59GHz 0.5480  cycles/cell@measured 0.5138  clock 4.309 GHz  Gcell/s 8.375  checksum 8805901.5328393709
+r5 base time f64 L1 L 1000 band -1   W 8  ns/cell 0.21630 (min 0.21607)  cycles/cell@4.59GHz 0.9928  cycles/cell@measured 0.9322  clock 4.302 GHz  Gcell/s 4.623  checksum 1103651.9641736674
+r5 head time f64 L1 L 1000 band -1   W 16 ns/cell 0.10782 (min 0.10777)  cycles/cell@4.59GHz 0.4949  cycles/cell@measured 0.4653  clock 4.317 GHz  Gcell/s 9.275  checksum 418365.41341673344
+r5 base time f64 L1 L 1000 band 100  W 8  ns/cell 0.21344 (min 0.21329)  cycles/cell@4.59GHz 0.9797  cycles/cell@measured 0.9201  clock 4.311 GHz  Gcell/s 4.685  checksum 5662325.4720484754
+r5 head time f64 L1 L 1000 band 100  W 16 ns/cell 0.10950 (min 0.10942)  cycles/cell@4.59GHz 0.5026  cycles/cell@measured 0.4720  clock 4.310 GHz  Gcell/s 9.132  checksum 2738937.3121385267
+r5 base time f64 Sq L 100  band -1   W 8  ns/cell 0.21847 (min 0.21833)  cycles/cell@4.59GHz 1.0028  cycles/cell@measured 0.9425  clock 4.314 GHz  Gcell/s 4.577  checksum 22165987.798932079
+r5 head time f64 Sq L 100  band -1   W 16 ns/cell 0.14129 (min 0.14101)  cycles/cell@4.59GHz 0.6485  cycles/cell@measured 0.6086  clock 4.306 GHz  Gcell/s 7.078  checksum 10371761.919710614
+r5 base time f64 Sq L 100  band 10   W 8  ns/cell 0.22477 (min 0.22429)  cycles/cell@4.59GHz 1.0317  cycles/cell@measured 0.9691  clock 4.314 GHz  Gcell/s 4.449  checksum 139364566.35085097
+r5 head time f64 Sq L 100  band 10   W 16 ns/cell 0.14756 (min 0.14734)  cycles/cell@4.59GHz 0.6773  cycles/cell@measured 0.6372  clock 4.318 GHz  Gcell/s 6.777  checksum 65896503.089176022
+r5 base time f64 Sq L 1000 band -1   W 8  ns/cell 0.21816 (min 0.21777)  cycles/cell@4.59GHz 1.0013  cycles/cell@measured 0.9410  clock 4.310 GHz  Gcell/s 4.584  checksum 34656988.917603835
+r5 head time f64 Sq L 1000 band -1   W 16 ns/cell 0.13641 (min 0.13629)  cycles/cell@4.59GHz 0.6261  cycles/cell@measured 0.5886  clock 4.309 GHz  Gcell/s 7.331  checksum 14634591.152599201
+r5 base time f64 Sq L 1000 band 100  W 8  ns/cell 0.21594 (min 0.21583)  cycles/cell@4.59GHz 0.9912  cycles/cell@measured 0.9315  clock 4.312 GHz  Gcell/s 4.631  checksum 146992599.41710925
+r5 head time f64 Sq L 1000 band 100  W 16 ns/cell 0.13812 (min 0.13781)  cycles/cell@4.59GHz 0.6340  cycles/cell@measured 0.5951  clock 4.308 GHz  Gcell/s 7.240  checksum 68694196.33171013
+r5 base time f32 L1 L 100  band -1   W 16 ns/cell 0.10791 (min 0.10778)  cycles/cell@4.59GHz 0.4953  cycles/cell@measured 0.4708  clock 4.355 GHz  Gcell/s 9.267  checksum 1505550.8875579834
+r5 head time f32 L1 L 100  band -1   W 32 ns/cell 0.05981 (min 0.05977)  cycles/cell@4.59GHz 0.2745  cycles/cell@measured 0.2622  clock 4.383 GHz  Gcell/s 16.719  checksum 764871.06845855713
+r5 base time f32 L1 L 100  band 10   W 16 ns/cell 0.10250 (min 0.10208)  cycles/cell@4.59GHz 0.4705  cycles/cell@measured 0.4508  clock 4.400 GHz  Gcell/s 9.756  checksum 8805901.6937255859
+r5 head time f32 L1 L 100  band 10   W 32 ns/cell 0.07277 (min 0.07247)  cycles/cell@4.59GHz 0.3340  cycles/cell@measured 0.3208  clock 4.407 GHz  Gcell/s 13.743  checksum 4574324.1126937866
+r5 base time f32 L1 L 1000 band -1   W 16 ns/cell 0.10833 (min 0.10816)  cycles/cell@4.59GHz 0.4972  cycles/cell@measured 0.4797  clock 4.428 GHz  Gcell/s 9.231  checksum 418365.45190429688
+r5 head time f32 L1 L 1000 band -1   W 32 ns/cell 0.05548 (min 0.05529)  cycles/cell@4.59GHz 0.2547  cycles/cell@measured 0.2459  clock 4.423 GHz  Gcell/s 18.024  checksum 262744.72778320312
+r5 base time f32 L1 L 1000 band 100  W 16 ns/cell 0.10740 (min 0.10720)  cycles/cell@4.59GHz 0.4929  cycles/cell@measured 0.4767  clock 4.439 GHz  Gcell/s 9.311  checksum 2738937.4350585938
+r5 head time f32 L1 L 1000 band 100  W 32 ns/cell 0.05758 (min 0.05746)  cycles/cell@4.59GHz 0.2643  cycles/cell@measured 0.2547  clock 4.424 GHz  Gcell/s 17.366  checksum 1301580.0183105469
+r5 base time f32 Sq L 100  band -1   W 16 ns/cell 0.11236 (min 0.11213)  cycles/cell@4.59GHz 0.5158  cycles/cell@measured 0.4964  clock 4.418 GHz  Gcell/s 8.900  checksum 10371762.134857178
+r5 head time f32 Sq L 100  band -1   W 32 ns/cell 0.07146 (min 0.07127)  cycles/cell@4.59GHz 0.3280  cycles/cell@measured 0.3132  clock 4.378 GHz  Gcell/s 13.994  checksum 6019921.7946395874
+r5 base time f32 Sq L 100  band 10   W 16 ns/cell 0.11663 (min 0.11636)  cycles/cell@4.59GHz 0.5353  cycles/cell@measured 0.5185  clock 4.440 GHz  Gcell/s 8.574  checksum 65896503.657989502
+r5 head time f32 Sq L 100  band 10   W 32 ns/cell 0.08273 (min 0.08231)  cycles/cell@4.59GHz 0.3797  cycles/cell@measured 0.3662  clock 4.428 GHz  Gcell/s 12.088  checksum 37492176.103019714
+r5 base time f32 Sq L 1000 band -1   W 16 ns/cell 0.10924 (min 0.10914)  cycles/cell@4.59GHz 0.5014  cycles/cell@measured 0.4894  clock 4.480 GHz  Gcell/s 9.154  checksum 14634592.775390625
+r5 head time f32 Sq L 1000 band -1   W 32 ns/cell 0.06728 (min 0.06702)  cycles/cell@4.59GHz 0.3088  cycles/cell@measured 0.3017  clock 4.501 GHz  Gcell/s 14.864  checksum 6563212.400390625
+r5 base time f32 Sq L 1000 band 100  W 16 ns/cell 0.10877 (min 0.10859)  cycles/cell@4.59GHz 0.4993  cycles/cell@measured 0.4775  clock 4.390 GHz  Gcell/s 9.194  checksum 68694199.6875
+r5 head time f32 Sq L 1000 band 100  W 32 ns/cell 0.06923 (min 0.06906)  cycles/cell@4.59GHz 0.3177  cycles/cell@measured 0.3069  clock 4.432 GHz  Gcell/s 14.446  checksum 31490552.604492188
+r5 base fill f64 L1 threads 18 N 2000  L 100  band -1   W 8  ms 314.07 (min 313.89)  Gcell/s 63.65  matrix hash fa485cbe1fa07d20
+r5 head fill f64 L1 threads 18 N 2000  L 100  band -1   W 16 ms 191.82 (min 191.27)  Gcell/s 104.21  matrix hash fa485cbe1fa07d20
+r5 base fill f64 L1 threads 18 N 500   L 1000 band 100  W 8  ms 395.30 (min 394.18)  Gcell/s 60.25  matrix hash 79637ca9e991a308
+r5 head fill f64 L1 threads 18 N 500   L 1000 band 100  W 16 ms 252.36 (min 249.88)  Gcell/s 94.37  matrix hash 79637ca9e991a308
+r5 base fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 8  ms 235.93 (min 233.99)  Gcell/s 21.06  matrix hash b28673ce59c47ce8
+r5 head fill f64 L1 threads 18 N 1000  L 100  ragged+-10 band -1   W 16 ms 238.68 (min 238.64)  Gcell/s 20.82  matrix hash b28673ce59c47ce8

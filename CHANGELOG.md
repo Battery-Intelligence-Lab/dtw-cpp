@@ -53,8 +53,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   device and GPU index, GPU precision and verbosity: what FastCLARA's sample Problems take from their parent.
 - **Changed (performance, AArch64):** on 64-bit Arm (Apple silicon, Arm Linux) the CPU distance-matrix fill and
   OneBatchPAM's batch table compute a series against 16 others of its length at once (32 in `float32`), not 8 (16),
-  and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: about
-  1.4–2.0× single thread on an Apple M5 Pro. Every distance is unchanged, bit for bit; x86-64, the one-pair kernels
+  and take each minimum of the recurrence with one `fminnm` instruction instead of a compare and a select: on an
+  Apple M5 Pro 1.41–2.00× single thread and 1.61–1.69× in an 18-thread fill of equal-length series. Every distance is unchanged, bit for bit; x86-64, the one-pair kernels
   and the other DTW variants are unchanged.
 - **Changed (C++, Python, MATLAB):** `fast_pam` takes its BUILD seed last, `fast_pam(prob, k, max_iter = 100,
   seed = 42)` (Python `seed=`, MATLAB `'Seed'`), and `fast_pam_seeded` is gone: `fast_pam_seeded(prob, k, seed,
