@@ -275,7 +275,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   decides the wheels' compiler (Volkan 10-02: measure first)
 - ☑ W14b CMake `FATAL_ERROR` for an explicit `ON` it cannot honour; CUDA CI asserts CUDA built;
   `test_conformance.py` collected (W14b 9d56aab, e7354b9, 015dc71, 836bddc, d99b15d; merged 9056fcb9; Gurobi defaults OFF; Arrow without Parquet is an IPC-only build that says so)
-- ☐ W14c CHANGELOG → one `2.0.0 (unreleased)` section vs v1.0.0; MAP regenerated; audit folder deleted
+- ☑ W14c CHANGELOG → one `2.0.0 (unreleased)` section vs v1.0.0; MAP regenerated; audit folder deleted (W14c
+  07f8afa0, e8bc0753, ff61ef27, e3a3a974, 6a870603, 94e2b0aa; merged ae2df68c on the Mac: CHANGELOG 1,814 → 255 lines,
+  Breaking 13 / Added 18 / Changed 20 / Performance 11 / Fixed 8 / Removed 7, each claim checked against v1.0.0 and the
+  code by three adversarial agents; the old log is `git show fa02acaf:CHANGELOG.md`; MAP §1–§5 regenerated; the
+  audit folder stays until Volkan's CLAUDE.md stops pointing into it — his call)
 - ☑ `scripts/generate_docs.py` keeps each page's line endings: on Windows it rewrites untouched pages with LF, so `git status` shows them modified (W6e) (H1 e5c7436; merged 1a079cd; the msvc preset names no generator either, f010a9a)
 
 ## After G (each behind a registered benchmark band)
