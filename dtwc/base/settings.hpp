@@ -20,13 +20,6 @@
 // without including it, so removal cannot be build-proven from here.
 #include <string>
 #include <filesystem>
-// <iostream> removed. The translation units that were relying on it
-// transitively -- benchmarks/UCR_dtwc.cpp, examples/cpp/example_project/main.cpp
-// and dtwc/mip/mip_Gurobi.cpp -- now include it themselves, and the
-// removal was proven by a build with DTWC_BUILD_BENCHMARK=ON and
-// DTWC_BUILD_EXAMPLES=ON, since benchmarks and examples are off in the
-// canonical gate and a green build without them would prove nothing.
-// <random> left with dtwc::randGenerator for dtwc/random_engine.hpp.
 
 namespace dtwc {
 // Data type settings:
@@ -48,9 +41,6 @@ using data_t = double;
 /// Counts and indices of series, clusters and rows: 64-bit, so no count needs a
 /// range check.
 using index_t = std::int64_t;
-
-// Random number settings: dtwc::randGenerator moved to dtwc/random_engine.hpp,
-// which dtwc/dtwc.hpp includes, so the public name is unaffected.
 } // namespace dtwc
 
 

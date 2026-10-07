@@ -83,8 +83,8 @@ res.score('silhouette')                               % the mean silhouette
 res.save('out');                                      % the four CSVs dtwc_cl writes
 ```
 
-`dtwc.cluster(data, k, Name, Value, ...)` takes the `dtwc_cl` keys that are not
-about files, by Python's words in CamelCase: `Method`, `Band`, `Metric`,
+`dtwc.cluster(data, k, Name, Value, ...)` takes these `dtwc_cl` keys, by
+Python's words in CamelCase: `Method`, `Band`, `Metric`,
 `Variant` and its parameters (`WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`,
 `TweNu`, `TweLambda`), `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`,
 `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver` and the MIP

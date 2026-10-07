@@ -12,8 +12,8 @@ function res = cluster(data, k, varargin)
 %          each, any lengths).
 %   k    : the number of clusters.
 %
-%   The name-value pairs are the dtwc_cl keys that are not about files, by
-%   their long names in CamelCase, the words of Python's cluster() keywords:
+%   The name-value pairs are these dtwc_cl keys, by their long names in
+%   CamelCase, the words of Python's cluster() keywords:
 %   Name, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG,
 %   AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda, MvMode, MissingStrategy,
 %   SampleSize, NSamples, Seed, BatchSize, Linkage, Solver, MipGap, TimeLimit,

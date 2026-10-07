@@ -400,8 +400,8 @@ constexpr dtwc::Name<Key> distance_keys[]{
   { "TweNu", Key::TweNu },         { "TweLambda", Key::TweLambda },
 };
 
-/// The keys of a clustering: every dtwc::Config key that is not about files, in
-/// cli::bind's order (k is an argument of its own).
+/// The keys dtwc.cluster takes, in cli::bind's order (k is an argument of its
+/// own): those dtwc::apply hands a Problem, and Name; not dtype nor the file options.
 constexpr dtwc::Name<Key> config_keys[]{
   { "Name", Key::Name },
   { "Method", Key::Method },

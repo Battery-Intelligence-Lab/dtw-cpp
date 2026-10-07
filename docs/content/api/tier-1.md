@@ -115,15 +115,16 @@ A negative `skip_cols` or `skip_rows` is `InvalidInput`. In C++,
 | `data` | a `Dataset` | a `Dataset`, a path or series in memory | a `dtwc.Dataset`, a path or series in memory |
 | other settings | through `dtwc::run(Config)`, below | keyword arguments | name-value pairs |
 
-The settings are `dtwc_cl`'s long options that are not about files: snake_case
-keywords in Python, the same words in CamelCase in MATLAB. They are `method`,
-`band`, `metric`, `variant` and its parameters (`wdtw_g`, `adtw_penalty`,
-`sdtw_gamma`, `msm_c`, `twe_nu`, `twe_lambda`), `mv_mode`, `missing_strategy`,
-`max_iter`, `n_init`, `seed`, `sample_size`, `n_samples`, `batch_size`,
-`linkage`, `dc`, `solver`, `mip_gap`, `time_limit`, `no_warm_start`,
-`numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes`, `device`,
-`gpu_precision`, `name` and `verbose` (MATLAB: `'Method'`, `'Band'`, `'WdtwG'`,
-`'MaxIter'`, `'NInit'`, ...). The [CLI reference](../../getting-started/cli/)
+The settings are these `dtwc_cl` long options, as snake_case keywords in Python
+and the same words in CamelCase in MATLAB: `method`, `band`, `metric`, `variant`
+and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
+`twe_lambda`), `mv_mode`, `missing_strategy`, `max_iter`, `n_init`, `seed`,
+`sample_size`, `n_samples`, `batch_size`, `linkage`, `dc`, `solver`, `mip_gap`,
+`time_limit`, `no_warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`,
+`lr_max_nodes`, `device`, `gpu_precision`, `name` and `verbose` (MATLAB:
+`'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, ...). The others
+(`input`, `output`, `dtype`, `ram_limit`, `checkpoint`, ...) are `dtwc_cl`'s and
+`dtwc::run`'s, unknown keys here. The [CLI reference](../../getting-started/cli/)
 gives each one's meaning and default. C++ reads and checks the values: an unknown
 key, or a name no table holds, is `InvalidInput` (MATLAB `dtwc:invalidArgument`)
 naming the valid ones, an unknown device is `DeviceError`, and in Python a value

@@ -266,8 +266,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     if (stream_payload && !config.checkpoint.empty())
       throw InvalidInput(
         "--checkpoint requires resident series data and cannot be combined "
-        "with RAM-limited Parquet streaming; the binary clustering-result "
-        "checkpoint is still written automatically.");
+        "with RAM-limited Parquet streaming.");
     if (stream_payload && !config.dist_matrix.empty())
       throw InvalidInput(
         "--dist-matrix requires resident series data and cannot be combined "

@@ -48,8 +48,9 @@ raises an invalid-argument error,
 because it submits a whole run (`dtwc.cluster(..., device="hpc")` in Python)
 rather than computing a `Problem` locally.
 
-Before a `Problem` fills its distance matrix, or computes its first pair on
-demand (`dist_by_ind`), one check decides whether the request can be honoured.
+Before a `Problem` fills its distance matrix, or hands out the function that
+computes pairs on demand (`dtw_function()`), one check decides whether the
+request can be honoured.
 The GPU kernels compute Standard DTW on univariate Float64 series held in RAM,
 in L1 or squared L2, with no missing-data strategy; anything else on a GPU raises
 a device error that names the setting and its value (`variant = WDTW`,
