@@ -468,3 +468,11 @@ CHANGELOG rule.
   "ask Fable max maybe if nan or negative values would make best? Then we could also have an option while reading
   distance matrix notcomputer="negative" or "nan" or something else with some default behaviour". A Fable advisor
   at max effort is consulted for this one question at his request; the 09-29/30 no-Fable rule stands otherwise.
+- 2026-10-08 — Volkan, after the advisor's design (question tool): "Can softdtw cause only small negative values or
+  also large negative values? If so we could just increase the negativity. Otherwise if we don't mess up the simd and
+  fast computations then go for nan". Measured (the wheel at 8a63cda3): Soft-DTW of a series with itself is about
+  −1.76·γ·n (n 1000: −1,757 at γ 1, −17,570 at γ 10; n 8000: −14,095), unbounded, so no finite mark is safe; the mark
+  never reaches a DP or SIMD loop (one scan where a matrix enters, one is_computed per pair when the fill schedules).
+  So NaN stays the mark, and unit MX adds `not_computed` = nan (default) | negative to matrix reads; under every
+  distance but Soft-DTW a negative entry is refused by default, naming the option (v1.0.0's files read with negative).
+  NaN's recorded cost was std::isnan under -ffast-math (eae10b27), closed by the -ffinite-math-only #error.
