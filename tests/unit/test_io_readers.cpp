@@ -658,7 +658,9 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   config.k = 2;
   config.sample_size = 4;
   config.n_samples = 2;
-  config.ram_limit = 900; // below the file's resident estimate, above one row group: FastCLARA streams it
+  // A byte below the file's resident estimate, above one row group: FastCLARA streams it. The estimate follows
+  // the writer's encoding: 896 bytes from Arrow 25, which a fixed cap of 900 let the run hold resident.
+  config.ram_limit = dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false) - 1;
   config.output.clear();
   config.name = "streamed";
   const auto result = dtwc::run(config);
