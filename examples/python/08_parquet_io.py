@@ -58,9 +58,12 @@ with tempfile.TemporaryDirectory() as tmp:
     print()
 
     # --- 4. Load Arrow IPC and cluster (float64 path) ---
+    # Read through a file object: ipc.open_file(path) memory-maps the file, and
+    # Windows cannot delete a mapped file while the batch is alive.
+    import pyarrow as pa
     import pyarrow.ipc as ipc
-    with ipc.open_file(str(arrow_path)) as reader:
-        batch = reader.get_batch(0)
+    with pa.OSFile(str(arrow_path)) as source:
+        batch = ipc.open_file(source).get_batch(0)
     series_f64 = [np.array(batch["data"][i].as_py()) for i in range(batch.num_rows)]
     series_names = [str(batch["name"][i].as_py()) for i in range(batch.num_rows)]
 
