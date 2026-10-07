@@ -313,8 +313,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   reads HAS_GUROBI), test_conformance.m in matlab_suite, a CLI build sets BUILD_SHARED_LIBS for HiGHS, CI installs
   matplotlib; main tree: ctest 94, matlab_suite 137/137, pytest 891/11/0, no cached BUILD_SHARED_LIBS after a
   re-configure
-- ◐ PQ: a Parquet file holds many series — each row a series when its numeric columns are scalar, the first string
-  column names the rows (Volkan 10-07, DECISIONS)
+- ☑ PQ: a Parquet file holds many series — each row a series when its numeric columns are scalar, the first string
+  column names the rows (Volkan 10-07, DECISIONS) (1a0022c8, 95ae2364, 589b539c; merged b2687171: one
+  `resolve_parquet_layout` in C++, mirrored in Python and MATLAB, the stream included; a sliced Arrow list is read
+  from its offset; the Arrow-25 `Result::save` failure was a fixed byte cap; Arrow tree ctest 97/97; main tree:
+  ctest 94, pytest 895/11/0, matlab_suite 138/138; left: Python/MATLAB errors name the CLI's `--column`, `.claude/commands` say only
+  list files stream, a negative CSV `--skip-rows` reads as 0)
 
 ## Blocked on another machine or on Volkan
 

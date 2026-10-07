@@ -436,3 +436,7 @@ CHANGELOG rule.
   MATLAB alike: several numeric scalar columns → each row is a series (as CSV; `--column` stays the option that
   reads one column); one float column → one series per file; a list column → one series per row; a file's first
   string column names its rows (both layouts), else `series_<i>` (unit PQ).
+- 2026-10-07 — PQ (`b2687171`): `--skip-cols` / `--skip-rows` drop a Parquet file's leading columns / rows as they
+  drop a CSV's fields / lines (Parquet refused them before): a dropped column is neither read nor a name, a dropped
+  row is not read; `--column` picks among the columns left; a column that is neither float nor string among a row's
+  samples is an IOError naming it.
