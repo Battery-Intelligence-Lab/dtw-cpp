@@ -427,3 +427,12 @@ CHANGELOG rule.
   `init::random` / `init::Kmeanspp` read `randGenerator`, one draw each as their seed (the pre-registered sequence
   change). `init::*_seeded` went rather than becoming overloads: an overload set breaks v1's
   `prob.init_fun = init::Kmeanspp`, so `init_with_seed` keeps its function-identity check.
+- 2026-10-07 — PF (`30284994`): Python reads Parquet by the C++ reader's column rule, as MATLAB does (the first
+  Float32/Float64 or list-of-float column; a scalar column is one series named by the file, list rows `series_<i>`);
+  a set_solver that cannot be honoured prints nothing, the SolverError speaks.
+- 2026-10-07 — Volkan, a Parquet file of scalar columns only (`save_dataset_parquet`'s layout), which read as one
+  series: "read each row as series I think or have some option right? It is probably not rare to have multiple time
+  series in the same file"; and (question tool) the rows' names: "First string column". So, in C++, Python and
+  MATLAB alike: several numeric scalar columns → each row is a series (as CSV; `--column` stays the option that
+  reads one column); one float column → one series per file; a list column → one series per row; a file's first
+  string column names its rows (both layouts), else `series_<i>` (unit PQ).

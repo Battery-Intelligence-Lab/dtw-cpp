@@ -300,7 +300,19 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   1.48–1.72× at 18 threads, bitwise over the sweep, x86 untouched (23c88336; merged e26d5680: bitwise — 15.36 M
   lane outputs, 64 CLI files, conformance; x86 `.s` identical; f64 L1 loop = `v_fmin_w16`; speed waits for the
   quiet run of its kit, `baselines/2026-10-06-mac-arm-lanes.md`)
-- ☐ per-pair kernels two columns per pass: kernel 1 1.44–1.98× unbanded, bitwise; kernel 2 not tried (Volkan rules)
+- ◐ per-pair kernels two columns per pass: kernel 1 1.44–1.98× unbanded, bitwise; kernel 2 not tried (Volkan 10-06: run it;
+  phase 1 on pb/pair-2col 463d2b52, 00fb9c36, 92a747d9: both kernels, the abandon test a template argument; bitwise
+  over 11.73 M outputs and every Cell; speed and the kernel 2 decision wait for the quiet run,
+  `baselines/2026-10-06-mac-pair-2col.md`)
+- ◐ the LR-core dual on OpenMP: `mip-solvers` compiled without the OpenMP flags on clang/GCC, so `evaluate_dual`'s
+  two loops ran serial (lrcore record finding 5); phase 1 on pb/lr-omp 54fe1150, 96de8de4, 3bc08848 (flags, an
+  `if(N >= kParallelMinN)` clause, a `#error` guard; 330 result comparisons identical); the threshold waits for
+  the quiet run (`baselines/2026-10-06-mac-lr-omp.md`)
+- ☑ PF follow-ups (8f45ea7a … 8585e6b9; merged 30284994): Python names series as C++ does (in memory after
+  `skip_rows`; Parquet by C++'s column rule), `load(Dataset, options)` refuses, `set_solver` prints nothing (FX-3
+  reads HAS_GUROBI), test_conformance.m in matlab_suite, a CLI build sets BUILD_SHARED_LIBS for HiGHS, CI installs
+  matplotlib; open: a Parquet file of scalar columns only (`save_dataset_parquet`'s layout) is read, in every
+  language, as one series of its first column — Volkan rules
 
 ## Blocked on another machine or on Volkan
 
