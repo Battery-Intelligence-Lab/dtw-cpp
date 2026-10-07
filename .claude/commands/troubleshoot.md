@@ -58,7 +58,7 @@ which dtwc_cl && dtwc_cl --version
 - Switch to CLARA: `--method clara` — uses subsamples
 - Lower memory: `--dtype float32` (halves the series' RAM; the distance matrix stays float64)
 - Memory-map: `--mmap-threshold 0` forces mmap distance matrix
-- Parquet input: `--ram-limit 8G` caps the series in RAM, streaming one list-per-row file through CLARA
+- Parquet input: `--ram-limit 8G` caps the series in RAM, streaming one file of a series per row (a list column, or several float columns) through CLARA
 
 **`series '…' (index i)[j] is NaN`**
 - Check data: `python3 -c "import numpy as np, pandas as pd; d=pd.read_csv('data.csv').values; print('NaN?', np.isnan(d).any())"`

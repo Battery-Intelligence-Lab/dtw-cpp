@@ -23,7 +23,7 @@ Match the question to one of these sections. If no match, read source files (`py
 | Need dendrogram | **Hierarchical** | Agglomerative; produces full tree |
 | Need provable optimum | **MIP** (Gurobi/HiGHS) | Integer programming; expensive but exact |
 | N > 50000 | **OneBatchPAM** | One fixed N×m distance batch; O(Nm) distances |
-| Series exceed RAM | **FastCLARA, streamed** | `--ram-limit` on one list-per-row Parquet file |
+| Series exceed RAM | **FastCLARA, streamed** | `--ram-limit` on one Parquet file of a series per row (a list column, or several float columns) |
 
 Python: `fast_pam()`, `fast_clara()`, `one_batch_pam()`, `build_dendrogram()` + `cut_dendrogram()`.
 CLI: `--method pam|clara|onebatch|hierarchical|mip|lrcore`.

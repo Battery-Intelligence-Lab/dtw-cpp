@@ -36,7 +36,7 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 - **Multi-language**: C++ core, Python (sklearn-compatible), MATLAB MEX bindings
 - **Parallelism**: OpenMP threads, CUDA and Metal GPUs (optional)
 - **Runtime precision**: Float64 by default; explicit Float32 halves series-storage bytes and uses Float32 recurrence arithmetic
-- **RAM-aware streaming**: `--ram-limit` bounds Parquet series materialisation and streams supported one-list-row-per-series non-full FastCLARA workloads
+- **RAM-aware streaming**: `--ram-limit` bounds Parquet series materialisation and streams a Parquet file of one series per row (a list column, or several float columns) through non-full FastCLARA
 - **Checkpointing**: Save/resume long-running distance matrix computations
 - **I/O**: CSV, Parquet, and Arrow IPC, gated by compiled capabilities and auto-detected from extension; HDF5 in Python (h5py)
 
