@@ -305,6 +305,27 @@ function test_parquet_reads_as_cpp_reads(testCase)
     verifyEqual(testCase, err.identifier, 'dtwc:ioError');
 end
 
+function test_parquet_layouts_read_as_cpp_and_python_read_them(testCase)
+%   One file per layout of the Parquet column rule (tests/data/reader/make_parquet_fixtures.py):
+%   the series and names tests/unit/test_io_readers.cpp (C++) and tests/python/test_io.py
+%   expect. Rows of Float32/Float64 columns are named by the string id, which SkipCols drops;
+%   a list column's rows by its string column, a missing name as series_<i>; one float column
+%   is one series, named by its file.
+    fx = fullfile(fileparts(mfilename('fullpath')), '..', 'data', 'reader');
+    cases = {
+        'parquet_rows.parquet', 0, 0, {[0 0.5 0.25], [1 1.5 1.25], [10 10.5 10.25]}, {'a', 'b', 'c'}
+        'parquet_rows.parquet', 1, 1, {[1 1.5 1.25], [10 10.5 10.25]}, {'series_0', 'series_1'}
+        'parquet_list.parquet', 0, 0, {[0 0.5], [2.5 1 0.25], [9 9.5]}, {'x', 'series_1', 'z'}
+        'parquet_one_column.parquet', 0, 0, {[3 1 4 1.5]}, {'parquet_one_column'}};
+    for c = 1:size(cases, 1)
+        [file, skipCols, skipRows, series, names] = cases{c, :};
+        data = dtwc.load(fullfile(fx, file), 'SkipCols', skipCols, 'SkipRows', skipRows);
+        [got, gotNames] = data.as_series();
+        verifyEqual(testCase, got, series, file);
+        verifyEqual(testCase, gotNames, names, file);
+    end
+end
+
 function test_arrow_ipc_is_refused_naming_the_format(testCase)
 %   MATLAB has no Arrow IPC reader (R2026a has no featherread), so an .arrow,
 %   .ipc or .feather path is refused before anything is read, never taken as text.

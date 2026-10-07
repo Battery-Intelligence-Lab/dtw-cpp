@@ -445,24 +445,25 @@ class TestSeriesNames:
         named 0, 1, ... as C++ dtwc::load names them (Dataset::materialize_local):
         an empty series dropped is not refused, and no name counts it. Parquet is
         read through pyarrow as the C++ reader (ParquetChunkReader) and MATLAB
-        read it: a file's first column that is Float32/Float64 or a list of them,
-        a list column's rows named series_<i> numbered on across a folder's files
-        whatever string column a file holds, a scalar column one series named by
-        its file (the folder of test_io_readers' Parquet case)."""
+        read it (test_io.py's fixtures hold its layouts): a folder's files in the
+        text reader's order, the rows of a file without a string column named
+        series_<i> numbered on across the files, a file's one float column one
+        series named by its file (the folder of test_io_readers' Parquet case)."""
         rows = [[0.0, 0.5], [2.5, 1.0, 0.25], [9.0, 9.5]]
         assert dtwcpp.load([[]] + rows, skip_rows=1).series_names() == ["0", "1", "2"]
         pa = pytest.importorskip("pyarrow")
         pq = pytest.importorskip("pyarrow.parquet")
         folder = tmp_path / "parquet"
         folder.mkdir()
-        pq.write_table(pa.table({"id": ["a", "b", "c"],
-                                 "series": pa.array(rows, type=pa.list_(pa.float64()))}),
+        pq.write_table(pa.table({"series": pa.array(rows, type=pa.list_(pa.float64()))}),
                        folder / "a.parquet")
         pq.write_table(pa.table({"id": ["d", "e"], "v": pa.array([5.0, 6.0], pa.float32())}),
                        folder / "b.parquet")
+        pq.write_table(pa.table({"series": pa.array([[7.0]], type=pa.list_(pa.float32()))}),
+                       folder / "c.parquet")
         data = dtwcpp.load(folder).as_data()
-        assert data.p_vec == rows + [[5.0, 6.0]]
-        assert data.p_names == ["series_0", "series_1", "series_2", "b"]
+        assert data.p_vec == rows + [[5.0, 6.0], [7.0]]
+        assert data.p_names == ["series_0", "series_1", "series_2", "b", "series_4"]
 
     def test_a_folder_given_with_a_trailing_separator_names_the_run(self, tmp_path):
         """The run is named as dtwc_cl names it (C++ detail::default_name):

@@ -296,9 +296,9 @@ TEST_CASE("run with in-memory series refuses the options only a file reader appl
   };
   refuses([](dtwc::Config &c) { c.input = "series.csv"; }, "the series are passed in memory");
   refuses([](dtwc::Config &c) { c.column = "values"; }, "--column selects a Parquet column");
-  refuses([](dtwc::Config &c) { c.skip_rows = 1; }, "--skip-rows, --skip-cols and --delimiter");
-  refuses([](dtwc::Config &c) { c.skip_cols = 1; }, "--skip-rows, --skip-cols and --delimiter");
-  refuses([](dtwc::Config &c) { c.delimiter = ';'; }, "--skip-rows, --skip-cols and --delimiter");
+  refuses([](dtwc::Config &c) { c.skip_rows = 1; }, "--skip-rows and --skip-cols (skip_rows, skip_cols) drop");
+  refuses([](dtwc::Config &c) { c.skip_cols = 1; }, "--skip-rows and --skip-cols (skip_rows, skip_cols) drop");
+  refuses([](dtwc::Config &c) { c.delimiter = ';'; }, "--delimiter (delimiter) splits CSV/TSV text");
   refuses([](dtwc::Config &c) { c.ram_limit = 1024; }, "--ram-limit caps Parquet series materialisation");
   refuses([](dtwc::Config &c) { c.k = 7; }, "cluster: k must not exceed the number of series.");
   refuses([](dtwc::Config &c) { c.k = dtwc::Config{}.k; }, "-k/--n-clusters, the number of clusters, is required.");

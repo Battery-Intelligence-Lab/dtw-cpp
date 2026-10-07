@@ -13,6 +13,7 @@
 
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -595,6 +596,59 @@ TEST_CASE("Parquet: a null list cell or null list element is rejected",
   }
 }
 
+// The reader fixtures tests/python/test_io.py and tests/matlab/test_tier1_route_parity.m read too, written by
+// tests/data/reader/make_parquet_fixtures.py: one file per layout, the same series and names in every language.
+TEST_CASE("Parquet: each layout's series and names as Python and MATLAB read them", "[io][parquet]")
+{
+  using Series = std::vector<std::vector<double>>;
+  using Names = std::vector<std::string>;
+  const auto fixture = [](const char *name) {
+    return std::filesystem::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader" / name;
+  };
+  // Three Float32/Float64 columns: each row a series, named by the string id.
+  const auto rows = dtwc::io::read_arrow(fixture("parquet_rows.parquet"));
+  CHECK(rows.p_vec == Series{ { 0, 0.5, 0.25 }, { 1, 1.5, 1.25 }, { 10, 10.5, 10.25 } });
+  CHECK(rows.p_names == Names{ "a", "b", "c" });
+  // --skip-cols 1 --skip-rows 1: the id column, dropped, names nothing; the rows count after the first.
+  const auto skipped = dtwc::io::read_arrow(fixture("parquet_rows.parquet"), "", 1, 1);
+  CHECK(skipped.p_vec == Series{ { 1, 1.5, 1.25 }, { 10, 10.5, 10.25 } });
+  CHECK(skipped.p_names == Names{ "series_0", "series_1" });
+  // A list column: a series per row, named by the string column, a null as series_<i>.
+  const auto list = dtwc::io::read_arrow(fixture("parquet_list.parquet"));
+  CHECK(list.p_vec == Series{ { 0, 0.5 }, { 2.5, 1, 0.25 }, { 9, 9.5 } });
+  CHECK(list.p_names == Names{ "x", "series_1", "z" });
+  // One Float64 column: one series, named by its file.
+  const auto one = dtwc::io::read_arrow(fixture("parquet_one_column.parquet"));
+  CHECK(one.p_vec == Series{ { 3, 1, 4, 1.5 } });
+  CHECK(one.p_names == Names{ "parquet_one_column" });
+}
+
+TEST_CASE("Parquet: a sample column neither Float32/Float64 nor a string is refused by name",
+          "[io][parquet]")
+{
+  // Each row is a series of the file's float columns, so an integer id would be one of its samples.
+  arrow::Int64Builder ids;
+  arrow::DoubleBuilder t0;
+  arrow::DoubleBuilder t1;
+  REQUIRE(ids.AppendValues(std::vector<int64_t>{ 1, 2 }).ok());
+  REQUIRE(t0.AppendValues(std::vector<double>{ 0.0, 1.0 }).ok());
+  REQUIRE(t1.AppendValues(std::vector<double>{ 0.5, 1.5 }).ok());
+  auto schema = arrow::schema({ arrow::field("id", arrow::int64()), arrow::field("t0", arrow::float64()),
+                                arrow::field("t1", arrow::float64()) });
+  const auto tmp = tmpdir() / "int_id.parquet";
+  write_parquet(tmp, arrow::Table::Make(schema, { unwrap(ids.Finish()), unwrap(t0.Finish()), unwrap(t1.Finish()) }));
+  CHECK_THROWS_MATCHES(
+    dtwc::io::read_arrow(tmp), dtwc::IOError,
+    Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(
+      "Parquet column 'id' is int64, neither Float32/Float64 nor Utf8/LargeUtf8, so it cannot be a sample of the "
+      "series each row holds; drop the leading columns with --skip-cols (skip_cols), or read one column with "
+      "--column.")));
+  // Either way out reads the file.
+  CHECK(dtwc::io::read_arrow(tmp, "", 1).p_vec == std::vector<std::vector<double>>{ { 0.0, 0.5 }, { 1.0, 1.5 } });
+  CHECK(dtwc::io::read_arrow(tmp, "t1").p_vec == std::vector<std::vector<double>>{ { 0.5, 1.5 } });
+  std::filesystem::remove(tmp);
+}
+
 // The streamed nearest-medoid assignment runs in parallel over each chunk (more
 // than 64 rows). The in-RAM route must give the same clustering bit for bit.
 TEST_CASE("Parquet: streamed FastCLARA equals the in-RAM run",
@@ -636,6 +690,24 @@ TEST_CASE("Parquet: streamed FastCLARA equals the in-RAM run",
   CHECK(streamed.labels == expected.labels);
   CHECK(streamed.total_cost == expected.total_cost);
   CHECK(streamed.labels.size() == series.size());
+
+  // The same series as rows of four Float64 columns, streamed by row groups of 16.
+  std::vector<std::shared_ptr<arrow::Field>> fields;
+  std::vector<std::shared_ptr<arrow::Array>> columns;
+  for (std::size_t j = 0; j < 4; ++j) {
+    arrow::DoubleBuilder column;
+    for (const auto &values : series) REQUIRE(column.Append(values[j]).ok());
+    fields.push_back(arrow::field("t" + std::to_string(j), arrow::float64()));
+    columns.push_back(unwrap(column.Finish()));
+  }
+  write_parquet(tmp, arrow::Table::Make(arrow::schema(fields), columns), 16);
+  options.parquet_column.clear();
+  dtwc::Problem rows_settings{"clara_rows_streamed"};
+  const auto rows_streamed = dtwc::algorithms::fast_clara_parquet(rows_settings, options);
+  std::filesystem::remove(tmp);
+  CHECK(rows_streamed.medoid_indices == expected.medoid_indices);
+  CHECK(rows_streamed.labels == expected.labels);
+  CHECK(rows_streamed.total_cost == expected.total_cost);
 }
 
 // A RAM-limited run holds no series, so Result::save used to read the names and
@@ -658,7 +730,9 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   config.k = 2;
   config.sample_size = 4;
   config.n_samples = 2;
-  config.ram_limit = 900; // below the file's resident estimate, above one row group: FastCLARA streams it
+  // A byte below the file's resident estimate, above one row group: FastCLARA streams it. The estimate follows
+  // the writer's encoding: 896 bytes from Arrow 25, which a fixed cap of 900 let the run hold resident.
+  config.ram_limit = dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false) - 1;
   config.output.clear();
   config.name = "streamed";
   const auto result = dtwc::run(config);
