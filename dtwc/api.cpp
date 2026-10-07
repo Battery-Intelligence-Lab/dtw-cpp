@@ -105,7 +105,7 @@ std::vector<double> Result::distance_matrix() const
   // Matrix-free methods leave the matrix unmaterialised; asking for it is an
   // explicit request for the full N*N, as score() and save() already treat it.
   problem_->fill_distance_matrix();
-  return io::to_full_matrix(std::as_const(*problem_).distance_matrix());
+  return io::to_full_matrix(problem_->distance_matrix());
 }
 
 void Result::save(const std::filesystem::path &directory) const

@@ -703,7 +703,7 @@ TEST_CASE("A refused CUDA fill leaves the Problem's matrix unallocated", "[cuda]
   prob.set_device(dtwc::Device::GPU, device_count);
   REQUIRE_THROWS_MATCHES(prob.fill_distance_matrix(), dtwc::DeviceError,
                          MessageMatches(ContainsSubstring("invalid device ordinal")));
-  CHECK(std::as_const(prob).distance_matrix().size() == 0);
+  CHECK(prob.distance_matrix().size() == 0);
 }
 
 // The wavefront's dynamic shared-memory limit is one value per kernel and
@@ -1772,7 +1772,7 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
     CAPTURE(fp64);
     prob.set_gpu_precision(fp64 ? dtwc::GpuPrecision::FP64 : dtwc::GpuPrecision::FP32);
     prob.fill_distance_matrix();
-    const auto &matrix = std::as_const(prob).distance_matrix();
+    const auto &matrix = prob.distance_matrix();
     REQUIRE(matrix.size() == N);
 
     // One mismatch count per row: each row has one writer.

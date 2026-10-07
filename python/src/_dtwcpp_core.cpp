@@ -936,7 +936,7 @@ NB_MODULE(_dtwcpp_core, m) {
            {
              nb::gil_scoped_release release;
              prob.fill_distance_matrix();
-             const auto &dm = std::as_const(prob).distance_matrix(); // on the heap or mapped
+             const auto &dm = prob.distance_matrix(); // on the heap or mapped
              n = dm.size();
              values = dtwc::io::to_full_matrix(dm); // row-major, expanded from the triangle
            }
