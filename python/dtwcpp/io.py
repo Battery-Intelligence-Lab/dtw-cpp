@@ -64,9 +64,11 @@ def _parquet_layout(schema, skip_cols):
     label = next((field for field in fields if is_string(field.type)), None)
     first = next((field for field in fields if is_float(field.type) or is_list(field.type)), None)
     if first is None:
-        after = f" after the {skip_cols} columns --skip-cols drops" if skip_cols else ""
+        after = f" after the {skip_cols} columns skip_cols drops" if skip_cols else ""
         raise DtwcIOError(f"No scalar/list Float32 or Float64 column found in Parquet schema{after}. "
-                          "Use --column to specify one.")
+                          "load() takes no column: read the one you want with "
+                          "pyarrow.parquet.read_table(path, columns=[name]) and pass its values, as floats, "
+                          "to load() or cluster().")
     if is_list(first.type):
         return "list", [first], label
     if sum(is_float(field.type) for field in fields) == 1:
@@ -77,7 +79,8 @@ def _parquet_layout(schema, skip_cols):
             raise DtwcIOError(
                 f"Parquet column '{field.name}' is {field.type}, neither Float32/Float64 nor Utf8/LargeUtf8, "
                 "so it cannot be a sample of the series each row holds; drop the leading columns with "
-                "--skip-cols (skip_cols), or read one column with --column.")
+                "skip_cols, or read the column you want with pyarrow.parquet.read_table(path, "
+                "columns=[name]) and pass its values to load() or cluster().")
     return "rows", samples, label
 
 
