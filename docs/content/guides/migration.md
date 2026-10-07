@@ -135,7 +135,9 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   the no-path value, `std::numeric_limits<T>::max()`, for such a pair.
 - The setters check their values: `set_n_clusters`, `set_max_iter` and
   `set_n_repetitions` below 1 and `set_band` below -1 are `InvalidInput`. A
-  direct write to a public field is not checked.
+  direct write to a public field is checked where it is used: a `band` below -1
+  at the next fill, a `maxIter` or `N_repetition` below 1 when Lloyd's
+  k-medoids runs.
 - A NaN or ±inf in a series is `InvalidInput` before any distance is computed,
   unless a missing-data strategy says what NaN means (`set_missing_strategy`).
 - The scores, `find_total_cost` and the writers raise `InvalidInput` on a
