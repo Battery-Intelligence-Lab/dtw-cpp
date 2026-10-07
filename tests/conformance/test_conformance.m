@@ -1,7 +1,7 @@
 function tests = test_conformance
 %TEST_CONFORMANCE MATLAB route of the cross-language conformance fixture (Task 2.4).
 %
-%   The permanent parity gate for docs/api-contract-2.0.md §9. Drives the LIVE
+%   The permanent cross-language parity gate. Drives the LIVE
 %   +dtwc / dtwc_mex pipeline (Problem.set_band -> fill_distance_matrix ->
 %   fast_pam -> silhouette/davies_bouldin/dunn) on the recorded conformance
 %   dataset and asserts digit-identical labels/medoids and scores within 1e-12

@@ -222,8 +222,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 
   // If sample_size >= N, just run FastPAM on the full dataset.
   if (sample_size >= N) {
-    return fast_pam_seeded(
-      prob, opts.n_clusters, detail::clara_pam_seed(opts, 0), opts.max_iter);
+    return fast_pam(
+      prob, opts.n_clusters, opts.max_iter, detail::clara_pam_seed(opts, 0));
   }
 
   // A GPU fills copies of the samples whatever the parent holds, but the
@@ -251,14 +251,7 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
       sub_names.push_back(prob.series_name(static_cast<std::size_t>(idx))); // O(1), no string copy
 
     Problem sub_prob("clara_subsample_" + std::to_string(s));
-    // Copy all relevant settings from the original problem.
-    sub_prob.set_distance(prob.distance());
-    // Device, GPU index and precision: the sample fill honours them, or
-    // validate_fill_request refuses them (e.g. Float32 series, a view, on a GPU).
-    const auto [device, index] = prob.device();
-    sub_prob.set_device(device, index);
-    sub_prob.set_gpu_precision(prob.gpu_precision());
-    sub_prob.set_verbose(prob.verbose());
+    sub_prob.copy_distance_settings_from(prob);
 
     if (prob.data().is_f32()) {
       std::vector<std::span<const float>> sub_spans;
@@ -267,7 +260,7 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
         sub_spans.push_back(prob.data().series_f32(static_cast<std::size_t>(idx)));
       sub_prob.set_view_data(
         Data(std::move(sub_spans), std::move(sub_names), prob.data().ndim));
-    } else if (device == Device::GPU) {
+    } else if (prob.device().first == Device::GPU) {
       std::vector<std::vector<data_t>> sub_series;
       sub_series.reserve(sample_size);
       for (index_t idx : sample_indices) {
@@ -287,8 +280,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     }
 
     // 3. Run FastPAM on the sub-Problem.
-    auto sub_result = fast_pam_seeded(
-      sub_prob, opts.n_clusters, detail::clara_pam_seed(opts, s), opts.max_iter);
+    auto sub_result = fast_pam(
+      sub_prob, opts.n_clusters, opts.max_iter, detail::clara_pam_seed(opts, s));
 
     // 4. Map sub-Problem medoid indices back to full dataset indices.
     std::vector<index_t> full_medoids(opts.n_clusters);

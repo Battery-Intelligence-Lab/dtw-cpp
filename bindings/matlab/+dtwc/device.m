@@ -1,5 +1,5 @@
 %> @file device.m
-%> @brief Global compute-device get/set (api-contract-2.0.md §1.1).
+%> @brief Global compute-device get/set.
 %> @author Volkan Kumtepeli
 function out = device(name)
 %DEVICE Get or set the process-wide compute device.

@@ -46,6 +46,8 @@ namespace algorithms {
     size_t ram_limit_bytes = 0;         ///< Series-data cap; 0 = no limit.
     std::filesystem::path parquet_path; ///< Parquet file to stream (empty = the Problem's series).
     std::string parquet_column;         ///< Column name for the Parquet reader.
+    index_t parquet_skip_cols = 0;      ///< Leading Parquet columns dropped (--skip-cols).
+    index_t parquet_skip_rows = 0;      ///< Leading Parquet rows dropped (--skip-rows).
     bool use_float32 = false;           ///< Read chunks as float32 (half the memory).
     bool force_parquet_streaming = false; ///< Stream even if the series fit (dtwc_cl's planner decided).
   };

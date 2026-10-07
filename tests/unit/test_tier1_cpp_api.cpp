@@ -1,5 +1,5 @@
 /** @file test_tier1_cpp_api.cpp
- *  @brief Live C++ route for the frozen Tier-1 device/load/cluster/Result API.
+ *  @brief Live C++ route for the Tier-1 device/load/cluster/Result API.
  */
 
 #include <dtwc.hpp>
@@ -14,6 +14,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <random>
 #include <iterator>
 #include <sstream>
 #include <system_error>
@@ -179,15 +180,15 @@ TEST_CASE("Tier-1 C++ PAM uses the shared local seed without touching legacy RNG
 
   auto init_29_problem = seed_sensitive_problem();
   auto init_42_problem = seed_sensitive_problem();
-  const auto init_29 = dtwc::fast_pam_seeded(init_29_problem, 3, 29, 0);
-  const auto init_42 = dtwc::fast_pam_seeded(init_42_problem, 3, 42, 0);
+  const auto init_29 = dtwc::fast_pam(init_29_problem, 3, 0, 29);
+  const auto init_42 = dtwc::fast_pam(init_42_problem, 3, 0, 42);
   CHECK(init_29.medoid_indices == std::vector<dtwc::index_t>{4, 2, 7});
   CHECK(init_42.medoid_indices == std::vector<dtwc::index_t>{6, 2, 5});
 
   auto final_29_problem = seed_sensitive_problem();
   auto final_42_problem = seed_sensitive_problem();
-  const auto final_29 = dtwc::fast_pam_seeded(final_29_problem, 3, 29);
-  const auto final_42 = dtwc::fast_pam_seeded(final_42_problem, 3, 42);
+  const auto final_29 = dtwc::fast_pam(final_29_problem, 3, 100, 29);
+  const auto final_42 = dtwc::fast_pam(final_42_problem, 3, 100, 42);
   CHECK(final_29.medoid_indices == std::vector<dtwc::index_t>{4, 1, 7});
   CHECK(final_29.total_cost == 20.0);
   CHECK(final_42.medoid_indices == std::vector<dtwc::index_t>{6, 2, 5});
@@ -261,23 +262,21 @@ TEST_CASE("Lloyd uses a wrapping seed schedule and preserves custom initializers
 {
   REQUIRE(dtwc::Problem{}.random_seed() == dtwc::settings::DEFAULT_RANDOM_SEED);
 
+  // Lloyd's restarts initialise by these portable schedules; the one-argument
+  // forms run them from one draw of the legacy engine. Oracle: the 2.0 seeded
+  // twins at 254ecd3b fed std::mt19937(29)'s first value gave {4, 1, 0}, {6, 1, 5}.
   const auto legacy_rng_original = dtwc::randGenerator;
-  dtwc::randGenerator.seed(271828); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
-  const auto legacy_rng_before = dtwc::randGenerator;
   auto problem = seed_sensitive_problem();
   problem.set_n_clusters(3);
-  dtwc::init::random_seeded(problem, 42);
-  const auto seed_42_medoids = problem.medoids();
-  CHECK(seed_42_medoids == std::vector<dtwc::index_t>{6, 2, 1});
-  dtwc::init::random_seeded(problem, 43);
-  const auto seed_43_medoids = problem.medoids();
-  CHECK(seed_42_medoids != seed_43_medoids);
-
-  auto kmeanspp_problem = seed_sensitive_problem();
-  kmeanspp_problem.set_n_clusters(3);
-  dtwc::init::Kmeanspp_seeded(kmeanspp_problem, 42);
-  CHECK(kmeanspp_problem.medoids() == std::vector<dtwc::index_t>{6, 2, 5});
-  CHECK(dtwc::randGenerator == legacy_rng_before);
+  dtwc::randGenerator.seed(29); // NOLINT(cert-msc51-cpp) fixed seed: the oracle's engine state
+  dtwc::init::random(problem);
+  CHECK(problem.medoids() == std::vector<dtwc::index_t>{4, 1, 0});
+  dtwc::randGenerator.seed(29); // NOLINT(cert-msc51-cpp)
+  dtwc::init::Kmeanspp(problem);
+  CHECK(problem.medoids() == std::vector<dtwc::index_t>{6, 1, 5});
+  std::mt19937 after_one_draw(29); // NOLINT(cert-msc51-cpp)
+  after_one_draw.discard(1);
+  CHECK(dtwc::randGenerator == after_one_draw);
   dtwc::randGenerator = legacy_rng_original;
 
   auto no_restarts = seed_sensitive_problem();
@@ -296,9 +295,13 @@ TEST_CASE("Lloyd uses a wrapping seed schedule and preserves custom initializers
     return std::pair{ run.find_total_cost(), run.medoids() };
   };
   constexpr auto max_seed = std::numeric_limits<std::uint64_t>::max();
+  dtwc::randGenerator.seed(271828); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Lloyd never touches this engine
+  const auto legacy_rng_before = dtwc::randGenerator;
   const auto last = lloyd(max_seed, 1);
   const auto wrapped = lloyd(0, 1);
   const auto both = lloyd(max_seed, 2);
+  CHECK(dtwc::randGenerator == legacy_rng_before); // Lloyd seeds init::random itself
+  dtwc::randGenerator = legacy_rng_original;
   CHECK((both == last || both == wrapped));
   CHECK(both.first == std::min(last.first, wrapped.first));
 }

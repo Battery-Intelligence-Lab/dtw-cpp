@@ -1,8 +1,8 @@
 %> @file cluster.m
-%> @brief High-level clustering entry point (api-contract-2.0.md §1.3).
+%> @brief High-level clustering entry point.
 %> @author Volkan Kumtepeli
 function res = cluster(data, k, varargin)
-%CLUSTER Cluster time series into k groups with DTW; returns a dtwc.Result (contract §1.3).
+%CLUSTER Cluster time series into k groups with DTW; returns a dtwc.Result.
 %
 %   res = dtwc.cluster(data, k)
 %   res = dtwc.cluster(data, k, 'Method', 'clara', 'Band', 10, 'MaxIter', 50)

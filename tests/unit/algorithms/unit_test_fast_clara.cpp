@@ -229,7 +229,7 @@ TEST_CASE("FastCLARA falls back to FastPAM when sample_size >= N", "[fast_clara]
 
   // Run the exact invocation-local FastPAM fallback oracle directly.
   Problem prob_pam = make_clara_problem(N);
-  auto pam_result = fast_pam_seeded(prob_pam, k, opts.random_seed, 100);
+  auto pam_result = fast_pam(prob_pam, k, 100, opts.random_seed);
 
   // Results should be identical (same algorithm, same seed).
   REQUIRE(clara_result.medoid_indices == pam_result.medoid_indices);

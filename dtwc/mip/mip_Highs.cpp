@@ -91,7 +91,7 @@ mip::PMedianModel mip::build_p_median_model(Problem &prob)
       }
 
   if (prob.mip_settings.warm_start) { // FastPAM's clustering as the MIP start
-    const auto pam = fast_pam_seeded(prob, k, prob.random_seed(), settings::DEFAULT_MAX_ITER);
+    const auto pam = fast_pam(prob, k, settings::DEFAULT_MAX_ITER, prob.random_seed());
     model.start.assign(n * n, 0.0);
     for (const auto med : pam.medoid_indices)
       model.start[static_cast<std::size_t>(med) * (n + 1)] = 1.0;

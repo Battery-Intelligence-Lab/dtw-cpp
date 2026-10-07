@@ -2,7 +2,7 @@
  * @file cpp_conformance.cpp
  * @brief C++ route of the cross-language conformance fixture (Phase 2 Task 2.4).
  *
- * This is the PERMANENT parity gate for docs/api-contract-2.0.md §9. It drives
+ * This is the PERMANENT cross-language parity gate. It drives
  * the LIVE Tier-2 public pipeline in-process:
  *
  *     DataLoader::load()            (load the recorded CSV, the exact CLI path)
@@ -59,7 +59,7 @@ namespace {
 constexpr int kNClusters = 3;
 constexpr int kBand = 3;
 constexpr int kMaxIter = 100;
-constexpr unsigned kSeed = 29; // dtwc::randGenerator default; reset for a literal fixed seed.
+constexpr std::uint64_t kSeed = 29; // the FastPAM BUILD seed the reference header records
 
 /// Repo-root/tests/conformance — located from the compile-time DTWC_TEST_DATA_DIR
 /// (== "<repo>/data"), never a runtime-relative path (Global Constraint #1).
@@ -126,16 +126,15 @@ CanonicalResult run_pipeline()
   prob.set_band(kBand);
   prob.fill_distance_matrix();
 
-  // Literal fixed seed. The data is init-independent, but resetting the global
-  // RNG makes "fast_pam with a fixed seed" (Task 2.4) exact in this route.
-  dtwc::randGenerator.seed(kSeed);
-  const auto raw = dtwc::fast_pam(prob, kNClusters, kMaxIter);
+  // Literal fixed seed. The data is init-independent, but the seed makes
+  // "fast_pam with a fixed seed" (Task 2.4) exact in this route.
+  const auto raw = dtwc::fast_pam(prob, kNClusters, kMaxIter, kSeed);
 
   CanonicalResult r;
   canonicalise(raw.labels, raw.medoid_indices, r.labels, r.medoids);
 
   // Scores read prob state (written back by fast_pam). Silhouette score = the
-  // mean of the per-point vector (the Tier-1 "silhouette" contract, §1.4). All
+  // mean of the per-point vector (what Result::score("silhouette") returns). All
   // three metrics are label-permutation invariant, so no canonicalisation needed.
   const auto sil = dtwc::scores::silhouette(prob);
   r.silhouette = std::reduce(sil.begin(), sil.end(), 0.0) / static_cast<double>(sil.size());

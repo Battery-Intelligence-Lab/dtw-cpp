@@ -1,5 +1,5 @@
 %> @file save_checkpoint.m
-%> @brief Save a Problem distance-matrix checkpoint (api-contract-2.0.md §2.7).
+%> @brief Save a Problem distance-matrix checkpoint.
 %> @author Volkan Kumtepeli
 function save_checkpoint(prob, path, metric)
 %SAVE_CHECKPOINT Save the Problem's distance matrix to a checkpoint directory.

@@ -98,17 +98,18 @@ std::optional<InputFormat> arrow_format(const fs::path &path)
   return std::nullopt; // text, or Parquet in a build without it: the core's reader takes it or refuses it
 }
 
-Data read_arrow(const fs::path &path, const std::string &column)
+Data read_arrow(const fs::path &path, const std::string &column, index_t skip_cols, index_t skip_rows)
 {
   const auto format = arrow_format(path);
-  if (!format) return read_data(path, 0, 0, '\0', column);
-  require_reader_options(format, 0, 0, '\0', column);
+  if (!format) return read_data(path, skip_cols, skip_rows, '\0', column);
+  require_reader_options(format, skip_cols, skip_rows, '\0', column);
   try {
 #ifdef DTWC_HAS_PARQUET
     if (*format == InputFormat::Parquet) {
       std::vector<std::vector<data_t>> series;
       std::vector<std::string> names;
-      for (const auto &file : parquet_files(path)) ParquetChunkReader(file, column).read_all(series, names);
+      for (const auto &file : parquet_files(path))
+        ParquetChunkReader(file, column, skip_cols, skip_rows).read_all(series, names);
       return Data(std::move(series), std::move(names));
     }
 #endif

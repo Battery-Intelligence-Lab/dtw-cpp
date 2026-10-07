@@ -44,7 +44,7 @@ needs a dated line in §3. Anything older or longer is in git history (`git log 
    Everything born during 2.0 is pre-tag: change it freely, no shims. No wire format is frozen before the tag.
    Breaking a frozen item needs a reason — R1 silently wrong, R2 unsound, R3 blocks the cross-language contract
    with no additive route, R4 unreachable and not in v1.0.0 — and one dated line in §3. "Cleaner" is not a
-   reason. `docs/api-contract-2.0.md` retires in phase G. A user-visible change against v1.0.0 gets a
+   reason. `docs/api-contract-2.0.md` retired with W14a (e7f6153a); the tier pages describe the 2.0 surface. A user-visible change against v1.0.0 gets a
    CHANGELOG line.
 2. **Integers.** `using index_t = std::int64_t;` counts of series, clusters and rows, labels, medoids and
    `dist_by_ind` indices are `index_t`; tuning values (`band`, `max_iter`, `n_init`, `n_samples`) are `int`;
@@ -417,3 +417,26 @@ CHANGELOG rule.
   the whole module ran that copy of the per-pair kernel (`NOMINSIZE`, 659f889f). For Volkan: AArch64 lanes with
   `fminnm` and 128-byte blocks (1.41–2.00×, fill 1.48–1.72×; exact on every input the checked paths admit) and
   two-column per-pair kernels (1.44–1.98× unbanded); the recommendation is both, AArch64 only for the first.
+- 2026-10-06 — Volkan, asked whether to run the two kernel units: "okay run whatever is left sure". Run on the Mac:
+  the reverse `check_docs` gate, arm-lanes, W13c, then W13e, W9f, lr-omp, pair-2col, the PF follow-ups, W14a, W14c.
+- 2026-10-06 — arm-lanes (`e26d5680`): on `__aarch64__` the lanes' min is `std::fmin` (`LanesCell`, one `fminnm`)
+  and W is 128 bytes (16 doubles, 32 floats); x86 (`fmin` = 3 instructions) and the per-pair kernels keep
+  `std::min`. Exact: the fill refuses NaN and ±inf before any lane runs. MSVC ARM64 (no `__aarch64__`) keeps W 8.
+- 2026-10-06 — W13c (`b36fad43`): `fast_pam(prob, k, max_iter = 100, seed = 42)` absorbs `fast_pam_seeded` in C++,
+  Python and MATLAB; the unseeded-engine contract retires (chair.md:121, MAP §6). Only v1's one-argument
+  `init::random` / `init::Kmeanspp` read `randGenerator`, one draw each as their seed (the pre-registered sequence
+  change). `init::*_seeded` went rather than becoming overloads: an overload set breaks v1's
+  `prob.init_fun = init::Kmeanspp`, so `init_with_seed` keeps its function-identity check.
+- 2026-10-07 — PF (`30284994`): Python reads Parquet by the C++ reader's column rule, as MATLAB does (the first
+  Float32/Float64 or list-of-float column; a scalar column is one series named by the file, list rows `series_<i>`);
+  a set_solver that cannot be honoured prints nothing, the SolverError speaks.
+- 2026-10-07 — Volkan, a Parquet file of scalar columns only (`save_dataset_parquet`'s layout), which read as one
+  series: "read each row as series I think or have some option right? It is probably not rare to have multiple time
+  series in the same file"; and (question tool) the rows' names: "First string column". So, in C++, Python and
+  MATLAB alike: several numeric scalar columns → each row is a series (as CSV; `--column` stays the option that
+  reads one column); one float column → one series per file; a list column → one series per row; a file's first
+  string column names its rows (both layouts), else `series_<i>` (unit PQ).
+- 2026-10-07 — PQ (`b2687171`): `--skip-cols` / `--skip-rows` drop a Parquet file's leading columns / rows as they
+  drop a CSV's fields / lines (Parquet refused them before): a dropped column is neither read nor a name, a dropped
+  row is not read; `--column` picks among the columns left; a column that is neither float nor string among a row's
+  samples is an IOError naming it.

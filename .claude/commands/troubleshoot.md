@@ -56,24 +56,24 @@ which dtwc_cl && dtwc_cl --version
 **`std::bad_alloc` / OOM**
 - Dataset too large for in-memory distance matrix.
 - Switch to CLARA: `--method clara` — uses subsamples
-- Lower memory: `--dtype float32` (halves distance matrix RAM)
+- Lower memory: `--dtype float32` (halves the series' RAM; the distance matrix stays float64)
 - Memory-map: `--mmap-threshold 0` forces mmap distance matrix
-- Set explicit limit: `--ram-limit 8G`
+- Parquet input: `--ram-limit 8G` caps the series in RAM, streaming one list-per-row file through CLARA
 
-**`NaN in distance matrix`**
+**`series '…' (index i)[j] is NaN`**
 - Check data: `python3 -c "import numpy as np, pandas as pd; d=pd.read_csv('data.csv').values; print('NaN?', np.isnan(d).any())"`
 - If expected: use `--missing-strategy arow` (AROW-DTW) or `zero_cost`
 - If unexpected: impute or drop NaN rows upstream
 
-**`CUDA not available`**
+**`device='gpu' requested but …`** (`DeviceError`)
 - `nvidia-smi` to confirm GPU
 - Rebuild: `-DDTWC_ENABLE_CUDA=ON`
-- macOS: CUDA is not supported (Apple dropped NVIDIA drivers in Mojave); use CPU
+- macOS: no CUDA (Apple dropped NVIDIA drivers in Mojave); the GPU there is Metal, `-DDTWC_ENABLE_METAL=ON` (the default on Apple)
 
 **`Clustering collapses all into one cluster`**
 - Try different `k`; if silhouette < 0.25 on all k, the variant may be wrong for the data
 - Try different variant (DDTW if shapes matter; WDTW if time offsets matter)
-- z-normalize input: `dtwcpp.z_normalize(data)`
+- z-normalize each series: `[dtwcpp.z_normalize(s) for s in series]`
 - Different seed or more restarts: `--seed 7`, `--n-init 5`
 
 ### Performance issues
@@ -94,12 +94,12 @@ Use when the error message doesn't match known patterns:
 
 1. `Grep` the exact error string in source to find the origin:
    ```
-   Grep pattern="exact error string here" path="/Users/engs2321/Desktop/git/dtw-cpp"
+   Grep pattern="exact error string here" path="."
    ```
 
 2. Read nearby code to understand the context.
 
-3. Check CMake build log: `build/CMakeFiles/CMakeOutput.log` and `CMakeError.log`.
+3. Check the CMake configure log: `build/CMakeFiles/CMakeConfigureLog.yaml`.
 
 4. Reproduce with minimal input (2-3 series) to isolate.
 

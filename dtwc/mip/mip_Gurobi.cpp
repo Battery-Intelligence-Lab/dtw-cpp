@@ -97,7 +97,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // Warm start: run FastPAM and feed solution as MIP start
     if (prob.mip_settings.warm_start) {
-      const auto pam_result = fast_pam_seeded(prob, Nc, prob.random_seed(), settings::DEFAULT_MAX_ITER);
+      const auto pam_result = fast_pam(prob, Nc, settings::DEFAULT_MAX_ITER, prob.random_seed());
 
       for (size_t idx = 0; idx < Nb * Nb; ++idx)
         w[idx].set(GRB_DoubleAttr_Start, 0.0);

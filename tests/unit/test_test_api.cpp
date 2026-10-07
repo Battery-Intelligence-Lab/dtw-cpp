@@ -73,6 +73,8 @@ TEST_CASE("dtwc::test::gpu validates against a CPU oracle or names what is missi
        << " device_name=" << r.device_name << " validated=" << r.validated
        << " pass=" << r.pass << " reason=" << r.reason);
 
+  // The probe never calls a GPU this build computes on unavailable.
+  REQUIRE(r.available == dtwc::gpu_available());
   if (r.available) {
     // GPU backend compiled AND a device present (a CUDA build): the
     // tiny kernel MUST match the CPU oracle within tolerance.

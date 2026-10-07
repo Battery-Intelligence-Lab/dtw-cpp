@@ -31,7 +31,7 @@ from dtwcpp._dtwcpp_core import (
     Problem,
     # Arrow C Data / stream ingest (Task 5.7 — zero-copy, no pyarrow)
     data_from_arrow_c_array,
-    # Error taxonomy (api-contract-2.0.md §5)
+    # Error taxonomy
     DtwcError,
     InvalidInput,
     UndefinedScore,
@@ -43,7 +43,6 @@ from dtwcpp._dtwcpp_core import (
     soft_dtw_gradient,
     # Algorithms
     fast_pam,
-    fast_pam_seeded,
     fast_clara,
     one_batch_pam,
     dtw_barycenter,
@@ -69,7 +68,7 @@ from dtwcpp._dtwcpp_core import (
 )
 
 from dtwcpp._dtwcpp_core import device as _core_device
-# The one device grammar, dtwc::detail::parse_device (§6.1): a name becomes
+# The one device grammar, dtwc::detail::parse_device: a name becomes
 # (canonical name, GPU ordinal), so "CUDA:3" -> ("gpu", 3).
 from dtwcpp._dtwcpp_core import parse_device as _parse_device
 
@@ -87,7 +86,7 @@ def _resolve_device(device):
     """Resolve a requested device to ``(backend, ordinal)``, failing loudly.
 
     ``backend`` is ``"cpu"``, ``"gpu"`` or ``"hpc"``. The name is parsed by the
-    C++ grammar, where ``cuda`` is a spelling of ``gpu`` (§6.1); ``gpu`` needs a
+    C++ grammar, where ``cuda`` is a spelling of ``gpu``; ``gpu`` needs a
     GPU this build's backend finds, and raises ``DeviceError`` without one.
     """
     if not isinstance(device, str):
@@ -123,7 +122,7 @@ def device(device=None):
 
     Call with no argument to read the current default; pass a name to set it.
     Accepts ``"cpu"``, ``"gpu"``, ``"gpu:N"``, ``"cuda"``, ``"cuda:N"``,
-    ``"hpc"`` or ``"hpc:gpu"``. A local selection is stored in C++ (§6) and the
+    ``"hpc"`` or ``"hpc:gpu"``. A local selection is stored in C++ and the
     CANONICAL name that ``dtwc::device()`` reports is returned, so
     ``"cuda:0"`` comes back as ``"gpu"`` exactly as it does in C++ and MATLAB.
     An explicit ``device=`` argument always overrides this global default.
@@ -269,7 +268,7 @@ __all__ = [
     "IOError",
     "DEFAULT_RANDOM_SEED",
     "soft_dtw_gradient",
-    "fast_pam", "fast_pam_seeded", "fast_clara", "CLARAOptions", "one_batch_pam",
+    "fast_pam", "fast_clara", "CLARAOptions", "one_batch_pam",
     "dtw_barycenter", "barycenter_kmeans",
     "build_dendrogram", "cut_dendrogram",
     # Scores (canonical 2.0 names)

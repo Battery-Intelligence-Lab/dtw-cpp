@@ -582,10 +582,11 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, d
 LagrangianResult lagrangian_root_exact(const double *D, index_t N, index_t k,
                                        double initial_ub, std::int64_t max_nodes)
 {
-  // 1. Root Lagrangian dual + primal. Prefer the Kelley cutting-plane root when
-  //    HiGHS is present: it certifies to machine precision where the subgradient
-  //    stalls, so far more instances close at the root (0 B&B nodes). Without
-  //    HiGHS the solver-free subgradient root is used and the B&B closes the gap.
+  // 1. Root Lagrangian dual + primal: the Kelley cutting-plane root when HiGHS is
+  //    linked, else the solver-free subgradient root; the B&B closes what the root
+  //    leaves open. Measured 2026-10-06 (synthetic length-40 L1 series): Kelley
+  //    certifies more roots only on a line metric (constant level-shifted series);
+  //    on noisy series the subgradient root certifies more and is faster.
   //    If it already certifies, the tree is a single node — return immediately.
 #ifdef DTWC_ENABLE_HIGHS
   LagrangianResult root = lagrangian_root_kelley(D, N, k, initial_ub);
@@ -764,8 +765,8 @@ void LR_core_clustering(Problem &prob)
   const index_t k = prob.n_clusters();
   if (N <= 0) throw InvalidInput("LR-core: the Problem has no data.");
 
-  // The FastPAM cost seeds the upper bound; fast_pam_seeded fills the matrix.
-  const double ub = fast_pam_seeded(prob, k, prob.random_seed(), settings::DEFAULT_MAX_ITER).total_cost;
+  // The FastPAM cost seeds the upper bound; fast_pam fills the matrix.
+  const double ub = fast_pam(prob, k, settings::DEFAULT_MAX_ITER, prob.random_seed()).total_cost;
   std::vector<double> D(static_cast<std::size_t>(N) * static_cast<std::size_t>(N));
   for (index_t i = 0; i < N; ++i)
     for (index_t j = 0; j < N; ++j)

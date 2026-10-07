@@ -35,8 +35,8 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/warping_ddtw.hpp"
 #include "../../dtwc/soft_dtw.hpp"
 #include "../../dtwc/base/env.hpp"     // detail::parse_device: the device-name grammar
-#include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
-#include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
+#include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError
+#include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
 #include "../../dtwc/base/names.hpp"   // parse_name over the C++ name tables
 
@@ -650,7 +650,7 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Args: handle, data, [names cell], [ndim]. `data` is either an N x L real
   // double matrix (each row a series) OR a cell array of numeric row vectors
-  // (ragged / variable-length series, contract §2.1 "data (owning)").
+  // (ragged / variable-length series).
   if (nrhs < 3) throw std::invalid_argument("Problem_set_data requires handle and data.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
@@ -864,7 +864,7 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
 }
 
 // =========================================================================
-//  Device commands (contract §1.1, §6 — delegate to dtwc::device)
+//  Device commands (delegate to dtwc::device)
 // =========================================================================
 
 /// set_device(name) -> canonical name ("cpu"/"gpu"/"gpu:N"), exactly as C++
@@ -985,7 +985,7 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
 }
 
 /// set_checkpoint(handle, struct) -- writes Problem::checkpoint, which
-/// fill_distance_matrix() consumes (contract 2.7). Fields are optional; the
+/// fill_distance_matrix() consumes. Fields are optional; the
 /// current value is kept for any field the struct omits.
 static void cmd_Problem_set_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3)
@@ -1055,7 +1055,7 @@ static void cmd_Problem_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mx
 }
 
 // =========================================================================
-//  Checkpoint / resume commands (contract §2.7)
+//  Checkpoint / resume commands
 // =========================================================================
 
 static void cmd_save_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1139,15 +1139,9 @@ static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prh
   const auto k = get_exact_int<dtwc::index_t>(prhs[2], "k");
   int max_iter = 100;
   if (nrhs > 3) max_iter = get_exact_int(prhs[3], "max_iter");
+  const std::uint64_t seed = nrhs > 4 ? get_random_seed(prhs[4]) : dtwc::settings::DEFAULT_RANDOM_SEED;
 
-  // Omitted seed preserves the mutable legacy Tier-2 behaviour. MATLAB Tier-1
-  // passes the shared default explicitly, so it never consumes global RNG state.
-  auto result = nrhs > 4
-    ? dtwc::fast_pam_seeded(
-        prob, k, get_random_seed(prhs[4]), max_iter)
-    : dtwc::fast_pam(prob, k, max_iter);
-
-  plhs[0] = clustering_result_to_mx(result);
+  plhs[0] = clustering_result_to_mx(dtwc::fast_pam(prob, k, max_iter, seed));
 }
 
 static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1249,7 +1243,7 @@ static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, cons
 }
 
 // =========================================================================
-//  Tier-1 (contract 1.2 - 1.4): dtwc.cluster, dtwc.load and dtwc.Result are
+//  Tier-1: dtwc.cluster, dtwc.load and dtwc.Result are
 //  Python's cluster(), load() and Result: the keys set a dtwc::Config that
 //  dtwc::apply hands a Problem, the series reach it through Problem_set_data,
 //  and Problem::cluster() runs the method. Text is read by dtwc::read_data and
@@ -1365,7 +1359,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
   // longjmp-safe: catch C++ exceptions, exit scope, THEN call mexErrMsgIdAndTxt
   std::string error_id, error_msg;
   try {
-    // Device (contract §1.1, §6)
+    // Device
     if (cmd == "version") {
       if (nlhs > 0) plhs[0] = mxCreateString(DTWC_VERSION_STRING);
     }
@@ -1421,7 +1415,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_find_total_cost") cmd_Problem_find_total_cost(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_distance_matrix") cmd_Problem_get_distance_matrix(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_distance_matrix") cmd_Problem_set_distance_matrix(nlhs, plhs, nrhs, prhs);
-    // Checkpoint / resume (contract §2.7)
+    // Checkpoint / resume
     else if (cmd == "save_checkpoint") cmd_save_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "load_checkpoint") cmd_load_checkpoint(nlhs, plhs, nrhs, prhs);
     // Stateless DTW functions
@@ -1442,7 +1436,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "calinski_harabasz") cmd_calinski_harabasz(nlhs, plhs, nrhs, prhs);
     else if (cmd == "adjusted_rand") cmd_adjusted_rand(nlhs, plhs, nrhs, prhs);
     else if (cmd == "normalized_mutual_info") cmd_normalized_mutual_info(nlhs, plhs, nrhs, prhs);
-    // Tier-1 (contract 1.2 - 1.4): a Config applied to a Problem, the C++ reader and writer
+    // Tier-1: a Config applied to a Problem, the C++ reader and writer
     else if (cmd == "apply") cmd_apply(nlhs, plhs, nrhs, prhs);
     else if (cmd == "read_data") cmd_read_data(nlhs, plhs, nrhs, prhs);
     else if (cmd == "parquet_files") cmd_parquet_files(nlhs, plhs, nrhs, prhs);
@@ -1453,7 +1447,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
       throw std::invalid_argument("Unknown command: '" + cmd + "'.");
     }
   }
-  // Error taxonomy (contract §5): map the dtwc leaf types FIRST, then keep the
+  // Error taxonomy: map the dtwc leaf types FIRST, then keep the
   // std fallbacks below them. dtwc::InvalidInput/SolverError/DeviceError/IOError all
   // derive from dtwc::Error : std::runtime_error, so they MUST be caught before
   // std::runtime_error. The std::invalid_argument catch is preserved below so the

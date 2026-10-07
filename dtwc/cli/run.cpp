@@ -81,7 +81,7 @@ InputFormat format_of(const fs::path &input)
 Data read_input(const fs::path &input, [[maybe_unused]] InputFormat format, const Config &config)
 {
 #ifdef DTWC_HAS_ARROW
-  if (format != InputFormat::Text) return io::read_arrow(input, config.column);
+  if (format != InputFormat::Text) return io::read_arrow(input, config.column, config.skip_cols, config.skip_rows);
 #endif
   return read_data(input, config.skip_cols, config.skip_rows, config.delimiter, config.column);
 }
@@ -98,7 +98,7 @@ void require_input_options_apply(const Config &config, std::optional<InputFormat
     throw InvalidInput(
       "--ram-limit caps Parquet series materialisation and cannot be honoured "
       "for this input; drop --ram-limit, or convert the series to a "
-      "list-per-row Parquet file to stream them under the cap.");
+      "Parquet file of one series per row to stream them under the cap.");
   require_reader_options(format, config.skip_cols, config.skip_rows, config.delimiter, config.column);
 }
 
@@ -161,6 +161,7 @@ struct Outcome
   std::shared_ptr<Problem> problem;
   core::ClusteringResult result;
   Method method;
+  std::vector<std::string> streamed_names; ///< a RAM-limited run's series names, which its Problem cannot hold
 };
 
 /// The run itself; `data` holds in-memory series, else config.input is read.
@@ -242,9 +243,9 @@ Outcome execute(const Config &config, std::optional<Data> data)
     auto layout = detail::ParquetLayout::Directory;
     std::size_t resident_bytes = 0;
     for (const auto &file : parquet_files(input)) {
-      const io::ParquetChunkReader metadata(file, config.column);
+      const io::ParquetChunkReader metadata(file, config.column, config.skip_cols, config.skip_rows);
       if (!folder)
-        layout = metadata.is_list_layout() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
+        layout = metadata.rows_are_series() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
       n_series += static_cast<std::size_t>(metadata.logical_series_count());
       resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
     }
@@ -255,6 +256,8 @@ Outcome execute(const Config &config, std::optional<Data> data)
       clara.ram_limit_bytes = config.ram_limit;
       clara.parquet_path = input;
       clara.parquet_column = config.column;
+      clara.parquet_skip_cols = config.skip_cols;
+      clara.parquet_skip_rows = config.skip_rows;
       clara.use_float32 = f32;
       clara.force_parquet_streaming = true;
     }
@@ -346,8 +349,11 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // A RAM-limited Parquet run is the one whose series the Problem does not hold:
   // FastCLARA streams them.
   if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
+  std::vector<std::string> streamed_names;
 #ifdef DTWC_HAS_PARQUET
   core::ClusteringResult result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : prob.cluster();
+  if (stream_payload)
+    streamed_names = io::ParquetChunkReader(input, config.column, config.skip_cols, config.skip_rows).series_names();
 #else
   core::ClusteringResult result = prob.cluster(); // only a Parquet input streams
 #endif
@@ -376,13 +382,13 @@ Outcome execute(const Config &config, std::optional<Data> data)
   }
 
   if (!config.output.empty())
-    detail::write_result_files(prob, output, false, config.verbose ? &std::cout : nullptr);
+    detail::write_result_files(prob, output, false, config.verbose ? &std::cout : nullptr, streamed_names);
   if (checkpoint_failure)
     throw IOError("--checkpoint '" + config.checkpoint + "': the distance checkpoint cannot be saved (the results are "
                   "written to '" + config.output + "'); free space or pass another directory to --checkpoint, or "
                   "omit it. Cause: " + *checkpoint_failure);
 
-  return { std::move(problem), std::move(result), method };
+  return { std::move(problem), std::move(result), method, std::move(streamed_names) };
 }
 
 } // namespace
@@ -402,9 +408,10 @@ detail::ParquetPlan detail::plan_parquet_load(Method method, Device device, std:
                          "raise --ram-limit.");
   if (layout == ParquetLayout::ScalarColumn)
     throw InvalidInput(
-      "RAM-limited FastCLARA streaming requires list-per-row Parquet "
-      "(one list cell per time series); a scalar column is one time series "
-      "whose rows cannot be clustered as independent series.");
+      "RAM-limited FastCLARA streaming requires a Parquet file of one series "
+      "per row (list-per-row, or several Float32/Float64 columns); a single "
+      "scalar column is one time series whose rows cannot be clustered as "
+      "independent series.");
   if (layout == ParquetLayout::Directory)
     throw InvalidInput(
       "RAM-limited FastCLARA streaming currently requires a single Parquet file; "
@@ -415,16 +422,16 @@ detail::ParquetPlan detail::plan_parquet_load(Method method, Device device, std:
 
 Result run(const Config &config)
 {
-  auto [problem, result, method] = execute(config, std::nullopt);
+  auto [problem, result, method, streamed_names] = execute(config, std::nullopt);
   return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
-                result.converged);
+                result.converged, std::move(streamed_names));
 }
 
 Result run(const Config &config, Data data)
 {
-  auto [problem, result, method] = execute(config, std::move(data));
+  auto [problem, result, method, streamed_names] = execute(config, std::move(data));
   return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
-                result.converged);
+                result.converged, std::move(streamed_names));
 }
 
 } // namespace dtwc

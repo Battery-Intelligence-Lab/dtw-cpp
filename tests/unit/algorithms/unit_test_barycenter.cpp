@@ -264,10 +264,10 @@ TEST_CASE("barycenter k-means separates two waveform groups",
 
   algorithms::BarycenterClusteringOptions options;
   options.n_clusters = 2;
-  options.method = algorithms::BarycenterMethod::SSG;
-  options.random_seed = 3;
+  options.barycenter.method = algorithms::BarycenterMethod::SSG;
+  options.barycenter.random_seed = 3;
   options.max_iter = 20;
-  options.barycenter_max_iter = 30;
+  options.barycenter.max_iter = 30;
   const auto result = algorithms::barycenter_kmeans(problem, options);
 
   REQUIRE(result.labels.size() == 16);
@@ -287,14 +287,14 @@ TEST_CASE("barycenter k-means updates its center before testing convergence",
 {
   auto problem = make_problem({{0.0}, {2.0}});
   const algorithms::BarycenterClusteringOptions defaults;
-  REQUIRE(defaults.tolerance > 0.0);
+  REQUIRE(defaults.barycenter.tolerance > 0.0);
 
-  for (const double tolerance : {defaults.tolerance, 0.0}) {
+  for (const double tolerance : {defaults.barycenter.tolerance, 0.0}) {
     CAPTURE(tolerance);
     algorithms::BarycenterClusteringOptions options;
     options.n_clusters = 1;
-    options.method = algorithms::BarycenterMethod::DBA;
-    options.tolerance = tolerance;
+    options.barycenter.method = algorithms::BarycenterMethod::DBA;
+    options.barycenter.tolerance = tolerance;
 
     const auto result = algorithms::barycenter_kmeans(problem, options);
 
@@ -356,18 +356,18 @@ TEST_CASE("barycenters reject non-finite input and finite-input overflow loudly"
 
   algorithms::BarycenterClusteringOptions clustering_options;
   clustering_options.n_clusters = 1;
-  clustering_options.method = algorithms::BarycenterMethod::DBA;
+  clustering_options.barycenter.method = algorithms::BarycenterMethod::DBA;
   CHECK_THROWS_WITH(
     algorithms::barycenter_kmeans(overflow_problem, clustering_options),
     "barycenter_kmeans: computed assignment cost is non-finite; "
     "rescale input values to a smaller magnitude.");
 
+  // The seeding is core::kmedoids_pp, whose weight step words its own refusal.
   auto initialization_overflow = make_problem({{largest}, {-largest}, {0.0}});
   clustering_options.n_clusters = 2;
   CHECK_THROWS_WITH(
     algorithms::barycenter_kmeans(initialization_overflow, clustering_options),
-    "barycenter_kmeans: computed initialization distance total is non-finite; "
-    "rescale input values to a smaller magnitude.");
+    "barycenter_kmeans: initialization distance must be finite");
 }
 
 TEST_CASE("barycenter k-means mixed-length no-op fingerprint",
@@ -388,13 +388,13 @@ TEST_CASE("barycenter k-means mixed-length no-op fingerprint",
   algorithms::BarycenterClusteringOptions options;
   options.n_clusters = 3;
   options.max_iter = 8;
-  options.barycenter_max_iter = 9;
+  options.barycenter.max_iter = 9;
   options.target_length = 5;
-  options.method = algorithms::BarycenterMethod::SSG;
-  options.learning_rate = 0.075;
-  options.learning_rate_decay = 0.03;
-  options.tolerance = 0.0;
-  options.random_seed = 123456789ULL;
+  options.barycenter.method = algorithms::BarycenterMethod::SSG;
+  options.barycenter.learning_rate = 0.075;
+  options.barycenter.learning_rate_decay = 0.03;
+  options.barycenter.tolerance = 0.0;
+  options.barycenter.random_seed = 123456789ULL;
 
   const auto result = algorithms::barycenter_kmeans(problem, options);
   // Re-recorded under the portable-v1 seeded schedule after the original
@@ -494,10 +494,10 @@ TEST_CASE("barycenter k-means with soft-DTW centres finds the scalar optimum",
   auto problem = make_problem({{0.0}, {2.0}});
   algorithms::BarycenterClusteringOptions options;
   options.n_clusters = 1;
-  options.method = algorithms::BarycenterMethod::SoftDTW;
-  options.barycenter_max_iter = 100;
-  options.learning_rate = 0.5;
-  options.gamma = 0.5;
+  options.barycenter.method = algorithms::BarycenterMethod::SoftDTW;
+  options.barycenter.max_iter = 100;
+  options.barycenter.learning_rate = 0.5;
+  options.barycenter.gamma = 0.5;
 
   const auto result = algorithms::barycenter_kmeans(problem, options);
 

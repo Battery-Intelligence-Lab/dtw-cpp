@@ -1,8 +1,8 @@
 %> @file Result.m
-%> @brief Clustering outcome returned by dtwc.cluster (api-contract-2.0.md §1.4).
+%> @brief Clustering outcome returned by dtwc.cluster.
 %> @author Volkan Kumtepeli
 classdef Result < handle
-%RESULT Clustering outcome (contract §1.4).
+%RESULT Clustering outcome.
 %
 %   Returned by dtwc.cluster(). It keeps the clustered dtwc.Problem, so
 %   score(), save() and distance_matrix() are C++'s (scores::score and the
@@ -54,7 +54,7 @@ classdef Result < handle
         end
 
         function save(obj, dir)
-        %SAVE Write the four result CSVs into DIR (contract §1.4/§7).
+        %SAVE Write the four result CSVs into DIR.
         %   res.save(outdir)
         %
         %   <name>_labels.csv, <name>_medoids.csv, <name>_distance_matrix.csv and

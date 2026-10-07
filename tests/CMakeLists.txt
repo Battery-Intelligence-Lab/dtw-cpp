@@ -227,9 +227,16 @@ if(TARGET dtwc_cl)
     else()
         set(_dtwc_cl_loud_marker "cases=16/16 efbig=ran")
     endif()
+    # ON without Gurobi stops the configure, so the option says whether dtwc_cl has it.
+    if(DTWC_ENABLE_GUROBI)
+        set(_dtwc_cl_gurobi 1)
+    else()
+        set(_dtwc_cl_gurobi 0)
+    endif()
     dtwc_add_script_test(NAME test_cli_loud_failures
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_loud_failures.cmake"
         ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>" "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-loud-failures"
+             "-DHAS_GUROBI=${_dtwc_cl_gurobi}"
         MARKER "CLI_LOUD_FAILURES subject=real_dtwc_cl ${_dtwc_cl_loud_marker} skips=0"
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 180)
 endif()
@@ -350,11 +357,10 @@ if(TARGET dtwc_cl AND "DTWC_HAS_PARQUET" IN_LIST _dtwc_public_defs)
 endif()
 
 # ── MATLAB .m suites ───────────────────────────────────────────────────────
-# One CTest entry drives tests/matlab through the freshly built MEX and passes as
-# a dtwc_add_test does: at least one case passed, none failed and none was
-# Incomplete (MATLAB's "filtered by assumption", green in its own summary). The
-# registered skip is the parallelisation pair, which prints its reason: an OpenMP
-# MEX filters the serial case, a sequential MEX the runtime case.
+# One CTest entry drives tests/matlab and the conformance fixture's MATLAB route
+# through the freshly built MEX and passes as a dtwc_add_test does: at least one
+# case passed, none failed and none was Incomplete (MATLAB's "filtered by
+# assumption", green in its own summary).
 
 # find_program(matlab) is PATH-only, so a normal install (MATLAB not on PATH)
 # made this test vanish with no diagnostic. find_package caches the same
@@ -368,7 +374,7 @@ if(DTWC_BUILD_MATLAB)
         add_test(
             NAME matlab_suite
             COMMAND "${Matlab_MAIN_PROGRAM}" -batch
-                "addpath('${CMAKE_SOURCE_DIR}/bindings/matlab'); addpath('$<TARGET_FILE_DIR:dtwc_mex>'); r = runtests('${CMAKE_CURRENT_SOURCE_DIR}/matlab'); allowed = {'test_test_api/test_parallelisation_runtime_engages', 'test_test_api/test_parallelisation_serial_is_honest'}; bad = setdiff({r([r.Incomplete]).Name}, allowed); fprintf('matlab_suite: %d run, %d passed, %d failed, %d incomplete%s', numel(r), sum([r.Passed]), sum([r.Failed]), sum([r.Incomplete]), newline); assert(sum([r.Passed]) >= 1 && sum([r.Failed]) == 0 && isempty(bad), 'matlab_suite gate failed');"
+                "addpath('${CMAKE_SOURCE_DIR}/bindings/matlab'); addpath('$<TARGET_FILE_DIR:dtwc_mex>'); r = runtests({'${CMAKE_CURRENT_SOURCE_DIR}/matlab', '${CMAKE_CURRENT_SOURCE_DIR}/conformance/test_conformance.m'}); fprintf('matlab_suite: %d run, %d passed, %d failed, %d incomplete%s', numel(r), sum([r.Passed]), sum([r.Failed]), sum([r.Incomplete]), newline); assert(sum([r.Passed]) >= 1 && sum([r.Failed]) == 0 && sum([r.Incomplete]) == 0, 'matlab_suite gate failed');"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
         set_tests_properties(matlab_suite PROPERTIES
             LABELS "matlab" RUN_SERIAL TRUE TIMEOUT 1800)

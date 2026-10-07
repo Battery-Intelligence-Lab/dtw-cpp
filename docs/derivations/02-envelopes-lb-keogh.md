@@ -1,14 +1,10 @@
 # D2 — envelopes and LB_Keogh admissibility
 
 **Verdict:** scalar envelope construction and fixed-window LB_Keogh are
-**CONFIRMED** for L1 (the CPU bound TADPole uses) and unrooted squared-L2
-costs (proved only: the CPU and GPU squared bounds were deleted in 2.0). The proof also confirms
+**CONFIRMED** for the L1 cost, the bound TADPole uses. The proof also confirms
 the `min(n,m)` prefix construction for feasible unequal-length paths under the
 current fixed window. The public envelope representation is
-**DISCREPANCY** F46, TADPole's empty
-domain is **DISCREPANCY** F48, direct-call band/cache provenance is
-**DISCREPANCY** F49. The CUDA and Metal LB_Keogh kernels that the
-F27–F30/F50 qualifications concerned were deleted in 2.0.
+**DISCREPANCY** F46, and TADPole's empty domain is **DISCREPANCY** F48.
 
 ## Primary-source scope
 
@@ -19,15 +15,14 @@ squared difference, and both their DTW and bound take a square root after the
 sum. The primary identifier is DOI `10.1007/s10115-004-0154-9`; the verified
 access record is in `.claude/CITATIONS.md`.
 
-DTWC++ differs in four relevant ways:
+DTWC++ differs in three relevant ways:
 
-1. its default point cost is absolute difference;
-2. its squared-L2 result is the unrooted sum;
-3. its symmetric bound is the maximum of two directional bounds;
-4. it compares only the first `min(n,m)` rows for unequal lengths.
+1. its point cost is absolute difference, with no square root;
+2. its symmetric bound is the maximum of two directional bounds;
+3. it compares only the first `min(n,m)` rows for unequal lengths.
 
 The paper is therefore the source for the equal-length envelope idea and its
-original proposition, not a verbatim source for those four extensions. They
+original proposition, not a verbatim source for those three extensions. They
 are derived here.
 
 Lemire's 2006 streaming maximum-minimum filter is the source for the
@@ -48,15 +43,16 @@ $$
 with `n,m >= 1`. A sample index, DTW radius, and envelope radius have unit
 `sample`. Scalar amplitudes have an arbitrary physical unit $U$.
 
-For $p\in\{1,2\}$ define the point cost
+The point cost is L1:
 
 $$
-c_p(a,b)=\lvert a-b\rvert^p.
+c(a,b)=\lvert a-b\rvert,
 \tag{1}
 $$
 
-Thus $p=1$ is L1 and has unit $U$; $p=2$ is unrooted squared L2 and has unit
-$U^2$. DTWC++ does not take a final square root.
+with unit $U$. The bound is proved for DTW under this cost only; it is not a
+lower bound of a squared-L2 DTW (for $x=[0]$, $y=[\tfrac12]$ it is $\tfrac12$
+against $\tfrac14$), so TADPole takes the exact route under any other metric.
 
 The proof uses the following assumptions exactly where needed:
 
@@ -70,9 +66,9 @@ The proof uses the following assumptions exactly where needed:
 6. arithmetic is exact and accumulated values are representable.
 
 Missing-value policies, normalized/path-averaged objectives, derivative
-series, ADTW penalties, Soft-DTW soft minima, GPU threshold casting, and
-floating-point last-ULP behavior are not smuggled into these assumptions.
-Their validity must be established separately.
+series, ADTW penalties, Soft-DTW soft minima, and floating-point last-ULP
+behavior are not smuggled into these assumptions. Their validity must be
+established separately.
 
 For unequal lengths, a finite fixed-window path exists if and only if
 `w >= |n-m|`. A finite lower bound below DTWC++'s no-path sentinel when this
@@ -162,26 +158,17 @@ The three cases prove (7) directly:
 - if $a>U$, then $b\le U$, hence $a-b\ge a-U$;
 - if $a\in[L,U]$, the left side is zero.
 
-Both sides are nonnegative, so the monotonicity of $t\mapsto t^p$ for
-$p\in\{1,2\}$ gives
-
-$$
-\delta(a;L,U)^p\le\lvert a-b\rvert^p.
-\tag{8}
-$$
-
 For a set $S$ of query rows, the directional bound is
 
 $$
-\operatorname{LB}^{(p)}_{x\mid y,r}(S)
+\operatorname{LB}_{x\mid y,r}(S)
 =
 \sum_{i\in S}
-\delta\!\left(x_i;L_i^{(r)}(y),U_i^{(r)}(y)\right)^p.
-\tag{9}
+\delta\!\left(x_i;L_i^{(r)}(y),U_i^{(r)}(y)\right).
+\tag{8}
 $$
 
-Equation (9) has the same units as its DTW objective: $U$ for $p=1$ and
-$U^2$ for $p=2$.
+Equation (8) has the unit of its DTW objective, $U$.
 
 ## One-directional admissibility
 
@@ -197,12 +184,12 @@ $$
 $$
 
 so $j_i\in J_i^{(r)}(y)$ and
-$y_{j_i}\in[L_i^{(r)}(y),U_i^{(r)}(y)]$. Applying (8) row by row gives
+$y_{j_i}\in[L_i^{(r)}(y),U_i^{(r)}(y)]$. Applying (7) row by row gives
 
 $$
-\delta\!\left(x_i;L_i^{(r)}(y),U_i^{(r)}(y)\right)^p
-\le c_p(x_i,y_{j_i}).
-\tag{10}
+\delta\!\left(x_i;L_i^{(r)}(y),U_i^{(r)}(y)\right)
+\le c(x_i,y_{j_i}).
+\tag{9}
 $$
 
 Summing the chosen distinct cells, then using nonnegativity for all unchosen
@@ -210,22 +197,22 @@ path cells,
 
 $$
 \begin{aligned}
-\operatorname{LB}^{(p)}_{x\mid y,r}(S)
+\operatorname{LB}_{x\mid y,r}(S)
 &\le
-\sum_{i\in S}c_p(x_i,y_{j_i})\\
+\sum_{i\in S}c(x_i,y_{j_i})\\
 &\le
-\sum_{(a,b)\in P}c_p(x_a,y_b)
-=C_p(P).
+\sum_{(a,b)\in P}c(x_a,y_b)
+=C(P).
 \end{aligned}
-\tag{11}
+\tag{10}
 $$
 
 This holds for every admissible $P$, hence it holds for the minimum:
 
 $$
-\operatorname{LB}^{(p)}_{x\mid y,r}(S)
-\le \operatorname{DTW}^{(p)}_w(x,y).
-\tag{12}
+\operatorname{LB}_{x\mid y,r}(S)
+\le \operatorname{DTW}_w(x,y).
+\tag{11}
 $$
 
 No property of rows outside $S$ was used. This observation is the entire
@@ -237,9 +224,9 @@ Transpose the path. Every candidate row is then visited, and the identical
 argument proves
 
 $$
-\operatorname{LB}^{(p)}_{y\mid x,r}(T)
-\le \operatorname{DTW}^{(p)}_w(x,y)
-\tag{13}
+\operatorname{LB}_{y\mid x,r}(T)
+\le \operatorname{DTW}_w(x,y)
+\tag{12}
 $$
 
 for any included candidate-row subset $T$.
@@ -248,14 +235,14 @@ If two numbers are each no larger than the same quantity, their maximum is
 also no larger:
 
 $$
-\operatorname{LB}^{(p)}_{\mathrm{sym}}
+\operatorname{LB}_{\mathrm{sym}}
 =
 \max\!\left(
-\operatorname{LB}^{(p)}_{x\mid y,r},
-\operatorname{LB}^{(p)}_{y\mid x,r}
+\operatorname{LB}_{x\mid y,r},
+\operatorname{LB}_{y\mid x,r}
 \right)
-\le \operatorname{DTW}^{(p)}_w(x,y).
-\tag{14}
+\le \operatorname{DTW}_w(x,y).
+\tag{13}
 $$
 
 Their sum is not generally admissible because the two proofs may charge the
@@ -270,10 +257,10 @@ Let
 $$
 k=\min(n,m),\qquad
 S=T=\{0,\ldots,k-1\}.
-\tag{15}
+\tag{14}
 $$
 
-Equations (12)–(14) immediately prove admissibility of forward, reverse, and
+Equations (11)–(13) immediately prove admissibility of forward, reverse, and
 symmetric prefix bounds. Truncation discards nonnegative terms; it does not
 invent a new charge.
 
@@ -286,12 +273,6 @@ This theorem has three load-bearing qualifications:
 It does not transfer automatically to a slope-scaled, asymmetric, or
 data-dependent window. Such a window would require donor sets derived from
 its own cell geometry.
-
-The original F29 fixture used series of lengths two and three at band zero.
-Under the repaired fixed geometry it has no path, so its claimed zero DTW is
-not a valid counterexample. At the minimally feasible band one, the path
-$(0,0),(0,1),(1,2)$ has zero cost and both prefixes have zero bound. The CUDA/Metal
-kernels F29 was to confirm executably were deleted in 2.0.
 
 ## Linear-time envelope construction
 
@@ -309,7 +290,7 @@ $$
 \bigl([i-r,i]\cap[0,m-1]\bigr)
 \cup
 \bigl([i,i+r]\cap[0,m-1]\bigr).
-\tag{18}
+\tag{15}
 $$
 
 A forward pass maintains decreasing and increasing deques for the trailing
@@ -318,18 +299,18 @@ then combines maxima with `max` and minima with `min`. Every index is inserted
 once and removed at most once from each deque, so time is $O(m)$ and temporary
 storage is $O(m+r)$ in the current implementation.
 
-Equation (18) is an exact set decomposition. The deque removes only an older
+Equation (15) is an exact set decomposition. The deque removes only an older
 value dominated by a newer value that remains in the window for at least as
 long. Therefore it preserves the extrema exactly.
 
 No approximation is used in envelope construction or in the bound. The
 finite oracle uses exactly representable values. Floating reductions can
 round in a different order from DTW accumulation; the analytic and
-cross-precision threshold band belongs to D17.
+cross-precision threshold band is not derived here.
 
-## Full-DTW call sites
+## The full-DTW call site
 
-TADPole is the one CPU call site. It can skip a pair because its density
+TADPole is the one caller. It can skip a pair because its density
 stage needs only a threshold decision. For supported finite, nonempty,
 equal-length, univariate Standard-L1 data whose series length is representable
 by the integer band API, it replaces a negative band by the series length and
@@ -344,21 +325,12 @@ zero-DTW warped pair, and one real bound decision for a separated-range pair.
 
 This confirmation does not cover empty series. F48 records the independent
 case where an empty diagonal upper bound of zero disagrees with the exact
-no-path sentinel. F49 separately records the direct matrix function's ability
-to receive a band that disagrees with `Problem::band`.
+no-path sentinel.
 
-## The negative-band discrepancy
+## The negative band
 
-Resolved by FX-13 (2026-09-23). The low-level helper used to normalize its
-integer argument as
-
-```cpp
-const std::size_t w =
-  static_cast<std::size_t>(std::max(band, 0));
-```
-
-so `compute_envelopes(series,-1,...)` constructed the radius-zero identity
-envelope, not (5). For
+`compute_envelopes` reads a negative band as full DTW and builds (5). A
+narrower envelope can exceed full DTW. For
 
 ```text
 x = [0,0,0,0,1,1,1,1,1,1]
@@ -366,10 +338,8 @@ y = [0,0,0,0,0,0,1,1,1,1]
 ```
 
 full L1 DTW is zero, while the symmetric L1 bounds are 2 at radius zero, 1 at
-radius one, and 0 for the global envelope. Passing `-1` to the helper returned
-the invalid value 2 against full DTW 0. The helper now reads a negative band as
-full DTW and builds (5); the D2 gate pins `-1`
-to the global envelope and the bound 0.
+radius one, and 0 for the global envelope. The D2 gate pins `-1` to the global
+envelope and the bound 0.
 
 The mutable `Envelope` type still does not record its window: valid-shaped
 arrays can come from an unrelated or too-narrow window. F46 keeps an explicit
@@ -394,8 +364,7 @@ Its exact inventories are:
 
 Every admissibility case checks forward, reverse, and symmetric L1 bounds
 against the explicit minimum path cost; the test REQUIREs each case count, so
-a run that skipped the enumeration fails. The squared-L2 bound is proved above;
-the GPU LB tests that exercised it were deleted in 2.0.
+a run that skipped the enumeration fails.
 
 The non-degenerate direction ledger is:
 
@@ -403,20 +372,19 @@ The non-degenerate direction ledger is:
 |---|---:|---:|---:|
 | L1 (`U`) | 8 | 2 | 8 |
 
-The preregistered bands and the first verbatim run (which also covered the
-since-deleted CPU squared, multivariate and pruned-matrix routes) are in
+The preregistered bands and the first verbatim run are in
 `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
 
 ## Code-conformance table
 
 | Claim | Live code | Verdict |
 |---|---|---|
-| Fixed CPU cell geometry and feasibility | `dtwc/core/dtw_kernel.hpp:190-205,420-436` | **CONFIRMED** by D1 |
-| Centered scalar envelope, equations (2)–(5) | `compute_envelopes` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED**; a negative band builds the global envelope (5) since FX-13 |
-| L1 projection sum, equations (6)–(12) | pointer `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** |
-| Symmetric maximum, equation (14) | `lb_keogh_symmetric` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** (L1) |
-| Prefix truncation, equation (15) | `Envelope` `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | Math **CONFIRMED** for feasible fixed windows |
-| TADPole global-envelope conversion | `dtwc/algorithms/tadpole.cpp:149-160,178-190,219-224` | **CONFIRMED** for finite, nonempty, equal-length Standard-L1 with integer-representable lengths; empty case is F48 and radius narrowing is F46 |
+| Fixed CPU cell geometry and feasibility | `dtw_band_bounds` and `dtw_kernel_banded` in `dtwc/core/dtw_kernel.hpp` | **CONFIRMED** by D1 |
+| Centered scalar envelope, equations (2)–(5) | `compute_envelopes` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED**; a negative band builds the global envelope (5) |
+| L1 projection sum, equations (6)–(11) | pointer `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** |
+| Symmetric maximum, equation (13) | `lb_keogh_symmetric` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** |
+| Prefix truncation, equation (14) | `Envelope` `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | Math **CONFIRMED** for feasible fixed windows |
+| TADPole global-envelope conversion | `bounds_valid` and `tadpole` in `dtwc/algorithms/tadpole.cpp` | **CONFIRMED** for finite, nonempty, equal-length Standard-L1 with integer-representable lengths; empty case is F48 and radius narrowing is F46 |
 | Exhaustive independent oracle | `tests/unit/core/test_lb_keogh_derivation.cpp` | **CONFIRMED**, non-skippable |
 | Public envelope shape/window contract | `Envelope`, `envelope_covers` and the `lb_keogh` overloads in `dtwc/core/lower_bound_impl.hpp` | **DISCREPANCY** F46: unchecked read/truncation and no provenance |
 
@@ -427,16 +395,12 @@ since-deleted CPU squared, multivariate and pruned-matrix routes) are in
   unequal fixed-window prefix theorem.
 - **CONFIRMED:** the nonempty TADPole full-DTW call site executes with the
   registered safety/reachability fingerprint.
-- **FALSIFIED:** the old F29 claim that prefix truncation itself is
-  inadmissible under the current fixed window. The device kernels F29 was to
-  confirm were deleted in 2.0.
-- **DISCREPANCY:** F46, F48, and F49 subjects named in the table. None is
-  hidden by the green scalar oracle. FX-13 closed F27, F28, F50, and F46's
-  negative-band coercion.
-- **OPEN:** floating-point threshold safety,
-  multivariate Euclidean bounds, and all non-Standard objectives.
+- **DISCREPANCY:** the F46 and F48 subjects named in the table. Neither is
+  hidden by the green scalar oracle.
+- **OPEN:** floating-point threshold safety, multivariate series, and all
+  non-Standard objectives.
 
 The claim most expected to need refinement is bit-level threshold
 admissibility. The proof is exact-arithmetic; a bound and DTW accumulated in
-different orders can straddle the same floating cutoff by an ulp. D17 must
-derive that guard before a universal floating-point pruning claim is made.
+different orders can straddle the same floating cutoff by an ulp. That guard
+must be derived before a universal floating-point pruning claim is made.

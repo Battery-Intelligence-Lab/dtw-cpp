@@ -12,8 +12,9 @@
  * still sees it. Only code that included `settings.hpp` *directly* and relied on
  * it transitively needs to include this file instead.
  *
- * The engine's future is undecided: it is shared mutable state consumed
- * by the unseeded Tier-2 entry points, and Tier-1 deliberately never touches it.
+ * The engine's future is undecided: it is shared mutable state that only the
+ * v1 one-argument init::random and init::Kmeanspp read (one draw each, as their
+ * seed), and Tier-1 deliberately never touches it.
  * This move is about the include graph only and changes no behaviour.
  */
 
@@ -23,10 +24,11 @@
 
 namespace dtwc {
 
-/// @brief Legacy mutable Mersenne Twister engine for unseeded Tier-2 calls.
-/// @details Its initial seed remains 29 for compatibility. Deterministic Tier-1
-///          entry points instead construct invocation-local engines from
-///          `settings::DEFAULT_RANDOM_SEED`; they never consume this state.
+/// @brief Legacy mutable Mersenne Twister engine: the seed source of the v1
+///        one-argument init::random and init::Kmeanspp.
+/// @details Its initial seed remains 29 for compatibility. Every other entry
+///          point takes its seed as an argument (default
+///          `settings::DEFAULT_RANDOM_SEED`) and never consumes this state.
 inline std::mt19937 randGenerator(29); // NOLINT(cert-msc51-cpp): fixed seed is the documented reproducibility contract.
 
 } // namespace dtwc

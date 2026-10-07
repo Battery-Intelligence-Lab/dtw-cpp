@@ -155,6 +155,26 @@ shape and matched the three fill matrices; its numbers are not measurements. Its
 also in `2026-10-06-mac-arm-lanes/kit/`; to rebuild there, `mkdir -p src/base src/head`, then `git archive 254ecd3b dtwc
 | tar -x -C src/base --strip-components=1` (and the head commit into `src/head`), `./build.sh base`, `./build.sh head`.
 
+## The quiet run (orchestrator, 2026-10-07 03:25–03:27, after every other unit had stopped)
+
+`./run.sh 5` in the kit, base and head interleaved, alternating which goes first [confirmed;
+`kit/results_20261007_032537.txt`, `kit/quiet_run_2026-10-07.log`]. Conditions: 1-minute load 1.49 at the start; on
+battery power; Sophos and Tanium used about one core; the probes' measured clock 4.50–4.57 GHz, so no low-power
+throttling. Single thread, median over 5 repeats, speed-up = base ns / head ns:
+
+| shape (f64 / f32) | L1 L100 | L1 L100 b10 | L1 L1000 | L1 L1000 b100 | Sq L100 | Sq L100 b10 | Sq L1000 | Sq L1000 b100 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| f64 (W 8 → 16) | 1.888 | 1.647 | 2.002 | 1.949 | 1.555 | 1.521 | 1.599 | 1.563 |
+| f32 (W 16 → 32) | 1.798 | 1.419 | 1.949 | 1.865 | 1.579 | 1.411 | 1.627 | 1.572 |
+
+f64 L1 head 0.49–0.55 cycles/cell (the 0.5 floor of 4 FP ops on 4 pipes, 2 lanes); base 0.90–0.99. Fills at 18
+threads, Gcell/s, matrices identical: N 2000 L 100 unbanded 66.80 → 111.85 (1.694×, range 1.637–1.717); N 500 L 1000
+band 100 64.09 → 101.51 (1.614×, 1.566–1.652); the ragged per-pair fill N 1000 L 90–110 21.73 → 21.64 (1.003×,
+0.989–1.009).
+
+Bands: every shape ≥ 1.15× (min 1.411) PASS; f64 L1 ≥ 1.3× at all four shapes (min 1.647) PASS; none below 0.97×
+PASS; 18-thread equal fill ≥ 1.3× (1.614, 1.694) PASS; ragged fill 0.97–1.03× (1.003) PASS.
+
 ## Not done
 
 - GCC on AArch64 (the Linux-aarch64 wheel, `ubuntu-24.04-arm`) is not built here: that GCC lowers `std::fmin` to

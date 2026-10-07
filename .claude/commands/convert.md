@@ -1,5 +1,5 @@
 ---
-description: "Convert time series between CSV, Parquet, Arrow IPC, HDF5, and .dtws formats."
+description: "Convert time series between CSV, Parquet, Arrow IPC, and HDF5 formats."
 allowed-tools:
   - Read
   - Write
@@ -19,7 +19,7 @@ Convert data between formats. `$ARGUMENTS` has input path and output path/format
 | `.parquet` | Parquet | Compressed, columnar, best for N > 10k |
 | `.arrow`, `.ipc` | Arrow IPC | Memory-mapped, fastest load |
 | `.h5`, `.hdf5` | HDF5 | With metadata |
-| `.dtws` | DTWC binary | Internal distance matrix cache |
+| `.dtwm` | DTWC binary | Distance matrix of `--checkpoint`, not time series |
 
 ## Step 1: Detect formats
 
@@ -31,8 +31,8 @@ ls -lh "INPUT_PATH"
 ## Step 2: Choose tool
 
 **`dtwc-convert` CLI** (if installed via Python package):
-- CSV ↔ Parquet ↔ Arrow IPC ↔ HDF5
-- Fastest for large datasets (memory-mapped)
+- CSV / Parquet / HDF5 → Arrow IPC (`.arrow`, `.ipc`, `.feather`)
+- Fastest for large datasets (dtwc_cl memory-maps Arrow IPC)
 
 **Python I/O module** (`dtwcpp.io`):
 - Flexible, programmable
@@ -47,32 +47,33 @@ python3 -c "import dtwcpp.io" 2>/dev/null && echo "Python available"
 ## Step 3a: CLI path (preferred for large data)
 
 ```bash
-dtwc-convert INPUT_PATH OUTPUT_PATH [--column COL] [--name-column NAME_COL]
+dtwc-convert INPUT_PATH -o OUTPUT_PATH [--columns COL ...] [--name-column NAME_COL]
 ```
 
 ## Step 3b: Python path
 
 ```python
+import numpy as np
 import dtwcpp as dc
 from pathlib import Path
 
 inp = Path("INPUT_PATH")
 out = Path("OUTPUT_PATH")
 
-# Load from source
+# Load from source: an (N, L) array
 ext_in = inp.suffix.lower()
 if ext_in == ".csv":
-    data = dc.load_dataset_csv(str(inp))
+    data, _ = dc.load_dataset_csv(str(inp))
 elif ext_in == ".parquet":
-    data = dc.load_dataset_parquet(str(inp))
+    data, _ = dc.load_dataset_parquet(str(inp))
 elif ext_in in (".h5", ".hdf5"):
-    data = dc.load_dataset_hdf5(str(inp))
+    data = dc.load_dataset_hdf5(str(inp))["series"]
 elif ext_in in (".arrow", ".ipc"):
-    data = dc.load_dataset_arrow_ipc(str(inp))
+    data = np.array(dc.load(str(inp)).as_data().p_vec)
 else:
     raise ValueError(f"Unsupported input: {ext_in}")
 
-# Save to target
+# Save to target (Arrow IPC: dtwc-convert, Step 3a)
 ext_out = out.suffix.lower()
 if ext_out == ".csv":
     dc.save_dataset_csv(data, str(out))
@@ -80,25 +81,23 @@ elif ext_out == ".parquet":
     dc.save_dataset_parquet(data, str(out))
 elif ext_out in (".h5", ".hdf5"):
     dc.save_dataset_hdf5(data, str(out))
-elif ext_out in (".arrow", ".ipc"):
-    dc.save_dataset_arrow_ipc(data, str(out))
 else:
     raise ValueError(f"Unsupported output: {ext_out}")
 
-print(f"Converted {data.size} series from {ext_in} to {ext_out}")
+print(f"Converted {len(data)} series from {ext_in} to {ext_out}")
 ```
 
 ## Step 4: Verify round-trip
 
 ```python
 # Re-load and check shape matches
-data2 = dc.load_dataset_parquet(str(out))  # or whichever format
-assert data2.size == data.size, f"Size mismatch: {data.size} → {data2.size}"
+data2, _ = dc.load_dataset_parquet(str(out))  # or whichever format
+assert len(data2) == len(data), f"Size mismatch: {len(data)} → {len(data2)}"
 # Check first series matches
 import numpy as np
 x1, x2 = np.asarray(data[0]), np.asarray(data2[0])
 assert np.allclose(x1, x2), "Data mismatch after conversion"
-print(f"Round-trip verified: {data2.size} series, first series matches")
+print(f"Round-trip verified: {len(data2)} series, first series matches")
 ```
 
 ## Step 5: Report
@@ -113,8 +112,8 @@ Show size ratio (compression effect).
 
 - CSV → Parquet typically 5-20× smaller (depending on dtype)
 - Parquet → Arrow IPC: sub-second for 10k series, memory-mapped reload
-- `.dtws` is an internal distance matrix format, not time series
-- For very wide dataframes, use `--column` to select only the series column
+- `.dtwm` is a distance matrix file (`--checkpoint`), not time series
+- For very wide dataframes, use `dtwc-convert --columns COL` to select only the series column
 
 ## Related
 

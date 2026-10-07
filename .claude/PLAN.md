@@ -138,8 +138,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
   10-01); the GCC-only test failures explained (V4) (V4 0721563, 52b557a, ba26ec9, cf03bd5, 499efdf; merged d6a9d54; GCC 13.3 v3: 113 / 0 failed, conformance identical)
 - ☑ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1) (S1 5cc52a0, 0268df1; merged c54e375; htc-gpu 80;86;89)
-- ☐ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
-  its own band; on the M5 alone 1.0–1.19×, with an `fminnm` min 1.41–2.00× (After G, AArch64 lanes)
+- ◐ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
+  its own band; on the M5 alone 1.0–1.19×, with an `fminnm` min 1.41–2.00× (AArch64 done: After G; x86 untried —
+  its fmin is three instructions, so x86 needs its own measurement on the Windows box)
 - ☑ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
   L can shrink it under each other's launch; set it once to the opt-in maximum less the static bytes, behind a band (W4d) (350ae39)
 - ☑ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
@@ -229,7 +230,14 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   and snake case can change between languages"); `dtwc.cluster`'s `band`, `max_iter` become `Band`, `MaxIter`
 - W9b/W9e note (Volkan 10-01, lighter bindings): Python and MATLAB share the Config names, not the CLI's file
   pipeline — `run(Config)` reads and writes files, which stays with the CLI (L2)
-- ☐ W9f Python test and example trims
+- ☑ W9f Python test and example trims (W9f 44af93de, e84679c1, 6246172f, 000e765f, b5ee6515; records 79bffcf8,
+  addde20a; merged 0e0f3056 on the Mac): test_api.py 836 → 551, test_hpc.py 1,243 → 1,222 (cases that re-checked another
+  Python or C++ pin, existence checks, stub captures); test_clustering_semantics folds into test_sklearn_estimator;
+  test_test_api.py/.m go (test_test_api.cpp owns the probes; one field line per binding); the nine examples/python
+  run under pytest; tier1.cpp (ctest `example_tier1`, examples on) replaces example_new_features.cpp; the contract
+  rows read/print_distance_matrix are back; matlab_suite's gate allows no incomplete; main tree: pytest 890/11/0
+  (923/11 before; 46 ids removed, 13 added, by id in `baselines/2026-10-06-w9f-test-trims-mac.md`), matlab_suite
+  136/136/0/0, ctest 95
 - ☑ W10a `DistanceMatrixStrategy`, `CUDASettings` → `set_device` + `set_gpu_precision`; the fingerprint
   hashes the resolved backend (W10 8124528, 373c039, d99734a; merged 73d7361; the cache identity hashes the computed precision, not the device: a CPU FP64 cache serves a CUDA FP64 run, GPU 0 and GPU 1 agree, FP32 is refused by FP64; Metal's Auto is FP32; CUDA's Auto is refused for a persistent cache)
 - ☑ W10b `gpu_available()` / `gpu_info()`; `gpu:1` on Metal refused; `system_info`, `check_system`,
@@ -255,7 +263,13 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## G — docs and release prep (W14)
 
-- ☐ W14a hand-written tier pages and a v1.0.0 → 2.0 migration page; `api-contract-2.0.md` deleted
+- ☑ W14a hand-written tier pages and a v1.0.0 → 2.0 migration page; `api-contract-2.0.md` deleted (W14a b73a1487,
+  5326fc20, 786fd99f, e4d26d08, 2f279c98; merged e7f6153a on the Mac: tier-1/tier-2 from the headers and bindings,
+  migration = v1.0.0's C++ library and CLI (Python and MATLAB are new, DECISIONS 10-02); lr-core.md by hand with
+  Kelley as measured; derivations 01/02 describe today's kernels; docs/sources and releases/2.0.0rc1.md gone;
+  contributor pages stay generated copies (Hugo mounts lose their order and Edit links); examples C++ 3 / Python 6 /
+  MATLAB 4 ran; Hugo builds, no new broken links; main tree: ctest 94, matlab_suite 136/136, pytest 890/11/0. Found: a v1.0.0 matrix CSV's −1 (uncomputed) entries read as
+  distances — the migration page warns; Volkan rules on a refusal)
 - ☑ VI `dtwc_cl.exe` carries a VERSIONINFO resource: name, version, copyright (Volkan 10-02) (VI 20579e0d, 45719487, e5456cc6, b63bc153; merged 96547a5a; rc.exe and llvm-rc .res byte-identical)
 - ☐ WM the Windows wheel's fill, MSVC against clang-cl, on a quiet machine with a registered band; Volkan then
   decides the wheels' compiler (Volkan 10-02: measure first)
@@ -266,7 +280,15 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## After G (each behind a registered benchmark band)
 
-- ☐ one `kmedoids_pp` (W13c) · ☐ HiGHS model built row-wise (W13d) · ☐ barycenter workspace (W13e)
+- ☑ one `kmedoids_pp` (W13c d6a771eb; merged b36fad43; −490/+291; conformance, CLI 25, matlab_suite 142/141 and
+  every seeded pin identical; the v1 one-argument `init::*` and unseeded `fast_pam` sequences changed as
+  pre-registered; pytest 923/11/0) · ☑ HiGHS model built row-wise (W13d: done by M1's `build_p_median_model`,
+  c0580948) · ☑ barycenter workspace (W13e 980709dd,
+  a9c18357; merged 32b219c6: thread_local alignment scratch through run_openmp, series read in place,
+  `BarycenterOptions` embedded as `barycenter`, `Problem::copy_distance_settings_from`; outputs identical (C++
+  399/400 hex-float probes — the one is a non-finite series dtw_barycenter does not select, no longer refused —,
+  Python 99/99, CLI 25; main tree: ctest 94 — the allocation test went —, matlab_suite 136/136, pytest 890/11/0);
+  each thread keeps its largest DP matrix after the call, as soft_dtw_gradient does)
 - ☑ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel (P4 9168ed9; merged 69be49c; that step 21.9× at 24 threads, the whole call 1.89× at N 2000, k 10, L 200 — identical labels, medoids, cost)
 - ☑ OneBatchPAM's batch table fill (m·(N−1) DTW calls, 95 % of the call after P4) on the P1 lanes kernel (P5 1b69614; merged bac9120; table fill 4.61×, whole call 3.87× at N 2000, k 10, L 200, 24 threads; bitwise identical over 24 configurations)
 - ☑ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
@@ -275,9 +297,29 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   integrates it)
 - ☑ the wheel's binding file at `-O3` (`NOMINSIZE`): LTO ran its `-Os` copy of the per-pair kernel in the whole module
   (659f889f; Python `dtw` 1.1–1.5×, ragged fill 1.5×; `baselines/2026-10-06-mac-kernel-assembly.md`)
-- ☐ AArch64 lanes: the min as `fminnm`, 128-byte blocks (16 doubles, 32 floats): 1.41–2.00× single thread, fill
-  1.48–1.72× at 18 threads, bitwise over the sweep, x86 untouched (same record; Volkan rules)
-- ☐ per-pair kernels two columns per pass: kernel 1 1.44–1.98× unbanded, bitwise; kernel 2 not tried (Volkan rules)
+- ☑ AArch64 lanes: the min as `fminnm`, 128-byte blocks (16 doubles, 32 floats) (23c88336; merged e26d5680:
+  bitwise — 15.36 M lane outputs, 64 CLI files, conformance; x86 `.s` identical; f64 L1 loop = `v_fmin_w16`; the
+  quiet run 2026-10-07: 1.41–2.00× single thread, 18-thread fill 1.61–1.69×, ragged fill 1.003×, every band PASS;
+  `baselines/2026-10-06-mac-arm-lanes.md`)
+- ◐ per-pair kernels two columns per pass: kernel 1 1.44–1.98× unbanded, bitwise; kernel 2 not tried (Volkan 10-06: run it;
+  phase 1 on pb/pair-2col 463d2b52, 00fb9c36, 92a747d9: both kernels, the abandon test a template argument; bitwise
+  over 11.73 M outputs and every Cell; speed and the kernel 2 decision wait for the quiet run,
+  `baselines/2026-10-06-mac-pair-2col.md`)
+- ◐ the LR-core dual on OpenMP: `mip-solvers` compiled without the OpenMP flags on clang/GCC, so `evaluate_dual`'s
+  two loops ran serial (lrcore record finding 5); phase 1 on pb/lr-omp 54fe1150, 96de8de4, 3bc08848 (flags, an
+  `if(N >= kParallelMinN)` clause, a `#error` guard; 330 result comparisons identical); the threshold waits for
+  the quiet run (`baselines/2026-10-06-mac-lr-omp.md`)
+- ☑ PF follow-ups (8f45ea7a … 8585e6b9; merged 30284994): Python names series as C++ does (in memory after
+  `skip_rows`; Parquet by C++'s column rule), `load(Dataset, options)` refuses, `set_solver` prints nothing (FX-3
+  reads HAS_GUROBI), test_conformance.m in matlab_suite, a CLI build sets BUILD_SHARED_LIBS for HiGHS, CI installs
+  matplotlib; main tree: ctest 94, matlab_suite 137/137, pytest 891/11/0, no cached BUILD_SHARED_LIBS after a
+  re-configure
+- ☑ PQ: a Parquet file holds many series — each row a series when its numeric columns are scalar, the first string
+  column names the rows (Volkan 10-07, DECISIONS) (1a0022c8, 95ae2364, 589b539c; merged b2687171: one
+  `resolve_parquet_layout` in C++, mirrored in Python and MATLAB, the stream included; a sliced Arrow list is read
+  from its offset; the Arrow-25 `Result::save` failure was a fixed byte cap; Arrow tree ctest 97/97; main tree:
+  ctest 94, pytest 895/11/0, matlab_suite 138/138; left: Python/MATLAB errors name the CLI's `--column`, `.claude/commands` say only
+  list files stream, a negative CSV `--skip-rows` reads as 0)
 
 ## Blocked on another machine or on Volkan
 

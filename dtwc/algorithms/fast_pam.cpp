@@ -4,8 +4,8 @@
  *
  * @details Reference: Schubert, E. & Rousseeuw, P.J. (2021). "Fast and eager
  *   k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS
- *   algorithms." *Information Systems* 101:101804 (arXiv:2008.05171). BUILD uses
- *   the existing K-means++; the eager FasterPAM SWAP uses the O(N) ΔTD
+ *   algorithms." *Information Systems* 101:101804 (arXiv:2008.05171). BUILD is
+ *   k-medoids++ (core::kmedoids_pp); the eager FasterPAM SWAP uses the O(N) ΔTD
  *   decomposition derived below.
  *
  * ── ΔTD decomposition (Eq. 11), derived from first principles ──────────────────
@@ -33,9 +33,7 @@
 #include "fast_pam.hpp"
 #include "../Problem.hpp"
 #include "../core/medoid_assignment_policy.hpp"
-#include "../core/portable_random.hpp"
-#include "../core/distance_sampling_weights.hpp"
-#include "../initialisation.hpp"
+#include "../core/distance_sampling_weights.hpp" // kmedoids_pp
 #include "../base/parallelisation.hpp"
 
 #include <algorithm>
@@ -280,67 +278,15 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, i
 } // anonymous namespace
 
 
-core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter)
+core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter, std::uint64_t seed)
 {
-  (void)checked_point_count(prob, n_clusters, max_iter, "fast_pam");
+  const index_t N = checked_point_count(prob, n_clusters, max_iter, "fast_pam");
   prob.fill_distance_matrix();
 
-  // -------------------------------------------------------------------------
-  // BUILD phase: initialize medoids using K-means++. Temporarily set prob's
-  // cluster count, run the existing initializer, copy medoids, restore state.
-  // -------------------------------------------------------------------------
-  const index_t orig_Nc = prob.n_clusters();
-  const auto orig_centroids = prob.centroids_ind;
-  const auto orig_clusters = prob.clusters_ind;
-
-  prob.set_n_clusters(n_clusters);
-  init::Kmeanspp(prob);
-  std::vector<index_t> medoids = prob.centroids_ind;
-
-  prob.set_n_clusters(orig_Nc);
-  prob.centroids_ind = orig_centroids;
-  prob.clusters_ind = orig_clusters;
-
-  return swap_phase(prob, std::move(medoids), max_iter);
-}
-
-core::ClusteringResult fast_pam_seeded(Problem& prob, index_t n_clusters,
-                                       std::uint64_t random_seed, int max_iter)
-{
-  const index_t N = checked_point_count(prob, n_clusters, max_iter, "fast_pam_seeded");
-  prob.fill_distance_matrix();
-
-  std::mt19937_64 rng(random_seed);
-  std::vector<index_t> medoids{static_cast<index_t>(core::portable_bounded(
-    rng, static_cast<std::uint64_t>(N)))};
-  medoids.reserve(static_cast<std::size_t>(n_clusters));
-  std::vector<double> distances(static_cast<std::size_t>(N),
-                                std::numeric_limits<double>::infinity());
-  while (static_cast<index_t>(medoids.size()) < n_clusters) {
-    for (index_t i = 0; i < N; ++i)
-      distances[static_cast<std::size_t>(i)] = std::min(
-        distances[static_cast<std::size_t>(i)], prob.dist_by_ind(medoids.back(), i));
-    for (index_t medoid : medoids) distances[static_cast<std::size_t>(medoid)] = 0.0;
-    // This is k-median++ D-sampling: PAM minimizes a sum of DTW distances, so
-    // the sampling weight is the current nearest objective contribution d.
-    // Barycenter k-means uses D^2-sampling because its `align_squared` values
-    // are already squared-local-cost objective contributions. Squaring this
-    // vector would instead bias a different (sum-of-squares) PAM objective.
-    const auto weights = core::distance_sampling_weights(
-      distances, medoids, "fast_pam_seeded");
-    index_t chosen = 0;
-    if (weights.total <= 0.0) {
-      while (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) ++chosen;
-    } else {
-      chosen = static_cast<index_t>(core::portable_weighted_index(
-        weights.values.begin(), weights.values.end(), weights.total, rng));
-      if (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) {
-        chosen = 0;
-        while (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) ++chosen;
-      }
-    }
-    medoids.push_back(chosen);
-  }
+  std::mt19937_64 rng(seed);
+  auto medoids = core::kmedoids_pp(
+    N, n_clusters, rng, [&prob](index_t m, index_t i) { return prob.dist_by_ind(m, i); },
+    "fast_pam");
   return swap_phase(prob, std::move(medoids), max_iter);
 }
 

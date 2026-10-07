@@ -1,5 +1,5 @@
 %> @file CheckpointOptions.m
-%> @brief Checkpoint options struct (api-contract-2.0.md §2.7).
+%> @brief Checkpoint options struct.
 %> @author Volkan Kumtepeli
 function opts = CheckpointOptions(varargin)
 %CHECKPOINTOPTIONS Build a checkpoint-options struct.

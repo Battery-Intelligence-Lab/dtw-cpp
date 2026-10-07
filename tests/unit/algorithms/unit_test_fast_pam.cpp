@@ -187,7 +187,7 @@ TEST_CASE("seeded FastPAM BUILD samples proportional to k-median distance",
   constexpr std::uint64_t seed_count = 4096;
   for (std::uint64_t seed = 0; seed < seed_count; ++seed) {
     // max_iter=0 observes the deterministic seeded BUILD result before SWAP.
-    const auto result = fast_pam_seeded(prob, 2, seed, 0);
+    const auto result = fast_pam(prob, 2, 0, seed);
     if (result.medoid_indices.front() != 0) continue;
     ++conditioned;
     if (result.medoid_indices.back() == 2) ++selected_far;
@@ -218,7 +218,7 @@ TEST_CASE("seeded FastPAM translates negative Soft-DTW sampling weights",
   // but cannot be passed directly to a weighted random sampler.
   prob.fill_distance_matrix();
   REQUIRE(prob.dist_by_ind(0, 1) < 0.0);
-  const auto result = fast_pam_seeded(prob, 2, 42, 20);
+  const auto result = fast_pam(prob, 2, 20, 42);
   CHECK(result.labels.size() == 4);
   CHECK(result.medoid_indices.size() == 2);
   CHECK(std::isfinite(result.total_cost));
@@ -227,9 +227,9 @@ TEST_CASE("seeded FastPAM translates negative Soft-DTW sampling weights",
 TEST_CASE("seeded FastPAM completes the medoid set when all weights are zero",
           "[fast_pam][seeded][degenerate]")
 {
-  // Exercises dtwc::fast_pam_seeded. Identical series drive every BUILD sampling
+  // Exercises dtwc::fast_pam. Identical series drive every BUILD sampling
   // weight to exactly zero, so core::distance_sampling_weights returns
-  // total == 0 and fast_pam.cpp:495 must complete the distinct medoid set
+  // total == 0 and core::kmedoids_pp must complete the distinct medoid set
   // deterministically instead of constructing an invalid weighted distribution.
   // The k-means++ siblings of this case are in unit_test_clustering_algorithms.cpp.
   Problem prob("fast_pam_identical_series");
@@ -240,7 +240,7 @@ TEST_CASE("seeded FastPAM completes the medoid set when all weights are zero",
     std::vector<std::string>{"a", "b", "c", "d"}));
 
   // max_iter=0 observes the deterministic seeded BUILD result before SWAP.
-  const auto result = fast_pam_seeded(prob, 3, 7, 0);
+  const auto result = fast_pam(prob, 3, 0, 7);
 
   REQUIRE(result.medoid_indices.size() == 3);
   const std::set<index_t> unique(result.medoid_indices.begin(),
@@ -424,21 +424,19 @@ TEST_CASE("FastPAM max_iter = 0 returns the seeded BUILD medoids and runs no SWA
 {
   auto prob = make_offset_problem();
 
-  const auto build_29 = fast_pam_seeded(prob, 3, 29, 0);
+  const auto build_29 = fast_pam(prob, 3, 0, 29);
   CHECK(build_29.medoid_indices == std::vector<index_t>{ 4, 2, 7 });
   CHECK(build_29.iterations == 0);
   CHECK_FALSE(build_29.converged);
 
-  const auto build_42 = fast_pam_seeded(prob, 3, 42, 0);
+  const auto build_42 = fast_pam(prob, 3, 0, 42);
   CHECK(build_42.medoid_indices == std::vector<index_t>{ 6, 2, 5 });
 
-  const auto unseeded = fast_pam(prob, 3, 0);
-  CHECK(unseeded.medoid_indices.size() == 3);
-  CHECK(unseeded.iterations == 0);
-  CHECK_FALSE(unseeded.converged);
+  // The default seed is 42.
+  CHECK(fast_pam(prob, 3, 0).medoid_indices == build_42.medoid_indices);
 
   // With a SWAP budget seed 29 leaves {4, 2, 7} for {4, 1, 7}.
-  const auto swapped = fast_pam_seeded(prob, 3, 29, 100);
+  const auto swapped = fast_pam(prob, 3, 100, 29);
   CHECK(swapped.medoid_indices == std::vector<index_t>{ 4, 1, 7 });
   CHECK_THAT(swapped.total_cost, WithinAbs(20.0, 1e-9));
   CHECK(swapped.converged);
@@ -454,9 +452,6 @@ TEST_CASE("FastPAM refuses a negative max_iter before it touches the Problem",
 
   REQUIRE_THROWS_MATCHES(fast_pam(prob, 3, bad), InvalidInput,
                          MessageMatches(ContainsSubstring("fast_pam: max_iter")
-                                        && ContainsSubstring("got " + std::to_string(bad))));
-  REQUIRE_THROWS_MATCHES(fast_pam_seeded(prob, 3, 29, bad), InvalidInput,
-                         MessageMatches(ContainsSubstring("fast_pam_seeded: max_iter")
                                         && ContainsSubstring("got " + std::to_string(bad))));
   CHECK_FALSE(prob.is_distance_matrix_filled()); // refused before any distance was computed
   CHECK(prob.labels().empty());

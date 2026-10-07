@@ -270,40 +270,12 @@ TEST_CASE("init::Kmeanspp selects distinct medoids when all weights are zero",
   CHECK(unique.size() == 3);
 }
 
-TEST_CASE("init::Kmeanspp_seeded selects distinct medoids when all weights are zero",
-          "[Phase1][clustering][init][degenerate][seeded]")
-{
-  // Exercises dtwc::init::Kmeanspp_seeded. Identical series drive every
-  // core::distance_sampling_weights total to exactly zero, so the seeded route
-  // must take the same first-unselected fallback (initialisation.cpp:202) as its
-  // unseeded sibling above rather than build an invalid weighted distribution.
-  Problem prob("identical_kmeanspp_seeded");
-  prob.set_data(Data(
-    std::vector<std::vector<data_t>>{
-      {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0},
-      {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}},
-    std::vector<std::string>{"a", "b", "c", "d"}));
-  prob.set_n_clusters(3);
-
-  REQUIRE_NOTHROW(init::Kmeanspp_seeded(prob, 42));
-  REQUIRE(prob.centroids_ind.size() == 3);
-  const std::set<index_t> unique(prob.centroids_ind.begin(),
-                                 prob.centroids_ind.end());
-  CHECK(unique.size() == 3);
-  // first_unselected fills upward from index 0, so whichever index the seed drew
-  // first, both 0 and 1 must be completed into the set. This holds for all four
-  // possible first draws and is therefore independent of the seed.
-  CHECK(unique.count(0) == 1);
-  CHECK(unique.count(1) == 1);
-}
-
 TEST_CASE("init::Kmeanspp translates negative Soft-DTW sampling weights",
           "[Phase1][clustering][init][softdtw]")
 {
-  // Exercises dtwc::init::Kmeanspp and dtwc::init::Kmeanspp_seeded on the signed
-  // branch of core::distance_sampling_weights. The FastPAM sibling of this case
-  // lives in tests/unit/algorithms/unit_test_fast_pam.cpp:210; the k-means++
-  // route carries the same rule through initialisation.cpp:113.
+  // Exercises dtwc::init::Kmeanspp on the signed branch of
+  // core::distance_sampling_weights, which core::kmedoids_pp applies. The FastPAM
+  // sibling of this case lives in tests/unit/algorithms/unit_test_fast_pam.cpp.
   Problem prob("kmeanspp_softdtw_sampling");
   prob.set_data(Data(
     std::vector<std::vector<data_t>>{
@@ -322,10 +294,6 @@ TEST_CASE("init::Kmeanspp translates negative Soft-DTW sampling weights",
   REQUIRE(prob.dist_by_ind(0, 1) < 0.0);
 
   REQUIRE_NOTHROW(init::Kmeanspp(prob));
-  REQUIRE(prob.centroids_ind.size() == 2);
-  CHECK(prob.centroids_ind[0] != prob.centroids_ind[1]);
-
-  REQUIRE_NOTHROW(init::Kmeanspp_seeded(prob, 42));
   REQUIRE(prob.centroids_ind.size() == 2);
   CHECK(prob.centroids_ind[0] != prob.centroids_ind[1]);
 }

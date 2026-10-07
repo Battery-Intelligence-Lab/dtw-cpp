@@ -1,5 +1,5 @@
-// Compile probe for the 1.x [[deprecated]] shims that docs/api-contract-2.0.md
-// section 3 keeps until 3.0 (test_deprecated_shims_warn in tests/CMakeLists.txt).
+// Compile probe for the 1.x [[deprecated]] shims, kept until 3.0
+// (test_deprecated_shims_warn in tests/CMakeLists.txt).
 // Compiled, never linked or run: the test passes only when this file compiles
 // AND the compiler names every shim used below in a deprecation diagnostic. One
 // use of each shim kind stands in for all 22, plus v1's std::vector<int>

@@ -73,9 +73,12 @@ void require_reader_options(std::optional<InputFormat> format, index_t skip_cols
   if (!column.empty() && format != InputFormat::Parquet)
     throw InvalidInput("--column selects a Parquet column and cannot be honoured for this input; drop --column, or "
                        "pass a .parquet/.pq file or directory.");
-  if ((skip_cols != 0 || skip_rows != 0 || delimiter != '\0') && format != InputFormat::Text)
-    throw InvalidInput("--skip-rows, --skip-cols and --delimiter (skip_rows, skip_cols, delimiter) are CSV/TSV parsing "
-                       "options and cannot be honoured for this input; drop them, or pass a text input.");
+  if (delimiter != '\0' && format != InputFormat::Text)
+    throw InvalidInput("--delimiter (delimiter) splits CSV/TSV text into fields and cannot be honoured for this input; "
+                       "drop it, or pass a text input.");
+  if ((skip_cols != 0 || skip_rows != 0) && format != InputFormat::Text && format != InputFormat::Parquet)
+    throw InvalidInput("--skip-rows and --skip-cols (skip_rows, skip_cols) drop the leading rows and columns of CSV/TSV "
+                       "text or Parquet and cannot be honoured for this input; drop them.");
 }
 
 Data read_data(const fs::path &path, index_t skip_cols, index_t skip_rows, char delimiter, const std::string &column)
