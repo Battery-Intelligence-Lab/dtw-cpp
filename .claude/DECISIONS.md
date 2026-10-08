@@ -485,3 +485,11 @@ CHANGELOG rule.
   wheel (cl leaves the lanes scalar), with identical results; the registered rule recommends clang-cl. Its costs: a
   pinned LLVM on CI, linking LLVM's libomp for clang-cl (today's clang-cl link fails), bundling libomp.dll and
   LLVM's licence, the project's FP flags spelled for clang-cl. Volkan decides.
+- 2026-10-08 — Volkan on the Windows wheel's compiler (question tool, after WM): "I like clang but what is the
+  license cost? What is a lane fill? What is its cost on overall? Can we first try to vectorise MSVC?" Answered: no
+  fee (libomp is Apache-2.0 WITH LLVM-exception, the runtime and terms the macOS wheels already bundle); the lanes
+  fill is the equal-length route; the fill dominates a clustering, so equal-length runs gain about the fill's ratio.
+  So unit MV first tries a loop form cl packs (one implementation, no intrinsics); the clang-cl wheel is the fallback.
+- 2026-10-08 — Volkan (question tool): GCC's lanes are timed at 128 bytes in WSL here (unit XG, XL's band);
+  `build --gpu-device` builds keep portable CPU code (W9c's DTWC_NATIVE_CPU=OFF confirmed: "Confirm portable CPU");
+  the two September worktrees (dtw-cpp-m53-red, the llfio spike's) are removed ("Remove both").
