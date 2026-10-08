@@ -6,6 +6,8 @@ in a tracked CMake file carries URL_HASH (or EXPECTED_HASH) SHA256=<64 hex> or
 GIT_TAG <40 hex>. A ${VAR} counts only when VAR is set once, to a literal, in a
 tracked CMake file; any other ${...} inside CPMAddPackage is refused, because a
 pin nobody can read statically is not a pin. Workflows: every `uses:` is @<40 hex>.
+Scripts: a tracked shell script that downloads with curl names a 64-hex SHA-256 and
+checks it (`sha256sum -c`, `shasum -a 256 -c`); the workflows fetch LLVM that way.
 REVIEWED is a second key: bumping Arrow means editing this file as well.
 """
 import re
@@ -69,6 +71,16 @@ actions = [(wf.name, ref) for wf in sorted((ROOT / ".github/workflows").glob("*.
 failures += [f".github/workflows/{wf}: uses {ref} is not pinned to a 40-hex commit"
              for wf, ref in actions if not ref.startswith("./") and not re.search(r"@[0-9a-f]{40}$", ref)]
 
+downloads = 0
+for name in subprocess.run(["git", "-C", str(ROOT), "ls-files", "*.sh"],
+                           capture_output=True, text=True, check=True).stdout.splitlines():
+    script = re.sub(r"(?m)(^|\s)#.*$", "", (ROOT / name).read_text(encoding="utf-8"))
+    if re.search(r"\bcurl\b", script):
+        downloads += 1
+        if not (re.search(r"\b[0-9a-f]{64}\b", script)
+                and re.search(r"\b(sha256sum|shasum -a 256)\b.*\s(-c|--check)\b", script)):
+            failures.append(f"{name}: downloads with curl but checks no SHA-256 it names")
+
 print(*failures, sep="\n", file=sys.stderr)
-print(f"PINS cmake={total} actions={len(actions)} failures={len(failures)}")
+print(f"PINS cmake={total} actions={len(actions)} scripts={downloads} failures={len(failures)}")
 sys.exit(1 if failures else 0)

@@ -112,9 +112,11 @@ if(MSVC)
   set(OpenMP_RUNTIME_MSVC experimental)
 endif()
 
-# Clang targeting MSVC (clang++ -target x86_64-pc-windows-msvc) ships libomp
-# but CMake's FindOpenMP cannot auto-detect the flags. Probe the compiler's
-# LLVM install directory for libomp and set the hints if found.
+# Clang targeting MSVC (clang++ -target x86_64-pc-windows-msvc, or clang-cl) ships
+# libomp but CMake's FindOpenMP cannot auto-detect the flags. Probe the compiler's
+# LLVM install directory for libomp and set the hints if found: the runtime is
+# then the compiler's own release (lib/libomp.lib, bin/libomp.dll), not another
+# libomp.lib on the library path (MSVC's imports libomp140.x86_64.dll).
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" AND WIN32 AND NOT OpenMP_CXX_FOUND)
   if(NOT DEFINED OpenMP_CXX_FLAGS)
     # Resolve the LLVM root from the compiler path: .../bin/clang++.exe → .../
@@ -122,7 +124,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" AND WIN32 AND NOT OpenMP_CXX_FOUND)
     get_filename_component(_llvm_root "${_llvm_bin}" DIRECTORY)
     find_library(_llvm_libomp omp PATHS "${_llvm_root}/lib" NO_DEFAULT_PATH)
     if(_llvm_libomp)
-      set(OpenMP_CXX_FLAGS "-fopenmp" CACHE STRING "OpenMP flags for Clang/Windows (auto-detected)")
+      set(_llvm_openmp_flag -fopenmp)
+      if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        set(_llvm_openmp_flag /openmp)  # clang-cl's spelling of -fopenmp
+      endif()
+      set(OpenMP_CXX_FLAGS "${_llvm_openmp_flag}" CACHE STRING "OpenMP flags for Clang/Windows (auto-detected)")
       set(OpenMP_CXX_LIB_NAMES "omp" CACHE STRING "OpenMP lib name for Clang/Windows (auto-detected)")
       set(OpenMP_omp_LIBRARY "${_llvm_libomp}" CACHE FILEPATH "Path to libomp (auto-detected)")
       message(STATUS "Auto-detected LLVM libomp at ${_llvm_libomp}")
@@ -130,6 +136,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" AND WIN32 AND NOT OpenMP_CXX_FOUND)
     unset(_llvm_bin)
     unset(_llvm_root)
     unset(_llvm_libomp)
+    unset(_llvm_openmp_flag)
   endif()
 endif()
 
@@ -142,7 +149,9 @@ if(OpenMP_CXX_FOUND)
   # consumers). Without them lagrangian_root.cpp's `#pragma omp` loops compile out and the
   # Lagrangian dual runs serial.
   target_compile_definitions(mip-solvers PRIVATE DTWC_HAS_OPENMP)
-  if(MSVC)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # cl: its objects name vcomp themselves. clang-cl's name no runtime (only a link it
+    # drives adds libomp), so it takes the else branch's target, as clang++ does.
     # PUBLIC on dtwc_core, so a consumer that links dtwc_core but not project_options
     # (the Python module) still compiles its `#pragma omp` loops in parallel.
     # project_options carries it too, for mip-solvers, which links that alone.
@@ -185,7 +194,7 @@ endif()
 foreach(_dtwc_lib IN LISTS _dtwc_libs)
   target_link_libraries(${_dtwc_lib} PRIVATE project_warnings project_options)
   if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(${_dtwc_lib} PRIVATE -fno-finite-math-only)
+    target_compile_options(${_dtwc_lib} PRIVATE ${DTWC_GNU_FLAG_PREFIX}-fno-finite-math-only)
   endif()
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     target_compile_options(${_dtwc_lib} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/we4062>)
