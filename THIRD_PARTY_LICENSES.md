@@ -23,7 +23,7 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
 | LLVM OpenMP runtime (`libomp`) | 23.1.1 | Apache-2.0 WITH LLVM-exception | macOS only — see note below | macOS wheels — bundled by `delocate` |
-| Microsoft Visual C++ runtime (`msvcp140*`, `vcruntime140*`, `concrt140`) and its OpenMP runtime (`vcomp140`) | that of the Visual Studio that built the artefact | Microsoft Distributable Code — see below | Windows only — `bin/`, beside `dtwc_cl.exe` | no |
+| Microsoft Visual C++ runtime (`msvcp140*`, `vcruntime140*`, `concrt140`) and its OpenMP runtime (`vcomp140`) | that of the Visual Studio that built the artefact | Microsoft Distributable Code — see below | Windows only — `bin/`, beside `dtwc_cl.exe` | Windows wheels — `msvcp140` and `vcomp140` in `dtwcpp.libs/`, bundled by `delvewheel` |
 | llfio, quickcpplib, outcome, ntkernel-error-category (Windows) | pinned commits | Apache-2.0 **OR** BSL-1.0 | yes — headers compiled in (`DTWC_ENABLE_LLFIO=ON`) | yes — headers compiled in |
 | wg14_signals (llfio's signal guard) | pinned commit | Apache-2.0 | as llfio | as llfio |
 | span-lite, byte-lite (via quickcpplib) | pinned commits | BSL-1.0 | as llfio | as llfio |
@@ -36,9 +36,9 @@ CPM.cmake and CPMLicenses.cmake (MIT), which are build-time CMake helpers; Apach
 Gurobi, which is proprietary, supplied by the user under their own licence, and never bundled.
 
 **Note on the OpenMP runtime.** On Linux the OpenMP runtime is the one belonging to the user's
-toolchain and is not redistributed by us. On Windows the archive carries MSVC's `vcomp140.dll`
-with the Visual C++ runtime, as Microsoft's Distributable Code (section below), because Windows ships
-neither. On macOS we bundle LLVM's `libomp`, which is
+toolchain and is not redistributed by us. On Windows the archive and the wheels carry MSVC's
+`vcomp140.dll` with the Visual C++ runtime, as Microsoft's Distributable Code (section below), because
+Windows ships neither. On macOS we bundle LLVM's `libomp`, which is
 Apache-2.0 WITH LLVM-exception; its terms are reproduced below. The release workflows build it
 unmodified from the LLVM 23.1.1 source release (`scripts/build_libomp_macos.sh`, SHA-256-pinned)
 for the artefacts' minimum macOS. We deliberately never redistribute GCC's `libgomp`, which is
@@ -219,12 +219,14 @@ Software.
 
 ## Microsoft Visual C++ runtime — Microsoft Distributable Code
 
-Bundled only in the Windows CLI archive, because Windows does not ship these files. The archive
-carries in `bin/`, beside `dtwc_cl.exe`, `msvcp140.dll`, `msvcp140_1.dll`, `msvcp140_2.dll`,
-`msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`,
-`concrt140.dll` and the OpenMP runtime `vcomp140.dll`, which CMake's `InstallRequiredSystemLibraries`
-copies from the building Visual Studio's `VC\Redist\MSVC` folder. These files are Microsoft's and are
-not covered by DTWC++'s licence.
+Bundled only in Windows artefacts, because Windows does not ship these files and CPython ships only
+`vcruntime140*.dll`. The CLI archive carries in `bin/`, beside `dtwc_cl.exe`, `msvcp140.dll`,
+`msvcp140_1.dll`, `msvcp140_2.dll`, `msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`,
+`vcruntime140.dll`, `vcruntime140_1.dll`, `concrt140.dll` and the OpenMP runtime `vcomp140.dll`, which
+CMake's `InstallRequiredSystemLibraries` copies from the building Visual Studio's `VC\Redist\MSVC`
+folder. The wheels carry `msvcp140.dll` and `vcomp140.dll` in `dtwcpp.libs/`, copied unchanged by
+`delvewheel` under hash-suffixed names (`msvcp140-<hash>.dll`) so that no other copy in the Python
+process stands in for them. These files are Microsoft's and are not covered by DTWC++'s licence.
 
 Microsoft lets licensed Visual Studio users copy and distribute them, unmodified, with their programs.
 The source is the "Distributable Code" section of the Visual Studio licence terms (for Microsoft Visual

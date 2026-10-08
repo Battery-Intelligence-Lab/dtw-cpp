@@ -173,6 +173,8 @@ Soft-DTW, Python or CUDA), on the machine named.
   v1.0.0 read arguments in the ANSI code page, so `δ.csv` could name `d.csv`, and threw for such an extension.
 - A direct write to the `band` field takes effect at the next `fill_distance_matrix()`; v1.0.0 kept the distances
   computed under the old band.
+- The Windows wheels and `dtwc_cl` archive carry the MSVC runtime they import (`msvcp140`, OpenMP's `vcomp140`), so
+  `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
 
 ## Removed
 

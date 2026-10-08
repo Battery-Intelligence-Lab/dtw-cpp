@@ -88,6 +88,18 @@ jobs:
             MACOSX_DEPLOYMENT_TARGET=13.3
             OpenMP_ROOT=$RUNNER_TEMP/libomp
           CIBW_BEFORE_ALL_MACOS: bash scripts/build_libomp_macos.sh "$OpenMP_ROOT"
+
+          # Windows: the extension imports MSVC's C++ runtime (msvcp140) and its OpenMP
+          # runtime (vcomp140). CPython ships only vcruntime140*, and cibuildwheel repairs
+          # no Windows wheel by default, so without this step `import dtwcpp` fails with
+          # "DLL load failed" wherever the Visual C++ Redistributable is not installed;
+          # the runners have it, so the test step could not see that. delvewheel copies
+          # the two DLLs into dtwcpp.libs/ under hash-suffixed names and points the
+          # extension at those names, so no other copy in the process can stand in for
+          # them and the test step loads the bundled ones. Pinned with its one
+          # dependency; to bump, take both versions from PyPI.
+          CIBW_BEFORE_BUILD_WINDOWS: pip install delvewheel==1.13.1 pefile==2024.8.26
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair -w {dest_dir} {wheel}
           CIBW_BUILD_VERBOSITY: 1
 
           # Execute a real OpenMP region, solve a compact conformance subset
