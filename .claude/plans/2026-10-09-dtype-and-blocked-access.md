@@ -73,6 +73,12 @@ is used today.
      in-memory shape ≥ 0.98× (L 100 and L 8000, ragged and equal, 1 and 24 threads; 24-thread controls over 20
      alternating process pairs); a mapped matrix 2–4× the memory the run may use ≥ 2× faster than today's sweep; a
      checkpointed fill writes at most 3× the matrix's bytes.
+2a. **AL — CLARA's assignment through the lanes** (added 2026-10-09 by Volkan's ruling, after DT): each point
+   against W medoids a call (`core::dtw_kernel_lanes`, the fill's block function), the per-pair kernel only where the
+   fill would use it (a band with unequal lengths; cl on unequal lengths). Distances as the fill's lanes give them, so
+   labels, medoids and costs stay as they are. Measured today: the CPU assignment at 17.9 Gcell/s on 24 threads
+   (`baselines/2026-10-01-gc-clara-gpu-assignment.md`) against the lanes fill's 105–131 Gcell/s; about 6× expected
+   [inferred].
 3. **CS — CLARA reads its data once.** All samples are drawn first (the RNG feeds only the sampling, so the result is
    identical), their union is read once, one assignment pass runs against every sample's medoids, and decoding
    overlaps computing. Draft band: decode passes 6 → 2, and a large Parquet run ≥ 1.5× faster.

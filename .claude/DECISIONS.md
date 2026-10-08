@@ -572,3 +572,9 @@ CHANGELOG rule.
   mapped series "Measure first" (after CS: does CLARA's time at scale go to decoding or to the disk); memory "One key,
   automatic" (`ram_limit` defaults to what the process may use, sizes slabs and batches, maps the matrix by its bytes;
   `--mmap-threshold` goes).
+- 2026-10-09 — CS's design (C:/D/git/wt/tmp/CS/design.md) found CLARA's I/O a small share at the target (about 53 min
+  per Parquet decode pass against days of assignment): reading once gains about 5 % on CPU, 30 % on GPU [inferred].
+  The assignment runs the per-pair kernel for every (point, medoid), 17.9 Gcell/s at 24 threads
+  (`baselines/2026-10-01-gc-clara-gpu-assignment.md`) where the fill's lanes run 105–131 Gcell/s. Volkan (question
+  tool): "AL right after DT": a new unit AL runs CLARA's assignment through the lanes kernel; the order becomes DT,
+  AL, BF, CS, SW, FM.
