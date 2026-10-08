@@ -480,7 +480,8 @@ public:
 
   void add_row(double lower, double upper, index_t nnz, const index_t *index, const double *value) override
   {
-    index_.assign(index, index + nnz);
+    index_.resize(static_cast<std::size_t>(nnz));
+    std::transform(index, index + nnz, index_.begin(), [](index_t i) { return static_cast<HighsInt>(i); });
     highs_.addRow(lower, upper, static_cast<HighsInt>(nnz), index_.data(), value);
   }
 
