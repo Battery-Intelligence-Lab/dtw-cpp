@@ -142,6 +142,9 @@ Soft-DTW, Python or CUDA), on the machine named.
   multiply-add caveat above), whose clusterings were unchanged. MSVC builds are unchanged.
 - The Windows wheels are built by clang-cl and carry LLVM's OpenMP runtime (`libomp.dll`), so their fill of
   equal-length series runs on the SIMD lanes, which MSVC's cl leaves scalar.
+- The Windows archive's `dtwc_cl.exe` is built by clang-cl too, with MSVC's build beside it as `dtwc_cl_msvc.exe`,
+  the fallback: on an Intel Core Ultra 9 285 `dtwc_cl.exe` filled the distance matrices of equal-length series <N>×
+  faster.
 - The one-pair kernel without a band computes two columns per pass: on an Apple M5 Pro a pair runs 1.14–1.98× faster,
   the 18-thread fill of 1,000 series of lengths 90–110 1.42–1.50× faster; bit for bit with Apple clang.
 - No DTW cell calls a library function (the MSVC STL made `std::min({…})` one): on an Intel Core Ultra 9 285, pinned,
@@ -177,8 +180,9 @@ Soft-DTW, Python or CUDA), on the machine named.
   v1.0.0 read arguments in the ANSI code page, so `δ.csv` could name `d.csv`, and threw for such an extension.
 - A direct write to the `band` field takes effect at the next `fill_distance_matrix()`; v1.0.0 kept the distances
   computed under the old band.
-- The Windows wheels and `dtwc_cl` archive carry the MSVC runtime they import (`msvcp140`, OpenMP's `vcomp140`), so
-  `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
+- The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
+  each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
+  `dtwc_cl_msvc.exe`), so `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
 
 ## Removed
 
