@@ -141,10 +141,11 @@ Soft-DTW, Python or CUDA), on the machine named.
   on one thread and 2.39× and 2.54× in the fills, a ragged fill unchanged; bit for bit, but for GCC's squared L2 (the
   multiply-add caveat above), whose clusterings were unchanged. MSVC builds are unchanged.
 - The Windows wheels are built by clang-cl and carry LLVM's OpenMP runtime (`libomp.dll`), so their fill of
-  equal-length series runs on the SIMD lanes, which MSVC's cl leaves scalar.
+  equal-length series runs on the SIMD lanes, which MSVC's cl leaves scalar: on an Intel Core Ultra 9 285
+  3.96–4.31× faster than the MSVC wheel with 24 threads, 8.1–8.2× on one thread; results identical.
 - The Windows archive's `dtwc_cl.exe` is built by clang-cl too, with MSVC's build beside it as `dtwc_cl_msvc.exe`,
-  the fallback: on an Intel Core Ultra 9 285 `dtwc_cl.exe` filled the distance matrices of equal-length series <N>×
-  faster.
+  the fallback: on an Intel Core Ultra 9 285 `dtwc_cl.exe` filled the distance matrices of equal-length series
+  4.04–4.18× faster with 24 threads, 8.05–8.14× on one thread.
 - The one-pair kernel without a band computes two columns per pass: on an Apple M5 Pro a pair runs 1.14–1.98× faster,
   the 18-thread fill of 1,000 series of lengths 90–110 1.42–1.50× faster; bit for bit with Apple clang.
 - No DTW cell calls a library function (the MSVC STL made `std::min({…})` one): on an Intel Core Ultra 9 285, pinned,

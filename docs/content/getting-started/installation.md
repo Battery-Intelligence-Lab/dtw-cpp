@@ -19,7 +19,7 @@ A build from source tunes for the machine it is built on (`-DDTWC_ARCH_LEVEL=nat
 
 ## The Windows CLI archive
 
-A release's Windows archive (`dtwc-<version>-Windows-AMD64.zip`) holds two builds of the command line interface in `bin/`: `dtwc_cl.exe`, built by clang-cl, and `dtwc_cl_msvc.exe`, built by MSVC. In our tests on an Intel Core Ultra 9 285, `dtwc_cl.exe` filled the distance matrices of equal-length series <N>× faster than `dtwc_cl_msvc.exe`, so we recommend `dtwc_cl.exe`; if it gives you trouble, `dtwc_cl_msvc.exe` takes the same arguments. Each runs from the unpacked folder without the Visual C++ Redistributable: `bin/` holds the runtime DLLs they import, the Visual C++ runtime and each one's OpenMP runtime (LLVM's `libomp.dll` for `dtwc_cl.exe`, MSVC's `vcomp140.dll` for `dtwc_cl_msvc.exe`).
+A release's Windows archive (`dtwc-<version>-Windows-AMD64.zip`) holds two builds of the command line interface in `bin/`: `dtwc_cl.exe`, built by clang-cl, and `dtwc_cl_msvc.exe`, built by MSVC. In our tests on an Intel Core Ultra 9 285, `dtwc_cl.exe` filled the distance matrices of equal-length series about 4× faster than `dtwc_cl_msvc.exe` with 24 threads (about 8× on one thread), so we recommend `dtwc_cl.exe`; if it gives you trouble, `dtwc_cl_msvc.exe` takes the same arguments. Each runs from the unpacked folder without the Visual C++ Redistributable: `bin/` holds the runtime DLLs they import, the Visual C++ runtime and each one's OpenMP runtime (LLVM's `libomp.dll` for `dtwc_cl.exe`, MSVC's `vcomp140.dll` for `dtwc_cl_msvc.exe`).
 
 ## Dependencies
 

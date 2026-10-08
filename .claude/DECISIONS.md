@@ -537,3 +537,15 @@ CHANGELOG rule.
   write its own line. The candidate is now row-local (rows in index order, each row's columns in length order);
   the global order is timed beside it for the record, with an N 8000, L 40–60 shape (256 MB matrix) whose band
   is ≥ 1.5× base under clang++ and GCC.
+- 2026-10-08 — CW timed (`baselines/2026-10-08-cw-clang-cl-wheel.md`, quiet run): PASS. The clang-cl wheel against
+  the MSVC wheel: lanes fills 3.96× and 4.31× at 24 threads, 8.22× and 8.14× on one thread; per-pair fill 1.11–1.23×;
+  one pair 1.01–1.03×; results identical. Merged 1ca7f6ff.
+- 2026-10-08 — CA timed (`baselines/2026-10-08-ca-clang-cl-archive.md`, quiet run): PASS. dtwc_cl.exe (clang-cl)
+  against dtwc_cl_msvc.exe: equal-length fills 4.04× and 4.18× at 24 threads, 8.14× and 8.05× on one thread; ragged
+  1.12–1.23×; costs identical. The docs quote "about 4× with 24 threads (about 8× on one thread)". Merged 713dd133.
+- 2026-10-08 — RL timed (quiet run; record to follow): clang PASS on all 10 shapes (ragged 6.8–6.9× one thread,
+  3.4–3.6× at 24; N 8000 3.7×; equal-length 0.997, 0.998); GCC FALSIFIED by one control (equal-length N 2000 L 100
+  at 24 threads 0.969, rounds 0.955–0.977; its ragged shapes 3.9–8.7×; its inner loops identical to base); cl
+  FALSIFIED on ragged data (0.83–0.91, scalar lanes). Row-local order B against longest-first A at N 8000: clang
+  3.68 vs 3.50, GCC 3.87 vs 3.96. Volkan (question tool): "Adopt, cl one-pair": merge for clang and GCC with the
+  miss recorded; under cl, blocks of unequal length keep the one-pair route.
