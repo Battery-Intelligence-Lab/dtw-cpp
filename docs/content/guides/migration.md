@@ -115,10 +115,12 @@ The library's writers (`write_clusters`, `write_silhouettes`,
 
 - **A distance-matrix CSV written by v1.0.0 can hold `-1` for pairs it never
   computed** (v1.0.0 computed pairs on demand and wrote the matrix as it stood).
-  2.0 reads every finite value as a distance, so those entries give a wrong
-  clustering without an error. Recompute the matrix, or empty those fields: 2.0
-  reads an empty field as a pair still to compute, and writes an uncomputed
-  pair that way.
+  Read it with `--not-computed negative` (`read_distance_matrix(path,
+  core::NotComputed::Negative)`): every value below 0 is then a pair still to
+  compute. By default 2.0 marks such a pair with an empty field or NaN, as it
+  writes one, and refuses a negative entry, naming the pair and the option,
+  under every variant but Soft-DTW, whose distances can be negative. v1.0.0
+  read every negative entry as not computed.
 - `cluster()` writes no files, and prints only after `set_verbose(true)`.
   `cluster_and_process()` clusters and writes the files, as before.
 - Lloyd's k-medoids fills the whole distance matrix first. Its repetitions start
@@ -143,8 +145,8 @@ The library's writers (`write_clusters`, `write_silhouettes`,
 - The scores, `find_total_cost` and the writers raise `InvalidInput` on a
   `Problem` that holds no clustering.
 - `read_distance_matrix` refuses a file of another size, a matrix that is not
-  square and symmetric, and ±inf. The CSV it writes carries every digit of a
-  double and LF line endings.
+  square and symmetric, ±inf, and a negative entry (above). The CSV it writes
+  carries every digit of a double and LF line endings.
 - Text input: a blank line is no longer an empty series; each file of a folder
   holds one value per line after `skip_cols` (a pandas `index,value` file needs
   `start_row(1)` and `start_column(1)`); a folder is read in sorted order; a

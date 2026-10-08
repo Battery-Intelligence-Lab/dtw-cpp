@@ -12,6 +12,7 @@
 #include "../fileOperations.hpp" // open_output, close_output
 
 #include <algorithm>
+#include <charconv>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -198,8 +199,13 @@ size_t DistanceMatrix::count_computed() const
   return static_cast<size_t>(std::count_if(data_, data_ + packed_count(), [](double d) { return !std::isnan(d); }));
 }
 
-bool DistanceMatrix::all_computed(std::string_view where) const
+bool DistanceMatrix::all_computed(std::string_view where, bool negative_is_distance,
+                                  std::string_view negative_way_out) const
 {
+  const auto pair = [&](size_t i, size_t j) {
+    return std::string(where) + ": the distance between series " + std::to_string(j) + " and " + std::to_string(i)
+           + " is ";
+  };
   bool all = true;
   for (size_t i = 0, k = 0; i < n_; ++i)
     for (size_t j = 0; j <= i; ++j, ++k) {
@@ -207,8 +213,13 @@ bool DistanceMatrix::all_computed(std::string_view where) const
       if (std::isnan(d))
         all = false;
       else if (std::isinf(d))
-        throw InvalidInput(std::string(where) + ": the distance between series " + std::to_string(j) + " and "
-                           + std::to_string(i) + " is " + (d > 0 ? "+inf" : "-inf") + "; a distance must be finite.");
+        throw InvalidInput(pair(i, j) + (d > 0 ? "+inf" : "-inf") + "; a distance must be finite.");
+      else if (d < 0 && !negative_is_distance) {
+        std::array<char, 32> text{}; // the shortest round-trip form of a double is at most 24 characters
+        char *const end = std::to_chars(text.data(), text.data() + text.size(), d).ptr;
+        throw InvalidInput(pair(i, j) + std::string(text.data(), end) + "; only a Soft-DTW distance can be negative."
+                           + (negative_way_out.empty() ? "" : " ") + std::string(negative_way_out));
+      }
     }
   return all;
 }

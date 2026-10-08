@@ -965,16 +965,24 @@ NB_MODULE(_dtwcpp_core, m) {
              for (size_t j = i; j < n; ++j)
                mat.set(i, j, data[i * n + j]);
            // A complete matrix is filled; NaN entries are computed on first use.
-           if (mat.all_computed("Problem.set_distance_matrix")) p.fill_distance_matrix();
+           if (mat.all_computed("Problem.set_distance_matrix",
+                                p.variant_params().variant == dtwc::core::DTWVariant::SoftDTW,
+                                "Mark a pair still to compute with NaN: D[D < 0] = np.nan."))
+             p.fill_distance_matrix();
          }, "dm"_a,
          "Load a precomputed NxN distance matrix (e.g. from a GPU compute). NaN marks\n"
-         "a pair to compute; a ±inf entry raises InvalidInput naming the pair.")
+         "a pair to compute; a ±inf entry, and a negative one under any variant but\n"
+         "Soft-DTW, raises InvalidInput naming the pair.")
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
-    .def("read_distance_matrix", [](dtwc::Problem &p, const std::filesystem::path &path) {
-      nb::gil_scoped_release release;
-      p.read_distance_matrix(path);
-    }, "path"_a,
-         "Read a distance matrix from a CSV file (REPLACES this Problem's matrix).")
+    .def("read_distance_matrix",
+         [](dtwc::Problem &p, const std::filesystem::path &path, const std::string &not_computed) {
+           const auto mark = dtwc::parse_name(dtwc::core::not_computed_names, not_computed, "not_computed");
+           nb::gil_scoped_release release;
+           p.read_distance_matrix(path, mark);
+         }, "path"_a, "not_computed"_a = "nan",
+         "Read a distance matrix from a CSV file (REPLACES this Problem's matrix). An empty\n"
+         "field or NaN marks a pair never computed; not_computed=\"negative\" reads a\n"
+         "v1.0.0 file, whose -1 (any value below 0) marks one.")
     .def("print_distance_matrix", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       p.print_distance_matrix();

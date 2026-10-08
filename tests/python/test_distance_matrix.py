@@ -269,3 +269,44 @@ def test_a_band_narrower_than_the_length_difference_is_refused():
     with pytest.raises(dtwcpp.InvalidInput, match="smallest feasible band is 6"):
         dtwcpp.compute_distance_matrix(series, band=2)
     assert dtwcpp.compute_distance_matrix(series, band=6).max() < 1e300
+
+
+class TestNotComputed:
+    """v1.0.0 wrote -1 for a pair it never computed; 2.0 marks one NaN. Under every
+    variant but Soft-DTW, whose distances can be negative, a negative entry is
+    refused with the way to mark the pair, never clustered as a distance."""
+
+    SERIES = [[0.0, 1.0, 3.0, 2.0], [1.0, 2.0, 0.0, 1.0], [4.0, 0.0, 2.0, 2.0]]
+
+    def _problem(self):
+        p = dtwcpp.Problem("not_computed")
+        p.set_data(self.SERIES, ["a", "b", "c"])
+        return p
+
+    def _dtw(self, i, j):  # the oracle: the per-pair route, not the matrix fill
+        return dtwcpp.distance.dtw(self.SERIES[i], self.SERIES[j])
+
+    def test_set_distance_matrix_refuses_a_negative_entry_and_computes_a_nan_one(self):
+        D = dtwcpp.compute_distance_matrix(self.SERIES)
+        D[0, 1] = D[1, 0] = -1.0
+        p = self._problem()
+        with pytest.raises(dtwcpp.InvalidInput, match=r"series 0 and 1 is -1.*D\[D < 0\] = np\.nan"):
+            p.set_distance_matrix(D)
+
+        D[D < 0] = np.nan
+        p.set_distance_matrix(D)
+        assert not p.is_distance_matrix_filled()
+        assert p.dist_by_ind(0, 1) == self._dtw(0, 1)
+
+    def test_read_distance_matrix_reads_a_v1_file_with_not_computed_negative(self, tmp_path):
+        path = tmp_path / "v1.csv"
+        path.write_bytes(b"0,-1,2.5\n-1,0,-1\n2.5,-1,0\n")
+        p = self._problem()
+        with pytest.raises(dtwcpp.InvalidInput, match='not_computed="negative"'):
+            p.read_distance_matrix(path)
+
+        p.read_distance_matrix(path, not_computed="negative")
+        assert not p.is_distance_matrix_filled()
+        assert p.dist_by_ind(0, 2) == 2.5  # the file's
+        assert p.dist_by_ind(0, 1) == self._dtw(0, 1)
+        assert p.dist_by_ind(1, 2) == self._dtw(1, 2)

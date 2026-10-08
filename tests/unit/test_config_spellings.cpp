@@ -234,7 +234,7 @@ std::vector<HelpOption> help_options(const std::string &help)
 TEST_CASE("every spelling of every Config key renders to the golden text", "[config][spellings]")
 {
   const std::string golden = golden_text();
-  REQUIRE(values_of(golden).size() == 45);
+  REQUIRE(values_of(golden).size() == 46);
 
   SECTION("the golden file itself, through --config")
   {
@@ -265,7 +265,7 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       "--sample-size", "40", "--n-samples", "3", "--seed", "7", "--batch-size", "64",
       "--linkage", "Complete",
       "--skip-rows", "1", "--skip-cols", "2", "--delimiter", ";",
-      "--dist-matrix", "dist.csv", "--checkpoint", "ckpt", "--checkpoint-interval", "10",
+      "--dist-matrix", "dist.csv", "--not-computed", "NEGATIVE", "--checkpoint", "ckpt", "--checkpoint-interval", "10",
       "--mmap-threshold", "1000",
       "--solver", "GUROBI", "--mip-gap", "1e-3", "--time-limit", "60", "--no-warm-start",
       "--numeric-focus", "3", "--mip-focus", "1", "--verbose-solver",
@@ -286,7 +286,8 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       { "sample_size", "40" }, { "n_samples", "3" }, { "seed", "7" }, { "batch_size", "64" },
       { "linkage", "complete" },
       { "skip_rows", "1" }, { "skip_cols", "2" }, { "delimiter", ";" },
-      { "dist_matrix", "dist.csv" }, { "checkpoint", "ckpt" }, { "checkpoint_interval", "10" },
+      { "dist_matrix", "dist.csv" }, { "not_computed", "negative" }, { "checkpoint", "ckpt" },
+      { "checkpoint_interval", "10" },
       { "mmap_threshold", "1000" },
       { "solver", "gurobi" }, { "mip_gap", "0.001" }, { "time_limit", "60" }, { "no_warm_start", "true" },
       { "numeric_focus", "3" }, { "mip_focus", "1" }, { "verbose_solver", "true" },

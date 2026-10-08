@@ -174,6 +174,43 @@ function test_set_distance_matrix_round_trips(testCase)
     verifyEqual(testCase, prob.distance_matrix(), D, 'AbsTol', 1e-10);
 end
 
+function test_a_negative_entry_is_refused_and_a_nan_one_computed(testCase)
+%   v1.0.0 wrote -1 for a pair it never computed; 2.0 marks one NaN. Under every
+%   variant but Soft-DTW a negative entry is refused with the way to mark the pair.
+%   The oracle of a computed pair is dtwc.distance.dtw, the per-pair route.
+    X = [0 1 3 2; 1 2 0 1; 4 0 2 2];
+    D = dtwc.compute_distance_matrix(X);
+    D(1, 2) = -1; D(2, 1) = -1;
+    prob = dtwc.Problem('not_computed');
+    prob.set_data(X);
+    try
+        prob.set_distance_matrix(D);
+        verifyFail(testCase, 'a -1 entry was read as a distance');
+    catch err
+        verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+        verifySubstring(testCase, err.message, 'is -1; only a Soft-DTW distance can be negative');
+        verifySubstring(testCase, err.message, 'D(D < 0) = NaN');
+    end
+    D(D < 0) = NaN;
+    prob.set_distance_matrix(D);
+    verifyFalse(testCase, prob.is_distance_matrix_filled());
+    verifyEqual(testCase, prob.dist_by_ind(1, 2), dtwc.distance.dtw(X(1, :), X(2, :)));
+
+    % A v1.0.0 file reads with 'NotComputed', 'negative'.
+    path = [tempname '.csv'];
+    cleanup = onCleanup(@() delete(path));
+    fid = fopen(path, 'w');
+    fprintf(fid, '0,-1,2.5\n-1,0,-1\n2.5,-1,0\n');
+    fclose(fid);
+    v1 = dtwc.Problem('v1');
+    v1.set_data(X);
+    verifyError(testCase, @() v1.read_distance_matrix(path), 'dtwc:invalidArgument');
+    v1.read_distance_matrix(path, 'NotComputed', 'negative');
+    verifyFalse(testCase, v1.is_distance_matrix_filled());
+    verifyEqual(testCase, v1.dist_by_ind(1, 3), 2.5);
+    verifyEqual(testCase, v1.dist_by_ind(2, 3), dtwc.distance.dtw(X(2, :), X(3, :)));
+end
+
 function test_wdtw_variant_fills_a_nonnegative_matrix(testCase)
     rng(42);
     prob = dtwc.Problem('wdtw');

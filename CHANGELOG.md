@@ -38,8 +38,10 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - A line of a folder's file with more than one value after the skipped columns is an error (v1.0.0 read the first):
   a pandas `index,value` file needs `--skip-rows 1 --skip-cols 1`.
 - `read_distance_matrix` (`--dist-matrix`) refuses a matrix of another size, one not square and symmetric, and ±inf.
-- A distance-matrix CSV written by v1.0.0 can hold `-1` for pairs it never computed, and 2.0 reads it as a distance:
-  recompute such a matrix, or empty those fields; 2.0 reads and writes an uncomputed pair as an empty field.
+- A negative distance-matrix entry (v1.0.0's `-1`, a pair it never computed) is read as not computed only with
+  `--not-computed negative` (C++ `NotComputed::Negative`, Python `not_computed="negative"`, MATLAB
+  `'NotComputed','negative'`), and refused otherwise under every variant but Soft-DTW; v1.0.0 read every negative entry
+  as not computed. 2.0 reads and writes an uncomputed pair as an empty field.
 
 ## Added
 

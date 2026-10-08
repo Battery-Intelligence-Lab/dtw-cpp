@@ -126,12 +126,14 @@ inline void write_csv(const core::DistanceMatrix &dm, const std::filesystem::pat
 }
 
 /// Read a full N×N CSV file into the matrix.
-/// Empty fields are treated as uncomputed; numeric fields are set. The file
+/// Empty fields are treated as uncomputed; numeric fields are set, but under
+/// NotComputed::Negative one below zero is uncomputed too. The file
 /// must be square and symmetric, or InvalidInput names the row: it used to
 /// read a 2×3 file as 2×2, let the later of two different values of a pair
 /// win, and leave a short row's missing cells silently uncomputed. One cell of
 /// a pair may be empty (an upper- or lower-triangle file).
-inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path)
+inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path,
+                     core::NotComputed not_computed = core::NotComputed::NaN)
 {
   // Binary, so every platform reads the same bytes: a text-mode stream on
   // Windows ended the file at a 0x1A byte and dropped the rows after it
@@ -205,10 +207,11 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
 
   if (N == 0) return;
   dm.resize(N);
+  const bool negative_is_mark = not_computed == core::NotComputed::Negative;
   for (size_t i = 0; i < N; ++i)
     for (size_t j = 0; j <= i; ++j) {
       const Cell &cell = rows[i][j].valid ? rows[i][j] : rows[j][i];
-      if (cell.valid) dm.set(i, j, cell.value);
+      if (cell.valid && !(negative_is_mark && cell.value < 0)) dm.set(i, j, cell.value);
     }
 }
 

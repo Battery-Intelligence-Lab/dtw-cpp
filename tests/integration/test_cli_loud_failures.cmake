@@ -21,6 +21,11 @@ cmake_minimum_required(VERSION 3.26)
 #   dist_matrix_known_pairs  (must succeed) a complete --dist-matrix under a band
 #                        no warping path fits: nothing is computed, so it runs
 #                        and reports the file's cost
+#   dist_matrix_v1_negative  v1.0.0's -1 for a pair it never computed, read as a
+#                        distance: refused, naming --not-computed; with
+#                        --not-computed negative (must succeed) the fill computes
+#                        the pair, and the matrix is the control run's, byte for byte
+#   not_computed_alone   --not-computed without --dist-matrix: nothing to apply it to
 #   max_iter_zero        --max-iter 0 ran no iteration and reported the result
 #   solver_gurobi        --solver gurobi on a build without Gurobi solved with
 #                        HiGHS and exited 0 (a Gurobi build must honour it)
@@ -224,6 +229,46 @@ endif()
 math(EXPR cases "${cases} + 1")
 message(STATUS "dist_matrix_known_pairs: exit=0 cost=3 (from the file)")
 
+# A v1.0.0 file: the control run's matrix with pair 0-1 as v1.0.0 left a pair it
+# never computed, -1. The control matrix is the oracle for the computed pair.
+file(READ "${WORK_ROOT}/out_control/loud_distance_matrix.csv" control_matrix)
+file(STRINGS "${WORK_ROOT}/out_control/loud_distance_matrix.csv" v1_rows)
+list(GET v1_rows 0 v1_row0)
+list(GET v1_rows 1 v1_row1)
+# Each pattern spans the whole row, so it matches once.
+string(REGEX REPLACE "^([^,]*),[^,]*,(.*)$" "\\1,-1,\\2" v1_row0 "${v1_row0}")
+string(REGEX REPLACE "^[^,]*,(.*)$" "-1,\\1" v1_row1 "${v1_row1}")
+list(REMOVE_AT v1_rows 0 1)
+string(JOIN "\n" v1_text "${v1_row0}" "${v1_row1}" ${v1_rows})
+file(WRITE "${WORK_ROOT}/v1_matrix.csv" "${v1_text}\n")
+expect_loud_failure(dist_matrix_v1_negative
+    NAMES "--dist-matrix" "v1_matrix.csv" "series 0 and 1 is -1" "--not-computed negative"
+    COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_dm_v1"
+            --dist-matrix "${WORK_ROOT}/v1_matrix.csv")
+execute_process(
+    COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_dm_v1_read"
+            --dist-matrix "${WORK_ROOT}/v1_matrix.csv" --not-computed negative
+    RESULT_VARIABLE v1_result
+    OUTPUT_VARIABLE v1_stdout
+    ERROR_VARIABLE v1_stderr
+    ENCODING UTF-8)
+string(APPEND all_output "${v1_stdout}\n${v1_stderr}\n")
+set(v1_matrix "")
+if(EXISTS "${WORK_ROOT}/out_dm_v1_read/loud_distance_matrix.csv")
+    file(READ "${WORK_ROOT}/out_dm_v1_read/loud_distance_matrix.csv" v1_matrix)
+endif()
+if(NOT "${v1_result}" STREQUAL "0" OR NOT "${v1_matrix}" STREQUAL "${control_matrix}")
+    message(FATAL_ERROR
+        "dist_matrix_v1_negative: exit=${v1_result}; with --not-computed negative the -1 pair "
+        "must be computed and the matrix be the control run's\nmatrix:\n${v1_matrix}\n"
+        "control:\n${control_matrix}\nstderr:\n${v1_stderr}")
+endif()
+math(EXPR cases "${cases} + 1")
+message(STATUS "dist_matrix_v1_negative: --not-computed negative exit=0, the control matrix")
+expect_loud_failure(not_computed_alone
+    NAMES "--not-computed" "--dist-matrix"
+    COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_not_computed" --not-computed negative)
+
 # No -k: v1.0.0 printed "Error processing input" for its missing --Nc and exited 0
 # having clustered nothing; there is no default number of clusters to guess.
 expect_loud_failure(k_missing
@@ -364,9 +409,9 @@ if(skip_match)
     message(FATAL_ERROR "dtwc_cl emitted skip text:\n${all_output}")
 endif()
 
-set(expected 15)
+set(expected 18)
 if(efbig STREQUAL "ran")
-    set(expected 16)
+    set(expected 19)
 endif()
 message(STATUS
     "CLI_LOUD_FAILURES subject=real_dtwc_cl cases=${cases}/${expected} "

@@ -199,13 +199,14 @@ negative `--skip-rows` or `--skip-cols`.
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--dist-matrix <path>` | Path to precomputed distance matrix CSV | — |
+| `--not-computed <string>` | What marks a pair the `--dist-matrix` file never computed: `nan` (an empty field or NaN), `negative` (also any value below 0, as v1.0.0 wrote `-1`) | `nan` |
 | `--checkpoint <path>` | Checkpoint directory: `<name>.dtwm` is saved there and resumed from | — |
 | `--checkpoint-interval <rows>` | Needs `--checkpoint`: save the checkpoint every N completed distance-matrix rows | 0 (save once, at the end) |
 | `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
 The checkpoint is one file, `<dir>/<name>.dtwm` ([Checkpointing](checkpointing.md)). Without `--checkpoint-interval` (or with `0`) it is written once, after clustering. With a non-zero interval, `fill_distance_matrix` saves it after every `<rows>` completed matrix rows, so an interrupted run resumes from the last block instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. A save of a matrix in RAM writes all N(N+1)/2 doubles, so choose an interval whose block (about `<rows>` * N DTW computations) costs much more than one save. A checkpoint for other data or settings, or a damaged one, stops the run with exit status 1 before anything is computed; it is never recomputed over.
 
-A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, or with a row count other than the number of input series) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes after the result files, so a save that fails there (a full disk) leaves the results written.
+A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, with a row count other than the number of input series, or with a negative entry under any `--variant` but `softdtw`, unless `--not-computed negative` reads it as a pair to compute) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes after the result files, so a save that fails there (a full disk) leaves the results written.
 
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
 exact/fallback distance still uses the packed cache. It therefore follows

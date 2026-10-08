@@ -5,6 +5,7 @@
 # a run refuses); delimiter and lr-max-nodes are new keys at the loader's and
 # MIPSettings' own defaults.
 # tests/integration/test_cli_device_matrix.cmake compares the binary against it.
+# not-computed, a new key, is at the matrix reader's own default (CLI11 writes nan bare).
 input = ""
 output = "./results"
 name = ""
@@ -36,6 +37,7 @@ skip-rows = 0
 skip-cols = 0
 delimiter = ""
 dist-matrix = ""
+not-computed = nan
 checkpoint = ""
 checkpoint-interval = 0
 mmap-threshold = 50000

@@ -223,9 +223,9 @@ endif()
 # so the expected case count is pinned per platform.
 if(TARGET dtwc_cl)
     if(WIN32)
-        set(_dtwc_cl_loud_marker "cases=15/15 efbig=unavailable")
+        set(_dtwc_cl_loud_marker "cases=18/18 efbig=unavailable")
     else()
-        set(_dtwc_cl_loud_marker "cases=16/16 efbig=ran")
+        set(_dtwc_cl_loud_marker "cases=19/19 efbig=ran")
     endif()
     # ON without Gurobi stops the configure, so the option says whether dtwc_cl has it.
     if(DTWC_ENABLE_GUROBI)
@@ -292,7 +292,7 @@ if(TARGET dtwc_cl)
              "-DDEFAULTS=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_defaults.toml"
              "-DGPU=${_dtwc_cl_gpu}" "-DHAS_HIGHS=${_dtwc_cl_highs}"
              "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-device-matrix"
-        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=45 skips=0"
+        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=46 skips=0"
         LABELS integration cli SERIAL TIMEOUT 300)
 endif()
 

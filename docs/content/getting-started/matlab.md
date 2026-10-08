@@ -267,3 +267,4 @@ snake_case in Python and CamelCase in MATLAB's name-value keys and properties.
 | `prob.band`, `prob.max_iter` | `prob.Band`, `prob.MaxIter` | Read-only in MATLAB: `set_band`, `set_max_iter` |
 | `Problem("p", device="gpu")` | `dtwc.Problem('p', 'Device', 'gpu')` | a `Problem`'s device; it does not follow `dtwc.device()` |
 | `prob.set_device("cpu")` | `prob.set_device('cpu')` | same names as `dtwc.device()`; `'hpc'` is Python's alone and is `dtwc:deviceError` here |
+| `prob.read_distance_matrix(path, not_computed="negative")` | `prob.read_distance_matrix(path, 'NotComputed', 'negative')` | a v1.0.0 file's `-1` (any value below 0) marks a pair to compute; the default, `'nan'`, an empty field or NaN |
