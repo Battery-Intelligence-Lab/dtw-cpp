@@ -139,6 +139,9 @@ Soft-DTW, Python or CUDA), on the machine named.
   to 1.97× faster on one thread and 1.17–1.19× in a 24-thread fill of equal-length series; GCC 13.3 (in WSL) 1.36–3.87×
   on one thread and 2.39× and 2.54× in the fills, a ragged fill unchanged; bit for bit, but for GCC's squared L2 (the
   multiply-add caveat above), whose clusterings were unchanged. MSVC builds are unchanged.
+- Without a band the lanes take series of different lengths too, each lane stopping at its own, and the fill takes
+  the series longest first so that a block's lengths are close: a fill of variable-length series, and OneBatchPAM's
+  batch table, no longer run pair by pair; bit for bit, but for GCC's squared L2 (the multiply-add caveat above).
 - The one-pair kernel without a band computes two columns per pass: on an Apple M5 Pro a pair runs 1.14–1.98× faster,
   the 18-thread fill of 1,000 series of lengths 90–110 1.42–1.50× faster; bit for bit with Apple clang.
 - No DTW cell calls a library function (the MSVC STL made `std::min({…})` one): on an Intel Core Ultra 9 285, pinned,
