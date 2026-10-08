@@ -20,7 +20,9 @@ inner loop's assembly before and after: no call, reload or spill added (CHARTER 
 
 **Pre-registered result changes** (everything else stays digit-identical): `pam` results (FasterPAM only); the
 LR-core seed (same cost, medoids may differ on ties); Soft-DTW summation order (1e-12 relative); the v1
-one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the selected solver.
+one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the selected solver; `dtwc_cl`'s and the
+MEX's default `lrcore` root becomes the subgradient root (LRK, Volkan 10-07): the cost is unchanged, medoids and labels
+may differ only where several optimal medoid sets exist, node counts and run times change.
 
 ## A — baseline, gates, records
 
