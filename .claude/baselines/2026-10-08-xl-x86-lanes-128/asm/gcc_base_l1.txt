@@ -1,0 +1,97 @@
+== f64 L1 main loop: loop  74 insns  min 16 (minsd on xmm)  fp  40  mem  33  stack 16  calls 0
+  vmovsd	QWORD PTR 128[rsp], xmm11
+  vmovsd	xmm11, xmm12, xmm12
+  vmovsd	xmm12, xmm13, xmm13
+  vmovq	xmm13, r9
+  vmovsd	QWORD PTR 136[rsp], xmm9
+  vmovsd	xmm9, xmm10, xmm10
+  vmovsd	xmm10, xmm8, xmm8
+  vmovsd	xmm15, QWORD PTR [rsi]
+  vmovq	xmm8, rcx
+  mov	rcx, QWORD PTR [rax]
+  add	rax, 64
+  vsubsd	xmm1, xmm15, QWORD PTR 88[rsp]
+  mov	r9, QWORD PTR -56[rax]
+  add	rsi, 8
+  vandpd	xmm1, xmm1, xmm0
+  vmovsd	QWORD PTR 144[rsp], xmm1
+  vmovq	xmm1, rcx
+  vminsd	xmm8, xmm1, xmm8
+  vsubsd	xmm1, xmm15, QWORD PTR 64[rsp]
+  vminsd	xmm14, xmm14, xmm8
+  vmovq	xmm8, r9
+  vandpd	xmm1, xmm1, xmm0
+  vaddsd	xmm14, xmm14, QWORD PTR 144[rsp]
+  vminsd	xmm13, xmm8, xmm13
+  vmovsd	xmm8, QWORD PTR 152[rsp]
+  vminsd	xmm6, xmm6, xmm13
+  vmovsd	xmm13, QWORD PTR -48[rax]
+  vmovsd	QWORD PTR -64[rax], xmm14
+  vminsd	xmm12, xmm13, xmm12
+  vaddsd	xmm6, xmm6, xmm1
+  vsubsd	xmm1, xmm15, QWORD PTR 120[rsp]
+  vminsd	xmm12, xmm8, xmm12
+  vmovsd	xmm8, QWORD PTR -32[rax]
+  vandpd	xmm1, xmm1, xmm0
+  vmovsd	QWORD PTR -56[rax], xmm6
+  vminsd	xmm10, xmm8, xmm10
+  vaddsd	xmm1, xmm1, xmm12
+  vmovsd	xmm12, QWORD PTR -40[rax]
+  vminsd	xmm11, xmm12, xmm11
+  vminsd	xmm5, xmm5, xmm10
+  vmovsd	xmm10, QWORD PTR -24[rax]
+  vmovsd	QWORD PTR -48[rax], xmm1
+  vmovsd	QWORD PTR 152[rsp], xmm1
+  vsubsd	xmm1, xmm15, QWORD PTR 80[rsp]
+  vminsd	xmm9, xmm10, xmm9
+  vminsd	xmm7, xmm7, xmm11
+  vandpd	xmm1, xmm1, xmm0
+  vminsd	xmm4, xmm4, xmm9
+  vmovsd	xmm9, QWORD PTR -16[rax]
+  vminsd	xmm11, xmm9, QWORD PTR 136[rsp]
+  vaddsd	xmm7, xmm7, xmm1
+  vsubsd	xmm1, xmm15, QWORD PTR 96[rsp]
+  vminsd	xmm3, xmm3, xmm11
+  vmovsd	xmm11, QWORD PTR -8[rax]
+  vandpd	xmm1, xmm1, xmm0
+  vmovsd	QWORD PTR -40[rax], xmm7
+  vaddsd	xmm5, xmm5, xmm1
+  vsubsd	xmm1, xmm15, QWORD PTR 104[rsp]
+  vandpd	xmm1, xmm1, xmm0
+  vmovsd	QWORD PTR -32[rax], xmm5
+  vaddsd	xmm4, xmm4, xmm1
+  vsubsd	xmm1, xmm15, QWORD PTR 72[rsp]
+  vandpd	xmm1, xmm1, xmm0
+  vmovsd	QWORD PTR -24[rax], xmm4
+  vaddsd	xmm3, xmm3, xmm1
+  vsubsd	xmm1, xmm15, QWORD PTR 112[rsp]
+  vminsd	xmm15, xmm11, QWORD PTR 128[rsp]
+  vandpd	xmm1, xmm1, xmm0
+  vmovsd	QWORD PTR -16[rax], xmm3
+  vminsd	xmm2, xmm2, xmm15
+  vaddsd	xmm2, xmm2, xmm1
+  vmovsd	QWORD PTR -8[rax], xmm2
+  cmp	rdi, rax
+  jne	.L781
+== f32 L1 main loop: loop  21 insns  min  4 (minps on ymm)  fp  10  mem   5  stack  0  calls 0
+  vmovaps	ymm11, ymm5
+  vmovups	ymm5, YMMWORD PTR [rsi]
+  vmovaps	ymm12, ymm4
+  add	rsi, 64
+  vmovups	ymm4, YMMWORD PTR -32[rsi]
+  vbroadcastss	ymm1, DWORD PTR [rdi]
+  add	rdi, 4
+  vminps	ymm11, ymm5, ymm11
+  vminps	ymm13, ymm4, ymm12
+  vminps	ymm3, ymm3, ymm11
+  vsubps	ymm11, ymm1, ymm9
+  vsubps	ymm1, ymm1, ymm10
+  vminps	ymm0, ymm0, ymm13
+  vandps	ymm11, ymm11, ymm7
+  vandps	ymm1, ymm1, ymm7
+  vaddps	ymm3, ymm11, ymm3
+  vaddps	ymm0, ymm1, ymm0
+  vmovups	YMMWORD PTR -64[rsi], ymm3
+  vmovups	YMMWORD PTR -32[rsi], ymm0
+  cmp	rsi, r9
+  jne	.L1000
