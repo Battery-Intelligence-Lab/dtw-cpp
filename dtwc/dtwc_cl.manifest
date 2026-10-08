@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<!-- Embedded in dtwc_cl.exe by dtwc_cl.rc.in. activeCodePage UTF-8 (Windows 10 1903 and
-     later) makes the process's ANSI code page UTF-8: argv and every narrow-string file
-     API (std::filesystem::path from std::string, std::ifstream, fopen) then carry the
-     user's UTF-8 paths unchanged. Without it argv arrives in the system code page, where
-     "d.csv" can name a different file than the user typed. -->
+<!-- A target source of dtwc_cl (CMakeLists.txt), merged by the linker with its default
+     manifest. activeCodePage UTF-8 (Windows 10 1903 and later) makes the process's ANSI
+     code page UTF-8: argv and every narrow-string file API (std::filesystem::path from
+     std::string, std::ifstream, fopen) then carry the user's UTF-8 paths unchanged.
+     Without it argv arrives in the system code page, where "d.csv" can name a different
+     file than the user typed. -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
