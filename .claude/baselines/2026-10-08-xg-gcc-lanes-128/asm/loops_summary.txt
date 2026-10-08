@@ -1,0 +1,68 @@
+######## asm/gcc_base_dtw_lanes.s
+== f32 dtw_kernel_lanes@MV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop 122 insns  min 16 (minss on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  19 insns  min  4 (minps on ymm)  fp   8  mem   5  stack  0  calls 0
+  loop  19 insns  min  4 (minps on ymm)  fp   8  mem   5  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop  52 insns  min  8 (minsd on xmm)  fp  32  mem  24  stack  0  calls 0
+  loop  73 insns  min 16 (minsd on xmm)  fp  40  mem  35  stack 18  calls 0
+  loop  72 insns  min 16 (minsd on xmm)  fp  40  mem  31  stack 14  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop  52 insns  min  8 (minsd on xmm)  fp  32  mem  24  stack  0  calls 0
+  loop  73 insns  min 16 (minsd on xmm)  fp  40  mem  37  stack 20  calls 0
+  loop  74 insns  min 16 (minsd on xmm)  fp  40  mem  33  stack 16  calls 0
+== f32 dtw_kernel_lanes@MV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop 122 insns  min 16 (minss on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  21 insns  min  4 (minps on ymm)  fp  10  mem   5  stack  0  calls 0
+  loop  21 insns  min  4 (minps on ymm)  fp  10  mem   5  stack  0  calls 0
+######## asm/gcc_base_xprobe.dis
+== f64 dtw_kernel_lanes@NV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop  52 insns  min  8 (minsd on xmm)  fp  32  mem  24  stack  0  calls 0
+  loop  75 insns  min 16 (minsd on xmm)  fp  40  mem  37  stack 20  calls 0
+  loop  72 insns  min 16 (minsd on xmm)  fp  40  mem  31  stack 14  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop  52 insns  min  8 (minsd on xmm)  fp  32  mem  24  stack  0  calls 0
+  loop  74 insns  min 16 (minsd on xmm)  fp  40  mem  39  stack 22  calls 0
+  loop  74 insns  min 16 (minsd on xmm)  fp  40  mem  33  stack 16  calls 0
+== f32 dtw_kernel_lanes@MV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop 122 insns  min 16 (minss on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  19 insns  min  4 (minps on ymm)  fp   8  mem   5  stack  0  calls 0
+  loop  19 insns  min  4 (minps on ymm)  fp   8  mem   5  stack  0  calls 0
+== f32 dtw_kernel_lanes@MV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop 122 insns  min 16 (minss on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  21 insns  min  4 (minps on ymm)  fp  10  mem   5  stack  0  calls 0
+  loop  21 insns  min  4 (minps on ymm)  fp  10  mem   5  stack  0  calls 0
+######## asm/gcc_cand_dtw_lanes.s
+== f32 dtw_kernel_lanes@MV<lambda_1> (GCC) _ZZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS0_20resolve_dtw_bl
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  33 insns  min  8 (minps on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+== f32 dtw_kernel_lanes@MV<lambda_2> (GCC) _ZZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS0_20resolve_dtw_bl
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0
+######## asm/gcc_cand_xprobe.dis
+== f64 dtw_kernel_lanes@NV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+== f32 dtw_kernel_lanes@MV<lambda_2> (GCC) _ZZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS0_20resolve_dtw_bl
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0
+== f32 dtw_kernel_lanes@MV<lambda_1> (GCC) _ZZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS0_20resolve_dtw_bl
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  33 insns  min  8 (minps on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0

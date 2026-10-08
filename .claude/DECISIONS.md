@@ -499,3 +499,20 @@ CHANGELOG rule.
   the runtime (delvewheel; InstallRequiredSystemLibraries). Volkan to review: the notice's wording of Microsoft's
   Distributable Code terms (indemnity, pass-through of protective terms) in THIRD_PARTY_LICENSES.md, and whether the
   CHANGELOG line belongs under Fixed or Added (v1.0.0 shipped no wheels or archives).
+- 2026-10-08 — XG timed on a quiet machine (`baselines/2026-10-08-xg-gcc-lanes-128.md`): GCC 13.3's x86-64 lanes
+  at 128 bytes PASS under the 10-01 ruling, the reading fixed before the run: single thread 1.36–3.87×, 24-thread
+  fills 2.39× and 2.54×, ragged control 0.99×; L1 lanes bit for bit, squared within the route bound, labels and
+  medoids identical in 64/64 CLI runs. Under the literal clause (every lane output as at 64) FALSIFIED. Unit XG2.
+- 2026-10-08 — MV timed (`baselines/2026-10-08-mv-msvc-lanes.md`): cl packing the lanes (a value-returning min,
+  128-byte lanes under cl) FALSIFIED: fills 2.5–2.6× and most single-thread shapes 2.6–6.6×, but 6 of 48
+  candidate probes ran 3–4× slower, per process (cause open), leaving one shape at 0.87×; squared lanes fuse FMA
+  under /fp:contract. pb/MV not merged.
+- 2026-10-08 — Volkan, after MV: "Okay move the wheel to cl if you cannot make it happen, unless there is a problem
+  with the license. Because speed is the most important right now." Read as clang-cl, the wheel being cl-built
+  already; no licence problem (libomp is Apache-2.0 WITH LLVM-exception, which the macOS wheels already carry; no
+  fee). Unit CW: the Windows wheels built by a pinned clang-cl, libomp.dll bundled.
+- 2026-10-08 — Volkan (question tool) on the Windows release archive: "yes archive too, you can also keep msvc
+  compiled versions with "_msvc" suffix like dtwc_cl_msvc.exe, so we can write in documentation in our tests we had
+  seen this much speedup so we suggest use of this but it is up to you or in case you have any issues." So, after
+  CW, unit CA: dtwc_cl.exe built by clang-cl, the cl build beside it as dtwc_cl_msvc.exe; the docs give the
+  measured speed-up, recommend dtwc_cl.exe and name dtwc_cl_msvc.exe as the fallback.

@@ -1,0 +1,50 @@
+diff -ru --strip-trailing-cr src/base/dtwc/core/dtw_kernel.hpp src/v4a/dtwc/core/dtw_kernel.hpp
+--- src/base/dtwc/core/dtw_kernel.hpp	2026-10-08 02:34:42.000000000 +0100
++++ src/v4a/dtwc/core/dtw_kernel.hpp	2026-10-08 03:10:43.234752500 +0100
+@@ -470,7 +470,15 @@
+   }
+ };
+ #else
+-using LanesCell = StandardCell;
++struct LanesCell : StandardCell {
++  template <typename T>
++  T combine(T diag, T up, T left, T cost,
++            std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
++  {
++    const T m = up < diag ? up : diag; // std::min(diag, up), by value
++    return (left < m ? left : m) + cost; // std::min(m, left)
++  }
++};
+ #endif
+ 
+ /// Pairs per dtw_kernel_lanes call: enough chains that the FP pipes, not one
+@@ -480,7 +488,7 @@
+ /// cl, whose lanes are scalar and ran slower at 128 (baselines
+ /// 2026-10-06-mac-arm-lanes, 2026-10-08-xl-x86-lanes-128). GCC's x86-64 lanes stay
+ /// at 64 bytes until timed, though its f64 lanes are packed at 128 and scalar at 64.
+-#if defined(__aarch64__) || (defined(__x86_64__) && defined(__clang__))
++#if defined(__aarch64__) || (defined(__x86_64__) && defined(__clang__)) || defined(_M_X64)
+ template <typename T>
+ inline constexpr std::size_t dtw_lanes = 128 / sizeof(T);
+ #else
+@@ -556,7 +564,7 @@
+     }
+     for (; i < hi; ++i) {
+       const T xi = x[i];
+-      T *si = s[i].v;
++      T *__restrict si = s[i].v;
+       for (std::size_t w = 0; w < W; ++w) {
+         const T up = si[w]; // dp[i, j-1]
+         left[w] = cell.combine(diag[w], up, left[w], dist(xi, y[w]), i, j);
+diff -ru --strip-trailing-cr src/base/dtwc/core/dtw_lanes.cpp src/v4a/dtwc/core/dtw_lanes.cpp
+--- src/base/dtwc/core/dtw_lanes.cpp	2026-10-08 02:34:42.000000000 +0100
++++ src/v4a/dtwc/core/dtw_lanes.cpp	2026-10-08 03:10:44.132102800 +0100
+@@ -20,6 +20,8 @@
+ #include <functional>
+ #include <span>
+ 
++#pragma STDC FP_CONTRACT OFF
++
+ namespace dtwc::core {
+ 
+ namespace {
