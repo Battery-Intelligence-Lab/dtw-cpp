@@ -331,6 +331,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   refuse an empty series (they returned max()); a negative skip is InvalidInput for every format; the Python/MATLAB
   Parquet errors name their own way out; `std::as_const` leftovers; MSVC C4244 casts; tracker ids out of comments in
   tests/integration, conformance, benchmarks, examples; stale texts (devices.md, run.cpp's checkpoint text, cluster's keys)
+- ☑ WU8 Windows follow-ups (aee8f9a9, 535aa869, 92f71a26; merged 0d042612, comment accd0136): `dtwc_cl` carries an
+  application manifest with activeCodePage UTF-8, so argv and every narrow file API read UTF-8 (`δ.csv` was read as
+  `d.csv` before, under clang and cl alike); `DataLoader::path` takes a non-ANSI extension; the Parquet example reads
+  its Arrow file through `pa.OSFile`, so Windows can delete it (WinError 32 before). Main tree: clang ctest 95 (+
+  test_cli_utf8_paths), CUDA tree 94, CLI outputs byte-identical, pytest 887/19/0
 
 ## Blocked on another machine or on Volkan
 
