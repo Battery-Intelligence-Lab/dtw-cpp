@@ -1,0 +1,648 @@
+== smoke before 2026-10-08 18:48:16
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 18:48:18.254","11.735275"
+"10/08/2026 18:48:19.257","9.811024"
+"10/08/2026 18:48:20.270","11.220926"
+"10/08/2026 18:48:21.276","16.528646"
+"10/08/2026 18:48:22.285","11.863946"
+"10/08/2026 18:48:23.292","11.335436"
+"10/08/2026 18:48:24.302","8.746100"
+"10/08/2026 18:48:25.302","8.989467"
+"10/08/2026 18:48:26.312","11.811903"
+"10/08/2026 18:48:27.317","8.931328"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+taniumcx                       4.13 % of all cores
+system                         1.19 % of all cores
+serviceshell                   0.69 % of all cores
+vmmemwsl                       0.61 % of all cores
+claude                         0.35 % of all cores
+sspservice                     0.26 % of all cores
+wmiprvse                       0.19 % of all cores
+svchost                        0.11 % of all cores
+code                           0.11 % of all cores
+svchost                        0.09 % of all cores
+WSL VM vmmemwsl                0.13 % of all cores
+comsol processes: 0
+-- WSL
+ 18:48:35 up 0 min,  1 user,  load average: 0.00, 0.00, 0.00
+systemd jobs: 0
+top - 18:48:36 up 0 min,  1 user,  load average: 0.00, 0.00, 0.00
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.1 sy,  0.0 ni, 99.9 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63089.6 free,   1036.8 used,    434.1 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62989.3 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 root      20   0   21752  12448   9376 S   0.0   0.0   0:00.19 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     49 root      19  -1   42104  15560  14600 S   0.0   0.0   0:00.04 systemd-journal
+    101 root      20   0   26992   7680   4800 S   0.0   0.0   0:00.05 systemd-udevd
+    112 root      20   0   25736   3752   2112 S   0.0   0.0   0:00.00 (udev-worker)
+    114 root      20   0   25732   3944   2304 S   0.0   0.0   0:00.00 (udev-worker)
+    115 root      20   0   25736   3944   2304 S   0.0   0.0   0:00.00 (udev-worker)
+    116 root      20   0   25736   4964   3264 S   0.0   0.0   0:00.01 (udev-worker)
+    117 root      20   0   25736   3952   2304 S   0.0   0.0   0:00.00 (udev-worker)
+== smoke after 2026-10-08 18:48:42
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 18:48:44.044","15.915038"
+"10/08/2026 18:48:45.057","12.689782"
+"10/08/2026 18:48:46.072","14.387144"
+"10/08/2026 18:48:47.088","12.897551"
+"10/08/2026 18:48:48.098","12.668449"
+"10/08/2026 18:48:49.104","13.556444"
+"10/08/2026 18:48:50.119","13.536862"
+"10/08/2026 18:48:51.130","11.321781"
+"10/08/2026 18:48:52.144","6.111042"
+"10/08/2026 18:48:53.159","6.162263"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+taniumcx                       4.30 % of all cores
+system                         1.83 % of all cores
+sspservice                     1.20 % of all cores
+serviceshell                   0.56 % of all cores
+sophosfilescanner              0.52 % of all cores
+vmmemwsl                       0.32 % of all cores
+wmiprvse                       0.24 % of all cores
+claude                         0.19 % of all cores
+matlab                         0.17 % of all cores
+hmpalert                       0.11 % of all cores
+WSL VM vmmemwsl                0.06 % of all cores
+comsol processes: 0
+-- WSL
+ 18:49:00 up 0 min,  1 user,  load average: 0.38, 0.08, 0.03
+systemd jobs: 0
+top - 18:49:02 up 0 min,  1 user,  load average: 0.38, 0.08, 0.03
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.0 sy,  0.0 ni, 99.9 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63083.5 free,   1039.3 used,    438.7 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62986.8 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+    198 message+  20   0    9780   4800   4224 S   2.0   0.0   0:00.02 dbus-daemon
+    215 syslog    20   0  222508   4224   4032 S   2.0   0.0   0:00.02 rsyslogd
+      1 root      20   0   21840  12448   9376 S   0.0   0.0   0:00.17 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     49 root      19  -1   42112  15876  14916 S   0.0   0.0   0:00.04 systemd-journal
+     98 root      20   0   27016   7872   4800 S   0.0   0.0   0:00.04 systemd-udevd
+    106 root      20   0   25736   4328   2688 S   0.0   0.0   0:00.00 (udev-worker)
+    107 root      20   0   25736   4328   2688 S   0.0   0.0   0:00.00 (udev-worker)
+    108 root      20   0   25736   4136   2496 S   0.0   0.0   0:00.00 (udev-worker)
+== smoke before 2026-10-08 19:44:35
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 19:44:37.262","18.063512"
+"10/08/2026 19:44:38.264","17.208186"
+"10/08/2026 19:44:39.278","12.662746"
+"10/08/2026 19:44:40.290","18.876074"
+"10/08/2026 19:44:41.305","9.763871"
+"10/08/2026 19:44:42.321","9.472154"
+"10/08/2026 19:44:43.334","13.243839"
+"10/08/2026 19:44:44.343","7.152023"
+"10/08/2026 19:44:45.359","13.152925"
+"10/08/2026 19:44:46.367","8.296528"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+taniumcx                       4.06 % of all cores
+system                         1.58 % of all cores
+serviceshell                   0.84 % of all cores
+vmmemwsl                       0.39 % of all cores
+wmiprvse                       0.28 % of all cores
+claude                         0.11 % of all cores
+svchost                        0.11 % of all cores
+sophosfilescanner              0.09 % of all cores
+sspservice                     0.09 % of all cores
+mathworksservicehost           0.06 % of all cores
+WSL VM vmmemwsl                0.19 % of all cores
+comsol processes: 0
+-- WSL
+ 19:44:54 up 0 min,  1 user,  load average: 0.00, 0.00, 0.00
+systemd jobs: 0
+top - 19:44:55 up 0 min,  1 user,  load average: 0.00, 0.00, 0.00
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.0 sy,  0.0 ni,100.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63082.9 free,   1041.4 used,    436.5 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62984.7 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+     49 root      19  -1   42100  15560  14600 S   1.0   0.0   0:00.04 systemd-journal
+    216 syslog    20   0  222508   4992   4416 S   1.0   0.0   0:00.01 rsyslogd
+      1 root      20   0   21712  12480   9408 S   0.0   0.0   0:00.18 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     99 root      20   0   27184   7872   4800 S   0.0   0.0   0:00.04 systemd-udevd
+    114 systemd+  20   0   21340  11712   9984 S   0.0   0.0   0:00.03 systemd-resolve
+    115 systemd+  20   0   91052   7488   6720 S   0.0   0.0   0:00.01 systemd-timesyn
+    117 root      20   0   25728   4324   2688 S   0.0   0.0   0:00.00 (udev-worker)
+    119 root      20   0   25728   5092   3456 S   0.0   0.0   0:00.00 (udev-worker)
+== smoke after 2026-10-08 19:45:02
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 19:45:03.867","7.959342"
+"10/08/2026 19:45:04.879","7.829801"
+"10/08/2026 19:45:05.890","8.165651"
+"10/08/2026 19:45:06.898","6.412583"
+"10/08/2026 19:45:07.908","10.329746"
+"10/08/2026 19:45:08.920","7.888480"
+"10/08/2026 19:45:09.930","8.354183"
+"10/08/2026 19:45:10.933","7.674527"
+"10/08/2026 19:45:11.946","7.058071"
+"10/08/2026 19:45:12.949","7.775475"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+taniumcx                       4.13 % of all cores
+system                         1.32 % of all cores
+serviceshell                   0.83 % of all cores
+vmmemwsl                       0.33 % of all cores
+wmiprvse                       0.28 % of all cores
+wmiprvse                       0.09 % of all cores
+dellcommandupdate              0.09 % of all cores
+svchost                        0.07 % of all cores
+claude                         0.04 % of all cores
+matlabwindowhelper             0.04 % of all cores
+WSL VM vmmemwsl                0.06 % of all cores
+comsol processes: 0
+-- WSL
+ 19:45:20 up 0 min,  1 user,  load average: 0.06, 0.02, 0.00
+systemd jobs: 0
+top - 19:45:21 up 0 min,  1 user,  load average: 0.06, 0.01, 0.00
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.0 sy,  0.0 ni,100.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63080.4 free,   1042.7 used,    438.5 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62983.4 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+    209 root      20   0 1830352  12096  10368 S   1.0   0.0   0:00.02 wsl-pro-service
+      1 root      20   0   21716  12480   9408 S   0.0   0.0   0:00.17 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     52 root      19  -1   42104  15560  14600 S   0.0   0.0   0:00.03 systemd-journal
+     98 root      20   0   27140   7872   4800 S   0.0   0.0   0:00.04 systemd-udevd
+    110 root      20   0   25728   4712   3072 S   0.0   0.0   0:00.00 (udev-worker)
+    111 root      20   0   25736   4520   2880 S   0.0   0.0   0:00.00 (udev-worker)
+    113 root      20   0   25732   4328   2688 S   0.0   0.0   0:00.00 (udev-worker)
+    114 root      20   0   25736   4384   2688 S   0.0   0.0   0:00.00 (udev-worker)
+== run before 2026-10-08 20:03:26
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 20:03:28.437","10.050691"
+"10/08/2026 20:03:29.441","3.042785"
+"10/08/2026 20:03:30.456","3.326197"
+"10/08/2026 20:03:31.470","3.892788"
+"10/08/2026 20:03:32.483","12.733184"
+"10/08/2026 20:03:33.484","14.204816"
+"10/08/2026 20:03:34.488","22.540752"
+"10/08/2026 20:03:35.489","7.114522"
+"10/08/2026 20:03:36.501","3.313140"
+"10/08/2026 20:03:37.510","3.079726"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         0.95 % of all cores
+serviceshell                   0.58 % of all cores
+vmmemwsl                       0.41 % of all cores
+wmiprvse                       0.19 % of all cores
+taniumcx                       0.17 % of all cores
+code                           0.13 % of all cores
+wudfhost                       0.13 % of all cores
+matlab                         0.11 % of all cores
+matlab                         0.09 % of all cores
+svchost                        0.09 % of all cores
+WSL VM vmmemwsl                0.19 % of all cores
+comsol processes: 0
+-- WSL
+ 20:03:45 up 0 min,  1 user,  load average: 0.00, 0.00, 0.00
+systemd jobs: 0
+top - 20:03:46 up 0 min,  1 user,  load average: 0.00, 0.00, 0.00
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.0 sy,  0.0 ni,100.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63085.1 free,   1039.1 used,    436.4 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62987.0 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 root      20   0   21748  12448   9376 S   0.0   0.0   0:00.18 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     49 root      19  -1   42100  15552  14592 S   0.0   0.0   0:00.03 systemd-journal
+     98 root      20   0   27052   7680   4800 S   0.0   0.0   0:00.05 systemd-udevd
+    114 systemd+  20   0   21340  11712   9984 S   0.0   0.0   0:00.03 systemd-resolve
+    115 root      20   0   25728   3940   2304 S   0.0   0.0   0:00.00 (udev-worker)
+    116 root      20   0   25728   3940   2304 S   0.0   0.0   0:00.00 (udev-worker)
+    117 systemd+  20   0   91052   7488   6720 S   0.0   0.0   0:00.01 systemd-timesyn
+    118 root      20   0   25732   3944   2304 S   0.0   0.0   0:00.00 (udev-worker)
+== run after 2026-10-08 20:15:49
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 20:15:51.240","3.537683"
+"10/08/2026 20:15:52.242","3.289031"
+"10/08/2026 20:15:53.258","2.396191"
+"10/08/2026 20:15:54.266","4.776319"
+"10/08/2026 20:15:55.282","2.610172"
+"10/08/2026 20:15:56.283","5.533664"
+"10/08/2026 20:15:57.293","3.716160"
+"10/08/2026 20:15:58.299","2.733981"
+"10/08/2026 20:15:59.305","4.664994"
+"10/08/2026 20:16:00.321","6.269871"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         1.23 % of all cores
+taniumclient                   1.06 % of all cores
+serviceshell                   0.86 % of all cores
+vmmemwsl                       0.45 % of all cores
+wmiprvse                       0.24 % of all cores
+svchost                        0.17 % of all cores
+sspservice                     0.17 % of all cores
+svchost                        0.11 % of all cores
+matlabwindowhelper             0.09 % of all cores
+wmiprvse                       0.06 % of all cores
+WSL VM vmmemwsl                0.00 % of all cores
+comsol processes: 0
+-- WSL
+ 20:16:08 up 1 min,  1 user,  load average: 5.60, 1.91, 0.68
+systemd jobs: 0
+top - 20:16:09 up 1 min,  1 user,  load average: 5.60, 1.91, 0.68
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.2 sy,  0.0 ni, 99.8 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63085.0 free,   1038.6 used,    437.5 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62987.5 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 root      20   0   21740  12096   9216 S   0.0   0.0   0:00.19 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     49 root      19  -1   42100  15368  14408 S   0.0   0.0   0:00.03 systemd-journal
+     98 root      20   0   27052   7680   4800 S   0.0   0.0   0:00.04 systemd-udevd
+    114 systemd+  20   0   21340  11904  10176 S   0.0   0.0   0:00.02 systemd-resolve
+    115 systemd+  20   0   91052   7488   6720 S   0.0   0.0   0:00.01 systemd-timesyn
+    118 root      20   0   25732   3756   2112 S   0.0   0.0   0:00.00 (udev-worker)
+    119 root      20   0   25728   3948   2304 S   0.0   0.0   0:00.00 (udev-worker)
+    120 root      20   0   25732   4336   2688 S   0.0   0.0   0:00.00 (udev-worker)
+== smoke before 2026-10-08 20:48:48
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 20:48:51.177","71.477267"
+"10/08/2026 20:48:52.193","71.572903"
+"10/08/2026 20:48:53.206","60.429158"
+"10/08/2026 20:48:54.210","40.717483"
+"10/08/2026 20:48:55.225","57.689911"
+"10/08/2026 20:48:56.239","59.297036"
+"10/08/2026 20:48:57.240","62.753276"
+"10/08/2026 20:48:58.255","55.716017"
+"10/08/2026 20:48:59.271","61.617033"
+"10/08/2026 20:49:00.285","63.787761"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+rprobe                        33.34 % of all cores
+sedevtjrncomp                  4.18 % of all cores
+dtwc_cl                        4.15 % of all cores
+serviceshell                   0.88 % of all cores
+system                         0.84 % of all cores
+sspservice                     0.43 % of all cores
+wmiprvse                       0.34 % of all cores
+claude                         0.19 % of all cores
+code                           0.11 % of all cores
+wmiprvse                       0.09 % of all cores
+WSL VM                         0.00 % of all cores
+comsol processes: 0
+== smoke after 2026-10-08 20:49:07
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 20:49:09.004","44.682942"
+"10/08/2026 20:49:10.008","46.206268"
+"10/08/2026 20:49:11.022","49.809618"
+"10/08/2026 20:49:12.032","52.957147"
+"10/08/2026 20:49:13.045","45.261251"
+"10/08/2026 20:49:14.055","46.393836"
+"10/08/2026 20:49:15.055","45.351017"
+"10/08/2026 20:49:16.066","45.189645"
+"10/08/2026 20:49:17.072","51.441076"
+"10/08/2026 20:49:18.082","56.805392"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+rprobe                        32.81 % of all cores
+sedevtjrncomp                  4.16 % of all cores
+system                         2.50 % of all cores
+cpptools                       2.39 % of all cores
+sspservice                     2.07 % of all cores
+matlab                         0.78 % of all cores
+serviceshell                   0.73 % of all cores
+msedgewebview2                 0.54 % of all cores
+msedgewebview2                 0.39 % of all cores
+cmake                          0.37 % of all cores
+WSL VM                         0.00 % of all cores
+comsol processes: 0
+== run before 2026-10-08 21:13:06
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 21:13:08.318","4.986885"
+"10/08/2026 21:13:09.322","4.215180"
+"10/08/2026 21:13:10.328","6.171893"
+"10/08/2026 21:13:11.335","3.236760"
+"10/08/2026 21:13:12.340","9.201730"
+"10/08/2026 21:13:13.347","7.372750"
+"10/08/2026 21:13:14.351","5.391171"
+"10/08/2026 21:13:15.358","5.128210"
+"10/08/2026 21:13:16.368","6.226943"
+"10/08/2026 21:13:17.384","8.328746"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         1.34 % of all cores
+wmiprvse                       0.97 % of all cores
+serviceshell                   0.93 % of all cores
+taskmgr                        0.62 % of all cores
+sspservice                     0.54 % of all cores
+code                           0.45 % of all cores
+svchost                        0.30 % of all cores
+code                           0.24 % of all cores
+claude                         0.17 % of all cores
+wmiprvse                       0.06 % of all cores
+WSL VM                         0.00 % of all cores
+comsol processes: 0
+== run after 2026-10-08 21:18:06
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 21:18:08.009","5.128780"
+"10/08/2026 21:18:09.013","4.081568"
+"10/08/2026 21:18:10.026","5.799540"
+"10/08/2026 21:18:11.035","3.908837"
+"10/08/2026 21:18:12.043","4.335238"
+"10/08/2026 21:18:13.051","4.987716"
+"10/08/2026 21:18:14.066","4.109167"
+"10/08/2026 21:18:15.077","3.184501"
+"10/08/2026 21:18:16.092","4.586581"
+"10/08/2026 21:18:17.105","5.668624"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         1.81 % of all cores
+serviceshell                   0.95 % of all cores
+taskmgr                        0.60 % of all cores
+wmiprvse                       0.26 % of all cores
+svchost                        0.13 % of all cores
+sspservice                     0.13 % of all cores
+svchost                        0.09 % of all cores
+wmiprvse                       0.09 % of all cores
+matlabwindowhelper             0.06 % of all cores
+claude                         0.06 % of all cores
+WSL VM                         0.00 % of all cores
+comsol processes: 0
+== smoke before 2026-10-08 22:59:09
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 22:59:10.675","4.925804"
+"10/08/2026 22:59:11.681","7.344074"
+"10/08/2026 22:59:12.691","4.641128"
+"10/08/2026 22:59:13.708","4.243695"
+"10/08/2026 22:59:14.722","6.158927"
+"10/08/2026 22:59:15.728","9.663837"
+"10/08/2026 22:59:16.737","11.656231"
+"10/08/2026 22:59:17.738","9.847460"
+"10/08/2026 22:59:18.740","10.716977"
+"10/08/2026 22:59:19.751","11.470533"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         1.47 % of all cores
+serviceshell                   0.89 % of all cores
+sspservice                     0.82 % of all cores
+vmmemwsl                       0.58 % of all cores
+taskmgr                        0.56 % of all cores
+claude                         0.39 % of all cores
+wmiprvse                       0.28 % of all cores
+code                           0.19 % of all cores
+code                           0.17 % of all cores
+svchost                        0.11 % of all cores
+WSL VM vmmemwsl                0.13 % of all cores
+comsol processes: 0
+-- WSL
+ 22:59:27 up 0 min,  1 user,  load average: 0.00, 0.00, 0.00
+systemd jobs: 0
+top - 22:59:29 up 0 min,  1 user,  load average: 0.00, 0.00, 0.00
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.0 sy,  0.0 ni,100.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63082.9 free,   1041.3 used,    436.6 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62984.9 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 root      20   0   21708  12264   9192 S   0.0   0.0   0:00.20 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     52 root      19  -1   42100  15720  14760 S   0.0   0.0   0:00.03 systemd-journal
+     99 root      20   0   27188   7872   4800 S   0.0   0.0   0:00.05 systemd-udevd
+    113 root      20   0   25736   4564   2880 S   0.0   0.0   0:00.00 (udev-worker)
+    114 root      20   0   25732   4520   2880 S   0.0   0.0   0:00.00 (udev-worker)
+    115 root      20   0   25736   4520   2880 S   0.0   0.0   0:00.00 (udev-worker)
+    116 root      20   0   25736   4140   2496 S   0.0   0.0   0:00.01 (udev-worker)
+    117 root      20   0   25736   4144   2496 S   0.0   0.0   0:00.00 (udev-worker)
+== smoke after 2026-10-08 22:59:36
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 22:59:38.225","9.931921"
+"10/08/2026 22:59:39.238","3.139640"
+"10/08/2026 22:59:40.254","4.043001"
+"10/08/2026 22:59:41.268","8.249799"
+"10/08/2026 22:59:42.283","8.462356"
+"10/08/2026 22:59:43.296","9.870827"
+"10/08/2026 22:59:44.300","8.653154"
+"10/08/2026 22:59:45.303","5.491939"
+"10/08/2026 22:59:46.308","4.266330"
+"10/08/2026 22:59:47.313","3.738636"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         1.51 % of all cores
+vmmemwsl                       0.71 % of all cores
+serviceshell                   0.65 % of all cores
+taskmgr                        0.43 % of all cores
+wmiprvse                       0.17 % of all cores
+taniumcx                       0.15 % of all cores
+matlab                         0.09 % of all cores
+svchost                        0.09 % of all cores
+claude                         0.09 % of all cores
+matlabwindowhelper             0.06 % of all cores
+WSL VM vmmemwsl                0.00 % of all cores
+comsol processes: 0
+-- WSL
+ 22:59:55 up 0 min,  1 user,  load average: 0.08, 0.02, 0.01
+systemd jobs: 0
+top - 22:59:56 up 0 min,  1 user,  load average: 0.08, 0.02, 0.01
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.0 sy,  0.0 ni,100.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63074.4 free,   1049.5 used,    438.0 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62976.6 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 root      20   0   21720  12480   9408 S   0.0   0.0   0:00.18 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     49 root      19  -1   42104  15560  14600 S   0.0   0.0   0:00.03 systemd-journal
+     98 root      20   0   27056   7872   4800 S   0.0   0.0   0:00.04 systemd-udevd
+    113 root      20   0   25736   4908   3264 S   0.0   0.0   0:00.00 (udev-worker)
+    114 root      20   0   25736   4336   2688 S   0.0   0.0   0:00.00 (udev-worker)
+    115 root      20   0   25732   4144   2496 S   0.0   0.0   0:00.00 (udev-worker)
+    116 root      20   0   25732   5528   3840 S   0.0   0.0   0:00.00 (udev-worker)
+    117 root      20   0   25736   4152   2496 S   0.0   0.0   0:00.00 (udev-worker)
+== smoke before 2026-10-08 23:00:05
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 23:00:07.410","7.588094"
+"10/08/2026 23:00:08.421","10.746932"
+"10/08/2026 23:00:09.421","10.216187"
+"10/08/2026 23:00:10.436","11.367624"
+"10/08/2026 23:00:11.437","8.019095"
+"10/08/2026 23:00:12.453","23.654796"
+"10/08/2026 23:00:13.468","17.371451"
+"10/08/2026 23:00:14.468","12.696480"
+"10/08/2026 23:00:15.484","26.865423"
+"10/08/2026 23:00:16.485","5.148092"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         1.60 % of all cores
+serviceshell                   0.60 % of all cores
+taskmgr                        0.45 % of all cores
+wmiprvse                       0.22 % of all cores
+claude                         0.13 % of all cores
+sspservice                     0.11 % of all cores
+dellcommandupdate              0.11 % of all cores
+taniumcx                       0.09 % of all cores
+svchost                        0.09 % of all cores
+wmiprvse                       0.09 % of all cores
+WSL VM vmmemwsl                0.06 % of all cores
+comsol processes: 0
+== smoke after 2026-10-08 23:00:23
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 23:00:25.562","5.959179"
+"10/08/2026 23:00:26.577","5.833065"
+"10/08/2026 23:00:27.579","5.480428"
+"10/08/2026 23:00:28.591","6.062284"
+"10/08/2026 23:00:29.604","5.245471"
+"10/08/2026 23:00:30.614","7.285612"
+"10/08/2026 23:00:31.627","6.912338"
+"10/08/2026 23:00:32.638","5.538997"
+"10/08/2026 23:00:33.640","3.296263"
+"10/08/2026 23:00:34.654","6.307227"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         1.75 % of all cores
+svchost                        1.38 % of all cores
+wmiprvse                       0.78 % of all cores
+serviceshell                   0.63 % of all cores
+taskmgr                        0.52 % of all cores
+taniumclient                   0.39 % of all cores
+claude                         0.28 % of all cores
+sspservice                     0.15 % of all cores
+code                           0.11 % of all cores
+vmmemwsl                       0.09 % of all cores
+WSL VM vmmemwsl                0.00 % of all cores
+comsol processes: 0
+== run before 2026-10-08 23:14:15
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 23:14:17.641","9.497145"
+"10/08/2026 23:14:18.655","4.934473"
+"10/08/2026 23:14:19.667","12.767268"
+"10/08/2026 23:14:20.672","10.292455"
+"10/08/2026 23:14:21.683","10.508048"
+"10/08/2026 23:14:22.685","6.340573"
+"10/08/2026 23:14:23.687","3.499242"
+"10/08/2026 23:14:24.688","2.052312"
+"10/08/2026 23:14:25.700","3.918987"
+"10/08/2026 23:14:26.702","3.536292"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         1.21 % of all cores
+serviceshell                   0.71 % of all cores
+vmmemwsl                       0.50 % of all cores
+taskmgr                        0.43 % of all cores
+wmiprvse                       0.30 % of all cores
+sspservice                     0.24 % of all cores
+code                           0.22 % of all cores
+code                           0.17 % of all cores
+svchost                        0.11 % of all cores
+code                           0.04 % of all cores
+WSL VM vmmemwsl                0.13 % of all cores
+comsol processes: 0
+-- WSL
+ 23:14:34 up 0 min,  1 user,  load average: 0.07, 0.02, 0.00
+systemd jobs: 0
+top - 23:14:35 up 0 min,  1 user,  load average: 0.07, 0.02, 0.00
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.1 sy,  0.0 ni, 99.9 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63132.2 free,   1039.0 used,    389.3 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62987.1 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 root      20   0   21748  12448   9376 S   0.0   0.0   0:00.19 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     49 root      19  -1   42104  14976  14208 S   0.0   0.0   0:00.03 systemd-journal
+     98 root      20   0   27056   7680   4800 S   0.0   0.0   0:00.04 systemd-udevd
+    113 root      20   0   25736   4144   2496 S   0.0   0.0   0:00.00 (udev-worker)
+    114 root      20   0   25736   4144   2496 S   0.0   0.0   0:00.00 (udev-worker)
+    115 root      20   0   25732   3760   2112 S   0.0   0.0   0:00.00 (udev-worker)
+    116 root      20   0   25736   4384   2688 S   0.0   0.0   0:00.00 (udev-worker)
+    117 root      20   0   25736   4152   2496 S   0.0   0.0   0:00.00 (udev-worker)
+== run after 2026-10-08 23:28:49
+
+"(PDH-CSV 4.0)","\\ENGS-32384\Processor(_Total)\% Processor Time"
+"10/08/2026 23:28:50.837","4.337049"
+"10/08/2026 23:28:51.854","9.968685"
+"10/08/2026 23:28:52.855","8.763611"
+"10/08/2026 23:28:53.868","4.387018"
+"10/08/2026 23:28:54.883","7.424421"
+"10/08/2026 23:28:55.886","3.912271"
+"10/08/2026 23:28:56.901","4.605760"
+"10/08/2026 23:28:57.905","6.600612"
+"10/08/2026 23:28:58.917","0.988932"
+"10/08/2026 23:28:59.918","5.706614"
+Exiting, please wait...                         
+The command completed successfully.
+logical processors: 24
+system                         1.08 % of all cores
+taskmgr                        0.65 % of all cores
+serviceshell                   0.56 % of all cores
+sspservice                     0.45 % of all cores
+wmiprvse                       0.28 % of all cores
+vmmemwsl                       0.28 % of all cores
+spotify                        0.22 % of all cores
+code                           0.15 % of all cores
+claude                         0.11 % of all cores
+svchost                        0.11 % of all cores
+WSL VM vmmemwsl                0.06 % of all cores
+comsol processes: 0
+-- WSL
+ 23:29:08 up 1 min,  1 user,  load average: 7.94, 2.89, 1.03
+systemd jobs: 0
+top - 23:29:09 up 1 min,  1 user,  load average: 7.94, 2.89, 1.03
+Tasks:  97 total,   1 running,  96 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.0 us,  0.1 sy,  0.0 ni, 99.9 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+MiB Mem :  64026.1 total,  63075.1 free,   1048.4 used,    437.7 buff/cache     
+MiB Swap:  16384.0 total,  16384.0 free,      0.0 used.  62977.7 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 root      20   0   21740  12480   9408 S   0.0   0.0   0:00.18 systemd
+      2 root      20   0    3120   1920   1920 S   0.0   0.0   0:00.00 init-systemd(Ub
+      6 root      20   0    3544   1920   1728 S   0.0   0.0   0:00.00 init
+     49 root      19  -1   42168  15560  14600 S   0.0   0.0   0:00.04 systemd-journal
+     99 root      20   0   27056   7872   4800 S   0.0   0.0   0:00.04 systemd-udevd
+    113 root      20   0   25728   3944   2304 S   0.0   0.0   0:00.00 (udev-worker)
+    114 root      20   0   25736   4136   2496 S   0.0   0.0   0:00.00 (udev-worker)
+    115 root      20   0   25732   4328   2688 S   0.0   0.0   0:00.00 (udev-worker)
+    116 root      20   0   25736   3948   2304 S   0.0   0.0   0:00.00 (udev-worker)
+    117 root      20   0   25736   3952   2304 S   0.0   0.0   0:00.00 (udev-worker)

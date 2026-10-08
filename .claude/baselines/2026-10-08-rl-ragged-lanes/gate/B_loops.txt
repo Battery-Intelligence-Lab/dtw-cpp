@@ -1,0 +1,23 @@
+gate count (the gate's own loop_calls): inner_loops=88 calls=0
+dtwc_probe_lanes_f64   BB55_16       6 insns  mins   0 -          fp   0 memory   2 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f64   BB55_19      20 insns  mins   0 -          fp   0 memory  16 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f64   BB55_48       5 insns  mins   0 -          fp   0 memory   1 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f64   BB55_52      12 insns  mins   0 -          fp   0 memory   8 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f64   BB55_39      36 insns  mins   0 -          fp   0 memory  32 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f64   BB55_43      12 insns  mins   0 -          fp   0 memory   8 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f64   BB55_22     116 insns  mins  16 xmm        fp  48 memory  64 stack   0 calls 0  DP cells, scalar
+dtwc_probe_lanes_f64   BB55_26       8 insns  mins   0 -          fp   0 memory   4 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f64   BB55_30      35 insns  mins   0 -          fp   0 memory  32 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f64   BB55_111     38 insns  mins   8 ymm        fp  12 memory  10 stack   0 calls 0  DP row step (packed)
+dtwc_probe_lanes_f32   BB60_22       6 insns  mins   0 -          fp   0 memory   2 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f32   BB60_25      20 insns  mins   0 -          fp   0 memory  16 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f32   BB60_29       5 insns  mins   0 -          fp   0 memory   1 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f32   BB60_33      12 insns  mins   0 -          fp   0 memory   8 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f32   BB60_18      14 insns  mins   0 -          fp   0 memory  10 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f32   BB60_40      32 insns  mins   4 xmm        fp  12 memory  16 stack   0 calls 0  DP cells, scalar
+dtwc_probe_lanes_f32   BB60_44       8 insns  mins   0 -          fp   0 memory   4 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f32   BB60_48      35 insns  mins   0 -          fp   0 memory  32 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f32   BB60_51      42 insns  mins   0 -          fp   0 memory  12 stack   0 calls 0  copy / fill (no min)
+dtwc_probe_lanes_f32   BB60_77      39 insns  mins   4 xmm        fp  12 memory  24 stack   0 calls 0  DP cells, scalar
+dtwc_probe_lanes_f32   BB60_81      37 insns  mins   8 ymm        fp  12 memory  10 stack   1 calls 0  DP row step (packed)
+dtwc_probe_lanes_f32   BB60_86      42 insns  mins   0 -          fp   0 memory  12 stack   0 calls 0  copy / fill (no min)

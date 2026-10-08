@@ -1,0 +1,1566 @@
+######## clang base (tools/loops.py; one loop = one DP row step of W lanes; lambda_1 squared, lambda_2 L1)
+== f64 ??$dtw_kernel_lanes@NV<lambda_1>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stack  1  calls 0
+    stack: vmovupd	ymm9, ymmword ptr [rsp + 240]   ; 32-byte Reload
+== f64 ??$dtw_kernel_lanes@NV<lambda_2>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop 193 insns  min 16 (minsd on xmm)  fp  64  mem  80  stack 11  calls 0
+    stack: vmovupd	ymmword ptr [rsp + 48], ymm4   ; 32-byte Spill
+    stack: vmovupd	ymmword ptr [rsp + 80], ymm2   ; 32-byte Spill
+    stack: vmovupd	ymmword ptr [rsp + 144], ymm1   ; 32-byte Spill
+    stack: vmovupd	ymmword ptr [rsp + 112], ymm0   ; 32-byte Spill
+    stack: vmovupd	ymmword ptr [rsp + 112], ymm0   ; 32-byte Spill
+    stack: vmovupd	ymmword ptr [rsp + 144], ymm1   ; 32-byte Spill
+    stack: vmovupd	ymmword ptr [rsp + 80], ymm2   ; 32-byte Spill
+    stack: vmovupd	ymmword ptr [rsp + 48], ymm4   ; 32-byte Spill
+    stack: vmovupd	ymm5, ymmword ptr [rsp + 112]   ; 32-byte Reload
+    stack: vmovupd	ymm6, ymmword ptr [rsp + 80]   ; 32-byte Reload
+    stack: vmovupd	ymm4, ymmword ptr [rsp + 48]   ; 32-byte Reload
+  loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  11  stack  1  calls 0
+    stack: vsubpd	ymm2, ymm0, ymmword ptr [rsp + 144]   ; 32-byte Folded Reload
+== f32 ??$dtw_kernel_lanes@MV<lambda_1>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stack  0  calls 0
+  loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stack  0  calls 0
+  loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem  10  stack  1  calls 0
+    stack: vsubps	ymm10, ymm15, ymmword ptr [rsp + 480]   ; 32-byte Folded Reload
+== f32 ??$dtw_kernel_lanes@MV<lambda_2>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stack  0  calls 0
+  loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stack  0  calls 0
+  loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem  11  stack  2  calls 0
+    stack: vsubps	ymm12, ymm1, ymmword ptr [rsp + 512]   ; 32-byte Folded Reload
+    stack: vsubps	ymm10, ymm1, ymmword ptr [rsp + 480]   ; 32-byte Folded Reload
+######## clang A (tools/loops.py; one loop = one DP row step of W lanes; lambda_1 squared, lambda_2 L1)
+== f64 ??$dtw_kernel_lanes@NV<lambda_1>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stack  1  calls 0
+    stack: vmovupd	ymm9, ymmword ptr [rsp + 384]   ; 32-byte Reload
+== f64 ??$dtw_kernel_lanes@NV<lambda_2>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stack  0  calls 0
+== f32 ??$dtw_kernel_lanes@MV<lambda_1>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stack  0  calls 0
+  loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stack  0  calls 0
+  loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem  10  stack  1  calls 0
+    stack: vsubps	ymm10, ymm15, ymmword ptr [rsp + 240]   ; 32-byte Folded Reload
+== f32 ??$dtw_kernel_lanes@MV<lambda_2>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stack  0  calls 0
+  loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stack  0  calls 0
+  loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem  11  stack  2  calls 0
+    stack: vsubps	ymm12, ymm1, ymmword ptr [rsp + 224]   ; 32-byte Folded Reload
+    stack: vsubps	ymm10, ymm1, ymmword ptr [rsp + 992]   ; 32-byte Folded Reload
+######## clang B (tools/loops.py; one loop = one DP row step of W lanes; lambda_1 squared, lambda_2 L1)
+== f64 ??$dtw_kernel_lanes@NV<lambda_1>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stack  1  calls 0
+    stack: vmovupd	ymm9, ymmword ptr [rsp + 384]   ; 32-byte Reload
+== f64 ??$dtw_kernel_lanes@NV<lambda_2>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stack  0  calls 0
+== f32 ??$dtw_kernel_lanes@MV<lambda_1>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stack  0  calls 0
+  loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stack  0  calls 0
+  loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem  10  stack  1  calls 0
+    stack: vsubps	ymm10, ymm15, ymmword ptr [rsp + 240]   ; 32-byte Folded Reload
+== f32 ??$dtw_kernel_lanes@MV<lambda_2>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stack  0  calls 0
+  loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stack  0  calls 0
+  loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem  11  stack  2  calls 0
+    stack: vsubps	ymm12, ymm1, ymmword ptr [rsp + 224]   ; 32-byte Folded Reload
+    stack: vsubps	ymm10, ymm1, ymmword ptr [rsp + 992]   ; 32-byte Folded Reload
+######## clang base vs A (tools/loopdiff.py: registers and labels normalised)
+f32 lambda_1 loop 0: loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stac | loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stac | same sequence
+f32 lambda_1 loop 1: loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stac | loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stac | same sequence
+f32 lambda_1 loop 2: loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stac | loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stac | DIFFERENT
+f32 lambda_1 loop 3: loop  37 insns  min  8 (minps on ymm)  fp  20  mem  10  stac | loop  37 insns  min  8 (minps on ymm)  fp  20  mem  10  stac | DIFFERENT
+f32 lambda_2 loop 0: loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stac | loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stac | same sequence
+f32 lambda_2 loop 1: loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stac | loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stac | same sequence
+f32 lambda_2 loop 2: loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stac | loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stac | DIFFERENT
+f32 lambda_2 loop 3: loop  37 insns  min  8 (minps on ymm)  fp  20  mem  11  stac | loop  37 insns  min  8 (minps on ymm)  fp  20  mem  11  stac | DIFFERENT
+f64 lambda_1 loop 0: loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | same sequence
+f64 lambda_1 loop 1: loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stac | loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stac | DIFFERENT
+f64 lambda_2 loop 0: loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | same sequence
+f64 lambda_2 loop 1: loop 193 insns  min 16 (minsd on xmm)  fp  64  mem  80  stac | loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stac | DIFFERENT
+f64 lambda_2 loop 2: loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  11  stac | -                                                            | DIFFERENT
+######## clang base vs B (tools/loopdiff.py: registers and labels normalised)
+f32 lambda_1 loop 0: loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stac | loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stac | same sequence
+f32 lambda_1 loop 1: loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stac | loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stac | same sequence
+f32 lambda_1 loop 2: loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stac | loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stac | DIFFERENT
+f32 lambda_1 loop 3: loop  37 insns  min  8 (minps on ymm)  fp  20  mem  10  stac | loop  37 insns  min  8 (minps on ymm)  fp  20  mem  10  stac | DIFFERENT
+f32 lambda_2 loop 0: loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stac | loop  34 insns  min  4 (minps on ymm)  fp  16  mem  13  stac | same sequence
+f32 lambda_2 loop 1: loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stac | loop  31 insns  min  4 (minss on xmm)  fp  16  mem  16  stac | same sequence
+f32 lambda_2 loop 2: loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stac | loop  39 insns  min  4 (minss on xmm)  fp  16  mem  24  stac | DIFFERENT
+f32 lambda_2 loop 3: loop  37 insns  min  8 (minps on ymm)  fp  20  mem  11  stac | loop  37 insns  min  8 (minps on ymm)  fp  20  mem  11  stac | DIFFERENT
+f64 lambda_1 loop 0: loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | same sequence
+f64 lambda_1 loop 1: loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stac | loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stac | DIFFERENT
+f64 lambda_2 loop 0: loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | loop 116 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | same sequence
+f64 lambda_2 loop 1: loop 193 insns  min 16 (minsd on xmm)  fp  64  mem  80  stac | loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  10  stac | DIFFERENT
+f64 lambda_2 loop 2: loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  11  stac | -                                                            | DIFFERENT
+######## gcc base (tools/loops.py; one loop = one DP row step of W lanes; lambda_1 squared, lambda_2 L1)
+== f32 dtw_kernel_lanes@MV<lambda_1> (GCC) _ZZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS0_20resolve_dtw_bl
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  33 insns  min  8 (minps on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+== f32 dtw_kernel_lanes@MV<lambda_2> (GCC) _ZZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS0_20resolve_dtw_bl
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0
+######## gcc A (tools/loops.py; one loop = one DP row step of W lanes; lambda_1 squared, lambda_2 L1)
+== f32 dtw_kernel_lanes@MV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  33 insns  min  8 (minps on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+== f32 dtw_kernel_lanes@MV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0
+######## gcc B (tools/loops.py; one loop = one DP row step of W lanes; lambda_1 squared, lambda_2 L1)
+== f32 dtw_kernel_lanes@MV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  33 insns  min  8 (minps on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+  loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stack  0  calls 0
+== f64 dtw_kernel_lanes@NV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+== f32 dtw_kernel_lanes@MV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stack  0  calls 0
+  loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stack  0  calls 0
+  loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stack  0  calls 0
+######## gcc base vs A (tools/loopdiff.py: registers and labels normalised)
+f32 lambda_1 loop 0: loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stac | loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stac | same sequence
+f32 lambda_1 loop 1: loop  33 insns  min  8 (minps on ymm)  fp  16  mem   9  stac | loop  33 insns  min  8 (minps on ymm)  fp  16  mem   9  stac | same sequence
+f32 lambda_1 loop 2: loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stac | loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stac | same sequence
+f32 lambda_2 loop 0: loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stac | loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stac | same sequence
+f32 lambda_2 loop 1: loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stac | loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stac | same sequence
+f32 lambda_2 loop 2: loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stac | loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stac | same sequence
+f64 lambda_1 loop 0: loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | same sequence
+f64 lambda_1 loop 1: loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stac | loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stac | same sequence
+f64 lambda_1 loop 2: loop  37 insns  min  8 (minpd on ymm)  fp  16  mem   9  stac | loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stac | DIFFERENT
+f64 lambda_2 loop 0: loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | same multiset
+f64 lambda_2 loop 1: loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stac | loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stac | same sequence
+f64 lambda_2 loop 2: loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stac | loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stac | same sequence
+######## gcc base vs B (tools/loopdiff.py: registers and labels normalised)
+f32 lambda_1 loop 0: loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stac | loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stac | same sequence
+f32 lambda_1 loop 1: loop  33 insns  min  8 (minps on ymm)  fp  16  mem   9  stac | loop  33 insns  min  8 (minps on ymm)  fp  16  mem   9  stac | same sequence
+f32 lambda_1 loop 2: loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stac | loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stac | same sequence
+f32 lambda_2 loop 0: loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stac | loop  10 insns  min  1 (minss on xmm)  fp   4  mem   4  stac | same sequence
+f32 lambda_2 loop 1: loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stac | loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stac | same sequence
+f32 lambda_2 loop 2: loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stac | loop  12 insns  min  1 (minss on xmm)  fp   4  mem   6  stac | same sequence
+f64 lambda_1 loop 0: loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | same sequence
+f64 lambda_1 loop 1: loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stac | loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stac | same sequence
+f64 lambda_1 loop 2: loop  37 insns  min  8 (minpd on ymm)  fp  16  mem   9  stac | loop  33 insns  min  8 (minpd on ymm)  fp  16  mem   9  stac | DIFFERENT
+f64 lambda_2 loop 0: loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | loop 122 insns  min 16 (minsd on xmm)  fp  64  mem  64  stac | same multiset
+f64 lambda_2 loop 1: loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stac | loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stac | same sequence
+f64 lambda_2 loop 2: loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stac | loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stac | same sequence
+######## msvc base (tools/loops.py; one loop = one DP row step of W lanes; lambda_1 squared, lambda_2 L1)
+== f32 ??$dtw_kernel_lanes@MV<lambda_2>@?1???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stack 49  calls 0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$[rsp], xmm6
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+  loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stack 99  calls 0
+    stack: vmovss	xmm0, DWORD PTR diag$1$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$1$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$2$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$2$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$3$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$3$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$4$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$4$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$5$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$6$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR diag$5$[rsp], xmm2
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$6$[rsp], xmm2
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$7$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$7$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$8$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$8$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$9$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vsubss	xmm1, xmm3, DWORD PTR y$9$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$9$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vsubss	xmm1, xmm3, DWORD PTR y$10$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$10$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR diag$10$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$11$[rsp]
+    stack: vsubss	xmm1, xmm3, DWORD PTR y$11$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$11$[rsp], xmm2
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$12$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$12$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$13$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$13$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$14$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$14$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$15$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$15$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$16$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$16$[rsp], xmm2
+== f32 ??$dtw_kernel_lanes@MV<lambda_1>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stack 49  calls 0
+    stack: vmovss	DWORD PTR up$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$[rsp], xmm6
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+  loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stack 99  calls 0
+    stack: vmovss	xmm1, DWORD PTR diag$1$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$1$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$2$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$2$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$3$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$3$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$4$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$4$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$5$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$6$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$5$[rsp], xmm3
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$6$[rsp], xmm3
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$7$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$7$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$8$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$8$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$9$[rsp]
+    stack: vsubss	xmm0, xmm4, DWORD PTR y$9$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$9$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$10$[rsp]
+    stack: vsubss	xmm0, xmm4, DWORD PTR y$10$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$10$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$11$[rsp]
+    stack: vsubss	xmm0, xmm4, DWORD PTR y$11$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$11$[rsp], xmm3
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$12$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$12$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$13$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$13$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$14$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$14$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$15$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$15$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$16$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$16$[rsp], xmm3
+== f64 ??$dtw_kernel_lanes@NV<lambda_2>@?1???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stack 25  calls 0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm6
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+  loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stack 49  calls 0
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$1$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$2$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$2$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm0, QWORD PTR diag$3$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$3$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm0, QWORD PTR diag$4$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$4$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$5$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$6$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR diag$5$[rsp], xmm2
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$6$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm0, QWORD PTR diag$7$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$7$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$8$[rsp]
+    stack: vsubsd	xmm1, xmm3, QWORD PTR y$8$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$8$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$1$[rsp]
+== f64 ??$dtw_kernel_lanes@NV<lambda_1>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stack 25  calls 0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm1
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm6
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r14, QWORD PTR diag$[rsp]
+  loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stack 49  calls 0
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$1$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$2$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$2$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm1, QWORD PTR diag$3$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$3$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm1, QWORD PTR diag$4$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$4$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$5$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$5$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$6$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$6$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm1, QWORD PTR diag$7$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r12, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$7$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$8$[rsp]
+    stack: vsubsd	xmm0, xmm4, QWORD PTR y$8$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$8$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$1$[rsp]
+######## msvc A (tools/loops.py; one loop = one DP row step of W lanes; lambda_1 squared, lambda_2 L1)
+== f32 ??$dtw_kernel_lanes@MV<lambda_2>@?1???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stack 49  calls 0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$[rsp], xmm8
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+  loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stack 98  calls 0
+    stack: vmovss	xmm0, DWORD PTR diag$1$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$1$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$2$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$2$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$3$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$3$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$4$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$4$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$5$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$6$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR diag$5$[rsp], xmm2
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$6$[rsp], xmm2
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$7$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$7$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$8$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$8$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$9$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vsubss	xmm1, xmm3, DWORD PTR y$9$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$9$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vsubss	xmm1, xmm3, DWORD PTR y$10$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$10$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR diag$10$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$11$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$11$[rsp], xmm2
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$12$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$12$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$13$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$13$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$14$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$14$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$15$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$15$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$16$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$16$[rsp], xmm2
+== f32 ??$dtw_kernel_lanes@MV<lambda_1>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stack 49  calls 0
+    stack: vmovss	DWORD PTR up$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$[rsp], xmm7
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+  loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stack 98  calls 0
+    stack: vmovss	xmm1, DWORD PTR diag$1$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$1$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$2$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$2$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$3$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$3$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$4$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$4$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$5$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$6$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$5$[rsp], xmm3
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$6$[rsp], xmm3
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$7$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$7$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$8$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$8$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$9$[rsp]
+    stack: vsubss	xmm0, xmm4, DWORD PTR y$9$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$9$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$10$[rsp]
+    stack: vsubss	xmm0, xmm4, DWORD PTR y$10$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$10$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$11$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$11$[rsp], xmm3
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$12$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$12$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$13$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$13$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$14$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$14$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$15$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$15$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$16$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$16$[rsp], xmm3
+== f64 ??$dtw_kernel_lanes@NV<lambda_2>@?1???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stack 25  calls 0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm7
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+  loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stack 49  calls 0
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$1$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$2$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$2$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm0, QWORD PTR diag$3$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$3$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm0, QWORD PTR diag$4$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$4$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$5$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$6$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR diag$5$[rsp], xmm2
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$6$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm0, QWORD PTR diag$7$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$7$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$8$[rsp]
+    stack: vsubsd	xmm1, xmm3, QWORD PTR y$8$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$8$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$1$[rsp]
+== f64 ??$dtw_kernel_lanes@NV<lambda_1>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stack 25  calls 0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm1
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm6
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+  loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stack 49  calls 0
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$1$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$2$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$2$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm1, QWORD PTR diag$3$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$3$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm1, QWORD PTR diag$4$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$4$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$5$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$5$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$6$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$6$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm1, QWORD PTR diag$7$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$7$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$8$[rsp]
+    stack: vsubsd	xmm0, xmm4, QWORD PTR y$8$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$8$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$1$[rsp]
+######## msvc B (tools/loops.py; one loop = one DP row step of W lanes; lambda_1 squared, lambda_2 L1)
+== f32 ??$dtw_kernel_lanes@MV<lambda_2>@?1???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stack 49  calls 0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$[rsp], xmm8
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+  loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stack 98  calls 0
+    stack: vmovss	xmm0, DWORD PTR diag$1$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$1$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$2$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$2$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$3$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$3$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$4$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$4$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$5$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$6$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR diag$5$[rsp], xmm2
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$6$[rsp], xmm2
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$7$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$7$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$8$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$8$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$9$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vsubss	xmm1, xmm3, DWORD PTR y$9$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$9$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vsubss	xmm1, xmm3, DWORD PTR y$10$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$10$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR diag$10$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$11$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$11$[rsp], xmm2
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$12$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$12$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$13$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$13$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$14$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: vmovss	DWORD PTR diag$14$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm0, DWORD PTR diag$15$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$15$[rsp], xmm2
+    stack: vmovss	xmm0, DWORD PTR diag$16$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$16$[rsp], xmm2
+== f32 ??$dtw_kernel_lanes@MV<lambda_1>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stack 49  calls 0
+    stack: vmovss	DWORD PTR up$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$[rsp], xmm7
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+  loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stack 98  calls 0
+    stack: vmovss	xmm1, DWORD PTR diag$1$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$1$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$2$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$2$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$3$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$3$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$4$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$4$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$5$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$6$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$5$[rsp], xmm3
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$6$[rsp], xmm3
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$7$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$7$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$8$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$8$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$9$[rsp]
+    stack: vsubss	xmm0, xmm4, DWORD PTR y$9$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$9$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$10$[rsp]
+    stack: vsubss	xmm0, xmm4, DWORD PTR y$10$[rsp]
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR diag$10$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$11$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$11$[rsp], xmm3
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$12$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$12$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$13$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$13$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$14$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: vmovss	DWORD PTR diag$14$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	xmm1, DWORD PTR diag$15$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovss	DWORD PTR diag$15$[rsp], xmm3
+    stack: vmovss	xmm1, DWORD PTR diag$16$[rsp]
+    stack: vmovss	DWORD PTR diag$[rsp], xmm1
+    stack: vmovss	DWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r10, QWORD PTR diag$[rsp]
+    stack: vmovss	DWORD PTR diag$16$[rsp], xmm3
+== f64 ??$dtw_kernel_lanes@NV<lambda_2>@?1???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stack 25  calls 0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm7
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+  loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stack 49  calls 0
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$1$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$2$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$2$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm0, QWORD PTR diag$3$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$3$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm0, QWORD PTR diag$4$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$4$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$5$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$6$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR diag$5$[rsp], xmm2
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$6$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm0, QWORD PTR diag$7$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$7$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$8$[rsp]
+    stack: vsubsd	xmm1, xmm3, QWORD PTR y$8$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm2
+    stack: vmovsd	QWORD PTR diag$8$[rsp], xmm2
+    stack: vmovsd	xmm0, QWORD PTR diag$1$[rsp]
+== f64 ??$dtw_kernel_lanes@NV<lambda_1>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stack 25  calls 0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm1
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm6
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: vmovsd	QWORD PTR up$[rsp], xmm0
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r9, QWORD PTR diag$[rsp]
+  loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stack 49  calls 0
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$1$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$2$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$2$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm1, QWORD PTR diag$3$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$3$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm1, QWORD PTR diag$4$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$4$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$5$[rsp]
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$5$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$6$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$6$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	xmm1, QWORD PTR diag$7$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: lea	r11, QWORD PTR diag$[rsp]
+    stack: vmovsd	QWORD PTR diag$7$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$8$[rsp]
+    stack: vsubsd	xmm0, xmm4, QWORD PTR y$8$[rsp]
+    stack: vmovsd	QWORD PTR diag$[rsp], xmm1
+    stack: lea	rax, QWORD PTR up$[rsp]
+    stack: vmovsd	QWORD PTR up$[rsp], xmm3
+    stack: vmovsd	QWORD PTR diag$8$[rsp], xmm3
+    stack: vmovsd	xmm1, QWORD PTR diag$1$[rsp]
+######## msvc base vs A (tools/loopdiff.py: registers and labels normalised)
+f32 lambda_1 loop 0: loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stac | loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stac | DIFFERENT
+f32 lambda_1 loop 1: loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stac | loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stac | DIFFERENT
+f32 lambda_2 loop 0: loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stac | loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stac | DIFFERENT
+f32 lambda_2 loop 1: loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stac | loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stac | DIFFERENT
+f64 lambda_1 loop 0: loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stac | loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stac | DIFFERENT
+f64 lambda_1 loop 1: loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stac | loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stac | DIFFERENT
+f64 lambda_2 loop 0: loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stac | loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stac | DIFFERENT
+f64 lambda_2 loop 1: loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stac | loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stac | DIFFERENT
+######## msvc base vs B (tools/loopdiff.py: registers and labels normalised)
+f32 lambda_1 loop 0: loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stac | loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stac | DIFFERENT
+f32 lambda_1 loop 1: loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stac | loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stac | DIFFERENT
+f32 lambda_2 loop 0: loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stac | loop 197 insns  min 16 (minss on xmm)  fp  64  mem 130  stac | DIFFERENT
+f32 lambda_2 loop 1: loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stac | loop 257 insns  min 16 (minss on xmm)  fp  64  mem 171  stac | DIFFERENT
+f64 lambda_1 loop 0: loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stac | loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stac | DIFFERENT
+f64 lambda_1 loop 1: loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stac | loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stac | DIFFERENT
+f64 lambda_2 loop 0: loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stac | loop 101 insns  min  8 (minsd on xmm)  fp  32  mem  66  stac | DIFFERENT
+f64 lambda_2 loop 1: loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stac | loop 134 insns  min  8 (minsd on xmm)  fp  32  mem  82  stac | DIFFERENT

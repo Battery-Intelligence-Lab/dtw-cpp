@@ -1,0 +1,2 @@
+counters: InstructionRetired, UnhaltedCoreCycles, LLCMisses, LLCReference, CacheMisses, BranchMispredictions (negative deltas skipped: 0)
+rprobe.exe (42180)                       InstructionRetired=26,113,068,237  UnhaltedCoreCycles=5,131,257,378  LLCMisses=1,214,472  LLCReference=3,219,414  CacheMisses=1,214,486  BranchMispredictions=7,034,213  IPC=5.089  LLC-MPKI=0.0465  LLC-miss/ref=0.377

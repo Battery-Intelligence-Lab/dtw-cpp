@@ -1,0 +1,37 @@
+vmovaps	ymm10, ymm1
+vmovaps	ymm0, ymm11
+vmovaps	ymm2, ymm12
+vmovaps	ymm14, ymm13
+vbroadcastss	ymm15, dword ptr [G + 4*G]
+vmovups	ymm1, ymmword ptr [G - 0x60]
+vminps	ymm10, ymm1, ymm10
+vminps	ymm9, ymm9, ymm10
+vsubps	ymm10, ymm15, ymmword ptr [rsp+S]
+vmulps	ymm10, ymm10, ymm10
+vaddps	ymm9, ymm9, ymm10
+vmovups	ymm11, ymmword ptr [G - 0x40]
+vminps	ymm0, ymm11, ymm0
+vminps	ymm0, ymm8, ymm0
+vsubps	ymm8, ymm15, ymm3
+vmulps	ymm8, ymm8, ymm8
+vaddps	ymm8, ymm8, ymm0
+vmovups	ymm12, ymmword ptr [G - 0x20]
+vminps	ymm0, ymm12, ymm2
+vminps	ymm0, ymm7, ymm0
+vsubps	ymm2, ymm15, ymm4
+vmulps	ymm2, ymm2, ymm2
+vaddps	ymm7, ymm0, ymm2
+vmovups	ymm13, ymmword ptr [G]
+vminps	ymm0, ymm13, ymm14
+vminps	ymm0, ymm5, ymm0
+vsubps	ymm2, ymm15, ymm6
+vmulps	ymm2, ymm2, ymm2
+vaddps	ymm5, ymm0, ymm2
+vmovups	ymmword ptr [G - 0x60], ymm9
+vmovups	ymmword ptr [G - 0x40], ymm8
+vmovups	ymmword ptr [G - 0x20], ymm7
+vmovups	ymmword ptr [G], ymm5
+inc	G
+sub	G, -0x80
+cmp	G, G
+jne

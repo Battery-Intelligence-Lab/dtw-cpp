@@ -1,0 +1,4 @@
+Downloading cpython-3.14.3-windows-x86_64-none (download) (21.3MiB)
+ Downloaded cpython-3.14.3-windows-x86_64-none (download)
+counters: InstructionRetired, UnhaltedCoreCycles, LLCMisses, LLCReference, CacheMisses, BranchMispredictions (negative deltas skipped: 0)
+rprobe.exe (73504)                       InstructionRetired=80,505,617,274  UnhaltedCoreCycles=33,069,250,427  LLCMisses=1,164,019  LLCReference=3,078,687  CacheMisses=1,164,035  BranchMispredictions=36,571,163  IPC=2.434  LLC-MPKI=0.0145  LLC-miss/ref=0.378

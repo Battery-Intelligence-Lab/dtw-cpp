@@ -549,3 +549,8 @@ CHANGELOG rule.
   FALSIFIED on ragged data (0.83–0.91, scalar lanes). Row-local order B against longest-first A at N 8000: clang
   3.68 vs 3.50, GCC 3.87 vs 3.96. Volkan (question tool): "Adopt, cl one-pair": merge for clang and GCC with the
   miss recorded; under cl, blocks of unequal length keep the one-pair route.
+- 2026-10-08 — RL fixed and re-timed (`baselines/2026-10-08-rl-ragged-lanes.md`): B ran 4–5 % slower than base
+  under clang on equal-length series of L ≥ 4000 (a per-column capture test changed the row loop's registers); B3
+  (`f8c3d23a`) has no test there. B3, quiet run, 11 shapes: clang PASS (ragged 6.8–6.9× one thread, 3.3–3.6× at
+  24, L 8000 0.994×), GCC PASS (8.1–8.7×, 4.9–5.5×; its control 1.011×), cl at base's speed (f32 ragged 0.940×
+  over 3 rounds, 1.059× over a registered 20-pair second attempt). Merged 8c818735.

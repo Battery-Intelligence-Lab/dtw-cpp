@@ -1,0 +1,10 @@
+check gcc 13.3.0 W f64 16 f32 32
+check lanes f64 L1 W=16 seeds 3: outputs 4140000  hash 24e36e73a3691ea6  lanes vs per-pair bitwise mismatches 0  non-finite outputs 1016125  outside the route bound 0  worst dev 0
+check lanes f32 L1 W=32 seeds 3: outputs 4140000  hash 46691aba0dcc9185  lanes vs per-pair bitwise mismatches 0  non-finite outputs 1016125  outside the route bound 0  worst dev 0
+check lanes f64 Sq W=16 seeds 3: outputs 4140000  hash f97babf59f98a072  lanes vs per-pair bitwise mismatches 673656  non-finite outputs 1017184  outside the route bound 0  worst dev 0.3095
+check lanes f32 Sq W=32 seeds 3: outputs 4140000  hash e01d201911ab52c7  lanes vs per-pair bitwise mismatches 672783  non-finite outputs 1017184  outside the route bound 0  worst dev 0.3278
+check pair  f64 L1       seeds 3: outputs 216000  hash e474310748f9a49f
+check pair  f32 L1       seeds 3: outputs 216000  hash c8eed1c8b1e628e0
+check pair  f64 Sq       seeds 3: outputs 216000  hash b4b08fdef3da6fd8
+check pair  f32 Sq       seeds 3: outputs 216000  hash 34c544640bb6b6f5
+check all hashes combined dd7c8326616f50f9

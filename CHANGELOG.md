@@ -142,7 +142,7 @@ Soft-DTW, Python or CUDA), on the machine named.
   multiply-add caveat above), whose clusterings were unchanged. MSVC builds are unchanged.
 - Without a band the lanes of a clang or GCC build take series of different lengths too, each lane stopping at its
   own, each row of the fill taking the series after it longest first: on an Intel Core Ultra 9 285 clang's ragged
-  fills run 6.8–6.9× faster on one thread and 3.4–3.6× at 24 threads, GCC 13.3's 8.2–8.7× and 5.0–5.6×, equal-length
+  fills run 6.8–6.9× faster on one thread and 3.3–3.6× at 24 threads, GCC 13.3's 8.1–8.7× and 4.9–5.5×, equal-length
   fills unchanged; OneBatchPAM's batch table too; bit for bit, but for GCC's squared L2. MSVC builds keep the
   one-pair route for series of different lengths.
 - The Windows wheels are built by clang-cl and carry LLVM's OpenMP runtime (`libomp.dll`), so their fill of

@@ -1,0 +1,10 @@
+# cl full-size matrix hashes, msvc_base vs msvc_B2 (0b5cfe42), each shape at 24 threads (the hash does not depend on the threads), 1 untimed + 1 fill
+f64 L1 N 1000 L 90-110 band -1: base b28673ce59c47ce8 B2 b28673ce59c47ce8 equal
+f64 L1 N 150 L 100-1000 band -1: base d0c4ea00ede2475c B2 d0c4ea00ede2475c equal
+f64 L1 N 500 L 100-1000 band -1: base cd125a5433bb9769 B2 cd125a5433bb9769 equal
+f32 L1 N 1000 L 90-110 band -1: base d0429e2d299c55ed B2 d0429e2d299c55ed equal
+f64 Sq N 1000 L 90-110 band -1: base 76e1c6ac3e6ce69d B2 76e1c6ac3e6ce69d equal
+f64 L1 N 2000 L 100-100 band -1: base fa485cbe1fa07d20 B2 fa485cbe1fa07d20 equal
+f64 L1 N 500 L 1000-1000 band 100: base 79637ca9e991a308 B2 79637ca9e991a308 equal
+f64 L1 N 1000 L 90-110 band 30: base bed68cfaa32b7445 B2 bed68cfaa32b7445 equal
+f64 L1 N 8000 L 40-60 band -1: base 64d2a0d49855c763 B2 64d2a0d49855c763 equal

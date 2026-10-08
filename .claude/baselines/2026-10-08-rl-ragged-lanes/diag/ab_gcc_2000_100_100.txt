@@ -1,0 +1,15 @@
+run 0 base ms 1922.22 clock 5.301
+run 0 B ms 1905.55 clock 5.356
+run 0 fix ms 1906.20 clock 5.396
+run 1 B ms 1900.13 clock 5.385
+run 1 fix ms 1921.43 clock 5.438
+run 1 base ms 1883.79 clock 5.401
+run 2 fix ms 1916.90 clock 5.543
+run 2 base ms 1886.47 clock 5.490
+run 2 B ms 1903.23 clock 5.498
+run 3 base ms 1941.10 clock 5.352
+run 3 B ms 1893.72 clock 5.368
+run 3 fix ms 1906.29 clock 5.348
+run 4 B ms 1930.70 clock 5.466
+run 4 fix ms 1909.76 clock 5.447
+run 4 base ms 1899.63 clock 5.380

@@ -54,13 +54,11 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A large fill is latency-bound per pair; the PAM swap on a cached matrix is memory-bound.** FastPAM1 gives
   2.95–8.06×, not k×. *`baselines/2026-07-08-faster-pam-bench.md`*
 - **Benchmark the kernel you change, on each standard library** (a triangular-index lookup table regressed 5 %).
-  **On the MSVC STL, `std::min({a,b,c})` and `std::min_element` are library calls** (`__std_min_d`,
-  `__std_min_element_d`), under cl and under clang on Windows; libc++ inlines both, so a Mac benchmark cannot see it.
-  One call per DP cell cost 7.2 ns against 1.36 with a nested, register-carried min. Read the Windows assembly;
-  `test_codegen_no_calls` guards the kernels (`baselines/2026-09-29-k1-dp-cell-no-call.md`).
-- **Apple clang turns a constant store loop into a `memset_pattern16` call** (Darwin only; x86 clang and GCC never
-  do): per row in the lanes kernel, per column in the banded one, a loop out from the innermost, which was all the gate
-  read. Copy a constant row or seed from the constant; no flag stops it. *`baselines/2026-10-05-macos-design-2-0.md`*
+  **On the MSVC STL, `std::min({a,b,c})` and `std::min_element` are library calls** under cl and clang on Windows
+  (libc++ inlines both): one call per DP cell cost 7.2 ns against 1.36 with a nested, register-carried min. Read the
+  Windows assembly; `test_codegen_no_calls` guards the kernels (`baselines/2026-09-29-k1-dp-cell-no-call.md`).
+- **Apple clang turns a constant store loop into a `memset_pattern16` call** (Darwin only), one loop out from the
+  innermost the gate read; no flag stops it, so copy a constant row or seed from the constant (`a332d671`).
 - **A restructured DP loop can move an ulp under `-fassociative-math`** (clang regrouped ADTW's `left + penalty` on a
   one-row copy: 15 f32 outputs): sweep every Cell and ndim before calling it bitwise. *`baselines/…-mac-pair-2col.md`*
 - **clang's Windows driver passes `-relaxed-aliasing`** (no TBAA, as MSVC): a store through a `double *` makes the
@@ -72,6 +70,11 @@ Append new entries at the end of their section; keep each to a few lines.
   cure a fusion cliff. *`baselines/2026-09-23-x27-eigen-gap.md`*
 - **Apple Silicon E-cores help** (8 → 12 threads 1.33× more); do not cap to P-cores; `omp_get_max_threads()`
   is the right count.
+- **A test in an outer loop can slow the inner loop by changing its registers**: RL's per-column capture left clang's
+  row loop the same 38 instructions with other vector registers, 4–5 % slower from L 4000 up. Diff a hot loop register
+  for register against base, and time a long series. *`baselines/2026-10-08-rl-ragged-lanes.md`*
+- **One 24-thread round is noise on the Windows box** (identical work ran 0.86–1.34× from one process pair to the
+  next): a ±3 % band on 3 rounds cannot judge it. Use pinned one-thread controls or 20 alternating process pairs.
 
 ## Tests and gates
 
@@ -234,11 +237,12 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A per-pair decode is device code.** Its cost is paid once per pair per launch.
 - **A profiler can exit 0 having seen no kernel.** Check that it observed one.
 - **Git Bash rewrites a leading `/c` argument.** Call `cmd //c`, or run from PowerShell.
-- **Sophos may quarantine a Release `dtwc_cl.exe` as 'Generic ML PUA'.** Symptoms: "Permission denied", CLI tests
-  "dtwc_cl not found"; the Application event log names the file. Never work around it; a Debug build runs. Volkan
-  declined an exclusion (2026-09-28): run the CLI tests from a Debug build of the same tree and say so.
+- **Sophos may quarantine a Release `dtwc_cl.exe` as 'Generic ML PUA'** ("Permission denied"; the Application log names
+  it). Never work around it (Volkan declined an exclusion, 09-28): run the CLI tests from a Debug build and say so.
 - **ARC:** compute capability is not the CUDA version in the docs (P100 6.0 … H100 9.0); Rome and Broadwell
   nodes lack AVX-512 (`DTWC_ARCH_LEVEL=v3`); Grace Hopper is AArch64.
+- **cmd.exe batch files need CRLF and must not change while they run**: with LF endings `call :label` jumped mid-run.
+  VTune cannot sample under this box's Hyper-V/VBS; an elevated `xperf -Pmc` can (`etw/` of the RL record).
 
 ## Solvers
 
@@ -264,9 +268,9 @@ Append new entries at the end of their section; keep each to a few lines.
 - **Remote-tracking refs are mutable evidence.** Re-read them at close-out.
 - **Before deleting a build dir, grep the surviving `CMakeCache.txt` files for its path.** The 2 KB
   `build/f9-arrow-config` was the Arrow shim of `build/arrow-pyarrow-23`.
-- **Agent tooling:** in the Bash tool a `\\` inside a quoted heredoc reaches the program as `\` (write scripts with
-  the Write tool); the Workflow tool rejects a `scriptPath` file holding non-ASCII text as "control characters"
-  (escape it to `\uXXXX`).
+- **Agent tooling:** in the Bash tool a `\\` inside a quoted heredoc reaches the program as `\`, and non-ASCII text
+  piped into Python on Windows is read as cp1252 (write scripts with the Write tool); the Workflow tool rejects a
+  `scriptPath` file holding non-ASCII text as "control characters" (escape it to `\uXXXX`).
 - **On Windows a plain stream cannot open a file llfio holds mapped** (llfio takes delete access): loading a checkpoint
   that another live Problem maps is `IOError`.
 - **Do not export `CPM_SOURCE_CACHE` for a build dir configured without it**: its cached `CPM_DIRECTORY` differs and the
@@ -278,11 +282,9 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A uv wheel build inherits `CMAKE_GENERATOR`**: exported as Ninja it builds the wheel with clang, which links
   `libomp.dll`, and the import fails with "DLL load failed". Unset it for `uv pip install` (X2 merge, 2026-09-30).
 - **`schedule(dynamic)` is nonmonotonic since OpenMP 5.0**: libomp hands a thread a lower index after a higher one
-  (8 threads × 300 runs, R1). Never assume a thread's indices increase; MSVC `/openmp:experimental` rejects the
-  `monotonic:` modifier (C3022). `run_openmp` skips only indices above a thread's own failure.
-- **A new Arrow build tree on Windows needs both `-DArrow_DIR` and `-DParquet_DIR`** at the pyarrow shim
-  (`build/arrow-pyarrow-23/pyarrow-config`): with `Arrow_DIR` alone Parquet is silently off and `test_io_readers` skips
-  its Parquet case. At run time put pyarrow and `pyarrow.libs` on PATH, else exit 0xc0000135 (F1, 2026-09-30).
+  (R1). Never assume a thread's indices increase; MSVC `/openmp:experimental` rejects `monotonic:` (C3022).
+- **A new Arrow build tree on Windows needs `-DArrow_DIR` and `-DParquet_DIR`** at the pyarrow shim (with `Arrow_DIR`
+  alone Parquet is silently off); at run time pyarrow and `pyarrow.libs` go on PATH, else exit 0xc0000135 (F1).
 - **A CUDA error check must consume the error it reports** (`cudaGetLastError`): otherwise the sticky error fails the
   thread's next, valid call with the same message (C1 `13246cb`: a refused fill poisoned the next fill).
 - **A mutable accessor overload wins for any non-const object, even through `const auto &`**: `Problem::distance_matrix()`
@@ -291,10 +293,8 @@ Append new entries at the end of their section; keep each to a few lines.
   Guard infinities first (an infinity agrees only with itself); `dtw_routes_agree` had this hole until 6fb95f4.
 - **A band sweep proves the band only if some band binds**: on shifted-by-one or iid pairs the best path stays near
   the diagonal and bands ≥ 2 never bind. Make the oracle ignore the band; the sweep must fail (W12b, band 0).
-- **`-S` without LTO sees neither what ThinLTO inlines nor which template copy it keeps** (and `-Rpass` is silent
-  under ThinLTO: `scripts/codegen_report.py` compiles a probe without it): moving a kernel's only call left it out of
-  line (Win64 reloaded a by-value struct every cell, +2–7 %, W7d); the wheel ran nanobind's `-Os` copy of the
+- **`-S` without LTO sees neither what ThinLTO inlines nor which template copy it keeps** (`-Rpass` is silent under
+  ThinLTO): a kernel's only call left out of line cost +2–7 % (W7d); the wheel ran nanobind's `-Os` copy of the
   per-pair kernel, 1.5× slower (`NOMINSIZE`). Read the post-LTO loop of what ships.
-- **A session restart kills in-flight agents silently**: after a resume the harness still said "running" for agents
-  whose transcripts had stopped 40 minutes earlier. Check transcript times and processes before waiting; resume an
-  agent with SendMessage (context intact); a dead integrator is replaced by one told the exact staged state (10-02).
+- **A session restart kills in-flight agents silently** (the harness still said "running" 40 minutes on): check
+  transcript times and processes; resume with SendMessage, or tell a replacement the exact staged state (10-02).

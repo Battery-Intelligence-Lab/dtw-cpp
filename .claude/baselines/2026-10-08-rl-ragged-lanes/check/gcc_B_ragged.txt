@@ -1,0 +1,6 @@
+ragged gcc 13.3.0 W f64 16 f32 32
+ragged lanes f64 L1 W=16 seeds 3: outputs 828000 (y longer than x 410275, shorter 411583)  hash 6bef4332caf0a691  lanes vs per-pair bitwise mismatches 0  non-finite outputs 206364  outside the route bound 0  worst dev 0
+ragged lanes f32 L1 W=32 seeds 3: outputs 828000 (y longer than x 410275, shorter 411583)  hash 5cf4e23b27314496  lanes vs per-pair bitwise mismatches 0  non-finite outputs 206364  outside the route bound 0  worst dev 0
+ragged lanes f64 Sq W=16 seeds 3: outputs 828000 (y longer than x 410275, shorter 411583)  hash 019c382a6833b0fe  lanes vs per-pair bitwise mismatches 131054  non-finite outputs 206819  outside the route bound 0  worst dev 0.4943
+ragged lanes f32 Sq W=32 seeds 3: outputs 828000 (y longer than x 410275, shorter 411583)  hash 0fde941bef6d2c05  lanes vs per-pair bitwise mismatches 133365  non-finite outputs 206819  outside the route bound 0  worst dev 0.4933
+ragged all hashes combined ea34017a458397ef

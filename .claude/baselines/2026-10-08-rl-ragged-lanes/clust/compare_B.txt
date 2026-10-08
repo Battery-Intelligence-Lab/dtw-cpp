@@ -1,0 +1,42 @@
+dummy_float32_l1_b-1_k3_kmedoids: exit 0/0; labels same; medoids same (19 2 10); cost 151544.93969726562 / 151544.93969726562 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_l1_b-1_k3_onebatch: exit 0/0; labels same; medoids same (11 24 2); no matrix written
+dummy_float32_l1_b-1_k3_pam: exit 0/0; labels same; medoids same (16 2 10); cost 148361.80200195312 / 148361.80200195312 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_l1_b-1_k5_kmedoids: exit 0/0; labels same; medoids same (19 2 16 22 10); cost 131504.56860351562 / 131504.56860351562 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_l1_b-1_k5_pam: exit 0/0; labels same; medoids same (0 2 12 16 10); cost 128431.31860351562 / 128431.31860351562 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_l1_b4300_k3_kmedoids: exit 0/0; labels same; medoids same (19 2 10); cost 151544.93969726562 / 151544.93969726562 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_l1_b4300_k3_pam: exit 0/0; labels same; medoids same (16 2 10); cost 148361.80200195312 / 148361.80200195312 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_l1_b4300_k5_kmedoids: exit 0/0; labels same; medoids same (19 2 16 22 10); cost 131504.56860351562 / 131504.56860351562 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_l1_b4300_k5_pam: exit 0/0; labels same; medoids same (0 2 12 16 10); cost 128431.31860351562 / 128431.31860351562 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_squared_euclidean_b-1_k3_kmedoids: exit 0/0; labels same; medoids same (19 20 10); cost 773868.9072265625 / 773868.90234375 (rel 6.31e-09); matrix max rel 1.92e-07; silhouettes max abs 1.21e-07
+dummy_float32_squared_euclidean_b-1_k3_onebatch: exit 0/0; labels same; medoids same (2 24 20); no matrix written
+dummy_float32_squared_euclidean_b-1_k3_pam: exit 0/0; labels same; medoids same (1 10 2); cost 712390.88671875 / 712390.884765625 (rel 2.74e-09); matrix max rel 1.92e-07; silhouettes max abs 7.9e-08
+dummy_float32_squared_euclidean_b-1_k5_kmedoids: exit 0/0; labels same; medoids same (19 2 16 8 10); cost 590337.0859375 / 590337.087890625 (rel 3.31e-09); matrix max rel 1.92e-07; silhouettes max abs 6.1e-08
+dummy_float32_squared_euclidean_b-1_k5_pam: exit 0/0; labels same; medoids same (6 16 1 2 10); cost 572676.015625 / 572676.021484375 (rel 1.02e-08); matrix max rel 1.92e-07; silhouettes max abs 5e-08
+dummy_float32_squared_euclidean_b4300_k3_kmedoids: exit 0/0; labels same; medoids same (19 20 10); cost 776205.8935546875 / 776205.8935546875 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_squared_euclidean_b4300_k3_pam: exit 0/0; labels same; medoids same (1 10 2); cost 712390.88671875 / 712390.88671875 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_squared_euclidean_b4300_k5_kmedoids: exit 0/0; labels same; medoids same (19 2 16 8 10); cost 590337.0859375 / 590337.0859375 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float32_squared_euclidean_b4300_k5_pam: exit 0/0; labels same; medoids same (6 16 1 2 10); cost 572676.015625 / 572676.015625 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_l1_b-1_k3_kmedoids: exit 0/0; labels same; medoids same (19 2 10); cost 151545.06388973322 / 151545.06388973322 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_l1_b-1_k3_onebatch: exit 0/0; labels same; medoids same (11 24 2); no matrix written
+dummy_float64_l1_b-1_k3_pam: exit 0/0; labels same; medoids same (16 2 10); cost 148361.91988495926 / 148361.91988495926 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_l1_b-1_k5_kmedoids: exit 0/0; labels same; medoids same (19 2 16 22 10); cost 131504.68567772626 / 131504.68567772626 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_l1_b-1_k5_pam: exit 0/0; labels same; medoids same (0 2 12 16 10); cost 128431.42148616939 / 128431.42148616939 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_l1_b4300_k3_kmedoids: exit 0/0; labels same; medoids same (19 2 10); cost 151545.06388973322 / 151545.06388973322 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_l1_b4300_k3_pam: exit 0/0; labels same; medoids same (16 2 10); cost 148361.91988495926 / 148361.91988495926 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_l1_b4300_k5_kmedoids: exit 0/0; labels same; medoids same (19 2 16 22 10); cost 131504.68567772626 / 131504.68567772626 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_l1_b4300_k5_pam: exit 0/0; labels same; medoids same (0 2 12 16 10); cost 128431.42148616939 / 128431.42148616939 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_squared_euclidean_b-1_k3_kmedoids: exit 0/0; labels same; medoids same (19 20 10); cost 773871.3210275557 / 773871.3210275557 (rel 0); matrix max rel 6.16e-16; silhouettes max abs 0
+dummy_float64_squared_euclidean_b-1_k3_onebatch: exit 0/0; labels same; medoids same (2 24 20); no matrix written
+dummy_float64_squared_euclidean_b-1_k3_pam: exit 0/0; labels same; medoids same (1 10 2); cost 712391.8906641033 / 712391.8906641033 (rel 0); matrix max rel 6.16e-16; silhouettes max abs 0
+dummy_float64_squared_euclidean_b-1_k5_kmedoids: exit 0/0; labels same; medoids same (19 2 16 8 10); cost 590339.0669770701 / 590339.0669770701 (rel 0); matrix max rel 6.16e-16; silhouettes max abs 0
+dummy_float64_squared_euclidean_b-1_k5_pam: exit 0/0; labels same; medoids same (6 16 1 2 10); cost 572676.964596143 / 572676.964596143 (rel 0); matrix max rel 6.16e-16; silhouettes max abs 0
+dummy_float64_squared_euclidean_b4300_k3_kmedoids: exit 0/0; labels same; medoids same (19 20 10); cost 776208.12733937 / 776208.12733937 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_squared_euclidean_b4300_k3_pam: exit 0/0; labels same; medoids same (1 10 2); cost 712391.8906641033 / 712391.8906641033 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_squared_euclidean_b4300_k5_kmedoids: exit 0/0; labels same; medoids same (19 2 16 8 10); cost 590339.0669770701 / 590339.0669770701 (rel 0); matrix max rel 0; silhouettes max abs 0
+dummy_float64_squared_euclidean_b4300_k5_pam: exit 0/0; labels same; medoids same (6 16 1 2 10); cost 572676.964596143 / 572676.964596143 (rel 0); matrix max rel 0; silhouettes max abs 0
+
+runs compared: 36 (base and candidate); exit 0 in both: 36/36; labels identical: 36/36; medoids identical: 36/36
+largest relative difference of the total cost: 1.02e-08 (dummy_float32_squared_euclidean_b-1_k5_pam)
+largest relative difference of a distance-matrix entry: l1 runs 0; squared_euclidean runs 1.92e-07 (dummy_float32_squared_euclidean_b-1_k3_kmedoids)
+largest absolute difference of a silhouette (8 digits written): 1.21e-07
+clustering identical: yes

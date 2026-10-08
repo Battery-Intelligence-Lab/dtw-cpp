@@ -377,8 +377,11 @@ may differ only where several optimal medoid sets exist, node counts and run tim
 - ☑ ES an empty series is InvalidInput on the CPU routes too (validate_fill_request refused it only for the
   GPU; a series emptied through `Data::p_vec` filled as 1.8e308 on the CPU; Mac handoff 10-07) (8dd16d8e; merged
   883484b8: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical)
-- ◐ RL ragged lanes: the fill's lanes take series of different lengths, unbanded (Volkan 10-08 "Probe it";
-  band in DECISIONS 2026-10-08; prepared by the unit, timed by the orchestrator)
+- ☑ RL ragged lanes: the fill's lanes take series of different lengths, unbanded (Volkan 10-08 "Probe it";
+  band in DECISIONS 2026-10-08; f8c3d23a, cl keeping the one-pair route by Volkan's "Adopt, cl one-pair"; B3 timed:
+  clang and GCC PASS 11/11, cl at base's speed, `baselines/2026-10-08-rl-ragged-lanes.md`; merged 8c818735: clang
+  95 = 92 + 3 skips, codegen 86/0 PASS, CUDA 94 (test_cuda_correctness ran), matlab_suite 140/140, pytest 893/19/0,
+  CLI outputs byte-identical, 156 + 65 files)
 
 ## Blocked on another machine or on Volkan
 
