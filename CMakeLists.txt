@@ -295,6 +295,15 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
   install(TARGETS dtwc_cl
     RUNTIME DESTINATION bin
     COMPONENT runtime)
+  # MSVC: the Visual C++ runtime and its OpenMP runtime (vcomp140) go into bin/ beside
+  # dtwc_cl.exe. Windows does not ship them, so without these copies the archive starts
+  # only where the Visual C++ Redistributable is installed. They are Microsoft's
+  # Distributable Code (THIRD_PARTY_LICENSES.md); smoke_release_archive.py checks them.
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(CMAKE_INSTALL_OPENMP_LIBRARIES ON)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT runtime)
+    include(InstallRequiredSystemLibraries)
+  endif()
   install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
     "${CMAKE_CURRENT_SOURCE_DIR}/README.md"

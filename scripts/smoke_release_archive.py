@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import struct
 import subprocess
 import sys
 import tarfile
@@ -44,6 +45,13 @@ MACHO_MAGICS = {
     for magic in ("feedface", "cefaedfe", "feedfacf", "cffaedfe", "cafebabe", "bebafeca")
 }
 
+# DLLs that Windows itself provides (10 and later); the api-ms-win-* API sets resolve
+# to the kernel and the Universal CRT. The Visual C++ runtime (vcruntime140*,
+# msvcp140*, concrt140, vcomp140) and LLVM's libomp.dll are not among them: a machine
+# without the Visual C++ Redistributable has none, so the archive carries each one
+# its binaries import, beside dtwc_cl.exe, where the loader looks first.
+WINDOWS_SYSTEM_DLLS = {"kernel32.dll", "user32.dll", "advapi32.dll", "ucrtbase.dll"}
+
 
 def macos_minimums(binary: Path) -> list[tuple[int, ...]]:
     """Every minimum macOS a Mach-O file records, one per architecture slice."""
@@ -82,6 +90,67 @@ def check_macos_minimum(root: Path) -> None:
         )
 
 
+def pe_imports(binary: Path) -> list[str]:
+    """The DLLs a PE file imports, at load time or delay-loaded: what `dumpbin /dependents` lists.
+
+    Read here rather than through dumpbin, which is on PATH only inside a Visual Studio
+    environment; the release workflow runs this script outside one.
+    """
+    data = binary.read_bytes()
+    header = struct.unpack_from("<I", data, 0x3C)[0]  # "PE\0\0", then the COFF header
+    sections, optional_size = struct.unpack_from("<2xH12xH", data, header + 4)
+    optional = header + 24
+    pe32_plus = struct.unpack_from("<H", data, optional)[0] == 0x20B
+    directory_count = struct.unpack_from("<I", data, optional + (108 if pe32_plus else 92))[0]
+    directories = optional + (112 if pe32_plus else 96)
+    section_table = optional + optional_size
+
+    def offset(rva: int) -> int:
+        for entry in range(section_table, section_table + 40 * sections, 40):
+            size, address, _, raw = struct.unpack_from("<4I", data, entry + 8)
+            if address <= rva < address + size:
+                return rva - address + raw
+        raise RuntimeError(f"{binary}: RVA {rva:#x} lies in no section")
+
+    names = []
+    # Directory 1 lists the import descriptors (20 bytes, name RVA at 12), directory 13
+    # the delay-load ones (32 bytes, name RVA at 4); a zero name ends each list.
+    for directory, stride, name_at in ((1, 20, 12), (13, 32, 4)):
+        if directory >= directory_count:
+            continue
+        rva = struct.unpack_from("<I", data, directories + 8 * directory)[0]
+        if not rva:
+            continue
+        descriptor = offset(rva)
+        while name := struct.unpack_from("<I", data, descriptor + name_at)[0]:
+            start = offset(name)
+            names.append(data[start:data.index(b"\0", start)].decode("ascii"))
+            descriptor += stride
+    return names
+
+
+def check_windows_imports(root: Path, executable_dir: Path) -> None:
+    """Fail unless every DLL the archive's binaries import is beside dtwc_cl.exe or part of Windows.
+
+    Running the CLI cannot notice a missing runtime: the build machine has the Visual
+    C++ Redistributable installed, and a user's machine may not.
+    """
+    bundled = {path.name.lower() for path in executable_dir.iterdir() if path.suffix.lower() == ".dll"}
+    known = bundled | WINDOWS_SYSTEM_DLLS
+    binaries = sorted(path for path in root.rglob("*") if path.suffix.lower() in (".exe", ".dll"))
+    missing = [
+        f"{binary.relative_to(root)} imports {name}"
+        for binary in binaries
+        for name in pe_imports(binary)
+        if name.lower() not in known and not name.lower().startswith("api-ms-win-")
+    ]
+    if missing:
+        raise RuntimeError(
+            f"archive is not self-contained; Windows does not ship these DLLs: {missing}\n"
+            "Install the runtime beside dtwc_cl.exe (InstallRequiredSystemLibraries in CMakeLists.txt)."
+        )
+
+
 def dependency_paths(binary: Path) -> list[str]:
     """Absolute, non-system libraries the binary will try to load."""
     if sys.platform == "darwin":
@@ -98,7 +167,7 @@ def dependency_paths(binary: Path) -> list[str]:
             _, sep, rhs = line.partition("=>")
             if sep:
                 found.append(rhs.strip().partition(" (0x")[0].strip())
-    else:  # Windows resolves DLLs beside the .exe; no equivalent to inspect here.
+    else:  # Windows records DLL names, not paths: check_windows_imports.
         return []
     return [
         path
@@ -167,6 +236,8 @@ def main() -> None:
         check_self_contained(executables[0].resolve(), root)
         if sys.platform == "darwin":
             check_macos_minimum(root)
+        if sys.platform == "win32":
+            check_windows_imports(root, executables[0].resolve().parent)
 
         fixture = scratch / "fixture.csv"
         output = scratch / "result"
