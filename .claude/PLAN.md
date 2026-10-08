@@ -371,8 +371,11 @@ may differ only where several optimal medoid sets exist, node counts and run tim
   type, `upload`, `build htc-cpu`, `build htc-gpu`, `build htc-gpu --gpu-device a100`, three `dtwcpp.cluster` runs
   (`hpc`, `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`; exact commands in
   `baselines/2026-10-06-w9c-hpc-job-toml-mac.md`.
-- Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux and Windows (Windows needs a
-  `dumpbin /dependents` leg).
+- Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux. Windows done (RA 0856c78d, 78f3373d,
+  3cd66f95; merged 97902908): the smoke checks every DLL a binary imports (a stdlib PE reader); under MSVC the
+  archive installs the Visual C++ runtime and vcomp140 beside dtwc_cl.exe (InstallRequiredSystemLibraries); the
+  Windows wheels are repaired by a pinned delvewheel (msvcp140, vcomp140 bundled). CI not run; the archive also
+  ships HiGHS's development install (277 headers, a static highs.lib), a candidate to trim.
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
 - Linux wheel: whether `libgomp` ships, and the notice says so.
 - A crash recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42). F43 (an llfio-ON MEX under R2024b crashing in `std::mutex`) did not reproduce on 2026-09-30, and no MEX route maps a matrix yet (Y4, `baselines/2026-09-30-y4-matlab.md`).

@@ -493,3 +493,9 @@ CHANGELOG rule.
 - 2026-10-08 — Volkan (question tool): GCC's lanes are timed at 128 bytes in WSL here (unit XG, XL's band);
   `build --gpu-device` builds keep portable CPU code (W9c's DTWC_NATIVE_CPU=OFF confirmed: "Confirm portable CPU");
   the two September worktrees (dtw-cpp-m53-red, the llfio spike's) are removed ("Remove both").
+- 2026-10-08 — RA (merged 97902908): the Windows wheel's extension imported MSVCP140 and VCOMP140, which CPython
+  does not ship and the wheel did not bundle, so `import dtwcpp` failed wherever the Visual C++ Redistributable is
+  absent (inferred from the import tables; the runners have it); the archive's dtwc_cl.exe likewise. Both now carry
+  the runtime (delvewheel; InstallRequiredSystemLibraries). Volkan to review: the notice's wording of Microsoft's
+  Distributable Code terms (indemnity, pass-through of protective terms) in THIRD_PARTY_LICENSES.md, and whether the
+  CHANGELOG line belongs under Fixed or Added (v1.0.0 shipped no wheels or archives).
