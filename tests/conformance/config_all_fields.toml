@@ -34,6 +34,7 @@ skip-rows = 1
 skip-cols = 2
 delimiter = ';'
 dist-matrix = "dist.csv"
+not-computed = "negative"
 checkpoint = "ckpt"
 checkpoint-interval = 10
 mmap-threshold = 1000

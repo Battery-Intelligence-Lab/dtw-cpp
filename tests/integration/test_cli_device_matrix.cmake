@@ -13,7 +13,7 @@ cmake_minimum_required(VERSION 3.26)
 #          refuses every gpu cell with the message naming the build flag.
 #   hpc    refused for every method, since it submits a whole run to a SLURM
 #          cluster, which dtwc_cl does not do; an unknown device is refused
-#   --print-config  the golden file reads back to itself (45 keys, each at a
+#   --print-config  the golden file reads back to itself (every key, each at a
 #          value that is not its default) and a bare --print-config prints
 #          config_defaults.toml: every default and spelling, pinned on the binary
 foreach(required_var IN ITEMS CLI INPUT GOLDEN DEFAULTS GPU HAS_HIGHS WORK_ROOT)

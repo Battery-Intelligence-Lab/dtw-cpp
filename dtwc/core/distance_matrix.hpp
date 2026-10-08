@@ -31,6 +31,8 @@
 
 #pragma once
 
+#include "../base/names.hpp"
+
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -43,6 +45,20 @@
 #include <vector>
 
 namespace dtwc::core {
+
+/// How a distance-matrix file marks a pair it never computed. NaN: an empty field
+/// or a NaN spelling, as this library writes it. Negative: also every value below
+/// zero, as v1.0.0 wrote -1 (-0 is not below zero: it stays the distance 0).
+enum class NotComputed
+{
+  NaN,
+  Negative
+};
+
+inline constexpr Name<NotComputed> not_computed_names[]{
+  { "nan", NotComputed::NaN },
+  { "negative", NotComputed::Negative },
+};
 
 /// Map (i,j) to a packed lower-triangular index (symmetric: tri_index(i,j)==tri_index(j,i)).
 inline size_t tri_index(size_t i, size_t j)
@@ -113,10 +129,12 @@ public:
   double max() const; ///< Largest computed distance; 0 when none is computed.
   size_t count_computed() const;
   /// Whether every pair is computed (none is NaN), in one pass that also refuses
-  /// a distance that is ±inf: InvalidInput, after `where`, names the first such
-  /// pair. Every matrix that enters a Problem from outside its fill passes this
+  /// a distance that is ±inf, and one below zero unless `negative_is_distance`
+  /// (Soft-DTW's can be): InvalidInput, after `where`, names the first such pair,
+  /// and for a negative one ends with `negative_way_out`, what the caller's route
+  /// offers. Every matrix that enters a Problem from outside its fill passes this
   /// scan, so the clustering loops read the matrix unchecked.
-  bool all_computed(std::string_view where) const;
+  bool all_computed(std::string_view where, bool negative_is_distance, std::string_view negative_way_out = {}) const;
 
 private:
   struct Mapping; // the llfio file handle and its map, in distance_matrix.cpp

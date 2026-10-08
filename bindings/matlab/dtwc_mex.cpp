@@ -859,7 +859,9 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
     for (size_t j = i; j < N; ++j)
       dm.set(i, j, data[i + j * N]);  // column-major
   // A complete matrix is filled; NaN entries are computed on first use.
-  if (dm.all_computed("Problem.set_distance_matrix")) prob.fill_distance_matrix();
+  if (dm.all_computed("Problem.set_distance_matrix", prob.variant_params().variant == dtwc::core::DTWVariant::SoftDTW,
+                      "Mark a pair still to compute with NaN: D(D < 0) = NaN."))
+    prob.fill_distance_matrix();
 
 }
 
@@ -1036,10 +1038,16 @@ static void cmd_Problem_refresh_distance_matrix(int nlhs, mxArray *plhs[], int n
   prob.refresh_distance_matrix();
 }
 
+/// read_distance_matrix(path[, not_computed]): not_computed by the `--not-computed` names.
 static void cmd_Problem_read_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_read_distance_matrix requires handle and path.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.read_distance_matrix(get_path(prhs[2], "path"));
+  auto not_computed = dtwc::core::NotComputed::NaN;
+  if (nrhs > 3) {
+    require_char(prhs[3], "NotComputed");
+    not_computed = dtwc::parse_name(dtwc::core::not_computed_names, get_string(prhs[3]), "NotComputed");
+  }
+  prob.read_distance_matrix(get_path(prhs[2], "path"), not_computed);
 }
 
 static void cmd_Problem_max_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {

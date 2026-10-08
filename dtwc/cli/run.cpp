@@ -179,6 +179,8 @@ Outcome execute(const Config &config, std::optional<Data> data)
     throw InvalidInput("--max-iter must be a positive integer, got " + std::to_string(config.max_iter));
   if (config.checkpoint_interval != 0 && config.checkpoint.empty())
     throw InvalidInput("--checkpoint-interval requires --checkpoint <dir>.");
+  if (config.not_computed != core::NotComputed::NaN && config.dist_matrix.empty())
+    throw InvalidInput("--not-computed says how a --dist-matrix file marks a pair, and requires --dist-matrix <path>.");
 
   auto problem =
     std::make_shared<Problem>(config.name.empty() ? detail::default_name(utf8_to_path(config.input)) : config.name);
@@ -325,7 +327,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // without it silently recomputed every distance and exited 0.
   if (!config.dist_matrix.empty()) {
     try {
-      prob.read_distance_matrix(utf8_to_path(config.dist_matrix));
+      prob.read_distance_matrix(utf8_to_path(config.dist_matrix), config.not_computed);
     } catch (const std::exception &e) {
       throw IOError("--dist-matrix '" + config.dist_matrix
                     + "' cannot be loaded; fix the file, or omit --dist-matrix to compute the distances. Cause: "

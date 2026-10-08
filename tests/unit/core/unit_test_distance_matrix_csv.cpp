@@ -729,6 +729,100 @@ TEST_CASE("A matrix reader error names its file in UTF-8, whatever the file is c
   CHECK_THROWS_WITH(dtwc::io::read_csv(loaded, bad), ContainsSubstring("\xCE\xB4_bad.csv"));
 }
 
+TEST_CASE("A v1.0.0 matrix's -1 marks a pair never computed only under not_computed = negative",
+          "[csv][dense][read][not-computed]")
+{
+  // v1.0.0 filled its matrix with -1 and wrote it as it stood. Oracle: these bytes.
+  using Catch::Matchers::ContainsSubstring;
+  using dtwc::core::NotComputed;
+  const auto path = fresh_path("v1.csv");
+  seed_binary(path, "0,-1,2.5\n-1,0,-1\n2.5,-1,0\n");
+
+  // The CSV layer reads every number; the refusal is the Problem's, where the matrix enters.
+  dtwc::core::DistanceMatrix as_written;
+  dtwc::io::read_csv(as_written, path);
+  CHECK(as_written.get(0, 1) == -1.0);
+  dtwc::Problem problem("v1");
+  problem.set_data(dtwc::Data(std::vector<std::vector<double>>{{0.0}, {1.0}, {2.0}},
+                              std::vector<std::string>{"a", "b", "c"}));
+  const auto refusal = capture_rejection([&] { problem.read_distance_matrix(path); });
+  CHECK(refusal.typed);
+  CHECK_THAT(refusal.message, ContainsSubstring("the distance between series 0 and 1 is -1")
+                                && ContainsSubstring("--not-computed negative")
+                                && ContainsSubstring("not a standard distance matrix"));
+
+  dtwc::core::DistanceMatrix holes;
+  dtwc::io::read_csv(holes, path, NotComputed::Negative);
+  REQUIRE(holes.size() == 3);
+  CHECK(holes.get(0, 0) == 0.0);
+  CHECK(holes.get(0, 2) == 2.5);
+  CHECK_FALSE(holes.is_computed(0, 1));
+  CHECK_FALSE(holes.is_computed(1, 2));
+
+  // -0 is not below zero: it stays the distance 0; -1.25 is a hole.
+  const auto signed_zero = fresh_path("v1_signed_zero.csv");
+  seed_binary(signed_zero, kExpected);
+  dtwc::core::DistanceMatrix zero;
+  dtwc::io::read_csv(zero, signed_zero, NotComputed::Negative);
+  CHECK(std::bit_cast<std::uint64_t>(zero.get(0, 1)) == UINT64_C(0x8000000000000000));
+  CHECK_FALSE(zero.is_computed(1, 2));
+}
+
+TEST_CASE("not_computed = negative computes a v1.0.0 file's holes and keeps its distances bit for bit",
+          "[csv][dense][read][not-computed]")
+{
+  // Constant series of length 4 under L1: every cell costs |a - b| and the
+  // diagonal path has the fewest cells, so DTW = 4 |a - b|: (0,1) 4, (1,2) 8.
+  // The file's (0,2) is 99.5, not DTW's 12, so a recomputed pair would show.
+  const auto path = fresh_path("v1_holes.csv");
+  seed_binary(path, "0,-1,99.5\n-1,0,-1\n99.5,-1,0\n");
+  dtwc::Problem problem("v1_holes");
+  problem.set_data(dtwc::Data(std::vector<std::vector<double>>{{0, 0, 0, 0}, {1, 1, 1, 1}, {3, 3, 3, 3}},
+                              std::vector<std::string>{"a", "b", "c"}));
+  problem.read_distance_matrix(path, dtwc::core::NotComputed::Negative);
+  CHECK_FALSE(problem.is_distance_matrix_filled());
+  problem.fill_distance_matrix();
+  CHECK(problem.dist_by_ind(0, 1) == 4.0);
+  CHECK(problem.dist_by_ind(1, 2) == 8.0);
+  CHECK(std::bit_cast<std::uint64_t>(problem.dist_by_ind(0, 2)) == std::bit_cast<std::uint64_t>(99.5));
+  CHECK(problem.dist_by_ind(1, 1) == 0.0);
+}
+
+TEST_CASE("A Soft-DTW matrix reads its negative distances, and refuses not_computed = negative",
+          "[csv][dense][read][not-computed][soft-dtw]")
+{
+  // Series 0 and 1 are equal: their Soft-DTW (gamma 1) is below the zero cost of the
+  // diagonal path, as every other path adds a positive term to the softmin's sum.
+  const auto soft = [] {
+    dtwc::Problem problem("soft");
+    problem.set_data(dtwc::Data(std::vector<std::vector<double>>{{1, 2, 3, 4, 5}, {1, 2, 3, 4, 5}, {5, 4, 3, 2, 1}},
+                                std::vector<std::string>{"a", "b", "c"}));
+    problem.set_variant(dtwc::core::DTWVariant::SoftDTW);
+    return problem;
+  };
+  auto written = soft();
+  written.fill_distance_matrix();
+  REQUIRE(written.dist_by_ind(0, 1) < 0.0);
+  const auto path = fresh_path("soft.csv");
+  written.set_output_folder(test_root());
+  written.write_distance_matrix(path.filename().string());
+
+  auto read = soft();
+  read.read_distance_matrix(path);
+  CHECK(read.is_distance_matrix_filled());
+  for (dtwc::index_t i = 0; i < 3; ++i)
+    for (dtwc::index_t j = 0; j < 3; ++j)
+      CHECK(std::bit_cast<std::uint64_t>(read.dist_by_ind(i, j))
+            == std::bit_cast<std::uint64_t>(written.dist_by_ind(i, j)));
+
+  auto refused = soft();
+  const auto refusal =
+    capture_rejection([&] { refused.read_distance_matrix(path, dtwc::core::NotComputed::Negative); });
+  CHECK(refusal.typed);
+  CHECK_THAT(refusal.message, Catch::Matchers::ContainsSubstring("not_computed = negative")
+                                && Catch::Matchers::ContainsSubstring("variant is softdtw"));
+}
+
 TEST_CASE("F14 focused route marker", "[f14][csv][marker]")
 {
   CHECK(true);

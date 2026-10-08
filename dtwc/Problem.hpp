@@ -311,7 +311,9 @@ public:
   /// vouch for the clustering calls require_clustered() once first.
   index_t centroid_of(index_t i_p) const { return centroids_ind[clusters_ind[i_p]]; }
 
-  void read_distance_matrix(const fs::path &distMat_path);
+  /// `not_computed`: NaN reads an empty field or NaN as a pair never computed;
+  /// Negative also every value below zero, as v1.0.0 wrote them (-1).
+  void read_distance_matrix(const fs::path &distMat_path, core::NotComputed not_computed = core::NotComputed::NaN);
   [[deprecated("use read_distance_matrix")]]
   void readDistanceMatrix(const fs::path &p) { read_distance_matrix(p); }
 

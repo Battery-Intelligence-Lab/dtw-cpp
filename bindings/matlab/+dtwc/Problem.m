@@ -261,9 +261,17 @@ classdef Problem < handle
             dtwc_mex('Problem_refresh_distance_matrix', obj.Handle);
         end
 
-        function read_distance_matrix(obj, path)
+        function read_distance_matrix(obj, path, varargin)
         %READ_DISTANCE_MATRIX Load a distance matrix from a CSV file.
-            dtwc_mex('Problem_read_distance_matrix', obj.Handle, char(path));
+        %   prob.read_distance_matrix(path)
+        %   prob.read_distance_matrix(path, 'NotComputed', 'negative')
+        %
+        %   NotComputed: 'nan' (default), an empty field or NaN marks a pair never
+        %   computed; 'negative' also any value below 0, as v1.0.0 wrote -1.
+            p = inputParser;
+            addParameter(p, 'NotComputed', 'nan', @(v) ischar(v) || isstring(v));
+            parse(p, varargin{:});
+            dtwc_mex('Problem_read_distance_matrix', obj.Handle, char(path), char(p.Results.NotComputed));
         end
 
         function d = max_distance(obj)

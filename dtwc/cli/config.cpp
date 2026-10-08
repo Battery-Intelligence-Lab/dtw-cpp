@@ -261,6 +261,9 @@ void bind(CLI::App &app, Config &config)
 
   // Distance matrix and checkpoints
   key(app, "--dist-matrix", config.dist_matrix, "Path to precomputed distance matrix CSV");
+  key(app, "--not-computed", config.not_computed, core::not_computed_names, "not-computed mark",
+      "What marks a pair --dist-matrix never computed: nan (an empty field or NaN), negative (also any value below 0, "
+      "as v1.0.0 wrote -1)");
   key(app, "--checkpoint", config.checkpoint, "Checkpoint directory: <name>.dtwm is saved there and resumed from");
   key(app, "--checkpoint-interval", config.checkpoint_interval,
       "Needs --checkpoint: save the checkpoint every N filled distance-matrix rows (0: at the end)");

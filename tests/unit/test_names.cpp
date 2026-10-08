@@ -21,6 +21,7 @@
 #include "base/error.hpp"
 #include "base/names.hpp"
 #include "cli/config.hpp"
+#include "core/distance_matrix.hpp"
 #include "core/dtw_options.hpp"
 #include "core/storage.hpp"
 #include "enums/Method.hpp"
@@ -134,13 +135,16 @@ TEST_CASE("dtype, linkage and OneBatchPAM weighting tables", "[names]")
               {});
 }
 
-TEST_CASE("config tables: GPU precision", "[names]")
+TEST_CASE("config tables: GPU precision, not-computed mark", "[names]")
 {
   using dtwc::GpuPrecision;
   check_table(dtwc::gpu_precision_names,
               { { "auto", GpuPrecision::Auto }, { "fp32", GpuPrecision::FP32 }, { "fp64", GpuPrecision::FP64 } },
               { { "float32", "fp32" }, { "f32", "fp32" }, { "float", "fp32" }, { "float64", "fp64" },
                 { "f64", "fp64" }, { "double", "fp64" } });
+  using dtwc::core::NotComputed;
+  check_table(dtwc::core::not_computed_names, { { "nan", NotComputed::NaN }, { "negative", NotComputed::Negative } },
+              {});
 }
 
 TEST_CASE("parse_name matches ASCII case only", "[names]")

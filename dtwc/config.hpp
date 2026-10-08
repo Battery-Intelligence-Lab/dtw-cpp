@@ -43,6 +43,7 @@ struct Config
   std::size_t ram_limit = 0;             ///< `--ram-limit` in bytes; 0 = no limit.
   std::size_t mmap_threshold = 50000;    ///< `--mmap-threshold`
   std::string dist_matrix;               ///< `--dist-matrix`: precomputed distance-matrix CSV.
+  core::NotComputed not_computed = core::NotComputed::NaN; ///< `--not-computed`: what marks a pair it never computed
   // Method
   Method method = Method::Auto;          ///< `--method`
   index_t k = 0;                         ///< `--n-clusters`, required: 0 = not given

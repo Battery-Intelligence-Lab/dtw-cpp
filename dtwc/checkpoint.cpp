@@ -65,7 +65,8 @@ bool load_checkpoint(Problem &prob, const std::string &path, core::MetricType me
   if (!exists) return false;
 
   auto loaded = core::DistanceMatrix::read(file, prob.size(), identity);
-  const bool complete = loaded.all_computed("load_checkpoint");
+  const bool complete =
+    loaded.all_computed("load_checkpoint", prob.variant_params().variant == core::DTWVariant::SoftDTW);
   prob.distMat = std::move(loaded);
   prob.filled_ = prob.distMat.size() > 0 && complete;
   return true;

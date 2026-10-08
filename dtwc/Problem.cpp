@@ -635,7 +635,8 @@ void Problem::use_mmap_distance_matrix(
   auto mapped = core::DistanceMatrix::map(cache_path, data_.size(),
                                           distance_checkpoint_identity(metric));
   // A warm start holds every pair.
-  const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix");
+  const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix",
+                                            distance_.variant.variant == core::DTWVariant::SoftDTW);
   if (distance_.metric != metric) { // new semantics, as in set_metric
     distance_.metric = metric;
     clusters_ind.clear();
@@ -840,10 +841,12 @@ void Problem::fill_distance_matrix()
 {
   validate_checkpoint_settings();
   sync_band();
-  // Writes through writable_distance_matrix() commit here: one scan refuses ±inf, and a
-  // matrix they made complete needs no pair.
+  // Writes through writable_distance_matrix() commit here: one scan refuses ±inf and a
+  // negative distance no variant but Soft-DTW gives, and a matrix they made complete needs no pair.
   if (written_ && !filled_ && data_.size() > 0 && distMat.size() == data_.size()) {
-    filled_ = distMat.all_computed("Problem::fill_distance_matrix");
+    filled_ = distMat.all_computed("Problem::fill_distance_matrix",
+                                   distance_.variant.variant == core::DTWVariant::SoftDTW,
+                                   "Leave a pair still to compute NaN, as resize() leaves every pair.");
     written_ = false;
   }
   if (filled_) return;
