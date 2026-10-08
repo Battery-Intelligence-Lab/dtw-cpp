@@ -295,13 +295,29 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
   install(TARGETS dtwc_cl
     RUNTIME DESTINATION bin
     COMPONENT runtime)
-  # MSVC: the Visual C++ runtime and its OpenMP runtime (vcomp140) go into bin/ beside
-  # dtwc_cl.exe. Windows does not ship them, so without these copies the archive starts
-  # only where the Visual C++ Redistributable is installed. They are Microsoft's
-  # Distributable Code (THIRD_PARTY_LICENSES.md); smoke_release_archive.py checks them.
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  # cl and clang-cl: the Visual C++ runtime and the OpenMP runtime go into bin/ beside
+  # dtwc_cl.exe. Windows ships neither, so without these copies the archive starts only
+  # where the Visual C++ Redistributable is installed. The module adds cl's vcomp140 but,
+  # under clang-cl, not LLVM's libomp.dll: the DLL of the import library dtwc/CMakeLists.txt
+  # links (<LLVM>/lib/libomp.lib), in that release's bin/. DTWC_MSVC_CLI names the
+  # dtwc_cl.exe of a cl build's install; the release workflow packs it as dtwc_cl_msvc.exe
+  # beside the clang-cl build, with the vcomp140.dll that install put beside it.
+  # THIRD_PARTY_LICENSES.md gives the terms; smoke_release_archive.py checks the imports.
+  if(MSVC)
     set(CMAKE_INSTALL_OPENMP_LIBRARIES ON)
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT runtime)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND OpenMP_omp_LIBRARY)
+      get_filename_component(_dtwc_libomp "${OpenMP_omp_LIBRARY}/../../bin/libomp.dll" ABSOLUTE)
+      list(APPEND CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS "${_dtwc_libomp}")
+      unset(_dtwc_libomp)
+    endif()
+    set(DTWC_MSVC_CLI "" CACHE FILEPATH "dtwc_cl.exe of a cl build's install, packed as bin/dtwc_cl_msvc.exe")
+    if(DTWC_MSVC_CLI)
+      install(PROGRAMS "${DTWC_MSVC_CLI}" DESTINATION bin RENAME dtwc_cl_msvc.exe COMPONENT runtime)
+      get_filename_component(_dtwc_msvc_bin "${DTWC_MSVC_CLI}" DIRECTORY)
+      list(APPEND CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS "${_dtwc_msvc_bin}/vcomp140.dll")
+      unset(_dtwc_msvc_bin)
+    endif()
     include(InstallRequiredSystemLibraries)
   endif()
   install(FILES

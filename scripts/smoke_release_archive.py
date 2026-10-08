@@ -1,4 +1,4 @@
-"""Unpack a DTWC++ release archive outside the checkout and run its CLI."""
+"""Unpack a DTWC++ release archive outside the checkout and run its CLI (each build of it on Windows)."""
 
 from __future__ import annotations
 
@@ -46,11 +46,12 @@ MACHO_MAGICS = {
 }
 
 # DLLs that Windows itself provides (10 and later); the api-ms-win-* API sets resolve
-# to the kernel and the Universal CRT. The Visual C++ runtime (vcruntime140*,
-# msvcp140*, concrt140, vcomp140) and LLVM's libomp.dll are not among them: a machine
-# without the Visual C++ Redistributable has none, so the archive carries each one
-# its binaries import, beside dtwc_cl.exe, where the loader looks first.
-WINDOWS_SYSTEM_DLLS = {"kernel32.dll", "user32.dll", "advapi32.dll", "ucrtbase.dll"}
+# to the kernel and the Universal CRT, and psapi.dll is the one LLVM's libomp.dll adds.
+# The Visual C++ runtime (vcruntime140*, msvcp140*, concrt140, vcomp140) and LLVM's
+# libomp.dll are not among them: a machine without the Visual C++ Redistributable has
+# none, so the archive carries each one its binaries import, beside dtwc_cl.exe, where
+# the loader looks first.
+WINDOWS_SYSTEM_DLLS = {"kernel32.dll", "user32.dll", "advapi32.dll", "ucrtbase.dll", "psapi.dll"}
 
 
 def macos_minimums(binary: Path) -> list[tuple[int, ...]]:
@@ -232,46 +233,52 @@ def main() -> None:
         if len(executables) != 1:
             raise RuntimeError(f"expected one {executable_name}, found {executables}")
 
-        root = executables[0].resolve().parent.parent
-        check_self_contained(executables[0].resolve(), root)
+        cli = executables[0].resolve()
+        root = cli.parent.parent
+        check_self_contained(cli, root)
         if sys.platform == "darwin":
             check_macos_minimum(root)
         if sys.platform == "win32":
-            check_windows_imports(root, executables[0].resolve().parent)
+            check_windows_imports(root, cli.parent)
 
         fixture = scratch / "fixture.csv"
-        output = scratch / "result"
         fixture.write_text(FIXTURE, encoding="utf-8")
-        completed = subprocess.run(
-            [
-                str(executables[0].resolve()),
-                "--input", str(fixture.resolve()),
-                "--output", str(output.resolve()),
-                "--name", "archive_smoke",
-                "--n-clusters", "2",
-                "--method", "pam",
-                "--max-iter", "3",
-                "--device", "cpu",
-                "--mmap-threshold", "0",  # the distance matrix is mapped (llfio)
-            ],
-            cwd=scratch,
-            text=True,
-            capture_output=True,
-            check=True,
-        )
-        labels = output / "archive_smoke_labels.csv"
-        if not labels.exists():
-            raise RuntimeError(
-                f"CLI returned success but did not create {labels}\n"
-                f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        # The Windows archive holds MSVC's build beside clang-cl's: the same run for each, into
+        # its own folder (a mapped matrix left in the folder would be resumed, not filled).
+        for executable in (cli, cli.with_name("dtwc_cl_msvc.exe")):
+            if not executable.exists():
+                continue
+            output = scratch / executable.stem
+            completed = subprocess.run(
+                [
+                    str(executable),
+                    "--input", str(fixture.resolve()),
+                    "--output", str(output.resolve()),
+                    "--name", "archive_smoke",
+                    "--n-clusters", "2",
+                    "--method", "pam",
+                    "--max-iter", "3",
+                    "--device", "cpu",
+                    "--mmap-threshold", "0",  # the distance matrix is mapped (llfio)
+                ],
+                cwd=scratch,
+                text=True,
+                capture_output=True,
+                check=True,
             )
-        matrix = output / "archive_smoke.dtwm"  # 4 series: 48-byte header, 10 doubles
-        if not matrix.exists() or matrix.stat().st_size != 48 + 10 * 8:
-            raise RuntimeError(
-                f"the archive's CLI did not map its distance matrix to {matrix}\n"
-                f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
-            )
-        print(f"release archive smoke OK: {archive.name} -> {labels}, {matrix.name}")
+            labels = output / "archive_smoke_labels.csv"
+            if not labels.exists():
+                raise RuntimeError(
+                    f"{executable.name} returned success but did not create {labels}\n"
+                    f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+                )
+            matrix = output / "archive_smoke.dtwm"  # 4 series: 48-byte header, 10 doubles
+            if not matrix.exists() or matrix.stat().st_size != 48 + 10 * 8:
+                raise RuntimeError(
+                    f"the archive's {executable.name} did not map its distance matrix to {matrix}\n"
+                    f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+                )
+            print(f"release archive smoke OK: {archive.name} {executable.name} -> {labels}, {matrix.name}")
 
 
 if __name__ == "__main__":
