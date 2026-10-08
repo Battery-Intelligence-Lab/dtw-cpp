@@ -533,8 +533,9 @@ CHANGELOG rule.
   need an elevated session; WSL2 has no PMU driver for this CPU, "software events only"; valgrind absent, sudo
   needs his password); asked, he chose "Install Intel VTune" (its sampling driver needs his admin install).
 - 2026-10-08 — RL review, before any timing: the packed lower-triangular matrix (`tri_index` = max·(max+1)/2 + min)
-  lets a thread's 8 consecutive fill rows share each written cache line; RL's longest-first row order made every
-  write its own line. The candidate is now row-local (rows in index order, each row's columns in length order);
+  lets the consecutive rows of a thread's chunk write neighbouring slots of each written cache line (a chunk is
+  N/(8·threads) rows, 41 at N 8000 on 24 threads; corrected 2026-10-09, this line said 8 rows); RL's longest-first
+  row order made every write its own line. The candidate is now row-local (rows in index order, each row's columns in length order);
   the global order is timed beside it for the record, with an N 8000, L 40–60 shape (256 MB matrix) whose band
   is ≥ 1.5× base under clang++ and GCC.
 - 2026-10-08 — CW timed (`baselines/2026-10-08-cw-clang-cl-wheel.md`, quiet run): PASS. The clang-cl wheel against

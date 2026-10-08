@@ -57,9 +57,10 @@ Merged into design-2.0 as `8c818735`.**
   lane function) a row takes its columns in one longest-first order (`order`: a stable sort by length, built once per
   fill, serially), passing over those up to its own; a block goes to the lanes unless a band is set and its lengths
   differ (or all its pairs are known). If the order is the index order (a band, no lane function, equal lengths), a row
-  starts at i + 1 as base did. A thread's rows i..i+7 then write (j, i..i+7), neighbouring slots of the packed matrix,
-  as at base; A (`9d2b9310`: rows and columns longest first, row a = series order[a]) gave a thread 8 unrelated rows,
-  each write its own cache line.
+  starts at i + 1 as base did. A thread's chunk of consecutive rows i.. then writes (j, i..), neighbouring slots of the
+  packed matrix, as at base (`run_openmp`'s 8 is chunks per thread: a chunk is N/(8·threads) rows, 41 at N 8000 on 24
+  threads; corrected 2026-10-09, this record said rows i..i+7); A (`9d2b9310`: rows and columns longest first, row a =
+  series order[a]) gave a chunk unrelated rows, each write its own cache line.
 - `0b5cfe42` (after the timing, Volkan's ruling): `core::dtw_lanes_ragged`, a `constexpr bool` beside `dtw_lanes` under
   the same `#if defined(__aarch64__) || defined(__x86_64__)`: true there (clang, clang-cl, GCC), false under cl and
   elsewhere; its comment: cl's lanes are scalar, and on blocks of unequal length they lost 9–17 % to the one-pair
