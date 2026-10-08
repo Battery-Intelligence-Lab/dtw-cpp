@@ -516,3 +516,10 @@ CHANGELOG rule.
   seen this much speedup so we suggest use of this but it is up to you or in case you have any issues." So, after
   CW, unit CA: dtwc_cl.exe built by clang-cl, the cl build beside it as dtwc_cl_msvc.exe; the docs give the
   measured speed-up, recommend dtwc_cl.exe and name dtwc_cl_msvc.exe as the fallback.
+- 2026-10-08 — Volkan (question tool) on ragged lanes, the CPU fill's lanes taking series of different lengths
+  (today a block of unequal lengths runs the one-pair kernel, 2.5–4× slower under clang, about 5× under GCC):
+  "Probe it". Unit RL prepares, the orchestrator times. Band registered before any code: under clang++ and GCC
+  each, the unbanded f64 L1 ragged fill N 1000 L 90–110 ≥ 2.0× base on one pinned thread and at 24; the wide
+  ragged fill (lengths 100–1000) ≥ 1.5×; its f32 L1 and f64 squared variants at 24 threads ≥ 1.5×; equal-length
+  fills and the banded ragged fill within 0.97–1.03×; L1 bit for bit, squared within the route bound, clusterings
+  identical; under cl no shape below 0.97×.
