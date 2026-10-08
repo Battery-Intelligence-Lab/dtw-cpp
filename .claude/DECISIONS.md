@@ -566,3 +566,9 @@ CHANGELOG rule.
   enough time series that fit in the ram, then do the parallel thing, then load the other block etc." An algorithm
   that sweeps series or the matrix does so in blocks sized to a memory budget (RAM for mapped files, cache for data
   in memory), parallel within a block. Survey and spec to follow, before code.
+- 2026-10-09 — Spec `plans/2026-10-09-dtype-and-blocked-access.md` approved by Volkan (question tool), each answer
+  the recommended one: order "DT, BF, CS, SW, FM"; the blocked SWAP "Yes, identical swaps" (the swaps it accepts and
+  the medoids equal the sequential sweep's; this overturns MAP §7's "sequential on purpose" for the evaluation only);
+  mapped series "Measure first" (after CS: does CLARA's time at scale go to decoding or to the disk); memory "One key,
+  automatic" (`ram_limit` defaults to what the process may use, sizes slabs and batches, maps the matrix by its bytes;
+  `--mmap-threshold` goes).

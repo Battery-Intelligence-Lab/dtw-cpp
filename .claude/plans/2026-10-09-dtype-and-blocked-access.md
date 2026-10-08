@@ -1,4 +1,4 @@
-# 2026-10-09 — dtype at load, and block-wise memory access (proposed; awaiting Volkan)
+# 2026-10-09 — dtype at load, and block-wise memory access (approved by Volkan 2026-10-09; DECISIONS §3)
 
 Rulings it answers (DECISIONS §3, 2026-10-08, verbatim there): double stays the default, float32 "easily changable
 like DataLoader(d_type = f32)", the distance matrix double "most of the time"; algorithms access memory "block by
@@ -96,5 +96,6 @@ CLI had none of them.
 
 ## Questions for Volkan
 
-Asked with the question tool on 2026-10-09: the order of the units, SW, MS and the memory budget. The answers go to
-DECISIONS §3, and this plan's status line changes with them.
+Asked with the question tool on 2026-10-09; every answer the recommended one (DECISIONS §3): the order DT, BF, CS,
+SW, FM; SW yes, with the accepted swaps identical to the sequential sweep's; MS measured first, after CS; one memory
+key, automatic.

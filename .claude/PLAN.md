@@ -382,6 +382,16 @@ may differ only where several optimal medoid sets exist, node counts and run tim
   clang and GCC PASS 11/11, cl at base's speed, `baselines/2026-10-08-rl-ragged-lanes.md`; merged 8c818735: clang
   95 = 92 + 3 skips, codegen 86/0 PASS, CUDA 94 (test_cuda_correctness ran), matlab_suite 140/140, pytest 893/19/0,
   CLI outputs byte-identical, 156 + 65 files)
+- Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, approved 10-09), in this order:
+  - ☐ DT `dtype` where data is loaded, in C++, Python, MATLAB and the CLI (float32 one word away; G2: a double view
+    under `--dtype float32` is no longer kept silently)
+  - ☐ BF the blocked CPU fill (slabs and tiles; prefetch and range flush when mapped; checkpoints per slab; parallel
+    NaN prefill) with the one automatic memory key `ram_limit`
+  - ☐ CS CLARA reads its data once (all samples drawn first, their union read once, decoding overlapped)
+  - ☐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
+  - ☐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5)
+  - ☐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
+    decoding dominates
 
 ## Blocked on another machine or on Volkan
 
