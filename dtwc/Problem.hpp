@@ -505,10 +505,12 @@ public:
   /// pairs they need instead of filling the matrix. Each call first takes a
   /// direct write to `band` into account and checks the request against the
   /// series (validate_fill_request, O(N·L)), so call it once, serially, before a
-  /// parallel loop; the function itself only reads what it holds.
-  /// @throws InvalidInput for a band no pair's warping path fits, a ±inf
-  ///         series value, or a NaN under MissingStrategy::Error; DeviceError
-  ///         for a GPU device the kernels cannot honour.
+  /// parallel loop; the function itself only reads what it holds and checks
+  /// nothing, so a caller passing spans other than the Problem's own owns their
+  /// validity.
+  /// @throws InvalidInput for an empty series, a band no pair's warping path
+  ///         fits, a ±inf series value, or a NaN under MissingStrategy::Error;
+  ///         DeviceError for a GPU device the kernels cannot honour.
   const dtw_fn_t &dtw_function();
   /// Float32 counterpart of dtw_function(), with the same checks.
   /// @throws InvalidInput also for an active variant parameter float32 cannot represent.

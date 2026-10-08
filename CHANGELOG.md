@@ -34,7 +34,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - `set_n_clusters` (v1.0.0's `set_numberOfClusters`) below 1 is `InvalidInput`, and so is a band below -1, set or
   written to `band` (v1.0.0 ran full DTW). A ±inf in a series is refused, a NaN unless a missing-data strategy applies.
 - A series with no values is `InvalidInput`, and a blank line in a file of one series per row is no longer an empty
-  series.
+  series. Every `Problem` fill and `dtw_function()` refuses one on the CPU too, for a series emptied through
+  `Data::p_vec` after `set_data` (it was refused on a GPU only, and a CPU stored `1.8e308`).
 - A line of a folder's file with more than one value after the skipped columns is an error (v1.0.0 read the first):
   a pandas `index,value` file needs `--skip-rows 1 --skip-cols 1`.
 - `read_distance_matrix` (`--dist-matrix`) refuses a matrix of another size, one not square and symmetric, and ±inf.
