@@ -47,6 +47,7 @@
 #include <iomanip>   // for operator<<, setprecision
 #include <iostream>  // for cout
 #include <limits>    // for numeric_limits
+#include <numeric>   // for iota
 #include <cassert>
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
@@ -771,45 +772,59 @@ void Problem::fillDistanceMatrix_BruteForce()
   // inside the structured block and deterministically rethrows the lowest-row
   // failure after the join; a failed pair remains uncomputed.
   //
-  // Row i first takes its columns W at a time through the lane function, where
-  // the block's series are as long as series i and not all its pairs are known;
-  // each of those distances is the per-pair one (bit for bit, unless the compiler
-  // contracts a multiply-add in one kernel and not the other). The block at the
-  // row's end repeats its last column in the lanes past it, whose results are
-  // dropped.
-  // The per-pair loop then fills the rest: mixed-length blocks, every pair
-  // without a lane function.
-  auto fill_lanes = [&](size_t i, auto x, auto column, const auto &block) {
+  // Row a is series order[a] against the series after it in `order`. It first
+  // takes them W at a time through the lane function, where not all the block's
+  // pairs are known and, under a band, the block's series are as long as the
+  // row's; each of those distances is the per-pair one (bit for bit, unless the
+  // compiler contracts a multiply-add in one kernel and not the other). The block
+  // at the row's end repeats its last column in the lanes past it, whose results
+  // are dropped. Without a band the lanes take series of any lengths, every lane
+  // running to its block's longest, so there the series go longest first (equal
+  // lengths in index order): a block's lengths are close, and the rows too short
+  // to fill a block are the shortest series. Otherwise they go in index order.
+  // The per-pair loop then fills the rest: banded blocks of mixed lengths, every
+  // pair without a lane function.
+  const bool unbanded = distance_.band < 0;
+  const bool lanes = data_.is_f32() ? static_cast<bool>(dtw_block_fn_f32_) : static_cast<bool>(dtw_block_fn_);
+  std::vector<size_t> order(N);
+  std::iota(order.begin(), order.end(), size_t{ 0 });
+  if (unbanded && lanes) {
+    auto length = [&](size_t i) { return data_.is_f32() ? data_.series_f32(i).size() : series(i).size(); };
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return length(a) > length(b); });
+  }
+  auto fill_lanes = [&](size_t i, std::span<const size_t> columns, auto x, auto column, const auto &block) {
     using T = typename decltype(x)::value_type;
     constexpr size_t W = core::dtw_lanes<T>;
     if (!block) return;
     std::array<std::span<const T>, W> ys;
     std::array<double, W> d;
-    for (size_t j = i + 1; j < N; j += W) {
-      const size_t count = std::min(W, N - j);
+    for (size_t b = 0; b < columns.size(); b += W) {
+      const size_t count = std::min(W, columns.size() - b);
       bool equal = true, known = true;
       for (size_t w = 0; w < W; ++w) {
-        const size_t c = j + std::min(w, count - 1);
+        const size_t c = columns[b + std::min(w, count - 1)];
         ys[w] = column(c);
         equal = equal && ys[w].size() == x.size();
         known = known && distMat.is_computed(i, c);
       }
-      if (!equal || known) continue;
+      if (!(unbanded || equal) || known) continue;
       block(x, ys, d);
       for (size_t w = 0; w < count; ++w)
-        if (!distMat.is_computed(i, j + w)) distMat.set(i, j + w, d[w]);
+        if (!distMat.is_computed(i, columns[b + w])) distMat.set(i, columns[b + w], d[w]);
     }
   };
-  auto fill_row = [&](size_t i) {
+  auto fill_row = [&](size_t a) {
+    const size_t i = order[a];
+    const std::span<const size_t> columns(order.data() + a + 1, N - a - 1);
     if (data_.is_f32()) {
       const auto si = data_.series_f32(i);
-      fill_lanes(i, si, [&](size_t j) { return data_.series_f32(j); }, dtw_block_fn_f32_);
-      for (size_t j = i + 1; j < N; ++j)
+      fill_lanes(i, columns, si, [&](size_t j) { return data_.series_f32(j); }, dtw_block_fn_f32_);
+      for (const size_t j : columns)
         if (!distMat.is_computed(i, j)) distMat.set(i, j, (*f32_function)(si, data_.series_f32(j)));
     } else {
       const auto si = series(i);
-      fill_lanes(i, si, [&](size_t j) { return series(j); }, dtw_block_fn_);
-      for (size_t j = i + 1; j < N; ++j)
+      fill_lanes(i, columns, si, [&](size_t j) { return series(j); }, dtw_block_fn_);
+      for (const size_t j : columns)
         if (!distMat.is_computed(i, j)) distMat.set(i, j, dtw_fn_(si, series(j)));
     }
   };

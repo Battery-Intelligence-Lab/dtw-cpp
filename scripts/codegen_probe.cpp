@@ -98,23 +98,23 @@ float dtwc_probe_kernels_f32(const float *x, std::size_t nx, const float *y, std
 }
 
 // The fill's lane kernel and cell: W pairs per call, f64 under L1 and f32 under squared L2.
-double dtwc_probe_lanes_f64(const double *x, const double *const *ys, std::size_t n, int band)
+double dtwc_probe_lanes_f64(const double *x, std::size_t nx, const std::span<const double> *ys, int band)
 {
   double sum = 0;
-  for (const double d : dtwc::core::dtw_kernel_lanes<double>(x, ys, n, band, AbsDiff{},
+  for (const double d : dtwc::core::dtw_kernel_lanes<double>({ x, nx }, ys, band, AbsDiff{},
                                                              dtwc::core::LanesCell{}))
     sum += d;
   return sum;
 }
 
-float dtwc_probe_lanes_f32(const float *x, const float *const *ys, std::size_t n, int band)
+float dtwc_probe_lanes_f32(const float *x, std::size_t nx, const std::span<const float> *ys, int band)
 {
   float sum = 0;
   const auto squared = [](float a, float b) noexcept {
     const float d = a - b;
     return d * d;
   };
-  for (const float d : dtwc::core::dtw_kernel_lanes<float>(x, ys, n, band, squared,
+  for (const float d : dtwc::core::dtw_kernel_lanes<float>({ x, nx }, ys, band, squared,
                                                            dtwc::core::LanesCell{}))
     sum += d;
   return sum;

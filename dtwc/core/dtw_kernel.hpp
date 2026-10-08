@@ -37,9 +37,9 @@
  *          compiler does not inline would reload the series pointers through it
  *          in every cell; the local copy stays in registers.
  *
- *          dtw_kernel_lanes computes W equal-length pairs at once and packs
- *          the values itself, so it takes a pointwise distance instead of a
- *          Cost:  T operator()(T a, T b) const.
+ *          dtw_kernel_lanes computes W pairs at once and packs the values
+ *          itself, so it takes a pointwise distance instead of a Cost:
+ *          T operator()(T a, T b) const.
  *
  * @date 2026-04-12
  */
@@ -51,6 +51,7 @@
 #include <cmath>        // std::ceil, std::floor, std::round, std::fmin
 #include <cstddef>      // size_t
 #include <limits>       // std::numeric_limits
+#include <span>         // std::span
 #include <utility>      // std::pair
 #include <vector>
 
@@ -210,9 +211,9 @@ struct AROWCell {
 inline std::pair<std::size_t, std::size_t>
 dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 {
+  if (band < 0) return {0, column_count}; // every row, of a matrix of any shape
   if (column_count == 0 || row >= column_count)
     return {column_count, column_count};
-  if (band < 0) return {0, column_count};
 
   const auto width = static_cast<std::size_t>(band);
   const auto lo = (row > width) ? row - width : 0;
@@ -437,16 +438,17 @@ T run_dtw(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, Cell
 }
 
 // ===========================================================================
-// Kernel 3: W equal-length pairs in SIMD lanes (outer = y, inner = x).
-// The pairs (x, ys[w]) share x. Every lane evaluates dtw_kernel_linear's cells
-// with its arithmetic in its order; with a band, dtw_kernel_banded's cells,
-// transposed (outer y, not outer x), each from the same three neighbours. So
-// each lane is the per-pair result for a Cell that treats `up` and `left`
-// alike, as StandardCell does: bit for bit, unless the compiler contracts
-// `d * d + m` into an FMA in one kernel and not the other (GCC does by default;
-// the two then differ in the last bits). The loop over the lanes is the one that
-// vectorises: W dependency chains side by side where the per-pair kernel runs
-// one, each a min then an add per row.
+// Kernel 3: W pairs in SIMD lanes (outer = y, inner = x).
+// The pairs (x, ys[w]) share x; without a band each ys[w] has its own length.
+// Every lane evaluates the per-pair kernel's cells (dtw_kernel_linear's; with a
+// band, dtw_kernel_banded's) with its arithmetic, each from the same three
+// neighbours, transposed where that kernel's outer series is x (it puts the
+// shorter series inner, x on a tie). So each lane is the per-pair result for a
+// Cell that treats `up` and `left` alike, as StandardCell does: bit for bit,
+// unless the compiler contracts `d * d + m` into an FMA in one kernel and not
+// the other (GCC does by default; the two then differ in the last bits). The
+// loop over the lanes is the one that vectorises: W dependency chains side by
+// side where the per-pair kernel runs one, each a min then an add per row.
 // ===========================================================================
 
 /// The fill's Cell for dtw_kernel_lanes: StandardCell, but on AArch64 its min is
@@ -488,23 +490,32 @@ template <typename T>
 inline constexpr std::size_t dtw_lanes = 64 / sizeof(T);
 #endif
 
-/// DTW between x and each of ys[0 .. dtw_lanes<T>), all n samples long, with the
-/// pointwise distance dist(x[i], y[j]); band < 0 is unconstrained, else the
-/// Sakoe-Chiba band of dtw_band_bounds.
+/// DTW between xs and each of ys[0 .. dtw_lanes<T>), with the pointwise distance
+/// dist(xs[i], ys[w][j]). band < 0 is unconstrained and each ys[w] has its own
+/// length; else the Sakoe-Chiba band of dtw_band_bounds, every ys[w] as long as xs.
+/// No ys[w] is empty (the fill refuses an empty series).
 template <typename T, typename Dist, typename Cell>
-std::array<T, dtw_lanes<T>> dtw_kernel_lanes(const T *x, const T *const *ys,
-                                             std::size_t n, int band, Dist dist, Cell cell)
+std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::span<const T> *ys,
+                                             int band, Dist dist, Cell cell)
 {
   constexpr std::size_t W = dtw_lanes<T>;
   constexpr T maxValue = std::numeric_limits<T>::max();
+  const T *x = xs.data();
+  const std::size_t nx = xs.size();
   std::array<T, W> out;
-  if (n == 0) {
+  if (nx == 0) {
     out.fill(maxValue);
     return out;
   }
+  std::size_t ny[W], ny_max = 0;
+  for (std::size_t w = 0; w < W; ++w) {
+    ny[w] = ys[w].size();
+    ny_max = std::max(ny_max, ny[w]);
+  }
 
-  // [n][W]: the W series interleaved, and the rolling DP column
-  // (s[i].v[w] = dp[i, j] of pair w).
+  // [ny_max][W]: the W series interleaved, a lane past its length repeating its
+  // last sample (finite; what those columns compute is never read); and [nx][W]:
+  // the rolling DP column (s[i].v[w] = dp[i, j] of pair w).
   struct alignas(64) Row { T v[W]; };
   // maxValue in every lane. A row, or the lanes of `left`, is set by copying it whole:
   // Apple clang turns a loop that stores a constant row (or reads this row lane by
@@ -515,28 +526,42 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(const T *x, const T *const *ys,
     return r;
   }();
   thread_local std::vector<Row> y_buf, s_buf;
-  if (y_buf.size() < n) {
-    y_buf.resize(n);
-    s_buf.resize(n);
-  }
+  if (y_buf.size() < ny_max) y_buf.resize(ny_max);
+  if (s_buf.size() < nx) s_buf.resize(nx);
   Row *Y = y_buf.data();
   Row *s = s_buf.data();
   for (std::size_t w = 0; w < W; ++w) {
-    const T *yw = ys[w];
-    for (std::size_t t = 0; t < n; ++t) Y[t].v[w] = yw[t];
+    const T *yw = ys[w].data();
+    std::size_t t = 0;
+    for (; t < ny[w]; ++t) Y[t].v[w] = yw[t];
+    for (; t < ny_max; ++t) Y[t].v[w] = yw[ny[w] - 1];
   }
 
   // Column 0 (y[0]). The rows above its band hold maxValue: the band only moves
   // up, so a later column first meets such a row as an unreachable `up`.
-  const std::size_t hi0 = dtw_band_bounds(band, 0, n).second;
+  const std::size_t hi0 = dtw_band_bounds(band, 0, nx).second;
   for (std::size_t w = 0; w < W; ++w) s[0].v[w] = cell.seed(dist(x[0], Y[0].v[w]), 0, 0);
   for (std::size_t i = 1; i < hi0; ++i)
     for (std::size_t w = 0; w < W; ++w)
       s[i].v[w] = cell.combine(maxValue, s[i - 1].v[w], maxValue, dist(x[i], Y[0].v[w]), i, 0);
-  for (std::size_t i = hi0; i < n; ++i) s[i] = kUnreachable;
+  for (std::size_t i = hi0; i < nx; ++i) s[i] = kUnreachable;
 
-  for (std::size_t j = 1; j < n; ++j) {
-    const auto [lo, hi] = dtw_band_bounds(band, j, n);
+  // Lane w's distance is s[nx - 1] once its last column, ny[w] - 1, is done, before
+  // a later column overwrites it. take(c), after c columns: the lanes of c samples
+  // take theirs, and it returns the next count a lane ends at (equal lengths: the
+  // last column). It copies s: cl, without type-based alias analysis, would reload a
+  // referenced s after every store to the column.
+  auto take = [&out, &ny, s, nx, ny_max](std::size_t columns) {
+    std::size_t next = ny_max;
+    for (std::size_t w = 0; w < W; ++w) {
+      if (ny[w] == columns) out[w] = s[nx - 1].v[w];
+      if (ny[w] > columns && ny[w] < next) next = ny[w];
+    }
+    return next;
+  };
+  std::size_t end = take(1);
+  for (std::size_t j = 1; j < ny_max; ++j) {
+    const auto [lo, hi] = dtw_band_bounds(band, j, nx);
     // Locals, so the compiler keeps them in registers: without type-based
     // alias analysis (clang's Windows driver) a store to s may alias memory.
     T y[W], diag[W], left[W];
@@ -564,9 +589,8 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(const T *x, const T *const *ys,
         si[w] = left[w];
       }
     }
+    if (j + 1 == end) end = take(j + 1);
   }
-
-  for (std::size_t w = 0; w < W; ++w) out[w] = s[n - 1].v[w];
   return out;
 }
 

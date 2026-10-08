@@ -29,9 +29,7 @@ std::function<void(std::span<const T>, std::span<const std::span<const T>>, std:
 block_fn(int band, Dist dist)
 {
   return [band, dist](std::span<const T> x, std::span<const std::span<const T>> ys, std::span<double> out) {
-    const T *y[dtw_lanes<T>];
-    for (std::size_t w = 0; w < dtw_lanes<T>; ++w) y[w] = ys[w].data();
-    const auto d = dtw_kernel_lanes<T>(x.data(), y, x.size(), band, dist, LanesCell{});
+    const auto d = dtw_kernel_lanes<T>(x, ys.data(), band, dist, LanesCell{});
     for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
   };
 }
