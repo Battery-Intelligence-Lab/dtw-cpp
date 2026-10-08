@@ -81,7 +81,7 @@ Canonical keys and aliases represented by the live CLI are:
 | FastCLARA/OneBatch/TADPole | `--sample-size`, `--n-samples`, `--batch-size`, `--dc` |
 | Hierarchical | `--linkage` |
 | Exact solvers | `--solver`, `--mip-gap`, `--time-limit`, `--no-warm-start`, `--numeric-focus`, `--mip-focus`, `--verbose-solver`, `--lr-max-nodes` |
-| Device/storage | `--device`, `--gpu-precision`, `--gpu-dtype`, `--dist-matrix`, `--checkpoint`, `--checkpoint-interval`, `--mmap-threshold` |
+| Device/storage | `--device`, `--gpu-precision`, `--gpu-dtype`, `--dist-matrix`, `--not-computed`, `--checkpoint`, `--checkpoint-interval`, `--mmap-threshold` |
 | Diagnostics | `--verbose` |
 
 Use canonical keys (`dtype`, `gpu-precision`) rather than their aliases in new
