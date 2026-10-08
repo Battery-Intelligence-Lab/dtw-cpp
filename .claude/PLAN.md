@@ -34,8 +34,9 @@ may differ only where several optimal medoid sets exist, node counts and run tim
 - ☑ W1.1 records floor: reports, specs, archive, old handoffs, uncited baselines, −31k lines — `80c4dcb`
 - ☑ W1.2 PLAN, MAP, DECISIONS, LESSONS, runbook rewritten; the design document folded into MAP and DECISIONS — `dac62a7`
 - ☑ CHARTER carries the 09-27 instructions verbatim — `0068386`
-- ◐ HEAD baseline: conformance digits and three benchmarks (CPU fill, GPU fill, PAM swap) → `baselines/` — waits for a
-  quiet machine (COMSOL runs on this box; no timing under load)
+- ☑ HEAD baseline: conformance digits and three benchmarks (CPU fill, GPU fill, PAM swap) → `baselines/` (HB, quiet
+  run at 75d61cfe: `baselines/2026-10-08-windows-head-baseline.md`; lanes fill 5.6 Gcell/s one thread, 90 at 24;
+  CUDA FP32 355 Gcell/s at L 100; conformance digit-identical)
 - ☑ CUDA build proven in `build/cuda-verify-0928`: vcvars64 + explicit `CMAKE_CUDA_COMPILER` + `-allow-unsupported-compiler`
   (recipe in MAP §3); 4 / 4 CUDA tests pass; `--device gpu` byte-identical to
   CPU on the fixture. MSVC findings: 9 squared-L2 cross-path `==` checks differ in the last bit
@@ -139,9 +140,12 @@ may differ only where several optimal medoid sets exist, node counts and run tim
 - ☑ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
   10-01); the GCC-only test failures explained (V4) (V4 0721563, 52b557a, ba26ec9, cf03bd5, 499efdf; merged d6a9d54; GCC 13.3 v3: 113 / 0 failed, conformance identical)
 - ☑ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1) (S1 5cc52a0, 0268df1; merged c54e375; htc-gpu 80;86;89)
-- ◐ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
-  its own band; on the M5 alone 1.0–1.19×, with an `fminnm` min 1.41–2.00× (AArch64 done: After G; x86 untried —
-  its fmin is three instructions, so x86 needs its own measurement on the Windows box)
+- ☑ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
+  its own band; on the M5 alone 1.0–1.19×, with an `fminnm` min 1.41–2.00× (AArch64 done: After G). x86 (XL
+  87bb75d7 … 6ae1a668; merged a215dfbd; `baselines/2026-10-08-xl-x86-lanes-128.md`): 128 bytes under clang, 1.15–
+  1.97× single thread (f64 L1 unbanded L 1000 1.97×, V3's prediction), 24-thread fills 1.17–1.19×, bitwise; cl
+  FALSIFIED (its scalar lanes reload `left` at 32 floats; 0.76–1.05×) and keeps 64; GCC keeps 64 until timed (its
+  f64 lanes pack only at 128)
 - ☑ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
   L can shrink it under each other's launch; set it once to the opt-in maximum less the static bytes, behind a band (W4d) (350ae39)
 - ☑ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
@@ -272,8 +276,11 @@ may differ only where several optimal medoid sets exist, node counts and run tim
   MATLAB 4 ran; Hugo builds, no new broken links; main tree: ctest 94, matlab_suite 136/136, pytest 890/11/0. Found: a v1.0.0 matrix CSV's −1 (uncomputed) entries read as
   distances — the migration page warns; Volkan rules on a refusal)
 - ☑ VI `dtwc_cl.exe` carries a VERSIONINFO resource: name, version, copyright (Volkan 10-02) (VI 20579e0d, 45719487, e5456cc6, b63bc153; merged 96547a5a; rc.exe and llvm-rc .res byte-identical)
-- ☐ WM the Windows wheel's fill, MSVC against clang-cl, on a quiet machine with a registered band; Volkan then
-  decides the wheels' compiler (Volkan 10-02: measure first)
+- ◐ WM the Windows wheel's fill, MSVC against clang-cl, on a quiet machine with a registered band; Volkan then
+  decides the wheels' compiler (Volkan 10-02: measure first). Measured 2026-10-08 at 8a63cda3
+  (`baselines/2026-10-07-wm-wheel-msvc-vs-clang-cl.md`): clang-cl/MSVC 4.40–4.68× one thread and 3.14–3.33× at 24
+  on the lanes fill (cl leaves the lanes scalar), 1.09–1.24× on the per-pair fill, 1.00–1.04× on one pair; results
+  identical; the registered rule recommends clang-cl. Waits for Volkan's choice
 - ☑ W14b CMake `FATAL_ERROR` for an explicit `ON` it cannot honour; CUDA CI asserts CUDA built;
   `test_conformance.py` collected (W14b 9d56aab, e7354b9, 015dc71, 836bddc, d99b15d; merged 9056fcb9; Gurobi defaults OFF; Arrow without Parquet is an IPC-only build that says so)
 - ☑ W14c CHANGELOG → one `2.0.0 (unreleased)` section vs v1.0.0; MAP regenerated; audit folder deleted (W14c
@@ -338,6 +345,18 @@ may differ only where several optimal medoid sets exist, node counts and run tim
   `d.csv` before, under clang and cl alike); `DataLoader::path` takes a non-ANSI extension; the Parquet example reads
   its Arrow file through `pa.OSFile`, so Windows can delete it (WinError 32 before). Main tree: clang ctest 95 (+
   test_cli_utf8_paths), CUDA tree 94, CLI outputs byte-identical, pytest 887/19/0
+- ☑ MX matrix reads say how a file marks a pair never computed (Volkan 10-07/08; eff5beba, 14297926; merged
+  b3b18626): NaN stays the mark; `not_computed` = nan (default) | negative in C++, `--not-computed`, Python, MATLAB;
+  under every variant but Soft-DTW the one intake scan refuses a negative entry, naming the way out per language
+  (v1.0.0's -1 files read with negative). Main tree: clang 95, CUDA 94, matlab_suite 139/139, pytest 889/19/0
+- ☑ LRK lrcore's root (Volkan 10-07; 46869065, 3a9bbd32; merged 75d61cfe): the subgradient root by default in every
+  build; `lr_root` = kelley runs Kelley's on `dtwc::mip::KelleyMaster` — linked HiGHS in C++, the user's highspy in
+  Python —, SolverError without either; the config key count 47 after MX. data/dummy lrcore cost identical under
+  both roots; every CLI output byte-identical; matlab_suite 140/140, pytest 893/19/0. C4244 in the HiGHS master
+  fixed (6c364b87)
+- ☑ TP pair-2col on x86 (`baselines/2026-10-07-tp-pair-2col-x86.md`, quiet run 2026-10-08): PASS on clang++ and
+  MSVC in two placements (largest new/old 1.02); the unbanded per-pair kernel 1.41–1.87× on both compilers, banded
+  0.96–1.02×; no call or spill added; bit for bit across eight binaries; code placement moves x86 by about 1 %
 
 ## Blocked on another machine or on Volkan
 

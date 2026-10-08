@@ -476,3 +476,12 @@ CHANGELOG rule.
   So NaN stays the mark, and unit MX adds `not_computed` = nan (default) | negative to matrix reads; under every
   distance but Soft-DTW a negative entry is refused by default, naming the option (v1.0.0's files read with negative).
   NaN's recorded cost was std::isnan under -ffast-math (eae10b27), closed by the -ffinite-math-only #error.
+- 2026-10-08 — TP (`baselines/2026-10-07-tp-pair-2col-x86.md`, quiet): pair-2col's per-pair kernels pass the
+  registered x86 band on clang++ and MSVC in two placements (largest new/old 1.02); the unbanded kernel runs
+  1.41–1.87× faster, so the two-column kernel stays on every platform. On x86 code placement moved times by ~1 %.
+- 2026-10-08 — XL (merged a215dfbd): on x86-64 the lanes are 128 bytes under clang only (PASS: 1.15–1.97× one
+  thread, fills 1.17–1.19×); cl failed its assembly check and its timing (keeps 64); GCC keeps 64 until timed.
+- 2026-10-08 — WM (quiet run): a clang-cl Windows wheel fills 3.1–4.7× faster on equal-length series than the MSVC
+  wheel (cl leaves the lanes scalar), with identical results; the registered rule recommends clang-cl. Its costs: a
+  pinned LLVM on CI, linking LLVM's libomp for clang-cl (today's clang-cl link fails), bundling libomp.dll and
+  LLVM's licence, the project's FP flags spelled for clang-cl. Volkan decides.
