@@ -104,6 +104,13 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
     endif()
   endif()
 endif()
+# clang-cl (Clang with MSVC's command line) ignores these GNU spellings, with a warning,
+# unless /clang: passes them to its driver; dtwc/CMakeLists.txt prefixes its own the same way.
+set(DTWC_GNU_FLAG_PREFIX "")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+  set(DTWC_GNU_FLAG_PREFIX "/clang:")
+endif()
+list(TRANSFORM DTWC_FP_FLAGS PREPEND "${DTWC_GNU_FLAG_PREFIX}")
 message(STATUS "Floating-point model: ${DTWC_FP_MODEL}")
 
 # Architecture level: the CPU generation the compiled code may assume. AVX2 and

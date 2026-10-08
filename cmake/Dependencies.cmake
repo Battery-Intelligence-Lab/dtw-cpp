@@ -76,6 +76,21 @@ function(dtwc_setup_dependencies)
     if(TARGET highs)
       target_compile_definitions(highs PRIVATE NDEBUG)
     endif()
+    # clang-cl, which HiGHS's MSVC tests include: its version resource is left out, since
+    # llvm-rc rejects its dotted PRODUCTVERSION and rc.exe reads the -clang: depfile flags
+    # CMake passes it as a code page (metadata only: highs.lib's code is the same). And
+    # clang-cl ignores HiGHS's -std=c++11 (it compiles HiGHS as C++14, its default and
+    # cl's), /MP and /Zc:preprocessor; their warnings are switched off on HiGHS's targets only.
+    if(TARGET highs AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+       AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+      set_source_files_properties("${highs_BINARY_DIR}/version.rc" TARGET_DIRECTORY highs
+        PROPERTIES HEADER_FILE_ONLY ON)
+      foreach(_highs_target IN ITEMS highs highs_extras)
+        if(TARGET ${_highs_target})
+          target_compile_options(${_highs_target} PRIVATE -Wno-unknown-argument -Wno-unused-command-line-argument)
+        endif()
+      endforeach()
+    endif()
   endif()
   # CPM treats an existing source directory as a cache hit, and a download that failed
   # earlier leaves one empty; HiGHS then adds no target and the MIP solver would vanish.
