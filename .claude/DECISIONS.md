@@ -554,3 +554,14 @@ CHANGELOG rule.
   (`f8c3d23a`) has no test there. B3, quiet run, 11 shapes: clang PASS (ragged 6.8–6.9× one thread, 3.3–3.6× at
   24, L 8000 0.994×), GCC PASS (8.1–8.7×, 4.9–5.5×; its control 1.011×), cl at base's speed (f32 ragged 0.940×
   over 3 rounds, 1.059× over a registered 20-pair second attempt). Merged 8c818735.
+- 2026-10-08 — Precision (Volkan, after asking why the default is double): "Okay let's make it double, but it should
+  be easily changable like DataLoader(d_type = f32) then data is loaded as f32. Same when creating a distance
+  matrix but I guess since it can go between huge ranges it should be double most of the time." Double stays the
+  default for series and matrix; float32 becomes a one-word option where data is loaded, in every language, and an
+  opt-in for the matrix. Survey and spec to follow, before code.
+- 2026-10-08 — Memory access (Volkan): "Please algorithms should also prioritise having a good memory access
+  pattern. Especially when we have mmap files, we should be accessing memory block by block like a well-written
+  matrix multiplication algorithm, so that we don't randomly read and write time series all the time. So read
+  enough time series that fit in the ram, then do the parallel thing, then load the other block etc." An algorithm
+  that sweeps series or the matrix does so in blocks sized to a memory budget (RAM for mapped files, cache for data
+  in memory), parallel within a block. Survey and spec to follow, before code.
