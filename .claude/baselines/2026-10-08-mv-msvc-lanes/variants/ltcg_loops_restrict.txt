@@ -1,0 +1,190 @@
+== f32 ?_Do_call@?$_Func_impl_no_alloc@V<lambda_1>@?1???$dtw_kernel_lanes@MV<lambda_2>@?1???$resolve_dtw_bl
+  loop  76 insns  min 16 (minss on xmm)  fp  40  mem  41  stack  0  calls 0
+  loop  76 insns  min  8 (minss on xmm)  fp  32  mem  49  stack 24  calls 0
+    stack: vsubss	xmm2, xmm0, dword ptr [rsp + 4*rcx + 0xa0]
+    stack: vmovss	dword ptr [rsp + 4*rcx + 0x230], xmm1
+    stack: vmovss	dword ptr [rsp + 4*rcx + 0x2b0], xmm0
+    stack: vsubss	xmm2, xmm0, dword ptr [rsp + rax + 0xa4]
+    stack: vmovss	dword ptr [rsp + rax + 0x234], xmm1
+    stack: vmovss	dword ptr [rsp + rax + 0x2b4], xmm0
+    stack: vsubss	xmm2, xmm0, dword ptr [rsp + rax + 0xa8]
+    stack: vmovss	dword ptr [rsp + rax + 0x238], xmm1
+    stack: vmovss	dword ptr [rsp + rax + 0x2b8], xmm0
+    stack: vsubss	xmm2, xmm0, dword ptr [rsp + rax + 0xac]
+    stack: vmovss	dword ptr [rsp + rax + 0x23c], xmm1
+    stack: vmovss	dword ptr [rsp + rax + 0x2bc], xmm0
+    stack: vsubss	xmm2, xmm0, dword ptr [rsp + rax + 0xb0]
+    stack: vmovss	dword ptr [rsp + rax + 0x240], xmm1
+    stack: vmovss	dword ptr [rsp + rax + 0x2c0], xmm0
+    stack: vsubss	xmm2, xmm0, dword ptr [rsp + rax + 0xb4]
+    stack: vmovss	dword ptr [rsp + rax + 0x244], xmm1
+    stack: vmovss	dword ptr [rsp + rax + 0x2c4], xmm0
+    stack: vsubss	xmm2, xmm0, dword ptr [rsp + rax + 0xb8]
+    stack: vmovss	dword ptr [rsp + rax + 0x248], xmm1
+    stack: vmovss	dword ptr [rsp + rax + 0x2c8], xmm0
+    stack: vsubss	xmm2, xmm0, dword ptr [rsp + rax + 0xbc]
+    stack: vmovss	dword ptr [rsp + rax + 0x24c], xmm1
+    stack: vmovss	dword ptr [rsp + rax + 0x2cc], xmm0
+  loop  44 insns  min  8 (minss on xmm)  fp  20  mem  29  stack 20  calls 0
+    stack: vminss	xmm1, xmm3, dword ptr [rsp + 4*rax + 0x230]
+    stack: vmovss	xmm0, dword ptr [rsp + 4*rax + 0x2b0]
+    stack: vsubss	xmm2, xmm4, dword ptr [rsp + 4*rax + 0xa0]
+    stack: vmovss	xmm0, dword ptr [rsp + rdx + 0x2b4]
+    stack: vmovss	dword ptr [rsp + 4*rax + 0x2b0], xmm2
+    stack: vsubss	xmm2, xmm4, dword ptr [rsp + rdx + 0xa4]
+    stack: vmovss	dword ptr [rsp + 4*rax + 0x230], xmm3
+    stack: vminss	xmm1, xmm3, dword ptr [rsp + rdx + 0x234]
+    stack: vmovss	xmm0, dword ptr [rsp + rdx + 0x2b8]
+    stack: vmovss	dword ptr [rsp + rdx + 0x2b4], xmm2
+    stack: vsubss	xmm2, xmm4, dword ptr [rsp + rdx + 0xa8]
+    stack: vmovss	dword ptr [rsp + rdx + 0x234], xmm3
+    stack: vminss	xmm1, xmm3, dword ptr [rsp + rdx + 0x238]
+    stack: vmovss	xmm0, dword ptr [rsp + rdx + 0x2bc]
+    stack: vmovss	dword ptr [rsp + rdx + 0x2b8], xmm2
+    stack: vsubss	xmm2, xmm4, dword ptr [rsp + rdx + 0xac]
+    stack: vmovss	dword ptr [rsp + rdx + 0x238], xmm3
+    stack: vminss	xmm1, xmm3, dword ptr [rsp + rdx + 0x23c]
+    stack: vmovss	dword ptr [rsp + rdx + 0x2bc], xmm2
+    stack: vmovss	dword ptr [rsp + rdx + 0x23c], xmm3
+  loop  13 insns  min  2 (minss on xmm)  fp   5  mem   7  stack  5  calls 0
+    stack: vminss	xmm1, xmm3, dword ptr [rsp + 4*rax + 0x230]
+    stack: vmovss	xmm0, dword ptr [rsp + 4*rax + 0x2b0]
+    stack: vsubss	xmm2, xmm4, dword ptr [rsp + 4*rax + 0xa0]
+    stack: vmovss	dword ptr [rsp + 4*rax + 0x2b0], xmm2
+    stack: vmovss	dword ptr [rsp + 4*rax + 0x230], xmm3
+  loop  13 insns  min  2 (minps on ymm)  fp   5  mem   7  stack  5  calls 0
+    stack: vminps	ymm2, ymm5, ymmword ptr [rsp + 4*rax + 0x230]
+    stack: vmovups	ymm1, ymmword ptr [rsp + 4*rax + 0x2b0]
+    stack: vsubps	ymm1, ymm7, ymmword ptr [rsp + 4*rax + 0xa0]
+    stack: vmovups	ymmword ptr [rsp + 4*rax + 0x2b0], ymm4
+    stack: vmovups	ymmword ptr [rsp + 4*rax + 0x230], ymm5
+== f32 ?_Do_call@?$_Func_impl_no_alloc@V<lambda_1>@?1???$dtw_kernel_lanes@MV<lambda_1>@?0???$resolve_dtw_bl
+  loop  76 insns  min 16 (minss on xmm)  fp  40  mem  41  stack  0  calls 0
+  loop  76 insns  min  8 (minss on xmm)  fp  32  mem  49  stack 24  calls 0
+    stack: vsubss	xmm1, xmm0, dword ptr [rsp + 4*rcx + 0xa0]
+    stack: vmovss	dword ptr [rsp + 4*rcx + 0x230], xmm2
+    stack: vmovss	dword ptr [rsp + 4*rcx + 0x2b0], xmm0
+    stack: vsubss	xmm1, xmm0, dword ptr [rsp + rax + 0xa4]
+    stack: vmovss	dword ptr [rsp + rax + 0x234], xmm2
+    stack: vmovss	dword ptr [rsp + rax + 0x2b4], xmm0
+    stack: vsubss	xmm1, xmm0, dword ptr [rsp + rax + 0xa8]
+    stack: vmovss	dword ptr [rsp + rax + 0x238], xmm2
+    stack: vmovss	dword ptr [rsp + rax + 0x2b8], xmm0
+    stack: vsubss	xmm1, xmm0, dword ptr [rsp + rax + 0xac]
+    stack: vmovss	dword ptr [rsp + rax + 0x23c], xmm2
+    stack: vmovss	dword ptr [rsp + rax + 0x2bc], xmm0
+    stack: vsubss	xmm1, xmm0, dword ptr [rsp + rax + 0xb0]
+    stack: vmovss	dword ptr [rsp + rax + 0x240], xmm2
+    stack: vmovss	dword ptr [rsp + rax + 0x2c0], xmm0
+    stack: vsubss	xmm1, xmm0, dword ptr [rsp + rax + 0xb4]
+    stack: vmovss	dword ptr [rsp + rax + 0x244], xmm2
+    stack: vmovss	dword ptr [rsp + rax + 0x2c4], xmm0
+    stack: vsubss	xmm1, xmm0, dword ptr [rsp + rax + 0xb8]
+    stack: vmovss	dword ptr [rsp + rax + 0x248], xmm2
+    stack: vmovss	dword ptr [rsp + rax + 0x2c8], xmm0
+    stack: vsubss	xmm1, xmm0, dword ptr [rsp + rax + 0xbc]
+    stack: vmovss	dword ptr [rsp + rax + 0x24c], xmm2
+    stack: vmovss	dword ptr [rsp + rax + 0x2cc], xmm0
+  loop  44 insns  min  8 (minss on xmm)  fp  20  mem  29  stack 20  calls 0
+    stack: vminss	xmm1, xmm4, dword ptr [rsp + 4*rax + 0x230]
+    stack: vmovss	xmm0, dword ptr [rsp + 4*rax + 0x2b0]
+    stack: vsubss	xmm3, xmm5, dword ptr [rsp + 4*rax + 0xa0]
+    stack: vmovss	xmm0, dword ptr [rsp + rdx + 0x2b4]
+    stack: vmovss	dword ptr [rsp + 4*rax + 0x2b0], xmm3
+    stack: vsubss	xmm3, xmm5, dword ptr [rsp + rdx + 0xa4]
+    stack: vmovss	dword ptr [rsp + 4*rax + 0x230], xmm4
+    stack: vminss	xmm1, xmm4, dword ptr [rsp + rdx + 0x234]
+    stack: vmovss	xmm0, dword ptr [rsp + rdx + 0x2b8]
+    stack: vmovss	dword ptr [rsp + rdx + 0x2b4], xmm3
+    stack: vsubss	xmm3, xmm5, dword ptr [rsp + rdx + 0xa8]
+    stack: vmovss	dword ptr [rsp + rdx + 0x234], xmm4
+    stack: vminss	xmm1, xmm4, dword ptr [rsp + rdx + 0x238]
+    stack: vmovss	xmm0, dword ptr [rsp + rdx + 0x2bc]
+    stack: vmovss	dword ptr [rsp + rdx + 0x2b8], xmm3
+    stack: vsubss	xmm3, xmm5, dword ptr [rsp + rdx + 0xac]
+    stack: vmovss	dword ptr [rsp + rdx + 0x238], xmm4
+    stack: vminss	xmm1, xmm4, dword ptr [rsp + rdx + 0x23c]
+    stack: vmovss	dword ptr [rsp + rdx + 0x2bc], xmm3
+    stack: vmovss	dword ptr [rsp + rdx + 0x23c], xmm4
+  loop  13 insns  min  2 (minss on xmm)  fp   5  mem   7  stack  5  calls 0
+    stack: vminss	xmm1, xmm4, dword ptr [rsp + 4*rax + 0x230]
+    stack: vmovss	xmm0, dword ptr [rsp + 4*rax + 0x2b0]
+    stack: vsubss	xmm3, xmm5, dword ptr [rsp + 4*rax + 0xa0]
+    stack: vmovss	dword ptr [rsp + 4*rax + 0x2b0], xmm3
+    stack: vmovss	dword ptr [rsp + 4*rax + 0x230], xmm4
+  loop  12 insns  min  2 (minps on ymm)  fp   4  mem   7  stack  5  calls 0
+    stack: vminps	ymm2, ymm4, ymmword ptr [rsp + 4*rax + 0x230]
+    stack: vmovups	ymm1, ymmword ptr [rsp + 4*rax + 0x2b0]
+    stack: vsubps	ymm3, ymm7, ymmword ptr [rsp + 4*rax + 0xa0]
+    stack: vmovups	ymmword ptr [rsp + 4*rax + 0x2b0], ymm0
+    stack: vmovups	ymmword ptr [rsp + 4*rax + 0x230], ymm4
+== f64 ?_Do_call@?$_Func_impl_no_alloc@V<lambda_1>@?1???$dtw_kernel_lanes@NV<lambda_2>@?1???$resolve_dtw_bl
+  loop 132 insns  min 32 (minsd on xmm)  fp  80  mem  64  stack  0  calls 0
+  loop  44 insns  min  8 (minsd on xmm)  fp  20  mem  29  stack 20  calls 0
+    stack: vminsd	xmm1, xmm3, qword ptr [rsp + 8*rax + 0x1e0]
+    stack: vmovsd	xmm0, qword ptr [rsp + 8*rax + 0x260]
+    stack: vsubsd	xmm2, xmm4, qword ptr [rsp + 8*rax + 0xe0]
+    stack: vmovsd	xmm0, qword ptr [rsp + rcx + 0x268]
+    stack: vmovsd	qword ptr [rsp + 8*rax + 0x260], xmm2
+    stack: vsubsd	xmm2, xmm4, qword ptr [rsp + rcx + 0xe8]
+    stack: vmovsd	qword ptr [rsp + 8*rax + 0x1e0], xmm3
+    stack: vminsd	xmm1, xmm3, qword ptr [rsp + rcx + 0x1e8]
+    stack: vmovsd	xmm0, qword ptr [rsp + rcx + 0x270]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x268], xmm2
+    stack: vsubsd	xmm2, xmm4, qword ptr [rsp + rcx + 0xf0]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x1e8], xmm3
+    stack: vminsd	xmm1, xmm3, qword ptr [rsp + rcx + 0x1f0]
+    stack: vmovsd	xmm0, qword ptr [rsp + rcx + 0x278]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x270], xmm2
+    stack: vsubsd	xmm2, xmm4, qword ptr [rsp + rcx + 0xf8]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x1f0], xmm3
+    stack: vminsd	xmm1, xmm3, qword ptr [rsp + rcx + 0x1f8]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x278], xmm2
+    stack: vmovsd	qword ptr [rsp + rcx + 0x1f8], xmm3
+  loop  13 insns  min  2 (minsd on xmm)  fp   5  mem   7  stack  5  calls 0
+    stack: vminsd	xmm1, xmm3, qword ptr [rsp + 8*rax + 0x1e0]
+    stack: vmovsd	xmm0, qword ptr [rsp + 8*rax + 0x260]
+    stack: vsubsd	xmm2, xmm4, qword ptr [rsp + 8*rax + 0xe0]
+    stack: vmovsd	qword ptr [rsp + 8*rax + 0x260], xmm2
+    stack: vmovsd	qword ptr [rsp + 8*rax + 0x1e0], xmm3
+  loop  13 insns  min  2 (minpd on ymm)  fp   5  mem   7  stack  5  calls 0
+    stack: vsubpd	ymm1, ymm7, ymmword ptr [rsp + 8*rax + 0xe0]
+    stack: vminpd	ymm2, ymm5, ymmword ptr [rsp + 8*rax + 0x1e0]
+    stack: vmovupd	ymm1, ymmword ptr [rsp + 8*rax + 0x260]
+    stack: vmovupd	ymmword ptr [rsp + 8*rax + 0x260], ymm4
+    stack: vmovupd	ymmword ptr [rsp + 8*rax + 0x1e0], ymm5
+== f64 ?_Do_call@?$_Func_impl_no_alloc@V<lambda_1>@?1???$dtw_kernel_lanes@NV<lambda_1>@?0???$resolve_dtw_bl
+  loop 132 insns  min 32 (minsd on xmm)  fp  80  mem  64  stack  0  calls 0
+  loop  44 insns  min  8 (minsd on xmm)  fp  20  mem  29  stack 20  calls 0
+    stack: vminsd	xmm1, xmm4, qword ptr [rsp + 8*rax + 0x1d0]
+    stack: vmovsd	xmm0, qword ptr [rsp + 8*rax + 0x250]
+    stack: vsubsd	xmm3, xmm5, qword ptr [rsp + 8*rax + 0xd0]
+    stack: vmovsd	xmm0, qword ptr [rsp + rcx + 0x258]
+    stack: vmovsd	qword ptr [rsp + 8*rax + 0x250], xmm3
+    stack: vsubsd	xmm3, xmm5, qword ptr [rsp + rcx + 0xd8]
+    stack: vmovsd	qword ptr [rsp + 8*rax + 0x1d0], xmm4
+    stack: vminsd	xmm1, xmm4, qword ptr [rsp + rcx + 0x1d8]
+    stack: vmovsd	xmm0, qword ptr [rsp + rcx + 0x260]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x258], xmm3
+    stack: vsubsd	xmm3, xmm5, qword ptr [rsp + rcx + 0xe0]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x1d8], xmm4
+    stack: vminsd	xmm1, xmm4, qword ptr [rsp + rcx + 0x1e0]
+    stack: vmovsd	xmm0, qword ptr [rsp + rcx + 0x268]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x260], xmm3
+    stack: vsubsd	xmm3, xmm5, qword ptr [rsp + rcx + 0xe8]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x1e0], xmm4
+    stack: vminsd	xmm1, xmm4, qword ptr [rsp + rcx + 0x1e8]
+    stack: vmovsd	qword ptr [rsp + rcx + 0x268], xmm3
+    stack: vmovsd	qword ptr [rsp + rcx + 0x1e8], xmm4
+  loop  13 insns  min  2 (minsd on xmm)  fp   5  mem   7  stack  5  calls 0
+    stack: vminsd	xmm1, xmm4, qword ptr [rsp + 8*rax + 0x1d0]
+    stack: vmovsd	xmm0, qword ptr [rsp + 8*rax + 0x250]
+    stack: vsubsd	xmm3, xmm5, qword ptr [rsp + 8*rax + 0xd0]
+    stack: vmovsd	qword ptr [rsp + 8*rax + 0x250], xmm3
+    stack: vmovsd	qword ptr [rsp + 8*rax + 0x1d0], xmm4
+  loop  12 insns  min  2 (minpd on ymm)  fp   4  mem   7  stack  5  calls 0
+    stack: vminpd	ymm2, ymm4, ymmword ptr [rsp + 8*rax + 0x1d0]
+    stack: vmovupd	ymm1, ymmword ptr [rsp + 8*rax + 0x250]
+    stack: vsubpd	ymm3, ymm6, ymmword ptr [rsp + 8*rax + 0xd0]
+    stack: vmovupd	ymmword ptr [rsp + 8*rax + 0x250], ymm0
+    stack: vmovupd	ymmword ptr [rsp + 8*rax + 0x1d0], ymm4

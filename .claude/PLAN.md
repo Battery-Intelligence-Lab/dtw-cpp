@@ -144,8 +144,8 @@ may differ only where several optimal medoid sets exist, node counts and run tim
   its own band; on the M5 alone 1.0–1.19×, with an `fminnm` min 1.41–2.00× (AArch64 done: After G). x86 (XL
   87bb75d7 … 6ae1a668; merged a215dfbd; `baselines/2026-10-08-xl-x86-lanes-128.md`): 128 bytes under clang, 1.15–
   1.97× single thread (f64 L1 unbanded L 1000 1.97×, V3's prediction), 24-thread fills 1.17–1.19×, bitwise; cl
-  FALSIFIED (its scalar lanes reload `left` at 32 floats; 0.76–1.05×) and keeps 64; GCC keeps 64 until timed (its
-  f64 lanes pack only at 128)
+  FALSIFIED (its scalar lanes reload `left` at 32 floats; 0.76–1.05×) and keeps 64; GCC PASS under the 10-01 ruling
+  (XG, `baselines/2026-10-08-xg-gcc-lanes-128.md`: 1.36–3.87× single thread, fills 2.39–2.54×), the change is XG2
 - ☑ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
   L can shrink it under each other's launch; set it once to the opt-in maximum less the static bytes, behind a band (W4d) (350ae39)
 - ☑ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
@@ -276,11 +276,11 @@ may differ only where several optimal medoid sets exist, node counts and run tim
   MATLAB 4 ran; Hugo builds, no new broken links; main tree: ctest 94, matlab_suite 136/136, pytest 890/11/0. Found: a v1.0.0 matrix CSV's −1 (uncomputed) entries read as
   distances — the migration page warns; Volkan rules on a refusal)
 - ☑ VI `dtwc_cl.exe` carries a VERSIONINFO resource: name, version, copyright (Volkan 10-02) (VI 20579e0d, 45719487, e5456cc6, b63bc153; merged 96547a5a; rc.exe and llvm-rc .res byte-identical)
-- ◐ WM the Windows wheel's fill, MSVC against clang-cl, on a quiet machine with a registered band; Volkan then
+- ☑ WM the Windows wheel's fill, MSVC against clang-cl, on a quiet machine with a registered band; Volkan then
   decides the wheels' compiler (Volkan 10-02: measure first). Measured 2026-10-08 at 8a63cda3
   (`baselines/2026-10-07-wm-wheel-msvc-vs-clang-cl.md`): clang-cl/MSVC 4.40–4.68× one thread and 3.14–3.33× at 24
   on the lanes fill (cl leaves the lanes scalar), 1.09–1.24× on the per-pair fill, 1.00–1.04× on one pair; results
-  identical; the registered rule recommends clang-cl. Waits for Volkan's choice
+  identical; the registered rule recommends clang-cl. Volkan 10-08, after MV: the wheel moves to clang-cl (CW)
 - ☑ W14b CMake `FATAL_ERROR` for an explicit `ON` it cannot honour; CUDA CI asserts CUDA built;
   `test_conformance.py` collected (W14b 9d56aab, e7354b9, 015dc71, 836bddc, d99b15d; merged 9056fcb9; Gurobi defaults OFF; Arrow without Parquet is an IPC-only build that says so)
 - ☑ W14c CHANGELOG → one `2.0.0 (unreleased)` section vs v1.0.0; MAP regenerated; audit folder deleted (W14c
@@ -357,6 +357,23 @@ may differ only where several optimal medoid sets exist, node counts and run tim
 - ☑ TP pair-2col on x86 (`baselines/2026-10-07-tp-pair-2col-x86.md`, quiet run 2026-10-08): PASS on clang++ and
   MSVC in two placements (largest new/old 1.02); the unbanded per-pair kernel 1.41–1.87× on both compilers, banded
   0.96–1.02×; no call or spill added; bit for bit across eight binaries; code placement moves x86 by about 1 %
+- ☑ XG GCC's x86-64 lanes at 128 bytes, timed in WSL (`baselines/2026-10-08-xg-gcc-lanes-128.md`, quiet run
+  2026-10-08): PASS under the 10-01 ruling: single thread 1.36–3.87×, 24-thread fills 2.39× and 2.54×, ragged
+  0.99×; L1 bit for bit, squared within the route bound, labels and medoids identical in 64/64 CLI runs
+- ☑ XG2 `dtw_lanes` 128 bytes under GCC too (1b0d8052; merged 388079ed: GCC 13.3 in WSL ctest 94/0, lanes 16 / 32;
+  main tree clang 95, CUDA 94, every CLI output byte-identical)
+- ☑ MV cl packs the lanes (`baselines/2026-10-08-mv-msvc-lanes.md`, quiet run 2026-10-08): FALSIFIED — a
+  value-returning min and 128-byte lanes make cl pack (fills 2.5–2.6×, most single-thread shapes 2.6–6.6×), but
+  6 of 48 candidate probes ran 3–4× slower per process (cause open); pb/MV (75490857, dd85b28e) not merged
+- ◐ CW the Windows wheels built by a pinned clang-cl, libomp.dll bundled by delvewheel; clang-cl's OpenMP link
+  and FP flags fixed in CMake (Volkan 10-08: "speed is the most important right now")
+- ☐ CA the Windows release archive built by clang-cl, the cl build beside it as `dtwc_cl_msvc.exe`; the docs give
+  the measured speed-up and recommend `dtwc_cl.exe` (Volkan 10-08); after CW
+- ☑ ES an empty series is InvalidInput on the CPU routes too (validate_fill_request refused it only for the
+  GPU; a series emptied through `Data::p_vec` filled as 1.8e308 on the CPU; Mac handoff 10-07) (8dd16d8e; merged
+  883484b8: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical)
+- ◐ RL ragged lanes: the fill's lanes take series of different lengths, unbanded (Volkan 10-08 "Probe it";
+  band in DECISIONS 2026-10-08; prepared by the unit, timed by the orchestrator)
 
 ## Blocked on another machine or on Volkan
 
@@ -375,7 +392,8 @@ may differ only where several optimal medoid sets exist, node counts and run tim
   3cd66f95; merged 97902908): the smoke checks every DLL a binary imports (a stdlib PE reader); under MSVC the
   archive installs the Visual C++ runtime and vcomp140 beside dtwc_cl.exe (InstallRequiredSystemLibraries); the
   Windows wheels are repaired by a pinned delvewheel (msvcp140, vcomp140 bundled). CI not run; the archive also
-  ships HiGHS's development install (277 headers, a static highs.lib), a candidate to trim.
+  ships HiGHS's development install (277 headers, a static highs.lib), a candidate to trim. The Windows archive
+  moves to clang-cl with `dtwc_cl_msvc.exe` beside it (CA, after CW).
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
 - Linux wheel: whether `libgomp` ships, and the notice says so.
 - A crash recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42). F43 (an llfio-ON MEX under R2024b crashing in `std::mutex`) did not reproduce on 2026-09-30, and no MEX route maps a matrix yet (Y4, `baselines/2026-09-30-y4-matlab.md`).

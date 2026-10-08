@@ -1,0 +1,82 @@
+== f32 ??$dtw_kernel_lanes@MV<lambda_2>@?1???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop  76 insns  min 16 (minss on xmm)  fp  40  mem  41  stack  0  calls 0
+  loop  76 insns  min  8 (minss on xmm)  fp  32  mem  49  stack 24  calls 0
+    stack: vsubss	xmm2, xmm0, DWORD PTR y$4[rsp+rcx*4]
+    stack: vmovss	DWORD PTR diag$5[rsp+rcx*4], xmm1
+    stack: vmovss	DWORD PTR left$6[rsp+rcx*4], xmm0
+    stack: vsubss	xmm2, xmm0, DWORD PTR y$4[rsp+rax+4]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+4], xmm1
+    stack: vmovss	DWORD PTR left$6[rsp+rax+4], xmm0
+    stack: vsubss	xmm2, xmm0, DWORD PTR y$4[rsp+rax+8]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+8], xmm1
+    stack: vmovss	DWORD PTR left$6[rsp+rax+8], xmm0
+    stack: vsubss	xmm2, xmm0, DWORD PTR y$4[rsp+rax+12]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+12], xmm1
+    stack: vmovss	DWORD PTR left$6[rsp+rax+12], xmm0
+    stack: vsubss	xmm2, xmm0, DWORD PTR y$4[rsp+rax+16]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+16], xmm1
+    stack: vmovss	DWORD PTR left$6[rsp+rax+16], xmm0
+    stack: vsubss	xmm2, xmm0, DWORD PTR y$4[rsp+rax+20]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+20], xmm1
+    stack: vmovss	DWORD PTR left$6[rsp+rax+20], xmm0
+    stack: vsubss	xmm2, xmm0, DWORD PTR y$4[rsp+rax+24]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+24], xmm1
+    stack: vmovss	DWORD PTR left$6[rsp+rax+24], xmm0
+    stack: vsubss	xmm2, xmm0, DWORD PTR y$4[rsp+rax+28]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+28], xmm1
+    stack: vmovss	DWORD PTR left$6[rsp+rax+28], xmm0
+  loop  13 insns  min  2 (minps on ymm)  fp   5  mem   7  stack  5  calls 0
+    stack: vminps	ymm2, ymm5, YMMWORD PTR diag$5[rsp+rax*4]
+    stack: vmovups	ymm1, YMMWORD PTR left$6[rsp+rax*4]
+    stack: vsubps	ymm1, ymm6, YMMWORD PTR y$4[rsp+rax*4]
+    stack: vmovups	YMMWORD PTR left$6[rsp+rax*4], ymm4
+    stack: vmovups	YMMWORD PTR diag$5[rsp+rax*4], ymm5
+== f32 ??$dtw_kernel_lanes@MV<lambda_1>@?0???$resolve_dtw_block_fn@M@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop  76 insns  min 16 (minss on xmm)  fp  40  mem  41  stack  0  calls 0
+  loop  76 insns  min  8 (minss on xmm)  fp  32  mem  49  stack 24  calls 0
+    stack: vsubss	xmm1, xmm0, DWORD PTR y$4[rsp+rcx*4]
+    stack: vmovss	DWORD PTR diag$5[rsp+rcx*4], xmm2
+    stack: vmovss	DWORD PTR left$6[rsp+rcx*4], xmm0
+    stack: vsubss	xmm1, xmm0, DWORD PTR y$4[rsp+rax+4]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+4], xmm2
+    stack: vmovss	DWORD PTR left$6[rsp+rax+4], xmm0
+    stack: vsubss	xmm1, xmm0, DWORD PTR y$4[rsp+rax+8]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+8], xmm2
+    stack: vmovss	DWORD PTR left$6[rsp+rax+8], xmm0
+    stack: vsubss	xmm1, xmm0, DWORD PTR y$4[rsp+rax+12]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+12], xmm2
+    stack: vmovss	DWORD PTR left$6[rsp+rax+12], xmm0
+    stack: vsubss	xmm1, xmm0, DWORD PTR y$4[rsp+rax+16]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+16], xmm2
+    stack: vmovss	DWORD PTR left$6[rsp+rax+16], xmm0
+    stack: vsubss	xmm1, xmm0, DWORD PTR y$4[rsp+rax+20]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+20], xmm2
+    stack: vmovss	DWORD PTR left$6[rsp+rax+20], xmm0
+    stack: vsubss	xmm1, xmm0, DWORD PTR y$4[rsp+rax+24]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+24], xmm2
+    stack: vmovss	DWORD PTR left$6[rsp+rax+24], xmm0
+    stack: vsubss	xmm1, xmm0, DWORD PTR y$4[rsp+rax+28]
+    stack: vmovss	DWORD PTR diag$5[rsp+rax+28], xmm2
+    stack: vmovss	DWORD PTR left$6[rsp+rax+28], xmm0
+  loop  12 insns  min  2 (minps on ymm)  fp   4  mem   7  stack  5  calls 0
+    stack: vminps	ymm2, ymm4, YMMWORD PTR diag$5[rsp+rax*4]
+    stack: vmovups	ymm1, YMMWORD PTR left$6[rsp+rax*4]
+    stack: vsubps	ymm3, ymm5, YMMWORD PTR y$4[rsp+rax*4]
+    stack: vmovups	YMMWORD PTR left$6[rsp+rax*4], ymm0
+    stack: vmovups	YMMWORD PTR diag$5[rsp+rax*4], ymm4
+== f64 ??$dtw_kernel_lanes@NV<lambda_2>@?1???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 132 insns  min 32 (minsd on xmm)  fp  80  mem  64  stack  0  calls 0
+  loop  13 insns  min  2 (minpd on ymm)  fp   5  mem   7  stack  5  calls 0
+    stack: vminpd	ymm2, ymm5, YMMWORD PTR diag$6[rsp+rax*8]
+    stack: vmovupd	ymm1, YMMWORD PTR left$7[rsp+rax*8]
+    stack: vsubpd	ymm1, ymm6, YMMWORD PTR y$5[rsp+rax*8]
+    stack: vmovupd	YMMWORD PTR left$7[rsp+rax*8], ymm4
+    stack: vmovupd	YMMWORD PTR diag$6[rsp+rax*8], ymm5
+== f64 ??$dtw_kernel_lanes@NV<lambda_1>@?0???$resolve_dtw_block_fn@N@core@dtwc@@YA?AV?$function@$$A6AXV?$sp
+  loop 132 insns  min 32 (minsd on xmm)  fp  80  mem  64  stack  0  calls 0
+  loop  12 insns  min  2 (minpd on ymm)  fp   4  mem   7  stack  5  calls 0
+    stack: vminpd	ymm2, ymm4, YMMWORD PTR diag$6[rsp+rax*8]
+    stack: vmovupd	ymm1, YMMWORD PTR left$7[rsp+rax*8]
+    stack: vsubpd	ymm3, ymm5, YMMWORD PTR y$5[rsp+rax*8]
+    stack: vmovupd	YMMWORD PTR left$7[rsp+rax*8], ymm0
+    stack: vmovupd	YMMWORD PTR diag$6[rsp+rax*8], ymm4

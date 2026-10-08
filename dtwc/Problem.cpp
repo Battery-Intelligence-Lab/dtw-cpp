@@ -671,6 +671,11 @@ void Problem::validate_fill_request(std::string_view where) const
 {
   const std::string at(where);
 
+  // On every device: set_data refuses an empty series, but an edit through
+  // p_vec can empty one afterwards, and the kernels answer it with the finite
+  // max() sentinel. First, so a band check does not blame the empty series' length.
+  reject_empty_series(data_, at);
+
   // A band narrower than a pair's length difference leaves that pair no warping
   // path: the banded kernels return the finite max() sentinel, which passes every
   // isfinite() guard, so clustering would silently sum 1.8e308. The widest gap is
@@ -733,9 +738,7 @@ void Problem::validate_fill_request(std::string_view where) const
     }
   }
 
-  // The GPU routes also need owned, resident, univariate series, none of them
-  // empty: a kernel would read before an empty series' start (p_vec edits in
-  // place can empty one after set_data).
+  // The GPU routes also need owned, resident, univariate series.
   if (device_ != Device::GPU) return;
   if (data_.is_view())
     reject_gpu_request(at,
@@ -746,7 +749,6 @@ void Problem::validate_fill_request(std::string_view where) const
   if (data_.ndim > 1)
     reject_gpu_request(at, "is univariate only, but ndim = " + std::to_string(data_.ndim) + " was requested",
                        "Use device cpu for multivariate series.");
-  reject_empty_series(data_, at);
 }
 
 /**

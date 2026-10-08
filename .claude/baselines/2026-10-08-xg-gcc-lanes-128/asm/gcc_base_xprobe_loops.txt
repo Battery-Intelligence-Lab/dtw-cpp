@@ -1,0 +1,811 @@
+== f64 dtw_kernel_lanes@NV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop  52 insns  min  8 (minsd on xmm)  fp  32  mem  24  stack  0  calls 0
+      vmovsd xmm0,QWORD PTR [rdx]
+      vminsd xmm1,xmm1,xmm8
+      vminsd xmm2,xmm2,xmm8
+      add    rax,0x40
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x0]
+      vminsd xmm3,xmm3,xmm8
+      add    rdx,0x8
+      vminsd xmm4,xmm4,xmm8
+      vminsd xmm5,xmm5,xmm8
+      vminsd xmm6,xmm6,xmm8
+      vminsd xmm7,xmm7,xmm8
+      vmulsd xmm0,xmm0,xmm0
+      vminsd xmm9,xmm9,xmm8
+      vaddsd xmm1,xmm1,xmm0
+      vmovsd QWORD PTR [rax-0x40],xmm1
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x8]
+      vmulsd xmm0,xmm0,xmm0
+      vaddsd xmm2,xmm2,xmm0
+      vmovsd QWORD PTR [rax-0x38],xmm2
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x10]
+      vmulsd xmm0,xmm0,xmm0
+      vaddsd xmm3,xmm3,xmm0
+      vmovsd QWORD PTR [rax-0x30],xmm3
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x18]
+      vmulsd xmm0,xmm0,xmm0
+      vaddsd xmm4,xmm4,xmm0
+      vmovsd QWORD PTR [rax-0x28],xmm4
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x20]
+      vmulsd xmm0,xmm0,xmm0
+      vaddsd xmm5,xmm5,xmm0
+      vmovsd QWORD PTR [rax-0x20],xmm5
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x28]
+      vmulsd xmm0,xmm0,xmm0
+      vaddsd xmm6,xmm6,xmm0
+      vmovsd QWORD PTR [rax-0x18],xmm6
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x30]
+      vmulsd xmm0,xmm0,xmm0
+      vaddsd xmm7,xmm7,xmm0
+      vmovsd QWORD PTR [rax-0x10],xmm7
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x38]
+      vmulsd xmm0,xmm0,xmm0
+      vaddsd xmm9,xmm9,xmm0
+      vmovsd QWORD PTR [rax-0x8],xmm9
+      cmp    rax,r9
+      jne    9b60 <_ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIdZNS8_20resolve_dtw_block_fnIdEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlddE_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x2e0>
+  loop  75 insns  min 16 (minsd on xmm)  fp  40  mem  37  stack 20  calls 0
+    stack: vmovsd xmm3,QWORD PTR [rsp+0x78]
+    stack: vmovsd xmm11,QWORD PTR [rsp+0x70]
+    stack: vmovsd QWORD PTR [rsp+0x80],xmm12
+    stack: vmovsd QWORD PTR [rsp+0x90],xmm7
+    stack: vmovsd QWORD PTR [rsp+0x88],xmm3
+    stack: vmovsd xmm7,QWORD PTR [rsp+0x98]
+    stack: vmovsd QWORD PTR [rsp+0x98],xmm3
+    stack: vsubsd xmm3,xmm13,QWORD PTR [rsp+0x58]
+    stack: vmovsd QWORD PTR [rsp+0x70],xmm7
+    stack: vsubsd xmm3,xmm13,QWORD PTR [rsp+0x50]
+    stack: vmovsd QWORD PTR [rsp+0x78],xmm7
+    stack: vminsd xmm7,xmm7,QWORD PTR [rsp+0x88]
+    stack: vminsd xmm7,xmm12,QWORD PTR [rsp+0x80]
+    stack: vsubsd xmm3,xmm13,QWORD PTR [rsp+0x48]
+    stack: vminsd xmm10,xmm7,QWORD PTR [rsp+0x90]
+    stack: vsubsd xmm3,xmm13,QWORD PTR [rsp+0x40]
+    stack: vsubsd xmm3,xmm13,QWORD PTR [rsp+0x38]
+    stack: vsubsd xmm3,xmm13,QWORD PTR [rsp+0x30]
+    stack: vsubsd xmm3,xmm13,QWORD PTR [rsp+0x68]
+    stack: vsubsd xmm3,xmm13,QWORD PTR [rsp+0x60]
+      vmovsd xmm3,QWORD PTR [rsp+0x78]
+      vmovsd xmm10,xmm11,xmm11
+      vmovsd xmm11,QWORD PTR [rsp+0x70]
+      vmovsd QWORD PTR [rsp+0x80],xmm12
+      vmovsd QWORD PTR [rsp+0x90],xmm7
+      vmovsd xmm14,xmm9,xmm9
+      vmovq  xmm12,r11
+      vmovsd QWORD PTR [rsp+0x88],xmm3
+      vmovsd xmm3,QWORD PTR [rax]
+      vmovsd xmm13,QWORD PTR [rsi]
+      add    rax,0x40
+      add    rsi,0x8
+      vmovsd xmm7,QWORD PTR [rsp+0x98]
+      mov    r11,QWORD PTR [rax-0x38]
+      vmovsd QWORD PTR [rsp+0x98],xmm3
+      vmovsd xmm9,xmm3,xmm3
+      vsubsd xmm3,xmm13,QWORD PTR [rsp+0x58]
+      vminsd xmm7,xmm9,xmm7
+      vmovsd xmm9,QWORD PTR [rax-0x10]
+      vmulsd xmm3,xmm3,xmm3
+      vminsd xmm14,xmm9,xmm14
+      vminsd xmm8,xmm8,xmm7
+      vmovq  xmm7,r11
+      vminsd xmm12,xmm7,xmm12
+      vmovsd xmm7,QWORD PTR [rax-0x30]
+      vminsd xmm5,xmm5,xmm14
+      vminsd xmm11,xmm7,xmm11
+      vmovsd QWORD PTR [rsp+0x70],xmm7
+      vmovsd xmm7,QWORD PTR [rax-0x28]
+      vaddsd xmm8,xmm8,xmm3
+      vsubsd xmm3,xmm13,QWORD PTR [rsp+0x50]
+      vminsd xmm4,xmm4,xmm12
+      vmovsd QWORD PTR [rsp+0x78],xmm7
+      vmovsd xmm12,QWORD PTR [rax-0x20]
+      vminsd xmm7,xmm7,QWORD PTR [rsp+0x88]
+      vminsd xmm15,xmm15,xmm11
+      vmovsd xmm11,QWORD PTR [rax-0x18]
+      vmulsd xmm3,xmm3,xmm3
+      vmovsd QWORD PTR [rax-0x40],xmm8
+      vminsd xmm2,xmm2,xmm7
+      vminsd xmm10,xmm11,xmm10
+      vminsd xmm7,xmm12,QWORD PTR [rsp+0x80]
+      vminsd xmm1,xmm1,xmm10
+      vaddsd xmm4,xmm4,xmm3
+      vsubsd xmm3,xmm13,QWORD PTR [rsp+0x48]
+      vminsd xmm0,xmm0,xmm7
+      vmovsd xmm7,QWORD PTR [rax-0x8]
+      vminsd xmm10,xmm7,QWORD PTR [rsp+0x90]
+      vmulsd xmm3,xmm3,xmm3
+      vmovsd QWORD PTR [rax-0x38],xmm4
+      vminsd xmm6,xmm6,xmm10
+      vaddsd xmm15,xmm15,xmm3
+      vsubsd xmm3,xmm13,QWORD PTR [rsp+0x40]
+      vmulsd xmm3,xmm3,xmm3
+      vmovsd QWORD PTR [rax-0x30],xmm15
+      vaddsd xmm2,xmm2,xmm3
+      vsubsd xmm3,xmm13,QWORD PTR [rsp+0x38]
+      vmulsd xmm3,xmm3,xmm3
+      vmovsd QWORD PTR [rax-0x28],xmm2
+      vaddsd xmm0,xmm0,xmm3
+      vsubsd xmm3,xmm13,QWORD PTR [rsp+0x30]
+      vmulsd xmm3,xmm3,xmm3
+      vmovsd QWORD PTR [rax-0x20],xmm0
+      vaddsd xmm1,xmm1,xmm3
+      vsubsd xmm3,xmm13,QWORD PTR [rsp+0x68]
+      vmulsd xmm3,xmm3,xmm3
+      vmovsd QWORD PTR [rax-0x18],xmm1
+      vaddsd xmm5,xmm5,xmm3
+      vsubsd xmm3,xmm13,QWORD PTR [rsp+0x60]
+      vmulsd xmm3,xmm3,xmm3
+      vmovsd QWORD PTR [rax-0x10],xmm5
+      vaddsd xmm6,xmm6,xmm3
+      vmovsd QWORD PTR [rax-0x8],xmm6
+      cmp    r9,rax
+      jne    9ec0 <_ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIdZNS8_20resolve_dtw_block_fnIdEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlddE_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x640>
+  loop  72 insns  min 16 (minsd on xmm)  fp  40  mem  31  stack 14  calls 0
+    stack: vmovsd QWORD PTR [rsp+0x88],xmm9
+    stack: vmovsd QWORD PTR [rsp+0x90],xmm13
+    stack: vsubsd xmm7,xmm12,QWORD PTR [rsp+0x58]
+    stack: vmovsd QWORD PTR [rsp+0x98],xmm7
+    stack: vsubsd xmm7,xmm12,QWORD PTR [rsp+0x48]
+    stack: vaddsd xmm15,xmm15,QWORD PTR [rsp+0x98]
+    stack: vsubsd xmm7,xmm12,QWORD PTR [rsp+0x78]
+    stack: vminsd xmm8,xmm13,QWORD PTR [rsp+0x90]
+    stack: vsubsd xmm7,xmm12,QWORD PTR [rsp+0x60]
+    stack: vsubsd xmm7,xmm12,QWORD PTR [rsp+0x70]
+    stack: vsubsd xmm7,xmm12,QWORD PTR [rsp+0x68]
+    stack: vsubsd xmm7,xmm12,QWORD PTR [rsp+0x50]
+    stack: vsubsd xmm7,xmm12,QWORD PTR [rsp+0x80]
+    stack: vminsd xmm12,xmm9,QWORD PTR [rsp+0x88]
+      vmovsd QWORD PTR [rsp+0x88],xmm9
+      vmovsd xmm9,xmm10,xmm10
+      vmovsd xmm10,xmm11,xmm11
+      vmovsd xmm11,xmm8,xmm8
+      vmovsd QWORD PTR [rsp+0x90],xmm13
+      vmovsd xmm13,xmm14,xmm14
+      vmovq  xmm14,rcx
+      vmovsd xmm12,QWORD PTR [rdi]
+      vmovq  xmm8,rsi
+      mov    rsi,QWORD PTR [rax]
+      add    rax,0x40
+      vsubsd xmm7,xmm12,QWORD PTR [rsp+0x58]
+      mov    rcx,QWORD PTR [rax-0x38]
+      add    rdi,0x8
+      vmulsd xmm7,xmm7,xmm7
+      vmovsd QWORD PTR [rsp+0x98],xmm7
+      vmovq  xmm7,rsi
+      vminsd xmm8,xmm7,xmm8
+      vsubsd xmm7,xmm12,QWORD PTR [rsp+0x48]
+      vminsd xmm15,xmm15,xmm8
+      vmulsd xmm7,xmm7,xmm7
+      vmovq  xmm8,rcx
+      vaddsd xmm15,xmm15,QWORD PTR [rsp+0x98]
+      vminsd xmm14,xmm8,xmm14
+      vminsd xmm6,xmm6,xmm14
+      vmovsd xmm14,QWORD PTR [rax-0x30]
+      vmovsd QWORD PTR [rax-0x40],xmm15
+      vminsd xmm13,xmm14,xmm13
+      vaddsd xmm6,xmm6,xmm7
+      vsubsd xmm7,xmm12,QWORD PTR [rsp+0x78]
+      vminsd xmm5,xmm5,xmm13
+      vmovsd xmm13,QWORD PTR [rax-0x28]
+      vminsd xmm8,xmm13,QWORD PTR [rsp+0x90]
+      vmulsd xmm7,xmm7,xmm7
+      vmovsd QWORD PTR [rax-0x38],xmm6
+      vminsd xmm0,xmm0,xmm8
+      vmovsd xmm8,QWORD PTR [rax-0x20]
+      vminsd xmm11,xmm8,xmm11
+      vaddsd xmm5,xmm5,xmm7
+      vsubsd xmm7,xmm12,QWORD PTR [rsp+0x60]
+      vminsd xmm4,xmm4,xmm11
+      vmovsd xmm11,QWORD PTR [rax-0x18]
+      vmulsd xmm7,xmm7,xmm7
+      vmovsd QWORD PTR [rax-0x30],xmm5
+      vminsd xmm10,xmm11,xmm10
+      vminsd xmm3,xmm3,xmm10
+      vmovsd xmm10,QWORD PTR [rax-0x10]
+      vaddsd xmm0,xmm0,xmm7
+      vsubsd xmm7,xmm12,QWORD PTR [rsp+0x70]
+      vminsd xmm9,xmm10,xmm9
+      vmulsd xmm7,xmm7,xmm7
+      vmovsd QWORD PTR [rax-0x28],xmm0
+      vminsd xmm2,xmm2,xmm9
+      vmovsd xmm9,QWORD PTR [rax-0x8]
+      vaddsd xmm4,xmm4,xmm7
+      vsubsd xmm7,xmm12,QWORD PTR [rsp+0x68]
+      vmulsd xmm7,xmm7,xmm7
+      vmovsd QWORD PTR [rax-0x20],xmm4
+      vaddsd xmm3,xmm3,xmm7
+      vsubsd xmm7,xmm12,QWORD PTR [rsp+0x50]
+      vmulsd xmm7,xmm7,xmm7
+      vmovsd QWORD PTR [rax-0x18],xmm3
+      vaddsd xmm2,xmm2,xmm7
+      vsubsd xmm7,xmm12,QWORD PTR [rsp+0x80]
+      vminsd xmm12,xmm9,QWORD PTR [rsp+0x88]
+      vmulsd xmm7,xmm7,xmm7
+      vmovsd QWORD PTR [rax-0x10],xmm2
+      vminsd xmm1,xmm1,xmm12
+      vaddsd xmm1,xmm1,xmm7
+      vmovsd QWORD PTR [rax-0x8],xmm1
+      cmp    r8,rax
+      jne    a260 <_ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIdZNS8_20resolve_dtw_block_fnIdEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlddE_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x9e0>
+== f64 dtw_kernel_lanes@NV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615E
+  loop  52 insns  min  8 (minsd on xmm)  fp  32  mem  24  stack  0  calls 0
+      vmovsd xmm0,QWORD PTR [rdx]
+      vminsd xmm1,xmm1,xmm15
+      vminsd xmm2,xmm2,xmm15
+      add    rax,0x40
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x0]
+      vminsd xmm3,xmm3,xmm15
+      add    rdx,0x8
+      vminsd xmm4,xmm4,xmm15
+      vminsd xmm5,xmm5,xmm15
+      vminsd xmm6,xmm6,xmm15
+      vminsd xmm7,xmm7,xmm15
+      vandpd xmm0,xmm0,xmm14
+      vminsd xmm8,xmm8,xmm15
+      vaddsd xmm1,xmm1,xmm0
+      vmovsd QWORD PTR [rax-0x40],xmm1
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x8]
+      vandpd xmm0,xmm0,xmm14
+      vaddsd xmm2,xmm2,xmm0
+      vmovsd QWORD PTR [rax-0x38],xmm2
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x10]
+      vandpd xmm0,xmm0,xmm14
+      vaddsd xmm3,xmm3,xmm0
+      vmovsd QWORD PTR [rax-0x30],xmm3
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x18]
+      vandpd xmm0,xmm0,xmm14
+      vaddsd xmm4,xmm4,xmm0
+      vmovsd QWORD PTR [rax-0x28],xmm4
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x20]
+      vandpd xmm0,xmm0,xmm14
+      vaddsd xmm5,xmm5,xmm0
+      vmovsd QWORD PTR [rax-0x20],xmm5
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x28]
+      vandpd xmm0,xmm0,xmm14
+      vaddsd xmm6,xmm6,xmm0
+      vmovsd QWORD PTR [rax-0x18],xmm6
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x30]
+      vandpd xmm0,xmm0,xmm14
+      vaddsd xmm7,xmm7,xmm0
+      vmovsd QWORD PTR [rax-0x10],xmm7
+      vmovsd xmm0,QWORD PTR [rdx-0x8]
+      vsubsd xmm0,xmm0,QWORD PTR [r13+0x38]
+      vandpd xmm0,xmm0,xmm14
+      vaddsd xmm8,xmm8,xmm0
+      vmovsd QWORD PTR [rax-0x8],xmm8
+      cmp    rax,rsi
+      jne    af10 <_ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIdZNS8_20resolve_dtw_block_fnIdEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlddE0_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x300>
+  loop  74 insns  min 16 (minsd on xmm)  fp  40  mem  39  stack 22  calls 0
+    stack: vmovsd QWORD PTR [rsp+0x98],xmm9
+    stack: vmovsd xmm11,QWORD PTR [rsp+0x90]
+    stack: vmovsd xmm9,QWORD PTR [rsp+0x88]
+    stack: vmovsd QWORD PTR [rsp+0xa0],xmm10
+    stack: vmovsd QWORD PTR [rsp+0xb0],xmm6
+    stack: vmovsd QWORD PTR [rsp+0xa8],xmm7
+    stack: vmovsd xmm6,QWORD PTR [rsp+0xb8]
+    stack: vmovsd QWORD PTR [rsp+0xb8],xmm5
+    stack: vsubsd xmm5,xmm8,QWORD PTR [rsp+0x70]
+    stack: vmovsd QWORD PTR [rsp+0x88],xmm7
+    stack: vminsd xmm7,xmm10,QWORD PTR [rsp+0xa0]
+    stack: vmovsd QWORD PTR [rsp+0x90],xmm6
+    stack: vsubsd xmm5,xmm8,QWORD PTR [rsp+0x68]
+    stack: vminsd xmm6,xmm9,QWORD PTR [rsp+0x98]
+    stack: vsubsd xmm5,xmm8,QWORD PTR [rsp+0x60]
+    stack: vminsd xmm6,xmm7,QWORD PTR [rsp+0xa8]
+    stack: vsubsd xmm5,xmm8,QWORD PTR [rsp+0x58]
+    stack: vminsd xmm11,xmm6,QWORD PTR [rsp+0xb0]
+    stack: vsubsd xmm5,xmm8,QWORD PTR [rsp+0x50]
+    stack: vsubsd xmm5,xmm8,QWORD PTR [rsp+0x48]
+    stack: vsubsd xmm5,xmm8,QWORD PTR [rsp+0x80]
+    stack: vsubsd xmm5,xmm8,QWORD PTR [rsp+0x78]
+      vmovsd QWORD PTR [rsp+0x98],xmm9
+      vmovsd xmm11,QWORD PTR [rsp+0x90]
+      vmovsd xmm9,QWORD PTR [rsp+0x88]
+      vmovsd QWORD PTR [rsp+0xa0],xmm10
+      vmovq  xmm10,r10
+      vmovsd QWORD PTR [rsp+0xb0],xmm6
+      vmovsd QWORD PTR [rsp+0xa8],xmm7
+      vmovsd xmm5,QWORD PTR [rax]
+      mov    r10,QWORD PTR [rax+0x8]
+      add    rax,0x40
+      add    rsi,0x8
+      vmovsd xmm6,QWORD PTR [rsp+0xb8]
+      vmovsd xmm8,QWORD PTR [rsi-0x8]
+      vmovsd QWORD PTR [rsp+0xb8],xmm5
+      vmovsd xmm7,xmm5,xmm5
+      vsubsd xmm5,xmm8,QWORD PTR [rsp+0x70]
+      vminsd xmm6,xmm7,xmm6
+      vmovq  xmm7,r10
+      vminsd xmm10,xmm7,xmm10
+      vmovsd xmm7,QWORD PTR [rax-0x30]
+      vandpd xmm5,xmm5,xmm14
+      vminsd xmm13,xmm13,xmm6
+      vminsd xmm9,xmm7,xmm9
+      vmovsd xmm6,QWORD PTR [rax-0x28]
+      vmovsd QWORD PTR [rsp+0x88],xmm7
+      vminsd xmm12,xmm12,xmm10
+      vmovsd xmm10,QWORD PTR [rax-0x20]
+      vminsd xmm7,xmm10,QWORD PTR [rsp+0xa0]
+      vmovsd QWORD PTR [rsp+0x90],xmm6
+      vminsd xmm11,xmm6,xmm11
+      vaddsd xmm13,xmm13,xmm5
+      vsubsd xmm5,xmm8,QWORD PTR [rsp+0x68]
+      vminsd xmm15,xmm15,xmm9
+      vminsd xmm0,xmm0,xmm7
+      vmovsd xmm9,QWORD PTR [rax-0x18]
+      vmovsd xmm7,QWORD PTR [rax-0x10]
+      vminsd xmm6,xmm9,QWORD PTR [rsp+0x98]
+      vminsd xmm2,xmm2,xmm11
+      vandpd xmm5,xmm5,xmm14
+      vmovsd QWORD PTR [rax-0x40],xmm13
+      vaddsd xmm12,xmm12,xmm5
+      vsubsd xmm5,xmm8,QWORD PTR [rsp+0x60]
+      vminsd xmm1,xmm1,xmm6
+      vminsd xmm6,xmm7,QWORD PTR [rsp+0xa8]
+      vandpd xmm5,xmm5,xmm14
+      vmovsd QWORD PTR [rax-0x38],xmm12
+      vaddsd xmm15,xmm15,xmm5
+      vsubsd xmm5,xmm8,QWORD PTR [rsp+0x58]
+      vminsd xmm4,xmm4,xmm6
+      vmovsd xmm6,QWORD PTR [rax-0x8]
+      vminsd xmm11,xmm6,QWORD PTR [rsp+0xb0]
+      vandpd xmm5,xmm5,xmm14
+      vmovsd QWORD PTR [rax-0x30],xmm15
+      vaddsd xmm2,xmm2,xmm5
+      vsubsd xmm5,xmm8,QWORD PTR [rsp+0x50]
+      vminsd xmm3,xmm3,xmm11
+      vandpd xmm5,xmm5,xmm14
+      vmovsd QWORD PTR [rax-0x28],xmm2
+      vaddsd xmm0,xmm0,xmm5
+      vsubsd xmm5,xmm8,QWORD PTR [rsp+0x48]
+      vandpd xmm5,xmm5,xmm14
+      vmovsd QWORD PTR [rax-0x20],xmm0
+      vaddsd xmm1,xmm1,xmm5
+      vsubsd xmm5,xmm8,QWORD PTR [rsp+0x80]
+      vandpd xmm5,xmm5,xmm14
+      vmovsd QWORD PTR [rax-0x18],xmm1
+      vaddsd xmm4,xmm4,xmm5
+      vsubsd xmm5,xmm8,QWORD PTR [rsp+0x78]
+      vandpd xmm5,xmm5,xmm14
+      vmovsd QWORD PTR [rax-0x10],xmm4
+      vaddsd xmm3,xmm3,xmm5
+      vmovsd QWORD PTR [rax-0x8],xmm3
+      cmp    r8,rax
+      jne    b2a0 <_ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIdZNS8_20resolve_dtw_block_fnIdEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlddE0_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x690>
+  loop  74 insns  min 16 (minsd on xmm)  fp  40  mem  33  stack 16  calls 0
+    stack: vmovsd QWORD PTR [rsp+0xa8],xmm11
+    stack: vmovsd QWORD PTR [rsp+0xa0],xmm9
+    stack: vsubsd xmm1,xmm14,QWORD PTR [rsp+0x70]
+    stack: vmovsd QWORD PTR [rsp+0xb0],xmm1
+    stack: vsubsd xmm1,xmm14,QWORD PTR [rsp+0x60]
+    stack: vaddsd xmm15,xmm15,QWORD PTR [rsp+0xb0]
+    stack: vmovsd xmm8,QWORD PTR [rsp+0xb8]
+    stack: vsubsd xmm1,xmm14,QWORD PTR [rsp+0x90]
+    stack: vmovsd QWORD PTR [rsp+0xb8],xmm1
+    stack: vsubsd xmm1,xmm14,QWORD PTR [rsp+0x78]
+    stack: vminsd xmm11,xmm9,QWORD PTR [rsp+0xa0]
+    stack: vsubsd xmm1,xmm14,QWORD PTR [rsp+0x88]
+    stack: vsubsd xmm1,xmm14,QWORD PTR [rsp+0x80]
+    stack: vsubsd xmm1,xmm14,QWORD PTR [rsp+0x68]
+    stack: vsubsd xmm1,xmm14,QWORD PTR [rsp+0x98]
+    stack: vminsd xmm14,xmm11,QWORD PTR [rsp+0xa8]
+      vmovsd QWORD PTR [rsp+0xa8],xmm11
+      vmovsd xmm11,xmm12,xmm12
+      vmovsd xmm12,xmm13,xmm13
+      vmovq  xmm13,r8
+      vmovsd QWORD PTR [rsp+0xa0],xmm9
+      vmovsd xmm9,xmm10,xmm10
+      vmovsd xmm10,xmm8,xmm8
+      vmovsd xmm14,QWORD PTR [rsi]
+      vmovq  xmm8,rcx
+      mov    rcx,QWORD PTR [rax]
+      add    rax,0x40
+      vsubsd xmm1,xmm14,QWORD PTR [rsp+0x70]
+      mov    r8,QWORD PTR [rax-0x38]
+      add    rsi,0x8
+      vandpd xmm1,xmm1,xmm0
+      vmovsd QWORD PTR [rsp+0xb0],xmm1
+      vmovq  xmm1,rcx
+      vminsd xmm8,xmm1,xmm8
+      vsubsd xmm1,xmm14,QWORD PTR [rsp+0x60]
+      vminsd xmm15,xmm15,xmm8
+      vmovq  xmm8,r8
+      vandpd xmm1,xmm1,xmm0
+      vaddsd xmm15,xmm15,QWORD PTR [rsp+0xb0]
+      vminsd xmm13,xmm8,xmm13
+      vmovsd xmm8,QWORD PTR [rsp+0xb8]
+      vminsd xmm6,xmm6,xmm13
+      vmovsd xmm13,QWORD PTR [rax-0x30]
+      vmovsd QWORD PTR [rax-0x40],xmm15
+      vminsd xmm12,xmm13,xmm12
+      vaddsd xmm6,xmm6,xmm1
+      vsubsd xmm1,xmm14,QWORD PTR [rsp+0x90]
+      vminsd xmm12,xmm8,xmm12
+      vmovsd xmm8,QWORD PTR [rax-0x20]
+      vandpd xmm1,xmm1,xmm0
+      vmovsd QWORD PTR [rax-0x38],xmm6
+      vminsd xmm10,xmm8,xmm10
+      vaddsd xmm1,xmm1,xmm12
+      vmovsd xmm12,QWORD PTR [rax-0x28]
+      vminsd xmm11,xmm12,xmm11
+      vminsd xmm5,xmm5,xmm10
+      vmovsd xmm10,QWORD PTR [rax-0x18]
+      vmovsd QWORD PTR [rax-0x30],xmm1
+      vmovsd QWORD PTR [rsp+0xb8],xmm1
+      vsubsd xmm1,xmm14,QWORD PTR [rsp+0x78]
+      vminsd xmm9,xmm10,xmm9
+      vminsd xmm7,xmm7,xmm11
+      vandpd xmm1,xmm1,xmm0
+      vminsd xmm4,xmm4,xmm9
+      vmovsd xmm9,QWORD PTR [rax-0x10]
+      vminsd xmm11,xmm9,QWORD PTR [rsp+0xa0]
+      vaddsd xmm7,xmm7,xmm1
+      vsubsd xmm1,xmm14,QWORD PTR [rsp+0x88]
+      vminsd xmm3,xmm3,xmm11
+      vmovsd xmm11,QWORD PTR [rax-0x8]
+      vandpd xmm1,xmm1,xmm0
+      vmovsd QWORD PTR [rax-0x28],xmm7
+      vaddsd xmm5,xmm5,xmm1
+      vsubsd xmm1,xmm14,QWORD PTR [rsp+0x80]
+      vandpd xmm1,xmm1,xmm0
+      vmovsd QWORD PTR [rax-0x20],xmm5
+      vaddsd xmm4,xmm4,xmm1
+      vsubsd xmm1,xmm14,QWORD PTR [rsp+0x68]
+      vandpd xmm1,xmm1,xmm0
+      vmovsd QWORD PTR [rax-0x18],xmm4
+      vaddsd xmm3,xmm3,xmm1
+      vsubsd xmm1,xmm14,QWORD PTR [rsp+0x98]
+      vminsd xmm14,xmm11,QWORD PTR [rsp+0xa8]
+      vandpd xmm1,xmm1,xmm0
+      vmovsd QWORD PTR [rax-0x10],xmm3
+      vminsd xmm2,xmm2,xmm14
+      vaddsd xmm2,xmm2,xmm1
+      vmovsd QWORD PTR [rax-0x8],xmm2
+      cmp    rdi,rax
+      jne    b668 <_ZNSt17_Function_handlerIFvSt4spanIKdLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIdZNS8_20resolve_dtw_block_fnIdEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlddE0_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0xa58>
+== f32 dtw_kernel_lanes@MV<lambda_1> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop 122 insns  min 16 (minss on xmm)  fp  64  mem  64  stack  0  calls 0
+      mov    rcx,rdi
+      mov    r11,r8
+      add    r8,0x4
+      add    rdi,0x40
+      cmp    rcx,r8
+      jae    c476 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x406>
+      cmp    r11,rdi
+      jae    c476 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x406>
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12]
+      vmovss xmm2,DWORD PTR [rcx-0x40]
+      vmulss xmm1,xmm1,xmm1
+      vminss xmm2,xmm2,xmm0
+      vaddss xmm1,xmm1,xmm2
+      vmovss xmm2,DWORD PTR [rcx-0x3c]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x4]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm1,xmm2
+      vmovss xmm2,DWORD PTR [rcx-0x38]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x4],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x8]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm2,xmm1
+      vmovss xmm2,DWORD PTR [rcx-0x34]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x8],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0xc]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm1,xmm2
+      vmovss xmm2,DWORD PTR [rcx-0x30]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0xc],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x10]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm1,xmm2
+      vmovss xmm2,DWORD PTR [rcx-0x2c]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x10],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x14]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm2,xmm1
+      vmovss xmm2,DWORD PTR [rcx-0x28]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x14],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x18]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm1,xmm2
+      vmovss xmm2,DWORD PTR [rcx-0x24]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x18],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x1c]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm1,xmm2
+      vmovss DWORD PTR [rcx+0x1c],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vmovss xmm2,DWORD PTR [rcx-0x20]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x20]
+      vminss xmm2,xmm2,xmm0
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm2,xmm1
+      vmovss xmm2,DWORD PTR [rcx-0x1c]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x20],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x24]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm1,xmm2
+      vmovss xmm2,DWORD PTR [rcx-0x18]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x24],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x28]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm1,xmm2
+      vmovss xmm2,DWORD PTR [rcx-0x14]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x28],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x2c]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm2,xmm1
+      vmovss xmm2,DWORD PTR [rcx-0x10]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x2c],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x30]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm2,xmm1
+      vmovss xmm2,DWORD PTR [rcx-0xc]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x30],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x34]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm2,xmm1
+      vmovss xmm2,DWORD PTR [rcx-0x8]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x34],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x38]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm2,xmm1
+      vmovss xmm2,DWORD PTR [rcx-0x4]
+      vminss xmm2,xmm2,xmm0
+      vmovss DWORD PTR [rcx+0x38],xmm1
+      vmovss xmm1,DWORD PTR [r11]
+      vsubss xmm1,xmm1,DWORD PTR [r12+0x3c]
+      vmulss xmm1,xmm1,xmm1
+      vaddss xmm1,xmm1,xmm2
+      vmovss DWORD PTR [rcx+0x3c],xmm1
+      cmp    r10,rdi
+      jne    c4c4 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x454>
+  loop  19 insns  min  4 (minps on ymm)  fp   8  mem   5  stack  0  calls 0
+      vmovaps ymm1,ymm5
+      vmovups ymm5,YMMWORD PTR [rcx]
+      add    rcx,0x40
+      add    rsi,0x4
+      vbroadcastss ymm11,DWORD PTR [rsi-0x4]
+      vminps ymm1,ymm5,ymm1
+      vsubps ymm9,ymm11,ymm7
+      vsubps ymm12,ymm11,ymm8
+      vminps ymm2,ymm2,ymm1
+      vmovaps ymm1,ymm4
+      vmovups ymm4,YMMWORD PTR [rcx-0x20]
+      vminps ymm1,ymm4,ymm1
+      vfmadd231ps ymm2,ymm9,ymm9
+      vminps ymm0,ymm0,ymm1
+      vfmadd231ps ymm0,ymm12,ymm12
+      vmovups YMMWORD PTR [rcx-0x40],ymm2
+      vmovups YMMWORD PTR [rcx-0x20],ymm0
+      cmp    rcx,rdi
+      jne    cb48 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0xad8>
+  loop  19 insns  min  4 (minps on ymm)  fp   8  mem   5  stack  0  calls 0
+      vmovaps ymm4,ymm6
+      vmovups ymm6,YMMWORD PTR [rcx]
+      add    rcx,0x40
+      add    rsi,0x4
+      vbroadcastss ymm0,DWORD PTR [rsi-0x4]
+      vminps ymm4,ymm6,ymm4
+      vsubps ymm10,ymm0,ymm7
+      vsubps ymm0,ymm0,ymm8
+      vminps ymm2,ymm2,ymm4
+      vmovaps ymm4,ymm5
+      vmovups ymm5,YMMWORD PTR [rcx-0x20]
+      vminps ymm4,ymm5,ymm4
+      vfmadd231ps ymm2,ymm10,ymm10
+      vminps ymm1,ymm1,ymm4
+      vfmadd231ps ymm1,ymm0,ymm0
+      vmovups YMMWORD PTR [rcx-0x40],ymm2
+      vmovups YMMWORD PTR [rcx-0x20],ymm1
+      cmp    rcx,rdi
+      jne    cc98 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0xc28>
+== f32 dtw_kernel_lanes@MV<lambda_2> (GCC) _ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615E
+  loop 122 insns  min 16 (minss on xmm)  fp  64  mem  64  stack  0  calls 0
+      mov    rcx,rdi
+      mov    r11,r8
+      add    r8,0x4
+      add    rdi,0x40
+      cmp    rcx,r8
+      jae    dd20 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE0_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x420>
+      cmp    r11,rdi
+      jae    dd20 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE0_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x420>
+      vmovss xmm5,DWORD PTR [rcx-0x40]
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12]
+      vminss xmm5,xmm5,xmm0
+      vandps xmm3,xmm3,xmm1
+      vaddss xmm3,xmm3,xmm5
+      vmovss xmm5,DWORD PTR [rcx-0x3c]
+      vminss xmm5,xmm5,xmm0
+      vmovss DWORD PTR [rcx],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x4]
+      vandps xmm3,xmm3,xmm1
+      vaddss xmm3,xmm3,xmm5
+      vmovss DWORD PTR [rcx+0x4],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x8]
+      vandps xmm5,xmm3,xmm1
+      vmovss xmm3,DWORD PTR [rcx-0x38]
+      vminss xmm3,xmm3,xmm0
+      vaddss xmm3,xmm3,xmm5
+      vmovss xmm5,DWORD PTR [rcx-0x34]
+      vminss xmm5,xmm5,xmm0
+      vmovss DWORD PTR [rcx+0x8],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0xc]
+      vandps xmm3,xmm3,xmm1
+      vaddss xmm3,xmm3,xmm5
+      vmovss xmm5,DWORD PTR [rcx-0x30]
+      vminss xmm5,xmm5,xmm0
+      vmovss DWORD PTR [rcx+0xc],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x10]
+      vandps xmm3,xmm3,xmm1
+      vaddss xmm3,xmm3,xmm5
+      vmovss DWORD PTR [rcx+0x10],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x14]
+      vandps xmm5,xmm3,xmm1
+      vmovss xmm3,DWORD PTR [rcx-0x2c]
+      vminss xmm3,xmm3,xmm0
+      vaddss xmm3,xmm3,xmm5
+      vmovss xmm5,DWORD PTR [rcx-0x28]
+      vminss xmm5,xmm5,xmm0
+      vmovss DWORD PTR [rcx+0x14],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x18]
+      vandps xmm3,xmm3,xmm1
+      vaddss xmm3,xmm3,xmm5
+      vmovss xmm5,DWORD PTR [rcx-0x24]
+      vminss xmm5,xmm5,xmm0
+      vmovss DWORD PTR [rcx+0x18],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x1c]
+      vandps xmm3,xmm3,xmm1
+      vaddss xmm3,xmm3,xmm5
+      vmovss DWORD PTR [rcx+0x1c],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x20]
+      vandps xmm5,xmm3,xmm1
+      vmovss xmm3,DWORD PTR [rcx-0x20]
+      vminss xmm3,xmm3,xmm0
+      vaddss xmm3,xmm3,xmm5
+      vmovss xmm5,DWORD PTR [rcx-0x1c]
+      vminss xmm5,xmm5,xmm0
+      vmovss DWORD PTR [rcx+0x20],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x24]
+      vandps xmm3,xmm3,xmm1
+      vaddss xmm3,xmm3,xmm5
+      vmovss xmm5,DWORD PTR [rcx-0x18]
+      vminss xmm5,xmm5,xmm0
+      vmovss DWORD PTR [rcx+0x24],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x28]
+      vandps xmm3,xmm3,xmm1
+      vaddss xmm3,xmm3,xmm5
+      vmovss DWORD PTR [rcx+0x28],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x2c]
+      vandps xmm5,xmm3,xmm1
+      vmovss xmm3,DWORD PTR [rcx-0x14]
+      vminss xmm3,xmm3,xmm0
+      vaddss xmm3,xmm3,xmm5
+      vmovss DWORD PTR [rcx+0x2c],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x30]
+      vandps xmm5,xmm3,xmm1
+      vmovss xmm3,DWORD PTR [rcx-0x10]
+      vminss xmm3,xmm3,xmm0
+      vaddss xmm3,xmm3,xmm5
+      vmovss DWORD PTR [rcx+0x30],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x34]
+      vandps xmm5,xmm3,xmm1
+      vmovss xmm3,DWORD PTR [rcx-0xc]
+      vminss xmm3,xmm3,xmm0
+      vaddss xmm3,xmm3,xmm5
+      vmovss DWORD PTR [rcx+0x34],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x38]
+      vandps xmm5,xmm3,xmm1
+      vmovss xmm3,DWORD PTR [rcx-0x8]
+      vminss xmm3,xmm3,xmm0
+      vaddss xmm3,xmm3,xmm5
+      vmovss xmm5,DWORD PTR [rcx-0x4]
+      vminss xmm5,xmm5,xmm0
+      vmovss DWORD PTR [rcx+0x38],xmm3
+      vmovss xmm3,DWORD PTR [r11]
+      vsubss xmm3,xmm3,DWORD PTR [r12+0x3c]
+      vandps xmm3,xmm3,xmm1
+      vaddss xmm3,xmm3,xmm5
+      vmovss DWORD PTR [rcx+0x3c],xmm3
+      cmp    r10,rdi
+      jne    dd74 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE0_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0x474>
+  loop  21 insns  min  4 (minps on ymm)  fp  10  mem   5  stack  0  calls 0
+      vmovaps ymm11,ymm5
+      vmovups ymm5,YMMWORD PTR [rcx]
+      vmovaps ymm12,ymm4
+      add    rcx,0x40
+      vmovups ymm4,YMMWORD PTR [rcx-0x20]
+      vbroadcastss ymm1,DWORD PTR [rsi]
+      add    rsi,0x4
+      vminps ymm11,ymm5,ymm11
+      vminps ymm13,ymm4,ymm12
+      vminps ymm3,ymm3,ymm11
+      vsubps ymm11,ymm1,ymm9
+      vsubps ymm1,ymm1,ymm10
+      vminps ymm0,ymm0,ymm13
+      vandps ymm11,ymm11,ymm7
+      vandps ymm1,ymm1,ymm7
+      vaddps ymm3,ymm11,ymm3
+      vaddps ymm0,ymm1,ymm0
+      vmovups YMMWORD PTR [rcx-0x40],ymm3
+      vmovups YMMWORD PTR [rcx-0x20],ymm0
+      cmp    rcx,rdi
+      jne    e420 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE0_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0xb20>
+  loop  21 insns  min  4 (minps on ymm)  fp  10  mem   5  stack  0  calls 0
+      vmovaps ymm1,ymm4
+      vmovups ymm4,YMMWORD PTR [rcx]
+      add    rcx,0x40
+      add    rsi,0x4
+      vbroadcastss ymm0,DWORD PTR [rsi-0x4]
+      vminps ymm1,ymm4,ymm1
+      vminps ymm1,ymm10,ymm1
+      vsubps ymm10,ymm0,ymm6
+      vsubps ymm0,ymm0,ymm7
+      vandps ymm10,ymm10,ymm5
+      vaddps ymm10,ymm10,ymm1
+      vmovaps ymm1,ymm3
+      vmovups ymm3,YMMWORD PTR [rcx-0x20]
+      vandps ymm0,ymm0,ymm5
+      vminps ymm1,ymm3,ymm1
+      vmovups YMMWORD PTR [rcx-0x40],ymm10
+      vminps ymm1,ymm11,ymm1
+      vaddps ymm11,ymm0,ymm1
+      vmovups YMMWORD PTR [rcx-0x20],ymm11
+      cmp    rcx,rdi
+      jne    e588 <_ZNSt17_Function_handlerIFvSt4spanIKfLm18446744073709551615EES0_IKS2_Lm18446744073709551615EES0_IdLm18446744073709551615EEEZN4dtwc4core12_GLOBAL__N_18block_fnIfZNS8_20resolve_dtw_block_fnIfEESt8functionIFvS0_IKT_Lm18446744073709551615EES0_IKSF_Lm18446744073709551615EES5_EERKNS8_14DistanceConfigEEUlffE0_EESJ_iT0_EUlS2_S4_S5_E_E9_M_invokeERKSt9_Any_dataOS2_OS4_OS5_.lto_priv.0+0xc88>

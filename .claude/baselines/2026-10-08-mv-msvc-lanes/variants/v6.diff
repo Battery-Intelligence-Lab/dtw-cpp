@@ -1,0 +1,83 @@
+diff -ru --strip-trailing-cr src/base/dtwc/core/CMakeLists.txt src/v6/dtwc/core/CMakeLists.txt
+--- src/base/dtwc/core/CMakeLists.txt	2026-10-08 02:34:42.000000000 +0100
++++ src/v6/dtwc/core/CMakeLists.txt	2026-10-08 03:26:58.813696100 +0100
+@@ -29,3 +29,10 @@
+ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+   set_source_files_properties(dtw_lanes.cpp TARGET_DIRECTORY dtwc_core PROPERTIES COMPILE_OPTIONS -fno-lto)
+ endif()
++# GCC unrolls a loop of up to 16 iterations completely before its loop vectoriser runs, and its
++# basic-block vectoriser cannot pack the selects of the unrolled lane loop: capped at 8, a loop of
++# 16 lanes stays a loop and is packed.
++if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
++  set_source_files_properties(dtw_lanes.cpp TARGET_DIRECTORY dtwc_core PROPERTIES
++    COMPILE_OPTIONS --param=max-completely-peel-times=8)
++endif()
+diff -ru --strip-trailing-cr src/base/dtwc/core/dtw_kernel.hpp src/v6/dtwc/core/dtw_kernel.hpp
+--- src/base/dtwc/core/dtw_kernel.hpp	2026-10-08 02:34:42.000000000 +0100
++++ src/v6/dtwc/core/dtw_kernel.hpp	2026-10-08 03:26:59.253766400 +0100
+@@ -457,9 +457,12 @@
+ /// cost is |a - b| or d * d (never -0, and never NaN from finite values), and the
+ /// boundary is max(). A cost that overflows is +inf, which both mins order alike.
+ /// On input the fill refuses (NaN, ±inf) the lanes and the per-pair kernel can
+-/// disagree. Elsewhere this is StandardCell: x86's fmin is three instructions (minpd,
+-/// cmpunordpd, blendvpd) where its min is one. The per-pair kernels keep std::min
+-/// on AArch64 too: their scalar fminnm chain measured slower.
++/// disagree. The per-pair kernels keep std::min on AArch64 too: their scalar
++/// fminnm chain measured slower. Elsewhere the min is std::min's own comparison,
++/// returned by value: the same operand as std::min for every input, NaN and ±0
++/// included, but cl packs it where it leaves std::min's reference scalar
++/// (/Qvec-report reason 1200). x86's fmin is three instructions (minpd, cmpunordpd,
++/// blendvpd) where this min is one.
+ #if defined(__aarch64__)
+ struct LanesCell : StandardCell {
+   template <typename T>
+@@ -470,17 +473,26 @@
+   }
+ };
+ #else
+-using LanesCell = StandardCell;
++struct LanesCell : StandardCell {
++  template <typename T>
++  T combine(T diag, T up, T left, T cost,
++            std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
++  {
++    const T m = up < diag ? up : diag;   // std::min(diag, up)
++    return (left < m ? left : m) + cost; // std::min(m, left)
++  }
++};
+ #endif
+ 
+ /// Pairs per dtw_kernel_lanes call: enough chains that the FP pipes, not one
+ /// chain's min-then-add latency, set the pace. 128 bytes of T (16 doubles, 32
+ /// floats) on AArch64 and on x86-64 under clang (clang++, clang-cl), where 64 left
+-/// the pipes waiting on that chain; 64 bytes, one cache line, elsewhere and under
+-/// cl, whose lanes are scalar and ran slower at 128 (baselines
+-/// 2026-10-06-mac-arm-lanes, 2026-10-08-xl-x86-lanes-128). GCC's x86-64 lanes stay
++/// the pipes waiting on that chain, and under cl, which packs a loop of 12 or more
++/// iterations only (/Qvec-report reason 1303: 8 doubles stay scalar); 64 bytes, one
++/// cache line, elsewhere (baselines 2026-10-06-mac-arm-lanes,
++/// 2026-10-08-xl-x86-lanes-128, 2026-10-08-mv-msvc-lanes). GCC's x86-64 lanes stay
+ /// at 64 bytes until timed, though its f64 lanes are packed at 128 and scalar at 64.
+-#if defined(__aarch64__) || (defined(__x86_64__) && defined(__clang__))
++#if defined(__aarch64__) || (defined(__x86_64__) && defined(__clang__)) || defined(_M_X64)
+ template <typename T>
+ inline constexpr std::size_t dtw_lanes = 128 / sizeof(T);
+ #else
+diff -ru --strip-trailing-cr src/base/dtwc/core/dtw_lanes.cpp src/v6/dtwc/core/dtw_lanes.cpp
+--- src/base/dtwc/core/dtw_lanes.cpp	2026-10-08 02:34:42.000000000 +0100
++++ src/v6/dtwc/core/dtw_lanes.cpp	2026-10-08 03:26:58.806831100 +0100
+@@ -9,6 +9,14 @@
+  *          file to native code there, where clang's own -O3 pipeline runs SLP.
+  */
+ 
++// cl's vectoriser contracts squared L2's d * d + min into an FMA under the project's
++// /fp:contract, which its per-pair kernels do not: off in this file, each lane stays the
++// per-pair result bit for bit. Before the includes: cl does not inline a function compiled
++// with contraction off (the costs below) into one compiled with it on (the kernel).
++#if defined(_MSC_VER) && !defined(__clang__)
++#pragma fp_contract(off)
++#endif
++
+ #include "dtw_dispatch.hpp"
+ 
+ #include "dtw_kernel.hpp"     // dtw_kernel_lanes, dtw_lanes, LanesCell

@@ -34,7 +34,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - `set_n_clusters` (v1.0.0's `set_numberOfClusters`) below 1 is `InvalidInput`, and so is a band below -1, set or
   written to `band` (v1.0.0 ran full DTW). A ±inf in a series is refused, a NaN unless a missing-data strategy applies.
 - A series with no values is `InvalidInput`, and a blank line in a file of one series per row is no longer an empty
-  series.
+  series. Every `Problem` fill and `dtw_function()` refuses one on the CPU too, for a series emptied through
+  `Data::p_vec` after `set_data` (it was refused on a GPU only, and a CPU stored `1.8e308`).
 - A line of a folder's file with more than one value after the skipped columns is an error (v1.0.0 read the first):
   a pandas `index,value` file needs `--skip-rows 1 --skip-cols 1`.
 - `read_distance_matrix` (`--dist-matrix`) refuses a matrix of another size, one not square and symmetric, and ±inf.
@@ -137,9 +138,10 @@ Soft-DTW, Python or CUDA), on the machine named.
   unless the compiler fuses a multiply-add in one and not the other (GCC does by default; squared L2 only).
 - On 64-bit Arm the lanes hold 16 doubles (32 floats) and take each minimum with one `fminnm`: on an Apple M5 Pro
   1.41–2.00× faster on one thread, 1.61–1.69× in an 18-thread fill of equal-length series; bit for bit.
-- On x86-64 a clang build's lanes hold 16 doubles (32 floats) too: on an Intel Core Ultra 9 285 up to 1.97× faster on
-  one thread, 1.17–1.19× in a 24-thread fill of equal-length series; bit for bit. MSVC and GCC builds (the Windows and
-  Linux wheels) are unchanged.
+- On x86-64 the lanes of a clang or GCC build hold 16 doubles (32 floats) too: on an Intel Core Ultra 9 285 clang is up
+  to 1.97× faster on one thread and 1.17–1.19× in a 24-thread fill of equal-length series; GCC 13.3 (in WSL) 1.36–3.87×
+  on one thread and 2.39× and 2.54× in the fills, a ragged fill unchanged; bit for bit, but for GCC's squared L2 (the
+  multiply-add caveat above), whose clusterings were unchanged. MSVC builds are unchanged.
 - The one-pair kernel without a band computes two columns per pass: on an Apple M5 Pro a pair runs 1.14–1.98× faster,
   the 18-thread fill of 1,000 series of lengths 90–110 1.42–1.50× faster; bit for bit with Apple clang.
 - No DTW cell calls a library function (the MSVC STL made `std::min({…})` one): on an Intel Core Ultra 9 285, pinned,

@@ -61,7 +61,7 @@ system default GPU). On every device, a
 Sakoe-Chiba band narrower than the length difference between the shortest and
 longest series is an invalid-argument error naming both series and the smallest
 feasible band: such a pair has no warping path, and its distance would otherwise
-be the finite `1.8e308` sentinel.
+be the finite `1.8e308` sentinel. So is an empty series, which `Data::p_vec` can leave after `set_data`.
 
 On-demand distances and the matrix-free schedules `onebatch` and `tadpole`
 compute through `Problem::dtw_function()`, on the CPU even when a `Problem`'s
