@@ -360,7 +360,8 @@ may differ only where several optimal medoid sets exist, node counts and run tim
 - ☑ XG GCC's x86-64 lanes at 128 bytes, timed in WSL (`baselines/2026-10-08-xg-gcc-lanes-128.md`, quiet run
   2026-10-08): PASS under the 10-01 ruling: single thread 1.36–3.87×, 24-thread fills 2.39× and 2.54×, ragged
   0.99×; L1 bit for bit, squared within the route bound, labels and medoids identical in 64/64 CLI runs
-- ◐ XG2 `dtw_lanes` 128 bytes under GCC too (pb/XG; GCC's full suite in WSL)
+- ☑ XG2 `dtw_lanes` 128 bytes under GCC too (1b0d8052; merged 388079ed: GCC 13.3 in WSL ctest 94/0, lanes 16 / 32;
+  main tree clang 95, CUDA 94, every CLI output byte-identical)
 - ☑ MV cl packs the lanes (`baselines/2026-10-08-mv-msvc-lanes.md`, quiet run 2026-10-08): FALSIFIED — a
   value-returning min and 128-byte lanes make cl pack (fills 2.5–2.6×, most single-thread shapes 2.6–6.6×), but
   6 of 48 candidate probes ran 3–4× slower per process (cause open); pb/MV (75490857, dd85b28e) not merged

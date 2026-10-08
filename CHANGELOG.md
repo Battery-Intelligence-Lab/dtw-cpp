@@ -137,7 +137,8 @@ Soft-DTW, Python or CUDA), on the machine named.
   1.41–2.00× faster on one thread, 1.61–1.69× in an 18-thread fill of equal-length series; bit for bit.
 - On x86-64 the lanes of a clang or GCC build hold 16 doubles (32 floats) too: on an Intel Core Ultra 9 285 clang is up
   to 1.97× faster on one thread and 1.17–1.19× in a 24-thread fill of equal-length series; GCC 13.3 (in WSL) 1.36–3.87×
-  on one thread and 2.39× and 2.54× in the fills, a ragged fill unchanged; bit for bit. MSVC builds are unchanged.
+  on one thread and 2.39× and 2.54× in the fills, a ragged fill unchanged; bit for bit, but for GCC's squared L2 (the
+  multiply-add caveat above), whose clusterings were unchanged. MSVC builds are unchanged.
 - The one-pair kernel without a band computes two columns per pass: on an Apple M5 Pro a pair runs 1.14–1.98× faster,
   the 18-thread fill of 1,000 series of lengths 90–110 1.42–1.50× faster; bit for bit with Apple clang.
 - No DTW cell calls a library function (the MSVC STL made `std::min({…})` one): on an Intel Core Ultra 9 285, pinned,
