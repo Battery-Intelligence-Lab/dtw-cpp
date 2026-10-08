@@ -47,6 +47,7 @@
 #include <iomanip>   // for operator<<, setprecision
 #include <iostream>  // for cout
 #include <limits>    // for numeric_limits
+#include <numeric>   // for iota
 #include <cassert>
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
@@ -773,33 +774,52 @@ void Problem::fillDistanceMatrix_BruteForce()
   // inside the structured block and deterministically rethrows the lowest-row
   // failure after the join; a failed pair remains uncomputed.
   //
-  // Row i first takes its columns W at a time through the lane function, where
-  // the block's series are as long as series i and not all its pairs are known;
-  // each of those distances is the per-pair one (bit for bit, unless the compiler
-  // contracts a multiply-add in one kernel and not the other). The block at the
-  // row's end repeats its last column in the lanes past it, whose results are
-  // dropped.
-  // The per-pair loop then fills the rest: mixed-length blocks, every pair
-  // without a lane function.
+  // Row i first takes the series after it W at a time through the lane function,
+  // where not all the block's pairs are known and, under a band, the block's
+  // series are as long as series i; each of those distances is the per-pair one
+  // (bit for bit, unless the compiler contracts a multiply-add in one kernel and not
+  // the other). The block at the row's end repeats its last column in the lanes
+  // past it, whose results are dropped. Without a band, where the lanes are packed
+  // (core::dtw_lanes_ragged), they take series of any lengths, every lane running to
+  // its block's longest, so there a row takes its columns in `order`, longest first
+  // (equal lengths in index order), passing over those up to its own: a block's
+  // lengths are close, and the rows keep index order, so a thread's consecutive rows
+  // still write neighbouring slots.
+  // The per-pair loop then fills the rest: blocks of mixed lengths the lanes do not
+  // take, every pair without a lane function.
+  const bool ragged = core::dtw_lanes_ragged && distance_.band < 0;
+  const bool lanes = data_.is_f32() ? static_cast<bool>(dtw_block_fn_f32_) : static_cast<bool>(dtw_block_fn_);
+  std::vector<size_t> order(N);
+  std::iota(order.begin(), order.end(), size_t{ 0 });
+  if (ragged && lanes) {
+    auto length = [&](size_t i) { return data_.is_f32() ? data_.series_f32(i).size() : series(i).size(); };
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return length(a) > length(b); });
+  }
+  const bool reordered = !std::is_sorted(order.begin(), order.end());
   auto fill_lanes = [&](size_t i, auto x, auto column, const auto &block) {
     using T = typename decltype(x)::value_type;
     constexpr size_t W = core::dtw_lanes<T>;
     if (!block) return;
+    std::array<size_t, W> c;
     std::array<std::span<const T>, W> ys;
     std::array<double, W> d;
-    for (size_t j = i + 1; j < N; j += W) {
-      const size_t count = std::min(W, N - j);
+    // In index order row i's columns start at i + 1, as they always did.
+    for (size_t b = reordered ? 0 : i + 1; b < N;) {
+      size_t count = 0;
+      for (; count < W && b < N; ++b)
+        if (order[b] > i) c[count++] = order[b];
+      if (count == 0) break;
       bool equal = true, known = true;
       for (size_t w = 0; w < W; ++w) {
-        const size_t c = j + std::min(w, count - 1);
-        ys[w] = column(c);
+        const size_t cw = c[std::min(w, count - 1)];
+        ys[w] = column(cw);
         equal = equal && ys[w].size() == x.size();
-        known = known && distMat.is_computed(i, c);
+        known = known && distMat.is_computed(i, cw);
       }
-      if (!equal || known) continue;
+      if (!(ragged || equal) || known) continue;
       block(x, ys, d);
       for (size_t w = 0; w < count; ++w)
-        if (!distMat.is_computed(i, j + w)) distMat.set(i, j + w, d[w]);
+        if (!distMat.is_computed(i, c[w])) distMat.set(i, c[w], d[w]);
     }
   };
   auto fill_row = [&](size_t i) {

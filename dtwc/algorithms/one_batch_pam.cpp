@@ -91,11 +91,14 @@ struct FixedBatchDistances {
 
     // Each worker writes a disjoint row. Row i takes its batch columns W at a
     // time through the lane function (the entry Problem's fill uses, resolved
-    // once here; each of its distances is bitwise the per-pair one) where the
+    // once here; each of its distances is bitwise the per-pair one) where there
+    // is no band and the lanes are packed (core::dtw_lanes_ragged), or the
     // block's series are as long as series i; every other column, and every
-    // request the lanes do not cover, goes pair by pair. The block at the end of
-    // the batch repeats its last column in the lanes past it, whose results are
-    // dropped, and a block holding series i computes that self-pair and drops it.
+    // request the lanes do not cover, goes pair by pair. The columns stay in
+    // batch order, so a block's lanes all run to its longest series. The block
+    // at the end of the batch repeats its last column in the lanes past it, whose
+    // results are dropped, and a block holding series i computes that self-pair
+    // and drops it.
     std::vector<std::uint64_t> row_evaluations(n, 0);
     std::vector<double> row_maxima(n, 0.0);
     const auto block_f32 = core::resolve_dtw_block_fn<float>(problem.distance());
@@ -113,7 +116,7 @@ struct FixedBatchDistances {
           bool lanes = static_cast<bool>(block);
           for (std::size_t w = 0; lanes && w < W; ++w) {
             ys[w] = column(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
-            lanes = ys[w].size() == x.size();
+            lanes = (core::dtw_lanes_ragged && prob.band < 0) || ys[w].size() == x.size();
           }
           if (lanes) block(x, ys, lane);
           for (std::size_t w = 0; w < count; ++w) {
