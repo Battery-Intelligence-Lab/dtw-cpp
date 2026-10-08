@@ -369,8 +369,9 @@ may differ only where several optimal medoid sets exist, node counts and run tim
   and FP flags fixed in CMake (Volkan 10-08: "speed is the most important right now")
 - ☐ CA the Windows release archive built by clang-cl, the cl build beside it as `dtwc_cl_msvc.exe`; the docs give
   the measured speed-up and recommend `dtwc_cl.exe` (Volkan 10-08); after CW
-- ◐ ES an empty series is InvalidInput on the CPU routes too (validate_fill_request refused it only for the
-  GPU; a series emptied through `Data::p_vec` filled as 1.8e308 on the CPU; Mac handoff 10-07)
+- ☑ ES an empty series is InvalidInput on the CPU routes too (validate_fill_request refused it only for the
+  GPU; a series emptied through `Data::p_vec` filled as 1.8e308 on the CPU; Mac handoff 10-07) (8dd16d8e; merged
+  883484b8: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical)
 - ◐ RL ragged lanes: the fill's lanes take series of different lengths, unbanded (Volkan 10-08 "Probe it";
   band in DECISIONS 2026-10-08; prepared by the unit, timed by the orchestrator)
 
