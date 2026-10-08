@@ -550,20 +550,12 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
       s[i].v[w] = cell.combine(maxValue, s[i - 1].v[w], maxValue, dist(x[i], Y[0].v[w]), i, 0);
   for (std::size_t i = hi0; i < nx; ++i) s[i] = kUnreachable;
 
-  // Lane w's distance is s[nx - 1] once its last column, ny[w] - 1, is done, before
-  // a later column overwrites it. take(c), after c columns: the lanes of c samples
-  // take theirs, and it returns the next count a lane ends at (equal lengths: the
-  // last column). It copies s: cl, without type-based alias analysis, would reload a
-  // referenced s after every store to the column.
-  auto take = [&out, &ny, s, nx, ny_max](std::size_t columns) {
-    std::size_t next = ny_max;
-    for (std::size_t w = 0; w < W; ++w) {
-      if (ny[w] == columns) out[w] = s[nx - 1].v[w];
-      if (ny[w] > columns && ny[w] < next) next = ny[w];
-    }
-    return next;
-  };
-  std::size_t end = take(1);
+  // Lane w's distance is s[nx - 1] once its last column, ny[w] - 1, is done: each
+  // column's last row goes to its Y row, which no later column reads, and lane w takes
+  // Y[ny[w] - 1] at the end. No test in the column loop: one there (a capture when a
+  // lane ended) changed clang's registers in the row loop below, which then ran 4-5 %
+  // slower on long equal-length series (baseline 2026-10-08-rl-ragged-lanes).
+  Y[0] = s[nx - 1];
   for (std::size_t j = 1; j < ny_max; ++j) {
     const auto [lo, hi] = dtw_band_bounds(band, j, nx);
     // Locals, so the compiler keeps them in registers: without type-based
@@ -593,8 +585,9 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
         si[w] = left[w];
       }
     }
-    if (j + 1 == end) end = take(j + 1);
+    Y[j] = s[nx - 1];
   }
+  for (std::size_t w = 0; w < W; ++w) out[w] = Y[ny[w] - 1].v[w];
   return out;
 }
 
