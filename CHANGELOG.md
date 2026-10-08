@@ -131,6 +131,8 @@ Soft-DTW, Python or CUDA), on the machine named.
 
 - The CPU fill of Standard DTW on univariate series computes a series against 8 of its length at once in SIMD lanes
   (16 in `float32`): on an Intel Core Ultra 9 285 (24 threads, loaded) ECG5000's 4,500 series fill in 3.9 s, not 66 s.
+- The Windows wheels are built by clang-cl and carry LLVM's OpenMP runtime (`libomp.dll`), so their fill of
+  equal-length series runs on the SIMD lanes, which MSVC's cl leaves scalar.
 - There a band-50 fill of 50 series of length 1,000 runs 5.1× faster; the lanes match the one-pair kernel bit for bit
   unless the compiler fuses a multiply-add in one and not the other (GCC does by default; squared L2 only).
 - On 64-bit Arm the lanes hold 16 doubles (32 floats) and take each minimum with one `fminnm`: on an Apple M5 Pro

@@ -22,8 +22,8 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | no |
 | fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
-| LLVM OpenMP runtime (`libomp`) | 23.1.1 | Apache-2.0 WITH LLVM-exception | macOS only — see note below | macOS wheels — bundled by `delocate` |
-| Microsoft Visual C++ runtime (`msvcp140*`, `vcruntime140*`, `concrt140`) and its OpenMP runtime (`vcomp140`) | that of the Visual Studio that built the artefact | Microsoft Distributable Code — see below | Windows only — `bin/`, beside `dtwc_cl.exe` | Windows wheels — `msvcp140` and `vcomp140` in `dtwcpp.libs/`, bundled by `delvewheel` |
+| LLVM OpenMP runtime (`libomp`) | 23.1.1 | Apache-2.0 WITH LLVM-exception | macOS only — see note below | macOS wheels — bundled by `delocate`; Windows wheels — `libomp.dll` in `dtwcpp.libs/`, bundled by `delvewheel` |
+| Microsoft Visual C++ runtime (`msvcp140*`, `vcruntime140*`, `concrt140`) and its OpenMP runtime (`vcomp140`) | that of the Visual Studio that built the artefact | Microsoft Distributable Code — see below | Windows only — `bin/`, beside `dtwc_cl.exe` | Windows wheels — `msvcp140` in `dtwcpp.libs/`, bundled by `delvewheel` |
 | llfio, quickcpplib, outcome, ntkernel-error-category (Windows) | pinned commits | Apache-2.0 **OR** BSL-1.0 | yes — headers compiled in (`DTWC_ENABLE_LLFIO=ON`) | yes — headers compiled in |
 | wg14_signals (llfio's signal guard) | pinned commit | Apache-2.0 | as llfio | as llfio |
 | span-lite, byte-lite (via quickcpplib) | pinned commits | BSL-1.0 | as llfio | as llfio |
@@ -36,13 +36,15 @@ CPM.cmake and CPMLicenses.cmake (MIT), which are build-time CMake helpers; Apach
 Gurobi, which is proprietary, supplied by the user under their own licence, and never bundled.
 
 **Note on the OpenMP runtime.** On Linux the OpenMP runtime is the one belonging to the user's
-toolchain and is not redistributed by us. On Windows the archive and the wheels carry MSVC's
-`vcomp140.dll` with the Visual C++ runtime, as Microsoft's Distributable Code (section below), because
-Windows ships neither. On macOS we bundle LLVM's `libomp`, which is
-Apache-2.0 WITH LLVM-exception; its terms are reproduced below. The release workflows build it
-unmodified from the LLVM 23.1.1 source release (`scripts/build_libomp_macos.sh`, SHA-256-pinned)
-for the artefacts' minimum macOS. We deliberately never redistribute GCC's `libgomp`, which is
-GPL-3.0 WITH GCC-exception.
+toolchain and is not redistributed by us. On Windows the archive carries MSVC's `vcomp140.dll` with
+the Visual C++ runtime, as Microsoft's Distributable Code (section below), and the wheels, which
+clang-cl builds, carry LLVM's `libomp.dll`, because Windows ships neither. On macOS we bundle LLVM's
+`libomp` too. LLVM's `libomp` is Apache-2.0 WITH LLVM-exception; its terms are reproduced below. For
+macOS the release workflows build it unmodified from the LLVM 23.1.1 source release
+(`scripts/build_libomp_macos.sh`, SHA-256-pinned) for the artefacts' minimum macOS; the Windows
+wheels take `bin/libomp.dll` from LLVM 23.1.1's official release binary for Windows x64, unmodified
+(`scripts/fetch_llvm_windows.sh`, SHA-256-pinned), whose clang-cl compiles them. We deliberately never
+redistribute GCC's `libgomp`, which is GPL-3.0 WITH GCC-exception.
 
 ---
 
@@ -195,9 +197,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## LLVM OpenMP runtime (`libomp`) — Apache-2.0 WITH LLVM-exception
 
-Bundled only in macOS artefacts. The complete Apache License 2.0 text is shipped alongside this
-file, at the `nanoarrow/` path given in the nanoarrow section above. The LLVM exception to it
-reads, in full:
+Bundled in the macOS artefacts and the Windows wheels. The complete Apache License 2.0 text is
+shipped alongside this file, at the `nanoarrow/` path given in the nanoarrow section above. The LLVM
+exception to it reads, in full:
 
 ```
 ---- LLVM Exceptions to the Apache 2.0 License ----
@@ -224,9 +226,9 @@ Bundled only in Windows artefacts, because Windows does not ship these files and
 `msvcp140_1.dll`, `msvcp140_2.dll`, `msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`,
 `vcruntime140.dll`, `vcruntime140_1.dll`, `concrt140.dll` and the OpenMP runtime `vcomp140.dll`, which
 CMake's `InstallRequiredSystemLibraries` copies from the building Visual Studio's `VC\Redist\MSVC`
-folder. The wheels carry `msvcp140.dll` and `vcomp140.dll` in `dtwcpp.libs/`, copied unchanged by
-`delvewheel` under hash-suffixed names (`msvcp140-<hash>.dll`) so that no other copy in the Python
-process stands in for them. These files are Microsoft's and are not covered by DTWC++'s licence.
+folder. The wheels carry `msvcp140.dll` in `dtwcpp.libs/`, copied unchanged by `delvewheel` under a
+hash-suffixed name (`msvcp140-<hash>.dll`) so that no other copy in the Python process stands in for
+it. These files are Microsoft's and are not covered by DTWC++'s licence.
 
 Microsoft lets licensed Visual Studio users copy and distribute them, unmodified, with their programs.
 The source is the "Distributable Code" section of the Visual Studio licence terms (for Microsoft Visual
