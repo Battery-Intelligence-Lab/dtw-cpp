@@ -203,6 +203,43 @@ TEST_CASE("FX-1: the dtw_function accessors validate the request before any pair
         == dtwc::dtwBanded<double>(series[0], series[1], 6));
 }
 
+TEST_CASE("FX-1: a series emptied through p_vec is refused on the CPU routes",
+          "[fx1][empty][dtw_function]")
+{
+  // set_data refuses an empty series, but p_vec edits one in place afterwards.
+  // The kernels answer an empty pair with the finite max() sentinel (oracle),
+  // which passes every isfinite() guard and which a clustering would sum.
+  CHECK(dtwc::dtwBanded<double>(std::vector<double>{}, ramp(4, 0.0), -1)
+        == std::numeric_limits<double>::max());
+
+  dtwc::Problem prob("cpu_empty");
+  prob.set_data(named({ ramp(4, 0.0), ramp(5, 0.5), ramp(6, 1.0) }));
+  prob.p_vec(1).clear();
+  prob.refresh_distance_matrix();
+
+  SECTION("the fill")
+  {
+    CHECK_THAT(message_of<dtwc::InvalidInput>([&] { prob.fill_distance_matrix(); }),
+               ContainsSubstring("Problem::fill_distance_matrix: series 1 ('b') is empty"));
+    CHECK_FALSE(prob.is_distance_matrix_filled());
+  }
+  SECTION("the accessors")
+  {
+    CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)prob.dtw_function(); }),
+               ContainsSubstring("Problem::dtw_function: series 1 ('b') is empty"));
+    CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)prob.dtw_function_f32(); }),
+               ContainsSubstring("Problem::dtw_function_f32: series 1 ('b') is empty"));
+  }
+  SECTION("a cost without a matrix")
+  {
+    prob.set_n_clusters(2);
+    prob.centroids_ind = { 0, 2 };
+    prob.clusters_ind = { 0, 0, 1 };
+    CHECK_THAT(message_of<dtwc::InvalidInput>([&] { (void)prob.find_total_cost(); }),
+               ContainsSubstring("Problem::find_total_cost: series 1 ('b') is empty"));
+  }
+}
+
 TEST_CASE("FX-15: ±inf, and NaN under MissingStrategy::Error, are rejected by position",
           "[fx15][missing][nonfinite]")
 {
