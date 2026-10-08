@@ -180,6 +180,7 @@ file to stream them under the cap.
 | `--mip-focus <int>` | Gurobi MIPFocus (0-3) | 2 |
 | `--verbose-solver` | Show MIP solver log output | off |
 | `--lr-max-nodes <int>` | Branch-and-bound node cap of `--method lrcore` | 2000000 |
+| `--lr-root <string>` | Root bound of `--method lrcore`: `subgradient`, or `kelley` (Kelley's cutting planes, whose master LP solves on HiGHS; a build without HiGHS exits 1 naming the build option) | `subgradient` |
 
 ### CSV and Parquet Parsing
 

@@ -169,8 +169,8 @@ Parse stdout for cost and timing; report the same summary.
 - **NaN in distances**: retry with `--missing-strategy arow`
 - **CUDA fails**: retry on CPU
 - **`mip` raises `SolverError` naming highspy**: the wheel solves `mip` with the user's highspy, so
-  `pip install "dtwcpp[mip]"` and rerun. `lrcore` is also exact and needs no solver (in the wheel its
-  root is the subgradient one, so a hard instance can stop at `lr_max_nodes`). Do not swap in `pam`:
+  `pip install "dtwcpp[mip]"` and rerun. `lrcore` is also exact and needs no solver (its default root
+  is the subgradient one; a hard instance can stop at `lr_max_nodes`). Do not swap in `pam`:
   it is a heuristic, not the optimum the user asked for.
 
 ## Related

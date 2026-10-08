@@ -45,6 +45,7 @@ numeric-focus = 3
 mip-focus = 1
 verbose-solver = true
 lr-max-nodes = 5000
+lr-root = "kelley"
 device = "gpu:2"
 gpu-precision = "fp64"
 verbose = true

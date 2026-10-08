@@ -355,7 +355,7 @@ function test_keys_are_python_words_in_camel_case(testCase)
         'dc', 'wdtw_g', 'adtw_penalty', 'sdtw_gamma', 'msm_c', 'twe_nu', 'twe_lambda', ...
         'mv_mode', 'missing_strategy', 'sample_size', 'n_samples', 'seed', 'batch_size', ...
         'linkage', 'solver', 'mip_gap', 'time_limit', 'no_warm_start', 'numeric_focus', ...
-        'mip_focus', 'verbose_solver', 'lr_max_nodes', 'device', 'gpu_precision', 'verbose'};
+        'mip_focus', 'verbose_solver', 'lr_max_nodes', 'lr_root', 'device', 'gpu_precision', 'verbose'};
     estimator_words = {'n_clusters', 'method', 'variant', 'band', 'max_iter', 'n_init', ...
         'wdtw_g', 'adtw_penalty', 'msm_c', 'twe_nu', 'twe_lambda', 'mv_mode', ...
         'missing_strategy', 'metric', 'batch_size', 'random_state', 'device'};
@@ -515,6 +515,33 @@ function test_problem_set_mip_settings_lr_max_nodes(testCase)
     verifyError(testCase, @() prob.set_mip_settings(struct('lr_max_nodes', 1.5)), ...
                 ?MException);
     verifyEqual(testCase, prob.get_mip_settings().lr_max_nodes, 12345);
+end
+
+function test_lr_root_both_values_reach_the_brute_force_optimum(testCase)
+%   LrRoot (dtwc_cl's --lr-root) picks LR-core's root: 'subgradient', the
+%   default, or 'kelley', whose master LP solves on the MEX's linked HiGHS.
+%   Both reach the optimum brute force finds over every medoid set, which is
+%   unique here, so the clusterings agree; an unknown root is refused, and
+%   Problem's mip_settings carry the value.
+    X = [zeros(3, 6); 4 * ones(3, 6); 9 * ones(3, 6)] + 0.1 * reshape(sin(1:54), 9, 6);
+    sub = dtwc.cluster(X, 3, 'Method', 'lrcore');
+    kel = dtwc.cluster(X, 3, 'Method', 'lrcore', 'LrRoot', 'kelley');
+    D = sub.distance_matrix();
+    sets = nchoosek(1:9, 3);
+    costs = sort(arrayfun(@(r) sum(min(D(:, sets(r, :)), [], 2)), 1:size(sets, 1)));
+    verifyGreaterThan(testCase, costs(2), costs(1) * (1 + 1e-9)); % one optimal medoid set
+    verifyEqual(testCase, sub.cost, costs(1), 'RelTol', 1e-12);
+    verifyEqual(testCase, kel.cost, costs(1), 'RelTol', 1e-12);
+    verifyEqual(testCase, kel.medoids, sub.medoids);
+    verifyEqual(testCase, kel.labels, sub.labels);
+    err = capture_error(@() dtwc.cluster(X, 3, 'Method', 'lrcore', 'LrRoot', 'simplex'));
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifySubstring(testCase, err.message, 'subgradient, kelley');
+
+    prob = dtwc.Problem('lr_root');
+    verifyEqual(testCase, prob.get_mip_settings().lr_root, 'subgradient');
+    prob.set_mip_settings(struct('lr_root', 'Kelley'));
+    verifyEqual(testCase, prob.get_mip_settings().lr_root, 'kelley');
 end
 
 function test_problem_set_data_ragged(testCase)

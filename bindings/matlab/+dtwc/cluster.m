@@ -17,8 +17,8 @@ function res = cluster(data, k, varargin)
 %   Name, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG,
 %   AdtwPenalty, SdtwGamma, MsmC, TweNu, TweLambda, MvMode, MissingStrategy,
 %   SampleSize, NSamples, Seed, BatchSize, Linkage, Solver, MipGap, TimeLimit,
-%   NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, Device,
-%   GpuPrecision, Verbose. C++ reads and checks them (dtwc::Config, then
+%   NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, LrRoot,
+%   Device, GpuPrecision, Verbose. C++ reads and checks them (dtwc::Config, then
 %   dtwc::apply) before the series are read; a key not given takes dtwc_cl's
 %   default, so Method is 'auto' (PAM on a GPU and for up to 5000 series on
 %   the CPU, CLARA above). Device is dtwc.device() unless given, and a Device

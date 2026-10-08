@@ -44,12 +44,17 @@ instead of publishing the uncertified incumbent. Raise the cap with
 `problem.mip_settings.lr_max_nodes` (default 2,000,000), or use
 `Method::Kmedoids` when a heuristic answer is what you want.
 
-Which root bound runs depends on the build. Where HiGHS is linked (`dtwc_cl`, C++ and
-the MATLAB MEX, `-DDTWC_ENABLE_HIGHS=ON`, the default) it is the Kelley cutting-plane
-root, which certifies to machine precision where the subgradient stalls, so far more
-instances close at the root with no branching. The Python wheel links no HiGHS, so its
-`method="lrcore"` starts from the solver-free subgradient root: the branch-and-bound
-closes the gap, with more nodes, and an instance can reach `lr_max_nodes`.
+The root bound is the subgradient root in every language and build; it needs no
+solver. `--lr-root kelley` (Python `lr_root="kelley"`, MATLAB `'LrRoot', 'kelley'`)
+runs Kelley's cutting planes instead, whose master LP solves on linked HiGHS in
+`dtwc_cl`, C++ and the MATLAB MEX, and on the installed highspy in Python, the `mip`
+extra (`pip install "dtwcpp[mip]"`). Without either, asking for it raises `SolverError`
+naming the fix before any distance is computed; it never falls back to the subgradient
+root. Both roots reach the same optimum, at different costs: on synthetic series
+(2026-10-06, the LR phase then serial) the subgradient root certified noisy series at
+the root, with no branching, where Kelley's needed up to 487,365 branch-and-bound
+nodes, and was the faster there; Kelley's certified constant, level-shifted series (a
+line metric) in 8–13 iterations, where the subgradient's LR phase took 43–230× longer.
 
 The recorded claims are intentionally not polished after the fact:
 

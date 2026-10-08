@@ -42,6 +42,18 @@
 
 namespace dtwc {
 
+/// The root dual of Method::LRCore. Both bound the same LP relaxation; which one certifies at the root, with
+/// no branching, depends on the data (measured 2026-10-06: the subgradient on noisy series, Kelley on a line metric).
+enum class LRRoot {
+  Subgradient, ///< Polyak subgradient steps; needs no LP solver.
+  Kelley       ///< Kelley's cutting planes; its master LP solves on linked HiGHS (Python: the user's highspy).
+};
+
+inline constexpr Name<LRRoot> lr_root_names[]{
+  { "subgradient", LRRoot::Subgradient },
+  { "kelley", LRRoot::Kelley },
+};
+
 /// MIP solver tuning parameters.
 struct MIPSettings {
   double mip_gap = 1e-5;          ///< Relative MIP gap tolerance.
@@ -51,6 +63,7 @@ struct MIPSettings {
   int mip_focus = 2;               ///< Gurobi MIPFocus (0=balanced, 1=feasible, 2=optimal, 3=bound).
   bool verbose_solver = false;     ///< Show solver log output.
   std::int64_t lr_max_nodes = 2000000; ///< Method::LRCore branch-and-bound node cap. Fixed width: `long` is 32-bit on Windows and 64-bit on Linux, so the public range would be platform-dependent.
+  LRRoot lr_root = LRRoot::Subgradient; ///< Method::LRCore's root dual (`--lr-root`).
 };
 
 /// Reject MIP settings a solver would otherwise turn into a solver-worded error.

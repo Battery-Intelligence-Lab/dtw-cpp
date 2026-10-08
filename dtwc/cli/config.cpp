@@ -279,6 +279,8 @@ void bind(CLI::App &app, Config &config)
   key(app, "--mip-focus", config.mip.mip_focus, "Gurobi MIPFocus (0-3, default: 2)");
   key(app, "--verbose-solver", config.mip.verbose_solver, "Show MIP solver log output");
   key(app, "--lr-max-nodes", config.mip.lr_max_nodes, "Branch-and-bound node cap of --method lrcore");
+  key(app, "--lr-root", config.mip.lr_root, lr_root_names, "lr root",
+      "Root bound of --method lrcore: subgradient, kelley (cutting planes; needs HiGHS)");
 
   // Compute device
   app.add_option_function<std::string>(

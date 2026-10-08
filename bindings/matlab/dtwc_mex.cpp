@@ -388,7 +388,7 @@ static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
 enum class Key {
   Name, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu,
   TweLambda, MvMode, MissingStrategy, SampleSize, NSamples, Seed, BatchSize, Linkage, Solver, MipGap,
-  TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, Device, GpuPrecision, Verbose
+  TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, LrRoot, Device, GpuPrecision, Verbose
 };
 
 /// The distance settings: what dtwc.distance.dtw and Problem.set_distance take.
@@ -432,6 +432,7 @@ constexpr dtwc::Name<Key> config_keys[]{
   { "MipFocus", Key::MipFocus },
   { "VerboseSolver", Key::VerboseSolver },
   { "LrMaxNodes", Key::LrMaxNodes },
+  { "LrRoot", Key::LrRoot },
   { "Device", Key::Device },
   { "GpuPrecision", Key::GpuPrecision },
   { "Verbose", Key::Verbose },
@@ -476,6 +477,7 @@ static void set_key(dtwc::Config &c, Key key, const std::string &name, const mxA
   case Key::MipFocus: c.mip.mip_focus = get_exact_int(value, key_name); break;
   case Key::VerboseSolver: c.mip.verbose_solver = get_logical(value, key_name); break;
   case Key::LrMaxNodes: c.mip.lr_max_nodes = get_exact_int<std::int64_t>(value, key_name); break;
+  case Key::LrRoot: c.mip.lr_root = dtwc::parse_name(dtwc::lr_root_names, text(), "lr root"); break;
   case Key::Device: std::tie(c.device, c.device_index) = dtwc::detail::parse_device(text()); break;
   case Key::GpuPrecision: c.gpu_precision = dtwc::parse_name(dtwc::gpu_precision_names, text(), "gpu precision"); break;
   case Key::Verbose: c.verbose = get_logical(value, key_name); break;
@@ -952,7 +954,7 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   const mxArray *s = prhs[2];
   if (!mxIsStruct(s))
     throw std::invalid_argument("mip_settings must be a struct (fields: mip_gap, time_limit_sec, "
-      "warm_start, numeric_focus, mip_focus, verbose_solver, lr_max_nodes).");
+      "warm_start, numeric_focus, mip_focus, verbose_solver, lr_max_nodes, lr_root).");
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap"))        m.mip_gap        = get_scalar(f, "mip_gap");
@@ -963,6 +965,10 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = (get_scalar(f, "verbose_solver") != 0.0);
   if (mxArray *f = mxGetField(s, 0, "lr_max_nodes"))
     m.lr_max_nodes = get_exact_int(f, "lr_max_nodes");
+  if (mxArray *f = mxGetField(s, 0, "lr_root")) {
+    require_char(f, "lr_root");
+    m.lr_root = dtwc::parse_name(dtwc::lr_root_names, get_string(f), "lr root");
+  }
   prob.mip_settings = m;
 }
 
@@ -972,8 +978,8 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   const auto &m = prob.mip_settings;
   const char *fields[] = { "mip_gap", "time_limit_sec", "warm_start", "numeric_focus",
-                           "mip_focus", "verbose_solver", "lr_max_nodes" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 7, fields);
+                           "mip_focus", "verbose_solver", "lr_max_nodes", "lr_root" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 8, fields);
   mxSetField(s, 0, "mip_gap", mxCreateDoubleScalar(m.mip_gap));
   mxSetField(s, 0, "time_limit_sec", mxCreateDoubleScalar(m.time_limit_sec));
   mxSetField(s, 0, "warm_start", mxCreateLogicalScalar(m.warm_start));
@@ -981,6 +987,7 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   mxSetField(s, 0, "mip_focus", mxCreateDoubleScalar(m.mip_focus));
   mxSetField(s, 0, "verbose_solver", mxCreateLogicalScalar(m.verbose_solver));
   mxSetField(s, 0, "lr_max_nodes", mxCreateDoubleScalar(static_cast<double>(m.lr_max_nodes)));
+  mxSetField(s, 0, "lr_root", mxCreateString(std::string(dtwc::name_of(dtwc::lr_root_names, m.lr_root)).c_str()));
   plhs[0] = s;
 }
 
