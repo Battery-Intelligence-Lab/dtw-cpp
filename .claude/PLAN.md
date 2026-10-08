@@ -370,7 +370,8 @@ may differ only where several optimal medoid sets exist, node counts and run tim
   d671cea4, 3619c828: LLVM 23.1.1 by `scripts/fetch_llvm_windows.sh`; the wheel built by cibuildwheel locally,
   pytest 893/19/0, 48/48 clusterings identical to the MSVC wheel's; waits for its timing, band in DECISIONS)
 - ◐ CA the Windows release archive built by clang-cl, the cl build beside it as `dtwc_cl_msvc.exe`; the docs give
-  the measured speed-up and recommend `dtwc_cl.exe` (Volkan 10-08); after CW
+  the measured speed-up and recommend `dtwc_cl.exe` (Volkan 10-08); after CW (5a232d61, a5cce9bd, 8b6bf4ef on
+  pb/CW: 312-file archive built locally, both CLIs' imports checked and run; waits for its timing)
 - ☑ ES an empty series is InvalidInput on the CPU routes too (validate_fill_request refused it only for the
   GPU; a series emptied through `Data::p_vec` filled as 1.8e308 on the CPU; Mac handoff 10-07) (8dd16d8e; merged
   883484b8: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical)

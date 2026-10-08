@@ -528,3 +528,12 @@ CHANGELOG rule.
   no shape at any thread count timed is below 0.95×; otherwise Volkan decides before the merge. CA: the archive
   ships as built if dtwc_cl.exe (clang-cl) fills each equal-length shape ≥ 1.2× as fast as dtwc_cl_msvc.exe at 24
   threads and no shape is below 0.95×; otherwise Volkan decides before the merge.
+- 2026-10-08 — Volkan: "Also have a look at cache misses, it is a very important metric for speed." Kits report
+  cache misses per cell beside wall time, base against candidate. Here no route worked unaided (Windows' counters
+  need an elevated session; WSL2 has no PMU driver for this CPU, "software events only"; valgrind absent, sudo
+  needs his password); asked, he chose "Install Intel VTune" (its sampling driver needs his admin install).
+- 2026-10-08 — RL review, before any timing: the packed lower-triangular matrix (`tri_index` = max·(max+1)/2 + min)
+  lets a thread's 8 consecutive fill rows share each written cache line; RL's longest-first row order made every
+  write its own line. The candidate is now row-local (rows in index order, each row's columns in length order);
+  the global order is timed beside it for the record, with an N 8000, L 40–60 shape (256 MB matrix) whose band
+  is ≥ 1.5× base under clang++ and GCC.
