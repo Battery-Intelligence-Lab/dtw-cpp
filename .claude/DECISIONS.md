@@ -523,3 +523,8 @@ CHANGELOG rule.
   ragged fill (lengths 100–1000) ≥ 1.5×; its f32 L1 and f64 squared variants at 24 threads ≥ 1.5×; equal-length
   fills and the banded ragged fill within 0.97–1.03×; L1 bit for bit, squared within the route bound, clusterings
   identical; under cl no shape below 0.97×.
+- 2026-10-08 — Bands registered before any run (the orchestrator's). CW: the clang-cl wheel ships as built if at
+  24 threads both lanes fills (WM's (a) N 2000 L 100, (b) N 500 L 1000 band 100) are ≥ 1.2× the MSVC wheel's and
+  no shape at any thread count timed is below 0.95×; otherwise Volkan decides before the merge. CA: the archive
+  ships as built if dtwc_cl.exe (clang-cl) fills each equal-length shape ≥ 1.2× as fast as dtwc_cl_msvc.exe at 24
+  threads and no shape is below 0.95×; otherwise Volkan decides before the merge.
