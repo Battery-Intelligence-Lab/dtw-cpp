@@ -39,6 +39,16 @@ jobs:
         with:
           submodules: true
 
+      # Windows: the wheels are compiled by clang-cl, which packs the fill's SIMD lanes
+      # (cl leaves them scalar), from one pinned LLVM release whose OpenMP runtime
+      # (libomp.dll) they bundle. The script checks the release's SHA-256.
+      - name: LLVM for clang-cl (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          bash scripts/fetch_llvm_windows.sh "$RUNNER_TEMP/llvm"
+          echo "DTWC_LLVM=$(cygpath -m "$RUNNER_TEMP/llvm")" >> "$GITHUB_ENV"
+
       - uses: pypa/cibuildwheel@8d2b08b68458a16aeb24b64e68a09ab1c8e82084 # v3.4.1
         env:
           CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
@@ -89,17 +99,27 @@ jobs:
             OpenMP_ROOT=$RUNNER_TEMP/libomp
           CIBW_BEFORE_ALL_MACOS: bash scripts/build_libomp_macos.sh "$OpenMP_ROOT"
 
-          # Windows: the extension imports MSVC's C++ runtime (msvcp140) and its OpenMP
-          # runtime (vcomp140). CPython ships only vcruntime140*, and cibuildwheel repairs
+          # Windows: clang-cl and its resource compiler from the LLVM fetched above, through
+          # Ninja (CMake takes lld-link, llvm-lib and llvm-mt from the compiler's directory).
+          # clang-cl and lld-link find Visual Studio's headers and libraries and the Windows
+          # SDK themselves, so no vcvars environment is set up.
+          CIBW_ENVIRONMENT_WINDOWS: >-
+            CC=$DTWC_LLVM/bin/clang-cl.exe
+            CXX=$DTWC_LLVM/bin/clang-cl.exe
+            RC=$DTWC_LLVM/bin/llvm-rc.exe
+            CMAKE_GENERATOR=Ninja
+
+          # Windows: the extension imports LLVM's OpenMP runtime (libomp.dll) and MSVC's C++
+          # runtime (msvcp140). CPython ships only vcruntime140*, and cibuildwheel repairs
           # no Windows wheel by default, so without this step `import dtwcpp` fails with
-          # "DLL load failed" wherever the Visual C++ Redistributable is not installed;
-          # the runners have it, so the test step could not see that. delvewheel copies
-          # the two DLLs into dtwcpp.libs/ under hash-suffixed names and points the
-          # extension at those names, so no other copy in the process can stand in for
-          # them and the test step loads the bundled ones. Pinned with its one
-          # dependency; to bump, take both versions from PyPI.
+          # "DLL load failed": libomp.dll is on no user's machine, msvcp140 is missing
+          # wherever the Visual C++ Redistributable is not installed. delvewheel copies the
+          # two DLLs (libomp.dll from the pinned LLVM's bin) into dtwcpp.libs/ under
+          # hash-suffixed names and points the extension at those names, so no other copy in
+          # the process can stand in for them and the test step loads the bundled ones.
+          # Pinned with its one dependency; to bump, take both versions from PyPI.
           CIBW_BEFORE_BUILD_WINDOWS: pip install delvewheel==1.13.1 pefile==2024.8.26
-          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair -w {dest_dir} {wheel}
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair --add-path %DTWC_LLVM%/bin -w {dest_dir} {wheel}
           CIBW_BUILD_VERBOSITY: 1
 
           # Execute a real OpenMP region, solve a compact conformance subset
