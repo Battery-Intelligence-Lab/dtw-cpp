@@ -475,10 +475,12 @@ using LanesCell = StandardCell;
 
 /// Pairs per dtw_kernel_lanes call: enough chains that the FP pipes, not one
 /// chain's min-then-add latency, set the pace. 128 bytes of T (16 doubles, 32
-/// floats) on AArch64 and x86-64, where 64 left the pipes waiting on that chain
-/// (baselines 2026-10-06-mac-arm-lanes, 2026-10-08-xl-x86-lanes-128); 64 bytes,
-/// one cache line, elsewhere. x86-64 is __x86_64__ (clang, GCC) or _M_X64 (cl).
-#if defined(__aarch64__) || defined(__x86_64__) || defined(_M_X64)
+/// floats) on AArch64 and on x86-64 under clang and GCC (__x86_64__), where 64
+/// left the pipes waiting on that chain; 64 bytes, one cache line, elsewhere and
+/// under cl (_M_X64 only), whose lanes are scalar and at 32 floats keep every
+/// lane's `left` on the stack (baselines 2026-10-06-mac-arm-lanes,
+/// 2026-10-08-xl-x86-lanes-128).
+#if defined(__aarch64__) || defined(__x86_64__)
 template <typename T>
 inline constexpr std::size_t dtw_lanes = 128 / sizeof(T);
 #else

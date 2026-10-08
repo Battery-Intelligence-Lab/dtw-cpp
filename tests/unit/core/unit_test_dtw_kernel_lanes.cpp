@@ -181,8 +181,9 @@ int fill_mismatches(const FillCase &c)
 
 } // namespace
 
-// 2W + 5 series (W = dtw_lanes: 37 double and 69 float on x86-64 and AArch64, 21
-// and 37 elsewhere) give rows of two blocks and a tail, of one block, and of a tail alone.
+// 2W + 5 series (W = dtw_lanes: 37 double and 69 float where the lanes are 128 bytes,
+// 21 and 37 where they are 64) give rows of two blocks and a tail, of one block, and of
+// a tail alone.
 TEST_CASE("fill_distance_matrix: the lanes fill agrees with the per-pair fill", "[lanes][fill]")
 {
   constexpr std::size_t W64 = dtwc::core::dtw_lanes<double>, n64 = 2 * W64 + 5;
