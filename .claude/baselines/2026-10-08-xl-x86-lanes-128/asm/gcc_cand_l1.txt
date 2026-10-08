@@ -1,0 +1,76 @@
+== f64 L1 main loop: loop  37 insns  min  8 (minpd on ymm)  fp  20  mem   9  stack  0  calls 0
+  vmovapd	ymm15, ymm9
+  vmovupd	ymm9, YMMWORD PTR [rax]
+  sub	rax, -128
+  add	rdi, 8
+  vbroadcastsd	ymm0, QWORD PTR -8[rdi]
+  vminpd	ymm15, ymm9, ymm15
+  vminpd	ymm15, ymm4, ymm15
+  vsubpd	ymm4, ymm0, ymm10
+  vandpd	ymm4, ymm4, ymm6
+  vaddpd	ymm4, ymm4, ymm15
+  vmovapd	ymm15, ymm8
+  vmovupd	ymm8, YMMWORD PTR -96[rax]
+  vminpd	ymm15, ymm8, ymm15
+  vmovupd	YMMWORD PTR -128[rax], ymm4
+  vminpd	ymm15, ymm3, ymm15
+  vsubpd	ymm3, ymm0, ymm13
+  vandpd	ymm3, ymm3, ymm6
+  vaddpd	ymm3, ymm3, ymm15
+  vmovapd	ymm15, ymm7
+  vmovupd	ymm7, YMMWORD PTR -64[rax]
+  vminpd	ymm15, ymm7, ymm15
+  vmovupd	YMMWORD PTR -96[rax], ymm3
+  vminpd	ymm15, ymm2, ymm15
+  vsubpd	ymm2, ymm0, ymm14
+  vsubpd	ymm0, ymm0, ymm12
+  vandpd	ymm2, ymm2, ymm6
+  vaddpd	ymm2, ymm2, ymm15
+  vmovapd	ymm15, ymm5
+  vmovupd	ymm5, YMMWORD PTR -32[rax]
+  vandpd	ymm0, ymm0, ymm6
+  vminpd	ymm15, ymm5, ymm15
+  vmovupd	YMMWORD PTR -64[rax], ymm2
+  vminpd	ymm1, ymm1, ymm15
+  vaddpd	ymm1, ymm0, ymm1
+  vmovupd	YMMWORD PTR -32[rax], ymm1
+  cmp	rax, r9
+  jne	.L308
+== f32 L1 main loop: loop  37 insns  min  8 (minps on ymm)  fp  20  mem   9  stack  0  calls 0
+  vmovaps	ymm15, ymm9
+  vmovups	ymm9, YMMWORD PTR [rax]
+  sub	rax, -128
+  add	rcx, 4
+  vbroadcastss	ymm0, DWORD PTR -4[rcx]
+  vminps	ymm15, ymm9, ymm15
+  vminps	ymm15, ymm4, ymm15
+  vsubps	ymm4, ymm0, ymm14
+  vandps	ymm4, ymm4, ymm6
+  vaddps	ymm4, ymm4, ymm15
+  vmovaps	ymm15, ymm8
+  vmovups	ymm8, YMMWORD PTR -96[rax]
+  vminps	ymm15, ymm8, ymm15
+  vmovups	YMMWORD PTR -128[rax], ymm4
+  vminps	ymm15, ymm3, ymm15
+  vsubps	ymm3, ymm0, ymm13
+  vandps	ymm3, ymm3, ymm6
+  vaddps	ymm3, ymm3, ymm15
+  vmovaps	ymm15, ymm7
+  vmovups	ymm7, YMMWORD PTR -64[rax]
+  vminps	ymm15, ymm7, ymm15
+  vmovups	YMMWORD PTR -96[rax], ymm3
+  vminps	ymm15, ymm2, ymm15
+  vsubps	ymm2, ymm0, ymm12
+  vsubps	ymm0, ymm0, ymm10
+  vandps	ymm2, ymm2, ymm6
+  vaddps	ymm2, ymm2, ymm15
+  vmovaps	ymm15, ymm5
+  vmovups	ymm5, YMMWORD PTR -32[rax]
+  vandps	ymm0, ymm0, ymm6
+  vminps	ymm15, ymm5, ymm15
+  vmovups	YMMWORD PTR -64[rax], ymm2
+  vminps	ymm1, ymm1, ymm15
+  vaddps	ymm1, ymm0, ymm1
+  vmovups	YMMWORD PTR -32[rax], ymm1
+  cmp	rax, rdx
+  jne	.L804

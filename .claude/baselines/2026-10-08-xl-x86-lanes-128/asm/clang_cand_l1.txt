@@ -1,0 +1,77 @@
+== f64 L1 main loop: loop  38 insns  min  8 (minpd on ymm)  fp  20  mem  11  stack  1  calls 0
+  vbroadcastsd	ymm0, qword ptr [rbx + 8*r12]
+  vmovupd	ymm15, ymmword ptr [rbp - 96]
+  vsubpd	ymm1, ymm0, ymm5
+  vminpd	ymm2, ymm15, ymm7
+  vminpd	ymm2, ymm8, ymm2
+  vbroadcastsd	ymm3, qword ptr [rip + __real@7fffffffffffffff]
+  vandpd	ymm1, ymm1, ymm3
+  vaddpd	ymm8, ymm2, ymm1
+  vmovupd	ymm7, ymmword ptr [rbp - 64]
+  vminpd	ymm1, ymm7, ymm9
+  vminpd	ymm1, ymm10, ymm1
+  vsubpd	ymm2, ymm0, ymmword ptr [rsp + 144]   ; 32-byte Folded Reload
+  vandpd	ymm2, ymm2, ymm3
+  vaddpd	ymm10, ymm1, ymm2
+  vmovupd	ymm1, ymmword ptr [rbp - 32]
+  vminpd	ymm2, ymm1, ymm11
+  vminpd	ymm2, ymm12, ymm2
+  vsubpd	ymm9, ymm0, ymm6
+  vandpd	ymm9, ymm9, ymm3
+  vaddpd	ymm12, ymm9, ymm2
+  vsubpd	ymm0, ymm0, ymm4
+  vandpd	ymm0, ymm0, ymm3
+  vmovupd	ymm2, ymmword ptr [rbp]
+  vminpd	ymm3, ymm2, ymm13
+  vminpd	ymm3, ymm14, ymm3
+  vaddpd	ymm14, ymm3, ymm0
+  vmovupd	ymmword ptr [rbp - 96], ymm8
+  vmovupd	ymmword ptr [rbp - 64], ymm10
+  vmovupd	ymmword ptr [rbp - 32], ymm12
+  vmovupd	ymmword ptr [rbp], ymm14
+  inc	r12
+  sub	rbp, -128
+  vmovapd	ymm13, ymm2
+  vmovapd	ymm11, ymm1
+  vmovapd	ymm9, ymm7
+  vmovapd	ymm7, ymm15
+  cmp	r13, r12
+  jne	.LBB29_374
+== f32 L1 main loop: loop  37 insns  min  8 (minps on ymm)  fp  20  mem  11  stack  2  calls 0
+  vmovaps	ymm12, ymm0
+  vmovaps	ymm4, ymm13
+  vmovaps	ymm5, ymm14
+  vmovaps	ymm3, ymm15
+  vbroadcastss	ymm1, dword ptr [rbx + 4*rdx]
+  vmovups	ymm0, ymmword ptr [r8 - 96]
+  vminps	ymm12, ymm0, ymm12
+  vminps	ymm11, ymm11, ymm12
+  vsubps	ymm12, ymm1, ymmword ptr [rsp + 512]   ; 32-byte Folded Reload
+  vandps	ymm12, ymm12, ymm2
+  vaddps	ymm11, ymm11, ymm12
+  vmovups	ymm13, ymmword ptr [r8 - 64]
+  vminps	ymm4, ymm13, ymm4
+  vminps	ymm4, ymm10, ymm4
+  vsubps	ymm10, ymm1, ymmword ptr [rsp + 480]   ; 32-byte Folded Reload
+  vandps	ymm10, ymm10, ymm2
+  vaddps	ymm10, ymm10, ymm4
+  vmovups	ymm14, ymmword ptr [r8 - 32]
+  vminps	ymm4, ymm14, ymm5
+  vminps	ymm4, ymm9, ymm4
+  vsubps	ymm5, ymm1, ymm6
+  vandps	ymm5, ymm5, ymm2
+  vaddps	ymm9, ymm4, ymm5
+  vmovups	ymm15, ymmword ptr [r8]
+  vminps	ymm3, ymm15, ymm3
+  vminps	ymm3, ymm7, ymm3
+  vsubps	ymm1, ymm1, ymm8
+  vandps	ymm1, ymm1, ymm2
+  vaddps	ymm7, ymm3, ymm1
+  vmovups	ymmword ptr [r8 - 96], ymm11
+  vmovups	ymmword ptr [r8 - 64], ymm10
+  vmovups	ymmword ptr [r8 - 32], ymm9
+  vmovups	ymmword ptr [r8], ymm7
+  inc	rdx
+  sub	r8, -128
+  cmp	rdi, rdx
+  jne	.LBB52_63

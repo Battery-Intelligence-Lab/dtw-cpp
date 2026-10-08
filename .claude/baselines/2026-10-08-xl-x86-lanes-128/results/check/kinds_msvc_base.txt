@@ -1,0 +1,8 @@
+kinds f64 L1 kind 0: band -1 76ff6a7eb7df509f  0 50ac60730c200bb4  1 33bf4933fe88af3e  L/10 9e77b7bd97818234  L 76ff6a7eb7df509f  |nx-ny| e1389cf8cadb5d76  non-finite 0
+kinds f64 L1 kind 1: band -1 f658496acdf3d048  0 61e6eea6270e9822  1 8db18ced3d30de50  L/10 a8ecd11ea28fb110  L f658496acdf3d048  |nx-ny| 33d6e93373ce7acb  non-finite 0
+kinds f64 L1 kind 2: band -1 0ab1b76c5ed381e4  0 638ecb2ffd1bd7f3  1 7b2233f0811a199e  L/10 30477c969d900655  L 0ab1b76c5ed381e4  |nx-ny| 1cc1e6053e933738  non-finite 0
+kinds f64 L1 kind 3: band -1 0605eb28a1708f81  0 e658d84d2f8134f8  1 f3d1835673e865c0  L/10 8c41bfad09094005  L 0605eb28a1708f81  |nx-ny| 377fd2f65cd91c89  non-finite 38916
+kinds f64 Sq kind 0: band -1 c42fb06792647c5a  0 24174f601ced2c98  1 bb4c1d6e2fd74a97  L/10 ffcc045ffd5696e1  L c42fb06792647c5a  |nx-ny| 4fe36d7c52dd6449  non-finite 0
+kinds f64 Sq kind 1: band -1 60c334ea6ede229d  0 98bf8fae539981cf  1 6c50331751dc2660  L/10 d487d20a746e66fe  L 60c334ea6ede229d  |nx-ny| 5e63e0048a076735  non-finite 0
+kinds f64 Sq kind 2: band -1 59adfcee268aa3f6  0 b26914efa6e10542  1 e32145b359dbd197  L/10 6ff71e6f4954d37b  L 59adfcee268aa3f6  |nx-ny| d01dbcfab49f4700  non-finite 0
+kinds f64 Sq kind 3: band -1 ea95270e64da3d45  0 61757356c12b85a5  1 62d144b481556400  L/10 bc6e0ad0fda08420  L ea95270e64da3d45  |nx-ny| 7e530145b905ea45  non-finite 38934

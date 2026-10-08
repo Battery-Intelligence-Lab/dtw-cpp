@@ -135,6 +135,9 @@ Soft-DTW, Python or CUDA), on the machine named.
   unless the compiler fuses a multiply-add in one and not the other (GCC does by default; squared L2 only).
 - On 64-bit Arm the lanes hold 16 doubles (32 floats) and take each minimum with one `fminnm`: on an Apple M5 Pro
   1.41–2.00× faster on one thread, 1.61–1.69× in an 18-thread fill of equal-length series; bit for bit.
+- On x86-64 a clang build's lanes hold 16 doubles (32 floats) too: on an Intel Core Ultra 9 285 up to 1.97× faster on
+  one thread, 1.17–1.19× in a 24-thread fill of equal-length series; bit for bit. MSVC and GCC builds (the Windows and
+  Linux wheels) are unchanged.
 - The one-pair kernel without a band computes two columns per pass: on an Apple M5 Pro a pair runs 1.14–1.98× faster,
   the 18-thread fill of 1,000 series of lengths 90–110 1.42–1.50× faster; bit for bit with Apple clang.
 - No DTW cell calls a library function (the MSVC STL made `std::min({…})` one): on an Intel Core Ultra 9 285, pinned,
