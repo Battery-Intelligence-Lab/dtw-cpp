@@ -238,7 +238,7 @@ TEST_CASE("fill_distance_matrix: the lanes fill agrees with the per-pair fill", 
     { "float32, full", true, std::vector<std::size_t>(n32, 40), -1, MetricType::L1, {} },
     { "float32, band 4, squared L2", true, std::vector<std::size_t>(n32, 40), 4,
       MetricType::SquaredL2, {} },
-    { "mixed lengths, unbanded: the lanes take them", false, alternating, -1, MetricType::L1, {} },
+    { "mixed lengths, unbanded", false, alternating, -1, MetricType::L1, {} },
     { "two lengths, band 3: mixed blocks fall back", false, halves, 3, MetricType::L1, {} },
     { "partially computed", false, std::vector<std::size_t>(n64, 60), -1, MetricType::L1, known },
   };
