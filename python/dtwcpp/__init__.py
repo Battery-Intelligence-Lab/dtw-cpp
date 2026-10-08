@@ -238,10 +238,14 @@ def _problem_cluster(self):
     """Cluster the series into n_clusters() by Problem.method (Auto: PAM on a GPU and
     for up to 5000 series, else CLARA) and return the ClusteringResult; the labels
     and medoids are published on the Problem too. An extension that links no HiGHS
-    (the wheel) solves Method.MIP on the HiGHS solver with the installed highspy."""
+    (the wheel) solves Method.MIP on the HiGHS solver, and Method.LRCore's kelley
+    root's master LP, with the installed highspy."""
     if self.method == Method.MIP and self.solver == Solver.HiGHS and not HIGHS_AVAILABLE:
         from dtwcpp import _mip
         return _mip.cluster(self)
+    if self.method == Method.LRCore and self.mip_settings.lr_root == "kelley" and not HIGHS_AVAILABLE:
+        from dtwcpp import _mip
+        return _mip.lrcore_kelley(self)
     return _cluster(self)
 
 

@@ -89,7 +89,7 @@ Python's words in CamelCase: `Method`, `Band`, `Metric`,
 `TweNu`, `TweLambda`), `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`,
 `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver` and the MIP
 settings (`MipGap`, `TimeLimit`, `NoWarmStart`, `NumericFocus`, `MipFocus`,
-`VerboseSolver`, `LrMaxNodes`), `GpuPrecision`, `Device`, `Name` and `Verbose`.
+`VerboseSolver`, `LrMaxNodes`, `LrRoot`), `GpuPrecision`, `Device`, `Name` and `Verbose`.
 C++ reads and checks them before a series is read; a key not given takes
 `dtwc_cl`'s default, so `Method` is `'auto'` (PAM on a GPU and for up to 5,000
 series on the CPU, CLARA above), and an unknown key raises `dtwc:invalidArgument`

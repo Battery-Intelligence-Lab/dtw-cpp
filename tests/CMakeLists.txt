@@ -269,7 +269,7 @@ if(TARGET dtwc_cl)
 endif()
 
 # dtwc::run's method x device table on the real binary, per build
-# flavour, and --print-config against the golden files (48 keys: every value
+# flavour, and --print-config against the golden files (47 keys: every value
 # and every default). A GPU build on a machine without the device must refuse.
 if(TARGET dtwc_cl)
     if("DTWC_HAS_CUDA" IN_LIST _dtwc_public_defs)
@@ -292,7 +292,7 @@ if(TARGET dtwc_cl)
              "-DDEFAULTS=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_defaults.toml"
              "-DGPU=${_dtwc_cl_gpu}" "-DHAS_HIGHS=${_dtwc_cl_highs}"
              "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-device-matrix"
-        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=46 skips=0"
+        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=47 skips=0"
         LABELS integration cli SERIAL TIMEOUT 300)
 endif()
 

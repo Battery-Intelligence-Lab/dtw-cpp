@@ -80,7 +80,7 @@ Canonical keys and aliases represented by the live CLI are:
 | Distances | `--band`, `--metric`, `--variant`, `--missing-strategy`, `--mv-mode`, `--wdtw-g`, `--adtw-penalty`, `--sdtw-gamma`, `--msm-c`, `--twe-nu`, `--twe-lambda` |
 | FastCLARA/OneBatch/TADPole | `--sample-size`, `--n-samples`, `--batch-size`, `--dc` |
 | Hierarchical | `--linkage` |
-| Exact solvers | `--solver`, `--mip-gap`, `--time-limit`, `--no-warm-start`, `--numeric-focus`, `--mip-focus`, `--verbose-solver`, `--lr-max-nodes` |
+| Exact solvers | `--solver`, `--mip-gap`, `--time-limit`, `--no-warm-start`, `--numeric-focus`, `--mip-focus`, `--verbose-solver`, `--lr-max-nodes`, `--lr-root` |
 | Device/storage | `--device`, `--gpu-precision`, `--gpu-dtype`, `--dist-matrix`, `--not-computed`, `--checkpoint`, `--checkpoint-interval`, `--mmap-threshold` |
 | Diagnostics | `--verbose` |
 

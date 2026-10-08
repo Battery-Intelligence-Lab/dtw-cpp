@@ -121,7 +121,7 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 `twe_lambda`), `mv_mode`, `missing_strategy`, `max_iter`, `n_init`, `seed`,
 `sample_size`, `n_samples`, `batch_size`, `linkage`, `dc`, `solver`, `mip_gap`,
 `time_limit`, `no_warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`,
-`lr_max_nodes`, `device`, `gpu_precision`, `name` and `verbose` (MATLAB:
+`lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `name` and `verbose` (MATLAB:
 `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, ...). The others
 (`input`, `output`, `dtype`, `ram_limit`, `checkpoint`, ...) are `dtwc_cl`'s and
 `dtwc::run`'s, unknown keys here. The [CLI reference](../../getting-started/cli/)

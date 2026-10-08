@@ -2,7 +2,10 @@ cmake_minimum_required(VERSION 3.26)
 
 # dtwc::run's method x device table through the real dtwc_cl, and
 # --print-config against the golden files. Every cell asserts its outcome:
-#   cpu    every method runs; `auto` is pam at N = 27 (the summary's Method:)
+#   cpu    every method runs; `auto` is pam at N = 27 (the summary's Method:);
+#          lrcore's -v names the root that ran: subgradient by default, kelley
+#          for --lr-root kelley, at the same cost (a build without HiGHS refuses
+#          kelley, naming the build option)
 #   gpu    the matrix methods run (the GPU fills the matrix), and clara with a
 #          sample smaller than N, whose -v names where its assignment ran: the
 #          CUDA entry's "series x k medoids" line, or Metal's CPU notice, so a
@@ -102,6 +105,26 @@ expect_ran(cpu_auto pam --device cpu --method auto)
 foreach(method IN LISTS methods)
     expect_ran(cpu_${method} ${method} --device cpu --method ${method})
 endforeach()
+macro(expect_root case root)
+    string(FIND "${out}" "LR-core: ${root} root, " root_at)
+    if(root_at EQUAL -1)
+        message(FATAL_ERROR "${case}: its -v names no ${root} root\nstdout:\n${out}")
+    endif()
+    string(REGEX MATCH "Total cost: [^\n]+" ${case}_cost "${out}")
+endmacro()
+expect_ran(cpu_lrcore_default lrcore --device cpu --method lrcore -v)
+expect_root(cpu_lrcore_default subgradient)
+if(HAS_HIGHS)
+    expect_ran(cpu_lrcore_kelley lrcore --device cpu --method lrcore --lr-root kelley -v)
+    expect_root(cpu_lrcore_kelley kelley)
+    if(NOT cpu_lrcore_kelley_cost STREQUAL cpu_lrcore_default_cost)
+        message(FATAL_ERROR "lrcore's roots disagree: ${cpu_lrcore_default_cost} (subgradient), "
+                            "${cpu_lrcore_kelley_cost} (kelley)")
+    endif()
+else()
+    expect_refused(cpu_lrcore_kelley "-DDTWC_ENABLE_HIGHS=ON" -i "${INPUT}" --device cpu --method lrcore
+                   --lr-root kelley)
+endif()
 
 # ---- gpu ----
 set(as_it_goes "computes its distances on the CPU as it goes, so device 'gpu' would sit idle")
@@ -176,7 +199,7 @@ expect_refused(device_tpu "unknown device 'tpu'" -i "${INPUT}" --device tpu)
 
 # ---- every cell ran ----
 list(LENGTH methods cpu_cells)
-math(EXPR expected "${cpu_cells} + 1 + 3")
+math(EXPR expected "${cpu_cells} + 1 + 2 + 3")
 list(LENGTH gpu_methods gpu_cells)
 if(GPU STREQUAL "none")
     math(EXPR expected "${expected} + ${gpu_cells} + 5")

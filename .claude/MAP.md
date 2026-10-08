@@ -25,13 +25,13 @@ Python  _dtwcpp_core + dtwcpp: apply(Config) → Problem::cluster()          MAT
 | io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet, Arrow IPC), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
 | backends | `cuda/`, `metal/` | 2.9k | GPU fills; CUDA also FastCLARA's assignment |
 | algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4k | FastPAM, FastCLARA (`fast_clara_parquet.cpp`: the stream, in `dtwc_io`), OneBatchPAM, hierarchical, TADPole, barycenter; seeding; seven scores |
-| mip | `mip/` | 1.5k | `mip-solvers`: HiGHS and Gurobi p-median (`build_p_median_model`), LR-core (`lagrangian_root`: dual, reduced-cost fixing, branch and bound) |
+| mip | `mip/` | 1.5k | `mip-solvers`: HiGHS and Gurobi p-median (`build_p_median_model`), LR-core (`lagrangian_root`: dual, the subgradient or Kelley root on a `KelleyMaster`, reduced-cost fixing, branch and bound) |
 | session | `Problem.{hpp,cpp}`, `Problem_IO.cpp`, `checkpoint.*` | 2.3k | the `Problem` session: data, distance binding, matrix cache, clustering state, checkpoints; `apply(Config, Problem&)` |
 | surface | `api.*`, `cli/`, `config.hpp`, `dtwc_cl.cpp`, `test_api.hpp`, `dtwc.hpp` | 2k | Tier-1 API; `Config` (`config.hpp`, in `dtwc_core`); `cli::bind` (the one key table), `run()`; diagnostics |
 | vendored | `extern/nanoarrow`, `extern/fast_float` | — | not ours; never edited |
 
 Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clustering.py`, `_hpc.py` + `_slurm/`, `_mip.py`:
-`method="mip"` through highspy), `bindings/matlab/` (3.2k; `dtwc_mex.cpp`, `+dtwc/`). Tests: `tests/` (42k lines).
+`method="mip"` and lrcore's Kelley master through highspy), `bindings/matlab/` (3.2k; `dtwc_mex.cpp`, `+dtwc/`). Tests: `tests/` (42k lines).
 
 ## 3. Build
 

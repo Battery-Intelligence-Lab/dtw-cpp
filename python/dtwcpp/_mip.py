@@ -1,10 +1,12 @@
 """
 @file _mip.py
-@brief Method.MIP with the installed highspy, for an extension that links no HiGHS (the wheel).
+@brief Method.MIP, and Method.LRCore's kelley root, with the installed highspy, for an
+       extension that links no HiGHS (the wheel).
 @details
     C++ builds the compact p-median model as arrays (dtwc::mip::build_p_median_model,
     the model dtwc_cl and MATLAB hand to their linked HiGHS); highspy reads them as
-    NumPy views, and C++ decodes the solution into labels and medoids.
+    NumPy views, and C++ decodes the solution into labels and medoids. LR-core runs in
+    C++ and solves its Kelley root's master LP through _KelleyMaster.
 @author Volkan Kumtepeli
 """
 
@@ -64,3 +66,57 @@ def cluster(prob):
         raise SolverError("highspy MIP did not solve to optimality. Model status: "
                           + highs.modelStatusToString(model_status))
     return _dtwcpp_core._mip_set_solution(prob, np.asarray(highs.getSolution().col_value))
+
+
+class _KelleyMaster:
+    """The master LP of LR-core's Kelley root (dtwc::mip::KelleyMaster) on the installed
+    highspy, as linked HiGHS solves it in C++: maximise over box-bounded columns, one row
+    per cut, re-solved after the column bounds move. C++ calls each method."""
+
+    def __init__(self, highspy):
+        self._highspy = highspy
+        self._highs = highspy.Highs()
+        self._highs.setOptionValue("output_flag", False)
+
+    def pass_model(self, cost, lower, upper):
+        lp = self._highspy.HighsLp()
+        lp.num_col_ = len(cost)
+        lp.sense_ = self._highspy.ObjSense.kMaximize
+        lp.col_cost_, lp.col_lower_, lp.col_upper_ = cost, lower, upper
+        lp.a_matrix_.num_col_ = len(cost)
+        lp.a_matrix_.start_ = [0] * (len(cost) + 1)  # no rows yet
+        return self._highs.passModel(lp) == self._highspy.HighsStatus.kOk
+
+    def add_row(self, lower, upper, index, value):
+        self._highs.addRow(lower, upper, len(index), index, value)
+
+    def change_col_bounds(self, first, lower, upper):
+        import numpy as np
+        columns = np.arange(first, first + len(lower), dtype=np.int32)
+        self._highs.changeColsBounds(len(columns), columns, lower, upper)
+
+    def run(self):
+        """The column values of an optimal solve, else None."""
+        if (self._highs.run() != self._highspy.HighsStatus.kOk
+                or self._highs.getModelStatus() != self._highspy.HighsModelStatus.kOptimal):
+            return None
+        return self._highs.getSolution().col_value
+
+
+def lrcore_kelley(prob):
+    """``Problem.cluster()`` for Method.LRCore with ``lr_root="kelley"`` on an extension
+    that links no HiGHS: LR-core runs in C++, and its Kelley root's master LP solves with
+    highspy. Without highspy, ``SolverError`` names the ``mip`` extra before any work."""
+    from dtwcpp import SolverError, _dtwcpp_core
+    try:
+        import highspy
+    except ImportError as error:  # absent, or present and failing to import: the message says which
+        raise SolverError(f"lr_root 'kelley' solves its master LP with highspy, which cannot be imported "
+                          f"({error}): pip install \"dtwcpp[mip]\", or keep lr_root 'subgradient', the "
+                          "default, which needs no solver.") from None
+    # As in cluster(): the run starts from no HiGHS scheduler and leaves none.
+    highspy.Highs.resetGlobalScheduler(True)
+    try:
+        return _dtwcpp_core._lr_core(prob, _KelleyMaster(highspy))
+    finally:
+        highspy.Highs.resetGlobalScheduler(True)

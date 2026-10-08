@@ -89,7 +89,7 @@ _SURFACE = {
     # MIP settings fields
     "MIPSettings": [
         "mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus",
-        "verbose_solver", "lr_max_nodes",
+        "verbose_solver", "lr_max_nodes", "lr_root",
     ],
 }
 _ROWS = [pytest.param(kind, name, id=f"{kind}.{name}")

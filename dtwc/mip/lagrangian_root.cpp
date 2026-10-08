@@ -18,6 +18,7 @@
 #include <cstdint>
 #include "lagrangian_root.hpp"
 
+#include "mip.hpp" // LR_core_clustering
 #include "nearest_medoid.hpp"
 
 #include "../core/clustering_result.hpp"
@@ -34,7 +35,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <iostream>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <utility>
@@ -451,14 +454,70 @@ LagrangianResult lagrangian_root(const double *D, index_t N, index_t k, double i
                   iter, params.rel_gap_tol);
 }
 
-LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, double initial_ub)
+namespace {
+#ifdef DTWC_ENABLE_HIGHS
+/// KelleyMaster on linked HiGHS: one Highs instance, warm-started across the re-solves.
+class HighsMaster final : public KelleyMaster
 {
-#ifndef DTWC_ENABLE_HIGHS
-  (void)D; (void)N; (void)k; (void)initial_ub;
-  throw SolverError(
-    "lagrangian_root_kelley: the cutting-plane master requires HiGHS. Rebuild with "
-    "-DDTWC_ENABLE_HIGHS=ON, or use lagrangian_root (the solver-free subgradient variant).");
+public:
+  HighsMaster() { highs_.setOptionValue("output_flag", false); }
+
+  bool pass_model(index_t ncol, const double *cost, const double *lower, const double *upper) override
+  {
+    HighsModel model;
+    model.lp_.num_col_ = static_cast<HighsInt>(ncol);
+    model.lp_.num_row_ = 0;
+    model.lp_.sense_ = ObjSense::kMaximize;
+    model.lp_.col_cost_.assign(cost, cost + ncol);
+    model.lp_.col_lower_.assign(lower, lower + ncol);
+    model.lp_.col_upper_.assign(upper, upper + ncol);
+    model.lp_.a_matrix_.format_ = MatrixFormat::kColwise;
+    model.lp_.a_matrix_.num_col_ = static_cast<HighsInt>(ncol);
+    model.lp_.a_matrix_.num_row_ = 0;
+    model.lp_.a_matrix_.start_.assign(static_cast<std::size_t>(ncol) + 1, 0); // no rows yet
+    return highs_.passModel(model) == HighsStatus::kOk;
+  }
+
+  void add_row(double lower, double upper, index_t nnz, const index_t *index, const double *value) override
+  {
+    index_.assign(index, index + nnz);
+    highs_.addRow(lower, upper, static_cast<HighsInt>(nnz), index_.data(), value);
+  }
+
+  void change_col_bounds(index_t first, index_t count, const double *lower, const double *upper) override
+  {
+    highs_.changeColsBounds(static_cast<HighsInt>(first), static_cast<HighsInt>(first + count - 1), lower, upper);
+  }
+
+  bool run(double *x) override
+  {
+    if (highs_.run() != HighsStatus::kOk || highs_.getModelStatus() != HighsModelStatus::kOptimal) return false;
+    const std::vector<double> &col_value = highs_.getSolution().col_value;
+    std::copy(col_value.begin(), col_value.end(), x);
+    return true;
+  }
+
+private:
+  Highs highs_;
+  std::vector<HighsInt> index_; // add_row's indices as HiGHS takes them
+};
+#endif
+} // namespace
+
+std::unique_ptr<KelleyMaster> highs_kelley_master()
+{
+#ifdef DTWC_ENABLE_HIGHS
+  return std::make_unique<HighsMaster>();
 #else
+  throw SolverError("LR-core's kelley root solves its master LP with HiGHS, which this build does not link: use a "
+                    "build with HiGHS (-DDTWC_ENABLE_HIGHS=ON), or the subgradient root (--lr-root subgradient, "
+                    "the default).");
+#endif
+}
+
+LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, double initial_ub,
+                                        KelleyMaster &master)
+{
   if (N <= 0) throw InvalidInput("lagrangian_root_kelley: N must be positive");
   if (k < 1 || k > N)
     throw InvalidInput("lagrangian_root_kelley: require 1 <= k <= N (k=" + std::to_string(k)
@@ -483,49 +542,36 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, d
   (void)omp_chunk_size(N, 8); // the single-thread loudness check
 
   // Master LP: cols μ_0..μ_{N-1} ∈ [0,maxD] and θ (col N) ∈ [-inf, UB]; maximize θ.
-  HighsModel model;
   const std::size_t ncol = Nz + 1;
-  model.lp_.num_col_ = static_cast<HighsInt>(ncol);
-  model.lp_.num_row_ = 0;
-  model.lp_.sense_ = ObjSense::kMaximize;
-  model.lp_.col_cost_.assign(ncol, 0.0);
-  model.lp_.col_cost_[Nz] = 1.0; // maximize θ
-  model.lp_.col_lower_.assign(ncol, 0.0);
-  model.lp_.col_upper_.assign(ncol, maxD);
-  model.lp_.col_lower_[Nz] = -kHighsInf;
-  model.lp_.col_upper_[Nz] = (seed_ub < inf) ? seed_ub : kHighsInf; // θ ≤ UB (valid: L* ≤ opt ≤ UB)
-  model.lp_.a_matrix_.format_ = MatrixFormat::kColwise;
-  model.lp_.a_matrix_.num_col_ = static_cast<HighsInt>(ncol);
-  model.lp_.a_matrix_.num_row_ = 0;
-  model.lp_.a_matrix_.start_.assign(ncol + 1, 0); // empty matrix
-
-  Highs highs;
-  highs.setOptionValue("output_flag", false);
-  if (highs.passModel(model) != HighsStatus::kOk)
-    throw SolverError("lagrangian_root_kelley: HiGHS rejected the master LP model.");
+  std::vector<double> col_cost(ncol, 0.0), col_lower(ncol, 0.0), col_upper(ncol, maxD), sol(ncol, 0.0);
+  col_cost[Nz] = 1.0;    // maximize θ
+  col_lower[Nz] = -inf;
+  col_upper[Nz] = seed_ub; // θ ≤ UB (valid: L* ≤ opt ≤ UB); +inf without a seed
+  if (!master.pass_model(N + 1, col_cost.data(), col_lower.data(), col_upper.data()))
+    throw SolverError("lagrangian_root_kelley: the LP solver rejected the master LP model.");
 
   int major = 0;
-  std::vector<HighsInt> ridx;
+  std::vector<index_t> ridx;
   std::vector<double> rval;
 
   // Add the supporting hyperplane θ ≤ L + g·(μ'−μ) for the CURRENT (μ, L, g).
   auto add_cut = [&](double L) {
     ridx.clear();
     rval.clear();
-    ridx.push_back(static_cast<HighsInt>(N)); // θ column, coeff +1
+    ridx.push_back(N); // θ column, coeff +1
     rval.push_back(1.0);
     double gdotmu = 0.0;
     for (index_t j = 0; j < N; ++j) {
       const double gj = g[static_cast<std::size_t>(j)];
       gdotmu += gj * mu[static_cast<std::size_t>(j)];
       if (gj != 0.0) {
-        ridx.push_back(static_cast<HighsInt>(j));
+        ridx.push_back(j);
         rval.push_back(-gj);
       }
     }
-    highs.addRow(-kHighsInf, L - gdotmu, static_cast<HighsInt>(ridx.size()),
-                 ridx.data(), rval.data());
+    master.add_row(-inf, L - gdotmu, static_cast<index_t>(ridx.size()), ridx.data(), rval.data());
   };
+  const double theta_lower = -inf;
 
   // Initial evaluation at μ = 0: seed the LB, the primal, and the θ ≤ UB bound
   // (unstabilized Kelley throws μ to box corners where L is terrible and the LB
@@ -534,7 +580,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, d
   best_lb = evaluate_dual(D, N, Nz, k, mu, rho, g, idx, rho_k);
   rho_at_best = rho;
   try_primal(D, N, Nz, k, idx, /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
-  highs.changeColBounds(static_cast<HighsInt>(N), -kHighsInf, best_primal); // θ ≤ UB
+  master.change_col_bounds(N, 1, &theta_lower, &best_primal); // θ ≤ UB
   add_cut(best_lb);
 
   std::vector<double> mu_hat = mu; // stability centre (best-L point so far)
@@ -545,13 +591,11 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, d
   for (major = 1; major <= params.kelley_max_major; ++major) {
     // Trust region: μ_j ∈ [μ̂_j − δ, μ̂_j + δ] ∩ [0, maxD].
     for (index_t j = 0; j < N; ++j) {
-      const double lo = std::max(0.0, mu_hat[static_cast<std::size_t>(j)] - delta);
-      const double hi = std::min(maxD, mu_hat[static_cast<std::size_t>(j)] + delta);
-      highs.changeColBounds(static_cast<HighsInt>(j), lo, hi);
+      col_lower[static_cast<std::size_t>(j)] = std::max(0.0, mu_hat[static_cast<std::size_t>(j)] - delta);
+      col_upper[static_cast<std::size_t>(j)] = std::min(maxD, mu_hat[static_cast<std::size_t>(j)] + delta);
     }
-    if (highs.run() != HighsStatus::kOk) break;
-    if (highs.getModelStatus() != HighsModelStatus::kOptimal) break;
-    const std::vector<double> &sol = highs.getSolution().col_value;
+    master.change_col_bounds(0, N, col_lower.data(), col_upper.data());
+    if (!master.run(sol.data())) break;
     const double theta_master = sol[Nz]; // model max over the trust region.
     for (index_t j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] = sol[static_cast<std::size_t>(j)];
 
@@ -559,7 +603,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, d
     const double L_new = evaluate_dual(D, N, Nz, k, mu, rho, g, idx, rho_k);
     try_primal(D, N, Nz, k, idx, /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
     if (best_primal < prev_ub) { // tightened UB ⇒ tighten θ bound too.
-      highs.changeColBounds(static_cast<HighsInt>(N), -kHighsInf, best_primal);
+      master.change_col_bounds(N, 1, &theta_lower, &best_primal);
       prev_ub = best_primal;
     }
     add_cut(L_new);
@@ -585,23 +629,20 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, d
   return finalize(D, N, k, best_lb, best_primal, seed_ub, std::move(best_medoids),
                   std::move(best_labels), std::move(mu_hat), rho_at_best,
                   major, params.rel_gap_tol);
-#endif
 }
 
 LagrangianResult lagrangian_root_exact(const double *D, index_t N, index_t k,
-                                       double initial_ub, std::int64_t max_nodes)
+                                       double initial_ub, std::int64_t max_nodes, KelleyMaster *kelley)
 {
-  // 1. Root Lagrangian dual + primal: the Kelley cutting-plane root when HiGHS is
-  //    linked, else the solver-free subgradient root; the B&B closes what the root
-  //    leaves open. Measured 2026-10-06 (synthetic length-40 L1 series): Kelley
-  //    certifies more roots only on a line metric (constant level-shifted series);
-  //    on noisy series the subgradient root certifies more and is faster.
+  // 1. Root Lagrangian dual + primal: the subgradient root (MIPSettings::lr_root's
+  //    default), or Kelley's cutting planes on the master LP the caller passes;
+  //    the B&B closes what the root leaves open. Measured 2026-10-06 (synthetic
+  //    length-40 L1 series): Kelley certifies more roots only on a line metric
+  //    (constant level-shifted series); on noisy series the subgradient root
+  //    certifies more and is faster.
   //    If it already certifies, the tree is a single node — return immediately.
-#ifdef DTWC_ENABLE_HIGHS
-  LagrangianResult root = lagrangian_root_kelley(D, N, k, initial_ub);
-#else
-  LagrangianResult root = lagrangian_root(D, N, k, initial_ub);
-#endif
+  LagrangianResult root = kelley != nullptr ? lagrangian_root_kelley(D, N, k, initial_ub, *kelley)
+                                            : lagrangian_root(D, N, k, initial_ub);
   if (root.certified_optimal) { root.nodes = 0; return root; }
 
   const std::size_t Nz = static_cast<std::size_t>(N);
@@ -767,12 +808,22 @@ LagrangianResult lagrangian_root_exact(const double *D, index_t N, index_t k,
 
 namespace dtwc {
 
-void LR_core_clustering(Problem &prob)
+void LR_core_clustering(Problem &prob, mip::KelleyMaster *kelley)
 {
   validate_mip_settings(prob.mip_settings); // lr_max_nodes is consumed below.
   const index_t N = prob.size();
   const index_t k = prob.n_clusters();
   if (N <= 0) throw InvalidInput("LR-core: the Problem has no data.");
+
+  // The root: the subgradient's, or Kelley's on the caller's master LP, else on linked HiGHS.
+  // A build without HiGHS refuses kelley here, before any distance is computed.
+  std::unique_ptr<mip::KelleyMaster> highs;
+  if (prob.mip_settings.lr_root == LRRoot::Subgradient) {
+    kelley = nullptr;
+  } else if (kelley == nullptr) {
+    highs = mip::highs_kelley_master();
+    kelley = highs.get();
+  }
 
   // The FastPAM cost seeds the upper bound; fast_pam fills the matrix.
   const double ub = fast_pam(prob, k, settings::DEFAULT_MAX_ITER, prob.random_seed()).total_cost;
@@ -785,7 +836,10 @@ void LR_core_clustering(Problem &prob)
   // Trivial k handled by the exact solver directly (k==N ⇒ all medoids; k==1 ⇒
   // the 1-medoid) — no special-casing needed, the B&B certifies them at the root.
   const mip::LagrangianResult r
-    = mip::lagrangian_root_exact(D.data(), N, k, ub, prob.mip_settings.lr_max_nodes);
+    = mip::lagrangian_root_exact(D.data(), N, k, ub, prob.mip_settings.lr_max_nodes, kelley);
+  if (prob.verbose())
+    std::cout << "LR-core: " << name_of(lr_root_names, kelley != nullptr ? LRRoot::Kelley : LRRoot::Subgradient)
+              << " root, " << r.nodes << " branch-and-bound nodes\n";
 
   // Method::LRCore is an EXACT entry point. lagrangian_root_exact clears
   // certified_optimal when the node cap stopped the tree, and publishing that

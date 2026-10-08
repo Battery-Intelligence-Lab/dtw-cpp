@@ -63,6 +63,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   per step, `--mv-mode dependent` or `independent`) and series stored as `float` on request (`--dtype float32`).
 - Methods FastPAM (FasterPAM), FastCLARA, OneBatchPAM, hierarchical, TADPole and LR-core (an exact Lagrangian branch and
   bound) beside Lloyd's k-medoids and the MIP; `--method auto`: FastPAM to 5,000 series, then FastCLARA (GPU: FastPAM).
+- LR-core's root bound is the subgradient root in every language and build; `--lr-root kelley` (Python `lr_root`,
+  MATLAB `LrRoot`) runs Kelley's cutting planes instead, whose master LP solves on linked HiGHS or, in Python, on
+  highspy (the `mip` extra). Both reach the same optimum; `-v` names the root and its branch-and-bound nodes.
 - `--seed` (42) for the seeded methods, whose draws are the same on every platform and standard library; `--n-init`
   (v1.0.0's `--repeat`) restarts FastPAM too.
 - DTW barycenters (`dtw_barycenter`: SSG, DBA, Soft-DTW) and barycenter k-means (`barycenter_kmeans`).
@@ -141,8 +144,8 @@ Soft-DTW, Python or CUDA), on the machine named.
 - FastPAM's swap reads the matrix directly: 5.6–5.9× faster on an Intel Core Ultra 9 285 (loaded), the same result.
 - OneBatchPAM (N = 2,000, k = 10; Intel Core Ultra 9 285, 24 threads, loaded): its final assignment runs on every
   thread (the call 1.82 s → 0.96 s), then its batch table on the SIMD lanes (0.98 s → 0.25 s; the lanes' FMA caveat).
-- LR-core's dual runs on OpenMP from 280 series: on an Apple M5 Pro (18 threads), at 800–3,200 series, its root runs
-  3.5–7.3× and `dtwc_cl -m lrcore` 1.4–4.7× faster without HiGHS (the wheel), 1.2–1.5× and 1.1–1.5× with it; bit for bit.
+- LR-core's dual runs on OpenMP from 280 series: on an Apple M5 Pro (18 threads), at 800–3,200 series, its subgradient
+  root runs 3.5–7.3× and `dtwc_cl -m lrcore` 1.4–4.7× faster, its Kelley root 1.2–1.5× and 1.1–1.5×; bit for bit.
 - The Python extension's binding file compiles at `-O3`, not nanobind's `-Os`: on an Apple M5 Pro `dtwcpp.dtw` runs
   1.1–1.5× and an unequal-length distance matrix 1.5× faster.
 - The CUDA fill writes the packed matrix: on an RTX 4000 Ada at N = 20,000 (FP32) host memory 6.0 → 1.6 GiB and GPU

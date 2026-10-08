@@ -12,6 +12,9 @@
 
 namespace dtwc {
 class Problem;
+namespace mip {
+class KelleyMaster;
+}
 
 void MIP_clustering_byGurobi(Problem &prob);
 void MIP_clustering_byHiGHS(Problem &prob);
@@ -22,9 +25,11 @@ void MIP_clustering_byHiGHS(Problem &prob);
 /// @brief LR-core EXACT clustering entry point (Method::LRCore).
 /// Fills the distance matrix, seeds an upper bound from the k-medoids heuristic,
 /// runs `mip::lagrangian_root_exact` on a dense copy of D, and writes the proven
-/// optimal `centroids_ind` / `clusters_ind` back into @p prob. Needs no external
-/// MIP solver (uses HiGHS only for a tighter Kelley root when available).
-void LR_core_clustering(Problem &prob);
+/// optimal `centroids_ind` / `clusters_ind` back into @p prob. The default root
+/// (MIPSettings::lr_root, subgradient) needs no solver; the kelley root solves its
+/// master LP on @p kelley, else on linked HiGHS.
+/// @throws SolverError for the kelley root with no master and no HiGHS, before any work.
+void LR_core_clustering(Problem &prob, mip::KelleyMaster *kelley = nullptr);
 
 namespace mip {
 
