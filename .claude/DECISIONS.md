@@ -207,3 +207,8 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   the CPU, nothing of ours running): "Run now, load recorded". Timed runs may start at total CPU < 12 %, the
   background recorded beside every run, 20 alternating pairs per 24-thread shape, a narrow miss getting one
   registered second attempt; < 6 % stays the gate whenever the scanners allow it.
+- 2026-10-09 — Volkan (question tool) on BF, whose GCC s1t (N 1000, 24 threads, a 40 ms fill) missed ≥ 0.98×
+  twice (0.892×, 0.951×): "Merge now, misses recorded"; GCC s1t, e3 and c1's closing save stay recorded as
+  missed, and the design's 8-column tasks for small fills become a PLAN candidate.
+- 2026-10-09 — Volkan (question tool) on PE, the Parquet stream overshooting its RAM limit (1.48 GB under
+  `--ram-limit 1G`): "Next, before SW". PE runs after CS, before SW, FM and MS.

@@ -30,22 +30,24 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 - ☑ DT `dtype` where data is loaded, in C++, Python, MATLAB and the CLI (float32 one word away; G2: a double view
   under `--dtype float32` is no longer kept silently) (ddb9fc3b; merged 999457d1: clang 95, Arrow tree 98, CUDA 94,
   matlab_suite 141/141, pytest 895/19/0; float32 output as before; a float32 Parquet load peaks at 0.52× the memory)
-- ◐ AL CLARA's assignment through the lanes kernel (added 10-09, "AL right after DT": per-pair today at 17.9
-  Gcell/s on 24 threads against the lanes fill's 105–131) (pb/AL 26d4af40; timed 10-09 06:16, PASS under clang, GCC
-  and cl: clang 3.4–3.8× at 24 threads and 7.8× on one, GCC 4.8–5.7× and 10.0×, cl 1.29× under a band; merge waits
-  for the rest of the timing chain)
+- ☑ AL CLARA's assignment through the lanes kernel (added 10-09, "AL right after DT": per-pair today at 17.9 Gcell/s
+  on 24 threads against the lanes fill's 105–131) (pb/AL 26d4af40; timed 10-09 06:16, PASS under clang, GCC and cl:
+  clang 3.4–3.8× at 24 threads and 7.8× on one, GCC 4.8–5.7× and 10.0×, cl 1.29× under a band; merged 6359acba: clang
+  95, Arrow 98, CUDA 94, matlab_suite 141, pytest 895/19/0; CLI and CLARA outputs identical)
 - ◐ BF the blocked CPU fill (slabs and tiles; prefetch and range flush when mapped; checkpoints per slab; parallel
   NaN prefill) with the one automatic memory key `ram_limit` (pb/BF 1b072918; matrices equal base's, GCC squared
   within the route bound; timed 10-09: clang and cl 0.99–1.08×, mapped 22.6× at a 4 GiB cap and ≥ 37× at 2 GiB,
   checkpoints write 2 M against 80 M; GCC s1t 0.892× against ≥ 0.98, a registered second attempt; e3 FALSIFIED:
-  LLC misses 0.405 and 0.450 per entry against ≤ 0.4, base 0.87–1.18; c1's closing save 0.04 % over, recorded)
+  LLC misses 0.405 and 0.450 per entry against ≤ 0.4, base 0.87–1.18; c1's closing save 0.04 % over, recorded;
+  GCC s1t FALSIFIED, 0.951× the second time; Volkan 10-09: merge with the misses recorded)
 - ◐ CS CLARA reads its data once (all samples drawn first, their union read once, decoding overlapped) and its stream
   refuses each row the in-RAM run refuses (NaN, ±inf, an empty row, a band too narrow: base published a cost of
   1.8e308) (pb/CS afd022c7 on pb/AL; 360/360 runs identical; P1 decodes 7.28 → 1.93 passes; timed 10-09 08:46,
   PASS: streams 3.4–3.6× faster, in RAM 1.00–1.86×; merge after BF)
-- ☐ PE the Parquet stream holds its RAM limit: under `--ram-limit 1G` a P1 stream peaked at 1.48 GB of private bytes
-  (CS; base 2.26 GB) against 1.16 GB allowed, as the per-group estimate (34.6 MB) undercounts Arrow's decode of a
-  batch (51–61 MB a group). With the automatic limit a SLURM job's `--mem` would kill the run
+- ◐ PE the Parquet stream holds its RAM limit (Volkan 10-09: next, before SW; implementing on pb/CS): under
+  `--ram-limit 1G` a P1 stream peaked at 1.48 GB of private bytes (CS; base 2.26 GB) against 1.16 GB allowed, as the
+  per-group estimate (34.6 MB) undercounts Arrow's decode of a batch (51–61 MB a group). With the automatic limit a
+  SLURM job's `--mem` would kill the run
 - ☐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
 - ☐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5)
 - ☐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
@@ -74,6 +76,8 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 
 ## Candidates (not scheduled)
 
+- BF's small fills under GCC: the design's 8-column tasks (one cache line) wherever a slab has enough of them; GCC
+  s1t (N 1000, 24 threads) ran 0.89–0.95×, perhaps neighbouring threads writing one line (untested; Volkan 10-09).
 - CUDA: the 64 KB carveout above L = 2048 (−18 % at L 2049; passed its band) once the CUDA floor reaches 12.5 (it was
   reverted, b803e47, because the floor is 12.0 and ARC loads 12.4).
 - The Windows archive ships HiGHS's development install (277 headers, a static `highs.lib`): trim it.
