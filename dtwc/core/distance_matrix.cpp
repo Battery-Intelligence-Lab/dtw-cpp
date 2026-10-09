@@ -9,10 +9,12 @@
 
 #include "distance_matrix.hpp"
 #include "../base/error.hpp"
+#include "../base/parallelisation.hpp" // run_openmp
 #include "../fileOperations.hpp" // open_output, close_output
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -143,6 +145,18 @@ void flush_to_device(const fs::path &path)
   if (!flushed) throw IOError("Cannot flush " + shown(path) + " to disk.");
 }
 
+/// NaN in `count` doubles, written by the OpenMP threads in contiguous chunks:
+/// first touch places a page where a thread runs, rather than all where one runs.
+void fill_not_computed(double *data, size_t count)
+{
+  const auto chunks = static_cast<size_t>(get_max_threads());
+  auto chunk = [&](size_t k) { std::fill(data + count * k / chunks, data + count * (k + 1) / chunks, not_computed); };
+  run_openmp(chunk, chunks, true, 1);
+}
+
+/// The byte offset of packed row r in a `.dtwm` file.
+size_t row_offset(size_t r) { return sizeof(Header) + packed_size(r) * sizeof(double); }
+
 #ifdef DTWC_HAS_MMAP
 namespace llfio = LLFIO_V2_NAMESPACE;
 
@@ -156,18 +170,59 @@ auto checked(Result &&result, const char *step, const fs::path &path)
                   + result.error().message());
   return std::forward<Result>(result).value();
 }
+
+/// Write bytes [first, last) of the file `file` maps back to it, from the page
+/// holding `first` (msync takes a page-aligned address): started, or finished
+/// with `kind` wait_data_only. Linux writes back that range only
+/// (sync_file_range); Windows and macOS flush the file.
+void flush_range(llfio::mapped_file_handle &file, size_t first, size_t last,
+                 llfio::mapped_file_handle::barrier_kind kind, const fs::path &path)
+{
+  first -= first % llfio::utils::page_size();
+  llfio::mapped_file_handle::const_buffer_type range(file.address() + first, last - first);
+  checked(file.barrier({ llfio::mapped_file_handle::const_buffers_type(&range, 1), first }, kind), "flush", path);
+}
 #endif
 
 } // namespace
 
+size_t available_memory()
+{
+#ifdef DTWC_HAS_MMAP
+  using usage = llfio::utils::process_memory_usage;
+  const auto system = llfio::utils::current_process_memory_usage(usage::want::system_physical_memory_available);
+  std::uint64_t bytes = system ? system.value().system_physical_memory_available : 0;
+#ifdef __linux__
+  // cgroup v2 ("0::<group>" in /proc/self/cgroup): the smallest memory.max of the
+  // group and its ancestors; "max", no limit, reads as no number.
+  std::ifstream cgroups("/proc/self/cgroup");
+  for (std::string line; std::getline(cgroups, line);) {
+    if (line.rfind("0::", 0) != 0) continue;
+    for (fs::path group = line.substr(3);; group = group.parent_path()) {
+      std::ifstream limit(fs::path("/sys/fs/cgroup") / group.relative_path() / "memory.max");
+      std::uint64_t value = 0;
+      if (limit >> value && (bytes == 0 || value < bytes)) bytes = value;
+      if (group == group.parent_path()) break;
+    }
+  }
+#endif
+  return static_cast<size_t>(bytes);
+#else
+  return 0;
+#endif
+}
+
 DistanceMatrix::DistanceMatrix() noexcept = default;
 
 DistanceMatrix::DistanceMatrix(size_t n)
-  : heap_(packed_size(n), not_computed), data_(heap_.data()), n_(n) {}
+  : heap_(std::make_unique_for_overwrite<double[]>(packed_size(n))), data_(heap_.get()), n_(n)
+{
+  fill_not_computed(data_, packed_size(n));
+}
 
 DistanceMatrix::~DistanceMatrix() = default;
 
-// A moved vector keeps its buffer, so data_ stays valid in the destination; the
+// A moved pointer keeps its buffer, so data_ stays valid in the destination; the
 // source is left empty rather than pointing into memory it no longer owns.
 DistanceMatrix::DistanceMatrix(DistanceMatrix &&other) noexcept
   : heap_(std::move(other.heap_)), mapping_(std::move(other.mapping_)),
@@ -262,11 +317,13 @@ DistanceMatrix DistanceMatrix::map(const fs::path &path, size_t n, const fingerp
     base = reinterpret_cast<std::byte *>(mapping->file.address());
     if (base == nullptr) throw IOError("Cannot map the distance matrix file " + shown(path) + ".");
     // A new file is zeros, and a zero reads as a computed distance: the NaN
-    // payload is on the device before the header that makes the file readable.
-    std::fill_n(reinterpret_cast<double *>(base + sizeof(Header)), packed_size(n), not_computed);
+    // payload is on the device before the header that makes the file readable,
+    // and the header before the first distance.
+    fill_not_computed(reinterpret_cast<double *>(base + sizeof(Header)), packed_size(n));
     checked(mapping->file.barrier({}, llfio::mapped_file_handle::barrier_kind::wait_all), "flush", path);
     const Header header = header_for(n, fingerprint);
     std::memcpy(base, &header, sizeof header);
+    flush_range(mapping->file, 0, sizeof header, llfio::mapped_file_handle::barrier_kind::wait_data_only, path);
   }
 
   DistanceMatrix matrix;
@@ -320,6 +377,53 @@ void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerp
   flush_to_device(temporary);
   fs::rename(temporary, path, ec);
   if (ec) throw IOError("Cannot rename " + shown(temporary) + " to " + shown(path) + ": " + ec.message());
+}
+
+void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerprint, size_t r0, size_t r1) const
+{
+  std::error_code ec;
+  if (mapping_ && fs::equivalent(mapping_->path, path, ec)) {
+    flush_rows(r0, r1, true);
+    return;
+  }
+  // In place only over this matrix's own file: the rows outside [r0, r1) there
+  // are NaN or this matrix's distances, written by an earlier save.
+  const Header expected = header_for(n_, fingerprint);
+  Header header{};
+  std::fstream file(path, std::ios::in | std::ios::out | std::ios::binary);
+  if (!file.read(reinterpret_cast<char *>(&header), sizeof header) || std::memcmp(&header, &expected, sizeof header) != 0
+      || fs::file_size(path, ec) != row_offset(n_)) {
+    file.close();
+    write(path, fingerprint);
+    return;
+  }
+  file.seekp(static_cast<std::streamoff>(row_offset(r0)));
+  file.write(reinterpret_cast<const char *>(data_ + packed_size(r0)),
+             static_cast<std::streamsize>((packed_size(r1) - packed_size(r0)) * sizeof(double)));
+  file.close();
+  if (!file) throw IOError("Cannot write rows " + std::to_string(r0) + " to " + std::to_string(r1) + " of " + shown(path) + ".");
+  flush_to_device(path);
+}
+
+void DistanceMatrix::prefetch_rows([[maybe_unused]] size_t r0, [[maybe_unused]] size_t r1) const
+{
+#ifdef DTWC_HAS_MMAP
+  if (!mapping_ || r0 >= r1) return;
+  const size_t first = row_offset(r0) - row_offset(r0) % llfio::utils::page_size();
+  const llfio::map_handle::buffer_type rows(mapping_->file.address() + first, row_offset(r1) - first);
+  (void)llfio::map_handle::prefetch(rows);
+#endif
+}
+
+void DistanceMatrix::flush_rows([[maybe_unused]] size_t r0, [[maybe_unused]] size_t r1,
+                                [[maybe_unused]] bool wait) const
+{
+#ifdef DTWC_HAS_MMAP
+  if (!mapping_ || r0 >= r1) return;
+  using kind = llfio::mapped_file_handle::barrier_kind;
+  flush_range(mapping_->file, row_offset(r0), row_offset(r1), wait ? kind::wait_data_only : kind::nowait_data_only,
+              mapping_->path);
+#endif
 }
 
 void DistanceMatrix::sync() const

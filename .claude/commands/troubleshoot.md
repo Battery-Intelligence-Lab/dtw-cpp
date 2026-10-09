@@ -57,7 +57,7 @@ which dtwc_cl && dtwc_cl --version
 - Dataset too large for in-memory distance matrix.
 - Switch to CLARA: `--method clara` — uses subsamples
 - Lower memory: `--dtype float32` (halves the series' RAM; the distance matrix stays float64)
-- Memory-map: `--mmap-threshold 0` forces mmap distance matrix
+- Memory-map: `--ram-limit 8G` maps the distance matrix once it exceeds half of what the series leave of 8 GiB (the default limit is the memory available)
 - Parquet input: `--ram-limit 8G` caps the series in RAM, streaming one file of a series per row (a list column, or several float columns) through CLARA
 
 **`series '…' (index i)[j] is NaN`**

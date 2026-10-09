@@ -182,6 +182,7 @@ private:
   int n_samples_{ 5 };        ///< CLARA's subsamples
   index_t batch_size_{ -1 };  ///< OneBatchPAM's batch size; -1: its automatic size
   algorithms::Linkage linkage_{ algorithms::Linkage::Average };
+  std::size_t ram_limit_{ 0 }; ///< bytes; 0: core::available_memory() when the matrix is filled
   bool verbose_{ false };
   /// Run-artifact files (per-repetition medoids, best-repetition record) belong
   /// to cluster_and_process(); cluster() itself is side-effect free.
@@ -444,6 +445,12 @@ public:
   void copy_distance_settings_from(const Problem &other);
 
   void set_verbose(bool value) { verbose_ = value; }
+  /// The memory this Problem may use, in bytes; 0, the default, is what the
+  /// process may use when the matrix is filled (core::available_memory()). A
+  /// mapped matrix is filled in slabs of an eighth of what the series leave of
+  /// it, at most 1 GiB.
+  void set_ram_limit(std::size_t bytes) { ram_limit_ = bytes; }
+  std::size_t ram_limit() const noexcept { return ram_limit_; }
   void set_output_folder(path_t folder)
   {
     output_folder_ = std::move(folder);

@@ -129,12 +129,12 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 `twe_lambda`), `mv_mode`, `missing_strategy`, `max_iter`, `n_init`, `seed`,
 `sample_size`, `n_samples`, `batch_size`, `linkage`, `dc`, `solver`, `mip_gap`,
 `time_limit`, `no_warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`,
-`lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `name` and `verbose` (MATLAB:
-`'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, ...). `dtype` (MATLAB
+`lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `ram_limit`, `name` and `verbose`
+(MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'RamLimit'`, ...). `dtype` (MATLAB
 `'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and
 refuses it beside a `Dataset`, which keeps its own. The others (`input`, `output`,
-`ram_limit`, `checkpoint`, ...) are `dtwc_cl`'s and `dtwc::run`'s, unknown keys
-here. The [CLI reference](../../getting-started/cli/)
+`checkpoint`, ...) are `dtwc_cl`'s and `dtwc::run`'s, unknown keys here.
+`ram_limit` takes a byte count or a size such as `"8G"`, as `--ram-limit` does. The [CLI reference](../../getting-started/cli/)
 gives each one's meaning and default. C++ reads and checks the values: an unknown
 key, or a name no table holds, is `InvalidInput` (MATLAB `dtwc:invalidArgument`)
 naming the valid ones, an unknown device is `DeviceError`, and in Python a value

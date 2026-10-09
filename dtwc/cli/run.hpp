@@ -48,8 +48,8 @@ namespace dtwc {
 Result run(const Config &config);
 
 /// Cluster `data`, already in memory: `input` and the options only a file
-/// reader applies (`column`, `skip-rows`, `skip-cols`, `delimiter`,
-/// `ram-limit`) must be at their defaults.
+/// reader applies (`column`, `skip-rows`, `skip-cols`, `delimiter`) must be at
+/// their defaults.
 Result run(const Config &config, Data data);
 
 namespace detail {

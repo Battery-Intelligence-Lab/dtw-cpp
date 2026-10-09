@@ -235,7 +235,7 @@ std::vector<HelpOption> help_options(const std::string &help)
 TEST_CASE("every spelling of every Config key renders to the golden text", "[config][spellings]")
 {
   const std::string golden = golden_text();
-  REQUIRE(values_of(golden).size() == 47);
+  REQUIRE(values_of(golden).size() == 46);
 
   SECTION("the golden file itself, through --config")
   {
@@ -267,7 +267,6 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       "--linkage", "Complete",
       "--skip-rows", "1", "--skip-cols", "2", "--delimiter", ";",
       "--dist-matrix", "dist.csv", "--not-computed", "NEGATIVE", "--checkpoint", "ckpt", "--checkpoint-interval", "10",
-      "--mmap-threshold", "1000",
       "--solver", "GUROBI", "--mip-gap", "1e-3", "--time-limit", "60", "--no-warm-start",
       "--numeric-focus", "3", "--mip-focus", "1", "--verbose-solver",
       "--lr-max-nodes", "5000", "--lr-root", "Kelley",
@@ -289,7 +288,6 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       { "skip_rows", "1" }, { "skip_cols", "2" }, { "delimiter", ";" },
       { "dist_matrix", "dist.csv" }, { "not_computed", "negative" }, { "checkpoint", "ckpt" },
       { "checkpoint_interval", "10" },
-      { "mmap_threshold", "1000" },
       { "solver", "gurobi" }, { "mip_gap", "0.001" }, { "time_limit", "60" }, { "no_warm_start", "true" },
       { "numeric_focus", "3" }, { "mip_focus", "1" }, { "verbose_solver", "true" },
       { "lr_max_nodes", "5000" }, { "lr_root", "kelley" },
@@ -372,9 +370,8 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
   CHECK_THROWS_AS(dtwc::parse_config({ { "method", "kmeans" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "k", "three" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "seed", "-1" } }), dtwc::InvalidInput); // unsigned: the type says no
-  CHECK_THROWS_AS(dtwc::parse_config({ { "mmap_threshold", "-1" } }), dtwc::InvalidInput);
   // Keys of deleted features are unknown keys, not silently ignored ones.
-  for (const char *gone : { "benders", "max_benders_iter", "batch_weighting" })
+  for (const char *gone : { "benders", "max_benders_iter", "batch_weighting", "mmap_threshold" })
     CHECK_THROWS_AS(dtwc::parse_config({ { gone, "1" } }), dtwc::InvalidInput);
   CHECK_THROWS_WITH(dtwc::parse_config({ { "ram_limit", "-1G" } }),
                     Catch::Matchers::ContainsSubstring("Invalid --ram-limit '-1G'"));

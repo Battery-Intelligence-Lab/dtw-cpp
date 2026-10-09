@@ -8,7 +8,7 @@
  *   - a second identical run resumes from it;
  *   - a run on other data exits 1 naming the mismatch, never recomputing
  *     over the checkpoint;
- *   - above --mmap-threshold the mapped matrix is that same file;
+ *   - over --ram-limit the mapped matrix is that same file;
  *   - `--checkpoint-interval` without `--checkpoint` exits 1 with a message.
  *
  * The fixture series are written into a temporary directory so the test does
@@ -205,7 +205,7 @@ TEST_CASE("dtwc_cl refuses a checkpoint of other data", "[cli][checkpoint]")
 
 
 #ifdef DTWC_HAS_MMAP
-TEST_CASE("dtwc_cl maps its checkpoint above --mmap-threshold", "[cli][checkpoint][mmap]")
+TEST_CASE("dtwc_cl maps its checkpoint over --ram-limit", "[cli][checkpoint][mmap]")
 {
   // One file for both storages: a checkpoint written in RAM is reopened mapped.
   const dtwc::test_support::ScratchDirectory scratch{ "cli_ckpt_mapped" };
@@ -215,7 +215,7 @@ TEST_CASE("dtwc_cl maps its checkpoint above --mmap-threshold", "[cli][checkpoin
   REQUIRE(run(in_ram, scratch.path).exit_code == 0);
 
   auto mapped = in_ram;
-  mapped.insert(mapped.end(), { "--mmap-threshold", "0" });
+  mapped.insert(mapped.end(), { "--ram-limit", "1" });
   const CommandResult result = run(mapped, scratch.path);
   INFO("stdout:\n" << result.out << "\nstderr:\n" << result.err);
   REQUIRE(result.exit_code == 0);

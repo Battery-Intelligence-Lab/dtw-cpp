@@ -14,7 +14,6 @@
 #include "config.hpp"
 
 #include "config_file.hpp"
-#include "../io/parse_number.hpp"
 
 #include <CLI/CLI.hpp>
 
@@ -38,39 +37,6 @@
 
 namespace dtwc {
 namespace {
-
-/// A byte count such as 2G, 500M, 1.5GiB or 1073741824; "" and 0 mean no limit.
-/// Units are binary and case-insensitive. A fraction of a byte rounds up, so a
-/// nonzero value never turns the cap off. (CLI11's AsSizeValue would truncate the
-/// documented `1.5G`.)
-size_t parse_ram_limit(const std::string &s)
-{
-  if (s.empty()) return 0;
-  const char *const first = s.data();
-  const char *const last = first + s.size();
-  // A plain byte count reads as an integer, so every count to_config_text()
-  // writes reads back exactly.
-  size_t bytes = 0;
-  if (const auto [end, ec] = std::from_chars(first, last, bytes); ec == std::errc{} && end == last) return bytes;
-
-  constexpr std::pair<std::string_view, int> units[]{ // spelling, power of two
-    { "", 0 },     { "B", 0 },   { "K", 10 },  { "KB", 10 },  { "KIB", 10 }, { "M", 20 },  { "MB", 20 },
-    { "MIB", 20 }, { "G", 30 },  { "GB", 30 }, { "GIB", 30 }, { "T", 40 },   { "TB", 40 }, { "TIB", 40 },
-  };
-  double value = -1.0;
-  const auto [end, ec] = io::parse_number(first, last, value); // not std::from_chars: macOS 26+ only
-  std::string unit(end, last);
-  for (char &c : unit) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-  const auto match = std::find_if(std::begin(units), std::end(units), [&](const auto &u) { return u.first == unit; });
-  const double scaled = match == std::end(units) ? -1.0 : std::ldexp(value, match->second);
-  // The one range check: a negative, NaN or infinite value and an unknown unit
-  // fail it, and so does a count size_t cannot hold, whose cast would be undefined.
-  if (ec != std::errc{} || !(scaled >= 0.0 && scaled < std::ldexp(1.0, std::numeric_limits<size_t>::digits)))
-    throw InvalidInput("Invalid --ram-limit '" + s
-                       + "': expected a size such as 2G, 500M or 1.5GiB, in B, K, M, G or T (KB and KiB alike), "
-                         "below 2^64 bytes.");
-  return static_cast<size_t>(std::ceil(scaled));
-}
 
 /// A bound field as config text: the default `--help` shows and the value
 /// to_config_text() writes.
@@ -206,8 +172,9 @@ void bind(CLI::App &app, Config &config)
       "Series data type: float64 (default, full precision) or float32 (2x memory saving) (aliases: f32, f64, "
       "float, double)");
   app.add_option_function<std::string>(
-       "--ram-limit", [&config](const std::string &text) { config.ram_limit = parse_ram_limit(text); },
-       "Max RAM for series data (e.g. 2G, 500M, 128G). Default: no limit.")
+       "--ram-limit", [&config](const std::string &text) { config.ram_limit = parse_ram_limit(text, "--ram-limit"); },
+       "Memory the run may use (e.g. 2G, 500M, 128G); 0: automatic, the memory available. It decides when the "
+       "distance matrix is mapped to a file and when Parquet series stream through clara")
     ->default_function([&config] { return text_of(config.ram_limit); })
     ->capture_default_str();
 
@@ -268,7 +235,6 @@ void bind(CLI::App &app, Config &config)
   key(app, "--checkpoint", config.checkpoint, "Checkpoint directory: <name>.dtwm is saved there and resumed from");
   key(app, "--checkpoint-interval", config.checkpoint_interval,
       "Needs --checkpoint: save the checkpoint every N filled distance-matrix rows (0: at the end)");
-  key(app, "--mmap-threshold", config.mmap_threshold, "N above which to use memory-mapped distance matrix (0=always)");
 
   // MIP solver
   key(app, "--solver", config.solver, solver_names, "solver", "MIP solver: highs, gurobi");

@@ -29,14 +29,15 @@ cmake -S . -B build -DDTWC_ENABLE_ARROW=ON
 ```
 
 Series are always held in RAM. The distance matrix can live in a memory-mapped
-`.dtwm` file instead (`use_mmap_distance_matrix`, `--mmap-threshold`); the Python
-wheels and the release CLI archives include that support (llfio).
+`.dtwm` file instead (`use_mmap_distance_matrix`; `dtwc_cl` maps it when it does
+not fit the `--ram-limit`); the Python wheels and the release CLI archives include
+that support (llfio).
 
 For data larger than an all-pairs matrix, choose a matrix-free method such as
 OneBatchPAM, CLARA, or TADPole rather than changing only the input container.
 
-The native CLI applies a nonzero `--ram-limit` to Parquet before payload
-materialisation. If the conservative selected-column estimate exceeds the cap,
+The native CLI applies `--ram-limit` (0: the memory available) to Parquet before
+payload materialisation. If the conservative selected-column estimate exceeds the cap,
 only non-full FastCLARA over a single file of one series per row (a list column,
 or several Float32/Float64 columns) can stream row groups; a one-column file,
 directories, and other methods fail before loading the payload.

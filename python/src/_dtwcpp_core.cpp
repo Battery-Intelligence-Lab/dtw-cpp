@@ -115,6 +115,14 @@ void set_error(PyObject *type, const char *what)
 struct FrozenParams : dtwc::core::DTWVariantParams
 {};
 
+/// ram_limit as every language takes it: a byte count, or a size such as "8G"
+/// (dtwc::parse_ram_limit); 0 is automatic.
+std::size_t ram_limit_of(nb::handle value)
+{
+  if (nb::isinstance<nb::str>(value)) return dtwc::parse_ram_limit(nb::cast<std::string>(value), "ram_limit");
+  return nb::cast<std::size_t>(value);
+}
+
 /// A Config field reached through `ref`, read and written as itself.
 template <class T, class Ref>
 void def_field(nb::class_<dtwc::Config> &config, const char *key, Ref ref)
@@ -542,7 +550,9 @@ NB_MODULE(_dtwcpp_core, m) {
                    std::tie(c.device, c.device_index) = dtwc::detail::parse_device(name);
                  })
     .def_prop_rw("no_warm_start", [](const Config &c) { return !c.mip.warm_start; },
-                 [](Config &c, bool value) { c.mip.warm_start = !value; });
+                 [](Config &c, bool value) { c.mip.warm_start = !value; })
+    .def_prop_rw("ram_limit", [](const Config &c) { return c.ram_limit; },
+                 [](Config &c, nb::handle value) { c.ram_limit = ram_limit_of(value); });
   def_named(config, "method", [](Config &c) -> dtwc::Method & { return c.method; }, dtwc::method_names);
   def_named(config, "metric", [](Config &c) -> dtwc::core::MetricType & { return c.metric; },
             dtwc::core::metric_names);
@@ -911,6 +921,12 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_prop_rw("verbose", &dtwc::Problem::verbose,
                  &dtwc::Problem::set_verbose,
                  "Print progress messages for long-running operations.")
+    .def_prop_rw("ram_limit", &dtwc::Problem::ram_limit,
+                 [](dtwc::Problem &p, nb::handle value) { p.set_ram_limit(ram_limit_of(value)); },
+                 "The memory this Problem may use: bytes, or a size such as '8G'. 0 (the\n"
+                 "default) is what the process may use when the matrix is filled: the\n"
+                 "available memory, or a cgroup's limit. It sizes the slabs in which a\n"
+                 "mapped matrix (use_mmap_distance_matrix) is filled.")
     .def_prop_rw("name", &dtwc::Problem::name, &dtwc::Problem::set_name)
     .def_prop_rw("output_folder", &dtwc::Problem::output_folder,
                  &dtwc::Problem::set_output_folder,
@@ -1313,10 +1329,11 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("directory", &dtwc::CheckpointOptions::directory,
             "Checkpoint directory. Empty with enabled raises InvalidInput.")
     .def_rw("save_interval", &dtwc::CheckpointOptions::save_interval,
-            "Completed matrix ROWS between automatic saves (>= 1). The fill\n"
-            "runs consecutive row blocks of this size and saves after each\n"
-            "block, the last included, so a completed fill leaves a complete\n"
-            "checkpoint. A value below 1 with enabled raises InvalidInput.")
+            "Completed matrix ROWS between automatic saves (>= 1), rounded up\n"
+            "to the lane width. The first save writes the whole matrix, each\n"
+            "later one the rows filled since, in place; the last save comes at\n"
+            "the end, so a completed fill leaves a complete checkpoint. A value\n"
+            "below 1 with enabled raises InvalidInput.")
     .def_rw("enabled", &dtwc::CheckpointOptions::enabled,
             "Enable automatic mid-fill checkpointing to <directory>/<name>.dtwm.\n"
             "A matrix mapped to that file is flushed in place. An empty\n"

@@ -40,7 +40,6 @@ dist-matrix = ""
 not-computed = nan
 checkpoint = ""
 checkpoint-interval = 0
-mmap-threshold = 50000
 solver = "highs"
 mip-gap = 1e-05
 time-limit = -1

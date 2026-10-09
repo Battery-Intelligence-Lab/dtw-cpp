@@ -364,6 +364,14 @@ static std::string get_string(const mxArray *mx) {
   return result;
 }
 
+/// RamLimit: a byte count, or a size such as '8G' (dtwc::parse_ram_limit); 0 is automatic.
+static std::size_t get_ram_limit(const mxArray *value) {
+  if (mxIsChar(value)) return dtwc::parse_ram_limit(get_string(value), "RamLimit");
+  const auto bytes = get_exact_int<dtwc::index_t>(value, "RamLimit");
+  if (bytes < 0) throw std::invalid_argument("RamLimit must be a byte count of at least 0, or a size such as '8G'.");
+  return static_cast<std::size_t>(bytes);
+}
+
 /// A path argument: a char row vector, read as UTF-8 into a filesystem path.
 static std::filesystem::path get_path(const mxArray *mx, const char *arg_name) {
   require_char(mx, arg_name);
@@ -411,7 +419,7 @@ static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
 /// The settings a caller names: dtwc_cl's long names in CamelCase, the words of
 /// Python's cluster() keywords.
 enum class Key {
-  Name, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu,
+  Name, RamLimit, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu,
   TweLambda, MvMode, MissingStrategy, SampleSize, NSamples, Seed, BatchSize, Linkage, Solver, MipGap,
   TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, LrRoot, Device, GpuPrecision, Verbose
 };
@@ -429,6 +437,7 @@ constexpr dtwc::Name<Key> distance_keys[]{
 /// own): those dtwc::apply hands a Problem, and Name; not dtype nor the file options.
 constexpr dtwc::Name<Key> config_keys[]{
   { "Name", Key::Name },
+  { "RamLimit", Key::RamLimit },
   { "Method", Key::Method },
   { "Band", Key::Band },
   { "Metric", Key::Metric },
@@ -474,6 +483,7 @@ static void set_key(dtwc::Config &c, Key key, const std::string &name, const mxA
   };
   switch (key) {
   case Key::Name: c.name = text(); break;
+  case Key::RamLimit: c.ram_limit = get_ram_limit(value); break;
   case Key::Method: c.method = dtwc::parse_name(dtwc::method_names, text(), "method"); break;
   case Key::Band: c.band = get_exact_int(value, key_name); break;
   case Key::Metric: c.metric = dtwc::parse_name(metric_names, text(), "metric"); break;
@@ -654,9 +664,9 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 
   const char *field_names[] = {
     "name", "size", "band", "verbose", "max_iter", "n_repetitions",
-    "dist_filled"
+    "dist_filled", "ram_limit"
   };
-  mxArray *s = mxCreateStructMatrix(1, 1, 7, field_names);
+  mxArray *s = mxCreateStructMatrix(1, 1, 8, field_names);
 
   mxSetField(s, 0, "name", mxCreateString(prob.name().c_str()));
   mxSetField(s, 0, "size", mxCreateDoubleScalar(static_cast<double>(prob.size())));
@@ -666,6 +676,7 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   mxSetField(
     s, 0, "n_repetitions", mxCreateDoubleScalar(prob.n_repetitions()));
   mxSetField(s, 0, "dist_filled", mxCreateLogicalScalar(prob.is_distance_matrix_filled()));
+  mxSetField(s, 0, "ram_limit", mxCreateDoubleScalar(static_cast<double>(prob.ram_limit())));
 
   plhs[0] = s;
 }
@@ -731,6 +742,11 @@ static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const m
   if (nrhs < 3) throw std::invalid_argument("Problem_set_verbose requires handle and bool.");
   const bool verbose = get_logical(prhs[2], "verbose");
   HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->set_verbose(verbose);
+}
+
+static void cmd_Problem_set_ram_limit(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("Problem_set_ram_limit requires handle and value.");
+  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->set_ram_limit(get_ram_limit(prhs[2]));
 }
 
 static void cmd_Problem_set_max_iter(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1446,6 +1462,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_set_data") cmd_Problem_set_data(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_band") cmd_Problem_set_band(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_verbose") cmd_Problem_set_verbose(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Problem_set_ram_limit") cmd_Problem_set_ram_limit(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_max_iter") cmd_Problem_set_max_iter(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_n_repetition") cmd_Problem_set_n_repetition(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_n_clusters") cmd_Problem_set_n_clusters(nlhs, plhs, nrhs, prhs);

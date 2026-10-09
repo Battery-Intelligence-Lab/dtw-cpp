@@ -142,6 +142,22 @@ class TestClusterKeywords:
         assert len(keys) == len(set(keys))
         assert "device" in keys and "n_clusters" not in keys  # k is the cluster count
 
+    def test_ram_limit_reads_bytes_or_a_size_as_cpp_does(self):
+        """ram_limit, the one memory key: a byte count, or a size C++ reads as
+        dtwc_cl reads --ram-limit; 0 is automatic."""
+        config = dtwcpp._dtwcpp_core.Config()
+        config.ram_limit = "1.5G"
+        assert config.ram_limit == 1610612736
+        prob = dtwcpp.Problem("ram")
+        assert prob.ram_limit == 0
+        prob.ram_limit = np.int64(4096)
+        assert prob.ram_limit == 4096
+        with pytest.raises(dtwcpp.InvalidInput, match="Invalid ram_limit '-1G'"):
+            prob.ram_limit = "-1G"
+        with pytest.raises(TypeError, match=r"^ram_limit must be a byte count"):
+            dtwcpp.cluster([[0.0], [1.0]], k=1, ram_limit=1.5)
+        assert len(dtwcpp.cluster([[0.0], [1.0], [5.0]], k=2, ram_limit="8G").labels) == 3
+
     def test_unknown_method_still_fails_before_load_or_device(self, monkeypatch):
         from dtwcpp import _api
 

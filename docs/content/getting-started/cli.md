@@ -54,7 +54,7 @@ two agree on every default, check and method choice.
 | `-v, --verbose` | Verbose output | off |
 | `--column <name>` | The Parquet scalar/list Float32 or Float64 column to read. If omitted, the first eligible top-level column decides: a list or several scalar columns are one series per row, the only scalar column one series ([Supported data](../supported-data/)) | — |
 | `--dtype <string>` | The precision the series are stored in: `float32` halves their memory, each value read as a double and rounded, with no double copy held. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
-| `--ram-limit <size>` | Conservative Parquet series-materialization budget, e.g. `2GiB`, `500M`, `1.5G`; see below | unlimited |
+| `--ram-limit <size>` | The memory the run may use, e.g. `2GiB`, `500M`, `1.5G`: it decides when the distance matrix is mapped to a file and when Parquet series stream through `clara`; see below | 0: automatic |
 
 The option names of DTW-C++ 1.0 (Nc, probName, in, out, skipRows, skipCols, maxIter, Nrep, bandwidth, distMat and
 their other spellings) still work, hidden from `--help`: each prints one warning naming its 2.0 flag. Its range of
@@ -112,19 +112,40 @@ The default seed is identical across the C++, Python, MATLAB, sklearn, and CLI
 seed-aware routes. Supplying `--seed` does not consume the legacy process-global
 FastPAM engine. Valid CLI seeds are integers from 0 through `UINT64_MAX`.
 
+### The memory limit
+
+`--ram-limit` is the memory the run may use. Units are binary and
+case-insensitive: `K`/`KB`/`KiB` through `T`/`TB`/`TiB`; a fraction of a byte
+rounds up, so a nonzero value never reads as 0; malformed, negative, or
+overflowing values are errors. `0`, the default, is automatic: the physical
+memory available when the run starts, or the Linux cgroup v2 limit of the
+process when that is lower (which a SLURM job's memory request sets). It is a
+budget for the run's decisions, not an operating-system limit on its resident
+memory.
+
+The distance matrix stays in RAM while its 8·N(N+1)/2 bytes fit in half of what
+the series leave of the limit. Past that it is mapped to `<name>.dtwm`, in the
+`--checkpoint` directory when one is given and in the output directory otherwise
+(a run that writes no output keeps it in RAM), and filled slab by slab: a slab is
+an eighth of what the series leave of the limit, at most 1 GiB, the next one
+read ahead and the finished one written back, so each page of the file is
+written while its slab runs and not again. A binary built without LLFIO maps
+nothing: there the automatic limit sets none, and a matrix over an explicit
+limit stops the run.
+
 ### RAM-limited Parquet FastCLARA
 
-For Parquet input, a nonzero `--ram-limit` is applied before the selected
-column payload is loaded. The CLI reads schema and row-group metadata, resolves
+For Parquet input the limit is applied before the selected column payload is
+loaded. The CLI reads schema and row-group metadata, resolves
 `--method auto` from the logical series count, and estimates the peak needed to
 decode and materialise the selected column at the requested `--dtype`. If that
 estimate fits, the ordinary resident reader is used. If it does not fit, the
 only supported streaming route is non-full FastCLARA over one Parquet file
 of one series per row: a `List<Float32/Float64>` or
 `LargeList<Float32/Float64>` column with one list cell per series, or several
-Float32/Float64 columns.
-
-The cap is fail-closed:
+Float32/Float64 columns. The automatic limit streams only there, and only without
+`--checkpoint` or `--dist-matrix`: elsewhere the series load as they would
+without a limit. An explicit `--ram-limit` is fail-closed:
 
 - over-budget one-column (one series), Parquet-directory, and non-CLARA requests stop
   before payload materialisation and explain how to convert the input or raise
@@ -141,19 +162,10 @@ The cap is fail-closed:
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.
 
-`--ram-limit` is a conservative cap for series decoding/materialisation, not a
-hard operating-system RSS limit: algorithm result arrays, the subsample PAM
-matrix, library metadata, and fixed process overhead are outside it. Units are
-binary and case-insensitive: `K`/`KB`/`KiB` through `T`/`TB`/`TiB`. A fraction
-of a byte rounds up, so a nonzero value never disables the limit. Zero means
-unlimited; malformed, negative, or overflowing values are errors.
-
-The cap governs Parquet series materialisation and nothing else. No other reader
-can honour it, so a nonzero `--ram-limit` on CSV/TSV, HDF5, Arrow IPC,
-or a CSV directory is a hard error, not a warning: those formats materialise
-their series unconditionally, and accepting the flag would report a budget that
-is never applied. Drop the flag, or convert the series to a list-per-row Parquet
-file to stream them under the cap.
+Streaming caps series decoding and materialisation: algorithm result arrays,
+the subsample PAM matrix, library metadata, and fixed process overhead are
+outside it. Other inputs (CSV/TSV, Arrow IPC, a CSV directory) are always read
+whole; the limit then governs the distance matrix alone.
 
 ### OneBatchPAM and TADPole options
 
@@ -203,19 +215,18 @@ negative `--skip-rows` or `--skip-cols`.
 | `--not-computed <string>` | What marks a pair the `--dist-matrix` file never computed: `nan` (an empty field or NaN), `negative` (also any value below 0, as v1.0.0 wrote `-1`) | `nan` |
 | `--checkpoint <path>` | Checkpoint directory: `<name>.dtwm` is saved there and resumed from | — |
 | `--checkpoint-interval <rows>` | Needs `--checkpoint`: save the checkpoint every N completed distance-matrix rows | 0 (save once, at the end) |
-| `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
-The checkpoint is one file, `<dir>/<name>.dtwm` ([Checkpointing](checkpointing.md)). Without `--checkpoint-interval` (or with `0`) it is written once, after clustering. With a non-zero interval, `fill_distance_matrix` saves it after every `<rows>` completed matrix rows, so an interrupted run resumes from the last block instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. A save of a matrix in RAM writes all N(N+1)/2 doubles, so choose an interval whose block (about `<rows>` * N DTW computations) costs much more than one save. A checkpoint for other data or settings, or a damaged one, stops the run with exit status 1 before anything is computed; it is never recomputed over.
+The checkpoint is one file, `<dir>/<name>.dtwm` ([Checkpointing](checkpointing.md)). Without `--checkpoint-interval` (or with `0`) it is written once, after clustering. With a non-zero interval, `fill_distance_matrix` saves it after every `<rows>` completed matrix rows (rounded up to the lane width, 16 rows of doubles where the lanes are 128 bytes), so an interrupted run resumes from the last save instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. The first save writes the whole matrix, each later one only the rows filled since, in place: a fill writes at most twice the matrix's bytes, and the end-of-run save once more. A checkpoint for other data or settings, or a damaged one, stops the run with exit status 1 before anything is computed; it is never recomputed over.
 
 A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, with a row count other than the number of input series, or with a negative entry under any `--variant` but `softdtw`, unless `--not-computed negative` reads it as a pair to compute) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes after the result files, so a save that fails there (a full disk) leaves the results written.
 
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
 exact/fallback distance still uses the packed cache. It therefore follows
-`--mmap-threshold` just like matrix-based methods. OneBatchPAM is the exception:
+`--ram-limit` just like matrix-based methods. OneBatchPAM is the exception:
 its fixed O(Nm) table never allocates the Problem distance matrix. If the
-threshold is reached in a binary built without LLFIO, the CLI exits before a
-heap allocation and tells you to enable LLFIO, raise the threshold only when the
-packed matrix fits in RAM, or select `onebatch`.
+matrix exceeds an explicit `--ram-limit` in a binary built without LLFIO, the
+CLI exits before a heap allocation and tells you to enable LLFIO, raise the
+limit only when the packed matrix fits in RAM, or select `onebatch`.
 
 Non-full FastCLARA is also parent-matrix-free: only its current subsample PAM
 owns an O(s²) matrix, while full-data assignment evaluates N×k configured DTW
@@ -230,8 +241,9 @@ given (it is then the checkpoint) and in the output directory otherwise. It
 resumes automatically when its magic, version, exact length, N and SHA-256
 fingerprint of the data and distance settings match; a file of other data or
 settings is `InvalidInput` and a damaged or earlier-layout one `IOError`, both
-before any cached distance is read. When the threshold selects mmap,
-`--dist-matrix` (a CSV matrix) is rejected before either path is opened. CUDA
+before any cached distance is read. `--dist-matrix` (a CSV matrix) is read into
+RAM: a matrix over an explicit `--ram-limit` is rejected before either path is
+opened, and the automatic limit keeps it in RAM. CUDA
 mmap and checkpoint runs must select explicit `--gpu-precision fp32` or `fp64`:
 CUDA's `auto` depends on the GPU, so it is not a stable cache identity (Metal's
 `auto` is FP32).

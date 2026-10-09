@@ -136,14 +136,14 @@ function(require_no_skip context stdout stderr)
     endif()
 endfunction()
 
-function(run_cli_route route output_dir threshold expect_mmap)
+function(run_cli_route route output_dir ram_limit expect_mmap)
     execute_process(
         COMMAND
             "${cli_path}"
             --config "${config_path}"
             --input "${input_path}"
             --output "${output_dir}"
-            --mmap-threshold "${threshold}"
+            --ram-limit "${ram_limit}"
             --device cpu
             --verbose
         RESULT_VARIABLE result
@@ -333,7 +333,7 @@ set(resident_matrix "${resident_dir}/conformance_distance_matrix.csv")
 set(result_matrix "${result_dir}/conformance_distance_matrix.csv")
 set(mmap_matrix "${mmap_dir}/conformance_distance_matrix.csv")
 
-run_cli_route("resident" "${resident_dir}" 1000000 FALSE)
+run_cli_route("resident" "${resident_dir}" 1G FALSE)
 run_result_route("${result_dir}")
 inspect_matrix("resident" "${resident_matrix}")
 inspect_matrix("result" "${result_matrix}")
@@ -342,7 +342,7 @@ require_matrix_pair(
     "result" "${result_matrix}" "${result_sha}")
 
 if(has_mmap STREQUAL "ON")
-    run_cli_route("mmap" "${mmap_dir}" 0 TRUE)
+    run_cli_route("mmap" "${mmap_dir}" 1 TRUE)
     inspect_matrix("mmap" "${mmap_matrix}")
     require_matrix_pair(
         "resident" "${resident_matrix}" "${resident_sha}"
