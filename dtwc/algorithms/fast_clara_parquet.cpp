@@ -120,9 +120,10 @@ namespace {
    * of its series. The medoids' series are copied out and the union released. Then one pass over the file: a batch
    * of row groups at a time, every point against the medoids of every sample, while the next batch decodes on another
    * thread when two batches fit the limit (else batches decode and are assigned in turn). Within ram_limit_bytes, as
-   * the reader prices them: the union beside one decode (read_rows' check), then the medoids, every sample's labels,
-   * one block of nearest distances, one decode and the batches. The union, and each batch as it decodes, go through
-   * the in-RAM route's checks (RowCheck): the stream refuses what the in-RAM route refuses, naming the row.
+   * the reader prices them: the union beside one decode (read_rows' check), then a sample's PAM beside the union, then
+   * the medoids, every sample's labels and one block of nearest distances beside one decode and the batches, and at
+   * the end the labels beside the Problem's copy. The union, and each batch as it decodes, go through the in-RAM
+   * route's checks (RowCheck): the stream refuses what the in-RAM route refuses, naming the row.
    */
   template <bool F32>
   core::ClusteringResult fast_clara_chunked(
