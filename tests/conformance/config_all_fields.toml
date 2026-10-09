@@ -37,7 +37,6 @@ dist-matrix = "dist.csv"
 not-computed = "negative"
 checkpoint = "ckpt"
 checkpoint-interval = 10
-mmap-threshold = 1000
 solver = "gurobi"
 mip-gap = 0.001
 time-limit = 60

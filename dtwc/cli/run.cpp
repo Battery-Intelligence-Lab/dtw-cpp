@@ -89,18 +89,12 @@ Data read_input(const fs::path &input, [[maybe_unused]] InputFormat format, cons
 }
 
 /// Reject a reader option the input cannot honour: accepting and then ignoring
-/// it would be a silent deceit. `--ram-limit` is the Parquet materialisation cap.
-/// `format` is empty for series passed in memory.
+/// it would be a silent deceit. `format` is empty for series passed in memory.
 void require_input_options_apply(const Config &config, std::optional<InputFormat> format)
 {
   if (!format && !config.input.empty())
     throw InvalidInput("run: the series are passed in memory, so --input '" + config.input
                        + "' would not be read; leave input empty.");
-  if (config.ram_limit != 0 && format != InputFormat::Parquet)
-    throw InvalidInput(
-      "--ram-limit caps Parquet series materialisation and cannot be honoured "
-      "for this input; drop --ram-limit, or convert the series to a "
-      "Parquet file of one series per row to stream them under the cap.");
   require_reader_options(format, config.skip_cols, config.skip_rows, config.delimiter, config.column);
 }
 
@@ -119,13 +113,16 @@ Data convert_to_f32(const Data &data_f64)
 }
 
 /// Bind persistent distance storage once every distance-affecting setting has
-/// reached the Problem. Returns the mmap cache path, or nullopt when the method
-/// keeps its own storage or N is below the threshold. OneBatchPAM owns a fixed
-/// O(Nm) table and reads no parent matrix; nor does non-full FastCLARA. TADPole
-/// reads the matrix when it is complete (a file or a cache from an earlier run)
-/// and otherwise computes the pairs it needs.
+/// reached the Problem. Returns the mapped file, or nullopt when the method keeps
+/// its own storage or the matrix stays in RAM: while its bytes fit in half of what
+/// the series leave of the memory budget (--ram-limit; 0: what the process may
+/// use). Past that a mapped matrix costs one sequential pass and keeps the run out
+/// of swap. OneBatchPAM owns a fixed O(Nm) table and reads no parent matrix; nor
+/// does non-full FastCLARA. TADPole reads the matrix when it is complete (a file
+/// or a cache from an earlier run) and otherwise computes the pairs it needs.
 std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &config, Method method,
-                                                   bool clara_uses_full_sample, const fs::path &cache_path)
+                                                   bool clara_uses_full_sample, std::size_t series_bytes,
+                                                   const fs::path &cache_path)
 {
   const bool checkpoint = !config.checkpoint.empty();
   const bool dist_matrix = !config.dist_matrix.empty();
@@ -138,24 +135,27 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
     return std::nullopt;
   }
   if (method == Method::OneBatch) return std::nullopt;
-  if (config.mmap_threshold != 0 && prob.size() < config.mmap_threshold) return std::nullopt;
-  if (dist_matrix)
-    throw InvalidInput(
-      "--dist-matrix uses a legacy dense CSV matrix and cannot be combined "
-      "with memory-mapped distance storage. Omit --dist-matrix to resume the "
-      "fingerprinted mmap cache, or raise --mmap-threshold if importing the "
-      "dense CSV matrix fits in RAM.");
+  // The automatic budget is 0, no limit, in a build without llfio: it maps nothing.
+  const std::size_t budget = config.ram_limit != 0 ? config.ram_limit : core::available_memory();
+  const std::size_t matrix_bytes = core::packed_size(prob.size()) * sizeof(double);
+  if (budget == 0 || matrix_bytes <= (budget > series_bytes ? (budget - series_bytes) / 2 : 0)) return std::nullopt;
+  const std::string over = "the distance matrix's " + std::to_string(matrix_bytes)
+                           + " bytes exceed half of what the series leave of --ram-limit="
+                           + std::to_string(config.ram_limit);
+  // Only an explicit --ram-limit refuses: the automatic one follows the machine's load.
+  if (dist_matrix) {
+    if (config.ram_limit == 0) return std::nullopt; // the CSV is read into RAM
+    throw InvalidInput("--dist-matrix reads a dense CSV matrix into RAM, but " + over
+                       + ". Raise --ram-limit, or omit --dist-matrix to compute the distances into a mapped matrix.");
+  }
 #ifdef DTWC_HAS_MMAP
   prob.use_mmap_distance_matrix(cache_path);
   return cache_path;
 #else
   (void)cache_path;
-  throw IOError("method='" + method_name(method) + "' at N=" + std::to_string(prob.size())
-                + " requires memory-mapped distance storage because --mmap-threshold="
-                + std::to_string(config.mmap_threshold)
-                + " was reached, but this binary was built without mmap support. Rebuild "
-                  "with -DDTWC_ENABLE_LLFIO=ON, raise --mmap-threshold only if the packed "
-                  "heap matrix fits in RAM, or use --method onebatch.");
+  throw IOError("method='" + method_name(method) + "' at N=" + std::to_string(prob.size()) + " needs a mapped matrix: "
+                + over + ", but this binary was built without mmap support. Rebuild with -DDTWC_ENABLE_LLFIO=ON, "
+                "raise --ram-limit only if the packed matrix fits in RAM, or use --method onebatch.");
 #endif
 }
 
@@ -255,11 +255,21 @@ Outcome execute(const Config &config, std::optional<Data> data)
       n_series += static_cast<std::size_t>(metadata.logical_series_count());
       resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
     }
-    const auto plan = detail::plan_parquet_load(method, config.device, n_series, resident_bytes, config.ram_limit, layout);
+    // An explicit --ram-limit refuses a route that cannot honour it. The automatic
+    // one never fails a run: it streams only where FastCLARA can stream a sample
+    // smaller than N, of one file of a series per row, without --checkpoint or
+    // --dist-matrix.
+    std::size_t limit = config.ram_limit;
+    if (limit == 0 && n_series > 0 && layout == detail::ParquetLayout::ListColumn && config.checkpoint.empty()
+        && config.dist_matrix.empty() && resolve_method(method, config.device, n_series) == Method::CLARA) {
+      const auto sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
+      if (sample.sample_size < sample.n_points) limit = core::available_memory();
+    }
+    const auto plan = detail::plan_parquet_load(method, config.device, n_series, resident_bytes, limit, layout);
     method = plan.method;
     stream_payload = plan.stream_payload;
     if (stream_payload) {
-      clara.ram_limit_bytes = config.ram_limit;
+      clara.ram_limit_bytes = limit;
       clara.parquet_path = input;
       clara.parquet_column = config.column;
       clara.parquet_skip_cols = config.skip_cols;
@@ -278,12 +288,13 @@ Outcome execute(const Config &config, std::optional<Data> data)
         "with RAM-limited Parquet streaming.");
     if (config.verbose && stream_payload)
       std::cout << "Parquet metadata selected streaming: " << n_series << " series, ~"
-                << (resident_bytes / (1ULL << 20)) << " MB resident estimate exceeds the series-data cap ["
+                << (resident_bytes / (1ULL << 20)) << " MB resident estimate exceeds the RAM limit ["
                 << clk << "]\n";
   }
 #endif
 
   // ---- 3. Load the series into RAM ----
+  std::size_t series_bytes = 0;
   if (!stream_payload) {
     Data series = data ? std::move(*data) : read_input(input, format.value_or(InputFormat::Text), config);
     if (config.verbose) {
@@ -298,18 +309,17 @@ Outcome execute(const Config &config, std::optional<Data> data)
       series = convert_to_f32(series);
       if (config.verbose) std::cout << "Converted to float32 (2x memory saving)\n";
     }
-    if (config.verbose && series.size() > 0) {
-      std::size_t elements = 0;
-      for (std::size_t i = 0; i < series.size(); ++i) elements += series.series_length(i) * series.ndim;
-      const std::size_t width = series.is_f32() ? sizeof(float) : sizeof(data_t);
-      std::cout << "  Data memory: ~" << (elements * width / (1ULL << 20)) << " MB (" << series.size()
-                << " series, " << (elements / series.size()) << " avg length, "
-                << name_of(core::precision_names, series.precision) << ")\n";
-    }
+    std::size_t elements = 0;
+    for (std::size_t i = 0; i < series.size(); ++i) elements += series.series_flat_size(i);
+    series_bytes = elements * (series.is_f32() ? sizeof(float) : sizeof(data_t));
+    if (config.verbose && series.size() > 0)
+      std::cout << "  Data memory: ~" << (series_bytes / (1ULL << 20)) << " MB (" << series.size() << " series, "
+                << (elements / series.size()) << " avg length, " << name_of(core::precision_names, series.precision)
+                << ")\n";
     prob.set_data(std::move(series));
     n_series = prob.size();
   }
-  if (config.ram_limit > 0 && config.verbose) std::cout << "Series-data RAM limit: " << config.ram_limit << " bytes\n";
+  if (config.ram_limit > 0 && config.verbose) std::cout << "RAM limit: " << config.ram_limit << " bytes\n";
   require_clusterable(config.k, n_series); // before a cache or checkpoint is touched
 
   method = resolve_method(method, config.device, n_series);
@@ -321,11 +331,11 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // ---- 4. Distance storage, once every distance setting is in place ----
   // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
   // the checkpoint, else in the output directory; a run that writes nothing
-  // keeps its matrix in RAM, as does an imported matrix.
+  // keeps its matrix in RAM.
   std::optional<fs::path> cache;
   if (!config.output.empty()) {
     const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
-    cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, path);
+    cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, series_bytes, path);
     if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
   }
   // A matrix the user supplied but that cannot be loaded is an error: going on

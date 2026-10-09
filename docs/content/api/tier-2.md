@@ -80,6 +80,7 @@ disp(result.medoid_indices); disp(result.total_cost); disp(dtwc.davies_bouldin(p
 | MIP solver | `set_solver(Solver)` (returns `bool`), `solver()`, `mip_settings` | `set_solver(Solver)`, `solver`, `mip_settings` | `set_solver(name)`, `set_mip_settings(s)` |
 | CLARA, OneBatchPAM, hierarchical, TADPole | `set_sample_size`, `set_n_samples`, `set_batch_size`, `set_linkage`, `set_tadpole_dc` | | |
 | output | `set_output_folder`, `set_verbose`, `set_name` | `output_folder`, `verbose`, `name` | `set_output_folder`, `set_verbose` |
+| memory | `set_ram_limit(bytes)`, `ram_limit()` | `ram_limit` (bytes or `"8G"`) | `set_ram_limit(limit)`, `RamLimit` |
 
 A distance setting is checked when it is set (`InvalidInput`, the setting left
 as it was) and drops the distance matrix and the clustering, which describe the
@@ -278,8 +279,8 @@ same file is the memory-mapped cache and the checkpoint.
 | save during a fill | `prob.checkpoint` (`CheckpointOptions`) | `prob.checkpoint` | `prob.set_checkpoint(dtwc.CheckpointOptions(...))` |
 
 Mapping a file reopens the distances it holds, and the next CPU fill computes
-only the pairs still NaN (a GPU fill computes them all); an absent file is
-created. A checkpoint is
+only the pairs still NaN (a GPU fill computes them all), in slabs sized by the
+`Problem`'s `ram_limit` (0: the memory available); an absent file is created. A checkpoint is
 `<dir>/<name>.dtwm`. `load_checkpoint` returns false only when there is no file;
 a file for other series or other distance settings is `InvalidInput`, and a
 file that is not a whole `.dtwm` file is `IOError`, neither changing the

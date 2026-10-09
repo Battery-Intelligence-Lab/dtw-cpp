@@ -333,7 +333,12 @@ def _set_key(config, key, value, name=None):
                            + ", ".join(valid) + ".")
     current = getattr(config, key)
     flag = isinstance(value, (bool, np.bool_))
-    if isinstance(current, bool):
+    if key == "ram_limit":  # bytes, or a size such as "8G" that C++ reads
+        ok = not flag and isinstance(value, (int, np.integer, str))
+        kind = "a byte count or a size such as '8G'"
+        if ok and not isinstance(value, str):
+            value = int(value)
+    elif isinstance(current, bool):
         kind, ok, value = "a bool", flag, bool(value) if flag else value
     elif isinstance(current, int):
         ok = not flag and isinstance(value, (int, np.integer))
@@ -371,8 +376,10 @@ def cluster(data, k, **keys):
     ``sdtw_gamma``, ``msm_c``, ``twe_nu``, ``twe_lambda``), ``mv_mode``,
     ``missing_strategy``, ``max_iter``, ``n_init``, ``seed``, ``sample_size``,
     ``n_samples``, ``batch_size``, ``linkage``, ``dc``, ``solver`` and the MIP
-    settings, ``gpu_precision``, ``name``, ``verbose`` — read and checked by
-    C++; an unknown key raises :class:`dtwcpp.InvalidInput`. ``method`` is
+    settings, ``gpu_precision``, ``name``, ``verbose``, ``ram_limit`` (the
+    memory the run may use, bytes or a size such as ``"8G"``; 0, the default,
+    is what the process may use) — read and checked by C++; an unknown key
+    raises :class:`dtwcpp.InvalidInput`. ``method`` is
     ``"auto"`` unless given: PAM on a GPU and for up to 5,000 series on the
     CPU, CLARA above. ``device=None`` uses the global default (see
     :func:`dtwcpp.device`). ``"hpc"`` and ``"hpc:gpu"`` run the clustering on a

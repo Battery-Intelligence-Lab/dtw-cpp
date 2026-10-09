@@ -102,22 +102,6 @@ TEST_CASE("--ram-limit reads a size and rejects anything else", "[cli][parquet][
   }
 }
 
-// A cap on an input no reader can apply it to must fail: the CLI once accepted
-// --ram-limit for CSV / Arrow, printed the cap and loaded everything.
-TEST_CASE("--ram-limit is rejected where no reader can honour it", "[cli][parquet][ram]")
-{
-  auto config = quiet_config(2, Method::PAM);
-  config.ram_limit = 1ULL << 30;
-  CHECK_THROWS_MATCHES(dtwc::run(config, tiny_series()), dtwc::InvalidInput,
-                       Catch::Matchers::MessageMatches(ContainsSubstring("cannot be honoured for this input")));
-  config.input = "never_read.csv"; // refused before the file is opened
-  CHECK_THROWS_WITH(dtwc::run(config), ContainsSubstring("cannot be honoured for this input"));
-
-  config.ram_limit = 0;
-  config.input.clear();
-  CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
-}
-
 // ---------------------------------------------------------------------------
 // Parquet metadata planning: decided before any payload is read
 // ---------------------------------------------------------------------------
@@ -222,7 +206,7 @@ TEST_CASE("run's PAM n_init retains the best deterministic restart", "[cli][seed
 }
 
 // ---------------------------------------------------------------------------
-// Distance-matrix storage routing: --mmap-threshold 0 always maps
+// Distance-matrix storage routing: --ram-limit 1 always maps
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -232,7 +216,7 @@ dtwc::Config mapped_config(Method method, const ScratchDirectory &scratch, const
   auto config = quiet_config(2, method);
   config.output = scratch.path.string();
   config.name = name;
-  config.mmap_threshold = 0;
+  config.ram_limit = 1; // any matrix exceeds half of what the series leave of 1 byte
   return config;
 }
 
@@ -243,7 +227,7 @@ bool cache_exists(const ScratchDirectory &scratch, const std::string &name)
 
 } // namespace
 
-TEST_CASE("run's TADPole threshold uses mmap or fails before dense allocation", "[cli][storage][mmap][tadpole]")
+TEST_CASE("run's TADPole over the memory limit uses mmap or fails before dense allocation", "[cli][storage][mmap][tadpole]")
 {
   const ScratchDirectory scratch{ "cli_tadpole_storage" };
   auto config = mapped_config(Method::TADPole, scratch, "tadpole");
@@ -255,13 +239,12 @@ TEST_CASE("run's TADPole threshold uses mmap or fails before dense allocation", 
   CHECK(cache_exists(scratch, "tadpole"));
 #else
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
-                    ContainsSubstring("requires memory-mapped distance storage")
-                      && ContainsSubstring("DTWC_ENABLE_LLFIO=ON"));
+                    ContainsSubstring("needs a mapped matrix") && ContainsSubstring("DTWC_ENABLE_LLFIO=ON"));
   CHECK_FALSE(cache_exists(scratch, "tadpole"));
 #endif
 }
 
-TEST_CASE("run's OneBatch keeps its own O(Nm) storage when the mmap threshold fires", "[cli][storage][onebatch]")
+TEST_CASE("run's OneBatch keeps its own O(Nm) storage over the memory limit", "[cli][storage][onebatch]")
 {
   const ScratchDirectory scratch{ "cli_onebatch_storage" };
   CHECK(dtwc::run(mapped_config(Method::OneBatch, scratch, "onebatch"), tiny_series()).labels().size() == 3);
@@ -310,7 +293,7 @@ TEST_CASE("run's mmap storage with --checkpoint maps the checkpoint file", "[cli
   CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
   CHECK(fs::file_size(scratch.path / "ckpt" / "checkpoint.dtwm") == 48 + 6 * sizeof(double));
 #else
-  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("requires memory-mapped distance storage"));
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("needs a mapped matrix"));
 #endif
   CHECK_FALSE(cache_exists(scratch, "checkpoint"));
 }
@@ -321,7 +304,7 @@ TEST_CASE("run rejects a legacy precomputed CSV plus mmap before false success",
   auto config = mapped_config(Method::PAM, scratch, "precomputed");
   config.dist_matrix = (scratch.path / "never_read.csv").string();
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
-                    ContainsSubstring("--dist-matrix") && ContainsSubstring("cannot be combined")
-                      && ContainsSubstring("importing"));
+                    ContainsSubstring("--dist-matrix reads a dense CSV matrix into RAM")
+                      && ContainsSubstring("Raise --ram-limit"));
   CHECK_FALSE(cache_exists(scratch, "precomputed"));
 }

@@ -38,10 +38,14 @@
 #include "algorithms/fast_pam.hpp"
 #include "algorithms/one_batch_pam.hpp"
 #include "algorithms/tadpole.hpp"
+#include "io/parse_number.hpp"         // for parse_ram_limit
 
 
 #include <algorithm> // for min
 #include <array>     // for array
+#include <cctype>    // for toupper
+#include <charconv>  // for from_chars
+#include <cmath>     // for ldexp, ceil
 #include <cstdint>   // for uint32_t, uint64_t
 #include <cstring>   // for memcpy
 #include <iomanip>   // for operator<<, setprecision
@@ -211,6 +215,35 @@ void require_clusterable(index_t k, std::size_t n_series)
   if (static_cast<std::size_t>(k) > n_series) throw InvalidInput("cluster: k must not exceed the number of series.");
 }
 
+std::size_t parse_ram_limit(const std::string &text, std::string_view key)
+{
+  if (text.empty()) return 0;
+  const char *const first = text.data();
+  const char *const last = first + text.size();
+  // A plain byte count reads as an integer, so every count to_config_text()
+  // writes reads back exactly.
+  std::size_t bytes = 0;
+  if (const auto [end, ec] = std::from_chars(first, last, bytes); ec == std::errc{} && end == last) return bytes;
+
+  constexpr std::pair<std::string_view, int> units[]{ // spelling, power of two
+    { "", 0 },     { "B", 0 },   { "K", 10 },  { "KB", 10 },  { "KIB", 10 }, { "M", 20 },  { "MB", 20 },
+    { "MIB", 20 }, { "G", 30 },  { "GB", 30 }, { "GIB", 30 }, { "T", 40 },   { "TB", 40 }, { "TIB", 40 },
+  };
+  double value = -1.0;
+  const auto [end, ec] = io::parse_number(first, last, value); // not std::from_chars: macOS 26+ only
+  std::string unit(end, last);
+  for (char &c : unit) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  const auto match = std::find_if(std::begin(units), std::end(units), [&](const auto &u) { return u.first == unit; });
+  const double scaled = match == std::end(units) ? -1.0 : std::ldexp(value, match->second);
+  // The one range check: a negative, NaN or infinite value and an unknown unit
+  // fail it, and so does a count size_t cannot hold, whose cast would be undefined.
+  if (ec != std::errc{} || !(scaled >= 0.0 && scaled < std::ldexp(1.0, std::numeric_limits<std::size_t>::digits)))
+    throw InvalidInput("Invalid " + std::string(key) + " '" + text
+                       + "': expected a size such as 2G, 500M or 1.5GiB, in B, K, M, G or T (KB and KiB alike), "
+                         "below 2^64 bytes; 0 is automatic.");
+  return static_cast<std::size_t>(std::ceil(scaled));
+}
+
 void apply(const Config &config, Problem &prob)
 {
   // Each setter checks its value: parameter domains, variant x missing
@@ -229,6 +262,7 @@ void apply(const Config &config, Problem &prob)
   prob.set_batch_size(config.batch_size);
   prob.set_linkage(config.linkage);
   prob.set_tadpole_dc(config.tadpole_dc); // < 0: auto-select from a DTW subsample
+  prob.set_ram_limit(config.ram_limit);
   prob.set_verbose(config.verbose);
   validate_mip_settings(config.mip);
   prob.mip_settings = config.mip;
@@ -754,103 +788,147 @@ void Problem::validate_fill_request(std::string_view where) const
 
 /**
  * @brief Fills the distance matrix using brute-force parallel computation.
- * @details Original implementation: parallel loop over all upper-triangle pairs
- *          using the bound dtw_fn_ (supports all DTW variants).
+ * @details Every pair through the bound lane and per-pair functions (all DTW
+ *          variants), block by block (see the body).
  */
 void Problem::fillDistanceMatrix_BruteForce()
 {
   const size_t N = data_.size();
-  const dtw_fn_f32_t *f32_function = data_.is_f32() ? &dtw_fn_f32_ : nullptr;
+  const bool f32 = data_.is_f32();
+  const dtw_fn_f32_t *f32_function = f32 ? &dtw_fn_f32_ : nullptr;
 
   // resize() re-fills every packed slot with NaN, so it must NOT run when the
   // matrix is already the right size (a mapped one always is): an unconditional
   // resize discarded a restored checkpoint and recomputed every pair.
   if (distMat.size() != N) distMat.resize(N);
+  if (N == 0) return;
 
-  for (size_t i = 0; i < N; ++i)
-    if (!distMat.is_computed(i, i)) distMat.set(i, i, 0.0);
-
-  // Lock-free by design: each worker owns a disjoint row. run_openmp catches
-  // inside the structured block and deterministically rethrows the lowest-row
-  // failure after the join; a failed pair remains uncomputed.
+  // Blocked as a matrix multiplication is. Tile-rows: packed rows [R0, R1), each
+  // one contiguous byte range of the matrix, cut at N - h, N - 2h, ... (only the
+  // one holding row 0 is shorter). A task is a column c of a tile-row: the pairs
+  // (c, r), r in R, c < r, and (c, c) if c is in R, so every pair has one task and
+  // the tasks share no write and no lock. A thread's chunk of consecutive columns
+  // writes one slot in each of R's packed rows, then the slot beside it: a cache
+  // line comes from memory once for its eight entries, and R's series stay in L2
+  // from one column to the next (h keeps them within 512 KiB, half an E-core's
+  // share of its cluster's 4 MB L2, and at least 16 lane blocks). A slab, whole
+  // tile-rows, is one parallel loop: the whole matrix in RAM; the rows between two
+  // checkpoint saves; for a mapped matrix an eighth of what the series leave of
+  // the memory budget (three slabs are in flight: filled, prefetched, written
+  // back), so each page is written once, while its slab runs.
   //
-  // Row i first takes the series after it W at a time through the lane function,
-  // where not all the block's pairs are known and, under a band, the block's
-  // series are as long as series i; each of those distances is the per-pair one
-  // (bit for bit, unless the compiler contracts a multiply-add in one kernel and not
-  // the other). The block at the row's end repeats its last column in the lanes
-  // past it, whose results are dropped. Without a band, where the lanes are packed
-  // (core::dtw_lanes_packed), they take series of any lengths, every lane running to
-  // its block's longest, so there a row takes its columns in `order`, longest first
-  // (equal lengths in index order), passing over those up to its own: a block's
-  // lengths are close, and the rows keep index order, so a thread's consecutive rows
-  // still write neighbouring slots.
-  // The per-pair loop then fills the rest: blocks of mixed lengths the lanes do not
-  // take, every pair without a lane function.
+  // In a column x = series c, the smaller index, as every per-pair call takes it;
+  // R's series not yet paired with it go to the lane function W at a time (a short
+  // last block repeats its last series in the lanes past it, whose results are
+  // dropped). A lane's value depends on x, its own series and the band only, so a
+  // pair gets the same bits in any block: the per-pair one, bit for bit, unless a
+  // compiler contracts a multiply-add in one kernel and not the other. Without a
+  // band, where the lanes are packed (core::dtw_lanes_packed), they take series of
+  // any lengths, each lane running to its block's longest, so R's rows go longest
+  // first (equal lengths in index order); otherwise a block goes to the lanes only
+  // if its series are as long as x. The per-pair loop fills the rest.
+  const size_t W = f32 ? core::dtw_lanes<float> : core::dtw_lanes<data_t>;
+  size_t values = 0;
+  for (size_t i = 0; i < N; ++i) values += data_.series_flat_size(i);
+  const size_t series_bytes = values * (f32 ? sizeof(float) : sizeof(data_t));
+  constexpr size_t tile_series_bytes = size_t{ 512 } << 10;
+  size_t h = std::max(16 * W, tile_series_bytes * N / series_bytes / W * W);
+  size_t slab_bytes = std::numeric_limits<size_t>::max();
+  if (distMat.is_mapped()) {
+    const size_t budget = ram_limit_ != 0 ? ram_limit_ : core::available_memory(); // 0: unknown, no limit
+    slab_bytes = budget == 0 ? size_t{ 1 } << 30
+                             : std::min(budget > series_bytes ? (budget - series_bytes) / 8 : 0, size_t{ 1 } << 30);
+    h = std::min(h, std::max(W, slab_bytes / (N * sizeof(double)) / W * W)); // the last tile-row fits a slab
+  }
+  const size_t save_rows =
+    checkpoint.enabled ? (static_cast<size_t>(checkpoint.save_interval) + W - 1) / W * W : N;
+  h = std::min(std::min(h, save_rows), N);
+
+  std::vector<size_t> bounds{ 0 }; // tile-row k: rows [bounds[k], bounds[k + 1])
+  for (size_t r = N % h; r < N; r += h)
+    if (r > 0) bounds.push_back(r);
+  bounds.push_back(N);
+  const size_t K = bounds.size() - 1;
+  std::vector<size_t> first_column(K + 1, 0); // tile-row k's columns: the tasks from first_column[k]
+  for (size_t k = 0; k < K; ++k) first_column[k + 1] = first_column[k] + bounds[k + 1];
+
   const bool ragged = core::dtw_lanes_packed && distance_.band < 0;
-  const bool lanes = data_.is_f32() ? static_cast<bool>(dtw_block_fn_f32_) : static_cast<bool>(dtw_block_fn_);
+  const bool lanes = f32 ? static_cast<bool>(dtw_block_fn_f32_) : static_cast<bool>(dtw_block_fn_);
   std::vector<size_t> order(N);
   std::iota(order.begin(), order.end(), size_t{ 0 });
-  if (ragged && lanes) {
-    auto length = [&](size_t i) { return data_.is_f32() ? data_.series_f32(i).size() : series(i).size(); };
-    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return length(a) > length(b); });
-  }
+  if (ragged && lanes)
+    for (size_t k = 0; k < K; ++k)
+      std::stable_sort(order.begin() + static_cast<std::ptrdiff_t>(bounds[k]),
+                       order.begin() + static_cast<std::ptrdiff_t>(bounds[k + 1]),
+                       [&](size_t a, size_t b) { return data_.series_flat_size(a) > data_.series_flat_size(b); });
   const bool reordered = !std::is_sorted(order.begin(), order.end());
-  auto fill_lanes = [&](size_t i, auto x, auto column, const auto &block) {
-    using T = typename decltype(x)::value_type;
-    constexpr size_t W = core::dtw_lanes<T>;
-    if (!block) return;
-    std::array<size_t, W> c;
-    std::array<std::span<const T>, W> ys;
-    std::array<double, W> d;
-    // In index order row i's columns start at i + 1, as they always did.
-    for (size_t b = reordered ? 0 : i + 1; b < N;) {
-      size_t count = 0;
-      for (; count < W && b < N; ++b)
-        if (order[b] > i) c[count++] = order[b];
-      if (count == 0) break;
-      bool equal = true, known = true;
-      for (size_t w = 0; w < W; ++w) {
-        const size_t cw = c[std::min(w, count - 1)];
-        ys[w] = column(cw);
-        equal = equal && ys[w].size() == x.size();
-        known = known && distMat.is_computed(i, cw);
-      }
-      if (!(ragged || equal) || known) continue;
-      block(x, ys, d);
-      for (size_t w = 0; w < count; ++w)
-        if (!distMat.is_computed(i, c[w])) distMat.set(i, c[w], d[w]);
-    }
-  };
-  auto fill_row = [&](size_t i) {
-    if (data_.is_f32()) {
-      const auto si = data_.series_f32(i);
-      fill_lanes(i, si, [&](size_t j) { return data_.series_f32(j); }, dtw_block_fn_f32_);
-      for (size_t j = i + 1; j < N; ++j)
-        if (!distMat.is_computed(i, j)) distMat.set(i, j, (*f32_function)(si, data_.series_f32(j)));
-    } else {
-      const auto si = series(i);
-      fill_lanes(i, si, [&](size_t j) { return series(j); }, dtw_block_fn_);
-      for (size_t j = i + 1; j < N; ++j)
-        if (!distMat.is_computed(i, j)) distMat.set(i, j, dtw_fn_(si, series(j)));
-    }
-  };
-  if (!checkpoint.enabled) {
-    run_openmp(fill_row, N, true, 8);
-    return;
-  }
 
-  // Invariant: each block is a disjoint row range [block_begin, end); the save
-  // runs on the main thread after run_openmp has joined, so it never observes a
-  // partially written row.
-  const size_t stride = static_cast<size_t>(checkpoint.save_interval);
-  size_t block_begin = 0;
-  auto fill_block = [&](size_t k) { fill_row(block_begin + k); };
-  for (; block_begin < N; block_begin += stride) {
-    const size_t end = std::min(block_begin + stride, N);
-    run_openmp(fill_block, end - block_begin, true, 8);
-    // Tagged with metric(), the metric this fill computed (both autosave sites).
-    save_checkpoint(*this, checkpoint.directory);
+  auto fill_column = [&](size_t R0, size_t R1, size_t c, auto column, const auto &block, const auto &one_pair) {
+    using T = typename decltype(column(c))::value_type;
+    constexpr size_t Wt = core::dtw_lanes<T>;
+    const auto x = column(c);
+    if (c >= R0 && !distMat.is_computed(c, c)) distMat.set(c, c, 0.0);
+    if (block) {
+      std::array<size_t, Wt> rows;
+      std::array<std::span<const T>, Wt> ys;
+      std::array<double, Wt> d;
+      // In index order the rows paired with c start after it.
+      for (size_t b = reordered ? R0 : std::max(R0, c + 1); b < R1;) {
+        size_t count = 0;
+        for (; count < Wt && b < R1; ++b)
+          if (order[b] > c && !distMat.is_computed(c, order[b])) rows[count++] = order[b];
+        if (count == 0) break;
+        bool equal = true;
+        for (size_t w = 0; w < Wt; ++w) {
+          ys[w] = column(rows[std::min(w, count - 1)]);
+          equal = equal && ys[w].size() == x.size();
+        }
+        if (!(ragged || equal)) continue;
+        block(x, ys, d);
+        for (size_t w = 0; w < count; ++w) distMat.set(c, rows[w], d[w]);
+      }
+    }
+    for (size_t r = std::max(R0, c + 1); r < R1; ++r)
+      if (!distMat.is_computed(c, r)) distMat.set(c, r, one_pair(x, column(r)));
+  };
+  auto task = [&](size_t g) {
+    const size_t k = static_cast<size_t>(std::upper_bound(first_column.begin(), first_column.end(), g)
+                                         - first_column.begin()) - 1;
+    const size_t c = g - first_column[k];
+    if (f32)
+      fill_column(bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); }, dtw_block_fn_f32_,
+                  *f32_function);
+    else
+      fill_column(bounds[k], bounds[k + 1], c, [&](size_t i) { return series(i); }, dtw_block_fn_, dtw_fn_);
+  };
+
+  std::vector<size_t> slabs{ 0 }; // slab s: tile-rows [slabs[s], slabs[s + 1])
+  while (slabs.back() < K) {
+    const size_t k0 = slabs.back();
+    size_t end = k0 + 1;
+    while (end < K && bounds[end + 1] - bounds[k0] <= save_rows
+           && (core::packed_size(bounds[end + 1]) - core::packed_size(bounds[k0])) * sizeof(double) <= slab_bytes)
+      ++end;
+    slabs.push_back(end);
+  }
+  // Hashed once: every save of this fill writes the same identity.
+  const auto identity = checkpoint.enabled ? distance_checkpoint_identity() : core::DistanceMatrix::fingerprint_type{};
+  const path_t file = checkpoint.enabled ? checkpoint_path(*this, checkpoint.directory) : path_t{};
+  distMat.prefetch_rows(0, bounds[slabs[1]]);
+  for (size_t s = 0; s + 1 < slabs.size(); ++s) {
+    const size_t r0 = bounds[slabs[s]], r1 = bounds[slabs[s + 1]];
+    if (s + 2 < slabs.size()) distMat.prefetch_rows(r1, bounds[slabs[s + 2]]);
+    // run_openmp catches inside the parallel region and rethrows the lowest
+    // column's failure after the join; a failed pair stays uncomputed.
+    const size_t first = first_column[slabs[s]];
+    auto slab_task = [&](size_t i) { task(first + i); };
+    run_openmp(slab_task, first_column[slabs[s + 1]] - first, true, 8);
+    // On this thread after the join, so a save never sees a slab half written;
+    // tagged with metric(), the metric this fill computed (both autosave sites).
+    if (checkpoint.enabled)
+      distMat.write(file, identity, r0, r1);
+    else
+      distMat.flush_rows(r0, r1, false);
   }
 }
 

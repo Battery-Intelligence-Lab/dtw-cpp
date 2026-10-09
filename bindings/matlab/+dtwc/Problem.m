@@ -26,6 +26,7 @@ classdef Problem < handle
         Verbose       % progress messages (set_verbose)
         MaxIter       % iteration limit of the methods (set_max_iter)
         NRepetitions  % restarts of the iterative methods (set_n_repetitions)
+        RamLimit      % bytes the Problem may use, 0 automatic (set_ram_limit)
     end
 
     methods
@@ -200,6 +201,15 @@ classdef Problem < handle
             dtwc_mex('Problem_set_verbose', obj.Handle, logical(tf));
         end
 
+        function set_ram_limit(obj, limit)
+        %SET_RAM_LIMIT Set the memory the Problem may use: bytes, or a size such as '8G'.
+        %   0 (the default) is what the process may use when the matrix is
+        %   filled: the available memory, or a cgroup's limit. It sizes the slabs
+        %   in which a mapped matrix is filled.
+            if isstring(limit), limit = char(limit); end
+            dtwc_mex('Problem_set_ram_limit', obj.Handle, limit);
+        end
+
         function set_max_iter(obj, n)
         %SET_MAX_ITER Set the maximum iteration count.
             dtwc_mex('Problem_set_max_iter', obj.Handle, double(n));
@@ -244,11 +254,12 @@ classdef Problem < handle
         %                                              'save_interval', 100, ...
         %                                              'enabled', true))
         %
-        %   fill_distance_matrix() then runs the exact BruteForce row schedule in
-        %   consecutive blocks of save_interval completed rows and publishes a
-        %   checkpoint generation after each block. Fields are optional; any
-        %   omitted field keeps its current value. enabled requires dense storage
-        %   and save_interval >= 1, both checked before any distance is computed.
+        %   fill_distance_matrix() then saves after every save_interval rows of
+        %   the matrix (rounded up to the lane width): the first save writes the
+        %   whole matrix, each later one the rows filled since, in place. Fields
+        %   are optional; any omitted field keeps its current value. enabled
+        %   requires dense storage and save_interval >= 1, both checked before
+        %   any distance is computed.
             dtwc_mex('Problem_set_checkpoint', obj.Handle, opts);
         end
 
@@ -358,6 +369,10 @@ classdef Problem < handle
 
         function v = get.NRepetitions(obj)
             v = obj.setting('n_repetitions');
+        end
+
+        function v = get.RamLimit(obj)
+            v = obj.setting('ram_limit');
         end
     end
 

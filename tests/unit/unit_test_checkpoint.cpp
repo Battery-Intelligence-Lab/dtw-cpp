@@ -19,6 +19,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -41,6 +42,22 @@ Problem make_problem(const std::string &name, std::size_t n = 5)
   std::vector<std::string> names;
   for (std::size_t i = 0; i < n; ++i) {
     series.push_back({ double(i), double(i * i % 7), double(3 * i % 5), 1.0, double(i % 2) });
+    names.push_back("s" + std::to_string(i));
+  }
+  Problem prob(name);
+  prob.set_data(Data(std::move(series), std::move(names)));
+  return prob;
+}
+
+/// 300 series of lengths 3 to 11 (neighbours differ), so a fill of a few rows
+/// per slab runs many slabs and blocks of mixed lengths.
+Problem ragged_problem(const std::string &name, double shift = 0.0)
+{
+  constexpr std::size_t n = 300;
+  std::vector<std::vector<double>> series(n);
+  std::vector<std::string> names;
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t t = 0; t < 3 + i * 7 % 9; ++t) series[i].push_back(10 * std::sin(0.37 * double(i) + 0.61 * double(t)) + shift);
     names.push_back("s" + std::to_string(i));
   }
   Problem prob(name);
@@ -248,19 +265,74 @@ TEST_CASE("A resumed fill computes only the missing cells", "[checkpoint][fill]"
 
 TEST_CASE("A failing automatic save keeps the computed distances", "[checkpoint][fill]")
 {
-  constexpr std::size_t N = 6;
+  constexpr std::size_t N = 40; // a save every lane width of rows: several slabs
   const ScratchDirectory scratch("save_fails");
   fs::create_directories(scratch.path);
   std::ofstream(scratch.path / "not_a_directory") << "occupied";
+  auto reference = make_problem("fails", N);
+  reference.fill_distance_matrix();
 
   auto prob = make_problem("fails", N);
   prob.checkpoint = { (scratch.path / "not_a_directory").string(), 2, true };
   REQUIRE_THROWS_AS(prob.fill_distance_matrix(), dtwc::IOError);
-  // The first block ran before its save failed: the diagonal and rows 0-1.
-  REQUIRE(prob.distance_matrix().count_computed() == N + (N - 1) + (N - 2));
+  // The first slab ran before its save failed: its distances stay, the reference's.
+  const auto bits = packed_bits(prob), want = packed_bits(reference);
+  std::size_t kept = 0;
+  for (std::size_t k = 0; k < bits.size(); ++k)
+    if (!std::isnan(prob.distance_matrix().raw()[k])) {
+      ++kept;
+      REQUIRE(bits[k] == want[k]);
+    }
+  REQUIRE(kept > 0);
+  REQUIRE(kept < bits.size());
   prob.checkpoint.enabled = false;
   prob.fill_distance_matrix();
-  REQUIRE(prob.is_distance_matrix_filled());
+  REQUIRE(packed_bits(prob) == want);
+}
+
+TEST_CASE("A checkpointed fill equals the fill in RAM, and its file holds it", "[checkpoint][fill]")
+{
+  const ScratchDirectory scratch("checkpointed");
+  auto reference = ragged_problem("ckpt");
+  reference.fill_distance_matrix();
+  // Another matrix's file where the checkpoint goes, as long (same N, other
+  // data): the first save replaces it whole, and only then do saves write rows in place.
+  auto other = ragged_problem("ckpt", 1.0);
+  other.fill_distance_matrix();
+  save_checkpoint(other, scratch.path.string());
+
+  // A save every 20 rows, rounded up to the lane width: many slabs, each saved.
+  auto prob = ragged_problem("ckpt");
+  prob.checkpoint = { scratch.path.string(), 20, true };
+  prob.fill_distance_matrix();
+  REQUIRE(packed_bits(prob) == packed_bits(reference));
+  auto restored = ragged_problem("ckpt");
+  REQUIRE(load_checkpoint(restored, scratch.path.string()));
+  REQUIRE(packed_bits(restored) == packed_bits(reference));
+}
+
+TEST_CASE("A resumed checkpointed fill equals an uninterrupted one", "[checkpoint][fill]")
+{
+  const ScratchDirectory scratch("resumed");
+  auto reference = ragged_problem("resumed");
+  reference.fill_distance_matrix();
+  // A fill stopped part way: a fifth of the entries, in no order, still NaN.
+  auto stopped = ragged_problem("resumed");
+  auto &partial = stopped.writable_distance_matrix();
+  partial.resize(reference.size());
+  for (std::size_t i = 0; i < reference.size(); ++i)
+    for (std::size_t j = 0; j <= i; ++j)
+      if ((i * 7 + j * 3) % 5 != 0) partial.set(i, j, reference.distance_matrix().get(i, j));
+  save_checkpoint(stopped, scratch.path.string());
+
+  auto resumed = ragged_problem("resumed");
+  REQUIRE(load_checkpoint(resumed, scratch.path.string()));
+  resumed.checkpoint = { scratch.path.string(), 20, true };
+  resumed.fill_distance_matrix();
+  REQUIRE(packed_bits(resumed) == packed_bits(reference));
+  auto reread = ragged_problem("resumed");
+  REQUIRE(load_checkpoint(reread, scratch.path.string()));
+  REQUIRE(packed_bits(reread) == packed_bits(reference));
 }
 
 #ifdef DTWC_HAS_MMAP
@@ -283,5 +355,31 @@ TEST_CASE("A matrix mapped to its checkpoint file is saved in place", "[checkpoi
   auto reader = make_problem("mapped", 6);
   REQUIRE(load_checkpoint(reader, scratch.path.string()));
   REQUIRE(packed_bits(reader) == packed_bits(reference));
+}
+
+TEST_CASE("A mapped fill of several slabs equals the fill in RAM, bit for bit", "[checkpoint][mmap][fill]")
+{
+  // A 361 KB matrix; a 1 MiB ram_limit leaves slabs of an eighth of what the
+  // series leave of it, about 125 KB: several slabs, each prefetched and flushed.
+  for (const int band : { -1, 8 }) { // ragged lanes; blocks of mixed lengths to the per-pair kernel
+    CAPTURE(band);
+    const ScratchDirectory scratch("mapped_slabs");
+    fs::create_directories(scratch.path);
+    auto reference = ragged_problem("slabs");
+    reference.set_band(band);
+    reference.fill_distance_matrix();
+    {
+      auto mapped = ragged_problem("slabs");
+      mapped.set_band(band);
+      mapped.set_ram_limit(std::size_t{ 1 } << 20);
+      mapped.use_mmap_distance_matrix(scratch.path / "slabs.dtwm");
+      mapped.fill_distance_matrix();
+      REQUIRE(packed_bits(mapped) == packed_bits(reference));
+    }
+    auto reopened = ragged_problem("slabs");
+    reopened.set_band(band);
+    reopened.use_mmap_distance_matrix(scratch.path / "slabs.dtwm");
+    REQUIRE(packed_bits(reopened) == packed_bits(reference));
+  }
 }
 #endif
