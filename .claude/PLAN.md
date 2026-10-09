@@ -27,8 +27,9 @@ differ only where several optimal medoid sets exist, node counts and run times c
 
 Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, approved 10-09), in this order:
 
-- ◐ DT `dtype` where data is loaded, in C++, Python, MATLAB and the CLI (float32 one word away; G2: a double view
-  under `--dtype float32` is no longer kept silently)
+- ☑ DT `dtype` where data is loaded, in C++, Python, MATLAB and the CLI (float32 one word away; G2: a double view
+  under `--dtype float32` is no longer kept silently) (ddb9fc3b; merged 999457d1: clang 95, Arrow tree 98, CUDA 94,
+  matlab_suite 141/141, pytest 895/19/0; float32 output as before; a float32 Parquet load peaks at 0.52× the memory)
 - ◐ AL CLARA's assignment through the lanes kernel (added 10-09, "AL right after DT": per-pair today at 17.9
   Gcell/s on 24 threads against the lanes fill's 105–131)
 - ◐ BF the blocked CPU fill (slabs and tiles; prefetch and range flush when mapped; checkpoints per slab; parallel
