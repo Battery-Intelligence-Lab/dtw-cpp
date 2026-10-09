@@ -488,8 +488,7 @@ inline constexpr std::size_t dtw_lanes = 128 / sizeof(T);
 /// Whether the lanes are packed, so beat the one-pair kernel without a band too: there the fill and OneBatchPAM
 /// give them blocks of unequal length (no band), and FastCLARA's assignment takes them unbanded. cl's lanes are
 /// scalar: without a band 3-5 % slower per cell than its one-pair kernel (f64 L1), 9-17 % on blocks of unequal
-/// length; under a band 1.5x faster than its banded one (baselines 2026-10-08-xl-x86-lanes-128,
-/// 2026-10-07-tp-pair-2col-x86, 2026-10-08-rl-ragged-lanes).
+/// length; under a band 1.5x faster than its banded one (measured 2026-10-07 and 2026-10-08).
 inline constexpr bool dtw_lanes_packed = true;
 #else
 template <typename T>
