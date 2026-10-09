@@ -41,7 +41,7 @@ payload materialisation. If the conservative selected-column estimate exceeds th
 only non-full FastCLARA over a single file of one series per row (a list column,
 or several Float32/Float64 columns) can stream row groups; a one-column file,
 directories, and other methods fail before loading the payload.
-Row groups are indivisible, and the cap covers series decoding/materialisation
-rather than all process memory. The streaming route emits labels and medoids
+A batch holds whole row groups, decoded about 1 MiB of values at a time, and the
+cap covers what the stream holds rather than all process memory. The streaming route emits labels and medoids
 without constructing dense distance or silhouette CSVs; storage requested with `--dtype f32` remains Float32 throughout the
 sample, medoid, and assignment payloads.

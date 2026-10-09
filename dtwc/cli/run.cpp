@@ -30,6 +30,7 @@
 #include "../io/parquet_chunk_reader.hpp"
 #endif
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -257,11 +258,13 @@ Outcome execute(const Config &config, std::optional<Data> data)
       resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
       names_bytes += metadata.series_names_bytes();
     }
-    // A CLARA run holds every sample's labels and nearest distances beside the series, in RAM as streamed.
+    // A CLARA run holds beside the series a sample's PAM matrix, then every sample's labels and nearest distances,
+    // in RAM as streamed.
     std::optional<algorithms::detail::ClaraPlan> sample;
     if (n_series > 0 && resolve_method(method, config.device, n_series) == Method::CLARA) {
       sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      resident_bytes += algorithms::detail::clara_pass_bytes(*sample, static_cast<std::size_t>(clara.n_samples));
+      resident_bytes += std::max(core::packed_size(static_cast<std::size_t>(sample->sample_size)) * sizeof(double),
+                                 algorithms::detail::clara_pass_bytes(*sample, static_cast<std::size_t>(clara.n_samples)));
     }
     // An explicit --ram-limit refuses a route that cannot honour it. The automatic
     // one never fails a run: it streams only where FastCLARA can stream a sample
