@@ -32,7 +32,9 @@
 #pragma once
 
 #include "../base/names.hpp"
+#include "../base/settings.hpp" // index_t
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -69,6 +71,30 @@ inline size_t tri_index(size_t i, size_t j)
 
 /// Number of elements in a packed lower-triangular matrix of dimension n.
 inline size_t packed_size(size_t n) { return n * (n + 1) / 2; }
+
+/// Rows for_each_point reads together by default: one 64-byte line of a packed row.
+inline constexpr size_t group_rows = 8;
+
+/// The symmetric rows a, a + 1, ..., a + W - 1 of a packed matrix of n series, point by point: f(o, v) for o = 0, 1,
+/// ..., n - 1 in order, with v[g] = D(a + g, o). A row a + g past n - 1 repeats row n - 1; its values are the caller's
+/// to drop. For o < a the values come from W packed rows, for o >= a + W from W neighbours in packed row o (eight: one
+/// 64-byte line), where a scan of one row reads a line per point.
+/// Each value is read as a lookup of one pair reads it (Problem::dist_by_ind: index_t indices converted at tri_index):
+/// a compiler that reassociates (-fassociative-math) orders a sum's operands by how each was computed, so f's sums
+/// group as a one-pair loop's do. GCC 13 grouped the swap's sums differently when the values came through a running
+/// pointer, and when the point index was a size_t, on which it split the loop at the first row's tri_index.
+template <size_t W = group_rows, typename F>
+inline void for_each_point(const double *packed, index_t n, index_t a, F &&f)
+{
+  index_t rows[W];
+  for (size_t g = 0; g < W; ++g) rows[g] = std::min(a + static_cast<index_t>(g), n - 1);
+  for (index_t o = 0; o < n; ++o) {
+    double v[W];
+    for (size_t g = 0; g < W; ++g)
+      v[g] = packed[tri_index(static_cast<size_t>(rows[g]), static_cast<size_t>(o))];
+    f(o, static_cast<const double *>(v));
+  }
+}
 
 /// The memory this process may use now, in bytes: the physical memory available,
 /// or a Linux cgroup v2 limit when lower (what a SLURM job's --mem sets); 0 when

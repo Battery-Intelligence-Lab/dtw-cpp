@@ -127,50 +127,69 @@ void update_removal_loss(index_t N, const std::vector<index_t>& nearest,
 /// Best medoid slot to swap out for candidate x_c, and the resulting ΔTD.
 struct SwapEval { double change; index_t best_m; };
 
-// Evaluate, for candidate x_c = xj, ΔTD(m, xj) = acc + ploss[m] for every medoid
-// slot m in ONE O(N) pass, then return the most negative over m (Algorithm 3
-// decomposition, derived in the file header comment above). O(N + k).
-//
-// Deliberately SEQUENTIAL. FasterPAM is eager — swaps within a sweep depend on
-// earlier ones — so this runs once per candidate (up to N times per sweep). An
-// OpenMP region here would pay fork/join + a k-wide reduction PER candidate, and
-// the O(N) body is far too small to amortise that (measured ~10× SLOWER than the
-// sequential loop at N=1000). FasterPAM wins by doing ~1/k the work, not by using
-// cores; the parallelism lives in the post-swap refresh (compute_nearest_and_second,
-// run only on accepted swaps). Very-large-N is the CLARA subsample path, not this.
-SwapEval find_best_swap(Problem& prob, index_t N, index_t xj,
-                        const std::vector<double>& rho, const std::vector<index_t>& nearest,
-                        const std::vector<double>& nearest_dist,
-                        const std::vector<double>& second_dist,
-                        std::vector<double>& ploss)
-{
-  ploss.assign(rho.begin(), rho.end()); // reuse caller's buffer (no per-candidate alloc)
-  double acc = 0.0;                     // shared benefit of adding x_c (Case A over all points)
-  for (index_t o = 0; o < N; ++o) {
-    const double doj = prob.dist_by_ind(xj, o);
-    const double d1 = nearest_dist[o];
-    if (doj < d1) {
-      acc += doj - d1;                             // x_c becomes o's nearest
-      ploss[nearest[o]] += d1 - second_dist[o];    // correct Case-A over-count (≤ 0)
-    } else if (doj < second_dist[o]) {
-      ploss[nearest[o]] += doj - second_dist[o];   // only helps if o's medoid removed (≤ 0)
-    }
-  }
+constexpr auto G = static_cast<index_t>(core::group_rows);
 
-  index_t best_m = 0;
-  double best = ploss[0];
-  for (std::size_t m = 1; m < ploss.size(); ++m)
-    if (ploss[m] < best) { best = ploss[m]; best_m = static_cast<index_t>(m); }
-  return { acc + best, best_m };
+// Evaluate, for each candidate x_c = a + g of a group of W (core::for_each_point), ΔTD(m, x_c) = acc + ploss[m] for
+// every medoid slot m in ONE O(N) pass, then the most negative over m (Algorithm 3 decomposition, derived in the file
+// header comment above); out[g] for g < n. O(N + k) per candidate. Each candidate's sums run on one thread, in point
+// order, through the operations a one-candidate loop makes, so its (change, slot) is the same whatever group, run or
+// thread count evaluates it.
+template <index_t W>
+void evaluate_group(const double *matrix, index_t N, index_t a, index_t n, const std::vector<double> &rho,
+                    const std::vector<index_t> &nearest, const std::vector<double> &nearest_dist,
+                    const std::vector<double> &second_dist, SwapEval *out)
+{
+  const auto k = static_cast<index_t>(rho.size());
+  thread_local std::vector<double> scratch; // ploss[m * W + g]; grows, never shrinks
+  if (scratch.size() < static_cast<std::size_t>(k * W)) scratch.resize(static_cast<std::size_t>(k * W));
+  double *const ploss = scratch.data();
+  for (index_t m = 0; m < k; ++m)
+    for (index_t g = 0; g < W; ++g) ploss[m * W + g] = rho[m];
+  double acc[W] = {}; // shared benefit of adding x_c (Case A over all points)
+  const index_t *const near = nearest.data();
+  const double *const d1s = nearest_dist.data();
+  const double *const d2s = second_dist.data();
+  core::for_each_point<W>(matrix, N, a, [&](index_t o, const double *doj) {
+    const double d1 = d1s[o];
+    const double d2 = d2s[o];
+    double *const pl = ploss + near[o] * W;
+    for (index_t g = 0; g < W; ++g) {
+      if (doj[g] < d1) {
+        acc[g] += doj[g] - d1; // x_c becomes o's nearest
+        pl[g] += d1 - d2;      // correct Case-A over-count (≤ 0)
+      } else if (doj[g] < d2) {
+        pl[g] += doj[g] - d2;  // only helps if o's medoid removed (≤ 0)
+      }
+    }
+  });
+
+  for (index_t g = 0; g < n; ++g) {
+    index_t best_m = 0;
+    double best = ploss[g];
+    for (index_t m = 1; m < k; ++m)
+      if (ploss[m * W + g] < best) { best = ploss[m * W + g]; best_m = m; }
+    out[g] = { acc[g] + best, best_m };
+  }
 }
+
+// Below this many points the sweep evaluates one candidate at a time on the calling thread, the sequential sweep
+// itself: there a parallel region, or a group's evaluations dropped after each swap, cost more than they save.
+constexpr index_t parallel_from = 1000;
 
 // ---------------------------------------------------------------------------
 // FasterPAM SWAP (Schubert & Rousseeuw 2021, Algorithm 3). Eager: cycle through
 // candidate points; for each, find the best medoid to swap it in for in O(N)
-// (find_best_swap) and perform the swap immediately if it lowers TD, then refresh
+// and perform the swap immediately if it lowers TD, then refresh
 // nearest/second and ρ. A full sweep of N candidates with no accepted swap ⇒
 // converged. Per-sweep cost O(N²); accepted swaps (few over
 // the whole run) each refresh state in O(N·k) via compute_nearest_and_second.
+//
+// From parallel_from points on, the candidates are evaluated in runs: consecutive groups of G in one parallel loop,
+// each against the state at the run's start, which is the sequential sweep's state up to the run's first accepted
+// swap. The first candidate of the run (index order) that lowers TD is accepted, the evaluations after it are dropped,
+// and the next run starts after it. So the accepted swaps, and the medoids, labels, cost and iterations, are the
+// sequential sweep's for any run length and thread count. A run is T groups after a swap (T threads) and doubles, up
+// to 8T, while none is accepted; on one thread it is one group. Below parallel_from a run is one candidate.
 //
 // State refresh after a swap uses the full (parallel) recompute rather than the
 // paper's O(N) incremental do_swap: identical result, and since accepted swaps
@@ -184,25 +203,55 @@ void fasterpam_swap_impl(Problem& prob, index_t N, index_t k,
 {
   std::vector<double> rho(k);
   update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
-  std::vector<double> ploss(k); // scratch, reused across candidates (no per-candidate alloc)
 
   // Accept only improvements below this threshold: guards against float noise
   // cycling. Tied to the cost scale so it is meaningful for any distance range.
   const double eps = 1e-9 * std::max(1.0, compute_total_cost(nearest_dist));
 
+  const core::DistanceMatrix &matrix = prob.distance_matrix();
+  const bool grouped = N >= parallel_from;
+  const index_t width = grouped ? G : 1; // candidates a group holds
+  const index_t threads = grouped ? get_max_threads() : 1;
+  const index_t longest = threads > 1 ? 8 * threads : 1; // groups in a run
+  std::vector<SwapEval> evals(static_cast<std::size_t>(longest * width)); // a run's candidates
   for (iter = 0; iter < max_iter; ++iter) {
     bool any_swap = false;
-    for (index_t j = 0; j < N; ++j) {
-      if (is_medoid[j]) continue;
-      const SwapEval e = find_best_swap(prob, N, j, rho, nearest, nearest_dist, second_dist, ploss);
-      if (e.change < -eps) {
-        is_medoid[medoids[e.best_m]] = false;
-        medoids[e.best_m] = j;
-        is_medoid[j] = true;
-        compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
-        update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
-        any_swap = true;
+    index_t groups = threads;
+    for (index_t j0 = 0; j0 < N;) {
+      if (!grouped && is_medoid[j0]) { // the sequential sweep skips a medoid unevaluated
+        ++j0;
+        continue;
       }
+      const index_t j1 = std::min(N, j0 + groups * width);
+      if (grouped) // a mapped matrix starts reading the next run's rows (a hint; nothing on the heap)
+        matrix.prefetch_rows(static_cast<std::size_t>(j1),
+                             static_cast<std::size_t>(std::min(N, j1 + std::min(2 * groups, longest) * G)));
+      auto run_group = [&](std::size_t q) {
+        const index_t a = j0 + static_cast<index_t>(q) * width;
+        if (grouped)
+          evaluate_group<G>(matrix.raw(), N, a, std::min(G, j1 - a), rho, nearest, nearest_dist, second_dist,
+                            evals.data() + q * G);
+        else
+          evaluate_group<1>(matrix.raw(), N, a, 1, rho, nearest, nearest_dist, second_dist, evals.data() + q);
+      };
+      run_openmp(run_group, static_cast<std::size_t>((j1 - j0 + width - 1) / width), threads > 1, 8);
+
+      index_t j = j0;
+      while (j < j1 && (is_medoid[j] || !(evals[j - j0].change < -eps))) ++j;
+      if (j == j1) {
+        j0 = j1;
+        groups = std::min(2 * groups, longest);
+        continue;
+      }
+      const SwapEval e = evals[j - j0];
+      is_medoid[medoids[e.best_m]] = false;
+      medoids[e.best_m] = j;
+      is_medoid[j] = true;
+      compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
+      update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
+      any_swap = true;
+      j0 = j + 1;
+      groups = threads;
     }
     if (!any_swap) { converged = true; break; }
   }
@@ -245,16 +294,20 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, i
     // Degenerate: with one medoid there is no second-nearest (second_dist = +inf),
     // so the removal-loss decomposition is undefined (ρ = inf, corrections = −inf
     // ⇒ NaN). The single-medoid optimum is simply argmin_x Σ_o d(x, o); compute it
-    // directly in O(N²), smallest index winning ties. Each candidate writes its
-    // own cost; the argmin is taken serially.
+    // directly in O(N²), smallest index winning ties. A task sums a group of
+    // candidates, each in point order, and writes their costs; the argmin is taken serially.
     std::vector<double> candidate_cost(static_cast<std::size_t>(N));
-    auto total_distance = [&](std::size_t index) {
-      const auto x = static_cast<index_t>(index);
-      core::detail::OrderedMedoidObjective cost;
-      for (index_t o = 0; o < N; ++o) cost.add(prob.dist_by_ind(x, o));
-      candidate_cost[index] = cost.value();
+    const double *const matrix = prob.distance_matrix().raw();
+    auto total_distance = [&](std::size_t q) {
+      const auto a = static_cast<index_t>(q) * G;
+      core::detail::OrderedMedoidObjective cost[G];
+      core::for_each_point(matrix, N, a, [&](index_t, const double *d) {
+        for (index_t g = 0; g < G; ++g) cost[g].add(d[g]);
+      });
+      for (index_t g = 0; g < std::min(G, N - a); ++g)
+        candidate_cost[static_cast<std::size_t>(a + g)] = cost[g].value();
     };
-    run_openmp(total_distance, static_cast<std::size_t>(N));
+    run_openmp(total_distance, static_cast<std::size_t>((N + G - 1) / G));
     medoids[0] = static_cast<index_t>(
       std::min_element(candidate_cost.begin(), candidate_cost.end()) - candidate_cost.begin());
     compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
