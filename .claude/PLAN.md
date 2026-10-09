@@ -34,16 +34,18 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   on 24 threads against the lanes fill's 105–131) (pb/AL 26d4af40; timed 10-09 06:16, PASS under clang, GCC and cl:
   clang 3.4–3.8× at 24 threads and 7.8× on one, GCC 4.8–5.7× and 10.0×, cl 1.29× under a band; merged 6359acba: clang
   95, Arrow 98, CUDA 94, matlab_suite 141, pytest 895/19/0; CLI and CLARA outputs identical)
-- ◐ BF the blocked CPU fill (slabs and tiles; prefetch and range flush when mapped; checkpoints per slab; parallel
-  NaN prefill) with the one automatic memory key `ram_limit` (pb/BF 1b072918; matrices equal base's, GCC squared
-  within the route bound; timed 10-09: clang and cl 0.99–1.08×, mapped 22.6× at a 4 GiB cap and ≥ 37× at 2 GiB,
-  checkpoints write 2 M against 80 M; GCC s1t 0.892× against ≥ 0.98, a registered second attempt; e3 FALSIFIED:
-  LLC misses 0.405 and 0.450 per entry against ≤ 0.4, base 0.87–1.18; c1's closing save 0.04 % over, recorded;
-  GCC s1t FALSIFIED, 0.951× the second time; Volkan 10-09: merge with the misses recorded)
-- ◐ CS CLARA reads its data once (all samples drawn first, their union read once, decoding overlapped) and its stream
+- ☑ BF the blocked CPU fill (slabs and tiles; prefetch and range flush when mapped; checkpoints per slab; parallel NaN
+  prefill) with the one automatic memory key `ram_limit` (pb/BF 1b072918; matrices equal base's, GCC squared within
+  the route bound; timed 10-09: clang and cl 0.99–1.08×, mapped 22.6× at a 4 GiB cap and ≥ 37× at 2 GiB, checkpoints
+  write 2 M against 80 M; GCC s1t 0.892× against ≥ 0.98, a registered second attempt; e3 FALSIFIED: LLC misses 0.405
+  and 0.450 per entry against ≤ 0.4, base 0.87–1.18; c1's closing save 0.04 % over, recorded; GCC s1t FALSIFIED,
+  0.951× the second time; Volkan 10-09: merge with the misses recorded; merged ec8d10e6: clang 95, Arrow 98, CUDA 94,
+  matlab_suite 141, pytest 896/19/0; CLI outputs identical)
+- ☑ CS CLARA reads its data once (all samples drawn first, their union read once, decoding overlapped) and its stream
   refuses each row the in-RAM run refuses (NaN, ±inf, an empty row, a band too narrow: base published a cost of
-  1.8e308) (pb/CS afd022c7 on pb/AL; 360/360 runs identical; P1 decodes 7.28 → 1.93 passes; timed 10-09 08:46,
-  PASS: streams 3.4–3.6× faster, in RAM 1.00–1.86×; merge after BF)
+  1.8e308) (pb/CS afd022c7 on pb/AL; 360/360 runs identical; P1 decodes 7.28 → 1.93 passes; timed 10-09 08:46, PASS:
+  streams 3.4–3.6× faster, in RAM 1.00–1.86×; merged 8af0336f: clang 95, Arrow 98, CUDA 94, matlab_suite 141, pytest
+  896/19/0; a `--ram-limit` too small for the samples' labels and one row group is now refused, as designed)
 - ◐ PE the Parquet stream holds its RAM limit (Volkan 10-09: next, before SW; implementing on pb/CS): under
   `--ram-limit 1G` a P1 stream peaked at 1.48 GB of private bytes (CS; base 2.26 GB) against 1.16 GB allowed, as the
   per-group estimate (34.6 MB) undercounts Arrow's decode of a batch (51–61 MB a group). With the automatic limit a
