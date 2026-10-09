@@ -117,8 +117,11 @@ function(run_f13_cli precision mode output_dir dtype expected_cost)
         --verbose
         --dtype "${dtype}"
         --variant standard)
+    # 4400 bytes hold the stream (4,206 in float64: the medoids, one sample's
+    # labels and nearest distances, one decode of the 8 rows, one row group),
+    # below the in-RAM estimate with CLARA's pass (4,638), so the run streams.
     if(mode STREQUAL "stream")
-        list(APPEND args --ram-limit 900)
+        list(APPEND args --ram-limit 4400)
     endif()
 
     execute_process(
@@ -213,9 +216,10 @@ function(require_f13_stream_rejection precision dtype)
     set(input_path "${work_root}/poison-${precision}.parquet")
     set(output_dir "${work_root}/${precision}-stream-rejection")
     file(MAKE_DIRECTORY "${output_dir}")
-    # 7000 bytes hold the pass (the medoid, 8 bytes of label and of nearest
-    # distance per row, one 65-row group: 6,808 in float64), below the file's
-    # resident estimate, so the run streams.
+    # 26000 bytes hold the pass (the medoid, 8 bytes of label and of nearest
+    # distance per row, one decode of the 129 rows, one 65-row group: 24,056 in
+    # float64), below the in-RAM estimate with CLARA's pass (29,159), so the
+    # run streams.
     execute_process(
         COMMAND
             "${cli_path}"
@@ -232,7 +236,7 @@ function(require_f13_stream_rejection precision dtype)
             --verbose
             --dtype "${dtype}"
             --variant standard
-            --ram-limit 7000
+            --ram-limit 26000
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
         ERROR_VARIABLE stderr

@@ -78,9 +78,9 @@ std::filesystem::path tmpdir()
 }
 
 // Build a List<Float64> array from ragged series.
-std::shared_ptr<arrow::Array> make_list_f64(const std::vector<std::vector<double>> &series)
+std::shared_ptr<arrow::Array> make_list_f64(const std::vector<std::vector<double>> &series,
+                                            arrow::MemoryPool *pool = arrow::default_memory_pool())
 {
-  auto pool = arrow::default_memory_pool();
   auto vb = std::make_shared<arrow::DoubleBuilder>(pool);
   arrow::ListBuilder lb(pool, vb);
   for (const auto &s : series) {
@@ -259,10 +259,13 @@ TEST_CASE("ArrowIPC: a null series or a null value is rejected", "[io][arrow][se
 namespace {
 
 void write_parquet(const std::filesystem::path &path,
-                   const std::shared_ptr<arrow::Table> &table, std::int64_t rows_per_group = 1024)
+                   const std::shared_ptr<arrow::Table> &table, std::int64_t rows_per_group = 1024,
+                   arrow::MemoryPool *pool = arrow::default_memory_pool())
 {
   auto out = unwrap(arrow::io::FileOutputStream::Open(dtwc::path_to_utf8(path))); // Arrow paths are UTF-8
-  REQUIRE(parquet::arrow::WriteTable(*table, arrow::default_memory_pool(), out, rows_per_group).ok());
+  REQUIRE(parquet::arrow::WriteTable(*table, pool, out, rows_per_group,
+                                     parquet::WriterProperties::Builder().memory_pool(pool)->build())
+            .ok());
   REQUIRE(out->Close().ok());
 }
 
@@ -462,12 +465,11 @@ TEST_CASE("Parquet metadata estimate uses decoded list values, not dictionary pa
     CHECK(reader.estimated_resident_bytes(false) >= decoded_values);
     CHECK(reader.estimated_materialization_peak_bytes(false)
           >= 2 * decoded_values);
-    const size_t metadata_only_boundary =
-      reader.estimated_materialization_peak_bytes(false)
-      + sizeof(std::vector<dtwc::data_t>) + sizeof(std::string);
-    CHECK_THROWS_WITH(
-      reader.read_rows({0}, metadata_only_boundary),
-      Catch::Matchers::ContainsSubstring("copying selected series"));
+    // read_rows holds the selected series' objects beside one decode before it decodes: a byte less is refused.
+    const size_t first_decode = dtwc::io::ParquetChunkReader::series_bytes(0, 1, false) + reader.decode_bytes();
+    CHECK_THROWS_WITH(reader.read_rows({ 0 }, first_decode - 1),
+                      Catch::Matchers::ContainsSubstring("decoding their rows needs"));
+    CHECK(reader.read_rows({ 0 }, first_decode).size() == 1);
   }
   std::filesystem::remove(tmp);
 }
@@ -782,11 +784,60 @@ TEST_CASE("Parquet: streamed FastCLARA refuses the rows the in-RAM run refuses",
     auto stream = options;
     stream.parquet_path = path;
     stream.parquet_column = "series";
-    stream.ram_limit_bytes = 8192; // two batches of a row group fit: the next decodes while one is assigned
+    // Beside one decode, two batches of a row group fit: the next decodes while one is assigned.
+    stream.ram_limit_bytes = dtwc::io::ParquetChunkReader(path, "series").decode_bytes() + 8192;
     stream.force_parquet_streaming = true;
     CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara_parquet(streamed, stream), dtwc::InvalidInput,
                          Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(poison.says)));
   }
+  std::filesystem::remove(path);
+}
+
+// The stream decoded a batch of row groups in one read, and Arrow's buffers grew to a power of two above the
+// batch's values, about 2.5 times them, which the batch's price did not hold: under --ram-limit 1G a stream peaked
+// at 1.48 GB of private bytes (2026-10-09). It decodes a record batch at a time, whatever its batches' size: Arrow's
+// buffers stay within decode_bytes(), the decode the stream prices beside its batches.
+TEST_CASE("Parquet: a stream's decoding stays within the reader's decode price", "[io][parquet][streaming][ram]")
+{
+  std::vector<std::vector<double>> series(32768, std::vector<double>(64)); // 8 row groups of 2 MiB of values
+  std::uint64_t state = 11;
+  for (auto &walk : series) {
+    double x = 0.0;
+    for (auto &value : walk) {
+      state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+      x += static_cast<double>(state >> 33) / 2147483648.0 - 1.0;
+      value = x;
+    }
+  }
+  // Built and written through the system pool: the default pool's high-water mark is the reads'.
+  auto *system = arrow::system_memory_pool();
+  const auto path = tmpdir() / "clara_stream_decode.parquet";
+  write_parquet(path, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
+                                         { make_list_f64(series, system) }),
+                4096, system);
+  const auto decode = static_cast<int64_t>(dtwc::io::ParquetChunkReader(path, "series").decode_bytes());
+  auto *pool = arrow::default_memory_pool();
+  REQUIRE(pool->max_memory() < decode / 2); // no earlier read in this process reached what this one may
+
+  dtwc::algorithms::CLARAOptions options;
+  options.n_clusters = 3;
+  options.n_samples = 2;
+  options.random_seed = 5;
+  dtwc::Problem in_ram{ "in_ram" };
+  auto stream = options;
+  stream.parquet_path = path;
+  stream.parquet_column = "series";
+  stream.ram_limit_bytes = std::size_t{ 64 } << 20; // a batch of all 8 groups: 16 MiB of values decoding at once
+  stream.force_parquet_streaming = true;
+  dtwc::Problem streamed{ "streamed" };
+  const auto result = dtwc::algorithms::fast_clara_parquet(streamed, stream);
+  CHECK(pool->max_memory() <= decode);
+
+  in_ram.set_data(dtwc::io::read_arrow(path, "series"));
+  const auto expected = dtwc::algorithms::fast_clara(in_ram, options);
+  CHECK(result.labels == expected.labels);
+  CHECK(result.medoid_indices == expected.medoid_indices);
+  CHECK(result.total_cost == expected.total_cost);
   std::filesystem::remove(path);
 }
 
@@ -797,7 +848,7 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
           "[io][parquet][streaming]")
 {
   std::vector<std::vector<double>> series;
-  for (int i = 0; i < 8; ++i) series.push_back(std::vector<double>(4, 10.0 * (i / 4) + 0.1 * i));
+  for (int i = 0; i < 8; ++i) series.push_back(std::vector<double>(64, 10.0 * (i / 4) + 0.1 * i));
   const auto input = tmpdir() / "streamed_save.parquet";
   write_parquet(input, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
                                           { make_list_f64(series) }),
@@ -810,8 +861,7 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   config.k = 2;
   config.sample_size = 4;
   config.n_samples = 2;
-  // A byte below the file's resident estimate, above one row group: FastCLARA streams it. The estimate follows
-  // the writer's encoding: 896 bytes from Arrow 25, which a fixed cap of 900 let the run hold resident.
+  // A byte below the file's resident estimate, which the stream's pass fits under: FastCLARA streams it.
   config.ram_limit = dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false) - 1;
   config.output.clear();
   config.name = "streamed";

@@ -245,13 +245,19 @@ Outcome execute(const Config &config, std::optional<Data> data)
     const bool folder = fs::is_directory(input, ec);
     auto layout = detail::ParquetLayout::Directory;
     std::size_t resident_bytes = 0;
+    std::size_t names_bytes = 0;
     for (const auto &file : parquet_files(input)) {
       const io::ParquetChunkReader metadata(file, config.column, config.skip_cols, config.skip_rows);
       if (!folder)
         layout = metadata.rows_are_series() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
       n_series += static_cast<std::size_t>(metadata.logical_series_count());
       resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
+      names_bytes += metadata.series_names_bytes();
     }
+    // A CLARA run holds every sample's labels and nearest distances beside the series, in RAM as streamed.
+    if (n_series > 0 && resolve_method(method, config.device, n_series) == Method::CLARA)
+      resident_bytes += algorithms::detail::clara_pass_bytes(
+        resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run"), static_cast<std::size_t>(clara.n_samples));
     const auto plan = detail::plan_parquet_load(method, config.device, n_series, resident_bytes, config.ram_limit, layout);
     method = plan.method;
     stream_payload = plan.stream_payload;
@@ -265,6 +271,13 @@ Outcome execute(const Config &config, std::optional<Data> data)
       clara.force_parquet_streaming = true;
     }
     plan_clara();
+    // After the stream the run holds every series' name, written beside its label, and the labels: the result's
+    // and the Problem's.
+    const std::size_t written_bytes = names_bytes + 2 * n_series * sizeof(index_t);
+    if (stream_payload && written_bytes > config.ram_limit)
+      throw InvalidInput("--ram-limit = " + std::to_string(config.ram_limit) + " cannot hold the names and labels of the "
+                         + std::to_string(n_series) + " streamed series, which need " + std::to_string(written_bytes)
+                         + " bytes; raise the limit.");
     if (stream_payload && !config.checkpoint.empty())
       throw InvalidInput(
         "--checkpoint requires resident series data and cannot be combined "
