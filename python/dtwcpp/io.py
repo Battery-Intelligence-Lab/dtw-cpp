@@ -84,9 +84,10 @@ def _parquet_layout(schema, skip_cols):
     return "rows", samples, label
 
 
-def _read_parquet(files, skip_cols, skip_rows):
+def _read_parquet(files, skip_cols, skip_rows, value):
     """Parquet files as one ``data``/``name`` table for nanoarrow, each file by
-    the C++ reader's rule (:func:`_parquet_layout`): ``skip_rows`` drops its
+    the C++ reader's rule (:func:`_parquet_layout`), its values cast to ``value``
+    (``pa.float64()`` or ``pa.float32()``): ``skip_rows`` drops its
     leading rows (of its one series, the leading values). One series is named by
     its file's stem; a row by the string field, a null or no field as
     ``series_<i>``, numbered on across the files."""
@@ -100,12 +101,12 @@ def _read_parquet(files, skip_cols, skip_rows):
                               columns=[field.name for field in samples] + ([label.name] if label else []))
         drop = min(skip_rows, table.num_rows)
         if kind == "one":
-            values = table.column(samples[0].name).combine_chunks().cast(pa.float64()).slice(drop)
+            values = table.column(samples[0].name).combine_chunks().cast(value).slice(drop)
             chunks.append(pa.LargeListArray.from_arrays([0, len(values)], values))
             names.append(Path(file).stem)
             continue
         if kind == "list":  # chunk by chunk: combined, list<float> offsets overflow past 2**31 - 1 values
-            chunks += table.column(samples[0].name).slice(drop).cast(pa.large_list(pa.float64())).chunks
+            chunks += table.column(samples[0].name).slice(drop).cast(pa.large_list(value)).chunks
         else:
             columns = [table.column(field.name).slice(drop) for field in samples]
             for field, column in zip(samples, columns):  # numpy would read a null as NaN; C++ refuses it
@@ -114,19 +115,20 @@ def _read_parquet(files, skip_cols, skip_rows):
                                        "null(s) (drop or fill nulls before clustering).")
             rows = np.column_stack([column.to_numpy() for column in columns])
             chunks.append(pa.LargeListArray.from_arrays(np.arange(0, rows.size + 1, len(samples)),
-                                                        pa.array(rows.ravel(), pa.float64())))
+                                                        pa.array(rows.ravel(), pa.float64()).cast(value)))
         first = len(names)
         labels = table.column(label.name).slice(drop).to_pylist() if label else [None] * (table.num_rows - drop)
         names += [f"series_{first + i}" if name is None else name for i, name in enumerate(labels)]
-    return pa.table({"data": pa.chunked_array(chunks, pa.large_list(pa.float64())),
+    return pa.table({"data": pa.chunked_array(chunks, pa.large_list(value)),
                      "name": pa.array(names, pa.string())})
 
 
-def _read_arrow(path, parquet, skip_cols=0, skip_rows=0):
+def _read_arrow(path, parquet, skip_cols=0, skip_rows=0, dtype="float64"):
     """Parquet files, read by the C++ reader's rule (:func:`_read_parquet`), or
     an Arrow IPC file (the ``data`` column, named by ``name``, ``ndim`` from the
     schema metadata) through the installed pyarrow, into the Arrow C stream the
-    compiled-in nanoarrow reads."""
+    compiled-in nanoarrow reads, in the precision ``dtype`` names: pyarrow casts
+    Parquet's values to it, nanoarrow rounds an Arrow IPC file's."""
     from dtwcpp import IOError as DtwcIOError, _dtwcpp_core
     try:
         import pyarrow as pa
@@ -137,7 +139,8 @@ def _read_arrow(path, parquet, skip_cols=0, skip_rows=0):
     ndim = 1
     try:
         if parquet:
-            table = _read_parquet(parquet, skip_cols, skip_rows)
+            table = _read_parquet(parquet, skip_cols, skip_rows,
+                                  pa.float32() if dtype == "float32" else pa.float64())
         else:
             with pa.OSFile(os.fspath(path), "rb") as f:
                 table = pa.ipc.open_file(f).read_all()
@@ -168,14 +171,14 @@ def _read_arrow(path, parquet, skip_cols=0, skip_rows=0):
             table = table.select(columns)
     except (OSError, pa.ArrowException) as error:
         raise DtwcIOError(f"load: failed to read '{os.fspath(path)}': {error}") from error
-    data = _dtwcpp_core.data_from_arrow_c_array(table)
+    data = _dtwcpp_core.data_from_arrow_c_array(table, dtype)
     if ndim != 1:
         data.ndim = ndim
         data.validate_ndim()
     return data
 
 
-def _read_data(source, skip_cols=0, skip_rows=0, delimiter=None):
+def _read_data(source, skip_cols=0, skip_rows=0, delimiter=None, dtype="float64"):
     """Every series ``source`` names, read as dtwc::read_data reads it.
 
     A .parquet/.pq file, or a folder holding one, is Parquet and an
@@ -184,11 +187,13 @@ def _read_data(source, skip_cols=0, skip_rows=0, delimiter=None):
     file), read by the C++ reader itself. ``skip_cols`` drops leading fields and
     ``skip_rows`` leading lines of text, and a Parquet file's leading columns and
     rows; ``delimiter`` None infers it from the extension (tab for .tsv/.txt,
-    else comma). A read failure is :class:`dtwcpp.IOError` naming the file, an
-    option the input cannot honour :class:`dtwcpp.InvalidInput`, both with the
-    C++ reader's words.
+    else comma). ``dtype`` (``"float64"`` or ``"float32"``, any spelling the C++
+    table takes) is the precision the series are stored in. A read failure is
+    :class:`dtwcpp.IOError` naming the file, an option the input cannot honour
+    :class:`dtwcpp.InvalidInput`, both with the C++ reader's words.
     """
     from dtwcpp import InvalidInput, _dtwcpp_core
+    dtype = _dtwcpp_core._dtype(dtype)
     path = os.fspath(source)
     parquet = _dtwcpp_core._parquet_files(path)
     arrow_ipc = os.path.splitext(path)[1].lower() in _ARROW_IPC and not os.path.isdir(path)
@@ -200,8 +205,8 @@ def _read_data(source, skip_cols=0, skip_rows=0, delimiter=None):
             raise InvalidInput("--skip-rows and --skip-cols (skip_rows, skip_cols) drop the leading rows "
                                "and columns of CSV/TSV text or Parquet and cannot be honoured for this "
                                "input; drop them.")
-        return _read_arrow(path, parquet, skip_cols, skip_rows)
-    return _dtwcpp_core._read_data(path, skip_cols, skip_rows, delimiter or "")
+        return _read_arrow(path, parquet, skip_cols, skip_rows, dtype)
+    return _dtwcpp_core._read_data(path, skip_cols, skip_rows, delimiter or "", dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +264,8 @@ def load_dataset_csv(path: str | Path) -> tuple[np.ndarray, list[str]]:
         names_out, skip_rows = [], 0
 
     from dtwcpp import _dtwcpp_core
-    rows = _dtwcpp_core._read_data(str(path), 0, skip_rows, ",").p_vec
+    data = _dtwcpp_core._read_data(str(path), 0, skip_rows, ",")
+    rows = [data.series(i) for i in range(data.size)]
     return np.array([row for row in rows if row], dtype=np.float64), names_out
 
 
