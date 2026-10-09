@@ -422,5 +422,5 @@ may differ only where several optimal medoid sets exist, node counts and run tim
 ## Records
 
 Charter `CHARTER.md` · map `MAP.md` · rules and rulings `DECISIONS.md` · lessons `LESSONS.md` · measurements
-`baselines/` · session state `summaries/` (newest two, via `session-handoff`) · literature `CITATIONS.md` ·
+`baselines/` · session state `summaries/` (newest two, via `session-handoff`) · literature `docs/CITATIONS.md` ·
 LR-core maths `UNIMODULAR.md`. Anything superseded is deleted; git keeps it.

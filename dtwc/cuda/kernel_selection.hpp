@@ -29,12 +29,12 @@ enum class KernelPath {
 /// memory, of which every wavefront block also takes @p block_overhead_bytes
 /// (the kernel's static and the runtime's reserved bytes). Each path up to the
 /// wavefront is the fastest one that accepts its range, by more than 5 % on the
-/// RTX 4000 Ada (.claude/baselines/2026-09-29-w4a-cuda-kernel-ab.md). Up to
+/// RTX 4000 Ada (measured 2026-09-29). Up to
 /// L = 2048 a wavefront block's anti-diagonals (32 KB at most) fit any supported
 /// GPU; above it they stay in shared memory only where three blocks fit an SM,
 /// and go to global memory otherwise, which is faster there: 0.64-0.68 of the
 /// time at FP32 L 6000-8446 and 0.76-0.84 at FP64 L 2049-4223 on an RTX 4000
-/// Ada (.claude/baselines/2026-09-30-c2-cuda-route.md).
+/// Ada (measured 2026-09-30).
 inline KernelPath select_kernel(std::size_t max_length, std::size_t sample_bytes,
                                 std::size_t sm_shared_bytes,
                                 std::size_t block_overhead_bytes) noexcept

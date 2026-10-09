@@ -17,7 +17,7 @@ they imply the three-predecessor relation in equation (6); equation (7) fixes
 the endpoints; and equation (8) defines the adjustment window
 $|i(k)-j(k)|\le r$. Their practical calculation domain restates the window as
 $j-r\le i\le j+r$. These claims were verified from the full paper scan listed
-in `.claude/CITATIONS.md`.
+in `docs/CITATIONS.md`.
 
 The same paper's practical symmetric recurrence uses step-dependent weights:
 in particular, a diagonal step carries twice the local cost, and the result is
@@ -335,18 +335,17 @@ from source.
 | Negative band and full-coverage fallbacks | `dtw_kernel_banded` in `dtwc/core/dtw_kernel.hpp` | Negative dispatches to full DTW; width at least `max_length-1` covers the complete rectangle. **CONFIRMED**. |
 | Dependent and independent MV wrappers preserve feasibility | `dtwBanded_mv` and `dtw_independent_mv` in `dtwc/warping.hpp` | Dependent MV runs the same banded kernel, so the same bound; independent MV returns one finite sentinel before channel summation. **CONFIRMED**. |
 | Missing-data AROW wrapper does not bypass the fixed window | `dtwAROW_banded` in `dtwc/warping_missing_arow.hpp` | It runs the shared banded kernel through `run_dtw`, whose endpoint feasibility precedes the singleton/full fallback. **CONFIRMED**. |
-| Independent DP oracle and hand-computed ledger | `tests/support/dtw_oracle.hpp`, `tests/unit/core/test_dtw.cpp` | A plain full-matrix DP written from this derivation reproduces by hand the registered unequal-length ledger of `.claude/baselines/2026-07-23-r2-d1-dtw.md` (L1 and squared L2; bands 1, 2, 3 and none; no path below the length difference), and the public routes (`dtwFull`, `dtwFull_L`, `dtwBanded`, the Problem's bound function and its fill) agree with it on every shape, band and precision of the table. The exhaustive path counts of the 2026-07-23 record (696, 1143 and 1289) are not re-run: the hand-computed ledger replaces them. **CONFIRMED**: `test_dtw` passes. |
+| Independent DP oracle and hand-computed ledger | `tests/support/dtw_oracle.hpp`, `tests/unit/core/test_dtw.cpp` | A plain full-matrix DP written from this derivation reproduces by hand the registered unequal-length ledger of the 2026-07-23 run (L1 and squared L2; bands 1, 2, 3 and none; no path below the length difference), and the public routes (`dtwFull`, `dtwFull_L`, `dtwBanded`, the Problem's bound function and its fill) agree with it on every shape, band and precision of the table. The exhaustive path counts of the 2026-07-23 record (696, 1143 and 1289) are not re-run: the hand-computed ledger replaces them. **CONFIRMED**: `test_dtw` passes. |
 | Neither accumulated form is a metric | `tests/unit/core/test_dtw.cpp` (hand-computed values) | The identity and triangle counterexamples above are run through the oracle and through the library. **CONFIRMED**: `test_dtw` passes. |
-| CUDA uses the same fixed geometry | `fixed_band_contains` in `dtwc/cuda/cuda_dtw.cu`, used by `dtw_wavefront_kernel`, `dtw_warp_kernel` and `dtw_regtile_kernel` | One ordered-subtraction predicate implements $\lvert i-j\rvert\le w$ without signed `abs` overflow in every kernel family. The `[F12]` cases of `tests/unit/test_cuda_correctness.cpp` reproduce the independent path ledger on a CUDA device. **CONFIRMED** on the local RTX by `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. |
+| CUDA uses the same fixed geometry | `fixed_band_contains` in `dtwc/cuda/cuda_dtw.cu`, used by `dtw_wavefront_kernel`, `dtw_warp_kernel` and `dtw_regtile_kernel` | One ordered-subtraction predicate implements $\lvert i-j\rvert\le w$ without signed `abs` overflow in every kernel family. The `[F12]` cases of `tests/unit/test_cuda_correctness.cpp` reproduce the independent path ledger on a CUDA device. **CONFIRMED** on the local RTX (2026-07-24). |
 | Metal fixed geometry and public sentinel | `dtw_wavefront_body` and `dtw_banded_row` in `dtwc/metal/metal_dtw.mm`; `normalize_public_distance` in `dtwc/core/public_distance.hpp` | The wavefront clip widens to `long` before `k ± band`; the banded-row kernel, chosen only for `0 < band <= 512`, clips each row to $\lvert i-j\rvert\le w$; exact device `FLT_MAX` is translated to public `DBL_MAX`. The `[F12]` case of `tests/unit/test_metal_correctness.cpp` covers the wavefront, banded-row and device-memory wavefront routes. Source **CONFIRMED**; real-device parity **CONFIRMED** on an Apple M5 Pro (2026-09-23). |
 
 ## Decisive artifact
 
 The CPU preregistered ledger, inherited red, exhaustive path counts, focused
-outputs, complete 114-target gate, assumptions, and rollback are recorded in
-`.claude/baselines/2026-07-23-r2-d1-dtw.md`. The later GPU repair, independent
-oracle, real-RTX outputs, and Metal environment probe are recorded in
-`.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`.
+outputs, complete 114-target gate, assumptions, and rollback were recorded on
+2026-07-23, and the later GPU repair, independent oracle, real-RTX outputs, and
+Metal environment probe on 2026-07-24, in the maintainers' run records.
 
 **D1 final verdict:** the standard CPU recurrence, boundary conditions, scalar
 cost semantics, fixed Sakoe–Chiba window, feasibility rule, and monotonicity

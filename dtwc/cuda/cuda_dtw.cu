@@ -287,7 +287,7 @@ __global__ void dtw_wavefront_kernel(
   // instead of four, and without it the FP32 fills at L 513-1024 and 2048 took
   // 4-23 % more time. FP64 compiles it out: 62 registers instead of 79, and its
   // fills at L 513-1024 took 0.84-0.89 of the time. On an RTX 4000 Ada
-  // (.claude/baselines/2026-09-30-c2-cuda-route.md).
+  // (measured 2026-09-30).
   constexpr int PRELOAD_THRESHOLD = static_cast<int>(detail::kPreloadMaxLength);
   const bool preload = Mode == Wavefront::Preload
       || (Mode == Wavefront::Shared && std::is_same_v<T, float> && max_L <= PRELOAD_THRESHOLD);
@@ -1022,7 +1022,7 @@ constexpr size_t PINNED_THRESHOLD = 256 * 1024;
 /// up to kPreloadMaxLength its kernel is the preload mode compiled alone: 40
 /// registers instead of 68 (FP32), so up to 6 blocks per SM instead of 3, and
 /// 11.5-18.5 % less time at L 257-512 in FP32 and FP64
-/// (.claude/baselines/2026-09-30-c1-cuda-long-series.md). The global-memory
+/// (measured 2026-09-30). The global-memory
 /// wavefront always runs persistent, each block in its own slice of scratch,
 /// on at most one block per pair of a launch.
 template <typename T, Pairs P>
@@ -1061,7 +1061,7 @@ struct Launches {
     // A global block's slice holds three anti-diagonals of max_L values. The
     // grid holds no more slices than fit the L2 cache, and a block per SM at
     // least: past the L2 their traffic goes to DRAM, which halved the FP32 fill
-    // at L = 20,000 on an RTX 4000 Ada (.claude/baselines/2026-09-30-c1-cuda-long-series.md).
+    // at L = 20,000 on an RTX 4000 Ada (measured 2026-09-30).
     const auto l2_slices =
         static_cast<std::int64_t>(device.l2_bytes / (3 * max_length * sizeof(T)));
     global_grid = static_cast<int>(std::min(std::min<std::int64_t>(chunk, persistent_grid),

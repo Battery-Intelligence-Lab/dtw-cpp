@@ -480,13 +480,13 @@ using LanesCell = StandardCell;
 /// floats) on AArch64 and on x86-64 under clang and GCC, where 64 left the pipes
 /// waiting on that chain (GCC's f64 lanes are scalar with stack traffic at 64,
 /// packed at 128); 64 bytes under cl, whose lanes stay scalar (slower at 128), and
-/// elsewhere (baselines 2026-10-06-mac-arm-lanes, 2026-10-08-xl-x86-lanes-128,
-/// 2026-10-08-xg-gcc-lanes-128).
+/// elsewhere (measured 2026-10-06 to 2026-10-08 on an Apple M5 Pro and an Intel Core
+/// Ultra 9 285).
 #if defined(__aarch64__) || defined(__x86_64__)
 template <typename T>
 inline constexpr std::size_t dtw_lanes = 128 / sizeof(T);
 /// Whether the fill gives the lanes blocks of unequal length (no band): where they are packed. cl's lanes are
-/// scalar, and on such blocks they lost 9-17 % to the one-pair kernel (baseline 2026-10-08-rl-ragged-lanes).
+/// scalar, and on such blocks they lost 9-17 % to the one-pair kernel (measured 2026-10-08).
 inline constexpr bool dtw_lanes_ragged = true;
 #else
 template <typename T>
@@ -554,7 +554,7 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
   // column's last row goes to its Y row, which no later column reads, and lane w takes
   // Y[ny[w] - 1] at the end. No test in the column loop: one there (a capture when a
   // lane ended) changed clang's registers in the row loop below, which then ran 4-5 %
-  // slower on long equal-length series (baseline 2026-10-08-rl-ragged-lanes).
+  // slower on long equal-length series (measured 2026-10-08).
   Y[0] = s[nx - 1];
   for (std::size_t j = 1; j < ny_max; ++j) {
     const auto [lo, hi] = dtw_band_bounds(band, j, nx);

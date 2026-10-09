@@ -15,7 +15,7 @@ Proposition 1, that their LB_Keogh is no larger than DTW for two sequences of
 the same length under a global window `j-r <= i <= j+r`. Their point cost is
 squared difference, and both their DTW and bound take a square root after the
 sum. The primary identifier is DOI `10.1007/s10115-004-0154-9`; the verified
-access record is in `.claude/CITATIONS.md`.
+access record is in `docs/CITATIONS.md`.
 
 DTWC++ differs in three relevant ways:
 
@@ -374,8 +374,8 @@ The non-degenerate direction ledger is:
 |---|---:|---:|---:|
 | L1 (`U`) | 8 | 2 | 8 |
 
-The preregistered bands and the first verbatim run are in
-`.claude/baselines/2026-07-30-d2-lb-keogh.md`.
+The preregistered bands and the first verbatim run were recorded on 2026-07-30
+in the maintainers' run records.
 
 ## Code-conformance table
 

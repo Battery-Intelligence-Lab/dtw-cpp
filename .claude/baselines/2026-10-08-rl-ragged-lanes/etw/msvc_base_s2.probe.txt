@@ -1,4 +1,0 @@
-[DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.
-  Distance-matrix computation will be extremely slow for large datasets.
-  Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.
-fill f64 L1 threads  1 N 150   L 100-1000 band -1   W 8  ms 2658.65 (min 2658.65 max 2658.65)  Gcell/s 1.422  clock 0.000 GHz (min 0.000 max 0.000)  lanes computed/useful B 1.0809 (padding 0.0608, tail duplicates 0.0140) A 1.0571 (padding 0.0450, tail duplicates 0.0090)  matrix hash d0c4ea00ede2475c

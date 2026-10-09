@@ -97,8 +97,7 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
 {
   if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
 
-  // Registered before any real-Metal execution in
-  // .claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md. The literal
+  // Registered before any real-Metal execution (2026-07-24). The literal
   // costs and sentinel come from the test-only full-matrix oracle, never the
   // CPU rolling-buffer implementation.
   //

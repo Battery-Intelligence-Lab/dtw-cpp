@@ -114,3 +114,7 @@ cmake-build-*/_deps/
 !.env.example
 *.aux
 *.log
+
+# The maintainers' run records and charter stay on disk, out of git (Volkan 2026-10-09).
+.claude/baselines/
+.claude/CHARTER.md

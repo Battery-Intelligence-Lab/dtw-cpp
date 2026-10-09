@@ -195,7 +195,7 @@ TEST_CASE("FasterPAM converges to a brute-force-verified local optimum", "[faste
 
 // ===========================================================================
 // k > max_iter — FastPAM1 made one swap per iteration and stopped unconverged at
-// k = 200 (baselines/2026-07-08-faster-pam-bench.md); the eager sweep converges.
+// k = 200 (measured 2026-07-08); the eager sweep converges.
 // ===========================================================================
 TEST_CASE("FasterPAM converges at k = 200 within the default iteration cap", "[faster_pam][large_k]")
 {
