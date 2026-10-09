@@ -143,9 +143,9 @@ estimate fits, the ordinary resident reader is used. If it does not fit, the
 only supported streaming route is non-full FastCLARA over one Parquet file
 of one series per row: a `List<Float32/Float64>` or
 `LargeList<Float32/Float64>` column with one list cell per series, or several
-Float32/Float64 columns. The automatic limit streams only there, and only without
-`--checkpoint` or `--dist-matrix`: elsewhere the series load as they would
-without a limit. An explicit `--ram-limit` is fail-closed:
+Float32/Float64 columns. The automatic limit streams only there, for a sample
+smaller than N and without `--checkpoint` or `--dist-matrix`: elsewhere the series
+load as they would without a limit. An explicit `--ram-limit` is fail-closed:
 
 - over-budget one-column (one series), Parquet-directory, and non-CLARA requests stop
   before payload materialisation and explain how to convert the input or raise
