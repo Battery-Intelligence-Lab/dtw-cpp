@@ -59,7 +59,7 @@ classdef Problem < handle
             end
         end
 
-        function set_data(obj, data, names, ndim)
+        function set_data(obj, data, names, ndim, dtype)
         %SET_DATA Load time series data into the Problem.
         %   prob.set_data(X)                    % X: N x L numeric matrix, one series per row
         %   prob.set_data(C)                    % C: cell of numeric vectors, one series each
@@ -67,28 +67,33 @@ classdef Problem < handle
         %   prob.set_data(X, names)             % names: 1xN cell array of char labels
         %   prob.set_data(X, names, ndim)       % ndim: features per timestep (multivariate,
         %                                       %   interleaved [t0f0 t0f1 t1f0 ...] layout)
+        %   prob.set_data(X, names, ndim, dtype)  % dtype: 'float64' (default) or 'float32',
+        %                                       %   the precision the series are stored in
         %
         %   Pass names = {} to auto-derive names "0".."N-1". The one conversion of
         %   series already in memory, behind dtwc.cluster, dtwc.load, DTWClustering
-        %   and compute_distance_matrix: numbers become doubles; anything else
+        %   and compute_distance_matrix: numbers become doubles, or singles for
+        %   dtype 'float32' (single data alone stays double); anything else
         %   (a non-numeric, complex, sparse, empty or N-D series) is refused by C++
         %   with dtwc:invalidArgument naming it.
+            if nargin < 3, names = {}; end
+            if nargin < 4, ndim = 1; end
+            if nargin < 5, dtype = 'float64'; end
+            dtype = dtwc_mex('dtype', char(dtype));
+            type = 'double';
+            if strcmp(dtype, 'float32')
+                type = 'single';
+            end
             if iscell(data)
                 for i = 1:numel(data)
                     if isnumeric(data{i})
-                        data{i} = double(data{i});
+                        data{i} = cast(data{i}, type);
                     end
                 end
             elseif isnumeric(data)
-                data = double(data);
+                data = cast(data, type);
             end
-
-            if nargin < 3, names = {}; end
-            if nargin < 4
-                dtwc_mex('Problem_set_data', obj.Handle, data, names);
-            else
-                dtwc_mex('Problem_set_data', obj.Handle, data, names, double(ndim));
-            end
+            dtwc_mex('Problem_set_data', obj.Handle, data, names, double(ndim), dtype);
         end
 
         function fill_distance_matrix(obj)

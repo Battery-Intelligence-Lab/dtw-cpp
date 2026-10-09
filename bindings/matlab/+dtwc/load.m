@@ -5,6 +5,7 @@ function ds = load(source, varargin)
 %LOAD A lazy dtwc.Dataset of a path or of series already in memory.
 %
 %   ds = dtwc.load('cycles.csv', 'SkipCols', 1, 'SkipRows', 1)
+%   ds = dtwc.load('cycles.csv', 'Dtype', 'float32')   % stored as single
 %   ds = dtwc.load('cycles/')            % a folder: one series per file
 %   ds = dtwc.load('cycles.parquet')     % MATLAB's parquetread
 %   ds = dtwc.load(X)                    % N x L numeric matrix, one series per row
@@ -19,6 +20,10 @@ function ds = load(source, varargin)
 %   Name     : the name of the run and of its result files; '' (default) is
 %              dtwc_cl's: the file's name without its extension, the folder's
 %              name, or 'dataset' for series in memory.
+%   Dtype    : the precision the series are stored in: 'float64' (default,
+%              double) or 'float32' (single, half the memory; also 'f32', 'fp32',
+%              'float'). Each value is read as a double and rounded to single;
+%              single data in memory alone does not choose it.
 %
 %   Nothing is read here: dtwc.cluster (or ds.as_series()) reads a path once.
 %   A Dataset passes through unchanged; it keeps the options it was made with.
@@ -38,7 +43,8 @@ function ds = load(source, varargin)
     addParameter(p, 'SkipRows', 0);
     addParameter(p, 'Delimiter', '');
     addParameter(p, 'Name', '');
+    addParameter(p, 'Dtype', 'float64');
     parse(p, varargin{:});
     ds = dtwc.Dataset(source, p.Results.SkipCols, p.Results.SkipRows, ...
-                      char(p.Results.Delimiter), char(p.Results.Name));
+                      char(p.Results.Delimiter), char(p.Results.Name), char(p.Results.Dtype));
 end

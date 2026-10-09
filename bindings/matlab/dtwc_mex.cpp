@@ -51,7 +51,9 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include <iterator>
 #include <stdexcept>
 #include <algorithm>
+#include <span>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 // =========================================================================
@@ -106,18 +108,21 @@ uint64_t HandleManager<T>::counter_ = 0;
 //  mexFunction maps to mexErrMsgIdAndTxt("dtwc:invalidArgument", ...).
 // =========================================================================
 
-/// Require a full (non-sparse), real, double, non-empty, <=2-D array.
-/// Throws std::invalid_argument BEFORE any mxGetDoubles() access.
-static void require_real_double(const mxArray *mx, const char *arg_name) {
+/// Require a full (non-sparse), real, non-empty, <=2-D array of class double, or
+/// single for T = float. Throws std::invalid_argument BEFORE any data access.
+template <typename T = double>
+static void require_real(const mxArray *mx, const char *arg_name) {
+  constexpr bool single = std::is_same_v<T, float>;
+  const std::string type = single ? "single" : "double";
   if (mx == nullptr)
     throw std::invalid_argument(std::string(arg_name) + ": argument is missing.");
   if (mxIsComplex(mx))
     throw std::invalid_argument(std::string(arg_name) + " must be real, not complex.");
   if (mxIsSparse(mx))
     throw std::invalid_argument(std::string(arg_name) + " must be a full (non-sparse) array.");
-  if (!mxIsDouble(mx))
-    throw std::invalid_argument(std::string(arg_name) + " must be of class 'double' (got '"
-      + std::string(mxGetClassName(mx)) + "'); convert with double(...) in MATLAB.");
+  if (single ? !mxIsSingle(mx) : !mxIsDouble(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must be of class '" + type + "' (got '"
+      + std::string(mxGetClassName(mx)) + "'); convert with " + type + "(...) in MATLAB.");
   if (mxIsEmpty(mx))
     throw std::invalid_argument(std::string(arg_name) + " must not be empty.");
   if (mxGetNumberOfDimensions(mx) != 2)
@@ -144,23 +149,34 @@ static void require_label_vector(const mxArray *mx, const char *arg_name) {
 //  Helpers: MATLAB <-> C++ type conversion
 // =========================================================================
 
+/// The values of a real array of class double, or single for T = float.
+template <typename T>
+static T *real_data(const mxArray *mx) {
+  if constexpr (std::is_same_v<T, float>)
+    return mxGetSingles(mx);
+  else
+    return mxGetDoubles(mx);
+}
+
 /// MATLAB double vector/row -> std::vector<double>
 static std::vector<double> to_std_vector(const mxArray *mx, const char *arg_name = "input") {
-  require_real_double(mx, arg_name);
+  require_real(mx, arg_name);
   const double *data = mxGetDoubles(mx);
   size_t n = mxGetNumberOfElements(mx);
   return std::vector<double>(data, data + n);
 }
 
-/// MATLAB N x L matrix -> vector of series (each row is one series)
-static std::vector<std::vector<double>> matrix_to_series(const mxArray *mx, const char *arg_name = "data") {
-  require_real_double(mx, arg_name);
+/// MATLAB N x L matrix -> vector of series (each row is one series), of class
+/// double, or single for T = float
+template <typename T>
+static std::vector<std::vector<T>> matrix_to_series(const mxArray *mx, const char *arg_name = "data") {
+  require_real<T>(mx, arg_name);
   size_t N = mxGetM(mx);  // rows = number of series
   size_t L = mxGetN(mx);  // cols = series length
-  const double *data = mxGetDoubles(mx);
+  const T *data = real_data<T>(mx);
 
   // MATLAB is column-major: data[row + col*N]
-  std::vector<std::vector<double>> series(N, std::vector<double>(L));
+  std::vector<std::vector<T>> series(N, std::vector<T>(L));
   for (size_t i = 0; i < N; ++i)
     for (size_t j = 0; j < L; ++j)
       series[i][j] = data[i + j * N];
@@ -177,10 +193,12 @@ static void require_char(const mxArray *mx, const char *arg_name) {
     throw std::invalid_argument(std::string(arg_name) + " must be a char row vector (string).");
 }
 
-/// MATLAB cell array of numeric vectors -> vector of ragged double series.
-/// Validates the container is a cell AND every element is a real, full, double,
-/// non-empty vector BEFORE any data-pointer access (audit CRITICAL #6 guard).
-static std::vector<std::vector<double>> cell_to_series(const mxArray *mx, const char *arg_name = "data") {
+/// MATLAB cell array of numeric vectors -> vector of ragged series, of class
+/// double, or single for T = float. Validates the container is a cell AND every
+/// element is a real, full, non-empty vector of that class BEFORE any data-pointer
+/// access (audit CRITICAL #6 guard).
+template <typename T>
+static std::vector<std::vector<T>> cell_to_series(const mxArray *mx, const char *arg_name = "data") {
   if (mx == nullptr)
     throw std::invalid_argument(std::string(arg_name) + ": argument is missing.");
   if (!mxIsCell(mx))
@@ -189,16 +207,16 @@ static std::vector<std::vector<double>> cell_to_series(const mxArray *mx, const 
   if (N == 0)
     throw std::invalid_argument(std::string(arg_name) + " (cell array) must not be empty.");
 
-  std::vector<std::vector<double>> series;
+  std::vector<std::vector<T>> series;
   series.reserve(N);
   for (size_t i = 0; i < N; ++i) {
     const mxArray *cell = mxGetCell(mx, i);
     const std::string elem = std::string(arg_name) + "{" + std::to_string(i + 1) + "}";
-    // Full validation BEFORE mxGetDoubles: reject non-double/complex/sparse/empty/N-D.
-    require_real_double(cell, elem.c_str());
+    // Full validation BEFORE the data access: reject another class/complex/sparse/empty/N-D.
+    require_real<T>(cell, elem.c_str());
     if (mxGetM(cell) != 1 && mxGetN(cell) != 1)
       throw std::invalid_argument(elem + " must be a vector: one series.");
-    const double *data = mxGetDoubles(cell);
+    const T *data = real_data<T>(cell);
     const size_t n = mxGetNumberOfElements(cell);
     series.emplace_back(data, data + n);
   }
@@ -373,6 +391,13 @@ static char parse_delimiter(const std::string &value) {
   if (value.size() != 1)
     throw std::invalid_argument("delimiter must be a single character.");
   return value[0];
+}
+
+/// Optional dtype name (core::precision_names); absent means float64, the default everywhere.
+static dtwc::core::Precision optional_dtype(int nrhs, const mxArray *prhs[], int index) {
+  const std::string text = optional_string(nrhs, prhs, index, "dtype");
+  return text.empty() ? dtwc::core::Precision::Float64
+                      : dtwc::parse_name(dtwc::core::precision_names, text, "dtype");
 }
 
 /// Optional metric name; absent means L1, matching C++/Python defaults.
@@ -649,20 +674,17 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 //  Problem property get/set commands
 // =========================================================================
 
-static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  // Args: handle, data, [names cell], [ndim]. `data` is either an N x L real
-  // double matrix (each row a series) OR a cell array of numeric row vectors
-  // (ragged / variable-length series).
-  if (nrhs < 3) throw std::invalid_argument("Problem_set_data requires handle and data.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-
+/// Problem_set_data's series as T (double, or float from single), with their names and ndim.
+template <typename T>
+static void set_series(dtwc::Problem &prob, int nrhs, const mxArray *prhs[]) {
   // Ragged (cell array) vs rectangular (matrix). Both paths validate class /
-  // complexity / shape BEFORE any mxGetDoubles() access (audit CRITICAL #6).
+  // complexity / shape BEFORE any data access (audit CRITICAL #6).
   // No series (an empty cell, a 0 x L matrix) is a dataset too: cluster() refuses
   // it ("cluster: dataset is empty."), as in C++ and Python.
-  const bool none = mxIsCell(prhs[2]) ? mxIsEmpty(prhs[2]) : mxIsDouble(prhs[2]) && mxGetM(prhs[2]) == 0;
-  std::vector<std::vector<double>> series;
-  if (!none) series = mxIsCell(prhs[2]) ? cell_to_series(prhs[2]) : matrix_to_series(prhs[2]);
+  const bool rows_of_t = std::is_same_v<T, float> ? mxIsSingle(prhs[2]) : mxIsDouble(prhs[2]);
+  const bool none = mxIsCell(prhs[2]) ? mxIsEmpty(prhs[2]) : rows_of_t && mxGetM(prhs[2]) == 0;
+  std::vector<std::vector<T>> series;
+  if (!none) series = mxIsCell(prhs[2]) ? cell_to_series<T>(prhs[2]) : matrix_to_series<T>(prhs[2]);
   const size_t N = series.size();
 
   // Optional series names (cell array of char). Empty ([]) => auto-derive "0..N-1".
@@ -685,6 +707,18 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 
   dtwc::Data data(std::move(series), std::move(names), ndim);
   prob.set_data(std::move(data));
+}
+
+static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  // Args: handle, data, [names cell], [ndim], [dtype]. `data` is either an N x L real
+  // matrix (each row a series) OR a cell array of numeric row vectors (ragged /
+  // variable-length series), of class double, or single for dtype 'float32'.
+  if (nrhs < 3) throw std::invalid_argument("Problem_set_data requires handle and data.");
+  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  if (optional_dtype(nrhs, prhs, 5) == dtwc::core::Precision::Float32)
+    set_series<float>(prob, nrhs, prhs);
+  else
+    set_series<double>(prob, nrhs, prhs);
 }
 
 static void cmd_Problem_set_band(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -847,7 +881,7 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   if (nrhs < 3) throw std::invalid_argument("Problem_set_distance_matrix requires handle and matrix.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
-  require_real_double(prhs[2], "distance_matrix");
+  require_real(prhs[2], "distance_matrix");
   size_t N = mxGetM(prhs[2]);
   if (N != mxGetN(prhs[2]))
     throw std::invalid_argument("Distance matrix must be square.");
@@ -1101,8 +1135,8 @@ static void cmd_load_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArr
 /// strategy reads NaN as missing.
 static void cmd_dtw(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("dtw requires x and y.");
-  require_real_double(prhs[1], "x");
-  require_real_double(prhs[2], "y");
+  require_real(prhs[1], "x");
+  require_real(prhs[2], "y");
   const auto c = distance_config(nrhs, prhs, 3);
   plhs[0] = mxCreateDoubleScalar(dtwc::distance::dtw<double>(
     std::span<const double>(mxGetDoubles(prhs[1]), mxGetNumberOfElements(prhs[1])),
@@ -1283,23 +1317,30 @@ static void cmd_apply(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]
   plhs[0] = mxCreateString(dtwc::device_text(config).c_str());
 }
 
-/// read_data(path, skip_cols, skip_rows, delimiter) -> {series}, {names}:
-/// dtwc::read_data, for CSV/TSV text and folders of it, each series a double row.
+/// A 1 x n row of class double, or single for float values.
+template <typename T>
+static mxArray *to_row(std::span<const T> values) {
+  mxArray *row = mxCreateNumericMatrix(1, values.size(), std::is_same_v<T, float> ? mxSINGLE_CLASS : mxDOUBLE_CLASS,
+                                       mxREAL);
+  std::copy(values.begin(), values.end(), real_data<T>(row));
+  return row;
+}
+
+/// read_data(path, skip_cols, skip_rows, delimiter, dtype) -> {series}, {names}:
+/// dtwc::read_data, for CSV/TSV text and folders of it, each series a double row,
+/// or single for dtype 'float32' (each value the double parse rounded).
 static void cmd_read_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 4) throw std::invalid_argument("read_data requires a path, skip_cols and skip_rows.");
   const auto path = get_path(prhs[1], "path");
   const auto skip_cols = get_exact_int<dtwc::index_t>(prhs[2], "skip_cols");
   const auto skip_rows = get_exact_int<dtwc::index_t>(prhs[3], "skip_rows");
   const char delimiter = parse_delimiter(optional_string(nrhs, prhs, 4, "delimiter"));
-  const dtwc::Data data = dtwc::read_data(path, skip_cols, skip_rows, delimiter);
+  const dtwc::Data data = dtwc::read_data(path, skip_cols, skip_rows, delimiter, {}, optional_dtype(nrhs, prhs, 5));
   const auto n = static_cast<size_t>(data.size());
   plhs[0] = mxCreateCellMatrix(1, n);
   mxArray *names = mxCreateCellMatrix(1, n);
   for (size_t i = 0; i < n; ++i) {
-    const auto &series = data.p_vec[i];
-    mxArray *row = mxCreateDoubleMatrix(1, series.size(), mxREAL);
-    std::copy(series.begin(), series.end(), mxGetDoubles(row));
-    mxSetCell(plhs[0], i, row);
+    mxSetCell(plhs[0], i, data.is_f32() ? to_row(data.series_f32(i)) : to_row(data.series(i)));
     mxSetCell(names, i, mxCreateString(data.p_names[i].c_str()));
   }
   if (nlhs > 1) plhs[1] = names;
@@ -1315,6 +1356,15 @@ static void cmd_parquet_files(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   plhs[0] = mxCreateCellMatrix(1, files.size());
   for (size_t i = 0; i < files.size(); ++i)
     mxSetCell(plhs[0], i, mxCreateString(dtwc::path_to_utf8(files[i]).c_str()));
+}
+
+/// dtype(text) -> char: the canonical name of a dtype spelling, by the C++ table
+/// dtwc_cl's --dtype reads ('f32' -> 'float32'); an unknown one is dtwc:invalidArgument.
+static void cmd_dtype(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("dtype requires a name.");
+  require_char(prhs[1], "dtype");
+  const auto precision = dtwc::parse_name(dtwc::core::precision_names, get_string(prhs[1]), "dtype");
+  plhs[0] = mxCreateString(std::string(dtwc::name_of(dtwc::core::precision_names, precision)).c_str());
 }
 
 /// default_name(path) -> char: the name dtwc_cl gives a run of `path` (its file name
@@ -1454,6 +1504,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "read_data") cmd_read_data(nlhs, plhs, nrhs, prhs);
     else if (cmd == "parquet_files") cmd_parquet_files(nlhs, plhs, nrhs, prhs);
     else if (cmd == "default_name") cmd_default_name(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "dtype") cmd_dtype(nlhs, plhs, nrhs, prhs);
     else if (cmd == "score") cmd_score(nlhs, plhs, nrhs, prhs);
     else if (cmd == "write_result_files") cmd_write_result_files(nlhs, plhs, nrhs, prhs);
     else {

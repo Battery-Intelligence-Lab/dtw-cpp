@@ -336,6 +336,36 @@ function test_arrow_ipc_is_refused_naming_the_format(testCase)
     end
 end
 
+function test_float32_load_clusters_as_todays_float32_route(testCase)
+%   dtwc.load(..., 'Dtype', 'float32') reads single series, each value the double
+%   read rounded, and clusters as today's float32 route does: the double read
+%   rounded and stored as float32 (dtwc_cl --dtype float32; here Problem.set_data's
+%   dtype), and not as the double run does.
+    cwdCleanup = scratch_working_directory(); %#ok<NASGU>
+    X = 1000 * floor((0:11)' / 4) + 100 * sin((1:12)' * (1:30) / 7);   % three groups
+    file = fullfile(pwd, 'series.csv');
+    fid = fopen(file, 'w');
+    fprintf(fid, [repmat('%.17g,', 1, 29) '%.17g\n'], X.');
+    fclose(fid);
+
+    data = dtwc.load(file, 'Dtype', 'f32');
+    verifyEqual(testCase, data.Dtype, 'float32');
+    series = data.as_series();
+    doubles = dtwc.load(file);
+    [read, names] = doubles.as_series();
+    verifyEqual(testCase, series, cellfun(@single, read, 'UniformOutput', false));
+
+    res = dtwc.cluster(file, 3, 'Method', 'pam', 'Dtype', 'float32');
+    oracle = dtwc.Problem('oracle');
+    oracle.set_data(read, names, 1, 'float32');
+    expected = dtwc.fast_pam(oracle, 3);
+    verifyEqual(testCase, res.labels, expected.labels);
+    verifyEqual(testCase, res.medoids, expected.medoid_indices);
+    verifyEqual(testCase, res.cost, expected.total_cost);
+    verifyNotEqual(testCase, res.cost, dtwc.cluster(file, 3, 'Method', 'pam').cost, ...
+        'the float32 run computed as the double one');
+end
+
 % =========================================================================
 %  Drift 2: device is a per-call override, never a global mutation
 % =========================================================================
