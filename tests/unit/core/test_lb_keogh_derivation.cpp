@@ -2,8 +2,8 @@
  * @file test_lb_keogh_derivation.cpp
  * @brief Executable oracle for scalar envelopes and LB_Keogh.
  *
- * The acceptance bands and exact inventories in this file were registered in
- * .claude/baselines/2026-07-30-d2-lb-keogh.md before the first execution.
+ * The acceptance bands and exact inventories in this file were registered on
+ * 2026-07-30, before the first execution.
  * Exact DTW costs are obtained by recursively enumerating every monotone path;
  * this oracle deliberately shares no DP recurrence or rolling storage with the
  * production kernel.

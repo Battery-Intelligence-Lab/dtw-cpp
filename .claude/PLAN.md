@@ -39,9 +39,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 - ☐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5)
 - ☐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
   decoding dominates
-- ◐ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672 on pb/AU: 160 files,
-  comments only; to merge); then the four record citations left in header blocks (`metal_dtw.hpp`, three tests)
-  lose their paths
+- ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;
+  merged 6521b01e: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical); the last four
+  record citations in header blocks reworded after it
 
 ## Blocked on another machine or on Volkan
 
