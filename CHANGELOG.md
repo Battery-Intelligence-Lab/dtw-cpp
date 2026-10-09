@@ -203,6 +203,9 @@ Soft-DTW, Python or CUDA), on the machine named.
 - The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
   each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
   `dtwc_cl_msvc.exe`), so `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
+- FastCLARA streamed from Parquet (`--ram-limit`) checks each row it reads as the in-RAM run checks its series: NaN,
+  ±inf, an empty list cell or a row longer than the band allows, outside the samples, is an `InvalidInput` naming the
+  row, where the stream published a cost of 1.8e308 (NaN: an error naming a point and a medoid).
 
 ## Removed
 

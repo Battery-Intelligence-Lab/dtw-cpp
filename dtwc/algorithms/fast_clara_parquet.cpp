@@ -16,13 +16,16 @@
 #include "fast_pam.hpp"
 #include "../Problem.hpp"
 #include "../base/error.hpp"
+#include "../base/missing_utils.hpp"
 #include "../core/medoid_assignment_policy.hpp"
 #include "../io/parquet_chunk_reader.hpp"
+#include "../warping.hpp" // detail::require_finite
 
 #include <algorithm>
 #include <cstdint>
 #include <future>
 #include <iostream>
+#include <limits>
 #include <span>
 #include <string>
 #include <type_traits>
@@ -54,6 +57,73 @@ namespace {
   }
 
   /**
+   * The in-RAM route's checks of the series it clusters (Problem::validate_fill_request), on rows read from the file:
+   * rows() refuses an empty series, a value no distance is defined for (+-inf, and NaN unless the missing strategy
+   * takes it) and under Interpolate a series entirely NaN, each an InvalidInput naming the row; band() refuses a band
+   * narrower than the length difference of the shortest and the longest rows rows() has seen, the first of each.
+   */
+  class RowCheck
+  {
+  public:
+    explicit RowCheck(const core::DistanceConfig &distance) : distance_(distance) {}
+
+    /// The series of `data`, the i-th the file's row row_of(i).
+    template <typename RowOf>
+    void rows(const Data &data, const RowOf &row_of)
+    {
+      const bool nan_is_missing = distance_.missing != core::MissingStrategy::Error;
+      std::string name;
+      for (std::size_t i = 0; i < static_cast<std::size_t>(data.size()); ++i) {
+        const auto row = static_cast<int64_t>(row_of(i));
+        const auto length = data.series_flat_size(i);
+        if (length == 0)
+          throw InvalidInput("fast_clara: series " + std::to_string(row) + " ('" + std::string(data.name(i))
+                             + "') is empty; every series needs at least one value.");
+        name.assign("series '").append(data.name(i)).append("' (index ").append(std::to_string(row)).append(")");
+        const auto check = [&](const auto values) {
+          dtwc::detail::require_finite(values, name, "fast_clara", nan_is_missing);
+          if (distance_.missing == core::MissingStrategy::Interpolate && all_missing(values))
+            throw InvalidInput("fast_clara: " + name + " is entirely NaN, so MissingStrategy::Interpolate has nothing "
+                               "to interpolate from. Use ZeroCost or AROW, or drop the series.");
+        };
+        if (data.is_f32())
+          check(data.series_f32(i));
+        else
+          check(data.series(i));
+        if (length < shortest_.length) shortest_ = { length, row, std::string(data.name(i)) };
+        if (length > longest_.length) longest_ = { length, row, std::string(data.name(i)) };
+      }
+    }
+
+    void band() const
+    {
+      const auto variant = distance_.variant.variant;
+      if (distance_.band < 0 || longest_.length <= shortest_.length || variant == core::DTWVariant::SoftDTW
+          || variant == core::DTWVariant::MSM || variant == core::DTWVariant::TWE)
+        return;
+      const std::size_t gap = longest_.length - shortest_.length;
+      if (gap <= static_cast<std::size_t>(distance_.band)) return;
+      const auto describe = [](const Extreme &e) {
+        return "series '" + e.name + "' (index " + std::to_string(e.row) + ", length " + std::to_string(e.length) + ")";
+      };
+      throw InvalidInput("fast_clara: band = " + std::to_string(distance_.band) + " is narrower than the length "
+                         "difference between " + describe(shortest_) + " and " + describe(longest_)
+                         + ", so no warping path fits that pair. The smallest feasible band is " + std::to_string(gap)
+                         + "; pass band >= " + std::to_string(gap) + ", or band = -1 for full DTW.");
+    }
+
+  private:
+    struct Extreme
+    {
+      std::size_t length;
+      int64_t row;
+      std::string name;
+    };
+    core::DistanceConfig distance_;
+    Extreme shortest_{ std::numeric_limits<std::size_t>::max(), 0, {} }, longest_{ 0, 0, {} };
+  };
+
+  /**
    * @brief FastCLARA streamed from Parquet, its series read as T (float with F32, else double).
    *
    * All samples are drawn first; the rows they hold, their union, are read once and each sample's PAM runs on a copy
@@ -61,7 +131,8 @@ namespace {
    * of row groups at a time, every point against the medoids of every sample, while the next batch decodes on another
    * thread when two batches fit the limit (else batches decode and are assigned in turn). Within ram_limit_bytes: the
    * union beside one row group (read_rows' check), then the medoids, every sample's labels, one block of nearest
-   * distances and the batches.
+   * distances and the batches. The union, and each batch as it decodes, go through the in-RAM route's checks
+   * (RowCheck): the stream refuses what the in-RAM route refuses, naming the row.
    */
   template <bool F32>
   core::ClusteringResult fast_clara_chunked(
@@ -95,6 +166,9 @@ namespace {
     Data medoid_data;
     {
       const Data pool = reader.read_rows<T>(rows, opts.ram_limit_bytes);
+      RowCheck sampled(prob.distance());
+      sampled.rows(pool, [&](std::size_t i) { return rows[i]; });
+      sampled.band();
       std::vector<std::vector<index_t>> positions;
       for (const auto &sample : samples) positions.push_back(positions_in(rows, sample));
       pams = detail::clara_pams(prob, opts, pool, samples, positions, true, medoids);
@@ -126,16 +200,23 @@ namespace {
     detail::say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));
 #endif
 
-    // The reader is used by one thread at a time: the decoding one while a batch decodes.
-    const auto decode = [&reader](int rg, int count) { return reader.read_row_groups<T>(rg, count); };
+    // The reader and `check` are used by one thread at a time: the decoding one while a batch decodes and is checked
+    // (its first row known, as the batches before it are), the team only after the last batch.
+    RowCheck check(prob.distance());
+    const auto decode = [&reader, &check](int rg, int count, index_t first_row) {
+      Data batch = reader.read_row_groups<T>(rg, count);
+      check.rows(batch, [first_row](std::size_t i) { return first_row + static_cast<index_t>(i); });
+      return batch;
+    };
     const auto policy = overlap ? std::launch::async : std::launch::deferred;
     const int total_rg = reader.num_row_groups();
-    std::future<Data> next = std::async(policy, decode, 0, std::min(per_batch, total_rg));
+    std::future<Data> next = std::async(policy, decode, 0, std::min(per_batch, total_rg), index_t{ 0 });
     index_t first = 0;
     for (int rg = 0; rg < total_rg; rg += per_batch) {
       const Data batch = next.get();
       if (rg + per_batch < total_rg)
-        next = std::async(policy, decode, rg + per_batch, std::min(per_batch, total_rg - rg - per_batch));
+        next = std::async(policy, decode, rg + per_batch, std::min(per_batch, total_rg - rg - per_batch),
+                          first + batch.size());
       // The batch is loaded: the assignment reads it, never the reader.
 #ifdef DTWC_HAS_CUDA
       if (on_gpu)
@@ -151,6 +232,7 @@ namespace {
                                  });
       first += batch.size();
     }
+    check.band();
 
     auto result = detail::clara_winner(pams, medoids, labels, costs);
     prob.set_result(result);
