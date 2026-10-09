@@ -46,11 +46,16 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   1.8e308) (pb/CS afd022c7 on pb/AL; 360/360 runs identical; P1 decodes 7.28 → 1.93 passes; timed 10-09 08:46, PASS:
   streams 3.4–3.6× faster, in RAM 1.00–1.86×; merged 8af0336f: clang 95, Arrow 98, CUDA 94, matlab_suite 141, pytest
   896/19/0; a `--ram-limit` too small for the samples' labels and one row group is now refused, as designed)
-- ◐ PE the Parquet stream holds its RAM limit (Volkan 10-09: next, before SW; implementing on pb/CS): under
-  `--ram-limit 1G` a P1 stream peaked at 1.48 GB of private bytes (CS; base 2.26 GB) against 1.16 GB allowed, as the
-  per-group estimate (34.6 MB) undercounts Arrow's decode of a batch (51–61 MB a group). With the automatic limit a
-  SLURM job's `--mem` would kill the run
-- ☐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
+- ☑ PE the Parquet stream holds its RAM limit (Volkan 10-09: next, before SW): every read decodes about 1 MiB at a
+  time and the stream is priced by what it holds (pb/PE 4e5123ea; under `--ram-limit 1G` P1 peaks at 0.71 GB, was 1.47
+  GB, against 1.16 GB allowed; 8/8 memory runs within the limit + 64 MiB; 360/360 identical; timed 10-09: 1.55–1.73×
+  faster than before; merged cc45f4b4: clang 95, Arrow 98, CUDA 94, matlab_suite 141, pytest 896/19/0; small explicit
+  limits rise: one decode is priced at about 10 MB)
+- ☐ PE-L the stream's memory price on Linux: its constants (8× a decode's bytes, 9/8 a series) were measured on
+  Windows with mimalloc and Arrow 23; a Linux build with Arrow (WSL, pyarrow's libraries) under a cgroup memory.max,
+  the automatic limit and P1's shapes must stay within the limit, as a SLURM job's `--mem` sets it
+- ◐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
+  (design `C:/D/git/wt/tmp/SW/design.md` approved 10-09 with conditions; implementing on pb/SW)
 - ☐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5)
 - ☐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
   decoding dominates
