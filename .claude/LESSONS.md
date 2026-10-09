@@ -1,7 +1,8 @@
 # DTWC++ — Lessons
 
 Durable rules learned the hard way: a headline, the rule, and at most one pointer. Narrative and anything the
-code or a test now enforces were dropped on 2026-09-28; `git log -p -- .claude/LESSONS.md` has the stories.
+code or a test now enforces were dropped on 2026-09-28, lessons about deleted code on 2026-10-09; `git log -p --
+.claude/LESSONS.md` has the stories.
 Append new entries at the end of their section; keep each to a few lines.
 
 ## DTW mathematics
@@ -38,8 +39,6 @@ Append new entries at the end of their section; keep each to a few lines.
 - **Metric traits must test units, not family names.** `|a−b|` and `(a−b)²` are different bound units.
 - **Admissibility is not tightness, and a decision counter is not an avoided-work counter.** Claim a prune rate
   only from an executed count; reachability needs a case that must prune and one that must not.
-- **EAP (deleted in P3) needed a relaxed prune threshold under reassociation** (`ub·(1 + n·16ε)`, tested, not
-  derived), and its speed-up depended on cohesion: 6–12× near-diagonal, ~1.5× unrelated pairs.
 - **Debug a floating-point failure from the exact failing bytes.** A 3-decimal copy of the input lost the
   ULPs that triggered the EAP bug.
 
@@ -246,13 +245,11 @@ Append new entries at the end of their section; keep each to a few lines.
 
 ## Solvers
 
-- **The 2023 x-space LP solvers stay killed.** PDLP / first-order LP arbiter: PDLP cross-checks the LR-core
-  bound; matrix-free Kelley wins on either device. *`baselines/2026-07-08-pdlp-bench.md`*
 - **The p-median matrix is totally unimodular only for N ≤ 2,** and fractional LP vertices are not
   half-integral (1/3, 1/4 occur): branching is mandatory. *`UNIMODULAR.md`*
 - **Two gaps, two tools.** The LR primal repair's gap and the root bound's gap are different quantities.
-- **HiGHS PDLP GPU is a build flag, not a runtime switch;** the two MIP adapters flatten differently (HiGHS
-  `f·N+p` as row-wise arrays, Gurobi point-major), equivalent only while D is symmetric.
+- **The two MIP adapters flatten differently** (HiGHS `f·N+p` as row-wise arrays, Gurobi point-major), equivalent
+  only while D is symmetric.
 - **A wheel links nothing the user's packages ship:** the HiGHS-linked extension's weak symbols crashed their highspy (M1).
 
 ## Process and records
@@ -287,8 +284,8 @@ Append new entries at the end of their section; keep each to a few lines.
   alone Parquet is silently off); at run time pyarrow and `pyarrow.libs` go on PATH, else exit 0xc0000135 (F1).
 - **A CUDA error check must consume the error it reports** (`cudaGetLastError`): otherwise the sticky error fails the
   thread's next, valid call with the same message (C1 `13246cb`: a refused fill poisoned the next fill).
-- **A mutable accessor overload wins for any non-const object, even through `const auto &`**: `Problem::distance_matrix()`
-  (mutable) clears `filled_`, so a reader must call it through `std::as_const` (E1, 2026-09-30).
+- **A mutable accessor overload wins for any non-const object, even through `const auto &`**: a mutating accessor
+  gets its own name (Problem's cleared `filled_` for every reader until it became `writable_distance_matrix()`, W7ef).
 - **A relative tolerance passes anything against infinity**: |a−b| ≤ k·max(|a|,|b|) is inf ≤ inf when b = inf.
   Guard infinities first (an infinity agrees only with itself); `dtw_routes_agree` had this hole until 6fb95f4.
 - **A band sweep proves the band only if some band binds**: on shifted-by-one or iid pairs the best path stays near
