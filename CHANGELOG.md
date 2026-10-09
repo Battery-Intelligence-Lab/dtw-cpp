@@ -232,7 +232,8 @@ Soft-DTW, Python or CUDA), on the machine named.
   read, whose buffers Arrow rounds up to a power of two over the batch, beyond what the batch was priced. On Windows
   4.2 million series of 128 doubles streamed under `--ram-limit 1G` peaked at 1.47 GB of private bytes (4G: 5.2 GB).
   Every Parquet read now decodes about 1 MiB of values at a time and the stream is priced by what it holds: the same
-  runs peak at 0.70 GB and 2.4 GB.
+  runs peak at 0.70 GB and 2.4 GB. On Linux the stream returns its freed batches to the system before the results
+  are written.
 
 ## Removed
 
