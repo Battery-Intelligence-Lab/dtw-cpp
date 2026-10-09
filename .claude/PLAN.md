@@ -51,9 +51,10 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   GB, against 1.16 GB allowed; 8/8 memory runs within the limit + 64 MiB; 360/360 identical; timed 10-09: 1.55–1.73×
   faster than before; merged cc45f4b4: clang 95, Arrow 98, CUDA 94, matlab_suite 141, pytest 896/19/0; small explicit
   limits rise: one decode is priced at about 10 MB)
-- ◐ PE-L the stream's memory price on Linux: its constants (8× a decode's bytes, 9/8 a series) were measured on
-  Windows with mimalloc and Arrow 23; a Linux build with Arrow (WSL, pyarrow's libraries) under a cgroup memory.max,
-  the automatic limit and P1's shapes must stay within the limit, as a SLURM job's `--mem` sets it
+- ☑ PE-L the stream's memory price on Linux (WSL, GCC 13.3, pyarrow 23's libraries; counters by the scope's
+  memory.peak): the automatic limit under cgroups of 768M, 1G and 2G 12/12, never killed, results identical; explicit
+  limits 7/8 at first (P1 f32 at 256M 0.8 MB over, beside its own labels file in the page cache), 8/8 after glibc's
+  kept batches (320–680 MB) went back through `malloc_trim(0)`; merged a30e6cf0
 - ◐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
   (design `C:/D/git/wt/tmp/SW/design.md` approved 10-09 with conditions; implementing on pb/SW)
 - ☐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5)
