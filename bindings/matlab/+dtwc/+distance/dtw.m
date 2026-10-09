@@ -18,6 +18,9 @@ function d = dtw(x, y, varargin)
 %   C++ reads and checks them: an unknown name, a parameter outside its domain,
 %   a combination no kernel implements, an empty series, or a value the
 %   strategy does not take raises dtwc:invalidArgument.
+
+%> @file dtw.m
+%> @author Volkan Kumtepeli
     if ~isnumeric(x) || ~isnumeric(y)
         error('dtwc:invalidArgument', 'x and y must be numeric.');
     end

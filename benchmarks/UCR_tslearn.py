@@ -2,6 +2,7 @@
 # This script is used for testing timings and memory allocation of the TSlearn clustering package using k-means.
 # It reads time series data, performs clustering using TimeSeriesKMeans, and records the time and memory usage for each operation.
 #
+# @author Volkan Kumtepeli
 # @author Rebecca Perriment
 # @date 02 Dec 2022
 #

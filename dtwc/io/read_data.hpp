@@ -2,12 +2,14 @@
  * @file read_data.hpp
  * @brief dtwc::read_data: the text reader, the one way from a CSV/TSV path to Data, for dtwc_cl, dtwc::load and
  *        Python's and MATLAB's load(). Parquet and Arrow IPC are dtwc::io::read_arrow's (io/read_arrow.hpp, dtwc_io).
+ * @author Volkan Kumtepeli
  */
 
 #pragma once
 
 #include "../Data.hpp"
 #include "../base/settings.hpp"
+#include "../core/storage.hpp"
 
 #include <filesystem>
 #include <optional>
@@ -57,10 +59,13 @@ void require_reader_options(std::optional<InputFormat> format, index_t skip_cols
  * - Arrow IPC (dtwc::io::read_arrow): the series are the rows of the `data` column across every record batch, named by
  *   a Utf8/LargeUtf8 `name` column (else series_<index>); the schema metadata `ndim` gives the features per time step.
  *
+ * `dtype` is the precision the series are stored in: Float32 rounds each value as it is read (a text value's double
+ * parse), never holding a double copy of the series.
+ *
  * A null is InvalidInput, an option the format cannot honour InvalidInput, and a read failure an IOError naming the file.
  */
 Data read_data(const std::filesystem::path &path, index_t skip_cols = 0, index_t skip_rows = 0, char delimiter = '\0',
-               const std::string &column = {});
+               const std::string &column = {}, core::Precision dtype = core::Precision::Float64);
 
 namespace detail {
 

@@ -5,6 +5,7 @@
  * @details Mirrors test_cuda_correctness.cpp. FP32 rounding tolerance is
  *          looser than CUDA FP64 but still tight enough to catch kernel bugs.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 
@@ -97,8 +98,7 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
 {
   if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
 
-  // Registered before any real-Metal execution in
-  // .claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md. The literal
+  // Registered before any real-Metal execution (2026-07-24). The literal
   // costs and sentinel come from the test-only full-matrix oracle, never the
   // CPU rolling-buffer implementation.
   //

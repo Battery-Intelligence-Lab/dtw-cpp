@@ -246,6 +246,11 @@ template <typename T>
 T parse_numeric_field(std::string_view raw_token, const fs::path &path,
                       std::size_t row, std::size_t column)
 {
+  // A float is the double parse rounded to float, as every float32 route rounds a
+  // double (pyarrow's cast, MATLAB's single): one text is one float series everywhere.
+  if constexpr (std::is_same_v<T, float>)
+    return static_cast<float>(parse_numeric_field<double>(raw_token, path, row, column));
+
   const std::string_view token = trim_ascii(raw_token);
   if (token.empty())
     throw_numeric_field_error(path, row, column, "empty numeric field", token);

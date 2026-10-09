@@ -11,6 +11,7 @@
  * cli/run.hpp, and the text forms (cli::bind, parse_config, to_config_text)
  * are the CLI's, in cli/config.hpp.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 
@@ -28,6 +29,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace dtwc {
 
@@ -40,8 +42,10 @@ struct Config
   index_t skip_cols = 0;                 ///< `--skip-cols`
   char delimiter = '\0';                 ///< `--delimiter`; '\0' infers it from the extension.
   core::Precision dtype = core::Precision::Float64; ///< `--dtype`
-  std::size_t ram_limit = 0;             ///< `--ram-limit` in bytes; 0 = no limit.
-  std::size_t mmap_threshold = 50000;    ///< `--mmap-threshold`
+  /// `--ram-limit`: the memory the run may use, in bytes; 0 = automatic, what the
+  /// process may use (core::available_memory()). The distance matrix is mapped
+  /// when its bytes exceed half of what the series leave of it.
+  std::size_t ram_limit = 0;
   std::string dist_matrix;               ///< `--dist-matrix`: precomputed distance-matrix CSV.
   core::NotComputed not_computed = core::NotComputed::NaN; ///< `--not-computed`: what marks a pair it never computed
   // Method
@@ -85,10 +89,17 @@ inline std::string device_text(const Config &config)
   return text;
 }
 
+/// A byte count as every language takes `ram_limit`: 2G, 500M, 1.5GiB or
+/// 1073741824; "" and 0 are 0, automatic. Units are binary and case-insensitive,
+/// and a fraction of a byte rounds up, so a nonzero value never reads as 0.
+/// @throws InvalidInput naming `key` (--ram-limit, ram_limit, RamLimit) for
+///         anything else.
+std::size_t parse_ram_limit(const std::string &text, std::string_view key);
+
 /// Hand `prob` the settings of `config` that describe the clustering: the
 /// distance, the method and its controls, the MIP solver and settings, the
-/// device and verbose. The Problem checks each as it takes it; `name` and the
-/// file options (input, output, checkpoint, dtype, ...) are not read.
+/// device, the memory limit and verbose. The Problem checks each as it takes it;
+/// `name` and the file options (input, output, checkpoint, dtype, ...) are not read.
 /// @throws InvalidInput for a value outside its domain or a distance no kernel
 ///         implements; SolverError for gurobi on a build without Gurobi;
 ///         DeviceError for gpu on a build without a GPU backend, and for

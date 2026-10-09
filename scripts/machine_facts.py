@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """Describe the machine and the build a benchmark ran on.
 
 Benchmark numbers are only meaningful next to the machine that produced them, and a

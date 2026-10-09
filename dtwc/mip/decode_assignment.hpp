@@ -1,6 +1,7 @@
 /**
  * @file decode_assignment.hpp
  * @brief Decode an optimal p-median assignment matrix into medoids and labels.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

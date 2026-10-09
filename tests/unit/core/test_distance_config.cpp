@@ -11,6 +11,7 @@
  *          both entries refuse the other 64. Where accepted, the fill and the facade agree
  *          on every pair within dtw_routes_agree (tests/support/dtw_route_bound.hpp).
  *          The table of refusals has one row per rule of core::validate.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

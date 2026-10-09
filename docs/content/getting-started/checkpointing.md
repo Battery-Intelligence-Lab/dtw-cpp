@@ -84,15 +84,18 @@ prob.checkpoint.enabled = true;             // Enable automatic saving
 prob.fill_distance_matrix();                // Saves every 100 rows and at the end
 ```
 
-`fill_distance_matrix()` then fills rows in consecutive blocks of `save_interval`
-rows and saves after each block, the last included. `save_interval >= 1` and a
+`fill_distance_matrix()` then saves after every `save_interval` rows of the
+packed matrix, rounded up to the lane width (16 rows of doubles where the lanes are
+128 bytes), the last save at the end. `save_interval >= 1` and a
 non-empty directory are required; either violation raises `InvalidInput` before
 any distance is computed. A save that fails propagates out of the fill; the
 distances computed so far stay in the `Problem`.
 
-A save of a matrix in RAM writes all N(N+1)/2 doubles, 4N² bytes, so choose
-`save_interval` so that a block (about `save_interval * N` DTW computations) costs
-much more than a save.
+The first save of a fill writes the whole matrix, N(N+1)/2 doubles, unless the
+file already holds this matrix; each later save writes only the rows filled since,
+in place, and flushes them to the device. A fill writes at most twice the matrix's
+bytes, however small `save_interval` is, and whenever a save stops, every entry of
+the file is NaN or its distance.
 
 ## Memory-mapped matrix
 
@@ -103,7 +106,10 @@ writes into the file through the page cache, so the file is a checkpoint at ever
 moment: a process that dies keeps every distance written, and reopening the file
 with the same data and settings resumes. A `Problem` mapped to
 `<directory>/<name>.dtwm` saves by flushing the mapping in place, so
-`CheckpointOptions` with that directory flushes after every block.
+`CheckpointOptions` with that directory flushes the rows of every save. A mapped
+matrix is filled in slabs of an eighth of what the series leave of the
+`Problem`'s `ram_limit` (0, the default: the memory available), at most 1 GiB:
+the next slab is read ahead while one fills, and a finished one is written back.
 
 A new file is filled with NaN and flushed to the device before its header is
 written, so a power cut during creation leaves a file that does not open
@@ -162,8 +168,9 @@ With `--checkpoint <dir>` the CLI
    fails (a full disk) stops the run with exit status 1; the results already
    written stay.
 
-When `--mmap-threshold` selects mapped storage, the mapped matrix is
-`<dir>/<name>.dtwm` itself: it is reopened if present and written in place.
+When the matrix is mapped (its bytes over half of what the series leave of
+`--ram-limit`), the mapped matrix is `<dir>/<name>.dtwm` itself: it is reopened if
+present and written in place.
 Without `--checkpoint`, a mapped matrix is `<name>.dtwm` in the output directory.
 
 ## Example workflow

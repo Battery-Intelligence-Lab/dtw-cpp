@@ -19,6 +19,7 @@
  * variants DTWC++ gives them; the caller asks only for what is defined.
  * A pair with no admissible path (an empty series, or a band narrower than the
  * length difference) is kOracleNoPath, as in the derivation.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

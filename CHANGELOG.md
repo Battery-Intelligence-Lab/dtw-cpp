@@ -60,8 +60,12 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `parquetread`), `dtwc.DTWClustering`, `dtwc.Problem`, the algorithms and the scores, through one MEX file.
 - DTW variants DDTW, WDTW, ADTW, Soft-DTW, MSM and TWE (`--variant`; Soft-DTW, MSM and TWE ignore the band), a squared
   Euclidean local cost for Standard DTW and DDTW (`--metric`), and `dtwc::distance::dtw` for one pair.
-- Missing values as NaN (`--missing-strategy zero_cost`, `arow` or `interpolate`), multivariate series (`ndim` values
-  per step, `--mv-mode dependent` or `independent`) and series stored as `float` on request (`--dtype float32`).
+- Missing values as NaN (`--missing-strategy zero_cost`, `arow` or `interpolate`) and multivariate series (`ndim` values
+  per step, `--mv-mode dependent` or `independent`).
+- Series stored as `float`, half the memory, chosen where they are loaded: `dtwc_cl --dtype float32`, C++
+  `DataLoader::dtype` and `dtwc::load(..., dtype)`, Python `dtwcpp.load(..., dtype="float32")`, MATLAB
+  `dtwc.load(..., 'Dtype', 'float32')`. Each reader rounds the double it reads and holds no double copy; so does
+  `readFile<float>` (v1.0.0 rounded the text to `float` directly: one ulp apart in a rare halfway case).
 - Methods FastPAM (FasterPAM), FastCLARA, OneBatchPAM, hierarchical, TADPole and LR-core (an exact Lagrangian branch and
   bound) beside Lloyd's k-medoids and the MIP; `--method auto`: FastPAM to 5,000 series, then FastCLARA (GPU: FastPAM).
 - LR-core's root bound is the subgradient root in every language and build; `--lr-root kelley` (Python `lr_root`,
@@ -76,8 +80,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   macOS) fill the matrix of Standard DTW on univariate series and FastCLARA's samples (`--device gpu`).
 - Input: Parquet and Arrow IPC (`-DDTWC_ENABLE_ARROW=ON`; a list column or several float columns hold a series per row,
   `--column` reads one) and `dtwc_cl --delimiter`.
-- The distance matrix memory-mapped in a `.dtwm` file from 50,000 series (`--mmap-threshold`), also the checkpoint
-  (`--checkpoint`, `--checkpoint-interval`: a fill resumes); with Arrow, `--ram-limit` streams Parquet through FastCLARA.
+- The distance matrix memory-mapped in a `.dtwm` file once it outgrows the memory limit (`--ram-limit`), also the
+  checkpoint (`--checkpoint`, `--checkpoint-interval`: a fill resumes); with Arrow, `--ram-limit` streams Parquet
+  through FastCLARA.
 - `Problem::cluster()` returns a `ClusteringResult` (labels, medoids, cost, iterations, converged); `Problem` gains
   `set_method`, `set_device`, `set_distance`, `set_variant`, `set_metric`, `set_result`, `solver()`, `mip_settings`, ...
 - Build options `DTWC_ENABLE_{HIGHS,GUROBI,CUDA,METAL,ARROW,LLFIO,YAML}` (each optional; an `ON` that cannot be honoured
@@ -124,6 +129,13 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   compile time); `dtwBanded`'s scalar type, where none is deduced, is `double` (v1.0.0: `float`).
 - Numbers are read with fast_float and the matrix CSV written with `std::to_chars`, whatever the global C++ locale;
   names taken from file names are UTF-8 on every platform (v1.0.0 used the Windows code page).
+- `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run may use, by
+  default the memory available (or a Linux cgroup's limit, which a SLURM job's memory request sets): the distance
+  matrix is mapped once its bytes exceed half of what the series leave of it, and `--mmap-threshold` (mapped from
+  50,000 series) is gone; a Parquet file over it streams through `clara`; other inputs no longer refuse it.
+- A checkpoint save during a fill writes only the rows filled since the last one, in place, the first the whole
+  matrix: a fill writes at most twice the matrix's bytes, where each save wrote it whole. Saves come every
+  `--checkpoint-interval` rows rounded up to the lane width (16 rows of doubles where the lanes are 128 bytes).
 - FastCLARA runs every sample's PAM before one assignment pass over all of them: `-v` prints one assignment line a
   pass, not one a sample; a non-finite distance is reported at the lowest failing series over all samples; and series
   it cannot take (NaN, ±inf, a band narrower than two series' length difference) are refused before any sample, by
@@ -151,14 +163,23 @@ Soft-DTW, Python or CUDA), on the machine named.
   fills run 6.8–6.9× faster on one thread and 3.3–3.6× at 24 threads, GCC 13.3's 8.1–8.7× and 4.9–5.5×, equal-length
   fills unchanged; OneBatchPAM's batch table too; bit for bit, but for GCC's squared L2. MSVC builds keep the
   one-pair route for series of different lengths.
-- FastCLARA's CPU assignment computes each medoid against 16 series at once (32 in `float32`) in the same SIMD
-  lanes, in RAM and streamed from Parquet: on an Intel Core Ultra 9 285 [figure: AL's timed run]; the same labels,
-  medoids and costs, but for GCC's squared L2. MSVC builds take the lanes there only under a band.
+- FastCLARA's CPU assignment computes each medoid against 16 series at once (32 in `float32`) in the same SIMD lanes,
+  in RAM and streamed from Parquet: on an Intel Core Ultra 9 285 3.4–3.8× faster at 24 threads and 7.8× on one thread
+  under clang, 4.8–5.7× and 10.0× under GCC 13.3 (`float32` 7.4× and 7.9×; under a band 6.3× and 6.6×, MSVC's 1.29×);
+  the same labels, medoids and costs, but for GCC's squared L2. MSVC builds take the lanes there only under a band.
+- The CPU fill goes block by block, as matrix multiplication does: rows of the packed matrix whose series stay in a
+  core's L2, each thread taking consecutive columns of them, so a cache line of the matrix comes from memory once for
+  its eight entries; the NaN prefill runs on every thread. On an Intel Core Ultra 9 285 at 24 threads, for 8,000
+  series of lengths 40–60, 1.08× faster (GCC 13.3: 1.11×) with 0.41–0.45 last-level-cache misses per matrix entry
+  against 0.87–1.18; GCC's fills of 1,000 series run 5–11 % slower. A mapped matrix fills slab by slab, the next slab
+  read ahead and the finished one written back: at 45,000 series 22.6× faster in a 4 GiB cgroup and at least 37× in a
+  2 GiB one. Bit for bit, but for GCC's squared L2 (the multiply-add caveat above), whose clusterings were unchanged.
 - FastCLARA reads its series once: all samples are drawn first and one pass assigns every series to the medoids of
-  every sample, where each sample took a pass of its own. Streamed from Parquet, the sampled rows are read once and the
-  file once more, its next row groups decoding while the current ones are assigned (before: per sample, a pass of the
-  file and a read of its sampled rows and of its medoids' rows): on an Intel Core Ultra 9 285 [figure: CS's timed
-  run]; the same labels, medoids and costs.
+  every sample, where each sample took a pass of its own. Streamed from Parquet, the sampled rows are read once and
+  the file once more, its next row groups decoding while the current ones are assigned (before: per sample, a pass of
+  the file and a read of its sampled rows and of its medoids' rows): on an Intel Core Ultra 9 285 3.4–3.6× faster
+  streaming 4.2 million series of 128 samples (1.25× where the assignment outweighs the decoding), in RAM 1.00–1.86×;
+  the same labels, medoids and costs.
 - The Windows wheels are built by clang-cl and carry LLVM's OpenMP runtime (`libomp.dll`), so their fill of
   equal-length series runs on the SIMD lanes, which MSVC's cl leaves scalar: on an Intel Core Ultra 9 285
   3.96–4.31× faster than the MSVC wheel with 24 threads, 8.1–8.2× on one thread; results identical.

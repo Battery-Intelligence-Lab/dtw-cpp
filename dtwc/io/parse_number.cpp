@@ -2,6 +2,7 @@
  * @file parse_number.cpp
  * @brief fast_float behind dtwc::io::parse_number (see parse_number.hpp).
  *
+ * @author Volkan Kumtepeli
  * @date 23 Sep 2026
  */
 

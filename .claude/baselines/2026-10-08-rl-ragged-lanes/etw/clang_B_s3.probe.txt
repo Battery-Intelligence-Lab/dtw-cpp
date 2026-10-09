@@ -1,1 +1,0 @@
-fill f64 L1 threads 24 N 8000  L 40-60 band -1   W 16 ms 733.73 (min 733.73 max 733.73)  Gcell/s 108.673  clock 5.237 GHz (min 5.237 max 5.237)  lanes computed/useful B 1.0023 (padding 0.0007, tail duplicates 0.0015) A 1.0019 (padding 0.0004, tail duplicates 0.0015)  matrix hash 64d2a0d49855c763

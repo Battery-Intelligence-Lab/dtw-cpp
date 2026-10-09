@@ -70,6 +70,11 @@ inline size_t tri_index(size_t i, size_t j)
 /// Number of elements in a packed lower-triangular matrix of dimension n.
 inline size_t packed_size(size_t n) { return n * (n + 1) / 2; }
 
+/// The memory this process may use now, in bytes: the physical memory available,
+/// or a Linux cgroup v2 limit when lower (what a SLURM job's --mem sets); 0 when
+/// unknown, as in a build without llfio.
+size_t available_memory();
+
 class DistanceMatrix
 {
 public:
@@ -98,6 +103,19 @@ public:
   /// device, then renamed over `path`. A matrix mapped to `path` is flushed in
   /// place instead. @throws IOError
   void write(const std::filesystem::path &path, const fingerprint_type &fingerprint) const;
+  /// Write packed rows [r0, r1), the rows changed since the last write to `path`:
+  /// when `path` holds this matrix's header (N and fingerprint), only their bytes,
+  /// in place, flushed to the device; a matrix mapped to `path` flushes them.
+  /// Otherwise the whole matrix, as write(path, fingerprint). Every entry of the
+  /// file stays NaN or its distance, whenever a write stops. @throws IOError
+  void write(const std::filesystem::path &path, const fingerprint_type &fingerprint, size_t r0, size_t r1) const;
+  /// Start reading packed rows [r0, r1) of a mapped matrix into memory; a hint,
+  /// so a heap matrix, and a failure, change nothing.
+  void prefetch_rows(size_t r0, size_t r1) const;
+  /// Write packed rows [r0, r1) of a mapped matrix back to its file: started,
+  /// or with `wait` on the device when this returns. A heap matrix has nothing
+  /// to write. @throws IOError
+  void flush_rows(size_t r0, size_t r1, bool wait) const;
 
   double get(size_t i, size_t j) const
   {
@@ -139,7 +157,7 @@ public:
 private:
   struct Mapping; // the llfio file handle and its map, in distance_matrix.cpp
 
-  std::vector<double> heap_;
+  std::unique_ptr<double[]> heap_; ///< allocated uninitialised, then NaN-filled in parallel
   std::unique_ptr<Mapping> mapping_;
   double *data_{ nullptr }; ///< heap_.data() or the mapped doubles
   size_t n_{ 0 };

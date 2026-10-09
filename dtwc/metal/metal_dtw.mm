@@ -17,6 +17,7 @@
  *            - Sakoe-Chiba band constraint: Sakoe & Chiba (1978),
  *              IEEE TASSP 26(1) pp. 43-49.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 

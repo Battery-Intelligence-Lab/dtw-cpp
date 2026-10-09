@@ -3,7 +3,7 @@
 ## Read in this order, and no further
 
 0. The newest `.claude/summaries/handoff-*.md` — where the last session stopped.
-1. `.claude/CHARTER.md` — what Volkan asked for, verbatim.
+1. `.claude/CHARTER.md` — what Volkan asked for, verbatim (kept on disk, not in git).
 2. `.claude/MAP.md` — what is where today, the target interface, the invariants. **Read this instead of the tree.**
 3. `.claude/PLAN.md` — the phases A–G and what is left; read your step.
 
@@ -25,7 +25,7 @@ grep them for the symbol or finding id you need.
    (500–1500 tokens). Run them in parallel where possible; use a separate adversarial agent to check
    quality. An agent's finding is a hypothesis until the cited line has been opened.
 5. Lessons go to `.claude/LESSONS.md` (≤ 300 lines: headline, rule, one pointer), citations to
-   `.claude/CITATIONS.md`, rulings to `.claude/DECISIONS.md` §3 (one line each).
+   `docs/CITATIONS.md`, rulings to `.claude/DECISIONS.md` §3 (one line each).
 6. **Always `uv`** for Python — never pip. Stdlib-only scripts: `uv run --no-project python <script>`.
 7. C++20 minimum. No naked `new` / `delete` in core.
 8. **Write state to disk before the session ends**: run the `session-handoff` skill
@@ -46,7 +46,9 @@ grep them for the symbol or finding id you need.
 - A gate must prove its subject **ran** — CTest scores a skip as a pass unless told otherwise. CLI
   behaviour is proven by driving the real binary.
 - Stash and re-run before calling a failure "pre-existing". Disagreement → a third computation.
-- Numbers go to `.claude/baselines/` verbatim, tagged `[confirmed]` or `[inferred]`.
+- Numbers go to `.claude/baselines/` verbatim, tagged `[confirmed]` or `[inferred]`. `baselines/` and `CHARTER.md`
+  stay on disk and out of git (Volkan 2026-10-09): code, tests and docs state a fact and its date, never a record's
+  path.
 - Full test runs are serial evidence (`ctest -j1`). Every C++ test writes to its own scratch directory
   (`tests/support/scratch_directory.hpp`), so runs of different build trees may overlap; two runs of the same build
   tree may not (the `FIXTURE_ROOT` and `cmake -P` CLI tests keep one directory inside it).

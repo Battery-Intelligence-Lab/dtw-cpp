@@ -5,6 +5,7 @@
  *        covers. The distances themselves are checked against the oracle in
  *        core/test_dtw.cpp.
  *
+ * @author Volkan Kumtepeli
  * @date 08 Apr 2026
  */
 

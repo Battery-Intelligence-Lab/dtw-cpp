@@ -29,7 +29,7 @@
  *              bind time (serial — before the parallel fill).
  *
  *          Oracle values generated from aeon 1.5.0 on reproducible LCG series
- *          (generator in .claude/baselines/2026-07-08-independent-mv.md).
+ *          (2026-07-08).
  *
  * @author Volkan Kumtepeli
  * @author Claude Opus 4.8

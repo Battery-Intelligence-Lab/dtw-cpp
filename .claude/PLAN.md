@@ -1,12 +1,11 @@
 # DTWC++ 2.0 — PLAN
 
-Branch `design-2.0`. The approved design review (`plans/2026-09-27-design-review.md`, Volkan 2026-09-28) is the
-plan: seven phases A–G. The audit behind its rows (`plans/2026-09-27-audit/`: advisor_exec.md's step detail,
-chair.md's waves, digest.md's finding ids) was deleted after phase G (Volkan 10-07); read it with
-`git show 8a63cda3:.claude/plans/2026-09-27-audit/<file>`. Where it and the review disagreed, the review won.
+Branch `design-2.0`. Phases A–G of the design review (`plans/2026-09-27-design-review.md`, approved 2026-09-28) and
+the units after them are done; their rows, with commits and results, are in git (`git show 034d8994:.claude/PLAN.md`).
+What is left is below.
 
-Marks: ☐ open · ◐ in progress · ☑ done (commit). One implementer per step, never two on the same files, at most
-four agents; each proven step is one local commit.
+Marks: ☐ open · ◐ in progress · ☑ done (commit; the row goes at the next prune). One implementer per step, never
+two on the same files, at most four agents; each proven step is one local commit.
 
 ## Proof rule (every step)
 
@@ -16,411 +15,79 @@ CUDA build (`build/cuda-verify-0928`, RTX 4000 Ada) for GPU steps, macOS CI for 
 deleted name (and `git grep <name> v1.0.0` = 0). Gates: `scripts/check_docs.py --cli <dtwc_cl>`,
 `scripts/check_pins.py`, gitleaks in CI. A new gate is shown to bite by a reverted mutation.
 A step that changes a hot loop (kernel cell, matrix get/set, `dist_by_ind`, swap or assignment loop) shows the
-inner loop's assembly before and after: no call, reload or spill added (CHARTER 2026-09-29).
+inner loop's assembly before and after: no call, reload or spill added (Volkan 2026-09-29).
 
-**Pre-registered result changes** (everything else stays digit-identical): `pam` results (FasterPAM only); the
-LR-core seed (same cost, medoids may differ on ties); Soft-DTW summation order (1e-12 relative); the v1
+**Pre-registered result changes** against v1.0.0 (everything else stays digit-identical): `pam` results (FasterPAM
+only); the LR-core seed (same cost, medoids may differ on ties); Soft-DTW summation order (1e-12 relative); the v1
 one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the selected solver; `dtwc_cl`'s and the
-MEX's default `lrcore` root becomes the subgradient root (LRK, Volkan 10-07): the cost is unchanged, medoids and labels
-may differ only where several optimal medoid sets exist, node counts and run times change.
+MEX's default `lrcore` root is the subgradient root (Volkan 10-07): the cost is unchanged, medoids and labels may
+differ only where several optimal medoid sets exist, node counts and run times change.
 
-## A — baseline, gates, records
+## Now: dtype at load and block-wise memory access
 
-- ☑ S0 `test_config_spellings` strips the CR of Windows text-mode stdout — `f859ab5`
-- ☑ W0.1 `check_pins.py` replaces the pin stack; CPMLicenses, benchmark, nanobind pinned to commits — `159c8fe`
-- ☑ W0.2 `check_docs.py`: every flag the docs show is in the live `--help`, plus the harness self-check — `2db972d`
-- ☑ W0.3 gitleaks in CI; Arrow-without-Parquet is a SKIP case in `test_io_readers`; literal-count markers cut
-  (the D2, D3, F57 markers wait for W6d) — `0e47d37`
-- ☑ W1.1 records floor: reports, specs, archive, old handoffs, uncited baselines, −31k lines — `80c4dcb`
-- ☑ W1.2 PLAN, MAP, DECISIONS, LESSONS, runbook rewritten; the design document folded into MAP and DECISIONS — `dac62a7`
-- ☑ CHARTER carries the 09-27 instructions verbatim — `0068386`
-- ☑ HEAD baseline: conformance digits and three benchmarks (CPU fill, GPU fill, PAM swap) → `baselines/` (HB, quiet
-  run at 75d61cfe: `baselines/2026-10-08-windows-head-baseline.md`; lanes fill 5.6 Gcell/s one thread, 90 at 24;
-  CUDA FP32 355 Gcell/s at L 100; conformance digit-identical)
-- ☑ CUDA build proven in `build/cuda-verify-0928`: vcvars64 + explicit `CMAKE_CUDA_COMPILER` + `-allow-unsupported-compiler`
-  (recipe in MAP §3); 4 / 4 CUDA tests pass; `--device gpu` byte-identical to
-  CPU on the fixture. MSVC findings: 9 squared-L2 cross-path `==` checks differ in the last bit
-  (`test_problem_metric:109,322`, `test_run_resolution:148`) → compare with a tight relative tolerance;
-  `bench_openmp_schedule` needs the OpenMP 3.0 API that `/openmp:experimental` lacks → delete it (W4); both done (Z1 `a238336`)
-- ☑ Q2 not mio (DECISIONS §3, 2026-09-28): llfio stays, header-only without the superbuild if the spike proves it
-  builds in wheels, else Boost.Interprocess; files created non-sparse (1.8× random reads on Windows)
-- ☑ Q3 OneBatchPAM and CLARA both stay: a measured trade-off (DECISIONS §3, 2026-09-28)
-- ☑ llfio header-only spike: pinned header downloads, no quickcpplib bootstrap; wheel build with llfio ON — `78af336`
-  (lands with W5d; DECISIONS §3)
-- ☑ `build/` reports Arrow ON but builds without it (Arrow not found with clang on Windows): Parquet tests run only in
-  `build/arrow-pyarrow-23` until W14b makes an unhonoured `ON` a configure error. That tree finds Arrow through the
-  shim `build/arrow-pyarrow-23/pyarrow-config` over `.venv`'s pyarrow 23.0.1; an Arrow gate counts only if
-  `ctest -N` lists `test_io_readers` (W14b: an unhonoured ON stops the configure; build/ now configures ARROW=OFF)
+Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, approved 10-09), in this order:
 
-## B — deletions (W2, W3, W5, W6)
-
-- ☑ W2a A/B `lb_webb_symmetric` vs Keogh in TADPole at N = 200; Webb stays only if it prunes ≥ 83 %
-  (X1 `ba5546f`: FALSIFIED, both prune 78.0 %; Webb deleted)
-- ☑ W2b delete the Pruned fill, `LowerBoundStrategy`, the bindings' pruning options; Auto = brute force
-  (X1 `872349d`, `fe06efd`)
-- ☑ W2c bounds → `compute_envelopes`, `lb_keogh`, `lb_keogh_symmetric`; the LB tests merged (X1 `b1d6514`)
-- ☑ W2d derivation 03 and the GPU LB docs follow (X1 `afdfc50`, `5aff090`; merged `227c956`)
-- ☑ W3a config keys `benders`, `max-benders-iter`, `batch-weighting` go (goldens 49 → 46) (X2 `104158c`; merged `4de2ce9`)
-- ☑ W3b delete Benders, PDLP, `DTWC_HIGHS_GPU` (X2 `6e650f9`; merged `4de2ce9`)
-- ☑ W3c delete CLARANS, `PAMVariant`, FastPAM1, public `fast_pam_swap`, `medoid_utils`; FasterPAM only;
-  `OneBatchWeighting` goes (NNIW stays the one weighting) (X2 `3bdb5d8`; merged `4de2ce9`)
-- ☑ W3d `decode_assignment` + `Problem::set_result` replace `solution_transaction` and `warm_start` (X2 `a85682b`; merged `4de2ce9`)
-- ☑ W3e `Method::MIP` uses the selected solver at every N (X2 `6e650f9`; merged `4de2ce9`)
-- ☑ W3f unclustered `silhouette()` and `batch_size < k` → `InvalidInput`; score aliases go (X2 `8995ad7`; merged `4de2ce9`)
-- ☑ W3g decisive test: duplicate series `{a,a,b,c}`, k = 4; fix only what it falsifies (X2 `0e583e8`, `9edfad2`; merged `4de2ce9`)
-- ☑ W5a delete `--resume` / `--restart` and the binary result checkpoint (Y1 `469e545`, `3ff7469`, `97bb54f`)
-- ☑ W5b delete `StoragePolicy`, `.dtws`, `MmapDataStore`, CRC32, the auto-spill; `load()` = heap (Y1 `46b3a89`)
-- ☑ W5c `Env` → two free functions over a static `{Device, int}` (Y1 `7ba0b4c`, `07b0ea4`)
-- ☑ W5d one `.dtwm` file (magic, version, N, SHA-256, packed doubles); the mapped cache is the checkpoint;
-  identity mismatch → `InvalidInput`, malformed → `IOError`, absent → fresh; llfio header-only (`78af336`) confined to
-  one `.cpp`; Python `distance_matrix()` on a mapped `Problem` fixed; `DTWC_ENABLE_LLFIO=ON` in the wheel and release
-  builds (the MEX waits for F43, W6e/f) (Y2 `a539d5d`, `75a65a4`, `6a96642`, `6d0f0c3`, `1d8c82a`; merged
-  `959dc5b`; Dense and Mmap are one DistanceMatrix)
-- ☑ W5e Parquet saturating helpers and leaf guards → asserts (Y1 `3000ca9`, `d8dd4f7`; merged `7eb928b`)
-- ☑ W6a `index_t` alias in `base/settings.hpp`; every count guard deleted; `mip/index_guard.hpp` → two inline throws
-  (Y3 `17843f4`, `36c7883`; merged `b260415`; outside algorithms/ and mip/; X2 `a587964` carries their part)
-- ☑ W6b enum validator tails → `-Werror=switch` (X3b `4903d8e` re-applies X3 `8c73029` on W4d; merged 6e346a7; clang -Werror=switch and MSVC C4062 both break the build at the same six switches on a dummy enumerator)
-- ☑ W6c `run_openmp` captures failures in per-thread slots (no critical, no atomic); `parse_ram_limit` shrinks;
-  `GpuPrecision{Auto, FP32, FP64}` (Y3 `36c7883`, `dc55d13`, `b88ae0c`, `119216d`; merged `b260415`)
-- ☑ W6d `cluster_by_kMedoidsPAM` shim restored; non-v1 root forwarders, D2/D3/F57 markers, tracker ids in
-  comments go (Y3 `9c0b8cb`, `94ae95f`, `8b48caa`, `119216d`; merged `b260415`; tracker ids in comments move to a
-  later sweep)
-- ☑ W6e never-released Python and MATLAB aliases and the bindings of deleted surface go (Python half: W6e 6f5048c, 7f6a46a; merged fe1bf9b; MATLAB half W6m 8cde5c1, fef03d7, 289cc0f, dcc6c9a, 7cb8cf8, 4ee4d19, 883e5cd; merged e053594)
-- ☑ B1 the Python binding checks every index it passes into unchecked C++ (`series`, `series_name`, `centroid_of`); `clusters_ind` / `centroids_ind` read-only, `set_result` bound as the write route (B1 2f8dc96; merged 4968d44)
-- ☑ B2 the clustering outputs stay empty until a clustering writes them and one `require_clustered` guards every whole-result reader (a crash before); `set_n_clusters(k < 1)` and `set_band(b < -1)` are refused (B2 0765ec7, 974a4a4, d64c1d1, 463d642, 03fc6a3; merged e0085fd)
-- ☑ B3 `fast_pam` `max_iter = 0` is BUILD only in every language, a negative count refused once in C++; `set_data` / `set_view_data` clear the clustering; dead `Nc` guards go (B3 049126e, bb2db4c, c814845; merged 65edcf7)
-- ☑ W6f C++ tests of deleted surface trimmed (W6f f125189, 5958063, e9ad125, 88c4a73, 78b27ef, f2c959e; merged ce34bf8; test_problem_api_2_0 one 25-row table; three probe files deleted)
-- ☑ `test_run_resolution` runs MIP and LR-core on the CPU without a HiGHS guard: 2 of 7 cases fail in a build with
-  `DTWC_ENABLE_HIGHS=OFF` (as `build/arrow-pyarrow-23`); guard them (Y3 merge report) (G1 `0c695c6`; merged 1bb9413; only MIP needs HiGHS — LR-core is exact without it; the GPU branch of the test is unproven without a CUDA build lacking HiGHS)
-- ☑ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
-  `one_batch_pam` through `run_openmp`; the FasterPAM and TADPole reductions → per-thread slots combined serially;
-  OneBatchPAM's warning mutex → a serial warning. Proof: TSan in WSL (LLVM libomp + Archer) (R1 1e03509, 5f0b65a, 091ea8b, 2a79aa9, 45a7cd8; merged 1ea8327; TSan with LLVM libomp + Archer in WSL: 0 reports at base and head, controls bite; `baselines/2026-09-30-r1-tsan.md`)
-- ☑ K1 (2026-09-29) the DP cell makes no library call: `std::min({…})` is `__std_min_d` on the MSVC STL, 7.2 ns/cell
-  vs 1.06 on the Mac; nested two-argument min, `dp[i-1, j]` carried in a register; digit-identical
-  (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`) (K1 `8bd6881`, `123146b`, `d114677`, `f705329`; merged
-  `4441969`); the fill band is FALSIFIED — the unbanded fill runs the EAPruned kernel, which made no call; P1 measures
-  lanes against it
-- ☑ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
-  compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions) (Y4 a46b0f7, ac311c4, aa7487b; merged 93eefe1; matlab_suite 119/120 + 1 allowed incomplete on R2024b and R2025b)
-- ☑ P1 lanes in the CPU fill, after K1 and Y2: `dtw_kernel_lanes<T, W, Cell>` beside `_linear` / `_banded`, W one cache
-  line of T; the fill steps a row by W columns of equal length, per-pair kernel otherwise; Standard DTW, L1 and
-  squared L2, full and banded first; bitwise equal to the per-pair fill; band ≥ 2× on the 24-thread fill
-  (P1 `94ef14b`, `e34c37f`, `940cd8a`, `3c95dc7`, `b930ff8`; merged `d61c499`; fill 14.5× unbanded, 5.1× band 50,
-  15.3× ECG5000; cl builds get unpacked lanes — the Windows wheel is built by cl)
-- ☑ P3 unbanded per-pair Standard DTW runs the linear kernel and EAPruned goes: after K1 the linear kernel is
-  1.5–3.6× faster on 7 of 7 UCR datasets, bitwise equal (`baselines/2026-09-29-p2-eap-vs-linear.md`) (P3 6587cda, 9e64074; merged 5e15459)
-
-## C — GPU to one fill (W4 + W13's GPU half)
-
-- ☑ W4a kernel A/B through `KernelOverride` (warp vs regtile, 2- vs 3-buffer), ±5 % band registered first: no variant
-  within 5 % of its replacement, every kernel stays (`035e70d`, `baselines/2026-09-29-w4a-cuda-kernel-ab.md`)
-- ☑ W4b delete MPI (Z1 `b3041d5`)
-- ☑ W4c delete the 1-vs-N / K-vs-N kernels and GPU LB_Keogh (Z1 `f2b1cfe`, `8fbb7c9`; merged `741ca3b`)
-- ☑ W4d CUDA: `KernelOverride` and fallback flags go; `gpu_config.cuh` reads attributes once at bind (sm_120 FP64
-  fixed; its mutex and atomics go); FP32 L = 4095–4096 "invalid argument" fixed (the 48 KiB check ignores static
-  shared memory; W4a) (W4d 4479ec0, 3a1e54e, e4a1d77, d46ac35, f22155f, 6b83682, d62c417, c3e24ae, 350ae39, a14454b; merged febd25f)
-- ☑ W4e Metal: one pipeline helper, one wavefront body, the dead pair-index plumbing gone, every buffer and the
-  autorelease pool owned by one holder so each exit releases once (the out.resize bad_alloc and five other throw paths
-  leaked; a leak probe went from 192 MB to 0); scratch failure was already `DeviceError` (W13a). Merged `6cb0c3c1`
-  on the Mac (test_metal_* 2168/16 and 169/5 assertions unchanged; CLI outputs byte-identical on every kernel route;
-  `baselines/2026-10-05-macos-design-2-0.md`). Its review found the regtile and threadgroup-wavefront routes checking
-  only the last chunk's command buffer, so a failed earlier chunk left its pairs at 0: every chunk is checked since
-  `bc9469fd` (CHANGELOG)
-- ☑ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset (W13a e9216f4, ccc07db, c67dd3f, 71a26b6, 08db34d, 1affff2, ace7f07; merged 62d5822; no fill.cpp — the fill was already one function; FP32 L 100 fill 0.756× base time, host memory at N 20,000 L 1000 6.2 → 1.6 GB)
-  (the N ≤ 65,536 refusal goes); a backend refuses before the N×N matrix is allocated — today `Problem` resizes first,
-  so a huge N on a host without a GPU hits bad_alloc before DeviceError (W4d review)
-- ☑ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C (GC 870a3cde, 7a65d88c, be6a7999, ab6c1f08, af885643; records aa114aa9, 808cf182, fc5f387d; merged 63415b4f; entry at the fill's rate; 6.6x FP32 / 1.6x FP64 vs the 24-thread CPU assignment; FP64 equal to the CPU)
-- ☑ CUDA tuning, each behind its own band (W4a): a separately compiled preload wavefront for L 257–1024 (−15–17 %
-  FP32 measured); a 64 KB carveout above L = 2048 (−18 % at L = 2049) (preload landed, C1 15b9143: FP32/FP64 L 257–512 at 0.82–0.89 of base; the carveout passed its band but needs the CUDA 12.5 API and the floor stays CUDA 12.0 — ARC loads 12.4 — so it was reverted, b803e47)
-- ☑ CUDA: the global wavefront above L 2048 where fewer than 3 blocks fit an SM (C1's probe: FP32 L 6000/8000 at 0.64/0.66 of the shared route, FP64 L 2049–4000 at 0.76–0.84) — its own band; the Shared kernel's unreachable preload branch goes with it (C1) (C2 63d5d0a; merged dd33a0e; FP32 L 6000–8446 at 0.64–0.68 of base, FP64 L 2049–4223 at 0.76–0.84; deleting the Shared kernel's preload branch FALSIFIED — it raises occupancy and slows FP32 L 513–2757 by 3–23 %, so the branch stays)
-- ☑ CUDA: the FP64 Shared kernel at 4 blocks per SM (C2 lead) — its own band (C3 f8093c6; merged 370c991; FP64 Shared 79 → 62 registers; FP64 L 513/768/1024 at 0.843/0.885/0.881 of base; FP32 SASS byte-identical)
-- ☑ CUDA: C2's route rule ignores shared memory's 128-byte allocation unit, so FP32 L 2751–2757 take the shared route at two blocks per SM (C3 lead) — its own band — FALSIFIED (C4 76c4542, 667bbc3; merged 52fb6ce: L 2751–2757 at 0.945–0.963 of base against ≤ 0.95; the patch is kept)
-- ☑ CUDA floor: compute capability 8.0 (the A30's generation, Volkan 09-30); older devices get a typed DeviceError before any allocation (C1 c445089)
-- ☑ CPU floor x86-64-v3 for release archives and wheels (Volkan 09-30); one `DTWC_ARCH_LEVEL` (native | v3 | v4) (V3) (V3 165e48d, 41a1be1; merged 169db40)
-- ☑ cross-route checks (lanes vs per-pair) within a path-length bound; each compiler keeps its contraction (Volkan
-  10-01); the GCC-only test failures explained (V4) (V4 0721563, 52b557a, ba26ec9, cf03bd5, 499efdf; merged d6a9d54; GCC 13.3 v3: 113 / 0 failed, conformance identical)
-- ☑ ARC scripts follow the CUDA floor; a build on a GPU node is native (S1) (S1 5cc52a0, 0268df1; merged c54e375; htc-gpu 80;86;89)
-- ☑ lead: 16 double lanes to hide the min-then-add latency (V3: x86-64-v3 vs SSE2 ~1.0× unbanded, 1.17× banded) —
-  its own band; on the M5 alone 1.0–1.19×, with an `fminnm` min 1.41–2.00× (AArch64 done: After G). x86 (XL
-  87bb75d7 … 6ae1a668; merged a215dfbd; `baselines/2026-10-08-xl-x86-lanes-128.md`): 128 bytes under clang, 1.15–
-  1.97× single thread (f64 L1 unbanded L 1000 1.97×, V3's prediction), 24-thread fills 1.17–1.19×, bitwise; cl
-  FALSIFIED (its scalar lanes reload `left` at 32 floats; 0.76–1.05×) and keeps 64; GCC PASS under the 10-01 ruling
-  (XG, `baselines/2026-10-08-xg-gcc-lanes-128.md`: 1.36–3.87× single thread, fills 2.39–2.54×), the change is XG2
-- ☑ CUDA: `cudaFuncSetAttribute(MaxDynamicSharedMemorySize)` is process-wide, so two threads filling at different long
-  L can shrink it under each other's launch; set it once to the opt-in maximum less the static bytes, behind a band (W4d) (350ae39)
-- ☑ CUDA has no global-memory wavefront: FP32 L > 8446 and FP64 L > 4223 are refused on sm_89 (typed), so `data/dummy`
-  (L 9406) cannot run with `--device gpu`; the 8K-sample target fits FP32 only (W4d) (C1 9cc754a, 60e2ec7; merged ceb7f91; FP32 L 10,000 82 Gcell/s vs the CPU fill's 39, L 20,000 73 vs 34, inferred under load)
-- ☑ `launch_dtw_kernel`'s warn-once latch prints to stderr above L 2048 whatever `verbose` says; a library does not
-  print unasked (W4d) (6b83682)
-
-## D — `index_t` in public counts (W11)
-
-- ☑ W11a `Problem`, `Data`, `ClusteringResult`, `Config`, algorithm signatures and loops; `[[deprecated]]`
-  `set_clusters(std::vector<int>)` for one release (W11a 5cb6693, 28cb2eb, e84ef04, 77e4227; merged cfeac4b; CLI outputs and conformance byte-identical; PAM swap counters identical)
-- ☑ W11b Python `np.int64`, MATLAB double 1-based labels (W11b d3f5aaf, 9d9233d, 07cbf78; merged 8a9db51)
-- ☑ W11c the last 32-bit guards go — Python `_CLI_INT_MAX` / `_CLI_UINT_MAX` / `_CPP_INT_MAX` and the slurm_remote.sh range checks; nanobind and dtwc_cl's parser refuse what they cannot hold (W11c 8a0d5e4, 35d9de7, 9ca7ecd, 8e39b96; merged d8d831d)
-
-## E — interface (W7 → W8 ‖ W9 + W10)
-
-- ☑ W7a `DistanceConfig`; `set_distance / set_band / set_metric / set_variant / set_missing_strategy`
-  invalidate the matrix; `bool filled_` — MATLAB cannot set `msm_c`, `twe_nu`, `twe_lambda` today (W6m); the same setters clear the clustering too (B3) (E1 2645fbc, 3c15a4e; merged 770816e)
-- ☑ W7b `resolve_dtw_fn(const DistanceConfig&)`; O(1) `dist_by_ind`; the preflight machinery goes. Acceptance:
-  `dist_by_ind`'s parallel read path has no critical, atomic, validation flag or lazy allocation; a method that
-  needs the matrix prepares it serially at entry (E1 2645fbc, 3c15a4e; merged 770816e; PAM swap 5.6–5.9× faster, no lock or atomic left in dtwc/)
-- ☑ W7c one `validate(DistanceConfig)`; `core/dtw.*`, `DTWOptions`, selector validation go (W7c 5bcd7bd, 78dd73f, 1afa573, 143f138; merged 6a44e4d; +517 / −1,927; the metric rule is the facade's)
-- ☑ W7d one orientation helper replaces the copied preambles (W7d 23b1978, a031ea1, 9e15eb4, ab72231, 243a715; merged 1ae4a30; −972 / +377; 26 preambles → core::orient + core::run_dtw; no per-cell Cost reloads in any build)
-- ☑ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers (WDTW weights at bind done in E1); the mutable
-  `distance_matrix()` overload gets its own name, so a reader cannot clear `filled_` by accident (E1) (W7ef cb0e20a, c275534, a09302a, fb8f1e6; merged c37e267; Soft-DTW peak 3,431 → 14 MB at 8 × 8,000 samples; Interpolate allocates nothing per pair; the mutable accessor is writable_distance_matrix())
-- ☑ W7f dead NaN functors and public helpers go (W7ef ac248dd, 441e64a, 1f7ce19; merged c37e267; TimeSeries/View, softmin_gamma, the DDTW pointer overloads and the full-matrix kernel gone; core::validate refuses an out-of-range enum)
-- ☑ W7g one `distance::dtw` per language (W7g fdb005d, f2f48bf, e597f19; merged 601748f; −1,672 / +685; both DTWClusterings ask C++; Problem.set_distance in both bindings)
-- ☑ W13b one finite scan at each matrix intake; read-only loops lose per-lookup checks (W13b 5605f4e, 3599ebc, a7f5af1, 8895c95, 7821cd7; merged 6605829; find_best_swap 27 → 21.5 instructions per lookup; Lloyd's assignment keeps its check: a fill of ±DBL_MAX series gives +inf)
-- ☑ W8a one reader entry (`read_data`); Parquet names and IPC nulls fixed; `load('x.parquet')` in Python (W8a 3dfbffe, 8b5bc1c, 34b031b, fcf6911, 292acc9; merged 761346a; −996/+749; Python reads Parquet through the installed pyarrow, Volkan 10-01)
-- ☑ W8b one writer (`write_result_files`); `Result::save` after streaming fixed (W8b d17f498, e65d6e2, ec47aef, 5bf7422, 9cdea99, 26b0409; merged 862a08f; one open/close pair, one write_result_files; a streamed Result::save writes series_<i> labels and refuses the matrix with InvalidInput, where it read an empty Data)
-- ☑ W8c Python and MATLAB `compute_distance_matrix` through `Problem` (the binding's own failure-slot loop, which rethrows by thread number, goes with it — R1) (W8c 3c412c4, b79bbea, db49209, abfa711; merged 1f50070; matrices byte-identical in 23 configurations, about 3× faster; an infeasible band, a band below −1 and an empty series are InvalidInput on every device)
-- ☑ L1 measure what the wheel and the MEX link (linker maps) → L2 split `dtwc_core` (no file formats, no CLI) from
-  `dtwc_io` and the CLI; the bindings link the core; Python reads and writes files with numpy/pandas/pyarrow, MATLAB
-  with its built-ins; v1 Python `DataLoader` / `write*` stay as thin Python (Volkan 10-01) (L1 1f951e1, record:
-  HiGHS 75–78 % of each binding, CLI + readers ~2 %, two edges pull them in). L2a: each dtwc/ source folder lists its
-  own files (Volkan 10-01; L2a 87b8e88, 15d87f2; merged 1110fe10; compile commands and executable link lines identical in
-  every tree; dtwc++.lib's member order follows the folders); Python reads `.arrow` through pyarrow too. Python half done
-  by W9b (5e710ba4 … 8ec61075, row W9b; merged 4265e3a6): the wheel's link map (W9b record) holds no `run`, `api` or `config`
-  object (CLI11, fkYAML), and Python reads text through the bound C++ reader and writes through the C++ writer (Volkan
-  10-02, not numpy/pandas), Parquet and Arrow IPC through pyarrow; the MATLAB half by W9e (merged bf82dc1b). L2b (12b3bce3, 2b1e384d,
-  95b10a20, acf86f93, 5b1d3cd0, c8e47e67, d33ed830; merged on the Mac): `dtwc_core` / `dtwc_cli` / `dtwc_io` (STATIC;
-  the last in a build with Arrow) behind an INTERFACE `dtwc++`; every folder lists its headers in a FILE_SET HEADERS
-  with dtwc/ as the base (40 unlisted headers listed, each with an includer); the core reads text only, dtwc::run
-  dispatches Parquet/Arrow IPC to `io::read_arrow` (one if) and streams through `algorithms::fast_clara_parquet`;
-  nanoarrow stays in the core (Python's Arrow C data interface); compile commands identical after the file sets
-  (254/254), the MEX and the extension byte-identical after the split, +704/+624 bytes after the reader move; with a
-  pyarrow-25 Arrow shim the MEX and the wheel link no Arrow (byte-identical to the Arrow-off ones) and 16
-  Parquet/Arrow CLI runs match base; `fast_clara` refuses a Parquet stream request (its review); Windows Arrow-ON and
-  Linux link order unproven
-- ☑ M1 Python solves the MIP with the user's highspy (optional extra; the wheel drops HiGHS); the MEX keeps HiGHS
-  linked (CI MEX: HiGHS ON, Gurobi OFF); the model leaves C++ as arrays for Python (Volkan 10-01) (M1 a6de1c71,
-  6aa7048c, caec354d; merged c0580948 on the Mac; one builder `dtwc::mip::build_p_median_model` (row-wise arrays,
-  solver_types.hpp and the triplet sort go) serves linked HiGHS and highspy, dtwc_cl's MIP outputs byte-identical; the
-  extension 5,034,320 → 1,203,728 bytes, the `mip` extra is highspy>=1.8 (the first with resetGlobalScheduler), a
-  missing highspy is SolverError naming `pip install "dtwcpp[mip]"`; the MEX links HiGHS statically (4,557,072 bytes);
-  Gurobi's builder untouched and not compiled on the Mac; pytest 973/12/0 with the extra, 969/16/0 without; its
-  adversarial review's five findings merged bb35d337: DTWC_REQUIRE_HIGHSPY fails a skipped highspy case in CI, the CI
-  MEX job asserts test_cluster_mip ran, THIRD_PARTY_LICENSES corrected; open: the wheel's lrcore runs the subgradient
-  root, not Kelley (needs linked HiGHS) — measured `3cb49bc8`: same answers everywhere, the subgradient root certifies
-  more noisy-DTW roots and Kelley wins only on a line metric; recommendation accept, Volkan rules. Candidate: OpenMP on
-  `mip-solvers` (the LR phase is serial in every build; 3.6–5.6× at N ≥ 800 in a scratch build))
-- ☑ a MEX built with Gurobi ON needs gurobi130.dll (38.7 MB) to load: delay-load it, or Gurobi OFF for MEX builds (W14b: Gurobi defaults OFF; the default MEX imports no Gurobi DLL; an explicit ON needs Gurobi's bin on PATH)
-- ☑ W9a `Method` nine values; `ClusterMethod` goes; `run()` = apply, load, cluster, write; v1 CLI aliases (W9a 2cabc18, adb9031, 6053239, 151f14e; merged 357d76e3; k required: v1.0.0 with no --Nc exited 0 having clustered nothing; name = the input stem; C++ method default auto; 23 v1 spellings warn once; --Nc i..j refused)
-- ☑ W9b Python on `run(Config)`; one `DTWClustering` (matrix once, `score` never refits); `variant_params` / `cuda_settings` return read-only objects, so a nested write raises instead of
-  silently editing a copy (E1) — Python `DTWClustering` refuses `max_iter = 0` like `sklearn.py` and MATLAB (B3) (W9b 5e710ba4, 4b0c6710, da4fdb09, 7ab98ce0, 7a00b225, d6129e1f, 55f2d3eb, 98190ae4, 29c7507b, f3a552d4, 49e443f6, 004d9b38, 9d186b46, 8ec61075; records 7b397a95, c689a4ac, 974ca3cc; merged 4265e3a6; `cluster()`, `DTWClustering`, `load()` and `set_data` run Config → apply() → `Problem::cluster()`; Python reads text through the bound C++ reader and writes through the C++ writer (Volkan 10-02), so a Ctrl-Z is refused, not an end of file; pytest 962 / 20 skipped / 0 failed against base 1094 / 19 / 0 (199 ids removed, 68 added); the CLI outputs byte-identical to base)
-- ☑ W9c `hpc` → `job.toml`; the positional transport goes; `device=hpc` takes `gpu_device=` (a100, a6000, l40s, h100, …) to pick the
-  SLURM GPU and the build's CUDA arch; a build on the target node detects both itself (Volkan 09-30). S1 notes:
-  `slurm_remote.sh build` submits with no `--gres` (always portable); `jobs/gpu_test.slurm` and
-  `ucr_benchmark_gpu.slurm` ask for any GPU and can land on a refused V100; ARC documents `gpu:<type>:<n>` (P100,
-  V100, RTX, RTX8000, A100) and constraints `gpu_sku`/`gpu_gen`/`gpu_cc`/`gpu_mem`/`nvlink`, no type for RTX A6000,
-  H100 or L40S
-  (W9c e9d54d8b … 3514c7e8, 17 commits; merged 834b7904 on the Mac: Python writes job.toml (the keys given, in
-  dtwc_cl's config_value grammar; C++ apply() checks every value first), `submit-job <rundir> [--gpu | --gpu-device
-  <type>]`, one GPU table `_slurm/gpu_devices.txt` read by Python and bash (a100 by gres type; a6000/l40s/h100 by
-  `gpu_cc:` constraint [inferred]; below the 8.0 floor refused), `build --gpu-device <type>` (CUDA native, CPU
-  portable), `smoke.slurm MODE=`; pytest 970/12 → 922/12 reconciled by id, 53 bash-driven cases ran; the ARC leg is
-  Volkan's: six commands in `baselines/2026-10-06-w9c-hpc-job-toml-mac.md`)
-- ☑ W9e MATLAB on the `run(Config)` MEX route; `cmd_cluster_legacy` and snake_case keys go here (DECISIONS 09-30); MATLAB
-  regains read access to band, verbose, max_iter and n_repetitions under the Python names, and its own metric lists
-  (`DTWClustering.resolve_metric`, `validate_metric.m`) give way to the C++ table (W6m) (done in W7g) (W9e 9230bd5e,
-  1000f8d0, d4c43410, 8dccdc68, bebcb149, 43fe390e; merged on the Mac: `dtwc.cluster(data, k, Name, Value)` and
-  `DTWClustering` set a dtwc::Config field by field, apply() checks it, Problem::cluster() runs; CamelCase keys are
-  Python's words; the MEX links no run() or api (link map), text through the bound C++ reader, Parquet through
-  parquetread, Arrow IPC refused; matlab_suite 140/139 → 142/141 reconciled by name, the 25 CLI runs byte-identical;
-  Windows R2024b at 8a63cda3: matlab_suite 138/138/0/0, the MEX built with HiGHS linked statically)
-- W9e note: MATLAB keys are CamelCase throughout, the same words as Python's snake_case (Volkan 10-01: "camelcase
-  and snake case can change between languages"); `dtwc.cluster`'s `band`, `max_iter` become `Band`, `MaxIter`
-- W9b/W9e note (Volkan 10-01, lighter bindings): Python and MATLAB share the Config names, not the CLI's file
-  pipeline — `run(Config)` reads and writes files, which stays with the CLI (L2)
-- ☑ W9f Python test and example trims (W9f 44af93de, e84679c1, 6246172f, 000e765f, b5ee6515; records 79bffcf8,
-  addde20a; merged 0e0f3056 on the Mac): test_api.py 836 → 551, test_hpc.py 1,243 → 1,222 (cases that re-checked another
-  Python or C++ pin, existence checks, stub captures); test_clustering_semantics folds into test_sklearn_estimator;
-  test_test_api.py/.m go (test_test_api.cpp owns the probes; one field line per binding); the nine examples/python
-  run under pytest; tier1.cpp (ctest `example_tier1`, examples on) replaces example_new_features.cpp; the contract
-  rows read/print_distance_matrix are back; matlab_suite's gate allows no incomplete; main tree: pytest 890/11/0
-  (923/11 before; 46 ids removed, 13 added, by id in `baselines/2026-10-06-w9f-test-trims-mac.md`), matlab_suite
-  136/136/0/0, ctest 95
-- ☑ W10a `DistanceMatrixStrategy`, `CUDASettings` → `set_device` + `set_gpu_precision`; the fingerprint
-  hashes the resolved backend (W10 8124528, 373c039, d99734a; merged 73d7361; the cache identity hashes the computed precision, not the device: a CPU FP64 cache serves a CUDA FP64 run, GPU 0 and GPU 1 agree, FP32 is refused by FP64; Metal's Auto is FP32; CUDA's Auto is refused for a persistent cache)
-- ☑ W10b `gpu_available()` / `gpu_info()`; `gpu:1` on Metal refused; `system_info`, `check_system`,
-  `*_AVAILABLE` go (`test.parallelisation()` / `test.gpu()` stay the diagnostics) (W10 3d9e6c4, a75973c; merged 73d7361)
-
-## F — tests to their oracles (W12)
-
-- ☑ W12a unrun and wave/phase test files go (rescued cases named) (W12a 3368bc9, 4c0a163, 1be6b73, 0dc3480, 58568f9, ed61a1a, 7b99ce1, da1739d, 11a468a, c7111cf, cce3398, 2d02451; merged 6c6f3d4; −4,217/+243; the hidden benches that records cite stay)
-- ☑ W12b `tests/unit/adversarial/` dissolved per subject (part 1: W12b beaaff0, d9746f0, 8a9603a, 12d2940, 180c28c, 35eadcd; merged 65aadc75; five files, 3,007 → 865 lines; part 2: 38d7d97, 2bdef6c, 2a7592b, 6fb95f4; merged a0d58242; three files, 2,346 → 0 lines; one oracle for the missing-data rules, tests/support/missing_dtw_oracle.hpp)
-- ☑ W12c repeated DTW property tests → one table-driven `core/test_dtw.cpp` against a new `tests/support/dtw_oracle.hpp` (W12c f1b2d13, f6c7a14, 6cec77c, 8d75fde, 8162a11; merged b3f6219; +820 / −2,906; the table bites on every axis)
-- ☑ W12d `test_contract_parity.py` existence lists → one table (W12d 4d49609; merged eeea331; 129 rows)
-- ☑ every test writes to its own temp dir (a fixed `%TEMP%/dtwc_test` collides under concurrent runs:
-  `unit_test_variant_distmat`) (F1 992d51f, 50d2c46; merged b5c7048; the 3 FIXTURE_ROOT tests and 6 cmake -P CLI tests keep one directory inside the build tree, so only two runs of the same build tree collide)
-- ☑ `test_hpc` and `test_api` honour `DTWC_CL_PATH`; today `find_dtwc_binary` takes the newest `dtwc_cl` under
-  `build*/`, e.g. an Arrow build that cannot load its DLLs (F2 2a3ae53; merged a965ad5)
-- ☑ `.github/workflows/python-tests.yml` runs pytest with no dtwc_cl and no `DTWC_CL_PATH`; `test_api`'s two
-  CLI-parity cases assert a binary exists (F2 note; CI not run here) (W14b 015dc71: the job builds dtwc_cl, sets DTWC_CL_PATH and runs test_conformance.py; CI not run here)
-- ☑ tests narrow `index_t` to `int` (`std::set<int>` built from `centroids_ind` / `medoid_indices`, `for (int m :
-  prob.centroids_ind)`; MSVC C4244 in the CUDA tree): unit_test_clustering_algorithms.cpp, algorithms/
-  unit_test_duplicate_series.cpp, unit_test_fast_clara.cpp, unit_test_fast_pam.cpp, unit_test_one_batch_pam.cpp — use
-  `index_t`, with the comment sweep; also dtwc/cli/run.cpp's `std::as_const(prob).distance_matrix()` and its comment
-  (redundant since `writable_distance_matrix()`, W7ef) (SW 88a6996, 79dcfc3, 1b6d3f6, d4e7f35; merged 6fd10ed1; tracker-citing comment lines 259 -> 17; C4244 in tests 2)
-
-## G — docs and release prep (W14)
-
-- ☑ W14a hand-written tier pages and a v1.0.0 → 2.0 migration page; `api-contract-2.0.md` deleted (W14a b73a1487,
-  5326fc20, 786fd99f, e4d26d08, 2f279c98; merged e7f6153a on the Mac: tier-1/tier-2 from the headers and bindings,
-  migration = v1.0.0's C++ library and CLI (Python and MATLAB are new, DECISIONS 10-02); lr-core.md by hand with
-  Kelley as measured; derivations 01/02 describe today's kernels; docs/sources and releases/2.0.0rc1.md gone;
-  contributor pages stay generated copies (Hugo mounts lose their order and Edit links); examples C++ 3 / Python 6 /
-  MATLAB 4 ran; Hugo builds, no new broken links; main tree: ctest 94, matlab_suite 136/136, pytest 890/11/0. Found: a v1.0.0 matrix CSV's −1 (uncomputed) entries read as
-  distances — the migration page warns; Volkan rules on a refusal)
-- ☑ VI `dtwc_cl.exe` carries a VERSIONINFO resource: name, version, copyright (Volkan 10-02) (VI 20579e0d, 45719487, e5456cc6, b63bc153; merged 96547a5a; rc.exe and llvm-rc .res byte-identical)
-- ☑ WM the Windows wheel's fill, MSVC against clang-cl, on a quiet machine with a registered band; Volkan then
-  decides the wheels' compiler (Volkan 10-02: measure first). Measured 2026-10-08 at 8a63cda3
-  (`baselines/2026-10-07-wm-wheel-msvc-vs-clang-cl.md`): clang-cl/MSVC 4.40–4.68× one thread and 3.14–3.33× at 24
-  on the lanes fill (cl leaves the lanes scalar), 1.09–1.24× on the per-pair fill, 1.00–1.04× on one pair; results
-  identical; the registered rule recommends clang-cl. Volkan 10-08, after MV: the wheel moves to clang-cl (CW)
-- ☑ W14b CMake `FATAL_ERROR` for an explicit `ON` it cannot honour; CUDA CI asserts CUDA built;
-  `test_conformance.py` collected (W14b 9d56aab, e7354b9, 015dc71, 836bddc, d99b15d; merged 9056fcb9; Gurobi defaults OFF; Arrow without Parquet is an IPC-only build that says so)
-- ☑ W14c CHANGELOG → one `2.0.0 (unreleased)` section vs v1.0.0; MAP regenerated; audit folder deleted (W14c
-  07f8afa0, e8bc0753, ff61ef27, e3a3a974, 6a870603, 94e2b0aa; merged ae2df68c on the Mac: CHANGELOG 1,814 → 255 lines,
-  Breaking 13 / Added 18 / Changed 20 / Performance 11 / Fixed 8 / Removed 7, each claim checked against v1.0.0 and the
-  code by three adversarial agents; the old log is `git show fa02acaf:CHANGELOG.md`; MAP §1–§5 regenerated; the
-  audit folder stays until Volkan's CLAUDE.md stops pointing into it — his call)
-- ☑ `scripts/generate_docs.py` keeps each page's line endings: on Windows it rewrites untouched pages with LF, so `git status` shows them modified (W6e) (H1 e5c7436; merged 1a079cd; the msvc preset names no generator either, f010a9a)
-
-## After G (each behind a registered benchmark band)
-
-- ☑ one `kmedoids_pp` (W13c d6a771eb; merged b36fad43; −490/+291; conformance, CLI 25, matlab_suite 142/141 and
-  every seeded pin identical; the v1 one-argument `init::*` and unseeded `fast_pam` sequences changed as
-  pre-registered; pytest 923/11/0) · ☑ HiGHS model built row-wise (W13d: done by M1's `build_p_median_model`,
-  c0580948) · ☑ barycenter workspace (W13e 980709dd,
-  a9c18357; merged 32b219c6: thread_local alignment scratch through run_openmp, series read in place,
-  `BarycenterOptions` embedded as `barycenter`, `Problem::copy_distance_settings_from`; outputs identical (C++
-  399/400 hex-float probes — the one is a non-finite series dtw_barycenter does not select, no longer refused —,
-  Python 99/99, CLI 25; main tree: ctest 94 — the allocation test went —, matlab_suite 136/136, pytest 890/11/0);
-  each thread keeps its largest DP matrix after the call, as soft_dtw_gradient does)
-- ☑ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel (P4 9168ed9; merged 69be49c; that step 21.9× at 24 threads, the whole call 1.89× at N 2000, k 10, L 200 — identical labels, medoids, cost)
-- ☑ OneBatchPAM's batch table fill (m·(N−1) DTW calls, 95 % of the call after P4) on the P1 lanes kernel (P5 1b69614; merged bac9120; table fill 4.61×, whole call 3.87× at N 2000, k 10, L 200, 24 threads; bitwise identical over 24 configurations)
-- ☑ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
-  (1581b7a8; merged on the Mac: a table row of `getting-started/cli.md` per flag the help prints; 0 of 60 missing)
-- ☑ PF-5 probe: SIMD lanes across pairs PASS, 3.7–7.9× single-thread f64, bit-identical (2026-09-29; P1 in phase B
-  integrates it)
-- ☑ the wheel's binding file at `-O3` (`NOMINSIZE`): LTO ran its `-Os` copy of the per-pair kernel in the whole module
-  (659f889f; Python `dtw` 1.1–1.5×, ragged fill 1.5×; `baselines/2026-10-06-mac-kernel-assembly.md`)
-- ☑ AArch64 lanes: the min as `fminnm`, 128-byte blocks (16 doubles, 32 floats) (23c88336; merged e26d5680:
-  bitwise — 15.36 M lane outputs, 64 CLI files, conformance; x86 `.s` identical; f64 L1 loop = `v_fmin_w16`; the
-  quiet run 2026-10-07: 1.41–2.00× single thread, 18-thread fill 1.61–1.69×, ragged fill 1.003×, every band PASS;
-  `baselines/2026-10-06-mac-arm-lanes.md`)
-- ☑ per-pair kernels two columns per pass (Volkan 10-06: run it; 463d2b52, 92a747d9, 3d024308, 73519cd7, e95fb62c;
-  merged 0edc388b): kernel 1 (unbanded) two columns, bitwise over 11.73 M outputs and every Cell; quiet run 10-07:
-  f64 L1 1.42–1.98×, every unbanded shape 1.14–1.98×, ragged fill 1.42–1.50× in all three placements; kernel 2
-  (banded) FALSIFIED (min 0.85× against ≥ 1.15×), reverted; the abandon test is a template argument in both. The
-  M5's per-pair speed carries a ±30 % code-placement term, and 64-byte loop alignment is no cure
-  (`baselines/2026-10-06-mac-pair-2col.md`)
-- ☑ the LR-core dual on OpenMP: `mip-solvers` compiled without the OpenMP flags on clang/GCC, so `evaluate_dual`'s
-  two loops ran serial (lrcore record finding 5) (54fe1150, 96de8de4, 3bc08848, 6afaafdd; merged 57ad9ad2): the
-  flags, a `#error` guard, the first loop forks from N = 280 (break-even 240–280), the second stays serial (forking
-  it never paid, k 3–64); quiet run 10-07: subgradient root (the wheel) 3.49–7.34× at N ≥ 800, Kelley 1.17–1.49×,
-  no cell below 0.963×, 54/54 bit-identical; main tree ctest 94, matlab_suite 138/138, pytest 895/11/0
-  (`baselines/2026-10-06-mac-lr-omp.md`, kit beside it)
-- ☑ PF follow-ups (8f45ea7a … 8585e6b9; merged 30284994): Python names series as C++ does (in memory after
-  `skip_rows`; Parquet by C++'s column rule), `load(Dataset, options)` refuses, `set_solver` prints nothing (FX-3
-  reads HAS_GUROBI), test_conformance.m in matlab_suite, a CLI build sets BUILD_SHARED_LIBS for HiGHS, CI installs
-  matplotlib; main tree: ctest 94, matlab_suite 137/137, pytest 891/11/0, no cached BUILD_SHARED_LIBS after a
-  re-configure
-- ☑ PQ: a Parquet file holds many series — each row a series when its numeric columns are scalar, the first string
-  column names the rows (Volkan 10-07, DECISIONS) (1a0022c8, 95ae2364, 589b539c; merged b2687171: one
-  `resolve_parquet_layout` in C++, mirrored in Python and MATLAB, the stream included; a sliced Arrow list is read
-  from its offset; the Arrow-25 `Result::save` failure was a fixed byte cap; Arrow tree ctest 97/97; main tree:
-  ctest 94, pytest 895/11/0, matlab_suite 138/138; left: Python/MATLAB errors name the CLI's `--column`, `.claude/commands` say only
-  list files stream, a negative CSV `--skip-rows` reads as 0 — all three fixed by FU)
-- ☑ FU follow-ups the Windows handoff, PQ and W14c left (d1ab0c65 … af269ad8; merged 8d969203): per-pair `distance::*`
-  refuse an empty series (they returned max()); a negative skip is InvalidInput for every format; the Python/MATLAB
-  Parquet errors name their own way out; `std::as_const` leftovers; MSVC C4244 casts; tracker ids out of comments in
-  tests/integration, conformance, benchmarks, examples; stale texts (devices.md, run.cpp's checkpoint text, cluster's keys)
-- ☑ WU8 Windows follow-ups (aee8f9a9, 535aa869, 92f71a26; merged 0d042612, comment accd0136): `dtwc_cl` carries an
-  application manifest with activeCodePage UTF-8, so argv and every narrow file API read UTF-8 (`δ.csv` was read as
-  `d.csv` before, under clang and cl alike); `DataLoader::path` takes a non-ANSI extension; the Parquet example reads
-  its Arrow file through `pa.OSFile`, so Windows can delete it (WinError 32 before). Main tree: clang ctest 95 (+
-  test_cli_utf8_paths), CUDA tree 94, CLI outputs byte-identical, pytest 887/19/0
-- ☑ MX matrix reads say how a file marks a pair never computed (Volkan 10-07/08; eff5beba, 14297926; merged
-  b3b18626): NaN stays the mark; `not_computed` = nan (default) | negative in C++, `--not-computed`, Python, MATLAB;
-  under every variant but Soft-DTW the one intake scan refuses a negative entry, naming the way out per language
-  (v1.0.0's -1 files read with negative). Main tree: clang 95, CUDA 94, matlab_suite 139/139, pytest 889/19/0
-- ☑ LRK lrcore's root (Volkan 10-07; 46869065, 3a9bbd32; merged 75d61cfe): the subgradient root by default in every
-  build; `lr_root` = kelley runs Kelley's on `dtwc::mip::KelleyMaster` — linked HiGHS in C++, the user's highspy in
-  Python —, SolverError without either; the config key count 47 after MX. data/dummy lrcore cost identical under
-  both roots; every CLI output byte-identical; matlab_suite 140/140, pytest 893/19/0. C4244 in the HiGHS master
-  fixed (6c364b87)
-- ☑ TP pair-2col on x86 (`baselines/2026-10-07-tp-pair-2col-x86.md`, quiet run 2026-10-08): PASS on clang++ and
-  MSVC in two placements (largest new/old 1.02); the unbanded per-pair kernel 1.41–1.87× on both compilers, banded
-  0.96–1.02×; no call or spill added; bit for bit across eight binaries; code placement moves x86 by about 1 %
-- ☑ XG GCC's x86-64 lanes at 128 bytes, timed in WSL (`baselines/2026-10-08-xg-gcc-lanes-128.md`, quiet run
-  2026-10-08): PASS under the 10-01 ruling: single thread 1.36–3.87×, 24-thread fills 2.39× and 2.54×, ragged
-  0.99×; L1 bit for bit, squared within the route bound, labels and medoids identical in 64/64 CLI runs
-- ☑ XG2 `dtw_lanes` 128 bytes under GCC too (1b0d8052; merged 388079ed: GCC 13.3 in WSL ctest 94/0, lanes 16 / 32;
-  main tree clang 95, CUDA 94, every CLI output byte-identical)
-- ☑ MV cl packs the lanes (`baselines/2026-10-08-mv-msvc-lanes.md`, quiet run 2026-10-08): FALSIFIED — a
-  value-returning min and 128-byte lanes make cl pack (fills 2.5–2.6×, most single-thread shapes 2.6–6.6×), but
-  6 of 48 candidate probes ran 3–4× slower per process (cause open); pb/MV (75490857, dd85b28e) not merged
-- ☑ CW the Windows wheels built by a pinned clang-cl, libomp.dll bundled by delvewheel; clang-cl's OpenMP link
-  and FP flags fixed in CMake (Volkan 10-08: "speed is the most important right now") (6053b495, e68d4b36,
-  d671cea4, 3619c828: LLVM 23.1.1 by `scripts/fetch_llvm_windows.sh`; the wheel built by cibuildwheel locally,
-  pytest 893/19/0, 48/48 clusterings identical to the MSVC wheel's; timed PASS: lanes fills 3.96–4.31× at 24
-  threads; merged 1ca7f6ff)
-- ☑ CA the Windows release archive built by clang-cl, the cl build beside it as `dtwc_cl_msvc.exe`; the docs give
-  the measured speed-up and recommend `dtwc_cl.exe` (Volkan 10-08); after CW (5a232d61, a5cce9bd, 8b6bf4ef on
-  pb/CW: 312-file archive built locally, both CLIs' imports checked and run; timed PASS: 4.04–4.18× at 24
-  threads; merged 713dd133)
-- ☑ ES an empty series is InvalidInput on the CPU routes too (validate_fill_request refused it only for the
-  GPU; a series emptied through `Data::p_vec` filled as 1.8e308 on the CPU; Mac handoff 10-07) (8dd16d8e; merged
-  883484b8: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical)
-- ☑ RL ragged lanes: the fill's lanes take series of different lengths, unbanded (Volkan 10-08 "Probe it";
-  band in DECISIONS 2026-10-08; f8c3d23a, cl keeping the one-pair route by Volkan's "Adopt, cl one-pair"; B3 timed:
-  clang and GCC PASS 11/11, cl at base's speed, `baselines/2026-10-08-rl-ragged-lanes.md`; merged 8c818735: clang
-  95 = 92 + 3 skips, codegen 86/0 PASS, CUDA 94 (test_cuda_correctness ran), matlab_suite 140/140, pytest 893/19/0,
-  CLI outputs byte-identical, 156 + 65 files)
-- Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, approved 10-09), in this order:
-  - ☐ DT `dtype` where data is loaded, in C++, Python, MATLAB and the CLI (float32 one word away; G2: a double view
-    under `--dtype float32` is no longer kept silently)
-  - ☐ AL CLARA's assignment through the lanes kernel (added 10-09, "AL right after DT": per-pair today at 17.9
-    Gcell/s on 24 threads against the lanes fill's 105–131)
-  - ☐ BF the blocked CPU fill (slabs and tiles; prefetch and range flush when mapped; checkpoints per slab; parallel
-    NaN prefill) with the one automatic memory key `ram_limit`
-  - ☐ CS CLARA reads its data once (all samples drawn first, their union read once, decoding overlapped)
-  - ☐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
-  - ☐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5)
-  - ☐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
-    decoding dominates
+- ☑ DT `dtype` where data is loaded, in C++, Python, MATLAB and the CLI (float32 one word away; G2: a double view
+  under `--dtype float32` is no longer kept silently) (ddb9fc3b; merged 999457d1: clang 95, Arrow tree 98, CUDA 94,
+  matlab_suite 141/141, pytest 895/19/0; float32 output as before; a float32 Parquet load peaks at 0.52× the memory)
+- ☑ AL CLARA's assignment through the lanes kernel (added 10-09, "AL right after DT": per-pair today at 17.9 Gcell/s
+  on 24 threads against the lanes fill's 105–131) (pb/AL 26d4af40; timed 10-09 06:16, PASS under clang, GCC and cl:
+  clang 3.4–3.8× at 24 threads and 7.8× on one, GCC 4.8–5.7× and 10.0×, cl 1.29× under a band; merged 6359acba: clang
+  95, Arrow 98, CUDA 94, matlab_suite 141, pytest 895/19/0; CLI and CLARA outputs identical)
+- ◐ BF the blocked CPU fill (slabs and tiles; prefetch and range flush when mapped; checkpoints per slab; parallel
+  NaN prefill) with the one automatic memory key `ram_limit` (pb/BF 1b072918; matrices equal base's, GCC squared
+  within the route bound; timed 10-09: clang and cl 0.99–1.08×, mapped 22.6× at a 4 GiB cap and ≥ 37× at 2 GiB,
+  checkpoints write 2 M against 80 M; GCC s1t 0.892× against ≥ 0.98, a registered second attempt; e3 FALSIFIED:
+  LLC misses 0.405 and 0.450 per entry against ≤ 0.4, base 0.87–1.18; c1's closing save 0.04 % over, recorded;
+  GCC s1t FALSIFIED, 0.951× the second time; Volkan 10-09: merge with the misses recorded)
+- ◐ CS CLARA reads its data once (all samples drawn first, their union read once, decoding overlapped) and its stream
+  refuses each row the in-RAM run refuses (NaN, ±inf, an empty row, a band too narrow: base published a cost of
+  1.8e308) (pb/CS afd022c7 on pb/AL; 360/360 runs identical; P1 decodes 7.28 → 1.93 passes; timed 10-09 08:46,
+  PASS: streams 3.4–3.6× faster, in RAM 1.00–1.86×; merge after BF)
+- ◐ PE the Parquet stream holds its RAM limit (Volkan 10-09: next, before SW; implementing on pb/CS): under
+  `--ram-limit 1G` a P1 stream peaked at 1.48 GB of private bytes (CS; base 2.26 GB) against 1.16 GB allowed, as the
+  per-group estimate (34.6 MB) undercounts Arrow's decode of a batch (51–61 MB a group). With the automatic limit a
+  SLURM job's `--mem` would kill the run
+- ☐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
+- ☐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5)
+- ☐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
+  decoding dominates
+- ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;
+  merged 6521b01e: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical); the last four
+  record citations in header blocks reworded after it
 
 ## Blocked on another machine or on Volkan
 
-- Metal and macOS: first pass done 2026-10-05 on `4dd4dcaf` (`baselines/2026-10-05-macos-design-2-0.md`): the
-  22 Metal commits built first time; ctest 95 with the Metal tests running; conformance digit-identical but one ulp of
-  silhouette; docs gates, pytest 1102/11/0, MEX + matlab_suite 139/140 (one registered filter) green. Fixed there:
-  Apple clang's `memset_pattern16` idiom in the lanes kernel (`a332d671`, failed `test_codegen_no_calls`) and the
-  banded kernel (`55911b2a`, two calls per column the gate cannot see); W4e merged; the Metal chunk check `bc9469fd`. The second short pass after L2b ran 2026-10-06 (`15b289be`: ctest 95 with the Metal tests,
-  the 12 GPU CLI routes byte-identical to the pre-L2b binary, `baselines/2026-10-06-l2b-core-io-cli-split-mac.md`);
-  pytest again once W9b lands (done 2026-10-06 at `33302535`: 970/12/0, `baselines/2026-10-06-macos-after-w9b.md`).
+- macOS: run `test_codegen_no_calls` and the Metal tests on the Mac after RL (its padding loop stores one value at a
+  128-byte stride, not Apple clang's `memset_pattern16` idiom, unproven there) and after DT/AL.
 - ARC (Volkan, rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres
   type, `upload`, `build htc-cpu`, `build htc-gpu`, `build htc-gpu --gpu-device a100`, three `dtwcpp.cluster` runs
-  (`hpc`, `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`; exact commands in
-  `baselines/2026-10-06-w9c-hpc-job-toml-mac.md`.
-- Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux. Windows done (RA 0856c78d, 78f3373d,
-  3cd66f95; merged 97902908): the smoke checks every DLL a binary imports (a stdlib PE reader); under MSVC the
-  archive installs the Visual C++ runtime and vcomp140 beside dtwc_cl.exe (InstallRequiredSystemLibraries); the
-  Windows wheels are repaired by a pinned delvewheel (msvcp140, vcomp140 bundled). CI not run; the archive also
-  ships HiGHS's development install (277 headers, a static highs.lib), a candidate to trim. The Windows archive
-  moves to clang-cl with `dtwc_cl_msvc.exe` beside it (CA, after CW).
+  (`hpc`, `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`.
+- Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux (Windows done: RA, CA). Linux wheel:
+  whether `libgomp` ships, and the notice says so.
+- L2b's open ends: a Windows build with Arrow ON and the Linux link order of `dtwc_core` / `dtwc_io` are unproven.
 - `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
-- Linux wheel: whether `libgomp` ships, and the notice says so.
-- A crash recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42). F43 (an llfio-ON MEX under R2024b crashing in `std::mutex`) did not reproduce on 2026-09-30, and no MEX route maps a matrix yet (Y4, `baselines/2026-09-30-y4-matlab.md`).
-- X2 merged `4de2ce9` on 2026-09-30; its Release `dtwc_cl.exe` ran without a Sophos event
+- GitHub history: `origin/design-2.0` holds 310 baseline files and the charter, and older pushed history the
+  PRIVATE Kasper folder (09-28); removing them needs a history rewrite and a force push (Volkan's).
+- RA's notice: the wording of Microsoft's Distributable Code terms (indemnity, pass-through of protective terms) in
+  `THIRD_PARTY_LICENSES.md`, and whether RA's CHANGELOG line is Fixed or Added (v1.0.0 shipped no wheels or archives).
+- F42: a crash of CUDA `Auto` precision through `Problem`, recorded on Windows and never re-run. No MEX route maps a
+  matrix yet (F43, an llfio-ON MEX crashing in `std::mutex` under R2024b, did not reproduce on 2026-09-30).
+
+## Candidates (not scheduled)
+
+- BF's small fills under GCC: the design's 8-column tasks (one cache line) wherever a slab has enough of them; GCC
+  s1t (N 1000, 24 threads) ran 0.89–0.95×, perhaps neighbouring threads writing one line (untested; Volkan 10-09).
+- CUDA: the 64 KB carveout above L = 2048 (−18 % at L 2049; passed its band) once the CUDA floor reaches 12.5 (it was
+  reverted, b803e47, because the floor is 12.0 and ARC loads 12.4).
+- The Windows archive ships HiGHS's development install (277 headers, a static `highs.lib`): trim it.
+- MV: cl packing the lanes ran 3–4× slower in some processes (FALSIFIED 10-08; pb/MV kept): the cause is open.
+- Barycenter and Soft-DTW keep each thread's largest DP matrix after a call (W13e): release or bound it.
+- Tracker prefixes in test names (`FX-1:`, F8/F13/F14 ids): name the contract instead.
 
 ## Records
 
-Charter `CHARTER.md` · map `MAP.md` · rules and rulings `DECISIONS.md` · lessons `LESSONS.md` · measurements
-`baselines/` · session state `summaries/` (newest two, via `session-handoff`) · literature `CITATIONS.md` ·
-LR-core maths `UNIMODULAR.md`. Anything superseded is deleted; git keeps it.
+Map `MAP.md` · rules and rulings `DECISIONS.md` · lessons `LESSONS.md` · session state `summaries/` (newest two, via
+`session-handoff`) · literature `docs/CITATIONS.md` · LR-core maths `UNIMODULAR.md`. On disk only, out of git
+(Volkan 2026-10-09): the charter `CHARTER.md` and the run records `baselines/`. Anything superseded is deleted; git
+keeps it.

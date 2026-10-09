@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """The Python quickstart printed in the Hugo site must remain executable."""
 
 import runpy

@@ -4,6 +4,7 @@
  *
  * Implements de Mathelin et al., "OneBatchPAM: A Fast and Frugal
  * K-Medoids Algorithm" (AAAI 2025, doi:10.1609/aaai.v39i15.33776).
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

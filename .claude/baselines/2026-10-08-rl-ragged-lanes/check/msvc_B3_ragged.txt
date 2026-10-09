@@ -1,6 +1,0 @@
-ragged cl 195035723 W f64 8 f32 16
-ragged lanes f64 L1 W=8  seeds 3: outputs 828000 (y longer than x 410275, shorter 411583)  hash 6bef4332caf0a691  lanes vs per-pair bitwise mismatches 0  non-finite outputs 206364  outside the route bound 0  worst dev 0
-ragged lanes f32 L1 W=16 seeds 3: outputs 828000 (y longer than x 410275, shorter 411583)  hash 5cf4e23b27314496  lanes vs per-pair bitwise mismatches 0  non-finite outputs 206364  outside the route bound 0  worst dev 0
-ragged lanes f64 Sq W=8  seeds 3: outputs 828000 (y longer than x 410275, shorter 411583)  hash bb220a3288d1c36a  lanes vs per-pair bitwise mismatches 0  non-finite outputs 206819  outside the route bound 0  worst dev 0
-ragged lanes f32 Sq W=16 seeds 3: outputs 828000 (y longer than x 410275, shorter 411583)  hash b025d3bfdb27919f  lanes vs per-pair bitwise mismatches 0  non-finite outputs 206819  outside the route bound 0  worst dev 0
-ragged all hashes combined 234a28d2eb9daf0a

@@ -86,6 +86,38 @@ class TestLoad:
         assert data.p_names == ["a", "b"]
         assert data.ndim == 2
 
+    @pytest.mark.parametrize("suffix", [".csv", ".parquet"])
+    def test_float32_load_clusters_as_the_from_float32_route(self, tmp_path, suffix):
+        """dtype="float32" stores float32 Data, each value the float64 read rounded
+        (text: the C++ reader; Parquet: pyarrow's cast), and clusters as today's
+        float32 route, Data.from_float32 of the float64 read, does."""
+        rng = np.random.default_rng(5)
+        rows = [rng.standard_normal(30) * 100.0 + 1000.0 * (i % 3) for i in range(12)]
+        path = tmp_path / f"series{suffix}"
+        if suffix == ".csv":
+            path.write_text("".join(",".join(repr(v) for v in row.tolist()) + "\n" for row in rows),
+                            encoding="utf-8")
+        else:
+            pa = pytest.importorskip("pyarrow")
+            pq = pytest.importorskip("pyarrow.parquet")
+            pq.write_table(pa.table({"series": pa.array([row.tolist() for row in rows],
+                                                        type=pa.list_(pa.float64()))}), path)
+        dataset = dtwcpp.load(path, dtype="f32")
+        assert dataset.dtype == "float32"
+        assert dataset.as_data().is_f32()
+        read = dtwcpp.load(path).as_series()
+        rounded = [np.asarray(row, np.float32).astype(np.float64).tolist() for row in read]
+        assert dataset.as_series() == rounded
+
+        result = dtwcpp.cluster(path, k=3, method="pam", dtype="float32")
+        oracle = dtwcpp.Problem("oracle")
+        oracle.set_data(dtwcpp.Data.from_float32(read, [str(i) for i in range(len(read))]))
+        expected = dtwcpp.fast_pam(oracle, 3)
+        np.testing.assert_array_equal(result.labels, expected.labels)
+        np.testing.assert_array_equal(result.medoids, expected.medoid_indices)
+        assert result.cost == expected.total_cost
+        assert result.cost != dtwcpp.cluster(path, k=3, method="pam").cost  # float32 ran
+
 
 # ---------------------------------------------------------------------------
 # cluster() keywords: read by C++ (a Config) before any data is read
@@ -109,6 +141,22 @@ class TestClusterKeywords:
         keys = str(caught.value).split("Valid keys: ")[1].rstrip(".").split(", ")
         assert len(keys) == len(set(keys))
         assert "device" in keys and "n_clusters" not in keys  # k is the cluster count
+
+    def test_ram_limit_reads_bytes_or_a_size_as_cpp_does(self):
+        """ram_limit, the one memory key: a byte count, or a size C++ reads as
+        dtwc_cl reads --ram-limit; 0 is automatic."""
+        config = dtwcpp._dtwcpp_core.Config()
+        config.ram_limit = "1.5G"
+        assert config.ram_limit == 1610612736
+        prob = dtwcpp.Problem("ram")
+        assert prob.ram_limit == 0
+        prob.ram_limit = np.int64(4096)
+        assert prob.ram_limit == 4096
+        with pytest.raises(dtwcpp.InvalidInput, match="Invalid ram_limit '-1G'"):
+            prob.ram_limit = "-1G"
+        with pytest.raises(TypeError, match=r"^ram_limit must be a byte count"):
+            dtwcpp.cluster([[0.0], [1.0]], k=1, ram_limit=1.5)
+        assert len(dtwcpp.cluster([[0.0], [1.0], [5.0]], k=2, ram_limit="8G").labels) == 3
 
     def test_unknown_method_still_fails_before_load_or_device(self, monkeypatch):
         from dtwcpp import _api

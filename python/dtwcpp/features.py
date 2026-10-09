@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Summary-feature extraction for the feature-based clustering baseline.
 
 When DTW finds only weak structure (low silhouette, conflicting partitions

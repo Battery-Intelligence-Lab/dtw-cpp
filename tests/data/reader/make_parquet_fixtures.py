@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Write the Parquet reader fixtures beside this script: one file per layout of the column rule.
 
 The C++ reader (tests/unit/test_io_readers.cpp), Python (tests/python/test_io.py) and MATLAB

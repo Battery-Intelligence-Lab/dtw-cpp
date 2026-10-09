@@ -1,6 +1,7 @@
 /**
  * @file unit_test_distance_matrix_csv.cpp
  * @brief Byte contract for every native distance-matrix CSV route.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

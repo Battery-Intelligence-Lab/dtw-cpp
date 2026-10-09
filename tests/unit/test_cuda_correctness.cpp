@@ -41,18 +41,6 @@
 #include <utility>
 #include <vector>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h> // GlobalMemoryStatusEx: the host-memory check
-#else
-#include <fstream>
-#endif
-
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::MessageMatches;
 using Catch::Matchers::WithinRel;
@@ -70,23 +58,6 @@ namespace {
 
 constexpr auto generate_random_series =
   &dtwc::test_support::accelerator_series_set;
-
-/// Physical memory the host can give a new allocation now, in bytes: Windows'
-/// available physical memory, Linux's MemAvailable; 0 when unknown.
-std::uint64_t available_host_memory()
-{
-#ifdef _WIN32
-  MEMORYSTATUSEX status{};
-  status.dwLength = sizeof(status);
-  return GlobalMemoryStatusEx(&status) ? status.ullAvailPhys : 0;
-#else
-  std::ifstream meminfo("/proc/meminfo");
-  for (std::string line; std::getline(meminfo, line);)
-    if (line.rfind("MemAvailable:", 0) == 0)
-      return std::stoull(line.substr(13)) * 1024; // the value is in kB
-  return 0;
-#endif
-}
 
 /// The CUDA fill of `series` into a fresh packed matrix, and its distances as
 /// the N x N row-major matrix the oracles below build.
@@ -1745,7 +1716,7 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
   // the rest of the process. A host that cannot hold it skips, and says so.
   const std::uint64_t needed =
       dtwc::core::packed_size(N) * sizeof(double) + (std::uint64_t{ 1 } << 30);
-  const std::uint64_t available = available_host_memory();
+  const std::uint64_t available = dtwc::core::available_memory(); // 0: unknown
   if (available != 0 && available < needed) {
     SKIP("A15 needs " << (needed >> 20) << " MiB of available host memory for its "
          << N << "-series matrix; this host has " << (available >> 20) << " MiB");

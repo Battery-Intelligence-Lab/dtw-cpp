@@ -15,6 +15,9 @@ function tests = test_contract_parity
 %   Run with: results = runtests('test_contract_parity');
 %   (Requires the compiled dtwc_mex on the path; otherwise every test is SKIPPED
 %    with a loud notice.)
+
+%> @file test_contract_parity.m
+%> @author Volkan Kumtepeli
     tests = functiontests(localfunctions);
 end
 
@@ -351,7 +354,7 @@ function test_keys_are_python_words_in_camel_case(testCase)
 %   less n_clusters, which k names) and DTWClustering's settable properties are
 %   Python's DTWClustering parameters, in CamelCase. The words are those of
 %   python/src/_dtwcpp_core.cpp's Config and python/dtwcpp/_clustering.py.
-    cluster_words = {'name', 'method', 'band', 'metric', 'variant', 'max_iter', 'n_init', ...
+    cluster_words = {'name', 'ram_limit', 'method', 'band', 'metric', 'variant', 'max_iter', 'n_init', ...
         'dc', 'wdtw_g', 'adtw_penalty', 'sdtw_gamma', 'msm_c', 'twe_nu', 'twe_lambda', ...
         'mv_mode', 'missing_strategy', 'sample_size', 'n_samples', 'seed', 'batch_size', ...
         'linkage', 'solver', 'mip_gap', 'time_limit', 'no_warm_start', 'numeric_focus', ...
@@ -492,6 +495,9 @@ function test_problem_setters_all_callable(testCase)
     prob.set_output_folder(tempdir);
     prob.set_verbose(false);
     prob.set_gpu_precision('auto');
+    prob.set_ram_limit('1.5G'); % read as dtwc_cl reads --ram-limit
+    verifyEqual(testCase, prob.RamLimit, 1610612736);
+    prob.set_ram_limit(0);
     verifyEqual(testCase, prob.size(), 6);
 end
 

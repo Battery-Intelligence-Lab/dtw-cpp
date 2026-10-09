@@ -5,6 +5,7 @@
  * Used for persistent-cache identities. The digest is a format contract, so it
  * must not depend on std::hash (which is implementation-defined and may be
  * salted) or on host word size.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

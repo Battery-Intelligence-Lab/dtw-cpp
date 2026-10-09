@@ -10,6 +10,7 @@
  * A missing device is a hard error, never a fallback: it previously produced an
  * all-zero N*N matrix — a valid-looking wrong answer.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Sep 2026
  */
 

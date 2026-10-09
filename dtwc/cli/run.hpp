@@ -25,6 +25,7 @@
  * implement raises validate_gpu_request()'s DeviceError, and a GPU index Metal
  * cannot honour Problem::set_device's, all before any I/O.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 
@@ -47,8 +48,8 @@ namespace dtwc {
 Result run(const Config &config);
 
 /// Cluster `data`, already in memory: `input` and the options only a file
-/// reader applies (`column`, `skip-rows`, `skip-cols`, `delimiter`,
-/// `ram-limit`) must be at their defaults.
+/// reader applies (`column`, `skip-rows`, `skip-cols`, `delimiter`) must be at
+/// their defaults.
 Result run(const Config &config, Data data);
 
 namespace detail {

@@ -1,6 +1,7 @@
 /**
  * @file one_batch_pam.cpp
  * @brief Fixed-batch eager PAM with O(Nm) distance storage.
+ * @author Volkan Kumtepeli
  */
 
 #include "one_batch_pam.hpp"

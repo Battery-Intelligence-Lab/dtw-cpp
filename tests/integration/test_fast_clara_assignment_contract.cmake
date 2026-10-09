@@ -212,14 +212,14 @@ function(run_f13_cli precision mode output_dir dtype expected_cost)
     set_property(GLOBAL APPEND PROPERTY f13_runs "${precision}/${mode}")
 endfunction()
 
-function(require_f13_stream_rejection precision dtype)
+function(require_f13_stream_rejection precision dtype ram_limit)
     set(input_path "${work_root}/poison-${precision}.parquet")
     set(output_dir "${work_root}/${precision}-stream-rejection")
     file(MAKE_DIRECTORY "${output_dir}")
-    # 26000 bytes hold the pass (the medoid, 8 bytes of label and of nearest
-    # distance per row, one decode of the 129 rows, one 65-row group: 24,056 in
-    # float64), below the in-RAM estimate with CLARA's pass (29,159), so the
-    # run streams.
+    # The limit holds the pass (the medoid, 8 bytes of label and of nearest
+    # distance per row, one decode of the 129 rows, one 65-row group: 24,056
+    # bytes in float64, 19,614 in float32), below the in-RAM estimate with
+    # CLARA's pass (29,159 and 24,434), so the run streams.
     execute_process(
         COMMAND
             "${cli_path}"
@@ -236,7 +236,7 @@ function(require_f13_stream_rejection precision dtype)
             --verbose
             --dtype "${dtype}"
             --variant standard
-            --ram-limit 26000
+            --ram-limit "${ram_limit}"
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
         ERROR_VARIABLE stderr
@@ -326,8 +326,8 @@ endfunction()
 # 406389999E800000).
 check_f13_precision(f64 float64 "156.3")
 check_f13_precision(f32 float32 "156.30000233650208")
-require_f13_stream_rejection(f64 float64)
-require_f13_stream_rejection(f32 float32)
+require_f13_stream_rejection(f64 float64 26000)
+require_f13_stream_rejection(f32 float32 22000)
 
 get_property(f13_runs GLOBAL PROPERTY f13_runs)
 get_property(f13_route_checks GLOBAL PROPERTY f13_route_checks)

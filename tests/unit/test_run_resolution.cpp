@@ -15,6 +15,7 @@
  * A build without HiGHS raises SolverError for `mip`, the one method that needs
  * a solver; `lrcore` needs none and runs there like every other method.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 
@@ -299,7 +300,6 @@ TEST_CASE("run with in-memory series refuses the options only a file reader appl
   refuses([](dtwc::Config &c) { c.skip_rows = 1; }, "--skip-rows and --skip-cols (skip_rows, skip_cols) drop");
   refuses([](dtwc::Config &c) { c.skip_cols = 1; }, "--skip-rows and --skip-cols (skip_rows, skip_cols) drop");
   refuses([](dtwc::Config &c) { c.delimiter = ';'; }, "--delimiter (delimiter) splits CSV/TSV text");
-  refuses([](dtwc::Config &c) { c.ram_limit = 1024; }, "--ram-limit caps Parquet series materialisation");
   refuses([](dtwc::Config &c) { c.k = 7; }, "cluster: k must not exceed the number of series.");
   refuses([](dtwc::Config &c) { c.k = dtwc::Config{}.k; }, "-k/--n-clusters, the number of clusters, is required.");
 }

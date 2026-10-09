@@ -2,6 +2,7 @@
  * @file f14_result_save_writer.cc
  * @brief Saves the conformance clustering with the C++ Result::save, for
  *        test_distance_matrix_csv_contract.cmake to compare with dtwc_cl's files.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

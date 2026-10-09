@@ -12,8 +12,9 @@
  *              https://doi.org/10.1007/978-3-030-57675-2_37
  *            - Sakoe-Chiba band: Sakoe & Chiba (1978), IEEE TASSP 26(1).
  *
- *          See also `.claude/CITATIONS.md` for the full bibliography.
+ *          See also `docs/CITATIONS.md` for the full bibliography.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 

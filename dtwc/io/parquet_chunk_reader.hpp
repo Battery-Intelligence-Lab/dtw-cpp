@@ -336,17 +336,21 @@ public:
     return series * sizeof(std::string) + name_heap_bytes(name_bytes_, series);
   }
 
-  /// The peak while read_arrow loads this file: its double series beside one
-  /// decode; Float32 output then copies them into float before releasing them.
+  /// The peak while the CLI materializes this file: its series at the selected
+  /// precision beside one decode (read_all decodes a record batch at a time).
   size_t estimated_materialization_peak_bytes(bool use_float32) const
   {
-    return estimated_resident_bytes(false) + decode_bytes() + (use_float32 ? estimated_resident_bytes(true) : 0);
+    return estimated_resident_bytes(use_float32) + decode_bytes();
   }
 
-  /// Append every series of the file to `series` and `names`, a record batch at
-  /// a time. A row's series_<i> numbers on from series.size(), so a folder's
-  /// files never repeat one. A file that is one series is decoded whole.
-  void read_all(std::vector<std::vector<data_t>> &series, std::vector<std::string> &names) const
+  /// Append every series of the file to `series` and `names` as `T`: data_t, or
+  /// float. A row's series_<i> numbers on from series.size(), so a folder's files
+  /// never repeat one. Rows are decoded a record batch at a time, so the decoded
+  /// values held beside the series are one batch's: a Float32 read of Float64
+  /// values never holds them all in double. A file that is one series is decoded
+  /// whole.
+  template <typename T>
+  void read_all(std::vector<std::vector<T>> &series, std::vector<std::string> &names) const
   {
     const size_t first_name = series.size();
     if (!rows_are_series()) {
@@ -583,6 +587,7 @@ private:
   template <typename Consume>
   void decode_rows(int rg_start, int count, const char *what, Consume &&consume) const
   {
+    if (count == 0) return;
     std::vector<int> groups(static_cast<size_t>(count));
     std::iota(groups.begin(), groups.end(), rg_start);
     const auto batches = record_batches(groups, what);

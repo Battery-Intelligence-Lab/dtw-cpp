@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """
 Plot DTWC++ benchmark results from Google Benchmark JSON output.
 

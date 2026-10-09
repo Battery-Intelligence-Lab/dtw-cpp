@@ -22,6 +22,9 @@ function tests = test_mex_input_validation
 %   Run with: results = runtests('test_mex_input_validation');
 %   (Requires the compiled MEX on the path; otherwise every test is SKIPPED
 %    with a loud notice -- MATLAB cannot be run in the CI/build environment.)
+
+%> @file test_mex_input_validation.m
+%> @author Volkan Kumtepeli
     tests = functiontests(localfunctions);
 end
 

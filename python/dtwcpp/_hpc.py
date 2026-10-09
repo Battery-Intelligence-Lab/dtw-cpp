@@ -319,6 +319,8 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
         items += [(key, value) for key, value in (
             ("skip-rows", data.skip_rows), ("skip-cols", data.skip_cols),
             ("delimiter", data.delimiter)) if value]
+    if data.dtype != "float64":  # a path or input.tsv is read in it on the cluster
+        items.append(("dtype", data.dtype))
     items += [(key.replace("_", "-"), getattr(config, key))
               for key in keys if key != "name"]
 

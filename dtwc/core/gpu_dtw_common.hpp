@@ -9,6 +9,7 @@
  *          inherit and append backend-specific fields. Designated aggregate
  *          initialisation still works in C++20 (`opts.band = 5; ...`).
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 

@@ -6,6 +6,7 @@
  *          GPU throughput and compares against the multi-threaded CPU path
  *          so we can publish Mac Studio / M-series numbers.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 

@@ -1,6 +1,7 @@
 /**
  * @file barycenter.hpp
  * @brief DTW barycenters and barycentric k-means clustering.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

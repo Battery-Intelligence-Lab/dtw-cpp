@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Unpack a DTWC++ release archive outside the checkout and run its CLI (each build of it on Windows)."""
 
 from __future__ import annotations
@@ -259,7 +260,7 @@ def main() -> None:
                     "--method", "pam",
                     "--max-iter", "3",
                     "--device", "cpu",
-                    "--mmap-threshold", "0",  # the distance matrix is mapped (llfio)
+                    "--ram-limit", "1",  # over 1 byte the distance matrix is mapped (llfio)
                 ],
                 cwd=scratch,
                 text=True,

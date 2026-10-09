@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """dtwcpp.distance.dtw, the one distance entry, against values worked out by hand.
 
 Every variant x metric x missing-data strategy that C++ computes (Standard with

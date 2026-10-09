@@ -31,15 +31,17 @@ class Problem;
 
 /// Options controlling automatic checkpointing, read by
 /// Problem::fill_distance_matrix() through Problem::checkpoint. With `enabled`
-/// the fill runs the BruteForce row schedule in blocks of `save_interval` rows
-/// and saves after each block, the last included, so a completed fill leaves a
-/// complete checkpoint. `enabled` with `save_interval < 1` or an empty
-/// `directory` is InvalidInput before any distance is computed.
+/// the fill saves after every `save_interval` rows of the packed matrix, rounded
+/// up to the lane width (16 doubles where the lanes are 128 bytes), the last
+/// included, so a completed fill leaves a complete checkpoint. `enabled` with
+/// `save_interval < 1` or an empty `directory` is InvalidInput before any
+/// distance is computed.
 struct CheckpointOptions {
   std::string directory = "./checkpoints"; ///< Directory of the checkpoint file.
-  /// Completed matrix rows between automatic saves (>= 1). A save of a matrix in
-  /// RAM writes all N(N+1)/2 doubles, so a fill writes O(N^3 / save_interval)
-  /// bytes in total; a mapped matrix is flushed in place instead.
+  /// Completed matrix rows between automatic saves (>= 1). The first save of a
+  /// fill writes the whole matrix, unless the file is already this matrix's; each
+  /// later save writes only the rows filled since, in place: at most twice the
+  /// matrix's bytes in all. A mapped matrix flushes those rows in place instead.
   int save_interval = 100;
   bool enabled = false; ///< Whether automatic checkpointing is enabled.
 };

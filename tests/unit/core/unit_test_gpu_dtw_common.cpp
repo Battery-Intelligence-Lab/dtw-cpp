@@ -1,6 +1,7 @@
 /**
  * @file unit_test_gpu_dtw_common.cpp
  * @brief Host-only contract tests for shared GPU result normalization.
+ * @author Volkan Kumtepeli
  */
 
 #include <core/gpu_dtw_common.hpp>

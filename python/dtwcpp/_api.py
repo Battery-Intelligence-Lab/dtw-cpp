@@ -67,7 +67,7 @@ def _series(source, skip_rows=0):
         source = source.to_numpy()
     elif hasattr(source, "__arrow_c_array__") or hasattr(source, "__arrow_c_stream__"):
         data = data_from_arrow_c_array(source)
-        return ([np.asarray(row, dtype=np.float64) for row in data.p_vec[skip_rows:]],
+        return ([np.asarray(data.series(i), dtype=np.float64) for i in range(skip_rows, data.size)],
                 list(data.p_names)[skip_rows:])
     elif type(source).__module__.startswith("scipy.sparse"):
         raise TypeError("Sparse input is not supported; provide a dense array.")
@@ -100,7 +100,7 @@ class Dataset:
     """
 
     def __init__(self, source, *, skip_cols=0, skip_rows=0, delimiter=None,
-                 name=None):
+                 name=None, dtype="float64"):
         from dtwcpp import InvalidInput
         # Checked where the handle is made, as C++ dtwc::load does, so a bad
         # count fails before any file is read or job submitted.
@@ -109,11 +109,16 @@ class Dataset:
                 raise TypeError(f"load: {key} must be an integer")
             if value < 0:
                 raise InvalidInput(f"load: {key} must be non-negative.")
+        if not isinstance(dtype, str):
+            raise TypeError(f"load: dtype must be a string such as 'float32', got {type(dtype).__name__}")
         from dtwcpp import _dtwcpp_core
         self.source = source
         self.skip_cols = int(skip_cols)
         self.skip_rows = int(skip_rows)
         self.delimiter = delimiter
+        # The precision the series are stored in, by the C++ table --dtype reads:
+        # "float32" halves their memory; float32 input alone does not choose it.
+        self.dtype = _dtwcpp_core._dtype(dtype)
         # dtwc_cl's rule, so a run of "data/" is named "data" in every language.
         self.name = name if name is not None else _dtwcpp_core._default_name(
             os.fspath(source) if self.is_path else "")
@@ -134,12 +139,13 @@ class Dataset:
         installed pyarrow. ``skip_rows`` drops leading SERIES of an
         in-memory source — one memory row is one file line — and the series left
         are named as :func:`_series` names them: ordinals count from 0, as in C++.
+        The series are stored in ``dtype``, each value rounded once to it.
         """
         if self._data is None:
             from dtwcpp import _dtwcpp_core, io
             if self.is_path:
                 self._data = io._read_data(self.source, self.skip_cols,
-                                           self.skip_rows, self.delimiter)
+                                           self.skip_rows, self.delimiter, self.dtype)
             else:
                 from dtwcpp import InvalidInput
                 rows, names = _series(self.source, self.skip_rows)
@@ -150,7 +156,8 @@ class Dataset:
                                 "load: skip_cols exceeds an in-memory series "
                                 "length.")
                     rows = [row[self.skip_cols:] for row in rows]
-                self._data = _dtwcpp_core.Data([row.tolist() for row in rows], names)
+                make = _dtwcpp_core.Data.from_float32 if self.dtype == "float32" else _dtwcpp_core.Data
+                self._data = make([row.tolist() for row in rows], names)
         return self._data
 
     def as_data(self):
@@ -163,22 +170,26 @@ class Dataset:
         Not cached: the C++ ``Data`` is the retained representation, so asking
         for Python floats is an explicit, transient request.
         """
-        return self._as_data().p_vec
+        data = self._as_data()
+        return [data.series(i) for i in range(data.size)]
 
     def series_names(self):
         """The loader's name for each series — what C++ ``series_name(i)`` returns."""
         return self._as_data().p_names
 
 
-def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None):
+def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="float64"):
     """Wrap a path or array in a lazy :class:`Dataset` handle (does not read it).
-    A Dataset passes through unchanged: it keeps the options it was made with, so
-    an option other than its default is refused, as MATLAB's dtwc.load refuses
-    any."""
+    ``dtype="float32"`` stores the series as float32, half the memory: a file's
+    reader rounds each value, never holding a float64 copy (float32 input data
+    alone does not choose it). A Dataset passes through unchanged: it keeps the
+    options it was made with, so an option other than its default is refused, as
+    MATLAB's dtwc.load refuses any."""
     if isinstance(source, Dataset):
         ignored = [key for key, value, default in (
             ("skip_cols", skip_cols, 0), ("skip_rows", skip_rows, 0),
-            ("delimiter", delimiter, None), ("name", name, None)) if value != default]
+            ("delimiter", delimiter, None), ("name", name, None),
+            ("dtype", dtype, "float64")) if value != default]
         if ignored:
             from dtwcpp import InvalidInput
             raise InvalidInput(
@@ -186,7 +197,7 @@ def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None):
                 "would be ignored; load its source with the options instead.")
         return source
     return Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
-                   delimiter=delimiter, name=name)
+                   delimiter=delimiter, name=name, dtype=dtype)
 
 
 class Result:
@@ -322,7 +333,12 @@ def _set_key(config, key, value, name=None):
                            + ", ".join(valid) + ".")
     current = getattr(config, key)
     flag = isinstance(value, (bool, np.bool_))
-    if isinstance(current, bool):
+    if key == "ram_limit":  # bytes, or a size such as "8G" that C++ reads
+        ok = not flag and isinstance(value, (int, np.integer, str))
+        kind = "a byte count or a size such as '8G'"
+        if ok and not isinstance(value, str):
+            value = int(value)
+    elif isinstance(current, bool):
         kind, ok, value = "a bool", flag, bool(value) if flag else value
     elif isinstance(current, int):
         ok = not flag and isinstance(value, (int, np.integer))
@@ -352,14 +368,18 @@ def _config(k, keys):
 def cluster(data, k, **keys):
     """Cluster a dataset into ``k`` clusters with DTW, on the global or given device.
 
-    ``data`` may be a :class:`Dataset`, a path, or an array. ``keys`` are the
+    ``data`` may be a :class:`Dataset`, a path, or an array; ``dtype`` is
+    :func:`load`'s, for a path or an array cluster() loads (``"float32"`` stores
+    the series at half the memory). ``keys`` are the
     keys of a dtwc_cl run — its long names in snake_case: ``method``, ``band``,
     ``metric``, ``variant`` and its parameters (``wdtw_g``, ``adtw_penalty``,
     ``sdtw_gamma``, ``msm_c``, ``twe_nu``, ``twe_lambda``), ``mv_mode``,
     ``missing_strategy``, ``max_iter``, ``n_init``, ``seed``, ``sample_size``,
     ``n_samples``, ``batch_size``, ``linkage``, ``dc``, ``solver`` and the MIP
-    settings, ``gpu_precision``, ``name``, ``verbose`` — read and checked by
-    C++; an unknown key raises :class:`dtwcpp.InvalidInput`. ``method`` is
+    settings, ``gpu_precision``, ``name``, ``verbose``, ``ram_limit`` (the
+    memory the run may use, bytes or a size such as ``"8G"``; 0, the default,
+    is what the process may use) — read and checked by C++; an unknown key
+    raises :class:`dtwcpp.InvalidInput`. ``method`` is
     ``"auto"`` unless given: PAM on a GPU and for up to 5,000 series on the
     CPU, CLARA above. ``device=None`` uses the global default (see
     :func:`dtwcpp.device`). ``"hpc"`` and ``"hpc:gpu"`` run the clustering on a
@@ -373,13 +393,14 @@ def cluster(data, k, **keys):
     from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
     device = keys.pop("device", None)
     gpu_device = keys.pop("gpu_device", None)
+    dtype = keys.pop("dtype", "float64")
     config = _config(k, keys)
     eff = device if device is not None else dtwcpp.device()
     backend, _ = _resolve_device(eff)
     if gpu_device is not None and eff.strip().lower() != "hpc:gpu":
         raise InvalidInput(f"cluster: gpu_device names the GPU of a device='hpc:gpu' "
                            f"run, and the device is '{eff}'.")
-    data = load(data)
+    data = load(data, dtype=dtype)
 
     t0 = time.perf_counter()
     if backend == "hpc":

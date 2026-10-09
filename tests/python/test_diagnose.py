@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Tests for dtwcpp.diagnose."""
 
 from __future__ import annotations

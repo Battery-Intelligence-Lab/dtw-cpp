@@ -18,6 +18,7 @@
  *
  * The automatic kernel choice (`cuda/kernel_selection.hpp`, also free of CUDA
  * headers) is pinned here too, so a build without a GPU checks its ranges.
+ * @author Volkan Kumtepeli
  */
 
 #include <catch2/catch_test_macros.hpp>
@@ -125,7 +126,7 @@ TEST_CASE("CUDA kernel choice follows the longest series length and the shared m
   using dtwc::cuda::detail::select_kernel;
 
   // Each range's kernel beats every other kernel that accepts the range by at
-  // least 15 % on the RTX 4000 Ada (.claude/baselines/2026-09-29-w4a-cuda-kernel-ab.md).
+  // least 15 % on the RTX 4000 Ada (measured 2026-09-29).
   // Above L = 2048 the wavefront keeps its three anti-diagonals in shared memory
   // only while three blocks fit an SM, each also taking the kernel's 16 static
   // bytes and the runtime's 1,024 reserved ones. The RTX 4000 Ada's SM has

@@ -115,6 +115,14 @@ void set_error(PyObject *type, const char *what)
 struct FrozenParams : dtwc::core::DTWVariantParams
 {};
 
+/// ram_limit as every language takes it: a byte count, or a size such as "8G"
+/// (dtwc::parse_ram_limit); 0 is automatic.
+std::size_t ram_limit_of(nb::handle value)
+{
+  if (nb::isinstance<nb::str>(value)) return dtwc::parse_ram_limit(nb::cast<std::string>(value), "ram_limit");
+  return nb::cast<std::size_t>(value);
+}
+
 /// A Config field reached through `ref`, read and written as itself.
 template <class T, class Ref>
 void def_field(nb::class_<dtwc::Config> &config, const char *key, Ref ref)
@@ -307,16 +315,26 @@ NB_MODULE(_dtwcpp_core, m) {
   // Tier-1 file parsing
   // =========================================================================
 
+  m.def("_dtype", [](const std::string &text) {
+    const auto precision = dtwc::parse_name(dtwc::core::precision_names, text, "dtype");
+    return std::string(dtwc::name_of(dtwc::core::precision_names, precision));
+  }, "text"_a,
+     "The canonical name of a dtype spelling, by the C++ table dtwc_cl's --dtype\n"
+     "reads (core::precision_names): 'f32' -> 'float32'. An unknown one raises\n"
+     "InvalidInput naming the valid ones.");
+
   m.def("_read_data",
         [](const std::filesystem::path &source, dtwc::index_t skip_cols,
-           dtwc::index_t skip_rows, const std::string &delimiter) {
+           dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype) {
     if (delimiter.size() > 1)
       throw dtwc::InvalidInput("load: delimiter must be a single character.");
+    const auto precision = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
     // File I/O and parsing touch no Python object, so the GIL is released for
     // the whole read exactly as every other I/O binding here does.
     nb::gil_scoped_release release;
-    return dtwc::read_data(source, skip_cols, skip_rows, delimiter.empty() ? '\0' : delimiter[0]);
+    return dtwc::read_data(source, skip_cols, skip_rows, delimiter.empty() ? '\0' : delimiter[0], {}, precision);
   }, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
+     "dtype"_a = std::string("float64"),
      "Read a path with dtwc::read_data, the reader dtwc_cl and C++ dtwc::load\n"
      "use (CSV/TSV and a folder of them; the wheel links no Arrow C++, so\n"
      "dtwcpp.load reads Parquet and Arrow IPC through pyarrow), and return the owning\n"
@@ -325,7 +343,8 @@ NB_MODULE(_dtwcpp_core, m) {
      "skip_cols drops leading FIELDS before numeric parsing, skip_rows drops\n"
      "leading LINES, an empty delimiter means infer from the extension, and\n"
      "variable-length rows are preserved. The names are the reader's own, so\n"
-     "Tier-1 output carries the series names the CLI writes.");
+     "Tier-1 output carries the series names the CLI writes. dtype 'float32'\n"
+     "stores each value as the double parse rounded to float.");
 
   m.def("_parquet_files", &dtwc::parquet_files, "path"_a,
         "The Parquet files a path names, listed as dtwc::read_data lists them:\n"
@@ -531,7 +550,9 @@ NB_MODULE(_dtwcpp_core, m) {
                    std::tie(c.device, c.device_index) = dtwc::detail::parse_device(name);
                  })
     .def_prop_rw("no_warm_start", [](const Config &c) { return !c.mip.warm_start; },
-                 [](Config &c, bool value) { c.mip.warm_start = !value; });
+                 [](Config &c, bool value) { c.mip.warm_start = !value; })
+    .def_prop_rw("ram_limit", [](const Config &c) { return c.ram_limit; },
+                 [](Config &c, nb::handle value) { c.ram_limit = ram_limit_of(value); });
   def_named(config, "method", [](Config &c) -> dtwc::Method & { return c.method; }, dtwc::method_names);
   def_named(config, "metric", [](Config &c) -> dtwc::core::MetricType & { return c.metric; },
             dtwc::core::metric_names);
@@ -737,6 +758,15 @@ NB_MODULE(_dtwcpp_core, m) {
                 "distances are returned and stored as double.")
     .def_rw("p_vec", &dtwc::Data::p_vec)
     .def_rw("p_names", &dtwc::Data::p_names)
+    .def("series", [](const dtwc::Data &d, std::int64_t i) {
+      require_index("Data.series", "i", i, static_cast<size_t>(d.size()));
+      const auto copy = [](auto s) { return std::vector<double>(s.begin(), s.end()); };
+      const auto at = static_cast<size_t>(i);
+      return d.is_f32() ? copy(d.series_f32(at)) : copy(d.series(at));
+    }, "i"_a,
+       "Series i as a list of floats, from either precision (a float32 value widens\n"
+       "exactly); p_vec holds the float64 series only.\n\n"
+       "Raises InvalidInput if i is outside [0, N).")
     .def_rw("ndim", &dtwc::Data::ndim,
             "Number of features (dimensions) per timestep (default 1).")
     .def_prop_ro("size", &dtwc::Data::size)
@@ -752,7 +782,9 @@ NB_MODULE(_dtwcpp_core, m) {
   // protocol `__arrow_c_array__` (polars / DuckDB / pyarrow / pandas) via the
   // vendored nanoarrow — NO pyarrow dependency. Each list element becomes one
   // (univariate) series; see dtwc::io::data_from_arrow for accepted layouts.
-  m.def("data_from_arrow_c_array", [](nb::object obj) -> dtwc::Data {
+  m.def("data_from_arrow_c_array", [](nb::object obj, const std::string &dtype) -> dtwc::Data {
+    // Checked before a capsule is taken, so a bad dtype consumes no stream.
+    const auto precision = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
     // Producers expose one of two PyCapsule protocols. pyarrow.Array / DuckDB
     // give a single array (__arrow_c_array__); polars / pandas give a batch
     // stream (__arrow_c_stream__). Support both; prefer the single-array form.
@@ -764,7 +796,7 @@ NB_MODULE(_dtwcpp_core, m) {
         if (PyErr_Occurred()) throw nb::python_error();
         throw dtwc::InvalidInput("data_from_arrow_c_array: null Arrow stream capsule.");
       }
-      return dtwc::io::data_from_arrow_stream(stream);
+      return dtwc::io::data_from_arrow_stream(stream, 1, precision);
     }
 
     if (!nb::hasattr(obj, "__arrow_c_array__"))
@@ -793,17 +825,18 @@ NB_MODULE(_dtwcpp_core, m) {
     // there is no double free.
     dtwc::Data data;
     try {
-      data = dtwc::io::data_from_arrow(schema, array);
+      data = dtwc::io::data_from_arrow(schema, array, {}, precision);
     } catch (...) {
       dtwc::io::release_arrow(schema, array);
       throw;
     }
     dtwc::io::release_arrow(schema, array);
     return data;
-  }, "obj"_a,
+  }, "obj"_a, "dtype"_a = std::string("float64"),
      "Build a Data object from an Arrow C Data interface source (zero-copy,\n"
      "no pyarrow). `obj` must implement __arrow_c_array__ over a list/large_list\n"
-     "of float32/float64 (each element one series) or a struct containing one.");
+     "of float32/float64 (each element one series) or a struct containing one.\n"
+     "dtype 'float32' stores each value rounded to float.");
 
   // =========================================================================
   // Problem class
@@ -888,6 +921,12 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_prop_rw("verbose", &dtwc::Problem::verbose,
                  &dtwc::Problem::set_verbose,
                  "Print progress messages for long-running operations.")
+    .def_prop_rw("ram_limit", &dtwc::Problem::ram_limit,
+                 [](dtwc::Problem &p, nb::handle value) { p.set_ram_limit(ram_limit_of(value)); },
+                 "The memory this Problem may use: bytes, or a size such as '8G'. 0 (the\n"
+                 "default) is what the process may use when the matrix is filled: the\n"
+                 "available memory, or a cgroup's limit. It sizes the slabs in which a\n"
+                 "mapped matrix (use_mmap_distance_matrix) is filled.")
     .def_prop_rw("name", &dtwc::Problem::name, &dtwc::Problem::set_name)
     .def_prop_rw("output_folder", &dtwc::Problem::output_folder,
                  &dtwc::Problem::set_output_folder,
@@ -1290,10 +1329,11 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("directory", &dtwc::CheckpointOptions::directory,
             "Checkpoint directory. Empty with enabled raises InvalidInput.")
     .def_rw("save_interval", &dtwc::CheckpointOptions::save_interval,
-            "Completed matrix ROWS between automatic saves (>= 1). The fill\n"
-            "runs consecutive row blocks of this size and saves after each\n"
-            "block, the last included, so a completed fill leaves a complete\n"
-            "checkpoint. A value below 1 with enabled raises InvalidInput.")
+            "Completed matrix ROWS between automatic saves (>= 1), rounded up\n"
+            "to the lane width. The first save writes the whole matrix, each\n"
+            "later one the rows filled since, in place; the last save comes at\n"
+            "the end, so a completed fill leaves a complete checkpoint. A value\n"
+            "below 1 with enabled raises InvalidInput.")
     .def_rw("enabled", &dtwc::CheckpointOptions::enabled,
             "Enable automatic mid-fill checkpointing to <directory>/<name>.dtwm.\n"
             "A matrix mapped to that file is flushed in place. An empty\n"

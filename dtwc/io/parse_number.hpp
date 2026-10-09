@@ -13,6 +13,7 @@
  * (dtwc/extern/fast_float, Apache-2.0 / MIT / BSL-1.0), so no installed header
  * includes fast_float.
  *
+ * @author Volkan Kumtepeli
  * @date 23 Sep 2026
  */
 

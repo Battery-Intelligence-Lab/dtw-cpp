@@ -20,7 +20,7 @@
  *              MSM/TWE <= 1.3x plain DTW DP (dtwFull_L, same DP structure).
  *
  *          Oracle values were generated from aeon 1.5.0 on reproducible LCG
- *          series (generator in .claude/baselines/2026-07-08-msm-twe.md).
+ *          series (2026-07-08).
  *
  * @author Volkan Kumtepeli
  * @author Claude Opus 4.8

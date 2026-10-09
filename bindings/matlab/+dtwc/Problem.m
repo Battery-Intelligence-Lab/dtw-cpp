@@ -26,6 +26,7 @@ classdef Problem < handle
         Verbose       % progress messages (set_verbose)
         MaxIter       % iteration limit of the methods (set_max_iter)
         NRepetitions  % restarts of the iterative methods (set_n_repetitions)
+        RamLimit      % bytes the Problem may use, 0 automatic (set_ram_limit)
     end
 
     methods
@@ -59,7 +60,7 @@ classdef Problem < handle
             end
         end
 
-        function set_data(obj, data, names, ndim)
+        function set_data(obj, data, names, ndim, dtype)
         %SET_DATA Load time series data into the Problem.
         %   prob.set_data(X)                    % X: N x L numeric matrix, one series per row
         %   prob.set_data(C)                    % C: cell of numeric vectors, one series each
@@ -67,28 +68,33 @@ classdef Problem < handle
         %   prob.set_data(X, names)             % names: 1xN cell array of char labels
         %   prob.set_data(X, names, ndim)       % ndim: features per timestep (multivariate,
         %                                       %   interleaved [t0f0 t0f1 t1f0 ...] layout)
+        %   prob.set_data(X, names, ndim, dtype)  % dtype: 'float64' (default) or 'float32',
+        %                                       %   the precision the series are stored in
         %
         %   Pass names = {} to auto-derive names "0".."N-1". The one conversion of
         %   series already in memory, behind dtwc.cluster, dtwc.load, DTWClustering
-        %   and compute_distance_matrix: numbers become doubles; anything else
+        %   and compute_distance_matrix: numbers become doubles, or singles for
+        %   dtype 'float32' (single data alone stays double); anything else
         %   (a non-numeric, complex, sparse, empty or N-D series) is refused by C++
         %   with dtwc:invalidArgument naming it.
+            if nargin < 3, names = {}; end
+            if nargin < 4, ndim = 1; end
+            if nargin < 5, dtype = 'float64'; end
+            dtype = dtwc_mex('dtype', char(dtype));
+            type = 'double';
+            if strcmp(dtype, 'float32')
+                type = 'single';
+            end
             if iscell(data)
                 for i = 1:numel(data)
                     if isnumeric(data{i})
-                        data{i} = double(data{i});
+                        data{i} = cast(data{i}, type);
                     end
                 end
             elseif isnumeric(data)
-                data = double(data);
+                data = cast(data, type);
             end
-
-            if nargin < 3, names = {}; end
-            if nargin < 4
-                dtwc_mex('Problem_set_data', obj.Handle, data, names);
-            else
-                dtwc_mex('Problem_set_data', obj.Handle, data, names, double(ndim));
-            end
+            dtwc_mex('Problem_set_data', obj.Handle, data, names, double(ndim), dtype);
         end
 
         function fill_distance_matrix(obj)
@@ -195,6 +201,15 @@ classdef Problem < handle
             dtwc_mex('Problem_set_verbose', obj.Handle, logical(tf));
         end
 
+        function set_ram_limit(obj, limit)
+        %SET_RAM_LIMIT Set the memory the Problem may use: bytes, or a size such as '8G'.
+        %   0 (the default) is what the process may use when the matrix is
+        %   filled: the available memory, or a cgroup's limit. It sizes the slabs
+        %   in which a mapped matrix is filled.
+            if isstring(limit), limit = char(limit); end
+            dtwc_mex('Problem_set_ram_limit', obj.Handle, limit);
+        end
+
         function set_max_iter(obj, n)
         %SET_MAX_ITER Set the maximum iteration count.
             dtwc_mex('Problem_set_max_iter', obj.Handle, double(n));
@@ -239,11 +254,12 @@ classdef Problem < handle
         %                                              'save_interval', 100, ...
         %                                              'enabled', true))
         %
-        %   fill_distance_matrix() then runs the exact BruteForce row schedule in
-        %   consecutive blocks of save_interval completed rows and publishes a
-        %   checkpoint generation after each block. Fields are optional; any
-        %   omitted field keeps its current value. enabled requires dense storage
-        %   and save_interval >= 1, both checked before any distance is computed.
+        %   fill_distance_matrix() then saves after every save_interval rows of
+        %   the matrix (rounded up to the lane width): the first save writes the
+        %   whole matrix, each later one the rows filled since, in place. Fields
+        %   are optional; any omitted field keeps its current value. enabled
+        %   requires dense storage and save_interval >= 1, both checked before
+        %   any distance is computed.
             dtwc_mex('Problem_set_checkpoint', obj.Handle, opts);
         end
 
@@ -353,6 +369,10 @@ classdef Problem < handle
 
         function v = get.NRepetitions(obj)
             v = obj.setting('n_repetitions');
+        end
+
+        function v = get.RamLimit(obj)
+            v = obj.setting('ram_limit');
         end
     end
 

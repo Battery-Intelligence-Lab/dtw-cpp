@@ -16,6 +16,7 @@
  *          Explicit instantiations for `T = data_t` (float64) and `T = float`
  *          live in dtw_dispatch.cpp, so adding a new variant only touches
  *          dtw_dispatch.cpp.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

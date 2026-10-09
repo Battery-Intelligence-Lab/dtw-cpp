@@ -22,6 +22,7 @@
  * Style note: inputs are named locals rather than inline braced-init-lists,
  * because a brace list does not protect its commas from preprocessor argument
  * splitting inside the two-parameter CHECK_THROWS_AS / CHECK_THROWS_WITH macros.
+ * @author Volkan Kumtepeli
  */
 
 #include <core/distance_sampling_weights.hpp>

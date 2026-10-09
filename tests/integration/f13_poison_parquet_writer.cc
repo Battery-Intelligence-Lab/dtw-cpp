@@ -3,6 +3,7 @@
  * @brief Writes, in the build tree, the Parquet file of extreme values (-max, then
  *        +max: their distances overflow) that test_fast_clara_assignment_contract.cmake
  *        streams through dtwc_cl.
+ * @author Volkan Kumtepeli
  */
 
 #include <arrow/api.h>

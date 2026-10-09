@@ -1,6 +1,8 @@
 %% DTWC++ MATLAB Cross-Language Benchmark
 % Run with: matlab -batch "addpath('build/bin','bindings/matlab'); run('benchmarks/bench_cross_language.m')"
 
+%> @file bench_cross_language.m
+%> @author Volkan Kumtepeli
 fprintf('=================================================================\n');
 fprintf('DTWC++ MATLAB Benchmark\n');
 fprintf('=================================================================\n');

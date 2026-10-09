@@ -2,6 +2,7 @@
  * @file arrow_c_data.cpp
  * @brief Implementation of Arrow C Data interface ingest (see arrow_c_data.hpp).
  *
+ * @author Volkan Kumtepeli
  * @author Claude Opus 4.8
  * @date 09 Jul 2026
  */
@@ -33,11 +34,12 @@ bool is_string(ArrowType t)
   return t == NANOARROW_TYPE_STRING || t == NANOARROW_TYPE_LARGE_STRING;
 }
 
-/// Append the series of one (schema, array) pair to `series`, and a name for each
-/// to `names`: the struct's string child where it has one, else series_<index in
-/// `series`>, so the batches of a stream number on.
+/// Append the series of one (schema, array) pair to `series`, each value as T, and
+/// a name for each to `names`: the struct's string child where it has one, else
+/// series_<index in `series`>, so the batches of a stream number on.
+template <typename T>
 void append_series(const ArrowSchema *schema, const ArrowArray *array,
-                   std::vector<std::vector<data_t>> &series, std::vector<std::string> &names)
+                   std::vector<std::vector<T>> &series, std::vector<std::string> &names)
 {
   ArrowError error;
   ArrowArrayView view;
@@ -97,13 +99,13 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
                           ") of the series at row " + std::to_string(first + i) + " is outside the values [0, " +
                           std::to_string(values->length) + ").");
 
-    std::vector<data_t> s;
+    std::vector<T> s;
     s.reserve(static_cast<size_t>(end - start));
     for (int64_t j = start; j < end; ++j) {
       if (ArrowArrayViewIsNull(values, j))
         fail("data_from_arrow: null value inside series at row " + std::to_string(first + i) +
              " (drop or fill nulls before clustering).");
-      s.push_back(static_cast<data_t>(ArrowArrayViewGetDoubleUnsafe(values, j)));
+      s.push_back(static_cast<T>(ArrowArrayViewGetDoubleUnsafe(values, j)));
     }
     series.push_back(std::move(s));
 
@@ -116,15 +118,11 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
   }
 }
 
-} // namespace
-
-Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
-                     std::vector<std::string> names)
+/// data_from_arrow's series, each value as T.
+template <typename T>
+Data read_array(const ArrowSchema *schema, const ArrowArray *array, std::vector<std::string> names)
 {
-  if (schema == nullptr || array == nullptr)
-    fail("data_from_arrow: null Arrow schema/array pointer.");
-
-  std::vector<std::vector<data_t>> series;
+  std::vector<std::vector<T>> series;
   std::vector<std::string> own_names;
   append_series(schema, array, series, own_names);
   if (!names.empty()) { // caller-supplied names win
@@ -136,28 +134,11 @@ Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
   return Data(std::move(series), std::move(own_names), 1);
 }
 
-Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim)
+/// The series of every batch left in `stream`, each value as T.
+template <typename T>
+Data read_batches(ArrowArrayStream *stream, const ArrowSchema &schema, std::size_t ndim)
 {
-  if (stream == nullptr || stream->release == nullptr)
-    fail("data_from_arrow_stream: null or already-released Arrow stream.");
-
-  // Guarantees stream->release runs on every exit path (success or throw).
-  struct StreamGuard {
-    ArrowArrayStream *s;
-    ~StreamGuard() { if (s->release != nullptr) s->release(s); }
-  } sguard{ stream };
-
-  ArrowSchema schema;
-  if (stream->get_schema(stream, &schema) != NANOARROW_OK) {
-    const char *e = stream->get_last_error != nullptr ? stream->get_last_error(stream) : nullptr;
-    fail(std::string("data_from_arrow_stream: get_schema failed: ") + (e ? e : "unknown"));
-  }
-  struct SchemaGuard {
-    ArrowSchema *s;
-    ~SchemaGuard() { if (s->release != nullptr) s->release(s); }
-  } scguard{ &schema };
-
-  std::vector<std::vector<data_t>> series;
+  std::vector<std::vector<T>> series;
   std::vector<std::string> names;
   while (true) {
     ArrowArray batch;
@@ -178,6 +159,42 @@ Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim)
     release_arrow(nullptr, &batch);
   }
   return Data(std::move(series), std::move(names), ndim);
+}
+
+} // namespace
+
+Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
+                     std::vector<std::string> names, core::Precision dtype)
+{
+  if (schema == nullptr || array == nullptr)
+    fail("data_from_arrow: null Arrow schema/array pointer.");
+  return dtype == core::Precision::Float32 ? read_array<float>(schema, array, std::move(names))
+                                           : read_array<data_t>(schema, array, std::move(names));
+}
+
+Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim, core::Precision dtype)
+{
+  if (stream == nullptr || stream->release == nullptr)
+    fail("data_from_arrow_stream: null or already-released Arrow stream.");
+
+  // Guarantees stream->release runs on every exit path (success or throw).
+  struct StreamGuard {
+    ArrowArrayStream *s;
+    ~StreamGuard() { if (s->release != nullptr) s->release(s); }
+  } sguard{ stream };
+
+  ArrowSchema schema;
+  if (stream->get_schema(stream, &schema) != NANOARROW_OK) {
+    const char *e = stream->get_last_error != nullptr ? stream->get_last_error(stream) : nullptr;
+    fail(std::string("data_from_arrow_stream: get_schema failed: ") + (e ? e : "unknown"));
+  }
+  struct SchemaGuard {
+    ArrowSchema *s;
+    ~SchemaGuard() { if (s->release != nullptr) s->release(s); }
+  } scguard{ &schema };
+
+  return dtype == core::Precision::Float32 ? read_batches<float>(stream, schema, ndim)
+                                           : read_batches<data_t>(stream, schema, ndim);
 }
 
 void release_arrow(ArrowSchema *schema, ArrowArray *array) noexcept

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """Three documentation gates that compare what users read with what the code does.
 
 1. Every dtwc_cl flag the user docs show exists in the live `dtwc_cl --help`.

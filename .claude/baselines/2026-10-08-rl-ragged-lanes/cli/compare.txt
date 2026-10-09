@@ -1,3 +1,0 @@
-cli_base: C:/D/git/wt/RL/build/bin/dtwc_cl.exe at e691e48c (clang tree, before the unit); cli_B3: the same tree at the fix (no test in the column loop); scripts C:/D/git/wt/tmp/int/w8b_cli_runs.sh + w8b_cli_extra.sh (25 runs on data/dummy); cli_A, cli_B and compare_A.txt, compare_B.txt: the same at A and B
-files: base 156, B3 156; exit codes base:      24 0       1 1 , B3:      24 0       1 1 
-byte-identical: yes
