@@ -18,6 +18,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <utility>
@@ -25,6 +26,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -45,6 +47,7 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 #include <arrow/util/key_value_metadata.h>
 
 #include <base/error.hpp>
+#include <core/portable_random.hpp>
 #include <fileOperations.hpp>
 #include <io/read_arrow.hpp>
 
@@ -709,6 +712,83 @@ TEST_CASE("Parquet: streamed FastCLARA equals the in-RAM run",
   CHECK(rows_streamed.medoid_indices == expected.medoid_indices);
   CHECK(rows_streamed.labels == expected.labels);
   CHECK(rows_streamed.total_cost == expected.total_cost);
+}
+
+// Only the stream's assignment pass reads the rows outside the samples. Each
+// batch it decodes goes through the in-RAM run's checks, so the stream refuses
+// what the in-RAM run refuses, with the same message naming the row: NaN,
+// +inf, -inf, an empty list cell, a row longer than the band allows. (Without
+// the checks it published a cost of 1.8e308 for all but NaN, which it reported
+// as a point's non-finite distance to a medoid.)
+TEST_CASE("Parquet: streamed FastCLARA refuses the rows the in-RAM run refuses",
+          "[io][parquet][streaming]")
+{
+  std::vector<std::vector<double>> walks(64); // 4 row groups of 16
+  std::uint64_t state = 7;
+  for (auto &walk : walks) {
+    double x = 0.0;
+    for (int t = 0; t < 8; ++t) {
+      state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+      x += static_cast<double>(state >> 33) / 2147483648.0 - 1.0;
+      walk.push_back(x);
+    }
+  }
+  dtwc::algorithms::CLARAOptions options;
+  options.n_clusters = 2;
+  options.sample_size = 8;
+  options.n_samples = 1;
+  options.random_seed = 3;
+  std::mt19937_64 rng(options.random_seed);
+  const auto sample = dtwc::core::portable_sample_indices<dtwc::index_t>(64, 8, rng);
+  REQUIRE(std::find(sample.begin(), sample.end(), 50) == sample.end()); // row 50 is outside the sample
+
+  constexpr double nan = std::numeric_limits<double>::quiet_NaN(), inf = std::numeric_limits<double>::infinity();
+  struct Poison
+  {
+    std::vector<double> row;
+    int band;
+    const char *says;
+  };
+  auto with = [&](std::size_t at, double value) {
+    auto row = walks[50];
+    row[at] = value;
+    return row;
+  };
+  const std::vector<Poison> poisons{
+    { with(2, nan), -1, "series 'series_50' (index 50)[2] is NaN" },
+    { with(2, inf), -1, "series 'series_50' (index 50)[2] is +inf" },
+    { with(5, -inf), -1, "series 'series_50' (index 50)[5] is -inf" },
+    { {}, -1, "series 50 ('series_50') is empty" },
+    { std::vector<double>(30, 0.5), 2, "and series 'series_50' (index 50, length 30), so no warping path fits" },
+  };
+  const auto path = tmpdir() / "clara_poisoned.parquet";
+  for (const auto &poison : poisons) {
+    auto rows = walks;
+    rows[50] = poison.row;
+    write_parquet(path, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
+                                           { make_list_f64(rows) }),
+                  16);
+    INFO(poison.says);
+    dtwc::Problem in_ram{ "in_ram" };
+    in_ram.set_band(poison.band);
+    CHECK_THROWS_MATCHES(
+      [&] {
+        in_ram.set_data(dtwc::io::read_arrow(path, "series"));
+        return dtwc::algorithms::fast_clara(in_ram, options);
+      }(),
+      dtwc::InvalidInput, Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(poison.says)));
+
+    dtwc::Problem streamed{ "streamed" };
+    streamed.set_band(poison.band);
+    auto stream = options;
+    stream.parquet_path = path;
+    stream.parquet_column = "series";
+    stream.ram_limit_bytes = 8192; // two batches of a row group fit: the next decodes while one is assigned
+    stream.force_parquet_streaming = true;
+    CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara_parquet(streamed, stream), dtwc::InvalidInput,
+                         Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(poison.says)));
+  }
+  std::filesystem::remove(path);
 }
 
 // A RAM-limited run holds no series, so Result::save used to read the names and

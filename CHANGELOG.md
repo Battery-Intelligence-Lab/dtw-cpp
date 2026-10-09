@@ -136,6 +136,12 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - A checkpoint save during a fill writes only the rows filled since the last one, in place, the first the whole
   matrix: a fill writes at most twice the matrix's bytes, where each save wrote it whole. Saves come every
   `--checkpoint-interval` rows rounded up to the lane width (16 rows of doubles where the lanes are 128 bytes).
+- FastCLARA runs every sample's PAM before one assignment pass over all of them: `-v` prints one assignment line a
+  pass, not one a sample; a non-finite distance is reported at the lowest failing series over all samples; and series
+  it cannot take (NaN, ±inf, a band narrower than two series' length difference) are refused before any sample, by
+  their index in the data. Streamed (`--ram-limit`), the limit holds the sampled rows beside one row group, then the
+  medoids, 8 bytes of labels per row and sample and a batch of row groups: a smaller limit is refused, naming the
+  bytes, where it streamed before.
 
 ## Performance
 
@@ -168,6 +174,12 @@ Soft-DTW, Python or CUDA), on the machine named.
   against 0.87–1.18; GCC's fills of 1,000 series run 5–11 % slower. A mapped matrix fills slab by slab, the next slab
   read ahead and the finished one written back: at 45,000 series 22.6× faster in a 4 GiB cgroup and at least 37× in a
   2 GiB one. Bit for bit, but for GCC's squared L2 (the multiply-add caveat above), whose clusterings were unchanged.
+- FastCLARA reads its series once: all samples are drawn first and one pass assigns every series to the medoids of
+  every sample, where each sample took a pass of its own. Streamed from Parquet, the sampled rows are read once and
+  the file once more, its next row groups decoding while the current ones are assigned (before: per sample, a pass of
+  the file and a read of its sampled rows and of its medoids' rows): on an Intel Core Ultra 9 285 3.4–3.6× faster
+  streaming 4.2 million series of 128 samples (1.25× where the assignment outweighs the decoding), in RAM 1.00–1.86×;
+  the same labels, medoids and costs.
 - The Windows wheels are built by clang-cl and carry LLVM's OpenMP runtime (`libomp.dll`), so their fill of
   equal-length series runs on the SIMD lanes, which MSVC's cl leaves scalar: on an Intel Core Ultra 9 285
   3.96–4.31× faster than the MSVC wheel with 24 threads, 8.1–8.2× on one thread; results identical.
@@ -212,6 +224,9 @@ Soft-DTW, Python or CUDA), on the machine named.
 - The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
   each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
   `dtwc_cl_msvc.exe`), so `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
+- FastCLARA streamed from Parquet (`--ram-limit`) checks each row it reads as the in-RAM run checks its series: NaN,
+  ±inf, an empty list cell or a row longer than the band allows, outside the samples, is an `InvalidInput` naming the
+  row, where the stream published a cost of 1.8e308 (NaN: an error naming a point and a medoid).
 
 ## Removed
 

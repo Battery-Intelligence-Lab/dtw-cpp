@@ -14,6 +14,7 @@
 #include <algorithms/fast_clara.hpp>
 #include <base/error.hpp>
 #include <core/medoid_assignment_policy.hpp>
+#include <core/portable_random.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -24,6 +25,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <limits>
+#include <random>
 #include <set>
 #include <string>
 #include <system_error>
@@ -904,18 +906,11 @@ Problem clara_walks(int lo, int hi)
   return prob;
 }
 
+/// Every point of `prob` to its nearest of `medoids` by the per-pair distance (the
+/// first slot on a tie, a medoid itself): the labels and their ordered cost.
 template <typename T>
-void require_per_pair_assignment(Problem &prob, int band)
+std::pair<std::vector<index_t>, double> per_pair_assignment(Problem &prob, const std::vector<index_t> &medoids)
 {
-  constexpr index_t k = 5;
-  prob.set_band(band);
-  algorithms::CLARAOptions opts;
-  opts.n_clusters = k;
-  opts.sample_size = 40;
-  opts.n_samples = 2;
-  opts.random_seed = 3;
-  const auto result = algorithms::fast_clara(prob, opts);
-
   const auto series = [&](index_t i) {
     if constexpr (std::is_same_v<T, float>)
       return prob.data().series_f32(static_cast<std::size_t>(i));
@@ -932,18 +927,33 @@ void require_per_pair_assignment(Problem &prob, int band)
   core::detail::OrderedMedoidObjective cost;
   for (index_t p = 0; p < prob.size(); ++p) {
     double nearest = 0.0;
-    for (index_t m = 0; m < k; ++m) {
-      const index_t medoid = result.medoid_indices[static_cast<std::size_t>(m)];
+    for (std::size_t m = 0; m < medoids.size(); ++m) {
+      const index_t medoid = medoids[m];
       const double d = p == medoid ? 0.0 : pair(series(p), series(medoid));
       if (m == 0 || d < nearest || (d == nearest && medoid == p)) {
         nearest = d;
-        labels[static_cast<std::size_t>(p)] = m;
+        labels[static_cast<std::size_t>(p)] = static_cast<index_t>(m);
       }
     }
     cost.add(nearest);
   }
+  return { labels, cost.value() };
+}
+
+template <typename T>
+void require_per_pair_assignment(Problem &prob, int band)
+{
+  prob.set_band(band);
+  algorithms::CLARAOptions opts;
+  opts.n_clusters = 5;
+  opts.sample_size = 40;
+  opts.n_samples = 2;
+  opts.random_seed = 3;
+  const auto result = algorithms::fast_clara(prob, opts);
+
+  const auto [labels, cost] = per_pair_assignment<T>(prob, result.medoid_indices);
   REQUIRE(result.labels == labels);
-  REQUIRE(result.total_cost == cost.value());
+  REQUIRE(result.total_cost == cost);
 }
 
 } // namespace
@@ -970,4 +980,59 @@ TEST_CASE("FastCLARA assigns each point its per-pair nearest medoid", "[fast_cla
     auto prob = clara_walks<float>(20, 40);
     require_per_pair_assignment<float>(prob, -1);
   }
+}
+
+// ===========================================================================
+// FastCLARA draws every sample before any PAM and assigns every sample's
+// medoids in one pass; its result is the loop's that runs one sample at a time:
+// sample s the s-th draw of one engine seeded with random_seed, FastPAM on it
+// with random_seed + s, every point to that sample's nearest medoid, and the
+// first sample with the least ordered cost. Seven samples, so the winner is
+// one in the middle (asserted), under the lanes and under a band.
+// ===========================================================================
+TEST_CASE("FastCLARA's result is the per-sample loop's", "[fast_clara][samples]")
+{
+  const int band = GENERATE(-1, 20);
+  auto prob = clara_walks<data_t>(20, 40);
+  prob.set_band(band);
+  algorithms::CLARAOptions opts;
+  opts.n_clusters = 3;
+  opts.sample_size = 30;
+  opts.n_samples = 7;
+  opts.random_seed = 11;
+  const auto result = algorithms::fast_clara(prob, opts);
+
+  std::mt19937_64 rng(opts.random_seed);
+  core::ClusteringResult expected;
+  int winner = -1;
+  for (int s = 0; s < opts.n_samples; ++s) {
+    const auto sample = core::portable_sample_indices<index_t>(prob.size(), opts.sample_size, rng);
+    std::vector<std::vector<data_t>> series;
+    std::vector<std::string> names;
+    for (const index_t i : sample) {
+      const auto values = prob.series(static_cast<std::size_t>(i));
+      series.emplace_back(values.begin(), values.end());
+      names.emplace_back(prob.series_name(static_cast<std::size_t>(i)));
+    }
+    Problem sub("per_sample");
+    sub.set_band(band);
+    sub.set_data(Data(std::move(series), std::move(names)));
+    const auto pam = fast_pam(sub, opts.n_clusters, opts.max_iter,
+                              opts.random_seed + static_cast<std::uint64_t>(s));
+    std::vector<index_t> medoids;
+    for (const index_t m : pam.medoid_indices) medoids.push_back(sample[static_cast<std::size_t>(m)]);
+    const auto [labels, cost] = per_pair_assignment<data_t>(prob, medoids);
+    if (winner < 0 || cost < expected.total_cost) {
+      expected = { labels, medoids, cost, pam.iterations, pam.converged };
+      winner = s;
+    }
+  }
+  INFO("band " << band << ": the per-sample loop's winner is sample " << winner);
+  REQUIRE(winner > 0);
+  REQUIRE(winner < opts.n_samples - 1);
+  CHECK(result.medoid_indices == expected.medoid_indices);
+  CHECK(result.labels == expected.labels);
+  CHECK(result.total_cost == expected.total_cost);
+  CHECK(result.iterations == expected.iterations);
+  CHECK(result.converged == expected.converged);
 }

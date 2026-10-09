@@ -86,7 +86,7 @@ function(run_f8_cli config_id mode output_dir dtype variant gamma accepted_costs
         list(APPEND args --sdtw-gamma "${gamma}")
     endif()
     if(mode STREQUAL "stream")
-        list(APPEND args --ram-limit 900)
+        list(APPEND args --ram-limit 1200)
     endif()
 
     execute_process(

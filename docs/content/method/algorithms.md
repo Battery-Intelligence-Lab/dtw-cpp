@@ -52,11 +52,11 @@ FastCLARA results therefore cannot depend on injected cache contents.
 
 ### How It Works
 
-1. Draw a random subsample of size $$s$$ from the dataset.
-2. Run FastPAM on the subsample to find $$k$$ medoids.
-3. Assign all $$N$$ points to the nearest medoid (requires only $$N \times k$$ DTW computations).
-4. Repeat for `n_samples` independent subsamples.
-5. Return the result with the lowest total cost.
+1. Draw `n_samples` random subsamples of size $$s$$ from the dataset, one after another from one seeded generator.
+2. Run FastPAM on each subsample to find its $$k$$ medoids.
+3. Assign all $$N$$ points to each subsample's nearest medoid, in one pass over the data that reads each series once
+   ($$N \times k$$ DTW computations per subsample).
+4. Return the subsample with the lowest total cost (the first, on a tie).
 
 ### Default Sample Size
 
