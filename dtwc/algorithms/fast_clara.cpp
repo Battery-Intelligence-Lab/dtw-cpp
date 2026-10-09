@@ -168,14 +168,14 @@ namespace {
     const auto n_points = static_cast<std::size_t>(prob.size());
     labels.resize(n_points);
     std::vector<double> best(n_points);
+    // dtw_function*() first: it takes a direct write to `band` into distance().
     if (prob.data().is_f32()) {
       const auto &distance = prob.dtw_function_f32();
-      detail::assign_points(0, best, medoid_indices, labels, [&](index_t p) {
-        return [&, point = prob.data().series_f32(static_cast<std::size_t>(p))](index_t m) {
-          return distance(
-            point, prob.data().series_f32(static_cast<std::size_t>(medoid_indices[m])));
-        };
-      });
+      const auto &data = prob.data();
+      detail::assign_points_cpu<float>(
+        0, best, medoid_indices, labels, prob.distance(), distance,
+        [&](index_t p) { return data.series_f32(static_cast<std::size_t>(p)); },
+        [&](index_t m) { return data.series_f32(static_cast<std::size_t>(medoid_indices[m])); });
     } else {
       // The request's check, on every device: band, values, and what a GPU takes.
       const auto &distance = prob.dtw_function();
@@ -190,11 +190,10 @@ namespace {
 #else
       detail::say_cpu_assignment(prob, n_points, medoid_indices.size());
 #endif
-      detail::assign_points(0, best, medoid_indices, labels, [&](index_t p) {
-        return [&, point = prob.series(static_cast<std::size_t>(p))](index_t m) {
-          return distance(point, prob.series(static_cast<std::size_t>(medoid_indices[m])));
-        };
-      });
+      detail::assign_points_cpu<data_t>(
+        0, best, medoid_indices, labels, prob.distance(), distance,
+        [&](index_t p) { return prob.series(static_cast<std::size_t>(p)); },
+        [&](index_t m) { return prob.series(static_cast<std::size_t>(medoid_indices[m])); });
     }
     return core::detail::ordered_medoid_objective(best, "fast_clara");
   }

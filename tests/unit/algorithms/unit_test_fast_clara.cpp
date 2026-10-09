@@ -13,6 +13,7 @@
 #include <algorithms/detail/fast_clara_plan.hpp>
 #include <algorithms/fast_clara.hpp>
 #include <base/error.hpp>
+#include <core/medoid_assignment_policy.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -20,11 +21,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <limits>
 #include <set>
 #include <string>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -866,4 +869,105 @@ TEST_CASE("FastCLARA leaves an existing parent cache byte-stable",
   REQUIRE(matrix.count_computed() == 2);
   REQUIRE(matrix.get(0, 1) == 12345.0);
   REQUIRE(matrix.get(2, 3) == 67890.0);
+}
+
+// ===========================================================================
+// The assignment, whatever route computes a distance (the lanes, W points a
+// call with a short last block; the per-pair kernel for points a band's lanes
+// do not take), labels each point with its nearest medoid by the per-pair
+// distance (the first slot on a tie, a medoid itself) and publishes the ordered
+// sum of those distances, bit for bit.
+// ===========================================================================
+namespace {
+
+template <typename T>
+Problem clara_walks(int lo, int hi)
+{
+  std::vector<std::vector<T>> vecs(150); // 9 blocks of 16 lanes and 6 points; 4 of 32 and 22
+  std::vector<std::string> names;
+  std::uint64_t s = 12345;
+  auto next = [&s] {
+    s = s * 6364136223846793005ULL + 1442695040888963407ULL;
+    return s >> 33;
+  };
+  for (std::size_t i = 0; i < vecs.size(); ++i) {
+    const auto len = static_cast<std::size_t>(lo) + next() % static_cast<std::uint64_t>(hi - lo + 1);
+    double walk = 0.0;
+    for (std::size_t j = 0; j < len; ++j) {
+      walk += static_cast<double>(next() % 2001) / 1000.0 - 1.0;
+      vecs[i].push_back(static_cast<T>(walk));
+    }
+    names.push_back("w" + std::to_string(i));
+  }
+  Problem prob("clara_assignment");
+  prob.set_data(Data(std::move(vecs), std::move(names)));
+  return prob;
+}
+
+template <typename T>
+void require_per_pair_assignment(Problem &prob, int band)
+{
+  constexpr index_t k = 5;
+  prob.set_band(band);
+  algorithms::CLARAOptions opts;
+  opts.n_clusters = k;
+  opts.sample_size = 40;
+  opts.n_samples = 2;
+  opts.random_seed = 3;
+  const auto result = algorithms::fast_clara(prob, opts);
+
+  const auto series = [&](index_t i) {
+    if constexpr (std::is_same_v<T, float>)
+      return prob.data().series_f32(static_cast<std::size_t>(i));
+    else
+      return prob.series(static_cast<std::size_t>(i));
+  };
+  const auto &pair = [&]() -> const auto & {
+    if constexpr (std::is_same_v<T, float>)
+      return prob.dtw_function_f32();
+    else
+      return prob.dtw_function();
+  }();
+  std::vector<index_t> labels(static_cast<std::size_t>(prob.size()));
+  core::detail::OrderedMedoidObjective cost;
+  for (index_t p = 0; p < prob.size(); ++p) {
+    double nearest = 0.0;
+    for (index_t m = 0; m < k; ++m) {
+      const index_t medoid = result.medoid_indices[static_cast<std::size_t>(m)];
+      const double d = p == medoid ? 0.0 : pair(series(p), series(medoid));
+      if (m == 0 || d < nearest || (d == nearest && medoid == p)) {
+        nearest = d;
+        labels[static_cast<std::size_t>(p)] = m;
+      }
+    }
+    cost.add(nearest);
+  }
+  REQUIRE(result.labels == labels);
+  REQUIRE(result.total_cost == cost.value());
+}
+
+} // namespace
+
+TEST_CASE("FastCLARA assigns each point its per-pair nearest medoid", "[fast_clara][assignment]")
+{
+  SECTION("float64, lengths 20-40, no band")
+  {
+    auto prob = clara_walks<data_t>(20, 40);
+    require_per_pair_assignment<data_t>(prob, -1);
+  }
+  SECTION("float64, length 30, band 3")
+  {
+    auto prob = clara_walks<data_t>(30, 30);
+    require_per_pair_assignment<data_t>(prob, 3);
+  }
+  SECTION("float64, lengths 20-40, band 20: per pair where lengths differ")
+  {
+    auto prob = clara_walks<data_t>(20, 40);
+    require_per_pair_assignment<data_t>(prob, 20);
+  }
+  SECTION("float32, lengths 20-40, no band")
+  {
+    auto prob = clara_walks<float>(20, 40);
+    require_per_pair_assignment<float>(prob, -1);
+  }
 }

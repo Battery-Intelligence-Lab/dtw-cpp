@@ -486,13 +486,15 @@ using LanesCell = StandardCell;
 #if defined(__aarch64__) || defined(__x86_64__)
 template <typename T>
 inline constexpr std::size_t dtw_lanes = 128 / sizeof(T);
-/// Whether the fill gives the lanes blocks of unequal length (no band): where they are packed. cl's lanes are
-/// scalar, and on such blocks they lost 9-17 % to the one-pair kernel (measured 2026-10-08).
-inline constexpr bool dtw_lanes_ragged = true;
+/// Whether the lanes are packed, so beat the one-pair kernel without a band too: there the fill and OneBatchPAM
+/// give them blocks of unequal length (no band), and FastCLARA's assignment takes them unbanded. cl's lanes are
+/// scalar: without a band 3-5 % slower per cell than its one-pair kernel (f64 L1), 9-17 % on blocks of unequal
+/// length; under a band 1.5x faster than its banded one (measured 2026-10-07 and 2026-10-08).
+inline constexpr bool dtw_lanes_packed = true;
 #else
 template <typename T>
 inline constexpr std::size_t dtw_lanes = 64 / sizeof(T);
-inline constexpr bool dtw_lanes_ragged = false;
+inline constexpr bool dtw_lanes_packed = false;
 #endif
 
 /// DTW between xs and each of ys[0 .. dtw_lanes<T>), with the pointwise distance

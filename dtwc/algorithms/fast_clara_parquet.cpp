@@ -27,6 +27,7 @@
 #include <limits>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace dtwc::algorithms {
@@ -128,11 +129,10 @@ namespace {
                               labels, best_dists);
       else
 #endif
-        detail::assign_points(global_offset, best_dists, medoid_indices, labels, [&](index_t p) {
-          return [&, point = series_at(chunk, p - global_offset)](index_t m) {
-            return dtw_fn(point, series_at(medoid_data, m));
-          };
-        });
+        detail::assign_points_cpu<std::conditional_t<F32, float, data_t>>(
+          global_offset, best_dists, medoid_indices, labels, prob.distance(), dtw_fn,
+          [&](index_t p) { return series_at(chunk, p - global_offset); },
+          [&](index_t m) { return series_at(medoid_data, m); });
       total_cost.add(best_dists);
       global_offset += chunk_size;
     }

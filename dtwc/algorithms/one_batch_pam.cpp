@@ -93,7 +93,7 @@ struct FixedBatchDistances {
     // Each worker writes a disjoint row. Row i takes its batch columns W at a
     // time through the lane function (the entry Problem's fill uses, resolved
     // once here; each of its distances is bitwise the per-pair one) where there
-    // is no band and the lanes are packed (core::dtw_lanes_ragged), or the
+    // is no band and the lanes are packed (core::dtw_lanes_packed), or the
     // block's series are as long as series i; every other column, and every
     // request the lanes do not cover, goes pair by pair. The columns stay in
     // batch order, so a block's lanes all run to its longest series. The block
@@ -117,7 +117,7 @@ struct FixedBatchDistances {
           bool lanes = static_cast<bool>(block);
           for (std::size_t w = 0; lanes && w < W; ++w) {
             ys[w] = column(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
-            lanes = (core::dtw_lanes_ragged && prob.band < 0) || ys[w].size() == x.size();
+            lanes = (core::dtw_lanes_packed && prob.band < 0) || ys[w].size() == x.size();
           }
           if (lanes) block(x, ys, lane);
           for (std::size_t w = 0; w < count; ++w) {
