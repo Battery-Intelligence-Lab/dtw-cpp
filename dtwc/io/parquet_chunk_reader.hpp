@@ -539,11 +539,11 @@ private:
 #endif
   }
 
-  /// The rows of `groups`, the leaves read, a batch at a time: Arrow 21 deprecated
+  /// The rows of `groups`, the leaves read, a batch at a time: Arrow 19 deprecated
   /// the Status form for the Result form.
   std::unique_ptr<arrow::RecordBatchReader> record_batches(const std::vector<int> &groups) const
   {
-#if ARROW_VERSION_MAJOR >= 21
+#if ARROW_VERSION_MAJOR >= 19
     auto batches = reader_->GetRecordBatchReader(groups, leaves_);
     detail::check_arrow_chunk(batches.status(), "read_all");
     return *std::move(batches);

@@ -48,8 +48,9 @@ values of magnitude 1e-40 to 1e38, with FLT_MAX, the subnormals, -0, NaN and ±i
 
 ## Not honoured, and refused
 
-- Arrow < 21: `read_all`'s `GetRecordBatchReader` uses the Status form under `#if ARROW_VERSION_MAJOR < 21`, not
-  compiled here (only Arrow 23 on this machine) [unverified].
+- Arrow before 23: `read_all` takes `GetRecordBatchReader`'s Result form from Arrow 19 (the CPM fallback's version,
+  where it appears and the `unique_ptr` Status form is deprecated) and that Status form before 19, as Arrow
+  19.0.1's and 18.1.0's `parquet/arrow/reader.h` declare them [read, not compiled: only Arrow 23 here].
 - A file that is one series (a scalar column) is decoded whole: its one series' double copy is held.
 - Python and MATLAB still decode a Parquet file whole before the cast (pyarrow, `parquetread`): the double copy is
   one file's, not the dataset's.
