@@ -86,6 +86,38 @@ class TestLoad:
         assert data.p_names == ["a", "b"]
         assert data.ndim == 2
 
+    @pytest.mark.parametrize("suffix", [".csv", ".parquet"])
+    def test_float32_load_clusters_as_the_from_float32_route(self, tmp_path, suffix):
+        """dtype="float32" stores float32 Data, each value the float64 read rounded
+        (text: the C++ reader; Parquet: pyarrow's cast), and clusters as today's
+        float32 route, Data.from_float32 of the float64 read, does."""
+        rng = np.random.default_rng(5)
+        rows = [rng.standard_normal(30) * 100.0 + 1000.0 * (i % 3) for i in range(12)]
+        path = tmp_path / f"series{suffix}"
+        if suffix == ".csv":
+            path.write_text("".join(",".join(repr(v) for v in row.tolist()) + "\n" for row in rows),
+                            encoding="utf-8")
+        else:
+            pa = pytest.importorskip("pyarrow")
+            pq = pytest.importorskip("pyarrow.parquet")
+            pq.write_table(pa.table({"series": pa.array([row.tolist() for row in rows],
+                                                        type=pa.list_(pa.float64()))}), path)
+        dataset = dtwcpp.load(path, dtype="f32")
+        assert dataset.dtype == "float32"
+        assert dataset.as_data().is_f32()
+        read = dtwcpp.load(path).as_series()
+        rounded = [np.asarray(row, np.float32).astype(np.float64).tolist() for row in read]
+        assert dataset.as_series() == rounded
+
+        result = dtwcpp.cluster(path, k=3, method="pam", dtype="float32")
+        oracle = dtwcpp.Problem("oracle")
+        oracle.set_data(dtwcpp.Data.from_float32(read, [str(i) for i in range(len(read))]))
+        expected = dtwcpp.fast_pam(oracle, 3)
+        np.testing.assert_array_equal(result.labels, expected.labels)
+        np.testing.assert_array_equal(result.medoids, expected.medoid_indices)
+        assert result.cost == expected.total_cost
+        assert result.cost != dtwcpp.cluster(path, k=3, method="pam").cost  # float32 ran
+
 
 # ---------------------------------------------------------------------------
 # cluster() keywords: read by C++ (a Config) before any data is read

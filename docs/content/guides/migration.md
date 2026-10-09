@@ -162,8 +162,11 @@ The library's writers (`write_clusters`, `write_silhouettes`,
 - The MIP starts from FastPAM's clustering, and both solvers stop at a relative
   gap of 1e-5; v1.0.0 started cold, left HiGHS at its own gap, and set Gurobi's
   NumericFocus to 3 (now 1). `mip_settings` sets each of them.
-- Series are stored as `double`, as in v1.0.0. Storing them as `float`
-  (`--dtype float32`) is new, and opt-in.
+- Series are stored as `double`, as in v1.0.0. Storing them as `float` is new, and
+  opt-in where they are loaded: `DataLoader::dtype`, `dtwc::load(..., dtype)`,
+  Python's and MATLAB's `load`, `dtwc_cl --dtype float32`. A `float` read from text
+  (`readFile<float>` too) is the double parse rounded, which can differ by one ulp
+  from v1.0.0's direct rounding in a halfway case.
 
 ## Results that change
 

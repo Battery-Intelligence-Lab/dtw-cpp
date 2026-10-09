@@ -78,13 +78,14 @@ InputFormat format_of(const fs::path &input)
   return input_format(input);
 }
 
-/// The series `input` names, read by the reader its format needs.
+/// The series `input` names, read by the reader its format needs, in the precision --dtype names.
 Data read_input(const fs::path &input, [[maybe_unused]] InputFormat format, const Config &config)
 {
 #ifdef DTWC_HAS_ARROW
-  if (format != InputFormat::Text) return io::read_arrow(input, config.column, config.skip_cols, config.skip_rows);
+  if (format != InputFormat::Text)
+    return io::read_arrow(input, config.column, config.skip_cols, config.skip_rows, config.dtype);
 #endif
-  return read_data(input, config.skip_cols, config.skip_rows, config.delimiter, config.column);
+  return read_data(input, config.skip_cols, config.skip_rows, config.delimiter, config.column, config.dtype);
 }
 
 /// Reject a reader option the input cannot honour: accepting and then ignoring
@@ -103,16 +104,17 @@ void require_input_options_apply(const Config &config, std::optional<InputFormat
   require_reader_options(format, config.skip_cols, config.skip_rows, config.delimiter, config.column);
 }
 
-/// An owning Float32 copy of Float64 series, each value rounded to float.
+/// An owning Float32 copy of Float64 series, owned or a view, each value rounded to float.
 Data convert_to_f32(const Data &data_f64)
 {
   std::vector<std::vector<float>> series(data_f64.size());
+  std::vector<std::string> names(series.size());
   for (std::size_t i = 0; i < series.size(); ++i) {
-    const auto &source = data_f64.p_vec[i];
+    const auto source = data_f64.series(i);
     series[i].reserve(source.size());
     for (const double value : source) series[i].push_back(static_cast<float>(value));
+    names[i] = data_f64.name(i);
   }
-  auto names = data_f64.p_names;
   return Data(std::move(series), std::move(names), data_f64.ndim);
 }
 
@@ -290,17 +292,19 @@ Outcome execute(const Config &config, std::optional<Data> data)
                          : format == InputFormat::ArrowIPC ? " from Arrow IPC"
                                                            : "";
       std::cout << "Data loaded" << from << ": " << series.size() << " series [" << clk << "]\n";
-      if (series.size() > 0) {
-        std::size_t elements = 0;
-        for (std::size_t i = 0; i < series.size(); ++i) elements += series.series_length(i) * series.ndim;
-        std::cout << "  Data memory: ~" << (elements * sizeof(data_t) / (1ULL << 20)) << " MB (" << series.size()
-                  << " series, " << (elements / series.size()) << " avg length, "
-                  << name_of(core::precision_names, config.dtype) << ")\n";
-      }
     }
-    if (config.dtype == core::Precision::Float32 && !series.is_f32() && !series.is_view()) {
+    // A reader stores what --dtype names; Float64 series passed in memory, a view among them, are converted here.
+    if (config.dtype == core::Precision::Float32 && !series.is_f32()) {
       series = convert_to_f32(series);
       if (config.verbose) std::cout << "Converted to float32 (2x memory saving)\n";
+    }
+    if (config.verbose && series.size() > 0) {
+      std::size_t elements = 0;
+      for (std::size_t i = 0; i < series.size(); ++i) elements += series.series_length(i) * series.ndim;
+      const std::size_t width = series.is_f32() ? sizeof(float) : sizeof(data_t);
+      std::cout << "  Data memory: ~" << (elements * width / (1ULL << 20)) << " MB (" << series.size()
+                << " series, " << (elements / series.size()) << " avg length, "
+                << name_of(core::precision_names, series.precision) << ")\n";
     }
     prob.set_data(std::move(series));
     n_series = prob.size();

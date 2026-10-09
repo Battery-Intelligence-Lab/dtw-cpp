@@ -31,15 +31,15 @@ void validate_skips(index_t skip_cols, index_t skip_rows)
 } // namespace
 
 Dataset::Dataset(std::filesystem::path source, index_t skip_cols, index_t skip_rows,
-                 char delimiter, std::string name)
+                 char delimiter, std::string name, core::Precision dtype)
   : source_(std::move(source)), skip_cols_(skip_cols), skip_rows_(skip_rows),
-    delimiter_(delimiter), name_(std::move(name))
+    delimiter_(delimiter), name_(std::move(name)), dtype_(dtype)
 {}
 
 Dataset::Dataset(series_type source, index_t skip_cols, index_t skip_rows, char delimiter,
-                 std::string name)
+                 std::string name, core::Precision dtype)
   : source_(std::move(source)), skip_cols_(skip_cols), skip_rows_(skip_rows),
-    delimiter_(delimiter), name_(std::move(name))
+    delimiter_(delimiter), name_(std::move(name)), dtype_(dtype)
 {}
 
 bool Dataset::is_path() const noexcept
@@ -75,19 +75,19 @@ Data Dataset::materialize_local() &&
 }
 
 Dataset load(const std::filesystem::path &source, index_t skip_cols, index_t skip_rows,
-             char delimiter, std::string_view name)
+             char delimiter, std::string_view name, core::Precision dtype)
 {
   validate_skips(skip_cols, skip_rows);
   std::string resolved = name.empty() ? detail::default_name(source) : std::string(name);
-  return Dataset(source, skip_cols, skip_rows, delimiter, std::move(resolved));
+  return Dataset(source, skip_cols, skip_rows, delimiter, std::move(resolved), dtype);
 }
 
 Dataset load(Dataset::series_type source, index_t skip_cols, index_t skip_rows,
-             char delimiter, std::string_view name)
+             char delimiter, std::string_view name, core::Precision dtype)
 {
   validate_skips(skip_cols, skip_rows);
   return Dataset(std::move(source), skip_cols, skip_rows, delimiter,
-                 name.empty() ? "dataset" : std::string(name));
+                 name.empty() ? "dataset" : std::string(name), dtype);
 }
 
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
@@ -134,6 +134,7 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
   config.max_iter = max_iter;
   config.output.clear(); // Result::save writes; cluster() does not
   config.name = dataset.name();
+  config.dtype = dataset.dtype(); // run() reads a path in it and converts series in memory to it
   const std::string process_device = dtwc::device(); // used when `device` is ""
   std::tie(config.device, config.device_index) =
     detail::parse_device(device.empty() ? std::string_view(process_device) : device);

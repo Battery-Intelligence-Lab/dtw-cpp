@@ -20,6 +20,7 @@ classdef Dataset < handle
         SkipRows    % leading lines (a path) or series (in memory) dropped
         Delimiter   % the field delimiter of text; '' infers it from the extension
         Name        % the name of the run and of its result files
+        Dtype       % 'float64' (double) or 'float32' (single): the precision the series are stored in
     end
 
     properties (Access = private)
@@ -29,7 +30,7 @@ classdef Dataset < handle
     end
 
     methods
-        function obj = Dataset(source, skipCols, skipRows, delimiter, name)
+        function obj = Dataset(source, skipCols, skipRows, delimiter, name, dtype)
         %DATASET Made by dtwc.load, which documents the arguments.
             counts = {'SkipCols', skipCols; 'SkipRows', skipRows};
             for i = 1:2
@@ -53,18 +54,23 @@ classdef Dataset < handle
             obj.SkipRows = double(skipRows);
             obj.Delimiter = delimiter;
             obj.Name = name;
+            obj.Dtype = dtwc_mex('dtype', dtype);   % the C++ table's canonical name
         end
 
         function [series, names] = as_series(obj)
-        %AS_SERIES The series, read once. A path gives a cell of double rows and,
-        %   in NAMES, the reader's name of each; series in memory are the source
-        %   less SkipRows and SkipCols, and NAMES is {} (C++ names them 0, 1, ...).
+        %AS_SERIES The series, read once. A path gives a cell of rows and, in
+        %   NAMES, the reader's name of each; series in memory are the source less
+        %   SkipRows and SkipCols, and NAMES is {} (C++ names them 0, 1, ...). With
+        %   Dtype 'float32' the series are single, else a path's are double.
             if ~obj.IsRead
                 if ischar(obj.Source)
                     [obj.Series, obj.Names] = dtwc.Dataset.read_path( ...
-                        obj.Source, obj.SkipCols, obj.SkipRows, obj.Delimiter);
+                        obj.Source, obj.SkipCols, obj.SkipRows, obj.Delimiter, obj.Dtype);
                 else
                     obj.Series = obj.trimmed();
+                    if strcmp(obj.Dtype, 'float32')
+                        obj.Series = dtwc.Dataset.to_single(obj.Series);
+                    end
                 end
                 obj.IsRead = true;
             end
@@ -101,13 +107,24 @@ classdef Dataset < handle
     end
 
     methods (Static, Access = private)
-        function [series, names] = read_path(path, skipCols, skipRows, delimiter)
-        %READ_PATH Every series a path names, read as dtwc::read_data reads it.
+        function series = to_single(series)
+        %TO_SINGLE The numeric series of a matrix or cell as single; anything else
+        %   is left for Problem.set_data to refuse.
+            if iscell(series)
+                numeric = cellfun(@isnumeric, series);
+                series(numeric) = cellfun(@single, series(numeric), 'UniformOutput', false);
+            elseif isnumeric(series)
+                series = single(series);
+            end
+        end
+
+        function [series, names] = read_path(path, skipCols, skipRows, delimiter, dtype)
+        %READ_PATH Every series a path names, read as dtwc::read_data reads it, in DTYPE.
             files = dtwc_mex('parquet_files', path);
             [~, ~, ext] = fileparts(path);
             arrow = any(strcmpi(ext, {'.arrow', '.ipc', '.feather'})) && ~isfolder(path);
             if isempty(files) && ~arrow
-                [series, names] = dtwc_mex('read_data', path, skipCols, skipRows, delimiter);
+                [series, names] = dtwc_mex('read_data', path, skipCols, skipRows, delimiter, dtype);
                 return
             end
             if ~isempty(delimiter)
@@ -123,6 +140,9 @@ classdef Dataset < handle
             names = {};
             for i = 1:numel(files)
                 [s, n] = dtwc.Dataset.read_parquet(files{i}, numel(series), skipCols, skipRows);
+                if strcmp(dtype, 'float32')   % file by file: no double copy of them all
+                    s = dtwc.Dataset.to_single(s);
+                end
                 series = [series, s]; %#ok<AGROW>
                 names = [names, n]; %#ok<AGROW>
             end

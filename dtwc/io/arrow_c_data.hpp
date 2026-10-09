@@ -13,11 +13,12 @@
  *   - struct< name: utf8/large_utf8 (optional), <list-of-floating> >: the list
  *     child supplies the series, the utf8 child (if present) supplies names.
  *
- * Values are copied once into owning storage (`Data::p_vec`); the borrowed Arrow
- * buffers are never aliased, so the caller may release the ArrowArray as soon as
- * this returns. "Zero-copy" here means the buffer-direct read that avoids both a
- * pyarrow dependency and the per-element Python-object materialisation of the old
- * `list(row) for row in X` path — not that the doubles are aliased in place.
+ * Values are copied once into owning storage, as double or, for `dtype` Float32,
+ * rounded to float; the borrowed Arrow buffers are never aliased, so the caller may
+ * release the ArrowArray as soon as this returns. "Zero-copy" here means the
+ * buffer-direct read that avoids both a pyarrow dependency and the per-element
+ * Python-object materialisation of the old `list(row) for row in X` path — not that
+ * the doubles are aliased in place.
  *
  * The two structs are BORROWED: this function reads them and does NOT call their
  * `release` callbacks. Ownership/release is the caller's responsibility (the
@@ -31,6 +32,7 @@
 #pragma once
 
 #include "../Data.hpp"
+#include "../core/storage.hpp"
 
 #include <cstddef>
 #include <string>
@@ -55,12 +57,14 @@ namespace dtwc::io {
  * @param names   Optional series names. If empty, names default to the utf8 child
  *                (struct layout) or to "series_<i>". If non-empty, its size must
  *                equal the number of series.
- * @return Data (float64, ndim = 1) owning a copy of every series.
+ * @param dtype   The precision the series are stored in.
+ * @return Data (ndim = 1) owning a copy of every series.
  * @throws dtwc::InvalidInput on unsupported schema, null elements, or a
  *         names-count mismatch; dtwc::IOError on list offsets outside the values.
  */
 Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
-                     std::vector<std::string> names = {});
+                     std::vector<std::string> names = {},
+                     core::Precision dtype = core::Precision::Float64);
 
 /**
  * @brief Build a Data object from an Arrow C stream (the `__arrow_c_stream__`
@@ -75,11 +79,13 @@ Data data_from_arrow(const ArrowSchema *schema, const ArrowArray *array,
  *
  * @param stream Borrowed-then-consumed ArrowArrayStream*.
  * @param ndim   Features per time step: each series holds ndim values per step.
+ * @param dtype  The precision the series are stored in.
  * @throws dtwc::InvalidInput on stream error, unsupported schema, nulls, or a
  *         series length not divisible by ndim; dtwc::IOError on list offsets
  *         outside the values.
  */
-Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim = 1);
+Data data_from_arrow_stream(ArrowArrayStream *stream, std::size_t ndim = 1,
+                            core::Precision dtype = core::Precision::Float64);
 
 /**
  * @brief Release a borrowed Arrow schema/array pair (calls their C release

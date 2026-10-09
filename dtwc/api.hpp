@@ -7,7 +7,8 @@
 #pragma once
 
 #include "Data.hpp"
-#include "base/env.hpp" // device(), device(name)
+#include "base/env.hpp"      // device(), device(name)
+#include "core/storage.hpp" // core::Precision
 
 #include <concepts>
 #include <filesystem>
@@ -40,16 +41,18 @@ public:
   index_t skip_cols() const noexcept { return skip_cols_; }
   index_t skip_rows() const noexcept { return skip_rows_; }
   char delimiter() const noexcept { return delimiter_; }
+  /// The precision cluster() stores the series in, as `--dtype` does.
+  core::Precision dtype() const noexcept { return dtype_; }
 
 private:
-  friend Dataset load(const std::filesystem::path &, index_t, index_t, char, std::string_view);
-  friend Dataset load(series_type, index_t, index_t, char, std::string_view);
+  friend Dataset load(const std::filesystem::path &, index_t, index_t, char, std::string_view, core::Precision);
+  friend Dataset load(series_type, index_t, index_t, char, std::string_view, core::Precision);
   friend Result cluster(Dataset &&, index_t, std::string_view, int, std::string_view, int);
 
   explicit Dataset(std::filesystem::path source, index_t skip_cols, index_t skip_rows,
-                   char delimiter, std::string name);
+                   char delimiter, std::string name, core::Precision dtype);
   explicit Dataset(series_type source, index_t skip_cols, index_t skip_rows,
-                   char delimiter, std::string name);
+                   char delimiter, std::string name, core::Precision dtype);
 
   /// The in-memory series, moved out, with skip_rows / skip_cols applied (a path
   /// is run()'s to read).
@@ -60,17 +63,23 @@ private:
   index_t skip_rows_ = 0;
   char delimiter_ = 0;
   std::string name_ = "dataset";
+  core::Precision dtype_ = core::Precision::Float64;
 };
 
 /** Wrap a path lazily.  No file is opened until cluster() is called.
- *  `skip_rows` drops that many leading LINES of the file, as `--skip-rows` does. */
+ *  `skip_rows` drops that many leading LINES of the file, as `--skip-rows` does.
+ *  `dtype` Float32 stores the series as float, half the memory: the reader rounds
+ *  each value, never holding a double copy. */
 Dataset load(const std::filesystem::path &source, index_t skip_cols = 0,
-             index_t skip_rows = 0, char delimiter = 0, std::string_view name = "");
+             index_t skip_rows = 0, char delimiter = 0, std::string_view name = "",
+             core::Precision dtype = core::Precision::Float64);
 
 /** Wrap an in-memory row-per-series array.  `skip_rows` drops that many leading
- *  SERIES — one memory row is one file line. */
+ *  SERIES — one memory row is one file line. `dtype` Float32 rounds each value to
+ *  float when cluster() runs. */
 Dataset load(Dataset::series_type source, index_t skip_cols = 0, index_t skip_rows = 0,
-             char delimiter = 0, std::string_view name = "");
+             char delimiter = 0, std::string_view name = "",
+             core::Precision dtype = core::Precision::Float64);
 
 /** `load(src, skip_cols, delimiter)` does not compile: without these,
  *  `load(p, 0, ',')` would bind the char to `skip_rows` (',' == 44). Only a

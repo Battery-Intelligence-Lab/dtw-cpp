@@ -60,8 +60,12 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `parquetread`), `dtwc.DTWClustering`, `dtwc.Problem`, the algorithms and the scores, through one MEX file.
 - DTW variants DDTW, WDTW, ADTW, Soft-DTW, MSM and TWE (`--variant`; Soft-DTW, MSM and TWE ignore the band), a squared
   Euclidean local cost for Standard DTW and DDTW (`--metric`), and `dtwc::distance::dtw` for one pair.
-- Missing values as NaN (`--missing-strategy zero_cost`, `arow` or `interpolate`), multivariate series (`ndim` values
-  per step, `--mv-mode dependent` or `independent`) and series stored as `float` on request (`--dtype float32`).
+- Missing values as NaN (`--missing-strategy zero_cost`, `arow` or `interpolate`) and multivariate series (`ndim` values
+  per step, `--mv-mode dependent` or `independent`).
+- Series stored as `float`, half the memory, chosen where they are loaded: `dtwc_cl --dtype float32`, C++
+  `DataLoader::dtype` and `dtwc::load(..., dtype)`, Python `dtwcpp.load(..., dtype="float32")`, MATLAB
+  `dtwc.load(..., 'Dtype', 'float32')`. Each reader rounds the double it reads and holds no double copy; so does
+  `readFile<float>` (v1.0.0 rounded the text to `float` directly: one ulp apart in a rare halfway case).
 - Methods FastPAM (FasterPAM), FastCLARA, OneBatchPAM, hierarchical, TADPole and LR-core (an exact Lagrangian branch and
   bound) beside Lloyd's k-medoids and the MIP; `--method auto`: FastPAM to 5,000 series, then FastCLARA (GPU: FastPAM).
 - LR-core's root bound is the subgradient root in every language and build; `--lr-root kelley` (Python `lr_root`,

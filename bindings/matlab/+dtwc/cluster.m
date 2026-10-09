@@ -12,6 +12,9 @@ function res = cluster(data, k, varargin)
 %          each, any lengths).
 %   k    : the number of clusters.
 %
+%   Dtype is dtwc.load's, for a path or series in memory that cluster loads:
+%   'float32' stores the series as single, half the memory.
+%
 %   The name-value pairs are these dtwc_cl keys, by their long names in
 %   CamelCase, the words of Python's cluster() keywords:
 %   Name, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG,
@@ -29,10 +32,13 @@ function res = cluster(data, k, varargin)
 %   See also dtwc.load, dtwc.Result, dtwc.device
 
     [varargin{:}] = convertStringsToChars(varargin{:});
-    data = dtwc.load(data);
+    key = 2 * find(strcmpi(varargin(1:2:end - 1), 'Dtype')) - 1;   % load's, not the run's
+    loadArgs = varargin(sort([key, key + 1]));
+    varargin([key, key + 1]) = [];
+    data = dtwc.load(data, loadArgs{:});
     prob = dtwc.Problem(data.Name);
     device = dtwc_mex('apply', prob.get_handle(), k, varargin{:});
     [series, names] = data.as_series();
-    prob.set_data(series, names);
+    prob.set_data(series, names, 1, data.Dtype);
     res = dtwc.Result(prob, prob.cluster(), device);
 end

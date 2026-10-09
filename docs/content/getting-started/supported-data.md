@@ -13,6 +13,15 @@ can either be read from multiple files (one per series), or from a single
 file, where each time series is represented row-wise or through one of the
 columnar formats below.
 
+Series are stored as float64 unless you ask for float32, half the memory, where
+they are loaded: `--dtype float32` for `dtwc_cl`, `dtype="float32"` in Python's
+`dtwcpp.load` and `dtwcpp.cluster`, `'Dtype', 'float32'` in MATLAB's `dtwc.load`
+and `dtwc.cluster`, `DataLoader::dtype(core::Precision::Float32)` or
+`dtwc::load(..., dtype)` in C++. Every reader rounds the double it reads, so a
+file gives the same float32 series in every language, and no double copy is held.
+Series already in memory are stored as float64, whatever their own type, unless
+`dtype` says otherwise.
+
 ## Reading data from disk
 
 You can specify either a _file path_ or a _folder path_ for your data. The software accommodates `*.csv` and `*.tsv` file extensions.

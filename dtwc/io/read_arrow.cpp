@@ -36,7 +36,7 @@ void check_arrow(const arrow::Status &status, const char *what)
 /// Arrow C++ maps the file and exports its 'data' and 'name' columns, every record
 /// batch, as one C stream, which the one Arrow converter reads: the values are
 /// copied once, into the Data.
-Data read_arrow_ipc(const fs::path &path)
+Data read_arrow_ipc(const fs::path &path, core::Precision dtype)
 {
   // Arrow takes a UTF-8 path on every platform; path::string() is the ANSI code page on Windows.
   auto file = arrow::io::MemoryMappedFile::Open(path_to_utf8(path), arrow::io::FileMode::READ);
@@ -85,8 +85,21 @@ Data read_arrow_ipc(const fs::path &path)
   ArrowArrayStream stream;
   check_arrow(arrow::ExportRecordBatchReader(std::make_shared<arrow::TableBatchReader>(*selected), &stream),
               "Arrow IPC export");
-  return data_from_arrow_stream(&stream, ndim);
+  return data_from_arrow_stream(&stream, ndim, dtype);
 }
+
+#ifdef DTWC_HAS_PARQUET
+/// The series of a Parquet file, or of a folder's files in order, each value as T.
+template <typename T>
+Data read_parquet(const fs::path &path, const std::string &column, index_t skip_cols, index_t skip_rows)
+{
+  std::vector<std::vector<T>> series;
+  std::vector<std::string> names;
+  for (const auto &file : parquet_files(path))
+    ParquetChunkReader(file, column, skip_cols, skip_rows).read_all(series, names);
+  return Data(std::move(series), std::move(names));
+}
+#endif
 
 } // namespace
 
@@ -99,22 +112,19 @@ std::optional<InputFormat> arrow_format(const fs::path &path)
   return std::nullopt; // text, or Parquet in a build without it: the core's reader takes it or refuses it
 }
 
-Data read_arrow(const fs::path &path, const std::string &column, index_t skip_cols, index_t skip_rows)
+Data read_arrow(const fs::path &path, const std::string &column, index_t skip_cols, index_t skip_rows,
+                core::Precision dtype)
 {
   const auto format = arrow_format(path);
-  if (!format) return read_data(path, skip_cols, skip_rows, '\0', column);
+  if (!format) return read_data(path, skip_cols, skip_rows, '\0', column, dtype);
   require_reader_options(format, skip_cols, skip_rows, '\0', column);
   try {
 #ifdef DTWC_HAS_PARQUET
-    if (*format == InputFormat::Parquet) {
-      std::vector<std::vector<data_t>> series;
-      std::vector<std::string> names;
-      for (const auto &file : parquet_files(path))
-        ParquetChunkReader(file, column, skip_cols, skip_rows).read_all(series, names);
-      return Data(std::move(series), std::move(names));
-    }
+    if (*format == InputFormat::Parquet)
+      return dtype == core::Precision::Float32 ? read_parquet<float>(path, column, skip_cols, skip_rows)
+                                               : read_parquet<data_t>(path, column, skip_cols, skip_rows);
 #endif
-    return read_arrow_ipc(path);
+    return read_arrow_ipc(path, dtype);
   } catch (...) {
     dtwc::detail::rethrow_naming_the_file(path); // dtwc::io::detail is the Parquet reader's
   }
