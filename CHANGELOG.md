@@ -145,6 +145,9 @@ Soft-DTW, Python or CUDA), on the machine named.
   fills run 6.8–6.9× faster on one thread and 3.3–3.6× at 24 threads, GCC 13.3's 8.1–8.7× and 4.9–5.5×, equal-length
   fills unchanged; OneBatchPAM's batch table too; bit for bit, but for GCC's squared L2. MSVC builds keep the
   one-pair route for series of different lengths.
+- FastCLARA's CPU assignment computes each medoid against 16 series at once (32 in `float32`) in the same SIMD
+  lanes, in RAM and streamed from Parquet: on an Intel Core Ultra 9 285 [figure: AL's timed run]; the same labels,
+  medoids and costs, but for GCC's squared L2. MSVC builds take the lanes there only under a band.
 - The Windows wheels are built by clang-cl and carry LLVM's OpenMP runtime (`libomp.dll`), so their fill of
   equal-length series runs on the SIMD lanes, which MSVC's cl leaves scalar: on an Intel Core Ultra 9 285
   3.96–4.31× faster than the MSVC wheel with 24 threads, 8.1–8.2× on one thread; results identical.

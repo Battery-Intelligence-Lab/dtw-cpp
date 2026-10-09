@@ -780,14 +780,14 @@ void Problem::fillDistanceMatrix_BruteForce()
   // (bit for bit, unless the compiler contracts a multiply-add in one kernel and not
   // the other). The block at the row's end repeats its last column in the lanes
   // past it, whose results are dropped. Without a band, where the lanes are packed
-  // (core::dtw_lanes_ragged), they take series of any lengths, every lane running to
+  // (core::dtw_lanes_packed), they take series of any lengths, every lane running to
   // its block's longest, so there a row takes its columns in `order`, longest first
   // (equal lengths in index order), passing over those up to its own: a block's
   // lengths are close, and the rows keep index order, so a thread's consecutive rows
   // still write neighbouring slots.
   // The per-pair loop then fills the rest: blocks of mixed lengths the lanes do not
   // take, every pair without a lane function.
-  const bool ragged = core::dtw_lanes_ragged && distance_.band < 0;
+  const bool ragged = core::dtw_lanes_packed && distance_.band < 0;
   const bool lanes = data_.is_f32() ? static_cast<bool>(dtw_block_fn_f32_) : static_cast<bool>(dtw_block_fn_);
   std::vector<size_t> order(N);
   std::iota(order.begin(), order.end(), size_t{ 0 });
