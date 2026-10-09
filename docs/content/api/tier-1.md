@@ -75,7 +75,7 @@ The process device is what `cluster()` uses when it is not given one. A Tier-2
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
-| call | `dtwc::load(source, skip_cols = 0, skip_rows = 0, delimiter = 0, name = "")` | `dtwcpp.load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None)` | `dtwc.load(source, 'SkipCols', 0, 'SkipRows', 0, 'Delimiter', '', 'Name', '')` |
+| call | `dtwc::load(source, skip_cols = 0, skip_rows = 0, delimiter = 0, name = "", dtype = core::Precision::Float64)` | `dtwcpp.load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="float64")` | `dtwc.load(source, 'SkipCols', 0, 'SkipRows', 0, 'Delimiter', '', 'Name', '', 'Dtype', 'float64')` |
 | a path | `std::filesystem::path` | `str` or `os.PathLike` | char or string |
 | series in memory | `std::vector<std::vector<double>>`, one series per row, any lengths | a 2-D array (one series per row), a list of 1-D arrays (any lengths), a pandas DataFrame (rows, named by its index) or an Arrow array | an N×L numeric matrix (one series per row) or a cell of numeric vectors (any lengths) |
 
@@ -94,6 +94,14 @@ MATLAB, Parquet only, through `parquetread`.
   and `.txt`, else a comma.
 - `name` names the run and prefixes its result files. Without one it is the
   file's or folder's name without extension, and `dataset` for series in memory.
+- `dtype` is the precision the series are stored in: `float64` (the default) or
+  `float32`, half the memory, with `dtwc_cl --dtype`'s spellings (`f32`, `fp32`,
+  `float`; `f64`, `fp64`, `double`; any case; another is `InvalidInput`). Each
+  reader rounds the double it reads, so a file gives the same float32 series in
+  every language and no double copy is held. Series in memory are rounded when
+  `cluster()` runs; float32 data in memory alone (NumPy `float32`, MATLAB `single`)
+  does not choose it. The dataset says which: `Dataset::dtype()`, Python
+  `Dataset.dtype`, MATLAB `Dataset.Dtype`.
 - Each series has a name, which the result files carry: `1`, `2`, ... for the
   series of a text file, in the order read after `skip_rows`; the file's name
   without extension in a folder; `0`, `1`, ... for series in memory (in Python,
@@ -122,9 +130,11 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 `sample_size`, `n_samples`, `batch_size`, `linkage`, `dc`, `solver`, `mip_gap`,
 `time_limit`, `no_warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`,
 `lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `name` and `verbose` (MATLAB:
-`'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, ...). The others
-(`input`, `output`, `dtype`, `ram_limit`, `checkpoint`, ...) are `dtwc_cl`'s and
-`dtwc::run`'s, unknown keys here. The [CLI reference](../../getting-started/cli/)
+`'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, ...). `dtype` (MATLAB
+`'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and
+refuses it beside a `Dataset`, which keeps its own. The others (`input`, `output`,
+`ram_limit`, `checkpoint`, ...) are `dtwc_cl`'s and `dtwc::run`'s, unknown keys
+here. The [CLI reference](../../getting-started/cli/)
 gives each one's meaning and default. C++ reads and checks the values: an unknown
 key, or a name no table holds, is `InvalidInput` (MATLAB `dtwc:invalidArgument`)
 naming the valid ones, an unknown device is `DeviceError`, and in Python a value

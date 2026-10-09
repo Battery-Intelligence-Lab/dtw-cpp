@@ -69,7 +69,7 @@ disp(result.medoid_indices); disp(result.total_cost); disp(dtwc.davies_bouldin(p
 | | C++ `dtwc::Problem` | Python `dtwcpp.Problem` | MATLAB `dtwc.Problem` |
 |---|---|---|---|
 | create | `Problem("name")`, `Problem("name", loader)` (a `DataLoader`) | `Problem("name", device="cpu")` | `dtwc.Problem('name', 'Device', 'cpu')` |
-| series | `set_data(Data)` | `set_data(series, names=None, ndim=1)` | `set_data(X, names, ndim)` |
+| series | `set_data(Data)` | `set_data(series, names=None, ndim=1)` | `set_data(X, names, ndim, dtype)` |
 | read | `size()`, `series(i)`, `series_name(i)`, `data()` | `size`, `series(i)`, `series_name(i)` | `size()` |
 | k | `set_n_clusters(k)`, `n_clusters()` | the same | the same |
 | method of `cluster()` | `set_method(Method)`, `method()` | `set_method(Method)`, `method` | `set_method(name)` |
@@ -249,11 +249,17 @@ the input first.
 
 Series are stored and computed in `double` unless asked otherwise:
 `dtwc::data_t` and the distance functions' default template argument are
-`double`, and `dtwc_cl --dtype` defaults to `float64`. Float32 is an opt-in that
-halves the memory the series take: a C++ `Data` built from
-`std::vector<std::vector<float>>`, Python's `Data.from_float32`, or `--dtype
-float32`. A float32 series is rounded on the way in and its recurrence runs in
-float, so results can differ from the float64 ones. Distances are stored as
+`double`, and every `dtype` defaults to `float64`. Float32 is an opt-in that
+halves the memory the series take, one word where data is loaded: Tier 1's
+`load(..., dtype)` (MATLAB `'Dtype'`), `DataLoader::dtype(core::Precision::Float32)`
+and `dtwc_cl --dtype float32`; or a C++ `Data` built from
+`std::vector<std::vector<float>>`, Python's `Data.from_float32`, MATLAB's
+`Problem.set_data(X, names, ndim, 'float32')`. Each reader rounds the double it
+reads (a text value is its double parse; Parquet and Arrow values are cast), so a
+float32 load holds no double copy and gives the same series in every language;
+float32 data in memory alone stays `double`. A float32 series' recurrence runs in
+float, so results can differ from the float64 ones. Python's `Data.series(i)`
+reads a series of either precision; `p_vec` holds the float64 ones. Distances are stored as
 `double` whatever the series' type, in the matrix and in a `.dtwm` file;
 `dtwc::distance::dtw<float>(...)` returns a `float`.
 

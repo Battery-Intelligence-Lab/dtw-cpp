@@ -1,0 +1,54 @@
+# Unit DT, 2026-10-09: raw lines behind 2026-10-09-dt-dtype-at-load.md (Windows 11, Intel Core Ultra 9 285,
+# clang++ 21.1.8; Arrow 23.0.1 through the pyarrow-23 shim). Shared machine; memory only, nothing timed.
+
+## Peak working set: dtwc_cl -i big_list_f64.parquet -k 1000000 -m pam -o "" --dtype <dtype>
+## (exits 1 after the load: "k must not exceed the number of series"); peak_ws.py
+## big_list_f64.parquet: 240,337,908 bytes; 30,000 rows x 1,000 float64 values (240,000,000 bytes), one row group,
+## pyarrow 23.0.1 write_table defaults (snappy). base = design-2.0 7ab1f354, cand = pb/DT; both Arrow builds.
+base float32: exit=1 peak_working_set=905891840 peak_private=990408704 page_faults=381906
+base float64: exit=1 peak_working_set=905773056 peak_private=990257152 page_faults=351447
+base float32: exit=1 peak_working_set=905830400 peak_private=990330880 page_faults=381883
+base float64: exit=1 peak_working_set=905748480 peak_private=990199808 page_faults=351440
+cand float32: exit=1 peak_working_set=473194496 peak_private=262475776 page_faults=177311
+cand float64: exit=1 peak_working_set=596762624 peak_private=379285504 page_faults=207936
+base float32: exit=1 peak_working_set=905682944 peak_private=990195712 page_faults=381856
+base float64: exit=1 peak_working_set=905830400 peak_private=990302208 page_faults=351452
+cand float32: exit=1 peak_working_set=473198592 peak_private=262422528 page_faults=177295
+cand float64: exit=1 peak_working_set=596877312 peak_private=379498496 page_faults=207950
+base float32: exit=1 peak_working_set=905904128 peak_private=990404608 page_faults=381917
+base float64: exit=1 peak_working_set=905859072 peak_private=990314496 page_faults=351464
+## final code (after the comment-only edits), float32:
+base float32: exit=1 peak_working_set=905744384 peak_private=990212096 page_faults=381865
+cand float32: exit=1 peak_working_set=473169920 peak_private=262418432 page_faults=177288
+base float32: exit=1 peak_working_set=905826304 peak_private=990306304 page_faults=381884
+cand float32: exit=1 peak_working_set=473288704 peak_private=262467584 page_faults=177319
+## process baseline, a 60-row Parquet file:
+cand tiny float32: exit=1 peak_working_set=19312640 peak_private=10481664 page_faults=5141
+base tiny float32: exit=1 peak_working_set=19316736 peak_private=9797632 page_faults=5084
+
+## dtwc_cl -v memory line on big_list_f64.parquet
+base float32:   Data memory: ~228 MB (30000 series, 1000 avg length, float32)   then "Converted to float32 (2x memory saving)"
+base float64:   Data memory: ~228 MB (30000 series, 1000 avg length, float64)
+cand float32:   Data memory: ~114 MB (30000 series, 1000 avg length, float32)
+cand float64:   Data memory: ~228 MB (30000 series, 1000 avg length, float64)
+
+## float64 unchanged: w8b_cli_runs.sh + w8b_cli_extra.sh (C:/D/git/wt/tmp/int) with pb/DT's clang build/dtwc_cl.exe
+diff -r C:/D/git/wt/tmp/int/rl_post_clang C:/D/git/wt/tmp/DT/cli_cand: empty, 156 files each (pam_f32, clara_f32,
+onebatch_f32 and tadpole_f32 among them)
+
+## float32 as today: f32_runs.sh with base's and pb/DT's Arrow dtwc_cl.exe, 22 runs, 154 files each, every exit 0
+diff -r f32_base f32_cand:
+diff -r f32_base/verbose_batch_f32/stdout.txt f32_cand/verbose_batch_f32/stdout.txt
+21d20
+< Converted to float32 (2x memory saving)
+diff -r f32_base/verbose_list_f32/stdout.txt f32_cand/verbose_list_f32/stdout.txt
+21d20
+< Converted to float32 (2x memory saving)
+
+## Parquet read a batch of one row at a time (decode_batch_bytes = 1, a throwaway build): test_io_readers 1544
+## assertions in 20 cases pass; list and rows layouts, --skip-rows 0 and 7: outputs equal the 16 MiB batches' and
+## base's (16 files)
+
+## G2, a throwaway Catch2 case: four series, PAM k 2, a Float64 view passed to dtwc::run
+cand: f64 3.45000000000000018, f32 view 3.45000004768371582 == f32 owned 3.45000004768371582 ("Converted to float32")
+base condition (!series.is_view()): f32 view 3.45000000000000018 == the f64 cost: the view ran in double

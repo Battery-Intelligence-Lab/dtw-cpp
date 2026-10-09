@@ -53,7 +53,7 @@ two agree on every default, check and method choice.
 | `-k, --n-clusters <int>` | Number of clusters (required) | — |
 | `-v, --verbose` | Verbose output | off |
 | `--column <name>` | The Parquet scalar/list Float32 or Float64 column to read. If omitted, the first eligible top-level column decides: a list or several scalar columns are one series per row, the only scalar column one series ([Supported data](../supported-data/)) | — |
-| `--dtype <string>` | Data type for in-memory storage. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
+| `--dtype <string>` | The precision the series are stored in: `float32` halves their memory, each value read as a double and rounded, with no double copy held. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
 | `--ram-limit <size>` | Conservative Parquet series-materialization budget, e.g. `2GiB`, `500M`, `1.5G`; see below | unlimited |
 
 The option names of DTW-C++ 1.0 (Nc, probName, in, out, skipRows, skipCols, maxIter, Nrep, bandwidth, distMat and
