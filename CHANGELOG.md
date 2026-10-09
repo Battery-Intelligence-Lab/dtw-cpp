@@ -139,9 +139,10 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - FastCLARA runs every sample's PAM before one assignment pass over all of them: `-v` prints one assignment line a
   pass, not one a sample; a non-finite distance is reported at the lowest failing series over all samples; and series
   it cannot take (NaN, ±inf, a band narrower than two series' length difference) are refused before any sample, by
-  their index in the data. Streamed (`--ram-limit`), the limit holds the sampled rows beside one row group, then the
-  medoids, 8 bytes of labels per row and sample and a batch of row groups: a smaller limit is refused, naming the
-  bytes, where it streamed before.
+  their index in the data. Streamed (`--ram-limit`), the limit holds the sampled rows beside one decode and a
+  sample's PAM, then the medoids, 8 bytes of labels and of nearest distance per row and sample, one decode and a batch
+  of row groups, and after the stream every series' name and label: a smaller limit is refused, naming the bytes,
+  where it streamed before.
 
 ## Performance
 
@@ -227,6 +228,11 @@ Soft-DTW, Python or CUDA), on the machine named.
 - FastCLARA streamed from Parquet (`--ram-limit`) checks each row it reads as the in-RAM run checks its series: NaN,
   ±inf, an empty list cell or a row longer than the band allows, outside the samples, is an `InvalidInput` naming the
   row, where the stream published a cost of 1.8e308 (NaN: an error naming a point and a medoid).
+- FastCLARA streamed from Parquet held `--ram-limit` only approximately: it decoded a batch of row groups in one
+  read, whose buffers Arrow rounds up to a power of two over the batch, beyond what the batch was priced. On Windows
+  4.2 million series of 128 doubles streamed under `--ram-limit 1G` peaked at 1.47 GB of private bytes (4G: 5.2 GB).
+  Every Parquet read now decodes about 1 MiB of values at a time and the stream is priced by what it holds: the same
+  runs peak at 0.70 GB and 2.4 GB.
 
 ## Removed
 

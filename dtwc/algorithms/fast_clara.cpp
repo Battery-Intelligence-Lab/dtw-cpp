@@ -119,6 +119,12 @@ namespace detail {
     }
   }
 
+  std::size_t clara_pass_bytes(const ClaraPlan &plan, std::size_t n_samples)
+  {
+    const auto n = static_cast<std::size_t>(plan.n_points);
+    return n_samples * (n * sizeof(index_t) + std::min(clara_block_points, n) * sizeof(double));
+  }
+
   Data clara_sample(const Data &source, const std::vector<index_t> &positions, bool owned)
   {
     const auto take = [&](const auto &series_of) {

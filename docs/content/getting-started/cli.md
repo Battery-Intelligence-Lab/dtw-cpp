@@ -152,10 +152,12 @@ load as they would without a limit. An explicit `--ram-limit` is fail-closed:
   the limit;
 - the sampled rows are read once, then the file once more for the assignment,
   a batch of row groups at a time (the next batch decoding while one is assigned,
-  when two fit). Parquet row groups are indivisible: the limit must hold the
-  sampled rows beside one row group, then the `n_samples` × k medoid series,
-  8 bytes of labels per row and sample and one batch; a smaller limit fails,
-  naming the bytes, with guidance to rewrite smaller row groups or raise it;
+  when two fit); every read decodes about 1 MiB of values at a time. The limit
+  must hold the sampled rows beside one decode, a sample's PAM beside them, then
+  the `n_samples` × k medoid series, 8 bytes of labels and of nearest distance
+  per row and sample, one decode and a batch of whole row groups, and the series'
+  names and labels written after the stream; a smaller limit fails, naming the
+  bytes, with guidance to rewrite smaller row groups or raise it;
 - a CLARA sample size that resolves to all N series is rejected while the file
   is over budget, because its full-data PAM fallback cannot stream;
 - with `--device gpu` the samples fill on the GPU, and with CUDA each streamed
@@ -165,8 +167,8 @@ load as they would without a limit. An explicit `--ram-limit` is fail-closed:
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.
 
-Streaming caps series decoding and materialisation: algorithm result arrays,
-the subsample PAM matrix, library metadata, and fixed process overhead are
+The limit covers what the streamed run holds: library metadata and fixed
+process overhead (the code, thread stacks, the allocators' first pages) are
 outside it. Other inputs (CSV/TSV, Arrow IPC, a CSV directory) are always read
 whole; the limit then governs the distance matrix alone.
 

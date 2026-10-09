@@ -36,17 +36,6 @@ namespace dtwc::algorithms {
 
 namespace {
 
-  size_t resident_data_bytes(const Data &data, size_t element_bytes)
-  {
-    const size_t object_bytes = data.is_f32()
-      ? sizeof(std::vector<float>) + sizeof(std::string)
-      : sizeof(std::vector<data_t>) + sizeof(std::string);
-    size_t total = data.size() * object_bytes;
-    for (size_t i = 0; i < data.size(); ++i)
-      total += data.series_flat_size(i) * element_bytes;
-    return total;
-  }
-
   /// Where each of `rows` sits in `sorted`, which holds every one of them.
   std::vector<index_t> positions_in(const std::vector<int64_t> &sorted, const std::vector<index_t> &rows)
   {
@@ -130,10 +119,11 @@ namespace {
    * All samples are drawn first; the rows they hold, their union, are read once and each sample's PAM runs on a copy
    * of its series. The medoids' series are copied out and the union released. Then one pass over the file: a batch
    * of row groups at a time, every point against the medoids of every sample, while the next batch decodes on another
-   * thread when two batches fit the limit (else batches decode and are assigned in turn). Within ram_limit_bytes: the
-   * union beside one row group (read_rows' check), then the medoids, every sample's labels, one block of nearest
-   * distances and the batches. The union, and each batch as it decodes, go through the in-RAM route's checks
-   * (RowCheck): the stream refuses what the in-RAM route refuses, naming the row.
+   * thread when two batches fit the limit (else batches decode and are assigned in turn). Within ram_limit_bytes, as
+   * the reader prices them: the union beside one decode (read_rows' check), then a sample's PAM beside the union, then
+   * the medoids, every sample's labels and one block of nearest distances beside one decode and the batches, and at
+   * the end the labels beside the Problem's copy. The union, and each batch as it decodes, go through the in-RAM
+   * route's checks (RowCheck): the stream refuses what the in-RAM route refuses, naming the row.
    */
   template <bool F32>
   core::ClusteringResult fast_clara_chunked(
@@ -172,22 +162,47 @@ namespace {
       sampled.band();
       std::vector<std::vector<index_t>> positions;
       for (const auto &sample : samples) positions.push_back(positions_in(rows, sample));
+      // The PAMs run one at a time beside the union: a sample's copy and its packed distance matrix.
+      std::size_t union_values = 0, sample_values = 0;
+      for (std::size_t i = 0; i < rows.size(); ++i) union_values += pool.series_flat_size(i);
+      for (const auto &at : positions) {
+        std::size_t values = 0;
+        for (const index_t i : at) values += pool.series_flat_size(static_cast<std::size_t>(i));
+        sample_values = std::max(sample_values, values);
+      }
+      const auto s = static_cast<std::size_t>(plan.sample_size);
+      const size_t union_bytes = io::ParquetChunkReader::series_bytes(union_values, rows.size(), F32);
+      const size_t pam_bytes =
+        io::ParquetChunkReader::series_bytes(sample_values, s, F32) + core::packed_size(s) * sizeof(double);
+      if (union_bytes + pam_bytes > opts.ram_limit_bytes)
+        throw InvalidInput("fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(opts.ram_limit_bytes)
+                           + " cannot hold a sample's PAM beside the samples' series, which needs "
+                           + std::to_string(union_bytes + pam_bytes) + " bytes: " + std::to_string(union_bytes)
+                           + " for the " + std::to_string(rows.size()) + " sampled series, "
+                           + std::to_string(pam_bytes) + " for a sample's copy and its distance matrix (sample_size = "
+                           + std::to_string(s) + "); raise the limit, or lower sample_size.");
       pams = detail::clara_pams(prob, opts, pool, samples, positions, true, medoids);
       medoid_data = detail::clara_sample(pool, positions_in(rows, medoids), true);
     }
 
     const size_t limit = opts.ram_limit_bytes;
-    const size_t fixed = resident_data_bytes(medoid_data, sizeof(T)) + samples.size() * n_points * sizeof(index_t)
-                       + samples.size() * std::min(detail::clara_block_points, n_points) * sizeof(double);
+    std::size_t medoid_values = 0;
+    for (std::size_t j = 0; j < medoids.size(); ++j) medoid_values += medoid_data.series_flat_size(j);
+    const size_t medoid_bytes = io::ParquetChunkReader::series_bytes(medoid_values, medoids.size(), F32);
+    const size_t fixed = medoid_bytes + detail::clara_pass_bytes(plan, samples.size()) + reader.decode_bytes();
     const size_t group = reader.largest_row_group_bytes(F32);
-    if (fixed + group > limit)
+    // After the pass the Problem copies the winner's labels (set_result) beside every sample's.
+    const size_t finish = medoid_bytes + samples.size() * n_points * sizeof(index_t) + n_points * sizeof(index_t)
+                        + n_points / 8;
+    if (std::max(fixed + group, finish) > limit)
       throw InvalidInput(
         "fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(limit) + " cannot hold the pass over the "
-        "file, which needs " + std::to_string(fixed + group) + " bytes: " + std::to_string(fixed)
-        + " for the medoids' series and every sample's labels and nearest distances (n_samples = "
+        "file, which needs " + std::to_string(std::max(fixed + group, finish)) + " bytes: " + std::to_string(fixed)
+        + " for the medoids' series, every sample's labels and nearest distances (n_samples = "
         + std::to_string(samples.size()) + ", k = " + std::to_string(opts.n_clusters) + ", "
-        + std::to_string(n_points) + " rows), " + std::to_string(group)
-        + " for one row group; raise the limit, or rewrite the file with smaller row groups.");
+        + std::to_string(n_points) + " rows) and decoding, " + std::to_string(group)
+        + " for one row group's series, " + std::to_string(finish)
+        + " at its end with the result's labels; raise the limit, or rewrite the file with smaller row groups.");
     const bool overlap = fixed + 2 * group <= limit; // a batch decoding beside the one assigned
     const int per_batch = reader.row_groups_per_batch(overlap ? (limit - fixed) / 2 : limit - fixed, F32);
 

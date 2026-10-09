@@ -85,8 +85,11 @@ function(run_f8_cli config_id mode output_dir dtype variant gamma accepted_costs
     if(NOT gamma STREQUAL "none")
         list(APPEND args --sdtw-gamma "${gamma}")
     endif()
+    # 4600 bytes hold the stream (4,550 in float64: the medoids, two samples'
+    # labels and nearest distances, one decode of the 8 rows, one row group),
+    # below the in-RAM estimate with CLARA's pass (4,766), so the run streams.
     if(mode STREQUAL "stream")
-        list(APPEND args --ram-limit 1200)
+        list(APPEND args --ram-limit 4600)
     endif()
 
     execute_process(

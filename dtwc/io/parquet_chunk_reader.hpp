@@ -222,42 +222,48 @@ public:
 
     rg_row_counts_.resize(num_row_groups_);
     rg_row_offsets_.resize(num_row_groups_);
-    rg_encoded_bytes_.resize(num_row_groups_);
     rg_value_counts_.resize(num_row_groups_);
     rg_name_bytes_.resize(num_row_groups_);
     int64_t offset = 0;
     for (int rg = 0; rg < num_row_groups_; ++rg) {
       const auto group = pq_meta->RowGroup(rg);
       rg_row_counts_[rg] = group->num_rows();
-      size_t encoded_bytes = 0; // the sample columns
-      size_t value_count = 0;   // their values
-      size_t name_bytes = 0;    // the name column: decoded, then copied into the series' names
+      size_t value_count = 0; // the sample columns' values
+      size_t name_bytes = 0;  // the name column: decoded, then copied into the series' names
+      size_t page_bytes = 0;  // a page of each leaf, the most a decode holds: the chunk over its pages, twice that
+                              // with more than one (pages are cut to one size, the last shorter), else the chunk
       for (const int leaf : leaves_) {
         const auto column = group->ColumnChunk(leaf);
         if (column->total_uncompressed_size() < 0 || column->num_values() < 0)
           throw dtwc::IOError("ParquetChunkReader: invalid row-group metadata");
+        const auto chunk = static_cast<size_t>(column->total_uncompressed_size());
+        size_t pages = 0;
+        for (const auto &stats : column->encoding_stats()) pages += static_cast<size_t>(std::max(stats.count, 0));
+        page_bytes += pages > 1 ? std::min(chunk, 2 * chunk / pages) : chunk;
         if (layout_.names && leaf == layout_.names->parquet_leaf_index) {
-          name_bytes += static_cast<size_t>(column->total_uncompressed_size());
+          name_bytes += chunk;
           continue;
         }
-        encoded_bytes += static_cast<size_t>(column->total_uncompressed_size());
         value_count += static_cast<size_t>(column->num_values());
       }
       if (rg_row_counts_[rg] < 0 || rg_row_counts_[rg] > std::numeric_limits<int64_t>::max() - offset)
         throw dtwc::IOError("ParquetChunkReader: invalid row-group metadata");
       rg_row_offsets_[rg] = offset;
-      rg_encoded_bytes_[rg] = encoded_bytes;
       rg_value_counts_[rg] = value_count;
       rg_name_bytes_[rg] = name_bytes;
       offset += rg_row_counts_[rg];
-      column_encoded_bytes_ += rg_encoded_bytes_[rg];
       total_value_count_ += rg_value_counts_[rg];
       name_bytes_ += name_bytes;
+      page_bytes_ = std::max(page_bytes_, page_bytes);
     }
     if (offset != total_rows_)
       throw dtwc::IOError(
         "ParquetChunkReader: row-group counts do not match file metadata");
-
+    // A record batch holds about decode_batch_bytes of values at the file's mean row length.
+    const size_t row_bytes = std::max<size_t>(
+      1, total_value_count_ * source_value_bytes_ / static_cast<size_t>(std::max<int64_t>(total_rows_, 1)));
+    batch_rows_ = std::max<size_t>(1, decode_batch_bytes / row_bytes);
+    reader_->set_batch_size(static_cast<int64_t>(batch_rows_));
   }
 
   /// Number of row groups in the file.
@@ -283,59 +289,77 @@ public:
   /// Number of rows in a specific row group.
   int64_t row_group_rows(int rg) const { return rg_row_counts_[rg]; }
 
-  /// Conservative estimate of resident `Data` bytes for the selected output
-  /// precision. The selected Parquet column bytes are never scaled down; a
-  /// Float32 column is scaled up for Float64 materialization, and per-series
-  /// vector/name objects are included.
-  size_t estimated_resident_bytes(bool use_float32) const
+  /// The bytes `rows` series of `values` values in all hold once read as float
+  /// (use_float32) or data_t: the values, each series' vector and name objects,
+  /// and the allocator's rounding of each series' block (an eighth of it and
+  /// block_overhead_bytes more, measured 2026-10-09). The one price of a read:
+  /// row groups by their metadata, read_rows' series as they are copied out.
+  static size_t series_bytes(size_t values, size_t rows, bool use_float32)
   {
-    const size_t payload = estimated_payload_bytes(use_float32);
-
-    const size_t object_bytes = use_float32
-      ? sizeof(std::vector<float>) + sizeof(std::string)
-      : sizeof(std::vector<data_t>) + sizeof(std::string);
-    return payload + static_cast<size_t>(logical_series_count()) * object_bytes;
+    const size_t width = use_float32 ? sizeof(float) : sizeof(data_t);
+    const size_t objects = (use_float32 ? sizeof(std::vector<float>) : sizeof(std::vector<data_t>))
+                         + sizeof(std::string) + block_overhead_bytes;
+    return values * width + values * width / 8 + rows * objects;
   }
 
-  /// Conservative peak while the CLI materializes this file: the series at the
-  /// selected precision beside the decoded values, at most the file's (read_all
-  /// decodes a batch of rows at a time).
+  /// The bytes a read holds beside its series while it decodes: Arrow's buffers
+  /// for one record batch of batch_rows_ rows (the whole column of a file that is
+  /// one series), decode_overhead times its values, levels, offsets and names,
+  /// and twice a page of each leaf (each leaf's page reader holds its page). The
+  /// factors cover Arrow's rounding of a buffer up to a power of two and the
+  /// allocator's keeping what a decode freed (measured 2026-10-09).
+  size_t decode_bytes() const
+  {
+    const size_t rows = rows_are_series() ? std::min(batch_rows_, static_cast<size_t>(total_rows_))
+                                          : static_cast<size_t>(total_rows_);
+    const size_t total_rows = static_cast<size_t>(std::max<int64_t>(total_rows_, 1));
+    const size_t values = rows_are_series() ? total_value_count_ * rows / total_rows : total_value_count_;
+    const size_t decoded = values * (source_value_bytes_ + 2 * sizeof(int16_t)) + rows * sizeof(int32_t)
+                         + name_bytes_ * rows / total_rows;
+    return decode_overhead * decoded + 2 * page_bytes_;
+  }
+
+  /// The bytes the series of every row group hold once read: what the series
+  /// of the whole file cost in RAM (series_bytes, and their names' characters).
+  size_t estimated_resident_bytes(bool use_float32) const
+  {
+    const auto series = static_cast<size_t>(logical_series_count());
+    return series_bytes(total_value_count_, series, use_float32) + name_heap_bytes(name_bytes_, series);
+  }
+
+  /// The bytes series_names() returns: a string per series and, when a name
+  /// column names them, its characters (its bytes bound them) with the
+  /// allocator's header a name.
+  size_t series_names_bytes() const
+  {
+    const auto series = static_cast<size_t>(logical_series_count());
+    return series * sizeof(std::string) + name_heap_bytes(name_bytes_, series);
+  }
+
+  /// The peak while the CLI materializes this file: its series at the selected
+  /// precision beside one decode (read_all decodes a record batch at a time).
   size_t estimated_materialization_peak_bytes(bool use_float32) const
   {
-    return source_payload_bytes() + estimated_resident_bytes(use_float32);
+    return estimated_resident_bytes(use_float32) + decode_bytes();
   }
 
   /// Append every series of the file to `series` and `names` as `T`: data_t, or
   /// float. A row's series_<i> numbers on from series.size(), so a folder's files
-  /// never repeat one. Rows are decoded a batch at a time, about
-  /// decode_batch_bytes of values, so the decoded values held beside the series
-  /// are one batch's: a Float32 read of Float64 values never holds them all in
-  /// double. A file that is one series is decoded whole.
+  /// never repeat one. Rows are decoded a record batch at a time, so the decoded
+  /// values held beside the series are one batch's: a Float32 read of Float64
+  /// values never holds them all in double. A file that is one series is decoded
+  /// whole.
   template <typename T>
   void read_all(std::vector<std::vector<T>> &series, std::vector<std::string> &names) const
   {
-    if (!rows_are_series() || total_rows_ == 0) {
-      append_row_groups(0, num_row_groups_, series, names, series.size());
+    const size_t first_name = series.size();
+    if (!rows_are_series()) {
+      append_row_groups(0, num_row_groups_, series, names);
       return;
     }
-    const size_t row_bytes = std::max<size_t>(1, total_value_count_ * source_value_bytes_
-                                                   / static_cast<size_t>(total_rows_));
-    reader_->set_batch_size(static_cast<int64_t>(std::max<size_t>(1, decode_batch_bytes / row_bytes)));
-    std::vector<int> groups(static_cast<size_t>(num_row_groups_));
-    std::iota(groups.begin(), groups.end(), 0);
-    const auto batches = record_batches(groups);
-    int64_t row = 0; // the file row the next batch starts at
-    for (std::shared_ptr<arrow::RecordBatch> batch;;) {
-      detail::check_arrow_chunk(batches->ReadNext(&batch), "read_all");
-      if (batch == nullptr) return;
-      // As append_row_groups: the rows before row_offset_ are dropped, a null there no error.
-      const int64_t dropped = std::clamp<int64_t>(row_offset_ - row, 0, batch->num_rows());
-      row += batch->num_rows();
-      if (dropped == batch->num_rows()) continue;
-      auto table = arrow::Table::FromRecordBatches({ batch->Slice(dropped) });
-      detail::check_arrow_chunk(table.status(), "read_all");
-      append_rows(**table, series, names, series.size());
-    }
+    decode_rows(0, num_row_groups_, "read_all", [&](const arrow::Table &table, int64_t first) {
+      return append_rows(table, series, names, first_name + static_cast<size_t>(first));
+    });
   }
 
   /// Every series' name, as read_all() names them, reading the name column
@@ -378,23 +402,25 @@ public:
     std::vector<std::string> names;
     vecs.reserve(rows);
     names.reserve(rows);
-    append_row_groups(rg_start, count, vecs, names,
-                      static_cast<size_t>(std::max<int64_t>(first_row_of(rg_start) - row_offset_, 0)));
+    if (rows_are_series())
+      decode_rows(rg_start, count, "read_row_groups", [&](const arrow::Table &table, int64_t first) {
+        return append_rows(table, vecs, names, static_cast<size_t>(first));
+      });
+    else
+      append_row_groups(rg_start, count, vecs, names);
     return Data(std::move(vecs), std::move(names));
   }
 
-  /// The largest row group's peak while read_row_groups() materialises it:
-  /// what a batch of row_groups_per_batch() budgets per group.
+  /// The largest row group's series once read_row_groups() reads it
+  /// (series_bytes and its names' characters): what a batch of
+  /// row_groups_per_batch() budgets per group, beside one decode_bytes().
   size_t largest_row_group_bytes(bool use_float32 = false) const
   {
     size_t largest_group = 0;
-    const size_t object_bytes = use_float32
-      ? sizeof(std::vector<float>) + sizeof(std::string)
-      : sizeof(std::vector<data_t>) + sizeof(std::string);
     for (int rg = 0; rg < num_row_groups_; ++rg) {
-      largest_group = std::max(
-        largest_group,
-        row_group_materialization_peak_bytes(rg, use_float32, object_bytes));
+      const auto rows = static_cast<size_t>(rg_row_counts_[rg]);
+      largest_group = std::max(largest_group, series_bytes(rg_value_counts_[rg], rows, use_float32)
+                                                + name_heap_bytes(rg_name_bytes_[rg], rows));
     }
     return largest_group;
   }
@@ -403,7 +429,7 @@ public:
   /// in a RAM budget. Throws when even one row group cannot fit; silently
   /// exceeding the requested cap is never a valid fallback.
   ///
-  /// @param ram_budget  Available bytes for chunk data.
+  /// @param ram_budget  Available bytes for chunk data, decode_bytes() excluded.
   /// @param use_float32  Whether chunks materialize as Float32.
   /// @return Number of row groups per batch (at least 1 when non-empty).
   int row_groups_per_batch(size_t ram_budget, bool use_float32 = false) const
@@ -429,8 +455,10 @@ public:
   /// `T`: data_t, or float to keep FastCLARA's Float32 route in Float32. An
   /// index counts the series, the rows after skip_rows.
   ///
-  /// Groups the requested indices by row group, reads only the needed
-  /// row groups, and filters to the requested rows.
+  /// Decodes the row groups holding a requested row, a record batch at a time
+  /// up to the group's last requested row, and copies the requested rows out.
+  /// Within ram_budget: every decode starts with the series read so far
+  /// (series_bytes, as copied) and one decode_bytes() inside it.
   ///
   /// @param indices  Global row indices to read.
   /// @return Data with series in the same order as indices.
@@ -447,91 +475,80 @@ public:
     for ([[maybe_unused]] const auto index : indices)
       assert(index >= 0 && index < logical_series_count());
 
-    const size_t result_object_bytes = sizeof(std::vector<T>) + sizeof(std::string);
-    size_t retained_bytes = indices.size() * result_object_bytes;
-    if (retained_bytes > ram_budget)
-      throw dtwc::InvalidInput(
-        "ParquetChunkReader::read_rows: the " + std::to_string(indices.size()) +
-        " selected series need " + std::to_string(retained_bytes) +
-        " bytes for their objects alone, exceeding --ram-limit=" +
-        std::to_string(ram_budget));
+    constexpr bool f32 = std::is_same_v<T, float>;
+    const size_t decode = decode_bytes();
+    size_t retained = series_bytes(0, indices.size(), f32); // the series' objects; their values as they are copied
+    const auto require_decode = [&] {
+      if (retained + decode > ram_budget)
+        throw dtwc::InvalidInput(
+          "ParquetChunkReader::read_rows: the " + std::to_string(indices.size()) + " selected series hold "
+          + std::to_string(retained) + " bytes so far and decoding their rows needs " + std::to_string(decode)
+          + " more, " + std::to_string(retained + decode) + " in all, exceeding --ram-limit="
+          + std::to_string(ram_budget) + "; raise the limit");
+    };
 
-    std::vector<size_t> order(indices.size());
+    std::vector<size_t> order(indices.size()); // indices[order[i]] ascending
     std::iota(order.begin(), order.end(), size_t{0});
     std::sort(order.begin(), order.end(), [&](size_t lhs, size_t rhs) {
       return indices[lhs] < indices[rhs];
     });
-    std::vector<int64_t> sorted_indices(indices.size()); // the file's rows
-    for (size_t i = 0; i < indices.size(); ++i)
-      sorted_indices[i] = indices[order[i]] + row_offset_;
-
     std::vector<std::vector<T>> result_vecs(indices.size());
     std::vector<std::string> result_names(indices.size());
-    size_t index_position = 0;
-    for (int rg = 0;
-         rg < num_row_groups_ && index_position < sorted_indices.size(); ++rg) {
-      const int64_t row_group_start = rg_row_offsets_[rg];
-      const int64_t row_group_end = row_group_start + rg_row_counts_[rg];
-      // As read_row_groups: the group's rows before row_offset_ are not read, so
-      // a local index counts from the first row after them.
-      const int64_t dropped = std::clamp<int64_t>(row_offset_ - row_group_start, 0, rg_row_counts_[rg]);
-      std::vector<int64_t> local_indices;
-      std::vector<size_t> result_positions;
-      while (index_position < sorted_indices.size()
-             && sorted_indices[index_position] < row_group_end) {
-        local_indices.push_back(
-          sorted_indices[index_position] - row_group_start - dropped);
-        result_positions.push_back(index_position++);
-      }
-      if (local_indices.empty()) continue;
-
-      const size_t group_peak = row_group_materialization_peak_bytes(
-        rg, std::is_same_v<T, float>, result_object_bytes);
-      if (group_peak > ram_budget - retained_bytes)
-        throw dtwc::InvalidInput(
-          "ParquetChunkReader::read_rows: selected row group needs " +
-          std::to_string(group_peak) + " bytes in addition to " +
-          std::to_string(retained_bytes) +
-          " retained sample bytes, exceeding --ram-limit=" +
-          std::to_string(ram_budget) +
-          "; rewrite with smaller row groups or raise the limit");
-
-      auto table = read_groups({ rg }, leaves_, "read_rows ReadRowGroups");
-      if (dropped > 0) table = table->Slice(dropped);
-      std::vector<std::vector<T>> row_group_series;
-      row_group_series.reserve(static_cast<size_t>(table->num_rows()));
-      extract_rows(*table, row_group_series);
-      std::vector<std::optional<std::string>> row_group_names;
-      if (layout_.names) detail::extract_row_names(*table->column(name_position_), row_group_names);
-
-      size_t selected_payload = 0;
-      for (const auto local_index : local_indices) {
-        selected_payload += row_group_series[static_cast<size_t>(local_index)].size() * sizeof(T);
-      }
-      const size_t copy_budget = ram_budget - retained_bytes - group_peak;
-      if (selected_payload > copy_budget)
-        throw dtwc::InvalidInput(
-          "ParquetChunkReader::read_rows: copying selected series needs " +
-          std::to_string(selected_payload) +
-          " additional bytes, exceeding --ram-limit=" +
-          std::to_string(ram_budget));
-
-      // Copy rather than move because duplicate requested indices are valid.
-      for (size_t i = 0; i < local_indices.size(); ++i) {
-        const size_t original = order[result_positions[i]];
-        const auto local = static_cast<size_t>(local_indices[i]);
-        result_vecs[original] = row_group_series[local];
-        result_names[original] = layout_.names && row_group_names[local]
-          ? *row_group_names[local] : "series_" + std::to_string(indices[original]);
-      }
-      retained_bytes += selected_payload;
+    size_t next = 0; // order[next] is the next index to read
+    for (int rg = 0; rg < num_row_groups_ && next < order.size(); ++rg) {
+      const int64_t group_end = first_row_of(rg + 1) - row_offset_; // the series index past the group
+      if (indices[order[next]] >= group_end) continue;
+      require_decode();
+      decode_rows(rg, 1, "read_rows", [&](const arrow::Table &table, int64_t first) {
+        const int64_t end = first + table.num_rows();
+        while (next < order.size() && indices[order[next]] < end) {
+          // The requested rows from indices[order[next]] on that follow one another: one slice.
+          size_t last = next + 1;
+          while (last < order.size() && indices[order[last]] <= indices[order[last - 1]] + 1
+                 && indices[order[last]] < end)
+            ++last;
+          const int64_t run = indices[order[next]];
+          const auto rows = table.Slice(run - first, indices[order[last - 1]] + 1 - run);
+          std::vector<std::vector<T>> series;
+          extract_rows(*rows, series);
+          std::vector<std::optional<std::string>> row_names;
+          if (layout_.names) detail::extract_row_names(*rows->column(name_position_), row_names);
+          for (; next < last; ++next) {
+            const size_t original = order[next];
+            const auto local = static_cast<size_t>(indices[original] - run);
+            result_names[original] = layout_.names && row_names[local] ? *row_names[local]
+                                                                       : "series_" + std::to_string(indices[original]);
+            retained += series_bytes(series[local].size(), 0, f32) + name_heap_bytes(result_names[original].size(), 1);
+            // A duplicate requested index copies the series; its last request takes it.
+            const bool repeated = next + 1 < last && indices[order[next + 1]] == indices[original];
+            result_vecs[original] = repeated ? series[local] : std::move(series[local]);
+          }
+        }
+        const bool more = next < order.size() && indices[order[next]] < group_end; // in this group's next batches
+        if (more) require_decode();
+        return more;
+      });
     }
     return Data(std::move(result_vecs), std::move(result_names));
   }
 
 private:
-  /// The values read_all decodes at a time beside the series it fills.
-  static constexpr size_t decode_batch_bytes = size_t{ 16 } << 20;
+  /// The values a decode holds at a time: a record batch's, at the source width.
+  static constexpr size_t decode_batch_bytes = size_t{ 1 } << 20;
+  /// decode_bytes() over a record batch's decoded bytes. With twice a page of each leaf it held every decode measured
+  /// (2026-10-09: Arrow 23 and mimalloc on Windows, both widths, four codecs, row groups of 256 to 131,072 rows,
+  /// both layouts, a name column), at most 0.82 of it.
+  static constexpr size_t decode_overhead = 8;
+  /// series_bytes() per series beyond an eighth of its block: the allocator's header (measured 2026-10-09).
+  static constexpr size_t block_overhead_bytes = 16;
+
+  /// The bytes `rows` names from the name column hold beyond their string
+  /// objects: their characters (`bytes` bounds them) and the allocator's header
+  /// each; none without one (series_<i> fits a string's own buffer).
+  size_t name_heap_bytes(size_t bytes, size_t rows) const
+  {
+    return layout_.names ? bytes + rows * block_overhead_bytes : 0;
+  }
 
   /// The `leaves` of `groups`: Arrow 24 deprecated the Status form for the Result form.
   std::shared_ptr<arrow::Table> read_groups(const std::vector<int> &groups, const std::vector<int> &leaves,
@@ -548,19 +565,46 @@ private:
 #endif
   }
 
-  /// The rows of `groups`, the leaves read, a batch at a time: Arrow 19 deprecated
-  /// the Status form for the Result form.
-  std::unique_ptr<arrow::RecordBatchReader> record_batches(const std::vector<int> &groups) const
+  /// The rows of `groups`, the leaves read, a record batch at a time: Arrow 19
+  /// deprecated the Status form for the Result form.
+  std::unique_ptr<arrow::RecordBatchReader> record_batches(const std::vector<int> &groups, const char *what) const
   {
 #if ARROW_VERSION_MAJOR >= 19
     auto batches = reader_->GetRecordBatchReader(groups, leaves_);
-    detail::check_arrow_chunk(batches.status(), "read_all");
+    detail::check_arrow_chunk(batches.status(), what);
     return *std::move(batches);
 #else
     std::unique_ptr<arrow::RecordBatchReader> batches;
-    detail::check_arrow_chunk(reader_->GetRecordBatchReader(groups, leaves_, &batches), "read_all");
+    detail::check_arrow_chunk(reader_->GetRecordBatchReader(groups, leaves_, &batches), what);
     return batches;
 #endif
+  }
+
+  /// Hand consume(table, first) the rows of row groups [rg_start, rg_start+count)
+  /// after row_offset_, a record batch of batch_rows_ rows at a time, `first`
+  /// the series index of the table's first row, until consume returns false.
+  /// A batch is released before the next decodes: Arrow holds one at a time.
+  template <typename Consume>
+  void decode_rows(int rg_start, int count, const char *what, Consume &&consume) const
+  {
+    if (count == 0) return;
+    std::vector<int> groups(static_cast<size_t>(count));
+    std::iota(groups.begin(), groups.end(), rg_start);
+    const auto batches = record_batches(groups, what);
+    int64_t row = first_row_of(rg_start); // the file row the next batch starts at
+    for (std::shared_ptr<arrow::RecordBatch> batch;;) {
+      batch.reset();
+      detail::check_arrow_chunk(batches->ReadNext(&batch), what);
+      if (batch == nullptr) return;
+      // The rows before row_offset_ are not read, as a CSV file's skipped lines: a null there is no error.
+      const int64_t dropped = std::clamp<int64_t>(row_offset_ - row, 0, batch->num_rows());
+      const int64_t first = row + dropped - row_offset_;
+      row += batch->num_rows();
+      if (dropped == batch->num_rows()) continue;
+      auto table = arrow::Table::FromRecordBatches({ batch->Slice(dropped) });
+      detail::check_arrow_chunk(table.status(), what);
+      if (!consume(**table, first)) return;
+    }
   }
 
   /// The file row a group starts at; the row count past the last group.
@@ -577,35 +621,10 @@ private:
                                          vecs);
   }
 
-  /// Append the series of row groups [rg_start, rg_start+count), less the rows
-  /// before row_offset_, with their names: the file's stem for a scalar column;
-  /// for a row, its name in the string column, else series_<first_name + i>
-  /// for the i-th row kept.
-  template <typename T>
-  void append_row_groups(int rg_start, int count, std::vector<std::vector<T>> &vecs,
-                         std::vector<std::string> &names, size_t first_name) const
-  {
-    std::vector<int> rg_indices(count);
-    std::iota(rg_indices.begin(), rg_indices.end(), rg_start);
-    // The rows before row_offset_ are not read, as a CSV file's skipped lines: a null there is no error.
-    auto table = read_groups(rg_indices, leaves_, "read_row_groups");
-    const auto dropped = static_cast<size_t>(
-      std::clamp<int64_t>(row_offset_ - first_row_of(rg_start), 0, table->num_rows()));
-    if (dropped > 0) table = table->Slice(static_cast<int64_t>(dropped));
-
-    if (!rows_are_series()) { // the column is one series: skip_rows drops its leading values
-      detail::extract_series_from_column(table->column(sample_positions_.front()), layout_.samples.front().type,
-                                         vecs);
-      names.push_back(name_);
-      return;
-    }
-    append_rows(*table, vecs, names, first_name);
-  }
-
   /// Append a series per row of `table` with its name: in the string column,
-  /// else series_<first_name + i> for the i-th row.
+  /// else series_<first_name + i> for the i-th row. Returns true: decode_rows reads on.
   template <typename T>
-  void append_rows(const arrow::Table &table, std::vector<std::vector<T>> &vecs, std::vector<std::string> &names,
+  bool append_rows(const arrow::Table &table, std::vector<std::vector<T>> &vecs, std::vector<std::string> &names,
                    size_t first_name) const
   {
     std::vector<std::vector<T>> rows;
@@ -618,32 +637,23 @@ private:
       names.push_back(layout_.names && row_names[row] ? std::move(*row_names[row])
                                                       : "series_" + std::to_string(first_name + row));
     }
+    return true;
   }
 
-  size_t estimated_payload_bytes(bool use_float32) const
+  /// Append the one series of a scalar column, row groups [rg_start, rg_start+count)
+  /// whole, less its first row_offset_ values, named by the file's stem.
+  template <typename T>
+  void append_row_groups(int rg_start, int count, std::vector<std::vector<T>> &vecs,
+                         std::vector<std::string> &names) const
   {
-    const size_t target_width = use_float32 ? sizeof(float) : sizeof(data_t);
-    return std::max(
-      column_encoded_bytes_,
-      total_value_count_ * target_width) + name_bytes_;
-  }
-
-  size_t source_payload_bytes() const
-  {
-    return std::max(
-      column_encoded_bytes_,
-      total_value_count_ * source_value_bytes_) + name_bytes_;
-  }
-
-  size_t row_group_materialization_peak_bytes(
-    int row_group, bool use_float32, size_t object_bytes) const
-  {
-    const size_t source = std::max(
-      rg_encoded_bytes_[row_group], rg_value_counts_[row_group] * source_value_bytes_);
-    const size_t target_width = use_float32 ? sizeof(float) : sizeof(data_t);
-    const size_t target = rg_value_counts_[row_group] * target_width;
-    const size_t objects = static_cast<size_t>(rg_row_counts_[row_group]) * object_bytes;
-    return source + target + objects + 2 * rg_name_bytes_[row_group];
+    std::vector<int> rg_indices(count);
+    std::iota(rg_indices.begin(), rg_indices.end(), rg_start);
+    auto table = read_groups(rg_indices, leaves_, "read_row_groups");
+    const auto dropped = static_cast<size_t>(
+      std::clamp<int64_t>(row_offset_ - first_row_of(rg_start), 0, table->num_rows()));
+    if (dropped > 0) table = table->Slice(static_cast<int64_t>(dropped));
+    detail::extract_series_from_column(table->column(sample_positions_.front()), layout_.samples.front().type, vecs);
+    names.push_back(name_);
   }
 
   std::string name_; ///< the file's stem in UTF-8: a scalar column's series name
@@ -656,17 +666,17 @@ private:
   std::vector<int> sample_positions_; ///< each sample column's column in a read table
   int name_position_ = -1;            ///< the name column's column in a read table
   size_t source_value_bytes_ = 0;
+  size_t batch_rows_ = 1;             ///< a record batch's rows: about decode_batch_bytes of values
 
   int num_row_groups_ = 0;
   int64_t total_rows_ = 0;
   std::vector<int64_t> rg_row_counts_;
   std::vector<int64_t> rg_row_offsets_;
-  std::vector<size_t> rg_encoded_bytes_;
   std::vector<size_t> rg_value_counts_;
   std::vector<size_t> rg_name_bytes_;
-  size_t column_encoded_bytes_ = 0;
   size_t total_value_count_ = 0;
   size_t name_bytes_ = 0;
+  size_t page_bytes_ = 0; ///< the largest group's pages, one a leaf: what its page readers hold
 };
 
 } // namespace dtwc::io

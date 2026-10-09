@@ -30,6 +30,7 @@
 #include "../io/parquet_chunk_reader.hpp"
 #endif
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -248,23 +249,31 @@ Outcome execute(const Config &config, std::optional<Data> data)
     const bool folder = fs::is_directory(input, ec);
     auto layout = detail::ParquetLayout::Directory;
     std::size_t resident_bytes = 0;
+    std::size_t names_bytes = 0;
     for (const auto &file : parquet_files(input)) {
       const io::ParquetChunkReader metadata(file, config.column, config.skip_cols, config.skip_rows);
       if (!folder)
         layout = metadata.rows_are_series() ? detail::ParquetLayout::ListColumn : detail::ParquetLayout::ScalarColumn;
       n_series += static_cast<std::size_t>(metadata.logical_series_count());
       resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
+      names_bytes += metadata.series_names_bytes();
+    }
+    // A CLARA run holds beside the series a sample's PAM matrix, then every sample's labels and nearest distances,
+    // in RAM as streamed.
+    std::optional<algorithms::detail::ClaraPlan> sample;
+    if (n_series > 0 && resolve_method(method, config.device, n_series) == Method::CLARA) {
+      sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
+      resident_bytes += std::max(core::packed_size(static_cast<std::size_t>(sample->sample_size)) * sizeof(double),
+                                 algorithms::detail::clara_pass_bytes(*sample, static_cast<std::size_t>(clara.n_samples)));
     }
     // An explicit --ram-limit refuses a route that cannot honour it. The automatic
     // one never fails a run: it streams only where FastCLARA can stream a sample
     // smaller than N, of one file of a series per row, without --checkpoint or
     // --dist-matrix.
     std::size_t limit = config.ram_limit;
-    if (limit == 0 && n_series > 0 && layout == detail::ParquetLayout::ListColumn && config.checkpoint.empty()
-        && config.dist_matrix.empty() && resolve_method(method, config.device, n_series) == Method::CLARA) {
-      const auto sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      if (sample.sample_size < sample.n_points) limit = core::available_memory();
-    }
+    if (limit == 0 && sample && layout == detail::ParquetLayout::ListColumn && config.checkpoint.empty()
+        && config.dist_matrix.empty() && sample->sample_size < sample->n_points)
+      limit = core::available_memory();
     const auto plan = detail::plan_parquet_load(method, config.device, n_series, resident_bytes, limit, layout);
     method = plan.method;
     stream_payload = plan.stream_payload;
@@ -278,6 +287,13 @@ Outcome execute(const Config &config, std::optional<Data> data)
       clara.force_parquet_streaming = true;
     }
     plan_clara();
+    // After the stream the run holds every series' name, written beside its label, and the labels: the result's
+    // and the Problem's.
+    const std::size_t written_bytes = names_bytes + 2 * n_series * sizeof(index_t);
+    if (stream_payload && written_bytes > limit)
+      throw InvalidInput("--ram-limit = " + std::to_string(limit) + " cannot hold the names and labels of the "
+                         + std::to_string(n_series) + " streamed series, which need " + std::to_string(written_bytes)
+                         + " bytes; raise the limit.");
     if (stream_payload && !config.checkpoint.empty())
       throw InvalidInput(
         "--checkpoint requires resident series data and cannot be combined "
