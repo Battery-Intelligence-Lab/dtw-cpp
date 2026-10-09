@@ -256,12 +256,15 @@ Outcome execute(const Config &config, std::optional<Data> data)
       resident_bytes += metadata.estimated_materialization_peak_bytes(f32);
     }
     // An explicit --ram-limit refuses a route that cannot honour it. The automatic
-    // one never fails a run: it streams only where FastCLARA can stream a sample,
-    // one file of a series per row, without --checkpoint or --dist-matrix.
+    // one never fails a run: it streams only where FastCLARA can stream a sample
+    // smaller than N, of one file of a series per row, without --checkpoint or
+    // --dist-matrix.
     std::size_t limit = config.ram_limit;
-    if (limit == 0 && layout == detail::ParquetLayout::ListColumn && config.checkpoint.empty()
-        && config.dist_matrix.empty() && resolve_method(method, config.device, n_series) == Method::CLARA)
-      limit = core::available_memory();
+    if (limit == 0 && n_series > 0 && layout == detail::ParquetLayout::ListColumn && config.checkpoint.empty()
+        && config.dist_matrix.empty() && resolve_method(method, config.device, n_series) == Method::CLARA) {
+      const auto sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
+      if (sample.sample_size < sample.n_points) limit = core::available_memory();
+    }
     const auto plan = detail::plan_parquet_load(method, config.device, n_series, resident_bytes, limit, layout);
     method = plan.method;
     stream_payload = plan.stream_payload;
