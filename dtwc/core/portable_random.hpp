@@ -5,6 +5,7 @@
  * @details Every caller validates what reaches these functions first (cluster
  * counts, sample plans, finite distance weights), so each std::logic_error below
  * marks a programming error, not bad user input.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

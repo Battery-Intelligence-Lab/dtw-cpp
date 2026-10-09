@@ -23,6 +23,7 @@
  *     INT32_MAX — that pins the int32-overflow defect; the shared decode returns
  *     int64, so the index arithmetic built on it (the retired N*N `si * N + sj`,
  *     now the CUDA packed slot) computes in 64-bit.
+ * @author Volkan Kumtepeli
  */
 
 #include <catch2/catch_test_macros.hpp>

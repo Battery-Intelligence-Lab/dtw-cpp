@@ -22,6 +22,7 @@
  *          univariate L2 cost is L1 (sqrt((a-b)^2) == |a-b|), a multivariate
  *          one is SpanMVL2Cost, the Euclidean norm over the channels.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 

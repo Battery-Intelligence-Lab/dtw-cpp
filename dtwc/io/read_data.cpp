@@ -1,6 +1,7 @@
 /**
  * @file read_data.cpp
  * @brief dtwc::read_data and the input classification dtwc_cl shares with it (see read_data.hpp).
+ * @author Volkan Kumtepeli
  */
 
 #include "read_data.hpp"

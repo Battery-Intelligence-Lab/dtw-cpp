@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """Aggregate per-dataset timing JSONs into a single benchmark results file.
 
 Reads timing_*.json files from one or more benchmark result directories,

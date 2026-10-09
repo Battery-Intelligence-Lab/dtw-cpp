@@ -1,6 +1,9 @@
 ﻿function tests = test_dtwc
 %TEST_DTWC Unit tests for the dtwc MATLAB package.
 %   Run with: results = runtests('test_dtwc');
+
+%> @file test_dtwc.m
+%> @author Volkan Kumtepeli
     tests = functiontests(localfunctions);
 end
 

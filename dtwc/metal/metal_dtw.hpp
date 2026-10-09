@@ -14,6 +14,7 @@
  *
  *          See also `.claude/CITATIONS.md` for the full bibliography.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 

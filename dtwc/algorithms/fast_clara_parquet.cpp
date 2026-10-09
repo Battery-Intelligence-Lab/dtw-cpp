@@ -6,6 +6,7 @@
  *   sample, the medoids and the assignment's row groups are read from the file as they are needed.
  *   It moved out of fast_clara.cpp so that the core, which the Python module and the MEX link, holds
  *   no Parquet; the rest of FastCLARA is fast_clara.cpp's, which this file calls.
+ * @author Volkan Kumtepeli
  */
 
 #ifdef DTWC_HAS_PARQUET

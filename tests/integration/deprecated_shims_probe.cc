@@ -1,3 +1,7 @@
+/**
+ * @file deprecated_shims_probe.cc
+ * @author Volkan Kumtepeli
+ */
 // Compile probe for the 1.x [[deprecated]] shims, kept until 3.0
 // (test_deprecated_shims_warn in tests/CMakeLists.txt).
 // Compiled, never linked or run: the test passes only when this file compiles

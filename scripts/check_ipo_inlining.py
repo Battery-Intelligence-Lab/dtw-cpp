@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """Report whether Problem::dist_by_ind survives as an out-of-line call inside
 the FastPAM SWAP kernels of a linked binary (ledger A-06 / core map Q10).
 

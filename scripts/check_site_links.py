@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """Validate every local href/src in a built Hugo site."""
 
 from __future__ import annotations

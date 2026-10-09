@@ -22,6 +22,7 @@
  * Each kernel computes either every pair of one set of series (the packed
  * triangle of compute_distance_matrix_cuda) or each series of one set against
  * each of a few others (compute_medoid_distances_cuda): its Pairs parameter.
+ * @author Volkan Kumtepeli
  */
 
 #include "cuda_dtw.cuh"

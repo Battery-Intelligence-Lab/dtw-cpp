@@ -7,6 +7,7 @@
  * reader dtwc_cl uses, so both formats take the same keys and CLI11 keeps
  * precedence (a flag beats the file) and the unknown-key error.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

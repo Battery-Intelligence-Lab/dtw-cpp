@@ -7,6 +7,7 @@
  * call it now, so each rule has one copy. Progress lines go to stdout
  * under `verbose`.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

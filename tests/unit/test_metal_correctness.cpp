@@ -5,6 +5,7 @@
  * @details Mirrors test_cuda_correctness.cpp. FP32 rounding tolerance is
  *          looser than CUDA FP64 but still tight enough to catch kernel bugs.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 

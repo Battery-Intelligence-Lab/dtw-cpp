@@ -2,6 +2,7 @@
  * @file arrow_c_data.cpp
  * @brief Implementation of Arrow C Data interface ingest (see arrow_c_data.hpp).
  *
+ * @author Volkan Kumtepeli
  * @author Claude Opus 4.8
  * @date 09 Jul 2026
  */

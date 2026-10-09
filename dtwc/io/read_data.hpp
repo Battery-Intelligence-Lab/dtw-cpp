@@ -2,6 +2,7 @@
  * @file read_data.hpp
  * @brief dtwc::read_data: the text reader, the one way from a CSV/TSV path to Data, for dtwc_cl, dtwc::load and
  *        Python's and MATLAB's load(). Parquet and Arrow IPC are dtwc::io::read_arrow's (io/read_arrow.hpp, dtwc_io).
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

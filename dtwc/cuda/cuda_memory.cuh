@@ -1,6 +1,7 @@
 /**
  * @file cuda_memory.cuh
  * @brief RAII wrappers for CUDA device memory.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

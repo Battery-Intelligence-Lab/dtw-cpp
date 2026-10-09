@@ -7,6 +7,7 @@
  *              distance matrix remains unfilled.
  *   HARD-QUALITY: on separated synthetic data, objective <= 1.05 * FasterPAM.
  *   HARD-STATE: deterministic for a fixed seed; result is written to Problem.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

@@ -8,6 +8,7 @@
  * DTWC_HAS_PARQUET exactly like the readers themselves (see dtwc/CMakeLists.txt);
  * when Arrow is not built the file registers a single skipped case.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-07-07
  */
 

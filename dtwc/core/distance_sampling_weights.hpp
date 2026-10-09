@@ -2,6 +2,7 @@
  * @file distance_sampling_weights.hpp
  * @brief k-medoids++ seeding: stable D-sampling weights for signed
  *        dissimilarities, and the one seeding loop that draws from them.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

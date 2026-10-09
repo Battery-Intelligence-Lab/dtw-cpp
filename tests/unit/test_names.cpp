@@ -10,6 +10,7 @@
  * canonical name of every value, that every alias reads as its value, that the
  * table holds nothing else, that case is ignored, and the error text.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

@@ -4,6 +4,7 @@
  *
  * The launcher runs the returned path and reports it to the caller as
  * `kernel_used`.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

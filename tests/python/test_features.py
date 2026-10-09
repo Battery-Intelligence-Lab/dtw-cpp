@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Tests for dtwcpp.features.summarise."""
 
 from __future__ import annotations

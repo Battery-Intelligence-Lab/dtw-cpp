@@ -1,6 +1,7 @@
 """
 @file distance.py
 @brief The DTW-family distance of two series, computed by C++ (dtwc::distance::dtw).
+@author Volkan Kumtepeli
 """
 
 from __future__ import annotations

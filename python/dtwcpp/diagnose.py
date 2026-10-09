@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Sanity-check helpers for clustering results.
 
 Catches the silent failure modes that bit us on the Kasper analysis:

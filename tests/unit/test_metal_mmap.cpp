@@ -7,6 +7,7 @@
  *        DistanceMatrix whichever storage holds it; this test exercises both via
  *        the Metal strategy and confirms the numbers match the CPU reference.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 

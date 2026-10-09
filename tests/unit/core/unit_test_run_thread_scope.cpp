@@ -6,6 +6,7 @@
  * OpenMP state that is never restored: one k-means++ init at 2 workers pinned
  * every later distance fill to 2 threads. The limit belongs in a
  * num_threads(...) clause on the pragma.
+ * @author Volkan Kumtepeli
  */
 
 #include <base/parallelisation.hpp>

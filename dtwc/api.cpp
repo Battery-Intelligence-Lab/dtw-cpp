@@ -1,6 +1,7 @@
 /**
  * @file api.cpp
  * @brief Implementation of the DTWC++ 2.0 Tier-1 API.
+ * @author Volkan Kumtepeli
  */
 
 #include "api.hpp"

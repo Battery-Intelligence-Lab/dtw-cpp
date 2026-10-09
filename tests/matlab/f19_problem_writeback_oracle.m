@@ -18,6 +18,8 @@ function summary = f19_problem_writeback_oracle(route, profile, version)
 %   This function does not select or build a MEX; the PowerShell runner owns
 %   exact path selection and fresh-artifact provenance.
 
+%> @file f19_problem_writeback_oracle.m
+%> @author Volkan Kumtepeli
     if nargin ~= 3
         error('dtwc:f19WritebackOracle', ...
             'Expected route, profile, and version arguments.');

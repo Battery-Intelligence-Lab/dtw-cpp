@@ -1,6 +1,7 @@
 /**
  * @file unit_test_deterministic_series.cpp
  * @brief Byte and reachability contract for shared deterministic support.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

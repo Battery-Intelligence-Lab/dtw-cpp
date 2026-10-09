@@ -15,6 +15,7 @@
  * A build without HiGHS raises SolverError for `mip`, the one method that needs
  * a solver; `lrcore` needs none and runs there like every other method.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

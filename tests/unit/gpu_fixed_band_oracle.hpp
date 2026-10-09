@@ -7,6 +7,7 @@
  *          programming matrix under the literal |i-j| <= band predicate.  A
  *          second arbiter enumerates every admissible monotone path without
  *          dynamic programming.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

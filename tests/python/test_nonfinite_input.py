@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """FX-15: the bindings that take series reject NaN and +-inf, naming the series
 and position; finite answers are unchanged.
 

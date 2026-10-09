@@ -5,6 +5,9 @@ function tests = test_distance
 %   with L1), each variant's parameter away from its default; then one row per
 %   refusal of core::validate, of the input scan and of the name-value reader.
 %   The values are tests/python/test_distance.py's, derived there.
+
+%> @file test_distance.m
+%> @author Volkan Kumtepeli
     tests = functiontests(localfunctions);
 end
 

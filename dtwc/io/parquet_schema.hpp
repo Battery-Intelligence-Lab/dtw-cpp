@@ -1,6 +1,7 @@
 /**
  * @file parquet_schema.hpp
  * @brief Where a Parquet file's series are: the one column rule of every reader (read_data.hpp states it).
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

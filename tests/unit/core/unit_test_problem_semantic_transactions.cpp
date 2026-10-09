@@ -5,6 +5,7 @@
  * Registered before production changes. A rejected variant/missing
  * cross-product must preserve the prior selectors, both active-precision
  * dispatchers, and every bit of an already-published dense or mapped cache.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

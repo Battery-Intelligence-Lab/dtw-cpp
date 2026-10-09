@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """Deterministic generator for the cross-language conformance dataset.
 
 This script emits ``conformance_series.csv`` — the SMALL recorded dataset that

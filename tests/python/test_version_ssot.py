@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Release-version single-source-of-truth regression tests."""
 
 from pathlib import Path

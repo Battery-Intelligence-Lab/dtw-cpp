@@ -7,6 +7,7 @@
     highspy's HiGHS may not be the version dtwc_cl links, so the optimum is compared,
     within the MIP gap, and not the labels. LR-core runs in C++ and solves its Kelley
     root's master LP with highspy; its oracle is brute force over every medoid set.
+@author Volkan Kumtepeli
 """
 import itertools
 import re

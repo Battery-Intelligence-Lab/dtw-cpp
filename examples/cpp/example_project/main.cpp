@@ -1,3 +1,7 @@
+/**
+ * @file main.cpp
+ * @author Volkan Kumtepeli
+ */
 #include "dtwc.hpp"
 #include <cstdlib>
 #include <filesystem>

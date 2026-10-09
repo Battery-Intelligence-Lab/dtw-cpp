@@ -1,6 +1,7 @@
 """
 @file test_contract_parity.py
 @brief Cross-language API parity gate for the Python surface.
+@author Volkan Kumtepeli
 
 Asserts that every public name the Tier-1 and Tier-2 pages
 (docs/content/api/tier-1.md, tier-2.md) document for Python exists on the

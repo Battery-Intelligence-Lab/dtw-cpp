@@ -2,6 +2,7 @@
  * @file fast_clara_assign.hpp
  * @brief FastCLARA's nearest-medoid assignment, shared by fast_clara.cpp (series in RAM)
  *        and fast_clara_parquet.cpp (series streamed from Parquet, dtwc_io).
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

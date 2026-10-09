@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """Regenerate the mechanical half of .claude/MAP.md (read-only, stdlib only).
 
   uv run --no-project python scripts/repo_map.py layers [--max-upward N] [--edges A:B ...]

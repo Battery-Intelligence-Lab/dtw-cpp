@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """Benchmark: CPU vs CUDA distance matrix computation via Python bindings."""
 
 import json

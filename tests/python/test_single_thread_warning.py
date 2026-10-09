@@ -1,6 +1,7 @@
 """
 @file test_single_thread_warning.py
 @brief No-silent-fallback on the Python compute path (Task 3.6, review H1).
+@author Volkan Kumtepeli
 
 Before the compute paths warned themselves, a build with OpenMP present but only 1 usable thread (OMP_NUM_THREADS=1,
 common on SLURM/containers) ran SILENTLY single-threaded. This test reproduces

@@ -1,6 +1,7 @@
 /**
  * @file read_arrow.cpp
  * @brief dtwc::io::read_arrow and arrow_format (see read_arrow.hpp): the readers that need Arrow, in dtwc_io.
+ * @author Volkan Kumtepeli
  */
 
 #include "read_arrow.hpp"

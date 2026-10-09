@@ -1,6 +1,7 @@
 """
 @file test.py
 @brief ``dtwcpp.test`` — capability self-introspection (Task 3.3).
+@author Volkan Kumtepeli
 
 Thin, dependency-free wrappers over the C++ ``dtwc::test::*`` probes bound in the
 core extension. Both return plain ``dict`` results whose keys are IDENTICAL to the
