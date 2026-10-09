@@ -242,6 +242,8 @@ Append new entries at the end of their section; keep each to a few lines.
   nodes lack AVX-512 (`DTWC_ARCH_LEVEL=v3`); Grace Hopper is AArch64.
 - **cmd.exe batch files need CRLF and must not change while they run**: with LF endings `call :label` jumped mid-run.
   VTune cannot sample under this box's Hyper-V/VBS; an elevated `xperf -Pmc` can (`etw/` of the RL record).
+  A rerun of a resumable kit `.cmd` skips every case whose output exists: empty its output folder before a
+  registered second attempt (BF's e3 second run measured one case, 2026-10-09).
 
 ## Solvers
 
