@@ -213,6 +213,9 @@ function(require_f13_stream_rejection precision dtype)
     set(input_path "${work_root}/poison-${precision}.parquet")
     set(output_dir "${work_root}/${precision}-stream-rejection")
     file(MAKE_DIRECTORY "${output_dir}")
+    # 7000 bytes hold the pass (the medoid, 8 bytes of label and of nearest
+    # distance per row, one 65-row group: 6,808 in float64), below the file's
+    # resident estimate, so the run streams.
     execute_process(
         COMMAND
             "${cli_path}"
@@ -229,7 +232,7 @@ function(require_f13_stream_rejection precision dtype)
             --verbose
             --dtype "${dtype}"
             --variant standard
-            --ram-limit 5000
+            --ram-limit 7000
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
         ERROR_VARIABLE stderr

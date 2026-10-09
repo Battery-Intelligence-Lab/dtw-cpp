@@ -361,6 +361,22 @@ public:
     return Data(std::move(vecs), std::move(names));
   }
 
+  /// The largest row group's peak while read_row_groups() materialises it:
+  /// what a batch of row_groups_per_batch() budgets per group.
+  size_t largest_row_group_bytes(bool use_float32 = false) const
+  {
+    size_t largest_group = 0;
+    const size_t object_bytes = use_float32
+      ? sizeof(std::vector<float>) + sizeof(std::string)
+      : sizeof(std::vector<data_t>) + sizeof(std::string);
+    for (int rg = 0; rg < num_row_groups_; ++rg) {
+      largest_group = std::max(
+        largest_group,
+        row_group_materialization_peak_bytes(rg, use_float32, object_bytes));
+    }
+    return largest_group;
+  }
+
   /// Compute a conservative fixed batch count that fits every row-group batch
   /// in a RAM budget. Throws when even one row group cannot fit; silently
   /// exceeding the requested cap is never a valid fallback.
@@ -372,16 +388,7 @@ public:
   {
     if (num_row_groups_ == 0) return 0;
 
-    size_t largest_group = 0;
-    const size_t object_bytes = use_float32
-      ? sizeof(std::vector<float>) + sizeof(std::string)
-      : sizeof(std::vector<data_t>) + sizeof(std::string);
-    for (int rg = 0; rg < num_row_groups_; ++rg) {
-      largest_group = std::max(
-        largest_group,
-        row_group_materialization_peak_bytes(rg, use_float32, object_bytes));
-    }
-
+    const size_t largest_group = largest_row_group_bytes(use_float32);
     if (largest_group > ram_budget) {
       throw dtwc::InvalidInput(
         "ParquetChunkReader: --ram-limit leaves " +
@@ -422,8 +429,10 @@ public:
     size_t retained_bytes = indices.size() * result_object_bytes;
     if (retained_bytes > ram_budget)
       throw dtwc::InvalidInput(
-        "ParquetChunkReader::read_rows: --ram-limit is too small for sparse "
-        "sample metadata");
+        "ParquetChunkReader::read_rows: the " + std::to_string(indices.size()) +
+        " selected series need " + std::to_string(retained_bytes) +
+        " bytes for their objects alone, exceeding --ram-limit=" +
+        std::to_string(ram_budget));
 
     std::vector<size_t> order(indices.size());
     std::iota(order.begin(), order.end(), size_t{0});

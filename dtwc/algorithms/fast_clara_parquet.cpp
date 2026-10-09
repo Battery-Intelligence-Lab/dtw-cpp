@@ -17,14 +17,13 @@
 #include "../Problem.hpp"
 #include "../base/error.hpp"
 #include "../core/medoid_assignment_policy.hpp"
-#include "../core/portable_random.hpp"
 #include "../io/parquet_chunk_reader.hpp"
 
 #include <algorithm>
 #include <cstdint>
+#include <future>
 #include <iostream>
-#include <limits>
-#include <random>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -44,189 +43,118 @@ namespace {
     return total;
   }
 
-  /**
-   * @brief Chunked assignment: stream Parquet row groups, compute DTW to medoids.
-   *
-   * Loads one batch of row groups at a time within the RAM budget.
-   * Each chunk's DTW distances to medoids are computed and discarded.
-   *
-   * @param prob         Settings-only Problem: its device computes the distances.
-   * @param dtw_fn       Bound DTW function (float64).
-   * @param medoid_data  Data containing only the k medoid series.
-   * @param[out] labels  Cluster assignment per point [0, k) for all N points.
-   * @param reader       Parquet chunk reader (already opened).
-   * @param ram_budget   Available bytes for chunk data.
-   * @return Total cost (sum of distances to nearest medoid).
-   */
-  /**
-   * @brief Chunked nearest-medoid assignment streamed from Parquet.
-   *
-   * One body for both precisions. `F32` selects the reader entry point, the
-   * per-series accessor and the resident-byte size at COMPILE time, so each
-   * instantiation emits exactly the loop the two hand-written copies emitted —
-   * no runtime branch enters the per-element inner loop.
-   */
-  template <bool F32, typename DtwFn>
-  double assign_all_points_chunked(
-    const Problem &prob,
-    const DtwFn &dtw_fn,
-    const Data &medoid_data,
-    const std::vector<index_t> &medoid_indices,
-    std::vector<index_t> &labels,
-    const io::ParquetChunkReader &reader,
-    size_t ram_budget)
+  /// Where each of `rows` sits in `sorted`, which holds every one of them.
+  std::vector<index_t> positions_in(const std::vector<int64_t> &sorted, const std::vector<index_t> &rows)
   {
+    std::vector<index_t> positions;
+    positions.reserve(rows.size());
+    for (const index_t row : rows)
+      positions.push_back(std::lower_bound(sorted.begin(), sorted.end(), row) - sorted.begin());
+    return positions;
+  }
+
+  /**
+   * @brief FastCLARA streamed from Parquet, its series read as T (float with F32, else double).
+   *
+   * All samples are drawn first; the rows they hold, their union, are read once and each sample's PAM runs on a copy
+   * of its series. The medoids' series are copied out and the union released. Then one pass over the file: a batch
+   * of row groups at a time, every point against the medoids of every sample, while the next batch decodes on another
+   * thread when two batches fit the limit (else batches decode and are assigned in turn). Within ram_limit_bytes: the
+   * union beside one row group (read_rows' check), then the medoids, every sample's labels, one block of nearest
+   * distances and the batches.
+   */
+  template <bool F32>
+  core::ClusteringResult fast_clara_chunked(
+    Problem &prob, const CLARAOptions &opts, const io::ParquetChunkReader &reader, const detail::ClaraPlan &plan)
+  {
+    detail::validate_streaming_clara_plan(plan, "fast_clara");
+    using T = std::conditional_t<F32, float, data_t>;
     const auto series_at = [](const Data &d, index_t index) {
       if constexpr (F32)
         return d.series_f32(static_cast<size_t>(index));
       else
         return d.series(static_cast<size_t>(index));
     };
-
-    const auto N = reader.logical_series_count();
-    labels.resize(static_cast<size_t>(N));
-#ifndef DTWC_HAS_CUDA
-    detail::say_cpu_assignment(prob, static_cast<std::size_t>(N), medoid_indices.size());
-#endif
-
-    const size_t medoid_bytes =
-      resident_data_bytes(medoid_data, F32 ? sizeof(float) : sizeof(data_t));
-    if (medoid_bytes >= ram_budget) {
+    // The settings' check, before any read: the series come later, row by row.
+    const auto &pair = [&]() -> const auto & {
       if constexpr (F32)
-        throw InvalidInput(
-          "fast_clara: ram_limit_bytes is too small to retain the selected "
-          "Float32 medoid series during chunked assignment.");
+        return prob.dtw_function_f32();
       else
-        throw InvalidInput(
-          "fast_clara: ram_limit_bytes is too small to retain the selected "
-          "medoid series during chunked assignment.");
+        return prob.dtw_function();
+    }();
+    const auto n_points = static_cast<std::size_t>(plan.n_points);
+    const auto samples = detail::draw_clara_samples(plan.n_points, plan.sample_size, opts);
+
+    std::vector<int64_t> rows; // the samples' union, ascending
+    for (const auto &sample : samples) rows.insert(rows.end(), sample.begin(), sample.end());
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+
+    std::vector<index_t> medoids; // sample s's medoid m is slot s * k + m
+    std::vector<core::ClusteringResult> pams;
+    Data medoid_data;
+    {
+      const Data pool = reader.read_rows<T>(rows, opts.ram_limit_bytes);
+      std::vector<std::vector<index_t>> positions;
+      for (const auto &sample : samples) positions.push_back(positions_in(rows, sample));
+      pams = detail::clara_pams(prob, opts, pool, samples, positions, true, medoids);
+      medoid_data = detail::clara_sample(pool, positions_in(rows, medoids), true);
     }
-    const size_t chunk_budget = ram_budget - medoid_bytes;
 
-    int rg_per_batch = reader.row_groups_per_batch(chunk_budget, F32);
-    int total_rg = reader.num_row_groups();
+    const size_t limit = opts.ram_limit_bytes;
+    const size_t fixed = resident_data_bytes(medoid_data, sizeof(T)) + samples.size() * n_points * sizeof(index_t)
+                       + samples.size() * std::min(detail::clara_block_points, n_points) * sizeof(double);
+    const size_t group = reader.largest_row_group_bytes(F32);
+    if (fixed + group > limit)
+      throw InvalidInput(
+        "fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(limit) + " cannot hold the pass over the "
+        "file, which needs " + std::to_string(fixed + group) + " bytes: " + std::to_string(fixed)
+        + " for the medoids' series and every sample's labels and nearest distances (n_samples = "
+        + std::to_string(samples.size()) + ", k = " + std::to_string(opts.n_clusters) + ", "
+        + std::to_string(n_points) + " rows), " + std::to_string(group)
+        + " for one row group; raise the limit, or rewrite the file with smaller row groups.");
+    const bool overlap = fixed + 2 * group <= limit; // a batch decoding beside the one assigned
+    const int per_batch = reader.row_groups_per_batch(overlap ? (limit - fixed) / 2 : limit - fixed, F32);
 
-    core::detail::OrderedMedoidObjective total_cost;
-    std::vector<double> best_dists;
-    int64_t global_offset = 0;
-
-    for (int rg = 0; rg < total_rg; rg += rg_per_batch) {
-      int batch_count = std::min(rg_per_batch, total_rg - rg);
-      Data chunk = F32 ? reader.read_row_groups<float>(rg, batch_count)
-                       : reader.read_row_groups(rg, batch_count);
-
-      const index_t chunk_size = chunk.size();
-      best_dists.resize(static_cast<size_t>(chunk_size));
-
-      // The chunk is loaded: the assignment reads it, never the reader.
+    std::vector<std::vector<index_t>> labels(samples.size(), std::vector<index_t>(n_points));
+    std::vector<core::detail::OrderedMedoidObjective> costs(samples.size());
 #ifdef DTWC_HAS_CUDA
-      bool on_gpu = false;
-      if constexpr (!F32) // Float32 series never reach a GPU: the sample fill refuses them first
-        on_gpu = prob.device().first == Device::GPU;
+    bool on_gpu = false;
+    if constexpr (!F32) // Float32 series never reach a GPU: the sample fill refuses them first
+      on_gpu = prob.device().first == Device::GPU;
+#else
+    detail::say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));
+#endif
+
+    // The reader is used by one thread at a time: the decoding one while a batch decodes.
+    const auto decode = [&reader](int rg, int count) { return reader.read_row_groups<T>(rg, count); };
+    const auto policy = overlap ? std::launch::async : std::launch::deferred;
+    const int total_rg = reader.num_row_groups();
+    std::future<Data> next = std::async(policy, decode, 0, std::min(per_batch, total_rg));
+    index_t first = 0;
+    for (int rg = 0; rg < total_rg; rg += per_batch) {
+      const Data batch = next.get();
+      if (rg + per_batch < total_rg)
+        next = std::async(policy, decode, rg + per_batch, std::min(per_batch, total_rg - rg - per_batch));
+      // The batch is loaded: the assignment reads it, never the reader.
+#ifdef DTWC_HAS_CUDA
       if (on_gpu)
-        detail::assign_on_gpu(prob, chunk.p_vec, global_offset, medoid_data.p_vec, medoid_indices,
-                              labels, best_dists);
+        detail::assign_on_gpu(prob, batch.p_vec, first, medoid_data.p_vec, medoids, labels, costs);
       else
 #endif
-        detail::assign_points_cpu<std::conditional_t<F32, float, data_t>>(
-          global_offset, best_dists, medoid_indices, labels, prob.distance(), dtw_fn,
-          [&](index_t p) { return series_at(chunk, p - global_offset); },
-          [&](index_t m) { return series_at(medoid_data, m); });
-      total_cost.add(best_dists);
-      global_offset += chunk_size;
+        detail::assign_in_blocks(first, static_cast<std::size_t>(batch.size()), costs,
+                                 [&](index_t block_first, std::size_t n, std::span<double> best) {
+                                   detail::assign_points_cpu<T>(
+                                     block_first, n, best, medoids, labels, prob.distance(), pair,
+                                     [&](index_t p) { return series_at(batch, p - first); },
+                                     [&](index_t j) { return series_at(medoid_data, j); });
+                                 });
+      first += batch.size();
     }
 
-    return core::detail::finite_objective(total_cost.value(), "fast_clara");
-  }
-
-  /**
-   * @brief Chunked CLARA: all data streamed from Parquet, nothing held in RAM.
-   *
-   * The main Problem holds settings only (band, variant, etc.).
-   * Subsamples and medoid series are loaded from Parquet on demand.
-   */
-  core::ClusteringResult fast_clara_chunked(
-    Problem &prob_template,
-    const CLARAOptions &opts,
-    io::ParquetChunkReader &reader,
-    const detail::ClaraPlan &plan)
-  {
-    const index_t N = plan.n_points;
-    const index_t sample_size = plan.sample_size;
-    detail::validate_streaming_clara_plan(plan, "fast_clara");
-
-    std::mt19937_64 rng(opts.random_seed);
-
-    core::ClusteringResult best_result;
-    best_result.total_cost = std::numeric_limits<double>::max();
-    bool best_present = false;
-
-    for (int s = 0; s < opts.n_samples; ++s) {
-      // 1. Stable O(N)-time selection with O(sample_size) sampling scratch.  The
-      // result still necessarily owns O(N) labels, but the old 8*N-byte index
-      // pool was avoidable in the streaming path.
-      auto sample_indices = core::portable_sample_indices<index_t>(
-        N, sample_size, rng);
-
-      // 2. Load subsample from Parquet (small — always fits in RAM)
-      core::ClusteringResult sub_result;
-      {
-        // Release the sample series and O(s^2) PAM cache before medoid and
-        // assignment chunks are materialized; otherwise streaming peaks add.
-        std::vector<int64_t> sample_rows(
-          sample_indices.begin(), sample_indices.end());
-        Data sample_data = opts.use_float32
-          ? reader.read_rows<float>(std::move(sample_rows), opts.ram_limit_bytes)
-          : reader.read_rows(std::move(sample_rows), opts.ram_limit_bytes);
-
-        Problem sub_prob("clara_chunked_" + std::to_string(s));
-        sub_prob.copy_distance_settings_from(prob_template);
-        sub_prob.set_data(std::move(sample_data));
-        sub_result = fast_pam(
-          sub_prob, opts.n_clusters, opts.max_iter, detail::clara_pam_seed(opts, s));
-      }
-
-      // 5. Map medoid indices back to global dataset indices
-      std::vector<index_t> full_medoids(opts.n_clusters);
-      std::vector<int64_t> medoid_rows(opts.n_clusters);
-      for (index_t m = 0; m < opts.n_clusters; ++m) {
-        const index_t global_idx = sample_indices[sub_result.medoid_indices[m]];
-        full_medoids[m] = global_idx;
-        medoid_rows[m] = global_idx;
-      }
-
-      // 6. Load medoid series from Parquet (k series — tiny)
-      Data medoid_data = opts.use_float32
-        ? reader.read_rows<float>(std::move(medoid_rows), opts.ram_limit_bytes)
-        : reader.read_rows(std::move(medoid_rows), opts.ram_limit_bytes);
-
-      // 7. Chunked assignment: stream row groups, compute DTW to medoids
-      std::vector<index_t> labels;
-      double total_cost;
-      if (opts.use_float32) {
-        total_cost = assign_all_points_chunked<true>(
-          prob_template, prob_template.dtw_function_f32(), medoid_data, full_medoids, labels,
-          reader, opts.ram_limit_bytes);
-      } else {
-        total_cost = assign_all_points_chunked<false>(
-          prob_template, prob_template.dtw_function(), medoid_data, full_medoids, labels,
-          reader, opts.ram_limit_bytes);
-      }
-
-      // 8. Track best result
-      if (!best_present || total_cost < best_result.total_cost) {
-        best_result.labels = std::move(labels);
-        best_result.medoid_indices = std::move(full_medoids);
-        best_result.total_cost = total_cost;
-        best_result.iterations = sub_result.iterations;
-        best_result.converged = sub_result.converged;
-        best_present = true;
-      }
-    }
-
-    prob_template.set_result(best_result);
-
-    return best_result;
+    auto result = detail::clara_winner(pams, medoids, labels, costs);
+    prob.set_result(result);
+    return result;
   }
 
 } // anonymous namespace
@@ -263,7 +191,8 @@ core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opt
                   << reader.logical_series_count()
                   << " rows, " << reader.num_row_groups() << " row groups, ~"
                   << resident_bytes / (1ULL << 20) << " MB resident estimate)\n";
-      return fast_clara_chunked(prob, opts, reader, stream_plan);
+      return opts.use_float32 ? fast_clara_chunked<true>(prob, opts, reader, stream_plan)
+                              : fast_clara_chunked<false>(prob, opts, reader, stream_plan);
     }
   }
   // The series fit the limit, or no stream was asked for: the Problem's own series.

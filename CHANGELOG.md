@@ -124,6 +124,12 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   compile time); `dtwBanded`'s scalar type, where none is deduced, is `double` (v1.0.0: `float`).
 - Numbers are read with fast_float and the matrix CSV written with `std::to_chars`, whatever the global C++ locale;
   names taken from file names are UTF-8 on every platform (v1.0.0 used the Windows code page).
+- FastCLARA runs every sample's PAM before one assignment pass over all of them: `-v` prints one assignment line a
+  pass, not one a sample; a non-finite distance is reported at the lowest failing series over all samples; and series
+  it cannot take (NaN, ±inf, a band narrower than two series' length difference) are refused before any sample, by
+  their index in the data. Streamed (`--ram-limit`), the limit holds the sampled rows beside one row group, then the
+  medoids, 8 bytes of labels per row and sample and a batch of row groups: a smaller limit is refused, naming the
+  bytes, where it streamed before.
 
 ## Performance
 
@@ -148,6 +154,11 @@ Soft-DTW, Python or CUDA), on the machine named.
 - FastCLARA's CPU assignment computes each medoid against 16 series at once (32 in `float32`) in the same SIMD
   lanes, in RAM and streamed from Parquet: on an Intel Core Ultra 9 285 [figure: AL's timed run]; the same labels,
   medoids and costs, but for GCC's squared L2. MSVC builds take the lanes there only under a band.
+- FastCLARA reads its series once: all samples are drawn first and one pass assigns every series to the medoids of
+  every sample, where each sample took a pass of its own. Streamed from Parquet, the sampled rows are read once and the
+  file once more, its next row groups decoding while the current ones are assigned (before: per sample, a pass of the
+  file and a read of its sampled rows and of its medoids' rows): on an Intel Core Ultra 9 285 [figure: CS's timed
+  run]; the same labels, medoids and costs.
 - The Windows wheels are built by clang-cl and carry LLVM's OpenMP runtime (`libomp.dll`), so their fill of
   equal-length series runs on the SIMD lanes, which MSVC's cl leaves scalar: on an Intel Core Ultra 9 285
   3.96–4.31× faster than the MSVC wheel with 24 threads, 8.1–8.2× on one thread; results identical.
