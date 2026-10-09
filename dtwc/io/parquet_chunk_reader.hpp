@@ -297,23 +297,45 @@ public:
     return payload + static_cast<size_t>(logical_series_count()) * object_bytes;
   }
 
-  /// Conservative peak while the CLI materializes this file. The current
-  /// loader first owns an Arrow decode table and Float64 `Data`; Float32 output
-  /// then allocates a second `Data` before releasing the Float64 vectors.
+  /// Conservative peak while the CLI materializes this file: the series at the
+  /// selected precision beside the decoded values, at most the file's (read_all
+  /// decodes a batch of rows at a time).
   size_t estimated_materialization_peak_bytes(bool use_float32) const
   {
-    const size_t f64 = estimated_resident_bytes(false);
-    const size_t decode_peak = source_payload_bytes() + f64;
-    if (!use_float32) return decode_peak;
-    const size_t conversion_peak = f64 + estimated_resident_bytes(true);
-    return std::max(decode_peak, conversion_peak);
+    return source_payload_bytes() + estimated_resident_bytes(use_float32);
   }
 
-  /// Append every series of the file to `series` and `names`. A row's
-  /// series_<i> numbers on from series.size(), so a folder's files never repeat one.
-  void read_all(std::vector<std::vector<data_t>> &series, std::vector<std::string> &names) const
+  /// Append every series of the file to `series` and `names` as `T`: data_t, or
+  /// float. A row's series_<i> numbers on from series.size(), so a folder's files
+  /// never repeat one. Rows are decoded a batch at a time, about
+  /// decode_batch_bytes of values, so the decoded values held beside the series
+  /// are one batch's: a Float32 read of Float64 values never holds them all in
+  /// double. A file that is one series is decoded whole.
+  template <typename T>
+  void read_all(std::vector<std::vector<T>> &series, std::vector<std::string> &names) const
   {
-    append_row_groups(0, num_row_groups_, series, names, series.size());
+    if (!rows_are_series() || total_rows_ == 0) {
+      append_row_groups(0, num_row_groups_, series, names, series.size());
+      return;
+    }
+    const size_t row_bytes = std::max<size_t>(1, total_value_count_ * source_value_bytes_
+                                                   / static_cast<size_t>(total_rows_));
+    reader_->set_batch_size(static_cast<int64_t>(std::max<size_t>(1, decode_batch_bytes / row_bytes)));
+    std::vector<int> groups(static_cast<size_t>(num_row_groups_));
+    std::iota(groups.begin(), groups.end(), 0);
+    const auto batches = record_batches(groups);
+    int64_t row = 0; // the file row the next batch starts at
+    for (std::shared_ptr<arrow::RecordBatch> batch;;) {
+      detail::check_arrow_chunk(batches->ReadNext(&batch), "read_all");
+      if (batch == nullptr) return;
+      // As append_row_groups: the rows before row_offset_ are dropped, a null there no error.
+      const int64_t dropped = std::clamp<int64_t>(row_offset_ - row, 0, batch->num_rows());
+      row += batch->num_rows();
+      if (dropped == batch->num_rows()) continue;
+      auto table = arrow::Table::FromRecordBatches({ batch->Slice(dropped) });
+      detail::check_arrow_chunk(table.status(), "read_all");
+      append_rows(**table, series, names, series.size());
+    }
   }
 
   /// Every series' name, as read_all() names them, reading the name column
@@ -499,6 +521,9 @@ public:
   }
 
 private:
+  /// The values read_all decodes at a time beside the series it fills.
+  static constexpr size_t decode_batch_bytes = size_t{ 16 } << 20;
+
   /// The `leaves` of `groups`: Arrow 24 deprecated the Status form for the Result form.
   std::shared_ptr<arrow::Table> read_groups(const std::vector<int> &groups, const std::vector<int> &leaves,
                                             const char *what) const
@@ -511,6 +536,21 @@ private:
     std::shared_ptr<arrow::Table> table;
     detail::check_arrow_chunk(reader_->ReadRowGroups(groups, leaves, &table), what);
     return table;
+#endif
+  }
+
+  /// The rows of `groups`, the leaves read, a batch at a time: Arrow 21 deprecated
+  /// the Status form for the Result form.
+  std::unique_ptr<arrow::RecordBatchReader> record_batches(const std::vector<int> &groups) const
+  {
+#if ARROW_VERSION_MAJOR >= 21
+    auto batches = reader_->GetRecordBatchReader(groups, leaves_);
+    detail::check_arrow_chunk(batches.status(), "read_all");
+    return *std::move(batches);
+#else
+    std::unique_ptr<arrow::RecordBatchReader> batches;
+    detail::check_arrow_chunk(reader_->GetRecordBatchReader(groups, leaves_, &batches), "read_all");
+    return batches;
 #endif
   }
 
@@ -550,11 +590,20 @@ private:
       names.push_back(name_);
       return;
     }
+    append_rows(*table, vecs, names, first_name);
+  }
+
+  /// Append a series per row of `table` with its name: in the string column,
+  /// else series_<first_name + i> for the i-th row.
+  template <typename T>
+  void append_rows(const arrow::Table &table, std::vector<std::vector<T>> &vecs, std::vector<std::string> &names,
+                   size_t first_name) const
+  {
     std::vector<std::vector<T>> rows;
-    rows.reserve(static_cast<size_t>(table->num_rows()));
-    extract_rows(*table, rows);
+    rows.reserve(static_cast<size_t>(table.num_rows()));
+    extract_rows(table, rows);
     std::vector<std::optional<std::string>> row_names;
-    if (layout_.names) detail::extract_row_names(*table->column(name_position_), row_names);
+    if (layout_.names) detail::extract_row_names(*table.column(name_position_), row_names);
     for (size_t row = 0; row < rows.size(); ++row) {
       vecs.push_back(std::move(rows[row]));
       names.push_back(layout_.names && row_names[row] ? std::move(*row_names[row])

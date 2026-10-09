@@ -12,9 +12,9 @@
 #include "Data.hpp"           //!< For Data class
 #include "fileOperations.hpp" //!< For load_batch_file(), load_folder()
 #include "base/settings.hpp"  //!< For data_t type
+#include "core/storage.hpp"   //!< For core::Precision
 
 #include <filesystem> //!< For filesystem objects like path
-#include <tuple>      //!< For std::tie(), std::tuple
 
 namespace dtwc {
 
@@ -29,6 +29,7 @@ class DataLoader
   int verbose{ 1 };                       //!< Verbosity level
   char delim{ ',' };                      //!< Column delimiter character
   bool delim_explicit_{ false };          //!< True once delimiter() was called; path() must not override it.
+  core::Precision dtype_{ core::Precision::Float64 }; //!< The precision the series are stored in
   std::filesystem::path data_path{ "." }; //!< Path to data file or folder
 
 public:
@@ -48,6 +49,7 @@ public:
   auto delimiter() { return delim; }       //!< Get the delimiter used in data files.
   auto path() { return data_path; }        //!< Get the path of the data file or directory.
   auto verbosity() { return verbose; }     //!< Get the verbosity level for data loading.
+  auto dtype() { return dtype_; }          //!< Get the precision the series are stored in.
 
   // Setters with chaining
 
@@ -121,19 +123,31 @@ public:
   }
 
   /**
-   * @brief Load data into RAM.
+   * @brief Set the precision the series are stored in: Float64 (the default), or
+   *        Float32 at half the memory, each value the double parse rounded to float.
+   * @return Reference to self for chaining
+   */
+  DataLoader &dtype(core::Precision precision)
+  {
+    dtype_ = precision;
+    return *this;
+  }
+
+  /**
+   * @brief Load data into RAM, in the precision dtype() names.
    * @details Calls the appropriate loader based on the path being a file or folder.
    * @return Loaded data.
    */
   Data load()
   {
-    Data d;
     const LoadOptions opts{ Ndata, verbose, start_row_, start_col_, delim };
-    if (fs::is_directory(data_path))
-      std::tie(d.p_vec, d.p_names) = load_folder<data_t>(data_path, opts);
-    else
-      std::tie(d.p_vec, d.p_names) = load_batch_file<data_t>(data_path, opts);
-    return d;
+    const auto read = [&](auto stored) {
+      using T = decltype(stored);
+      auto [series, names] = fs::is_directory(data_path) ? load_folder<T>(data_path, opts)
+                                                         : load_batch_file<T>(data_path, opts);
+      return Data(std::move(series), std::move(names));
+    };
+    return dtype_ == core::Precision::Float32 ? read(float{}) : read(data_t{});
   }
 };
 

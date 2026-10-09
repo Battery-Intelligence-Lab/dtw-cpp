@@ -84,13 +84,14 @@ void require_reader_options(std::optional<InputFormat> format, index_t skip_cols
                        "text or Parquet and cannot be honoured for this input; drop them.");
 }
 
-Data read_data(const fs::path &path, index_t skip_cols, index_t skip_rows, char delimiter, const std::string &column)
+Data read_data(const fs::path &path, index_t skip_cols, index_t skip_rows, char delimiter, const std::string &column,
+               core::Precision dtype)
 {
   const InputFormat format = input_format(path);
   require_reader_options(format, skip_cols, skip_rows, delimiter, column);
   try {
     DataLoader loader{ path }; // text: input_format() refused Parquet and Arrow IPC
-    loader.start_column(skip_cols).start_row(skip_rows).verbosity(0);
+    loader.start_column(skip_cols).start_row(skip_rows).verbosity(0).dtype(dtype);
     if (delimiter != '\0') loader.delimiter(delimiter);
     return loader.load();
   } catch (...) {

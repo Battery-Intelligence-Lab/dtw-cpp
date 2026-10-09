@@ -17,7 +17,9 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <concepts>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <system_error>
@@ -324,4 +326,41 @@ TEST_CASE("Folder and batch loaders honour verbosity(0)",
     loader.path(batch).verbosity(0).load();
     CHECK(capture.sink.str().empty());
   }
+}
+
+TEST_CASE("A Float32 DataLoader stores each value as its double parse rounded to float",
+          "[DataLoader][dtype]")
+{
+  // 1 + 2^-24 lies halfway between the floats 1 and 1 + 2^-23. The first value is
+  // 1e-34 above it, inside half a double ulp, so its double parse is the midpoint,
+  // which rounds to 1 (ties to even); a float parse of the text would give 1 + 2^-23.
+  // The CLI, pyarrow's cast and MATLAB's single() all round the double: 1.
+  const ScratchDirectory folder{ "dtype_contract" };
+  const auto batch = folder.path / "batch.csv";
+  {
+    std::ofstream out(batch);
+    out << "1.0000000596046447753906250000000001,0.1,-2.5\n3.4e38,7e-46,123456.789\n";
+  }
+  DataLoader text_file{ batch };
+  text_file.verbosity(0);
+  DataLoader text_folder{ dummy_data_path() };
+  text_folder.start_row(1).start_column(1).verbosity(0);
+  for (auto *loader : { &text_file, &text_folder }) {
+    const Data f64 = loader->load();
+    const Data f32 = loader->dtype(core::Precision::Float32).load();
+    REQUIRE(f32.is_f32());
+    REQUIRE(f32.size() == f64.size());
+    std::size_t values = 0, differ = 0;
+    for (std::size_t i = 0; i < f64.size(); ++i) {
+      const auto wide = f64.series(i);
+      const auto narrow = f32.series_f32(i);
+      REQUIRE(narrow.size() == wide.size());
+      CHECK(f32.name(i) == f64.name(i));
+      for (std::size_t j = 0; j < wide.size(); ++j, ++values)
+        differ += std::bit_cast<std::uint32_t>(narrow[j]) != std::bit_cast<std::uint32_t>(static_cast<float>(wide[j]));
+    }
+    CHECK(values > 0);
+    CHECK(differ == 0);
+  }
+  CHECK(text_file.load().series_f32(0)[0] == 1.0f);
 }

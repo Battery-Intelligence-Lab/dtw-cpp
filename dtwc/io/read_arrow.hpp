@@ -25,10 +25,11 @@ std::optional<InputFormat> arrow_format(const std::filesystem::path &path);
  *        dtwc::read_data's, with no text options.
  *
  * `column` selects a Parquet column (empty: the layout rule decides), `skip_cols` and `skip_rows` drop a Parquet file's
- * leading columns and rows; Arrow IPC takes none of them. A null is InvalidInput, an option the format cannot honour
- * InvalidInput, and a read failure an IOError naming the file.
+ * leading columns and rows; Arrow IPC takes none of them. `dtype` is the precision the series are stored in, as
+ * read_data takes it. A null is InvalidInput, an option the format cannot honour InvalidInput, and a read failure an
+ * IOError naming the file.
  */
 Data read_arrow(const std::filesystem::path &path, const std::string &column = {}, index_t skip_cols = 0,
-                index_t skip_rows = 0);
+                index_t skip_rows = 0, core::Precision dtype = core::Precision::Float64);
 
 } // namespace dtwc::io
