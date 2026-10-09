@@ -32,6 +32,10 @@
 #include <type_traits>
 #include <vector>
 
+#if defined(__GLIBC__)
+#include <malloc.h> // malloc_trim
+#endif
+
 namespace dtwc::algorithms {
 
 namespace {
@@ -248,6 +252,10 @@ namespace {
                                  });
       first += batch.size();
     }
+#if defined(__GLIBC__)
+    // The end phase is priced as if the batches went back to the system; glibc kept 320-680 MB (1 GiB, 2026-10-09).
+    malloc_trim(0);
+#endif
     check.band();
 
     auto result = detail::clara_winner(pams, medoids, labels, costs);
