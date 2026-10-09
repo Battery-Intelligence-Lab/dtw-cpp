@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Preprocessing helpers for time-series clustering with DTW.
 
 Use this module when your raw signal has artefacts that confuse DTW:

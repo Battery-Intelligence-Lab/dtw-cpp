@@ -15,6 +15,7 @@
  * `missing`, `arow` and the ZeroCost / AROW / Interpolate strategies read NaN
  * as a missing value and reject only ±inf. The unchecked per-pair wrappers
  * they call are unchanged.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

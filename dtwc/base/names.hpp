@@ -8,6 +8,7 @@
  * are aliases. parse_name() matches ASCII case-insensitively and nothing else (no
  * trimming, no '-' / '_' folding): an alias exists because a table lists it.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

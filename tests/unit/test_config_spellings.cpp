@@ -15,6 +15,7 @@
  * --print-config, against tests/conformance/config_defaults.toml and the golden
  * file, is test_cli_device_matrix's).
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

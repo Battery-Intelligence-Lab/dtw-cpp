@@ -10,6 +10,7 @@
  *   A Problem is clustered when it holds one label per series and one medoid per
  *   cluster; every call that reads the whole clustering checks that once and
  *   raises InvalidInput otherwise. The per-element accessors stay unchecked.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

@@ -8,6 +8,7 @@
  *          chose the same name. The directory name carries the process id and a
  *          per-process serial, so no two live objects share it, in this process
  *          or another.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

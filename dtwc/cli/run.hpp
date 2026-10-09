@@ -25,6 +25,7 @@
  * implement raises validate_gpu_request()'s DeviceError, and a GPU index Metal
  * cannot honour Problem::set_device's, all before any I/O.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

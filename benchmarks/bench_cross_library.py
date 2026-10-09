@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """
 Cross-library DTW benchmark: dtwcpp vs dtaidistance vs tslearn vs aeon.
 

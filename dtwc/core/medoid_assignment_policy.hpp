@@ -13,6 +13,7 @@
  * parallel-vs-serial execution, index space, distance signature and per-element
  * side effects, so folding them together needs runtime policy switches in the
  * library's hottest loops.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

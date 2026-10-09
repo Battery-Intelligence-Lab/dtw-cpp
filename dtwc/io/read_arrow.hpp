@@ -1,6 +1,7 @@
 /**
  * @file read_arrow.hpp
  * @brief dtwc::io::read_arrow: Parquet and Arrow IPC, read with Arrow C++ (dtwc_io: a build with Arrow only).
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

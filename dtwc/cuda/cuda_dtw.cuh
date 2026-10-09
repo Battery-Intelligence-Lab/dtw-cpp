@@ -7,6 +7,7 @@
  *          slots stream into the caller's matrix (cuda_dtw.cu); or, on the same
  *          kernels, each series' distances to a few medoids.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

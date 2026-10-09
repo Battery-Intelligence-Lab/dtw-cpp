@@ -8,6 +8,7 @@
  *
  * Every include inside this repository was updated to the new path when the move
  * happened, so the message below can only be reached by code outside it.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

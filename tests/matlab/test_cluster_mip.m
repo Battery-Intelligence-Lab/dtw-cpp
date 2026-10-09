@@ -17,6 +17,9 @@ function tests = test_cluster_mip
 %   Run with: results = runtests('test_cluster_mip');
 %   (Requires the compiled MEX on the path AND a HiGHS-enabled build; the
 %    exact MIP backend throws when no MIP solver is compiled in.)
+
+%> @file test_cluster_mip.m
+%> @author Volkan Kumtepeli
     tests = functiontests(localfunctions);
 end
 

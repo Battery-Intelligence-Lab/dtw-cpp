@@ -9,6 +9,7 @@
  *          The fill-versus-oracle distance table is core/test_dtw.cpp. The Metal
  *          cases live in test_metal_mmap.cpp and the CUDA case in
  *          test_cuda_correctness.cpp, which may skip without a device.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

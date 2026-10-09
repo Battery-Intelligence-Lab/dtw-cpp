@@ -16,6 +16,7 @@
  * v1 one-argument init::random and init::Kmeanspp read (one draw each, as their
  * seed), and Tier-1 deliberately never touches it.
  * This move is about the include graph only and changes no behaviour.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

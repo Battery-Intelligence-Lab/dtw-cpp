@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Cross-language benchmark: Python bindings vs C++ baseline.
 
 Run with: uv run benchmarks/bench_cross_language.py

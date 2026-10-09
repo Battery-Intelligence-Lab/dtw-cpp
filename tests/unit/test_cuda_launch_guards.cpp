@@ -18,6 +18,7 @@
  *
  * The automatic kernel choice (`cuda/kernel_selection.hpp`, also free of CUDA
  * headers) is pinned here too, so a build without a GPU checks its ranges.
+ * @author Volkan Kumtepeli
  */
 
 #include <catch2/catch_test_macros.hpp>

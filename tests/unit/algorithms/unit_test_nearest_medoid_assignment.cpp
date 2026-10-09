@@ -3,6 +3,7 @@
  * @brief Public-route contract for nearest-medoid assignment: where a
  *        non-finite distance is refused, first-slot ties, the point-ordered
  *        objective and its one finite check.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

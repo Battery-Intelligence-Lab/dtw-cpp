@@ -9,6 +9,7 @@
  * are only read here; run-time checks belong to the run. The Config itself is
  * the core's (../config.hpp).
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

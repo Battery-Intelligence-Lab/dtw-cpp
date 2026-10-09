@@ -13,6 +13,7 @@
  * dtwc_cl's pipeline is dtwc::run, which the third case drives; both
  * it and Python's load() read through dtwc::read_data, which the last case drives.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

@@ -1,6 +1,7 @@
 /**
  * @file unit_test_soft_dtw_hotpath.cpp
  * @brief Allocation and unchecked-cell contract for Soft-DTW.
+ * @author Volkan Kumtepeli
  */
 
 #include <soft_dtw.hpp>

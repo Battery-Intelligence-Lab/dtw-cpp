@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Unpack a DTWC++ release archive outside the checkout and run its CLI (each build of it on Windows)."""
 
 from __future__ import annotations

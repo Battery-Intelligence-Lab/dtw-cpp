@@ -1,6 +1,7 @@
 /**
  * @file barycenter.cpp
  * @brief SSG/DBA/soft-DTW barycenters and a sequence-centroid k-means driver.
+ * @author Volkan Kumtepeli
  */
 
 #include "barycenter.hpp"

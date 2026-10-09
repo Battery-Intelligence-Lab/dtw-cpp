@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Typed errors (docs/content/api/tier-1.md) at the seams the GT-4 sweep left (GT-4b).
 
 Each case raised an untyped C++ error (Python ``RuntimeError``), the wrong

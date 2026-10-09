@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @author Volkan Kumtepeli
 """Every third-party download is pinned by content: SHA-256 or a 40-hex commit.
 
 CMake: each CPMAddPackage / FetchContent_Declare / ExternalProject_Add / file(DOWNLOAD)

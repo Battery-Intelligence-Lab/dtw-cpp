@@ -4,6 +4,7 @@
  *        series and clusters, labels, medoids and dist_by_ind indices are
  *        index_t; band, max_iter, n_init and n_samples stay int; seeds are
  *        uint64_t.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

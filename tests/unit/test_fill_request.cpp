@@ -8,6 +8,7 @@
  * present or not, in every build with a GPU backend (a build without one refuses
  * Device::GPU in set_device). Oracles: the length difference is computed here
  * from the input; distances come from the CPU kernels.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

@@ -1,6 +1,7 @@
 /**
  * @file api.hpp
  * @brief Tier-1 DTWC++ 2.0 API: device -> load -> cluster -> Result.
+ * @author Volkan Kumtepeli
  */
 
 #pragma once

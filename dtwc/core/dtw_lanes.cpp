@@ -7,6 +7,7 @@
  *          Windows the lane loop of dtw_kernel_lanes would compile to W scalar
  *          chains instead of W / 4 vector ones. dtwc/core/CMakeLists.txt compiles this
  *          file to native code there, where clang's own -O3 pipeline runs SLP.
+ * @author Volkan Kumtepeli
  */
 
 #include "dtw_dispatch.hpp"

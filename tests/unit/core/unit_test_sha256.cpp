@@ -1,3 +1,7 @@
+/**
+ * @file unit_test_sha256.cpp
+ * @author Volkan Kumtepeli
+ */
 #include <core/sha256.hpp>
 
 #include <catch2/catch_test_macros.hpp>

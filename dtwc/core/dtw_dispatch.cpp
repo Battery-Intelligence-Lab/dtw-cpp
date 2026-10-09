@@ -1,6 +1,7 @@
 /**
  * @file dtw_dispatch.cpp
  * @brief validate(DistanceConfig) and resolve_dtw_fn<T> (see dtw_dispatch.hpp).
+ * @author Volkan Kumtepeli
  */
 
 #include "dtw_dispatch.hpp"

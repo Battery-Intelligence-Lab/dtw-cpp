@@ -41,6 +41,7 @@
  *          itself, so it takes a pointwise distance instead of a Cost:
  *          T operator()(T a, T b) const.
  *
+ * @author Volkan Kumtepeli
  * @date 2026-04-12
  */
 

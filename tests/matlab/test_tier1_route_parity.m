@@ -10,6 +10,9 @@ function tests = test_tier1_route_parity
 %   cannot satisfy them by accident.
 %
 %   Run with: results = runtests('test_tier1_route_parity');
+
+%> @file test_tier1_route_parity.m
+%> @author Volkan Kumtepeli
     tests = functiontests(localfunctions);
 end
 

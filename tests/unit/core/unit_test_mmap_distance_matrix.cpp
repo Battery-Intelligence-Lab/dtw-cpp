@@ -6,6 +6,7 @@
  * with plain streams: a 48-byte header {magic "DTWM", uint32 version 4, uint64 N,
  * 32-byte fingerprint} and N(N+1)/2 doubles.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Sep 2026
  */
 

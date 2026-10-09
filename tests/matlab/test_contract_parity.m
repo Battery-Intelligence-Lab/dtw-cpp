@@ -15,6 +15,9 @@ function tests = test_contract_parity
 %   Run with: results = runtests('test_contract_parity');
 %   (Requires the compiled dtwc_mex on the path; otherwise every test is SKIPPED
 %    with a loud notice.)
+
+%> @file test_contract_parity.m
+%> @author Volkan Kumtepeli
     tests = functiontests(localfunctions);
 end
 

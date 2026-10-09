@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Problem.checkpoint parity with C++ automatic mid-fill checkpointing.
 
 Mirrors ``dtwc::Problem::checkpoint`` (dtwc/Problem.hpp) and the validation

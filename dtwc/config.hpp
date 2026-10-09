@@ -11,6 +11,7 @@
  * cli/run.hpp, and the text forms (cli::bind, parse_config, to_config_text)
  * are the CLI's, in cli/config.hpp.
  *
+ * @author Volkan Kumtepeli
  * @date 24 Sep 2026
  */
 

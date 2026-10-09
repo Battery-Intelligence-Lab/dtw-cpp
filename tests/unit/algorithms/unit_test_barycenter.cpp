@@ -1,6 +1,7 @@
 /**
  * @file unit_test_barycenter.cpp
  * @brief Independent oracles for DBA, SSG, soft-DTW barycenters and clustering.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>

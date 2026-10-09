@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Phase 8 M34: binding-level DTW variant parameter domains."""
 
 import re

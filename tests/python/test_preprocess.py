@@ -1,3 +1,4 @@
+# @author Volkan Kumtepeli
 """Tests for dtwcpp.preprocess.
 
 Covers each helper in isolation plus the chained `power_signal` entry point.

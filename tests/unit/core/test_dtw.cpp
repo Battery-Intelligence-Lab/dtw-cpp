@@ -16,6 +16,7 @@
  *          SIMD lanes (epsilon-level, accepted: clusterings must not change, not bits);
  *          float rows run the library in float against the oracle on the same float
  *          values widened to double.
+ * @author Volkan Kumtepeli
  */
 
 #include <dtwc.hpp>
