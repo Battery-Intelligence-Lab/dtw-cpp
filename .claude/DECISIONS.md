@@ -203,3 +203,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   already completed ones." Done in `034d8994` and the prune that follows; the copies already pushed
   (`origin/design-2.0` holds 310 baseline files and the charter) stay in GitHub's history unless Volkan rewrites it
   (open, with the Kasper folder of 09-28).
+- 2026-10-09 — Volkan (question tool), the machine not quiet since 02:13 (Sophos and Tanium a steady 8–10 % of
+  the CPU, nothing of ours running): "Run now, load recorded". Timed runs may start at total CPU < 12 %, the
+  background recorded beside every run, 20 alternating pairs per 24-thread shape, a narrow miss getting one
+  registered second attempt; < 6 % stays the gate whenever the scanners allow it.
