@@ -56,8 +56,11 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   limits 7/8 at first (P1 f32 at 256M 0.8 MB over, beside its own labels file in the page cache), 8/8 after glibc's
   kept batches (320–680 MB) went back through `malloc_trim(0)`; merged a30e6cf0
 - ◐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
-  (design `C:/D/git/wt/tmp/SW/design.md` approved 10-09 with conditions; implementing on pb/SW)
-- ☐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5)
+  (design `C:/D/git/wt/tmp/SW/design.md` approved 10-09 with conditions; proven on pb/SW 2a63803f: every
+  evaluation base's on clang, GCC and cl; c0 set the parallel threshold at 2000 points; timing 10-10)
+- ◐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5 with the width and the rows written; design
+  `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
+  implementation after SW's merge)
 - ☐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
   decoding dominates
 - ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;

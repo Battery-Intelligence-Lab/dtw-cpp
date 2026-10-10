@@ -212,3 +212,8 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   missed, and the design's 8-column tasks for small fills become a PLAN candidate.
 - 2026-10-09 — Volkan (question tool) on PE, the Parquet stream overshooting its RAM limit (1.48 GB under
   `--ram-limit 1G`): "Next, before SW". PE runs after CS, before SW, FM and MS.
+- 2026-10-10 — Volkan (question tool) on FM, the opt-in float32 matrix, each answer the recommended one: `.dtwm` v5
+  records the rows written ("Yes, rows-written field": a new mapped matrix skips its NaN prefill, rows past the count
+  are not computed); a float32 matrix exports at its width ("Stored width": NumPy float32, MATLAB `single`); v4 files
+  are read and mapped as float64 ("Read and map v4"); `matrix_dtype` also sets CLARA's sample matrices and TADPole's
+  cache ("Yes, one rule").
