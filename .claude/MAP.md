@@ -143,8 +143,11 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
   means missing or not computed.
 - The kernels' `numeric_limits::max()` is the DP's unreachable value and must never leave a kernel as a
   distance; NaN is the only "not a distance" outside kernels.
-- `find_best_swap` and the FasterPAM sweep are sequential on purpose; the nearest-medoid scans stay separate at
-  run time (a compile-time template collapse with identical code is allowed).
+- FasterPAM's accepted swaps are the sequential sweep's: from 2,000 points it evaluates runs of eight-candidate groups
+  on every thread against the state at the run's start and takes the first accepted in index order; bit for bit only
+  while each compiler keeps base's sum groupings, so a new compiler re-proves it evaluation by evaluation (SW, 10-10).
+  `find_best_swap` stays sequential; the nearest-medoid scans stay separate at run time (a compile-time template
+  collapse with identical code is allowed).
 - Parquet planning is metadata-first; argv beats the config file; an unknown key is an error.
 - `portable_random`: the same seed gives the same result on every standard library.
 - Conventions: local cost L1, band in integer cells, no final square root (`DECISIONS.md` §2).

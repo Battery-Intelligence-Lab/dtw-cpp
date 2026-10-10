@@ -58,22 +58,23 @@ Append new entries at the end of their section; keep each to a few lines.
   Windows assembly; `test_codegen_no_calls` guards the kernels (`baselines/2026-09-29-k1-dp-cell-no-call.md`).
 - **Apple clang turns a constant store loop into a `memset_pattern16` call** (Darwin only), one loop out from the
   innermost the gate read; no flag stops it, so copy a constant row or seed from the constant (`a332d671`).
-- **A restructured DP loop can move an ulp under `-fassociative-math`** (clang regrouped ADTW's `left + penalty` on a
-  one-row copy: 15 f32 outputs): sweep every Cell and ndim before calling it bitwise. *`baselines/…-mac-pair-2col.md`*
+- **A restructured loop can move an ulp under `-fassociative-math`**: clang regrouped ADTW's `left + penalty` (15 f32
+  outputs); in SW's 8-wide swap GCC ranked a sum's loads by address arithmetic, clang by read order. Read each
+  compiler's chain in its binary, compare every evaluation, then call it bitwise. *`baselines/…-sw-blocked-swap.md`*
 - **clang's Windows driver passes `-relaxed-aliasing`** (no TBAA, as MSVC): a store through a `double *` makes the
   compiler reload every pointer it cannot prove distinct. Copy what a hot loop reads into locals.
-- **Float32 is opt-in.** It halves the payload and measured 1.57–1.90× faster; Float64 stays the default.
 - **Interleave A and B, and check the power state.** A laptop dropped to low-power mid-run and made unchanged
   code 1.56× slower; one-after-the-other runs would have called it a regression.
 - **Before blaming code for a timing gap between two builds, pin where the time goes.** Alignment does not
   cure a fusion cliff. *`baselines/2026-09-23-x27-eigen-gap.md`*
-- **Apple Silicon E-cores help** (8 → 12 threads 1.33× more); do not cap to P-cores; `omp_get_max_threads()`
-  is the right count.
+- **Apple Silicon E-cores help** (8 → 12 threads 1.33× more): do not cap to P-cores; use `omp_get_max_threads()`.
 - **A test in an outer loop can slow the inner loop by changing its registers**: RL's per-column capture left clang's
   row loop the same 38 instructions with other vector registers, 4–5 % slower from L 4000 up. Diff a hot loop register
   for register against base, and time a long series. *`baselines/2026-10-08-rl-ragged-lanes.md`*
 - **One 24-thread round is noise on the Windows box** (identical work ran 0.86–1.34× from one process pair to the
-  next): a ±3 % band on 3 rounds cannot judge it. Use pinned one-thread controls or 20 alternating process pairs.
+  next): a ±3 % band on 3 rounds cannot judge it. Use pinned one-thread controls or 20 alternating process pairs. In
+  WSL a host process holding one core stalls every 24-thread barrier (short swaps 2–48× slower, clean at 20 threads,
+  Windows-native unaffected; SW 10-10): gate a WSL timing on base's own drift.
 
 ## Tests and gates
 

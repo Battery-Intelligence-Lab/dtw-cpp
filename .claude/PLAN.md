@@ -55,19 +55,20 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   memory.peak): the automatic limit under cgroups of 768M, 1G and 2G 12/12, never killed, results identical; explicit
   limits 7/8 at first (P1 f32 at 256M 0.8 MB over, beside its own labels file in the page cache), 8/8 after glibc's
   kept batches (320–680 MB) went back through `malloc_trim(0)`; merged a30e6cf0
-- ◐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
+- ☑ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
   (design `C:/D/git/wt/tmp/SW/design.md` approved 10-09 with conditions; proven on pb/SW 2a63803f: every
   evaluation base's on clang, GCC and cl; c0 set the parallel threshold at 2000 points; fix pass af18d202 timed
   10-10: t1 13.6–16.7×, t5, t6a, t6b, p1–p4 and the scores PASS, t2, t3, t4, m1 and e1 FALSIFIED, GCC's 24-thread
-  t4–t6b not measurable in WSL; Volkan 10-10: merge with the misses recorded; integrating)
+  t4–t6b not measurable in WSL; Volkan 10-10: merge with the misses recorded); merged 557cd889 (clang 95, Arrow 98,
+  CUDA 94, matlab_suite 141/141 on R2025b, pytest 896/19/0, CLI outputs byte-identical)
 - ◐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5 with the width and the rows written; design
   `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
-  implementation after SW's merge)
+  implementation started 10-10 on pb/FM)
 - ◐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
   decoding dominates (plan `C:/D/git/wt/tmp/MS/design.md` with its decision rule registered 10-10; Volkan: WSL
   decides, 2^25 float64 series; measured 10-10: cold, 75 % of the stream's time at 10^8 waits on its one decoder,
-  predicted 5–12 %; the band-20 control failed its gate, Volkan "Accept as is": Decoding, mapped series; next
-  branch M, a kit-only prototype)
+  predicted 5–12 %; the band-20 control failed its gate, Volkan "Accept as is": Decoding, mapped series; branch M,
+  a kit-only prototype, building 10-10)
 - ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;
   merged 6521b01e: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical); the last four
   record citations in header blocks reworded after it
@@ -103,8 +104,8 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 - SW's swap after the fix pass: an O(N) update of the nearest and second-nearest after each accepted swap
   (FasterPAM's), the same values and ties as the full refresh; t2 (k 200) and the mapped m1 missed while every swap
   pays an O(N k) refresh (inferred, 10-10). And a prefetch of the panel lines a few rows ahead: SW's t3 missed
-  0.22 LLC lines a lookup at IPC 0.56 (ETW 10-10), the packed rows' growing stride defeating the hardware prefetcher
-  (inferred).
+  0.22 LLC lines a lookup at IPC 0.53–0.56 (ETW 10-10, both commits), the packed rows' growing stride defeating the
+  hardware prefetcher (inferred).
 
 ## Records
 
