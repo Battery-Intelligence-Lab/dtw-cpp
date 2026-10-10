@@ -220,3 +220,6 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
 - 2026-10-10 — Volkan (question tool) on SW's 8-wide swap loop, which under GCC 13.3 reads the stack 0.5 times a
   lookup where base's never did (fewer instructions, one-thread swaps 1.25–1.64× faster): "Fix it first". The
   hot-loop rule holds without exception: SW returns to its implementer before any merge.
+- 2026-10-10 — Volkan (question tool) on MS's measurement: disk space, "I opened up some space for you now" (C:
+  224 GB free at 13:21, WSL's ext4.vhdx on it); "WSL decides" (every cold and scale run in WSL, Windows only the
+  NVMe's raw ceiling); scale "2^25 series, float64" (34.5 GB, extrapolated to 10^8).
