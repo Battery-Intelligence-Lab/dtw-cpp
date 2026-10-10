@@ -57,13 +57,17 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   kept batches (320–680 MB) went back through `malloc_trim(0)`; merged a30e6cf0
 - ◐ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
   (design `C:/D/git/wt/tmp/SW/design.md` approved 10-09 with conditions; proven on pb/SW 2a63803f: every
-  evaluation base's on clang, GCC and cl; c0 set the parallel threshold at 2000 points; timing 10-10)
+  evaluation base's on clang, GCC and cl; c0 set the parallel threshold at 2000 points; fix pass af18d202 timed
+  10-10: t1 13.6–16.7×, t5, t6a, t6b, p1–p4 and the scores PASS, t2, t3, t4, m1 and e1 FALSIFIED, GCC's 24-thread
+  t4–t6b not measurable in WSL; Volkan 10-10: merge with the misses recorded; integrating)
 - ◐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5 with the width and the rows written; design
   `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
   implementation after SW's merge)
 - ◐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
   decoding dominates (plan `C:/D/git/wt/tmp/MS/design.md` with its decision rule registered 10-10; Volkan: WSL
-  decides, 2^25 float64 series; kit building)
+  decides, 2^25 float64 series; measured 10-10: cold, 75 % of the stream's time at 10^8 waits on its one decoder,
+  predicted 5–12 %; the band-20 control failed its gate, Volkan "Accept as is": Decoding, mapped series; next
+  branch M, a kit-only prototype)
 - ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;
   merged 6521b01e: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical); the last four
   record citations in header blocks reworded after it

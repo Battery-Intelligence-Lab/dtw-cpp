@@ -223,3 +223,9 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
 - 2026-10-10 — Volkan (question tool) on MS's measurement: disk space, "I opened up some space for you now" (C:
   224 GB free at 13:21, WSL's ext4.vhdx on it); "WSL decides" (every cold and scale run in WSL, Windows only the
   NVMe's raw ceiling); scale "2^25 series, float64" (34.5 GB, extrapolated to 10^8).
+- 2026-10-10 — Volkan (question tool) on SW at af18d202, re-timed (t1, t5, t6a, t6b, p1–p4 and the scores PASS; t2,
+  t3, t4, m1 and e1 FALSIFIED; GCC's 24-thread t4–t6b not measurable in WSL while a host core was busy): "Merge now
+  (Recommended)", the misses recorded; he re-ran e1's ETW at 21:17 ("Done: it finished").
+- 2026-10-10 — Volkan (question tool) on MS's failed validity gate (the band-20 control decoder-bound, the assignment
+  4.5× faster than designed; W agrees with the model at both bands): "Accept as is". The registered decision stands:
+  decoding binds, so mapped series, branch M (a kit-only prototype) first.
