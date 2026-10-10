@@ -261,8 +261,8 @@ TEST_CASE("FasterPAM converges at k = 200 within the default iteration cap", "[f
 }
 
 // ===========================================================================
-// The SWAP evaluates its candidates in runs of groups, on several threads above
-// 1000 points; it accepts the sequential sweep's swaps, so the thread count
+// The SWAP evaluates its candidates in runs of groups, on several threads from
+// 2000 points; it accepts the sequential sweep's swaps, so the thread count
 // changes no result: one thread runs one group at a time, four threads runs of
 // 4 to 32 groups.
 // ===========================================================================

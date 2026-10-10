@@ -174,7 +174,7 @@ void evaluate_group(const double *matrix, index_t N, index_t a, index_t n, const
 
 // Below this many points the sweep evaluates one candidate at a time on the calling thread, the sequential sweep
 // itself: there a parallel region, or a group's evaluations dropped after each swap, cost more than they save.
-constexpr index_t parallel_from = 1000;
+constexpr index_t parallel_from = 2000;
 
 // ---------------------------------------------------------------------------
 // FasterPAM SWAP (Schubert & Rousseeuw 2021, Algorithm 3). Eager: cycle through
