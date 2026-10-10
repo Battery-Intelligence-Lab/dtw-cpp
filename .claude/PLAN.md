@@ -95,6 +95,11 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 - MV: cl packing the lanes ran 3–4× slower in some processes (FALSIFIED 10-08; pb/MV kept): the cause is open.
 - Barycenter and Soft-DTW keep each thread's largest DP matrix after a call (W13e): release or bound it.
 - Tracker prefixes in test names (`FX-1:`, F8/F13/F14 ids): name the contract instead.
+- SW's swap after the fix pass: an O(N) update of the nearest and second-nearest after each accepted swap
+  (FasterPAM's), the same values and ties as the full refresh; t2 (k 200) and the mapped m1 missed while every swap
+  pays an O(N k) refresh (inferred, 10-10). And a prefetch of the panel lines a few rows ahead: SW's t3 missed
+  0.22 LLC lines a lookup at IPC 0.56 (ETW 10-10), the packed rows' growing stride defeating the hardware prefetcher
+  (inferred).
 
 ## Records
 

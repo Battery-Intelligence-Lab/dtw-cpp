@@ -217,3 +217,6 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   are not computed); a float32 matrix exports at its width ("Stored width": NumPy float32, MATLAB `single`); v4 files
   are read and mapped as float64 ("Read and map v4"); `matrix_dtype` also sets CLARA's sample matrices and TADPole's
   cache ("Yes, one rule").
+- 2026-10-10 — Volkan (question tool) on SW's 8-wide swap loop, which under GCC 13.3 reads the stack 0.5 times a
+  lookup where base's never did (fewer instructions, one-thread swaps 1.25–1.64× faster): "Fix it first". The
+  hot-loop rule holds without exception: SW returns to its implementer before any merge.
