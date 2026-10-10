@@ -151,19 +151,18 @@ void evaluate_group(const double *matrix, index_t N, index_t a, index_t n, const
   const double *const d2s = second_dist.data();
   const index_t a0 = std::min(a, N - W); // lane g is candidate a0 + g: a short last group drops its first lanes
   std::array<double, W> total;           // acc of each lane: the shared benefit of adding x_c (Case A, all points)
-  if constexpr (W == 1) {
+  if constexpr (W == 1) {                // the loop find_best_swap ran before groups
     double acc = 0.0;
-    core::for_each_point<1>(matrix, N, a, [&](index_t o, const double *doj) {
+    for (index_t o = 0; o < N; ++o) {
+      const double doj = matrix[core::tri_index(static_cast<std::size_t>(a), static_cast<std::size_t>(o))];
       const double d1 = d1s[o];
-      const double d2 = d2s[o];
-      double *const pl = ploss + near[o];
-      if (doj[0] < d1) {
-        acc += doj[0] - d1; // x_c becomes o's nearest
-        pl[0] += d1 - d2;   // correct Case-A over-count (≤ 0)
-      } else if (doj[0] < d2) {
-        pl[0] += doj[0] - d2; // only helps if o's medoid removed (≤ 0)
+      if (doj < d1) {
+        acc += doj - d1;               // x_c becomes o's nearest
+        ploss[near[o]] += d1 - d2s[o]; // correct Case-A over-count (≤ 0)
+      } else if (doj < d2s[o]) {
+        ploss[near[o]] += doj - d2s[o]; // only helps if o's medoid removed (≤ 0)
       }
-    });
+    }
     total[0] = acc;
   } else {
     // D(a0 + g, o) without a register per lane (GCC 13 kept the W rows a0 + g in registers and read pointers from
