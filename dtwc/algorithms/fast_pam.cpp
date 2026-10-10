@@ -37,6 +37,7 @@
 #include "../base/parallelisation.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <random>
@@ -129,11 +130,11 @@ struct SwapEval { double change; index_t best_m; };
 
 constexpr auto G = static_cast<index_t>(core::group_rows);
 
-// Evaluate, for each candidate x_c = a + g of a group of W (core::for_each_point), ΔTD(m, x_c) = acc + ploss[m] for
-// every medoid slot m in ONE O(N) pass, then the most negative over m (Algorithm 3 decomposition, derived in the file
-// header comment above); out[g] for g < n. O(N + k) per candidate. Each candidate's sums run on one thread, in point
-// order, through the operations a one-candidate loop makes, so its (change, slot) is the same whatever group, run or
-// thread count evaluates it.
+// Evaluate, for each candidate x_c = a + g of a group of W, ΔTD(m, x_c) = acc + ploss[m] for every medoid slot m in
+// ONE O(N) pass, then the most negative over m (Algorithm 3 decomposition, derived in the file header comment above);
+// out[g] for g < n. O(N + k) per candidate. Each candidate's sums run on one thread, in point order, through the
+// operations of the one-candidate loop (W = 1), so its (change, slot) is the same whatever group, run or thread count
+// evaluates it.
 template <index_t W>
 void evaluate_group(const double *matrix, index_t N, index_t a, index_t n, const std::vector<double> &rho,
                     const std::vector<index_t> &nearest, const std::vector<double> &nearest_dist,
@@ -145,30 +146,69 @@ void evaluate_group(const double *matrix, index_t N, index_t a, index_t n, const
   double *const ploss = scratch.data();
   for (index_t m = 0; m < k; ++m)
     for (index_t g = 0; g < W; ++g) ploss[m * W + g] = rho[m];
-  double acc[W] = {}; // shared benefit of adding x_c (Case A over all points)
   const index_t *const near = nearest.data();
   const double *const d1s = nearest_dist.data();
   const double *const d2s = second_dist.data();
-  core::for_each_point<W>(matrix, N, a, [&](index_t o, const double *doj) {
-    const double d1 = d1s[o];
-    const double d2 = d2s[o];
-    double *const pl = ploss + near[o] * W;
-    for (index_t g = 0; g < W; ++g) {
-      if (doj[g] < d1) {
-        acc[g] += doj[g] - d1; // x_c becomes o's nearest
-        pl[g] += d1 - d2;      // correct Case-A over-count (≤ 0)
-      } else if (doj[g] < d2) {
-        pl[g] += doj[g] - d2;  // only helps if o's medoid removed (≤ 0)
+  const index_t a0 = std::min(a, N - W); // lane g is candidate a0 + g: a short last group drops its first lanes
+  std::array<double, W> total;           // acc of each lane: the shared benefit of adding x_c (Case A, all points)
+  if constexpr (W == 1) {
+    double acc = 0.0;
+    core::for_each_point<1>(matrix, N, a, [&](index_t o, const double *doj) {
+      const double d1 = d1s[o];
+      const double d2 = d2s[o];
+      double *const pl = ploss + near[o];
+      if (doj[0] < d1) {
+        acc += doj[0] - d1; // x_c becomes o's nearest
+        pl[0] += d1 - d2;   // correct Case-A over-count (≤ 0)
+      } else if (doj[0] < d2) {
+        pl[0] += doj[0] - d2; // only helps if o's medoid removed (≤ 0)
       }
+    });
+    total[0] = acc;
+  } else {
+    // D(a0 + g, o) without a register per lane (GCC 13 kept the W rows a0 + g in registers and read pointers from
+    // the stack): with hi = max(a0 + g, o), tri_index = hi (hi + 1) / 2 + min = hi (hi - 1) / 2 + (a0 + g) + o.
+    // A select on values, not std::max: through its references GCC branched on each comparison of o - a0 with g and
+    // threaded them.
+    const auto distance = [&](index_t g, index_t o) {
+      const index_t d = o - a0;
+      const auto hi = static_cast<std::size_t>(a0 + (d > g ? d : g));
+      return matrix[hi * (hi - 1) / 2 + static_cast<std::size_t>(a0 + g + o)];
+    };
+    std::array<double, W> acc{};
+    for (index_t o = 0; o < N; ++o) {
+      const double d2 = d2s[o];
+      double *const pl = ploss + near[o] * W;
+      const auto update = [&](index_t g, double doj, double d1) { // the one-candidate loop's branches
+        if (doj < d1) {
+          acc[g] += doj - d1;
+          pl[g] += d1 - d2;
+        } else if (doj < d2) {
+          pl[g] += doj - d2;
+        }
+      };
+      // Half the lanes at a time, their distances read before d1 as the one-candidate loop reads its one: clang ranks a
+      // sum's terms by where they were read, so it groups (doj + acc) - d1 as there. A half's W / 2 distances and
+      // the W accumulators fit the 16 vector registers; d1 is read again for the second half.
+      constexpr index_t H = W / 2;
+      double doj[W];
+      for (index_t g = 0; g < H; ++g) doj[g] = distance(g, o);
+      const double d1 = d1s[o];
+      for (index_t g = 0; g < H; ++g) update(g, doj[g], d1);
+      for (index_t g = H; g < W; ++g) doj[g] = distance(g, o);
+      const double d1_again = d1s[o];
+      for (index_t g = H; g < W; ++g) update(g, doj[g], d1_again);
     }
-  });
+    total = acc; // copied whole after the loop, so acc stays in registers through it (GCC 13)
+  }
 
   for (index_t g = 0; g < n; ++g) {
+    const index_t lane = a - a0 + g;
     index_t best_m = 0;
-    double best = ploss[g];
+    double best = ploss[lane];
     for (index_t m = 1; m < k; ++m)
-      if (ploss[m * W + g] < best) { best = ploss[m * W + g]; best_m = m; }
-    out[g] = { acc[g] + best, best_m };
+      if (ploss[m * W + lane] < best) { best = ploss[m * W + lane]; best_m = m; }
+    out[g] = { total[lane] + best, best_m };
   }
 }
 
