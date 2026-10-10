@@ -26,11 +26,17 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <set>
 #include <string>
 #include <vector>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
@@ -101,6 +107,53 @@ Problem make_kgroup_problem(int N, int n_groups, const std::string& name = "kgro
   prob.fill_distance_matrix();
   return prob;
 }
+
+/// N random walks of length 16 (steps in [-1, 1)), or with `ties` integer series 0-3 of length 8 in which every
+/// fourth series repeats the one before it: integer distances, equal gains and duplicate medoids.
+Problem make_walk_problem(int N, bool ties)
+{
+  std::uint64_t state = 2026;
+  auto next = [&state] { // splitmix64
+    std::uint64_t z = (state += 0x9e3779b97f4a7c15ULL);
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+    return z ^ (z >> 31);
+  };
+  std::vector<std::vector<data_t>> vecs(N);
+  std::vector<std::string> names(N);
+  for (int i = 0; i < N; ++i) {
+    names[i] = "w" + std::to_string(i);
+    if (ties && i % 4 == 3) {
+      vecs[i] = vecs[i - 1];
+      continue;
+    }
+    double walk = 0.0;
+    for (int j = 0; j < (ties ? 8 : 16); ++j) {
+      if (ties) {
+        vecs[i].push_back(static_cast<double>(next() % 4));
+      } else {
+        walk += static_cast<double>(next() >> 11) * 0x1p-52 - 1.0;
+        vecs[i].push_back(walk);
+      }
+    }
+  }
+  Problem prob(ties ? "walk_ties" : "walks");
+  prob.set_data(Data(std::move(vecs), std::move(names)));
+  prob.fill_distance_matrix();
+  return prob;
+}
+
+/// Holds the OpenMP thread count at `threads` for the scope (a no-op without OpenMP).
+struct ThreadCount
+{
+#ifdef _OPENMP
+  int previous = omp_get_max_threads();
+  explicit ThreadCount(int threads) { omp_set_num_threads(threads); }
+  ~ThreadCount() { omp_set_num_threads(previous); }
+#else
+  explicit ThreadCount(int) {}
+#endif
+};
 
 /// Total assignment cost for a medoid set (each point → nearest medoid). O(N·k).
 double assign_cost(Problem& prob, const std::vector<index_t>& medoids, int N)
@@ -205,6 +258,36 @@ TEST_CASE("FasterPAM converges at k = 200 within the default iteration cap", "[f
   REQUIRE(res.iterations < 100);
   std::set<index_t> med(res.medoid_indices.begin(), res.medoid_indices.end());
   REQUIRE(med.size() == 200);
+}
+
+// ===========================================================================
+// The SWAP evaluates its candidates in runs of groups, on several threads from
+// 2000 points; it accepts the sequential sweep's swaps, so the thread count
+// changes no result: one thread runs one group at a time, four threads runs of
+// 4 to 32 groups.
+// ===========================================================================
+TEST_CASE("FasterPAM gives the same result on 1 and 4 threads", "[faster_pam][threads]")
+{
+  for (const bool ties : { false, true }) {
+    Problem prob = make_walk_problem(3000, ties);
+    core::ClusteringResult one, four;
+    {
+      const ThreadCount threads(1);
+      one = fast_pam(prob, 50, 100, 7);
+    }
+    {
+      const ThreadCount threads(4);
+      four = fast_pam(prob, 50, 100, 7);
+    }
+    INFO("ties=" << ties << " iterations=" << one.iterations);
+    REQUIRE(one.converged);
+    REQUIRE(one.iterations > 1); // the first sweep accepted swaps
+    CHECK(four.medoid_indices == one.medoid_indices);
+    CHECK(four.labels == one.labels);
+    CHECK(std::bit_cast<std::uint64_t>(four.total_cost) == std::bit_cast<std::uint64_t>(one.total_cost));
+    CHECK(four.iterations == one.iterations);
+    CHECK(four.converged == one.converged);
+  }
 }
 
 // ===========================================================================

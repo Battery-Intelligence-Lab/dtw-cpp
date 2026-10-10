@@ -117,39 +117,43 @@ std::vector<double> silhouette(Problem &prob)
 
   prob.fill_distance_matrix(); //!< We need all pairwise distance for silhouette score.
 
-  auto oneTask = [&](size_t i_b) {
-    const auto i_c = prob.clusters_ind[i_b];
+  // A task scores a group of points (core::for_each_point): each point's distance sum to each cluster runs over
+  // the points in order.
+  constexpr auto G = static_cast<index_t>(core::group_rows);
+  const double *const matrix = prob.distance_matrix().raw();
+  const index_t *const label = prob.clusters_ind.data();
+  auto oneTask = [&](size_t q) {
+    const auto first = static_cast<index_t>(q) * G;
+    thread_local std::vector<double> sums; // sums[cluster * G + g]; grows, never shrinks
+    sums.assign(static_cast<size_t>(Nc * G), 0.0);
+    core::for_each_point(matrix, Nb, first, [&](index_t i, const double *d) {
+      double *const s = sums.data() + label[i] * G;
+      for (index_t g = 0; g < G; ++g) s[g] += d[g];
+    });
 
-    std::vector<std::pair<index_t, double>> mean_distances(Nc, { 0, 0 });
+    for (index_t g = 0; g < std::min(G, Nb - first); ++g) {
+      const index_t i_b = first + g;
+      const index_t i_c = label[i_b];
+      if (counts[i_c] == 1) // If the profile is the only member of the cluster
+        silhouettes[i_b] = 0;
+      else {
+        auto min = std::numeric_limits<double>::max();
+        double a = 0.0;
+        for (index_t i = 0; i < Nc; i++) // Finding means:
+          if (i == i_c)
+            a = sums[i * G + g] / (counts[i] - 1);
+          else if (counts[i] > 0)
+            min = std::min(min, sums[i * G + g] / counts[i]);
 
-    for (auto i : Range(prob.size())) {
-      mean_distances[prob.clusters_ind[i]].first++;
-      mean_distances[prob.clusters_ind[i]].second
-        += prob.dist_by_ind(static_cast<index_t>(i), static_cast<index_t>(i_b));
-    }
-
-
-    if (mean_distances[i_c].first == 1) // If the profile is the only member of the cluster
-      silhouettes[i_b] = 0;
-    else {
-      auto min = std::numeric_limits<double>::max();
-      for (index_t i = 0; i < Nc; i++) // Finding means:
-        if (i == i_c)
-          mean_distances[i].second /= (mean_distances[i].first - 1);
-        else if (mean_distances[i].first > 0) {
-          mean_distances[i].second /= mean_distances[i].first;
-          min = std::min(min, mean_distances[i].second);
-        }
-
-      // a = b = 0 is 0/0; Rousseeuw's convention is s(i) = 0 (neither well nor
-      // badly placed). A NaN here would poison any downstream mean.
-      const double a = mean_distances[i_c].second;
-      const double denom = std::max(min, a);
-      silhouettes[i_b] = (denom > 0.0) ? (min - a) / denom : 0.0;
+        // a = b = 0 is 0/0; Rousseeuw's convention is s(i) = 0 (neither well nor
+        // badly placed). A NaN here would poison any downstream mean.
+        const double denom = std::max(min, a);
+        silhouettes[i_b] = (denom > 0.0) ? (min - a) / denom : 0.0;
+      }
     }
   };
 
-  dtwc::run(oneTask, prob.size());
+  dtwc::run(oneTask, static_cast<size_t>((Nb + G - 1) / G));
 
   return silhouettes;
 }
@@ -255,19 +259,38 @@ double dunn(Problem &prob)
 
   prob.fill_distance_matrix();
 
+  // Packed row r holds the pairs (r, c), c < r, in one stretch: the rows go in blocks, in parallel, each block with
+  // its own extremes. min and max pick a value and never round, so the order of the pairs changes neither.
   const index_t N = prob.size();
+  const double *const matrix = prob.distance_matrix().raw();
+  const index_t *const label = prob.clusters_ind.data();
+  constexpr index_t block_rows = 64;
+  const index_t blocks = (N + block_rows - 1) / block_rows;
+  std::vector<double> block_min(static_cast<size_t>(blocks)), block_max(static_cast<size_t>(blocks));
+  auto block = [&](size_t b) {
+    double lo = std::numeric_limits<double>::max();
+    double hi = 0.0;
+    const index_t r1 = std::min(N, static_cast<index_t>(b + 1) * block_rows);
+    for (index_t r = static_cast<index_t>(b) * block_rows; r < r1; ++r) {
+      const double *const row = matrix + core::packed_size(static_cast<size_t>(r));
+      const index_t lr = label[r];
+      for (index_t c = 0; c < r; ++c) {
+        if (label[c] == lr)
+          hi = std::max(hi, row[c]); // Same cluster: contributes to intra-cluster diameter
+        else
+          lo = std::min(lo, row[c]); // Different clusters: contributes to inter-cluster distance
+      }
+    }
+    block_min[b] = lo;
+    block_max[b] = hi;
+  };
+  run_openmp(block, static_cast<size_t>(blocks));
 
   double min_inter = std::numeric_limits<double>::max();
   double max_intra = 0.0;
-
-  for (index_t i = 0; i < N; ++i) {
-    for (index_t j = i + 1; j < N; ++j) {
-      const double d = prob.dist_by_ind(i, j);
-      if (prob.clusters_ind[i] == prob.clusters_ind[j]) 
-        max_intra = std::max(max_intra, d); // Same cluster: contributes to intra-cluster diameter
-       else 
-        min_inter = std::min(min_inter, d); // Different clusters: contributes to inter-cluster distance
-    }
+  for (index_t b = 0; b < blocks; ++b) {
+    min_inter = std::min(min_inter, block_min[b]);
+    max_intra = std::max(max_intra, block_max[b]);
   }
 
   if (max_intra == 0.0)

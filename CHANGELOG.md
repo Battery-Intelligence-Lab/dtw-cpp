@@ -181,6 +181,12 @@ Soft-DTW, Python or CUDA), on the machine named.
   the file and a read of its sampled rows and of its medoids' rows): on an Intel Core Ultra 9 285 3.4–3.6× faster
   streaming 4.2 million series of 128 samples (1.25× where the assignment outweighs the decoding), in RAM 1.00–1.86×;
   the same labels, medoids and costs.
+- From 2,000 series on, FasterPAM's swap evaluates candidates in parallel blocks: eight consecutive candidates a
+  thread, each matrix line read once for the eight, runs of such blocks on every thread against the state at the run's
+  start; the accepted swaps, medoids, labels and costs are the sequential sweep's. On an Intel Core Ultra 9 285 at 24
+  threads 13.6× faster at 50,000 series (k = 5) under clang and 16.7× under GCC 13.3, 3.6× and 3.7× at k = 200, 3.8×
+  at 2,000 series (MSVC 6.3×); 1.1–1.6× on one thread. The silhouette score reads eight points a pass and the Dunn
+  index runs row by row on every thread (1.3–1.4× and 30–49× faster at 24 threads); the same values.
 - The Windows wheels are built by clang-cl and carry LLVM's OpenMP runtime (`libomp.dll`), so their fill of
   equal-length series runs on the SIMD lanes, which MSVC's cl leaves scalar: on an Intel Core Ultra 9 285
   3.96–4.31× faster than the MSVC wheel with 24 threads, 8.1–8.2× on one thread; results identical.
