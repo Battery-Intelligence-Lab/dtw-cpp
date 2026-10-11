@@ -64,13 +64,18 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 - ◐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5 with the width and the rows written; design
   `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
   c72adf3b and 3fe34165 on pb/FM 10-11: identity bit for bit on three compilers, gates pass; of the assembly check's
-  FAILs Calinski-Harabasz's were fixed and six accepted by Volkan ("Accept all, time FM"); timing queued 10-11)
+  FAILs Calinski-Harabasz's were fixed and six accepted by Volkan ("Accept all, time FM"); not timed: the quiet gate
+  never passed 10-11 19:34–22:14; its bands are this Windows machine's)
 - ◐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
   decoding dominates (plan `C:/D/git/wt/tmp/MS/design.md` with its decision rule registered 10-10; Volkan: WSL
   decides, 2^25 float64 series; measured 10-10: cold, 75 % of the stream's time at 10^8 waits on its one decoder,
   predicted 5–12 %; the band-20 control failed its gate, Volkan "Accept as is": Decoding, mapped series; branch M,
-  a kit-only prototype, timed 10-11: its bands confirmed, 0.447 of the stream's cold time; a production unit is
-  Volkan's call)
+  a kit-only prototype, timed 10-11: its bands confirmed, 0.447 of the stream's cold time)
+- ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
+  IPC read piece by piece (Volkan 10-11, DECISIONS §3; design rounds 1–3 `C:/D/git/wt/tmp/MM/`, the third review's
+  blocker and should-fixes open; approval before code, code after FM's merge)
+- ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
+  MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 - ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;
   merged 6521b01e: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical); the last four
   record citations in header blocks reworded after it
