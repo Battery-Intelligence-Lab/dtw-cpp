@@ -199,10 +199,10 @@ function(run_cli_route route output_dir ram_limit expect_mmap)
         file(SIZE "${cache_path}" cache_size)
         file(SHA256 "${cache_path}" cache_sha)
         string(TOUPPER "${cache_sha}" cache_sha)
-        # The .dtwm file of the 27 series: a 48-byte header and 27*28/2 doubles.
-        if(NOT cache_size EQUAL 3072)
+        # The .dtwm file of the 27 series: a 64-byte header and 27*28/2 doubles.
+        if(NOT cache_size EQUAL 3088)
             message(FATAL_ERROR
-                "F14 ${route} mmap cache is ${cache_size} bytes, not the 3072 of a 27-series .dtwm")
+                "F14 ${route} mmap cache is ${cache_size} bytes, not the 3088 of a 27-series .dtwm")
         endif()
         message(STATUS
             "F14_CSV_CACHE route=${route} bytes=${cache_size} "

@@ -177,6 +177,27 @@ function test_set_distance_matrix_round_trips(testCase)
     verifyEqual(testCase, prob.distance_matrix(), D, 'AbsTol', 1e-10);
 end
 
+function test_a_float32_matrix_comes_back_single(testCase)
+%   MatrixDtype 'float32' stores each distance rounded to a single, and the
+%   matrix comes back at that width (Volkan 2026-10-10: the stored width).
+    rng(42);
+    data = randn(5, 20);
+    D = dtwc.compute_distance_matrix(data);
+    S = dtwc.compute_distance_matrix(data, 'MatrixDtype', 'float32');
+    verifyClass(testCase, S, 'single');
+    verifyEqual(testCase, S, single(D));
+    prob = dtwc.Problem('narrow');
+    prob.set_matrix_dtype('f32');
+    prob.set_data(data);
+    prob.set_distance_matrix(S);
+    verifyTrue(testCase, prob.is_distance_matrix_filled());
+    verifyEqual(testCase, prob.distance_matrix(), S);
+    prob.set_distance_matrix(D); % a double D is rounded as it is stored
+    verifyEqual(testCase, prob.distance_matrix(), S);
+    res = dtwc.cluster(data, 2, 'MatrixDtype', 'float32');
+    verifyClass(testCase, res.distance_matrix(), 'single');
+end
+
 function test_a_negative_entry_is_refused_and_a_nan_one_computed(testCase)
 %   v1.0.0 wrote -1 for a pair it never computed; 2.0 marks one NaN. Under every
 %   variant but Soft-DTW a negative entry is refused with the way to mark the pair.

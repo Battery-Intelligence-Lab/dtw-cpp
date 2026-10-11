@@ -219,7 +219,7 @@ void Problem::read_distance_matrix(const fs::path &distMat_path, core::NotComput
   // discarded silently at the first lookup and every distance recomputed.
   // An empty file loaded nothing, equally silently. A Problem without
   // series takes any matrix, as before.
-  core::DistanceMatrix loaded;
+  core::DistanceMatrix loaded(0, matrix_dtype_);
   io::read_csv(loaded, distMat_path, not_computed);
   if (size() != 0 && loaded.size() != size())
     throw InvalidInput(

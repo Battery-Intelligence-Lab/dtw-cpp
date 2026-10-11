@@ -6,6 +6,7 @@ output: out
 name: golden
 column: values
 dtype: float32
+matrix-dtype: float32
 ram-limit: 1073741824
 n-clusters: 5
 method: clara

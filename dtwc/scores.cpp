@@ -81,46 +81,22 @@ index_t require_two_realised(const std::vector<index_t> &counts, const char *who
   return realised;
 }
 
-} // anonymous namespace
+// The scores' loops over the packed distances at their width (`matrix`, from DistanceMatrix::visit); every sum runs
+// in double. Function templates, not generic lambdas: in a generic lambda cl 19.50 read the captures through the
+// closure, even a constexpr one, and left the loops without the unrolling and FMA contraction it gives them here, so
+// Calinski-Harabasz's last bits moved (2026-10-11).
 
-
-/**
- * @brief Calculates the silhouette score for each data point in a given clustering problem.
- *
- * The silhouette score is a measure of how similar an object is to its own cluster (cohesion)
- * compared to other clusters (separation). The score ranges from -1 to 1, where a high value
- * indicates that the object is well matched to its own cluster and poorly matched to neighboring clusters.
- *
- * @param prob The clustering problem instance, which contains the data points, cluster indices, and centroids.
- * @return std::vector<double> A vector of silhouette scores for each data point.
- *
- * @throws InvalidInput if the Problem has not been clustered.
- * @see https://en.wikipedia.org/wiki/Silhouette_(clustering) for more information on silhouette scoring.
- */
-std::vector<double> silhouette(Problem &prob)
+/// The silhouette of each point of a clustered `prob` into `silhouettes`; `counts` holds each cluster's size.
+template <typename T>
+void silhouette_of(const T *matrix, const Problem &prob, const std::vector<index_t> &counts,
+                   std::vector<double> &silhouettes)
 {
-  const auto Nb = prob.size();         //!< Number of profiles
-  const auto Nc = prob.n_clusters(); //!< Number of clusters
-
-  // v1.0.0 printed a line and returned N copies of -1, a valid-looking score.
-  prob.require_clustered("silhouette");
-
-  std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
-
-  // s(i) is only defined when a SECOND non-empty cluster supplies b(i);
-  // otherwise `min` stays at DBL_MAX and (min - a)/min evaluates to ~ +1.0 — a
-  // "perfect" score for one cluster. sklearn raises here for the same reason.
-  const auto counts = cluster_counts_checked(prob, "silhouette");
-  require_two_realised(counts, "silhouette",
-                       "b(i) is the mean distance to the nearest OTHER cluster, which does not "
-                       "exist for a single realised cluster.");
-
-  prob.fill_distance_matrix(); //!< We need all pairwise distance for silhouette score.
+  const auto Nb = prob.size();
+  const auto Nc = prob.n_clusters();
 
   // A task scores a group of points (core::for_each_point): each point's distance sum to each cluster runs over
   // the points in order.
   constexpr auto G = static_cast<index_t>(core::group_rows);
-  const double *const matrix = prob.distance_matrix().raw();
   const index_t *const label = prob.clusters_ind.data();
   auto oneTask = [&](size_t q) {
     const auto first = static_cast<index_t>(q) * G;
@@ -154,7 +130,188 @@ std::vector<double> silhouette(Problem &prob)
   };
 
   dtwc::run(oneTask, static_cast<size_t>((Nb + G - 1) / G));
+}
 
+/// The Davies-Bouldin index of a clustered `prob` with `k_realised` non-empty clusters of sizes `cluster_counts`.
+template <typename T>
+double davies_bouldin_of(const T *matrix, const Problem &prob, const std::vector<index_t> &cluster_counts,
+                         index_t k_realised)
+{
+  const auto Nc = prob.n_clusters();
+
+  // Compute within-cluster scatter S_i = (1/|C_i|) * sum_{x in C_i} d(x, medoid_i)
+  std::vector<double> scatter(Nc, 0.0);
+  for (auto i : Range(prob.size())) {
+    const index_t ci = prob.clusters_ind[i];
+    scatter[ci] += matrix[core::tri_index(i, static_cast<std::size_t>(prob.centroids_ind[ci]))];
+  }
+  for (index_t c = 0; c < Nc; ++c) {
+    if (cluster_counts[c] > 0)
+      scatter[c] /= cluster_counts[c];
+  }
+
+  // Compute DBI = (1/k) * sum_i max_{j != i} R_ij
+  // where R_ij = (S_i + S_j) / M_ij and M_ij = d(medoid_i, medoid_j).
+  double dbi = 0.0;
+  for (index_t i = 0; i < Nc; ++i) {
+    if (cluster_counts[i] == 0) continue; // skip empty clusters
+    double max_ratio = 0.0;
+    for (index_t j = 0; j < Nc; ++j) {
+      if (i == j || cluster_counts[j] == 0) continue;
+      const double d_ij = matrix[core::tri_index(static_cast<std::size_t>(prob.centroids_ind[i]),
+                                                 static_cast<std::size_t>(prob.centroids_ind[j]))];
+      const double combined_scatter = scatter[i] + scatter[j];
+      // M_ij == 0 must NOT skip the pair. Davies & Bouldin (1979) require R_ij to
+      // be strictly decreasing in M_ij with R_ij = 0 iff S_i = S_j = 0, so the
+      // M_ij -> 0 limit is +inf when the clusters have any spread and 0 in the
+      // 0/0 case (their axiom 3). Skipping it reported the worst configuration
+      // — coincident medoids with real spread — as a perfect DBI = 0.
+      double ratio;
+      if (d_ij > 0.0)
+        ratio = combined_scatter / d_ij;
+      else
+        ratio = (combined_scatter > 0.0) ? std::numeric_limits<double>::infinity() : 0.0;
+      max_ratio = std::max(max_ratio, ratio);
+    }
+    dbi += max_ratio;
+  }
+  return dbi / k_realised;
+}
+
+/// The Dunn index of a clustered `prob`.
+template <typename T>
+double dunn_of(const T *matrix, const Problem &prob)
+{
+  // Packed row r holds the pairs (r, c), c < r, in one stretch: the rows go in blocks, in parallel, each block with
+  // its own extremes. min and max pick a value and never round, so the order of the pairs changes neither.
+  const index_t N = prob.size();
+  const index_t *const label = prob.clusters_ind.data();
+  constexpr index_t block_rows = 64;
+  const index_t blocks = (N + block_rows - 1) / block_rows;
+  std::vector<double> block_min(static_cast<size_t>(blocks)), block_max(static_cast<size_t>(blocks));
+  auto block = [&](size_t b) {
+    double lo = std::numeric_limits<double>::max();
+    double hi = 0.0;
+    const index_t r1 = std::min(N, static_cast<index_t>(b + 1) * block_rows);
+    for (index_t r = static_cast<index_t>(b) * block_rows; r < r1; ++r) {
+      const T *const row = matrix + core::packed_size(static_cast<size_t>(r));
+      const index_t lr = label[r];
+      for (index_t c = 0; c < r; ++c) {
+        if (label[c] == lr)
+          hi = std::max<double>(hi, row[c]); // Same cluster: contributes to intra-cluster diameter
+        else
+          lo = std::min<double>(lo, row[c]); // Different clusters: contributes to inter-cluster distance
+      }
+    }
+    block_min[b] = lo;
+    block_max[b] = hi;
+  };
+  run_openmp(block, static_cast<size_t>(blocks));
+
+  double min_inter = std::numeric_limits<double>::max();
+  double max_intra = 0.0;
+  for (index_t b = 0; b < blocks; ++b) {
+    min_inter = std::min(min_inter, block_min[b]);
+    max_intra = std::max(max_intra, block_max[b]);
+  }
+
+  if (max_intra == 0.0)
+    return std::numeric_limits<double>::infinity();
+
+  return min_inter / max_intra;
+}
+
+/// The inertia of a clustered `prob`: each point's distance to its medoid, summed in point order.
+template <typename T>
+double inertia_of(const T *matrix, const Problem &prob)
+{
+  double total = 0.0;
+  for (auto i : Range(prob.size())) {
+    const index_t medoid = prob.centroids_ind[prob.clusters_ind[i]];
+    total += matrix[core::tri_index(i, static_cast<std::size_t>(medoid))];
+  }
+  return total;
+}
+
+/// The medoid-adapted Calinski-Harabasz index of a clustered `prob` with `k` non-empty clusters of sizes
+/// `cluster_counts`.
+template <typename T>
+double calinski_harabasz_of(const T *matrix, const Problem &prob, const std::vector<index_t> &cluster_counts,
+                            index_t k)
+{
+  const index_t N = prob.size();
+  const auto Nc = prob.n_clusters();
+
+  // Find overall medoid: point with minimum sum of distances to all other points
+  index_t overall_medoid = 0;
+  double min_row_sum = std::numeric_limits<double>::max();
+  for (index_t i = 0; i < N; ++i) {
+    double row_sum = 0.0;
+    for (index_t j = 0; j < N; ++j)
+      row_sum += matrix[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))];
+    if (row_sum < min_row_sum) {
+      min_row_sum = row_sum;
+      overall_medoid = i;
+    }
+  }
+
+  // Within-cluster scatter W = sum_c sum_{x in c} d(x, medoid_c)^2
+  double W = 0.0;
+  for (index_t i = 0; i < N; ++i) {
+    const index_t medoid_c = prob.centroids_ind[prob.clusters_ind[i]];
+    double d = matrix[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(medoid_c))];
+    W += d * d;
+  }
+
+  // Between-cluster scatter B = sum_c |c| * d(medoid_c, overall_medoid)^2
+  double B = 0.0;
+  for (index_t c = 0; c < Nc; ++c) {
+    if (cluster_counts[c] == 0) continue; // an empty cluster has no medoid
+    double d = matrix[core::tri_index(static_cast<std::size_t>(prob.centroids_ind[c]),
+                                       static_cast<std::size_t>(overall_medoid))];
+    B += static_cast<double>(cluster_counts[c]) * d * d;
+  }
+
+  if (W == 0.0)
+    return std::numeric_limits<double>::infinity();
+  return (B / (k - 1)) / (W / (N - k));
+}
+
+} // anonymous namespace
+
+
+/**
+ * @brief Calculates the silhouette score for each data point in a given clustering problem.
+ *
+ * The silhouette score is a measure of how similar an object is to its own cluster (cohesion)
+ * compared to other clusters (separation). The score ranges from -1 to 1, where a high value
+ * indicates that the object is well matched to its own cluster and poorly matched to neighboring clusters.
+ *
+ * @param prob The clustering problem instance, which contains the data points, cluster indices, and centroids.
+ * @return std::vector<double> A vector of silhouette scores for each data point.
+ *
+ * @throws InvalidInput if the Problem has not been clustered.
+ * @see https://en.wikipedia.org/wiki/Silhouette_(clustering) for more information on silhouette scoring.
+ */
+std::vector<double> silhouette(Problem &prob)
+{
+  const auto Nb = prob.size();         //!< Number of profiles
+
+  // v1.0.0 printed a line and returned N copies of -1, a valid-looking score.
+  prob.require_clustered("silhouette");
+
+  std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
+
+  // s(i) is only defined when a SECOND non-empty cluster supplies b(i);
+  // otherwise `min` stays at DBL_MAX and (min - a)/min evaluates to ~ +1.0 — a
+  // "perfect" score for one cluster. sklearn raises here for the same reason.
+  const auto counts = cluster_counts_checked(prob, "silhouette");
+  require_two_realised(counts, "silhouette",
+                       "b(i) is the mean distance to the nearest OTHER cluster, which does not "
+                       "exist for a single realised cluster.");
+
+  prob.fill_distance_matrix(); //!< We need all pairwise distance for silhouette score.
+  prob.distance_matrix().visit([&](const auto *matrix) { silhouette_of(matrix, prob, counts, silhouettes); });
   return silhouettes;
 }
 
@@ -196,42 +353,8 @@ double davies_bouldin(Problem &prob)
 
   prob.fill_distance_matrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
 
-  // Compute within-cluster scatter S_i = (1/|C_i|) * sum_{x in C_i} d(x, medoid_i)
-  std::vector<double> scatter(Nc, 0.0);
-  for (auto i : Range(prob.size())) {
-    const index_t ci = prob.clusters_ind[i];
-    scatter[ci] += prob.dist_by_ind(static_cast<index_t>(i), prob.centroids_ind[ci]);
-  }
-  for (index_t c = 0; c < Nc; ++c) {
-    if (cluster_counts[c] > 0)
-      scatter[c] /= cluster_counts[c];
-  }
-
-  // Compute DBI = (1/k) * sum_i max_{j != i} R_ij
-  // where R_ij = (S_i + S_j) / M_ij and M_ij = d(medoid_i, medoid_j).
-  double dbi = 0.0;
-  for (index_t i = 0; i < Nc; ++i) {
-    if (cluster_counts[i] == 0) continue; // skip empty clusters
-    double max_ratio = 0.0;
-    for (index_t j = 0; j < Nc; ++j) {
-      if (i == j || cluster_counts[j] == 0) continue;
-      const double d_ij = prob.dist_by_ind(prob.centroids_ind[i], prob.centroids_ind[j]);
-      const double combined_scatter = scatter[i] + scatter[j];
-      // M_ij == 0 must NOT skip the pair. Davies & Bouldin (1979) require R_ij to
-      // be strictly decreasing in M_ij with R_ij = 0 iff S_i = S_j = 0, so the
-      // M_ij -> 0 limit is +inf when the clusters have any spread and 0 in the
-      // 0/0 case (their axiom 3). Skipping it reported the worst configuration
-      // — coincident medoids with real spread — as a perfect DBI = 0.
-      double ratio;
-      if (d_ij > 0.0)
-        ratio = combined_scatter / d_ij;
-      else
-        ratio = (combined_scatter > 0.0) ? std::numeric_limits<double>::infinity() : 0.0;
-      max_ratio = std::max(max_ratio, ratio);
-    }
-    dbi += max_ratio;
-  }
-  return dbi / k_realised;
+  return prob.distance_matrix().visit(
+    [&](const auto *matrix) { return davies_bouldin_of(matrix, prob, cluster_counts, k_realised); });
 }
 
 /**
@@ -258,45 +381,7 @@ double dunn(Problem &prob)
                        "inter-cluster pair exists.");
 
   prob.fill_distance_matrix();
-
-  // Packed row r holds the pairs (r, c), c < r, in one stretch: the rows go in blocks, in parallel, each block with
-  // its own extremes. min and max pick a value and never round, so the order of the pairs changes neither.
-  const index_t N = prob.size();
-  const double *const matrix = prob.distance_matrix().raw();
-  const index_t *const label = prob.clusters_ind.data();
-  constexpr index_t block_rows = 64;
-  const index_t blocks = (N + block_rows - 1) / block_rows;
-  std::vector<double> block_min(static_cast<size_t>(blocks)), block_max(static_cast<size_t>(blocks));
-  auto block = [&](size_t b) {
-    double lo = std::numeric_limits<double>::max();
-    double hi = 0.0;
-    const index_t r1 = std::min(N, static_cast<index_t>(b + 1) * block_rows);
-    for (index_t r = static_cast<index_t>(b) * block_rows; r < r1; ++r) {
-      const double *const row = matrix + core::packed_size(static_cast<size_t>(r));
-      const index_t lr = label[r];
-      for (index_t c = 0; c < r; ++c) {
-        if (label[c] == lr)
-          hi = std::max(hi, row[c]); // Same cluster: contributes to intra-cluster diameter
-        else
-          lo = std::min(lo, row[c]); // Different clusters: contributes to inter-cluster distance
-      }
-    }
-    block_min[b] = lo;
-    block_max[b] = hi;
-  };
-  run_openmp(block, static_cast<size_t>(blocks));
-
-  double min_inter = std::numeric_limits<double>::max();
-  double max_intra = 0.0;
-  for (index_t b = 0; b < blocks; ++b) {
-    min_inter = std::min(min_inter, block_min[b]);
-    max_intra = std::max(max_intra, block_max[b]);
-  }
-
-  if (max_intra == 0.0)
-    return std::numeric_limits<double>::infinity();
-
-  return min_inter / max_intra;
+  return prob.distance_matrix().visit([&](const auto *matrix) { return dunn_of(matrix, prob); });
 }
 
 /**
@@ -314,12 +399,7 @@ double inertia(Problem &prob)
 
   prob.fill_distance_matrix();
 
-  double total = 0.0;
-  for (auto i : Range(prob.size())) {
-    const index_t medoid = prob.centroids_ind[prob.clusters_ind[i]];
-    total += prob.dist_by_ind(static_cast<index_t>(i), medoid);
-  }
-  return total;
+  return prob.distance_matrix().visit([&](const auto *matrix) { return inertia_of(matrix, prob); });
 }
 
 /**
@@ -338,7 +418,6 @@ double calinski_harabasz(Problem &prob)
   prob.require_clustered("calinski_harabasz");
 
   const index_t N = prob.size();
-  const auto Nc = prob.n_clusters();
 
   // k is the number of REALISED clusters: it sets both the (k-1) and the (N-k)
   // degrees of freedom, so an empty declared cluster would bias both.
@@ -352,38 +431,8 @@ double calinski_harabasz(Problem &prob)
 
   prob.fill_distance_matrix();
 
-  // Find overall medoid: point with minimum sum of distances to all other points
-  index_t overall_medoid = 0;
-  double min_row_sum = std::numeric_limits<double>::max();
-  for (index_t i = 0; i < N; ++i) {
-    double row_sum = 0.0;
-    for (index_t j = 0; j < N; ++j)
-      row_sum += prob.dist_by_ind(i, j);
-    if (row_sum < min_row_sum) {
-      min_row_sum = row_sum;
-      overall_medoid = i;
-    }
-  }
-
-  // Within-cluster scatter W = sum_c sum_{x in c} d(x, medoid_c)^2
-  double W = 0.0;
-  for (index_t i = 0; i < N; ++i) {
-    const index_t medoid_c = prob.centroids_ind[prob.clusters_ind[i]];
-    double d = prob.dist_by_ind(i, medoid_c);
-    W += d * d;
-  }
-
-  // Between-cluster scatter B = sum_c |c| * d(medoid_c, overall_medoid)^2
-  double B = 0.0;
-  for (index_t c = 0; c < Nc; ++c) {
-    if (cluster_counts[c] == 0) continue; // an empty cluster has no medoid
-    double d = prob.dist_by_ind(prob.centroids_ind[c], overall_medoid);
-    B += static_cast<double>(cluster_counts[c]) * d * d;
-  }
-
-  if (W == 0.0)
-    return std::numeric_limits<double>::infinity();
-  return (B / (k - 1)) / (W / (N - k));
+  return prob.distance_matrix().visit(
+    [&](const auto *matrix) { return calinski_harabasz_of(matrix, prob, cluster_counts, k); });
 }
 
 /**

@@ -419,7 +419,7 @@ static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
 /// The settings a caller names: dtwc_cl's long names in CamelCase, the words of
 /// Python's cluster() keywords.
 enum class Key {
-  Name, RamLimit, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu,
+  Name, MatrixDtype, RamLimit, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu,
   TweLambda, MvMode, MissingStrategy, SampleSize, NSamples, Seed, BatchSize, Linkage, Solver, MipGap,
   TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, LrRoot, Device, GpuPrecision, Verbose
 };
@@ -437,6 +437,7 @@ constexpr dtwc::Name<Key> distance_keys[]{
 /// own): those dtwc::apply hands a Problem, and Name; not dtype nor the file options.
 constexpr dtwc::Name<Key> config_keys[]{
   { "Name", Key::Name },
+  { "MatrixDtype", Key::MatrixDtype },
   { "RamLimit", Key::RamLimit },
   { "Method", Key::Method },
   { "Band", Key::Band },
@@ -483,6 +484,7 @@ static void set_key(dtwc::Config &c, Key key, const std::string &name, const mxA
   };
   switch (key) {
   case Key::Name: c.name = text(); break;
+  case Key::MatrixDtype: c.matrix_dtype = dtwc::parse_name(precision_names, text(), "MatrixDtype"); break;
   case Key::RamLimit: c.ram_limit = get_ram_limit(value); break;
   case Key::Method: c.method = dtwc::parse_name(dtwc::method_names, text(), "method"); break;
   case Key::Band: c.band = get_exact_int(value, key_name); break;
@@ -881,23 +883,27 @@ static void cmd_Problem_get_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   prob.fill_distance_matrix(); // a no-op once filled, as Python's distance_matrix()
 
+  // Symmetric, so the row-major expansion is MATLAB's column-major array; a float32 matrix comes back single.
   const auto &dm = prob.distance_matrix();
-  size_t N = dm.size();
-  mxArray *result = mxCreateDoubleMatrix(N, N, mxREAL);
-  double *out = mxGetDoubles(result);
-
-  for (size_t i = 0; i < N; ++i)
-    for (size_t j = 0; j < N; ++j)
-      out[i + j * N] = dm.get(i, j);  // column-major
-
-  plhs[0] = result;
+  const size_t N = dm.size();
+  if (dm.width() == dtwc::core::Precision::Float32) {
+    plhs[0] = mxCreateNumericMatrix(N, N, mxSINGLE_CLASS, mxREAL);
+    dtwc::io::to_full_matrix(dm, mxGetSingles(plhs[0]));
+  } else {
+    plhs[0] = mxCreateDoubleMatrix(N, N, mxREAL);
+    dtwc::io::to_full_matrix(dm, mxGetDoubles(plhs[0]));
+  }
 }
 
 static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_distance_matrix requires handle and matrix.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
-  require_real(prhs[2], "distance_matrix");
+  const bool single = mxIsSingle(prhs[2]); // a double or single D, stored at the matrix's width
+  if (single)
+    require_real<float>(prhs[2], "distance_matrix");
+  else
+    require_real(prhs[2], "distance_matrix");
   size_t N = mxGetM(prhs[2]);
   if (N != mxGetN(prhs[2]))
     throw std::invalid_argument("Distance matrix must be square.");
@@ -906,10 +912,15 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
 
   auto &dm = prob.writable_distance_matrix();
   dm.resize(N);
-  const double *data = mxGetDoubles(prhs[2]);
-  for (size_t i = 0; i < N; ++i)
-    for (size_t j = i; j < N; ++j)
-      dm.set(i, j, data[i + j * N]);  // column-major
+  const auto copy = [&](const auto *data) {
+    for (size_t i = 0; i < N; ++i)
+      for (size_t j = i; j < N; ++j)
+        dm.set(i, j, data[i + j * N]); // column-major
+  };
+  if (single)
+    copy(mxGetSingles(prhs[2]));
+  else
+    copy(mxGetDoubles(prhs[2]));
   // A complete matrix is filled; NaN entries are computed on first use.
   if (dm.all_computed("Problem.set_distance_matrix", prob.variant_params().variant == dtwc::core::DTWVariant::SoftDTW,
                       "Mark a pair still to compute with NaN: D(D < 0) = NaN."))
@@ -1079,6 +1090,14 @@ static void cmd_Problem_get_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
              mxCreateDoubleScalar(static_cast<double>(options.save_interval)));
   mxSetField(s, 0, "enabled", mxCreateLogicalScalar(options.enabled));
   plhs[0] = s;
+}
+
+/// set_matrix_dtype(name) — the width of the distance matrix's values, by the `--matrix-dtype` names.
+static void cmd_Problem_set_matrix_dtype(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("Problem_set_matrix_dtype requires handle and dtype name.");
+  require_char(prhs[2], "dtype");
+  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))
+    ->set_matrix_dtype(dtwc::parse_name(dtwc::core::precision_names, get_string(prhs[2]), "MatrixDtype"));
 }
 
 /// set_gpu_precision(name) — what a GPU computes in, by the `--gpu-precision` names.
@@ -1482,6 +1501,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_set_mip_settings") cmd_Problem_set_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_mip_settings") cmd_Problem_get_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_gpu_precision") cmd_Problem_set_gpu_precision(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Problem_set_matrix_dtype") cmd_Problem_set_matrix_dtype(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_checkpoint") cmd_Problem_set_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_checkpoint") cmd_Problem_get_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_n_clusters") cmd_Problem_n_clusters(nlhs, plhs, nrhs, prhs);

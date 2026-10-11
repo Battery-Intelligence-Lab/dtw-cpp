@@ -89,6 +89,34 @@ nb::ndarray<nb::numpy, T> adopt_as_ndarray(
   return nb::ndarray<nb::numpy, T>(ptr, shape, owner);
 }
 
+/// Problem.set_distance_matrix for an NxN array of T, float64 or float32: each value stored at the matrix's width.
+template <typename T>
+void set_distance_matrix(dtwc::Problem &p, nb::ndarray<const T, nb::ndim<2>, nb::c_contig> dm)
+{
+  const size_t n = dm.shape(0);
+  if (dm.shape(1) != n)
+    throw dtwc::InvalidInput("Expected square distance matrix");
+  if (n != p.size())
+    throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
+  // Values written into a mapped matrix would persist in its file under the
+  // Problem's fingerprint, whatever they were computed from.
+  if (p.distance_matrix().is_mapped())
+    throw dtwc::InvalidInput("Problem.set_distance_matrix: this Problem's distance matrix is "
+                             "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
+                             "kept in RAM only; call refresh_distance_matrix() first.");
+  auto &mat = p.writable_distance_matrix();
+  mat.resize(n);
+  const auto *data = dm.data();
+  for (size_t i = 0; i < n; ++i)
+    for (size_t j = i; j < n; ++j)
+      mat.set(i, j, data[i * n + j]);
+  // A complete matrix is filled; NaN entries are computed on first use.
+  if (mat.all_computed("Problem.set_distance_matrix",
+                       p.variant_params().variant == dtwc::core::DTWVariant::SoftDTW,
+                       "Mark a pair still to compute with NaN: D[D < 0] = np.nan."))
+    p.fill_distance_matrix();
+}
+
 /// The range check every binding runs before it hands an index to C++ that does
 /// not check it (Data::series, Data::name, Problem::dist_by_ind and
 /// centroids_ind[clusters_ind[i]] sit in hot loops): an index outside [0, n) is
@@ -567,6 +595,8 @@ NB_MODULE(_dtwcpp_core, m) {
   def_named(config, "solver", [](Config &c) -> dtwc::Solver & { return c.solver; }, dtwc::solver_names);
   def_named(config, "gpu_precision", [](Config &c) -> dtwc::GpuPrecision & { return c.gpu_precision; },
             dtwc::gpu_precision_names);
+  def_named(config, "matrix_dtype", [](Config &c) -> dtwc::core::Precision & { return c.matrix_dtype; },
+            dtwc::core::precision_names);
   def_field<double>(config, "wdtw_g", [](Config &c) -> double & { return c.variant.wdtw_g; });
   def_field<double>(config, "adtw_penalty", [](Config &c) -> double & { return c.variant.adtw_penalty; });
   def_field<double>(config, "sdtw_gamma", [](Config &c) -> double & { return c.variant.sdtw_gamma; });
@@ -883,6 +913,17 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("set_gpu_precision", &dtwc::Problem::set_gpu_precision, "precision"_a,
          "What a GPU computes in: GpuPrecision.Auto (the default; FP32 on consumer\n"
          "CUDA GPUs and on Metal), FP32 or FP64. A change drops the distance matrix.")
+    .def_prop_rw("matrix_dtype",
+                 [](const dtwc::Problem &p) {
+                   return std::string(dtwc::name_of(dtwc::core::precision_names, p.matrix_dtype()));
+                 },
+                 [](dtwc::Problem &p, const std::string &text) {
+                   p.set_matrix_dtype(dtwc::parse_name(dtwc::core::precision_names, text, "matrix_dtype"));
+                 },
+                 "The distance matrix's value type: 'float64' (the default) or 'float32', half\n"
+                 "the memory, each distance rounded to a float (costs and scores move by about\n"
+                 "6e-8 of themselves; medoids and labels can change). distance_matrix() returns\n"
+                 "it at this width. A change drops the distance matrix.")
     // ---- config properties (canonical names) ----
     .def_prop_rw("method", &dtwc::Problem::method, &dtwc::Problem::set_method)
     .def_prop_ro("solver", &dtwc::Problem::solver,
@@ -1030,50 +1071,37 @@ NB_MODULE(_dtwcpp_core, m) {
     }, "Compute all pairwise DTW distances.")
     // Always a COPY: the C++ store keeps only the upper triangle, so a zero-copy
     // view into a full NxN layout is structurally impossible.
-    .def("distance_matrix", [](dtwc::Problem &prob) {
+    .def("distance_matrix", [](dtwc::Problem &prob) -> nb::object {
            // Size is only known after the fill, so both happen inside one release.
-           std::vector<double> values;
+           std::vector<double> f64;
+           std::vector<float> f32;
            size_t n = 0;
+           bool narrow = false;
            {
              nb::gil_scoped_release release;
              prob.fill_distance_matrix();
              const auto &dm = prob.distance_matrix(); // on the heap or mapped
              n = dm.size();
-             values = dtwc::io::to_full_matrix(dm); // row-major, expanded from the triangle
+             // Row-major, expanded from the triangle, at the matrix's width.
+             narrow = dm.width() == dtwc::core::Precision::Float32;
+             if (narrow)
+               f32 = dtwc::io::to_full_matrix<float>(dm);
+             else
+               f64 = dtwc::io::to_full_matrix<double>(dm);
            }
-           return adopt_as_ndarray(std::move(values), {n, n});
+           if (narrow)
+             return nb::cast(adopt_as_ndarray(std::move(f32), {n, n}));
+           return nb::cast(adopt_as_ndarray(std::move(f64), {n, n}));
          },
          "Fill (if needed) and return the full NxN distance matrix as a numpy\n"
-         "array (independent copy; use set_distance_matrix to write).")
-    .def("set_distance_matrix",
-         [](dtwc::Problem &p,
-            nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
-           const size_t n = dm.shape(0);
-           if (dm.shape(1) != n)
-             throw dtwc::InvalidInput("Expected square distance matrix");
-           if (n != p.size())
-             throw dtwc::InvalidInput("Matrix size doesn't match Problem data size");
-           // Values written into a mapped matrix would persist in its file under the
-           // Problem's fingerprint, whatever they were computed from.
-           if (p.distance_matrix().is_mapped())
-             throw dtwc::InvalidInput("Problem.set_distance_matrix: this Problem's distance matrix is "
-                                      "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
-                                      "kept in RAM only; call refresh_distance_matrix() first.");
-           auto &mat = p.writable_distance_matrix();
-           mat.resize(n);
-           const double *data = dm.data();
-           for (size_t i = 0; i < n; ++i)
-             for (size_t j = i; j < n; ++j)
-               mat.set(i, j, data[i * n + j]);
-           // A complete matrix is filled; NaN entries are computed on first use.
-           if (mat.all_computed("Problem.set_distance_matrix",
-                                p.variant_params().variant == dtwc::core::DTWVariant::SoftDTW,
-                                "Mark a pair still to compute with NaN: D[D < 0] = np.nan."))
-             p.fill_distance_matrix();
-         }, "dm"_a,
-         "Load a precomputed NxN distance matrix (e.g. from a GPU compute). NaN marks\n"
-         "a pair to compute; a ±inf entry, and a negative one under any variant but\n"
-         "Soft-DTW, raises InvalidInput naming the pair.")
+         "array of the matrix's dtype, float64 or float32 (matrix_dtype); an\n"
+         "independent copy (use set_distance_matrix to write).")
+    .def("set_distance_matrix", set_distance_matrix<double>, "dm"_a,
+         "Load a precomputed NxN distance matrix (e.g. from a GPU compute), float64 or\n"
+         "float32, stored at the matrix's width (matrix_dtype). NaN marks a pair to\n"
+         "compute; a ±inf entry, and a negative one under any variant but Soft-DTW,\n"
+         "raises InvalidInput naming the pair.")
+    .def("set_distance_matrix", set_distance_matrix<float>, "dm"_a)
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
     .def("read_distance_matrix",
          [](dtwc::Problem &p, const std::filesystem::path &path, const std::string &not_computed) {

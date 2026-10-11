@@ -138,7 +138,7 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
   if (method == Method::OneBatch) return std::nullopt;
   // The automatic budget is 0, no limit, in a build without llfio: it maps nothing.
   const std::size_t budget = config.ram_limit != 0 ? config.ram_limit : core::available_memory();
-  const std::size_t matrix_bytes = core::packed_size(prob.size()) * sizeof(double);
+  const std::size_t matrix_bytes = core::packed_size(prob.size()) * core::value_bytes(config.matrix_dtype);
   if (budget == 0 || matrix_bytes <= (budget > series_bytes ? (budget - series_bytes) / 2 : 0)) return std::nullopt;
   const std::string over = "the distance matrix's " + std::to_string(matrix_bytes)
                            + " bytes exceed half of what the series leave of --ram-limit="
@@ -263,7 +263,8 @@ Outcome execute(const Config &config, std::optional<Data> data)
     std::optional<algorithms::detail::ClaraPlan> sample;
     if (n_series > 0 && resolve_method(method, config.device, n_series) == Method::CLARA) {
       sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      resident_bytes += std::max(core::packed_size(static_cast<std::size_t>(sample->sample_size)) * sizeof(double),
+      resident_bytes += std::max(core::packed_size(static_cast<std::size_t>(sample->sample_size))
+                                   * core::value_bytes(config.matrix_dtype),
                                  algorithms::detail::clara_pass_bytes(*sample, static_cast<std::size_t>(clara.n_samples)));
     }
     // An explicit --ram-limit refuses a route that cannot honour it. The automatic

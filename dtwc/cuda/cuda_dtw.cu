@@ -879,6 +879,16 @@ std::string cuda_device_info(int device_id)
 
 namespace {
 
+/// Each double of `in` rounded to the nearest float (cvt.rn.f32.f64, IEEE as the host's static_cast): a launch's
+/// span for a float32 matrix, which then crosses PCIe at half the bytes. inf stays inf, and so does a distance of
+/// 2^128 - 2^103 or more, which the fill refuses after it.
+__global__ void narrow_kernel(const double *in, float *out, std::int64_t count)
+{
+  const std::int64_t stride = static_cast<std::int64_t>(gridDim.x) * blockDim.x;
+  for (std::int64_t k = static_cast<std::int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; k < count; k += stride)
+    out[k] = static_cast<float>(in[k]);
+}
+
 template <typename T>
 struct CachedHostBuffer {
   size_t capacity = 0;
@@ -914,12 +924,14 @@ struct DTWLaunchWorkspace {
   size_t series_capacity = 0;
   size_t length_capacity = 0;
   size_t out_capacity = 0;
+  size_t out32_capacity = 0;
   size_t counter_capacity = 0;
   size_t scratch_capacity = 0;
   CachedHostBuffer<T> host_series;
   CudaPtr<T> d_series;
   CudaPtr<int> d_lengths;
   CudaPtr<double> d_out; ///< one launch's slots
+  CudaPtr<float> d_out32; ///< d_out rounded to floats, for a float32 matrix
   CudaPtr<int> d_counter;
   CudaPtr<T> d_scratch; ///< the global wavefront's anti-diagonals, a slice per block
   CudaStream stream;
@@ -932,6 +944,7 @@ struct DTWLaunchWorkspace {
       d_series.reset();
       d_lengths.reset();
       d_out.reset();
+      d_out32.reset();
       d_counter.reset();
       d_scratch.reset();
       stream.reset();
@@ -940,6 +953,7 @@ struct DTWLaunchWorkspace {
       series_capacity = 0;
       length_capacity = 0;
       out_capacity = 0;
+      out32_capacity = 0;
       counter_capacity = 0;
       scratch_capacity = 0;
       device_id = new_device_id;
@@ -969,7 +983,8 @@ void ensure_dtw_device_capacity(
     size_t length_elems,
     size_t out_elems,
     size_t scratch_elems,
-    size_t counter_elems)
+    size_t counter_elems,
+    size_t out32_elems = 0)
 {
   if (workspace.series_capacity < series_elems) {
     workspace.d_series = cuda_alloc<T>(series_elems);
@@ -982,6 +997,10 @@ void ensure_dtw_device_capacity(
   if (workspace.out_capacity < out_elems) {
     workspace.d_out = cuda_alloc<double>(out_elems);
     workspace.out_capacity = out_elems;
+  }
+  if (workspace.out32_capacity < out32_elems) {
+    workspace.d_out32 = cuda_alloc<float>(out32_elems);
+    workspace.out32_capacity = out32_elems;
   }
   if (workspace.scratch_capacity < scratch_elems) {
     workspace.d_scratch = cuda_alloc<T>(scratch_elems);
@@ -1121,9 +1140,10 @@ struct Launches {
 /// Fill @p out with the distance of every pair, computed in T. The pairs run
 /// in launches of at most kMaxPairsPerLaunch consecutive pairs, whose first
 /// pair is an int64 offset; a launch writes its span of packed slots on the
-/// device, and the span is copied as it is into out.raw(), on the heap or
-/// mapped, so the device holds one launch's output whatever N is. No launch
-/// writes a diagonal slot: the host zeroes the diagonal.
+/// device, and the span is copied into out's values, on the heap or mapped:
+/// as it is into a float64 matrix, rounded to floats on the device first
+/// (narrow_kernel) for a float32 one. So the device holds one launch's output
+/// whatever N is. No launch writes a diagonal slot: the host zeroes the diagonal.
 ///
 /// Pair indices are decoded on the device (decode_pair), so no pair list is
 /// built or uploaded. GPU timing is measured with CUDA events around the
@@ -1145,8 +1165,9 @@ void launch_dtw_kernel(
   // matrix, so a device that cannot hold them refuses the fill first. A
   // launch's span holds its pairs and one diagonal slot per row it crosses.
   auto &workspace = get_dtw_launch_workspace<T>(device_id);
-  ensure_dtw_device_capacity(workspace, N * max_L, N, static_cast<size_t>(chunk) + N,
-                             launches.scratch_elems(), launches.counter_elems());
+  const size_t span_elems = static_cast<size_t>(chunk) + N;
+  ensure_dtw_device_capacity(workspace, N * max_L, N, span_elems, launches.scratch_elems(), launches.counter_elems(),
+                             out.width() == core::Precision::Float32 ? span_elems : 0);
 
   // The series in upload order, the last first (see packed_slot).
   const size_t series_bytes = N * max_L * sizeof(T);
@@ -1186,8 +1207,20 @@ void launch_dtw_kernel(
     const auto span = static_cast<size_t>(end - first_slot);
     CUDA_CHECK(cudaMemsetAsync(workspace.d_out.get(), 0, span * sizeof(double), stream));
     launches(workspace, static_cast<int>(N), first, count, first_slot, stream);
-    CUDA_CHECK(cudaMemcpyAsync(out.raw() + first_slot, workspace.d_out.get(),
-                                span * sizeof(double), cudaMemcpyDeviceToHost, stream));
+    out.visit([&](auto *values) {
+      using V = std::remove_pointer_t<decltype(values)>;
+      const void *slots = workspace.d_out.get();
+      if constexpr (std::is_same_v<V, float>) {
+        constexpr int block = 256;
+        const auto grid = static_cast<unsigned>(
+          std::min<std::int64_t>((static_cast<std::int64_t>(span) + block - 1) / block, 1 << 16));
+        narrow_kernel<<<grid, block, 0, stream>>>(workspace.d_out.get(), workspace.d_out32.get(),
+                                                  static_cast<std::int64_t>(span));
+        CUDA_CHECK(cudaGetLastError());
+        slots = workspace.d_out32.get();
+      }
+      CUDA_CHECK(cudaMemcpyAsync(values + first_slot, slots, span * sizeof(V), cudaMemcpyDeviceToHost, stream));
+    });
     end = first_slot;
   }
 

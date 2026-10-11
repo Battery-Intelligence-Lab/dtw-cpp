@@ -21,11 +21,13 @@
 // include path and deliberately never the repo root, because on a
 // case-insensitive filesystem the root VERSION file shadows <version>.
 #include "warping.hpp"
+#include "core/distance_matrix.hpp"
 #include "core/msm.hpp"
 #include "core/twe.hpp"
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 
 namespace {
@@ -122,6 +124,24 @@ float dtwc_probe_lanes_f32(const float *x, std::size_t nx, const std::span<const
                                                            dtwc::core::LanesCell{}))
     sum += d;
   return sum;
+}
+
+// The packed matrix read eight rows a point (core::for_each_point: FasterPAM's k = 1, silhouette), at both widths:
+// a float32 matrix's values are widened as they are read.
+double dtwc_probe_rows_f64(const double *packed, std::int64_t n, std::int64_t a, double *sums)
+{
+  dtwc::core::for_each_point(packed, n, a, [sums](std::int64_t, const double *v) {
+    for (int g = 0; g < 8; ++g) sums[g] += v[g];
+  });
+  return sums[0];
+}
+
+double dtwc_probe_rows_f32(const float *packed, std::int64_t n, std::int64_t a, double *sums)
+{
+  dtwc::core::for_each_point(packed, n, a, [sums](std::int64_t, const double *v) {
+    for (int g = 0; g < 8; ++g) sums[g] += v[g];
+  });
+  return sums[0];
 }
 
 } // extern "C"

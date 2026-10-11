@@ -67,10 +67,15 @@ void kmeanspp_from_seed(Problem &prob, std::uint64_t seed)
   prob.fill_distance_matrix(); // the seeding below only reads it
 
   std::mt19937_64 rng(seed);
-  prob.set_clusters(core::kmedoids_pp(
-    prob.size(), Nc, rng,
-    [&prob](index_t c, index_t i) { return prob.dist_by_ind(c, i); },
-    "init::Kmeanspp"));
+  // N·k reads: from the typed values (fast_pam's BUILD).
+  prob.set_clusters(prob.distance_matrix().visit([&](const auto *matrix) {
+    return core::kmedoids_pp(
+      prob.size(), Nc, rng,
+      [matrix](index_t c, index_t i) {
+        return matrix[core::tri_index(static_cast<std::size_t>(c), static_cast<std::size_t>(i))];
+      },
+      "init::Kmeanspp");
+  }));
 }
 
 } // namespace

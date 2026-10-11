@@ -157,12 +157,12 @@ expect_loud_failure(results_blocked_checkpoint_kept
     NAMES "loud_labels.csv"
     COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_blocked"
             --checkpoint "${WORK_ROOT}/checkpoint_kept")
-# The checkpoint of the 6 series: a 48-byte header and 21 packed doubles.
+# The checkpoint of the 6 series: a 64-byte header and 21 packed doubles.
 set(kept_size 0)
 if(EXISTS "${WORK_ROOT}/checkpoint_kept/loud.dtwm")
     file(SIZE "${WORK_ROOT}/checkpoint_kept/loud.dtwm" kept_size)
 endif()
-if(NOT kept_size EQUAL 216)
+if(NOT kept_size EQUAL 232)
     message(FATAL_ERROR
         "results_blocked_checkpoint_kept: the failing result write lost the "
         "distance checkpoint\nstderr:\n${loud_stderr}")

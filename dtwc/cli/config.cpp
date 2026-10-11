@@ -171,6 +171,9 @@ void bind(CLI::App &app, Config &config)
   key(app, "--dtype,--data-precision,--data-type", config.dtype, core::precision_names, "dtype",
       "Series data type: float64 (default, full precision) or float32 (2x memory saving) (aliases: f32, f64, "
       "float, double)");
+  key(app, "--matrix-dtype", config.matrix_dtype, core::precision_names, "matrix dtype",
+      "Distance matrix value type: float64 (default) or float32 (half the memory; each distance rounded to a float, "
+      "which can change costs, scores and medoids) (aliases: f32, f64, float, double)");
   app.add_option_function<std::string>(
        "--ram-limit", [&config](const std::string &text) { config.ram_limit = parse_ram_limit(text, "--ram-limit"); },
        "Memory the run may use (e.g. 2G, 500M, 128G); 0: automatic, the memory available. It decides when the "

@@ -28,6 +28,7 @@
 #include "../io/parse_number.hpp" // exact, locale-free floating-point parsing
 #include "distance_matrix.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <charconv>
@@ -50,7 +51,7 @@ inline void preflight_distance_matrix_csv(const DistanceMatrix &matrix)
 {
   constexpr std::uint64_t exponent_mask = UINT64_C(0x7ff0000000000000);
   constexpr std::uint64_t fraction_mask = UINT64_C(0x000fffffffffffff);
-  const size_t n = matrix.size();
+  const size_t n = matrix.rows_written(); // a pair in a row never written is not computed
   for (size_t i = 0; i < n; ++i) {
     for (size_t j = 0; j < n; ++j) {
       const auto bits = std::bit_cast<std::uint64_t>(matrix.get(i, j));
@@ -96,12 +97,14 @@ inline std::string_view distance_matrix_csv_token(
 inline std::ostream &write_distance_matrix_csv_preflighted(std::ostream &os,
                                                            const DistanceMatrix &dm)
 {
-  const size_t n = dm.size();
+  const size_t n = dm.size(), rows = dm.rows_written();
   std::array<char, 64> number{};
   for (size_t i = 0; i < n; ++i) {
     for (size_t j = 0; j < n; ++j) {
       if (j > 0) os.put(',');
-      const auto token = distance_matrix_csv_token(dm.get(i, j), number);
+      // A pair in a row never written (a mapped matrix's) is not computed: an empty field.
+      const double value = std::max(i, j) < rows ? dm.get(i, j) : std::numeric_limits<double>::quiet_NaN();
+      const auto token = distance_matrix_csv_token(value, number);
       if (!token.empty())
         os.write(token.data(), static_cast<std::streamsize>(token.size()));
       // uncomputed -> empty field
@@ -215,23 +218,30 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
     }
 }
 
-/// Expand packed triangular storage to a full N×N matrix, in row-major order.
-/// Useful for numpy/MATLAB export from the binding layer.
-///
-/// Returned as a flat `std::vector<double>` rather than an Eigen matrix.
-/// The matrix is symmetric, so row- and column-major layouts are byte-identical
-/// and every caller already copied it straight into a `std::vector<double>` —
-/// returning one removes an N×N copy instead of adding one.
-inline std::vector<double> to_full_matrix(const core::DistanceMatrix &dm)
+/// Expand packed triangular storage into `full`, N×N values in row-major order:
+/// the NumPy and MATLAB exports. The matrix is symmetric, so row- and column-major
+/// layouts are byte-identical. Each value at T: a float32 matrix's exported as
+/// float is exact, a float64 one's as double too. A pair never computed, and every
+/// pair of a row never written (a mapped matrix's), is NaN.
+template <typename T>
+inline void to_full_matrix(const core::DistanceMatrix &dm, T *full)
 {
-  const size_t n = dm.size();
-  std::vector<double> full(n * n, 0.0);
+  const size_t n = dm.size(), rows = dm.rows_written();
   for (size_t i = 0; i < n; ++i)
     for (size_t j = 0; j <= i; ++j) {
-      const double v = dm.get(i, j);
+      const T v = i < rows ? static_cast<T>(dm.get(i, j)) : std::numeric_limits<T>::quiet_NaN();
       full[i * n + j] = v;
       full[j * n + i] = v;
     }
+}
+
+/// As above, into a flat `std::vector<T>` rather than an Eigen matrix: every
+/// caller copied it straight into one, so returning one removes an N×N copy.
+template <typename T = double>
+inline std::vector<T> to_full_matrix(const core::DistanceMatrix &dm)
+{
+  std::vector<T> full(dm.size() * dm.size());
+  to_full_matrix(dm, full.data());
   return full;
 }
 

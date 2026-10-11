@@ -170,7 +170,7 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
   const std::size_t M = core::packed_size(static_cast<std::size_t>(N)); // incl. diagonal slots
   std::vector<char> computed(M, 0); // first-touch flag per pair (dedup + exact-call count)
   // The pairs computed so far, when the Problem's matrix does not hold them.
-  core::DistanceMatrix cache(prob.is_distance_matrix_filled() ? 0 : static_cast<std::size_t>(N));
+  core::DistanceMatrix cache(prob.is_distance_matrix_filled() ? 0 : static_cast<std::size_t>(N), prob.matrix_dtype());
 
   // Exact DTW with dedup. computed[p] and the cache slot are written by exactly
   // one thread per pair (each unordered pair is visited by a single owner in
@@ -349,6 +349,10 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
     const index_t c = center_of_label[label[i]];
     if (i != c) total_cost += exact(i, c);
   }
+  // A float32 cache stores a distance beyond its range as inf, which no result may rest on.
+  if (cache.width() == core::Precision::Float32)
+    if (const auto [i, j] = cache.first_infinite(0, cache.size()); i < cache.size())
+      core::refuse_float32_range("tadpole", i, j, distance(static_cast<index_t>(j), static_cast<index_t>(i)));
 
   if (stats) {
     std::size_t uniq = 0;

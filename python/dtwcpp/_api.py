@@ -376,7 +376,9 @@ def cluster(data, k, **keys):
     ``sdtw_gamma``, ``msm_c``, ``twe_nu``, ``twe_lambda``), ``mv_mode``,
     ``missing_strategy``, ``max_iter``, ``n_init``, ``seed``, ``sample_size``,
     ``n_samples``, ``batch_size``, ``linkage``, ``dc``, ``solver`` and the MIP
-    settings, ``gpu_precision``, ``name``, ``verbose``, ``ram_limit`` (the
+    settings, ``gpu_precision``, ``matrix_dtype`` (``"float32"`` stores the
+    distance matrix at half the memory, each distance rounded to a float),
+    ``name``, ``verbose``, ``ram_limit`` (the
     memory the run may use, bytes or a size such as ``"8G"``; 0, the default,
     is what the process may use) — read and checked by C++; an unknown key
     raises :class:`dtwcpp.InvalidInput`. ``method`` is

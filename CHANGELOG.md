@@ -66,6 +66,13 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `DataLoader::dtype` and `dtwc::load(..., dtype)`, Python `dtwcpp.load(..., dtype="float32")`, MATLAB
   `dtwc.load(..., 'Dtype', 'float32')`. Each reader rounds the double it reads and holds no double copy; so does
   `readFile<float>` (v1.0.0 rounded the text to `float` directly: one ulp apart in a rare halfway case).
+- The distance matrix stored as `float`, half the memory, whatever the series' type: `dtwc_cl --matrix-dtype float32`,
+  C++ `Problem::set_matrix_dtype` and `Config::matrix_dtype`, Python `cluster(..., matrix_dtype="float32")`,
+  `Problem.matrix_dtype` and `compute_distance_matrix(..., matrix_dtype=)`, MATLAB `'MatrixDtype'` and
+  `set_matrix_dtype`; CLARA's sample matrices and TADPole's cache follow it. Each distance is rounded once to the
+  nearest float (at most 2^-24 of it), so costs and scores move by about as much and medoids and labels can change
+  where two choices differ by less; a distance beyond float32's range (3.4e38) is refused. Every sum over the matrix
+  stays in double, and its exports keep its type (NumPy `float32`, MATLAB `single`).
 - Methods FastPAM (FasterPAM), FastCLARA, OneBatchPAM, hierarchical, TADPole and LR-core (an exact Lagrangian branch and
   bound) beside Lloyd's k-medoids and the MIP; `--method auto`: FastPAM to 5,000 series, then FastCLARA (GPU: FastPAM).
 - LR-core's root bound is the subgradient root in every language and build; `--lr-root kelley` (Python `lr_root`,
@@ -143,6 +150,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   sample's PAM, then the medoids, 8 bytes of labels and of nearest distance per row and sample, one decode and a batch
   of row groups, and after the stream every series' name and label: a smaller limit is refused, naming the bytes,
   where it streamed before.
+- `.dtwm` files are version 5: a 64-byte header that adds the bytes of a value (8, or 4 for `matrix_dtype` float32)
+  and the rows written. Version-4 files, from earlier 2.0 builds, are still read and mapped as float64; a file of the
+  other `matrix_dtype` is refused (`InvalidInput`, naming the one that reads it), never converted.
 
 ## Performance
 
@@ -175,6 +185,10 @@ Soft-DTW, Python or CUDA), on the machine named.
   against 0.87–1.18; GCC's fills of 1,000 series run 5–11 % slower. A mapped matrix fills slab by slab, the next slab
   read ahead and the finished one written back: at 45,000 series 22.6× faster in a 4 GiB cgroup and at least 37× in a
   2 GiB one. Bit for bit, but for GCC's squared L2 (the multiply-add caveat above), whose clusterings were unchanged.
+- A new mapped `.dtwm` file is not filled with NaN before its fill: its header records the rows written, which the fill
+  advances once they are on the disk, so creating the file and reading its NaN back go. On an Intel Core Ultra 9 285
+  (GCC 13.3, WSL) the fill of 45,000 series in a 4 GiB cgroup runs «S2_F64»× faster, «S2_F32»× more with
+  `--matrix-dtype float32`; the same distances.
 - FastCLARA reads its series once: all samples are drawn first and one pass assigns every series to the medoids of
   every sample, where each sample took a pass of its own. Streamed from Parquet, the sampled rows are read once and
   the file once more, its next row groups decoding while the current ones are assigned (before: per sample, a pass of

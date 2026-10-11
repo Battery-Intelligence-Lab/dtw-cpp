@@ -82,7 +82,7 @@ static void BM_cuda_distanceMatrix(benchmark::State &state)
 
   for (auto _ : state) {
     (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
-    benchmark::DoNotOptimize(matrix.raw());
+    matrix.visit([](auto *values) { benchmark::DoNotOptimize(values); });
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);
@@ -156,7 +156,7 @@ static void BM_cuda_scaling_N(benchmark::State &state)
 
   for (auto _ : state) {
     (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
-    benchmark::DoNotOptimize(matrix.raw());
+    matrix.visit([](auto *values) { benchmark::DoNotOptimize(values); });
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);
@@ -189,7 +189,7 @@ static void BM_cuda_scaling_L(benchmark::State &state)
 
   for (auto _ : state) {
     (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
-    benchmark::DoNotOptimize(matrix.raw());
+    matrix.visit([](auto *values) { benchmark::DoNotOptimize(values); });
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);
@@ -230,7 +230,7 @@ static void BM_cuda_structuredDistanceMatrix(benchmark::State &state)
 
   for (auto _ : state) {
     (void)dtwc::cuda::compute_distance_matrix_cuda(series, opts, matrix);
-    benchmark::DoNotOptimize(matrix.raw());
+    matrix.visit([](auto *values) { benchmark::DoNotOptimize(values); });
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);

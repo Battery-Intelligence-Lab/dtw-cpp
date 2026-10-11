@@ -291,7 +291,7 @@ TEST_CASE("run's mmap storage with --checkpoint maps the checkpoint file", "[cli
   config.checkpoint = (scratch.path / "ckpt").string();
 #ifdef DTWC_HAS_MMAP
   CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
-  CHECK(fs::file_size(scratch.path / "ckpt" / "checkpoint.dtwm") == 48 + 6 * sizeof(double));
+  CHECK(fs::file_size(scratch.path / "ckpt" / "checkpoint.dtwm") == 64 + 6 * sizeof(double));
 #else
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("needs a mapped matrix"));
 #endif
