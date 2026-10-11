@@ -1,57 +1,64 @@
-# Handoff — 2026-10-11 (Mac) — synced after the Windows units: gates at 6ae7824f, pb/FM's Metal path proven
+# Handoff — 2026-10-11/12 (Mac) — the Mac after the Windows units: gates, Arrow 26, sanitizers, FM's Metal path, timing
 
 ## Base
 
-- `design-2.0` from 6ae7824f (Volkan pushed the Windows session; the Mac pulled it 22:45); HEAD = this file's commit,
-  local only; tree clean. `origin/pb/FM` = 3fe34165; no local `pb/FM` branch.
-- `.claude/worktrees/mac-FM/`: 6ae7824f with `origin/pb/FM` merged and NOT committed (`git merge --no-ff --no-commit`),
-  with its own `build/` and `build-matlab/`. Remove it with `git worktree remove -f -f` once FM is merged.
-- Kept `handoff-2026-10-10-sw-fm-ms.md` (Windows); deleted the 10-09 one.
+- `design-2.0` local only, ahead of `origin/design-2.0` 6ae7824f by this session's commits (records 1d96c83c, the
+  parity limit 292defe3, the codegen gate 13d23225, this file's commit); tree clean.
+- `pb/FM-metal` dcc847be (local) on `origin/pb/FM` 3fe34165: FM's Metal float32 test. Push both (Volkan's).
+- Worktrees (`.claude/worktrees/`): `mac-FM` = 6ae7824f + pb/FM merged, NOT committed; `FM-metal` (pb/FM-metal). In the
+  session scratchpad `mac1011/agents/E/`: `src-base` 263e0e24, `src-head` 6ae7824f (detached). Remove all four with
+  `git worktree remove -f -f` once FM is merged and the timing recorded.
+- Kept `handoff-2026-10-10-sw-fm-ms.md` (Windows); the 10-09 one deleted.
 
 ## Done
 
-- The pull deleted `.claude/CHARTER.md` and `.claude/baselines/` from the Mac (034d8994 untracked them). I restored
-  them from `034d8994^` with `git archive … | tar -x -k` (577 files, ignored). They are the 10-09 versions. The
-  Windows records after that (`tmp/FM`, `tmp/MS`, `tmp/MM`, the 10-09 to 10-11 baselines) are only in
-  `C:/D/git/wt/tmp/handoff-mac/records-2026-10-11.zip`, which is not on the Mac.
-- The Mac's gates at 6ae7824f and at 6ae7824f + pb/FM: record `baselines/2026-10-11-mac-gates-fm-metal.md` (on disk).
-- PLAN marks: the macOS row ☑; FM's Mac evidence. LESSONS: untracking deletes files from other clones (two lines
-  that only repeated CLAUDE.md went to make room).
+- The pull deleted `.claude/CHARTER.md` and `.claude/baselines/` (034d8994 untracked them): restored from `034d8994^`
+  (the 10-09 versions). The Windows records after that (`tmp/FM`, `tmp/MS`, `tmp/MM`) are only in
+  `C:/D/git/wt/tmp/handoff-mac/records-2026-10-11.zip`, not on the Mac.
+- Records: `baselines/2026-10-11-mac-gates-fm-metal.md` (all results; the pyarrow shim kept beside it) and
+  `2026-10-11-mac-bands.md` (bands registered 23:20, before any run). PLAN marks; MAP §4 counts and §7's gate note.
+- 292defe3: the parity test's float32 stream limit fits libc++'s 24-byte `std::string` (4500, windows stated).
+- 13d23225: `test_codegen_no_calls` is not registered under a sanitizer (its checks are calls in every loop).
+- dcc847be (pb/FM-metal): a Metal fill into a float32 matrix holds the float64 fill narrowed, in RAM and mapped.
 
-## Verified by me (commands and verbatim lines in the record)
+## Verified by me (verbatim lines in the record)
 
-- 6ae7824f: build 0 warnings; `ctest -j1` 95 (CUDA the one MAY_SKIP); `test_codegen_no_calls` 61 inner loops 0 calls
-  (RL's padding loop under Apple clang); Metal 2168 + 169 assertions; `check_docs` PASS (439 flags, 0 undocumented),
-  `check_pins` 0 failures, generated docs current; conformance regen: D-19's silhouette ulp only; pytest from a fresh
-  venv 904/11/0; matlab_suite 141/141/0/0 on R2026a.
-- 6ae7824f + pb/FM: `git merge-tree` clean; build 0 warnings (`metal_dtw.mm` compiled for the first time); ctest 95;
-  conformance D-19 only; pytest 907/11/0; matlab_suite 142/142/0/0 on R2026a.
-- FM's Metal path, driven through the real CLI (400 series, lengths 64–512): the float32 Metal matrix equals the float64
-  Metal matrix narrowed in all 160,000 entries; CPU float32 = CPU float64 rounded once in all entries; labels and
-  medoids identical per device; a mapped float32 checkpoint is 64 + 80,200 × 4 bytes and resumes byte-identical; a
-  float64 run on it is refused naming `matrix_dtype`. No test covers a GPU fill into a float32 matrix (CUDA or Metal).
-- Correction to the 10-10 handoff ("the Metal tests never compiled since W4d, W13a, W10, GC"): all four merged before
-  263e0e24, whose Mac ctest ran the Metal tests on 10-07; since then `dtwc/metal/` changed only in comments (AU).
+- 6ae7824f: build 0 warnings; ctest 95 (CUDA the MAY_SKIP); codegen 61 loops 0 calls; Metal 2168 + 169 assertions;
+  docs gates PASS; conformance D-19's ulp only; pytest 904/11/0; matlab_suite 141/141 (R2026a). With pb/FM merged:
+  0 warnings, ctest 95, pytest 907/11/0, matlab_suite 142/142; the CLI's Metal float32 matrix = float64 narrowed in
+  all 160,000 entries; a mapped float32 checkpoint resumes; a float64 run on it is refused.
+- After 292defe3 and 13d23225: Release ctest "100% tests passed out of 95"; the Arrow 26 tree "out of 98" (CUDA
+  skipped), "F8_PARITY … route_markers=12/12 parity=9/9"; an ASan tree lists 94 tests without the codegen gate.
+- dcc847be's two tests re-run: 21972 assertions in 17 cases, 10072 in 6. The reader maps its file
+  (`parquet_chunk_reader.hpp`, `MemoryMappedFile::Open`): why max RSS exceeds a streamed run's limit.
+- Correction to the 10-10 handoff: W4d, W13a, W10 and GC all merged before 263e0e24, whose Mac ctest ran the Metal
+  tests on 10-07; since then `dtwc/metal/` changed only in comments.
 
-## Reported by agents, unverified
+## Reported by agents, unverified by me
 
-- None this session (no agents ran).
+- A (Arrow, pyarrow 26.0.0 shim): both trees 0 warnings; `test_io_readers` 67761 assertions; the libc++ windows of
+  the parity fixture; A2 the stream's peak memory footprint under each limit (955 MB at 1G … 373 MB at 384M) — PASS
+  4/4 against limit + 64 MiB; A3 `cmp` identical 8/8.
+- B (ASan + UBSan on 6ae7824f + pb/FM): 0 reports in two serial runs (child logs too), the markers shown to bite.
+- C: the mutations that fail dcc847be's tests. E: the kit's builds, flags and the smoke (all six workloads identical
+  in labels, medoids, costs and matrices; ratios NOT evidence: E1 0.87 twice, below its 0.95 band — watch it).
 
 ## Decisions
 
-- Taken by Volkan this session: none yet. His 10-11 rulings (MM, HG, FM "Accept all, time FM") are in DECISIONS §3.
-- Awaiting him: where FM is timed (its kit and bands are the Windows machine's: `timing_fm.sh`, ≈ 3.5 h quiet; or
-  bands re-registered for the Mac); MM's finding 7 (an explicit `ram_limit` in Python's and MATLAB's cluster() would
-  go unhonoured for CSV and Parquet: route all of cluster() through C++ `run`?); copying the records zip to the Mac.
+- Volkan this session: "Do if there is anything you could do on a mac if not then handoff".
+- Awaiting him: where FM is timed (Windows' kit, or new Mac bands); MM's finding 7 (route Python's and MATLAB's
+  cluster() through C++ `run`?); the records zip on the Mac; the gate if this Mac's idle load never falls below 1.5.
 
 ## Next steps
 
-1. Volkan: copy `records-2026-10-11.zip` to the Mac (or run MM round 4 on Windows); then MM round 4, design only (PLAN
-   MM): fix `tmp/MM/review-round3.md` (1 blocker, 12 should-fixes), put finding 7 to Volkan, and ask him to approve
-   the design and bands. Code after FM's merge.
-2. FM (PLAN FM): the timing (Windows, or Mac bands), Volkan's merge question, then an integrator; a GPU-into-float32
-   test is a candidate for the merge (the CLI probe above is its oracle: float64 narrowed, bit for bit).
-3. HG after MM. Candidates as in PLAN; the 10-10 handoff's `import dtwcpp` cost (sklearn, scipy, pandas).
+1. The timed kit (E): started 2026-10-11 23:42 with `caffeinate -i zsh $E/run_kit.sh > $E/kit-console.log 2>&1`
+   (resumable: finished runs are skipped), then `uv run --no-project python $E/analyse.py $E/runs`; record the
+   verdicts in the record's §E. E6 is not measurable (no silhouette time in `-v`).
+2. Windows: re-run `test_fast_clara_parquet_parity` in the Arrow 23 tree (MS STL: the float32 window is inferred);
+   FM's timing, then merge pb/FM and pb/FM-metal; a CUDA counterpart of the float32 GPU test (none exists).
+3. MM round 4 (PLAN MM), with the zip; HG after MM.
+4. Candidates: one repo script for the pyarrow CMake shim (both machines hand-make one); CMake 4.4's CMP0219 warning
+   in `test_cli_config_formats.cmake:131` (a macro's backslashes; passes either way); a silhouette time in `-v`.
 
 ## Open questions
 
@@ -60,5 +67,5 @@
 
 ## Status honesty
 
-- Built and run on the Mac only: `build/`, `build-matlab/`, the FM worktree's two trees, two fresh-venv wheels. Not run:
-  any timing (the machine was not quiet, load 2.6–3.0), Arrow (no Arrow tree here), `build-asan/`, Windows, Linux, CI.
+- Built and run on the Mac only: `build/`, `build-matlab/`, the FM trees, two fresh-venv wheels, the agents' Arrow 26,
+  ASan and timing trees. Not run: Windows, Linux, CI, Arrow 23 with my parity change, CUDA, the timed kit's result.

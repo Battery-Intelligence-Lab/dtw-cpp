@@ -67,8 +67,9 @@ Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
   scripts driven by `cmake -P`, the deprecated-shim probe), `tests/conformance` (one tracked reference for C++,
   Python, MATLAB and the CLI; `DTWC_CONFORMANCE_REGEN=1` rewrites it), `tests/python` (pytest; not run by ctest),
   `tests/matlab`, `tests/data/reader`, `tests/support` (oracles, `scratch_directory.hpp`), `tests/fixtures`.
-- Full run: `ctest --test-dir build -C Release -j1` — 94 on the Mac's `build/` (CUDA's a `MAY_SKIP`); `build-matlab/`
-  adds `matlab_suite` (138/138; an Incomplete fails it); pytest from a fresh venv 895 / 11 skipped / 0 (2026-10-07).
+- Full run: `ctest --test-dir build -C Release -j1` — 95 on the Mac's `build/`, 98 with Arrow (CUDA's a `MAY_SKIP`);
+  `build-matlab/` adds `matlab_suite` (141/141; an Incomplete fails it); pytest from a fresh venv 904 / 11 skipped / 0
+  (2026-10-11).
 - Gates: `scripts/check_docs.py --cli <dtwc_cl>` (both directions: every flag the docs, README and `.claude/commands`
   show is in the live `--help`; every flag the help prints has a row in `getting-started/cli.md`), `check_pins.py`,
   `generate_docs.py --check`; in CI also `check_site_links.py` and gitleaks. Manual: `codegen_report.py`,
@@ -137,7 +138,7 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
   `omp_set_num_threads`.
 - No `std::min({…})`, `std::max({…})` or `std::min_element` in a hot loop: the MSVC STL makes them library calls.
   `test_codegen_no_calls` fails a clang build in which any loop of a probe kernel calls anything (Apple clang's
-  `memset_pattern16` idiom sat one loop out from the innermost).
+  `memset_pattern16` idiom sat one loop out from the innermost); a sanitizer build does not register it.
 - `decode_pair` is the single pair decoder on host and device, with its integer corrections.
 - FP model: `-fassociative-math` **without** `-ffinite-math-only`, and the `#error` under finite-math-only. NaN
   means missing or not computed.
