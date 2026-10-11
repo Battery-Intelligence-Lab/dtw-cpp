@@ -235,3 +235,11 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   before code.
 - 2026-10-11 — Volkan (question tool) on his uncommitted edits, which blocked FM's merge (FM changes
   `dtwc/Problem_IO.cpp`): "You commit all five": committed exactly as they stood (6490bc61).
+- 2026-10-11 — Volkan (question tool) on FM's fix round (Calinski-Harabasz fixed at 3fe34165; six loops still add a
+  load, call or spill after three arrangements each, none the kernel cell, swap, k = 1 or an assignment loop): "Accept
+  all, time FM". The six are recorded as accepted FAILs; a FALSIFIED timing band reopens its loop.
+- 2026-10-11 — Volkan (question tool) on MM: the reader is nanoarrow's IPC extension, vendored into the core ("Vendor
+  nanoarrow IPC"; amends 10-02 for Arrow IPC, Parquet stays with pyarrow). Compressed IPC: "why we cannot read
+  compressed files in all languages? Matlab should also have its own pyarrow or something reader if needed. Please
+  seek solutions for this". A GPU on mapped series: "which option would be faster ... they should probably read things
+  in batches then process then read again? ... Also plan a way to use CPU + GPU at the same time".
