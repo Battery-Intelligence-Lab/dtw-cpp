@@ -229,3 +229,9 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
 - 2026-10-10 — Volkan (question tool) on MS's failed validity gate (the band-20 control decoder-bound, the assignment
   4.5× faster than designed; W agrees with the model at both bands): "Accept as is". The registered decision stands:
   decoding binds, so mapped series, branch M (a kit-only prototype) first.
+- 2026-10-11 — Volkan (question tool) on MS's branch M (its bands confirmed; the mapped route 0.447 of the stream's
+  cold time on the same rows): "Design unit, with check": a production unit for mapped Arrow IPC series as a view
+  `Data` in every language, with the per-series check done block by block in parallel; design and bands approved
+  before code.
+- 2026-10-11 — Volkan (question tool) on his uncommitted edits, which blocked FM's merge (FM changes
+  `dtwc/Problem_IO.cpp`): "You commit all five": committed exactly as they stood (6490bc61).
