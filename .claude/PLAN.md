@@ -65,7 +65,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
   c72adf3b and 3fe34165 on pb/FM 10-11: identity bit for bit on three compilers, gates pass; of the assembly check's
   FAILs Calinski-Harabasz's were fixed and six accepted by Volkan ("Accept all, time FM"); not timed: the quiet gate
-  never passed 10-11 19:34–22:14; its bands are this Windows machine's)
+  never passed 10-11 19:34–22:14; its bands are this Windows machine's; Mac 10-11, merged into 6ae7824f uncommitted:
+  `metal_dtw.mm` builds without warnings, ctest 95, pytest 907/11/0, matlab_suite 142/142 on R2026a, the CLI's Metal
+  float32 matrix equals the float64 one narrowed in all 160,000 entries, its mapped checkpoint resumes)
 - ◐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
   decoding dominates (plan `C:/D/git/wt/tmp/MS/design.md` with its decision rule registered 10-10; Volkan: WSL
   decides, 2^25 float64 series; measured 10-10: cold, 75 % of the stream's time at 10^8 waits on its one decoder,
@@ -82,8 +84,8 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 
 ## Blocked on another machine or on Volkan
 
-- macOS: run `test_codegen_no_calls` and the Metal tests on the Mac after RL (its padding loop stores one value at a
-  128-byte stride, not Apple clang's `memset_pattern16` idiom, unproven there) and after DT/AL.
+- ☑ macOS: `test_codegen_no_calls` and the Metal tests on the Mac after RL and DT/AL (10-11 at 6ae7824f: 61 inner
+  loops, 0 calls; Metal 2168 and 169 assertions; ctest 95, pytest 904/11/0, matlab_suite 141/141 on R2026a)
 - ARC (Volkan, rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres
   type, `upload`, `build htc-cpu`, `build htc-gpu`, `build htc-gpu --gpu-device a100`, three `dtwcpp.cluster` runs
   (`hpc`, `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`.

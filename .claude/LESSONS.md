@@ -258,13 +258,13 @@ Append new entries at the end of their section; keep each to a few lines.
 ## Process and records
 
 - **One step per commit.** An omnibus commit makes review, bisection and rollback inseparable.
-- **A frozen contract changes only through a dated decision** (`DECISIONS.md` §2).
+- **Untracking a file deletes it from every other clone at its next pull** (`git rm --cached` + `.gitignore`): restore
+  it there from the last commit that tracked it, `git archive 034d8994^ <paths> | tar -x -k` (the Mac, 10-11).
 - **Always verify citations.** Authors, venues and volumes can be invented.
 - **Re-run a counterexample after its premise changes.** A killed premise is replaced by a new discriminator,
   not carried by name.
 - **Check a recorded number before building a ratchet on it.** The row said 256; the tree held 259.
 - **A comment/string stripper under-counts silently.** Compare it with a naive grep.
-- **An agent's finding is a hypothesis until the cited line has been opened.**
 - **Remote-tracking refs are mutable evidence.** Re-read them at close-out.
 - **Before deleting a build dir, grep the surviving `CMakeCache.txt` files for its path.** The 2 KB
   `build/f9-arrow-config` was the Arrow shim of `build/arrow-pyarrow-23`.
