@@ -25,7 +25,9 @@
 #include <metal/metal_dtw.hpp>
 #endif
 
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <random>
 #include <string>
@@ -164,6 +166,56 @@ TEST_CASE("Metal squared-L2 cache via Problem::fill_distance_matrix", "[metal][m
       }
     }
   }
+#endif
+}
+
+// A float32 matrix mapped to a file takes the Metal fill as one in RAM does, and the file holds the floats: a
+// fresh Problem finds it complete and reads the same values.
+TEST_CASE("Metal fills a mapped float32 .dtwm with the values of the float32 fill in RAM",
+          "[metal][mmap][float32]")
+{
+#ifndef DTWC_HAS_MMAP
+  SKIP("mmap support not compiled in");
+#else
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  const size_t N = 100;
+  const size_t L = 100;
+
+  const dtwc::test_support::ScratchDirectory scratch{ "metal_f32_mmap" };
+  const auto cache = scratch.path / "metal_f32.dtwm";
+
+  auto float32_on_metal = [&] { // over the same series each time
+    auto prob = make_problem(N, L, 4242);
+    prob.set_matrix_dtype(dtwc::core::Precision::Float32);
+    prob.set_device(dtwc::Device::GPU);
+    return prob;
+  };
+  auto same_floats = [&](const dtwc::Problem &held, const dtwc::Problem &expected) {
+    for (size_t i = 0; i < N; ++i) {
+      for (size_t j = i + 1; j < N; ++j) {
+        CAPTURE(i, j);
+        REQUIRE(std::bit_cast<std::uint32_t>(static_cast<float>(held.dist_by_ind(int(i), int(j))))
+                == std::bit_cast<std::uint32_t>(static_cast<float>(expected.dist_by_ind(int(i), int(j)))));
+      }
+    }
+  };
+
+  auto in_ram = float32_on_metal();
+  in_ram.fill_distance_matrix();
+  REQUIRE(in_ram.max_distance() > 0.0); // the reference holds distances: two fills that computed none would agree
+  {
+    auto mapped = float32_on_metal();
+    mapped.use_mmap_distance_matrix(cache);
+    mapped.fill_distance_matrix();
+    REQUIRE(mapped.distance_matrix().is_mapped());
+    INFO("the mapped matrix, as the fill left it");
+    same_floats(mapped, in_ram);
+  }
+  auto reopened = float32_on_metal();
+  reopened.use_mmap_distance_matrix(cache);
+  REQUIRE(reopened.is_distance_matrix_filled()); // the fill recorded every row written
+  INFO("the file, mapped again");
+  same_floats(reopened, in_ram);
 #endif
 }
 

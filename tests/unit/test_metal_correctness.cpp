@@ -22,7 +22,9 @@
 #endif
 
 #include <array>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <random>
 #include <vector>
@@ -523,6 +525,41 @@ TEST_CASE("Metal handles long series via global-memory kernel", "[metal]")
       CAPTURE(i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
       REQUIRE_THAT(gpu.matrix[i * N + j],
                    WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1.0));
+    }
+  }
+}
+
+TEST_CASE("Metal fills a float32 matrix with the float64 fill's distances, narrowed, bit for bit",
+          "[metal][float32]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  // 100 series of 100 to 120 samples. Their lengths differ by 20 at most, so band 24 leaves every pair a warping
+  // path: a pair without one holds float64's max, which no float32 can.
+  std::vector<std::vector<double>> series;
+  for (unsigned i = 0; i < 100; ++i)
+    series.push_back(dtwc::test_support::benchmark_series(100 + (i * 11) % 21, 7000 + i));
+
+  for (const int band : { -1, 24 }) {
+    CAPTURE(band);
+    dtwc::metal::MetalDistMatOptions opts;
+    opts.band = band;
+    dtwc::core::DistanceMatrix wide;
+    dtwc::core::DistanceMatrix narrow(0, dtwc::core::Precision::Float32);
+    (void)dtwc::metal::compute_distance_matrix_metal(series, opts, wide);
+    (void)dtwc::metal::compute_distance_matrix_metal(series, opts, narrow);
+    REQUIRE(narrow.size() == series.size());
+    REQUIRE(narrow.width() == dtwc::core::Precision::Float32); // the fill keeps the width it was given
+
+    for (std::size_t i = 0; i < series.size(); ++i) {
+      for (std::size_t j = i + 1; j < series.size(); ++j) {
+        CAPTURE(i, j);
+        const double widened = wide.get(i, j);
+        REQUIRE((widened > 0.0 && widened < std::numeric_limits<float>::max())); // a distance, not 0 or the sentinel
+        // A float widens to a double exactly, so the cast gives back the float the matrix holds.
+        REQUIRE(std::bit_cast<std::uint32_t>(static_cast<float>(narrow.get(i, j)))
+                == std::bit_cast<std::uint32_t>(static_cast<float>(widened)));
+      }
     }
   }
 }
