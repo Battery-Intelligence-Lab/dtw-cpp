@@ -63,12 +63,14 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   CUDA 94, matlab_suite 141/141 on R2025b, pytest 896/19/0, CLI outputs byte-identical)
 - ◐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5 with the width and the rows written; design
   `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
-  implementation started 10-10 on pb/FM)
+  c72adf3b on pb/FM 10-11: identity bit for bit on three compilers, gates pass; the registered assembly check
+  fails in six loops, so it went back to its implementer 10-11 before any timing)
 - ◐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
   decoding dominates (plan `C:/D/git/wt/tmp/MS/design.md` with its decision rule registered 10-10; Volkan: WSL
   decides, 2^25 float64 series; measured 10-10: cold, 75 % of the stream's time at 10^8 waits on its one decoder,
   predicted 5–12 %; the band-20 control failed its gate, Volkan "Accept as is": Decoding, mapped series; branch M,
-  a kit-only prototype, building 10-10)
+  a kit-only prototype, timed 10-11: its bands confirmed, 0.447 of the stream's cold time; a production unit is
+  Volkan's call)
 - ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;
   merged 6521b01e: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical); the last four
   record citations in header blocks reworded after it
