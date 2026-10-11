@@ -243,3 +243,8 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   compressed files in all languages? Matlab should also have its own pyarrow or something reader if needed. Please
   seek solutions for this". A GPU on mapped series: "which option would be faster ... they should probably read things
   in batches then process then read again? ... Also plan a way to use CPU + GPU at the same time".
+- 2026-10-11 — Volkan (question tool) on MM's round 2: fusing the series check into CLARA's pass "Inside MM"; the
+  GPU pipeline and CPU+GPU work "Own unit HG" after MM; the LZ4 and ZSTD decoders "if you think we would have issues
+  with versions, then vendor it. If not then CPM": the orchestrator found no version risk (pinned by URL and SHA-256
+  as CLI11 is; the core already fetches through CPM), so CPM; a compressed file beyond the budget: "why not this file
+  reading is like happen in piece by piece, like you start reading and decompressing and stop when you reach limit?"
