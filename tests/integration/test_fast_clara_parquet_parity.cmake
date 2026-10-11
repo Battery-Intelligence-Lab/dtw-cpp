@@ -85,10 +85,15 @@ function(run_f8_cli config_id mode output_dir dtype variant gamma accepted_costs
     if(NOT gamma STREQUAL "none")
         list(APPEND args --sdtw-gamma "${gamma}")
     endif()
-    # 4600 bytes hold the stream (4,550 in float64: the medoids, two samples'
-    # labels and nearest distances, one decode of the 8 rows, one row group),
-    # below the in-RAM estimate with CLARA's pass (4,766), so the run streams.
-    if(mode STREQUAL "stream")
+    # The limit holds the stream (the medoids, two samples' labels and nearest
+    # distances, one decode of the 8 rows, one row group) below the in-RAM
+    # estimate with CLARA's pass, so the run streams. Both prices count a
+    # std::string a row, 32 bytes in libstdc++ and MSVC and 24 in libc++: float64
+    # streams in [4550, 4766) and [4502, 4702) under libc++, float32 in
+    # [4442, 4622) and [4394, 4558).
+    if(mode STREQUAL "stream" AND dtype STREQUAL "float32")
+        list(APPEND args --ram-limit 4500)
+    elseif(mode STREQUAL "stream")
         list(APPEND args --ram-limit 4600)
     endif()
 
