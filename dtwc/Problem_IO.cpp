@@ -5,9 +5,10 @@
  * @details These functions handle the writing of medoids, clusters, silhouettes, and
  * distance matrices to files, as well as reading distance matrices from files.
  *
- * @date 25 Dec 2023
  * @author Volkan Kumtepeli
  * @author Becky Perriment
+ *
+ * @date 25 Dec 2023
  */
 
 #include "Problem.hpp"

@@ -118,3 +118,4 @@ cmake-build-*/_deps/
 # The maintainers' run records and charter stay on disk, out of git (Volkan 2026-10-09).
 .claude/baselines/
 .claude/CHARTER.md
+/graphify-out

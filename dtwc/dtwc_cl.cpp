@@ -8,10 +8,10 @@
  *   dtwc_cl --config config.toml          (or config.yaml: the same keys)
  *   dtwc_cl --config config.toml --print-config > job.toml
  *
- * @author Volkan Kumtepeli
- * @date 29 Mar 2026
  * @authors Volkan Kumtepeli
  * @authors Becky Perriment
+ * 
+ * @date 29 Mar 2026
  */
 
 #include "base/timing.hpp"
