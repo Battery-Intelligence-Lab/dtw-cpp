@@ -248,3 +248,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   with versions, then vendor it. If not then CPM": the orchestrator found no version risk (pinned by URL and SHA-256
   as CLI11 is; the core already fetches through CPM), so CPM; a compressed file beyond the budget: "why not this file
   reading is like happen in piece by piece, like you start reading and decompressing and stop when you reach limit?"
+- 2026-10-11 — Volkan (question tool) on MM's round 3: "Confirm": beyond the budget only CLARA reads a decoded file
+  piece by piece, in every language (Python and MATLAB through a bound C++ `run`); the methods that read every series
+  at once stop with a typed error beyond an explicit `ram_limit` and decode into RAM beyond the automatic budget. Parquet
+  beyond the budget in Python and MATLAB: "Keep, document IPC" (read whole as today; converting to Arrow IPC streams).
