@@ -38,10 +38,13 @@ dtwc_add_script_test(NAME test_deprecated_shims_warn
     LABELS compat b19 SERIAL TIMEOUT 300)
 
 # A DP cell makes no call: codegen_report.py compiles the probe to assembly with dtw_dispatch.cpp's
-# flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments.
+# flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments. Under a
+# sanitizer every loop calls its checks, so there the gate has nothing to prove.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU"
-   AND CMAKE_GENERATOR MATCHES "Ninja|Makefiles" AND Python3_Interpreter_FOUND)
+   AND CMAKE_GENERATOR MATCHES "Ninja|Makefiles" AND Python3_Interpreter_FOUND
+   AND NOT (DTWC_ENABLE_SANITIZER_ADDRESS OR DTWC_ENABLE_SANITIZER_UNDEFINED
+            OR DTWC_ENABLE_SANITIZER_THREAD OR DTWC_ENABLE_SANITIZER_MEMORY))
     add_test(NAME test_codegen_no_calls COMMAND "${Python3_EXECUTABLE}"
              "${CMAKE_SOURCE_DIR}/scripts/codegen_report.py" --no-calls --build-dir "${CMAKE_BINARY_DIR}")
     set_tests_properties(test_codegen_no_calls PROPERTIES FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}"
