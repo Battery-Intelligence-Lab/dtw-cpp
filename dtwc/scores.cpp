@@ -234,9 +234,10 @@ double inertia_of(const T *matrix, const Problem &prob)
 }
 
 /// The medoid-adapted Calinski-Harabasz index of a clustered `prob` with `k` non-empty clusters of sizes
-/// `cluster_counts`.
+/// `cluster_counts`. The values' pointer comes by reference: by value, clang 21 reloaded a constant of the row sum
+/// once per 8 entries, which it keeps in a register here (2026-10-11).
 template <typename T>
-double calinski_harabasz_of(const T *matrix, const Problem &prob, const std::vector<index_t> &cluster_counts,
+double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const std::vector<index_t> &cluster_counts,
                             index_t k)
 {
   const index_t N = prob.size();
@@ -264,10 +265,11 @@ double calinski_harabasz_of(const T *matrix, const Problem &prob, const std::vec
   }
 
   // Between-cluster scatter B = sum_c |c| * d(medoid_c, overall_medoid)^2
+  const index_t *const centroid = prob.centroids_ind.data(); // GCC 13 reloaded it at each cluster (2026-10-11)
   double B = 0.0;
   for (index_t c = 0; c < Nc; ++c) {
     if (cluster_counts[c] == 0) continue; // an empty cluster has no medoid
-    double d = matrix[core::tri_index(static_cast<std::size_t>(prob.centroids_ind[c]),
+    double d = matrix[core::tri_index(static_cast<std::size_t>(centroid[c]),
                                        static_cast<std::size_t>(overall_medoid))];
     B += static_cast<double>(cluster_counts[c]) * d * d;
   }
