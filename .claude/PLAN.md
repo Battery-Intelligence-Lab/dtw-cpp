@@ -63,8 +63,8 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   CUDA 94, matlab_suite 141/141 on R2025b, pytest 896/19/0, CLI outputs byte-identical)
 - ◐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5 with the width and the rows written; design
   `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
-  c72adf3b on pb/FM 10-11: identity bit for bit on three compilers, gates pass; the registered assembly check
-  fails in six loops, so it went back to its implementer 10-11 before any timing)
+  c72adf3b and 3fe34165 on pb/FM 10-11: identity bit for bit on three compilers, gates pass; of the assembly check's
+  FAILs Calinski-Harabasz's were fixed and six accepted by Volkan ("Accept all, time FM"); timing queued 10-11)
 - ◐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
   decoding dominates (plan `C:/D/git/wt/tmp/MS/design.md` with its decision rule registered 10-10; Volkan: WSL
   decides, 2^25 float64 series; measured 10-10: cold, 75 % of the stream's time at 10^8 waits on its one decoder,
