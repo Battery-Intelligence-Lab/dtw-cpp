@@ -252,3 +252,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   piece by piece, in every language (Python and MATLAB through a bound C++ `run`); the methods that read every series
   at once stop with a typed error beyond an explicit `ram_limit` and decode into RAM beyond the automatic budget. Parquet
   beyond the budget in Python and MATLAB: "Keep, document IPC" (read whole as today; converting to Arrow IPC streams).
+- 2026-10-12 — Volkan (question tool) on MM's finding 7: "All through run": Python's and MATLAB's `cluster()` go
+  through C++ `run` for every input (CSV, Parquet, IPC, in-memory data), so `ram_limit` means one thing everywhere;
+  a budget that cannot hold the series is a typed error. FM: timed on this Windows machine when it is idle, then
+  merged. BF's Mac fill: a candidate only. Remote branches: the old ones stay; pb/MV (FALSIFIED) is not merged.
