@@ -104,6 +104,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 
 - BF's small fills under GCC: the design's 8-column tasks (one cache line) wherever a slab has enough of them; GCC
   s1t (N 1000, 24 threads) ran 0.89–0.95×, perhaps neighbouring threads writing one line (untested; Volkan 10-09).
+  On the Mac (6P + 12E) BF's fill of N 2000, L 500 at 18 threads ran 0.944× and 0.945× the 10-07 fill (one thread
+  0.995×); 32 chunks per thread instead of 8 gave 1.038× (inconclusive): the last large chunks on efficiency cores
+  (inferred, 10-12).
 - CUDA: the 64 KB carveout above L = 2048 (−18 % at L 2049; passed its band) once the CUDA floor reaches 12.5 (it was
   reverted, b803e47, because the floor is 12.0 and ARC loads 12.4).
 - The Windows archive ships HiGHS's development install (277 headers, a static `highs.lib`): trim it.

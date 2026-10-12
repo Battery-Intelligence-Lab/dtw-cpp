@@ -78,11 +78,10 @@ Append new entries at the end of their section; keep each to a few lines.
 
 ## Tests and gates
 
-- **Tests must pin the LIVE code path — name the public entry point in a comment.** A fix to a dead duplicate
-  with no call sites passed its tests and changed nothing.
+- **Tests pin the LIVE code path, and a test's name the path it runs.** A fix to a dead duplicate passed its tests;
+  a "FastPAM" test that set another method tested that method. Name the public entry point in a comment.
 - **A structure test does not test optimality.** Label ranges and a converged flag pass a wrong answer; keep an
   independent oracle (brute DP, exhaustive optimum on small N, hand-computed values).
-- **A test name must match the path it runs.** A "FastPAM" test that set another method tested that method.
 - **A regression test must execute the production arithmetic.** A copy of the formula in the test proves the
   copy.
 - **A gate must prove its subject ran.** CTest scores exit 4 (skip) as a pass and exits 0 when `-R` matches
@@ -95,8 +94,7 @@ Append new entries at the end of their section; keep each to a few lines.
 - **Run full suites serially.** Concurrent ctest runs, and different build matrices, collide on test
   artefacts and working directories.
 - **A symmetric matrix cannot prove row- vs column-major copies.** Use a deliberately non-symmetric seam.
-- **Dual-type APIs need parity tests.** The Float32 DTW function silently ignored the variant because only
-  Float64 was tested.
+- **Dual-type APIs need parity tests.** The Float32 DTW function ignored the variant: only Float64 was tested.
 - **Cross-validate before migrating a dispatch.** Run old and new on representative inputs (NaN positions ×
   bands) and require agreement before switching.
 - **`catch (...)` without a rethrow manufactures success.** A swallowed read error printed "loaded" and then
@@ -105,6 +103,8 @@ Append new entries at the end of their section; keep each to a few lines.
   its printed notice goes blind when the notice goes: key it to the configure (FX-3 reads `HAS_GUROBI`, PF).
 - **Poison external seams before testing a rejection.** Make the command or file a rejection path would reach
   unusable, so a pass cannot come from the wrong branch.
+- **A byte limit priced from `sizeof` holds on one standard library**: `std::string` is 24 B in libc++, 32 in
+  libstdc++ and MSVC; a test pinning a streaming window states each library's (292defe3, the Mac's Arrow 26).
 - **An Arrow gate can pass while running nothing.** `test_io_readers` registers only when Arrow is found: check that
   `ctest -N` lists it (the Arrow shim was deleted once, 2026-09-28).
 
