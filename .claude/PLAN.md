@@ -74,8 +74,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   predicted 5–12 %; the band-20 control failed its gate, Volkan "Accept as is": Decoding, mapped series; branch M,
   a kit-only prototype, timed 10-11: its bands confirmed, 0.447 of the stream's cold time)
 - ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
-  IPC read piece by piece (Volkan 10-11, DECISIONS §3; design rounds 1–3 `C:/D/git/wt/tmp/MM/`, the third review's
-  blocker and should-fixes open; approval before code, code after FM's merge)
+  IPC read piece by piece, Python's and MATLAB's `cluster()` through C++ `run` with highspy required, the load
+  pricing the matrix (Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
+  review: no blocker or should-fix left after F3's threshold, fixed 10-12; awaiting approval; code after FM's merge)
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 - ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;
