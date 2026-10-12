@@ -261,3 +261,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   highspy": highspy a required dependency of the Python package, reached from `run` through the binding. On Q10
   (a run without an output file never maps the matrix): the load prices the N² matrix in its stored width unless it
   is mapped, counted as each series is added, plus headroom for other work; over an explicit limit, a typed error.
+- 2026-10-12 — Volkan (question tool) on MM's design round 6 (`C:/D/git/wt/tmp/MM/`, reviews 4–6): "Approve as is",
+  with its unruled choices: `dtwc_run` for the bindings, `--checkpoint` without `-o` maps, `run`'s GPU refusal first,
+  the estimators on the Problem route, no upper pin on highspy, F3's threshold 3.58 GB/s. Code after FM's merge;
+  the open terms P1–P3, K1 and K2 measured first.

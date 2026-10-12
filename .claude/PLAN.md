@@ -76,7 +76,7 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 - ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
   IPC read piece by piece, Python's and MATLAB's `cluster()` through C++ `run` with highspy required, the load
   pricing the matrix (Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
-  review: no blocker or should-fix left after F3's threshold, fixed 10-12; awaiting approval; code after FM's merge)
+  review: none left after F3's threshold; approved 10-12; code after FM's merge, P1–P3, K1, K2 measured first)
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 - ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;
