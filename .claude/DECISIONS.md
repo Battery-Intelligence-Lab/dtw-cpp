@@ -256,3 +256,8 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   through C++ `run` for every input (CSV, Parquet, IPC, in-memory data), so `ram_limit` means one thing everywhere;
   a budget that cannot hold the series is a typed error. FM: timed on this Windows machine when it is idle, then
   merged. BF's Mac fill: a candidate only. Remote branches: the old ones stay; pb/MV (FALSIFIED) is not merged.
+- 2026-10-12 — Volkan (question tool) on MM's round-4 blocker (the wheel's MIP and kelley root solve with highspy,
+  which `run` cannot reach): "highspy should be dependency when people do uv install ... it should also install
+  highspy": highspy a required dependency of the Python package, reached from `run` through the binding. On Q10
+  (a run without an output file never maps the matrix): the load prices the N² matrix in its stored width unless it
+  is mapped, counted as each series is added, plus headroom for other work; over an explicit limit, a typed error.
