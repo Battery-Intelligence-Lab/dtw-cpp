@@ -7,8 +7,8 @@ No line numbers: grep for the symbol. Sizes are `git ls-files | xargs cat | wc -
 ## 1. Pipeline today
 
 ```text
-text file / folder ──▶ io/read_data (dtwc_core) ───┐
-Parquet / Arrow IPC ──▶ io/read_arrow (dtwc_io) ───┴▶ Data ─▶ Problem ─┬─ bind the DTW function once (dtw_dispatch)
+text file / folder, Arrow IPC ──▶ io/read_data (dtwc_core) ─┐
+Parquet ──▶ io/read_arrow (dtwc_io) ────────────────────────┴▶ Data ─▶ Problem ─┬─ bind the DTW function once (dtw_dispatch)
                                                                        ├─ fill_distance_matrix: CPU lanes | per pair | CUDA | Metal
                                                                        ├─ dist_by_ind(i, j): an O(1) read ◀── algorithms, MIP, scores
                                                                        └─ cluster() ─▶ ClusteringResult, or a free algorithm function
@@ -21,8 +21,8 @@ Python  _dtwcpp_core + dtwcpp: apply(Config) → Problem::cluster()          MAT
 | Layer | Where | Lines | What |
 | --- | --- | --- | --- |
 | base | `base/` (+ forwarders at `dtwc/` root), `types/`, `enums/` | 1.1k | errors (`Error` → `InvalidInput`, `DeviceError`, `IOError`, `SolverError`, `UndefinedScore`), settings (`index_t`), OpenMP helpers (`run_openmp`: per-thread failure slots, the lowest-index failure rethrown), `device()` (`env`), names tables, `Index` / `Range` |
-| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 5.4k | `dtw_kernel.hpp` (linear: two columns per pass; lanes: 128 bytes on AArch64 and under clang or GCC on x86-64, 64 under cl and elsewhere, each lane its own length when unbanded but under cl; banded; × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio only in `distance_matrix.cpp`), SHA-256, portable RNG, `kmedoids_pp` |
-| io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet, Arrow IPC), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
+| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 5.4k | `dtw_kernel.hpp` (linear: two columns per pass; lanes: 128 bytes on AArch64 and under clang or GCC on x86-64, 64 under cl and elsewhere, each lane its own length when unbanded but under cl; banded; × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio in `distance_matrix.cpp` and `io/arrow_ipc.cpp`), SHA-256, portable RNG, `kmedoids_pp` |
+| io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), the Arrow IPC reader `arrow_ipc` (nanoarrow's IPC extension; a mapped file's series are views, `Data::owner()` keeps the bytes), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
 | backends | `cuda/`, `metal/` | 2.9k | GPU fills; CUDA also FastCLARA's assignment |
 | algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4k | FastPAM, FastCLARA (`fast_clara_parquet.cpp`: the stream, in `dtwc_io`), OneBatchPAM, hierarchical, TADPole, barycenter; seeding; seven scores |
 | mip | `mip/` | 1.5k | `mip-solvers`: HiGHS and Gurobi p-median (`build_p_median_model`), LR-core (`lagrangian_root`: dual, the subgradient or Kelley root on a `KelleyMaster`, reduced-cost fixing, branch and bound) |

@@ -5,12 +5,11 @@ classdef Dataset < handle
 %DATASET A lazy handle to time series: a path, or series already in memory.
 %
 %   Made by dtwc.load. A path is read once, when its series are first needed
-%   (dtwc.cluster, as_series), as dtwc_cl and Python read it: CSV/TSV text and
-%   folders of it by the C++ reader (dtwc::read_data, in the MEX); Parquet (a
-%   .parquet/.pq file, or a folder of them) by MATLAB's parquetread, by the C++
-%   reader's rule (read_parquet). MATLAB has no Arrow IPC reader, so an .arrow,
-%   .ipc or .feather file is refused with dtwc:invalidArgument: read it
-%   elsewhere and pass its series in memory.
+%   (dtwc.cluster, as_series), as dtwc_cl and Python read it: CSV/TSV text,
+%   folders of it and Arrow IPC (an .arrow, .ipc or .feather file) by the C++
+%   reader (dtwc::read_data, in the MEX); Parquet (a .parquet/.pq file, or a
+%   folder of them) by MATLAB's parquetread, by the C++ reader's rule
+%   (read_parquet).
 %
 %   See also dtwc.load, dtwc.cluster
 
@@ -121,20 +120,13 @@ classdef Dataset < handle
         function [series, names] = read_path(path, skipCols, skipRows, delimiter, dtype)
         %READ_PATH Every series a path names, read as dtwc::read_data reads it, in DTYPE.
             files = dtwc_mex('parquet_files', path);
-            [~, ~, ext] = fileparts(path);
-            arrow = any(strcmpi(ext, {'.arrow', '.ipc', '.feather'})) && ~isfolder(path);
-            if isempty(files) && ~arrow
+            if isempty(files)   % text and Arrow IPC: the C++ reader
                 [series, names] = dtwc_mex('read_data', path, skipCols, skipRows, delimiter, dtype);
                 return
             end
             if ~isempty(delimiter)
                 error('dtwc:invalidArgument', ['load: Delimiter splits CSV/TSV text into fields ' ...
-                    'and cannot be honoured for a Parquet or Arrow IPC input; drop it.']);
-            end
-            if arrow
-                error('dtwc:invalidArgument', ['load: ''%s'' is Arrow IPC, which MATLAB has no ' ...
-                    'reader for. Write the series to Parquet or CSV, or read them elsewhere and ' ...
-                    'pass them in memory: a matrix, one series per row, or a cell of vectors.'], path);
+                    'and cannot be honoured for a Parquet input; drop it.']);
             end
             series = {};
             names = {};

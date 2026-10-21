@@ -117,6 +117,15 @@ void set_distance_matrix(dtwc::Problem &p, nb::ndarray<const T, nb::ndim<2>, nb:
     p.fill_distance_matrix();
 }
 
+/// A view's series and names are another store's (an Arrow IPC file's, read in place): refuse a write to them.
+void refuse_view_write(const dtwc::Data &d, const char *field) {
+  if (d.is_view())
+    throw dtwc::InvalidInput(std::string("Data.") + field + ": this Data is a view of series it does not own (an "
+                             "Arrow IPC file's, read in place), so its " + field + " cannot be written; make an "
+                             "owned copy first: dtwcpp.Data(data.p_vec, data.p_names), or Data.from_float32 of "
+                             "its series for float32 ones.");
+}
+
 /// The range check every binding runs before it hands an index to C++ that does
 /// not check it (Data::series, Data::name, Problem::dist_by_ind and
 /// centroids_ind[clusters_ind[i]] sit in hot loops): an index outside [0, n) is
@@ -364,9 +373,10 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
      "dtype"_a = std::string("float64"),
      "Read a path with dtwc::read_data, the reader dtwc_cl and C++ dtwc::load\n"
-     "use (CSV/TSV and a folder of them; the wheel links no Arrow C++, so\n"
-     "dtwcpp.load reads Parquet and Arrow IPC through pyarrow), and return the owning\n"
-     "dtwc::Data (series + names) with no intermediate Python objects. Backs\n"
+     "use (CSV/TSV, a folder of them, and Arrow IPC, read in place; the wheel links\n"
+     "no Arrow C++, so dtwcpp.load reads Parquet through pyarrow), and return the\n"
+     "dtwc::Data (series + names; an Arrow IPC file's are views of the file, which\n"
+     "the Data keeps open) with no intermediate Python objects. Backs\n"
      "dtwcpp.Dataset, whose handle is handed straight to Problem.set_data(Data):\n"
      "skip_cols drops leading FIELDS before numeric parsing, skip_rows drops\n"
      "leading LINES, an empty delimiter means infer from the extension, and\n"
@@ -786,8 +796,35 @@ NB_MODULE(_dtwcpp_core, m) {
                 "Float32 heap-mode data (explicit opt-in; halves storage). The series\n"
                 "are rounded to float32 and the DTW recurrence runs in float32; the\n"
                 "distances are returned and stored as double.")
-    .def_rw("p_vec", &dtwc::Data::p_vec)
-    .def_rw("p_names", &dtwc::Data::p_names)
+    .def_prop_rw("p_vec",
+                 [](const dtwc::Data &d) {
+                   if (!d.is_view() || d.is_f32()) return d.p_vec;
+                   std::vector<std::vector<dtwc::data_t>> series(static_cast<size_t>(d.size()));
+                   for (size_t i = 0; i < series.size(); ++i) {
+                     const auto s = d.series(i);
+                     series[i].assign(s.begin(), s.end());
+                   }
+                   return series;
+                 },
+                 [](dtwc::Data &d, std::vector<std::vector<dtwc::data_t>> series) {
+                   refuse_view_write(d, "p_vec");
+                   d.p_vec = std::move(series);
+                 },
+                 "The float64 series, a list each (a float32 store's is []); a view's, as an\n"
+                 "Arrow IPC file's, are read through it and cannot be written.")
+    .def_prop_rw("p_names",
+                 [](const dtwc::Data &d) {
+                   if (!d.is_view()) return d.p_names;
+                   std::vector<std::string> names(static_cast<size_t>(d.size()));
+                   for (size_t i = 0; i < names.size(); ++i) names[i] = d.name(i);
+                   return names;
+                 },
+                 [](dtwc::Data &d, std::vector<std::string> names) {
+                   refuse_view_write(d, "p_names");
+                   d.p_names = std::move(names);
+                 },
+                 "The series' names; a view's, as an Arrow IPC file's, are read through it and\n"
+                 "cannot be written.")
     .def("series", [](const dtwc::Data &d, std::int64_t i) {
       require_index("Data.series", "i", i, static_cast<size_t>(d.size()));
       const auto copy = [](auto s) { return std::vector<double>(s.begin(), s.end()); };

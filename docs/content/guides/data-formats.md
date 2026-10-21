@@ -10,7 +10,7 @@ Rows represent time series unless a format stores an explicit list column.
 | Format | Read path | Notes |
 |---|---|---|
 | CSV / TSV / text | Core, CLI, all bindings | One series per row; use `skip_cols` for identifiers. TSV is auto-detected from `.tsv`. |
-| Arrow IPC / Feather | CLI with `-DDTWC_ENABLE_ARROW=ON`; Python via `pyarrow` | List/large-list Float32 or Float64 columns; memory-mapped native reader. |
+| Arrow IPC / Feather | Core, CLI, all bindings | List/large-list Float32 or Float64 columns, read in place (memory-mapped) by the native reader; uncompressed files. |
 | Parquet | CLI with Arrow/Parquet enabled; Python via `pyarrow`; MATLAB via `parquetread` | Each List/LargeList Float32/64 row = one series; several scalar Float32/64 columns = one series per row, as CSV; the only scalar Float32/64 column = one whole series. Rows are named by the first string column. `--column` reads one column ([Supported data](../../getting-started/supported-data/)). |
 | HDF5 | Python conversion/I/O utilities | Optional `h5py`; convert before using the native CLI. |
 

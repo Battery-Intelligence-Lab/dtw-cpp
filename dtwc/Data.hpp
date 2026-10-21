@@ -15,6 +15,7 @@
 #include "core/storage.hpp"
 
 #include <cstddef>      // for size_t
+#include <memory>       // for shared_ptr
 #include <span>         // for span
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -80,8 +81,12 @@ struct Data
     return std::string_view(p_names[i]);
   }
 
-  /// True if this Data is a non-owning view into another Data's storage.
+  /// True if this Data is a non-owning view: of another Data's storage, or of bytes owner() keeps alive.
   bool is_view() const { return is_view_; }
+
+  /// What keeps a view's bytes alive (a mapped file, a read buffer, decoded batches), shared by every copy of this
+  /// Data; empty for an owning Data, and for a view into another Data's storage, which must then outlive it.
+  const std::shared_ptr<const void> &owner() const { return owner_; }
 
   /// True if data is stored as float32.
   bool is_f32() const { return precision == core::Precision::Float32; }
@@ -129,23 +134,25 @@ struct Data
     validate_ndim();
   }
 
-  /// View-mode constructor: non-owning float64 spans into another Data's storage.
+  /// View-mode constructor: non-owning float64 spans into storage `owner` keeps alive (see owner()).
   Data(std::vector<std::span<const data_t>> &&spans,
-       std::vector<std::string_view> &&name_views, size_t ndim_)
+       std::vector<std::string_view> &&name_views, size_t ndim_,
+       std::shared_ptr<const void> owner = {})
     : ndim{ ndim_ }, p_spans_(std::move(spans)),
-      p_name_views_(std::move(name_views)), is_view_(true)
+      p_name_views_(std::move(name_views)), is_view_(true), owner_(std::move(owner))
   {
     if (p_spans_.size() != p_name_views_.size())
       throw InvalidInput("Data view: span and name vectors should be of the same size");
     validate_ndim();
   }
 
-  /// View-mode constructor: non-owning float32 spans into another Data's storage.
+  /// View-mode constructor: non-owning float32 spans into storage `owner` keeps alive (see owner()).
   Data(std::vector<std::span<const float>> &&spans,
-       std::vector<std::string_view> &&name_views, size_t ndim_)
+       std::vector<std::string_view> &&name_views, size_t ndim_,
+       std::shared_ptr<const void> owner = {})
     : ndim{ ndim_ }, precision{ core::Precision::Float32 },
       p_spans_f32_(std::move(spans)),
-      p_name_views_(std::move(name_views)), is_view_(true)
+      p_name_views_(std::move(name_views)), is_view_(true), owner_(std::move(owner))
   {
     if (p_spans_f32_.size() != p_name_views_.size())
       throw InvalidInput("Data view: span and name vectors should be of the same size");
@@ -157,6 +164,7 @@ private:
   std::vector<std::span<const float>> p_spans_f32_; //!< View-mode: float32 spans into parent data
   std::vector<std::string_view> p_name_views_;       //!< View-mode: names from parent
   bool is_view_ = false;                             //!< True when in view mode
+  std::shared_ptr<const void> owner_;                //!< View-mode: keeps the viewed bytes alive (owner())
 
   /// Common error for an accessor that does not match the active precision.
   [[noreturn]] static void throw_wrong_precision(const char *accessor,
@@ -168,5 +176,32 @@ private:
       + "; use " + correct + "() instead.");
   }
 };
+
+namespace detail {
+
+/// An owning copy of `data`, a view or not, in `precision`: each value cast once, the names copied.
+inline Data owned_copy(const Data &data, core::Precision precision)
+{
+  const auto copy = [&data](auto zero) {
+    using T = decltype(zero);
+    std::vector<std::vector<T>> series(static_cast<size_t>(data.size()));
+    std::vector<std::string> names(series.size());
+    for (size_t i = 0; i < series.size(); ++i) {
+      const auto cast = [&series, i](auto values) {
+        series[i].reserve(values.size());
+        for (const auto value : values) series[i].push_back(static_cast<T>(value));
+      };
+      if (data.is_f32())
+        cast(data.series_f32(i));
+      else
+        cast(data.series(i));
+      names[i] = data.name(i);
+    }
+    return Data(std::move(series), std::move(names), data.ndim);
+  };
+  return precision == core::Precision::Float32 ? copy(float{}) : copy(data_t{});
+}
+
+} // namespace detail
 
 } // namespace dtwc

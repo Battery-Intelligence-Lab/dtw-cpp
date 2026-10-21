@@ -1,12 +1,13 @@
 """
 @file test_io.py
-@brief Tests for dtwcpp.io — CSV, HDF5, and Parquet I/O utilities.
+@brief Tests for dtwcpp.io — CSV, HDF5, Parquet and Arrow IPC I/O utilities.
 @author Volkan Kumtepeli
 """
 
 from __future__ import annotations
 
 import importlib
+import re
 from pathlib import Path
 
 import numpy as np
@@ -166,6 +167,72 @@ def test_parquet_layouts_read_as_cpp_and_matlab_read_them(name, skip_cols, skip_
     data = dtwcpp.load(_CORPUS / name, skip_cols=skip_cols, skip_rows=skip_rows).as_data()
     assert data.p_vec == series
     assert data.p_names == names
+
+
+_IPC_THREE = [[0, 0.5, 0.25], [1.5, 2], [3]]
+
+
+@pytest.mark.parametrize(
+    ("name", "series", "names", "ndim"),
+    [
+        ("ipc_list.arrow", _IPC_THREE, ["a", "series_1", "c"], 1),
+        ("ipc_large_list.arrow", _IPC_THREE, ["a", "series_1", "c"], 1),
+        ("ipc_float32.arrow", _IPC_THREE, ["x", "y", "z"], 1),
+        ("ipc_no_name.arrow", _IPC_THREE, ["series_0", "series_1", "series_2"], 1),
+        ("ipc_ndim2.arrow", [[0, 1, 2, 3], [4, 5]], ["series_0", "series_1"], 2),
+        ("ipc_batches.arrow", [[0, 1], [2], [3], [4, 5], [6], [7, 8, 9]],
+         ["a", "b", "series_2", "d", "series_4", "f"], 1),
+        ("ipc_stream.arrow", _IPC_THREE, ["a", "series_1", "c"], 1),
+    ],
+)
+def test_arrow_ipc_fixtures_read_as_cpp_and_matlab_read_them(name, series, names, ndim):
+    """Each Arrow IPC fixture (make_ipc_fixtures.py beside them), read in place by the bound C++ reader without
+    pyarrow: the series and names tests/unit/io/test_arrow_ipc.cpp (C++) and test_tier1_route_parity.m (MATLAB)
+    expect, in either precision. A file read in its own precision is a view of it."""
+    dataset = dtwcpp.load(_CORPUS / name)
+    data = dataset.as_data()
+    assert data.is_view() == (name != "ipc_float32.arrow")
+    assert data.p_vec == series
+    assert data.p_names == names == dataset.series_names()
+    assert data.ndim == ndim
+    narrow = dtwcpp.load(_CORPUS / name, dtype="float32").as_data()
+    assert narrow.is_f32() and narrow.is_view() == (name == "ipc_float32.arrow")
+    assert [narrow.series(i) for i in range(narrow.size)] == series
+
+
+@pytest.mark.parametrize(
+    ("name", "error", "says"),
+    [
+        ("feather_v1.feather", "IOError", "a Feather version 1 file (magic FEA1), which is not Arrow IPC"),
+        ("ipc_scalar_data.arrow", "IOError",
+         "the 'data' column must be a List or LargeList of Float32/Float64, got double."),
+        ("ipc_int64_names.arrow", "IOError", "the 'name' column must be Utf8 or LargeUtf8, got int64."),
+        ("ipc_ndim_2x.arrow", "IOError", "schema metadata 'ndim' must be a positive integer, got '2x'."),
+        ("ipc_dictionary.arrow", "IOError", "Schema message field with DictionaryEncoding not supported"),
+        ("ipc_lz4.arrow", "IOError", "Arrow IPC record batch 0 is compressed (LZ4_FRAME)"),
+        ("ipc_null_series.arrow", "InvalidInput", "null series at row 1 (drop or fill nulls"),
+        ("ipc_null_value.arrow", "InvalidInput", "null value inside series at row 1 (drop or fill nulls"),
+    ],
+)
+def test_arrow_ipc_fixture_errors_as_cpp_and_matlab_raise_them(name, error, says):
+    """The C++ reader's type and text for each bad fixture; an IOError names the file."""
+    named = "load: failed to read .*" if error == "IOError" else ""
+    with pytest.raises(getattr(dtwcpp, error), match=named + re.escape(says)):
+        dtwcpp.load(_CORPUS / name).as_data()
+
+
+def test_an_arrow_ipc_view_refuses_a_write_and_clusters_as_its_series_in_memory():
+    """A view's p_vec and p_names are the file's, read only; clustered, the view gives what the same series in
+    memory give."""
+    data = dtwcpp.load(_CORPUS / "ipc_batches.arrow").as_data()
+    for field, value in (("p_vec", [[1.0]]), ("p_names", ["x"])):
+        with pytest.raises(dtwcpp.InvalidInput, match=f"Data.{field}: .* cannot be written"):
+            setattr(data, field, value)
+    mapped = dtwcpp.cluster(_CORPUS / "ipc_batches.arrow", 2, method="pam")
+    in_memory = dtwcpp.cluster([np.asarray(s) for s in data.p_vec], 2, method="pam")
+    assert list(mapped.labels) == list(in_memory.labels)
+    assert list(mapped.medoids) == list(in_memory.medoids)
+    assert mapped.cost == in_memory.cost
 
 
 # ---------------------------------------------------------------------------

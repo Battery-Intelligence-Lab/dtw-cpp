@@ -289,7 +289,7 @@ function(dtwc_setup_dependencies)
     message(STATUS "  llfio:    OFF (DTWC_ENABLE_LLFIO=OFF) — mmap disabled.")
   endif()
 
-  # Apache Arrow + Parquet (optional) — zero-copy IPC and Parquet reading.
+  # Apache Arrow + Parquet (optional) — Parquet reading (Arrow IPC is read without it, by the vendored nanoarrow).
   # No Python required. No external package manager required.
   #
   # Detection order:

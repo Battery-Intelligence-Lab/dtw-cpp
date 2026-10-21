@@ -1,14 +1,16 @@
 target_sources(dtwc_core
   PRIVATE
     arrow_c_data.cpp
+    arrow_ipc.cpp
     read_data.cpp
     parse_number.cpp
   PUBLIC FILE_SET HEADERS FILES
     arrow_c_data.hpp
+    arrow_ipc.hpp
     read_data.hpp
     parse_number.hpp
   )
-# The readers that need Arrow, in a build with Arrow.
+# The Parquet readers, which need Arrow C++, in a build with Arrow.
 if(TARGET dtwc_io)
   target_sources(dtwc_io
     PRIVATE

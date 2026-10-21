@@ -127,20 +127,8 @@ namespace detail {
 
   Data clara_sample(const Data &source, const std::vector<index_t> &positions, bool owned)
   {
-    const auto take = [&](const auto &series_of) {
+    const auto view = [&](const auto &series_of) {
       using T = typename std::remove_cvref_t<decltype(series_of(std::size_t{ 0 }))>::value_type;
-      if (owned) {
-        std::vector<std::vector<T>> series;
-        std::vector<std::string> names;
-        series.reserve(positions.size());
-        names.reserve(positions.size());
-        for (const index_t i : positions) {
-          const auto values = series_of(static_cast<std::size_t>(i));
-          series.emplace_back(values.begin(), values.end());
-          names.emplace_back(source.name(static_cast<std::size_t>(i)));
-        }
-        return Data(std::move(series), std::move(names), source.ndim);
-      }
       std::vector<std::span<const T>> series;
       std::vector<std::string_view> names;
       series.reserve(positions.size());
@@ -149,10 +137,12 @@ namespace detail {
         series.push_back(series_of(static_cast<std::size_t>(i)));
         names.push_back(source.name(static_cast<std::size_t>(i))); // O(1), no string copy
       }
-      return Data(std::move(series), std::move(names), source.ndim);
+      return Data(std::move(series), std::move(names), source.ndim, source.owner());
     };
-    if (source.is_f32()) return take([&](std::size_t i) { return source.series_f32(i); });
-    return take([&](std::size_t i) { return source.series(i); });
+    Data sample = source.is_f32() ? view([&](std::size_t i) { return source.series_f32(i); })
+                                  : view([&](std::size_t i) { return source.series(i); });
+    if (owned) return dtwc::detail::owned_copy(sample, source.precision);
+    return sample;
   }
 
 #ifdef DTWC_HAS_CUDA

@@ -69,8 +69,8 @@ const char *progress_label(Method method)
 }
 
 /// The input's format, judged from its name before any file is opened. In a
-/// build with Arrow, dtwc_io reads Parquet and Arrow IPC; the core's reader
-/// takes the rest, and refuses those formats in a build without them.
+/// build with Arrow, dtwc_io reads Parquet; the core's reader takes the rest,
+/// Arrow IPC among them, and refuses Parquet in a build without Arrow.
 InputFormat format_of(const fs::path &input)
 {
 #ifdef DTWC_HAS_ARROW

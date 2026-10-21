@@ -1362,8 +1362,9 @@ static mxArray *to_row(std::span<const T> values) {
 }
 
 /// read_data(path, skip_cols, skip_rows, delimiter, dtype) -> {series}, {names}:
-/// dtwc::read_data, for CSV/TSV text and folders of it, each series a double row,
-/// or single for dtype 'float32' (each value the double parse rounded).
+/// dtwc::read_data, for CSV/TSV text, folders of it and Arrow IPC, each series a
+/// double row, or single for dtype 'float32' (each value the double parse rounded).
+/// An Arrow IPC file's Data is a view of it: its names are read through name(i).
 static void cmd_read_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 4) throw std::invalid_argument("read_data requires a path, skip_cols and skip_rows.");
   const auto path = get_path(prhs[1], "path");
@@ -1376,7 +1377,7 @@ static void cmd_read_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *pr
   mxArray *names = mxCreateCellMatrix(1, n);
   for (size_t i = 0; i < n; ++i) {
     mxSetCell(plhs[0], i, data.is_f32() ? to_row(data.series_f32(i)) : to_row(data.series(i)));
-    mxSetCell(names, i, mxCreateString(data.p_names[i].c_str()));
+    mxSetCell(names, i, mxCreateString(std::string(data.name(i)).c_str()));
   }
   if (nlhs > 1) plhs[1] = names;
   else mxDestroyArray(names);

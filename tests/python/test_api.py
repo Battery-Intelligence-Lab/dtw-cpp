@@ -72,8 +72,9 @@ class TestLoad:
             dtwcpp.load(ds, skip_rows=1, name="x")
 
     def test_arrow_ipc_path_reads_its_data_and_name_columns(self, tmp_path):
-        """load('x.arrow') reads through pyarrow as dtwc_cl reads Arrow IPC: the
-        series are the 'data' column, named by 'name', 'ndim' features a step."""
+        """load('x.arrow') reads through the C++ reader, as dtwc_cl reads Arrow IPC:
+        the series are the 'data' column, named by 'name', 'ndim' features a step,
+        and the Data is a view of the file, its p_vec and p_names read through it."""
         pa = pytest.importorskip("pyarrow")
         rows = [[0.0, 0.5, 1.0, 1.5], [2.5, 1.0]]
         table = pa.table({"data": pa.array(rows, type=pa.list_(pa.float64())),

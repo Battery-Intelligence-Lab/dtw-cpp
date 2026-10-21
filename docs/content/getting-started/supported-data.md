@@ -158,9 +158,7 @@ byte-identical to the resident route's.
 
 ## Arrow IPC (Feather v2)
 
-Arrow IPC (`.arrow` / `.ipc` / `.feather`) is **memory-mapped**: the file's buffers are read in place, with no decoding step, and each series is copied once into memory. Preferred for repeated clustering runs on the same dataset.
-
-Requires `-DDTWC_ENABLE_ARROW=ON`.
+Arrow IPC (`.arrow` / `.ipc` / `.feather`) is **read in place**, in every build and language, by the C++ reader (the vendored nanoarrow; no Arrow C++ or pyarrow): the file is memory-mapped (in a build without llfio, read once into memory), and each series is a view of its bytes, never copied. A file whose buffers cannot be viewed is refused with an error naming why: compressed (LZ4, ZSTD; `pyarrow.feather.write_feather` and pandas' `to_feather` compress with LZ4 unless given `compression="uncompressed"`), big-endian, or with a buffer not aligned to its values. Preferred for repeated clustering runs on the same dataset.
 
 CLI:
 
@@ -171,21 +169,21 @@ dtwc_cl -i data.arrow -k 10
 C++:
 
 ```cpp
-problem.set_data(dtwc::io::read_arrow("data.arrow"));
+problem.set_data(dtwc::read_data("data.arrow"));
 ```
 
-Python reads it with the installed pyarrow (the `dtwcpp[parquet]` extra), the
-same columns and names:
+Python and MATLAB read it with the same C++ reader, the same columns and names:
 
 ```python
 data = dtwcpp.load("data.arrow").as_data()
 ```
 
-MATLAB has no Arrow IPC reader (R2026a has no `featherread`), so `dtwc.load` of an
-`.arrow`, `.ipc` or `.feather` file raises `dtwc:invalidArgument` naming the format:
-read the series elsewhere and pass them in memory, or write them to Parquet or CSV.
+```matlab
+ds = dtwc.load('data.arrow');
+[series, names] = ds.as_series();
+```
 
-**Schema:** a `data` column of `List` or `LargeList` (more than 2 billion values) of `Float32`/`Float64` holds one series per row, across every record batch; an optional `name` column of `Utf8` or `LargeUtf8` (Polars' default) names the series (without one, or for a null name, a series is `series_<i>`), and a `name` column of any other type is an error. The schema metadata `ndim` gives the features per time step (default 1). A null series or value is an error. Create Arrow IPC files with the `dtwc-convert` tool — see [Data formats and conversion](../../guides/data-formats/).
+**Schema:** a `data` column of `List` or `LargeList` (more than 2 billion values) of `Float32`/`Float64` holds one series per row, across every record batch; an optional `name` column of `Utf8` or `LargeUtf8` (Polars' default) names the series (without one, or for a null name, a series is `series_<i>`), and a `name` column of any other type is an error. The schema metadata `ndim` gives the features per time step (default 1). A null series or value is an error, and so is a dictionary-encoded column. A Feather version 1 file is not Arrow IPC. Create Arrow IPC files with the `dtwc-convert` tool — see [Data formats and conversion](../../guides/data-formats/).
 
 ---
 

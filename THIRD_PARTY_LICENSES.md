@@ -16,7 +16,7 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 
 | Component | Version | Licence | CLI archive | Python wheel |
 | --- | --- | --- | --- | --- |
-| Apache Arrow nanoarrow | 0.8.0 | Apache-2.0 | yes — vendored, compiled in | yes |
+| Apache Arrow nanoarrow, its IPC extension and flatcc | 0.8.0 | Apache-2.0 (four flatcc headers MIT or BSD-3-Clause) | yes — vendored, compiled in | yes |
 | fast_float | 8.3.0 | Apache-2.0 **OR** MIT **OR** BSL-1.0 | yes — vendored, compiled in | yes |
 | HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | no — the wheel links no HiGHS; `method="mip"` solves with the user's highspy (the `mip` extra) |
 | CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | no |
@@ -51,12 +51,26 @@ deliberately never redistribute GCC's `libgomp`, which is GPL-3.0 WITH GCC-excep
 
 ## Apache Arrow nanoarrow 0.8.0 — Apache-2.0
 
-A namespaced amalgamation of nanoarrow (`nanoarrow.h`, `nanoarrow.c`) is vendored at
-`dtwc/extern/nanoarrow/` and compiled unconditionally into `dtwc++`.
+A namespaced amalgamation of nanoarrow (`nanoarrow.h`, `nanoarrow.c`), its IPC extension (`nanoarrow_ipc.h`,
+`nanoarrow_ipc.c`) and the flatcc runtime that reads Arrow IPC messages (`flatcc.c`, `flatcc/`) are vendored at
+`dtwc/extern/nanoarrow/` and compiled unconditionally into `dtwc++`. They are the ASF release archive
+`apache-arrow-nanoarrow-0.8.0.tar.gz` bundled, unmodified, by its own
+`ci/scripts/bundle.py --symbol-namespace DtwcNanoarrow --with-ipc --with-flatcc`. SHA-512 of the archive, as the ASF
+publishes it, and SHA-256 of each bundled file as committed (LF line ends):
+
+```
+98f9f4c8dada0175e39e02d2baa01d0f63ad94636925cd289cbffa423de26bf0ede437aaa1ec10ff91e7d375e72cfddd950d040602520ab7891ab4c6337ce4f7  apache-arrow-nanoarrow-0.8.0.tar.gz
+46b9c6e2b3d98e344dab0e537fe8b595e4baf34c81955bdbb9e3304b83814556  nanoarrow.h
+647bcf7fe799815acf7263e9969a93c2f3a64bf3f49b8b5bfd3845c2e134fe01  nanoarrow.c
+da83285ce5deb36f9680917899cf0cc688d6853af88d6fe696aef5c6c89cdd87  nanoarrow_ipc.h
+ee1b5db2899bd568423f9ec816ad6027f053a68a306b842995e2e6937ed9c503  nanoarrow_ipc.c
+5f5c30467b76b1fa4c287b23a5de885cf4a95b79a60dcd75df29a4818d64f918  flatcc.c
+```
 
 The complete Apache License 2.0 text, as distributed by the project, is shipped alongside this file,
 together with the upstream `NOTICE.txt` — in the CLI archive at `share/doc/dtwc/nanoarrow/`, and in
-the wheel under `dtwcpp-<version>.dist-info/licenses/dtwc/extern/nanoarrow/`. The attribution notice
+the wheel under `dtwcpp-<version>.dist-info/licenses/dtwc/extern/nanoarrow/`. Its `LICENSE.txt` also names flatcc
+(Apache-2.0, Copyright 2015-2023 Mikkel F. Jørgensen, dvide.com). The attribution notice
 required by Apache-2.0 §4(d) is reproduced here in full:
 
 ```
@@ -65,6 +79,59 @@ Copyright 2023 The Apache Software Foundation
 
 This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
+```
+
+Four of flatcc's portability headers carry their own terms, kept in each file. `flatcc/portable/punaligned.h`
+(Copyright (c) 2016), `pmemaccess.h` and `prestrict.h` (Copyright (c) 2024), all Mikkel Fahnøe Jørgensen, dvide.com,
+are MIT:
+
+```
+(MIT License)
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+- The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+- The Software is provided "as is", without warranty of any kind, express or
+  implied, including but not limited to the warranties of merchantability,
+  fitness for a particular purpose and noninfringement. In no event shall the
+  authors or copyright holders be liable for any claim, damages or other
+  liability, whether in an action of contract, tort or otherwise, arising from,
+  out of or in connection with the Software or the use or other dealings in the
+  Software.
+```
+
+`flatcc/portable/pstdint.h`, a `<stdint.h>` for compilers that lack one, is BSD-3-Clause:
+
+```
+Copyright (c) 2005-2016 Paul Hsieh
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
 ## fast_float 8.3.0 — Apache-2.0 OR MIT OR BSL-1.0

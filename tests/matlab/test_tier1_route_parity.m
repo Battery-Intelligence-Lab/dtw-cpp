@@ -329,13 +329,43 @@ function test_parquet_layouts_read_as_cpp_and_python_read_them(testCase)
     end
 end
 
-function test_arrow_ipc_is_refused_naming_the_format(testCase)
-%   MATLAB has no Arrow IPC reader (R2026a has no featherread), so an .arrow,
-%   .ipc or .feather path is refused before anything is read, never taken as text.
-    for ext = {'.arrow', '.ipc', '.feather'}
-        err = capture_error(@() dtwc.cluster(['series' ext{1}], 2));
-        verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
-        verifySubstring(testCase, err.message, 'is Arrow IPC, which MATLAB has no reader for');
+function test_arrow_ipc_fixtures_read_as_cpp_and_python_read_them(testCase)
+%   Each Arrow IPC fixture (tests/data/reader/make_ipc_fixtures.py), read in place by the MEX's C++
+%   reader: the series and names tests/unit/io/test_arrow_ipc.cpp (C++) and tests/python/test_io.py
+%   expect, in either precision; each bad one raises their error.
+    fx = fullfile(fileparts(mfilename('fullpath')), '..', 'data', 'reader');
+    three = {[0 0.5 0.25], [1.5 2], 3};
+    cases = {
+        'ipc_list.arrow', three, {'a', 'series_1', 'c'}
+        'ipc_large_list.arrow', three, {'a', 'series_1', 'c'}
+        'ipc_float32.arrow', three, {'x', 'y', 'z'}
+        'ipc_no_name.arrow', three, {'series_0', 'series_1', 'series_2'}
+        'ipc_ndim2.arrow', {[0 1 2 3], [4 5]}, {'series_0', 'series_1'}
+        'ipc_batches.arrow', {[0 1], 2, 3, [4 5], 6, [7 8 9]}, {'a', 'b', 'series_2', 'd', 'series_4', 'f'}
+        'ipc_stream.arrow', three, {'a', 'series_1', 'c'}};
+    for c = 1:size(cases, 1)
+        [file, series, names] = cases{c, :};
+        [got, gotNames] = as_series(dtwc.load(fullfile(fx, file)));
+        verifyEqual(testCase, got, series, file);
+        verifyEqual(testCase, gotNames, names, file);
+        narrow = as_series(dtwc.load(fullfile(fx, file), 'Dtype', 'float32'));
+        verifyEqual(testCase, narrow, cellfun(@single, series, 'UniformOutput', false), file);
+    end
+    bad = {
+        'feather_v1.feather', 'dtwc:ioError', 'a Feather version 1 file (magic FEA1), which is not Arrow IPC'
+        'ipc_scalar_data.arrow', 'dtwc:ioError', ...
+            'the ''data'' column must be a List or LargeList of Float32/Float64, got double.'
+        'ipc_int64_names.arrow', 'dtwc:ioError', 'the ''name'' column must be Utf8 or LargeUtf8, got int64.'
+        'ipc_ndim_2x.arrow', 'dtwc:ioError', 'schema metadata ''ndim'' must be a positive integer, got ''2x''.'
+        'ipc_dictionary.arrow', 'dtwc:ioError', 'Schema message field with DictionaryEncoding not supported'
+        'ipc_lz4.arrow', 'dtwc:ioError', 'Arrow IPC record batch 0 is compressed (LZ4_FRAME)'
+        'ipc_null_series.arrow', 'dtwc:invalidArgument', 'null series at row 1 (drop or fill nulls'
+        'ipc_null_value.arrow', 'dtwc:invalidArgument', 'null value inside series at row 1 (drop or fill nulls'};
+    for c = 1:size(bad, 1)
+        [file, identifier, says] = bad{c, :};
+        err = capture_error(@() as_series(dtwc.load(fullfile(fx, file))));
+        verifyEqual(testCase, err.identifier, identifier, file);
+        verifySubstring(testCase, err.message, says, file);
     end
 end
 

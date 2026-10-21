@@ -47,7 +47,7 @@ two agree on every default, check and method choice.
 |------|-------------|---------|
 | `-h, --help` | Print the live command reference | — |
 | `--version` | Print the version from the repository `VERSION` source of truth | — |
-| `-i, --input <path>` | Input file or folder. CSV/TSV are core; Parquet/Arrow IPC/Feather require an Arrow-enabled build | — |
+| `-i, --input <path>` | Input file or folder. CSV/TSV and Arrow IPC/Feather are core; Parquet requires an Arrow-enabled build | — |
 | `-o, --output <path>` | Output directory (`""` writes no file) | `./results` |
 | `--name <string>` | Problem name (used in output filenames) | the input's file or folder name |
 | `-k, --n-clusters <int>` | Number of clusters (required) | — |

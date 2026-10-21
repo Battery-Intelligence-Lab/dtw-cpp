@@ -38,7 +38,7 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 - **Runtime precision**: Float64 by default; explicit Float32 halves series-storage bytes and uses Float32 recurrence arithmetic
 - **RAM-aware**: `--ram-limit` (automatic by default: the memory available) maps the distance matrix to a file when it does not fit, and streams a Parquet file of one series per row (a list column, or several float columns) through non-full FastCLARA
 - **Checkpointing**: Save/resume long-running distance matrix computations
-- **I/O**: CSV, Parquet, and Arrow IPC, gated by compiled capabilities and auto-detected from extension; HDF5 in Python (h5py)
+- **I/O**: CSV and Arrow IPC (read in place) in every build, Parquet in a build with Arrow, auto-detected from extension; HDF5 in Python (h5py)
 
 Recorded, workload-specific measurements are published in the
 [UCR benchmark ledger](benchmarks/ucr_benchmark_results.md); do not extrapolate
@@ -187,7 +187,7 @@ option; nothing is turned off silently. Defaults are the ones every platform can
 | `DTWC_ALLOW_SEQUENTIAL` | OFF | Explicitly permit a build without OpenMP; otherwise missing OpenMP is an error |
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration (an error without `nvcc`, and on macOS) |
 | `DTWC_ENABLE_METAL` | ON on Apple platforms, OFF elsewhere | Enable the Metal backend (an error off Apple platforms) |
-| `DTWC_ENABLE_ARROW` | OFF | Enable Apache Arrow IPC + Parquet I/O (system packages or CPM) |
+| `DTWC_ENABLE_ARROW` | OFF | Enable Parquet I/O through Apache Arrow C++ (system packages or CPM); Arrow IPC needs no Arrow C++ |
 | `DTWC_ENABLE_LLFIO` | ON | Enable llfio-backed memory-mapped distance matrices |
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
 | `DTWC_ENABLE_GUROBI` | OFF | Link the Gurobi MIP solver (needs an install, see `GUROBI_HOME`; the binary then needs the Gurobi library to load). v1.0.0 linked Gurobi when it found it |

@@ -6,6 +6,7 @@
 
 #include "read_data.hpp"
 
+#include "arrow_ipc.hpp"
 #include "../DataLoader.hpp"
 #include "../base/error.hpp"
 #include "../fileOperations.hpp"
@@ -53,19 +54,15 @@ bool is_arrow_ipc(const fs::path &path)
   return ext == ".arrow" || ext == ".ipc" || ext == ".feather";
 }
 
-// This reader has no Arrow, in any build: Parquet and Arrow IPC are refused here, never read as text. dtwc_cl reads
-// them through dtwc_io (read_arrow.hpp) in a build with Arrow, which it asks first.
+// This reader has no Arrow C++, in any build: Parquet is refused here, never read as text. dtwc_cl reads it through
+// dtwc_io (read_arrow.hpp) in a build with Arrow, which it asks first.
 InputFormat input_format(const fs::path &path)
 {
   if (!parquet_files(path).empty())
     throw IOError("Parquet input (.parquet/.pq) requires a build with Arrow/Parquet (-DDTWC_ENABLE_ARROW=ON). This "
                   "binary was built without Parquet support; convert the input to CSV/TSV or use an Arrow-enabled "
                   "build.");
-  if (is_arrow_ipc(path))
-    throw IOError("Arrow IPC input (.arrow/.ipc/.feather) requires a build with Arrow (-DDTWC_ENABLE_ARROW=ON). This "
-                  "binary was built without Arrow support; convert the input to CSV/TSV or use an Arrow-enabled "
-                  "build.");
-  return InputFormat::Text;
+  return is_arrow_ipc(path) ? InputFormat::ArrowIPC : InputFormat::Text;
 }
 
 void require_reader_options(std::optional<InputFormat> format, index_t skip_cols, index_t skip_rows, char delimiter,
@@ -90,8 +87,9 @@ Data read_data(const fs::path &path, index_t skip_cols, index_t skip_rows, char 
 {
   const InputFormat format = input_format(path);
   require_reader_options(format, skip_cols, skip_rows, delimiter, column);
+  if (format == InputFormat::ArrowIPC) return io::read_arrow_ipc(path, dtype); // names the file in its errors
   try {
-    DataLoader loader{ path }; // text: input_format() refused Parquet and Arrow IPC
+    DataLoader loader{ path }; // text: input_format() refused Parquet
     loader.start_column(skip_cols).start_row(skip_rows).verbosity(0).dtype(dtype);
     if (delimiter != '\0') loader.delimiter(delimiter);
     return loader.load();

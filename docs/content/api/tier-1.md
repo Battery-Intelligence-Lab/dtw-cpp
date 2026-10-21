@@ -81,10 +81,11 @@ The process device is what `cluster()` uses when it is not given one. A Tier-2
 
 `load` reads nothing: the file is read when `cluster()` runs. A path is a
 CSV, TSV or TXT file, a folder (one series per file), a Parquet file or an Arrow
-IPC file. Text files and folders are read by the C++ reader `dtwc_cl` uses, in
-every language. Parquet and Arrow IPC are read by C++ in a build with Arrow
+IPC file. Text files, folders and Arrow IPC files are read by the C++ reader
+`dtwc_cl` uses, in every language and build (an Arrow IPC file in place: its series
+are views of the file). Parquet is read by C++ in a build with Arrow
 (`-DDTWC_ENABLE_ARROW=ON`), by Python through the installed `pyarrow`, and by
-MATLAB, Parquet only, through `parquetread`.
+MATLAB through `parquetread`.
 
 - `skip_cols` drops the leading fields of each line (an id column), the leading
   columns of a Parquet file, or the leading values of each series in memory.

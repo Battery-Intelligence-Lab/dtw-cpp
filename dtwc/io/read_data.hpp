@@ -1,7 +1,7 @@
 /**
  * @file read_data.hpp
- * @brief dtwc::read_data: the text reader, the one way from a CSV/TSV path to Data, for dtwc_cl, dtwc::load and
- *        Python's and MATLAB's load(). Parquet and Arrow IPC are dtwc::io::read_arrow's (io/read_arrow.hpp, dtwc_io).
+ * @brief dtwc::read_data: the one way from a CSV/TSV or Arrow IPC path to Data, for dtwc_cl, dtwc::load and Python's
+ *        and MATLAB's load(). Parquet is dtwc::io::read_arrow's (io/read_arrow.hpp, dtwc_io).
  * @author Volkan Kumtepeli
  */
 
@@ -19,15 +19,15 @@
 
 namespace dtwc {
 
-/// The input formats: read_data reads Text; dtwc::io::read_arrow (dtwc_io) Parquet and Arrow IPC.
+/// The input formats: read_data reads Text and Arrow IPC; dtwc::io::read_arrow (dtwc_io) Parquet.
 enum class InputFormat { Text, Parquet, ArrowIPC };
 
 /**
  * @brief The reader `path` needs, judged from the file system alone, before any file is opened.
  *
  * A .parquet/.pq file, or a folder holding one, is Parquet; an .arrow/.ipc/.feather file is Arrow IPC; anything else is
- * CSV/TSV text, one file or a folder of them. This reader has no Arrow: Parquet and Arrow IPC are an IOError naming
- * the build option, never read as text (dtwc_cl asks dtwc::io::arrow_format first in a build with Arrow).
+ * CSV/TSV text, one file or a folder of them. This reader has no Arrow C++: Parquet is an IOError naming the build
+ * option, never read as text (dtwc_cl asks dtwc::io::arrow_format first in a build with Arrow).
  */
 InputFormat input_format(const std::filesystem::path &path);
 
@@ -45,7 +45,7 @@ void require_reader_options(std::optional<InputFormat> format, index_t skip_cols
                             std::string_view column);
 
 /**
- * @brief Read every series a CSV/TSV `path` names; Parquet and Arrow IPC are input_format()'s IOError.
+ * @brief Read every series a CSV/TSV or Arrow IPC `path` names; Parquet is input_format()'s IOError.
  *
  * - Text: skip_cols leading fields and skip_rows leading lines are dropped; delimiter '\0' is inferred from the
  *   extension. A file holds one series per row, named by its 1-based row number; a folder one series per file, named
@@ -56,8 +56,9 @@ void require_reader_options(std::optional<InputFormat> format, index_t skip_cols
  *   the file's only Float32/Float64 column, else each row is a series of its values in the file's columns, string
  *   columns aside (any other column is an IOError naming it). One series is named by its file's stem; the rows by the
  *   file's first string column (a null: series_<index>), else series_<index>, numbered across a folder's files.
- * - Arrow IPC (dtwc::io::read_arrow): the series are the rows of the `data` column across every record batch, named by
- *   a Utf8/LargeUtf8 `name` column (else series_<index>); the schema metadata `ndim` gives the features per time step.
+ * - Arrow IPC (dtwc::io::read_arrow_ipc, io/arrow_ipc.hpp, in every build): the series are the rows of the `data`
+ *   column across every record batch, named by a Utf8/LargeUtf8 `name` column (else series_<index>); the schema
+ *   metadata `ndim` gives the features per time step. The series are views of the file, read in place.
  *
  * `dtype` is the precision the series are stored in: Float32 rounds each value as it is read (a text value's double
  * parse), never holding a double copy of the series.

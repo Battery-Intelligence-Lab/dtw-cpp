@@ -123,15 +123,14 @@ res = dtwc.cluster({x1, x2, x3, x4}, 2);
 | `Name` | `''` | the run's name: the file's name without its extension, the folder's name, or `'dataset'` |
 | `Dtype` | `'float64'` | the precision the series are stored in: `'float32'` keeps them `single`, half the memory, each value the double read rounded; `single` data alone stays `double` |
 
-CSV/TSV text and folders of it are read by the C++ reader in the MEX, the one
-`dtwc_cl` and Python use. Parquet (`.parquet`, `.pq`, or a folder of them) is read
+CSV/TSV text, folders of it and Arrow IPC (`.arrow`, `.ipc`, `.feather`: read in
+place) are read by the C++ reader in the MEX, the one `dtwc_cl` and Python use.
+Parquet (`.parquet`, `.pq`, or a folder of them) is read
 by MATLAB's `parquetread` (R2019a or later; the MEX links no Arrow) by the C++
 reader's rule ([Supported data](../supported-data/)): a list column, or a row of
 several Float32/Float64 columns, is one series per row, named by the file's first
 string column, else `series_<i>`; the file's only Float32/Float64 column is one
-series, named by its file. MATLAB
-has no Arrow IPC reader, so an `.arrow`, `.ipc` or `.feather` file raises
-`dtwc:invalidArgument`: read it elsewhere and pass the series in memory.
+series, named by its file.
 
 ## Distance matrix
 

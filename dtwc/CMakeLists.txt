@@ -3,9 +3,8 @@ cmake_minimum_required(VERSION 3.26)
 # Three libraries and one name for consumers:
 #   dtwc_core  the algorithms, the session, the text reader and the result
 #              writers: everything the Python module and the MEX link;
-#   dtwc_io    the readers that need Arrow (Arrow IPC, Parquet, and FastCLARA
-#              streaming from Parquet), in a build with Arrow: the one library
-#              Arrow links;
+#   dtwc_io    the readers that need Arrow C++ (Parquet, and FastCLARA streaming
+#              from Parquet), in a build with Arrow: the one library Arrow links;
 #   dtwc_cli   the command line: cli::bind and its config files (CLI11, fkYAML),
 #              dtwc::run and the Tier-1 facade (api.cpp) that runs it.
 # dtwc++ links them all, so tests, examples, benchmarks and a parent project keep
@@ -87,9 +86,9 @@ target_sources(dtwc_core
 # The facade the command line runs.
 target_sources(dtwc_cli PRIVATE api.cpp PUBLIC FILE_SET HEADERS FILES api.hpp)
 
-# The vendored nanoarrow and fast_float are PRIVATE: only io/arrow_c_data.cpp and
-# io/parse_number.cpp include them, behind headers that name none of their types,
-# so they never reach a consumer.
+# The vendored nanoarrow and fast_float are PRIVATE: only io/arrow_c_data.cpp,
+# io/arrow_ipc.cpp and io/parse_number.cpp include them, behind headers that name
+# none of their types, so they never reach a consumer.
 target_include_directories(dtwc_core PRIVATE extern)
 
 target_link_libraries(dtwc_core PRIVATE mip-solvers)
@@ -203,24 +202,25 @@ foreach(_dtwc_lib IN LISTS _dtwc_libs)
   endif()
 endforeach()
 
-# llfio (optional) — memory-mapped distance matrices. core/distance_matrix.cpp
-# is the one file that includes it, so the link is PRIVATE; DTWC_HAS_MMAP is
-# PUBLIC, as every capability is, so a consumer (and the tests) can tell whether
-# use_mmap_distance_matrix can map a file.
+# llfio (optional) — memory-mapped distance matrices and Arrow IPC files.
+# core/distance_matrix.cpp and io/arrow_ipc.cpp are the files that include it, so
+# the link is PRIVATE; DTWC_HAS_MMAP is PUBLIC, as every capability is, so a
+# consumer (and the tests) can tell whether use_mmap_distance_matrix can map a file.
 if(TARGET llfio_hl)
   target_link_libraries(dtwc_core PRIVATE llfio_hl)
   target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_MMAP)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()
 
-# Arrow + Parquet (optional) — Arrow IPC and Parquet reading, on dtwc_io alone. Arrow without Parquet is a
-# legitimate IPC-only build; Arrow found with no target to link is an error, not a build that links nothing.
+# Arrow + Parquet (optional) — Parquet reading, on dtwc_io alone (every build reads Arrow IPC, io/arrow_ipc.cpp).
+# Arrow without Parquet reads no more than a build without Arrow; Arrow found with no target to link is an error, not a
+# build that links nothing.
 if(TARGET dtwc_io)
   if(DTWC_ARROW_FROM_CPM)
     # CPM-built static Arrow + Parquet
     target_link_libraries(dtwc_io PUBLIC arrow_static parquet_static)
     target_compile_definitions(dtwc_io PUBLIC DTWC_HAS_ARROW DTWC_HAS_PARQUET)
-    message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
+    message(STATUS "Arrow + Parquet linked — Parquet reading enabled")
   elseif(TARGET Arrow::arrow_shared)
     # System-installed Arrow (conda, apt, brew)
     target_link_libraries(dtwc_io PUBLIC Arrow::arrow_shared)
@@ -228,9 +228,9 @@ if(TARGET dtwc_io)
     if(Parquet_FOUND)
       target_link_libraries(dtwc_io PUBLIC Parquet::parquet_shared)
       target_compile_definitions(dtwc_io PUBLIC DTWC_HAS_PARQUET)
-      message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
+      message(STATUS "Arrow + Parquet linked — Parquet reading enabled")
     else()
-      message(STATUS "Arrow linked, IPC only: Parquet not found — reading a Parquet file raises")
+      message(STATUS "Arrow linked without Parquet: reading a Parquet file raises")
     endif()
   else()
     message(FATAL_ERROR

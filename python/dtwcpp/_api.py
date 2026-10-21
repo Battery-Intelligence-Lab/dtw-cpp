@@ -129,14 +129,15 @@ class Dataset:
         return isinstance(self.source, (str, os.PathLike))
 
     def _as_data(self):
-        """Read the source once, caching the owning C++ ``dtwc::Data``.
+        """Read the source once, caching the C++ ``dtwc::Data``.
 
         A path is read as dtwc_cl reads it: text by the C++ reader
         (``skip_cols`` drops leading FIELDS before numeric parsing, ``skip_rows``
         leading LINES, variable-length rows are kept, a batch file names its
-        series 1, 2, ... and a folder by file stem), Parquet (``skip_cols`` and
-        ``skip_rows`` drop leading columns and rows) and Arrow IPC through the
-        installed pyarrow. ``skip_rows`` drops leading SERIES of an
+        series 1, 2, ... and a folder by file stem), Arrow IPC by the C++ reader
+        too, in place (the series are views of the file, which the Data keeps
+        open), and Parquet (``skip_cols`` and ``skip_rows`` drop leading columns
+        and rows) through the installed pyarrow. ``skip_rows`` drops leading SERIES of an
         in-memory source — one memory row is one file line — and the series left
         are named as :func:`_series` names them: ordinals count from 0, as in C++.
         The series are stored in ``dtype``, each value rounded once to it.
@@ -161,7 +162,8 @@ class Dataset:
         return self._data
 
     def as_data(self):
-        """The owning C++ :class:`dtwcpp.Data` (reads the file if a path). Cached."""
+        """The C++ :class:`dtwcpp.Data` (reads the file if a path; an Arrow IPC file's series are views of it).
+        Cached."""
         return self._as_data()
 
     def as_series(self):

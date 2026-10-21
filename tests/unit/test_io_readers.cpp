@@ -1,12 +1,13 @@
 /**
  * @file test_io_readers.cpp
- * @brief The Arrow IPC and Parquet routes of dtwc::io::read_arrow, and the Parquet
- *        reader's streaming entries: names, values, nulls, offsets, metadata.
+ * @brief The Parquet route of dtwc::io::read_arrow, and the Parquet reader's
+ *        streaming entries: names, values, nulls, offsets, metadata.
  *
- * Each test builds an Arrow/Parquet fixture with the Arrow C++ API in a temp
+ * Each test builds a Parquet fixture with the Arrow C++ API in a temp
  * directory, then exercises the reader. The tests are gated on DTWC_HAS_ARROW /
  * DTWC_HAS_PARQUET exactly like the readers themselves (see dtwc/CMakeLists.txt);
- * when Arrow is not built the file registers a single skipped case.
+ * when Arrow is not built the file registers a single skipped case. Arrow IPC,
+ * which every build reads, is tests/unit/io/test_arrow_ipc.cpp's.
  *
  * @author Volkan Kumtepeli
  * @date 2026-07-07
@@ -43,8 +44,6 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 
 #include <arrow/api.h>
 #include <arrow/io/api.h>
-#include <arrow/ipc/api.h>
-#include <arrow/util/key_value_metadata.h>
 
 #include <base/error.hpp>
 #include <core/portable_random.hpp>
@@ -93,19 +92,6 @@ std::shared_ptr<arrow::Array> make_list_f64(const std::vector<std::vector<double
   return out;
 }
 
-// Write an Arrow IPC (Feather v2) file, one record batch per column set.
-void write_ipc(const std::filesystem::path &path,
-               const std::shared_ptr<arrow::Schema> &schema,
-               const std::vector<std::vector<std::shared_ptr<arrow::Array>>> &batches)
-{
-  auto out = unwrap(arrow::io::FileOutputStream::Open(dtwc::path_to_utf8(path))); // Arrow paths are UTF-8
-  auto writer = unwrap(arrow::ipc::MakeFileWriter(out, schema));
-  for (const auto &columns : batches)
-    REQUIRE(writer->WriteRecordBatch(*arrow::RecordBatch::Make(schema, columns.front()->length(), columns)).ok());
-  REQUIRE(writer->Close().ok());
-  REQUIRE(out->Close().ok());
-}
-
 // A list column holding a null cell, and one holding a null inside a cell.
 std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>> null_lists()
 {
@@ -131,127 +117,6 @@ std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>> null_lists()
 }
 
 } // namespace
-
-// --------------------- Arrow IPC (read_data, via a C stream) ---------------------
-
-TEMPLATE_TEST_CASE("ArrowIPC: every record batch, its names and ndim reach the Data", "[io][arrow]",
-                   arrow::StringBuilder, arrow::LargeStringBuilder)
-{
-  // The C stream path dropped the 'name' column for series_<i>, and the IPC
-  // reader refused a second record batch. LargeUtf8 is Polars' default string type.
-  const auto names = [](const std::vector<std::string> &values) {
-    TestType builder;
-    REQUIRE(builder.AppendValues(values).ok());
-    std::shared_ptr<arrow::Array> out;
-    REQUIRE(builder.Finish(&out).ok());
-    return out;
-  };
-  const auto first_names = names({ "first", "second" });
-  const auto first_data = make_list_f64({ { 1.0, 2.0, 3.0, 4.0 }, { 5.0, 6.0 } });
-  const auto schema = arrow::schema(
-    { arrow::field("name", first_names->type()), arrow::field("data", first_data->type()) },
-    arrow::key_value_metadata({ "ndim" }, { "2" }));
-  const auto tmp = tmpdir() / (first_names->type()->ToString() + "_batches.arrow");
-  write_ipc(tmp, schema, { { first_names, first_data }, { names({ "third" }), make_list_f64({ { 7.0, 8.0 } }) } });
-
-  const auto data = dtwc::io::read_arrow(tmp);
-  CHECK(data.ndim == 2);
-  CHECK(data.series_length(0) == 2); // 4 flat values / ndim 2
-  CHECK(data.p_names == std::vector<std::string>{ "first", "second", "third" });
-  CHECK(data.p_vec == std::vector<std::vector<double>>{ { 1.0, 2.0, 3.0, 4.0 }, { 5.0, 6.0 }, { 7.0, 8.0 } });
-  std::filesystem::remove(tmp);
-}
-
-TEST_CASE("ArrowIPC: out-of-bounds list offset rejected", "[io][arrow][security]")
-{
-  // A crafted file: int32 offsets [0, 6, 3] over 5 values. The IPC writer keeps
-  // values [offsets[0], offsets[length]) = 3 of them, so the middle offset, 6,
-  // points past the mapped values; reading it would run off the buffer.
-  auto pool = arrow::default_memory_pool();
-  arrow::DoubleBuilder vb(pool);
-  REQUIRE(vb.AppendValues(std::vector<double>{ 1.0, 2.0, 3.0, 4.0, 5.0 }).ok());
-  std::shared_ptr<arrow::Array> values;
-  REQUIRE(vb.Finish(&values).ok());
-  auto offsets = arrow::Buffer::FromVector(std::vector<int32_t>{ 0, 6, 3 });
-  auto list_type = arrow::list(arrow::float64());
-  auto list = std::static_pointer_cast<arrow::Array>(
-    std::make_shared<arrow::ListArray>(list_type, /*length=*/2, offsets, values));
-  auto tmp = tmpdir() / "crafted.arrow"; // a name the message matcher cannot match
-  write_ipc(tmp, arrow::schema({ arrow::field("data", list_type) }), { { list } });
-
-  CHECK_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::IOError);
-  CHECK_THROWS_WITH(dtwc::io::read_arrow(tmp), Catch::Matchers::ContainsSubstring("is outside the values"));
-  std::filesystem::remove(tmp);
-}
-
-TEST_CASE("ArrowIPC: a column of the wrong type is rejected by type", "[io][arrow]")
-{
-  // A bad Arrow type is an IOError naming the file and the column: a scalar
-  // 'data' column, and an Int64 'name' column, which must not silently become
-  // series_<i>.
-  arrow::DoubleBuilder scalar_builder;
-  REQUIRE(scalar_builder.AppendValues(std::vector<double>{ 1.0, 2.0 }).ok());
-  std::shared_ptr<arrow::Array> scalar;
-  REQUIRE(scalar_builder.Finish(&scalar).ok());
-  const auto scalar_file = tmpdir() / "scalar_data.arrow";
-  write_ipc(scalar_file, arrow::schema({ arrow::field("data", scalar->type()) }), { { scalar } });
-  REQUIRE_THROWS_AS(dtwc::io::read_arrow(scalar_file), dtwc::IOError);
-  REQUIRE_THROWS_WITH(dtwc::io::read_arrow(scalar_file),
-                      Catch::Matchers::ContainsSubstring("'data'")
-                        && Catch::Matchers::ContainsSubstring("scalar_data.arrow"));
-  std::filesystem::remove(scalar_file);
-
-  auto data = make_list_f64({ { 1.0, 2.0 }, { 3.0, 4.0 } });
-  arrow::Int64Builder nb;
-  REQUIRE(nb.AppendValues(std::vector<int64_t>{ 7, 8 }).ok());
-  std::shared_ptr<arrow::Array> names;
-  REQUIRE(nb.Finish(&names).ok());
-  auto schema = arrow::schema(
-    { arrow::field("data", data->type()), arrow::field("name", names->type()) });
-  auto tmp = tmpdir() / "int64_names.arrow";
-  write_ipc(tmp, schema, { { data, names } });
-
-  REQUIRE_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::IOError);
-  REQUIRE_THROWS_WITH(dtwc::io::read_arrow(tmp),
-                      Catch::Matchers::ContainsSubstring("'name'")
-                        && Catch::Matchers::ContainsSubstring("int64_names.arrow"));
-  std::filesystem::remove(tmp);
-}
-
-TEST_CASE("ArrowIPC: ndim metadata must be a whole positive integer", "[io][arrow]")
-{
-  // An unguarded std::stoul let "abc" escape as a context-free
-  // std::invalid_argument, wrapped "-1" to 2^64 - 1 and read "2x" as 2; 0 would
-  // divide every series length by zero. Each is an IOError naming the file.
-  for (const std::string text : { "0", "abc", "-1", "2x", "", "99999999999999999999999" }) {
-    INFO("ndim metadata '" << text << "'");
-    auto arr = make_list_f64({ { 1.0, 2.0, 3.0, 4.0 } });
-    auto meta = arrow::key_value_metadata({ "ndim" }, { text });
-    auto schema = arrow::schema({ arrow::field("data", arr->type()) }, meta);
-    auto tmp = tmpdir() / "ndim_text.arrow";
-    write_ipc(tmp, schema, { { arr } });
-
-    REQUIRE_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::IOError);
-    REQUIRE_THROWS_WITH(dtwc::io::read_arrow(tmp),
-                        Catch::Matchers::ContainsSubstring("ndim")
-                          && Catch::Matchers::ContainsSubstring("ndim_text.arrow"));
-    std::filesystem::remove(tmp);
-  }
-}
-
-TEST_CASE("ArrowIPC: a null series or a null value is rejected", "[io][arrow][security]")
-{
-  // The IPC reader never looked at the validity bitmap: a null slot became
-  // whatever bytes the values buffer held, straight into the distances.
-  for (const auto &[label, arr] : null_lists()) {
-    CAPTURE(label);
-    auto tmp = tmpdir() / ("ipc_" + label.substr(5) + ".arrow");
-    write_ipc(tmp, arrow::schema({ arrow::field("data", arr->type()) }), { { arr } });
-    CHECK_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::InvalidInput);
-    CHECK_THROWS_WITH(dtwc::io::read_arrow(tmp), Catch::Matchers::ContainsSubstring("null"));
-    std::filesystem::remove(tmp);
-  }
-}
 
 // -------------------------- Parquet reader ----------------------------
 
