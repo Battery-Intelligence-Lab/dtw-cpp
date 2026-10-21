@@ -52,7 +52,9 @@ and HG ship in 2.0 or after it is open (not asked).
 
 - [here] `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
 - [here] L2b's open ends: a Windows build with Arrow ON, and the Linux link order of `dtwc_core` / `dtwc_io` (WSL).
-- [here] F42: a crash of CUDA `Auto` precision through `Problem`, recorded on Windows and never re-run.
+- [done 10-21] F42 does not reproduce: Auto, FP32, FP64 exit 0 through the CLI and a CUDA MEX on R2025b; July's
+  crash was 926542f1's `static std::mutex` (MSVC >= 14.40's all-zero mutex under R2024b's 14.36 runtime), gone with
+  e4a1d774, bcd5868d's macro and R2025b's runtime (`baselines/2026-10-21-f42-cuda-auto.md`).
 - [here] The MEX maps no matrix yet (F43, an llfio-ON MEX crashing in `std::mutex` under R2024b, did not reproduce
   on 2026-09-30).
 - [here] Release archives on Linux (WSL): `cpack` + `scripts/smoke_release_archive.py` (Windows done: RA, CA); the
@@ -82,6 +84,9 @@ and HG ship in 2.0 or after it is open (not asked).
 - The Windows archive ships HiGHS's development install (277 headers, a static `highs.lib`): trim it.
 - MV: cl packing the lanes ran 3–4× slower in some processes (FALSIFIED 10-08; pb/MV kept): the cause is open.
 - Barycenter and Soft-DTW keep each thread's largest DP matrix after a call (W13e): release or bound it.
+- CUDA `Auto` through `Problem` is tested only for its refusals (`unit_test_variant_distmat.cpp:433`); the raw
+  backend covers it (F42, 10-21). And `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` covers MATLAB builds only: HiGHS's and
+  llfio's `std::mutex` could fault in a CLI or Python process that loaded an older msvcp140 first (untested).
 - Tracker prefixes in test names (`FX-1:`, F8/F13/F14 ids): name the contract instead.
 - `import dtwcpp` imports scikit-learn whenever it is installed (`__init__.py:197` → `_clustering.py:16-18`), and
   through it scipy, pandas and joblib: +870 MB committed by scipy's OpenBLAS pool at 24 threads (FM's M3, 10-11), which
