@@ -39,7 +39,8 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   IPC read piece by piece, Python's and MATLAB's `cluster()` through C++ `run` with highspy required, the load
   pricing the matrix (MS measured 10-10: at 10^8 series 75 % of the stream's cold time waits on its one decoder, so
   mapped series; Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
-  review: none left after F3's threshold; approved 10-12; FM merged 10-21, so S1 next; P1–P3, K1, K2 measured first in its timing session)
+  review: none left after F3's threshold; approved 10-12; S1 (the reader) on pb/MM from e0e2e44b, 10-21; P1–P3, K1, K2 measured first in its
+  timing session; MM merges once, after S10)
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 
@@ -57,8 +58,8 @@ and HG ship in 2.0 or after it is open (not asked).
 - [here] Release archives on Linux (WSL): `cpack` + `scripts/smoke_release_archive.py` (Windows done: RA, CA); the
   Linux wheel: whether `libgomp` ships, and the notice says so.
 - [here] The docs site (charter item 10): the audit of 10-21 (`baselines/2026-10-21-docs-audit.md`: 15 findings, among
-  them `pip install "dtwcpp[cuda]"` with no such extra and a `cut_dendrogram` example that raises), fixed and the
-  gates green. RA's notice: Volkan 10-21, "Keep bundling" the runtime DLLs, the notice as written; its CHANGELOG line
+  them `pip install "dtwcpp[cuda]"` with no such extra and a `cut_dendrogram` example that raises): being fixed on
+  pb/DX (10-21), then the gates green. RA's notice: Volkan 10-21, "Keep bundling" the runtime DLLs, the notice as written; its CHANGELOG line
   moved to Added.
 - [CI] design-2.0's tip green: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and `matlab-mex.yml` on
   Linux, macOS and Windows, the three unit jobs, `documentation.yml`.

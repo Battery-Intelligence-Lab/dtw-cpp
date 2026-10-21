@@ -277,3 +277,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   archive nine files, 1.6 MB; not bundling means the 17.7 MB Visual C++ Redistributable, installed with admin rights;
   clang-cl's binaries import MSVCP140 and VCRUNTIME140 too): "Keep bundling", the notice as written. RA's CHANGELOG
   line: "Move to Added" (v1.0.0 shipped no wheels or archives).
+- 2026-10-21 — Volkan (question tool) on pushing (rule 11 kept pushes his; pushing here is awkward with many
+  worktrees): "Push design-2.0 after each merge": `design-2.0` is pushed fast-forward, never forced, after each merge
+  with its gates or a committed handoff; `pb/*` branches stay local unless another machine needs one. Rule 11's
+  wording is his to change (proposed to him).
