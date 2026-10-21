@@ -1,8 +1,8 @@
 # DTWC++ 2.0 — PLAN
 
 Branch `design-2.0`. Phases A–G of the design review (`plans/2026-09-27-design-review.md`, approved 2026-09-28) and
-the units after them are done; their rows, with commits and results, are in git (`git show 034d8994:.claude/PLAN.md`).
-What is left is below.
+the units after them are done; their rows, with commits and results, are in git (`git show 034d8994:.claude/PLAN.md`;
+DT, AL, BF, CS, PE, PE-L, SW, MS and AU: `git show 11ef39c0:.claude/PLAN.md`). What is left is below.
 
 Marks: ☐ open · ◐ in progress · ☑ done (commit; the row goes at the next prune). One implementer per step, never
 two on the same files, at most four agents; each proven step is one local commit.
@@ -27,40 +27,6 @@ differ only where several optimal medoid sets exist, node counts and run times c
 
 Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, approved 10-09), in this order:
 
-- ☑ DT `dtype` where data is loaded, in C++, Python, MATLAB and the CLI (float32 one word away; G2: a double view
-  under `--dtype float32` is no longer kept silently) (ddb9fc3b; merged 999457d1: clang 95, Arrow tree 98, CUDA 94,
-  matlab_suite 141/141, pytest 895/19/0; float32 output as before; a float32 Parquet load peaks at 0.52× the memory)
-- ☑ AL CLARA's assignment through the lanes kernel (added 10-09, "AL right after DT": per-pair today at 17.9 Gcell/s
-  on 24 threads against the lanes fill's 105–131) (pb/AL 26d4af40; timed 10-09 06:16, PASS under clang, GCC and cl:
-  clang 3.4–3.8× at 24 threads and 7.8× on one, GCC 4.8–5.7× and 10.0×, cl 1.29× under a band; merged 6359acba: clang
-  95, Arrow 98, CUDA 94, matlab_suite 141, pytest 895/19/0; CLI and CLARA outputs identical)
-- ☑ BF the blocked CPU fill (slabs and tiles; prefetch and range flush when mapped; checkpoints per slab; parallel NaN
-  prefill) with the one automatic memory key `ram_limit` (pb/BF 1b072918; matrices equal base's, GCC squared within
-  the route bound; timed 10-09: clang and cl 0.99–1.08×, mapped 22.6× at a 4 GiB cap and ≥ 37× at 2 GiB, checkpoints
-  write 2 M against 80 M; GCC s1t 0.892× against ≥ 0.98, a registered second attempt; e3 FALSIFIED: LLC misses 0.405
-  and 0.450 per entry against ≤ 0.4, base 0.87–1.18; c1's closing save 0.04 % over, recorded; GCC s1t FALSIFIED,
-  0.951× the second time; Volkan 10-09: merge with the misses recorded; merged ec8d10e6: clang 95, Arrow 98, CUDA 94,
-  matlab_suite 141, pytest 896/19/0; CLI outputs identical)
-- ☑ CS CLARA reads its data once (all samples drawn first, their union read once, decoding overlapped) and its stream
-  refuses each row the in-RAM run refuses (NaN, ±inf, an empty row, a band too narrow: base published a cost of
-  1.8e308) (pb/CS afd022c7 on pb/AL; 360/360 runs identical; P1 decodes 7.28 → 1.93 passes; timed 10-09 08:46, PASS:
-  streams 3.4–3.6× faster, in RAM 1.00–1.86×; merged 8af0336f: clang 95, Arrow 98, CUDA 94, matlab_suite 141, pytest
-  896/19/0; a `--ram-limit` too small for the samples' labels and one row group is now refused, as designed)
-- ☑ PE the Parquet stream holds its RAM limit (Volkan 10-09: next, before SW): every read decodes about 1 MiB at a
-  time and the stream is priced by what it holds (pb/PE 4e5123ea; under `--ram-limit 1G` P1 peaks at 0.71 GB, was 1.47
-  GB, against 1.16 GB allowed; 8/8 memory runs within the limit + 64 MiB; 360/360 identical; timed 10-09: 1.55–1.73×
-  faster than before; merged cc45f4b4: clang 95, Arrow 98, CUDA 94, matlab_suite 141, pytest 896/19/0; small explicit
-  limits rise: one decode is priced at about 10 MB)
-- ☑ PE-L the stream's memory price on Linux (WSL, GCC 13.3, pyarrow 23's libraries; counters by the scope's
-  memory.peak): the automatic limit under cgroups of 768M, 1G and 2G 12/12, never killed, results identical; explicit
-  limits 7/8 at first (P1 f32 at 256M 0.8 MB over, beside its own labels file in the page cache), 8/8 after glibc's
-  kept batches (320–680 MB) went back through `malloc_trim(0)`; merged a30e6cf0
-- ☑ SW the blocked SWAP (accepted swaps identical to the sequential sweep's) and the scores' loop orders
-  (design `C:/D/git/wt/tmp/SW/design.md` approved 10-09 with conditions; proven on pb/SW 2a63803f: every
-  evaluation base's on clang, GCC and cl; c0 set the parallel threshold at 2000 points; fix pass af18d202 timed
-  10-10: t1 13.6–16.7×, t5, t6a, t6b, p1–p4 and the scores PASS, t2, t3, t4, m1 and e1 FALSIFIED, GCC's 24-thread
-  t4–t6b not measurable in WSL; Volkan 10-10: merge with the misses recorded); merged 557cd889 (clang 95, Arrow 98,
-  CUDA 94, matlab_suite 141/141 on R2025b, pytest 896/19/0, CLI outputs byte-identical)
 - ◐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5 with the width and the rows written; design
   `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
   c72adf3b and 3fe34165 on pb/FM 10-11: identity bit for bit on three compilers, gates pass; of the assembly check's
@@ -68,25 +34,16 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   never passed 10-11 19:34–22:14; its bands are this Windows machine's; Mac 10-11, merged into 6ae7824f uncommitted:
   `metal_dtw.mm` builds without warnings, ctest 95, pytest 907/11/0, matlab_suite 142/142 on R2026a, the CLI's Metal
   float32 matrix equals the float64 one narrowed in all 160,000 entries, its mapped checkpoint resumes)
-- ◐ MS measure, after CS, whether CLARA's time at scale goes to decoding or to the disk; mapped series only if
-  decoding dominates (plan `C:/D/git/wt/tmp/MS/design.md` with its decision rule registered 10-10; Volkan: WSL
-  decides, 2^25 float64 series; measured 10-10: cold, 75 % of the stream's time at 10^8 waits on its one decoder,
-  predicted 5–12 %; the band-20 control failed its gate, Volkan "Accept as is": Decoding, mapped series; branch M,
-  a kit-only prototype, timed 10-11: its bands confirmed, 0.447 of the stream's cold time)
 - ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
   IPC read piece by piece, Python's and MATLAB's `cluster()` through C++ `run` with highspy required, the load
-  pricing the matrix (Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
+  pricing the matrix (MS measured 10-10: at 10^8 series 75 % of the stream's cold time waits on its one decoder, so
+  mapped series; Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
   review: none left after F3's threshold; approved 10-12; code after FM's merge, P1–P3, K1, K2 measured first)
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
-- ☑ AU `@author Volkan Kumtepeli` in every source file's header (Volkan 10-09; b77ba672: 160 files, comments only;
-  merged 6521b01e: clang 95, CUDA 94, matlab_suite 140/140, pytest 893/19/0, CLI outputs byte-identical); the last four
-  record citations in header blocks reworded after it
 
 ## Blocked on another machine or on Volkan
 
-- ☑ macOS: `test_codegen_no_calls` and the Metal tests on the Mac after RL and DT/AL (10-11 at 6ae7824f: 61 inner
-  loops, 0 calls; Metal 2168 and 169 assertions; ctest 95, pytest 904/11/0, matlab_suite 141/141 on R2026a)
 - ARC (Volkan, rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres
   type, `upload`, `build htc-cpu`, `build htc-gpu`, `build htc-gpu --gpu-device a100`, three `dtwcpp.cluster` runs
   (`hpc`, `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`.
