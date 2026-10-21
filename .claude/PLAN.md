@@ -31,7 +31,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   3fe34165, 2ef3e075; timed 10-21: 45 of 46 PASS, S2's mapped fill 1.60× and 1.14× more at float32, S4's mapped swap
   114×, swap and scores 1.1–2.1× at float32; clang's float32 Lloyd 0.49× FALSIFIED, fixed by a clang-only
   `vectorize(disable)` and re-timed 1.226; merged 0548796b: clang 95, Arrow 98 with the parquet parity test run, CUDA
-  94, matlab_suite 142, pytest 899/19/0, CLI outputs identical; pb/FM-metal's Metal tests merged bc36375a; E1, the ETW
+  94, matlab_suite 142, pytest 899/19/0, CLI outputs identical; pb/FM-metal's Metal tests merged bc36375a; the Mac
+  at 705ada87 10-21: clang-macos 95 with both Metal tests run, codegen 63 loops 0 calls, docs gates, pytest 907/11/0,
+  matlab_suite 142; Apple clang's float32 sum scalar with or without the pragma (identical code); E1, the ETW
   counters, whenever Volkan runs `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` elevated)
 - ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
   IPC read piece by piece, Python's and MATLAB's `cluster()` through C++ `run` with highspy required, the load
