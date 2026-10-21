@@ -57,10 +57,10 @@ and HG ship in 2.0 or after it is open (not asked).
   on 2026-09-30).
 - [here] Release archives on Linux (WSL): `cpack` + `scripts/smoke_release_archive.py` (Windows done: RA, CA); the
   Linux wheel: whether `libgomp` ships, and the notice says so.
-- [here] The docs site (charter item 10): the audit of 10-21 (`baselines/2026-10-21-docs-audit.md`: 15 findings, among
-  them `pip install "dtwcpp[cuda]"` with no such extra and a `cut_dendrogram` example that raises): being fixed on
-  pb/DX (10-21), then the gates green. RA's notice: Volkan 10-21, "Keep bundling" the runtime DLLs, the notice as written; its CHANGELOG line
-  moved to Added.
+- [done 10-21] The docs audit (`baselines/2026-10-21-docs-audit.md`, 15 findings) fixed and merged 485dbeb7 (check_docs,
+  check_pins, generate_docs green); `benchmarks/verify_results.py` named UCR rows from 0 where dtwc_cl names them from
+  1 (every ARI compared shifted rows), fixed 59202f68. RA's notice: Volkan 10-21, "Keep bundling", the notice as
+  written; its CHANGELOG line under Added. The site itself rebuilds in CI (`documentation.yml`).
 - [CI] design-2.0's tip green: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and `matlab-mex.yml` on
   Linux, macOS and Windows, the three unit jobs, `documentation.yml`.
 - [Volkan] ARC (rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres
