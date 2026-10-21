@@ -44,7 +44,7 @@ prob = dtwc.Problem('run', 'Device', 'gpu');   % or prob.set_device('gpu')
 index; Metal has GPU 0 only, so `gpu:1` there is a device error, never GPU 0.
 `set_gpu_precision` chooses what the GPU computes in (`auto`, `fp32`, `fp64`).
 `gpu` on a build without a GPU backend raises a device error at the call; `hpc`
-raises an invalid-argument error,
+raises a device error,
 because it submits a whole run (`dtwc.cluster(..., device="hpc")` in Python)
 rather than computing a `Problem` locally.
 

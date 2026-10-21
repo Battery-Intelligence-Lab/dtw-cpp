@@ -80,9 +80,9 @@ DTWC++ requires CMake 3.26 or newer and a C++20-capable compiler. Distribution p
     ```bash
     cmake --build . -j4 --config Release
     ```
-6. After this, the `dtwc_cl` executable will be ready to run in the `dtw-cpp/bin` folder:
+6. After this, the `dtwc_cl` executable will be ready to run in the `dtw-cpp/build/bin` folder:
     ```bash
-    cd ../bin
+    cd bin
     ./dtwc_cl # to run the command line interface
     ```
 
@@ -129,9 +129,9 @@ brew install libomp llvm && brew link --force libomp
     ```bash
     cmake --build . -j4 --config Release
     ```
-7. After this, the `dtwc_cl` executable will be ready to run in the `dtw-cpp/bin` folder:
+7. After this, the `dtwc_cl` executable will be ready to run in the `dtw-cpp/build/bin` folder:
     ```bash
-    cd ../bin
+    cd bin
     ./dtwc_cl # to run the command line interface
     ```
 
@@ -164,9 +164,9 @@ On Windows platforms, you probably need to install CMake and a C++ compiler:
     ```bash
     cmake --build . -j4 --config Release
     ```
-6. After this, the `dtwc_cl` executable will be ready to run in the `dtw-cpp/bin` folder:
+6. After this, the `dtwc_cl` executable will be ready to run in the `dtw-cpp/build/bin` folder:
     ```bash
-    cd ../bin
+    cd bin
     ./dtwc_cl # to run the command line interface
     ```
 

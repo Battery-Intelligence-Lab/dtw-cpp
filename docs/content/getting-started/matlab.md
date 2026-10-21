@@ -84,7 +84,9 @@ res.save('out');                                      % the four CSVs dtwc_cl wr
 ```
 
 `dtwc.cluster(data, k, Name, Value, ...)` takes these `dtwc_cl` keys, by
-Python's words in CamelCase: `Method`, `Band`, `Metric`,
+Python's words in CamelCase: `MatrixDtype` (`'float64'`, or `'float32'` for half the
+matrix memory, each distance rounded to a single), `RamLimit` (a byte count, or a size
+such as `'8G'`; `0` is automatic), `Method`, `Band`, `Metric`,
 `Variant` and its parameters (`WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`,
 `TweNu`, `TweLambda`), `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`,
 `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver` and the MIP
