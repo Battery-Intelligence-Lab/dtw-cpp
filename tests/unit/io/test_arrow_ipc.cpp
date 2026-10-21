@@ -29,12 +29,15 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
 #include <vector>
 
 using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::EndsWith;
+using Catch::Matchers::Equals;
 using Catch::Matchers::MessageMatches;
 using Catch::Matchers::StartsWith;
 using dtwc::core::Precision;
@@ -191,7 +194,7 @@ TEST_CASE("Arrow IPC: corrupt, truncated and unaligned copies of a fixture are r
                          "list offset [0, 7) of the series at row 0 is outside the values [0, 6).")));
   // The values' field node claims a value more than their buffer holds.
   CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(no_name, { 3, 0, 6, 0 }, { 3, 0, 7, 0 })), dtwc::IOError,
-                       MessageMatches(StartsWith("Arrow IPC record batch 0: ")
+                       MessageMatches(StartsWith("Arrow IPC record batch 0, column 'data': ")
                                       && ContainsSubstring("to have size >= 56 bytes but found buffer with 48 bytes")));
   // ndim neither whole nor positive, in the schema message and in the footer's copy of it.
   for (const auto *text : { "-1", "00" }) {
@@ -211,7 +214,8 @@ TEST_CASE("Arrow IPC: corrupt, truncated and unaligned copies of a fixture are r
   CHECK_THROWS_MATCHES(read_bytes(cut), dtwc::IOError, MessageMatches(ContainsSubstring("it is truncated")));
   const auto stream = bytes_of("ipc_stream.arrow");
   CHECK_THROWS_MATCHES(read_bytes({ stream.begin(), stream.end() - 40 }), dtwc::IOError,
-                       MessageMatches(StartsWith("Arrow IPC message at byte ")));
+                       MessageMatches(Equals("Arrow IPC message at byte 544: its body of 72 bytes runs past the 40 "
+                                             "left: the file is truncated or corrupt")));
   CHECK_THROWS_MATCHES(read_bytes(std::vector<std::byte>(8)), dtwc::IOError,
                        MessageMatches(StartsWith("not an Arrow IPC file")));
   // Fed at a 4-byte offset: flatcc's verifier refuses each record batch's header, whose int64 fields lie unaligned.
@@ -220,15 +224,62 @@ TEST_CASE("Arrow IPC: corrupt, truncated and unaligned copies of a fixture are r
     std::copy(bytes.begin(), bytes.end(), buffer.begin() + 4);
     return buffer;
   };
-  for (const auto *file : { "ipc_no_name.arrow", "ipc_float32.arrow" }) {
+  for (const auto &[file, batch] :
+       { std::pair{ "ipc_no_name.arrow", "184" }, std::pair{ "ipc_float32.arrow", "224" } }) {
     INFO(file);
     const auto buffer = shifted(bytes_of(file));
     CHECK_THROWS_MATCHES(dtwc::io::detail::read_ipc(std::span(buffer).subspan(4), nullptr, Precision::Float32),
-                         dtwc::IOError, MessageMatches(ContainsSubstring("not aligned")));
+                         dtwc::IOError,
+                         MessageMatches(Equals("Arrow IPC message at byte " + std::string(batch)
+                                               + ": Message flatbuffer verification failed (12) table field not "
+                                                 "aligned")));
   }
-  // A writer that put the values (Float64) 4 bytes into their 8: the buffer {offset 16, length 48} at offset 20.
+  // A writer that put the values 4 bytes into their 8 (Float64: the buffer {offset 16, length 48} at offset 20), or
+  // 2 into their 4 (Float32: {16, 24} at 18).
+  const std::string unaligned = "Arrow IPC record batch 0: a buffer is not aligned to its elements, so it cannot be "
+                                "viewed in place (Arrow IPC writers align every buffer to 8 bytes: rewrite the file "
+                                "with one)";
   CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(bytes_of("ipc_list.arrow"), { 16, 48 }, { 20, 48 })),
-                       dtwc::IOError, MessageMatches(ContainsSubstring("a buffer is not aligned to its elements")));
+                       dtwc::IOError, MessageMatches(Equals(unaligned)));
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(bytes_of("ipc_float32.arrow"), { 16, 24 }, { 18, 24 })),
+                       dtwc::IOError, MessageMatches(Equals(unaligned)));
+}
+
+TEST_CASE("Arrow IPC: the offsets and lengths a file gives nanoarrow are checked before a byte is read through them",
+          "[io][arrow][security]")
+{
+  const auto no_name = bytes_of("ipc_no_name.arrow");
+  const std::string batch = "Arrow IPC record batch 0, column 'data': ";
+  // The values' buffer {16, 48} moved 2^63 - 8 bytes on, past the body of 64 bytes, or given a negative length (-1
+  // is what nanoarrow takes for a size it is to compute).
+  CHECK_THROWS_MATCHES(
+    read_bytes(patched<std::int64_t>(no_name, { 16, 48 }, { std::numeric_limits<std::int64_t>::max() - 7, 48 })),
+    dtwc::IOError,
+    MessageMatches(Equals(batch + "a buffer of 48 bytes is not inside the batch's body of 64 bytes: the file is "
+                                  "corrupt")));
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(no_name, { 16, 48 }, { 16, -1 })), dtwc::IOError,
+                       MessageMatches(Equals(batch + "a buffer of -1 bytes is not inside the batch's body of 64 "
+                                                     "bytes: the file is corrupt")));
+  // The values' field node claims 2^58 values, which nanoarrow's minimal buffer size does not hold, and the last
+  // list offset 40 of them: row 2 would be 35 values over a buffer of 6.
+  CHECK_THROWS_MATCHES(
+    read_bytes(patched<std::int64_t>(patched<std::int32_t>(no_name, { 0, 3, 5, 6 }, { 0, 3, 5, 40 }), { 3, 0, 6, 0 },
+                                     { 3, 0, std::int64_t{ 1 } << 58, 0 })),
+    dtwc::IOError,
+    MessageMatches(Equals(batch + "a length of 288230376151711744 does not fit in the batch's body of 64 bytes: the "
+                                  "file is corrupt")));
+  // A stream whose schema's metadata length is 2^31 - 8 bytes, which with its 8-byte prefix is no header in the file.
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int32_t>(bytes_of("ipc_stream.arrow"), { -1, 208 },
+                                                        { -1, 0x7FFFFFF8 })),
+                       dtwc::IOError,
+                       MessageMatches(StartsWith("Arrow IPC message at byte 0: its header of ")
+                                      && EndsWith(" bytes does not fit in the 880 left: the file is truncated or "
+                                                  "corrupt")));
+  // An end-of-stream marker before the file format's record batch, which would end the walk before it.
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int32_t>(no_name, { -1, 184 }, { -1, 0 })), dtwc::IOError,
+                       MessageMatches(Equals("Arrow IPC message at byte 184 is an end-of-stream marker, but the "
+                                             "file's messages run on to its footer at byte 448: the file is "
+                                             "corrupt")));
 }
 
 TEST_CASE("Arrow IPC: the series are views of the bytes, which the Data's owner keeps alive", "[io][arrow]")
