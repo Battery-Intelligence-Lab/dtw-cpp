@@ -57,7 +57,7 @@ bash scripts/slurm/slurm_remote.sh upload
 # Build on an interactive node (batch job)
 bash scripts/slurm/slurm_remote.sh build --profile htc-cpu
 
-# Submit the CPU smoke test (modes: cpu, gpu, checkpoint, parquet)
+# Submit the CPU smoke test (modes: cpu, gpu, checkpoint; parquet needs a build with Arrow, which `build` turns off)
 bash scripts/slurm/slurm_remote.sh submit-smoke cpu
 
 # Check job status
@@ -69,7 +69,7 @@ bash scripts/slurm/slurm_remote.sh download
 # Verify results against known answers
 uv run benchmarks/verify_results.py \
     --true data/benchmark/UCRArchive_2018/Coffee/Coffee_TRAIN.tsv \
-    --predicted results/slurm/smoke_cpu_JOBID/coffee_k2/coffee_labels.csv -k 2
+    --predicted results/slurm/smoke_cpu_JOBID/coffee_k2/coffee_labels.csv --k 2
 ```
 
 ## From Python: `device="hpc"`
@@ -136,7 +136,7 @@ submits to the `interactive` partition without a GPU request and takes the porta
 
 ## Test Datasets
 
-The scripts upload small UCR datasets for quick verification:
+`upload` sends the Coffee and Beef datasets from `data/benchmark/UCRArchive_2018` for quick verification. The repository does not track them: download the [UCR archive](https://www.cs.ucr.edu/~eamonn/time_series_data_2018/) into `data/benchmark` first; `upload` skips a dataset it does not find.
 
 | Dataset | Samples | Length | Classes | Expected ARI |
 |---------|---------|--------|---------|--------------|

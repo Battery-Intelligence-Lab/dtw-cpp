@@ -90,7 +90,8 @@ old distances. The distance settings are the ones `cluster()` takes: `variant`
 `band` (the Sakoe-Chiba half-width in steps, `-1` for none), `metric` (`l1` or
 `squared_euclidean`, for Standard DTW and DDTW), `missing_strategy` (`error`,
 `zero_cost`, `arow`, `interpolate`) and `mv_mode` (`dependent` or `independent`,
-for multivariate series). Multivariate series hold `ndim` values per time step,
+for multivariate series; MATLAB's `set_distance` and `dtwc.distance.dtw` do not take
+`MvMode`, which `dtwc.cluster` and `DTWClustering` do). Multivariate series hold `ndim` values per time step,
 interleaved. A `Problem` computes on the CPU until its device is set; it does
 not follow the process device ([Devices](../../guides/devices/)).
 
