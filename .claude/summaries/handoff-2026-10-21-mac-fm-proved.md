@@ -11,6 +11,10 @@
 - Proved the merged tree (FM 0548796b, pb/FM-metal bc36375a, clang fix 2ef3e075) on macOS; no re-timing.
 - Record: `.claude/baselines/2026-10-21-mac-gates-fm-merged.md` and its folder (logs, assembly, `asm/count.py`).
 - PLAN's FM row: the Mac's gates added. The 10-12 handoff pruned.
+- Cleanup (Volkan: "sure clean up old work"): the Mac's 20 agent worktrees (09-22/23, detached at e784e5c3 or
+  899bb653, 12 GB) removed; each held staged or untracked content found in no commit, so each was first saved as a
+  commit under `refs/archive/worktrees/agent-*` (local only; 20/20 matched their worktree before removal). 50 local
+  branches, all in design-2.0, deleted; left: design-2.0, main. Drop the archive refs when nobody needs them.
 
 ## Verified by me
 
