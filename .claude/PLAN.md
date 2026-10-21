@@ -34,7 +34,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   never passed 10-11 19:34–22:14; its bands are this Windows machine's; timed 10-21 05:15–07:20: 45 of 46 PASS
   (S2's mapped fill 1.60× and 1.14× more at float32, S4's mapped swap 114×, swap and scores 1.1–2.1× at float32),
   FALSIFIED clang's float32 Lloyd 0.49× (D3's accepted `calculate_medoids` loop, vectorised); Volkan 10-21: "Fix
-  first" (a clang-only `vectorize(disable)`), E1 not awaited; Mac 10-11, merged into 6ae7824f uncommitted:
+  first", E1 not awaited; fix 2ef3e075 (a clang-only `vectorize(disable)`): D3's loops equal their float64 twins,
+  Lloyd identity 72/0 at both widths, ctest 95, km re-timed 1.226 (0.988–1.484) PASS; merge gates next; Mac 10-11,
+  merged into 6ae7824f uncommitted:
   `metal_dtw.mm` builds without warnings, ctest 95, pytest 907/11/0, matlab_suite 142/142 on R2026a, the CLI's Metal
   float32 matrix equals the float64 one narrowed in all 160,000 entries, its mapped checkpoint resumes)
 - ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
