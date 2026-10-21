@@ -95,6 +95,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - Build options `DTWC_ENABLE_{HIGHS,GUROBI,CUDA,METAL,ARROW,LLFIO,YAML}` (each optional; an `ON` that cannot be honoured
   stops the configure), `DTWC_FP_MODEL` and `DTWC_ARCH_LEVEL`.
 - On Windows, `dtwc_cl.exe` states its name, version and copyright in its file properties.
+- The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
+  each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
+  `dtwc_cl_msvc.exe`), so `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
 
 ## Changed
 
@@ -242,9 +245,6 @@ Soft-DTW, Python or CUDA), on the machine named.
   v1.0.0 read arguments in the ANSI code page, so `δ.csv` could name `d.csv`, and threw for such an extension.
 - A direct write to the `band` field takes effect at the next `fill_distance_matrix()`; v1.0.0 kept the distances
   computed under the old band.
-- The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
-  each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
-  `dtwc_cl_msvc.exe`), so `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
 - FastCLARA streamed from Parquet (`--ram-limit`) checks each row it reads as the in-RAM run checks its series: NaN,
   ±inf, an empty list cell or a row longer than the band allows, outside the samples, is an `InvalidInput` naming the
   row, where the stream published a cost of 1.8e308 (NaN: an error naming a point and a medoid).
