@@ -1176,9 +1176,13 @@ void Problem::calculate_medoids()
     {
       // The values' pointer is read at each pair summed, as dist_by_ind read it. Held in a register (a capture by
       // value), clang 21 vectorised the sum: another order. Read through the capture, GCC 13 and cl 19.50 loaded
-      // the capture too at each pair (2026-10-11).
+      // the capture too at each pair (2026-10-11). The float32 sum clang vectorised even so, with masked gathers and
+      // spills, at 0.49x the float64 sum's speed in Lloyd (2026-10-21).
       const auto *const *const values = &matrix;
       double sum{ 0 };
+#if defined(__clang__)
+#pragma clang loop vectorize(disable)
+#endif
       for (const auto i : Range(size()))
         if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
           sum += (*values)[core::tri_index(i_p, i)];

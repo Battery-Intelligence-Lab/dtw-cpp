@@ -187,7 +187,7 @@ Soft-DTW, Python or CUDA), on the machine named.
   2 GiB one. Bit for bit, but for GCC's squared L2 (the multiply-add caveat above), whose clusterings were unchanged.
 - A new mapped `.dtwm` file is not filled with NaN before its fill: its header records the rows written, which the fill
   advances once they are on the disk, so creating the file and reading its NaN back go. On an Intel Core Ultra 9 285
-  (GCC 13.3, WSL) the fill of 45,000 series in a 4 GiB cgroup runs «S2_F64»× faster, «S2_F32»× more with
+  (GCC 13.3, WSL) the fill of 45,000 series in a 4 GiB cgroup runs 1.60× faster, 1.14× more with
   `--matrix-dtype float32`; the same distances.
 - FastCLARA reads its series once: all samples are drawn first and one pass assigns every series to the medoids of
   every sample, where each sample took a pass of its own. Streamed from Parquet, the sampled rows are read once and
