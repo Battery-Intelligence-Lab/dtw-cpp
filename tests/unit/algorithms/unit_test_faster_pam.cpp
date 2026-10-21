@@ -268,8 +268,10 @@ TEST_CASE("FasterPAM converges at k = 200 within the default iteration cap", "[f
 // ===========================================================================
 TEST_CASE("FasterPAM gives the same result on 1 and 4 threads", "[faster_pam][threads]")
 {
+  for (const auto width : { core::Precision::Float64, core::Precision::Float32 })
   for (const bool ties : { false, true }) {
     Problem prob = make_walk_problem(3000, ties);
+    prob.set_matrix_dtype(width); // a float32 matrix's values are widened as read: the same sums, in double
     core::ClusteringResult one, four;
     {
       const ThreadCount threads(1);
@@ -279,7 +281,7 @@ TEST_CASE("FasterPAM gives the same result on 1 and 4 threads", "[faster_pam][th
       const ThreadCount threads(4);
       four = fast_pam(prob, 50, 100, 7);
     }
-    INFO("ties=" << ties << " iterations=" << one.iterations);
+    INFO("float32=" << (width == core::Precision::Float32) << " ties=" << ties << " iterations=" << one.iterations);
     REQUIRE(one.converged);
     REQUIRE(one.iterations > 1); // the first sweep accepted swaps
     CHECK(four.medoid_indices == one.medoid_indices);

@@ -40,7 +40,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <sstream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 using dtwc::core::DistanceMatrix;
@@ -74,6 +76,34 @@ DistanceMatrix::fingerprint_type fingerprint_of(std::uint8_t byte)
   return f;
 }
 
+/// The packed values' bits, widened to double.
+std::vector<std::uint64_t> bits_of(const DistanceMatrix &m)
+{
+  std::vector<std::uint64_t> bits;
+  m.visit([&](const auto *values) {
+    for (std::size_t k = 0; k < m.packed_count(); ++k)
+      bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(values[k])));
+  });
+  return bits;
+}
+
+/// A version-5 header: the version-4 layout above (bytes 0-47, version 5), then the bytes of a value, a zero word
+/// and the rows written.
+std::vector<char> v5_header(std::size_t n, const DistanceMatrix::fingerprint_type &fingerprint, std::uint32_t bytes,
+                            std::uint64_t rows)
+{
+  std::vector<char> header(64, 0);
+  std::memcpy(header.data(), "DTWM", 4);
+  const std::uint32_t version = 5;
+  const std::uint64_t n64 = n;
+  std::memcpy(header.data() + 4, &version, sizeof version);
+  std::memcpy(header.data() + 8, &n64, sizeof n64);
+  std::memcpy(header.data() + 16, fingerprint.data(), fingerprint.size());
+  std::memcpy(header.data() + 48, &bytes, sizeof bytes);
+  std::memcpy(header.data() + 56, &rows, sizeof rows);
+  return header;
+}
+
 } // namespace
 
 TEST_CASE("tri_index is symmetric and packs the lower triangle row by row", "[DistanceMatrix][tri_index]")
@@ -101,25 +131,128 @@ TEST_CASE("map() on a build without llfio is IOError naming the build option", "
 
 #else
 
-TEST_CASE("A new mapped matrix is every entry NaN under its header", "[DistanceMatrix][mmap]")
+TEST_CASE("A new mapped matrix has no row written: its version-5 header says 0", "[DistanceMatrix][mmap]")
 {
-  const ScratchDirectory tmp_dir{ "mmap_create" };
-  const fs::path tmp = tmp_dir.path / "create.dtwm";
-  const auto fingerprint = fingerprint_of(0x5a);
-  {
-    auto m = DistanceMatrix::map(tmp, 10, fingerprint);
-    REQUIRE(m.is_mapped());
-    REQUIRE(m.size() == 10);
-    REQUIRE(m.count_computed() == 0);
+  // No NaN is written into a new file: its header's rows written, 0, makes every pair not computed.
+  for (const auto width : { dtwc::core::Precision::Float64, dtwc::core::Precision::Float32 }) {
+    const ScratchDirectory tmp_dir{ "mmap_create" };
+    const fs::path tmp = tmp_dir.path / "create.dtwm";
+    const auto fingerprint = fingerprint_of(0x5a);
+    const std::size_t value = dtwc::core::value_bytes(width);
+    {
+      auto m = DistanceMatrix::map(tmp, 10, fingerprint, width);
+      REQUIRE(m.is_mapped());
+      REQUIRE(m.size() == 10);
+      REQUIRE(m.width() == width);
+      REQUIRE(m.rows_written() == 0);
+      REQUIRE(m.count_computed() == 0);
+      REQUIRE_FALSE(m.all_computed("test", false));
+    }
+    const auto bytes = file_bytes(tmp);
+    REQUIRE(bytes.size() == 64 + 55 * value);
+    REQUIRE(std::vector<char>(bytes.begin(), bytes.begin() + 64)
+            == v5_header(10, fingerprint, static_cast<std::uint32_t>(value), 0));
+    REQUIRE(DistanceMatrix::read(tmp, 10, fingerprint, width).count_computed() == 0);
   }
-  const auto bytes = file_bytes(tmp);
-  REQUIRE(bytes.size() == 48 + 55 * sizeof(double));
-  REQUIRE(std::string(bytes.data(), 4) == "DTWM");
-  REQUIRE(read_at<std::uint32_t>(bytes, 4) == 4);
-  REQUIRE(read_at<std::uint64_t>(bytes, 8) == 10);
-  REQUIRE(read_at<DistanceMatrix::fingerprint_type>(bytes, 16) == fingerprint);
-  for (std::size_t k = 0; k < 55; ++k)
-    REQUIRE(std::isnan(read_at<double>(bytes, 48 + k * sizeof(double))));
+}
+
+TEST_CASE("Rows written: a wait that leaves rows on the device records them, and no reader looks past them",
+          "[DistanceMatrix][mmap]")
+{
+  const ScratchDirectory tmp_dir{ "mmap_rows" };
+  const fs::path tmp = tmp_dir.path / "rows.dtwm";
+  const auto fingerprint = fingerprint_of(0x33);
+  {
+    auto m = DistanceMatrix::map(tmp, 4, fingerprint);
+    m.clear_rows(0, 2);
+    m.set(1, 0, 2.5);
+    m.flush_rows(0, 2, false); // started only: nothing recorded
+    REQUIRE(m.rows_written() == 0);
+    m.flush_rows(2, 4, true); // rows 0 and 1 not known on the device: nothing recorded
+    REQUIRE(m.rows_written() == 0);
+    m.flush_rows(0, 2, true);
+    REQUIRE(m.rows_written() == 2);
+    m.set(3, 0, 7.0); // a row past the written ones
+  }
+  REQUIRE(read_at<std::uint64_t>(file_bytes(tmp), 56) == 2);
+  const auto read = DistanceMatrix::read(tmp, 4, fingerprint);
+  REQUIRE(read.get(0, 1) == 2.5);
+  REQUIRE(std::isnan(read.get(0, 3))); // row 3 was never written: not computed, though the file holds 7
+  const auto mapped = DistanceMatrix::map(tmp, 4, fingerprint);
+  REQUIRE(mapped.rows_written() == 2);
+  REQUIRE(mapped.count_computed() == 1);
+  REQUIRE_FALSE(mapped.all_computed("test", false));
+  const auto full = dtwc::io::to_full_matrix(mapped);
+  REQUIRE(full[0 * 4 + 1] == 2.5);
+  REQUIRE(std::isnan(full[3 * 4 + 0]));
+  std::ostringstream csv;
+  csv << mapped;
+  REQUIRE(csv.str() == ",2.5,,\n2.5,,,\n,,,\n,,,\n");
+}
+
+TEST_CASE("A version-4 file is read and mapped as float64, and a mapped one stays version 4", "[DistanceMatrix][mmap]")
+{
+  // Version 4: a 48-byte header (bytes 0-47 of version 5's) and doubles, every row written.
+  const ScratchDirectory tmp_dir{ "mmap_v4" };
+  const fs::path tmp = tmp_dir.path / "v4.dtwm";
+  const auto fingerprint = fingerprint_of(0x44);
+  auto bytes = v5_header(3, fingerprint, 8, 0);
+  bytes.resize(48);
+  const std::uint32_t v4 = 4;
+  std::memcpy(bytes.data() + 4, &v4, sizeof v4);
+  const double values[] = { 0.0, 1.5, 0.0, std::nan(""), 2.25, 0.0 };
+  for (const double v : values) bytes.insert(bytes.end(), reinterpret_cast<const char *>(&v),
+                                             reinterpret_cast<const char *>(&v) + sizeof v);
+  std::ofstream(tmp, std::ios::binary).write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+
+  const auto read = DistanceMatrix::read(tmp, 3, fingerprint);
+  REQUIRE(read.rows_written() == 3);
+  REQUIRE(read.get(1, 0) == 1.5);
+  REQUIRE_FALSE(read.is_computed(2, 0));
+  REQUIRE_THROWS_MATCHES(DistanceMatrix::read(tmp, 3, fingerprint, dtwc::core::Precision::Float32),
+                         dtwc::InvalidInput, MessageMatches(ContainsSubstring("holds float64 distances")));
+  {
+    auto mapped = DistanceMatrix::map(tmp, 3, fingerprint);
+    REQUIRE(mapped.rows_written() == 3);
+    REQUIRE(mapped.get(2, 1) == 2.25);
+    mapped.set(2, 0, 4.0);
+    mapped.write(tmp, fingerprint); // its own file: flushed in place
+  }
+  const auto after = file_bytes(tmp);
+  REQUIRE(after.size() == 48 + 6 * sizeof(double));
+  REQUIRE(read_at<std::uint32_t>(after, 4) == 4);
+  REQUIRE(read_at<double>(after, 48 + 3 * sizeof(double)) == 4.0);
+}
+
+TEST_CASE("A file of the other width is InvalidInput naming both; a bad header word is IOError",
+          "[DistanceMatrix][mmap][error]")
+{
+  const ScratchDirectory tmp_dir{ "mmap_width" };
+  const auto fingerprint = fingerprint_of(0x66);
+  const fs::path f64 = tmp_dir.path / "f64.dtwm", f32 = tmp_dir.path / "f32.dtwm";
+  DistanceMatrix(4, dtwc::core::Precision::Float64).write(f64, fingerprint);
+  DistanceMatrix(4, dtwc::core::Precision::Float32).write(f32, fingerprint);
+  REQUIRE(fs::file_size(f64) == 64 + 10 * 8);
+  REQUIRE(fs::file_size(f32) == 64 + 10 * 4);
+  REQUIRE_THROWS_MATCHES(DistanceMatrix::read(f64, 4, fingerprint, dtwc::core::Precision::Float32), dtwc::InvalidInput,
+                         MessageMatches(ContainsSubstring("holds float64 distances, but this Problem stores float32")
+                                        && ContainsSubstring("set matrix_dtype float64")));
+  REQUIRE_THROWS_MATCHES(DistanceMatrix::map(f32, 4, fingerprint), dtwc::InvalidInput,
+                         MessageMatches(ContainsSubstring("holds float32 distances, but this Problem stores float64")));
+  REQUIRE(DistanceMatrix::map(f32, 4, fingerprint, dtwc::core::Precision::Float32).width()
+          == dtwc::core::Precision::Float32);
+
+  auto bad = file_bytes(f32);
+  const std::uint32_t three = 3;
+  std::memcpy(bad.data() + 48, &three, sizeof three); // three bytes a value
+  std::ofstream(f32, std::ios::binary | std::ios::trunc).write(bad.data(), static_cast<std::streamsize>(bad.size()));
+  REQUIRE_THROWS_AS(DistanceMatrix::read(f32, 4, fingerprint, dtwc::core::Precision::Float32), dtwc::IOError);
+  const std::uint32_t four = 4;
+  const std::uint64_t past_n = 5;
+  std::memcpy(bad.data() + 48, &four, sizeof four);
+  std::memcpy(bad.data() + 56, &past_n, sizeof past_n); // more rows written than N
+  std::ofstream(f32, std::ios::binary | std::ios::trunc).write(bad.data(), static_cast<std::streamsize>(bad.size()));
+  REQUIRE_THROWS_AS(DistanceMatrix::read(f32, 4, fingerprint, dtwc::core::Precision::Float32), dtwc::IOError);
 }
 
 TEST_CASE("A mapped matrix persists bit for bit and reopens with its values", "[DistanceMatrix][mmap]")
@@ -131,12 +264,17 @@ TEST_CASE("A mapped matrix persists bit for bit and reopens with its values", "[
   const std::size_t n = 5;
   {
     auto m = DistanceMatrix::map(tmp, n, fingerprint);
-    for (std::size_t k = 0; k < values.size(); ++k) m.raw()[k] = values[k];
+    m.clear_rows(0, n);
+    m.visit([&](auto *packed) {
+      for (std::size_t k = 0; k < values.size(); ++k)
+        packed[k] = static_cast<std::remove_cvref_t<decltype(*packed)>>(values[k]);
+    });
     m.set(4, 3, 42.0);
+    m.flush_rows(0, n, true); // on the device: every row written
   }
   const auto bytes = file_bytes(tmp);
   for (std::size_t k = 0; k < values.size(); ++k)
-    REQUIRE(std::bit_cast<std::uint64_t>(read_at<double>(bytes, 48 + k * sizeof(double)))
+    REQUIRE(std::bit_cast<std::uint64_t>(read_at<double>(bytes, 64 + k * sizeof(double)))
             == std::bit_cast<std::uint64_t>(values[k]));
 
   // One layout, two routes. The stream read comes first: Windows refuses a
@@ -144,11 +282,10 @@ TEST_CASE("A mapped matrix persists bit for bit and reopens with its values", "[
   const auto streamed = DistanceMatrix::read(tmp, n, fingerprint);
   const auto reopened = DistanceMatrix::map(tmp, n, fingerprint);
   REQUIRE_FALSE(streamed.is_mapped());
-  for (std::size_t k = 0; k < reopened.packed_count(); ++k) {
-    REQUIRE(std::bit_cast<std::uint64_t>(reopened.raw()[k]) == std::bit_cast<std::uint64_t>(streamed.raw()[k]));
-    if (k < values.size())
-      REQUIRE(std::bit_cast<std::uint64_t>(reopened.raw()[k]) == std::bit_cast<std::uint64_t>(values[k]));
-  }
+  const auto reopened_bits = bits_of(reopened);
+  REQUIRE(reopened_bits == bits_of(streamed));
+  for (std::size_t k = 0; k < values.size(); ++k)
+    REQUIRE(reopened_bits[k] == std::bit_cast<std::uint64_t>(values[k]));
   REQUIRE(reopened.get(3, 4) == 42.0);
   REQUIRE(reopened.count_computed() == values.size() + 1);
 }
@@ -161,6 +298,8 @@ TEST_CASE("Writing a matrix over the file it maps flushes it in place", "[Distan
   const auto fingerprint = fingerprint_of(0x22);
   {
     auto m = DistanceMatrix::map(tmp, 3, fingerprint);
+    m.clear_rows(0, 3);
+    m.flush_rows(0, 3, true); // every row written, NaN
     m.set(2, 0, 9.5);
     REQUIRE_NOTHROW(m.write(tmp, fingerprint));
     REQUIRE(m.is_mapped());
@@ -182,7 +321,7 @@ TEST_CASE("A moved or resized matrix lets go of its file", "[DistanceMatrix][mma
   REQUIRE(moved.is_mapped());
   REQUIRE(moved.get(0, 1) == 2.0);
   REQUIRE(m.size() == 0); // NOLINT(bugprone-use-after-move): the moved-from state is the subject
-  REQUIRE(m.raw() == nullptr);
+  m.visit([](const auto *values) { REQUIRE(values == nullptr); });
   REQUIRE_FALSE(m.is_mapped());
 
   moved.resize(4);
@@ -205,8 +344,8 @@ TEST_CASE("Zero and one series map and reopen", "[DistanceMatrix][mmap]")
     auto m = DistanceMatrix::map(one, 1, {});
     m.set(0, 0, 0.0);
   }
-  REQUIRE(fs::file_size(zero) == 48);
-  REQUIRE(fs::file_size(one) == 56);
+  REQUIRE(fs::file_size(zero) == 64);
+  REQUIRE(fs::file_size(one) == 72);
   REQUIRE(DistanceMatrix::map(zero, 0, {}).size() == 0);
   REQUIRE(DistanceMatrix::map(one, 1, {}).get(0, 0) == 0.0);
 }

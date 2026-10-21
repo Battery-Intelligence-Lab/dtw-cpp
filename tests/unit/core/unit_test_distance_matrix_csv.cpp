@@ -436,6 +436,8 @@ TEST_CASE("F14 mmap stream is literal and hostile-state independent",
 {
   const auto cache = fresh_path("stream.dtwm");
   auto matrix = dtwc::core::DistanceMatrix::map(cache, 3, {});
+  matrix.clear_rows(0, 3); // as a fill makes them: NaN, then recorded written once on the device
+  matrix.flush_rows(0, 3, true);
   populate_contract_matrix(matrix);
   check_contract_bits(matrix);
 

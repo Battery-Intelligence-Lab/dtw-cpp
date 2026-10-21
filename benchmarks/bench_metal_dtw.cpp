@@ -45,7 +45,7 @@ static void BM_metal_distanceMatrix(benchmark::State &state)
 
   for (auto _ : state) {
     (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
-    benchmark::DoNotOptimize(matrix.raw());
+    matrix.visit([](auto *values) { benchmark::DoNotOptimize(values); });
   }
 
   const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;
@@ -83,7 +83,7 @@ static void BM_metal_distanceMatrix_banded(benchmark::State &state)
 
   for (auto _ : state) {
     (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
-    benchmark::DoNotOptimize(matrix.raw());
+    matrix.visit([](auto *values) { benchmark::DoNotOptimize(values); });
   }
 
   const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;
@@ -114,7 +114,7 @@ static void BM_metal_distanceMatrix_tightband(benchmark::State &state)
 
   for (auto _ : state) {
     (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
-    benchmark::DoNotOptimize(matrix.raw());
+    matrix.visit([](auto *values) { benchmark::DoNotOptimize(values); });
   }
   state.counters["N"] = N;
   state.counters["L"] = L;
@@ -148,7 +148,7 @@ static void BM_metal_regtile_short(benchmark::State &state)
 
   for (auto _ : state) {
     (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
-    benchmark::DoNotOptimize(matrix.raw());
+    matrix.visit([](auto *values) { benchmark::DoNotOptimize(values); });
   }
 
   const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;
@@ -178,7 +178,7 @@ static void BM_metal_flops(benchmark::State &state)
 
   for (auto _ : state) {
     (void)dtwc::metal::compute_distance_matrix_metal(series, opts, matrix);
-    benchmark::DoNotOptimize(matrix.raw());
+    matrix.visit([](auto *values) { benchmark::DoNotOptimize(values); });
   }
 
   const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;

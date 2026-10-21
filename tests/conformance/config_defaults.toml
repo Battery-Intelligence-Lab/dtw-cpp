@@ -11,6 +11,7 @@ output = "./results"
 name = ""
 column = ""
 dtype = "float64"
+matrix-dtype = "float64"
 ram-limit = 0
 n-clusters = 0
 method = "auto"

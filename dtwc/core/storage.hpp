@@ -9,15 +9,15 @@
 
 namespace dtwc::core {
 
-/// Controls the precision of stored time series data.
+/// Controls the precision of stored time series data (`dtype`) and of the distance matrix's values (`matrix_dtype`),
+/// each on its own: neither sets the other.
 /// DTW functions are templated — both float and double codepaths are always compiled.
-/// Distance matrix always uses double regardless of this setting.
 enum class Precision {
   Float32, ///< Store series as float (4 bytes). Opt-in — 2x memory saving.
   Float64  ///< Store series as double (8 bytes). Default — full precision.
 };
 
-/// The spellings of `--dtype`.
+/// The spellings of `--dtype` and `--matrix-dtype`.
 inline constexpr Name<Precision> precision_names[]{
   { "float32", Precision::Float32 },
   { "f32", Precision::Float32 },

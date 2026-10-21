@@ -41,7 +41,7 @@ def _mapped_matrix_persists(dtwcpp):
         size = os.path.getsize(path)
         del first, second  # unmap before the directory goes
     assert filled, "the mapped distance matrix did not persist"
-    assert size == 48 + 21 * 8, size
+    assert size == 64 + 21 * 8, size  # the .dtwm v5 header and 21 packed doubles
     return size
 
 

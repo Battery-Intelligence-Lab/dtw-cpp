@@ -235,7 +235,7 @@ std::vector<HelpOption> help_options(const std::string &help)
 TEST_CASE("every spelling of every Config key renders to the golden text", "[config][spellings]")
 {
   const std::string golden = golden_text();
-  REQUIRE(values_of(golden).size() == 46);
+  REQUIRE(values_of(golden).size() == 47);
 
   SECTION("the golden file itself, through --config")
   {
@@ -258,7 +258,7 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
   {
     const dtwc::Config config = parse_args({
       "-i", "series.csv", "-o", "out", "--name", "golden", "--column", "values",
-      "--data-type", "FP32", "--ram-limit", "1G",
+      "--data-type", "FP32", "--matrix-dtype", "F32", "--ram-limit", "1G",
       "-k", "5", "-m", "CLARA", "-b", "7", "--metric", "L2SQ", "--variant", "WDTW",
       "--max-iter", "25", "--n-init", "4", "--dc", "0.25",
       "--wdtw-g", "0.125", "--adtw-penalty", "2.5", "--sdtw-gamma", "0.5", "--msm-c", "3",
@@ -278,7 +278,7 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
   {
     const dtwc::Config config = dtwc::parse_config({
       { "i", "series.csv" }, { "output", "out" }, { "name", "golden" }, { "column", "values" },
-      { "data_precision", "f32" }, { "ram_limit", "1GiB" },
+      { "data_precision", "f32" }, { "matrix_dtype", "fp32" }, { "ram_limit", "1GiB" },
       { "k", "5" }, { "method", "clara" }, { "band", "7" }, { "metric", "sqeuclidean" }, { "variant", "wdtw" },
       { "max_iter", "25" }, { "n_init", "4" }, { "dc", "0.25" },
       { "wdtw_g", "0.125" }, { "adtw_penalty", "2.5" }, { "sdtw_gamma", "0.5" }, { "msm_c", "3" },

@@ -39,7 +39,7 @@ Data make_f32_data(float offset = 0.0f)
 
 struct DenseSnapshot
 {
-  const double *address;
+  const void *address;
   size_t size;
   size_t computed;
   double pair;
@@ -48,7 +48,8 @@ struct DenseSnapshot
 DenseSnapshot snapshot_dense(const Problem &problem)
 {
   const auto &matrix = problem.distance_matrix();
-  return {matrix.raw(), matrix.size(), matrix.count_computed(), matrix.get(0, 1)};
+  const void *address = matrix.visit([](const auto *values) { return static_cast<const void *>(values); });
+  return {address, matrix.size(), matrix.count_computed(), matrix.get(0, 1)};
 }
 
 void require_dense_unchanged(const Problem &problem, const DenseSnapshot &before)

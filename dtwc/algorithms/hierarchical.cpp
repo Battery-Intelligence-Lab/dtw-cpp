@@ -154,6 +154,42 @@ struct UF {
   }
 };
 
+/// Each cluster's medoid, the member whose distances to its peers sum least (the smallest index on a tie), into
+/// `medoid_indices`; returns the cost, each point's distance to its medoid summed in cluster order. `matrix` holds
+/// the packed distances at their width; every sum runs in double. The inner loops index the members, not a
+/// range-for: so clang 21 vectorises the peer sums as it did the loop on dist_by_ind, in the same order (2026-10-11).
+template <typename T>
+double medoids_and_cost(const T *matrix, const std::vector<std::vector<index_t>> &members,
+                        std::vector<index_t> &medoid_indices)
+{
+  double total_cost = 0.0;
+  for (std::size_t cl = 0; cl < members.size(); ++cl) {
+    const index_t *const mem = members[cl].data();
+    const std::size_t size = members[cl].size();
+    double best_cost = std::numeric_limits<double>::infinity();
+    index_t best_idx = mem[0]; // fallback (smallest index in cluster)
+
+    for (const index_t cand : members[cl]) {
+      double cost = 0.0;
+      for (std::size_t q = 0; q < size; ++q)
+        cost += matrix[core::tri_index(static_cast<std::size_t>(cand), static_cast<std::size_t>(mem[q]))];
+
+      if (cost < best_cost ||
+          (cost == best_cost && cand < best_idx)) {
+        best_cost = cost;
+        best_idx = cand;
+      }
+    }
+
+    medoid_indices[cl] = best_idx;
+
+    // Total cost = sum of distances of each point to its medoid.
+    for (std::size_t q = 0; q < size; ++q)
+      total_cost += matrix[core::tri_index(static_cast<std::size_t>(mem[q]), static_cast<std::size_t>(best_idx))];
+  }
+  return total_cost;
+}
+
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -233,31 +269,8 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, ind
   // come from the matrix, which build_dendrogram filled.
   prob.fill_distance_matrix();
   std::vector<index_t> medoid_indices(k, -1);
-  double total_cost = 0.0;
-
-  for (index_t cl = 0; cl < k; ++cl) {
-    const auto &mem = members[static_cast<size_t>(cl)];
-    double best_cost = std::numeric_limits<double>::infinity();
-    index_t best_idx = mem[0]; // fallback (smallest index in cluster)
-
-    for (index_t cand : mem) {
-      double cost = 0.0;
-      for (index_t other : mem)
-        cost += prob.dist_by_ind(cand, other);
-
-      if (cost < best_cost ||
-          (cost == best_cost && cand < best_idx)) {
-        best_cost = cost;
-        best_idx = cand;
-      }
-    }
-
-    medoid_indices[static_cast<size_t>(cl)] = best_idx;
-
-    // Total cost = sum of distances of each point to its medoid.
-    for (index_t pt : mem)
-      total_cost += prob.dist_by_ind(pt, best_idx);
-  }
+  const double total_cost = prob.distance_matrix().visit(
+    [&](const auto *matrix) { return medoids_and_cost(matrix, members, medoid_indices); });
 
   core::ClusteringResult result;
   result.labels = std::move(labels);

@@ -137,8 +137,8 @@ void write_fixture_series(const fs::path &directory, int shift = 0)
   }
 }
 
-/// The checkpoint of six series: a 48-byte header and 21 packed doubles.
-constexpr std::uintmax_t checkpoint_bytes = 48 + 21 * sizeof(double);
+/// The checkpoint of six series: a 64-byte header and 21 packed doubles.
+constexpr std::uintmax_t checkpoint_bytes = 64 + 21 * sizeof(double);
 
 std::vector<std::string> cli_args(const fs::path &data, const fs::path &scratch, const fs::path &checkpoint_dir)
 {

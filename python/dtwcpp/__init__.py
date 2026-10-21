@@ -146,7 +146,7 @@ def device(device=None):
     return canonical
 
 
-def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
+def compute_distance_matrix(series, band=-1, metric="l1", *, device=None, matrix_dtype="float64"):
     """Compute pairwise DTW distance matrix.
 
     Parameters
@@ -163,10 +163,13 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
         the global default set via :func:`device` (itself 'cpu' unless changed).
         ``'hpc'`` is rejected here — it offloads the whole job, not just the
         matrix; use the high-level clustering path instead.
+    matrix_dtype : str, default='float64'
+        The matrix's value type and the array's dtype: 'float64', or 'float32'
+        (half the memory, each distance rounded to a float).
 
     Returns
     -------
-    numpy.ndarray of shape (N, N)
+    numpy.ndarray of shape (N, N), of dtype ``matrix_dtype``
 
     Raises
     ------
@@ -188,6 +191,7 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
     # A Problem's fill on `device`: the CPU, or for 'gpu' this build's backend
     # (CUDA, else Metal) and the GPU index of `device`, never the CPU.
     prob = Problem("compute_distance_matrix", device=device)
+    prob.matrix_dtype = matrix_dtype
     prob.set_distance(band=band, metric=metric)
     prob.set_data(series)
     return prob.distance_matrix()

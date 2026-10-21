@@ -161,6 +161,16 @@ classdef Problem < handle
             dtwc_mex('Problem_set_device', obj.Handle, char(device));
         end
 
+        function set_matrix_dtype(obj, dtype)
+        %SET_MATRIX_DTYPE The distance matrix's value type: 'float64' (the default) or 'float32'.
+        %   prob.set_matrix_dtype('float32')
+        %   'float32' stores each distance rounded to a single, half the memory;
+        %   costs and scores move by about 6e-8 of themselves, and medoids and
+        %   labels can change. distance_matrix() then returns single. A change
+        %   drops the distance matrix.
+            dtwc_mex('Problem_set_matrix_dtype', obj.Handle, char(dtype));
+        end
+
         function set_gpu_precision(obj, precision)
         %SET_GPU_PRECISION What a GPU computes in: 'auto' (the default), 'fp32', 'fp64'.
         %   prob.set_gpu_precision('fp64')
@@ -177,8 +187,10 @@ classdef Problem < handle
 
         function set_distance_matrix(obj, D)
         %SET_DISTANCE_MATRIX Set a precomputed distance matrix.
-        %   prob.set_distance_matrix(D) where D is NxN symmetric double.
-            dtwc_mex('Problem_set_distance_matrix', obj.Handle, double(D));
+        %   prob.set_distance_matrix(D) where D is NxN symmetric double or single,
+        %   stored at the matrix's value type (set_matrix_dtype).
+            if ~isa(D, 'single'), D = double(D); end
+            dtwc_mex('Problem_set_distance_matrix', obj.Handle, D);
         end
 
         function filled = is_distance_matrix_filled(obj)

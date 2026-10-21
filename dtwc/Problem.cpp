@@ -273,6 +273,7 @@ void apply(const Config &config, Problem &prob)
                       + " is not available: this DTWC++ was built without Gurobi. Use --solver highs, or "
                         "rebuild with -DDTWC_ENABLE_GUROBI=ON and GUROBI_HOME set.");
   prob.set_gpu_precision(config.gpu_precision);
+  prob.set_matrix_dtype(config.matrix_dtype);
   prob.set_device(config.device, config.device_index); // gpu without a GPU backend: the DeviceError
   if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
     throw DeviceError(
@@ -446,7 +447,7 @@ void Problem::refresh_distance_matrix()
     set_band(band); // drops the matrix too
     return;
   }
-  distMat = core::DistanceMatrix{};
+  distMat = core::DistanceMatrix(0, matrix_dtype_); // empty, of the width every resize keeps
   filled_ = false;
   rebind_dtw_fn(); // series edited in place may have new lengths (the WDTW table)
 }
@@ -556,6 +557,7 @@ void Problem::copy_distance_settings_from(const Problem &other)
   set_distance(other.distance());
   set_device(other.device_, other.device_index_);
   set_gpu_precision(other.gpu_precision_);
+  set_matrix_dtype(other.matrix_dtype_);
   verbose_ = other.verbose_;
 }
 
@@ -668,7 +670,7 @@ void Problem::use_mmap_distance_matrix(
   // map() checks an existing file's magic, version, length, N and fingerprint
   // before any of its distances can be read.
   auto mapped = core::DistanceMatrix::map(cache_path, data_.size(),
-                                          distance_checkpoint_identity(metric));
+                                          distance_checkpoint_identity(metric), matrix_dtype_);
   // A warm start holds every pair.
   const bool complete = mapped.all_computed("Problem::use_mmap_distance_matrix",
                                             distance_.variant.variant == core::DTWVariant::SoftDTW);
@@ -831,6 +833,7 @@ void Problem::fillDistanceMatrix_BruteForce()
   size_t values = 0;
   for (size_t i = 0; i < N; ++i) values += data_.series_flat_size(i);
   const size_t series_bytes = values * (f32 ? sizeof(float) : sizeof(data_t));
+  const size_t entry_bytes = core::value_bytes(distMat.width());
   constexpr size_t tile_series_bytes = size_t{ 512 } << 10;
   size_t h = std::max(16 * W, tile_series_bytes * N / series_bytes / W * W);
   size_t slab_bytes = std::numeric_limits<size_t>::max();
@@ -838,7 +841,7 @@ void Problem::fillDistanceMatrix_BruteForce()
     const size_t budget = ram_limit_ != 0 ? ram_limit_ : core::available_memory(); // 0: unknown, no limit
     slab_bytes = budget == 0 ? size_t{ 1 } << 30
                              : std::min(budget > series_bytes ? (budget - series_bytes) / 8 : 0, size_t{ 1 } << 30);
-    h = std::min(h, std::max(W, slab_bytes / (N * sizeof(double)) / W * W)); // the last tile-row fits a slab
+    h = std::min(h, std::max(W, slab_bytes / (N * entry_bytes) / W * W)); // the last tile-row fits a slab
   }
   const size_t save_rows =
     checkpoint.enabled ? (static_cast<size_t>(checkpoint.save_interval) + W - 1) / W * W : N;
@@ -863,11 +866,16 @@ void Problem::fillDistanceMatrix_BruteForce()
                        [&](size_t a, size_t b) { return data_.series_flat_size(a) > data_.series_flat_size(b); });
   const bool reordered = !std::is_sorted(order.begin(), order.end());
 
-  auto fill_column = [&](size_t R0, size_t R1, size_t c, auto column, const auto &block, const auto &one_pair) {
+  // `matrix` holds the values at the matrix's width: a pair is NaN until computed, then its distance rounded to it.
+  auto fill_column = [&](auto *matrix, size_t R0, size_t R1, size_t c, auto column, const auto &block,
+                         const auto &one_pair) {
     using T = typename decltype(column(c))::value_type;
+    using V = std::remove_pointer_t<decltype(matrix)>;
     constexpr size_t Wt = core::dtw_lanes<T>;
+    const auto computed = [matrix](size_t i, size_t j) { return !std::isnan(matrix[core::tri_index(i, j)]); };
+    const auto store = [matrix](size_t i, size_t j, double v) { matrix[core::tri_index(i, j)] = static_cast<V>(v); };
     const auto x = column(c);
-    if (c >= R0 && !distMat.is_computed(c, c)) distMat.set(c, c, 0.0);
+    if (c >= R0 && !computed(c, c)) store(c, c, 0.0);
     if (block) {
       std::array<size_t, Wt> rows;
       std::array<std::span<const T>, Wt> ys;
@@ -876,7 +884,7 @@ void Problem::fillDistanceMatrix_BruteForce()
       for (size_t b = reordered ? R0 : std::max(R0, c + 1); b < R1;) {
         size_t count = 0;
         for (; count < Wt && b < R1; ++b)
-          if (order[b] > c && !distMat.is_computed(c, order[b])) rows[count++] = order[b];
+          if (order[b] > c && !computed(c, order[b])) rows[count++] = order[b];
         if (count == 0) break;
         bool equal = true;
         for (size_t w = 0; w < Wt; ++w) {
@@ -885,21 +893,21 @@ void Problem::fillDistanceMatrix_BruteForce()
         }
         if (!(ragged || equal)) continue;
         block(x, ys, d);
-        for (size_t w = 0; w < count; ++w) distMat.set(c, rows[w], d[w]);
+        for (size_t w = 0; w < count; ++w) store(c, rows[w], d[w]);
       }
     }
     for (size_t r = std::max(R0, c + 1); r < R1; ++r)
-      if (!distMat.is_computed(c, r)) distMat.set(c, r, one_pair(x, column(r)));
+      if (!computed(c, r)) store(c, r, one_pair(x, column(r)));
   };
-  auto task = [&](size_t g) {
+  auto task = [&](auto *matrix, size_t g) {
     const size_t k = static_cast<size_t>(std::upper_bound(first_column.begin(), first_column.end(), g)
                                          - first_column.begin()) - 1;
     const size_t c = g - first_column[k];
     if (f32)
-      fill_column(bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); }, dtw_block_fn_f32_,
-                  *f32_function);
+      fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); },
+                  dtw_block_fn_f32_, *f32_function);
     else
-      fill_column(bounds[k], bounds[k + 1], c, [&](size_t i) { return series(i); }, dtw_block_fn_, dtw_fn_);
+      fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return series(i); }, dtw_block_fn_, dtw_fn_);
   };
 
   std::vector<size_t> slabs{ 0 }; // slab s: tile-rows [slabs[s], slabs[s + 1])
@@ -907,29 +915,53 @@ void Problem::fillDistanceMatrix_BruteForce()
     const size_t k0 = slabs.back();
     size_t end = k0 + 1;
     while (end < K && bounds[end + 1] - bounds[k0] <= save_rows
-           && (core::packed_size(bounds[end + 1]) - core::packed_size(bounds[k0])) * sizeof(double) <= slab_bytes)
+           && (core::packed_size(bounds[end + 1]) - core::packed_size(bounds[k0])) * entry_bytes <= slab_bytes)
       ++end;
     slabs.push_back(end);
   }
   // Hashed once: every save of this fill writes the same identity.
   const auto identity = checkpoint.enabled ? distance_checkpoint_identity() : core::DistanceMatrix::fingerprint_type{};
   const path_t file = checkpoint.enabled ? checkpoint_path(*this, checkpoint.directory) : path_t{};
-  distMat.prefetch_rows(0, bounds[slabs[1]]);
-  for (size_t s = 0; s + 1 < slabs.size(); ++s) {
-    const size_t r0 = bounds[slabs[s]], r1 = bounds[slabs[s + 1]];
-    if (s + 2 < slabs.size()) distMat.prefetch_rows(r1, bounds[slabs[s + 2]]);
-    // run_openmp catches inside the parallel region and rethrows the lowest
-    // column's failure after the join; a failed pair stays uncomputed.
-    const size_t first = first_column[slabs[s]];
-    auto slab_task = [&](size_t i) { task(first + i); };
-    run_openmp(slab_task, first_column[slabs[s + 1]] - first, true, 8);
-    // On this thread after the join, so a save never sees a slab half written;
-    // tagged with metric(), the metric this fill computed (both autosave sites).
-    if (checkpoint.enabled)
-      distMat.write(file, identity, r0, r1);
-    else
-      distMat.flush_rows(r0, r1, false);
-  }
+  // A mapped file's rows from `written` on were never written (no NaN prefill): each slab makes them NaN just
+  // before it computes them, and a wait that leaves rows on the device records them written (flush_rows).
+  const size_t written = distMat.rows_written();
+  size_t waiting = 0; // the first row of the slabs whose write-back no wait has covered
+  distMat.visit([&](auto *matrix) {
+    distMat.prefetch_rows(0, bounds[slabs[1]]);
+    for (size_t s = 0; s + 1 < slabs.size(); ++s) {
+      const size_t r0 = bounds[slabs[s]], r1 = bounds[slabs[s + 1]];
+      if (s + 2 < slabs.size()) distMat.prefetch_rows(r1, bounds[slabs[s + 2]]);
+      distMat.clear_rows(std::max(r0, written), r1);
+      // run_openmp catches inside the parallel region and rethrows the lowest
+      // column's failure after the join; a failed pair stays uncomputed.
+      const size_t first = first_column[slabs[s]];
+      auto slab_task = [&](size_t i) { task(matrix, first + i); };
+      run_openmp(slab_task, first_column[slabs[s + 1]] - first, true, 8);
+      refuse_float32_overflow(r0, r1);
+      // On this thread after the join, so a save never sees a slab half written;
+      // tagged with metric(), the metric this fill computed (both autosave sites).
+      if (checkpoint.enabled)
+        distMat.write(file, identity, r0, r1);
+      else {
+        distMat.flush_rows(r0, r1, false);                       // this slab's write-back starts
+        if (written < N) distMat.flush_rows(waiting, r0, true); // the slabs before it are on the device
+      }
+      waiting = r0;
+    }
+  });
+  if (written < N) // every row on the device: the file records them all written
+    distMat.flush_rows(distMat.rows_written(), N, true);
+}
+
+void Problem::refuse_float32_overflow(size_t r0, size_t r1)
+{
+  if (distMat.width() != core::Precision::Float32) return;
+  const auto [i, j] = distMat.first_infinite(r0, r1);
+  if (i == distMat.size()) return;
+  distMat.clear_rows(r0, r1); // no file keeps these rows, nor a later fill a distance a float could not hold
+  const double distance = data_.is_f32() ? dtw_fn_f32_(data_.series_f32(j), data_.series_f32(i))
+                                         : dtw_fn_(series(j), series(i));
+  core::refuse_float32_range("Problem::fill_distance_matrix", i, j, distance);
 }
 
 /**
@@ -986,6 +1018,9 @@ void Problem::fill_distance_matrix()
 #  else
     (void)metal::compute_distance_matrix_metal(data_.p_vec, opts, distMat);
 #  endif
+    refuse_float32_overflow(0, distMat.size());
+    if (distMat.rows_written() < distMat.size()) // a mapped file's rows are on the device, and it records them
+      distMat.flush_rows(0, distMat.size(), true);
     // One call fills every pair, so the only automatic save is here.
     if (checkpoint.enabled) save_checkpoint(*this, checkpoint.directory);
 #endif
@@ -1095,32 +1130,33 @@ void Problem::assign_clusters()
 {
   fill_distance_matrix(); // every point against every medoid: a read each
   std::vector<index_t> labels(data_.size());
-  auto assignClustersTask = [this, &labels](size_t i_p) //!< i_p and i_c in [0, Np)
-  {
-    const auto ip = static_cast<index_t>(i_p);
-    double best_distance = std::numeric_limits<double>::max();
-    index_t best_slot = 0;
-    bool has_best = false;
-    for (std::size_t slot = 0; slot < centroids_ind.size(); ++slot) {
-      const index_t medoid = centroids_ind[slot];
-      // Not the matrix's intake check: a fill of finite series can overflow
-      // (values near DBL_MAX give +inf), and Lloyd refuses that before it
-      // publishes labels.
-      const double distance = core::detail::require_finite_medoid_distance(
-        dist_by_ind(ip, medoid), "kmedoids_lloyd", i_p,
-        static_cast<index_t>(slot), medoid);
-      // A medoid tied with another medoid (a duplicate series) serves itself,
-      // or its own cluster would be published empty.
-      if (!has_best || distance < best_distance || (distance == best_distance && medoid == ip)) {
-        best_distance = distance;
-        best_slot = static_cast<index_t>(slot);
-        has_best = true;
+  distMat.visit([&](const auto *matrix) {
+    auto assignClustersTask = [this, &labels, matrix](size_t i_p) //!< i_p and i_c in [0, Np)
+    {
+      const auto ip = static_cast<index_t>(i_p);
+      double best_distance = std::numeric_limits<double>::max();
+      index_t best_slot = 0;
+      bool has_best = false;
+      for (std::size_t slot = 0; slot < centroids_ind.size(); ++slot) {
+        const index_t medoid = centroids_ind[slot];
+        // Not the matrix's intake check: a fill of finite series can overflow
+        // (values near DBL_MAX give +inf), and Lloyd refuses that before it
+        // publishes labels.
+        const double distance = core::detail::require_finite_medoid_distance(
+          matrix[core::tri_index(static_cast<std::size_t>(ip), static_cast<std::size_t>(medoid))], "kmedoids_lloyd",
+          i_p, static_cast<index_t>(slot), medoid);
+        // A medoid tied with another medoid (a duplicate series) serves itself,
+        // or its own cluster would be published empty.
+        if (!has_best || distance < best_distance || (distance == best_distance && medoid == ip)) {
+          best_distance = distance;
+          best_slot = static_cast<index_t>(slot);
+          has_best = true;
+        }
       }
-    }
-    labels[i_p] = best_slot;
-  };
-
-  run(assignClustersTask, data_.size()); // read-only lookups, one label slot per point
+      labels[i_p] = best_slot;
+    };
+    run(assignClustersTask, data_.size()); // read-only lookups, one label slot per point
+  });
   clusters_ind = std::move(labels);
 }
 
@@ -1135,17 +1171,26 @@ void Problem::calculate_medoids()
   fill_distance_matrix(); // every pair within a cluster
   std::vector<double> pointCosts(size());
 
-  auto findBetterMedoidTask = [&](size_t i_p) // i_p is point index.
-  {
-    double sum{ 0 };
-    for (const auto i : Range(size()))
-      if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
-        sum += dist_by_ind(static_cast<index_t>(i_p), static_cast<index_t>(i));
+  distMat.visit([&](const auto *matrix) {
+    auto findBetterMedoidTask = [&](size_t i_p) // i_p is point index.
+    {
+      // The values' pointer is read at each pair summed, as dist_by_ind read it. Held in a register (a capture by
+      // value), clang 21 vectorised the sum: another order. Read through the capture, GCC 13 and cl 19.50 loaded
+      // the capture too at each pair (2026-10-11). The float32 sum clang vectorised even so, with masked gathers and
+      // spills, at 0.49x the float64 sum's speed in Lloyd (2026-10-21).
+      const auto *const *const values = &matrix;
+      double sum{ 0 };
+#if defined(__clang__)
+#pragma clang loop vectorize(disable)
+#endif
+      for (const auto i : Range(size()))
+        if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
+          sum += (*values)[core::tri_index(i_p, i)];
 
-    pointCosts[i_p] = sum;
-  };
-
-  run(findBetterMedoidTask, size());
+      pointCosts[i_p] = sum;
+    };
+    run(findBetterMedoidTask, size());
+  });
 
   std::vector<double> clusterCosts(n_clusters(), std::numeric_limits<double>::max());
   for (const auto i : Range(size()))

@@ -73,7 +73,7 @@ class TestMappedDistanceMatrix:
             pytest.skip("this build has no memory-mapped support (DTWC_ENABLE_LLFIO=OFF)")
         in_ram = self._problem("in_ram")
         np.testing.assert_array_equal(mapped.distance_matrix(), in_ram.distance_matrix())
-        assert (tmp_path / "mapped.dtwm").stat().st_size == 48 + 10 * 8
+        assert (tmp_path / "mapped.dtwm").stat().st_size == 64 + 10 * 8
 
         # The file keeps the distances: a second Problem maps them without computing.
         reopened = self._problem("reopened")
@@ -83,6 +83,57 @@ class TestMappedDistanceMatrix:
 
         with pytest.raises(dtwcpp.InvalidInput, match="memory-mapped"):
             reopened.set_distance_matrix(in_ram.distance_matrix())
+
+
+class TestMatrixDtype:
+    """matrix_dtype "float32" stores each distance rounded to a float, and the
+    matrix comes back at that width (Volkan 2026-10-10: the stored width)."""
+
+    SERIES = TestMappedDistanceMatrix.SERIES
+
+    def _problem(self, name, matrix_dtype="float64"):
+        prob = dtwcpp.Problem(name)
+        prob.matrix_dtype = matrix_dtype
+        prob.set_data(self.SERIES, [f"s{i}" for i in range(len(self.SERIES))])
+        return prob
+
+    def test_a_float32_matrix_exports_float32_each_distance_rounded_once(self):
+        wide = self._problem("wide").distance_matrix()
+        narrow_problem = self._problem("narrow", "f32")
+        assert narrow_problem.matrix_dtype == "float32"
+        narrow = narrow_problem.distance_matrix()
+        assert wide.dtype == np.float64 and narrow.dtype == np.float32
+        np.testing.assert_array_equal(narrow, wide.astype(np.float32))
+        np.testing.assert_array_equal(
+            dtwcpp.compute_distance_matrix(self.SERIES, matrix_dtype="float32"), narrow)
+
+        # set_distance_matrix takes float32 and float64 arrays, stored at the matrix's width.
+        for given in (narrow, wide):
+            target = self._problem("target", "float32")
+            target.set_distance_matrix(given)
+            assert target.is_distance_matrix_filled()
+            np.testing.assert_array_equal(target.distance_matrix(), narrow)
+
+    def test_matrix_dtype_is_a_cluster_key(self):
+        config = dtwcpp._dtwcpp_core.Config()
+        config.matrix_dtype = "fp32"
+        assert config.matrix_dtype == "float32"
+        with pytest.raises(dtwcpp.InvalidInput, match="matrix_dtype"):
+            config.matrix_dtype = "float16"
+
+    def test_a_cache_of_the_other_width_is_refused_naming_the_fix(self, tmp_path):
+        wide = self._problem("wide")
+        try:
+            wide.use_mmap_distance_matrix(str(tmp_path / "cache.dtwm"))
+        except dtwcpp.IOError as error:
+            if "DTWC_ENABLE_LLFIO" not in str(error):
+                raise
+            pytest.skip("this build has no memory-mapped support (DTWC_ENABLE_LLFIO=OFF)")
+        wide.fill_distance_matrix()
+        del wide
+        narrow = self._problem("narrow", "float32")
+        with pytest.raises(dtwcpp.InvalidInput, match="set matrix_dtype float64"):
+            narrow.use_mmap_distance_matrix(str(tmp_path / "cache.dtwm"))
 
 
 class TestProblemThreadSafety:

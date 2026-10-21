@@ -52,15 +52,16 @@ namespace {
 /**
  * @brief For each point, find its nearest and second-nearest medoid.
  *
- * @param prob          Problem instance (for distance lookups).
+ * @param matrix        The packed distance matrix's values, at its width.
  * @param medoids       Current medoid indices.
  * @param N             Number of data points.
  * @param nearest       [out] Index into medoids array of nearest medoid for each point.
  * @param nearest_dist  [out] Distance to nearest medoid for each point.
  * @param second_dist   [out] Distance to second-nearest medoid for each point.
  */
+template <typename T>
 void compute_nearest_and_second(
-  Problem& prob,
+  const T* matrix,
   const std::vector<index_t>& medoids,
   index_t N,
   std::vector<index_t>& nearest,
@@ -80,10 +81,11 @@ void compute_nearest_and_second(
     bool has_second = false;
 
     for (index_t m = 0; m < k; ++m) {
-      const double d = prob.dist_by_ind(p, medoids[m]);
+      const index_t medoid = medoids[m]; // read once: cl 19.50 read it again for the tie below (2026-10-11)
+      const double d = matrix[core::tri_index(static_cast<std::size_t>(p), static_cast<std::size_t>(medoid))];
       // A medoid tied with another medoid (a duplicate series) serves itself,
       // or its own cluster would be published empty.
-      if (!has_best || d < best || (d == best && medoids[m] == p)) {
+      if (!has_best || d < best || (d == best && medoid == p)) {
         if (has_best) {
           second_best = best;
           has_second = true;
@@ -135,8 +137,8 @@ constexpr auto G = static_cast<index_t>(core::group_rows);
 // out[g] for g < n. O(N + k) per candidate. Each candidate's sums run on one thread, in point order, through the
 // operations of the one-candidate loop (W = 1), so its (change, slot) is the same whatever group, run or thread count
 // evaluates it.
-template <index_t W>
-void evaluate_group(const double *matrix, index_t N, index_t a, index_t n, const std::vector<double> &rho,
+template <index_t W, typename T>
+void evaluate_group(const T *matrix, index_t N, index_t a, index_t n, const std::vector<double> &rho,
                     const std::vector<index_t> &nearest, const std::vector<double> &nearest_dist,
                     const std::vector<double> &second_dist, SwapEval *out)
 {
@@ -233,8 +235,11 @@ constexpr index_t parallel_from = 2000;
 // State refresh after a swap uses the full (parallel) recompute rather than the
 // paper's O(N) incremental do_swap: identical result, and since accepted swaps
 // total O(k) over the run the extra work is negligible next to O(N²) per sweep.
+//
+// `values` are the matrix's values at its width: a float32 matrix's are widened as they are read, every sum in double.
 // ---------------------------------------------------------------------------
-void fasterpam_swap_impl(Problem& prob, index_t N, index_t k,
+template <typename T>
+void fasterpam_swap_impl(const core::DistanceMatrix& matrix, const T* values, index_t N, index_t k,
                          std::vector<index_t>& medoids, std::vector<bool>& is_medoid,
                          std::vector<index_t>& nearest, std::vector<double>& nearest_dist,
                          std::vector<double>& second_dist, int max_iter,
@@ -247,7 +252,6 @@ void fasterpam_swap_impl(Problem& prob, index_t N, index_t k,
   // cycling. Tied to the cost scale so it is meaningful for any distance range.
   const double eps = 1e-9 * std::max(1.0, compute_total_cost(nearest_dist));
 
-  const core::DistanceMatrix &matrix = prob.distance_matrix();
   const bool grouped = N >= parallel_from;
   const index_t width = grouped ? G : 1; // candidates a group holds
   const index_t threads = grouped ? get_max_threads() : 1;
@@ -268,10 +272,10 @@ void fasterpam_swap_impl(Problem& prob, index_t N, index_t k,
       auto run_group = [&](std::size_t q) {
         const index_t a = j0 + static_cast<index_t>(q) * width;
         if (grouped)
-          evaluate_group<G>(matrix.raw(), N, a, std::min(G, j1 - a), rho, nearest, nearest_dist, second_dist,
+          evaluate_group<G>(values, N, a, std::min(G, j1 - a), rho, nearest, nearest_dist, second_dist,
                             evals.data() + q * G);
         else
-          evaluate_group<1>(matrix.raw(), N, a, 1, rho, nearest, nearest_dist, second_dist, evals.data() + q);
+          evaluate_group<1>(values, N, a, 1, rho, nearest, nearest_dist, second_dist, evals.data() + q);
       };
       run_openmp(run_group, static_cast<std::size_t>((j1 - j0 + width - 1) / width), threads > 1, 8);
 
@@ -286,7 +290,7 @@ void fasterpam_swap_impl(Problem& prob, index_t N, index_t k,
       is_medoid[medoids[e.best_m]] = false;
       medoids[e.best_m] = j;
       is_medoid[j] = true;
-      compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
+      compute_nearest_and_second(values, medoids, N, nearest, nearest_dist, second_dist);
       update_removal_loss(N, nearest, nearest_dist, second_dist, rho);
       any_swap = true;
       j0 = j + 1;
@@ -325,36 +329,38 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, i
   std::vector<index_t> nearest(N);
   std::vector<double> nearest_dist(N);
   std::vector<double> second_dist(N);
-  compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
 
   int iter = 0;
   bool converged = false;
-  if (k == 1) {
-    // Degenerate: with one medoid there is no second-nearest (second_dist = +inf),
-    // so the removal-loss decomposition is undefined (ρ = inf, corrections = −inf
-    // ⇒ NaN). The single-medoid optimum is simply argmin_x Σ_o d(x, o); compute it
-    // directly in O(N²), smallest index winning ties. A task sums a group of
-    // candidates, each in point order, and writes their costs; the argmin is taken serially.
-    std::vector<double> candidate_cost(static_cast<std::size_t>(N));
-    const double *const matrix = prob.distance_matrix().raw();
-    auto total_distance = [&](std::size_t q) {
-      const auto a = static_cast<index_t>(q) * G;
-      core::detail::OrderedMedoidObjective cost[G];
-      core::for_each_point(matrix, N, a, [&](index_t, const double *d) {
-        for (index_t g = 0; g < G; ++g) cost[g].add(d[g]);
-      });
-      for (index_t g = 0; g < std::min(G, N - a); ++g)
-        candidate_cost[static_cast<std::size_t>(a + g)] = cost[g].value();
-    };
-    run_openmp(total_distance, static_cast<std::size_t>((N + G - 1) / G));
-    medoids[0] = static_cast<index_t>(
-      std::min_element(candidate_cost.begin(), candidate_cost.end()) - candidate_cost.begin());
-    compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
-    converged = true;
-  } else {
-    fasterpam_swap_impl(prob, N, k, medoids, is_medoid, nearest, nearest_dist,
-                        second_dist, max_iter, iter, converged);
-  }
+  const core::DistanceMatrix &matrix = prob.distance_matrix();
+  matrix.visit([&](const auto *values) {
+    compute_nearest_and_second(values, medoids, N, nearest, nearest_dist, second_dist);
+    if (k == 1) {
+      // Degenerate: with one medoid there is no second-nearest (second_dist = +inf),
+      // so the removal-loss decomposition is undefined (ρ = inf, corrections = −inf
+      // ⇒ NaN). The single-medoid optimum is simply argmin_x Σ_o d(x, o); compute it
+      // directly in O(N²), smallest index winning ties. A task sums a group of
+      // candidates, each in point order, and writes their costs; the argmin is taken serially.
+      std::vector<double> candidate_cost(static_cast<std::size_t>(N));
+      auto total_distance = [&](std::size_t q) {
+        const auto a = static_cast<index_t>(q) * G;
+        core::detail::OrderedMedoidObjective cost[G];
+        core::for_each_point(values, N, a, [&](index_t, const double *d) {
+          for (index_t g = 0; g < G; ++g) cost[g].add(d[g]);
+        });
+        for (index_t g = 0; g < std::min(G, N - a); ++g)
+          candidate_cost[static_cast<std::size_t>(a + g)] = cost[g].value();
+      };
+      run_openmp(total_distance, static_cast<std::size_t>((N + G - 1) / G));
+      medoids[0] = static_cast<index_t>(
+        std::min_element(candidate_cost.begin(), candidate_cost.end()) - candidate_cost.begin());
+      compute_nearest_and_second(values, medoids, N, nearest, nearest_dist, second_dist);
+      converged = true;
+    } else {
+      fasterpam_swap_impl(matrix, values, N, k, medoids, is_medoid, nearest, nearest_dist,
+                          second_dist, max_iter, iter, converged);
+    }
+  });
 
   core::ClusteringResult result;
   result.medoid_indices = medoids;
@@ -376,9 +382,15 @@ core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter,
   prob.fill_distance_matrix();
 
   std::mt19937_64 rng(seed);
-  auto medoids = core::kmedoids_pp(
-    N, n_clusters, rng, [&prob](index_t m, index_t i) { return prob.dist_by_ind(m, i); },
-    "fast_pam");
+  // BUILD reads N·k entries: from the typed values, as the swap (cl 19.50 reloaded get()'s pointer at each read).
+  auto medoids = prob.distance_matrix().visit([&](const auto *matrix) {
+    return core::kmedoids_pp(
+      N, n_clusters, rng,
+      [matrix](index_t m, index_t i) {
+        return matrix[core::tri_index(static_cast<std::size_t>(m), static_cast<std::size_t>(i))];
+      },
+      "fast_pam");
+  });
   return swap_phase(prob, std::move(medoids), max_iter);
 }
 

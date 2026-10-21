@@ -273,8 +273,8 @@ def main() -> None:
                     f"{executable.name} returned success but did not create {labels}\n"
                     f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
                 )
-            matrix = output / "archive_smoke.dtwm"  # 4 series: 48-byte header, 10 doubles
-            if not matrix.exists() or matrix.stat().st_size != 48 + 10 * 8:
+            matrix = output / "archive_smoke.dtwm"  # 4 series: the 64-byte v5 header, 10 doubles
+            if not matrix.exists() or matrix.stat().st_size != 64 + 10 * 8:
                 raise RuntimeError(
                     f"the archive's {executable.name} did not map its distance matrix to {matrix}\n"
                     f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"

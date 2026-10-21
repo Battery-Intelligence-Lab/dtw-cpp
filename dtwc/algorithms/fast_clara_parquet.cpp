@@ -176,8 +176,8 @@ namespace {
       }
       const auto s = static_cast<std::size_t>(plan.sample_size);
       const size_t union_bytes = io::ParquetChunkReader::series_bytes(union_values, rows.size(), F32);
-      const size_t pam_bytes =
-        io::ParquetChunkReader::series_bytes(sample_values, s, F32) + core::packed_size(s) * sizeof(double);
+      const size_t pam_bytes = io::ParquetChunkReader::series_bytes(sample_values, s, F32)
+                               + core::packed_size(s) * core::value_bytes(prob.matrix_dtype());
       if (union_bytes + pam_bytes > opts.ram_limit_bytes)
         throw InvalidInput("fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(opts.ram_limit_bytes)
                            + " cannot hold a sample's PAM beside the samples' series, which needs "

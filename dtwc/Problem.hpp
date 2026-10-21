@@ -173,6 +173,8 @@ private:
   /// writable_distance_matrix(): the next fill scans it, where those writes commit.
   /// Every other way a matrix enters scans it there.
   bool written_{ false };
+  /// The width of every matrix this Problem makes: distMat, a sub-Problem's (CLARA's samples), TADPole's cache.
+  core::Precision matrix_dtype_{ core::Precision::Float64 };
 
   Method method_{ Method::Kmedoids };
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
@@ -208,6 +210,9 @@ private:
   /// indexing would read past an empty vector in a Release build.
   void require_owned_storage(std::string_view accessor, bool float64_values) const;
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
+  /// A float32 matrix's rows [r0, r1), just filled: the first distance stored as ±inf sets them back to NaN and is
+  /// refused (core::refuse_float32_range, its value computed again in double). A float64 matrix is not scanned.
+  void refuse_float32_overflow(size_t r0, size_t r1);
 
   // Private functions:
   friend bool load_checkpoint(Problem &prob, const std::string &path,
@@ -439,7 +444,18 @@ public:
     refresh_distance_matrix();
   }
   GpuPrecision gpu_precision() const noexcept { return gpu_precision_; }
-  /// Take `other`'s distance settings, device, GPU index, GPU precision and
+  /// The width of the distance matrix's values (`matrix_dtype`): Float64, the default, or Float32, half the memory,
+  /// each distance rounded once to the nearest float, so costs and scores move by about 2^-24 of themselves and
+  /// medoids and labels can change; a distance beyond float32's range (3.4e38) is refused (InvalidInput). The
+  /// series' dtype is another setting. A change drops the distance matrix.
+  void set_matrix_dtype(core::Precision width)
+  {
+    if (matrix_dtype_ == width) return;
+    matrix_dtype_ = width;
+    refresh_distance_matrix();
+  }
+  core::Precision matrix_dtype() const noexcept { return matrix_dtype_; }
+  /// Take `other`'s distance settings, device, GPU index, GPU precision, matrix dtype and
   /// verbosity: a sub-Problem's, before its series (its fill then honours the
   /// parent's device, or validate_fill_request refuses it, e.g. Float32 on a GPU).
   void copy_distance_settings_from(const Problem &other);
@@ -540,6 +556,11 @@ public:
     sync_band();
     filled_ = false;
     written_ = true;
+    // A mapped file's rows never written become NaN on the device first, so a write there is kept by the fill.
+    if (const size_t written = distMat.rows_written(); written < distMat.size()) {
+      distMat.clear_rows(written, distMat.size());
+      distMat.flush_rows(written, distMat.size(), true);
+    }
     return distMat;
   }
 

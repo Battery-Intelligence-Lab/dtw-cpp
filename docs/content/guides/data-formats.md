@@ -31,7 +31,8 @@ cmake -S . -B build -DDTWC_ENABLE_ARROW=ON
 Series are always held in RAM. The distance matrix can live in a memory-mapped
 `.dtwm` file instead (`use_mmap_distance_matrix`; `dtwc_cl` maps it when it does
 not fit the `--ram-limit`); the Python wheels and the release CLI archives include
-that support (llfio).
+that support (llfio). `matrix_dtype` float32 (`--matrix-dtype`) stores the matrix
+at half the bytes, each distance rounded to a float.
 
 For data larger than an all-pairs matrix, choose a matrix-free method such as
 OneBatchPAM, CLARA, or TADPole rather than changing only the input container.

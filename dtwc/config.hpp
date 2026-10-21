@@ -46,6 +46,9 @@ struct Config
   /// process may use (core::available_memory()). The distance matrix is mapped
   /// when its bytes exceed half of what the series leave of it.
   std::size_t ram_limit = 0;
+  /// `--matrix-dtype`: the width of the distance matrix's values, float64 (default) or float32 (half the memory,
+  /// each distance rounded to the nearest float); not `dtype`'s, the series'.
+  core::Precision matrix_dtype = core::Precision::Float64;
   std::string dist_matrix;               ///< `--dist-matrix`: precomputed distance-matrix CSV.
   core::NotComputed not_computed = core::NotComputed::NaN; ///< `--not-computed`: what marks a pair it never computed
   // Method
@@ -98,7 +101,7 @@ std::size_t parse_ram_limit(const std::string &text, std::string_view key);
 
 /// Hand `prob` the settings of `config` that describe the clustering: the
 /// distance, the method and its controls, the MIP solver and settings, the
-/// device, the memory limit and verbose. The Problem checks each as it takes it;
+/// device, the matrix dtype, the memory limit and verbose. The Problem checks each as it takes it;
 /// `name` and the file options (input, output, checkpoint, dtype, ...) are not read.
 /// @throws InvalidInput for a value outside its domain or a distance no kernel
 ///         implements; SolverError for gurobi on a build without Gurobi;

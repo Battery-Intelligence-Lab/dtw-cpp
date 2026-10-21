@@ -65,11 +65,15 @@ Problem ragged_problem(const std::string &name, double shift = 0.0)
   return prob;
 }
 
+/// The packed values' bits, widened to double.
 std::vector<std::uint64_t> packed_bits(const Problem &prob)
 {
   const auto &m = prob.distance_matrix();
   std::vector<std::uint64_t> bits;
-  for (std::size_t k = 0; k < m.packed_count(); ++k) bits.push_back(std::bit_cast<std::uint64_t>(m.raw()[k]));
+  m.visit([&](const auto *values) {
+    for (std::size_t k = 0; k < m.packed_count(); ++k)
+      bits.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(values[k])));
+  });
   return bits;
 }
 
@@ -119,7 +123,7 @@ TEST_CASE("A checkpoint round trip is bit-exact, full and partial", "[checkpoint
   auto full = make_problem("full");
   full.fill_distance_matrix();
   save_checkpoint(full, scratch.path.string());
-  REQUIRE(fs::file_size(scratch.path / "full.dtwm") == 48 + 15 * sizeof(double));
+  REQUIRE(fs::file_size(scratch.path / "full.dtwm") == 64 + 15 * sizeof(double));
 
   auto partial = make_problem("partial");
   partial.writable_distance_matrix().resize(5);
@@ -279,7 +283,7 @@ TEST_CASE("A failing automatic save keeps the computed distances", "[checkpoint]
   const auto bits = packed_bits(prob), want = packed_bits(reference);
   std::size_t kept = 0;
   for (std::size_t k = 0; k < bits.size(); ++k)
-    if (!std::isnan(prob.distance_matrix().raw()[k])) {
+    if (!std::isnan(std::bit_cast<double>(bits[k]))) {
       ++kept;
       REQUIRE(bits[k] == want[k]);
     }
@@ -379,7 +383,75 @@ TEST_CASE("A mapped fill of several slabs equals the fill in RAM, bit for bit", 
     auto reopened = ragged_problem("slabs");
     reopened.set_band(band);
     reopened.use_mmap_distance_matrix(scratch.path / "slabs.dtwm");
+    REQUIRE(reopened.is_distance_matrix_filled()); // the fill recorded every row written
     REQUIRE(packed_bits(reopened) == packed_bits(reference));
   }
 }
 #endif
+
+TEST_CASE("A float32 fill holds the float64 fill's distances rounded to floats, in RAM and mapped",
+          "[checkpoint][fill][float32]")
+{
+  for (const int band : { -1, 8 }) {
+    CAPTURE(band);
+    auto reference = ragged_problem("narrow");
+    reference.set_band(band);
+    reference.fill_distance_matrix();
+    std::vector<std::uint64_t> rounded;
+    reference.distance_matrix().visit([&](const auto *values) {
+      for (std::size_t k = 0; k < reference.distance_matrix().packed_count(); ++k)
+        rounded.push_back(std::bit_cast<std::uint64_t>(static_cast<double>(static_cast<float>(values[k]))));
+    });
+    auto in_ram = ragged_problem("narrow");
+    in_ram.set_band(band);
+    in_ram.set_matrix_dtype(core::Precision::Float32);
+    in_ram.fill_distance_matrix();
+    REQUIRE(in_ram.distance_matrix().width() == core::Precision::Float32);
+    REQUIRE(packed_bits(in_ram) == rounded);
+#ifdef DTWC_HAS_MMAP
+    const ScratchDirectory scratch("narrow_mapped");
+    fs::create_directories(scratch.path);
+    auto mapped = ragged_problem("narrow");
+    mapped.set_band(band);
+    mapped.set_matrix_dtype(core::Precision::Float32);
+    mapped.set_ram_limit(std::size_t{ 1 } << 20); // several slabs
+    mapped.use_mmap_distance_matrix(scratch.path / "narrow.dtwm");
+    mapped.fill_distance_matrix();
+    REQUIRE(packed_bits(mapped) == rounded);
+#endif
+  }
+}
+
+TEST_CASE("A checkpoint of the other matrix_dtype is InvalidInput, loaded or mapped, naming both",
+          "[checkpoint][error][float32]")
+{
+  const ScratchDirectory scratch("width");
+  auto writer = make_problem("width");
+  writer.fill_distance_matrix();
+  save_checkpoint(writer, scratch.path.string());
+  auto reader = make_problem("width");
+  reader.set_matrix_dtype(core::Precision::Float32);
+  try {
+    (void)load_checkpoint(reader, scratch.path.string());
+    FAIL("a float64 checkpoint loaded into a float32 Problem");
+  } catch (const InvalidInput &e) {
+    const std::string what = e.what();
+    CHECK(what.find("holds float64 distances, but this Problem stores float32") != std::string::npos);
+    CHECK(what.find("set matrix_dtype float64") != std::string::npos);
+  }
+  CHECK(reader.distance_matrix().size() == 0); // nothing was installed
+#ifdef DTWC_HAS_MMAP
+  CHECK_THROWS_AS(reader.use_mmap_distance_matrix(checkpoint_path(reader, scratch.path.string())), InvalidInput);
+  CHECK_FALSE(reader.distance_matrix().is_mapped());
+#endif
+  // At its own width the round trip is bit-exact.
+  reader.fill_distance_matrix();
+  const fs::path narrow = scratch.path / "narrow";
+  save_checkpoint(reader, narrow.string());
+  REQUIRE(fs::file_size(checkpoint_path(reader, narrow.string())) == 64 + 15 * sizeof(float));
+  auto restored = make_problem("width");
+  restored.set_matrix_dtype(core::Precision::Float32);
+  REQUIRE(load_checkpoint(restored, narrow.string()));
+  REQUIRE(restored.is_distance_matrix_filled());
+  REQUIRE(packed_bits(restored) == packed_bits(reader));
+}

@@ -35,6 +35,7 @@
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
+#include <type_traits>
 
 #include "../detail/decode_pair.hpp"
 
@@ -999,13 +1000,15 @@ MetalDistMatResult compute_distance_matrix_metal(
     }
 
     // Every refusal is behind us: size the caller's matrix (one already N x N,
-    // as a mapped one is, keeps its storage) and widen the packed FP32
-    // triangle into it, slot for slot.
+    // as a mapped one is, keeps its storage) and copy the packed FP32 triangle
+    // into it, slot for slot: widened for a float64 matrix, as it is for a float32 one.
     if (out.size() != N) out.resize(N);
     const float *packed = static_cast<const float *>([owned.out contents]);
-    double *dst = out.raw();
-    for (size_t t = 0; t < slots; ++t)
-      dst[t] = dtwc::core::normalize_public_distance(packed[t]);
+    out.visit([&](auto *dst) {
+      using V = std::remove_pointer_t<decltype(dst)>;
+      for (size_t t = 0; t < slots; ++t)
+        dst[t] = static_cast<V>(dtwc::core::normalize_public_distance(packed[t]));
+    });
 
     auto t1 = std::chrono::steady_clock::now();
     result.gpu_time_sec =

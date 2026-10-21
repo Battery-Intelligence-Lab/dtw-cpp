@@ -129,8 +129,8 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 `twe_lambda`), `mv_mode`, `missing_strategy`, `max_iter`, `n_init`, `seed`,
 `sample_size`, `n_samples`, `batch_size`, `linkage`, `dc`, `solver`, `mip_gap`,
 `time_limit`, `no_warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`,
-`lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `ram_limit`, `name` and `verbose`
-(MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'RamLimit'`, ...). `dtype` (MATLAB
+`lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `matrix_dtype`, `ram_limit`, `name` and `verbose`
+(MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'MatrixDtype'`, `'RamLimit'`, ...). `dtype` (MATLAB
 `'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and
 refuses it beside a `Dataset`, which keeps its own. The others (`input`, `output`,
 `checkpoint`, ...) are `dtwc_cl`'s and `dtwc::run`'s, unknown keys here.
@@ -193,7 +193,8 @@ const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std
 `dunn` and `davies_bouldin` raise `UndefinedScore` and `calinski_harabasz` raises
 `InvalidInput`, as `davies_bouldin` does for one cluster. `onebatch`, `clara` and `tadpole` do not
 build the N×N matrix; `score`, `distance_matrix` and `save` fill it the first
-time they need it.
+time they need it. Under `matrix_dtype` float32, `distance_matrix` is a NumPy
+`float32` array in Python and `single` in MATLAB; C++ returns doubles.
 
 `save(dir)` writes, with `dtwc_cl`'s writer and byte for byte as it writes them,
 into `dir` (created if missing): `<name>_labels.csv` (`name,cluster`), `<name>_medoids.csv`

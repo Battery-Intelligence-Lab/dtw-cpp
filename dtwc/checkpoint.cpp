@@ -46,7 +46,7 @@ void save_checkpoint(const Problem &prob, const std::string &path, core::MetricT
   if (matrix.size() == n)
     matrix.write(file, identity);
   else
-    core::DistanceMatrix(n).write(file, identity);
+    core::DistanceMatrix(n, prob.matrix_dtype()).write(file, identity);
 }
 
 bool load_checkpoint(Problem &prob, const std::string &path)
@@ -64,7 +64,7 @@ bool load_checkpoint(Problem &prob, const std::string &path, core::MetricType me
   if (ec) throw IOError("Cannot inspect the checkpoint in '" + path + "': " + ec.message());
   if (!exists) return false;
 
-  auto loaded = core::DistanceMatrix::read(file, prob.size(), identity);
+  auto loaded = core::DistanceMatrix::read(file, prob.size(), identity, prob.matrix_dtype());
   const bool complete =
     loaded.all_computed("load_checkpoint", prob.variant_params().variant == core::DTWVariant::SoftDTW);
   prob.distMat = std::move(loaded);

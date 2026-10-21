@@ -26,6 +26,7 @@
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -139,6 +140,31 @@ TEST_CASE("O-06: Lloyd refuses zero iterations held by the deprecated field",
   DTWC_POP_NO_DEPRECATED
   REQUIRE_NOTHROW(prob.cluster_by_kmedoids_lloyd());
   CHECK(prob.last_iterations() >= 1);
+}
+
+TEST_CASE("A float32 matrix refuses a distance beyond float32's range, naming the pair and the fix",
+          "[problem][float32]")
+{
+  // Squared L2 over a value of 2^67: a distance of 2^134, about 2.2e40, finite in double, beyond a float's 3.4e38.
+  const auto problem = [] {
+    dtwc::Problem prob("overflow");
+    prob.set_data(dtwc::Data(std::vector<std::vector<double>>{ { 0.0, 1.0 }, { 0.0, 1.0 }, { std::ldexp(1.0, 67), 1.0 } },
+                       std::vector<std::string>{ "a", "b", "c" }));
+    prob.set_metric(dtwc::core::MetricType::SquaredL2);
+    return prob;
+  };
+  auto wide = problem();
+  wide.fill_distance_matrix();
+  REQUIRE(wide.max_distance() == std::ldexp(1.0, 134));
+
+  auto narrow = problem();
+  narrow.set_matrix_dtype(dtwc::core::Precision::Float32);
+  REQUIRE_THROWS_MATCHES(narrow.fill_distance_matrix(), dtwc::InvalidInput,
+                         MessageMatches(ContainsSubstring("between series 0 and 2 is 2.17")
+                                        && ContainsSubstring("beyond float32's range")
+                                        && ContainsSubstring("set matrix_dtype float64")));
+  REQUIRE_FALSE(narrow.is_distance_matrix_filled());
+  REQUIRE(narrow.distance_matrix().count_computed() == 0); // the slab went back to NaN
 }
 
 TEST_CASE("FX-3: read_distance_matrix refuses a matrix of another size and an empty file",

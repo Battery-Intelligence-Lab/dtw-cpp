@@ -81,6 +81,7 @@ disp(result.medoid_indices); disp(result.total_cost); disp(dtwc.davies_bouldin(p
 | CLARA, OneBatchPAM, hierarchical, TADPole | `set_sample_size`, `set_n_samples`, `set_batch_size`, `set_linkage`, `set_tadpole_dc` | | |
 | output | `set_output_folder`, `set_verbose`, `set_name` | `output_folder`, `verbose`, `name` | `set_output_folder`, `set_verbose` |
 | memory | `set_ram_limit(bytes)`, `ram_limit()` | `ram_limit` (bytes or `"8G"`) | `set_ram_limit(limit)`, `RamLimit` |
+| matrix value type | `set_matrix_dtype(core::Precision)`, `matrix_dtype()` | `matrix_dtype` (`"float64"`, `"float32"`) | `set_matrix_dtype(name)` |
 
 A distance setting is checked when it is set (`InvalidInput`, the setting left
 as it was) and drops the distance matrix and the clustering, which describe the
@@ -104,7 +105,7 @@ The C++ fields `band`, `maxIter`, `N_repetition`, `init_fun`, `clusters_ind` and
 | compute every pair | `fill_distance_matrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` |
 | one pair | `dist_by_ind(i, j)` | `dist_by_ind(i, j)` | `dist_by_ind(i, j)` |
 | computed? | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` |
-| the matrix | `distance_matrix()`: the packed `core::DistanceMatrix` | `distance_matrix()`: an N×N array | `distance_matrix()`: an N×N matrix |
+| the matrix | `distance_matrix()`: the packed `core::DistanceMatrix` | `distance_matrix()`: an N×N array, float64 or float32 | `distance_matrix()`: an N×N matrix, `double` or `single` |
 | set it | `writable_distance_matrix()` | `set_distance_matrix(D)` | `set_distance_matrix(D)` |
 | CSV in, out | `read_distance_matrix(path, not_computed)`, `write_distance_matrix()` | `read_distance_matrix(path, not_computed="nan")`, `write_distance_matrix()` | `read_distance_matrix(path, 'NotComputed', 'nan')` |
 | forget it | `refresh_distance_matrix()` | `refresh_distance_matrix()` | `refresh_distance_matrix()` |
@@ -114,7 +115,8 @@ The fill runs in parallel over pairs, on the `Problem`'s device. C++
 `dist_by_ind` reads the matrix with no check and no computation, so a parallel
 loop can call it: fill the matrix first, as every method that reads it does.
 Python and MATLAB check the indices, and their `distance_matrix()` fills the
-matrix first and returns a copy. A matrix that is read or set must be the
+matrix first and returns a copy at the matrix's value type (`matrix_dtype`, below);
+`set_distance_matrix` takes either type and stores it at that one. A matrix that is read or set must be the
 `Problem`'s size and finite, and not negative under any variant but Soft-DTW;
 NaN marks a pair still to compute. v1.0.0 wrote `-1` for such a pair: read its
 files with `not_computed` set to `negative` (C++ `core::NotComputed::Negative`),
@@ -208,8 +210,8 @@ The keyword arguments and their defaults are `cluster()`'s distance settings.
 Each call checks its settings and both series first and raises `InvalidInput`
 for an empty series, a NaN or ±inf value (NaN is a missing value under a
 missing-data strategy) or a parameter outside its domain. Python's
-`compute_distance_matrix(series, band=-1, metric="l1", device=None)` and MATLAB's
-`dtwc.compute_distance_matrix(X, 'Band', b)` return the N×N matrix of a set of
+`compute_distance_matrix(series, band=-1, metric="l1", device=None, matrix_dtype="float64")` and MATLAB's
+`dtwc.compute_distance_matrix(X, 'Band', b, 'MatrixDtype', 'float64')` return the N×N matrix of a set of
 series.
 
 ```cpp
@@ -260,16 +262,34 @@ reads (a text value is its double parse; Parquet and Arrow values are cast), so 
 float32 load holds no double copy and gives the same series in every language;
 float32 data in memory alone stays `double`. A float32 series' recurrence runs in
 float, so results can differ from the float64 ones. Python's `Data.series(i)`
-reads a series of either precision; `p_vec` holds the float64 ones. Distances are stored as
-`double` whatever the series' type, in the matrix and in a `.dtwm` file;
+reads a series of either precision; `p_vec` holds the float64 ones.
 `dtwc::distance::dtw<float>(...)` returns a `float`.
+
+The distance matrix has a value type of its own, `matrix_dtype`, `float64` by
+default whatever the series' type: C++ `Problem::set_matrix_dtype` and
+`Config::matrix_dtype`, Python `Problem.matrix_dtype` and `cluster(...,
+matrix_dtype=)`, MATLAB `set_matrix_dtype` and `'MatrixDtype'`, `dtwc_cl
+--matrix-dtype`. It sets every matrix the run makes: the `Problem`'s, in RAM or a
+`.dtwm` file, CLARA's sample matrices and TADPole's cache. `matrix_dtype` float32
+stores each distance rounded to float32: half the memory (N 100,000: 20 GB, not
+40) and a relative error of at most 2^-24 (6e-8) a distance, none for float32
+series. Costs and scores move by about as much; medoids and labels can change
+where two choices differ by less. A distance beyond float32's range (3.4e38) is
+refused. Every sum over the matrix still runs in `double`, and the exports return
+the stored type: a NumPy `float32` array, a MATLAB `single` matrix (C++
+`Result::distance_matrix()` stays `double`).
 
 ## The .dtwm cache and checkpoints
 
-A distance matrix can live in a `.dtwm` file: a 48-byte header (`DTWM`, version 4,
-N, and a SHA-256 fingerprint of the series and the distance settings) followed
-by the packed lower triangle of doubles, NaN for a pair not yet computed. The
-same file is the memory-mapped cache and the checkpoint.
+A distance matrix can live in a `.dtwm` file: a 64-byte header (`DTWM`, version 5,
+N, a SHA-256 fingerprint of the series and the distance settings, the bytes of a
+value and the rows written) followed by the packed lower triangle at the matrix's
+value type, NaN for a pair not yet computed. A new file is not filled with NaN:
+its rows from the rows written on hold no distance, and the fill records rows
+once they are on the disk. A direct `get` or `dist_by_ind` of such a row reads
+what the file holds there, 0, where every reader of the library takes it as not
+computed. A file of version 4 (2.0 builds before `matrix_dtype`) is read and
+mapped as float64. The same file is the memory-mapped cache and the checkpoint.
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
@@ -282,9 +302,9 @@ Mapping a file reopens the distances it holds, and the next CPU fill computes
 only the pairs still NaN (a GPU fill computes them all), in slabs sized by the
 `Problem`'s `ram_limit` (0: the memory available); an absent file is created. A checkpoint is
 `<dir>/<name>.dtwm`. `load_checkpoint` returns false only when there is no file;
-a file for other series or other distance settings is `InvalidInput`, and a
-file that is not a whole `.dtwm` file is `IOError`, neither changing the
-`Problem`. With `checkpoint.enabled`, `fill_distance_matrix()` saves into
+a file for other series, other distance settings or the other `matrix_dtype` is
+`InvalidInput` (it names the `matrix_dtype` that reads it), and a file that is
+not a whole `.dtwm` file is `IOError`, neither changing the `Problem`. With `checkpoint.enabled`, `fill_distance_matrix()` saves into
 `checkpoint.directory` (`./checkpoints`) after every `save_interval` rows (100)
 on the CPU, and once, at the end, on a GPU. On the
 command line, `--checkpoint dir` saves the matrix as `dir/<name>.dtwm` and

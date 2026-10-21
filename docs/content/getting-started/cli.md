@@ -54,6 +54,7 @@ two agree on every default, check and method choice.
 | `-v, --verbose` | Verbose output | off |
 | `--column <name>` | The Parquet scalar/list Float32 or Float64 column to read. If omitted, the first eligible top-level column decides: a list or several scalar columns are one series per row, the only scalar column one series ([Supported data](../supported-data/)) | — |
 | `--dtype <string>` | The precision the series are stored in: `float32` halves their memory, each value read as a double and rounded, with no double copy held. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
+| `--matrix-dtype <string>` | The distance matrix's value type: `float32` halves its memory (N = 100,000: 20 GB, not 40), each distance rounded once to the nearest float, so costs and scores move by about 6e-8 of themselves and medoids and labels can change; a distance beyond float32's range (3.4e38) stops the run. Independent of `--dtype`; value aliases as `--dtype`'s | `float64` |
 | `--ram-limit <size>` | The memory the run may use, e.g. `2GiB`, `500M`, `1.5G`: it decides when the distance matrix is mapped to a file and when Parquet series stream through `clara`; see below | 0: automatic |
 
 The option names of DTW-C++ 1.0 (Nc, probName, in, out, skipRows, skipCols, maxIter, Nrep, bandwidth, distMat and
@@ -123,13 +124,16 @@ process when that is lower (which a SLURM job's memory request sets). It is a
 budget for the run's decisions, not an operating-system limit on its resident
 memory.
 
-The distance matrix stays in RAM while its 8·N(N+1)/2 bytes fit in half of what
-the series leave of the limit. Past that it is mapped to `<name>.dtwm`, in the
+The distance matrix stays in RAM while its N(N+1)/2 values (8 bytes each, 4 under
+`--matrix-dtype float32`) fit in half of what the series leave of the limit. Past that
+it is mapped to `<name>.dtwm`, in the
 `--checkpoint` directory when one is given and in the output directory otherwise
 (a run that writes no output keeps it in RAM), and filled slab by slab: a slab is
 an eighth of what the series leave of the limit, at most 1 GiB, the next one
 read ahead and the finished one written back, so each page of the file is
-written while its slab runs and not again. A binary built without LLFIO maps
+written while its slab runs and not again. A new file is not written before its
+fill: its header records the rows written, which a slab advances once the slab
+before it is on the disk. A binary built without LLFIO maps
 nothing: there the automatic limit sets none, and a matrix over an explicit
 limit stops the run.
 
@@ -243,10 +247,13 @@ uses a non-full sample.
 
 The mapped matrix is `<name>.dtwm`, in the `--checkpoint` directory when one is
 given (it is then the checkpoint) and in the output directory otherwise. It
-resumes automatically when its magic, version, exact length, N and SHA-256
-fingerprint of the data and distance settings match; a file of other data or
-settings is `InvalidInput` and a damaged or earlier-layout one `IOError`, both
-before any cached distance is read. `--dist-matrix` (a CSV matrix) is read into
+resumes automatically when its magic, version, exact length, N, SHA-256
+fingerprint of the data and distance settings and value type (`--matrix-dtype`)
+match, the rows it records as written kept and the rest computed; a file of other
+data, settings or value type is `InvalidInput` (the message names the
+`--matrix-dtype` that reads it) and a damaged or earlier-layout one `IOError`, both
+before any cached distance is read. A version-4 file, from a 2.0 build before
+`--matrix-dtype`, is read as `float64`. `--dist-matrix` (a CSV matrix) is read into
 RAM: a matrix over an explicit `--ram-limit` is rejected before either path is
 opened, and the automatic limit keeps it in RAM. CUDA
 mmap and checkpoint runs must select explicit `--gpu-precision fp32` or `fp64`:
