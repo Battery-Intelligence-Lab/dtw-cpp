@@ -269,3 +269,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   FM's timing with his paper_test python's one core recorded as background (gate < 12 % still), then FM's merge gates
   and the Arrow 23 rebuild. The finished units' scratch folders in `C:/D/git/wt/tmp` deleted (records in baselines).
   A "Before the 2.0 tag" section in PLAN: what the tag needs, each item marked as running here or his.
+- 2026-10-21 — Volkan (question tool) on FM's timing (45 of 46 bands PASS; clang's float32 Lloyd 0.49× float64, the
+  `calculate_medoids` loop the assembly check flagged and he accepted 10-11): "Fix first" (clang-only
+  `#pragma clang loop vectorize(disable)`, its assembly check, the Lloyd identity cases, `km` re-timed, then the merge
+  gates). E1 (ETW, elevated): "Don't wait": FM merges on its gates, E1 is recorded whenever he runs it.
