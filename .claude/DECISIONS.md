@@ -265,3 +265,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   with its unruled choices: `dtwc_run` for the bindings, `--checkpoint` without `-o` maps, `run`'s GPU refusal first,
   the estimators on the Problem route, no upper pin on highspy, F3's threshold 3.58 GB/s. Code after FM's merge;
   the open terms P1–P3, K1 and K2 measured first.
+- 2026-10-21 — Volkan (question tool), after a review of where the campaign stands: heavy work now, "Yes, all of it":
+  FM's timing with his paper_test python's one core recorded as background (gate < 12 % still), then FM's merge gates
+  and the Arrow 23 rebuild. The finished units' scratch folders in `C:/D/git/wt/tmp` deleted (records in baselines).
+  A "Before the 2.0 tag" section in PLAN: what the tag needs, each item marked as running here or his.

@@ -31,7 +31,8 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
   c72adf3b and 3fe34165 on pb/FM 10-11: identity bit for bit on three compilers, gates pass; of the assembly check's
   FAILs Calinski-Harabasz's were fixed and six accepted by Volkan ("Accept all, time FM"); not timed: the quiet gate
-  never passed 10-11 19:34–22:14; its bands are this Windows machine's; Mac 10-11, merged into 6ae7824f uncommitted:
+  never passed 10-11 19:34–22:14; its bands are this Windows machine's; timing started 10-21 05:15, Volkan's
+  paper_test python (one core) recorded as background; Mac 10-11, merged into 6ae7824f uncommitted:
   `metal_dtw.mm` builds without warnings, ctest 95, pytest 907/11/0, matlab_suite 142/142 on R2026a, the CLI's Metal
   float32 matrix equals the float64 one narrowed in all 160,000 entries, its mapped checkpoint resumes)
 - ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
@@ -42,21 +43,31 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 
-## Blocked on another machine or on Volkan
+## Before the 2.0 tag (Volkan 10-21)
 
-- ARC (Volkan, rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres
+Marked [here] (this Windows machine, WSL included, run in slots between timed units), [CI] (runs on Volkan's push;
+`gh` is not authenticated here, so its results are read on GitHub) or [Volkan]. `VERSION` is 2.0.0rc1. Whether MM
+and HG ship in 2.0 or after it is open (not asked).
+
+- [here] `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
+- [here] L2b's open ends: a Windows build with Arrow ON, and the Linux link order of `dtwc_core` / `dtwc_io` (WSL).
+- [here] F42: a crash of CUDA `Auto` precision through `Problem`, recorded on Windows and never re-run.
+- [here] The MEX maps no matrix yet (F43, an llfio-ON MEX crashing in `std::mutex` under R2024b, did not reproduce
+  on 2026-09-30).
+- [here] Release archives on Linux (WSL): `cpack` + `scripts/smoke_release_archive.py` (Windows done: RA, CA); the
+  Linux wheel: whether `libgomp` ships, and the notice says so.
+- [here] The docs site (charter item 10): `docs/content` against the 2.0 surface, `scripts/generate_docs.py --check`
+  and `check_docs.py` green; RA's notice: the wording of Microsoft's Distributable Code terms (indemnity, pass-through
+  of protective terms) in `THIRD_PARTY_LICENSES.md`, and whether RA's CHANGELOG line is Fixed or Added (v1.0.0 shipped
+  no wheels or archives), for Volkan to rule.
+- [CI] design-2.0's tip green: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and `matlab-mex.yml` on
+  Linux, macOS and Windows, the three unit jobs, `documentation.yml`.
+- [Volkan] ARC (rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres
   type, `upload`, `build htc-cpu`, `build htc-gpu`, `build htc-gpu --gpu-device a100`, three `dtwcpp.cluster` runs
   (`hpc`, `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`.
-- Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux (Windows done: RA, CA). Linux wheel:
-  whether `libgomp` ships, and the notice says so.
-- L2b's open ends: a Windows build with Arrow ON and the Linux link order of `dtwc_core` / `dtwc_io` are unproven.
-- `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
-- GitHub history: `origin/design-2.0` holds 310 baseline files and the charter, and older pushed history the
-  PRIVATE Kasper folder (09-28); removing them needs a history rewrite and a force push (Volkan's).
-- RA's notice: the wording of Microsoft's Distributable Code terms (indemnity, pass-through of protective terms) in
-  `THIRD_PARTY_LICENSES.md`, and whether RA's CHANGELOG line is Fixed or Added (v1.0.0 shipped no wheels or archives).
-- F42: a crash of CUDA `Auto` precision through `Problem`, recorded on Windows and never re-run. No MEX route maps a
-  matrix yet (F43, an llfio-ON MEX crashing in `std::mutex` under R2024b, did not reproduce on 2026-09-30).
+- [Volkan] GitHub history: `origin/design-2.0` holds 310 baseline files and the charter, and older pushed history the
+  PRIVATE Kasper folder (09-28); removing them needs a history rewrite and a force push.
+- [Volkan] The tag, the release archives and the PyPI upload ("when we are hundred percent sure", charter item 4).
 
 ## Candidates (not scheduled)
 
