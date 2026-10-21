@@ -39,8 +39,12 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   IPC read piece by piece, Python's and MATLAB's `cluster()` through C++ `run` with highspy required, the load
   pricing the matrix (MS measured 10-10: at 10^8 series 75 % of the stream's cold time waits on its one decoder, so
   mapped series; Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
-  review: none left after F3's threshold; approved 10-12; S1 (the reader) on pb/MM from e0e2e44b, 10-21; P1–P3, K1, K2 measured first in its
-  timing session; MM merges once, after S10)
+  review: none left after F3's threshold; approved 10-12; S1 (the reader) 70d512cd on pb/MM 10-21: six trees
+  green, matlab_suite 142, pytest 915/19/0, kernel probes identical; its review found nanoarrow trusting a
+  file's buffer offsets and lengths (two blockers): fixed next on pb/MM with GCC's out-of-line `Data::series`
+  (force-inline, Volkan 10-21), then S2; pulled forward: S8's read-only view `p_vec`, S9's MEX names; for S5:
+  a GPU fill of an IPC file is refused until then; P1–P3, K1, K2 measured first in its timing session; MM
+  merges once, after S10)
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 

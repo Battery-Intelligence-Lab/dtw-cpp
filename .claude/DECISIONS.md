@@ -281,3 +281,6 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   worktrees): "Push design-2.0 after each merge": `design-2.0` is pushed fast-forward, never forced, after each merge
   with its gates or a committed handoff; `pb/*` branches stay local unless another machine needs one. Rule 11's
   wording is his to change (proposed to him).
+- 2026-10-21 — Volkan (question tool) on MM S1's GCC-only out-of-line `Data::series` / `series_f32` in the
+  fill's tile (Problem.cpp at GCC's `inline-unit-growth` cap; 1 → 4 call sites; clang unaffected):
+  "Force-inline now": the two accessors always-inline under `__GNUC__`, checked by GCC's inline report.
