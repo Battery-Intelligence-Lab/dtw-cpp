@@ -27,23 +27,17 @@ differ only where several optimal medoid sets exist, node counts and run times c
 
 Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, approved 10-09), in this order:
 
-- ◐ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5 with the width and the rows written; design
-  `C:/D/git/wt/tmp/FM/design.md` approved 10-10 with conditions, Volkan's four answers in DECISIONS §3;
-  c72adf3b and 3fe34165 on pb/FM 10-11: identity bit for bit on three compilers, gates pass; of the assembly check's
-  FAILs Calinski-Harabasz's were fixed and six accepted by Volkan ("Accept all, time FM"); not timed: the quiet gate
-  never passed 10-11 19:34–22:14; its bands are this Windows machine's; timed 10-21 05:15–07:20: 45 of 46 PASS
-  (S2's mapped fill 1.60× and 1.14× more at float32, S4's mapped swap 114×, swap and scores 1.1–2.1× at float32),
-  FALSIFIED clang's float32 Lloyd 0.49× (D3's accepted `calculate_medoids` loop, vectorised); Volkan 10-21: "Fix
-  first", E1 not awaited; fix 2ef3e075 (a clang-only `vectorize(disable)`): D3's loops equal their float64 twins,
-  Lloyd identity 72/0 at both widths, ctest 95, km re-timed 1.226 (0.988–1.484) PASS; merge gates next; Mac 10-11,
-  merged into 6ae7824f uncommitted:
-  `metal_dtw.mm` builds without warnings, ctest 95, pytest 907/11/0, matlab_suite 142/142 on R2026a, the CLI's Metal
-  float32 matrix equals the float64 one narrowed in all 160,000 entries, its mapped checkpoint resumes)
+- ☑ FM the opt-in float32 matrix (`matrix_dtype`; `.dtwm` v5 with the width and the rows written) (pb/FM c72adf3b,
+  3fe34165, 2ef3e075; timed 10-21: 45 of 46 PASS, S2's mapped fill 1.60× and 1.14× more at float32, S4's mapped swap
+  114×, swap and scores 1.1–2.1× at float32; clang's float32 Lloyd 0.49× FALSIFIED, fixed by a clang-only
+  `vectorize(disable)` and re-timed 1.226; merged 0548796b: clang 95, Arrow 98 with the parquet parity test run, CUDA
+  94, matlab_suite 142, pytest 899/19/0, CLI outputs identical; pb/FM-metal's Metal tests merged bc36375a; E1, the ETW
+  counters, whenever Volkan runs `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` elevated)
 - ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
   IPC read piece by piece, Python's and MATLAB's `cluster()` through C++ `run` with highspy required, the load
   pricing the matrix (MS measured 10-10: at 10^8 series 75 % of the stream's cold time waits on its one decoder, so
   mapped series; Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
-  review: none left after F3's threshold; approved 10-12; code after FM's merge, P1–P3, K1, K2 measured first)
+  review: none left after F3's threshold; approved 10-12; FM merged 10-21, so S1 next; P1–P3, K1, K2 measured first in its timing session)
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 
@@ -60,10 +54,10 @@ and HG ship in 2.0 or after it is open (not asked).
   on 2026-09-30).
 - [here] Release archives on Linux (WSL): `cpack` + `scripts/smoke_release_archive.py` (Windows done: RA, CA); the
   Linux wheel: whether `libgomp` ships, and the notice says so.
-- [here] The docs site (charter item 10): `docs/content` against the 2.0 surface, `scripts/generate_docs.py --check`
-  and `check_docs.py` green; RA's notice: the wording of Microsoft's Distributable Code terms (indemnity, pass-through
-  of protective terms) in `THIRD_PARTY_LICENSES.md`, and whether RA's CHANGELOG line is Fixed or Added (v1.0.0 shipped
-  no wheels or archives), for Volkan to rule.
+- [here] The docs site (charter item 10): the audit of 10-21 (`baselines/2026-10-21-docs-audit.md`: 15 findings, among
+  them `pip install "dtwcpp[cuda]"` with no such extra and a `cut_dendrogram` example that raises), fixed and the
+  gates green. RA's notice: Volkan 10-21, "Keep bundling" the runtime DLLs, the notice as written; its CHANGELOG line
+  moved to Added.
 - [CI] design-2.0's tip green: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and `matlab-mex.yml` on
   Linux, macOS and Windows, the three unit jobs, `documentation.yml`.
 - [Volkan] ARC (rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres

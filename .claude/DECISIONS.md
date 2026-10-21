@@ -273,3 +273,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   `calculate_medoids` loop the assembly check flagged and he accepted 10-11): "Fix first" (clang-only
   `#pragma clang loop vectorize(disable)`, its assembly check, the Lloyd identity cases, `km` re-timed, then the merge
   gates). E1 (ETW, elevated): "Don't wait": FM merges on its gates, E1 is recorded whenever he runs it.
+- 2026-10-21 — Volkan (question tool) on the Windows runtime DLLs (the wheel bundles `msvcp140`, 541 KB; the CLI
+  archive nine files, 1.6 MB; not bundling means the 17.7 MB Visual C++ Redistributable, installed with admin rights;
+  clang-cl's binaries import MSVCP140 and VCRUNTIME140 too): "Keep bundling", the notice as written. RA's CHANGELOG
+  line: "Move to Added" (v1.0.0 shipped no wheels or archives).
