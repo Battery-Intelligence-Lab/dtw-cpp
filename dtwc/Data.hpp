@@ -22,6 +22,13 @@
 #include <utility>      // for move
 #include <vector>       // for vector
 
+// GCC's inline-unit-growth cap in Problem.cpp left series() and series_f32() out of line in the fill (2026-10-21).
+#if defined(__GNUC__)
+#define DTWC_ALWAYS_INLINE [[gnu::always_inline]] inline
+#else
+#define DTWC_ALWAYS_INLINE inline
+#endif
+
 namespace dtwc {
 
 /**
@@ -52,7 +59,7 @@ struct Data
   /// Returns a float64 span view of series i. Requires precision == Float64.
   /// @details size() already branches on precision; without the same branch
   /// here, series() on Float32 data indexes the empty p_vec / p_spans_.
-  std::span<const data_t> series(size_t i) const
+  DTWC_ALWAYS_INLINE std::span<const data_t> series(size_t i) const
   {
     if (is_f32()) throw_wrong_precision("series", "Float32", "series_f32");
     if (is_view_) return p_spans_[i];
@@ -60,7 +67,7 @@ struct Data
   }
 
   /// Returns a float32 span view of series i. Requires precision == Float32.
-  std::span<const float> series_f32(size_t i) const
+  DTWC_ALWAYS_INLINE std::span<const float> series_f32(size_t i) const
   {
     if (!is_f32()) throw_wrong_precision("series_f32", "Float64", "series");
     if (is_view_) return p_spans_f32_[i];

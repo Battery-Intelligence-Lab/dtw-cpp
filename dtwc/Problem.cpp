@@ -906,8 +906,9 @@ void Problem::fillDistanceMatrix_BruteForce()
     if (f32)
       fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); },
                   dtw_block_fn_f32_, *f32_function);
-    else
-      fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return series(i); }, dtw_block_fn_, dtw_fn_);
+    else // Data's accessor, as above: GCC's inline-unit-growth cap leaves the Problem::series wrapper out of line here
+      fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series(i); }, dtw_block_fn_,
+                  dtw_fn_);
   };
 
   std::vector<size_t> slabs{ 0 }; // slab s: tile-rows [slabs[s], slabs[s + 1])
