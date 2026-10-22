@@ -269,6 +269,11 @@ function(dtwc_setup_dependencies)
       # glibc < 2.34 keeps dladdr (ringbuffer_log) in libdl. quickcpplib's own target
       # links dl too, and rt, which only its signal_guard needs; llfio does not use that.
       INTERFACE_LINK_LIBRARIES "Threads::Threads;${CMAKE_DL_LIBS}")
+    if(UNIX AND NOT APPLE)
+      # wg14_signals defaults to initial-exec TLS, which a dlopen'd module (the wheel) cannot take; 0 selects macOS's path.
+      set_property(TARGET llfio_hl APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS
+        WG14_SIGNALS_HAVE_ASYNC_SAFE_THREAD_LOCAL=0)
+    endif()
     if(WIN32)
       CPMAddPackage(NAME ntkernel_error_category DOWNLOAD_ONLY YES
         URL "https://github.com/ned14/ntkernel-error-category/archive/c20f97bccacc3162d515c0828ff35fe88f4bf9f2.tar.gz"
