@@ -386,10 +386,21 @@ TEST_CASE("Arrow IPC: a compressed batch's offsets and lengths are checked befor
     read_bytes(patched<std::int64_t>(lz4, { 3, 0, 6, 0 }, { 3, 0, std::int64_t{ 1 } << 58, 0 })), dtwc::IOError,
     MessageMatches(Equals(batch + "a length of 288230376151711744 does not fit in the column's 64 decoded bytes: the "
                                   "file is corrupt")));
-  // The values' declared length (their buffer's first 8 bytes) 512 GiB: refused whether it cannot be allocated or the
-  // frame does not fill it.
-  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(lz4, { 48 }, { std::int64_t{ 1 } << 39 })), dtwc::IOError,
-                       MessageMatches(StartsWith(batch)));
+  // The values' declared decoded length (their buffer's first 8 bytes) 2^40 bytes, which nanoarrow would allocate
+  // before decompressing: refused before any batch is decoded, against the 6 values' 48 bytes.
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(lz4, { 48 }, { std::int64_t{ 1 } << 40 })), dtwc::IOError,
+                       MessageMatches(Equals(batch + "a buffer declares 1099511627776 decoded bytes, and its lengths "
+                                                     "imply at most 48: the file is corrupt")));
+#if defined(DTWC_HAS_MMAP)
+  // The first batch's names declare 2^62 characters (their buffer at byte 616), which no length implies: the file's
+  // declared total is refused against the memory this process may use, which llfio reads.
+  auto names = bytes_of("ipc_lz4_batches.arrow");
+  const std::int64_t characters = std::int64_t{ 1 } << 62;
+  std::memcpy(names.data() + 616, &characters, sizeof characters);
+  CHECK_THROWS_MATCHES(read_bytes(names), dtwc::IOError,
+                       MessageMatches(StartsWith("the Arrow IPC file's batches that cannot be viewed declare ")
+                                      && ContainsSubstring(" decoded bytes, more than the ")));
+#endif
 }
 
 TEST_CASE("Arrow IPC: the series are views of the bytes, or of the decoded batches, which the Data's owner keeps "

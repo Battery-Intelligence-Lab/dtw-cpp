@@ -10,6 +10,7 @@
 #include "read_data.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
+#include "../core/distance_matrix.hpp" // available_memory
 
 #include "nanoarrow/nanoarrow.h"
 #include "nanoarrow/nanoarrow_ipc.h"
@@ -34,6 +35,7 @@
 #include <charconv>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <new>
 #include <optional>
 #include <string>
@@ -318,6 +320,98 @@ void check_lengths(const ArrowArrayView *view, std::int64_t bytes, const std::st
   for (std::int64_t i = 0; i < view->n_children; ++i) check_lengths(view->children[i], bytes, where);
 }
 
+/// `a + b`, at most INT64_MAX: a sum of declared sizes, which a file can make as large as it likes.
+std::int64_t sum(std::int64_t a, std::int64_t b)
+{
+  return b > std::numeric_limits<std::int64_t>::max() - a ? std::numeric_limits<std::int64_t>::max() : a + b;
+}
+
+/// The size buffer `i` of `view` must have from its length alone, rounded up to 8 (as writers may pad it), at most
+/// INT64_MAX; -1 where the column's contents decide it (a string's characters).
+std::int64_t implied_bytes(const ArrowArrayView *view, int i)
+{
+  constexpr std::int64_t most = std::numeric_limits<std::int64_t>::max();
+  const std::int64_t n = view->length, width = view->layout.element_size_bits[i] / 8;
+  const ArrowBufferType type = view->layout.buffer_type[i];
+  std::int64_t bytes = -1;
+  if (type == NANOARROW_BUFFER_TYPE_VALIDITY)
+    bytes = n / 8 + (n % 8 != 0);
+  else if (type == NANOARROW_BUFFER_TYPE_DATA_OFFSET && width > 0)
+    bytes = n < most / width ? (n + 1) * width : most;
+  else if (type == NANOARROW_BUFFER_TYPE_DATA && width > 0
+           && (view->storage_type == NANOARROW_TYPE_FLOAT || view->storage_type == NANOARROW_TYPE_DOUBLE))
+    bytes = n <= most / width ? n * width : most;
+  return bytes > most - 7 ? most : bytes < 0 ? -1 : (bytes + 7) / 8 * 8;
+}
+
+/// The bytes nanoarrow allocates to decode the buffers of `view` and its children, each proven inside the body: a
+/// compressed buffer's declared decoded length (its first 8 bytes, little-endian, as nanoarrow reads them; -1: stored
+/// as it is, and copied), refused above the size its length implies; an uncompressed buffer's own size, which the file
+/// holds. At most INT64_MAX.
+std::int64_t declared_bytes(const ArrowArrayView *view, bool compressed, const std::string &where)
+{
+  if (view->length < 0)
+    throw IOError(where + ": a length of " + std::to_string(view->length) + " is negative: the file is corrupt");
+  std::int64_t total = 0;
+  for (int i = 0; i < NANOARROW_MAX_FIXED_BUFFERS; ++i) {
+    const ArrowBufferView &buffer = view->buffer_views[i];
+    if (!compressed || buffer.size_bytes < 8) { // below 8 bytes nanoarrow refuses it, allocating nothing
+      total = sum(total, compressed ? 0 : buffer.size_bytes);
+      continue;
+    }
+    std::uint64_t word = 0;
+    for (int b = 7; b >= 0; --b) word = (word << 8) | buffer.data.as_uint8[b];
+    const auto declared = static_cast<std::int64_t>(word);
+    if (declared < -1) continue; // nanoarrow refuses it, allocating nothing
+    if (declared == -1) {
+      total = sum(total, buffer.size_bytes - 8);
+      continue;
+    }
+    if (const std::int64_t implied = implied_bytes(view, i); implied >= 0 && declared > implied)
+      throw IOError(where + ": a buffer declares " + std::to_string(declared) + " decoded bytes, and its lengths "
+                    + "imply at most " + std::to_string(implied) + ": the file is corrupt");
+    total = sum(total, declared);
+  }
+  for (std::int64_t i = 0; i < view->n_children; ++i)
+    total = sum(total, declared_bytes(view->children[i], compressed, where));
+  return total;
+}
+
+/// The record batch `decoder` last decoded, which cannot be viewed (compressed, in the other byte order, or a used
+/// buffer not aligned), its body `body`: each buffer of its used columns proven before nanoarrow reads it, and the
+/// bytes decoding them will allocate. Returns the batch's rows (its root's length, unbounded: its columns bound it once
+/// decoded) and those bytes.
+///
+/// nanoarrow trusts the file's buffer offsets and lengths, and its DecodeArray reads each buffer of the column it
+/// decodes (decompressing, swapping or copying it) at the offset the file gives, having allocated the size the buffer
+/// declares, before any check of ours could run. A pass with the codec set to NONE and no byte order makes each buffer
+/// a view where the file puts it and reads none. Each used column's views must lie in the body (bounds only: a
+/// compressed body can be smaller than its values) and, to be swapped where it lies, be aligned to its elements; then
+/// the declared sizes are read from inside the body (declared_bytes). DecodeArray of a column reads those buffers and
+/// no others: the same FieldNodes and Buffers of the same verified header, of that column's fields only.
+std::pair<std::int64_t, std::int64_t> prove_batch(Decoder &decoder, const ArrowBufferView &body, const Used &used,
+                                                  bool swapped, const std::string &step)
+{
+  ArrowError error{};
+  const auto codec = decoder.ipc.codec;
+  decoder.ipc.codec = NANOARROW_IPC_COMPRESSION_TYPE_NONE;
+  ArrowArrayView *raw = nullptr;
+  const ArrowErrorCode code = ArrowIpcDecoderDecodeArrayView(&decoder.ipc, body, -1, &raw, &error);
+  decoder.ipc.codec = codec;
+  check(code, error, step);
+  std::int64_t declared = 0;
+  for (const auto &[column, name] : used) {
+    const std::string where = step + ", column '" + name + "'";
+    check_in_body(raw->children[column], body, where, false);
+    if (swapped && !aligned(raw->children[column]))
+      throw IOError(step + ": a buffer is not aligned to its elements, so it cannot be byte-swapped (Arrow IPC "
+                           "writers align every buffer to 8 bytes: rewrite the file with one)");
+    declared =
+      sum(declared, declared_bytes(raw->children[column], codec != NANOARROW_IPC_COMPRESSION_TYPE_NONE, where));
+  }
+  return { raw->length, declared };
+}
+
 /// A record batch that cannot be viewed, decoded: the arrays of its used columns, whose buffers hold the values and
 /// names the series view, and a view of the batch through them.
 struct Decoded
@@ -326,21 +420,16 @@ struct Decoded
   View batch;
 };
 
-/// Record batch `k` at `message`, which cannot be viewed (compressed, in the other byte order, or a used buffer not
-/// aligned), decoded into `out` by a decoder of its own (a decoder holds the batch it last decoded, so none is shared
-/// between threads): each column of `used` into an array nanoarrow allocates, decompressed, in this machine's byte
-/// order and aligned.
-///
-/// nanoarrow trusts the file's buffer offsets and lengths, and its DecodeArray reads each buffer of the column it
-/// decodes (decompressing, swapping or copying it) at the offset the file gives, before any check of ours could run.
-/// So every buffer it will read is proven inside the body first: a pass with the codec set to NONE and no byte order
-/// makes each buffer a view where the file puts it and reads none, and each used column's views must lie in the body
-/// (bounds only: a compressed body can be smaller than its values), and, to be swapped where it lies, be aligned to its
-/// elements. DecodeArray of a column then reads those buffers and no others: the same FieldNodes and Buffers of the
-/// same verified header, of that column's fields only. Decoded, each length is bounded by the column's decoded bytes,
-/// the column must be as long as the batch, and it is validated at DEFAULT.
+/// Record batch `k` at `message`, which cannot be viewed, decoded into `out` by a decoder of its own (a decoder holds
+/// the batch it last decoded, so none is shared between threads): each column of `used` into an array nanoarrow
+/// allocates, decompressed, in this machine's byte order and aligned. Its buffers are proven first (prove_batch), and
+/// must declare the bytes the walk found (`walked`, if it walked the file), which the whole file's were checked
+/// against. Decoded, each length is bounded by the column's decoded bytes (nanoarrow's validation sizes the buffers
+/// from the lengths, in a product that wraps at 2^57), the column must be as long as the batch, and it is validated
+/// at DEFAULT.
 void decode_batch(const ArrowSchema &schema, ArrowIpcEndianness endianness, std::span<const std::byte> bytes,
-                  const Message &message, const Used &used, std::size_t k, Decoded &out)
+                  const Message &message, const Used &used, std::size_t k, std::optional<std::int64_t> walked,
+                  Decoded &out)
 {
   const std::string step = "Arrow IPC record batch " + std::to_string(k);
   ArrowError error{};
@@ -349,19 +438,9 @@ void decode_batch(const ArrowSchema &schema, ArrowIpcEndianness endianness, std:
   check(ArrowIpcDecoderSetSchema(&decoder.ipc, const_cast<ArrowSchema *>(&schema), &error), error, step);
   (void)next_message(decoder, bytes, message.at, message.end()); // the walk verified it: decode it again
   const ArrowBufferView body = bytes_view(bytes, message.at + message.header, message.end());
-  const auto codec = decoder.ipc.codec;
-  decoder.ipc.codec = NANOARROW_IPC_COMPRESSION_TYPE_NONE;
-  ArrowArrayView *raw = nullptr;
-  check(ArrowIpcDecoderDecodeArrayView(&decoder.ipc, body, -1, &raw, &error), error, step);
-  decoder.ipc.codec = codec;
-  const std::int64_t rows = raw->length;
-  const bool swapped = endianness != ArrowIpcSystemEndianness();
-  for (const auto &[column, name] : used) {
-    check_in_body(raw->children[column], body, step + ", column '" + name + "'", false);
-    if (swapped && !aligned(raw->children[column]))
-      throw IOError(step + ": a buffer is not aligned to its elements, so it cannot be byte-swapped (Arrow IPC "
-                           "writers align every buffer to 8 bytes: rewrite the file with one)");
-  }
+  const auto [rows, declared] = prove_batch(decoder, body, used, endianness != ArrowIpcSystemEndianness(), step);
+  if (walked && declared != *walked)
+    throw IOError(step + " declares other buffers than when the file was walked: the file changed while it was read");
   check(ArrowIpcDecoderSetEndianness(&decoder.ipc, endianness), error, step);
   check(ArrowArrayViewInitFromSchema(&out.batch.arrow, &schema, &error), error, step);
   out.batch.arrow.length = rows;
@@ -383,12 +462,13 @@ void decode_batch(const ArrowSchema &schema, ArrowIpcEndianness endianness, std:
   }
 }
 
-/// A record batch of the walk: its message, whether it is viewed where it lies (else decoded), and its rows.
+/// A record batch of the walk: its message, whether it is viewed where it lies (else decoded), its rows, and the bytes
+/// decoding it will allocate.
 struct Batch
 {
   Message message;
   bool viewed = false;
-  std::int64_t rows = 0;
+  std::int64_t rows = 0, declared = 0;
 };
 
 /// The file format's footer verified (flatcc) and decoded, its record batch blocks the batches the walk found: a
@@ -609,6 +689,7 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
   Decoder decoder; // the walk's, which views batches in this machine's byte order only
   const auto [endianness, after_schema] = read_schema(decoder, bytes, first, last, schema);
   const Columns columns = columns_of(schema.arrow);
+  const Used used = used_of(columns);
 
   // The walk: each record batch's message, viewed where it lies (uncompressed, in this machine's byte order, its used
   // buffers aligned) with its rows, so the views are sized before any is made, or else decoded below.
@@ -623,7 +704,13 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
     const bool plain =
       decoder.ipc.codec == NANOARROW_IPC_COMPRESSION_TYPE_NONE && endianness == ArrowIpcSystemEndianness();
     const ArrowArrayView *view = plain ? view_batch(decoder, bytes, *message, columns, k) : nullptr;
-    batches.push_back({ *message, view != nullptr, view != nullptr ? view->length : 0 });
+    Batch batch{ *message, view != nullptr, view != nullptr ? view->length : 0, 0 };
+    if (view == nullptr) {
+      const ArrowBufferView body = bytes_view(bytes, message->at + message->header, message->end());
+      const std::string step = "Arrow IPC record batch " + std::to_string(k);
+      batch.declared = prove_batch(decoder, body, used, endianness != ArrowIpcSystemEndianness(), step).second;
+    }
+    batches.push_back(batch);
     at = message->end();
   }
   // The file format's end-of-stream marker, if it has one, is its last message (just before the footer): a marker
@@ -632,6 +719,16 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
     throw IOError("Arrow IPC message at byte " + std::to_string(at) + " is an end-of-stream marker, but the file's "
                   "messages run on to its footer at byte " + std::to_string(last) + ": the file is corrupt");
   if (first != 0) check_footer(bytes, batches);
+  // What decoding will allocate, before any batch is decoded: the decoded batches are held together, so a file that
+  // declares more than the memory this process may use now cannot be decoded without exhausting it. Where that memory
+  // is unknown (a build without llfio), no limit, as everywhere it is read.
+  std::int64_t declared = 0;
+  for (const Batch &batch : batches) declared = sum(declared, batch.declared);
+  if (const std::size_t memory = declared > 0 ? core::available_memory() : 0;
+      memory != 0 && static_cast<std::uint64_t>(declared) > memory)
+    throw IOError("the Arrow IPC file's batches that cannot be viewed declare " + std::to_string(declared)
+                  + " decoded bytes, more than the " + std::to_string(memory) + " bytes of memory this process may use "
+                  + "now: free memory, or write the file uncompressed, so that it is viewed in place");
 
   // Every batch that cannot be viewed, decoded in parallel over disjoint batches; a failure is the lowest failing
   // batch's, as a serial decode raises it.
@@ -639,10 +736,9 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
   for (std::size_t k = 0; k < batches.size(); ++k)
     if (!batches[k].viewed) todo.push_back(k);
   std::vector<Decoded> decoded(batches.size());
-  const Used used = used_of(columns);
   const auto decode = [&](std::size_t j) {
     const std::size_t k = todo[j];
-    decode_batch(schema.arrow, endianness, bytes, batches[k].message, used, k, decoded[k]);
+    decode_batch(schema.arrow, endianness, bytes, batches[k].message, used, k, batches[k].declared, decoded[k]);
     batches[k].rows = decoded[k].batch.arrow.length;
   };
   run_openmp(decode, todo.size(), todo.size() > 1);
@@ -670,7 +766,8 @@ std::vector<std::vector<std::vector<std::byte>>> detail::decoded_buffers(std::sp
   for (auto message = next_message(decoder, bytes, at, last); message;
        message = next_message(decoder, bytes, at, last)) {
     Decoded batch;
-    decode_batch(schema.arrow, endianness, bytes, *message, { { index, name.c_str() } }, out.size(), batch);
+    decode_batch(schema.arrow, endianness, bytes, *message, { { index, name.c_str() } }, out.size(), std::nullopt,
+                 batch);
     auto &buffers = out.emplace_back();
     const auto collect = [&buffers](const auto &self, ArrowArray *array) -> void {
       for (std::int64_t i = 0; i < array->n_buffers; ++i) {

@@ -90,10 +90,11 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   without Arrow C++ or pyarrow, and in place: the file is mapped (without llfio, read once into memory) and each
   series is a view of it (C++ `Data::series(i)` and `name(i)` read it, its `p_vec` and `p_names` are empty; Python's
   `Data.p_vec` and `p_names` read through it); a compressed (LZ4, ZSTD), big-endian or misaligned record batch is
-  decoded instead, the batches in parallel (lz4 1.10.0 and zstd 1.5.7's decoder built in, their symbols hidden), and
-  bytes handed to the reader at an address not 8-aligned are read from an aligned copy; a file with a
-  dictionary-encoded column is an `IOError` naming why. Parquet (`-DDTWC_ENABLE_ARROW=ON`; a list column or several
-  float columns hold a series per row, `--column` reads one) and `dtwc_cl --delimiter`.
+  decoded instead, the batches in parallel (lz4 1.10.0 and zstd 1.5.7's decoder built in, their symbols hidden), unless
+  its buffers declare more decoded bytes than their lengths imply, or the file's more than the memory available (an
+  `IOError` before any decode), and bytes handed to the reader at an address not 8-aligned are read from an aligned
+  copy; a file with a dictionary-encoded column is an `IOError` naming why. Parquet (`-DDTWC_ENABLE_ARROW=ON`; a list
+  column or several float columns hold a series per row, `--column` reads one) and `dtwc_cl --delimiter`.
 - The distance matrix memory-mapped in a `.dtwm` file once it outgrows the memory limit (`--ram-limit`), also the
   checkpoint (`--checkpoint`, `--checkpoint-interval`: a fill resumes); with Arrow, `--ram-limit` streams Parquet
   through FastCLARA.
