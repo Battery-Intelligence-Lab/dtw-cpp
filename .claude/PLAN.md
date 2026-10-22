@@ -42,7 +42,7 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   review: none left after F3's threshold; approved 10-12; on pb/MM: S1 the reader 70d512cd, hardened
   4d1e0723 (nanoarrow 0.8.0 trusts a file's offsets and lengths; a crafted header crashed cl and GCC builds),
   GCC force-inline 84d84101 (Volkan 10-21); S2 codecs and decoding 61b88767, 71d9d4b1, 25f65d34 (declared
-  decoded sizes capped); six trees, matlab_suite and pytest green at each
+  decoded sizes capped), fd8a7450 (its review: a V4 union, the footer); six trees, matlab_suite and pytest green at each
   (`baselines/2026-10-21-mm-s1-reader.md`, `2026-10-22-mm-s2-codecs.md`); S2's adversarial review pending;
   pulled forward: S8's read-only view `p_vec`, S9's MEX names; for S5: a GPU fill of an IPC file is refused
   until then; P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10)
@@ -56,11 +56,11 @@ Marked [here] (this Windows machine, WSL included, run in slots between timed un
 and HG ship in 2.0 or after it is open (not asked).
 
 - [here] `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
-- [here] The Linux wheel cannot be imported (10-22, glibc 2.39, at e0e2e44b too): llfio's wg14_signals
-  thread-local is `initial-exec` (its `config.h`), so `_dtwcpp_core` is STATIC_TLS with a 6984-byte block and
-  `import dtwcpp` fails, "cannot allocate memory in static TLS block"; the candidate fix is llfio's own
-  `WG14_SIGNALS_HAVE_ASYNC_SAFE_THREAD_LOCAL=0` (its Apple path). [CI] whether python-wheels.yml's Linux jobs
-  pass (each wheel is imported) (`baselines/2026-10-22-mm-s2-codecs.md`).
+- [done 10-22] The Linux wheel could not be imported (glibc 2.39, since before MM): llfio's wg14_signals
+  thread-local was `initial-exec`, so `_dtwcpp_core` was STATIC_TLS; TL 571c40f9, merged e3cba47d, sets llfio's
+  own `WG14_SIGNALS_HAVE_ASYNC_SAFE_THREAD_LOCAL=0` on ELF: imports without the tunable, its Python suite
+  901/17, GCC 94, Windows clang 95 (`baselines/2026-10-22-tl-static-tls.md`). [CI] whether python-wheels.yml's
+  Linux jobs passed before it.
 - [here] L2b's open ends: a Windows build with Arrow ON, and the Linux link order of `dtwc_core` / `dtwc_io` (WSL).
 - [done 10-21] F42 does not reproduce: Auto, FP32, FP64 exit 0 through the CLI and a CUDA MEX on R2025b; July's
   crash was 926542f1's `static std::mutex` (MSVC >= 14.40's all-zero mutex under R2024b's 14.36 runtime), gone with
@@ -97,6 +97,8 @@ and HG ship in 2.0 or after it is open (not asked).
 - CUDA `Auto` through `Problem` is tested only for its refusals (`unit_test_variant_distmat.cpp:433`); the raw
   backend covers it (F42, 10-21). And `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` covers MATLAB builds only: HiGHS's and
   llfio's `std::mutex` could fault in a CLI or Python process that loaded an older msvcp140 first (untested).
+- `test_mip.py::test_highspy_reaches_the_optimum_of_linked_highs` fails, not skips, when `DTWC_CL_PATH` names a
+  `dtwc_cl` built without HiGHS (TL, 10-22): skip it there, or require HiGHS in that binary.
 - Tracker prefixes in test names (`FX-1:`, F8/F13/F14 ids): name the contract instead.
 - `import dtwcpp` imports scikit-learn whenever it is installed (`__init__.py:197` → `_clustering.py:16-18`), and
   through it scipy, pandas and joblib: +870 MB committed by scipy's OpenBLAS pool at 24 threads (FM's M3, 10-11), which
