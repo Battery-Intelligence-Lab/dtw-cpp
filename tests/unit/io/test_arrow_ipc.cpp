@@ -280,6 +280,30 @@ TEST_CASE("Arrow IPC: the offsets and lengths a file gives nanoarrow are checked
                        MessageMatches(Equals("Arrow IPC message at byte 184 is an end-of-stream marker, but the "
                                              "file's messages run on to its footer at byte 448: the file is "
                                              "corrupt")));
+  // The data column's field node a row short of the batch's three.
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(no_name, { 3, 0, 6, 0 }, { 2, 0, 6, 0 })), dtwc::IOError,
+                       MessageMatches(Equals(batch + "its length of 2 is not the batch's 3: the file is corrupt")));
+  // Offsets a writer put 2 bytes off their alignment, the list's ({0, 16} at 2) and the names' ({72, 16} at 74):
+  // refused before validation reads their first and last offsets.
+  const std::string unaligned = "Arrow IPC record batch 0: a buffer is not aligned to its elements, so it cannot be "
+                                "viewed in place (Arrow IPC writers align every buffer to 8 bytes: rewrite the file "
+                                "with one)";
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(no_name, { 0, 0, 0, 16 }, { 0, 0, 2, 16 })), dtwc::IOError,
+                       MessageMatches(Equals(unaligned)));
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(bytes_of("ipc_list.arrow"), { 72, 16 }, { 74, 16 })),
+                       dtwc::IOError, MessageMatches(Equals(unaligned)));
+  // The footer's length enlarged by the record batch and the end-of-stream marker before it (208 + 256 + 8 bytes),
+  // which ends the messages at the batch; and a footer whose second block names the third batch.
+  auto long_footer = no_name;
+  const std::int32_t footer = 208 + 256 + 8;
+  std::memcpy(long_footer.data() + long_footer.size() - 10, &footer, sizeof footer);
+  CHECK_THROWS_MATCHES(read_bytes(long_footer), dtwc::IOError,
+                       MessageMatches(StartsWith("Arrow IPC footer: Footer flatbuffer verification failed")));
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(bytes_of("ipc_batches.arrow"), { 544, 256, 32 },
+                                                        { 832, 256, 32 })),
+                       dtwc::IOError,
+                       MessageMatches(Equals("the Arrow IPC footer puts record batch 1 at byte 832, and the file's "
+                                             "messages put it at byte 544: the file is corrupt")));
 }
 
 TEST_CASE("Arrow IPC: the series are views of the bytes, which the Data's owner keeps alive", "[io][arrow]")

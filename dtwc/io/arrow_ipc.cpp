@@ -190,9 +190,20 @@ void check_in_body(const ArrowArrayView *view, const ArrowBufferView &body, cons
   for (std::int64_t i = 0; i < view->n_children; ++i) check_in_body(view->children[i], body, where);
 }
 
+/// Whether the offsets or values (buffer 1) of `view` and of its children start at an address their elements can be
+/// read from; validity bits and characters are bytes.
+bool aligned(const ArrowArrayView *view)
+{
+  const auto bytes = static_cast<std::uintptr_t>(view->layout.element_size_bits[1] / 8);
+  if (bytes > 1 && reinterpret_cast<std::uintptr_t>(view->buffer_views[1].data.data) % bytes != 0) return false;
+  for (std::int64_t i = 0; i < view->n_children; ++i)
+    if (!aligned(view->children[i])) return false;
+  return true;
+}
+
 /// Record batch `k`'s views of every column, nanoarrow's pointers into the body. The columns the series come from are
-/// checked to lie in the body, as long as the batch, and validated (DEFAULT: every buffer size, and the first and last
-/// offset of each list and string column); the others are never read.
+/// checked to lie in the body, as long as the batch, aligned to their elements, and validated (DEFAULT: every buffer
+/// size, and the first and last offset of each list and string column, read as integers); the others are never read.
 ArrowArrayView *decode_batch(Decoder &decoder, std::span<const std::byte> bytes, const Message &message,
                              const Columns &columns, std::size_t k)
 {
@@ -209,9 +220,34 @@ ArrowArrayView *decode_batch(Decoder &decoder, std::span<const std::byte> bytes,
     if (used->length != view->length)
       throw IOError(where + ": its length of " + std::to_string(used->length) + " is not the batch's "
                     + std::to_string(view->length) + ": the file is corrupt");
+    if (!aligned(used))
+      throw IOError(step + ": a buffer is not aligned to its elements, so it cannot be viewed in place (Arrow IPC "
+                           "writers align every buffer to 8 bytes: rewrite the file with one)");
     check(ArrowArrayViewValidate(used, NANOARROW_VALIDATION_LEVEL_DEFAULT, &error), error, where);
   }
   return view;
+}
+
+/// The file format's footer verified (flatcc) and decoded, its record batch blocks the batches the walk found: a
+/// reader that seeks by the footer reads those.
+void check_footer(std::span<const std::byte> bytes, const std::vector<Message> &batches)
+{
+  Decoder decoder;
+  ArrowError error{};
+  const ArrowBufferView file = bytes_view(bytes, 0, static_cast<std::int64_t>(bytes.size()));
+  check(ArrowIpcDecoderVerifyFooter(&decoder.ipc, file, &error), error, "Arrow IPC footer");
+  check(ArrowIpcDecoderDecodeFooter(&decoder.ipc, file, &error), error, "Arrow IPC footer");
+  const ArrowBuffer &blocks = decoder.ipc.footer->record_batch_blocks;
+  const auto *block = reinterpret_cast<const ArrowIpcFileBlock *>(blocks.data);
+  const auto n = static_cast<std::size_t>(blocks.size_bytes) / sizeof(ArrowIpcFileBlock);
+  if (n != batches.size())
+    throw IOError("the Arrow IPC footer lists " + std::to_string(n) + " record batches, and the file's messages hold "
+                  + std::to_string(batches.size()) + ": the file is corrupt");
+  for (std::size_t k = 0; k < n; ++k)
+    if (block[k].offset != batches[k].at)
+      throw IOError("the Arrow IPC footer puts record batch " + std::to_string(k) + " at byte "
+                    + std::to_string(block[k].offset) + ", and the file's messages put it at byte "
+                    + std::to_string(batches[k].at) + ": the file is corrupt");
 }
 
 ArrowType type_of(const ArrowSchema *schema)
@@ -268,12 +304,6 @@ Columns columns_of(const ArrowSchema &schema)
   return columns;
 }
 
-/// Whether buffer `i` of `view` starts at an address its elements of `bytes` bytes can be read from.
-bool aligned(const ArrowArrayView *view, int i, std::size_t bytes)
-{
-  return reinterpret_cast<std::uintptr_t>(view->buffer_views[i].data.data) % bytes == 0;
-}
-
 /// The offsets [start, end) of string `r` of a Utf8 or LargeUtf8 view.
 std::pair<std::int64_t, std::int64_t> string_offsets(const ArrowArrayView *view, std::int64_t r)
 {
@@ -283,26 +313,17 @@ std::pair<std::int64_t, std::int64_t> string_offsets(const ArrowArrayView *view,
   return { view->buffer_views[1].data.as_int32[i], view->buffer_views[1].data.as_int32[i + 1] };
 }
 
-/// The rows of record batch `k`, from row `first` on: a span of each series' values and a view of its name where it
+/// The rows of a record batch, from row `first` on: a span of each series' values and a view of its name where it
 /// lies in the body, today's verdicts on a null and on offsets outside their values row by row; a row named by no
 /// 'name' value is marked in `unnamed`.
 template <typename T>
-void view_rows(const ArrowArrayView *batch, const Columns &columns, std::size_t k, std::int64_t first,
+void view_rows(const ArrowArrayView *batch, const Columns &columns, std::int64_t first,
                std::vector<std::span<const T>> &series, std::vector<std::string_view> &names,
                std::vector<bool> &unnamed)
 {
   const ArrowArrayView *list = batch->children[columns.data];
   const ArrowArrayView *values = list->children[0];
   const ArrowArrayView *label = columns.name >= 0 ? batch->children[columns.name] : nullptr;
-  const auto offset_bytes = [](const ArrowArrayView *view) -> std::size_t {
-    return view->storage_type == NANOARROW_TYPE_LARGE_LIST || view->storage_type == NANOARROW_TYPE_LARGE_STRING ? 8
-                                                                                                                : 4;
-  };
-  if (!aligned(list, 1, offset_bytes(list)) || !aligned(values, 1, sizeof(T))
-      || (label != nullptr && !aligned(label, 1, offset_bytes(label))))
-    throw IOError("Arrow IPC record batch " + std::to_string(k)
-                  + ": a buffer is not aligned to its elements, so it cannot be viewed in place (Arrow IPC writers "
-                    "align every buffer to 8 bytes: rewrite the file with one)");
   const T *data = reinterpret_cast<const T *>(values->buffer_views[1].data.data);
   for (std::int64_t r = 0; r < batch->length; ++r) {
     const std::int64_t row = first + r;
@@ -357,8 +378,11 @@ Data view_batches(Decoder &decoder, std::span<const std::byte> bytes, const std:
     if (series.size() + static_cast<std::size_t>(batch->length) > n)
       throw IOError("Arrow IPC record batch " + std::to_string(k)
                     + " holds more rows than when the file was walked: the file changed while it was read");
-    view_rows(batch, columns, k, static_cast<std::int64_t>(series.size()), series, names, unnamed);
+    view_rows(batch, columns, static_cast<std::int64_t>(series.size()), series, names, unnamed);
   }
+  if (series.size() != n)
+    throw IOError("the Arrow IPC file's record batches hold " + std::to_string(series.size()) + " rows, and its walk "
+                  + "counted " + std::to_string(n) + ": the file changed while it was read");
   char digits[24];
   std::size_t chars = 0;
   for (std::size_t i = 0; i < n; ++i)
@@ -420,6 +444,7 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
   if (first != 0 && at != last && at != last - 8)
     throw IOError("Arrow IPC message at byte " + std::to_string(at) + " is an end-of-stream marker, but the file's "
                   "messages run on to its footer at byte " + std::to_string(last) + ": the file is corrupt");
+  if (first != 0) check_footer(bytes, batches);
   Data view = columns.f32 ? view_batches<float>(decoder, bytes, batches, rows, columns, std::move(owner))
                           : view_batches<data_t>(decoder, bytes, batches, rows, columns, std::move(owner));
   if (view.precision == dtype) return view;
