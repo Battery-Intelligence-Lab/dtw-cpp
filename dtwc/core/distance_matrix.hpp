@@ -106,6 +106,12 @@ inline void for_each_point(const T *packed, index_t n, index_t a, F &&f)
 /// unknown, as in a build without llfio.
 size_t available_memory();
 
+/// Start reading the pages of bytes [address, address + bytes) of a mapped file into memory, and return: a hint
+/// (llfio's map_handle::prefetch: madvise WILLNEED, PrefetchVirtualMemory), so a failure changes nothing; nothing in a
+/// build without llfio. A mapped matrix's next rows (DistanceMatrix::prefetch_rows) and the next block of a mapped
+/// file's series (Problem's check, FastCLARA's pass) are read ahead through it.
+void prefetch_pages(const void *address, size_t bytes);
+
 /// The refusal of a distance a float32 matrix cannot hold: InvalidInput, after `where`, naming the pair, `distance`
 /// (computed in double) and the fix, matrix_dtype float64; a distance that is itself ±inf is no number at any width.
 [[noreturn]] void refuse_float32_range(std::string_view where, size_t i, size_t j, double distance);

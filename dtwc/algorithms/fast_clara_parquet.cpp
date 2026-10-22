@@ -20,7 +20,7 @@
 #include "../base/missing_utils.hpp"
 #include "../core/medoid_assignment_policy.hpp"
 #include "../io/parquet_chunk_reader.hpp"
-#include "../warping.hpp" // detail::require_finite
+#include "../warping.hpp" // detail::all_usable, refuse_unusable
 
 #include <algorithm>
 #include <cstdint>
@@ -66,19 +66,22 @@ namespace {
     void rows(const Data &data, const RowOf &row_of)
     {
       const bool nan_is_missing = distance_.missing != core::MissingStrategy::Error;
-      std::string name;
       for (std::size_t i = 0; i < static_cast<std::size_t>(data.size()); ++i) {
         const auto row = static_cast<int64_t>(row_of(i));
         const auto length = data.series_flat_size(i);
         if (length == 0)
           throw InvalidInput("fast_clara: series " + std::to_string(row) + " ('" + std::string(data.name(i))
                              + "') is empty; every series needs at least one value.");
-        name.assign("series '").append(data.name(i)).append("' (index ").append(std::to_string(row)).append(")");
+        // The in-RAM check's predicate (Problem's check); the name only for a refusal.
+        const auto name = [&] {
+          return "series '" + std::string(data.name(i)) + "' (index " + std::to_string(row) + ")";
+        };
         const auto check = [&](const auto values) {
-          dtwc::detail::require_finite(values, name, "fast_clara", nan_is_missing);
+          if (!dtwc::detail::all_usable(values, nan_is_missing))
+            dtwc::detail::refuse_unusable(values, name(), "fast_clara", nan_is_missing);
           if (distance_.missing == core::MissingStrategy::Interpolate && all_missing(values))
-            throw InvalidInput("fast_clara: " + name + " is entirely NaN, so MissingStrategy::Interpolate has nothing "
-                               "to interpolate from. Use ZeroCost or AROW, or drop the series.");
+            throw InvalidInput("fast_clara: " + name() + " is entirely NaN, so MissingStrategy::Interpolate has "
+                               "nothing to interpolate from. Use ZeroCost or AROW, or drop the series.");
         };
         if (data.is_f32())
           check(data.series_f32(i));
@@ -151,10 +154,7 @@ namespace {
     const auto n_points = static_cast<std::size_t>(plan.n_points);
     const auto samples = detail::draw_clara_samples(plan.n_points, plan.sample_size, opts);
 
-    std::vector<int64_t> rows; // the samples' union, ascending
-    for (const auto &sample : samples) rows.insert(rows.end(), sample.begin(), sample.end());
-    std::sort(rows.begin(), rows.end());
-    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    const std::vector<int64_t> rows = detail::sample_union(samples);
 
     std::vector<index_t> medoids; // sample s's medoid m is slot s * k + m
     std::vector<core::ClusteringResult> pams;

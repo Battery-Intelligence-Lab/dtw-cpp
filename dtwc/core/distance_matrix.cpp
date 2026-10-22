@@ -524,14 +524,22 @@ void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerp
   flush_to_device(path);
 }
 
+void prefetch_pages([[maybe_unused]] const void *address, [[maybe_unused]] size_t bytes)
+{
+#ifdef DTWC_HAS_MMAP
+  if (bytes == 0) return;
+  using buffer = llfio::map_handle::buffer_type;
+  const auto at = reinterpret_cast<std::uintptr_t>(address);
+  const std::uintptr_t first = at - at % llfio::utils::page_size(); // madvise takes a page's address
+  (void)llfio::map_handle::prefetch(buffer(reinterpret_cast<buffer::pointer>(first), at + bytes - first));
+#endif
+}
+
 void DistanceMatrix::prefetch_rows([[maybe_unused]] size_t r0, [[maybe_unused]] size_t r1) const
 {
 #ifdef DTWC_HAS_MMAP
   r1 = std::min(r1, rows_); // a row never written holds nothing to read
-  if (!mapping_ || r0 >= r1) return;
-  const size_t first = row_offset(r0) - row_offset(r0) % llfio::utils::page_size();
-  const llfio::map_handle::buffer_type rows(mapping_->file.address() + first, row_offset(r1) - first);
-  (void)llfio::map_handle::prefetch(rows);
+  if (mapping_ && r0 < r1) prefetch_pages(mapping_->file.address() + row_offset(r0), row_offset(r1) - row_offset(r0));
 #endif
 }
 

@@ -144,4 +144,15 @@ double dtwc_probe_rows_f32(const float *packed, std::int64_t n, std::int64_t a, 
   return sums[0];
 }
 
+// The series check's predicate (Problem's check, the Parquet stream's), each value of every series once.
+bool dtwc_probe_all_usable_f64(const double *x, std::size_t n, bool nan_is_missing)
+{
+  return dtwc::detail::all_usable<double>({ x, n }, nan_is_missing);
+}
+
+bool dtwc_probe_all_usable_f32(const float *x, std::size_t n, bool nan_is_missing)
+{
+  return dtwc::detail::all_usable<float>({ x, n }, nan_is_missing);
+}
+
 } // extern "C"

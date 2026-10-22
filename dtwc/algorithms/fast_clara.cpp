@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -229,25 +230,48 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
       prob, opts.n_clusters, opts.max_iter, detail::clara_pam_seed(opts, 0));
   }
 
-  // The parent's series are checked once, before any sample: the band, the values and, on a GPU, what it takes (a
-  // GPU fills copies of the samples whatever the parent holds, but the assignment uploads the parent's own series).
-  // Every sample views or copies them, and the pass reads them all.
+  // The parent's series are checked as the pass reads them, on the CPU (Problem::SeriesCheck): the empty series and
+  // the band first, the samples' rows before the PAMs, each block of points just before it is assigned, so a mapped
+  // file is read once; the verdict, type and text are dtw_function()'s, only later. A GPU checks them all first, as
+  // dtw_function() does: CUDA's assignment packs and uploads the parent's series inside its call, where no block can
+  // be checked (and a GPU fills copies of the samples whatever the parent holds).
   const bool gpu = prob.device().first == Device::GPU;
   const bool f32 = prob.data().is_f32() && !gpu; // a GPU refuses Float32 series in that check
-  const auto *const pair = f32 ? nullptr : &prob.dtw_function();
-  const auto *const pair_f32 = f32 ? &prob.dtw_function_f32() : nullptr;
+  std::optional<Problem::SeriesCheck> check;
+  if (!gpu) check.emplace(prob.series_check(f32 ? "Problem::dtw_function_f32" : "Problem::dtw_function", f32));
+  const auto *const pair = f32 ? nullptr : check ? &prob.dtw_function(*check) : &prob.dtw_function();
+  const auto *const pair_f32 = f32 ? &prob.dtw_function_f32(*check) : nullptr;
 
   // All samples first, from one engine; each PAM on a view of its series (a copy on a GPU, which uploads owned ones).
   const auto samples = detail::draw_clara_samples(N, sample_size, opts);
+  const auto n_points = static_cast<std::size_t>(N);
+  // An entirely-NaN series (Interpolate) cannot be assigned, its distances throw: at the first one marked the pass
+  // stops, the series not yet checked are checked, and finish() refuses what a check of every series refuses.
+  const auto stop_if_marked = [&](std::size_t checked) {
+    if (!check->marked()) return;
+    check->check(checked, n_points - checked);
+    check->finish();
+  };
+  if (check) {
+    check->check_rows(detail::sample_union(samples));
+    stop_if_marked(0); // before the PAMs, whose fills would refuse it first
+  }
   std::vector<index_t> medoids; // sample s's medoid m is slot s * k + m
   const auto pams = detail::clara_pams(prob, opts, prob.data(), samples, samples, gpu, medoids);
 
   // One pass: every point against the medoids of every sample.
-  const auto n_points = static_cast<std::size_t>(N);
   std::vector<std::vector<index_t>> labels(samples.size(), std::vector<index_t>(n_points));
   std::vector<core::detail::OrderedMedoidObjective> costs(samples.size());
   const auto &data = prob.data();
-  const auto in_blocks = [&](const auto &assign) { detail::assign_in_blocks(0, n_points, costs, assign); };
+  const auto in_blocks = [&](const auto &assign) {
+    detail::assign_in_blocks(0, n_points, costs, [&](index_t first, std::size_t n, std::span<double> best) {
+      if (check) {
+        check->check(static_cast<std::size_t>(first), n);
+        stop_if_marked(static_cast<std::size_t>(first) + n);
+      }
+      assign(first, n, best);
+    });
+  };
   if (pair_f32) {
     in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
       detail::assign_points_cpu<float>(
@@ -274,6 +298,7 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
       });
   }
 
+  if (check) check->finish();
   auto result = detail::clara_winner(pams, medoids, labels, costs);
   // The sample_size >= N branch above delegates to fast_pam, which publishes too.
   prob.set_result(result);

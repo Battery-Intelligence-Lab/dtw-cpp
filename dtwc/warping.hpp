@@ -36,10 +36,13 @@
 #include "core/dtw_kernel.hpp"     // unified DTW kernels, orient, run_dtw
 #include "core/dtw_cost.hpp"       // Span*Cost functors
 
+#include <cstdint>   // for uint32_t, uint64_t
 #include <cstdlib>   // for abs, size_t
 #include <algorithm> // for min, max
 #include <cmath>     // for floor, round
 #include <limits>    // for numeric_limits
+#include <stdexcept> // for logic_error
+#include <type_traits> // for conditional_t
 #include <vector>    // for vector
 #include <span>      // for span
 #include <string>    // for string, to_string
@@ -78,6 +81,33 @@ void require_finite(std::span<const data_t> series, std::string_view name,
     }
     throw InvalidInput(message);
   }
+}
+
+/// require_finite()'s test with no branch per value: true when every value of `series` is one a distance takes
+/// (finite; NaN too when `nan_is_missing`). !(|v| <= max) holds for NaN and ±inf, |v| > max for ±inf only. No early
+/// exit and no call (std::isfinite may be one in the MSVC STL), so the loop vectorises; require_finite() then names the
+/// value. The accumulator is as wide as a value: GCC 13 vectorises neither a bool one nor, without shuffles, a narrower.
+template <typename data_t>
+bool all_usable(std::span<const data_t> series, bool nan_is_missing)
+{
+  using Bits = std::conditional_t<sizeof(data_t) == 8, std::uint64_t, std::uint32_t>;
+  constexpr data_t max = std::numeric_limits<data_t>::max();
+  Bits refused = 0;
+  if (nan_is_missing)
+    for (const data_t value : series) refused |= static_cast<Bits>(std::abs(value) > max);
+  else
+    for (const data_t value : series) refused |= static_cast<Bits>(!(std::abs(value) <= max));
+  return refused == 0;
+}
+
+/// require_finite() on a series all_usable() refused: its InvalidInput, or std::logic_error should the two disagree.
+template <typename data_t>
+[[noreturn]] void refuse_unusable(std::span<const data_t> series, std::string_view name, std::string_view where,
+                                  bool nan_is_missing)
+{
+  require_finite(series, name, where, nan_is_missing);
+  throw std::logic_error(std::string(where) + ": all_usable() refused " + std::string(name)
+                         + ", which require_finite() takes.");
 }
 
 /// Both series of a pair, x first. Neither may be empty: an empty series has no

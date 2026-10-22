@@ -57,6 +57,7 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 #include <cli/config.hpp>
 #include <io/parquet_chunk_reader.hpp>
 #include <Problem.hpp>
+#include <warping.hpp> // detail::require_finite, the refusals' text
 #endif
 
 using Catch::Matchers::WithinAbs;
@@ -655,6 +656,101 @@ TEST_CASE("Parquet: streamed FastCLARA refuses the rows the in-RAM run refuses",
     stream.force_parquet_streaming = true;
     CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara_parquet(streamed, stream), dtwc::InvalidInput,
                          Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(poison.says)));
+  }
+  std::filesystem::remove(path);
+}
+
+// The stream checks the sampled rows before its PAM, then each row group as it decodes, each in row order (RowCheck):
+// it names the first row it refuses in that order. The in-RAM run of the same file names the lowest, ±inf before an
+// entirely-NaN row under Interpolate (Problem's check). Two refused rows in one row group, refused rows in two, a
+// sampled row above an unsampled lower one, an entirely-NaN row before an infinite one; each route's full text, as at
+// fd8a7450: require_finite's at the row it names, or the entirely-NaN one.
+TEST_CASE("Parquet: the stream refuses the first row it reads, the in-RAM run the lowest",
+          "[io][parquet][streaming][mm]")
+{
+  using dtwc::core::MissingStrategy;
+  constexpr double nan = std::numeric_limits<double>::quiet_NaN(), inf = std::numeric_limits<double>::infinity();
+  std::vector<std::vector<double>> walks(64, std::vector<double>(8)); // 4 row groups of 16
+  for (std::size_t i = 0; i < walks.size(); ++i)
+    for (std::size_t t = 0; t < 8; ++t) walks[i][t] = 0.25 * static_cast<double>((5 * i + 3 * t) % 13);
+  dtwc::algorithms::CLARAOptions options;
+  options.n_clusters = 2;
+  options.sample_size = 8;
+  options.n_samples = 1;
+  options.random_seed = 3;
+  std::mt19937_64 rng(options.random_seed);
+  const auto sample = dtwc::core::portable_sample_indices<dtwc::index_t>(64, 8, rng);
+  const auto sampled = [&](std::size_t row) {
+    return std::find(sample.begin(), sample.end(), static_cast<dtwc::index_t>(row)) != sample.end();
+  };
+  const auto unsampled = [&](std::size_t from, std::size_t skip = 0) { // the skip-th unsampled row from `from`
+    for (;; ++from)
+      if (!sampled(from) && skip-- == 0) return from;
+  };
+  const auto r = static_cast<std::size_t>(sample.back()); // sampled, above an unsampled row
+  std::size_t u = r;
+  while (u > 0 && sampled(--u)) {}
+  const std::size_t a = unsampled(32), b = unsampled(32, 1), c = unsampled(16), d = unsampled(48), e = unsampled(18),
+                    f = unsampled(52);
+  REQUIRE((!sampled(u) && u < r && a < b && b < 48 && c < 32 && d >= 48 && e < 32 && f < 64));
+
+  constexpr std::size_t none = std::numeric_limits<std::size_t>::max();
+  struct Case
+  {
+    const char *what;
+    MissingStrategy missing;
+    std::vector<std::pair<std::size_t, double>> poisons; // a row's position 1 gets the value
+    std::size_t entirely_nan;                            // a row NaN in every position, or none
+    std::size_t stream_row, in_ram_row;
+  };
+  const std::vector<Case> cases{
+    { "two rows of one row group", MissingStrategy::Error, { { b, inf }, { a, nan } }, none, a, a },
+    { "two row groups", MissingStrategy::Error, { { d, -inf }, { c, inf } }, none, c, c },
+    { "a sampled row above an unsampled lower one", MissingStrategy::Error, { { r, -inf }, { u, nan } }, none, r, u },
+    { "an entirely-NaN row before an infinite one", MissingStrategy::Interpolate, { { f, inf } }, e, e, f },
+  };
+  const auto text = [](const std::vector<double> &values, std::size_t row, const char *where, MissingStrategy missing,
+                       bool entirely_nan) {
+    const std::string name = "series 'series_" + std::to_string(row) + "' (index " + std::to_string(row) + ")";
+    if (entirely_nan)
+      return std::string(where) + ": " + name
+             + " is entirely NaN, so MissingStrategy::Interpolate has nothing to interpolate from. Use ZeroCost or "
+               "AROW, or drop the series.";
+    try {
+      dtwc::detail::require_finite(std::span<const double>(values), name, where, missing != MissingStrategy::Error);
+    } catch (const dtwc::InvalidInput &refused) {
+      return std::string(refused.what());
+    }
+    FAIL("require_finite takes row " << row);
+    return std::string();
+  };
+  const auto path = tmpdir() / "clara_first_refused.parquet";
+  for (const Case &c : cases) {
+    INFO(c.what);
+    auto rows = walks;
+    for (const auto &[row, value] : c.poisons) rows[row][1] = value;
+    if (c.entirely_nan != none) std::fill(rows[c.entirely_nan].begin(), rows[c.entirely_nan].end(), nan);
+    write_parquet(path, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
+                                           { make_list_f64(rows) }),
+                  16);
+
+    dtwc::Problem in_ram{ "in_ram" };
+    in_ram.set_missing_strategy(c.missing);
+    in_ram.set_data(dtwc::io::read_arrow(path, "series"));
+    CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara(in_ram, options), dtwc::InvalidInput,
+                         Catch::Matchers::Message(text(rows[c.in_ram_row], c.in_ram_row, "Problem::dtw_function",
+                                                       c.missing, c.in_ram_row == c.entirely_nan)));
+
+    dtwc::Problem streamed{ "streamed" };
+    streamed.set_missing_strategy(c.missing);
+    auto stream = options;
+    stream.parquet_path = path;
+    stream.parquet_column = "series";
+    stream.ram_limit_bytes = dtwc::io::ParquetChunkReader(path, "series").decode_bytes() + 8192; // a row group a batch
+    stream.force_parquet_streaming = true;
+    CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara_parquet(streamed, stream), dtwc::InvalidInput,
+                         Catch::Matchers::Message(
+                           text(rows[c.stream_row], c.stream_row, "fast_clara", c.missing, c.stream_row == c.entirely_nan)));
   }
   std::filesystem::remove(path);
 }

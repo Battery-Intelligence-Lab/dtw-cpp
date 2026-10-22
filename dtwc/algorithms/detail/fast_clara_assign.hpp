@@ -45,6 +45,16 @@ inline std::vector<std::vector<index_t>> draw_clara_samples(index_t N, index_t s
   return samples;
 }
 
+/// The rows of every sample, each once, ascending.
+inline std::vector<index_t> sample_union(const std::vector<std::vector<index_t>> &samples)
+{
+  std::vector<index_t> rows;
+  for (const auto &sample : samples) rows.insert(rows.end(), sample.begin(), sample.end());
+  std::sort(rows.begin(), rows.end());
+  rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+  return rows;
+}
+
 /**
  * Point p to its nearest medoid of one sample: `label` and `best`. medoids[m] is the sample's medoid in slot m and
  * distance(m) p's distance to it, whichever route computed it; a point is at 0 from itself.

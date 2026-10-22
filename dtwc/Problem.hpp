@@ -34,6 +34,7 @@
 #include <vector>      // for vector, allocator
 #include <functional>  // std::function
 #include <iosfwd>      // std::ostream
+#include <limits>      // std::numeric_limits
 #include <span>        // std::span
 #include <memory>
 #include <stdexcept>
@@ -80,6 +81,11 @@ inline void validate_mip_settings(const MIPSettings &s)
 }
 
 class Problem;
+
+namespace algorithms {
+struct CLARAOptions;
+core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);
+} // namespace algorithms
 
 /// The GPU rules that need no series: `prob`'s variant or missing-data
 /// strategy the GPU kernels do not implement, Float32 series
@@ -202,9 +208,20 @@ private:
   void validate_checkpoint_settings() const;
   /// The one check of a distance request — every device axis, band
   /// feasibility and the series values the missing-data strategy
-  /// cannot take — before any pair is computed. O(N·L): run once per fill and
-  /// per dtw_function() call, never per pair.
+  /// cannot take — before any pair is computed: a SeriesCheck over every
+  /// series. O(N·L): run once per fill and per dtw_function() call, never per pair.
   void validate_fill_request(std::string_view where) const;
+  class SeriesCheck;
+  /// The check of a distance request in parts (SeriesCheck), for a pass that checks the series as it reads them: a
+  /// direct write to `band` taken (sync_band), with `f32` float32's hold on the variant's parameters (core::validate),
+  /// then the empty series and the band. `where` begins every refusal.
+  SeriesCheck series_check(std::string_view where, bool f32);
+  /// The bound functions, no series checked: `check` (this Problem's, else std::logic_error; the float32 function's
+  /// for dtw_function_f32) checks them as they are read. The float32 one is bound on first use, as dtw_function_f32().
+  const dtw_fn_t &dtw_function(const SeriesCheck &check);
+  const dtw_fn_f32_t &dtw_function_f32(const SeriesCheck &check);
+  /// FastCLARA's CPU pass, which checks each block of series just before it assigns it.
+  friend core::ClusteringResult algorithms::fast_clara(Problem &prob, const algorithms::CLARAOptions &opts);
   /// get_name / p_vec return references into owned heap storage. A view
   /// (set_view_data) has none, nor has a Float32 store Float64 values:
   /// indexing would read past an empty vector in a Release build.
@@ -527,7 +544,7 @@ public:
   /// The bound DTW distance function (float64), for methods that compute the
   /// pairs they need instead of filling the matrix. Each call first takes a
   /// direct write to `band` into account and checks the request against the
-  /// series (validate_fill_request, O(N·L)), so call it once, serially, before a
+  /// series (the fill's check, a SeriesCheck of every series, O(N·L)), so call it once, serially, before a
   /// parallel loop; the function itself only reads what it holds and checks
   /// nothing, so a caller passing spans other than the Problem's own owns their
   /// validity.
@@ -648,6 +665,45 @@ public:
 
   void calculate_medoids();
   [[deprecated("use calculate_medoids")]] void calculateMedoids() { calculate_medoids(); }
+};
+
+/**
+ * @brief The check of a distance request against a Problem's series, in parts, with the verdict, type and text of
+ *        the check over every series (Problem::validate_fill_request).
+ *
+ * Problem::series_check refuses (1) the first empty series and (2) a band narrower than the shortest and the longest
+ * series' length difference. check() and check_rows() refuse (3) the first series holding a value no distance takes
+ * (±inf, and NaN under MissingStrategy::Error), at its first such value, and under Interpolate mark (4) every
+ * entirely-NaN series; finish() refuses the lowest marked one, then (5) what a GPU device needs. A refusal in (3)
+ * comes before any mark, so a caller that checks every series before finish() has the serial check's verdict.
+ */
+class Problem::SeriesCheck
+{
+public:
+  /// Series [first, first + count): blocks of consecutive series whose values fill an eighth of the memory budget
+  /// (ram_limit, else the memory available, 1 GiB when unknown; at least one series), in order, a block's series on
+  /// every thread. The first series refused throws once its block is checked: require_finite's InvalidInput. The
+  /// thread that checks series `first` asks for the next `count` series' pages when they are a mapped file's
+  /// (core::prefetch_pages), so they arrive while the caller works on these.
+  void check(std::size_t first, std::size_t count);
+  /// check() of the series `rows`, ascending: a refusal at row r throws after check(0, r), so a lower series' first.
+  void check_rows(std::span<const index_t> rows);
+  /// True once a series checked is marked (entirely NaN under Interpolate), which finish() refuses.
+  bool marked() const noexcept { return mark_ != none; }
+  /// The lowest marked series' InvalidInput, then the GPU's needs (DeviceError).
+  void finish() const;
+
+private:
+  friend class Problem;
+  SeriesCheck(const Problem &problem, std::string_view where, bool f32);
+  [[noreturn]] void refuse(std::size_t i) const;
+  static constexpr std::size_t none = std::numeric_limits<std::size_t>::max();
+
+  const Problem *problem_;
+  std::string where_;
+  bool f32_;                ///< made for the float32 function, whose parameters series_check validated
+  std::size_t block_bytes_; ///< the values of a block of check()
+  std::size_t mark_ = none; ///< the lowest series marked
 };
 
 

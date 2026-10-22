@@ -156,11 +156,12 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `--checkpoint-interval` rows rounded up to the lane width (16 rows of doubles where the lanes are 128 bytes).
 - FastCLARA runs every sample's PAM before one assignment pass over all of them: `-v` prints one assignment line a
   pass, not one a sample; a non-finite distance is reported at the lowest failing series over all samples; and series
-  it cannot take (NaN, ±inf, a band narrower than two series' length difference) are refused before any sample, by
-  their index in the data. Streamed (`--ram-limit`), the limit holds the sampled rows beside one decode and a
-  sample's PAM, then the medoids, 8 bytes of labels and of nearest distance per row and sample, one decode and a batch
-  of row groups, and after the stream every series' name and label: a smaller limit is refused, naming the bytes,
-  where it streamed before.
+  it cannot take (NaN, ±inf, a band narrower than two series' length difference) are refused by their index in the
+  data, as the other methods refuse them: the band before any sample, the sampled series before the PAMs, every other
+  just before the pass assigns it, so a mapped file is read once (on a GPU, every series before any sample). Streamed
+  (`--ram-limit`), the limit holds the sampled rows beside one decode and a sample's PAM, then the medoids, 8 bytes of
+  labels and of nearest distance per row and sample, one decode and a batch of row groups, and after the stream every
+  series' name and label: a smaller limit is refused, naming the bytes, where it streamed before.
 - `.dtwm` files are version 5: a 64-byte header that adds the bytes of a value (8, or 4 for `matrix_dtype` float32)
   and the rows written. Version-4 files, from earlier 2.0 builds, are still read and mapped as float64; a file of the
   other `matrix_dtype` is refused (`InvalidInput`, naming the one that reads it), never converted.
