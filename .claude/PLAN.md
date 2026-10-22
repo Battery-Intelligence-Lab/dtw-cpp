@@ -41,8 +41,10 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   mapped series; Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
   review: none left after F3's threshold; approved 10-12; S1 (the reader) 70d512cd on pb/MM 10-21: six trees
   green, matlab_suite 142, pytest 915/19/0, kernel probes identical; its review found nanoarrow trusting a
-  file's buffer offsets and lengths (two blockers): fixed next on pb/MM with GCC's out-of-line `Data::series`
-  (force-inline, Volkan 10-21), then S2; pulled forward: S8's read-only view `p_vec`, S9's MEX names; for S5:
+  file's buffer offsets and lengths (two blockers; a crafted header crashed cl and GCC builds): fixed 4d1e0723,
+  re-checked clean; GCC's out-of-line `Data::series` force-inlined 84d84101 (Volkan 10-21); six trees,
+  matlab_suite and pytest again green; S2 next on pb/MM, S1's minor residuals first; pulled forward: S8's
+  read-only view `p_vec`, S9's MEX names; for S5:
   a GPU fill of an IPC file is refused until then; P1–P3, K1, K2 measured first in its timing session; MM
   merges once, after S10)
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
