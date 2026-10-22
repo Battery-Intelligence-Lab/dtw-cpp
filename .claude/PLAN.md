@@ -38,14 +38,14 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 - ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
   IPC read piece by piece, Python's and MATLAB's `cluster()` through C++ `run` with highspy required, the load
   pricing the matrix (MS measured 10-10: at 10^8 series 75 % of the stream's cold time waits on its one decoder, so
-  mapped series; Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
-  review: none left after F3's threshold; approved 10-12; on pb/MM: S1 the reader 70d512cd, hardened
-  4d1e0723 (nanoarrow 0.8.0 trusts a file's offsets and lengths; a crafted header crashed cl and GCC builds),
-  GCC force-inline 84d84101 (Volkan 10-21); S2 codecs and decoding 61b88767, 71d9d4b1, 25f65d34 (declared
-  decoded sizes capped), fd8a7450 (its review: a V4 union, the footer); six trees, matlab_suite and pytest green at each
-  (`baselines/2026-10-21-mm-s1-reader.md`, `2026-10-22-mm-s2-codecs.md`); S2's adversarial review pending;
-  pulled forward: S8's read-only view `p_vec`, S9's MEX names; for S5: a GPU fill of an IPC file is refused
-  until then; P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10)
+  mapped series; Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, approved 10-12).
+  On pb/MM: S1 the reader 70d512cd, hardened 4d1e0723 (nanoarrow 0.8.0 trusts a file's offsets and lengths; a
+  crafted header crashed cl and GCC builds), GCC force-inline 84d84101 (Volkan 10-21); S2 codecs and decoding
+  61b88767, 71d9d4b1, 25f65d34 (declared decoded sizes capped), fd8a7450 (its review: a V4 union, the footer); six
+  trees, matlab_suite and pytest green at each; both reviews re-checked clean (`baselines/2026-10-21-mm-s1-reader.md`,
+  `2026-10-22-mm-s2-codecs.md`). S3 started 10-22. S4 also compares the footer's byte order with the stream's.
+  Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
+  P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 
