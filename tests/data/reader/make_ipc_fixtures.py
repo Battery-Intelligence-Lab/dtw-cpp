@@ -16,7 +16,8 @@ The C++ reader (tests/unit/io/test_arrow_ipc.cpp), Python (tests/python/test_io.
 - ipc_scalar_data.arrow, ipc_int64_names.arrow, ipc_ndim_2x.arrow: a Float64 'data' column, an Int64 'name' column,
   ndim "2x";
 - ipc_dictionary.arrow: ipc_no_name.arrow's series beside a dictionary-encoded column, which nanoarrow cannot decode;
-- ipc_lz4.arrow: ipc_no_name.arrow's series, LZ4-compressed, which a view cannot read.
+- ipc_lz4.arrow, ipc_zstd.arrow: ipc_no_name.arrow's series, LZ4- and ZSTD-compressed, which the reader decodes;
+- ipc_lz4_batches.arrow, ipc_zstd_batches.arrow: ipc_batches.arrow's series and names, in its three batches, alike.
 
 Every value is exact in Float32. Run: uv run --no-project --with pyarrow==23.0.1 python make_ipc_fixtures.py
 """
@@ -74,4 +75,8 @@ write("ipc_int64_names.arrow", table({"data": pa.array(SERIES, f64), "name": pa.
 write("ipc_ndim_2x.arrow", table({"data": pa.array(SERIES, f64)}, {"ndim": "2x"}))
 write("ipc_dictionary.arrow", table({"data": pa.array(SERIES, f64),
                                      "label": pa.array(["u", "v", "u"]).dictionary_encode()}))
-write("ipc_lz4.arrow", table({"data": pa.array(SERIES, f64)}), compression="lz4")
+for codec in ("lz4", "zstd"):
+    write(f"ipc_{codec}.arrow", table({"data": pa.array(SERIES, f64)}), compression=codec)
+    write(f"ipc_{codec}_batches.arrow", table({
+        "data": pa.array([[0.0, 1.0], [2.0], [3.0], [4.0, 5.0], [6.0], [7.0, 8.0, 9.0]], f64),
+        "name": pa.array(["a", "b", None, "d", None, "f"], pa.string())}, batches=[2, 1, 3]), compression=codec)

@@ -7,7 +7,10 @@
 from __future__ import annotations
 
 import importlib
+import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -209,7 +212,6 @@ def test_arrow_ipc_fixtures_read_as_cpp_and_matlab_read_them(name, series, names
         ("ipc_int64_names.arrow", "IOError", "the 'name' column must be Utf8 or LargeUtf8, got int64."),
         ("ipc_ndim_2x.arrow", "IOError", "schema metadata 'ndim' must be a positive integer, got '2x'."),
         ("ipc_dictionary.arrow", "IOError", "Schema message field with DictionaryEncoding not supported"),
-        ("ipc_lz4.arrow", "IOError", "Arrow IPC record batch 0 is compressed (LZ4_FRAME)"),
         ("ipc_null_series.arrow", "InvalidInput", "null series at row 1 (drop or fill nulls"),
         ("ipc_null_value.arrow", "InvalidInput", "null value inside series at row 1 (drop or fill nulls"),
     ],
@@ -219,6 +221,22 @@ def test_arrow_ipc_fixture_errors_as_cpp_and_matlab_raise_them(name, error, says
     named = "load: failed to read .*" if error == "IOError" else ""
     with pytest.raises(getattr(dtwcpp, error), match=named + re.escape(says)):
         dtwcpp.load(_CORPUS / name).as_data()
+
+
+def test_compressed_arrow_ipc_files_read_as_their_twins_with_pyarrow_imported_first():
+    """LZ4 and ZSTD files, one batch and three, decoded by the module's own codecs in a process that imports pyarrow,
+    which carries its copies of lz4 and zstd, before dtwcpp: the uncompressed twin's series and names, bit for bit, as
+    tests/unit/io/test_arrow_ipc.cpp (C++) and test_tier1_route_parity.m (MATLAB) read them."""
+    pytest.importorskip("pyarrow")
+    twins = {"ipc_lz4.arrow": "ipc_no_name.arrow", "ipc_zstd.arrow": "ipc_no_name.arrow",
+             "ipc_lz4_batches.arrow": "ipc_batches.arrow", "ipc_zstd_batches.arrow": "ipc_batches.arrow"}
+    code = ("import json, sys\nimport pyarrow\nimport dtwcpp\n"
+            "print(json.dumps([[d.p_vec, d.p_names] for d in (dtwcpp.load(f).as_data() for f in sys.argv[1:])]))\n")
+    run = subprocess.run([sys.executable, "-c", code, *(str(_CORPUS / name) for name in twins)],
+                         capture_output=True, text=True, check=True)
+    for read, twin in zip(json.loads(run.stdout), twins.values()):
+        plain = dtwcpp.load(_CORPUS / twin).as_data()
+        assert read == [plain.p_vec, plain.p_names]
 
 
 def test_an_arrow_ipc_view_refuses_a_write_and_clusters_as_its_series_in_memory():

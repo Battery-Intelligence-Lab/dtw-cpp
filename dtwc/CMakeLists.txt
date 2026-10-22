@@ -34,6 +34,35 @@ endforeach()
 # The umbrella header includes the libraries' headers.
 target_sources(dtwc++ INTERFACE FILE_SET HEADERS BASE_DIRS . FILES dtwc.hpp)
 
+# The third-party C the Arrow IPC reader runs: nanoarrow's IPC extension and flatcc
+# (extern/nanoarrow lists them), lz4's library and zstd's decoder (fetched by
+# cmake/Dependencies.cmake). One object library, linked into dtwc_core: without the
+# project's warnings (their C set is the C++ one), position-independent (the wheel's
+# module) and hidden, so neither these codecs nor another copy of them in the process
+# (pyarrow's, a host's) can take the other's place. The codecs' headers give their API
+# default visibility whatever the preset unless the four macros are defined; lz4's
+# copy of xxHash takes lz4's namespace (zstd's has its own), and zstd's sources no
+# assembly (cl never compiles it).
+add_library(dtwc_third_party OBJECT)
+set_target_properties(dtwc_third_party PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+target_link_libraries(dtwc_third_party PRIVATE project_options)
+target_include_directories(dtwc_third_party PRIVATE extern extern/nanoarrow "${lz4_SOURCE_DIR}/lib"
+                                                   "${zstd_SOURCE_DIR}/lib")
+target_compile_definitions(dtwc_third_party PRIVATE NANOARROW_IPC_WITH_LZ4 NANOARROW_IPC_WITH_ZSTD
+  ZSTDLIB_VISIBLE= ZSTDERRORLIB_VISIBLE= LZ4LIB_VISIBILITY= LZ4FLIB_VISIBILITY=)
+set(_dtwc_lz4 lz4.c lz4frame.c lz4hc.c xxhash.c)
+list(TRANSFORM _dtwc_lz4 PREPEND "${lz4_SOURCE_DIR}/lib/")
+set(_dtwc_zstd common/debug.c common/entropy_common.c common/error_private.c common/fse_decompress.c
+  common/xxhash.c common/zstd_common.c decompress/huf_decompress.c decompress/zstd_ddict.c
+  decompress/zstd_decompress.c decompress/zstd_decompress_block.c)
+list(TRANSFORM _dtwc_zstd PREPEND "${zstd_SOURCE_DIR}/lib/")
+target_sources(dtwc_third_party PRIVATE ${_dtwc_lz4} ${_dtwc_zstd})
+set_source_files_properties(${_dtwc_lz4} PROPERTIES COMPILE_DEFINITIONS XXH_NAMESPACE=LZ4_)
+set_source_files_properties(${_dtwc_zstd} PROPERTIES COMPILE_DEFINITIONS ZSTD_DISABLE_ASM)
+target_link_libraries(dtwc_core PRIVATE dtwc_third_party)
+unset(_dtwc_lz4)
+unset(_dtwc_zstd)
+
 # Each folder lists its own files, and the settings that belong to them, on its library.
 add_subdirectory(mip)
 add_subdirectory(algorithms)

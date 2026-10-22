@@ -115,6 +115,19 @@ function(dtwc_setup_dependencies)
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
+  # lz4 1.10.0 (BSD-2-Clause) and zstd 1.5.7 (BSD-3-Clause): the decoders of compressed Arrow IPC record batches
+  # (LZ4_FRAME, ZSTD), which the vendored nanoarrow IPC extension calls. Downloaded only: dtwc/CMakeLists.txt compiles
+  # lz4's library and zstd's decoder into dtwc_third_party. The release archives each project uploaded, pinned by the
+  # SHA-256 its release publishes (two downloads identical, 2026-10-22).
+  CPMAddPackage(NAME lz4 DOWNLOAD_ONLY YES
+    URL "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz"
+    URL_HASH SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b)
+  CPMAddPackage(NAME zstd DOWNLOAD_ONLY YES
+    URL "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz"
+    URL_HASH SHA256=eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3)
+  set(lz4_SOURCE_DIR "${lz4_SOURCE_DIR}" PARENT_SCOPE)
+  set(zstd_SOURCE_DIR "${zstd_SOURCE_DIR}" PARENT_SCOPE)
+
   # fkYAML — single-header YAML 1.2 parser (MIT). OPTIONAL: it only feeds
   # dtwc/cli/config_file.hpp, which turns a YAML `--config` file into CLI11
   # ConfigItems. With DTWC_ENABLE_YAML=OFF the CLI still builds and rejects YAML

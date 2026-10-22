@@ -17,6 +17,8 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | Component | Version | Licence | CLI archive | Python wheel |
 | --- | --- | --- | --- | --- |
 | Apache Arrow nanoarrow, its IPC extension and flatcc | 0.8.0 | Apache-2.0 (four flatcc headers MIT or BSD-3-Clause) | yes — vendored, compiled in | yes |
+| lz4 (its library, `lib/`) | 1.10.0 | BSD-2-Clause | yes — compiled in | yes |
+| Zstandard (its decoder) | 1.5.7 | BSD-3-Clause | yes — compiled in | yes |
 | fast_float | 8.3.0 | Apache-2.0 **OR** MIT **OR** BSL-1.0 | yes — vendored, compiled in | yes |
 | HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | no — the wheel links no HiGHS; `method="mip"` solves with the user's highspy (the `mip` extra) |
 | CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | no |
@@ -133,6 +135,92 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## lz4 1.10.0 — BSD-2-Clause
+
+lz4's library sources `lz4.c`, `lz4frame.c`, `lz4hc.c` and `xxhash.c` decode the LZ4_FRAME-compressed record
+batches of Arrow IPC files; they are compiled into `dtwc++` from the release archive
+`https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz` (SHA-256
+`537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b`, as the release publishes it), unmodified. Its
+`lib/LICENSE`:
+
+```
+LZ4 Library
+Copyright (c) 2011-2020, Yann Collet
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice, this
+  list of conditions and the following disclaimer in the documentation and/or
+  other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## Zstandard 1.5.7 — BSD-3-Clause
+
+Zstandard's decoder (`lib/decompress/` and the files of `lib/common/` it calls) decodes the ZSTD-compressed record
+batches of Arrow IPC files; it is compiled into `dtwc++` from the release archive
+`https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz` (SHA-256
+`eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3`, as the release publishes it), unmodified.
+Zstandard is dual-licensed, BSD-3-Clause or GPL-2.0; DTWC++ takes it under BSD-3-Clause, its `LICENSE`:
+
+```
+BSD License
+
+For Zstandard software
+
+Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither the name Facebook, nor Meta, nor the names of its contributors may
+   be used to endorse or promote products derived from this software without
+   specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## Apache Arrow testing data — Apache-2.0 (sdist and source only)
+
+Two test files of the Apache Arrow project's `arrow-testing` repository, at commit
+`9ff285c88565f0f6abc855918c6a342e70e4909c`, are in the source tree and the sdist, unmodified, at
+`tests/data/reader/arrow-testing/` (they are compiled into nothing): `data/arrow-ipc-stream/integration/` its
+`1.0.0-bigendian/generated_primitive.arrow_file` (SHA-256
+`80a8b0877d098632f98eb7d186662dbc6613c27851f40f1899ad9a8d4db8ba49`) and `1.0.0-littleendian/generated_primitive.arrow_file`
+(SHA-256 `7aab19247177ea959506d7b192e8e21235f082267c72f394bb788c615ce03f54`). The repository's Apache License 2.0
+text is beside them, as `LICENSE.txt`; the repository has no NOTICE file.
 
 ## fast_float 8.3.0 — Apache-2.0 OR MIT OR BSL-1.0
 

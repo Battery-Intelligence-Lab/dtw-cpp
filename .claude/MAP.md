@@ -22,7 +22,7 @@ Python  _dtwcpp_core + dtwcpp: apply(Config) → Problem::cluster()          MAT
 | --- | --- | --- | --- |
 | base | `base/` (+ forwarders at `dtwc/` root), `types/`, `enums/` | 1.1k | errors (`Error` → `InvalidInput`, `DeviceError`, `IOError`, `SolverError`, `UndefinedScore`), settings (`index_t`), OpenMP helpers (`run_openmp`: per-thread failure slots, the lowest-index failure rethrown), `device()` (`env`), names tables, `Index` / `Range` |
 | core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 5.4k | `dtw_kernel.hpp` (linear: two columns per pass; lanes: 128 bytes on AArch64 and under clang or GCC on x86-64, 64 under cl and elsewhere, each lane its own length when unbanded but under cl; banded; × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio in `distance_matrix.cpp` and `io/arrow_ipc.cpp`), SHA-256, portable RNG, `kmedoids_pp` |
-| io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), the Arrow IPC reader `arrow_ipc` (nanoarrow's IPC extension; a mapped file's series are views, `Data::owner()` keeps the bytes), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
+| io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), the Arrow IPC reader `arrow_ipc` (nanoarrow's IPC extension; a mapped file's series are views, `Data::owner()` keeps the bytes; a compressed, big-endian or misaligned batch is decoded, the batches in parallel, into arrays the owner holds, its buffers proven inside the body first), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
 | backends | `cuda/`, `metal/` | 2.9k | GPU fills; CUDA also FastCLARA's assignment |
 | algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4k | FastPAM, FastCLARA (`fast_clara_parquet.cpp`: the stream, in `dtwc_io`), OneBatchPAM, hierarchical, TADPole, barycenter; seeding; seven scores |
 | mip | `mip/` | 1.5k | `mip-solvers`: HiGHS and Gurobi p-median (`build_p_median_model`), LR-core (`lagrangian_root`: dual, the subgradient or Kelley root on a `KelleyMaster`, reduced-cost fixing, branch and bound) |
@@ -38,7 +38,8 @@ Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
 - Targets (L2b): static `dtwc_core` (all of the above but `cli/` and `api.cpp`; what the Python module and the MEX
   link), `dtwc_cli` (`cli/`, `api.cpp`; CLI11, fkYAML) and, with Arrow, `dtwc_io` (the Arrow readers and FastCLARA's
   Parquet stream), behind `dtwc++` (INTERFACE, the consumers' link name; headers in `FILE_SET`s based at `dtwc/`);
-  `mip-solvers` (object, OpenMP), `dtwc_options` / `dtwc_warnings`, `dtwc_cl` (top-level project only, not under
+  `mip-solvers` (object, OpenMP), `dtwc_third_party` (object, C: nanoarrow's IPC and flatcc, lz4, zstd's decoder;
+  hidden, no project warnings), `dtwc_options` / `dtwc_warnings`, `dtwc_cl` (top-level project only, not under
   scikit-build), examples, benchmarks, `_dtwcpp_core` (nanobind, `NOMINSIZE`), `dtwc_mex`.
 - Presets `clang-macos`, `clang-win`, `clang-win-debug`, `msvc`, `gcc-linux`, each into `build/`, tests ON. Mac:
   `build/` (Ninja Release; HiGHS, llfio, Metal, YAML), `build-matlab/` (+ the MEX, `matlab_suite`), `build-asan/`
@@ -49,7 +50,7 @@ Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
   stops the configure. `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error), `DTWC_FP_MODEL` (`fast` | `strict`),
   `DTWC_ARCH_LEVEL` (`native` | `v3` | `v4`; `v3` for Python), `DTWC_CUDA_ARCH_LIST` (8.0–9.0), `DTWC_DEV_MODE`.
 - Dependencies (`cmake/Dependencies.cmake`, pinned, checked by `check_pins.py`): CLI11, fkYAML, HiGHS, llfio
-  (header-only, with pinned quickcpplib and outcome), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
+  (header-only, with pinned quickcpplib and outcome), lz4 and zstd (sources, always), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
   Gurobi, CUDA, Metal from the system. FP flags: `-fassociative-math` without `-ffinite-math-only`, on `dtwc_options`.
 - macOS needs `brew install libomp` and `-DOpenMP_ROOT=/opt/homebrew/opt/libomp`; Windows CUDA, nvcc 13.0 with a
   supported MSVC host. The wheel links no HiGHS (`mip` extra: highspy); the MEX links it statically; archives and
