@@ -17,7 +17,9 @@ The C++ reader (tests/unit/io/test_arrow_ipc.cpp), Python (tests/python/test_io.
   ndim "2x";
 - ipc_dictionary.arrow: ipc_no_name.arrow's series beside a dictionary-encoded column, which nanoarrow cannot decode;
 - ipc_lz4.arrow, ipc_zstd.arrow: ipc_no_name.arrow's series, LZ4- and ZSTD-compressed, which the reader decodes;
-- ipc_lz4_batches.arrow, ipc_zstd_batches.arrow: ipc_batches.arrow's series and names, in its three batches, alike.
+- ipc_lz4_batches.arrow, ipc_zstd_batches.arrow: ipc_batches.arrow's series and names, in its three batches, alike;
+- ipc_v4_union.arrow: metadata version V4 and LZ4, a sparse union column before ipc_no_name.arrow's series, which the
+  reader refuses (nanoarrow's single-column decode misplaces the buffers after a pre-1.0 union).
 
 Every value is exact in Float32. Run: uv run --no-project --with pyarrow==23.0.1 python make_ipc_fixtures.py
 """
@@ -30,8 +32,8 @@ HERE = Path(__file__).resolve().parent
 SERIES = [[0.0, 0.5, 0.25], [1.5, 2.0], [3.0]]
 
 
-def write(name, table, stream=False, compression=None):
-    options = pa.ipc.IpcWriteOptions(compression=compression)
+def write(name, table, stream=False, compression=None, metadata_version=pa.ipc.MetadataVersion.V5):
+    options = pa.ipc.IpcWriteOptions(compression=compression, metadata_version=metadata_version)
     with pa.OSFile(str(HERE / name), "wb") as sink:
         open_writer = pa.ipc.new_stream if stream else pa.ipc.new_file
         with open_writer(sink, table.schema, options=options) as writer:
@@ -80,3 +82,6 @@ for codec in ("lz4", "zstd"):
     write(f"ipc_{codec}_batches.arrow", table({
         "data": pa.array([[0.0, 1.0], [2.0], [3.0], [4.0, 5.0], [6.0], [7.0, 8.0, 9.0]], f64),
         "name": pa.array(["a", "b", None, "d", None, "f"], pa.string())}, batches=[2, 1, 3]), compression=codec)
+union = pa.UnionArray.from_sparse(pa.array([0, 0, 0], pa.int8()), [pa.array([7, 8, 9], pa.int32())], field_names=["i"])
+write("ipc_v4_union.arrow", table({"u": union, "data": pa.array(SERIES, f64)}), compression="lz4",
+      metadata_version=pa.ipc.MetadataVersion.V4)

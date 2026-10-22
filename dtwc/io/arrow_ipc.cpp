@@ -146,7 +146,8 @@ std::pair<std::int64_t, std::int64_t> message_bytes(std::span<const std::byte> b
     for (std::int64_t i = size - 7; i >= size - 10; --i)
       length = (length << 8) | std::to_integer<std::uint32_t>(bytes[static_cast<std::size_t>(i)]);
     const auto footer = static_cast<std::int64_t>(static_cast<std::int32_t>(length));
-    if (footer <= 0 || footer > size - 18)
+    // nanoarrow adds the 10 bytes after the footer to its length in an int32 (VerifyFooter, DecodeFooter).
+    if (footer <= 0 || footer > size - 18 || footer > std::numeric_limits<std::int32_t>::max() - 10)
       throw IOError("the Arrow IPC footer's length, " + std::to_string(footer) + " bytes, does not fit in the file's "
                     + std::to_string(size) + ": it is truncated or corrupt");
     return { 8, size - 10 - footer };
@@ -231,13 +232,33 @@ bool aligned(const ArrowArrayView *view)
   return true;
 }
 
-/// The columns the series come from, each with the name its errors give it: 'data', and 'name' if the file has one.
-using Used = std::vector<std::pair<std::int64_t, const char *>>;
-
-Used used_of(const Columns &columns)
+/// The index nanoarrow's decoder gives column `c`: every field depth first, the batch's root not counted.
+std::int64_t field_index(const ArrowSchema &schema, std::int64_t c)
 {
-  Used used{ { columns.data, "data" } };
-  if (columns.name >= 0) used.emplace_back(columns.name, "name");
+  const auto fields = [](const auto &self, const ArrowSchema *field) -> std::int64_t {
+    std::int64_t n = 1;
+    for (std::int64_t i = 0; i < field->n_children; ++i) n += self(self, field->children[i]);
+    return n;
+  };
+  std::int64_t index = 0;
+  for (std::int64_t i = 0; i < c; ++i) index += fields(fields, schema.children[i]);
+  return index;
+}
+
+/// A column the series come from: its index among the batch's columns, its field index (field_index), and the name its
+/// errors give it.
+struct Use
+{
+  std::int64_t column, field;
+  const char *name;
+};
+using Used = std::vector<Use>;
+
+/// The used columns: 'data', and 'name' if the file has one.
+Used used_of(const ArrowSchema &schema, const Columns &columns)
+{
+  Used used{ { columns.data, field_index(schema, columns.data), "data" } };
+  if (columns.name >= 0) used.push_back({ columns.name, field_index(schema, columns.name), "name" });
   return used;
 }
 
@@ -254,35 +275,22 @@ void check_rows(const ArrowArrayView *used, std::int64_t rows, const std::string
 /// to lie in the body, as long as the batch, aligned, and validated (DEFAULT: every buffer size, and the first and last
 /// offset of each list and string column, read as integers); the others are never read.
 ArrowArrayView *view_batch(Decoder &decoder, std::span<const std::byte> bytes, const Message &message,
-                           const Columns &columns, std::size_t k)
+                           const Used &columns, std::size_t k)
 {
   const std::string step = "Arrow IPC record batch " + std::to_string(k);
   ArrowError error{};
   ArrowArrayView *view = nullptr;
   const ArrowBufferView body = bytes_view(bytes, message.at + message.header, message.end());
   check(ArrowIpcDecoderDecodeArrayView(&decoder.ipc, body, -1, &view, &error), error, step);
-  for (const auto &[column, name] : used_of(columns)) {
-    const std::string where = step + ", column '" + name + "'";
-    ArrowArrayView *used = view->children[column];
+  for (const Use &use : columns) {
+    const std::string where = step + ", column '" + use.name + "'";
+    ArrowArrayView *used = view->children[use.column];
     check_in_body(used, body, where);
     check_rows(used, view->length, where);
     if (!aligned(used)) return nullptr;
     check(ArrowArrayViewValidate(used, NANOARROW_VALIDATION_LEVEL_DEFAULT, &error), error, where);
   }
   return view;
-}
-
-/// The index nanoarrow's decoder gives column `c`: every field depth first, the batch's root not counted.
-std::int64_t field_index(const ArrowSchema &schema, std::int64_t c)
-{
-  const auto fields = [](const auto &self, const ArrowSchema *field) -> std::int64_t {
-    std::int64_t n = 1;
-    for (std::int64_t i = 0; i < field->n_children; ++i) n += self(self, field->children[i]);
-    return n;
-  };
-  std::int64_t index = 0;
-  for (std::int64_t i = 0; i < c; ++i) index += fields(fields, schema.children[i]);
-  return index;
 }
 
 /// `view`, made from the column's schema, filled from `array`, which nanoarrow decoded: each buffer's size is the
@@ -385,31 +393,36 @@ std::int64_t declared_bytes(const ArrowArrayView *view, bool compressed, const s
 /// nanoarrow trusts the file's buffer offsets and lengths, and its DecodeArray reads each buffer of the column it
 /// decodes (decompressing, swapping or copying it) at the offset the file gives, having allocated the size the buffer
 /// declares, before any check of ours could run. A pass with the codec set to NONE and no byte order makes each buffer
-/// a view where the file puts it and reads none. Each used column's views must lie in the body (bounds only: a
-/// compressed body can be smaller than its values) and, to be swapped where it lies, be aligned to its elements; then
-/// the declared sizes are read from inside the body (declared_bytes). DecodeArray of a column reads those buffers and
-/// no others: the same FieldNodes and Buffers of the same verified header, of that column's fields only.
+/// a view where the file puts it and reads none: DecodeArrayView of a used column's field index, the walk its
+/// DecodeArray makes, so it reads exactly the buffers proven here (a pass over the whole batch can differ: it skips a
+/// pre-1.0 union's extra buffer, which a one-column walk does not). Each used column's views must lie in the body
+/// (bounds only: a compressed body can be smaller than its values) and, to be swapped where it lies, be aligned to its
+/// elements; then the declared sizes are read from inside the body (declared_bytes).
 std::pair<std::int64_t, std::int64_t> prove_batch(Decoder &decoder, const ArrowBufferView &body, const Used &used,
                                                   bool swapped, const std::string &step)
 {
   ArrowError error{};
   const auto codec = decoder.ipc.codec;
   decoder.ipc.codec = NANOARROW_IPC_COMPRESSION_TYPE_NONE;
-  ArrowArrayView *raw = nullptr;
-  const ArrowErrorCode code = ArrowIpcDecoderDecodeArrayView(&decoder.ipc, body, -1, &raw, &error);
+  // The batch's rows, its root's length, from a pass over every column; then each used column from the pass its
+  // DecodeArray makes, the same walk from the same field index, so the buffers proven are the buffers it reads.
+  ArrowArrayView *root = nullptr;
+  std::vector<ArrowArrayView *> views(used.size());
+  ArrowErrorCode code = ArrowIpcDecoderDecodeArrayView(&decoder.ipc, body, -1, &root, &error);
+  for (std::size_t c = 0; c < used.size() && code == NANOARROW_OK; ++c)
+    code = ArrowIpcDecoderDecodeArrayView(&decoder.ipc, body, used[c].field, &views[c], &error);
   decoder.ipc.codec = codec;
   check(code, error, step);
   std::int64_t declared = 0;
-  for (const auto &[column, name] : used) {
-    const std::string where = step + ", column '" + name + "'";
-    check_in_body(raw->children[column], body, where, false);
-    if (swapped && !aligned(raw->children[column]))
+  for (std::size_t c = 0; c < used.size(); ++c) {
+    const std::string where = step + ", column '" + used[c].name + "'";
+    check_in_body(views[c], body, where, false);
+    if (swapped && !aligned(views[c]))
       throw IOError(step + ": a buffer is not aligned to its elements, so it cannot be byte-swapped (Arrow IPC "
                            "writers align every buffer to 8 bytes: rewrite the file with one)");
-    declared =
-      sum(declared, declared_bytes(raw->children[column], codec != NANOARROW_IPC_COMPRESSION_TYPE_NONE, where));
+    declared = sum(declared, declared_bytes(views[c], codec != NANOARROW_IPC_COMPRESSION_TYPE_NONE, where));
   }
-  return { raw->length, declared };
+  return { root->length, declared };
 }
 
 /// A record batch that cannot be viewed, decoded: the arrays of its used columns, whose buffers hold the values and
@@ -445,16 +458,16 @@ void decode_batch(const ArrowSchema &schema, ArrowIpcEndianness endianness, std:
   check(ArrowArrayViewInitFromSchema(&out.batch.arrow, &schema, &error), error, step);
   out.batch.arrow.length = rows;
   out.arrays.reserve(used.size());
-  for (const auto &[column, name] : used) {
-    const std::string where = step + ", column '" + name + "'";
+  for (const Use &use : used) {
+    const std::string where = step + ", column '" + use.name + "'";
     Array &array = out.arrays.emplace_back();
-    check(ArrowIpcDecoderDecodeArray(&decoder.ipc, body, field_index(schema, column), &array.arrow,
-                                     NANOARROW_VALIDATION_LEVEL_NONE, &error),
+    check(ArrowIpcDecoderDecodeArray(&decoder.ipc, body, use.field, &array.arrow, NANOARROW_VALIDATION_LEVEL_NONE,
+                                     &error),
           error, where);
     if (array.arrow.release == nullptr) // nanoarrow returns OK with a released array when it runs out of memory
       throw IOError(where + ": nanoarrow decoded no array"
                     + (error.message[0] != '\0' ? ": " + std::string(error.message) : std::string()));
-    ArrowArrayView *view = out.batch.arrow.children[column];
+    ArrowArrayView *view = out.batch.arrow.children[use.column];
     view_decoded(view, &array.arrow);
     check_lengths(view, decoded_bytes(view), where);
     check_rows(view, rows, where);
@@ -471,26 +484,55 @@ struct Batch
   std::int64_t rows = 0, declared = 0;
 };
 
-/// The file format's footer verified (flatcc) and decoded, its record batch blocks the batches the walk found: a
-/// reader that seeks by the footer reads those.
-void check_footer(std::span<const std::byte> bytes, const std::vector<Batch> &batches)
+/// Whether `a` and `b` give every field the same type, name, nullability and metadata.
+bool same_schema(const ArrowSchema *a, const ArrowSchema *b)
+{
+  const auto text = [](const char *chars) { return std::string_view(chars != nullptr ? chars : ""); };
+  const auto metadata = [](const char *chars) {
+    return chars != nullptr ? std::string_view(chars, static_cast<std::size_t>(ArrowMetadataSizeOf(chars)))
+                            : std::string_view();
+  };
+  if (text(a->format) != text(b->format) || text(a->name) != text(b->name) || a->flags != b->flags
+      || metadata(a->metadata) != metadata(b->metadata) || a->n_children != b->n_children)
+    return false;
+  for (std::int64_t i = 0; i < a->n_children; ++i)
+    if (!same_schema(a->children[i], b->children[i])) return false;
+  return true;
+}
+
+/// The file format's footer verified (flatcc) and decoded: its schema the stream's `schema`, and its record batch
+/// blocks the batches the walk found, each at its message's byte, with its header's and body's lengths. A reader that
+/// seeks by the footer (pyarrow) reads what the footer says: other values from the same bytes, under another schema, or
+/// the rows in another order, under blocks in another order.
+void check_footer(std::span<const std::byte> bytes, const std::vector<Batch> &batches, const ArrowSchema &schema)
 {
   Decoder decoder;
   ArrowError error{};
   const ArrowBufferView file = bytes_view(bytes, 0, static_cast<std::int64_t>(bytes.size()));
   check(ArrowIpcDecoderVerifyFooter(&decoder.ipc, file, &error), error, "Arrow IPC footer");
   check(ArrowIpcDecoderDecodeFooter(&decoder.ipc, file, &error), error, "Arrow IPC footer");
+  if (!same_schema(&decoder.ipc.footer->schema, &schema))
+    throw IOError("the Arrow IPC footer's schema is not the stream's, so a reader that follows the footer reads other "
+                  "columns: the file is corrupt");
   const ArrowBuffer &blocks = decoder.ipc.footer->record_batch_blocks;
   const auto *block = reinterpret_cast<const ArrowIpcFileBlock *>(blocks.data);
   const auto n = static_cast<std::size_t>(blocks.size_bytes) / sizeof(ArrowIpcFileBlock);
   if (n != batches.size())
     throw IOError("the Arrow IPC footer lists " + std::to_string(n) + " record batches, and the file's messages hold "
                   + std::to_string(batches.size()) + ": the file is corrupt");
-  for (std::size_t k = 0; k < n; ++k)
-    if (block[k].offset != batches[k].message.at)
+  for (std::size_t k = 0; k < n; ++k) {
+    const Message &message = batches[k].message;
+    if (block[k].offset != message.at)
       throw IOError("the Arrow IPC footer puts record batch " + std::to_string(k) + " at byte "
                     + std::to_string(block[k].offset) + ", and the file's messages put it at byte "
-                    + std::to_string(batches[k].message.at) + ": the file is corrupt");
+                    + std::to_string(message.at) + ": the file is corrupt");
+    if (block[k].metadata_length != message.header || block[k].body_length != message.body)
+      throw IOError("the Arrow IPC footer gives record batch " + std::to_string(k) + " a header of "
+                    + std::to_string(block[k].metadata_length) + " bytes and a body of "
+                    + std::to_string(block[k].body_length) + ", and the file's messages give it "
+                    + std::to_string(message.header) + " and " + std::to_string(message.body)
+                    + ": the file is corrupt");
+  }
 }
 
 ArrowType type_of(const ArrowSchema *schema)
@@ -499,6 +541,16 @@ ArrowType type_of(const ArrowSchema *schema)
   ArrowError error{};
   check(ArrowSchemaViewInit(&view, schema, &error), error, "Arrow IPC schema");
   return view.type;
+}
+
+/// Whether `schema` or a field below it is a union.
+bool has_union(const ArrowSchema *schema)
+{
+  if (const ArrowType type = type_of(schema); type == NANOARROW_TYPE_SPARSE_UNION || type == NANOARROW_TYPE_DENSE_UNION)
+    return true;
+  for (std::int64_t i = 0; i < schema->n_children; ++i)
+    if (has_union(schema->children[i])) return true;
+  return false;
 }
 
 std::string type_text(const ArrowSchema *schema)
@@ -608,7 +660,8 @@ void view_rows(const ArrowArrayView *batch, const Columns &columns, std::int64_t
 /// into a growing one would dangle). The owner keeps the bytes only if a batch is viewed in them.
 template <typename T>
 Data view_batches(Decoder &decoder, std::span<const std::byte> bytes, const std::vector<Batch> &batches,
-                  std::vector<Decoded> &decoded, const Columns &columns, std::shared_ptr<const void> keep)
+                  std::vector<Decoded> &decoded, const Columns &columns, const Used &used,
+                  std::shared_ptr<const void> keep)
 {
   std::int64_t rows = 0; // each batch's rows are bounded by its body or its decoded bytes
   for (const Batch &batch : batches) rows += batch.rows;
@@ -624,7 +677,7 @@ Data view_batches(Decoder &decoder, std::span<const std::byte> bytes, const std:
     if (batches[k].viewed) {
       const Message &message = batches[k].message;
       (void)next_message(decoder, bytes, message.at, message.end()); // the walk verified it: decode it again
-      batch = view_batch(decoder, bytes, message, columns, k);
+      batch = view_batch(decoder, bytes, message, used, k);
       if (batch == nullptr)
         throw IOError("Arrow IPC record batch " + std::to_string(k)
                       + " can no longer be viewed where it lies: the file changed while it was read");
@@ -689,7 +742,8 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
   Decoder decoder; // the walk's, which views batches in this machine's byte order only
   const auto [endianness, after_schema] = read_schema(decoder, bytes, first, last, schema);
   const Columns columns = columns_of(schema.arrow);
-  const Used used = used_of(columns);
+  const Used used = used_of(schema.arrow, columns);
+  const bool unions = has_union(&schema.arrow);
 
   // The walk: each record batch's message, viewed where it lies (uncompressed, in this machine's byte order, its used
   // buffers aligned) with its rows, so the views are sized before any is made, or else decoded below.
@@ -703,7 +757,12 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
                     + " is a second schema; a file holds one, before its record batches");
     const bool plain =
       decoder.ipc.codec == NANOARROW_IPC_COMPRESSION_TYPE_NONE && endianness == ArrowIpcSystemEndianness();
-    const ArrowArrayView *view = plain ? view_batch(decoder, bytes, *message, columns, k) : nullptr;
+    // A pre-1.0 union carries a validity buffer nanoarrow skips over a whole batch, and not in the walk of one column.
+    if (unions && decoder.ipc.metadata_version < NANOARROW_IPC_METADATA_VERSION_V5)
+      throw IOError("Arrow IPC record batch " + std::to_string(k) + " is in metadata version V4 and its schema holds a "
+                    "union, whose pre-1.0 layout misplaces the buffers of later columns in nanoarrow's decode of one "
+                    "column: rewrite the file with Arrow 1.0 or later");
+    const ArrowArrayView *view = plain ? view_batch(decoder, bytes, *message, used, k) : nullptr;
     Batch batch{ *message, view != nullptr, view != nullptr ? view->length : 0, 0 };
     if (view == nullptr) {
       const ArrowBufferView body = bytes_view(bytes, message->at + message->header, message->end());
@@ -718,7 +777,7 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
   if (first != 0 && at != last && at != last - 8)
     throw IOError("Arrow IPC message at byte " + std::to_string(at) + " is an end-of-stream marker, but the file's "
                   "messages run on to its footer at byte " + std::to_string(last) + ": the file is corrupt");
-  if (first != 0) check_footer(bytes, batches);
+  if (first != 0) check_footer(bytes, batches, schema.arrow);
   // What decoding will allocate, before any batch is decoded: the decoded batches are held together, so a file that
   // declares more than the memory this process may use now cannot be decoded without exhausting it. Where that memory
   // is unknown (a build without llfio), no limit, as everywhere it is read.
@@ -743,8 +802,8 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
   };
   run_openmp(decode, todo.size(), todo.size() > 1);
 
-  Data view = columns.f32 ? view_batches<float>(decoder, bytes, batches, decoded, columns, std::move(owner))
-                          : view_batches<data_t>(decoder, bytes, batches, decoded, columns, std::move(owner));
+  Data view = columns.f32 ? view_batches<float>(decoder, bytes, batches, decoded, columns, used, std::move(owner))
+                          : view_batches<data_t>(decoder, bytes, batches, decoded, columns, used, std::move(owner));
   if (view.precision == dtype) return view;
   return dtwc::detail::owned_copy(view, dtype); // the request names other bytes: each value cast once
 }
@@ -766,8 +825,8 @@ std::vector<std::vector<std::vector<std::byte>>> detail::decoded_buffers(std::sp
   for (auto message = next_message(decoder, bytes, at, last); message;
        message = next_message(decoder, bytes, at, last)) {
     Decoded batch;
-    decode_batch(schema.arrow, endianness, bytes, *message, { { index, name.c_str() } }, out.size(), std::nullopt,
-                 batch);
+    const Used used{ { index, field_index(schema.arrow, index), name.c_str() } };
+    decode_batch(schema.arrow, endianness, bytes, *message, used, out.size(), std::nullopt, batch);
     auto &buffers = out.emplace_back();
     const auto collect = [&buffers](const auto &self, ArrowArray *array) -> void {
       for (std::int64_t i = 0; i < array->n_buffers; ++i) {

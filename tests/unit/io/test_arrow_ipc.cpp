@@ -220,6 +220,12 @@ TEST_CASE("Arrow IPC: a big-endian file's batches decode to its little-endian tw
       CHECK_FALSE(decoded[0][1].empty()); // the values or offsets
       CHECK(decoded == dtwc::io::detail::decoded_buffers(little, column));
     }
+  // A big-endian int32 values buffer 2 bytes off its alignment ({176, 68} at 178): nanoarrow would swap it where it lies.
+  CHECK_THROWS_MATCHES(
+    dtwc::io::detail::decoded_buffers(patched<std::int64_t>(big, { 176, 68 }, { 178, 68 }), "int32_nullable"),
+    dtwc::IOError,
+    MessageMatches(Equals("Arrow IPC record batch 0: a buffer is not aligned to its elements, so it cannot be "
+                          "byte-swapped (Arrow IPC writers align every buffer to 8 bytes: rewrite the file with one)")));
 }
 
 TEST_CASE("Arrow IPC: each bad fixture's error, as Python and MATLAB raise it", "[io][arrow]")
@@ -366,6 +372,20 @@ TEST_CASE("Arrow IPC: the offsets and lengths a file gives nanoarrow are checked
                        dtwc::IOError,
                        MessageMatches(Equals("the Arrow IPC footer puts record batch 1 at byte 832, and the file's "
                                              "messages put it at byte 544: the file is corrupt")));
+  // A footer whose block gives that batch a body of 40 bytes, not 32; and a footer schema of list<float> (the item's
+  // precision at byte 654 SINGLE) over the stream's list<double>: a reader that follows the footer reads other values.
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(bytes_of("ipc_batches.arrow"), { 544, 256, 32 },
+                                                        { 544, 256, 40 })),
+                       dtwc::IOError,
+                       MessageMatches(Equals("the Arrow IPC footer gives record batch 1 a header of 256 bytes and a "
+                                             "body of 40, and the file's messages give it 256 and 32: the file is "
+                                             "corrupt")));
+  auto single = no_name;
+  REQUIRE(single[654] == std::byte{ 2 }); // DOUBLE
+  single[654] = std::byte{ 1 };
+  CHECK_THROWS_MATCHES(read_bytes(single), dtwc::IOError,
+                       MessageMatches(Equals("the Arrow IPC footer's schema is not the stream's, so a reader that "
+                                             "follows the footer reads other columns: the file is corrupt")));
 }
 
 TEST_CASE("Arrow IPC: a compressed batch's offsets and lengths are checked before nanoarrow decodes through them",
@@ -431,4 +451,38 @@ TEST_CASE("Arrow IPC: the series are views of the bytes, or of the decoded batch
   CHECK(released.expired());
   CHECK(series_of(decoded) == series_of(dtwc::read_data(fixture("ipc_batches.arrow"))));
   CHECK(names_of(decoded) == Names{ "a", "b", "series_2", "d", "series_4", "f" });
+}
+
+TEST_CASE("Arrow IPC: viewed and decoded batches of one stream read together", "[io][arrow]")
+{
+  // ipc_batches.arrow's three batches in the stream format, the first and the last LZ4 (ipc_lz4_batches.arrow's, whose
+  // schema message is the same bytes), the second not: the series and names of the uncompressed file, the second
+  // batch's row viewed in the bytes, which the owner keeps.
+  const auto lz4 = bytes_of("ipc_lz4_batches.arrow"), plain = bytes_of("ipc_batches.arrow");
+  auto stream = std::make_shared<std::vector<std::byte>>(lz4.begin() + 8, lz4.begin() + 648); // schema, batch 0
+  stream->insert(stream->end(), plain.begin() + 544, plain.begin() + 832);                    // batch 1
+  stream->insert(stream->end(), lz4.begin() + 1040, lz4.begin() + 1512);                      // batch 2, the end
+  const std::weak_ptr<std::vector<std::byte>> alive = stream;
+  const std::span<const std::byte> bytes(*stream);
+  const auto data = dtwc::io::detail::read_ipc(bytes, std::move(stream), Precision::Float64);
+  CHECK(series_of(data) == series_of(dtwc::read_data(fixture("ipc_batches.arrow"))));
+  CHECK(names_of(data) == Names{ "a", "b", "series_2", "d", "series_4", "f" });
+  CHECK_FALSE(alive.expired());
+  for (std::size_t i = 0; i < 6; ++i) CHECK(inside(bytes, data.series(i).data()) == (i == 2));
+}
+
+TEST_CASE("Arrow IPC: a metadata V4 file with a union is refused before a column after it is decoded",
+          "[io][arrow][security]")
+{
+  // Pre-1.0 unions carry one more buffer, which nanoarrow skips in a whole batch but not when it decodes one column:
+  // the columns after the union would be read from their neighbours' buffers. Also when the union's values point
+  // 2^63 - 8 bytes on, where the decode of 'data' (LZ4, so decoded) would read its declared length.
+  const std::string v4 = "Arrow IPC record batch 0 is in metadata version V4 and its schema holds a union, whose "
+                         "pre-1.0 layout misplaces the buffers of later columns in nanoarrow's decode of one column: "
+                         "rewrite the file with Arrow 1.0 or later";
+  const auto union_file = bytes_of("ipc_v4_union.arrow");
+  CHECK_THROWS_MATCHES(read_bytes(union_file), dtwc::IOError, MessageMatches(Equals(v4)));
+  CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(union_file, { 32, 35 },
+                                                        { std::numeric_limits<std::int64_t>::max() - 7, 8 })),
+                       dtwc::IOError, MessageMatches(Equals(v4)));
 }
