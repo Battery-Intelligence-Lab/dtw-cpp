@@ -71,6 +71,8 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A test in an outer loop can slow the inner loop by changing its registers**: RL's per-column capture left clang's
   row loop the same 38 instructions with other vector registers, 4–5 % slower from L 4000 up. Diff a hot loop register
   for register against base, and time a long series. *`baselines/2026-10-08-rl-ragged-lanes.md`*
+- **GCC's `inline-unit-growth` cap is per file**: a `shared_ptr` added to `Data` left `Data::series` out of line in
+  Problem.cpp's fill (clang unaffected). Hot accessors are `DTWC_ALWAYS_INLINE`; read `-fopt-info-inline` (MM S1).
 - **One 24-thread round is noise on the Windows box** (identical work ran 0.86–1.34× from one process pair to the
   next): a ±3 % band on 3 rounds cannot judge it. Use pinned one-thread controls or 20 alternating process pairs. In
   WSL a host process holding one core stalls every 24-thread barrier (short swaps 2–48× slower, clean at 20 threads,
@@ -167,7 +169,9 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A scalar Parquet column is one series; a list cell is one series.** Every reader path uses one selector.
 - **Parquet's `total_uncompressed_size` is not decoded RAM.** Budget `num_values × width`; a streaming cap is
   decided before payload I/O and counts the largest row group.
-- **Use `LargeList` when offsets may pass `INT32_MAX`,** and validate offsets before access.
+- **Use `LargeList` when offsets may pass `INT32_MAX`; nanoarrow 0.8.0 trusts a file's offsets and lengths** (its
+  `offset + length` and buffer-size sums wrap; cl and GCC crashed): bound each buffer read inside the body, and each
+  length by the body's bytes, before validating (MM S1, 10-21). flatcc refuses a batch header at a 4-byte offset.
 - **polars and pandas export `__arrow_c_stream__`, not `__arrow_c_array__`.** Accept both capsules.
 - **Prove "works without pyarrow" by blocking the import** (`sys.modules['pyarrow'] = None`), not by
   uninstalling it.
@@ -257,20 +261,16 @@ Append new entries at the end of their section; keep each to a few lines.
 
 ## Process and records
 
-- **One step per commit.** An omnibus commit makes review, bisection and rollback inseparable.
 - **Untracking a file deletes it from every other clone at its next pull** (`git rm --cached` + `.gitignore`): restore
   it there from the last commit that tracked it, `git archive 034d8994^ <paths> | tar -x -k` (the Mac, 10-11).
-- **Always verify citations.** Authors, venues and volumes can be invented.
 - **Re-run a counterexample after its premise changes.** A killed premise is replaced by a new discriminator,
   not carried by name.
-- **Check a recorded number before building a ratchet on it.** The row said 256; the tree held 259.
-- **A comment/string stripper under-counts silently.** Compare it with a naive grep.
-- **Remote-tracking refs are mutable evidence.** Re-read them at close-out.
 - **Before deleting a build dir, grep the surviving `CMakeCache.txt` files for its path.** The 2 KB
   `build/f9-arrow-config` was the Arrow shim of `build/arrow-pyarrow-23`.
 - **Agent tooling:** in the Bash tool a `\\` inside a quoted heredoc reaches the program as `\`, and non-ASCII text
   piped into Python on Windows is read as cp1252 (write scripts with the Write tool); the Workflow tool rejects a
-  `scriptPath` file holding non-ASCII text as "control characters" (escape it to `\uXXXX`).
+  `scriptPath` file holding non-ASCII text as "control characters" (escape it to `\uXXXX`); Git Bash has no `bc`
+  (a wait loop on it spins forever), and WSL's `/tmp` empties when the distro idles.
 - **On Windows a plain stream cannot open a file llfio holds mapped** (llfio takes delete access): loading a checkpoint
   that another live Problem maps is `IOError`.
 - **Do not export `CPM_SOURCE_CACHE` for a build dir configured without it**: its cached `CPM_DIRECTORY` differs and the
