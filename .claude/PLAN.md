@@ -38,8 +38,14 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 - ◐ MM mapped Arrow IPC series as a view `Data` in every language, the series check fused into CLARA's pass, compressed
   IPC read piece by piece, Python's and MATLAB's `cluster()` through C++ `run` with highspy required, the load
   pricing the matrix (MS measured 10-10: at 10^8 series 75 % of the stream's cold time waits on its one decoder, so
-  mapped series; Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, round 6's
-  review: none left after F3's threshold; approved 10-12; FM merged 10-21, so S1 next; P1–P3, K1, K2 measured first in its timing session)
+  mapped series; Volkan 10-11 and 10-12, DECISIONS §3; design rounds 1–6 `C:/D/git/wt/tmp/MM/`, approved 10-12).
+  On pb/MM: S1 the reader 70d512cd, hardened 4d1e0723 (nanoarrow 0.8.0 trusts a file's offsets and lengths; a
+  crafted header crashed cl and GCC builds), GCC force-inline 84d84101 (Volkan 10-21); S2 codecs and decoding
+  61b88767, 71d9d4b1, 25f65d34 (declared decoded sizes capped), fd8a7450 (its review: a V4 union, the footer); six
+  trees, matlab_suite and pytest green at each; both reviews re-checked clean (`baselines/2026-10-21-mm-s1-reader.md`,
+  `2026-10-22-mm-s2-codecs.md`). S3 started 10-22. S4 also compares the footer's byte order with the stream's.
+  Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
+  P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 
@@ -50,16 +56,23 @@ Marked [here] (this Windows machine, WSL included, run in slots between timed un
 and HG ship in 2.0 or after it is open (not asked).
 
 - [here] `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
+- [done 10-22] The Linux wheel could not be imported (glibc 2.39, since before MM): llfio's wg14_signals
+  thread-local was `initial-exec`, so `_dtwcpp_core` was STATIC_TLS; TL 571c40f9, merged e3cba47d, sets llfio's
+  own `WG14_SIGNALS_HAVE_ASYNC_SAFE_THREAD_LOCAL=0` on ELF: imports without the tunable, its Python suite
+  901/17, GCC 94, Windows clang 95 (`baselines/2026-10-22-tl-static-tls.md`). [CI] whether python-wheels.yml's
+  Linux jobs passed before it.
 - [here] L2b's open ends: a Windows build with Arrow ON, and the Linux link order of `dtwc_core` / `dtwc_io` (WSL).
-- [here] F42: a crash of CUDA `Auto` precision through `Problem`, recorded on Windows and never re-run.
+- [done 10-21] F42 does not reproduce: Auto, FP32, FP64 exit 0 through the CLI and a CUDA MEX on R2025b; July's
+  crash was 926542f1's `static std::mutex` (MSVC >= 14.40's all-zero mutex under R2024b's 14.36 runtime), gone with
+  e4a1d774, bcd5868d's macro and R2025b's runtime (`baselines/2026-10-21-f42-cuda-auto.md`).
 - [here] The MEX maps no matrix yet (F43, an llfio-ON MEX crashing in `std::mutex` under R2024b, did not reproduce
   on 2026-09-30).
 - [here] Release archives on Linux (WSL): `cpack` + `scripts/smoke_release_archive.py` (Windows done: RA, CA); the
   Linux wheel: whether `libgomp` ships, and the notice says so.
-- [here] The docs site (charter item 10): the audit of 10-21 (`baselines/2026-10-21-docs-audit.md`: 15 findings, among
-  them `pip install "dtwcpp[cuda]"` with no such extra and a `cut_dendrogram` example that raises), fixed and the
-  gates green. RA's notice: Volkan 10-21, "Keep bundling" the runtime DLLs, the notice as written; its CHANGELOG line
-  moved to Added.
+- [done 10-21] The docs audit (`baselines/2026-10-21-docs-audit.md`, 15 findings) fixed and merged 485dbeb7 (check_docs,
+  check_pins, generate_docs green); `benchmarks/verify_results.py` named UCR rows from 0 where dtwc_cl names them from
+  1 (every ARI compared shifted rows), fixed 59202f68. RA's notice: Volkan 10-21, "Keep bundling", the notice as
+  written; its CHANGELOG line under Added. The site itself rebuilds in CI (`documentation.yml`).
 - [CI] design-2.0's tip green: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and `matlab-mex.yml` on
   Linux, macOS and Windows, the three unit jobs, `documentation.yml`.
 - [Volkan] ARC (rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres
@@ -81,6 +94,11 @@ and HG ship in 2.0 or after it is open (not asked).
 - The Windows archive ships HiGHS's development install (277 headers, a static `highs.lib`): trim it.
 - MV: cl packing the lanes ran 3–4× slower in some processes (FALSIFIED 10-08; pb/MV kept): the cause is open.
 - Barycenter and Soft-DTW keep each thread's largest DP matrix after a call (W13e): release or bound it.
+- CUDA `Auto` through `Problem` is tested only for its refusals (`unit_test_variant_distmat.cpp:433`); the raw
+  backend covers it (F42, 10-21). And `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` covers MATLAB builds only: HiGHS's and
+  llfio's `std::mutex` could fault in a CLI or Python process that loaded an older msvcp140 first (untested).
+- `test_mip.py::test_highspy_reaches_the_optimum_of_linked_highs` fails, not skips, when `DTWC_CL_PATH` names a
+  `dtwc_cl` built without HiGHS (TL, 10-22): skip it there, or require HiGHS in that binary.
 - Tracker prefixes in test names (`FX-1:`, F8/F13/F14 ids): name the contract instead.
 - `import dtwcpp` imports scikit-learn whenever it is installed (`__init__.py:197` → `_clustering.py:16-18`), and
   through it scipy, pandas and joblib: +870 MB committed by scipy's OpenBLAS pool at 24 threads (FM's M3, 10-11), which

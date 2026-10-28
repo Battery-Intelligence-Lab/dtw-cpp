@@ -35,7 +35,7 @@ $$\text{cost}(a, b) = \begin{cases} 0 & \text{if } a \text{ or } b \text{ is NaN
 ### C++ API
 
 ```cpp
-#include <dtwc/warping_missing.hpp>
+#include <warping_missing.hpp>
 
 std::vector<double> x = {1.0, NAN, 3.0, 4.0};
 std::vector<double> y = {1.0, 2.0, 3.0, 4.0};
@@ -80,7 +80,7 @@ $$C(i,j) = \begin{cases} C(i-1,j-1) & \text{if } x[i] \text{ or } y[j] \text{ is
 ### C++ API
 
 ```cpp
-#include <dtwc/warping_missing_arow.hpp>
+#include <warping_missing_arow.hpp>
 
 std::vector<double> x = {1.0, NAN, NAN, 4.0, 5.0};
 std::vector<double> y = {1.0, 2.0, 3.0, 4.0, 5.0};
@@ -111,7 +111,7 @@ series without NaN comes back as itself, without a copy:
 - **All-NaN input:** throws `dtwc::InvalidInput` (Python `dtwcpp.InvalidInput`, a `ValueError`).
 
 ```cpp
-#include <dtwc/base/missing_utils.hpp>
+#include <base/missing_utils.hpp>
 
 std::vector<double> v = {NAN, 1.0, NAN, NAN, 4.0, NAN};
 std::vector<double> buffer;
@@ -123,16 +123,16 @@ When `MissingStrategy::Interpolate` is set on a `Problem`, interpolation is appl
 
 ---
 
-## Bitwise NaN Check
+## NaN Check
 
-The `is_missing()` function uses raw bit inspection to detect NaN values, making it safe under aggressive floating-point optimization flags (`-ffast-math`, `/fp:fast`) where `std::isnan()` may be optimized away by the compiler.
+The `is_missing()` function is `std::isnan()` under a name for missing-data code. NaN marks a missing value, so `dtwc.hpp` refuses to compile under `-ffinite-math-only` (implied by `-ffast-math`), under which the compiler may fold NaN tests away; its own build flags omit it.
 
 ```cpp
-#include <dtwc/base/missing_utils.hpp>
+#include <base/missing_utils.hpp>
 
 double val = NAN;
-bool m = dtwc::is_missing(val);  // true (safe under -ffast-math)
-bool s = std::isnan(val);         // may be false under -ffast-math!
+bool m = dtwc::is_missing(val);  // true
+bool s = std::isnan(val);         // true, the same test
 ```
 
 Additional utility:
@@ -148,7 +148,7 @@ bool any_nan = dtwc::has_missing(series);      // true if any NaN present
 Missing data support extends to multivariate time series with per-channel NaN handling. If channel $$d$$ at timestep $$i$$ is NaN, only that channel is skipped; other channels at the same timestep still contribute normally.
 
 ```cpp
-#include <dtwc/warping_missing.hpp>
+#include <warping_missing.hpp>
 
 // Interleaved layout: [x1_ch1, x1_ch2, x2_ch1, x2_ch2, ...]
 double dist = dtwc::dtwMissing_L_mv(x_ptr, nx_steps, y_ptr, ny_steps, /*ndim=*/3);
