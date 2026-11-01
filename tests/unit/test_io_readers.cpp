@@ -803,6 +803,25 @@ TEST_CASE("Parquet: a stream's decoding stays within the reader's decode price",
   std::filesystem::remove(path);
 }
 
+// CLARA with more clusters than series is refused with the text every input gives, before CLARA's plan (whose own
+// text it gave, where a CSV gave require_clusterable's).
+TEST_CASE("Parquet: CLARA with more clusters than series is refused as for every input", "[io][parquet]")
+{
+  const auto input = tmpdir() / "k_over_n.parquet";
+  write_parquet(input, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
+                                          { make_list_f64({ { 1.0, 2.0 }, { 3.0 }, { 4.0, 5.0 } }) }),
+                2);
+  dtwc::Config config;
+  config.input = dtwc::path_to_utf8(input);
+  config.column = "series";
+  config.method = dtwc::Method::CLARA;
+  config.k = 5;
+  config.output.clear();
+  CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput,
+                       Catch::Matchers::Message("cluster: k must not exceed the number of series."));
+  std::filesystem::remove(input);
+}
+
 // A RAM-limited run holds no series, so Result::save used to read the names and
 // the distance matrix of an empty Data. It writes the labels and medoids under
 // the readers' series_<i> names and refuses the files it cannot make.

@@ -40,8 +40,10 @@
 #include <vector>
 
 using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::EndsWith;
 using Catch::Matchers::Message;
 using Catch::Matchers::MessageMatches;
+using Catch::Matchers::StartsWith;
 using dtwc::core::Precision;
 
 namespace {
@@ -150,14 +152,20 @@ TEST_CASE("Arrow IPC: FastCLARA streamed a record batch at a time gives the in-R
   options.n_samples = 2;
   options.random_seed = 42;
   const auto csv = in_ram(fixture("clara_256.csv"), options, Precision::Float64);
-  // 256 rows in eight record batches of 32 (uncompressed, LZ4, ZSTD, Float32 LZ4): within 24,000 bytes a batch of
-  // the stream holds three record batches, read by a team; each precision streamed, the file's and the other.
+  // 256 rows in eight record batches of 32 (uncompressed, LZ4, ZSTD, Float32 LZ4): within a limit that holds what
+  // reading holds, three record batches each with its reader's scratch, and 16,000 bytes for the medoids and the
+  // labels, a batch of the stream holds about three record batches, read by a team; each precision streamed, the
+  // file's and the other.
   for (const char *file : { "clara_256.arrow", "clara_256_lz4.arrow", "clara_256_zstd.arrow", "clara_256_f32.arrow" })
     for (const Precision dtype : { Precision::Float64, Precision::Float32 }) {
       INFO(file << (dtype == Precision::Float32 ? " as float32" : " as float64"));
       const auto expected = in_ram(fixture(file), options, dtype);
       dtwc::Problem settings_only{ "streamed" };
-      const auto result = streamed(settings_only, options, fixture(file), dtype, 24000);
+      const dtwc::io::IpcFile walked(fixture(file));
+      const std::size_t limit =
+        walked.decode_bytes()
+        + 3 * (walked.largest_row_group_bytes(dtype == Precision::Float32) + walked.reader_bytes()) + 16000;
+      const auto result = streamed(settings_only, options, fixture(file), dtype, limit);
       CHECK(result.labels == expected.labels);
       CHECK(result.medoid_indices == expected.medoid_indices);
       CHECK(result.total_cost == expected.total_cost);
@@ -201,31 +209,35 @@ TEST_CASE("Arrow IPC: run streams a file over --ram-limit through FastCLARA, as 
         cost = result.cost();
       });
       CHECK_THAT(resident, ContainsSubstring("Data loaded from Arrow IPC: 256 series"));
-      config.ram_limit = 24000; // below what the series hold in RAM, above what the stream holds
+      // Below what the series hold in RAM (the walk's price, CLARA's terms not counted), above what the stream holds.
+      // A mapped file holds its values in the page cache, and is not streamed: it is read into RAM within a MiB.
+      const dtwc::io::IpcFile walked(fixture(file));
+      const bool mapped = !walked.streams(dtype);
+#if defined(DTWC_HAS_MMAP)
+      CHECK(mapped == (std::string(file) == "clara_256.arrow" && dtype == Precision::Float64));
+#else
+      CHECK_FALSE(mapped); // the file read without llfio is anonymous
+#endif
+      config.ram_limit = mapped ? std::size_t{ 1 } << 20 : walked.resident_bytes(dtype, false);
       const std::string stream = printed([&] {
         const auto result = dtwc::run(config);
         CHECK(result.labels() == labels);
         CHECK(result.medoids() == medoids);
         CHECK(result.cost() == cost);
       });
-      // A mapped file holds its values in the page cache: in RAM it holds what the stream would.
-      const bool mapped = std::string(file) == "clara_256.arrow" && dtype == Precision::Float64;
-#if defined(DTWC_HAS_MMAP)
       CHECK((stream.find("Arrow IPC walk selected streaming: 256 series") == std::string::npos) == mapped);
-#else
-      CHECK_THAT(stream, ContainsSubstring("Arrow IPC walk selected streaming: 256 series"));
-      (void)mapped;
-#endif
       CHECK(labels == csv.labels());
       CHECK(medoids == csv.medoids());
       CHECK(cost == csv.cost());
     }
-  // The same values as two time steps of two features (ndim 2): streamed, the distance takes the file's features, as
-  // in RAM, and the clustering is not the univariate walks'.
+  // The same values as time steps of two features (ndim 2), of two time steps or three: streamed, the distance takes
+  // the file's features, as in RAM, the band of 1 counts time steps (in values the rows differ by 2), and the
+  // clustering is not the univariate walks'.
   dtwc::Config config = clara_config(fixture("clara_256_ndim2.arrow"));
   config.verbose = false;
+  config.band = 1;
   const auto resident = dtwc::run(config);
-  config.ram_limit = 24000;
+  config.ram_limit = dtwc::io::IpcFile(fixture("clara_256_ndim2.arrow")).resident_bytes(Precision::Float64, false);
   config.verbose = true;
   const std::string stream = printed([&] {
     const auto result = dtwc::run(config);
@@ -323,44 +335,81 @@ TEST_CASE("Arrow IPC: the stream refuses, before any record batch is decoded, a 
   config.k = 2;
   config.sample_size = 2;
   config.verbose = false;
-  config.ram_limit = 200;
-  REQUIRE(batch > config.ram_limit);
+  config.ram_limit = batch - 1;
   CHECK_THROWS_MATCHES(
     dtwc::run(config), dtwc::InvalidInput,
     Message("io::IpcFile::read_rows: record batch 0 of the Arrow IPC file holds " + std::to_string(batch)
-            + " bytes once read (its 3 series), more than --ram-limit=200, and FastCLARA's stream reads each record "
-              "batch whole; raise the limit, or rewrite the file in smaller record batches"));
+            + " bytes once read (its 3 series), more than --ram-limit=" + std::to_string(batch - 1)
+            + ", and FastCLARA's stream reads each record batch whole; raise the limit, or rewrite the file in "
+              "smaller record batches"));
 
-  // The union's 16 rows beside one record batch, read whole: a byte short, refused before any batch is decoded.
-  const auto copy = undecodable("clara_256_lz4.arrow");
+  // The union's rows 0, 16, 32 and 48, one in each record batch of 16 rows of 8 values (no name column): the first
+  // batch read whole beside what reading holds (decode_bytes), with the copies of its rows, at most its 128 values: a
+  // byte short, refused before any batch is decoded.
+  const auto copy = undecodable("clara_verdict_rows.arrow");
   const dtwc::io::IpcFile file(copy);
-  const std::size_t largest = file.largest_row_group_bytes(false);
-  const std::size_t objects = dtwc::io::IpcFile::series_bytes(0, 16, false);
-  std::vector<dtwc::index_t> rows;
-  for (dtwc::index_t i = 0; i < 16; ++i) rows.push_back(16 * i);
-  CHECK_THROWS_AS(file.read_rows<double>(rows, std::size_t{ 1 } << 20), dtwc::IOError); // record batch 0 is read
+  const std::size_t objects = dtwc::io::IpcFile::series_bytes(0, 4, false), reading = file.decode_bytes();
+  const std::size_t member = file.largest_row_group_bytes(false) + dtwc::io::IpcFile::series_bytes(128, 0, false);
+  const std::size_t need = objects + reading + member;
+  const std::vector<dtwc::index_t> rows{ 0, 16, 32, 48 };
+  CHECK_THROWS_AS(file.read_rows<double>(rows, need), dtwc::IOError); // record batch 0 is read
   CHECK_THROWS_MATCHES(
-    file.read_rows<double>(rows, objects + largest - 1), dtwc::InvalidInput,
-    Message("io::IpcFile::read_rows: the 16 selected series hold " + std::to_string(objects)
-            + " bytes so far and reading a record batch of their rows needs " + std::to_string(largest) + " more, "
-            + std::to_string(objects + largest) + " in all, exceeding --ram-limit="
-            + std::to_string(objects + largest - 1) + "; raise the limit"));
+    file.read_rows<double>(rows, need - 1), dtwc::InvalidInput,
+    Message("io::IpcFile::read_rows: the 4 selected series hold " + std::to_string(objects)
+            + " bytes so far and reading the file " + std::to_string(reading) + " (its walk and a reader's scratch); a "
+            + "record batch of their rows read whole and its rows copied need " + std::to_string(member) + " more, "
+            + std::to_string(need) + " in all, exceeding --ram-limit=" + std::to_string(need - 1)
+            + "; raise the limit"));
 }
 
 TEST_CASE("Arrow IPC: the planner prices a mapped view at its views, and the file read without llfio whole",
           "[io][arrow][streaming][ram]")
 {
-  // 256 rows in RAM: a view's 46 bytes a row (its values the page cache's), the compressed file's decoded batches, and
-  // without llfio the whole file beside them.
-  const dtwc::io::IpcFile plain(fixture("clara_256.arrow")), lz4(fixture("clara_256_lz4.arrow"));
+  using dtwc::io::IpcFile;
+  // 256 rows in eight record batches of four fields (the root, 'data' and its values, 'name'): in RAM a view's 46 bytes
+  // a row (its values the page cache's), each batch's objects, the walk's schema and one reader's decoders; the
+  // compressed file's decoded batches beside them; without llfio the whole file.
+  const IpcFile plain(fixture("clara_256.arrow")), lz4(fixture("clara_256_lz4.arrow")),
+    zstd(fixture("clara_256_zstd.arrow"));
   const auto size = static_cast<std::size_t>(std::filesystem::file_size(fixture("clara_256.arrow")));
+  const std::size_t decoders = 4 * IpcFile::field_bytes;
+  const std::size_t resident = 256 * dtwc::detail::view_series_bytes + 8 * IpcFile::batch_object_bytes
+                               + 4 * IpcFile::schema_field_bytes + decoders;
+  CHECK(plain.reader_bytes() == decoders);
 #if defined(DTWC_HAS_MMAP)
-  CHECK(plain.resident_bytes(Precision::Float64, false) == 256 * dtwc::detail::view_series_bytes);
+  CHECK(plain.resident_bytes(Precision::Float64, false) == resident);
   CHECK_FALSE(plain.streams(Precision::Float64));
+  // A mapped record batch of 3 rows holds their spans and name views twice (16 bytes each) and a made name each
+  // (series_<i>, 8 bytes), its objects, and the two names its check copies (made, with the allocator's header).
+  CHECK(IpcFile(fixture("ipc_no_name.arrow")).largest_row_group_bytes(false)
+        == 3 * (4 * 16 + 8) + IpcFile::batch_object_bytes + 2 * (8 + 16));
 #else
-  CHECK(plain.resident_bytes(Precision::Float64, false) == 256 * dtwc::detail::view_series_bytes + size);
+  CHECK(plain.resident_bytes(Precision::Float64, false) == resident + size);
   CHECK(plain.streams(Precision::Float64));
 #endif
+  // A reading thread's codec scratch, from each frame's descriptor: pyarrow's LZ4 frames of one block are independent
+  // blocks of 64 KB (LZ4F's context, 304 bytes; its 64 KB in, with its checksum, and out, each with the allocator's
+  // header); zstd's context.
+  CHECK(lz4.reader_bytes() == decoders + 304 + (65536 + 4 + 16) + (65536 + 16));
+  CHECK(zstd.reader_bytes() == decoders + 95968 + 16);
+  // The same frames declaring linked blocks of 4 MB (FLG 0x40, BD 0x70; walked, never decoded): 128 KB more out.
+  auto big = bytes_of(fixture("clara_256_lz4.arrow"));
+  const std::byte magic[] = { std::byte{ 0x04 }, std::byte{ 0x22 }, std::byte{ 0x4D }, std::byte{ 0x18 } };
+  std::size_t frames = 0;
+  for (auto at = big.begin(); (at = std::search(at, big.end(), std::begin(magic), std::end(magic))) != big.end();
+       at += 4, ++frames) {
+    at[4] = std::byte{ 0x40 };
+    at[5] = std::byte{ 0x70 };
+  }
+  REQUIRE(frames == 40); // eight batches of five buffers
+  write(scratch() / "blocks_4mb.arrow", big);
+  CHECK(IpcFile(scratch() / "blocks_4mb.arrow").reader_bytes()
+        == decoders + 304 + (4194304 + 4 + 16) + (4194304 + 131072 + 16));
+  // read_arrow_ipc decodes the eight LZ4 batches with a thread each, up to the team, each its reader's scratch, and
+  // each batch's view of the schema's four fields lasts the read.
+  const auto readers = static_cast<std::size_t>(std::min(8, dtwc::get_max_threads()));
+  CHECK(lz4.resident_bytes(Precision::Float64, false)
+        > resident + readers * lz4.reader_bytes() - decoders + 8 * 4 * IpcFile::view_field_bytes);
   CHECK(plain.streams(Precision::Float32)); // its copy in Float32
   CHECK(lz4.streams(Precision::Float64));
   CHECK(lz4.resident_bytes(Precision::Float64, false) > 256 * dtwc::detail::view_series_bytes);
@@ -371,7 +420,7 @@ TEST_CASE("Arrow IPC: the planner prices a mapped view at its views, and the fil
   // The automatic limit (none without llfio) streams no file this small and refuses none: in RAM.
   dtwc::Config config = clara_config(fixture("clara_256_lz4.arrow"));
   CHECK_THAT(printed([&] { (void)dtwc::run(config); }), ContainsSubstring("Data loaded from Arrow IPC: 256 series"));
-  // Beyond an explicit limit the other methods are refused, naming the bytes, the limit and CLARA.
+  // Beyond an explicit limit the other methods are refused, naming the bytes, the limit and CLARA, which streams it.
   config.method = dtwc::Method::PAM;
   config.ram_limit = 16000;
   REQUIRE(lz4.resident_bytes(Precision::Float64, false) > config.ram_limit);
@@ -381,6 +430,57 @@ TEST_CASE("Arrow IPC: the planner prices a mapped view at its views, and the fil
                                + " bytes of resident series storage, exceeding --ram-limit=16000; method 'pam' cannot "
                                  "stream it. Use --method clara, which reads the file a record batch at a time, or "
                                  "raise --ram-limit."));
+#if defined(DTWC_HAS_MMAP)
+  // A mapped file's values are not streamed: beyond an explicit limit no method names CLARA as the file is read; the
+  // other precision, whose copy FastCLARA streams, is a way out (the run test streams clara_256.arrow as float32).
+  const std::string mapped = "its values are mapped where they lie in the file, and a mapped file's values are not "
+                             "streamed: the views of its 256 series are held at once. Raise --ram-limit, or read its "
+                             "values as float32 (--dtype float32)";
+  dtwc::Config view = clara_config(fixture("clara_256.arrow"));
+  view.verbose = false;
+  view.method = dtwc::Method::PAM;
+  view.ram_limit = 16000;
+  REQUIRE(plain.resident_bytes(Precision::Float64, false) > view.ram_limit);
+  CHECK_THROWS_MATCHES(dtwc::run(view), dtwc::InvalidInput,
+                       Message("Arrow IPC input needs approximately "
+                               + std::to_string(plain.resident_bytes(Precision::Float64, false))
+                               + " bytes of resident series storage, exceeding --ram-limit=16000; " + mapped
+                               + " with --method clara, whose copy FastCLARA reads a record batch at a time."));
+  view.method = dtwc::Method::CLARA;
+  CHECK_THROWS_MATCHES(dtwc::run(view), dtwc::InvalidInput,
+                       MessageMatches(StartsWith("Arrow IPC input needs approximately ")
+                                      && EndsWith("; " + mapped + ", whose copy FastCLARA reads a record batch at a "
+                                                  "time.")));
+#endif
+  // CLARA with more clusters than series is refused as for every input, before its plan.
+  config.method = dtwc::Method::CLARA;
+  config.ram_limit = 0;
+  config.k = 300;
+  CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput,
+                       Message("cluster: k must not exceed the number of series."));
+}
+
+TEST_CASE("Arrow IPC: a file's names read alone are the in-RAM read's", "[io][arrow][streaming]")
+{
+  // Each record batch's 'name' column alone: in the mapping, or without llfio its header and the bytes it spans read;
+  // viewed (uncompressed) or decoded (LZ4, ZSTD), a null named series_<row>; by one reader within the names' price,
+  // and by a team; a byte below that price refused, naming the bytes.
+  for (const char *file : { "clara_256.arrow", "clara_256_lz4.arrow", "ipc_batches.arrow", "ipc_lz4_batches.arrow",
+                            "ipc_zstd_batches.arrow", "ipc_large_list.arrow" }) {
+    INFO(file);
+    const dtwc::Data data = dtwc::read_data(fixture(file));
+    std::vector<std::string> names;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(data.size()); ++i) names.emplace_back(data.name(i));
+    const dtwc::io::IpcFile walked(fixture(file));
+    const std::size_t one = walked.series_names_bytes() + walked.names_read_bytes();
+    for (const std::size_t budget : { one, std::size_t{ 1 } << 30 }) CHECK(walked.series_names(budget) == names);
+    CHECK_THROWS_MATCHES(walked.series_names(one - 1), dtwc::InvalidInput,
+                         MessageMatches(StartsWith("io::IpcFile::series_names: the " + std::to_string(names.size())
+                                                   + " names and the file's walk hold ")
+                                        && EndsWith(" " + std::to_string(one) + " in all, exceeding the "
+                                                    + std::to_string(one - 1) + " the limit leaves them; raise the "
+                                                    "limit")));
+  }
 }
 
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
@@ -401,7 +501,9 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, is a typed refusal", 
     return std::string();
   }();
   config.method = dtwc::Method::CLARA;
-  config.ram_limit = 24000;
+  // Below what the series hold in RAM for a GPU (a view's upload copy among it): the stream is chosen.
+  config.ram_limit =
+    dtwc::io::IpcFile(fixture("clara_256_lz4.arrow")).resident_bytes(Precision::Float64, true) - 1;
   const std::string stream = [&] {
     try {
       (void)dtwc::run(config);
@@ -415,6 +517,16 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, is a typed refusal", 
     CHECK_THAT(filled, ContainsSubstring("a non-owning view"));
     CHECK_THAT(stream, ContainsSubstring("fast_clara: a GPU assigns owned series in RAM, but a file streamed a record "
                                          "batch at a time (--ram-limit) is read as views of its batches"));
+    // Beyond an explicit limit, on a GPU no route streams: CLARA is not named.
+    config.method = dtwc::Method::PAM;
+    config.ram_limit = 16000;
+    const std::size_t resident =
+      dtwc::io::IpcFile(fixture("clara_256_lz4.arrow")).resident_bytes(Precision::Float64, true);
+    CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput,
+                         Message("Arrow IPC input needs approximately " + std::to_string(resident)
+                                 + " bytes of resident series storage, exceeding --ram-limit=16000; on a GPU every "
+                                   "route holds the series in RAM at once; raise --ram-limit, or run on the CPU "
+                                   "(--device cpu)."));
   }
 }
 #endif

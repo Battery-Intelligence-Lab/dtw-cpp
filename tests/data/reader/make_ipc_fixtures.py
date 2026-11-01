@@ -25,8 +25,9 @@ FastCLARA's stream of an Arrow IPC file (tests/unit/io/test_ipc_stream.cpp, test
 
 - clara_256.arrow, clara_256_lz4.arrow, clara_256_zstd.arrow: 256 random walks of 4 steps of k/8 (an LCG's), in eight
   record batches of 32, named r<i> but every seventh null; uncompressed, LZ4 and ZSTD; clara_256.csv their CSV twin;
-- clara_256_f32.arrow: the same as list<float>, LZ4; clara_256_ndim2.arrow: the same, LZ4, each series two time
-  steps of two features (metadata ndim 2);
+- clara_256_f32.arrow: the same as list<float>, LZ4; clara_256_ndim2.arrow: the same, LZ4, as time steps of two
+  features (metadata ndim 2), every third series with its last time step repeated: two time steps or three, so that
+  a band of 1 holds in time steps and not in values;
 - clara_verdict_rows.arrow, clara_verdict_union.arrow, clara_verdict_nan.arrow, clara_verdict_band.arrow: 64 walks of 8
   steps, no name column, LZ4, four record batches of 16, poisoned as each test case names (CASES below; the rows sampled
   by a CLARA of sample_size 8, one sample, seed 3, are 10 15 22 23 30 37 52 55). With --parquet-twins <dir>, their
@@ -119,7 +120,8 @@ clara_names = pa.array([None if i % 7 == 3 else f"r{i}" for i in range(len(CLARA
 for name, codec, values in (("clara_256.arrow", None, f64), ("clara_256_lz4.arrow", "lz4", f64),
                             ("clara_256_zstd.arrow", "zstd", f64), ("clara_256_f32.arrow", "lz4", pa.list_(pa.float32()))):
     write(name, table({"data": pa.array(CLARA, values), "name": clara_names}, batches=[32] * 8), compression=codec)
-write("clara_256_ndim2.arrow", table({"data": pa.array(CLARA, f64), "name": clara_names}, {"ndim": "2"},
+NDIM2 = [walk + walk[2:] if i % 3 == 0 else walk for i, walk in enumerate(CLARA)]
+write("clara_256_ndim2.arrow", table({"data": pa.array(NDIM2, f64), "name": clara_names}, {"ndim": "2"},
                                      batches=[32] * 8), compression="lz4")
 with open(HERE / "clara_256.csv", "w", newline="\n") as csv:
     csv.writelines(",".join(repr(value) for value in walk) + "\n" for walk in CLARA)

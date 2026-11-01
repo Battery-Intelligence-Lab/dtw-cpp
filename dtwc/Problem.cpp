@@ -956,8 +956,9 @@ void Problem::fillDistanceMatrix_BruteForce()
   size_t slab_bytes = std::numeric_limits<size_t>::max();
   if (distMat.is_mapped()) {
     const size_t budget = ram_limit_ != 0 ? ram_limit_ : core::available_memory(); // 0: unknown, no limit
-    // What the series hold of the budget: a view's values are the page cache's, its spans and names its own.
-    const size_t held = data_.is_view() ? N * detail::view_series_bytes : series_bytes;
+    // What the series hold of the budget: a mapped view's values are the page cache's, its spans and names its own;
+    // any other's values (owned, decoded, read into a buffer) are this process's.
+    const size_t held = data_.is_mapped() ? N * detail::view_series_bytes : series_bytes;
     slab_bytes = budget == 0 ? size_t{ 1 } << 30 : std::min(budget > held ? (budget - held) / 8 : 0, size_t{ 1 } << 30);
     h = std::min(h, std::max(W, slab_bytes / (N * entry_bytes) / W * W)); // the last tile-row fits a slab
   }

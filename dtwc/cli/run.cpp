@@ -292,6 +292,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     // in RAM as streamed.
     std::optional<algorithms::detail::ClaraPlan> sample;
     if (n_series > 0 && resolve_method(method, config.device, n_series) == Method::CLARA) {
+      require_clusterable(config.k, n_series); // k > N refused as for every input, before CLARA's plan
       sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
       resident_bytes += clara_bytes(*sample);
     }
@@ -335,6 +336,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     std::optional<algorithms::detail::ClaraPlan> sample;
     const Method resolved = n_series > 0 ? resolve_method(method, config.device, n_series) : method;
     if (n_series > 0 && resolved == Method::CLARA) {
+      require_clusterable(config.k, n_series); // k > N refused as for every input, before CLARA's plan
       sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
       resident += clara_bytes(*sample);
     }
@@ -348,15 +350,28 @@ Outcome execute(const Config &config, std::optional<Data> data)
       method = resolved;
       clara.ram_limit_bytes = limit;
       plan_clara();
-      check_stream("Arrow IPC", "Arrow IPC walk", ipc->series_names_bytes(), resident, limit);
+      // The names are read after the stream, beside the labels: their read is priced with them.
+      check_stream("Arrow IPC", "Arrow IPC walk", ipc->series_names_bytes() + ipc->names_read_bytes(), resident,
+                   limit);
     } else if (config.ram_limit != 0 && resident > config.ram_limit) {
-      const std::string why =
-        resolved != Method::CLARA
-          ? "method '" + method_name(resolved) + "' cannot stream it. Use --method clara, which reads the file a "
-              "record batch at a time, or raise --ram-limit."
-        : !streams ? std::string("its values are mapped, so FastCLARA's stream would hold no less; raise --ram-limit.")
-                   : "FastCLARA streams it only with a sample smaller than its " + std::to_string(n_series)
-                       + " series; lower --sample-size, or raise --ram-limit.";
+      // CLARA is named only where its stream could read the file: a file that streams, on the CPU.
+      const std::string other = config.dtype == core::Precision::Float32 ? "float64" : "float32";
+      std::string why;
+      if (config.device == Device::GPU)
+        why = "on a GPU every route holds the series in RAM at once; raise --ram-limit, or run on the CPU (--device "
+              "cpu).";
+      else if (!streams)
+        why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
+              "views of its " + std::to_string(n_series) + " series are held at once. Raise --ram-limit, or read its "
+              "values as " + other + " (--dtype " + other + ")"
+              + (resolved == Method::CLARA ? "" : " with --method clara")
+              + ", whose copy FastCLARA reads a record batch at a time.";
+      else if (resolved != Method::CLARA)
+        why = "method '" + method_name(resolved) + "' cannot stream it. Use --method clara, which reads the file a "
+              "record batch at a time, or raise --ram-limit.";
+      else
+        why = "FastCLARA streams it only with a sample smaller than its " + std::to_string(n_series)
+              + " series; lower --sample-size, or raise --ram-limit.";
       throw InvalidInput("Arrow IPC input needs approximately " + std::to_string(resident)
                          + " bytes of resident series storage, exceeding --ram-limit="
                          + std::to_string(config.ram_limit) + "; " + why);
@@ -449,7 +464,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     result = config.dtype == core::Precision::Float32
                ? algorithms::detail::fast_clara_chunked<true>(prob, clara, *ipc, plan)
                : algorithms::detail::fast_clara_chunked<false>(prob, clara, *ipc, plan);
-    streamed_names = ipc->series_names();
+    streamed_names = ipc->series_names(clara.ram_limit_bytes - 2 * n_series * sizeof(index_t)); // beside the labels
   } else {
 #ifdef DTWC_HAS_PARQUET
     result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : prob.cluster();

@@ -91,6 +91,10 @@ struct Data
   /// True if this Data is a non-owning view: of another Data's storage, or of bytes owner() keeps alive.
   bool is_view() const { return is_view_; }
 
+  /// True if this Data is a view whose values all lie in a file's mapping (an Arrow IPC file read in place with llfio):
+  /// they are the page cache's, outside this process's own memory. A view of decoded, read or owned values is not.
+  bool is_mapped() const { return is_mapped_; }
+
   /// What keeps a view's bytes alive (a mapped file, a read buffer, decoded batches), shared by every copy of this
   /// Data; empty for an owning Data, and for a view into another Data's storage, which must then outlive it.
   const std::shared_ptr<const void> &owner() const { return owner_; }
@@ -141,25 +145,27 @@ struct Data
     validate_ndim();
   }
 
-  /// View-mode constructor: non-owning float64 spans into storage `owner` keeps alive (see owner()).
+  /// View-mode constructor: non-owning float64 spans into storage `owner` keeps alive (see owner()); `mapped` if
+  /// every span lies in a file's mapping (see is_mapped()).
   Data(std::vector<std::span<const data_t>> &&spans,
        std::vector<std::string_view> &&name_views, size_t ndim_,
-       std::shared_ptr<const void> owner = {})
+       std::shared_ptr<const void> owner = {}, bool mapped = false)
     : ndim{ ndim_ }, p_spans_(std::move(spans)),
-      p_name_views_(std::move(name_views)), is_view_(true), owner_(std::move(owner))
+      p_name_views_(std::move(name_views)), is_view_(true), is_mapped_(mapped), owner_(std::move(owner))
   {
     if (p_spans_.size() != p_name_views_.size())
       throw InvalidInput("Data view: span and name vectors should be of the same size");
     validate_ndim();
   }
 
-  /// View-mode constructor: non-owning float32 spans into storage `owner` keeps alive (see owner()).
+  /// View-mode constructor: non-owning float32 spans into storage `owner` keeps alive (see owner()); `mapped` if
+  /// every span lies in a file's mapping (see is_mapped()).
   Data(std::vector<std::span<const float>> &&spans,
        std::vector<std::string_view> &&name_views, size_t ndim_,
-       std::shared_ptr<const void> owner = {})
+       std::shared_ptr<const void> owner = {}, bool mapped = false)
     : ndim{ ndim_ }, precision{ core::Precision::Float32 },
       p_spans_f32_(std::move(spans)),
-      p_name_views_(std::move(name_views)), is_view_(true), owner_(std::move(owner))
+      p_name_views_(std::move(name_views)), is_view_(true), is_mapped_(mapped), owner_(std::move(owner))
   {
     if (p_spans_f32_.size() != p_name_views_.size())
       throw InvalidInput("Data view: span and name vectors should be of the same size");
@@ -171,6 +177,7 @@ private:
   std::vector<std::span<const float>> p_spans_f32_; //!< View-mode: float32 spans into parent data
   std::vector<std::string_view> p_name_views_;       //!< View-mode: names from parent
   bool is_view_ = false;                             //!< True when in view mode
+  bool is_mapped_ = false;                           //!< View-mode: every value in a file's mapping (is_mapped())
   std::shared_ptr<const void> owner_;                //!< View-mode: keeps the viewed bytes alive (owner())
 
   /// Common error for an accessor that does not match the active precision.
@@ -225,7 +232,7 @@ inline size_t owned_series_bytes(size_t values, size_t rows, bool f32)
 
 /// What a view Data holds for a series beside its values: a span and a name view (16 bytes each), and the name
 /// series_<i> made for a row that has none (14 characters at a few million rows): 45.7 bytes a row measured on 4.2
-/// million mapped rows (2026-10-10).
+/// million mapped rows (2026-10-10). A mapped view's values are the page cache's (Data::is_mapped).
 inline constexpr size_t view_series_bytes = 46;
 
 } // namespace detail

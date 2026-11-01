@@ -3,9 +3,12 @@
 # The real dtwc_cl on Arrow IPC files streamed a record batch at a time under --ram-limit: FastCLARA's labels,
 # medoids and total cost are the in-RAM run's and the CSV twin's, and the route is the one the build prices. Fixtures:
 # tests/data/reader/make_ipc_fixtures.py (256 series in eight record batches; uncompressed, LZ4, ZSTD, Float32 LZ4).
-# A --ram-limit of 24000 bytes holds the stream (the names and labels after it, about 19,000 bytes, the largest need)
-# and not the series in RAM (from 31,000 bytes), but for an uncompressed file mapped with llfio, whose values are the
-# page cache's: it is read into RAM (about 20,000 bytes).
+# Each run has four OpenMP threads, so that a price which counts the decoding threads is the same on every machine.
+# A --ram-limit of 300,000 bytes holds the stream of a compressed file (each decoding thread's codec scratch, about
+# 135,000 bytes for LZ4 and 100,000 for ZSTD, the largest need) and not its series in RAM (four threads decoding: from
+# 440,000 bytes); 40,000 holds the stream of the uncompressed file read without llfio (about 25,000) and not its
+# series (about 55,000). Mapped with llfio, that file's values are the page cache's: it is read into RAM, within
+# 300,000 bytes (about 45,000).
 cmake_minimum_required(VERSION 3.26)
 
 foreach(required_var IN ITEMS CLI DATA HAS_MMAP WORK_ROOT)
@@ -28,7 +31,8 @@ set(parity 0)
 function(run_cli id input limit dtype)
     set(out "${WORK_ROOT}/${id}")
     execute_process(
-        COMMAND "${CLI}" --input "${DATA}/${input}" --output "${out}" --name t --method clara --n-clusters 3
+        COMMAND "${CMAKE_COMMAND}" -E env OMP_NUM_THREADS=4
+                "${CLI}" --input "${DATA}/${input}" --output "${out}" --name t --method clara --n-clusters 3
                 --sample-size 8 --n-samples 2 --seed 42 --device cpu --dtype ${dtype} --ram-limit ${limit} --verbose
         RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr ENCODING UTF-8)
     if(NOT result EQUAL 0)
@@ -87,8 +91,13 @@ foreach(config IN ITEMS plain:clara_256.arrow:float64 lz4:clara_256_lz4.arrow:fl
     list(GET parts 0 id)
     list(GET parts 1 input)
     list(GET parts 2 dtype)
+    if(id STREQUAL "plain" AND NOT HAS_MMAP)
+        set(limit 40000)
+    else()
+        set(limit 300000)
+    endif()
     run_cli(${id}_ram ${input} 0 ${dtype})
-    run_cli(${id}_limited ${input} 24000 ${dtype})
+    run_cli(${id}_limited ${input} ${limit} ${dtype})
     if(NOT ${id}_ram_route STREQUAL "ram")
         message(FATAL_ERROR "CLI_IPC_STREAM ${id}: without --ram-limit the route is ${${id}_ram_route}")
     endif()
@@ -99,7 +108,7 @@ foreach(config IN ITEMS plain:clara_256.arrow:float64 lz4:clara_256_lz4.arrow:fl
         set(expected stream)
     endif()
     if(NOT ${id}_limited_route STREQUAL expected)
-        message(FATAL_ERROR "CLI_IPC_STREAM ${id}: at --ram-limit 24000 the route is ${${id}_limited_route}, "
+        message(FATAL_ERROR "CLI_IPC_STREAM ${id}: at --ram-limit ${limit} the route is ${${id}_limited_route}, "
                             "expected ${expected}")
     endif()
     if(expected STREQUAL "stream")
