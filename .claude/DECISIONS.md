@@ -284,3 +284,12 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
 - 2026-10-21 — Volkan (question tool) on MM S1's GCC-only out-of-line `Data::series` / `series_f32` in the
   fill's tile (Problem.cpp at GCC's `inline-unit-growth` cap; 1 → 4 call sites; clang unaffected):
   "Force-inline now": the two accessors always-inline under `__GNUC__`, checked by GCC's inline report.
+- 2026-11-01 — Volkan (question tool) after MM S4 closed, on the DTW lane kernel's per-thread scratch, priced on no
+  route (two rows of 128 B a time step of the longest series a thread; CLARA streamed at 300M peaked 860 MB at 24
+  threads on 100,000-value series): "Kernel scratch first": a unit pricing it on every route comes before MM S5.
+- 2026-11-01 — Volkan (question tool) on that scratch kept in OpenMP's workers after a call (615 MB in the process
+  after a 100,000-value run): "Release on return": a top-level call (`dtwc_cl`'s `run`, Python's and MATLAB's
+  `cluster()`) gives its workers' kernel scratch back when it returns; MAP §7's invariant holds within a call.
+- 2026-11-01 — Volkan (question tool) on KS's spec (`C:/D/git/wt/tmp/MM/ks_spec.md`): "Approve as written": the
+  kernels' and algorithms' thread scratch priced on every route (a phase's team shrinks to what an explicit limit
+  holds, one thread that does not fit is a typed `InvalidInput`), released by `dtwc::run` on return and on error.

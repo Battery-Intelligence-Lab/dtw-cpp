@@ -49,8 +49,12 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   (`baselines/2026-10-21-mm-s1-reader.md`, `2026-10-22-mm-s2-codecs.md`, `2026-10-22-mm-s3-check.md`). S4 the stream
   62fab80d, its reviews' fixes 8dab1e78 (two blockers in the IPC reader's memory pricing) and 819e8703 (the walk's
   growth, prices measured both ways); six trees, matlab_suite, pytest green at each; closed 11-01
-  (`2026-11-01-mm-s4-stream.md`). For S7: the DTW lane kernel's per-thread scratch is priced on no route (2 × 128 B
-  a time step a thread; CLARA streamed at 300M peaked 860 MB at 24 threads on 100,000-value series). S5 next.
+  (`2026-11-01-mm-s4-stream.md`). Then KS (below), then S5.
+  - ◐ KS the kernels' and algorithms' thread scratch, priced on every route and released by `dtwc::run` on return
+    (Volkan 11-01: "Kernel scratch first", "Release on return"; spec `C:/D/git/wt/tmp/MM/ks_spec.md`, approved 11-01):
+    S4's reviewer A found it priced nowhere (CLARA streamed at 300M peaked 860 MB at 24 threads on 100,000-value
+    series; 615 MB kept after `run`). On pb/MM; S8's and S9's briefs carry the release into Python's and MATLAB's
+    `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
