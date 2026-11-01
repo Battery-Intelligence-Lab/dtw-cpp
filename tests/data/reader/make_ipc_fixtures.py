@@ -21,12 +21,26 @@ The C++ reader (tests/unit/io/test_arrow_ipc.cpp), Python (tests/python/test_io.
 - ipc_v4_union.arrow: metadata version V4 and LZ4, a sparse union column before ipc_no_name.arrow's series, which the
   reader refuses (nanoarrow's single-column decode misplaces the buffers after a pre-1.0 union).
 
+FastCLARA's stream of an Arrow IPC file (tests/unit/io/test_ipc_stream.cpp, tests/integration/test_cli_ipc_stream.cmake):
+
+- clara_256.arrow, clara_256_lz4.arrow, clara_256_zstd.arrow: 256 random walks of 4 steps of k/8 (an LCG's), in eight
+  record batches of 32, named r<i> but every seventh null; uncompressed, LZ4 and ZSTD; clara_256.csv their CSV twin;
+- clara_256_f32.arrow: the same as list<float>, LZ4; clara_256_ndim2.arrow: the same, LZ4, each series two time
+  steps of two features (metadata ndim 2);
+- clara_verdict_rows.arrow, clara_verdict_union.arrow, clara_verdict_nan.arrow, clara_verdict_band.arrow: 64 walks of 8
+  steps, no name column, LZ4, four record batches of 16, poisoned as each test case names (CASES below; the rows sampled
+  by a CLARA of sample_size 8, one sample, seed 3, are 10 15 22 23 30 37 52 55). With --parquet-twins <dir>, their
+  Parquet twins (column 'data', a row group a record batch), whose stream gave the cases' texts;
+- clara_verdict_ndim.arrow: the same walks as four time steps of two features (ndim 2), row 41's cut to 7 values.
+
 Every value is exact in Float32. Run: uv run --no-project --with pyarrow==23.0.1 python make_ipc_fixtures.py
 """
+import sys
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.feather as feather
+import pyarrow.parquet as pq
 
 HERE = Path(__file__).resolve().parent
 SERIES = [[0.0, 0.5, 0.25], [1.5, 2.0], [3.0]]
@@ -85,3 +99,53 @@ for codec in ("lz4", "zstd"):
 union = pa.UnionArray.from_sparse(pa.array([0, 0, 0], pa.int8()), [pa.array([7, 8, 9], pa.int32())], field_names=["i"])
 write("ipc_v4_union.arrow", table({"u": union, "data": pa.array(SERIES, f64)}), compression="lz4",
       metadata_version=pa.ipc.MetadataVersion.V4)
+
+
+def walks(rows, steps, seed):
+    """`rows` random walks of `steps` steps of k/8, k in [-8, 8], from an LCG seeded with `seed`: exact in Float32."""
+    state, out = seed, []
+    for _ in range(rows):
+        x, walk = 0.0, []
+        for _ in range(steps):
+            state = (state * 6364136223846793005 + 1442695040888963407) % 2**64
+            x += ((state >> 33) % 17 - 8) / 8
+            walk.append(x)
+        out.append(walk)
+    return out
+
+
+CLARA = walks(256, 4, 7)
+clara_names = pa.array([None if i % 7 == 3 else f"r{i}" for i in range(len(CLARA))], pa.string())
+for name, codec, values in (("clara_256.arrow", None, f64), ("clara_256_lz4.arrow", "lz4", f64),
+                            ("clara_256_zstd.arrow", "zstd", f64), ("clara_256_f32.arrow", "lz4", pa.list_(pa.float32()))):
+    write(name, table({"data": pa.array(CLARA, values), "name": clara_names}, batches=[32] * 8), compression=codec)
+write("clara_256_ndim2.arrow", table({"data": pa.array(CLARA, f64), "name": clara_names}, {"ndim": "2"},
+                                     batches=[32] * 8), compression="lz4")
+with open(HERE / "clara_256.csv", "w", newline="\n") as csv:
+    csv.writelines(",".join(repr(value) for value in walk) + "\n" for walk in CLARA)
+
+# Each case: its rows' changes (a row's position 1 set to a value, a row entirely NaN, a row 30 values of 0.5).
+NAN, INF = float("nan"), float("inf")
+CASES = {
+    "rows": {18: (1, NAN), 33: (1, INF)},             # unsampled rows of batches 1 and 2: the lower is refused
+    "union": {52: (1, -INF), 20: (1, NAN)},           # the sampled row 52 is refused before the lower 20
+    "nan": {25: "entirely NaN", 45: (1, INF)},        # Interpolate: row 25 is refused, before the infinite 45
+    "band": {40: "30 values", 60: "30 values"},       # band 2: the first shortest row (0) and the first longest (40)
+}
+for case, changes in CASES.items():
+    rows = walks(64, 8, 3)
+    for row, change in changes.items():
+        if change == "entirely NaN":
+            rows[row] = [NAN] * 8
+        elif change == "30 values":
+            rows[row] = [0.5] * 30
+        else:
+            rows[row][change[0]] = change[1]
+    verdict = table({"data": pa.array(rows, f64)}, batches=[16] * 4)
+    write(f"clara_verdict_{case}.arrow", verdict, compression="lz4")
+    if len(sys.argv) == 3 and sys.argv[1] == "--parquet-twins":
+        pq.write_table(verdict, str(Path(sys.argv[2]) / f"clara_verdict_{case}.parquet"), row_group_size=16)
+cut = walks(64, 8, 3)
+cut[41] = cut[41][:7]
+write("clara_verdict_ndim.arrow", table({"data": pa.array(cut, f64)}, {"ndim": "2"}, batches=[16] * 4),
+      compression="lz4")

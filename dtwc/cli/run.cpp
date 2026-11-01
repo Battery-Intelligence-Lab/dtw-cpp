@@ -15,12 +15,14 @@
 
 #include "../Problem.hpp"
 #include "../algorithms/detail/fast_clara_plan.hpp"
+#include "../algorithms/detail/fast_clara_stream.hpp"
 #include "../algorithms/fast_clara.hpp"
 #include "../base/error.hpp"
 #include "../base/timing.hpp"
 #include "../checkpoint.hpp"
 #include "../core/matrix_io.hpp"
 #include "../fileOperations.hpp"
+#include "../io/arrow_ipc.hpp"
 #include "../io/read_data.hpp"
 #include "../scores.hpp"
 #ifdef DTWC_HAS_ARROW
@@ -238,6 +240,34 @@ Outcome execute(const Config &config, std::optional<Data> data)
     if (stream_payload) algorithms::detail::validate_streaming_clara_plan(plan, "run");
     clara_planned = true;
   };
+  // A streamed run holds no series: what it holds after the stream, and the options that need the series, are checked
+  // before it; `what` is the input's format, `resident` the price that chose the stream.
+  const auto check_stream = [&](const char *what, const char *by, std::size_t names_bytes, std::size_t resident,
+                                std::size_t limit) {
+    // After the stream the run holds every series' name, written beside its label, and the labels: the result's
+    // and the Problem's.
+    const std::size_t written_bytes = names_bytes + 2 * n_series * sizeof(index_t);
+    if (written_bytes > limit)
+      throw InvalidInput("--ram-limit = " + std::to_string(limit) + " cannot hold the names and labels of the "
+                         + std::to_string(n_series) + " streamed series, which need " + std::to_string(written_bytes)
+                         + " bytes; raise the limit.");
+    if (!config.checkpoint.empty())
+      throw InvalidInput("--checkpoint requires resident series data and cannot be combined with RAM-limited "
+                         + std::string(what) + " streaming.");
+    if (!config.dist_matrix.empty())
+      throw InvalidInput("--dist-matrix requires resident series data and cannot be combined with RAM-limited "
+                         + std::string(what) + " streaming.");
+    if (config.verbose)
+      std::cout << by << " selected streaming: " << n_series << " series, ~" << (resident / (1ULL << 20))
+                << " MB resident estimate exceeds the RAM limit [" << clk << "]\n";
+  };
+  // CLARA's terms beside the series, in RAM as streamed: a sample PAM's matrix, then every sample's labels and
+  // nearest distances.
+  const auto clara_bytes = [&](const algorithms::detail::ClaraPlan &sample) {
+    const std::size_t pam = core::packed_size(static_cast<std::size_t>(sample.sample_size))
+                            * core::value_bytes(config.matrix_dtype);
+    return std::max(pam, algorithms::detail::clara_pass_bytes(sample, static_cast<std::size_t>(clara.n_samples)));
+  };
 
 #ifdef DTWC_HAS_PARQUET
   // A cap changes the load decision, so only the metadata is read here: the
@@ -263,9 +293,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     std::optional<algorithms::detail::ClaraPlan> sample;
     if (n_series > 0 && resolve_method(method, config.device, n_series) == Method::CLARA) {
       sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      resident_bytes += std::max(core::packed_size(static_cast<std::size_t>(sample->sample_size))
-                                   * core::value_bytes(config.matrix_dtype),
-                                 algorithms::detail::clara_pass_bytes(*sample, static_cast<std::size_t>(clara.n_samples)));
+      resident_bytes += clara_bytes(*sample);
     }
     // An explicit --ram-limit refuses a route that cannot honour it. The automatic
     // one never fails a run: it streams only where FastCLARA can stream a sample
@@ -288,27 +316,53 @@ Outcome execute(const Config &config, std::optional<Data> data)
       clara.force_parquet_streaming = true;
     }
     plan_clara();
-    // After the stream the run holds every series' name, written beside its label, and the labels: the result's
-    // and the Problem's.
-    const std::size_t written_bytes = names_bytes + 2 * n_series * sizeof(index_t);
-    if (stream_payload && written_bytes > limit)
-      throw InvalidInput("--ram-limit = " + std::to_string(limit) + " cannot hold the names and labels of the "
-                         + std::to_string(n_series) + " streamed series, which need " + std::to_string(written_bytes)
-                         + " bytes; raise the limit.");
-    if (stream_payload && !config.checkpoint.empty())
-      throw InvalidInput(
-        "--checkpoint requires resident series data and cannot be combined "
-        "with RAM-limited Parquet streaming.");
-    if (stream_payload && !config.dist_matrix.empty())
-      throw InvalidInput(
-        "--dist-matrix requires resident series data and cannot be combined "
-        "with RAM-limited Parquet streaming.");
-    if (config.verbose && stream_payload)
-      std::cout << "Parquet metadata selected streaming: " << n_series << " series, ~"
-                << (resident_bytes / (1ULL << 20)) << " MB resident estimate exceeds the RAM limit ["
-                << clk << "]\n";
+    if (stream_payload) check_stream("Parquet", "Parquet metadata", names_bytes, resident_bytes, limit);
   }
 #endif
+
+  // Arrow IPC: its walk gives N and every record batch's rows and decoded bytes before any batch is decoded, so what
+  // the in-RAM route would hold at once is priced first (io::IpcFile::resident_bytes; a mapped view's values are the
+  // page cache's). Beyond the limit FastCLARA reads the file a record batch at a time, where that holds less (decoded
+  // batches, the file read without llfio, a copy in the other precision); beyond an explicit limit any other route is
+  // refused, beyond the automatic one (no limit without llfio) the series are read into RAM.
+  std::optional<io::IpcFile> ipc;
+  std::size_t ipc_bytes = 0; // what the in-RAM route holds of the file at once
+  if (format == InputFormat::ArrowIPC) {
+    ipc.emplace(input);
+    n_series = static_cast<std::size_t>(ipc->num_rows());
+    ipc_bytes = ipc->resident_bytes(config.dtype, config.device == Device::GPU);
+    std::size_t resident = ipc_bytes;
+    std::optional<algorithms::detail::ClaraPlan> sample;
+    const Method resolved = n_series > 0 ? resolve_method(method, config.device, n_series) : method;
+    if (n_series > 0 && resolved == Method::CLARA) {
+      sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
+      resident += clara_bytes(*sample);
+    }
+    const bool streams = ipc->streams(config.dtype);
+    const bool can_stream = sample && sample->sample_size < sample->n_points && streams;
+    std::size_t limit = config.ram_limit;
+    if (limit == 0 && can_stream && config.checkpoint.empty() && config.dist_matrix.empty())
+      limit = core::available_memory();
+    if (limit != 0 && resident > limit && can_stream) {
+      stream_payload = true;
+      method = resolved;
+      clara.ram_limit_bytes = limit;
+      plan_clara();
+      check_stream("Arrow IPC", "Arrow IPC walk", ipc->series_names_bytes(), resident, limit);
+    } else if (config.ram_limit != 0 && resident > config.ram_limit) {
+      const std::string why =
+        resolved != Method::CLARA
+          ? "method '" + method_name(resolved) + "' cannot stream it. Use --method clara, which reads the file a "
+              "record batch at a time, or raise --ram-limit."
+        : !streams ? std::string("its values are mapped, so FastCLARA's stream would hold no less; raise --ram-limit.")
+                   : "FastCLARA streams it only with a sample smaller than its " + std::to_string(n_series)
+                       + " series; lower --sample-size, or raise --ram-limit.";
+      throw InvalidInput("Arrow IPC input needs approximately " + std::to_string(resident)
+                         + " bytes of resident series storage, exceeding --ram-limit="
+                         + std::to_string(config.ram_limit) + "; " + why);
+    }
+    if (!stream_payload) ipc.reset(); // read below as every Arrow IPC file is read
+  }
 
   // ---- 3. Load the series into RAM ----
   std::size_t series_bytes = 0;
@@ -328,11 +382,14 @@ Outcome execute(const Config &config, std::optional<Data> data)
     }
     std::size_t elements = 0;
     for (std::size_t i = 0; i < series.size(); ++i) elements += series.series_flat_size(i);
-    series_bytes = elements * (series.is_f32() ? sizeof(float) : sizeof(data_t));
+    const std::size_t value_bytes = elements * (series.is_f32() ? sizeof(float) : sizeof(data_t));
     if (config.verbose && series.size() > 0)
-      std::cout << "  Data memory: ~" << (series_bytes / (1ULL << 20)) << " MB (" << series.size() << " series, "
+      std::cout << "  Data memory: ~" << (value_bytes / (1ULL << 20)) << " MB (" << series.size() << " series, "
                 << (elements / series.size()) << " avg length, " << name_of(core::precision_names, series.precision)
                 << ")\n";
+    // What the series hold in RAM: an Arrow IPC file's as its walk priced them (a mapped view's values are the page
+    // cache's), others' their values, counted after the read.
+    series_bytes = format == InputFormat::ArrowIPC ? ipc_bytes : value_bytes;
     prob.set_data(std::move(series));
     n_series = prob.size();
   }
@@ -380,17 +437,28 @@ Outcome execute(const Config &config, std::optional<Data> data)
   }
 
   // ---- 5. Cluster; the matrix methods fill through the Problem, on its device ----
-  // A RAM-limited Parquet run is the one whose series the Problem does not hold:
-  // FastCLARA streams them.
+  // A RAM-limited Parquet or Arrow IPC run is the one whose series the Problem does
+  // not hold: FastCLARA streams them.
   if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
   std::vector<std::string> streamed_names;
+  core::ClusteringResult result;
+  if (stream_payload && ipc) {
+    // The Problem holds no series: its distance takes their features a time step from an empty Data of them.
+    prob.set_data(Data(std::vector<std::vector<data_t>>{}, std::vector<std::string>{}, ipc->ndim()));
+    const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "fast_clara");
+    result = config.dtype == core::Precision::Float32
+               ? algorithms::detail::fast_clara_chunked<true>(prob, clara, *ipc, plan)
+               : algorithms::detail::fast_clara_chunked<false>(prob, clara, *ipc, plan);
+    streamed_names = ipc->series_names();
+  } else {
 #ifdef DTWC_HAS_PARQUET
-  core::ClusteringResult result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : prob.cluster();
-  if (stream_payload)
-    streamed_names = io::ParquetChunkReader(input, config.column, config.skip_cols, config.skip_rows).series_names();
+    result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : prob.cluster();
+    if (stream_payload)
+      streamed_names = io::ParquetChunkReader(input, config.column, config.skip_cols, config.skip_rows).series_names();
 #else
-  core::ClusteringResult result = prob.cluster(); // only a Parquet input streams
+    result = prob.cluster();
 #endif
+  }
   if (config.verbose) {
     std::cout << progress_label(method);
     if (method == Method::PAM)

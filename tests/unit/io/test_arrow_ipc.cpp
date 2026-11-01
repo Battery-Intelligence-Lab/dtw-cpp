@@ -13,8 +13,11 @@
  */
 
 #include <base/error.hpp>
+#include <fileOperations.hpp>
 #include <io/arrow_ipc.hpp>
 #include <io/read_data.hpp>
+
+#include "../../support/scratch_directory.hpp"
 #if defined(DTWC_HAS_ARROW)
 #include <io/read_arrow.hpp>
 #endif
@@ -105,6 +108,29 @@ std::vector<std::byte> patched(std::vector<std::byte> bytes, const std::vector<I
 dtwc::Data read_bytes(const std::vector<std::byte> &bytes, Precision dtype = Precision::Float64)
 {
   return dtwc::io::detail::read_ipc(bytes, nullptr, dtype);
+}
+
+/// `bytes` written to the file `name` in a directory unique to this process, removed at exit.
+std::filesystem::path written(const char *name, const std::vector<std::byte> &bytes)
+{
+  static const dtwc::test_support::ScratchDirectory dir{ "arrow_ipc_test" };
+  const auto path = dir.path / name;
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+  REQUIRE(out.good());
+  return path;
+}
+
+/// read_ipc's error on `bytes`, which it refuses.
+std::string refusal(const std::vector<std::byte> &bytes)
+{
+  try {
+    (void)read_bytes(bytes);
+  } catch (const dtwc::IOError &refused) {
+    return refused.what();
+  }
+  FAIL("read_ipc read the bytes");
+  return {};
 }
 
 /// Whether `p` points into `bytes`.
@@ -407,10 +433,10 @@ TEST_CASE("Arrow IPC: a compressed batch's offsets and lengths are checked befor
     MessageMatches(Equals(batch + "a length of 288230376151711744 does not fit in the column's 64 decoded bytes: the "
                                   "file is corrupt")));
   // The values' declared decoded length (their buffer's first 8 bytes) 2^40 bytes, which nanoarrow would allocate
-  // before decompressing: refused before any batch is decoded, against the 6 values' 48 bytes.
+  // before decompressing: refused before any batch is decoded, against the 6 values' 48 bytes padded to 64.
   CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(lz4, { 48 }, { std::int64_t{ 1 } << 40 })), dtwc::IOError,
                        MessageMatches(Equals(batch + "a buffer declares 1099511627776 decoded bytes, and its lengths "
-                                                     "imply at most 48: the file is corrupt")));
+                                                     "imply at most 64: the file is corrupt")));
 #if defined(DTWC_HAS_MMAP)
   // The first batch's names declare 2^62 characters (their buffer at byte 616), which no length implies: the file's
   // declared total is refused against the memory this process may use, which llfio reads.
@@ -485,4 +511,49 @@ TEST_CASE("Arrow IPC: a metadata V4 file with a union is refused before a column
   CHECK_THROWS_MATCHES(read_bytes(patched<std::int64_t>(union_file, { 32, 35 },
                                                         { std::numeric_limits<std::int64_t>::max() - 7, 8 })),
                        dtwc::IOError, MessageMatches(Equals(v4)));
+}
+
+TEST_CASE("Arrow IPC: the footer's byte order is the stream's", "[io][arrow][security]")
+{
+  // ipc_no_name.arrow's footer schema with an endianness field Big: its vtable (at byte 520: 8 bytes, a table of 8, no
+  // endianness, the fields at 4) given a table of 10 and the endianness at 8, where the fields vector's length (1)
+  // lies. pyarrow, which seeks by the footer, would read every value byte-swapped.
+  auto big = bytes_of("ipc_no_name.arrow");
+  REQUIRE((big[522] == std::byte{ 8 } && big[524] == std::byte{ 0 } && big[536] == std::byte{ 1 }));
+  big[522] = std::byte{ 10 };
+  big[524] = std::byte{ 8 };
+  const std::string says = "the Arrow IPC footer's byte order is not the stream's, so a reader that follows the footer "
+                           "swaps every value: the file is corrupt";
+  CHECK_THROWS_MATCHES(read_bytes(big), dtwc::IOError, MessageMatches(Equals(says)));
+  CHECK_THROWS_MATCHES(dtwc::io::IpcFile(written("big_footer.arrow", big)), dtwc::IOError,
+                       MessageMatches(EndsWith(says)));
+}
+
+TEST_CASE("Arrow IPC: a file read a record batch at a time is walked with the same checks", "[io][arrow][security]")
+{
+  // io::IpcFile walks the file as read_arrow_ipc does: the same refusals, the file named.
+  const auto no_name = bytes_of("ipc_no_name.arrow");
+  const std::vector<std::pair<const char *, std::vector<std::byte>>> corrupt{
+    { "outside.arrow",
+      patched<std::int64_t>(no_name, { 16, 48 }, { std::numeric_limits<std::int64_t>::max() - 7, 48 }) },
+    { "declares.arrow", patched<std::int64_t>(bytes_of("ipc_lz4.arrow"), { 48 }, { std::int64_t{ 1 } << 40 }) },
+    { "block.arrow", patched<std::int64_t>(bytes_of("ipc_batches.arrow"), { 544, 256, 32 }, { 832, 256, 32 }) },
+    { "truncated.arrow", std::vector<std::byte>(no_name.begin(), no_name.end() - 20) },
+  };
+  for (const auto &[name, bytes] : corrupt) {
+    INFO(name);
+    const auto path = written(name, bytes);
+    CHECK_THROWS_MATCHES(dtwc::io::IpcFile(path), dtwc::IOError,
+                         MessageMatches(Equals("load: failed to read '" + dtwc::path_to_utf8(path) + "': "
+                                               + refusal(bytes))));
+  }
+#if !defined(DTWC_HAS_MMAP)
+  // Without llfio a record batch is read from the file again: one that changed since the walk is refused (with llfio
+  // the mapping holds the bytes walked).
+  const auto path = written("changed.arrow", bytes_of("ipc_batches.arrow"));
+  const dtwc::io::IpcFile file(path);
+  written("changed.arrow", bytes_of("ipc_lz4_batches.arrow"));
+  CHECK_THROWS_MATCHES(file.read_row_groups<double>(0, 3, [](std::size_t, const dtwc::Data &, dtwc::index_t) {}),
+                       dtwc::IOError, MessageMatches(ContainsSubstring("the file changed while it was read")));
+#endif
 }

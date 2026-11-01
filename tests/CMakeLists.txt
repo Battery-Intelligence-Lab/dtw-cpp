@@ -299,6 +299,22 @@ if(TARGET dtwc_cl)
         LABELS integration cli SERIAL TIMEOUT 300)
 endif()
 
+# FastCLARA streaming an Arrow IPC file a record batch at a time, on the real binary in every build: the in-RAM run's
+# clustering and its CSV twin's; with llfio an uncompressed file stays mapped, so one run fewer streams.
+if(TARGET dtwc_cl)
+    if(_dtwc_has_mmap)
+        set(_dtwc_ipc_stream_marker "runs=11 streamed=4 parity=30/30 mmap=1")
+    else()
+        set(_dtwc_ipc_stream_marker "runs=11 streamed=5 parity=30/30 mmap=0")
+    endif()
+    dtwc_add_script_test(NAME test_cli_ipc_stream
+        SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_ipc_stream.cmake"
+        ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>" "-DDATA=${CMAKE_CURRENT_SOURCE_DIR}/data/reader"
+             "-DHAS_MMAP=${_dtwc_has_mmap}" "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-ipc-stream"
+        MARKER "CLI_IPC_STREAM subject=real_dtwc_cl ${_dtwc_ipc_stream_marker} skips=0"
+        LABELS integration cli SERIAL TIMEOUT 120)
+endif()
+
 # The poison-Parquet test below is a real-CLI integration contract, not an Arrow-OFF
 # capability probe. Add no CTest target at all unless the linked library actually publishes
 # Parquet support; a passing stub or SKIP_RETURN_CODE would hide the subject.

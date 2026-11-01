@@ -93,8 +93,13 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   decoded instead, the batches in parallel (lz4 1.10.0 and zstd 1.5.7's decoder built in, their symbols hidden), unless
   its buffers declare more decoded bytes than their lengths imply, or the file's more than the memory available (an
   `IOError` before any decode), and bytes handed to the reader at an address not 8-aligned are read from an aligned
-  copy; a file with a dictionary-encoded column is an `IOError` naming why. Parquet (`-DDTWC_ENABLE_ARROW=ON`; a list
-  column or several float columns hold a series per row, `--column` reads one) and `dtwc_cl --delimiter`.
+  copy; a file with a dictionary-encoded column is an `IOError` naming why. Over `--ram-limit` (or the memory available,
+  where llfio reads it) FastCLARA reads a file whose series RAM would hold outside the page cache (decoded, read without
+  llfio, or in the other `--dtype`) a record batch at a time, decoded and checked in parallel, within the limit: the
+  sampled rows beside one record batch, then the medoids, the labels and a batch of record batches, and after it the
+  names; a record batch larger than the limit is refused before any is decoded, and the other methods refuse a file
+  over an explicit limit (`InvalidInput`, naming the bytes). Parquet (`-DDTWC_ENABLE_ARROW=ON`; a list column or several
+  float columns hold a series per row, `--column` reads one) and `dtwc_cl --delimiter`.
 - The distance matrix memory-mapped in a `.dtwm` file once it outgrows the memory limit (`--ram-limit`), also the
   checkpoint (`--checkpoint`, `--checkpoint-interval`: a fill resumes); with Arrow, `--ram-limit` streams Parquet
   through FastCLARA.
@@ -150,7 +155,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run may use, by
   default the memory available (or a Linux cgroup's limit, which a SLURM job's memory request sets): the distance
   matrix is mapped once its bytes exceed half of what the series leave of it, and `--mmap-threshold` (mapped from
-  50,000 series) is gone; a Parquet file over it streams through `clara`; other inputs no longer refuse it.
+  50,000 series) is gone; a Parquet or Arrow IPC file over it streams through `clara`; other inputs no longer refuse it.
 - A checkpoint save during a fill writes only the rows filled since the last one, in place, the first the whole
   matrix: a fill writes at most twice the matrix's bytes, where each save wrote it whole. Saves come every
   `--checkpoint-interval` rows rounded up to the lane width (16 rows of doubles where the lanes are 128 bytes).
