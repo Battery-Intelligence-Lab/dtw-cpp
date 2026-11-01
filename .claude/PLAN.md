@@ -46,8 +46,10 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   read from its logs), dd7ba144 (its review: an error the PAMs or a block raise on accepted values, an overflowing
   distance, came before a refusal of a series not yet checked); six trees and matlab_suite green at each, pytest
   at each but dd7ba144 (no binding, reader or default); every review re-checked clean
-  (`baselines/2026-10-21-mm-s1-reader.md`, `2026-10-22-mm-s2-codecs.md`, `2026-10-22-mm-s3-check.md`). S4 next
-  (`C:/D/git/wt/tmp/MM/brief_s4.md`), with the footer's byte order against the stream's.
+  (`baselines/2026-10-21-mm-s1-reader.md`, `2026-10-22-mm-s2-codecs.md`, `2026-10-22-mm-s3-check.md`). S4 the stream
+  62fab80d (six trees, matlab_suite, pytest green); its two reviews found two blockers in the IPC reader's memory
+  pricing (the names without llfio; per-batch objects at 0) and six should-fix items; the fix in flight
+  (`C:/D/git/wt/tmp/MM/brief_s4fix.md`; `2026-11-01-mm-s4-stream.md`).
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
