@@ -15,6 +15,9 @@
 
 #include <dtwc.hpp>
 #include <base/parallelisation.hpp>
+#include <cli/run.hpp>
+#include <config.hpp>
+#include <core/thread_scratch.hpp>
 
 #include "gpu_fixed_band_oracle.hpp"
 #include "../support/deterministic_series.hpp"
@@ -2100,6 +2103,42 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
   // Every point's distance agrees within the route bound of its pair, so the sum
   // agrees within the bound of the longest pair (2 * 60 - 1 samples).
   CHECK(dtwc::test_support::dtw_routes_agree<float>(gpu32.total_cost, cpu32.total_cost, 60, 60));
+}
+
+
+TEST_CASE("CUDA's launch workspace is its thread's scratch: registered by a GPU fill, its pinned and device buffers "
+          "given back by the release, as dtwc::run gives them back",
+          "[cuda][thread_scratch]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  std::vector<std::vector<double>> series(8);
+  for (std::size_t i = 0; i < series.size(); ++i)
+    for (std::size_t t = 0; t < 300; ++t) series[i].push_back(std::sin(0.37 * double(i + 1) + 0.11 * double(t)));
+  const auto this_thread = [] { return dtwc::core::registered_scratch_bytes().front(); };
+  dtwc::core::release_thread_scratch();
+  REQUIRE(this_thread() == 0);
+  const auto first = gpu_fill(series); // this thread's workspace stages the series
+  CHECK(this_thread() >= 8 * 300 * sizeof(float)); // the series flattened, as floats where the GPU computes in FP32
+  CHECK(dtwc::cuda::thread_workspace_bytes() > this_thread()); // its device buffers beside
+  dtwc::core::release_thread_scratch(); // every buffer freed, the workspace unregistered
+  CHECK(this_thread() == 0);
+  CHECK(dtwc::cuda::thread_workspace_bytes() == 0);
+  const auto again = gpu_fill(series); // made again, registered again
+  CHECK(this_thread() >= 8 * 300 * sizeof(float)); // the series flattened, as floats where the GPU computes in FP32
+  CHECK(again.matrix == first.matrix);
+  // dtwc::run on the GPU leaves none.
+  dtwc::Config config;
+  config.output.clear();
+  config.k = 2;
+  config.method = dtwc::Method::PAM;
+  config.device = dtwc::Device::GPU;
+  config.band = -1;
+  std::vector<std::string> names(series.size());
+  for (std::size_t i = 0; i < names.size(); ++i) names[i] = "s" + std::to_string(i);
+  auto copy = series;
+  (void)dtwc::run(config, dtwc::Data(std::move(copy), std::move(names), 1));
+  CHECK(this_thread() == 0);
+  CHECK(dtwc::cuda::thread_workspace_bytes() == 0);
 }
 
 #endif // DTWC_HAS_CUDA

@@ -120,6 +120,23 @@ data_t wdtwBanded(std::span<const data_t> x, std::span<const data_t> y,
 // ---------------------------------------------------------------------------
 
 namespace detail {
+/// cached_wdtw_weights' rebuild, out of line: the table registered as it grows from empty, else the old one freed
+/// before the new one is built.
+template <typename data_t>
+#if defined(__GNUC__) || defined(__clang__)
+[[gnu::noinline]]
+#elif defined(_MSC_VER)
+__declspec(noinline)
+#endif
+void rebuild_wdtw_weights(std::vector<data_t> &cached_w, int max_dev, data_t g)
+{
+  if (cached_w.capacity() == 0)
+    core::register_scratch(cached_w); // this thread's scratch, given back when a top-level call returns
+  else
+    std::vector<data_t>().swap(cached_w); // the old table freed before the new one is built
+  cached_w = wdtw_weights<data_t>(max_dev, g);
+}
+
 template <typename data_t>
 const std::vector<data_t>& cached_wdtw_weights(int max_dev, data_t g)
 {
@@ -128,11 +145,7 @@ const std::vector<data_t>& cached_wdtw_weights(int max_dev, data_t g)
   thread_local int cached_max_dev = -1;
   thread_local data_t cached_g = data_t(-1);
   if (cached_w.empty() || max_dev != cached_max_dev || g != cached_g) {
-    if (cached_w.capacity() == 0)
-      core::register_scratch(cached_w); // this thread's scratch, given back when a top-level call returns
-    else
-      std::vector<data_t>().swap(cached_w); // the old table freed before the new one is built
-    cached_w = wdtw_weights<data_t>(max_dev, g);
+    rebuild_wdtw_weights(cached_w, max_dev, g);
     cached_max_dev = max_dev;
     cached_g = g;
   }

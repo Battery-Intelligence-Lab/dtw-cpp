@@ -348,7 +348,7 @@ if(has_mmap STREQUAL "ON")
         COMMAND "${cli_path}" --config "${config_path}" --input "${input_path}" --output "${mmap_dir}"
                 --ram-limit 1 --device cpu
         RESULT_VARIABLE one_byte_result OUTPUT_VARIABLE one_byte_stdout ERROR_VARIABLE one_byte_stderr ENCODING UTF-8)
-    string(REGEX MATCH "one thread's DTW scratch, ([0-9]+) bytes [^\n]* beside the ([0-9]+) bytes the run holds with it"
+    string(REGEX MATCH "one thread's scratch, ([0-9]+) bytes [^\n]* beside the ([0-9]+) bytes the run holds with it"
            least_match "${one_byte_stderr}")
     if("${one_byte_result}" STREQUAL "0" OR NOT least_match)
         message(FATAL_ERROR "F14 mmap: --ram-limit 1 exit=${one_byte_result}, not the refusal naming the least limit\n"

@@ -21,6 +21,9 @@
 // include path and deliberately never the repo root, because on a
 // case-insensitive filesystem the root VERSION file shadows <version>.
 #include "warping.hpp"
+#include "warping_adtw.hpp"
+#include "warping_missing.hpp"
+#include "warping_wdtw.hpp"
 #include "core/distance_matrix.hpp"
 #include "core/msm.hpp"
 #include "core/twe.hpp"
@@ -43,6 +46,26 @@ struct AbsDiff
     return std::abs(a - b);
   }
 };
+
+// The multivariate kernels dtw_dispatch.cpp binds for ndim > 1, through the wrappers it calls: the dependent DTW under
+// the runtime metric (L1, L2, squared L2), ZeroCost's NaN-aware costs, AROW's, WDTW's weighted L1 and ADTW; for the
+// independent channels (dtw_independent_mv, whose channel loop calls one kernel a channel) the univariate kernel each
+// channel runs, under the metric. The band is the caller's, so each cost has its banded kernel and its linear one (band
+// -1, or a pair the band covers whole), each with and without early abandon (dtw_kernel_banded picks at run time).
+template <typename T>
+T probe_mv(const T *x, std::size_t nx, const T *y, std::size_t ny, std::size_t ndim, int band, int metric,
+           const T *weights, std::size_t n_weights)
+{
+  namespace core = dtwc::core;
+  const auto m = static_cast<core::MetricType>(metric);
+  return dtwc::dtwBanded_mv<T>(x, nx, y, ny, ndim, band, T(-1), m)
+         + dtwc::dtwMissing_banded_mv<T>(x, nx, y, ny, ndim, band, T(-1), m)
+         + core::run_dtw<core::SpanMVAROWSquaredL2Cost>(x, nx, y, ny, band, core::AROWCell{}, T(-1), ndim)
+         + core::run_dtw<core::SpanMVAROWL1Cost>(x, nx, y, ny, band, core::AROWCell{}, T(-1), ndim)
+         + dtwc::wdtwBanded_mv<T>(x, nx, y, ny, ndim, { weights, n_weights }, band)
+         + dtwc::adtwBanded_mv<T>(x, nx, y, ny, ndim, band, T(0.5))
+         + dtwc::dtwBanded<T>(x, nx, y, ny, band, T(-1), m);
+}
 
 } // namespace
 
@@ -124,6 +147,19 @@ float dtwc_probe_lanes_f32(const float *x, std::size_t nx, const std::span<const
                                                            dtwc::core::LanesCell{}))
     sum += d;
   return sum;
+}
+
+// The multivariate kernels, the dispatcher's (probe_mv above), at both precisions.
+double dtwc_probe_mv_f64(const double *x, std::size_t nx, const double *y, std::size_t ny, std::size_t ndim,
+                         int band, int metric, const double *weights, std::size_t n_weights)
+{
+  return probe_mv<double>(x, nx, y, ny, ndim, band, metric, weights, n_weights);
+}
+
+float dtwc_probe_mv_f32(const float *x, std::size_t nx, const float *y, std::size_t ny, std::size_t ndim, int band,
+                        int metric, const float *weights, std::size_t n_weights)
+{
+  return probe_mv<float>(x, nx, y, ny, ndim, band, metric, weights, n_weights);
 }
 
 // The packed matrix read eight rows a point (core::for_each_point: FasterPAM's k = 1, silhouette), at both widths:

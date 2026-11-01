@@ -185,7 +185,7 @@ With `--checkpoint <dir>` the CLI
    written stay.
 
 When the matrix is mapped (its bytes over half of what the series and the threads'
-DTW scratch leave of `--ram-limit`), the mapped matrix is `<dir>/<name>.dtwm` itself: it is reopened if
+scratch leave of `--ram-limit`), the mapped matrix is `<dir>/<name>.dtwm` itself: it is reopened if
 present and written in place.
 Without `--checkpoint`, a mapped matrix is `<name>.dtwm` in the output directory.
 

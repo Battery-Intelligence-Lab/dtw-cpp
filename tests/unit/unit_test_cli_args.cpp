@@ -235,7 +235,7 @@ dtwc::Config at_least_limit(dtwc::Config config)
   }
   std::smatch m;
   INFO(refusal);
-  REQUIRE(std::regex_search(refusal, m, std::regex("one thread's DTW scratch, ([0-9]+) bytes .* beside the ([0-9]+) "
+  REQUIRE(std::regex_search(refusal, m, std::regex("one thread's scratch, ([0-9]+) bytes .* beside the ([0-9]+) "
                                                    "bytes the run holds with it; raise the limit")));
   config.ram_limit = std::stoull(m[1].str()) + std::stoull(m[2].str());
   return config;

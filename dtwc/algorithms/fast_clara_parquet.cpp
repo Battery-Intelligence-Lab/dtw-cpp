@@ -16,13 +16,14 @@
 #include "detail/fast_clara_stream.hpp"
 #include "../Problem.hpp"
 #include "../base/error.hpp"
+#include "../core/thread_scratch.hpp" // KernelTeam
 #include "../io/parquet_chunk_reader.hpp"
 
 #include <iostream>
 
 namespace dtwc::algorithms {
 
-core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opts)
+core::ClusteringResult detail::fast_clara_parquet(Problem &prob, const CLARAOptions &opts, core::KernelTeam &team)
 {
   detail::validate_clara_request(prob, opts);
   // Chunked mode: stream from Parquet when ram_limit is set
@@ -54,14 +55,20 @@ core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opt
                   << reader.logical_series_count()
                   << " rows, " << reader.num_row_groups() << " row groups, ~"
                   << resident_bytes / (1ULL << 20) << " MB resident estimate)\n";
-      return opts.use_float32 ? detail::fast_clara_chunked<true>(prob, opts, reader, stream_plan)
-                              : detail::fast_clara_chunked<false>(prob, opts, reader, stream_plan);
+      return opts.use_float32 ? detail::fast_clara_chunked<true>(prob, opts, reader, stream_plan, team)
+                              : detail::fast_clara_chunked<false>(prob, opts, reader, stream_plan, team);
     }
   }
   // The series fit the limit, or no stream was asked for: the Problem's own series.
   CLARAOptions in_ram = opts;
   in_ram.parquet_path.clear();
   return fast_clara(prob, in_ram);
+}
+
+core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opts)
+{
+  core::KernelTeam team(opts.ram_limit_bytes, prob.verbose()); // the stream's limit, its threads' scratch within it
+  return detail::fast_clara_parquet(prob, opts, team);
 }
 
 } // namespace dtwc::algorithms

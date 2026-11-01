@@ -149,10 +149,11 @@ def key(rec: dict) -> str:
     return f"{rec['file']}:{rec['line']}:{rec['col']}"
 
 
-def loop_calls(asm: str) -> tuple[int, list[str]]:
-    """(innermost-loop count, calls inside any loop) over the dtwc functions in `asm`."""
+def loop_calls(asm: str) -> tuple[int, int, list[str]]:
+    """(innermost-loop count, of them the multivariate kernels' (a function of a SpanMV cost), calls inside any loop)
+    over the dtwc functions in `asm`."""
     fn = block = ""
-    inner, in_loop, calls = set(), set(), []
+    inner, mv, in_loop, calls = set(), set(), set(), []
     for n, line in enumerate(asm.splitlines()):
         if m := FUNCTION.match(line):
             fn = m.group(1)
@@ -164,9 +165,11 @@ def loop_calls(asm: str) -> tuple[int, list[str]]:
             in_loop.add(block)
         if "This Inner Loop Header" in line:
             inner.add(block)
+            if "SpanMV" in fn:
+                mv.add(block)
         if CALL.match(line):
             calls.append((block, f"{fn}: {line.strip()}"))
-    return len(inner), [c for b, c in calls if b in in_loop]
+    return len(inner), len(mv), [c for b, c in calls if b in in_loop]
 
 
 def main() -> int:
@@ -206,10 +209,11 @@ def main() -> int:
             argv = rebuild_argv(entries[0], out, args.probe, ("-S", "-fno-color-diagnostics"))
             proc = subprocess.run(argv, cwd=entries[0].get("directory", str(ROOT)),
                                   capture_output=True, text=True, errors="replace")
-            loops, bad = loop_calls(out.read_text(errors="replace") if out.is_file() else "")
-        # A listing with no loop proves nothing: loops > 0 shows the probe instantiated the kernels.
-        ok = proc.returncode == 0 and loops > 0 and not bad
-        print(f"CODEGEN_NO_CALLS tool={Path(argv[0]).name} inner_loops={loops} calls={len(bad)} "
+            loops, mv_loops, bad = loop_calls(out.read_text(errors="replace") if out.is_file() else "")
+        # A listing with no loop proves nothing: loops > 0 shows the probe instantiated the kernels, mv_loops > 0 the
+        # multivariate ones (the dispatcher binds them for ndim > 1).
+        ok = proc.returncode == 0 and loops > 0 and mv_loops > 0 and not bad
+        print(f"CODEGEN_NO_CALLS tool={Path(argv[0]).name} inner_loops={loops} mv_loops={mv_loops} calls={len(bad)} "
               f"verdict={'PASS' if ok else 'FAIL'}", *bad, sep="\n  ")
         print(proc.stderr[-2000:] if proc.returncode else "", file=sys.stderr, end="")
         return 0 if ok else 1

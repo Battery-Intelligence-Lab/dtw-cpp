@@ -125,8 +125,10 @@ budget for the run's decisions, not an operating-system limit on its resident
 memory.
 
 The distance matrix stays in RAM while its N(N+1)/2 values (8 bytes each, 4 under
-`--matrix-dtype float32`) fit in half of what the series and the threads' DTW
-scratch leave of the limit. Past that it is mapped to `<name>.dtwm`, in the
+`--matrix-dtype float32`) fit in half of what the series and the scratch of the
+threads that run beside it leave of the limit, and one thread's scratch fits beside
+it (beside a complete `--dist-matrix` no DTW kernel runs, and none of theirs is
+counted). Past that it is mapped to `<name>.dtwm`, in the
 `--checkpoint` directory when one is given and in the output directory otherwise
 (a run that writes no output keeps it in RAM), and filled slab by slab: a slab is
 an eighth of what the series and that scratch leave of the limit, at most 1 GiB, the next one
@@ -171,18 +173,23 @@ load as they would without a limit. An explicit `--ram-limit` is fail-closed:
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.
 
-The limit covers what the streamed run holds, each thread's DTW scratch among it
-(the kernels' rolling columns and lanes for the longest series a phase meets, and
-the algorithms' tables): a phase runs on as many threads as fit, `--verbose` saying
-how many and why, with the same results, and a limit that cannot hold one thread's
-scratch is refused. Library metadata and fixed process overhead (the code, thread
+The limit covers what the streamed run holds, each thread's scratch among it
+(the DTW kernels' rolling columns and lanes for the longest series a phase meets,
+and the algorithms' tables): a phase runs on as many threads as fit, `--verbose`
+saying how many and why, and a limit that cannot hold one thread's scratch is
+refused, naming the bytes. The results are those of the whole team: a stream's
+batches, and a mapped matrix's slabs, are sized for every thread. A record batch
+or row group holding a series longer than any before is read again in smaller
+batches where the scratch for it does not fit beside its batch, the team fitted
+again beside them; a limit is refused only where one thread's does not fit beside
+one record batch or row group. Library metadata and fixed process overhead (the code, thread
 stacks, the allocators' first pages) are outside it. An Arrow IPC file streams as
 Parquet does, on the CPU, where RAM would hold its series outside the page cache
 (decoded, read without LLFIO, or in the other `--dtype`): FastCLARA reads it a
 record batch at a time; a mapped file's values are not streamed, and on a GPU the
 stream is a `DeviceError`. Other inputs (CSV/TSV, a CSV directory) are always read
 whole; the limit then governs the distance matrix and the threads' scratch beside
-them. A run gives its threads' scratch back when it ends.
+them. A run gives its threads' scratch back as it starts and when it ends.
 
 ### OneBatchPAM and TADPole options
 

@@ -129,7 +129,7 @@ function(run_f13_cli precision mode output_dir dtype expected_cost)
             OUTPUT_VARIABLE probe_stdout
             ERROR_VARIABLE probe_stderr
             ENCODING UTF-8)
-        string(REGEX MATCH "one thread's DTW scratch, ([0-9]+) bytes [^\n]* beside the ([0-9]+) bytes"
+        string(REGEX MATCH "one thread's scratch, ([0-9]+) bytes [^\n]* beside the ([0-9]+) bytes"
                least_match "${probe_stderr}")
         if("${probe_result}" STREQUAL "0" OR NOT least_match)
             message(FATAL_ERROR

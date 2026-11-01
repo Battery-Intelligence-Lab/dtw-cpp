@@ -1611,8 +1611,9 @@ int IpcFile::row_groups_per_batch(std::size_t ram_budget, bool f32) const
                        "but one record batch holds " + std::to_string(largest) + " bytes once read; rewrite the file "
                        "in smaller record batches or raise the limit");
   // `count` record batches are read by min(count, threads) threads, each but the first (decode_bytes holds its scratch)
-  // holding a reader's scratch beside its batch.
-  const std::size_t scratch = state_->reader, threads = thread_count();
+  // holding a reader's scratch beside its batch: as many as the full team, whatever a TeamCap leaves the read, so a
+  // stream's batches do not depend on the team a phase shrank to.
+  const std::size_t scratch = state_->reader, threads = static_cast<std::size_t>(std::max(1, full_team_threads()));
   std::size_t count = (ram_budget + scratch) / (largest + scratch);
   if (count >= threads) count = (ram_budget - (threads - 1) * scratch) / largest;
   return static_cast<int>(std::max<std::size_t>(1, std::min<std::size_t>(num_row_groups(), count)));

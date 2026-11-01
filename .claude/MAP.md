@@ -131,9 +131,13 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
 - Cost and Cell are **template parameters**, never a `std::function` or a virtual per cell.
 - Orient so `n_short ≤ n_long` before every kernel call; buffers are sized on that.
 - `thread_local` scratch grows (exactly, registered with its thread: `core/thread_scratch.hpp`) and never shrinks
-  within a top-level call: `dtwc::run` gives every thread's back when it returns or throws, Tier-2 calls keep it.
-  `core::thread_scratch_bytes` is each buffer's growth rule, priced within an explicit limit, phase by phase
-  (`KernelTeam`, `TeamCap`). A Cost must not re-enter its kernel.
+  within a top-level call: `dtwc::run` gives every thread's back as it starts and when it returns or throws, Tier-2
+  calls keep it. `core::thread_scratch_bytes` is each buffer's growth rule, priced within an explicit limit, phase by
+  phase (`KernelTeam`, `TeamCap`). The per-pair and lane kernels keep 819e8703's code: their buffers, one of each a
+  `T`, get their room out of line before the kernel runs (`detail::reserve_pair`, `reserve_lanes`), whose routing
+  `reserve_pair` repeats (`dtw_banded`'s). A sizing that decides a result (a stream's batches, a mapped fill's
+  tile-rows) reads the full team (`full_team_threads()`), never a `TeamCap`, so a shrunk team changes no digit. A Cost
+  must not re-enter its kernel.
 - The dense matrix has **no locks or atomics**; fills partition pairs. `resize()` wipes to NaN, so it stays
   conditional.
 - Bind the distance function **once**; every guard lives in the builder, outside the closure (a throw inside

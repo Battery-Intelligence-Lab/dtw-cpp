@@ -128,10 +128,11 @@ bool holds_matrix(Method method, bool clara_uses_full_sample)
 
 /// What each thread of the in-RAM run of `method` holds of scratch: the DTW kernels' for series of up to `longest` time
 /// steps of `precision` (core::thread_scratch_bytes; none where a GPU computes the distances, but for Metal's CPU
-/// assignment of FastCLARA), FasterPAM's swap table where the method runs it, FastCLARA's assignment table, and the
+/// assignment of FastCLARA, and none without `kernels`: a complete matrix, which no kernel adds to), FasterPAM's swap
+/// table where the method runs it, FastCLARA's assignment table, TADPole's count of each point's neighbours, and the
 /// silhouettes' sums when the results are written.
 std::size_t in_ram_thread_bytes(const Problem &prob, const Config &config, Method method, bool clara_uses_full_sample,
-                                std::size_t longest, core::Precision precision)
+                                std::size_t longest, core::Precision precision, bool kernels = true)
 {
   const bool assigns = method == Method::CLARA && !clara_uses_full_sample;
 #ifdef DTWC_HAS_CUDA
@@ -140,13 +141,14 @@ std::size_t in_ram_thread_bytes(const Problem &prob, const Config &config, Metho
   const bool cpu_assignment = true; // Metal has no kernel for FastCLARA's assignment
 #endif
   std::size_t bytes = 0;
-  if (prob.device().first != Device::GPU || (assigns && cpu_assignment))
+  if ((kernels && prob.device().first != Device::GPU) || (assigns && cpu_assignment))
     bytes += core::thread_scratch_bytes(prob.distance(), longest, precision);
   if (method == Method::PAM || method == Method::CLARA || method == Method::MIP || method == Method::LRCore)
     bytes += detail::fast_pam_thread_bytes(config.k);
   if (assigns && cpu_assignment)
     bytes += algorithms::detail::clara_assign_thread_bytes(static_cast<std::size_t>(config.n_samples) * config.k,
                                                            precision);
+  if (method == Method::TADPole) bytes += prob.size() * sizeof(index_t); // tadpole.cpp's row of counts a thread
   if (!config.output.empty()) bytes += scores::detail::silhouette_thread_bytes(config.k);
   return bytes;
 }
@@ -154,15 +156,18 @@ std::size_t in_ram_thread_bytes(const Problem &prob, const Config &config, Metho
 /// Decide the persistent distance storage once every distance-affecting setting has
 /// reached the Problem. Returns the file to map (the caller maps it), or nullopt when
 /// the method keeps its own storage or the matrix stays in RAM: while its bytes fit
-/// in half of what the series and the threads' scratch (`scratch_bytes`) leave of the
-/// memory budget (--ram-limit; 0: what the process may use). Past that a mapped matrix
-/// costs one sequential pass and keeps the run out of swap. OneBatchPAM and non-full
+/// in half of what the series and the scratch of the threads that run beside it in RAM
+/// (`scratch_bytes`, the team fitted to an explicit limit) leave of the memory budget
+/// (--ram-limit; 0: what the process may use), and, within an explicit limit, one
+/// thread's fits beside it (`thread_fits`). Past that a mapped matrix costs one
+/// sequential pass and keeps the run out of swap. OneBatchPAM and non-full
 /// FastCLARA read no parent matrix (holds_matrix). TADPole reads the matrix when it
 /// is complete (a file or a cache from an earlier run) and otherwise computes the
 /// pairs it needs.
 std::optional<fs::path> configure_distance_storage(const Problem &prob, const Config &config, Method method,
                                                    bool clara_uses_full_sample, std::size_t series_bytes,
-                                                   std::size_t scratch_bytes, const fs::path &cache_path)
+                                                   std::size_t scratch_bytes, bool thread_fits,
+                                                   const fs::path &cache_path)
 {
   const bool checkpoint = !config.checkpoint.empty();
   const bool dist_matrix = !config.dist_matrix.empty();
@@ -179,11 +184,13 @@ std::optional<fs::path> configure_distance_storage(const Problem &prob, const Co
   const std::size_t budget = config.ram_limit != 0 ? config.ram_limit : core::available_memory();
   const std::size_t matrix_bytes = core::packed_size(prob.size()) * core::value_bytes(config.matrix_dtype);
   const std::size_t held = series_bytes + scratch_bytes;
-  if (budget == 0 || matrix_bytes <= (budget > held ? (budget - held) / 2 : 0)) return std::nullopt;
-  const std::string over = "the distance matrix's " + std::to_string(matrix_bytes)
-                           + " bytes exceed half of what the series and the DTW kernels' thread scratch ("
-                           + std::to_string(scratch_bytes) + " bytes) leave of --ram-limit="
-                           + std::to_string(config.ram_limit);
+  if (budget == 0 || (thread_fits && matrix_bytes <= (budget > held ? (budget - held) / 2 : 0))) return std::nullopt;
+  const std::string over =
+    thread_fits ? "the distance matrix's " + std::to_string(matrix_bytes)
+                    + " bytes exceed half of what the series and the threads' scratch ("
+                    + std::to_string(scratch_bytes) + " bytes) leave of --ram-limit=" + std::to_string(config.ram_limit)
+                : "beside the series and the distance matrix's " + std::to_string(matrix_bytes)
+                    + " bytes in RAM no thread's scratch fits within --ram-limit=" + std::to_string(config.ram_limit);
   // Only an explicit --ram-limit refuses: the automatic one follows the machine's load.
   if (dist_matrix) {
     if (config.ram_limit == 0) return std::nullopt; // the CSV is read into RAM
@@ -271,6 +278,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   std::size_t n_series = 0;
   bool clara_uses_full_sample = false;
   bool clara_planned = false;
+  std::size_t stream_names_bytes = 0; // a streamed run's names, read after the stream beside the labels
   const auto plan_clara = [&] {
     if (method != Method::CLARA || clara_planned) return;
     const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
@@ -360,7 +368,10 @@ Outcome execute(const Config &config, std::optional<Data> data)
       clara.force_parquet_streaming = true;
     }
     plan_clara();
-    if (stream_payload) check_stream("Parquet", "Parquet metadata", names_bytes, resident_bytes, limit);
+    if (stream_payload) {
+      check_stream("Parquet", "Parquet metadata", names_bytes, resident_bytes, limit);
+      stream_names_bytes = names_bytes;
+    }
   }
 #endif
 
@@ -400,8 +411,8 @@ Outcome execute(const Config &config, std::optional<Data> data)
       clara.ram_limit_bytes = limit;
       plan_clara();
       // The names are read after the stream, beside the labels: their read is priced with them.
-      check_stream("Arrow IPC", "Arrow IPC walk", ipc->series_names_bytes() + ipc->names_read_bytes(), resident,
-                   limit);
+      stream_names_bytes = ipc->series_names_bytes() + ipc->names_read_bytes();
+      check_stream("Arrow IPC", "Arrow IPC walk", stream_names_bytes, resident, limit);
     } else if (config.ram_limit != 0 && resident > config.ram_limit) {
       // CLARA is named only where its stream could read the file: a file that streams, on the CPU, sampled in fewer
       // than its series (the plan of these options; none where CLARA cannot run on them).
@@ -478,38 +489,54 @@ Outcome execute(const Config &config, std::optional<Data> data)
   plan_clara();
   prob.set_method(method);
   // What each thread of the in-RAM run holds of scratch (the streamed run prices its own phases): the DTW kernels' for
-  // the longest series, in time steps, and the method's tables.
+  // the longest series, in time steps, and the method's tables; without the kernels' where none runs, a complete
+  // --dist-matrix (known once it is read).
   std::size_t longest = 0;
   for (std::size_t i = 0; i < prob.data().size(); ++i)
     longest = std::max(longest, prob.data().series_flat_size(i) / prob.data().ndim);
-  const std::size_t per_thread =
-    stream_payload ? 0
-                   : in_ram_thread_bytes(prob, config, method, clara_uses_full_sample, longest, prob.data().precision);
+  const auto thread_bytes = [&](bool kernels) {
+    return stream_payload ? 0
+                          : in_ram_thread_bytes(prob, config, method, clara_uses_full_sample, longest,
+                                                prob.data().precision, kernels);
+  };
+  // Within an explicit --ram-limit the threads of the in-RAM run are those whose scratch fits beside what it holds
+  // (core::KernelTeam): the series, in-RAM FastCLARA's sample matrix and labels, the matrix where it is in RAM; every
+  // region from here on capped to them. The stream fits each of its phases beside, too, what follows it: the series'
+  // names, read beside the labels.
+  core::KernelTeam team(config.ram_limit, config.verbose,
+                        stream_payload ? 2 * n_series * sizeof(index_t) + stream_names_bytes : 0);
+  const std::size_t clara_rest =
+    !stream_payload && method == Method::CLARA && !clara_uses_full_sample
+      ? clara_bytes(resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run"))
+      : 0;
+  const std::size_t matrix_bytes = holds_matrix(method, clara_uses_full_sample)
+                                     ? core::packed_size(n_series) * core::value_bytes(config.matrix_dtype)
+                                     : 0;
+  const bool reads_matrix = !config.dist_matrix.empty(); // read into RAM, never mapped
+  const auto fit_team = [&](std::size_t matrix, bool kernels) {
+    const char *held = clara_rest != 0 ? "the series and FastCLARA's sample matrix and labels"
+                       : matrix != 0   ? "the series and the distance matrix"
+                                       : "the series";
+    return team.fit(progress_label(method), series_bytes + clara_rest + matrix, thread_bytes(kernels), longest, held);
+  };
 
   // ---- 4. Distance storage, once every distance setting is in place ----
   // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
   // the checkpoint, else in the output directory; a run that writes nothing
-  // keeps its matrix in RAM.
+  // keeps its matrix in RAM. Decided with the team that runs beside the matrix in
+  // RAM (beside a --dist-matrix, which no kernel may add to, the least): mapped
+  // where not one thread fits beside it.
   std::optional<fs::path> cache;
   if (!config.output.empty()) {
+    const std::size_t each = thread_bytes(!reads_matrix);
+    const int beside = team.fitting(series_bytes + clara_rest + matrix_bytes, each);
     const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
     cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, series_bytes,
-                                       static_cast<std::size_t>(get_max_threads()) * per_thread, path);
+                                       static_cast<std::size_t>(beside) * each, beside > 0, path);
   }
-  // Within an explicit --ram-limit the threads of the in-RAM run are those whose scratch fits beside the series and a
-  // matrix in RAM (core::KernelTeam), every region from here on capped to them, refused before any file is mapped; the
-  // stream fits each of its phases beside, too, what follows it: an Arrow IPC file's names, read beside the labels.
-  core::KernelTeam team(config.ram_limit, config.verbose,
-                        stream_payload && ipc ? 2 * n_series * sizeof(index_t) + ipc->series_names_bytes()
-                                                  + ipc->names_read_bytes()
-                                              : 0);
+  // Refused, where one thread does not fit, before any file is mapped; beside a --dist-matrix once it is read.
   std::optional<TeamCap> cap;
-  if (!stream_payload) {
-    const std::size_t matrix = holds_matrix(method, clara_uses_full_sample) && !cache
-                                 ? core::packed_size(n_series) * core::value_bytes(config.matrix_dtype)
-                                 : 0;
-    cap.emplace(team.fit(progress_label(method), series_bytes + matrix, per_thread, longest));
-  }
+  if (!stream_payload && !reads_matrix) cap.emplace(fit_team(cache ? 0 : matrix_bytes, true));
   if (cache) {
     prob.use_mmap_distance_matrix(*cache);
     if (config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
@@ -525,6 +552,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
                     + e.what());
     }
     if (config.verbose) std::cout << "Loaded distance matrix from " << config.dist_matrix << "\n";
+    if (!stream_payload) cap.emplace(fit_team(matrix_bytes, !prob.is_distance_matrix_filled()));
   }
   if (config.checkpoint_interval != 0) { // 0: saved once, at the end
     prob.checkpoint.directory = config.checkpoint;
@@ -556,7 +584,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     streamed_names = ipc->series_names(clara.ram_limit_bytes > held ? clara.ram_limit_bytes - held : 0);
   } else {
 #ifdef DTWC_HAS_PARQUET
-    result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : prob.cluster();
+    result = stream_payload ? algorithms::detail::fast_clara_parquet(prob, clara, team) : prob.cluster();
     if (stream_payload)
       streamed_names = io::ParquetChunkReader(input, config.column, config.skip_cols, config.skip_rows).series_names();
 #else
@@ -628,7 +656,7 @@ detail::ParquetPlan detail::plan_parquet_load(Method method, Device device, std:
 
 Result run(const Config &config)
 {
-  const core::ScratchRelease release; // every thread's scratch given back when the run returns or throws
+  const core::ScratchRelease release; // every thread's scratch given back as the run starts, returns or throws
   auto [problem, result, method, streamed_names] = execute(config, std::nullopt);
   return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
                 result.converged, std::move(streamed_names));
@@ -636,7 +664,7 @@ Result run(const Config &config)
 
 Result run(const Config &config, Data data)
 {
-  const core::ScratchRelease release; // every thread's scratch given back when the run returns or throws
+  const core::ScratchRelease release; // every thread's scratch given back as the run starts, returns or throws
   auto [problem, result, method, streamed_names] = execute(config, std::move(data));
   return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
                 result.converged, std::move(streamed_names));

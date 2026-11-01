@@ -8,8 +8,9 @@
  *          scratch) and exactly n elements are taken, so a thread holds what core::thread_scratch_bytes prices, never a
  *          growth factor more; a buffer that grows from empty joins its thread's registry. release_thread_scratch()
  *          empties every registered buffer of every thread of the OpenMP team (a buffer emptied registers again when it
- *          next grows): dtwc::run calls it when it returns or throws (ScratchRelease); Tier-2 calls keep their scratch,
- *          so a k-sweep allocates once. KernelTeam sizes each phase's team within an explicit limit (TeamCap applies it).
+ *          next grows): dtwc::run calls it as it starts and when it returns or throws (ScratchRelease); Tier-2 calls
+ *          keep their scratch, so a k-sweep allocates once. KernelTeam sizes each phase's team within an explicit limit
+ *          (TeamCap applies it).
  * @author Volkan Kumtepeli
  */
 
@@ -94,10 +95,11 @@ void release_thread_scratch() noexcept;
 /// (the calling thread's first): a test hook.
 std::vector<std::size_t> registered_scratch_bytes();
 
-/// release_thread_scratch() when it goes out of scope, on return and on error: dtwc::run's guard.
+/// release_thread_scratch() when it is made and when it goes out of scope, on return and on error: dtwc::run's guard,
+/// so a run starts with no scratch an earlier call left (a Tier-2 k-sweep's) and leaves none.
 struct ScratchRelease
 {
-  ScratchRelease() = default;
+  ScratchRelease() { release_thread_scratch(); }
   ScratchRelease(const ScratchRelease &) = delete;
   ScratchRelease &operator=(const ScratchRelease &) = delete;
   ~ScratchRelease() { release_thread_scratch(); }
@@ -121,12 +123,17 @@ public:
   KernelTeam(std::size_t limit, bool verbose, std::size_t after = 0);
 
   /// The team of `phase`, whose threads each hold `per_thread` bytes for series of up to `length` time steps
-  /// (thread_scratch_bytes and the method's tables) beside the `rest` the run holds with it: every thread of the last
-  /// phase's team that fits, the threads left out keeping theirs (verbose says how many and why); InvalidInput, naming
-  /// the bytes and the limit, before the phase runs when one thread does not fit.
-  int fit(std::string_view phase, std::size_t rest, std::size_t per_thread, std::size_t length);
+  /// (thread_scratch_bytes and the method's tables) beside the `rest` the run holds with it (`held` says what that is):
+  /// every thread of the last phase's team that fits, the threads left out keeping theirs (verbose says how many and
+  /// why); InvalidInput, naming the bytes and the limit, before the phase runs when one thread does not fit, or when
+  /// `rest` alone does not.
+  int fit(std::string_view phase, std::size_t rest, std::size_t per_thread, std::size_t length,
+          std::string_view held = {});
+  /// The team fit() would give, nothing changed and nothing refused: 0 where one thread does not fit.
+  int fitting(std::size_t rest, std::size_t per_thread) const noexcept;
 
   int threads() const noexcept { return team_; }           ///< the last phase's team
+  bool prices() const noexcept { return limit_ != 0; }      ///< an explicit limit: teams are fitted, scratch priced
   std::size_t priced() const noexcept { return priced_; }  ///< what the call's threads hold of their scratch so far
 
 private:

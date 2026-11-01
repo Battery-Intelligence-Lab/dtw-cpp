@@ -37,8 +37,8 @@ dtwc_add_script_test(NAME test_deprecated_shims_warn
     MARKER "DEPRECATED_SHIMS family=${_dtwc_shim_family} exit=0 warned=${_dtwc_shim_count}/${_dtwc_shim_count}"
     LABELS compat b19 SERIAL TIMEOUT 300)
 
-# A DP cell makes no call: codegen_report.py compiles the probe to assembly with dtw_dispatch.cpp's
-# flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments. Under a
+# A DP cell makes no call: codegen_report.py compiles the probe (the univariate and multivariate kernels) to assembly
+# with dtw_dispatch.cpp's flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments. Under a
 # sanitizer every loop calls its checks, so there the gate has nothing to prove.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU"
@@ -48,7 +48,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT
     add_test(NAME test_codegen_no_calls COMMAND "${Python3_EXECUTABLE}"
              "${CMAKE_SOURCE_DIR}/scripts/codegen_report.py" --no-calls --build-dir "${CMAKE_BINARY_DIR}")
     set_tests_properties(test_codegen_no_calls PROPERTIES FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}"
-        PASS_REGULAR_EXPRESSION "CODEGEN_NO_CALLS tool=[^ ]+ inner_loops=[1-9][0-9]* calls=0 verdict=PASS")
+        PASS_REGULAR_EXPRESSION
+        "CODEGEN_NO_CALLS tool=[^ ]+ inner_loops=[1-9][0-9]* mv_loops=[1-9][0-9]* calls=0 verdict=PASS")
 endif()
 
 # Capability flags, queried once (they select markers and skip tolerance).

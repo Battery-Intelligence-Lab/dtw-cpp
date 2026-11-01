@@ -55,6 +55,18 @@ inline int get_max_threads()
 #endif
 }
 
+/// @brief The OpenMP team every region could use (1 if OpenMP is absent), past the calling thread's TeamCap: what a
+///        sizing reads that must not depend on a phase's team (a stream's batches, a mapped fill's tile-rows), so a
+///        team shrunk to a memory limit changes how many threads compute a result, never the result.
+inline int full_team_threads()
+{
+#ifdef _OPENMP
+  return omp_get_max_threads();
+#else
+  return 1;
+#endif
+}
+
 /// @brief While it lives, the parallel regions the calling thread starts use at most `threads` threads (0: no cap):
 ///        a phase's team within a memory limit (core::KernelTeam). Each region still takes its team in its own
 ///        num_threads clause; nothing process-wide is set, and the cap before it comes back when it goes.

@@ -83,8 +83,11 @@ dtwc::core::ClusteringResult streamed(dtwc::Problem &prob, dtwc::algorithms::CLA
   const dtwc::io::IpcFile file(path);
   options.ram_limit_bytes = limit;
   const auto plan = dtwc::algorithms::detail::resolve_clara_plan(file.num_rows(), options, "fast_clara");
-  return dtype == Precision::Float32 ? dtwc::algorithms::detail::fast_clara_chunked<true>(prob, options, file, plan)
-                                     : dtwc::algorithms::detail::fast_clara_chunked<false>(prob, options, file, plan);
+  // Its threads' scratch within the Problem's explicit limit, as dtwc::run fits it; none under the automatic budget.
+  dtwc::core::KernelTeam team(prob.ram_limit() != 0 ? limit : 0, prob.verbose());
+  return dtype == Precision::Float32
+           ? dtwc::algorithms::detail::fast_clara_chunked<true>(prob, options, file, plan, team)
+           : dtwc::algorithms::detail::fast_clara_chunked<false>(prob, options, file, plan, team);
 }
 
 /// The in-RAM run: the file read by dtwc::read_data as `dtype`, clustered by fast_clara.

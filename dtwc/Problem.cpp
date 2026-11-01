@@ -960,9 +960,11 @@ void Problem::fillDistanceMatrix_BruteForce()
   if (distMat.is_mapped()) {
     const size_t budget = ram_limit_ != 0 ? ram_limit_ : core::available_memory(); // 0: unknown, no limit
     // What the series hold of the budget: a mapped view's values are the page cache's, its spans and names its own;
-    // any other's values (owned, decoded, read into a buffer) are this process's. Beside them each of the fill's
-    // threads holds the DTW kernels' scratch for the longest series (core::thread_scratch_bytes).
-    const size_t scratch = static_cast<size_t>(get_max_threads())
+    // any other's values (owned, decoded, read into a buffer) are this process's. Beside them each thread holds the DTW
+    // kernels' scratch for the longest series (core::thread_scratch_bytes): every thread of the full team, whatever
+    // team a memory limit left the fill (TeamCap), so the tile-rows, and which pairs take the lanes, do not depend on
+    // it.
+    const size_t scratch = static_cast<size_t>(full_team_threads())
                            * core::thread_scratch_bytes(distance_, longest / data_.ndim, data_.precision);
     const size_t held = (data_.is_mapped() ? N * detail::view_series_bytes : series_bytes) + scratch;
     slab_bytes = budget == 0 ? size_t{ 1 } << 30 : std::min(budget > held ? (budget - held) / 8 : 0, size_t{ 1 } << 30);
@@ -971,6 +973,9 @@ void Problem::fillDistanceMatrix_BruteForce()
   const size_t save_rows =
     checkpoint.enabled ? (static_cast<size_t>(checkpoint.save_interval) + W - 1) / W * W : N;
   h = std::min(std::min(h, save_rows), N);
+  if (verbose_ && distMat.is_mapped())
+    std::cout << "Mapped distance matrix: tile-rows of " << h << " series, slabs of at most " << slab_bytes
+              << " bytes\n";
 
   std::vector<size_t> bounds{ 0 }; // tile-row k: rows [bounds[k], bounds[k + 1])
   for (size_t r = N % h; r < N; r += h)

@@ -30,6 +30,7 @@
 #include "kernel_selection.hpp"
 #include "launch_prep.hpp"
 #include "../detail/decode_pair.hpp"
+#include "../core/thread_scratch.hpp" // register_scratch: the launch workspace is this thread's scratch
 
 #ifdef DTWC_HAS_CUDA
 
@@ -937,6 +938,26 @@ struct DTWLaunchWorkspace {
   CudaStream stream;
   CudaEvent evt_start;
   CudaEvent evt_end;
+  bool registered = false; ///< with this thread's scratch (core::register_scratch), until a release empties it
+
+  /// Its pinned host buffer and every device buffer freed, its stream and events too: what
+  /// core::release_thread_scratch() does to it, so a top-level call leaves no GPU or pinned memory behind.
+  void release() noexcept
+  {
+    host_series = CachedHostBuffer<T>{};
+    d_series.reset();
+    d_lengths.reset();
+    d_out.reset();
+    d_out32.reset();
+    d_counter.reset();
+    d_scratch.reset();
+    stream.reset();
+    evt_start.reset();
+    evt_end.reset();
+    series_capacity = length_capacity = out_capacity = out32_capacity = counter_capacity = scratch_capacity = 0;
+    device_id = -1;
+    registered = false; // registers again when it is next used
+  }
 
   void ensure_runtime(int new_device_id)
   {
@@ -968,10 +989,45 @@ struct DTWLaunchWorkspace {
   }
 };
 
+/// What a workspace holds in the process: its staging buffer, pinned or not (its device buffers are the GPU's).
+template <typename T>
+std::size_t workspace_host_bytes(const void *workspace) noexcept
+{
+  const auto &w = *static_cast<const DTWLaunchWorkspace<T> *>(workspace);
+  return (w.host_series.pinned ? w.host_series.capacity : w.host_series.fallback.capacity()) * sizeof(T);
+}
+
+template <typename T>
+void workspace_release(void *workspace) noexcept
+{
+  static_cast<DTWLaunchWorkspace<T> *>(workspace)->release();
+}
+
+/// This thread's launch workspace of T, as it is.
+template <typename T>
+DTWLaunchWorkspace<T> &workspace_of()
+{
+  thread_local DTWLaunchWorkspace<T> workspace;
+  return workspace;
+}
+
+/// What a workspace holds, host and device: its staging buffer and every device buffer.
+template <typename T>
+std::size_t workspace_bytes(const DTWLaunchWorkspace<T> &w)
+{
+  return workspace_host_bytes<T>(&w) + w.series_capacity * sizeof(T) + w.length_capacity * sizeof(int)
+         + w.out_capacity * sizeof(double) + w.out32_capacity * sizeof(float) + w.counter_capacity * sizeof(int)
+         + w.scratch_capacity * sizeof(T);
+}
+
 template <typename T>
 DTWLaunchWorkspace<T> &get_dtw_launch_workspace(int device_id)
 {
-  thread_local DTWLaunchWorkspace<T> workspace;
+  DTWLaunchWorkspace<T> &workspace = workspace_of<T>();
+  if (!workspace.registered) { // this thread's scratch, given back when a top-level call returns
+    dtwc::core::detail::register_scratch({ &workspace, &workspace_host_bytes<T>, &workspace_release<T> });
+    workspace.registered = true;
+  }
   workspace.ensure_runtime(device_id);
   return workspace;
 }
@@ -1317,6 +1373,11 @@ std::pair<bool, detail::KernelPath> select_route(size_t max_L, const CUDADistMat
 }
 
 } // anonymous namespace
+
+std::size_t thread_workspace_bytes()
+{
+  return workspace_bytes(workspace_of<float>()) + workspace_bytes(workspace_of<double>());
+}
 
 CUDADistMatResult compute_distance_matrix_cuda(
     const std::vector<std::vector<double>> &series,
