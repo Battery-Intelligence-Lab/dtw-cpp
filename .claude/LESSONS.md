@@ -105,8 +105,8 @@ Append new entries at the end of their section; keep each to a few lines.
   its printed notice goes blind when the notice goes: key it to the configure (FX-3 reads `HAS_GUROBI`, PF).
 - **Poison external seams before testing a rejection.** Make the command or file a rejection path would reach
   unusable, so a pass cannot come from the wrong branch.
-- **A byte limit priced from `sizeof` holds on one standard library**: `std::string` is 24 B in libc++, 32 in
-  libstdc++ and MSVC; a test pinning a streaming window states each library's (292defe3, the Mac's Arrow 26).
+- **A memory price holds only where it was measured**: `std::string` is 24 B in libc++, 32 elsewhere (292defe3); a
+  per-series heap eighth over-priced one big buffer 12 % (MM S4): measure priced and held both ways, per shape.
 - **An Arrow gate can pass while running nothing.** `test_io_readers` registers only when Arrow is found: check that
   `ctest -N` lists it (the Arrow shim was deleted once, 2026-09-28).
 
