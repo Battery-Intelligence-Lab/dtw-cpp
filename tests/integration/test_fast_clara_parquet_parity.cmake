@@ -88,13 +88,34 @@ function(run_f8_cli config_id mode output_dir dtype variant gamma accepted_costs
     # The limit holds the stream (the medoids, two samples' labels and nearest
     # distances, one decode of the 8 rows, one row group) below the in-RAM
     # estimate with CLARA's pass, so the run streams. Both prices count a
-    # std::string a row, 32 bytes in libstdc++ and MSVC and 24 in libc++: float64
-    # streams in [4550, 4766) and [4502, 4702) under libc++, float32 in
-    # [4442, 4622) and [4394, 4558).
-    if(mode STREQUAL "stream" AND dtype STREQUAL "float32")
-        list(APPEND args --ram-limit 4500)
-    elseif(mode STREQUAL "stream")
-        list(APPEND args --ram-limit 4600)
+    # std::string a row, 32 bytes in libstdc++ and MSVC and 24 in libc++: without
+    # the threads' scratch float64 streamed in [4550, 4766) and [4502, 4702) under
+    # libc++, float32 in [4442, 4622) and [4394, 4558). Both hold one thread's DTW
+    # scratch beside that (the lanes' rows, a column, FasterPAM's and the
+    # assignment's tables; the lanes 64 or 128 bytes a row by compiler), more than
+    # the window: at 4500 and 4600 the stream's refusal names the least limit it
+    # takes, which the run streams within.
+    if(mode STREQUAL "stream")
+        if(dtype STREQUAL "float32")
+            set(probe_limit 4500)
+        else()
+            set(probe_limit 4600)
+        endif()
+        execute_process(
+            COMMAND "${cli_path}" ${args} --ram-limit ${probe_limit}
+            RESULT_VARIABLE probe_result
+            OUTPUT_VARIABLE probe_stdout
+            ERROR_VARIABLE probe_stderr
+            ENCODING UTF-8)
+        string(REGEX MATCH "one thread's DTW scratch, ([0-9]+) bytes [^\n]* beside the ([0-9]+) bytes"
+               least_match "${probe_stderr}")
+        if("${probe_result}" STREQUAL "0" OR NOT least_match)
+            message(FATAL_ERROR
+                "F8 ${config_id}/stream: --ram-limit ${probe_limit} exit=${probe_result}, not the refusal naming the "
+                "least limit\nstdout:\n${probe_stdout}\nstderr:\n${probe_stderr}")
+        endif()
+        math(EXPR least_limit "${CMAKE_MATCH_1} + ${CMAKE_MATCH_2}")
+        list(APPEND args --ram-limit ${least_limit})
     endif()
 
     execute_process(

@@ -16,6 +16,7 @@
 #include "Problem.hpp"
 #include "base/error.hpp"
 #include "base/parallelisation.hpp"
+#include "core/thread_scratch.hpp" // reserve_scratch
 #include "types/Range.hpp"
 
 #include <algorithm>      // for std::max, std::count_if
@@ -100,7 +101,8 @@ void silhouette_of(const T *matrix, const Problem &prob, const std::vector<index
   const index_t *const label = prob.clusters_ind.data();
   auto oneTask = [&](size_t q) {
     const auto first = static_cast<index_t>(q) * G;
-    thread_local std::vector<double> sums; // sums[cluster * G + g]; grows, never shrinks
+    thread_local std::vector<double> sums; // sums[cluster * G + g]; grows exactly, never shrinks within a call
+    core::reserve_scratch(sums, static_cast<size_t>(Nc * G));
     sums.assign(static_cast<size_t>(Nc * G), 0.0);
     core::for_each_point(matrix, Nb, first, [&](index_t i, const double *d) {
       double *const s = sums.data() + label[i] * G;
@@ -295,6 +297,11 @@ double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const s
  * @throws InvalidInput if the Problem has not been clustered.
  * @see https://en.wikipedia.org/wiki/Silhouette_(clustering) for more information on silhouette scoring.
  */
+std::size_t detail::silhouette_thread_bytes(index_t k)
+{
+  return static_cast<std::size_t>(k) * core::group_rows * sizeof(double); // silhouette_of's sums
+}
+
 std::vector<double> silhouette(Problem &prob)
 {
   const auto Nb = prob.size();         //!< Number of profiles

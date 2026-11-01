@@ -37,6 +37,7 @@
 
 #include "../base/settings.hpp"
 #include "dtw_kernel.hpp" // orient
+#include "thread_scratch.hpp" // reserve_scratch
 
 #include <algorithm>
 #include <cmath>
@@ -69,7 +70,9 @@ T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
   auto add = [maxValue](T u, T v) noexcept { return u == maxValue ? maxValue : u + v; };
 
   // Rolling buffers over the padded shorter axis (size nb+1).
-  thread_local std::vector<T> prev_buf, curr_buf;
+  thread_local std::vector<T> prev_buf, curr_buf; // grow exactly, never shrink within a call: thread_scratch.hpp
+  reserve_scratch(prev_buf, nb + 1);
+  reserve_scratch(curr_buf, nb + 1);
   prev_buf.assign(nb + 1, maxValue);
   curr_buf.assign(nb + 1, maxValue);
   T* prev = prev_buf.data();

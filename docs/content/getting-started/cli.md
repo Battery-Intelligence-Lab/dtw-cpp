@@ -125,11 +125,11 @@ budget for the run's decisions, not an operating-system limit on its resident
 memory.
 
 The distance matrix stays in RAM while its N(N+1)/2 values (8 bytes each, 4 under
-`--matrix-dtype float32`) fit in half of what the series leave of the limit. Past that
-it is mapped to `<name>.dtwm`, in the
+`--matrix-dtype float32`) fit in half of what the series and the threads' DTW
+scratch leave of the limit. Past that it is mapped to `<name>.dtwm`, in the
 `--checkpoint` directory when one is given and in the output directory otherwise
 (a run that writes no output keeps it in RAM), and filled slab by slab: a slab is
-an eighth of what the series leave of the limit, at most 1 GiB, the next one
+an eighth of what the series and that scratch leave of the limit, at most 1 GiB, the next one
 read ahead and the finished one written back, so each page of the file is
 written while its slab runs and not again. A new file is not written before its
 fill: its header records the rows written, which a slab advances once the slab
@@ -171,14 +171,18 @@ load as they would without a limit. An explicit `--ram-limit` is fail-closed:
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.
 
-The limit covers what the streamed run holds: library metadata and fixed
-process overhead (the code, thread stacks, the allocators' first pages) are
-outside it. An Arrow IPC file streams as Parquet does, on the CPU, where RAM would
-hold its series outside the page cache (decoded, read without LLFIO, or in the
-other `--dtype`): FastCLARA reads it a record batch at a time; a mapped file's
-values are not streamed, and on a GPU the stream is a `DeviceError`. Other inputs
-(CSV/TSV, a CSV directory) are always read whole; the limit then governs the
-distance matrix alone.
+The limit covers what the streamed run holds, each thread's DTW scratch among it
+(the kernels' rolling columns and lanes for the longest series a phase meets, and
+the algorithms' tables): a phase runs on as many threads as fit, `--verbose` saying
+how many and why, with the same results, and a limit that cannot hold one thread's
+scratch is refused. Library metadata and fixed process overhead (the code, thread
+stacks, the allocators' first pages) are outside it. An Arrow IPC file streams as
+Parquet does, on the CPU, where RAM would hold its series outside the page cache
+(decoded, read without LLFIO, or in the other `--dtype`): FastCLARA reads it a
+record batch at a time; a mapped file's values are not streamed, and on a GPU the
+stream is a `DeviceError`. Other inputs (CSV/TSV, a CSV directory) are always read
+whole; the limit then governs the distance matrix and the threads' scratch beside
+them. A run gives its threads' scratch back when it ends.
 
 ### OneBatchPAM and TADPole options
 

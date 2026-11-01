@@ -41,6 +41,7 @@
 
 #include "../base/settings.hpp"
 #include "dtw_kernel.hpp" // orient
+#include "thread_scratch.hpp" // reserve_scratch
 
 #include <algorithm>
 #include <cmath>
@@ -72,7 +73,9 @@ T msm_distance(const T* x, std::size_t nx, const T* y, std::size_t ny, T c = T(1
   std::size_t na = nx, nb = ny;
   orient(b, nb, a, na); // a = long (rows), b = short (cols); a tie keeps a = x
 
-  thread_local std::vector<T> prev_buf, curr_buf;
+  thread_local std::vector<T> prev_buf, curr_buf; // grow exactly, never shrink within a call: thread_scratch.hpp
+  reserve_scratch(prev_buf, nb);
+  reserve_scratch(curr_buf, nb);
   prev_buf.resize(nb);
   curr_buf.resize(nb);
   T* prev = prev_buf.data();

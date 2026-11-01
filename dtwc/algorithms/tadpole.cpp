@@ -267,7 +267,7 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
   std::vector<double> delta(N, kInf);
   std::vector<index_t> parent(N, -1);
 
-  #pragma omp parallel for schedule(dynamic, 8)
+  #pragma omp parallel for schedule(dynamic, 8) num_threads(n_threads)
   for (index_t i = 0; i < N; ++i) {
     double best = kInf;
     index_t best_parent = -1;

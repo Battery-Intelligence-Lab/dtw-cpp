@@ -47,6 +47,8 @@
 
 #pragma once
 
+#include "thread_scratch.hpp" // reserve_scratch
+
 #include <algorithm>    // std::min, std::max
 #include <array>        // std::array
 #include <cmath>        // std::ceil, std::floor, std::round, std::fmin
@@ -241,7 +243,8 @@ T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell, T
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (n_short == 0 || n_long == 0) return maxValue;
 
-  thread_local static std::vector<T> short_buf;
+  thread_local static std::vector<T> short_buf; // grows exactly, never shrinks within a call: thread_scratch.hpp
+  reserve_scratch(short_buf, n_short);
   short_buf.resize(n_short);
   T *short_side = short_buf.data(); // hoisted out of the loops
 
@@ -349,7 +352,8 @@ T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
   if (n_short == 1 || n_long == 1 || band_width >= n_long - 1)
     return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
 
-  thread_local std::vector<T> col_buf;
+  thread_local std::vector<T> col_buf; // grows exactly, never shrinks within a call: thread_scratch.hpp
+  reserve_scratch(col_buf, n_long);
   col_buf.assign(n_long, maxValue);
   T *col = col_buf.data(); // hoisted out of the loops
   const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
@@ -532,9 +536,15 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
     for (T &e : r.v) e = maxValue;
     return r;
   }();
-  thread_local std::vector<Row> y_buf, s_buf;
-  if (y_buf.size() < ny_max) y_buf.resize(ny_max);
-  if (s_buf.size() < nx) s_buf.resize(nx);
+  thread_local std::vector<Row> y_buf, s_buf; // grow exactly, never shrink within a call: thread_scratch.hpp
+  if (y_buf.size() < ny_max) {
+    reserve_scratch(y_buf, ny_max);
+    y_buf.resize(ny_max);
+  }
+  if (s_buf.size() < nx) {
+    reserve_scratch(s_buf, nx);
+    s_buf.resize(nx);
+  }
   Row *Y = y_buf.data();
   Row *s = s_buf.data();
   for (std::size_t w = 0; w < W; ++w) {

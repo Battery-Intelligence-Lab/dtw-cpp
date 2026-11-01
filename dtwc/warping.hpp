@@ -35,6 +35,7 @@
 #include "core/dtw_options.hpp"    // for core::MetricType
 #include "core/dtw_kernel.hpp"     // unified DTW kernels, orient, run_dtw
 #include "core/dtw_cost.hpp"       // Span*Cost functors
+#include "core/thread_scratch.hpp" // reserve_scratch
 
 #include <cstdint>   // for uint32_t, uint64_t
 #include <cstdlib>   // for abs, size_t
@@ -371,7 +372,9 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
   // De-interleave one channel at a time into contiguous scratch, then run the
   // univariate kernel. thread_local buffers keep the parallel matrix fill
   // heap-allocation-free after the first pair per thread.
-  thread_local std::vector<data_t> cx, cy;
+  thread_local std::vector<data_t> cx, cy; // grow exactly, never shrink within a call: core/thread_scratch.hpp
+  core::reserve_scratch(cx, nx_steps);
+  core::reserve_scratch(cy, ny_steps);
   cx.resize(nx_steps);
   cy.resize(ny_steps);
 

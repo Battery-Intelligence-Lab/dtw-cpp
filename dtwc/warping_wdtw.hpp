@@ -32,6 +32,7 @@
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
 #include "base/error.hpp"
+#include "core/thread_scratch.hpp" // register_scratch
 
 #include <algorithm>      // std::max
 #include <cmath>          // std::exp
@@ -122,10 +123,15 @@ namespace detail {
 template <typename data_t>
 const std::vector<data_t>& cached_wdtw_weights(int max_dev, data_t g)
 {
+  // A table is never empty (max_dev + 1 weights): an empty one was given back (core::release_thread_scratch).
   thread_local std::vector<data_t> cached_w;
   thread_local int cached_max_dev = -1;
   thread_local data_t cached_g = data_t(-1);
-  if (max_dev != cached_max_dev || g != cached_g) {
+  if (cached_w.empty() || max_dev != cached_max_dev || g != cached_g) {
+    if (cached_w.capacity() == 0)
+      core::register_scratch(cached_w); // this thread's scratch, given back when a top-level call returns
+    else
+      std::vector<data_t>().swap(cached_w); // the old table freed before the new one is built
     cached_w = wdtw_weights<data_t>(max_dev, g);
     cached_max_dev = max_dev;
     cached_g = g;

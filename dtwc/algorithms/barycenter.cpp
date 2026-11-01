@@ -11,6 +11,7 @@
 #include "../core/portable_random.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
+#include "../core/thread_scratch.hpp" // reserve_scratch
 
 #include <algorithm>
 #include <cmath>
@@ -142,9 +143,9 @@ Series resample_linear(SeriesView input, std::size_t length)
 }
 
 /// Squared-cost DTW of x against y and, if asked, its optimal warping path. The
-/// DP matrix and the path are this thread's scratch, grown and never shrunk as
-/// the DTW kernels' is: a warmed thread allocates nothing. The path stays valid
-/// until the thread's next call.
+/// DP matrix and the path are this thread's scratch, grown exactly and never
+/// shrunk within a call as the DTW kernels' is (core/thread_scratch.hpp): a warmed
+/// thread allocates nothing. The path stays valid until the thread's next call.
 Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
 {
   thread_local std::vector<double> matrix_buffer;
@@ -152,11 +153,11 @@ Alignment align_squared(SeriesView x, SeriesView y, bool need_path)
   const std::size_t nx = x.size();
   const std::size_t ny = y.size();
   if (matrix_buffer.size() < nx * ny) {
-    matrix_buffer.reserve(nx * ny); // exact: resize alone may overshoot
+    core::reserve_scratch(matrix_buffer, nx * ny); // exact: resize alone may overshoot
     matrix_buffer.resize(nx * ny);
   }
   path.clear();
-  if (need_path) path.reserve(nx + ny - 1);
+  if (need_path) core::reserve_scratch(path, nx + ny - 1);
   // The matrix pointer is hoisted and at(i, j - 1) carried in a register: without
   // TBAA (the MSVC target) each store forced a reload of both.
   double *const matrix = matrix_buffer.data();

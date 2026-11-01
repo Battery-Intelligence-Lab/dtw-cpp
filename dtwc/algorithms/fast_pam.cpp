@@ -35,6 +35,7 @@
 #include "../core/medoid_assignment_policy.hpp"
 #include "../core/distance_sampling_weights.hpp" // kmedoids_pp
 #include "../base/parallelisation.hpp"
+#include "../core/thread_scratch.hpp" // reserve_scratch
 
 #include <algorithm>
 #include <array>
@@ -143,8 +144,11 @@ void evaluate_group(const T *matrix, index_t N, index_t a, index_t n, const std:
                     const std::vector<double> &second_dist, SwapEval *out)
 {
   const auto k = static_cast<index_t>(rho.size());
-  thread_local std::vector<double> scratch; // ploss[m * W + g]; grows, never shrinks
-  if (scratch.size() < static_cast<std::size_t>(k * W)) scratch.resize(static_cast<std::size_t>(k * W));
+  thread_local std::vector<double> scratch; // ploss[m * W + g]; grows exactly, never shrinks within a call
+  if (scratch.size() < static_cast<std::size_t>(k * W)) {
+    core::reserve_scratch(scratch, static_cast<std::size_t>(k * W));
+    scratch.resize(static_cast<std::size_t>(k * W));
+  }
   double *const ploss = scratch.data();
   for (index_t m = 0; m < k; ++m)
     for (index_t g = 0; g < W; ++g) ploss[m * W + g] = rho[m];
@@ -393,5 +397,7 @@ core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter,
   });
   return swap_phase(prob, std::move(medoids), max_iter);
 }
+
+std::size_t detail::fast_pam_thread_bytes(index_t k) { return static_cast<std::size_t>(k * G) * sizeof(double); }
 
 } // namespace dtwc

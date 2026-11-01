@@ -3,6 +3,7 @@ target_sources(dtwc_core
     distance_matrix.cpp
     dtw_dispatch.cpp
     dtw_lanes.cpp
+    thread_scratch.cpp
   PUBLIC FILE_SET HEADERS FILES
     clustering_result.hpp
     distance_matrix.hpp
@@ -20,6 +21,7 @@ target_sources(dtwc_core
     public_distance.hpp
     sha256.hpp
     storage.hpp
+    thread_scratch.hpp
     twe.hpp
     z_normalize.hpp
   )

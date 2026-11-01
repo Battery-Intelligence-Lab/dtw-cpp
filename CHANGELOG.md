@@ -98,8 +98,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   the stream is a `DeviceError`), a file whose series RAM would hold outside the page cache (decoded, read without
   llfio, or in the other `--dtype`) a record batch at a time, decoded and checked in parallel, within the limit: the
   sampled rows beside one record batch, then a sample's PAM beside the sampled rows, then the medoids, the labels and
-  a batch of record batches, and after it the names, read alone; each record batch priced with its objects, and each
-  decoding thread with its codec's scratch (LZ4's block buffers, from each frame's descriptor; zstd's context). A
+  a batch of record batches, and after it the names, read alone; each record batch priced with its objects, each
+  decoding thread with its codec's scratch (LZ4's block buffers, from each frame's descriptor; zstd's context), and
+  each phase's threads with their DTW scratch, as many as fit (see `--ram-limit`). A
   record batch larger than the limit is refused before any is decoded (without llfio, before its body is read), and
   over an explicit limit the other methods, and a mapped file's views, are refused (`InvalidInput`, naming the bytes).
   Parquet (`-DDTWC_ENABLE_ARROW=ON`; a list column or several float columns hold a series per row, `--column` reads
@@ -158,11 +159,18 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   names taken from file names are UTF-8 on every platform (v1.0.0 used the Windows code page).
 - `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run may use, by
   default the memory available (or a Linux cgroup's limit, which a SLURM job's memory request sets): the distance
-  matrix is mapped once its bytes exceed half of what the series leave of it, and `--mmap-threshold` (mapped from
-  50,000 series) is gone; with `dtwc_cl` a Parquet file over it streams through `clara`, as does, on the CPU, an Arrow
-  IPC file whose series RAM would hold outside the page cache (a mapped file's values are not streamed; on a GPU the
-  Arrow IPC stream is a `DeviceError`); Python's and MATLAB's `cluster()` hold every series at once; other inputs no
-  longer refuse it.
+  matrix is mapped once its bytes exceed half of what the series and the threads' DTW scratch leave of it, and
+  `--mmap-threshold` (mapped from 50,000 series) is gone; with `dtwc_cl` a Parquet file over it streams through
+  `clara`, as does, on the CPU, an Arrow IPC file whose series RAM would hold outside the page cache (a mapped file's
+  values are not streamed; on a GPU the Arrow IPC stream is a `DeviceError`); Python's and MATLAB's `cluster()` hold
+  every series at once; other inputs no longer refuse it. An explicit limit holds each thread's scratch too, the DTW
+  kernels' for the longest series a phase meets and the algorithms' tables (2 x 128 bytes a time step for the lanes:
+  25.6 MB a thread at 100,000 values, which 24 threads held unpriced, 2026-11-01): `dtwc_cl` and `dtwc::run` run each
+  phase on as many threads as fit (`-v` says how many and why; the same results), and refuse a limit that cannot hold
+  one thread's beside what the phase holds (`InvalidInput`, naming the bytes).
+- `dtwc::run` (so `dtwc::cluster` and `dtwc_cl`) gives its threads' scratch back when it returns or throws: a 24-thread
+  run on 100,000-value series kept 615 MB committed after it returned (2026-11-01). Tier-2 calls (a fill,
+  `Problem::cluster`, the algorithms) keep theirs, so a k-sweep allocates once.
 - A checkpoint save during a fill writes only the rows filled since the last one, in place, the first the whole
   matrix: a fill writes at most twice the matrix's bytes, where each save wrote it whole. Saves come every
   `--checkpoint-interval` rows rounded up to the lane width (16 rows of doubles where the lanes are 128 bytes).
@@ -173,7 +181,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   just before the pass assigns it, so a mapped file is read once (on a GPU, every series before any sample). Streamed
   (`--ram-limit`), the limit holds the sampled rows beside one decode and a sample's PAM, then the medoids, 8 bytes of
   labels and of nearest distance per row and sample, one decode and a batch of row groups, and after the stream every
-  series' name and label: a smaller limit is refused, naming the bytes, where it streamed before.
+  series' name and label, each beside the threads' DTW scratch: a smaller limit is refused, naming the bytes, where it
+  streamed before.
 - `.dtwm` files are version 5: a 64-byte header that adds the bytes of a value (8, or 4 for `matrix_dtype` float32)
   and the rows written. Version-4 files, from earlier 2.0 builds, are still read and mapped as float64; a file of the
   other `matrix_dtype` is refused (`InvalidInput`, naming the one that reads it), never converted.

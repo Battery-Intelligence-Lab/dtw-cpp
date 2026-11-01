@@ -32,7 +32,13 @@ namespace dtwc {
 ///        hot-path header light and free of an include cycle.
 void warn_if_single_threaded();
 
-/// @brief Returns the number of available OpenMP threads (1 if OpenMP is absent).
+namespace detail {
+/// The most threads the regions this thread starts may use (0: no cap), while a TeamCap lives.
+inline thread_local int team_cap = 0;
+} // namespace detail
+
+/// @brief Returns the number of available OpenMP threads (1 if OpenMP is absent),
+///        at most the calling thread's TeamCap.
 ///        On first call, emits a loud stderr warning if running single-threaded —
 ///        this is the chokepoint every compute path funnels through (via
 ///        omp_chunk_size / run), so no compute path is silently serial. The
@@ -41,12 +47,28 @@ inline int get_max_threads()
 {
 #ifdef _OPENMP
   warn_if_single_threaded();
-  return omp_get_max_threads();
+  const int available = omp_get_max_threads();
+  return detail::team_cap > 0 && detail::team_cap < available ? detail::team_cap : available;
 #else
   warn_if_single_threaded();
   return 1;
 #endif
 }
+
+/// @brief While it lives, the parallel regions the calling thread starts use at most `threads` threads (0: no cap):
+///        a phase's team within a memory limit (core::KernelTeam). Each region still takes its team in its own
+///        num_threads clause; nothing process-wide is set, and the cap before it comes back when it goes.
+class TeamCap
+{
+public:
+  explicit TeamCap(int threads) noexcept : previous_(detail::team_cap) { detail::team_cap = threads; }
+  ~TeamCap() { detail::team_cap = previous_; }
+  TeamCap(const TeamCap &) = delete;
+  TeamCap &operator=(const TeamCap &) = delete;
+
+private:
+  int previous_;
+};
 
 /// @brief Computes an optimal OpenMP dynamic chunk size at runtime.
 /// @param n_iterations Total loop iterations.

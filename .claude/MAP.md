@@ -130,13 +130,17 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
   (CUDA: int64 pair offset) instead of refusing. (`index_t` exists since Y3; public counts move to it in phase D.)
 - Cost and Cell are **template parameters**, never a `std::function` or a virtual per cell.
 - Orient so `n_short ≤ n_long` before every kernel call; buffers are sized on that.
-- `thread_local` scratch grows and never shrinks; a Cost must not re-enter its kernel.
+- `thread_local` scratch grows (exactly, registered with its thread: `core/thread_scratch.hpp`) and never shrinks
+  within a top-level call: `dtwc::run` gives every thread's back when it returns or throws, Tier-2 calls keep it.
+  `core::thread_scratch_bytes` is each buffer's growth rule, priced within an explicit limit, phase by phase
+  (`KernelTeam`, `TeamCap`). A Cost must not re-enter its kernel.
 - The dense matrix has **no locks or atomics**; fills partition pairs. `resize()` wipes to NaN, so it stays
   conditional.
 - Bind the distance function **once**; every guard lives in the builder, outside the closure (a throw inside
   an OpenMP region is UB). Series travel as spans.
 - No `omp critical`, mutex or atomic on a data path (DECISIONS §2 rule 6); region-local `num_threads`, never
-  `omp_set_num_threads`.
+  `omp_set_num_threads` (a phase's team within a limit is `TeamCap`, the calling thread's cap on the teams its regions
+  take, restored when it goes).
 - No `std::min({…})`, `std::max({…})` or `std::min_element` in a hot loop: the MSVC STL makes them library calls.
   `test_codegen_no_calls` fails a clang build in which any loop of a probe kernel calls anything (Apple clang's
   `memset_pattern16` idiom sat one loop out from the innermost); a sanitizer build does not register it.

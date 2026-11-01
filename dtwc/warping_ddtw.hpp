@@ -25,6 +25,7 @@
 
 #include "warping.hpp"
 #include "base/settings.hpp"
+#include "core/thread_scratch.hpp" // reserve_scratch
 
 #include <vector>
 #include <span>
@@ -182,7 +183,9 @@ data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                   int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
 {
-  thread_local std::vector<data_t> dx, dy;
+  thread_local std::vector<data_t> dx, dy; // grow exactly, never shrink within a call: core/thread_scratch.hpp
+  core::reserve_scratch(dx, x.size());
+  core::reserve_scratch(dy, y.size());
   derivative_transform_inplace(x, dx);
   derivative_transform_inplace(y, dy);
   return dtwBanded<data_t>(dx, dy, band, static_cast<data_t>(-1), metric);
@@ -204,7 +207,9 @@ template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
                   core::MetricType metric = core::MetricType::L1)
 {
-  thread_local std::vector<data_t> dx, dy;
+  thread_local std::vector<data_t> dx, dy; // grow exactly, never shrink within a call: core/thread_scratch.hpp
+  core::reserve_scratch(dx, x.size());
+  core::reserve_scratch(dy, y.size());
   derivative_transform_inplace(x, dx);
   derivative_transform_inplace(y, dy);
   return dtwFull_L<data_t>(dx, dy, static_cast<data_t>(-1), metric);

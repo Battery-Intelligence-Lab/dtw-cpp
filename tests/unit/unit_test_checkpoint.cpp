@@ -13,6 +13,7 @@
  */
 
 #include <dtwc.hpp>
+#include <core/dtw_dispatch.hpp> // thread_scratch_bytes
 
 #include "../support/scratch_directory.hpp"
 
@@ -394,9 +395,10 @@ TEST_CASE("A mapped fill of several slabs equals the fill in RAM, bit for bit", 
 TEST_CASE("A mapped fill's slabs count the series' values, unless a mapped file holds them", "[checkpoint][mmap][fill]")
 {
   // 64 series of 256 values, the last holding 2^67: its squared distances, about 2^134, are beyond a float, so a
-  // Float32 fill refuses the slab holding the last row and keeps the slabs before it. Within 150,000 bytes the
-  // series' 131,072 bytes of values leave slabs of about 2,400 bytes: several. A view whose values a mapped file holds
-  // counts its 46 bytes a row (the values are the page cache's), which leave one slab, refused whole.
+  // Float32 fill refuses the slab holding the last row and keeps the slabs before it. Within 150,000 bytes (beside
+  // the DTW kernels' scratch of the fill's threads, which the limit holds too) the series' 131,072 bytes of values
+  // leave slabs of about 2,400 bytes: several. A view whose values a mapped file holds counts its 46 bytes a row (the
+  // values are the page cache's), which leave one slab, refused whole.
   constexpr std::size_t n = 64, length = 256;
   const auto values = std::make_shared<std::vector<std::vector<double>>>(n);
   std::vector<std::string> names;
@@ -412,7 +414,8 @@ TEST_CASE("A mapped fill's slabs count the series' values, unless a mapped file 
     prob.set_data(std::move(data));
     prob.set_metric(core::MetricType::SquaredL2);
     prob.set_matrix_dtype(core::Precision::Float32);
-    prob.set_ram_limit(150000);
+    prob.set_ram_limit(150000 + static_cast<std::size_t>(dtwc::get_max_threads())
+                                  * core::thread_scratch_bytes(prob.distance(), length, core::Precision::Float64));
     prob.use_mmap_distance_matrix(scratch.path / "slab_rule.dtwm");
     REQUIRE_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
     return prob.distance_matrix().count_computed();

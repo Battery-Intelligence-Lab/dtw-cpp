@@ -74,6 +74,7 @@ public:
   int num_row_groups() const;   ///< the record batches
   bool is_f32() const;          ///< whether the values are Float32
   std::size_t ndim() const;     ///< features a time step: the schema's metadata 'ndim', else 1
+  std::size_t num_values() const; ///< every series' values, as the walk declares them
 
   /// What read_arrow_ipc(path, dtype) holds at once outside the page cache: a view's detail::view_series_bytes a
   /// series, the batches it decodes and the scratch of the threads decoding them, each batch's objects, without llfio

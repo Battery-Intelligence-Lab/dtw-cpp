@@ -1561,6 +1561,8 @@ bool IpcFile::is_f32() const { return state_->walk.columns.f32; }
 
 std::size_t IpcFile::ndim() const { return state_->walk.columns.ndim; }
 
+std::size_t IpcFile::num_values() const { return static_cast<std::size_t>(state_->values); }
+
 bool IpcFile::streams(core::Precision dtype) const
 {
   return !state_->mapped() || state_->decoded > 0 || (dtype == core::Precision::Float32) != is_f32();

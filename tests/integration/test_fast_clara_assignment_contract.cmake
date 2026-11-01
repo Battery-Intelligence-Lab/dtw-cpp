@@ -117,11 +117,27 @@ function(run_f13_cli precision mode output_dir dtype expected_cost)
         --verbose
         --dtype "${dtype}"
         --variant standard)
-    # 4400 bytes hold the stream (4,206 in float64: the medoids, one sample's
-    # labels and nearest distances, one decode of the 8 rows, one row group),
-    # below the in-RAM estimate with CLARA's pass (4,638), so the run streams.
+    # 4400 bytes hold the stream without the threads' scratch (4,206 in float64:
+    # the medoids, one sample's labels and nearest distances, one decode of the 8
+    # rows, one row group), below the in-RAM estimate with CLARA's pass (4,638).
+    # The stream holds one thread's DTW scratch beside them, more than that: at
+    # 4400 its refusal names the least limit it takes, which the run streams within.
     if(mode STREQUAL "stream")
-        list(APPEND args --ram-limit 4400)
+        execute_process(
+            COMMAND "${cli_path}" ${args} --ram-limit 4400
+            RESULT_VARIABLE probe_result
+            OUTPUT_VARIABLE probe_stdout
+            ERROR_VARIABLE probe_stderr
+            ENCODING UTF-8)
+        string(REGEX MATCH "one thread's DTW scratch, ([0-9]+) bytes [^\n]* beside the ([0-9]+) bytes"
+               least_match "${probe_stderr}")
+        if("${probe_result}" STREQUAL "0" OR NOT least_match)
+            message(FATAL_ERROR
+                "F13 ${precision}/stream: --ram-limit 4400 exit=${probe_result}, not the refusal naming the least "
+                "limit\nstdout:\n${probe_stdout}\nstderr:\n${probe_stderr}")
+        endif()
+        math(EXPR least_limit "${CMAKE_MATCH_1} + ${CMAKE_MATCH_2}")
+        list(APPEND args --ram-limit ${least_limit})
     endif()
 
     execute_process(

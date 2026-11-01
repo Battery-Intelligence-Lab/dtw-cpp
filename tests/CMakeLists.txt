@@ -89,6 +89,10 @@ dtwc_add_test(NAME test_problem_api_2_0 SOURCE ${_dtwc_test_source_test_problem_
 dtwc_add_test(NAME unit_test_nearest_medoid_assignment SOURCE ${_dtwc_test_source_unit_test_nearest_medoid_assignment}
     ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4)
 
+# The threads' scratch: a team of 4, shrunk within --ram-limit, given back by dtwc::run.
+dtwc_add_test(NAME test_thread_scratch SOURCE ${_dtwc_test_source_test_thread_scratch}
+    ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4 ${_dtwc_seq_skip})
+
 # Native distance-matrix CSV bytes; mmap is a required subject
 # only in a build that publishes it.
 if(_dtwc_has_mmap)

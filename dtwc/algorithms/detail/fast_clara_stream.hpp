@@ -11,10 +11,14 @@
 #include "fast_clara_assign.hpp"
 #include "fast_clara_plan.hpp"
 #include "../fast_clara.hpp"
+#include "../fast_pam.hpp" // fast_pam_thread_bytes
 #include "../../Data.hpp"
 #include "../../Problem.hpp"
 #include "../../base/error.hpp"
 #include "../../base/missing_utils.hpp"
+#include "../../base/parallelisation.hpp" // TeamCap
+#include "../../core/dtw_dispatch.hpp"    // thread_scratch_bytes
+#include "../../core/thread_scratch.hpp"  // KernelTeam
 #include "../../core/medoid_assignment_policy.hpp"
 #include "../../warping.hpp" // detail::all_usable, refuse_unusable
 
@@ -147,10 +151,15 @@ private:
  * `prob` holds no series; its distance takes the series' features a time step from its data (an empty Data of the
  * file's ndim, for a file of more than one). Static, so each including file's instantiation is local to it, as it was
  * in fast_clara_parquet.cpp: GCC inlines the assignment into its caller only then (2026-11-01).
+ *
+ * The threads' scratch (`team`, within an explicit limit): each thread's DTW kernels' for the longest series it meets,
+ * FasterPAM's and the assignment's tables, kept to the end of the call. The PAMs' team is the most that fit beside the
+ * PAMs, the pass beside one piece (the medoids at most `slots` of the union's longest series) and its end; a block of
+ * longer series than any before fits the assignment's team again, before it is assigned, beside the blocks in flight.
  */
 template <bool F32, typename Reader>
 static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptions &opts, const Reader &reader,
-                                                 const ClaraPlan &plan)
+                                                 const ClaraPlan &plan, core::KernelTeam &team)
 {
   validate_streaming_clara_plan(plan, "fast_clara");
   if constexpr (Reader::decodes_with_team)
@@ -177,6 +186,23 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
 
   const std::vector<int64_t> rows = sample_union(samples);
   const size_t open = reader.open_bytes(); // held beside every phase
+
+  // What each thread holds of scratch for series of up to `length` time steps: the DTW kernels' where the CPU runs
+  // them (a GPU fills the samples' matrices; CUDA's assignment is its own), FasterPAM's swap table, the assignment's.
+  const auto precision = F32 ? core::Precision::Float32 : core::Precision::Float64;
+  const std::size_t slots = samples.size() * static_cast<std::size_t>(opts.n_clusters);
+#ifdef DTWC_HAS_CUDA
+  const bool cpu_assignment = F32 || prob.device().first != Device::GPU;
+#else
+  const bool cpu_assignment = true; // Metal has no kernel for the assignment
+#endif
+  const bool cpu_kernels = cpu_assignment || prob.device().first != Device::GPU;
+  const auto per_thread = [&](std::size_t length) {
+    return (cpu_kernels ? core::thread_scratch_bytes(prob.distance(), length, precision) : 0)
+           + dtwc::detail::fast_pam_thread_bytes(opts.n_clusters)
+           + (cpu_assignment ? clara_assign_thread_bytes(slots, precision) : 0);
+  };
+  std::size_t longest = 0; // time steps: of the union's series, then of every block's so far
 
   std::vector<index_t> medoids; // sample s's medoid m is slot s * k + m
   std::vector<core::ClusteringResult> pams;
@@ -213,6 +239,16 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
                          + " sampled series, " + std::to_string(pam_bytes)
                          + " for a sample's copy and its distance matrix (sample_size = " + std::to_string(s)
                          + "); raise the limit, or lower sample_size.");
+    // The PAMs' threads keep their scratch for the union's longest series to the end: their team fits beside the
+    // PAMs, the pass's least (one piece, the medoids at most `slots` of those series) and its end.
+    for (std::size_t i = 0; i < rows.size(); ++i) longest = std::max(longest, pool.series_flat_size(i) / pool.ndim);
+    const size_t medoids_most = Reader::series_bytes(slots * longest * pool.ndim, slots, F32);
+    const size_t pass_least = medoids_most + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes()
+                              + reader.largest_row_group_bytes(F32);
+    const size_t end_least = open + medoids_most + samples.size() * n_points * sizeof(index_t)
+                             + n_points * sizeof(index_t) + n_points / 8;
+    const size_t rest = std::max(std::max(open + union_bytes + pam_bytes, pass_least), end_least);
+    const TeamCap pam_team(team.fit("FastCLARA's PAMs", rest, per_thread(longest), longest));
     pams = clara_pams(prob, opts, pool, samples, positions, true, medoids);
     medoid_data = clara_sample(pool, positions_in(rows, medoids), true);
   }
@@ -222,19 +258,21 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   std::size_t medoid_values = 0;
   for (std::size_t j = 0; j < medoids.size(); ++j) medoid_values += medoid_data.series_flat_size(j);
   const size_t medoid_bytes = Reader::series_bytes(medoid_values, medoids.size(), F32);
-  const size_t fixed = medoid_bytes + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes();
+  const size_t fixed_rest = medoid_bytes + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes();
   const size_t group = reader.largest_row_group_bytes(F32);
   // After the pass the Problem copies the winner's labels (set_result) beside every sample's, the file still open.
-  const size_t finish = open + medoid_bytes + samples.size() * n_points * sizeof(index_t) + n_points * sizeof(index_t)
-                      + n_points / 8;
+  const size_t finish_rest = open + medoid_bytes + samples.size() * n_points * sizeof(index_t)
+                             + n_points * sizeof(index_t) + n_points / 8;
+  // The threads' scratch, held to the end (team; 0 under the automatic budget).
+  const size_t fixed = fixed_rest + team.priced(), finish = finish_rest + team.priced();
   if (std::max(fixed + group, finish) > limit)
     throw InvalidInput(
       "fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(limit) + " cannot hold the pass over the "
       "file, which needs " + std::to_string(std::max(fixed + group, finish)) + " bytes: " + std::to_string(fixed)
       + " for the medoids' series, every sample's labels and nearest distances (n_samples = "
       + std::to_string(samples.size()) + ", k = " + std::to_string(opts.n_clusters) + ", "
-      + std::to_string(n_points) + " rows) and decoding, " + std::to_string(group) + " for one " + Reader::piece
-      + "'s series, " + std::to_string(finish) + " at its end with the result's labels"
+      + std::to_string(n_points) + " rows), decoding and the threads' DTW scratch, " + std::to_string(group)
+      + " for one " + Reader::piece + "'s series, " + std::to_string(finish) + " at its end with the result's labels"
       + (open != 0 ? " and the open file" : "") + "; raise the limit, or rewrite the file with smaller "
       + Reader::pieces + ".");
   // A batch decoding beside the one assigned; a team decodes in turn with the assignment.
@@ -281,6 +319,17 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
       if (rg + per_batch < total_rg)
         next = std::async(policy, decode, rg + per_batch, std::min(per_batch, total_rg - rg - per_batch),
                           first + batch.size());
+      // A block of longer series than any before grows the assignment's threads' scratch: their team fitted again,
+      // beside the blocks in flight and the pass's end, before it is assigned.
+      std::size_t block_longest = 0;
+      for (std::size_t i = 0; i < static_cast<std::size_t>(batch.size()); ++i)
+        block_longest = std::max(block_longest, batch.series_flat_size(i) / batch.ndim);
+      if (block_longest > longest) {
+        longest = block_longest;
+        const size_t blocks = (overlap ? 2 : 1) * static_cast<size_t>(per_batch) * group;
+        team.fit("FastCLARA's assignment", std::max(fixed_rest + blocks, finish_rest), per_thread(longest), longest);
+      }
+      const TeamCap assignment_team(team.threads());
       // The batch is loaded: the assignment reads it, never the reader.
 #ifdef DTWC_HAS_CUDA
       if (on_gpu)
@@ -307,6 +356,16 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   auto result = clara_winner(pams, medoids, labels, costs);
   prob.set_result(result);
   return result;
+}
+
+/// fast_clara_chunked, its threads' scratch within the Problem's explicit limit (Problem::ram_limit, which --ram-limit
+/// sets: ram_limit_bytes then); under the automatic budget (0) no team is fitted, as nothing is refused for it.
+template <bool F32, typename Reader>
+static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptions &opts, const Reader &reader,
+                                                 const ClaraPlan &plan)
+{
+  core::KernelTeam team(prob.ram_limit() != 0 ? opts.ram_limit_bytes : 0, prob.verbose());
+  return fast_clara_chunked<F32>(prob, opts, reader, plan, team);
 }
 
 } // namespace dtwc::algorithms::detail

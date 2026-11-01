@@ -275,6 +275,9 @@ public:
   /// Total number of rows across all row groups.
   int64_t total_rows() const { return total_rows_; }
 
+  /// Every row group's leaf values: the series' values, as the metadata counts them.
+  size_t total_value_count() const { return total_value_count_; }
+
   /// Whether each physical row is one list-encoded time series.
   bool is_list_layout() const { return layout_.kind == detail::ParquetSeriesLayout::Kind::List; }
 

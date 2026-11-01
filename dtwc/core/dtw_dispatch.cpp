@@ -20,6 +20,7 @@
 #include "dtw_options.hpp"           // DistanceConfig, variant_names
 #include "msm.hpp"                   // msm_distance
 #include "public_distance.hpp"       // normalize_public_distance
+#include "thread_scratch.hpp"        // reserve_scratch
 #include "twe.hpp"                   // twe_distance
 #include "../base/error.hpp"              // InvalidInput
 
@@ -72,7 +73,10 @@ auto make_interpolate(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   return [band = c.band, metric = c.metric](std::span<const T> x, std::span<const T> y) -> double {
+    // Room for each side's filled copy, gappy or not: registered scratch (thread_scratch.hpp), grown exactly.
     thread_local std::vector<T> x_buffer, y_buffer;
+    reserve_scratch(x_buffer, x.size());
+    reserve_scratch(y_buffer, y.size());
     return normalize_public_distance(dtwBanded<T>(interpolate_linear_into(x, x_buffer),
                                                   interpolate_linear_into(y, y_buffer), band, T(-1), metric));
   };
@@ -138,7 +142,9 @@ auto make_ddtw(const DistanceConfig &c)
   const MetricType metric = c.metric;
   if (c.ndim > 1) {
     return [band, metric, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
-      thread_local std::vector<T> dx, dy;
+      thread_local std::vector<T> dx, dy; // registered scratch (thread_scratch.hpp), grown exactly
+      reserve_scratch(dx, x.size());
+      reserve_scratch(dy, y.size());
       derivative_transform_mv_inplace(x, ndim, dx);
       derivative_transform_mv_inplace(y, ndim, dy);
       return normalize_public_distance(dtwBanded_mv<T>(
@@ -385,6 +391,48 @@ resolve_dtw_fn(const DistanceConfig &c, const Data &data)
   case DTWVariant::Standard: return make_standard<T>(c);
   }
   throw std::logic_error("resolve_dtw_fn: unreachable DTWVariant");
+}
+
+// ----------------------------------------------------------------------------
+// thread_scratch_bytes: each buffer's growth rule, the order resolve_dtw_fn takes
+// ----------------------------------------------------------------------------
+
+namespace {
+
+template <typename T>
+std::size_t scratch_bytes(const DistanceConfig &c, std::size_t length)
+{
+  const std::size_t value = sizeof(T), values = length * c.ndim;
+  // run_dtw (dtw_kernel.hpp): without a band dtw_linear's column of the shorter series; under one dtw_linear's only for
+  // a pair it covers whole (the longer series at most band + 1 long, or one of length 1), dtw_banded's of the longer.
+  std::size_t dp = length;
+  if (c.band >= 0 && length > static_cast<std::size_t>(c.band) + 1) dp = static_cast<std::size_t>(c.band) + 1 + length;
+  dp *= value;
+  if (c.variant.mv_mode == MVMode::Independent && c.ndim > 1) return 2 * length * value + dp; // cx, cy (warping.hpp)
+  switch (c.missing) {
+  case MissingStrategy::ZeroCost:
+  case MissingStrategy::AROW: return dp;
+  case MissingStrategy::Interpolate: return 2 * length * value + dp; // x_buffer, y_buffer (make_interpolate)
+  case MissingStrategy::Error: break;
+  }
+  switch (c.variant.variant) {
+  case DTWVariant::DDTW: return 2 * values * value + dp; // dx, dy (warping_ddtw.hpp; make_ddtw's, multivariate)
+  case DTWVariant::WDTW: return length * value + dp;     // cached_w: max_dev + 1 weights (warping_wdtw.hpp)
+  case DTWVariant::ADTW: return dp;
+  case DTWVariant::SoftDTW: return length * value;       // dtw_kernel_linear's column, no band
+  case DTWVariant::MSM: return 2 * length * value;       // prev_buf, curr_buf (msm.hpp)
+  case DTWVariant::TWE: return length == 0 ? 0 : 2 * (length + 1) * value; // prev_buf, curr_buf, padded (twe.hpp)
+  case DTWVariant::Standard: break;
+  }
+  // The lanes (resolve_dtw_block_fn): y_buf and s_buf, a row of dtw_lanes<T> values a time step each.
+  return (c.ndim == 1 ? 2 * length * dtw_lanes<T> * value : 0) + dp;
+}
+
+} // namespace
+
+std::size_t thread_scratch_bytes(const DistanceConfig &config, std::size_t length, Precision precision)
+{
+  return precision == Precision::Float32 ? scratch_bytes<float>(config, length) : scratch_bytes<data_t>(config, length);
 }
 
 // Explicit instantiations.

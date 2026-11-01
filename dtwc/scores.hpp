@@ -16,6 +16,7 @@
 
 #include "base/settings.hpp" // index_t
 
+#include <cstddef>
 #include <string_view>
 #include <vector>
 
@@ -39,6 +40,12 @@ namespace scores {
                        const std::vector<index_t> &labels_pred);
   double normalized_mutual_info(const std::vector<index_t> &labels_true,
                                 const std::vector<index_t> &labels_pred);
+
+  namespace detail {
+  /// The bytes of silhouette()'s sums a thread holds for k clusters (one per cluster and point of a group of
+  /// core::group_rows): what a planner prices beside the DTW kernels' scratch.
+  std::size_t silhouette_thread_bytes(index_t k);
+  } // namespace detail
 
 } // namespace scores
 
