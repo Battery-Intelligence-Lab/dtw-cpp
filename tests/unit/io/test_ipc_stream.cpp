@@ -127,6 +127,15 @@ std::filesystem::path undecodable(const char *name)
   return path;
 }
 
+/// One heap block of `bytes`, as io::IpcFile prices it (measured on Windows' heap, 2026-11-01): up to 16,384 bytes an
+/// eighth and 18 bytes more, to 262,128 a 64th and 64, above them its page tables (1/512) and 4,700 bytes; none for
+/// none.
+std::size_t heap(std::size_t bytes)
+{
+  if (bytes == 0) return 0;
+  return bytes + (bytes <= 16384 ? bytes / 8 + 18 : bytes <= 262128 ? bytes / 64 + 64 : bytes / 512 + 4700);
+}
+
 dtwc::Config clara_config(const std::filesystem::path &path)
 {
   dtwc::Config config;
@@ -360,6 +369,34 @@ TEST_CASE("Arrow IPC: the stream refuses, before any record batch is decoded, a 
             + "record batch of their rows read whole and its rows copied need " + std::to_string(member) + " more, "
             + std::to_string(need) + " in all, exceeding --ram-limit=" + std::to_string(need - 1)
             + "; raise the limit"));
+
+  // A sample's PAM beside the sampled series and what the open file holds (its walk): one sample of 200 of
+  // clara_256.arrow's 256 rows, read within the limit, a byte short of its copy and matrix beside them.
+  dtwc::algorithms::CLARAOptions options;
+  options.n_clusters = 3;
+  options.sample_size = 200;
+  options.n_samples = 1;
+  options.random_seed = 42;
+  const dtwc::io::IpcFile plain(fixture("clara_256.arrow"));
+  const auto plan = dtwc::algorithms::detail::resolve_clara_plan(plain.num_rows(), options, "fast_clara");
+  const auto sampled = dtwc::algorithms::detail::sample_union(
+    dtwc::algorithms::detail::draw_clara_samples(plan.n_points, plan.sample_size, options));
+  REQUIRE(sampled.size() == 200);
+  const dtwc::Data all = dtwc::read_data(fixture("clara_256.arrow"));
+  std::size_t values = 0;
+  for (const auto row : sampled) values += all.series_flat_size(static_cast<std::size_t>(row));
+  const std::size_t union_bytes = dtwc::io::IpcFile::series_bytes(values, 200, false);
+  const std::size_t pam = union_bytes + dtwc::core::packed_size(200) * sizeof(double);
+  const std::size_t needs = plain.open_bytes() + union_bytes + pam;
+  dtwc::Problem settings_only{ "pam" };
+  CHECK_THROWS_MATCHES(streamed(settings_only, options, fixture("clara_256.arrow"), Precision::Float64, needs - 1),
+                       dtwc::InvalidInput,
+                       Message("fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(needs - 1)
+                               + " cannot hold a sample's PAM beside the samples' series, which needs "
+                               + std::to_string(needs) + " bytes: " + std::to_string(plain.open_bytes())
+                               + " the open file holds, " + std::to_string(union_bytes) + " for the 200 sampled "
+                               + "series, " + std::to_string(pam) + " for a sample's copy and its distance matrix "
+                               + "(sample_size = 200); raise the limit, or lower sample_size."));
 }
 
 TEST_CASE("Arrow IPC: the planner prices a mapped view at its views, and the file read without llfio whole",
@@ -368,30 +405,38 @@ TEST_CASE("Arrow IPC: the planner prices a mapped view at its views, and the fil
   using dtwc::io::IpcFile;
   // 256 rows in eight record batches of four fields (the root, 'data' and its values, 'name'): in RAM a view's 46 bytes
   // a row (its values the page cache's), each batch's objects, the walk's schema and one reader's decoders; the
-  // compressed file's decoded batches beside them; without llfio the whole file.
+  // compressed file's decoded batches beside them; without llfio the whole file, one heap block.
   const IpcFile plain(fixture("clara_256.arrow")), lz4(fixture("clara_256_lz4.arrow")),
     zstd(fixture("clara_256_zstd.arrow"));
   const auto size = static_cast<std::size_t>(std::filesystem::file_size(fixture("clara_256.arrow")));
   const std::size_t decoders = 4 * IpcFile::field_bytes;
-  const std::size_t resident = 256 * dtwc::detail::view_series_bytes + 8 * IpcFile::batch_object_bytes
+  const std::size_t resident = 256 * dtwc::detail::view_series_bytes + 8 * IpcFile::resident_batch_bytes
                                + 4 * IpcFile::schema_field_bytes + decoders;
   CHECK(plain.reader_bytes() == decoders);
 #if defined(DTWC_HAS_MMAP)
   CHECK(plain.resident_bytes(Precision::Float64, false) == resident);
   CHECK_FALSE(plain.streams(Precision::Float64));
-  // A mapped record batch of 3 rows holds their spans and name views twice (16 bytes each) and a made name each
-  // (series_<i>, 8 bytes), its objects, and the two names its check copies (made, with the allocator's header).
+  // A mapped record batch of 3 rows holds their spans and name views (16 bytes each), its made names (series_<i>, 8
+  // bytes each) and the rows it marks unnamed, each a heap block; its share of the block's spans and views; its
+  // objects; the two names its check copies, made, within a string's own buffer.
   CHECK(IpcFile(fixture("ipc_no_name.arrow")).largest_row_group_bytes(false)
-        == 3 * (4 * 16 + 8) + IpcFile::batch_object_bytes + 2 * (8 + 16));
+        == 2 * heap(3 * 16) + heap(3 * 8) + heap(8) + 2 * 3 * 16 + IpcFile::batch_object_bytes);
+  // A batch of 32 named rows (r<i>, every seventh null): its two copied names at most its longest, which the walk of
+  // the mapping read from its offsets, or series_<i>, within a string's own buffer as well.
+  CHECK(plain.largest_row_group_bytes(false)
+        == 2 * heap(32 * 16) + heap(32 * 10) + heap(8) + 2 * (32 * 16 + 1) + IpcFile::batch_object_bytes);
+  // A batch whose 'name' column holds no validity buffer (x, y, z): no name is null, so none is made, none priced.
+  CHECK(IpcFile(fixture("ipc_float32.arrow")).largest_row_group_bytes(true)
+        == 2 * heap(3 * 16) + heap(8) + 2 * 3 * 16 + IpcFile::batch_object_bytes);
 #else
-  CHECK(plain.resident_bytes(Precision::Float64, false) == resident + size);
+  CHECK(plain.resident_bytes(Precision::Float64, false) == resident + heap(size));
   CHECK(plain.streams(Precision::Float64));
 #endif
-  // A reading thread's codec scratch, from each frame's descriptor: pyarrow's LZ4 frames of one block are independent
-  // blocks of 64 KB (LZ4F's context, 304 bytes; its 64 KB in, with its checksum, and out, each with the allocator's
-  // header); zstd's context.
-  CHECK(lz4.reader_bytes() == decoders + 304 + (65536 + 4 + 16) + (65536 + 16));
-  CHECK(zstd.reader_bytes() == decoders + 95968 + 16);
+  // A reading thread's codec scratch, from each frame's descriptor, each a heap block: pyarrow's LZ4 frames of one
+  // block are independent blocks of 64 KB (LZ4F's context, 288 bytes; its 64 KB in, with its checksum, and out);
+  // zstd's context.
+  CHECK(lz4.reader_bytes() == decoders + heap(288) + heap(65536 + 4) + heap(65536));
+  CHECK(zstd.reader_bytes() == decoders + heap(95968));
   // The same frames declaring linked blocks of 4 MB (FLG 0x40, BD 0x70; walked, never decoded): 128 KB more out.
   auto big = bytes_of(fixture("clara_256_lz4.arrow"));
   const std::byte magic[] = { std::byte{ 0x04 }, std::byte{ 0x22 }, std::byte{ 0x4D }, std::byte{ 0x18 } };
@@ -404,12 +449,13 @@ TEST_CASE("Arrow IPC: the planner prices a mapped view at its views, and the fil
   REQUIRE(frames == 40); // eight batches of five buffers
   write(scratch() / "blocks_4mb.arrow", big);
   CHECK(IpcFile(scratch() / "blocks_4mb.arrow").reader_bytes()
-        == decoders + 304 + (4194304 + 4 + 16) + (4194304 + 131072 + 16));
+        == decoders + heap(288) + heap(4194304 + 4) + heap(4194304 + 131072));
   // read_arrow_ipc decodes the eight LZ4 batches with a thread each, up to the team, each its reader's scratch, and
-  // each batch's view of the schema's four fields lasts the read.
+  // each batch's decoded columns' objects and its view of the schema's four fields last the read.
   const auto readers = static_cast<std::size_t>(std::min(8, dtwc::get_max_threads()));
   CHECK(lz4.resident_bytes(Precision::Float64, false)
-        > resident + readers * lz4.reader_bytes() - decoders + 8 * 4 * IpcFile::view_field_bytes);
+        > resident + readers * lz4.reader_bytes() - decoders
+            + 8 * (IpcFile::resident_data_bytes + IpcFile::resident_name_bytes + 4 * IpcFile::view_field_bytes));
   CHECK(plain.streams(Precision::Float32)); // its copy in Float32
   CHECK(lz4.streams(Precision::Float64));
   CHECK(lz4.resident_bytes(Precision::Float64, false) > 256 * dtwc::detail::view_series_bytes);
@@ -451,7 +497,24 @@ TEST_CASE("Arrow IPC: the planner prices a mapped view at its views, and the fil
                        MessageMatches(StartsWith("Arrow IPC input needs approximately ")
                                       && EndsWith("; " + mapped + ", whose copy FastCLARA reads a record batch at a "
                                                   "time.")));
+  // A sample of every series streams no copy either: the other precision is then no way out, by CLARA or for PAM.
+  view.sample_size = 256;
+  const std::string held = "its values are mapped where they lie in the file, and a mapped file's values are not "
+                           "streamed: the views of its 256 series are held at once. Raise --ram-limit.";
+  for (const auto method : { dtwc::Method::CLARA, dtwc::Method::PAM }) {
+    view.method = method;
+    CHECK_THROWS_MATCHES(dtwc::run(view), dtwc::InvalidInput,
+                         MessageMatches(StartsWith("Arrow IPC input needs approximately ") && EndsWith("; " + held)));
+  }
 #endif
+  // Nor is CLARA for a file that streams, where its sample would hold every series.
+  config.sample_size = 256;
+  CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput,
+                       Message("Arrow IPC input needs approximately "
+                               + std::to_string(lz4.resident_bytes(Precision::Float64, false))
+                               + " bytes of resident series storage, exceeding --ram-limit=16000; method 'pam' cannot "
+                                 "stream it. Raise --ram-limit."));
+  config.sample_size = 8;
   // CLARA with more clusters than series is refused as for every input, before its plan.
   config.method = dtwc::Method::CLARA;
   config.ram_limit = 0;

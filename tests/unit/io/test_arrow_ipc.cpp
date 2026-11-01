@@ -456,8 +456,9 @@ TEST_CASE("Arrow IPC: a compressed batch's offsets and lengths are checked befor
                                                                               { 3, 0, std::int64_t{ 1 } << 37, 0 }),
                                                         { 48 }, { std::int64_t{ 1 } << 40 })),
                        dtwc::IOError,
-                       MessageMatches(StartsWith("the Arrow IPC file's batches that cannot be viewed declare ")
-                                      && ContainsSubstring(" decoded bytes, more than the ")));
+                       MessageMatches(StartsWith("the Arrow IPC file's batches that cannot be viewed declare buffers "
+                                                 "that take ")
+                                      && ContainsSubstring(" bytes decoded, more than the ")));
 #endif
 }
 
@@ -489,6 +490,39 @@ TEST_CASE("Arrow IPC: the series are views of the bytes, or of the decoded batch
   CHECK(released.expired());
   CHECK(series_of(decoded) == series_of(dtwc::read_data(fixture("ipc_batches.arrow"))));
   CHECK(names_of(decoded) == Names{ "a", "b", "series_2", "d", "series_4", "f" });
+}
+
+TEST_CASE("Arrow IPC: a read's series are mapped only where a file's mapping holds all their values",
+          "[io][arrow][ram]")
+{
+  // An uncompressed file is mapped with llfio (every series a view of the mapping: the page cache's) and read into one
+  // buffer without it; a compressed file's series are views of its decoded batches, a copy in the other precision owns
+  // its values: neither is mapped. A mapping's bytes handed to the reader (`mapped`) stay mapped where every batch is
+  // viewed in them: not where one batch is decoded, and not where they are not 8-aligned (read from an aligned copy).
+#if defined(DTWC_HAS_MMAP)
+  CHECK(dtwc::io::read_arrow_ipc(fixture("clara_256.arrow")).is_mapped());
+#else
+  CHECK_FALSE(dtwc::io::read_arrow_ipc(fixture("clara_256.arrow")).is_mapped());
+#endif
+  CHECK_FALSE(dtwc::io::read_arrow_ipc(fixture("clara_256_lz4.arrow")).is_mapped());
+  CHECK_FALSE(dtwc::io::read_arrow_ipc(fixture("clara_256.arrow"), Precision::Float32).is_mapped());
+  const auto plain = bytes_of("clara_256.arrow"), lz4 = bytes_of("clara_256_lz4.arrow");
+  CHECK(dtwc::io::detail::read_ipc(plain, nullptr, Precision::Float64, true).is_mapped());
+  CHECK_FALSE(dtwc::io::detail::read_ipc(plain, nullptr, Precision::Float64, false).is_mapped());
+  CHECK_FALSE(dtwc::io::detail::read_ipc(lz4, nullptr, Precision::Float64, true).is_mapped());
+  // ipc_batches.arrow's second batch between ipc_lz4_batches.arrow's first and last (as the next case builds it).
+  const auto lz4_batches = bytes_of("ipc_lz4_batches.arrow"), batches = bytes_of("ipc_batches.arrow");
+  std::vector<std::byte> mixed(lz4_batches.begin() + 8, lz4_batches.begin() + 648);
+  mixed.insert(mixed.end(), batches.begin() + 544, batches.begin() + 832);
+  mixed.insert(mixed.end(), lz4_batches.begin() + 1040, lz4_batches.begin() + 1512);
+  const auto one_decoded = dtwc::io::detail::read_ipc(mixed, nullptr, Precision::Float64, true);
+  REQUIRE(one_decoded.size() == 6);
+  CHECK_FALSE(one_decoded.is_mapped());
+  std::vector<std::byte> shifted(plain.size() + 4);
+  std::copy(plain.begin(), plain.end(), shifted.begin() + 4);
+  CHECK_FALSE(
+    dtwc::io::detail::read_ipc(std::span<const std::byte>(shifted).subspan(4), nullptr, Precision::Float64, true)
+      .is_mapped());
 }
 
 TEST_CASE("Arrow IPC: viewed and decoded batches of one stream read together", "[io][arrow]")

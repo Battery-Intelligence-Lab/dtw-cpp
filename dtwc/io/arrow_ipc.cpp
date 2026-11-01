@@ -477,41 +477,62 @@ std::int64_t needed_bytes(const ArrowArrayView *view, int i)
   return view->storage_type == NANOARROW_TYPE_STRING ? std::int64_t{ std::numeric_limits<std::int32_t>::max() } : -1;
 }
 
+/// What one heap block of `bytes` bytes adds to them in private bytes (0 for none), measured 2026-11-01 on Windows' heap (the
+/// UCRT's process heap, clang 21; malloc of 1 byte to 100 MB, many blocks of each size): up to 16,384 bytes its
+/// bucket's rounding and its header, at most an eighth and 18 bytes (10.04 % at 10,000 bytes and 17.6 bytes at 1, the
+/// most measured); to 262,128 its place in the heap's segments, at most a 64th and 64 bytes (1/70 at 255,000 the most);
+/// above, a block of its own pages: their page tables (8 bytes a 4,096-byte page) and at most 4,700 bytes more, its last
+/// page with the heap's header (4,624 the most measured, 262,143 bytes to 100 MB).
+std::uint64_t heap_block_added(std::uint64_t bytes)
+{
+  if (bytes == 0) return 0;
+  return bytes <= 16384 ? bytes / 8 + 18 : bytes <= 262128 ? bytes / 64 + 64 : bytes / 512 + 4700;
+}
+
+/// A heap block of `bytes` a file declares (heap_block_added), at most INT64_MAX.
+std::int64_t heap_block_bytes(std::int64_t bytes)
+{
+  return bytes <= 0 ? 0 : sum(bytes, static_cast<std::int64_t>(heap_block_added(static_cast<std::uint64_t>(bytes))));
+}
+
 /// What the codecs allocate to decode one buffer beside its decoded bytes, each call freeing it before the next (read
-/// in lz4 1.10.0's and zstd 1.5.7's sources, measured 2026-11-01): zstd's decompression context, which ZSTD_decompress
-/// makes and frees a call (ZSTD_HEAPMODE, 1 by default; ZSTD_estimateDCtxSize()), and LZ4F's context (lz4frame.c's
-/// LZ4F_dctx_s, 288 bytes on a 64-bit target), each with the allocator's 16-byte header.
-constexpr std::int64_t zstd_context_bytes = 95968 + 16, lz4_context_bytes = 288 + 16;
+/// in lz4 1.10.0's and zstd 1.5.7's sources, measured 2026-11-01), each a heap block: zstd's decompression context,
+/// which ZSTD_decompress makes and frees a call (ZSTD_HEAPMODE, 1 by default; ZSTD_estimateDCtxSize()), and LZ4F's
+/// context (lz4frame.c's LZ4F_dctx_s, 288 bytes on a 64-bit target).
+constexpr std::int64_t zstd_context_bytes = 95968, lz4_context_bytes = 288;
 
 /// The scratch nanoarrow's codec holds while it decodes a buffer whose frame begins with `frame` (its bytes after the
-/// 8-byte declared length): zstd's context; LZ4F's context and, for a frame descriptor LZ4F_decodeHeader takes (the
-/// magic, version 01, the reserved bits clear, a block size ID of 4 to 7), its two block buffers (lz4frame.c,
-/// dstage_init): in, the frame's largest block (BD: 64 KB, 256 KB, 1 MB or 4 MB) and its 4-byte checksum; out, the
-/// block and 128 KB more for linked blocks (FLG's block independence clear), each with the allocator's header.
+/// 8-byte declared length), as heap blocks: zstd's context; LZ4F's context and, for a frame descriptor
+/// LZ4F_decodeHeader takes (the magic, version 01, the reserved bits clear, a block size ID of 4 to 7), its two block
+/// buffers (lz4frame.c, dstage_init): in, the frame's largest block (BD: 64 KB, 256 KB, 1 MB or 4 MB) and its 4-byte
+/// checksum; out, the block and 128 KB more for linked blocks (FLG's block independence clear).
 std::int64_t codec_bytes(ArrowIpcCompressionType codec, std::span<const std::byte> frame)
 {
-  if (codec == NANOARROW_IPC_COMPRESSION_TYPE_ZSTD) return zstd_context_bytes;
+  if (codec == NANOARROW_IPC_COMPRESSION_TYPE_ZSTD) return heap_block_bytes(zstd_context_bytes);
   const auto at = [&](std::size_t i) { return std::to_integer<unsigned>(frame[i]); };
   if (frame.size() < 6 || at(0) != 0x04 || at(1) != 0x22 || at(2) != 0x4D || at(3) != 0x18 || (at(4) >> 6) != 1
       || (at(4) & 0x02) != 0 || (at(5) & 0x8F) != 0 || ((at(5) >> 4) & 7) < 4)
-    return lz4_context_bytes;
+    return heap_block_bytes(lz4_context_bytes);
   const std::int64_t block = std::int64_t{ 1 } << (8 + 2 * ((at(5) >> 4) & 7));
   const bool linked = (at(4) & 0x20) == 0;
-  return lz4_context_bytes + (block + 4 + 16) + (block + (linked ? 128 * 1024 : 0) + 16);
+  return heap_block_bytes(lz4_context_bytes) + heap_block_bytes(block + 4)
+         + heap_block_bytes(block + (linked ? 128 * 1024 : 0));
 }
 
-/// What decoding a column's buffers allocates: their decoded bytes, and the most the codec holds to decode one of them.
+/// What decoding a column's buffers allocates: their decoded bytes, each a heap block (heap_block_bytes), and the most
+/// the codec holds to decode one of them; and of a string column, the bytes of its characters.
 struct Declared
 {
-  std::int64_t bytes = 0, scratch = 0;
+  std::int64_t bytes = 0, scratch = 0, characters = 0;
 };
 
 /// What nanoarrow allocates to decode the buffers of `view` and its children, each proven inside the body `body`, added
-/// to `out`: a compressed buffer's declared decoded length (its first 8 bytes, little-endian, as nanoarrow reads them;
-/// -1: stored as it is, and copied), refused beyond Arrow's 64-byte padding of the bytes its lengths allow
-/// (needed_bytes: Arrow C++'s writer keeps a sliced array's buffer whole up to that padding, so a batch of 32 rows of a
-/// 256-row column declares its 32-byte validity bitmap), and the codec's scratch for its frame (codec_bytes, from the
-/// frame's descriptor after the length); an uncompressed buffer's own size, which the file holds. At most INT64_MAX.
+/// to `out`, each buffer a heap block (heap_block_bytes): a compressed buffer's declared decoded length (its first 8
+/// bytes, little-endian, as nanoarrow reads them; -1: stored as it is, and copied), refused beyond Arrow's 64-byte
+/// padding of the bytes its lengths allow (needed_bytes: Arrow C++'s writer keeps a sliced array's buffer whole up to
+/// that padding, so a batch of 32 rows of a 256-row column declares its 32-byte validity bitmap), and the codec's
+/// scratch for its frame (codec_bytes, from the frame's descriptor after the length); an uncompressed buffer's own
+/// size, which the file holds. At most INT64_MAX.
 void declared_bytes(const ArrowArrayView *view, ArrowIpcCompressionType codec, const Body &body,
                     const std::string &where, Declared &out, std::vector<std::byte> &scratch)
 {
@@ -519,10 +540,13 @@ void declared_bytes(const ArrowArrayView *view, ArrowIpcCompressionType codec, c
     throw IOError(where + ": a length of " + std::to_string(view->length) + " is negative: the file is corrupt");
   constexpr std::int64_t most = std::numeric_limits<std::int64_t>::max();
   const bool compressed = codec != NANOARROW_IPC_COMPRESSION_TYPE_NONE;
+  const bool strings = view->storage_type == NANOARROW_TYPE_STRING || view->storage_type == NANOARROW_TYPE_LARGE_STRING;
   for (int i = 0; i < NANOARROW_MAX_FIXED_BUFFERS; ++i) {
     const ArrowBufferView &buffer = view->buffer_views[i];
+    const bool characters = strings && view->layout.buffer_type[i] == NANOARROW_BUFFER_TYPE_DATA;
     if (!compressed || buffer.size_bytes < 8) { // below 8 bytes nanoarrow refuses it, allocating nothing
-      out.bytes = sum(out.bytes, compressed ? 0 : buffer.size_bytes);
+      out.bytes = sum(out.bytes, compressed ? 0 : heap_block_bytes(buffer.size_bytes));
+      if (characters && !compressed) out.characters = buffer.size_bytes;
       continue;
     }
     // The declared length, then the frame's descriptor (LZ4: its magic, FLG and BD bytes).
@@ -532,7 +556,8 @@ void declared_bytes(const ArrowArrayView *view, ArrowIpcCompressionType codec, c
     const auto declared = static_cast<std::int64_t>(word);
     if (declared < -1) continue; // nanoarrow refuses it, allocating nothing
     if (declared == -1) {
-      out.bytes = sum(out.bytes, buffer.size_bytes - 8);
+      out.bytes = sum(out.bytes, heap_block_bytes(buffer.size_bytes - 8));
+      if (characters) out.characters = buffer.size_bytes - 8;
       continue;
     }
     if (const std::int64_t need = needed_bytes(view, i);
@@ -540,7 +565,8 @@ void declared_bytes(const ArrowArrayView *view, ArrowIpcCompressionType codec, c
       throw IOError(where + ": a buffer declares " + std::to_string(declared) + " decoded bytes, more than Arrow's "
                     "64-byte padding beyond the " + std::to_string(need) + " bytes its lengths allow: refused before "
                     "any decode");
-    out.bytes = sum(out.bytes, declared);
+    out.bytes = sum(out.bytes, heap_block_bytes(declared));
+    if (characters) out.characters = declared;
     out.scratch = std::max(out.scratch, codec_bytes(codec, head.subspan(8)));
   }
   for (std::int64_t i = 0; i < view->n_children; ++i)
@@ -549,11 +575,13 @@ void declared_bytes(const ArrowArrayView *view, ArrowIpcCompressionType codec, c
 
 /// What the walk learns of a record batch it cannot view: its rows (its root's length, unbounded: its columns bound it
 /// once decoded), the bytes decoding its used columns will allocate and the most the codec holds decoding one of their
-/// buffers, the values of its 'data' column, and its 'name' column's decoded bytes and the body's bytes its buffers
-/// span (0 without one), each from its header's lengths and its buffers' declared sizes.
+/// buffers, the values of its 'data' column, and its 'name' column's decoded bytes, its characters' bytes and the
+/// body's bytes its buffers span (0 without one), each from its header's lengths and its buffers' declared sizes, and
+/// whether it holds a validity buffer (without one no name is null).
 struct Proof
 {
-  std::int64_t rows = 0, declared = 0, scratch = 0, values = 0, names = 0, name_span = 0;
+  std::int64_t rows = 0, declared = 0, scratch = 0, values = 0, names = 0, characters = 0, name_span = 0;
+  bool name_nulls = true;
 };
 
 /// The record batch `decoder` last decoded, which cannot be viewed (compressed, in the other byte order, or a used
@@ -599,6 +627,8 @@ Proof prove_batch(Decoder &decoder, const Body &body, const Used &used, bool swa
       proof.values = views[c]->n_children > 0 ? views[c]->children[0]->length : 0;
     } else {
       proof.names = declared.bytes;
+      proof.characters = declared.characters;
+      proof.name_nulls = views[c]->buffer_views[0].size_bytes != 0;
       const auto [first, last] = span_of(views[c], body.view);
       proof.name_span = last - first;
     }
@@ -666,13 +696,29 @@ void decode_batch(const ArrowSchema &schema, ArrowIpcEndianness endianness, std:
 
 /// A record batch of the walk: its message, whether it is viewed where it lies (else decoded), its rows, the bytes
 /// decoding it will allocate (0 when viewed) and the codec's scratch for its largest frame, the values of its 'data'
-/// column, and of its 'name' column the bytes (its buffers', or decoded) and the body's bytes its buffers span.
+/// column, and of its 'name' column whether a name may be null (it holds a validity buffer), the bytes (its buffers',
+/// or decoded), the body's bytes its buffers span, and the most bytes a name takes: its longest name where the walk
+/// read its offsets (a batch viewed in memory), else its characters' bytes (-1 without the column).
 struct Batch
 {
   Message message;
-  bool viewed = false;
-  std::int64_t rows = 0, declared = 0, scratch = 0, values = 0, names = 0, name_span = 0;
+  bool viewed = false, name_nulls = true;
+  std::int64_t rows = 0, declared = 0, scratch = 0, values = 0, names = 0, name_span = 0, longest_name = -1;
 };
+
+/// The longest name `label` holds, a 'name' column viewed in memory and validated (its offsets inside their buffer),
+/// from its offsets, at most its characters' bytes: a name whose offsets run backwards or past them is refused when its
+/// row is read.
+std::int64_t longest_name(const ArrowArrayView *label)
+{
+  const bool large = label->storage_type == NANOARROW_TYPE_LARGE_STRING;
+  const ArrowBufferView &offsets = label->buffer_views[1];
+  std::int64_t longest = 0;
+  for (std::int64_t i = label->offset; i < label->offset + label->length; ++i)
+    longest = std::max(longest, large ? offsets.data.as_int64[i + 1] - offsets.data.as_int64[i]
+                                      : std::int64_t{ offsets.data.as_int32[i + 1] } - offsets.data.as_int32[i]);
+  return std::min(longest, label->buffer_views[2].size_bytes);
+}
 
 /// Whether `a` and `b` give every field the same type, name, nullability and metadata.
 bool same_schema(const ArrowSchema *a, const ArrowSchema *b)
@@ -690,45 +736,89 @@ bool same_schema(const ArrowSchema *a, const ArrowSchema *b)
   return true;
 }
 
-/// The file format's footer, from byte `last` on, verified (flatcc) and decoded: its byte order and schema the stream's
-/// (`endianness`, `schema`), and its record batch blocks the batches the walk found, each at its message's byte, with
-/// its header's and body's lengths. A reader that seeks by the footer (pyarrow) reads what the footer says: the values
-/// byte-swapped under another byte order, other values from the same bytes under another schema, or the rows in another
-/// order under blocks in another order.
-void check_footer(const Source &source, std::int64_t last, const std::vector<Batch> &batches, const ArrowSchema &schema,
-                  ArrowIpcEndianness endianness)
+/// What the walk learns of the messages before it holds any fact of them (count_batches).
+struct Count
 {
-  Decoder decoder;
-  ArrowError error{};
-  std::vector<std::byte> buffer;
-  const ArrowBufferView footer = view_of(source.range(last, source.size(), buffer)); // the footer, its length, ARROW1
-  check(ArrowIpcDecoderVerifyFooter(&decoder.ipc, footer, &error), error, "Arrow IPC footer");
-  check(ArrowIpcDecoderDecodeFooter(&decoder.ipc, footer, &error), error, "Arrow IPC footer");
-  if (decoder.ipc.endianness != endianness)
-    throw IOError("the Arrow IPC footer's byte order is not the stream's, so a reader that follows the footer swaps "
-                  "every value: the file is corrupt");
-  if (!same_schema(&decoder.ipc.footer->schema, &schema))
-    throw IOError("the Arrow IPC footer's schema is not the stream's, so a reader that follows the footer reads other "
-                  "columns: the file is corrupt");
-  const ArrowBuffer &blocks = decoder.ipc.footer->record_batch_blocks;
-  const auto *block = reinterpret_cast<const ArrowIpcFileBlock *>(blocks.data);
-  const auto n = static_cast<std::size_t>(blocks.size_bytes) / sizeof(ArrowIpcFileBlock);
-  if (n != batches.size())
-    throw IOError("the Arrow IPC footer lists " + std::to_string(n) + " record batches, and the file's messages hold "
-                  + std::to_string(batches.size()) + ": the file is corrupt");
-  for (std::size_t k = 0; k < n; ++k) {
-    const Message &message = batches[k].message;
-    if (block[k].offset != message.at)
-      throw IOError("the Arrow IPC footer puts record batch " + std::to_string(k) + " at byte "
-                    + std::to_string(block[k].offset) + ", and the file's messages put it at byte "
-                    + std::to_string(message.at) + ": the file is corrupt");
-    if (block[k].metadata_length != message.header || block[k].body_length != message.body)
-      throw IOError("the Arrow IPC footer gives record batch " + std::to_string(k) + " a header of "
-                    + std::to_string(block[k].metadata_length) + " bytes and a body of "
-                    + std::to_string(block[k].body_length) + ", and the file's messages give it "
-                    + std::to_string(message.header) + " and " + std::to_string(message.body)
-                    + ": the file is corrupt");
+  std::size_t batches = 0; ///< the record batches up to the end, or up to the first message the walk refuses
+  std::int64_t end = 0;    ///< the byte after the last of them
+  std::string footer;      ///< why the file format's footer is not those messages', or empty
+};
+
+/// Why the footer's block `block` is not record batch `k`'s message `message`, or empty.
+std::string block_mismatch(const ArrowIpcFileBlock &block, const Message &message, std::size_t k)
+{
+  if (block.offset != message.at)
+    return "the Arrow IPC footer puts record batch " + std::to_string(k) + " at byte " + std::to_string(block.offset)
+           + ", and the file's messages put it at byte " + std::to_string(message.at) + ": the file is corrupt";
+  if (block.metadata_length != message.header || block.body_length != message.body)
+    return "the Arrow IPC footer gives record batch " + std::to_string(k) + " a header of "
+           + std::to_string(block.metadata_length) + " bytes and a body of " + std::to_string(block.body_length)
+           + ", and the file's messages give it " + std::to_string(message.header) + " and "
+           + std::to_string(message.body) + ": the file is corrupt";
+  return {};
+}
+
+/// The record batch messages from byte `at` to `last`, counted before the walk holds anything of them: each header
+/// read, verified and decoded (next_message, by `decoder`) and kept nowhere, so that the walk holds its facts in one
+/// allocation of their size (grown a batch at a time, a vector held up to 2.5 times them while it grew: its old block
+/// beside the new, MSVC's growth by half). With a footer (the file format's, from byte `last` on), the footer is checked
+/// here, before the facts are held, beside which its decoded blocks (24 bytes each, nanoarrow's) would lie: verified
+/// (flatcc) and decoded, its byte order and schema the stream's (`endianness`, `schema`), and its record batch blocks
+/// those messages, each at its message's byte with its header's and body's lengths. A reader that seeks by the footer
+/// (pyarrow) reads what the footer says: the values byte-swapped under another byte order, other values from the same
+/// bytes under another schema, or the rows in another order under blocks in another order. A message the walk refuses
+/// ends the count, which it then refuses in turn, after what it finds before it; the footer's refusal (Count::footer)
+/// waits for the walk's end, as when the footer was checked after it.
+Count count_batches(Decoder &decoder, const Source &source, std::int64_t at, std::int64_t last, bool footer,
+                    const ArrowSchema &schema, ArrowIpcEndianness endianness)
+{
+  Count count;
+  Decoder reader; // the footer's: decoding a footer sets its decoder's byte order and schema
+  const ArrowIpcFileBlock *block = nullptr;
+  std::size_t blocks = 0;
+  if (footer) {
+    try {
+      ArrowError error{};
+      std::vector<std::byte> buffer; // the footer, its length and ARROW1, read once (without llfio), freed decoded
+      const ArrowBufferView bytes = view_of(source.range(last, source.size(), buffer));
+      check(ArrowIpcDecoderVerifyFooter(&reader.ipc, bytes, &error), error, "Arrow IPC footer");
+      check(ArrowIpcDecoderDecodeFooter(&reader.ipc, bytes, &error), error, "Arrow IPC footer");
+    } catch (const IOError &refused) {
+      count.footer = refused.what();
+    }
+    if (count.footer.empty() && reader.ipc.endianness != endianness)
+      count.footer = "the Arrow IPC footer's byte order is not the stream's, so a reader that follows the footer swaps "
+                     "every value: the file is corrupt";
+    if (count.footer.empty() && !same_schema(&reader.ipc.footer->schema, &schema))
+      count.footer = "the Arrow IPC footer's schema is not the stream's, so a reader that follows the footer reads other "
+                     "columns: the file is corrupt";
+    if (count.footer.empty()) {
+      const ArrowBuffer &decoded = reader.ipc.footer->record_batch_blocks;
+      block = reinterpret_cast<const ArrowIpcFileBlock *>(decoded.data);
+      blocks = static_cast<std::size_t>(decoded.size_bytes) / sizeof(ArrowIpcFileBlock);
+    }
   }
+  std::string mismatch; // the first block that is not its message's
+  std::vector<std::byte> buffer;
+  std::span<const std::byte> window;
+  try {
+    for (auto message = next_message(decoder, source, at, last, buffer, window); message;
+         message = next_message(decoder, source, at, last, buffer, window)) {
+      if (decoder.ipc.message_type != NANOARROW_IPC_MESSAGE_TYPE_RECORD_BATCH) break; // the walk refuses it
+      const std::size_t k = count.batches++;
+      if (k < blocks && mismatch.empty()) mismatch = block_mismatch(block[k], *message, k);
+      at = message->end();
+    }
+  } catch (const IOError &) {
+    // The walk refuses this message, after the batches before it.
+  }
+  count.end = at;
+  if (block != nullptr)
+    count.footer = blocks != count.batches
+                     ? "the Arrow IPC footer lists " + std::to_string(blocks) + " record batches, and the file's "
+                         "messages hold " + std::to_string(count.batches) + ": the file is corrupt"
+                     : mismatch;
+  return count;
 }
 
 ArrowType type_of(const ArrowSchema *schema)
@@ -824,11 +914,11 @@ struct Walk
   std::int64_t first = 0, last = 0;
 };
 
-/// The file `source` holds walked into `out`: each record batch's message, viewed where it lies (uncompressed, in this
-/// machine's byte order, its used buffers aligned) with its rows, or else proven (prove_batch) to be decoded later;
-/// the end-of-stream marker's place, and the file format's footer, checked. A file not in memory (read without llfio)
-/// is read a header at a time and, of a batch to be decoded, each used buffer's declared length and frame descriptor:
-/// no body is read.
+/// The file `source` holds walked into `out`: its record batches counted and the file format's footer checked against
+/// them (count_batches), then each record batch's message, viewed where it lies (uncompressed, in this machine's byte
+/// order, its used buffers aligned) with its rows, or else proven (prove_batch) to be decoded later; the end-of-stream
+/// marker's place checked. A file not in memory (read without llfio) is read a header at a time (twice: counted, then
+/// walked) and, of a batch to be decoded, each used buffer's declared length and frame descriptor: no body is read.
 void walk(const Source &source, Walk &out)
 {
   std::tie(out.first, out.last) = message_bytes(source);
@@ -838,6 +928,8 @@ void walk(const Source &source, Walk &out)
   out.columns = columns_of(out.schema.arrow);
   out.used = used_of(out.schema.arrow, out.columns);
   const bool unions = has_union(&out.schema.arrow);
+  const Count count = count_batches(decoder, source, at, out.last, out.first != 0, out.schema.arrow, out.endianness);
+  out.batches.reserve(count.batches);
   std::vector<std::byte> buffer;
   std::span<const std::byte> window;
   for (auto message = next_message(decoder, source, at, out.last, buffer, window); message;
@@ -866,6 +958,8 @@ void walk(const Source &source, Walk &out)
         for (const ArrowBufferView &buffer : names->buffer_views) batch.names += buffer.size_bytes;
         const auto [first, last] = span_of(names, body.view);
         batch.name_span = last - first;
+        batch.longest_name = memory ? longest_name(names) : names->buffer_views[2].size_bytes;
+        batch.name_nulls = names->buffer_views[0].size_bytes != 0;
       }
     } else {
       const Proof proof = prove_batch(decoder, body, out.used, out.endianness != ArrowIpcSystemEndianness(),
@@ -876,16 +970,23 @@ void walk(const Source &source, Walk &out)
       batch.values = proof.values;
       batch.names = proof.names;
       batch.name_span = proof.name_span;
+      if (out.columns.name >= 0) {
+        batch.longest_name = proof.characters;
+        batch.name_nulls = proof.name_nulls;
+      }
     }
     out.batches.push_back(batch);
     at = message->end();
   }
+  if (out.batches.size() != count.batches || at != count.end)
+    throw IOError("the Arrow IPC file's messages are not those it was counted with: the file changed while it was "
+                  "read");
   // The file format's end-of-stream marker, if it has one, is its last message (just before the footer): a marker
   // before a record batch would drop it unread. The stream format's messages begin at byte 0, the file format's at 8.
   if (out.first != 0 && at != out.last && at != out.last - 8)
     throw IOError("Arrow IPC message at byte " + std::to_string(at) + " is an end-of-stream marker, but the file's "
                   "messages run on to its footer at byte " + std::to_string(out.last) + ": the file is corrupt");
-  if (out.first != 0) check_footer(source, out.last, out.batches, out.schema.arrow, out.endianness);
+  if (!count.footer.empty()) throw IOError(count.footer);
 }
 
 /// Name `label`'s row r (the batch's row `row`, for the error) gives a series, a view into the names; none when null.
@@ -1009,7 +1110,10 @@ Data view_batches(Decoder &decoder, std::span<const std::byte> bytes, const std:
     throw IOError("the Arrow IPC file's record batches hold " + std::to_string(series.size()) + " rows, and its walk "
                   + "counted " + std::to_string(n) + ": the file changed while it was read");
   std::vector<char> made = name_unnamed(names, unnamed, 0);
+  std::size_t count = 0; // one allocation of the arrays, not one grown an array at a time
+  for (const Decoded &batch : decoded) count += batch.arrays.size();
   std::vector<Array> arrays;
+  arrays.reserve(count);
   for (Decoded &batch : decoded)
     for (Array &array : batch.arrays) arrays.push_back(std::move(array)); // the structs move, their buffers stay
   auto owner = std::make_shared<Owner>(
@@ -1055,16 +1159,17 @@ Data detail::read_ipc(std::span<const std::byte> bytes, std::shared_ptr<const vo
   Walk walked;
   walk(source, walked);
   const std::vector<Batch> &batches = walked.batches;
-  // What decoding will allocate, before any batch is decoded: the decoded batches are held together, so a file that
-  // declares more than the memory this process may use now cannot be decoded without exhausting it. Where that memory
-  // is unknown (a build without llfio), no limit, as everywhere it is read.
+  // What decoding will allocate, before any batch is decoded (each buffer a heap block): the decoded batches are held
+  // together, so a file that declares more than the memory this process may use now cannot be decoded without
+  // exhausting it. Where that memory is unknown (a build without llfio), no limit, as everywhere it is read.
   std::int64_t declared = 0;
   for (const Batch &batch : batches) declared = sum(declared, batch.declared);
   if (const std::size_t memory = declared > 0 ? core::available_memory() : 0;
       memory != 0 && static_cast<std::uint64_t>(declared) > memory)
-    throw IOError("the Arrow IPC file's batches that cannot be viewed declare " + std::to_string(declared)
-                  + " decoded bytes, more than the " + std::to_string(memory) + " bytes of memory this process may use "
-                  + "now: free memory, or write the file uncompressed, so that it is viewed in place");
+    throw IOError("the Arrow IPC file's batches that cannot be viewed declare buffers that take "
+                  + std::to_string(declared) + " bytes decoded, more than the " + std::to_string(memory)
+                  + " bytes of memory this process may use now: free memory, or write the file uncompressed, so that "
+                  + "it is viewed in place");
 
   // Every batch that cannot be viewed, decoded in parallel over disjoint batches; a failure is the lowest failing
   // batch's, as a serial decode raises it.
@@ -1177,13 +1282,12 @@ struct IpcFile::State
 
 namespace {
 
-/// `bytes` in blocks of the heap, with the allocator's rounding: an eighth more (as owned_series_bytes counts a series'
-/// block, measured 2026-10-09).
-std::size_t rounded(std::int64_t bytes)
-{
-  const auto size = static_cast<std::size_t>(bytes);
-  return size + size / 8;
-}
+/// One heap block of `bytes` (heap_block_added), as a size: a price of rows and values, as unsigned as they.
+std::size_t heap(std::size_t bytes) { return bytes + static_cast<std::size_t>(heap_block_added(bytes)); }
+
+/// A string's heap block for `chars` characters: none within its own buffer (15 characters in each standard library's
+/// string), else its characters, its terminator and the rounding of its capacity (at most 15 more).
+std::size_t string_bytes(std::size_t chars) { return chars <= 15 ? 0 : heap(chars + 16); }
 
 /// The fields of `schema`, it and its children's, depth first.
 std::size_t fields_of(const ArrowSchema &schema)
@@ -1199,30 +1303,47 @@ std::size_t thread_count() { return static_cast<std::size_t>(std::max(1, get_max
 /// The bytes of the name series_<i> made for a row of a file of `n` rows that has none, at most: what a price counts.
 std::size_t made_name_bytes(index_t n) { return 7 + std::to_string(std::max<index_t>(n - 1, 0)).size(); }
 
-/// IpcFile::largest_row_group_bytes for one record batch: its message read from the file (without llfio) and its
-/// decoded columns, as the heap's blocks hold them (rounded), its spans and name views (16 bytes each) and their copy
-/// in its batch's Data, a made name a row, its values cast in the other precision (T Float32 with `f32`), its objects
-/// (batch_object_bytes), and the two names the stream's check of it copies (its shortest and longest rows'), each at
-/// most its names' bytes or a made name.
+/// The objects a record batch's decoded columns hold (nanoarrow's arrays and their private data, their place in an
+/// owner): IpcFile::decoded_data_bytes, and IpcFile::decoded_name_bytes with a 'name' column; none when it is viewed.
+std::size_t decoded_object_bytes(const IpcFile::State &state, const Batch &batch)
+{
+  if (batch.viewed) return 0;
+  return IpcFile::decoded_data_bytes + (state.walk.columns.name >= 0 ? IpcFile::decoded_name_bytes : 0);
+}
+
+/// IpcFile::largest_row_group_bytes for one record batch, each heap block as the heap holds it (heap_block_bytes): its
+/// message read from the file (without llfio) and its decoded columns; its spans and its name views (16 bytes a row
+/// each), its made names (a made name a row at most, none where a 'name' column has no nulls), the rows it marks
+/// unnamed while it is read; in the other
+/// precision (T Float32 with `f32`) its values cast, beside which the spans of the stored values live until it is
+/// read; its share of the block's spans and name views; its objects (batch_object_bytes, decoded_object_bytes); and
+/// the two names the stream's check of it copies (its shortest and longest rows'), each at most its longest name where
+/// the walk read its offsets (a batch viewed in memory), else its characters' bytes, or a made name.
 std::size_t batch_bytes(const IpcFile::State &state, const Batch &batch, bool f32)
 {
   const auto rows = static_cast<std::size_t>(batch.rows);
   const std::size_t made = made_name_bytes(state.first_row.back());
-  std::size_t bytes = (state.mapped() ? 0 : rounded(batch.message.end() - batch.message.at)) + rounded(batch.declared)
-                      + rows * (4 * sizeof(std::span<const float>) + made) + IpcFile::batch_object_bytes
-                      + 2 * (static_cast<std::size_t>(batch.names) + made + dtwc::detail::series_block_overhead_bytes);
-  if (f32 != state.walk.columns.f32)
-    bytes += static_cast<std::size_t>(batch.values) * (f32 ? sizeof(float) : sizeof(data_t));
-  return bytes;
+  const std::size_t views = rows * sizeof(std::span<const float>);
+  const bool cast = f32 != state.walk.columns.f32;
+  const std::size_t name = std::max(static_cast<std::size_t>(std::max<std::int64_t>(batch.longest_name, 0)), made);
+  return (state.mapped() ? 0 : heap(static_cast<std::size_t>(batch.message.end() - batch.message.at)))
+         + static_cast<std::size_t>(batch.declared) + (cast ? 3 : 2) * heap(views)
+         + heap((state.walk.columns.name < 0 || batch.name_nulls ? rows : 0) * made)
+         + heap((rows + 63) / 64 * 8)
+         + (cast ? heap(static_cast<std::size_t>(batch.values) * (f32 ? sizeof(float) : sizeof(data_t))) : 0)
+         + 2 * (views + views / 512) + IpcFile::batch_object_bytes + decoded_object_bytes(state, batch)
+         + 2 * string_bytes(name);
 }
 
-/// What reading record batch `batch`'s names alone holds beside the names it makes (read_names): without llfio its
-/// header and the bytes its 'name' column spans in the body (with 16 to place them), the column decoded, and the
-/// batch's objects.
+/// What reading record batch `batch`'s names alone holds beside the names it makes (read_names), each heap block as the
+/// heap holds it: without llfio its header and the bytes its 'name' column spans in the body (with 16 to place them);
+/// decoded, the column and its objects.
 std::size_t batch_names_bytes(const IpcFile::State &state, const Batch &batch)
 {
-  const std::size_t read = state.mapped() ? 0 : rounded(batch.message.header) + rounded(batch.name_span + 16);
-  return read + (batch.viewed ? 0 : rounded(batch.names)) + IpcFile::batch_object_bytes;
+  const std::size_t read = state.mapped() ? 0
+                                          : heap(static_cast<std::size_t>(batch.message.header))
+                                              + heap(static_cast<std::size_t>(batch.name_span) + 16);
+  return read + (batch.viewed ? 0 : static_cast<std::size_t>(batch.names) + IpcFile::decoded_name_bytes);
 }
 
 /// What the walk holds for as long as the file is open: its facts of every record batch, and its schema.
@@ -1294,6 +1415,7 @@ Data read_batch_as(const IpcFile::State &state, std::size_t k)
                          + std::to_string(stored[r].size()) + " which is not divisible by ndim="
                          + std::to_string(walked.columns.ndim));
   owner->names = name_unnamed(names, unnamed, first);
+  owner->decoded.reserve(decoded.arrays.size());
   for (Array &array : decoded.arrays) owner->decoded.push_back(std::move(array));
   if constexpr (std::is_same_v<T, Stored>) {
     return Data(std::move(stored), std::move(names), walked.columns.ndim, std::move(owner));
@@ -1451,13 +1573,15 @@ std::size_t IpcFile::resident_bytes(core::Precision dtype, bool gpu) const
   const auto values = static_cast<std::size_t>(state.values);
   const std::size_t names = name_heap_bytes(state, static_cast<std::size_t>(state.names), n);
   // read_arrow_ipc decodes its batches with up to a thread each, each holding a reader's scratch (and views the rest
-  // with one decoder), and holds until it returns each batch's objects, a decoded batch's view of the schema, and its
-  // walk's schema.
+  // with one decoder), and holds until it returns each batch's objects (its walk's facts among them), a decoded batch's
+  // columns' objects and its view of the schema, and its walk's schema; without llfio, the file read into one block.
   const std::size_t readers = std::min(thread_count(), std::max<std::size_t>(state.decoded, 1));
-  std::size_t bytes = n * dtwc::detail::view_series_bytes + rounded(state.declared)
-                      + (state.mapped() ? 0 : static_cast<std::size_t>(state.size))
-                      + state.walk.batches.size() * batch_object_bytes + state.decoded * state.fields * view_field_bytes
-                      + state.fields * schema_field_bytes + readers * state.reader;
+  const std::size_t decoded_objects =
+    resident_data_bytes + (state.walk.columns.name >= 0 ? resident_name_bytes : 0) + state.fields * view_field_bytes;
+  std::size_t bytes = n * dtwc::detail::view_series_bytes + static_cast<std::size_t>(state.declared)
+                      + (state.mapped() ? 0 : heap(static_cast<std::size_t>(state.size)))
+                      + state.walk.batches.size() * resident_batch_bytes
+                      + state.decoded * decoded_objects + state.fields * schema_field_bytes + readers * state.reader;
   const bool f32 = dtype == core::Precision::Float32;
   if (f32 != is_f32()) bytes += series_bytes(values, n, f32) + names; // the copy in the other precision
   else if (gpu) bytes += series_bytes(values, n, false) + names;      // a view's upload copy
@@ -1472,6 +1596,8 @@ std::size_t IpcFile::largest_row_group_bytes(bool f32) const
 }
 
 std::size_t IpcFile::decode_bytes() const { return walk_bytes(*state_) + state_->reader; }
+
+std::size_t IpcFile::open_bytes() const { return walk_bytes(*state_); }
 
 std::size_t IpcFile::reader_bytes() const { return state_->reader; }
 
@@ -1628,7 +1754,7 @@ std::size_t IpcFile::series_names_bytes() const
 
 std::size_t IpcFile::names_read_bytes() const
 {
-  return walk_bytes(*state_) + (state_->names_read != 0 ? state_->names_read + state_->reader : 0);
+  return walk_bytes(*state_) + (state_->walk.columns.name >= 0 ? state_->names_read + state_->reader : 0);
 }
 
 std::vector<std::string> IpcFile::series_names(std::size_t ram_budget) const

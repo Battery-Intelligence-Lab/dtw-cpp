@@ -173,8 +173,12 @@ load as they would without a limit. An explicit `--ram-limit` is fail-closed:
 
 The limit covers what the streamed run holds: library metadata and fixed
 process overhead (the code, thread stacks, the allocators' first pages) are
-outside it. Other inputs (CSV/TSV, Arrow IPC, a CSV directory) are always read
-whole; the limit then governs the distance matrix alone.
+outside it. An Arrow IPC file streams as Parquet does, on the CPU, where RAM would
+hold its series outside the page cache (decoded, read without LLFIO, or in the
+other `--dtype`): FastCLARA reads it a record batch at a time; a mapped file's
+values are not streamed, and on a GPU the stream is a `DeviceError`. Other inputs
+(CSV/TSV, a CSV directory) are always read whole; the limit then governs the
+distance matrix alone.
 
 ### OneBatchPAM and TADPole options
 

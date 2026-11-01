@@ -41,17 +41,20 @@ Data read_arrow_ipc(const std::filesystem::path &path, core::Precision dtype = c
  *
  * The constructor walks the file as read_arrow_ipc does, with its checks and texts (both magics, the footer against
  * the messages, each batch's buffers inside its body, each compressed buffer's declared decoded bytes against its
- * lengths), and decodes nothing. The file is mapped (llfio), or without llfio read in pieces: the walk reads each
- * message's header and, of a batch to be decoded, each used buffer's declared length and frame descriptor, and a batch
- * is read whole when it is read (each with a file read). A batch is read as read_arrow_ipc reads it: viewed where it
- * lies or decoded, its rows' values and names checked; read again, it must be the batch the walk found, else the file
- * changed while it was read (IOError). Its series are views of T (read in the other precision, its values cast once
- * into a buffer the views point into), its rows named by nothing named series_<row>, owned by the Data. An IOError
- * names the file.
+ * lengths), and decodes nothing: it counts the record batches first (each header read and verified, nothing kept),
+ * then walks them, and of a batch viewed in memory reads the 'name' column's offsets (its longest name). The file is
+ * mapped (llfio), or without llfio read in pieces: the walk reads each message's header (twice: counted, then walked)
+ * and, of a batch to be decoded, each used buffer's declared length and frame descriptor, and a batch is read whole
+ * when it is read (each with a file read). A batch is read as read_arrow_ipc reads it: viewed where it lies or
+ * decoded, its rows' values and names checked; read again, it must be the batch the walk found, else the file changed
+ * while it was read (IOError). Its series are views of T (read in the other precision, its values cast once into a
+ * buffer the views point into), its rows named by nothing named series_<row>, owned by the Data. An IOError names the
+ * file.
  *
- * The prices: a record batch from its read until it is freed (largest_row_group_bytes); what a thread holds while it
- * reads one, the codec's scratch for the file's largest frame and nanoarrow's decoders (decode_bytes holds one, and
- * row_groups_per_batch and read_rows a team's others); the walk's facts, held while the file is open (decode_bytes).
+ * The prices, each heap block as Windows' heap was measured to hold it: a record batch from its read until it is freed
+ * (largest_row_group_bytes); what a thread holds while it reads one, the codec's scratch for the file's largest frame
+ * and nanoarrow's decoders (decode_bytes holds one, and row_groups_per_batch and read_rows a team's others); the walk's
+ * facts, held while the file is open (open_bytes, in decode_bytes).
  */
 class IpcFile
 {
@@ -102,31 +105,52 @@ public:
   /// objects (its Data, owner and nanoarrow's arrays, the stream's check of it).
   std::size_t largest_row_group_bytes(bool f32) const;
   /// What reading holds beside the record batches it hands over, which are priced whole (largest_row_group_bytes): the
-  /// walk's facts, held while the file is open, and what one thread holds while it reads a batch (reader_bytes);
-  /// row_groups_per_batch and read_rows price a team's other threads.
+  /// walk's facts, held while the file is open (open_bytes), and what one thread holds while it reads a batch
+  /// (reader_bytes); row_groups_per_batch and read_rows price a team's other threads.
   std::size_t decode_bytes() const;
+  /// What the file holds while it is open, beside any read: the walk's facts of every record batch, and its schema. For
+  /// algorithms::detail::fast_clara_chunked, which prices it beside the samples' PAMs and the end of its pass.
+  std::size_t open_bytes() const;
   /// What a thread holds while it reads a record batch, freed before its next: the codec's scratch for the file's
   /// largest frame (zstd's context; LZ4F's context and block buffers, from each frame's descriptor), and nanoarrow's
   /// decoders and views of the schema's fields.
   std::size_t reader_bytes() const;
-  /// What a record batch's objects hold from its read until it is freed, beyond what its price counts by its rows and
-  /// bytes, on every path that holds batches: the stream's (its Data and their vectors, its owner and the owner's
-  /// vectors, its decoded columns' nanoarrow arrays and their private data, the template's RowCheck, its share in the
-  /// block's Data), read_rows' (the batch's Data while its rows are copied), and the in-RAM read's (a decoded batch's
-  /// arrays until the read ends, the walk's facts of it). Measured 2026-11-01 on Windows' private bytes (the UCRT
-  /// heap, clang 21), files of 200,000 record batches of one series, a block of every batch read by 24 threads (its
-  /// peak): at most 1,690 bytes a batch beyond its other prices (LZ4 with a 'name' column), 1,480 without one, 590
-  /// uncompressed.
-  static constexpr std::size_t batch_object_bytes = 2048;
+  /// What a record batch's objects hold in the stream from its read until it is freed, beyond what its price counts by
+  /// its rows and bytes (largest_row_group_bytes): its Data and its owner (the owner's vectors, its keep-alive of the
+  /// bytes), its place in the block's Data, the template's RowCheck, and read_rows' batch while its rows are copied; a
+  /// decoded batch's columns add decoded_data_bytes and decoded_name_bytes. Measured 2026-11-01 on Windows' private
+  /// bytes (the UCRT heap, clang 21), with and without llfio, a block of every batch of a file of 200,000 record
+  /// batches of one series read by 24 threads (its peak, beyond the block's other prices), three runs: uncompressed,
+  /// 553.7 bytes the most.
+  static constexpr std::size_t batch_object_bytes = 554;
+  /// What a decoded record batch's 'data' column holds in the stream beside its buffers: nanoarrow's arrays (the list
+  /// and its values) and their private data, their place in the owner. Measured as batch_object_bytes, on LZ4 and ZSTD
+  /// files, three runs: 1,412.3 bytes the most with it.
+  static constexpr std::size_t decoded_data_bytes = 859;
+  /// The same of a decoded 'name' column: measured as decoded_data_bytes, on LZ4 files with names (s<i>; and every
+  /// other null), three runs: 1,541.7 bytes the most with them.
+  static constexpr std::size_t decoded_name_bytes = 129;
+  /// What read_arrow_ipc holds a record batch until it returns, beyond its rows' views (view_series_bytes) and its
+  /// decoded buffers: the walk's facts of it, its place among the decoded batches; a decoded batch's columns add
+  /// resident_data_bytes and resident_name_bytes, its view of the schema view_field_bytes a field. Measured as
+  /// batch_object_bytes, the file read in RAM by 24 threads: uncompressed, 312.2 bytes the most.
+  static constexpr std::size_t resident_batch_bytes = 313;
+  /// What a decoded record batch's 'data' column holds in read_arrow_ipc beside its buffers (its arrays, as
+  /// decoded_data_bytes in the stream). Measured as resident_batch_bytes, on LZ4 and ZSTD files, three runs: 1,784.2
+  /// bytes the most with it and the view's three fields.
+  static constexpr std::size_t resident_data_bytes = 809;
+  /// The same of a decoded 'name' column, on LZ4 files with names (s<i>; and every other null), three runs: 2,450.7
+  /// bytes the most with them and the view's four fields.
+  static constexpr std::size_t resident_name_bytes = 445;
   /// What nanoarrow allocates for each field of the schema (the root and every column, depth first) in a thread that
   /// reads a record batch, freed after it: the array view and the array of the schema its decoder sets (SetSchema),
-  /// and of a decoded batch the batch's view. Measured 2026-11-01 as above: 846 bytes a field on one thread (203
-  /// fields, LZ4), about 400 over 24 threads.
-  static constexpr std::size_t field_bytes = 1024;
+  /// and of a decoded batch the batch's view. Measured 2026-11-01 as above, a block of every batch of a file of 96
+  /// batches of 203 fields against its twin of 3 (one thread): 512 bytes a field the most.
+  static constexpr std::size_t field_bytes = 512;
   /// What a decoded record batch's view of the schema holds a field in read_arrow_ipc, until it returns: nanoarrow
   /// 0.8's ArrowArrayView (208 bytes on a 64-bit target), its place in its parent's children, the allocator's header.
-  /// Measured 2026-11-01 as above: 230 bytes a field (96 batches of 203 fields, one thread).
-  static constexpr std::size_t view_field_bytes = 320;
+  /// Measured 2026-11-01 as above, the file of 203 fields read in RAM against its twin of 3 (one thread): 220.3 bytes.
+  static constexpr std::size_t view_field_bytes = 221;
   /// What the walk's decoded schema holds a field while the file is open: nanoarrow's ArrowSchema (72 bytes), its
   /// place in its parent's children, its format and name strings, each with the allocator's header (about 160 bytes,
   /// read in nanoarrow 0.8).

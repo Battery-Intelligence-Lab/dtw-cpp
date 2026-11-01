@@ -317,6 +317,10 @@ public:
     return decode_overhead * decoded + 2 * page_bytes_;
   }
 
+  /// What FastCLARA's stream prices the reader holding while it is open, beside any read: nothing, as before the
+  /// stream priced an Arrow IPC file's walk (2026-11-01); its metadata is not measured.
+  size_t open_bytes() const { return 0; }
+
   /// The bytes the series of every row group hold once read: what the series
   /// of the whole file cost in RAM (series_bytes, and their names' characters).
   size_t estimated_resident_bytes(bool use_float32) const

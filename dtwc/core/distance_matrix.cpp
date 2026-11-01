@@ -22,6 +22,9 @@
 #include <system_error>
 #include <type_traits>
 
+#if defined(__GLIBC__)
+#include <malloc.h> // malloc_trim
+#endif
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -284,6 +287,21 @@ size_t available_memory()
   return static_cast<size_t>(bytes);
 #else
   return 0;
+#endif
+}
+
+void release_free_memory()
+{
+#if defined(__GLIBC__)
+  malloc_trim(0);
+#elif defined(_WIN32)
+  // HeapOptimizeResources (3) with its information of version 1, which the SDK declares from Windows 8.1 on only
+  // (llfio's build targets 0x0601): a Windows before it refuses the call, a hint whose failure changes nothing.
+  struct
+  {
+    DWORD version = 1, flags = 0;
+  } information;
+  (void)HeapSetInformation(nullptr, static_cast<HEAP_INFORMATION_CLASS>(3), &information, sizeof information);
 #endif
 }
 

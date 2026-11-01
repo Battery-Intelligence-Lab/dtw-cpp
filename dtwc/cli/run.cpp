@@ -354,7 +354,16 @@ Outcome execute(const Config &config, std::optional<Data> data)
       check_stream("Arrow IPC", "Arrow IPC walk", ipc->series_names_bytes() + ipc->names_read_bytes(), resident,
                    limit);
     } else if (config.ram_limit != 0 && resident > config.ram_limit) {
-      // CLARA is named only where its stream could read the file: a file that streams, on the CPU.
+      // CLARA is named only where its stream could read the file: a file that streams, on the CPU, sampled in fewer
+      // than its series (the plan of these options; none where CLARA cannot run on them).
+      const auto clara_streams = [&] {
+        try {
+          const auto plan = sample ? *sample : resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
+          return plan.sample_size < plan.n_points;
+        } catch (const InvalidInput &) {
+          return false;
+        }
+      };
       const std::string other = config.dtype == core::Precision::Float32 ? "float64" : "float32";
       std::string why;
       if (config.device == Device::GPU)
@@ -362,13 +371,16 @@ Outcome execute(const Config &config, std::optional<Data> data)
               "cpu).";
       else if (!streams)
         why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
-              "views of its " + std::to_string(n_series) + " series are held at once. Raise --ram-limit, or read its "
-              "values as " + other + " (--dtype " + other + ")"
-              + (resolved == Method::CLARA ? "" : " with --method clara")
-              + ", whose copy FastCLARA reads a record batch at a time.";
+              "views of its " + std::to_string(n_series) + " series are held at once. Raise --ram-limit"
+              + (clara_streams() ? ", or read its values as " + other + " (--dtype " + other + ")"
+                                     + (resolved == Method::CLARA ? "" : " with --method clara")
+                                     + ", whose copy FastCLARA reads a record batch at a time."
+                                 : std::string("."));
       else if (resolved != Method::CLARA)
-        why = "method '" + method_name(resolved) + "' cannot stream it. Use --method clara, which reads the file a "
-              "record batch at a time, or raise --ram-limit.";
+        why = "method '" + method_name(resolved) + "' cannot stream it. "
+              + (clara_streams() ? "Use --method clara, which reads the file a record batch at a time, or raise "
+                                   "--ram-limit."
+                                 : std::string("Raise --ram-limit."));
       else
         why = "FastCLARA streams it only with a sample smaller than its " + std::to_string(n_series)
               + " series; lower --sample-size, or raise --ram-limit.";

@@ -29,10 +29,6 @@
 #include <type_traits>
 #include <vector>
 
-#if defined(__GLIBC__)
-#include <malloc.h> // malloc_trim
-#endif
-
 namespace dtwc::algorithms::detail {
 
 /// Where each of `rows` sits in `sorted`, which holds every one of them.
@@ -131,20 +127,22 @@ private:
  * All samples are drawn first; the rows they hold, their union, are read once and each sample's PAM runs on a copy
  * of its series. The medoids' series are copied out and the union released. Then one pass over the file: a batch
  * of the reader's pieces at a time, every point against the medoids of every sample. Within ram_limit_bytes, as the
- * reader prices them: the union beside its decode (read_rows' check), then a sample's PAM beside the union, then the
- * medoids, every sample's labels and one block of nearest distances beside the decode and the batches, and at the end
- * the labels beside the Problem's copy. The union, and each batch as it is read, go through the in-RAM route's checks
- * (RowCheck): the stream refuses what the in-RAM route refuses, naming the row.
+ * reader prices them: the union beside its decode (read_rows' check), then a sample's PAM beside the union and what
+ * the open file holds, then the medoids, every sample's labels and one block of nearest distances beside the decode
+ * and the batches, and at the end the labels beside the Problem's copy and the open file. The union, and each batch as
+ * it is read, go through the in-RAM route's checks (RowCheck): the stream refuses what the in-RAM route refuses,
+ * naming the row.
  *
  * The reader: read_rows<T>(rows, limit), num_row_groups(), row_groups_per_batch(budget, f32),
- * largest_row_group_bytes(f32), decode_bytes(), series_bytes(values, rows, f32), and the traits piece and pieces (what
- * its refusals call a batch's parts) and decodes_with_team. Without a team (Parquet) read_row_groups<T>(first, count)
+ * largest_row_group_bytes(f32), decode_bytes(), open_bytes() (what it holds while open, beside any read: IpcFile's
+ * walk), series_bytes(values, rows, f32), and the traits piece and pieces (what its refusals call a batch's parts) and
+ * decodes_with_team. Without a team (Parquet) read_row_groups<T>(first, count)
  * decodes on one thread, which checks the batch and, when two batches fit, overlaps the assignment of the one before.
  * With a team (Arrow IPC) read_row_groups<T>(first, count, check) decodes a batch's pieces in parallel and hands
  * check(j, piece, first_row) each one from the thread that decoded it, while it is in that thread's cache: each piece
  * has a RowCheck of its own, their extremes merged in piece order, and the reader rethrows the lowest failing piece's
- * refusal (run_openmp), so the verdict is the serial check's; the batch is assigned after, and freed (on glibc, its
- * memory returned to the system, malloc_trim) before the next is read.
+ * refusal (run_openmp), so the verdict is the serial check's; the batch is assigned after, and freed (its memory
+ * returned to the system, core::release_free_memory) before the next is read; so is the union's, before the pass.
  *
  * `prob` holds no series; its distance takes the series' features a time step from its data (an empty Data of the
  * file's ndim, for a file of more than one). Static, so each including file's instantiation is local to it, as it was
@@ -178,6 +176,7 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   const auto samples = draw_clara_samples(plan.n_points, plan.sample_size, opts);
 
   const std::vector<int64_t> rows = sample_union(samples);
+  const size_t open = reader.open_bytes(); // held beside every phase
 
   std::vector<index_t> medoids; // sample s's medoid m is slot s * k + m
   std::vector<core::ClusteringResult> pams;
@@ -205,16 +204,19 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
     const size_t union_bytes = Reader::series_bytes(union_values, rows.size(), F32);
     const size_t pam_bytes = Reader::series_bytes(sample_values, s, F32)
                              + core::packed_size(s) * core::value_bytes(prob.matrix_dtype());
-    if (union_bytes + pam_bytes > opts.ram_limit_bytes)
+    if (open + union_bytes + pam_bytes > opts.ram_limit_bytes)
       throw InvalidInput("fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(opts.ram_limit_bytes)
                          + " cannot hold a sample's PAM beside the samples' series, which needs "
-                         + std::to_string(union_bytes + pam_bytes) + " bytes: " + std::to_string(union_bytes)
-                         + " for the " + std::to_string(rows.size()) + " sampled series, "
-                         + std::to_string(pam_bytes) + " for a sample's copy and its distance matrix (sample_size = "
-                         + std::to_string(s) + "); raise the limit, or lower sample_size.");
+                         + std::to_string(open + union_bytes + pam_bytes) + " bytes: "
+                         + (open != 0 ? std::to_string(open) + " the open file holds, " : std::string())
+                         + std::to_string(union_bytes) + " for the " + std::to_string(rows.size())
+                         + " sampled series, " + std::to_string(pam_bytes)
+                         + " for a sample's copy and its distance matrix (sample_size = " + std::to_string(s)
+                         + "); raise the limit, or lower sample_size.");
     pams = clara_pams(prob, opts, pool, samples, positions, true, medoids);
     medoid_data = clara_sample(pool, positions_in(rows, medoids), true);
   }
+  core::release_free_memory(); // the union's and its read's memory, before the labels
 
   const size_t limit = opts.ram_limit_bytes;
   std::size_t medoid_values = 0;
@@ -222,8 +224,8 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   const size_t medoid_bytes = Reader::series_bytes(medoid_values, medoids.size(), F32);
   const size_t fixed = medoid_bytes + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes();
   const size_t group = reader.largest_row_group_bytes(F32);
-  // After the pass the Problem copies the winner's labels (set_result) beside every sample's.
-  const size_t finish = medoid_bytes + samples.size() * n_points * sizeof(index_t) + n_points * sizeof(index_t)
+  // After the pass the Problem copies the winner's labels (set_result) beside every sample's, the file still open.
+  const size_t finish = open + medoid_bytes + samples.size() * n_points * sizeof(index_t) + n_points * sizeof(index_t)
                       + n_points / 8;
   if (std::max(fixed + group, finish) > limit)
     throw InvalidInput(
@@ -232,13 +234,15 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
       + " for the medoids' series, every sample's labels and nearest distances (n_samples = "
       + std::to_string(samples.size()) + ", k = " + std::to_string(opts.n_clusters) + ", "
       + std::to_string(n_points) + " rows) and decoding, " + std::to_string(group) + " for one " + Reader::piece
-      + "'s series, " + std::to_string(finish) + " at its end with the result's labels; raise the limit, or "
-      "rewrite the file with smaller " + Reader::pieces + ".");
+      + "'s series, " + std::to_string(finish) + " at its end with the result's labels"
+      + (open != 0 ? " and the open file" : "") + "; raise the limit, or rewrite the file with smaller "
+      + Reader::pieces + ".");
   // A batch decoding beside the one assigned; a team decodes in turn with the assignment.
   const bool overlap = !Reader::decodes_with_team && fixed + 2 * group <= limit;
   const int per_batch = reader.row_groups_per_batch(overlap ? (limit - fixed) / 2 : limit - fixed, F32);
 
-  std::vector<std::vector<index_t>> labels(samples.size(), std::vector<index_t>(n_points));
+  std::vector<std::vector<index_t>> labels(samples.size()); // each sized in place: a prototype would add n_points
+  for (auto &sample_labels : labels) sample_labels.resize(n_points);
   std::vector<core::detail::OrderedMedoidObjective> costs(samples.size());
 #ifdef DTWC_HAS_CUDA
   bool on_gpu = false;
@@ -292,15 +296,12 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
                          });
       first += batch.size();
     }
-#if defined(__GLIBC__)
-    // A team's threads freed the batch's pieces into their own arenas: returned to the system before the next.
-    if constexpr (Reader::decodes_with_team) malloc_trim(0);
-#endif
+    // A team's threads freed the batch's pieces (into their own arenas on glibc; Windows' heap keeps them committed):
+    // returned to the system before the next.
+    if constexpr (Reader::decodes_with_team) core::release_free_memory();
   }
-#if defined(__GLIBC__)
   // The end phase is priced as if the batches went back to the system; glibc kept 320-680 MB (1 GiB, 2026-10-09).
-  if constexpr (!Reader::decodes_with_team) malloc_trim(0);
-#endif
+  if constexpr (!Reader::decodes_with_team) core::release_free_memory();
   check.band();
 
   auto result = clara_winner(pams, medoids, labels, costs);
