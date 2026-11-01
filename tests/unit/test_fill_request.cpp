@@ -31,10 +31,12 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <random>
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 using Catch::Matchers::ContainsSubstring;
@@ -73,6 +75,7 @@ std::string message_of(F &&f)
 
 constexpr double nan_value = std::numeric_limits<double>::quiet_NaN();
 constexpr double inf_value = std::numeric_limits<double>::infinity();
+constexpr double huge = 1.5e308; ///< finite, but a distance to it overflows; a float series holds 3e38 for it
 constexpr std::size_t whole = std::numeric_limits<std::size_t>::max(); ///< a Poison's position: every value
 
 /// `value` written into series `series` at `position`, or into all of its values.
@@ -103,22 +106,24 @@ Store<T> store(std::size_t n, std::size_t length, const std::vector<Poison> &poi
   }
   for (const Poison &p : poisons) {
     auto &values = s.values[p.series];
+    const T value = std::is_same_v<T, float> && p.value == huge ? T(3e38) : static_cast<T>(p.value);
     if (p.position == whole)
-      std::fill(values.begin(), values.end(), static_cast<T>(p.value));
+      std::fill(values.begin(), values.end(), value);
     else
-      values[p.position] = static_cast<T>(p.value);
+      values[p.position] = value;
   }
   return s;
 }
 
-/// `s` as the Problem's series: owned (a copy), or a view of s's storage.
+/// `s` as the Problem's series: owned (a copy), or a view of s's storage with an owner, as a mapped file's view has
+/// one (FastCLARA's check then asks for the pages of the series it checks next).
 template <typename T>
 void hold(dtwc::Problem &prob, const Store<T> &s, bool view, std::size_t ndim = 1)
 {
   if (view) {
     std::vector<std::span<const T>> spans(s.values.begin(), s.values.end());
     std::vector<std::string_view> names(s.names.begin(), s.names.end());
-    prob.set_view_data(dtwc::Data(std::move(spans), std::move(names), ndim));
+    prob.set_view_data(dtwc::Data(std::move(spans), std::move(names), ndim, std::make_shared<int>(0)));
   } else
     prob.set_data(dtwc::Data(std::vector<std::vector<T>>(s.values), std::vector<std::string>(s.names), ndim));
 }
@@ -546,9 +551,12 @@ TEST_CASE("MM G3: an empty series, an infeasible band and float32's parameters c
 // MM G3b: FastCLARA on the CPU checks the samples' rows before the PAMs and each block of 65,536 points just before it
 // is assigned, and gives the verdict dtw_function() gave before the PAMs at fd8a7450 (the oracle): the lowest refused
 // series; ±inf before an entirely-NaN series under Interpolate, which stops the pass at its block (its distances would
-// throw "interpolate_linear_into"). 70,000 series (two blocks), sample 150, 5 samples, owned and as a view, both
-// precisions. On a GPU device nothing is fused: dtw_function() checks every series first, Float32 ones too (the
-// GPU's needs come last), so the same verdicts, under Problem::dtw_function.
+// throw "interpolate_linear_into"). An error the PAMs or a block's assignment raise on values the check takes (a
+// series of `huge`, whose distances overflow: fast_pam's "initialization distance must be finite", the assignment's
+// "non-finite nearest-medoid distance") comes after the refusal of any series not yet checked, as the oracle's check
+// came before the PAMs. 70,000 series (two blocks), sample 150, 5 samples, owned and as a view, both precisions. On a
+// GPU device nothing is fused: dtw_function() checks every series first, Float32 ones too (the GPU's needs come last),
+// so the same verdicts, under Problem::dtw_function.
 TEST_CASE("MM G3b: FastCLARA's fused check gives dtw_function()'s verdicts", "[mm][g3b][fast_clara][nonfinite]")
 {
   using dtwc::core::MissingStrategy;
@@ -569,8 +577,9 @@ TEST_CASE("MM G3b: FastCLARA's fused check gives dtw_function()'s verdicts", "[m
     return from;
   };
   const std::size_t u = at(1000, false), r = at(20000, true), x = at(r + 1, false), r2 = at(r + 5000, true),
-                    v = at(40000, false), w = at(50000, false), t = at(66000, false), t2 = at(68000, false);
-  REQUIRE((u < r && r < x && x < r2 && r2 < v && v < w && w < block && block <= t && t < t2 && t2 < n));
+                    o = at(30000, false), v = at(40000, false), w = at(50000, false), t = at(66000, false),
+                    t2 = at(68000, false);
+  REQUIRE((u < r && r < x && x < r2 && r2 < o && o < v && v < w && w < block && block <= t && t < t2 && t2 < n));
 
   const std::vector<Verdict> cases{
     { "a sampled row above an unsampled lower one", MissingStrategy::Error,
@@ -592,6 +601,12 @@ TEST_CASE("MM G3b: FastCLARA's fused check gives dtw_function()'s verdicts", "[m
     { "entirely-NaN rows in two blocks: the lower", MissingStrategy::Interpolate,
       { { t, whole, nan_value }, { w, whole, nan_value } }, w },
     { "an entirely-NaN row in the late block only", MissingStrategy::Interpolate, { { t2, whole, nan_value } }, t2 },
+    { "an overflowing row in the early block, ±inf in the late block", MissingStrategy::Error,
+      { { o, whole, huge }, { t, 1, inf_value } }, t },
+    { "an overflowing row in the early block, an entirely-NaN row in the late block", MissingStrategy::Interpolate,
+      { { o, whole, huge }, { t, whole, nan_value } }, t },
+    { "an overflowing sampled row, ±inf in an unsampled one", MissingStrategy::Error,
+      { { r, whole, huge }, { v, 1, inf_value } }, v },
   };
   const auto run = [&](auto zero, bool gpu) {
     using T = decltype(zero);

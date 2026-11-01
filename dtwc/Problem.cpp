@@ -838,10 +838,14 @@ void prefetch_series(const Data &data, std::size_t first, std::size_t count)
 
 void Problem::SeriesCheck::check(std::size_t first, std::size_t count)
 {
+  sweep(first, count, std::min(count, static_cast<std::size_t>(problem_->data_.size()) - (first + count)));
+}
+
+void Problem::SeriesCheck::sweep(std::size_t first, std::size_t count, std::size_t ahead)
+{
   const Data &data = problem_->data_;
   const auto missing = problem_->distance_.missing;
   const std::size_t end = first + count, value_bytes = data.is_f32() ? sizeof(float) : sizeof(data_t);
-  const std::size_t ahead = std::min(count, static_cast<std::size_t>(data.size()) - end);
   for (std::size_t b0 = first; b0 < end;) {
     std::size_t b1 = b0 + 1; // the block [b0, b1)
     for (std::size_t bytes = data.series_flat_size(b0) * value_bytes;
@@ -873,7 +877,7 @@ void Problem::SeriesCheck::check_rows(std::span<const index_t> rows)
   for (std::size_t i = 0; i < rows.size(); ++i) {
     const auto row = static_cast<std::size_t>(rows[i]);
     if (verdicts[i] == refused) {
-      check(0, row); // a lower series refused comes first
+      sweep(0, row, 0); // a lower series refused comes first; nothing past row is read
       refuse(row);
     }
     if (verdicts[i] == entirely_nan) mark_ = std::min(mark_, row);

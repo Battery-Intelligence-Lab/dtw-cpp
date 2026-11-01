@@ -686,7 +686,8 @@ public:
   /// thread that checks series `first` asks for the next `count` series' pages when they are a mapped file's
   /// (core::prefetch_pages), so they arrive while the caller works on these.
   void check(std::size_t first, std::size_t count);
-  /// check() of the series `rows`, ascending: a refusal at row r throws after check(0, r), so a lower series' first.
+  /// check() of the series `rows`, ascending: a refusal at row r throws once the series below r are checked (no page
+  /// asked for past them), so a lower series' first.
   void check_rows(std::span<const index_t> rows);
   /// True once a series checked is marked (entirely NaN under Interpolate), which finish() refuses.
   bool marked() const noexcept { return mark_ != none; }
@@ -696,6 +697,8 @@ public:
 private:
   friend class Problem;
   SeriesCheck(const Problem &problem, std::string_view where, bool f32);
+  /// check(first, count), the thread that checks series `first` asking for the pages of the `ahead` series after them.
+  void sweep(std::size_t first, std::size_t count, std::size_t ahead);
   [[noreturn]] void refuse(std::size_t i) const;
   static constexpr std::size_t none = std::numeric_limits<std::size_t>::max();
 

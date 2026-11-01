@@ -245,19 +245,26 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   // All samples first, from one engine; each PAM on a view of its series (a copy on a GPU, which uploads owned ones).
   const auto samples = detail::draw_clara_samples(N, sample_size, opts);
   const auto n_points = static_cast<std::size_t>(N);
-  // An entirely-NaN series (Interpolate) cannot be assigned, its distances throw: at the first one marked the pass
-  // stops, the series not yet checked are checked, and finish() refuses what a check of every series refuses.
-  const auto stop_if_marked = [&](std::size_t checked) {
-    if (!check->marked()) return;
+  // The pass stops at the first entirely-NaN series marked (Interpolate), whose distances throw, and at an error the
+  // PAMs or a block's assignment raise on values the check takes (a distance that overflows): the series from
+  // `checked` on are checked and finish() runs, so a refusal of dtw_function()'s check comes before that error.
+  const auto check_rest = [&](std::size_t checked) {
+    if (!check) return;
     check->check(checked, n_points - checked);
     check->finish();
   };
   if (check) {
     check->check_rows(detail::sample_union(samples));
-    stop_if_marked(0); // before the PAMs, whose fills would refuse it first
+    if (check->marked()) check_rest(0); // before the PAMs, whose fills would refuse it first
   }
   std::vector<index_t> medoids; // sample s's medoid m is slot s * k + m
-  const auto pams = detail::clara_pams(prob, opts, prob.data(), samples, samples, gpu, medoids);
+  std::vector<core::ClusteringResult> pams;
+  try {
+    pams = detail::clara_pams(prob, opts, prob.data(), samples, samples, gpu, medoids);
+  } catch (...) {
+    check_rest(0);
+    throw;
+  }
 
   // One pass: every point against the medoids of every sample.
   std::vector<std::vector<index_t>> labels(samples.size(), std::vector<index_t>(n_points));
@@ -265,11 +272,17 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   const auto &data = prob.data();
   const auto in_blocks = [&](const auto &assign) {
     detail::assign_in_blocks(0, n_points, costs, [&](index_t first, std::size_t n, std::span<double> best) {
+      const std::size_t next = static_cast<std::size_t>(first) + n;
       if (check) {
         check->check(static_cast<std::size_t>(first), n);
-        stop_if_marked(static_cast<std::size_t>(first) + n);
+        if (check->marked()) check_rest(next);
       }
-      assign(first, n, best);
+      try {
+        assign(first, n, best);
+      } catch (...) {
+        check_rest(next);
+        throw;
+      }
     });
   };
   if (pair_f32) {
