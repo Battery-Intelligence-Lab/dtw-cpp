@@ -293,3 +293,6 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
 - 2026-11-01 — Volkan (question tool) on KS's spec (`C:/D/git/wt/tmp/MM/ks_spec.md`): "Approve as written": the
   kernels' and algorithms' thread scratch priced on every route (a phase's team shrinks to what an explicit limit
   holds, one thread that does not fit is a typed `InvalidInput`), released by `dtwc::run` on return and on error.
+- 2026-11-01 — Volkan (question tool) on KS (539d7d7e), where clang gave 4 of 470 multivariate compute loops one or
+  two stack reloads a DP cell (the growth check before the loops): "Fix them first": KS closes once no hot loop adds
+  a reload, and the codegen probe instantiates the multivariate kernels so the gate sees them.

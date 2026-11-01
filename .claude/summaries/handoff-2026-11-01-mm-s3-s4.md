@@ -4,7 +4,7 @@
 
 - `design-2.0` at the commit holding this file, pushed fast-forward with it (DECISIONS §3, 10-21). At this session's
   start a64b44be = origin (Volkan's 10-28 merge of the Mac's 4-line handoff edit e48141ec; no code). Tree clean.
-- `pb/MM` 819e8703, local only, worktree `C:/D/git/wt/MM`: S1–S4 and their fixes; KS's implementer works there now.
+- `pb/MM` 539d7d7e (KS on 819e8703), local only, worktree `C:/D/git/wt/MM`; KS's fix implementer works there now.
   `wt/FM` (merged) stays for E1; `wt/TL` (merged) holds a build tree: ask before removing either.
 
 ## Done
@@ -40,7 +40,7 @@
 ## Decisions
 
 - Asked through the question tool (10-31): "Close S3, then S4 (Recommended)". 11-01 (DECISIONS §3): "Kernel scratch
-  first"; "Release on return"; KS's spec "Approve as written".
+  first"; "Release on return"; KS's spec "Approve as written"; on KS's loops "Fix them first".
 - My calls, not asked: S3's B1 fixed as a blocker; S3's `bad_alloc` ordering nit not fixed (machine memory, not input);
   S4's `decode_bytes() = 0` accepted; S4 closed with the lane kernel's scratch carried to S7 (unpriced on every route
   since before MM; a bound needs each series' length as read); `release_free_memory()` kept (reviewer A: sound in a
@@ -48,8 +48,10 @@
 
 ## Next steps
 
-1. PLAN KS (in flight on pb/MM from `C:/D/git/wt/tmp/MM/brief_ks.md`, spec `ks_spec.md`; evidence
-   `logs/ks_summary.log`): check `git log 819e8703..pb/MM` and that log first; then two fresh reviews (one measuring).
+1. PLAN KS: 539d7d7e (record `baselines/2026-11-01-ks-scratch.md`; my ctest 99/99); its two reviews' fix in flight
+   from `C:/D/git/wt/tmp/MM/brief_ks2.md` (evidence `logs/ks2_summary.log`): Volkan's "Fix them first" (no hot loop
+   adds a reload; the probe instantiates the multivariate kernels) and two blockers. Check `git log 539d7d7e..pb/MM`
+   and that log first; then the two reviewers (`review_ks1/`, `review_ks2/`) re-check.
 2. PLAN MM S5 (GPU, interim; design §6): the CUDA tree here; G8b, Metal, on the Mac. Then S6–S10; S8's and S9's briefs
    carry KS's release into Python's and MATLAB's `cluster()`. Merge design-2.0 into pb/MM before S8.
 3. PLAN FM's E1 (Volkan runs `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` elevated); then FM's scratch and `wt/FM`.
