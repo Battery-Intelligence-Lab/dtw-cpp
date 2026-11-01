@@ -4,7 +4,7 @@
 
 - `design-2.0` at the commit holding this file, pushed fast-forward with it (DECISIONS §3, 10-21). Before it, a64b44be
   = origin: Volkan's 10-28 merge of the Mac's 4-line handoff edit e48141ec (no code). Tree clean.
-- `pb/MM` 62fab80d (S4 on dd7ba144), local only, worktree `C:/D/git/wt/MM`; S4's fix agent works there. dd7ba144
+- `pb/MM` 8dab1e78 (S4 62fab80d, its fix), local only, worktree `C:/D/git/wt/MM`; S4's second fix works there. dd7ba144
   merged into design-2.0 cleanly (`git merge-tree`, 11-01). `wt/FM` (pb/FM, merged) stays for E1; `wt/TL` (merged)
   holds a build tree: ask before removing either.
 
@@ -56,9 +56,12 @@
 1. PLAN MM S4: committed 62fab80d (tree 6294a4b3; `logs/s4_summary.log`; my clang ctest 98/98). Two fresh reviews
    (A the reader's memory bounds, B the stream and planner; `baselines/2026-11-01-mm-s4-stream.md`, every cited line
    opened): two blockers (`series_names()` without llfio reads every batch at once, unpriced; per-batch objects priced
-   at 0), six should-fix items, four nits. Their fix is in flight from `C:/D/git/wt/tmp/MM/brief_s4fix.md` (one commit
-   on 62fab80d; evidence `logs/s4r_summary.log`). Next: verify it against that log, then reviewer A re-runs its probes
-   (`C:/D/git/wt/tmp/MM/review_s4a/`) and B re-checks by trace.
+   at 0), six should-fix items, four nits; fixed 8dab1e78 (my clang ctest 98/98; both re-checks: all closed). The
+   re-checks' residuals (the walk's growth before any price, two template checks without the walk, an unmeasured
+   eighth over-pricing large buffers, three text/test items) are in a second fix from
+   `C:/D/git/wt/tmp/MM/brief_s4fix2.md` (evidence `logs/s4r2_summary.log`). Then A and B re-check; if only nits
+   remain, S4 closes with them recorded. For S7: the kernel's per-thread lanes scratch is unpriced (PAM on 400 series
+   of 100,000 doubles at 380M peaked at 939.5 MB with 24 threads).
 2. PLAN MM S5–S10 (design §6); merge design-2.0 into pb/MM before S8 (S8 builds wheels; pb/MM lacks TL's fix).
 3. PLAN FM's E1 (Volkan runs `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` elevated); then FM's scratch and `wt/FM`.
 4. PLAN "Before the 2.0 tag": the [CI] Linux wheel jobs; `cpp_conformance` under GCC and MSVC; L2b; F43; Linux archives.
