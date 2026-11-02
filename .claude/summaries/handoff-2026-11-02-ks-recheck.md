@@ -61,9 +61,9 @@
 
 ## Next steps
 
-1. PLAN MM RB: read `rb_plan.md` (open its cited lines; the planner's claims are hypotheses), brief the 2 or 3 implementer
-   steps from it (each with all six gate trees, pytest, G6 where sources are restored; briefs in `C:/D/git/wt/tmp/MM/`),
-   re-check with fresh narrow reviewers, I reproduce the oracles myself. Then RR (plan, implement, gates).
+1. PLAN MM RB: verify RB1 when it reports (G6 verdicts, the sites it changed, gate counts; reproduce the release figure and a
+   fixture sweep), then brief RB2 and RB3 from `rb_plan.md` sections 3.2-3.5 and 5 (my rulings above), fresh narrow reviewers,
+   I reproduce the oracles. Then RR from `rr_plan.md` (plan, implement, gates).
 2. Then merge design-2.0 into pb/MM, fill `<KS-TIP>` in `brief_s5_draft.md` (the tip is then RB's), S5, S6, S7 (the planner,
    `run` for every language), S8, S9, S10.
 3. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4 and 7 if MM ships, FM's E1; conformance legs redone
@@ -71,11 +71,11 @@
 
 ## Open questions
 
-- Whether every KS scratch buffer is reachable by a closed-list release (the planner reports); RR's machine facts: a
-  maintained library or under 80 lines (Volkan prefers libraries); a GCC "no call in a DP loop" gate.
+- RB1's closed list may leave a buffer unreleased if G6 shows its accessor moving a loop (the brief pre-authorises that);
+  RR's machine facts: a maintained library or under 80 lines (Volkan prefers libraries); a GCC "no call in a DP loop" gate.
 
 ## Status honesty
 
-- Run by me: clang `ctest -j1` at both commits, the sweeps and scans above, the conformance log reads. Not run by me: the
-  Arrow, no-llfio, MEX, CUDA and GCC gates, pytest, any assembly, any timing, mutations.
-- Agents this session: Fable audit, R1, R2, KS3 (763 k tokens), R1' (490 k), R2' (440 k), conformance (92 k), KS4 (412 k).
+- Run by me: clang `ctest -j1` at both KS commits, the sweeps and scans above, the conformance log reads. Not run by me: the
+  Arrow, no-llfio, MEX, CUDA and GCC gates, pytest, any assembly, any timing, mutations. Agents today: Fable audit, R1, R2, KS3
+  (763 k tokens), R1' (490 k), R2' (440 k), conformance (92 k), KS4 (412 k), RB planner (529 k), RB1, RR planner (running).
