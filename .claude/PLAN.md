@@ -76,7 +76,9 @@ Marked [here] (this Windows machine, WSL included, run in slots between timed un
 `gh` is not authenticated here, so its results are read on GitHub) or [Volkan]. `VERSION` is 2.0.0rc1. Whether MM
 and HG ship in 2.0 or after it is open (not asked).
 
-- [here] `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the same 17 significant figures.
+- [here] `cpp_conformance` under GCC and MSVC Release, `strict` and `fast`: the test as it stands (labels and medoids
+  equal, scores within 1e-12; Volkan 11-02: "1e-12 is fine ... as long as it doesn't change the clustering"). `fast`
+  passed in the gate trees (GCC in WSL, cl in the CUDA tree); `strict` has not run.
 - [done 10-22] The Linux wheel could not be imported (glibc 2.39, since before MM): llfio's wg14_signals
   thread-local was `initial-exec`, so `_dtwcpp_core` was STATIC_TLS; TL 571c40f9, merged e3cba47d, sets llfio's
   own `WG14_SIGNALS_HAVE_ASYNC_SAFE_THREAD_LOCAL=0` on ELF: imports without the tunable, its Python suite

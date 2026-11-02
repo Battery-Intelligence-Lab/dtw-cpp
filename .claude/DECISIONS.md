@@ -302,3 +302,6 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   differences in `dtw_dispatch.cpp`: "Read post-LTO code first" (the LTO-linked CLI equals 819e8703's: accepted for it).
 - 2026-11-02 — Volkan, in the chat: Fable 5.1 at max effort for one audit of the status report; rule 16's "never Fable"
   stands otherwise.
+- 2026-11-02 — Volkan (question tool, free text) on the cross-compiler check (PLAN's "17 significant figures" was an
+  earlier session's wording, not his: "I never said 17 significant figures"): "1e-12 is fine I guess, as long as it
+  doesn't change the clustering": `cpp_conformance` under GCC and MSVC, `strict` and `fast`, passes as the test stands.

@@ -52,8 +52,10 @@
 - My calls, not asked: release also at the stream's re-plan (at PAM to pass alone the assignment team regrows before the
   long row and a late series still finds no room; the advisor's catch; told to Volkan in the chat); S8 and S9 serial; merge
   design-2.0 into pb/MM after KS closes; hold the `strict` conformance legs while KS3 builds; fresh reviewers at default effort.
-- Awaiting Volkan: the `cpp_conformance` wording (tolerance 1e-12, or "17 significant figures"); carried: whether MM and HG
-  ship in 2.0, the history purge, disk deletions.
+- Volkan 11-02 (free text), on the cross-compiler check: "I never said 17 significant figures, ask me what it is" (that was
+  PLAN's wording from an earlier session, now fixed); "1e-12 is fine I guess, as long as it doesn't change the clustering":
+  `cpp_conformance` as the test stands (labels and medoids equal, scores within 1e-12).
+- Awaiting Volkan, carried: whether MM and HG ship in 2.0, the history purge, disk deletions.
 
 ## Next steps
 
@@ -62,7 +64,7 @@
 2. Merge design-2.0 into pb/MM (`--no-ff --no-commit`, clang build and ctest), then PLAN MM S5 (`brief_s5_draft.md`; the CUDA
    tree here, Metal on the Mac), S6, S7 (reworks `run.cpp`'s planner, which KS changed), S8, S9 serial, S10 (add a kernel
    band; G6 against the MM base with the fixed kit before the merge).
-3. PLAN "Before the 2.0 tag": `cpp_conformance` strict legs (GCC, MSVC) and the wording; L2b; Linux archives; F43; design.md
+3. PLAN "Before the 2.0 tag": `cpp_conformance` strict legs (GCC, MSVC; the test as it stands); L2b; Linux archives; F43; design.md
    §7 risks 4 and 7 if MM ships; FM's E1 (Volkan runs `profile_fm_etw.cmd`).
 
 ## Open questions
