@@ -154,12 +154,14 @@ private:
  * in fast_clara_parquet.cpp: GCC inlines the assignment into its caller only then (2026-11-01).
  *
  * The threads' scratch (`team`, within an explicit limit): each thread's DTW kernels' for the longest series it meets,
- * FasterPAM's and the assignment's tables, kept to the end of the call. The PAMs' team is the most that fit beside the
- * PAMs, the pass beside one piece (the medoids at most `slots` of the union's longest series) and its end. The pass's
- * batches leave room for every thread of the full team, not the team a phase shrank to, so a shrunk team gives the
- * same results. A block of longer series than any before plans the batches again for them (read again, in smaller
- * batches, where it holds more pieces than they leave room for) and fits the assignment's team again, before it is
- * assigned, beside the blocks in flight: refused only where one thread's scratch does not fit beside one piece.
+ * FasterPAM's and the assignment's tables. The PAMs' team is the most that fit beside the PAMs; when they finish, no
+ * kernel runs until the pass, so every thread gives its scratch back and the pass's team is fitted afresh beside the
+ * pass with the medoids it has (KernelTeam::release). The pass's batches leave room for every thread of the full team,
+ * not the team a phase shrank to, so a shrunk team gives the same results. A block of longer series than any before
+ * plans the batches again for them (read again, in smaller batches, where it holds more pieces than they leave room
+ * for) and fits the assignment's team again before it is assigned, beside the blocks in flight, every thread first
+ * giving its scratch back where what they hold leaves the team less room than it needs: refused only where one
+ * thread's scratch does not fit beside the PAMs, or beside one piece and the pass's end.
  */
 template <bool F32, typename Reader>
 static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptions &opts, const Reader &reader,
@@ -243,41 +245,35 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
                          + " sampled series, " + std::to_string(pam_bytes)
                          + " for a sample's copy and its distance matrix (sample_size = " + std::to_string(s)
                          + "); raise the limit, or lower sample_size.");
-    // The PAMs' threads keep their scratch for the union's longest series to the end: their team fits beside the
-    // PAMs, the pass's least (one piece, the medoids at most `slots` of those series) and its end.
+    // The PAMs' team: the threads whose scratch for the union's longest series fits beside the PAMs.
     for (std::size_t i = 0; i < rows.size(); ++i) longest = std::max(longest, pool.series_flat_size(i) / pool.ndim);
-    const size_t medoids_most = Reader::series_bytes(slots * longest * pool.ndim, slots, F32);
-    const size_t pass_least = medoids_most + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes()
-                              + reader.largest_row_group_bytes(F32);
-    const size_t end_least = open + medoids_most + samples.size() * n_points * sizeof(index_t)
-                             + n_points * sizeof(index_t) + n_points / 8;
-    const size_t rest = std::max(std::max(open + union_bytes + pam_bytes, pass_least), end_least);
-    const TeamCap pam_team(team.fit("FastCLARA's PAMs", rest, per_thread(longest), longest,
-                                    "the samples' series and a sample's PAM, or the pass's least"));
+    const TeamCap pam_team(team.fit("FastCLARA's PAMs", open + union_bytes + pam_bytes, per_thread(longest), longest,
+                                    "the samples' series and a sample's PAM"));
     pams = clara_pams(prob, opts, pool, samples, positions, true, medoids);
     medoid_data = clara_sample(pool, positions_in(rows, medoids), true);
   }
-  core::release_free_memory(); // the union's and its read's memory, before the labels
+  // The PAMs are over and no kernel runs until the pass: their threads give their scratch back (under an explicit
+  // limit), the pass's team is fitted afresh beside the pass; and the union's and its read's memory, before the labels.
+  team.release();
+  core::release_free_memory();
 
   const size_t limit = opts.ram_limit_bytes;
   std::size_t medoid_values = 0;
   for (std::size_t j = 0; j < medoids.size(); ++j) medoid_values += medoid_data.series_flat_size(j);
   const size_t medoid_bytes = Reader::series_bytes(medoid_values, medoids.size(), F32);
-  const size_t fixed_rest = medoid_bytes + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes();
+  const size_t fixed = medoid_bytes + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes();
   const size_t group = reader.largest_row_group_bytes(F32);
   // After the pass the Problem copies the winner's labels (set_result) beside every sample's, the file still open.
-  const size_t finish_rest = open + medoid_bytes + samples.size() * n_points * sizeof(index_t)
-                             + n_points * sizeof(index_t) + n_points / 8;
-  // The threads' scratch, held to the end (team; 0 under the automatic budget).
-  const size_t fixed = fixed_rest + team.priced(), finish = finish_rest + team.priced();
+  const size_t finish = open + medoid_bytes + samples.size() * n_points * sizeof(index_t) + n_points * sizeof(index_t)
+                        + n_points / 8;
   if (std::max(fixed + group, finish) > limit)
     throw InvalidInput(
       "fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(limit) + " cannot hold the pass over the "
       "file, which needs " + std::to_string(std::max(fixed + group, finish)) + " bytes: " + std::to_string(fixed)
       + " for the medoids' series, every sample's labels and nearest distances (n_samples = "
       + std::to_string(samples.size()) + ", k = " + std::to_string(opts.n_clusters) + ", "
-      + std::to_string(n_points) + " rows), decoding and the threads' scratch, " + std::to_string(group)
-      + " for one " + Reader::piece + "'s series, " + std::to_string(finish) + " at its end with the result's labels"
+      + std::to_string(n_points) + " rows) and decoding, " + std::to_string(group) + " for one " + Reader::piece
+      + "'s series, " + std::to_string(finish) + " at its end with the result's labels"
       + (open != 0 ? " and the open file" : "") + "; raise the limit, or rewrite the file with smaller "
       + Reader::pieces + ".");
   // The pass's batches for series of up to `length` time steps: as many pieces as the limit holds beside the rest and,
@@ -292,7 +288,7 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   };
   const std::size_t full = static_cast<std::size_t>(full_team_threads());
   const auto batches_for = [&](std::size_t length) -> Batches {
-    const size_t held = fixed_rest + (team.prices() ? full * per_thread(length) : 0);
+    const size_t held = fixed + (team.prices() ? full * per_thread(length) : 0);
     if (held + group > limit) return { 1, false };
     const bool overlap = !Reader::decodes_with_team && held + 2 * group <= limit;
     return { reader.row_groups_per_batch(overlap ? (limit - held) / 2 : limit - held, F32), overlap };
@@ -330,6 +326,17 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
     }
   };
   const int total_rg = reader.num_row_groups();
+  // The assignment's team for series of up to `longest` time steps, before a batch of `count` pieces is assigned: the
+  // threads whose scratch fits beside the pass (the batches in flight, its end). Where what the threads hold leaves the
+  // team less room than it needs to grow, no kernel runs then: they give it back first (KernelTeam::release) and the
+  // team is fitted from the whole one, so it is refused only where one thread does not fit beside the batches.
+  const auto fit_assignment = [&](int count) {
+    const size_t blocks = static_cast<size_t>(count + (batches.overlap ? batches.pieces : 0)) * group;
+    const size_t rest = std::max(fixed + blocks, finish);
+    if (team.priced() != 0 && team.fitting(rest, per_thread(longest)) < team.threads()) team.release();
+    team.fit("FastCLARA's assignment", rest, per_thread(longest), longest,
+             "the medoids' series, every sample's labels, decoding and the batches in flight");
+  };
   const auto say = [&](int rg) {
     if (prob.verbose())
       std::cout << "FastCLARA's pass: " << batches.pieces << " "
@@ -339,6 +346,8 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
                 << '\n';
   };
   say(0);
+  fit_assignment(std::min(batches.pieces, total_rg));
+  std::size_t fitted = longest; // the series' length the team's scratch is priced for
   // The batch of `rg` on, its first row `first_row`: decoded beside the assignment of the one before where two fit.
   const auto read_from = [&](int rg, index_t first_row) {
     return std::async(batches.overlap ? std::launch::async : std::launch::deferred, decode, rg,
@@ -346,7 +355,6 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   };
   std::future<Data> next = read_from(0, index_t{ 0 });
   index_t first = 0;
-  std::size_t fitted = longest; // the series' length the team's scratch is priced for
   for (int rg = 0; rg < total_rg;) {
     const int count = std::min(batches.pieces, total_rg - rg); // this batch's pieces
     {
@@ -369,9 +377,7 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
         }
       }
       if (longest > fitted) {
-        const size_t blocks = static_cast<size_t>(count + (batches.overlap ? batches.pieces : 0)) * group;
-        team.fit("FastCLARA's assignment", std::max(fixed_rest + blocks, finish_rest), per_thread(longest), longest,
-                 "the medoids' series, every sample's labels, decoding and the batches in flight");
+        fit_assignment(count);
         fitted = longest;
       }
       if (rg + count < total_rg) next = read_from(rg + count, first + batch.size());

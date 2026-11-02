@@ -49,7 +49,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT
              "${CMAKE_SOURCE_DIR}/scripts/codegen_report.py" --no-calls --build-dir "${CMAKE_BINARY_DIR}")
     set_tests_properties(test_codegen_no_calls PROPERTIES FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}"
         PASS_REGULAR_EXPRESSION
-        "CODEGEN_NO_CALLS tool=[^ ]+ inner_loops=[1-9][0-9]* mv_loops=[1-9][0-9]* calls=0 verdict=PASS")
+        "CODEGEN_NO_CALLS tool=[^ ]+ inner_loops=[1-9][0-9]* families=[1-9][0-9]* missing=none calls=0 verdict=PASS")
 endif()
 
 # Capability flags, queried once (they select markers and skip tolerance).

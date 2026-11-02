@@ -240,14 +240,14 @@ namespace detail {
 template <typename T>
 std::vector<T> &linear_short_buf()
 {
-  thread_local std::vector<T> short_buf; // grows exactly, never shrinks within a call: thread_scratch.hpp
+  thread_local std::vector<T> short_buf; // grows exactly, held while a kernel can run: thread_scratch.hpp
   return short_buf;
 }
 
 template <typename T>
 std::vector<T> &banded_col_buf()
 {
-  thread_local std::vector<T> col_buf; // grows exactly, never shrinks within a call: thread_scratch.hpp
+  thread_local std::vector<T> col_buf; // grows exactly, held while a kernel can run: thread_scratch.hpp
   return col_buf;
 }
 
@@ -551,14 +551,14 @@ struct alignas(64) LanesRow
 template <typename T>
 std::vector<LanesRow<T>> &lanes_y_buf()
 {
-  thread_local std::vector<LanesRow<T>> y_buf; // grows exactly, never shrinks within a call: thread_scratch.hpp
+  thread_local std::vector<LanesRow<T>> y_buf; // grows exactly, held while a kernel can run: thread_scratch.hpp
   return y_buf;
 }
 
 template <typename T>
 std::vector<LanesRow<T>> &lanes_s_buf()
 {
-  thread_local std::vector<LanesRow<T>> s_buf; // grows exactly, never shrinks within a call: thread_scratch.hpp
+  thread_local std::vector<LanesRow<T>> s_buf; // grows exactly, held while a kernel can run: thread_scratch.hpp
   return s_buf;
 }
 

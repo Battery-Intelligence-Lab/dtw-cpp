@@ -4,7 +4,9 @@
  *        each variant's kernels ran is core::thread_scratch_bytes, to the byte; release_thread_scratch() and dtwc::run,
  *        returning or throwing, give every thread's back, a Tier-2 k-sweep keeps it; within an explicit --ram-limit a
  *        run's team is the threads whose scratch fits (core::KernelTeam), the same digits as the whole team's, and one
- *        thread that does not fit is refused, naming the bytes.
+ *        thread that does not fit is refused, naming the bytes; a stream gives its threads' back at its phase
+ *        boundaries, the matrix stays in RAM while one thread fits beside it, and Arrow IPC's routing is monotone in
+ *        the limit.
  *
  * @details Registered with OMP_NUM_THREADS=4, so a team of 4 shrinks to 2. A thread's bytes are its registered
  *          buffers' capacities (core::registered_scratch_bytes(), the calling thread's first), read after the kernels
@@ -25,6 +27,7 @@
 #include <core/dtw_dispatch.hpp>
 #include <core/thread_scratch.hpp>
 #include <io/arrow_ipc.hpp>
+#include <scores.hpp>
 
 #include "../../support/scratch_directory.hpp"
 
@@ -44,6 +47,7 @@
 #include <span>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #ifdef _OPENMP
@@ -232,7 +236,8 @@ TEST_CASE("A thread holds the algorithms' tables a planner prices", "[thread_scr
   dtwc::core::release_thread_scratch();
 }
 
-TEST_CASE("core::KernelTeam: a phase's team only shrinks, and the threads it leaves keep what they hold",
+TEST_CASE("core::KernelTeam: a phase's team only shrinks, and the threads it leaves keep what they hold, until "
+          "release() gives every thread's back",
           "[thread_scratch]")
 {
 #ifndef _OPENMP
@@ -254,6 +259,11 @@ TEST_CASE("core::KernelTeam: a phase's team only shrinks, and the threads it lea
                                "the limit."));
   CHECK(team.fitting(100, 350) == 2); // the query: 2 of the team grow 50 each beside 100 and 800; nothing changes
   CHECK(team.priced() == 800);
+  KernelTeam given_back = team;
+  given_back.release(); // where no kernel runs: every thread's scratch given back, the next fit from the whole team
+  CHECK(given_back.priced() == 0);
+  CHECK(given_back.fit("r", 100, 200, 2) == 4); // kept, the 2 would stay at 300; from nothing, 4 x 200 beside 100
+  CHECK(given_back.priced() == 800);
   // What the run holds alone exceeds the limit: said so, with what one thread would need beside it.
   CHECK_THROWS_MATCHES(team.fit("d", 1200, 350, 4, "the series"), dtwc::InvalidInput,
                        Message("d: --ram-limit = 1000 cannot hold the series alone, 1200 bytes, let alone one thread's "
@@ -418,6 +428,10 @@ TEST_CASE("FastCLARA streamed within --ram-limit keeps the threads whose scratch
                                           "\\(the DTW kernels' for series of up to 4 time steps and the method's "
                                           "tables\\), as many as --ram-limit = " + std::to_string(less)
                                           + " holds beside the [0-9]+ bytes the run holds with it")));
+  // When the PAMs finish no kernel runs until the pass: their threads give their scratch back and the pass's team is
+  // fitted afresh from the whole one, so it says how many of the 4 it keeps (here the names read after the stream bind
+  // both phases); a team that went on from the PAMs' 3 would say nothing.
+  CHECK_THAT(out, ContainsSubstring("FastCLARA's assignment: 3 of 4 threads"));
 }
 
 TEST_CASE("dtwc::run's guard gives every thread's scratch back as a run starts, not only when it returns",
@@ -486,7 +500,7 @@ TEST_CASE("Beside a complete --dist-matrix, which no kernel adds to, the matrix 
 {
   // Reviewer R1's case: 4 series of 100,000 values, FastPAM under a band of 10, results written, --ram-limit 100M: one
   // thread's kernel scratch (the lanes' 25.6 MB) times the team is past the limit, but no kernel runs beside a complete
-  // matrix: its 80 bytes stay in RAM, as 819e8703 kept them.
+  // matrix: its 80 bytes stay in RAM, as 819e8703 kept them. At 10M one thread's kernel scratch alone is past it.
   const dtwc::test_support::ScratchDirectory scratch{ "scratch_dist_matrix" };
   const auto series = [] { return data_of(walks<double>(4, 100000, 1, false), 1); };
   dtwc::Config config;
@@ -498,85 +512,184 @@ TEST_CASE("Beside a complete --dist-matrix, which no kernel adds to, the matrix 
   const auto full = dtwc::run(config, series()); // the matrix computed, and written
   const auto matrix = scratch.path / "full" / "long4_distance_matrix.csv";
   REQUIRE(std::filesystem::exists(matrix));
+  REQUIRE(dtwc::core::thread_scratch_bytes(distance(DTWVariant::Standard, 10), 100000, Precision::Float64)
+          > (std::size_t{ 10 } << 20));
   config.dist_matrix = dtwc::path_to_utf8(matrix);
-  config.output = dtwc::path_to_utf8(scratch.path / "read");
-  config.ram_limit = std::size_t{ 100 } << 20;
+  config.verbose = true;
+  for (const std::size_t mib : { 100, 10 }) {
+    config.ram_limit = mib << 20;
+    config.output = dtwc::path_to_utf8(scratch.path / ("read" + std::to_string(mib)));
+    double cost = 0;
+    const std::string out = printed([&] { cost = dtwc::run(config, series()).cost(); });
+    INFO("--ram-limit " << mib << "M:\n" << out);
+    CHECK_THAT(out, ContainsSubstring("Loaded distance matrix from"));
+    CHECK_THAT(out, !ContainsSubstring("Using memory-mapped distance matrix"));
+    CHECK_FALSE(std::filesystem::exists(scratch.path / ("read" + std::to_string(mib)) / "long4.dtwm"));
+    CHECK(cost == full.cost());
+  }
+}
+
+TEST_CASE("Within --ram-limit the distance matrix stays in RAM while one thread's scratch fits beside it and the "
+          "series and it takes at most half of what they and one thread leave; the team beside it shrinks",
+          "[thread_scratch][run][ram_limit]")
+{
+#ifndef _OPENMP
+  SKIP("two OpenMP workers unavailable: a sequential build has no team");
+#endif
+  REQUIRE(dtwc::get_max_threads() == 4);
+  // Reviewer R1's shape: 200 series of 100 values, FastPAM, results written. At the series, twice the matrix and one
+  // thread's scratch (the kernels', FasterPAM's and the silhouettes' tables) the matrix takes half of what the series
+  // and that thread leave: it stays in RAM, beside as many threads as fit (four); half of what the series and the four
+  // threads' scratch leave would have mapped it, or without llfio refused the run.
+  constexpr std::size_t n = 200, steps = 100;
+  const dtwc::test_support::ScratchDirectory scratch{ "scratch_storage_one_thread" };
+  const auto series = [&] { return data_of(walks<double>(n, steps, 1, false), 1); };
+  dtwc::Config config;
+  config.k = 3;
+  config.method = dtwc::Method::PAM;
+  config.band = -1;
+  config.name = "s200";
+  config.output = dtwc::path_to_utf8(scratch.path / "whole");
+  const auto whole = dtwc::run(config, series());
+  const std::size_t values = n * steps * sizeof(double), matrix = dtwc::core::packed_size(n) * sizeof(double);
+  const std::size_t each = dtwc::core::thread_scratch_bytes(distance(DTWVariant::Standard, -1), steps,
+                                                            Precision::Float64)
+                           + dtwc::detail::fast_pam_thread_bytes(3) + dtwc::scores::detail::silhouette_thread_bytes(3);
+  config.ram_limit = values + 2 * matrix + each;
+  REQUIRE(config.ram_limit >= values + matrix + 4 * each); // the four fit beside it in RAM
+  config.output = dtwc::path_to_utf8(scratch.path / "limited");
   config.verbose = true;
   double cost = 0;
   const std::string out = printed([&] { cost = dtwc::run(config, series()).cost(); });
   INFO(out);
-  CHECK_THAT(out, ContainsSubstring("Loaded distance matrix from"));
   CHECK_THAT(out, !ContainsSubstring("Using memory-mapped distance matrix"));
-  CHECK_FALSE(std::filesystem::exists(scratch.path / "read" / "long4.dtwm"));
-  CHECK(cost == full.cost());
+  CHECK_FALSE(std::filesystem::exists(scratch.path / "limited" / "s200.dtwm"));
+  CHECK(cost == whole.cost());
 }
 
+namespace {
+
+/// What Arrow IPC's routing prices FastCLARA's in-RAM route at (k 3, two samples of 8, Float64, nothing written) on
+/// `file` under `band`, for series of up to `steps` time steps: the file's resident bytes, a sample PAM's matrix or
+/// every sample's labels and nearest distances, and one thread's scratch. With the longest series' steps, the least
+/// limit that routes the series into RAM.
+std::size_t ipc_in_ram_bytes(const std::filesystem::path &file, int band, std::size_t steps)
+{
+  dtwc::algorithms::CLARAOptions options;
+  options.n_clusters = 3;
+  options.sample_size = 8;
+  options.n_samples = 2;
+  const dtwc::io::IpcFile ipc(file);
+  const auto plan = dtwc::algorithms::detail::resolve_clara_plan(ipc.num_rows(), options, "run");
+  return ipc.resident_bytes(Precision::Float64, false)
+         + std::max(dtwc::core::packed_size(8) * sizeof(double), dtwc::algorithms::detail::clara_pass_bytes(plan, 2))
+         + dtwc::core::thread_scratch_bytes(distance(DTWVariant::Standard, band), steps, Precision::Float64)
+         + dtwc::detail::fast_pam_thread_bytes(3)
+         + dtwc::algorithms::detail::clara_assign_thread_bytes(6, Precision::Float64);
+}
+
+} // namespace
+
 TEST_CASE("FastCLARA streamed: a series longer than any sampled, read late, has its batch read again in smaller ones "
-          "and its team fitted again; the least limit streams it, a byte below is refused naming that limit",
+          "and its team fitted afresh, every thread's scratch given back first; the stream runs at every limit from its "
+          "least up to where the in-RAM route runs, with the same results",
           "[thread_scratch][run][arrow][streaming]")
 {
 #ifndef _OPENMP
   SKIP("two OpenMP workers unavailable: a sequential build has no team");
 #endif
   REQUIRE(dtwc::get_max_threads() == 4);
-  // 2,048 series of 8 steps, row 1,500's of 1,500, LZ4, record batches of 64; the samples hold no series of 1,500.
-  const auto file = std::filesystem::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader"
-                    / "clara_long_late.arrow";
-  dtwc::Config config;
-  config.output.clear();
-  config.input = dtwc::path_to_utf8(file);
-  config.method = dtwc::Method::CLARA;
-  config.k = 3;
-  config.sample_size = 8;
-  config.n_samples = 2;
-  config.seed = 42;
-  const auto whole = dtwc::run(config); // in RAM
-  config.verbose = true;
-  struct Outcome
-  {
-    bool streamed;
-    std::string text; // -v's, or the refusal's
-  };
-  const auto at = [&](std::size_t limit) -> Outcome {
-    config.ram_limit = limit;
-    try {
-      return { true, printed([&] {
-                 const auto result = dtwc::run(config);
-                 CHECK(result.labels() == whole.labels());
-                 CHECK(result.medoids() == whole.medoids());
-                 CHECK(result.cost() == whole.cost());
-               }) };
-    } catch (const dtwc::InvalidInput &e) {
-      return { false, e.what() };
+  // Each file holds one series of 1,500 steps, read late, that the samples do not hold: clara_long_late.arrow's other
+  // 2,047 are 8 steps (LZ4, record batches of 64: every lane width's plan reads the long one's batch with others, and so
+  // again on its own), clara_late_wide.arrow's 511 are 48 (list<float>, batches of 32, the long one in the last), so
+  // the scratch the PAMs' and the pass's 4 threads hold for them is not tiny.
+  for (const auto &[name, sampled, rows, reread] :
+       { std::tuple{ "clara_long_late.arrow", std::size_t{ 8 }, 2048, true },
+         std::tuple{ "clara_late_wide.arrow", std::size_t{ 48 }, 512, false } }) {
+    const auto file = std::filesystem::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader" / name;
+    dtwc::Config config;
+    config.output.clear();
+    config.input = dtwc::path_to_utf8(file);
+    config.method = dtwc::Method::CLARA;
+    config.k = 3;
+    config.sample_size = 8;
+    config.n_samples = 2;
+    config.seed = 42;
+    const auto whole = dtwc::run(config); // in RAM
+    config.verbose = true;
+    struct Outcome
+    {
+      bool ran;
+      std::string text; // -v's, or the refusal's
+      bool streamed() const { return ran && text.find("Arrow IPC walk selected streaming") != std::string::npos; }
+    };
+    const auto at = [&](std::size_t limit) -> Outcome {
+      config.ram_limit = limit;
+      try {
+        return { true, printed([&] {
+                   const auto result = dtwc::run(config);
+                   CHECK(result.labels() == whole.labels());
+                   CHECK(result.medoids() == whole.medoids());
+                   CHECK(result.cost() == whole.cost());
+                 }) };
+      } catch (const dtwc::InvalidInput &e) {
+        return { false, e.what() };
+      }
+    };
+    // The in-RAM route from where RAM holds the series and one thread's scratch for the longest, 1,500 steps (the walk
+    // bounds it above, so its lengths are read); below it the stream, down to the least limit it runs at, by bisection.
+    const dtwc::io::IpcFile ipc(file);
+    REQUIRE(ipc.longest() == 1500);
+    REQUIRE(ipc.longest_bound() > 1500);
+    const std::size_t in_ram = ipc_in_ram_bytes(file, config.band, 1500);
+    std::size_t refused = 1, streams = in_ram - 1;
+    REQUIRE_THAT(at(streams).text, ContainsSubstring("Arrow IPC walk selected streaming: " + std::to_string(rows)));
+    REQUIRE_FALSE(at(refused).ran);
+    while (streams - refused > 1) {
+      const std::size_t mid = refused + (streams - refused) / 2;
+      (at(mid).ran ? streams : refused) = mid;
     }
-  };
-  // The least limit the stream runs at, by bisection from the file's resident estimate, which it streams at.
-  std::size_t refused = 1, streams = dtwc::io::IpcFile(file).resident_bytes(Precision::Float64, false);
-  REQUIRE_THAT(at(streams).text, ContainsSubstring("Arrow IPC walk selected streaming: 2048 series"));
-  REQUIRE_FALSE(at(refused).streamed);
-  while (streams - refused > 1) {
-    const std::size_t mid = refused + (streams - refused) / 2;
-    (at(mid).streamed ? streams : refused) = mid;
+    const Outcome least = at(streams), below = at(streams - 1);
+    INFO(name << ": at the least limit " << streams << ":\n" << least.text << "\na byte below:\n" << below.text);
+    REQUIRE(least.streamed());
+    // Its record batch read again on its own (where the plan read it with others), and the team one thread for its
+    // 1,500 steps.
+    if (reread) CHECK_THAT(least.text, ContainsSubstring("FastCLARA's pass: 1 record batch a batch from record batch "));
+    CHECK_THAT(least.text, ContainsSubstring("for series of up to 1500 time steps"));
+    CHECK_THAT(least.text, ContainsSubstring("FastCLARA's assignment: 1 of 4 threads"));
+    // A byte below, the typed refusal: one thread's scratch beside what the run holds, the threads having given theirs
+    // back, is the limit.
+    REQUIRE_FALSE(below.ran);
+    std::smatch m;
+    REQUIRE(std::regex_search(below.text, m,
+                              std::regex("^FastCLARA's assignment: --ram-limit = ([0-9]+) cannot hold one thread's "
+                                         "scratch, ([0-9]+) bytes \\(the DTW kernels' for series of up to 1500 time "
+                                         "steps and the method's tables\\), beside the ([0-9]+) bytes the run holds "
+                                         "with it; raise the limit\\.$")));
+    CHECK(std::stoull(m[1].str()) == streams - 1);
+    CHECK(std::stoull(m[2].str()) + std::stoull(m[3].str()) == streams);
+    // Had the 4 threads kept their scratch for the sampled series, one growing, the limit would hold 3 x a thread's
+    // more: the stream runs inside that window too (`kept`).
+    const std::size_t kept = dtwc::core::thread_scratch_bytes(distance(DTWVariant::Standard, config.band), sampled,
+                                                              Precision::Float64)
+                             + dtwc::detail::fast_pam_thread_bytes(3)
+                             + dtwc::algorithms::detail::clara_assign_thread_bytes(6, Precision::Float64);
+    // Monotone: the stream at every limit from the least up to the in-RAM route's, and the in-RAM route from there on,
+    // below the walk's bound's price too.
+    for (const std::size_t limit : { streams + 3 * kept / 2, streams + (in_ram - streams) / 3,
+                                     streams + 2 * (in_ram - streams) / 3, in_ram - 1 }) {
+      if (limit < streams || limit >= in_ram) continue;
+      INFO("--ram-limit " << limit);
+      CHECK(at(limit).streamed());
+    }
+    const std::size_t bound = ipc_in_ram_bytes(file, config.band, ipc.longest_bound());
+    for (const std::size_t limit : { in_ram, in_ram + (bound - in_ram) / 2, bound + bound / 4 }) {
+      const Outcome o = at(limit);
+      INFO("--ram-limit " << limit << ":\n" << o.text);
+      CHECK(o.ran);
+      CHECK_THAT(o.text, ContainsSubstring("Data loaded from Arrow IPC: " + std::to_string(rows) + " series"));
+    }
   }
-  const Outcome least = at(streams), below = at(streams - 1);
-  INFO("at the least limit " << streams << ":\n" << least.text << "\na byte below:\n" << below.text);
-  REQUIRE(least.streamed);
-  CHECK_THAT(least.text, ContainsSubstring("Arrow IPC walk selected streaming: 2048 series"));
-  // Its record batch read again on its own, and the team one thread for its 1,500 steps.
-  CHECK_THAT(least.text, ContainsSubstring("FastCLARA's pass: 1 record batch a batch from record batch "));
-  CHECK_THAT(least.text, ContainsSubstring("for series of up to 1500 time steps"));
-  CHECK_THAT(least.text, ContainsSubstring("FastCLARA's assignment: 1 of 4 threads"));
-  // A byte below, the typed refusal: one more thread's growth beside what the run and its threads hold is the limit.
-  REQUIRE_FALSE(below.streamed);
-  std::smatch m;
-  REQUIRE(std::regex_search(below.text, m,
-                            std::regex("^FastCLARA's assignment: --ram-limit = ([0-9]+) cannot hold one thread's "
-                                       "scratch, [0-9]+ bytes \\(the DTW kernels' for series of up to 1500 time steps "
-                                       "and the method's tables\\), ([0-9]+) more than it holds, beside the ([0-9]+) "
-                                       "bytes the run holds with it and the ([0-9]+) its threads hold already; raise "
-                                       "the limit\\.$")));
-  CHECK(std::stoull(m[1].str()) == streams - 1);
-  CHECK(std::stoull(m[2].str()) + std::stoull(m[3].str()) + std::stoull(m[4].str()) == streams);
 }
 
 namespace {
@@ -702,14 +815,18 @@ TEST_CASE("A team shrunk to --ram-limit computes what the whole team computes: a
 #endif
 }
 
-TEST_CASE("Arrow IPC's routing streams a file whose series and one thread's scratch, at their mean length, exceed "
+TEST_CASE("Arrow IPC's routing streams a file whose series and one thread's scratch for its longest series exceed "
           "--ram-limit",
           "[thread_scratch][run][arrow][streaming]")
 {
-  // The walk knows each record batch's values, not each series' length: the in-RAM route is priced with one thread's
-  // scratch at the series' mean length (here every series' 4 steps) beside what it holds of the file and CLARA's terms.
+  // The walk knows each record batch's rows and values, not each series' length: a series is at most its batch's time
+  // steps less one for each other row (here 32 rows of 4 steps: 97). The in-RAM route, its team fitted on the longest
+  // series once they are read, is priced with one thread's scratch for it beside what it holds of the file and
+  // CLARA's terms: every series here is 4 steps, which the lengths read say where the bound cannot.
   const auto file = std::filesystem::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader"
                     / "clara_256_lz4.arrow";
+  REQUIRE(dtwc::io::IpcFile(file).longest_bound() == 32 * 4 - 31);
+  REQUIRE(dtwc::io::IpcFile(file).longest() == 4);
   dtwc::Config config;
   config.output.clear();
   config.input = dtwc::path_to_utf8(file);
@@ -719,24 +836,32 @@ TEST_CASE("Arrow IPC's routing streams a file whose series and one thread's scra
   config.n_samples = 2;
   config.seed = 42;
   config.verbose = true;
-  // What the in-RAM route holds at once: the file's resident bytes, then a sample PAM's matrix or every sample's labels
-  // and nearest distances.
-  dtwc::algorithms::CLARAOptions options;
-  options.n_clusters = 3;
-  options.sample_size = 8;
-  options.n_samples = 2;
-  const auto plan = dtwc::algorithms::detail::resolve_clara_plan(256, options, "run");
-  const std::size_t resident = dtwc::io::IpcFile(file).resident_bytes(Precision::Float64, false)
-                               + std::max(dtwc::core::packed_size(8) * sizeof(double),
-                                          dtwc::algorithms::detail::clara_pass_bytes(plan, 2));
-  const std::size_t one_thread =
-    dtwc::core::thread_scratch_bytes(distance(DTWVariant::Standard, config.band), 4, Precision::Float64)
-    + dtwc::detail::fast_pam_thread_bytes(3)
-    + dtwc::algorithms::detail::clara_assign_thread_bytes(6, Precision::Float64);
-  config.ram_limit = resident + one_thread - 1;
+  const std::size_t in_ram = ipc_in_ram_bytes(file, config.band, 4);
+  config.ram_limit = in_ram - 1;
   CHECK_THAT(printed([&] { (void)dtwc::run(config); }), ContainsSubstring("Arrow IPC walk selected streaming"));
-  config.ram_limit = resident + one_thread;
-  const std::string in_ram = printed([&] { (void)dtwc::run(config); });
-  CHECK_THAT(in_ram, !ContainsSubstring("selected streaming"));
-  CHECK_THAT(in_ram, ContainsSubstring("Data loaded from Arrow IPC: 256 series"));
+  config.ram_limit = in_ram;
+  const std::string in_ram_text = printed([&] { (void)dtwc::run(config); });
+  CHECK_THAT(in_ram_text, !ContainsSubstring("selected streaming"));
+  CHECK_THAT(in_ram_text, ContainsSubstring("Data loaded from Arrow IPC: 256 series"));
+}
+
+TEST_CASE("Arrow IPC's batch of record batches does not depend on a TeamCap: every thread of the full team holds its "
+          "decoder's scratch",
+          "[thread_scratch][arrow][streaming]")
+{
+#ifndef _OPENMP
+  SKIP("two OpenMP workers unavailable: a sequential build has no team");
+#endif
+  REQUIRE(dtwc::full_team_threads() == 4);
+  // An LZ4 file: each decoding thread but the first holds a reader's scratch beside its record batch. A budget of 4
+  // record batches and 3 readers' scratch holds 4 decoded by the full team; a team capped to 1 would fit more.
+  const dtwc::io::IpcFile file(std::filesystem::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader"
+                               / "clara_256_lz4.arrow");
+  const std::size_t batch = file.largest_row_group_bytes(false), scratch = file.reader_bytes();
+  REQUIRE(scratch > batch); // so the cap would change the count
+  const std::size_t budget = 4 * batch + 3 * scratch;
+  const int whole = file.row_groups_per_batch(budget, false);
+  CHECK(whole == 4);
+  const dtwc::TeamCap one(1);
+  CHECK(file.row_groups_per_batch(budget, false) == whole);
 }

@@ -22,7 +22,9 @@ then one line per loop: file:line:col and whether it was vectorised. A manual
 tool, not a gate: the answer depends on the compiler and the host. Exit 0 when a
 report was produced, 2 when it could not be (no clang, no compile_commands.json,
 no matching TU) -- never silently green. --no-calls (test_codegen_no_calls) fails
-instead, exit 1, when a call sits inside any loop of a dtwc function, however deep.
+instead, exit 1, when a call sits inside any loop of a dtwc function, however deep
+(but Soft-DTW's own exp, log and scalbn, counted as libm=), or a kernel family
+(FAMILIES) has no loop.
 """
 
 from __future__ import annotations
@@ -71,6 +73,41 @@ BLOCK = re.compile(r"^(?:\.?LBB(\w+):|\s*(?:#|;|//) %bb\.\d+:)")
 FUNCTION = re.compile(r'^(?![.Ll])("[^"]+"|\S+):')
 CALL = re.compile(r"^\s+(?:call|callq|bl|blr)\s")
 LOOP = re.compile(r"This (?:Inner )?Loop Header|in Loop: Header=BB")
+# The kernel families the probe instantiates, the dispatcher's: each pointwise cost and DP cell it binds, by the name
+# its instantiations carry in either mangling (a cost's name is no part of another's), and the fill's lanes, MSM and
+# TWE. --no-calls passes only when every family has an innermost loop, so a probe that loses one fails however many
+# loops the others keep.
+FAMILIES = {
+    "lanes": r"dtwc_probe_lanes_",
+    "l1": r"SpanL1Cost",
+    "squared_l2": r"SpanSquaredL2Cost",
+    "nan_aware_l1": r"SpanNanAwareL1Cost",
+    "nan_aware_squared_l2": r"SpanNanAwareSquaredL2Cost",
+    "weighted_l1": r"SpanWeightedL1Cost",
+    "arow_l1": r"SpanAROWL1Cost",
+    "arow_squared_l2": r"SpanAROWSquaredL2Cost",
+    "mv_l1": r"SpanMVL1Cost",
+    "mv_l2": r"SpanMVL2Cost",
+    "mv_squared_l2": r"SpanMVSquaredL2Cost",
+    "mv_nan_aware_l1": r"SpanMVNanAwareL1Cost",
+    "mv_nan_aware_l2": r"SpanMVNanAwareL2Cost",
+    "mv_nan_aware_squared_l2": r"SpanMVNanAwareSquaredL2Cost",
+    "mv_arow_l1": r"SpanMVAROWL1Cost",
+    "mv_arow_squared_l2": r"SpanMVAROWSquaredL2Cost",
+    "mv_weighted_l1": r"SpanMVWeightedL1Cost",
+    "standard_cell": r"StandardCell",
+    "adtw_cell": r"ADTWCell",
+    "arow_cell": r"AROWCell",
+    "soft_cell": r"SoftCell",
+    "msm": r"msm_distance",
+    "twe": r"twe_distance",
+}
+# Soft-DTW's cell is a log-sum-exp (SoftCell: exp, log, and scalbn where gamma's reciprocal overflows): in its kernels a
+# call into the C runtime's exp, log or scalbn, direct, through the import table or the GOT, or through a register loaded
+# from either, is the cell's own arithmetic, which no kernel form inlines. Those are counted apart (libm=); any other
+# call in their loops fails as everywhere.
+LIBM = {"exp", "expf", "log", "logf", "scalbn", "scalbnf"}
+LIBM_LOAD = re.compile(r"^\s+mov[ql]?\s+\*?(?:__imp_)?_*(\w+?)(?:@GOTPCREL)?\(%rip\),\s*%(\w+)")
 
 
 def compile_commands(build_dir: Path) -> list[dict]:
@@ -149,14 +186,24 @@ def key(rec: dict) -> str:
     return f"{rec['file']}:{rec['line']}:{rec['col']}"
 
 
-def loop_calls(asm: str) -> tuple[int, int, list[str]]:
-    """(innermost-loop count, of them the multivariate kernels' (a function of a SpanMV cost), calls inside any loop)
-    over the dtwc functions in `asm`."""
+def libm_target(call: str, loaded: dict[str, str]) -> bool:
+    """Whether the call instruction `call` reaches LIBM: by name (a Mach-O underscore, a PLT, the import table or the
+    GOT), or through a register `loaded` from one."""
+    target = call.split(None, 1)[1].strip() if len(call.split(None, 1)) > 1 else ""
+    if target.startswith("*%"):
+        return loaded.get(target[2:]) in LIBM
+    target = re.sub(r"(@PLT|@GOTPCREL\(%rip\)|\(%rip\))$", "", target.lstrip("*")).removeprefix("__imp_").lstrip("_")
+    return target in LIBM
+
+
+def loop_calls(asm: str) -> tuple[int, list[str], list[str], int]:
+    """(innermost-loop count, the FAMILIES none of whose functions holds one, calls inside any loop, Soft-DTW's calls of
+    LIBM inside its loops) over the dtwc functions in `asm`."""
     fn = block = ""
-    inner, mv, in_loop, calls = set(), set(), set(), []
+    inner, in_loop, calls, found, loaded = set(), set(), [], set(), {}
     for n, line in enumerate(asm.splitlines()):
         if m := FUNCTION.match(line):
-            fn = m.group(1)
+            fn, loaded = m.group(1), {}
         if m := BLOCK.match(line):
             block = m.group(1) or f"line{n}"
         if "dtwc" not in fn:
@@ -165,11 +212,15 @@ def loop_calls(asm: str) -> tuple[int, int, list[str]]:
             in_loop.add(block)
         if "This Inner Loop Header" in line:
             inner.add(block)
-            if "SpanMV" in fn:
-                mv.add(block)
+            found.update(name for name, pattern in FAMILIES.items() if re.search(pattern, fn))
+        if m := LIBM_LOAD.match(line):
+            loaded[m.group(2)] = m.group(1)
         if CALL.match(line):
-            calls.append((block, f"{fn}: {line.strip()}"))
-    return len(inner), len(mv), [c for b, c in calls if b in in_loop]
+            libm = re.search(FAMILIES["soft_cell"], fn) is not None and libm_target(line.split("#")[0], loaded)
+            calls.append((block, f"{fn}: {line.strip()}", libm))
+    in_loops = [(c, libm) for b, c, libm in calls if b in in_loop]
+    return (len(inner), [name for name in FAMILIES if name not in found], [c for c, libm in in_loops if not libm],
+            sum(1 for _, libm in in_loops if libm))
 
 
 def main() -> int:
@@ -209,12 +260,12 @@ def main() -> int:
             argv = rebuild_argv(entries[0], out, args.probe, ("-S", "-fno-color-diagnostics"))
             proc = subprocess.run(argv, cwd=entries[0].get("directory", str(ROOT)),
                                   capture_output=True, text=True, errors="replace")
-            loops, mv_loops, bad = loop_calls(out.read_text(errors="replace") if out.is_file() else "")
-        # A listing with no loop proves nothing: loops > 0 shows the probe instantiated the kernels, mv_loops > 0 the
-        # multivariate ones (the dispatcher binds them for ndim > 1).
-        ok = proc.returncode == 0 and loops > 0 and mv_loops > 0 and not bad
-        print(f"CODEGEN_NO_CALLS tool={Path(argv[0]).name} inner_loops={loops} mv_loops={mv_loops} calls={len(bad)} "
-              f"verdict={'PASS' if ok else 'FAIL'}", *bad, sep="\n  ")
+            loops, missing, bad, libm = loop_calls(out.read_text(errors="replace") if out.is_file() else "")
+        # A listing with no loop proves nothing: every family's loops show the probe instantiated its kernels.
+        ok = proc.returncode == 0 and loops > 0 and not missing and not bad
+        print(f"CODEGEN_NO_CALLS tool={Path(argv[0]).name} inner_loops={loops} families={len(FAMILIES)} "
+              f"missing={','.join(missing) or 'none'} calls={len(bad)} verdict={'PASS' if ok else 'FAIL'} libm={libm}",
+              *bad, sep="\n  ")
         print(proc.stderr[-2000:] if proc.returncode else "", file=sys.stderr, end="")
         return 0 if ok else 1
 

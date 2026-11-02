@@ -3,14 +3,15 @@
  * @brief The thread_local scratch of the DTW kernels and the algorithms: grown exactly, registered with its thread so
  *        that a top-level call gives it back when it returns, and priced where a memory limit sizes a phase's team.
  *
- * @details A scratch vector grows and never shrinks within a top-level call, so a kernel run again on its thread
- *          allocates nothing. reserve_scratch() is its growth path: the old block is freed first (its values are
- *          scratch) and exactly n elements are taken, so a thread holds what core::thread_scratch_bytes prices, never a
- *          growth factor more; a buffer that grows from empty joins its thread's registry. release_thread_scratch()
- *          empties every registered buffer of every thread of the OpenMP team (a buffer emptied registers again when it
- *          next grows): dtwc::run calls it as it starts and when it returns or throws (ScratchRelease); Tier-2 calls
- *          keep their scratch, so a k-sweep allocates once. KernelTeam sizes each phase's team within an explicit limit
- *          (TeamCap applies it).
+ * @details A scratch vector grows and is held while a kernel can run, so a kernel run again on its thread allocates
+ *          nothing. reserve_scratch() is its growth path: the old block is freed first (its values are scratch) and
+ *          exactly n elements are taken, so a thread holds what core::thread_scratch_bytes prices, never a growth
+ *          factor more; a buffer that grows from empty joins its thread's registry. release_thread_scratch() empties
+ *          every registered buffer of every thread of the OpenMP team (a buffer emptied registers again when it next
+ *          grows): dtwc::run calls it as it starts and when it returns or throws (ScratchRelease), and within an
+ *          explicit limit a stream where no kernel runs and the next phase's team needs the room (KernelTeam::release:
+ *          when its PAMs finish, and at a re-plan); Tier-2 calls keep their scratch, so a k-sweep allocates once.
+ *          KernelTeam sizes each phase's team within an explicit limit (TeamCap applies it).
  * @author Volkan Kumtepeli
  */
 
@@ -109,11 +110,12 @@ struct ScratchRelease
  * @brief The DTW kernels' thread scratch of one call within an explicit memory limit, phase by phase: each phase's
  *        team (the threads its parallel regions use, TeamCap) is the most that fit beside what the phase holds.
  *
- * A team only shrinks, and a thread it leaves keeps what it holds, since scratch grows and never shrinks within a
- * call: the call's threads hold `priced()`, the team's at the most a phase gave them and the others at what they held
- * when they left. That counts each thread once only while a smaller team is the calling thread and workers of the
- * larger one, as libgomp and libomp reuse their workers in order. Without a limit (0: the automatic budget) nothing
- * shrinks, is refused or is priced.
+ * Between releases a team only shrinks, and a thread it leaves keeps what it holds, since scratch is held while a
+ * kernel can run: the call's threads hold `priced()`, the team's at the most a phase gave them and the others at what
+ * they held when they left. That counts each thread once only while a smaller team is the calling thread and workers
+ * of the larger one, as libgomp and libomp reuse their workers in order. release() gives every thread's back, where no
+ * kernel runs, and the next fit starts from the whole team. Without a limit (0: the automatic budget) nothing shrinks,
+ * is refused, priced or released.
  */
 class KernelTeam
 {
@@ -131,6 +133,10 @@ public:
           std::string_view held = {});
   /// The team fit() would give, nothing changed and nothing refused: 0 where one thread does not fit.
   int fitting(std::size_t rest, std::size_t per_thread) const noexcept;
+  /// Where no kernel runs and the next fit needs the room the threads hold (a stream's phase boundary, a re-plan):
+  /// every thread gives its scratch back (release_thread_scratch) and the next fit starts from the whole team, priced
+  /// at nothing. Nothing under the automatic budget, where nothing is priced.
+  void release() noexcept;
 
   int threads() const noexcept { return team_; }           ///< the last phase's team
   bool prices() const noexcept { return limit_ != 0; }      ///< an explicit limit: teams are fitted, scratch priced

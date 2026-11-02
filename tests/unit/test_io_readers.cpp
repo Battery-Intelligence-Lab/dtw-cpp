@@ -854,8 +854,9 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   config.k = 2;
   config.sample_size = 4;
   config.n_samples = 2;
-  // A byte below the file's resident estimate FastCLARA streams it, but no thread's scratch fits there beside the
-  // stream's phases: the refusal names the least limit the stream takes, the bytes it holds beside one thread's.
+  // A byte below the file's resident estimate FastCLARA streams it, but no thread's scratch fits there beside one of
+  // the stream's phases (the PAMs, or the pass, whose team is fitted afresh after them): the refusal names the least
+  // limit the stream takes, the bytes that phase holds beside one thread's.
   config.ram_limit = dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false) - 1;
   config.output.clear();
   config.name = "streamed";
@@ -867,8 +868,9 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   }
   std::smatch least;
   INFO(refusal);
-  REQUIRE(std::regex_search(refusal, least, std::regex("FastCLARA's PAMs: --ram-limit = [0-9]+ cannot hold one thread's "
-                                                       "scratch, ([0-9]+) bytes .* beside the ([0-9]+) bytes")));
+  REQUIRE(std::regex_search(refusal, least,
+                            std::regex("FastCLARA's (?:PAMs|assignment): --ram-limit = [0-9]+ cannot hold one thread's "
+                                       "scratch, ([0-9]+) bytes .* beside the ([0-9]+) bytes")));
   config.ram_limit = std::stoull(least[1].str()) + std::stoull(least[2].str());
   const auto result = dtwc::run(config);
   std::filesystem::remove(input);

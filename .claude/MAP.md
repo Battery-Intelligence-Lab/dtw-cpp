@@ -130,10 +130,11 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
   (CUDA: int64 pair offset) instead of refusing. (`index_t` exists since Y3; public counts move to it in phase D.)
 - Cost and Cell are **template parameters**, never a `std::function` or a virtual per cell.
 - Orient so `n_short ≤ n_long` before every kernel call; buffers are sized on that.
-- `thread_local` scratch grows (exactly, registered with its thread: `core/thread_scratch.hpp`) and never shrinks
-  within a top-level call: `dtwc::run` gives every thread's back as it starts and when it returns or throws, Tier-2
-  calls keep it. `core::thread_scratch_bytes` is each buffer's growth rule, priced within an explicit limit, phase by
-  phase (`KernelTeam`, `TeamCap`). The per-pair and lane kernels keep 819e8703's code: their buffers, one of each a
+- `thread_local` scratch grows (exactly, registered with its thread: `core/thread_scratch.hpp`) and is held while a
+  kernel can run; it is given back where none runs and a refit needs the room (a stream's phase boundaries and
+  re-plans: `KernelTeam::release`, within an explicit limit) and when `dtwc::run` starts, returns or throws; Tier-2
+  calls keep it otherwise. `core::thread_scratch_bytes` is each buffer's growth rule, priced within an explicit limit,
+  phase by phase (`KernelTeam`, `TeamCap`). The per-pair and lane kernels keep 819e8703's code: their buffers, one of each a
   `T`, get their room out of line before the kernel runs (`detail::reserve_pair`, `reserve_lanes`), whose routing
   `reserve_pair` repeats (`dtw_banded`'s). A sizing that decides a result (a stream's batches, a mapped fill's
   tile-rows) reads the full team (`full_team_threads()`), never a `TeamCap`, so a shrunk team changes no digit. A Cost

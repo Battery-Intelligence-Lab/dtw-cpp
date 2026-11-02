@@ -20,9 +20,11 @@
 // Included as "warping.hpp", not "dtwc/warping.hpp": the build puts dtwc/ on the
 // include path and deliberately never the repo root, because on a
 // case-insensitive filesystem the root VERSION file shadows <version>.
+#include "soft_dtw.hpp"
 #include "warping.hpp"
 #include "warping_adtw.hpp"
 #include "warping_missing.hpp"
+#include "warping_missing_arow.hpp"
 #include "warping_wdtw.hpp"
 #include "core/distance_matrix.hpp"
 #include "core/msm.hpp"
@@ -65,6 +67,15 @@ T probe_mv(const T *x, std::size_t nx, const T *y, std::size_t ny, std::size_t n
          + dtwc::wdtwBanded_mv<T>(x, nx, y, ny, ndim, { weights, n_weights }, band)
          + dtwc::adtwBanded_mv<T>(x, nx, y, ny, ndim, band, T(0.5))
          + dtwc::dtwBanded<T>(x, nx, y, ny, band, T(-1), m);
+}
+
+// The univariate kernels dtw_dispatch.cpp binds beside the lanes and dtwBanded: AROW's for missing data (its cost by the
+// runtime metric; banded, and linear for band -1 or a pair the band covers whole) and Soft-DTW's (unbanded).
+template <typename T>
+T probe_univariate(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, int metric, T gamma)
+{
+  return dtwc::dtwAROW_banded<T>(x, nx, y, ny, band, static_cast<dtwc::core::MetricType>(metric))
+         + dtwc::soft_dtw<T>({ x, nx }, { y, ny }, gamma);
 }
 
 } // namespace
@@ -160,6 +171,19 @@ float dtwc_probe_mv_f32(const float *x, std::size_t nx, const float *y, std::siz
                         int metric, const float *weights, std::size_t n_weights)
 {
   return probe_mv<float>(x, nx, y, ny, ndim, band, metric, weights, n_weights);
+}
+
+// AROW's and Soft-DTW's univariate kernels (probe_univariate above), at both precisions.
+double dtwc_probe_univariate_f64(const double *x, std::size_t nx, const double *y, std::size_t ny, int band, int metric,
+                                 double gamma)
+{
+  return probe_univariate<double>(x, nx, y, ny, band, metric, gamma);
+}
+
+float dtwc_probe_univariate_f32(const float *x, std::size_t nx, const float *y, std::size_t ny, int band, int metric,
+                                float gamma)
+{
+  return probe_univariate<float>(x, nx, y, ny, band, metric, gamma);
 }
 
 // The packed matrix read eight rows a point (core::for_each_point: FasterPAM's k = 1, silhouette), at both widths:

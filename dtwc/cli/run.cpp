@@ -155,15 +155,15 @@ std::size_t in_ram_thread_bytes(const Problem &prob, const Config &config, Metho
 
 /// Decide the persistent distance storage once every distance-affecting setting has
 /// reached the Problem. Returns the file to map (the caller maps it), or nullopt when
-/// the method keeps its own storage or the matrix stays in RAM: while its bytes fit
-/// in half of what the series and the scratch of the threads that run beside it in RAM
-/// (`scratch_bytes`, the team fitted to an explicit limit) leave of the memory budget
-/// (--ram-limit; 0: what the process may use), and, within an explicit limit, one
-/// thread's fits beside it (`thread_fits`). Past that a mapped matrix costs one
-/// sequential pass and keeps the run out of swap. OneBatchPAM and non-full
-/// FastCLARA read no parent matrix (holds_matrix). TADPole reads the matrix when it
-/// is complete (a file or a cache from an earlier run) and otherwise computes the
-/// pairs it needs.
+/// the method keeps its own storage or the matrix stays in RAM: while, within an
+/// explicit limit, one thread's scratch fits beside the series and the matrix in RAM
+/// (`thread_fits`), and the matrix's bytes fit in half of what the series and one
+/// thread's scratch (`scratch_bytes`) leave of the memory budget (--ram-limit; 0: what
+/// the process may use); the team is then fitted beside the matrix in RAM, and shrinks.
+/// Past that a mapped matrix costs one sequential pass and keeps the run out of swap.
+/// OneBatchPAM and non-full FastCLARA read no parent matrix (holds_matrix). TADPole
+/// reads the matrix when it is complete (a file or a cache from an earlier run) and
+/// otherwise computes the pairs it needs.
 std::optional<fs::path> configure_distance_storage(const Problem &prob, const Config &config, Method method,
                                                    bool clara_uses_full_sample, std::size_t series_bytes,
                                                    std::size_t scratch_bytes, bool thread_fits,
@@ -187,7 +187,7 @@ std::optional<fs::path> configure_distance_storage(const Problem &prob, const Co
   if (budget == 0 || (thread_fits && matrix_bytes <= (budget > held ? (budget - held) / 2 : 0))) return std::nullopt;
   const std::string over =
     thread_fits ? "the distance matrix's " + std::to_string(matrix_bytes)
-                    + " bytes exceed half of what the series and the threads' scratch ("
+                    + " bytes exceed half of what the series and one thread's scratch ("
                     + std::to_string(scratch_bytes) + " bytes) leave of --ram-limit=" + std::to_string(config.ram_limit)
                 : "beside the series and the distance matrix's " + std::to_string(matrix_bytes)
                     + " bytes in RAM no thread's scratch fits within --ram-limit=" + std::to_string(config.ram_limit);
@@ -399,13 +399,16 @@ Outcome execute(const Config &config, std::optional<Data> data)
     std::size_t limit = config.ram_limit;
     if (limit == 0 && can_stream && config.checkpoint.empty() && config.dist_matrix.empty())
       limit = core::available_memory();
-    // The in-RAM run holds one thread's scratch at the least beside the series (in_ram_thread_bytes, for their mean
-    // length: the longest is known once they are read, where its team is fitted on it).
-    const std::size_t one_thread =
-      can_stream ? in_ram_thread_bytes(prob, config, Method::CLARA, false, ipc->num_values() / n_series / ipc->ndim(),
-                                       config.dtype)
-                 : 0;
-    if (limit != 0 && resident + one_thread > limit && can_stream) {
+    // The in-RAM run holds one thread's scratch at the least beside the series (in_ram_thread_bytes), its team fitted
+    // on the longest series once they are read: routed by that need, so a limit that routes the series into RAM holds
+    // the thread and a smaller one streams them. A series is at least their mean long and at most the walk's bound
+    // (IpcFile::longest_bound); where those disagree on the route, the series' lengths are read (IpcFile::longest).
+    const auto in_ram_needs = [&](std::size_t steps) {
+      return resident + in_ram_thread_bytes(prob, config, Method::CLARA, false, steps, config.dtype);
+    };
+    if (limit != 0 && can_stream
+        && (in_ram_needs(ipc->num_values() / n_series / ipc->ndim()) > limit
+            || (in_ram_needs(ipc->longest_bound()) > limit && in_ram_needs(ipc->longest()) > limit))) {
       stream_payload = true;
       method = resolved;
       clara.ram_limit_bytes = limit;
@@ -523,16 +526,18 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // ---- 4. Distance storage, once every distance setting is in place ----
   // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
   // the checkpoint, else in the output directory; a run that writes nothing
-  // keeps its matrix in RAM. Decided with the team that runs beside the matrix in
-  // RAM (beside a --dist-matrix, which no kernel may add to, the least): mapped
-  // where not one thread fits beside it.
+  // keeps its matrix in RAM. In RAM while one thread's scratch (beside a
+  // --dist-matrix, which no kernel may add to, without the kernels') fits beside
+  // it and the series, and it takes at most half of what the series and that
+  // thread leave; the team is then fitted beside it, and shrinks. Mapped where
+  // that fails.
   std::optional<fs::path> cache;
   if (!config.output.empty()) {
     const std::size_t each = thread_bytes(!reads_matrix);
-    const int beside = team.fitting(series_bytes + clara_rest + matrix_bytes, each);
+    const bool thread_fits = team.fitting(series_bytes + clara_rest + matrix_bytes, each) > 0;
     const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
-    cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, series_bytes,
-                                       static_cast<std::size_t>(beside) * each, beside > 0, path);
+    cache = configure_distance_storage(prob, config, method, clara_uses_full_sample, series_bytes, each, thread_fits,
+                                       path);
   }
   // Refused, where one thread does not fit, before any file is mapped; beside a --dist-matrix once it is read.
   std::optional<TeamCap> cap;

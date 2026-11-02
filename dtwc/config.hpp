@@ -44,7 +44,7 @@ struct Config
   core::Precision dtype = core::Precision::Float64; ///< `--dtype`
   /// `--ram-limit`: the memory the run may use, in bytes; 0 = automatic, what the
   /// process may use (core::available_memory()). The distance matrix is mapped
-  /// when its bytes exceed half of what the series leave of it.
+  /// when its bytes exceed half of what the series and one thread's scratch leave of it.
   std::size_t ram_limit = 0;
   /// `--matrix-dtype`: the width of the distance matrix's values, float64 (default) or float32 (half the memory,
   /// each distance rounded to the nearest float); not `dtype`'s, the series'.

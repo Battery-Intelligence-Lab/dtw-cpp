@@ -144,7 +144,7 @@ void evaluate_group(const T *matrix, index_t N, index_t a, index_t n, const std:
                     const std::vector<double> &second_dist, SwapEval *out)
 {
   const auto k = static_cast<index_t>(rho.size());
-  thread_local std::vector<double> scratch; // ploss[m * W + g]; grows exactly, never shrinks within a call
+  thread_local std::vector<double> scratch; // ploss[m * W + g]; grows exactly, held while a kernel can run
   if (scratch.size() < static_cast<std::size_t>(k * W)) {
     core::reserve_scratch(scratch, static_cast<std::size_t>(k * W));
     scratch.resize(static_cast<std::size_t>(k * W));

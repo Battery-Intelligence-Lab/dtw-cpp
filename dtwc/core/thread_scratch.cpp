@@ -85,6 +85,15 @@ int KernelTeam::fitting(std::size_t rest, std::size_t per_thread) const noexcept
   return static_cast<int>(growth == 0 ? team : std::min(team, (limit_ - rest - priced_) / growth));
 }
 
+void KernelTeam::release() noexcept
+{
+  if (limit_ == 0) return;
+  release_thread_scratch();
+  team_ = full_;
+  per_thread_ = 0;
+  priced_ = 0;
+}
+
 int KernelTeam::fit(std::string_view phase, std::size_t rest, std::size_t per_thread, std::size_t length,
                     std::string_view held)
 {

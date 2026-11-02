@@ -39,7 +39,9 @@ The stream's threads' scratch within --ram-limit (tests/unit/core/test_thread_sc
 - clara_long_late.arrow: 2,048 walks of 8 steps, row 1,500's of 1,500, LZ4, record batches of 64: a series longer than
   any the test's samples hold, read late in the pass;
 - clara_ragged.arrow: 512 walks of 6 to 10 steps, uncompressed, record batches of 32: unequal lengths under a band of
-  4, streamed as Float32 (a copy: no codec's scratch beside a record batch).
+  4, streamed as Float32 (a copy: no codec's scratch beside a record batch);
+- clara_late_wide.arrow: 512 walks of 48 steps as list<float>, row 505's of 1,500, record batches of 32: a series
+  longer than any the test's samples hold, in the last record batch, beside sampled series whose scratch is not tiny.
 
 Every value is exact in Float32. Run: uv run --no-project --with pyarrow==23.0.1 python make_ipc_fixtures.py
 """
@@ -159,9 +161,12 @@ cut[41] = cut[41][:7]
 write("clara_verdict_ndim.arrow", table({"data": pa.array(cut, f64)}, {"ndim": "2"}, batches=[16] * 4),
       compression="lz4")
 
-# The stream's scratch fixtures (seeds 11 and 12, 13; row i of clara_ragged has 6 + i % 5 steps).
+# The stream's scratch fixtures (seeds 11 and 12, 13, 14 and 15; row i of clara_ragged has 6 + i % 5 steps).
 LONG_LATE = walks(2048, 8, 11)
 LONG_LATE[1500] = walks(1, 1500, 12)[0]
 write("clara_long_late.arrow", table({"data": pa.array(LONG_LATE, f64)}, batches=[64] * 32), compression="lz4")
 RAGGED = [walk[: 6 + i % 5] for i, walk in enumerate(walks(512, 10, 13))]
 write("clara_ragged.arrow", table({"data": pa.array(RAGGED, f64)}, batches=[32] * 16))
+LATE_WIDE = walks(512, 48, 14)
+LATE_WIDE[505] = walks(1, 1500, 15)[0]
+write("clara_late_wide.arrow", table({"data": pa.array(LATE_WIDE, pa.list_(pa.float32()))}, batches=[32] * 16))

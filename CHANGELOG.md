@@ -159,24 +159,27 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   names taken from file names are UTF-8 on every platform (v1.0.0 used the Windows code page).
 - `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run may use, by
   default the memory available (or a Linux cgroup's limit, which a SLURM job's memory request sets): the distance
-  matrix is mapped once its bytes exceed half of what the series and the scratch of the threads that run beside it
-  leave of it, or where not one thread's fits beside it (beside a complete `--dist-matrix` no DTW kernel runs: none
-  of theirs is counted), and `--mmap-threshold` (mapped from 50,000 series) is gone; with `dtwc_cl` a Parquet file
-  over it streams through `clara`, as does, on the CPU, an Arrow IPC file whose series RAM would hold outside the page
-  cache (a mapped file's values are not streamed; on a GPU the Arrow IPC stream is a `DeviceError`); Python's and
-  MATLAB's `cluster()` hold every series at once; other inputs no longer refuse it. An explicit limit holds each
+  matrix is mapped once its bytes exceed half of what the series and one thread's scratch leave of it, or where not
+  one thread's fits beside it and the series (beside a complete `--dist-matrix` no DTW kernel runs: none of theirs is
+  counted); in RAM, the threads beside it are as many as fit; `--mmap-threshold` (mapped from 50,000 series) is gone;
+  with `dtwc_cl` a Parquet file over it streams through `clara`, as does, on the CPU, an Arrow IPC file whose series
+  RAM would hold outside the page cache, where they and one thread's scratch for its longest series exceed it (a
+  mapped file's values are not streamed; on a GPU the Arrow IPC stream is a `DeviceError`); Python's and MATLAB's
+  `cluster()` hold every series at once; other inputs no longer refuse it. An explicit limit holds each
   thread's scratch too, the DTW kernels' for the longest series a phase meets and the algorithms' tables (2 x 128
   bytes a time step for the lanes: 25.6 MB a thread at 100,000 values, which 24 threads held unpriced, 2026-11-01):
   `dtwc_cl` and `dtwc::run` run each phase on as many threads as fit (`-v` says how many and why), and refuse a limit
   that cannot hold one thread's beside what the phase holds, or that what the run holds alone exceeds
   (`InvalidInput`, naming the bytes). A smaller team gives the same results: a stream's batches and a mapped fill's
-  tile-rows are sized for the whole team. A stream that meets a series longer than any before reads its batch again
-  in smaller ones, its team fitted again beside them, so it streams where the scratch fits beside one record batch or
-  row group.
+  tile-rows are sized for the whole team. Where no kernel runs and the next phase needs the room, a stream's threads
+  give their scratch back and its team is fitted afresh: when its PAMs finish, and where a series longer than any
+  before needs more than they hold (its batch read again in smaller ones), so it streams wherever one thread's scratch
+  fits beside the sampled rows and a sample's PAM, and beside one record batch or row group with the medoids, the
+  labels and the names written after it.
 - `dtwc::run` (so `dtwc::cluster` and `dtwc_cl`) gives its threads' scratch back as it starts and when it returns or
   throws, CUDA's pinned and device buffers among it: a 24-thread run on 100,000-value series kept 615 MB committed
   after it returned (2026-11-01). Tier-2 calls (a fill, `Problem::cluster`, the algorithms) keep theirs, so a k-sweep
-  allocates once.
+  allocates once; a stream within an explicit limit gives its back at its phase boundaries (see `--ram-limit`).
 - A checkpoint save during a fill writes only the rows filled since the last one, in place, the first the whole
   matrix: a fill writes at most twice the matrix's bytes, where each save wrote it whole. Saves come every
   `--checkpoint-interval` rows rounded up to the lane width (16 rows of doubles where the lanes are 128 bytes).
