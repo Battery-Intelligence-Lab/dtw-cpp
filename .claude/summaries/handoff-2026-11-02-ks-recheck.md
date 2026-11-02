@@ -66,8 +66,7 @@
    I reproduce the oracles. Then RR from `rr_plan.md` (plan, implement, gates).
 2. Then merge design-2.0 into pb/MM, fill `<KS-TIP>` in `brief_s5_draft.md` (the tip is then RB's), S5, S6, S7 (the planner,
    `run` for every language), S8, S9, S10.
-3. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4 and 7 if MM ships, FM's E1; conformance legs redone
-   on the tag tree if MM merges first.
+3. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4, 7, FM's E1; conformance legs redone if MM merges first.
 
 ## Open questions
 
