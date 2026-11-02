@@ -4,22 +4,22 @@
 
 - `design-2.0` at the commit holding this file, pushed fast-forward with it (DECISIONS §3, 10-21); at the session's
   start 446d8b99 = origin. Tree clean.
-- `pb/MM` 1234030a (KS4, tree c3ac7090, parent 4741d753 = KS3, 5422bb11 = KS2), local only, worktree `C:/D/git/wt/MM`, clean.
-  Two agents run: the RB1 implementer (brief `C:/D/git/wt/tmp/MM/brief_rb1.md`, commits on pb/MM, log `logs/rb1_summary.log`) and
-  the RR planner (read-only, `brief_rr_plan.md`, writes `rr_plan.md`); after a restart check their transcripts' mtimes before
-  relaunching, and `git -C C:/D/git/wt/MM status` for what RB1 left. Reviewer folders (disk, until Volkan's yes): `C:/D/git/wt/tmp/MM/review_ks3_r1/` 0.6 GB, `review_ks3_r2/`
-  0.7 GB (+ WSL `~/mm/ks3r2_*` 0.4 GB), `review_ks1/fix` 0.08 GB, `review_ks2/rc` 0.65 GB, `C:/D/git/wt/tmp/conf_strict/`.
+- `pb/MM` 1234030a (KS4, tree c3ac7090; 4741d753 = KS3, 5422bb11 = KS2), local only, worktree `C:/D/git/wt/MM`, clean at last look.
+  The RB1 implementer runs (brief `C:/D/git/wt/tmp/MM/brief_rb1.md`, log `logs/rb1_summary.log`); after a restart check its
+  transcript's mtime before relaunching, and `git -C C:/D/git/wt/MM status` for what it left. The RR plan is written (`rr_plan.md`,
+  not yet reviewed by me); Volkan decides D1 cpuinfo as an optional dependency (hwinfo needs C++23, cpu_features has no core
+  counts), D2 `Result::save` writes the report too, D3 `--no-report` drops the text as well, D4 hostname by default, D5 RR2
+  (swaps, start cost, pairs: edits algorithm files). Disk until Volkan's yes: `C:/D/git/wt/tmp/MM/review_ks*` (about 2 GB),
+  WSL `~/mm/ks3r2_*` and `~/conf_strict` (0.5 GB), `C:/D/git/wt/tmp/conf_strict/`.
 
 ## Done
 
-- Weekly-limit stall of 11-01 explained (memory `project-weekly-limit-stall`); status report v2 + Fable audit; PLAN, DECISIONS §3.
-- KS3 4741d753 (release at phase end, storage and IPC routing on one thread, silhouette form fc, probe + 23-family gate).
+- 11-01's stall was the weekly usage limit (memory `project-weekly-limit-stall`); status report v2 + Fable audit; KS3 4741d753.
 - Fresh re-checks of KS3 (reports `review_ks3_r1/recheck_report.md`, `review_ks3_r2/recheck_report.md`): R1' one blocker (IPC
   routing priced ndim 1) + Parquet mean-length window (S1); R2' loops: four residual deviations (below).
 - KS4 1234030a: `in_ram_thread_bytes(..., ndim)`, the routing passes `ipc->ndim()`; test loops `clara_256_lz4` (Standard) and
   `clara_256_ndim2` (DDTW), fails on 4741d753 (`logs/ks4_mut_route_ndim1.diff`); gate regex `(?![.Ll$])`. Log `logs/ks4_summary.log`.
-- `cpp_conformance` `strict` PASS on design-2.0 292a9bd7: GCC 13.3 (WSL) and cl 19.50, 8 assertions each
-  (`baselines/2026-11-02-conformance-strict.md`; PLAN updated, b985303a).
+- `cpp_conformance` `strict` PASS on design-2.0 292a9bd7, GCC 13.3 (WSL) and cl 19.50, 8 assertions each (`baselines/2026-11-02-conformance-strict.md`).
 
 ## Verified by me
 
@@ -77,4 +77,4 @@
 
 - Run by me: clang `ctest -j1` at both KS commits, the sweeps and scans above, the conformance log reads. Not run by me: the
   Arrow, no-llfio, MEX, CUDA and GCC gates, pytest, any assembly, any timing, mutations. Agents today: Fable audit, R1, R2, KS3
-  (763 k tokens), R1' (490 k), R2' (440 k), conformance (92 k), KS4 (412 k), RB planner (529 k), RB1, RR planner (running).
+  (763 k tokens), R1' (490 k), R2' (440 k), conformance (92 k), KS4 (412 k), RB planner (529 k), RR planner (Sonnet), RB1.
