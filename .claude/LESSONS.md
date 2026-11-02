@@ -296,5 +296,5 @@ Append new entries at the end of their section; keep each to a few lines.
 - **`-S` without LTO sees neither what ThinLTO inlines nor which template copy it keeps** (`-Rpass` is silent under
   ThinLTO): a kernel's only call left out of line cost +2–7 % (W7d); the wheel ran nanobind's `-Os` copy of the
   per-pair kernel, 1.5× slower (`NOMINSIZE`). Read the post-LTO loop of what ships.
-- **A session end kills in-flight agents silently**, even between an agent's commit and its reply (10-02; S3 10-22):
-  check transcript times and processes; resume with SendMessage or brief the exact state; gates log as they run.
+- **A session end or the weekly usage limit (429 `usage_limit_reached`) kills in-flight agents silently**, even after a
+  commit, before the reply (10-02; S3 10-22; KS 11-01): grep transcripts' last lines, check times; gates log as they run.

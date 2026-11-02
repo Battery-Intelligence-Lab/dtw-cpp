@@ -296,3 +296,9 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
 - 2026-11-01 — Volkan (question tool) on KS (539d7d7e), where clang gave 4 of 470 multivariate compute loops one or
   two stack reloads a DP cell (the growth check before the loops): "Fix them first": KS closes once no hot loop adds
   a reload, and the codegen probe instantiates the multivariate kernels so the gate sees them.
+- 2026-11-02 — Volkan (question tool) after KS's re-checks, on the stream's PAM team keeping its scratch to the end (a
+  late long series refused where 819e8703 streams it): "Release at phase end": the PAM threads' scratch is given back
+  when the PAMs finish (and, the same principle, at a stream's re-plan); MAP §7 amended. On GCC's ten per-TU loop
+  differences in `dtw_dispatch.cpp`: "Read post-LTO code first" (the LTO-linked CLI equals 819e8703's: accepted for it).
+- 2026-11-02 — Volkan, in the chat: Fable 5.1 at max effort for one audit of the status report; rule 16's "never Fable"
+  stands otherwise.
