@@ -305,3 +305,18 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
 - 2026-11-02 — Volkan (question tool, free text) on the cross-compiler check (PLAN's "17 significant figures" was an
   earlier session's wording, not his: "I never said 17 significant figures"): "1e-12 is fine I guess, as long as it
   doesn't change the clustering": `cpp_conformance` under GCC and MSVC, `strict` and `fast`, passes as the test stands.
+- 2026-11-02 — Volkan (question tool) on KS3's four residual loop deviations (R2': clang's silhouette post-pass store,
+  clang ThinLTO's ADTW and zero-cost column loads, GCC LTO's and the wheel's Soft-DTW cell loops): "Fix first (a KS5
+  unit)".
+- 2026-11-02 — Volkan (question tool, free text) asked where Parquet's mean-length pricing should be fixed, answering
+  about the RAM limit as a whole: "I think we stuck at this RAM limit a lot. Let's do an engineering solution. Relax it
+  a little bit. I think the person who will run this code will have some safety margins of like 10% or something. So if
+  you have 64 GB machine probably you would fix the RAM usage in 55 or something so slightly being over or under it
+  doesn't really matter. Let's just simplify that interface, For example seperate several GB for the algorithm, then just
+  load the data, or something like it. Or at least simplify the loading interface, so in future we could consider
+  different systems for example having a simple MCU with several MBs of RAM, so we could constrain our algorithm
+  selections more etc. So currently it would be better if we properly for example something happened and we didn't fit in
+  the RAM, so we need to report it back. That would be a more important thing, so btw we should definitely write a log of
+  the process afterwards like how long it took, which computer, how much utilisations which stage is how long, stopping
+  criteria etc. Nice log in plain text at the end would be amazing." No code for Parquet's window; the memory model and
+  the end-of-run report are to be specced and approved first.

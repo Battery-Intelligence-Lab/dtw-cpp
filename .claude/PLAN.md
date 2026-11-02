@@ -66,7 +66,15 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     (`C:/D/git/wt/tmp/MM/brief_ks3.md`) is committed, 4741d753 (11-02, tree 61ec2e4f): its gates (six trees, pytest
     915/19/0, 25 of 25 mutations) are the implementer's; mine: clang `ctest -j1` 99/99 and limit sweeps of R1's four
     refusals on its llfio and no-llfio binaries (each runs at one cost, no refusal above an accepted limit; the 5422bb11
-    binary shows them). Fresh re-checks (refusals and release; loops, kit and post-LTO) decide whether KS closes. S8's
+    binary shows them). Fresh re-checks (11-02, `C:/D/git/wt/tmp/MM/review_ks3_r1/`, `review_ks3_r2/`): R1' found one
+    blocker (the IPC routing priced a thread at ndim 1: windows of limits refused for every ndim > 1 file; I reproduced
+    it) and the Parquet route's mean-length pricing (S1); R2' read the shipped code of three builds: every DP cell loop
+    but Soft-DTW's equals 819e8703, four deviations remain (none new in KS3). KS4, 1234030a (tree c3ac7090, brief
+    `brief_ks4.md`): the routing prices the file's ndim, one test that fails on 4741d753, the gate's `$ehgcr_` token;
+    implementer's gates (six trees, pytest 915/19/0) as KS3's counts; mine: clang `ctest -j1` 99/99 and R1's three ndim-2
+    flips to the byte. Volkan 11-02: loops "Fix first (a KS5 unit)", and on the RAM limit: simplify it, a margin of about
+    10 %, a reserve for the algorithm, report a run that does not fit, and a plain-text log of every run
+    (DECISIONS §3). KS does not close: the memory model's design (and with it KS5) goes to him as a spec first. S8's
     and S9's briefs carry the release into Python's and MATLAB's `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.

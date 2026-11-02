@@ -1,79 +1,70 @@
-# Handoff — 2026-11-02 (Windows) — KS3 committed (4741d753); its fresh re-checks decide whether KS closes
+# Handoff — 2026-11-02 (Windows) — KS4 committed (1234030a); Volkan: simplify the RAM limit, add a run report
 
 ## Base
 
 - `design-2.0` at the commit holding this file, pushed fast-forward with it (DECISIONS §3, 10-21); at the session's
   start 446d8b99 = origin. Tree clean.
-- `pb/MM` 4741d753 (KS3, tree 61ec2e4f, parent 5422bb11), local only, worktree `C:/D/git/wt/MM`, clean. Nobody may rebuild
-  `C:/D/git/wt/MM/build*` while the re-checks read them. The reviewers' own trees: `C:/D/git/wt/tmp/MM/review_ks3_r1/`
-  (refusals, release; agent a6bef573) and `review_ks3_r2/` (loops, kit, post-LTO; agent a42b3bfb); claims for them:
-  `C:/D/git/wt/tmp/MM/ks3_claims.md`. If a session restart killed them, check the transcripts' mtimes before relaunching.
-- Disk trees stay until Volkan's yes: `review_ks1/fix` 0.08 GB, `review_ks2/rc` 0.65 GB (and the new review_ks3_*).
+- `pb/MM` 1234030a (KS4, tree c3ac7090, parent 4741d753 = KS3, 5422bb11 = KS2), local only, worktree `C:/D/git/wt/MM`, clean.
+  No agent runs. Reviewer folders (disk, until Volkan's yes): `C:/D/git/wt/tmp/MM/review_ks3_r1/` 0.6 GB, `review_ks3_r2/`
+  0.7 GB (+ WSL `~/mm/ks3r2_*` 0.4 GB), `review_ks1/fix` 0.08 GB, `review_ks2/rc` 0.65 GB, `C:/D/git/wt/tmp/conf_strict/`.
 
 ## Done
 
-- Why 11-01 stalled: the weekly usage limit at 20:14Z (HTTP 429 `usage_limit_reached`, resets 07:00 London) killed the two
-  KS re-check reviewers on their first call; nothing technical blocked (memory `project-weekly-limit-stall`).
-- The status report corrected (v2) and audited by Fable 5.1 max (Volkan asked for it). PLAN, DECISIONS §3 (11-02 lines),
-  the KS record `baselines/2026-11-01-ks-scratch.md` (disk). Fresh re-checks of 5422bb11: `review_ks1/recheck_report.md`,
-  `review_ks2/recheck_report.md` (disk): R1's blockers only partly closed, silhouette loop reloads.
-- KS3 (4741d753, implementer's report; its logs `C:/D/git/wt/tmp/MM/logs/ks3_summary.log`): `KernelTeam::release()` at the
-  PAMs' end and at a re-plan, storage with one thread's scratch, IPC routing by the longest series' need (walk bound, then
-  `IpcFile::longest()`), the PAMs' team beside their own term, silhouette form fc, probe 10 univariate kernels + 23-family gate.
+- Weekly-limit stall of 11-01 explained (memory `project-weekly-limit-stall`); status report v2 + Fable audit; PLAN, DECISIONS §3.
+- KS3 4741d753 (release at phase end, storage and IPC routing on one thread, silhouette form fc, probe + 23-family gate).
+- Fresh re-checks of KS3 (reports `review_ks3_r1/recheck_report.md`, `review_ks3_r2/recheck_report.md`): R1' one blocker (IPC
+  routing priced ndim 1) + Parquet mean-length window (S1); R2' loops: four residual deviations (below).
+- KS4 1234030a: `in_ram_thread_bytes(..., ndim)`, the routing passes `ipc->ndim()`; test loops `clara_256_lz4` (Standard) and
+  `clara_256_ndim2` (DDTW), fails on 4741d753 (`logs/ks4_mut_route_ndim1.diff`); gate regex `(?![.Ll$])`. Log `logs/ks4_summary.log`.
+- `cpp_conformance` `strict` PASS on design-2.0 292a9bd7: GCC 13.3 (WSL) and cl 19.50, 8 assertions each
+  (`baselines/2026-11-02-conformance-strict.md`; PLAN updated, b985303a).
 
 ## Verified by me
 
-- 4741d753: parent 5422bb11, tree 61ec2e4f, 22 files +505/-213; I opened the diffs of `run.cpp`, `fast_clara_stream.hpp`,
-  `thread_scratch.{hpp,cpp}` (release reaches every thread past a TeamCap: `team_of_every_thread()`), `arrow_ipc.{hpp,cpp}`
-  (`longest_bound`, `longest`), `scores.cpp`, the tests, MAP §7, CHANGELOG, cli.md.
-- My clang tree (`C:/D/git/wt/MM/build`) at 4741d753, 11-02 ~15:10Z: `ninja` no work, `ctest -j1` 99/99, skips CUDA and
-  Metal x2, 46 s (`logs/ks3_orch_ctest.log`). `build-nollfio` also no work.
-- R1's refusals, my own scripts (llfio and no-llfio after; 5422bb11 and 819e8703 for contrast): before shows them (late6k
-  refused at 2.0M, 2.5M, in RAM at 5,668,107; long1 at 6,327,625 and in RAM at 12.58M, 16.6M; every100 at 2,500,124;
-  s200x100 mapped / no-llfio exit 1). After, one cost per fixture: late6k 609392.5 (least 1,868,413, in RAM from 5,668,108),
-  long1 1389997.75 (least 6,327,625, in RAM from 16,600,208), every100 5334612.625 (least 2,043,825; before 2,500,125),
-  s200x100 3244.2483770000013 in RAM at 800K/1M, one2000 195712.5 (least 2,227,321 llfio, 3,042,210 no-llfio: equal to
-  5422bb11's), long4 + `--dist-matrix` 45465.497809000066 at 10M and 100M. Grid scans: no refusal above an accepted limit
-  (before: 15 on late6k, 21 on long1). Scripts: scratchpad `orch_sweep.sh`, `orch_mono.sh`, `orch_least.sh`.
+- 4741d753 and 1234030a diffs read (stream, thread_scratch, run.cpp, arrow_ipc, scores, tests, docs, gate regex).
+- Clang tree `C:/D/git/wt/MM/build`: `ctest -j1` 99/99 at 4741d753 (46 s) and at 1234030a (47 s), skips CUDA, Metal x2.
+- Limit sweeps with my scripts (scratchpad `orch_*.sh`): at 4741d753 the four R1 refusals gone, one cost per fixture, no
+  refusal above an accepted limit (llfio, no-llfio; the 5422bb11 binary shows 15 and 21); R1''s B1 reproduced (`late_nd2` DDTW
+  refused 4.30-4.36M between streamed 4.28M and in-RAM 4.38M; `one_nd2` refused 5,506,137-5,772,440, 819e8703 runs from
+  5,506,137). At 1234030a: `one_nd2` least 5,516,441; `late_nd2` DDTW in RAM from 4,378,108, nothing refused; `late150k_nd2`
+  DDTW least 8,644,570, in RAM from 12,730,108. Conformance logs opened (Catch2 lines, FP model lines).
 
 ## Reported by agents, unverified
 
-- KS3's gates on 61ec2e4f (clang 99, Arrow 102, no-llfio 99, MEX 100, CUDA 98, GCC 98, pytest 915/19/0, docs, probe
-  `inner_loops=1616 missing=none calls=0`, 25 of 25 mutations), its G6 reads (silhouette gather loop equal, clang post-pass
-  +1 store), the memory table (`logs/ks3_measure.log`), and four deviations it left for Volkan: clang's post-pass +1
-  store; clang ThinLTO `dtw_dispatch` column loops +1-3 loads a column in six functions (byte-equal from 5422bb11); GCC LTO
-  Soft-DTW f32 handler cell loop +1 load +1 store; the wheel's `soft_dtw_gradient` cell loops +2 loads, +2 stack loads, +2 stores.
-- KS3 deviated from brief item 3: the walk's bound alone failed on one single-batch file, so it routes by the exact longest.
-- R1/R2's earlier reports (least limits by arithmetic, GCC per-TU table, kit blind spot): superseded by 4741d753's re-checks.
+- KS3's and KS4's gates (six trees, pytest 915/19/0, docs, codegen `inner_loops=1616 families=23 missing=none calls=0
+  libm=66`, 25 of 25 mutations at KS3), KS3's memory table. R2': four deviations, none new in KS3, all in 5422bb11 too: (a)
+  clang silhouette post-pass +1 stack store a point; (b) clang ThinLTO ADTW and zero-cost handlers +1-2 stack loads a column;
+  (c) GCC LTO Soft-DTW handlers +1-2 loads, +1 store in libm-bound cell loops; (d) wheel Soft-DTW gradient +2 loads, +2
+  stores. No small source form (a: three tried; c, d register allocation). R2' gate notes N2-N4 (no code).
+  R1': release sound (50 stream runs); fail-late at the pass; memory excess +3-4 MB at 24 threads (not 3.3).
 
 ## Decisions
 
-- Volkan 11-02 (question tool): B1 "Release at phase end (Recommended)"; GCC loops "Read post-LTO code first (Recommended)";
-  cross-compiler check: "I never said 17 significant figures, ask me what it is" -> "1e-12 is fine I guess, as long as it
-  doesn't change the clustering" (`cpp_conformance` as the test stands). In the chat: "check it with Fable 5.1 max" (one audit).
-- My calls, not asked: release also at the stream's re-plan; S8 and S9 serial; merge design-2.0 into pb/MM after KS closes;
-  fresh reviewers at default effort; accepting KS3's routing by the exact longest pending R1'. Awaiting Volkan, carried:
-  whether MM and HG ship in 2.0, the history purge, disk deletions; the four deviations above once R2' classifies them.
+- Volkan 11-02 (question tool): B1 "Release at phase end"; GCC loops "Read post-LTO code first"; `cpp_conformance` 1e-12 as the
+  test stands; loops of KS3 "Fix first (a KS5 unit)"; and, answering the Parquet question with a free text on the RAM limit
+  as a whole (DECISIONS §3, quoted in full): relax it, about 10 % safety margin, "separate several GB for the algorithm, then
+  just load the data", a simpler loading interface that could serve an MCU with MBs of RAM (constrain the algorithm choice),
+  report a run that does not fit, and "a log of the process afterwards ... Nice log in plain text at the end".
+- My calls, not asked: S8/S9 serial; merge design-2.0 into pb/MM after KS closes; Parquet's window gets no code now.
+- Awaiting Volkan, carried: whether MM and HG ship in 2.0, the history purge, disk deletions.
 
 ## Next steps
 
-1. PLAN KS: read R1' and R2' (open every cited line, reproduce each blocker); a blocker -> KS4 brief; none -> KS closes
-   (the deviations, as R2' classifies them, to Volkan through the question tool).
-2. Merge design-2.0 into pb/MM (`--no-ff --no-commit`, clang build and ctest), fill `<KS-TIP>` in `brief_s5_draft.md`, then
-   PLAN MM S5 (CUDA tree here, Metal on the Mac), S6, S7 (reworks `run.cpp`'s planner, which KS changed), S8, S9 serial, S10
-   (add a kernel band; G6 against the MM base with the fixed kit before the merge).
-3. PLAN "Before the 2.0 tag": `cpp_conformance` strict legs (GCC in WSL, MSVC; the test as it stands), held until the
-   re-checks stop building; L2b; Linux archives; F43; design.md §7 risks 4 and 7 if MM ships; FM's E1 (Volkan runs `profile_fm_etw.cmd`).
+1. PLAN MM: spec (his approval first, then briefs) of a simpler memory model: one budget (`--ram-limit`, else ~90 % of
+   available), a reserve for the algorithm, a loader that only chooses in RAM / mapped / streamed, the algorithm chosen by
+   the budget, a typed report where a run does not fit; and what of KS goes (the exact per-thread pricing, KernelTeam/TeamCap,
+   phase-end releases) so that KS5 (the loops) is solved by removal. Second spec: the plain-text end-of-run report.
+2. Then merge design-2.0 into pb/MM, fill `<KS-TIP>` in `brief_s5_draft.md`, S5, S6, S7 (the planner, the report), S8, S9, S10.
+3. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4 and 7 if MM ships, FM's E1; conformance legs redone
+   on the tag tree if MM merges first.
 
 ## Open questions
 
-- Parquet's routing still prices the mean series length (`run.cpp` 339-349; R1' tests it); a GCC "no call in a DP loop" gate
-  (unruled); `reserve_pair` costs 2.6-5.7 % of a pair at L = 8 in GCC -fPIC shared objects; `IpcFile::longest()` reads
-  every record batch the bound cannot decide (R1' times it). `gh` unauthenticated: CI unread.
+- Which of KS survives (release on return only?); where the run report lives (S7: `run` is the one path for every language);
+  a GCC "no call in a DP loop" gate; `reserve_pair` cost in -fPIC objects; Parquet's mean-length window (carried to the new model).
 
 ## Status honesty
 
-- Run by me: clang `ctest -j1` (99/99) and the limit sweeps and scans above. Not run by me: the Arrow, no-llfio, MEX, CUDA and
-  GCC gates, pytest, any assembly, any timing, the mutations, the `strict` conformance legs.
-- Agents this session: the Fable audit (190 k tokens), R1 (349 k), R2 (530 k), the KS3 implementer (763 k), R1' and R2'
-  (running); the advisor tool twice. Cost-state of 11-01: $519.49.
+- Run by me: clang `ctest -j1` at both commits, the sweeps and scans above, the conformance log reads. Not run by me: the
+  Arrow, no-llfio, MEX, CUDA and GCC gates, pytest, any assembly, any timing, mutations.
+- Agents this session: Fable audit, R1, R2, KS3 (763 k tokens), R1' (490 k), R2' (440 k), conformance (92 k), KS4 (412 k).
