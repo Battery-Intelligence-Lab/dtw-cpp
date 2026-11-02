@@ -127,12 +127,13 @@ bool holds_matrix(Method method, bool clara_uses_full_sample)
 }
 
 /// What each thread of the in-RAM run of `method` holds of scratch: the DTW kernels' for series of up to `longest` time
-/// steps of `precision` (core::thread_scratch_bytes; none where a GPU computes the distances, but for Metal's CPU
-/// assignment of FastCLARA, and none without `kernels`: a complete matrix, which no kernel adds to), FasterPAM's swap
-/// table where the method runs it, FastCLARA's assignment table, TADPole's count of each point's neighbours, and the
-/// silhouettes' sums when the results are written.
+/// steps of `precision` and `ndim` features (core::thread_scratch_bytes; 0: the Problem's series'; none where a GPU
+/// computes the distances, but for Metal's CPU assignment of FastCLARA, and none without `kernels`: a complete matrix,
+/// which no kernel adds to), FasterPAM's swap table where the method runs it, FastCLARA's assignment table, TADPole's
+/// count of each point's neighbours, and the silhouettes' sums when the results are written.
 std::size_t in_ram_thread_bytes(const Problem &prob, const Config &config, Method method, bool clara_uses_full_sample,
-                                std::size_t longest, core::Precision precision, bool kernels = true)
+                                std::size_t longest, core::Precision precision, bool kernels = true,
+                                std::size_t ndim = 0)
 {
   const bool assigns = method == Method::CLARA && !clara_uses_full_sample;
 #ifdef DTWC_HAS_CUDA
@@ -141,8 +142,11 @@ std::size_t in_ram_thread_bytes(const Problem &prob, const Config &config, Metho
   const bool cpu_assignment = true; // Metal has no kernel for FastCLARA's assignment
 #endif
   std::size_t bytes = 0;
-  if ((kernels && prob.device().first != Device::GPU) || (assigns && cpu_assignment))
-    bytes += core::thread_scratch_bytes(prob.distance(), longest, precision);
+  if ((kernels && prob.device().first != Device::GPU) || (assigns && cpu_assignment)) {
+    auto distance = prob.distance();
+    if (ndim != 0) distance.ndim = ndim;
+    bytes += core::thread_scratch_bytes(distance, longest, precision);
+  }
   if (method == Method::PAM || method == Method::CLARA || method == Method::MIP || method == Method::LRCore)
     bytes += detail::fast_pam_thread_bytes(config.k);
   if (assigns && cpu_assignment)
@@ -403,8 +407,9 @@ Outcome execute(const Config &config, std::optional<Data> data)
     // on the longest series once they are read: routed by that need, so a limit that routes the series into RAM holds
     // the thread and a smaller one streams them. A series is at least their mean long and at most the walk's bound
     // (IpcFile::longest_bound); where those disagree on the route, the series' lengths are read (IpcFile::longest).
+    // The thread is priced for the file's features a time step, which reach the Problem only with its series.
     const auto in_ram_needs = [&](std::size_t steps) {
-      return resident + in_ram_thread_bytes(prob, config, Method::CLARA, false, steps, config.dtype);
+      return resident + in_ram_thread_bytes(prob, config, Method::CLARA, false, steps, config.dtype, true, ipc->ndim());
     };
     if (limit != 0 && can_stream
         && (in_ram_needs(ipc->num_values() / n_series / ipc->ndim()) > limit

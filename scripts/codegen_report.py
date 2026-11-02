@@ -70,7 +70,8 @@ LTO_PREFIX = "-flto"
 # "in Loop: Header=BBn", naming the innermost loop it is in. Either is loop code, at any depth:
 # the banded kernel's column loop has a child loop, and a call there is a call per column.
 BLOCK = re.compile(r"^(?:\.?LBB(\w+):|\s*(?:#|;|//) %bb\.\d+:)")
-FUNCTION = re.compile(r'^(?![.Ll])("[^"]+"|\S+):')
+# A function's label; not a block's, nor clang's `$ehgcr_N_M:` catchret label inside a function.
+FUNCTION = re.compile(r'^(?![.Ll$])("[^"]+"|\S+):')
 CALL = re.compile(r"^\s+(?:call|callq|bl|blr)\s")
 LOOP = re.compile(r"This (?:Inner )?Loop Header|in Loop: Header=BB")
 # The kernel families the probe instantiates, the dispatcher's: each pointwise cost and DP cell it binds, by the name

@@ -570,10 +570,11 @@ TEST_CASE("Within --ram-limit the distance matrix stays in RAM while one thread'
 namespace {
 
 /// What Arrow IPC's routing prices FastCLARA's in-RAM route at (k 3, two samples of 8, Float64, nothing written) on
-/// `file` under `band`, for series of up to `steps` time steps: the file's resident bytes, a sample PAM's matrix or
-/// every sample's labels and nearest distances, and one thread's scratch. With the longest series' steps, the least
-/// limit that routes the series into RAM.
-std::size_t ipc_in_ram_bytes(const std::filesystem::path &file, int band, std::size_t steps)
+/// `file` under `band` and `variant`, for series of up to `steps` time steps of the file's features: the file's
+/// resident bytes, a sample PAM's matrix or every sample's labels and nearest distances, and one thread's scratch. With
+/// the longest series' steps, the least limit that routes the series into RAM.
+std::size_t ipc_in_ram_bytes(const std::filesystem::path &file, int band, std::size_t steps,
+                             DTWVariant variant = DTWVariant::Standard)
 {
   dtwc::algorithms::CLARAOptions options;
   options.n_clusters = 3;
@@ -583,7 +584,7 @@ std::size_t ipc_in_ram_bytes(const std::filesystem::path &file, int band, std::s
   const auto plan = dtwc::algorithms::detail::resolve_clara_plan(ipc.num_rows(), options, "run");
   return ipc.resident_bytes(Precision::Float64, false)
          + std::max(dtwc::core::packed_size(8) * sizeof(double), dtwc::algorithms::detail::clara_pass_bytes(plan, 2))
-         + dtwc::core::thread_scratch_bytes(distance(DTWVariant::Standard, band), steps, Precision::Float64)
+         + dtwc::core::thread_scratch_bytes(distance(variant, band, ipc.ndim()), steps, Precision::Float64)
          + dtwc::detail::fast_pam_thread_bytes(3)
          + dtwc::algorithms::detail::clara_assign_thread_bytes(6, Precision::Float64);
 }
@@ -820,29 +821,41 @@ TEST_CASE("Arrow IPC's routing streams a file whose series and one thread's scra
           "[thread_scratch][run][arrow][streaming]")
 {
   // The walk knows each record batch's rows and values, not each series' length: a series is at most its batch's time
-  // steps less one for each other row (here 32 rows of 4 steps: 97). The in-RAM route, its team fitted on the longest
-  // series once they are read, is priced with one thread's scratch for it beside what it holds of the file and
-  // CLARA's terms: every series here is 4 steps, which the lengths read say where the bound cannot.
-  const auto file = std::filesystem::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader"
-                    / "clara_256_lz4.arrow";
-  REQUIRE(dtwc::io::IpcFile(file).longest_bound() == 32 * 4 - 31);
-  REQUIRE(dtwc::io::IpcFile(file).longest() == 4);
-  dtwc::Config config;
-  config.output.clear();
-  config.input = dtwc::path_to_utf8(file);
-  config.method = dtwc::Method::CLARA;
-  config.k = 3;
-  config.sample_size = 8;
-  config.n_samples = 2;
-  config.seed = 42;
-  config.verbose = true;
-  const std::size_t in_ram = ipc_in_ram_bytes(file, config.band, 4);
-  config.ram_limit = in_ram - 1;
-  CHECK_THAT(printed([&] { (void)dtwc::run(config); }), ContainsSubstring("Arrow IPC walk selected streaming"));
-  config.ram_limit = in_ram;
-  const std::string in_ram_text = printed([&] { (void)dtwc::run(config); });
-  CHECK_THAT(in_ram_text, !ContainsSubstring("selected streaming"));
-  CHECK_THAT(in_ram_text, ContainsSubstring("Data loaded from Arrow IPC: 256 series"));
+  // steps less one for each other row (clara_256_lz4.arrow's 32 rows of 4 steps: 97). The in-RAM route, its team
+  // fitted on the longest series once they are read, is priced with one thread's scratch for it beside what it holds
+  // of the file and CLARA's terms: every series there is 4 steps, which the lengths read say where the bound cannot.
+  // The thread is priced for the file's features a time step, which reach the Problem only with its series:
+  // clara_256_ndim2.arrow's two (series of two or three time steps), where DDTW's derivatives hold two values a time
+  // step, so a thread priced for one feature would route into RAM a limit that cannot hold it there.
+  for (const auto &[name, ndim, variant, longest, bound] :
+       { std::tuple{ "clara_256_lz4.arrow", std::size_t{ 1 }, DTWVariant::Standard, std::size_t{ 4 },
+                     std::size_t{ 32 * 4 - 31 } },
+         std::tuple{ "clara_256_ndim2.arrow", std::size_t{ 2 }, DTWVariant::DDTW, std::size_t{ 3 },
+                     std::size_t{ 44 } } }) {
+    INFO(name);
+    const auto file = std::filesystem::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader" / name;
+    const dtwc::io::IpcFile ipc(file);
+    REQUIRE(ipc.ndim() == ndim);
+    REQUIRE(ipc.longest_bound() == bound);
+    REQUIRE(ipc.longest() == longest);
+    dtwc::Config config;
+    config.output.clear();
+    config.input = dtwc::path_to_utf8(file);
+    config.method = dtwc::Method::CLARA;
+    config.k = 3;
+    config.sample_size = 8;
+    config.n_samples = 2;
+    config.seed = 42;
+    config.variant.variant = variant;
+    config.verbose = true;
+    const std::size_t in_ram = ipc_in_ram_bytes(file, config.band, longest, variant);
+    config.ram_limit = in_ram - 1;
+    CHECK_THAT(printed([&] { (void)dtwc::run(config); }), ContainsSubstring("Arrow IPC walk selected streaming"));
+    config.ram_limit = in_ram;
+    const std::string in_ram_text = printed([&] { (void)dtwc::run(config); });
+    CHECK_THAT(in_ram_text, !ContainsSubstring("selected streaming"));
+    CHECK_THAT(in_ram_text, ContainsSubstring("Data loaded from Arrow IPC: 256 series"));
+  }
 }
 
 TEST_CASE("Arrow IPC's batch of record batches does not depend on a TeamCap: every thread of the full team holds its "
