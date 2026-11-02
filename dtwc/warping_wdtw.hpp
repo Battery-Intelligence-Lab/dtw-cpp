@@ -32,7 +32,6 @@
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
 #include "base/error.hpp"
-#include "core/thread_scratch.hpp" // register_scratch
 
 #include <algorithm>      // std::max
 #include <cmath>          // std::exp
@@ -120,32 +119,30 @@ data_t wdtwBanded(std::span<const data_t> x, std::span<const data_t> y,
 // ---------------------------------------------------------------------------
 
 namespace detail {
-/// cached_wdtw_weights' rebuild, out of line: the table registered as it grows from empty, else the old one freed
-/// before the new one is built.
-template <typename data_t>
-#if defined(__GNUC__) || defined(__clang__)
-[[gnu::noinline]]
-#elif defined(_MSC_VER)
-__declspec(noinline)
-#endif
-void rebuild_wdtw_weights(std::vector<data_t> &cached_w, int max_dev, data_t g)
+/// cached_wdtw_weights' table and the max_dev and g it was built for (-1: none). Its key lives with it, so that
+/// core::release_thread_scratch(), which empties it (detail::dispatch_scratch, core/dtw_dispatch.cpp), resets the key too.
+template <typename T>
+struct WdtwCache
 {
-  if (cached_w.capacity() == 0)
-    core::register_scratch(cached_w); // this thread's scratch, given back when a top-level call returns
-  else
-    std::vector<data_t>().swap(cached_w); // the old table freed before the new one is built
-  cached_w = wdtw_weights<data_t>(max_dev, g);
+  std::vector<T> w;
+  int max_dev = -1;
+  T g = T(-1);
+};
+
+/// This thread's WdtwCache, one a T.
+template <typename T>
+WdtwCache<T> &wdtw_cache()
+{
+  thread_local WdtwCache<T> cache;
+  return cache;
 }
 
 template <typename data_t>
 const std::vector<data_t>& cached_wdtw_weights(int max_dev, data_t g)
 {
-  // A table is never empty (max_dev + 1 weights): an empty one was given back (core::release_thread_scratch).
-  thread_local std::vector<data_t> cached_w;
-  thread_local int cached_max_dev = -1;
-  thread_local data_t cached_g = data_t(-1);
-  if (cached_w.empty() || max_dev != cached_max_dev || g != cached_g) {
-    rebuild_wdtw_weights(cached_w, max_dev, g);
+  auto &[cached_w, cached_max_dev, cached_g] = wdtw_cache<data_t>();
+  if (max_dev != cached_max_dev || g != cached_g) {
+    cached_w = wdtw_weights<data_t>(max_dev, g);
     cached_max_dev = max_dev;
     cached_g = g;
   }

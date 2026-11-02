@@ -75,13 +75,6 @@ public:
   bool is_f32() const;          ///< whether the values are Float32
   std::size_t ndim() const;     ///< features a time step: the schema's metadata 'ndim', else 1
   std::size_t num_values() const; ///< every series' values, as the walk declares them
-  /// The most time steps a series can hold by what the walk knows of each record batch, its rows and its values: a
-  /// batch's time steps less one for each of its other rows (an empty series is refused). At least the longest
-  /// series'.
-  std::size_t longest_bound() const;
-  /// The time steps of the longest series: each record batch read in turn, in the file's precision, as read_arrow_ipc
-  /// reads it (a view, or decoded), but those whose bound is no longer than the longest so far; one batch at a time.
-  std::size_t longest() const;
 
   /// What read_arrow_ipc(path, dtype) holds at once outside the page cache: a view's detail::view_series_bytes a
   /// series, the batches it decodes and the scratch of the threads decoding them, each batch's objects, without llfio

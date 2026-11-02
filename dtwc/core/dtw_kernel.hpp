@@ -47,8 +47,6 @@
 
 #pragma once
 
-#include "thread_scratch.hpp" // reserve_scratch
-
 #include <algorithm>    // std::min, std::max
 #include <array>        // std::array
 #include <cmath>        // std::ceil, std::floor, std::round, std::fmin
@@ -235,41 +233,20 @@ dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 
 namespace detail {
 
-/// The per-pair kernels' thread_local buffers, one of each a T (every kernel of that T shares them), reached by the
-/// kernels and by reserve_pair.
+/// The per-pair kernels' thread_local buffers, one of each a T (every kernel of that T shares it): reached here so
+/// that core::release_thread_scratch() can empty them (detail::dispatch_scratch, core/dtw_dispatch.cpp).
 template <typename T>
 std::vector<T> &linear_short_buf()
 {
-  thread_local std::vector<T> short_buf; // grows exactly, held while a kernel can run: thread_scratch.hpp
+  thread_local std::vector<T> short_buf;
   return short_buf;
 }
 
 template <typename T>
 std::vector<T> &banded_col_buf()
 {
-  thread_local std::vector<T> col_buf; // grows exactly, held while a kernel can run: thread_scratch.hpp
+  thread_local std::vector<T> col_buf;
   return col_buf;
-}
-
-/// Room for the buffer dtw_banded (band >= 0) or dtw_linear (band < 0) sizes for this pair (reserve_scratch), taken
-/// out of line by the public kernels before they run one, so that the kernels' code stays as it was without it: their
-/// resize or assign then never allocates. The pair's route is dtw_banded's.
-template <typename T>
-#if defined(__GNUC__) || defined(__clang__)
-[[gnu::noinline]]
-#elif defined(_MSC_VER)
-__declspec(noinline)
-#endif
-void reserve_pair(std::size_t n_short, std::size_t n_long, int band)
-{
-  if (n_short == 0 || n_long == 0) return;
-  if (band >= 0) {
-    const auto band_width = static_cast<std::size_t>(band);
-    if (n_long - n_short > band_width) return;
-    if (n_short > 1 && n_long > 1 && band_width < n_long - 1)
-      return reserve_scratch(banded_col_buf<T>(), n_long);
-  }
-  reserve_scratch(linear_short_buf<T>(), n_short);
 }
 
 /// dtw_kernel_linear with the early-abandon test known at compile time.
@@ -280,7 +257,7 @@ T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell, T
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (n_short == 0 || n_long == 0) return maxValue;
 
-  std::vector<T> &short_buf = linear_short_buf<T>(); // its room: reserve_pair
+  std::vector<T> &short_buf = linear_short_buf<T>();
   short_buf.resize(n_short);
   T *short_side = short_buf.data(); // hoisted out of the loops
 
@@ -356,7 +333,6 @@ template <typename T, typename Cost, typename Cell>
 T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
                     Cost cost, Cell cell, T early_abandon = T(-1))
 {
-  detail::reserve_pair<T>(n_short, n_long, -1);
   return early_abandon >= T(0)
            ? detail::dtw_linear<true, T>(n_short, n_long, cost, cell, early_abandon)
            : detail::dtw_linear<false, T>(n_short, n_long, cost, cell, early_abandon);
@@ -385,11 +361,11 @@ T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
   // The fixed terminal cell must lie inside |short_idx-long_idx| <= band.
   if (n_long - n_short > band_width) return maxValue;
 
-  // Degenerate length-one path, or a band covering the complete matrix. reserve_pair repeats these routes.
+  // Degenerate length-one path, or a band covering the complete matrix.
   if (n_short == 1 || n_long == 1 || band_width >= n_long - 1)
     return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
 
-  std::vector<T> &col_buf = banded_col_buf<T>(); // its room: reserve_pair
+  std::vector<T> &col_buf = banded_col_buf<T>();
   col_buf.assign(n_long, maxValue);
   T *col = col_buf.data(); // hoisted out of the loops
   const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
@@ -444,7 +420,6 @@ template <typename T, typename Cost, typename Cell>
 T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
                     Cost cost, Cell cell, T early_abandon = T(-1))
 {
-  detail::reserve_pair<T>(n_short, n_long, band);
   return early_abandon >= T(0)
            ? detail::dtw_banded<true, T>(n_short, n_long, band, cost, cell, early_abandon)
            : detail::dtw_banded<false, T>(n_short, n_long, band, cost, cell, early_abandon);
@@ -547,36 +522,15 @@ struct alignas(64) LanesRow
   T v[dtw_lanes<T>];
 };
 
-/// The lanes kernel's two thread_local buffers, one pair a T (both of its distances share them).
+/// The lanes kernel's two thread_local buffers, one pair a T (both of its distances share them): reached here so
+/// that core::release_thread_scratch() can empty them (detail::lanes_scratch, core/dtw_lanes.cpp). Two thread_locals,
+/// as the kernel declared them, returned as references (`auto [y_buf, s_buf]` binds the buffers): one pair object
+/// moved a column loop of the lanes, and a cell loop of TWE's, under GCC (2026-11-02).
 template <typename T>
-std::vector<LanesRow<T>> &lanes_y_buf()
+std::pair<std::vector<LanesRow<T>> &, std::vector<LanesRow<T>> &> lanes_bufs()
 {
-  thread_local std::vector<LanesRow<T>> y_buf; // grows exactly, held while a kernel can run: thread_scratch.hpp
-  return y_buf;
-}
-
-template <typename T>
-std::vector<LanesRow<T>> &lanes_s_buf()
-{
-  thread_local std::vector<LanesRow<T>> s_buf; // grows exactly, held while a kernel can run: thread_scratch.hpp
-  return s_buf;
-}
-
-/// Room for the lanes' buffers (reserve_scratch): the longest of ys[0 .. dtw_lanes<T>) and nx rows, taken out of line
-/// by dtw_kernel_lanes before dtw_kernel_lanes_impl runs, whose code stays as it was without it.
-template <typename T>
-#if defined(__GNUC__) || defined(__clang__)
-[[gnu::noinline]]
-#elif defined(_MSC_VER)
-__declspec(noinline)
-#endif
-void reserve_lanes(std::size_t nx, const std::span<const T> *ys)
-{
-  if (nx == 0) return;
-  std::size_t ny_max = 0;
-  for (std::size_t w = 0; w < dtw_lanes<T>; ++w) ny_max = std::max(ny_max, ys[w].size());
-  reserve_scratch(lanes_y_buf<T>(), ny_max);
-  reserve_scratch(lanes_s_buf<T>(), nx);
+  thread_local std::vector<LanesRow<T>> y_buf, s_buf;
+  return { y_buf, s_buf };
 }
 
 } // namespace detail
@@ -586,8 +540,8 @@ void reserve_lanes(std::size_t nx, const std::span<const T> *ys)
 /// length; else the Sakoe-Chiba band of dtw_band_bounds, every ys[w] as long as xs.
 /// No ys[w] is empty (the fill refuses an empty series).
 template <typename T, typename Dist, typename Cell>
-std::array<T, dtw_lanes<T>> dtw_kernel_lanes_impl(std::span<const T> xs, const std::span<const T> *ys,
-                                                  int band, Dist dist, Cell cell)
+std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::span<const T> *ys,
+                                             int band, Dist dist, Cell cell)
 {
   constexpr std::size_t W = dtw_lanes<T>;
   constexpr T maxValue = std::numeric_limits<T>::max();
@@ -616,8 +570,7 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_impl(std::span<const T> xs, const s
     for (T &e : r.v) e = maxValue;
     return r;
   }();
-  std::vector<Row> &y_buf = detail::lanes_y_buf<T>(); // their room: reserve_lanes
-  std::vector<Row> &s_buf = detail::lanes_s_buf<T>();
+  auto [y_buf, s_buf] = detail::lanes_bufs<T>();
   if (y_buf.size() < ny_max) y_buf.resize(ny_max);
   if (s_buf.size() < nx) s_buf.resize(nx);
   Row *Y = y_buf.data();
@@ -677,15 +630,6 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_impl(std::span<const T> xs, const s
   }
   for (std::size_t w = 0; w < W; ++w) out[w] = Y[ny[w] - 1].v[w];
   return out;
-}
-
-/// dtw_kernel_lanes_impl, its buffers' room taken first (detail::reserve_lanes).
-template <typename T, typename Dist, typename Cell>
-std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::span<const T> *ys,
-                                             int band, Dist dist, Cell cell)
-{
-  detail::reserve_lanes<T>(xs.size(), ys);
-  return dtw_kernel_lanes_impl<T>(xs, ys, band, dist, cell);
 }
 
 } // namespace dtwc::core

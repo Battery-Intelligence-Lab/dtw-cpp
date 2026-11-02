@@ -1563,44 +1563,6 @@ std::size_t IpcFile::ndim() const { return state_->walk.columns.ndim; }
 
 std::size_t IpcFile::num_values() const { return static_cast<std::size_t>(state_->values); }
 
-namespace {
-
-/// The most time steps a series of `batch` can hold: its time steps less one for each of its other rows.
-std::size_t batch_longest_bound(const Batch &batch, std::size_t ndim)
-{
-  const auto steps = static_cast<std::size_t>(batch.values) / ndim;
-  const auto others = static_cast<std::size_t>(std::max<std::int64_t>(batch.rows - 1, 0));
-  return steps > others ? steps - others : 0;
-}
-
-} // namespace
-
-std::size_t IpcFile::longest_bound() const
-{
-  std::size_t longest = 0;
-  for (const Batch &batch : state_->walk.batches)
-    longest = std::max(longest, batch_longest_bound(batch, state_->walk.columns.ndim));
-  return longest;
-}
-
-std::size_t IpcFile::longest() const
-{
-  const State &state = *state_;
-  try {
-    std::size_t longest = 0;
-    for (std::size_t k = 0; k < state.walk.batches.size(); ++k) {
-      if (batch_longest_bound(state.walk.batches[k], state.walk.columns.ndim) <= longest) continue;
-      const Data batch = state.walk.columns.f32 ? read_batch_as<float, float>(state, k)
-                                                : read_batch_as<data_t, data_t>(state, k);
-      for (std::size_t i = 0; i < static_cast<std::size_t>(batch.size()); ++i)
-        longest = std::max(longest, batch.series_flat_size(i) / batch.ndim);
-    }
-    return longest;
-  } catch (...) {
-    dtwc::detail::rethrow_naming_the_file(state.path);
-  }
-}
-
 bool IpcFile::streams(core::Precision dtype) const
 {
   return !state_->mapped() || state_->decoded > 0 || (dtype == core::Precision::Float32) != is_f32();
@@ -1649,9 +1611,8 @@ int IpcFile::row_groups_per_batch(std::size_t ram_budget, bool f32) const
                        "but one record batch holds " + std::to_string(largest) + " bytes once read; rewrite the file "
                        "in smaller record batches or raise the limit");
   // `count` record batches are read by min(count, threads) threads, each but the first (decode_bytes holds its scratch)
-  // holding a reader's scratch beside its batch: as many as the full team, whatever a TeamCap leaves the read, so a
-  // stream's batches do not depend on the team a phase shrank to.
-  const std::size_t scratch = state_->reader, threads = static_cast<std::size_t>(std::max(1, full_team_threads()));
+  // holding a reader's scratch beside its batch.
+  const std::size_t scratch = state_->reader, threads = thread_count();
   std::size_t count = (ram_budget + scratch) / (largest + scratch);
   if (count >= threads) count = (ram_budget - (threads - 1) * scratch) / largest;
   return static_cast<int>(std::max<std::size_t>(1, std::min<std::size_t>(num_row_groups(), count)));

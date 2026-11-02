@@ -20,7 +20,6 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <utility>
@@ -29,7 +28,6 @@
 #include <limits>
 #include <memory>
 #include <random>
-#include <regex>
 #include <string>
 #include <vector>
 
@@ -58,10 +56,6 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 #include <api.hpp>
 #include <cli/config.hpp>
 #include <io/parquet_chunk_reader.hpp>
-#include <algorithms/detail/fast_clara_assign.hpp> // clara_assign_thread_bytes
-#include <algorithms/fast_pam.hpp>                 // fast_pam_thread_bytes
-#include <base/parallelisation.hpp>                // full_team_threads
-#include <core/dtw_dispatch.hpp>                   // thread_scratch_bytes
 #include <Problem.hpp>
 #include <warping.hpp> // detail::require_finite, the refusals' text
 #endif
@@ -657,14 +651,8 @@ TEST_CASE("Parquet: streamed FastCLARA refuses the rows the in-RAM run refuses",
     auto stream = options;
     stream.parquet_path = path;
     stream.parquet_column = "series";
-    // Beside one decode, two batches of a row group fit: the next decodes while one is assigned; and beside them every
-    // thread's scratch for row 50's 30 values (the limit prices it: fast_clara_parquet's, opts.ram_limit_bytes).
-    const std::size_t scratch =
-      dtwc::core::thread_scratch_bytes(streamed.distance(), 30, dtwc::core::Precision::Float64)
-      + dtwc::detail::fast_pam_thread_bytes(2)
-      + dtwc::algorithms::detail::clara_assign_thread_bytes(2, dtwc::core::Precision::Float64);
-    stream.ram_limit_bytes = dtwc::io::ParquetChunkReader(path, "series").decode_bytes() + 8192
-                             + static_cast<std::size_t>(dtwc::full_team_threads()) * scratch;
+    // Beside one decode, two batches of a row group fit: the next decodes while one is assigned.
+    stream.ram_limit_bytes = dtwc::io::ParquetChunkReader(path, "series").decode_bytes() + 8192;
     stream.force_parquet_streaming = true;
     CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara_parquet(streamed, stream), dtwc::InvalidInput,
                          Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(poison.says)));
@@ -854,24 +842,10 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   config.k = 2;
   config.sample_size = 4;
   config.n_samples = 2;
-  // A byte below the file's resident estimate FastCLARA streams it, but no thread's scratch fits there beside one of
-  // the stream's phases (the PAMs, or the pass, whose team is fitted afresh after them): the refusal names the least
-  // limit the stream takes, the bytes that phase holds beside one thread's.
+  // A byte below the file's resident estimate, which the stream's pass fits under: FastCLARA streams it.
   config.ram_limit = dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false) - 1;
   config.output.clear();
   config.name = "streamed";
-  std::string refusal;
-  try {
-    (void)dtwc::run(config);
-  } catch (const dtwc::InvalidInput &e) {
-    refusal = e.what();
-  }
-  std::smatch least;
-  INFO(refusal);
-  REQUIRE(std::regex_search(refusal, least,
-                            std::regex("FastCLARA's (?:PAMs|assignment): --ram-limit = [0-9]+ cannot hold one thread's "
-                                       "scratch, ([0-9]+) bytes .* beside the ([0-9]+) bytes")));
-  config.ram_limit = std::stoull(least[1].str()) + std::stoull(least[2].str());
   const auto result = dtwc::run(config);
   std::filesystem::remove(input);
 
@@ -901,55 +875,6 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   }
   CHECK_FALSE(std::filesystem::exists(out / "streamed_distance_matrix.csv"));
   CHECK_FALSE(std::filesystem::exists(out / "streamed_silhouettes.csv"));
-}
-
-// Tier-2 fast_clara_parquet streams within opts.ram_limit_bytes, its threads' scratch priced within it: one switch
-// and one limit, whatever Problem::ram_limit says (it used to price only when that was set too).
-TEST_CASE("Parquet: Tier-2 fast_clara_parquet prices its threads' scratch within opts.ram_limit_bytes alone",
-          "[io][parquet][streaming]")
-{
-  std::vector<std::vector<double>> series;
-  for (int i = 0; i < 64; ++i) {
-    series.emplace_back();
-    for (int t = 0; t < 50; ++t) series.back().push_back(std::sin(0.37 * (i + 1) + 0.11 * t));
-  }
-  const auto input = tmpdir() / "tier2_limit.parquet";
-  write_parquet(input, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
-                                          { make_list_f64(series) }),
-                8);
-  dtwc::algorithms::CLARAOptions opts;
-  opts.n_clusters = 3;
-  opts.sample_size = 8;
-  opts.n_samples = 2;
-  opts.parquet_path = input;
-  opts.parquet_column = "series";
-  opts.force_parquet_streaming = true;
-  // Whether the stream runs at `limit`, Problem::ram_limit `problem_limit`.
-  const auto streams = [&](std::size_t limit, std::size_t problem_limit) {
-    dtwc::Problem prob{ "tier2" };
-    prob.set_ram_limit(problem_limit);
-    opts.ram_limit_bytes = limit;
-    try {
-      (void)dtwc::algorithms::fast_clara_parquet(prob, opts);
-      return true;
-    } catch (const dtwc::InvalidInput &) {
-      return false;
-    }
-  };
-  // The least limit, Problem::ram_limit set alike, by bisection from the file's resident estimate.
-  std::size_t least = 2 * dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false),
-              refused = 1;
-  REQUIRE(streams(least, least));
-  REQUIRE_FALSE(streams(refused, refused));
-  while (least - refused > 1) {
-    const std::size_t mid = refused + (least - refused) / 2;
-    (streams(mid, mid) ? least : refused) = mid;
-  }
-  INFO("least limit " << least);
-  // Problem::ram_limit unset: the same limit, the same verdicts.
-  CHECK(streams(least, 0));
-  CHECK_FALSE(streams(least - 1, 0));
-  std::filesystem::remove(input);
 }
 
 #else

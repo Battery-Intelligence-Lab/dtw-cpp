@@ -20,7 +20,7 @@
 #include "dtw_options.hpp"           // DistanceConfig, variant_names
 #include "msm.hpp"                   // msm_distance
 #include "public_distance.hpp"       // normalize_public_distance
-#include "thread_scratch.hpp"        // reserve_scratch
+#include "thread_scratch.hpp"        // dispatch_scratch, held_bytes
 #include "twe.hpp"                   // twe_distance
 #include "../base/error.hpp"              // InvalidInput
 
@@ -66,6 +66,15 @@ auto make_zero_cost(const DistanceConfig &c)
   };
 }
 
+/// make_interpolate's two buffers, one pair a T: reached here so that core::release_thread_scratch() can empty them
+/// (detail::dispatch_scratch below); two thread_locals returned as references, as detail::lanes_bufs says why.
+template <typename T>
+std::pair<std::vector<T> &, std::vector<T> &> interpolate_bufs()
+{
+  thread_local std::vector<T> x_buffer, y_buffer;
+  return { x_buffer, y_buffer };
+}
+
 // Univariate: validate() refuses it on ndim > 1. A series without NaN is used as
 // it is; a gappy one is filled into this thread's buffer for its side.
 template <typename T>
@@ -73,10 +82,7 @@ auto make_interpolate(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   return [band = c.band, metric = c.metric](std::span<const T> x, std::span<const T> y) -> double {
-    // Room for each side's filled copy, gappy or not: registered scratch (thread_scratch.hpp), grown exactly.
-    thread_local std::vector<T> x_buffer, y_buffer;
-    reserve_scratch(x_buffer, x.size());
-    reserve_scratch(y_buffer, y.size());
+    auto [x_buffer, y_buffer] = interpolate_bufs<T>();
     return normalize_public_distance(dtwBanded<T>(interpolate_linear_into(x, x_buffer),
                                                   interpolate_linear_into(y, y_buffer), band, T(-1), metric));
   };
@@ -142,9 +148,7 @@ auto make_ddtw(const DistanceConfig &c)
   const MetricType metric = c.metric;
   if (c.ndim > 1) {
     return [band, metric, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
-      thread_local std::vector<T> dx, dy; // registered scratch (thread_scratch.hpp), grown exactly
-      reserve_scratch(dx, x.size());
-      reserve_scratch(dy, y.size());
+      auto [dx, dy] = dtwc::detail::derivative_bufs<T>();
       derivative_transform_mv_inplace(x, ndim, dx);
       derivative_transform_mv_inplace(y, ndim, dy);
       return normalize_public_distance(dtwBanded_mv<T>(
@@ -393,46 +397,25 @@ resolve_dtw_fn(const DistanceConfig &c, const Data &data)
   throw std::logic_error("resolve_dtw_fn: unreachable DTWVariant");
 }
 
-// ----------------------------------------------------------------------------
-// thread_scratch_bytes: each buffer's growth rule, the order resolve_dtw_fn takes
-// ----------------------------------------------------------------------------
-
-namespace {
-
-template <typename T>
-std::size_t scratch_bytes(const DistanceConfig &c, std::size_t length)
+std::size_t detail::dispatch_scratch(bool release) noexcept
 {
-  const std::size_t value = sizeof(T), values = length * c.ndim;
-  // run_dtw (dtw_kernel.hpp): without a band dtw_linear's column of the shorter series; under one dtw_linear's only for
-  // a pair it covers whole (the longer series at most band + 1 long, or one of length 1), dtw_banded's of the longer.
-  std::size_t dp = length;
-  if (c.band >= 0 && length > static_cast<std::size_t>(c.band) + 1) dp = static_cast<std::size_t>(c.band) + 1 + length;
-  dp *= value;
-  if (c.variant.mv_mode == MVMode::Independent && c.ndim > 1) return 2 * length * value + dp; // cx, cy (warping.hpp)
-  switch (c.missing) {
-  case MissingStrategy::ZeroCost:
-  case MissingStrategy::AROW: return dp;
-  case MissingStrategy::Interpolate: return 2 * length * value + dp; // x_buffer, y_buffer (make_interpolate)
-  case MissingStrategy::Error: break;
+  // For both Ts the kernels take: the per-pair kernels' columns (dtw_kernel.hpp), MSM's and TWE's rows, the
+  // independent channels (warping.hpp), DDTW's derivatives (warping_ddtw.hpp; make_ddtw's multivariate too), WDTW's
+  // weights with their key, and make_interpolate's copies.
+  auto &wdtw32 = dtwc::detail::wdtw_cache<float>();
+  auto &wdtw64 = dtwc::detail::wdtw_cache<data_t>();
+  std::size_t bytes = held_bytes(release, detail::linear_short_buf<float>(), detail::linear_short_buf<data_t>(),
+                                 detail::banded_col_buf<float>(), detail::banded_col_buf<data_t>(), wdtw32.w, wdtw64.w);
+  if (release) {
+    wdtw32 = {};
+    wdtw64 = {};
   }
-  switch (c.variant.variant) {
-  case DTWVariant::DDTW: return 2 * values * value + dp; // dx, dy (warping_ddtw.hpp; make_ddtw's, multivariate)
-  case DTWVariant::WDTW: return length * value + dp;     // cached_w: max_dev + 1 weights (warping_wdtw.hpp)
-  case DTWVariant::ADTW: return dp;
-  case DTWVariant::SoftDTW: return length * value;       // dtw_kernel_linear's column, no band
-  case DTWVariant::MSM: return 2 * length * value;       // prev_buf, curr_buf (msm.hpp)
-  case DTWVariant::TWE: return length == 0 ? 0 : 2 * (length + 1) * value; // prev_buf, curr_buf, padded (twe.hpp)
-  case DTWVariant::Standard: break;
-  }
-  // The lanes (resolve_dtw_block_fn): y_buf and s_buf, a row of dtw_lanes<T> values a time step each.
-  return (c.ndim == 1 ? 2 * length * dtw_lanes<T> * value : 0) + dp;
-}
-
-} // namespace
-
-std::size_t thread_scratch_bytes(const DistanceConfig &config, std::size_t length, Precision precision)
-{
-  return precision == Precision::Float32 ? scratch_bytes<float>(config, length) : scratch_bytes<data_t>(config, length);
+  const auto pairs = [release](auto both) noexcept { return held_bytes(release, both.first, both.second); };
+  bytes += pairs(detail::msm_rows<float>()) + pairs(detail::msm_rows<data_t>());
+  bytes += pairs(detail::twe_rows<float>()) + pairs(detail::twe_rows<data_t>());
+  bytes += pairs(dtwc::detail::channel_bufs<float>()) + pairs(dtwc::detail::channel_bufs<data_t>());
+  bytes += pairs(dtwc::detail::derivative_bufs<float>()) + pairs(dtwc::detail::derivative_bufs<data_t>());
+  return bytes + pairs(interpolate_bufs<float>()) + pairs(interpolate_bufs<data_t>());
 }
 
 // Explicit instantiations.

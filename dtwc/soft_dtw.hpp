@@ -38,7 +38,6 @@
 #include "core/dtw_kernel.hpp"   // dtw_kernel_linear, SoftCell
 #include "core/dtw_cost.hpp"     // SpanL1Cost
 #include "core/dtw_options.hpp"  // core::validate
-#include "core/thread_scratch.hpp" // reserve_scratch
 #include "warping.hpp"           // detail::require_finite
 
 namespace dtwc {
@@ -139,7 +138,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   thread_local std::vector<T> c_buf, e_buf;
   for (auto *buffer : { &c_buf, &e_buf })
     if (buffer->size() < mx * my) {
-      core::reserve_scratch(*buffer, mx * my); // registered: core/thread_scratch.hpp
+      buffer->reserve(mx * my);
       buffer->resize(mx * my);
     }
   const auto C = [c = c_buf.data(), mx](std::size_t i, std::size_t j) -> T & { return c[i + j * mx]; };

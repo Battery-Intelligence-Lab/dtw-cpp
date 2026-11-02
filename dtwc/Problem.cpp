@@ -947,11 +947,8 @@ void Problem::fillDistanceMatrix_BruteForce()
   // first (equal lengths in index order); otherwise a block goes to the lanes only
   // if its series are as long as x. The per-pair loop fills the rest.
   const size_t W = f32 ? core::dtw_lanes<float> : core::dtw_lanes<data_t>;
-  size_t values = 0, longest = 0;
-  for (size_t i = 0; i < N; ++i) {
-    values += data_.series_flat_size(i);
-    longest = std::max(longest, data_.series_flat_size(i));
-  }
+  size_t values = 0;
+  for (size_t i = 0; i < N; ++i) values += data_.series_flat_size(i);
   const size_t series_bytes = values * (f32 ? sizeof(float) : sizeof(data_t));
   const size_t entry_bytes = core::value_bytes(distMat.width());
   constexpr size_t tile_series_bytes = size_t{ 512 } << 10;
@@ -960,22 +957,14 @@ void Problem::fillDistanceMatrix_BruteForce()
   if (distMat.is_mapped()) {
     const size_t budget = ram_limit_ != 0 ? ram_limit_ : core::available_memory(); // 0: unknown, no limit
     // What the series hold of the budget: a mapped view's values are the page cache's, its spans and names its own;
-    // any other's values (owned, decoded, read into a buffer) are this process's. Beside them each thread holds the DTW
-    // kernels' scratch for the longest series (core::thread_scratch_bytes): every thread of the full team, whatever
-    // team a memory limit left the fill (TeamCap), so the tile-rows, and which pairs take the lanes, do not depend on
-    // it.
-    const size_t scratch = static_cast<size_t>(full_team_threads())
-                           * core::thread_scratch_bytes(distance_, longest / data_.ndim, data_.precision);
-    const size_t held = (data_.is_mapped() ? N * detail::view_series_bytes : series_bytes) + scratch;
+    // any other's values (owned, decoded, read into a buffer) are this process's.
+    const size_t held = data_.is_mapped() ? N * detail::view_series_bytes : series_bytes;
     slab_bytes = budget == 0 ? size_t{ 1 } << 30 : std::min(budget > held ? (budget - held) / 8 : 0, size_t{ 1 } << 30);
     h = std::min(h, std::max(W, slab_bytes / (N * entry_bytes) / W * W)); // the last tile-row fits a slab
   }
   const size_t save_rows =
     checkpoint.enabled ? (static_cast<size_t>(checkpoint.save_interval) + W - 1) / W * W : N;
   h = std::min(std::min(h, save_rows), N);
-  if (verbose_ && distMat.is_mapped())
-    std::cout << "Mapped distance matrix: tile-rows of " << h << " series, slabs of at most " << slab_bytes
-              << " bytes\n";
 
   std::vector<size_t> bounds{ 0 }; // tile-row k: rows [bounds[k], bounds[k + 1])
   for (size_t r = N % h; r < N; r += h)

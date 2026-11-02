@@ -41,7 +41,6 @@
 
 #include "../base/settings.hpp"
 #include "dtw_kernel.hpp" // orient
-#include "thread_scratch.hpp" // reserve_scratch
 
 #include <algorithm>
 #include <cmath>
@@ -60,6 +59,19 @@ inline T msm_cost(T nv, T a, T b, T c) noexcept
   return c + std::min(std::abs(nv - a), std::abs(nv - b));
 }
 
+namespace detail {
+
+/// msm_distance's two rolling rows, one pair a T: reached here so that core::release_thread_scratch() can empty them
+/// (detail::dispatch_scratch, core/dtw_dispatch.cpp); two thread_locals returned as references, as detail::lanes_bufs (dtw_kernel.hpp) says why.
+template <typename T>
+std::pair<std::vector<T> &, std::vector<T> &> msm_rows()
+{
+  thread_local std::vector<T> prev_buf, curr_buf;
+  return { prev_buf, curr_buf };
+}
+
+} // namespace detail
+
 /// MSM distance (pointer + length). Univariate, unbanded, exact; c > 0, unchecked.
 template <typename T = dtwc::settings::default_data_t>
 T msm_distance(const T* x, std::size_t nx, const T* y, std::size_t ny, T c = T(1))
@@ -73,9 +85,7 @@ T msm_distance(const T* x, std::size_t nx, const T* y, std::size_t ny, T c = T(1
   std::size_t na = nx, nb = ny;
   orient(b, nb, a, na); // a = long (rows), b = short (cols); a tie keeps a = x
 
-  thread_local std::vector<T> prev_buf, curr_buf; // grow exactly, never shrink within a call: thread_scratch.hpp
-  reserve_scratch(prev_buf, nb);
-  reserve_scratch(curr_buf, nb);
+  auto [prev_buf, curr_buf] = detail::msm_rows<T>();
   prev_buf.resize(nb);
   curr_buf.resize(nb);
   T* prev = prev_buf.data();

@@ -130,22 +130,17 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
   (CUDA: int64 pair offset) instead of refusing. (`index_t` exists since Y3; public counts move to it in phase D.)
 - Cost and Cell are **template parameters**, never a `std::function` or a virtual per cell.
 - Orient so `n_short ≤ n_long` before every kernel call; buffers are sized on that.
-- `thread_local` scratch grows (exactly, registered with its thread: `core/thread_scratch.hpp`) and is held while a
-  kernel can run; it is given back where none runs and a refit needs the room (a stream's phase boundaries and
-  re-plans: `KernelTeam::release`, within an explicit limit) and when `dtwc::run` starts, returns or throws; Tier-2
-  calls keep it otherwise. `core::thread_scratch_bytes` is each buffer's growth rule, priced within an explicit limit,
-  phase by phase (`KernelTeam`, `TeamCap`). The per-pair and lane kernels keep 819e8703's code: their buffers, one of each a
-  `T`, get their room out of line before the kernel runs (`detail::reserve_pair`, `reserve_lanes`), whose routing
-  `reserve_pair` repeats (`dtw_banded`'s). A sizing that decides a result (a stream's batches, a mapped fill's
-  tile-rows) reads the full team (`full_team_threads()`), never a `TeamCap`, so a shrunk team changes no digit. A Cost
-  must not re-enter its kernel.
+- `thread_local` scratch grows and never shrinks within a call; each buffer is an accessor on
+  `core/thread_scratch.cpp`'s closed list, which `dtwc::run` gives back as it starts and when it returns or throws (a
+  new buffer joins the list, or it stays held). A list function sits in the source whose kernels use its buffers, so
+  under LTO no other module refers to their `thread_local`s; the silhouettes' sums (k x 64 B a thread) stay off it, as
+  every accessor form moved their loops. A Cost must not re-enter its kernel.
 - The dense matrix has **no locks or atomics**; fills partition pairs. `resize()` wipes to NaN, so it stays
   conditional.
 - Bind the distance function **once**; every guard lives in the builder, outside the closure (a throw inside
   an OpenMP region is UB). Series travel as spans.
 - No `omp critical`, mutex or atomic on a data path (DECISIONS §2 rule 6); region-local `num_threads`, never
-  `omp_set_num_threads` (a phase's team within a limit is `TeamCap`, the calling thread's cap on the teams its regions
-  take, restored when it goes).
+  `omp_set_num_threads`.
 - No `std::min({…})`, `std::max({…})` or `std::min_element` in a hot loop: the MSVC STL makes them library calls.
   `test_codegen_no_calls` fails a clang build in which any loop of a probe kernel calls anything (Apple clang's
   `memset_pattern16` idiom sat one loop out from the innermost); a sanitizer build does not register it.

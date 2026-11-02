@@ -2106,7 +2106,7 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
 }
 
 
-TEST_CASE("CUDA's launch workspace is its thread's scratch: registered by a GPU fill, its pinned and device buffers "
+TEST_CASE("CUDA's launch workspace is its thread's scratch: made by a GPU fill, its pinned and device buffers "
           "given back by the release, as dtwc::run gives them back",
           "[cuda][thread_scratch]")
 {
@@ -2114,17 +2114,15 @@ TEST_CASE("CUDA's launch workspace is its thread's scratch: registered by a GPU 
   std::vector<std::vector<double>> series(8);
   for (std::size_t i = 0; i < series.size(); ++i)
     for (std::size_t t = 0; t < 300; ++t) series[i].push_back(std::sin(0.37 * double(i + 1) + 0.11 * double(t)));
-  const auto this_thread = [] { return dtwc::core::registered_scratch_bytes().front(); };
   dtwc::core::release_thread_scratch();
-  REQUIRE(this_thread() == 0);
-  const auto first = gpu_fill(series); // this thread's workspace stages the series
-  CHECK(this_thread() >= 8 * 300 * sizeof(float)); // the series flattened, as floats where the GPU computes in FP32
-  CHECK(dtwc::cuda::thread_workspace_bytes() > this_thread()); // its device buffers beside
-  dtwc::core::release_thread_scratch(); // every buffer freed, the workspace unregistered
-  CHECK(this_thread() == 0);
+  REQUIRE(dtwc::cuda::thread_workspace_bytes() == 0);
+  const auto first = gpu_fill(series); // this thread's workspace stages the series, its device buffers beside
+  // the series flattened, as floats where the GPU computes in FP32, and more on the device
+  CHECK(dtwc::cuda::thread_workspace_bytes() > 8 * 300 * sizeof(float));
+  dtwc::core::release_thread_scratch(); // every buffer freed
   CHECK(dtwc::cuda::thread_workspace_bytes() == 0);
-  const auto again = gpu_fill(series); // made again, registered again
-  CHECK(this_thread() >= 8 * 300 * sizeof(float)); // the series flattened, as floats where the GPU computes in FP32
+  const auto again = gpu_fill(series); // made again
+  CHECK(dtwc::cuda::thread_workspace_bytes() > 8 * 300 * sizeof(float));
   CHECK(again.matrix == first.matrix);
   // dtwc::run on the GPU leaves none.
   dtwc::Config config;
@@ -2137,7 +2135,6 @@ TEST_CASE("CUDA's launch workspace is its thread's scratch: registered by a GPU 
   for (std::size_t i = 0; i < names.size(); ++i) names[i] = "s" + std::to_string(i);
   auto copy = series;
   (void)dtwc::run(config, dtwc::Data(std::move(copy), std::move(names), 1));
-  CHECK(this_thread() == 0);
   CHECK(dtwc::cuda::thread_workspace_bytes() == 0);
 }
 

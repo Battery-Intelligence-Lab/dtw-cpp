@@ -29,6 +29,7 @@
 #include "../core/medoid_assignment_policy.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
+#include "../core/thread_scratch.hpp" // clara_assign_scratch, held_bytes
 
 #ifdef DTWC_HAS_CUDA
 #include "../cuda/cuda_dtw.cuh"
@@ -319,3 +320,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 }
 
 } // namespace dtwc::algorithms
+
+std::size_t dtwc::core::detail::clara_assign_scratch(bool release) noexcept
+{
+  return held_bytes(release, dtwc::algorithms::detail::assign_table());
+}

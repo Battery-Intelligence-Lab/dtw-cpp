@@ -31,10 +31,6 @@ namespace dtwc {
 
 class Problem; // Forward declaration
 
-namespace core {
-class KernelTeam;
-} // namespace core
-
 namespace algorithms {
 
   /// Options for the FastCLARA algorithm.
@@ -47,7 +43,7 @@ namespace algorithms {
     std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED; ///< Reproducible RNG seed.
 
     // Streaming from Parquet: fast_clara_parquet's (dtwc_io); fast_clara refuses it.
-    size_t ram_limit_bytes = 0;         ///< Memory cap of a stream, its threads' scratch within it; 0 = no limit.
+    size_t ram_limit_bytes = 0;         ///< Series-data cap; 0 = no limit.
     std::filesystem::path parquet_path; ///< Parquet file to stream (empty = the Problem's series).
     std::string parquet_column;         ///< Column name for the Parquet reader.
     index_t parquet_skip_cols = 0;      ///< Leading Parquet columns dropped (--skip-cols).
@@ -96,12 +92,6 @@ namespace algorithms {
    * with Parquet links: the core reads no Parquet.
    */
   core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opts);
-
-  namespace detail {
-  /// fast_clara_parquet, its stream's threads fitted by `team` (dtwc::run's, within --ram-limit: under the automatic
-  /// budget it fits none); the public one fits them within opts.ram_limit_bytes.
-  core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opts, core::KernelTeam &team);
-  } // namespace detail
 #endif
 
 } // namespace algorithms

@@ -35,7 +35,7 @@
 #include "../core/medoid_assignment_policy.hpp"
 #include "../core/distance_sampling_weights.hpp" // kmedoids_pp
 #include "../base/parallelisation.hpp"
-#include "../core/thread_scratch.hpp" // reserve_scratch
+#include "../core/thread_scratch.hpp" // fast_pam_scratch, held_bytes
 
 #include <algorithm>
 #include <array>
@@ -133,6 +133,14 @@ struct SwapEval { double change; index_t best_m; };
 
 constexpr auto G = static_cast<index_t>(core::group_rows);
 
+/// evaluate_group's per-slot losses, one buffer a thread: reached here so that core::release_thread_scratch() can
+/// empty it (its closed list: core::detail::fast_pam_scratch below).
+std::vector<double> &swap_losses()
+{
+  thread_local std::vector<double> scratch;
+  return scratch;
+}
+
 // Evaluate, for each candidate x_c = a + g of a group of W, ΔTD(m, x_c) = acc + ploss[m] for every medoid slot m in
 // ONE O(N) pass, then the most negative over m (Algorithm 3 decomposition, derived in the file header comment above);
 // out[g] for g < n. O(N + k) per candidate. Each candidate's sums run on one thread, in point order, through the
@@ -144,11 +152,8 @@ void evaluate_group(const T *matrix, index_t N, index_t a, index_t n, const std:
                     const std::vector<double> &second_dist, SwapEval *out)
 {
   const auto k = static_cast<index_t>(rho.size());
-  thread_local std::vector<double> scratch; // ploss[m * W + g]; grows exactly, held while a kernel can run
-  if (scratch.size() < static_cast<std::size_t>(k * W)) {
-    core::reserve_scratch(scratch, static_cast<std::size_t>(k * W));
-    scratch.resize(static_cast<std::size_t>(k * W));
-  }
+  std::vector<double> &scratch = swap_losses(); // ploss[m * W + g]; grows, never shrinks
+  if (scratch.size() < static_cast<std::size_t>(k * W)) scratch.resize(static_cast<std::size_t>(k * W));
   double *const ploss = scratch.data();
   for (index_t m = 0; m < k; ++m)
     for (index_t g = 0; g < W; ++g) ploss[m * W + g] = rho[m];
@@ -398,6 +403,9 @@ core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter,
   return swap_phase(prob, std::move(medoids), max_iter);
 }
 
-std::size_t detail::fast_pam_thread_bytes(index_t k) { return static_cast<std::size_t>(k * G) * sizeof(double); }
+std::size_t core::detail::fast_pam_scratch(bool release) noexcept
+{
+  return held_bytes(release, swap_losses());
+}
 
 } // namespace dtwc

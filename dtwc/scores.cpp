@@ -16,7 +16,6 @@
 #include "Problem.hpp"
 #include "base/error.hpp"
 #include "base/parallelisation.hpp"
-#include "core/thread_scratch.hpp" // reserve_scratch
 #include "types/Range.hpp"
 
 #include <algorithm>      // for std::max, std::count_if
@@ -101,14 +100,10 @@ void silhouette_of(const T *matrix, const Problem &prob, const std::vector<index
   const index_t *const label = prob.clusters_ind.data();
   auto oneTask = [&](size_t q) {
     const auto first = static_cast<index_t>(q) * G;
-    thread_local std::vector<double> sums; // sums[cluster * G + g]; grows exactly, held while a kernel can run
-    core::reserve_scratch(sums, static_cast<size_t>(Nc * G));
+    thread_local std::vector<double> sums; // sums[cluster * G + g]; grows, never shrinks
     sums.assign(static_cast<size_t>(Nc * G), 0.0);
-    // Both loops read the sums through a local: through the thread_local, clang reloaded its data pointer, and more,
-    // a point (2026-11-02).
-    double *const sums_base = sums.data();
     core::for_each_point(matrix, Nb, first, [&](index_t i, const double *d) {
-      double *const s = sums_base + label[i] * G;
+      double *const s = sums.data() + label[i] * G;
       for (index_t g = 0; g < G; ++g) s[g] += d[g];
     });
 
@@ -122,9 +117,9 @@ void silhouette_of(const T *matrix, const Problem &prob, const std::vector<index
         double a = 0.0;
         for (index_t i = 0; i < Nc; i++) // Finding means:
           if (i == i_c)
-            a = sums_base[i * G + g] / (counts[i] - 1);
+            a = sums[i * G + g] / (counts[i] - 1);
           else if (counts[i] > 0)
-            min = std::min(min, sums_base[i * G + g] / counts[i]);
+            min = std::min(min, sums[i * G + g] / counts[i]);
 
         // a = b = 0 is 0/0; Rousseeuw's convention is s(i) = 0 (neither well nor
         // badly placed). A NaN here would poison any downstream mean.
@@ -300,11 +295,6 @@ double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const s
  * @throws InvalidInput if the Problem has not been clustered.
  * @see https://en.wikipedia.org/wiki/Silhouette_(clustering) for more information on silhouette scoring.
  */
-std::size_t detail::silhouette_thread_bytes(index_t k)
-{
-  return static_cast<std::size_t>(k) * core::group_rows * sizeof(double); // silhouette_of's sums
-}
-
 std::vector<double> silhouette(Problem &prob)
 {
   const auto Nb = prob.size();         //!< Number of profiles

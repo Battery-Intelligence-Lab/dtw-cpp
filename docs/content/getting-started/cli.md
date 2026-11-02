@@ -124,15 +124,12 @@ process when that is lower (which a SLURM job's memory request sets). It is a
 budget for the run's decisions, not an operating-system limit on its resident
 memory.
 
-The distance matrix stays in RAM while one thread's scratch fits beside it and the
-series, and its N(N+1)/2 values (8 bytes each, 4 under `--matrix-dtype float32`)
-fit in half of what the series and that thread's scratch leave of the limit (beside
-a complete `--dist-matrix` no DTW kernel runs, and none of theirs is counted); the
-threads that run beside it are then as many as fit. Past that it is mapped to
-`<name>.dtwm`, in the
+The distance matrix stays in RAM while its N(N+1)/2 values (8 bytes each, 4 under
+`--matrix-dtype float32`) fit in half of what the series leave of the limit. Past that
+it is mapped to `<name>.dtwm`, in the
 `--checkpoint` directory when one is given and in the output directory otherwise
 (a run that writes no output keeps it in RAM), and filled slab by slab: a slab is
-an eighth of what the series and every thread's scratch leave of the limit, at most 1 GiB, the next one
+an eighth of what the series leave of the limit, at most 1 GiB, the next one
 read ahead and the finished one written back, so each page of the file is
 written while its slab runs and not again. A new file is not written before its
 fill: its header records the rows written, which a slab advances once the slab
@@ -174,29 +171,15 @@ load as they would without a limit. An explicit `--ram-limit` is fail-closed:
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.
 
-The limit covers what the streamed run holds, each thread's scratch among it
-(the DTW kernels' rolling columns and lanes for the longest series a phase meets,
-and the algorithms' tables): a phase runs on as many threads as fit, `--verbose`
-saying how many and why, and a limit that cannot hold one thread's scratch is
-refused, naming the bytes. The results are those of the whole team: a stream's
-batches, and a mapped matrix's slabs, are sized for every thread. Where no kernel
-runs and the next phase needs the room, a stream's threads give their scratch
-back and its team is fitted afresh: when the samples' PAMs finish, and where a
-record batch or row group holds a series longer than any before (read again in
-smaller batches where the scratch for it does not fit beside its batch). So a
-limit is refused only where one thread's scratch does not fit beside the sampled
-rows and a sample's PAM, or beside one record batch or row group with the
-medoids, the labels and the names written after the stream. An Arrow IPC file
-streams wherever its series and one thread's scratch for its longest series exceed
-the limit (the series' lengths are read where its record batches cannot tell). Library metadata and fixed process overhead (the code, thread
-stacks, the allocators' first pages) are outside it. An Arrow IPC file streams as
-Parquet does, on the CPU, where RAM would hold its series outside the page cache
-(decoded, read without LLFIO, or in the other `--dtype`): FastCLARA reads it a
-record batch at a time; a mapped file's values are not streamed, and on a GPU the
-stream is a `DeviceError`. Other inputs (CSV/TSV, a CSV directory) are always read
-whole; the limit then governs the distance matrix and the threads' scratch beside
-them. A run gives its threads' scratch back as it starts and when it ends, and a
-stream at its phase boundaries, as above.
+The limit covers what the streamed run holds: library metadata and fixed
+process overhead (the code, thread stacks, the allocators' first pages) are
+outside it. An Arrow IPC file streams as Parquet does, on the CPU, where RAM would
+hold its series outside the page cache (decoded, read without LLFIO, or in the
+other `--dtype`): FastCLARA reads it a record batch at a time; a mapped file's
+values are not streamed, and on a GPU the stream is a `DeviceError`. Other inputs
+(CSV/TSV, a CSV directory) are always read whole; the limit then governs the
+distance matrix alone. A run gives its threads' scratch back as it starts and
+when it ends.
 
 ### OneBatchPAM and TADPole options
 

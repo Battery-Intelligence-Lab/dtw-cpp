@@ -22,7 +22,6 @@
 #include "../base/settings.hpp" // DEFAULT_RANDOM_SEED
 #include "../core/clustering_result.hpp"
 
-#include <cstddef>
 #include <cstdint>
 
 namespace dtwc {
@@ -58,12 +57,5 @@ class Problem; // Forward declaration
  */
 core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter = 100,
                                 std::uint64_t seed = settings::DEFAULT_RANDOM_SEED);
-
-namespace detail {
-/// The bytes of FasterPAM's swap table a thread holds for k medoids (fast_pam.cpp's evaluate_group: a loss per medoid
-/// and candidate of a group, core::group_rows candidates a group; one candidate, on the calling thread, below 2,000
-/// points): what a planner prices beside the DTW kernels' scratch (core::thread_scratch_bytes).
-std::size_t fast_pam_thread_bytes(index_t k);
-} // namespace detail
 
 } // namespace dtwc

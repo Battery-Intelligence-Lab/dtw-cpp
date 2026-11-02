@@ -15,7 +15,6 @@
 #include "../../core/dtw_options.hpp"  // DistanceConfig
 #include "../../core/medoid_assignment_policy.hpp"
 #include "../../core/portable_random.hpp"
-#include "../../core/thread_scratch.hpp" // reserve_scratch
 
 #include <algorithm>
 #include <array>
@@ -121,6 +120,14 @@ void assign_points(index_t first, std::size_t n, std::span<double> best, std::sp
  * medoid is x here, where `pair` puts the shorter series, or on a tie the point, first), so labels and costs are the
  * per-pair route's.
  */
+/// assign_points_cpu's table, one buffer a thread: reached here so that core::release_thread_scratch() can empty it
+/// (its closed list: core::detail::clara_assign_scratch, fast_clara.cpp).
+inline std::vector<double> &assign_table()
+{
+  thread_local std::vector<double> table;
+  return table;
+}
+
 template <typename T, typename Pair, typename PointOf, typename MedoidOf>
 void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std::span<const index_t> medoids,
                        std::vector<std::vector<index_t>> &labels, const core::DistanceConfig &distance,
@@ -147,11 +154,8 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
       shortest = std::min(shortest, ys[w].size());
       longest = std::max(longest, ys[w].size());
     }
-    thread_local std::vector<double> table; // [j * W + w]: point i0 + w to medoid slot j; registered scratch
-    if (table.size() < slots * W) {
-      core::reserve_scratch(table, slots * W);
-      table.resize(slots * W);
-    }
+    std::vector<double> &table = assign_table(); // [j * W + w]: point i0 + w to medoid slot j
+    if (table.size() < slots * W) table.resize(slots * W);
     double *const t = table.data();
     for (std::size_t j = 0; j < slots; ++j) {
       const auto x = medoid(static_cast<index_t>(j));
@@ -170,14 +174,6 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
     }
   };
   run_openmp(assign_block, (n + W - 1) / W, n > 64);
-}
-
-/// The bytes of assign_points_cpu's table a thread holds for `slots` medoids (n_samples x k) and series of `precision`:
-/// each slot against a lane block of points; what a planner prices beside the DTW kernels' scratch.
-inline std::size_t clara_assign_thread_bytes(std::size_t slots, core::Precision precision)
-{
-  return slots * (precision == core::Precision::Float32 ? core::dtw_lanes<float> : core::dtw_lanes<data_t>)
-         * sizeof(double);
 }
 
 /// Points per call of assign_in_blocks' `assign`: their nearest distances, 8 bytes a point and sample, are its scratch.
