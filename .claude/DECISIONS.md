@@ -320,3 +320,10 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   the process afterwards like how long it took, which computer, how much utilisations which stage is how long, stopping
   criteria etc. Nice log in plain text at the end would be amazing." No code for Parquet's window; the memory model and
   the end-of-run report are to be specced and approved first.
+- 2026-11-02 — Volkan (question tool) on that spec (`C:/D/git/wt/tmp/MM/ram_budget_spec.md`): "Approve RB and RR as
+  written (Recommended)": one soft budget (`--ram-limit`, default 90 % of what the process may use), a reserve for the
+  algorithm priced once (threads fitted once), one loading decision (in RAM, streamed, mapped) from budget minus reserve,
+  `auto` by the same budget, a typed report where a run does not fit (`std::bad_alloc` caught at a stage boundary), KS's
+  exact pricing removed with the CPU kernel and algorithm sources back to 819e8703's text (the KS5 loops by removal);
+  "Release on return" stays; every run writes a plain-text report. Supersedes 11-01 "Kernel scratch first" and the KS
+  spec's approval, and 11-02 "Release at phase end".

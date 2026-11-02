@@ -5,7 +5,8 @@
 - `design-2.0` at the commit holding this file, pushed fast-forward with it (DECISIONS §3, 10-21); at the session's
   start 446d8b99 = origin. Tree clean.
 - `pb/MM` 1234030a (KS4, tree c3ac7090, parent 4741d753 = KS3, 5422bb11 = KS2), local only, worktree `C:/D/git/wt/MM`, clean.
-  No agent runs. Reviewer folders (disk, until Volkan's yes): `C:/D/git/wt/tmp/MM/review_ks3_r1/` 0.6 GB, `review_ks3_r2/`
+  One agent runs: the RB planner (read-only; brief `C:/D/git/wt/tmp/MM/brief_rb_plan.md`, writes `rb_plan.md`); after a restart
+  check its transcript's mtime before relaunching. Reviewer folders (disk, until Volkan's yes): `C:/D/git/wt/tmp/MM/review_ks3_r1/` 0.6 GB, `review_ks3_r2/`
   0.7 GB (+ WSL `~/mm/ks3r2_*` 0.4 GB), `review_ks1/fix` 0.08 GB, `review_ks2/rc` 0.65 GB, `C:/D/git/wt/tmp/conf_strict/`.
 
 ## Done
@@ -45,23 +46,26 @@
   as a whole (DECISIONS §3, quoted in full): relax it, about 10 % safety margin, "separate several GB for the algorithm, then
   just load the data", a simpler loading interface that could serve an MCU with MBs of RAM (constrain the algorithm choice),
   report a run that does not fit, and "a log of the process afterwards ... Nice log in plain text at the end".
-- My calls, not asked: S8/S9 serial; merge design-2.0 into pb/MM after KS closes; Parquet's window gets no code now.
+- Volkan 11-02 (question tool) on my spec `C:/D/git/wt/tmp/MM/ram_budget_spec.md`: "Approve RB and RR as written
+  (Recommended)": the new memory model (RB) and the plain-text run report (RR); KS's exact pricing goes, the kernel sources
+  return to 819e8703's text, "Release on return" stays (DECISIONS §3). KS is closed as history (four commits, superseded).
+- My calls, not asked: S8/S9 serial; Parquet's window gets no code; a planner before the RB implementer; RR after RB.
 - Awaiting Volkan, carried: whether MM and HG ship in 2.0, the history purge, disk deletions.
 
 ## Next steps
 
-1. PLAN MM: spec (his approval first, then briefs) of a simpler memory model: one budget (`--ram-limit`, else ~90 % of
-   available), a reserve for the algorithm, a loader that only chooses in RAM / mapped / streamed, the algorithm chosen by
-   the budget, a typed report where a run does not fit; and what of KS goes (the exact per-thread pricing, KernelTeam/TeamCap,
-   phase-end releases) so that KS5 (the loops) is solved by removal. Second spec: the plain-text end-of-run report.
-2. Then merge design-2.0 into pb/MM, fill `<KS-TIP>` in `brief_s5_draft.md`, S5, S6, S7 (the planner, the report), S8, S9, S10.
+1. PLAN MM RB: read `rb_plan.md` (open its cited lines; the planner's claims are hypotheses), brief the 2 or 3 implementer
+   steps from it (each with all six gate trees, pytest, G6 where sources are restored; briefs in `C:/D/git/wt/tmp/MM/`),
+   re-check with fresh narrow reviewers, I reproduce the oracles myself. Then RR (plan, implement, gates).
+2. Then merge design-2.0 into pb/MM, fill `<KS-TIP>` in `brief_s5_draft.md` (the tip is then RB's), S5, S6, S7 (the planner,
+   `run` for every language), S8, S9, S10.
 3. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4 and 7 if MM ships, FM's E1; conformance legs redone
    on the tag tree if MM merges first.
 
 ## Open questions
 
-- Which of KS survives (release on return only?); where the run report lives (S7: `run` is the one path for every language);
-  a GCC "no call in a DP loop" gate; `reserve_pair` cost in -fPIC objects; Parquet's mean-length window (carried to the new model).
+- Whether every KS scratch buffer is reachable by a closed-list release (the planner reports); RR's machine facts: a
+  maintained library or under 80 lines (Volkan prefers libraries); a GCC "no call in a DP loop" gate.
 
 ## Status honesty
 

@@ -50,32 +50,20 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   62fab80d, its reviews' fixes 8dab1e78 (two blockers in the IPC reader's memory pricing) and 819e8703 (the walk's
   growth, prices measured both ways); six trees, matlab_suite, pytest green at each; closed 11-01
   (`2026-11-01-mm-s4-stream.md`). Then KS (below), then S5.
-  - ◐ KS the kernels' and algorithms' thread scratch, priced on every route and released by `dtwc::run` on return
-    (Volkan 11-01: "Kernel scratch first", "Release on return"; spec `C:/D/git/wt/tmp/MM/ks_spec.md`, approved 11-01):
-    S4's reviewer A found it priced nowhere (CLARA streamed at 300M peaked 860 MB at 24 threads on 100,000-value
-    series; 615 MB kept after `run`). On pb/MM: 539d7d7e (that run 296.6 MB, the 615 MB released); its two reviews
-    found two blockers (a stream refusing a long series in a late block; the storage decision pricing the whole team)
-    and Volkan ruled "Fix them first" on 4 clang loops with an added reload. The fix 5422bb11 (11-01 20:04Z, tree
-    e57ff2b1, `C:/D/git/wt/tmp/MM/brief_ks2.md`) is committed: its gates (six trees, matlab_suite, pytest 915/19/0, 14 of
-    14 mutations caught) are the implementer's, my clang `ctest -j1` 99/99 (11-02). Its two re-check reviewers died at the
-    weekly usage limit (11-01 20:14Z); fresh ones re-checked it 11-02 (`2026-11-01-ks-scratch.md`): it closes R1's
-    blockers only partly (the stream's PAM team fills the limit, the storage rule still maps a matrix the whole team
-    fits beside; I reproduced both) and clang's silhouette per-point loop gained reloads (539d7d7e's `scores.cpp:105`).
-    Volkan 11-02: "Release at phase end" (the PAMs' scratch given back when they finish; MAP §7 amended) and, for GCC's
-    ten per-TU loop differences, post-LTO first (the LTO-linked CLI equals 819e8703's: accepted). The third fix
-    (`C:/D/git/wt/tmp/MM/brief_ks3.md`) is committed, 4741d753 (11-02, tree 61ec2e4f): its gates (six trees, pytest
-    915/19/0, 25 of 25 mutations) are the implementer's; mine: clang `ctest -j1` 99/99 and limit sweeps of R1's four
-    refusals on its llfio and no-llfio binaries (each runs at one cost, no refusal above an accepted limit; the 5422bb11
-    binary shows them). Fresh re-checks (11-02, `C:/D/git/wt/tmp/MM/review_ks3_r1/`, `review_ks3_r2/`): R1' found one
-    blocker (the IPC routing priced a thread at ndim 1: windows of limits refused for every ndim > 1 file; I reproduced
-    it) and the Parquet route's mean-length pricing (S1); R2' read the shipped code of three builds: every DP cell loop
-    but Soft-DTW's equals 819e8703, four deviations remain (none new in KS3). KS4, 1234030a (tree c3ac7090, brief
-    `brief_ks4.md`): the routing prices the file's ndim, one test that fails on 4741d753, the gate's `$ehgcr_` token;
-    implementer's gates (six trees, pytest 915/19/0) as KS3's counts; mine: clang `ctest -j1` 99/99 and R1's three ndim-2
-    flips to the byte. Volkan 11-02: loops "Fix first (a KS5 unit)", and on the RAM limit: simplify it, a margin of about
-    10 %, a reserve for the algorithm, report a run that does not fit, and a plain-text log of every run
-    (DECISIONS §3). KS does not close: the memory model's design (and with it KS5) goes to him as a spec first. S8's
-    and S9's briefs carry the release into Python's and MATLAB's `cluster()`.
+  - ☑ KS (superseded by RB below): the kernels' and algorithms' thread scratch priced on every route and released by
+    `dtwc::run` on return (Volkan 11-01 "Kernel scratch first", "Release on return"; 11-02 "Release at phase end"). Four
+    commits on pb/MM: 539d7d7e, 5422bb11, 4741d753, 1234030a (53 files, +2,345/-151 against 819e8703), each with fresh
+    adversarial re-checks that found another window of `--ram-limit` values and then four residual loop deviations
+    (record `baselines/2026-11-01-ks-scratch.md`; reviews `C:/D/git/wt/tmp/MM/review_ks*`). Volkan 11-02: "Fix first (a KS5
+    unit)" for the loops, and on the RAM limit "Let's do an engineering solution. Relax it a little bit" (DECISIONS §3).
+  - ◐ RB the simpler memory model (Volkan 11-02, "Approve RB and RR as written": `C:/D/git/wt/tmp/MM/ram_budget_spec.md`):
+    one soft budget (`--ram-limit`, default 90 % of what the process may use), a reserve for the algorithm priced once
+    (threads fitted once), one loading decision (in RAM, streamed, mapped) from budget minus reserve, `auto` by the same
+    budget, a typed report where a run does not fit (`std::bad_alloc` at a stage boundary); KS's exact pricing removed,
+    the CPU kernel and algorithm sources back to 819e8703's text (the KS5 loops by removal), "Release on return" kept.
+    A planner (11-02) writes `C:/D/git/wt/tmp/MM/rb_plan.md`; then 2 or 3 implementer steps, each with all gates.
+  - ☐ RR the end-of-run plain-text report in `Result` (same spec; Volkan 11-02: "Nice log in plain text at the end").
+    S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
