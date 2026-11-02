@@ -62,9 +62,12 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     blockers only partly (the stream's PAM team fills the limit, the storage rule still maps a matrix the whole team
     fits beside; I reproduced both) and clang's silhouette per-point loop gained reloads (539d7d7e's `scores.cpp:105`).
     Volkan 11-02: "Release at phase end" (the PAMs' scratch given back when they finish; MAP §7 amended) and, for GCC's
-    ten per-TU loop differences, post-LTO first (the LTO-linked CLI equals 819e8703's: accepted). A third fix
-    (`C:/D/git/wt/tmp/MM/brief_ks3.md`) is in flight. S8's and S9's briefs carry the release into Python's and
-    MATLAB's `cluster()`.
+    ten per-TU loop differences, post-LTO first (the LTO-linked CLI equals 819e8703's: accepted). The third fix
+    (`C:/D/git/wt/tmp/MM/brief_ks3.md`) is committed, 4741d753 (11-02, tree 61ec2e4f): its gates (six trees, pytest
+    915/19/0, 25 of 25 mutations) are the implementer's; mine: clang `ctest -j1` 99/99 and limit sweeps of R1's four
+    refusals on its llfio and no-llfio binaries (each runs at one cost, no refusal above an accepted limit; the 5422bb11
+    binary shows them). Fresh re-checks (refusals and release; loops, kit and post-LTO) decide whether KS closes. S8's
+    and S9's briefs carry the release into Python's and MATLAB's `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
