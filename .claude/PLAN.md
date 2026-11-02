@@ -55,9 +55,12 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     S4's reviewer A found it priced nowhere (CLARA streamed at 300M peaked 860 MB at 24 threads on 100,000-value
     series; 615 MB kept after `run`). On pb/MM: 539d7d7e (that run 296.6 MB, the 615 MB released); its two reviews
     found two blockers (a stream refusing a long series in a late block; the storage decision pricing the whole team)
-    and Volkan ruled "Fix them first" on 4 clang loops with an added reload; the fix in flight
-    (`C:/D/git/wt/tmp/MM/brief_ks2.md`; `2026-11-01-ks-scratch.md`). S8's and S9's briefs carry the release into
-    Python's and MATLAB's `cluster()`.
+    and Volkan ruled "Fix them first" on 4 clang loops with an added reload. The fix 5422bb11 (11-01 20:04Z, tree
+    e57ff2b1, `C:/D/git/wt/tmp/MM/brief_ks2.md`) is committed: its gates (six trees, matlab_suite, pytest 915/19/0, 14 of
+    14 mutations caught) are the implementer's, my clang `ctest -j1` 99/99 (11-02); clang's loops as 819e8703's, GCC's
+    `dtw_dispatch.cpp` has 10 functions whose loops differ (Volkan's ruling). Its two re-check reviewers died at the
+    weekly usage limit (11-01 20:14Z) and run again 11-02 (`2026-11-01-ks-scratch.md`). S8's and S9's briefs carry the
+    release into Python's and MATLAB's `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
