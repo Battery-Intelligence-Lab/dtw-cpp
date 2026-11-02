@@ -1,80 +1,78 @@
-# Handoff — 2026-11-02 (Windows) — KS4 committed (1234030a); Volkan: simplify the RAM limit, add a run report
+# Handoff — 2026-11-02 (Windows) — RB1 committed (a6c1ab2f), verified; RB2 next; Volkan: simpler RAM limit, run report
 
 ## Base
 
 - `design-2.0` at the commit holding this file, pushed fast-forward with it (DECISIONS §3, 10-21); at the session's
   start 446d8b99 = origin. Tree clean.
-- `pb/MM` 1234030a (KS4, tree c3ac7090; 4741d753 = KS3, 5422bb11 = KS2), local only, worktree `C:/D/git/wt/MM`, clean at last look.
-  The RB1 implementer runs (brief `C:/D/git/wt/tmp/MM/brief_rb1.md`, log `logs/rb1_summary.log`); after a restart check its
-  transcript's mtime before relaunching, and `git -C C:/D/git/wt/MM status` for what it left. The RR plan is written (`rr_plan.md`,
-  not yet reviewed by me); Volkan decides D1 cpuinfo as an optional dependency (hwinfo needs C++23, cpu_features has no core
-  counts), D2 `Result::save` writes the report too, D3 `--no-report` drops the text as well, D4 hostname by default, D5 RR2
-  (swaps, start cost, pairs: edits algorithm files). Disk until Volkan's yes: `C:/D/git/wt/tmp/MM/review_ks*` (about 2 GB),
-  WSL `~/mm/ks3r2_*` and `~/conf_strict` (0.5 GB), `C:/D/git/wt/tmp/conf_strict/`.
+- `pb/MM` a6c1ab2f (RB1, tree c711dbcc), local only, worktree `C:/D/git/wt/MM`, clean. Below it 1234030a (KS4; KS = 539d7d7e,
+  5422bb11, 4741d753, 1234030a, superseded history). Trees there: `build` (clang), `build-arrow`, `build-nollfio`, `build-mex`,
+  `build-cuda`, GCC in WSL. RB1's work files: `C:/D/git/wt/tmp/MM/rb1/`, kit `kit/rb1_*`, log `logs/rb1_summary.log`.
+- RR plan `rr_plan.md` (not yet reviewed by me). Disk until Volkan's yes: `C:/D/git/wt/tmp/MM/review_ks*` (about 2 GB), WSL
+  `~/mm/ks3r2_*` and `~/conf_strict` (0.5 GB), `C:/D/git/wt/tmp/conf_strict/`.
 
 ## Done
 
-- 11-01's stall was the weekly usage limit (memory `project-weekly-limit-stall`); status report v2 + Fable audit; KS3 4741d753.
-- Fresh re-checks of KS3 (reports `review_ks3_r1/recheck_report.md`, `review_ks3_r2/recheck_report.md`): R1' one blocker (IPC
-  routing priced ndim 1) + Parquet mean-length window (S1); R2' loops: four residual deviations (below).
-- KS4 1234030a: `in_ram_thread_bytes(..., ndim)`, the routing passes `ipc->ndim()`; test loops `clara_256_lz4` (Standard) and
-  `clara_256_ndim2` (DDTW), fails on 4741d753 (`logs/ks4_mut_route_ndim1.diff`); gate regex `(?![.Ll$])`. Log `logs/ks4_summary.log`.
-- `cpp_conformance` `strict` PASS on design-2.0 292a9bd7, GCC 13.3 (WSL) and cl 19.50, 8 assertions each (`baselines/2026-11-02-conformance-strict.md`).
+- 11-01's stall was the weekly usage limit (memory `project-weekly-limit-stall`); status report v2 + Fable audit; KS3, KS4.
+- `cpp_conformance` `strict` PASS on design-2.0 292a9bd7, GCC 13.3 (WSL) and cl 19.50 (`baselines/2026-11-02-conformance-strict.md`).
+- RB1 a6c1ab2f: 34 files, +849/-38 against 819e8703 (44 files, +449/-1,832 against 1234030a). Kernels, `scores.cpp`, `soft_dtw.hpp`,
+  `barycenter.cpp`, `Problem.cpp`, the stream and readers are 819e8703's text but for accessor lines (`linear_short_buf`,
+  `banded_col_buf`, `lanes_bufs`, `msm_rows`, `twe_rows`, `channel_bufs`, `derivative_bufs`, `wdtw_cache`, `interpolate_bufs`,
+  `swap_losses`, `assign_table`, CUDA `workspace_of`). `thread_scratch.cpp` holds the closed list (4 functions, defined beside
+  their users so ThinLTO keeps the thread_locals internal); `run()` holds `ScratchRelease`; `TeamCap` kept (my ruling D1).
 
 ## Verified by me
 
-- 4741d753 and 1234030a diffs read (stream, thread_scratch, run.cpp, arrow_ipc, scores, tests, docs, gate regex).
-- Clang tree `C:/D/git/wt/MM/build`: `ctest -j1` 99/99 at 4741d753 (46 s) and at 1234030a (47 s), skips CUDA, Metal x2.
-- Limit sweeps with my scripts (scratchpad `orch_*.sh`): at 4741d753 the four R1 refusals gone, one cost per fixture, no
-  refusal above an accepted limit (llfio, no-llfio; the 5422bb11 binary shows 15 and 21); R1''s B1 reproduced (`late_nd2` DDTW
-  refused 4.30-4.36M between streamed 4.28M and in-RAM 4.38M; `one_nd2` refused 5,506,137-5,772,440, 819e8703 runs from
-  5,506,137). At 1234030a: `one_nd2` least 5,516,441; `late_nd2` DDTW in RAM from 4,378,108, nothing refused; `late150k_nd2`
-  DDTW least 8,644,570, in RAM from 12,730,108. Conformance logs opened (Catch2 lines, FP model lines).
+- RB1: `git write-tree` = c711dbcc; the kernel diffs against 819e8703 read (accessor lines only); `thread_local` grep: every
+  buffer a run route grows is on the list; off it DBA's (no route calls it), the Soft-DTW gradient's, the silhouettes' sums
+  (k x 64 B a thread).
+- Clang `ctest -j1` 99/99 (38 s; skips CUDA, Metal x2); my sweep `orch_sweep.sh`, 26 runs, 819e8703's binary and RB1 equal in exit,
+  cost, route; `check_docs`, `check_pins`, `generate_docs --check` pass; `rb1m_probe.exe file` (24 threads, 400 x 100,000):
+  held after return -0.58 MB (CLARA, 300M), +0.3 MB (PAM, 400M); 819e8703 kept 615 MB (agent's log).
+- G6 logs opened (`rb1/g6/cmp/`): 245/245 objects of identical-source TUs byte-equal; ThinLTO: dtw_dispatch's only loop change
+  is -1 load in two WDTW handlers' outer part, lanes -3, silhouettes equal; GCC LTO: no kernel cell loop grows (grown cells are
+  zstd and `lagrangian_root_exact`, via TeamCap); wheel: (d) present. The CUDA test case ran (its one skip is mmap).
+- Earlier: 4741d753 and 1234030a read, their clang ctest 99/99, limit sweeps, R1''s B1 reproduced. Not run by me: any assembly.
 
 ## Reported by agents, unverified
 
-- KS3's and KS4's gates (six trees, pytest 915/19/0, docs, codegen `inner_loops=1616 families=23 missing=none calls=0
-  libm=66`, 25 of 25 mutations at KS3), KS3's memory table. R2': four deviations, none new in KS3, all in 5422bb11 too: (a)
-  clang silhouette post-pass +1 stack store a point; (b) clang ThinLTO ADTW and zero-cost handlers +1-2 stack loads a column;
-  (c) GCC LTO Soft-DTW handlers +1-2 loads, +1 store in libm-bound cell loops; (d) wheel Soft-DTW gradient +2 loads, +2
-  stores. No small source form (a: three tried; c, d register allocation). R2' gate notes N2-N4 (no code).
-  R1': release sound (50 stream runs); fail-late at the pass; memory excess +3-4 MB at 24 threads (not 3.3).
+- RB1 gates: Arrow 102, no-llfio 99, MEX 100 (`matlab_suite` 142/142), CUDA 98, GCC 98; pytest 915/19; `cpp_conformance`, codegen
+  `families=23 calls=0`; 80 sweep runs equal; two mutations caught; the agent's per-TU clang: 8 driver loops grew (fast_pam(),
+  fast_clara(), fill, ...), none when `TeamCap` is removed (D1's cost, as at KS3).
+- Class (d): the wheel's Soft-DTW gradient lambda has +2 loads +2 stores a cell; text unchanged (GCC LTO calls the vector
+  destructor out of line); absent in RB1's four other wheels. Source form cannot fix it; it flips with unrelated code size.
+- Stale after RB1 (fix in RB2): `parallelisation.hpp` names `core::KernelTeam`; `tests/CMakeLists.txt` says "shrunk within
+  --ram-limit"; `make_ipc_fixtures.py` points at removed cases (its fixtures stay: RB2's test 1 and 2 use them).
 
 ## Decisions
 
-- Volkan 11-02 (question tool): B1 "Release at phase end"; GCC loops "Read post-LTO code first"; `cpp_conformance` 1e-12 as the
-  test stands; loops of KS3 "Fix first (a KS5 unit)"; and, answering the Parquet question with a free text on the RAM limit
-  as a whole (DECISIONS §3, quoted in full): relax it, about 10 % safety margin, "separate several GB for the algorithm, then
-  just load the data", a simpler loading interface that could serve an MCU with MBs of RAM (constrain the algorithm choice),
-  report a run that does not fit, and "a log of the process afterwards ... Nice log in plain text at the end".
-- Volkan 11-02 (question tool) on my spec `C:/D/git/wt/tmp/MM/ram_budget_spec.md`: "Approve RB and RR as written
-  (Recommended)": the new memory model (RB) and the plain-text run report (RR); KS's exact pricing goes, the kernel sources
-  return to 819e8703's text, "Release on return" stays (DECISIONS §3). KS is closed as history (four commits, superseded).
-- My calls, not asked: S8/S9 serial; Parquet's window gets no code; a planner before the RB implementer; RR after RB. On
-  `rb_plan.md`'s open decisions: D1 keep `TeamCap` (MAP §7: region-local `num_threads`, never `omp_set_num_threads`; the plan's
-  recommendation contradicted it and could not say how MSVC's vcomp behaves); D3 streams keep the requested threads (a departure
-  from the spec's "every route": a stream's floor is known only inside it, and fitting threads against an estimate brings the
-  windows back); D4 `auto` changes only through a guard (N <= 5000 stays PAM, CLARA where PAM's matrix can neither stay in RAM
-  nor be mapped); D5 `std::bad_alloc` becomes an `InvalidInput` (the spec says "typed"; no binding changes). The plan's finding:
-  no 819e8703 `thread_local` is reachable unchanged, so the closed list needs one accessor line a site and G6 reads the rest.
-- Awaiting Volkan, carried: whether MM and HG ship in 2.0, the history purge, disk deletions.
+- Volkan 11-02 (question tool): GCC loops "Read post-LTO code first"; `cpp_conformance` 1e-12 as the test stands; KS3's loops
+  "Fix first (a KS5 unit)"; on the RAM limit a free text (DECISIONS §3, in full): relax it, about 10 % margin, "separate several GB
+  for the algorithm, then just load the data", a simpler loading interface (an MCU with MBs), report a run that does not fit, and
+  "a log of the process afterwards ... Nice log in plain text at the end"; then "Approve RB and RR as written (Recommended)"
+  (`C:/D/git/wt/tmp/MM/ram_budget_spec.md`): KS's pricing goes, sources back to 819e8703's text, "Release on return" stays.
+- My calls, not asked: on `rb_plan.md`: D1 keep `TeamCap` (MAP §7: never `omp_set_num_threads`), D3 streams keep the requested
+  threads, D4 `auto` changes only through a guard (N <= 5000 stays PAM, CLARA where PAM's matrix can neither stay in RAM nor be
+  mapped), D5 `std::bad_alloc` becomes `InvalidInput`; S8/S9 serial; no code for Parquet's window. 11-02 night: class (d) is
+  accepted at RB1 and carried to S10 (final tree, re-measured; then Volkan's call: fix by hoisting in `soft_dtw_gradient`, or accept).
+- Awaiting Volkan: RR D1 cpuinfo as an optional dependency (hwinfo needs C++23, cpu_features has no core counts), D2
+  `Result::save` writes the report, D3 `--no-report` drops the text too, D4 hostname by default, D5 RR2 (swaps, start cost);
+  whether MM and HG ship in 2.0; the history purge; disk deletions.
 
 ## Next steps
 
-1. PLAN MM RB: verify RB1 when it reports (G6 verdicts, the sites it changed, gate counts; reproduce the release figure and a
-   fixture sweep), then brief RB2 and RB3 from `rb_plan.md` sections 3.2-3.5 and 5 (my rulings above), fresh narrow reviewers,
-   I reproduce the oracles. Then RR from `rr_plan.md` (plan, implement, gates).
-2. Then merge design-2.0 into pb/MM, fill `<KS-TIP>` in `brief_s5_draft.md` (the tip is then RB's), S5, S6, S7 (the planner,
-   `run` for every language), S8, S9, S10.
-3. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4, 7, FM's E1; conformance legs redone if MM merges first.
+1. PLAN MM RB2: brief from `rb_plan.md` 3.2-3.5 (no `RunStage`/`bad_alloc`), 3.6, 3.7, tests 1-3, threshold rewrites, docs, the stale
+   lines above; my rulings; G6 on the changed TUs against RB1 and 819e8703 (Problem.cpp holds the fill loops); fresh narrow
+   reviewer; I reproduce the oracles. Then RB3, then RR (review `rr_plan.md`, ask Volkan its D1-D5, plan is done, implement).
+2. Merge design-2.0 into pb/MM, fill `<KS-TIP>` in `brief_s5_draft.md` (tip = RB's), S5, S6, S7, S8, S9, S10 (final G6 vs MM base).
+3. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4, 7, FM's E1; conformance redone if MM merges first.
 
 ## Open questions
 
-- RB1's closed list may leave a buffer unreleased if G6 shows its accessor moving a loop (the brief pre-authorises that);
-  RR's machine facts: a maintained library or under 80 lines (Volkan prefers libraries); a GCC "no call in a DP loop" gate.
+- Class (d) and the driver loops' `TeamCap` read (D1) at S10; the Mac needs its own G6 of the accessor TUs (Apple's thread_locals
+  cost a call an access) and a Metal build: memory `project-metal-on-mac-checklist`; RR's machine facts: a library or under 80 lines.
 
 ## Status honesty
 
-- Run by me: clang `ctest -j1` at both KS commits, the sweeps and scans above, the conformance log reads. Not run by me: the
-  Arrow, no-llfio, MEX, CUDA and GCC gates, pytest, any assembly, any timing, mutations. Agents today: Fable audit, R1, R2, KS3
-  (763 k tokens), R1' (490 k), R2' (440 k), conformance (92 k), KS4 (412 k), RB planner (529 k), RR planner (Sonnet), RB1.
+- Run by me: clang `ctest -j1` at RB1 and both KS commits, sweeps, the probe, the docs gates, G6 log reads. Not run by me: the Arrow,
+  no-llfio, MEX, CUDA and GCC gates, pytest, any assembly, any timing, mutations. Agents today: Fable audit, R1, R2, KS3, R1', R2',
+  conformance, KS4, RB planner, RR planner, RB1 (905 k tokens).
