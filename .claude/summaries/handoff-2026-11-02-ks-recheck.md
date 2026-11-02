@@ -5,8 +5,9 @@
 - `design-2.0` at the commit holding this file, pushed fast-forward with it (DECISIONS §3, 10-21); at the session's
   start 446d8b99 = origin. Tree clean.
 - `pb/MM` 1234030a (KS4, tree c3ac7090, parent 4741d753 = KS3, 5422bb11 = KS2), local only, worktree `C:/D/git/wt/MM`, clean.
-  One agent runs: the RB planner (read-only; brief `C:/D/git/wt/tmp/MM/brief_rb_plan.md`, writes `rb_plan.md`); after a restart
-  check its transcript's mtime before relaunching. Reviewer folders (disk, until Volkan's yes): `C:/D/git/wt/tmp/MM/review_ks3_r1/` 0.6 GB, `review_ks3_r2/`
+  Two agents run: the RB1 implementer (brief `C:/D/git/wt/tmp/MM/brief_rb1.md`, commits on pb/MM, log `logs/rb1_summary.log`) and
+  the RR planner (read-only, `brief_rr_plan.md`, writes `rr_plan.md`); after a restart check their transcripts' mtimes before
+  relaunching, and `git -C C:/D/git/wt/MM status` for what RB1 left. Reviewer folders (disk, until Volkan's yes): `C:/D/git/wt/tmp/MM/review_ks3_r1/` 0.6 GB, `review_ks3_r2/`
   0.7 GB (+ WSL `~/mm/ks3r2_*` 0.4 GB), `review_ks1/fix` 0.08 GB, `review_ks2/rc` 0.65 GB, `C:/D/git/wt/tmp/conf_strict/`.
 
 ## Done
@@ -49,7 +50,13 @@
 - Volkan 11-02 (question tool) on my spec `C:/D/git/wt/tmp/MM/ram_budget_spec.md`: "Approve RB and RR as written
   (Recommended)": the new memory model (RB) and the plain-text run report (RR); KS's exact pricing goes, the kernel sources
   return to 819e8703's text, "Release on return" stays (DECISIONS §3). KS is closed as history (four commits, superseded).
-- My calls, not asked: S8/S9 serial; Parquet's window gets no code; a planner before the RB implementer; RR after RB.
+- My calls, not asked: S8/S9 serial; Parquet's window gets no code; a planner before the RB implementer; RR after RB. On
+  `rb_plan.md`'s open decisions: D1 keep `TeamCap` (MAP §7: region-local `num_threads`, never `omp_set_num_threads`; the plan's
+  recommendation contradicted it and could not say how MSVC's vcomp behaves); D3 streams keep the requested threads (a departure
+  from the spec's "every route": a stream's floor is known only inside it, and fitting threads against an estimate brings the
+  windows back); D4 `auto` changes only through a guard (N <= 5000 stays PAM, CLARA where PAM's matrix can neither stay in RAM
+  nor be mapped); D5 `std::bad_alloc` becomes an `InvalidInput` (the spec says "typed"; no binding changes). The plan's finding:
+  no 819e8703 `thread_local` is reachable unchanged, so the closed list needs one accessor line a site and G6 reads the rest.
 - Awaiting Volkan, carried: whether MM and HG ship in 2.0, the history purge, disk deletions.
 
 ## Next steps

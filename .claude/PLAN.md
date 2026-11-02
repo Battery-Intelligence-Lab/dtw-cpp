@@ -61,8 +61,10 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     (threads fitted once), one loading decision (in RAM, streamed, mapped) from budget minus reserve, `auto` by the same
     budget, a typed report where a run does not fit (`std::bad_alloc` at a stage boundary); KS's exact pricing removed,
     the CPU kernel and algorithm sources back to 819e8703's text (the KS5 loops by removal), "Release on return" kept.
-    A planner (11-02) writes `C:/D/git/wt/tmp/MM/rb_plan.md`; then 2 or 3 implementer steps, each with all gates.
-  - ☐ RR the end-of-run plain-text report in `Result` (same spec; Volkan 11-02: "Nice log in plain text at the end").
+    Plan `C:/D/git/wt/tmp/MM/rb_plan.md` (11-02, reviewed): RB1 restore the kernel sources + closed-list release (brief
+    `brief_rb1.md`, in flight), RB2 the plan (budget, reserve, one loading decision, `auto` guard), RB3 the `bad_alloc` boundary.
+  - ☐ RR the end-of-run plain-text report in `Result` (same spec; Volkan 11-02: "Nice log in plain text at the end");
+    planner running (`rr_plan.md`).
     S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
