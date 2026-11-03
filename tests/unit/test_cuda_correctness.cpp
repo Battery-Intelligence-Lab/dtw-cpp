@@ -36,10 +36,12 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
 #include <random>
 #include <span>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -2072,10 +2074,14 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
   clara.n_clusters = 3;
   clara.sample_size = 40;
   clara.n_samples = 3;
-  const auto run = [&](dtwc::Device device, dtwc::GpuPrecision precision, bool float32_series) {
+  const auto run = [&](dtwc::Device device, dtwc::GpuPrecision precision, bool float32_series, bool view = false) {
     std::vector<std::string> names(series.size());
     dtwc::Problem prob("clara");
-    if (float32_series) {
+    if (view) {
+      std::vector<std::span<const double>> spans(series.begin(), series.end());
+      std::vector<std::string_view> name_views(names.begin(), names.end());
+      prob.set_view_data(dtwc::Data(std::move(spans), std::move(name_views), 1, std::make_shared<int>(0)));
+    } else if (float32_series) {
       std::vector<std::vector<float>> rounded;
       for (const auto &s : series) {
         auto &r = rounded.emplace_back(s.size());
@@ -2095,6 +2101,12 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
   CHECK(gpu.labels == cpu.labels);
   CHECK(gpu.medoid_indices == cpu.medoid_indices);
   CHECK_THAT(gpu.total_cost, WithinRel(cpu.total_cost, 1e-12));
+  // A view of the same series (a mapped Arrow IPC file's, MM S5) leaves p_vec empty: the assignment reads its series
+  // and medoids from an owned copy of them, so the owned run's labels, medoids and cost, bit for bit.
+  const auto view = run(dtwc::Device::GPU, dtwc::GpuPrecision::FP64, false, true);
+  CHECK(view.labels == gpu.labels);
+  CHECK(view.medoid_indices == gpu.medoid_indices);
+  CHECK(view.total_cost == gpu.total_cost);
 
   const auto cpu32 = run(dtwc::Device::CPU, dtwc::GpuPrecision::Auto, true);
   const auto gpu32 = run(dtwc::Device::GPU, dtwc::GpuPrecision::FP32, false);

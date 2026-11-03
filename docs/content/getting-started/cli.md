@@ -219,21 +219,26 @@ load on the threads that fit. An explicit `--ram-limit` is fail-closed:
 - a CLARA sample size that resolves to all N series is rejected while the file
   is over budget, because its full-data PAM fallback cannot stream;
 - with `--device gpu` the samples fill on the GPU, and with CUDA each streamed
-  chunk's assignment runs there too (Metal assigns on the CPU, which `-v`
-  says); and
+  chunk's assignment runs there too, the data cap holding the medoids beside the
+  GPU's staging of them and each chunk beside its staging and, for an Arrow IPC
+  file, the owned copy the GPU uploads of its record batches (Metal assigns on the
+  CPU, which `-v` says); and
 - `--dtype f32` keeps the sample, medoid, and assignment chunks in Float32;
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.
 
 The data cap covers what the streamed run holds: library metadata and fixed
 process overhead (the code, thread stacks, the allocators' first pages) are
-outside it. An Arrow IPC file streams as Parquet does, on the CPU, where RAM would
-hold its series outside the page cache (decoded, read without LLFIO, or in the
-other `--dtype`): FastCLARA reads it a record batch at a time; a mapped file's
-values are not streamed, and on a GPU the stream is a `DeviceError`. Other inputs
-(CSV/TSV, a CSV directory) are always read whole; the plan then sets the threads
-and where the distance matrix is held. A run gives its threads' scratch back as
-it starts and when it ends.
+outside it. An Arrow IPC file streams as Parquet does where RAM would hold its
+series outside the page cache (decoded, read without LLFIO, or in the other
+`--dtype`): FastCLARA reads it a record batch at a time; a mapped file's values are
+not streamed. With `--device gpu` the plan prices the GPU's staging buffer for
+every input (the series padded to the longest, 8 bytes a value unless
+`--gpu-precision fp32`) and, for an Arrow IPC file, whose series are views of it,
+the owned copy the GPU uploads of them. Other inputs (CSV/TSV, a CSV directory) are
+always read whole; the plan then sets the threads and where the distance matrix is
+held. A run gives its threads' scratch back, CUDA's staging and device buffers
+among it, as it starts and when it ends.
 
 ### OneBatchPAM and TADPole options
 

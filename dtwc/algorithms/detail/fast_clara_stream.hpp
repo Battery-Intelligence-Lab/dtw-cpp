@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <future>
 #include <limits>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -153,11 +154,6 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
                                                  const ClaraPlan &plan)
 {
   validate_streaming_clara_plan(plan, "fast_clara");
-  if constexpr (Reader::decodes_with_team)
-    if (prob.device().first == Device::GPU)
-      throw DeviceError("fast_clara: a GPU assigns owned series in RAM, but a file streamed a record batch at a time "
-                        "(--ram-limit) is read as views of its batches; no backend call or CPU fallback was "
-                        "attempted. Use device cpu.");
   using T = std::conditional_t<F32, float, data_t>;
   const auto series_at = [](const Data &d, index_t index) {
     if constexpr (F32)
@@ -219,11 +215,23 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   core::release_free_memory(); // the union's and its read's memory, before the labels
 
   const size_t limit = opts.ram_limit_bytes;
+  // CUDA assigns a batch from its staging buffer, the medoids' series and the batch's padded to the longest (pinned
+  // where it can be; launch_medoid_kernel), and uploads owned series, a batch that is a view (Arrow IPC's) as an owned
+  // copy, freed after it: on a GPU the medoids are held twice, and a batch beside its staging and its copy, each about
+  // the batch's bytes (the staging more where its series' lengths differ). Metal assigns on the CPU.
+#ifdef DTWC_HAS_CUDA
+  bool on_gpu = false;
+  if constexpr (!F32) // Float32 series never reach a GPU: the sample fill refuses them first
+    on_gpu = prob.device().first == Device::GPU;
+#else
+  constexpr bool on_gpu = false;
+#endif
+  const size_t times = on_gpu ? (Reader::decodes_with_team ? 3 : 2) : 1; // a batch, its copy and its staging
   std::size_t medoid_values = 0;
   for (std::size_t j = 0; j < medoids.size(); ++j) medoid_values += medoid_data.series_flat_size(j);
   const size_t medoid_bytes = Reader::series_bytes(medoid_values, medoids.size(), F32);
-  const size_t fixed = medoid_bytes + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes();
-  const size_t group = reader.largest_row_group_bytes(F32);
+  const size_t fixed = (on_gpu ? 2 : 1) * medoid_bytes + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes();
+  const size_t one = reader.largest_row_group_bytes(F32), group = times * one;
   // After the pass the Problem copies the winner's labels (set_result) beside every sample's, the file still open.
   const size_t finish = open + medoid_bytes + samples.size() * n_points * sizeof(index_t) + n_points * sizeof(index_t)
                       + n_points / 8;
@@ -231,24 +239,24 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
     throw InvalidInput(
       "fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(limit) + " cannot hold the pass over the "
       "file, which needs " + std::to_string(std::max(fixed + group, finish)) + " bytes: " + std::to_string(fixed)
-      + " for the medoids' series, every sample's labels and nearest distances (n_samples = "
-      + std::to_string(samples.size()) + ", k = " + std::to_string(opts.n_clusters) + ", "
-      + std::to_string(n_points) + " rows) and decoding, " + std::to_string(group) + " for one " + Reader::piece
-      + "'s series, " + std::to_string(finish) + " at its end with the result's labels"
+      + " for the medoids' series" + (on_gpu ? " and the GPU's staging of them" : "")
+      + ", every sample's labels and nearest distances (n_samples = " + std::to_string(samples.size()) + ", k = "
+      + std::to_string(opts.n_clusters) + ", " + std::to_string(n_points) + " rows) and decoding, "
+      + std::to_string(group) + " for one " + Reader::piece + "'s series"
+      + (!on_gpu                       ? ""
+         : Reader::decodes_with_team ? ", the owned copy the GPU uploads of them and its staging of them"
+                                     : " and the GPU's staging of them")
+      + ", " + std::to_string(finish) + " at its end with the result's labels"
       + (open != 0 ? " and the open file" : "") + "; raise the limit, or rewrite the file with smaller "
       + Reader::pieces + ".");
   // A batch decoding beside the one assigned; a team decodes in turn with the assignment.
-  const bool overlap = !Reader::decodes_with_team && fixed + 2 * group <= limit;
-  const int per_batch = reader.row_groups_per_batch(overlap ? (limit - fixed) / 2 : limit - fixed, F32);
+  const bool overlap = !Reader::decodes_with_team && fixed + group + one <= limit;
+  const int per_batch = reader.row_groups_per_batch((limit - fixed) / (overlap ? times + 1 : times), F32);
 
   std::vector<std::vector<index_t>> labels(samples.size()); // each sized in place: a prototype would add n_points
   for (auto &sample_labels : labels) sample_labels.resize(n_points);
   std::vector<core::detail::OrderedMedoidObjective> costs(samples.size());
-#ifdef DTWC_HAS_CUDA
-  bool on_gpu = false;
-  if constexpr (!F32) // Float32 series never reach a GPU: the sample fill refuses them first
-    on_gpu = prob.device().first == Device::GPU;
-#else
+#ifndef DTWC_HAS_CUDA
   say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));
 #endif
 
@@ -283,9 +291,11 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
                           first + batch.size());
       // The batch is loaded: the assignment reads it, never the reader.
 #ifdef DTWC_HAS_CUDA
-      if (on_gpu)
-        assign_on_gpu(prob, batch.p_vec, first, medoid_data.p_vec, medoids, labels, costs);
-      else
+      if (on_gpu) {
+        std::optional<Data> copy; // a view's owned copy, which the GPU uploads
+        if (batch.is_view()) copy.emplace(dtwc::detail::owned_copy(batch, core::Precision::Float64));
+        assign_on_gpu(prob, copy ? copy->p_vec : batch.p_vec, first, medoid_data.p_vec, medoids, labels, costs);
+      } else
 #endif
         assign_in_blocks(first, static_cast<std::size_t>(batch.size()), costs,
                          [&](index_t block_first, std::size_t n, std::span<double> best) {

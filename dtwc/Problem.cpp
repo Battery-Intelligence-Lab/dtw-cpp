@@ -52,6 +52,7 @@
 #include <iostream>  // for cout
 #include <limits>    // for numeric_limits
 #include <numeric>   // for iota
+#include <optional>  // for optional
 #include <cassert>
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
@@ -157,8 +158,8 @@ constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
 
 void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision)
 {
-  // The GPU routes upload owned Float64 series (data_.p_vec) and run Standard
-  // DTW with no missing-data strategy, in L1 or squared L2.
+  // The GPU routes upload owned Float64 series (data_.p_vec, or an owned copy of
+  // a view's) and run Standard DTW with no missing-data strategy, in L1 or squared L2.
   if (prob.device().first != Device::GPU) return;
   if (series_precision == core::Precision::Float32)
     reject_gpu_request(where, "computes from Float64 series, but precision = Float32 was requested",
@@ -892,13 +893,8 @@ void Problem::SeriesCheck::finish() const
                        + std::to_string(mark_) + ") is entirely NaN, so MissingStrategy::Interpolate has nothing to "
                        "interpolate from. Use ZeroCost or AROW, or drop the series.");
 
-  // The GPU routes also need owned, resident, univariate series.
+  // The GPU routes also need univariate Float64 series (a view's are uploaded as an owned copy).
   if (problem.device_ != Device::GPU) return;
-  if (problem.data_.is_view())
-    reject_gpu_request(where_,
-                       "needs owned series in RAM, but this Problem's series are a non-owning "
-                       "view (set_view_data)",
-                       "Install owning series with set_data, or use device cpu.");
   validate_gpu_request(where_, problem, problem.data_.precision);
   if (problem.data_.ndim > 1)
     reject_gpu_request(where_, "is univariate only, but ndim = " + std::to_string(problem.data_.ndim) + " was requested",
@@ -1133,10 +1129,15 @@ void Problem::fill_distance_matrix()
     // L2 is L1 on the univariate series the GPU routes take.
     opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
     opts.verbose = verbose_;
+    // The backends upload owned Float64 series, which a view (a mapped Arrow IPC file's series, a decoded record
+    // batch's) leaves p_vec empty of: it uploads an owned copy, checked above, freed when the fill returns.
+    std::optional<Data> copy;
+    if (data_.is_view()) copy.emplace(detail::owned_copy(data_, core::Precision::Float64));
+    const auto &series = copy ? copy->p_vec : data_.p_vec;
 #  if defined(DTWC_HAS_CUDA)
-    (void)cuda::compute_distance_matrix_cuda(data_.p_vec, opts, distMat);
+    (void)cuda::compute_distance_matrix_cuda(series, opts, distMat);
 #  else
-    (void)metal::compute_distance_matrix_metal(data_.p_vec, opts, distMat);
+    (void)metal::compute_distance_matrix_metal(series, opts, distMat);
 #  endif
     refuse_float32_overflow(0, distMat.size());
     if (distMat.rows_written() < distMat.size()) // a mapped file's rows are on the device, and it records them

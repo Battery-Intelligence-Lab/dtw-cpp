@@ -85,7 +85,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - Scores: Davies–Bouldin, Dunn, inertia and Calinski–Harabasz beside the silhouette (`Result::score(name)`), and the
   adjusted Rand index and normalised mutual information of two labellings.
 - GPUs: CUDA (compute capability 8.0 or newer, `-DDTWC_ENABLE_CUDA=ON`) and Metal (Apple silicon, built by default on
-  macOS) fill the matrix of Standard DTW on univariate series and FastCLARA's samples (`--device gpu`).
+  macOS) fill the matrix of Standard DTW on univariate series and FastCLARA's samples (`--device gpu`); series a
+  `Data` views (an Arrow IPC file read in place or decoded, `set_view_data`) are uploaded as an owned Float64 copy,
+  which `dtwc_cl`'s memory plan prices with the GPU's staging buffer.
 - Input: Arrow IPC, the file and the stream format, in every build and language, read by the vendored nanoarrow
   without Arrow C++ or pyarrow, and in place: the file is mapped (without llfio, read once into memory) and each
   series is a view of it (C++ `Data::series(i)` and `name(i)` read it, its `p_vec` and `p_names` are empty; Python's
@@ -94,9 +96,10 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   its buffers declare more decoded bytes than their lengths allow beyond Arrow's 64-byte padding, or the file's more
   than the memory available (an `IOError` before any decode), and bytes handed to the reader at an address not
   8-aligned are read from an aligned copy; a file with a dictionary-encoded column is an `IOError` naming why. With
-  `dtwc_cl` beyond the data cap of its memory plan (`--ram-limit`, below) FastCLARA reads, on the CPU (on a GPU
-  the stream is a `DeviceError`), a file whose series RAM would hold outside the page cache (decoded, read without
-  llfio, or in the other `--dtype`) a record batch at a time, decoded and checked in parallel, within the cap: the
+  `dtwc_cl` beyond the data cap of its memory plan (`--ram-limit`, below) FastCLARA reads (with CUDA each record batch
+  uploaded as an owned copy, priced beside it with CUDA's staging of it) a file whose series RAM would hold outside the
+  page cache (decoded, read without llfio, or in the other `--dtype`) a record batch at a time, decoded and checked in
+  parallel, within the cap: the
   sampled rows beside one record batch, then a sample's PAM beside the sampled rows, then the medoids, the labels and
   a batch of record batches, and after it the names, read alone; each record batch priced with its objects, and each
   decoding thread with its codec's scratch (LZ4's block buffers, from each frame's descriptor; zstd's context). A
@@ -180,8 +183,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   series, the method's own terms (TADPole's pair flags and cache, the hierarchical clustering's dense copy,
   OneBatchPAM's batch table) and the distance matrix in what is left, the data cap. The series go into RAM on every
   thread, the matrix beside them where it fits, else mapped to a `.dtwm` file (with llfio and an output directory),
-  else held; else a Parquet file, or on the CPU an Arrow IPC file whose series RAM would hold outside the page cache (a
-  mapped file's values are not streamed; on a GPU the Arrow IPC stream is a `DeviceError`), streams through `clara`
+  else held; else a Parquet file, or an Arrow IPC file whose series RAM would hold outside the page cache (a mapped
+  file's values are not streamed), streams through `clara`
   within the data cap on every thread; else the series load on the most threads whose working set fits, fitted once.
   `-v` prints the plan; `auto` is `clara` also where `pam`'s matrix can be neither held in RAM nor mapped (the method
   follows the limit; the threads and the clustering are each method's). An explicit limit that cannot hold the run is

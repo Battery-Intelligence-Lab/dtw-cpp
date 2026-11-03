@@ -296,10 +296,15 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   } else {
 #ifdef DTWC_HAS_CUDA
     if (gpu) {
+      // CUDA uploads owned Float64 series, which a view leaves p_vec empty of: the series and the medoids are read
+      // from an owned copy of it, freed when the assignment returns.
+      std::optional<Data> copy;
+      if (data.is_view()) copy.emplace(dtwc::detail::owned_copy(data, core::Precision::Float64));
+      const auto &series = copy ? copy->p_vec : data.p_vec;
       std::vector<std::vector<double>> medoid_series;
       medoid_series.reserve(medoids.size());
-      for (const index_t medoid : medoids) medoid_series.push_back(data.p_vec[static_cast<std::size_t>(medoid)]);
-      detail::assign_on_gpu(prob, data.p_vec, 0, medoid_series, medoids, labels, costs);
+      for (const index_t medoid : medoids) medoid_series.push_back(series[static_cast<std::size_t>(medoid)]);
+      detail::assign_on_gpu(prob, series, 0, medoid_series, medoids, labels, costs);
     } else
 #else
     detail::say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));

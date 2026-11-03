@@ -726,15 +726,13 @@ TEST_CASE("FX-1: a GPU device rejects what its kernels do not implement",
     rejects(prob, "precision = Float32");
   }
   {
-    // A view-mode store leaves it empty too.
-    const auto owner = equal;
-    std::vector<std::span<const double>> spans;
-    std::vector<std::string_view> names{ "a", "b", "c" };
-    for (const auto &s : owner) spans.emplace_back(s);
-    dtwc::Problem prob("gpu_view");
-    prob.set_view_data(dtwc::Data(std::move(spans), std::move(names), 1));
+    // A view uploads an owned Float64 copy (below); a Float32 view is refused as a Float32 store is.
+    const std::vector<std::vector<float>> owner{ { 0.f, 1.f, 2.f }, { 1.f, 2.f, 3.f } };
+    std::vector<std::span<const float>> spans(owner.begin(), owner.end());
+    dtwc::Problem prob("gpu_f32_view");
+    prob.set_view_data(dtwc::Data(std::move(spans), { "a", "b" }, 1));
     prob.set_device(dtwc::Device::GPU);
-    rejects(prob, "a non-owning view");
+    rejects(prob, "precision = Float32");
   }
   {
     // set_data refuses an empty series, but an edit in place can empty one; a
@@ -748,6 +746,39 @@ TEST_CASE("FX-1: a GPU device rejects what its kernels do not implement",
                ContainsSubstring("Problem::fill_distance_matrix: series 1 ('b') is empty"));
     CHECK_FALSE(prob.is_distance_matrix_filled());
   }
+}
+
+// MM S5: a view's series (a mapped Arrow IPC file's, a decoded record batch's) leave p_vec empty, so a GPU uploads an
+// owned copy of them: the view fills the matrix the owned store of the same series fills, entry for entry (the same
+// values uploaded), never an empty one. Without a device, the backend's refusal, never the view's.
+TEST_CASE("MM S5: a view on a GPU fills from an owned copy, as the owned store does", "[mm][s5][gpu]")
+{
+  const std::vector<std::vector<double>> owner{ ramp(8, 0.0), ramp(11, 1.0), ramp(9, 2.0), ramp(8, 0.5) };
+  std::vector<std::span<const double>> spans(owner.begin(), owner.end());
+  dtwc::Problem view("gpu_view"), owned("gpu_owned");
+  view.set_view_data(dtwc::Data(std::move(spans), { "a", "b", "c", "d" }, 1, std::make_shared<int>(0)));
+  owned.set_data(named(owner));
+  for (dtwc::Problem *prob : { &view, &owned }) {
+    prob->set_device(dtwc::Device::GPU);
+#  if defined(DTWC_HAS_CUDA)
+    prob->set_gpu_precision(dtwc::GpuPrecision::FP64); // CUDA's Auto computes in FP32 on a GPU slow at FP64
+#  endif
+  }
+  if (!dtwc::gpu_available()) {
+    CHECK_THAT(message_of<dtwc::DeviceError>([&] { view.fill_distance_matrix(); }), !ContainsSubstring("view"));
+    CHECK_FALSE(view.is_distance_matrix_filled());
+    return;
+  }
+  view.fill_distance_matrix();
+  owned.fill_distance_matrix();
+  REQUIRE(view.is_distance_matrix_filled());
+  REQUIRE(view.distance_matrix().size() == owner.size());
+  for (std::size_t i = 0; i < owner.size(); ++i)
+    for (std::size_t j = 0; j < owner.size(); ++j) {
+      CAPTURE(i, j);
+      CHECK(view.dist_by_ind(i, j) == owned.dist_by_ind(i, j));
+      if (i != j) CHECK(view.dist_by_ind(i, j) > 0.0); // the series differ: a distance was computed
+    }
 }
 
 #endif

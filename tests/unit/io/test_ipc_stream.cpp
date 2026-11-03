@@ -26,6 +26,7 @@
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -582,49 +583,124 @@ TEST_CASE("Arrow IPC: a file's names read alone are the in-RAM read's", "[io][ar
 }
 
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, is a typed refusal", "[io][arrow][streaming][gpu]")
+// MM S5: in RAM the series are views (of the mapping, of the file read without llfio, of decoded record batches), which
+// a GPU uploads as an owned copy; streamed, views of its record batches, which CUDA's assignment uploads as an owned
+// copy each (Metal assigns on the CPU). The oracle: the same run on the file's CSV twin, whose series are owned and hold
+// the same values. Beyond an explicit limit the planner prices the copy, and names CLARA, which streams on a GPU too.
+TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's clustering",
+          "[io][arrow][streaming][gpu]")
 {
-  // In RAM a view, which the GPU's fill cannot upload; streamed, views of its record batches.
-  dtwc::Config config = clara_config(fixture("clara_256_lz4.arrow"));
-  config.verbose = false;
-  config.device = dtwc::Device::GPU;
-  config.method = dtwc::Method::PAM;
-  const std::string filled = [&] {
-    try {
-      (void)dtwc::run(config);
-    } catch (const dtwc::DeviceError &refused) {
-      return std::string(refused.what());
-    }
-    FAIL("a view on a GPU ran");
-    return std::string();
-  }();
-  config.method = dtwc::Method::CLARA;
-  // Below what the series hold in RAM for a GPU (a view's upload copy among it): the stream is chosen.
-  config.ram_limit =
-    dtwc::io::IpcFile(fixture("clara_256_lz4.arrow")).resident_bytes(Precision::Float64, true) - 1;
-  const std::string stream = [&] {
-    try {
-      (void)dtwc::run(config);
-    } catch (const dtwc::DeviceError &refused) {
-      return std::string(refused.what());
-    }
-    FAIL("a stream on a GPU ran");
-    return std::string();
-  }();
-  if (dtwc::gpu_available()) {
-    CHECK_THAT(filled, ContainsSubstring("a non-owning view"));
-    CHECK_THAT(stream, ContainsSubstring("fast_clara: a GPU assigns owned series in RAM, but a file streamed a record "
-                                         "batch at a time (--ram-limit) is read as views of its batches"));
-    // Beyond an explicit limit, on a GPU no route streams: CLARA is not named.
-    config.method = dtwc::Method::PAM;
-    config.ram_limit = 16000;
-    const std::size_t resident =
-      dtwc::io::IpcFile(fixture("clara_256_lz4.arrow")).resident_bytes(Precision::Float64, true);
-    CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput,
-                         Message("Arrow IPC input needs approximately " + std::to_string(resident)
-                                 + " bytes of resident series storage, exceeding --ram-limit=16000; on a GPU every "
-                                   "route holds the series in RAM at once; raise --ram-limit, or run on the CPU "
-                                   "(--device cpu)."));
+  const auto on_gpu = [](const char *file, dtwc::Method method) {
+    dtwc::Config config = clara_config(fixture(file));
+    config.verbose = false;
+    config.method = method;
+    config.device = dtwc::Device::GPU;
+#  if defined(DTWC_HAS_CUDA)
+    config.gpu_precision = dtwc::GpuPrecision::FP64; // CUDA's Auto computes in FP32 on a GPU slow at FP64
+#  endif
+    return config;
+  };
+  const dtwc::io::IpcFile lz4(fixture("clara_256_lz4.arrow"));
+  // Refused at the plan, before any device is used.
+  dtwc::Config pam = on_gpu("clara_256_lz4.arrow", dtwc::Method::PAM);
+  pam.ram_limit = 16000;
+  CHECK_THROWS_MATCHES(dtwc::run(pam), dtwc::InvalidInput,
+                       Message("Arrow IPC input needs approximately "
+                               + std::to_string(lz4.resident_bytes(Precision::Float64, true))
+                               + " bytes of resident series storage, exceeding --ram-limit=16000; method 'pam' cannot "
+                                 "stream it. Use --method clara, which reads the file a record batch at a time, or "
+                                 "raise --ram-limit."));
+  // Series passed in memory as a view (read_data's of the file): the plan holds their values, the owned copy the GPU
+  // uploads of them, and the GPU's staging of them, the series padded to the longest (4 values each), beside the matrix.
+  dtwc::Config memory = on_gpu("clara_256.arrow", dtwc::Method::PAM);
+  memory.input.clear();
+  memory.ram_limit = 16000;
+  const dtwc::Data view = dtwc::read_data(fixture("clara_256.arrow"));
+  REQUIRE(view.is_view());
+  const std::size_t series = 1024 * sizeof(double) + dtwc::detail::owned_series_bytes(1024, 256, false);
+#  if defined(DTWC_HAS_CUDA)
+  const std::size_t staging = 256 * 4 * sizeof(double); // FP64
+#  else
+  const std::size_t staging = 256 * 4 * sizeof(float) + dtwc::core::packed_size(256) * sizeof(float); // and the matrix
+#  endif
+  CHECK_THROWS_MATCHES(dtwc::run(memory, view), dtwc::InvalidInput,
+                       MessageMatches(ContainsSubstring(
+                         std::to_string(series) + " for the series and the owned copy the GPU uploads of them, "
+                         + std::to_string(staging) + " for the GPU's staging of them, "
+                         + std::to_string(dtwc::core::packed_size(256) * sizeof(double)) + " for the distance matrix")));
+#  if defined(DTWC_HAS_MMAP)
+  // A mapped file's values are not streamed: below its views and their copy, the CPU, which holds no copy, is a way out.
+  dtwc::Config mapped = on_gpu("clara_256.arrow", dtwc::Method::PAM);
+  const std::size_t views = dtwc::io::IpcFile(fixture("clara_256.arrow")).resident_bytes(Precision::Float64, true);
+  mapped.ram_limit = views - 1;
+  CHECK_THROWS_MATCHES(dtwc::run(mapped), dtwc::InvalidInput,
+                       Message("Arrow IPC input needs approximately " + std::to_string(views)
+                               + " bytes of resident series storage, exceeding --ram-limit=" + std::to_string(views - 1)
+                               + "; its values are mapped where they lie in the file, and a mapped file's values are "
+                                 "not streamed: the views of its 256 series and the owned copy the GPU uploads of them "
+                                 "are held at once. Raise --ram-limit, or run on the CPU (--device cpu), which holds no "
+                                 "copy."));
+#  endif
+  if (!dtwc::gpu_available()) { // the backend's refusal, never a view's or the stream's
+    CHECK_THROWS_MATCHES(dtwc::run(on_gpu("clara_256_lz4.arrow", dtwc::Method::PAM)), dtwc::DeviceError,
+                         MessageMatches(!ContainsSubstring("view")));
+    return;
   }
+  for (const auto method : { dtwc::Method::PAM, dtwc::Method::CLARA }) {
+    const auto twin = dtwc::run(on_gpu("clara_256.csv", method));
+    for (const char *file : { "clara_256.arrow", "clara_256_lz4.arrow" }) {
+      INFO(file << (method == dtwc::Method::PAM ? ", pam" : ", clara"));
+      const auto result = dtwc::run(on_gpu(file, method));
+      CHECK(result.labels() == twin.labels());
+      CHECK(result.medoids() == twin.medoids());
+      CHECK(result.cost() == twin.cost());
+    }
+  }
+  // Streamed: a data cap below what the series hold in RAM for a GPU (their copy among it).
+  const auto twin = dtwc::run(on_gpu("clara_256.csv", dtwc::Method::CLARA));
+  dtwc::Config config = on_gpu("clara_256_lz4.arrow", dtwc::Method::CLARA);
+  const std::size_t cap = lz4.resident_bytes(Precision::Float64, true);
+  config.ram_limit = reserve_of(config, cap) + cap;
+  config.verbose = true;
+  const std::string stream = printed([&] {
+    const auto result = dtwc::run(config);
+    CHECK(result.labels() == twin.labels());
+    CHECK(result.medoids() == twin.medoids());
+    CHECK(result.cost() == twin.cost());
+  });
+  CHECK_THAT(stream, ContainsSubstring("Arrow IPC walk selected streaming: 256 series"));
+#  if defined(DTWC_HAS_CUDA)
+  // CUDA's pass holds the medoids beside its staging of them (its launch workspace), and each record batch beside its
+  // owned copy and its staging: a byte below that, refused naming them; at it, the stream runs. clara_256's rows are 4
+  // values each, so the two samples' 3 medoids hold 24.
+  dtwc::algorithms::CLARAOptions options;
+  options.n_clusters = 3;
+  options.sample_size = 8;
+  options.n_samples = 2;
+  options.random_seed = 42;
+  const auto plan = dtwc::algorithms::detail::resolve_clara_plan(lz4.num_rows(), options, "fast_clara");
+  const std::size_t medoids = dtwc::io::IpcFile::series_bytes(24, 6, false);
+  const std::size_t fixed = 2 * medoids + dtwc::algorithms::detail::clara_pass_bytes(plan, 2) + lz4.decode_bytes();
+  const std::size_t group = 3 * lz4.largest_row_group_bytes(false);
+  const std::size_t finish = lz4.open_bytes() + medoids + 3 * 256 * sizeof(dtwc::index_t) + 256 / 8;
+  const std::size_t needs = std::max(fixed + group, finish);
+  dtwc::Problem gpu{ "streamed_gpu" };
+  gpu.set_device(dtwc::Device::GPU);
+  gpu.set_gpu_precision(dtwc::GpuPrecision::FP64);
+  CHECK_THROWS_MATCHES(streamed(gpu, options, fixture("clara_256_lz4.arrow"), Precision::Float64, needs - 1),
+                       dtwc::InvalidInput,
+                       Message("fast_clara: ram_limit_bytes (--ram-limit) = " + std::to_string(needs - 1)
+                               + " cannot hold the pass over the file, which needs " + std::to_string(needs)
+                               + " bytes: " + std::to_string(fixed) + " for the medoids' series and the GPU's staging "
+                               + "of them, every sample's labels and nearest distances (n_samples = 2, k = 3, 256 "
+                               + "rows) and decoding, " + std::to_string(group) + " for one record batch's series, the "
+                               + "owned copy the GPU uploads of them and its staging of them, " + std::to_string(finish)
+                               + " at its end with the result's labels and the open file; raise the limit, or rewrite "
+                               + "the file with smaller record batches."));
+  const auto at = streamed(gpu, options, fixture("clara_256_lz4.arrow"), Precision::Float64, needs);
+  CHECK(at.labels == twin.labels());
+  CHECK(at.medoid_indices == twin.medoids());
+  CHECK(at.total_cost == twin.cost());
+#  endif
 }
 #endif

@@ -37,6 +37,9 @@
 #ifdef DTWC_HAS_PARQUET
 #include "../io/parquet_chunk_reader.hpp"
 #endif
+#ifdef DTWC_HAS_CUDA
+#include "../cuda/launch_prep.hpp" // kMaxPairsPerLaunch
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -164,6 +167,42 @@ std::size_t thread_bytes(const Problem &prob, const Config &config, Method metho
   return bytes;
 }
 
+/// What a GPU holds in host memory beside the series and the distance matrix as it computes: the series it uploads,
+/// each padded to the longest of `length` time steps of `ndim` features, in the precision it computes in. CUDA stages
+/// them in its launch workspace (pinned where it can be; kept until the run gives its threads' scratch back), 8 bytes a
+/// value (4 under --gpu-precision fp32): every series for a fill; for FastCLARA's assignment the medoids of every
+/// sample beside a launch's block of series (at most 2^27 values, launch_medoid_kernel) and the block's distances to
+/// them, or a sample's fill where that is larger. Metal's fill holds the series and the matrix as floats in shared
+/// memory while it runs (its FastCLARA assigns on the CPU). Where the longest series is estimated (twice the mean, a
+/// decoded file's), so is this.
+std::size_t gpu_staging_bytes([[maybe_unused]] const Config &config, [[maybe_unused]] Method method,
+                              [[maybe_unused]] const std::optional<algorithms::detail::ClaraPlan> &sample,
+                              [[maybe_unused]] std::size_t n_series, [[maybe_unused]] std::size_t length,
+                              [[maybe_unused]] std::size_t ndim)
+{
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
+  if (config.device != Device::GPU) return 0;
+  const std::size_t steps = length * ndim;
+  const bool assigns = method == Method::CLARA && sample && sample->sample_size < sample->n_points;
+  const std::size_t filled = assigns ? static_cast<std::size_t>(sample->sample_size) : n_series; // a fill's series
+#  if defined(DTWC_HAS_CUDA)
+  const std::size_t value = config.gpu_precision == GpuPrecision::FP32 ? sizeof(float) : sizeof(double);
+  std::size_t bytes = filled * steps * value;
+  if (assigns) {
+    const auto medoids = static_cast<std::size_t>(config.k) * static_cast<std::size_t>(config.n_samples);
+    const auto launch = static_cast<std::size_t>(cuda::detail::kMaxPairsPerLaunch);
+    const std::size_t block = std::min(n_series, std::max<std::size_t>(1, launch / std::max(medoids, steps)));
+    bytes = std::max(bytes, (medoids + block) * steps * value + block * medoids * sizeof(double));
+  }
+  return bytes;
+#  else
+  return filled * steps * sizeof(float) + core::packed_size(filled) * sizeof(float);
+#  endif
+#else
+  return 0; // a build without a GPU backend: set_device refused the GPU
+#endif
+}
+
 /// What `threads` threads of `per_thread` bytes each hold, and a tenth more for what that price does not see: the
 /// working set a run reserves.
 std::size_t working_set(std::size_t per_thread, int threads)
@@ -188,6 +227,8 @@ enum class Route { InRam, Streamed, Refused };
 struct SourceFacts
 {
   std::size_t series = 0;     ///< what the series hold in RAM: the reader's resident bytes, or their values once read
+  bool copy = false;          ///< `series` holds the owned copy a GPU uploads of a view's series
+  std::size_t staging = 0;    ///< a GPU's host buffers for the series it uploads (gpu_staging_bytes)
   std::size_t clara = 0;      ///< in-RAM FastCLARA's sample matrix, then every sample's labels and nearest distances
   std::size_t fixed = 0;      ///< the method's own terms, in RAM whatever the matrix's storage
   const char *fixed_what = nullptr; ///< what `fixed` is, for a refusal
@@ -289,7 +330,7 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
   plan.threads = plan.requested = requested;
   plan.facts = facts;
   const std::size_t reserve = working_set(per_thread, requested);
-  const std::size_t series = facts.series + facts.clara + facts.fixed;
+  const std::size_t series = facts.series + facts.staging + facts.clara + facts.fixed;
   // No budget, no plan: in RAM on every thread, nothing mapped or streamed.
   plan.mapped = budget > 0 && facts.matrix > 0 && facts.held == nullptr && series + facts.matrix + reserve > budget;
   const bool matrix = facts.matrix > 0 && (!plan.mapped || facts.cache); // its bytes in RAM
@@ -331,7 +372,9 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
   if (plan.threads > 0) return plan;
   plan.threads = 1;
   if (!explicit_limit) return plan;
-  std::string terms = std::to_string(facts.series) + " for the series";
+  std::string terms = std::to_string(facts.series) + " for the series"
+                      + (facts.copy ? " and the owned copy the GPU uploads of them" : "");
+  if (facts.staging > 0) terms += ", " + std::to_string(facts.staging) + " for the GPU's staging of them";
   if (facts.clara > 0) terms += ", " + std::to_string(facts.clara) + " for FastCLARA's sample matrix and labels";
   if (facts.fixed > 0) terms += ", " + std::to_string(facts.fixed) + " for " + facts.fixed_what;
   if (matrix)
@@ -496,9 +539,12 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     if (method != Method::Auto) return method;
     const std::size_t matrix = core::packed_size(n_series) * core::value_bytes(config.matrix_dtype);
     const std::size_t pam = thread_bytes(prob, config, Method::PAM, false, n_series, length, ndim, precision);
+    const std::size_t staging = gpu_staging_bytes(config, Method::PAM, std::nullopt, n_series, length, ndim);
     return resolve_method(method, config.device, n_series,
-                          budget == 0 || held == nullptr || series + matrix + working_set(pam, 1) <= budget);
+                          budget == 0 || held == nullptr || series + staging + matrix + working_set(pam, 1) <= budget);
   };
+  // Whether `series`, as plan_of takes it, holds the owned copy a GPU uploads of a view's series.
+  bool upload_copy = false;
   // The plan of `resolved` on series that hold `series` bytes, `values` values of up to `length` time steps of `ndim`
   // features in `precision`; FastCLARA's `sample` where it runs; `streams`: a file FastCLARA streams.
   const auto plan_of = [&](Method resolved, const std::optional<algorithms::detail::ClaraPlan> &sample,
@@ -507,6 +553,8 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     const bool full = sample && sample->sample_size == sample->n_points;
     SourceFacts facts;
     facts.series = series;
+    facts.copy = upload_copy;
+    facts.staging = gpu_staging_bytes(config, resolved, sample, n_series, length, ndim);
     facts.clara = sample && !full ? clara_bytes(*sample) : 0;
     const std::size_t pairs = core::packed_size(n_series);
     facts.matrix = holds_matrix(resolved, full) ? pairs * core::value_bytes(config.matrix_dtype) : 0;
@@ -659,6 +707,8 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
                             && (config.ram_limit != 0 || (config.checkpoint.empty() && config.dist_matrix.empty()));
     // The names are read after the stream, beside the labels: their read is priced with them.
     const std::size_t names_bytes = ipc->series_names_bytes() + ipc->names_read_bytes();
+    // A GPU uploads an owned copy of the views read_arrow_ipc gives in the file's precision (resident_bytes prices it).
+    upload_copy = config.device == Device::GPU && (config.dtype == core::Precision::Float32) == ipc->is_f32();
     const MemoryPlan planned = plan_of(resolved, sample, ipc_bytes, ipc->num_values(), length, ipc->ndim(),
                                        config.dtype, can_stream, streams, names_bytes + 2 * n_series * sizeof(index_t));
     method = resolved;
@@ -668,8 +718,8 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
       plan_clara();
       check_stream("Arrow IPC", "Arrow IPC walk", resident);
     } else if (planned.route == Route::Refused && !can_stream && resident > config.ram_limit) {
-      // CLARA is named only where its stream could read the file: a file that streams, on the CPU, sampled in fewer
-      // than its series (the plan of these options; none where CLARA cannot run on them).
+      // CLARA is named only where its stream could read the file: a file that streams, sampled in fewer than its series
+      // (the plan of these options; none where CLARA cannot run on them).
       const auto clara_streams = [&] {
         try {
           const auto plan = sample ? *sample : resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
@@ -680,9 +730,10 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
       };
       const std::string other = config.dtype == core::Precision::Float32 ? "float64" : "float32";
       std::string why;
-      if (config.device == Device::GPU)
-        why = "on a GPU every route holds the series in RAM at once; raise --ram-limit, or run on the CPU (--device "
-              "cpu).";
+      if (!streams && config.device == Device::GPU)
+        why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
+              "views of its " + std::to_string(n_series) + " series and the owned copy the GPU uploads of them are "
+              "held at once. Raise --ram-limit, or run on the CPU (--device cpu), which holds no copy.";
       else if (!streams)
         why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
               "views of its " + std::to_string(n_series) + " series are held at once. Raise --ram-limit"
@@ -740,17 +791,20 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
                 << ")\n";
     const std::size_t ndim = series.ndim;
     const core::Precision precision = series.precision;
+    const bool view = series.is_view();
     prob.set_data(std::move(series));
     n_series = prob.size();
     // Planned on the series read (CSV, a folder, series in memory, Parquet its metadata did not route): their values,
-    // the longest of them.
+    // the longest of them, and on a GPU the owned copy it uploads of a view.
     if (!memory) {
       require_clusterable(config.k, n_series); // before CLARA's plan
       method = resolve(value_bytes, longest, ndim, precision);
       std::optional<algorithms::detail::ClaraPlan> sample;
       if (method == Method::CLARA) sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
+      upload_copy = config.device == Device::GPU && view;
+      const std::size_t copy = upload_copy ? detail::owned_series_bytes(elements, n_series, false) : 0;
       if (const MemoryPlan planned =
-            plan_of(method, sample, value_bytes, elements, longest, ndim, precision, false, false, 0);
+            plan_of(method, sample, value_bytes + copy, elements, longest, ndim, precision, false, false, 0);
           planned.route == Route::Refused)
         throw InvalidInput(planned.refusal);
     }
@@ -825,8 +879,10 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
   if (fills_first) {
     if (stage.report)
       stage.report->stages.back().note =
-        prob.is_distance_matrix_filled() ? "complete on entry"
-                                         : std::to_string(n_series) + " series' matrix on " + device_text(config);
+        prob.is_distance_matrix_filled()
+          ? "complete on entry"
+          : std::to_string(n_series) + " series' matrix on " + device_text(config)
+              + (config.device == Device::GPU && prob.data().is_view() ? ", from an owned copy of their views" : "");
     prob.fill_distance_matrix();
     stage.begin("cluster");
   }

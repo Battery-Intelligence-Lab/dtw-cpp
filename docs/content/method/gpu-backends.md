@@ -40,7 +40,8 @@ raises `DeviceError` naming the setting and its value:
 | Request | GPU result |
 |---|---|
 | a variant other than Standard, a missing-data strategy, `ndim > 1` | `DeviceError` |
-| Float32, mmap-backed or view-mode series | `DeviceError` |
+| Float32 series, owned or a view | `DeviceError` |
+| Float64 series a `Data` views (an Arrow IPC file read in place or decoded, `set_view_data`) | uploaded as an owned copy, freed when the fill or the assignment returns |
 | squared L2 (`Problem::set_metric(MetricType::SquaredL2)`, dense or mapped) | computed with `use_squared_l2` |
 | Metal: precision FP64, or a GPU index other than 0 (refused by `set_device`) | `DeviceError` |
 | CUDA: precision Auto, FP32 or FP64; any device index | honoured |
