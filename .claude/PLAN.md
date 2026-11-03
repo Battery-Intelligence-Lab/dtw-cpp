@@ -78,7 +78,12 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names.
   ☑ S5 a view on a GPU, interim: 99766bc1 + docs S5b d2abe94c on pb/MM (11-03; `brief_s5.md`; CUDA G8 verified, Metal lines
-  await G8b on the Mac, listed in the handoff). Next S6 CLI.
+  await G8b on the Mac, listed in the handoff). ☑ S6 the CLI's reading: `convert_to_f32` gone, `-v` and the report name how
+  an IPC file's series are held (04c793fc, 11-03; `brief_s6.md`; `format_of`/`read_input` stay: Parquet is `dtwc_io`'s).
+  S7-S9 re-planned from today's code (11-03, `s7_plan.md`; the design's meter, pre-read pricing, `2·(M+E)` and P3 are
+  superseded by RB): ◐ S7a the seam and the streamed `Result` (running, `brief_s7a.md`, base 04c793fc), ☐ S7b `--checkpoint`
+  without `-o` maps (cuttable), ☐ S8a Python plumbing (the link: Volkan 11-03 "Link the CLI library", DECISIONS §3), ☐ S8b
+  Python `cluster()` through `run` (highspy required: check its wheels first), ☐ S9 MATLAB.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)

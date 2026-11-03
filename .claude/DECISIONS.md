@@ -337,3 +337,8 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   allocation ends the process with no message (RB3's routes review B1): "Fix it before the 2.0 tag" (carry the failure
   out of both regions, then a G6 re-check of TADPole's loops); which work ships in 2.0: "MM and HG both in 2.0"; the
   KS review scratch (`review_ks*`, WSL `ks3r2_*` and `conf_strict`, `wt/tmp/conf_strict`) may be deleted: "Delete these".
+- 2026-11-03 — Volkan (question tool) on the bindings' link, after the run report made `run` need the CLI key table
+  (CLI11): "Link the CLI library (Recommended)": the Python module and the MEX link `dtwc_cli` itself, not the design's second
+  library `dtwc_run` and its configure guard; configuring a binding with `DTWC_ENABLE_ARROW=ON` stops with an error naming
+  the fix (the bindings read Parquet through pyarrow and `parquetread`); the wheel and MEX builds turn YAML off. Plan:
+  `C:/D/git/wt/tmp/MM/s7_plan.md` §3 and §5 (Q1).
