@@ -68,7 +68,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     (31f7158d, 11-03, `brief_rb3b.md`; verifying): readers' and library OOM statuses become the one typed report, the ways
     out follow the run. Not in RB3b: TADPole's two bare `omp parallel` regions (Volkan 11-03: fix before the 2.0 tag, below).
   - ☐ RR the end-of-run plain-text report in `Result` (same spec; Volkan 11-02: "Nice log in plain text at the end");
-    planned (`rr_plan.md`), after RB3.
+    planned (`rr_plan.md`; its code claims checked 11-03, `rr_claims_check.md`: 11 false, 37 moved), in two commits after
+    RB3c: ☐ RR1a cpuinfo (optional) + machine facts + `print_settings` (`brief_rr1a.md`), ☐ RR1b the report, the fill split
+    for PAM, Lloyd and full-sample CLARA only (`brief_rr1b.md`); RR2 (counters) later.
     S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.

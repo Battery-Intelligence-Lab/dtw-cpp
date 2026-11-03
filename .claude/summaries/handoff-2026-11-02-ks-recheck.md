@@ -7,7 +7,7 @@
   539d7d7e, 5422bb11, 4741d753, 1234030a: superseded history); local only, worktree `C:/D/git/wt/MM`. Trees there: `build` (clang), `build-arrow`,
   `build-nollfio`, `build-mex`, `build-cuda`, GCC in WSL `~/mm/rb3b`. Work files `C:/D/git/wt/tmp/MM/rb{1,2,2b,3,3b}/`, kit `kit/rb*_*`, logs
   `logs/rb{1,2,2b,3,3b}_summary.log`, `review_rb2/`, `review_rb3/` (reports, fixtures, cap tools `cap_run.py`, `cap_wsl.sh`), `review_rb3b/` (the re-check writes there).
-  Briefs: `brief_rb3c.md` (its agent runs on pb/MM since 11-03; nothing else touches the worktree), `brief_rr1.md` (fill `<RB3c-TIP>`; its `RunStage` is RB3's),
+  Briefs: `brief_rb3c.md` (its agent runs on pb/MM since 11-03; nothing else touches the worktree), `brief_rr1a.md` (fill `<RB3c-TIP>`) and `brief_rr1b.md` (fill `<RR1a-TIP>`; its `RunStage` is RB3's),
   `brief_s5_draft.md`. After a restart check the agent's transcript mtime before relaunching.
 - RR plan `rr_plan.md` (code claims not yet checked). Disk 11-03: Volkan approved, I deleted `review_ks1/2/3_r2`, most of `review_ks3_r1`, `conf_strict`, WSL
   `ks3r2_*` and `conf_strict` (about 3.9 GB); an empty `review_ks3_r1/src` stays (a process holds it).
@@ -57,8 +57,9 @@
 1. PLAN MM RB3c (running, `brief_rb3c.md`; PLAN "Before the 2.0 tag"): TADPole's two regions carry a failure out (the `run_openmp` slot pattern, G6 on TADPole's loops) and the
    four re-check fixes; verify (write-tree, diffs, clang `ctest -j1`, the MIP/checkpoint/no-llfio real-binary cases, `ctest` of the Python test), then a narrow look at `ways_out()`.
 2. S9: map `std::bad_alloc` in the MEX gateway (it is `dtwc:internal` today).
-3. PLAN MM RR1 (`brief_rr1.md`: cpuinfo step zero on the six trees; the fill split keeps digits and `-v` lines; `test_run_out_of_memory`'s word may change cluster -> fill; RB3b's
-   leftovers), RR2 later; then merge design-2.0 into pb/MM (`--no-ff --no-commit`), fill `<RR1-TIP>` in `brief_s5_draft.md`, S5-S9 serial, S10, then HG (both in 2.0).
+3. PLAN MM RR1a then RR1b (`rr_claims_check.md` checked the plan's 104 code claims at 31f7158d: 56 true, 37 moved, 11 false; its Part 3 cuts RR1 in two): `brief_rr1a.md` (cpuinfo step zero on the
+   six trees, `core/machine`, `print_settings`; fill `<RB3c-TIP>`), `brief_rr1b.md` (the report; the fill split only for PAM, Lloyd, full-sample CLARA; `Result::save` writes it last; fill
+   `<RR1a-TIP>`); RR2 later; then merge design-2.0 into pb/MM (`--no-ff --no-commit`), fill `<RR1b-TIP>` in `brief_s5_draft.md`, S5-S9 serial, S10, then HG (both in 2.0).
 4. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4, 7, FM's E1; conformance redone if MM merges first.
 
 ## Open questions
