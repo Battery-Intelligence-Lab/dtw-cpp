@@ -107,6 +107,13 @@ TEST_CASE("The run report: eight sections in order, the stages once each, their 
   REQUIRE_FALSE(text.empty());
   CHECK(read_text(scratch.path / "out" / "rr_report.txt") == text); // the file is the text
 
+  // Result::save writes the same text last, beside the result files.
+  const auto saved = scratch.path / "saved";
+  result.save(saved);
+  CHECK(read_text(saved / "rr_report.txt") == text);
+  CHECK(fs::exists(saved / "rr_labels.csv"));
+  CHECK(fs::exists(saved / "rr_silhouettes.csv"));
+
   const auto lines = lines_of(text);
   std::vector<int> headings;
   for (const auto &line : lines) {
@@ -176,6 +183,35 @@ TEST_CASE("A run that fails past its checks writes its report up to the failing 
   const auto rows = stage_rows(lines_of(text));
   REQUIRE(rows.size() >= 2);
   CHECK(rows[rows.size() - 2].first == "read"); // no row after the failing stage's, then the total
+
+  // A failure in `check` (no k) writes no report, though its output directory exists.
+  auto unchecked = pam_into(scratch.path / "checked");
+  unchecked.k = 0;
+  fs::create_directories(scratch.path / "checked");
+  CHECK_THROWS_AS(dtwc::run(unchecked, three_groups(6)), dtwc::InvalidInput);
+  CHECK_FALSE(fs::exists(scratch.path / "checked" / "rr_report.txt"));
+}
+
+TEST_CASE("The fill is a stage of its own for PAM, Lloyd's k-medoids and CLARA of every series, and for no other method",
+          "[run][report]")
+{
+  const dtwc::test_support::ScratchDirectory scratch{ "run_report_fill" };
+  const auto stages_of = [&](dtwc::Method method, const char *directory) {
+    auto config = pam_into(scratch.path / directory);
+    config.method = method;
+    if (method == dtwc::Method::CLARA) config.sample_size = 60; // every series
+    const auto result = dtwc::run(config, three_groups(60));
+    std::vector<std::string> names;
+    for (const auto &row : stage_rows(lines_of(result.report()))) names.push_back(row.first);
+    return names;
+  };
+  const std::vector<std::string> filled{ "check", "plan", "read", "storage", "fill",
+                                         "cluster", "write", "silhouettes", "total" };
+  CHECK(stages_of(dtwc::Method::PAM, "pam") == filled);
+  CHECK(stages_of(dtwc::Method::Kmedoids, "lloyd") == filled);
+  CHECK(stages_of(dtwc::Method::CLARA, "clara") == filled);
+  const std::vector<std::string> inside{ "check", "plan", "read", "storage", "cluster", "write", "silhouettes", "total" };
+  CHECK(stages_of(dtwc::Method::Hierarchical, "hierarchical") == inside);
 }
 
 TEST_CASE("The report's command row double-quotes what the key table writes as a TOML literal, which cmd.exe would "
