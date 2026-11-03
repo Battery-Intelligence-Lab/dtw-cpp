@@ -1,4 +1,4 @@
-# Handoff — 2026-11-03 (Windows) — RB1, RB2, RB2b, RB3 committed; RB3 under review; RB3b, RR1 next
+# Handoff — 2026-11-03 (Windows) — RB1, RB2, RB2b, RB3 committed; RB3 reviewed; RB3b running; RR1 next
 
 ## Base
 
@@ -7,9 +7,9 @@
 - `pb/MM` 92c04967 (RB3, tree d26261d8) on 014123c4 (RB2b, 3d72dc1b) on f9e731f9 (RB2) on a6c1ab2f (RB1) on 1234030a (KS4; KS =
   539d7d7e, 5422bb11, 4741d753, 1234030a: superseded history); local only, worktree `C:/D/git/wt/MM`. Trees there: `build` (clang),
   `build-arrow`, `build-nollfio`, `build-mex`, `build-cuda`, GCC in WSL `~/mm/rb3`. Work files `C:/D/git/wt/tmp/MM/rb{1,2,2b,3}/`, kit
-  `kit/rb*_*`, logs `logs/rb{1,2,2b,3}_summary.log`, `review_rb2/`, `review_rb3/` (the reviewers write there). Briefs: `brief_rb3_review_routes.md`
-  and `brief_rb3_review_code.md` (running), then `brief_rr1.md` (fill `<RB3b-TIP>`; its `RunStage` is RB3's). After a restart check the
-  agents' transcript mtimes before relaunching.
+  `kit/rb*_*`, logs `logs/rb{1,2,2b,3,3b}_summary.log`, `review_rb2/`, `review_rb3/` (reports `report_routes.md`, `report_code.md`; fixtures; cap tools). Briefs:
+  `brief_rb3b.md` (its agent runs on pb/MM since 11-03, nothing else touches that worktree), then `brief_rr1.md` (fill `<RB3b-TIP>`; its `RunStage` is
+  RB3's). After a restart check the agent's transcript mtime before relaunching.
 - RR plan `rr_plan.md` (code claims not yet checked). Disk until Volkan's yes: `C:/D/git/wt/tmp/MM/review_ks*` (about 2 GB), WSL
   `~/mm/ks3r2_*` and `~/conf_strict`, `C:/D/git/wt/tmp/conf_strict/`.
 
@@ -39,7 +39,11 @@
   caught; placement probe 2.9 MB (committed placement) vs 111.8 MB (catch inside `execute`); G6: 239/239 identical-source objects equal, run/distance_matrix/
   arrow_ipc differ, post-ThinLTO text equal; GCC LTO: CLI11 x4, `vector<string>`, `main`, the fill's `vector<Verdict>` inlined again (RB2's shape); wheel: 3 inliner moves.
 - The first RB3 gate crashed `test_arrow_ipc`: `psapi.h` before llfio renamed its inline `GetPerformanceInfo` (ODR); included after llfio now.
-- `std::bad_alloc` terminates, not reaches the catch, at `tadpole.cpp:210` and `:270` (bare `omp parallel`, scratch growth in `exact()`): unverified.
+- RB3's two fresh reviews (read-only). Code (Sonnet): no blocker; `mip_Gurobi.cpp:147` and `run.cpp:717` rename a `bad_alloc` (opened: true); the envelope and
+  OneBatch tests restate the code; `ru_maxrss` survives `exec`. Routes (Opus, 96 capped runs, Windows Job + WSL `ulimit -v`): the plan clause equals `-v`'s in all
+  96; B1 TADPole with `--dc` terminates (`tadpole.cpp:210/:270`: 0xC0000409, rc 134); S1 stream and IO statuses (nanoarrow 12, Arrow OutOfMemory, ENOMEM) and the
+  readers are `IOError`s, a failed `.dtwm` sizing leaves a stale zero file; S2 the ways out are one static list (`--dtype` frees no matrix, clara offered to
+  clara); S3 the peak counts mapped pages (65-72 MB against a 20 MB budget). Their lines for S1, `mip_Gurobi`, `api.cpp:141` opened by me.
 - Earlier, still open: 64 MiB cgroup (auto never refuses; pam maps a 100 MB matrix that thrashed); least limits rise at 24 threads (the reserve); llfio vs
   no-llfio least limits differ ~10x; class (d) (wheel Soft-DTW gradient) carried to S10.
 
@@ -49,14 +53,15 @@
   (DECISIONS §3: relax it, ~10 % margin, "separate several GB for the algorithm, then just load the data", report a run that does not fit, "Nice log in plain
   text at the end"); "Approve RB and RR as written". 11-03: "cpuinfo, optional"; `--no-report` "No text at all"; counters "Later, own commit" (RR2).
 - My calls, not asked: D1 keep `TeamCap`, D3 streams keep the requested threads, D4 `auto` changes only through a guard, D5 `std::bad_alloc` becomes
-  `InvalidInput`; S8/S9 serial; class (d) accepted at RB1. Proposed for RB3b: a reader's and `--dist-matrix`'s `bad_alloc` passes through (the helper
-  `rethrow_naming_the_file` is 2.0-born, absent at v1.0.0) so the one typed report covers the read stage; the checkpoint save stays deferred.
+  `InvalidInput`; S8/S9 serial; class (d) accepted at RB1. RB3b (brief `brief_rb3b.md`): a reader's and `--dist-matrix`'s `bad_alloc` passes through (the helper
+  `rethrow_naming_the_file` is 2.0-born, absent at v1.0.0), library OOM statuses become `bad_alloc`, the ways out follow the run, pins, `VmHWM` if the floor is
+  real; the checkpoint save stays deferred. NOT in RB3b, carried to Volkan: TADPole's two bare `omp parallel` regions (a few KB at the margin; algorithm loops = G6).
 - Awaiting him: whether MM and HG ship in 2.0; the history purge; disk deletions.
 
 ## Next steps
 
-1. PLAN MM RB3: the two reviewers' reports (routes: Opus; code, test, docs: Sonnet xhigh) -> one fix commit RB3b (the reader pass-through, the ways-out
-   text naming `--matrix-dtype`, their findings) by an implementer; verify it; a CSV read stage and the TADPole terminate sites into the report.
+1. PLAN MM RB3b (running): verify (write-tree, diffs, clang `ctest -j1`, the real-binary repros in `review_rb3/` on WSL and with the Job-object cap, the ways out
+   each tried), a narrow re-check of the text; then ask Volkan about TADPole's regions with the other open questions.
 2. PLAN MM RR1 (`brief_rr1.md`: cpuinfo step zero on the six trees; the fill split keeps digits and `-v` lines; `test_run_out_of_memory`'s word may
    change cluster -> fill), RR2 later; then merge design-2.0 into pb/MM (`--no-ff --no-commit`), fill `<RR1-TIP>` in `brief_s5_draft.md`, S5-S9 serial, S10.
 3. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4, 7, FM's E1; conformance redone if MM merges first.
@@ -64,10 +69,11 @@
 ## Open questions
 
 - Class (d) and the driver loops' `TeamCap` read at S10; the Mac needs its own G6 and a Metal build (memory `project-metal-on-mac-checklist`); whether the
-  reserve's rise in least limits at 24 threads is what Volkan wants; whether `available_memory()` should see `RLIMIT_AS`.
+  reserve's rise in least limits at 24 threads is what Volkan wants; whether `available_memory()` should see `RLIMIT_AS`; TADPole's two regions (document
+  the margin crash, or wrap them: G6); residuals: Gurobi's `catch (...)`, `--dist-matrix`'s unpriced transient (98 MB for a 16 MB matrix), `api.cpp:141`.
 
 ## Status honesty
 
 - Run by me: clang `ctest -j1` at RB1, RB2, RB2b, RB3 and both KS commits, sweeps, the probe, the docs gates, G6 log reads, my RB2 scan, B1, the peaks,
   the RB3 real-binary runs above. Not run by me: the Arrow, no-llfio, MEX, CUDA and GCC gates, pytest, any assembly, any timing, mutations. Agents so far:
-  Fable audit, R1, R2, KS3, R1', R2', conformance, KS4, RB and RR planners, RB1 (905k tokens), RB2 (814k + 233k), its reviewer (309k), RB2b, RB3 (617k).
+  Fable audit, R1, R2, KS3, R1', R2', conformance, KS4, RB and RR planners, RB1 (905k tokens), RB2 (814k + 233k), its reviewer (309k), RB2b, RB3 (617k), its reviewers (263k, 351k), RB3b running.
