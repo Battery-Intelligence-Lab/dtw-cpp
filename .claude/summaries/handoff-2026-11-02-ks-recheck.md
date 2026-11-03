@@ -1,4 +1,4 @@
-# Handoff — 2026-11-03 (Windows) — RB1 a6c1ab2f and RB2 f9e731f9 committed; RB2 under review; RB3, RR next
+# Handoff — 2026-11-03 (Windows) — RB1 a6c1ab2f, RB2 f9e731f9 committed; RB2's review found B1 + S1-S3: RB2b fix running; RB3, RR next
 
 ## Base
 
@@ -7,9 +7,10 @@
 - `pb/MM` f9e731f9 (RB2, tree d06ad68e) on a6c1ab2f (RB1, tree c711dbcc) on 1234030a (KS4; KS = 539d7d7e, 5422bb11, 4741d753,
   1234030a: superseded history); local only, worktree `C:/D/git/wt/MM`, clean. Trees there: `build` (clang), `build-arrow`,
   `build-nollfio`, `build-mex`, `build-cuda`, GCC in WSL. Work files `C:/D/git/wt/tmp/MM/rb1/`, `rb2/`, kit `kit/rb[12]_*`,
-  logs `logs/rb[12]_summary.log`. Briefs ready: `brief_rb3.md` (fill `<RB2-TIP>`), `brief_rb2_review.md` (running).
-- RR plan `rr_plan.md` (read by me 11-03; its code claims not yet checked). A reviewer for RB2 runs (agent `review_rb2/`, report
-  `review_rb2/report.md`); after a restart check its transcript's mtime before relaunching. Disk until Volkan's yes:
+  logs `logs/rb[12]_summary.log`. Briefs: `brief_rb2b.md` (the RB2 implementer, resumed by SendMessage, runs it: log
+  `logs/rb2b_summary.log`), then `brief_rb3.md` (fill `<RB2-TIP>`) and `brief_rr1.md` (fill `<RB3-TIP>`).
+- RR plan `rr_plan.md` (read by me 11-03; its code claims not yet checked). RB2's reviewer: evidence `review_rb2/log.md`, `sweeps/`,
+  `tools/`; after a restart check the RB2b agent's transcript mtime before relaunching. Disk until Volkan's yes:
   `C:/D/git/wt/tmp/MM/review_ks*` (about 2 GB), WSL `~/mm/ks3r2_*` and `~/conf_strict`, `C:/D/git/wt/tmp/conf_strict/`.
 
 ## Done
@@ -32,6 +33,11 @@
   compared at the requested threads' reserve); clang `ctest -j1` 99/99 (50 s); my scan `scratchpad/orch_rb2_scan.py` (refusal scan,
   bisection, grid; own cases): late6k least 43,248,595, long1 140,498,332, one cost = 819e8703's, streamed then in RAM (the rest of the
   cases: see the log there); an explicit limit with the default output dir: PAM at 1.5 MB runs on 3 of 24 threads, mapped matrix.
+- RB2's review (fresh Opus reviewer, text report): B1 every streamed refusal's "at least N" is not the least (late6k: 1 byte -> 41,984,795;
+  at N the stream refuses naming the data cap as `--ram-limit`; least 43,248,595); S1 the spec's "method's fixed terms" were dropped
+  (TADPole `computed` + `cache`, hierarchical dense copy, OneBatch table: unpriced, as at 819e8703); S2 `auto` can cut threads across
+  its switch; S3 CHANGELOG says 90 % for Tier-2 (it is 100 %). I reproduced B1, S2, S3 and read S1's lines; my own 10-case scan found no
+  monotonicity violation (it checks exit codes, not the "at least N" text). 32 reviewer sweeps clean (methods, GPU, no-llfio, Parquet).
 - G6 logs of RB2 opened: kernels, lanes, fill, swap, assignment loops text-identical to RB1 per TU and ThinLTO; GCC LTO growth only in
   `execute`, the walk, a cold clone of the fill, IO/CLI code; wheel: the CSV writer (+1 store).
 
@@ -57,7 +63,7 @@
 
 ## Next steps
 
-1. PLAN MM RB: read `review_rb2/report.md` (open each cited line); a fix commit on RB2 if it finds a blocker, then RB3 from `brief_rb3.md`
+1. PLAN MM RB: verify RB2b (B1: re-run late6k at 1 byte, at N, at the least; S1 fixed terms; docs), then RB3 from `brief_rb3.md`
    (`core::peak_memory()` = peak working set on Windows, as `ru_maxrss`: RR compares it with the budget; stage names = RR's). Then RR1
    (check `rr_plan.md`'s code claims; cpuinfo step zero on the six trees; the fill split must keep digits and `-v` lines), RR2 later.
 2. Merge design-2.0 into pb/MM, fill `<KS-TIP>` in `brief_s5_draft.md` (tip = RB's), S5, S6, S7, S8, S9, S10 (final G6 vs MM base).
@@ -70,6 +76,6 @@
 
 ## Status honesty
 
-- Run by me: clang `ctest -j1` at RB1 and RB2 and both KS commits, sweeps, the probe, the docs gates, G6 log reads, my RB2 scan. Not run by
-  me: the Arrow, no-llfio, MEX, CUDA and GCC gates, pytest, any assembly, any timing, mutations. Agents today: Fable audit, R1, R2, KS3,
-  R1', R2', conformance, KS4, RB and RR planners, RB1 (905 k tokens), RB2 (814 k), the RB2 reviewer.
+- Run by me: clang `ctest -j1` at RB1, RB2 and both KS commits, sweeps, the probe, the docs gates, G6 log reads, my RB2 scan. Not run by me:
+  the Arrow, no-llfio, MEX, CUDA and GCC gates, pytest, any assembly, any timing, mutations. Agents: Fable audit, R1, R2, KS3, R1', R2',
+  conformance, KS4, RB and RR planners, RB1 (905 k tokens), RB2 (814 k), its reviewer (309 k), RB2b.
