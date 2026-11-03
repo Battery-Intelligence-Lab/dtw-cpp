@@ -132,7 +132,7 @@ jobs:
         run: |
           cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON \
             -DDTWC_ENABLE_ARROW=ON -DDTWC_ENABLE_GUROBI=OFF \
-            -DDTWC_ENABLE_HIGHS=OFF -DDTWC_ENABLE_LLFIO=OFF
+            -DDTWC_ENABLE_HIGHS=OFF -DDTWC_ENABLE_LLFIO=OFF -DDTWC_ENABLE_CPUINFO=OFF
         working-directory: build_dir
 
       - name: cmake build

@@ -77,6 +77,7 @@ jobs:
           -DDTWC_ENABLE_HIGHS=OFF
           -DDTWC_ENABLE_GUROBI=OFF
           -DDTWC_ENABLE_LLFIO=OFF
+          -DDTWC_ENABLE_CPUINFO=OFF
         env:
           CC: gcc-13
           CXX: g++-13

@@ -34,6 +34,7 @@ jobs:
           cmake -S . -B build/mex-ci
           -DDTWC_BUILD_MATLAB=ON
           -DDTWC_ENABLE_LLFIO=OFF
+          -DDTWC_ENABLE_CPUINFO=ON
           -DDTWC_ENABLE_HIGHS=ON
           -DDTWC_ENABLE_GUROBI=OFF
           -DDTWC_BUILD_TESTING=OFF

@@ -78,6 +78,7 @@ jobs:
             cmake.args=-DDTWC_ENABLE_GUROBI=OFF
             cmake.args=-DDTWC_ENABLE_HIGHS=OFF
             cmake.args=-DDTWC_ENABLE_LLFIO=ON
+            cmake.args=-DDTWC_ENABLE_CPUINFO=ON
             cmake.args=-DDTWC_BUILD_TESTING=OFF
             cmake.args=-DDTWC_BUILD_BENCHMARK=OFF
             cmake.args=-DCMAKE_BUILD_TYPE=Release

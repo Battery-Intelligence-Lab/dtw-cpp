@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           cmake -S . -B build/msvc -DDTWC_ENABLE_GUROBI=OFF -DDTWC_ENABLE_HIGHS=ON \
-            -DDTWC_ENABLE_LLFIO=ON -DDTWC_BUILD_TESTING=OFF -DDTWC_ARCH_LEVEL=v3 -DCMAKE_BUILD_TYPE=Release
+            -DDTWC_ENABLE_LLFIO=ON -DDTWC_ENABLE_CPUINFO=ON -DDTWC_BUILD_TESTING=OFF -DDTWC_ARCH_LEVEL=v3 -DCMAKE_BUILD_TYPE=Release
           cmake --build build/msvc --config Release --target dtwc_cl --parallel 2
           cmake --install build/msvc --config Release --component runtime --prefix build/msvc/install
 
@@ -85,6 +85,7 @@ jobs:
           -DDTWC_ENABLE_GUROBI=OFF
           -DDTWC_ENABLE_HIGHS=ON
           -DDTWC_ENABLE_LLFIO=ON
+          -DDTWC_ENABLE_CPUINFO=ON
           -DDTWC_BUILD_TESTING=OFF
           -DDTWC_ARCH_LEVEL=v3
           -DCMAKE_BUILD_TYPE=Release

@@ -29,6 +29,7 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | llfio, quickcpplib, outcome, ntkernel-error-category (Windows) | pinned commits | Apache-2.0 **OR** BSL-1.0 | yes — headers compiled in (`DTWC_ENABLE_LLFIO=ON`) | yes — headers compiled in |
 | wg14_signals (llfio's signal guard) | pinned commit | Apache-2.0 | as llfio | as llfio |
 | span-lite, byte-lite (via quickcpplib) | pinned commits | BSL-1.0 | as llfio | as llfio |
+| cpuinfo (pytorch/cpuinfo) | pinned commit | BSD-2-Clause | yes — compiled in (`DTWC_ENABLE_CPUINFO=ON`) | no — built, but no binding calls it, so the module links none of it (2026-11-03) |
 
 **Not redistributed**, and therefore not covered here: Catch2 (BSL-1.0) and google/benchmark
 (Apache-2.0), which are test- and benchmark-only; libpfm4 (MIT), which google/benchmark links only
@@ -435,4 +436,43 @@ SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
 FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+```
+
+## cpuinfo — BSD-2-Clause
+
+pytorch/cpuinfo reads the CPU's model, its cores and its SIMD extensions for the machine facts that `dtwc_cl -v`
+prints. Its library (`src/`, `include/cpuinfo.h`) is compiled into the CLI archives (`DTWC_ENABLE_CPUINFO=ON`, the
+default) from the archive of commit `e9320ce3398899fbecc986c82f49b5d59b80dff7`
+(`https://github.com/pytorch/cpuinfo/archive/e9320ce3398899fbecc986c82f49b5d59b80dff7.tar.gz`, SHA-256
+`0f19bffed603d591240b6e25e8def96d203ccf59db09c28cd15c92bf856f5e90`), unmodified; its `deps/clog` is not built. Its
+`LICENSE`:
+
+```
+Copyright (c) 2019 Google LLC
+Copyright (c) 2017-2018 Facebook Inc.
+Copyright (C) 2012-2017 Georgia Institute of Technology
+Copyright (C) 2010-2012 Marat Dukhan
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```

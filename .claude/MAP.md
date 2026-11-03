@@ -21,7 +21,7 @@ Python  _dtwcpp_core + dtwcpp: apply(Config) → Problem::cluster()          MAT
 | Layer | Where | Lines | What |
 | --- | --- | --- | --- |
 | base | `base/` (+ forwarders at `dtwc/` root), `types/`, `enums/` | 1.1k | errors (`Error` → `InvalidInput`, `DeviceError`, `IOError`, `SolverError`, `UndefinedScore`), settings (`index_t`), OpenMP helpers (`run_openmp`: per-thread failure slots, the lowest-index failure rethrown), `device()` (`env`), names tables, `Index` / `Range` |
-| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 5.4k | `dtw_kernel.hpp` (linear: two columns per pass; lanes: 128 bytes on AArch64 and under clang or GCC on x86-64, 64 under cl and elsewhere, each lane its own length when unbanded but under cl; banded; × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio in `distance_matrix.cpp` and `io/arrow_ipc.cpp`), SHA-256, portable RNG, `kmedoids_pp` |
+| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 5.4k | `dtw_kernel.hpp` (linear: two columns per pass; lanes: 128 bytes on AArch64 and under clang or GCC on x86-64, 64 under cl and elsewhere, each lane its own length when unbanded but under cl; banded; × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio in `distance_matrix.cpp` and `io/arrow_ipc.cpp`), SHA-256, portable RNG, `kmedoids_pp`; `machine_facts` (`machine.{hpp,cpp}`: host, OS, CPU via cpuinfo, RAM via llfio's `total_memory`/`available_memory`, a GPU run's GPU, the build; `unknown` where not known; `dtwc_cl -v` prints it) |
 | io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), the Arrow IPC reader `arrow_ipc` (nanoarrow's IPC extension; a mapped file's series are views, `Data::owner()` keeps the bytes; a compressed, big-endian or misaligned batch is decoded, the batches in parallel, into arrays the owner holds, its buffers proven inside the body first), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
 | backends | `cuda/`, `metal/` | 2.9k | GPU fills; CUDA also FastCLARA's assignment |
 | algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4k | FastPAM, FastCLARA (`fast_clara_parquet.cpp`: the stream, in `dtwc_io`), OneBatchPAM, hierarchical, TADPole, barycenter; seeding; seven scores |
@@ -45,12 +45,12 @@ Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
   `build/` (Ninja Release; HiGHS, llfio, Metal, YAML), `build-matlab/` (+ the MEX, `matlab_suite`), `build-asan/`
   (ASan + UBSan). Windows box: `build/` (clang Release, benchmarks; Arrow OFF), `build/arrow-pyarrow-23` (Arrow via its
   `pyarrow-config/` shim; counts only if `ctest -N` lists `test_io_readers`), `build/cuda-verify-0928` (CUDA).
-- Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,LLFIO,YAML}` (ON),
+- Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,LLFIO,YAML,CPUINFO}` (ON),
   `DTWC_ENABLE_METAL` (ON on Apple only), `DTWC_ENABLE_{GUROBI,ARROW,CUDA}` (OFF); an `ON` that cannot be honoured
   stops the configure. `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error), `DTWC_FP_MODEL` (`fast` | `strict`),
   `DTWC_ARCH_LEVEL` (`native` | `v3` | `v4`; `v3` for Python), `DTWC_CUDA_ARCH_LIST` (8.0–9.0), `DTWC_DEV_MODE`.
 - Dependencies (`cmake/Dependencies.cmake`, pinned, checked by `check_pins.py`): CLI11, fkYAML, HiGHS, llfio
-  (header-only, with pinned quickcpplib and outcome), lz4 and zstd (sources, always), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
+  (header-only, with pinned quickcpplib and outcome), cpuinfo (a commit; static, PIC, silent, outside `all`), lz4 and zstd (sources, always), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
   Gurobi, CUDA, Metal from the system. FP flags: `-fassociative-math` without `-ffinite-math-only`, on `dtwc_options`.
 - macOS needs `brew install libomp` and `-DOpenMP_ROOT=/opt/homebrew/opt/libomp`; Windows CUDA, nvcc 13.0 with a
   supported MSVC host. The wheel links no HiGHS (`mip` extra: highspy); the MEX links it statically; archives and

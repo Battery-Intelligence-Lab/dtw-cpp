@@ -3,6 +3,7 @@ target_sources(dtwc_core
     distance_matrix.cpp
     dtw_dispatch.cpp
     dtw_lanes.cpp
+    machine.cpp
     thread_scratch.cpp
   PUBLIC FILE_SET HEADERS FILES
     clustering_result.hpp
@@ -14,6 +15,7 @@ target_sources(dtwc_core
     dtw_options.hpp
     gpu_dtw_common.hpp
     lower_bound_impl.hpp
+    machine.hpp
     matrix_io.hpp
     medoid_assignment_policy.hpp
     msm.hpp

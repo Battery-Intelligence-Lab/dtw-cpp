@@ -241,6 +241,13 @@ if(TARGET llfio_hl)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()
 
+# cpuinfo (optional) — the CPU's model, cores and SIMD extensions in core/machine.cpp, the one file that includes it;
+# DTWC_HAS_CPUINFO is PUBLIC, as every capability is, so a consumer (and the tests) can tell whether they are known.
+if(TARGET cpuinfo)
+  target_link_libraries(dtwc_core PRIVATE cpuinfo)
+  target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_CPUINFO)
+endif()
+
 # Arrow + Parquet (optional) — Parquet reading, on dtwc_io alone (every build reads Arrow IPC, io/arrow_ipc.cpp).
 # Arrow without Parquet reads no more than a build without Arrow; Arrow found with no target to link is an error, not a
 # build that links nothing.

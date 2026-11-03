@@ -36,6 +36,7 @@ The following dependencies need to be manually installed by the user if they do 
 The following dependencies are installed by the CPM package manager:
 - [HiGHS](https://highs.dev/) as an open source MIP solver alternative to Gurobi.
 - [CLI11](https://github.com/CLIUtils/CLI11) (for command line interface)
+- [cpuinfo](https://github.com/pytorch/cpuinfo) (optional: the CPU's model, cores and SIMD extensions in `dtwc_cl -v`, which read `unknown` in a build configured with `-DDTWC_ENABLE_CPUINFO=OFF`)
 - [Catch2](https://github.com/catchorg/Catch2/) (for testing)
 
 ### CMake and compilers

@@ -8,6 +8,7 @@
  */
 
 #include "distance_matrix.hpp"
+#include "machine.hpp" // total_memory
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp" // run_openmp
 #include "../fileOperations.hpp" // open_output, close_output
@@ -296,6 +297,17 @@ size_t available_memory()
   }
 #endif
   return static_cast<size_t>(bytes);
+#else
+  return 0;
+#endif
+}
+
+size_t total_memory()
+{
+#ifdef DTWC_HAS_MMAP
+  using usage = llfio::utils::process_memory_usage;
+  const auto system = llfio::utils::current_process_memory_usage(usage::want::system_physical_memory_total);
+  return system ? static_cast<size_t>(system.value().system_physical_memory_total) : 0;
 #else
   return 0;
 #endif

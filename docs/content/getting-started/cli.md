@@ -51,7 +51,7 @@ two agree on every default, check and method choice.
 | `-o, --output <path>` | Output directory (`""` writes no file) | `./results` |
 | `--name <string>` | Problem name (used in output filenames) | the input's file or folder name |
 | `-k, --n-clusters <int>` | Number of clusters (required) | — |
-| `-v, --verbose` | Verbose output | off |
+| `-v, --verbose` | Verbose output. Its header gives the settings and the machine: host, OS, CPU and its cores, the SIMD extensions of the CPU and of the build, RAM, a GPU run's GPU, the compiler and the optional libraries built in; a fact the build or the system cannot tell reads `unknown` (the CPU's without cpuinfo, `-DDTWC_ENABLE_CPUINFO=OFF`; the RAM's without llfio) | off |
 | `--column <name>` | The Parquet scalar/list Float32 or Float64 column to read. If omitted, the first eligible top-level column decides: a list or several scalar columns are one series per row, the only scalar column one series ([Supported data](../supported-data/)) | — |
 | `--dtype <string>` | The precision the series are stored in: `float32` halves their memory, each value read as a double and rounded, with no double copy held. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
 | `--matrix-dtype <string>` | The distance matrix's value type: `float32` halves its memory (N = 100,000: 20 GB, not 40), each distance rounded once to the nearest float, so costs and scores move by about 6e-8 of themselves and medoids and labels can change; a distance beyond float32's range (3.4e38) stops the run. Independent of `--dtype`; value aliases as `--dtype`'s | `float64` |

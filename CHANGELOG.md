@@ -110,8 +110,12 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   through FastCLARA.
 - `Problem::cluster()` returns a `ClusteringResult` (labels, medoids, cost, iterations, converged); `Problem` gains
   `set_method`, `set_device`, `set_distance`, `set_variant`, `set_metric`, `set_result`, `solver()`, `mip_settings`, ...
-- Build options `DTWC_ENABLE_{HIGHS,GUROBI,CUDA,METAL,ARROW,LLFIO,YAML}` (each optional; an `ON` that cannot be honoured
-  stops the configure), `DTWC_FP_MODEL` and `DTWC_ARCH_LEVEL`.
+- Build options `DTWC_ENABLE_{HIGHS,GUROBI,CUDA,METAL,ARROW,LLFIO,YAML,CPUINFO}` (each optional; an `ON` that cannot be
+  honoured stops the configure), `DTWC_FP_MODEL` and `DTWC_ARCH_LEVEL`.
+- `dtwc_cl -v` begins with the settings and the machine it runs on: host, OS, the CPU's model and cores, the SIMD
+  extensions of the CPU and of the build, total and available RAM, a GPU run's GPU, the compiler and the optional
+  libraries built in. The CPU's facts come from pytorch/cpuinfo (`DTWC_ENABLE_CPUINFO`, ON, pinned and built static)
+  and the RAM's from llfio; a fact a build or a system cannot tell reads `unknown`.
 - On Windows, `dtwc_cl.exe` states its name, version and copyright in its file properties.
 - The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
   each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside

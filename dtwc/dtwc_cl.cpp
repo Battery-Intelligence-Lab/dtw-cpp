@@ -17,6 +17,7 @@
 #include "base/timing.hpp"
 #include "cli/config.hpp"
 #include "cli/run.hpp"
+#include "core/machine.hpp"
 #include "io/read_data.hpp"
 
 #include <CLI/CLI.hpp>
@@ -28,7 +29,6 @@
 #include <array>
 #include <charconv>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -73,18 +73,7 @@ void print_settings(const dtwc::Config &config)
   for (const char *name : { "OMP_NUM_THREADS", "SLURM_JOB_ID", "SLURM_CPUS_PER_TASK", "SLURM_NODELIST",
                             "SLURM_JOB_PARTITION", "SLURM_GPUS" })
     if (const char *value = std::getenv(name)) std::cout << "  " << name << ": " << value << "\n";
-#if defined(__linux__)
-  std::ifstream cpuinfo("/proc/cpuinfo");
-  for (std::string line; std::getline(cpuinfo, line);) {
-    if (line.rfind("model name", 0) != 0) continue;
-    if (const auto colon = line.find(':'); colon != std::string::npos)
-      std::cout << "  CPU:             " << line.substr(colon + 2) << "\n";
-    break;
-  }
-  std::ifstream status("/proc/self/status");
-  for (std::string line; std::getline(status, line);)
-    if (line.rfind("VmRSS:", 0) == 0 || line.rfind("VmPeak:", 0) == 0) std::cout << "  " << line << "\n";
-#endif
+  std::cout << dtwc::core::machine_facts(config.device, config.device_index).text();
   std::cout << "==========================\n\n" << std::flush;
 }
 

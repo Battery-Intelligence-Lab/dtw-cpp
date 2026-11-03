@@ -189,6 +189,7 @@ option; nothing is turned off silently. Defaults are the ones every platform can
 | `DTWC_ENABLE_METAL` | ON on Apple platforms, OFF elsewhere | Enable the Metal backend (an error off Apple platforms) |
 | `DTWC_ENABLE_ARROW` | OFF | Enable Parquet I/O through Apache Arrow C++ (system packages or CPM); Arrow IPC needs no Arrow C++ |
 | `DTWC_ENABLE_LLFIO` | ON | Enable llfio-backed memory-mapped distance matrices |
+| `DTWC_ENABLE_CPUINFO` | ON | The CPU's model, cores and SIMD extensions in `dtwc_cl -v`'s machine facts (pytorch/cpuinfo, static); without it they read `unknown` |
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
 | `DTWC_ENABLE_GUROBI` | OFF | Link the Gurobi MIP solver (needs an install, see `GUROBI_HOME`; the binary then needs the Gurobi library to load). v1.0.0 linked Gurobi when it found it |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
