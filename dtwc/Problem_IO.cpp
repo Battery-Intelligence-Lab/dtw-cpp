@@ -254,7 +254,7 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
 {
   const auto &labels = prob.labels();
   const auto &medoids = prob.medoids();
-  // A RAM-limited Parquet run holds no series: its names are the reader's, given here.
+  // A streamed run (Arrow IPC or Parquet) holds no series: its names are the reader's, given here.
   const bool streamed = prob.size() == 0;
   const auto series_name = [&](std::size_t i) {
     if (!streamed) return std::string(prob.series_name(i));
@@ -288,7 +288,7 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
   };
   if (streamed) {
     if (complete)
-      throw InvalidInput("Result: a RAM-limited Parquet run holds no series, so it has no distance matrix or "
+      throw InvalidInput("Result: a streamed run holds no series, so it has no distance matrix or "
                          "silhouettes to save; its labels and medoids are written, with the reader's names.");
     skipped("not computed: a streamed run holds no distance matrix");
     return;

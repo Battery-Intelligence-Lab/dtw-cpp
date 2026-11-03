@@ -4,7 +4,8 @@
  *        io::IpcFile, and run's planner, in every build): the in-RAM run's labels, medoids and cost, and the CSV
  *        twin's; the Parquet stream's verdicts, the cases' texts being those its serial check gave on their Parquet
  *        twins (2026-11-01, at dd7ba144); a record batch larger than the limit, and a limit below the union beside its
- *        decode, refused before any batch is decoded. Fixtures: tests/data/reader/make_ipc_fixtures.py.
+ *        decode, refused before any batch is decoded; a streamed run's Result: its score and distance matrix refused,
+ *        its save dtwc_cl's files. Fixtures: tests/data/reader/make_ipc_fixtures.py.
  * @author Volkan Kumtepeli
  */
 
@@ -34,6 +35,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <random>
 #include <regex>
 #include <sstream>
@@ -286,6 +288,41 @@ TEST_CASE("Arrow IPC: run streams a file over --ram-limit through FastCLARA, as 
   });
   CHECK_THAT(stream, ContainsSubstring("Arrow IPC walk selected streaming: 256 series"));
   CHECK(resident.cost() != csv.cost());
+}
+
+TEST_CASE("Arrow IPC: a streamed run's Result refuses score and the distance matrix, naming the stream and "
+          "--ram-limit, and saves dtwc_cl's labels and medoids, then the report",
+          "[io][arrow][streaming]")
+{
+  // clara_256_lz4.arrow's record batches are decoded, never mapped: a limit below its series streams it in every
+  // build. dtwc_cl runs dtwc::run(config) with its -o, so the files that run writes are dtwc_cl's (test_cli_ipc_stream
+  // drives the binary on the same fixtures).
+  const auto file = fixture("clara_256_lz4.arrow");
+  dtwc::Config config = clara_config(file);
+  const std::size_t cap = dtwc::io::IpcFile(file).resident_bytes(Precision::Float64, false);
+  config.ram_limit = reserve_of(config, cap) + cap;
+  config.name = "streamed";
+  const auto cli = scratch() / "streamed_cli";
+  config.output = dtwc::path_to_utf8(cli);
+  std::optional<dtwc::Result> result;
+  REQUIRE_THAT(printed([&] { result.emplace(dtwc::run(config)); }),
+               ContainsSubstring("Arrow IPC walk selected streaming: 256 series"));
+  // A composed matcher keeps its parts' addresses: the parts outlive each check.
+  const auto stream = ContainsSubstring("the run streamed its 256 series");
+  const auto limit = ContainsSubstring("--ram-limit");
+  CHECK_THROWS_MATCHES(result->score("silhouette"), dtwc::InvalidInput, MessageMatches(stream && limit));
+  CHECK_THROWS_MATCHES(result->distance_matrix(), dtwc::InvalidInput, MessageMatches(stream && limit));
+  CHECK_THROWS_MATCHES(dtwc::detail::filled_matrix(*result), dtwc::InvalidInput, MessageMatches(stream && limit));
+
+  const auto saved = scratch() / "streamed_saved";
+  REQUIRE_NOTHROW(result->save(saved));
+  for (const char *written : { "streamed_labels.csv", "streamed_medoids.csv", "streamed_report.txt" }) {
+    INFO(written);
+    CHECK(bytes_of(saved / written) == bytes_of(cli / written));
+  }
+  CHECK_FALSE(result->report().empty());
+  CHECK_FALSE(std::filesystem::exists(saved / "streamed_distance_matrix.csv"));
+  CHECK_FALSE(std::filesystem::exists(saved / "streamed_silhouettes.csv"));
 }
 
 // The cases of the Parquet stream's verdicts (test_io_readers.cpp's), in record batches read by a team: each batch's

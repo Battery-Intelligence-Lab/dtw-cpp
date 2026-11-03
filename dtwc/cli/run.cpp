@@ -412,9 +412,10 @@ const char *format_name(std::optional<InputFormat> format)
   return *format == InputFormat::Parquet ? "Parquet" : *format == InputFormat::ArrowIPC ? "Arrow IPC" : "text";
 }
 
-/// The run itself; `data` holds in-memory series, else config.input is read. `stage` follows it: the stage it is in,
-/// its memory plan once made, and the report's figures.
-Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
+/// The run itself; `data` holds in-memory series, else config.input is read; `solver`, where given, clusters MIP on
+/// HiGHS and LR-core's Kelley root in RAM (detail::run). `stage` follows it: the stage it is in, its memory plan once
+/// made, and the report's figures.
+Outcome execute(const Config &config, std::optional<Data> data, const ExternalSolver &solver, RunStage &stage)
 {
   // ---- 1. Every check that needs no series, before any file is touched (stage check, run_with's) ----
   if (!data && config.input.empty())
@@ -880,6 +881,17 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
   if (stage.report)
     stage.report->stages.back().note =
       std::string(progress_label(method)) + (fills_first ? "" : ", any distances it computes inside");
+  // In RAM the Problem clusters, but where detail::run was given a solver (a binding that links no HiGHS gives its
+  // own) and the run is MIP on HiGHS or LR-core's Kelley root, tested as Python's Problem.cluster override tests them:
+  // the solver's clustering is the run's, published on the Problem, which the Result reads.
+  const auto cluster_in_ram = [&] {
+    if (!solver || !((prob.method() == Method::MIP && prob.solver() == Solver::HiGHS)
+                     || (prob.method() == Method::LRCore && prob.mip_settings.lr_root == LRRoot::Kelley)))
+      return prob.cluster();
+    core::ClusteringResult solved = solver(problem);
+    prob.set_result(solved);
+    return solved;
+  };
   std::vector<std::string> streamed_names;
   core::ClusteringResult result;
   try {
@@ -893,12 +905,12 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
       streamed_names = ipc->series_names(clara.ram_limit_bytes - 2 * n_series * sizeof(index_t)); // beside the labels
     } else {
 #ifdef DTWC_HAS_PARQUET
-      result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : prob.cluster();
+      result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : cluster_in_ram();
       if (stream_payload)
         streamed_names =
           io::ParquetChunkReader(input, config.column, config.skip_cols, config.skip_rows).series_names();
 #else
-      result = prob.cluster();
+      result = cluster_in_ram();
 #endif
     }
   } catch (const InvalidInput &refused) {
@@ -1065,12 +1077,13 @@ InvalidInput out_of_memory(const RunStage &stage, const Config &config)
                       + ways_out(stage, config) + ".");
 }
 
-/// A run of `config` on `data` (else config.input), its report rendered and, with an output directory, written last.
+/// A run of `config` on `data` (else config.input), `solver` as detail::run takes it, its report rendered and, with an
+/// output directory, written last.
 /// Every thread's scratch is given back as the run starts, returns or throws (ScratchRelease). A std::bad_alloc is
 /// caught outside it and outside execute, whose Problem, series and TeamCap are gone by then, and becomes
 /// out_of_memory's InvalidInput. A run that fails past its checks writes its report up to the failing stage, with the
 /// error, and throws its own exception on: a report that cannot be made or written is dropped, never the error.
-Outcome run_with(const Config &config, std::optional<Data> data)
+Outcome run_with(const Config &config, std::optional<Data> data, const ExternalSolver &solver)
 {
   RunStage stage;
   try {
@@ -1078,7 +1091,7 @@ Outcome run_with(const Config &config, std::optional<Data> data)
       if (config.report) stage.report.emplace(config);
       stage.begin("check"); // the scratch given back first, the checks then
       const core::ScratchRelease release;
-      Outcome outcome = execute(config, std::move(data), stage);
+      Outcome outcome = execute(config, std::move(data), solver, stage);
       if (stage.report) {
         stage.report->close(stage.plan ? stage.plan->threads : 0);
         outcome.report = stage.report->render();
@@ -1152,18 +1165,15 @@ fs::path report_path(const Config &config)
   return utf8_to_path(config.output) / utf8_to_path(run_name(config) + "_report.txt");
 }
 
-Result run(const Config &config)
+Result detail::run(const Config &config, std::optional<Data> data, const ExternalSolver &solver)
 {
-  auto [problem, result, method, streamed_names, report] = run_with(config, std::nullopt);
+  auto [problem, result, method, streamed_names, report] = run_with(config, std::move(data), solver);
   return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
                 result.converged, std::move(streamed_names), std::move(report));
 }
 
-Result run(const Config &config, Data data)
-{
-  auto [problem, result, method, streamed_names, report] = run_with(config, std::move(data));
-  return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
-                result.converged, std::move(streamed_names), std::move(report));
-}
+Result run(const Config &config) { return detail::run(config, std::nullopt, {}); }
+
+Result run(const Config &config, Data data) { return detail::run(config, std::move(data), {}); }
 
 } // namespace dtwc

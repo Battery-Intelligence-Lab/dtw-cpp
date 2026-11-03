@@ -114,6 +114,17 @@ std::size_t memory_budget(std::size_t ram_limit);
 
 namespace detail {
 
+/// run(config) (`data` empty) or run(config, *data), with `solver` (ExternalSolver, api.hpp) clustering in place of
+/// Problem::cluster where it is given and the run, in RAM, is Method::MIP on Solver::HiGHS or Method::LRCore with
+/// lr_root Kelley (any solver): the seam through which a binding that links no HiGHS solves those two with its own
+/// (Python's dtwcpp._mip on highspy, as its Problem.cluster override does); a stream (FastCLARA) never calls it. It is
+/// handed the run's own Problem, its settings applied and its series set, to co-own; what it returns is the run's
+/// clustering, published on the Problem (Problem::set_result, so the Result's labels and medoids are its), with its
+/// cost, iterations and convergence (dtwcpp._mip's: 0 iterations, converged). An exception it throws crosses the run
+/// unchanged, the threads' scratch given back as on every throw; only a std::bad_alloc becomes run()'s out-of-memory
+/// InvalidInput. Tier-1's run(config) and run(config, data) give no solver.
+Result run(const Config &config, std::optional<Data> data, const ExternalSolver &solver);
+
 /// How a Parquet input stores its series, as its metadata shows it: one file of
 /// one series per row (a list column, or the row layout of several Float32/Float64
 /// columns: ListColumn), one file whose one scalar column is one series, or a folder.

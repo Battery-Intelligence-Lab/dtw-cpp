@@ -4,22 +4,29 @@
  */
 
 #include <dtwc.hpp>
+#include <cli/run.hpp>             // detail::run, the seam
+#include <core/thread_scratch.hpp> // thread_scratch_held
 
 #include "../support/scratch_directory.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
+#include <numeric>
 #include <random>
 #include <iterator>
 #include <sstream>
 #include <system_error>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifndef DTWC_TEST_DATA_DIR
@@ -610,4 +617,181 @@ TEST_CASE("Tier-1 carries a non-ASCII name as UTF-8 end to end",
                              std::istreambuf_iterator<char>() };
     CHECK(bytes.find(cafe) != std::string::npos);
   }
+}
+
+namespace {
+
+/// Ten series of six time steps in two groups, one about 0 and one about 10, named s0 to s9.
+dtwc::Data seam_series()
+{
+  std::vector<std::vector<dtwc::data_t>> series;
+  std::vector<std::string> names;
+  for (int i = 0; i < 10; ++i) {
+    std::vector<dtwc::data_t> values;
+    for (int t = 0; t < 6; ++t) values.push_back(10.0 * (i / 5) + 0.1 * i + 0.05 * t * (i % 3));
+    series.push_back(std::move(values));
+    names.push_back("s" + std::to_string(i));
+  }
+  return dtwc::Data(std::move(series), std::move(names));
+}
+
+/// What the fake solver returns: a clustering no method finds on seam_series(), blind to its groups (the medoids 9 and
+/// 0, the even series in cluster 1, the odd in cluster 0), its cost 1234.5, 0 iterations and converged, as
+/// dtwcpp._mip returns.
+dtwc::core::ClusteringResult fake_clustering()
+{
+  dtwc::core::ClusteringResult out;
+  out.medoid_indices = { 9, 0 };
+  for (dtwc::index_t i = 0; i < 10; ++i) out.labels.push_back(i % 2 == 0 ? 1 : 0);
+  out.total_cost = 1234.5;
+  out.converged = true;
+  return out;
+}
+
+/// What a binding's solver throws: a type no dtwc code knows (Python's error reaches C++ as nanobind's python_error).
+struct BindingError : std::exception
+{
+  const char *what() const noexcept override { return "the binding's solver failed"; }
+};
+
+std::size_t scratch_bytes()
+{
+  const auto bytes = dtwc::core::thread_scratch_held();
+  return std::accumulate(bytes.begin(), bytes.end(), std::size_t{ 0 });
+}
+
+} // namespace
+
+TEST_CASE("detail::run hands MIP on HiGHS and LR-core's Kelley root to the solver it is given, with the run's own "
+          "Problem, and the solver's clustering is the run's",
+          "[api][run][seam]")
+{
+  int calls = 0;
+  std::shared_ptr<dtwc::Problem> given;
+  const dtwc::ExternalSolver fake = [&](const std::shared_ptr<dtwc::Problem> &problem) {
+    ++calls;
+    given = problem; // co-owned, as a Python object that outlives the call would hold it
+    return fake_clustering();
+  };
+  dtwc::Config config;
+  config.k = 2;
+  config.output.clear();
+  config.name = "seam";
+  config.solver = dtwc::Solver::HiGHS;
+  config.mip.lr_root = dtwc::LRRoot::Kelley;
+  const auto expected = fake_clustering();
+  for (const dtwc::Method method : { dtwc::Method::MIP, dtwc::Method::LRCore }) {
+    INFO(dtwc::name_of(dtwc::method_names, method));
+    config.method = method;
+    calls = 0;
+    const auto result = dtwc::detail::run(config, seam_series(), fake);
+    REQUIRE(calls == 1);
+    // The Problem the run builds, its own way: the configuration applied, the series set.
+    dtwc::Problem built{ "seam" };
+    dtwc::apply(config, built);
+    built.set_data(seam_series());
+    CHECK(given->name() == built.name());
+    CHECK(given->size() == 10);
+    CHECK(given->n_clusters() == 2);
+    CHECK(given->method() == method);
+    CHECK(given->solver() == dtwc::Solver::HiGHS);
+    CHECK(given->mip_settings.lr_root == dtwc::LRRoot::Kelley);
+    CHECK(given->distance_checkpoint_identity() == built.distance_checkpoint_identity());
+    CHECK(&given->labels() == &result.labels()); // the Result holds the Problem the solver was given
+    CHECK(result.labels() == expected.labels);
+    CHECK(result.medoids() == expected.medoid_indices);
+    CHECK(result.cost() == 1234.5);
+    CHECK(result.iterations() == 0);
+    CHECK(result.converged());
+    CHECK(result.method() == method);
+  }
+}
+
+TEST_CASE("detail::run clusters every other method as run(config, data) does, never calling the solver",
+          "[api][run][seam]")
+{
+  int calls = 0;
+  const dtwc::ExternalSolver fake = [&](const std::shared_ptr<dtwc::Problem> &) {
+    ++calls;
+    return fake_clustering();
+  };
+  dtwc::Config config;
+  config.k = 2;
+  config.output.clear();
+  config.sample_size = 6; // CLARA's: a sample of 6 of the 10 series
+
+  SECTION("PAM, CLARA and LR-core's subgradient root, the Kelley setting beside the first two")
+  {
+    for (const auto &[method, root] : { std::pair{ dtwc::Method::PAM, dtwc::LRRoot::Kelley },
+                                        std::pair{ dtwc::Method::CLARA, dtwc::LRRoot::Kelley },
+                                        std::pair{ dtwc::Method::LRCore, dtwc::LRRoot::Subgradient } }) {
+      INFO(dtwc::name_of(dtwc::method_names, method));
+      config.method = method;
+      config.mip.lr_root = root;
+      const auto expected = dtwc::run(config, seam_series());
+      const auto result = dtwc::detail::run(config, seam_series(), fake);
+      CHECK(result.labels() == expected.labels());
+      CHECK(result.medoids() == expected.medoids());
+      CHECK(result.cost() == expected.cost());
+    }
+    CHECK(calls == 0);
+  }
+  SECTION("MIP on Gurobi: solved by Gurobi where it is built, refused by apply where it is not")
+  {
+    config.method = dtwc::Method::MIP;
+    config.solver = dtwc::Solver::Gurobi;
+    if (dtwc::Problem{ "gurobi" }.set_solver(dtwc::Solver::Gurobi))
+      CHECK(dtwc::detail::run(config, seam_series(), fake).labels().size() == 10);
+    else
+      CHECK_THROWS_AS(dtwc::detail::run(config, seam_series(), fake), dtwc::SolverError);
+    CHECK(calls == 0);
+  }
+}
+
+TEST_CASE("An exception from detail::run's solver crosses the run unchanged, the threads' scratch given back",
+          "[api][run][seam]")
+{
+  std::size_t held = 0; // what the threads' scratch holds as the solver throws
+  const dtwc::ExternalSolver failing =
+    [&](const std::shared_ptr<dtwc::Problem> &problem) -> dtwc::core::ClusteringResult {
+    problem->fill_distance_matrix(); // the DTW kernels' scratch, grown on the run's threads
+    held = scratch_bytes();
+    throw BindingError{};
+  };
+  dtwc::Config config;
+  config.k = 2;
+  config.output.clear();
+  config.method = dtwc::Method::MIP;
+  CHECK_THROWS_MATCHES(dtwc::detail::run(config, seam_series(), failing), BindingError,
+                       Catch::Matchers::Message("the binding's solver failed"));
+  CHECK(held > 0);
+  CHECK(scratch_bytes() == 0);
+}
+
+TEST_CASE("detail::filled_matrix is the run's distance matrix at its stored width, filled where the method left it "
+          "unfilled; Result::distance_matrix is its expansion to doubles",
+          "[api][run][matrix]")
+{
+  dtwc::Config config;
+  config.k = 2;
+  config.output.clear();
+  config.method = dtwc::Method::CLARA; // a sample of 6 of the 10 series: no matrix of every series filled
+  config.sample_size = 6;
+  config.matrix_dtype = dtwc::core::Precision::Float32;
+  const auto result = dtwc::run(config, seam_series());
+  const dtwc::core::DistanceMatrix &matrix = dtwc::detail::filled_matrix(result);
+  CHECK(&dtwc::detail::filled_matrix(result) == &matrix); // the Result's own matrix, not a copy
+  REQUIRE(matrix.width() == dtwc::core::Precision::Float32);
+  REQUIRE(matrix.size() == 10);
+  // Oracle: Tier-2 fills the same series into a float32 matrix.
+  dtwc::Problem oracle{ "oracle" };
+  oracle.set_matrix_dtype(dtwc::core::Precision::Float32);
+  oracle.set_data(seam_series());
+  oracle.fill_distance_matrix();
+  const auto values = dtwc::io::to_full_matrix<float>(matrix); // as a binding expands it
+  CHECK(values == dtwc::io::to_full_matrix<float>(oracle.distance_matrix()));
+  CHECK(result.distance_matrix() == std::vector<double>(values.begin(), values.end()));
+
+  config.matrix_dtype = dtwc::core::Precision::Float64;
+  CHECK(dtwc::detail::filled_matrix(dtwc::run(config, seam_series())).width() == dtwc::core::Precision::Float64);
 }

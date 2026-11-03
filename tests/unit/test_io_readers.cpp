@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <random>
@@ -826,9 +827,10 @@ TEST_CASE("Parquet: CLARA with more clusters than series is refused as for every
 }
 
 // A RAM-limited run holds no series, so Result::save used to read the names and
-// the distance matrix of an empty Data. It writes the labels and medoids under
-// the readers' series_<i> names and refuses the files it cannot make.
-TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses the matrix",
+// the distance matrix of an empty Data. It writes what dtwc_cl writes for it: the
+// labels and medoids under the reader's series_<i> names, then the run report; no
+// matrix or silhouettes, which it has none of.
+TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and the report, no matrix",
           "[io][parquet][streaming]")
 {
   std::vector<std::vector<double>> series;
@@ -873,10 +875,7 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   std::filesystem::remove(input);
 
   const auto out = tmpdir() / "streamed_save";
-  REQUIRE_THROWS_AS(result.save(out), dtwc::InvalidInput);
-  // The run report is save()'s last file: a save that throws before it writes none.
-  CHECK_FALSE(result.report().empty());
-  CHECK_FALSE(std::filesystem::exists(out / "streamed_report.txt"));
+  REQUIRE_NOTHROW(result.save(out));
 
   const auto lines = [&](const char *file) {
     std::ifstream in(out / file);
@@ -901,6 +900,13 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   }
   CHECK_FALSE(std::filesystem::exists(out / "streamed_distance_matrix.csv"));
   CHECK_FALSE(std::filesystem::exists(out / "streamed_silhouettes.csv"));
+  // The run report, save()'s last file, as the run rendered it.
+  std::ifstream report(out / "streamed_report.txt", std::ios::binary);
+  REQUIRE(report.good());
+  std::string text{ std::istreambuf_iterator<char>(report), std::istreambuf_iterator<char>() };
+  std::erase(text, '\r'); // the text-mode stream's line ends on Windows
+  CHECK_FALSE(result.report().empty());
+  CHECK(text == result.report());
 }
 
 #else
