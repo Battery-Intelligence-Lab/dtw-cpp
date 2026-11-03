@@ -94,6 +94,17 @@ dtwc_add_test(NAME unit_test_nearest_medoid_assignment SOURCE ${_dtwc_test_sourc
 dtwc_add_test(NAME test_thread_scratch SOURCE ${_dtwc_test_source_test_thread_scratch}
     ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4 ${_dtwc_seq_skip})
 
+# A run the system refuses memory: the test caps its own process (a Windows Job object, Linux RLIMIT_AS), which macOS
+# does not enforce and a sanitizer's allocator defeats; there it skips.
+if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT (DTWC_ENABLE_SANITIZER_ADDRESS OR DTWC_ENABLE_SANITIZER_THREAD
+                                                          OR DTWC_ENABLE_SANITIZER_MEMORY))
+    set(_dtwc_oom_skip "")
+else()
+    set(_dtwc_oom_skip MAY_SKIP)
+endif()
+dtwc_add_test(NAME test_run_out_of_memory SOURCE ${_dtwc_test_source_test_run_out_of_memory}
+    ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4 TIMEOUT 120 ${_dtwc_oom_skip})
+
 # Native distance-matrix CSV bytes; mmap is a required subject
 # only in a build that publishes it.
 if(_dtwc_has_mmap)

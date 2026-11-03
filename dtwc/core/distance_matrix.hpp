@@ -106,6 +106,11 @@ inline void for_each_point(const T *packed, index_t n, index_t a, F &&f)
 /// unknown, as in a build without llfio.
 size_t available_memory();
 
+/// The most memory this process has held resident so far, in bytes, one meaning on every platform: Windows' peak
+/// working set (K32GetProcessMemoryInfo; a mapped file's pages count, as on Linux), Linux's maximum resident set
+/// (getrusage), macOS's; 0 where the platform does not say.
+size_t peak_memory();
+
 /// Return to the system the memory this process's allocator keeps after it was freed, as a hint: glibc's
 /// malloc_trim(0); on Windows HeapOptimizeResources on every heap (its heap keeps freed blocks committed: an Arrow IPC
 /// stream of 9,600 record batches at --ram-limit 48 MB, read without llfio, peaked 33 MB over the limit without the

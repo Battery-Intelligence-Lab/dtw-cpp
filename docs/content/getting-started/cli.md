@@ -170,6 +170,14 @@ may run on fewer threads than `clara` did just below it. A binary built without
 LLFIO knows no memory available: there the automatic limit plans nothing, and
 the series and the matrix go into RAM on every thread.
 
+A run whose memory the system refuses all the same (Windows past its commit
+limit, Linux under `ulimit -v` or strict overcommit) stops with an error naming
+the stage it was in (`check`, `plan`, `read`, `storage`, `cluster` or `write`),
+its memory plan and the process's peak resident memory, once it has given its
+memory back; a reader that cannot hold its input says so itself, naming the
+file. Under Linux's default overcommit a run over a cgroup's limit (a SLURM
+job's memory) gets no message: the kernel's OOM killer ends it.
+
 ### RAM-limited Parquet FastCLARA
 
 For Parquet input the plan is made before the selected column payload is

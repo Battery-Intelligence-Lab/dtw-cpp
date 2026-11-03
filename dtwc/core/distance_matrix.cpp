@@ -34,8 +34,9 @@
 #endif
 #include <windows.h> // FlushFileBuffers
 #else
-#include <fcntl.h>  // open
-#include <unistd.h> // fsync, close
+#include <fcntl.h>        // open
+#include <sys/resource.h> // getrusage
+#include <unistd.h>       // fsync, close
 #endif
 
 #ifdef DTWC_HAS_MMAP
@@ -50,6 +51,12 @@
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
+#endif
+#ifdef _WIN32
+// After llfio: psapi.h maps names such as GetPerformanceInfo to their K32 forms, and llfio declares an inline variable
+// of that name, which the macro would rename in this file alone: two llfio definitions of one entity, and a call
+// through the null pointer of the one never loaded (Arrow IPC reads crashed so, 2026-11-03).
+#include <psapi.h> // K32GetProcessMemoryInfo
 #endif
 
 namespace dtwc::core {
@@ -287,6 +294,20 @@ size_t available_memory()
   return static_cast<size_t>(bytes);
 #else
   return 0;
+#endif
+}
+
+size_t peak_memory()
+{
+#if defined(_WIN32)
+  PROCESS_MEMORY_COUNTERS counters{};
+  return K32GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof counters) ? counters.PeakWorkingSetSize : 0;
+#elif defined(__APPLE__)
+  rusage usage{};
+  return getrusage(RUSAGE_SELF, &usage) == 0 ? static_cast<size_t>(usage.ru_maxrss) : 0; // bytes
+#else
+  rusage usage{};
+  return getrusage(RUSAGE_SELF, &usage) == 0 ? static_cast<size_t>(usage.ru_maxrss) * 1024 : 0; // KiB
 #endif
 }
 

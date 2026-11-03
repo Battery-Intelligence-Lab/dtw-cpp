@@ -6,7 +6,8 @@
  *        complete --dist-matrix the matrix stays in RAM within --ram-limit; a --ram-limit that runs still runs when
  *        raised, its route never stepping back, with the unlimited run's clustering; the clustering does not depend on
  *        the limit, the data cap or the threads; a refusal names its terms and, in RAM, the least limit, which runs;
- *        a stream's refusals say what their --ram-limit is; the plan holds the methods' own terms.
+ *        a stream's refusals say what their --ram-limit is; the plan holds the methods' own terms, OneBatchPAM's for
+ *        the batch one_batch_pam takes.
  *
  * @details Registered with OMP_NUM_THREADS=4: a team of 4. A thread's bytes are what the buffers on the closed list
  *          hold (core::thread_scratch_held(), by thread number). The plan's numbers are read from the run's own text:
@@ -461,16 +462,18 @@ TEST_CASE("A stream's refusal names no least limit, and the stream's own refusal
   names_the_cap(attempt(config, lowest - 1, file), lowest - 1);
 }
 
-TEST_CASE("The plan holds the method's own terms: TADPole's pair flags and cache, the hierarchical clustering's dense "
-          "copy, OneBatchPAM's batch table",
+TEST_CASE("The plan holds the method's own terms: TADPole's pair flags, cache and envelopes, the hierarchical "
+          "clustering's dense copy, OneBatchPAM's batch table",
           "[thread_scratch][run][ram_limit][plan]")
 {
   // 256 walks of 20 doubles in memory (40,960 bytes): the least limit each refusal names runs, a byte below it does
   // not, and it holds each method's own terms beside the series, from their sizes in the code: TADPole, its results
   // written (its matrix mapped where llfio maps it), a byte a pair and its cache, 8 bytes a pair (256 x 257 / 2
-  // pairs); the hierarchical clustering N x N doubles beside the matrix, nothing written (held); OneBatchPAM N x m
-  // doubles for a batch of 32.
+  // pairs), and as it prunes these series (Standard DTW, L1, univariate float64) each one's envelope, an upper and a
+  // lower vector of its values; the hierarchical clustering N x N doubles beside the matrix, nothing written (held);
+  // OneBatchPAM N x m doubles for a batch of 32.
   constexpr std::size_t n = 256, series = n * 20 * sizeof(double), pairs = n * (n + 1) / 2;
+  constexpr std::size_t envelopes = 2 * (series + n * sizeof(std::vector<double>));
   const dtwc::test_support::ScratchDirectory scratch{ "scratch_fixed_terms" };
   int outputs = 0;
   const Runner memory = [&](const dtwc::Config &c) {
@@ -484,7 +487,7 @@ TEST_CASE("The plan holds the method's own terms: TADPole's pair flags and cache
     bool written;
     std::size_t holds;
   };
-  for (const Case c : { Case{ dtwc::Method::TADPole, true, series + pairs + pairs * sizeof(double) },
+  for (const Case c : { Case{ dtwc::Method::TADPole, true, series + pairs + pairs * sizeof(double) + envelopes },
                         Case{ dtwc::Method::Hierarchical, false,
                               series + n * n * sizeof(double) + pairs * sizeof(double) },
                         Case{ dtwc::Method::OneBatch, false, series + n * 32 * sizeof(double) } }) {
@@ -503,5 +506,36 @@ TEST_CASE("The plan holds the method's own terms: TADPole's pair flags and cache
     const Attempt least_limit = attempt(config, needs, memory);
     INFO(least_limit.text << least_limit.refusal);
     CHECK(least_limit.ran);
+  }
+}
+
+TEST_CASE("The plan prices OneBatchPAM's table for the batch one_batch_pam takes", "[thread_scratch][run][plan]")
+{
+  // run.cpp copies one_batch_pam.cpp's batch size (automatic_batch_size, or --batch-size; then at least k) to price
+  // the table, N x (m + 8) doubles: m read back from the refusal's term, against the m one_batch_pam reports
+  // (OneBatchPAMStats::batch_size), for N below 64 (m = N), N = 5000 (m = 20 x ceil(log2(N + 1))) and --batch-size 100.
+  struct Case
+  {
+    std::size_t n;
+    dtwc::index_t batch;
+  };
+  for (const Case c : { Case{ 40, -1 }, Case{ 5000, -1 }, Case{ 5000, 100 } }) {
+    dtwc::Config config;
+    config.method = dtwc::Method::OneBatch;
+    config.k = 3;
+    config.batch_size = c.batch;
+    config.output.clear();
+    const Runner memory = [&](const dtwc::Config &cfg) { return dtwc::run(cfg, data_of(walks(c.n, 2))); };
+    const Attempt one_byte = attempt(config, 1, memory);
+    INFO("N = " << c.n << ", --batch-size " << c.batch << ": " << one_byte.refusal);
+    std::smatch m;
+    REQUIRE(std::regex_search(one_byte.refusal, m, std::regex("([0-9]+) for OneBatchPAM's batch table")));
+    const std::size_t table = std::stoull(m[1].str());
+    REQUIRE(table % (c.n * sizeof(double)) == 0);
+    dtwc::Problem prob{ "batch" };
+    prob.set_data(data_of(walks(c.n, 2)));
+    dtwc::algorithms::OneBatchPAMStats stats;
+    (void)dtwc::algorithms::one_batch_pam(prob, { .n_clusters = 3, .batch_size = c.batch }, &stats);
+    CHECK(table / (c.n * sizeof(double)) - 8 == stats.batch_size);
   }
 }

@@ -61,7 +61,12 @@ namespace dtwc {
 ///         runs ("at least N bytes"); on a stream naming what the plan holds,
 ///         the stream's own floor coming on top: the stream checks it within
 ///         the data cap, which its refusal names as --ram-limit, and fewer
-///         threads, OMP_NUM_THREADS, lower the reserve), DeviceError as above,
+///         threads, OMP_NUM_THREADS, lower the reserve; and in place of a
+///         std::bad_alloc, the system refusing memory, once the run has given
+///         its memory back: "<stage> stage: out of memory; plan: <the plan>;
+///         the process peaked at P bytes resident; ways out: ...", the stages
+///         check, plan, read, storage, cluster and write, where a reader's own
+///         refused allocation stays its IOError), DeviceError as above,
 ///         IOError for an
 ///         input this build cannot read or a file that cannot be read or written,
 ///         SolverError for `gurobi` on a build without Gurobi.

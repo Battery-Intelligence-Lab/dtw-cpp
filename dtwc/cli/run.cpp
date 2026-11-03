@@ -42,6 +42,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <new> // std::bad_alloc
 #include <numeric>
 #include <optional>
 #include <string>
@@ -209,20 +210,30 @@ struct MemoryPlan
   std::size_t reserve() const { return working_set(per_thread, threads); }
   std::size_t data_cap() const { return budget > reserve() ? budget - reserve() : 0; }
 
-  /// The plan as -v prints it, one line.
+  /// The plan, one line: what -v prints after "Memory plan: ", and a run out of memory names.
   std::string text() const
   {
     if (budget == 0)
-      return "Memory plan: no budget (no --ram-limit, and what the process may use is unknown): in RAM on "
+      return "no budget (no --ram-limit, and what the process may use is unknown): in RAM on "
              + std::to_string(requested) + " threads";
     const char *const routes[] = { "in RAM", "streamed", "refused" };
-    return "Memory plan: budget " + std::to_string(budget) + " bytes, reserve " + std::to_string(reserve()) + " bytes ("
+    return "budget " + std::to_string(budget) + " bytes, reserve " + std::to_string(reserve()) + " bytes ("
            + std::to_string(threads) + " of " + std::to_string(requested) + " threads, " + std::to_string(per_thread)
            + " bytes each for series of up to " + std::to_string(length) + " time steps), data cap "
            + std::to_string(data_cap()) + " bytes: "
            + (route == Route::InRam && mapped ? "in RAM, the distance matrix mapped"
                                               : routes[static_cast<int>(route)]);
   }
+};
+
+/// Where a run is, which a run that runs out of memory names (out_of_memory): the stage, and the memory plan once made.
+/// The stages, in order: `check` (the checks that need no series, and apply), `plan` (the input's plan from Parquet
+/// metadata or an Arrow IPC file's walk), `read` (the series loaded, and planned where nothing did before), `storage`
+/// (the distance matrix's storage, a --dist-matrix or a checkpoint read), `cluster` and `write`.
+struct RunStage
+{
+  const char *stage = "check";
+  std::optional<MemoryPlan> plan;
 };
 
 /// The memory plan of a run on `facts` within `budget` (0: none, as without llfio; `explicit_limit`: --ram-limit set),
@@ -333,10 +344,12 @@ struct Outcome
   std::vector<std::string> streamed_names; ///< a RAM-limited run's series names, which its Problem cannot hold
 };
 
-/// The run itself; `data` holds in-memory series, else config.input is read.
-Outcome execute(const Config &config, std::optional<Data> data)
+/// The run itself; `data` holds in-memory series, else config.input is read. `stage` follows it: the stage it is in,
+/// and its memory plan once made.
+Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
 {
   // ---- 1. Every check that needs no series, before any file is touched ----
+  stage.stage = "check";
   if (!data && config.input.empty())
     throw InvalidInput("--input is required via CLI or config file (TOML or YAML)");
   if (config.k == 0) throw InvalidInput("-k/--n-clusters, the number of clusters, is required.");
@@ -389,6 +402,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   }
 
   // ---- 2. The method and, from Parquet metadata when it has them, N ----
+  stage.stage = "plan";
   const Clock clk;
   Method method = config.method;
   bool stream_payload = false;
@@ -429,7 +443,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // to the end of the run (TeamCap; the release reaches the full team, full_team_threads()).
   const std::size_t budget = core::memory_budget(config.ram_limit);
   const int requested = get_max_threads();
-  std::optional<MemoryPlan> memory;
+  std::optional<MemoryPlan> &memory = stage.plan;
   std::optional<TeamCap> team;
   // Why a distance matrix that does not fit beside the series stays in RAM (nullptr: it is mapped). It maps only with
   // an output directory, into the --checkpoint directory when one is given.
@@ -448,25 +462,32 @@ Outcome execute(const Config &config, std::optional<Data> data)
     return resolve_method(method, config.device, n_series,
                           budget == 0 || held == nullptr || series + matrix + working_set(pam, 1) <= budget);
   };
-  // The plan of `resolved` on series that hold `series` bytes, of up to `length` time steps of `ndim` features in
-  // `precision`; FastCLARA's `sample` where it runs.
+  // The plan of `resolved` on series that hold `series` bytes, `values` values of up to `length` time steps of `ndim`
+  // features in `precision`; FastCLARA's `sample` where it runs.
   const auto plan_of = [&](Method resolved, const std::optional<algorithms::detail::ClaraPlan> &sample,
-                           std::size_t series, std::size_t length, std::size_t ndim, core::Precision precision,
-                           bool can_stream, std::size_t streamed) {
+                           std::size_t series, std::size_t values, std::size_t length, std::size_t ndim,
+                           core::Precision precision, bool can_stream, std::size_t streamed) {
     const bool full = sample && sample->sample_size == sample->n_points;
     SourceFacts facts;
     facts.series = series;
     facts.clara = sample && !full ? clara_bytes(*sample) : 0;
     const std::size_t pairs = core::packed_size(n_series);
     facts.matrix = holds_matrix(resolved, full) ? pairs * core::value_bytes(config.matrix_dtype) : 0;
-    // The method's own terms, in RAM whatever the matrix's storage: TADPole's flag a pair (tadpole.cpp's `computed`)
-    // and its cache of the matrix's pairs (`cache`, unless a complete --dist-matrix is read in its place); the
-    // hierarchical clustering's dense copy of N x N doubles (hierarchical.cpp's `work`); OneBatchPAM's batch table,
-    // N x m doubles, m as one_batch_pam.cpp's automatic_batch_size or --batch-size takes it, and its per-point
-    // vectors, at most 8 doubles a point. MIP's and LR-core's solver memory is not planned.
+    // The method's own terms, in RAM whatever the matrix's storage: TADPole's flag a pair (tadpole.cpp's `computed`),
+    // its cache of the matrix's pairs (`cache`, unless a complete --dist-matrix is read in its place) and, where it
+    // prunes (`can_prune`: bounds_valid's Standard DTW under L1 on univariate float64 series, no missing-data
+    // strategy), each series' envelope (`envs`: an upper and a lower vector of its values); the hierarchical
+    // clustering's dense copy of N x N doubles (hierarchical.cpp's `work`); OneBatchPAM's batch table, N x m doubles,
+    // m as one_batch_pam.cpp's automatic_batch_size or --batch-size takes it, and its per-point vectors, at most 8
+    // doubles a point. MIP's and LR-core's solver memory is not planned.
     if (resolved == Method::TADPole) {
-      facts.fixed = pairs;
-      facts.fixed_what = "TADPole's flag a pair";
+      const auto distance = prob.distance();
+      const bool prunes = distance.variant.variant == core::DTWVariant::Standard
+                          && distance.metric == core::MetricType::L1 && ndim == 1
+                          && precision != core::Precision::Float32
+                          && distance.missing == core::MissingStrategy::Error;
+      facts.fixed = pairs + (prunes ? 2 * (values * sizeof(double) + n_series * sizeof(std::vector<double>)) : 0);
+      facts.fixed_what = prunes ? "TADPole's flag a pair and the series' envelopes" : "TADPole's flag a pair";
       facts.cache = true;
     } else if (resolved == Method::Hierarchical) {
       facts.fixed = n_series * n_series * sizeof(double);
@@ -487,7 +508,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     facts.length = length;
     memory = plan_memory(facts, budget, config.ram_limit != 0,
                          thread_bytes(prob, config, resolved, full, n_series, length, ndim, precision), requested);
-    if (config.verbose) std::cout << memory->text() << "\n";
+    if (config.verbose) std::cout << "Memory plan: " << memory->text() << "\n";
     if (memory->route != Route::Refused) team.emplace(memory->threads);
     return *memory;
   };
@@ -530,7 +551,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
     const bool can_stream = sample && sample->sample_size < sample->n_points
                             && layout == detail::ParquetLayout::ListColumn
                             && (config.ram_limit != 0 || (config.checkpoint.empty() && config.dist_matrix.empty()));
-    const MemoryPlan planned = plan_of(resolved, sample, resident_bytes, length, 1, config.dtype, can_stream,
+    const MemoryPlan planned = plan_of(resolved, sample, resident_bytes, values, length, 1, config.dtype, can_stream,
                                        names_bytes + 2 * n_series * sizeof(index_t));
     // The series alone beyond the budget: a route that cannot stream them is refused as it says why (the method or
     // the layout, plan_parquet_load; a sample of every series, FastCLARA's plan). An input of no series is refused.
@@ -581,8 +602,8 @@ Outcome execute(const Config &config, std::optional<Data> data)
                             && (config.ram_limit != 0 || (config.checkpoint.empty() && config.dist_matrix.empty()));
     // The names are read after the stream, beside the labels: their read is priced with them.
     const std::size_t names_bytes = ipc->series_names_bytes() + ipc->names_read_bytes();
-    const MemoryPlan planned = plan_of(resolved, sample, ipc_bytes, length, ipc->ndim(), config.dtype, can_stream,
-                                       names_bytes + 2 * n_series * sizeof(index_t));
+    const MemoryPlan planned = plan_of(resolved, sample, ipc_bytes, ipc->num_values(), length, ipc->ndim(),
+                                       config.dtype, can_stream, names_bytes + 2 * n_series * sizeof(index_t));
     method = resolved;
     if (planned.route == Route::Streamed) {
       stream_payload = true;
@@ -629,6 +650,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   }
 
   // ---- 3. Load the series into RAM ----
+  stage.stage = "read";
   if (!stream_payload) {
     Data series = data ? std::move(*data) : read_input(input, format.value_or(InputFormat::Text), config);
     if (config.verbose) {
@@ -664,7 +686,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
       method = resolve(value_bytes, longest, ndim, precision);
       std::optional<algorithms::detail::ClaraPlan> sample;
       if (method == Method::CLARA) sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      if (const MemoryPlan planned = plan_of(method, sample, value_bytes, longest, ndim, precision, false, 0);
+      if (const MemoryPlan planned = plan_of(method, sample, value_bytes, elements, longest, ndim, precision, false, 0);
           planned.route == Route::Refused)
         throw InvalidInput(planned.refusal);
     }
@@ -680,6 +702,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
   // the checkpoint, else in the output directory; a run that writes nothing
   // keeps its matrix in RAM.
+  stage.stage = "storage";
   std::optional<fs::path> cache;
   if (!config.output.empty()) {
     const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
@@ -713,6 +736,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // ---- 5. Cluster; the matrix methods fill through the Problem, on its device ----
   // A RAM-limited Parquet or Arrow IPC run is the one whose series the Problem does
   // not hold: FastCLARA streams them.
+  stage.stage = "cluster";
   if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
   std::vector<std::string> streamed_names;
   core::ClusteringResult result;
@@ -761,6 +785,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   // Before the results, so a result write that
   // fails cannot lose the distance matrix. A save that fails is kept and raised
   // once the results are on disk, so it cannot lose them either.
+  stage.stage = "write";
   std::optional<std::string> checkpoint_failure;
   if (!config.checkpoint.empty()) {
     try {
@@ -779,6 +804,19 @@ Outcome execute(const Config &config, std::optional<Data> data)
                   "omit it. Cause: " + *checkpoint_failure);
 
   return { std::move(problem), std::move(result), method, std::move(streamed_names) };
+}
+
+/// What a run that runs out of memory throws in place of its std::bad_alloc (std::bad_array_new_length among them): the
+/// stage, the memory plan and the process's peak resident memory. run() builds it in its catch, outside everything
+/// the run held (execute's Problem, series and TeamCap, the threads' scratch), so that memory is free by then.
+InvalidInput out_of_memory(const RunStage &stage)
+{
+  return InvalidInput(std::string(stage.stage) + " stage: out of memory; plan: "
+                      + (stage.plan ? stage.plan->text() : std::string("none yet")) + "; the process peaked at "
+                      + std::to_string(core::peak_memory())
+                      + " bytes resident; ways out: a --ram-limit below what the process can get (the plan then maps "
+                        "the distance matrix, streams the series, or refuses before any work), --dtype float32, "
+                        "--method clara, or fewer threads (OMP_NUM_THREADS).");
 }
 
 } // namespace
@@ -821,20 +859,32 @@ std::size_t core::memory_budget(std::size_t ram_limit)
   return ram_limit != 0 ? ram_limit : available_memory() / 10 * 9;
 }
 
+// Every thread's scratch is given back as a run starts, returns or throws (ScratchRelease). A std::bad_alloc is caught
+// outside it and outside execute, whose Problem, series and TeamCap are gone by then; every other exception passes.
 Result run(const Config &config)
 {
-  const core::ScratchRelease release; // every thread's scratch given back as the run starts, returns or throws
-  auto [problem, result, method, streamed_names] = execute(config, std::nullopt);
-  return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
-                result.converged, std::move(streamed_names));
+  RunStage stage;
+  try {
+    const core::ScratchRelease release;
+    auto [problem, result, method, streamed_names] = execute(config, std::nullopt, stage);
+    return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
+                  result.converged, std::move(streamed_names));
+  } catch (const std::bad_alloc &) {
+    throw out_of_memory(stage);
+  }
 }
 
 Result run(const Config &config, Data data)
 {
-  const core::ScratchRelease release; // every thread's scratch given back as the run starts, returns or throws
-  auto [problem, result, method, streamed_names] = execute(config, std::move(data));
-  return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
-                result.converged, std::move(streamed_names));
+  RunStage stage;
+  try {
+    const core::ScratchRelease release;
+    auto [problem, result, method, streamed_names] = execute(config, std::move(data), stage);
+    return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
+                  result.converged, std::move(streamed_names));
+  } catch (const std::bad_alloc &) {
+    throw out_of_memory(stage);
+  }
 }
 
 } // namespace dtwc
