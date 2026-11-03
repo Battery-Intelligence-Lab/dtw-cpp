@@ -83,9 +83,10 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   S7-S9 re-planned from today's code (11-03, `s7_plan.md`; the design's meter, pre-read pricing, `2·(M+E)` and P3 are
   superseded by RB): ☑ S7a the seam and the streamed `Result` (86e3467b, 11-03; `brief_s7a.md`), ☐ S7b `--checkpoint`
   without `-o` maps (cuttable), ☑ S8a Python plumbing (c3ba5458, 11-03; `brief_s8a.md`; the link: Volkan 11-03 "Link the CLI
-  library", DECISIONS §3: the bindings link `dtwc_cli`, `_run`/`_Result`, cpuinfo hidden), ◐ S8b Python `cluster()` through
-  `run` (running, `brief_s8b.md`, base c3ba5458; highspy required: PyPI's 1.15.1 has wheels for every tag and platform we
-  build, checked 11-03), ☐ S9 MATLAB.
+  library", DECISIONS §3: the bindings link `dtwc_cli`, `_run`/`_Result`, cpuinfo hidden), ☑ S8b Python `cluster()` through
+  `run` (1dbd03db, 11-03; `brief_s8b.md`; highspy required: PyPI's 1.15.1 has wheels for every tag and platform we build,
+  checked twice 11-03) + ☑ S8b2 one set of words for a bad value whatever the input, stale `mip` extra lines (d1f0530f,
+  11-03, mine), ◐ S9 MATLAB (running, `brief_s9.md`, base d1f0530f).
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
