@@ -20,7 +20,7 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | lz4 (its library, `lib/`) | 1.10.0 | BSD-2-Clause | yes — compiled in | yes |
 | Zstandard (its decoder) | 1.5.7 | BSD-3-Clause | yes — compiled in | yes |
 | fast_float | 8.3.0 | Apache-2.0 **OR** MIT **OR** BSL-1.0 | yes — vendored, compiled in | yes |
-| HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | no — the wheel links no HiGHS; `method="mip"` solves with the user's highspy (the `mip` extra) |
+| HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | no — the wheel links no HiGHS; `method="mip"` solves with highspy, a dependency of dtwcpp that the wheel does not contain |
 | CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | yes — headers compiled in: the module links the CLI library (`dtwc::run`, whose run report prints the command line's key table) |
 | fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no — the wheels are built with `DTWC_ENABLE_YAML=OFF` |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
@@ -238,8 +238,8 @@ file — in the CLI archive at `share/doc/dtwc/fast_float/`, and in the wheel un
 ## HiGHS 1.15.1 — MIT
 
 The CLI archive ships it as `lib/libhighs.*`, and the MATLAB MEX links it statically; the MIT
-licence below covers both. The Python wheel links no HiGHS: `method="mip"` solves with the user's
-own highspy (the `mip` extra), which is not redistributed here.
+licence below covers both. The Python wheel links no HiGHS: `method="mip"` solves with highspy,
+which dtwcpp depends on and the wheel does not contain.
 
 ```
 MIT License

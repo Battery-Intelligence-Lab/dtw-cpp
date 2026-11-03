@@ -186,6 +186,19 @@ class TestClusterKeywords:
         with pytest.raises(dtwcpp.InvalidInput, match="band must be -1"):
             dtwcpp.cluster(str(tmp_path / "missing.parquet"), k=2, band=-5)
 
+    @pytest.mark.parametrize("k, keys", [(0, {}), (2, {"n_init": 0}), (2, {"max_iter": 0})])
+    def test_a_bad_value_reads_alike_for_a_file_and_series_in_memory(self, tmp_path, k, keys):
+        """C++ checks the settings before any series is read, whatever the
+        input: a text file, which the run reads itself, and series in memory
+        are refused with the same words."""
+        csv = tmp_path / "two_groups.csv"
+        np.savetxt(csv, _two_groups(), delimiter=",")
+        with pytest.raises(dtwcpp.InvalidInput) as in_memory:
+            dtwcpp.cluster(_two_groups(), k=k, **keys)
+        with pytest.raises(dtwcpp.InvalidInput) as from_file:
+            dtwcpp.cluster(str(csv), k=k, **keys)
+        assert str(from_file.value) == str(in_memory.value)
+
     def test_invalid_device_still_fails_before_load(self, monkeypatch):
         from dtwcpp import _api
 

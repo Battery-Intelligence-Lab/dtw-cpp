@@ -436,20 +436,20 @@ def cluster(data, k, **keys):
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
                       k=k, n_series=len(labels), name=config.name or data.name)
 
-    # dtwc::run checks the settings before it reads the series. A path C++
-    # reads goes as the path, with the Dataset's reader options (its memory
+    # C++ checks every value before any series is read, as dtwc::run does, so
+    # that a bad one costs no read and reads the same for every input. A path
+    # C++ reads goes as the path, with the Dataset's reader options (its memory
     # plan may stream an Arrow IPC file); Parquet, which pyarrow reads, and
     # series in memory go as the Data, their skips applied (run refuses a
-    # reader option beside series in memory), C++ checking every value first
-    # as the run would, so that a bad one costs no read. The run is named as
-    # the Dataset is, else as dtwc_cl names it.
+    # reader option beside series in memory). The run is named as the Dataset
+    # is, else as dtwc_cl names it.
     config.device = eff
+    _dtwcpp_core.apply(config, _dtwcpp_core.Problem())
     if data.is_path and not _dtwcpp_core._parquet_files(os.fspath(data.source)):
         source = os.fspath(data.source)
         reader = {"skip_cols": data.skip_cols, "skip_rows": data.skip_rows,
                   "delimiter": data.delimiter or ""}
     else:
-        _dtwcpp_core.apply(config, _dtwcpp_core.Problem())
         source, reader = data.as_data(), {}
     config.name = config.name or data.name or _dtwcpp_core._default_name(
         source if isinstance(source, str) else "")

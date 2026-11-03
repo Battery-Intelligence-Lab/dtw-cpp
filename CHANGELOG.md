@@ -59,8 +59,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   plan among them; `ram_limit` is the plan's, so an explicit limit that cannot hold the run is `InvalidInput`, `auto` is
   `clara` where `pam`'s matrix does not fit it, and an Arrow IPC file beyond it streams through FastCLARA, whose
   `Result` holds no series (`score` and `distance_matrix` raise `InvalidInput`; `save` writes the labels and medoids, as
-  `dtwc_cl` does, and the report); a GPU request the device cannot compute is refused before the series are read; and
-  the `Result` carries the run report, `report` (`no_report=True` makes none), which `save` writes last.
+  `dtwc_cl` does, and the report); a GPU request the device cannot compute is refused before a text or Arrow IPC file
+  is read; and the `Result` carries the run report, `report` (`no_report=True` makes none), which `save` writes last.
 - Python: `device="hpc"` and `"hpc:gpu"` (beta) send a run to a SLURM cluster as one `job.toml`; the extras `parquet`,
   `hdf5`, `io`, `sklearn` and `mip`. highspy is installed with dtwcpp (the wheel links no HiGHS, so `method="mip"` and
   `lr_root="kelley"` run on it); the `mip` extra names the same highspy.
