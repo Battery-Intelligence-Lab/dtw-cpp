@@ -13,6 +13,7 @@
  */
 
 #include <dtwc.hpp>
+#include <cli/report.hpp>
 #include <cli/run.hpp>
 #include <config.hpp>
 
@@ -35,7 +36,6 @@ namespace {
 
 namespace fs = std::filesystem;
 using Catch::Matchers::ContainsSubstring;
-using Catch::Matchers::StartsWith;
 
 /// `n` series of 20 steps in three groups.
 dtwc::Data three_groups(std::size_t n)
@@ -176,6 +176,25 @@ TEST_CASE("A run that fails past its checks writes its report up to the failing 
   const auto rows = stage_rows(lines_of(text));
   REQUIRE(rows.size() >= 2);
   CHECK(rows[rows.size() - 2].first == "read"); // no row after the failing stage's, then the total
+}
+
+TEST_CASE("The report's command row double-quotes what the key table writes as a TOML literal, which cmd.exe would "
+          "hand on with its single quotes",
+          "[run][report]")
+{
+  dtwc::Config config;
+  // Never opened: command_of only spells the keys. The key table writes a string of over 100 characters with a
+  // backslash as '''...''' and a one-character string as 'x'.
+  const std::string long_path = "C:\\" + std::string(100, 'd') + "\\series.csv";
+  config.input = long_path;
+  config.name = "x";
+  config.k = 3;
+  const std::string command = dtwc::detail::command_of(config, dtwc::Method::PAM);
+  CHECK_THAT(command, ContainsSubstring(" --input \"" + long_path + "\""));
+  CHECK_THAT(command, ContainsSubstring(" --name \"x\""));
+  CHECK_THAT(command, ContainsSubstring(" --n-clusters 3"));
+  CHECK_THAT(command, ContainsSubstring(" --method \"pam\""));
+  CHECK_THAT(command, !ContainsSubstring("'"));
 }
 
 TEST_CASE("report = false: no report text and no report file, the results as ever", "[run][report]")

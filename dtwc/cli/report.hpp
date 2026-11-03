@@ -109,7 +109,8 @@ struct RunReport
 };
 
 /// The command line that repeats `config` with its method as `method`: dtwc_cl and every key whose value is not its
-/// default (to_config_text, the one key table), a flag as `--key`.
+/// default (to_config_text, the one key table), a flag as `--key`, a string in the double quotes that sh, cmd.exe and
+/// PowerShell read alike (where to_config_text writes a TOML literal in single quotes, it is requoted).
 std::string command_of(const Config &config, Method method);
 
 } // namespace dtwc::detail

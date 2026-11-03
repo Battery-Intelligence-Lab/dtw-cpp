@@ -418,7 +418,14 @@ std::string command_of(const Config &config, Method method)
     if (given[i] == defaults[i]) continue;
     const std::size_t equals = given[i].find(" = ");
     if (equals == std::string::npos) continue;
-    const std::string value = given[i].substr(equals + 3);
+    std::string value = given[i].substr(equals + 3);
+    // CLI11 writes a one-character string as 'c' and one of over 100 characters with a backslash (a long Windows path)
+    // as '''...''': TOML literals, whose single quotes cmd.exe hands on to dtwc_cl as part of the value. Double-quoted,
+    // the same value runs in cmd.exe, PowerShell and sh.
+    if (value.size() >= 3 && value.front() == '\'' && value.back() == '\'') {
+      const std::size_t quotes = value.size() >= 6 && value.compare(0, 3, "'''") == 0 ? 3 : 1;
+      value = '"' + value.substr(quotes, value.size() - 2 * quotes) + '"';
+    }
     command += " --" + given[i].substr(0, equals);
     if (value != "true") command += " " + value;
   }

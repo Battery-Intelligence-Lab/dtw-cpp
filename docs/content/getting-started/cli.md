@@ -357,7 +357,7 @@ The CLI writes the following files to the output directory:
 | `<name>_medoids.csv` | Cluster ID, medoid index, and medoid name |
 | `<name>_silhouettes.csv` | Point name, cluster, and silhouette score (only when a full distance matrix is materialised) |
 | `<name>_distance_matrix.csv` | Full pairwise distance matrix (only when materialised) |
-| `<name>_report.txt` | The run report, written last (none with `--no-report`): plain text in eight sections, the run (status, start and end, version and build, the resolved configuration, the command that repeats it), the machine (host, OS, CPU and cores, SIMD, RAM, a GPU run's GPU), the memory plan (budget, reserve, data cap, route, what the plan holds in RAM, the process's peak resident memory, mapped files included), the input, a table of the stages (`check`, `plan`, `read`, `storage`, `fill`, `cluster`, `write` and the silhouettes within it: wall seconds, share, CPU utilisation, peak memory), the algorithm (iterations, the stopping criterion), the result (cost, mean silhouette, cluster sizes, medoids) and notes. `dtwc_cl` prints its path as `Report:` |
+| `<name>_report.txt` | The run report, written last (none with `--no-report`): plain text in eight sections, the run (status, start and end, version and build, the resolved configuration, the command that repeats it, wrapped at 100 columns: join its lines), the machine (host, OS, CPU and cores, SIMD, RAM, a GPU run's GPU), the memory plan (budget, reserve, data cap, route, what the plan holds in RAM, the process's peak resident memory, mapped files included), the input, a table of the stages (`check`, `plan`, `read`, `storage`, `fill`, `cluster`, `write` and the silhouettes within it: wall seconds, share, CPU utilisation, peak memory), the algorithm (iterations, the stopping criterion), the result (cost, mean silhouette, cluster sizes, medoids) and notes. `dtwc_cl` prints its path as `Report:` |
 
 If an output file cannot be written in full (an unwritable directory, a full
 disk, a file-size quota), `dtwc_cl` exits 1 and names the file; a file named in
@@ -367,8 +367,8 @@ realised) is only a warning; `-k 1` writes no silhouettes file.
 A run that fails once its first checks have passed (in any stage but `check`) writes
 `<name>_report.txt` up to the failing stage, its status `FAILED in stage <stage>: <error type>`
 and the error in its notes, then exits 1 with the same `Error:` line as without a report;
-a failure in `check` (a missing `-k`, a `--checkpoint` that is no directory) creates
-nothing. The stage table's times and the machine's facts differ from run to run: the
+a failure in `check` (a missing `-k`, a `--checkpoint` that is no directory) writes
+no report. The stage table's times and the machine's facts differ from run to run: the
 report is the run's own account, and no other file holds them. On SLURM,
 `slurm_remote.sh download` brings back the whole `results/` directory, reports
 included; a Python `device="hpc"` job's (`download-cluster`) brings back its labels only.
