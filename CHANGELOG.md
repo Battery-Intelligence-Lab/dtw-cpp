@@ -85,9 +85,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - Scores: Davies–Bouldin, Dunn, inertia and Calinski–Harabasz beside the silhouette (`Result::score(name)`), and the
   adjusted Rand index and normalised mutual information of two labellings.
 - GPUs: CUDA (compute capability 8.0 or newer, `-DDTWC_ENABLE_CUDA=ON`) and Metal (Apple silicon, built by default on
-  macOS) fill the matrix of Standard DTW on univariate series and FastCLARA's samples (`--device gpu`); series a
-  `Data` views (an Arrow IPC file read in place or decoded, `set_view_data`) are uploaded as an owned Float64 copy,
-  which `dtwc_cl`'s memory plan prices with the GPU's staging buffer.
+  macOS) fill the matrix of Standard DTW on univariate series and FastCLARA's samples (`--device gpu`); series that a
+  `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) are uploaded as an owned Float64
+  copy, which `dtwc_cl`'s memory plan prices with the GPU's staging buffer.
 - Input: Arrow IPC, the file and the stream format, in every build and language, read by the vendored nanoarrow
   without Arrow C++ or pyarrow, and in place: the file is mapped (without llfio, read once into memory) and each
   series is a view of it (C++ `Data::series(i)` and `name(i)` read it, its `p_vec` and `p_names` are empty; Python's

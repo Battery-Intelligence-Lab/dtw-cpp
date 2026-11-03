@@ -55,10 +55,10 @@ The GPU kernels compute Standard DTW on univariate Float64 series held in RAM,
 in L1 or squared L2, with no missing-data strategy; anything else on a GPU raises
 a device error that names the setting and its value (`variant = WDTW`,
 `missing_strategy = ZeroCost`, `ndim = 3`, `precision = Float32`, owned or a
-view). Float64 series a `Data` views (an Arrow IPC file read in place, a decoded
-record batch, `set_view_data`) are checked where they lie and uploaded as an
-owned copy, freed when the fill or the assignment returns; `dtwc_cl`'s memory
-plan (`--ram-limit`) prices that copy and the GPU's staging buffer. Metal also
+view). Float64 series that a `Data` only views (an Arrow IPC file read in place,
+a decoded record batch, `set_view_data`) are checked where they lie and uploaded
+as an owned copy, freed when the fill or the assignment returns; `dtwc_cl`'s
+memory plan (`--ram-limit`) prices that copy and the GPU's staging buffer. Metal also
 rejects precision FP64 (its kernels are FP32);
 `set_device` already refused a GPU index other than 0 there (Metal runs on the
 system default GPU). On every device, a

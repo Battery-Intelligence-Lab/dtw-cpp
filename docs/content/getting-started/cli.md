@@ -229,13 +229,16 @@ load on the threads that fit. An explicit `--ram-limit` is fail-closed:
 
 The data cap covers what the streamed run holds: library metadata and fixed
 process overhead (the code, thread stacks, the allocators' first pages) are
-outside it. An Arrow IPC file streams as Parquet does where RAM would hold its
+outside it, and so is a GPU runtime's own host memory (the resident peak of a
+CUDA run rose by about 90 MiB when the runtime started: CUDA 13.0, one run,
+2026-11-03). An Arrow IPC file streams as Parquet does where RAM would hold its
 series outside the page cache (decoded, read without LLFIO, or in the other
 `--dtype`): FastCLARA reads it a record batch at a time; a mapped file's values are
 not streamed. With `--device gpu` the plan prices the GPU's staging buffer for
-every input (the series padded to the longest, 8 bytes a value unless
-`--gpu-precision fp32`) and, for an Arrow IPC file, whose series are views of it,
-the owned copy the GPU uploads of them. Other inputs (CSV/TSV, a CSV directory) are
+every input (CUDA: the series padded to the longest, 8 bytes a value, 4 under
+`--gpu-precision fp32`; Metal: the series and the matrix as floats) and, for an
+Arrow IPC file, whose series are views of it, the owned copy the GPU uploads of
+them. Other inputs (CSV/TSV, a CSV directory) are
 always read whole; the plan then sets the threads and where the distance matrix is
 held. A run gives its threads' scratch back, CUDA's staging and device buffers
 among it, as it starts and when it ends.
