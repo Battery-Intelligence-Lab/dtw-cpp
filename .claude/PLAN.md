@@ -63,7 +63,8 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     the CPU kernel and algorithm sources back to 819e8703's text (the KS5 loops by removal), "Release on return" kept.
     Plan `C:/D/git/wt/tmp/MM/rb_plan.md` (11-02, reviewed): ☑ RB1 restore the kernel sources + closed-list release
     (a6c1ab2f, 11-02; G6 absent for loop classes (a)-(c), class (d) the wheel's Soft-DTW gradient present, see the handoff),
-    ☐ RB2 the plan (budget, reserve, one loading decision, `auto` guard), ☐ RB3 the `bad_alloc` boundary.
+    ◐ RB2 the plan (budget, reserve, one loading decision, `auto` guard; f9e731f9, 11-03, its review running), ☐ RB3 the
+    `bad_alloc` boundary.
   - ☐ RR the end-of-run plain-text report in `Result` (same spec; Volkan 11-02: "Nice log in plain text at the end");
     planned (`rr_plan.md`), after RB3.
     S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
