@@ -201,7 +201,7 @@ Append new entries at the end of their section; keep each to a few lines.
   rpath and the `-march` it was built with. *`baselines/2026-09-22-x29-release-archive-not-portable.md`*
 - **`install_name_tool` re-signs an executable but not a dylib,** and an invalid signature on Apple Silicon is
   a silent SIGKILL (exit 137). Change only the client's load command (`-change` on the executable).
-- **Never include `<windows.h>` in a header reachable from `dtwc.hpp`.**
+- **Windows headers collide with llfio's inline variables.** None in a header reachable from `dtwc.hpp`; `<psapi.h>` after llfio in a `.cpp` (`GetPerformanceInfo` → K32 macro: ODR, null call; RB3 11-03).
 
 ## Python
 

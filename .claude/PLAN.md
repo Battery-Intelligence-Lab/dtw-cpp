@@ -64,7 +64,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     Plan `C:/D/git/wt/tmp/MM/rb_plan.md` (11-02, reviewed): ☑ RB1 restore the kernel sources + closed-list release
     (a6c1ab2f, 11-02; G6 absent for loop classes (a)-(c), class (d) the wheel's Soft-DTW gradient present, see the handoff),
     ☑ RB2 the plan (budget, reserve, one loading decision, `auto` guard; f9e731f9, 11-03, with its review's fixes 014123c4),
-    ◐ RB3 the `bad_alloc` boundary (brief `brief_rb3.md`, in flight).
+    ◐ RB3 the `bad_alloc` boundary (92c04967, 11-03: verified by me, two fresh reviewers running; a fix commit follows:
+    a reader's `bad_alloc` is still an `IOError` naming the file, and the "ways out" text names `--dtype` where
+    `--matrix-dtype` is what frees a matrix).
   - ☐ RR the end-of-run plain-text report in `Result` (same spec; Volkan 11-02: "Nice log in plain text at the end");
     planned (`rr_plan.md`), after RB3.
     S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
