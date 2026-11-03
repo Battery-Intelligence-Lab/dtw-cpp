@@ -53,3 +53,4 @@ lr-root = "subgradient"
 device = "cpu"
 gpu-precision = "auto"
 verbose = false
+no-report = false

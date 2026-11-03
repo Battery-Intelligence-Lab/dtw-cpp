@@ -162,7 +162,9 @@ C++ `cluster()` takes `k` and four settings. Any other goes through
 fill: its fields follow the long options (`k` is `--n-clusters`, `tadpole_dc` is
 `--dc`), and each starts at `dtwc_cl`'s default. `dtwc::run(config)` reads `config.input`; `dtwc::run(config, data)`
 clusters series already in memory. Both write the result files into
-`config.output` (`./results` unless cleared). From `examples/cpp/tier1.cpp`:
+`config.output` (`./results` unless cleared), and the run report last
+(`<name>_report.txt`; `config.report = false`, `dtwc_cl --no-report`, makes none).
+From `examples/cpp/tier1.cpp`:
 
 ```cpp
 dtwc::Config config;   // every setting starts at dtwc_cl's default
@@ -185,6 +187,7 @@ const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std
 | a quality score | `score(name)` | `score(name)` | `score(name)` |
 | the N×N distances | `distance_matrix()`, row-major | `distance_matrix` | `distance_matrix()` |
 | write the result files | `save(dir)` | `save(dir)` | `save(dir)` |
+| the run report | `report()`: the text of `<name>_report.txt` | (not before `cluster()` runs through `dtwc::run`) | (not before `cluster()` runs through `dtwc::run`) |
 | plot | (plot the files `save` writes) | `plot(png="clusters_2d.png", show=True)` | `plot()` |
 | run details | `method()` (`auto` resolved), `iterations()`, `converged()` | `summary()`, `elapsed_s`, `k`, `n_series`, `name` | |
 
@@ -201,7 +204,11 @@ time they need it. Under `matrix_dtype` float32, `distance_matrix` is a NumPy
 into `dir` (created if missing): `<name>_labels.csv` (`name,cluster`), `<name>_medoids.csv`
 (`cluster,medoid_index,medoid_name`), `<name>_distance_matrix.csv` and
 `<name>_silhouettes.csv` (`name,cluster,silhouette`), with the series' names
-from the input. `save` fills the matrix first, where `dtwc_cl` writes the
+from the input. C++ `save` then writes the run report, last, as `<name>_report.txt`
+(the run's own: its times and machine; a run without an output directory, as
+`cluster()` is, reports its silhouettes not computed though `save` computes them;
+a `save` that fails before it writes none). Python's and MATLAB's `save` write the
+four result files only (2026-11-03: their `cluster()` does not run through `dtwc::run`). `save` fills the matrix first, where `dtwc_cl` writes the
 matrix and silhouette files only when the method filled it (not after
 `onebatch`, `tadpole` or a sampled `clara`). With one cluster there is no
 silhouette file; when fewer than two clusters are non-empty, `save` prints a

@@ -874,6 +874,9 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
 
   const auto out = tmpdir() / "streamed_save";
   REQUIRE_THROWS_AS(result.save(out), dtwc::InvalidInput);
+  // The run report is save()'s last file: a save that throws before it writes none.
+  CHECK_FALSE(result.report().empty());
+  CHECK_FALSE(std::filesystem::exists(out / "streamed_report.txt"));
 
   const auto lines = [&](const char *file) {
     std::ifstream in(out / file);

@@ -81,6 +81,8 @@ struct Config
   std::string output = "./results";      ///< `--output` ("" = write nothing)
   std::string name;                      ///< `--name` ("" = the input's file or folder name)
   bool verbose = false;                  ///< `--verbose`
+  /// `--no-report` makes it false: no run report, neither Result::report()'s text nor `<name>_report.txt`.
+  bool report = true;
 };
 
 /// `device` as to_config_text() writes it and detail::parse_device() reads it

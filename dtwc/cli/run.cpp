@@ -12,6 +12,7 @@
  */
 
 #include "run.hpp"
+#include "report.hpp"
 
 #include "../Problem.hpp"
 #include "../algorithms/detail/fast_clara_plan.hpp"
@@ -22,8 +23,10 @@
 #include "../base/timing.hpp"
 #include "../checkpoint.hpp"
 #include "../core/dtw_kernel.hpp" // dtw_lanes
+#include "../core/machine.hpp"    // cpu_seconds
 #include "../core/matrix_io.hpp"
 #include "../core/thread_scratch.hpp"
+#include "../detail/result_files.hpp" // WriteTimes
 #include "../fileOperations.hpp"
 #include "../io/arrow_ipc.hpp"
 #include "../io/read_data.hpp"
@@ -219,6 +222,12 @@ struct MemoryPlan
 
   std::size_t reserve() const { return working_set(per_thread, threads); }
   std::size_t data_cap() const { return budget > reserve() ? budget - reserve() : 0; }
+  /// The route, as text() and the run report name it.
+  const char *route_name() const
+  {
+    const char *const routes[] = { "in RAM", "streamed", "refused" };
+    return route == Route::InRam && mapped ? "in RAM, the distance matrix mapped" : routes[static_cast<int>(route)];
+  }
 
   /// The plan, one line: what -v prints after "Memory plan: ", and a run out of memory names.
   std::string text() const
@@ -226,26 +235,33 @@ struct MemoryPlan
     if (budget == 0)
       return "no budget (no --ram-limit, and what the process may use is unknown): in RAM on "
              + std::to_string(requested) + " threads";
-    const char *const routes[] = { "in RAM", "streamed", "refused" };
     return "budget " + std::to_string(budget) + " bytes, reserve " + std::to_string(reserve()) + " bytes ("
            + std::to_string(threads) + " of " + std::to_string(requested) + " threads, " + std::to_string(per_thread)
            + " bytes each for series of up to " + std::to_string(length) + " time steps), data cap "
-           + std::to_string(data_cap()) + " bytes: "
-           + (route == Route::InRam && mapped ? "in RAM, the distance matrix mapped"
-                                              : routes[static_cast<int>(route)]);
+           + std::to_string(data_cap()) + " bytes: " + route_name();
   }
 };
 
-/// Where a run is, which a run that runs out of memory names (out_of_memory): the stage, the input's format and the
-/// memory plan once made. The stages, in order: `check` (the checks that need no series, and apply), `plan` (the
-/// input's plan from Parquet metadata or an Arrow IPC file's walk), `read` (the series loaded, and planned where nothing
-/// did before: a text file's once read), `storage` (the distance matrix's storage, a --dist-matrix or a checkpoint
-/// read), `cluster` and `write`.
+/// Where a run is, which a run that runs out of memory names (out_of_memory) and its report times: the stage, the
+/// input's format, the memory plan once made and the report's figures (unless --no-report). The stages, in order:
+/// `check` (the checks that need no series, and apply), `plan` (the input's plan from Parquet metadata or an Arrow IPC
+/// file's walk), `read` (the series loaded, and planned where nothing did before: a text file's once read), `storage`
+/// (the distance matrix's storage, a --dist-matrix or a checkpoint read), `fill` (the distance matrix, where the method
+/// fills it before anything else: PAM, Lloyd's k-medoids, FastCLARA on a sample of every series), `cluster` and
+/// `write`.
 struct RunStage
 {
   const char *stage = "check";
   std::optional<InputFormat> format; ///< empty: the series are in memory
   std::optional<MemoryPlan> plan;
+  std::optional<detail::RunReport> report;
+
+  /// Enter stage `name`; the report closes the stage before it, on the plan's threads, and opens `name`'s row.
+  void begin(const char *name)
+  {
+    stage = name;
+    if (report) report->begin(name, plan ? plan->threads : 0);
+  }
 };
 
 /// The memory plan of a run on `facts` within `budget` (0: none, as without llfio; `explicit_limit`: --ram-limit set),
@@ -357,14 +373,21 @@ struct Outcome
   core::ClusteringResult result;
   Method method;
   std::vector<std::string> streamed_names; ///< a RAM-limited run's series names, which its Problem cannot hold
+  std::string report;                      ///< the run report's text; empty under --no-report
 };
 
+/// What the run report calls an input's format.
+const char *format_name(std::optional<InputFormat> format)
+{
+  if (!format) return "in memory";
+  return *format == InputFormat::Parquet ? "Parquet" : *format == InputFormat::ArrowIPC ? "Arrow IPC" : "text";
+}
+
 /// The run itself; `data` holds in-memory series, else config.input is read. `stage` follows it: the stage it is in,
-/// and its memory plan once made.
+/// its memory plan once made, and the report's figures.
 Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
 {
-  // ---- 1. Every check that needs no series, before any file is touched ----
-  stage.stage = "check";
+  // ---- 1. Every check that needs no series, before any file is touched (stage check, run_with's) ----
   if (!data && config.input.empty())
     throw InvalidInput("--input is required via CLI or config file (TOML or YAML)");
   if (config.k == 0) throw InvalidInput("-k/--n-clusters, the number of clusters, is required.");
@@ -378,8 +401,7 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
   if (config.not_computed != core::NotComputed::NaN && config.dist_matrix.empty())
     throw InvalidInput("--not-computed says how a --dist-matrix file marks a pair, and requires --dist-matrix <path>.");
 
-  auto problem =
-    std::make_shared<Problem>(config.name.empty() ? detail::default_name(utf8_to_path(config.input)) : config.name);
+  auto problem = std::make_shared<Problem>(run_name(config));
   Problem &prob = *problem;
   apply(config, prob);
   validate_gpu_request("run", prob, config.dtype);
@@ -417,7 +439,7 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
   }
 
   // ---- 2. The method and, from Parquet metadata when it has them, N ----
-  stage.stage = "plan";
+  stage.begin("plan");
   const Clock clk;
   Method method = config.method;
   bool stream_payload = false;
@@ -529,8 +551,20 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     memory = plan_memory(facts, budget, config.ram_limit != 0,
                          thread_bytes(prob, config, resolved, full, n_series, length, ndim, precision), requested);
     if (config.verbose) std::cout << "Memory plan: " << memory->text() << "\n";
+    if (stage.report)
+      stage.report->plan = detail::RunReport::Plan{ memory->budget,   memory->reserve(), memory->data_cap(),
+                                                    memory->held,     memory->per_thread, memory->length,
+                                                    memory->threads,  memory->requested, memory->route_name() };
     if (memory->route != Route::Refused) team.emplace(memory->threads);
     return *memory;
+  };
+  // The series as the report gives them: `values` values of `ndim` features, `bytes` of them in RAM, of `shortest`
+  // to `longest` time steps (0: not known, a stream's).
+  const auto report_input = [&](std::size_t series, std::size_t values, std::size_t ndim, std::size_t bytes,
+                                std::size_t shortest, std::size_t longest, bool streamed) {
+    if (stage.report)
+      stage.report->input =
+        detail::RunReport::Input{ format_name(format), series, values, ndim, bytes, shortest, longest, streamed };
   };
 
 #ifdef DTWC_HAS_PARQUET
@@ -593,6 +627,8 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     }
     plan_clara();
     if (stream_payload) check_stream("Parquet", "Parquet metadata", resident);
+    if (stage.report) stage.report->stages.back().note = "Parquet metadata";
+    if (stream_payload) report_input(n_series, values, 1, 0, 0, 0, true);
   }
 #endif
 
@@ -667,11 +703,14 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
                          + std::to_string(config.ram_limit) + "; " + why);
     }
     if (planned.route == Route::Refused) throw InvalidInput(planned.refusal);
+    if (stage.report) stage.report->stages.back().note = "Arrow IPC walk";
+    if (stream_payload) report_input(n_series, ipc->num_values(), ipc->ndim(), 0, 0, 0, true);
     if (!stream_payload) ipc.reset(); // read below as every Arrow IPC file is read
   }
 
   // ---- 3. Load the series into RAM ----
-  stage.stage = "read";
+  stage.begin("read");
+  if (stream_payload && stage.report) stage.report->stages.back().note = "none: FastCLARA streams them, inside cluster";
   if (!stream_payload) {
     Data series = data ? std::move(*data) : read_input(input, format.value_or(InputFormat::Text), config);
     if (config.verbose) {
@@ -686,12 +725,15 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
       series = convert_to_f32(series);
       if (config.verbose) std::cout << "Converted to float32 (2x memory saving)\n";
     }
-    std::size_t elements = 0, longest = 0;
+    std::size_t elements = 0, longest = 0, shortest = series.size() > 0 ? SIZE_MAX : 0;
     for (std::size_t i = 0; i < series.size(); ++i) {
       elements += series.series_flat_size(i);
       longest = std::max(longest, series.series_flat_size(i) / series.ndim);
+      shortest = std::min(shortest, series.series_flat_size(i) / series.ndim);
     }
     const std::size_t value_bytes = elements * (series.is_f32() ? sizeof(float) : sizeof(data_t));
+    report_input(static_cast<std::size_t>(series.size()), elements, series.ndim, value_bytes, shortest, longest, false);
+    if (stage.report) stage.report->stages.back().note = std::to_string(series.size()) + " series";
     if (config.verbose && series.size() > 0)
       std::cout << "  Data memory: ~" << (value_bytes / (1ULL << 20)) << " MB (" << series.size() << " series, "
                 << (elements / series.size()) << " avg length, " << name_of(core::precision_names, series.precision)
@@ -719,12 +761,13 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     std::cout << "Auto-selected method: " << method_name(method) << " (N=" << n_series << ")\n";
   plan_clara();
   prob.set_method(method);
+  if (stage.report) stage.report->method = method;
 
   // ---- 4. Distance storage, once every distance setting is in place ----
   // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
   // the checkpoint, else in the output directory; a run that writes nothing
   // keeps its matrix in RAM.
-  stage.stage = "storage";
+  stage.begin("storage");
   std::optional<fs::path> cache;
   if (!config.output.empty()) {
     const auto path = checkpoint_path(prob, config.checkpoint.empty() ? config.output : config.checkpoint);
@@ -750,18 +793,46 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     prob.checkpoint.save_interval = config.checkpoint_interval;
     prob.checkpoint.enabled = true;
   }
+  bool resumed = false;
   if (!config.checkpoint.empty() && !cache) { // a mapped matrix is its own checkpoint
-    const bool resumed = load_checkpoint(prob, config.checkpoint); // false: no file, start fresh
+    resumed = load_checkpoint(prob, config.checkpoint); // false: no file, start fresh
     if (config.verbose)
       std::cout << (resumed ? "Resumed from checkpoint: " + config.checkpoint + "\n"
                             : "No checkpoint in " + config.checkpoint + ", starting fresh.\n");
   }
+  if (stage.report) {
+    std::string note = stream_payload || !holds_matrix(method, clara_uses_full_sample)
+                         ? std::string("no distance matrix of every series")
+                       : cache ? "the distance matrix mapped, " + path_to_utf8(cache->filename())
+                               : std::string("the distance matrix in RAM");
+    if (!config.dist_matrix.empty()) note += "; --dist-matrix read";
+    if (resumed) note += "; the checkpoint resumed";
+    stage.report->stages.back().note = std::move(note);
+  }
 
-  // ---- 5. Cluster; the matrix methods fill through the Problem, on its device ----
+  // ---- 5. Fill, then cluster; the matrix methods fill through the Problem, on its device ----
+  // PAM, Lloyd's k-medoids and FastCLARA on a sample of every series fill the whole distance matrix before anything
+  // else, past checks this run made already (k, max-iter, n-init, CLARA's plan), so the fill is a stage of its own;
+  // the idempotent fill leaves their clustering nothing to compute. Every other method refuses what it cannot run
+  // before its own fill (the hierarchical clustering above its size, a MIP without its solver, LR-core's Kelley root
+  // without HiGHS), or fills nothing whole: its distances are computed inside the cluster stage.
   // A RAM-limited Parquet or Arrow IPC run is the one whose series the Problem does
   // not hold: FastCLARA streams them.
-  stage.stage = "cluster";
+  const bool fills_first = !stream_payload && (method == Method::PAM || method == Method::Kmedoids
+                                               || (method == Method::CLARA && clara_uses_full_sample));
+  stage.begin(fills_first ? "fill" : "cluster");
   if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
+  if (fills_first) {
+    if (stage.report)
+      stage.report->stages.back().note =
+        prob.is_distance_matrix_filled() ? "complete on entry"
+                                         : std::to_string(n_series) + " series' matrix on " + device_text(config);
+    prob.fill_distance_matrix();
+    stage.begin("cluster");
+  }
+  if (stage.report)
+    stage.report->stages.back().note =
+      std::string(progress_label(method)) + (fills_first ? "" : ", any distances it computes inside");
   std::vector<std::string> streamed_names;
   core::ClusteringResult result;
   try {
@@ -804,12 +875,25 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
       std::cout << " finished";
     std::cout << ", cost=" << std::setprecision(6) << result.total_cost << " [" << clk << "]\n";
   }
+  if (stage.report) {
+    detail::RunReport::Clustering clustering{ method, progress_label(method), result.total_cost, result.iterations,
+                                              result.converged, std::vector<std::size_t>(result.medoid_indices.size()),
+                                              result.medoid_indices };
+    for (const index_t label : result.labels)
+      if (label >= 0 && static_cast<std::size_t>(label) < clustering.sizes.size())
+        ++clustering.sizes[static_cast<std::size_t>(label)];
+    stage.report->clustering = std::move(clustering);
+  }
 
   // ---- 6. Checkpoints first, then the outputs ----
   // Before the results, so a result write that
   // fails cannot lose the distance matrix. A save that fails is kept and raised
   // once the results are on disk, so it cannot lose them either: what to do, and its cause.
-  stage.stage = "write";
+  stage.begin("write");
+  if (stage.report)
+    stage.report->stages.back().note =
+      std::string(config.checkpoint.empty() ? "" : "the checkpoint, then ")
+      + (config.output.empty() ? std::string("no result files (no -o)") : "the result files");
   std::optional<std::string> checkpoint_failure;
   if (!config.checkpoint.empty()) {
     try {
@@ -823,13 +907,39 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     }
   }
 
-  if (!config.output.empty())
-    detail::write_result_files(prob, output, false, config.verbose ? &std::cout : nullptr, streamed_names);
+  if (!config.output.empty()) {
+    detail::WriteTimes times;
+    times.cpu_clock = &core::cpu_seconds;
+    detail::write_result_files(prob, output, false, config.verbose ? &std::cout : nullptr, streamed_names,
+                               stage.report ? &times : nullptr);
+    if (stage.report)
+      stage.report->silhouettes = detail::RunReport::Silhouettes{ times.silhouette_wall, times.silhouette_cpu,
+                                                                  times.mean_silhouette, times.skipped };
+  }
   if (checkpoint_failure)
     throw IOError("--checkpoint '" + config.checkpoint + "': the distance checkpoint cannot be saved (the results are "
                   "written to '" + config.output + "'); " + *checkpoint_failure);
 
-  return { std::move(problem), std::move(result), method, std::move(streamed_names) };
+  return { std::move(problem), std::move(result), method, std::move(streamed_names), {} };
+}
+
+/// The name a failed run's report gives its error: its type in base/error.hpp.
+const char *kind_of(const std::exception &error)
+{
+  if (dynamic_cast<const UndefinedScore *>(&error)) return "UndefinedScore";
+  if (dynamic_cast<const InvalidInput *>(&error)) return "InvalidInput";
+  if (dynamic_cast<const SolverError *>(&error)) return "SolverError";
+  if (dynamic_cast<const DeviceError *>(&error)) return "DeviceError";
+  if (dynamic_cast<const IOError *>(&error)) return "IOError";
+  return "std::exception";
+}
+
+void write_report(const Config &config, const std::string &text)
+{
+  const fs::path path = report_path(config);
+  auto out = open_output(path);
+  out << text;
+  close_output(out, path);
 }
 
 /// The ways out a run out of memory names, each only where it holds less in this run. Once the method's terms are
@@ -908,6 +1018,43 @@ InvalidInput out_of_memory(const RunStage &stage, const Config &config)
                       + ways_out(stage, config) + ".");
 }
 
+/// A run of `config` on `data` (else config.input), its report rendered and, with an output directory, written last.
+/// Every thread's scratch is given back as the run starts, returns or throws (ScratchRelease). A std::bad_alloc is
+/// caught outside it and outside execute, whose Problem, series and TeamCap are gone by then, and becomes
+/// out_of_memory's InvalidInput. A run that fails past its checks writes its report up to the failing stage, with the
+/// error, and throws its own exception on: a report that cannot be made or written is dropped, never the error.
+Outcome run_with(const Config &config, std::optional<Data> data)
+{
+  RunStage stage;
+  try {
+    try {
+      if (config.report) stage.report.emplace(config);
+      stage.begin("check"); // the scratch given back first, the checks then
+      const core::ScratchRelease release;
+      Outcome outcome = execute(config, std::move(data), stage);
+      if (stage.report) {
+        stage.report->close(stage.plan ? stage.plan->threads : 0);
+        outcome.report = stage.report->render();
+        if (!config.output.empty()) write_report(config, outcome.report);
+      }
+      return outcome;
+    } catch (const std::bad_alloc &) {
+      throw out_of_memory(stage, config);
+    }
+  } catch (const std::exception &error) {
+    if (stage.report && !config.output.empty() && std::string_view(stage.stage) != "check") {
+      try {
+        stage.report->close(stage.plan ? stage.plan->threads : 0);
+        stage.report->error_kind = kind_of(error);
+        stage.report->error_text = error.what();
+        write_report(config, stage.report->render());
+      } catch (...) { // the run's own error is what it throws
+      }
+    }
+    throw;
+  }
+}
+
 } // namespace
 
 detail::ParquetPlan detail::plan_parquet_load(Method method, Device device, std::size_t series_count,
@@ -948,32 +1095,28 @@ std::size_t core::memory_budget(std::size_t ram_limit)
   return ram_limit != 0 ? ram_limit : available_memory() / 10 * 9;
 }
 
-// Every thread's scratch is given back as a run starts, returns or throws (ScratchRelease). A std::bad_alloc is caught
-// outside it and outside execute, whose Problem, series and TeamCap are gone by then; every other exception passes.
+std::string run_name(const Config &config)
+{
+  return config.name.empty() ? detail::default_name(utf8_to_path(config.input)) : config.name;
+}
+
+fs::path report_path(const Config &config)
+{
+  return utf8_to_path(config.output) / utf8_to_path(run_name(config) + "_report.txt");
+}
+
 Result run(const Config &config)
 {
-  RunStage stage;
-  try {
-    const core::ScratchRelease release;
-    auto [problem, result, method, streamed_names] = execute(config, std::nullopt, stage);
-    return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
-                  result.converged, std::move(streamed_names));
-  } catch (const std::bad_alloc &) {
-    throw out_of_memory(stage, config);
-  }
+  auto [problem, result, method, streamed_names, report] = run_with(config, std::nullopt);
+  return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
+                result.converged, std::move(streamed_names), std::move(report));
 }
 
 Result run(const Config &config, Data data)
 {
-  RunStage stage;
-  try {
-    const core::ScratchRelease release;
-    auto [problem, result, method, streamed_names] = execute(config, std::move(data), stage);
-    return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
-                  result.converged, std::move(streamed_names));
-  } catch (const std::bad_alloc &) {
-    throw out_of_memory(stage, config);
-  }
+  auto [problem, result, method, streamed_names, report] = run_with(config, std::move(data));
+  return Result(std::move(problem), result.total_cost, device_text(config), method, result.iterations,
+                result.converged, std::move(streamed_names), std::move(report));
 }
 
 } // namespace dtwc

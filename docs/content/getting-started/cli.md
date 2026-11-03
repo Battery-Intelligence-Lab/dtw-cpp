@@ -51,7 +51,8 @@ two agree on every default, check and method choice.
 | `-o, --output <path>` | Output directory (`""` writes no file) | `./results` |
 | `--name <string>` | Problem name (used in output filenames) | the input's file or folder name |
 | `-k, --n-clusters <int>` | Number of clusters (required) | — |
-| `-v, --verbose` | Verbose output. Its header gives the settings and the machine: host, OS, CPU and its cores, the SIMD extensions of the CPU and of the build, RAM, a GPU run's GPU, the compiler and the optional libraries built in; a fact the build or the system cannot tell reads `unknown` (the CPU's without cpuinfo, `-DDTWC_ENABLE_CPUINFO=OFF`; the RAM's without llfio) | off |
+| `-v, --verbose` | Verbose output. Its header gives the settings and the machine: host, OS, CPU and its cores, the SIMD extensions of the CPU and of the build, RAM, a GPU run's GPU, the compiler and the core library's optional libraries (`dtwc_core`'s: OpenMP, llfio, cpuinfo, HiGHS, Gurobi, CUDA, Metal; the run report adds Arrow and YAML where `dtwc_cl` has them); a fact the build or the system cannot tell reads `unknown` (the CPU's without cpuinfo, `-DDTWC_ENABLE_CPUINFO=OFF`; the RAM's without llfio) | off |
+| `--no-report` | Write no run report (`<name>_report.txt`, below) and print no `Report:` line | off (a report is written) |
 | `--column <name>` | The Parquet scalar/list Float32 or Float64 column to read. If omitted, the first eligible top-level column decides: a list or several scalar columns are one series per row, the only scalar column one series ([Supported data](../supported-data/)) | — |
 | `--dtype <string>` | The precision the series are stored in: `float32` halves their memory, each value read as a double and rounded, with no double copy held. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
 | `--matrix-dtype <string>` | The distance matrix's value type: `float32` halves its memory (N = 100,000: 20 GB, not 40), each distance rounded once to the nearest float, so costs and scores move by about 6e-8 of themselves and medoids and labels can change; a distance beyond float32's range (3.4e38) stops the run. Independent of `--dtype`; value aliases as `--dtype`'s | `float64` |
@@ -172,7 +173,9 @@ the series and the matrix go into RAM on every thread.
 
 A run whose memory the system refuses all the same (Windows past its commit
 limit, Linux under `ulimit -v` or strict overcommit) stops with an error naming
-the stage it was in (`check`, `plan`, `read`, `storage`, `cluster` or `write`),
+the stage it was in (`check`, `plan`, `read`, `storage`, `fill`, `cluster` or `write`;
+`pam`, `kmedoids` and a `clara` that samples every series fill the distance matrix
+in `fill`, every other method inside `cluster`),
 its memory plan and what the plan holds in RAM, the process's peak resident
 memory (mapped files' pages included) and the ways out that hold less in that
 run, once it has given its memory back. The plan is "none yet" until it is
@@ -184,7 +187,7 @@ the same way, but for one inside LZ4 decompression, which stays an `IOError`
 Linux's default overcommit a run over a cgroup's limit (a SLURM job's memory)
 gets no message: the kernel's OOM killer ends it. Where the system refuses
 memory on a thread's stack or in the process's start-up, the process ends
-without a report (Windows 0xC0000409 or 0xC00000FD; Linux, at start-up,
+without its error or a run report (Windows 0xC0000409 or 0xC00000FD; Linux, at start-up,
 libgomp's own message).
 
 ### RAM-limited Parquet FastCLARA
@@ -354,11 +357,21 @@ The CLI writes the following files to the output directory:
 | `<name>_medoids.csv` | Cluster ID, medoid index, and medoid name |
 | `<name>_silhouettes.csv` | Point name, cluster, and silhouette score (only when a full distance matrix is materialised) |
 | `<name>_distance_matrix.csv` | Full pairwise distance matrix (only when materialised) |
+| `<name>_report.txt` | The run report, written last (none with `--no-report`): plain text in eight sections, the run (status, start and end, version and build, the resolved configuration, the command that repeats it), the machine (host, OS, CPU and cores, SIMD, RAM, a GPU run's GPU), the memory plan (budget, reserve, data cap, route, what the plan holds in RAM, the process's peak resident memory, mapped files included), the input, a table of the stages (`check`, `plan`, `read`, `storage`, `fill`, `cluster`, `write` and the silhouettes within it: wall seconds, share, CPU utilisation, peak memory), the algorithm (iterations, the stopping criterion), the result (cost, mean silhouette, cluster sizes, medoids) and notes. `dtwc_cl` prints its path as `Report:` |
 
 If an output file cannot be written in full (an unwritable directory, a full
 disk, a file-size quota), `dtwc_cl` exits 1 and names the file; a file named in
 that message is incomplete. A silhouette that is undefined (fewer than two clusters
 realised) is only a warning; `-k 1` writes no silhouettes file.
+
+A run that fails once its first checks have passed (in any stage but `check`) writes
+`<name>_report.txt` up to the failing stage, its status `FAILED in stage <stage>: <error type>`
+and the error in its notes, then exits 1 with the same `Error:` line as without a report;
+a failure in `check` (a missing `-k`, a `--checkpoint` that is no directory) creates
+nothing. The stage table's times and the machine's facts differ from run to run: the
+report is the run's own account, and no other file holds them. On SLURM,
+`slurm_remote.sh download` brings back the whole `results/` directory, reports
+included; a Python `device="hpc"` job's (`download-cluster`) brings back its labels only.
 
 RAM-limited Parquet streaming writes labels and medoids, but deliberately does
 not materialise the dense matrix merely to produce distance or silhouette CSVs.

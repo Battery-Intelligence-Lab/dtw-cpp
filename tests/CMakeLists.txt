@@ -287,8 +287,20 @@ if(TARGET dtwc_cl)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 120)
 endif()
 
+# The run report on the real binary: a file of its own, named on stdout, the four result files the same bytes
+# without it (--no-report).
+if(TARGET dtwc_cl)
+    dtwc_add_script_test(NAME test_cli_report
+        SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_report.cmake"
+        ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>"
+             "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
+             "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-report"
+        MARKER "CLI_REPORT subject=real_dtwc_cl report=1 no_report=0 results_equal=4/4"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 120)
+endif()
+
 # dtwc::run's method x device table on the real binary, per build
-# flavour, and --print-config against the golden files (47 keys: every value
+# flavour, and --print-config against the golden files (48 keys: every value
 # and every default). A GPU build on a machine without the device must refuse.
 if(TARGET dtwc_cl)
     if("DTWC_HAS_CUDA" IN_LIST _dtwc_public_defs)
@@ -311,7 +323,7 @@ if(TARGET dtwc_cl)
              "-DDEFAULTS=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_defaults.toml"
              "-DGPU=${_dtwc_cl_gpu}" "-DHAS_HIGHS=${_dtwc_cl_highs}"
              "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-device-matrix"
-        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=47 skips=0"
+        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=48 skips=0"
         LABELS integration cli SERIAL TIMEOUT 300)
 endif()
 

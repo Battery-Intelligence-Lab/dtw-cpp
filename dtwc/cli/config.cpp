@@ -271,6 +271,11 @@ void bind(CLI::App &app, Config &config)
       "GPU kernel precision: auto (default), float32/f32/fp32, float64/f64/fp64/double");
 
   key(app, "-v,--verbose", config.verbose, "Verbose output");
+  app.add_flag_function(
+       "--no-report", [&config](std::int64_t count) { if (count > 0) config.report = false; },
+       "Write no run report (<name>_report.txt: the run's machine, memory plan, stages and result, in plain text)")
+    ->default_function([&config] { return text_of(!config.report); })
+    ->capture_default_str();
 
   // v1.0.0's spellings (its --method values kMedoids and MIP read already, case aside).
   v1_spellings(app, "--n-clusters", { "--Nc", "--clusters", "--number_of_clusters" });

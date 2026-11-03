@@ -91,9 +91,11 @@ Dataset load(Dataset::series_type source, index_t skip_cols, index_t skip_rows,
 }
 
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
-               Method method, int iterations, bool converged, std::vector<std::string> streamed_names)
+               Method method, int iterations, bool converged, std::vector<std::string> streamed_names,
+               std::string report)
   : problem_(std::move(problem)), cost_(cost), device_(std::move(device_name)), method_(method),
-    iterations_(iterations), converged_(converged), streamed_names_(std::move(streamed_names))
+    iterations_(iterations), converged_(converged), streamed_names_(std::move(streamed_names)),
+    report_(std::move(report))
 {}
 
 const std::vector<index_t> &Result::labels() const noexcept { return problem_->labels(); }
@@ -116,6 +118,12 @@ void Result::save(const std::filesystem::path &directory) const
   // Result::score("silhouette") still throws on one cluster; asking for the
   // number is a different contract from skipping a file.
   detail::write_result_files(*problem_, directory, true, nullptr, streamed_names_);
+  // The run's report, last: a save that fails before it writes none.
+  if (report_.empty()) return;
+  const auto path = directory / utf8_to_path(problem_->name() + "_report.txt");
+  auto out = open_output(path);
+  out << report_;
+  close_output(out, path);
 }
 
 Result cluster(const Dataset &dataset, index_t k, std::string_view method, int band,

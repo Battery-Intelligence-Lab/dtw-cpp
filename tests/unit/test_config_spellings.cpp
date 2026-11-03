@@ -235,7 +235,7 @@ std::vector<HelpOption> help_options(const std::string &help)
 TEST_CASE("every spelling of every Config key renders to the golden text", "[config][spellings]")
 {
   const std::string golden = golden_text();
-  REQUIRE(values_of(golden).size() == 47);
+  REQUIRE(values_of(golden).size() == 48);
 
   SECTION("the golden file itself, through --config")
   {
@@ -270,7 +270,7 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       "--solver", "GUROBI", "--mip-gap", "1e-3", "--time-limit", "60", "--no-warm-start",
       "--numeric-focus", "3", "--mip-focus", "1", "--verbose-solver",
       "--lr-max-nodes", "5000", "--lr-root", "Kelley",
-      "-d", "CUDA:2", "--gpu-dtype", "double", "-v" });
+      "-d", "CUDA:2", "--gpu-dtype", "double", "-v", "--no-report" });
     CHECK(dtwc::to_config_text(config) == golden);
   }
 
@@ -291,7 +291,7 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       { "solver", "gurobi" }, { "mip_gap", "0.001" }, { "time_limit", "60" }, { "no_warm_start", "true" },
       { "numeric_focus", "3" }, { "mip_focus", "1" }, { "verbose_solver", "true" },
       { "lr_max_nodes", "5000" }, { "lr_root", "kelley" },
-      { "device", "gpu:2" }, { "gpu_precision", "fp64" }, { "verbose", "true" } });
+      { "device", "gpu:2" }, { "gpu_precision", "fp64" }, { "verbose", "true" }, { "no_report", "true" } });
     CHECK(dtwc::to_config_text(config) == golden);
   }
 }

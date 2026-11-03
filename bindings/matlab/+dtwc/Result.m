@@ -59,7 +59,10 @@ classdef Result < handle
         %
         %   <name>_labels.csv, <name>_medoids.csv, <name>_distance_matrix.csv and
         %   <name>_silhouettes.csv, written by the C++ writer dtwc_cl uses, so the
-        %   series names are the dataset's and the bytes are the CLI's.
+        %   series names are the dataset's and the bytes are the CLI's. No run
+        %   report: dtwc_cl and C++ Result::save write <name>_report.txt beside
+        %   them, a MATLAB result has none (2026-11-03: dtwc.cluster does not run
+        %   through dtwc::run).
             dtwc_mex('write_result_files', obj.Problem.get_handle(), char(dir));
         end
 

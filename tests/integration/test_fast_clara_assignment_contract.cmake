@@ -200,6 +200,8 @@ function(run_f13_cli precision mode output_dir dtype expected_cost)
     endforeach()
 
     file(GLOB output_files RELATIVE "${output_dir}" "${output_dir}/*")
+    # The run report is the run's own account (times, the machine): not an artefact the routes share.
+    list(FILTER output_files EXCLUDE REGEX "_report\\.txt$")
     list(SORT output_files)
     if(NOT "${output_files}" STREQUAL "${expected_files}")
         message(FATAL_ERROR

@@ -105,6 +105,7 @@ target_sources(dtwc_core
   soft_dtw.hpp
   # The folders that hold headers only
   detail/decode_pair.hpp
+  detail/result_files.hpp
   enums/Method.hpp
   enums/Solver.hpp
   enums/enums.hpp

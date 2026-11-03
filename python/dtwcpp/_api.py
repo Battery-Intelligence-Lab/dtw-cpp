@@ -268,7 +268,10 @@ class Result:
         ``dtwc_cl`` and C++ ``Result::save`` use: ``<name>_labels.csv``
         (``name,cluster``), ``<name>_medoids.csv``
         (``cluster,medoid_index,medoid_name``), ``<name>_distance_matrix.csv``
-        and ``<name>_silhouettes.csv`` (``name,cluster,silhouette``).
+        and ``<name>_silhouettes.csv`` (``name,cluster,silhouette``). No run
+        report: ``dtwc_cl`` and C++ ``Result::save`` write ``<name>_report.txt``
+        beside them, a Python result has none (2026-11-03: ``cluster()`` does not
+        run through ``dtwc::run``).
 
         With one cluster the silhouette is undefined and no silhouettes file is
         written; a partition with fewer than two realised clusters prints

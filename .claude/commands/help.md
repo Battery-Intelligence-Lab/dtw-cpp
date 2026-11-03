@@ -106,6 +106,9 @@ dtwc_cl --input data.parquet --method clara -k 5 \
         --output results/
 ```
 
+It writes `results/<name>_labels.csv`, `_medoids.csv` (and `_distance_matrix.csv`, `_silhouettes.csv` where the
+method filled the matrix), then the run report `results/<name>_report.txt` (`--no-report`: none).
+
 Run `dtwc_cl --help` for full flag reference.
 
 ## Fallback: When question doesn't match

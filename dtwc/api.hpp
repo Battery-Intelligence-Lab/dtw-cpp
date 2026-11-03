@@ -101,7 +101,12 @@ public:
    *  `Result.distance_matrix`.  Fills the matrix first if it is not yet
    *  materialised, exactly as score() does. */
   std::vector<double> distance_matrix() const;
+  /** The four result files dtwc_cl writes, byte for byte (labels, medoids, the matrix and the silhouettes, filled and
+   *  computed here where the run left them out), then the run report (report()), last, where the run made one. */
   void save(const std::filesystem::path &directory) const;
+  /** The run report: the run's machine, memory plan, stages, algorithm and result, in plain text, as run() writes it
+   *  to `<name>_report.txt`; empty where the run was told `report = false` (dtwc_cl --no-report). */
+  const std::string &report() const noexcept { return report_; }
   double cost() const noexcept { return cost_; }
   const std::string &device() const noexcept { return device_; }
   /** The method that ran, `auto` resolved (name_of(method_names, m) spells it). */
@@ -115,7 +120,8 @@ private:
   friend Result run(const Config &, Data);
 
   Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
-         Method method, int iterations, bool converged, std::vector<std::string> streamed_names);
+         Method method, int iterations, bool converged, std::vector<std::string> streamed_names,
+         std::string report);
 
   std::shared_ptr<Problem> problem_;
   double cost_ = 0.0;
@@ -124,6 +130,7 @@ private:
   int iterations_ = 0;
   bool converged_ = false;
   std::vector<std::string> streamed_names_; ///< a RAM-limited run's series names, which its Problem cannot hold
+  std::string report_;                      ///< the run report's text
 };
 
 /**

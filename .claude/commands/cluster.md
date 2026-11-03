@@ -161,7 +161,9 @@ dtwc_cl \
   --verbose
 ```
 
-Parse stdout for cost and timing; report the same summary.
+Parse stdout for cost and timing; report the same summary. `dtwc_cl` also writes the run report,
+`OUTPUT_DIR/<name>_report.txt` (its `Report:` line names it): the machine, the memory plan and peak, each stage's
+time and CPU use, the iterations and stopping criterion; quote from it what the user asks about.
 
 ## Error handling
 

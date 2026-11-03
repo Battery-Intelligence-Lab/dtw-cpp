@@ -18,7 +18,7 @@
 #include "cli/config.hpp"
 #include "cli/run.hpp"
 #include "core/machine.hpp"
-#include "io/read_data.hpp"
+#include "fileOperations.hpp" // path_to_utf8
 
 #include <CLI/CLI.hpp>
 
@@ -43,8 +43,7 @@ void print_settings(const dtwc::Config &config)
   std::cout << "DTWC++ Clustering\n"
             << "  Input:    " << config.input << "\n"
             << "  Output:   " << config.output << "\n"
-            << "  Name:     "
-            << (config.name.empty() ? dtwc::detail::default_name(dtwc::utf8_to_path(config.input)) : config.name) << "\n"
+            << "  Name:     " << dtwc::run_name(config) << "\n"
             << "  Clusters: " << config.k << "\n"
             << "  Method:   " << name_of(dtwc::method_names, config.method) << "\n"
             << "  Band:     " << (config.band < 0 ? "full" : std::to_string(config.band)) << "\n"
@@ -117,6 +116,8 @@ int main(int argc, char *argv[])
               << "  Iterations: " << result.iterations() << "\n"
               << "  Output:     " << config.output << "/\n"
               << "  Time:       " << clock << "\n";
+    if (config.report && !config.output.empty())
+      std::cout << "  Report:     " << dtwc::path_to_utf8(dtwc::report_path(config)) << "\n";
     return EXIT_SUCCESS;
   } catch (const std::exception &e) {
     std::cerr << "Error: " << e.what() << '\n';

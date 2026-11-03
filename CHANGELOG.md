@@ -114,8 +114,18 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   honoured stops the configure), `DTWC_FP_MODEL` and `DTWC_ARCH_LEVEL`.
 - `dtwc_cl -v` begins with the settings and the machine it runs on: host, OS, the CPU's model and cores, the SIMD
   extensions of the CPU and of the build, total and available RAM, a GPU run's GPU, the compiler and the optional
-  libraries built in. The CPU's facts come from pytorch/cpuinfo (`DTWC_ENABLE_CPUINFO`, ON, pinned and built static)
-  and the RAM's from llfio; a fact a build or a system cannot tell reads `unknown`.
+  libraries `dtwc_core` was built with (Arrow and YAML are the command line's own: the run report names them). The
+  CPU's facts come from pytorch/cpuinfo (`DTWC_ENABLE_CPUINFO`, ON, pinned and built static) and the RAM's from
+  llfio; a fact a build or a system cannot tell reads `unknown`.
+- Every run writes a run report, `<name>_report.txt`, last beside its result files (`dtwc_cl` prints its path as
+  `Report:`; C++ `Result::report()` gives its text and `Result::save` writes it last): plain text in eight sections,
+  the run (status, start and end, version and build, the resolved configuration, the command that repeats it), the
+  machine, the memory plan with the process's peak resident memory (mapped files included) beside the budget and
+  what the plan holds, the input, each stage's wall time, share, CPU utilisation and peak (`check`, `plan`, `read`,
+  `storage`, `fill`, `cluster`, `write`, the silhouettes), the algorithm's iterations and stopping criterion, the
+  result and notes. A run that fails past its first checks writes it up to the failing stage, with the error, and
+  throws that error unchanged; `--no-report` (TOML/YAML key `no-report`, C++ `Config::report = false`) writes none.
+  Python's and MATLAB's results carry none yet (2026-11-03: their `cluster()` does not run through `dtwc::run`).
 - On Windows, `dtwc_cl.exe` states its name, version and copyright in its file properties.
 - The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
   each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
@@ -181,7 +191,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   than planned; MIP's and LR-core's solver memory is not planned. Python's and MATLAB's `cluster()` hold every series
   at once.
 - A run (`dtwc_cl`, `dtwc::run`, `dtwc::cluster`) whose memory the system refuses (`std::bad_alloc`) throws
-  `InvalidInput` naming the stage it was in (`check`, `plan`, `read`, `storage`, `cluster`, `write`), its memory plan
+  `InvalidInput` naming the stage it was in (`check`, `plan`, `read`, `storage`, `fill`, `cluster`, `write`; PAM,
+  `kmedoids` and a `clara` sampling every series fill the distance matrix in `fill`), its memory plan
   and what the plan holds in RAM, the process's peak resident memory (`core::peak_memory()`, mapped files' pages
   included) and the ways out that hold less in that run, built once the run's memory is given back. A reader's or a
   library's refused allocation (nanoarrow's ENOMEM, Arrow's out-of-memory status, a map llfio is refused memory for)

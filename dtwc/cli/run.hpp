@@ -6,7 +6,11 @@
  * @details run() checks the whole configuration before it reads a series,
  * resolves the method and the device together, loads the input (CSV / TSV,
  * a folder, Parquet or Arrow IPC) into RAM, computes, and writes the outputs
- * into `output` (nothing when it is empty).
+ * into `output` (nothing when it is empty), the run report last
+ * (`<name>_report.txt`, report_path(); Result::report() gives its text, which
+ * `report = false`, `--no-report`, leaves empty). A run that fails past its first
+ * checks writes the report up to the failing stage, with its error, and throws
+ * that error unchanged; one without an output directory writes nothing.
  *
  * | method        | cpu                           | gpu                               |
  * |---------------|-------------------------------|-----------------------------------|
@@ -38,7 +42,9 @@
 #include "config.hpp"
 
 #include <cstddef>
+#include <filesystem>
 #include <iosfwd>
+#include <string>
 
 namespace dtwc {
 
@@ -68,7 +74,9 @@ namespace dtwc {
 ///         back: "<stage> stage: out of memory; plan: <the plan>; the plan
 ///         holds H bytes in RAM; the process peaked at P bytes resident, mapped
 ///         files' pages included; ways out: ...", the stages check, plan, read,
-///         storage, cluster and write, the plan "none yet" until it is made
+///         storage, fill (PAM, kmedoids and clara on a sample of every series fill
+///         the distance matrix there; every other method in cluster), cluster and
+///         write, the plan "none yet" until it is made
 ///         (a text file's series are planned once read), each way out named
 ///         where it holds less in this run), DeviceError as above,
 ///         IOError for an
@@ -83,6 +91,12 @@ Result run(const Config &config);
 /// reader applies (`column`, `skip-rows`, `skip-cols`, `delimiter`) must be at
 /// their defaults.
 Result run(const Config &config, Data data);
+
+/// The name a run gives its files: `name`, else the input's file or folder name ("dataset" for series in memory).
+std::string run_name(const Config &config);
+
+/// Where a run writes its report: `<output>/<run_name>_report.txt`.
+std::filesystem::path report_path(const Config &config);
 
 /// The method `auto` stands for within run()'s memory plan: resolve_method(method, device, n_series) (Problem.hpp),
 /// and clara where pam's distance matrix can be held neither in RAM beside the series and one thread's working set

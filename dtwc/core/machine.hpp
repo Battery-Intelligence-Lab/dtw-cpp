@@ -52,4 +52,8 @@ MachineFacts machine_facts(Device device = Device::CPU, int device_index = 0);
 /// unknown, as in a build without llfio. Defined in distance_matrix.cpp, beside available_memory().
 std::size_t total_memory();
 
+/// The CPU time this process has used so far, user and system, every thread's, in seconds (Windows GetProcessTimes,
+/// POSIX getrusage); 0 where the system does not say. A run's report divides a stage's share by its wall time.
+double cpu_seconds();
+
 } // namespace dtwc::core

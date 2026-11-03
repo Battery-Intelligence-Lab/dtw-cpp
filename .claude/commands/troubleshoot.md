@@ -55,7 +55,8 @@ which dtwc_cl && dtwc_cl --version
 
 **`std::bad_alloc` / OOM / `<stage> stage: out of memory; plan: ...`**
 - Dataset too large for in-memory distance matrix. `dtwc_cl` names the stage, its memory plan and what it holds in RAM, the process's peak resident memory and the ways out that hold less in that run.
-- A refusal at the margin can end the process without a report: on a thread's stack or in the process's start-up (Windows 0xC0000409 or 0xC00000FD; Linux, at start-up, libgomp's own message).
+- The run report, `<output>/<name>_report.txt`, is written up to the failing stage (not for a failure in `check`): its stage table and memory plan show where the time and memory went.
+- A refusal at the margin can end the process without its error or a run report: on a thread's stack or in the process's start-up (Windows 0xC0000409 or 0xC00000FD; Linux, at start-up, libgomp's own message).
 - Switch to CLARA: `--method clara` — uses subsamples
 - Halve the distance matrix: `--matrix-dtype float32`
 - Lower memory: `--dtype float32` (halves the series' RAM; the distance matrix stays float64)

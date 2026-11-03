@@ -249,7 +249,8 @@ TEST_CASE("A run the system refuses memory reports its stage, its memory plan an
   }
   std::cout << "capped at " << cap << " bytes (" << held << " held + 256 MiB); dtwc::run threw InvalidInput: "
             << message << "\n";
-  CHECK_THAT(message, StartsWith("cluster stage: out of memory; plan: budget 1099511627776 bytes, reserve "));
+  // PAM fills its distance matrix in a stage of its own: the matrix refused there.
+  CHECK_THAT(message, StartsWith("fill stage: out of memory; plan: budget 1099511627776 bytes, reserve "));
   const auto budget = message.find("budget"), data_cap = message.find("data cap"), peak = message.find("peak");
   CHECK(budget < data_cap);
   CHECK(data_cap < peak);
@@ -329,7 +330,7 @@ TEST_CASE("A run the system refuses memory at a text file's read, at a --dist-ma
   auto text = config;
   text.input = dtwc::path_to_utf8(steps);
   const std::string matrix_bound = refused_under_cap(margin, [&] { return dtwc::run(text); });
-  CHECK_THAT(matrix_bound, StartsWith("cluster stage: out of memory; plan: budget 1099511627776 bytes, reserve "));
+  CHECK_THAT(matrix_bound, StartsWith("fill stage: out of memory; plan: budget 1099511627776 bytes, reserve "));
   CHECK_THAT(matrix_bound, ContainsSubstring("ways out: --matrix-dtype float32, "));
   CHECK_THAT(matrix_bound, ContainsSubstring("--method clara"));
   CHECK_THAT(matrix_bound, !ContainsSubstring("--dtype float32"));

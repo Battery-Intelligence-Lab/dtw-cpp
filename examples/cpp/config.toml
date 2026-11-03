@@ -63,6 +63,9 @@ dtype = "float64"
 # Verbose output.
 verbose = true
 
+# true: write no run report (<name>_report.txt, written last beside the result files).
+no-report = false
+
 # --- DTW variant parameters ---
 # WDTW logistic weight steepness (only used when variant = "wdtw").
 wdtw-g = 0.05

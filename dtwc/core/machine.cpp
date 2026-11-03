@@ -32,10 +32,11 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h> // GetComputerNameExA, GetModuleHandleW, GetProcAddress
+#include <windows.h> // GetComputerNameExA, GetModuleHandleW, GetProcAddress, GetProcessTimes
 #else
-#include <sys/utsname.h> // uname
-#include <unistd.h>      // gethostname
+#include <sys/resource.h> // getrusage
+#include <sys/utsname.h>  // uname
+#include <unistd.h>       // gethostname
 #endif
 
 namespace dtwc::core {
@@ -58,7 +59,7 @@ std::string os_name()
 {
   using RtlGetVersion = LONG(WINAPI *)(RTL_OSVERSIONINFOW *);
   const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-  const FARPROC address = ntdll ? GetProcAddress(ntdll, "RtlGetVersion") : nullptr;
+  FARPROC address = ntdll ? GetProcAddress(ntdll, "RtlGetVersion") : nullptr;
   RTL_OSVERSIONINFOW version{};
   version.dwOSVersionInfoSize = static_cast<DWORD>(sizeof version);
   // Through void (*)(), the function pointer type a cast to any other is not warned about.
@@ -121,14 +122,15 @@ std::string named(const bool (&set)[4])
   return list.empty() ? "none of AVX2, FMA, AVX-512F, NEON" : list;
 }
 
-/// The SIMD extensions this file's compiler may use: the arch level dtwc_core is built for (DTWC_ARCH_LEVEL).
+/// The SIMD extensions this file's compiler may use: the arch level dtwc_core is built for (DTWC_ARCH_LEVEL). cl's
+/// /arch:AVX2 defines no __FMA__ but uses FMA3 (cl 19.50 contracts x * y + z to vfmadd231pd under /fp:contract).
 std::string build_simd()
 {
   bool set[4]{};
 #ifdef __AVX2__
   set[0] = true;
 #endif
-#ifdef __FMA__
+#if defined(__FMA__) || (defined(_MSC_VER) && !defined(__clang__) && defined(__AVX2__))
   set[1] = true;
 #endif
 #ifdef __AVX512F__
@@ -239,6 +241,25 @@ std::string MachineFacts::text() const
   if (gpu) line("GPU:", *gpu);
   line("Build:", compiler + "; " + libraries);
   return out;
+}
+
+double cpu_seconds()
+{
+#ifdef _WIN32
+  FILETIME created{}, exited{}, kernel{}, user{};
+  if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) return 0.0;
+  const auto ticks = [](const FILETIME &time) {
+    return (static_cast<std::uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+  };
+  return static_cast<double>(ticks(kernel) + ticks(user)) * 1e-7; // 100 ns ticks
+#else
+  rusage usage{};
+  if (getrusage(RUSAGE_SELF, &usage) != 0) return 0.0;
+  const auto seconds = [](const timeval &time) {
+    return static_cast<double>(time.tv_sec) + static_cast<double>(time.tv_usec) * 1e-6;
+  };
+  return seconds(usage.ru_utime) + seconds(usage.ru_stime);
+#endif
 }
 
 } // namespace dtwc::core
