@@ -179,12 +179,13 @@ run, once it has given its memory back. The plan is "none yet" until it is
 made: from an Arrow IPC file's walk or Parquet metadata, else from the series
 once read (a text file's while it is read). A reader's or a library's
 refused allocation (nanoarrow's, Arrow's, a map llfio cannot make) is reported
-the same way. Under Linux's default overcommit a run over a cgroup's limit (a
-SLURM job's memory) gets no message: the kernel's OOM killer ends it. Where the
-system refuses a small allocation in a parallel region that cannot carry an
-exception (TADPole's two, with an explicit `--dc`), on a thread's stack or in
-the process's start-up, the process ends without a report (Windows 0xC0000409,
-or 0xC00000FD on a stack; Linux an abort).
+the same way, but for one inside LZ4 decompression, which stays an `IOError`
+("LZ4F_decompress(...) failed"): nanoarrow drops LZ4F's error code. Under
+Linux's default overcommit a run over a cgroup's limit (a SLURM job's memory)
+gets no message: the kernel's OOM killer ends it. Where the system refuses
+memory on a thread's stack or in the process's start-up, the process ends
+without a report (Windows 0xC0000409 or 0xC00000FD; Linux, at start-up,
+libgomp's own message).
 
 ### RAM-limited Parquet FastCLARA
 

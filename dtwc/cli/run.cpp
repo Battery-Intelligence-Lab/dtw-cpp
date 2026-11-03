@@ -188,6 +188,8 @@ struct SourceFacts
   std::size_t clara = 0;      ///< in-RAM FastCLARA's sample matrix, then every sample's labels and nearest distances
   std::size_t fixed = 0;      ///< the method's own terms, in RAM whatever the matrix's storage
   const char *fixed_what = nullptr; ///< what `fixed` is, for a refusal
+  bool unpriced = false;      ///< the method's own memory, which the plan does not price, outweighs the matrix (MIP's
+                              ///< solver): no way out sized by the plan's terms frees a tenth of what the run needs
   std::size_t matrix = 0;     ///< the distance matrix, where the method holds one
   const char *held = nullptr; ///< why the matrix stays in RAM where it does not fit (nullptr: it is mapped there)
   bool cache = false;         ///< the method keeps the matrix's bytes in RAM, mapped or not (TADPole's cache)
@@ -492,7 +494,10 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     // strategy), each series' envelope (`envs`: an upper and a lower vector of its values); the hierarchical
     // clustering's dense copy of N x N doubles (hierarchical.cpp's `work`); OneBatchPAM's batch table, N x m doubles,
     // m as one_batch_pam.cpp's automatic_batch_size or --batch-size takes it, and its per-point vectors, at most 8
-    // doubles a point. MIP's and LR-core's solver memory is not planned.
+    // doubles a point. MIP's and LR-core's solver memory is not planned: MIP's outweighs the matrix (150 series of 10
+    // steps: the plan held 102,600 bytes, the run needed about 118 MB), LR-core's does not (2,000 series: float32 or the
+    // matrix mapped got runs through where the plain run was refused, 2026-11-03).
+    facts.unpriced = resolved == Method::MIP;
     if (resolved == Method::TADPole) {
       const auto distance = prob.distance();
       const bool prunes = distance.variant.variant == core::DTWVariant::Standard
@@ -828,30 +833,32 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
 }
 
 /// The ways out a run out of memory names, each only where it holds less in this run. Once the method's terms are
-/// held (storage, cluster, write): float32 for the matrix or a text file's series, --method clara (not beside a
-/// --dist-matrix or --checkpoint, which non-full FastCLARA refuses), the matrix mapped, fewer threads, each where it
-/// frees at least a tenth of what the run needs, the plan's own margin (working_set's tenth): what the plan holds and
-/// its reserve, and at the storage stage a matrix it maps, whose map is what was refused there. A stream: a lower
-/// --ram-limit, down to its floor; at a read, a file FastCLARA streams: --method clara below a lower one; a
-/// --dist-matrix read: the distances computed (its CSV's cells, which the plan does not price, outweigh the matrix four
-/// times); a text file's read, before its plan: float32, or Arrow IPC, whose values are mapped where they lie. A cap on
-/// address space counts a mapped file. Where none applies, more memory.
+/// held (storage, cluster, write): float32 for the matrix (not beside a --checkpoint, whose file keeps its width) or a
+/// text file's series, --method clara (not beside a --dist-matrix or --checkpoint, which non-full FastCLARA refuses),
+/// the matrix mapped, fewer threads, each where it frees at least a tenth of what the run needs, the plan's own margin
+/// (working_set's tenth): what the plan holds and its reserve, and at the storage stage a matrix it maps, whose map is
+/// what was refused there; a method whose own memory the plan does not price (`unpriced`): --method clara alone. A
+/// stream: a lower --ram-limit, down to its floor; at a read, a file FastCLARA streams: --method clara below a lower
+/// one; a --dist-matrix read: the distances computed (its CSV's cells, which the plan does not price, outweigh the
+/// matrix four times); a text file's read, before its plan: float32, or, where llfio maps it, Arrow IPC, whose values
+/// are mapped where they lie (without llfio the file is read whole, and the one record batch dtwc-convert writes is a
+/// stream's floor). A cap on address space counts a mapped file. Where none applies, more memory.
 std::string ways_out(const RunStage &stage, const Config &config)
 {
   const std::string_view at = stage.stage;
   const bool clara_can = config.dist_matrix.empty() && config.checkpoint.empty();
-  const char *const down_to = " (no lower than its floor, a record batch, which a refusal names)";
+  const char *const down_to = " (no lower than its floor, which a refusal names)";
 #ifdef DTWC_HAS_MMAP
   const char *const counted = " (which a cap on address space, ulimit -v, counts)";
-  const std::string ipc = std::string("whose values are mapped where they lie") + counted;
-#else
-  const std::string ipc = "which --method clara streams below a lower --ram-limit"; // read whole, not mapped
 #endif
   std::vector<std::string> ways;
   if (!stage.plan) {
     if (at == "read" && stage.format == InputFormat::Text) {
       if (config.dtype == core::Precision::Float64) ways.emplace_back("--dtype float32");
-      ways.emplace_back("the file converted to Arrow IPC (dtwc-convert), " + ipc);
+#ifdef DTWC_HAS_MMAP
+      ways.emplace_back(std::string("the file converted to Arrow IPC (dtwc-convert), whose values are mapped where they "
+                                    "lie") + counted);
+#endif
     }
   } else if (stage.plan->route == Route::Streamed) {
     ways.emplace_back(std::string("a lower --ram-limit, within which the stream reads") + down_to);
@@ -862,13 +869,15 @@ std::string ways_out(const RunStage &stage, const Config &config)
   } else if (at == "storage" && !config.dist_matrix.empty()) {
     ways.emplace_back("the distances computed without --dist-matrix (its CSV is read at 16 bytes a cell beside the "
                       "matrix)");
+  } else if (at != "check" && at != "plan" && stage.plan->facts.unpriced) {
+    if (clara_can) ways.emplace_back("--method clara");
   } else if (at != "check" && at != "plan") {
     const MemoryPlan &plan = *stage.plan;
     const SourceFacts &facts = plan.facts;
     const std::size_t matrix = !plan.mapped || facts.cache ? facts.matrix : 0; // its bytes in RAM
     const std::size_t map = plan.mapped && at == "storage" ? facts.matrix : 0, need = plan.held + plan.reserve() + map;
     const auto frees = [&](std::size_t bytes) { return bytes > 0 && bytes >= need / 10; };
-    if (config.matrix_dtype == core::Precision::Float64 && frees((matrix + map) / 2))
+    if (config.matrix_dtype == core::Precision::Float64 && config.checkpoint.empty() && frees((matrix + map) / 2))
       ways.emplace_back("--matrix-dtype float32");
     if (facts.halves && frees(facts.series / 2)) ways.emplace_back("--dtype float32");
     if (!facts.clara_method && clara_can && frees(matrix + map + facts.fixed)) ways.emplace_back("--method clara");

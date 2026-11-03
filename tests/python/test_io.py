@@ -172,6 +172,21 @@ def test_parquet_layouts_read_as_cpp_and_matlab_read_them(name, skip_cols, skip_
     assert data.p_names == names
 
 
+def test_parquet_read_refused_memory_is_memory_error_naming_the_file(monkeypatch):
+    """Memory pyarrow is refused while it reads a Parquet file (pyarrow.ArrowMemoryError) is MemoryError naming the
+    file, as memory the C++ readers are refused is; a file that cannot be read stays dtwcpp.IOError."""
+    pa = pytest.importorskip("pyarrow")
+    import pyarrow.parquet as pq
+
+    def refused(*args, **kwargs):
+        raise pa.ArrowMemoryError("malloc of size 1048576 failed")
+
+    monkeypatch.setattr(pq, "read_table", refused)
+    with pytest.raises(MemoryError, match=r"^load: failed to read '.*parquet_rows\.parquet': malloc of size") as caught:
+        dtwcpp.load(_CORPUS / "parquet_rows.parquet").as_data()
+    assert type(caught.value) is MemoryError
+
+
 _IPC_THREE = [[0, 0.5, 0.25], [1.5, 2], [3]]
 
 

@@ -74,10 +74,9 @@ namespace dtwc {
 ///         IOError for an
 ///         input this build cannot read or a file that cannot be read or written,
 ///         SolverError for `gurobi` on a build without Gurobi. Where the system
-///         refuses a small allocation in a parallel region that cannot carry an
-///         exception (TADPole's two, with an explicit --dc), on a thread's stack
-///         or in the process's start-up, the process ends without a report
-///         (Windows 0xC0000409, or 0xC00000FD on a stack; Linux an abort).
+///         refuses memory on a thread's stack or in the process's start-up, the
+///         process ends without a report (Windows 0xC0000409 or 0xC00000FD;
+///         Linux, at start-up, libgomp's own message).
 Result run(const Config &config);
 
 /// Cluster `data`, already in memory: `input` and the options only a file

@@ -278,7 +278,8 @@ In C++ they derive from `dtwc::Error`, a `std::runtime_error`; in Python from
 catches `InvalidInput` and `UndefinedScore` only; MATLAB's base identifier is
 `dtwc:error`. Memory the system refuses is no fault of an argument or a file:
 `load()` and the Tier-2 calls pass C++'s `std::bad_alloc` as it is (Python
-`MemoryError`, MATLAB `dtwc:internal`; Gurobi's MIP adapter reports it as a
+`MemoryError`, as Python's `load()` raises for memory pyarrow is refused reading
+Parquet; MATLAB `dtwc:internal`; Gurobi's MIP adapter reports it as a
 `SolverError`), and C++'s `dtwc::cluster` reports it as
 the `InvalidInput` above; Python's and MATLAB's `cluster()` do not go through
 `dtwc::run` (2026-11-03).

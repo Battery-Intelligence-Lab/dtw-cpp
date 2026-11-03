@@ -303,7 +303,11 @@ TEST_CASE("A run the system refuses memory at a text file's read, at a --dist-ma
   read.band = 1;
   const std::string at_read = refused_under_cap(margin, [&] { return dtwc::run(read); });
   CHECK_THAT(at_read, StartsWith("read stage: out of memory; plan: none yet; the process peaked at "));
+#ifdef DTWC_HAS_MMAP
   CHECK_THAT(at_read, ContainsSubstring("ways out: --dtype float32, or the file converted to Arrow IPC"));
+#else // without llfio an Arrow IPC file is read whole, and dtwc-convert writes one record batch, a stream's floor
+  CHECK_THAT(at_read, Catch::Matchers::EndsWith("ways out: --dtype float32."));
+#endif
 
   // A --dist-matrix read: 16,000,000 cells parsed beside the matrix the plan holds, 64,016,000 bytes, and the 4,000
   // series' 32,000.

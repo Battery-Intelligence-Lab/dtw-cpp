@@ -123,7 +123,9 @@ def _read_arrow(path, parquet, skip_cols=0, skip_rows=0, dtype="float64"):
     """Parquet files, read by the C++ reader's rule (:func:`_read_parquet`)
     through the installed pyarrow, into the Arrow C stream the compiled-in
     nanoarrow reads, in the precision ``dtype`` names: pyarrow casts the values
-    to it."""
+    to it. pyarrow's failure is :class:`dtwcpp.IOError` naming the file, and
+    memory it is refused (``pyarrow.ArrowMemoryError``) ``MemoryError`` naming
+    it, as the C++ readers' refused memory is."""
     from dtwcpp import IOError as DtwcIOError, _dtwcpp_core
     try:
         import pyarrow as pa
@@ -133,6 +135,8 @@ def _read_arrow(path, parquet, skip_cols=0, skip_rows=0, dtype="float64"):
     try:
         table = _read_parquet(parquet, skip_cols, skip_rows,
                               pa.float32() if dtype == "float32" else pa.float64())
+    except pa.ArrowMemoryError as error:  # memory the system refused, no fault of the file: as the C++ readers'
+        raise MemoryError(f"load: failed to read '{os.fspath(path)}': {error}") from error
     except (OSError, pa.ArrowException) as error:
         raise DtwcIOError(f"load: failed to read '{os.fspath(path)}': {error}") from error
     return _dtwcpp_core.data_from_arrow_c_array(table, dtype)
@@ -152,7 +156,7 @@ def _read_data(source, skip_cols=0, skip_rows=0, delimiter=None, dtype="float64"
     any spelling the C++ table takes) is the precision the series are stored in.
     A read failure is :class:`dtwcpp.IOError` naming the file, an option the
     input cannot honour :class:`dtwcpp.InvalidInput`, both with the C++ reader's
-    words.
+    words; memory the system refuses is ``MemoryError``.
     """
     from dtwcpp import InvalidInput, _dtwcpp_core
     dtype = _dtwcpp_core._dtype(dtype)

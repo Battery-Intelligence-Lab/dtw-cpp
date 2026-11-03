@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <exception>
 #include <limits>
 #include <numeric>
 #include <span>
@@ -111,6 +112,24 @@ auto exact_distance(Problem &prob)
 inline bool higher_density(index_t a, index_t b, const std::vector<index_t> &rho)
 {
   return rho[a] > rho[b] || (rho[a] == rho[b] && a < b);
+}
+
+/// A thread's failure in a parallel stage, as run_openmp keeps it (parallelisation.hpp, which says why): an exception
+/// may not leave an OpenMP region, so each thread keeps the failure of the lowest index it saw fail and skips only the
+/// indices above it; `failed_at` (the stage's end: none) is what the loop tests.
+struct Failure
+{
+  std::exception_ptr failure;
+  index_t failed_at;
+};
+
+/// After a stage's join: the failure with the lowest index over every thread, rethrown unchanged, the one a serial
+/// run raises.
+void rethrow_lowest(const std::vector<Failure> &failures, index_t end)
+{
+  const auto lowest = std::min_element(failures.begin(), failures.end(),
+                                       [](const Failure &a, const Failure &b) { return a.failed_at < b.failed_at; });
+  if (lowest->failed_at < end) std::rethrow_exception(lowest->failure);
 }
 
 } // anonymous namespace
@@ -201,11 +220,13 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
   // ── Stage 1 · local density ρ_i = |{ j≠i : d(i,j) < dc }| (cutoff kernel) ──
   // Each thread owns one count row and one pair of tallies (LB / UB pruning),
   // so the region has no shared write; the rows are summed serially after it.
+  // A thread's failure waits in its own slot (Failure) until the join, in both stages.
   const int n_threads = get_max_threads();
   const auto threads = static_cast<std::size_t>(n_threads);
   const auto points = static_cast<std::size_t>(N);
   std::vector<index_t> rho_rows(threads * points, 0);
   std::vector<std::size_t> plb_by_thread(threads, 0), pub_by_thread(threads, 0);
+  std::vector<Failure> failures(threads, Failure{ nullptr, N });
 
   #pragma omp parallel num_threads(n_threads)
   {
@@ -216,44 +237,52 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
 #endif
     index_t *const rho_local = rho_rows.data() + thread * points;
     std::size_t loc_plb = 0, loc_pub = 0;
+    Failure &slot = failures[thread];
 
     // `can_prune` is loop-invariant, so it selects the whole i-body once rather
     // than being retested per pair, and keeps prob.series() — which throws under
     // Float32 — strictly inside the pruning branch.
     #pragma omp for schedule(dynamic, 8) nowait
     for (index_t i = 0; i < N; ++i) {
-      if (can_prune) {
-        const auto si = prob.series(static_cast<std::size_t>(i));
-        for (index_t j = i + 1; j < N; ++j) {
-          const auto sj = prob.series(static_cast<std::size_t>(j));
-          bool neighbour;
-          if (si.size() == sj.size()) {
-            const double lb = core::lb_keogh_symmetric(si, envs[i], sj, envs[j]);
-            if (lb >= dc) {                            // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
-              neighbour = false;
-              ++loc_plb;
-            } else {
-              const double ub = diagonal_ub_l1(si, sj);
-              if (ub < dc) {                           // Case B: d ≤ UB < dc ⇒ neighbour
-                neighbour = true;
-                ++loc_pub;
-              } else {                                 // Case D: bounds straddle dc ⇒ exact
-                neighbour = (exact(i, j) < dc);
+      if (i > slot.failed_at) continue;
+      try {
+        if (can_prune) {
+          const auto si = prob.series(static_cast<std::size_t>(i));
+          for (index_t j = i + 1; j < N; ++j) {
+            const auto sj = prob.series(static_cast<std::size_t>(j));
+            bool neighbour;
+            if (si.size() == sj.size()) {
+              const double lb = core::lb_keogh_symmetric(si, envs[i], sj, envs[j]);
+              if (lb >= dc) {                            // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
+                neighbour = false;
+                ++loc_plb;
+              } else {
+                const double ub = diagonal_ub_l1(si, sj);
+                if (ub < dc) {                           // Case B: d ≤ UB < dc ⇒ neighbour
+                  neighbour = true;
+                  ++loc_pub;
+                } else {                                 // Case D: bounds straddle dc ⇒ exact
+                  neighbour = (exact(i, j) < dc);
+                }
               }
+            } else {
+              neighbour = (exact(i, j) < dc);
             }
-          } else {
-            neighbour = (exact(i, j) < dc);
+            if (neighbour) { ++rho_local[i]; ++rho_local[j]; }
           }
-          if (neighbour) { ++rho_local[i]; ++rho_local[j]; }
+        } else {
+          for (index_t j = i + 1; j < N; ++j)
+            if (exact(i, j) < dc) { ++rho_local[i]; ++rho_local[j]; }
         }
-      } else {
-        for (index_t j = i + 1; j < N; ++j)
-          if (exact(i, j) < dc) { ++rho_local[i]; ++rho_local[j]; }
+      } catch (...) {
+        slot.failure = std::current_exception();
+        slot.failed_at = i;
       }
     }
     plb_by_thread[thread] = loc_plb;
     pub_by_thread[thread] = loc_pub;
   }
+  rethrow_lowest(failures, N);
 
   std::vector<index_t> rho(N, 0);
   for (std::size_t t = 0; t < threads; ++t)
@@ -267,32 +296,45 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
   std::vector<double> delta(N, kInf);
   std::vector<index_t> parent(N, -1);
 
+  // The slots are Stage 1's, every one empty again: a failure there was rethrown above.
   #pragma omp parallel for schedule(dynamic, 8) num_threads(n_threads)
   for (index_t i = 0; i < N; ++i) {
-    double best = kInf;
-    index_t best_parent = -1;
-    if (can_prune) { // prob.series() only on the pruning path — see above
-      const auto si = prob.series(static_cast<std::size_t>(i));
-      for (index_t q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
-        if (q == i || !higher_density(q, i, rho)) continue;
-        const auto sq = prob.series(static_cast<std::size_t>(q));
-        if (si.size() == sq.size()) {
-          const double lb = core::lb_keogh_symmetric(si, envs[i], sq, envs[q]);
-          if (lb >= best) continue; // d ≥ LB ≥ best ⇒ q cannot lower the min (nor tie-win)
+#ifdef _OPENMP
+    Failure &slot = failures[static_cast<std::size_t>(omp_get_thread_num())];
+#else
+    Failure &slot = failures[0];
+#endif
+    if (i > slot.failed_at) continue;
+    try {
+      double best = kInf;
+      index_t best_parent = -1;
+      if (can_prune) { // prob.series() only on the pruning path — see above
+        const auto si = prob.series(static_cast<std::size_t>(i));
+        for (index_t q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
+          if (q == i || !higher_density(q, i, rho)) continue;
+          const auto sq = prob.series(static_cast<std::size_t>(q));
+          if (si.size() == sq.size()) {
+            const double lb = core::lb_keogh_symmetric(si, envs[i], sq, envs[q]);
+            if (lb >= best) continue; // d ≥ LB ≥ best ⇒ q cannot lower the min (nor tie-win)
+          }
+          const double d = exact(i, q);
+          if (d < best) { best = d; best_parent = q; }
         }
-        const double d = exact(i, q);
-        if (d < best) { best = d; best_parent = q; }
+      } else {
+        for (index_t q = 0; q < N; ++q) {
+          if (q == i || !higher_density(q, i, rho)) continue;
+          const double d = exact(i, q);
+          if (d < best) { best = d; best_parent = q; }
+        }
       }
-    } else {
-      for (index_t q = 0; q < N; ++q) {
-        if (q == i || !higher_density(q, i, rho)) continue;
-        const double d = exact(i, q);
-        if (d < best) { best = d; best_parent = q; }
-      }
+      delta[i] = best;
+      parent[i] = best_parent;
+    } catch (...) {
+      slot.failure = std::current_exception();
+      slot.failed_at = i;
     }
-    delta[i] = best;
-    parent[i] = best_parent;
   }
+  rethrow_lowest(failures, N);
 
   // Global densest point (unique under the strict order: no higher-density
   // neighbour ⇒ parent == -1): δ = max of all other points' δ (Begum's
