@@ -112,20 +112,6 @@ void require_input_options_apply(const Config &config, std::optional<InputFormat
   require_reader_options(format, config.skip_cols, config.skip_rows, config.delimiter, config.column);
 }
 
-/// An owning Float32 copy of Float64 series, owned or a view, each value rounded to float.
-Data convert_to_f32(const Data &data_f64)
-{
-  std::vector<std::vector<float>> series(data_f64.size());
-  std::vector<std::string> names(series.size());
-  for (std::size_t i = 0; i < series.size(); ++i) {
-    const auto source = data_f64.series(i);
-    series[i].reserve(source.size());
-    for (const double value : source) series[i].push_back(static_cast<float>(value));
-    names[i] = data_f64.name(i);
-  }
-  return Data(std::move(series), std::move(names), data_f64.ndim);
-}
-
 /// Whether `method` holds the Problem's distance matrix (TADPole, its cache of it): OneBatchPAM owns a fixed O(Nm)
 /// table and reads no parent matrix; nor does non-full FastCLARA.
 bool holds_matrix(Method method, bool clara_uses_full_sample)
@@ -686,6 +672,7 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
   // (decoded batches, the file read without llfio, a copy in the other precision); beyond an explicit limit the series
   // alone, any other route is refused as it says why.
   std::optional<io::IpcFile> ipc;
+  std::string storage; // how the file's series are held once read (-v and the report's read row name it)
   if (format == InputFormat::ArrowIPC) {
     ipc.emplace(input);
     n_series = static_cast<std::size_t>(ipc->num_rows());
@@ -756,7 +743,10 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     if (planned.route == Route::Refused) throw InvalidInput(planned.refusal);
     if (stage.report) stage.report->stages.back().note = "Arrow IPC walk";
     if (stream_payload) report_input(n_series, ipc->num_values(), ipc->ndim(), 0, 0, 0, true);
-    if (!stream_payload) ipc.reset(); // read below as every Arrow IPC file is read
+    if (!stream_payload) {
+      storage = ipc->storage(config.dtype); // the read below repeats the walk's decisions on the same file
+      ipc.reset();                          // read below as every Arrow IPC file is read
+    }
   }
 
   // ---- 3. Load the series into RAM ----
@@ -764,16 +754,17 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
   if (stream_payload && stage.report) stage.report->stages.back().note = "none: FastCLARA streams them, inside cluster";
   if (!stream_payload) {
     Data series = data ? std::move(*data) : read_input(input, format.value_or(InputFormat::Text), config);
+    const std::string held = std::to_string(series.size()) + " series" + (storage.empty() ? "" : ", " + storage);
     if (config.verbose) {
       const char *from = !format                            ? " in memory"
                          : format == InputFormat::Parquet  ? " from Parquet"
                          : format == InputFormat::ArrowIPC ? " from Arrow IPC"
                                                            : "";
-      std::cout << "Data loaded" << from << ": " << series.size() << " series [" << clk << "]\n";
+      std::cout << "Data loaded" << from << ": " << held << " [" << clk << "]\n";
     }
     // A reader stores what --dtype names; Float64 series passed in memory, a view among them, are converted here.
     if (config.dtype == core::Precision::Float32 && !series.is_f32()) {
-      series = convert_to_f32(series);
+      series = detail::owned_copy(series, core::Precision::Float32);
       if (config.verbose) std::cout << "Converted to float32 (2x memory saving)\n";
     }
     std::size_t elements = 0, longest = 0, shortest = series.size() > 0 ? SIZE_MAX : 0;
@@ -784,7 +775,7 @@ Outcome execute(const Config &config, std::optional<Data> data, RunStage &stage)
     }
     const std::size_t value_bytes = elements * (series.is_f32() ? sizeof(float) : sizeof(data_t));
     report_input(static_cast<std::size_t>(series.size()), elements, series.ndim, value_bytes, shortest, longest, false);
-    if (stage.report) stage.report->stages.back().note = std::to_string(series.size()) + " series";
+    if (stage.report) stage.report->stages.back().note = held;
     if (config.verbose && series.size() > 0)
       std::cout << "  Data memory: ~" << (value_bytes / (1ULL << 20)) << " MB (" << series.size() << " series, "
                 << (elements / series.size()) << " avg length, " << name_of(core::precision_names, series.precision)

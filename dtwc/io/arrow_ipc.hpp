@@ -87,6 +87,12 @@ public:
   /// Whether read_arrow_ipc(path, dtype) holds values outside the page cache: decoded batches, the file read without
   /// llfio, or a copy in the other precision. A stream holds a batch of them at a time; a mapped view, none.
   bool streams(core::Precision dtype) const;
+  /// How read_arrow_ipc(path, dtype) holds the series, in the words `dtwc_cl -v` and the run report's `read` stage give
+  /// (a file's walk says as much as its read does): `a copy as float32` (or float64) when `dtype` is not the file's
+  /// precision, else `decoded (lz4, 8 record batches)` where a record batch cannot be viewed (the codec, zstd,
+  /// `big-endian` or `misaligned` that made the first one so; `3 of 8 record batches` where only some are), else `mapped`
+  /// (llfio) or `read into memory (no llfio)`.
+  std::string storage(core::Precision dtype) const;
 
   /// The series of the file's rows `rows` (each in [0, num_rows())), in that order, as an owned copy of T: the record
   /// batches holding them read in parallel, each whole by a thread with its scratch, as many at a time as `ram_budget`

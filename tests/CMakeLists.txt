@@ -328,12 +328,13 @@ if(TARGET dtwc_cl)
 endif()
 
 # FastCLARA streaming an Arrow IPC file a record batch at a time, on the real binary in every build: the in-RAM run's
-# clustering and its CSV twin's; with llfio an uncompressed file stays mapped, so one run fewer streams.
+# clustering and its CSV twin's; with llfio an uncompressed file stays mapped, so one run fewer streams. Each run that
+# loads its series names how it holds them (named= counts them), in -v and in the report.
 if(TARGET dtwc_cl)
     if(_dtwc_has_mmap)
-        set(_dtwc_ipc_stream_marker "runs=11 streamed=4 parity=30/30 mmap=1")
+        set(_dtwc_ipc_stream_marker "runs=11 streamed=4 parity=30/30 mmap=1 named=7")
     else()
-        set(_dtwc_ipc_stream_marker "runs=11 streamed=5 parity=30/30 mmap=0")
+        set(_dtwc_ipc_stream_marker "runs=11 streamed=5 parity=30/30 mmap=0 named=6")
     endif()
     dtwc_add_script_test(NAME test_cli_ipc_stream
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_ipc_stream.cmake"

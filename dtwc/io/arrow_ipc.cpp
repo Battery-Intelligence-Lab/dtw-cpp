@@ -908,7 +908,8 @@ std::pair<ArrowIpcEndianness, std::int64_t> read_schema(Decoder &decoder, const 
 /// An Arrow IPC file walked (walk()): its schema, the columns the series come from, the byte order of its buffers,
 /// every record batch, the bytes [first, last) its messages lie in, and the most values a series holds, from the
 /// offsets of every batch where each is viewed in memory (-1 where one is viewed otherwise or decoded). No batch is
-/// decoded.
+/// decoded. `decoded_for` says why the first batch that is decoded cannot be viewed (IpcFile::storage names it);
+/// null if every batch is viewed.
 struct Walk
 {
   Schema schema;
@@ -917,6 +918,7 @@ struct Walk
   ArrowIpcEndianness endianness = NANOARROW_IPC_ENDIANNESS_UNINITIALIZED;
   std::vector<Batch> batches;
   std::int64_t first = 0, last = 0, longest_values = 0;
+  const char *decoded_for = nullptr;
 };
 
 /// The file `source` holds walked into `out`: its record batches counted and the file format's footer checked against
@@ -971,6 +973,11 @@ void walk(const Source &source, Walk &out)
         batch.name_nulls = names->buffer_views[0].size_bytes != 0;
       }
     } else {
+      if (out.decoded_for == nullptr)
+        out.decoded_for = decoder.ipc.codec == NANOARROW_IPC_COMPRESSION_TYPE_LZ4_FRAME ? "lz4"
+                          : decoder.ipc.codec == NANOARROW_IPC_COMPRESSION_TYPE_ZSTD    ? "zstd"
+                          : out.endianness != ArrowIpcSystemEndianness()                ? "big-endian"
+                                                                                        : "misaligned";
       const Proof proof = prove_batch(decoder, body, out.used, out.endianness != ArrowIpcSystemEndianness(),
                                       "Arrow IPC record batch " + std::to_string(k));
       out.longest_values = -1;
@@ -1584,6 +1591,20 @@ std::size_t IpcFile::longest_steps() const
 bool IpcFile::streams(core::Precision dtype) const
 {
   return !state_->mapped() || state_->decoded > 0 || (dtype == core::Precision::Float32) != is_f32();
+}
+
+std::string IpcFile::storage(core::Precision dtype) const
+{
+  const State &state = *state_;
+  if ((dtype == core::Precision::Float32) != is_f32())
+    return "a copy as " + std::string(name_of(core::precision_names, dtype));
+  if (state.decoded > 0) {
+    const std::size_t batches = state.walk.batches.size();
+    const std::string count = state.decoded < batches ? std::to_string(state.decoded) + " of " : std::string();
+    return std::string("decoded (") + state.walk.decoded_for + ", " + count + std::to_string(batches)
+           + (batches == 1 ? " record batch)" : " record batches)");
+  }
+  return state.mapped() ? "mapped" : "read into memory (no llfio)";
 }
 
 std::size_t IpcFile::resident_bytes(core::Precision dtype, bool gpu) const

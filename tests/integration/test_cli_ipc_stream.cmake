@@ -9,6 +9,9 @@
 # 440,000 bytes); 40,000 holds the stream of the uncompressed file read without llfio (about 25,000) and not its
 # series (about 55,000). Mapped with llfio, that file's values are the page cache's: it is read into RAM, within
 # 300,000 bytes (about 45,000).
+# A run that reads the series into RAM names how it holds them (-v's "Data loaded" line and the run report's read row,
+# in the same words): mapped (llfio), read into memory (a build without llfio), decoded (a record batch that cannot be
+# viewed: lz4, zstd), or a copy in the other precision than the file's; its CSV twin names nothing.
 cmake_minimum_required(VERSION 3.26)
 
 foreach(required_var IN ITEMS CLI DATA HAS_MMAP WORK_ROOT)
@@ -25,10 +28,12 @@ file(MAKE_DIRECTORY "${WORK_ROOT}")
 set(runs 0)
 set(streamed 0)
 set(parity 0)
+set(held 0)
 
-# run_cli(<id> <input> <ram-limit> <dtype>): dtwc_cl's FastCLARA; sets <id>_route, <id>_labels (the cluster column),
-# <id>_medoids (the index column) and <id>_cost.
-function(run_cli id input limit dtype)
+# run_cli(<id> <input> <ram-limit> <dtype> <storage>): dtwc_cl's FastCLARA; sets <id>_route, <id>_labels (the cluster
+# column), <id>_medoids (the index column) and <id>_cost. A run that loads the series (route ram) names them as
+# <storage> says (empty: no words, a text input), in the "Data loaded" line and in the report's read row alike.
+function(run_cli id input limit dtype storage)
     set(out "${WORK_ROOT}/${id}")
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -E env OMP_NUM_THREADS=4
@@ -51,6 +56,26 @@ function(run_cli id input limit dtype)
         message(FATAL_ERROR "CLI_IPC_STREAM ${id}: no 'Total cost:' in\n${stdout}")
     endif()
     set(cost "${CMAKE_MATCH_1}")
+    if(route STREQUAL "ram")
+        string(REGEX MATCH "Data loaded[^\r\n]*" loaded "${stdout}")
+        file(READ "${out}/t_report.txt" report)
+        string(REGEX REPLACE "[ \r\n]+" " " flat "${report}") # the stage table's note wraps at 100 columns
+        if(storage STREQUAL "")
+            set(line "Data loaded: 256 series [")
+            set(row " 256 series storage ")
+        else()
+            set(line "Data loaded from Arrow IPC: 256 series, ${storage} [")
+            set(row " 256 series, ${storage} storage ")
+        endif()
+        string(FIND "${loaded}" "${line}" at_line)
+        string(FIND "${flat}" "${row}" at_row)
+        if(NOT at_line EQUAL 0 OR at_row EQUAL -1)
+            message(FATAL_ERROR "CLI_IPC_STREAM ${id}: the series are not named '${storage}' in both the -v line and the "
+                                "report's read row\n-v: ${loaded}\nreport: ${flat}")
+        endif()
+        math(EXPR held "${held} + 1")
+        set(held ${held} PARENT_SCOPE)
+    endif()
     foreach(table IN ITEMS labels medoids)
         file(STRINGS "${out}/t_${table}.csv" lines)
         list(POP_FRONT lines) # the header
@@ -83,7 +108,7 @@ function(same a b)
     set(parity ${parity} PARENT_SCOPE)
 endfunction()
 
-run_cli(csv clara_256.csv 0 float64)
+run_cli(csv clara_256.csv 0 float64 "")
 foreach(config IN ITEMS plain:clara_256.arrow:float64 lz4:clara_256_lz4.arrow:float64
                         zstd:clara_256_zstd.arrow:float64 f32:clara_256_f32.arrow:float64
                         lz4_as_f32:clara_256_lz4.arrow:float32)
@@ -91,13 +116,22 @@ foreach(config IN ITEMS plain:clara_256.arrow:float64 lz4:clara_256_lz4.arrow:fl
     list(GET parts 0 id)
     list(GET parts 1 input)
     list(GET parts 2 dtype)
+    if(id STREQUAL "plain" AND HAS_MMAP)
+        set(storage "mapped")
+    elseif(id STREQUAL "plain")
+        set(storage "read into memory (no llfio)")
+    elseif(id STREQUAL "lz4" OR id STREQUAL "zstd")
+        set(storage "decoded (${id}, 8 record batches)")
+    else() # the file's Float32 values as float64, a Float64 file's as float32: a copy in the other precision
+        set(storage "a copy as ${dtype}")
+    endif()
     if(id STREQUAL "plain" AND NOT HAS_MMAP)
         set(limit 40000)
     else()
         set(limit 300000)
     endif()
-    run_cli(${id}_ram ${input} 0 ${dtype})
-    run_cli(${id}_limited ${input} ${limit} ${dtype})
+    run_cli(${id}_ram ${input} 0 ${dtype} "${storage}")
+    run_cli(${id}_limited ${input} ${limit} ${dtype} "${storage}")
     if(NOT ${id}_ram_route STREQUAL "ram")
         message(FATAL_ERROR "CLI_IPC_STREAM ${id}: without --ram-limit the route is ${${id}_ram_route}")
     endif()
@@ -124,4 +158,4 @@ else()
     set(mmap 0)
 endif()
 message(STATUS "CLI_IPC_STREAM subject=real_dtwc_cl runs=${runs} streamed=${streamed} parity=${parity}/30 "
-               "mmap=${mmap} skips=0")
+               "mmap=${mmap} named=${held} skips=0")

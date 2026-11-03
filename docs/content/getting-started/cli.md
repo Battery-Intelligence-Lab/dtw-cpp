@@ -171,6 +171,12 @@ may run on fewer threads than `clara` did just below it. A binary built without
 LLFIO knows no memory available: there the automatic limit plans nothing, and
 the series and the matrix go into RAM on every thread.
 
+`-v`'s `Data loaded` line and the run report's `read` row say, in the same words, how an Arrow IPC file's series are
+held once read into RAM: `mapped` (llfio), `read into memory (no llfio)`, `decoded (lz4, 8 record batches)` (also
+`zstd`, `big-endian` or `misaligned`: why a record batch cannot be viewed in place; `3 of 8 record batches` where only
+some cannot), or `a copy as float32` (`float64`: the `--dtype` is not the file's). A streamed run reads none of them,
+and a text or Parquet input names nothing.
+
 A run whose memory the system refuses all the same (Windows past its commit
 limit, Linux under `ulimit -v` or strict overcommit) stops with an error naming
 the stage it was in (`check`, `plan`, `read`, `storage`, `fill`, `cluster` or `write`;

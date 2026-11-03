@@ -105,7 +105,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   decoding thread with its codec's scratch (LZ4's block buffers, from each frame's descriptor; zstd's context). A
   record batch larger than the cap is refused before any is decoded (without llfio, before its body is read), and
   series alone over an explicit limit are refused for the other methods and a mapped file's views (`InvalidInput`,
-  naming the bytes).
+  naming the bytes). A run that reads the file into RAM names how its series are held, in `-v`'s `Data loaded` line
+  and the run report's `read` row alike: `mapped`, `read into memory (no llfio)`, `decoded (lz4, 8 record batches)`
+  (`zstd`, `big-endian`, `misaligned`) or `a copy as float32` (`float64`: the `--dtype` is not the file's).
   Parquet (`-DDTWC_ENABLE_ARROW=ON`; a list column or several float columns hold a series per row, `--column` reads
   one) and `dtwc_cl --delimiter`.
 - The distance matrix memory-mapped in a `.dtwm` file where it does not fit the memory plan (`--ram-limit`), also the
