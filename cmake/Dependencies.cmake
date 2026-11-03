@@ -334,8 +334,11 @@ function(dtwc_setup_dependencies)
         "CPUINFO_BUILD_MOCK_TESTS OFF"
         "CPUINFO_BUILD_BENCHMARKS OFF"
         "CPUINFO_BUILD_PKG_CONFIG OFF")
+    # Hidden: the Python module and the MEX link it, and a shared object exports a static library's default-visibility
+    # symbols, which could then bind to another copy of cpuinfo in the process (PyTorch's) or it to ours. Nothing links
+    # cpuinfo through those exports: dtwc_core links it statically, and dtwc_cl and the tests are executables.
     if(TARGET cpuinfo)
-      set_target_properties(cpuinfo PROPERTIES POSITION_INDEPENDENT_CODE ON)
+      set_target_properties(cpuinfo PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
     endif()
   endif()
   # As HiGHS: an empty source directory left by a failed download is a cache hit that adds no target.

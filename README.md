@@ -188,7 +188,7 @@ option; nothing is turned off silently. Defaults are the ones every platform can
 | `DTWC_ALLOW_SEQUENTIAL` | OFF | Explicitly permit a build without OpenMP; otherwise missing OpenMP is an error |
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration (an error without `nvcc`, and on macOS) |
 | `DTWC_ENABLE_METAL` | ON on Apple platforms, OFF elsewhere | Enable the Metal backend (an error off Apple platforms) |
-| `DTWC_ENABLE_ARROW` | OFF | Enable Parquet I/O through Apache Arrow C++ (system packages or CPM); Arrow IPC needs no Arrow C++ |
+| `DTWC_ENABLE_ARROW` | OFF | Enable Parquet I/O through Apache Arrow C++ (system packages or CPM); Arrow IPC needs no Arrow C++. An error with `DTWC_BUILD_PYTHON` or `DTWC_BUILD_MATLAB`, which read Parquet through pyarrow and `parquetread` |
 | `DTWC_ENABLE_LLFIO` | ON | Enable llfio-backed memory-mapped distance matrices |
 | `DTWC_ENABLE_CPUINFO` | ON | The CPU's model, cores and SIMD extensions in `dtwc_cl -v`'s machine facts (pytorch/cpuinfo, static); without it they read `unknown` |
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |

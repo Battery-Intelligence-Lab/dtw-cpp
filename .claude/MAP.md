@@ -35,8 +35,8 @@ Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
 
 ## 3. Build
 
-- Targets (L2b): static `dtwc_core` (all of the above but `cli/` and `api.cpp`; what the Python module and the MEX
-  link), `dtwc_cli` (`cli/`, `api.cpp`; CLI11, fkYAML) and, with Arrow, `dtwc_io` (the Arrow readers and FastCLARA's
+- Targets (L2b): static `dtwc_core` (all of the above but `cli/` and `api.cpp`), `dtwc_cli` (`cli/`, `api.cpp`;
+  CLI11, fkYAML; what the Python module and the MEX link, never with Arrow) and, with Arrow, `dtwc_io` (the Arrow readers and FastCLARA's
   Parquet stream), behind `dtwc++` (INTERFACE, the consumers' link name; headers in `FILE_SET`s based at `dtwc/`);
   `mip-solvers` (object, OpenMP), `dtwc_third_party` (object, C: nanoarrow's IPC and flatcc, lz4, zstd's decoder;
   hidden, no project warnings), `dtwc_options` / `dtwc_warnings`, `dtwc_cl` (top-level project only, not under
@@ -47,13 +47,14 @@ Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
   `pyarrow-config/` shim; counts only if `ctest -N` lists `test_io_readers`), `build/cuda-verify-0928` (CUDA).
 - Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,LLFIO,YAML,CPUINFO}` (ON),
   `DTWC_ENABLE_METAL` (ON on Apple only), `DTWC_ENABLE_{GUROBI,ARROW,CUDA}` (OFF); an `ON` that cannot be honoured
-  stops the configure. `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error), `DTWC_FP_MODEL` (`fast` | `strict`),
+  stops the configure, as does Arrow beside a binding. `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error), `DTWC_FP_MODEL` (`fast` | `strict`),
   `DTWC_ARCH_LEVEL` (`native` | `v3` | `v4`; `v3` for Python), `DTWC_CUDA_ARCH_LIST` (8.0–9.0), `DTWC_DEV_MODE`.
 - Dependencies (`cmake/Dependencies.cmake`, pinned, checked by `check_pins.py`): CLI11, fkYAML, HiGHS, llfio
-  (header-only, with pinned quickcpplib and outcome), cpuinfo (a commit; static, PIC, silent, outside `all`), lz4 and zstd (sources, always), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
+  (header-only, with pinned quickcpplib and outcome), cpuinfo (a commit; static, PIC, hidden, silent, outside `all`), lz4 and zstd (sources, always), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
   Gurobi, CUDA, Metal from the system. FP flags: `-fassociative-math` without `-ffinite-math-only`, on `dtwc_options`.
 - macOS needs `brew install libomp` and `-DOpenMP_ROOT=/opt/homebrew/opt/libomp`; Windows CUDA, nvcc 13.0 with a
-  supported MSVC host. The wheel links no HiGHS (`mip` extra: highspy); the MEX links it statically; archives and
+  supported MSVC host. The wheel links no HiGHS (`mip` extra: highspy); the MEX links it statically; the wheel and
+  the MEX CI build YAML off; archives and
   wheels are x86-64-v3 or arm64, macOS ≥ 13.3.
 - Windows CUDA tree (`build/cuda-verify-0928`), under `vcvars64.bat`: `cmake -S . -B <dir> -G Ninja
   -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl "-DCMAKE_CUDA_COMPILER=<CUDA 13.0>/bin/nvcc.exe"

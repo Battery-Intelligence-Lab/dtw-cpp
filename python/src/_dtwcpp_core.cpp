@@ -18,6 +18,7 @@
 #include <nanobind/stl/function.h>
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/pair.h>
+#include <nanobind/stl/shared_ptr.h> // _run hands dtwcpp._mip.solve the run's own Problem, to co-own
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -53,6 +54,7 @@
 #include <initializer_list>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -87,6 +89,33 @@ nb::ndarray<nb::numpy, T> adopt_as_ndarray(
   });
   owned.release(); // the capsule owns the buffer from here on
   return nb::ndarray<nb::numpy, T>(ptr, shape, owner);
+}
+
+/// A distance matrix as an N x N NumPy array at its stored width, float64 or float32 (matrix_dtype), row-major:
+/// `filled()`, called with the GIL released, fills the matrix where needed and returns it (packed, the upper triangle,
+/// on the heap or mapped), and the array is its expansion (io::to_full_matrix). Always a copy: a zero-copy view of a
+/// triangle as a full N x N layout is impossible. Problem.distance_matrix and _Result._distance_matrix return it.
+template <class Filled>
+nb::object full_matrix(Filled &&filled)
+{
+  // The size is known only after the fill, so both happen inside one release.
+  std::vector<double> f64;
+  std::vector<float> f32;
+  size_t n = 0;
+  bool narrow = false;
+  {
+    nb::gil_scoped_release release;
+    const dtwc::core::DistanceMatrix &dm = filled();
+    n = dm.size();
+    narrow = dm.width() == dtwc::core::Precision::Float32;
+    if (narrow)
+      f32 = dtwc::io::to_full_matrix<float>(dm);
+    else
+      f64 = dtwc::io::to_full_matrix<double>(dm);
+  }
+  if (narrow)
+    return nb::cast(adopt_as_ndarray(std::move(f32), {n, n}));
+  return nb::cast(adopt_as_ndarray(std::move(f64), {n, n}));
 }
 
 /// Problem.set_distance_matrix for an NxN array of T, float64 or float32: each value stored at the matrix's width.
@@ -252,6 +281,35 @@ private:
   nb::object master_;
   dtwc::index_t ncol_ = 0;
 };
+
+/// _run's body: dtwc::run of `config`, the caller's copied, on `data` (series in memory), else on config.input, with
+/// the GIL released for the whole run. The reader's options and the series' dtype go on the copy (run refuses a
+/// reader option beside series in memory, and converts float64 ones to a float32 dtype); `output` is cleared, so the
+/// run writes no files (Config::output defaults to "./results"). The run is named config.name, else as dtwc_cl names
+/// it (the input's file or folder name, "dataset" in memory: a Dataset's default name). Where `external`, the run's
+/// ExternalSolver is dtwcpp._mip.solve: MIP on HiGHS and LR-core's Kelley root call it with the run's own Problem,
+/// which an object that outlives the call co-owns, and take its ClusteringResult. The solver captures nothing Python:
+/// it takes the GIL and imports dtwcpp._mip there; an exception it raises crosses the run as nb::python_error, which
+/// nanobind raises again, the same exception, when _run returns.
+dtwc::Result run_released(dtwc::Config config, std::optional<dtwc::Data> data, dtwc::index_t skip_cols,
+                          dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype,
+                          bool external)
+{
+  if (delimiter.size() > 1) throw dtwc::InvalidInput("load: delimiter must be a single character.");
+  config.skip_cols = skip_cols;
+  config.skip_rows = skip_rows;
+  config.delimiter = delimiter.empty() ? '\0' : delimiter[0];
+  config.dtype = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
+  config.output.clear();
+  dtwc::ExternalSolver solver;
+  if (external)
+    solver = [](const std::shared_ptr<dtwc::Problem> &problem) {
+      nb::gil_scoped_acquire gil;
+      return nb::cast<dtwc::core::ClusteringResult>(nb::module_::import_("dtwcpp._mip").attr("solve")(problem));
+    };
+  nb::gil_scoped_release release;
+  return dtwc::detail::run(config, std::move(data), solver);
+}
 
 } // namespace
 
@@ -589,6 +647,8 @@ NB_MODULE(_dtwcpp_core, m) {
                  })
     .def_prop_rw("no_warm_start", [](const Config &c) { return !c.mip.warm_start; },
                  [](Config &c, bool value) { c.mip.warm_start = !value; })
+    .def_prop_rw("no_report", [](const Config &c) { return !c.report; },
+                 [](Config &c, bool value) { c.report = !value; })
     .def_prop_rw("ram_limit", [](const Config &c) { return c.ram_limit; },
                  [](Config &c, nb::handle value) { c.ram_limit = ram_limit_of(value); });
   def_named(config, "method", [](Config &c) -> dtwc::Method & { return c.method; }, dtwc::method_names);
@@ -1106,29 +1166,11 @@ NB_MODULE(_dtwcpp_core, m) {
       nb::gil_scoped_release release;
       p.fill_distance_matrix();
     }, "Compute all pairwise DTW distances.")
-    // Always a COPY: the C++ store keeps only the upper triangle, so a zero-copy
-    // view into a full NxN layout is structurally impossible.
-    .def("distance_matrix", [](dtwc::Problem &prob) -> nb::object {
-           // Size is only known after the fill, so both happen inside one release.
-           std::vector<double> f64;
-           std::vector<float> f32;
-           size_t n = 0;
-           bool narrow = false;
-           {
-             nb::gil_scoped_release release;
+    .def("distance_matrix", [](dtwc::Problem &prob) {
+           return full_matrix([&prob]() -> const dtwc::core::DistanceMatrix & {
              prob.fill_distance_matrix();
-             const auto &dm = prob.distance_matrix(); // on the heap or mapped
-             n = dm.size();
-             // Row-major, expanded from the triangle, at the matrix's width.
-             narrow = dm.width() == dtwc::core::Precision::Float32;
-             if (narrow)
-               f32 = dtwc::io::to_full_matrix<float>(dm);
-             else
-               f64 = dtwc::io::to_full_matrix<double>(dm);
-           }
-           if (narrow)
-             return nb::cast(adopt_as_ndarray(std::move(f32), {n, n}));
-           return nb::cast(adopt_as_ndarray(std::move(f64), {n, n}));
+             return prob.distance_matrix();
+           });
          },
          "Fill (if needed) and return the full NxN distance matrix as a numpy\n"
          "array of the matrix's dtype, float64 or float32 (matrix_dtype); an\n"
@@ -1205,6 +1247,69 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "prob"_a, "directory"_a,
      "Write a clustered Problem's four result files into directory, as\n"
      "dtwc_cl and C++ Result::save write them (detail::write_result_files).");
+
+  // =========================================================================
+  // dtwc::run, the run dtwc_cl makes: _run and its _Result (C++ dtwc::Result)
+  // =========================================================================
+
+  nb::class_<dtwc::Result>(m, "_Result",
+    "What _run returns, C++ dtwc::Result: the run's clustering, its report, and the\n"
+    "Problem it clustered, which score, save and _distance_matrix read.")
+    .def_prop_ro("labels", [](const dtwc::Result &r) {
+        return adopt_as_ndarray(std::vector<dtwc::index_t>(r.labels()), {r.labels().size()});
+      }, nb::rv_policy::move, "Cluster label of each series, an int64 array (a copy).")
+    .def_prop_ro("medoids", [](const dtwc::Result &r) {
+        return adopt_as_ndarray(std::vector<dtwc::index_t>(r.medoids()), {r.medoids().size()});
+      }, nb::rv_policy::move, "Medoid series index of each cluster, an int64 array (a copy).")
+    .def_prop_ro("cost", [](const dtwc::Result &r) { return r.cost(); },
+                 "Total distance of the series to their medoids.")
+    .def_prop_ro("method", [](const dtwc::Result &r) { return std::string(dtwc::name_of(dtwc::method_names, r.method())); },
+                 "The method that ran, auto resolved: 'pam', 'clara', ...")
+    .def_prop_ro("iterations", [](const dtwc::Result &r) { return r.iterations(); })
+    .def_prop_ro("converged", [](const dtwc::Result &r) { return r.converged(); })
+    .def_prop_ro("report", [](const dtwc::Result &r) { return r.report(); },
+                 "The run report's text, as dtwc_cl writes <name>_report.txt; empty under Config.no_report.")
+    .def("score", [](const dtwc::Result &r, const std::string &name) {
+        nb::gil_scoped_release release;
+        return r.score(name);
+      }, "name"_a,
+         "The score `name` names (as dtwcpp.score); a streamed run, which holds no\n"
+         "series, raises InvalidInput.")
+    .def("save", [](const dtwc::Result &r, const std::filesystem::path &directory) {
+        nb::gil_scoped_release release;
+        r.save(directory);
+      }, "directory"_a,
+         "Write the result files dtwc_cl writes into directory, then the run report:\n"
+         "a streamed run's labels and medoids, with the reader's names, and its report.")
+    .def("_distance_matrix", [](const dtwc::Result &r) {
+        return full_matrix([&r]() -> const dtwc::core::DistanceMatrix & { return dtwc::detail::filled_matrix(r); });
+      },
+         "The N x N distances, filled where the method left them out, at the stored\n"
+         "width: a float32 matrix (matrix_dtype) as float32. A streamed run raises\n"
+         "InvalidInput.");
+
+  constexpr auto run_doc =
+    "Cluster with dtwc::run, the run dtwc_cl makes, and return a _Result. source is a\n"
+    "path C++ reads (CSV/TSV, a folder or Arrow IPC; skip_cols, skip_rows, delimiter\n"
+    "and dtype as dtwcpp.load takes them) or a Data, copied (the run refuses a\n"
+    "reader option beside series in memory; dtype float32 converts float64 ones).\n"
+    "The run takes a copy of config: it writes no files (output cleared) and is named\n"
+    "config.name, else as dtwc_cl names it. The GIL is released for the whole run.\n"
+    "external (a build without HiGHS) solves Method.MIP on HiGHS and LR-core's kelley\n"
+    "root with dtwcpp._mip.solve(prob), prob the run's own Problem, co-owned; an\n"
+    "exception solve raises reaches the caller as itself.";
+  m.def("_run", [](const dtwc::Config &config, const std::string &source, dtwc::index_t skip_cols,
+                   dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype, bool external) {
+          dtwc::Config copy = config;
+          copy.input = source;
+          return run_released(std::move(copy), std::nullopt, skip_cols, skip_rows, delimiter, dtype, external);
+        }, "config"_a, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
+        "dtype"_a = std::string("float64"), "external"_a = false, run_doc);
+  m.def("_run", [](const dtwc::Config &config, const dtwc::Data &source, dtwc::index_t skip_cols,
+                   dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype, bool external) {
+          return run_released(config, source, skip_cols, skip_rows, delimiter, dtype, external);
+        }, "config"_a, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
+        "dtype"_a = std::string("float64"), "external"_a = false);
 
   // =========================================================================
   // Method.MIP without linked HiGHS (the wheel): dtwcpp._mip hands the model's

@@ -21,15 +21,15 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | Zstandard (its decoder) | 1.5.7 | BSD-3-Clause | yes — compiled in | yes |
 | fast_float | 8.3.0 | Apache-2.0 **OR** MIT **OR** BSL-1.0 | yes — vendored, compiled in | yes |
 | HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | no — the wheel links no HiGHS; `method="mip"` solves with the user's highspy (the `mip` extra) |
-| CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | no |
-| fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no |
+| CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | yes — headers compiled in: the module links the CLI library (`dtwc::run`, whose run report prints the command line's key table) |
+| fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no — the wheels are built with `DTWC_ENABLE_YAML=OFF` |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
 | LLVM OpenMP runtime (`libomp`) | 23.1.1 | Apache-2.0 WITH LLVM-exception | macOS — `lib/`; Windows — `bin/libomp.dll`, beside `dtwc_cl.exe`; see note below | macOS wheels — bundled by `delocate`; Windows wheels — `libomp.dll` in `dtwcpp.libs/`, bundled by `delvewheel` |
 | Microsoft Visual C++ runtime (`msvcp140*`, `vcruntime140*`, `concrt140`) and its OpenMP runtime (`vcomp140`) | that of the Visual Studio that built the artefact | Microsoft Distributable Code — see below | Windows only — `bin/`, beside `dtwc_cl.exe` and `dtwc_cl_msvc.exe`; `vcomp140` for `dtwc_cl_msvc.exe` only | Windows wheels — `msvcp140` in `dtwcpp.libs/`, bundled by `delvewheel` |
 | llfio, quickcpplib, outcome, ntkernel-error-category (Windows) | pinned commits | Apache-2.0 **OR** BSL-1.0 | yes — headers compiled in (`DTWC_ENABLE_LLFIO=ON`) | yes — headers compiled in |
 | wg14_signals (llfio's signal guard) | pinned commit | Apache-2.0 | as llfio | as llfio |
 | span-lite, byte-lite (via quickcpplib) | pinned commits | BSL-1.0 | as llfio | as llfio |
-| cpuinfo (pytorch/cpuinfo) | pinned commit | BSD-2-Clause | yes — compiled in (`DTWC_ENABLE_CPUINFO=ON`) | no — built, but no binding calls it, so the module links none of it (2026-11-03) |
+| cpuinfo (pytorch/cpuinfo) | pinned commit | BSD-2-Clause | yes — compiled in (`DTWC_ENABLE_CPUINFO=ON`) | yes — compiled in (`DTWC_ENABLE_CPUINFO=ON`): the module links the CLI library, whose run report reads it |
 
 **Not redistributed**, and therefore not covered here: Catch2 (BSL-1.0) and google/benchmark
 (Apache-2.0), which are test- and benchmark-only; libpfm4 (MIT), which google/benchmark links only
@@ -267,6 +267,8 @@ SOFTWARE.
 
 ## CLI11 2.6.2 — BSD-3-Clause
 
+Its headers are compiled into the CLI archives, the Python wheels and the MATLAB MEX, which link the CLI library.
+
 ```
 CLI11 2.6.2 Copyright (c) 2017-2026 University of Cincinnati, developed by Henry
 Schreiner under NSF AWARD 1414736. All rights reserved.
@@ -441,8 +443,8 @@ DEALINGS IN THE SOFTWARE.
 ## cpuinfo — BSD-2-Clause
 
 pytorch/cpuinfo reads the CPU's model, its cores and its SIMD extensions for the machine facts that `dtwc_cl -v`
-prints. Its library (`src/`, `include/cpuinfo.h`) is compiled into the CLI archives (`DTWC_ENABLE_CPUINFO=ON`, the
-default) from the archive of commit `e9320ce3398899fbecc986c82f49b5d59b80dff7`
+and the run report print. Its library (`src/`, `include/cpuinfo.h`) is compiled into the CLI archives, the Python
+wheels and the MATLAB MEX (`DTWC_ENABLE_CPUINFO=ON`, the default) from the archive of commit `e9320ce3398899fbecc986c82f49b5d59b80dff7`
 (`https://github.com/pytorch/cpuinfo/archive/e9320ce3398899fbecc986c82f49b5d59b80dff7.tar.gz`, SHA-256
 `0f19bffed603d591240b6e25e8def96d203ccf59db09c28cd15c92bf856f5e90`), unmodified; its `deps/clog` is not built. Its
 `LICENSE`:

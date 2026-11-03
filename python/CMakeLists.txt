@@ -32,11 +32,14 @@ else()
   nanobind_add_module(_dtwcpp_core NOMINSIZE src/_dtwcpp_core.cpp)
 endif()
 
-# The core alone: no command line (CLI11, fkYAML) and no Arrow (Parquet and Arrow IPC go through pyarrow).
-target_link_libraries(_dtwcpp_core PRIVATE dtwc_core project_options)
+# The CLI library, which brings the core: _run is dtwc::run, whose run report prints the command line's key table
+# (CLI11) and the machine's facts (cpuinfo). Never Arrow C++: the module reads Parquet through pyarrow (and Arrow IPC
+# with the core's reader), so a build with DTWC_ENABLE_ARROW=ON, where dtwc_cli links dtwc_io, stops at configure
+# (CMakeLists.txt); the wheel builds with DTWC_ENABLE_YAML=OFF, so no fkYAML (pyproject.toml).
+target_link_libraries(_dtwcpp_core PRIVATE dtwc_cli project_options)
 # The MSVC `/openmp:experimental` flag (and `-fopenmp`/libomp on Clang/GCC) is
 # now attached DIRECTLY to dtwc_core as a PUBLIC usage requirement
-# (dtwc/CMakeLists.txt), so linking `dtwc_core` alone is enough for this module to
+# (dtwc/CMakeLists.txt), so linking `dtwc_core` (through dtwc_cli) is enough for this module to
 # compile against the OpenMP runtime (`_OPENMP`, `omp_get_max_threads`).
 # `project_options` is kept in the link for
 # its other usage requirements and as belt-and-suspenders; the OpenMP behaviour

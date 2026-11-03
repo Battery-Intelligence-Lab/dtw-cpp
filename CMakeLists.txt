@@ -420,6 +420,15 @@ if(DTWC_BUILD_MATLAB)
   add_subdirectory(bindings/matlab)
 endif()
 
+# The bindings link dtwc_cli (dtwc::run), which links dtwc_io, so Arrow C++, in a build with Arrow: a binding never
+# links Arrow C++ (Python reads Parquet through pyarrow, MATLAB with parquetread), so the two do not share a tree.
+if((DTWC_BUILD_PYTHON OR DTWC_BUILD_MATLAB) AND TARGET dtwc_io)
+  message(FATAL_ERROR
+    "DTWC_ENABLE_ARROW=ON with DTWC_BUILD_PYTHON or DTWC_BUILD_MATLAB: the bindings link the CLI library, which links "
+    "Arrow C++ in this build, and they read Parquet through pyarrow (Python) and parquetread (MATLAB) instead.\n"
+    "  Configure the bindings in a build tree with -DDTWC_ENABLE_ARROW=OFF (the default), and Arrow in another.")
+endif()
+
 cpm_licenses_create_disclaimer_target(write-licenses "${CMAKE_BINARY_DIR}/third_party.txt" "${CPM_PACKAGES}")
 
 if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)

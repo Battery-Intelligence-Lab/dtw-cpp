@@ -70,7 +70,8 @@ jobs:
 
           # Release build with header-only llfio (the memory-mapped distance
           # matrix) and no MIP solver: method="mip" solves with the user's
-          # highspy (the mip extra); Gurobi stays external.
+          # highspy (the mip extra); Gurobi stays external. No YAML: the module
+          # links the CLI library (dtwc::run), and only dtwc_cl reads a --config file.
           # DTWC_BUILD_PYTHON=ON makes DTWC_ARCH_LEVEL default to v3, the CPU floor
           # of every x86-64 wheel (AVX2 and FMA); arm64 wheels get no level flag.
           CIBW_CONFIG_SETTINGS: >-
@@ -79,6 +80,7 @@ jobs:
             cmake.args=-DDTWC_ENABLE_HIGHS=OFF
             cmake.args=-DDTWC_ENABLE_LLFIO=ON
             cmake.args=-DDTWC_ENABLE_CPUINFO=ON
+            cmake.args=-DDTWC_ENABLE_YAML=OFF
             cmake.args=-DDTWC_BUILD_TESTING=OFF
             cmake.args=-DDTWC_BUILD_BENCHMARK=OFF
             cmake.args=-DCMAKE_BUILD_TYPE=Release
