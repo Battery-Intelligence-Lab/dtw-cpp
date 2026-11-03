@@ -54,8 +54,16 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   YAML (a flag beats the file, an unknown key is an error), `--print-config` writes one; `dtwc_cl --version`.
 - Python: `dtwcpp.cluster(data, k, **keys)` takes `dtwc_cl`'s clustering keys (`method`, `band`, `variant`, `seed`, ...)
   and series in memory as NumPy arrays, lists of arrays of any length, pandas or Arrow; a scikit-learn `DTWClustering`.
+  `cluster()` runs `dtwc::run`, as `dtwc_cl` does (C++ reads a text file, a folder or an Arrow IPC file itself; pyarrow
+  reads Parquet; the estimators cluster through a `Problem`, in RAM): `verbose` prints `dtwc_cl -v`'s lines, the memory
+  plan among them; `ram_limit` is the plan's, so an explicit limit that cannot hold the run is `InvalidInput`, `auto` is
+  `clara` where `pam`'s matrix does not fit it, and an Arrow IPC file beyond it streams through FastCLARA, whose
+  `Result` holds no series (`score` and `distance_matrix` raise `InvalidInput`; `save` writes the labels and medoids, as
+  `dtwc_cl` does, and the report); a GPU request the device cannot compute is refused before the series are read; and
+  the `Result` carries the run report, `report` (`no_report=True` makes none), which `save` writes last.
 - Python: `device="hpc"` and `"hpc:gpu"` (beta) send a run to a SLURM cluster as one `job.toml`; the extras `parquet`,
-  `hdf5`, `io`, `sklearn` and `mip` (the wheel links no HiGHS, so `method="mip"` runs on highspy).
+  `hdf5`, `io`, `sklearn` and `mip`. highspy is installed with dtwcpp (the wheel links no HiGHS, so `method="mip"` and
+  `lr_root="kelley"` run on it); the `mip` extra names the same highspy.
 - MATLAB: `dtwc.cluster(data, k, Name, Value)` with the same keys in CamelCase, `dtwc.load` (Parquet through
   `parquetread`, Arrow IPC through the C++ reader), `dtwc.DTWClustering`, `dtwc.Problem`, the algorithms and the
   scores, through one MEX file.
@@ -78,7 +86,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   bound) beside Lloyd's k-medoids and the MIP; `--method auto`: FastPAM to 5,000 series, then FastCLARA (GPU: FastPAM).
 - LR-core's root bound is the subgradient root in every language and build; `--lr-root kelley` (Python `lr_root`,
   MATLAB `LrRoot`) runs Kelley's cutting planes instead, whose master LP solves on linked HiGHS or, in Python, on
-  highspy (the `mip` extra). Both reach the same optimum; `-v` names the root and its branch-and-bound nodes.
+  highspy. Both reach the same optimum; `-v` names the root and its branch-and-bound nodes.
 - `--seed` (42) for the seeded methods, whose draws are the same on every platform and standard library; `--n-init`
   (v1.0.0's `--repeat`) restarts FastPAM too.
 - DTW barycenters (`dtw_barycenter`: SSG, DBA, Soft-DTW) and barycenter k-means (`barycenter_kmeans`).
@@ -96,7 +104,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   its buffers declare more decoded bytes than their lengths allow beyond Arrow's 64-byte padding, or the file's more
   than the memory available (an `IOError` before any decode), and bytes handed to the reader at an address not
   8-aligned are read from an aligned copy; a file with a dictionary-encoded column is an `IOError` naming why. With
-  `dtwc_cl` beyond the data cap of its memory plan (`--ram-limit`, below) FastCLARA reads (with CUDA each record batch
+  `dtwc_cl` (and Python's `cluster()`) beyond the data cap of its memory plan (`--ram-limit`, below) FastCLARA reads
+  (with CUDA each record batch
   uploaded as an owned copy, priced beside it with CUDA's staging of it) a file whose series RAM would hold outside the
   page cache (decoded, read without llfio, or in the other `--dtype`) a record batch at a time, decoded and checked in
   parallel, within the cap: the
@@ -129,8 +138,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   what the plan holds, the input, each stage's wall time, share, CPU utilisation and peak (`check`, `plan`, `read`,
   `storage`, `fill`, `cluster`, `write`, the silhouettes), the algorithm's iterations and stopping criterion, the
   result and notes. A run that fails past its first checks writes it up to the failing stage, with the error, and
-  throws that error unchanged; `--no-report` (TOML/YAML key `no-report`, C++ `Config::report = false`) writes none.
-  Python's and MATLAB's results carry none yet (2026-11-03: their `cluster()` does not run through `dtwc::run`).
+  throws that error unchanged; `--no-report` (TOML/YAML key `no-report`, C++ `Config::report = false`, Python
+  `no_report=True`) writes none. Python's `Result.report` gives its text and `Result.save` writes it last; MATLAB's
+  result carries none yet (2026-11-03: its `cluster()` does not run through `dtwc::run`).
 - On Windows, `dtwc_cl.exe` states its name, version and copyright in its file properties.
 - The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
   each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
@@ -178,9 +188,10 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   names taken from file names are UTF-8 on every platform (v1.0.0 used the Windows code page).
 - `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run may use, and
   `--mmap-threshold` (mapped from 50,000 series) is gone. Its default is 90 % of the memory available (or of a Linux
-  cgroup's limit, which a SLURM job's memory request sets) for `dtwc_cl`, `dtwc::run` and `dtwc::cluster`; a
-  `Problem`'s (`set_ram_limit`, and Python's and MATLAB's `cluster()`, which go through one) stays all of it, which
-  sizes a mapped fill. `dtwc_cl` (and `dtwc::run`, `dtwc::cluster`) plans once: a reserve for its threads' working
+  cgroup's limit, which a SLURM job's memory request sets) for `dtwc_cl`, `dtwc::run`, `dtwc::cluster` and Python's
+  `cluster()`; a `Problem`'s (`set_ram_limit`, and MATLAB's `cluster()`, which goes through one) stays all of it, which
+  sizes a mapped fill. `dtwc_cl` (and `dtwc::run`, `dtwc::cluster`, Python's `cluster()`) plans once: a reserve for
+  its threads' working
   set (1.1 × threads × a thread's DTW scratch for the longest series expected and the method's tables), then the
   series, the method's own terms (TADPole's pair flags and cache, the hierarchical clustering's dense copy,
   OneBatchPAM's batch table) and the distance matrix in what is left, the data cap. The series go into RAM on every
@@ -193,19 +204,21 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   refused before any work (`InvalidInput`): in RAM naming the least limit that runs, on a stream naming what the plan
   holds, the stream's own floor coming on top (its refusals name the data cap as `--ram-limit`, and say so); the
   automatic limit never refuses. It is a plan, not a cap: a run may use about a tenth more, more with series longer
-  than planned; MIP's and LR-core's solver memory is not planned. Python's and MATLAB's `cluster()` hold every series
-  at once.
-- A run (`dtwc_cl`, `dtwc::run`, `dtwc::cluster`) whose memory the system refuses (`std::bad_alloc`) throws
+  than planned; MIP's and LR-core's solver memory is not planned. MATLAB's `cluster()` holds every series at once.
+- A run (`dtwc_cl`, `dtwc::run`, `dtwc::cluster`, Python's `cluster()`) whose memory the system refuses
+  (`std::bad_alloc`) throws
   `InvalidInput` naming the stage it was in (`check`, `plan`, `read`, `storage`, `fill`, `cluster`, `write`; PAM,
   `kmedoids` and a `clara` sampling every series fill the distance matrix in `fill`), its memory plan
   and what the plan holds in RAM, the process's peak resident memory (`core::peak_memory()`, mapped files' pages
   included) and the ways out that hold less in that run, built once the run's memory is given back. A reader's or a
   library's refused allocation (nanoarrow's ENOMEM, Arrow's out-of-memory status, a map llfio is refused memory for)
-  is reported the same way; `dtwc::load` and `read_data` pass it as `std::bad_alloc` (Python `MemoryError`). Python's
-  and MATLAB's `cluster()` do not go through `dtwc::run` (2026-11-03): there it is `MemoryError` and `dtwc:internal`.
+  is reported the same way; `dtwc::load` and `read_data` pass it as `std::bad_alloc` (Python `MemoryError`, as for
+  Python's `cluster()` reading Parquet or copying series in memory before its run). MATLAB's `cluster()` does not go
+  through `dtwc::run` (2026-11-03): there it is `dtwc:internal`.
   A new `.dtwm` file that cannot be sized or mapped is removed. Under Linux's overcommit a run over a cgroup's limit
   gets no message: the kernel's OOM killer ends it.
-- `dtwc::run` (so `dtwc::cluster` and `dtwc_cl`) gives its threads' scratch back as it starts and when it returns or
+- `dtwc::run` (so `dtwc::cluster`, `dtwc_cl` and Python's `cluster()`) gives its threads' scratch back as it starts
+  and when it returns or
   throws, CUDA's pinned and device buffers among it: a 24-thread run on 100,000-value series kept 615 MB committed
   after it returned (2026-11-01). Tier-2 calls (a fill, `Problem::cluster`, the algorithms) keep theirs, so a k-sweep
   allocates once.

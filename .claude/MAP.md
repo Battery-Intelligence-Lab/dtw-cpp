@@ -13,7 +13,7 @@ Parquet ──▶ io/read_arrow (dtwc_io) ────────────�
                                                                        ├─ dist_by_ind(i, j): an O(1) read ◀── algorithms, MIP, scores
                                                                        └─ cluster() ─▶ ClusteringResult, or a free algorithm function
 Tier-1  device() → load() → Dataset → cluster() → run(Config) → Result       CLI  dtwc_cl → cli::bind → Config → run()
-Python  _dtwcpp_core + dtwcpp: apply(Config) → Problem::cluster()          MATLAB  dtwc_mex + +dtwc: the same
+Python  cluster() → _dtwcpp_core._run → run(Config) → Result (estimators: Problem)   MATLAB  dtwc_mex: apply → Problem::cluster()
 ```
 
 ## 2. Where the code is (`dtwc/`)
@@ -53,7 +53,7 @@ Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
   (header-only, with pinned quickcpplib and outcome), cpuinfo (a commit; static, PIC, hidden, silent, outside `all`), lz4 and zstd (sources, always), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
   Gurobi, CUDA, Metal from the system. FP flags: `-fassociative-math` without `-ffinite-math-only`, on `dtwc_options`.
 - macOS needs `brew install libomp` and `-DOpenMP_ROOT=/opt/homebrew/opt/libomp`; Windows CUDA, nvcc 13.0 with a
-  supported MSVC host. The wheel links no HiGHS (`mip` extra: highspy); the MEX links it statically; the wheel and
+  supported MSVC host. The wheel links no HiGHS (highspy, a dependency: `_mip.solve`); the MEX links it statically; the wheel and
   the MEX CI build YAML off; archives and
   wheels are x86-64-v3 or arm64, macOS ≥ 13.3.
 - Windows CUDA tree (`build/cuda-verify-0928`), under `vcvars64.bat`: `cmake -S . -B <dir> -G Ninja

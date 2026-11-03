@@ -42,10 +42,12 @@ def test_highspy_reaches_the_optimum_of_linked_highs(highspy_route, dtwc_cl, tmp
     assert result.cost == pytest.approx(result.distance_matrix[np.arange(n), medoids[labels]].sum())
 
 
-def test_mip_without_highspy_names_the_extra(monkeypatch):
+def test_mip_without_highspy_says_to_reinstall_dtwcpp(monkeypatch):
+    """highspy is a dependency of dtwcpp: one that cannot be imported is SolverError, raised in the
+    run's solver (dtwcpp._mip.solve) and reaching cluster()'s caller as itself."""
     monkeypatch.setattr(dtwcpp, "HIGHS_AVAILABLE", False)
     monkeypatch.setitem(sys.modules, "highspy", None)  # `import highspy` raises ImportError
-    with pytest.raises(dtwcpp.SolverError, match=r'pip install "dtwcpp\[mip\]"'):
+    with pytest.raises(dtwcpp.SolverError, match=r"highspy, which dtwcpp requires .*: reinstall dtwcpp\."):
         dtwcpp.cluster([[0.0, 1.0], [5.0, 6.0], [0.5, 1.5]], 2, method="mip")
 
 
@@ -75,7 +77,7 @@ def test_lrcore_kelley_root_on_highspy_reaches_the_brute_force_optimum(highspy_r
     assert np.array_equal(kelley.labels, default.labels)
 
 
-def test_lrcore_kelley_without_highspy_names_the_extra_before_any_work(monkeypatch):
+def test_lrcore_kelley_without_highspy_says_to_reinstall_dtwcpp_before_any_work(monkeypatch):
     monkeypatch.setattr(dtwcpp, "HIGHS_AVAILABLE", False)
     monkeypatch.setitem(sys.modules, "highspy", None)  # `import highspy` raises ImportError
     prob = dtwcpp.Problem("kelley_without_highspy")
@@ -85,6 +87,6 @@ def test_lrcore_kelley_without_highspy_names_the_extra_before_any_work(monkeypat
     settings = dtwcpp.MIPSettings()
     settings.lr_root = "kelley"
     prob.mip_settings = settings
-    with pytest.raises(dtwcpp.SolverError, match=r'pip install "dtwcpp\[mip\]"'):
+    with pytest.raises(dtwcpp.SolverError, match=r"highspy, which dtwcpp requires .*: reinstall dtwcpp, or keep"):
         prob.cluster()
     assert not prob.is_distance_matrix_filled()  # refused before any distance was computed

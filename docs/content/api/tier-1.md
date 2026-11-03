@@ -7,11 +7,11 @@ description: "The high-level API: the same four steps in C++, Python and MATLAB.
 # Tier 1: device, load, cluster, Result
 
 Tier 1 is four steps, spelled the same way in every language: choose a device,
-wrap the data, cluster it, read the result. C++ `cluster()` runs `dtwc::run`, as
-`dtwc_cl` does; Python and MATLAB hand the same `dtwc::Config` to `dtwc::apply`
-and run `Problem::cluster()`. So one input with one set of settings gives the
-same labels, medoids and cost in each. C++ and Python count from 0; MATLAB
-counts from 1.
+wrap the data, cluster it, read the result. C++'s and Python's `cluster()` run
+`dtwc::run`, as `dtwc_cl` does; MATLAB hands the same `dtwc::Config` to
+`dtwc::apply` and runs `Problem::cluster()`. So one input with one set of
+settings gives the same labels, medoids and cost in each. C++ and Python count
+from 0; MATLAB counts from 1.
 
 Each program below clusters the 27 series of
 `tests/conformance/data/conformance_series.csv` into three groups with FastPAM
@@ -131,7 +131,8 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 `sample_size`, `n_samples`, `batch_size`, `linkage`, `dc`, `solver`, `mip_gap`,
 `time_limit`, `no_warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`,
 `lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `matrix_dtype`, `ram_limit`, `name` and `verbose`
-(MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'MatrixDtype'`, `'RamLimit'`, ...). `dtype` (MATLAB
+(MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'MatrixDtype'`, `'RamLimit'`, ...), and in
+Python `no_report` (`--no-report`: no run report). `dtype` (MATLAB
 `'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and
 refuses it beside a `Dataset`, which keeps its own. The others (`input`, `output`,
 `checkpoint`, ...) are `dtwc_cl`'s and `dtwc::run`'s, unknown keys here.
@@ -144,7 +145,9 @@ of the wrong type is `TypeError`.
 `method` is one of `auto` (the default), `pam`, `onebatch`, `clara`, `kmedoids`,
 `mip`, `lrcore`, `tadpole` and `hierarchical` (also `obp`, `lr` and `hclust`), in
 any case. `auto` is `pam` for up to 5000 series on the CPU and `clara` above
-that; on a GPU it is `pam`. A `device` given to `cluster()` is for that run only.
+that; on a GPU it is `pam`. Where `cluster()` runs `dtwc::run` (C++, Python), `auto`
+is also `clara` where `pam`'s distance matrix does not fit the run's memory plan
+(`ram_limit`). A `device` given to `cluster()` is for that run only.
 On a GPU, `pam`, `kmedoids`, `mip`, `lrcore` and `hierarchical` run with the GPU
 filling the distance matrix and `clara` with the GPU filling its samples, while
 `onebatch` and `tadpole`, which compute on the CPU as they go, raise
@@ -187,7 +190,7 @@ const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std
 | a quality score | `score(name)` | `score(name)` | `score(name)` |
 | the N×N distances | `distance_matrix()`, row-major | `distance_matrix` | `distance_matrix()` |
 | write the result files | `save(dir)` | `save(dir)` | `save(dir)` |
-| the run report | `report()`: the text of `<name>_report.txt` | (not before `cluster()` runs through `dtwc::run`) | (not before `cluster()` runs through `dtwc::run`) |
+| the run report | `report()`: the text of `<name>_report.txt` | `report` (`None` for an `hpc` run) | (not before `cluster()` runs through `dtwc::run`) |
 | plot | (plot the files `save` writes) | `plot(png="clusters_2d.png", show=True)` | `plot()` |
 | run details | `method()` (`auto` resolved), `iterations()`, `converged()` | `summary()`, `elapsed_s`, `k`, `n_series`, `name` | |
 
@@ -204,16 +207,22 @@ time they need it. Under `matrix_dtype` float32, `distance_matrix` is a NumPy
 into `dir` (created if missing): `<name>_labels.csv` (`name,cluster`), `<name>_medoids.csv`
 (`cluster,medoid_index,medoid_name`), `<name>_distance_matrix.csv` and
 `<name>_silhouettes.csv` (`name,cluster,silhouette`), with the series' names
-from the input. C++ `save` then writes the run report, last, as `<name>_report.txt`
+from the input. C++'s and Python's `save` then write the run report, last, as `<name>_report.txt`
 (the run's own: its times and machine; a run without an output directory, as
 `cluster()` is, reports its silhouettes not computed though `save` computes them;
-a `save` that fails before it writes none). Python's and MATLAB's `save` write the
-four result files only (2026-11-03: their `cluster()` does not run through `dtwc::run`). `save` fills the matrix first, where `dtwc_cl` writes the
+a `save` that fails before it writes none; none under `config.report = false`,
+Python's `no_report=True`). MATLAB's `save` writes the four result files only
+(2026-11-03: its `cluster()` does not run through `dtwc::run`). `save` fills the matrix first, where `dtwc_cl` writes the
 matrix and silhouette files only when the method filled it (not after
 `onebatch`, `tadpole` or a sampled `clara`). With one cluster there is no
 silhouette file; when fewer than two clusters are non-empty, `save` prints a
 warning and skips it. `plot` draws a
 two-dimensional classical-MDS map of the distance matrix, coloured by cluster.
+
+A run that streamed its series (an Arrow IPC file, or with Arrow C++ a Parquet
+file, beyond the memory plan's data cap: `ram_limit`) holds none: its `score` and
+`distance_matrix` (so `plot`) raise `InvalidInput`, and `save` writes the labels and
+medoids, with the reader's names, as `dtwc_cl` writes them, then the report.
 
 A Python `hpc` result holds the labels only: `score` and `save` raise
 `InvalidInput` (the cluster's `dtwc_cl` wrote the files there), and `plot`
@@ -274,7 +283,7 @@ type.
 
 | C++ | Python | MATLAB identifier | raised for |
 |---|---|---|---|
-| `dtwc::InvalidInput` | `dtwcpp.InvalidInput` (a `ValueError`) | `dtwc:invalidArgument` | an argument or input the call cannot take: an unknown name, a value out of range, empty data, a NaN or ±inf a distance does not accept, a matrix or cache made for other data; in C++ also a `dtwc::run` whose memory the system refuses, naming its stage, its memory plan and the process's peak |
+| `dtwc::InvalidInput` | `dtwcpp.InvalidInput` (a `ValueError`) | `dtwc:invalidArgument` | an argument or input the call cannot take: an unknown name, a value out of range, empty data, a NaN or ±inf a distance does not accept, a matrix or cache made for other data; in C++ and Python also a `dtwc::run` whose memory the system refuses, naming its stage, its memory plan and the process's peak |
 | `dtwc::UndefinedScore` | `dtwcpp.UndefinedScore` (an `InvalidInput`) | `dtwc:invalidArgument` | a silhouette, Dunn or Davies–Bouldin score of a labelling with fewer than two non-empty clusters |
 | `dtwc::SolverError` | `dtwcpp.SolverError` (a `RuntimeError`) | `dtwc:solverError` | a solver this build lacks, or a MIP or LR-core run that ends without a proven optimum |
 | `dtwc::DeviceError` | `dtwcpp.DeviceError` (a `RuntimeError`) | `dtwc:deviceError` | a device name, a GPU the build or machine lacks, or a setting the device cannot compute |
@@ -287,6 +296,7 @@ catches `InvalidInput` and `UndefinedScore` only; MATLAB's base identifier is
 `load()` and the Tier-2 calls pass C++'s `std::bad_alloc` as it is (Python
 `MemoryError`, as Python's `load()` raises for memory pyarrow is refused reading
 Parquet; MATLAB `dtwc:internal`; Gurobi's MIP adapter reports it as a
-`SolverError`), and C++'s `dtwc::cluster` reports it as
-the `InvalidInput` above; Python's and MATLAB's `cluster()` do not go through
+`SolverError`), and C++'s and Python's `cluster()` report it within the run as
+the `InvalidInput` above (Python reads Parquet, and copies series in memory, before
+the run: `MemoryError` there); MATLAB's `cluster()` does not go through
 `dtwc::run` (2026-11-03).

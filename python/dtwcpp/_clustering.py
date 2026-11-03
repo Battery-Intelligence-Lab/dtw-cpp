@@ -3,8 +3,9 @@
 @brief DTWClustering: the sklearn-compatible DTW k-medoids estimator.
 @details
     fit() hands C++ one Problem, configured by a Config exactly as
-    dtwcpp.cluster() is, and Problem.cluster() runs the method, its n_init
-    seeded restarts on one distance matrix. metric="precomputed" takes the
+    dtwcpp.cluster() is and clustered through a Problem, in RAM:
+    Problem.cluster() runs the method, its n_init seeded restarts on one
+    distance matrix. metric="precomputed" takes the
     sklearn convention: fit reads an N x N distance matrix, predict and
     transform an M x N one.
 @author Volkan Kumtepeli

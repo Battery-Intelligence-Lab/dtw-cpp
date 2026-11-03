@@ -170,8 +170,8 @@ time and CPU use, the iterations and stopping criterion; quote from it what the 
 - **OOM / bad_alloc**: retry with `--method clara`; on a Parquet file of a series per row, `--ram-limit 8G` also streams the series
 - **NaN in distances**: retry with `--missing-strategy arow`
 - **CUDA fails**: retry on CPU
-- **`mip` raises `SolverError` naming highspy**: the wheel solves `mip` with the user's highspy, so
-  `pip install "dtwcpp[mip]"` and rerun. `lrcore` is also exact and needs no solver (its default root
+- **`mip` raises `SolverError` naming highspy**: the wheel solves `mip` with highspy, which dtwcpp
+  requires, so reinstall dtwcpp and rerun. `lrcore` is also exact and needs no solver (its default root
   is the subgradient one; a hard instance can stop at `lr_max_nodes`). Do not swap in `pam`:
   it is a heuristic, not the optimum the user asked for.
 

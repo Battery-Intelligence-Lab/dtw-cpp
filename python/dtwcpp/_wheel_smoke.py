@@ -47,7 +47,7 @@ def _mapped_matrix_persists(dtwcpp):
 
 def run():
     """Assert compiled parallelism, a real MIP solve with highspy (the wheel links no
-    HiGHS; the mip extra) and a mapped matrix."""
+    HiGHS; highspy is a dependency of dtwcpp) and a mapped matrix."""
     import dtwcpp
     import dtwcpp.test
 

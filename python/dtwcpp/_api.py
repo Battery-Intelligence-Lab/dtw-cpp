@@ -12,9 +12,11 @@
         print(res.summary())
         res.plot()
 
-    A local cluster() is C++'s: the keywords become a dtwcpp Config, which C++
-    applies to a Problem holding the series, and Problem.cluster() runs the
-    method. Python reads and writes the files (dtwcpp.io).
+    A local cluster() is C++'s dtwc::run, the run dtwc_cl makes: the keywords
+    become a dtwcpp Config, and the run reads a path itself (text, a folder or
+    Arrow IPC, which its memory plan may stream) or takes series in memory
+    (arrays, and Parquet, which pyarrow reads: dtwcpp.io). Result wraps the
+    run's C++ dtwc::Result.
 @author Volkan Kumtepeli
 """
 import os
@@ -205,14 +207,18 @@ def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="
 class Result:
     """Outcome of :func:`cluster` — the canonical 2.0 ``Result``.
 
-    ``labels``, ``medoids`` and ``cost`` are values; ``score(name)``,
-    ``save(dir)`` and ``distance_matrix`` read the clustered ``Problem`` the
-    result keeps, which fills its matrix on demand after a matrix-free
-    OneBatchPAM/CLARA/TADPole run. An ``hpc`` run returns labels only.
+    ``labels``, ``medoids``, ``cost`` and ``report`` (the run report's text,
+    ``""`` under ``no_report=True``) are values; ``score(name)``, ``save(dir)``
+    and ``distance_matrix`` read the run's C++ ``dtwc::Result``, which the
+    result keeps and which fills its matrix on demand after a matrix-free
+    OneBatchPAM/CLARA/TADPole run. A run that streamed an Arrow IPC file under
+    ``ram_limit`` holds no series: its ``score`` and ``distance_matrix`` raise
+    :class:`dtwcpp.InvalidInput`. An ``hpc`` run returns labels only, and its
+    ``report`` is ``None``.
     """
 
     def __init__(self, labels, *, device, elapsed_s, k, n_series,
-                 medoid_indices=None, cost=None, name="dataset", problem=None):
+                 medoid_indices=None, cost=None, name="dataset", result=None):
         self.labels = np.asarray(labels)
         self.device = device
         self.elapsed_s = elapsed_s
@@ -221,31 +227,34 @@ class Result:
         self.medoids = None if medoid_indices is None else np.asarray(medoid_indices)
         self.cost = cost
         self.name = name
-        self._problem = problem
+        self.report = None if result is None else result.report
+        self._result = result
         self._distance_matrix = None
 
     def _clustered(self):
-        """The Problem this result was clustered on; an hpc run has none."""
-        if self._problem is None:
+        """The run's C++ Result (``_dtwcpp_core._Result``); an hpc run has none."""
+        if self._result is None:
             import dtwcpp
             raise dtwcpp.InvalidInput(
                 "no local distance matrix available to score (an hpc run "
                 "returns labels only; score()/save(silhouettes) need "
                 "cpu/gpu output).")
-        return self._problem
+        return self._result
 
     @property
     def distance_matrix(self):
-        """Dense N x N distances, filled on demand — C++ ``Result::distance_matrix()``.
+        """Dense N x N distances, filled on demand — C++ ``Result::distance_matrix()``,
+        at the width the run stored them: float32 under ``matrix_dtype="float32"``.
 
         A matrix-free ``onebatch``/``clara``/``tadpole`` run leaves the matrix
         unmaterialised, so the O(N) schedule survives until this property is
         read; reading it is an explicit request for the full N x N and fills
-        the retained ``Problem``, exactly as ``score()``/``save()`` do. An
-        ``hpc`` run has no local ``Problem`` and stays ``None``.
+        it, exactly as ``score()``/``save()`` do. A streamed run holds no
+        series and raises :class:`dtwcpp.InvalidInput`; an ``hpc`` run has no
+        local matrix and stays ``None``.
         """
-        if self._distance_matrix is None and self._problem is not None:
-            self._distance_matrix = self._problem.distance_matrix()
+        if self._distance_matrix is None and self._result is not None:
+            self._distance_matrix = self._result._distance_matrix()
         return self._distance_matrix
 
     def summary(self):
@@ -258,32 +267,32 @@ class Result:
 
         ``"silhouette"`` (the MEAN silhouette), ``"davies_bouldin"``,
         ``"dunn"``, ``"calinski_harabasz"`` or ``"inertia"``; any other name
-        raises :class:`dtwcpp.InvalidInput`.
+        raises :class:`dtwcpp.InvalidInput`, as does a streamed run, which
+        holds no series.
         """
-        from dtwcpp import _dtwcpp_core
-        return _dtwcpp_core.score(self._clustered(), name)
+        return self._clustered().score(name)
 
     def save(self, directory):
-        """Write the four result CSVs into ``directory`` with the C++ writer
-        ``dtwc_cl`` and C++ ``Result::save`` use: ``<name>_labels.csv``
+        """Write the result files into ``directory`` as C++ ``Result::save``
+        does, with the writer ``dtwc_cl`` uses: ``<name>_labels.csv``
         (``name,cluster``), ``<name>_medoids.csv``
         (``cluster,medoid_index,medoid_name``), ``<name>_distance_matrix.csv``
-        and ``<name>_silhouettes.csv`` (``name,cluster,silhouette``). No run
-        report: ``dtwc_cl`` and C++ ``Result::save`` write ``<name>_report.txt``
-        beside them, a Python result has none (2026-11-03: ``cluster()`` does not
-        run through ``dtwc::run``).
+        and ``<name>_silhouettes.csv`` (``name,cluster,silhouette``), then the
+        run report, ``<name>_report.txt``, last (none under ``no_report=True``).
+        A streamed run holds no series: it writes its labels and medoids, with
+        the reader's names, as ``dtwc_cl`` does, and its report.
 
         With one cluster the silhouette is undefined and no silhouettes file is
         written; a partition with fewer than two realised clusters prints
         ``Warning: silhouettes skipped: ...`` on ``stderr``. An ``hpc`` result
         holds labels only: the remote ``dtwc_cl`` wrote its files.
         """
-        from dtwcpp import InvalidInput, _dtwcpp_core
-        if self._problem is None:
+        from dtwcpp import InvalidInput
+        if self._result is None:
             raise InvalidInput(
                 "save: this hpc result holds the labels only; dtwc_cl wrote the "
                 "result files on the cluster.")
-        _dtwcpp_core._write_result_files(self._problem, os.fspath(directory))
+        self._result.save(os.fspath(directory))
         return directory
 
     def plot(self, png="clusters_2d.png", show=True):
@@ -373,7 +382,10 @@ def _config(k, keys):
 def cluster(data, k, **keys):
     """Cluster a dataset into ``k`` clusters with DTW, on the global or given device.
 
-    ``data`` may be a :class:`Dataset`, a path, or an array; ``dtype`` is
+    A local run is C++ ``dtwc::run``, the run ``dtwc_cl`` makes, without its
+    files: C++ reads a path itself (CSV/TSV, a folder or an Arrow IPC file),
+    pyarrow reads Parquet, and series in memory go as they are. ``data`` may be
+    a :class:`Dataset`, a path, or an array; ``dtype`` is
     :func:`load`'s, for a path or an array cluster() loads (``"float32"`` stores
     the series at half the memory). ``keys`` are the
     keys of a dtwc_cl run — its long names in snake_case: ``method``, ``band``,
@@ -383,12 +395,16 @@ def cluster(data, k, **keys):
     ``n_samples``, ``batch_size``, ``linkage``, ``dc``, ``solver`` and the MIP
     settings, ``gpu_precision``, ``matrix_dtype`` (``"float32"`` stores the
     distance matrix at half the memory, each distance rounded to a float),
-    ``name``, ``verbose``, ``ram_limit`` (the
-    memory the run may use, bytes or a size such as ``"8G"``; 0, the default,
-    is what the process may use) — read and checked by C++; an unknown key
-    raises :class:`dtwcpp.InvalidInput`. ``method`` is
-    ``"auto"`` unless given: PAM on a GPU and for up to 5,000 series on the
-    CPU, CLARA above. ``device=None`` uses the global default (see
+    ``name``, ``verbose`` (``dtwc_cl -v``'s lines, the memory plan among
+    them), ``no_report`` (no run report: ``Result.report`` is ``""``),
+    ``ram_limit`` (the memory the run may use, bytes or a size such as
+    ``"8G"``; 0, the default, plans with 90 % of the memory available; a limit
+    that cannot hold the run raises :class:`dtwcpp.InvalidInput`, and an Arrow
+    IPC file whose series it cannot hold streams through CLARA) — read and
+    checked by C++; an unknown key raises :class:`dtwcpp.InvalidInput`.
+    ``method`` is ``"auto"`` unless given: PAM on a GPU and for up to 5,000
+    series on the CPU, CLARA above, and CLARA too where PAM's distance matrix
+    does not fit the memory plan. ``device=None`` uses the global default (see
     :func:`dtwcpp.device`). ``"hpc"`` and ``"hpc:gpu"`` run the clustering on a
     SLURM cluster as one job.toml: the keys given and the data (a path is read
     on the cluster, never here); the result holds the labels. ``gpu_device``
@@ -420,17 +436,31 @@ def cluster(data, k, **keys):
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
                       k=k, n_series=len(labels), name=config.name or data.name)
 
-    # As dtwc::run: the settings reach the Problem, and are checked, before
-    # the series are read.
+    # dtwc::run checks the settings before it reads the series. A path C++
+    # reads goes as the path, with the Dataset's reader options (its memory
+    # plan may stream an Arrow IPC file); Parquet, which pyarrow reads, and
+    # series in memory go as the Data, their skips applied (run refuses a
+    # reader option beside series in memory), C++ checking every value first
+    # as the run would, so that a bad one costs no read. The run is named as
+    # the Dataset is, else as dtwc_cl names it.
     config.device = eff
-    prob = _dtwcpp_core.Problem(config.name or data.name)
-    _dtwcpp_core.apply(config, prob)
-    prob.set_data(data.as_data())
-    result = prob.cluster()
+    if data.is_path and not _dtwcpp_core._parquet_files(os.fspath(data.source)):
+        source = os.fspath(data.source)
+        reader = {"skip_cols": data.skip_cols, "skip_rows": data.skip_rows,
+                  "delimiter": data.delimiter or ""}
+    else:
+        _dtwcpp_core.apply(config, _dtwcpp_core.Problem())
+        source, reader = data.as_data(), {}
+    config.name = config.name or data.name or _dtwcpp_core._default_name(
+        source if isinstance(source, str) else "")
+    # An extension that links no HiGHS (the wheel) hands MIP on HiGHS and
+    # LR-core's kelley root to dtwcpp._mip.solve, on highspy.
+    result = _dtwcpp_core._run(config, source, dtype=data.dtype,
+                               external=not dtwcpp.HIGHS_AVAILABLE, **reader)
     return Result(result.labels, device=backend,
                   elapsed_s=time.perf_counter() - t0, k=config.n_clusters,
-                  n_series=prob.size, medoid_indices=result.medoid_indices,
-                  cost=result.total_cost, name=prob.name, problem=prob)
+                  n_series=len(result.labels), medoid_indices=result.medoids,
+                  cost=result.cost, name=config.name, result=result)
 
 
 def plot(result, **kwargs):

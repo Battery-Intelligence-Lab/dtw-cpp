@@ -19,12 +19,9 @@ Or using [uv](https://docs.astral.sh/uv/):
 uv pip install dtwcpp
 ```
 
-Exact MIP clustering (`method="mip"`) solves with highspy, which the `mip` extra installs
-(the wheel links no MIP solver; without highspy, `method="mip"` raises `SolverError` naming it):
-
-```bash
-pip install "dtwcpp[mip]"
-```
+Exact MIP clustering (`method="mip"`) solves with highspy, which dtwcpp requires, so it is
+installed with it (the wheel links no MIP solver; a highspy that cannot be imported makes
+`method="mip"` raise `SolverError`, saying to reinstall dtwcpp).
 
 For GPU support, build from source with CUDA enabled (there is no `cuda` extra; see [CUDA Setup](cuda-setup.md)):
 

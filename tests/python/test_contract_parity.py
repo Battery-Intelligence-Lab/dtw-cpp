@@ -83,10 +83,10 @@ _SURFACE = {
         # I/O
         "print_clusters", "write_clusters", "write_medoid_members", "write_silhouettes",
     ],
-    # Result members: labels/medoids/cost/device are set in __init__
+    # Result members: labels/medoids/cost/device/report are set in __init__
     # (instance attributes), so the owner is an instance; score/save/plot are methods.
     "Result": ["labels", "medoids", "score", "distance_matrix", "save", "plot",
-               "cost", "device"],
+               "cost", "device", "report"],
     # MIP settings fields
     "MIPSettings": [
         "mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus",

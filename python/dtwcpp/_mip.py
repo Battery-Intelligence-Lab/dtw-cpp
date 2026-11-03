@@ -1,14 +1,33 @@
 """
 @file _mip.py
-@brief Method.MIP, and Method.LRCore's kelley root, with the installed highspy, for an
-       extension that links no HiGHS (the wheel).
+@brief Method.MIP, and Method.LRCore's kelley root, with highspy (a dependency of
+       dtwcpp), for an extension that links no HiGHS (the wheel).
 @details
     C++ builds the compact p-median model as arrays (dtwc::mip::build_p_median_model,
     the model dtwc_cl and MATLAB hand to their linked HiGHS); highspy reads them as
     NumPy views, and C++ decodes the solution into labels and medoids. LR-core runs in
-    C++ and solves its Kelley root's master LP through _KelleyMaster.
+    C++ and solves its Kelley root's master LP through _KelleyMaster. dtwcpp.cluster()'s
+    run (dtwc::run) calls solve(); Problem.cluster's override (__init__.py) calls cluster()
+    and lrcore_kelley().
 @author Volkan Kumtepeli
 """
+
+
+def solve(prob):
+    """The solver ``dtwcpp.cluster()``'s run hands its two highspy cases to (C++
+    ``dtwc::ExternalSolver``, given where the extension links no HiGHS): Method.MIP on the
+    HiGHS solver goes to :func:`cluster`, Method.LRCore with ``lr_root="kelley"`` to
+    :func:`lrcore_kelley`, as Problem.cluster's override tests them; anything else is
+    ``InvalidInput``. ``prob`` is the run's own Problem; the ClusteringResult the route
+    returns, published on it, is the run's."""
+    from dtwcpp import InvalidInput, Method, Solver
+    if prob.method == Method.MIP and prob.solver == Solver.HiGHS:
+        return cluster(prob)
+    if prob.method == Method.LRCore and prob.mip_settings.lr_root == "kelley":
+        return lrcore_kelley(prob)
+    raise InvalidInput(f"dtwcpp._mip.solve: {prob.method} on {prob.solver}, lr_root "
+                       f"'{prob.mip_settings.lr_root}', has no highspy route; only mip on HiGHS and "
+                       "lrcore's kelley root do.")
 
 
 def cluster(prob):
@@ -16,8 +35,9 @@ def cluster(prob):
 
     The MIPSettings that apply are mapped as C++ maps them for linked HiGHS (``mip_gap``,
     ``time_limit_sec``, ``verbose_solver``, the FastPAM ``warm_start`` as the MIP start),
-    and HiGHS runs on the threads OpenMP gives dtwcpp. Without highspy, ``SolverError``
-    names the ``mip`` extra; a solve that does not reach optimality is ``SolverError``.
+    and HiGHS runs on the threads OpenMP gives dtwcpp. An installed highspy that cannot be
+    imported is ``SolverError``, saying to reinstall dtwcpp, which requires highspy; a solve
+    that does not reach optimality is ``SolverError``.
     """
     import numpy as np
 
@@ -25,8 +45,8 @@ def cluster(prob):
     try:
         import highspy
     except ImportError as error:  # absent, or present and failing to import: the message says which
-        raise SolverError(f"method 'mip' solves with highspy, which cannot be imported ({error}): "
-                          "pip install \"dtwcpp[mip]\". Method 'lrcore' is exact without it.") from None
+        raise SolverError(f"method 'mip' solves with highspy, which dtwcpp requires and which cannot be "
+                          f"imported ({error}): reinstall dtwcpp. Method 'lrcore' is exact without it.") from None
 
     model = _dtwcpp_core._mip_model(prob)  # checks k, N and the settings; fills the matrix
     settings = prob.mip_settings
@@ -106,14 +126,15 @@ class _KelleyMaster:
 def lrcore_kelley(prob):
     """``Problem.cluster()`` for Method.LRCore with ``lr_root="kelley"`` on an extension
     that links no HiGHS: LR-core runs in C++, and its Kelley root's master LP solves with
-    highspy. Without highspy, ``SolverError`` names the ``mip`` extra before any work."""
+    highspy. An installed highspy that cannot be imported is ``SolverError``, saying to
+    reinstall dtwcpp, before any work."""
     from dtwcpp import SolverError, _dtwcpp_core
     try:
         import highspy
     except ImportError as error:  # absent, or present and failing to import: the message says which
-        raise SolverError(f"lr_root 'kelley' solves its master LP with highspy, which cannot be imported "
-                          f"({error}): pip install \"dtwcpp[mip]\", or keep lr_root 'subgradient', the "
-                          "default, which needs no solver.") from None
+        raise SolverError(f"lr_root 'kelley' solves its master LP with highspy, which dtwcpp requires and "
+                          f"which cannot be imported ({error}): reinstall dtwcpp, or keep lr_root "
+                          "'subgradient', the default, which needs no solver.") from None
     # As in cluster(): the run starts from no HiGHS scheduler and leaves none.
     highspy.Highs.resetGlobalScheduler(True)
     try:

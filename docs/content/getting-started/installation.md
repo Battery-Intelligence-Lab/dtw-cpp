@@ -187,7 +187,7 @@ The easiest way to use DTW-C++ from Python:
 pip install dtwcpp
 ```
 
-Exact MIP clustering (`method="mip"`) solves with highspy: `pip install "dtwcpp[mip]"`.
+Exact MIP clustering (`method="mip"`) solves with highspy, which `pip install dtwcpp` installs with it.
 
 The macOS and Windows wheels carry LLVM's OpenMP runtime (`libomp`). A process that also loads Intel's OpenMP runtime (`libiomp5`, as PyTorch and MKL builds do) can abort with "OMP: Error #15"; keep such work in a separate process.
 
