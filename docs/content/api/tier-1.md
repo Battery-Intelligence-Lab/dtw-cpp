@@ -276,4 +276,9 @@ type.
 In C++ they derive from `dtwc::Error`, a `std::runtime_error`; in Python from
 `dtwcpp.DtwcError` and the built-in the table names, so `except ValueError`
 catches `InvalidInput` and `UndefinedScore` only; MATLAB's base identifier is
-`dtwc:error`.
+`dtwc:error`. Memory the system refuses is no fault of an argument or a file:
+`load()` and the Tier-2 calls pass C++'s `std::bad_alloc` as it is (Python
+`MemoryError`, MATLAB `dtwc:internal`; Gurobi's MIP adapter reports it as a
+`SolverError`), and C++'s `dtwc::cluster` reports it as
+the `InvalidInput` above; Python's and MATLAB's `cluster()` do not go through
+`dtwc::run` (2026-11-03).

@@ -173,10 +173,18 @@ the series and the matrix go into RAM on every thread.
 A run whose memory the system refuses all the same (Windows past its commit
 limit, Linux under `ulimit -v` or strict overcommit) stops with an error naming
 the stage it was in (`check`, `plan`, `read`, `storage`, `cluster` or `write`),
-its memory plan and the process's peak resident memory, once it has given its
-memory back; a reader that cannot hold its input says so itself, naming the
-file. Under Linux's default overcommit a run over a cgroup's limit (a SLURM
-job's memory) gets no message: the kernel's OOM killer ends it.
+its memory plan and what the plan holds in RAM, the process's peak resident
+memory (mapped files' pages included) and the ways out that hold less in that
+run, once it has given its memory back. The plan is "none yet" until it is
+made: from an Arrow IPC file's walk or Parquet metadata, else from the series
+once read (a text file's while it is read). A reader's or a library's
+refused allocation (nanoarrow's, Arrow's, a map llfio cannot make) is reported
+the same way. Under Linux's default overcommit a run over a cgroup's limit (a
+SLURM job's memory) gets no message: the kernel's OOM killer ends it. Where the
+system refuses a small allocation in a parallel region that cannot carry an
+exception (TADPole's two, with an explicit `--dc`), on a thread's stack or in
+the process's start-up, the process ends without a report (Windows 0xC0000409,
+or 0xC00000FD on a stack; Linux an abort).
 
 ### RAM-limited Parquet FastCLARA
 

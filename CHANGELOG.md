@@ -178,9 +178,13 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   at once.
 - A run (`dtwc_cl`, `dtwc::run`, `dtwc::cluster`) whose memory the system refuses (`std::bad_alloc`) throws
   `InvalidInput` naming the stage it was in (`check`, `plan`, `read`, `storage`, `cluster`, `write`), its memory plan
-  and the process's peak resident memory (`core::peak_memory()`), built once the run's memory is given back; a
-  reader's refused allocation stays its `IOError`, naming the file. Under Linux's overcommit a run over a cgroup's
-  limit gets no message: the kernel's OOM killer ends it.
+  and what the plan holds in RAM, the process's peak resident memory (`core::peak_memory()`, mapped files' pages
+  included) and the ways out that hold less in that run, built once the run's memory is given back. A reader's or a
+  library's refused allocation (nanoarrow's ENOMEM, Arrow's out-of-memory status, a map llfio is refused memory for)
+  is reported the same way; `dtwc::load` and `read_data` pass it as `std::bad_alloc` (Python `MemoryError`). Python's
+  and MATLAB's `cluster()` do not go through `dtwc::run` (2026-11-03): there it is `MemoryError` and `dtwc:internal`.
+  A new `.dtwm` file that cannot be sized or mapped is removed. Under Linux's overcommit a run over a cgroup's limit
+  gets no message: the kernel's OOM killer ends it.
 - `dtwc::run` (so `dtwc::cluster` and `dtwc_cl`) gives its threads' scratch back as it starts and when it returns or
   throws, CUDA's pinned and device buffers among it: a 24-thread run on 100,000-value series kept 615 MB committed
   after it returned (2026-11-01). Tier-2 calls (a fill, `Problem::cluster`, the algorithms) keep theirs, so a k-sweep

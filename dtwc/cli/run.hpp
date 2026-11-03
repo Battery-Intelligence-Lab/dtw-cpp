@@ -62,14 +62,22 @@ namespace dtwc {
 ///         the stream's own floor coming on top: the stream checks it within
 ///         the data cap, which its refusal names as --ram-limit, and fewer
 ///         threads, OMP_NUM_THREADS, lower the reserve; and in place of a
-///         std::bad_alloc, the system refusing memory, once the run has given
-///         its memory back: "<stage> stage: out of memory; plan: <the plan>;
-///         the process peaked at P bytes resident; ways out: ...", the stages
-///         check, plan, read, storage, cluster and write, where a reader's own
-///         refused allocation stays its IOError), DeviceError as above,
+///         std::bad_alloc, the system refusing memory to the run, a reader or a
+///         library (nanoarrow's ENOMEM, Arrow's out-of-memory status, a map
+///         llfio is refused memory for), once the run has given its memory
+///         back: "<stage> stage: out of memory; plan: <the plan>; the plan
+///         holds H bytes in RAM; the process peaked at P bytes resident, mapped
+///         files' pages included; ways out: ...", the stages check, plan, read,
+///         storage, cluster and write, the plan "none yet" until it is made
+///         (a text file's series are planned once read), each way out named
+///         where it holds less in this run), DeviceError as above,
 ///         IOError for an
 ///         input this build cannot read or a file that cannot be read or written,
-///         SolverError for `gurobi` on a build without Gurobi.
+///         SolverError for `gurobi` on a build without Gurobi. Where the system
+///         refuses a small allocation in a parallel region that cannot carry an
+///         exception (TADPole's two, with an explicit --dc), on a thread's stack
+///         or in the process's start-up, the process ends without a report
+///         (Windows 0xC0000409, or 0xC00000FD on a stack; Linux an abort).
 Result run(const Config &config);
 
 /// Cluster `data`, already in memory: `input` and the options only a file

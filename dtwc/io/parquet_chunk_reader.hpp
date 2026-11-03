@@ -33,6 +33,7 @@
 #include <filesystem>
 #include <limits>
 #include <memory>
+#include <new>
 #include <numeric>
 #include <optional>
 #include <stdexcept>
@@ -44,8 +45,11 @@ namespace dtwc::io {
 
 namespace detail {
 
+/// An Arrow failure as an IOError naming `ctx`; out of memory, an allocation the system refused Arrow's pool, is
+/// std::bad_alloc, as every refused allocation is.
 inline void check_arrow_chunk(const arrow::Status &s, const char *ctx)
 {
+  if (s.IsOutOfMemory()) throw std::bad_alloc();
   if (!s.ok())
     throw dtwc::IOError(std::string(ctx) + ": " + s.ToString());
 }

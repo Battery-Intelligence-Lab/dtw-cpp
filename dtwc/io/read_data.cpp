@@ -12,6 +12,7 @@
 #include "../fileOperations.hpp"
 
 #include <exception>
+#include <new>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -106,6 +107,8 @@ void detail::rethrow_naming_the_file(const fs::path &path)
     throw IOError("load: failed to read '" + path_to_utf8(path) + "': " + e.what());
   } catch (const Error &) {
     throw;
+  } catch (const std::bad_alloc &) {
+    throw; // the system refused memory, no fault of the file's
   } catch (const std::exception &e) {
     throw IOError("load: failed to read '" + path_to_utf8(path) + "': " + e.what());
   }

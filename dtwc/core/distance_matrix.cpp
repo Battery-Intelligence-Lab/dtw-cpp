@@ -15,9 +15,11 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <new>
 #include <string>
 #include <system_error>
 #include <type_traits>
@@ -202,9 +204,11 @@ namespace llfio = LLFIO_V2_NAMESPACE;
 
 /// The value of an llfio result, or IOError naming the step and the file: llfio's
 /// own error is no dtwc::Error, so Python saw RuntimeError and MATLAB dtwc:runtime.
+/// Memory the system refuses (a map under a cap on address space) is std::bad_alloc.
 template <typename Result>
 auto checked(Result &&result, const char *step, const fs::path &path)
 {
+  if (!result && result.error() == std::errc::not_enough_memory) throw std::bad_alloc();
   if (!result)
     throw IOError(std::string("Cannot ") + step + " the distance matrix file " + shown(path) + ": "
                   + result.error().message());
@@ -306,6 +310,14 @@ size_t peak_memory()
   rusage usage{};
   return getrusage(RUSAGE_SELF, &usage) == 0 ? static_cast<size_t>(usage.ru_maxrss) : 0; // bytes
 #else
+#ifdef __linux__
+  // VmHWM, this program's own peak: getrusage keeps ru_maxrss across execve(2), so a process that a large one started
+  // read at least its starter's peak (dtwc_cl started by a Python process that had touched 600 MiB printed 637 MB,
+  // 8.7 MB started by a small one, 2026-11-03).
+  std::ifstream status("/proc/self/status");
+  for (std::string line; std::getline(status, line);)
+    if (line.rfind("VmHWM:", 0) == 0) return static_cast<size_t>(std::strtoull(line.c_str() + 6, nullptr, 10)) * 1024;
+#endif
   rusage usage{};
   return getrusage(RUSAGE_SELF, &usage) == 0 ? static_cast<size_t>(usage.ru_maxrss) * 1024 : 0; // KiB
 #endif
@@ -463,16 +475,24 @@ DistanceMatrix DistanceMatrix::map(const fs::path &path, size_t n, const fingerp
                               llfio::file_handle::creation::only_if_not_exist, llfio::file_handle::caching::all,
                               llfio::file_handle::flag::win_disable_sparse_file_creation),
                             "create", path);
-    checked(mapping->file.truncate(length), "size", path);
-    checked(mapping->file.update_map(), "map", path);
-    base = reinterpret_cast<std::byte *>(mapping->file.address());
-    if (base == nullptr) throw IOError("Cannot map the distance matrix file " + shown(path) + ".");
-    // A new file is zeros, and a zero reads as a computed distance: its header
-    // says no row is written, so none is read, and a fill makes each row NaN
-    // before it computes it.
-    const Header header = header_for(n, fingerprint, width, 0);
-    std::memcpy(base, &header, sizeof header);
-    flush_range(mapping->file, 0, sizeof header, llfio::mapped_file_handle::barrier_kind::wait_data_only, path);
+    // The file made here goes again if it cannot be sized, mapped and given its header (closed first: Windows
+    // deletes no open file); left as zeros, it refused the next run (no DTWM magic).
+    try {
+      checked(mapping->file.truncate(length), "size", path);
+      checked(mapping->file.update_map(), "map", path);
+      base = reinterpret_cast<std::byte *>(mapping->file.address());
+      if (base == nullptr) throw IOError("Cannot map the distance matrix file " + shown(path) + ".");
+      // A new file is zeros, and a zero reads as a computed distance: its header
+      // says no row is written, so none is read, and a fill makes each row NaN
+      // before it computes it.
+      const Header header = header_for(n, fingerprint, width, 0);
+      std::memcpy(base, &header, sizeof header);
+      flush_range(mapping->file, 0, sizeof header, llfio::mapped_file_handle::barrier_kind::wait_data_only, path);
+    } catch (...) {
+      (void)mapping->file.close();
+      fs::remove(path, ec);
+      throw;
+    }
   }
 
   DistanceMatrix matrix;

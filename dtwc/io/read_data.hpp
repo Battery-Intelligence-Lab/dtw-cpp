@@ -63,7 +63,8 @@ void require_reader_options(std::optional<InputFormat> format, index_t skip_cols
  * `dtype` is the precision the series are stored in: Float32 rounds each value as it is read (a text value's double
  * parse), never holding a double copy of the series.
  *
- * A null is InvalidInput, an option the format cannot honour InvalidInput, and a read failure an IOError naming the file.
+ * A null is InvalidInput, an option the format cannot honour InvalidInput, a read failure an IOError naming the file,
+ * and memory the system refuses std::bad_alloc (Python's MemoryError; dtwc::run names its stage).
  */
 Data read_data(const std::filesystem::path &path, index_t skip_cols = 0, index_t skip_rows = 0, char delimiter = '\0',
                const std::string &column = {}, core::Precision dtype = core::Precision::Float64);
@@ -77,7 +78,8 @@ std::string default_name(const std::filesystem::path &input);
 
 /// Called in a reader's catch (...): rethrows the exception being handled, an
 /// IOError or a std::exception that is no dtwc::Error as an IOError naming
-/// `path` ("load: failed to read '<path>': ..."), so every reader says it alike.
+/// `path` ("load: failed to read '<path>': ..."), so every reader says it alike;
+/// a std::bad_alloc as it is: memory the system refused is no fault of the file.
 [[noreturn]] void rethrow_naming_the_file(const std::filesystem::path &path);
 
 } // namespace detail

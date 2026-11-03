@@ -7,7 +7,7 @@
  *        raised, its route never stepping back, with the unlimited run's clustering; the clustering does not depend on
  *        the limit, the data cap or the threads; a refusal names its terms and, in RAM, the least limit, which runs;
  *        a stream's refusals say what their --ram-limit is; the plan holds the methods' own terms, OneBatchPAM's for
- *        the batch one_batch_pam takes.
+ *        the batch one_batch_pam takes, TADPole's envelopes exactly where tadpole prunes.
  *
  * @details Registered with OMP_NUM_THREADS=4: a team of 4. A thread's bytes are what the buffers on the closed list
  *          hold (core::thread_scratch_held(), by thread number). The plan's numbers are read from the run's own text:
@@ -16,9 +16,11 @@
  */
 
 #include <dtwc.hpp>
+#include <algorithms/tadpole.hpp>
 #include <base/parallelisation.hpp>
 #include <cli/run.hpp>
 #include <config.hpp>
+#include <core/lower_bound_impl.hpp> // Envelope, compute_envelope
 #include <core/thread_scratch.hpp>
 
 #include "../../support/scratch_directory.hpp"
@@ -469,11 +471,16 @@ TEST_CASE("The plan holds the method's own terms: TADPole's pair flags, cache an
   // 256 walks of 20 doubles in memory (40,960 bytes): the least limit each refusal names runs, a byte below it does
   // not, and it holds each method's own terms beside the series, from their sizes in the code: TADPole, its results
   // written (its matrix mapped where llfio maps it), a byte a pair and its cache, 8 bytes a pair (256 x 257 / 2
-  // pairs), and as it prunes these series (Standard DTW, L1, univariate float64) each one's envelope, an upper and a
-  // lower vector of its values; the hierarchical clustering N x N doubles beside the matrix, nothing written (held);
-  // OneBatchPAM N x m doubles for a batch of 32.
+  // pairs), and as it prunes these series (Standard DTW, L1, univariate float64) each one's envelope as tadpole.cpp
+  // builds it (core::compute_envelope, under full DTW over the series' length): its two vectors' capacity, and the N
+  // Envelopes; the hierarchical clustering N x N doubles beside the matrix, nothing written (held); OneBatchPAM N x m
+  // doubles for a batch of 32.
   constexpr std::size_t n = 256, series = n * 20 * sizeof(double), pairs = n * (n + 1) / 2;
-  constexpr std::size_t envelopes = 2 * (series + n * sizeof(std::vector<double>));
+  std::size_t envelopes = n * sizeof(dtwc::core::Envelope);
+  for (const auto &walk : walks(n, 20)) {
+    const auto envelope = dtwc::core::compute_envelope(walk, static_cast<int>(walk.size()));
+    envelopes += (envelope.upper.capacity() + envelope.lower.capacity()) * sizeof(double);
+  }
   const dtwc::test_support::ScratchDirectory scratch{ "scratch_fixed_terms" };
   int outputs = 0;
   const Runner memory = [&](const dtwc::Config &c) {
@@ -513,21 +520,22 @@ TEST_CASE("The plan prices OneBatchPAM's table for the batch one_batch_pam takes
 {
   // run.cpp copies one_batch_pam.cpp's batch size (automatic_batch_size, or --batch-size; then at least k) to price
   // the table, N x (m + 8) doubles: m read back from the refusal's term, against the m one_batch_pam reports
-  // (OneBatchPAMStats::batch_size), for N below 64 (m = N), N = 5000 (m = 20 x ceil(log2(N + 1))) and --batch-size 100.
+  // (OneBatchPAMStats::batch_size), for N below 64 (m = N), N = 5000 (m = 20 x ceil(log2(N + 1))), --batch-size 100,
+  // and k above the automatic m (N = 200: m = 160, raised to k = 170).
   struct Case
   {
     std::size_t n;
-    dtwc::index_t batch;
+    dtwc::index_t batch, k;
   };
-  for (const Case c : { Case{ 40, -1 }, Case{ 5000, -1 }, Case{ 5000, 100 } }) {
+  for (const Case c : { Case{ 40, -1, 3 }, Case{ 5000, -1, 3 }, Case{ 5000, 100, 3 }, Case{ 200, -1, 170 } }) {
     dtwc::Config config;
     config.method = dtwc::Method::OneBatch;
-    config.k = 3;
+    config.k = c.k;
     config.batch_size = c.batch;
     config.output.clear();
     const Runner memory = [&](const dtwc::Config &cfg) { return dtwc::run(cfg, data_of(walks(c.n, 2))); };
     const Attempt one_byte = attempt(config, 1, memory);
-    INFO("N = " << c.n << ", --batch-size " << c.batch << ": " << one_byte.refusal);
+    INFO("N = " << c.n << ", --batch-size " << c.batch << ", k = " << c.k << ": " << one_byte.refusal);
     std::smatch m;
     REQUIRE(std::regex_search(one_byte.refusal, m, std::regex("([0-9]+) for OneBatchPAM's batch table")));
     const std::size_t table = std::stoull(m[1].str());
@@ -535,7 +543,57 @@ TEST_CASE("The plan prices OneBatchPAM's table for the batch one_batch_pam takes
     dtwc::Problem prob{ "batch" };
     prob.set_data(data_of(walks(c.n, 2)));
     dtwc::algorithms::OneBatchPAMStats stats;
-    (void)dtwc::algorithms::one_batch_pam(prob, { .n_clusters = 3, .batch_size = c.batch }, &stats);
+    (void)dtwc::algorithms::one_batch_pam(prob, { .n_clusters = c.k, .batch_size = c.batch }, &stats);
     CHECK(table / (c.n * sizeof(double)) - 8 == stats.batch_size);
+  }
+}
+
+TEST_CASE("The plan holds TADPole's envelopes exactly where tadpole prunes", "[thread_scratch][run][plan]")
+{
+  // run.cpp copies tadpole.cpp's bounds_valid (Standard DTW under L1 on univariate float64 series, no missing-data
+  // strategy) to price the envelopes: its refusal names them exactly where TADPoleStats::pruning_enabled says
+  // algorithms::tadpole pruned, on the same settings and series, for L1 (it prunes), squared Euclidean, float32
+  // series, two features a time step and a missing-data strategy (each not).
+  struct Case
+  {
+    const char *what;
+    dtwc::core::MetricType metric;
+    bool f32;
+    std::size_t ndim;
+    dtwc::core::MissingStrategy missing;
+  };
+  using dtwc::core::MetricType, dtwc::core::MissingStrategy;
+  for (const Case c : { Case{ "L1", MetricType::L1, false, 1, MissingStrategy::Error },
+                        Case{ "squared Euclidean", MetricType::SquaredL2, false, 1, MissingStrategy::Error },
+                        Case{ "float32", MetricType::L1, true, 1, MissingStrategy::Error },
+                        Case{ "ndim 2", MetricType::L1, false, 2, MissingStrategy::Error },
+                        Case{ "zero_cost", MetricType::L1, false, 1, MissingStrategy::ZeroCost } }) {
+    const auto series = [&] {
+      auto values = walks(64, 20);
+      std::vector<std::string> names(values.size());
+      for (std::size_t i = 0; i < names.size(); ++i) names[i] = "s" + std::to_string(i);
+      if (!c.f32) return dtwc::Data(std::move(values), std::move(names), c.ndim);
+      std::vector<std::vector<float>> single(values.size());
+      for (std::size_t i = 0; i < values.size(); ++i)
+        for (const double value : values[i]) single[i].push_back(static_cast<float>(value));
+      return dtwc::Data(std::move(single), std::move(names), c.ndim);
+    };
+    dtwc::Config config;
+    config.method = dtwc::Method::TADPole;
+    config.k = 3;
+    config.metric = c.metric;
+    config.missing = c.missing;
+    config.output.clear();
+    const Attempt one_byte = attempt(config, 1, [&](const dtwc::Config &cfg) { return dtwc::run(cfg, series()); });
+    dtwc::Problem prob{ "prunes" };
+    dtwc::apply(config, prob);
+    prob.set_data(series());
+    dtwc::algorithms::TADPoleStats stats;
+    (void)dtwc::algorithms::tadpole(prob, 3, 1.0, true, &stats);
+    INFO(c.what << ": pruning_enabled " << stats.pruning_enabled << "; " << one_byte.refusal);
+    REQUIRE_FALSE(one_byte.ran);
+    CHECK(stats.pruning_enabled == (std::string(c.what) == "L1"));
+    const bool priced = one_byte.refusal.find("the series' envelopes") != std::string::npos;
+    CHECK(priced == stats.pruning_enabled);
   }
 }

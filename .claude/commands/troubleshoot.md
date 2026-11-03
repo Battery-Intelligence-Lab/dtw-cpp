@@ -54,8 +54,10 @@ which dtwc_cl && dtwc_cl --version
 ### Runtime errors
 
 **`std::bad_alloc` / OOM / `<stage> stage: out of memory; plan: ...`**
-- Dataset too large for in-memory distance matrix. `dtwc_cl` names the stage, its memory plan and the process's peak resident memory
+- Dataset too large for in-memory distance matrix. `dtwc_cl` names the stage, its memory plan and what it holds in RAM, the process's peak resident memory and the ways out that hold less in that run.
+- A refusal at the margin can end the process without a report: in a parallel region that cannot carry an exception (TADPole's two, with an explicit `--dc`), on a thread's stack or in the process's start-up (Windows 0xC0000409 or 0xC00000FD, Linux an abort).
 - Switch to CLARA: `--method clara` — uses subsamples
+- Halve the distance matrix: `--matrix-dtype float32`
 - Lower memory: `--dtype float32` (halves the series' RAM; the distance matrix stays float64)
 - Memory-map: `--ram-limit 8G` plans for 8 GiB: a reserve for the threads' working set, then the series, and the distance matrix where it fits beside them; else it is mapped (with an output directory). The default plans for 90 % of the memory available; `-v` prints the plan, and a limit that cannot hold the run on one thread is refused, naming the least that can
 - Parquet input: `--ram-limit 8G` caps the series in RAM, streaming one file of a series per row (a list column, or several float columns) through CLARA

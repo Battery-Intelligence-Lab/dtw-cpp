@@ -81,9 +81,11 @@ struct Owner
   std::shared_ptr<const void> values;
 };
 
-/// nanoarrow's failure as an IOError naming the step; some of its returns set no message.
+/// nanoarrow's failure as an IOError naming the step; some of its returns set no message. ENOMEM, an allocation the
+/// system refused it, is std::bad_alloc, as every refused allocation is.
 void check(ArrowErrorCode code, const ArrowError &error, const std::string &step)
 {
+  if (code == ENOMEM) throw std::bad_alloc();
   if (code != NANOARROW_OK)
     throw IOError(step + ": "
                   + (error.message[0] != '\0' ? std::string(error.message)
@@ -1130,11 +1132,13 @@ Data view_batches(Decoder &decoder, std::span<const std::byte> bytes, const std:
 }
 
 #ifdef DTWC_HAS_MMAP
-/// The file at `path` mapped (llfio): its bytes, and the mapping, which keeps them.
+/// The file at `path` mapped (llfio): its bytes, and the mapping, which keeps them. A map the system refuses memory for
+/// (a cap on address space) is std::bad_alloc.
 std::pair<std::shared_ptr<const void>, std::span<const std::byte>> map_file(const std::filesystem::path &path)
 {
   namespace llfio = LLFIO_V2_NAMESPACE;
   const auto value = [](auto &&result, const char *step) {
+    if (!result && result.error() == std::errc::not_enough_memory) throw std::bad_alloc();
     if (!result) throw IOError(std::string(step) + ": " + result.error().message());
     return std::forward<decltype(result)>(result).value();
   };
