@@ -86,10 +86,12 @@ For example, consider two temperature sensor readings that follow the same daily
 
 Z-normalization is applied as a **preprocessing step** before DTW computation. The normalization does not affect the DTW algorithm itself -- it only transforms the input data. The warping path found by DTW on z-normalized data may differ from the path on raw data, as the pointwise distances change.
 
-DTW-C++ provides two functions for z-normalization:
+The C++ core (`dtwc::core`) provides two functions for z-normalization:
 
-* `z_normalize(series)` -- normalizes the series in place
-* `z_normalized(series)` -- returns a new normalized copy, leaving the original unchanged
+* `z_normalize(series, n)` -- normalizes the series in place
+* `z_normalized(series, n)` -- returns a new normalized copy, leaving the original unchanged
+
+Python's `dtwcpp.z_normalize(series)` and MATLAB's `dtwc.z_normalize(x)` return a normalized copy and leave the input unchanged.
 
 Both functions handle the edge case of constant series ($$\sigma_x = 0$$) by returning a zero series.
 
@@ -105,7 +107,7 @@ For non-empty series, because the terminal cell is $$(n,m)$$, an endpoint-preser
 
 $$w \ge |n-m|.$$
 
-Below this threshold the CPU routes return the finite no-path sentinel `numeric_limits<T>::max()`. The unchecked per-pair kernels (`dtwBanded` and the like) return the same value for empty input and for an exceeded early-abandon cutoff, so a mere `isfinite(result)` check does not prove that a path was evaluated; `distance::dtw` refuses an empty series, and so does every `Problem` fill and `dtw_function()`. A negative CPU API band requests unconstrained DTW.
+Below this threshold the CPU routes return the finite no-path sentinel `numeric_limits<T>::max()`. The unchecked per-pair kernels (`dtwBanded` and the like) return the same value for empty input and for an exceeded early-abandon cutoff, so a mere `isfinite(result)` check does not prove that a path was evaluated; `distance::dtw` refuses an empty series, and so does every `Problem` fill and `dtw_function()`. A band of `-1` requests unconstrained DTW; a `Problem` refuses a band below `-1` (`InvalidInput`), while `distance::dtw` and the per-pair kernels read any negative band as unconstrained.
 
 Widening the window only adds admissible paths. Therefore the exact banded value is non-increasing in $$w$$ and is always at least the full-DTW value. A narrower band can reduce work, but it can also increase the dissimilarity or eliminate every path; choose it from the timing variation allowed by the application. The fixed-window definition and endpoint conditions come from [Sakoe and Chiba (1978)](https://doi.org/10.1109/TASSP.1978.1163055).
 

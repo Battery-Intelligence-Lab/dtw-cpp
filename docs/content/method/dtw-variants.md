@@ -26,7 +26,7 @@ $$x'[0] = x[1] - x[0], \quad x'[n-1] = x[n-1] - x[n-2]$$
 ### C++ API
 
 ```cpp
-#include <dtwc/warping_ddtw.hpp>
+#include <warping_ddtw.hpp>
 
 std::vector<double> x = {1.0, 2.0, 3.0, 2.0, 1.0};
 std::vector<double> y = {1.0, 1.5, 3.0, 2.5, 1.0};
@@ -75,7 +75,7 @@ $$C(i,j) = w(|i-j|) \cdot d(x[i], y[j]) + \min(C(i-1,j-1),\; C(i-1,j),\; C(i,j-1
 ### C++ API
 
 ```cpp
-#include <dtwc/warping_wdtw.hpp>
+#include <warping_wdtw.hpp>
 
 // With precomputed weights
 auto weights = dtwc::wdtw_weights<double>(/*max_dev=*/99, /*g=*/0.05);
@@ -123,7 +123,7 @@ where $$\omega$$ is the penalty. A diagonal step (no stretching) incurs no extra
 ### C++ API
 
 ```cpp
-#include <dtwc/warping_adtw.hpp>
+#include <warping_adtw.hpp>
 
 // Full ADTW (linear-space, O(min(m,n)) memory)
 double dist = dtwc::adtwFull_L(x, y, /*penalty=*/0.1);
@@ -174,7 +174,7 @@ As $$\gamma \to 0$$, Soft-DTW converges to standard DTW.
 ### C++ API
 
 ```cpp
-#include <dtwc/soft_dtw.hpp>
+#include <soft_dtw.hpp>
 
 // Compute Soft-DTW distance
 double dist = dtwc::soft_dtw(x, y, /*gamma=*/1.0);
@@ -211,7 +211,7 @@ unbanded recurrence with $$O(\min(m,n))$$ rolling scratch. In this release MSM
 rejects multivariate input and ignores the `Problem` band by contract.
 
 ```cpp
-#include <dtwc/distance.hpp>
+#include <distance.hpp>
 
 double dist = dtwc::distance::msm(x, y, /*c=*/1.0);
 ```
@@ -233,7 +233,7 @@ recurrence with $$O(\min(m,n))$$ rolling scratch. Multivariate input is rejected
 and the Sakoe–Chiba band is not applied in this release.
 
 ```cpp
-#include <dtwc/distance.hpp>
+#include <distance.hpp>
 
 double dist = dtwc::distance::twe(x, y, /*nu=*/0.001, /*lambda=*/1.0);
 ```
@@ -261,7 +261,7 @@ dtwc_cl -i data.csv -k 3 --variant twe --twe-nu 0.001 --twe-lambda 1.0
 When using the `Problem` class for clustering, you can select the variant through `DTWVariantParams`:
 
 ```cpp
-#include <dtwc/Problem.hpp>
+#include <Problem.hpp>
 
 dtwc::Problem prob;
 prob.set_data(std::move(data));

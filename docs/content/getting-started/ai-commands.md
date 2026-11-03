@@ -26,7 +26,7 @@ Handles the end-to-end workflow: load data, pick a method and variant, run clust
 ```
 
 The command auto-detects:
-- Input format from extension (CSV, Parquet, Arrow IPC, HDF5)
+- Input format from extension (CSV or TSV, a folder, Parquet, Arrow IPC)
 - Method from N (PAM for N ≤ 5000, CLARA above)
 - Missing data (auto-switches to `missing_strategy=arow`)
 

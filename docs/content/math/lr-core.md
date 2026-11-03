@@ -223,7 +223,7 @@ Source: the derivation above. Math verdict, verified by independent re-derivatio
 
 ### Task 4.1: Lagrangian root solver [DONE 2026-07-07, commit `fd49ff4`]
 
-**Files:** Created: `dtwc/mip/lagrangian_root.{hpp,cpp}` (`dtwc::mip::lagrangian_root` — dense-`D` core + `Problem` overload), `tests/unit/mip/test_lagrangian_root.cpp`. Returns `{lower_bound, upper_bound, gap, medoids, labels, multipliers, iterations, n_core}`.
+**Files:** Created: `dtwc/mip/lagrangian_root.{hpp,cpp}` (`dtwc::mip::lagrangian_root` — the dense-`D` core), `tests/unit/mip/test_lagrangian_root.cpp`. Returns `{lower_bound, upper_bound, gap, medoids, labels, multipliers, iterations, n_core}`.
 - [x] Inner problem per facility `ρ_i = Σ_j min(0, D_ij − μ_j)`, pick k best; **damped** Polyak subgradient (λ=1.0 — λ=2.0 oscillated on ~25% of separated instances, a step-schedule finding worth keeping); primal repair = k-medoids local search (assign + medoid-update sweeps; assignment-only found the right clusters but not the optimal medoid within each). Beasley reduced-cost fixing reports `n_core`.
 - [x] Leading-order cost = T·N² (one D stream/iter), OpenMP over the ρ pass. **P3** throughput/scale bands NOT yet measured (needs a quiet-machine bench) — deferred with Task 4.4 wiring.
 - [x] Oracle: brute-force IP validated on a hand-computed non-degenerate instance. VALID BOUNDS `lower_bound ≤ opt ≤ upper_bound` on 80 uniform+clustered instances. **P1 MET:** root gap ≤ 0.1% on 40/40 clustered instances; primal recovers the exact optimum 40/40; LR `upper_bound` == brute-force optimum == HiGHS/Gurobi compact-MIP cost to 1e-6. ctest "0 failed out of 87".

@@ -26,10 +26,10 @@ Exact MIP clustering (`method="mip"`) solves with highspy, which the `mip` extra
 pip install "dtwcpp[mip]"
 ```
 
-For GPU support, install the CUDA-enabled build:
+For GPU support, build from source with CUDA enabled (there is no `cuda` extra; see [CUDA Setup](cuda-setup.md)):
 
 ```bash
-pip install "dtwcpp[cuda]"
+pip install . --config-settings=cmake.define.DTWC_ENABLE_CUDA=ON
 ```
 
 ## Quick start
@@ -83,6 +83,7 @@ Parameters:
 | `band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
 | `metric` | str | `"l1"` | `"l1"` or `"squared_euclidean"` |
 | `device` | str | `None` | `"cpu"`, `"gpu"`, `"gpu:N"` (`"cuda"` / `"cuda:N"` are aliases); `None` uses `dtwcpp.device()` |
+| `matrix_dtype` | str | `"float64"` | `"float64"` or `"float32"`: the matrix's value type and the array's dtype; `"float32"` takes half the memory, each distance rounded to a float |
 
 ## DTWClustering class
 
@@ -132,10 +133,11 @@ print(f"Iterations:     {clf.n_iter_}")
 | `device` | str | `None` | Local `"cpu"`/`"gpu"`/`"cuda:N"`, or whole-job `"hpc"` offload |
 
 The estimator validates the complete distance contract before computing.
-Squared Euclidean cost is available for Standard dependent DTW with
-`missing_strategy="error"`; the non-Standard variants retain their intrinsic L1
-cost. Non-error missing handling requires Standard, dependent, L1 DTW, and
-independent multivariate mode requires Standard, Error, L1 DTW. Local CUDA and
+Squared Euclidean cost is available for Standard DTW and DDTW, and the
+missing-data strategies and independent mode honour the metric; WDTW, ADTW,
+Soft-DTW, MSM and TWE compute an L1 cost and refuse another metric. Non-error
+missing handling requires Standard DTW, and independent multivariate mode
+requires Standard DTW with `missing_strategy="error"`. Local CUDA and
 Metal execution support Standard, dependent, Error mode with either metric.
 `fit()` and `predict()` use the same validated recurrence and parameters.
 
@@ -231,7 +233,7 @@ hier_opts = HierarchicalOptions()
 hier_opts.linkage = Linkage.Average  # Single, Complete, or Average
 
 dend = build_dendrogram(prob, hier_opts)
-result = cut_dendrogram(dend, prob, n_clusters=3)
+result = cut_dendrogram(dend, prob, k=3)
 ```
 
 ## Threading
@@ -311,7 +313,7 @@ A `Problem` takes the device once and does not follow the process-wide
 `dtwcpp.device()` and the per-call `device=` arguments above — `cpu`, `gpu`,
 `gpu:N`, with `cuda` / `cuda:N` as aliases of `gpu` / `gpu:N`, so on a Metal
 build `device="cuda"` selects Metal. `hpc` is a `cluster()` option, not a
-`Problem` device (`InvalidInput`):
+`Problem` device (`DeviceError`):
 
 ```python
 prob = dtwcpp.Problem("my_clustering", device="gpu")   # CUDA, else Metal

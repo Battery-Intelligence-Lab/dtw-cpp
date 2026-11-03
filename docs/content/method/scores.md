@@ -32,8 +32,7 @@ Ordinary finite results lie in $$[-1,1]$$.
 The function returns one value per series. An unclustered problem raises
 `InvalidInput`. A singleton cluster
 member receives `0`. If a non-singleton point has both means equal to zero,
-the implemented `0/0` expression can return NaN; callers that aggregate the
-vector must decide how to handle non-finite values.
+the `0/0` case is also `0` (Rousseeuw's convention), so the vector is finite.
 
 ### Davies-Bouldin
 
@@ -47,7 +46,9 @@ $$\mathrm{DBI} = \frac{1}{k}\sum_i
   \max_{j\ne i}\frac{S_i+S_j}{d(c_i,c_j)}.$$
 
 This implementation requires at least two clusters. A pair with
-zero medoid separation is skipped rather than divided by zero. Lower finite
+zero medoid separation is not skipped: its ratio is infinity when the two
+clusters have any scatter and `0` when both have none,
+so the index is infinite when two medoids coincide with spread. Lower finite
 values indicate smaller within-cluster scatter relative to medoid separation.
 
 ### Dunn
@@ -131,8 +132,8 @@ sum to zero, the function returns `1`.
 ## C++ example
 
 ```cpp
-#include <dtwc/Problem.hpp>
-#include <dtwc/scores.hpp>
+#include <Problem.hpp>
+#include <scores.hpp>
 
 dtwc::Problem prob;
 prob.set_data(std::move(data));

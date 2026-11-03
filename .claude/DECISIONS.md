@@ -277,3 +277,63 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   archive nine files, 1.6 MB; not bundling means the 17.7 MB Visual C++ Redistributable, installed with admin rights;
   clang-cl's binaries import MSVCP140 and VCRUNTIME140 too): "Keep bundling", the notice as written. RA's CHANGELOG
   line: "Move to Added" (v1.0.0 shipped no wheels or archives).
+- 2026-10-21 — Volkan (question tool) on pushing (rule 11 kept pushes his; pushing here is awkward with many
+  worktrees): "Push design-2.0 after each merge": `design-2.0` is pushed fast-forward, never forced, after each merge
+  with its gates or a committed handoff; `pb/*` branches stay local unless another machine needs one. Rule 11's
+  wording is his to change (proposed to him).
+- 2026-10-21 — Volkan (question tool) on MM S1's GCC-only out-of-line `Data::series` / `series_f32` in the
+  fill's tile (Problem.cpp at GCC's `inline-unit-growth` cap; 1 → 4 call sites; clang unaffected):
+  "Force-inline now": the two accessors always-inline under `__GNUC__`, checked by GCC's inline report.
+- 2026-11-01 — Volkan (question tool) after MM S4 closed, on the DTW lane kernel's per-thread scratch, priced on no
+  route (two rows of 128 B a time step of the longest series a thread; CLARA streamed at 300M peaked 860 MB at 24
+  threads on 100,000-value series): "Kernel scratch first": a unit pricing it on every route comes before MM S5.
+- 2026-11-01 — Volkan (question tool) on that scratch kept in OpenMP's workers after a call (615 MB in the process
+  after a 100,000-value run): "Release on return": a top-level call (`dtwc_cl`'s `run`, Python's and MATLAB's
+  `cluster()`) gives its workers' kernel scratch back when it returns; MAP §7's invariant holds within a call.
+- 2026-11-01 — Volkan (question tool) on KS's spec (`C:/D/git/wt/tmp/MM/ks_spec.md`): "Approve as written": the
+  kernels' and algorithms' thread scratch priced on every route (a phase's team shrinks to what an explicit limit
+  holds, one thread that does not fit is a typed `InvalidInput`), released by `dtwc::run` on return and on error.
+- 2026-11-01 — Volkan (question tool) on KS (539d7d7e), where clang gave 4 of 470 multivariate compute loops one or
+  two stack reloads a DP cell (the growth check before the loops): "Fix them first": KS closes once no hot loop adds
+  a reload, and the codegen probe instantiates the multivariate kernels so the gate sees them.
+- 2026-11-02 — Volkan (question tool) after KS's re-checks, on the stream's PAM team keeping its scratch to the end (a
+  late long series refused where 819e8703 streams it): "Release at phase end": the PAM threads' scratch is given back
+  when the PAMs finish (and, the same principle, at a stream's re-plan); MAP §7 amended. On GCC's ten per-TU loop
+  differences in `dtw_dispatch.cpp`: "Read post-LTO code first" (the LTO-linked CLI equals 819e8703's: accepted for it).
+- 2026-11-02 — Volkan, in the chat: Fable 5.1 at max effort for one audit of the status report; rule 16's "never Fable"
+  stands otherwise.
+- 2026-11-02 — Volkan (question tool, free text) on the cross-compiler check (PLAN's "17 significant figures" was an
+  earlier session's wording, not his: "I never said 17 significant figures"): "1e-12 is fine I guess, as long as it
+  doesn't change the clustering": `cpp_conformance` under GCC and MSVC, `strict` and `fast`, passes as the test stands.
+- 2026-11-02 — Volkan (question tool) on KS3's four residual loop deviations (R2': clang's silhouette post-pass store,
+  clang ThinLTO's ADTW and zero-cost column loads, GCC LTO's and the wheel's Soft-DTW cell loops): "Fix first (a KS5
+  unit)".
+- 2026-11-02 — Volkan (question tool, free text) asked where Parquet's mean-length pricing should be fixed, answering
+  about the RAM limit as a whole: "I think we stuck at this RAM limit a lot. Let's do an engineering solution. Relax it
+  a little bit. I think the person who will run this code will have some safety margins of like 10% or something. So if
+  you have 64 GB machine probably you would fix the RAM usage in 55 or something so slightly being over or under it
+  doesn't really matter. Let's just simplify that interface, For example seperate several GB for the algorithm, then just
+  load the data, or something like it. Or at least simplify the loading interface, so in future we could consider
+  different systems for example having a simple MCU with several MBs of RAM, so we could constrain our algorithm
+  selections more etc. So currently it would be better if we properly for example something happened and we didn't fit in
+  the RAM, so we need to report it back. That would be a more important thing, so btw we should definitely write a log of
+  the process afterwards like how long it took, which computer, how much utilisations which stage is how long, stopping
+  criteria etc. Nice log in plain text at the end would be amazing." No code for Parquet's window; the memory model and
+  the end-of-run report are to be specced and approved first.
+- 2026-11-02 — Volkan (question tool) on that spec (`C:/D/git/wt/tmp/MM/ram_budget_spec.md`): "Approve RB and RR as
+  written (Recommended)": one soft budget (`--ram-limit`, default 90 % of what the process may use), a reserve for the
+  algorithm priced once (threads fitted once), one loading decision (in RAM, streamed, mapped) from budget minus reserve,
+  `auto` by the same budget, a typed report where a run does not fit (`std::bad_alloc` caught at a stage boundary), KS's
+  exact pricing removed with the CPU kernel and algorithm sources back to 819e8703's text (the KS5 loops by removal);
+  "Release on return" stays; every run writes a plain-text report. Supersedes 11-01 "Kernel scratch first" and the KS
+  spec's approval, and 11-02 "Release at phase end".
+- 2026-11-03 — Volkan (question tool) on RR's three open points (`C:/D/git/wt/tmp/MM/rr_plan.md`): "cpuinfo, optional
+  (Recommended)" (pytorch/cpuinfo as a new optional dependency for the report's CPU model, cores and SIMD flags; without it
+  those lines read `unknown`); "No text at all (Recommended)" (`--no-report` leaves no report text in `Result`, no
+  `<name>_report.txt` and no extra CLI lines); "Later, own commit (Recommended)" (RR1 prints the counters that exist;
+  swaps, start cost, pairs and nodes are an optional RR2 commit after RB and RR1). My calls on the plan's other two: the
+  report prints the hostname, and `Result::save` writes the report beside the four result files.
+- 2026-11-03 — Volkan (question tool), later that day: TADPole's two bare `omp parallel` regions, where a refused
+  allocation ends the process with no message (RB3's routes review B1): "Fix it before the 2.0 tag" (carry the failure
+  out of both regions, then a G6 re-check of TADPole's loops); which work ships in 2.0: "MM and HG both in 2.0"; the
+  KS review scratch (`review_ks*`, WSL `ks3r2_*` and `conf_strict`, `wt/tmp/conf_strict`) may be deleted: "Delete these".

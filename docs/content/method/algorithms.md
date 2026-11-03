@@ -26,7 +26,7 @@ evaluates one candidate against every medoid in $$O(N)$$, so a sweep costs
 $$O(N^2)$$, and each improving swap is taken as soon as it is found, so few
 sweeps are needed even at large $$k$$.
 
-**CLI:** `dtwc_cl -k 5 --method pam`
+**CLI:** `dtwc_cl -i data.csv -k 5 --method pam`
 
 > **Reference:** Schubert, E. and Rousseeuw, P. J. (2021). "Fast and eager
 > k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS
@@ -40,11 +40,11 @@ as medoids, reducing the distance table to $$O(Nm)$$ for batch size $$m$$. The
 CLI exposes explicit or logarithmic-auto batch sizes; the batch objective uses
 nearest-neighbour importance weights.
 
-**CLI:** `dtwc_cl -k 5 --method onebatch --batch-size 200`
+**CLI:** `dtwc_cl -i data.csv -k 5 --method onebatch --batch-size 200`
 
 ## FastCLARA (Scalable k-Medoids)
 
-CLARA (Clustering Large Applications) scales k-medoids to large datasets by running FastPAM on random subsamples of size $$s \ll N$$, then assigning all $$N$$ points to the best medoids found. This avoids computing the full $$O(N^2)$$ distance matrix. The current result ABI uses signed 32-bit medoid indices, so FastCLARA rejects datasets with more than `INT_MAX` series before allocation.
+CLARA (Clustering Large Applications) scales k-medoids to large datasets by running FastPAM on random subsamples of size $$s \ll N$$, then assigning all $$N$$ points to the best medoids found. This avoids computing the full $$O(N^2)$$ distance matrix.
 
 Assignment uses the `Problem`'s configured DTW function directly. A pre-existing
 dense or memory-mapped parent distance cache is neither consulted nor modified;
@@ -75,7 +75,7 @@ This follows the recommendation from Schubert & Rousseeuw (2021).
 | `max_iter` | `--max-iter` | 100 | Max FastPAM iterations per subsample |
 | `random_seed` | `--seed` | 42 | RNG seed for reproducibility |
 
-**CLI:** `dtwc_cl -k 5 --method clara --sample-size 200 --n-samples 10`
+**CLI:** `dtwc_cl -i data.csv -k 5 --method clara --sample-size 200 --n-samples 10`
 
 > **Reference:** Kaufman, L. & Rousseeuw, P.J. (1990). "Finding Groups in Data." Wiley Series in Probability and Statistics.
 
@@ -98,16 +98,16 @@ Ward's linkage is intentionally excluded. Ward's formula requires squared Euclid
 ### Usage
 
 ```cpp
-#include <dtwc/algorithms/hierarchical.hpp>
+#include <algorithms/hierarchical.hpp>
 
 dtwc::algorithms::HierarchicalOptions opts;
 opts.linkage = dtwc::algorithms::Linkage::Average;
 
 auto dendrogram = dtwc::algorithms::build_dendrogram(prob, opts);
-auto result = dtwc::algorithms::cut_dendrogram(dendrogram, k);
+auto result = dtwc::algorithms::cut_dendrogram(dendrogram, prob, k);
 ```
 
-**CLI:** `dtwc_cl -k 5 --method hierarchical --linkage average`
+**CLI:** `dtwc_cl -i data.csv -k 5 --method hierarchical --linkage average`
 
 ```note
 Hierarchical clustering requires the full distance matrix and has $$O(N^2)$$ memory complexity. A hard guard of `max_points = 2000` prevents accidental out-of-memory errors on large datasets. For larger datasets, use FastCLARA instead.
@@ -143,7 +143,7 @@ The MIP is the compact $$N^2$$-variable model on the selected solver at every $$
 | Time limit | `--time-limit` | -1 (unlimited) | Seconds |
 | Warm start | `--no-warm-start` | enabled | Disable FastPAM warm start |
 
-**CLI:** `dtwc_cl -k 5 --method mip --solver gurobi --mip-gap 1e-4`
+**CLI:** `dtwc_cl -i data.csv -k 5 --method mip --solver gurobi --mip-gap 1e-4`
 
 ## LR-core
 
@@ -154,7 +154,7 @@ materialises a dense distance matrix and therefore has an $$O(N^2)$$ memory
 budget. It either returns a certified solution or fails loudly at its
 configured limits.
 
-**CLI:** `dtwc_cl -k 5 --method lrcore`
+**CLI:** `dtwc_cl -i data.csv -k 5 --method lrcore`
 
 ## TADPole
 
@@ -184,7 +184,7 @@ sentinel, while the current empty envelope and diagonal upper bound both
 return zero. Do not rely on pruned/brute TADPole identity for data containing
 empty series.
 
-**CLI:** `dtwc_cl -k 5 --method tadpole --dc 2.0`
+**CLI:** `dtwc_cl -i data.csv -k 5 --method tadpole --dc 2.0`
 
 ## Algorithm Comparison
 

@@ -64,7 +64,7 @@ over, and a file for other data is never silently accepted.
 ## C++ API
 
 ```cpp
-#include "dtwc/checkpoint.hpp"
+#include "checkpoint.hpp"
 
 dtwc::Problem prob("my_problem", loader);
 if (dtwc::load_checkpoint(prob, "./checkpoints"))   // ./checkpoints/my_problem.dtwm

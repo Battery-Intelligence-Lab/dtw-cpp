@@ -78,10 +78,10 @@ as multivariate distances.
 The direct functions take interleaved pointers plus explicit timestep counts:
 
 ```cpp
-#include <dtwc/warping.hpp>
-#include <dtwc/warping_adtw.hpp>
-#include <dtwc/warping_missing.hpp>
-#include <dtwc/warping_wdtw.hpp>
+#include <warping.hpp>
+#include <warping_adtw.hpp>
+#include <warping_missing.hpp>
+#include <warping_wdtw.hpp>
 
 double standard = dtwc::dtwBanded_mv(
     x_ptr, nx_steps, y_ptr, ny_steps, ndim, band);
@@ -117,13 +117,13 @@ channels where either value is NaN.
 `Problem` validates `Data::ndim` and routes supported combinations:
 
 ```cpp
-dtwc::Data data(
-    {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
-     {1.1, 2.1, 3.1, 4.1, 5.1, 6.1},
-     {8.0, 7.0, 6.0, 5.0, 4.0, 3.0},
-     {8.2, 7.1, 6.2, 5.1, 4.2, 3.1}},
-    {"a", "b", "c", "d"},
-    3);
+// Named, so that the Float64 constructor is chosen over the Float32 one.
+std::vector<std::vector<double>> series{
+    {1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
+    {1.1, 2.1, 3.1, 4.1, 5.1, 6.1},
+    {8.0, 7.0, 6.0, 5.0, 4.0, 3.0},
+    {8.2, 7.1, 6.2, 5.1, 4.2, 3.1}};
+dtwc::Data data(std::move(series), {"a", "b", "c", "d"}, 3);
 
 dtwc::Problem prob("multivariate");
 prob.set_data(std::move(data));

@@ -142,8 +142,11 @@ dtwc_cl -i data.parquet --column series -k 5 --method clara \
   --sample-size 500 --ram-limit 2GiB
 ```
 
-A one-column file (one series), directories, non-CLARA methods, a sample resolving to all
-N series, and non-full CLARA with CUDA fail loudly while over budget. Parquet
+Under an explicit `--ram-limit`, a one-column file (one series), directories, non-CLARA methods, a sample resolving to all
+N series, and non-full CLARA with CUDA fail loudly while over budget. The automatic
+limit (0) never fails a run: it streams only where FastCLARA can, for a sample smaller
+than N and without `--checkpoint` or `--dist-matrix`, and elsewhere the series load as
+they would without a limit. Parquet
 row groups are indivisible; rewrite the file with smaller row groups if one
 cannot fit beside retained sample/medoid data. Float32 streaming remains
 Float32 through sample, medoid, and assignment payloads. The cap governs series
@@ -232,7 +235,7 @@ std::vector<std::string> myNames = generate_some_names();
 //-------------------------------
 
 // Create a Problem object:
-dtwc::Problem myProblem{'problem_name'};
+dtwc::Problem myProblem{"problem_name"};
 auto myDataObject = dtwc::Data(std::move(myData), std::move(myNames));
 myProblem.set_data(myDataObject);
 /* Other settings */

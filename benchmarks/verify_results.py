@@ -81,18 +81,18 @@ def load_ucr_labels(tsv_path: Path) -> dict[str, int]:
     UCR format: first column is integer class label, rest are time-series
     values, tab-separated, no header.
 
-    Row names are generated as 0-indexed strings to match DTWC++ naming when
-    loading a single batch file (e.g. "0", "1", ...).
+    Row names are 1-based strings ("1", "2", ...), as DTWC++ names the rows of a
+    single batch file.
     """
     labels: dict[str, int] = {}
     with open(tsv_path, newline="") as f:
         reader = csv.reader(f, delimiter="\t")
-        for idx, row in enumerate(reader):
+        for row in reader:
             if not row:
                 continue
             # First column is the class label (may be float like "1.0")
             label = int(float(row[0]))
-            labels[str(idx)] = label
+            labels[str(len(labels) + 1)] = label
     return labels
 
 

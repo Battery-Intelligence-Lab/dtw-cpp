@@ -98,7 +98,7 @@ The CLI is already config-first. The library APIs are currently Problem-first.
 | Pairwise distance | flags only | `dtwc::distance::dtw` | `dtwcpp.distance.dtw` | `dtwc.distance.dtw` |
 | FastPAM entry point | `--method pam` | `dtwc::fast_pam(prob, ...)` | `dtwcpp.fast_pam(prob, ...)` or `DTWClustering.fit()` | `dtwc.fast_pam(prob, ...)` or `DTWClustering.fit()` |
 | Hierarchical clustering | `--method hierarchical` | `build_dendrogram` / `cut_dendrogram` | same names | same names |
-| Missing-data strategy | `--missing-strategy` | `Problem.missing_strategy` | `Problem.missing_strategy`, `DTWClustering(missing_strategy=...)` | `Problem.set_missing_strategy(...)`, `DTWClustering('MissingStrategy', ...)` |
+| Missing-data strategy | `--missing-strategy` | `Problem::set_missing_strategy(...)` | `Problem.missing_strategy`, `DTWClustering(missing_strategy=...)` | `Problem.set_missing_strategy(...)`, `DTWClustering('MissingStrategy', ...)` |
 | A `Problem`'s device | `--device` (`cpu`, `gpu`, `gpu:N`; `cuda`, `cuda:N` alike) | `Problem::set_device(Device, index)` | `Problem(..., device=...)`, `Problem.set_device(name)` | `dtwc.Problem(name, 'Device', d)`, `Problem.set_device(name)` |
 
 ## Recommended usage split

@@ -71,6 +71,8 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A test in an outer loop can slow the inner loop by changing its registers**: RL's per-column capture left clang's
   row loop the same 38 instructions with other vector registers, 4–5 % slower from L 4000 up. Diff a hot loop register
   for register against base, and time a long series. *`baselines/2026-10-08-rl-ragged-lanes.md`*
+- **GCC's `inline-unit-growth` cap is per file**: a `shared_ptr` added to `Data` left `Data::series` out of line in
+  Problem.cpp's fill (clang unaffected). Hot accessors are `DTWC_ALWAYS_INLINE`; read `-fopt-info-inline` (MM S1).
 - **One 24-thread round is noise on the Windows box** (identical work ran 0.86–1.34× from one process pair to the
   next): a ±3 % band on 3 rounds cannot judge it. Use pinned one-thread controls or 20 alternating process pairs. In
   WSL a host process holding one core stalls every 24-thread barrier (short swaps 2–48× slower, clean at 20 threads,
@@ -103,8 +105,8 @@ Append new entries at the end of their section; keep each to a few lines.
   its printed notice goes blind when the notice goes: key it to the configure (FX-3 reads `HAS_GUROBI`, PF).
 - **Poison external seams before testing a rejection.** Make the command or file a rejection path would reach
   unusable, so a pass cannot come from the wrong branch.
-- **A byte limit priced from `sizeof` holds on one standard library**: `std::string` is 24 B in libc++, 32 in
-  libstdc++ and MSVC; a test pinning a streaming window states each library's (292defe3, the Mac's Arrow 26).
+- **A memory price holds only where it was measured**: `std::string` is 24 B in libc++, 32 elsewhere (292defe3); a
+  per-series heap eighth over-priced one big buffer 12 % (MM S4): measure priced and held both ways, per shape.
 - **An Arrow gate can pass while running nothing.** `test_io_readers` registers only when Arrow is found: check that
   `ctest -N` lists it (the Arrow shim was deleted once, 2026-09-28).
 
@@ -167,7 +169,9 @@ Append new entries at the end of their section; keep each to a few lines.
 - **A scalar Parquet column is one series; a list cell is one series.** Every reader path uses one selector.
 - **Parquet's `total_uncompressed_size` is not decoded RAM.** Budget `num_values × width`; a streaming cap is
   decided before payload I/O and counts the largest row group.
-- **Use `LargeList` when offsets may pass `INT32_MAX`,** and validate offsets before access.
+- **Use `LargeList` when offsets may pass `INT32_MAX`; nanoarrow 0.8.0 trusts a file's offsets and lengths** (its
+  `offset + length` and buffer-size sums wrap; cl and GCC crashed): bound each buffer read inside the body, and each
+  length by the body's bytes, before validating (MM S1, 10-21). flatcc refuses a batch header at a 4-byte offset.
 - **polars and pandas export `__arrow_c_stream__`, not `__arrow_c_array__`.** Accept both capsules.
 - **Prove "works without pyarrow" by blocking the import** (`sys.modules['pyarrow'] = None`), not by
   uninstalling it.
@@ -197,7 +201,7 @@ Append new entries at the end of their section; keep each to a few lines.
   rpath and the `-march` it was built with. *`baselines/2026-09-22-x29-release-archive-not-portable.md`*
 - **`install_name_tool` re-signs an executable but not a dylib,** and an invalid signature on Apple Silicon is
   a silent SIGKILL (exit 137). Change only the client's load command (`-change` on the executable).
-- **Never include `<windows.h>` in a header reachable from `dtwc.hpp`.**
+- **Windows headers collide with llfio's inline variables.** None in a header reachable from `dtwc.hpp`; `<psapi.h>` after llfio in a `.cpp` (`GetPerformanceInfo` → K32 macro: ODR, null call; RB3 11-03).
 
 ## Python
 
@@ -257,20 +261,16 @@ Append new entries at the end of their section; keep each to a few lines.
 
 ## Process and records
 
-- **One step per commit.** An omnibus commit makes review, bisection and rollback inseparable.
 - **Untracking a file deletes it from every other clone at its next pull** (`git rm --cached` + `.gitignore`): restore
   it there from the last commit that tracked it, `git archive 034d8994^ <paths> | tar -x -k` (the Mac, 10-11).
-- **Always verify citations.** Authors, venues and volumes can be invented.
 - **Re-run a counterexample after its premise changes.** A killed premise is replaced by a new discriminator,
   not carried by name.
-- **Check a recorded number before building a ratchet on it.** The row said 256; the tree held 259.
-- **A comment/string stripper under-counts silently.** Compare it with a naive grep.
-- **Remote-tracking refs are mutable evidence.** Re-read them at close-out.
 - **Before deleting a build dir, grep the surviving `CMakeCache.txt` files for its path.** The 2 KB
   `build/f9-arrow-config` was the Arrow shim of `build/arrow-pyarrow-23`.
 - **Agent tooling:** in the Bash tool a `\\` inside a quoted heredoc reaches the program as `\`, and non-ASCII text
   piped into Python on Windows is read as cp1252 (write scripts with the Write tool); the Workflow tool rejects a
-  `scriptPath` file holding non-ASCII text as "control characters" (escape it to `\uXXXX`).
+  `scriptPath` file holding non-ASCII text as "control characters" (escape it to `\uXXXX`); Git Bash has no `bc`
+  (a wait loop on it spins forever), and WSL's `/tmp` empties when the distro idles.
 - **On Windows a plain stream cannot open a file llfio holds mapped** (llfio takes delete access): loading a checkpoint
   that another live Problem maps is `IOError`.
 - **Do not export `CPM_SOURCE_CACHE` for a build dir configured without it**: its cached `CPM_DIRECTORY` differs and the
@@ -296,5 +296,5 @@ Append new entries at the end of their section; keep each to a few lines.
 - **`-S` without LTO sees neither what ThinLTO inlines nor which template copy it keeps** (`-Rpass` is silent under
   ThinLTO): a kernel's only call left out of line cost +2–7 % (W7d); the wheel ran nanobind's `-Os` copy of the
   per-pair kernel, 1.5× slower (`NOMINSIZE`). Read the post-LTO loop of what ships.
-- **A session restart kills in-flight agents silently** (the harness still said "running" 40 minutes on): check
-  transcript times and processes; resume with SendMessage, or tell a replacement the exact staged state (10-02).
+- **A session end or the weekly usage limit (429 `usage_limit_reached`) kills in-flight agents silently**, even after a
+  commit, before the reply (10-02; S3 10-22; KS 11-01): grep transcripts' last lines, check times; gates log as they run.
