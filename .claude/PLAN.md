@@ -70,8 +70,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     accepted by me, see the handoff).
   - ◐ RR the end-of-run plain-text report in `Result` (same spec; Volkan 11-02: "Nice log in plain text at the end");
     planned (`rr_plan.md`; its code claims checked 11-03, `rr_claims_check.md`: 11 false, 37 moved), in two commits after
-    RB3c: ☑ RR1a cpuinfo (optional) + machine facts + `print_settings` (06f7d00d, 11-03; `brief_rr1a.md`), ◐ RR1b the
-    report, the fill split for PAM, Lloyd and full-sample CLARA only (`brief_rr1b.md`, running); RR2 (counters) later.
+    RB3c: ☑ RR1a cpuinfo (optional) + machine facts + `print_settings` (06f7d00d, 11-03; `brief_rr1a.md`), ☑ RR1b the
+    report, the fill split for PAM, Lloyd and full-sample CLARA only (43a4802b, 11-03; `brief_rr1b.md`), ☑ RR1b2 its
+    command row's quoting (755b74e9, 11-03); RR2 (counters) later.
     S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
