@@ -7,7 +7,8 @@
 - `pb/MM` a6c1ab2f (RB1, tree c711dbcc), local only, worktree `C:/D/git/wt/MM`, clean. Below it 1234030a (KS4; KS = 539d7d7e,
   5422bb11, 4741d753, 1234030a, superseded history). Trees there: `build` (clang), `build-arrow`, `build-nollfio`, `build-mex`,
   `build-cuda`, GCC in WSL. RB1's work files: `C:/D/git/wt/tmp/MM/rb1/`, kit `kit/rb1_*`, log `logs/rb1_summary.log`.
-- RR plan `rr_plan.md` (not yet reviewed by me). Disk until Volkan's yes: `C:/D/git/wt/tmp/MM/review_ks*` (about 2 GB), WSL
+- RR plan `rr_plan.md` (read by me 11-03; its code claims not yet checked). RB2 implementer running from `brief_rb2.md`
+  (log `logs/rb2_summary.log`); check its transcript's mtime before relaunching. Disk until Volkan's yes: `C:/D/git/wt/tmp/MM/review_ks*` (about 2 GB), WSL
   `~/mm/ks3r2_*` and `~/conf_strict` (0.5 GB), `C:/D/git/wt/tmp/conf_strict/`.
 
 ## Done
@@ -54,15 +55,17 @@
   threads, D4 `auto` changes only through a guard (N <= 5000 stays PAM, CLARA where PAM's matrix can neither stay in RAM nor be
   mapped), D5 `std::bad_alloc` becomes `InvalidInput`; S8/S9 serial; no code for Parquet's window. 11-02 night: class (d) is
   accepted at RB1 and carried to S10 (final tree, re-measured; then Volkan's call: fix by hoisting in `soft_dtw_gradient`, or accept).
-- Awaiting Volkan: RR D1 cpuinfo as an optional dependency (hwinfo needs C++23, cpu_features has no core counts), D2
-  `Result::save` writes the report, D3 `--no-report` drops the text too, D4 hostname by default, D5 RR2 (swaps, start cost);
-  whether MM and HG ship in 2.0; the history purge; disk deletions.
+- Volkan 11-03 (question tool, DECISIONS §3) on RR: "cpuinfo, optional (Recommended)" (hwinfo needs C++23, cpu_features has
+  no core counts); `--no-report` = "No text at all"; counters (swaps, start cost, pairs, nodes) "Later, own commit" (RR2). My
+  calls: hostname printed; `Result::save` writes the report. Still awaiting him: whether MM and HG ship in 2.0; the history
+  purge; disk deletions.
 
 ## Next steps
 
 1. PLAN MM RB2: brief from `rb_plan.md` 3.2-3.5 (no `RunStage`/`bad_alloc`), 3.6, 3.7, tests 1-3, threshold rewrites, docs, the stale
    lines above; my rulings; G6 on the changed TUs against RB1 and 819e8703 (Problem.cpp holds the fill loops); fresh narrow
-   reviewer; I reproduce the oracles. Then RB3, then RR (review `rr_plan.md`, ask Volkan its D1-D5, plan is done, implement).
+   reviewer; I reproduce the oracles. Then RB3 (`core::peak_memory()` = peak working set on Windows, as `ru_maxrss`: RR compares it
+   with the budget), then RR1 (check `rr_plan.md`'s code claims first; cpuinfo step zero on the six trees), RR2 later.
 2. Merge design-2.0 into pb/MM, fill `<KS-TIP>` in `brief_s5_draft.md` (tip = RB's), S5, S6, S7, S8, S9, S10 (final G6 vs MM base).
 3. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4, 7, FM's E1; conformance redone if MM merges first.
 

@@ -327,3 +327,9 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   exact pricing removed with the CPU kernel and algorithm sources back to 819e8703's text (the KS5 loops by removal);
   "Release on return" stays; every run writes a plain-text report. Supersedes 11-01 "Kernel scratch first" and the KS
   spec's approval, and 11-02 "Release at phase end".
+- 2026-11-03 — Volkan (question tool) on RR's three open points (`C:/D/git/wt/tmp/MM/rr_plan.md`): "cpuinfo, optional
+  (Recommended)" (pytorch/cpuinfo as a new optional dependency for the report's CPU model, cores and SIMD flags; without it
+  those lines read `unknown`); "No text at all (Recommended)" (`--no-report` leaves no report text in `Result`, no
+  `<name>_report.txt` and no extra CLI lines); "Later, own commit (Recommended)" (RR1 prints the counters that exist;
+  swaps, start cost, pairs and nodes are an optional RR2 commit after RB and RR1). My calls on the plan's other two: the
+  report prints the hostname, and `Result::save` writes the report beside the four result files.
