@@ -47,17 +47,22 @@ namespace dtwc {
 /// The run plans its memory once, where its input's facts are known (an Arrow IPC file's walk, a Parquet file's
 /// metadata, else the series read): within the budget (core::memory_budget), a reserve for its threads' working set,
 /// 1.1 x threads x a thread's bytes (the DTW kernels' scratch for the longest series it expects and the method's
-/// tables), and the series and the distance matrix in what is left, the data cap. The series go into RAM on every
-/// thread where they fit in it beside the matrix, which is mapped where it does not (llfio and an output to map it
-/// in) and else held in RAM; else FastCLARA streams them within the data cap where it can (an Arrow IPC or Parquet
-/// file, a sample smaller than N); else they load on the most threads whose working set fits, the threads fitted
-/// once. `-v` prints the plan. It is a plan, not a cap: a run may use about a tenth more, more with series longer
-/// than planned.
+/// tables), and the series, the method's own terms (TADPole's pair flags and cache, the hierarchical clustering's
+/// dense copy, OneBatchPAM's batch table) and the distance matrix in what is left, the data cap. The series go into
+/// RAM on every thread where they fit in it beside the matrix, which is mapped where it does not (llfio and an output
+/// directory to map it in) and else held in RAM; else FastCLARA streams them within the data cap where it can (an
+/// Arrow IPC or Parquet file, a sample smaller than N), on every thread; else they load on the most threads whose
+/// working set fits, the threads fitted once. `-v` prints the plan. It is a plan, not a cap: a run may use about a
+/// tenth more, more with series longer than planned; MIP's and LR-core's solver memory is not planned.
 /// @throws InvalidInput for a setting no run can honour (an empty input, k,
 ///         max-iter or n-init below 1, a format option the input cannot take,
 ///         k above the number of series, an explicit --ram-limit that cannot
-///         hold the run on one thread, naming what it holds and the least
-///         limit), DeviceError as above, IOError for an
+///         hold the run, before any work: in RAM naming the least limit that
+///         runs ("at least N bytes"); on a stream naming what the plan holds,
+///         the stream's own floor coming on top: the stream checks it within
+///         the data cap, which its refusal names as --ram-limit, and fewer
+///         threads, OMP_NUM_THREADS, lower the reserve), DeviceError as above,
+///         IOError for an
 ///         input this build cannot read or a file that cannot be read or written,
 ///         SolverError for `gurobi` on a build without Gurobi.
 Result run(const Config &config);
@@ -70,6 +75,9 @@ Result run(const Config &config, Data data);
 /// The method `auto` stands for within run()'s memory plan: resolve_method(method, device, n_series) (Problem.hpp),
 /// and clara where pam's distance matrix can be held neither in RAM beside the series and one thread's working set
 /// nor mapped (`pam_matrix_holds` false). Any other method is itself. Tier-2 Problem::cluster resolves without it.
+/// The method follows the limit monotonically, clara below the switch and pam above it; the threads the plan fits
+/// and the clustering are each resolved method's, so pam just above the switch may run on fewer threads than clara
+/// just below it, with pam's clustering.
 Method resolve_method(Method method, Device device, std::size_t n_series, bool pam_matrix_holds);
 
 namespace core {

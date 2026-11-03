@@ -122,27 +122,32 @@ overflowing values are errors. `0`, the default, is automatic: 90 % of the
 physical memory available when the run starts, or of the Linux cgroup v2 limit
 of the process when that is lower (which a SLURM job's memory request sets). It
 is a plan, not an operating-system limit on the run's resident memory: a run may
-use about a tenth more, more with series longer than it planned for.
+use about a tenth more, more with series longer than it planned for; MIP's and
+LR-core's solver memory is not planned.
 
 The run plans once, as soon as it knows its input (an Arrow IPC file's walk, a
 Parquet file's metadata, else the series read). It reserves its threads' working
 set: a thread's scratch for the DTW kernels, priced for the longest series it
 expects (the longest series read, a mapped Arrow IPC file's longest, else twice
 the mean length), and the method's tables, times the threads, and a tenth more.
-What the reserve leaves is the data cap, for the series and the distance matrix:
+What the reserve leaves is the data cap, for the series, the method's own terms
+(TADPole's flag a pair and its cache of the pairs, the hierarchical clustering's
+dense copy of N x N doubles, OneBatchPAM's batch table: in RAM however the
+matrix is stored) and the distance matrix:
 
 - the series go into RAM on every thread where they fit in the data cap beside
   the distance matrix's N(N+1)/2 values (8 bytes each, 4 under
   `--matrix-dtype float32`);
-- a matrix that does not fit beside them is mapped to `<name>.dtwm`, in the
-  `--checkpoint` directory when one is given and in the output directory
-  otherwise, and filled slab by slab: a slab is an eighth of what the series
-  leave of the limit, at most 1 GiB, the next one read ahead and the finished
-  one written back, so each page of the file is written while its slab runs and
-  not again. A new file is not written before its fill: its header records the
-  rows written, which a slab advances once the slab before it is on the disk. A
-  run that writes no output or reads `--dist-matrix`, and a binary built without
-  LLFIO, hold the matrix in RAM;
+- a matrix that does not fit beside them is mapped to `<name>.dtwm` where the
+  run has an output directory: in the `--checkpoint` directory when one is
+  given, else in the output directory. It is filled slab by slab: a slab is an
+  eighth of what the series leave of the limit, at most 1 GiB, the next one
+  read ahead and the finished one written back, so each page of the file is
+  written while its slab runs and not again. A new file is not written before
+  its fill: its header records the rows written, which a slab advances once the
+  slab before it is on the disk. A run without an output directory (even with
+  `--checkpoint`), one that reads `--dist-matrix`, and a binary built without
+  LLFIO hold the matrix in RAM;
 - otherwise FastCLARA streams a Parquet or Arrow IPC file within the data cap on
   every thread, where it can (below);
 - otherwise the series load on the most threads whose working set fits beside
@@ -150,11 +155,18 @@ What the reserve leaves is the data cap, for the series and the distance matrix:
 
 `-v` prints the plan: `Memory plan: budget B bytes, reserve R bytes (T of N
 threads, P bytes each for series of up to L time steps), data cap C bytes:
-<route>`. An explicit limit that cannot hold the run on one thread is refused
-before any work, naming what the run holds, the working set and the least limit
-that runs; the automatic limit never refuses. Fewer threads (`OMP_NUM_THREADS`)
-make the reserve smaller. With `--method auto` the run takes `clara` also where
-`pam`'s matrix can neither stay in RAM nor be mapped. A binary built without
+<route>`. An explicit limit that cannot hold the run is refused before any work,
+naming what the run holds beside the working set. In RAM the refusal's "at least
+N bytes" is the least limit that runs. On a stream the stream's own floor (the
+sampled rows, a sample's PAM, a record batch) comes on top: the stream checks it
+within the data cap, and its refusal names the data cap as `--ram-limit` (the
+limit less the reserve, which the refusal then says). A stream keeps the
+requested threads, so fewer threads (`OMP_NUM_THREADS`) make its reserve
+smaller. The automatic limit never refuses. With `--method auto` the run takes
+`clara` also where `pam`'s matrix can neither stay in RAM nor be mapped: the
+method follows the limit (`clara` below the switch, `pam` above it), and the
+threads and the clustering are each method's, so just above the switch `pam`
+may run on fewer threads than `clara` did just below it. A binary built without
 LLFIO knows no memory available: there the automatic limit plans nothing, and
 the series and the matrix go into RAM on every thread.
 

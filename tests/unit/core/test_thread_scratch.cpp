@@ -5,7 +5,8 @@
  *        throws, a Tier-2 k-sweep keeps it, and WDTW's cached weights are built again after a release; beside a
  *        complete --dist-matrix the matrix stays in RAM within --ram-limit; a --ram-limit that runs still runs when
  *        raised, its route never stepping back, with the unlimited run's clustering; the clustering does not depend on
- *        the limit, the data cap or the threads; a refusal names its terms and the least limit, which runs.
+ *        the limit, the data cap or the threads; a refusal names its terms and, in RAM, the least limit, which runs;
+ *        a stream's refusals say what their --ram-limit is; the plan holds the methods' own terms.
  *
  * @details Registered with OMP_NUM_THREADS=4: a team of 4. A thread's bytes are what the buffers on the closed list
  *          hold (core::thread_scratch_held(), by thread number). The plan's numbers are read from the run's own text:
@@ -411,8 +412,10 @@ TEST_CASE("A refused --ram-limit names the budget, what it holds, the working se
   CHECK(working == per_thread / 10 * 11);
   CHECK(std::stoull(m[3].str()) == needs);
   CHECK(42240 + working == needs);
-  for (const char *way : { "Raise --ram-limit", "(--dtype float32)", "use --method clara", "(OMP_NUM_THREADS)" })
+  // The ways out that apply: one thread already, so fewer threads are none.
+  for (const char *way : { "Raise --ram-limit", "(--dtype float32)", "use --method clara" })
     CHECK_THAT(below.refusal, ContainsSubstring(way));
+  CHECK_THAT(below.refusal, !ContainsSubstring("OMP_NUM_THREADS"));
 
   const Attempt least_limit = attempt(config, needs, memory);
   INFO(least_limit.text << least_limit.refusal);
@@ -421,4 +424,84 @@ TEST_CASE("A refused --ram-limit names the budget, what it holds, the working se
   CHECK(least_limit.labels == unlimited.labels);
   CHECK(least_limit.medoids == unlimited.medoids);
   CHECK(least_limit.cost == unlimited.cost);
+}
+
+TEST_CASE("A stream's refusal names no least limit, and the stream's own refusals say their --ram-limit is the data "
+          "cap",
+          "[thread_scratch][run][ram_limit][plan]")
+{
+  // clara_long_late.arrow, FastCLARA streamed on 4 threads: the plan's refusal states what the names and labels need
+  // beside the working set, which the stream's own floor (the sampled rows, a sample's PAM, a record batch) exceeds.
+  const dtwc::Config config = clara_on("clara_long_late.arrow");
+  const Runner file = [](const dtwc::Config &c) { return dtwc::run(c); };
+  const Attempt one_byte = attempt(config, 1, file);
+  INFO(one_byte.refusal);
+  REQUIRE_FALSE(one_byte.ran);
+  CHECK_THAT(one_byte.refusal, !ContainsSubstring("at least"));
+  CHECK_THAT(one_byte.refusal, ContainsSubstring("the stream's own floor"));
+  CHECK_THAT(one_byte.refusal, ContainsSubstring("(OMP_NUM_THREADS)"));
+  CHECK_THAT(one_byte.refusal, !ContainsSubstring("use --method clara"));
+  std::smatch m;
+  REQUIRE(std::regex_search(one_byte.refusal, m, std::regex("these alone need ([0-9]+) bytes")));
+  const std::size_t alone = std::stoull(m[1].str());
+  // The stream's refusal, within its data cap, says what that --ram-limit is: the limit less the reserve.
+  const auto names_the_cap = [](const Attempt &a, std::size_t limit) {
+    INFO("at " << limit << ":\n" << a.text << a.refusal);
+    CHECK_FALSE(a.ran);
+    CHECK(a.rank == 1); // streamed: the stream refused
+    CHECK_THAT(a.refusal, ContainsSubstring("The --ram-limit it names is the stream's data cap: --ram-limit = "
+                                            + std::to_string(limit) + " less the reserve of "
+                                            + std::to_string(a.reserve) + " bytes for 4 threads"));
+  };
+  names_the_cap(attempt(config, alone, file), alone);
+  const std::size_t lowest =
+    least(alone, std::size_t{ 1 } << 30, [&](std::size_t limit) { return attempt(config, limit, file).ran; });
+  INFO("these alone need " << alone << "; the least that runs " << lowest);
+  CHECK(lowest > alone);
+  names_the_cap(attempt(config, lowest - 1, file), lowest - 1);
+}
+
+TEST_CASE("The plan holds the method's own terms: TADPole's pair flags and cache, the hierarchical clustering's dense "
+          "copy, OneBatchPAM's batch table",
+          "[thread_scratch][run][ram_limit][plan]")
+{
+  // 256 walks of 20 doubles in memory (40,960 bytes): the least limit each refusal names runs, a byte below it does
+  // not, and it holds each method's own terms beside the series, from their sizes in the code: TADPole, its results
+  // written (its matrix mapped where llfio maps it), a byte a pair and its cache, 8 bytes a pair (256 x 257 / 2
+  // pairs); the hierarchical clustering N x N doubles beside the matrix, nothing written (held); OneBatchPAM N x m
+  // doubles for a batch of 32.
+  constexpr std::size_t n = 256, series = n * 20 * sizeof(double), pairs = n * (n + 1) / 2;
+  const dtwc::test_support::ScratchDirectory scratch{ "scratch_fixed_terms" };
+  int outputs = 0;
+  const Runner memory = [&](const dtwc::Config &c) {
+    auto config = c;
+    if (!config.output.empty()) config.output = dtwc::path_to_utf8(scratch.path / ("run" + std::to_string(outputs++)));
+    return dtwc::run(config, data_of(walks(256, 20)));
+  };
+  struct Case
+  {
+    dtwc::Method method;
+    bool written;
+    std::size_t holds;
+  };
+  for (const Case c : { Case{ dtwc::Method::TADPole, true, series + pairs + pairs * sizeof(double) },
+                        Case{ dtwc::Method::Hierarchical, false,
+                              series + n * n * sizeof(double) + pairs * sizeof(double) },
+                        Case{ dtwc::Method::OneBatch, false, series + n * 32 * sizeof(double) } }) {
+    dtwc::Config config;
+    config.method = c.method;
+    config.k = 3;
+    config.batch_size = 32;
+    if (!c.written) config.output.clear();
+    const Attempt one_byte = attempt(config, 1, memory);
+    INFO(dtwc::name_of(dtwc::method_names, c.method) << ": " << one_byte.refusal);
+    std::smatch m;
+    REQUIRE(std::regex_search(one_byte.refusal, m, std::regex("it needs at least ([0-9]+) bytes")));
+    const std::size_t needs = std::stoull(m[1].str());
+    CHECK(needs >= c.holds);
+    CHECK_FALSE(attempt(config, needs - 1, memory).ran);
+    const Attempt least_limit = attempt(config, needs, memory);
+    INFO(least_limit.text << least_limit.refusal);
+    CHECK(least_limit.ran);
+  }
 }

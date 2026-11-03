@@ -375,12 +375,17 @@ TEST_CASE("Arrow IPC: the stream refuses, before any record batch is decoded, a 
   config.sample_size = 2;
   config.verbose = false;
   config.ram_limit = reserve_of(config, batch - 1) + batch - 1;
+  // run says what that --ram-limit is: the stream's data cap, the limit less the reserve.
   CHECK_THROWS_MATCHES(
     dtwc::run(config), dtwc::InvalidInput,
-    Message("io::IpcFile::read_rows: record batch 0 of the Arrow IPC file holds " + std::to_string(batch)
-            + " bytes once read (its 3 series), more than --ram-limit=" + std::to_string(batch - 1)
-            + ", and FastCLARA's stream reads each record batch whole; raise the limit, or rewrite the file in "
-              "smaller record batches"));
+    MessageMatches(StartsWith("io::IpcFile::read_rows: record batch 0 of the Arrow IPC file holds "
+                              + std::to_string(batch) + " bytes once read (its 3 series), more than --ram-limit="
+                              + std::to_string(batch - 1)
+                              + ", and FastCLARA's stream reads each record batch whole; raise the limit, or rewrite "
+                                "the file in smaller record batches. The --ram-limit it names is the stream's data "
+                                "cap: --ram-limit = "
+                              + std::to_string(config.ram_limit) + " less the reserve of "
+                              + std::to_string(config.ram_limit - (batch - 1)) + " bytes for ")));
 
   // The union's rows 0, 16, 32 and 48, one in each record batch of 16 rows of 8 values (no name column): the first
   // batch read whole beside what reading holds (decode_bytes), with the copies of its rows, at most its 128 values: a

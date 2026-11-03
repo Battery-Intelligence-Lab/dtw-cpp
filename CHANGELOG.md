@@ -157,20 +157,25 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   compile time); `dtwBanded`'s scalar type, where none is deduced, is `double` (v1.0.0: `float`).
 - Numbers are read with fast_float and the matrix CSV written with `std::to_chars`, whatever the global C++ locale;
   names taken from file names are UTF-8 on every platform (v1.0.0 used the Windows code page).
-- `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run plans for, by
-  default 90 % of the memory available (or of a Linux cgroup's limit, which a SLURM job's memory request sets), and
-  `--mmap-threshold` (mapped from 50,000 series) is gone. `dtwc_cl` (and `dtwc::run`, `dtwc::cluster`) plans once: a
-  reserve for its threads' working set (1.1 × threads × a thread's DTW scratch for the longest series expected and the
-  method's tables), then the series and the distance matrix in what is left, the data cap. The series go into RAM on
-  every thread, the matrix beside them where it fits, else mapped to a `.dtwm` file (with llfio and an output
-  directory), else held; else a Parquet file, or on the CPU an Arrow IPC file whose series RAM would hold outside the
-  page cache (a mapped file's values are not streamed; on a GPU the Arrow IPC stream is a `DeviceError`), streams
-  through `clara` within the data cap on every thread; else the series load on the most threads whose working set
-  fits, fitted once. `-v` prints the plan; `auto` is `clara` also where `pam`'s matrix can be neither held in RAM nor
-  mapped; an explicit limit that cannot hold the run on one thread is refused before any work (`InvalidInput`, naming
-  what it holds, the working set and the least limit), the automatic one never. It is a plan, not a cap: a run may use
-  about a tenth more, more with series longer than planned. Python's and MATLAB's `cluster()` hold every series at
-  once.
+- `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run may use, and
+  `--mmap-threshold` (mapped from 50,000 series) is gone. Its default is 90 % of the memory available (or of a Linux
+  cgroup's limit, which a SLURM job's memory request sets) for `dtwc_cl`, `dtwc::run` and `dtwc::cluster`; a
+  `Problem`'s (`set_ram_limit`, and Python's and MATLAB's `cluster()`, which go through one) stays all of it, which
+  sizes a mapped fill. `dtwc_cl` (and `dtwc::run`, `dtwc::cluster`) plans once: a reserve for its threads' working
+  set (1.1 × threads × a thread's DTW scratch for the longest series expected and the method's tables), then the
+  series, the method's own terms (TADPole's pair flags and cache, the hierarchical clustering's dense copy,
+  OneBatchPAM's batch table) and the distance matrix in what is left, the data cap. The series go into RAM on every
+  thread, the matrix beside them where it fits, else mapped to a `.dtwm` file (with llfio and an output directory),
+  else held; else a Parquet file, or on the CPU an Arrow IPC file whose series RAM would hold outside the page cache (a
+  mapped file's values are not streamed; on a GPU the Arrow IPC stream is a `DeviceError`), streams through `clara`
+  within the data cap on every thread; else the series load on the most threads whose working set fits, fitted once.
+  `-v` prints the plan; `auto` is `clara` also where `pam`'s matrix can be neither held in RAM nor mapped (the method
+  follows the limit; the threads and the clustering are each method's). An explicit limit that cannot hold the run is
+  refused before any work (`InvalidInput`): in RAM naming the least limit that runs, on a stream naming what the plan
+  holds, the stream's own floor coming on top (its refusals name the data cap as `--ram-limit`, and say so); the
+  automatic limit never refuses. It is a plan, not a cap: a run may use about a tenth more, more with series longer
+  than planned; MIP's and LR-core's solver memory is not planned. Python's and MATLAB's `cluster()` hold every series
+  at once.
 - `dtwc::run` (so `dtwc::cluster` and `dtwc_cl`) gives its threads' scratch back as it starts and when it returns or
   throws, CUDA's pinned and device buffers among it: a 24-thread run on 100,000-value series kept 615 MB committed
   after it returned (2026-11-01). Tier-2 calls (a fill, `Problem::cluster`, the algorithms) keep theirs, so a k-sweep

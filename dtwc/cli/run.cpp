@@ -184,8 +184,12 @@ struct SourceFacts
 {
   std::size_t series = 0;     ///< what the series hold in RAM: the reader's resident bytes, or their values once read
   std::size_t clara = 0;      ///< in-RAM FastCLARA's sample matrix, then every sample's labels and nearest distances
+  std::size_t fixed = 0;      ///< the method's own terms, in RAM whatever the matrix's storage
+  const char *fixed_what = nullptr; ///< what `fixed` is, for a refusal
   std::size_t matrix = 0;     ///< the distance matrix, where the method holds one
   const char *held = nullptr; ///< why the matrix stays in RAM where it does not fit (nullptr: it is mapped there)
+  bool cache = false;         ///< the method keeps the matrix's bytes in RAM, mapped or not (TADPole's cache)
+  bool clara_method = false;  ///< the method is FastCLARA, which a refusal does not suggest
   bool can_stream = false;    ///< FastCLARA can stream the series (an Arrow IPC or Parquet file, a sample below N)
   std::size_t streamed = 0;   ///< what a streamed run holds after its stream: every series' name and label
   std::size_t n_series = 0;
@@ -230,9 +234,12 @@ struct MemoryPlan
 ///    in RAM.
 /// 2. Else, where FastCLARA can stream the series, streamed on every thread within the data cap, where that holds what
 ///    the stream keeps after it (every series' name and label); an explicit limit that does not is refused (fewer
-///    threads, OMP_NUM_THREADS, leave it more).
+///    threads, OMP_NUM_THREADS, leave it more). The stream's own floor (the sampled rows, a sample's PAM, a record
+///    batch) is checked inside it, within the data cap.
 /// 3. Else in RAM on the most threads whose working set fits beside the series (and a held matrix), fitted once: none
-///    is refused under an explicit limit, one thread under the automatic one, which never refuses.
+///    is refused under an explicit limit, naming the least limit that runs, one thread under the automatic one, which
+///    never refuses.
+/// The method's own terms (`fixed`), and TADPole's cache of the matrix, are in RAM whatever the matrix's storage.
 MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explicit_limit, std::size_t per_thread,
                        int requested)
 {
@@ -243,21 +250,25 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
   plan.threads = plan.requested = requested;
   if (budget == 0) return plan; // no plan: in RAM on every thread, nothing mapped or streamed
   const std::size_t reserve = working_set(per_thread, requested);
-  const std::size_t series = facts.series + facts.clara;
+  const std::size_t series = facts.series + facts.clara + facts.fixed;
   plan.mapped = facts.matrix > 0 && facts.held == nullptr && series + facts.matrix + reserve > budget;
-  const std::size_t need = series + (plan.mapped ? 0 : facts.matrix);
+  const bool matrix = facts.matrix > 0 && (!plan.mapped || facts.cache); // its bytes in RAM
+  const std::size_t need = series + (matrix ? facts.matrix : 0);
   if (need + reserve <= budget) return plan;
-  const auto refuse = [&](const std::string &what, std::size_t bytes, int threads) {
-    const std::size_t work = working_set(per_thread, threads);
+  // The refusal: what the run holds beside the working set of `threads`, and the ways out that apply.
+  const auto refuse = [&](const std::string &what, int threads, const std::string &needs) {
+    std::vector<std::string> ways{ "Raise --ram-limit", "read the series as float32 (--dtype float32)" };
+    if (!facts.clara_method) ways.emplace_back("use --method clara");
+    if (threads > 1) ways.emplace_back("run fewer threads (OMP_NUM_THREADS)");
+    std::string out = ways.front();
+    for (std::size_t i = 1; i < ways.size(); ++i) out += (i + 1 == ways.size() ? ", or " : ", ") + ways[i];
     plan.route = Route::Refused;
     plan.threads = threads;
     plan.refusal = "--ram-limit = " + std::to_string(budget) + " cannot hold " + what + " beside the working set of "
-                   + std::to_string(work) + " bytes (" + std::to_string(threads)
+                   + std::to_string(working_set(per_thread, threads)) + " bytes (" + std::to_string(threads)
                    + (threads == 1 ? " thread x " : " threads x ") + std::to_string(per_thread)
                    + " bytes: the DTW kernels' scratch for series of up to " + std::to_string(facts.length)
-                   + " time steps and the method's tables, x1.1): it needs at least " + std::to_string(bytes + work)
-                   + " bytes. Raise --ram-limit, read the series as float32 (--dtype float32), use --method clara, or "
-                     "run fewer threads (OMP_NUM_THREADS).";
+                   + " time steps and the method's tables, x1.1): " + needs + ". " + out + ".";
   };
   if (facts.can_stream) {
     if (facts.streamed + reserve <= budget) {
@@ -267,7 +278,10 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
     if (explicit_limit) {
       refuse("the names and labels of the " + std::to_string(facts.n_series) + " streamed series ("
                + std::to_string(facts.streamed) + " bytes)",
-             facts.streamed, requested);
+             requested,
+             "these alone need " + std::to_string(facts.streamed + reserve)
+               + " bytes, and the stream's own floor (the sampled rows, a sample's PAM, a record batch) comes on "
+                 "top, checked within the data cap, --ram-limit less the working set");
       return plan;
     }
   }
@@ -277,11 +291,13 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
   if (!explicit_limit) return plan;
   std::string terms = std::to_string(facts.series) + " for the series";
   if (facts.clara > 0) terms += ", " + std::to_string(facts.clara) + " for FastCLARA's sample matrix and labels";
-  const bool matrix = !plan.mapped && facts.matrix > 0;
-  if (matrix) terms += ", " + std::to_string(facts.matrix) + " for the distance matrix, " + facts.held;
+  if (facts.fixed > 0) terms += ", " + std::to_string(facts.fixed) + " for " + facts.fixed_what;
+  if (matrix)
+    terms += ", " + std::to_string(facts.matrix) + " for the distance matrix, "
+             + (facts.held != nullptr ? facts.held : "which TADPole keeps in RAM as its cache");
   refuse((matrix ? "the series and the distance matrix (" : "the series (") + std::to_string(need) + " bytes: " + terms
            + ")",
-         need, 1);
+         1, "it needs at least " + std::to_string(need + working_set(per_thread, 1)) + " bytes");
   return plan;
 }
 
@@ -386,17 +402,10 @@ Outcome execute(const Config &config, std::optional<Data> data)
     if (stream_payload) algorithms::detail::validate_streaming_clara_plan(plan, "run");
     clara_planned = true;
   };
-  // A streamed run holds no series: what it holds after the stream, and the options that need the series, are checked
-  // before it; `what` is the input's format, `resident` the price that chose the stream.
-  const auto check_stream = [&](const char *what, const char *by, std::size_t names_bytes, std::size_t resident,
-                                std::size_t limit) {
-    // After the stream the run holds every series' name, written beside its label, and the labels: the result's
-    // and the Problem's.
-    const std::size_t written_bytes = names_bytes + 2 * n_series * sizeof(index_t);
-    if (written_bytes > limit)
-      throw InvalidInput("--ram-limit = " + std::to_string(limit) + " cannot hold the names and labels of the "
-                         + std::to_string(n_series) + " streamed series, which need " + std::to_string(written_bytes)
-                         + " bytes; raise the limit.");
+  // A streamed run holds no series: the options that need the series are checked before it (what it holds after the
+  // stream, every series' name and label, the plan holds within the data cap); `what` is the input's format,
+  // `resident` the price that chose the stream.
+  const auto check_stream = [&](const char *what, const char *by, std::size_t resident) {
     if (!config.checkpoint.empty())
       throw InvalidInput("--checkpoint requires resident series data and cannot be combined with RAM-limited "
                          + std::string(what) + " streaming.");
@@ -422,9 +431,10 @@ Outcome execute(const Config &config, std::optional<Data> data)
   const int requested = get_max_threads();
   std::optional<MemoryPlan> memory;
   std::optional<TeamCap> team;
-  // Why a distance matrix that does not fit beside the series stays in RAM (nullptr: it is mapped).
+  // Why a distance matrix that does not fit beside the series stays in RAM (nullptr: it is mapped). It maps only with
+  // an output directory, into the --checkpoint directory when one is given.
 #ifdef DTWC_HAS_MMAP
-  const char *const unmapped = config.output.empty() ? "which a run that writes nothing keeps in RAM" : nullptr;
+  const char *const unmapped = config.output.empty() ? "which a run without an output directory keeps in RAM" : nullptr;
 #else
   const char *const unmapped = "which a build without llfio cannot map (DTWC_ENABLE_LLFIO=OFF)";
 #endif
@@ -447,8 +457,29 @@ Outcome execute(const Config &config, std::optional<Data> data)
     SourceFacts facts;
     facts.series = series;
     facts.clara = sample && !full ? clara_bytes(*sample) : 0;
-    facts.matrix =
-      holds_matrix(resolved, full) ? core::packed_size(n_series) * core::value_bytes(config.matrix_dtype) : 0;
+    const std::size_t pairs = core::packed_size(n_series);
+    facts.matrix = holds_matrix(resolved, full) ? pairs * core::value_bytes(config.matrix_dtype) : 0;
+    // The method's own terms, in RAM whatever the matrix's storage: TADPole's flag a pair (tadpole.cpp's `computed`)
+    // and its cache of the matrix's pairs (`cache`, unless a complete --dist-matrix is read in its place); the
+    // hierarchical clustering's dense copy of N x N doubles (hierarchical.cpp's `work`); OneBatchPAM's batch table,
+    // N x m doubles, m as one_batch_pam.cpp's automatic_batch_size or --batch-size takes it, and its per-point
+    // vectors, at most 8 doubles a point. MIP's and LR-core's solver memory is not planned.
+    if (resolved == Method::TADPole) {
+      facts.fixed = pairs;
+      facts.fixed_what = "TADPole's flag a pair";
+      facts.cache = true;
+    } else if (resolved == Method::Hierarchical) {
+      facts.fixed = n_series * n_series * sizeof(double);
+      facts.fixed_what = "the hierarchical clustering's dense copy of the matrix";
+    } else if (resolved == Method::OneBatch) {
+      const auto log2_steps = static_cast<std::size_t>(std::ceil(std::log2(static_cast<double>(n_series) + 1.0)));
+      std::size_t m = config.batch_size > 0 ? static_cast<std::size_t>(config.batch_size)
+                                            : std::max<std::size_t>(64, 20 * log2_steps);
+      m = std::max(std::min(m, n_series), static_cast<std::size_t>(config.k));
+      facts.fixed = n_series * (m + 8) * sizeof(double);
+      facts.fixed_what = "OneBatchPAM's batch table and per-point vectors";
+    }
+    facts.clara_method = resolved == Method::CLARA;
     facts.held = held;
     facts.can_stream = can_stream;
     facts.streamed = streamed;
@@ -519,7 +550,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
       clara.force_parquet_streaming = true;
     }
     plan_clara();
-    if (stream_payload) check_stream("Parquet", "Parquet metadata", names_bytes, resident, planned.data_cap());
+    if (stream_payload) check_stream("Parquet", "Parquet metadata", resident);
   }
 #endif
 
@@ -557,7 +588,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
       stream_payload = true;
       clara.ram_limit_bytes = planned.data_cap();
       plan_clara();
-      check_stream("Arrow IPC", "Arrow IPC walk", names_bytes, resident, planned.data_cap());
+      check_stream("Arrow IPC", "Arrow IPC walk", resident);
     } else if (planned.route == Route::Refused && !can_stream && resident > config.ram_limit) {
       // CLARA is named only where its stream could read the file: a file that streams, on the CPU, sampled in fewer
       // than its series (the plan of these options; none where CLARA cannot run on them).
@@ -685,22 +716,36 @@ Outcome execute(const Config &config, std::optional<Data> data)
   if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
   std::vector<std::string> streamed_names;
   core::ClusteringResult result;
-  if (stream_payload && ipc) {
-    // The Problem holds no series: its distance takes their features a time step from an empty Data of them.
-    prob.set_data(Data(std::vector<std::vector<data_t>>{}, std::vector<std::string>{}, ipc->ndim()));
-    const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "fast_clara");
-    result = config.dtype == core::Precision::Float32
-               ? algorithms::detail::fast_clara_chunked<true>(prob, clara, *ipc, plan)
-               : algorithms::detail::fast_clara_chunked<false>(prob, clara, *ipc, plan);
-    streamed_names = ipc->series_names(clara.ram_limit_bytes - 2 * n_series * sizeof(index_t)); // beside the labels
-  } else {
+  try {
+    if (stream_payload && ipc) {
+      // The Problem holds no series: its distance takes their features a time step from an empty Data of them.
+      prob.set_data(Data(std::vector<std::vector<data_t>>{}, std::vector<std::string>{}, ipc->ndim()));
+      const auto plan = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "fast_clara");
+      result = config.dtype == core::Precision::Float32
+                 ? algorithms::detail::fast_clara_chunked<true>(prob, clara, *ipc, plan)
+                 : algorithms::detail::fast_clara_chunked<false>(prob, clara, *ipc, plan);
+      streamed_names = ipc->series_names(clara.ram_limit_bytes - 2 * n_series * sizeof(index_t)); // beside the labels
+    } else {
 #ifdef DTWC_HAS_PARQUET
-    result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : prob.cluster();
-    if (stream_payload)
-      streamed_names = io::ParquetChunkReader(input, config.column, config.skip_cols, config.skip_rows).series_names();
+      result = stream_payload ? algorithms::fast_clara_parquet(prob, clara) : prob.cluster();
+      if (stream_payload)
+        streamed_names =
+          io::ParquetChunkReader(input, config.column, config.skip_cols, config.skip_rows).series_names();
 #else
-    result = prob.cluster();
+      result = prob.cluster();
 #endif
+    }
+  } catch (const InvalidInput &refused) {
+    // A stream's own refusals (its readers', FastCLARA's) check its floor within the data cap, which they name as
+    // --ram-limit: say what that is, after their text.
+    const std::string text = refused.what();
+    if (!stream_payload || text.find("--ram-limit") == std::string::npos) throw;
+    throw InvalidInput(text + (text.ends_with('.') ? " " : ". ")
+                       + "The --ram-limit it names is the stream's data cap: --ram-limit = "
+                       + std::to_string(memory->budget) + " less the reserve of " + std::to_string(memory->reserve())
+                       + " bytes for " + std::to_string(memory->threads)
+                       + " threads (-v prints the memory plan); raise --ram-limit by what the stream lacks, or run "
+                         "fewer threads (OMP_NUM_THREADS) to shrink the reserve.");
   }
   if (config.verbose) {
     std::cout << progress_label(method);
