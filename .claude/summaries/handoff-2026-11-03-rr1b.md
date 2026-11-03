@@ -8,7 +8,8 @@
   4741d753, 1234030a: superseded history); local only, worktree `C:/D/git/wt/MM`. Trees there: `build` (clang), `build-arrow`, `build-nollfio`, `build-mex`, `build-cuda`,
   `build-nocpuinfo`, `build-mexci`, GCC in WSL `~/mm/rr1b*`, `~/mm/sync`, the wheel `~/mm/sync_whl`. Work files `C:/D/git/wt/tmp/MM/rb*/`, `rr1a/`, `rr1b/` (g6, identity, reports, after,
   tools), `sync/` (the merge's WSL check), kit `kit/rb*_*`, `kit/rr1a_*`, `kit/rr1b_*`, logs `logs/rb*_summary.log`, `rr1a_summary.log`, `rr1b_summary.log`, `review_rb2/`, `review_rb3/`
-  (fixtures, cap tools), `rr_claims_check.md`. Brief: `brief_s5.md` (base ac25ffdc, ready). After a restart check any agent's transcript mtime before relaunching.
+  (fixtures, cap tools), `rr_claims_check.md`. S5 is RUNNING (an Opus implementer on pb/MM from `brief_s5.md`, base ac25ffdc, launched 11-03 ~16:10Z; its log
+  `logs/s5_summary.log`; nothing else touches the worktree). After a restart check its transcript mtime and that log before relaunching.
 - Disk 11-03: Volkan approved, I deleted `review_ks1/2/3_r2`, most of `review_ks3_r1`, `conf_strict`, WSL `ks3r2_*`, `conf_strict` (about 3.9 GB); an empty `review_ks3_r1/src` stays.
 
 ## Done
@@ -59,7 +60,7 @@
 
 ## Next steps
 
-1. S5 (GPU view interim; `brief_s5.md`, base ac25ffdc, an Opus implementer), then S6 CLI, S7 `run` for every `cluster()` (then THIRD_PARTY_LICENSES's cpuinfo row, "the module links none",
+1. S5 (GPU view interim; running; verify it when it hands back: write-tree, diff, clang `ctest -j1`, the CUDA tree's G8 equal-to-CPU runs and the report it writes, G6), then S6 CLI, S7 `run` for every `cluster()` (then THIRD_PARTY_LICENSES's cpuinfo row, "the module links none",
    changes if a binding reaches `machine_facts`), S8 Python, S9 MATLAB (map `std::bad_alloc` in the MEX gateway), S10 (G6 vs the MM base, class (d), Volkan's call), then HG. RR2 (counters)
    later, its own commit.
 2. PLAN "Before the 2.0 tag": L2b, Linux archives, F43, design.md §7 risks 4 and 7, FM's E1; conformance redone if MM merges first.

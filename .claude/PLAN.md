@@ -77,6 +77,7 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     one docs conflict; the wheel built from it imports in WSL without GLIBC_TUNABLES).
     S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
   Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
+  ◐ S5 a view on a GPU, interim: running on pb/MM from `brief_s5.md` (base ac25ffdc, 11-03).
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
