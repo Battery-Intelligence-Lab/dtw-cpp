@@ -64,9 +64,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     Plan `C:/D/git/wt/tmp/MM/rb_plan.md` (11-02, reviewed): ☑ RB1 restore the kernel sources + closed-list release
     (a6c1ab2f, 11-02; G6 absent for loop classes (a)-(c), class (d) the wheel's Soft-DTW gradient present, see the handoff),
     ☑ RB2 the plan (budget, reserve, one loading decision, `auto` guard; f9e731f9, 11-03, with its review's fixes 014123c4),
-    ◐ RB3 the `bad_alloc` boundary (92c04967, 11-03: verified by me, two fresh reviews done) and ◐ RB3b its fix commit
-    (running, `brief_rb3b.md`): readers' and library OOM statuses become the one typed report, the ways out follow the run.
-    Not in RB3b: TADPole's two bare `omp parallel` regions terminate on a refused allocation with `--dc` (Volkan's call).
+    ☑ RB3 the `bad_alloc` boundary (92c04967, 11-03: verified by me, two fresh reviews done) and ◐ RB3b its fix commit
+    (31f7158d, 11-03, `brief_rb3b.md`; verifying): readers' and library OOM statuses become the one typed report, the ways
+    out follow the run. Not in RB3b: TADPole's two bare `omp parallel` regions (Volkan 11-03: fix before the 2.0 tag, below).
   - ☐ RR the end-of-run plain-text report in `Result` (same spec; Volkan 11-02: "Nice log in plain text at the end");
     planned (`rr_plan.md`), after RB3.
     S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
@@ -78,8 +78,14 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
 ## Before the 2.0 tag (Volkan 10-21)
 
 Marked [here] (this Windows machine, WSL included, run in slots between timed units), [CI] (runs on Volkan's push;
-`gh` is not authenticated here, so its results are read on GitHub) or [Volkan]. `VERSION` is 2.0.0rc1. Whether MM
-and HG ship in 2.0 or after it is open (not asked).
+`gh` is not authenticated here, so its results are read on GitHub) or [Volkan]. `VERSION` is 2.0.0rc1. MM and HG
+both ship in 2.0 (Volkan 11-03).
+
+- [here] TADPole's two bare `omp parallel` regions (`dtwc/algorithms/tadpole.cpp:210`, `:270`): a refused allocation
+  there (the first thread's DTW column with an explicit `--dc`) ends the process (Windows 0xC0000409, Linux abort); carry
+  it out as RB3's typed report (Volkan 11-03: "Fix it before the 2.0 tag"), then a G6 re-check of TADPole's loops. Repro
+  and caps: `C:/D/git/wt/tmp/MM/review_rb3/runs/tad_region_*`. Runs as unit RB3c on pb/MM (`brief_rb3c.md`), after RB3b's
+  re-check and before RR1.
 
 - [done 11-02, redo on the tag tree if MM merges first] `cpp_conformance` under GCC and MSVC Release, `strict` and
   `fast`: the test as it stands (labels and medoids equal, scores within 1e-12; Volkan 11-02: "1e-12 is fine ... as long as

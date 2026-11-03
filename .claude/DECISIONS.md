@@ -333,3 +333,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   `<name>_report.txt` and no extra CLI lines); "Later, own commit (Recommended)" (RR1 prints the counters that exist;
   swaps, start cost, pairs and nodes are an optional RR2 commit after RB and RR1). My calls on the plan's other two: the
   report prints the hostname, and `Result::save` writes the report beside the four result files.
+- 2026-11-03 — Volkan (question tool), later that day: TADPole's two bare `omp parallel` regions, where a refused
+  allocation ends the process with no message (RB3's routes review B1): "Fix it before the 2.0 tag" (carry the failure
+  out of both regions, then a G6 re-check of TADPole's loops); which work ships in 2.0: "MM and HG both in 2.0"; the
+  KS review scratch (`review_ks*`, WSL `ks3r2_*` and `conf_strict`, `wt/tmp/conf_strict`) may be deleted: "Delete these".
