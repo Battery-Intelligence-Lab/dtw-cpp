@@ -76,8 +76,9 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
     later. ☑ design-2.0 synced into pb/MM (7e061212, 11-03: the Linux wheel's TLS fix, verify_results, the user pages;
     one docs conflict; the wheel built from it imports in WSL without GLIBC_TUNABLES).
     S8's and S9's briefs carry the release on return into Python's and MATLAB's `cluster()`.
-  Pulled forward: S8's read-only view `p_vec`, S9's MEX names. Until S5 a GPU fill of an IPC file is refused.
-  ◐ S5 a view on a GPU, interim: running on pb/MM from `brief_s5.md` (base ac25ffdc, 11-03).
+  Pulled forward: S8's read-only view `p_vec`, S9's MEX names.
+  ☑ S5 a view on a GPU, interim: 99766bc1 + docs S5b d2abe94c on pb/MM (11-03; `brief_s5.md`; CUDA G8 verified, Metal lines
+  await G8b on the Mac, listed in the handoff). Next S6 CLI.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
