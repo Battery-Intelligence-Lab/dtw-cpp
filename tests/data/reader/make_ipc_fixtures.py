@@ -34,14 +34,15 @@ FastCLARA's stream of an Arrow IPC file (tests/unit/io/test_ipc_stream.cpp, test
   Parquet twins (column 'data', a row group a record batch), whose stream gave the cases' texts;
 - clara_verdict_ndim.arrow: the same walks as four time steps of two features (ndim 2), row 41's cut to 7 values.
 
-The stream's threads' scratch within --ram-limit (tests/unit/core/test_thread_scratch.cpp):
+dtwc::run's memory plan, its routes as --ram-limit grows and its clustering at any limit and team
+(tests/unit/core/test_thread_scratch.cpp):
 
-- clara_long_late.arrow: 2,048 walks of 8 steps, row 1,500's of 1,500, LZ4, record batches of 64: a series longer than
-  any the test's samples hold, read late in the pass;
+- clara_long_late.arrow: 2,048 walks of 8 steps, row 1,500's of 1,500, LZ4, record batches of 64: a series far longer
+  than twice the mean, which the plan prices a compressed file by, read late;
 - clara_ragged.arrow: 512 walks of 6 to 10 steps, uncompressed, record batches of 32: unequal lengths under a band of
   4, streamed as Float32 (a copy: no codec's scratch beside a record batch);
 - clara_late_wide.arrow: 512 walks of 48 steps as list<float>, row 505's of 1,500, record batches of 32: a series
-  longer than any the test's samples hold, in the last record batch, beside sampled series whose scratch is not tiny.
+  far longer than the others, in the last record batch, read as Float64 (a copy, which streams).
 
 Every value is exact in Float32. Run: uv run --no-project --with pyarrow==23.0.1 python make_ipc_fixtures.py
 """

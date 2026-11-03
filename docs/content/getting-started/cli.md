@@ -115,53 +115,75 @@ FastPAM engine. Valid CLI seeds are integers from 0 through `UINT64_MAX`.
 
 ### The memory limit
 
-`--ram-limit` is the memory the run may use. Units are binary and
+`--ram-limit` is the memory the run plans for. Units are binary and
 case-insensitive: `K`/`KB`/`KiB` through `T`/`TB`/`TiB`; a fraction of a byte
 rounds up, so a nonzero value never reads as 0; malformed, negative, or
-overflowing values are errors. `0`, the default, is automatic: the physical
-memory available when the run starts, or the Linux cgroup v2 limit of the
-process when that is lower (which a SLURM job's memory request sets). It is a
-budget for the run's decisions, not an operating-system limit on its resident
-memory.
+overflowing values are errors. `0`, the default, is automatic: 90 % of the
+physical memory available when the run starts, or of the Linux cgroup v2 limit
+of the process when that is lower (which a SLURM job's memory request sets). It
+is a plan, not an operating-system limit on the run's resident memory: a run may
+use about a tenth more, more with series longer than it planned for.
 
-The distance matrix stays in RAM while its N(N+1)/2 values (8 bytes each, 4 under
-`--matrix-dtype float32`) fit in half of what the series leave of the limit. Past that
-it is mapped to `<name>.dtwm`, in the
-`--checkpoint` directory when one is given and in the output directory otherwise
-(a run that writes no output keeps it in RAM), and filled slab by slab: a slab is
-an eighth of what the series leave of the limit, at most 1 GiB, the next one
-read ahead and the finished one written back, so each page of the file is
-written while its slab runs and not again. A new file is not written before its
-fill: its header records the rows written, which a slab advances once the slab
-before it is on the disk. A binary built without LLFIO maps
-nothing: there the automatic limit sets none, and a matrix over an explicit
-limit stops the run.
+The run plans once, as soon as it knows its input (an Arrow IPC file's walk, a
+Parquet file's metadata, else the series read). It reserves its threads' working
+set: a thread's scratch for the DTW kernels, priced for the longest series it
+expects (the longest series read, a mapped Arrow IPC file's longest, else twice
+the mean length), and the method's tables, times the threads, and a tenth more.
+What the reserve leaves is the data cap, for the series and the distance matrix:
+
+- the series go into RAM on every thread where they fit in the data cap beside
+  the distance matrix's N(N+1)/2 values (8 bytes each, 4 under
+  `--matrix-dtype float32`);
+- a matrix that does not fit beside them is mapped to `<name>.dtwm`, in the
+  `--checkpoint` directory when one is given and in the output directory
+  otherwise, and filled slab by slab: a slab is an eighth of what the series
+  leave of the limit, at most 1 GiB, the next one read ahead and the finished
+  one written back, so each page of the file is written while its slab runs and
+  not again. A new file is not written before its fill: its header records the
+  rows written, which a slab advances once the slab before it is on the disk. A
+  run that writes no output or reads `--dist-matrix`, and a binary built without
+  LLFIO, hold the matrix in RAM;
+- otherwise FastCLARA streams a Parquet or Arrow IPC file within the data cap on
+  every thread, where it can (below);
+- otherwise the series load on the most threads whose working set fits beside
+  them (and a matrix held in RAM), fitted once for the whole run.
+
+`-v` prints the plan: `Memory plan: budget B bytes, reserve R bytes (T of N
+threads, P bytes each for series of up to L time steps), data cap C bytes:
+<route>`. An explicit limit that cannot hold the run on one thread is refused
+before any work, naming what the run holds, the working set and the least limit
+that runs; the automatic limit never refuses. Fewer threads (`OMP_NUM_THREADS`)
+make the reserve smaller. With `--method auto` the run takes `clara` also where
+`pam`'s matrix can neither stay in RAM nor be mapped. A binary built without
+LLFIO knows no memory available: there the automatic limit plans nothing, and
+the series and the matrix go into RAM on every thread.
 
 ### RAM-limited Parquet FastCLARA
 
-For Parquet input the limit is applied before the selected column payload is
+For Parquet input the plan is made before the selected column payload is
 loaded. The CLI reads schema and row-group metadata, resolves
 `--method auto` from the logical series count, and estimates the peak needed to
 decode and materialise the selected column at the requested `--dtype`. If that
-estimate fits, the ordinary resident reader is used. If it does not fit, the
-only supported streaming route is non-full FastCLARA over one Parquet file
-of one series per row: a `List<Float32/Float64>` or
+estimate fits the data cap, the ordinary resident reader is used. If it does not
+fit, the only supported streaming route is non-full FastCLARA over one Parquet
+file of one series per row: a `List<Float32/Float64>` or
 `LargeList<Float32/Float64>` column with one list cell per series, or several
 Float32/Float64 columns. The automatic limit streams only there, for a sample
 smaller than N and without `--checkpoint` or `--dist-matrix`: elsewhere the series
-load as they would without a limit. An explicit `--ram-limit` is fail-closed:
+load on the threads that fit. An explicit `--ram-limit` is fail-closed:
 
-- over-budget one-column (one series), Parquet-directory, and non-CLARA requests stop
-  before payload materialisation and explain how to convert the input or raise
-  the limit;
+- one-column (one series), Parquet-directory, and non-CLARA requests whose
+  series do not fit beside one thread's working set stop before payload
+  materialisation and explain how to convert the input or raise the limit;
 - the sampled rows are read once, then the file once more for the assignment,
   a batch of row groups at a time (the next batch decoding while one is assigned,
-  when two fit); every read decodes about 1 MiB of values at a time. The limit
+  when two fit); every read decodes about 1 MiB of values at a time. The data cap
   must hold the sampled rows beside one decode, a sample's PAM beside them, then
   the `n_samples` × k medoid series, 8 bytes of labels and of nearest distance
   per row and sample, one decode and a batch of whole row groups, and the series'
-  names and labels written after the stream; a smaller limit fails, naming the
-  bytes, with guidance to rewrite smaller row groups or raise it;
+  names and labels written after the stream; a smaller one fails, naming the
+  bytes (as `--ram-limit`), with guidance to rewrite smaller row groups or raise
+  it;
 - a CLARA sample size that resolves to all N series is rejected while the file
   is over budget, because its full-data PAM fallback cannot stream;
 - with `--device gpu` the samples fill on the GPU, and with CUDA each streamed
@@ -171,15 +193,15 @@ load as they would without a limit. An explicit `--ram-limit` is fail-closed:
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.
 
-The limit covers what the streamed run holds: library metadata and fixed
+The data cap covers what the streamed run holds: library metadata and fixed
 process overhead (the code, thread stacks, the allocators' first pages) are
 outside it. An Arrow IPC file streams as Parquet does, on the CPU, where RAM would
 hold its series outside the page cache (decoded, read without LLFIO, or in the
 other `--dtype`): FastCLARA reads it a record batch at a time; a mapped file's
 values are not streamed, and on a GPU the stream is a `DeviceError`. Other inputs
-(CSV/TSV, a CSV directory) are always read whole; the limit then governs the
-distance matrix alone. A run gives its threads' scratch back as it starts and
-when it ends.
+(CSV/TSV, a CSV directory) are always read whole; the plan then sets the threads
+and where the distance matrix is held. A run gives its threads' scratch back as
+it starts and when it ends.
 
 ### OneBatchPAM and TADPole options
 

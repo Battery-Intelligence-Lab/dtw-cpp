@@ -10,7 +10,10 @@
  *
  * | method        | cpu                           | gpu                               |
  * |---------------|-------------------------------|-----------------------------------|
- * | auto          | pam for N <= 5000, else clara | pam                               |
+ * | auto          | pam for N <= 5000, else clara;| pam; clara where pam's matrix     |
+ * |               | clara where pam's matrix can  | can neither stay in RAM nor be    |
+ * |               | neither stay in RAM nor be    | mapped                            |
+ * |               | mapped (the memory plan)      |                                   |
  * | onebatch      | runs                          | DeviceError                       |
  * | tadpole       | runs                          | DeviceError                       |
  * | clara         | runs                          | runs; the GPU fills the samples   |
@@ -40,9 +43,21 @@
 namespace dtwc {
 
 /// Cluster the series `config.input` names. Config's strings are UTF-8.
+///
+/// The run plans its memory once, where its input's facts are known (an Arrow IPC file's walk, a Parquet file's
+/// metadata, else the series read): within the budget (core::memory_budget), a reserve for its threads' working set,
+/// 1.1 x threads x a thread's bytes (the DTW kernels' scratch for the longest series it expects and the method's
+/// tables), and the series and the distance matrix in what is left, the data cap. The series go into RAM on every
+/// thread where they fit in it beside the matrix, which is mapped where it does not (llfio and an output to map it
+/// in) and else held in RAM; else FastCLARA streams them within the data cap where it can (an Arrow IPC or Parquet
+/// file, a sample smaller than N); else they load on the most threads whose working set fits, the threads fitted
+/// once. `-v` prints the plan. It is a plan, not a cap: a run may use about a tenth more, more with series longer
+/// than planned.
 /// @throws InvalidInput for a setting no run can honour (an empty input, k,
 ///         max-iter or n-init below 1, a format option the input cannot take,
-///         k above the number of series), DeviceError as above, IOError for an
+///         k above the number of series, an explicit --ram-limit that cannot
+///         hold the run on one thread, naming what it holds and the least
+///         limit), DeviceError as above, IOError for an
 ///         input this build cannot read or a file that cannot be read or written,
 ///         SolverError for `gurobi` on a build without Gurobi.
 Result run(const Config &config);
@@ -51,6 +66,17 @@ Result run(const Config &config);
 /// reader applies (`column`, `skip-rows`, `skip-cols`, `delimiter`) must be at
 /// their defaults.
 Result run(const Config &config, Data data);
+
+/// The method `auto` stands for within run()'s memory plan: resolve_method(method, device, n_series) (Problem.hpp),
+/// and clara where pam's distance matrix can be held neither in RAM beside the series and one thread's working set
+/// nor mapped (`pam_matrix_holds` false). Any other method is itself. Tier-2 Problem::cluster resolves without it.
+Method resolve_method(Method method, Device device, std::size_t n_series, bool pam_matrix_holds);
+
+namespace core {
+/// The memory a run plans for (--ram-limit): `ram_limit`, else 90 % of what the process may use (available_memory(),
+/// a Linux cgroup's limit among it); 0 where neither is known (a build without llfio): no plan.
+std::size_t memory_budget(std::size_t ram_limit);
+} // namespace core
 
 namespace detail {
 

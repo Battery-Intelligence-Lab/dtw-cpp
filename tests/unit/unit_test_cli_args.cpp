@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <limits>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -206,7 +207,7 @@ TEST_CASE("run's PAM n_init retains the best deterministic restart", "[cli][seed
 }
 
 // ---------------------------------------------------------------------------
-// Distance-matrix storage routing: --ram-limit 1 always maps
+// Distance-matrix storage routing: the least --ram-limit a run takes maps
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -216,7 +217,25 @@ dtwc::Config mapped_config(Method method, const ScratchDirectory &scratch, const
   auto config = quiet_config(2, method);
   config.output = scratch.path.string();
   config.name = name;
-  config.ram_limit = 1; // any matrix exceeds half of what the series leave of 1 byte
+  config.ram_limit = 1; // refused: below the series beside one thread's working set
+  return config;
+}
+
+/// `config` at the least --ram-limit its run on tiny_series() takes, which 1 byte's refusal names: the series beside
+/// one thread's working set, the matrix mapped (where it can be) as it does not fit beside them on every thread.
+dtwc::Config at_least_limit(dtwc::Config config)
+{
+  config.ram_limit = 1;
+  std::string refusal;
+  try {
+    (void)dtwc::run(config, tiny_series());
+  } catch (const dtwc::InvalidInput &e) {
+    refusal = e.what();
+  }
+  std::smatch m;
+  INFO(refusal);
+  REQUIRE(std::regex_search(refusal, m, std::regex("it needs at least ([0-9]+) bytes")));
+  config.ram_limit = std::stoull(m[1].str());
   return config;
 }
 
@@ -234,12 +253,14 @@ TEST_CASE("run's TADPole over the memory limit uses mmap or fails before dense a
   config.tadpole_dc = 3.0;
 #ifdef DTWC_HAS_MMAP
   // TADPole is not exempt: it reads the matrix when a complete one is there.
-  const auto result = dtwc::run(config, tiny_series());
+  const auto result = dtwc::run(at_least_limit(config), tiny_series());
   CHECK(result.labels().size() == 3);
   CHECK(cache_exists(scratch, "tadpole"));
 #else
+  // Refused before any matrix is allocated: it would stay in RAM beside the series and a thread.
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
-                    ContainsSubstring("needs a mapped matrix") && ContainsSubstring("DTWC_ENABLE_LLFIO=ON"));
+                    ContainsSubstring("cannot hold the series and the distance matrix")
+                      && ContainsSubstring("DTWC_ENABLE_LLFIO=OFF"));
   CHECK_FALSE(cache_exists(scratch, "tadpole"));
 #endif
 }
@@ -247,7 +268,8 @@ TEST_CASE("run's TADPole over the memory limit uses mmap or fails before dense a
 TEST_CASE("run's OneBatch keeps its own O(Nm) storage over the memory limit", "[cli][storage][onebatch]")
 {
   const ScratchDirectory scratch{ "cli_onebatch_storage" };
-  CHECK(dtwc::run(mapped_config(Method::OneBatch, scratch, "onebatch"), tiny_series()).labels().size() == 3);
+  CHECK(dtwc::run(at_least_limit(mapped_config(Method::OneBatch, scratch, "onebatch")), tiny_series()).labels().size()
+        == 3);
   CHECK_FALSE(cache_exists(scratch, "onebatch"));
 }
 
@@ -256,6 +278,7 @@ TEST_CASE("run's non-full FastCLARA does not open an unused parent matrix", "[cl
   const ScratchDirectory scratch{ "cli_clara_storage" };
   auto config = mapped_config(Method::CLARA, scratch, "clara");
   config.sample_size = 2; // < N = 3
+  config = at_least_limit(config);
   CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
   CHECK_FALSE(cache_exists(scratch, "clara"));
 
@@ -275,6 +298,7 @@ TEST_CASE("run's mmap storage binds the pointwise metric", "[cli][storage][mmap]
   const ScratchDirectory scratch{ "cli_metric_fingerprint" };
   auto config = mapped_config(Method::PAM, scratch, "metric");
   config.metric = dtwc::core::MetricType::SquaredL2;
+  config = at_least_limit(config);
   CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
   REQUIRE(cache_exists(scratch, "metric"));
 
@@ -290,10 +314,10 @@ TEST_CASE("run's mmap storage with --checkpoint maps the checkpoint file", "[cli
   auto config = mapped_config(Method::PAM, scratch, "checkpoint");
   config.checkpoint = (scratch.path / "ckpt").string();
 #ifdef DTWC_HAS_MMAP
-  CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
+  CHECK(dtwc::run(at_least_limit(config), tiny_series()).labels().size() == 3);
   CHECK(fs::file_size(scratch.path / "ckpt" / "checkpoint.dtwm") == 64 + 6 * sizeof(double));
 #else
-  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("needs a mapped matrix"));
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("DTWC_ENABLE_LLFIO=OFF"));
 #endif
   CHECK_FALSE(cache_exists(scratch, "checkpoint"));
 }
@@ -304,7 +328,7 @@ TEST_CASE("run rejects a legacy precomputed CSV plus mmap before false success",
   auto config = mapped_config(Method::PAM, scratch, "precomputed");
   config.dist_matrix = (scratch.path / "never_read.csv").string();
   CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
-                    ContainsSubstring("--dist-matrix reads a dense CSV matrix into RAM")
+                    ContainsSubstring("for the distance matrix, which --dist-matrix reads into RAM")
                       && ContainsSubstring("Raise --ram-limit"));
   CHECK_FALSE(cache_exists(scratch, "precomputed"));
 }

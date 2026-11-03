@@ -30,19 +30,19 @@ cmake -S . -B build -DDTWC_ENABLE_ARROW=ON
 
 Series are always held in RAM. The distance matrix can live in a memory-mapped
 `.dtwm` file instead (`use_mmap_distance_matrix`; `dtwc_cl` maps it when it does
-not fit the `--ram-limit`); the Python wheels and the release CLI archives include
+not fit beside the series in its `--ram-limit` plan); the Python wheels and the release CLI archives include
 that support (llfio). `matrix_dtype` float32 (`--matrix-dtype`) stores the matrix
 at half the bytes, each distance rounded to a float.
 
 For data larger than an all-pairs matrix, choose a matrix-free method such as
 OneBatchPAM, CLARA, or TADPole rather than changing only the input container.
 
-The native CLI applies `--ram-limit` (0: the memory available) to Parquet before
-payload materialisation. If the conservative selected-column estimate exceeds the cap,
+The native CLI plans `--ram-limit` (0: 90 % of the memory available) for Parquet before
+payload materialisation. If the conservative selected-column estimate exceeds the data cap,
 only non-full FastCLARA over a single file of one series per row (a list column,
 or several Float32/Float64 columns) can stream row groups; a one-column file,
 directories, and other methods fail before loading the payload.
 A batch holds whole row groups, decoded about 1 MiB of values at a time, and the
-cap covers what the stream holds rather than all process memory. The streaming route emits labels and medoids
+data cap covers what the stream holds rather than all process memory. The streaming route emits labels and medoids
 without constructing dense distance or silhouette CSVs; storage requested with `--dtype f32` remains Float32 throughout the
 sample, medoid, and assignment payloads.

@@ -75,6 +75,9 @@ public:
   bool is_f32() const;          ///< whether the values are Float32
   std::size_t ndim() const;     ///< features a time step: the schema's metadata 'ndim', else 1
   std::size_t num_values() const; ///< every series' values, as the walk declares them
+  /// The time steps of the longest series, which the walk read from each record batch's offsets where it views the
+  /// batch in memory (a mapped file, uncompressed, aligned); 0 where it views a batch otherwise or decodes one.
+  std::size_t longest_steps() const;
 
   /// What read_arrow_ipc(path, dtype) holds at once outside the page cache: a view's detail::view_series_bytes a
   /// series, the batches it decodes and the scratch of the threads decoding them, each batch's objects, without llfio

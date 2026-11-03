@@ -134,13 +134,16 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
   `core/thread_scratch.cpp`'s closed list, which `dtwc::run` gives back as it starts and when it returns or throws (a
   new buffer joins the list, or it stays held). A list function sits in the source whose kernels use its buffers, so
   under LTO no other module refers to their `thread_local`s; the silhouettes' sums (k x 64 B a thread) stay off it, as
-  every accessor form moved their loops. A Cost must not re-enter its kernel.
+  both accessor forms tried moved their loops. A Cost must not re-enter its kernel.
 - The dense matrix has **no locks or atomics**; fills partition pairs. `resize()` wipes to NaN, so it stays
   conditional.
 - Bind the distance function **once**; every guard lives in the builder, outside the closure (a throw inside
   an OpenMP region is UB). Series travel as spans.
 - No `omp critical`, mutex or atomic on a data path (DECISIONS §2 rule 6); region-local `num_threads`, never
-  `omp_set_num_threads`.
+  `omp_set_num_threads`. `dtwc::run`'s threads are its memory plan's, fitted once: a `TeamCap` (parallelisation.hpp)
+  made at the plan and alive until the run's end caps `get_max_threads()`, so every region with the clause; the
+  release reaches past it (`full_team_threads()`). A clause-less region (`lagrangian_root.cpp`'s dual) holds no
+  scratch the plan reserves.
 - No `std::min({…})`, `std::max({…})` or `std::min_element` in a hot loop: the MSVC STL makes them library calls.
   `test_codegen_no_calls` fails a clang build in which any loop of a probe kernel calls anything (Apple clang's
   `memset_pattern16` idiom sat one loop out from the innermost); a sanitizer build does not register it.

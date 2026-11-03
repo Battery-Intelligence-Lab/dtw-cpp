@@ -94,17 +94,18 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   its buffers declare more decoded bytes than their lengths allow beyond Arrow's 64-byte padding, or the file's more
   than the memory available (an `IOError` before any decode), and bytes handed to the reader at an address not
   8-aligned are read from an aligned copy; a file with a dictionary-encoded column is an `IOError` naming why. With
-  `dtwc_cl` over `--ram-limit` (or the memory available, where llfio reads it) FastCLARA reads, on the CPU (on a GPU
+  `dtwc_cl` beyond the data cap of its memory plan (`--ram-limit`, below) FastCLARA reads, on the CPU (on a GPU
   the stream is a `DeviceError`), a file whose series RAM would hold outside the page cache (decoded, read without
-  llfio, or in the other `--dtype`) a record batch at a time, decoded and checked in parallel, within the limit: the
+  llfio, or in the other `--dtype`) a record batch at a time, decoded and checked in parallel, within the cap: the
   sampled rows beside one record batch, then a sample's PAM beside the sampled rows, then the medoids, the labels and
   a batch of record batches, and after it the names, read alone; each record batch priced with its objects, and each
   decoding thread with its codec's scratch (LZ4's block buffers, from each frame's descriptor; zstd's context). A
-  record batch larger than the limit is refused before any is decoded (without llfio, before its body is read), and
-  over an explicit limit the other methods, and a mapped file's views, are refused (`InvalidInput`, naming the bytes).
+  record batch larger than the cap is refused before any is decoded (without llfio, before its body is read), and
+  series alone over an explicit limit are refused for the other methods and a mapped file's views (`InvalidInput`,
+  naming the bytes).
   Parquet (`-DDTWC_ENABLE_ARROW=ON`; a list column or several float columns hold a series per row, `--column` reads
   one) and `dtwc_cl --delimiter`.
-- The distance matrix memory-mapped in a `.dtwm` file once it outgrows the memory limit (`--ram-limit`), also the
+- The distance matrix memory-mapped in a `.dtwm` file where it does not fit the memory plan (`--ram-limit`), also the
   checkpoint (`--checkpoint`, `--checkpoint-interval`: a fill resumes); with Arrow, `--ram-limit` streams Parquet
   through FastCLARA.
 - `Problem::cluster()` returns a `ClusteringResult` (labels, medoids, cost, iterations, converged); `Problem` gains
@@ -156,13 +157,20 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   compile time); `dtwBanded`'s scalar type, where none is deduced, is `double` (v1.0.0: `float`).
 - Numbers are read with fast_float and the matrix CSV written with `std::to_chars`, whatever the global C++ locale;
   names taken from file names are UTF-8 on every platform (v1.0.0 used the Windows code page).
-- `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run may use, by
-  default the memory available (or a Linux cgroup's limit, which a SLURM job's memory request sets): the distance
-  matrix is mapped once its bytes exceed half of what the series leave of it, and `--mmap-threshold` (mapped from
-  50,000 series) is gone; with `dtwc_cl` a Parquet file over it streams through `clara`, as does, on the CPU, an Arrow
-  IPC file whose series RAM would hold outside the page cache (a mapped file's values are not streamed; on a GPU the
-  Arrow IPC stream is a `DeviceError`); Python's and MATLAB's `cluster()` hold every series at once; other inputs no
-  longer refuse it.
+- `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run plans for, by
+  default 90 % of the memory available (or of a Linux cgroup's limit, which a SLURM job's memory request sets), and
+  `--mmap-threshold` (mapped from 50,000 series) is gone. `dtwc_cl` (and `dtwc::run`, `dtwc::cluster`) plans once: a
+  reserve for its threads' working set (1.1 × threads × a thread's DTW scratch for the longest series expected and the
+  method's tables), then the series and the distance matrix in what is left, the data cap. The series go into RAM on
+  every thread, the matrix beside them where it fits, else mapped to a `.dtwm` file (with llfio and an output
+  directory), else held; else a Parquet file, or on the CPU an Arrow IPC file whose series RAM would hold outside the
+  page cache (a mapped file's values are not streamed; on a GPU the Arrow IPC stream is a `DeviceError`), streams
+  through `clara` within the data cap on every thread; else the series load on the most threads whose working set
+  fits, fitted once. `-v` prints the plan; `auto` is `clara` also where `pam`'s matrix can be neither held in RAM nor
+  mapped; an explicit limit that cannot hold the run on one thread is refused before any work (`InvalidInput`, naming
+  what it holds, the working set and the least limit), the automatic one never. It is a plan, not a cap: a run may use
+  about a tenth more, more with series longer than planned. Python's and MATLAB's `cluster()` hold every series at
+  once.
 - `dtwc::run` (so `dtwc::cluster` and `dtwc_cl`) gives its threads' scratch back as it starts and when it returns or
   throws, CUDA's pinned and device buffers among it: a 24-thread run on 100,000-value series kept 615 MB committed
   after it returned (2026-11-01). Tier-2 calls (a fill, `Problem::cluster`, the algorithms) keep theirs, so a k-sweep
@@ -175,9 +183,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   it cannot take (NaN, ±inf, a band narrower than two series' length difference) are refused by their index in the
   data, as the other methods refuse them: the band before any sample, the sampled series before the PAMs, every other
   just before the pass assigns it, so a mapped file is read once (on a GPU, every series before any sample). Streamed
-  (`--ram-limit`), the limit holds the sampled rows beside one decode and a sample's PAM, then the medoids, 8 bytes of
-  labels and of nearest distance per row and sample, one decode and a batch of row groups, and after the stream every
-  series' name and label: a smaller limit is refused, naming the bytes, where it streamed before.
+  (`--ram-limit`), the data cap holds the sampled rows beside one decode and a sample's PAM, then the medoids, 8 bytes
+  of labels and of nearest distance per row and sample, one decode and a batch of row groups, and after the stream
+  every series' name and label: a smaller one is refused, naming the bytes, where it streamed before.
 - `.dtwm` files are version 5: a 64-byte header that adds the bytes of a value (8, or 4 for `matrix_dtype` float32)
   and the rows written. Version-4 files, from earlier 2.0 builds, are still read and mapped as float64; a file of the
   other `matrix_dtype` is refused (`InvalidInput`, naming the one that reads it), never converted.

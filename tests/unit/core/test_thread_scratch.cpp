@@ -1,12 +1,15 @@
 /**
  * @file test_thread_scratch.cpp
- * @brief The thread scratch of the DTW kernels and the algorithms (core/thread_scratch.hpp): dtwc::run gives every
- *        thread's back as it starts and when it returns or throws, a Tier-2 k-sweep keeps it, and WDTW's cached
- *        weights are built again after a release; beside a complete --dist-matrix the matrix stays in RAM within
- *        --ram-limit.
+ * @brief The thread scratch of the DTW kernels and the algorithms (core/thread_scratch.hpp) and dtwc::run's memory
+ *        plan, which reserves it: dtwc::run gives every thread's scratch back as it starts and when it returns or
+ *        throws, a Tier-2 k-sweep keeps it, and WDTW's cached weights are built again after a release; beside a
+ *        complete --dist-matrix the matrix stays in RAM within --ram-limit; a --ram-limit that runs still runs when
+ *        raised, its route never stepping back, with the unlimited run's clustering; the clustering does not depend on
+ *        the limit, the data cap or the threads; a refusal names its terms and the least limit, which runs.
  *
  * @details Registered with OMP_NUM_THREADS=4: a team of 4. A thread's bytes are what the buffers on the closed list
- *          hold (core::thread_scratch_held(), by thread number).
+ *          hold (core::thread_scratch_held(), by thread number). The plan's numbers are read from the run's own text:
+ *          -v's "Memory plan: ..." line and the refusal's "at least N bytes".
  * @author Volkan Kumtepeli
  */
 
@@ -21,11 +24,16 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <iostream>
+#include <map>
 #include <numeric>
+#include <optional>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -70,6 +78,85 @@ std::string printed(F &&f)
   }
   std::cout.rdbuf(previous);
   return out.str();
+}
+
+using Runner = std::function<dtwc::Result(const dtwc::Config &)>;
+
+/// A run at one --ram-limit, as its text tells it: -v's plan (the route, the threads, the reserve and the data cap),
+/// whether it ran or was refused (InvalidInput), and its clustering.
+struct Attempt
+{
+  bool ran = false;
+  int rank = -1; ///< the route: 0 refused, 1 streamed, 2 in RAM with the matrix mapped, 3 in RAM; -1 no plan printed
+  int threads = 0;
+  std::size_t reserve = 0, data_cap = 0;
+  std::string text, refusal; ///< -v's output; the refusal's
+  std::vector<dtwc::index_t> labels, medoids;
+  double cost = 0;
+};
+
+/// `config` run by `run` with -v at --ram-limit `limit`.
+Attempt attempt(dtwc::Config config, std::size_t limit, const Runner &run)
+{
+  config.ram_limit = limit;
+  config.verbose = true;
+  Attempt a;
+  std::ostringstream out;
+  auto *const previous = std::cout.rdbuf(out.rdbuf());
+  try {
+    const auto result = run(config);
+    a.ran = true;
+    a.labels = result.labels();
+    a.medoids = result.medoids();
+    a.cost = result.cost();
+  } catch (const dtwc::InvalidInput &refused) {
+    a.refusal = refused.what();
+  } catch (...) {
+    std::cout.rdbuf(previous);
+    throw;
+  }
+  std::cout.rdbuf(previous);
+  a.text = out.str();
+  static const std::regex plan("Memory plan: budget [0-9]+ bytes, reserve ([0-9]+) bytes \\(([0-9]+) of [0-9]+ threads, "
+                               "[0-9]+ bytes each for series of up to [0-9]+ time steps\\), data cap ([0-9]+) bytes: "
+                               "([^\r\n]+)");
+  std::smatch m;
+  if (std::regex_search(a.text, m, plan)) {
+    a.reserve = std::stoull(m[1].str());
+    a.threads = std::stoi(m[2].str());
+    a.data_cap = std::stoull(m[3].str());
+    const std::string route = m[4].str();
+    a.rank = route == "refused" ? 0 : route == "streamed" ? 1 : route == "in RAM, the distance matrix mapped" ? 2 : 3;
+  }
+  return a;
+}
+
+/// The least limit in (lo, hi] at which `holds`, where it holds at `hi` and not at `lo`: bisected.
+std::size_t least(std::size_t lo, std::size_t hi, const std::function<bool(std::size_t)> &holds)
+{
+  while (hi - lo > 1) {
+    const std::size_t mid = lo + (hi - lo) / 2;
+    (holds(mid) ? hi : lo) = mid;
+  }
+  return hi;
+}
+
+std::filesystem::path reader_fixture(const char *name)
+{
+  return std::filesystem::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader" / name;
+}
+
+/// FastCLARA's settings for the reader fixtures: 3 clusters, 2 samples of 40, no output.
+dtwc::Config clara_on(const char *file)
+{
+  dtwc::Config config;
+  config.input = dtwc::path_to_utf8(reader_fixture(file));
+  config.method = dtwc::Method::CLARA;
+  config.k = 3;
+  config.sample_size = 40;
+  config.n_samples = 2;
+  config.output.clear();
+  return config;
 }
 
 } // namespace
@@ -153,4 +240,185 @@ TEST_CASE("Beside a complete --dist-matrix, which no kernel adds to, the matrix 
     CHECK_FALSE(std::filesystem::exists(scratch.path / ("read" + std::to_string(mib)) / "long4.dtwm"));
     CHECK(cost == full.cost());
   }
+}
+
+TEST_CASE("A --ram-limit that runs still runs when raised, its route never stepping back, with the unlimited run's "
+          "clustering",
+          "[thread_scratch][run][ram_limit][plan]")
+{
+  // Arrow IPC files FastCLARA streams (a late long series LZ4-compressed, priced by the mean; one in a file of Float32
+  // read as Float64, priced by the walk's offsets where the file is mapped; two features a time step under DDTW), and
+  // 200 walks in memory as FastPAM with results written, its matrix (160,800 bytes) smaller than a thread's working
+  // set (600 time steps under a band of 10: the lanes' rows, about 158,000 bytes), so that a matrix put in RAM beside a
+  // fitted team, not the requested one, would step back to mapped where the next thread fits. For each, every limit
+  // tried: the least that runs (bisected), the least in RAM, the least on each count of threads, and 12 from the least
+  // to three times the least in RAM.
+  const dtwc::test_support::ScratchDirectory scratch{ "scratch_monotone" };
+  int outputs = 0;
+  const Runner file = [](const dtwc::Config &config) { return dtwc::run(config); };
+  const Runner walks_pam = [&](const dtwc::Config &config) {
+    auto written = config;
+    written.output = dtwc::path_to_utf8(scratch.path / ("run" + std::to_string(outputs++))); // a fresh .dtwm each
+    return dtwc::run(written, data_of(walks(200, 600)));
+  };
+  dtwc::Config pam;
+  pam.method = dtwc::Method::PAM;
+  pam.k = 3;
+  pam.band = 10;
+  dtwc::Config ddtw = clara_on("clara_256_ndim2.arrow");
+  ddtw.variant.variant = dtwc::core::DTWVariant::DDTW;
+  struct Case
+  {
+    const char *name;
+    dtwc::Config config;
+    const Runner &run;
+  };
+  const Case cases[] = { { "clara_long_late.arrow", clara_on("clara_long_late.arrow"), file },
+                         { "clara_late_wide.arrow", clara_on("clara_late_wide.arrow"), file },
+                         { "clara_256_ndim2.arrow, DDTW", ddtw, file },
+                         { "200 walks in memory, FastPAM, results written", pam, walks_pam } };
+  constexpr std::size_t top = std::size_t{ 1 } << 30;
+  for (const Case &c : cases) {
+    std::map<std::size_t, Attempt> tried;
+    const auto at = [&](std::size_t limit) -> const Attempt & {
+      auto it = tried.find(limit);
+      if (it == tried.end()) it = tried.emplace(limit, attempt(c.config, limit, c.run)).first;
+      return it->second;
+    };
+    const Attempt unlimited = attempt(c.config, 0, c.run);
+    INFO(c.name << ", unlimited:\n" << unlimited.text << unlimited.refusal);
+    REQUIRE(unlimited.ran);
+    REQUIRE(at(top).rank == 3);
+    REQUIRE_FALSE(at(1).ran);
+    const std::size_t lowest = least(1, top, [&](std::size_t limit) { return at(limit).ran; });
+    const std::size_t in_ram = least(lowest - 1, top, [&](std::size_t limit) { return at(limit).rank == 3; });
+    for (int threads = 2; threads <= 4; ++threads)
+      (void)least(lowest - 1, in_ram, [&](std::size_t limit) { return at(limit).ran && at(limit).threads >= threads; });
+    for (int i = 0; i < 12; ++i)
+      (void)at(static_cast<std::size_t>(double(lowest) * std::pow(3.0 * double(in_ram) / double(lowest), i / 11.0)));
+    bool ran = false;
+    int rank = -1, threads = 0;
+    for (const auto &[limit, a] : tried) {
+      INFO(c.name << " at --ram-limit " << limit << ":\n" << a.text << a.refusal);
+      CHECK((a.ran || !ran)); // a limit that runs still runs when raised
+      REQUIRE(a.rank >= 0);
+      CHECK(a.rank >= rank); // the route never steps back
+      CHECK(a.threads >= threads);
+      rank = a.rank;
+      threads = a.threads;
+      ran = ran || a.ran;
+      if (!a.ran) continue;
+      CHECK(a.labels == unlimited.labels);
+      CHECK(a.medoids == unlimited.medoids);
+      CHECK(a.cost == unlimited.cost);
+    }
+    INFO(c.name << ": " << tried.size() << " limits tried, the least that runs " << lowest << ", in RAM from "
+                << in_ram);
+    CHECK(tried.size() >= 12);
+  }
+}
+
+TEST_CASE("The clustering depends on neither the limit nor the threads: a stream at one data cap on the caller's 1 "
+          "and 4 threads, and in RAM; FastPAM on the 2 of 4 threads a limit fits",
+          "[thread_scratch][run][ram_limit][plan]")
+{
+#ifndef _OPENMP
+  SKIP("two OpenMP workers unavailable: a sequential build has no team");
+#endif
+  REQUIRE(dtwc::get_max_threads() == 4);
+  constexpr std::size_t top = std::size_t{ 1 } << 30;
+  // clara_ragged.arrow (512 walks of 6 to 10 time steps) under a band of 4 as Float32, a copy FastCLARA streams.
+  dtwc::Config ragged = clara_on("clara_ragged.arrow");
+  ragged.band = 4;
+  ragged.dtype = dtwc::core::Precision::Float32;
+  const Runner file = [](const dtwc::Config &config) { return dtwc::run(config); };
+  const Attempt in_ram = attempt(ragged, 0, file);
+  INFO("in RAM:\n" << in_ram.text << in_ram.refusal);
+  REQUIRE(in_ram.ran);
+  const std::size_t lowest = least(1, top, [&](std::size_t limit) { return attempt(ragged, limit, file).ran; });
+  const Attempt four = attempt(ragged, lowest, file);
+  INFO("4 threads at " << lowest << ":\n" << four.text);
+  REQUIRE(four.rank == 1); // the least limit that runs streams
+  REQUIRE(four.threads == 4);
+  {
+    const dtwc::TeamCap caller(1); // the caller's team: one thread
+    const std::size_t one_reserve = attempt(ragged, lowest, file).reserve;
+    const Attempt one = attempt(ragged, four.data_cap + one_reserve, file);
+    INFO("1 thread at " << four.data_cap + one_reserve << ":\n" << one.text << one.refusal);
+    REQUIRE(one.ran);
+    CHECK(one.rank == 1);
+    CHECK(one.threads == 1);
+    CHECK(one.data_cap == four.data_cap);
+    CHECK(one.labels == in_ram.labels);
+    CHECK(one.medoids == in_ram.medoids);
+    CHECK(one.cost == in_ram.cost);
+  }
+  CHECK(four.labels == in_ram.labels);
+  CHECK(four.medoids == in_ram.medoids);
+  CHECK(four.cost == in_ram.cost);
+
+  // 64 walks in memory, `auto` (FastPAM for 64 series where its matrix is held), nothing written: the matrix in RAM.
+  dtwc::Config automatic;
+  automatic.k = 3;
+  automatic.output.clear();
+  const Runner memory = [](const dtwc::Config &config) { return dtwc::run(config, data_of(walks(64, 50))); };
+  const Attempt all = attempt(automatic, 0, memory);
+  REQUIRE(all.ran);
+  const std::size_t two = least(1, top, [&](std::size_t limit) {
+    const Attempt a = attempt(automatic, limit, memory);
+    return a.ran && a.threads >= 2;
+  });
+  const Attempt fitted = attempt(automatic, two, memory);
+  INFO("at " << two << ":\n" << fitted.text << fitted.refusal);
+  REQUIRE(fitted.ran);
+  CHECK_THAT(fitted.text, ContainsSubstring("(2 of 4 threads, "));
+  CHECK_THAT(fitted.text, ContainsSubstring("Auto-selected method: pam"));
+  CHECK(fitted.labels == all.labels);
+  CHECK(fitted.medoids == all.medoids);
+  CHECK(fitted.cost == all.cost);
+}
+
+TEST_CASE("A refused --ram-limit names the budget, what it holds, the working set and the least limit, which runs",
+          "[thread_scratch][run][ram_limit][plan]")
+{
+  // 64 walks of 50 doubles in memory as FastPAM, nothing written: the series' 25,600 bytes and the matrix's 16,640
+  // (64 x 65 / 2 doubles) held in RAM beside one thread's working set at the least.
+  dtwc::Config config;
+  config.method = dtwc::Method::PAM;
+  config.k = 3;
+  config.output.clear();
+  const Runner memory = [](const dtwc::Config &c) { return dtwc::run(c, data_of(walks(64, 50))); };
+  const Attempt unlimited = attempt(config, 0, memory);
+  REQUIRE(unlimited.ran);
+  const Attempt one_byte = attempt(config, 1, memory);
+  REQUIRE_FALSE(one_byte.ran);
+  std::smatch m;
+  REQUIRE(std::regex_search(one_byte.refusal, m, std::regex("it needs at least ([0-9]+) bytes")));
+  const std::size_t needs = std::stoull(m[1].str());
+
+  const Attempt below = attempt(config, needs - 1, memory);
+  INFO(below.text << below.refusal);
+  REQUIRE_FALSE(below.ran);
+  CHECK(below.rank == 0);
+  CHECK_THAT(below.refusal, ContainsSubstring("--ram-limit = " + std::to_string(needs - 1)
+                                              + " cannot hold the series and the distance matrix (42240 bytes: 25600 "
+                                                "for the series, 16640 for the distance matrix, "));
+  REQUIRE(std::regex_search(below.refusal, m,
+                            std::regex("beside the working set of ([0-9]+) bytes \\(1 thread x ([0-9]+) bytes: the DTW "
+                                       "kernels' scratch for series of up to 50 time steps and the method's tables, "
+                                       "x1\\.1\\): it needs at least ([0-9]+) bytes\\. ")));
+  const std::size_t working = std::stoull(m[1].str()), per_thread = std::stoull(m[2].str());
+  CHECK(working == per_thread / 10 * 11);
+  CHECK(std::stoull(m[3].str()) == needs);
+  CHECK(42240 + working == needs);
+  for (const char *way : { "Raise --ram-limit", "(--dtype float32)", "use --method clara", "(OMP_NUM_THREADS)" })
+    CHECK_THAT(below.refusal, ContainsSubstring(way));
+
+  const Attempt least_limit = attempt(config, needs, memory);
+  INFO(least_limit.text << least_limit.refusal);
+  REQUIRE(least_limit.ran);
+  CHECK(least_limit.threads == 1);
+  CHECK(least_limit.labels == unlimited.labels);
+  CHECK(least_limit.medoids == unlimited.medoids);
+  CHECK(least_limit.cost == unlimited.cost);
 }

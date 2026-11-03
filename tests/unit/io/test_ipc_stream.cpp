@@ -34,6 +34,7 @@
 #include <iostream>
 #include <iterator>
 #include <random>
+#include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -136,6 +137,30 @@ std::size_t heap(std::size_t bytes)
   return bytes + (bytes <= 16384 ? bytes / 8 + 18 : bytes <= 262128 ? bytes / 64 + 64 : bytes / 512 + 4700);
 }
 
+/// The reserve for its threads' working set that `config`'s run sets aside within --ram-limit `limit`, as -v's memory
+/// plan names it, refused or run: a stream's data cap is the limit less it, so the reserve beside a stream's own limit
+/// gives the stream that limit.
+std::size_t reserve_of(dtwc::Config config, std::size_t limit)
+{
+  config.ram_limit = limit;
+  config.verbose = true;
+  std::ostringstream out;
+  auto *const previous = std::cout.rdbuf(out.rdbuf());
+  try {
+    (void)dtwc::run(config);
+  } catch (const dtwc::InvalidInput &) {
+  } catch (...) {
+    std::cout.rdbuf(previous);
+    throw;
+  }
+  std::cout.rdbuf(previous);
+  const std::string text = out.str();
+  std::smatch reserve;
+  INFO(text);
+  REQUIRE(std::regex_search(text, reserve, std::regex("Memory plan: budget [0-9]+ bytes, reserve ([0-9]+) bytes")));
+  return std::stoull(reserve[1].str());
+}
+
 dtwc::Config clara_config(const std::filesystem::path &path)
 {
   dtwc::Config config;
@@ -218,8 +243,9 @@ TEST_CASE("Arrow IPC: run streams a file over --ram-limit through FastCLARA, as 
         cost = result.cost();
       });
       CHECK_THAT(resident, ContainsSubstring("Data loaded from Arrow IPC: 256 series"));
-      // Below what the series hold in RAM (the walk's price, CLARA's terms not counted), above what the stream holds.
-      // A mapped file holds its values in the page cache, and is not streamed: it is read into RAM within a MiB.
+      // A data cap below what the series hold in RAM (the walk's price, CLARA's terms not counted), above what the
+      // stream holds, beside the threads' reserve. A mapped file holds its values in the page cache, and is not
+      // streamed: it is read into RAM within a MiB.
       const dtwc::io::IpcFile walked(fixture(file));
       const bool mapped = !walked.streams(dtype);
 #if defined(DTWC_HAS_MMAP)
@@ -227,7 +253,8 @@ TEST_CASE("Arrow IPC: run streams a file over --ram-limit through FastCLARA, as 
 #else
       CHECK_FALSE(mapped); // the file read without llfio is anonymous
 #endif
-      config.ram_limit = mapped ? std::size_t{ 1 } << 20 : walked.resident_bytes(dtype, false);
+      const std::size_t cap = walked.resident_bytes(dtype, false);
+      config.ram_limit = mapped ? std::size_t{ 1 } << 20 : reserve_of(config, cap) + cap;
       const std::string stream = printed([&] {
         const auto result = dtwc::run(config);
         CHECK(result.labels() == labels);
@@ -246,7 +273,9 @@ TEST_CASE("Arrow IPC: run streams a file over --ram-limit through FastCLARA, as 
   config.verbose = false;
   config.band = 1;
   const auto resident = dtwc::run(config);
-  config.ram_limit = dtwc::io::IpcFile(fixture("clara_256_ndim2.arrow")).resident_bytes(Precision::Float64, false);
+  const std::size_t cap =
+    dtwc::io::IpcFile(fixture("clara_256_ndim2.arrow")).resident_bytes(Precision::Float64, false);
+  config.ram_limit = reserve_of(config, cap) + cap;
   config.verbose = true;
   const std::string stream = printed([&] {
     const auto result = dtwc::run(config);
@@ -336,7 +365,8 @@ TEST_CASE("Arrow IPC: the stream refuses, before any record batch is decoded, a 
           "[io][arrow][streaming][ram]")
 {
   // ipc_lz4.arrow is one record batch: streamed under a limit that holds its names and labels but not the batch, the
-  // refusal names the batch's bytes, before any batch is decoded (record batch 0 of this copy cannot be).
+  // refusal names the batch's bytes, before any batch is decoded (record batch 0 of this copy cannot be). That limit
+  // is the stream's data cap, beside the threads' reserve.
   const auto one = undecodable("ipc_lz4.arrow");
   CHECK_THROWS_AS(dtwc::read_data(one), dtwc::IOError); // its decode fails
   const std::size_t batch = dtwc::io::IpcFile(one).largest_row_group_bytes(false);
@@ -344,7 +374,7 @@ TEST_CASE("Arrow IPC: the stream refuses, before any record batch is decoded, a 
   config.k = 2;
   config.sample_size = 2;
   config.verbose = false;
-  config.ram_limit = batch - 1;
+  config.ram_limit = reserve_of(config, batch - 1) + batch - 1;
   CHECK_THROWS_MATCHES(
     dtwc::run(config), dtwc::InvalidInput,
     Message("io::IpcFile::read_rows: record batch 0 of the Arrow IPC file holds " + std::to_string(batch)

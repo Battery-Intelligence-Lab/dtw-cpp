@@ -90,11 +90,28 @@ function(run_f8_cli config_id mode output_dir dtype variant gamma accepted_costs
     # estimate with CLARA's pass, so the run streams. Both prices count a
     # std::string a row, 32 bytes in libstdc++ and MSVC and 24 in libc++: float64
     # streams in [4550, 4766) and [4502, 4702) under libc++, float32 in
-    # [4442, 4622) and [4394, 4558).
-    if(mode STREQUAL "stream" AND dtype STREQUAL "float32")
-        list(APPEND args --ram-limit 4500)
-    elseif(mode STREQUAL "stream")
-        list(APPEND args --ram-limit 4600)
+    # [4442, 4622) and [4394, 4558). That is the data cap: the limit is it beside
+    # the reserve for the threads' working set, which -v's memory plan names.
+    if(mode STREQUAL "stream")
+        if(dtype STREQUAL "float32")
+            set(data_cap 4500)
+        else()
+            set(data_cap 4600)
+        endif()
+        set(probe_args ${args})
+        list(TRANSFORM probe_args REPLACE "^${output_dir}$" "${output_dir}-probe")
+        execute_process(
+            COMMAND "${cli_path}" ${probe_args} --ram-limit ${data_cap}
+            RESULT_VARIABLE probe_result
+            OUTPUT_VARIABLE probe_stdout
+            ERROR_VARIABLE probe_stderr
+            ENCODING UTF-8)
+        if(NOT probe_stdout MATCHES "Memory plan: budget [0-9]+ bytes, reserve ([0-9]+) bytes")
+            message(FATAL_ERROR "F8 ${config_id}/stream: no memory plan at --ram-limit ${data_cap}\n"
+                                "stdout:\n${probe_stdout}\nstderr:\n${probe_stderr}")
+        endif()
+        math(EXPR limit "${CMAKE_MATCH_1} + ${data_cap}")
+        list(APPEND args --ram-limit ${limit})
     endif()
 
     execute_process(

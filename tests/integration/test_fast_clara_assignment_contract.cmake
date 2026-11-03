@@ -101,6 +101,27 @@ set_property(GLOBAL PROPERTY f13_payloads)
 set_property(GLOBAL PROPERTY f13_objectives)
 set_property(GLOBAL PROPERTY f13_stream_rejections)
 
+# The reserve a run of `args` (--output's directory replaced by a probe's) sets aside for its threads' working set
+# within --ram-limit `limit`, as -v's memory plan names it: a stream's data cap is the limit less it, so the reserve
+# beside a stream's own limit gives the stream that limit, and its batches.
+function(f13_reserve out_var output_dir limit)
+    set(probe_args ${ARGN})
+    list(FIND probe_args "${output_dir}" output_at)
+    list(REMOVE_AT probe_args ${output_at})
+    list(INSERT probe_args ${output_at} "${output_dir}-probe")
+    execute_process(
+        COMMAND "${cli_path}" ${probe_args} --ram-limit ${limit}
+        RESULT_VARIABLE probe_result
+        OUTPUT_VARIABLE probe_stdout
+        ERROR_VARIABLE probe_stderr
+        ENCODING UTF-8)
+    if(NOT probe_stdout MATCHES "Memory plan: budget [0-9]+ bytes, reserve ([0-9]+) bytes")
+        message(FATAL_ERROR
+            "F13: no memory plan at --ram-limit ${limit}\nstdout:\n${probe_stdout}\nstderr:\n${probe_stderr}")
+    endif()
+    set(${out_var} ${CMAKE_MATCH_1} PARENT_SCOPE)
+endfunction()
+
 function(run_f13_cli precision mode output_dir dtype expected_cost)
     file(MAKE_DIRECTORY "${output_dir}")
     set(args
@@ -119,9 +140,12 @@ function(run_f13_cli precision mode output_dir dtype expected_cost)
         --variant standard)
     # 4400 bytes hold the stream (4,206 in float64: the medoids, one sample's
     # labels and nearest distances, one decode of the 8 rows, one row group),
-    # below the in-RAM estimate with CLARA's pass (4,638), so the run streams.
+    # below the in-RAM estimate with CLARA's pass (4,638), so the run streams:
+    # the data cap beside the threads' reserve.
     if(mode STREQUAL "stream")
-        list(APPEND args --ram-limit 4400)
+        f13_reserve(reserve "${output_dir}" 4400 ${args})
+        math(EXPR limit "${reserve} + 4400")
+        list(APPEND args --ram-limit ${limit})
     endif()
 
     execute_process(
@@ -219,24 +243,28 @@ function(require_f13_stream_rejection precision dtype ram_limit)
     # The limit holds the pass (the medoid, 8 bytes of label and of nearest
     # distance per row, one decode of the 129 rows, one 65-row group: 24,056
     # bytes in float64, 19,614 in float32), below the in-RAM estimate with
-    # CLARA's pass (29,159 and 24,434), so the run streams.
+    # CLARA's pass (29,159 and 24,434), so the run streams: the data cap beside
+    # the threads' reserve.
+    set(args
+        --input "${input_path}"
+        --output "${output_dir}"
+        --column series
+        --method clara
+        --n-clusters 1
+        --sample-size 2
+        --n-samples 1
+        --seed 0
+        --device cpu
+        --name assignment
+        --verbose
+        --dtype "${dtype}"
+        --variant standard)
+    f13_reserve(reserve "${output_dir}" ${ram_limit} ${args})
+    math(EXPR limit "${reserve} + ${ram_limit}")
     execute_process(
         COMMAND
-            "${cli_path}"
-            --input "${input_path}"
-            --output "${output_dir}"
-            --column series
-            --method clara
-            --n-clusters 1
-            --sample-size 2
-            --n-samples 1
-            --seed 0
-            --device cpu
-            --name assignment
-            --verbose
-            --dtype "${dtype}"
-            --variant standard
-            --ram-limit "${ram_limit}"
+            "${cli_path}" ${args}
+            --ram-limit "${limit}"
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
         ERROR_VARIABLE stderr

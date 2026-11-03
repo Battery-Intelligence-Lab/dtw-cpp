@@ -57,8 +57,9 @@ which dtwc_cl && dtwc_cl --version
 - Dataset too large for in-memory distance matrix.
 - Switch to CLARA: `--method clara` — uses subsamples
 - Lower memory: `--dtype float32` (halves the series' RAM; the distance matrix stays float64)
-- Memory-map: `--ram-limit 8G` maps the distance matrix once it exceeds half of what the series leave of 8 GiB (the default limit is the memory available)
+- Memory-map: `--ram-limit 8G` plans for 8 GiB: a reserve for the threads' working set, then the series, and the distance matrix where it fits beside them; else it is mapped (with an output directory). The default plans for 90 % of the memory available; `-v` prints the plan, and a limit that cannot hold the run on one thread is refused, naming the least that can
 - Parquet input: `--ram-limit 8G` caps the series in RAM, streaming one file of a series per row (a list column, or several float columns) through CLARA
+- Fewer threads (`OMP_NUM_THREADS`) make the reserve smaller
 
 **`series '…' (index i)[j] is NaN`**
 - Check data: `python3 -c "import numpy as np, pandas as pd; d=pd.read_csv('data.csv').values; print('NaN?', np.isnan(d).any())"`

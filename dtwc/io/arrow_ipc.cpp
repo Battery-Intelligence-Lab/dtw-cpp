@@ -706,18 +706,19 @@ struct Batch
   std::int64_t rows = 0, declared = 0, scratch = 0, values = 0, names = 0, name_span = 0, longest_name = -1;
 };
 
-/// The longest name `label` holds, a 'name' column viewed in memory and validated (its offsets inside their buffer),
-/// from its offsets, at most its characters' bytes: a name whose offsets run backwards or past them is refused when its
-/// row is read.
-std::int64_t longest_name(const ArrowArrayView *label)
+/// The longest row `column` holds, a list or string column viewed in memory and validated (its offsets inside their
+/// buffer), from its offsets, at most `bound` (its values, or its characters' bytes): a row whose offsets run
+/// backwards or past them is refused when it is read.
+std::int64_t longest_span(const ArrowArrayView *column, std::int64_t bound)
 {
-  const bool large = label->storage_type == NANOARROW_TYPE_LARGE_STRING;
-  const ArrowBufferView &offsets = label->buffer_views[1];
+  const bool large =
+    column->storage_type == NANOARROW_TYPE_LARGE_STRING || column->storage_type == NANOARROW_TYPE_LARGE_LIST;
+  const ArrowBufferView &offsets = column->buffer_views[1];
   std::int64_t longest = 0;
-  for (std::int64_t i = label->offset; i < label->offset + label->length; ++i)
+  for (std::int64_t i = column->offset; i < column->offset + column->length; ++i)
     longest = std::max(longest, large ? offsets.data.as_int64[i + 1] - offsets.data.as_int64[i]
                                       : std::int64_t{ offsets.data.as_int32[i + 1] } - offsets.data.as_int32[i]);
-  return std::min(longest, label->buffer_views[2].size_bytes);
+  return std::min(longest, bound);
 }
 
 /// Whether `a` and `b` give every field the same type, name, nullability and metadata.
@@ -903,7 +904,9 @@ std::pair<ArrowIpcEndianness, std::int64_t> read_schema(Decoder &decoder, const 
 }
 
 /// An Arrow IPC file walked (walk()): its schema, the columns the series come from, the byte order of its buffers,
-/// every record batch, and the bytes [first, last) its messages lie in. No batch is decoded.
+/// every record batch, the bytes [first, last) its messages lie in, and the most values a series holds, from the
+/// offsets of every batch where each is viewed in memory (-1 where one is viewed otherwise or decoded). No batch is
+/// decoded.
 struct Walk
 {
   Schema schema;
@@ -911,7 +914,7 @@ struct Walk
   Used used;
   ArrowIpcEndianness endianness = NANOARROW_IPC_ENDIANNESS_UNINITIALIZED;
   std::vector<Batch> batches;
-  std::int64_t first = 0, last = 0;
+  std::int64_t first = 0, last = 0, longest_values = 0;
 };
 
 /// The file `source` holds walked into `out`: its record batches counted and the file format's footer checked against
@@ -952,18 +955,23 @@ void walk(const Source &source, Walk &out)
     Batch batch{ *message, view != nullptr };
     if (view != nullptr) {
       batch.rows = view->length;
-      batch.values = view->children[out.columns.data]->children[0]->length;
+      const ArrowArrayView *series = view->children[out.columns.data];
+      batch.values = series->children[0]->length;
+      if (out.longest_values >= 0)
+        out.longest_values = memory ? std::max(out.longest_values, longest_span(series, batch.values)) : -1;
       if (out.columns.name >= 0) {
         const ArrowArrayView *names = view->children[out.columns.name];
         for (const ArrowBufferView &buffer : names->buffer_views) batch.names += buffer.size_bytes;
         const auto [first, last] = span_of(names, body.view);
         batch.name_span = last - first;
-        batch.longest_name = memory ? longest_name(names) : names->buffer_views[2].size_bytes;
+        batch.longest_name =
+          memory ? longest_span(names, names->buffer_views[2].size_bytes) : names->buffer_views[2].size_bytes;
         batch.name_nulls = names->buffer_views[0].size_bytes != 0;
       }
     } else {
       const Proof proof = prove_batch(decoder, body, out.used, out.endianness != ArrowIpcSystemEndianness(),
                                       "Arrow IPC record batch " + std::to_string(k));
+      out.longest_values = -1;
       batch.rows = proof.rows;
       batch.declared = proof.declared;
       batch.scratch = proof.scratch;
@@ -1562,6 +1570,12 @@ bool IpcFile::is_f32() const { return state_->walk.columns.f32; }
 std::size_t IpcFile::ndim() const { return state_->walk.columns.ndim; }
 
 std::size_t IpcFile::num_values() const { return static_cast<std::size_t>(state_->values); }
+
+std::size_t IpcFile::longest_steps() const
+{
+  const std::int64_t longest = state_->walk.longest_values;
+  return longest < 0 ? 0 : static_cast<std::size_t>(longest) / state_->walk.columns.ndim;
+}
 
 bool IpcFile::streams(core::Precision dtype) const
 {

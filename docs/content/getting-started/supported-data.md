@@ -132,9 +132,9 @@ as a Float64 column.
 
 ### Metadata-first RAM-limited streaming
 
-`--ram-limit` (0, the default: the memory available) is checked from Parquet
+`--ram-limit` (0, the default: 90 % of the memory available) plans the run from Parquet
 schema and row-group metadata before the selected payload is materialised. When the conservative decode/materialisation
-estimate exceeds the cap, the CLI can stream only a single file of one series
+estimate exceeds the data cap (the limit less the threads' reserve), the CLI can stream only a single file of one series
 per row (a list column, or the row layout) through non-full FastCLARA:
 
 ```bash

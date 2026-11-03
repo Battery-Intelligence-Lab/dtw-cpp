@@ -176,8 +176,9 @@ void bind(CLI::App &app, Config &config)
       "which can change costs, scores and medoids) (aliases: f32, f64, float, double)");
   app.add_option_function<std::string>(
        "--ram-limit", [&config](const std::string &text) { config.ram_limit = parse_ram_limit(text, "--ram-limit"); },
-       "Memory the run may use (e.g. 2G, 500M, 128G); 0: automatic, the memory available. It decides when the "
-       "distance matrix is mapped to a file and when Parquet series stream through clara")
+       "Memory the run plans for (e.g. 2G, 500M, 128G); 0: automatic, 90% of the memory available. A reserve for "
+       "the threads, then the series and the distance matrix: it sets the threads, when the matrix is mapped to a "
+       "file and when Parquet and Arrow IPC series stream through clara")
     ->default_function([&config] { return text_of(config.ram_limit); })
     ->capture_default_str();
 

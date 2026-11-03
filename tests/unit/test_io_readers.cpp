@@ -25,9 +25,12 @@
 #include <utility>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <random>
+#include <regex>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -842,10 +845,30 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   config.k = 2;
   config.sample_size = 4;
   config.n_samples = 2;
-  // A byte below the file's resident estimate, which the stream's pass fits under: FastCLARA streams it.
-  config.ram_limit = dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false) - 1;
+  // A byte below the file's resident estimate, which the stream's pass fits under: FastCLARA streams it. That is the
+  // data cap: the limit is it beside the reserve for the threads' working set, which -v's memory plan names.
+  const std::size_t data_cap =
+    dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false) - 1;
+  config.ram_limit = data_cap;
   config.output.clear();
   config.name = "streamed";
+  config.verbose = true;
+  std::ostringstream probe;
+  auto *const previous = std::cout.rdbuf(probe.rdbuf());
+  try {
+    (void)dtwc::run(config); // refused or run, -v prints its plan first
+  } catch (const dtwc::InvalidInput &) {
+  } catch (...) {
+    std::cout.rdbuf(previous);
+    throw;
+  }
+  std::cout.rdbuf(previous);
+  const std::string plan = probe.str();
+  std::smatch reserve;
+  INFO(plan);
+  REQUIRE(std::regex_search(plan, reserve, std::regex("Memory plan: budget [0-9]+ bytes, reserve ([0-9]+) bytes")));
+  config.ram_limit = std::stoull(reserve[1].str()) + data_cap;
+  config.verbose = false;
   const auto result = dtwc::run(config);
   std::filesystem::remove(input);
 
