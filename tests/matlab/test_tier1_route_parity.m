@@ -531,6 +531,33 @@ function test_a_bad_value_reads_alike_for_every_input(testCase)
     end
 end
 
+function test_a_run_writes_no_file_until_it_is_saved(testCase)
+%   dtwc.cluster runs dtwc::run with no output directory (Config::output, which
+%   defaults to ./results where dtwc_cl writes, is cleared): series in memory, a
+%   path C++ reads and a Parquet file parquetread reads leave the working directory
+%   as it was, and Result.save writes the files.
+    cwdCleanup = scratch_working_directory(); %#ok<NASGU>
+    csv = fullfile(pwd, 'series.csv');
+    writematrix(testCase.TestData.X, csv);
+    parquet = fullfile(fileparts(mfilename('fullpath')), '..', 'data', 'reader', 'parquet_rows.parquet');
+    for source = {testCase.TestData.X, csv, parquet}
+        dtwc.cluster(source{1}, 2);
+    end
+    verifyEqual(testCase, files_below(pwd), {'series.csv'}, 'dtwc.cluster wrote files');
+end
+
+function test_the_names_of_a_datasets_series_reach_the_saved_files(testCase)
+%   Series in memory (Parquet's, which parquetread reads) go to dtwc::run with the
+%   names their Dataset gives them, and Result.save writes those, as C++ does for a
+%   path it reads: the ids of parquet_rows.parquet, a, b and c, not 0, 1 and 2.
+    file = fullfile(fileparts(mfilename('fullpath')), '..', 'data', 'reader', 'parquet_rows.parquet');
+    outdir = [tempname '_names'];
+    cleanupDir = onCleanup(@() remove_directory(outdir));
+    dtwc.cluster(file, 2).save(outdir);
+    written = strrep(fileread(fullfile(outdir, 'parquet_rows_labels.csv')), sprintf('\r\n'), newline);
+    verifyEqual(testCase, extractBefore(splitlines(strtrim(written)), ','), {'name'; 'a'; 'b'; 'c'});
+end
+
 % =========================================================================
 %  Drift 2: device is a per-call override, never a global mutation
 % =========================================================================
@@ -675,6 +702,12 @@ end
 function names = files_in(d)
 %FILES_IN The names of the files in folder D, sorted.
     listing = dir(d);
+    names = sort({listing(~[listing.isdir]).name});
+end
+
+function names = files_below(d)
+%FILES_BELOW The names of the files in folder D and every folder under it, sorted.
+    listing = dir(fullfile(d, '**', '*'));
     names = sort({listing(~[listing.isdir]).name});
 end
 
