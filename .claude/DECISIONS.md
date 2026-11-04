@@ -342,3 +342,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   library `dtwc_run` and its configure guard; configuring a binding with `DTWC_ENABLE_ARROW=ON` stops with an error naming
   the fix (the bindings read Parquet through pyarrow and `parquetread`); the wheel and MEX builds turn YAML off. Plan:
   `C:/D/git/wt/tmp/MM/s7_plan.md` §3 and §5 (Q1).
+- 2026-11-04 — Volkan (question tool): S7b (`--checkpoint` without `-o` maps; approved 10-12 among the unruled choices) is
+  cut: "Cut it (Recommended)" (only `dtwc_cl -o ""` and C++ `run(Config)` reach it; the bindings bind no checkpoint). The
+  S10 timing session (P1-P3, K1, K2; HG's baseline) runs when he says his MATLAB sessions are closed: "Later, I will tell
+  you"; until then no speed claim is made for MM and the non-timing work goes on.

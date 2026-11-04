@@ -81,13 +81,15 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   await G8b on the Mac, listed in the handoff). ☑ S6 the CLI's reading: `convert_to_f32` gone, `-v` and the report name how
   an IPC file's series are held (04c793fc, 11-03; `brief_s6.md`; `format_of`/`read_input` stay: Parquet is `dtwc_io`'s).
   S7-S9 re-planned from today's code (11-03, `s7_plan.md`; the design's meter, pre-read pricing, `2·(M+E)` and P3 are
-  superseded by RB): ☑ S7a the seam and the streamed `Result` (86e3467b, 11-03; `brief_s7a.md`), ☐ S7b `--checkpoint`
-  without `-o` maps (cuttable), ☑ S8a Python plumbing (c3ba5458, 11-03; `brief_s8a.md`; the link: Volkan 11-03 "Link the CLI
+  superseded by RB): ☑ S7a the seam and the streamed `Result` (86e3467b, 11-03; `brief_s7a.md`), S7b `--checkpoint`
+  without `-o` maps CUT (Volkan 11-04, DECISIONS §3), ☑ S8a Python plumbing (c3ba5458, 11-03; `brief_s8a.md`; the link: Volkan 11-03 "Link the CLI
   library", DECISIONS §3: the bindings link `dtwc_cli`, `_run`/`_Result`, cpuinfo hidden), ☑ S8b Python `cluster()` through
   `run` (1dbd03db, 11-03; `brief_s8b.md`; highspy required: PyPI's 1.15.1 has wheels for every tag and platform we build,
   checked twice 11-03) + ☑ S8b2 one set of words for a bad value whatever the input, stale `mip` extra lines (d1f0530f,
   11-03, mine), ☑ S9 MATLAB `cluster()` through `run`, `Result` wraps the run's, `Report`/`NoReport` (d04b61fd, 11-04;
-  `brief_s9.md`; G10 660/660 in both MEX trees) + ☑ S9b two contracts pinned, tests only (6f199228, 11-04, mine).
+  `brief_s9.md`; G10 660/660 in both MEX trees) + ☑ S9b two contracts pinned, tests only (6f199228, 11-04, mine), ☑ S10a the docs sweep of MM: where series live, batches of
+  a compressed IPC file, what a path Dataset re-reads (95012424, 11-04; `brief_s10a.md`, Sonnet xhigh), ☐ S10 the timing session
+  (waits for Volkan: his MATLAB sessions are open) and his call on the merge.
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
