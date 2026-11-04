@@ -86,7 +86,8 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   library", DECISIONS §3: the bindings link `dtwc_cli`, `_run`/`_Result`, cpuinfo hidden), ☑ S8b Python `cluster()` through
   `run` (1dbd03db, 11-03; `brief_s8b.md`; highspy required: PyPI's 1.15.1 has wheels for every tag and platform we build,
   checked twice 11-03) + ☑ S8b2 one set of words for a bad value whatever the input, stale `mip` extra lines (d1f0530f,
-  11-03, mine), ◐ S9 MATLAB (running, `brief_s9.md`, base d1f0530f).
+  11-03, mine), ☑ S9 MATLAB `cluster()` through `run`, `Result` wraps the run's, `Report`/`NoReport` (d04b61fd, 11-04;
+  `brief_s9.md`; G10 660/660 in both MEX trees) + ☑ S9b two contracts pinned, tests only (6f199228, 11-04, mine).
   P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
