@@ -617,7 +617,7 @@ NB_MODULE(_dtwcpp_core, m) {
              + ", lr_root=" + std::string(dtwc::name_of(dtwc::lr_root_names, s.lr_root))
              + ", verbose=" + (s.verbose_solver ? "True" : "False") + ")";
     });
-  // 'subgradient' (default) or 'kelley': Kelley's master LP solves on highspy (the mip extra).
+  // 'subgradient' (default) or 'kelley': Kelley's master LP solves on highspy (a dependency of dtwcpp).
   def_named(mip_settings, "lr_root", [](dtwc::MIPSettings &s) -> dtwc::LRRoot & { return s.lr_root; },
             dtwc::lr_root_names);
 

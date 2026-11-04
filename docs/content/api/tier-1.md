@@ -86,6 +86,17 @@ are views of the file). Parquet is read by C++ in a build with Arrow
 (`-DDTWC_ENABLE_ARROW=ON`), by Python through the installed `pyarrow`, and by
 MATLAB through `parquetread`.
 
+A `Dataset` of a path keeps no series: every `cluster()` call on it reads the
+file again. The exception is Parquet in Python and MATLAB, which `pyarrow` or
+`parquetread` reads once and the `Dataset` keeps. To read a file once for several
+runs, read its series into memory first and cluster those: C++
+`dtwc::run(config, dtwc::read_data(path))`, Python `dtwcpp.cluster(data.as_series(), k)`,
+MATLAB `dtwc.cluster(data.as_series(), k)` (with `dtype` given again for float32). The
+clustering is the path's, with two differences in Python and MATLAB. `cluster()` names
+series in memory `0`, `1`, ... in the result files, not by the reader. And `as_series()`
+returns no `ndim`: an Arrow IPC file with `ndim` above 1 clusters as multivariate from its
+path and as univariate series from `as_series()`. C++'s `read_data` keeps both.
+
 - `skip_cols` drops the leading fields of each line (an id column), the leading
   columns of a Parquet file, or the leading values of each series in memory.
 - `skip_rows` drops leading lines of a file (a header), of each file in a folder,

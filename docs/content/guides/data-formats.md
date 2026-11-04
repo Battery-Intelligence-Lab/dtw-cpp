@@ -22,14 +22,51 @@ dtwc-convert input.parquet -o output.arrow --name-column name
 dtwc-convert input.h5 -o output.arrow --name-column name
 ```
 
+`dtwc-convert` writes an uncompressed file, which the reader maps and never decodes. A compressed Arrow IPC
+file (LZ4 or ZSTD) is decoded a whole record batch to a thread, so one written as a single record batch
+decodes on one core, and the writer's batch count sets how many cores decode it. A streamed run reads each
+record batch whole as well, so one batch must fit its data cap. Write a compressed file in several record
+batches, at least as many as the threads that should decode it. With pyarrow, from a table with the columns
+[Supported data](../../getting-started/supported-data/) describes:
+
+```python
+import pyarrow as pa
+import pyarrow.ipc as ipc
+
+options = ipc.IpcWriteOptions(compression="lz4")
+with pa.OSFile("data.arrow", "wb") as sink:
+    with ipc.new_file(sink, table.schema, options=options) as writer:
+        for batch in table.to_batches(max_chunksize=rows_per_batch):
+            writer.write_batch(batch)
+```
+
 Arrow/Parquet support is optional in native builds:
 
 ```sh
 cmake -S . -B build -DDTWC_ENABLE_ARROW=ON
 ```
 
-Series are held in RAM, except that a RAM-limited Parquet run streams them through
-FastCLARA (below). The distance matrix can live in a memory-mapped
+Where the series live depends on the input:
+
+- Text files, folders and series passed in memory are read whole into RAM.
+- An Arrow IPC file (every build and language) is viewed where it lies when the reader can: uncompressed,
+  aligned, in the precision asked for, with llfio. Its series are then views of the memory-mapped file, and
+  their values stay in the page cache. Otherwise it is decoded into RAM (compressed or big-endian batches, a
+  copy in the other `--dtype`, a build without llfio). Where such a file does not fit the data cap
+  (`--ram-limit`, Python `ram_limit`, MATLAB `RamLimit`), non-full FastCLARA (`--method clara`, or `auto` where
+  PAM's matrix does not fit) streams it, one record batch at a time; a mapped file is not streamed.
+- A Parquet file is read whole into RAM, or, in a native build with Arrow (`dtwc_cl`, C++ `dtwc::run`),
+  streamed through non-full FastCLARA a batch of row groups at a time where it does not fit the data cap
+  (below). Python and MATLAB read it before the run, with `pyarrow` and `parquetread`, and pass the series in
+  memory: whatever `ram_limit` says, it is read whole, and memory the system refuses fails the run there
+  (Python `MemoryError`; MATLAB `dtwc:internal` when the MEX's copy of the series is refused:
+  [Tier 1](../../api/tier-1/)). Convert a file too large for that to Arrow IPC
+  (`dtwc-convert big.parquet -o big.arrow`) and a run of it maps the file, or, if it is compressed or read as
+  another `--dtype`, streams it. `dtwc-convert` itself holds the series while it converts, so a file the
+  machine cannot hold is converted on a larger one, or written batch by batch with pyarrow
+  (`ParquetFile.iter_batches`, `pyarrow.ipc.new_file`).
+
+The distance matrix can live in a memory-mapped
 `.dtwm` file instead (`use_mmap_distance_matrix`; `dtwc_cl` maps it when it does
 not fit beside the series in its `--ram-limit` plan); the Python wheels and the release CLI archives include
 that support (llfio). `matrix_dtype` float32 (`--matrix-dtype`) stores the matrix

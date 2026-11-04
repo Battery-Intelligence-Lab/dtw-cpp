@@ -61,7 +61,11 @@ classdef Dataset < handle
         %AS_SERIES The series, read once. A path gives a cell of rows and, in
         %   NAMES, the reader's name of each; series in memory are the source less
         %   SkipRows and SkipCols, and NAMES is {} (C++ names them 0, 1, ...). With
-        %   Dtype 'float32' the series are single, else a path's are double.
+        %   Dtype 'float32' the series are single, else a path's are double. The
+        %   rows carry no ndim: an Arrow IPC file whose schema says ndim > 1 comes
+        %   back as univariate series (each row's interleaved values), so
+        %   dtwc.cluster of them is univariate where dtwc.cluster of the path is
+        %   multivariate.
             if ~obj.IsRead
                 if ischar(obj.Source)
                     [obj.Series, obj.Names] = dtwc.Dataset.read_path( ...

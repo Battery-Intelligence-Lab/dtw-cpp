@@ -69,7 +69,7 @@ be the finite `1.8e308` sentinel. So is an empty series, which `Data::p_vec` can
 
 On-demand distances and the matrix-free schedules `onebatch` and `tadpole`
 compute through `Problem::dtw_function()`, on the CPU even when a `Problem`'s
-device is a GPU; `dtwc_cl`, C++ and Python `cluster(...)` and `DTWClustering`,
+device is a GPU; `dtwc_cl`, C++, Python and MATLAB `cluster(...)` and `DTWClustering`,
 which hand their settings to a `Problem` through `dtwc::apply`, reject
 `onebatch` and `tadpole` on a GPU instead. FastCLARA on a GPU fills its
 sample matrices there (each sample is a copy of its series, since the GPU

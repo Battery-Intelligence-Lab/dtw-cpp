@@ -147,6 +147,22 @@ several Float32/Float64 columns, is one series per row, named by the file's firs
 string column, else `series_<i>`; the file's only Float32/Float64 column is one
 series, named by its file.
 
+`dtwc.load` reads nothing, and a `Dataset` of a path keeps no series: `dtwc.cluster`
+hands a text file, a folder or an Arrow IPC file to C++, which reads it at every
+call. Parquet is the exception: `parquetread` reads it at the first `dtwc.cluster`
+call, and `Dataset.as_series()` keeps the series. To read any file once for several
+runs, take its series and cluster those (`'Dtype'` again for `'float32'`):
+
+```matlab
+[series, names] = data.as_series();
+res = dtwc.cluster(series, 3);
+```
+
+The clustering is the path's, with two differences. The result files name series in
+memory `0`, `1`, ..., not by `names`. And `as_series()` returns no `ndim`: an Arrow IPC
+file whose schema says `ndim` above 1 clusters as multivariate from its path, and as
+univariate series (each row's interleaved values) from `as_series()`.
+
 ## Distance matrix
 
 Compute the full NxN pairwise DTW distance matrix:

@@ -113,9 +113,9 @@ namespace detail {
  *
  * `<name>_labels.csv` and `<name>_medoids.csv`, then, when the distance matrix is filled,
  * `<name>_distance_matrix.csv` and, for k > 1, `<name>_silhouettes.csv`. An undefined silhouette is a
- * warning on stderr; any other failure propagates. A Problem without series (a RAM-limited Parquet run)
- * names its series by `streamed_names`, the reader's names (else `series_<i>`), and has no matrix or
- * silhouettes to write.
+ * warning on stderr; any other failure propagates. A Problem without series (a streamed run: RAM-limited
+ * Parquet or Arrow IPC) names its series by `streamed_names`, the reader's names (else `series_<i>`), and has
+ * no matrix or silhouettes to write.
  *
  * @param complete  true (Result::save): fill the matrix first, so all four files are written, and throw
  *                  InvalidInput after the labels and medoids when there is no matrix to fill. false (the
