@@ -4,12 +4,13 @@
 classdef Dataset < handle
 %DATASET A lazy handle to time series: a path, or series already in memory.
 %
-%   Made by dtwc.load. A path is read once, when its series are first needed
-%   (dtwc.cluster, as_series), as dtwc_cl and Python read it: CSV/TSV text,
-%   folders of it and Arrow IPC (an .arrow, .ipc or .feather file) by the C++
-%   reader (dtwc::read_data, in the MEX); Parquet (a .parquet/.pq file, or a
+%   Made by dtwc.load. A path is read as dtwc_cl and Python read it: CSV/TSV
+%   text, folders of it and Arrow IPC (an .arrow, .ipc or .feather file) by the
+%   C++ reader (dtwc::read_data, in the MEX); Parquet (a .parquet/.pq file, or a
 %   folder of them) by MATLAB's parquetread, by the C++ reader's rule
-%   (read_parquet).
+%   (read_parquet). as_series reads a path once and keeps its series, which
+%   dtwc.cluster takes for Parquet; any other path dtwc.cluster hands to C++
+%   dtwc::run, which reads it at every call.
 %
 %   See also dtwc.load, dtwc.cluster
 
@@ -68,7 +69,7 @@ classdef Dataset < handle
                 else
                     obj.Series = obj.trimmed();
                     if strcmp(obj.Dtype, 'float32')
-                        obj.Series = dtwc.Dataset.to_single(obj.Series);
+                        obj.Series = cast_series(obj.Series, 'float32');
                     end
                 end
                 obj.IsRead = true;
@@ -83,7 +84,7 @@ classdef Dataset < handle
         %TRIMMED The in-memory series less the leading SkipRows series and SkipCols values.
             series = obj.Source;
             if (obj.SkipRows == 0 && obj.SkipCols == 0) || ~(iscell(series) || ismatrix(series))
-                return   % nothing to drop, or not series: Problem.set_data says why
+                return   % nothing to drop, or not series: the MEX says why
             end
             if iscell(series)
                 series = series(obj.SkipRows + 1:end);
@@ -106,17 +107,6 @@ classdef Dataset < handle
     end
 
     methods (Static, Access = private)
-        function series = to_single(series)
-        %TO_SINGLE The numeric series of a matrix or cell as single; anything else
-        %   is left for Problem.set_data to refuse.
-            if iscell(series)
-                numeric = cellfun(@isnumeric, series);
-                series(numeric) = cellfun(@single, series(numeric), 'UniformOutput', false);
-            elseif isnumeric(series)
-                series = single(series);
-            end
-        end
-
         function [series, names] = read_path(path, skipCols, skipRows, delimiter, dtype)
         %READ_PATH Every series a path names, read as dtwc::read_data reads it, in DTYPE.
             files = dtwc_mex('parquet_files', path);
@@ -133,7 +123,7 @@ classdef Dataset < handle
             for i = 1:numel(files)
                 [s, n] = dtwc.Dataset.read_parquet(files{i}, numel(series), skipCols, skipRows);
                 if strcmp(dtype, 'float32')   % file by file: no double copy of them all
-                    s = dtwc.Dataset.to_single(s);
+                    s = cast_series(s, 'float32');
                 end
                 series = [series, s]; %#ok<AGROW>
                 names = [names, n]; %#ok<AGROW>

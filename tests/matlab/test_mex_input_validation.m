@@ -445,6 +445,46 @@ function test_deleted_problem_handle_is_invalid(testCase)
         'dtwc:invalidArgument');
 end
 
+function test_run_and_its_result_refuse_arguments_they_cannot_take(testCase)
+%   The run command (dtwc.cluster's) checks its arguments before it runs and
+%   the Result commands theirs: too few, names beside a path (its reader names
+%   its series), a series of another class, a reader option beside series in
+%   memory (C++'s refusal), a non-char score name or directory, and a handle no
+%   stored Result has (unknown, or deleted).
+    X = [1 2 3 4 5; 2 3 4 5 6; 9 8 7 6 5; 8 7 6 5 4];
+    csv = [tempname '.csv'];
+    writematrix(X, csv);
+    testCase.addTeardown(@() delete(csv));
+    out = dtwc_mex('run', X, {}, 0, 0, '', 'float64', 'v', 2);
+    cases = {
+        @() dtwc_mex('run', X, {}, 0, 0, '', 'float64', 'v'), ...
+            'run requires a source, names, skip_cols, skip_rows, delimiter, dtype, a name and k.'
+        @() dtwc_mex('run', csv, {'a', 'b', 'c', 'd'}, 0, 0, '', 'float64', 'v', 2), ...
+            'run: names name series in memory; a path''s series are named by its reader, so pass {}.'
+        @() dtwc_mex('run', int32(X), {}, 0, 0, '', 'float64', 'v', 2), ...
+            'data must be of class ''double'' (got ''int32''); convert with double(...) in MATLAB.'
+        @() dtwc_mex('run', X, {}, 1, 0, '', 'float64', 'v', 2), ...
+            ['--skip-rows and --skip-cols (skip_rows, skip_cols) drop the leading rows and columns of CSV/TSV ' ...
+             'text or Parquet and cannot be honoured for this input; drop them.']
+        @() dtwc_mex('Result_score', out.handle, 3), 'score must be a char row vector (string).'
+        @() dtwc_mex('Result_save', out.handle, 3), 'directory must be a char row vector (string).'
+        @() dtwc_mex('Result_distance_matrix', uint64(99999)), 'Invalid handle: 99999'};
+    for i = 1:size(cases, 1)
+        err = [];
+        try
+            cases{i, 1}();
+        catch caught
+            err = caught;
+        end
+        assertNotEmpty(testCase, err, sprintf('case %d raised nothing', i));
+        verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument', sprintf('case %d', i));
+        verifyEqual(testCase, err.message, cases{i, 2}, sprintf('case %d', i));
+    end
+    verifyEqual(testCase, out.labels, dtwc.cluster(X, 2, 'Name', 'v').labels);   % the control
+    dtwc_mex('Result_delete', out.handle);
+    verifyError(testCase, @() dtwc_mex('Result_score', out.handle, 'silhouette'), 'dtwc:invalidArgument');
+end
+
 % -------------------------------------------------------------------------
 %  Integer arguments are read exactly. A fractional, NaN or Inf value, and an
 %  index below 1, is dtwc:invalidArgument; each was truncated or cast with

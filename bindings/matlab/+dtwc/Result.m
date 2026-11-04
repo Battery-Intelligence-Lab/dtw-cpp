@@ -4,10 +4,13 @@
 classdef Result < handle
 %RESULT Clustering outcome.
 %
-%   Returned by dtwc.cluster(). It keeps the clustered dtwc.Problem, so
-%   score(), save() and distance_matrix() are C++'s (scores::score and the
-%   writer dtwc_cl uses): the scores and the four result files, series names
-%   included, are the CLI's, byte for byte.
+%   Returned by dtwc.cluster(). It keeps the run's C++ dtwc::Result, so score(),
+%   save() and distance_matrix() are C++'s (scores::score and the writer dtwc_cl
+%   uses): the scores and the result files, series names included, are the
+%   CLI's, byte for byte. A run that streamed its series (an Arrow IPC file
+%   beyond RamLimit) holds none: its score() and distance_matrix(), so plot(),
+%   raise dtwc:invalidArgument, and save() writes its labels and medoids, as
+%   dtwc_cl does, and the report.
 %
 %   Properties
 %   ----------
@@ -15,6 +18,9 @@ classdef Result < handle
 %   medoids : double row vector, the 1-based medoid series of each cluster.
 %   cost    : double, the total DTW distance of the series to their medoids.
 %   device  : char, the device the run computed on ('cpu', 'gpu' or 'gpu:N').
+%   Report  : char, the run report, the text dtwc_cl writes to <name>_report.txt
+%             (the run's machine, memory plan, stages and result); '' under
+%             NoReport.
 %
 %   See also dtwc.cluster, dtwc.silhouette
 
@@ -23,20 +29,36 @@ classdef Result < handle
         medoids
         cost
         device
+        Report
     end
 
     properties (Access = private)
-        Problem   % the clustered dtwc.Problem
+        Handle uint64 = uint64(0)   % the run's C++ dtwc::Result, in the MEX
+        Name                        % the run's name, plot's title
     end
 
     methods
-        function obj = Result(prob, result, device)
-        %RESULT Made by dtwc.cluster from its Problem and Problem.cluster's result.
-            obj.Problem = prob;
-            obj.labels = result.labels;
-            obj.medoids = result.medoid_indices;
-            obj.cost = result.total_cost;
-            obj.device = device;
+        function obj = Result(out)
+        %RESULT Made by dtwc.cluster from what dtwc_mex('run', ...) returns.
+            obj.Handle = out.handle;
+            obj.labels = out.labels;
+            obj.medoids = out.medoids;
+            obj.cost = out.cost;
+            obj.device = out.device;
+            obj.Name = out.name;
+            obj.Report = out.report;
+        end
+
+        function delete(obj)
+        %DELETE Release the run's C++ Result.
+            if obj.Handle > 0
+                try
+                    dtwc_mex('Result_delete', obj.Handle);
+                catch
+                    % MEX may be unloaded during MATLAB shutdown
+                end
+                obj.Handle = uint64(0);
+            end
         end
 
         function s = score(obj, name)
@@ -45,25 +67,25 @@ classdef Result < handle
         %   s = res.score('davies_bouldin')    % also 'dunn', 'calinski_harabasz', 'inertia'
         %
         %   A matrix-free run (onebatch, clara, tadpole) fills the matrix first.
-            s = dtwc_mex('score', obj.Problem.get_handle(), char(name));
+            s = dtwc_mex('Result_score', obj.Handle, char(name));
         end
 
         function D = distance_matrix(obj)
-        %DISTANCE_MATRIX The N x N DTW distances, filled first after a matrix-free run.
-            D = obj.Problem.distance_matrix();
+        %DISTANCE_MATRIX The N x N DTW distances, filled first after a matrix-free
+        %   run, at the width the run stored them: single under MatrixDtype 'float32'.
+            D = dtwc_mex('Result_distance_matrix', obj.Handle);
         end
 
         function save(obj, dir)
-        %SAVE Write the four result CSVs into DIR.
+        %SAVE Write the result files into DIR, then the run report.
         %   res.save(outdir)
         %
         %   <name>_labels.csv, <name>_medoids.csv, <name>_distance_matrix.csv and
-        %   <name>_silhouettes.csv, written by the C++ writer dtwc_cl uses, so the
-        %   series names are the dataset's and the bytes are the CLI's. No run
-        %   report: dtwc_cl and C++ Result::save write <name>_report.txt beside
-        %   them, a MATLAB result has none (2026-11-03: dtwc.cluster does not run
-        %   through dtwc::run).
-            dtwc_mex('write_result_files', obj.Problem.get_handle(), char(dir));
+        %   <name>_silhouettes.csv, written by the C++ writer dtwc_cl uses (C++
+        %   Result::save), so the series names are the dataset's and the bytes are
+        %   the CLI's; then the run report, <name>_report.txt, last (none under
+        %   NoReport). A streamed run writes its labels and medoids and the report.
+            dtwc_mex('Result_save', obj.Handle, char(dir));
         end
 
         function varargout = plot(obj)
@@ -86,8 +108,7 @@ classdef Result < handle
             f = figure('Visible', 'off');
             ax = axes('Parent', f);
             scatter(ax, coords(:, 1), coords(:, 2), 36, double(obj.labels), 'filled');
-            title(ax, sprintf('%s: %d clusters (MDS)', obj.Problem.name(), ...
-                              numel(obj.medoids)));
+            title(ax, sprintf('%s: %d clusters (MDS)', obj.Name, numel(obj.medoids)));
             xlabel(ax, 'MDS-1'); ylabel(ax, 'MDS-2');
             if nargout > 0, varargout{1} = ax; end
         end

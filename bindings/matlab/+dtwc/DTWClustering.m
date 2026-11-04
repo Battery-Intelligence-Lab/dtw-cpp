@@ -11,9 +11,10 @@ classdef DTWClustering
 %   labels = c.predict(Y);      % the nearest medoid of each series of Y
 %
 %   fit hands C++ one dtwc.Problem, set up from these properties as
-%   dtwc.cluster sets one up from its keys, and Problem.cluster runs Method
-%   and its NInit seeded restarts on one distance matrix. predict, transform
-%   and score read the fitted medoids; nothing is refitted.
+%   dtwc.cluster's keys set up its run (dtwc::apply), and clustered through
+%   the Problem, in RAM: Problem.cluster runs Method and its NInit seeded
+%   restarts on one distance matrix. predict, transform and score read the
+%   fitted medoids; nothing is refitted.
 %
 %   Properties: Python's parameters in CamelCase. One left empty takes the C++
 %   default (dtwc_cl's), and C++ checks every value when fit runs, so a value

@@ -13,7 +13,7 @@ Parquet ──▶ io/read_arrow (dtwc_io) ────────────�
                                                                        ├─ dist_by_ind(i, j): an O(1) read ◀── algorithms, MIP, scores
                                                                        └─ cluster() ─▶ ClusteringResult, or a free algorithm function
 Tier-1  device() → load() → Dataset → cluster() → run(Config) → Result       CLI  dtwc_cl → cli::bind → Config → run()
-Python  cluster() → _dtwcpp_core._run → run(Config) → Result (estimators: Problem)   MATLAB  dtwc_mex: apply → Problem::cluster()
+Python  cluster() → _dtwcpp_core._run → run(Config) → Result (estimators: Problem)   MATLAB  dtwc.cluster → dtwc_mex run → the same
 ```
 
 ## 2. Where the code is (`dtwc/`)
@@ -109,8 +109,8 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
 
 - `Config` is flat, keyed by the CLI long names; `cli::bind` is the one key table; TOML / YAML through CLI11.
   `k` is required, `method = auto` (cpu: `pam` for N ≤ 5000, else `clara`; gpu: `pam`).
-- `Result` in every language: `labels, medoids, cost, device, score(name), save(dir), distance_matrix`; C++ adds
-  `method, iterations, converged, report`, Python and MATLAB `plot()`.
+- `Result` in every language: `labels, medoids, cost, device, score(name), save(dir), distance_matrix` and the run
+  report (`report`, MATLAB `Report`); C++ adds `method, iterations, converged`, Python and MATLAB `plot()`.
 - Tier-2 (C++, Python, MATLAB alike): `Problem` with the v1 fields; `set_distance / set_band / set_metric /
   set_variant / set_missing_strategy / set_device / set_gpu_precision` each invalidate the matrix;
   `fill_distance_matrix`, O(1) `dist_by_ind`, `cluster()` over nine `Method` values, `set_result`; algorithms

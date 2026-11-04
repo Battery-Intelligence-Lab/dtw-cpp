@@ -359,7 +359,7 @@ function test_keys_are_python_words_in_camel_case(testCase)
         'mv_mode', 'missing_strategy', 'sample_size', 'n_samples', 'seed', 'batch_size', ...
         'linkage', 'solver', 'mip_gap', 'time_limit', 'no_warm_start', 'numeric_focus', ...
         'mip_focus', 'verbose_solver', 'lr_max_nodes', 'lr_root', 'device', 'gpu_precision', 'matrix_dtype', ...
-        'verbose'};
+        'verbose', 'no_report'};
     estimator_words = {'n_clusters', 'method', 'variant', 'band', 'max_iter', 'n_init', ...
         'wdtw_g', 'adtw_penalty', 'msm_c', 'twe_nu', 'twe_lambda', 'mv_mode', ...
         'missing_strategy', 'metric', 'batch_size', 'random_state', 'device'};
@@ -404,13 +404,23 @@ function test_tier1_result_score_names(testCase)
     verifyError(testCase, @() res.score('nope'), 'dtwc:invalidArgument');
 end
 
+function test_tier1_result_surface_is_the_python_result(testCase)
+%   dtwc.Result's surface is Python's Result in MATLAB's words (the names
+%   tests/python/test_contract_parity.py pins): labels, medoids, cost, device and
+%   the run report, Report; score, distance_matrix, save and plot.
+    verifyEqual(testCase, sort(properties('dtwc.Result')'), sort({'labels', 'medoids', 'cost', 'device', 'Report'}));
+    mc = ?dtwc.Result;
+    public = {mc.MethodList(strcmp({mc.MethodList.Access}, 'public')).Name};
+    verifyTrue(testCase, all(ismember({'score', 'distance_matrix', 'save', 'plot'}, public)));
+end
+
 function test_tier1_result_save_and_plot(testCase)
-%   Result.save(dir) writes the 4 CSVs; Result.plot() renders (headless).
+%   Result.save(dir) writes the 4 CSVs and the run report; Result.plot() renders (headless).
     res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k);
     outdir = fullfile(tempdir, ['dtwc_parity_' num2str(feature('getpid'))]);
     res.save(outdir);
     nm = 'dataset';
-    for suffix = {'_labels.csv', '_medoids.csv', '_distance_matrix.csv', '_silhouettes.csv'}
+    for suffix = {'_labels.csv', '_medoids.csv', '_distance_matrix.csv', '_silhouettes.csv', '_report.txt'}
         f = fullfile(outdir, [nm suffix{1}]);
         verifyTrue(testCase, isfile(f), sprintf('save() must emit %s', suffix{1}));
     end

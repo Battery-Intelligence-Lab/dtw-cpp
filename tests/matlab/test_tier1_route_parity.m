@@ -406,6 +406,132 @@ function test_float32_load_clusters_as_todays_float32_route(testCase)
 end
 
 % =========================================================================
+%  dtwc.cluster runs dtwc::run, as dtwc_cl and Python do; dtwc.Result wraps
+%  the run's dtwc::Result
+% =========================================================================
+
+function test_report_is_the_run_report_and_no_report_makes_none(testCase)
+%   The Result carries the run report dtwc::run writes (C++ Result::report(),
+%   dtwc_cl's <name>_report.txt), which save writes last beside the result
+%   files; NoReport true makes none, as dtwc_cl --no-report does.
+    X = testCase.TestData.X;
+    outdir = [tempname '_report'];
+    cleanupDir = onCleanup(@() remove_directory(outdir));
+    res = dtwc.cluster(X, 2, 'Name', 'r');
+    verifyClass(testCase, res.Report, 'char');
+    verifyTrue(testCase, startsWith(res.Report, 'DTWC++ run report'), 'Report is not the run report');
+    res.save(fullfile(outdir, 'on'));
+    written = fileread(fullfile(outdir, 'on', 'r_report.txt'));
+    % C++ writes its files in text mode: CRLF line ends on Windows, as dtwc_cl's.
+    verifyEqual(testCase, strrep(written, sprintf('\r\n'), newline), res.Report);
+
+    silent = dtwc.cluster(X, 2, 'Name', 'r', 'NoReport', true);
+    verifyClass(testCase, silent.Report, 'char');
+    verifyEmpty(testCase, silent.Report);
+    silent.save(fullfile(outdir, 'off'));
+    verifyEqual(testCase, files_in(fullfile(outdir, 'off')), ...
+        {'r_distance_matrix.csv', 'r_labels.csv', 'r_medoids.csv', 'r_silhouettes.csv'});
+    verifyEqual(testCase, silent.labels, res.labels);
+end
+
+function test_a_float32_matrix_comes_back_single(testCase)
+%   Under MatrixDtype 'float32' the run stores each distance as a float and
+%   distance_matrix returns it at that width, single, whether the method filled
+%   the matrix (pam) or the request fills it (clara): the float64 matrix rounded.
+    X = testCase.TestData.Xbig;
+    wide = dtwc.cluster(X, 3, 'Method', 'pam').distance_matrix();
+    verifyClass(testCase, wide, 'double');
+    for m = {'pam', 'clara'}
+        narrow = dtwc.cluster(X, 3, 'Method', m{1}, 'MatrixDtype', 'float32').distance_matrix();
+        verifyClass(testCase, narrow, 'single', m{1});
+        verifyEqual(testCase, narrow, single(wide), m{1});
+    end
+end
+
+function test_parquet_through_parquetread_clusters_as_its_csv_twin(testCase)
+%   The MEX links no Arrow: parquetread reads a Parquet file and its series reach
+%   dtwc::run in memory, where C++ reads the CSV twin itself. clara_256.csv's
+%   256 series, written by parquetwrite as four Float64 columns (a series a row),
+%   cluster alike.
+    csv = fullfile(fileparts(mfilename('fullpath')), '..', 'data', 'reader', 'clara_256.csv');
+    rows = readmatrix(csv, 'Delimiter', ',', 'NumHeaderLines', 0, 'FileType', 'text');
+    verifySize(testCase, rows, [256 4]);
+    file = [tempname '.parquet'];
+    parquetwrite(file, array2table(rows));
+    cleanupFile = onCleanup(@() delete(file));
+    fromParquet = dtwc.cluster(file, 3, 'Method', 'pam');
+    fromCsv = dtwc.cluster(csv, 3, 'Method', 'pam');
+    verifyEqual(testCase, fromParquet.labels, fromCsv.labels);
+    verifyEqual(testCase, fromParquet.medoids, fromCsv.medoids);
+    verifyEqual(testCase, fromParquet.cost, fromCsv.cost);
+end
+
+function test_an_arrow_ipc_file_streams_under_ram_limit(testCase)
+%   clara_256_lz4.arrow under an explicit RamLimit streams through FastCLARA and
+%   gives the in-RAM run's labels, medoids and cost. The run's memory plan counts
+%   the threads' reserve and the decoders' scratch, so the limit that streams it
+%   moves with the threads: 300000 bytes on 2 to 24 threads, 180000 on one, with
+%   llfio and without (dtwc_cl -v, 2026-11-04). Its Problem holds no series:
+%   score and distance_matrix raise dtwc:invalidArgument naming the stream, and
+%   save writes the in-RAM run's labels and medoids files, byte for byte (the
+%   reader's names), then the report, and nothing else.
+    file = fullfile(fileparts(mfilename('fullpath')), '..', 'data', 'reader', 'clara_256_lz4.arrow');
+    keys = {'Method', 'clara', 'SampleSize', 8, 'NSamples', 2, 'Seed', 42, 'Name', 't'};
+    limit = 300000;
+    if dtwc.test.parallelisation().max_threads == 1
+        limit = 180000;
+    end
+    ram = dtwc.cluster(file, 3, keys{:});
+    streamed = dtwc.cluster(file, 3, keys{:}, 'RamLimit', limit);
+    verifyEqual(testCase, streamed.labels, ram.labels);
+    verifyEqual(testCase, streamed.medoids, ram.medoids);
+    verifyEqual(testCase, streamed.cost, ram.cost);
+    verifyNumElements(testCase, streamed.labels, 256);
+    verifyNotEmpty(testCase, ram.distance_matrix());
+    for call = {@() streamed.score('silhouette'), @() streamed.distance_matrix(), @() streamed.plot()}
+        err = capture_error(call{1});
+        verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+        verifySubstring(testCase, err.message, 'the run streamed its 256 series');
+    end
+    outdir = [tempname '_stream'];
+    cleanupDir = onCleanup(@() remove_directory(outdir));
+    ram.save(fullfile(outdir, 'ram'));
+    streamed.save(fullfile(outdir, 'streamed'));
+    verifyEqual(testCase, files_in(fullfile(outdir, 'streamed')), {'t_labels.csv', 't_medoids.csv', 't_report.txt'});
+    for table = {'t_labels.csv', 't_medoids.csv'}
+        verifyEqual(testCase, file_bytes(fullfile(outdir, 'streamed', table{1})), ...
+                    file_bytes(fullfile(outdir, 'ram', table{1})), table{1});
+    end
+    verifyNotEmpty(testCase, streamed.Report);
+end
+
+function test_a_bad_value_reads_alike_for_every_input(testCase)
+%   C++ checks every key (dtwc::apply) before any series is read, whatever the
+%   input: a path C++ reads, a Parquet file parquetread would read, a file that
+%   does not exist and series in memory are refused in the same words, apply's,
+%   which name the setting (dtwc::run's own check would name dtwc_cl's flags).
+    X = testCase.TestData.X;
+    csv = [tempname '.csv'];
+    writematrix(X, csv);
+    cleanupFile = onCleanup(@() delete(csv));
+    sources = {X, csv, [tempname '.csv'], [tempname '.parquet']};
+    for bad = {{0}, {-1}, {2, 'NInit', 0}, {2, 'MaxIter', 0}, {2, 'Band', -5}}
+        args = bad{1};
+        words = '';
+        for s = 1:numel(sources)
+            err = capture_error(@() dtwc.cluster(sources{s}, args{:}));
+            verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument', sprintf('source %d', s));
+            if s == 1
+                words = err.message;
+                verifyTrue(testCase, startsWith(words, 'Problem::set_'), words);
+            else
+                verifyEqual(testCase, err.message, words, sprintf('source %d', s));
+            end
+        end
+    end
+end
+
+% =========================================================================
 %  Drift 2: device is a per-call override, never a global mutation
 % =========================================================================
 
@@ -544,6 +670,18 @@ function err = capture_error(fn)
         err = caught;
     end
     assert(~isempty(err), 'expected an error, none was raised');
+end
+
+function names = files_in(d)
+%FILES_IN The names of the files in folder D, sorted.
+    listing = dir(d);
+    names = sort({listing(~[listing.isdir]).name});
+end
+
+function bytes = file_bytes(path)
+    f = fopen(path, 'r');
+    bytes = fread(f, Inf, '*uint8');
+    fclose(f);
 end
 
 function cleaner = scratch_working_directory()

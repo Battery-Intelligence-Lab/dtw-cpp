@@ -87,7 +87,8 @@ The recommended flow is intentionally similar across the stateful APIs:
 settings -> data -> Problem -> clustering algorithm -> scores / outputs
 ```
 
-The CLI is already config-first. The library APIs are currently Problem-first.
+The CLI and `cluster()` in C++, Python and MATLAB are config-first: their settings become a `dtwc::Config`
+that `dtwc::run` runs. The Tier-2 APIs (`Problem`, the algorithms, the estimators) are Problem-first.
 
 ## Surface map
 

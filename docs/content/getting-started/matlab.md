@@ -80,24 +80,37 @@ res = dtwc.cluster(data, 3, 'Band', 10, 'MaxIter', 50);
 res.labels                                            % 1-based cluster of each series
 res.medoids                                           % 1-based medoid of each cluster
 res.score('silhouette')                               % the mean silhouette
-res.save('out');                                      % the four CSVs dtwc_cl writes
+res.save('out');                                      % the CSVs dtwc_cl writes, then the run report
+res.Report                                            % the run report's text
 ```
+
+`dtwc.cluster` runs `dtwc::run`, the run `dtwc_cl` makes, without its files: C++
+reads a text file, a folder or an Arrow IPC file itself, `parquetread` reads
+Parquet, and series in memory go as they are. `res.save` writes the files
+`dtwc_cl` writes, then the run report, `<name>_report.txt` (the run's machine,
+memory plan, stages and result), which `res.Report` holds.
 
 `dtwc.cluster(data, k, Name, Value, ...)` takes these `dtwc_cl` keys, by
 Python's words in CamelCase: `MatrixDtype` (`'float64'`, or `'float32'` for half the
-matrix memory, each distance rounded to a single), `RamLimit` (a byte count, or a size
-such as `'8G'`; `0` is automatic), `Method`, `Band`, `Metric`,
+matrix memory, each distance rounded to a single), `RamLimit` (the memory the run
+plans for: a byte count, or a size such as `'8G'`; `0` is automatic, as `dtwc_cl`'s
+`--ram-limit`; a limit that cannot hold the run raises `dtwc:invalidArgument`, and an
+Arrow IPC file whose series it cannot hold streams through CLARA), `Method`, `Band`, `Metric`,
 `Variant` and its parameters (`WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`,
 `TweNu`, `TweLambda`), `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`,
 `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver` and the MIP
 settings (`MipGap`, `TimeLimit`, `NoWarmStart`, `NumericFocus`, `MipFocus`,
-`VerboseSolver`, `LrMaxNodes`, `LrRoot`), `GpuPrecision`, `Device`, `Name` and `Verbose`;
-and `Dtype`, `dtwc.load`'s, for a path or series in memory it loads.
+`VerboseSolver`, `LrMaxNodes`, `LrRoot`), `GpuPrecision`, `Device`, `Name`, `Verbose`
+(`dtwc_cl -v`'s lines, the memory plan among them) and `NoReport` (no run report:
+`res.Report` is `''`); and `Dtype`, `dtwc.load`'s, for a path or series in memory it loads.
 C++ reads and checks them before a series is read; a key not given takes
 `dtwc_cl`'s default, so `Method` is `'auto'` (PAM on a GPU and for up to 5,000
-series on the CPU, CLARA above), and an unknown key raises `dtwc:invalidArgument`
+series on the CPU, CLARA above, and CLARA too where PAM's distance matrix does
+not fit the memory plan), and an unknown key raises `dtwc:invalidArgument`
 naming the valid ones. `Device` defaults to `dtwc.device()`; naming one sets
-that run's device only.
+that run's device only. A run that streamed its series holds none: its
+`score` and `distance_matrix` (so `plot`) raise `dtwc:invalidArgument`, and
+`save` writes its labels and medoids, as `dtwc_cl` does, and the report.
 
 ## Loading data
 
