@@ -103,7 +103,9 @@ For Volkan's hand: the merged units' worktrees, clean, their branches merged (`C
 `wt/REL`, `wt/QP1`–`wt/QP5`, `wt/QPR`, and `wt/QP` and `wt/DOC` once HG no longer needs `wt/QP/build-cuda` as its base
 binary): `git worktree remove --force <path>` and `git branch -d pb/<id>`; the permission classifier refuses the agent that
 deletion (11-09). The CHANGELOG's Performance section compares 2.0 with earlier 2.0 (no v1.0.0 baseline exists for its
-subjects): keep as the development record it is, or drop (DOC's open question).
+subjects): keep as the development record it is, or drop (DOC's open question). At the HG merge batch: when a pinned
+host buffer cannot be allocated the CUDA routes fall back to pageable memory silently and lose the pipeline's overlap
+(HG1 about doubled the pinned demand): a stderr warning always, or a `-v` line only (hg_plan.md §4b).
 
 ## Cut, deferred or not scheduled
 
