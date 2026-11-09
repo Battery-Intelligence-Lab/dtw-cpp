@@ -951,11 +951,20 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   // ---- 6. Checkpoints first, then the outputs ----
   // The checkpoint goes before the results, so a result write that fails cannot lose the distance matrix. A save that
   // fails is kept and raised once the results are on disk, so it cannot lose them either: what to do, and its cause.
+  // A method that never allocates the distance matrix (OneBatchPAM, TADPole) has nothing to save: save_checkpoint would
+  // write all N^2 pairs as NaN (about 40 GB for 100,000 series), for a resume that computes every distance again. A
+  // Problem may save before a fill on purpose, so that stays save_checkpoint's contract; the run decides here.
+  const bool has_checkpoint = !config.checkpoint.empty();
+  const bool saves_checkpoint = has_checkpoint && prob.distance_matrix().size() != 0;
   stage.begin("write");
-  stage.note(std::string(config.checkpoint.empty() ? "" : "the checkpoint, then ")
+  stage.note(std::string(saves_checkpoint ? "the checkpoint, then "
+                         : has_checkpoint ? "no distances were computed: no checkpoint written, then "
+                                          : "")
              + (config.output.empty() ? std::string("no result files (no -o)") : "the result files"));
   std::optional<std::string> checkpoint_failure;
-  if (!config.checkpoint.empty()) {
+  if (has_checkpoint && !saves_checkpoint && config.verbose)
+    std::cout << "No distances were computed: no checkpoint written.\n";
+  if (saves_checkpoint) {
     try {
       save_checkpoint(prob, config.checkpoint);
       if (config.verbose) std::cout << "Checkpoint saved to " << config.checkpoint << "\n";

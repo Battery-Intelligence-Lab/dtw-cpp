@@ -217,7 +217,12 @@ def save_dataset_csv(
     path : str or Path
         Destination file path.
     names : list[str], optional
-        Series names written as the header row.
+        Series names, written as one comma-joined first row; the file has no
+        name column, and the row is not checked against N or L. Without names
+        the file holds the numbers only. :func:`load_dataset_csv` returns the
+        row as ``names``; :func:`dtwcpp.load` and ``dtwc_cl`` reject it unless
+        told to skip it (``skip_rows=1``, ``--skip-rows 1``), and then take
+        no names from it.
     """
     path = Path(path)
     header = ",".join(names) if names else ""

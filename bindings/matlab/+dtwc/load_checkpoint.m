@@ -9,16 +9,17 @@ function ok = load_checkpoint(prob, path, metric)
 %   series or another metric raises 'dtwc:invalidArgument', and a file that is not
 %   a whole checkpoint raises 'dtwc:ioError'.
 %
-%   metric is the pointwise metric THIS run computes with: 'l1' (default) or
+%   metric is the pointwise metric THIS run computes with: 'l1' or
 %   'squared_euclidean' ('sqeuclidean'). A checkpoint written under a different
-%   metric no longer matches the identity fingerprint. Mirrors C++
-%   load_checkpoint(prob, path, metric).
+%   metric no longer matches the identity fingerprint. Omitted, it is the
+%   Problem's own metric, as C++ load_checkpoint(prob, path) and the CLI take
+%   it; name it only for a matrix filled outside the Problem.
 %
 %   See also dtwc.save_checkpoint, dtwc.CheckpointOptions
 
 %> @file load_checkpoint.m
 %> @brief Load a Problem distance-matrix checkpoint.
 %> @author Volkan Kumtepeli
-    if nargin < 3, metric = 'l1'; end
+    if nargin < 3, metric = ''; end % the MEX takes the Problem's own metric
     ok = dtwc_mex('load_checkpoint', prob.get_handle(), char(path), char(metric));
 end

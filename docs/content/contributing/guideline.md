@@ -42,3 +42,5 @@ Issues labelled with `good first issue` are great starting points.
 - Learn Git:
   - GitHub Help: [Good Resources for Learning Git and GitHub][good-git-resources]
 - [GitHub Flow Guide](https://guides.github.com/introduction/flow/): Step-by-step instructions for GitHub Flow
+
+[good-git-resources]: https://docs.github.com/en/get-started/start-your-journey/git-and-github-learning-resources

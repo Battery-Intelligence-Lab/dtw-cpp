@@ -5,6 +5,7 @@
 """
 
 import math
+import subprocess
 
 import numpy as np
 import pytest
@@ -271,10 +272,11 @@ class TestCheckpointMetricFingerprint:
 
     SERIES = [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 1.0, 1.0, 1.0]]
 
-    def _problem(self, filled=False):
+    def _problem(self, filled=False, metric="l1"):
         # One name: the checkpoint is <directory>/<name>.dtwm.
         p = dtwcpp.Problem("ckpt")
         p.set_data(self.SERIES, ["a", "b", "c"])
+        p.set_distance(metric=metric)
         if filled:
             p.fill_distance_matrix()
         return p
@@ -301,6 +303,30 @@ class TestCheckpointMetricFingerprint:
         target = self._problem()
         assert dtwcpp.load_checkpoint(target, directory) is True
         np.testing.assert_array_equal(target.distance_matrix(), source.distance_matrix())
+
+    def test_squared_euclidean_checkpoint_round_trips_without_naming_the_metric(self, tmp_path, dtwc_cl):
+        """A metric left out is the Problem's own, as in C++ save_checkpoint(prob, path) and dtwc_cl: a
+        squared-Euclidean Problem's checkpoint was written L1-tagged from Python, which the C++ load refused."""
+        source = self._problem(filled=True, metric="squared_euclidean")
+        directory = str(tmp_path / "ckpt_sq_default")
+        dtwcpp.save_checkpoint(source, directory)
+
+        target = self._problem(metric="squared_euclidean")
+        assert dtwcpp.load_checkpoint(target, directory) is True
+        np.testing.assert_array_equal(target.distance_matrix(), source.distance_matrix())
+
+        # The C++ writer's file loads into the same Problem the same way.
+        csv = tmp_path / "ckpt.csv"
+        np.savetxt(csv, self.SERIES, delimiter=",")
+        cli_directory = str(tmp_path / "ckpt_cli")
+        run = subprocess.run(
+            [dtwc_cl, "-i", str(csv), "-k", "2", "-m", "pam", "--name", "ckpt",
+             "--metric", "squared_euclidean", "--checkpoint", cli_directory],
+            capture_output=True, text=True)
+        assert run.returncode == 0, run.stderr
+        from_cli = self._problem(metric="squared_euclidean")
+        assert dtwcpp.load_checkpoint(from_cli, cli_directory) is True
+        np.testing.assert_array_equal(from_cli.distance_matrix(), source.distance_matrix())
 
     def test_an_absent_checkpoint_is_false(self, tmp_path):
         assert dtwcpp.load_checkpoint(self._problem(), str(tmp_path / "nothing")) is False

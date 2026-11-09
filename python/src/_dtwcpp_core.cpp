@@ -17,6 +17,7 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/pair.h>
+#include <nanobind/stl/optional.h> // save_checkpoint / load_checkpoint: the metric is optional
 #include <nanobind/stl/shared_ptr.h> // _run hands dtwcpp._mip.solve the run's own Problem, to co-own
 
 #ifdef _OPENMP
@@ -997,7 +998,7 @@ NB_MODULE(_dtwcpp_core, m) {
        "Create a Problem that computes on `device`: 'cpu' (default), 'gpu',\n"
        "'gpu:N', 'cuda' or 'cuda:N', as for dtwcpp.device(). A Problem does not\n"
        "follow the process-wide dtwcpp.device(). 'gpu' without a GPU backend\n"
-       "raises DeviceError; 'hpc' raises InvalidInput (it is a cluster() option).")
+       "and 'hpc' raise DeviceError ('hpc' is a cluster() option).")
     .def("set_device", [](dtwc::Problem &p, const std::string &device) {
       const auto [selected, index] = dtwc::detail::parse_device(device);
       p.set_device(selected, index);
@@ -1514,25 +1515,27 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("save_checkpoint", [](const dtwc::Problem &prob,
                               const std::string &path,
-                              dtwc::core::MetricType metric) {
+                              std::optional<dtwc::core::MetricType> metric) {
         // An N^2 write; `prob` is const here and the writer only reads it.
         nb::gil_scoped_release release;
-        dtwc::save_checkpoint(prob, path, metric);
-      }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
+        if (metric) dtwc::save_checkpoint(prob, path, *metric);
+        else dtwc::save_checkpoint(prob, path); // the Problem's own metric, as the C++ and the CLI
+      }, "prob"_a, "path"_a, "metric"_a = nb::none(),
         "Save the distance matrix to <path>/<name>.dtwm ('distances' for an\n"
         "unnamed Problem), replacing any previous checkpoint there. The\n"
         "directory is created if it does not exist; IOError if it cannot be.\n\n"
         "`metric` is the pointwise metric the stored distances were computed\n"
         "with. It is part of the identity fingerprint, so a SquaredL2 matrix is\n"
-        "no longer accepted by a later L1 load. Mirrors the CLI's --metric and\n"
-        "defaults to L1 for backward compatibility.");
+        "no longer accepted by a later L1 load. Absent (None), the Problem's\n"
+        "own metric, as the CLI's checkpoint records it; name it only for a\n"
+        "matrix that was filled outside this Problem.");
 
   m.def("load_checkpoint", [](dtwc::Problem &prob,
                               const std::string &path,
-                              dtwc::core::MetricType metric) {
+                              std::optional<dtwc::core::MetricType> metric) {
         nb::gil_scoped_release release;
-        return dtwc::load_checkpoint(prob, path, metric);
-      }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
+        return metric ? dtwc::load_checkpoint(prob, path, *metric) : dtwc::load_checkpoint(prob, path);
+      }, "prob"_a, "path"_a, "metric"_a = nb::none(),
         "Load <path>/<name>.dtwm into the Problem's distance matrix.\n\n"
         "Returns True when loaded, False only when there is no such file.\n"
         "Raises InvalidInput for a checkpoint of other series or other\n"
@@ -1540,8 +1543,9 @@ NB_MODULE(_dtwcpp_core, m) {
         "file; neither changes the Problem.\n\n"
         "`metric` is the pointwise metric THIS run computes with: a checkpoint\n"
         "written under a different metric does not match the identity\n"
-        "fingerprint (InvalidInput). Mirrors the CLI's --metric; defaults to\n"
-        "L1 for backward compatibility.\n\n"
+        "fingerprint (InvalidInput). Absent (None), the Problem's own metric,\n"
+        "as the CLI loads; name it only for a matrix that was filled outside\n"
+        "this Problem.\n\n"
         "MUTATES `prob`: do not run it concurrently with any other method on\n"
         "the same Problem (see the Problem class docstring).");
 

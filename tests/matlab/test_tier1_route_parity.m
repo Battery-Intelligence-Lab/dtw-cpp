@@ -659,6 +659,18 @@ function test_checkpoint_metric_is_part_of_the_identity(testCase)
     verifyError(testCase, ...
         @() dtwc.load_checkpoint(fresh, ckdir, 'not_a_metric'), ...
         'dtwc:invalidArgument');
+
+    % Unnamed, the metric is the Problem's own, as C++ save_checkpoint(prob, path)
+    % and dtwc_cl take it: a squared-Euclidean Problem was stamped L1 here.
+    own = problem_with(X, 'ckpt_metric_own');
+    own.set_distance('Metric', 'squared_euclidean');
+    own.fill_distance_matrix();
+    dtwc.save_checkpoint(own, ckdir);
+    own_fresh = problem_with(X, 'ckpt_metric_own');
+    own_fresh.set_distance('Metric', 'squared_euclidean');
+    verifyTrue(testCase, dtwc.load_checkpoint(own_fresh, ckdir));
+    verifyError(testCase, @() dtwc.load_checkpoint(problem_with(X, 'ckpt_metric_own'), ckdir), ...
+        'dtwc:invalidArgument', 'an L1 Problem must refuse the SquaredL2 checkpoint it did not name');
 end
 
 function test_checkpoint_absent_file_is_false_not_an_error(testCase)
