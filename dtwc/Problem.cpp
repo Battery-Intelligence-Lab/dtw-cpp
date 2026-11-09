@@ -16,7 +16,6 @@
 #include "base/error.hpp"           // for DeviceError
 #include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byHiGHS, LR_core_clustering
 #include "base/parallelisation.hpp" // for run
-#include "scores.hpp"          // for silhouette
 #include "base/settings.hpp"        // for data_t, index_t, settings::DEFAULT_MIP_SOLVER
 #include "core/matrix_io.hpp"  // for operator<<(ostream, DistanceMatrix)
 #include "core/medoid_assignment_policy.hpp" // finite assignment contract
@@ -29,9 +28,7 @@
 #endif
 #include "warping.hpp"         // for detail::all_usable, refuse_unusable
 #include "core/dtw_kernel.hpp" // for dtw_lanes
-#include "warping_wdtw.hpp"    // for wdtw_weights (cache population)
 #include "types/Range.hpp"     // for Range
-#include "initialisation.hpp"  // For initialisation functions
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
 #include "base/missing_utils.hpp"               // for all_missing
@@ -54,7 +51,6 @@
 #include <limits>    // for numeric_limits
 #include <numeric>   // for iota
 #include <optional>  // for optional
-#include <cassert>
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
 #include <utility>   // for pair
@@ -239,7 +235,9 @@ std::size_t parse_ram_limit(const std::string &text, std::string_view key)
   const double scaled = match == std::end(units) ? -1.0 : std::ldexp(value, match->second);
   // The one range check: a negative, NaN or infinite value and an unknown unit
   // fail it, and so does a count size_t cannot hold, whose cast would be undefined.
-  if (ec != std::errc{} || !(scaled >= 0.0 && scaled < std::ldexp(1.0, std::numeric_limits<std::size_t>::digits)))
+  // A conjunction of the passing comparisons, not the negated pair of failing ones: every comparison is false for NaN.
+  const bool in_range = scaled >= 0.0 && scaled < std::ldexp(1.0, std::numeric_limits<std::size_t>::digits);
+  if (ec != std::errc{} || !in_range)
     throw InvalidInput("Invalid " + std::string(key) + " '" + text
                        + "': expected a size such as 2G, 500M or 1.5GiB, in B, K, M, G or T (KB and KiB alike), "
                          "below 2^64 bytes; 0 is automatic.");
