@@ -298,6 +298,9 @@ void redecode(Decoder &decoder, std::span<const std::byte> bytes, const Message 
     throw IOError(step + "'s message is not the one the file was walked with: the file changed while it was read");
 }
 
+/// What an error calls record batch `k` of the file.
+std::string batch_step(std::size_t k) { return "Arrow IPC record batch " + std::to_string(k); }
+
 /// The schema's columns the series come from, checked with the Parquet reader's texts: 'data', a List or LargeList of
 /// Float32/Float64, and 'name', Utf8 or LargeUtf8 (-1: none), and the metadata 'ndim'.
 struct Columns
@@ -407,7 +410,7 @@ void check_rows(const ArrowArrayView *used, std::int64_t rows, const std::string
 ArrowArrayView *view_batch(Decoder &decoder, const ArrowBufferView &body, const Used &columns, std::size_t k,
                            bool validate = true)
 {
-  const std::string step = "Arrow IPC record batch " + std::to_string(k);
+  const std::string step = batch_step(k);
   ArrowError error{};
   ArrowArrayView *view = nullptr;
   check(ArrowIpcDecoderDecodeArrayView(&decoder.ipc, body, -1, &view, &error), error, step);
@@ -666,7 +669,7 @@ void decode_batch(const ArrowSchema &schema, ArrowIpcEndianness endianness, std:
                   const Body &body, const Message &message, const Used &used, std::size_t k,
                   std::optional<Expect> walked, Decoded &out)
 {
-  const std::string step = "Arrow IPC record batch " + std::to_string(k);
+  const std::string step = batch_step(k);
   ArrowError error{};
   Decoder decoder;
   // SetSchema reads the schema, as every decoder does at once.
@@ -707,6 +710,24 @@ struct Batch
   bool viewed = false, name_nulls = true;
   std::int64_t rows = 0, declared = 0, scratch = 0, values = 0, names = 0, name_span = 0, longest_name = -1;
 };
+
+/// view_batch of record batch `k`, which the walk found viewed where it lies: it must still be, else the file changed
+/// while it was read.
+const ArrowArrayView *view_again(Decoder &decoder, const ArrowBufferView &body, const Used &used, std::size_t k)
+{
+  const ArrowArrayView *view = view_batch(decoder, body, used, k);
+  if (view == nullptr)
+    throw IOError(batch_step(k) + " can no longer be viewed where it lies: the file changed while it was read");
+  return view;
+}
+
+/// An IOError naming `step` unless `view`, record batch `batch` read again, has the rows the walk found in it.
+void check_walked_rows(const ArrowArrayView *view, const Batch &batch, const std::string &step)
+{
+  if (view->length != batch.rows)
+    throw IOError(step + " holds " + std::to_string(view->length) + " rows, and when the file was walked "
+                  + std::to_string(batch.rows) + ": the file changed while it was read");
+}
 
 /// The longest row `column` holds, a list or string column viewed in memory and validated (its offsets inside their
 /// buffer), from its offsets, at most `bound` (its values, or its characters' bytes): a row whose offsets run
@@ -771,7 +792,7 @@ std::string block_mismatch(const ArrowIpcFileBlock &block, const Message &messag
 /// (pyarrow) reads what the footer says: the values byte-swapped under another byte order, other values from the same
 /// bytes under another schema, or the rows in another order under blocks in another order. A message the walk refuses
 /// ends the count, which it then refuses in turn, after what it finds before it; the footer's refusal (Count::footer)
-/// waits for the walk's end, as when the footer was checked after it.
+/// waits for the walk's end, so the walk's own refusals come first.
 Count count_batches(Decoder &decoder, const Source &source, std::int64_t at, std::int64_t last, bool footer,
                     const ArrowSchema &schema, ArrowIpcEndianness endianness)
 {
@@ -949,7 +970,7 @@ void walk(const Source &source, Walk &out)
       decoder.ipc.codec == NANOARROW_IPC_COMPRESSION_TYPE_NONE && out.endianness == ArrowIpcSystemEndianness();
     // A pre-1.0 union carries a validity buffer nanoarrow skips over a whole batch, and not in the walk of one column.
     if (unions && decoder.ipc.metadata_version < NANOARROW_IPC_METADATA_VERSION_V5)
-      throw IOError("Arrow IPC record batch " + std::to_string(k) + " is in metadata version V4 and its schema holds a "
+      throw IOError(batch_step(k) + " is in metadata version V4 and its schema holds a "
                     "union, whose pre-1.0 layout misplaces the buffers of later columns in nanoarrow's decode of one "
                     "column: rewrite the file with Arrow 1.0 or later");
     const bool memory = source.in_memory();
@@ -979,7 +1000,7 @@ void walk(const Source &source, Walk &out)
                           : out.endianness != ArrowIpcSystemEndianness()                ? "big-endian"
                                                                                         : "misaligned";
       const Proof proof = prove_batch(decoder, body, out.used, out.endianness != ArrowIpcSystemEndianness(),
-                                      "Arrow IPC record batch " + std::to_string(k));
+                                      batch_step(k));
       out.longest_values = -1;
       batch.rows = proof.rows;
       batch.declared = proof.declared;
@@ -1026,8 +1047,8 @@ std::optional<std::string_view> row_name(const ArrowArrayView *label, std::int64
 }
 
 /// The rows of a record batch, the file's rows from `first` on: a span of each series' values and a view of its name
-/// where they lie (the body, or a decoded column), today's verdicts on a null and on offsets outside their values row
-/// by row; a row named by no 'name' value is marked in `unnamed`, at its row less `marks`.
+/// where they lie (the body, or a decoded column); a null, or offsets outside the values, is refused at its row, in
+/// data_from_arrow's words; a row named by no 'name' value is marked in `unnamed`, at its row less `marks`.
 template <typename T>
 void view_rows(const ArrowArrayView *batch, const Columns &columns, std::int64_t first,
                std::vector<std::span<const T>> &series, std::vector<std::string_view> &names,
@@ -1109,17 +1130,14 @@ Data view_batches(Decoder &decoder, std::span<const std::byte> bytes, const std:
       const Message &message = batches[k].message;
       const auto own = bytes.subspan(static_cast<std::size_t>(message.at),
                                      static_cast<std::size_t>(message.header + message.body));
-      redecode(decoder, own, message, "Arrow IPC record batch " + std::to_string(k)); // the walk verified it
-      batch = view_batch(decoder, body_of(own, message).view, used, k);
-      if (batch == nullptr)
-        throw IOError("Arrow IPC record batch " + std::to_string(k)
-                      + " can no longer be viewed where it lies: the file changed while it was read");
+      redecode(decoder, own, message, batch_step(k)); // the walk verified it
+      batch = view_again(decoder, body_of(own, message).view, used, k);
       viewed = true;
     } else {
       decoded_any = true;
     }
     if (series.size() + static_cast<std::size_t>(batch->length) > n)
-      throw IOError("Arrow IPC record batch " + std::to_string(k)
+      throw IOError(batch_step(k)
                     + " holds more rows than when the file was walked: the file changed while it was read");
     view_rows(batch, columns, static_cast<std::int64_t>(series.size()), series, names, unnamed, 0);
   }
@@ -1322,6 +1340,16 @@ std::size_t thread_count() { return static_cast<std::size_t>(std::max(1, get_max
 /// The bytes of the name series_<i> made for a row of a file of `n` rows that has none, at most: what a price counts.
 std::size_t made_name_bytes(index_t n) { return 7 + std::to_string(std::max<index_t>(n - 1, 0)).size(); }
 
+/// Series `i` of `data`, which holds T (float or data_t).
+template <typename T>
+std::span<const T> series_of(const Data &data, std::size_t i)
+{
+  if constexpr (std::is_same_v<T, float>)
+    return data.series_f32(i);
+  else
+    return data.series(i);
+}
+
 /// The objects a record batch's decoded columns hold (nanoarrow's arrays and their private data, their place in an
 /// owner): IpcFile::decoded_data_bytes, and IpcFile::decoded_name_bytes with a 'name' column; none when it is viewed.
 std::size_t decoded_object_bytes(const IpcFile::State &state, const Batch &batch)
@@ -1333,11 +1361,11 @@ std::size_t decoded_object_bytes(const IpcFile::State &state, const Batch &batch
 /// IpcFile::largest_row_group_bytes for one record batch, each heap block as the heap holds it (heap_block_bytes): its
 /// message read from the file (without llfio) and its decoded columns; its spans and its name views (16 bytes a row
 /// each), its made names (a made name a row at most, none where a 'name' column has no nulls), the rows it marks
-/// unnamed while it is read; in the other
-/// precision (T Float32 with `f32`) its values cast, beside which the spans of the stored values live until it is
-/// read; its share of the block's spans and name views; its objects (batch_object_bytes, decoded_object_bytes); and
-/// the two names the stream's check of it copies (its shortest and longest rows'), each at most its longest name where
-/// the walk read its offsets (a batch viewed in memory), else its characters' bytes, or a made name.
+/// unnamed while it is read; in the other precision (T Float32 with `f32`) its values cast, beside which the spans of
+/// the stored values live until it is read; its share of the block's spans and name views; its objects
+/// (batch_object_bytes, decoded_object_bytes); and the two names the stream's check of it copies (its shortest and
+/// longest rows'), each at most its longest name where the walk read its offsets (a batch viewed in memory), else its
+/// characters' bytes, or a made name.
 std::size_t batch_bytes(const IpcFile::State &state, const Batch &batch, bool f32)
 {
   const auto rows = static_cast<std::size_t>(batch.rows);
@@ -1388,7 +1416,7 @@ Data read_batch_as(const IpcFile::State &state, std::size_t k)
   const Walk &walked = state.walk;
   const Batch &batch = walked.batches[k];
   const Message &message = batch.message;
-  const std::string step = "Arrow IPC record batch " + std::to_string(k);
+  const std::string step = batch_step(k);
   auto owner = std::make_shared<Owner>();
   std::span<const std::byte> bytes;
   if (state.mapped()) {
@@ -1408,17 +1436,13 @@ Data read_batch_as(const IpcFile::State &state, std::size_t k)
     check(ArrowIpcDecoderSetSchema(&decoder.emplace().ipc, const_cast<ArrowSchema *>(&walked.schema.arrow), &error),
           error, step);
     redecode(*decoder, bytes, message, step);
-    view = view_batch(*decoder, body_of(bytes, message).view, walked.used, k);
-    if (view == nullptr)
-      throw IOError(step + " can no longer be viewed where it lies: the file changed while it was read");
+    view = view_again(*decoder, body_of(bytes, message).view, walked.used, k);
   } else {
     decode_batch(walked.schema.arrow, walked.endianness, bytes, body_of(bytes, message), message, walked.used, k,
                  Expect{ batch.declared, batch.scratch }, decoded);
     view = &decoded.batch.arrow;
   }
-  if (view->length != batch.rows)
-    throw IOError(step + " holds " + std::to_string(view->length) + " rows, and when the file was walked "
-                  + std::to_string(batch.rows) + ": the file changed while it was read");
+  check_walked_rows(view, batch, step);
   const auto rows = static_cast<std::size_t>(batch.rows);
   const std::int64_t first = state.first_row[k];
   std::vector<std::span<const Stored>> stored;
@@ -1472,7 +1496,7 @@ void read_names(const IpcFile::State &state, std::size_t k, std::vector<std::str
   const Walk &walked = state.walk;
   const Batch &batch = walked.batches[k];
   const Message &message = batch.message;
-  const std::string step = "Arrow IPC record batch " + std::to_string(k);
+  const std::string step = batch_step(k);
   const Used used{ walked.used[1] };
   Decoder decoder;
   ArrowError error{};
@@ -1510,17 +1534,13 @@ void read_names(const IpcFile::State &state, std::size_t k, std::vector<std::str
   const ArrowArrayView *view = nullptr;
   if (batch.viewed) {
     if (state.mapped()) redecode(decoder, header, message, step);
-    view = view_batch(decoder, body.view, used, k);
-    if (view == nullptr)
-      throw IOError(step + " can no longer be viewed where it lies: the file changed while it was read");
+    view = view_again(decoder, body.view, used, k);
   } else {
     decode_batch(walked.schema.arrow, walked.endianness, header, body, message, used, k,
                  Expect{ batch.names, batch.scratch }, decoded);
     view = &decoded.batch.arrow;
   }
-  if (view->length != batch.rows)
-    throw IOError(step + " holds " + std::to_string(view->length) + " rows, and when the file was walked "
-                  + std::to_string(batch.rows) + ": the file changed while it was read");
+  check_walked_rows(view, batch, step);
   const ArrowArrayView *label = view->children[walked.columns.name];
   for (std::int64_t r = 0; r < batch.rows; ++r) {
     const std::int64_t row = state.first_row[k] + r;
@@ -1730,12 +1750,7 @@ Data IpcFile::read_rows(std::vector<index_t> rows, std::size_t ram_budget) const
         for (std::size_t i = group.from; i < group.to; ++i) {
           const std::size_t original = order[i];
           const auto local = static_cast<std::size_t>(rows[original] - state.first_row[group.batch]);
-          const auto values = [&] {
-            if constexpr (f32)
-              return batch.series_f32(local);
-            else
-              return batch.series(local);
-          }();
+          const auto values = series_of<T>(batch, local);
           vecs[original].assign(values.begin(), values.end());
           names[original] = std::string(batch.name(local));
           copied[j] += series_bytes(values.size(), 0, f32) + name_heap_bytes(state, names[original].size(), 1);
@@ -1773,10 +1788,7 @@ Data IpcFile::read_row_groups(int first, int count, const PieceCheck &check) con
     auto owners = std::make_shared<std::vector<std::shared_ptr<const void>>>();
     for (const Data &batch : batches) {
       for (std::size_t i = 0; i < static_cast<std::size_t>(batch.size()); ++i) {
-        if constexpr (std::is_same_v<T, float>)
-          series.push_back(batch.series_f32(i));
-        else
-          series.push_back(batch.series(i));
+        series.push_back(series_of<T>(batch, i));
         names.push_back(batch.name(i));
       }
       owners->push_back(batch.owner());

@@ -146,8 +146,8 @@ private:
  * returned to the system, core::release_free_memory) before the next is read; so is the union's, before the pass.
  *
  * `prob` holds no series; its distance takes the series' features a time step from its data (an empty Data of the
- * file's ndim, for a file of more than one). Static, so each including file's instantiation is local to it, as it was
- * in fast_clara_parquet.cpp: GCC inlines the assignment into its caller only then (2026-11-01).
+ * file's ndim, for a file of more than one). Static, so each including file's instantiation is local to it: GCC
+ * inlines the assignment into its caller only then (2026-11-01).
  */
 template <bool F32, typename Reader>
 static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptions &opts, const Reader &reader,
@@ -232,7 +232,8 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
   const size_t medoid_bytes = Reader::series_bytes(medoid_values, medoids.size(), F32);
   const size_t fixed = (on_gpu ? 2 : 1) * medoid_bytes + clara_pass_bytes(plan, samples.size()) + reader.decode_bytes();
   const size_t one = reader.largest_row_group_bytes(F32), group = times * one;
-  // After the pass the Problem copies the winner's labels (set_result) beside every sample's, the file still open.
+  // After the pass Problem::set_result copies the winner's labels into the Problem (n_points labels) and builds its
+  // is_medoid bitmap (n_points / 8 bytes), beside every sample's labels, the file still open.
   const size_t finish = open + medoid_bytes + samples.size() * n_points * sizeof(index_t) + n_points * sizeof(index_t)
                       + n_points / 8;
   if (std::max(fixed + group, finish) > limit)

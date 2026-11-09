@@ -1,6 +1,7 @@
 /**
  * @file arrow_c_data.cpp
- * @brief Implementation of Arrow C Data interface ingest (see arrow_c_data.hpp).
+ * @brief dtwc::io::data_from_arrow and data_from_arrow_stream: the series of Arrow C Data (schema, array) pairs copied
+ *        into a Data, read with nanoarrow's views (see arrow_c_data.hpp).
  *
  * @author Volkan Kumtepeli
  * @author Claude Opus 4.8
@@ -12,7 +13,10 @@
 #include "../base/error.hpp"
 #include "nanoarrow/nanoarrow.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dtwc::io {

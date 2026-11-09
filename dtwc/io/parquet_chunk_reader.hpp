@@ -36,7 +36,6 @@
 #include <new>
 #include <numeric>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -324,8 +323,8 @@ public:
     return decode_overhead * decoded + 2 * page_bytes_;
   }
 
-  /// What FastCLARA's stream prices the reader holding while it is open, beside any read: nothing, as before the
-  /// stream priced an Arrow IPC file's walk (2026-11-01); its metadata is not measured.
+  /// What FastCLARA's stream prices the reader holding while it is open, beside any read: nothing, its metadata is
+  /// not measured (an Arrow IPC file's walk is: IpcFile::open_bytes).
   size_t open_bytes() const { return 0; }
 
   /// The bytes the series of every row group hold once read: what the series
