@@ -53,17 +53,23 @@
   for my commits on `pb/QP` after the gather: dead `row_group_rows` and `RunReport::notes`, the `check` parameter that
   shadows `check()`, one `made_name` for the seven `"series_" + to_string` sites, one text-file writer for the report's two
   sites, the "Metoid" misspelling, a `reserve` tidy flags.
-- The merged tree's MSVC strict build FAILS: `dtwc/extern/nanoarrow/flatcc.c:3033` C2099 under `/fp:strict` (a float
-  constant initialiser), because MM's `dtwc_third_party` links `project_options` and so takes our FP flags. Fix on `pb/REL`
-  52f3f765 (`cmake/ProjectOptions.cmake`: the flags on `COMPILE_LANGUAGE:CXX` only; our code has no C). Three proofs were
-  running: cl strict + `cpp_conformance` (`orch_rel_cl_strict.log`), clang fast ctest + identity against the merged binary
-  (`orch_rel_clang.log`), WSL GCC rebuild + ctest (`orch_rel_wsl.log`). Merge `pb/REL` fast-forward when green.
+- The merged tree's MSVC strict build FAILED: `dtwc/extern/nanoarrow/flatcc.c:3033` C2099 under `/fp:strict` (a float
+  constant initialiser), because MM's `dtwc_third_party` links `project_options` and so took our FP flags. Fixed and merged:
+  c4271bbf (`cmake/ProjectOptions.cmake`: the flags on `COMPILE_LANGUAGE:CXX` only; our code has no C), proven by cl strict
+  `cpp_conformance` 1/1, clang fast 103/103 with the identity gate 0 differ against the merged binary, and WSL GCC rebuilt
+  (112 steps) 102/102 (my chains `orch_rel_*`; the first WSL run logged into the repo root by a `cd` mistake, LESSONS).
+- QP4 accepted (`report_qp4.md`; diffs read; its pytest 933/19, MEX 104 + matlab_suite 151, G10 324/324) and merged into
+  `pb/QP` (eda1481b). My two commits there: ffe8939e, the cross-file findings (`made_name`, `write_text`, dead
+  `row_group_rows` and `RunReport::notes`, the `piece` parameter, the MEX's one `dtwc:invalidInput`, "Medoid", a `reserve`;
+  gates clang 103/103, identity 153 files 0 differ, check_docs PASS, MEX tree 104/104), and e0d4d63d, the MATLAB help fix QP4
+  found (31 files' Doxygen headers moved below the help blocks; `tests/matlab/test_help_text.m` 3/3 on the fixed tree,
+  3/3 FAIL on the base). `pb/QP` tree e135797a.
 
 ## Reported by agents, unverified
 
-- QP4 (bindings), QP5 (MM's tests under the 09-30 rule) and DOC (the docs' and CHANGELOG's final read, `brief_doc.md`,
-  branch `pb/DOC` from 93ef5434) were running. Logs: `C:/D/git/wt/tmp/QP/logs/`. The agents' own gate counts in the three
-  accepted reports (GCC, Arrow, MEX, pytest were not theirs to run) are theirs until the QP merge's full gates.
+- QP5 (MM's tests under the 09-30 rule) and DOC (the docs' and CHANGELOG's final read, `brief_doc.md`, branch `pb/DOC`
+  from 93ef5434) were running. Logs: `C:/D/git/wt/tmp/QP/logs/`. The agents' own gate counts in the four accepted reports
+  (GCC, Arrow, CUDA were not theirs to run) are theirs until the QP merge's full gates.
 
 ## Decisions
 
@@ -74,10 +80,10 @@
 
 ## Next steps
 
-1. QP (PLAN item 2): QP4 and QP5 as QP1–3 (diff read, identity run, report transcribed), merged into `pb/QP`; my gather
-   commits (`gather_todo.md`), each with the identity gate; the review (`brief_qp_review.md`, one Sonnet agent on `pb/QP`);
-   the full gates once on `pb/QP` in its worktree (clang, Arrow, no-llfio, no-cpuinfo, MEX + matlab_suite, CUDA, WSL GCC,
-   fresh-venv pytest); merge `--no-ff` into design-2.0 after `pb/REL`; push. Then `pb/DOC` the same way (docs gates only).
+1. QP (PLAN item 2): QP5 as QP1–4 (diff read, identity run, report transcribed), merged into `pb/QP`; the review
+   (`brief_qp_review.md`, one Sonnet agent on `pb/QP`, with `gather_todo.md`'s done list); the full gates once on `pb/QP` in its
+   worktree (clang, Arrow, no-llfio, no-cpuinfo, MEX + matlab_suite, CUDA, WSL GCC, fresh-venv pytest); merge `--no-ff` into
+   design-2.0; push. Then `pb/DOC` the same way (docs gates only).
 2. The release list (item 3): left are `cpp_conformance` under MSVC strict (`C:/D/git/wt/MM/build-cl-strict` was building;
    a waiter runs `ctest -R cpp_conformance` there and logs `orch_cl_strict_ctest.log`), F43 (the question batch) and the
    docs' and CHANGELOG's final read (one Sonnet agent after QP). HG's draft plan: `C:/D/git/wt/tmp/HG/hg_plan.md`.
