@@ -2,12 +2,12 @@ cmake_minimum_required(VERSION 3.26)
 
 # Three libraries and one name for consumers:
 #   dtwc_core  the algorithms, the session, the text reader and the result
-#              writers: everything the Python module and the MEX link;
-#   dtwc_io    the readers that need Arrow (Arrow IPC, Parquet, and FastCLARA
-#              streaming from Parquet), in a build with Arrow: the one library
-#              Arrow links;
+#              writers;
+#   dtwc_io    the readers that need Arrow C++ (Parquet, and FastCLARA streaming
+#              from Parquet), in a build with Arrow: the one library Arrow links;
 #   dtwc_cli   the command line: cli::bind and its config files (CLI11, fkYAML),
-#              dtwc::run and the Tier-1 facade (api.cpp) that runs it.
+#              dtwc::run and the Tier-1 facade (api.cpp) that runs it: what the
+#              Python module and the MEX link, in a build without Arrow.
 # dtwc++ links them all, so tests, examples, benchmarks and a parent project keep
 # their link line.
 add_library(dtwc_core STATIC)
@@ -34,6 +34,35 @@ foreach(_dtwc_lib IN LISTS _dtwc_libs)
 endforeach()
 # The umbrella header includes the libraries' headers.
 target_sources(dtwc++ INTERFACE FILE_SET HEADERS BASE_DIRS . FILES dtwc.hpp)
+
+# The third-party C the Arrow IPC reader runs: nanoarrow's IPC extension and flatcc
+# (extern/nanoarrow lists them), lz4's library and zstd's decoder (fetched by
+# cmake/Dependencies.cmake). One object library, linked into dtwc_core: without the
+# project's warnings (their C set is the C++ one), position-independent (the wheel's
+# module) and hidden, so neither these codecs nor another copy of them in the process
+# (pyarrow's, a host's) can take the other's place. The codecs' headers give their API
+# default visibility whatever the preset unless the four macros are defined; lz4's
+# copy of xxHash takes lz4's namespace (zstd's has its own), and zstd's sources no
+# assembly (cl never compiles it).
+add_library(dtwc_third_party OBJECT)
+set_target_properties(dtwc_third_party PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+target_link_libraries(dtwc_third_party PRIVATE project_options)
+target_include_directories(dtwc_third_party PRIVATE extern extern/nanoarrow "${lz4_SOURCE_DIR}/lib"
+                                                   "${zstd_SOURCE_DIR}/lib")
+target_compile_definitions(dtwc_third_party PRIVATE NANOARROW_IPC_WITH_LZ4 NANOARROW_IPC_WITH_ZSTD
+  ZSTDLIB_VISIBLE= ZSTDERRORLIB_VISIBLE= LZ4LIB_VISIBILITY= LZ4FLIB_VISIBILITY=)
+set(_dtwc_lz4 lz4.c lz4frame.c lz4hc.c xxhash.c)
+list(TRANSFORM _dtwc_lz4 PREPEND "${lz4_SOURCE_DIR}/lib/")
+set(_dtwc_zstd common/debug.c common/entropy_common.c common/error_private.c common/fse_decompress.c
+  common/xxhash.c common/zstd_common.c decompress/huf_decompress.c decompress/zstd_ddict.c
+  decompress/zstd_decompress.c decompress/zstd_decompress_block.c)
+list(TRANSFORM _dtwc_zstd PREPEND "${zstd_SOURCE_DIR}/lib/")
+target_sources(dtwc_third_party PRIVATE ${_dtwc_lz4} ${_dtwc_zstd})
+set_source_files_properties(${_dtwc_lz4} PROPERTIES COMPILE_DEFINITIONS XXH_NAMESPACE=LZ4_)
+set_source_files_properties(${_dtwc_zstd} PROPERTIES COMPILE_DEFINITIONS ZSTD_DISABLE_ASM)
+target_link_libraries(dtwc_core PRIVATE dtwc_third_party)
+unset(_dtwc_lz4)
+unset(_dtwc_zstd)
 
 # Each folder lists its own files, and the settings that belong to them, on its library.
 add_subdirectory(mip)
@@ -77,6 +106,7 @@ target_sources(dtwc_core
   soft_dtw.hpp
   # The folders that hold headers only
   detail/decode_pair.hpp
+  detail/result_files.hpp
   enums/Method.hpp
   enums/Solver.hpp
   enums/enums.hpp
@@ -87,9 +117,9 @@ target_sources(dtwc_core
 # The facade the command line runs.
 target_sources(dtwc_cli PRIVATE api.cpp PUBLIC FILE_SET HEADERS FILES api.hpp)
 
-# The vendored nanoarrow and fast_float are PRIVATE: only io/arrow_c_data.cpp and
-# io/parse_number.cpp include them, behind headers that name none of their types,
-# so they never reach a consumer.
+# The vendored nanoarrow and fast_float are PRIVATE: only io/arrow_c_data.cpp,
+# io/arrow_ipc.cpp and io/parse_number.cpp include them, behind headers that name
+# none of their types, so they never reach a consumer.
 target_include_directories(dtwc_core PRIVATE extern)
 
 target_link_libraries(dtwc_core PRIVATE mip-solvers)
@@ -203,24 +233,32 @@ foreach(_dtwc_lib IN LISTS _dtwc_libs)
   endif()
 endforeach()
 
-# llfio (optional) — memory-mapped distance matrices. core/distance_matrix.cpp
-# is the one file that includes it, so the link is PRIVATE; DTWC_HAS_MMAP is
-# PUBLIC, as every capability is, so a consumer (and the tests) can tell whether
-# use_mmap_distance_matrix can map a file.
+# llfio (optional) — memory-mapped distance matrices and Arrow IPC files.
+# core/distance_matrix.cpp and io/arrow_ipc.cpp are the files that include it, so
+# the link is PRIVATE; DTWC_HAS_MMAP is PUBLIC, as every capability is, so a
+# consumer (and the tests) can tell whether use_mmap_distance_matrix can map a file.
 if(TARGET llfio_hl)
   target_link_libraries(dtwc_core PRIVATE llfio_hl)
   target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_MMAP)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")
 endif()
 
-# Arrow + Parquet (optional) — Arrow IPC and Parquet reading, on dtwc_io alone. Arrow without Parquet is a
-# legitimate IPC-only build; Arrow found with no target to link is an error, not a build that links nothing.
+# cpuinfo (optional) — the CPU's model, cores and SIMD extensions in core/machine.cpp, the one file that includes it;
+# DTWC_HAS_CPUINFO is PUBLIC, as every capability is, so a consumer (and the tests) can tell whether they are known.
+if(TARGET cpuinfo)
+  target_link_libraries(dtwc_core PRIVATE cpuinfo)
+  target_compile_definitions(dtwc_core PUBLIC DTWC_HAS_CPUINFO)
+endif()
+
+# Arrow + Parquet (optional) — Parquet reading, on dtwc_io alone (every build reads Arrow IPC, io/arrow_ipc.cpp).
+# Arrow without Parquet reads no more than a build without Arrow; Arrow found with no target to link is an error, not a
+# build that links nothing.
 if(TARGET dtwc_io)
   if(DTWC_ARROW_FROM_CPM)
     # CPM-built static Arrow + Parquet
     target_link_libraries(dtwc_io PUBLIC arrow_static parquet_static)
     target_compile_definitions(dtwc_io PUBLIC DTWC_HAS_ARROW DTWC_HAS_PARQUET)
-    message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
+    message(STATUS "Arrow + Parquet linked — Parquet reading enabled")
   elseif(TARGET Arrow::arrow_shared)
     # System-installed Arrow (conda, apt, brew)
     target_link_libraries(dtwc_io PUBLIC Arrow::arrow_shared)
@@ -228,9 +266,9 @@ if(TARGET dtwc_io)
     if(Parquet_FOUND)
       target_link_libraries(dtwc_io PUBLIC Parquet::parquet_shared)
       target_compile_definitions(dtwc_io PUBLIC DTWC_HAS_PARQUET)
-      message(STATUS "Arrow + Parquet linked — IPC and Parquet reading enabled")
+      message(STATUS "Arrow + Parquet linked — Parquet reading enabled")
     else()
-      message(STATUS "Arrow linked, IPC only: Parquet not found — reading a Parquet file raises")
+      message(STATUS "Arrow linked without Parquet: reading a Parquet file raises")
     endif()
   else()
     message(FATAL_ERROR

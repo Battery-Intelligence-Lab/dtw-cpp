@@ -119,12 +119,28 @@ data_t wdtwBanded(std::span<const data_t> x, std::span<const data_t> y,
 // ---------------------------------------------------------------------------
 
 namespace detail {
+/// cached_wdtw_weights' table and the max_dev and g it was built for (-1: none). Its key lives with it, so that
+/// core::release_thread_scratch(), which empties it (detail::dispatch_scratch, core/dtw_dispatch.cpp), resets the key too.
+template <typename T>
+struct WdtwCache
+{
+  std::vector<T> w;
+  int max_dev = -1;
+  T g = T(-1);
+};
+
+/// This thread's WdtwCache, one a T.
+template <typename T>
+WdtwCache<T> &wdtw_cache()
+{
+  thread_local WdtwCache<T> cache;
+  return cache;
+}
+
 template <typename data_t>
 const std::vector<data_t>& cached_wdtw_weights(int max_dev, data_t g)
 {
-  thread_local std::vector<data_t> cached_w;
-  thread_local int cached_max_dev = -1;
-  thread_local data_t cached_g = data_t(-1);
+  auto &[cached_w, cached_max_dev, cached_g] = wdtw_cache<data_t>();
   if (max_dev != cached_max_dev || g != cached_g) {
     cached_w = wdtw_weights<data_t>(max_dev, g);
     cached_max_dev = max_dev;

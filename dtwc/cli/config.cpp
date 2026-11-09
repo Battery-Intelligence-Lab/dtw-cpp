@@ -176,8 +176,9 @@ void bind(CLI::App &app, Config &config)
       "which can change costs, scores and medoids) (aliases: f32, f64, float, double)");
   app.add_option_function<std::string>(
        "--ram-limit", [&config](const std::string &text) { config.ram_limit = parse_ram_limit(text, "--ram-limit"); },
-       "Memory the run may use (e.g. 2G, 500M, 128G); 0: automatic, the memory available. It decides when the "
-       "distance matrix is mapped to a file and when Parquet series stream through clara")
+       "Memory the run plans for (e.g. 2G, 500M, 128G); 0: automatic, 90% of the memory available. A reserve for "
+       "the threads, then the series and the distance matrix: it sets the threads, when the matrix is mapped to a "
+       "file and when Parquet and Arrow IPC series stream through clara")
     ->default_function([&config] { return text_of(config.ram_limit); })
     ->capture_default_str();
 
@@ -270,6 +271,11 @@ void bind(CLI::App &app, Config &config)
       "GPU kernel precision: auto (default), float32/f32/fp32, float64/f64/fp64/double");
 
   key(app, "-v,--verbose", config.verbose, "Verbose output");
+  app.add_flag_function(
+       "--no-report", [&config](std::int64_t count) { if (count > 0) config.report = false; },
+       "Write no run report (<name>_report.txt: the run's machine, memory plan, stages and result, in plain text)")
+    ->default_function([&config] { return text_of(!config.report); })
+    ->capture_default_str();
 
   // v1.0.0's spellings (its --method values kMedoids and MIP read already, case aside).
   v1_spellings(app, "--n-clusters", { "--Nc", "--clusters", "--number_of_clusters" });

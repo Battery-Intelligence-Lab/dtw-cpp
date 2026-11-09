@@ -37,17 +37,24 @@
 #include <core/lower_bound_impl.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <new>
 #include <numeric>
 #include <random>
+#include <span>
 #include <string>
 #include <vector>
 
+using Catch::Matchers::Message;
+using Catch::Matchers::MessageMatches;
+using Catch::Matchers::StartsWith;
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 
@@ -430,4 +437,70 @@ TEST_CASE("TADPole: Float32 data disables LB/UB pruning (A1)", "[tadpole][float3
   REQUIRE(sd.pruning_enabled);
   REQUIRE(sd.pruned_by_lb + sd.pruned_by_ub > 0);
   REQUIRE(sd.dtw_calls < sd.total_pairs);
+}
+
+TEST_CASE("TADPole: a failure in either parallel stage reaches the caller as it was thrown", "[tadpole][failure]")
+{
+  // An exception may not leave an OpenMP region (the process would end), so each stage keeps a thread's failure and
+  // rethrows the lowest index's after its join, its type and text unchanged. The seam is the Problem's own bound DTW
+  // function, which both stages call: dtw_function() returns a reference to the Problem's member (no const object),
+  // replaced here by one that throws for a pair of series of two clusters and computes every other pair. Without
+  // pruning, Stage 1 computes every pair and throws there. With pruning, Stage 1 skips every such pair (LB >= dc,
+  // checked below) and Stage 2 computes one: a cluster's densest point that is not the densest of all has its
+  // higher-density points in other clusters only, and the first of them no bound skips.
+  const int N = 30, k = 3, len = 32, band = 3;
+  Problem prob = make_clusters(N, k, len, band); // series i in cluster i % k, the clusters 100 apart
+  const double dc = algorithms::tadpole_auto_dc(prob, 2.0);
+  std::vector<core::Envelope> envs(N);
+  for (int i = 0; i < N; ++i) envs[i] = core::compute_envelope(prob.series(i), band);
+  double least_lb = kInf; // of the pairs of two clusters
+  for (int i = 0; i < N; ++i)
+    for (int j = i + 1; j < N; ++j)
+      if (i % k != j % k)
+        least_lb = std::min(least_lb, core::lb_keogh_symmetric(prob.series(i), envs[i], prob.series(j), envs[j]));
+  REQUIRE(least_lb >= dc);
+
+  auto &bound = const_cast<Problem::dtw_fn_t &>(prob.dtw_function());
+  const Problem::dtw_fn_t computed = bound;
+  std::vector<const data_t *> first(N);
+  for (int i = 0; i < N; ++i) first[i] = prob.series(i).data();
+  const auto index_of = [&](std::span<const data_t> s) {
+    return static_cast<int>(std::find(first.begin(), first.end(), s.data()) - first.begin());
+  };
+  const auto refusing = [&](auto refuse) { // refuse(i, j) throws
+    return Problem::dtw_fn_t([&, refuse](std::span<const data_t> x, std::span<const data_t> y) -> data_t {
+      const int i = index_of(x), j = index_of(y);
+      if (i % k != j % k) refuse(i, j);
+      return computed(x, y);
+    });
+  };
+  const auto no_memory = refusing([](int, int) { throw std::bad_alloc(); });
+  const auto invalid = refusing([](int i, int j) {
+    throw InvalidInput("refused: series " + std::to_string(i) + " and " + std::to_string(j));
+  });
+
+  SECTION("Stage 1, every pair computed")
+  {
+    bound = no_memory;
+    REQUIRE_THROWS_AS(algorithms::tadpole(prob, k, dc, /*prune=*/false), std::bad_alloc);
+    bound = invalid; // the lowest index's: series 0 and 1 are of two clusters
+    REQUIRE_THROWS_MATCHES(algorithms::tadpole(prob, k, dc, /*prune=*/false), InvalidInput,
+                           Message("refused: series 0 and 1"));
+  }
+  SECTION("Stage 2, Stage 1 pruned")
+  {
+    bound = no_memory;
+    REQUIRE_THROWS_AS(algorithms::tadpole(prob, k, dc, /*prune=*/true), std::bad_alloc);
+    bound = invalid;
+    REQUIRE_THROWS_MATCHES(algorithms::tadpole(prob, k, dc, /*prune=*/true), InvalidInput,
+                           MessageMatches(StartsWith("refused: series ")));
+  }
+
+  // The process lives on, and with its own function again the Problem clusters as a fresh one does.
+  bound = computed;
+  Problem fresh = make_clusters(N, k, len, band);
+  const auto expected = algorithms::tadpole(fresh, k, dc, /*prune=*/true);
+  const auto got = algorithms::tadpole(prob, k, dc, /*prune=*/true);
+  REQUIRE(got.labels == expected.labels);
+  REQUIRE(got.medoid_indices == expected.medoid_indices);
 }

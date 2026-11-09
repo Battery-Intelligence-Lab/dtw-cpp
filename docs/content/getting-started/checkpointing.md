@@ -184,8 +184,9 @@ With `--checkpoint <dir>` the CLI
    fails (a full disk) stops the run with exit status 1; the results already
    written stay.
 
-When the matrix is mapped (its bytes over half of what the series leave of
-`--ram-limit`), the mapped matrix is `<dir>/<name>.dtwm` itself: it is reopened if
+When the matrix is mapped (it does not fit beside the series in what
+`--ram-limit` leaves beside the threads' reserve, the memory plan's data cap),
+the mapped matrix is `<dir>/<name>.dtwm` itself: it is reopened if
 present and written in place.
 Without `--checkpoint`, a mapped matrix is `<name>.dtwm` in the output directory.
 

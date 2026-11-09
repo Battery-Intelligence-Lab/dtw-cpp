@@ -7,13 +7,13 @@ No line numbers: grep for the symbol. Sizes are `git ls-files | xargs cat | wc -
 ## 1. Pipeline today
 
 ```text
-text file / folder ──▶ io/read_data (dtwc_core) ───┐
-Parquet / Arrow IPC ──▶ io/read_arrow (dtwc_io) ───┴▶ Data ─▶ Problem ─┬─ bind the DTW function once (dtw_dispatch)
+text file / folder, Arrow IPC ──▶ io/read_data (dtwc_core) ─┐
+Parquet ──▶ io/read_arrow (dtwc_io) ────────────────────────┴▶ Data ─▶ Problem ─┬─ bind the DTW function once (dtw_dispatch)
                                                                        ├─ fill_distance_matrix: CPU lanes | per pair | CUDA | Metal
                                                                        ├─ dist_by_ind(i, j): an O(1) read ◀── algorithms, MIP, scores
                                                                        └─ cluster() ─▶ ClusteringResult, or a free algorithm function
 Tier-1  device() → load() → Dataset → cluster() → run(Config) → Result       CLI  dtwc_cl → cli::bind → Config → run()
-Python  _dtwcpp_core + dtwcpp: apply(Config) → Problem::cluster()          MATLAB  dtwc_mex + +dtwc: the same
+Python  cluster() → _dtwcpp_core._run → run(Config) → Result (estimators: Problem)   MATLAB  dtwc.cluster → dtwc_mex run → the same
 ```
 
 ## 2. Where the code is (`dtwc/`)
@@ -21,13 +21,13 @@ Python  _dtwcpp_core + dtwcpp: apply(Config) → Problem::cluster()          MAT
 | Layer | Where | Lines | What |
 | --- | --- | --- | --- |
 | base | `base/` (+ forwarders at `dtwc/` root), `types/`, `enums/` | 1.1k | errors (`Error` → `InvalidInput`, `DeviceError`, `IOError`, `SolverError`, `UndefinedScore`), settings (`index_t`), OpenMP helpers (`run_openmp`: per-thread failure slots, the lowest-index failure rethrown), `device()` (`env`), names tables, `Index` / `Range` |
-| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 5.4k | `dtw_kernel.hpp` (linear: two columns per pass; lanes: 128 bytes on AArch64 and under clang or GCC on x86-64, 64 under cl and elsewhere, each lane its own length when unbanded but under cl; banded; × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio only in `distance_matrix.cpp`), SHA-256, portable RNG, `kmedoids_pp` |
-| io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet, Arrow IPC), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
-| backends | `cuda/`, `metal/` | 2.9k | GPU fills; CUDA also FastCLARA's assignment |
+| core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 5.4k | `dtw_kernel.hpp` (linear: two columns per pass; lanes: 128 bytes on AArch64 and under clang or GCC on x86-64, 64 under cl and elsewhere, each lane its own length when unbanded but under cl; banded; × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio in `distance_matrix.cpp` and `io/arrow_ipc.cpp`), SHA-256, portable RNG, `kmedoids_pp`; `machine_facts` (`machine.{hpp,cpp}`: host, OS, CPU via cpuinfo, RAM via llfio's `total_memory`/`available_memory`, a GPU run's GPU, the build; `unknown` where not known; `dtwc_cl -v` prints it; `cpu_seconds()`, the process's CPU time) |
+| io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), the Arrow IPC reader `arrow_ipc` (nanoarrow's IPC extension; a mapped file's series are views, `Data::owner()` keeps the bytes; a compressed, big-endian or misaligned batch is decoded, the batches in parallel, into arrays the owner holds, its buffers proven inside the body first), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
+| backends | `cuda/`, `metal/` | 2.9k | GPU fills; CUDA also FastCLARA's assignment. Both take `vector<vector<double>>`: a view `Data` (Arrow IPC, decoded batches, `set_view_data`) uploads a `detail::owned_copy` made in the caller (the fill, FastCLARA's assignment, the stream's batch), priced by `run`'s plan beside the GPU's staging (`gpu_staging_bytes`) |
 | algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4k | FastPAM, FastCLARA (`fast_clara_parquet.cpp`: the stream, in `dtwc_io`), OneBatchPAM, hierarchical, TADPole, barycenter; seeding; seven scores |
 | mip | `mip/` | 1.5k | `mip-solvers`: HiGHS and Gurobi p-median (`build_p_median_model`), LR-core (`lagrangian_root`: dual, the subgradient or Kelley root on a `KelleyMaster`, reduced-cost fixing, branch and bound) |
 | session | `Problem.{hpp,cpp}`, `Problem_IO.cpp`, `checkpoint.*` | 2.3k | the `Problem` session: data, distance binding, matrix cache, clustering state, checkpoints; `apply(Config, Problem&)` |
-| surface | `api.*`, `cli/`, `config.hpp`, `dtwc_cl.cpp`, `test_api.hpp`, `dtwc.hpp` | 2k | Tier-1 API; `Config` (`config.hpp`, in `dtwc_core`); `cli::bind` (the one key table), `run()`; diagnostics |
+| surface | `api.*`, `cli/`, `config.hpp`, `dtwc_cl.cpp`, `test_api.hpp`, `dtwc.hpp` | 2k | Tier-1 API; `Config` (`config.hpp`, in `dtwc_core`); `cli::bind` (the one key table), `run()` (`cli/run.cpp`: the memory plan; a `std::bad_alloc` caught outside the run's scopes becomes an `InvalidInput` naming the stage, the plan, what it holds, `core::peak_memory()` and `ways_out`; readers, nanoarrow's ENOMEM, Arrow's OutOfMemory and llfio's ENOMEM pass the system's refusal as `std::bad_alloc`; `run_with` writes the run report, `cli/report.{hpp,cpp}`'s `RunReport`, as `<name>_report.txt` last, or up to a failing stage, the stages `check, plan, read, storage, fill, cluster, write`; `fill` is PAM's, Lloyd's and a full-sample CLARA's matrix); diagnostics |
 | vendored | `extern/nanoarrow`, `extern/fast_float` | — | not ours; never edited |
 
 Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clustering.py`, `_hpc.py` + `_slurm/`, `_mip.py`:
@@ -35,24 +35,26 @@ Bindings: `python/` (4.9k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
 
 ## 3. Build
 
-- Targets (L2b): static `dtwc_core` (all of the above but `cli/` and `api.cpp`; what the Python module and the MEX
-  link), `dtwc_cli` (`cli/`, `api.cpp`; CLI11, fkYAML) and, with Arrow, `dtwc_io` (the Arrow readers and FastCLARA's
+- Targets (L2b): static `dtwc_core` (all of the above but `cli/` and `api.cpp`), `dtwc_cli` (`cli/`, `api.cpp`;
+  CLI11, fkYAML; what the Python module and the MEX link, never with Arrow) and, with Arrow, `dtwc_io` (the Arrow readers and FastCLARA's
   Parquet stream), behind `dtwc++` (INTERFACE, the consumers' link name; headers in `FILE_SET`s based at `dtwc/`);
-  `mip-solvers` (object, OpenMP), `dtwc_options` / `dtwc_warnings`, `dtwc_cl` (top-level project only, not under
+  `mip-solvers` (object, OpenMP), `dtwc_third_party` (object, C: nanoarrow's IPC and flatcc, lz4, zstd's decoder;
+  hidden, no project warnings), `dtwc_options` / `dtwc_warnings`, `dtwc_cl` (top-level project only, not under
   scikit-build), examples, benchmarks, `_dtwcpp_core` (nanobind, `NOMINSIZE`), `dtwc_mex`.
 - Presets `clang-macos`, `clang-win`, `clang-win-debug`, `msvc`, `gcc-linux`, each into `build/`, tests ON. Mac:
   `build/` (Ninja Release; HiGHS, llfio, Metal, YAML), `build-matlab/` (+ the MEX, `matlab_suite`), `build-asan/`
   (ASan + UBSan). Windows box: `build/` (clang Release, benchmarks; Arrow OFF), `build/arrow-pyarrow-23` (Arrow via its
   `pyarrow-config/` shim; counts only if `ctest -N` lists `test_io_readers`), `build/cuda-verify-0928` (CUDA).
-- Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,LLFIO,YAML}` (ON),
+- Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,LLFIO,YAML,CPUINFO}` (ON),
   `DTWC_ENABLE_METAL` (ON on Apple only), `DTWC_ENABLE_{GUROBI,ARROW,CUDA}` (OFF); an `ON` that cannot be honoured
-  stops the configure. `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error), `DTWC_FP_MODEL` (`fast` | `strict`),
+  stops the configure, as does Arrow beside a binding. `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error), `DTWC_FP_MODEL` (`fast` | `strict`),
   `DTWC_ARCH_LEVEL` (`native` | `v3` | `v4`; `v3` for Python), `DTWC_CUDA_ARCH_LIST` (8.0–9.0), `DTWC_DEV_MODE`.
 - Dependencies (`cmake/Dependencies.cmake`, pinned, checked by `check_pins.py`): CLI11, fkYAML, HiGHS, llfio
-  (header-only, with pinned quickcpplib and outcome), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
+  (header-only, with pinned quickcpplib and outcome), cpuinfo (a commit; static, PIC, hidden, silent, outside `all`), lz4 and zstd (sources, always), Arrow, Catch2, Google Benchmark, nanobind (PyPI first); OpenMP,
   Gurobi, CUDA, Metal from the system. FP flags: `-fassociative-math` without `-ffinite-math-only`, on `dtwc_options`.
 - macOS needs `brew install libomp` and `-DOpenMP_ROOT=/opt/homebrew/opt/libomp`; Windows CUDA, nvcc 13.0 with a
-  supported MSVC host. The wheel links no HiGHS (`mip` extra: highspy); the MEX links it statically; archives and
+  supported MSVC host. The wheel links no HiGHS (highspy, a dependency: `_mip.solve`); the MEX links it statically; the wheel and
+  the MEX CI build YAML off; archives and
   wheels are x86-64-v3 or arm64, macOS ≥ 13.3.
 - Windows CUDA tree (`build/cuda-verify-0928`), under `vcvars64.bat`: `cmake -S . -B <dir> -G Ninja
   -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl "-DCMAKE_CUDA_COMPILER=<CUDA 13.0>/bin/nvcc.exe"
@@ -107,8 +109,8 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
 
 - `Config` is flat, keyed by the CLI long names; `cli::bind` is the one key table; TOML / YAML through CLI11.
   `k` is required, `method = auto` (cpu: `pam` for N ≤ 5000, else `clara`; gpu: `pam`).
-- `Result` in every language: `labels, medoids, cost, device, score(name), save(dir), distance_matrix`; C++ adds
-  `method, iterations, converged`, Python and MATLAB `plot()`.
+- `Result` in every language: `labels, medoids, cost, device, score(name), save(dir), distance_matrix` and the run
+  report (`report`, MATLAB `Report`); C++ adds `method, iterations, converged`, Python and MATLAB `plot()`.
 - Tier-2 (C++, Python, MATLAB alike): `Problem` with the v1 fields; `set_distance / set_band / set_metric /
   set_variant / set_missing_strategy / set_device / set_gpu_precision` each invalidate the matrix;
   `fill_distance_matrix`, O(1) `dist_by_ind`, `cluster()` over nine `Method` values, `set_result`; algorithms
@@ -129,13 +131,20 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
   (CUDA: int64 pair offset) instead of refusing. (`index_t` exists since Y3; public counts move to it in phase D.)
 - Cost and Cell are **template parameters**, never a `std::function` or a virtual per cell.
 - Orient so `n_short ≤ n_long` before every kernel call; buffers are sized on that.
-- `thread_local` scratch grows and never shrinks; a Cost must not re-enter its kernel.
+- `thread_local` scratch grows and never shrinks within a call; each buffer is an accessor on
+  `core/thread_scratch.cpp`'s closed list, which `dtwc::run` gives back as it starts and when it returns or throws (a
+  new buffer joins the list, or it stays held). A list function sits in the source whose kernels use its buffers, so
+  under LTO no other module refers to their `thread_local`s; the silhouettes' sums (k x 64 B a thread) stay off it, as
+  both accessor forms tried moved their loops. A Cost must not re-enter its kernel.
 - The dense matrix has **no locks or atomics**; fills partition pairs. `resize()` wipes to NaN, so it stays
   conditional.
 - Bind the distance function **once**; every guard lives in the builder, outside the closure (a throw inside
   an OpenMP region is UB). Series travel as spans.
 - No `omp critical`, mutex or atomic on a data path (DECISIONS §2 rule 6); region-local `num_threads`, never
-  `omp_set_num_threads`.
+  `omp_set_num_threads`. `dtwc::run`'s threads are its memory plan's, fitted once: a `TeamCap` (parallelisation.hpp)
+  made at the plan and alive until the run's end caps `get_max_threads()`, so every region with the clause; the
+  release reaches past it (`full_team_threads()`). A clause-less region (`lagrangian_root.cpp`'s dual) holds no
+  scratch the plan reserves.
 - No `std::min({…})`, `std::max({…})` or `std::min_element` in a hot loop: the MSVC STL makes them library calls.
   `test_codegen_no_calls` fails a clang build in which any loop of a probe kernel calls anything (Apple clang's
   `memset_pattern16` idiom sat one loop out from the innermost); a sanitizer build does not register it.

@@ -25,7 +25,10 @@ function ds = load(source, varargin)
 %              'float'). Each value is read as a double and rounded to single;
 %              single data in memory alone does not choose it.
 %
-%   Nothing is read here: dtwc.cluster (or ds.as_series()) reads a path once.
+%   Nothing is read here. ds.as_series() reads a path once and keeps its series,
+%   which dtwc.cluster takes for Parquet; dtwc.cluster hands any other path to C++
+%   dtwc::run, which reads it at every call (and may stream an Arrow IPC file
+%   under RamLimit); to read it once, cluster its series: dtwc.cluster(ds.as_series(), k).
 %   A Dataset passes through unchanged; it keeps the options it was made with.
 %
 %   See also dtwc.Dataset, dtwc.cluster

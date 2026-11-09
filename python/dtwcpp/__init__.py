@@ -243,7 +243,8 @@ def _problem_cluster(self):
     for up to 5000 series, else CLARA) and return the ClusteringResult; the labels
     and medoids are published on the Problem too. An extension that links no HiGHS
     (the wheel) solves Method.MIP on the HiGHS solver, and Method.LRCore's kelley
-    root's master LP, with the installed highspy."""
+    root's master LP, with highspy, a dependency of dtwcpp (dtwcpp.cluster()'s run
+    reaches the same routes through dtwcpp._mip.solve)."""
     if self.method == Method.MIP and self.solver == Solver.HiGHS and not HIGHS_AVAILABLE:
         from dtwcpp import _mip
         return _mip.cluster(self)

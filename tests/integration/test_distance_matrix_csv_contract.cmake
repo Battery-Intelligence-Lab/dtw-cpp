@@ -342,7 +342,18 @@ require_matrix_pair(
     "result" "${result_matrix}" "${result_sha}")
 
 if(has_mmap STREQUAL "ON")
-    run_cli_route("mmap" "${mmap_dir}" 1 TRUE)
+    # The least --ram-limit the run takes, which 1 byte's refusal names: the series beside one thread's working set.
+    # The matrix does not fit beside them on every thread, and maps.
+    execute_process(
+        COMMAND "${cli_path}" --config "${config_path}" --input "${input_path}" --output "${mmap_dir}"
+                --ram-limit 1 --device cpu
+        RESULT_VARIABLE one_byte_result OUTPUT_VARIABLE one_byte_stdout ERROR_VARIABLE one_byte_stderr ENCODING UTF-8)
+    string(REGEX MATCH "it needs at least ([0-9]+) bytes" least_match "${one_byte_stderr}")
+    if("${one_byte_result}" STREQUAL "0" OR NOT least_match)
+        message(FATAL_ERROR "F14 mmap: --ram-limit 1 exit=${one_byte_result}, not the refusal naming the least limit\n"
+                            "stdout:\n${one_byte_stdout}\nstderr:\n${one_byte_stderr}")
+    endif()
+    run_cli_route("mmap" "${mmap_dir}" ${CMAKE_MATCH_1} TRUE)
     inspect_matrix("mmap" "${mmap_matrix}")
     require_matrix_pair(
         "resident" "${resident_matrix}" "${resident_sha}"

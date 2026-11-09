@@ -50,3 +50,4 @@ lr-root = "kelley"
 device = "gpu:2"
 gpu-precision = "fp64"
 verbose = true
+no-report = true

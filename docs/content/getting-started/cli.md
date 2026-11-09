@@ -47,11 +47,12 @@ two agree on every default, check and method choice.
 |------|-------------|---------|
 | `-h, --help` | Print the live command reference | — |
 | `--version` | Print the version from the repository `VERSION` source of truth | — |
-| `-i, --input <path>` | Input file or folder. CSV/TSV are core; Parquet/Arrow IPC/Feather require an Arrow-enabled build | — |
+| `-i, --input <path>` | Input file or folder. CSV/TSV and Arrow IPC/Feather are core; Parquet requires an Arrow-enabled build | — |
 | `-o, --output <path>` | Output directory (`""` writes no file) | `./results` |
 | `--name <string>` | Problem name (used in output filenames) | the input's file or folder name |
 | `-k, --n-clusters <int>` | Number of clusters (required) | — |
-| `-v, --verbose` | Verbose output | off |
+| `-v, --verbose` | Verbose output. Its header gives the settings and the machine: host, OS, CPU and its cores, the SIMD extensions of the CPU and of the build, RAM, a GPU run's GPU, the compiler and the core library's optional libraries (`dtwc_core`'s: OpenMP, llfio, cpuinfo, HiGHS, Gurobi, CUDA, Metal; the run report adds Arrow and YAML where `dtwc_cl` has them); a fact the build or the system cannot tell reads `unknown` (the CPU's without cpuinfo, `-DDTWC_ENABLE_CPUINFO=OFF`; the RAM's without llfio) | off |
+| `--no-report` | Write no run report (`<name>_report.txt`, below) and print no `Report:` line | off (a report is written) |
 | `--column <name>` | The Parquet scalar/list Float32 or Float64 column to read. If omitted, the first eligible top-level column decides: a list or several scalar columns are one series per row, the only scalar column one series ([Supported data](../supported-data/)) | — |
 | `--dtype <string>` | The precision the series are stored in: `float32` halves their memory, each value read as a double and rounded, with no double copy held. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
 | `--matrix-dtype <string>` | The distance matrix's value type: `float32` halves its memory (N = 100,000: 20 GB, not 40), each distance rounded once to the nearest float, so costs and scores move by about 6e-8 of themselves and medoids and labels can change; a distance beyond float32's range (3.4e38) stops the run. Independent of `--dtype`; value aliases as `--dtype`'s | `float64` |
@@ -115,66 +116,139 @@ FastPAM engine. Valid CLI seeds are integers from 0 through `UINT64_MAX`.
 
 ### The memory limit
 
-`--ram-limit` is the memory the run may use. Units are binary and
+`--ram-limit` is the memory the run plans for. Units are binary and
 case-insensitive: `K`/`KB`/`KiB` through `T`/`TB`/`TiB`; a fraction of a byte
 rounds up, so a nonzero value never reads as 0; malformed, negative, or
-overflowing values are errors. `0`, the default, is automatic: the physical
-memory available when the run starts, or the Linux cgroup v2 limit of the
-process when that is lower (which a SLURM job's memory request sets). It is a
-budget for the run's decisions, not an operating-system limit on its resident
-memory.
+overflowing values are errors. `0`, the default, is automatic: 90 % of the
+physical memory available when the run starts, or of the Linux cgroup v2 limit
+of the process when that is lower (which a SLURM job's memory request sets). It
+is a plan, not an operating-system limit on the run's resident memory: a run may
+use about a tenth more, more with series longer than it planned for; the program's
+own memory (its code, libraries and tables, a few megabytes) lies outside the plan;
+MIP's and LR-core's solver memory is not planned.
 
-The distance matrix stays in RAM while its N(N+1)/2 values (8 bytes each, 4 under
-`--matrix-dtype float32`) fit in half of what the series leave of the limit. Past that
-it is mapped to `<name>.dtwm`, in the
-`--checkpoint` directory when one is given and in the output directory otherwise
-(a run that writes no output keeps it in RAM), and filled slab by slab: a slab is
-an eighth of what the series leave of the limit, at most 1 GiB, the next one
-read ahead and the finished one written back, so each page of the file is
-written while its slab runs and not again. A new file is not written before its
-fill: its header records the rows written, which a slab advances once the slab
-before it is on the disk. A binary built without LLFIO maps
-nothing: there the automatic limit sets none, and a matrix over an explicit
-limit stops the run.
+The run plans once, as soon as it knows its input (an Arrow IPC file's walk, a
+Parquet file's metadata, else the series read). It reserves its threads' working
+set: a thread's scratch for the DTW kernels, priced for the longest series it
+expects (the longest series read, a mapped Arrow IPC file's longest, else twice
+the mean length), and the method's tables, times the threads, and a tenth more.
+What the reserve leaves is the data cap, for the series, the method's own terms
+(TADPole's flag a pair and its cache of the pairs, the hierarchical clustering's
+dense copy of N x N doubles, OneBatchPAM's batch table: in RAM however the
+matrix is stored) and the distance matrix:
+
+- the series go into RAM on every thread where they fit in the data cap beside
+  the distance matrix's N(N+1)/2 values (8 bytes each, 4 under
+  `--matrix-dtype float32`);
+- a matrix that does not fit beside them is mapped to `<name>.dtwm` where the
+  run has an output directory: in the `--checkpoint` directory when one is
+  given, else in the output directory. It is filled slab by slab: a slab is an
+  eighth of what the series leave of the limit, at most 1 GiB, the next one
+  read ahead and the finished one written back, so each page of the file is
+  written while its slab runs and not again. A new file is not written before
+  its fill: its header records the rows written, which a slab advances once the
+  slab before it is on the disk. A run without an output directory (even with
+  `--checkpoint`), one that reads `--dist-matrix`, and a binary built without
+  LLFIO hold the matrix in RAM;
+- otherwise FastCLARA streams a Parquet or Arrow IPC file within the data cap on
+  every thread, where it can (below);
+- otherwise the series load on the most threads whose working set fits beside
+  them (and a matrix held in RAM), fitted once for the whole run.
+
+`-v` prints the plan: `Memory plan: budget B bytes, reserve R bytes (T of N
+threads, P bytes each for series of up to L time steps), data cap C bytes:
+<route>`. An explicit limit that cannot hold the run is refused before any work,
+naming what the run holds beside the working set. In RAM the refusal's "at least
+N bytes" is the least limit that runs. On a stream the stream's own floor (the
+sampled rows, a sample's PAM, a record batch) comes on top: the stream checks it
+within the data cap, and its refusal names the data cap as `--ram-limit` (the
+limit less the reserve, which the refusal then says). A stream keeps the
+requested threads, so fewer threads (`OMP_NUM_THREADS`) make its reserve
+smaller. The automatic limit never refuses. With `--method auto` the run takes
+`clara` also where `pam`'s matrix can neither stay in RAM nor be mapped: the
+method follows the limit (`clara` below the switch, `pam` above it), and the
+threads and the clustering are each method's, so just above the switch `pam`
+may run on fewer threads than `clara` did just below it. A binary built without
+LLFIO knows no memory available: there the automatic limit plans nothing, and
+the series and the matrix go into RAM on every thread.
+
+`-v`'s `Data loaded` line and the run report's `read` row say, in the same words, how an Arrow IPC file's series are
+held once read into RAM: `mapped` (llfio), `read into memory (no llfio)`, `decoded (lz4, 8 record batches)` (also
+`zstd`, `big-endian` or `misaligned`: why a record batch cannot be viewed in place; `3 of 8 record batches` where only
+some cannot), or `a copy as float32` (`float64`: the `--dtype` is not the file's). A streamed run reads none of them,
+and a text or Parquet input names nothing.
+
+A run whose memory the system refuses all the same (Windows past its commit
+limit, Linux under `ulimit -v` or strict overcommit) stops with an error naming
+the stage it was in (`check`, `plan`, `read`, `storage`, `fill`, `cluster` or `write`;
+`pam`, `kmedoids` and a `clara` that samples every series fill the distance matrix
+in `fill`, every other method inside `cluster`),
+its memory plan and what the plan holds in RAM, the process's peak resident
+memory (mapped files' pages included) and the ways out that hold less in that
+run, once it has given its memory back. The plan is "none yet" until it is
+made: from an Arrow IPC file's walk or Parquet metadata, else from the series
+once read (a text file's while it is read). A reader's or a library's
+refused allocation (nanoarrow's, Arrow's, a map llfio cannot make) is reported
+the same way, but for one inside LZ4 decompression, which stays an `IOError`
+("LZ4F_decompress(...) failed"): nanoarrow drops LZ4F's error code. Under
+Linux's default overcommit a run over a cgroup's limit (a SLURM job's memory)
+gets no message: the kernel's OOM killer ends it. Where the system refuses
+memory on a thread's stack or in the process's start-up, the process ends
+without its error or a run report (Windows 0xC0000409 or 0xC00000FD; Linux, at start-up,
+libgomp's own message).
 
 ### RAM-limited Parquet FastCLARA
 
-For Parquet input the limit is applied before the selected column payload is
+For Parquet input the plan is made before the selected column payload is
 loaded. The CLI reads schema and row-group metadata, resolves
 `--method auto` from the logical series count, and estimates the peak needed to
 decode and materialise the selected column at the requested `--dtype`. If that
-estimate fits, the ordinary resident reader is used. If it does not fit, the
-only supported streaming route is non-full FastCLARA over one Parquet file
-of one series per row: a `List<Float32/Float64>` or
+estimate fits the data cap, the ordinary resident reader is used. If it does not
+fit, the only supported streaming route is non-full FastCLARA over one Parquet
+file of one series per row: a `List<Float32/Float64>` or
 `LargeList<Float32/Float64>` column with one list cell per series, or several
 Float32/Float64 columns. The automatic limit streams only there, for a sample
 smaller than N and without `--checkpoint` or `--dist-matrix`: elsewhere the series
-load as they would without a limit. An explicit `--ram-limit` is fail-closed:
+load on the threads that fit. An explicit `--ram-limit` is fail-closed:
 
-- over-budget one-column (one series), Parquet-directory, and non-CLARA requests stop
-  before payload materialisation and explain how to convert the input or raise
-  the limit;
+- one-column (one series), Parquet-directory, and non-CLARA requests whose
+  series do not fit beside one thread's working set stop before payload
+  materialisation and explain how to convert the input or raise the limit;
 - the sampled rows are read once, then the file once more for the assignment,
   a batch of row groups at a time (the next batch decoding while one is assigned,
-  when two fit); every read decodes about 1 MiB of values at a time. The limit
+  when two fit); every read decodes about 1 MiB of values at a time. The data cap
   must hold the sampled rows beside one decode, a sample's PAM beside them, then
   the `n_samples` × k medoid series, 8 bytes of labels and of nearest distance
   per row and sample, one decode and a batch of whole row groups, and the series'
-  names and labels written after the stream; a smaller limit fails, naming the
-  bytes, with guidance to rewrite smaller row groups or raise it;
+  names and labels written after the stream; a smaller one fails, naming the
+  bytes (as `--ram-limit`), with guidance to rewrite smaller row groups or raise
+  it;
 - a CLARA sample size that resolves to all N series is rejected while the file
   is over budget, because its full-data PAM fallback cannot stream;
 - with `--device gpu` the samples fill on the GPU, and with CUDA each streamed
-  chunk's assignment runs there too (Metal assigns on the CPU, which `-v`
-  says); and
+  chunk's assignment runs there too, the data cap holding the medoids beside the
+  GPU's staging of them and each chunk beside its staging and, for an Arrow IPC
+  file, the owned copy the GPU uploads of its record batches (Metal assigns on the
+  CPU, which `-v` says); and
 - `--dtype f32` keeps the sample, medoid, and assignment chunks in Float32;
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.
 
-The limit covers what the streamed run holds: library metadata and fixed
+The data cap covers what the streamed run holds: library metadata and fixed
 process overhead (the code, thread stacks, the allocators' first pages) are
-outside it. Other inputs (CSV/TSV, Arrow IPC, a CSV directory) are always read
-whole; the limit then governs the distance matrix alone.
+outside it, and so is a GPU runtime's own host memory (the resident peak of a
+CUDA run rose by about 90 MiB when the runtime started: CUDA 13.0, one run,
+2026-11-03). An Arrow IPC file streams as Parquet does where RAM would hold its
+series outside the page cache (decoded, read without LLFIO, or in the other
+`--dtype`): FastCLARA reads it a record batch at a time; a mapped file's values are
+not streamed. With `--device gpu` the plan prices the GPU's staging buffer for
+every input (CUDA: the series padded to the longest, 8 bytes a value, 4 under
+`--gpu-precision fp32`; Metal: the series and the matrix as floats) and, for an
+Arrow IPC file, whose series are views of it, the owned copy the GPU uploads of
+them. Other inputs (CSV/TSV, a CSV directory) are
+always read whole; the plan then sets the threads and where the distance matrix is
+held. A run gives its threads' scratch back, CUDA's staging and device buffers
+among it, as it starts and when it ends.
 
 ### OneBatchPAM and TADPole options
 
@@ -298,11 +372,21 @@ The CLI writes the following files to the output directory:
 | `<name>_medoids.csv` | Cluster ID, medoid index, and medoid name |
 | `<name>_silhouettes.csv` | Point name, cluster, and silhouette score (only when a full distance matrix is materialised) |
 | `<name>_distance_matrix.csv` | Full pairwise distance matrix (only when materialised) |
+| `<name>_report.txt` | The run report, written last (none with `--no-report`): plain text in eight sections, the run (status, start and end, version and build, the resolved configuration, the command that repeats it, wrapped at 100 columns: join its lines), the machine (host, OS, CPU and cores, SIMD, RAM, a GPU run's GPU), the memory plan (budget, reserve, data cap, route, what the plan holds in RAM, the process's peak resident memory, mapped files included), the input, a table of the stages (`check`, `plan`, `read`, `storage`, `fill`, `cluster`, `write` and the silhouettes within it: wall seconds, share, CPU utilisation, peak memory), the algorithm (iterations, the stopping criterion), the result (cost, mean silhouette, cluster sizes, medoids) and notes. `dtwc_cl` prints its path as `Report:` |
 
 If an output file cannot be written in full (an unwritable directory, a full
 disk, a file-size quota), `dtwc_cl` exits 1 and names the file; a file named in
 that message is incomplete. A silhouette that is undefined (fewer than two clusters
 realised) is only a warning; `-k 1` writes no silhouettes file.
+
+A run that fails once its first checks have passed (in any stage but `check`) writes
+`<name>_report.txt` up to the failing stage, its status `FAILED in stage <stage>: <error type>`
+and the error in its notes, then exits 1 with the same `Error:` line as without a report;
+a failure in `check` (a missing `-k`, a `--checkpoint` that is no directory) writes
+no report. The stage table's times and the machine's facts differ from run to run: the
+report is the run's own account, and no other file holds them. On SLURM,
+`slurm_remote.sh download` brings back the whole `results/` directory, reports
+included; a Python `device="hpc"` job's (`download-cluster`) brings back its labels only.
 
 RAM-limited Parquet streaming writes labels and medoids, but deliberately does
 not materialise the dense matrix merely to produce distance or silhouette CSVs.

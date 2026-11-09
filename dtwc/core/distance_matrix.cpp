@@ -8,6 +8,7 @@
  */
 
 #include "distance_matrix.hpp"
+#include "machine.hpp" // total_memory
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp" // run_openmp
 #include "../fileOperations.hpp" // open_output, close_output
@@ -15,13 +16,18 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <new>
 #include <string>
 #include <system_error>
 #include <type_traits>
 
+#if defined(__GLIBC__)
+#include <malloc.h> // malloc_trim
+#endif
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -31,8 +37,9 @@
 #endif
 #include <windows.h> // FlushFileBuffers
 #else
-#include <fcntl.h>  // open
-#include <unistd.h> // fsync, close
+#include <fcntl.h>        // open
+#include <sys/resource.h> // getrusage
+#include <unistd.h>       // fsync, close
 #endif
 
 #ifdef DTWC_HAS_MMAP
@@ -47,6 +54,12 @@
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
+#endif
+#ifdef _WIN32
+// After llfio: psapi.h maps names such as GetPerformanceInfo to their K32 forms, and llfio declares an inline variable
+// of that name, which the macro would rename in this file alone: two llfio definitions of one entity, and a call
+// through the null pointer of the one never loaded (Arrow IPC reads crashed so, 2026-11-03).
+#include <psapi.h> // K32GetProcessMemoryInfo
 #endif
 
 namespace dtwc::core {
@@ -192,9 +205,11 @@ namespace llfio = LLFIO_V2_NAMESPACE;
 
 /// The value of an llfio result, or IOError naming the step and the file: llfio's
 /// own error is no dtwc::Error, so Python saw RuntimeError and MATLAB dtwc:runtime.
+/// Memory the system refuses (a map under a cap on address space) is std::bad_alloc.
 template <typename Result>
 auto checked(Result &&result, const char *step, const fs::path &path)
 {
+  if (!result && result.error() == std::errc::not_enough_memory) throw std::bad_alloc();
   if (!result)
     throw IOError(std::string("Cannot ") + step + " the distance matrix file " + shown(path) + ": "
                   + result.error().message());
@@ -284,6 +299,54 @@ size_t available_memory()
   return static_cast<size_t>(bytes);
 #else
   return 0;
+#endif
+}
+
+size_t total_memory()
+{
+#ifdef DTWC_HAS_MMAP
+  using usage = llfio::utils::process_memory_usage;
+  const auto system = llfio::utils::current_process_memory_usage(usage::want::system_physical_memory_total);
+  return system ? static_cast<size_t>(system.value().system_physical_memory_total) : 0;
+#else
+  return 0;
+#endif
+}
+
+size_t peak_memory()
+{
+#if defined(_WIN32)
+  PROCESS_MEMORY_COUNTERS counters{};
+  return K32GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof counters) ? counters.PeakWorkingSetSize : 0;
+#elif defined(__APPLE__)
+  rusage usage{};
+  return getrusage(RUSAGE_SELF, &usage) == 0 ? static_cast<size_t>(usage.ru_maxrss) : 0; // bytes
+#else
+#ifdef __linux__
+  // VmHWM, this program's own peak: getrusage keeps ru_maxrss across execve(2), so a process that a large one started
+  // read at least its starter's peak (dtwc_cl started by a Python process that had touched 600 MiB printed 637 MB,
+  // 8.7 MB started by a small one, 2026-11-03).
+  std::ifstream status("/proc/self/status");
+  for (std::string line; std::getline(status, line);)
+    if (line.rfind("VmHWM:", 0) == 0) return static_cast<size_t>(std::strtoull(line.c_str() + 6, nullptr, 10)) * 1024;
+#endif
+  rusage usage{};
+  return getrusage(RUSAGE_SELF, &usage) == 0 ? static_cast<size_t>(usage.ru_maxrss) * 1024 : 0; // KiB
+#endif
+}
+
+void release_free_memory()
+{
+#if defined(__GLIBC__)
+  malloc_trim(0);
+#elif defined(_WIN32)
+  // HeapOptimizeResources (3) with its information of version 1, which the SDK declares from Windows 8.1 on only
+  // (llfio's build targets 0x0601): a Windows before it refuses the call, a hint whose failure changes nothing.
+  struct
+  {
+    DWORD version = 1, flags = 0;
+  } information;
+  (void)HeapSetInformation(nullptr, static_cast<HEAP_INFORMATION_CLASS>(3), &information, sizeof information);
 #endif
 }
 
@@ -424,16 +487,24 @@ DistanceMatrix DistanceMatrix::map(const fs::path &path, size_t n, const fingerp
                               llfio::file_handle::creation::only_if_not_exist, llfio::file_handle::caching::all,
                               llfio::file_handle::flag::win_disable_sparse_file_creation),
                             "create", path);
-    checked(mapping->file.truncate(length), "size", path);
-    checked(mapping->file.update_map(), "map", path);
-    base = reinterpret_cast<std::byte *>(mapping->file.address());
-    if (base == nullptr) throw IOError("Cannot map the distance matrix file " + shown(path) + ".");
-    // A new file is zeros, and a zero reads as a computed distance: its header
-    // says no row is written, so none is read, and a fill makes each row NaN
-    // before it computes it.
-    const Header header = header_for(n, fingerprint, width, 0);
-    std::memcpy(base, &header, sizeof header);
-    flush_range(mapping->file, 0, sizeof header, llfio::mapped_file_handle::barrier_kind::wait_data_only, path);
+    // The file made here goes again if it cannot be sized, mapped and given its header (closed first: Windows
+    // deletes no open file); left as zeros, it refused the next run (no DTWM magic).
+    try {
+      checked(mapping->file.truncate(length), "size", path);
+      checked(mapping->file.update_map(), "map", path);
+      base = reinterpret_cast<std::byte *>(mapping->file.address());
+      if (base == nullptr) throw IOError("Cannot map the distance matrix file " + shown(path) + ".");
+      // A new file is zeros, and a zero reads as a computed distance: its header
+      // says no row is written, so none is read, and a fill makes each row NaN
+      // before it computes it.
+      const Header header = header_for(n, fingerprint, width, 0);
+      std::memcpy(base, &header, sizeof header);
+      flush_range(mapping->file, 0, sizeof header, llfio::mapped_file_handle::barrier_kind::wait_data_only, path);
+    } catch (...) {
+      (void)mapping->file.close();
+      fs::remove(path, ec);
+      throw;
+    }
   }
 
   DistanceMatrix matrix;
@@ -524,14 +595,22 @@ void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerp
   flush_to_device(path);
 }
 
+void prefetch_pages([[maybe_unused]] const void *address, [[maybe_unused]] size_t bytes)
+{
+#ifdef DTWC_HAS_MMAP
+  if (bytes == 0) return;
+  using buffer = llfio::map_handle::buffer_type;
+  const auto at = reinterpret_cast<std::uintptr_t>(address);
+  const std::uintptr_t first = at - at % llfio::utils::page_size(); // madvise takes a page's address
+  (void)llfio::map_handle::prefetch(buffer(reinterpret_cast<buffer::pointer>(first), at + bytes - first));
+#endif
+}
+
 void DistanceMatrix::prefetch_rows([[maybe_unused]] size_t r0, [[maybe_unused]] size_t r1) const
 {
 #ifdef DTWC_HAS_MMAP
   r1 = std::min(r1, rows_); // a row never written holds nothing to read
-  if (!mapping_ || r0 >= r1) return;
-  const size_t first = row_offset(r0) - row_offset(r0) % llfio::utils::page_size();
-  const llfio::map_handle::buffer_type rows(mapping_->file.address() + first, row_offset(r1) - first);
-  (void)llfio::map_handle::prefetch(rows);
+  if (mapping_ && r0 < r1) prefetch_pages(mapping_->file.address() + row_offset(r0), row_offset(r1) - row_offset(r0));
 #endif
 }
 

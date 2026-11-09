@@ -165,6 +165,20 @@ std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t
   return derivative_transform_mv(std::span<const data_t>{x}, ndim);
 }
 
+namespace detail {
+
+/// DDTW's two derivative series, one pair a T (ddtwBanded, ddtwFull_L and the multivariate DDTW the dispatcher binds
+/// share them): reached here so that core::release_thread_scratch() can empty them (detail::dispatch_scratch, core/dtw_dispatch.cpp); two
+/// thread_locals returned as references, as core::detail::lanes_bufs says why.
+template <typename T>
+std::pair<std::vector<T> &, std::vector<T> &> derivative_bufs()
+{
+  thread_local std::vector<T> dx, dy;
+  return { dx, dy };
+}
+
+} // namespace detail
+
 /**
  * @brief DDTW using banded DTW on derivative series.
  *
@@ -182,7 +196,7 @@ data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                   int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
 {
-  thread_local std::vector<data_t> dx, dy;
+  auto [dx, dy] = detail::derivative_bufs<data_t>();
   derivative_transform_inplace(x, dx);
   derivative_transform_inplace(y, dy);
   return dtwBanded<data_t>(dx, dy, band, static_cast<data_t>(-1), metric);
@@ -204,7 +218,7 @@ template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
                   core::MetricType metric = core::MetricType::L1)
 {
-  thread_local std::vector<data_t> dx, dy;
+  auto [dx, dy] = detail::derivative_bufs<data_t>();
   derivative_transform_inplace(x, dx);
   derivative_transform_inplace(y, dy);
   return dtwFull_L<data_t>(dx, dy, static_cast<data_t>(-1), metric);

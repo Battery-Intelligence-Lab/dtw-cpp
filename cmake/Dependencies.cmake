@@ -115,6 +115,19 @@ function(dtwc_setup_dependencies)
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
+  # lz4 1.10.0 (BSD-2-Clause) and zstd 1.5.7 (BSD-3-Clause): the decoders of compressed Arrow IPC record batches
+  # (LZ4_FRAME, ZSTD), which the vendored nanoarrow IPC extension calls. Downloaded only: dtwc/CMakeLists.txt compiles
+  # lz4's library and zstd's decoder into dtwc_third_party. The release archives each project uploaded, pinned by the
+  # SHA-256 its release publishes (two downloads identical, 2026-10-22).
+  CPMAddPackage(NAME lz4 DOWNLOAD_ONLY YES
+    URL "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz"
+    URL_HASH SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b)
+  CPMAddPackage(NAME zstd DOWNLOAD_ONLY YES
+    URL "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz"
+    URL_HASH SHA256=eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3)
+  set(lz4_SOURCE_DIR "${lz4_SOURCE_DIR}" PARENT_SCOPE)
+  set(zstd_SOURCE_DIR "${zstd_SOURCE_DIR}" PARENT_SCOPE)
+
   # fkYAML — single-header YAML 1.2 parser (MIT). OPTIONAL: it only feeds
   # dtwc/cli/config_file.hpp, which turns a YAML `--config` file into CLI11
   # ConfigItems. With DTWC_ENABLE_YAML=OFF the CLI still builds and rejects YAML
@@ -294,7 +307,54 @@ function(dtwc_setup_dependencies)
     message(STATUS "  llfio:    OFF (DTWC_ENABLE_LLFIO=OFF) — mmap disabled.")
   endif()
 
-  # Apache Arrow + Parquet (optional) — zero-copy IPC and Parquet reading.
+  # cpuinfo (BSD-2-Clause) — the CPU's model, its physical and logical cores and SIMD extensions, which the machine
+  # facts report (OPTIONAL). With DTWC_ENABLE_CPUINFO=OFF there is no cpuinfo target, dtwc/CMakeLists.txt then leaves
+  # DTWC_HAS_CPUINFO undefined, and those facts read "unknown". Only dtwc/core/machine.cpp includes it.
+  #
+  # pytorch/cpuinfo publishes no tags or releases, so a commit is the pin: e9320ce3 (2026-10-30), its main on
+  # 2026-11-03; the archive's SHA-256 from two downloads, identical bytes. A static library, position-independent (the
+  # Python module and the MEX are shared objects), outside `all` and the install (EXCLUDE_FROM_ALL): its tools, tests,
+  # benchmarks and pkg-config file are not built. Silent: its log calls compile to nothing (CPUINFO_LOG_LEVEL none), so
+  # where /sys or /proc is closed to it (an HPC jail) cpuinfo_initialize() fails without a word and the facts read
+  # "unknown". Its deps/clog is in the archive but not built.
+  option(DTWC_ENABLE_CPUINFO "Enable cpuinfo: the CPU's model, cores and SIMD extensions in the machine facts" ON)
+  if(DTWC_ENABLE_CPUINFO AND NOT TARGET cpuinfo)
+    message(STATUS "  cpuinfo:  fetching (DTWC_ENABLE_CPUINFO=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_CPUINFO=OFF)")
+    CPMAddPackage(NAME cpuinfo
+      URL "https://github.com/pytorch/cpuinfo/archive/e9320ce3398899fbecc986c82f49b5d59b80dff7.tar.gz"
+      URL_HASH SHA256=0f19bffed603d591240b6e25e8def96d203ccf59db09c28cd15c92bf856f5e90
+      SYSTEM YES
+      EXCLUDE_FROM_ALL YES
+      OPTIONS
+        "CPUINFO_LIBRARY_TYPE static"
+        "CPUINFO_LOG_LEVEL none"
+        "CPUINFO_LOG_TO_STDIO OFF"
+        "CPUINFO_BUILD_TOOLS OFF"
+        "CPUINFO_BUILD_UNIT_TESTS OFF"
+        "CPUINFO_BUILD_MOCK_TESTS OFF"
+        "CPUINFO_BUILD_BENCHMARKS OFF"
+        "CPUINFO_BUILD_PKG_CONFIG OFF")
+    # Hidden: the Python module and the MEX link it, and a shared object exports a static library's default-visibility
+    # symbols, which could then bind to another copy of cpuinfo in the process (PyTorch's) or it to ours. Nothing links
+    # cpuinfo through those exports: dtwc_core links it statically, and dtwc_cl and the tests are executables.
+    if(TARGET cpuinfo)
+      set_target_properties(cpuinfo PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+    endif()
+  endif()
+  # As HiGHS: an empty source directory left by a failed download is a cache hit that adds no target.
+  if(DTWC_ENABLE_CPUINFO AND NOT TARGET cpuinfo)
+    message(FATAL_ERROR "DTWC_ENABLE_CPUINFO=ON but cpuinfo made no cpuinfo target "
+      "(source directory ${cpuinfo_SOURCE_DIR}; delete it if a download failed earlier).\n"
+      "  To build without cpuinfo (the CPU's model, cores and SIMD extensions then read unknown), "
+      "pass -DDTWC_ENABLE_CPUINFO=OFF.")
+  endif()
+  if(TARGET cpuinfo)
+    message(STATUS "  cpuinfo:  YES (static; the CPU's model, cores and SIMD extensions)")
+  else()
+    message(STATUS "  cpuinfo:  OFF (DTWC_ENABLE_CPUINFO=OFF) — the CPU's model, cores and SIMD extensions read unknown.")
+  endif()
+
+  # Apache Arrow + Parquet (optional) — Parquet reading (Arrow IPC is read without it, by the vendored nanoarrow).
   # No Python required. No external package manager required.
   #
   # Detection order:

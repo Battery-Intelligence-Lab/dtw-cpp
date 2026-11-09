@@ -48,9 +48,10 @@ def well_separated_data():
 @pytest.fixture
 def highspy_route():
     """Run a case only where method="mip" solves with highspy: an extension that links no HiGHS
-    (two HiGHS builds in one process crash) and an importable highspy, the mip extra. Elsewhere the
-    case skips; with DTWC_REQUIRE_HIGHSPY set it fails instead, as a missing DTWC_CL_PATH file does.
-    The Python CI job sets it, so a missing extra cannot leave that job green."""
+    (two HiGHS builds in one process crash) and an importable highspy, a dependency of dtwcpp.
+    Elsewhere the case skips; with DTWC_REQUIRE_HIGHSPY set it fails instead, as a missing
+    DTWC_CL_PATH file does. The Python CI job sets it, so a missing highspy cannot leave that job
+    green."""
     import dtwcpp
 
     if dtwcpp.HIGHS_AVAILABLE:
@@ -60,7 +61,7 @@ def highspy_route():
             import highspy  # noqa: F401
             return
         except ImportError as error:
-            reason = f"highspy cannot be imported ({error}); it is the mip extra"
+            reason = f"highspy cannot be imported ({error}); dtwcpp requires it: reinstall dtwcpp"
     if os.environ.get("DTWC_REQUIRE_HIGHSPY"):
         pytest.fail(f"DTWC_REQUIRE_HIGHSPY is set, and {reason}", pytrace=False)
     pytest.skip(reason)

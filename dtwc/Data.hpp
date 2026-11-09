@@ -15,11 +15,19 @@
 #include "core/storage.hpp"
 
 #include <cstddef>      // for size_t
+#include <memory>       // for shared_ptr
 #include <span>         // for span
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
 #include <vector>       // for vector
+
+// GCC's inline-unit-growth cap in Problem.cpp left series() and series_f32() out of line in the fill (2026-10-21).
+#if defined(__GNUC__)
+#define DTWC_ALWAYS_INLINE [[gnu::always_inline]] inline
+#else
+#define DTWC_ALWAYS_INLINE inline
+#endif
 
 namespace dtwc {
 
@@ -51,7 +59,7 @@ struct Data
   /// Returns a float64 span view of series i. Requires precision == Float64.
   /// @details size() already branches on precision; without the same branch
   /// here, series() on Float32 data indexes the empty p_vec / p_spans_.
-  std::span<const data_t> series(size_t i) const
+  DTWC_ALWAYS_INLINE std::span<const data_t> series(size_t i) const
   {
     if (is_f32()) throw_wrong_precision("series", "Float32", "series_f32");
     if (is_view_) return p_spans_[i];
@@ -59,7 +67,7 @@ struct Data
   }
 
   /// Returns a float32 span view of series i. Requires precision == Float32.
-  std::span<const float> series_f32(size_t i) const
+  DTWC_ALWAYS_INLINE std::span<const float> series_f32(size_t i) const
   {
     if (!is_f32()) throw_wrong_precision("series_f32", "Float64", "series");
     if (is_view_) return p_spans_f32_[i];
@@ -80,8 +88,16 @@ struct Data
     return std::string_view(p_names[i]);
   }
 
-  /// True if this Data is a non-owning view into another Data's storage.
+  /// True if this Data is a non-owning view: of another Data's storage, or of bytes owner() keeps alive.
   bool is_view() const { return is_view_; }
+
+  /// True if this Data is a view whose values all lie in a file's mapping (an Arrow IPC file read in place with llfio):
+  /// they are the page cache's, outside this process's own memory. A view of decoded, read or owned values is not.
+  bool is_mapped() const { return is_mapped_; }
+
+  /// What keeps a view's bytes alive (a mapped file, a read buffer, decoded batches), shared by every copy of this
+  /// Data; empty for an owning Data, and for a view into another Data's storage, which must then outlive it.
+  const std::shared_ptr<const void> &owner() const { return owner_; }
 
   /// True if data is stored as float32.
   bool is_f32() const { return precision == core::Precision::Float32; }
@@ -129,23 +145,27 @@ struct Data
     validate_ndim();
   }
 
-  /// View-mode constructor: non-owning float64 spans into another Data's storage.
+  /// View-mode constructor: non-owning float64 spans into storage `owner` keeps alive (see owner()); `mapped` if
+  /// every span lies in a file's mapping (see is_mapped()).
   Data(std::vector<std::span<const data_t>> &&spans,
-       std::vector<std::string_view> &&name_views, size_t ndim_)
+       std::vector<std::string_view> &&name_views, size_t ndim_,
+       std::shared_ptr<const void> owner = {}, bool mapped = false)
     : ndim{ ndim_ }, p_spans_(std::move(spans)),
-      p_name_views_(std::move(name_views)), is_view_(true)
+      p_name_views_(std::move(name_views)), is_view_(true), is_mapped_(mapped), owner_(std::move(owner))
   {
     if (p_spans_.size() != p_name_views_.size())
       throw InvalidInput("Data view: span and name vectors should be of the same size");
     validate_ndim();
   }
 
-  /// View-mode constructor: non-owning float32 spans into another Data's storage.
+  /// View-mode constructor: non-owning float32 spans into storage `owner` keeps alive (see owner()); `mapped` if
+  /// every span lies in a file's mapping (see is_mapped()).
   Data(std::vector<std::span<const float>> &&spans,
-       std::vector<std::string_view> &&name_views, size_t ndim_)
+       std::vector<std::string_view> &&name_views, size_t ndim_,
+       std::shared_ptr<const void> owner = {}, bool mapped = false)
     : ndim{ ndim_ }, precision{ core::Precision::Float32 },
       p_spans_f32_(std::move(spans)),
-      p_name_views_(std::move(name_views)), is_view_(true)
+      p_name_views_(std::move(name_views)), is_view_(true), is_mapped_(mapped), owner_(std::move(owner))
   {
     if (p_spans_f32_.size() != p_name_views_.size())
       throw InvalidInput("Data view: span and name vectors should be of the same size");
@@ -157,6 +177,8 @@ private:
   std::vector<std::span<const float>> p_spans_f32_; //!< View-mode: float32 spans into parent data
   std::vector<std::string_view> p_name_views_;       //!< View-mode: names from parent
   bool is_view_ = false;                             //!< True when in view mode
+  bool is_mapped_ = false;                           //!< View-mode: every value in a file's mapping (is_mapped())
+  std::shared_ptr<const void> owner_;                //!< View-mode: keeps the viewed bytes alive (owner())
 
   /// Common error for an accessor that does not match the active precision.
   [[noreturn]] static void throw_wrong_precision(const char *accessor,
@@ -168,5 +190,51 @@ private:
       + "; use " + correct + "() instead.");
   }
 };
+
+namespace detail {
+
+/// An owning copy of `data`, a view or not, in `precision`: each value cast once, the names copied.
+inline Data owned_copy(const Data &data, core::Precision precision)
+{
+  const auto copy = [&data](auto zero) {
+    using T = decltype(zero);
+    std::vector<std::vector<T>> series(static_cast<size_t>(data.size()));
+    std::vector<std::string> names(series.size());
+    for (size_t i = 0; i < series.size(); ++i) {
+      const auto cast = [&series, i](auto values) {
+        series[i].reserve(values.size());
+        for (const auto value : values) series[i].push_back(static_cast<T>(value));
+      };
+      if (data.is_f32())
+        cast(data.series_f32(i));
+      else
+        cast(data.series(i));
+      names[i] = data.name(i);
+    }
+    return Data(std::move(series), std::move(names), data.ndim);
+  };
+  return precision == core::Precision::Float32 ? copy(float{}) : copy(data_t{});
+}
+
+/// What the allocator adds to each block a series' vector or name takes, beyond an eighth of it (measured 2026-10-09).
+inline constexpr size_t series_block_overhead_bytes = 16;
+
+/// The bytes `rows` owned series of `values` values in all hold, as float (`f32`) or data_t: the values, each series'
+/// vector and name objects, and the allocator's rounding of each series' block (an eighth of it and
+/// series_block_overhead_bytes more, measured 2026-10-09). The price the streams give a copy of their series.
+inline size_t owned_series_bytes(size_t values, size_t rows, bool f32)
+{
+  const size_t width = f32 ? sizeof(float) : sizeof(data_t);
+  const size_t objects = (f32 ? sizeof(std::vector<float>) : sizeof(std::vector<data_t>)) + sizeof(std::string)
+                       + series_block_overhead_bytes;
+  return values * width + values * width / 8 + rows * objects;
+}
+
+/// What a view Data holds for a series beside its values: a span and a name view (16 bytes each), and the name
+/// series_<i> made for a row that has none (14 characters at a few million rows): 45.7 bytes a row measured on 4.2
+/// million mapped rows (2026-10-10). A mapped view's values are the page cache's (Data::is_mapped).
+inline constexpr size_t view_series_bytes = 46;
+
+} // namespace detail
 
 } // namespace dtwc

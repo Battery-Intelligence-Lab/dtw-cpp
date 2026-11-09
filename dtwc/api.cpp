@@ -28,6 +28,16 @@ void validate_skips(index_t skip_cols, index_t skip_rows)
   if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
 }
 
+/// A streamed run's Result (`streamed_names` its series' names) refuses `what`: FastCLARA read its series a record
+/// batch at a time within --ram-limit, and its Problem holds none, so it has no distances.
+void refuse_if_streamed(const std::vector<std::string> &streamed_names, const char *what)
+{
+  if (streamed_names.empty()) return;
+  throw InvalidInput("Result::" + std::string(what) + ": the run streamed its " + std::to_string(streamed_names.size())
+                     + " series (FastCLARA read them a record batch at a time within --ram-limit) and holds none, so "
+                       "it has no distances; a run whose --ram-limit holds the series in RAM, or with none, has them.");
+}
+
 } // namespace
 
 Dataset::Dataset(std::filesystem::path source, index_t skip_cols, index_t skip_rows,
@@ -91,31 +101,47 @@ Dataset load(Dataset::series_type source, index_t skip_cols, index_t skip_rows,
 }
 
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
-               Method method, int iterations, bool converged, std::vector<std::string> streamed_names)
+               Method method, int iterations, bool converged, std::vector<std::string> streamed_names,
+               std::string report)
   : problem_(std::move(problem)), cost_(cost), device_(std::move(device_name)), method_(method),
-    iterations_(iterations), converged_(converged), streamed_names_(std::move(streamed_names))
+    iterations_(iterations), converged_(converged), streamed_names_(std::move(streamed_names)),
+    report_(std::move(report))
 {}
 
 const std::vector<index_t> &Result::labels() const noexcept { return problem_->labels(); }
 const std::vector<index_t> &Result::medoids() const noexcept { return problem_->medoids(); }
 
-double Result::score(std::string_view name) const { return scores::score(*problem_, name); }
-
-std::vector<double> Result::distance_matrix() const
+double Result::score(std::string_view name) const
 {
+  refuse_if_streamed(streamed_names_, "score");
+  return scores::score(*problem_, name);
+}
+
+const core::DistanceMatrix &detail::filled_matrix(const Result &result)
+{
+  refuse_if_streamed(result.streamed_names_, "distance_matrix");
   // Matrix-free methods leave the matrix unmaterialised; asking for it is an
   // explicit request for the full N*N, as score() and save() already treat it.
-  problem_->fill_distance_matrix();
-  return io::to_full_matrix(problem_->distance_matrix());
+  result.problem_->fill_distance_matrix();
+  return result.problem_->distance_matrix();
 }
+
+std::vector<double> Result::distance_matrix() const { return io::to_full_matrix(detail::filled_matrix(*this)); }
 
 void Result::save(const std::filesystem::path &directory) const
 {
   // save() promises the complete matrix and silhouettes: matrix-free methods
   // retain their scaling until this explicitly requested operation.
   // Result::score("silhouette") still throws on one cluster; asking for the
-  // number is a different contract from skipping a file.
-  detail::write_result_files(*problem_, directory, true, nullptr, streamed_names_);
+  // number is a different contract from skipping a file. A streamed run holds no
+  // series: its labels and medoids, with the reader's names, as dtwc_cl writes them.
+  detail::write_result_files(*problem_, directory, streamed_names_.empty(), nullptr, streamed_names_);
+  // The run's report, last: a save that fails before it writes none.
+  if (report_.empty()) return;
+  const auto path = directory / utf8_to_path(problem_->name() + "_report.txt");
+  auto out = open_output(path);
+  out << report_;
+  close_output(out, path);
 }
 
 Result cluster(const Dataset &dataset, index_t k, std::string_view method, int band,

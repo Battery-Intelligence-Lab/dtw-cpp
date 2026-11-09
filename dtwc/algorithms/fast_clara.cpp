@@ -29,6 +29,7 @@
 #include "../core/medoid_assignment_policy.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
+#include "../core/thread_scratch.hpp" // clara_assign_scratch, held_bytes
 
 #ifdef DTWC_HAS_CUDA
 #include "../cuda/cuda_dtw.cuh"
@@ -38,6 +39,7 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -127,20 +129,8 @@ namespace detail {
 
   Data clara_sample(const Data &source, const std::vector<index_t> &positions, bool owned)
   {
-    const auto take = [&](const auto &series_of) {
+    const auto view = [&](const auto &series_of) {
       using T = typename std::remove_cvref_t<decltype(series_of(std::size_t{ 0 }))>::value_type;
-      if (owned) {
-        std::vector<std::vector<T>> series;
-        std::vector<std::string> names;
-        series.reserve(positions.size());
-        names.reserve(positions.size());
-        for (const index_t i : positions) {
-          const auto values = series_of(static_cast<std::size_t>(i));
-          series.emplace_back(values.begin(), values.end());
-          names.emplace_back(source.name(static_cast<std::size_t>(i)));
-        }
-        return Data(std::move(series), std::move(names), source.ndim);
-      }
       std::vector<std::span<const T>> series;
       std::vector<std::string_view> names;
       series.reserve(positions.size());
@@ -149,10 +139,12 @@ namespace detail {
         series.push_back(series_of(static_cast<std::size_t>(i)));
         names.push_back(source.name(static_cast<std::size_t>(i))); // O(1), no string copy
       }
-      return Data(std::move(series), std::move(names), source.ndim);
+      return Data(std::move(series), std::move(names), source.ndim, source.owner());
     };
-    if (source.is_f32()) return take([&](std::size_t i) { return source.series_f32(i); });
-    return take([&](std::size_t i) { return source.series(i); });
+    Data sample = source.is_f32() ? view([&](std::size_t i) { return source.series_f32(i); })
+                                  : view([&](std::size_t i) { return source.series(i); });
+    if (owned) return dtwc::detail::owned_copy(sample, source.precision);
+    return sample;
   }
 
 #ifdef DTWC_HAS_CUDA
@@ -239,25 +231,61 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
       prob, opts.n_clusters, opts.max_iter, detail::clara_pam_seed(opts, 0));
   }
 
-  // The parent's series are checked once, before any sample: the band, the values and, on a GPU, what it takes (a
-  // GPU fills copies of the samples whatever the parent holds, but the assignment uploads the parent's own series).
-  // Every sample views or copies them, and the pass reads them all.
+  // The parent's series are checked as the pass reads them, on the CPU (Problem::SeriesCheck): the empty series and
+  // the band first, the samples' rows before the PAMs, each block of points just before it is assigned, so a mapped
+  // file is read once; the verdict, type and text are dtw_function()'s, only later. A GPU checks them all first, as
+  // dtw_function() does: CUDA's assignment packs and uploads the parent's series inside its call, where no block can
+  // be checked (and a GPU fills copies of the samples whatever the parent holds).
   const bool gpu = prob.device().first == Device::GPU;
   const bool f32 = prob.data().is_f32() && !gpu; // a GPU refuses Float32 series in that check
-  const auto *const pair = f32 ? nullptr : &prob.dtw_function();
-  const auto *const pair_f32 = f32 ? &prob.dtw_function_f32() : nullptr;
+  std::optional<Problem::SeriesCheck> check;
+  if (!gpu) check.emplace(prob.series_check(f32 ? "Problem::dtw_function_f32" : "Problem::dtw_function", f32));
+  const auto *const pair = f32 ? nullptr : check ? &prob.dtw_function(*check) : &prob.dtw_function();
+  const auto *const pair_f32 = f32 ? &prob.dtw_function_f32(*check) : nullptr;
 
   // All samples first, from one engine; each PAM on a view of its series (a copy on a GPU, which uploads owned ones).
   const auto samples = detail::draw_clara_samples(N, sample_size, opts);
+  const auto n_points = static_cast<std::size_t>(N);
+  // The pass stops at the first entirely-NaN series marked (Interpolate), whose distances throw, and at an error the
+  // PAMs or a block's assignment raise on values the check takes (a distance that overflows): the series from
+  // `checked` on are checked and finish() runs, so a refusal of dtw_function()'s check comes before that error.
+  const auto check_rest = [&](std::size_t checked) {
+    if (!check) return;
+    check->check(checked, n_points - checked);
+    check->finish();
+  };
+  if (check) {
+    check->check_rows(detail::sample_union(samples));
+    if (check->marked()) check_rest(0); // before the PAMs, whose fills would refuse it first
+  }
   std::vector<index_t> medoids; // sample s's medoid m is slot s * k + m
-  const auto pams = detail::clara_pams(prob, opts, prob.data(), samples, samples, gpu, medoids);
+  std::vector<core::ClusteringResult> pams;
+  try {
+    pams = detail::clara_pams(prob, opts, prob.data(), samples, samples, gpu, medoids);
+  } catch (...) {
+    check_rest(0);
+    throw;
+  }
 
   // One pass: every point against the medoids of every sample.
-  const auto n_points = static_cast<std::size_t>(N);
   std::vector<std::vector<index_t>> labels(samples.size(), std::vector<index_t>(n_points));
   std::vector<core::detail::OrderedMedoidObjective> costs(samples.size());
   const auto &data = prob.data();
-  const auto in_blocks = [&](const auto &assign) { detail::assign_in_blocks(0, n_points, costs, assign); };
+  const auto in_blocks = [&](const auto &assign) {
+    detail::assign_in_blocks(0, n_points, costs, [&](index_t first, std::size_t n, std::span<double> best) {
+      const std::size_t next = static_cast<std::size_t>(first) + n;
+      if (check) {
+        check->check(static_cast<std::size_t>(first), n);
+        if (check->marked()) check_rest(next);
+      }
+      try {
+        assign(first, n, best);
+      } catch (...) {
+        check_rest(next);
+        throw;
+      }
+    });
+  };
   if (pair_f32) {
     in_blocks([&](index_t first, std::size_t n, std::span<double> best) {
       detail::assign_points_cpu<float>(
@@ -268,10 +296,15 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   } else {
 #ifdef DTWC_HAS_CUDA
     if (gpu) {
+      // CUDA uploads owned Float64 series, which a view leaves p_vec empty of: the series and the medoids are read
+      // from an owned copy of it, freed when the assignment returns.
+      std::optional<Data> copy;
+      if (data.is_view()) copy.emplace(dtwc::detail::owned_copy(data, core::Precision::Float64));
+      const auto &series = copy ? copy->p_vec : data.p_vec;
       std::vector<std::vector<double>> medoid_series;
       medoid_series.reserve(medoids.size());
-      for (const index_t medoid : medoids) medoid_series.push_back(data.p_vec[static_cast<std::size_t>(medoid)]);
-      detail::assign_on_gpu(prob, data.p_vec, 0, medoid_series, medoids, labels, costs);
+      for (const index_t medoid : medoids) medoid_series.push_back(series[static_cast<std::size_t>(medoid)]);
+      detail::assign_on_gpu(prob, series, 0, medoid_series, medoids, labels, costs);
     } else
 #else
     detail::say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));
@@ -284,6 +317,7 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
       });
   }
 
+  if (check) check->finish();
   auto result = detail::clara_winner(pams, medoids, labels, costs);
   // The sample_size >= N branch above delegates to fast_pam, which publishes too.
   prob.set_result(result);
@@ -291,3 +325,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
 }
 
 } // namespace dtwc::algorithms
+
+std::size_t dtwc::core::detail::clara_assign_scratch(bool release) noexcept
+{
+  return held_bytes(release, dtwc::algorithms::detail::assign_table());
+}

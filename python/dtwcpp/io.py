@@ -2,15 +2,15 @@
 @file io.py
 @brief Reading series, and saving/loading datasets.
 @details
-A path reads as dtwc_cl reads it: CSV/TSV text and folders of text files through
-the bound C++ reader (dtwc::read_data), so a file reads to the same series in
-every language; Parquet and Arrow IPC through the installed pyarrow, into the
-Arrow C stream the compiled-in nanoarrow reads. The result files are C++'s too
-(Result.save, Problem.write_*).
+A path reads as dtwc_cl reads it: CSV/TSV text, folders of text files and Arrow
+IPC through the bound C++ reader (dtwc::read_data; an Arrow IPC file read in
+place), so a file reads to the same series in every language; Parquet through the
+installed pyarrow, into the Arrow C stream the compiled-in nanoarrow reads. The
+result files are C++'s too (Result.save, Problem.write_*).
 
 Supported formats:
-- CSV/TSV text and a folder of them: always available
-- Parquet and Arrow IPC: require pyarrow (the ``parquet`` extra)
+- CSV/TSV text, a folder of them, and Arrow IPC: always available
+- Parquet: requires pyarrow (the ``parquet`` extra)
 - HDF5: requires h5py (optional)
 
 HDF5 layout::
@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import csv
 import os
-import re
 from pathlib import Path
 from typing import Any
 
@@ -37,9 +36,6 @@ import numpy as np
 # ---------------------------------------------------------------------------
 # Reading series (dtwcpp.load)
 # ---------------------------------------------------------------------------
-
-_ARROW_IPC = (".arrow", ".ipc", ".feather")
-
 
 def _parquet_layout(schema, skip_cols):
     """Where a Parquet file's series are, by the C++ reader's rule
@@ -124,87 +120,52 @@ def _read_parquet(files, skip_cols, skip_rows, value):
 
 
 def _read_arrow(path, parquet, skip_cols=0, skip_rows=0, dtype="float64"):
-    """Parquet files, read by the C++ reader's rule (:func:`_read_parquet`), or
-    an Arrow IPC file (the ``data`` column, named by ``name``, ``ndim`` from the
-    schema metadata) through the installed pyarrow, into the Arrow C stream the
-    compiled-in nanoarrow reads, in the precision ``dtype`` names: pyarrow casts
-    Parquet's values to it, nanoarrow rounds an Arrow IPC file's."""
+    """Parquet files, read by the C++ reader's rule (:func:`_read_parquet`)
+    through the installed pyarrow, into the Arrow C stream the compiled-in
+    nanoarrow reads, in the precision ``dtype`` names: pyarrow casts the values
+    to it. pyarrow's failure is :class:`dtwcpp.IOError` naming the file, and
+    memory it is refused (``pyarrow.ArrowMemoryError``) ``MemoryError`` naming
+    it, as the C++ readers' refused memory is."""
     from dtwcpp import IOError as DtwcIOError, _dtwcpp_core
     try:
         import pyarrow as pa
         import pyarrow.parquet  # noqa: F401 - _read_parquet's, missing here named with the extra
     except ImportError:
-        raise ImportError(
-            "Reading Parquet or Arrow IPC needs pyarrow: install \"dtwcpp[parquet]\".") from None
-    ndim = 1
+        raise ImportError("Reading Parquet needs pyarrow: install \"dtwcpp[parquet]\".") from None
     try:
-        if parquet:
-            table = _read_parquet(parquet, skip_cols, skip_rows,
-                                  pa.float32() if dtype == "float32" else pa.float64())
-        else:
-            with pa.OSFile(os.fspath(path), "rb") as f:
-                table = pa.ipc.open_file(f).read_all()
-            schema = table.schema
-            if "data" not in schema.names:
-                raise DtwcIOError("no 'data' column; write the series as a List or LargeList "
-                                  "of Float32/Float64 named 'data'.")
-            data_type = schema.field("data").type
-            if not ((pa.types.is_list(data_type) or pa.types.is_large_list(data_type))
-                    and (pa.types.is_float32(data_type.value_type)
-                         or pa.types.is_float64(data_type.value_type))):
-                raise DtwcIOError("the 'data' column must be a List or LargeList of "
-                                  f"Float32/Float64, got {data_type}.")
-            columns = ["data"]
-            if "name" in schema.names:
-                name_type = schema.field("name").type
-                if not (pa.types.is_string(name_type) or pa.types.is_large_string(name_type)):
-                    raise DtwcIOError(f"the 'name' column must be Utf8 or LargeUtf8, got {name_type}. "
-                                      "Write the names as strings, or drop the column.")
-                columns.append("name")
-            text = (schema.metadata or {}).get(b"ndim")
-            if text is not None:
-                if not re.fullmatch(rb"[0-9]+", text) or int(text) == 0:
-                    raise DtwcIOError(f"schema metadata 'ndim' must be a positive integer, got "
-                                      f"'{text.decode('utf-8', 'replace')}'. Set it to the number of "
-                                      "features per timestep (1 for univariate data).")
-                ndim = int(text)
-            table = table.select(columns)
+        table = _read_parquet(parquet, skip_cols, skip_rows,
+                              pa.float32() if dtype == "float32" else pa.float64())
+    except pa.ArrowMemoryError as error:  # memory the system refused, no fault of the file: as the C++ readers'
+        raise MemoryError(f"load: failed to read '{os.fspath(path)}': {error}") from error
     except (OSError, pa.ArrowException) as error:
         raise DtwcIOError(f"load: failed to read '{os.fspath(path)}': {error}") from error
-    data = _dtwcpp_core.data_from_arrow_c_array(table, dtype)
-    if ndim != 1:
-        data.ndim = ndim
-        data.validate_ndim()
-    return data
+    return _dtwcpp_core.data_from_arrow_c_array(table, dtype)
 
 
 def _read_data(source, skip_cols=0, skip_rows=0, delimiter=None, dtype="float64"):
     """Every series ``source`` names, read as dtwc::read_data reads it.
 
-    A .parquet/.pq file, or a folder holding one, is Parquet and an
-    .arrow/.ipc/.feather file Arrow IPC, both read through pyarrow; anything
-    else is CSV/TSV text, one file (a series per row) or a folder (a series per
-    file), read by the C++ reader itself. ``skip_cols`` drops leading fields and
-    ``skip_rows`` leading lines of text, and a Parquet file's leading columns and
-    rows; ``delimiter`` None infers it from the extension (tab for .tsv/.txt,
-    else comma). ``dtype`` (``"float64"`` or ``"float32"``, any spelling the C++
-    table takes) is the precision the series are stored in. A read failure is
-    :class:`dtwcpp.IOError` naming the file, an option the input cannot honour
-    :class:`dtwcpp.InvalidInput`, both with the C++ reader's words.
+    A .parquet/.pq file, or a folder holding one, is Parquet, read through
+    pyarrow; anything else is read by the C++ reader itself: an
+    .arrow/.ipc/.feather file is Arrow IPC, read in place (the Data's series are
+    views of the file, which it keeps open), and the rest CSV/TSV text, one file
+    (a series per row) or a folder (a series per file). ``skip_cols`` drops
+    leading fields and ``skip_rows`` leading lines of text, and a Parquet file's
+    leading columns and rows; ``delimiter`` None infers it from the extension
+    (tab for .tsv/.txt, else comma). ``dtype`` (``"float64"`` or ``"float32"``,
+    any spelling the C++ table takes) is the precision the series are stored in.
+    A read failure is :class:`dtwcpp.IOError` naming the file, an option the
+    input cannot honour :class:`dtwcpp.InvalidInput`, both with the C++ reader's
+    words; memory the system refuses is ``MemoryError``.
     """
     from dtwcpp import InvalidInput, _dtwcpp_core
     dtype = _dtwcpp_core._dtype(dtype)
     path = os.fspath(source)
     parquet = _dtwcpp_core._parquet_files(path)
-    arrow_ipc = os.path.splitext(path)[1].lower() in _ARROW_IPC and not os.path.isdir(path)
-    if parquet or arrow_ipc:
+    if parquet:
         if delimiter:
             raise InvalidInput("--delimiter (delimiter) splits CSV/TSV text into fields and cannot be "
                                "honoured for this input; drop it, or pass a text input.")
-        if arrow_ipc and (skip_cols or skip_rows):
-            raise InvalidInput("--skip-rows and --skip-cols (skip_rows, skip_cols) drop the leading rows "
-                               "and columns of CSV/TSV text or Parquet and cannot be honoured for this "
-                               "input; drop them.")
         return _read_arrow(path, parquet, skip_cols, skip_rows, dtype)
     return _dtwcpp_core._read_data(path, skip_cols, skip_rows, delimiter or "", dtype)
 

@@ -9,8 +9,8 @@ weight: 30
 
 HiGHS is the default open-source MIP backend. `dtwc_cl`, C++ and the MATLAB MEX
 link it (`-DDTWC_ENABLE_HIGHS=ON`, the default). The Python wheel does not:
-`method="mip"` builds the same model in C++ and solves it with the installed
-highspy, the `mip` extra (`pip install "dtwcpp[mip]"`). If neither is there,
+`method="mip"` builds the same model in C++ and solves it with highspy, which
+dtwcpp requires (`pip install dtwcpp` installs it). If neither can be loaded,
 requesting HiGHS raises `SolverError` naming the fix; it never returns an empty or
 partially solved clustering as though it succeeded.
 
@@ -47,8 +47,8 @@ instead of publishing the uncertified incumbent. Raise the cap with
 The root bound is the subgradient root in every language and build; it needs no
 solver. `--lr-root kelley` (Python `lr_root="kelley"`, MATLAB `'LrRoot', 'kelley'`)
 runs Kelley's cutting planes instead, whose master LP solves on linked HiGHS in
-`dtwc_cl`, C++ and the MATLAB MEX, and on the installed highspy in Python, the `mip`
-extra (`pip install "dtwcpp[mip]"`). Without either, asking for it raises `SolverError`
+`dtwc_cl`, C++ and the MATLAB MEX, and on highspy in Python, which dtwcpp requires.
+Without either, asking for it raises `SolverError`
 naming the fix before any distance is computed; it never falls back to the subgradient
 root. Both roots reach the same optimum, at different costs: on synthetic series
 (2026-10-06, the LR phase then serial) the subgradient root certified noisy series at

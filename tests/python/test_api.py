@@ -3,12 +3,18 @@
 @brief Tests for the unified device()/load()/cluster()/result.plot() interface.
 @author Volkan Kumtepeli
 """
+import json
+import os
 import subprocess
+import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 import dtwcpp
+
+_READER = Path(__file__).resolve().parents[1] / "data" / "reader"
 
 
 @pytest.fixture(autouse=True)
@@ -72,8 +78,9 @@ class TestLoad:
             dtwcpp.load(ds, skip_rows=1, name="x")
 
     def test_arrow_ipc_path_reads_its_data_and_name_columns(self, tmp_path):
-        """load('x.arrow') reads through pyarrow as dtwc_cl reads Arrow IPC: the
-        series are the 'data' column, named by 'name', 'ndim' features a step."""
+        """load('x.arrow') reads through the C++ reader, as dtwc_cl reads Arrow IPC:
+        the series are the 'data' column, named by 'name', 'ndim' features a step,
+        and the Data is a view of the file, its p_vec and p_names read through it."""
         pa = pytest.importorskip("pyarrow")
         rows = [[0.0, 0.5, 1.0, 1.5], [2.5, 1.0]]
         table = pa.table({"data": pa.array(rows, type=pa.list_(pa.float64())),
@@ -171,6 +178,26 @@ class TestClusterKeywords:
         )
         with pytest.raises(ValueError, match="unknown method"):
             dtwcpp.cluster("must_not_be_loaded.tsv", k=1, method="bogus")
+
+    def test_a_bad_value_is_refused_before_parquet_is_read(self, tmp_path):
+        """C++ checks every value before any series is read, as dtwc::run does
+        for a path it reads: pyarrow reads Parquet before the run, and not for
+        a band the run would refuse (the missing file would be an IOError)."""
+        with pytest.raises(dtwcpp.InvalidInput, match="band must be -1"):
+            dtwcpp.cluster(str(tmp_path / "missing.parquet"), k=2, band=-5)
+
+    @pytest.mark.parametrize("k, keys", [(0, {}), (2, {"n_init": 0}), (2, {"max_iter": 0})])
+    def test_a_bad_value_reads_alike_for_a_file_and_series_in_memory(self, tmp_path, k, keys):
+        """C++ checks the settings before any series is read, whatever the
+        input: a text file, which the run reads itself, and series in memory
+        are refused with the same words."""
+        csv = tmp_path / "two_groups.csv"
+        np.savetxt(csv, _two_groups(), delimiter=",")
+        with pytest.raises(dtwcpp.InvalidInput) as in_memory:
+            dtwcpp.cluster(_two_groups(), k=k, **keys)
+        with pytest.raises(dtwcpp.InvalidInput) as from_file:
+            dtwcpp.cluster(str(csv), k=k, **keys)
+        assert str(from_file.value) == str(in_memory.value)
 
     def test_invalid_device_still_fails_before_load(self, monkeypatch):
         from dtwcpp import _api
@@ -613,3 +640,82 @@ class TestResultWriteBackInCpp:
         assert res.medoids is not None
         assert len(set(res.labels[:6])) == 1 and len(set(res.labels[6:])) == 1
         assert res.score("silhouette") > 0.5
+
+
+# ---------------------------------------------------------------------------
+# cluster() is dtwc::run, the run dtwc_cl makes: its report, the matrix at its
+# stored width, an Arrow IPC file streamed under ram_limit
+# ---------------------------------------------------------------------------
+class TestClusterIsTheRun:
+    def test_report_is_the_run_report_and_no_report_makes_none(self, tmp_path):
+        """Result.report is the run report's text, which save writes last as
+        <name>_report.txt; no_report=True, as dtwc_cl --no-report, makes none:
+        report is "" and save writes the result files without it."""
+        reported = dtwcpp.cluster(_two_groups(), k=2, method="pam", name="r")
+        silent = dtwcpp.cluster(_two_groups(), k=2, method="pam", name="r", no_report=True)
+
+        assert reported.report.startswith("DTWC++ run report")
+        assert silent.report == ""
+        reported.save(tmp_path / "on")
+        silent.save(tmp_path / "off")
+        assert (tmp_path / "on" / "r_report.txt").read_text(encoding="utf-8") == reported.report
+        assert not (tmp_path / "off" / "r_report.txt").exists()
+        assert (tmp_path / "off" / "r_labels.csv").read_bytes() == (tmp_path / "on" / "r_labels.csv").read_bytes()
+
+    @pytest.mark.parametrize("method", ["pam", "clara"])
+    def test_a_float32_matrix_comes_back_float32(self, method):
+        """matrix_dtype="float32" stores each distance rounded to a float:
+        distance_matrix is that array, float32, the float64 run's rounded,
+        whether the method filled it (pam) or the read fills it (clara)."""
+        wide = dtwcpp.cluster(_two_groups(), k=2, method=method).distance_matrix
+        narrow = dtwcpp.cluster(_two_groups(), k=2, method=method, matrix_dtype="float32").distance_matrix
+
+        assert wide.dtype == np.float64 and narrow.dtype == np.float32 and narrow.shape == (12, 12)
+        assert np.array_equal(narrow, wide.astype(np.float32))
+
+    def test_an_arrow_ipc_file_streams_under_ram_limit(self, tmp_path):
+        """clara_256_lz4.arrow, four OpenMP threads as test_cli_ipc_stream runs
+        it (the stream's price counts its decoding threads): at ram_limit
+        300,000 the run streams it through FastCLARA, as -v says, and gives the
+        in-RAM run's labels, medoids and cost. Its Problem holds no series, yet
+        n_series is the file's 256; score and distance_matrix raise
+        InvalidInput naming the stream; save writes the in-RAM run's labels
+        and medoids files, byte for byte (the reader's names), then the
+        report, and nothing else."""
+        code = r"""
+import json, os, sys
+import dtwcpp
+out = {}
+for limit in (0, 300000):
+    res = dtwcpp.cluster(sys.argv[1], 3, method="clara", sample_size=8, n_samples=2, seed=42, device="cpu",
+                         name="t", ram_limit=limit, verbose=True)
+    run = {"labels": res.labels.tolist(), "medoids": res.medoids.tolist(), "cost": res.cost,
+           "n_series": res.n_series}
+    for name, call in (("score", lambda: res.score("silhouette")), ("matrix", lambda: res.distance_matrix)):
+        try:
+            call()
+            run[name] = "returned"
+        except dtwcpp.InvalidInput as error:
+            run[name] = str(error)
+    res.save(os.path.join(sys.argv[2], str(limit)))
+    out[limit] = run
+print("JSON " + json.dumps(out))
+"""
+        run = subprocess.run([sys.executable, "-c", code, str(_READER / "clara_256_lz4.arrow"), str(tmp_path)],
+                             capture_output=True, text=True, env={**os.environ, "OMP_NUM_THREADS": "4"}, check=False)
+        assert run.returncode == 0, run.stderr
+        ram, streamed = json.loads(next(line[5:] for line in run.stdout.splitlines()
+                                        if line.startswith("JSON "))).values()
+
+        assert run.stdout.count("Arrow IPC walk selected streaming: 256 series") == 1
+        for key in ("labels", "medoids", "cost"):
+            assert streamed[key] == ram[key], key
+        assert ram["n_series"] == streamed["n_series"] == 256
+        assert ram["score"] == ram["matrix"] == "returned"
+        for name, call in (("score", "score"), ("matrix", "distance_matrix")):
+            assert streamed[name].startswith(f"Result::{call}: the run streamed its 256 series")
+        in_ram, saved = tmp_path / "0", tmp_path / "300000"
+        assert sorted(os.listdir(saved)) == ["t_labels.csv", "t_medoids.csv", "t_report.txt"]
+        for table in ("labels", "medoids"):
+            assert (saved / f"t_{table}.csv").read_bytes() == (in_ram / f"t_{table}.csv").read_bytes()
+        assert (saved / "t_report.txt").stat().st_size > 0

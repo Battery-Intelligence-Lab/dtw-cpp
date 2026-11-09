@@ -27,7 +27,7 @@
 #include "DataLoader.hpp"
 #include "io/read_data.hpp"
 #ifdef DTWC_HAS_ARROW
-#include "io/read_arrow.hpp" //!< Parquet and Arrow IPC (dtwc_io)
+#include "io/read_arrow.hpp" //!< Parquet (dtwc_io); Arrow IPC is read_data's, in every build
 #endif
 #include "distance.hpp"
 #include "scores.hpp"

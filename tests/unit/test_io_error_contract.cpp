@@ -7,8 +7,8 @@
  *    `load: failed to read '<path>': ` prefix only to other exceptions, so the
  *    prefix vanished. The type stays `IOError`; the prefix is back.
  *  - `ignoreBOM`: a partial byte-order mark that cannot be handed back named no file.
- *  - `dtwc_cl`: Parquet / Arrow IPC input on a build without Arrow was
- *    `InvalidInput`. A format this build cannot read is `IOError`.
+ *  - `dtwc_cl`: Parquet input on a build without Arrow was `InvalidInput`. A
+ *    format this build cannot read is `IOError`; Arrow IPC every build reads.
  *
  * dtwc_cl's pipeline is dtwc::run, which the third case drives; both
  * it and Python's load() read through dtwc::read_data, which the last case drives.
@@ -108,26 +108,22 @@ TEST_CASE("dtwc_cl: an input format this build cannot read is IOError",
   // Python's load() calls read_data directly, without run().
   const auto read_on = [](const char *input) { (void)dtwc::read_data(input); };
   const auto check = [](const auto &reach) {
-    // Control: a format every build reads fails in its reader, naming the file.
+    // Control: the formats every build reads, text and Arrow IPC, fail in their reader, naming the file.
     CHECK_THROWS_MATCHES(reach("missing.csv"), dtwc::IOError,
                          MessageMatches(StartsWith("load: failed to read 'missing.csv': ")));
+    CHECK_THROWS_MATCHES(reach("missing.arrow"), dtwc::IOError,
+                         MessageMatches(StartsWith("load: failed to read 'missing.arrow': ")));
 #ifndef DTWC_HAS_PARQUET
     CHECK_THROWS_MATCHES(reach("missing.parquet"), dtwc::IOError,
                          MessageMatches(ContainsSubstring("Parquet input")
-                                        && ContainsSubstring("-DDTWC_ENABLE_ARROW=ON")));
-#endif
-#ifndef DTWC_HAS_ARROW
-    CHECK_THROWS_MATCHES(reach("missing.arrow"), dtwc::IOError,
-                         MessageMatches(ContainsSubstring("Arrow IPC input")
                                         && ContainsSubstring("-DDTWC_ENABLE_ARROW=ON")));
 #endif
   };
   check(run_on);
   check(read_on);
 #ifdef DTWC_HAS_ARROW
-  // The core's reader has no Arrow in any build (dtwc_cl reads these through dtwc_io), so it refuses them here too.
+  // The core's reader has no Arrow C++ in any build (dtwc_cl reads Parquet through dtwc_io), so it refuses it here too.
   CHECK_THROWS_MATCHES(read_on("missing.parquet"), dtwc::IOError, MessageMatches(ContainsSubstring("Parquet input")));
-  CHECK_THROWS_MATCHES(read_on("missing.arrow"), dtwc::IOError, MessageMatches(ContainsSubstring("Arrow IPC input")));
 #endif
 }
 

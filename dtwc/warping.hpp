@@ -36,10 +36,13 @@
 #include "core/dtw_kernel.hpp"     // unified DTW kernels, orient, run_dtw
 #include "core/dtw_cost.hpp"       // Span*Cost functors
 
+#include <cstdint>   // for uint32_t, uint64_t
 #include <cstdlib>   // for abs, size_t
 #include <algorithm> // for min, max
 #include <cmath>     // for floor, round
 #include <limits>    // for numeric_limits
+#include <stdexcept> // for logic_error
+#include <type_traits> // for conditional_t
 #include <vector>    // for vector
 #include <span>      // for span
 #include <string>    // for string, to_string
@@ -78,6 +81,33 @@ void require_finite(std::span<const data_t> series, std::string_view name,
     }
     throw InvalidInput(message);
   }
+}
+
+/// require_finite()'s test with no branch per value: true when every value of `series` is one a distance takes
+/// (finite; NaN too when `nan_is_missing`). !(|v| <= max) holds for NaN and ±inf, |v| > max for ±inf only. No early
+/// exit and no call (std::isfinite may be one in the MSVC STL), so the loop vectorises; require_finite() then names the
+/// value. The accumulator is as wide as a value: GCC 13 vectorises neither a bool one nor, without shuffles, a narrower.
+template <typename data_t>
+bool all_usable(std::span<const data_t> series, bool nan_is_missing)
+{
+  using Bits = std::conditional_t<sizeof(data_t) == 8, std::uint64_t, std::uint32_t>;
+  constexpr data_t max = std::numeric_limits<data_t>::max();
+  Bits refused = 0;
+  if (nan_is_missing)
+    for (const data_t value : series) refused |= static_cast<Bits>(std::abs(value) > max);
+  else
+    for (const data_t value : series) refused |= static_cast<Bits>(!(std::abs(value) <= max));
+  return refused == 0;
+}
+
+/// require_finite() on a series all_usable() refused: its InvalidInput, or std::logic_error should the two disagree.
+template <typename data_t>
+[[noreturn]] void refuse_unusable(std::span<const data_t> series, std::string_view name, std::string_view where,
+                                  bool nan_is_missing)
+{
+  require_finite(series, name, where, nan_is_missing);
+  throw std::logic_error(std::string(where) + ": all_usable() refused " + std::string(name)
+                         + ", which require_finite() takes.");
 }
 
 /// Both series of a pair, x first. Neither may be empty: an empty series has no
@@ -293,6 +323,19 @@ data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
   return dtwBanded_mv<data_t>(x, nx_steps, y, ny_steps, ndim, -1, early_abandon, metric);
 }
 
+namespace detail {
+
+/// dtw_independent_mv's two channel buffers, one pair a T: reached here so that core::release_thread_scratch() can
+/// empty them (detail::dispatch_scratch, core/dtw_dispatch.cpp); two thread_locals returned as references, as core::detail::lanes_bufs says why.
+template <typename T>
+std::pair<std::vector<T> &, std::vector<T> &> channel_bufs()
+{
+  thread_local std::vector<T> cx, cy;
+  return { cx, cy };
+}
+
+} // namespace detail
+
 /**
  * @brief Independent multivariate DTW (DTW_I; Shokoohi-Yekta et al., DMKD 2017).
  *
@@ -341,7 +384,7 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
   // De-interleave one channel at a time into contiguous scratch, then run the
   // univariate kernel. thread_local buffers keep the parallel matrix fill
   // heap-allocation-free after the first pair per thread.
-  thread_local std::vector<data_t> cx, cy;
+  auto [cx, cy] = detail::channel_bufs<data_t>();
   cx.resize(nx_steps);
   cy.resize(ny_steps);
 

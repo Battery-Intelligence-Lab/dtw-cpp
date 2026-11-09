@@ -7,12 +7,15 @@
 #pragma once
 
 #include "Data.hpp"
-#include "base/env.hpp"      // device(), device(name)
-#include "core/storage.hpp" // core::Precision
+#include "base/env.hpp"               // device(), device(name)
+#include "core/clustering_result.hpp" // ExternalSolver's result
+#include "core/storage.hpp"           // core::Precision
 
 #include <concepts>
 #include <filesystem>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -24,10 +27,22 @@ class Problem;
 class Result;
 struct Config;
 enum class Method; // enums/Method.hpp
+namespace core {
+class DistanceMatrix; // core/distance_matrix.hpp
+} // namespace core
 
-// cli/run.hpp documents these; Result is built only by them.
+// cli/run.hpp documents these; Result is built only by detail::run, which both run() overloads call.
 Result run(const Config &config);
 Result run(const Config &config, Data data);
+using ExternalSolver = std::function<core::ClusteringResult(const std::shared_ptr<Problem> &)>;
+namespace detail {
+Result run(const Config &config, std::optional<Data> data, const ExternalSolver &solver);
+/// The run's distance matrix as it is stored, packed, its values float64 or float32 (`matrix_dtype`), filled first
+/// where the method left it unfilled: what a binding expands at that width (io::to_full_matrix<T>, as Python's
+/// Problem.distance_matrix does), a float32 matrix as float32; Result::distance_matrix() is its expansion to doubles.
+/// The Result's own, valid while the Result lives. @throws InvalidInput for a streamed run, as Result::score.
+const core::DistanceMatrix &filled_matrix(const Result &result);
+} // namespace detail
 
 /** A lazy path-or-memory dataset handle.  Construct with dtwc::load(). */
 class Dataset
@@ -96,12 +111,22 @@ class Result
 public:
   const std::vector<index_t> &labels() const noexcept;
   const std::vector<index_t> &medoids() const noexcept;
+  /** @throws InvalidInput for a streamed run (its series over --ram-limit, which FastCLARA read a record batch at a
+   *  time): its Problem holds no series, so no distances to score. */
   double score(std::string_view name) const;
   /** Dense row-major N*N pairwise DTW distances, matching Python's
    *  `Result.distance_matrix`.  Fills the matrix first if it is not yet
-   *  materialised, exactly as score() does. */
+   *  materialised, exactly as score() does: detail::filled_matrix, as doubles.
+   *  @throws InvalidInput for a streamed run, as score(). */
   std::vector<double> distance_matrix() const;
+  /** The four result files dtwc_cl writes, byte for byte (labels, medoids, the matrix and the silhouettes, filled and
+   *  computed here where the run left them out), then the run report (report()), last, where the run made one. A
+   *  streamed run writes what dtwc_cl writes for it: the labels and medoids, with the reader's names, then the report;
+   *  it holds no series, so no matrix or silhouettes. */
   void save(const std::filesystem::path &directory) const;
+  /** The run report: the run's machine, memory plan, stages, algorithm and result, in plain text, as run() writes it
+   *  to `<name>_report.txt`; empty where the run was told `report = false` (dtwc_cl --no-report). */
+  const std::string &report() const noexcept { return report_; }
   double cost() const noexcept { return cost_; }
   const std::string &device() const noexcept { return device_; }
   /** The method that ran, `auto` resolved (name_of(method_names, m) spells it). */
@@ -111,11 +136,12 @@ public:
   bool converged() const noexcept { return converged_; }
 
 private:
-  friend Result run(const Config &);
-  friend Result run(const Config &, Data);
+  friend Result detail::run(const Config &, std::optional<Data>, const ExternalSolver &);
+  friend const core::DistanceMatrix &detail::filled_matrix(const Result &);
 
   Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
-         Method method, int iterations, bool converged, std::vector<std::string> streamed_names);
+         Method method, int iterations, bool converged, std::vector<std::string> streamed_names,
+         std::string report);
 
   std::shared_ptr<Problem> problem_;
   double cost_ = 0.0;
@@ -123,7 +149,8 @@ private:
   Method method_{};
   int iterations_ = 0;
   bool converged_ = false;
-  std::vector<std::string> streamed_names_; ///< a RAM-limited run's series names, which its Problem cannot hold
+  std::vector<std::string> streamed_names_; ///< a streamed run's series names, which its Problem cannot hold; empty in RAM
+  std::string report_;                      ///< the run report's text
 };
 
 /**

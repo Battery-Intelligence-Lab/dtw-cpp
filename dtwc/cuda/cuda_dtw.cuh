@@ -40,6 +40,14 @@ struct CUDADistMatResult : public dtwc::gpu::DistMatResultBase {};
 /// Check if CUDA is available (device count > 0).
 bool cuda_available();
 
+/// The bytes the calling thread's launch workspaces hold, pinned or pageable staging and every device buffer, of both
+/// precisions: what core::release_thread_scratch() gives back (a test hook).
+std::size_t thread_workspace_bytes();
+
+/// Frees the calling thread's launch workspaces of both precisions: their staging buffer and device buffers, stream and
+/// events (each made again when it is next used). core::release_thread_scratch() calls it on every thread.
+void release_thread_workspace() noexcept;
+
 /// Get CUDA device info string.
 std::string cuda_device_info(int device_id = 0);
 

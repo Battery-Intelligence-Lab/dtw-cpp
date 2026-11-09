@@ -78,7 +78,8 @@ uv run benchmarks/verify_results.py \
 clustering job through the same wrapper, which ships inside the `dtwcpp` package, so an
 installed wheel needs no source checkout. Put `.env` in the directory you run Python from,
 or set `DTWC_REPO_ROOT` to the directory that holds it; the labels are downloaded to
-`results/slurm/cluster_<job id>/` there. `DTWC_REPO_ROOT` steers only this Python route:
+`results/slurm/cluster_<job id>/` there (the labels only: the run report, `<name>_report.txt`,
+stays in the job's directory on the cluster). `DTWC_REPO_ROOT` steers only this Python route:
 `bash scripts/slurm/slurm_remote.sh` always reads the `.env` of, and uploads, its own
 checkout.
 

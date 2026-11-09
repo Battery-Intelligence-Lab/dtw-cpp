@@ -27,6 +27,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -214,8 +215,17 @@ TEST_CASE("dtwc_cl maps its checkpoint over --ram-limit", "[cli][checkpoint][mma
   const auto in_ram = cli_args(scratch.path / "series", scratch.path, checkpoint_dir);
   REQUIRE(run(in_ram, scratch.path).exit_code == 0);
 
+  // The least --ram-limit the run takes, which 1 byte's refusal names: the series beside one thread's working set. The
+  // matrix does not fit beside them on every thread, and maps.
+  auto refused = in_ram;
+  refused.insert(refused.end(), { "--ram-limit", "1" });
+  const CommandResult one_byte = run(refused, scratch.path);
+  std::smatch m;
+  INFO("stderr at 1 byte:\n" << one_byte.err);
+  REQUIRE(one_byte.exit_code == 1);
+  REQUIRE(std::regex_search(one_byte.err, m, std::regex("it needs at least ([0-9]+) bytes")));
   auto mapped = in_ram;
-  mapped.insert(mapped.end(), { "--ram-limit", "1" });
+  mapped.insert(mapped.end(), { "--ram-limit", m[1].str() });
   const CommandResult result = run(mapped, scratch.path);
   INFO("stdout:\n" << result.out << "\nstderr:\n" << result.err);
   REQUIRE(result.exit_code == 0);

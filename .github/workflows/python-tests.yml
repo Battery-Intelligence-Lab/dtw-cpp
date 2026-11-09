@@ -48,7 +48,7 @@ jobs:
       - name: Install
         run: uv pip install ".[test,dev,io,mip]" pandas matplotlib --system -v
 
-      # The extension links no HiGHS, so method="mip" solves with highspy (the mip extra).
+      # The extension links no HiGHS, so method="mip" solves with highspy (a dependency of dtwcpp).
       # test_mip.py and test_wheel_smoke.py skip only without highspy or with linked HiGHS; the
       # Test step sets DTWC_REQUIRE_HIGHSPY, which makes such a skip fail the job, and this
       # step fails earlier and names the cause.

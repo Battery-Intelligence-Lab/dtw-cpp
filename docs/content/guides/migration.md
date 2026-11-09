@@ -107,6 +107,7 @@ The v1.0.0 spellings still work: they are hidden from `--help` and print
 | `<name>_silhouettes_Nc_<k>.csv` | `<name>_silhouettes.csv` (`name,cluster,silhouette`) |
 | `<name>_distanceMatrix.csv` | `<name>_distance_matrix.csv`, when the method filled the matrix |
 | `<name>medoids_rep_<r>.csv`, `<name>_bestRepetition_Nc_<k>.csv` | not written |
+| (none) | `<name>_report.txt`: the run report, written last; `--no-report` writes none |
 
 The library's writers (`write_clusters`, `write_silhouettes`,
 `write_distance_matrix`) keep v1.0.0's file names.

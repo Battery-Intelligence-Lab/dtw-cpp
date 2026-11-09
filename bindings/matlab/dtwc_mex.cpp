@@ -27,6 +27,7 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #endif
 
 #include "../../dtwc/dtwc.hpp"
+#include "../../dtwc/cli/run.hpp"   // dtwc::run_name: the name a run gives its files
 #include "../../dtwc/algorithms/fast_pam.hpp"
 #include "../../dtwc/algorithms/fast_clara.hpp"
 #include "../../dtwc/algorithms/hierarchical.hpp"
@@ -421,7 +422,8 @@ static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
 enum class Key {
   Name, MatrixDtype, RamLimit, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu,
   TweLambda, MvMode, MissingStrategy, SampleSize, NSamples, Seed, BatchSize, Linkage, Solver, MipGap,
-  TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, LrRoot, Device, GpuPrecision, Verbose
+  TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, LrRoot, Device, GpuPrecision, Verbose,
+  NoReport
 };
 
 /// The distance settings: what dtwc.distance.dtw and Problem.set_distance take.
@@ -434,7 +436,8 @@ constexpr dtwc::Name<Key> distance_keys[]{
 };
 
 /// The keys dtwc.cluster takes, in cli::bind's order (k is an argument of its
-/// own): those dtwc::apply hands a Problem, and Name; not dtype nor the file options.
+/// own): those dtwc::apply hands a Problem, Name, and NoReport (the run's, which a
+/// Problem does not read); not dtype nor the file options.
 constexpr dtwc::Name<Key> config_keys[]{
   { "Name", Key::Name },
   { "MatrixDtype", Key::MatrixDtype },
@@ -471,6 +474,7 @@ constexpr dtwc::Name<Key> config_keys[]{
   { "Device", Key::Device },
   { "GpuPrecision", Key::GpuPrecision },
   { "Verbose", Key::Verbose },
+  { "NoReport", Key::NoReport },
 };
 
 /// Set the Config field `key` names from `value`, read as its kind; C++ checks the
@@ -518,6 +522,7 @@ static void set_key(dtwc::Config &c, Key key, const std::string &name, const mxA
   case Key::Device: std::tie(c.device, c.device_index) = dtwc::detail::parse_device(text()); break;
   case Key::GpuPrecision: c.gpu_precision = dtwc::parse_name(dtwc::gpu_precision_names, text(), "gpu precision"); break;
   case Key::Verbose: c.verbose = get_logical(value, key_name); break;
+  case Key::NoReport: c.report = !get_logical(value, key_name); break;
   }
 }
 
@@ -687,23 +692,24 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 //  Problem property get/set commands
 // =========================================================================
 
-/// Problem_set_data's series as T (double, or float from single), with their names and ndim.
+/// Series in memory as the Data a Problem (Problem_set_data) or a run (run) takes, their values as T (double, or float
+/// from single), named by `names_mx` and `ndim_mx` values a time step; either may be nullptr.
 template <typename T>
-static void set_series(dtwc::Problem &prob, int nrhs, const mxArray *prhs[]) {
+static dtwc::Data series_data(const mxArray *source, const mxArray *names_mx, const mxArray *ndim_mx) {
   // Ragged (cell array) vs rectangular (matrix). Both paths validate class /
   // complexity / shape BEFORE any data access (audit CRITICAL #6).
   // No series (an empty cell, a 0 x L matrix) is a dataset too: cluster() refuses
   // it ("cluster: dataset is empty."), as in C++ and Python.
-  const bool rows_of_t = std::is_same_v<T, float> ? mxIsSingle(prhs[2]) : mxIsDouble(prhs[2]);
-  const bool none = mxIsCell(prhs[2]) ? mxIsEmpty(prhs[2]) : rows_of_t && mxGetM(prhs[2]) == 0;
+  const bool rows_of_t = std::is_same_v<T, float> ? mxIsSingle(source) : mxIsDouble(source);
+  const bool none = mxIsCell(source) ? mxIsEmpty(source) : rows_of_t && mxGetM(source) == 0;
   std::vector<std::vector<T>> series;
-  if (!none) series = mxIsCell(prhs[2]) ? cell_to_series<T>(prhs[2]) : matrix_to_series<T>(prhs[2]);
+  if (!none) series = mxIsCell(source) ? cell_to_series<T>(source) : matrix_to_series<T>(source);
   const size_t N = series.size();
 
   // Optional series names (cell array of char). Empty ([]) => auto-derive "0..N-1".
   std::vector<std::string> names;
-  if (nrhs > 3 && !mxIsEmpty(prhs[3])) {
-    names = cell_to_names(prhs[3], N, "names");
+  if (names_mx != nullptr && !mxIsEmpty(names_mx)) {
+    names = cell_to_names(names_mx, N, "names");
   } else {
     names.resize(N);
     for (size_t i = 0; i < N; ++i) names[i] = std::to_string(i);
@@ -712,14 +718,13 @@ static void set_series(dtwc::Problem &prob, int nrhs, const mxArray *prhs[]) {
   // Optional ndim (multivariate interleaved layout). Default 1 (univariate).
   // Data::validate_ndim() throws if any series flat-size is not divisible by ndim.
   size_t ndim = 1;
-  if (nrhs > 4 && !mxIsEmpty(prhs[4])) {
-    const int nd = get_exact_int(prhs[4], "ndim");
+  if (ndim_mx != nullptr && !mxIsEmpty(ndim_mx)) {
+    const int nd = get_exact_int(ndim_mx, "ndim");
     if (nd < 1) throw std::invalid_argument("ndim must be a positive integer.");
     ndim = static_cast<size_t>(nd);
   }
 
-  dtwc::Data data(std::move(series), std::move(names), ndim);
-  prob.set_data(std::move(data));
+  return dtwc::Data(std::move(series), std::move(names), ndim);
 }
 
 static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -728,10 +733,12 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   // variable-length series), of class double, or single for dtype 'float32'.
   if (nrhs < 3) throw std::invalid_argument("Problem_set_data requires handle and data.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  const mxArray *names = nrhs > 3 ? prhs[3] : nullptr;
+  const mxArray *ndim = nrhs > 4 ? prhs[4] : nullptr;
   if (optional_dtype(nrhs, prhs, 5) == dtwc::core::Precision::Float32)
-    set_series<float>(prob, nrhs, prhs);
+    prob.set_data(series_data<float>(prhs[2], names, ndim));
   else
-    set_series<double>(prob, nrhs, prhs);
+    prob.set_data(series_data<double>(prhs[2], names, ndim));
 }
 
 static void cmd_Problem_set_band(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -878,21 +885,26 @@ static void cmd_Problem_find_total_cost(int nlhs, mxArray *plhs[], int nrhs, con
   plhs[0] = mxCreateDoubleScalar(cost);
 }
 
+/// A filled distance matrix as an N x N MATLAB array at its stored width: single for a float32 matrix (MatrixDtype),
+/// else double. Symmetric, so the row-major expansion (io::to_full_matrix) is MATLAB's column-major array. What
+/// Problem_get_distance_matrix and Result_distance_matrix return.
+static mxArray *full_matrix(const dtwc::core::DistanceMatrix &dm) {
+  const size_t N = dm.size();
+  if (dm.width() == dtwc::core::Precision::Float32) {
+    mxArray *full = mxCreateNumericMatrix(N, N, mxSINGLE_CLASS, mxREAL);
+    dtwc::io::to_full_matrix(dm, mxGetSingles(full));
+    return full;
+  }
+  mxArray *full = mxCreateDoubleMatrix(N, N, mxREAL);
+  dtwc::io::to_full_matrix(dm, mxGetDoubles(full));
+  return full;
+}
+
 static void cmd_Problem_get_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_distance_matrix requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   prob.fill_distance_matrix(); // a no-op once filled, as Python's distance_matrix()
-
-  // Symmetric, so the row-major expansion is MATLAB's column-major array; a float32 matrix comes back single.
-  const auto &dm = prob.distance_matrix();
-  const size_t N = dm.size();
-  if (dm.width() == dtwc::core::Precision::Float32) {
-    plhs[0] = mxCreateNumericMatrix(N, N, mxSINGLE_CLASS, mxREAL);
-    dtwc::io::to_full_matrix(dm, mxGetSingles(plhs[0]));
-  } else {
-    plhs[0] = mxCreateDoubleMatrix(N, N, mxREAL);
-    dtwc::io::to_full_matrix(dm, mxGetDoubles(plhs[0]));
-  }
+  plhs[0] = full_matrix(prob.distance_matrix());
 }
 
 static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1327,13 +1339,23 @@ static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, cons
 }
 
 // =========================================================================
-//  Tier-1: dtwc.cluster, dtwc.load and dtwc.Result are
-//  Python's cluster(), load() and Result: the keys set a dtwc::Config that
-//  dtwc::apply hands a Problem, the series reach it through Problem_set_data,
-//  and Problem::cluster() runs the method. Text is read by dtwc::read_data and
-//  results are written by detail::write_result_files, the reader and writer
-//  dtwc_cl and Python use; this MEX links neither run() nor the CLI's config.
+//  Tier-1: dtwc.cluster, dtwc.load and dtwc.Result are Python's cluster(),
+//  load() and Result. dtwc.cluster runs dtwc::run, as dtwc_cl and Python do
+//  (run): the keys set a dtwc::Config, C++ reads a path itself and takes series
+//  in memory (Parquet, which parquetread reads, and arrays) as a Data, and the
+//  run's dtwc::Result stays here under a handle that dtwc.Result wraps
+//  (Result_*). The estimator (DTWClustering) and the Tier-2 functions keep the
+//  Problem route: apply hands the Config to a Problem. Text is read by
+//  dtwc::read_data, the reader dtwc_cl and Python use.
 // =========================================================================
+
+/// The default Config of dtwc.cluster's keys: k, and the device dtwc.device() names.
+static dtwc::Config config_defaults(const mxArray *k) {
+  dtwc::Config defaults;
+  defaults.k = get_exact_int<dtwc::index_t>(k, "k");
+  std::tie(defaults.device, defaults.device_index) = dtwc::detail::parse_device(dtwc::device());
+  return defaults;
+}
 
 /// apply(handle, k, Name, Value, ...) -> device: a dtwc::Config from k and the
 /// keys (a key not given keeps dtwc_cl's default; the device is dtwc.device()'s
@@ -1343,13 +1365,99 @@ static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, cons
 static void cmd_apply(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("apply requires a handle and k.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  dtwc::Config defaults;
-  defaults.k = get_exact_int<dtwc::index_t>(prhs[2], "k");
-  std::tie(defaults.device, defaults.device_index) = dtwc::detail::parse_device(dtwc::device());
-  const dtwc::Config config = read_keys(config_keys, "key", defaults, nrhs, prhs, 3);
+  const dtwc::Config config = read_keys(config_keys, "key", config_defaults(prhs[2]), nrhs, prhs, 3);
   dtwc::apply(config, prob);
   if (!config.name.empty()) prob.set_name(config.name);
   plhs[0] = mxCreateString(dtwc::device_text(config).c_str());
+}
+
+/// The run's Result a handle names (run).
+static const dtwc::Result &stored_result(const mxArray *handle) {
+  return *HandleManager<dtwc::Result>::get(get_handle(handle));
+}
+
+/// run(source, names, skip_cols, skip_rows, delimiter, dtype, name, k, Name, Value, ...) -> struct {handle, labels,
+/// medoids, cost, device, name, report}: dtwc::run, the run dtwc_cl makes, without its files (output cleared:
+/// Config::output is "./results"; Result_save writes them). `source` is a path C++ reads (CSV/TSV text, a folder of
+/// it or an Arrow IPC file, which the run's memory plan may stream through FastCLARA) with its reader options, and
+/// `names` {}; or series in memory (Parquet that parquetread read, or arrays), an N x L matrix or a cell of vectors as
+/// Problem_set_data takes them (of class double, or single for dtype 'float32'), named by `names` ({}: 0, 1, ...),
+/// skip_cols and skip_rows 0 and delimiter '' (the run refuses a reader option beside series in memory). k and the
+/// keys are dtwc.cluster's (config_keys); the device is dtwc.device()'s unless Device names one; the run is named
+/// Name, else `name` (the Dataset's), else as dtwc_cl names it (run_name). dtwc::apply checks every key on a Problem
+/// of no series before anything is read, so a bad value reads as apply says it, whatever the input (run's own check
+/// would name dtwc_cl's flags). The Result is stored under a handle before any output is made; the labels and
+/// medoids come back 1-based, the device as device_text writes it, the report '' under NoReport. MIP and LR-core's
+/// Kelley root solve on the HiGHS this MEX links: no external solver.
+static void cmd_run(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 9)
+    throw std::invalid_argument("run requires a source, names, skip_cols, skip_rows, delimiter, dtype, a name and k.");
+  dtwc::Config config = read_keys(config_keys, "key", config_defaults(prhs[8]), nrhs, prhs, 9);
+  {
+    dtwc::Problem settings; // holds no series: apply only checks the keys
+    dtwc::apply(config, settings);
+  }
+  if (config.name.empty()) config.name = optional_string(nrhs, prhs, 7, "name");
+  config.dtype = optional_dtype(nrhs, prhs, 6);
+  config.skip_cols = get_exact_int<dtwc::index_t>(prhs[3], "skip_cols");
+  config.skip_rows = get_exact_int<dtwc::index_t>(prhs[4], "skip_rows");
+  config.delimiter = parse_delimiter(optional_string(nrhs, prhs, 5, "delimiter"));
+  config.output.clear();
+  std::optional<dtwc::Data> data;
+  if (mxIsChar(prhs[1])) {
+    if (!mxIsEmpty(prhs[2]))
+      throw std::invalid_argument("run: names name series in memory; a path's series are named by its reader, so pass {}.");
+    config.input = get_string(prhs[1]);
+  } else if (config.dtype == dtwc::core::Precision::Float32) {
+    data = series_data<float>(prhs[1], prhs[2], nullptr);
+  } else {
+    data = series_data<double>(prhs[1], prhs[2], nullptr);
+  }
+  const uint64_t handle =
+    HandleManager<dtwc::Result>::create(std::make_shared<dtwc::Result>(dtwc::detail::run(config, std::move(data), {})));
+  const std::string name = dtwc::run_name(config);
+  // The Result is stored: from here MATLAB arrays are made, which own nothing of it.
+  const dtwc::Result &result = *HandleManager<dtwc::Result>::get(handle);
+  const char *fields[] = { "handle", "labels", "medoids", "cost", "device", "name", "report" };
+  mxArray *out = mxCreateStructMatrix(1, 1, 7, fields);
+  mxArray *id = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
+  *static_cast<uint64_t *>(mxGetData(id)) = handle;
+  mxSetField(out, 0, "handle", id);
+  mxSetField(out, 0, "labels", ivec_to_mx_1based(result.labels()));
+  mxSetField(out, 0, "medoids", ivec_to_mx_1based(result.medoids()));
+  mxSetField(out, 0, "cost", mxCreateDoubleScalar(result.cost()));
+  mxSetField(out, 0, "device", mxCreateString(result.device().c_str()));
+  mxSetField(out, 0, "name", mxCreateString(name.c_str()));
+  mxSetField(out, 0, "report", mxCreateString(result.report().c_str()));
+  plhs[0] = out;
+}
+
+/// Result_score(handle, name) -> scalar: the run's Result::score, the score scores::score names. A streamed run holds
+/// no series: InvalidInput.
+static void cmd_Result_score(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("Result_score requires a handle and a score name.");
+  require_char(prhs[2], "score");
+  const double score = stored_result(prhs[1]).score(get_string(prhs[2]));
+  plhs[0] = mxCreateDoubleScalar(score);
+}
+
+/// Result_distance_matrix(handle) -> N x N: the run's matrix, filled where its method left it, at its stored width
+/// (detail::filled_matrix); a streamed run's is InvalidInput.
+static void cmd_Result_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("Result_distance_matrix requires a handle.");
+  plhs[0] = full_matrix(dtwc::detail::filled_matrix(stored_result(prhs[1])));
+}
+
+/// Result_save(handle, directory): Result::save, the result files dtwc_cl writes, then the run report.
+static void cmd_Result_save(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("Result_save requires a handle and a directory.");
+  const auto directory = get_path(prhs[2], "directory");
+  stored_result(prhs[1]).save(directory);
+}
+
+static void cmd_Result_delete(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("Result_delete requires a handle.");
+  HandleManager<dtwc::Result>::destroy(get_handle(prhs[1]));
 }
 
 /// A 1 x n row of class double, or single for float values.
@@ -1362,8 +1470,9 @@ static mxArray *to_row(std::span<const T> values) {
 }
 
 /// read_data(path, skip_cols, skip_rows, delimiter, dtype) -> {series}, {names}:
-/// dtwc::read_data, for CSV/TSV text and folders of it, each series a double row,
-/// or single for dtype 'float32' (each value the double parse rounded).
+/// dtwc::read_data, for CSV/TSV text, folders of it and Arrow IPC, each series a
+/// double row, or single for dtype 'float32' (each value the double parse rounded).
+/// An Arrow IPC file's Data is a view of it: its names are read through name(i).
 static void cmd_read_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 4) throw std::invalid_argument("read_data requires a path, skip_cols and skip_rows.");
   const auto path = get_path(prhs[1], "path");
@@ -1376,7 +1485,7 @@ static void cmd_read_data(int nlhs, mxArray *plhs[], int nrhs, const mxArray *pr
   mxArray *names = mxCreateCellMatrix(1, n);
   for (size_t i = 0; i < n; ++i) {
     mxSetCell(plhs[0], i, data.is_f32() ? to_row(data.series_f32(i)) : to_row(data.series(i)));
-    mxSetCell(names, i, mxCreateString(data.p_names[i].c_str()));
+    mxSetCell(names, i, mxCreateString(std::string(data.name(i)).c_str()));
   }
   if (nlhs > 1) plhs[1] = names;
   else mxDestroyArray(names);
@@ -1409,28 +1518,13 @@ static void cmd_default_name(int nlhs, mxArray *plhs[], int nrhs, const mxArray 
   plhs[0] = mxCreateString(dtwc::detail::default_name(get_path(prhs[1], "path")).c_str());
 }
 
-/// score(handle, name) -> scalar: scores::score, the score Result::score names.
-static void cmd_score(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("score requires a handle and a score name.");
-  require_char(prhs[2], "score");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  plhs[0] = mxCreateDoubleScalar(dtwc::scores::score(prob, get_string(prhs[2])));
-}
-
-/// write_result_files(handle, directory): a clustered Problem's four result files,
-/// written as dtwc_cl and Result::save write them.
-static void cmd_write_result_files(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("write_result_files requires a handle and a directory.");
-  const auto directory = get_path(prhs[2], "directory");
-  dtwc::detail::write_result_files(*HandleManager<dtwc::Problem>::get(get_handle(prhs[1])), directory, true);
-}
-
 // =========================================================================
 //  Cleanup callback - called when MEX is unloaded (clear mex / exit)
 // =========================================================================
 
 static void cleanup_at_exit() {
   HandleManager<dtwc::Problem>::drain();
+  HandleManager<dtwc::Result>::drain();
 }
 
 static bool first_call = true;
@@ -1536,14 +1630,17 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "calinski_harabasz") cmd_calinski_harabasz(nlhs, plhs, nrhs, prhs);
     else if (cmd == "adjusted_rand") cmd_adjusted_rand(nlhs, plhs, nrhs, prhs);
     else if (cmd == "normalized_mutual_info") cmd_normalized_mutual_info(nlhs, plhs, nrhs, prhs);
-    // Tier-1: a Config applied to a Problem, the C++ reader and writer
+    // Tier-1: dtwc::run and its Result, a Config applied to a Problem, the C++ reader
+    else if (cmd == "run") cmd_run(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Result_score") cmd_Result_score(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Result_distance_matrix") cmd_Result_distance_matrix(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Result_save") cmd_Result_save(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Result_delete") cmd_Result_delete(nlhs, plhs, nrhs, prhs);
     else if (cmd == "apply") cmd_apply(nlhs, plhs, nrhs, prhs);
     else if (cmd == "read_data") cmd_read_data(nlhs, plhs, nrhs, prhs);
     else if (cmd == "parquet_files") cmd_parquet_files(nlhs, plhs, nrhs, prhs);
     else if (cmd == "default_name") cmd_default_name(nlhs, plhs, nrhs, prhs);
     else if (cmd == "dtype") cmd_dtype(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "score") cmd_score(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "write_result_files") cmd_write_result_files(nlhs, plhs, nrhs, prhs);
     else {
       throw std::invalid_argument("Unknown command: '" + cmd + "'.");
     }

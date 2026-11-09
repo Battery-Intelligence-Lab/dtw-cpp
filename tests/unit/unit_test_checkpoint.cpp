@@ -26,7 +26,10 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace dtwc;
@@ -386,6 +389,44 @@ TEST_CASE("A mapped fill of several slabs equals the fill in RAM, bit for bit", 
     REQUIRE(reopened.is_distance_matrix_filled()); // the fill recorded every row written
     REQUIRE(packed_bits(reopened) == packed_bits(reference));
   }
+}
+
+TEST_CASE("A mapped fill's slabs count the series' values, unless a mapped file holds them", "[checkpoint][mmap][fill]")
+{
+  // 64 series of 256 values, the last holding 2^67: its squared distances, about 2^134, are beyond a float, so a
+  // Float32 fill refuses the slab holding the last row and keeps the slabs before it. Within 150,000 bytes the
+  // series' 131,072 bytes of values leave slabs of about 2,400 bytes: several. A view whose values a mapped file holds
+  // counts its 46 bytes a row (the values are the page cache's), which leave one slab, refused whole.
+  constexpr std::size_t n = 64, length = 256;
+  const auto values = std::make_shared<std::vector<std::vector<double>>>(n);
+  std::vector<std::string> names;
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t t = 0; t < length; ++t)
+      (*values)[i].push_back(i + 1 == n && t == 0 ? std::ldexp(1.0, 67) : std::sin(0.37 * double(i) + 0.61 * double(t)));
+    names.push_back("s" + std::to_string(i));
+  }
+  const auto kept = [](Data data) { // the pairs the fill kept
+    const ScratchDirectory scratch("slab_rule");
+    fs::create_directories(scratch.path);
+    Problem prob("slab_rule");
+    prob.set_data(std::move(data));
+    prob.set_metric(core::MetricType::SquaredL2);
+    prob.set_matrix_dtype(core::Precision::Float32);
+    prob.set_ram_limit(150000);
+    prob.use_mmap_distance_matrix(scratch.path / "slab_rule.dtwm");
+    REQUIRE_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
+    return prob.distance_matrix().count_computed();
+  };
+  const auto view = [&](bool mapped) {
+    std::vector<std::span<const double>> spans(values->begin(), values->end());
+    std::vector<std::string_view> views(names.begin(), names.end());
+    return Data(std::move(spans), std::move(views), 1, values, mapped);
+  };
+  const auto owned = kept(Data(std::vector<std::vector<double>>(*values), std::vector<std::string>(names)));
+  CHECK(owned > 0);
+  // A view of values this process holds (a decoded Arrow IPC file, one read without llfio) fills as an owned Data.
+  CHECK(kept(view(false)) == owned);
+  CHECK(kept(view(true)) == 0);
 }
 #endif
 

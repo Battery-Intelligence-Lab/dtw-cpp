@@ -37,8 +37,8 @@ dtwc_add_script_test(NAME test_deprecated_shims_warn
     MARKER "DEPRECATED_SHIMS family=${_dtwc_shim_family} exit=0 warned=${_dtwc_shim_count}/${_dtwc_shim_count}"
     LABELS compat b19 SERIAL TIMEOUT 300)
 
-# A DP cell makes no call: codegen_report.py compiles the probe to assembly with dtw_dispatch.cpp's
-# flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments. Under a
+# A DP cell makes no call: codegen_report.py compiles the probe (the univariate and multivariate kernels) to assembly
+# with dtw_dispatch.cpp's flags from compile_commands.json (Ninja, Makefiles) and reads clang's loop comments. Under a
 # sanitizer every loop calls its checks, so there the gate has nothing to prove.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU"
@@ -48,7 +48,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT
     add_test(NAME test_codegen_no_calls COMMAND "${Python3_EXECUTABLE}"
              "${CMAKE_SOURCE_DIR}/scripts/codegen_report.py" --no-calls --build-dir "${CMAKE_BINARY_DIR}")
     set_tests_properties(test_codegen_no_calls PROPERTIES FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}"
-        PASS_REGULAR_EXPRESSION "CODEGEN_NO_CALLS tool=[^ ]+ inner_loops=[1-9][0-9]* calls=0 verdict=PASS")
+        PASS_REGULAR_EXPRESSION
+        "CODEGEN_NO_CALLS tool=[^ ]+ inner_loops=[1-9][0-9]* families=[1-9][0-9]* missing=none calls=0 verdict=PASS")
 endif()
 
 # Capability flags, queried once (they select markers and skip tolerance).
@@ -88,6 +89,21 @@ dtwc_add_test(NAME test_problem_api_2_0 SOURCE ${_dtwc_test_source_test_problem_
 # Nearest-medoid assignment through a multi-worker OpenMP region.
 dtwc_add_test(NAME unit_test_nearest_medoid_assignment SOURCE ${_dtwc_test_source_unit_test_nearest_medoid_assignment}
     ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4)
+
+# The threads' scratch, given back by dtwc::run, and the memory plan that reserves it: a team of 4.
+dtwc_add_test(NAME test_thread_scratch SOURCE ${_dtwc_test_source_test_thread_scratch}
+    ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4 ${_dtwc_seq_skip})
+
+# A run the system refuses memory: the test caps its own process (a Windows Job object, Linux RLIMIT_AS), which macOS
+# does not enforce and a sanitizer's allocator defeats; there it skips.
+if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT (DTWC_ENABLE_SANITIZER_ADDRESS OR DTWC_ENABLE_SANITIZER_THREAD
+                                                          OR DTWC_ENABLE_SANITIZER_MEMORY))
+    set(_dtwc_oom_skip "")
+else()
+    set(_dtwc_oom_skip MAY_SKIP)
+endif()
+dtwc_add_test(NAME test_run_out_of_memory SOURCE ${_dtwc_test_source_test_run_out_of_memory}
+    ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4 TIMEOUT 120 ${_dtwc_oom_skip})
 
 # Native distance-matrix CSV bytes; mmap is a required subject
 # only in a build that publishes it.
@@ -271,8 +287,20 @@ if(TARGET dtwc_cl)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 120)
 endif()
 
+# The run report on the real binary: a file of its own, named on stdout, the four result files the same bytes
+# without it (--no-report).
+if(TARGET dtwc_cl)
+    dtwc_add_script_test(NAME test_cli_report
+        SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_report.cmake"
+        ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>"
+             "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
+             "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-report"
+        MARKER "CLI_REPORT subject=real_dtwc_cl report=1 no_report=0 results_equal=4/4"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 120)
+endif()
+
 # dtwc::run's method x device table on the real binary, per build
-# flavour, and --print-config against the golden files (47 keys: every value
+# flavour, and --print-config against the golden files (48 keys: every value
 # and every default). A GPU build on a machine without the device must refuse.
 if(TARGET dtwc_cl)
     if("DTWC_HAS_CUDA" IN_LIST _dtwc_public_defs)
@@ -295,8 +323,25 @@ if(TARGET dtwc_cl)
              "-DDEFAULTS=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_defaults.toml"
              "-DGPU=${_dtwc_cl_gpu}" "-DHAS_HIGHS=${_dtwc_cl_highs}"
              "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-device-matrix"
-        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=47 skips=0"
+        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=48 skips=0"
         LABELS integration cli SERIAL TIMEOUT 300)
+endif()
+
+# FastCLARA streaming an Arrow IPC file a record batch at a time, on the real binary in every build: the in-RAM run's
+# clustering and its CSV twin's; with llfio an uncompressed file stays mapped, so one run fewer streams. Each run that
+# loads its series names how it holds them (named= counts them), in -v and in the report.
+if(TARGET dtwc_cl)
+    if(_dtwc_has_mmap)
+        set(_dtwc_ipc_stream_marker "runs=11 streamed=4 parity=30/30 mmap=1 named=7")
+    else()
+        set(_dtwc_ipc_stream_marker "runs=11 streamed=5 parity=30/30 mmap=0 named=6")
+    endif()
+    dtwc_add_script_test(NAME test_cli_ipc_stream
+        SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_ipc_stream.cmake"
+        ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>" "-DDATA=${CMAKE_CURRENT_SOURCE_DIR}/data/reader"
+             "-DHAS_MMAP=${_dtwc_has_mmap}" "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-ipc-stream"
+        MARKER "CLI_IPC_STREAM subject=real_dtwc_cl ${_dtwc_ipc_stream_marker} skips=0"
+        LABELS integration cli SERIAL TIMEOUT 120)
 endif()
 
 # The poison-Parquet test below is a real-CLI integration contract, not an Arrow-OFF

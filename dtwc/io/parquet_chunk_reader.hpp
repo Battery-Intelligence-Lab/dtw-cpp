@@ -33,6 +33,7 @@
 #include <filesystem>
 #include <limits>
 #include <memory>
+#include <new>
 #include <numeric>
 #include <optional>
 #include <stdexcept>
@@ -44,8 +45,11 @@ namespace dtwc::io {
 
 namespace detail {
 
+/// An Arrow failure as an IOError naming `ctx`; out of memory, an allocation the system refused Arrow's pool, is
+/// std::bad_alloc, as every refused allocation is.
 inline void check_arrow_chunk(const arrow::Status &s, const char *ctx)
 {
+  if (s.IsOutOfMemory()) throw std::bad_alloc();
   if (!s.ok())
     throw dtwc::IOError(std::string(ctx) + ": " + s.ToString());
 }
@@ -173,6 +177,9 @@ inline void extract_row_names(const arrow::ChunkedArray &column, std::vector<std
 class ParquetChunkReader
 {
 public:
+  /// For algorithms::detail::fast_clara_chunked: one decoder thread reads the row groups, beside the assignment.
+  static constexpr bool decodes_with_team = false;
+  static constexpr const char *piece = "row group", *pieces = "row groups"; ///< what its refusals call a batch's parts
   /// Open a Parquet file for chunked reading.
   ///
   /// @param path       Parquet file path.
@@ -272,6 +279,9 @@ public:
   /// Total number of rows across all row groups.
   int64_t total_rows() const { return total_rows_; }
 
+  /// Every row group's leaf values: the series' values, as the metadata counts them.
+  size_t total_value_count() const { return total_value_count_; }
+
   /// Whether each physical row is one list-encoded time series.
   bool is_list_layout() const { return layout_.kind == detail::ParquetSeriesLayout::Kind::List; }
 
@@ -290,16 +300,11 @@ public:
   int64_t row_group_rows(int rg) const { return rg_row_counts_[rg]; }
 
   /// The bytes `rows` series of `values` values in all hold once read as float
-  /// (use_float32) or data_t: the values, each series' vector and name objects,
-  /// and the allocator's rounding of each series' block (an eighth of it and
-  /// block_overhead_bytes more, measured 2026-10-09). The one price of a read:
-  /// row groups by their metadata, read_rows' series as they are copied out.
+  /// (use_float32) or data_t (dtwc::detail::owned_series_bytes). The one price of
+  /// a read: row groups by their metadata, read_rows' series as they are copied out.
   static size_t series_bytes(size_t values, size_t rows, bool use_float32)
   {
-    const size_t width = use_float32 ? sizeof(float) : sizeof(data_t);
-    const size_t objects = (use_float32 ? sizeof(std::vector<float>) : sizeof(std::vector<data_t>))
-                         + sizeof(std::string) + block_overhead_bytes;
-    return values * width + values * width / 8 + rows * objects;
+    return dtwc::detail::owned_series_bytes(values, rows, use_float32);
   }
 
   /// The bytes a read holds beside its series while it decodes: Arrow's buffers
@@ -318,6 +323,10 @@ public:
                          + name_bytes_ * rows / total_rows;
     return decode_overhead * decoded + 2 * page_bytes_;
   }
+
+  /// What FastCLARA's stream prices the reader holding while it is open, beside any read: nothing, as before the
+  /// stream priced an Arrow IPC file's walk (2026-11-01); its metadata is not measured.
+  size_t open_bytes() const { return 0; }
 
   /// The bytes the series of every row group hold once read: what the series
   /// of the whole file cost in RAM (series_bytes, and their names' characters).
@@ -539,15 +548,13 @@ private:
   /// (2026-10-09: Arrow 23 and mimalloc on Windows, both widths, four codecs, row groups of 256 to 131,072 rows,
   /// both layouts, a name column), at most 0.82 of it.
   static constexpr size_t decode_overhead = 8;
-  /// series_bytes() per series beyond an eighth of its block: the allocator's header (measured 2026-10-09).
-  static constexpr size_t block_overhead_bytes = 16;
 
   /// The bytes `rows` names from the name column hold beyond their string
   /// objects: their characters (`bytes` bounds them) and the allocator's header
   /// each; none without one (series_<i> fits a string's own buffer).
   size_t name_heap_bytes(size_t bytes, size_t rows) const
   {
-    return layout_.names ? bytes + rows * block_overhead_bytes : 0;
+    return layout_.names ? bytes + rows * dtwc::detail::series_block_overhead_bytes : 0;
   }
 
   /// The `leaves` of `groups`: Arrow 24 deprecated the Status form for the Result form.

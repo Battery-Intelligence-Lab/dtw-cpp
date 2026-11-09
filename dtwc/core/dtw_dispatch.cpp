@@ -20,6 +20,7 @@
 #include "dtw_options.hpp"           // DistanceConfig, variant_names
 #include "msm.hpp"                   // msm_distance
 #include "public_distance.hpp"       // normalize_public_distance
+#include "thread_scratch.hpp"        // dispatch_scratch, held_bytes
 #include "twe.hpp"                   // twe_distance
 #include "../base/error.hpp"              // InvalidInput
 
@@ -65,6 +66,15 @@ auto make_zero_cost(const DistanceConfig &c)
   };
 }
 
+/// make_interpolate's two buffers, one pair a T: reached here so that core::release_thread_scratch() can empty them
+/// (detail::dispatch_scratch below); two thread_locals returned as references, as detail::lanes_bufs says why.
+template <typename T>
+std::pair<std::vector<T> &, std::vector<T> &> interpolate_bufs()
+{
+  thread_local std::vector<T> x_buffer, y_buffer;
+  return { x_buffer, y_buffer };
+}
+
 // Univariate: validate() refuses it on ndim > 1. A series without NaN is used as
 // it is; a gappy one is filled into this thread's buffer for its side.
 template <typename T>
@@ -72,7 +82,7 @@ auto make_interpolate(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   return [band = c.band, metric = c.metric](std::span<const T> x, std::span<const T> y) -> double {
-    thread_local std::vector<T> x_buffer, y_buffer;
+    auto [x_buffer, y_buffer] = interpolate_bufs<T>();
     return normalize_public_distance(dtwBanded<T>(interpolate_linear_into(x, x_buffer),
                                                   interpolate_linear_into(y, y_buffer), band, T(-1), metric));
   };
@@ -138,7 +148,7 @@ auto make_ddtw(const DistanceConfig &c)
   const MetricType metric = c.metric;
   if (c.ndim > 1) {
     return [band, metric, ndim = c.ndim](std::span<const T> x, std::span<const T> y) -> double {
-      thread_local std::vector<T> dx, dy;
+      auto [dx, dy] = dtwc::detail::derivative_bufs<T>();
       derivative_transform_mv_inplace(x, ndim, dx);
       derivative_transform_mv_inplace(y, ndim, dy);
       return normalize_public_distance(dtwBanded_mv<T>(
@@ -385,6 +395,27 @@ resolve_dtw_fn(const DistanceConfig &c, const Data &data)
   case DTWVariant::Standard: return make_standard<T>(c);
   }
   throw std::logic_error("resolve_dtw_fn: unreachable DTWVariant");
+}
+
+std::size_t detail::dispatch_scratch(bool release) noexcept
+{
+  // For both Ts the kernels take: the per-pair kernels' columns (dtw_kernel.hpp), MSM's and TWE's rows, the
+  // independent channels (warping.hpp), DDTW's derivatives (warping_ddtw.hpp; make_ddtw's multivariate too), WDTW's
+  // weights with their key, and make_interpolate's copies.
+  auto &wdtw32 = dtwc::detail::wdtw_cache<float>();
+  auto &wdtw64 = dtwc::detail::wdtw_cache<data_t>();
+  std::size_t bytes = held_bytes(release, detail::linear_short_buf<float>(), detail::linear_short_buf<data_t>(),
+                                 detail::banded_col_buf<float>(), detail::banded_col_buf<data_t>(), wdtw32.w, wdtw64.w);
+  if (release) {
+    wdtw32 = {};
+    wdtw64 = {};
+  }
+  const auto pairs = [release](auto both) noexcept { return held_bytes(release, both.first, both.second); };
+  bytes += pairs(detail::msm_rows<float>()) + pairs(detail::msm_rows<data_t>());
+  bytes += pairs(detail::twe_rows<float>()) + pairs(detail::twe_rows<data_t>());
+  bytes += pairs(dtwc::detail::channel_bufs<float>()) + pairs(dtwc::detail::channel_bufs<data_t>());
+  bytes += pairs(dtwc::detail::derivative_bufs<float>()) + pairs(dtwc::detail::derivative_bufs<data_t>());
+  return bytes + pairs(interpolate_bufs<float>()) + pairs(interpolate_bufs<data_t>());
 }
 
 // Explicit instantiations.

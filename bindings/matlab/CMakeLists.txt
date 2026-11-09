@@ -32,7 +32,10 @@ matlab_add_mex(
     NAME dtwc_mex
     SRC dtwc_mex.cpp
     R2018a          # Use interleaved complex (mxGetDoubles); keeps legacy C API
-    LINK_TO dtwc_core   # the core alone: no command line and no Arrow (the CSV/TSV reader is the core's)
+    # The CLI library, which brings the core: dtwc::run and its run report (CLI11's key table, cpuinfo's facts).
+    # Never Arrow C++: MATLAB reads Parquet with parquetread, so a build with DTWC_ENABLE_ARROW=ON stops at configure
+    # (CMakeLists.txt); the MEX CI builds with DTWC_ENABLE_YAML=OFF, so no fkYAML.
+    LINK_TO dtwc_cli
 )
 
 target_compile_features(dtwc_mex PRIVATE cxx_std_20)

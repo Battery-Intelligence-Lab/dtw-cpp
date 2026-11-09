@@ -1,6 +1,7 @@
 /**
  * @file read_arrow.hpp
- * @brief dtwc::io::read_arrow: Parquet and Arrow IPC, read with Arrow C++ (dtwc_io: a build with Arrow only).
+ * @brief dtwc::io::read_arrow: Parquet, read with Arrow C++ (dtwc_io: a build with Arrow only), and Arrow IPC, read by
+ *        the core's reader (io/arrow_ipc.hpp) in every build.
  * @author Volkan Kumtepeli
  */
 
@@ -17,7 +18,8 @@ namespace dtwc::io {
 /**
  * @brief The format of `path` this build's Arrow reader takes, judged from the file system alone, before any file is
  *        opened: Parquet (a .parquet/.pq file or a folder holding one, in a build with Parquet) or Arrow IPC (an
- *        .arrow/.ipc/.feather file). Empty for anything else, which dtwc::read_data reads or refuses.
+ *        .arrow/.ipc/.feather file, which read_arrow hands to dtwc::read_data). Empty for anything else, which
+ *        dtwc::read_data reads or refuses.
  */
 std::optional<InputFormat> arrow_format(const std::filesystem::path &path);
 

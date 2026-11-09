@@ -13,10 +13,12 @@
 
 #include "Problem.hpp"
 #include "core/matrix_io.hpp"
+#include "detail/result_files.hpp" // WriteTimes
 #include "fileOperations.hpp" // for open_output, close_output
 #include "scores.hpp"      // for silhouette
 #include "types/Range.hpp" // for Range
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>  // for setprecision
@@ -244,9 +246,15 @@ void Problem::read_distance_matrix(const fs::path &distMat_path, core::NotComput
 void detail::write_result_files(Problem &prob, const fs::path &directory, bool complete, std::ostream *progress,
                                 const std::vector<std::string> &streamed_names)
 {
+  write_result_files(prob, directory, complete, progress, streamed_names, nullptr);
+}
+
+void detail::write_result_files(Problem &prob, const fs::path &directory, bool complete, std::ostream *progress,
+                                const std::vector<std::string> &streamed_names, WriteTimes *times)
+{
   const auto &labels = prob.labels();
   const auto &medoids = prob.medoids();
-  // A RAM-limited Parquet run holds no series: its names are the reader's, given here.
+  // A streamed run (Arrow IPC or Parquet) holds no series: its names are the reader's, given here.
   const bool streamed = prob.size() == 0;
   const auto series_name = [&](std::size_t i) {
     if (!streamed) return std::string(prob.series_name(i));
@@ -275,27 +283,44 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
   }
   if (progress) *progress << "Medoids written to " << medoids_path << "\n";
 
+  const auto skipped = [times](const char *why) {
+    if (times) times->skipped = why;
+  };
   if (streamed) {
     if (complete)
-      throw InvalidInput("Result: a RAM-limited Parquet run holds no series, so it has no distance matrix or "
+      throw InvalidInput("Result: a streamed run holds no series, so it has no distance matrix or "
                          "silhouettes to save; its labels and medoids are written, with the reader's names.");
+    skipped("not computed: a streamed run holds no distance matrix");
     return;
   }
   // A matrix-free run does not fill an O(N^2) matrix merely to write these files.
-  if (!prob.is_distance_matrix_filled()) return;
+  if (!prob.is_distance_matrix_filled()) {
+    skipped("not computed: the method left the distance matrix unfilled, and a run does not fill it to write them");
+    return;
+  }
   const auto matrix_path = file_in_directory("_distance_matrix.csv");
   io::write_csv(prob.distance_matrix(), matrix_path);
   if (progress) *progress << "Distance matrix written to " << matrix_path << "\n";
 
   // s(i) is undefined for one cluster, which is no reason to fail a clustering that succeeded; a
   // computed score that cannot be written is an error like any other file.
-  if (medoids.size() < 2) return;
+  if (medoids.size() < 2) {
+    skipped("not computed: one cluster");
+    return;
+  }
   std::vector<double> silhouettes;
+  const auto wall = std::chrono::steady_clock::now();
+  const double cpu = times && times->cpu_clock ? times->cpu_clock() : 0.0;
   try {
     silhouettes = scores::silhouette(prob);
   } catch (const UndefinedScore &e) {
     std::cerr << "Warning: silhouettes skipped: " << e.what() << '\n';
+    if (times) times->skipped = std::string("skipped: ") + e.what();
     return;
+  }
+  if (times) {
+    times->silhouette_wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - wall).count();
+    times->silhouette_cpu = times->cpu_clock ? times->cpu_clock() - cpu : 0.0;
   }
   const auto silhouettes_path = file_in_directory("_silhouettes.csv");
   {
@@ -305,12 +330,12 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
       out << series_name(i) << ',' << labels[i] << ',' << std::setprecision(8) << silhouettes[i] << '\n';
     close_output(out, silhouettes_path);
   }
-  if (progress) {
-    const double mean = silhouettes.empty() ? 0.0
-                                            : std::accumulate(silhouettes.begin(), silhouettes.end(), 0.0)
-                                                / static_cast<double>(silhouettes.size());
-    *progress << "Silhouette scores written, mean=" << std::setprecision(4) << mean << "\n";
-  }
+  // The report's mean is -v's: one sum of the silhouettes already computed.
+  const double mean = silhouettes.empty() ? 0.0
+                                          : std::accumulate(silhouettes.begin(), silhouettes.end(), 0.0)
+                                              / static_cast<double>(silhouettes.size());
+  if (times) times->mean_silhouette = mean;
+  if (progress) *progress << "Silhouette scores written, mean=" << std::setprecision(4) << mean << "\n";
 }
 
 } // namespace dtwc

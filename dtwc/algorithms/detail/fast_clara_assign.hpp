@@ -45,6 +45,16 @@ inline std::vector<std::vector<index_t>> draw_clara_samples(index_t N, index_t s
   return samples;
 }
 
+/// The rows of every sample, each once, ascending.
+inline std::vector<index_t> sample_union(const std::vector<std::vector<index_t>> &samples)
+{
+  std::vector<index_t> rows;
+  for (const auto &sample : samples) rows.insert(rows.end(), sample.begin(), sample.end());
+  std::sort(rows.begin(), rows.end());
+  rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+  return rows;
+}
+
 /**
  * Point p to its nearest medoid of one sample: `label` and `best`. medoids[m] is the sample's medoid in slot m and
  * distance(m) p's distance to it, whichever route computed it; a point is at 0 from itself.
@@ -110,6 +120,14 @@ void assign_points(index_t first, std::size_t n, std::span<double> best, std::sp
  * medoid is x here, where `pair` puts the shorter series, or on a tie the point, first), so labels and costs are the
  * per-pair route's.
  */
+/// assign_points_cpu's table, one buffer a thread: reached here so that core::release_thread_scratch() can empty it
+/// (its closed list: core::detail::clara_assign_scratch, fast_clara.cpp).
+inline std::vector<double> &assign_table()
+{
+  thread_local std::vector<double> table;
+  return table;
+}
+
 template <typename T, typename Pair, typename PointOf, typename MedoidOf>
 void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std::span<const index_t> medoids,
                        std::vector<std::vector<index_t>> &labels, const core::DistanceConfig &distance,
@@ -136,7 +154,7 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
       shortest = std::min(shortest, ys[w].size());
       longest = std::max(longest, ys[w].size());
     }
-    thread_local std::vector<double> table; // [j * W + w]: point i0 + w to medoid slot j
+    std::vector<double> &table = assign_table(); // [j * W + w]: point i0 + w to medoid slot j
     if (table.size() < slots * W) table.resize(slots * W);
     double *const t = table.data();
     for (std::size_t j = 0; j < slots; ++j) {

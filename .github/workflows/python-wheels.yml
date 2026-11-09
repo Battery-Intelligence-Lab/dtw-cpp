@@ -69,8 +69,9 @@ jobs:
           CIBW_ARCHS_MACOS: "arm64"
 
           # Release build with header-only llfio (the memory-mapped distance
-          # matrix) and no MIP solver: method="mip" solves with the user's
-          # highspy (the mip extra); Gurobi stays external.
+          # matrix) and no MIP solver: method="mip" solves with highspy, a
+          # dependency of dtwcpp; Gurobi stays external. No YAML: the module
+          # links the CLI library (dtwc::run), and only dtwc_cl reads a --config file.
           # DTWC_BUILD_PYTHON=ON makes DTWC_ARCH_LEVEL default to v3, the CPU floor
           # of every x86-64 wheel (AVX2 and FMA); arm64 wheels get no level flag.
           CIBW_CONFIG_SETTINGS: >-
@@ -78,6 +79,8 @@ jobs:
             cmake.args=-DDTWC_ENABLE_GUROBI=OFF
             cmake.args=-DDTWC_ENABLE_HIGHS=OFF
             cmake.args=-DDTWC_ENABLE_LLFIO=ON
+            cmake.args=-DDTWC_ENABLE_CPUINFO=ON
+            cmake.args=-DDTWC_ENABLE_YAML=OFF
             cmake.args=-DDTWC_BUILD_TESTING=OFF
             cmake.args=-DDTWC_BUILD_BENCHMARK=OFF
             cmake.args=-DCMAKE_BUILD_TYPE=Release
@@ -123,11 +126,11 @@ jobs:
           CIBW_BUILD_VERBOSITY: 1
 
           # Execute a real OpenMP region, solve a compact conformance subset
-          # through the MIP path with highspy (the mip extra, installed for the
-          # test) and map a distance matrix to a file and reopen it (llfio) in
-          # every produced wheel, and check the wheel carries the SLURM wrapper
-          # device='hpc' runs (FX-5).
-          CIBW_TEST_EXTRAS: mip
+          # through the MIP path with highspy (a dependency: no extra is asked
+          # for, so the solve proves the wheel's install brings it) and map a
+          # distance matrix to a file and reopen it (llfio) in every produced
+          # wheel, and check the wheel carries the SLURM wrapper device='hpc'
+          # runs (FX-5).
           CIBW_TEST_COMMAND: >-
             python -c "from dtwcpp._wheel_smoke import run; run()" &&
             python -c "import os, dtwcpp._hpc as h; d = os.path.dirname(h.slurm_wrapper_path()); assert all(os.path.isfile(os.path.join(d, f)) for f in ('slurm_remote.sh', 'cluster_generic.slurm', 'gpu_devices.txt')), d"

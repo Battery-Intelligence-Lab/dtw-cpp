@@ -26,7 +26,7 @@
 #ifdef DTWC_HAS_METAL
 #include "metal/metal_dtw.hpp" // Apple Metal GPU distance matrix computation
 #endif
-#include "warping.hpp"         // for detail::require_finite
+#include "warping.hpp"         // for detail::all_usable, refuse_unusable
 #include "core/dtw_kernel.hpp" // for dtw_lanes
 #include "warping_wdtw.hpp"    // for wdtw_weights (cache population)
 #include "types/Range.hpp"     // for Range
@@ -52,6 +52,7 @@
 #include <iostream>  // for cout
 #include <limits>    // for numeric_limits
 #include <numeric>   // for iota
+#include <optional>  // for optional
 #include <cassert>
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
@@ -157,8 +158,8 @@ constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
 
 void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision)
 {
-  // The GPU routes upload owned Float64 series (data_.p_vec) and run Standard
-  // DTW with no missing-data strategy, in L1 or squared L2.
+  // The GPU routes upload owned Float64 series (data_.p_vec, or an owned copy of
+  // a view's) and run Standard DTW with no missing-data strategy, in L1 or squared L2.
   if (prob.device().first != Device::GPU) return;
   if (series_precision == core::Precision::Float32)
     reject_gpu_request(where, "computes from Float64 series, but precision = Float32 was requested",
@@ -569,16 +570,37 @@ void Problem::validate_distance(core::DistanceConfig config, const Data &data)
 
 const Problem::dtw_fn_t &Problem::dtw_function()
 {
-  sync_band();
-  validate_fill_request("Problem::dtw_function");
-  return dtw_fn_;
+  auto check = series_check("Problem::dtw_function", false);
+  check.check(0, static_cast<std::size_t>(data_.size()));
+  check.finish();
+  return dtw_function(check);
 }
 
 const Problem::dtw_fn_f32_t &Problem::dtw_function_f32()
 {
+  auto check = series_check("Problem::dtw_function_f32", true);
+  check.check(0, static_cast<std::size_t>(data_.size()));
+  check.finish();
+  return dtw_function_f32(check);
+}
+
+Problem::SeriesCheck Problem::series_check(std::string_view where, bool f32)
+{
   sync_band();
-  core::validate(distance_, true); // the series may be Float64: float32 must hold the parameters
-  validate_fill_request("Problem::dtw_function_f32");
+  if (f32) core::validate(distance_, true); // the series may be Float64: float32 must hold the parameters
+  return SeriesCheck(*this, where, f32);
+}
+
+const Problem::dtw_fn_t &Problem::dtw_function(const SeriesCheck &check)
+{
+  if (check.problem_ != this) throw std::logic_error("Problem::dtw_function: the check is another Problem's.");
+  return dtw_fn_;
+}
+
+const Problem::dtw_fn_f32_t &Problem::dtw_function_f32(const SeriesCheck &check)
+{
+  if (check.problem_ != this || !check.f32_)
+    throw std::logic_error("Problem::dtw_function_f32: the check is another Problem's, or not the float32 function's.");
   if (!dtw_fn_f32_) dtw_fn_f32_ = core::resolve_dtw_fn<float>(distance_, data_);
   return dtw_fn_f32_;
 }
@@ -706,37 +728,50 @@ void Problem::validate_checkpoint_settings() const
 
 void Problem::validate_fill_request(std::string_view where) const
 {
-  const std::string at(where);
+  SeriesCheck check(*this, where, false);
+  check.check(0, static_cast<std::size_t>(data_.size()));
+  check.finish();
+}
 
+Problem::SeriesCheck::SeriesCheck(const Problem &problem, std::string_view where, bool f32)
+  : problem_(&problem), where_(where), f32_(f32)
+{
+  const Data &data = problem.data_;
   // On every device: set_data refuses an empty series, but an edit through
   // p_vec can empty one afterwards, and the kernels answer it with the finite
   // max() sentinel. First, so a band check does not blame the empty series' length.
-  reject_empty_series(data_, at);
+  reject_empty_series(data, where_);
 
   // A band narrower than a pair's length difference leaves that pair no warping
   // path: the banded kernels return the finite max() sentinel, which passes every
   // isfinite() guard, so clustering would silently sum 1.8e308. The widest gap is
   // shortest vs longest. Soft-DTW, MSM and TWE ignore the band. Lengths are
   // timesteps, as the multivariate kernels count them.
-  const auto variant = distance_.variant.variant;
-  const int band = distance_.band;
-  if (band >= 0 && data_.size() > 1 && variant != core::DTWVariant::SoftDTW
+  const auto variant = problem.distance_.variant.variant;
+  const int band = problem.distance_.band;
+  if (band >= 0 && data.size() > 1 && variant != core::DTWVariant::SoftDTW
       && variant != core::DTWVariant::MSM && variant != core::DTWVariant::TWE) {
-    std::size_t shortest = 0, longest = 0;
-    for (std::size_t i = 1; i < data_.size(); ++i) {
-      if (data_.series_length(i) < data_.series_length(shortest)) shortest = i;
-      if (data_.series_length(i) > data_.series_length(longest)) longest = i;
+    std::size_t shortest = 0, longest = 0, low = data.series_length(0), high = low; // the first of each, as found
+    for (std::size_t i = 1; i < static_cast<std::size_t>(data.size()); ++i) {
+      const std::size_t length = data.series_length(i);
+      if (length < low) {
+        shortest = i;
+        low = length;
+      }
+      if (length > high) {
+        longest = i;
+        high = length;
+      }
     }
-    const std::size_t gap =
-      data_.series_length(longest) - data_.series_length(shortest);
+    const std::size_t gap = high - low;
     if (gap > static_cast<std::size_t>(band)) {
       const auto describe = [&](std::size_t i) {
-        return "series '" + std::string(series_name(i)) + "' (index "
+        return "series '" + std::string(data.name(i)) + "' (index "
              + std::to_string(i) + ", length "
-             + std::to_string(data_.series_length(i)) + ")";
+             + std::to_string(data.series_length(i)) + ")";
       };
       throw InvalidInput(
-        at + ": band = " + std::to_string(band) + " is narrower than the length "
+        where_ + ": band = " + std::to_string(band) + " is narrower than the length "
         "difference between " + describe(shortest) + " and " + describe(longest)
         + ", so no warping path fits that pair. The smallest feasible band is "
         + std::to_string(gap) + "; pass band >= " + std::to_string(gap)
@@ -744,47 +779,125 @@ void Problem::validate_fill_request(std::string_view where) const
     }
   }
 
-  // The kernels take NaN and ±inf as numbers. ±inf gives inf, or
-  // inf − inf = NaN, under any strategy; NaN is a missing value only to a
-  // missing-data strategy, and otherwise poisons the recurrence (NaN also marks
-  // an uncomputed matrix entry). One check through the raw entry points' own
-  // boundary test, serial so the message names the series and its (flat)
-  // position.
-  const bool nan_is_missing = distance_.missing != core::MissingStrategy::Error;
-  std::string name;
-  for (std::size_t i = 0; i < data_.size(); ++i) {
-    name.assign("series '").append(series_name(i)).append("' (index ")
-      .append(std::to_string(i)).append(")");
-    if (data_.is_f32())
-      detail::require_finite(data_.series_f32(i), name, at, nan_is_missing);
-    else
-      detail::require_finite(series(i), name, at, nan_is_missing);
-  }
-  if (distance_.missing == core::MissingStrategy::Interpolate) {
-    // interpolate_linear_into() has no observed value to interpolate from when a
-    // series is entirely NaN, and used to throw from inside the per-pair lambda.
-    for (std::size_t i = 0; i < data_.size(); ++i) {
-      const bool all_nan = data_.is_f32() ? all_missing(data_.series_f32(i))
-                                          : all_missing(series(i));
-      if (all_nan)
-        throw InvalidInput(
-          at + ": series '" + std::string(series_name(i)) + "' (index "
-          + std::to_string(i) + ") is entirely NaN, so MissingStrategy::Interpolate "
-            "has nothing to interpolate from. Use ZeroCost or AROW, or drop the "
-            "series.");
-    }
-  }
+  const std::size_t budget = problem.ram_limit_ != 0 ? problem.ram_limit_ : core::available_memory(); // 0: unknown
+  block_bytes_ = budget == 0 ? std::size_t{ 1 } << 30 : budget / 8;
+}
 
-  // The GPU routes also need owned, resident, univariate series.
-  if (device_ != Device::GPU) return;
-  if (data_.is_view())
-    reject_gpu_request(at,
-                       "needs owned series in RAM, but this Problem's series are a non-owning "
-                       "view (set_view_data)",
-                       "Install owning series with set_data, or use device cpu.");
-  validate_gpu_request(at, *this, data_.precision);
-  if (data_.ndim > 1)
-    reject_gpu_request(at, "is univariate only, but ndim = " + std::to_string(data_.ndim) + " was requested",
+/// Series i's refused value, named by its series and (flat) position: require_finite's message.
+void Problem::SeriesCheck::refuse(std::size_t i) const
+{
+  const Data &data = problem_->data_;
+  const std::string name = "series '" + std::string(data.name(i)) + "' (index " + std::to_string(i) + ")";
+  const bool nan_is_missing = problem_->distance_.missing != core::MissingStrategy::Error;
+  if (data.is_f32()) detail::refuse_unusable(data.series_f32(i), name, where_, nan_is_missing);
+  detail::refuse_unusable(data.series(i), name, where_, nan_is_missing);
+}
+
+namespace {
+
+/// A series' verdict in Problem::SeriesCheck: a byte a series, written by the thread that checks it.
+enum Verdict : unsigned char { usable, entirely_nan, refused };
+
+// The kernels take NaN and ±inf as numbers. ±inf gives inf, or inf − inf = NaN,
+// under any strategy; NaN is a missing value only to a missing-data strategy,
+// and otherwise poisons the recurrence (NaN also marks an uncomputed matrix
+// entry). The raw entry points' boundary test with no branch per value
+// (detail::all_usable), and under Interpolate whether a series has no observed
+// value: interpolate_linear_into() has nothing to interpolate it from. Always
+// inlined: GCC's inline-unit-growth cap in this file left it a call a series.
+DTWC_ALWAYS_INLINE Verdict verdict_of(const Data &data, std::size_t i, core::MissingStrategy missing)
+{
+  const auto of = [missing](const auto values) {
+    if (!detail::all_usable(values, missing != core::MissingStrategy::Error)) return refused;
+    return missing == core::MissingStrategy::Interpolate && all_missing(values) ? entirely_nan : usable;
+  };
+  return data.is_f32() ? of(data.series_f32(i)) : of(data.series(i));
+}
+
+/// Ask for the pages of series [first, first + count) of `data` when they lie in a mapped file: a view whose bytes an
+/// owner keeps (the Arrow IPC reader's), the series ascending within twice their values' bytes, as a file's rows lie.
+/// Owned series are in memory, and a view of scattered storage is left alone.
+void prefetch_series(const Data &data, std::size_t first, std::size_t count)
+{
+  if (count == 0 || !data.is_view() || !data.owner()) return;
+  const auto read_ahead = [&](const auto &series_of) {
+    std::size_t bytes = 0;
+    for (std::size_t i = first; i < first + count; ++i) bytes += series_of(i).size_bytes();
+    const auto back = series_of(first + count - 1);
+    const auto begin = reinterpret_cast<std::uintptr_t>(series_of(first).data());
+    const auto end = reinterpret_cast<std::uintptr_t>(back.data() + back.size());
+    if (begin < end && end - begin <= 2 * bytes)
+      core::prefetch_pages(series_of(first).data(), static_cast<std::size_t>(end - begin));
+  };
+  if (data.is_f32())
+    read_ahead([&data](std::size_t i) { return data.series_f32(i); });
+  else
+    read_ahead([&data](std::size_t i) { return data.series(i); });
+}
+
+} // namespace
+
+void Problem::SeriesCheck::check(std::size_t first, std::size_t count)
+{
+  sweep(first, count, std::min(count, static_cast<std::size_t>(problem_->data_.size()) - (first + count)));
+}
+
+void Problem::SeriesCheck::sweep(std::size_t first, std::size_t count, std::size_t ahead)
+{
+  const Data &data = problem_->data_;
+  const auto missing = problem_->distance_.missing;
+  const std::size_t end = first + count, value_bytes = data.is_f32() ? sizeof(float) : sizeof(data_t);
+  for (std::size_t b0 = first; b0 < end;) {
+    std::size_t b1 = b0 + 1; // the block [b0, b1)
+    for (std::size_t bytes = data.series_flat_size(b0) * value_bytes;
+         b1 < end && (bytes += data.series_flat_size(b1) * value_bytes) <= block_bytes_;)
+      ++b1;
+    // Each series' verdict in its own byte; after the join, the first refused series in the block, the lowest of all
+    // as the blocks go in order, throws.
+    std::vector<Verdict> verdicts(b1 - b0);
+    auto task = [&](std::size_t i) {
+      if (i == 0 && b0 == first) prefetch_series(data, end, ahead);
+      verdicts[i] = verdict_of(data, b0 + i, missing);
+    };
+    run_openmp(task, verdicts.size(), verdicts.size() > 64, 16);
+    for (std::size_t i = 0; i < verdicts.size(); ++i) {
+      if (verdicts[i] == refused) refuse(b0 + i);
+      if (verdicts[i] == entirely_nan) mark_ = std::min(mark_, b0 + i);
+    }
+    b0 = b1;
+  }
+}
+
+void Problem::SeriesCheck::check_rows(std::span<const index_t> rows)
+{
+  const Data &data = problem_->data_;
+  const auto missing = problem_->distance_.missing;
+  std::vector<Verdict> verdicts(rows.size());
+  auto task = [&](std::size_t i) { verdicts[i] = verdict_of(data, static_cast<std::size_t>(rows[i]), missing); };
+  run_openmp(task, rows.size(), rows.size() > 64, 16);
+  for (std::size_t i = 0; i < rows.size(); ++i) {
+    const auto row = static_cast<std::size_t>(rows[i]);
+    if (verdicts[i] == refused) {
+      sweep(0, row, 0); // a lower series refused comes first; nothing past row is read
+      refuse(row);
+    }
+    if (verdicts[i] == entirely_nan) mark_ = std::min(mark_, row);
+  }
+}
+
+void Problem::SeriesCheck::finish() const
+{
+  const Problem &problem = *problem_;
+  if (marked())
+    throw InvalidInput(where_ + ": series '" + std::string(problem.series_name(mark_)) + "' (index "
+                       + std::to_string(mark_) + ") is entirely NaN, so MissingStrategy::Interpolate has nothing to "
+                       "interpolate from. Use ZeroCost or AROW, or drop the series.");
+
+  // The GPU routes also need univariate Float64 series (a view's are uploaded as an owned copy).
+  if (problem.device_ != Device::GPU) return;
+  validate_gpu_request(where_, problem, problem.data_.precision);
+  if (problem.data_.ndim > 1)
+    reject_gpu_request(where_, "is univariate only, but ndim = " + std::to_string(problem.data_.ndim) + " was requested",
                        "Use device cpu for multivariate series.");
 }
 
@@ -839,8 +952,10 @@ void Problem::fillDistanceMatrix_BruteForce()
   size_t slab_bytes = std::numeric_limits<size_t>::max();
   if (distMat.is_mapped()) {
     const size_t budget = ram_limit_ != 0 ? ram_limit_ : core::available_memory(); // 0: unknown, no limit
-    slab_bytes = budget == 0 ? size_t{ 1 } << 30
-                             : std::min(budget > series_bytes ? (budget - series_bytes) / 8 : 0, size_t{ 1 } << 30);
+    // What the series hold of the budget: a mapped view's values are the page cache's, its spans and names its own;
+    // any other's values (owned, decoded, read into a buffer) are this process's.
+    const size_t held = data_.is_mapped() ? N * detail::view_series_bytes : series_bytes;
+    slab_bytes = budget == 0 ? size_t{ 1 } << 30 : std::min(budget > held ? (budget - held) / 8 : 0, size_t{ 1 } << 30);
     h = std::min(h, std::max(W, slab_bytes / (N * entry_bytes) / W * W)); // the last tile-row fits a slab
   }
   const size_t save_rows =
@@ -906,8 +1021,9 @@ void Problem::fillDistanceMatrix_BruteForce()
     if (f32)
       fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); },
                   dtw_block_fn_f32_, *f32_function);
-    else
-      fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return series(i); }, dtw_block_fn_, dtw_fn_);
+    else // Data's accessor, as above: GCC's inline-unit-growth cap leaves the Problem::series wrapper out of line here
+      fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series(i); }, dtw_block_fn_,
+                  dtw_fn_);
   };
 
   std::vector<size_t> slabs{ 0 }; // slab s: tile-rows [slabs[s], slabs[s + 1])
@@ -991,8 +1107,8 @@ void Problem::fill_distance_matrix()
   if (verbose_)
     std::cout << "Distance matrix is being filled!" << '\n';
 
-  // The serial missing-data pre-scan is part of validate_fill_request,
-  // above: it runs before any pair, here and on every other entry point.
+  // The missing-data pre-scan is part of validate_fill_request, above: it
+  // runs before any pair, here and on every other entry point.
 
   if (device_ == Device::CPU) {
     fillDistanceMatrix_BruteForce(); // saves a checkpoint after each row block
@@ -1013,10 +1129,15 @@ void Problem::fill_distance_matrix()
     // L2 is L1 on the univariate series the GPU routes take.
     opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
     opts.verbose = verbose_;
+    // The backends upload owned Float64 series, which a view (a mapped Arrow IPC file's series, a decoded record
+    // batch's) leaves p_vec empty of: it uploads an owned copy, checked above, freed when the fill returns.
+    std::optional<Data> copy;
+    if (data_.is_view()) copy.emplace(detail::owned_copy(data_, core::Precision::Float64));
+    const auto &series = copy ? copy->p_vec : data_.p_vec;
 #  if defined(DTWC_HAS_CUDA)
-    (void)cuda::compute_distance_matrix_cuda(data_.p_vec, opts, distMat);
+    (void)cuda::compute_distance_matrix_cuda(series, opts, distMat);
 #  else
-    (void)metal::compute_distance_matrix_metal(data_.p_vec, opts, distMat);
+    (void)metal::compute_distance_matrix_metal(series, opts, distMat);
 #  endif
     refuse_float32_overflow(0, distMat.size());
     if (distMat.rows_written() < distMat.size()) // a mapped file's rows are on the device, and it records them

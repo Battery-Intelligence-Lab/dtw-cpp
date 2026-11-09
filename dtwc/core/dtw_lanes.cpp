@@ -15,6 +15,7 @@
 #include "dtw_kernel.hpp"     // dtw_kernel_lanes, dtw_lanes, LanesCell
 #include "dtw_options.hpp"    // DTWVariant, MissingStrategy, MetricType
 #include "public_distance.hpp" // normalize_public_distance
+#include "thread_scratch.hpp"  // lanes_scratch, held_bytes
 
 #include <cmath>
 #include <cstddef>
@@ -61,5 +62,12 @@ resolve_dtw_block_fn<data_t>(const DistanceConfig &);
 template std::function<void(std::span<const float>, std::span<const std::span<const float>>,
                             std::span<double>)>
 resolve_dtw_block_fn<float>(const DistanceConfig &);
+
+std::size_t detail::lanes_scratch(bool release) noexcept
+{
+  auto [y32, s32] = detail::lanes_bufs<float>();
+  auto [y64, s64] = detail::lanes_bufs<data_t>();
+  return held_bytes(release, y32, s32, y64, s64);
+}
 
 } // namespace dtwc::core

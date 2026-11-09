@@ -1,12 +1,13 @@
 /**
  * @file test_io_readers.cpp
- * @brief The Arrow IPC and Parquet routes of dtwc::io::read_arrow, and the Parquet
- *        reader's streaming entries: names, values, nulls, offsets, metadata.
+ * @brief The Parquet route of dtwc::io::read_arrow, and the Parquet reader's
+ *        streaming entries: names, values, nulls, offsets, metadata.
  *
- * Each test builds an Arrow/Parquet fixture with the Arrow C++ API in a temp
+ * Each test builds a Parquet fixture with the Arrow C++ API in a temp
  * directory, then exercises the reader. The tests are gated on DTWC_HAS_ARROW /
  * DTWC_HAS_PARQUET exactly like the readers themselves (see dtwc/CMakeLists.txt);
- * when Arrow is not built the file registers a single skipped case.
+ * when Arrow is not built the file registers a single skipped case. Arrow IPC,
+ * which every build reads, is tests/unit/io/test_arrow_ipc.cpp's.
  *
  * @author Volkan Kumtepeli
  * @date 2026-07-07
@@ -24,9 +25,13 @@
 #include <utility>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <random>
+#include <regex>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -43,8 +48,6 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 
 #include <arrow/api.h>
 #include <arrow/io/api.h>
-#include <arrow/ipc/api.h>
-#include <arrow/util/key_value_metadata.h>
 
 #include <base/error.hpp>
 #include <core/portable_random.hpp>
@@ -58,6 +61,7 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 #include <cli/config.hpp>
 #include <io/parquet_chunk_reader.hpp>
 #include <Problem.hpp>
+#include <warping.hpp> // detail::require_finite, the refusals' text
 #endif
 
 using Catch::Matchers::WithinAbs;
@@ -93,19 +97,6 @@ std::shared_ptr<arrow::Array> make_list_f64(const std::vector<std::vector<double
   return out;
 }
 
-// Write an Arrow IPC (Feather v2) file, one record batch per column set.
-void write_ipc(const std::filesystem::path &path,
-               const std::shared_ptr<arrow::Schema> &schema,
-               const std::vector<std::vector<std::shared_ptr<arrow::Array>>> &batches)
-{
-  auto out = unwrap(arrow::io::FileOutputStream::Open(dtwc::path_to_utf8(path))); // Arrow paths are UTF-8
-  auto writer = unwrap(arrow::ipc::MakeFileWriter(out, schema));
-  for (const auto &columns : batches)
-    REQUIRE(writer->WriteRecordBatch(*arrow::RecordBatch::Make(schema, columns.front()->length(), columns)).ok());
-  REQUIRE(writer->Close().ok());
-  REQUIRE(out->Close().ok());
-}
-
 // A list column holding a null cell, and one holding a null inside a cell.
 std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>> null_lists()
 {
@@ -131,127 +122,6 @@ std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>> null_lists()
 }
 
 } // namespace
-
-// --------------------- Arrow IPC (read_data, via a C stream) ---------------------
-
-TEMPLATE_TEST_CASE("ArrowIPC: every record batch, its names and ndim reach the Data", "[io][arrow]",
-                   arrow::StringBuilder, arrow::LargeStringBuilder)
-{
-  // The C stream path dropped the 'name' column for series_<i>, and the IPC
-  // reader refused a second record batch. LargeUtf8 is Polars' default string type.
-  const auto names = [](const std::vector<std::string> &values) {
-    TestType builder;
-    REQUIRE(builder.AppendValues(values).ok());
-    std::shared_ptr<arrow::Array> out;
-    REQUIRE(builder.Finish(&out).ok());
-    return out;
-  };
-  const auto first_names = names({ "first", "second" });
-  const auto first_data = make_list_f64({ { 1.0, 2.0, 3.0, 4.0 }, { 5.0, 6.0 } });
-  const auto schema = arrow::schema(
-    { arrow::field("name", first_names->type()), arrow::field("data", first_data->type()) },
-    arrow::key_value_metadata({ "ndim" }, { "2" }));
-  const auto tmp = tmpdir() / (first_names->type()->ToString() + "_batches.arrow");
-  write_ipc(tmp, schema, { { first_names, first_data }, { names({ "third" }), make_list_f64({ { 7.0, 8.0 } }) } });
-
-  const auto data = dtwc::io::read_arrow(tmp);
-  CHECK(data.ndim == 2);
-  CHECK(data.series_length(0) == 2); // 4 flat values / ndim 2
-  CHECK(data.p_names == std::vector<std::string>{ "first", "second", "third" });
-  CHECK(data.p_vec == std::vector<std::vector<double>>{ { 1.0, 2.0, 3.0, 4.0 }, { 5.0, 6.0 }, { 7.0, 8.0 } });
-  std::filesystem::remove(tmp);
-}
-
-TEST_CASE("ArrowIPC: out-of-bounds list offset rejected", "[io][arrow][security]")
-{
-  // A crafted file: int32 offsets [0, 6, 3] over 5 values. The IPC writer keeps
-  // values [offsets[0], offsets[length]) = 3 of them, so the middle offset, 6,
-  // points past the mapped values; reading it would run off the buffer.
-  auto pool = arrow::default_memory_pool();
-  arrow::DoubleBuilder vb(pool);
-  REQUIRE(vb.AppendValues(std::vector<double>{ 1.0, 2.0, 3.0, 4.0, 5.0 }).ok());
-  std::shared_ptr<arrow::Array> values;
-  REQUIRE(vb.Finish(&values).ok());
-  auto offsets = arrow::Buffer::FromVector(std::vector<int32_t>{ 0, 6, 3 });
-  auto list_type = arrow::list(arrow::float64());
-  auto list = std::static_pointer_cast<arrow::Array>(
-    std::make_shared<arrow::ListArray>(list_type, /*length=*/2, offsets, values));
-  auto tmp = tmpdir() / "crafted.arrow"; // a name the message matcher cannot match
-  write_ipc(tmp, arrow::schema({ arrow::field("data", list_type) }), { { list } });
-
-  CHECK_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::IOError);
-  CHECK_THROWS_WITH(dtwc::io::read_arrow(tmp), Catch::Matchers::ContainsSubstring("is outside the values"));
-  std::filesystem::remove(tmp);
-}
-
-TEST_CASE("ArrowIPC: a column of the wrong type is rejected by type", "[io][arrow]")
-{
-  // A bad Arrow type is an IOError naming the file and the column: a scalar
-  // 'data' column, and an Int64 'name' column, which must not silently become
-  // series_<i>.
-  arrow::DoubleBuilder scalar_builder;
-  REQUIRE(scalar_builder.AppendValues(std::vector<double>{ 1.0, 2.0 }).ok());
-  std::shared_ptr<arrow::Array> scalar;
-  REQUIRE(scalar_builder.Finish(&scalar).ok());
-  const auto scalar_file = tmpdir() / "scalar_data.arrow";
-  write_ipc(scalar_file, arrow::schema({ arrow::field("data", scalar->type()) }), { { scalar } });
-  REQUIRE_THROWS_AS(dtwc::io::read_arrow(scalar_file), dtwc::IOError);
-  REQUIRE_THROWS_WITH(dtwc::io::read_arrow(scalar_file),
-                      Catch::Matchers::ContainsSubstring("'data'")
-                        && Catch::Matchers::ContainsSubstring("scalar_data.arrow"));
-  std::filesystem::remove(scalar_file);
-
-  auto data = make_list_f64({ { 1.0, 2.0 }, { 3.0, 4.0 } });
-  arrow::Int64Builder nb;
-  REQUIRE(nb.AppendValues(std::vector<int64_t>{ 7, 8 }).ok());
-  std::shared_ptr<arrow::Array> names;
-  REQUIRE(nb.Finish(&names).ok());
-  auto schema = arrow::schema(
-    { arrow::field("data", data->type()), arrow::field("name", names->type()) });
-  auto tmp = tmpdir() / "int64_names.arrow";
-  write_ipc(tmp, schema, { { data, names } });
-
-  REQUIRE_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::IOError);
-  REQUIRE_THROWS_WITH(dtwc::io::read_arrow(tmp),
-                      Catch::Matchers::ContainsSubstring("'name'")
-                        && Catch::Matchers::ContainsSubstring("int64_names.arrow"));
-  std::filesystem::remove(tmp);
-}
-
-TEST_CASE("ArrowIPC: ndim metadata must be a whole positive integer", "[io][arrow]")
-{
-  // An unguarded std::stoul let "abc" escape as a context-free
-  // std::invalid_argument, wrapped "-1" to 2^64 - 1 and read "2x" as 2; 0 would
-  // divide every series length by zero. Each is an IOError naming the file.
-  for (const std::string text : { "0", "abc", "-1", "2x", "", "99999999999999999999999" }) {
-    INFO("ndim metadata '" << text << "'");
-    auto arr = make_list_f64({ { 1.0, 2.0, 3.0, 4.0 } });
-    auto meta = arrow::key_value_metadata({ "ndim" }, { text });
-    auto schema = arrow::schema({ arrow::field("data", arr->type()) }, meta);
-    auto tmp = tmpdir() / "ndim_text.arrow";
-    write_ipc(tmp, schema, { { arr } });
-
-    REQUIRE_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::IOError);
-    REQUIRE_THROWS_WITH(dtwc::io::read_arrow(tmp),
-                        Catch::Matchers::ContainsSubstring("ndim")
-                          && Catch::Matchers::ContainsSubstring("ndim_text.arrow"));
-    std::filesystem::remove(tmp);
-  }
-}
-
-TEST_CASE("ArrowIPC: a null series or a null value is rejected", "[io][arrow][security]")
-{
-  // The IPC reader never looked at the validity bitmap: a null slot became
-  // whatever bytes the values buffer held, straight into the distances.
-  for (const auto &[label, arr] : null_lists()) {
-    CAPTURE(label);
-    auto tmp = tmpdir() / ("ipc_" + label.substr(5) + ".arrow");
-    write_ipc(tmp, arrow::schema({ arrow::field("data", arr->type()) }), { { arr } });
-    CHECK_THROWS_AS(dtwc::io::read_arrow(tmp), dtwc::InvalidInput);
-    CHECK_THROWS_WITH(dtwc::io::read_arrow(tmp), Catch::Matchers::ContainsSubstring("null"));
-    std::filesystem::remove(tmp);
-  }
-}
 
 // -------------------------- Parquet reader ----------------------------
 
@@ -794,6 +664,101 @@ TEST_CASE("Parquet: streamed FastCLARA refuses the rows the in-RAM run refuses",
   std::filesystem::remove(path);
 }
 
+// The stream checks the sampled rows before its PAM, then each row group as it decodes, each in row order (RowCheck):
+// it names the first row it refuses in that order. The in-RAM run of the same file names the lowest, ±inf before an
+// entirely-NaN row under Interpolate (Problem's check). Two refused rows in one row group, refused rows in two, a
+// sampled row above an unsampled lower one, an entirely-NaN row before an infinite one; each route's full text, as at
+// fd8a7450: require_finite's at the row it names, or the entirely-NaN one.
+TEST_CASE("Parquet: the stream refuses the first row it reads, the in-RAM run the lowest",
+          "[io][parquet][streaming][mm]")
+{
+  using dtwc::core::MissingStrategy;
+  constexpr double nan = std::numeric_limits<double>::quiet_NaN(), inf = std::numeric_limits<double>::infinity();
+  std::vector<std::vector<double>> walks(64, std::vector<double>(8)); // 4 row groups of 16
+  for (std::size_t i = 0; i < walks.size(); ++i)
+    for (std::size_t t = 0; t < 8; ++t) walks[i][t] = 0.25 * static_cast<double>((5 * i + 3 * t) % 13);
+  dtwc::algorithms::CLARAOptions options;
+  options.n_clusters = 2;
+  options.sample_size = 8;
+  options.n_samples = 1;
+  options.random_seed = 3;
+  std::mt19937_64 rng(options.random_seed);
+  const auto sample = dtwc::core::portable_sample_indices<dtwc::index_t>(64, 8, rng);
+  const auto sampled = [&](std::size_t row) {
+    return std::find(sample.begin(), sample.end(), static_cast<dtwc::index_t>(row)) != sample.end();
+  };
+  const auto unsampled = [&](std::size_t from, std::size_t skip = 0) { // the skip-th unsampled row from `from`
+    for (;; ++from)
+      if (!sampled(from) && skip-- == 0) return from;
+  };
+  const auto r = static_cast<std::size_t>(sample.back()); // sampled, above an unsampled row
+  std::size_t u = r;
+  while (u > 0 && sampled(--u)) {}
+  const std::size_t a = unsampled(32), b = unsampled(32, 1), c = unsampled(16), d = unsampled(48), e = unsampled(18),
+                    f = unsampled(52);
+  REQUIRE((!sampled(u) && u < r && a < b && b < 48 && c < 32 && d >= 48 && e < 32 && f < 64));
+
+  constexpr std::size_t none = std::numeric_limits<std::size_t>::max();
+  struct Case
+  {
+    const char *what;
+    MissingStrategy missing;
+    std::vector<std::pair<std::size_t, double>> poisons; // a row's position 1 gets the value
+    std::size_t entirely_nan;                            // a row NaN in every position, or none
+    std::size_t stream_row, in_ram_row;
+  };
+  const std::vector<Case> cases{
+    { "two rows of one row group", MissingStrategy::Error, { { b, inf }, { a, nan } }, none, a, a },
+    { "two row groups", MissingStrategy::Error, { { d, -inf }, { c, inf } }, none, c, c },
+    { "a sampled row above an unsampled lower one", MissingStrategy::Error, { { r, -inf }, { u, nan } }, none, r, u },
+    { "an entirely-NaN row before an infinite one", MissingStrategy::Interpolate, { { f, inf } }, e, e, f },
+  };
+  const auto text = [](const std::vector<double> &values, std::size_t row, const char *where, MissingStrategy missing,
+                       bool entirely_nan) {
+    const std::string name = "series 'series_" + std::to_string(row) + "' (index " + std::to_string(row) + ")";
+    if (entirely_nan)
+      return std::string(where) + ": " + name
+             + " is entirely NaN, so MissingStrategy::Interpolate has nothing to interpolate from. Use ZeroCost or "
+               "AROW, or drop the series.";
+    try {
+      dtwc::detail::require_finite(std::span<const double>(values), name, where, missing != MissingStrategy::Error);
+    } catch (const dtwc::InvalidInput &refused) {
+      return std::string(refused.what());
+    }
+    FAIL("require_finite takes row " << row);
+    return std::string();
+  };
+  const auto path = tmpdir() / "clara_first_refused.parquet";
+  for (const Case &c : cases) {
+    INFO(c.what);
+    auto rows = walks;
+    for (const auto &[row, value] : c.poisons) rows[row][1] = value;
+    if (c.entirely_nan != none) std::fill(rows[c.entirely_nan].begin(), rows[c.entirely_nan].end(), nan);
+    write_parquet(path, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
+                                           { make_list_f64(rows) }),
+                  16);
+
+    dtwc::Problem in_ram{ "in_ram" };
+    in_ram.set_missing_strategy(c.missing);
+    in_ram.set_data(dtwc::io::read_arrow(path, "series"));
+    CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara(in_ram, options), dtwc::InvalidInput,
+                         Catch::Matchers::Message(text(rows[c.in_ram_row], c.in_ram_row, "Problem::dtw_function",
+                                                       c.missing, c.in_ram_row == c.entirely_nan)));
+
+    dtwc::Problem streamed{ "streamed" };
+    streamed.set_missing_strategy(c.missing);
+    auto stream = options;
+    stream.parquet_path = path;
+    stream.parquet_column = "series";
+    stream.ram_limit_bytes = dtwc::io::ParquetChunkReader(path, "series").decode_bytes() + 8192; // a row group a batch
+    stream.force_parquet_streaming = true;
+    CHECK_THROWS_MATCHES(dtwc::algorithms::fast_clara_parquet(streamed, stream), dtwc::InvalidInput,
+                         Catch::Matchers::Message(
+                           text(rows[c.stream_row], c.stream_row, "fast_clara", c.missing, c.stream_row == c.entirely_nan)));
+  }
+  std::filesystem::remove(path);
+}
+
 // The stream decoded a batch of row groups in one read, and Arrow's buffers grew to a power of two above the
 // batch's values, about 2.5 times them, which the batch's price did not hold: under --ram-limit 1G a stream peaked
 // at 1.48 GB of private bytes (2026-10-09). It decodes a record batch at a time, whatever its batches' size: Arrow's
@@ -842,10 +807,30 @@ TEST_CASE("Parquet: a stream's decoding stays within the reader's decode price",
   std::filesystem::remove(path);
 }
 
+// CLARA with more clusters than series is refused with the text every input gives, before CLARA's plan (whose own
+// text it gave, where a CSV gave require_clusterable's).
+TEST_CASE("Parquet: CLARA with more clusters than series is refused as for every input", "[io][parquet]")
+{
+  const auto input = tmpdir() / "k_over_n.parquet";
+  write_parquet(input, arrow::Table::Make(arrow::schema({ arrow::field("series", arrow::list(arrow::float64())) }),
+                                          { make_list_f64({ { 1.0, 2.0 }, { 3.0 }, { 4.0, 5.0 } }) }),
+                2);
+  dtwc::Config config;
+  config.input = dtwc::path_to_utf8(input);
+  config.column = "series";
+  config.method = dtwc::Method::CLARA;
+  config.k = 5;
+  config.output.clear();
+  CHECK_THROWS_MATCHES(dtwc::run(config), dtwc::InvalidInput,
+                       Catch::Matchers::Message("cluster: k must not exceed the number of series."));
+  std::filesystem::remove(input);
+}
+
 // A RAM-limited run holds no series, so Result::save used to read the names and
-// the distance matrix of an empty Data. It writes the labels and medoids under
-// the readers' series_<i> names and refuses the files it cannot make.
-TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses the matrix",
+// the distance matrix of an empty Data. It writes what dtwc_cl writes for it: the
+// labels and medoids under the reader's series_<i> names, then the run report; no
+// matrix or silhouettes, which it has none of.
+TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and the report, no matrix",
           "[io][parquet][streaming]")
 {
   std::vector<std::vector<double>> series;
@@ -862,15 +847,35 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   config.k = 2;
   config.sample_size = 4;
   config.n_samples = 2;
-  // A byte below the file's resident estimate, which the stream's pass fits under: FastCLARA streams it.
-  config.ram_limit = dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false) - 1;
+  // A byte below the file's resident estimate, which the stream's pass fits under: FastCLARA streams it. That is the
+  // data cap: the limit is it beside the reserve for the threads' working set, which -v's memory plan names.
+  const std::size_t data_cap =
+    dtwc::io::ParquetChunkReader(input, "series").estimated_materialization_peak_bytes(false) - 1;
+  config.ram_limit = data_cap;
   config.output.clear();
   config.name = "streamed";
+  config.verbose = true;
+  std::ostringstream probe;
+  auto *const previous = std::cout.rdbuf(probe.rdbuf());
+  try {
+    (void)dtwc::run(config); // refused or run, -v prints its plan first
+  } catch (const dtwc::InvalidInput &) {
+  } catch (...) {
+    std::cout.rdbuf(previous);
+    throw;
+  }
+  std::cout.rdbuf(previous);
+  const std::string plan = probe.str();
+  std::smatch reserve;
+  INFO(plan);
+  REQUIRE(std::regex_search(plan, reserve, std::regex("Memory plan: budget [0-9]+ bytes, reserve ([0-9]+) bytes")));
+  config.ram_limit = std::stoull(reserve[1].str()) + data_cap;
+  config.verbose = false;
   const auto result = dtwc::run(config);
   std::filesystem::remove(input);
 
   const auto out = tmpdir() / "streamed_save";
-  REQUIRE_THROWS_AS(result.save(out), dtwc::InvalidInput);
+  REQUIRE_NOTHROW(result.save(out));
 
   const auto lines = [&](const char *file) {
     std::ifstream in(out / file);
@@ -895,6 +900,13 @@ TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and refuses 
   }
   CHECK_FALSE(std::filesystem::exists(out / "streamed_distance_matrix.csv"));
   CHECK_FALSE(std::filesystem::exists(out / "streamed_silhouettes.csv"));
+  // The run report, save()'s last file, as the run rendered it.
+  std::ifstream report(out / "streamed_report.txt", std::ios::binary);
+  REQUIRE(report.good());
+  std::string text{ std::istreambuf_iterator<char>(report), std::istreambuf_iterator<char>() };
+  std::erase(text, '\r'); // the text-mode stream's line ends on Windows
+  CHECK_FALSE(result.report().empty());
+  CHECK(text == result.report());
 }
 
 #else

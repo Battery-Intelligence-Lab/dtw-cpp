@@ -15,6 +15,9 @@
 
 #include <dtwc.hpp>
 #include <base/parallelisation.hpp>
+#include <cli/run.hpp>
+#include <config.hpp>
+#include <core/thread_scratch.hpp>
 
 #include "gpu_fixed_band_oracle.hpp"
 #include "../support/deterministic_series.hpp"
@@ -33,10 +36,12 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
 #include <random>
 #include <span>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -2069,10 +2074,14 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
   clara.n_clusters = 3;
   clara.sample_size = 40;
   clara.n_samples = 3;
-  const auto run = [&](dtwc::Device device, dtwc::GpuPrecision precision, bool float32_series) {
+  const auto run = [&](dtwc::Device device, dtwc::GpuPrecision precision, bool float32_series, bool view = false) {
     std::vector<std::string> names(series.size());
     dtwc::Problem prob("clara");
-    if (float32_series) {
+    if (view) {
+      std::vector<std::span<const double>> spans(series.begin(), series.end());
+      std::vector<std::string_view> name_views(names.begin(), names.end());
+      prob.set_view_data(dtwc::Data(std::move(spans), std::move(name_views), 1, std::make_shared<int>(0)));
+    } else if (float32_series) {
       std::vector<std::vector<float>> rounded;
       for (const auto &s : series) {
         auto &r = rounded.emplace_back(s.size());
@@ -2092,6 +2101,12 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
   CHECK(gpu.labels == cpu.labels);
   CHECK(gpu.medoid_indices == cpu.medoid_indices);
   CHECK_THAT(gpu.total_cost, WithinRel(cpu.total_cost, 1e-12));
+  // A view of the same series (a mapped Arrow IPC file's, MM S5) leaves p_vec empty: the assignment reads its series
+  // and medoids from an owned copy of them, so the owned run's labels, medoids and cost, bit for bit.
+  const auto view = run(dtwc::Device::GPU, dtwc::GpuPrecision::FP64, false, true);
+  CHECK(view.labels == gpu.labels);
+  CHECK(view.medoid_indices == gpu.medoid_indices);
+  CHECK(view.total_cost == gpu.total_cost);
 
   const auto cpu32 = run(dtwc::Device::CPU, dtwc::GpuPrecision::Auto, true);
   const auto gpu32 = run(dtwc::Device::GPU, dtwc::GpuPrecision::FP32, false);
@@ -2100,6 +2115,39 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
   // Every point's distance agrees within the route bound of its pair, so the sum
   // agrees within the bound of the longest pair (2 * 60 - 1 samples).
   CHECK(dtwc::test_support::dtw_routes_agree<float>(gpu32.total_cost, cpu32.total_cost, 60, 60));
+}
+
+
+TEST_CASE("CUDA's launch workspace is its thread's scratch: made by a GPU fill, its pinned and device buffers "
+          "given back by the release, as dtwc::run gives them back",
+          "[cuda][thread_scratch]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  std::vector<std::vector<double>> series(8);
+  for (std::size_t i = 0; i < series.size(); ++i)
+    for (std::size_t t = 0; t < 300; ++t) series[i].push_back(std::sin(0.37 * double(i + 1) + 0.11 * double(t)));
+  dtwc::core::release_thread_scratch();
+  REQUIRE(dtwc::cuda::thread_workspace_bytes() == 0);
+  const auto first = gpu_fill(series); // this thread's workspace stages the series, its device buffers beside
+  // the series flattened, as floats where the GPU computes in FP32, and more on the device
+  CHECK(dtwc::cuda::thread_workspace_bytes() > 8 * 300 * sizeof(float));
+  dtwc::core::release_thread_scratch(); // every buffer freed
+  CHECK(dtwc::cuda::thread_workspace_bytes() == 0);
+  const auto again = gpu_fill(series); // made again
+  CHECK(dtwc::cuda::thread_workspace_bytes() > 8 * 300 * sizeof(float));
+  CHECK(again.matrix == first.matrix);
+  // dtwc::run on the GPU leaves none.
+  dtwc::Config config;
+  config.output.clear();
+  config.k = 2;
+  config.method = dtwc::Method::PAM;
+  config.device = dtwc::Device::GPU;
+  config.band = -1;
+  std::vector<std::string> names(series.size());
+  for (std::size_t i = 0; i < names.size(); ++i) names[i] = "s" + std::to_string(i);
+  auto copy = series;
+  (void)dtwc::run(config, dtwc::Data(std::move(copy), std::move(names), 1));
+  CHECK(dtwc::cuda::thread_workspace_bytes() == 0);
 }
 
 #endif // DTWC_HAS_CUDA

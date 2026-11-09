@@ -106,6 +106,23 @@ inline void for_each_point(const T *packed, index_t n, index_t a, F &&f)
 /// unknown, as in a build without llfio.
 size_t available_memory();
 
+/// The most memory this process has held resident so far, in bytes, one meaning on every platform: Windows' peak
+/// working set (K32GetProcessMemoryInfo; a mapped file's pages count, as on Linux), Linux's VmHWM (/proc/self/status:
+/// getrusage keeps its starter's peak across exec), macOS's maximum resident set; 0 where the platform does not say.
+size_t peak_memory();
+
+/// Return to the system the memory this process's allocator keeps after it was freed, as a hint: glibc's
+/// malloc_trim(0); on Windows HeapOptimizeResources on every heap (its heap keeps freed blocks committed: an Arrow IPC
+/// stream of 9,600 record batches at --ram-limit 48 MB, read without llfio, peaked 33 MB over the limit without the
+/// call and at most 3.1 MB over it with the call after each block, measured 2026-11-01); nothing elsewhere.
+void release_free_memory();
+
+/// Start reading the pages of bytes [address, address + bytes) of a mapped file into memory, and return: a hint
+/// (llfio's map_handle::prefetch: madvise WILLNEED, PrefetchVirtualMemory), so a failure changes nothing; nothing in a
+/// build without llfio. A mapped matrix's next rows (DistanceMatrix::prefetch_rows) and the next block of a mapped
+/// file's series (Problem's check, FastCLARA's pass) are read ahead through it.
+void prefetch_pages(const void *address, size_t bytes);
+
 /// The refusal of a distance a float32 matrix cannot hold: InvalidInput, after `where`, naming the pair, `distance`
 /// (computed in double) and the fix, matrix_dtype float64; a distance that is itself ±inf is no number at any width.
 [[noreturn]] void refuse_float32_range(std::string_view where, size_t i, size_t j, double distance);

@@ -17,7 +17,8 @@
 #include "base/timing.hpp"
 #include "cli/config.hpp"
 #include "cli/run.hpp"
-#include "io/read_data.hpp"
+#include "core/machine.hpp"
+#include "fileOperations.hpp" // path_to_utf8
 
 #include <CLI/CLI.hpp>
 
@@ -28,7 +29,6 @@
 #include <array>
 #include <charconv>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -43,8 +43,7 @@ void print_settings(const dtwc::Config &config)
   std::cout << "DTWC++ Clustering\n"
             << "  Input:    " << config.input << "\n"
             << "  Output:   " << config.output << "\n"
-            << "  Name:     "
-            << (config.name.empty() ? dtwc::detail::default_name(dtwc::utf8_to_path(config.input)) : config.name) << "\n"
+            << "  Name:     " << dtwc::run_name(config) << "\n"
             << "  Clusters: " << config.k << "\n"
             << "  Method:   " << name_of(dtwc::method_names, config.method) << "\n"
             << "  Band:     " << (config.band < 0 ? "full" : std::to_string(config.band)) << "\n"
@@ -73,18 +72,7 @@ void print_settings(const dtwc::Config &config)
   for (const char *name : { "OMP_NUM_THREADS", "SLURM_JOB_ID", "SLURM_CPUS_PER_TASK", "SLURM_NODELIST",
                             "SLURM_JOB_PARTITION", "SLURM_GPUS" })
     if (const char *value = std::getenv(name)) std::cout << "  " << name << ": " << value << "\n";
-#if defined(__linux__)
-  std::ifstream cpuinfo("/proc/cpuinfo");
-  for (std::string line; std::getline(cpuinfo, line);) {
-    if (line.rfind("model name", 0) != 0) continue;
-    if (const auto colon = line.find(':'); colon != std::string::npos)
-      std::cout << "  CPU:             " << line.substr(colon + 2) << "\n";
-    break;
-  }
-  std::ifstream status("/proc/self/status");
-  for (std::string line; std::getline(status, line);)
-    if (line.rfind("VmRSS:", 0) == 0 || line.rfind("VmPeak:", 0) == 0) std::cout << "  " << line << "\n";
-#endif
+  std::cout << dtwc::core::machine_facts(config.device, config.device_index).text();
   std::cout << "==========================\n\n" << std::flush;
 }
 
@@ -128,6 +116,8 @@ int main(int argc, char *argv[])
               << "  Iterations: " << result.iterations() << "\n"
               << "  Output:     " << config.output << "/\n"
               << "  Time:       " << clock << "\n";
+    if (config.report && !config.output.empty())
+      std::cout << "  Report:     " << dtwc::path_to_utf8(dtwc::report_path(config)) << "\n";
     return EXIT_SUCCESS;
   } catch (const std::exception &e) {
     std::cerr << "Error: " << e.what() << '\n';

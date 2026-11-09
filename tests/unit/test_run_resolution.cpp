@@ -32,7 +32,10 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using Catch::Matchers::ContainsSubstring;
@@ -157,6 +160,46 @@ TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "
                    dtwc::distance::dtw<double>(data.p_vec[i], data.p_vec[j], -1,
                                                dtwc::core::MetricType::SquaredL2),
                    1e-14));
+}
+
+// MM S6: --dtype float32 meets Float64 series passed in memory (a binding's, a caller's): run() stores them as the
+// dtype names, each value rounded to float once, whether the Data owns them or only views bytes another owns. Oracle:
+// the same series rounded by hand into a Float32 Data, which no conversion touches.
+TEST_CASE("run with dtype float32 rounds Float64 series passed in memory once, owned or a view, as the same series "
+          "rounded by hand",
+          "[run][dtype][mm][s6]")
+{
+  const dtwc::Data owned = levels();
+  const auto storage = std::make_shared<const std::vector<std::vector<double>>>(owned.p_vec);
+  std::vector<std::span<const double>> spans(storage->begin(), storage->end());
+  std::vector<std::string_view> names(owned.p_names.begin(), owned.p_names.end());
+  const dtwc::Data view(std::move(spans), std::move(names), 1, storage);
+  REQUIRE(view.is_view());
+  std::vector<std::vector<float>> rounded;
+  for (const auto &values : owned.p_vec) {
+    auto &row = rounded.emplace_back();
+    for (const double value : values) row.push_back(static_cast<float>(value)); // each value, once
+  }
+  const dtwc::Data by_hand(std::move(rounded), std::vector<std::string>(owned.p_names));
+  REQUIRE(by_hand.is_f32());
+
+  auto config = config_for(Method::PAM, Device::CPU);
+  config.dtype = dtwc::core::Precision::Float32;
+  const auto expected = dtwc::run(config, by_hand);
+  REQUIRE(two_groups(expected));
+  REQUIRE(float_exact(expected.distance_matrix())); // computed in Float32
+  config.dtype = dtwc::core::Precision::Float64;
+  REQUIRE_FALSE(float_exact(dtwc::run(config, owned).distance_matrix())); // so the Float64 route differs
+  config.dtype = dtwc::core::Precision::Float32;
+  const auto matches = [&](const dtwc::Data &data) {
+    const auto result = dtwc::run(config, data);
+    CHECK(result.labels() == expected.labels());
+    CHECK(result.medoids() == expected.medoids());
+    CHECK(result.cost() == expected.cost());
+    CHECK(result.distance_matrix() == expected.distance_matrix());
+  };
+  SECTION("owned") { matches(owned); }
+  SECTION("a view") { matches(view); }
 }
 
 TEST_CASE("run on gpu: the matrix methods and clara run on the GPU; the as-it-goes methods raise",

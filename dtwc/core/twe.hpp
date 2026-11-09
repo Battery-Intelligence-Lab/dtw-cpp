@@ -48,6 +48,19 @@
 
 namespace dtwc::core {
 
+namespace detail {
+
+/// twe_distance's two rolling rows, one pair a T: reached here so that core::release_thread_scratch() can empty them
+/// (detail::dispatch_scratch, core/dtw_dispatch.cpp); two thread_locals returned as references, as detail::lanes_bufs (dtw_kernel.hpp) says why.
+template <typename T>
+std::pair<std::vector<T> &, std::vector<T> &> twe_rows()
+{
+  thread_local std::vector<T> prev_buf, curr_buf;
+  return { prev_buf, curr_buf };
+}
+
+} // namespace detail
+
 /// TWE distance (pointer + length). Univariate, unbanded, exact; nu, lambda > 0, unchecked.
 template <typename T = dtwc::settings::default_data_t>
 T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
@@ -69,7 +82,7 @@ T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
   auto add = [maxValue](T u, T v) noexcept { return u == maxValue ? maxValue : u + v; };
 
   // Rolling buffers over the padded shorter axis (size nb+1).
-  thread_local std::vector<T> prev_buf, curr_buf;
+  auto [prev_buf, curr_buf] = detail::twe_rows<T>();
   prev_buf.assign(nb + 1, maxValue);
   curr_buf.assign(nb + 1, maxValue);
   T* prev = prev_buf.data();

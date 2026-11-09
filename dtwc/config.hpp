@@ -42,9 +42,10 @@ struct Config
   index_t skip_cols = 0;                 ///< `--skip-cols`
   char delimiter = '\0';                 ///< `--delimiter`; '\0' infers it from the extension.
   core::Precision dtype = core::Precision::Float64; ///< `--dtype`
-  /// `--ram-limit`: the memory the run may use, in bytes; 0 = automatic, what the
-  /// process may use (core::available_memory()). The distance matrix is mapped
-  /// when its bytes exceed half of what the series leave of it.
+  /// `--ram-limit`: the memory the run plans for, in bytes (run(): a reserve for its threads, the series and the
+  /// matrix in what is left); 0 = automatic, 90 % of what the process may use (core::memory_budget). A plan, not a
+  /// cap: a run may use about a tenth more, more with series longer than planned, and the program's own few
+  /// megabytes lie outside the plan.
   std::size_t ram_limit = 0;
   /// `--matrix-dtype`: the width of the distance matrix's values, float64 (default) or float32 (half the memory,
   /// each distance rounded to the nearest float); not `dtype`'s, the series'.
@@ -81,6 +82,8 @@ struct Config
   std::string output = "./results";      ///< `--output` ("" = write nothing)
   std::string name;                      ///< `--name` ("" = the input's file or folder name)
   bool verbose = false;                  ///< `--verbose`
+  /// `--no-report` makes it false: no run report, neither Result::report()'s text nor `<name>_report.txt`.
+  bool report = true;
 };
 
 /// `device` as to_config_text() writes it and detail::parse_device() reads it

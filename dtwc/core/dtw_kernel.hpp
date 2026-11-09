@@ -233,6 +233,22 @@ dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 
 namespace detail {
 
+/// The per-pair kernels' thread_local buffers, one of each a T (every kernel of that T shares it): reached here so
+/// that core::release_thread_scratch() can empty them (detail::dispatch_scratch, core/dtw_dispatch.cpp).
+template <typename T>
+std::vector<T> &linear_short_buf()
+{
+  thread_local std::vector<T> short_buf;
+  return short_buf;
+}
+
+template <typename T>
+std::vector<T> &banded_col_buf()
+{
+  thread_local std::vector<T> col_buf;
+  return col_buf;
+}
+
 /// dtw_kernel_linear with the early-abandon test known at compile time.
 template <bool Abandon, typename T, typename Cost, typename Cell>
 T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell, T early_abandon)
@@ -241,7 +257,7 @@ T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell, T
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (n_short == 0 || n_long == 0) return maxValue;
 
-  thread_local static std::vector<T> short_buf;
+  std::vector<T> &short_buf = linear_short_buf<T>();
   short_buf.resize(n_short);
   T *short_side = short_buf.data(); // hoisted out of the loops
 
@@ -349,7 +365,7 @@ T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
   if (n_short == 1 || n_long == 1 || band_width >= n_long - 1)
     return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
 
-  thread_local std::vector<T> col_buf;
+  std::vector<T> &col_buf = banded_col_buf<T>();
   col_buf.assign(n_long, maxValue);
   T *col = col_buf.data(); // hoisted out of the loops
   const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
@@ -497,6 +513,28 @@ inline constexpr std::size_t dtw_lanes = 64 / sizeof(T);
 inline constexpr bool dtw_lanes_packed = false;
 #endif
 
+namespace detail {
+
+/// A row of the lanes' buffers: one value a lane.
+template <typename T>
+struct alignas(64) LanesRow
+{
+  T v[dtw_lanes<T>];
+};
+
+/// The lanes kernel's two thread_local buffers, one pair a T (both of its distances share them): reached here so
+/// that core::release_thread_scratch() can empty them (detail::lanes_scratch, core/dtw_lanes.cpp). Two thread_locals,
+/// as the kernel declared them, returned as references (`auto [y_buf, s_buf]` binds the buffers): one pair object
+/// moved a column loop of the lanes, and a cell loop of TWE's, under GCC (2026-11-02).
+template <typename T>
+std::pair<std::vector<LanesRow<T>> &, std::vector<LanesRow<T>> &> lanes_bufs()
+{
+  thread_local std::vector<LanesRow<T>> y_buf, s_buf;
+  return { y_buf, s_buf };
+}
+
+} // namespace detail
+
 /// DTW between xs and each of ys[0 .. dtw_lanes<T>), with the pointwise distance
 /// dist(xs[i], ys[w][j]). band < 0 is unconstrained and each ys[w] has its own
 /// length; else the Sakoe-Chiba band of dtw_band_bounds, every ys[w] as long as xs.
@@ -523,7 +561,7 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
   // [ny_max][W]: the W series interleaved, a lane past its length repeating its
   // last sample (finite; what those columns compute is never read); and [nx][W]:
   // the rolling DP column (s[i].v[w] = dp[i, j] of pair w).
-  struct alignas(64) Row { T v[W]; };
+  using Row = detail::LanesRow<T>;
   // maxValue in every lane. A row, or the lanes of `left`, is set by copying it whole:
   // Apple clang turns a loop that stores a constant row (or reads this row lane by
   // lane, which it folds to that constant) into a call of memset_pattern16.
@@ -532,7 +570,7 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
     for (T &e : r.v) e = maxValue;
     return r;
   }();
-  thread_local std::vector<Row> y_buf, s_buf;
+  auto [y_buf, s_buf] = detail::lanes_bufs<T>();
   if (y_buf.size() < ny_max) y_buf.resize(ny_max);
   if (s_buf.size() < nx) s_buf.resize(nx);
   Row *Y = y_buf.data();

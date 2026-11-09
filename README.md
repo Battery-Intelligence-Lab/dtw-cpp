@@ -36,9 +36,10 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 - **Multi-language**: C++ core, Python (sklearn-compatible), MATLAB MEX bindings
 - **Parallelism**: OpenMP threads, CUDA and Metal GPUs (optional)
 - **Runtime precision**: Float64 by default; explicit Float32 halves series-storage bytes and uses Float32 recurrence arithmetic
-- **RAM-aware**: `--ram-limit` (automatic by default: the memory available) maps the distance matrix to a file when it does not fit, and streams a Parquet file of one series per row (a list column, or several float columns) through non-full FastCLARA
+- **RAM-aware**: `--ram-limit` (automatic by default: 90 % of the memory available) is a memory plan: a reserve for the threads, then the series and the distance matrix, mapped to a file when it does not fit; it streams a Parquet file of one series per row (a list column, or several float columns) through non-full FastCLARA
 - **Checkpointing**: Save/resume long-running distance matrix computations
-- **I/O**: CSV, Parquet, and Arrow IPC, gated by compiled capabilities and auto-detected from extension; HDF5 in Python (h5py)
+- **Run report**: every `dtwc_cl` run writes `<name>_report.txt` beside its results, plain text: the machine, the memory plan and the peak resident memory, each stage's wall time, share and CPU utilisation, the stopping criterion and the result (`--no-report` writes none)
+- **I/O**: CSV and Arrow IPC (read in place) in every build, Parquet in a build with Arrow, auto-detected from extension; HDF5 in Python (h5py)
 
 Recorded, workload-specific measurements are published in the
 [UCR benchmark ledger](benchmarks/ucr_benchmark_results.md); do not extrapolate
@@ -187,8 +188,9 @@ option; nothing is turned off silently. Defaults are the ones every platform can
 | `DTWC_ALLOW_SEQUENTIAL` | OFF | Explicitly permit a build without OpenMP; otherwise missing OpenMP is an error |
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration (an error without `nvcc`, and on macOS) |
 | `DTWC_ENABLE_METAL` | ON on Apple platforms, OFF elsewhere | Enable the Metal backend (an error off Apple platforms) |
-| `DTWC_ENABLE_ARROW` | OFF | Enable Apache Arrow IPC + Parquet I/O (system packages or CPM) |
+| `DTWC_ENABLE_ARROW` | OFF | Enable Parquet I/O through Apache Arrow C++ (system packages or CPM); Arrow IPC needs no Arrow C++. An error with `DTWC_BUILD_PYTHON` or `DTWC_BUILD_MATLAB`, which read Parquet through pyarrow and `parquetread` |
 | `DTWC_ENABLE_LLFIO` | ON | Enable llfio-backed memory-mapped distance matrices |
+| `DTWC_ENABLE_CPUINFO` | ON | The CPU's model, cores and SIMD extensions in `dtwc_cl -v`'s machine facts (pytorch/cpuinfo, static); without it they read `unknown` |
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
 | `DTWC_ENABLE_GUROBI` | OFF | Link the Gurobi MIP solver (needs an install, see `GUROBI_HOME`; the binary then needs the Gurobi library to load). v1.0.0 linked Gurobi when it found it |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |

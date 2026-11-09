@@ -265,7 +265,11 @@ References used during development. Verify each citation independently before pu
   https://github.com/apache/arrow-nanoarrow/releases/tag/apache-arrow-nanoarrow-0.8.0
   — Dependency-free C reader/builder vendored as the namespaced amalgamation
   `dtwc/extern/nanoarrow/nanoarrow.{h,c}`
-  (`NANOARROW_NAMESPACE=DtwcNanoarrow`).
+  (`NANOARROW_NAMESPACE=DtwcNanoarrow`), with its IPC extension
+  (`nanoarrow_ipc.{h,c}`) and the flatcc runtime (`flatcc.c`, `flatcc/`), the
+  Arrow IPC reader of every build (`dtwc/io/arrow_ipc.cpp`): the release
+  archive's own `ci/scripts/bundle.py --symbol-namespace DtwcNanoarrow
+  --with-ipc --with-flatcc`.
 
 ## PMU counters for benchmarks (X-24 · D-17)
 
