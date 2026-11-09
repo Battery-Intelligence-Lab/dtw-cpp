@@ -311,7 +311,7 @@ classdef Problem < handle
         % =================================================================
 
         function n = size(obj)
-        %SIZE Number of time series in the Problem (1-based count).
+        %SIZE Number of time series in the Problem.
             n = dtwc_mex('Problem_get_size', obj.Handle);
         end
 

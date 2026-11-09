@@ -1395,7 +1395,7 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "prob"_a, "n_clusters"_a, "max_iter"_a = 100,
      "seed"_a = dtwc::settings::DEFAULT_RANDOM_SEED,
      "Run FastPAM k-medoids clustering (Schubert & Rousseeuw 2021).\n\n"
-     "The C++ core writes labels/medoids/k back into prob (since 1.6), so\n"
+     "The C++ core writes labels/medoids/k back into prob, so\n"
      "silhouette(prob) and davies_bouldin(prob) work after this call with no\n"
      "wrapper-side wiring.\n\n"
      "max_iter is the SWAP budget: 0 returns the BUILD medoids without a SWAP\n"
@@ -1438,7 +1438,7 @@ NB_MODULE(_dtwcpp_core, m) {
      "Run FastCLARA scalable k-medoids clustering.\n\n"
      "Runs FastPAM on random subsamples and assigns all points to the\n"
      "best medoids found. Avoids O(N^2) memory of full PAM.\n\n"
-     "The C++ core writes labels/medoids/k back into prob (since 1.6), so\n"
+     "The C++ core writes labels/medoids/k back into prob, so\n"
      "silhouette(prob) and davies_bouldin(prob) work after this call.\n\n"
      "Parameters:\n"
      "  prob: Problem with data loaded.\n"
@@ -1617,7 +1617,7 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "dendrogram"_a, "prob"_a, "k"_a,
      "Cut a dendrogram to produce k flat clusters.\n\n"
      "Returns a ClusteringResult with labels, medoid_indices, and total_cost.\n"
-     "The C++ core also writes labels/medoids/k back into prob (since 1.6), so\n"
+     "The C++ core also writes labels/medoids/k back into prob, so\n"
      "silhouette(prob) etc. work after this call with no wrapper wiring.");
 
 

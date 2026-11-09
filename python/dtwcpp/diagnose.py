@@ -54,7 +54,7 @@ def within_between_length_ratio(
 
     Returns ``var_within / var_between`` weighted by cluster size. Ratio < 0.5
     suggests cluster labels are a length proxy — i.e. the clustering is just
-    measuring how long each ride is, not its shape.
+    measuring how long each series is, not its shape.
     """
     L = np.asarray(series_lengths, dtype=np.float64)
     lab = _as_int_array(labels)
@@ -107,7 +107,7 @@ def diagnose_clusters(
         (clusters look like a length proxy).
     degenerate_share :
         If a single cluster holds more than this share of all series, the
-        partition is flagged as degenerate (e.g. hierarchical's ``[136, 1]``).
+        partition is flagged as degenerate (e.g. hierarchical's ``[N-1, 1]``).
 
     Returns
     -------

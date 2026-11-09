@@ -223,6 +223,16 @@ static std::vector<std::vector<T>> cell_to_series(const mxArray *mx, const char 
   return series;
 }
 
+/// A char array as UTF-8, the encoding of every string in DTWC++ (names, paths,
+/// messages); mxArrayToString would give the local code page on Windows.
+static std::string get_string(const mxArray *mx) {
+  char *str = mxArrayToUTF8String(mx);
+  if (!str) return "";
+  std::string result(str);
+  mxFree(str);
+  return result;
+}
+
 /// MATLAB cell array of char/string -> vector of std::string names.
 /// Validates cell-ness and element char-ness BEFORE dereference.
 static std::vector<std::string> cell_to_names(const mxArray *mx, size_t expected_N,
@@ -239,9 +249,7 @@ static std::vector<std::string> cell_to_names(const mxArray *mx, size_t expected
     if (cell == nullptr || !mxIsChar(cell))
       throw std::invalid_argument(std::string(arg_name) + "{" + std::to_string(i + 1)
         + "} must be a char row vector.");
-    char *s = mxArrayToUTF8String(cell);
-    names[i] = (s ? std::string(s) : std::string());
-    if (s) mxFree(s);
+    names[i] = get_string(cell);
   }
   return names;
 }
@@ -372,19 +380,16 @@ static uint64_t get_handle(const mxArray *mx) {
   return static_cast<uint64_t>(get_exact_int(mx, "handle"));
 }
 
+/// A handle as the 1 x 1 uint64 array MATLAB keeps it in.
+static mxArray *handle_to_mx(uint64_t handle) {
+  mxArray *mx = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
+  *static_cast<uint64_t *>(mxGetData(mx)) = handle;
+  return mx;
+}
+
 /// The Problem a handle names.
 static dtwc::Problem &stored_problem(const mxArray *handle) {
   return *HandleManager<dtwc::Problem>::get(get_handle(handle));
-}
-
-/// A char array as UTF-8, the encoding of every string in DTWC++ (names, paths,
-/// messages); mxArrayToString would give the local code page on Windows.
-static std::string get_string(const mxArray *mx) {
-  char *str = mxArrayToUTF8String(mx);
-  if (!str) return "";
-  std::string result(str);
-  mxFree(str);
-  return result;
 }
 
 /// RamLimit: a byte count, or a size such as '8G' (dtwc::parse_ram_limit); 0 is automatic.
@@ -677,8 +682,7 @@ static void cmd_Problem_new(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
   if (nrhs > 2) set_problem_device(*prob, prhs[2]);
   uint64_t h = HandleManager<dtwc::Problem>::create(prob);
 
-  plhs[0] = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
-  *static_cast<uint64_t *>(mxGetData(plhs[0])) = h;
+  plhs[0] = handle_to_mx(h);
 }
 
 static void cmd_Problem_delete(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1416,9 +1420,7 @@ static void cmd_run(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) 
   const dtwc::Result &result = *HandleManager<dtwc::Result>::get(handle);
   const char *fields[] = { "handle", "labels", "medoids", "cost", "device", "name", "report" };
   mxArray *out = mxCreateStructMatrix(1, 1, 7, fields);
-  mxArray *id = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
-  *static_cast<uint64_t *>(mxGetData(id)) = handle;
-  mxSetField(out, 0, "handle", id);
+  mxSetField(out, 0, "handle", handle_to_mx(handle));
   mxSetField(out, 0, "labels", ivec_to_mx_1based(result.labels()));
   mxSetField(out, 0, "medoids", ivec_to_mx_1based(result.medoids()));
   mxSetField(out, 0, "cost", mxCreateDoubleScalar(result.cost()));
@@ -1575,7 +1577,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_get_centroids") cmd_Problem_get_centroids(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_clusters") cmd_Problem_get_clusters(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_is_distance_matrix_filled") cmd_Problem_is_distance_matrix_filled(nlhs, plhs, nrhs, prhs);
-    // Problem: 2.0 config setters (method / solver / output / MIP / GPU precision)
+    // Problem: method, solver, output folder, MIP settings, GPU precision, matrix dtype, checkpoint, n_clusters
     else if (cmd == "Problem_set_method") cmd_Problem_set_method(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_solver") cmd_Problem_set_solver(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_output_folder") cmd_Problem_set_output_folder(nlhs, plhs, nrhs, prhs);

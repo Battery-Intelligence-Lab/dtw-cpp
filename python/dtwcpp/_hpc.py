@@ -69,7 +69,7 @@ def write_series_tsv(series, path):
     Pure data — no header, no id column — matching ``dtwc_cl --skip-cols 0``.
     Ragged series are allowed (rows may differ in length). Values are written
     with ``repr``, the shortest text that reads back to the same double, so an
-    HPC run clusters the same numbers as a local one (``:.10g`` rounded them).
+    HPC run clusters the same numbers as a local one.
     """
     path = str(path)
     with open(path, "w", newline="") as f:
