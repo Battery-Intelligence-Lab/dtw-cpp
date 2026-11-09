@@ -205,7 +205,7 @@ MachineFacts machine_facts(Device device, int device_index)
   facts.build_simd = build_simd();
   facts.ram_total = total_memory();
   facts.ram_available = available_memory();
-  if (device == Device::GPU) {
+  if (uses_gpu(device)) {
 #ifdef DTWC_HAS_CUDA
     facts.gpu = "CUDA: " + cuda::cuda_device_info(device_index); // gpu_info()'s line for GPU 0
 #else

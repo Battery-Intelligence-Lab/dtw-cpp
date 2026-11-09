@@ -157,8 +157,8 @@ void validate_gpu_request(std::string_view where, const Problem &prob, core::Pre
 {
   // The GPU routes upload Float64 series (CUDA's fill and FastCLARA assignment
   // from the series' spans, Metal's fill p_vec or an owned copy of a view's) and run Standard
-  // DTW with no missing-data strategy, in L1 or squared L2.
-  if (prob.device().first != Device::GPU) return;
+  // DTW with no missing-data strategy, in L1 or squared L2; so does cpu+gpu, whose GPU share is the GPU's.
+  if (!uses_gpu(prob.device().first)) return;
   if (series_precision == core::Precision::Float32)
     reject_gpu_request(where, "computes from Float64 series, but precision = Float32 was requested",
                        "Load the series as Float64, or use device cpu.");
@@ -205,6 +205,7 @@ Method resolve_method(Method method, Device device, std::size_t n_series)
 {
   constexpr std::size_t pam_max_series = 5000; // on the CPU; the GPU fills PAM's matrix at any N
   if (method != Method::Auto) return method;
+  if (device == Device::CPU_GPU) return Method::CLARA; // the one method whose pass cpu+gpu splits
   return device == Device::GPU || n_series <= pam_max_series ? Method::PAM : Method::CLARA;
 }
 
@@ -276,6 +277,10 @@ void apply(const Config &config, Problem &prob)
   prob.set_gpu_precision(config.gpu_precision);
   prob.set_matrix_dtype(config.matrix_dtype);
   prob.set_device(config.device, config.device_index); // gpu without a GPU backend: the DeviceError
+  if (config.device == Device::CPU_GPU && config.method != Method::CLARA && config.method != Method::Auto)
+    throw DeviceError(detail::hybrid_refused_message(
+      "run", "method '" + std::string(name_of(method_names, config.method)) + "' does not run that pass (its distances "
+               "fill a matrix or are computed as it goes); choose method clara"));
   if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
     throw DeviceError(
       "run: method '" + std::string(name_of(method_names, config.method))
@@ -531,6 +536,8 @@ void Problem::set_device(Device device, int index)
   if (index < 0)
     throw InvalidInput("Problem::set_device: the GPU index must be >= 0; got "
                        + std::to_string(index) + ".");
+  if (device == Device::CPU_GPU && !detail::hybrid_not_built_reason().empty())
+    throw DeviceError(detail::hybrid_refused_message("Problem::set_device", detail::hybrid_not_built_reason()));
   if (device == Device::GPU) {
 #if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
     throw DeviceError(detail::gpu_not_built_message());
@@ -542,7 +549,7 @@ void Problem::set_device(Device device, int index)
                          "Use gpu (index 0).");
 #endif
   }
-  const int gpu_index = device == Device::GPU ? index : 0; // the CPU has no index
+  const int gpu_index = uses_gpu(device) ? index : 0; // the CPU has no index
   if (device_ == device && device_index_ == gpu_index) return;
   device_ = device;
   device_index_ = gpu_index;
@@ -627,7 +634,7 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
   // rounding, so either's cache serves the other (and GPU 0's serves GPU 1),
   // while FP32 distances in an FP64 run are a loss of precision.
   const GpuPrecision gpu = resolve_gpu_precision(gpu_precision_);
-  if (device_ == Device::GPU && gpu == GpuPrecision::Auto)
+  if (uses_gpu(device_) && gpu == GpuPrecision::Auto)
     throw InvalidInput(
       "A persistent distance cache (a mapped .dtwm or a checkpoint) records the precision "
       "its distances are computed in, but CUDA precision Auto resolves to FP32 or FP64 on the "
@@ -730,7 +737,7 @@ void Problem::validate_checkpoint_settings() const
       "checkpoint.directory.");
   // The autosave records the precision its distances were computed in, which
   // CUDA's Auto leaves open: the identity refuses it here, before any pair.
-  if (device_ == Device::GPU && resolve_gpu_precision(gpu_precision_) == GpuPrecision::Auto)
+  if (uses_gpu(device_) && resolve_gpu_precision(gpu_precision_) == GpuPrecision::Auto)
     (void)distance_checkpoint_identity();
 }
 
@@ -903,7 +910,7 @@ void Problem::SeriesCheck::finish() const
 
   // The GPU routes also need univariate Float64 series (CUDA reads them where they lie; Metal's fill uploads a view's
   // as an owned copy).
-  if (problem.device_ != Device::GPU) return;
+  if (!uses_gpu(problem.device_)) return;
   validate_gpu_request(where_, problem, problem.data_.precision);
   if (problem.data_.ndim > 1)
     reject_gpu_request(where_, "is univariate only, but ndim = " + std::to_string(problem.data_.ndim) + " was requested",
@@ -1096,6 +1103,10 @@ void Problem::refuse_float32_overflow(size_t r0, size_t r1)
  */
 void Problem::fill_distance_matrix()
 {
+  if (device_ == Device::CPU_GPU)
+    throw DeviceError(detail::hybrid_refused_message(
+      "Problem::fill_distance_matrix", "the distance matrix fills on one device (a FastCLARA sample of every series "
+                                       "is one fill)"));
   validate_checkpoint_settings();
   sync_band();
   // Writes through writable_distance_matrix() commit here: one scan refuses ±inf and a
@@ -1176,6 +1187,10 @@ core::ClusteringResult Problem::cluster()
 {
   require_clusterable(Nc, size());
   const Method method = resolve_method(method_, device_, size());
+  if (device_ == Device::CPU_GPU && method != Method::CLARA)
+    throw DeviceError(detail::hybrid_refused_message(
+      "Problem::cluster", "method '" + std::string(name_of(method_names, method)) + "' does not run that pass; choose "
+                          "method clara"));
   switch (method) {
   case Method::PAM: {
     // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie

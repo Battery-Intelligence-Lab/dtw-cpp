@@ -126,10 +126,10 @@ bool holds_matrix(Method method, bool clara_uses_full_sample)
 std::size_t thread_bytes(const Problem &prob, const Config &config, Method method, bool clara_uses_full_sample,
                          std::size_t n_series, std::size_t length, std::size_t ndim, core::Precision precision)
 {
-  const bool gpu = prob.device().first == Device::GPU;
+  const bool gpu = uses_gpu(prob.device().first);
   const bool assigns = method == Method::CLARA && !clara_uses_full_sample;
 #ifdef DTWC_HAS_CUDA
-  const bool cpu_assignment = assigns && !gpu;
+  const bool cpu_assignment = assigns && (!gpu || prob.device().first == Device::CPU_GPU); // cpu+gpu's CPU share
 #else
   const bool cpu_assignment = assigns; // Metal has no kernel for FastCLARA's assignment
 #endif
@@ -156,7 +156,7 @@ std::size_t thread_bytes(const Problem &prob, const Config &config, Method metho
 bool gpu_reads_views([[maybe_unused]] const Config &config)
 {
 #if defined(DTWC_HAS_CUDA)
-  return config.device == Device::GPU;
+  return uses_gpu(config.device);
 #else
   return false;
 #endif
@@ -177,7 +177,7 @@ std::size_t gpu_staging_bytes([[maybe_unused]] const Config &config, [[maybe_unu
                               [[maybe_unused]] std::size_t ndim, [[maybe_unused]] std::size_t assign_cap = 0)
 {
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-  if (config.device != Device::GPU) return 0;
+  if (!uses_gpu(config.device)) return 0; // cpu+gpu's GPU share is priced as if it took every series
   const std::size_t steps = length * ndim;
   const bool assigns = method == Method::CLARA && sample && sample->sample_size < sample->n_points;
   const std::size_t filled = assigns ? static_cast<std::size_t>(sample->sample_size) : n_series; // a fill's series
@@ -525,7 +525,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     const std::size_t pam = core::packed_size(static_cast<std::size_t>(sample.sample_size))
                             * core::value_bytes(config.matrix_dtype);
     const auto n = static_cast<std::size_t>(sample.n_points);
-    const std::size_t pass = algorithms::detail::clara_pass_bytes(sample, static_cast<std::size_t>(clara.n_samples));
+    const std::size_t pass = algorithms::detail::clara_pass_bytes(sample, static_cast<std::size_t>(clara.n_samples),
+                                                                  config.device == Device::CPU_GPU);
     return std::max(pam, pass + n * sizeof(index_t) + n / 8);
   };
   // FastCLARA's plan where `resolved` is clara and there are series (none otherwise). k above the number of series is
@@ -721,7 +722,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     // Metal's GPU uploads an owned copy of the views read_arrow_ipc gives in the file's precision (resident_bytes
     // prices it); CUDA reads them where they lie.
     const bool reads_views = gpu_reads_views(config);
-    const std::size_t ipc_bytes = ipc->resident_bytes(config.dtype, config.device == Device::GPU && !reads_views);
+    const std::size_t ipc_bytes = ipc->resident_bytes(config.dtype, uses_gpu(config.device) && !reads_views);
     // Series of up to the longest the walk read from a mapped file's offsets, else of twice the mean length.
     std::size_t length = ipc->longest_steps();
     if (length == 0 && n_series > 0) length = 2 * ipc->num_values() / (n_series * ipc->ndim());
@@ -732,7 +733,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     const bool can_stream = can_stream_file(sample, streams);
     // The names are read after the stream, beside the labels: their read is priced with them.
     const std::size_t names_bytes = ipc->series_names_bytes() + ipc->names_read_bytes();
-    upload_copy = config.device == Device::GPU && (config.dtype == core::Precision::Float32) == ipc->is_f32()
+    upload_copy = uses_gpu(config.device) && (config.dtype == core::Precision::Float32) == ipc->is_f32()
                   && !reads_views;
     const MemoryPlan planned = plan_of(resolved, sample, ipc_bytes, ipc->num_values(), length, ipc->ndim(),
                                        config.dtype, can_stream, streams, names_bytes + 2 * n_series * sizeof(index_t));
@@ -830,7 +831,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
       method = resolve(value_bytes, longest, ndim, precision);
       std::optional<algorithms::detail::ClaraPlan> sample;
       if (method == Method::CLARA) sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      upload_copy = config.device == Device::GPU && view && !gpu_reads_views(config);
+      upload_copy = uses_gpu(config.device) && view && !gpu_reads_views(config);
       const std::size_t copy = upload_copy ? detail::owned_series_bytes(elements, n_series, false) : 0;
       if (const MemoryPlan planned =
             plan_of(method, sample, value_bytes + copy, elements, longest, ndim, precision, false, false, 0);
@@ -907,7 +908,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     stage.note(prob.is_distance_matrix_filled()
                  ? "complete on entry"
                  : std::to_string(n_series) + " series' matrix on " + device_text(config)
-                     + (config.device == Device::GPU && prob.data().is_view() && !gpu_reads_views(config)
+                     + (uses_gpu(config.device) && prob.data().is_view() && !gpu_reads_views(config)
                           ? ", from an owned copy of their views"
                           : ""));
     prob.fill_distance_matrix();
@@ -958,6 +959,11 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
                        + " threads (-v prints the memory plan); raise --ram-limit by what the stream lacks, or run "
                          "fewer threads (OMP_NUM_THREADS) to shrink the reserve.");
   }
+  // cpu+gpu's split, which depends on the moment where it is measured: the cluster row says it, so forcing its share
+  // repeats the run.
+  if (result.hybrid)
+    stage.note(std::string(progress_label(method)) + ", any distances it computes inside; "
+               + algorithms::describe(*result.hybrid, result.labels.size()));
   if (config.verbose) {
     std::cout << progress_label(method);
     if (method == Method::PAM)

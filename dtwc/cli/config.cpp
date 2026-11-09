@@ -260,7 +260,8 @@ void bind(CLI::App &app, Config &config)
          config.device = device;
          config.device_index = index;
        },
-       "Compute device: cpu, gpu, gpu:N (cuda and cuda:N are the same)")
+       "Compute device: cpu, gpu, gpu:N (cuda and cuda:N are the same), cpu+gpu, cpu+gpu:N (FastCLARA's pass split "
+       "between the CPU and a CUDA GPU)")
     ->default_function([&config] { return device_text(config); })
     ->capture_default_str();
   key(app, "--gpu-precision,--gpu-dtype", config.gpu_precision, gpu_precision_names, "gpu precision",

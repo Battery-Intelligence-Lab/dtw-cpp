@@ -103,8 +103,9 @@ bool gpu_available();
 /// 0) computes on — "CUDA: <device>", "Metal: <device>" — or why there is none.
 std::string gpu_info();
 
-/// The method `auto` stands for: pam on a GPU, and on the CPU pam for up to 5000
-/// series, clara above. Any other method is itself.
+/// The method `auto` stands for: pam on a GPU, clara on cpu+gpu (the one method
+/// whose pass it splits), and on the CPU pam for up to 5000 series, clara above.
+/// Any other method is itself.
 Method resolve_method(Method method, Device device, std::size_t n_series);
 
 namespace detail {
@@ -449,12 +450,15 @@ public:
   ///         MSM or TWE, whose kernels compute L1 (core::validate).
   void set_metric(core::MetricType metric);
   /// Where this Problem computes distances: the CPU, or GPU `index` of this
-  /// build's GPU backend (CUDA, else Metal), which the fill resolves. A Problem
+  /// build's GPU backend (CUDA, else Metal), which the fill resolves, or (cpu+gpu)
+  /// the CPU and CUDA GPU `index` together on FastCLARA's assignment pass, whose
+  /// samples fill on the GPU; everything else refuses cpu+gpu. A Problem
   /// never reads the process-wide default (dtwc::device()); until told
   /// otherwise it computes on the CPU. A change drops the distance matrix.
-  /// @throws DeviceError for `gpu` on a build with no GPU backend, and for a
-  ///         GPU index other than 0 on Metal, which runs on the system default
-  ///         GPU; InvalidInput for a negative index.
+  /// @throws DeviceError for `gpu` on a build with no GPU backend, for cpu+gpu
+  ///         on a build without CUDA, and for a GPU index other than 0 on
+  ///         Metal, which runs on the system default GPU; InvalidInput for a
+  ///         negative index.
   void set_device(Device device, int index = 0);
   /// The device and GPU index set_device recorded.
   std::pair<Device, int> device() const noexcept { return { device_, device_index_ }; }

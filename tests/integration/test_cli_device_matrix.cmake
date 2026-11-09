@@ -14,12 +14,16 @@ cmake_minimum_required(VERSION 3.26)
 #          kernels lack and (Metal) a GPU index are refused before the input is
 #          read, which does not exist; `cuda` is `gpu`. A build without a GPU
 #          refuses every gpu cell with the message naming the build flag.
+#   cpu+gpu  CUDA's: clara with a sample smaller than N runs, its -v naming the
+#          split; a fill (pam; clara on a sample of every series), a method that
+#          computes as it goes (onebatch) and a streamed Arrow IPC file are
+#          refused, each naming why; a build without CUDA refuses every cell
 #   hpc    refused for every method, since it submits a whole run to a SLURM
 #          cluster, which dtwc_cl does not do; an unknown device is refused
 #   --print-config  the golden file reads back to itself (every key, each at a
 #          value that is not its default) and a bare --print-config prints
 #          config_defaults.toml: every default and spelling, pinned on the binary
-foreach(required_var IN ITEMS CLI INPUT GOLDEN DEFAULTS GPU HAS_HIGHS WORK_ROOT)
+foreach(required_var IN ITEMS CLI INPUT STREAM_INPUT GOLDEN DEFAULTS GPU HAS_HIGHS WORK_ROOT)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "missing required -D${required_var}=...")
     endif()
@@ -190,6 +194,36 @@ else()
     endif()
 endif()
 
+# ---- cpu+gpu: FastCLARA's pass split between the CPU and a CUDA GPU ----
+set(hybrid "device 'cpu+gpu' splits FastCLARA's assignment pass between the CPU and a CUDA GPU, but ")
+if(NOT GPU STREQUAL "cuda")
+    foreach(method IN ITEMS auto clara pam)
+        expect_refused(hybrid_${method} "${hybrid}" -i "${INPUT}" --device cpu+gpu --method ${method})
+    endforeach()
+else()
+    expect_refused(hybrid_pam "${hybrid}method 'pam' does not run that pass" -i "${INPUT}" --device cpu+gpu
+                   --method pam)
+    expect_refused(hybrid_onebatch "${hybrid}method 'onebatch' does not run that pass" -i "${INPUT}"
+                   --device cpu+gpu --method onebatch)
+    # A sample of every series (27 here) is one PAM, whose matrix fills on one device.
+    expect_refused(hybrid_clara_full "${hybrid}the distance matrix fills on one device" -i "${INPUT}"
+                   --device cpu+gpu --method clara)
+    # A compressed file beyond --ram-limit streams; a streamed batch is assigned on one device.
+    set(ENV{OMP_NUM_THREADS} 4)
+    expect_refused(hybrid_stream "${hybrid}the series are streamed" -i "${STREAM_INPUT}" --device cpu+gpu
+                   --method clara --sample-size 8 --n-samples 2 --ram-limit 300000)
+    unset(ENV{OMP_NUM_THREADS})
+    if(device STREQUAL "present")
+        expect_ran(hybrid_clara clara --device cpu+gpu --method clara --sample-size 5 -v)
+        string(FIND "${out}" "FastCLARA cpu+gpu: the GPU assigned the first " split_at)
+        if(split_at EQUAL -1 OR NOT "${out}" MATCHES "of 27 series [(]share [0-9.e-]+, recorded[)]")
+            message(FATAL_ERROR "hybrid_clara: its -v names no split\nstdout:\n${out}")
+        endif()
+    else()
+        expect_refused(hybrid_clara "GPU was detected" -i "${INPUT}" --device cpu+gpu --method clara --sample-size 5)
+    endif()
+endif()
+
 # ---- hpc, and a name no grammar reads ----
 foreach(method IN ITEMS auto pam)
     expect_refused(hpc_${method} "device 'hpc' submits a whole run to a SLURM cluster" -i "${INPUT}"
@@ -202,11 +236,11 @@ list(LENGTH methods cpu_cells)
 math(EXPR expected "${cpu_cells} + 1 + 2 + 3")
 list(LENGTH gpu_methods gpu_cells)
 if(GPU STREQUAL "none")
-    math(EXPR expected "${expected} + ${gpu_cells} + 5")
+    math(EXPR expected "${expected} + ${gpu_cells} + 5 + 3")
 elseif(GPU STREQUAL "metal")
-    math(EXPR expected "${expected} + ${gpu_cells} + 7")
+    math(EXPR expected "${expected} + ${gpu_cells} + 7 + 3")
 else()
-    math(EXPR expected "${expected} + ${gpu_cells} + 6")
+    math(EXPR expected "${expected} + ${gpu_cells} + 6 + 5")
 endif()
 if(NOT cells EQUAL expected)
     message(FATAL_ERROR "ran ${cells} cells, expected ${expected}")

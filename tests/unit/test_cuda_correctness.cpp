@@ -37,6 +37,7 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
@@ -2386,6 +2387,151 @@ TEST_CASE("HG0: the GPU's FP32 and squared-L2 distances differ from the CPU's wi
   CAPTURE(differ);
   CHECK(outside == 0);
   if (route.metric == dtwc::core::MetricType::L1 || band < 0) CHECK(differ > 0);
+}
+
+namespace {
+
+/// HG3's fixture: `n` series, more than one calibration block (clara_block_points), in three groups (moved to 0, 4
+/// or 8 by i % 3) of uniform noise in [-0.5, 0.5), seed fixed; lengths 17 to 48 (`narrow` false, each length once in a
+/// cycle of 32 rows) or 30 to 32 (`narrow`: a band of 2 leaves every pair a path).
+std::vector<std::vector<double>> hg3_series(bool narrow, std::size_t n = 70000)
+{
+  std::mt19937 rng(20261109);
+  std::uniform_real_distribution<double> noise(-0.5, 0.5);
+  std::vector<std::vector<double>> series(n);
+  for (std::size_t i = 0; i < series.size(); ++i) {
+    series[i].resize(narrow ? 30 + i % 3 : 17 + (i * 7) % 32);
+    for (auto &v : series[i]) v = 4.0 * static_cast<double>(i % 3) + noise(rng);
+  }
+  return series;
+}
+
+/// FastCLARA (k 3, three samples of 40) on `series` on `device`, its GPU's host buffers within blocks of 8,192 series
+/// (nine for the whole input), the GPU's share `share` on cpu+gpu.
+dtwc::core::ClusteringResult hg3_run(const std::vector<std::vector<double>> &series, int band,
+                                     dtwc::core::MetricType metric, dtwc::Device device, dtwc::GpuPrecision precision,
+                                     double share)
+{
+  dtwc::Problem prob("hg3");
+  prob.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::vector<std::string>(series.size())));
+  prob.set_band(band);
+  prob.set_metric(metric);
+  prob.set_gpu_precision(precision);
+  prob.set_device(device);
+  dtwc::algorithms::CLARAOptions clara;
+  clara.n_clusters = 3;
+  clara.sample_size = 40;
+  clara.n_samples = 3;
+  clara.gpu_staging_bytes = dtwc::cuda::detail::MedoidBlocks{ 8192, 2, 3 }.host_bytes(9, 48, 8);
+  clara.gpu_share = share;
+  return dtwc::algorithms::fast_clara(prob, clara);
+}
+
+bool same_result(const dtwc::core::ClusteringResult &a, const dtwc::core::ClusteringResult &b)
+{
+  return a.labels == b.labels && a.medoid_indices == b.medoid_indices
+         && std::memcmp(&a.total_cost, &b.total_cost, sizeof(double)) == 0;
+}
+
+} // anonymous namespace
+
+// HG3, the hybrid's contract (DECISIONS 11-09): under FP64 L1 the GPU's distances are the CPU's bit for bit (HG0), so
+// cpu+gpu's labels, medoids and cost equal the CPU-only and the GPU-only runs whatever the split: the GPU's share forced
+// to 0, 0.5 and 1 and measured, compared by memcmp. The measured split's calibration block is the last 65,536 points:
+// of 70,000 the GPU's share reaches into it unless that share is under 6 %, so the pass assigns it again; of 140,000 it
+// lies in the CPU's share unless the GPU's is over 53 %, so the pass keeps it (the output line says which ran). The
+// CPU's lanes run unbanded, its per-pair function at band 2.
+TEST_CASE("HG3: cpu+gpu's FP64 L1 FastCLARA equals the CPU's and the GPU's whatever the split", "[cuda][clara][hg3]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  struct Shape {
+    bool narrow;
+    std::size_t n;
+  };
+  const auto shape = GENERATE(values<Shape>({ { false, 70000 }, { false, 140000 }, { true, 70000 } }));
+  const bool narrow = shape.narrow;
+  const int band = narrow ? 2 : -1;
+  CAPTURE(narrow, band, shape.n);
+  const auto series = hg3_series(narrow, shape.n);
+  const auto run = [&](dtwc::Device device, double share) {
+    return hg3_run(series, band, dtwc::core::MetricType::L1, device, dtwc::GpuPrecision::FP64, share);
+  };
+  const auto cpu = run(dtwc::Device::CPU, -1.0);
+  const auto gpu = run(dtwc::Device::GPU, -1.0);
+  REQUIRE(same_result(gpu, cpu));
+  CHECK_FALSE(cpu.hybrid);
+  for (const double share : { 0.0, -1.0, 0.5, 1.0 }) {
+    CAPTURE(share);
+    const auto hybrid = run(dtwc::Device::CPU_GPU, share);
+    CHECK(same_result(hybrid, cpu));
+    REQUIRE(hybrid.hybrid);
+    if (share < 0) {
+      CHECK(std::string_view(hybrid.hybrid->source) == "calibrated");
+      CHECK(hybrid.hybrid->cpu_rate > 0);
+      CHECK(hybrid.hybrid->gpu_rate > 0);
+      const double gpu_points = hybrid.hybrid->gpu_share * static_cast<double>(series.size());
+      std::cout << "HG3 FP64 L1 " << (narrow ? "band 2" : "unbanded") << ", measured: FastCLARA "
+                << dtwc::algorithms::describe(*hybrid.hybrid, series.size()) << "; its calibration block "
+                << (gpu_points <= static_cast<double>(series.size() - 65536) ? "kept" : "assigned again") << "\n";
+    } else {
+      CHECK(std::string_view(hybrid.hybrid->source) == "forced");
+      CHECK(hybrid.hybrid->gpu_share == share);
+    }
+  }
+}
+
+// Where the GPU's distances are not the CPU's (FP32; squared L2, where the routes contract the product differently):
+// cpu+gpu at share 1 is the GPU-only run byte for byte (the same sample fills, the same assignment), and a forced share
+// repeats byte for byte; at a share of 0.5 and measured, the medoids are the GPU-only run's (the samples fill on the
+// GPU), the cost lies within the route bound of the GPU-only run's, and a label differs only at a near-tie: where the
+// point's CPU (FP64) distances to the two medoids lie within the route bound of each other. The near-ties are counted.
+TEST_CASE("HG3: cpu+gpu under FP32 and squared L2 differs from the GPU only at near-ties", "[cuda][clara][hg3]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  struct Route {
+    dtwc::GpuPrecision precision;
+    dtwc::core::MetricType metric;
+  };
+  const auto route = GENERATE(values<Route>({ { dtwc::GpuPrecision::FP32, dtwc::core::MetricType::L1 },
+                                              { dtwc::GpuPrecision::FP64, dtwc::core::MetricType::SquaredL2 } }));
+  const bool fp32 = route.precision == dtwc::GpuPrecision::FP32;
+  CAPTURE(fp32);
+  const auto series = hg3_series(false);
+  const auto run = [&](dtwc::Device device, double share) {
+    return hg3_run(series, -1, route.metric, device, route.precision, share);
+  };
+  const auto gpu = run(dtwc::Device::GPU, -1.0);
+  CHECK(same_result(run(dtwc::Device::CPU_GPU, 1.0), gpu));
+  const auto half = run(dtwc::Device::CPU_GPU, 0.5);
+  CHECK(same_result(run(dtwc::Device::CPU_GPU, 0.5), half));
+
+  dtwc::Problem cpu("hg3_cpu"); // the CPU's FP64 distance function on the same settings
+  cpu.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::vector<std::string>(series.size())));
+  cpu.set_metric(route.metric);
+  const auto &pair = cpu.dtw_function();
+  const auto agree = [fp32](double a, double b, std::size_t nx, std::size_t ny) {
+    return fp32 ? dtwc::test_support::dtw_routes_agree<float>(a, b, nx, ny)
+                : dtwc::test_support::dtw_routes_agree<double>(a, b, nx, ny);
+  };
+  for (const double share : { 0.5, -1.0 }) {
+    CAPTURE(share);
+    const auto hybrid = share == 0.5 ? half : run(dtwc::Device::CPU_GPU, share);
+    REQUIRE(hybrid.medoid_indices == gpu.medoid_indices);
+    CHECK(agree(hybrid.total_cost, gpu.total_cost, 48, 48));
+    std::size_t near_ties = 0, other = 0;
+    for (std::size_t p = 0; p < series.size(); ++p) {
+      if (hybrid.labels[p] == gpu.labels[p]) continue;
+      const auto &a = series[static_cast<std::size_t>(gpu.medoid_indices[static_cast<std::size_t>(hybrid.labels[p])])];
+      const auto &b = series[static_cast<std::size_t>(gpu.medoid_indices[static_cast<std::size_t>(gpu.labels[p])])];
+      const bool tie = agree(pair(series[p], a), pair(series[p], b), series[p].size(), std::max(a.size(), b.size()));
+      near_ties += tie;
+      other += !tie;
+    }
+    std::cout << "HG3 " << (fp32 ? "FP32 L1" : "FP64 squared L2") << " share " << share << ": " << near_ties
+              << " labels differ from the GPU-only run, each at a near-tie\n";
+    CAPTURE(near_ties);
+    CHECK(other == 0);
+  }
 }
 
 

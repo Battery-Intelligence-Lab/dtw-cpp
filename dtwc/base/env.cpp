@@ -51,6 +51,7 @@ std::string to_string(Device d)
   switch (d) {
   case Device::CPU: return "cpu";
   case Device::GPU: return "gpu";
+  case Device::CPU_GPU: return "cpu+gpu";
   }
   throw std::logic_error("to_string: unreachable Device");
 }
@@ -66,6 +67,8 @@ std::string device(std::string_view name)
 #if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
   if (selected.first == Device::GPU) throw DeviceError(detail::gpu_not_built_message());
 #endif
+  if (selected.first == Device::CPU_GPU && !detail::hybrid_not_built_reason().empty())
+    throw DeviceError(detail::hybrid_refused_message("[dtwc] dtwc::device", detail::hybrid_not_built_reason()));
   g_device = selected;
   return device();
 }
@@ -73,7 +76,7 @@ std::string device(std::string_view name)
 std::string device()
 {
   std::string out = to_string(g_device.first);
-  if (g_device.first == Device::GPU && g_device.second != 0) out += ":" + std::to_string(g_device.second);
+  if (uses_gpu(g_device.first) && g_device.second != 0) out += ":" + std::to_string(g_device.second);
   return out;
 }
 
@@ -86,11 +89,12 @@ std::pair<Device, int> parse_device(std::string_view name)
 
   if (lname == "cpu") return { Device::CPU, 0 };
   if (lname == "gpu" || lname == "cuda") return { Device::GPU, 0 };
-  if (lname.rfind("gpu:", 0) == 0 || lname.rfind("cuda:", 0) == 0) {
+  if (lname == "cpu+gpu") return { Device::CPU_GPU, 0 };
+  if (lname.rfind("gpu:", 0) == 0 || lname.rfind("cuda:", 0) == 0 || lname.rfind("cpu+gpu:", 0) == 0) {
     const std::string id = lname.substr(lname.find(':') + 1);
     if (!id.empty() && id.find_first_not_of("0123456789") == std::string::npos) {
       try {
-        return { Device::GPU, std::stoi(id) };
+        return { lname.starts_with("cpu+gpu:") ? Device::CPU_GPU : Device::GPU, std::stoi(id) };
       } catch (const std::out_of_range &) {
         // An absurdly large ordinal is an unknown name.
       }
@@ -110,6 +114,23 @@ std::string gpu_not_built_message()
   return "[dtwc] device='gpu' requested but this build has no GPU backend compiled in.\n"
          "Rebuild with -DDTWC_ENABLE_CUDA=ON (NVIDIA) or, on macOS, -DDTWC_ENABLE_METAL=ON.\n"
          "This build will not silently fall back to CPU.";
+}
+
+std::string hybrid_refused_message(std::string_view where, std::string_view why)
+{
+  return std::string(where) + ": device 'cpu+gpu' splits FastCLARA's assignment pass between the CPU and a CUDA GPU, "
+         "but " + std::string(why) + ". Use device cpu or gpu; no single-device fallback was attempted.";
+}
+
+std::string hybrid_not_built_reason()
+{
+#if defined(DTWC_HAS_CUDA)
+  return {};
+#elif defined(DTWC_HAS_METAL)
+  return "Metal has no kernel for that pass";
+#else
+  return "this build has no CUDA (rebuild with -DDTWC_ENABLE_CUDA=ON)";
+#endif
 }
 
 } // namespace detail

@@ -319,6 +319,7 @@ if(TARGET dtwc_cl)
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_device_matrix.cmake"
         ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>"
              "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
+             "-DSTREAM_INPUT=${CMAKE_CURRENT_SOURCE_DIR}/data/reader/clara_256_lz4.arrow"
              "-DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_all_fields.toml"
              "-DDEFAULTS=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_defaults.toml"
              "-DGPU=${_dtwc_cl_gpu}" "-DHAS_HIGHS=${_dtwc_cl_highs}"

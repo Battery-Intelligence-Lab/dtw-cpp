@@ -2,7 +2,7 @@
  * @file env.hpp
  * @brief The device vocabulary and the single-thread warning.
  *
- * @details `Device` names where a run computes (`cpu` / `gpu`), `GpuPrecision`
+ * @details `Device` names where a run computes (`cpu` / `gpu` / `cpu+gpu`), `GpuPrecision`
  * what a GPU computes in. The process-wide default device is read and set
  * through `dtwc::device()` / `dtwc::device(name)`; a `Problem` never reads it.
  * `hpc` is not a C++ device: it submits a
@@ -28,9 +28,13 @@ namespace dtwc {
 
 /// @brief Where a run computes.
 enum class Device {
-  CPU, ///< Local CPU execution (the default).
-  GPU  ///< Local GPU execution (CUDA on NVIDIA, Metal on macOS).
+  CPU,    ///< Local CPU execution (the default).
+  GPU,    ///< Local GPU execution (CUDA on NVIDIA, Metal on macOS).
+  CPU_GPU ///< The CPU and a CUDA GPU together: FastCLARA's assignment pass split between them (cpu+gpu).
 };
+
+/// Whether `d` computes on a GPU, alone or beside the CPU: everything a GPU takes and refuses applies to it.
+constexpr bool uses_gpu(Device d) noexcept { return d != Device::CPU; }
 
 /// GPU compute precision, on every GPU backend. `Auto` is FP32 on consumer CUDA
 /// GPUs and FP64 on HPC ones; Metal computes in FP32 and rejects FP64.
@@ -45,13 +49,13 @@ inline constexpr Name<GpuPrecision> gpu_precision_names[]{
   { "double", GpuPrecision::FP64 },
 };
 
-/// @brief Canonical lower-case name of a Device ("cpu" / "gpu").
+/// @brief Canonical lower-case name of a Device ("cpu" / "gpu" / "cpu+gpu").
 std::string to_string(Device d);
 
 /// @brief Set the process-wide default device and return its canonical name
-///        ("cpu", "gpu", "gpu:N"). A Problem never reads it; Tier-1 cluster() does.
-/// @throws DeviceError for a name detail::parse_device() refuses, and for `gpu`
-///         on a build with no GPU backend.
+///        ("cpu", "gpu", "gpu:N", "cpu+gpu", "cpu+gpu:N"). A Problem never reads it; Tier-1 cluster() does.
+/// @throws DeviceError for a name detail::parse_device() refuses, for `gpu`
+///         on a build with no GPU backend, and for `cpu+gpu` on a build without CUDA.
 std::string device(std::string_view name);
 
 /// @brief The canonical name of the process-wide default device ("cpu" until set).
@@ -61,16 +65,24 @@ namespace detail {
 
 /// @brief Parse a device name: the one grammar behind dtwc::device(name), the
 ///        CLI's `--device` and the bindings' Problem device setters.
-/// @details "cpu", "gpu", "gpu:N", "cuda", "cuda:N"; case-insensitive,
-///          surrounding whitespace ignored, `cuda` ≡ `gpu`, N a non-negative
-///          `int` GPU ordinal (0 when absent). Grammar only: the build is checked
-///          by the caller.
+/// @details "cpu", "gpu", "gpu:N", "cuda", "cuda:N", "cpu+gpu", "cpu+gpu:N";
+///          case-insensitive, surrounding whitespace ignored, `cuda` ≡ `gpu`, N a
+///          non-negative `int` GPU ordinal (0 when absent). Grammar only: the
+///          build is checked by the caller.
 /// @throws DeviceError listing the valid names; for "hpc" / "hpc:…", naming
 ///         Python's dtwcpp.device("hpc") and slurm_remote.sh.
 std::pair<Device, int> parse_device(std::string_view name);
 
 /// @brief The message for `gpu` on a build with no GPU backend (tests pin it verbatim).
 std::string gpu_not_built_message();
+
+/// @brief The DeviceError text where `cpu+gpu` cannot run: `where` refuses it, `why` says what stands in the way.
+/// The hybrid exists for FastCLARA's in-RAM assignment pass on CUDA only, so the text names the devices that run.
+std::string hybrid_refused_message(std::string_view where, std::string_view why);
+
+/// @brief Why this build refuses `cpu+gpu` ("" where it has CUDA): no CUDA, or Metal, which has no kernel for the
+/// assignment pass.
+std::string hybrid_not_built_reason();
 
 } // namespace detail
 

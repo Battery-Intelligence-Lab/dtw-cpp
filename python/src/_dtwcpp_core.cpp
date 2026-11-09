@@ -395,7 +395,8 @@ NB_MODULE(_dtwcpp_core, m) {
 
   nb::enum_<dtwc::Device>(m, "Device")
     .value("CPU", dtwc::Device::CPU)
-    .value("GPU", dtwc::Device::GPU);
+    .value("GPU", dtwc::Device::GPU)
+    .value("CPU_GPU", dtwc::Device::CPU_GPU);
 
   m.def("device_to_string", [](dtwc::Device d) { return dtwc::to_string(d); }, "device"_a,
         "Canonical lower-case name of a Device ('cpu'/'gpu').");

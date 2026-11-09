@@ -20,6 +20,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <random>
 #include <span>
@@ -90,11 +91,12 @@ void assign_point(index_t p, std::span<const index_t> medoids, index_t &label, d
  * Points first .. first + n - 1 to their nearest medoid in each sample s: labels[s][p] and best[s * n + p - first], by
  * assign_point over the sample's k medoids, slots s * k .. s * k + k - 1 of `medoids` (parent indices). row_of(p)(j)
  * is point p's distance to medoid slot j, whichever device computed it. Each point writes its own slots; a failure
- * is the lowest point's, at its lowest sample.
+ * is the lowest point's, at its lowest sample. `parallel` false: on the calling thread alone (a block of cpu+gpu's
+ * pass, inside its one parallel region).
  */
 template <typename RowOf>
 void assign_points(index_t first, std::size_t n, std::span<double> best, std::span<const index_t> medoids,
-                   std::vector<std::vector<index_t>> &labels, const RowOf &row_of)
+                   std::vector<std::vector<index_t>> &labels, const RowOf &row_of, bool parallel = true)
 {
   const std::size_t samples = labels.size(), k = medoids.size() / samples;
   auto assign = [&](std::size_t i) {
@@ -106,7 +108,7 @@ void assign_points(index_t first, std::size_t n, std::span<double> best, std::sp
                    [&distance, slot](index_t m) { return distance(slot + m); });
     }
   };
-  run_openmp(assign, n, n > 64);
+  run_openmp(assign, n, parallel && n > 64);
 }
 
 /**
@@ -118,7 +120,7 @@ void assign_points(index_t first, std::size_t n, std::span<double> best, std::sp
  * as long as the medoid. A pair they do not take, an empty point's included, is pair(point, medoid), as without
  * lanes. Each lane is that pair's distance as dtw_dispatch.hpp states it (the recurrence transposes exactly: the
  * medoid is x here, where `pair` puts the shorter series, or on a tie the point, first), so labels and costs are the
- * per-pair route's.
+ * per-pair route's. `parallel` as assign_points takes it.
  */
 /// assign_points_cpu's table, one buffer a thread: reached here so that core::release_thread_scratch() can empty it
 /// (its closed list: core::detail::clara_assign_scratch, fast_clara.cpp).
@@ -131,14 +133,14 @@ inline std::vector<double> &assign_table()
 template <typename T, typename Pair, typename PointOf, typename MedoidOf>
 void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std::span<const index_t> medoids,
                        std::vector<std::vector<index_t>> &labels, const core::DistanceConfig &distance,
-                       const Pair &pair, const PointOf &point, const MedoidOf &medoid)
+                       const Pair &pair, const PointOf &point, const MedoidOf &medoid, bool parallel = true)
 {
   const auto block = core::resolve_dtw_block_fn<T>(distance);
   const bool unbanded = distance.band < 0;
   if (!block || (unbanded && !core::dtw_lanes_packed)) {
-    assign_points(first, n, best, medoids, labels, [&](index_t p) {
-      return [&, x = point(p)](index_t j) { return pair(x, medoid(j)); };
-    });
+    assign_points(
+      first, n, best, medoids, labels,
+      [&](index_t p) { return [&, x = point(p)](index_t j) { return pair(x, medoid(j)); }; }, parallel);
     return;
   }
 
@@ -173,7 +175,7 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
       }
     }
   };
-  run_openmp(assign_block, (n + W - 1) / W, n > 64);
+  run_openmp(assign_block, (n + W - 1) / W, parallel && n > 64);
 }
 
 /// Points per call of assign_in_blocks' `assign`: their nearest distances, 8 bytes a point and sample, are its scratch.
@@ -252,6 +254,14 @@ void assign_on_gpu(
   const Problem &prob, const Data &points, index_t first, const std::vector<std::span<const double>> &medoids,
   std::span<const index_t> medoid_indices, std::vector<std::vector<index_t>> &labels,
   std::vector<core::detail::OrderedMedoidObjective> &costs, std::size_t staging_bytes = 0);
+
+/// assign_on_gpu on `count` points, point(i) the series of point first + i; `team` false: its blocks padded and assigned
+/// on the calling thread alone (cpu+gpu's driving thread, whose team runs the CPU's share).
+void assign_on_gpu(
+  const Problem &prob, std::size_t count, const std::function<std::span<const double>(std::size_t)> &point,
+  index_t first, const std::vector<std::span<const double>> &medoids, std::span<const index_t> medoid_indices,
+  std::vector<std::vector<index_t>> &labels, std::vector<core::detail::OrderedMedoidObjective> &costs,
+  std::size_t staging_bytes, bool team);
 #else
 /// Metal has no kernel for the assignment, so on a GPU device it runs on the
 /// CPU (the sample matrices still fill on the GPU); verbose says so, once a pass.

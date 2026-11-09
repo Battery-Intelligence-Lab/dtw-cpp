@@ -154,6 +154,9 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
                                                  const ClaraPlan &plan)
 {
   validate_streaming_clara_plan(plan, "fast_clara");
+  if (prob.device().first == Device::CPU_GPU)
+    throw DeviceError(dtwc::detail::hybrid_refused_message(
+      "fast_clara", "the series are streamed, and a streamed batch is assigned on one device"));
   using T = std::conditional_t<F32, float, data_t>;
   const auto series_at = [](const Data &d, index_t index) {
     if constexpr (F32)
