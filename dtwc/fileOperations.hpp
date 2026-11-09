@@ -118,8 +118,8 @@ inline void close_output(std::ofstream &file, const fs::path &path)
  */
 inline void ignoreBOM(std::istream &in, const fs::path &path = {})
 {
-  // peek/get/unget only, never tellg/seekg: a pipe or FIFO cannot seek, and the
-  // failed seekg left the stream failed, so a BOM-less pipe read as zero rows.
+  // peek/get/unget only, never tellg/seekg: a pipe or FIFO cannot seek, and a
+  // failed seekg leaves the stream failed, so a BOM-less pipe would read as zero rows.
   constexpr unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
   std::size_t matched = 0;
   while (matched < 3 && in.peek() == bom[matched]) {
@@ -139,9 +139,8 @@ inline void ignoreBOM(std::istream &in, const fs::path &path = {})
 /**
  * @brief One series-count contract for every loader.
  *
- * @details Contract, shared by count() and both loaders (which used to disagree
- * for `Ndata == 0`): `Ndata == -1` means "all", otherwise stop at exactly
- * `Ndata`. Anything below -1 is rejected.
+ * @details The contract of both loaders and of DataLoader::n_data: `Ndata == -1` means "all",
+ * otherwise stop at exactly `Ndata` (0 reads nothing). Anything below -1 is rejected.
  */
 inline void validate_ndata(index_t Ndata, const char *ctx)
 {
@@ -159,8 +158,8 @@ inline bool ndata_wants_more(index_t Ndata, std::size_t produced)
 
 namespace text_io_detail {
 
-/// ASCII whitespace but CR. Not std::isspace: that reads LC_CTYPE, so under a
-/// UTF-8 locale byte 0xA0 was a space and one file parsed differently per
+/// ASCII whitespace but CR. Not std::isspace: that reads LC_CTYPE, so a locale
+/// could make byte 0xA0 a space and one file parse differently per
 /// process. A CR ends a line only before its LF (for_each_data_line drops it
 /// there); anywhere else it is a byte of a field, which then fails to parse, so
 /// a CR-only file is refused rather than read as one line of numbers.
@@ -338,8 +337,8 @@ std::optional<T> parse_series_value_row(std::string_view line,
   // cannot disappear merely because it occurs on the first row.
   if (allow_legacy_empty_header && trim_ascii(fields[column]).empty())
     return std::nullopt;
-  // One value per line: the fields after it used to be dropped silently, so a
-  // two-column `index,value` file read without start_col=1 clustered the index.
+  // One value per line: dropping the fields after it silently would cluster the
+  // index of a two-column `index,value` file read without start_col=1.
   if (fields.size() > column + 1) {
     throw IOError(
       "Error in delimited text file: '" + path_to_utf8(path) + "' row "
@@ -355,7 +354,7 @@ std::optional<T> parse_series_value_row(std::string_view line,
 /// `on_line(line, row)` (row 1-based, counting skipped lines) for each data
 /// line until `Ndata` lines were produced (-1 = all); returns that count.
 /// Blank lines after the last data line are ignored. A blank line followed by
-/// data is an error: it used to become an empty series in a batch file and to
+/// data is an error: it would become an empty series in a batch file and
 /// vanish, shifting every later value, in a folder file.
 template <typename OnLine>
 std::size_t for_each_data_line(std::istream &in, const fs::path &path,
@@ -384,7 +383,7 @@ std::size_t for_each_data_line(std::istream &in, const fs::path &path,
 
 /// Open a text file for reading, positioned after any UTF-8 byte-order mark.
 /// Binary, so every platform reads the same bytes: a text-mode stream on Windows
-/// ended the file at a 0x1A byte and dropped the rows after it silently. The CR
+/// ends the file at a 0x1A byte and drops the rows after it silently. The CR
 /// of a CRLF line end is dropped by for_each_data_line.
 inline std::ifstream open_text_file(const fs::path &path, std::string_view reader)
 {
@@ -401,26 +400,26 @@ inline std::ifstream open_text_file(const fs::path &path, std::string_view reade
 /**
  * @brief Reads a file and returns the data as a vector of a specified type.
  *
- * @tparam data_t The data type of the elements to be read.
+ * @tparam T The data type of the elements to be read.
  * @param name Path of the file to read.
  * @param start_row Starting row index for reading the data (default is 0).
  * @param start_col Starting column index for reading the data (default is 0).
  * @param delimiter Delimiter character used in the file (default is ',').
- * @return std::vector<data_t> A vector containing the read data.
+ * @return std::vector<T> A vector containing the read data.
  */
-template <typename data_t>
+template <typename T>
 auto readFile(const fs::path &name, index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
   auto in = text_io_detail::open_text_file(name, "readFile");
 
-  std::vector<data_t> p;
+  std::vector<T> p;
   p.reserve(10000);
   // The legacy `,0` header is a header only when no rows were skipped: after
   // start_row it is the first value, and an empty one is an error.
   bool legacy_header = start_row == 0;
   text_io_detail::for_each_data_line(in, name, start_row, -1,
     [&](std::string_view line, std::size_t row) {
-      const auto value = text_io_detail::parse_series_value_row<data_t>(
+      const auto value = text_io_detail::parse_series_value_row<T>(
         line, name, row, start_col, delimiter, legacy_header);
       legacy_header = false;
       if (value) p.push_back(*value);
@@ -437,7 +436,7 @@ auto readFile(const fs::path &name, index_t start_row = 0, index_t start_col = 0
  * every name, label, medoid and distance-matrix index depends on the machine
  * that ran the job. Non-regular entries are dropped rather than passed to
  * readFile(), and so are dot-files (.DS_Store, .gitkeep, AppleDouble `._a.csv`):
- * an empty .gitkeep used to load as an empty series. One O(n log n) pass per
+ * an empty .gitkeep would load as an empty series. One O(n log n) pass per
  * load, before any parallel work.
  */
 inline std::vector<fs::path> sorted_directory_files(const fs::path &folder_path)
@@ -456,13 +455,13 @@ inline std::vector<fs::path> sorted_directory_files(const fs::path &folder_path)
  * @brief Options for load_folder / load_batch_file.
  *
  * @details Bundles the five auxiliary parameters (Ndata, verbose, start_row,
- * start_col, delimiter) that previously trailed the path argument as positional
- * args. C++20 designated initialisers make call sites self-documenting:
+ * start_col, delimiter) that the positional-arg overloads take after the path.
+ * C++20 designated initialisers make call sites self-documenting:
  *
  *   load_folder<double>(path, {.Ndata = 1000, .start_row = 1});
  *
- * The positional-arg overloads are retained for backwards compatibility; they
- * delegate to the struct-based form.
+ * The positional-arg overloads are kept for v1.0.0 callers; they delegate to
+ * the struct-based form.
  */
 struct LoadOptions {
   index_t Ndata = -1;     //!< Max number of series to read; -1 = all.
@@ -475,29 +474,26 @@ struct LoadOptions {
 /**
  * @brief Loads all files from a given folder and returns their data as vectors along with file names.
  *
- * @tparam data_t The data type of the elements to be read.
+ * @tparam T The data type of the elements to be read.
  * @tparam Tpath Type of the folder path (auto-deduced).
  * @param folder_path Path of the folder containing the files.
- * @param Ndata Maximum number of data points to read from each file (default is -1, read all data).
- * @param verbose Verbosity level for logging output (default is 1).
- * @param start_row Starting row index for reading the data (default is 0).
- * @param start_col Starting column index for reading the data (default is 0).
- * @param delimiter Delimiter character used in the files (default is ',').
- * @return std::pair<std::vector<std::vector<data_t>>, std::vector<std::string>> A pair containing vectors of data and corresponding file names.
+ * @param opts See LoadOptions; Ndata is the number of files read (-1: all), start_row and start_col apply to
+ *        each file.
+ * @return std::pair<std::vector<std::vector<T>>, std::vector<std::string>> A pair containing vectors of data and corresponding file names.
  */
-template <typename data_t, typename Tpath>
+template <typename T, typename Tpath>
 auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
 {
   validate_ndata(opts.Ndata, "load_folder");
   if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
 
-  std::vector<std::vector<data_t>> p_vec;
+  std::vector<std::vector<T>> p_vec;
   std::vector<std::string> p_names;
 
   for (const auto &file : sorted_directory_files(folder_path)) {
     if (!ndata_wants_more(opts.Ndata, p_vec.size())) break;
 
-    auto p = readFile<data_t>(file, opts.start_row, opts.start_col, opts.delimiter);
+    auto p = readFile<T>(file, opts.start_row, opts.start_col, opts.delimiter);
 
     if (opts.verbose >= 2 || (opts.verbose == 1 && p.empty()))
       std::cout << file << "\tSize: " << p.size() << '\n';
@@ -514,42 +510,38 @@ auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
 
 /// Positional-arg overload retained for backwards compatibility; delegates to
 /// the LoadOptions-based form.
-template <typename data_t, typename Tpath>
+template <typename T, typename Tpath>
 auto load_folder(Tpath &folder_path, index_t Ndata, int verbose = 1,
                  index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
-  return load_folder<data_t>(folder_path,
+  return load_folder<T>(folder_path,
     LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
 }
 
 /**
  * @brief Loads batch data from a single file and returns the data as vectors.
  *
- * @tparam data_t The data type of the elements to be read.
+ * @tparam T The data type of the elements to be read.
  * @param file_path Path of the file containing batch data.
- * @param Ndata Maximum number of data points to read (default is -1, read all data).
- * @param verbose Verbosity level for logging output (default is 1).
- * @param start_row Starting row index for reading the data (default is 0).
- * @param start_col Starting column index for reading the data (default is 0).
- * @param delimiter Delimiter character used in the file (default is ',').
- * @return std::pair<std::vector<std::vector<data_t>>, std::vectorstd::string> A pair containing vectors of data and corresponding identifiers.
+ * @param opts See LoadOptions; Ndata is the number of series (rows) read (-1: all).
+ * @return std::pair<std::vector<std::vector<T>>, std::vector<std::string>> A pair containing vectors of data and corresponding identifiers.
  */
-template <typename data_t>
+template <typename T>
 auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
 {
   validate_ndata(opts.Ndata, "load_batch_file");
   if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
 
-  std::vector<std::vector<data_t>> p_vec;
+  std::vector<std::vector<T>> p_vec;
   std::vector<std::string> p_names;
 
   auto in = text_io_detail::open_text_file(file_path, "load_batch_file");
   text_io_detail::for_each_data_line(in, file_path, opts.start_row, opts.Ndata,
     [&](std::string_view line, std::size_t row) {
-      std::vector<data_t> p;
-      text_io_detail::parse_numeric_row<data_t>(
+      std::vector<T> p;
+      text_io_detail::parse_numeric_row<T>(
         line, file_path, row, opts.start_col, opts.delimiter,
-        [&](data_t value) { p.push_back(value); });
+        [&](T value) { p.push_back(value); });
       p.shrink_to_fit();
 
       const auto n_rows = p_vec.size() + 1;
@@ -568,11 +560,11 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
 
 /// Positional-arg overload retained for backwards compatibility; delegates to
 /// the LoadOptions-based form.
-template <typename data_t>
+template <typename T>
 auto load_batch_file(fs::path &file_path, index_t Ndata, int verbose = 1,
                      index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
-  return load_batch_file<data_t>(file_path,
+  return load_batch_file<T>(file_path,
     LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
 }
 

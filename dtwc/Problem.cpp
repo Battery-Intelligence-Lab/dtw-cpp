@@ -2,8 +2,9 @@
  * @file Problem.cpp
  * @brief Implementation of the DTWC (Dynamic Time Warping Clustering) problem encapsulated in a class.
  *
- * @details This file includes the implementation of the Problem class, which contains methods for clustering,
- * initializing clusters, calculating distances, and other functionalities related to the DTWC problem.
+ * @details The Problem session: its setters, the distance functions they bind, the distance-matrix fill and its
+ * cache, the series check, cluster() over the nine methods and Lloyd's k-medoids; also `apply(Config, Problem &)`,
+ * `parse_ram_limit` and the GPU queries. The result files are in Problem_IO.cpp, initialisation in initialisation.cpp.
  *
  * @date 06 Nov 2022
  * @author Volkan Kumtepeli
@@ -13,10 +14,9 @@
 #include "Problem.hpp"
 #include "config.hpp"               // for Config, apply
 #include "base/error.hpp"           // for DeviceError
-#include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byHiGHS
+#include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byHiGHS, LR_core_clustering
 #include "base/parallelisation.hpp" // for run
-#include "scores.hpp"          // for silhouette
-#include "base/settings.hpp"        // for data_t, randGenerator, band, isDebug
+#include "base/settings.hpp"        // for data_t, index_t, settings::DEFAULT_MIP_SOLVER
 #include "core/matrix_io.hpp"  // for operator<<(ostream, DistanceMatrix)
 #include "core/medoid_assignment_policy.hpp" // finite assignment contract
 
@@ -28,9 +28,7 @@
 #endif
 #include "warping.hpp"         // for detail::all_usable, refuse_unusable
 #include "core/dtw_kernel.hpp" // for dtw_lanes
-#include "warping_wdtw.hpp"    // for wdtw_weights (cache population)
 #include "types/Range.hpp"     // for Range
-#include "initialisation.hpp"  // For initialisation functions
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
 #include "base/missing_utils.hpp"               // for all_missing
@@ -38,7 +36,7 @@
 #include "algorithms/fast_pam.hpp"
 #include "algorithms/one_batch_pam.hpp"
 #include "algorithms/tadpole.hpp"
-#include "io/parse_number.hpp"         // for parse_ram_limit
+#include "io/parse_number.hpp"         // for io::parse_number
 
 
 #include <algorithm> // for min
@@ -53,7 +51,6 @@
 #include <limits>    // for numeric_limits
 #include <numeric>   // for iota
 #include <optional>  // for optional
-#include <cassert>
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
 #include <utility>   // for pair
@@ -105,7 +102,7 @@ void hash_float(FingerprintHash &hash, float value)
   hash_u32(hash, bits);
 }
 
-// Enum spellings for validate_fill_request's messages: the C++ and Python
+// Enum spellings for validate_gpu_request's messages: the C++ and Python
 // enumerator names.
 const char *variant_name(core::DTWVariant v)
 {
@@ -238,7 +235,9 @@ std::size_t parse_ram_limit(const std::string &text, std::string_view key)
   const double scaled = match == std::end(units) ? -1.0 : std::ldexp(value, match->second);
   // The one range check: a negative, NaN or infinite value and an unknown unit
   // fail it, and so does a count size_t cannot hold, whose cast would be undefined.
-  if (ec != std::errc{} || !(scaled >= 0.0 && scaled < std::ldexp(1.0, std::numeric_limits<std::size_t>::digits)))
+  // A conjunction of the passing comparisons, not the negated pair of failing ones: every comparison is false for NaN.
+  const bool in_range = scaled >= 0.0 && scaled < std::ldexp(1.0, std::numeric_limits<std::size_t>::digits);
+  if (ec != std::errc{} || !in_range)
     throw InvalidInput("Invalid " + std::string(key) + " '" + text
                        + "': expected a size such as 2G, 500M or 1.5GiB, in B, K, M, G or T (KB and KiB alike), "
                          "below 2^64 bytes; 0 is automatic.");
@@ -410,16 +409,12 @@ void Problem::set_result(const core::ClusteringResult &result)
  */
 bool Problem::set_solver(Solver solver_)
 {
+#ifndef DTWC_ENABLE_GUROBI
   if (solver_ == Solver::Gurobi) {
-#ifdef DTWC_ENABLE_GUROBI
-    mipSolver = Solver::Gurobi;
-    return true;
-#else
     mipSolver = settings::DEFAULT_MIP_SOLVER;
     return false;
-#endif
   }
-
+#endif
   mipSolver = solver_;
   return true;
 }
@@ -566,6 +561,18 @@ void Problem::validate_distance(core::DistanceConfig config, const Data &data)
 {
   config.ndim = data.ndim;
   core::validate(config, data.is_f32());
+}
+
+void Problem::adopt_data(Data candidate, std::string_view operation)
+{
+  candidate.validate_ndim();
+  reject_empty_series(candidate, operation);
+  validate_distance(distance_, candidate);
+  data_ = std::move(candidate);
+  distance_.ndim = data_.ndim;
+  clusters_ind.clear(); // a clustering describes the series it was computed on
+  centroids_ind.clear();
+  refresh_distance_matrix();
 }
 
 const Problem::dtw_fn_t &Problem::dtw_function()
@@ -1391,7 +1398,9 @@ void Problem::cluster_by_kmedoids_lloyd()
  * @details This function performs a single run of the Lloyd k-medoids algorithm, updating the medoids and clusters,
  * and calculating the total cost for this run.
  * @param rep The current repetition number.
- * @return A pair containing the status (whether the algorithm converged or not) and the total cost of clustering for this repetition.
+ * @param persist_artifacts Write this repetition's medoids per iteration (writeMedoids).
+ * @return The status (0: the medoids stopped changing, -1: max_iter was reached first), the total cost of this
+ *         repetition's clustering and the iterations run.
  */
 std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
   int rep, bool persist_artifacts)
