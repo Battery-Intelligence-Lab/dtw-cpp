@@ -34,7 +34,14 @@
   so "load recorded" is partial. MM/base wall ratios A: 0.37, 0.43, 0.37, 0.60; B: 0.90, 0.95, 0.96; no gross slowdown
   (`baselines/2026-11-09-mm-merge-sanity.md`, [inferred]).
 - The identity kit: base against itself 111 files 0 differ; the merged main binary against the MM worktree's 131 files 0
-  differ; the report and `-v` cases added after the advisor's note, 0 differ.
+  differ; the report and `-v` cases added after the advisor's note, 153 files over 30 cases, 0 differ.
+- The release list on the merged code in WSL (`~/mm/merge_gcc`, GCC 13.3; my scripts `orch_strict_inner.sh`,
+  `orch_linux_arrow_inner.sh`, `orch_linux_archive_inner.sh`): `cpp_conformance` strict 1/1; Arrow ON through the pyarrow
+  23.0.1 shim 105/105 with `test_io_readers` listed, `dtwc_cl` linking libarrow, libparquet, libgomp; the Linux archive
+  (`cpack`, 340 members, no libgomp, the notice's lines 41-51 say the system's runtime is used) and its smoke: FAILED on the
+  merged code because `scripts/smoke_release_archive.py` forced the mapped matrix with `--ram-limit 1`, which the memory plan
+  refuses; fixed to `--checkpoint <output>` (6de4a741, re-run OK). CI's three archive jobs would have failed the same way.
+  Tree-wide clang-tidy (the repo's `.clang-tidy`, 31 own TUs): 4 warnings in all, handed to QP2 and QP3.
 - Earlier today: see `handoff-2026-11-09-s10.md` (S9–S10b, the kit prep).
 
 ## Reported by agents, unverified
@@ -54,9 +61,9 @@
    `pb/QP1..4` on `pb/QP` (`git merge --no-ff`, in a worktree, never the main checkout); then QP5 part 1 (tests) as one
    agent, clang-tidy tree-wide by me (`orch_tidy_all.sh` was running; `C:/D/git/wt/tmp/QP/tidy_before.txt`); the review
    (`brief_qp_review.md`); full gates once on `pb/QP`; merge; push.
-2. The release list (item 3): WSL results due in `orch_strict_wsl.log`, `orch_linux_arrow_wsl.log`,
-   `orch_linux_archive_wsl.log`; cl strict in `orch_cl_strict.log` (then `ctest -R cpp_conformance` in
-   `C:/D/git/wt/MM/build-cl-strict`); the docs' and CHANGELOG's final read (one Sonnet agent after QP).
+2. The release list (item 3): left are `cpp_conformance` under MSVC strict (`C:/D/git/wt/MM/build-cl-strict` was building;
+   a waiter runs `ctest -R cpp_conformance` there and logs `orch_cl_strict_ctest.log`), F43 (the question batch) and the
+   docs' and CHANGELOG's final read (one Sonnet agent after QP). HG's draft plan: `C:/D/git/wt/tmp/HG/hg_plan.md`.
 3. The question batch at the QP merge (PLAN, after "Done before the tag"): HG on the design's prediction with advisory
    measurement, or a quiet window; the CI MEX job's llfio; the merged worktrees.
 4. HG (item 5): draft its unit plan from `C:/D/git/wt/tmp/MM/hetero.md` myself (no planner agent).
