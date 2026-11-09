@@ -128,7 +128,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - A memory plan: `--ram-limit` (Python `ram_limit`, MATLAB `'RamLimit'`, `Problem::set_ram_limit`) is the memory a run
   plans for. Its default, 0, is 90 % of the memory available (or of a Linux cgroup's limit, which a SLURM job's memory
   request sets) for `dtwc_cl`, `dtwc::run`, `dtwc::cluster` and Python's and MATLAB's `cluster()` (a build without
-  llfio, as the MEX the CI builds, cannot tell it, and plans only under an explicit limit); a `Problem`'s
+  llfio cannot tell it, and plans only under an explicit limit); a `Problem`'s
   (`set_ram_limit`) stays all of it, which sizes a mapped fill. The run plans once: a reserve for its threads' working
   set (1.1 × threads × a thread's DTW scratch for the longest series expected and the method's tables), then the
   series, the method's own terms (TADPole's pair flags and cache, the hierarchical clustering's dense copy,
