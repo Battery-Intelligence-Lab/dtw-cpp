@@ -3,18 +3,16 @@
  * @brief RunReport: the clocks of a run's stages, and the report's text (render(), command_of()).
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 5.5 (RR1b)
+ * @author Claude Opus 5.5
  * @date 03 Nov 2026
  */
 
 #include "report.hpp"
 
 #include "../core/distance_matrix.hpp" // peak_memory
-#include "config.hpp"                  // to_config_text
+#include "config.hpp"                  // to_config_text, shortest_text
 
 #include <algorithm>
-#include <array>
-#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <iterator>
@@ -131,13 +129,6 @@ std::string calendar(std::time_t time, bool utc)
   return text;
 }
 
-/// The shortest text that reads back as `value`, as dtwc_cl prints the cost.
-std::string shortest(double value)
-{
-  std::array<char, 32> text{};
-  return std::string(text.data(), std::to_chars(text.data(), text.data() + text.size(), value).ptr);
-}
-
 /// The first 20 of `values`, space-separated, and how many there are where there are more.
 template <class T>
 std::string first_of(const std::vector<T> &values)
@@ -187,7 +178,7 @@ std::string stopped(const RunReport::Clustering &clustering, const Config &confi
            + " linkage) cut at k";
   case Method::TADPole:
     return "no iterations: one pass over the density peaks, dc "
-           + (config.tadpole_dc > 0.0 ? shortest(config.tadpole_dc) : std::string("automatic"));
+           + (config.tadpole_dc > 0.0 ? shortest_text(config.tadpole_dc) : std::string("automatic"));
   case Method::Auto: break;
   }
   return "unknown";
@@ -376,7 +367,7 @@ std::string RunReport::render() const
   if (!clustering) {
     row(out, "result", "none");
   } else {
-    row(out, "cost", shortest(clustering->cost));
+    row(out, "cost", shortest_text(clustering->cost));
     std::string silhouette = "not computed: no output directory (-o)";
     if (silhouettes) silhouette = silhouettes->mean ? "mean " + four_digits(*silhouettes->mean) : silhouettes->why_not;
     row(out, "silhouette", silhouette);

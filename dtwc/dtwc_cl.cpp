@@ -14,6 +14,10 @@
  * @date 29 Mar 2026
  */
 
+// print_settings reads SLURM's and OpenMP's variables with std::getenv, which the Windows CRT marks deprecated as unsafe
+// (cl's C4996, clang's -Wdeprecated-declarations there): the macro silences it, and must precede the first CRT header.
+#define _CRT_SECURE_NO_WARNINGS 1
+
 #include "base/timing.hpp"
 #include "cli/config.hpp"
 #include "cli/run.hpp"
@@ -26,12 +30,9 @@
 #include <omp.h>
 #endif
 
-#include <array>
-#include <charconv>
 #include <cstdlib>
 #include <iostream>
 #include <string>
-#include <string_view>
 
 namespace {
 
@@ -105,13 +106,12 @@ int main(int argc, char *argv[])
     const dtwc::Result result = dtwc::run(config);
     // Shortest round-trip form: the printed cost is the exact double, so two runs
     // can be compared bit for bit from their output.
-    std::array<char, 32> cost{};
-    const char *cost_end = std::to_chars(cost.data(), cost.data() + cost.size(), result.cost()).ptr;
+    const std::string cost = dtwc::shortest_text(result.cost());
 
     std::cout << "\n=== Results ===\n"
               << "  Method:     " << dtwc::name_of(dtwc::method_names, result.method()) << "\n";
     std::cout << "  Clusters:   " << config.k << "\n"
-              << "  Total cost: " << std::string_view(cost.data(), cost_end - cost.data()) << "\n"
+              << "  Total cost: " << cost << "\n"
               << "  Converged:  " << (result.converged() ? "yes" : "no") << "\n"
               << "  Iterations: " << result.iterations() << "\n"
               << "  Output:     " << config.output << "/\n"
