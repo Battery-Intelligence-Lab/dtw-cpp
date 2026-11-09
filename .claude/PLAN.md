@@ -55,12 +55,14 @@ differ only where several optimal medoid sets exist, node counts and run times c
    the oracle": a crash there puts the flag back and becomes a tracked item). The docs' and CHANGELOG's final read (charter
    item 10) merged c3f26c47 (`pb/DOC`, 8 commits, 33 files; docs gates on the merged tree PASS; `check_site_links` runs in
    CI). It left ten code-side items (`C:/D/git/wt/tmp/QP/brief_dc.md`): unit DC, below.
-3b. ◐ **DC, the code the docs read found wrong** [here]: Python `save_checkpoint` / `load_checkpoint` defaulting `metric` to
-   L1 where C++ uses the Problem's (rule 17); `--checkpoint` with a method that never allocates the matrix writing an
-   all-NaN `.dtwm`; the stale Doxygen of `.dtwm`'s header and ADTW's citation; the `hpc` docstring's error type; the Arrow
-   option's description; `dtwc-convert`'s usage line; `CONTRIBUTING.md`'s dead reference; two Python docstrings; the
-   `cluster` slash command's method. One Sonnet agent on `pb/DC`; tests only where a contract has none (the two behaviour
-   items); the identity gate, clang `ctest -j1`, fresh-venv pytest, the docs gates.
+3b. ☑ **DC, the code the docs read found wrong** merged 5b01d1fe (11-09; `pb/DC`, three commits, report
+   `C:/D/git/wt/tmp/DC/report_dc.md`): Python's and MATLAB's `save_checkpoint` / `load_checkpoint` take the Problem's metric
+   when none is named (rule 17; one pytest case, the MATLAB identity test extended); a `--checkpoint` run of a method that
+   never allocates the matrix writes no all-NaN `.dtwm` (one CLI test that fails on the previous binary; CHANGELOG; two docs
+   clauses); eight comments, docstrings and descriptions made true. Gates: clang 103, identity 0 differ, pytest 934/19, docs
+   gates, the MEX tree 104/104 with the MATLAB suite (mine). Candidates it left: `save_dataset_csv(names=)` writes a header
+   row `dtwc_cl` cannot read back; `help.md` and `visualize.md` still show `Method.Kmedoids`; TADPole on the mapped route
+   leaves a never-filled `.dtwm`.
 4. ☐ **Timing, advisory** [here, a quiet machine; Volkan 11-04 "Later, I will tell you"]: MM's bands, HG's baseline and
    FM's E1 (ETW counters, `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` run elevated by Volkan); numbers to `baselines/`
    tagged [confirmed]; a FALSIFIED hot-loop band reopens its loop, anything else is fixed or reworded after. Two of MM's

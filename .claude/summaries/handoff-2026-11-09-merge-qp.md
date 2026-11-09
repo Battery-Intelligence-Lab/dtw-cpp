@@ -35,6 +35,10 @@
   (`baselines/2026-11-09-mm-merge-sanity.md`, [inferred]).
 - The identity kit: base against itself 111 files 0 differ; the merged main binary against the MM worktree's 131 files 0
   differ; the report and `-v` cases added after the advisor's note, 153 files over 30 cases, 0 differ.
+- DOC's table: eight rows opened against the code (the checkpoint saved before the result files, `--dc` = -1, highspy for
+  the Kelley root, `.csv` comma and `.tsv`/`.txt` tab, the silhouette's two non-empty clusters, Problem's Kmedoids default,
+  the README badge branch, the CHANGELOG's folded entries), all true; the ADTW citation confirmed against the ADS record
+  and the DOI (Herrmann and Webb, Pattern Recognition 137, 109333).
 - The release list on the merged code in WSL (`~/mm/merge_gcc`, GCC 13.3; my scripts `orch_strict_inner.sh`,
   `orch_linux_arrow_inner.sh`, `orch_linux_archive_inner.sh`): `cpp_conformance` strict 1/1; Arrow ON through the pyarrow
   23.0.1 shim 105/105 with `test_io_readers` listed, `dtwc_cl` linking libarrow, libparquet, libgomp; the Linux archive
@@ -91,8 +95,8 @@
 
 ## Next steps
 
-1. DC (PLAN 3b): accept (open the cited lines; the identity gate, clang ctest, pytest on its branch), merge `--no-ff`
-   into design-2.0, push; then rebuild the main `build/` (the identity base is two units behind otherwise). HG1 (item 5):
+1. DC merged 5b01d1fe (PLAN 3b; my identity run 0 differ and its MEX tree 104/104 with the MATLAB suite). Then rebuild
+   the main `build/` once HG1 has reported (it is HG1's identity base; a rebuild mid-run would race its gate). HG1 (item 5):
    accept on `pb/HG` only (its `__global__` kernel bodies in `cuda_dtw.cu` must be unchanged against the base: only the
    host loop and the staging move; HG0's bit-equality test is the backstop); then merge design-2.0 into `pb/HG` (DC's
    `run.cpp` change meets HG1's), run the identity gate on that tree, and brief HG2 from `pb/HG`'s tip. HG merges once,
