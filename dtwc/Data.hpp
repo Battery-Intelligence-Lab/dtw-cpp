@@ -32,7 +32,8 @@
 namespace dtwc {
 
 /// The name a series gets when its source gives none: `series_<i>`, `i` its position in the source (from 0, as the
-/// result files count). Every reader and the result writer spell it through this one function.
+/// result files count). The C++ readers and the result writer spell it through this function, but for IpcFile's row
+/// view, which writes every made name of a batch into one buffer (arrow_ipc.cpp); the Python readers spell their own.
 template <typename I>
 std::string made_name(I i)
 {

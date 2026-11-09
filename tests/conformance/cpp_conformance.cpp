@@ -29,6 +29,10 @@
  * @date 07 Jul 2026
  */
 
+// std::getenv reads DTWC_CONFORMANCE_REGEN; the Windows CRT marks it deprecated as unsafe (cl's C4996, clang's
+// -Wdeprecated-declarations there): the macro silences it, and must precede the first CRT header, as in dtwc_cl.cpp.
+#define _CRT_SECURE_NO_WARNINGS 1
+
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>

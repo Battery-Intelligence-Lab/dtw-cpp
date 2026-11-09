@@ -202,8 +202,7 @@ int fit_threads(std::size_t budget, std::size_t need, std::size_t per_thread, in
   return threads;
 }
 
-/// `ways`, which are not empty, as a sentence's list: "a, b, or c". A refusal and a run out of memory name their ways
-/// out alike.
+/// `ways` (one at least) as a sentence's list, "a, b, or c": a refusal and a run out of memory name their ways out alike.
 std::string list_or(const std::vector<std::string> &ways)
 {
   std::string out = ways.front();
