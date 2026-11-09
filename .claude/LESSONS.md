@@ -39,8 +39,6 @@ Append new entries at the end of their section; keep each to a few lines.
 - **Metric traits must test units, not family names.** `|a−b|` and `(a−b)²` are different bound units.
 - **Admissibility is not tightness, and a decision counter is not an avoided-work counter.** Claim a prune rate
   only from an executed count; reachability needs a case that must prune and one that must not.
-- **Debug a floating-point failure from the exact failing bytes.** A 3-decimal copy of the input lost the
-  ULPs that triggered the EAP bug.
 
 ## Kernels and performance
 
@@ -190,7 +188,8 @@ Append new entries at the end of their section; keep each to a few lines.
 - **`add_compile_options()` reaches every fetched dependency.** Put project flags on `dtwc_options`.
 - **An OBJECT library has only its own flags**: its PUBLIC definition misses test TUs, its parent's OpenMP misses it
   (LR-core's `#pragma omp` ran serial). Read each target's line (`ninja -t commands`). *`baselines/…-mac-lr-omp.md`*
-- **MSVC flags leak into nvcc.** Wrap them in `$<$<COMPILE_LANGUAGE:C,CXX>:...>`.
+- **Compiler flags leak.** Into nvcc, unless wrapped in `$<$<COMPILE_LANGUAGE:CXX>:...>`; into vendored C through a
+  linked options target: flatcc failed under cl's `/fp:strict` (C2099) until our FP flags became C++-only (11-09).
 - **A Windows DLL linked PUBLIC reaches every test executable.** Attach the runtime directories to every test
   in that directory (and to the `PATH` of spawned CLI children).
 - **`string(REPLACE)` with an absent pattern succeeds.** A patch step asserts that it changed something.
@@ -270,9 +269,8 @@ Append new entries at the end of their section; keep each to a few lines.
 - **Agent tooling:** in the Bash tool a `\\` inside a quoted heredoc reaches the program as `\`, and non-ASCII text
   piped into Python on Windows is read as cp1252 (write scripts with the Write tool); the Workflow tool rejects a
   `scriptPath` file holding non-ASCII text as "control characters" (escape it to `\uXXXX`); Git Bash has no `bc`
-  (a wait loop on it spins forever), and WSL's `/tmp` empties when the distro idles; `cd X && nohup a & nohup b &`
-  backgrounds the `cd` with `a`, so `b` runs in the old directory (two chains wrote their logs into the repo root, 11-09):
-  launch every chain and its log by absolute path.
+  (a wait loop on it spins forever); WSL's `/tmp` empties when the distro idles; `cd X && nohup a & nohup b &` runs
+  only `a` in X (the `cd` is backgrounded with it): launch every chain and its log by absolute path (11-09).
 - **On Windows a plain stream cannot open a file llfio holds mapped** (llfio takes delete access): loading a checkpoint
   that another live Problem maps is `IOError`.
 - **Do not export `CPM_SOURCE_CACHE` for a build dir configured without it**: its cached `CPM_DIRECTORY` differs and the
