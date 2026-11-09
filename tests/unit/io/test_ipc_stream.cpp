@@ -2,8 +2,8 @@
  * @file test_ipc_stream.cpp
  * @brief FastCLARA's stream of an Arrow IPC file a record batch at a time (algorithms::detail::fast_clara_chunked over
  *        io::IpcFile, and run's planner, in every build): the in-RAM run's labels, medoids and cost, and the CSV
- *        twin's; the Parquet stream's verdicts, the cases' texts being those its serial check gave on their Parquet
- *        twins (2026-11-01, at dd7ba144); a record batch larger than the limit, and a limit below the union beside its
+ *        twin's; the Parquet stream's verdicts, the cases' texts being those its serial check gives on their Parquet
+ *        twins; a record batch larger than the limit, and a limit below the union beside its
  *        decode, refused before any batch is decoded; a streamed run's Result: its score and distance matrix refused,
  *        its save dtwc_cl's files. Fixtures: tests/data/reader/make_ipc_fixtures.py.
  * @author Volkan Kumtepeli
@@ -210,7 +210,7 @@ TEST_CASE("Arrow IPC: FastCLARA streamed a record batch at a time gives the in-R
       CHECK(result.medoid_indices == csv.medoid_indices);
       CHECK(result.total_cost == csv.total_cost);
     }
-  // S1's and S2's fixtures: one record batch of three rows (uncompressed, LZ4, ZSTD, Float32) and three batches of
+  // The small fixtures: one record batch of three rows (uncompressed, LZ4, ZSTD, Float32) and three batches of
   // six rows (uncompressed, LZ4, ZSTD), each a batch of the stream.
   options.n_clusters = 2;
   for (const char *file : { "ipc_no_name.arrow", "ipc_lz4.arrow", "ipc_zstd.arrow", "ipc_float32.arrow",
@@ -620,7 +620,7 @@ TEST_CASE("Arrow IPC: a file's names read alone are the in-RAM read's", "[io][ar
 }
 
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-// MM S5: in RAM the series are views (of the mapping, of the file read without llfio, of decoded record batches), which
+// In RAM the series are views (of the mapping, of the file read without llfio, of decoded record batches), which
 // a GPU uploads as an owned copy; streamed, views of its record batches, which CUDA's assignment uploads as an owned
 // copy each (Metal assigns on the CPU). The oracle: the same run on the file's CSV twin, whose series are owned and hold
 // the same values. Beyond an explicit limit the planner prices the copy, and names CLARA, which streams on a GPU too.

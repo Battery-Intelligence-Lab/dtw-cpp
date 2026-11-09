@@ -667,8 +667,8 @@ TEST_CASE("Parquet: streamed FastCLARA refuses the rows the in-RAM run refuses",
 // The stream checks the sampled rows before its PAM, then each row group as it decodes, each in row order (RowCheck):
 // it names the first row it refuses in that order. The in-RAM run of the same file names the lowest, ±inf before an
 // entirely-NaN row under Interpolate (Problem's check). Two refused rows in one row group, refused rows in two, a
-// sampled row above an unsampled lower one, an entirely-NaN row before an infinite one; each route's full text, as at
-// fd8a7450: require_finite's at the row it names, or the entirely-NaN one.
+// sampled row above an unsampled lower one, an entirely-NaN row before an infinite one; each route's full text:
+// require_finite's at the row it names, or the entirely-NaN one.
 TEST_CASE("Parquet: the stream refuses the first row it reads, the in-RAM run the lowest",
           "[io][parquet][streaming]")
 {
@@ -826,8 +826,8 @@ TEST_CASE("Parquet: CLARA with more clusters than series is refused as for every
   std::filesystem::remove(input);
 }
 
-// A RAM-limited run holds no series, so Result::save used to read the names and
-// the distance matrix of an empty Data. It writes what dtwc_cl writes for it: the
+// A RAM-limited run holds no series, so Result::save has no names or distance
+// matrix to read. It writes what dtwc_cl writes for it: the
 // labels and medoids under the reader's series_<i> names, then the run report; no
 // matrix or silhouettes, which it has none of.
 TEST_CASE("Parquet: a streamed Result::save writes series_<i> names and the report, no matrix",
