@@ -202,6 +202,15 @@ int fit_threads(std::size_t budget, std::size_t need, std::size_t per_thread, in
   return threads;
 }
 
+/// `ways`, which are not empty, as a sentence's list: "a, b, or c". A refusal and a run out of memory name their ways
+/// out alike.
+std::string list_or(const std::vector<std::string> &ways)
+{
+  std::string out = ways.front();
+  for (std::size_t i = 1; i < ways.size(); ++i) out += (i + 1 == ways.size() ? ", or " : ", ") + ways[i];
+  return out;
+}
+
 /// What a run does with its series, decided once (plan_memory): reads them into RAM (the distance matrix in RAM or
 /// mapped), streams them through FastCLARA, or refuses.
 enum class Route { InRam, Streamed, Refused };
@@ -286,6 +295,12 @@ struct RunStage
     stage = name;
     if (report) report->begin(name, plan ? plan->threads : 0);
   }
+
+  /// The note of the stage's row in the report, where there is one.
+  void note(std::string text)
+  {
+    if (report) report->stages.back().note = std::move(text);
+  }
 };
 
 /// The memory plan of a run on `facts` within `budget` (0: none, as without llfio; `explicit_limit`: --ram-limit set),
@@ -325,15 +340,13 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
     std::vector<std::string> ways{ "Raise --ram-limit", "read the series as float32 (--dtype float32)" };
     if (!facts.clara_method) ways.emplace_back("use --method clara");
     if (threads > 1) ways.emplace_back("run fewer threads (OMP_NUM_THREADS)");
-    std::string out = ways.front();
-    for (std::size_t i = 1; i < ways.size(); ++i) out += (i + 1 == ways.size() ? ", or " : ", ") + ways[i];
     plan.route = Route::Refused;
     plan.threads = threads;
     plan.refusal = "--ram-limit = " + std::to_string(budget) + " cannot hold " + what + " beside the working set of "
                    + std::to_string(working_set(per_thread, threads)) + " bytes (" + std::to_string(threads)
                    + (threads == 1 ? " thread x " : " threads x ") + std::to_string(per_thread)
                    + " bytes: the DTW kernels' scratch for series of up to " + std::to_string(facts.length)
-                   + " time steps and the method's tables, x1.1): " + needs + ". " + out + ".";
+                   + " time steps and the method's tables, x1.1): " + needs + ". " + list_or(ways) + ".";
   };
   if (facts.can_stream) {
     if (facts.streamed + reserve <= budget) {
@@ -504,6 +517,19 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     const std::size_t pass = algorithms::detail::clara_pass_bytes(sample, static_cast<std::size_t>(clara.n_samples));
     return std::max(pam, pass + n * sizeof(index_t) + n / 8);
   };
+  // FastCLARA's plan where `resolved` is clara and there are series (none otherwise). k above the number of series is
+  // refused here as for every input, before CLARA's plan.
+  const auto clara_sample = [&](Method resolved) -> std::optional<algorithms::detail::ClaraPlan> {
+    if (n_series == 0 || resolved != Method::CLARA) return std::nullopt;
+    require_clusterable(config.k, n_series);
+    return resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
+  };
+  // Whether FastCLARA can stream a file of one series per row (`rows_are_series`): a sample smaller than N; the automatic
+  // budget not beside --checkpoint or --dist-matrix, which an explicit one refuses (check_stream).
+  const auto can_stream_file = [&](const std::optional<algorithms::detail::ClaraPlan> &sample, bool rows_are_series) {
+    return sample && sample->sample_size < sample->n_points && rows_are_series
+           && (config.ram_limit != 0 || (config.checkpoint.empty() && config.dist_matrix.empty()));
+  };
 
   // The memory plan (plan_memory), made once where the input's facts are known: an Arrow IPC file's walk, a Parquet
   // file's metadata where they route it, else the series read. -v prints it; its threads cap every region from there
@@ -628,18 +654,9 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     const Method resolved = resolve(resident_bytes, length, 1, config.dtype);
     // A CLARA run holds beside the series a sample's PAM matrix, then every sample's labels and nearest distances,
     // in RAM as streamed.
-    std::optional<algorithms::detail::ClaraPlan> sample;
-    std::size_t resident = resident_bytes;
-    if (n_series > 0 && resolved == Method::CLARA) {
-      require_clusterable(config.k, n_series); // k > N refused as for every input, before CLARA's plan
-      sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      resident += clara_bytes(*sample);
-    }
-    // FastCLARA streams a sample smaller than N of one file of a series per row; the automatic budget not beside
-    // --checkpoint or --dist-matrix, which an explicit one refuses (check_stream).
-    const bool can_stream = sample && sample->sample_size < sample->n_points
-                            && layout == detail::ParquetLayout::ListColumn
-                            && (config.ram_limit != 0 || (config.checkpoint.empty() && config.dist_matrix.empty()));
+    const auto sample = clara_sample(resolved);
+    const std::size_t resident = resident_bytes + (sample ? clara_bytes(*sample) : 0);
+    const bool can_stream = can_stream_file(sample, layout == detail::ParquetLayout::ListColumn);
     const MemoryPlan planned = plan_of(resolved, sample, resident_bytes, values, length, 1, config.dtype, can_stream,
                                        layout == detail::ParquetLayout::ListColumn,
                                        names_bytes + 2 * n_series * sizeof(index_t));
@@ -662,7 +679,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     }
     plan_clara();
     if (stream_payload) check_stream("Parquet", "Parquet metadata", resident);
-    if (stage.report) stage.report->stages.back().note = "Parquet metadata";
+    stage.note("Parquet metadata");
     if (stream_payload) report_input(n_series, values, 1, 0, 0, 0, true);
   }
 #endif
@@ -682,17 +699,10 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     std::size_t length = ipc->longest_steps();
     if (length == 0 && n_series > 0) length = 2 * ipc->num_values() / (n_series * ipc->ndim());
     const Method resolved = resolve(ipc_bytes, length, ipc->ndim(), config.dtype);
-    std::size_t resident = ipc_bytes;
-    std::optional<algorithms::detail::ClaraPlan> sample;
-    if (n_series > 0 && resolved == Method::CLARA) {
-      require_clusterable(config.k, n_series); // k > N refused as for every input, before CLARA's plan
-      sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      resident += clara_bytes(*sample);
-    }
+    const auto sample = clara_sample(resolved);
+    const std::size_t resident = ipc_bytes + (sample ? clara_bytes(*sample) : 0);
     const bool streams = ipc->streams(config.dtype);
-    // The automatic budget streams not beside --checkpoint or --dist-matrix, which an explicit one refuses.
-    const bool can_stream = sample && sample->sample_size < sample->n_points && streams
-                            && (config.ram_limit != 0 || (config.checkpoint.empty() && config.dist_matrix.empty()));
+    const bool can_stream = can_stream_file(sample, streams);
     // The names are read after the stream, beside the labels: their read is priced with them.
     const std::size_t names_bytes = ipc->series_names_bytes() + ipc->names_read_bytes();
     // A GPU uploads an owned copy of the views read_arrow_ipc gives in the file's precision (resident_bytes prices it).
@@ -742,7 +752,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
                          + std::to_string(config.ram_limit) + "; " + why);
     }
     if (planned.route == Route::Refused) throw InvalidInput(planned.refusal);
-    if (stage.report) stage.report->stages.back().note = "Arrow IPC walk";
+    stage.note("Arrow IPC walk");
     if (stream_payload) report_input(n_series, ipc->num_values(), ipc->ndim(), 0, 0, 0, true);
     if (!stream_payload) {
       storage = ipc->storage(config.dtype); // the read below repeats the walk's decisions on the same file
@@ -752,7 +762,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
 
   // ---- 3. Load the series into RAM ----
   stage.begin("read");
-  if (stream_payload && stage.report) stage.report->stages.back().note = "none: FastCLARA streams them, inside cluster";
+  if (stream_payload) stage.note("none: FastCLARA streams them, inside cluster");
   if (!stream_payload) {
     Data series = data ? std::move(*data) : read_input(input, format.value_or(InputFormat::Text), config);
     const std::string held = std::to_string(series.size()) + " series" + (storage.empty() ? "" : ", " + storage);
@@ -776,7 +786,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     }
     const std::size_t value_bytes = elements * (series.is_f32() ? sizeof(float) : sizeof(data_t));
     report_input(static_cast<std::size_t>(series.size()), elements, series.ndim, value_bytes, shortest, longest, false);
-    if (stage.report) stage.report->stages.back().note = held;
+    stage.note(held);
     if (config.verbose && series.size() > 0)
       std::cout << "  Data memory: ~" << (value_bytes / (1ULL << 20)) << " MB (" << series.size() << " series, "
                 << (elements / series.size()) << " avg length, " << name_of(core::precision_names, series.precision)
@@ -846,15 +856,13 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
       std::cout << (resumed ? "Resumed from checkpoint: " + config.checkpoint + "\n"
                             : "No checkpoint in " + config.checkpoint + ", starting fresh.\n");
   }
-  if (stage.report) {
-    std::string note = stream_payload || !holds_matrix(method, clara_uses_full_sample)
-                         ? std::string("no distance matrix of every series")
-                       : cache ? "the distance matrix mapped, " + path_to_utf8(cache->filename())
-                               : std::string("the distance matrix in RAM");
-    if (!config.dist_matrix.empty()) note += "; --dist-matrix read";
-    if (resumed) note += "; the checkpoint resumed";
-    stage.report->stages.back().note = std::move(note);
-  }
+  std::string storage_note = stream_payload || !holds_matrix(method, clara_uses_full_sample)
+                               ? std::string("no distance matrix of every series")
+                             : cache ? "the distance matrix mapped, " + path_to_utf8(cache->filename())
+                                     : std::string("the distance matrix in RAM");
+  if (!config.dist_matrix.empty()) storage_note += "; --dist-matrix read";
+  if (resumed) storage_note += "; the checkpoint resumed";
+  stage.note(std::move(storage_note));
 
   // ---- 5. Fill, then cluster; the matrix methods fill through the Problem, on its device ----
   // PAM, Lloyd's k-medoids and FastCLARA on a sample of every series fill the whole distance matrix before anything
@@ -869,18 +877,15 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   stage.begin(fills_first ? "fill" : "cluster");
   if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
   if (fills_first) {
-    if (stage.report)
-      stage.report->stages.back().note =
-        prob.is_distance_matrix_filled()
-          ? "complete on entry"
-          : std::to_string(n_series) + " series' matrix on " + device_text(config)
-              + (config.device == Device::GPU && prob.data().is_view() ? ", from an owned copy of their views" : "");
+    stage.note(prob.is_distance_matrix_filled()
+                 ? "complete on entry"
+                 : std::to_string(n_series) + " series' matrix on " + device_text(config)
+                     + (config.device == Device::GPU && prob.data().is_view() ? ", from an owned copy of their views"
+                                                                              : ""));
     prob.fill_distance_matrix();
     stage.begin("cluster");
   }
-  if (stage.report)
-    stage.report->stages.back().note =
-      std::string(progress_label(method)) + (fills_first ? "" : ", any distances it computes inside");
+  stage.note(std::string(progress_label(method)) + (fills_first ? "" : ", any distances it computes inside"));
   // In RAM the Problem clusters, but where detail::run was given a solver (a binding that links no HiGHS gives its
   // own) and the run is MIP on HiGHS or LR-core's Kelley root, tested as Python's Problem.cluster override tests them:
   // the solver's clustering is the run's, published on the Problem, which the Result reads.
@@ -948,10 +953,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   // The checkpoint goes before the results, so a result write that fails cannot lose the distance matrix. A save that
   // fails is kept and raised once the results are on disk, so it cannot lose them either: what to do, and its cause.
   stage.begin("write");
-  if (stage.report)
-    stage.report->stages.back().note =
-      std::string(config.checkpoint.empty() ? "" : "the checkpoint, then ")
-      + (config.output.empty() ? std::string("no result files (no -o)") : "the result files");
+  stage.note(std::string(config.checkpoint.empty() ? "" : "the checkpoint, then ")
+             + (config.output.empty() ? std::string("no result files (no -o)") : "the result files"));
   std::optional<std::string> checkpoint_failure;
   if (!config.checkpoint.empty()) {
     try {
@@ -1056,10 +1059,7 @@ std::string ways_out(const RunStage &stage, const Config &config)
 #endif
     if (frees(plan.reserve() - working_set(plan.per_thread, 1))) ways.emplace_back("fewer threads (OMP_NUM_THREADS)");
   }
-  if (ways.empty()) return "more memory for the process";
-  std::string out = ways.front();
-  for (std::size_t i = 1; i < ways.size(); ++i) out += (i + 1 == ways.size() ? ", or " : ", ") + ways[i];
-  return out;
+  return ways.empty() ? "more memory for the process" : list_or(ways);
 }
 
 /// What a run that runs out of memory throws in place of its std::bad_alloc (std::bad_array_new_length among them): the
