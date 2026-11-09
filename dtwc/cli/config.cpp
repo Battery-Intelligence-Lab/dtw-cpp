@@ -45,8 +45,7 @@ std::string text_of(const T &value)
   } else if constexpr (std::is_same_v<T, char>) {
     return value == '\0' ? std::string{} : std::string(1, value);
   } else if constexpr (std::is_same_v<T, double>) {
-    std::array<char, 32> buffer{}; // the shortest round-trip form of a double is at most 24 characters
-    return std::string(buffer.data(), std::to_chars(buffer.data(), buffer.data() + buffer.size(), value).ptr);
+    return shortest_text(value);
   } else if constexpr (std::is_integral_v<T>) {
     return std::to_string(value);
   } else {
@@ -289,6 +288,12 @@ void bind(CLI::App &app, Config &config)
 }
 
 } // namespace cli
+
+std::string shortest_text(double value)
+{
+  std::array<char, 32> buffer{}; // the shortest round-trip form of a double is at most 24 characters
+  return std::string(buffer.data(), std::to_chars(buffer.data(), buffer.data() + buffer.size(), value).ptr);
+}
 
 std::string to_config_text(const Config &config)
 {
