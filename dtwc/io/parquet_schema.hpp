@@ -155,11 +155,9 @@ inline ParquetSeriesLayout resolve_parquet_layout(
 
 /// Reject an Arrow array that carries nulls.
 ///
-/// @details Neither Parquet reader used to inspect nulls at all
-/// (`null_count`/`IsNull` appeared zero times in both). A null list cell
-/// produced a wrong series and a null element produced whatever bytes the
-/// values buffer happened to hold, straight into the DTW distances.
-/// `arrow_c_data.cpp` already rejects both; this matches its policy and its
+/// @details A null list cell would give a wrong series and a null element
+/// whatever bytes the values buffer happens to hold, straight into the DTW
+/// distances. `arrow_c_data.cpp` rejects both; this matches its policy and its
 /// remedy wording. Exactly ONE `null_count()` read per array — i.e. per chunk,
 /// per values buffer — never a per-element probe inside a copy loop.
 inline void require_no_nulls(const arrow::Array &array, const char *what)
@@ -187,10 +185,9 @@ inline void require_list_range(std::int64_t start, std::int64_t end,
 /// Copy `count` values starting at `start` from a Float64/Float32 Arrow array
 /// into `dst`, converting to the destination element type.
 ///
-/// @details One type dispatch per array, never per element. This single
-/// definition replaces the six near-identical extractor bodies that each
-/// re-implemented the Float32/Float64 branch.
-/// The caller has already validated the range and the null count.
+/// @details One type dispatch per array, never per element; every extractor
+/// takes the Float32/Float64 branch here. The caller has already validated the
+/// range and the null count.
 template <typename T>
 inline void copy_arrow_numeric(const arrow::Array &values, std::int64_t start,
                                std::size_t count, T *dst)

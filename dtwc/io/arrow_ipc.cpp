@@ -792,7 +792,7 @@ std::string block_mismatch(const ArrowIpcFileBlock &block, const Message &messag
 /// (pyarrow) reads what the footer says: the values byte-swapped under another byte order, other values from the same
 /// bytes under another schema, or the rows in another order under blocks in another order. A message the walk refuses
 /// ends the count, which it then refuses in turn, after what it finds before it; the footer's refusal (Count::footer)
-/// waits for the walk's end, as when the footer was checked after it.
+/// waits for the walk's end, so the walk's own refusals come first.
 Count count_batches(Decoder &decoder, const Source &source, std::int64_t at, std::int64_t last, bool footer,
                     const ArrowSchema &schema, ArrowIpcEndianness endianness)
 {
@@ -1047,8 +1047,8 @@ std::optional<std::string_view> row_name(const ArrowArrayView *label, std::int64
 }
 
 /// The rows of a record batch, the file's rows from `first` on: a span of each series' values and a view of its name
-/// where they lie (the body, or a decoded column), today's verdicts on a null and on offsets outside their values row
-/// by row; a row named by no 'name' value is marked in `unnamed`, at its row less `marks`.
+/// where they lie (the body, or a decoded column); a null, or offsets outside the values, is refused at its row, in
+/// data_from_arrow's words; a row named by no 'name' value is marked in `unnamed`, at its row less `marks`.
 template <typename T>
 void view_rows(const ArrowArrayView *batch, const Columns &columns, std::int64_t first,
                std::vector<std::span<const T>> &series, std::vector<std::string_view> &names,
@@ -1361,11 +1361,11 @@ std::size_t decoded_object_bytes(const IpcFile::State &state, const Batch &batch
 /// IpcFile::largest_row_group_bytes for one record batch, each heap block as the heap holds it (heap_block_bytes): its
 /// message read from the file (without llfio) and its decoded columns; its spans and its name views (16 bytes a row
 /// each), its made names (a made name a row at most, none where a 'name' column has no nulls), the rows it marks
-/// unnamed while it is read; in the other
-/// precision (T Float32 with `f32`) its values cast, beside which the spans of the stored values live until it is
-/// read; its share of the block's spans and name views; its objects (batch_object_bytes, decoded_object_bytes); and
-/// the two names the stream's check of it copies (its shortest and longest rows'), each at most its longest name where
-/// the walk read its offsets (a batch viewed in memory), else its characters' bytes, or a made name.
+/// unnamed while it is read; in the other precision (T Float32 with `f32`) its values cast, beside which the spans of
+/// the stored values live until it is read; its share of the block's spans and name views; its objects
+/// (batch_object_bytes, decoded_object_bytes); and the two names the stream's check of it copies (its shortest and
+/// longest rows'), each at most its longest name where the walk read its offsets (a batch viewed in memory), else its
+/// characters' bytes, or a made name.
 std::size_t batch_bytes(const IpcFile::State &state, const Batch &batch, bool f32)
 {
   const auto rows = static_cast<std::size_t>(batch.rows);
