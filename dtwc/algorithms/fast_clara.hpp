@@ -72,8 +72,8 @@ namespace algorithms {
    * Non-full assignment evaluates the configured bound DTW function directly;
    * an existing parent distance cache is ignored and left unchanged.
    * Each sample Problem takes `prob`'s distance settings, metric and device
-   * (GPU index, precision). An in-memory sample is a view of `prob`'s series on
-   * the CPU and a copy on a GPU, which uploads owned series. On a GPU device the
+   * (GPU index, precision). An in-memory sample is a view of `prob`'s series,
+   * but a copy on Metal, which uploads owned series. On a GPU device the
    * sample matrices fill on the GPU, and so does the assignment where the GPU
    * is CUDA's; Metal has no kernel for the assignment, which then runs on the
    * CPU (a verbose line says so). On cpu+gpu (CUDA) the samples fill on the GPU

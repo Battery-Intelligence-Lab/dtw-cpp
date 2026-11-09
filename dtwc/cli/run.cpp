@@ -151,7 +151,7 @@ std::size_t thread_bytes(const Problem &prob, const Config &config, Method metho
 }
 
 /// Whether a GPU run reads a view's series where they lie: every CUDA route (its fill pads the series from their
-/// spans, FastCLARA's assignment its blocks; FastCLARA's samples are filled from copies of the samples). Metal's fill
+/// spans, FastCLARA's assignment its blocks, and its samples' fills views of them). Metal's fill
 /// uploads an owned copy of a view's series.
 bool gpu_reads_views([[maybe_unused]] const Config &config)
 {

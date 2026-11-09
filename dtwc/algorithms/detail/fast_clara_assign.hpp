@@ -234,7 +234,7 @@ Data clara_sample(const Data &source, const std::vector<index_t> &positions, boo
 
 /**
  * FastPAM on each sample in turn (seed + s): sample s is a Problem with `prob`'s distance settings holding
- * clara_sample(source, positions[s], owned) (owned: a GPU uploads owned series). Its medoids, parent indices through
+ * clara_sample(source, positions[s], owned) (owned: Metal uploads owned series). Its medoids, parent indices through
  * samples[s], are slots s * k .. s * k + k - 1 of `medoids`.
  */
 std::vector<core::ClusteringResult> clara_pams(const Problem &prob, const CLARAOptions &opts, const Data &source,

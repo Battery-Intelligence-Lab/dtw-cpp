@@ -405,7 +405,7 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   // the band first, the samples' rows before the PAMs, each block of points just before it is assigned, so a mapped
   // file is read once; the verdict, type and text are dtw_function()'s, only later. A GPU checks them all first, as
   // dtw_function() does: CUDA's assignment packs and uploads the parent's series inside its call, where no block can
-  // be checked (and a GPU fills copies of the samples whatever the parent holds).
+  // be checked (and Metal fills copies of the samples whatever the parent holds).
   const Device device = prob.device().first;
   const bool gpu = uses_gpu(device); // cpu+gpu checks as the GPU does: its GPU share reads the series inside its call
   const bool f32 = prob.data().is_f32() && !gpu; // a GPU refuses Float32 series in that check
@@ -414,7 +414,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   const auto *const pair = f32 ? nullptr : check ? &prob.dtw_function(*check) : &prob.dtw_function();
   const auto *const pair_f32 = f32 ? &prob.dtw_function_f32(*check) : nullptr;
 
-  // All samples first, from one engine; each PAM on a view of its series (a copy on a GPU, which uploads owned ones).
+  // All samples first, from one engine; each PAM on a view of its series, which CUDA's fill reads through spans too (a
+  // copy on Metal, whose fill uploads owned series).
   const auto samples = detail::draw_clara_samples(N, sample_size, opts);
   const auto n_points = static_cast<std::size_t>(N);
   // The pass stops at the first entirely-NaN series marked (Interpolate), whose distances throw, and at an error the
@@ -432,7 +433,12 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   std::vector<index_t> medoids; // sample s's medoid m is slot s * k + m
   std::vector<core::ClusteringResult> pams;
   try {
-    pams = detail::clara_pams(prob, opts, prob.data(), samples, samples, gpu, medoids);
+#ifdef DTWC_HAS_CUDA
+    constexpr bool copies = false;
+#else
+    const bool copies = gpu;
+#endif
+    pams = detail::clara_pams(prob, opts, prob.data(), samples, samples, copies, medoids);
   } catch (...) {
     check_rest(0);
     throw;
