@@ -2,10 +2,9 @@
  * @file config.cpp
  * @brief cli::bind(), the one key table of dtwc::Config, and the text forms built on it.
  *
- * @details The only translation unit of dtwc++ that includes CLI11 (linked
- * PRIVATE). Config files, TOML or YAML, are read by dtwc::cli::ConfigFile, the
- * reader dtwc_cl uses, so both formats take the same keys and CLI11 keeps
- * precedence (a flag beats the file) and the unknown-key error.
+ * @details Config files, TOML or YAML, are read by dtwc::cli::ConfigFile
+ * (config_file.hpp), which bind() installs, so both formats take the same keys
+ * and CLI11 keeps precedence (a flag beats the file) and the unknown-key error.
  *
  * @author Volkan Kumtepeli
  * @date 24 Sep 2026

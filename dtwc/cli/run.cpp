@@ -3,9 +3,8 @@
  * @brief dtwc::run: the checks, the method x device resolution, the load, the
  *        distance storage, the dispatch and the outputs of one clustering run.
  *
- * @details Moved from dtwc_cl.cpp's main() and api.cpp's cluster(), which both
- * call it now, so each rule has one copy. Progress lines go to stdout
- * under `verbose`.
+ * @details dtwc_cl.cpp's main() and api.cpp's cluster() both call it, so each
+ * rule has one copy. Progress lines go to stdout under `verbose`.
  *
  * @author Volkan Kumtepeli
  * @date 24 Sep 2026
@@ -372,9 +371,9 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
 
 /// Bind persistent distance storage once every distance-affecting setting has reached the Problem, as the memory plan
 /// decided it (`mapped`). Returns the mapped file, or nullopt when the method keeps its own storage or the matrix
-/// stays in RAM. A mapped matrix costs one sequential pass and keeps the run out of swap. OneBatchPAM owns a fixed
-/// O(Nm) table and reads no parent matrix; nor does non-full FastCLARA. TADPole reads the matrix when it is complete
-/// (a file or a cache from an earlier run) and otherwise computes the pairs it needs.
+/// stays in RAM. A mapped matrix costs one sequential pass and keeps the run out of swap. A method that reads no parent
+/// matrix (holds_matrix) maps none. TADPole reads the matrix when it is complete (a file or a cache from an earlier
+/// run) and otherwise computes the pairs it needs.
 std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &config, Method method,
                                                    bool clara_uses_full_sample, bool mapped, const fs::path &cache_path)
 {
@@ -448,7 +447,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   require_input_options_apply(config, format);
 
   // A --checkpoint that cannot hold a checkpoint stops the run here, before any
-  // work: the save comes after clustering, so a typo cost the whole run.
+  // work: the save comes after clustering, so a typo would cost the whole run.
   const fs::path checkpoint_dir = utf8_to_path(config.checkpoint);
   if (!config.checkpoint.empty()) {
     std::error_code ec;
@@ -466,7 +465,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     prob.set_output_folder(output);
   }
 
-  // ---- 2. The method and, from Parquet metadata when it has them, N ----
+  // ---- 2. The method, and N and the memory plan where Parquet metadata or an Arrow IPC file's walk give them ----
   stage.begin("plan");
   const Clock clk;
   Method method = config.method;
@@ -822,7 +821,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     if (cache && config.verbose) std::cout << "Using memory-mapped distance matrix: " << *cache << "\n";
   }
   // A matrix the user supplied but that cannot be loaded is an error: going on
-  // without it silently recomputed every distance and exited 0.
+  // without it would silently recompute every distance and exit 0.
   if (!config.dist_matrix.empty()) {
     try {
       prob.read_distance_matrix(utf8_to_path(config.dist_matrix), config.not_computed);
@@ -946,9 +945,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   }
 
   // ---- 6. Checkpoints first, then the outputs ----
-  // Before the results, so a result write that
-  // fails cannot lose the distance matrix. A save that fails is kept and raised
-  // once the results are on disk, so it cannot lose them either: what to do, and its cause.
+  // The checkpoint goes before the results, so a result write that fails cannot lose the distance matrix. A save that
+  // fails is kept and raised once the results are on disk, so it cannot lose them either: what to do, and its cause.
   stage.begin("write");
   if (stage.report)
     stage.report->stages.back().note =

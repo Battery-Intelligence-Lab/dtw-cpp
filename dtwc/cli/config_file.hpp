@@ -82,7 +82,7 @@ private:
     if (node.is_boolean()) return node.get_value<bool>() ? "true" : "false";
     if (node.is_integer()) return std::to_string(node.get_value<std::int64_t>());
     // A YAML null is NOT an empty value: CLI11 would take "" as a supplied
-    // value, so `band: ~` set band 0 and `verbose: ~` turned the flag on.
+    // value, so `band: ~` would set band 0 and `verbose: ~` would turn the flag on.
     if (node.is_null())
       throw CLI::ConfigError("key '" + path
                              + "' is null; omit the key to use the default");

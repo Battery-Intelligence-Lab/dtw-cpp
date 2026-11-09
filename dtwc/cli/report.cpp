@@ -3,7 +3,7 @@
  * @brief RunReport: the clocks of a run's stages, and the report's text (render(), command_of()).
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 5.5 (RR1b)
+ * @author Claude Opus 5.5
  * @date 03 Nov 2026
  */
 
