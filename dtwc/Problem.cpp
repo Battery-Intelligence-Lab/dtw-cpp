@@ -71,10 +71,13 @@ namespace {
 /// rate on the whole fill at every size (its unit's columns run the full height of the last tile-row). So the
 /// smallest, whose sequential cost (the other device idles) is least.
 constexpr std::size_t fill_calibration_pairs = std::size_t{ 1 } << 19;
-/// cpu+gpu's share of a slab's entries for the GPU where no calibration is measured (the slab's tile-rows do not hold
-/// both units and more): the design's rates (2026-10-11, inferred): the FP64 fill on an RTX 4000 Ada 28.5 Gcell/s,
-/// the CPU's lanes 55 on 24 threads.
+/// cpu+gpu's share of the entries for the GPU where none is measured (no slab's tile-rows hold both units; the slabs
+/// before the calibrating one): the design's rates (2026-10-11, inferred): the FP64 fill on an RTX 4000 Ada 28.5
+/// Gcell/s, the CPU's lanes 55 on 24 threads.
 constexpr double recorded_fill_gpu_share = 28.5 / (28.5 + 55.0);
+/// The same where the GPU computes in FP32: its FP32 fill ran at 12.9 times its FP64 one on 20,000 series of 32 to 64
+/// steps (7.88e7 against 6.10e6 pairs a second, 2026-11-09, inferred: the machine was loaded), taken as 13.
+constexpr double recorded_fill_gpu_share_fp32 = 13.0 * 28.5 / (13.0 * 28.5 + 55.0);
 #endif
 
 using FingerprintHash = core::detail::Sha256;
@@ -1119,9 +1122,9 @@ void Problem::fillDistanceMatrix_BruteForce()
   };
   core::FillSplit hybrid;
   hybrid.entries = core::packed_size(N);
-  double share = gpu_share_; // -1 until the first slab with rows to compute sets it
-  hybrid.split.gpu_share = share >= 0 ? share : recorded_fill_gpu_share;
-  hybrid.split.source = share >= 0 ? "forced" : "recorded";
+  double share = gpu_share_; // s: forced, else -1 until the calibrating slab measures it (or none can: recorded)
+  hybrid.split.gpu_share = share;
+  const double recorded = gpu && gpu->fp32() ? recorded_fill_gpu_share_fp32 : recorded_fill_gpu_share;
 #endif
   distMat.visit([&](auto *matrix) {
 #ifdef DTWC_HAS_CUDA
@@ -1138,58 +1141,79 @@ void Problem::fillDistanceMatrix_BruteForce()
     // cpu+gpu's slab, tile-rows [k0, k1): the GPU takes [kw, kg), the CPU's team the rest; no tile-row is split (the
     // ragged lanes sort `order` within one). kw is the first with nothing computed, so the tile-rows a resumed fill
     // wrote stay the CPU's, whose tasks skip computed entries: no entry is computed again, and the device that
-    // computed one does not change on resume. kg is the largest k with entries(kw, k) at most
-    // llround(share x entries(kw, k1)). The first slab with a tile-row to compute sets the share where it is not
-    // forced: measured there, where its tile-rows hold both calibration units and more (else the recorded ratio),
-    // then made that slab's effective share, the GPU's entries over the slab's, which every later slab takes (forced
-    // again, it repeats every slab's split). The calibration, sequential and before the slab's region: the GPU fills
-    // the leading tile-rows [kw, ka) whose pairs first reach fill_calibration_pairs, then the team (run_openmp) the
-    // first columns of the last tile-row k1 - 1 that hold as many pairs; both stand (the region scans those columns,
-    // and keeps kg within [ka, k1 - 1]). Rates in pairs a second, the team's scaled to the threads less the GPU's
-    // driver, as FastCLARA's pass does. Then one parallel region: thread 0 (whose CUDA workspace the session holds)
-    // fills the GPU's rows, its copies synchronised before it returns, and then takes CPU tasks like the rest; the
-    // team runs the CPU's tile-rows' column tasks. Every task and every GPU copy writes its own packed slots. An
-    // error is its thread's slot's, the lowest column's rethrown after the region, as run_openmp does.
-    const auto on_both = [&](size_t k0, size_t k1) {
-      size_t kw = k0;
-      while (kw < k1 && core::packed_size(bounds[kw]) < clean) ++kw;
-      size_t ka = kw, kg = kw; // the GPU's tile-rows [kw, kg), of which its calibration filled [kw, ka)
+    // computed one does not change on resume. kg is the bound at which the slab's predicted time, max(entries(kw, kg)
+    // / s, entries(kg, k1) / (1 - s)), is least (the smaller kg on a tie; s = 0 gives kw, s = 1 gives k1), for one
+    // share s of the whole fill: forced (gpu_share_), else measured in the calibrating slab, else the recorded ratio.
+    // The calibrating slab is geometry: the first slab with a tile-row to compute whose tile-rows hold both
+    // calibration units (`units`), so a forced run finds the same slab and the same ka; the slabs before it take the
+    // recorded ratio, in both kinds of run, and in it kg >= ka for any s > 0 (a measured run's GPU unit stands). So a
+    // measured run's printed s, forced, repeats every slab's split. The calibration, sequential and before that slab's
+    // region (a measured run only): the GPU fills the leading tile-rows [kw, ka) whose pairs first reach
+    // fill_calibration_pairs, then the team (run_openmp) the first columns of the last tile-row k1 - 1 that hold as
+    // many pairs; both stand (the region scans those columns, or the GPU rewrites them if it takes that tile-row: the
+    // same bits under FP64, the GPU's as a GPU fill writes them under FP32). Rates in pairs a second, the team's scaled
+    // to the threads less the GPU's driver, as FastCLARA's pass does. Then one parallel region: thread 0 (whose CUDA
+    // workspace the session holds) fills the GPU's rows, its copies synchronised before it returns, and then takes
+    // CPU tasks like the rest; the team runs the CPU's tile-rows' column tasks. Every task and every GPU copy writes
+    // its own packed slots. An error is its thread's slot's, the lowest column's rethrown after the region, as
+    // run_openmp does.
+    struct SlabUnits {
+      size_t kw, ka, columns;
+      bool holds; // the slab's tile-rows hold both calibration units
+    };
+    const auto units = [&](size_t k0, size_t k1) {
+      SlabUnits u{ k0, k0, 0, false };
+      while (u.kw < k1 && core::packed_size(bounds[u.kw]) < clean) ++u.kw;
+      if (u.kw == k1) return u;
+      u.ka = u.kw;
+      while (u.ka + 1 < k1 && entries(u.kw, u.ka) < fill_calibration_pairs) ++u.ka;
+      const size_t last_rows = bounds[k1] - bounds[k1 - 1];
+      u.columns = (fill_calibration_pairs + last_rows - 1) / last_rows; // each holds last_rows pairs
+      u.holds = entries(u.kw, u.ka) >= fill_calibration_pairs && u.columns <= bounds[k1 - 1];
+      return u;
+    };
+    size_t calibrating = 0; // the calibrating slab; slabs.size() - 1 where none holds both units
+    while (gpu && calibrating + 1 < slabs.size() && !units(slabs[calibrating], slabs[calibrating + 1]).holds)
+      ++calibrating;
+    if (gpu && calibrating + 1 == slabs.size() && share < 0) {
+      share = recorded;
+      hybrid.split.gpu_share = share;
+      hybrid.split.source = "recorded";
+    }
+    const auto on_both = [&](size_t slab) {
+      const size_t k0 = slabs[slab], k1 = slabs[slab + 1];
+      const SlabUnits u = units(k0, k1);
+      const size_t kw = u.kw;
+      size_t from = kw, kg = kw; // the GPU's tile-rows [kw, kg), of which the region fills [from, kg)
       if (kw < k1) {
-        bool calibrated = false;
-        double slab_share = share;
-        if (share < 0) {
-          while (ka + 1 < k1 && entries(kw, ka) < fill_calibration_pairs) ++ka;
-          const size_t last_rows = bounds[k1] - bounds[k1 - 1];
-          const size_t columns = (fill_calibration_pairs + last_rows - 1) / last_rows; // each holds last_rows pairs
-          calibrated = entries(kw, ka) >= fill_calibration_pairs && columns <= bounds[k1 - 1];
-          if (calibrated) {
-            using clock = std::chrono::steady_clock;
-            const auto start = clock::now();
-            gpu->rows(bounds[kw], bounds[ka], distMat);
-            const auto gpu_done = clock::now();
-            const size_t g0 = first_column[k1 - 1];
-            auto unit = [&](size_t i) { task(matrix, g0 + i); };
-            run_openmp(unit, columns, true, 8);
-            const std::chrono::duration<double> gpu_time = gpu_done - start, team_time = clock::now() - gpu_done;
-            const int threads = get_max_threads();
-            hybrid.split.gpu_rate =
-              static_cast<double>(entries(kw, ka) - (bounds[ka] - bounds[kw])) / gpu_time.count();
-            hybrid.split.cpu_rate =
-              static_cast<double>(columns * last_rows) / team_time.count() * (threads - 1) / threads;
-            hybrid.split.source = "calibrated";
-            slab_share = hybrid.split.gpu_rate / (hybrid.split.gpu_rate + hybrid.split.cpu_rate);
-          } else {
-            ka = kw;
-            slab_share = recorded_fill_gpu_share;
-          }
-        }
-        const auto target = static_cast<size_t>(std::llround(slab_share * static_cast<double>(entries(kw, k1))));
-        while (kg < k1 && entries(kw, kg + 1) <= target) ++kg;
-        if (calibrated) kg = std::clamp(kg, ka, k1 - 1);
-        if (share < 0) {
-          share = static_cast<double>(entries(kw, kg)) / static_cast<double>(entries(kw, k1));
+        if (slab == calibrating && share < 0) {
+          using clock = std::chrono::steady_clock;
+          const auto start = clock::now();
+          gpu->rows(bounds[kw], bounds[u.ka], distMat);
+          const auto gpu_done = clock::now();
+          const size_t g0 = first_column[k1 - 1];
+          auto unit = [&](size_t i) { task(matrix, g0 + i); };
+          run_openmp(unit, u.columns, true, 8);
+          const std::chrono::duration<double> gpu_time = gpu_done - start, team_time = clock::now() - gpu_done;
+          const int threads = get_max_threads();
+          hybrid.split.gpu_rate =
+            static_cast<double>(entries(kw, u.ka) - (bounds[u.ka] - bounds[kw])) / gpu_time.count();
+          hybrid.split.cpu_rate = static_cast<double>(u.columns * (bounds[k1] - bounds[k1 - 1])) / team_time.count()
+                                  * (threads - 1) / threads;
+          hybrid.split.source = "calibrated";
+          share = hybrid.split.gpu_rate / (hybrid.split.gpu_rate + hybrid.split.cpu_rate);
           hybrid.split.gpu_share = share;
+          from = u.ka;
         }
+        // Before the calibrating slab, the recorded ratio; with none, s everywhere (forced, or the recorded ratio).
+        const double s_here = calibrating + 1 < slabs.size() && slab < calibrating ? recorded : share;
+        const auto cost = [&](size_t k) { // the slab's predicted time, its entries over each device's share
+          const auto on_gpu = static_cast<double>(entries(kw, k)), on_cpu = static_cast<double>(entries(k, k1));
+          return std::max(on_gpu == 0 ? 0.0 : on_gpu / s_here, on_cpu == 0 ? 0.0 : on_cpu / (1.0 - s_here));
+        };
+        kg = slab == calibrating && s_here > 0 ? u.ka : kw;
+        for (size_t k = kg + 1; k <= k1; ++k)
+          if (cost(k) < cost(kg)) kg = k;
         hybrid.gpu_entries += entries(kw, kg);
       }
 
@@ -1202,11 +1226,11 @@ void Problem::fillDistanceMatrix_BruteForce()
       };
       std::vector<Slot> slots(static_cast<size_t>(get_max_threads()), Slot{ nullptr, none });
       const auto gpu_rows = [&](Slot &slot) {
-        if (kg <= ka) return;
+        if (kg <= from) return;
         try {
-          gpu->rows(bounds[ka], bounds[kg], distMat);
+          gpu->rows(bounds[from], bounds[kg], distMat);
         } catch (...) {
-          slot = { std::current_exception(), first_column[ka] };
+          slot = { std::current_exception(), first_column[from] };
         }
       };
       const auto cpu_task = [&](Slot &slot, size_t i) {
@@ -1250,7 +1274,7 @@ void Problem::fillDistanceMatrix_BruteForce()
       auto slab_task = [&](size_t i) { task(matrix, first + i); };
 #ifdef DTWC_HAS_CUDA
       if (gpu)
-        on_both(slabs[s], slabs[s + 1]);
+        on_both(s);
       else
 #endif
         run_openmp(slab_task, first_column[slabs[s + 1]] - first, true, 8);

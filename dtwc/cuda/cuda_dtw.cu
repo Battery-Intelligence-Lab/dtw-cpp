@@ -1271,6 +1271,9 @@ struct TriangleFill {
                                   series_bytes, cudaMemcpyHostToDevice, stream));
       CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get(), lengths.data(),
                                   N * sizeof(int), cudaMemcpyHostToDevice, stream));
+      // On the device before the session is handed back: the first rows() call's wall time (cpu+gpu's calibration)
+      // holds its launches and copies only.
+      CUDA_CHECK(cudaStreamSynchronize(stream));
     } catch (...) {
       // Outside every OpenMP region (`parallel` joined its own before the upload); its errors set aside.
       (void)cudaStreamSynchronize(stream);

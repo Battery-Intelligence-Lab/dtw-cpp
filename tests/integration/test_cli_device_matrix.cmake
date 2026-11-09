@@ -229,8 +229,9 @@ else()
                        -i "${INPUT}" --device cpu+gpu --method ${method})
     endforeach()
     # The matrix methods fill it on both devices, their -v naming the split (27 series: one tile-row of 378 entries,
-    # which the recorded share leaves wholly to the CPU): pam; auto, which is pam at any N as on the GPU; and clara on
-    # a sample of every series, one PAM on the run's matrix.
+    # which holds no calibration unit, so the recorded FP64 share stands, 28.5 / (28.5 + 55), and leaves it to the CPU;
+    # FP32's, 13 x 28.5 / (13 x 28.5 + 55), would give it to the GPU): pam; auto, which is pam at any N as on the GPU;
+    # and clara on a sample of every series, one PAM on the run's matrix.
     foreach(case IN ITEMS pam auto clara_full)
         set(method ${case})
         set(ran ${case})
@@ -241,8 +242,9 @@ else()
             set(ran clara)
         endif()
         if(device STREQUAL "present")
-            expect_ran(hybrid_${case} ${ran} --device cpu+gpu --method ${method} -v)
-            if(NOT "${out}" MATCHES "Distance matrix cpu[+]gpu: the GPU filled 0 of 378 entries [(]share 0, recorded[)]")
+            expect_ran(hybrid_${case} ${ran} --device cpu+gpu --gpu-precision fp64 --method ${method} -v)
+            if(NOT "${out}" MATCHES
+               "Distance matrix cpu[+]gpu: the GPU filled 0 of 378 entries [(]share 0[.]3413173652694611, recorded[)]")
                 message(FATAL_ERROR "hybrid_${case}: its -v names no fill split\nstdout:\n${out}")
             endif()
         else()

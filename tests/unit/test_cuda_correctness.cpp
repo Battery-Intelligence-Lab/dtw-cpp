@@ -2674,8 +2674,12 @@ double hg4_entry(const std::vector<unsigned char> &bytes, std::size_t k)
 // and measured, into a heap matrix and a mapped `.dtwm`, compared by memcmp; and a team of one at a forced 0.9 (thread
 // 0 fills the GPU's rows, then every CPU task). On 6,007 series of HG3's fixture (17 to 48 samples unbanded, 30 to 32
 // at band 2) the one slab holds three tile-rows: the first holds the GPU's calibration unit (2^19 pairs) and the
-// first columns of the last the CPU's, so the measured path runs ("calibrated"), the GPU's share then one or two
-// tile-rows; the CPU's lanes run unbanded, its per-pair function at band 2.
+// first columns of the last the CPU's, so the measured path runs ("calibrated"), and this slab is the calibrating one
+// in a forced run too, where the GPU keeps at least the unit's tile-row for any share above 0. The rule (the bound
+// least in max(GPU entries / s, CPU entries / (1 - s))): 0.5 splits the slab inside (two tile-rows to the GPU),
+// 0.999 gives the GPU every tile-row (a floor to whole tile-rows left it two), 0.001 the unit's tile-row alone. The
+// CPU's lanes run unbanded, its per-pair function at band 2. On 900 series (one tile-row, which holds no unit, so the
+// forced share applies with no clamp) 0.001 gives the GPU nothing and 0.999 everything.
 TEST_CASE("HG4: cpu+gpu's FP64 L1 matrix equals the CPU fill's and the GPU fill's whatever the split", "[cuda][hg4]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
@@ -2699,7 +2703,7 @@ TEST_CASE("HG4: cpu+gpu's FP64 L1 matrix equals the CPU fill's and the GPU fill'
 #endif
   int files = 0;
   for (const bool mapped : storages)
-    for (const double share : { 0.0, -1.0, 0.5, 1.0 }) {
+    for (const double share : { 0.0, -1.0, 0.5, 1.0, 0.999, 0.001 }) {
       CAPTURE(mapped, share);
       const auto hybrid = fill(dtwc::Device::CPU_GPU, share,
                                mapped ? scratch.path / ("m" + std::to_string(files++) + ".dtwm") : std::filesystem::path{});
@@ -2720,26 +2724,40 @@ TEST_CASE("HG4: cpu+gpu's FP64 L1 matrix equals the CPU fill's and the GPU fill'
         CHECK(std::string_view(split.split.source) == "forced");
         CHECK(split.split.gpu_share == share);
         if (share == 0.0) CHECK(split.gpu_entries == 0);
-        if (share == 1.0) CHECK(split.gpu_entries == split.entries);
-        if (share == 0.5) {
+        if (share == 1.0 || share == 0.999) CHECK(split.gpu_entries == split.entries);
+        if (share == 0.5 || share == 0.001) {
           CHECK(split.gpu_entries > 0);
           CHECK(split.gpu_entries < split.entries);
         }
       }
     }
-  dtwc::TeamCap one(1);
-  const auto alone = fill(dtwc::Device::CPU_GPU, 0.9);
-  const bool alone_is_cpu = alone.bytes == cpu.bytes;
-  CHECK(alone_is_cpu);
-  REQUIRE(alone.split);
-  CHECK(alone.split->gpu_entries > 0);
-  CHECK(alone.split->gpu_entries < alone.split->entries);
+  {
+    dtwc::TeamCap one(1);
+    const auto alone = fill(dtwc::Device::CPU_GPU, 0.5);
+    const bool alone_is_cpu = alone.bytes == cpu.bytes;
+    CHECK(alone_is_cpu);
+    REQUIRE(alone.split);
+    CHECK(alone.split->gpu_entries > 0);
+    CHECK(alone.split->gpu_entries < alone.split->entries);
+  }
+  const auto few = hg3_series(narrow, 900);
+  const auto few_cpu = hg4_fill(few, band, dtwc::core::MetricType::L1, dtwc::Device::CPU, dtwc::GpuPrecision::FP64, -1.0);
+  for (const double share : { 0.001, 0.999 }) {
+    CAPTURE(share);
+    const auto hybrid =
+      hg4_fill(few, band, dtwc::core::MetricType::L1, dtwc::Device::CPU_GPU, dtwc::GpuPrecision::FP64, share);
+    const bool same = hybrid.bytes == few_cpu.bytes;
+    CHECK(same);
+    REQUIRE(hybrid.split);
+    CHECK(hybrid.split->gpu_entries == (share < 0.5 ? 0 : hybrid.split->entries));
+  }
 }
 
 // Where the GPU's distances are not the CPU's (FP32; squared L2, where the routes contract the product differently):
 // cpu+gpu at share 1 is the GPU fill byte for byte (the same session and launches), a forced share repeats byte for
 // byte, and at a share of 0.5 and measured every entry agrees with the GPU fill's within the route bound of its pair
-// (dtw_route_bound.hpp); the entries that differ are counted (the CPU's tile-rows', under FP32 nearly all of them).
+// (dtw_route_bound.hpp); the entries that differ are counted (the CPU's tile-rows', under FP32 nearly all of them; at
+// 0.5 the CPU takes a tile-row, measured it may take none: FP32's s of about 0.87 gives the GPU the whole slab).
 TEST_CASE("HG4: cpu+gpu's FP32 and squared-L2 matrices agree with the GPU fill's within the route bound",
           "[cuda][hg4]")
 {
@@ -2783,7 +2801,7 @@ TEST_CASE("HG4: cpu+gpu's FP32 and squared-L2 matrices agree with the GPU fill's
               << " beyond the route bound; " << dtwc::describe(*hybrid.split) << "\n";
     CAPTURE(differ);
     CHECK(outside == 0);
-    if (fp32) CHECK(differ > 0); // the CPU's entries are FP64's
+    if (share == 0.5) CHECK(differ > 0); // the CPU's tile-row, computed on another route
   }
 }
 
@@ -2795,7 +2813,9 @@ TEST_CASE("HG4: cpu+gpu's FP32 and squared-L2 matrices agree with the GPU fill's
 // GPU's again. And a resumed fill computes only the missing entries: the stopped slab's entries replaced by values no
 // kernel gives (the distance + 1000) stay, so the GPU, which writes whole rows, took no tile-row with an entry
 // computed. A tile-row that straddles the written rows (a resume under another save interval) is the CPU's by the same
-// rule; it is not tested.
+// rule; it is not tested. On the same two slabs, a measured run's printed share, forced in a fresh Problem, repeats
+// its split in both slabs (the GPU's entries), and under FP32 its matrix byte for byte: the calibrating slab and its
+// GPU unit are the bounds', so the forced run finds them too.
 TEST_CASE("HG4: a cpu+gpu fill stopped after a slab resumes to the uninterrupted matrix", "[cuda][hg4][checkpoint]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
@@ -2812,6 +2832,24 @@ TEST_CASE("HG4: a cpu+gpu fill stopped after a slab resumes to the uninterrupted
   whole.checkpoint = { (scratch.path / "whole").string(), interval, true };
   whole.fill_distance_matrix();
   const auto want = packed_bytes(whole.distance_matrix());
+  {
+    dtwc::Problem measured("hg4_resume"), forced("hg4_resume");
+    hg4_configure(measured, series, -1, dtwc::core::MetricType::L1, dtwc::Device::CPU_GPU, precision, -1.0);
+    measured.checkpoint = { (scratch.path / "measured").string(), interval, true };
+    measured.fill_distance_matrix();
+    REQUIRE(measured.fill_split());
+    CHECK(std::string_view(measured.fill_split()->split.source) == "calibrated");
+    hg4_configure(forced, series, -1, dtwc::core::MetricType::L1, dtwc::Device::CPU_GPU, precision,
+                  measured.fill_split()->split.gpu_share);
+    forced.checkpoint = { (scratch.path / "forced").string(), interval, true };
+    forced.fill_distance_matrix();
+    REQUIRE(forced.fill_split());
+    CHECK(forced.fill_split()->gpu_entries == measured.fill_split()->gpu_entries);
+    const bool same = packed_bytes(forced.distance_matrix()) == packed_bytes(measured.distance_matrix());
+    CHECK(same); // FP64: whatever the split; FP32: the same split
+    std::cout << "HG4 two slabs " << (precision == dtwc::GpuPrecision::FP32 ? "FP32" : "FP64")
+              << ", measured: " << dtwc::describe(*measured.fill_split()) << "\n";
+  }
   if (precision == dtwc::GpuPrecision::FP64) {
     const auto cpu = hg4_fill(series, -1, dtwc::core::MetricType::L1, dtwc::Device::CPU, precision, -1.0);
     const bool whole_is_cpu = want == cpu.bytes;
