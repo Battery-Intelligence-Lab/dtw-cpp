@@ -74,7 +74,10 @@ differ only where several optimal medoid sets exist, node counts and run times c
    byte for byte the CPU's, the `cpu` route unchanged): ◐ HG0 the bit-equality test + HG1 the pipeline for CLARA's
    assignment (`brief_hg1.md`, Opus), ☐ HG2 the fill's preload, ☐ HG3 the hybrid assignment, ☐ HG4 the hybrid fill, ☐ HG5
    the device word in every language, docs, CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item
-   4's window. Until HG1, S5's route: a view uploads an owned Float64 copy.
+   4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
+   true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
+   into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
+   gate runs on the merged tree, not the branches alone. Until HG merges, S5's route ships.
 6. [CI] design-2.0's tip green on Volkan's push: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and
    `matlab-mex.yml` on Linux, macOS and Windows, the three unit jobs, `documentation.yml`; whether python-wheels' Linux
    jobs passed before TL (e3cba47d). The Mac: no Metal has been built since S5 (G8b lines: the 11-09 handoff). macOS

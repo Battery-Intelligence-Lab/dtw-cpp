@@ -91,9 +91,13 @@
 
 ## Next steps
 
-1. HG1 (PLAN item 5) and DC (3b): accept as every step (open the cited lines; run the identity gate and the touched
-   suite on each branch), merge `--no-ff` into design-2.0 (DC first; it is small), push. Then HG2, HG3, HG4, HG5 as
-   `hg_plan.md` §2 (one implementer each, Opus for the CUDA steps), one review at HG's merge, the full gates there.
+1. DC (PLAN 3b): accept (open the cited lines; the identity gate, clang ctest, pytest on its branch), merge `--no-ff`
+   into design-2.0, push; then rebuild the main `build/` (the identity base is two units behind otherwise). HG1 (item 5):
+   accept on `pb/HG` only (its `__global__` kernel bodies in `cuda_dtw.cu` must be unchanged against the base: only the
+   host loop and the staging move; HG0's bit-equality test is the backstop); then merge design-2.0 into `pb/HG` (DC's
+   `run.cpp` change meets HG1's), run the identity gate on that tree, and brief HG2 from `pb/HG`'s tip. HG merges once,
+   after HG5, with one review and the full gates. Remaining HG agents, an estimate for the budget: HG2, HG3, HG4 on Opus,
+   HG5 and the review on Sonnet, about 350–470k tokens each as this session's agents ran, so 2–3M tokens plus fix rounds.
 2. The release list (item 3): left are `cpp_conformance` under MSVC strict (`C:/D/git/wt/MM/build-cl-strict` was building;
    a waiter runs `ctest -R cpp_conformance` there and logs `orch_cl_strict_ctest.log`), F43 (the question batch) and the
    docs' and CHANGELOG's final read (one Sonnet agent after QP). HG's draft plan: `C:/D/git/wt/tmp/HG/hg_plan.md`.
