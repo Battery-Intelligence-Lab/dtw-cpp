@@ -89,9 +89,13 @@ differ only where several optimal medoid sets exist, node counts and run times c
    kept; the GPU share always [0, 65,536) then the rest, so a forced share repeats the bits; bands [inferred, loaded] FP32
    v1100k hybrid 1.12× gpu against ≤ 1.2 and FP64 0.75× against ≤ 0.8: both HOLD) + ☑ HG3f (1ccf05be: run.cpp's in-RAM
    CLARA through `fast_clara(prob, clara)`, so the plan's `gpu_staging_bytes` reach the run; a CLI cell that fails without
-   the routing line; identity 0 differ, mine too), ◐ HG4 the hybrid fill (Opus, launched 11-09; `brief_hg4.md`, base 1ccf05be: a CUDA fill
-   session uploading once with row-range calls, whole tile-rows to either device split by pairs, `Problem::set_gpu_share`
-   the one knob, `auto` on cpu+gpu = the GPU's rule), ☐ HG5 the device word in every language, the docs HG1–HG3 made false
+   the routing line; identity 0 differ, mine too), ◐ HG4 the hybrid fill (Opus; HG4a–d 3a2544bd, 5aca61e1, 220cff44, a9d64427 accepted as code:
+   a CUDA fill session uploading once with row-range calls, whole tile-rows to either device, one region per slab,
+   `Problem::set_gpu_share` the one knob, `auto` on cpu+gpu = pam at any N; identity 0 differ, mine too; G8 FP64 `cpu+gpu` =
+   `cpu` = `gpu` by `cmp`; its FP32 sanity band FALSIFIED [inferred, loaded]: 1.92× the GPU against ≤ 1.2 (FP64 0.73× of the
+   CPU HOLDS against ≤ 0.8), the brief's floor-to-whole-tile-row split landing a raw 0.86 share on 0.7465 — a gross slowdown,
+   which stops the merge until HG4e: a min-max split rule, one share for the whole fill, reproducible by its printed value,
+   sent to the same agent 11-09, `brief_hg4e.md`), ☐ HG5 the device word in every language, the docs HG1–HG3 made false
    (hg_plan.md §4b), CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
    into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
