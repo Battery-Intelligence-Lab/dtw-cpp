@@ -905,13 +905,17 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   stage.begin(fills_first ? "fill" : "cluster");
   if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
   if (fills_first) {
-    stage.note(prob.is_distance_matrix_filled()
-                 ? "complete on entry"
-                 : std::to_string(n_series) + " series' matrix on " + device_text(config)
-                     + (uses_gpu(config.device) && prob.data().is_view() && !gpu_reads_views(config)
-                          ? ", from an owned copy of their views"
-                          : ""));
+    const std::string fill_note = prob.is_distance_matrix_filled()
+                                    ? "complete on entry"
+                                    : std::to_string(n_series) + " series' matrix on " + device_text(config)
+                                        + (uses_gpu(config.device) && prob.data().is_view() && !gpu_reads_views(config)
+                                             ? ", from an owned copy of their views"
+                                             : "");
+    stage.note(fill_note);
     prob.fill_distance_matrix();
+    // cpu+gpu's split, which depends on the moment where it is measured: the fill row says it, so forcing its share
+    // repeats the fill.
+    if (prob.fill_split()) stage.note(fill_note + "; " + dtwc::describe(*prob.fill_split()));
     stage.begin("cluster");
   }
   stage.note(std::string(progress_label(method)) + (fills_first ? "" : ", any distances it computes inside"));

@@ -17,9 +17,10 @@ cmake_minimum_required(VERSION 3.26)
 #          (-v names their size). A build without a GPU
 #          refuses every gpu cell with the message naming the build flag.
 #   cpu+gpu  CUDA's: clara with a sample smaller than N runs, its -v naming the
-#          split; a fill (pam; clara on a sample of every series), a method that
-#          computes as it goes (onebatch) and a streamed Arrow IPC file are
-#          refused, each naming why; a build without CUDA refuses every cell
+#          split, and clara on a sample of every series, its -v naming the
+#          fill's; pam, a method that computes as it goes (onebatch) and a
+#          streamed Arrow IPC file are refused, each naming why; a build without
+#          CUDA refuses every cell
 #   hpc    refused for every method, since it submits a whole run to a SLURM
 #          cluster, which dtwc_cl does not do; an unknown device is refused
 #   --print-config  the golden file reads back to itself (every key, each at a
@@ -226,9 +227,16 @@ else()
                    --method pam)
     expect_refused(hybrid_onebatch "${hybrid}method 'onebatch' does not run that pass" -i "${INPUT}"
                    --device cpu+gpu --method onebatch)
-    # A sample of every series (27 here) is one PAM, whose matrix fills on one device.
-    expect_refused(hybrid_clara_full "${hybrid}the distance matrix fills on one device" -i "${INPUT}"
-                   --device cpu+gpu --method clara)
+    # A sample of every series (27 here) is one PAM, whose matrix cpu+gpu fills: its -v names the split (one tile-row
+    # of 378 entries, which the recorded share leaves wholly to the CPU).
+    if(device STREQUAL "present")
+        expect_ran(hybrid_clara_full clara --device cpu+gpu --method clara -v)
+        if(NOT "${out}" MATCHES "Distance matrix cpu[+]gpu: the GPU filled 0 of 378 entries [(]share 0, recorded[)]")
+            message(FATAL_ERROR "hybrid_clara_full: its -v names no fill split\nstdout:\n${out}")
+        endif()
+    else()
+        expect_refused(hybrid_clara_full "GPU was detected" -i "${INPUT}" --device cpu+gpu --method clara)
+    endif()
     # A compressed file beyond --ram-limit streams; a streamed batch is assigned on one device.
     set(ENV{OMP_NUM_THREADS} 4)
     expect_refused(hybrid_stream "${hybrid}the series are streamed" -i "${STREAM_INPUT}" --device cpu+gpu

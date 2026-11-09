@@ -29,6 +29,17 @@ struct HybridSplit {
   const char *source = "forced"; ///< "forced", "calibrated" or "recorded"
 };
 
+/// How a distance matrix fill was split under cpu+gpu (Problem::fill_split): the GPU filled `gpu_entries` of the
+/// matrix's `entries` packed entries (the diagonal counted), whole tile-rows, the CPU's team the rest. `split` is the
+/// share that set every slab's split (forced, or set in the first slab with rows to compute as the GPU's entries of
+/// that slab over its entries: forced again, it repeats every slab's split) and, where that slab measured it, both
+/// rates in pairs a second.
+struct FillSplit {
+  HybridSplit split;
+  std::size_t gpu_entries = 0;
+  std::size_t entries = 0;
+};
+
 /// Result of a clustering algorithm run.
 struct ClusteringResult {
   std::vector<index_t> labels;         ///< Cluster assignment per point [0, k).

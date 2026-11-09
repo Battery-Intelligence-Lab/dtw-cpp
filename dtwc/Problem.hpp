@@ -37,6 +37,7 @@
 #include <limits>      // std::numeric_limits
 #include <span>        // std::span
 #include <memory>
+#include <optional>    // std::optional
 #include <stdexcept>
 #include <tuple>       // std::tuple
 
@@ -108,6 +109,10 @@ std::string gpu_info();
 /// Any other method is itself.
 Method resolve_method(Method method, Device device, std::size_t n_series);
 
+/// cpu+gpu's split of a distance matrix fill in words: the GPU's entries of the matrix's, the share (17 digits: forced
+/// again, it repeats the split), how the share was set and, where measured, both rates. -v and the run report print it.
+std::string describe(const core::FillSplit &fill);
+
 namespace detail {
 
 /**
@@ -164,6 +169,8 @@ private:
   Device device_{ Device::CPU };
   int device_index_{ 0 }; ///< The GPU ordinal of Device::GPU.
   GpuPrecision gpu_precision_{ GpuPrecision::Auto };
+  double gpu_share_{ -1.0 }; ///< cpu+gpu's GPU share (set_gpu_share); -1: measured
+  std::optional<core::FillSplit> fill_split_; ///< cpu+gpu's split of the last fill (fill_split)
   /// Bound from distance_ (and, for WDTW, the series lengths) whenever either
   /// changes; each holds copies of the settings it reads. The float32 one is
   /// bound then for float32 series, else by dtw_function_f32() (rebind_dtw_fn).
@@ -471,6 +478,16 @@ public:
     refresh_distance_matrix();
   }
   GpuPrecision gpu_precision() const noexcept { return gpu_precision_; }
+  /// cpu+gpu: the GPU's share of the work it splits with the CPU's team, of each slab's packed entries in a distance
+  /// matrix fill (whole tile-rows, the GPU's leading) and of the points of FastCLARA's pass (CLARAOptions::gpu_share,
+  /// which cluster() passes it). -1, the default, measures it where the work starts (a calibration timed on each
+  /// device); a value in [0, 1] forces it, so a run repeats exactly. Another device refuses any value but -1 when it
+  /// fills or clusters. The distances do not depend on it, so the matrix stays. @throws InvalidInput for another value.
+  void set_gpu_share(double share);
+  double gpu_share() const noexcept { return gpu_share_; }
+  /// cpu+gpu: how the last fill split the distance matrix between the GPU and the CPU's team; empty after a fill on
+  /// another device and before the first.
+  const std::optional<core::FillSplit> &fill_split() const noexcept { return fill_split_; }
   /// The width of the distance matrix's values (`matrix_dtype`): Float64, the default, or Float32, half the memory,
   /// each distance rounded once to the nearest float, so costs and scores move by about 2^-24 of themselves and
   /// medoids and labels can change; a distance beyond float32's range (3.4e38) is refused (InvalidInput). The
