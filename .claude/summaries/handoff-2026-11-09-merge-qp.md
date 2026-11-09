@@ -44,9 +44,26 @@
   Tree-wide clang-tidy (the repo's `.clang-tidy`, 31 own TUs): 4 warnings in all, handed to QP2 and QP3.
 - Earlier today: see `handoff-2026-11-09-s10.md` (S9–S10b, the kit prep).
 
+- QP1, QP2 and QP3 accepted (their reports, transcribed from the hand-backs because the Write tool refused the agents the
+  path: `C:/D/git/wt/tmp/QP/report_qp1..3.md`): I read every code diff (the helpers keep each text byte for byte; QP3's
+  `in_range` is the NaN-correct form of clang-tidy's De Morgan proposal) and ran the identity gate on each branch's binary,
+  153 files over 30 cases, 0 differ; QP1's Arrow tree's five reader tests pass. Gathered on `pb/QP` (worktree
+  `C:/D/git/wt/QP`, merges cf2acd99, 55bd2ce3, 4cda6d12, no conflict); its own build, ctest, identity and docs gates were
+  running (`orch_qp_gather.log`). The cross-file items the agents reported are listed in `C:/D/git/wt/tmp/QP/gather_todo.md`
+  for my commits on `pb/QP` after the gather: dead `row_group_rows` and `RunReport::notes`, the `check` parameter that
+  shadows `check()`, one `made_name` for the seven `"series_" + to_string` sites, one text-file writer for the report's two
+  sites, the "Metoid" misspelling, a `reserve` tidy flags.
+- The merged tree's MSVC strict build FAILS: `dtwc/extern/nanoarrow/flatcc.c:3033` C2099 under `/fp:strict` (a float
+  constant initialiser), because MM's `dtwc_third_party` links `project_options` and so takes our FP flags. Fix on `pb/REL`
+  52f3f765 (`cmake/ProjectOptions.cmake`: the flags on `COMPILE_LANGUAGE:CXX` only; our code has no C). Three proofs were
+  running: cl strict + `cpp_conformance` (`orch_rel_cl_strict.log`), clang fast ctest + identity against the merged binary
+  (`orch_rel_clang.log`), WSL GCC rebuild + ctest (`orch_rel_wsl.log`). Merge `pb/REL` fast-forward when green.
+
 ## Reported by agents, unverified
 
-- Nothing new: the four QP agents had not reported when this was written. Their logs: `C:/D/git/wt/tmp/QP/logs/`.
+- QP4 (bindings), QP5 (MM's tests under the 09-30 rule) and DOC (the docs' and CHANGELOG's final read, `brief_doc.md`,
+  branch `pb/DOC` from 93ef5434) were running. Logs: `C:/D/git/wt/tmp/QP/logs/`. The agents' own gate counts in the three
+  accepted reports (GCC, Arrow, MEX, pytest were not theirs to run) are theirs until the QP merge's full gates.
 
 ## Decisions
 
@@ -57,10 +74,10 @@
 
 ## Next steps
 
-1. QP (PLAN item 2): collect the four reports; open every cited line; run the identity gate on each branch; gather
-   `pb/QP1..4` on `pb/QP` (`git merge --no-ff`, in a worktree, never the main checkout); then QP5 part 1 (tests) as one
-   agent, clang-tidy tree-wide by me (`orch_tidy_all.sh` was running; `C:/D/git/wt/tmp/QP/tidy_before.txt`); the review
-   (`brief_qp_review.md`); full gates once on `pb/QP`; merge; push.
+1. QP (PLAN item 2): QP4 and QP5 as QP1–3 (diff read, identity run, report transcribed), merged into `pb/QP`; my gather
+   commits (`gather_todo.md`), each with the identity gate; the review (`brief_qp_review.md`, one Sonnet agent on `pb/QP`);
+   the full gates once on `pb/QP` in its worktree (clang, Arrow, no-llfio, no-cpuinfo, MEX + matlab_suite, CUDA, WSL GCC,
+   fresh-venv pytest); merge `--no-ff` into design-2.0 after `pb/REL`; push. Then `pb/DOC` the same way (docs gates only).
 2. The release list (item 3): left are `cpp_conformance` under MSVC strict (`C:/D/git/wt/MM/build-cl-strict` was building;
    a waiter runs `ctest -R cpp_conformance` there and logs `orch_cl_strict_ctest.log`), F43 (the question batch) and the
    docs' and CHANGELOG's final read (one Sonnet agent after QP). HG's draft plan: `C:/D/git/wt/tmp/HG/hg_plan.md`.
