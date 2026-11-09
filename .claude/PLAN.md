@@ -38,11 +38,14 @@ differ only where several optimal medoid sets exist, node counts and run times c
    byte against the base binary). QP1 io and the stream, QP2 cli and api, QP3 the `Problem` session, QP4 the bindings, QP5
    MM's tests under the 09-30 rule then clang-tidy; one review; branches `pb/QP1..5` from c4bcefc2, gathered on `pb/QP`,
    full gates once at its merge.
-3. ☐ **Release list** [here]: L2b's open ends (a Windows build with Arrow ON; the Linux link order of `dtwc_core` /
-   `dtwc_io`); F43 (the MEX maps no matrix yet; the llfio-ON MEX crash under R2024b did not reproduce 2026-09-30); the
-   Linux release archives (`cpack` + `scripts/smoke_release_archive.py`; whether `libgomp` ships and the notice says so;
-   Windows done: RA, CA); `cpp_conformance` strict and fast under GCC and MSVC redone on the merged tree (passed on
-   292a9bd7 and in the pb/MM gate trees); the docs' final read (charter item 10) and CHANGELOG's.
+3. ◐ **Release list** [here]. Done 11-09 on the merged code (WSL `~/mm/merge_gcc`, GCC 13.3): L2b's open ends (Arrow ON
+   on Windows: the clang Arrow tree 106/106 at the merge; Arrow ON on Linux through the pyarrow 23.0.1 shim: 105/105 with
+   `test_io_readers`, `dtwc_cl` linking libarrow, libparquet and libgomp); the Linux release archive (`cpack` 340 members,
+   `smoke_release_archive.py` OK once its one-byte `--ram-limit`, a mapping threshold before the memory plan, became
+   `--checkpoint`; `libgomp` is not shipped and `THIRD_PARTY_LICENSES.md` says so); `cpp_conformance` GCC strict 1/1 and
+   fast (in the 102/102). Left: `cpp_conformance` under MSVC strict (the tree `C:/D/git/wt/MM/build-cl-strict` building)
+   and fast (in the CUDA tree's 102/102); F43 (the CI MEX is llfio OFF: the question batch); the docs' final read (charter
+   item 10) and CHANGELOG's, one agent after QP.
 4. ☐ **Timing, advisory** [here, a quiet machine; Volkan 11-04 "Later, I will tell you"]: MM's bands, HG's baseline and
    FM's E1 (ETW counters, `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` run elevated by Volkan); numbers to `baselines/`
    tagged [confirmed]; a FALSIFIED hot-loop band reopens its loop, anything else is fixed or reworded after. Two of MM's
