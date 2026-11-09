@@ -80,10 +80,16 @@ differ only where several optimal medoid sets exist, node counts and run times c
    view's series through spans (42f6b12d + abe91544, Opus; `report_hg2.md`: its gate 0 reran HG1's G8 on real mappings with
    the CUDA tree llfio ON, every read line `mapped`, identical; the fill's matrix and the `.dtwm` byte for byte against the
    base in 15 comparisons, a checkpoint resume identical; one upload from spans, since the launches hold every series on the
-   device: a tile-row pipeline would retile the kernels), ☐ HG3 the hybrid assignment (`brief_hg3.md`; with FastCLARA's GPU
-   sample copies read through spans), ☐ HG4 the hybrid fill, ☐ HG5 the device word in every language, the docs
-   HG1 made false (hg_plan.md §4b), CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item 4's
-   window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
+   device: a tile-row pipeline would retile the kernels), ☑ HG3 the hybrid assignment (183a332a, a26c025e, 60b09c03,
+   da6708ca, Opus; `report_hg3.md`: `Device::CPU_GPU` with rule-4 refusals everywhere but FastCLARA's in-RAM pass, one
+   parallel region, `CLARAOptions::gpu_share`; FP64 L1 `cpu+gpu` = `cpu` = `gpu` by memcmp at four shares and by `cmp` on
+   v200k and v1100k, FP32 0 near-ties; the sanity run [inferred]: FP64 0.72 of the GPU, FP32 1.76× the GPU — a gross
+   slowdown, the serial 65,536-point CPU calibration block idling the GPU, which by hg_plan §3 stops the merge until),
+   ◐ HG3e the calibration's cost (the GPU's leading block, a small trailing CPU block, both kept; band FP32 v1100k hybrid
+   ≤ 1.2× gpu, FP64 ≤ 0.8× gpu [inferred]) + HG3f run.cpp's in-RAM CLARA through `fast_clara(prob, clara)` so the plan's
+   `gpu_staging_bytes` and a forced share reach the run (today the Parquet stream only) + two tidy items, the same agent;
+   ☐ HG4 the hybrid fill (brief after HG3e), ☐ HG5 the device word in every language, the docs HG1–HG3 made false
+   (hg_plan.md §4b), CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
    into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
    gate runs on the merged tree, not the branches alone. Until HG merges, S5's route ships.
