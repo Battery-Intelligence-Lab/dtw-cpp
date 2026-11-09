@@ -2478,6 +2478,8 @@ TEST_CASE("HG3: cpu+gpu's FP64 L1 FastCLARA equals the CPU's and the GPU's whate
       CHECK(hybrid.hybrid->gpu_share == share);
     }
   }
+  dtwc::TeamCap one(1); // the region of one thread: thread 0 drives the GPU's share, then runs every CPU item
+  CHECK(same_result(run(dtwc::Device::CPU_GPU, 0.5), cpu));
 }
 
 // Where the GPU's distances are not the CPU's (FP32; squared L2, where the routes contract the product differently):

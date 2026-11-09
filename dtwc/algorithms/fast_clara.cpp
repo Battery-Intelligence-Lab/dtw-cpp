@@ -34,11 +34,15 @@
 #ifdef DTWC_HAS_CUDA
 #include "../cuda/cuda_dtw.cuh"
 #endif
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -218,7 +222,7 @@ namespace detail {
    * the pass, then on the CPU's team, whose labels and distances stand; the CPU's rate is scaled to the team less the
    * GPU's driving thread. Where the block lies in the CPU's share the pass keeps it, else assigns it again. Each point's
    * distance is its device's whatever the split (the CPU's lanes are its per-pair function's bits), so a forced share
-   * repeats a run exactly.
+   * repeats a run exactly. The two shares run at once, in one parallel region (below).
    */
   template <typename Pair>
   core::HybridSplit assign_hybrid(
@@ -266,11 +270,62 @@ namespace detail {
     if (!keep) std::vector<double>().swap(calibrated);
     const std::size_t cpu_end = keep ? tail : n;
 
-    if (n_gpu > 0)
-      assign_on_gpu(prob, n_gpu, series, 0, medoid_series, medoids, labels, costs, opts.gpu_staging_bytes, true);
-    if (cpu_end > n_gpu)
-      assign_in_blocks(static_cast<index_t>(n_gpu), cpu_end - n_gpu, costs,
-                       [&](index_t first, std::size_t count, std::span<double> best) { on_cpu(first, count, best, true); });
+    // One parallel region, nothing nested in it. Thread 0, whose CUDA workspace the samples' fills and the calibration
+    // made, drives the GPU's share: its blocks padded and assigned by it alone, their distances added into costs as
+    // they come (they lead the point order, and no other thread adds). The team runs the CPU's share in items of at
+    // most clara_block_points points, about four a thread, so that the threads finish together whatever the share;
+    // each item writes its own label slots and its own nearest distances, added into costs in point order after the
+    // region. Thread 0 takes items too once its share is done. An error is its thread's slot's, the lowest point's
+    // rethrown after the region, as run_openmp does.
+    const std::size_t cpu_points = cpu_end - n_gpu;
+    const auto team = static_cast<std::size_t>(threads);
+    const std::size_t item = std::clamp<std::size_t>((cpu_points + 4 * team - 1) / (4 * team), 256, clara_block_points);
+    const std::size_t items = (cpu_points + item - 1) / item;
+    std::vector<double> nearest(samples * cpu_points); // item b's at samples * b * item, [s * count + i]
+    struct Slot {
+      std::exception_ptr failure;
+      std::size_t failed_at; // the first point of what failed; n: nothing did
+    };
+    std::vector<Slot> slots(team, Slot{ nullptr, n });
+    const auto gpu_share = [&](Slot &slot) {
+      if (n_gpu == 0) return;
+      try {
+        assign_on_gpu(prob, n_gpu, series, 0, medoid_series, medoids, labels, costs, opts.gpu_staging_bytes, false);
+      } catch (...) {
+        slot = { std::current_exception(), 0 };
+      }
+    };
+    const auto cpu_item = [&](Slot &slot, std::size_t b) {
+      const std::size_t first = n_gpu + b * item, count = std::min(item, cpu_end - first);
+      if (first > slot.failed_at) return;
+      try {
+        on_cpu(static_cast<index_t>(first), count, std::span<double>(nearest).subspan(samples * b * item, samples * count),
+               false);
+      } catch (...) {
+        slot = { std::current_exception(), first };
+      }
+    };
+#ifdef _OPENMP
+#pragma omp parallel num_threads(threads)
+    {
+      Slot &slot = slots[static_cast<std::size_t>(omp_get_thread_num())];
+      if (omp_get_thread_num() == 0) gpu_share(slot);
+#pragma omp for schedule(dynamic) nowait
+      for (index_t b = 0; b < static_cast<index_t>(items); ++b) cpu_item(slot, static_cast<std::size_t>(b));
+    }
+#else
+    gpu_share(slots[0]);
+    for (std::size_t b = 0; b < items; ++b) cpu_item(slots[0], b);
+#endif
+    const Slot *lowest = &slots[0];
+    for (const Slot &slot : slots)
+      if (slot.failed_at < lowest->failed_at) lowest = &slot;
+    if (lowest->failed_at < n) std::rethrow_exception(lowest->failure);
+    for (std::size_t b = 0; b < items; ++b) {
+      const std::size_t count = std::min(item, cpu_points - b * item);
+      for (std::size_t s = 0; s < samples; ++s)
+        costs[s].add(std::span<const double>(nearest).subspan(samples * b * item + s * count, count));
+    }
     if (keep)
       for (std::size_t s = 0; s < samples; ++s)
         costs[s].add(std::span<const double>(calibrated).subspan(s * block, block));
