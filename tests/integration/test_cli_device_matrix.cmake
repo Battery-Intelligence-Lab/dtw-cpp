@@ -16,11 +16,12 @@ cmake_minimum_required(VERSION 3.26)
 #          under an explicit --ram-limit assigns in the plan's shrunk blocks
 #          (-v names their size). A build without a GPU
 #          refuses every gpu cell with the message naming the build flag.
-#   cpu+gpu  CUDA's: clara with a sample smaller than N runs, its -v naming the
-#          split, and clara on a sample of every series, its -v naming the
-#          fill's; pam, a method that computes as it goes (onebatch) and a
-#          streamed Arrow IPC file are refused, each naming why; a build without
-#          CUDA refuses every cell
+#   cpu+gpu  CUDA's: the matrix methods run (pam; auto, which is pam at any N;
+#          clara on a sample of every series), their -v naming the fill's split,
+#          and clara with a sample smaller than N, its -v naming the pass's; the
+#          methods that compute as they go (onebatch, tadpole) and a streamed
+#          Arrow IPC file are refused, each naming why; a build without CUDA
+#          refuses every cell
 #   hpc    refused for every method, since it submits a whole run to a SLURM
 #          cluster, which dtwc_cl does not do; an unknown device is refused
 #   --print-config  the golden file reads back to itself (every key, each at a
@@ -216,27 +217,38 @@ else()
     endif()
 endif()
 
-# ---- cpu+gpu: FastCLARA's pass split between the CPU and a CUDA GPU ----
-set(hybrid "device 'cpu+gpu' splits FastCLARA's assignment pass between the CPU and a CUDA GPU, but ")
+# ---- cpu+gpu: FastCLARA's pass and the distance matrix's fill split between the CPU and a CUDA GPU ----
+set(hybrid "device 'cpu+gpu' splits FastCLARA's assignment pass and the distance matrix's fill between the CPU and a CUDA GPU, but ")
 if(NOT GPU STREQUAL "cuda")
     foreach(method IN ITEMS auto clara pam)
         expect_refused(hybrid_${method} "${hybrid}" -i "${INPUT}" --device cpu+gpu --method ${method})
     endforeach()
 else()
-    expect_refused(hybrid_pam "${hybrid}method 'pam' does not run that pass" -i "${INPUT}" --device cpu+gpu
-                   --method pam)
-    expect_refused(hybrid_onebatch "${hybrid}method 'onebatch' does not run that pass" -i "${INPUT}"
-                   --device cpu+gpu --method onebatch)
-    # A sample of every series (27 here) is one PAM, whose matrix cpu+gpu fills: its -v names the split (one tile-row
-    # of 378 entries, which the recorded share leaves wholly to the CPU).
-    if(device STREQUAL "present")
-        expect_ran(hybrid_clara_full clara --device cpu+gpu --method clara -v)
-        if(NOT "${out}" MATCHES "Distance matrix cpu[+]gpu: the GPU filled 0 of 378 entries [(]share 0, recorded[)]")
-            message(FATAL_ERROR "hybrid_clara_full: its -v names no fill split\nstdout:\n${out}")
+    foreach(method IN ITEMS onebatch tadpole)
+        expect_refused(hybrid_${method} "${hybrid}method '${method}' computes its distances on the CPU as it goes"
+                       -i "${INPUT}" --device cpu+gpu --method ${method})
+    endforeach()
+    # The matrix methods fill it on both devices, their -v naming the split (27 series: one tile-row of 378 entries,
+    # which the recorded share leaves wholly to the CPU): pam; auto, which is pam at any N as on the GPU; and clara on
+    # a sample of every series, one PAM on the run's matrix.
+    foreach(case IN ITEMS pam auto clara_full)
+        set(method ${case})
+        set(ran ${case})
+        if(case STREQUAL "auto")
+            set(ran pam)
+        elseif(case STREQUAL "clara_full")
+            set(method clara)
+            set(ran clara)
         endif()
-    else()
-        expect_refused(hybrid_clara_full "GPU was detected" -i "${INPUT}" --device cpu+gpu --method clara)
-    endif()
+        if(device STREQUAL "present")
+            expect_ran(hybrid_${case} ${ran} --device cpu+gpu --method ${method} -v)
+            if(NOT "${out}" MATCHES "Distance matrix cpu[+]gpu: the GPU filled 0 of 378 entries [(]share 0, recorded[)]")
+                message(FATAL_ERROR "hybrid_${case}: its -v names no fill split\nstdout:\n${out}")
+            endif()
+        else()
+            expect_refused(hybrid_${case} "GPU was detected" -i "${INPUT}" --device cpu+gpu --method ${method})
+        endif()
+    endforeach()
     # A compressed file beyond --ram-limit streams; a streamed batch is assigned on one device.
     set(ENV{OMP_NUM_THREADS} 4)
     expect_refused(hybrid_stream "${hybrid}the series are streamed" -i "${STREAM_INPUT}" --device cpu+gpu
@@ -269,7 +281,7 @@ if(GPU STREQUAL "none")
 elseif(GPU STREQUAL "metal")
     math(EXPR expected "${expected} + ${gpu_cells} + 7 + 3")
 else()
-    math(EXPR expected "${expected} + ${gpu_cells} + 6 + 5 + 1")
+    math(EXPR expected "${expected} + ${gpu_cells} + 6 + 7 + 1")
 endif()
 if(NOT cells EQUAL expected)
     message(FATAL_ERROR "ran ${cells} cells, expected ${expected}")

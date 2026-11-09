@@ -30,7 +30,8 @@ namespace dtwc {
 enum class Device {
   CPU,    ///< Local CPU execution (the default).
   GPU,    ///< Local GPU execution (CUDA on NVIDIA, Metal on macOS).
-  CPU_GPU ///< The CPU and a CUDA GPU together: FastCLARA's assignment pass split between them (cpu+gpu).
+  CPU_GPU ///< The CPU and a CUDA GPU together: FastCLARA's assignment pass and the distance matrix's fill split
+          ///< between them (cpu+gpu).
 };
 
 /// Whether `d` computes on a GPU, alone or beside the CPU: everything a GPU takes and refuses applies to it.
@@ -77,11 +78,12 @@ std::pair<Device, int> parse_device(std::string_view name);
 std::string gpu_not_built_message();
 
 /// @brief The DeviceError text where `cpu+gpu` cannot run: `where` refuses it, `why` says what stands in the way.
-/// The hybrid exists for FastCLARA's in-RAM assignment pass on CUDA only, so the text names the devices that run.
+/// The hybrid exists for FastCLARA's in-RAM assignment pass and the distance matrix's fill on CUDA only, so the
+/// text names the devices that run.
 std::string hybrid_refused_message(std::string_view where, std::string_view why);
 
 /// @brief Why this build refuses `cpu+gpu` ("" where it has CUDA): no CUDA, or Metal, which has no kernel for the
-/// assignment pass.
+/// assignment pass (and no session for part of a fill).
 std::string hybrid_not_built_reason();
 
 } // namespace detail

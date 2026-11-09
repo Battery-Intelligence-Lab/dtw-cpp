@@ -122,7 +122,8 @@ bool holds_matrix(Method method, bool clara_uses_full_sample)
 /// taken as complete), FasterPAM's swap table where the method runs it (a loss per medoid and candidate of a group),
 /// FastCLARA's assignment table (each sample's medoids against a lane block of points), TADPole's count of each of the
 /// `n_series` points' neighbours, and the silhouettes' sums when the results are written (a sum per cluster and point
-/// of a group).
+/// of a group). cpu+gpu prices the CPU's scratch as `cpu` does (its fill's tasks and its pass's points), and its GPU's
+/// staging as `gpu` does (gpu_staging_bytes).
 std::size_t thread_bytes(const Problem &prob, const Config &config, Method method, bool clara_uses_full_sample,
                          std::size_t n_series, std::size_t length, std::size_t ndim, core::Precision precision)
 {
@@ -134,7 +135,8 @@ std::size_t thread_bytes(const Problem &prob, const Config &config, Method metho
   const bool cpu_assignment = assigns; // Metal has no kernel for FastCLARA's assignment
 #endif
   std::size_t bytes = 0;
-  if ((config.dist_matrix.empty() && !gpu) || cpu_assignment) {
+  // cpu+gpu fills as the CPU does, the GPU taking some tile-rows: its threads hold the CPU fill's scratch.
+  if ((config.dist_matrix.empty() && (!gpu || prob.device().first == Device::CPU_GPU)) || cpu_assignment) {
     auto distance = prob.distance();
     distance.ndim = ndim; // the input's, which reaches the Problem only with its series
     bytes += core::thread_scratch_bytes(distance, length, precision);

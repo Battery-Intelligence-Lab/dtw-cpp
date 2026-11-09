@@ -118,7 +118,8 @@ std::string gpu_not_built_message()
 
 std::string hybrid_refused_message(std::string_view where, std::string_view why)
 {
-  return std::string(where) + ": device 'cpu+gpu' splits FastCLARA's assignment pass between the CPU and a CUDA GPU, "
+  return std::string(where) + ": device 'cpu+gpu' splits FastCLARA's assignment pass and the distance matrix's fill "
+         "between the CPU and a CUDA GPU, "
          "but " + std::string(why) + ". Use device cpu or gpu; no single-device fallback was attempted.";
 }
 

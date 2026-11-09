@@ -87,7 +87,7 @@ TEST_CASE("dtwc::device cpu+gpu is CUDA's, refused elsewhere with the reason", "
   REQUIRE(dtwc::device("cpu") == "cpu");
 #else
   const std::string message = device_error_message("cpu+gpu");
-  CHECK(message.starts_with("[dtwc] dtwc::device: device 'cpu+gpu' splits FastCLARA's assignment pass"));
+  CHECK(message.starts_with("[dtwc] dtwc::device: device 'cpu+gpu' splits FastCLARA's assignment pass and the distance matrix's fill"));
 #  if defined(DTWC_HAS_METAL)
   CHECK(message.find("Metal has no kernel for that pass") != std::string::npos);
 #  else

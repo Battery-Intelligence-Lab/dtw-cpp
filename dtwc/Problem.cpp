@@ -220,10 +220,10 @@ std::string gpu_info()
 
 Method resolve_method(Method method, Device device, std::size_t n_series)
 {
-  constexpr std::size_t pam_max_series = 5000; // on the CPU; the GPU fills PAM's matrix at any N
+  // On the CPU; the GPU fills PAM's matrix at any N, and cpu+gpu at least as fast as the GPU alone.
+  constexpr std::size_t pam_max_series = 5000;
   if (method != Method::Auto) return method;
-  if (device == Device::CPU_GPU) return Method::CLARA; // the one method whose pass cpu+gpu splits
-  return device == Device::GPU || n_series <= pam_max_series ? Method::PAM : Method::CLARA;
+  return uses_gpu(device) || n_series <= pam_max_series ? Method::PAM : Method::CLARA;
 }
 
 std::string describe(const core::FillSplit &fill)
@@ -306,10 +306,10 @@ void apply(const Config &config, Problem &prob)
   prob.set_gpu_precision(config.gpu_precision);
   prob.set_matrix_dtype(config.matrix_dtype);
   prob.set_device(config.device, config.device_index); // gpu without a GPU backend: the DeviceError
-  if (config.device == Device::CPU_GPU && config.method != Method::CLARA && config.method != Method::Auto)
+  if (config.device == Device::CPU_GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
     throw DeviceError(detail::hybrid_refused_message(
-      "run", "method '" + std::string(name_of(method_names, config.method)) + "' does not run that pass (its distances "
-               "fill a matrix or are computed as it goes); choose method clara"));
+      "run", "method '" + std::string(name_of(method_names, config.method)) + "' computes its distances on the CPU as "
+               "it goes, so the GPU would sit idle; choose pam, kmedoids, hierarchical, mip, lrcore or clara"));
   if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
     throw DeviceError(
       "run: method '" + std::string(name_of(method_names, config.method))
@@ -1376,10 +1376,11 @@ core::ClusteringResult Problem::cluster()
 {
   require_clusterable(Nc, size());
   const Method method = resolve_method(method_, device_, size());
-  if (device_ == Device::CPU_GPU && method != Method::CLARA)
+  if (device_ == Device::CPU_GPU && (method == Method::OneBatch || method == Method::TADPole))
     throw DeviceError(detail::hybrid_refused_message(
-      "Problem::cluster", "method '" + std::string(name_of(method_names, method)) + "' does not run that pass; choose "
-                          "method clara"));
+      "Problem::cluster", "method '" + std::string(name_of(method_names, method)) + "' computes its distances on the "
+                          "CPU as it goes, so the GPU would sit idle; choose pam, kmedoids, hierarchical, mip, lrcore "
+                          "or clara"));
   switch (method) {
   case Method::PAM: {
     // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie

@@ -104,9 +104,9 @@ bool gpu_available();
 /// 0) computes on — "CUDA: <device>", "Metal: <device>" — or why there is none.
 std::string gpu_info();
 
-/// The method `auto` stands for: pam on a GPU, clara on cpu+gpu (the one method
-/// whose pass it splits), and on the CPU pam for up to 5000 series, clara above.
-/// Any other method is itself.
+/// The method `auto` stands for: pam on a GPU and on cpu+gpu (whose two devices
+/// fill PAM's matrix at least as fast as the GPU alone), and on the CPU pam for
+/// up to 5000 series, clara above. Any other method is itself.
 Method resolve_method(Method method, Device device, std::size_t n_series);
 
 /// cpu+gpu's split of a distance matrix fill in words: the GPU's entries of the matrix's, the share (17 digits: forced
@@ -458,8 +458,9 @@ public:
   void set_metric(core::MetricType metric);
   /// Where this Problem computes distances: the CPU, or GPU `index` of this
   /// build's GPU backend (CUDA, else Metal), which the fill resolves, or (cpu+gpu)
-  /// the CPU and CUDA GPU `index` together on FastCLARA's assignment pass, whose
-  /// samples fill on the GPU; everything else refuses cpu+gpu. A Problem
+  /// the CPU and CUDA GPU `index` together on the distance matrix's fill (whole
+  /// tile-rows to either) and FastCLARA's assignment pass, whose samples fill on
+  /// the GPU; OneBatchPAM, TADPole and a streamed FastCLARA refuse cpu+gpu. A Problem
   /// never reads the process-wide default (dtwc::device()); until told
   /// otherwise it computes on the CPU. A change drops the distance matrix.
   /// @throws DeviceError for `gpu` on a build with no GPU backend, for cpu+gpu
