@@ -85,10 +85,13 @@ differ only where several optimal medoid sets exist, node counts and run times c
    parallel region, `CLARAOptions::gpu_share`; FP64 L1 `cpu+gpu` = `cpu` = `gpu` by memcmp at four shares and by `cmp` on
    v200k and v1100k, FP32 0 near-ties; the sanity run [inferred]: FP64 0.72 of the GPU, FP32 1.76× the GPU — a gross
    slowdown, the serial 65,536-point CPU calibration block idling the GPU, which by hg_plan §3 stops the merge until),
-   ◐ HG3e the calibration's cost (the GPU's leading block, a small trailing CPU block, both kept; band FP32 v1100k hybrid
-   ≤ 1.2× gpu, FP64 ≤ 0.8× gpu [inferred]) + HG3f run.cpp's in-RAM CLARA through `fast_clara(prob, clara)` so the plan's
-   `gpu_staging_bytes` and a forced share reach the run (today the Parquet stream only) + two tidy items, the same agent;
-   ☐ HG4 the hybrid fill (brief after HG3e), ☐ HG5 the device word in every language, the docs HG1–HG3 made false
+   ☑ HG3e the calibration's cost (abdab042: the GPU's leading 65,536-point block, a 4,096-point trailing CPU block, both
+   kept; the GPU share always [0, 65,536) then the rest, so a forced share repeats the bits; bands [inferred, loaded] FP32
+   v1100k hybrid 1.12× gpu against ≤ 1.2 and FP64 0.75× against ≤ 0.8: both HOLD) + ☑ HG3f (1ccf05be: run.cpp's in-RAM
+   CLARA through `fast_clara(prob, clara)`, so the plan's `gpu_staging_bytes` reach the run; a CLI cell that fails without
+   the routing line; identity 0 differ, mine too), ◐ HG4 the hybrid fill (Opus, launched 11-09; `brief_hg4.md`, base 1ccf05be: a CUDA fill
+   session uploading once with row-range calls, whole tile-rows to either device split by pairs, `Problem::set_gpu_share`
+   the one knob, `auto` on cpu+gpu = the GPU's rule), ☐ HG5 the device word in every language, the docs HG1–HG3 made false
    (hg_plan.md §4b), CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
    into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
