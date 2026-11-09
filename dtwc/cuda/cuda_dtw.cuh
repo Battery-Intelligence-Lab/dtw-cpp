@@ -22,6 +22,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
@@ -80,6 +81,39 @@ CUDADistMatResult compute_distance_matrix_cuda(
     std::size_t n_series, const SeriesAt &series,
     const CUDADistMatOptions &opts, const ParallelFor &parallel,
     core::DistanceMatrix &out);
+
+/// compute_distance_matrix_cuda as a session, so that the GPU can fill some rows of a matrix while the CPU fills
+/// the rest (device cpu+gpu): that fill is the session and then rows(0, n_series).
+///
+/// The session is that fill's refusals, its route (the precision and the kernel, chosen on the longest of all the
+/// series, so a pair's distance does not depend on which rows a call fills), its launch workspace and its one upload
+/// of every series (padded by @p parallel); then @p out is sized as that fill sizes it, and its width taken. The
+/// workspace is the calling thread's: make the session and call rows() on one thread.
+class DistanceFill
+{
+public:
+  DistanceFill(std::size_t n_series, const SeriesAt &series, const CUDADistMatOptions &opts,
+               const ParallelFor &parallel, core::DistanceMatrix &out);
+  ~DistanceFill();
+  DistanceFill(const DistanceFill &) = delete;
+  DistanceFill &operator=(const DistanceFill &) = delete;
+
+  /// Packed rows [r0, r1) of @p out, the session's matrix, written whole: each pair's distance, and the diagonal's
+  /// zero. They are the pairs the session's launches number from P(n - r1) to P(n - r0), P(s) = s (n - 1) - s (s - 1)
+  /// / 2 (the series are uploaded last first, see packed_slot), copied into packed slots [r0 (r0 + 1) / 2, r1 (r1 + 1)
+  /// / 2), and nothing else of @p out is written. Returns once they are copied; a CUDA call that fails throws
+  /// DeviceError naming it, after the stream has drained. @pre r0 <= r1 <= n_series.
+  void rows(std::size_t r0, std::size_t r1, core::DistanceMatrix &out);
+
+  /// The kernel, the pairs computed so far and their GPU time: CUDA events from the upload to the end of the first
+  /// rows() call, then around each later one.
+  const CUDADistMatResult &result() const noexcept;
+  bool fp32() const noexcept; ///< the GPU computes in FP32
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
 
 /// The DTW distance of each of the @p n_series series (series(i), read where
 /// they lie: no copy of them is made) to each of the k @p medoids on the GPU,

@@ -23,6 +23,7 @@
 #include "gpu_fixed_band_oracle.hpp"
 #include "../support/deterministic_series.hpp"
 #include "../support/dtw_route_bound.hpp"
+#include "../support/scratch_directory.hpp"
 
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
@@ -2537,6 +2538,90 @@ TEST_CASE("HG3: cpu+gpu under FP32 and squared L2 differs from the GPU only at n
               << " labels differ from the GPU-only run, each at a near-tie\n";
     CAPTURE(near_ties);
     CHECK(other == 0);
+  }
+}
+
+namespace {
+
+/// The bytes of a matrix's packed values, at its width.
+std::vector<unsigned char> packed_bytes(const dtwc::core::DistanceMatrix &m)
+{
+  std::vector<unsigned char> bytes;
+  m.visit([&](const auto *v) {
+    const auto *first = reinterpret_cast<const unsigned char *>(v);
+    bytes.assign(first, first + m.packed_count() * sizeof(*v));
+  });
+  return bytes;
+}
+
+} // anonymous namespace
+
+// HG4's session (cuda::DistanceFill), on HG0's ragged fixture (307 series of 17 to 211 samples): rows(0, r) and then
+// rows(r, N) write the matrix rows(0, N) writes, byte for byte (memcmp), the GPU in FP64 and FP32, into a float64 and a
+// float32 heap matrix and a mapped float64 one, for r = 51 (a bound of tile-rows of 64 rows cut from the bottom: 307 =
+// 51 + 4 x 64), 52 (none), 1 (row 0 alone, which holds no pair) and 306 (the last row alone). Each matrix starts with a
+// value no fill writes in every slot, so a slot no range writes fails it. So matrix rows [r0, r1) are the pairs of
+// uploaded series [N - r1, N - r0), whose slots are [r0 (r0 + 1) / 2, r1 (r1 + 1) / 2), the diagonal included; and
+// compute_distance_matrix_cuda, the session and rows(0, N), is the fill HG0 compares with the CPU's.
+TEST_CASE("HG4: a CUDA fill session's row ranges write the matrix its whole fill writes", "[cuda][hg4]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  using dtwc::core::Precision;
+  struct Storage {
+    Precision width;
+    bool mapped;
+  };
+#ifdef DTWC_HAS_MMAP
+  const auto storage = GENERATE(values<Storage>({ { Precision::Float64, false }, { Precision::Float32, false },
+                                                  { Precision::Float64, true } }));
+#else
+  const auto storage = GENERATE(values<Storage>({ { Precision::Float64, false }, { Precision::Float32, false } }));
+#endif
+  const auto precision = GENERATE(dtwc::GpuPrecision::FP64, dtwc::GpuPrecision::FP32);
+  CAPTURE(storage.width, storage.mapped, precision);
+  const auto series = hg0_series(false);
+  const std::size_t N = series.size();
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = precision;
+  const dtwc::cuda::SeriesAt at = [&series](std::size_t i) { return std::span<const double>(series[i]); };
+  const dtwc::cuda::ParallelFor team = [](std::size_t count, const std::function<void(std::size_t)> &task) {
+    dtwc::run_openmp(task, count);
+  };
+  const dtwc::test_support::ScratchDirectory scratch("hg4_rows");
+  int made = 0;
+  const auto matrix = [&] { // every slot -1, which no fill writes
+    dtwc::core::DistanceMatrix m = storage.mapped ? dtwc::core::DistanceMatrix::map(
+                                                      scratch.path / ("m" + std::to_string(made++) + ".dtwm"), N, {},
+                                                      storage.width)
+                                                  : dtwc::core::DistanceMatrix(N, storage.width);
+    m.visit([&](auto *v) { std::fill(v, v + m.packed_count(), static_cast<std::remove_pointer_t<decltype(v)>>(-1)); });
+    return m;
+  };
+
+  auto whole = matrix();
+  dtwc::cuda::DistanceFill fill(N, at, opts, team, whole);
+  fill.rows(0, N, whole);
+  REQUIRE(fill.result().kernel_used == "regtile_w8");
+  REQUIRE(fill.result().pairs_computed == N * (N - 1) / 2);
+  REQUIRE(fill.fp32() == (precision == dtwc::GpuPrecision::FP32));
+  const auto want = packed_bytes(whole);
+  whole.visit([&](const auto *v) { REQUIRE(std::none_of(v, v + whole.packed_count(), [](auto x) { return x < 0; })); });
+  for (std::size_t s = 0; s < N; ++s) REQUIRE(whole.get(s, s) == 0.0);
+  {
+    auto again = matrix(); // compute_distance_matrix_cuda is the session and rows(0, N)
+    (void)dtwc::cuda::compute_distance_matrix_cuda(N, at, opts, team, again);
+    const bool same = packed_bytes(again) == want; // a bool: Catch would print every byte
+    CHECK(same);
+  }
+  for (const std::size_t r : { std::size_t{ 51 }, std::size_t{ 52 }, std::size_t{ 1 }, std::size_t{ 306 } }) {
+    CAPTURE(r);
+    auto parts = matrix();
+    dtwc::cuda::DistanceFill split(N, at, opts, team, parts);
+    split.rows(0, r, parts);
+    split.rows(r, N, parts);
+    CHECK(split.result().pairs_computed == N * (N - 1) / 2);
+    const bool same = packed_bytes(parts) == want;
+    CHECK(same);
   }
 }
 
