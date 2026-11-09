@@ -1,4 +1,4 @@
-# Handoff — 2026-11-09 (Windows) — the finish plan, MM merged, the strict-build fix, the quality pass QP merged; DOC in flight
+# Handoff — 2026-11-09 (Windows) — the finish plan; MM, the strict-build fix, QP and DOC merged; HG1 and DC in flight
 
 ## Base
 
@@ -73,9 +73,14 @@
   reverted with a NOLINTNEXTLINE and its reason, `made_name`'s comment made true, the Medoid CHANGELOG line, `list_or`'s
   comment, the conformance test's CRT define; `made_name` stays a template: mixed `size_t` and `int64_t` callers). The
   full gates on 8bd99855 and the fix's clang and GCC gates: PLAN item 2. **QP merged bb440d0e** (74 files, +763 −708).
-- DOC (the docs' and CHANGELOG's final read, `brief_doc.md`, branch `pb/DOC` from 93ef5434) was running; its merge needs
-  the docs gates only (`check_docs`, `check_pins`, `generate_docs --check`, `check_site_links`), then a rebase or merge over
-  bb440d0e (QP changed no docs page; CHANGELOG gained one line under Fixed, which may conflict with DOC's CHANGELOG edits).
+- DOC merged c3f26c47 (`pb/DOC`, 8 commits, 33 files, docs only; the docs gates on the merged tree PASS, 512 flags; its
+  report is in the hand-back, not transcribed: the merge message carries the summary). Its ten code-side items are unit DC.
+- Volkan's batch (DECISIONS §3): HG mode A, the word `cpu+gpu`, "Rounding errors are fine", the CI MEX with llfio
+  (8cdb1b40: `matlab-mex.yml`, the CHANGELOG clause). PLAN items 3, 3b and 5 carry them (9e47fcaa).
+- Launched at the end: HG1 with HG0 (Opus, `C:/D/git/wt/tmp/HG/brief_hg1.md`, worktree `wt/HG`, `pb/HG` from 9e47fcaa) and
+  DC (Sonnet, `C:/D/git/wt/tmp/DC/brief_dc.md`, `wt/DC`, `pb/DC` from 9e47fcaa). Their base binaries: the main `build/`
+  (clang, built at c4bcefc2's code, which QP left behaviour-identical) and `wt/QP/build-cuda` (the CUDA binary of the QP
+  tree). Do not rebuild the main `build/` while they run.
 
 ## Decisions
 
@@ -86,8 +91,9 @@
 
 ## Next steps
 
-1. DOC (PLAN item 3's last entry): accept its report (open the cited lines), run the docs gates on `pb/DOC`, merge
-   `--no-ff` over bb440d0e, push. Then the question batch's answers into DECISIONS §3 and HG's plan (`hg_plan.md`).
+1. HG1 (PLAN item 5) and DC (3b): accept as every step (open the cited lines; run the identity gate and the touched
+   suite on each branch), merge `--no-ff` into design-2.0 (DC first; it is small), push. Then HG2, HG3, HG4, HG5 as
+   `hg_plan.md` §2 (one implementer each, Opus for the CUDA steps), one review at HG's merge, the full gates there.
 2. The release list (item 3): left are `cpp_conformance` under MSVC strict (`C:/D/git/wt/MM/build-cl-strict` was building;
    a waiter runs `ctest -R cpp_conformance` there and logs `orch_cl_strict_ctest.log`), F43 (the question batch) and the
    docs' and CHANGELOG's final read (one Sonnet agent after QP). HG's draft plan: `C:/D/git/wt/tmp/HG/hg_plan.md`.
@@ -97,7 +103,9 @@
 
 ## Open questions
 
-- Those three for Volkan above. Still his: the history purge, the G6-on-TADPole acceptance, Metal on the Mac, Intel Macs.
+- Volkan's hand: the merged worktrees (`wt/FM`, `wt/TL`, `wt/REL`, `wt/QP1`–`QP5`, `wt/QPR`; `wt/QP` and `wt/DOC` after
+  HG1 lands): the permission classifier refused the agent their deletion. Still his: the history purge, the
+  G6-on-TADPole acceptance, Metal on the Mac, Intel Macs, the CHANGELOG's Performance section (DOC's question).
 
 ## Status honesty
 
