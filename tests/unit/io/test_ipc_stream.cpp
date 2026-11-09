@@ -328,7 +328,7 @@ TEST_CASE("Arrow IPC: a streamed run's Result refuses score and the distance mat
 // The cases of the Parquet stream's verdicts (test_io_readers.cpp's), in record batches read by a team: each batch's
 // rows checked by the thread that read it, its RowCheck's extremes merged in batch order, the lowest failing batch's
 // refusal rethrown. The texts are the Parquet stream's on each case's Parquet twin (a row group a record batch).
-TEST_CASE("Arrow IPC: the stream's team gives the serial check's verdicts", "[io][arrow][streaming][mm]")
+TEST_CASE("Arrow IPC: the stream's team gives the serial check's verdicts", "[io][arrow][streaming]")
 {
   using dtwc::core::MissingStrategy;
   std::mt19937_64 rng(3);

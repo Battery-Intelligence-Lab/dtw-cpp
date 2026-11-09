@@ -167,7 +167,7 @@ TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "
 // the same series rounded by hand into a Float32 Data, which no conversion touches.
 TEST_CASE("run with dtype float32 rounds Float64 series passed in memory once, owned or a view, as the same series "
           "rounded by hand",
-          "[run][dtype][mm][s6]")
+          "[run][dtype]")
 {
   const dtwc::Data owned = levels();
   const auto storage = std::make_shared<const std::vector<std::vector<double>>>(owned.p_vec);

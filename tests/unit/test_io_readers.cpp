@@ -670,7 +670,7 @@ TEST_CASE("Parquet: streamed FastCLARA refuses the rows the in-RAM run refuses",
 // sampled row above an unsampled lower one, an entirely-NaN row before an infinite one; each route's full text, as at
 // fd8a7450: require_finite's at the row it names, or the entirely-NaN one.
 TEST_CASE("Parquet: the stream refuses the first row it reads, the in-RAM run the lowest",
-          "[io][parquet][streaming][mm]")
+          "[io][parquet][streaming]")
 {
   using dtwc::core::MissingStrategy;
   constexpr double nan = std::numeric_limits<double>::quiet_NaN(), inf = std::numeric_limits<double>::infinity();

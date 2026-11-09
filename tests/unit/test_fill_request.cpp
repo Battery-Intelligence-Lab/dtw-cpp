@@ -422,7 +422,7 @@ TEST_CASE("FX-15: ±inf, and NaN under MissingStrategy::Error, are rejected by p
 // the serial check's verdict: the lowest refused series at its first refused value, ±inf (or NaN under Error) before
 // any entirely-NaN series under Interpolate. 1,000 series, owned and as a view, in both precisions, the budget unknown,
 // holding one block and about ten; the poisons sit on both sides of the ten blocks' edges (100, 200, ...).
-TEST_CASE("MM G3: the blocked check's verdicts are the serial check's", "[mm][g3][nonfinite][missing]")
+TEST_CASE("The blocked check's verdicts are the serial check's", "[nonfinite][missing]")
 {
   using dtwc::core::MissingStrategy;
   constexpr std::size_t n = 1000, length = 16;
@@ -481,8 +481,8 @@ TEST_CASE("MM G3: the blocked check's verdicts are the serial check's", "[mm][g3
 
 // MM G3: the empty series, the band (a direct write to `band` included) and float32's parameters come before any
 // value, in the serial check's order.
-TEST_CASE("MM G3: an empty series, an infeasible band and float32's parameters come before any value",
-          "[mm][g3][band][empty]")
+TEST_CASE("An empty series, an infeasible band and float32's parameters come before any value",
+          "[band][empty]")
 {
   constexpr std::size_t n = 1000, length = 16;
   auto s = store<double>(n, length, { { 5, 2, inf_value }, { 640, 1, nan_value } });
@@ -557,7 +557,7 @@ TEST_CASE("MM G3: an empty series, an infeasible band and float32's parameters c
 // came before the PAMs. 70,000 series (two blocks), sample 150, 5 samples, owned and as a view, both precisions. On a
 // GPU device nothing is fused: dtw_function() checks every series first, Float32 ones too (the GPU's needs come last),
 // so the same verdicts, under Problem::dtw_function.
-TEST_CASE("MM G3b: FastCLARA's fused check gives dtw_function()'s verdicts", "[mm][g3b][fast_clara][nonfinite]")
+TEST_CASE("FastCLARA's fused check gives dtw_function()'s verdicts", "[fast_clara][nonfinite]")
 {
   using dtwc::core::MissingStrategy;
   constexpr std::size_t n = 70000, length = 4, block = 65536;
@@ -751,7 +751,7 @@ TEST_CASE("FX-1: a GPU device rejects what its kernels do not implement",
 // MM S5: a view's series (a mapped Arrow IPC file's, a decoded record batch's) leave p_vec empty, so a GPU uploads an
 // owned copy of them: the view fills the matrix the owned store of the same series fills, entry for entry (the same
 // values uploaded), never an empty one. Without a device, the backend's refusal, never the view's.
-TEST_CASE("MM S5: a view on a GPU fills from an owned copy, as the owned store does", "[mm][s5][gpu]")
+TEST_CASE("A view on a GPU fills from an owned copy, as the owned store does", "[gpu]")
 {
   const std::vector<std::vector<double>> owner{ ramp(8, 0.0), ramp(11, 1.0), ramp(9, 2.0), ramp(8, 0.5) };
   std::vector<std::span<const double>> spans(owner.begin(), owner.end());
