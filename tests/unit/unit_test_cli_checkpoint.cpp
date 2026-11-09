@@ -205,6 +205,33 @@ TEST_CASE("dtwc_cl refuses a checkpoint of other data", "[cli][checkpoint]")
 }
 
 
+TEST_CASE("dtwc_cl --checkpoint with a method that computes no matrix writes no .dtwm", "[cli][checkpoint]")
+{
+  // TADPole and OneBatchPAM never allocate the Problem's distance matrix. Saving it wrote all N^2 pairs as NaN (about
+  // 40 GB for 100,000 series) for a resume that computes every distance again. PAM fills it, and does write.
+  const dtwc::test_support::ScratchDirectory scratch{ "cli_ckpt_no_matrix" };
+  write_fixture_series(scratch.path / "series");
+  const auto checkpoint_files = [&](const std::string &method) {
+    const fs::path directory = scratch.path / ("ckpt_" + method);
+    auto argv = cli_args(scratch.path / "series", scratch.path, directory);
+    argv.insert(argv.end(), { "--method", method });
+    const CommandResult result = run(argv, scratch.path);
+    INFO(method << " stdout:\n" << result.out << "\nstderr:\n" << result.err);
+    REQUIRE(result.exit_code == 0);
+    REQUIRE(fs::is_directory(directory)); // made before any data is read, as for every --checkpoint
+    const bool said = result.out.find("No distances were computed: no checkpoint written.") != std::string::npos;
+    REQUIRE(said == !fs::exists(directory / "cli_ckpt.dtwm"));
+    return std::vector<fs::path>(fs::directory_iterator(directory), fs::directory_iterator());
+  };
+
+  REQUIRE(checkpoint_files("tadpole").empty());
+  REQUIRE(checkpoint_files("onebatch").empty());
+  const auto pam = checkpoint_files("pam");
+  REQUIRE(pam == std::vector<fs::path>{ scratch.path / "ckpt_pam" / "cli_ckpt.dtwm" });
+  REQUIRE(fs::file_size(pam.front()) == checkpoint_bytes);
+}
+
+
 #ifdef DTWC_HAS_MMAP
 TEST_CASE("dtwc_cl maps its checkpoint over --ram-limit", "[cli][checkpoint][mmap]")
 {

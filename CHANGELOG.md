@@ -118,7 +118,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   reads one) and `dtwc_cl --delimiter`.
 - The distance matrix memory-mapped in a `.dtwm` file where it does not fit the memory plan (`--ram-limit`), the file
   being also the checkpoint (`--checkpoint`, `--checkpoint-interval`: a fill resumes). Without
-  `--checkpoint-interval` the checkpoint is saved once, after the method has finished; with it, also during the fill,
+  `--checkpoint-interval` the checkpoint is saved once, after the method has finished (a method that computes no
+  distance matrix writes no checkpoint); with it, also during the fill,
   every that many rows rounded up to the lane width (16 rows of doubles where the lanes are 128 bytes), each save
   writing only the rows filled since the last one, in place, the first the whole matrix: a fill writes at most twice
   the matrix's bytes. A `.dtwm` file is a 64-byte header (version 5; among its fields the bytes of a value, 8 or 4 for

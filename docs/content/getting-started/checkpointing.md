@@ -180,7 +180,9 @@ With `--checkpoint <dir>` the CLI
    other data or settings, or a damaged one, stops the run with exit status 1 and
    the reason, before anything is computed;
 3. saves the matrix there once the method has finished, before the result files
-   are written, and every `--checkpoint-interval` rows during the fill when that
+   are written (a method that computes no distance matrix, `onebatch` and
+   `tadpole` while its matrix is not mapped, writes no checkpoint), and every
+   `--checkpoint-interval` rows during the fill when that
    is non-zero. A save that fails (a full disk) is reported after the result
    files are written: the run stops with exit status 1, and the results stay.
 
