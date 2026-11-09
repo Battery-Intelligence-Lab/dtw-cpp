@@ -109,18 +109,24 @@ uint64_t HandleManager<T>::counter_ = 0;
 //  mexFunction maps to mexErrMsgIdAndTxt("dtwc:invalidArgument", ...).
 // =========================================================================
 
-/// Require a full (non-sparse), real, non-empty, <=2-D array of class double, or
-/// single for T = float. Throws std::invalid_argument BEFORE any data access.
-template <typename T = double>
-static void require_real(const mxArray *mx, const char *arg_name) {
-  constexpr bool single = std::is_same_v<T, float>;
-  const std::string type = single ? "single" : "double";
+/// Require an argument that is present, real and full (non-sparse): what every numeric
+/// argument has in common. Throws std::invalid_argument BEFORE any data access.
+static void require_real_full(const mxArray *mx, const char *arg_name) {
   if (mx == nullptr)
     throw std::invalid_argument(std::string(arg_name) + ": argument is missing.");
   if (mxIsComplex(mx))
     throw std::invalid_argument(std::string(arg_name) + " must be real, not complex.");
   if (mxIsSparse(mx))
     throw std::invalid_argument(std::string(arg_name) + " must be a full (non-sparse) array.");
+}
+
+/// Require a full (non-sparse), real, non-empty, <=2-D array of class double, or
+/// single for T = float. Throws std::invalid_argument BEFORE any data access.
+template <typename T = double>
+static void require_real(const mxArray *mx, const char *arg_name) {
+  constexpr bool single = std::is_same_v<T, float>;
+  const std::string type = single ? "single" : "double";
+  require_real_full(mx, arg_name);
   if (single ? !mxIsSingle(mx) : !mxIsDouble(mx))
     throw std::invalid_argument(std::string(arg_name) + " must be of class '" + type + "' (got '"
       + std::string(mxGetClassName(mx)) + "'); convert with " + type + "(...) in MATLAB.");
@@ -133,12 +139,7 @@ static void require_real(const mxArray *mx, const char *arg_name) {
 /// Require a label vector: real, non-empty, full, class int32 OR double.
 /// The ARI/NMI entry points intentionally accept both int32 and double labels.
 static void require_label_vector(const mxArray *mx, const char *arg_name) {
-  if (mx == nullptr)
-    throw std::invalid_argument(std::string(arg_name) + ": argument is missing.");
-  if (mxIsComplex(mx))
-    throw std::invalid_argument(std::string(arg_name) + " must be real, not complex.");
-  if (mxIsSparse(mx))
-    throw std::invalid_argument(std::string(arg_name) + " must be a full (non-sparse) array.");
+  require_real_full(mx, arg_name);
   if (!mxIsInt32(mx) && !mxIsDouble(mx))
     throw std::invalid_argument(std::string(arg_name) + " must be an int32 or double vector (got '"
       + std::string(mxGetClassName(mx)) + "').");
@@ -257,6 +258,15 @@ static mxArray *ivec_to_mx_1based(const std::vector<dtwc::index_t> &v) {
   return mx;
 }
 
+/// A 1 x n row of class double, or single for float values.
+template <typename T>
+static mxArray *to_row(std::span<const T> values) {
+  mxArray *row = mxCreateNumericMatrix(1, values.size(), std::is_same_v<T, float> ? mxSINGLE_CLASS : mxDOUBLE_CLASS,
+                                       mxREAL);
+  std::copy(values.begin(), values.end(), real_data<T>(row));
+  return row;
+}
+
 /// Extract scalar double from mxArray (validates numeric/logical + non-empty).
 static double get_scalar(const mxArray *mx, const char *arg_name = "argument") {
   if (mx == nullptr || (!mxIsNumeric(mx) && !mxIsLogical(mx)))
@@ -326,6 +336,16 @@ static std::vector<dtwc::index_t> label_vector(const mxArray *mx, const char *ar
   return out;
 }
 
+/// The two label vectors of ARI and NMI, which must have the same length.
+static std::pair<std::vector<dtwc::index_t>, std::vector<dtwc::index_t>> two_label_vectors(const mxArray *first,
+                                                                                         const mxArray *second) {
+  auto labels1 = label_vector(first, "labels_1");
+  auto labels2 = label_vector(second, "labels_2");
+  if (labels1.size() != labels2.size())
+    throw std::invalid_argument("Label vectors must have the same length.");
+  return { std::move(labels1), std::move(labels2) };
+}
+
 /// Decode a MATLAB double seed without invoking an out-of-range float-to-int
 /// conversion. MATLAB represents every integer exactly only through flintmax, so
 /// that is the largest seed a double can carry into the C++ uint64.
@@ -353,6 +373,11 @@ static uint64_t get_handle(const mxArray *mx) {
   // Accept double as well (MATLAB defaults to double). A negative id wraps to a
   // value no handle has, so the lookup fails with "Invalid handle".
   return static_cast<uint64_t>(get_exact_int(mx, "handle"));
+}
+
+/// The Problem a handle names.
+static dtwc::Problem &stored_problem(const mxArray *handle) {
+  return *HandleManager<dtwc::Problem>::get(get_handle(handle));
 }
 
 /// A char array as UTF-8, the encoding of every string in DTWC++ (names, paths,
@@ -667,7 +692,7 @@ static void cmd_Problem_delete(int nlhs, mxArray *plhs[], int nrhs, const mxArra
 
 static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_info requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
 
   const char *field_names[] = {
     "name", "size", "band", "verbose", "max_iter", "n_repetitions",
@@ -732,7 +757,7 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   // matrix (each row a series) OR a cell array of numeric row vectors (ragged /
   // variable-length series), of class double, or single for dtype 'float32'.
   if (nrhs < 3) throw std::invalid_argument("Problem_set_data requires handle and data.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   const mxArray *names = nrhs > 3 ? prhs[3] : nullptr;
   const mxArray *ndim = nrhs > 4 ? prhs[4] : nullptr;
   if (optional_dtype(nrhs, prhs, 5) == dtwc::core::Precision::Float32)
@@ -743,54 +768,54 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 
 static void cmd_Problem_set_band(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_band requires handle and band value.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.set_band(get_exact_int(prhs[2], "band"));
 }
 
 static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_verbose requires handle and bool.");
   const bool verbose = get_logical(prhs[2], "verbose");
-  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->set_verbose(verbose);
+  stored_problem(prhs[1]).set_verbose(verbose);
 }
 
 static void cmd_Problem_set_ram_limit(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_ram_limit requires handle and value.");
-  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->set_ram_limit(get_ram_limit(prhs[2]));
+  stored_problem(prhs[1]).set_ram_limit(get_ram_limit(prhs[2]));
 }
 
 static void cmd_Problem_set_max_iter(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_max_iter requires handle and value.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.set_max_iter(get_exact_int(prhs[2], "max_iter"));
 }
 
 static void cmd_Problem_set_n_repetition(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_n_repetition requires handle and value.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.set_n_repetitions(get_exact_int(prhs[2], "n_repetitions"));
 }
 
 static void cmd_Problem_set_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_n_clusters requires handle and k.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.set_n_clusters(get_exact_int<dtwc::index_t>(prhs[2], "k"));
 }
 
 static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_missing_strategy requires handle and string.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.set_missing_strategy(dtwc::parse_name(
     dtwc::core::missing_strategy_names, get_string(prhs[2]), "missing strategy"));
 }
 
 static void cmd_Problem_set_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_device requires handle and device name.");
-  set_problem_device(*HandleManager<dtwc::Problem>::get(get_handle(prhs[1])), prhs[2]);
+  set_problem_device(stored_problem(prhs[1]), prhs[2]);
 }
 
 static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_variant requires handle and variant string.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   using dtwc::core::DTWVariant;
   const DTWVariant variant = dtwc::parse_name(
     dtwc::core::variant_names, get_string(prhs[2]), "variant");
@@ -810,36 +835,36 @@ static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const m
 
 static void cmd_Problem_set_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_set_distance requires a handle.");
-  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->set_distance(distance_config(nrhs, prhs, 2));
+  stored_problem(prhs[1]).set_distance(distance_config(nrhs, prhs, 2));
 }
 
 static void cmd_Problem_get_size(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_size requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.size()));
 }
 
 static void cmd_Problem_get_name(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_name requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = mxCreateString(prob.name().c_str());
 }
 
 static void cmd_Problem_get_centroids(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_centroids requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = ivec_to_mx_1based(prob.centroids_ind);
 }
 
 static void cmd_Problem_get_clusters(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_clusters requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = ivec_to_mx_1based(prob.clusters_ind);
 }
 
 static void cmd_Problem_is_distance_matrix_filled(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_is_distance_matrix_filled requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = mxCreateLogicalScalar(prob.is_distance_matrix_filled());
 }
 
@@ -849,13 +874,13 @@ static void cmd_Problem_is_distance_matrix_filled(int nlhs, mxArray *plhs[], int
 
 static void cmd_Problem_fill_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_fill_distance_matrix requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.fill_distance_matrix();
 }
 
 static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 4) throw std::invalid_argument("Problem_dist_by_ind requires handle, i, j.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   // Problem::dist_by_ind is the unchecked hot path: this boundary owns the range check.
   const auto n = prob.size();
   const auto index = [&](int arg, const char *name) {
@@ -875,12 +900,12 @@ static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const m
 /// to (auto resolved), its labels and medoids published on the Problem too.
 static void cmd_Problem_cluster(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_cluster requires a handle.");
-  plhs[0] = clustering_result_to_mx(HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->cluster());
+  plhs[0] = clustering_result_to_mx(stored_problem(prhs[1]).cluster());
 }
 
 static void cmd_Problem_find_total_cost(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_find_total_cost requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   double cost = prob.find_total_cost();
   plhs[0] = mxCreateDoubleScalar(cost);
 }
@@ -902,14 +927,14 @@ static mxArray *full_matrix(const dtwc::core::DistanceMatrix &dm) {
 
 static void cmd_Problem_get_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_distance_matrix requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.fill_distance_matrix(); // a no-op once filled, as Python's distance_matrix()
   plhs[0] = full_matrix(prob.distance_matrix());
 }
 
 static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_distance_matrix requires handle and matrix.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
 
   const bool single = mxIsSingle(prhs[2]); // a double or single D, stored at the matrix's width
   if (single)
@@ -1003,14 +1028,14 @@ static void cmd_test_gpu(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prh
 static void cmd_Problem_set_method(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_method requires handle and method string.");
   require_char(prhs[2], "method");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.set_method(dtwc::parse_name(dtwc::method_names, get_string(prhs[2]), "method"));
 }
 
 static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_solver requires handle and solver string.");
   require_char(prhs[2], "solver");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   const bool ok = prob.set_solver(
     dtwc::parse_name(dtwc::solver_names, get_string(prhs[2]), "solver"));
   plhs[0] = mxCreateLogicalScalar(ok);  // false => requested solver not compiled in
@@ -1018,14 +1043,14 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
 
 static void cmd_Problem_set_output_folder(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_output_folder requires handle and folder string.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.set_output_folder(get_path(prhs[2], "output_folder"));
 }
 
 /// set_mip_settings(struct): reads any subset of the MIPSettings fields present.
 static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_mip_settings requires handle and a struct.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   const mxArray *s = prhs[2];
   if (!mxIsStruct(s))
     throw std::invalid_argument("mip_settings must be a struct (fields: mip_gap, time_limit_sec, "
@@ -1050,7 +1075,7 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
 /// get_mip_settings() -> struct mirroring MIPSettings (round-trip / introspection).
 static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_mip_settings requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   const auto &m = prob.mip_settings;
   const char *fields[] = { "mip_gap", "time_limit_sec", "warm_start", "numeric_focus",
                            "mip_focus", "verbose_solver", "lr_max_nodes", "lr_root" };
@@ -1072,7 +1097,7 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
 static void cmd_Problem_set_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3)
     throw std::invalid_argument("Problem_set_checkpoint requires handle and a struct.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   const mxArray *s = prhs[2];
   if (!mxIsStruct(s))
     throw std::invalid_argument("checkpoint must be a struct (fields: directory, "
@@ -1094,7 +1119,7 @@ static void cmd_Problem_set_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
 /// get_checkpoint() -> struct mirroring CheckpointOptions (round-trip).
 static void cmd_Problem_get_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_checkpoint requires a handle.");
-  const auto &options = HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->checkpoint;
+  const auto &options = stored_problem(prhs[1]).checkpoint;
   const char *fields[] = { "directory", "save_interval", "enabled" };
   mxArray *s = mxCreateStructMatrix(1, 1, 3, fields);
   mxSetField(s, 0, "directory", mxCreateString(options.directory.c_str()));
@@ -1108,28 +1133,28 @@ static void cmd_Problem_get_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
 static void cmd_Problem_set_matrix_dtype(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_matrix_dtype requires handle and dtype name.");
   require_char(prhs[2], "dtype");
-  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))
-    ->set_matrix_dtype(dtwc::parse_name(dtwc::core::precision_names, get_string(prhs[2]), "MatrixDtype"));
+  stored_problem(prhs[1])
+    .set_matrix_dtype(dtwc::parse_name(dtwc::core::precision_names, get_string(prhs[2]), "MatrixDtype"));
 }
 
 /// set_gpu_precision(name) — what a GPU computes in, by the `--gpu-precision` names.
 static void cmd_Problem_set_gpu_precision(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_gpu_precision requires handle and precision name.");
   require_char(prhs[2], "precision");
-  HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))
-    ->set_gpu_precision(dtwc::parse_name(dtwc::gpu_precision_names, get_string(prhs[2]), "gpu precision"));
+  stored_problem(prhs[1])
+    .set_gpu_precision(dtwc::parse_name(dtwc::gpu_precision_names, get_string(prhs[2]), "gpu precision"));
 }
 
 static void cmd_Problem_refresh_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_refresh_distance_matrix requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   prob.refresh_distance_matrix();
 }
 
 /// read_distance_matrix(path[, not_computed]): not_computed by the `--not-computed` names.
 static void cmd_Problem_read_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_read_distance_matrix requires handle and path.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   auto not_computed = dtwc::core::NotComputed::NaN;
   if (nrhs > 3) {
     require_char(prhs[3], "NotComputed");
@@ -1140,13 +1165,13 @@ static void cmd_Problem_read_distance_matrix(int nlhs, mxArray *plhs[], int nrhs
 
 static void cmd_Problem_max_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_max_distance requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.max_distance()));
 }
 
 static void cmd_Problem_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_n_clusters requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.n_clusters()));
 }
 
@@ -1157,7 +1182,7 @@ static void cmd_Problem_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mx
 static void cmd_save_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("save_checkpoint requires handle and directory path.");
   require_char(prhs[2], "path");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   // The metric is part of the checkpoint identity: an L1 and a SquaredL2 matrix
   // over the same data are different numbers (C++/Python default to L1 too).
   dtwc::save_checkpoint(prob, get_string(prhs[2]), optional_metric(nrhs, prhs, 3));
@@ -1166,7 +1191,7 @@ static void cmd_save_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArr
 static void cmd_load_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("load_checkpoint requires handle and directory path.");
   require_char(prhs[2], "path");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   const bool ok = dtwc::load_checkpoint(prob, get_string(prhs[2]),
                                        optional_metric(nrhs, prhs, 3));
   plhs[0] = mxCreateLogicalScalar(ok);
@@ -1197,32 +1222,19 @@ static void cmd_soft_dtw_gradient(int nlhs, mxArray *plhs[], int nrhs, const mxA
   auto y = to_std_vector(prhs[2], "y");
   double gamma = 1.0;
   if (nrhs > 3) gamma = get_scalar(prhs[3]);
-  auto grad = dtwc::soft_dtw_gradient<double>(x, y, gamma);
-
-  mxArray *result = mxCreateDoubleMatrix(1, grad.size(), mxREAL);
-  double *out = mxGetDoubles(result);
-  for (size_t i = 0; i < grad.size(); ++i) out[i] = grad[i];
-  plhs[0] = result;
+  plhs[0] = to_row<double>(dtwc::soft_dtw_gradient<double>(x, y, gamma));
 }
 
 static void cmd_derivative_transform(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("derivative_transform requires a vector.");
   auto x = to_std_vector(prhs[1]);
-  auto dx = dtwc::derivative_transform<double>(x);
-  mxArray *result = mxCreateDoubleMatrix(1, dx.size(), mxREAL);
-  double *out = mxGetDoubles(result);
-  for (size_t i = 0; i < dx.size(); ++i) out[i] = dx[i];
-  plhs[0] = result;
+  plhs[0] = to_row<double>(dtwc::derivative_transform<double>(x));
 }
 
 static void cmd_z_normalize(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("z_normalize requires a vector.");
   auto x = to_std_vector(prhs[1]);
-  auto result_vec = dtwc::core::z_normalized<double>(x.data(), x.size());
-  mxArray *result = mxCreateDoubleMatrix(1, result_vec.size(), mxREAL);
-  double *out = mxGetDoubles(result);
-  for (size_t i = 0; i < result_vec.size(); ++i) out[i] = result_vec[i];
-  plhs[0] = result;
+  plhs[0] = to_row<double>(dtwc::core::z_normalized<double>(x.data(), x.size()));
 }
 
 // =========================================================================
@@ -1231,7 +1243,7 @@ static void cmd_z_normalize(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
 
 static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("fast_pam requires handle and k.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   const auto k = get_exact_int<dtwc::index_t>(prhs[2], "k");
   int max_iter = 100;
   if (nrhs > 3) max_iter = get_exact_int(prhs[3], "max_iter");
@@ -1242,7 +1254,7 @@ static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prh
 
 static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("fast_clara requires handle and k.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
 
   dtwc::algorithms::CLARAOptions opts;
   opts.n_clusters = get_exact_int<dtwc::index_t>(prhs[2], "k");
@@ -1257,7 +1269,7 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
 
 static void cmd_build_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("build_dendrogram requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
 
   dtwc::algorithms::HierarchicalOptions opts;
   if (nrhs > 2)
@@ -1272,7 +1284,7 @@ static void cmd_cut_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArra
   if (nrhs < 4) throw std::invalid_argument("cut_dendrogram requires dendrogram struct, handle, and k.");
 
   auto dend = mx_to_dendrogram(prhs[1]);
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[2]));
+  auto &prob = stored_problem(prhs[2]);
   const auto k = get_exact_int<dtwc::index_t>(prhs[3], "k");
 
   auto result = dtwc::algorithms::cut_dendrogram(dend, prob, k);
@@ -1285,56 +1297,43 @@ static void cmd_cut_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArra
 
 static void cmd_silhouette(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("silhouette requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  auto sil = dtwc::scores::silhouette(prob);
-
-  mxArray *result = mxCreateDoubleMatrix(1, sil.size(), mxREAL);
-  double *out = mxGetDoubles(result);
-  for (size_t i = 0; i < sil.size(); ++i) out[i] = sil[i];
-  plhs[0] = result;
+  auto &prob = stored_problem(prhs[1]);
+  plhs[0] = to_row<double>(dtwc::scores::silhouette(prob));
 }
 
 static void cmd_davies_bouldin(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("davies_bouldin requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::davies_bouldin(prob));
 }
 
 static void cmd_dunn(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("dunn requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::dunn(prob));
 }
 
 static void cmd_inertia(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("inertia requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::inertia(prob));
 }
 
 static void cmd_calinski_harabasz(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("calinski_harabasz requires a handle.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::calinski_harabasz(prob));
 }
 
 static void cmd_adjusted_rand(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("adjusted_rand requires two label vectors.");
-  const auto labels1 = label_vector(prhs[1], "labels_1");
-  const auto labels2 = label_vector(prhs[2], "labels_2");
-  if (labels1.size() != labels2.size())
-    throw std::invalid_argument("Label vectors must have the same length.");
-
+  const auto [labels1, labels2] = two_label_vectors(prhs[1], prhs[2]);
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::adjusted_rand(labels1, labels2));
 }
 
 static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("normalized_mutual_info requires two label vectors.");
-  const auto labels1 = label_vector(prhs[1], "labels_1");
-  const auto labels2 = label_vector(prhs[2], "labels_2");
-  if (labels1.size() != labels2.size())
-    throw std::invalid_argument("Label vectors must have the same length.");
-
+  const auto [labels1, labels2] = two_label_vectors(prhs[1], prhs[2]);
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::normalized_mutual_info(labels1, labels2));
 }
 
@@ -1364,7 +1363,7 @@ static dtwc::Config config_defaults(const mxArray *k) {
 /// device_text writes it ('cpu', 'gpu', 'gpu:N').
 static void cmd_apply(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("apply requires a handle and k.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  auto &prob = stored_problem(prhs[1]);
   const dtwc::Config config = read_keys(config_keys, "key", config_defaults(prhs[2]), nrhs, prhs, 3);
   dtwc::apply(config, prob);
   if (!config.name.empty()) prob.set_name(config.name);
@@ -1458,15 +1457,6 @@ static void cmd_Result_save(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
 static void cmd_Result_delete(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Result_delete requires a handle.");
   HandleManager<dtwc::Result>::destroy(get_handle(prhs[1]));
-}
-
-/// A 1 x n row of class double, or single for float values.
-template <typename T>
-static mxArray *to_row(std::span<const T> values) {
-  mxArray *row = mxCreateNumericMatrix(1, values.size(), std::is_same_v<T, float> ? mxSINGLE_CLASS : mxDOUBLE_CLASS,
-                                       mxREAL);
-  std::copy(values.begin(), values.end(), real_data<T>(row));
-  return row;
 }
 
 /// read_data(path, skip_cols, skip_rows, delimiter, dtype) -> {series}, {names}:
