@@ -89,14 +89,19 @@ differ only where several optimal medoid sets exist, node counts and run times c
    kept; the GPU share always [0, 65,536) then the rest, so a forced share repeats the bits; bands [inferred, loaded] FP32
    v1100k hybrid 1.12× gpu against ≤ 1.2 and FP64 0.75× against ≤ 0.8: both HOLD) + ☑ HG3f (1ccf05be: run.cpp's in-RAM
    CLARA through `fast_clara(prob, clara)`, so the plan's `gpu_staging_bytes` reach the run; a CLI cell that fails without
-   the routing line; identity 0 differ, mine too), ◐ HG4 the hybrid fill (Opus; HG4a–d 3a2544bd, 5aca61e1, 220cff44, a9d64427 accepted as code:
+   the routing line; identity 0 differ, mine too), ☑ HG4 the hybrid fill (Opus; HG4a–d 3a2544bd, 5aca61e1, 220cff44, a9d64427:
    a CUDA fill session uploading once with row-range calls, whole tile-rows to either device, one region per slab,
    `Problem::set_gpu_share` the one knob, `auto` on cpu+gpu = pam at any N; identity 0 differ, mine too; G8 FP64 `cpu+gpu` =
-   `cpu` = `gpu` by `cmp`; its FP32 sanity band FALSIFIED [inferred, loaded]: 1.92× the GPU against ≤ 1.2 (FP64 0.73× of the
-   CPU HOLDS against ≤ 0.8), the brief's floor-to-whole-tile-row split landing a raw 0.86 share on 0.7465 — a gross slowdown,
-   which stops the merge until HG4e: a min-max split rule, one share for the whole fill, reproducible by its printed value,
-   sent to the same agent 11-09, `brief_hg4e.md`), ☐ HG5 the device word in every language, the docs HG1–HG3 made false
-   (hg_plan.md §4b), CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
+   `cpu` = `gpu` by `cmp`; its FP32 sanity band FALSIFIED under the brief's floor-to-whole-tile-row split, 1.92× the GPU
+   against ≤ 1.2) + ☑ HG4e (2c87f2d3; `report_hg4.md`'s HG4e section: per slab the tile-row bound least in
+   max(GPU entries / s, CPU entries / (1 − s)), one s for the fill printed as itself, the calibrating slab found from the
+   bounds so a forced run repeats a measured one, the recorded ratio by precision; my run of its four cases 2,206
+   assertions; bands [inferred, 27 MATLAB processes]: FP32 0.90 and 0.89 × gpu against ≤ 1.2, FP64 0.72 and 0.68 × cpu
+   against ≤ 0.8 (gpu FP64 reference not rerun): both HOLD; a forced share does not reach a slab before the calibrating
+   one, kept and to be stated in the docs), ◐ HG5 the device word and `gpu_share` in every language (Volkan 11-09: "Key
+   in every language"), the pinned buffer's stderr warning ("stderr warning always"), the docs HG1–HG4 made false
+   (hg_plan.md §4b), CHANGELOG (Sonnet, launched 11-09 from 2c87f2d3, `brief_hg5.md`); ☐ one review at the unit's merge
+   (`brief_hg_review.md`); its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
    into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
    gate runs on the merged tree, not the branches alone. Until HG merges, S5's route ships.
@@ -120,11 +125,7 @@ For Volkan's hand: the merged units' worktrees, clean, their branches merged (`C
 `wt/REL`, `wt/QP1`–`wt/QP5`, `wt/QPR`, and `wt/QP` and `wt/DOC` once HG no longer needs `wt/QP/build-cuda` as its base
 binary): `git worktree remove --force <path>` and `git branch -d pb/<id>`; the permission classifier refuses the agent that
 deletion (11-09). The CHANGELOG's Performance section compares 2.0 with earlier 2.0 (no v1.0.0 baseline exists for its
-subjects): keep as the development record it is, or drop (DOC's open question). At the HG merge batch: when a pinned
-host buffer cannot be allocated the CUDA routes fall back to pageable memory silently and lose the pipeline's overlap
-(HG1 about doubled the pinned demand): a stderr warning always, or a `-v` line only (hg_plan.md §4b); and whether the
-hybrid's calibrated GPU share becomes a `--gpu-share` key in every language, the one knob that makes an FP32 `cpu+gpu` run
-reproducible (DECISIONS §3, 11-09).
+subjects): keep as the development record it is, or drop (DOC's open question).
 
 ## Cut, deferred or not scheduled
 

@@ -378,3 +378,7 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   hook; whether it becomes a `--gpu-share` key in every language is a question for Volkan) makes a run reproducible. The CI MEX
   job (`matlab-mex.yml`, R2024b): "Turn llfio ON in CI; its R2024b run is the oracle" (F43: a crash there is a tracked item
   with the CI log as evidence, and the flag goes back).
+- 2026-11-09 — Volkan (question tool), at HG4e's acceptance: the hybrid's forced share is a "Key in every language": CLI
+  `--gpu-share`, Python `gpu_share=`, MATLAB `'GpuShare'`, −1 measures (the default); it is the way a `cpu+gpu` FP32 run is
+  repeated (the share a run prints, forced). When CUDA cannot allocate a pinned host buffer: "stderr warning always" (one
+  line, the run continues on pageable memory; results are unaffected, so no error).
