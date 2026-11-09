@@ -48,7 +48,7 @@ The three predecessors correspond to a diagonal match, advancing only in $$x$$, 
 
 > **Cost convention:** The formula above uses the absolute difference (L1 local cost), which is the default in DTW-C++. The alternative squared-L2 local cost is $$(x_i-y_j)^2$$. If amplitudes have unit $$U$$, the accumulated results have units $$U$$ and $$U^2$$ respectively; DTWC++ does not take a final square root. Warping means that both accumulated forms are dissimilarities, not a metric: distinct repeated-value sequences can have zero cost, and the triangle inequality can fail.
 
-> **Input values:** the recurrence is defined on finite values. NaN or ±inf passed to `dtwc::distance::*`, `soft_dtw_gradient`, Python's `dtwcpp.distance.dtw` and `compute_distance_matrix`, or MATLAB's `dtwc.distance.dtw` raises `InvalidInput` naming the series and the 0-based position, for example `distance::dtw: y[3] is NaN`. NaN is accepted only as a missing value, by the [missing-data](../missing-data/) distances; ±inf never is. The C++ per-pair wrappers in `warping*.hpp` (`dtwBanded`, `dtwFull_L`, …) do not check: they, and the lane kernel below, are what the matrix fill calls once it has checked the data, so their caller must pass finite values (and NaN only to the missing-data wrappers).
+> **Input values:** the recurrence is defined on finite values. NaN or ±inf passed to `dtwc::distance::*`, `soft_dtw_gradient`, Python's `dtwcpp.distance.dtw` and `compute_distance_matrix`, or MATLAB's `dtwc.distance.dtw` raises `InvalidInput` (Python `dtwcpp.InvalidInput`, a `ValueError`; MATLAB error id `dtwc:invalidArgument`) naming the series and the 0-based position, for example `distance::dtw: y[3] is NaN`. NaN is accepted only as a missing value, by the [missing-data](../missing-data/) distances; ±inf never is. The C++ per-pair wrappers in `warping*.hpp` (`dtwBanded`, `dtwFull_L`, …) do not check: they, and the lane kernel below, are what the matrix fill calls once it has checked the data, so their caller must pass finite values (and NaN only to the missing-data wrappers).
 
 The final element $$C_{n,m}$$ is the DTW dissimilarity between the two series. Below is an example of the cost matrix $$C$$ and the warping path through it.
 
@@ -111,8 +111,8 @@ Below this threshold the CPU routes return the finite no-path sentinel `numeric_
 
 Widening the window only adds admissible paths. Therefore the exact banded value is non-increasing in $$w$$ and is always at least the full-DTW value. A narrower band can reduce work, but it can also increase the dissimilarity or eliminate every path; choose it from the timing variation allowed by the application. The fixed-window definition and endpoint conditions come from [Sakoe and Chiba (1978)](https://doi.org/10.1109/TASSP.1978.1163055).
 
-CUDA's fixed-window geometry and public no-path sentinel are confirmed on the
-local RTX. Its registered real-device gate covers the pairwise kernel
+CUDA's fixed-window geometry and public no-path sentinel were confirmed on an
+RTX GPU on 2026-07-24. Its real-device test covers the pairwise kernel
 families, infeasible windows, and `INT_MAX`.
 
 Metal source implements the same fixed geometry and sentinel translation, and

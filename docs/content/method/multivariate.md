@@ -69,9 +69,9 @@ The current channel-aware routes are:
 | ZeroCost missing data, dependent | `dtwMissing_L_mv` / `dtwMissing_banded_mv` |
 | AROW missing data, dependent | the multivariate AROW cost in the `Problem` resolver |
 
-MSM and TWE reject `ndim > 1`. Soft-DTW and the Interpolate missing strategy
-do not have channel-aware multivariate routes; do not use those combinations
-as multivariate distances.
+MSM, TWE, Soft-DTW and the Interpolate missing strategy have no channel-aware
+multivariate route and raise `InvalidInput` for `ndim > 1`, as does AROW with the
+Euclidean `MetricType::L2`.
 
 ### Direct C++ calls
 
