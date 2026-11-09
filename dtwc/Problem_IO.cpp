@@ -257,7 +257,7 @@ void detail::write_result_files(Problem &prob, const fs::path &directory, bool c
   const bool streamed = prob.size() == 0;
   const auto series_name = [&](std::size_t i) {
     if (!streamed) return std::string(prob.series_name(i));
-    return i < streamed_names.size() ? streamed_names[i] : "series_" + std::to_string(i);
+    return i < streamed_names.size() ? streamed_names[i] : made_name(i);
   };
   const auto file_in_directory = [&](const char *suffix) { return directory / utf8_to_path(prob.name() + suffix); };
 

@@ -1353,12 +1353,12 @@ void Problem::cluster_by_kmedoids_lloyd()
   std::vector<index_t> best_labels;
 
   for (int i_rand = 0; i_rand < repetitions; i_rand++) {
-    if (verbose_) std::cout << "Metoid initialisation is started.\n";
+    if (verbose_) std::cout << "Medoid initialisation is started.\n";
     // Unsigned: a seed near 2^64 wraps to another valid seed.
     init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
 
     if (verbose_)
-      std::cout << "Metoid initialisation is finished. "
+      std::cout << "Medoid initialisation is finished. "
                 << Nc << " medoids are initialised.\n"
                 << "Start clustering:\n";
 

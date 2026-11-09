@@ -1532,7 +1532,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
   }
 
   if (nrhs < 1 || !mxIsChar(prhs[0]))
-    mexErrMsgIdAndTxt("dtwc:invalidInput",
+    mexErrMsgIdAndTxt("dtwc:invalidArgument",
                       "First argument must be a command string.");
 
   std::string cmd = get_string(prhs[0]);

@@ -1545,7 +1545,7 @@ void read_names(const IpcFile::State &state, std::size_t k, std::vector<std::str
   for (std::int64_t r = 0; r < batch.rows; ++r) {
     const std::int64_t row = state.first_row[k] + r;
     const auto name = row_name(label, r, row);
-    names[static_cast<std::size_t>(row)] = name ? std::string(*name) : "series_" + std::to_string(row);
+    names[static_cast<std::size_t>(row)] = name ? std::string(*name) : made_name(row);
   }
 }
 
@@ -1767,7 +1767,7 @@ Data IpcFile::read_rows(std::vector<index_t> rows, std::size_t ram_budget) const
 }
 
 template <typename T>
-Data IpcFile::read_row_groups(int first, int count, const PieceCheck &check) const
+Data IpcFile::read_row_groups(int first, int count, const PieceCheck &piece) const
 {
   const State &state = *state_;
   try {
@@ -1775,7 +1775,7 @@ Data IpcFile::read_row_groups(int first, int count, const PieceCheck &check) con
     const auto read = [&](std::size_t j) {
       const std::size_t k = static_cast<std::size_t>(first) + j;
       batches[j] = read_batch<T>(state, k);
-      check(j, batches[j], state.first_row[k]);
+      piece(j, batches[j], state.first_row[k]);
     };
     run_openmp(read, batches.size(), batches.size() > 1);
     // One Data: the batches' spans and names, its owner holding theirs.
@@ -1815,7 +1815,7 @@ std::vector<std::string> IpcFile::series_names(std::size_t ram_budget) const
   const State &state = *state_;
   std::vector<std::string> names(static_cast<std::size_t>(num_rows()));
   if (state.walk.columns.name < 0) {
-    for (std::size_t i = 0; i < names.size(); ++i) names[i] = "series_" + std::to_string(i);
+    for (std::size_t i = 0; i < names.size(); ++i) names[i] = made_name(i);
     return names;
   }
   try {

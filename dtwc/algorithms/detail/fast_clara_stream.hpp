@@ -187,6 +187,7 @@ static core::ClusteringResult fast_clara_chunked(Problem &prob, const CLARAOptio
     sampled.rows(pool, [&](std::size_t i) { return rows[i]; });
     sampled.band();
     std::vector<std::vector<index_t>> positions;
+    positions.reserve(samples.size());
     for (const auto &sample : samples) positions.push_back(positions_in(rows, sample));
     // The PAMs run one at a time beside the union: a sample's copy and its packed distance matrix.
     std::size_t union_values = 0, sample_values = 0;

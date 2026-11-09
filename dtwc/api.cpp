@@ -137,10 +137,7 @@ void Result::save(const std::filesystem::path &directory) const
   detail::write_result_files(*problem_, directory, streamed_names_.empty(), nullptr, streamed_names_);
   // The run's report, last: a save that fails before it writes none.
   if (report_.empty()) return;
-  const auto path = directory / utf8_to_path(problem_->name() + "_report.txt");
-  auto out = open_output(path);
-  out << report_;
-  close_output(out, path);
+  write_text(directory / utf8_to_path(problem_->name() + "_report.txt"), report_);
 }
 
 Result cluster(const Dataset &dataset, index_t k, std::string_view method, int band,

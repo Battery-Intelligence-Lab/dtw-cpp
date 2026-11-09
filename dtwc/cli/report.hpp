@@ -104,7 +104,6 @@ struct RunReport
   std::vector<Stage> stages;
   std::optional<Clustering> clustering;
   std::optional<Silhouettes> silhouettes;
-  std::vector<std::string> notes;
   std::string error_kind, error_text; ///< a failed run's typed error and its text
 };
 

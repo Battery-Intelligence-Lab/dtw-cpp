@@ -31,6 +31,14 @@
 
 namespace dtwc {
 
+/// The name a series gets when its source gives none: `series_<i>`, `i` its position in the source (from 0, as the
+/// result files count). Every reader and the result writer spell it through this one function.
+template <typename I>
+std::string made_name(I i)
+{
+  return "series_" + std::to_string(i);
+}
+
 /**
  * @brief Struct to encapsulate DTWC data.
  *        This struct holds data vectors and their corresponding names, providing

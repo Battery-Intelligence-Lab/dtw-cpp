@@ -110,6 +110,15 @@ inline void close_output(std::ofstream &file, const fs::path &path)
                     "directory, then rerun.");
 }
 
+/// Write `text` to `path` as one file, checked on open and on close (open_output, close_output): the run's report,
+/// which dtwc_cl writes at the end of a run and Result::save beside the result files.
+inline void write_text(const fs::path &path, const std::string &text)
+{
+  std::ofstream out = open_output(path);
+  out << text;
+  close_output(out, path);
+}
+
 /**
  * @brief Ignores Byte Order Mark (BOM) in UTF-8 encoded files.
  *

@@ -995,13 +995,7 @@ const char *kind_of(const std::exception &error)
   return "std::exception";
 }
 
-void write_report(const Config &config, const std::string &text)
-{
-  const fs::path path = report_path(config);
-  auto out = open_output(path);
-  out << text;
-  close_output(out, path);
-}
+void write_report(const Config &config, const std::string &text) { write_text(report_path(config), text); }
 
 /// The ways out a run out of memory names, each only where it holds less in this run. Once the method's terms are
 /// held (storage, cluster, write): float32 for the matrix (not beside a --checkpoint, whose file keeps its width) or a

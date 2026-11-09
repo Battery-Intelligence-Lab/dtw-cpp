@@ -117,7 +117,7 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
       const ArrowStringView sv = ArrowArrayViewGetStringUnsafe(name_view, i);
       names.emplace_back(sv.data, static_cast<size_t>(sv.size_bytes));
     } else {
-      names.emplace_back("series_" + std::to_string(first + i));
+      names.emplace_back(made_name(first + i));
     }
   }
 }

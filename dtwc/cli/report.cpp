@@ -385,7 +385,6 @@ std::string RunReport::render() const
     row(out, "length", "a series of " + std::to_string(input->longest) + " time steps, longer than the "
                          + std::to_string(plan->length)
                          + " the plan priced: the threads' scratch can grow past the reserve");
-  for (const auto &note : notes) row(out, "note", note);
   if (failed) row(out, "error", error_kind + ": " + error_text);
   return out;
 }
