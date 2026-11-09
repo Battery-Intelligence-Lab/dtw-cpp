@@ -36,7 +36,6 @@
 #include <new>
 #include <numeric>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>

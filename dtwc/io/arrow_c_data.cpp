@@ -13,7 +13,10 @@
 #include "../base/error.hpp"
 #include "nanoarrow/nanoarrow.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dtwc::io {
