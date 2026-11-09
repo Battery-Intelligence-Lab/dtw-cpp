@@ -18,6 +18,7 @@
 
 #include "../base/error.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -31,6 +32,40 @@ namespace dtwc::cuda::detail {
 /// and the persistent wavefront's work counter, which overshoots the count by
 /// up to one per block).
 inline constexpr std::int64_t kMaxPairsPerLaunch = std::int64_t{ 1 } << 27;
+
+/// The blocks of the medoid entry's pipeline (launch_medoid_kernel): `block` series a launch; `series_slots` host and
+/// device buffers of a block's series padded to the longest (two, so that a block is padded and uploaded while the one
+/// before computes; one where a block holds every series) and `distance_slots` pinned host buffers of a block's
+/// distances (three, so that the host assigns a block while the next two compute; fewer where there are fewer blocks).
+struct MedoidBlocks {
+  std::size_t block = 0, series_slots = 0, distance_slots = 0;
+
+  /// The host bytes the pipeline stages for k medoids and series of up to max_L samples of `value` bytes each: the
+  /// medoids and the series slots padded to max_L, with their lengths (an int each), and the distance slots.
+  std::size_t host_bytes(std::size_t k, std::size_t max_L, std::size_t value) const
+  {
+    return (k + series_slots * block) * (max_L * value + sizeof(int)) + distance_slots * block * k * sizeof(double);
+  }
+};
+
+/// The pipeline's blocks for n >= 1 series against k >= 1 medoids, the longest of max_L samples of `value` bytes: a
+/// block holds at most kMaxPairsPerLaunch / max(k, max_L) series (a launch's samples and its distances) and at least
+/// one. Where `host_cap` > 0 and those blocks stage more than host_cap bytes, a block shrinks to the most series that
+/// fit it (priced with two series slots and three distance slots), down to one series, which may stage more.
+inline MedoidBlocks medoid_blocks(std::size_t n, std::size_t k, std::size_t max_L, std::size_t value,
+                                  std::size_t host_cap = 0)
+{
+  const auto of = [n](std::size_t block) {
+    const std::size_t blocks = (n + block - 1) / block;
+    return MedoidBlocks{ block, std::min<std::size_t>(2, blocks), std::min<std::size_t>(3, blocks) };
+  };
+  const std::size_t launch =
+    std::clamp<std::size_t>(static_cast<std::size_t>(kMaxPairsPerLaunch) / std::max(k, max_L), 1, n);
+  if (host_cap == 0 || of(launch).host_bytes(k, max_L, value) <= host_cap) return of(launch);
+  const std::size_t row = max_L * value + sizeof(int), medoids = k * row;
+  const std::size_t per_series = 2 * row + 3 * k * sizeof(double);
+  return of(std::clamp<std::size_t>(host_cap > medoids ? (host_cap - medoids) / per_series : 0, 1, launch));
+}
 
 /// Upper-triangle pair count for @p n series, evaluated in 64 bits throughout.
 /// At the project's 100M-series target this is ~5e15 — representable only as

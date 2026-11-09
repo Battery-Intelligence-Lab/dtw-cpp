@@ -242,14 +242,16 @@ std::vector<core::ClusteringResult> clara_pams(const Problem &prob, const CLARAO
 
 #ifdef DTWC_HAS_CUDA
 /**
- * Points first .. of `series` against the medoid series `medoids` (slot j is medoid_indices[j]; sample s's are slots
- * s * k .. s * k + k - 1) on `prob`'s GPU, with its band, metric and precision, in one call: each block of distances
- * is assigned as it arrives, each sample's nearest distances going into costs[s] in point order.
+ * Points first .. of `points` (Float64 series, owned or a view: read where they lie, no copy made) against the
+ * medoid series `medoids` (slot j is medoid_indices[j]; sample s's are slots s * k .. s * k + k - 1) on `prob`'s GPU,
+ * with its band, metric and precision, in one call (cuda::compute_medoid_distances_cuda, its blocks padded by this
+ * thread's team; its host buffers within `staging_bytes`, 0: blocks of a launch's bound): each block of distances is
+ * assigned as it arrives, each sample's nearest distances going into costs[s] in point order.
  */
 void assign_on_gpu(
-  const Problem &prob, const std::vector<std::vector<double>> &series, index_t first,
-  const std::vector<std::vector<double>> &medoids, std::span<const index_t> medoid_indices,
-  std::vector<std::vector<index_t>> &labels, std::vector<core::detail::OrderedMedoidObjective> &costs);
+  const Problem &prob, const Data &points, index_t first, const std::vector<std::span<const double>> &medoids,
+  std::span<const index_t> medoid_indices, std::vector<std::vector<index_t>> &labels,
+  std::vector<core::detail::OrderedMedoidObjective> &costs, std::size_t staging_bytes = 0);
 #else
 /// Metal has no kernel for the assignment, so on a GPU device it runs on the
 /// CPU (the sample matrices still fill on the GPU); verbose says so, once a pass.

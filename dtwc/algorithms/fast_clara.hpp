@@ -41,6 +41,9 @@ namespace algorithms {
     int n_samples = 5;                                         ///< Number of subsamples to try.
     int max_iter = 100;                                        ///< Max PAM iterations per subsample.
     std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED; ///< Reproducible RNG seed.
+    /// CUDA's assignment: its host buffers within this many bytes, a block down to one series (0: blocks of a
+    /// launch's bound); dtwc_cl's memory plan sets it where an explicit --ram-limit leaves the default blocks no room.
+    size_t gpu_staging_bytes = 0;
 
     // Streaming from Parquet: fast_clara_parquet's (dtwc_io); fast_clara refuses it.
     size_t ram_limit_bytes = 0;         ///< Series-data cap; 0 = no limit.

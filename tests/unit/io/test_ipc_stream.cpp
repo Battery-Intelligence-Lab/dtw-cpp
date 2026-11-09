@@ -17,6 +17,7 @@
 #include <cli/run.hpp>
 #include <config.hpp>
 #include <core/portable_random.hpp>
+#include <cuda/launch_prep.hpp>
 #include <fileOperations.hpp>
 #include <io/arrow_ipc.hpp>
 #include <io/read_data.hpp>
@@ -620,9 +621,10 @@ TEST_CASE("Arrow IPC: a file's names read alone are the in-RAM read's", "[io][ar
 
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
 // In RAM the series are views (of the mapping, of the file read without llfio, of decoded record batches), which
-// a GPU uploads as an owned copy; streamed, views of its record batches, which CUDA's assignment uploads as an owned
-// copy each (Metal assigns on the CPU). The oracle: the same run on the file's CSV twin, whose series are owned and hold
-// the same values. Beyond an explicit limit the planner prices the copy, and names CLARA, which streams on a GPU too.
+// a GPU's fill uploads as an owned copy and CUDA's assignment reads where they lie; streamed, views of its record
+// batches, which CUDA's assignment reads where they lie too (Metal assigns on the CPU). The oracle: the same run on the
+// file's CSV twin, whose series are owned and hold the same values. Beyond an explicit limit the planner prices a
+// fill's copy, and names CLARA, which streams on a GPU too.
 TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's clustering",
           "[io][arrow][streaming][gpu]")
 {
@@ -692,10 +694,11 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
       CHECK(result.cost() == twin.cost());
     }
   }
-  // Streamed: a data cap below what the series hold in RAM for a GPU (their copy among it).
+  // Streamed: a data cap of what the series alone hold in RAM, below them beside the GPU's staging (and Metal's
+  // copy).
   const auto twin = dtwc::run(on_gpu("clara_256.csv", dtwc::Method::CLARA));
   dtwc::Config config = on_gpu("clara_256_lz4.arrow", dtwc::Method::CLARA);
-  const std::size_t cap = lz4.resident_bytes(Precision::Float64, true);
+  const std::size_t cap = lz4.resident_bytes(Precision::Float64, false);
   config.ram_limit = reserve_of(config, cap) + cap;
   config.verbose = true;
   const std::string stream = printed([&] {
@@ -707,8 +710,8 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
   CHECK_THAT(stream, ContainsSubstring("Arrow IPC walk selected streaming: 256 series"));
 #  if defined(DTWC_HAS_CUDA)
   // CUDA's pass holds the medoids beside its staging of them (its launch workspace), and each record batch beside its
-  // owned copy and its staging: a byte below that, refused naming them; at it, the stream runs. clara_256's rows are 4
-  // values each, so the two samples' 3 medoids hold 24.
+  // staging (the batch is read where it lies, no copy): a byte below that, refused naming them; at it, the stream
+  // runs. clara_256's rows are 4 values each, so the two samples' 3 medoids hold 24.
   dtwc::algorithms::CLARAOptions options;
   options.n_clusters = 3;
   options.sample_size = 8;
@@ -717,7 +720,7 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
   const auto plan = dtwc::algorithms::detail::resolve_clara_plan(lz4.num_rows(), options, "fast_clara");
   const std::size_t medoids = dtwc::io::IpcFile::series_bytes(24, 6, false);
   const std::size_t fixed = 2 * medoids + dtwc::algorithms::detail::clara_pass_bytes(plan, 2) + lz4.decode_bytes();
-  const std::size_t group = 3 * lz4.largest_row_group_bytes(false);
+  const std::size_t group = 2 * lz4.largest_row_group_bytes(false);
   const std::size_t finish = lz4.open_bytes() + medoids + 3 * 256 * sizeof(dtwc::index_t) + 256 / 8;
   const std::size_t needs = std::max(fixed + group, finish);
   dtwc::Problem gpu{ "streamed_gpu" };
@@ -729,14 +732,38 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
                                + " cannot hold the pass over the file, which needs " + std::to_string(needs)
                                + " bytes: " + std::to_string(fixed) + " for the medoids' series and the GPU's staging "
                                + "of them, every sample's labels and nearest distances (n_samples = 2, k = 3, 256 "
-                               + "rows) and decoding, " + std::to_string(group) + " for one record batch's series, the "
-                               + "owned copy the GPU uploads of them and its staging of them, " + std::to_string(finish)
+                               + "rows) and decoding, " + std::to_string(group) + " for one record batch's series and "
+                               + "the GPU's staging of them, " + std::to_string(finish)
                                + " at its end with the result's labels and the open file; raise the limit, or rewrite "
                                + "the file with smaller record batches."));
   const auto at = streamed(gpu, options, fixture("clara_256_lz4.arrow"), Precision::Float64, needs);
   CHECK(at.labels == twin.labels());
   CHECK(at.medoid_indices == twin.medoids());
   CHECK(at.total_cost == twin.cost());
+  // In RAM, CUDA's FastCLARA assignment reads a view's series where they lie: the plan prices no copy of them, and as
+  // the GPU's staging its pipeline (cuda::detail::medoid_blocks: one block of the 256 series against the 6 medoid
+  // slots, rows of 4 values and a length, and the block's distances). An explicit limit a byte below what that run
+  // needs shrinks the blocks, which then run, with the twin's clustering.
+  dtwc::Config in_ram = on_gpu("clara_256.arrow", dtwc::Method::CLARA);
+  in_ram.input.clear();
+  in_ram.ram_limit = 1000;
+  const std::size_t pipeline = dtwc::cuda::detail::medoid_blocks(256, 6, 4, sizeof(double)).host_bytes(6, 4, 8);
+  REQUIRE(pipeline == (6 + 256) * (4 * 8 + 4) + 256 * 6 * 8);
+  std::string refusal;
+  try {
+    (void)dtwc::run(in_ram, view);
+  } catch (const dtwc::InvalidInput &e) {
+    refusal = e.what();
+  }
+  CHECK_THAT(refusal, ContainsSubstring(std::to_string(1024 * sizeof(double)) + " for the series, "
+                                        + std::to_string(pipeline) + " for the GPU's staging of them"));
+  std::smatch least;
+  REQUIRE(std::regex_search(refusal, least, std::regex("it needs at least ([0-9]+) bytes")));
+  in_ram.ram_limit = std::stoull(least[1].str()) - 1;
+  const auto shrunk = dtwc::run(in_ram, view);
+  CHECK(shrunk.labels() == twin.labels());
+  CHECK(shrunk.medoids() == twin.medoids());
+  CHECK(shrunk.cost() == twin.cost());
 #  endif
 }
 #endif

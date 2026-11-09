@@ -149,9 +149,9 @@ namespace detail {
 
 #ifdef DTWC_HAS_CUDA
   void assign_on_gpu(
-    const Problem &prob, const std::vector<std::vector<double>> &series, index_t first,
-    const std::vector<std::vector<double>> &medoids, std::span<const index_t> medoid_indices,
-    std::vector<std::vector<index_t>> &labels, std::vector<core::detail::OrderedMedoidObjective> &costs)
+    const Problem &prob, const Data &points, index_t first, const std::vector<std::span<const double>> &medoids,
+    std::span<const index_t> medoid_indices, std::vector<std::vector<index_t>> &labels,
+    std::vector<core::detail::OrderedMedoidObjective> &costs, std::size_t staging_bytes)
   {
     const auto distance = prob.distance();
     cuda::CUDADistMatOptions opts;
@@ -160,10 +160,15 @@ namespace detail {
     opts.band = distance.band;
     opts.use_squared_l2 = distance.metric == core::MetricType::SquaredL2;
     opts.verbose = prob.verbose();
+    opts.host_staging_bytes = staging_bytes;
     const std::size_t slots = medoids.size();
+    // Each padded row is one thread's (disjoint writes); a block's rows go to the team only where they are many.
+    const auto parallel = [](std::size_t count, const std::function<void(std::size_t)> &task) {
+      run_openmp(task, count, count > 64);
+    };
     (void)cuda::compute_medoid_distances_cuda(
-      series, medoids, opts,
-      [&](std::size_t block_first, std::size_t count, std::span<const double> distances) {
+      static_cast<std::size_t>(points.size()), [&points](std::size_t i) { return points.series(i); }, medoids, opts,
+      parallel, [&](std::size_t block_first, std::size_t count, std::span<const double> distances) {
         const index_t block_point = first + static_cast<index_t>(block_first);
         assign_in_blocks(block_point, count, costs, [&](index_t sub_first, std::size_t n, std::span<double> best) {
           assign_points(sub_first, n, best, medoid_indices, labels, [&](index_t p) {
@@ -296,15 +301,11 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   } else {
 #ifdef DTWC_HAS_CUDA
     if (gpu) {
-      // CUDA uploads owned Float64 series, which a view leaves p_vec empty of: the series and the medoids are read
-      // from an owned copy of it, freed when the assignment returns.
-      std::optional<Data> copy;
-      if (data.is_view()) copy.emplace(dtwc::detail::owned_copy(data, core::Precision::Float64));
-      const auto &series = copy ? copy->p_vec : data.p_vec;
-      std::vector<std::vector<double>> medoid_series;
+      // The series and the medoids are read where they lie, a view's or owned: no copy of them is made.
+      std::vector<std::span<const double>> medoid_series;
       medoid_series.reserve(medoids.size());
-      for (const index_t medoid : medoids) medoid_series.push_back(series[static_cast<std::size_t>(medoid)]);
-      detail::assign_on_gpu(prob, series, 0, medoid_series, medoids, labels, costs);
+      for (const index_t medoid : medoids) medoid_series.push_back(data.series(static_cast<std::size_t>(medoid)));
+      detail::assign_on_gpu(prob, data, 0, medoid_series, medoids, labels, costs, opts.gpu_staging_bytes);
     } else
 #else
     detail::say_cpu_assignment(prob, n_points, samples.size(), static_cast<std::size_t>(opts.n_clusters));

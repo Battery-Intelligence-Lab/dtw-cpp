@@ -155,8 +155,9 @@ constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
 
 void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision)
 {
-  // The GPU routes upload owned Float64 series (data_.p_vec, or an owned copy of
-  // a view's) and run Standard DTW with no missing-data strategy, in L1 or squared L2.
+  // The GPU routes upload Float64 series (a fill data_.p_vec or an owned copy of
+  // a view's, CUDA's FastCLARA assignment the series' spans) and run Standard
+  // DTW with no missing-data strategy, in L1 or squared L2.
   if (prob.device().first != Device::GPU) return;
   if (series_precision == core::Precision::Float32)
     reject_gpu_request(where, "computes from Float64 series, but precision = Float32 was requested",
@@ -900,7 +901,8 @@ void Problem::SeriesCheck::finish() const
                        + std::to_string(mark_) + ") is entirely NaN, so MissingStrategy::Interpolate has nothing to "
                        "interpolate from. Use ZeroCost or AROW, or drop the series.");
 
-  // The GPU routes also need univariate Float64 series (a view's are uploaded as an owned copy).
+  // The GPU routes also need univariate Float64 series (a fill uploads a view's as an owned copy; CUDA's FastCLARA
+  // assignment reads them where they lie).
   if (problem.device_ != Device::GPU) return;
   validate_gpu_request(where_, problem, problem.data_.precision);
   if (problem.data_.ndim > 1)

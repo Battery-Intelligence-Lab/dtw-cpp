@@ -37,6 +37,7 @@
 #include <device_launch_parameters.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -928,22 +929,32 @@ struct DTWLaunchWorkspace {
   size_t counter_capacity = 0;
   size_t scratch_capacity = 0;
   CachedHostBuffer<T> host_series;
+  CachedHostBuffer<int> host_lengths; ///< the medoid pipeline's lengths, beside host_series
+  CachedHostBuffer<double> host_out;  ///< the medoid pipeline's distance slots
   CudaPtr<T> d_series;
   CudaPtr<int> d_lengths;
   CudaPtr<double> d_out; ///< one launch's slots
   CudaPtr<float> d_out32; ///< d_out rounded to floats, for a float32 matrix
   CudaPtr<int> d_counter;
   CudaPtr<T> d_scratch; ///< the global wavefront's anti-diagonals, a slice per block
-  CudaStream stream;
+  CudaStream stream;      ///< the launches (the medoid pipeline's compute stream)
+  CudaStream copy_stream; ///< the medoid pipeline's uploads
   CudaEvent evt_start;
   CudaEvent evt_end;
+  /// The medoid pipeline's order: each series slot's upload and kernel done, each distance slot's download done.
+  std::array<CudaEvent, 2> uploaded, computed;
+  std::array<CudaEvent, 3> downloaded;
 
-  /// Its pinned host buffer and every device buffer freed, its stream and events too: what
+  /// Its pinned host buffers and every device buffer freed, its streams and events too: what
   /// core::release_thread_scratch() does to it (release_thread_workspace), so a top-level call leaves no GPU or pinned
   /// memory behind.
   void release() noexcept
   {
     host_series = CachedHostBuffer<T>{};
+    host_lengths = CachedHostBuffer<int>{};
+    host_out = CachedHostBuffer<double>{};
+    reset_events();
+    copy_stream.reset();
     d_series.reset();
     d_lengths.reset();
     d_out.reset();
@@ -967,8 +978,10 @@ struct DTWLaunchWorkspace {
       d_counter.reset();
       d_scratch.reset();
       stream.reset();
+      copy_stream.reset();
       evt_start.reset();
       evt_end.reset();
+      reset_events();
       series_capacity = 0;
       length_capacity = 0;
       out_capacity = 0;
@@ -985,6 +998,26 @@ struct DTWLaunchWorkspace {
     if (!evt_end)
       evt_end = make_cuda_event();
   }
+
+  /// The medoid pipeline's second stream and its events, made on its first use on this thread's device.
+  void ensure_pipeline()
+  {
+    if (!copy_stream) copy_stream = make_cuda_stream();
+    const auto make = [](auto &events) {
+      for (auto &event : events)
+        if (!event) event = make_cuda_event();
+    };
+    make(uploaded);
+    make(computed);
+    make(downloaded);
+  }
+
+  void reset_events() noexcept
+  {
+    for (auto &event : uploaded) event.reset();
+    for (auto &event : computed) event.reset();
+    for (auto &event : downloaded) event.reset();
+  }
 };
 
 /// This thread's launch workspace of T, as it is: reached here so that core::release_thread_scratch() can free it
@@ -996,13 +1029,16 @@ DTWLaunchWorkspace<T> &workspace_of()
   return workspace;
 }
 
-/// What a workspace holds, host and device: its staging buffer, pinned or not, and every device buffer.
+/// What a workspace holds, host and device: its staging buffers, pinned or not, and every device buffer.
 template <typename T>
 std::size_t workspace_bytes(const DTWLaunchWorkspace<T> &w)
 {
-  return (w.host_series.pinned ? w.host_series.capacity : w.host_series.fallback.capacity()) * sizeof(T)
-         + w.series_capacity * sizeof(T) + w.length_capacity * sizeof(int) + w.out_capacity * sizeof(double)
-         + w.out32_capacity * sizeof(float) + w.counter_capacity * sizeof(int) + w.scratch_capacity * sizeof(T);
+  const auto host = [](const auto &buffer) {
+    return (buffer.pinned ? buffer.capacity : buffer.fallback.capacity()) * sizeof(*buffer.fallback.data());
+  };
+  return host(w.host_series) + host(w.host_lengths) + host(w.host_out) + w.series_capacity * sizeof(T)
+         + w.length_capacity * sizeof(int) + w.out_capacity * sizeof(double) + w.out32_capacity * sizeof(float)
+         + w.counter_capacity * sizeof(int) + w.scratch_capacity * sizeof(T);
 }
 
 template <typename T>
@@ -1051,7 +1087,7 @@ void ensure_dtw_device_capacity(
 
 /// @p src at @p dst, padded with zeros to max_L samples of T; returns its length.
 template <typename T>
-int pad_series(T *dst, const std::vector<double> &src, size_t max_L)
+int pad_series(T *dst, std::span<const double> src, size_t max_L)
 {
   const size_t len = src.size();
   if constexpr (std::is_same_v<T, double>) {
@@ -1130,10 +1166,10 @@ struct Launches {
   size_t scratch_elems() const { return static_cast<size_t>(global_grid) * 3 * max_L; }
   size_t counter_elems() const { return persistent_grid > 0 ? 1 : 0; }
 
-  /// Pairs first .. first + count - 1 of the workspace's uploaded series (n:
-  /// pair_series'), their distances into its out buffer from first_slot on.
-  void operator()(DTWLaunchWorkspace<T> &workspace, int n, std::int64_t first, int count,
-                  std::int64_t first_slot, cudaStream_t stream) const
+  /// Pairs first .. first + count - 1 of the uploaded `series` and their `lengths` on the device (n:
+  /// pair_series'), their distances into the workspace's out buffer from first_slot on.
+  void operator()(DTWLaunchWorkspace<T> &workspace, const T *series, const int *lengths, int n, std::int64_t first,
+                  int count, std::int64_t first_slot, cudaStream_t stream) const
   {
     // The warp-family kernels run one pair per warp, PAIRS_PER_BLOCK warps per
     // block; each warp stages its pair's two series, `staged` samples apiece,
@@ -1143,7 +1179,7 @@ struct Launches {
           (std::int64_t{ count } + PAIRS_PER_BLOCK - 1) / PAIRS_PER_BLOCK);
       const size_t warp_shared_mem = PAIRS_PER_BLOCK * 2 * staged * sizeof(T);
       kernel<<<grid_size, PAIRS_PER_BLOCK * 32, warp_shared_mem, stream>>>(
-          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
+          series, lengths, workspace.d_out.get(),
           n, max_L, count, use_squared_l2, band, first, first_slot);
     };
 
@@ -1158,13 +1194,13 @@ struct Launches {
       if (persistent)
         CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
       shared_kernel<<<persistent ? persistent_grid : count, block_size, shared_mem, stream>>>(
-          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
+          series, lengths, workspace.d_out.get(),
           n, max_L, count, use_squared_l2, band,
           persistent ? workspace.d_counter.get() : nullptr, first, first_slot, nullptr);
     } else if (path == detail::KernelPath::WavefrontGlobal) {
       CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
       dtw_wavefront_kernel<T, Wavefront::Global, P><<<global_grid, block_size, 0, stream>>>(
-          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_out.get(),
+          series, lengths, workspace.d_out.get(),
           n, max_L, count, use_squared_l2, band,
           workspace.d_counter.get(), first, first_slot, workspace.d_scratch.get());
     } else {
@@ -1243,7 +1279,8 @@ void launch_dtw_kernel(
     }
     const auto span = static_cast<size_t>(end - first_slot);
     CUDA_CHECK(cudaMemsetAsync(workspace.d_out.get(), 0, span * sizeof(double), stream));
-    launches(workspace, static_cast<int>(N), first, count, first_slot, stream);
+    launches(workspace, workspace.d_series.get(), workspace.d_lengths.get(), static_cast<int>(N), first, count,
+             first_slot, stream);
     out.visit([&](auto *values) {
       using V = std::remove_pointer_t<decltype(values)>;
       const void *slots = workspace.d_out.get();
@@ -1271,72 +1308,102 @@ void launch_dtw_kernel(
   gpu_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
 }
 
-/// Hand @p consume the distance of each of @p series to each of the k
-/// @p medoids, computed in T, a block of consecutive series at a time. The
-/// medoids go up once, first (pair_series' rectangle of k columns); each block
-/// goes up behind them and is one launch, whose distances come back whole. A
-/// block's samples and its distances are each at most kMaxPairsPerLaunch
-/// values, so the device and the host hold one block whatever the number of
-/// series. GPU timing is the CUDA-event time from each block's upload to its
-/// distances' download, summed.
+/// Hand @p consume the distance of each of the N series (series(i), read where
+/// they lie) to each of the k @p medoids, computed in T, a block of
+/// consecutive series at a time (detail::medoid_blocks, within
+/// opts.host_staging_bytes where it is set). A pipeline on two streams: the
+/// medoids go up once into each device series slot, first (pair_series'
+/// rectangle of k columns); block b's rows are padded from the spans by the
+/// caller's threads (`parallel`, each its own rows) into host series slot b % 2
+/// once block b - 2's upload has left it, and uploaded on the copy stream into
+/// device slot b % 2 once block b - 2's kernel has; its kernel and the download
+/// of its distances into pinned distance slot b % 3 follow on the compute
+/// stream. Blocks b + 1 and b + 2 are enqueued before the host assigns block b
+/// (consume), so the padding, the transfers, the kernels and the assignment
+/// overlap, and consume takes the blocks in order on the calling thread: what it
+/// adds does not depend on the overlap. A failure drains both streams before it
+/// leaves, so no copy is in flight into or out of a buffer the next call
+/// reuses. GPU timing is the CUDA-event time from the medoids' upload to the
+/// last download.
 template <typename T>
 void launch_medoid_kernel(
-    const std::vector<std::vector<double>> &series,
-    const std::vector<std::vector<double>> &medoids, size_t max_L,
-    bool use_squared_l2, int band, int device_id, double &gpu_time_sec,
-    detail::KernelPath kernel_path,
-    const std::function<void(size_t, size_t, std::span<const double>)> &consume)
+    size_t N, const SeriesAt &series, const std::vector<std::span<const double>> &medoids, size_t max_L,
+    const CUDADistMatOptions &opts, double &gpu_time_sec, detail::KernelPath kernel_path,
+    const ParallelFor &parallel, const std::function<void(size_t, size_t, std::span<const double>)> &consume)
 {
-  const size_t N = series.size();
   const size_t k = medoids.size();
-  const size_t block = std::clamp<size_t>(
-      static_cast<size_t>(detail::kMaxPairsPerLaunch) / std::max(k, max_L), 1, N);
-  const Launches<T, Pairs::Rectangle> launches(kernel_path, max_L, use_squared_l2, band,
+  const auto plan = detail::medoid_blocks(N, k, max_L, sizeof(T), opts.host_staging_bytes);
+  const size_t block = plan.block, blocks = (N + block - 1) / block;
+  const Launches<T, Pairs::Rectangle> launches(kernel_path, max_L, opts.use_squared_l2, opts.band,
                                                static_cast<std::int64_t>(block * k),
-                                               device_limits(device_id));
+                                               device_limits(opts.device_id));
 
-  // Every buffer is allocated before the first block is handed out.
-  auto &workspace = get_dtw_launch_workspace<T>(device_id);
-  ensure_dtw_device_capacity(workspace, (k + block) * max_L, k + block, block * k,
+  // Every buffer is allocated before the first block is handed out: series_slots device slots of [medoids | block]
+  // (the layout pair_series reads), on the host the medoids and then series_slots slots of a block, all pinned where
+  // the runtime grants it (a pageable buffer serialises its copies; the results stay the same).
+  auto &workspace = get_dtw_launch_workspace<T>(opts.device_id);
+  workspace.ensure_pipeline();
+  const size_t device_slot = (k + block) * max_L;
+  ensure_dtw_device_capacity(workspace, plan.series_slots * device_slot, plan.series_slots * (k + block), block * k,
                              launches.scratch_elems(), launches.counter_elems());
-  T *h_flat_series = workspace.host_series.ensure(
-      (k + block) * max_L, (k + block) * max_L * sizeof(T) >= PINNED_THRESHOLD);
-  std::vector<int> lengths(k + block);
-  std::vector<double> distances(block * k);
+  T *const h_series = workspace.host_series.ensure((k + plan.series_slots * block) * max_L, true);
+  int *const h_lengths = workspace.host_lengths.ensure(k + plan.series_slots * block, true);
+  double *const h_out = workspace.host_out.ensure(plan.distance_slots * block * k, true);
+  T *const d_series = workspace.d_series.get();
+  int *const d_lengths = workspace.d_lengths.get();
+  const cudaStream_t copy = workspace.copy_stream.get(), compute = workspace.stream.get();
 
-  for (size_t m = 0; m < k; ++m)
-    lengths[m] = pad_series(h_flat_series + m * max_L, medoids[m], max_L);
-  auto stream = workspace.stream.get();
-  CUDA_CHECK(cudaMemcpyAsync(workspace.d_series.get(), h_flat_series,
-                              k * max_L * sizeof(T), cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get(), lengths.data(),
-                              k * sizeof(int), cudaMemcpyHostToDevice, stream));
+  // Block b: its series first .. first + count - 1 padded, uploaded, computed and downloaded.
+  const auto enqueue = [&](size_t b) {
+    const size_t s = b % 2, first = b * block, count = std::min(block, N - first);
+    T *const h_slot = h_series + (k + s * block) * max_L;
+    int *const h_slot_lengths = h_lengths + k + s * block;
+    if (b >= 2) CUDA_CHECK(cudaEventSynchronize(workspace.uploaded[s].get())); // block b - 2's upload left the slot
+    parallel(count, [&](size_t i) { h_slot_lengths[i] = pad_series(h_slot + i * max_L, series(first + i), max_L); });
+    if (b >= 2) CUDA_CHECK(cudaStreamWaitEvent(copy, workspace.computed[s].get(), 0)); // and block b - 2's kernel
+    T *const d_slot = d_series + s * device_slot;
+    int *const d_slot_lengths = d_lengths + s * (k + block);
+    CUDA_CHECK(cudaMemcpyAsync(d_slot + k * max_L, h_slot, count * max_L * sizeof(T), cudaMemcpyHostToDevice, copy));
+    CUDA_CHECK(cudaMemcpyAsync(d_slot_lengths + k, h_slot_lengths, count * sizeof(int), cudaMemcpyHostToDevice, copy));
+    CUDA_CHECK(cudaEventRecord(workspace.uploaded[s].get(), copy));
+    CUDA_CHECK(cudaStreamWaitEvent(compute, workspace.uploaded[s].get(), 0));
+    launches(workspace, d_slot, d_slot_lengths, static_cast<int>(k), 0, static_cast<int>(count * k), 0, compute);
+    CUDA_CHECK(cudaEventRecord(workspace.computed[s].get(), compute));
+    // Distance slot b % 3 was last read by the host's assignment of block b - 3, which returned before this call.
+    CUDA_CHECK(cudaMemcpyAsync(h_out + (b % 3) * block * k, workspace.d_out.get(), count * k * sizeof(double),
+                               cudaMemcpyDeviceToHost, compute));
+    CUDA_CHECK(cudaEventRecord(workspace.downloaded[b % 3].get(), compute));
+  };
 
-  gpu_time_sec = 0.0;
-  T *const h_block = h_flat_series + k * max_L;
-  for (size_t first = 0; first < N; first += block) {
-    const size_t count = std::min(block, N - first);
-    for (size_t i = 0; i < count; ++i)
-      lengths[k + i] = pad_series(h_block + i * max_L, series[first + i], max_L);
-
-    CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), stream));
-    CUDA_CHECK(cudaMemcpyAsync(workspace.d_series.get() + k * max_L, h_block,
-                                count * max_L * sizeof(T), cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get() + k, lengths.data() + k,
-                                count * sizeof(int), cudaMemcpyHostToDevice, stream));
-    launches(workspace, static_cast<int>(k), 0, static_cast<int>(count * k), 0, stream);
-    CUDA_CHECK(cudaMemcpyAsync(distances.data(), workspace.d_out.get(),
-                                count * k * sizeof(double), cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), stream));
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-
-    float elapsed_ms = 0.0f;
-    CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms,
-                                    workspace.evt_start.get(),
-                                    workspace.evt_end.get()));
-    gpu_time_sec += static_cast<double>(elapsed_ms) / 1000.0;
-    consume(first, count, std::span<const double>(distances.data(), count * k));
+  try {
+    for (size_t m = 0; m < k; ++m) h_lengths[m] = pad_series(h_series + m * max_L, medoids[m], max_L);
+    CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), copy));
+    for (size_t s = 0; s < plan.series_slots; ++s) {
+      CUDA_CHECK(cudaMemcpyAsync(d_series + s * device_slot, h_series, k * max_L * sizeof(T), cudaMemcpyHostToDevice,
+                                 copy));
+      CUDA_CHECK(cudaMemcpyAsync(d_lengths + s * (k + block), h_lengths, k * sizeof(int), cudaMemcpyHostToDevice,
+                                 copy));
+    }
+    enqueue(0);
+    if (blocks > 1) enqueue(1);
+    for (size_t b = 0; b < blocks; ++b) {
+      if (b + 2 < blocks) enqueue(b + 2);
+      CUDA_CHECK(cudaEventSynchronize(workspace.downloaded[b % 3].get()));
+      const size_t first = b * block, count = std::min(block, N - first);
+      consume(first, count, std::span<const double>(h_out + (b % 3) * block * k, count * k));
+    }
+    CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), compute));
+    CUDA_CHECK(cudaEventSynchronize(workspace.evt_end.get()));
+  } catch (...) {
+    // Outside every OpenMP region (`parallel` and consume join theirs before they return); their errors set aside.
+    (void)cudaStreamSynchronize(copy);
+    (void)cudaStreamSynchronize(compute);
+    (void)cudaGetLastError();
+    throw;
   }
+  float elapsed_ms = 0.0f;
+  CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, workspace.evt_start.get(), workspace.evt_end.get()));
+  gpu_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
 }
 
 /// The precision and the kernel path of a batch of pairs @p pairs whose longest
@@ -1415,9 +1482,9 @@ CUDADistMatResult compute_distance_matrix_cuda(
 }
 
 CUDADistMatResult compute_medoid_distances_cuda(
-    const std::vector<std::vector<double>> &series,
-    const std::vector<std::vector<double>> &medoids,
-    const CUDADistMatOptions &opts,
+    std::size_t n_series, const SeriesAt &series,
+    const std::vector<std::span<const double>> &medoids,
+    const CUDADistMatOptions &opts, const ParallelFor &parallel,
     const std::function<void(size_t, size_t, std::span<const double>)> &consume)
 {
   // Before the first block: a missing device must not answer with zeros.
@@ -1425,13 +1492,13 @@ CUDADistMatResult compute_medoid_distances_cuda(
 
   CUDADistMatResult result;
   result.kernel_used = "none";
-  result.n = series.size();
-  if (series.empty() || medoids.empty()) return result;
+  result.n = n_series;
+  if (n_series == 0 || medoids.empty()) return result;
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
   size_t max_L = 0;
-  for (const auto &s : series) max_L = std::max(max_L, s.size());
+  for (size_t i = 0; i < n_series; ++i) max_L = std::max(max_L, series(i).size());
   for (const auto &s : medoids) max_L = std::max(max_L, s.size());
 
   // Zero distances would read as every series equal to every medoid.
@@ -1441,17 +1508,17 @@ CUDADistMatResult compute_medoid_distances_cuda(
 
   const auto [use_fp32, kernel_path] = select_route(max_L, opts, Pairs::Rectangle);
   result.kernel_used = std::string(detail::kernel_path_name(kernel_path));
-  result.pairs_computed = series.size() * medoids.size();
+  result.pairs_computed = n_series * medoids.size();
 
   if (use_fp32)
-    launch_medoid_kernel<float>(series, medoids, max_L, opts.use_squared_l2, opts.band,
-                                opts.device_id, result.gpu_time_sec, kernel_path, consume);
+    launch_medoid_kernel<float>(n_series, series, medoids, max_L, opts, result.gpu_time_sec, kernel_path, parallel,
+                                consume);
   else
-    launch_medoid_kernel<double>(series, medoids, max_L, opts.use_squared_l2, opts.band,
-                                 opts.device_id, result.gpu_time_sec, kernel_path, consume);
+    launch_medoid_kernel<double>(n_series, series, medoids, max_L, opts, result.gpu_time_sec, kernel_path, parallel,
+                                 consume);
 
   if (opts.verbose) {
-    std::cout << "CUDA DTW: " << result.pairs_computed << " pairs (" << series.size()
+    std::cout << "CUDA DTW: " << result.pairs_computed << " pairs (" << n_series
               << " series x " << medoids.size() << " medoids)"
               << (use_fp32 ? " [FP32]" : " [FP64]")
               << " in " << result.gpu_time_sec * 1000 << "ms"
