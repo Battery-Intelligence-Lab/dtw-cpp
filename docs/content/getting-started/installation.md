@@ -187,7 +187,7 @@ The easiest way to use DTW-C++ from Python:
 pip install dtwcpp
 ```
 
-Exact MIP clustering (`method="mip"`) solves with highspy, which `pip install dtwcpp` installs with it.
+The wheel links no HiGHS: exact MIP clustering (`method="mip"`) and LR-core's Kelley root (`lr_root="kelley"`) solve with highspy, which `pip install dtwcpp` installs with it.
 
 The macOS and Windows wheels carry LLVM's OpenMP runtime (`libomp`). A process that also loads Intel's OpenMP runtime (`libiomp5`, as PyTorch and MKL builds do) can abort with "OMP: Error #15"; keep such work in a separate process.
 
@@ -207,9 +207,9 @@ See [CUDA Setup](cuda-setup.md) for detailed GPU configuration.
 
 ## GPU Acceleration
 
-CUDA GPU acceleration is optional. See the dedicated [CUDA Setup Guide](cuda-setup.md) for installation instructions.
+GPU acceleration is optional. See the dedicated [CUDA Setup Guide](cuda-setup.md) for installation instructions.
 
-> **Note:** CUDA is not available on macOS. Use Linux or Windows with an NVIDIA GPU.
+> **Note:** CUDA is not available on macOS. Use Linux or Windows with an NVIDIA GPU for CUDA; on a Mac the GPU backend is Metal (`-DDTWC_ENABLE_METAL`, on by default on Apple platforms; see [GPU backends](../../method/gpu-backends/)).
 
 ## Visual Studio Code
 
@@ -225,4 +225,4 @@ Visual Studio Code (VScode) is one of the powerful editors and we personally pre
 
 ## Importing as a library
 
-DTW-C++ is designed to be used both as a standalone application and a library where you can add into your existing C++ code. You may copy and use the [example project on our GitHub page](https://github.com/Battery-Intelligence-Lab/dtw-cpp/tree/main/examples/example_project)
+DTW-C++ is designed to be used both as a standalone application and a library where you can add into your existing C++ code. You may copy and use the [example project on our GitHub page](https://github.com/Battery-Intelligence-Lab/dtw-cpp/tree/main/examples/cpp/example_project)

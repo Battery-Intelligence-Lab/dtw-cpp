@@ -10,7 +10,7 @@ DTWC++ includes scripts for building and testing on SLURM-managed HPC clusters. 
 ## Prerequisites
 
 - SSH access to a SLURM cluster (`ssh` and `rsync` — both ship with Git Bash on Windows)
-- Cluster modules: GCC >= 13, CMake >= 3.26, and optionally CUDA >= 12.0, Arrow >= 15.0
+- Cluster modules: a C++20-capable GCC or Clang (the scripts load `GCC/13.2.0`), CMake >= 3.26, and optionally CUDA >= 12.0 (for GPU builds) and Arrow (the smoke test's Parquet mode loads `Arrow/15.0.0`)
 
 ## Configuration
 
@@ -79,7 +79,8 @@ clustering job through the same wrapper, which ships inside the `dtwcpp` package
 installed wheel needs no source checkout. Put `.env` in the directory you run Python from,
 or set `DTWC_REPO_ROOT` to the directory that holds it; the labels are downloaded to
 `results/slurm/cluster_<job id>/` there (the labels only: the run report, `<name>_report.txt`,
-stays in the job's directory on the cluster). `DTWC_REPO_ROOT` steers only this Python route:
+stays in `results/cluster_<job id>/` under `SLURM_REMOTE_BASE/src` on the cluster, which
+`slurm_remote.sh download` fetches). `DTWC_REPO_ROOT` steers only this Python route:
 `bash scripts/slurm/slurm_remote.sh` always reads the `.env` of, and uploads, its own
 checkout.
 

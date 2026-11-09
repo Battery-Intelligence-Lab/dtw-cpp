@@ -41,7 +41,7 @@ raises `DeviceError` naming the setting and its value:
 |---|---|
 | a variant other than Standard, a missing-data strategy, `ndim > 1` | `DeviceError` |
 | Float32 series, owned or a view | `DeviceError` |
-| Float64 series that a `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) | uploaded as an owned copy, freed when the fill or the assignment returns |
+| Float64 series that a `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) | uploaded as an owned copy, freed when the fill or the assignment returns (`dtwc_cl`'s memory plan counts that copy and the GPU's staging buffer) |
 | squared L2 (`Problem::set_metric(MetricType::SquaredL2)`, dense or mapped) | computed with `use_squared_l2` |
 | Metal: precision FP64, or a GPU index other than 0 (refused by `set_device`) | `DeviceError` |
 | CUDA: precision Auto, FP32 or FP64; any device index | honoured |
@@ -49,7 +49,9 @@ raises `DeviceError` naming the setting and its value:
 
 The same validator runs in `Problem::dtw_function()`, through which
 OneBatchPAM, FastCLARA's assignment and TADPole compute the pairs they need.
-Known gap: OneBatchPAM and TADPole compute on the CPU when the device is a GPU.
+Known gap: through a Tier-2 `Problem`, OneBatchPAM and TADPole compute on the CPU
+when the device is a GPU (`dtwc_cl` and Tier-1 `cluster()` refuse them on a GPU with
+a `DeviceError`).
 FastCLARA's assignment runs on the GPU with CUDA: `compute_medoid_distances_cuda`
 computes every series against the k medoids on the fill's kernels and route
 rule, one launch per block of series (a block holds at most 2^27 samples and as
@@ -77,7 +79,7 @@ The sequential dependency is on the three predecessors of $$(i, j)$$. Two natura
 1. **Anti-diagonal wavefront.** Cells on the same anti-diagonal ($$i + j = k$$) are mutually independent — once diagonal $$k-1$$ and $$k-2$$ are done, diagonal $$k$$ can be computed in parallel.
 2. **Register tile.** Each thread holds a column *stripe* in registers and propagates the left-neighbour cost through the warp via `shfl_up` / `simd_shuffle_up`. No barrier is needed between cells in the same row — the shuffle is implicitly synchronised within a warp / SIMD-group.
 
-DTWC++ uses both, plus a third row-major scheme for tight Sakoe-Chiba bands.
+DTWC++ uses both, plus, on Metal, a third row-major scheme for tight Sakoe-Chiba bands.
 
 ## Kernel dispatch tables
 
@@ -164,4 +166,4 @@ See [`docs/CITATIONS.md`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/bl
 | Metal kernels | [dtwc/metal/metal_dtw.mm](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.mm) | Wavefront × 2, banded-row, regtile × 2 |
 | Metal API | [dtwc/metal/metal_dtw.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.hpp) | `MetalDistMatOptions`, `MetalDistMatResult` |
 | CPU lower bounds | [dtwc/core/lower_bound_impl.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/lower_bound_impl.hpp) | `compute_envelope`, `lb_keogh_symmetric` |
-| Dispatcher | [dtwc/Problem.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/Problem.cpp) | `fill_distance_matrix` routes through the strategy enum |
+| Dispatcher | [dtwc/Problem.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/Problem.cpp) | `fill_distance_matrix` routes on the Problem's device: the CPU fill, or this build's GPU backend |

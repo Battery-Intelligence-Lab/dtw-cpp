@@ -50,25 +50,21 @@ runs Kelley's cutting planes instead, whose master LP solves on linked HiGHS in
 `dtwc_cl`, C++ and the MATLAB MEX, and on highspy in Python, which dtwcpp requires.
 Without either, asking for it raises `SolverError`
 naming the fix before any distance is computed; it never falls back to the subgradient
-root. Both roots reach the same optimum, at different costs: on synthetic series
-(2026-10-06, the LR phase then serial) the subgradient root certified noisy series at
-the root, with no branching, where Kelley's needed up to 487,365 branch-and-bound
-nodes, and was the faster there; Kelley's certified constant, level-shifted series (a
-line metric) in 8–13 iterations, where the subgradient's LR phase took 43–230× longer.
+root. Both roots reach the same optimum, at different costs: on some synthetic noisy
+series the subgradient root certified at the root, with no branching, where Kelley's
+needed up to 487,365 branch-and-bound nodes; on constant, level-shifted series (a
+line metric) Kelley's certified in 8–13 iterations, where the subgradient root took
+far longer.
 
-The recorded claims are intentionally not polished after the fact:
+What the route does and does not establish:
 
-- Root exactness met its registered clustered-instance band (40/40 in the
-  implementation gate), but a full quiet UCR certification sweep remains open.
-- The universal reduced-cost fixing floor was **falsified**: mean elimination was
-  80.3%, minimum 73.3%, and 77.8% of qualifying instances reached 80%.
+- On clustered instances the root gap was at most 0.1% on 40 of 40 test
+  instances; certification across the full UCR archive has not been run.
+- Reduced-cost fixing has no guaranteed floor: on 36 qualifying clustered test
+  instances it eliminated 80.3% of the candidates on average (minimum 73.3%).
 - Fractional solutions are not generally half-integral (values of 1/4, 1/3, and
   3/4 occur), so odd-cycle cuts cannot replace branching.
-- The N=10,000 throughput claim remains a quiet-machine benchmark requirement,
-  not a published result.
+- No throughput at N=10,000 is claimed: it has not been benchmarked on a quiet
+  machine.
 
-See the [full derivation and registered-band ledger](../../math/lr-core/).
-
-HiGHS PDLP was tried as an LP-bound cross-check and removed: the recorded
-comparison found matrix-free Kelley substantially faster at tested sizes even
-when GPU PDLP crossed over its CPU variant.
+See the [full derivation](../../math/lr-core/).

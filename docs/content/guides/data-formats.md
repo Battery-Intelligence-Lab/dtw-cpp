@@ -9,7 +9,7 @@ Rows represent time series unless a format stores an explicit list column.
 
 | Format | Read path | Notes |
 |---|---|---|
-| CSV / TSV / text | Core, CLI, all bindings | One series per row; use `skip_cols` for identifiers. TSV is auto-detected from `.tsv`. |
+| CSV / TSV / text | Core, CLI, all bindings | One series per row; use `skip_cols` for identifiers. A file's `.tsv` and `.txt` extensions read as tab-separated and any other as comma-separated, and the files of a folder as comma-separated, unless a delimiter is given. |
 | Arrow IPC / Feather | Core, CLI, all bindings | List/large-list Float32 or Float64 columns, read in place (memory-mapped) by the native reader; compressed (LZ4, ZSTD) and big-endian files decoded. |
 | Parquet | CLI with Arrow/Parquet enabled; Python via `pyarrow`; MATLAB via `parquetread` | Each List/LargeList Float32/64 row = one series; several scalar Float32/64 columns = one series per row, as CSV; the only scalar Float32/64 column = one whole series. Rows are named by the first string column. `--column` reads one column ([Supported data](../../getting-started/supported-data/)). |
 | HDF5 | Python conversion/I/O utilities | Optional `h5py`; convert before using the native CLI. |
@@ -19,7 +19,7 @@ Convert from CSV, Parquet, or HDF5 to Arrow IPC:
 ```sh
 dtwc-convert input.csv -o output.arrow
 dtwc-convert input.parquet -o output.arrow --name-column name
-dtwc-convert input.h5 -o output.arrow --name-column name
+dtwc-convert input.h5 -o output.arrow
 ```
 
 `dtwc-convert` writes an uncompressed file, which the reader maps and never decodes. A compressed Arrow IPC
@@ -40,7 +40,7 @@ with pa.OSFile("data.arrow", "wb") as sink:
             writer.write_batch(batch)
 ```
 
-Arrow/Parquet support is optional in native builds:
+Parquet support is optional in native builds (Arrow IPC is read in every build):
 
 ```sh
 cmake -S . -B build -DDTWC_ENABLE_ARROW=ON
@@ -53,7 +53,8 @@ Where the series live depends on the input:
   aligned, in the precision asked for, with llfio. Its series are then views of the memory-mapped file, and
   their values stay in the page cache. Otherwise it is decoded into RAM (compressed or big-endian batches, a
   copy in the other `--dtype`, a build without llfio). Where such a file does not fit the data cap
-  (`--ram-limit`, Python `ram_limit`, MATLAB `RamLimit`), non-full FastCLARA (`--method clara`, or `auto` where
+  (what `--ram-limit`, Python `ram_limit`, MATLAB `RamLimit`, the run's soft memory budget, leaves after a reserve
+  for the threads; 0 plans with 90 % of the memory available), non-full FastCLARA (`--method clara`, or `auto` where
   PAM's matrix does not fit) streams it, one record batch at a time; a mapped file is not streamed.
 - A Parquet file is read whole into RAM, or, in a native build with Arrow (`dtwc_cl`, C++ `dtwc::run`),
   streamed through non-full FastCLARA a batch of row groups at a time where it does not fit the data cap
@@ -72,15 +73,16 @@ not fit beside the series in its `--ram-limit` plan); the Python wheels and the 
 that support (llfio). `matrix_dtype` float32 (`--matrix-dtype`) stores the matrix
 at half the bytes, each distance rounded to a float.
 
-For data larger than an all-pairs matrix, choose a matrix-free method such as
-OneBatchPAM, CLARA, or TADPole rather than changing only the input container.
+For data larger than an all-pairs matrix, choose a method that holds no parent matrix,
+OneBatchPAM or non-full CLARA (TADPole keeps the pairs it computes in a packed matrix),
+rather than changing only the input container.
 
 The native CLI plans `--ram-limit` (0: 90 % of the memory available) for Parquet before
 payload materialisation. If the conservative selected-column estimate exceeds the data cap,
 only non-full FastCLARA over a single file of one series per row (a list column,
 or several Float32/Float64 columns) can stream row groups; under an explicit
-`--ram-limit`, a one-column file, directories, and other methods fail before loading
-the payload. The automatic cap never fails a run: elsewhere the series load as they
+`--ram-limit`, a one-column file, directories, and other methods stop with an `InvalidInput`
+before loading the payload. The automatic cap never fails a run: elsewhere the series load as they
 would without a limit.
 A batch holds whole row groups, decoded about 1 MiB of values at a time, and the
 data cap covers what the stream holds rather than all process memory. The streaming route emits labels and medoids

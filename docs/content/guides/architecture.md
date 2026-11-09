@@ -7,7 +7,10 @@ weight: 40
 
 The language surfaces converge on one C++ core. Device and method validation
 happen before expensive work; algorithms write their result back into `Problem`,
-so Tier-1 results and Tier-2 scores observe the same state.
+so Tier-1 results and Tier-2 scores observe the same state. `dtwc_cl`, C++
+`dtwc::cluster`, Python `dtwcpp.cluster` and MATLAB `dtwc.cluster` are one C++
+function, `dtwc::run`: the same checks, memory plan, loading decision, dispatch
+and run report, whichever language calls it.
 
 ```mermaid
 flowchart TB
@@ -19,8 +22,8 @@ flowchart TB
     LOAD[Lazy Dataset / DataLoader / Arrow ingest]
     PROB[Problem: data, DTW policy, distance storage, result state]
     MATRIX[Distance schedules: CPU OpenMP / CUDA / Metal / mmap]
-    FREE[Matrix-free schedules: OneBatchPAM / CLARA / TADPole]
-    ALG[Matrix consumers: FastPAM / Lloyd / hierarchy]
+    FREE[No parent matrix: OneBatchPAM / non-full CLARA]
+    ALG[Matrix consumers: FastPAM / Lloyd / hierarchy / TADPole]
     SOLVE[Exact routes: HiGHS / Gurobi / LR-core]
     OUT[Result, scores, checkpoints, CSV outputs]
 
@@ -44,5 +47,5 @@ flowchart TB
 ```
 
 The important scaling decision is the branch after `Problem`: changing file
-format reduces ingestion cost, while choosing a matrix-free algorithm avoids the
-quadratic distance matrix itself.
+format reduces ingestion cost, while choosing an algorithm that holds no parent
+matrix (OneBatchPAM, non-full CLARA) avoids the quadratic distance matrix itself.
