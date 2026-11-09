@@ -46,9 +46,7 @@ d_soft = dtwc.distance.dtw(x, y, 'Variant', 'softdtw', 'SdtwGamma', 1.0);
 fprintf('Soft-DTW distance: %.4f\n', d_soft);
 ```
 
-The distance of two series is `dtwc.distance.dtw`, for every variant. The old
-root-level helpers such as `dtwc.dtw_distance(...)` were removed in this
-breaking release.
+The distance of two series is `dtwc.distance.dtw`, for every variant.
 
 Its settings are name-value pairs, the `dtwc_cl` keys in CamelCase; C++ reads
 and checks them, so an unknown name, a parameter outside its domain or a
@@ -93,9 +91,10 @@ memory plan, stages and result), which `res.Report` holds.
 `dtwc.cluster(data, k, Name, Value, ...)` takes these `dtwc_cl` keys, by
 Python's words in CamelCase: `MatrixDtype` (`'float64'`, or `'float32'` for half the
 matrix memory, each distance rounded to a single), `RamLimit` (the memory the run
-plans for: a byte count, or a size such as `'8G'`; `0` is automatic, as `dtwc_cl`'s
-`--ram-limit`; a limit that cannot hold the run raises `dtwc:invalidArgument`, and an
-Arrow IPC file whose series it cannot hold streams through CLARA), `Method`, `Band`, `Metric`,
+plans for: a byte count, or a size such as `'8G'`; `0` is automatic, 90 % of the memory
+available, as `dtwc_cl`'s `--ram-limit`; a limit that cannot hold the run raises
+`dtwc:invalidArgument`, and an Arrow IPC file whose series it cannot hold streams through
+CLARA), `Method`, `Band`, `Metric`,
 `Variant` and its parameters (`WdtwG`, `AdtwPenalty`, `SdtwGamma`, `MsmC`,
 `TweNu`, `TweLambda`), `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`,
 `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver` and the MIP
@@ -138,8 +137,10 @@ res = dtwc.cluster({x1, x2, x3, x4}, 2);
 | `Name` | `''` | the run's name: the file's name without its extension, the folder's name, or `'dataset'` |
 | `Dtype` | `'float64'` | the precision the series are stored in: `'float32'` keeps them `single`, half the memory, each value the double read rounded; `single` data alone stays `double` |
 
-CSV/TSV text, folders of it and Arrow IPC (`.arrow`, `.ipc`, `.feather`: read in
-place) are read by the C++ reader in the MEX, the one `dtwc_cl` and Python use.
+CSV/TSV text, folders of it and Arrow IPC (`.arrow`, `.ipc`, `.feather`: mapped, its
+series views of the file; decoded or read into memory where it cannot be viewed in place,
+as a compressed file) are read by the C++ reader in the MEX, the one `dtwc_cl` and
+Python use.
 Parquet (`.parquet`, `.pq`, or a folder of them) is read
 by MATLAB's `parquetread` (R2019a or later; the MEX links no Arrow) by the C++
 reader's rule ([Supported data](../supported-data/)): a list column, or a row of
@@ -182,6 +183,7 @@ Parameters:
 |-----------|------|---------|-------------|
 | `X` | numeric matrix (N x L) or cell of vectors | required | One series per row, or per cell (any lengths) |
 | `Band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
+| `MatrixDtype` | char | `'float64'` | `'float64'` or `'float32'`: the matrix's value type and the class of `D` (`double` or `single`); `'float32'` takes half the memory, each distance rounded to a single |
 
 The returned matrix `D` is symmetric with zeros on the diagonal.
 
@@ -298,5 +300,5 @@ snake_case in Python and CamelCase in MATLAB's name-value keys and properties.
 | `clf.inertia_` | `clust.Inertia` | |
 | `prob.band`, `prob.max_iter` | `prob.Band`, `prob.MaxIter` | Read-only in MATLAB: `set_band`, `set_max_iter` |
 | `Problem("p", device="gpu")` | `dtwc.Problem('p', 'Device', 'gpu')` | a `Problem`'s device; it does not follow `dtwc.device()` |
-| `prob.set_device("cpu")` | `prob.set_device('cpu')` | same names as `dtwc.device()`; `'hpc'` is Python's alone and is `dtwc:deviceError` here |
+| `prob.set_device("cpu")` | `prob.set_device('cpu')` | same names as `dtwc.device()`; `'hpc'` is an option of Python's `cluster()` and `dtwcpp.device()` only, and is `dtwc:deviceError` here |
 | `prob.read_distance_matrix(path, not_computed="negative")` | `prob.read_distance_matrix(path, 'NotComputed', 'negative')` | a v1.0.0 file's `-1` (any value below 0) marks a pair to compute; the default, `'nan'`, an empty field or NaN |

@@ -94,9 +94,9 @@ that `dtwc::run` runs. The Tier-2 APIs (`Problem`, the algorithms, the estimator
 
 | Concern | CLI | C++ | Python | MATLAB |
 |---------|-----|-----|--------|--------|
-| Config file input | TOML or YAML (`--config`; `--print-config` writes one) | `dtwc::Config` read by `cli::bind` / `parse_config`, run by `dtwc::run` | not first-class yet | not first-class yet |
+| Config file input | TOML or YAML (`--config`; `--print-config` writes one) | `dtwc::Config` read by `cli::bind` / `parse_config`, run by `dtwc::run` | none: the typed API takes the settings | none: the typed API takes the settings |
 | Stateful clustering object | `dtwc::Config` -> `dtwc::run` -> `Problem` | `dtwc::Problem` | `dtwcpp.Problem` and `dtwcpp.DTWClustering` | `dtwc.Problem` and `dtwc.DTWClustering` |
-| Pairwise distance | flags only | `dtwc::distance::dtw` | `dtwcpp.distance.dtw` | `dtwc.distance.dtw` |
+| Pairwise distance | none (the variant flags set a clustering's distance) | `dtwc::distance::dtw` | `dtwcpp.distance.dtw` | `dtwc.distance.dtw` |
 | FastPAM entry point | `--method pam` | `dtwc::fast_pam(prob, ...)` | `dtwcpp.fast_pam(prob, ...)` or `DTWClustering.fit()` | `dtwc.fast_pam(prob, ...)` or `DTWClustering.fit()` |
 | Hierarchical clustering | `--method hierarchical` | `build_dendrogram` / `cut_dendrogram` | same names | same names |
 | Missing-data strategy | `--missing-strategy` | `Problem::set_missing_strategy(...)` | `Problem.missing_strategy`, `DTWClustering(missing_strategy=...)` | `Problem.set_missing_strategy(...)`, `DTWClustering('MissingStrategy', ...)` |
@@ -178,10 +178,9 @@ sil = dtwc.silhouette(prob);
 
 These are real API differences today, not just documentation differences:
 
-1. The CLI and C++ (`dtwc::Config`, `dtwc::run`) are the surfaces with first-class configuration files; Python and MATLAB take their typed APIs until IF-2 S4.
+1. The CLI and C++ (`dtwc::Config`, `dtwc::run`) are the surfaces with first-class configuration files; Python and MATLAB take their typed APIs.
 2. Python `Problem` is extension-backed, so Doxygen does not emit a standalone `dtwcpp.Problem` page the way it can for pure-Python classes.
 3. Python's `dtwcpp.distance.dtw` and MATLAB's `dtwc.distance.dtw` each call `dtwc::distance::dtw` through one binding entry, which reads the settings with the C++ name tables; C++ checks them.
-4. C++ examples in older docs historically used `DataLoader` + legacy Lloyd clustering more than the newer `Problem` + algorithm function flow.
 
 ## Present guidance
 

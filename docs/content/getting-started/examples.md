@@ -5,9 +5,8 @@ weight: 5
 
 # Examples
 
-These examples use the current `Problem`-centric flow rather than the older
-loader-heavy examples. The goal is to mirror the Python and MATLAB surfaces as
-closely as the C++ API allows today.
+These examples use the `Problem`-centric flow, mirroring the Python and MATLAB
+surfaces as closely as the C++ API allows.
 
 ## Pairwise DTW distance
 
