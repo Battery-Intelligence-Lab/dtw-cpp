@@ -13,7 +13,7 @@ DTW-C++
 [![codecov](https://codecov.io/gh/Battery-Intelligence-Lab/dtw-cpp/branch/main/graph/badge.svg)](https://codecov.io/gh/Battery-Intelligence-Lab/dtw-cpp)
 
 ![Contributors](https://img.shields.io/github/contributors/Battery-Intelligence-Lab/dtw-cpp)
-![Last update](https://img.shields.io/github/last-commit/Battery-Intelligence-Lab/dtw-cpp/develop)
+![Last update](https://img.shields.io/github/last-commit/Battery-Intelligence-Lab/dtw-cpp/main)
 ![Issues](https://img.shields.io/github/issues/Battery-Intelligence-Lab/dtw-cpp)
 ![Forks](https://img.shields.io/github/forks/Battery-Intelligence-Lab/dtw-cpp)
 ![Stars](https://img.shields.io/github/stars/Battery-Intelligence-Lab/dtw-cpp)
@@ -35,11 +35,11 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 - **Lower bounds**: LB_Keogh and admissible TADPole pair pruning
 - **Multi-language**: C++ core, Python (sklearn-compatible), MATLAB MEX bindings
 - **Parallelism**: OpenMP threads, CUDA and Metal GPUs (optional)
-- **Runtime precision**: Float64 by default; explicit Float32 halves series-storage bytes and uses Float32 recurrence arithmetic
-- **RAM-aware**: `--ram-limit` (automatic by default: 90 % of the memory available) is a memory plan: a reserve for the threads, then the series and the distance matrix, mapped to a file when it does not fit; it streams a Parquet file of one series per row (a list column, or several float columns) through non-full FastCLARA
+- **Runtime precision**: Float64 by default; `--dtype float32` halves series-storage bytes and uses Float32 recurrence arithmetic, `--matrix-dtype float32` halves the distance matrix
+- **RAM-aware**: `--ram-limit` (automatic by default: 90 % of the memory available) is a memory plan: a reserve for the threads, then the series and the distance matrix, mapped to a file when it does not fit; it streams a Parquet or Arrow IPC file of one series per row (a list column, or for Parquet several float columns) through non-full FastCLARA, and an explicit limit that cannot hold the run is an error
 - **Checkpointing**: Save/resume long-running distance matrix computations
 - **Run report**: every `dtwc_cl` run writes `<name>_report.txt` beside its results, plain text: the machine, the memory plan and the peak resident memory, each stage's wall time, share and CPU utilisation, the stopping criterion and the result (`--no-report` writes none)
-- **I/O**: CSV and Arrow IPC (read in place) in every build, Parquet in a build with Arrow, auto-detected from extension; HDF5 in Python (h5py)
+- **I/O**: CSV and Arrow IPC (mapped and read in place; a compressed file is decoded into RAM) in every build, Parquet in a build with Arrow, auto-detected from extension; HDF5 in Python (h5py)
 
 Recorded, workload-specific measurements are published in the
 [UCR benchmark ledger](benchmarks/ucr_benchmark_results.md); do not extrapolate
@@ -195,6 +195,7 @@ option; nothing is turned off silently. Defaults are the ones every platform can
 | `DTWC_ENABLE_GUROBI` | OFF | Link the Gurobi MIP solver (needs an install, see `GUROBI_HOME`; the binary then needs the Gurobi library to load). v1.0.0 linked Gurobi when it found it |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
 | `DTWC_REPRODUCIBLE_BUILD` | OFF | Strip source/build paths from supported compiler outputs |
+| `DTWC_FP_MODEL` | `fast` | Floating-point policy of optimised builds: `fast` (selected relaxations, never `-ffinite-math-only`) or `strict` (none) |
 | `DTWC_ARCH_LEVEL` | `""` | CPU target of x86-64 builds: `native` (`-march=native`; the default for C++ builds), `v3` (x86-64-v3: AVX2+FMA, the default for Python builds and the floor of released wheels and archives), `v4` (AVX-512). arm64 takes no flag from `v3` |
 | `DTWC_CUDA_ARCH_LIST` | `80-real;86-real;89-real;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set (compute capability 8.0 is the floor) |
 

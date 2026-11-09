@@ -10,13 +10,13 @@ partitioning time series from elastic distances.
 
 ## FastPAM (k-Medoids)
 
-The Partitioning Around Medoids (PAM) algorithm is the default clustering method in DTW-C++. Unlike k-means, which uses computed centroids, k-medoids selects actual data points (medoids) as cluster representatives. This is particularly well-suited for DTW-based clustering because computing a meaningful "average" time series under DTW is non-trivial.
+The Partitioning Around Medoids (PAM) algorithm is what the default `--method auto` runs for up to 5000 series on the CPU, and for any number on a GPU; above 5000 series on the CPU, or where PAM's distance matrix can be neither held in RAM nor mapped to a file, `auto` runs FastCLARA. Unlike k-means, which uses computed centroids, k-medoids selects actual data points (medoids) as cluster representatives. This is particularly well-suited for DTW-based clustering because computing a meaningful "average" time series under DTW is non-trivial.
 
 ### Algorithm Overview
 
 PAM consists of two phases:
 
-1. **BUILD phase:** Select initial medoids (either randomly or via k++ initialization).
+1. **BUILD phase:** Select initial medoids by k-medoids++: the first at random, each next drawn with probability proportional to its distance to the nearest medoid already chosen, from the `--seed` generator.
 2. **SWAP phase:** Iteratively improve the clustering by considering swapping each medoid with each non-medoid and accepting swaps that reduce total cost.
 
 ### FasterPAM
@@ -50,6 +50,12 @@ Assignment uses the `Problem`'s configured DTW function directly. A pre-existing
 dense or memory-mapped parent distance cache is neither consulted nor modified;
 FastCLARA results therefore cannot depend on injected cache contents.
 
+In `dtwc_cl`, FastCLARA is also the one method that streams a Parquet or Arrow IPC
+file's series in chunks when they do not fit the memory budget (`--ram-limit`, the
+run's soft budget: 0, the default, plans for 90 % of the memory available); every other method
+that cannot fit under an explicit limit is refused with an error. The limit, the
+memory plan and the streaming rules are on the [CLI page](../../getting-started/cli/).
+
 ### How It Works
 
 1. Draw `n_samples` random subsamples of size $$s$$ from the dataset, one after another from one seeded generator.
@@ -64,7 +70,7 @@ When `sample_size = -1` (auto), the size is computed as:
 
 $$s = \max(40 + 2k, \min(N, 10k + 100))$$
 
-This follows the recommendation from Schubert & Rousseeuw (2021).
+The size is then limited to the range $$[k, N]$$. This follows the recommendation from Schubert & Rousseeuw (2021).
 
 ### Parameters
 
@@ -124,7 +130,7 @@ This is simpler than PAM but converges to a local minimum. FastPAM is generally 
 
 ## Mixed-Integer Programming (MIP)
 
-DTW-C++ supports solving the k-medoids problem exactly via mixed-integer programming using Gurobi or HiGHS solvers. This finds the globally optimal solution but is computationally expensive for large datasets.
+DTW-C++ supports solving the k-medoids problem exactly via mixed-integer programming using Gurobi or HiGHS solvers. This finds the globally optimal solution but is computationally expensive for large datasets. In Python the HiGHS solve runs on `highspy`, a dependency of `dtwcpp`; the wheel is built without Gurobi.
 
 ### MIP Warm Start
 
@@ -152,7 +158,10 @@ bound, reduced-cost fixing, and medoid-variable branch-and-bound. It does not
 require a commercial MIP solver, but the current clustering entry point
 materialises a dense distance matrix and therefore has an $$O(N^2)$$ memory
 budget. It either returns a certified solution or fails loudly at its
-configured limits.
+configured limits: `--lr-max-nodes` (default 2000000) caps the branch and bound,
+and a run that reaches the cap is a `SolverError`, not an uncertified answer. The
+root bound is the subgradient's by default, which needs no solver; `--lr-root
+kelley` selects a cutting-plane root, which needs HiGHS (`highspy` in Python).
 
 **CLI:** `dtwc_cl -i data.csv -k 5 --method lrcore`
 
@@ -160,7 +169,8 @@ configured limits.
 
 TADPole implements density-peaks clustering with lower/upper-bound pruning.
 For finite, nonempty, equal-length Standard-L1 pairs whose series length is
-representable by the integer band API, TADPole can classify some cutoff
+representable by the integer band API (and float64, univariate, with no missing-data
+strategy: `--dtype float32` series take the exact route), TADPole can classify some cutoff
 comparisons without an exact DTW. In its density stage, `LB >= dc` proves that
 a pair is not a neighbour, while `UB < dc` proves that it is; a bound interval
 that straddles `dc` triggers exact DTW. In its separation stage, `LB >= best`
@@ -197,4 +207,4 @@ empty series.
 | Lloyd's (`kmedoids`) | Local optimum | Uses configured distance storage | Dense | Simple assignment/update |
 | MIP | Certified when solved to optimality | $$O(N^2)$$ distance storage plus solver model | Dense | Solver-backed exact result |
 | LR-core | Certified or loud failure | $$O(N^2)$$ distance storage | Dense | In-tree exact result |
-| TADPole | Exact-arithmetic identity for finite, nonempty supported inputs with integer-representable lengths; exactly representable regression confirmed; floating thresholds and empty series not covered (above) | Threshold routing may use mmap | Density/cutoff search | Admissible pair pruning |
+| TADPole | Exact-arithmetic identity for finite, nonempty supported inputs with integer-representable lengths; exactly representable regression confirmed; floating thresholds and empty series not covered (above) | $$O(N^2)$$ pair flags and pair cache, held in RAM; pruning saves DTW calls, not memory | Density/cutoff search | Admissible pair pruning |

@@ -81,8 +81,9 @@ The process device is what `cluster()` uses when it is not given one. A Tier-2
 `load` reads nothing: the file is read when `cluster()` runs. A path is a
 CSV, TSV or TXT file, a folder (one series per file), a Parquet file or an Arrow
 IPC file. Text files, folders and Arrow IPC files are read by the C++ reader
-`dtwc_cl` uses, in every language and build (an Arrow IPC file in place: its series
-are views of the file). Parquet is read by C++ in a build with Arrow
+`dtwc_cl` uses, in every language and build (an Arrow IPC file is mapped, its series
+views of the file; where it cannot be viewed in place, as a compressed file or in a build
+without llfio, it is decoded or read into memory). Parquet is read by C++ in a build with Arrow
 (`-DDTWC_ENABLE_ARROW=ON`), by Python through the installed `pyarrow`, and by
 MATLAB through `parquetread`.
 
@@ -146,8 +147,10 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 `'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and
 refuses it beside a `Dataset`, which keeps its own. The others (`input`, `output`,
 `checkpoint`, ...) are `dtwc_cl`'s and `dtwc::run`'s, unknown keys here.
-`ram_limit` takes a byte count or a size such as `"8G"`, as `--ram-limit` does. The [CLI reference](../../getting-started/cli/)
-gives each one's meaning and default. C++ reads and checks the values: an unknown
+`ram_limit` is the run's soft memory budget, a byte count or a size such as `"8G"`, as
+`--ram-limit` is: a reserve for the threads, then where the series and the matrix go (`0`, the
+default, plans with 90 % of the memory available); a run that cannot fit under an explicit limit is
+`InvalidInput`. The [CLI reference](../../getting-started/cli/) gives each one's meaning and default. C++ reads and checks the values: an unknown
 key, or a name no table holds, is `InvalidInput` (MATLAB `dtwc:invalidArgument`)
 naming the valid ones, an unknown device is `DeviceError`, and in Python a value
 of the wrong type is `TypeError`.
@@ -161,7 +164,8 @@ is for that run only.
 On a GPU, `pam`, `kmedoids`, `mip`, `lrcore` and `hierarchical` run with the GPU
 filling the distance matrix and `clara` with the GPU filling its samples, while
 `onebatch` and `tadpole`, which compute on the CPU as they go, raise
-`DeviceError`. `k` below 1 or above the number of series, and an empty dataset,
+`DeviceError`. A GPU uploads owned Float64 series, so for an Arrow IPC file, whose series are
+views, it makes an owned copy, which the memory plan counts. `k` below 1 or above the number of series, and an empty dataset,
 are `InvalidInput`.
 
 In Python, `device="hpc"` or `"hpc:gpu"` submits the run as one `job.toml` and
@@ -240,7 +244,8 @@ prints the cluster sizes.
 ## The scikit-learn estimator (Python and MATLAB)
 
 `dtwcpp.DTWClustering` and `dtwc.DTWClustering` wrap one `Problem` in the
-scikit-learn pattern; C++ has no counterpart.
+scikit-learn pattern and cluster it in RAM (only `cluster()` runs `dtwc::run`); C++ has no
+counterpart.
 
 ```python
 import numpy as np

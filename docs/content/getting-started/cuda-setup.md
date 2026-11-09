@@ -12,7 +12,7 @@ DTWC++ supports an optional CUDA backend for GPU acceleration. It is **optional*
 | Feature | Minimum Version | Notes |
 |---------|----------------|-------|
 | CUDA | 12.0+ | The CUDA Toolkit that builds the backend |
-| GPU | NVIDIA compute capability 8.0 or newer (Ampere, 2021: A30/A100/RTX 30 and later) | An older GPU is refused with `DeviceError`; AMD ROCm support is planned for future releases |
+| GPU | NVIDIA compute capability 8.0 or newer (Ampere, 2021: A30/A100/RTX 30 and later) | An older GPU is refused with `DeviceError` |
 
 ---
 
@@ -89,7 +89,7 @@ Set up `PATH` and `LD_LIBRARY_PATH` as described in the Ubuntu section above.
 
 ### macOS
 
-CUDA is **not supported** on macOS. Apple dropped NVIDIA driver support starting with macOS 10.14 (Mojave). There is no workaround -- if you need GPU acceleration, use a Linux or Windows machine with an NVIDIA GPU.
+CUDA is **not supported** on macOS. Apple dropped NVIDIA driver support starting with macOS 10.14 (Mojave). There is no workaround for CUDA: on a Mac the GPU backend is Metal (`DTWC_ENABLE_METAL`, on by default on Apple platforms; see [GPU backends](../../method/gpu-backends/)), and for CUDA you need a Linux or Windows machine with an NVIDIA GPU.
 
 ### Verify CMake Detection
 
@@ -121,10 +121,10 @@ cmake --build build --config Release
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| `Could NOT find CUDAToolkit` in CMake | CUDA not on PATH or not installed | Ensure `/usr/local/cuda/bin` is on your PATH and `nvcc --version` works. |
+| `DTWC_ENABLE_CUDA=ON but there is no usable CUDA compiler` (or `Could NOT find CUDAToolkit`) in CMake | `nvcc` is not on PATH or not installed, or it cannot compile with this host compiler | Ensure `/usr/local/cuda/bin` is on your PATH and `nvcc --version` works, or set `CUDA_PATH`, or pass `-DCMAKE_CUDA_COMPILER=<path-to-nvcc>`. |
 | `nvcc --version` works but CMake still fails | CMake too old to detect your CUDA version | Upgrade CMake to 3.26+ (required by DTWC++). |
 | `nvidia-smi` shows driver but `nvcc` is missing | Only the GPU driver is installed, not the toolkit | Install the full CUDA Toolkit (the driver alone is not enough for compilation). |
-| `no CUDA-capable device is detected` | No NVIDIA GPU, or driver not loaded | Check `lspci | grep -i nvidia`. Install or update the NVIDIA driver. |
+| `DeviceError: ... DTWC++ was built with CUDA support, but no usable CUDA GPU was detected` | No NVIDIA GPU, or driver not loaded | Check `lspci \| grep -i nvidia`. Install or update the NVIDIA driver. |
 | `DeviceError: CUDA device 0 has compute capability 7.5; DTWC++ needs 8.0 or newer` | The GPU predates Ampere | Use a GPU of compute capability 8.0 or newer, or `--device cpu`. |
 | CUDA not available on macOS | Apple does not ship NVIDIA drivers | No fix -- use Linux or Windows with an NVIDIA GPU. |
 | `undefined reference to cudaXxx` | CUDA libraries not linked | Ensure `LD_LIBRARY_PATH` includes `/usr/local/cuda/lib64`. |

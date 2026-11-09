@@ -126,7 +126,9 @@ only an empty field or NaN so.
 
 ### Clustering a Problem
 
-`cluster()` runs `method()` (`Auto` resolved as in Tier 1) with the `Problem`'s
+`cluster()` runs `method()` (`Kmedoids`, Lloyd's, until `set_method` says otherwise; `Auto` is
+`pam` on a GPU and for up to 5000 series, else `clara`, by device and series count only, where
+Tier 1's `cluster()` also weighs the memory plan) with the `Problem`'s
 settings and returns a `ClusteringResult` (MATLAB: a struct) of `labels`,
 `medoid_indices`, `total_cost`, `iterations` and `converged`; the labels and
 medoids are also kept in the `Problem` (`labels()`, `medoids()`). `set_result`
@@ -211,7 +213,7 @@ The keyword arguments and their defaults are `cluster()`'s distance settings.
 Each call checks its settings and both series first and raises `InvalidInput`
 for an empty series, a NaN or ±inf value (NaN is a missing value under a
 missing-data strategy) or a parameter outside its domain. Python's
-`compute_distance_matrix(series, band=-1, metric="l1", device=None, matrix_dtype="float64")` and MATLAB's
+`compute_distance_matrix(series, band=-1, metric="l1", *, device=None, matrix_dtype="float64")` and MATLAB's
 `dtwc.compute_distance_matrix(X, 'Band', b, 'MatrixDtype', 'float64')` return the N×N matrix of a set of
 series.
 

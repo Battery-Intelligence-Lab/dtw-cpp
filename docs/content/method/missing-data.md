@@ -157,6 +157,9 @@ double dist_b = dtwc::dtwMissing_banded_mv(x_ptr, nx_steps, y_ptr, ny_steps, /*n
 
 When `ndim == 1`, the multivariate functions dispatch to the faster scalar implementations.
 
+Through a `Problem`, `ZeroCost` and `AROW` take multivariate series; `Interpolate`, and `AROW` with
+the Euclidean `MetricType::L2`, are univariate only and raise `InvalidInput` for `ndim > 1`.
+
 ---
 
 ## Python API

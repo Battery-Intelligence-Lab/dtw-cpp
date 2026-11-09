@@ -66,8 +66,8 @@ oracle are in the
 - Use **L1** for the default CPU/CLI path and absolute-deviation costs.
 - Use **L2** when multivariate Euclidean point costs are required through the
   C++ runtime API.
-- Use **Squared L2** when large pointwise deviations should receive a quadratic
-  penalty, or for the supported CUDA CLI path.
+- Use **Squared L2** (`--metric squared_euclidean`) when large pointwise deviations
+  should receive a quadratic penalty; the CPU and the GPU take it alike.
 
 Metric choice and elastic-distance choice are separate. MSM and TWE are
 standalone elastic metrics with their own recurrences and parameters; they are

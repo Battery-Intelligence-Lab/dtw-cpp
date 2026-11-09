@@ -76,6 +76,7 @@ References used during development. Verify each citation independently before pu
   Warping. *Proceedings of the 2001 SIAM International Conference on Data
   Mining*, 1–11. https://doi.org/10.1137/1.9781611972719.1
 - Jeong, Y.-S., Jeong, M. K., & Omitaomu, O. A. (2011). Weighted dynamic time warping for time series classification. *Pattern Recognition*, 44(9), 2231-2240.
+- Herrmann, M. & Webb, G. I. (2023). Amercing: An intuitive and effective constraint for dynamic time warping. *Pattern Recognition*, 137, 109333. https://doi.org/10.1016/j.patcog.2023.109333 — ADTW. **[inferred 2026-11-09]** Authors, journal, volume and article number from a web search that returned the ADS record (bibcode 2023PatRe.13709333H) and the arXiv preprint 2111.13314 (an earlier title with "Elegant"); neither page's text was opened and the full text was not read, so the page states the recurrence as `warping_adtw.hpp` implements it. An earlier draft of the page named Shifaz and article 109301, which the search contradicts.
 - Cuturi, M. & Blondel, M. (2017). Soft-DTW: a Differentiable Loss Function for Time-Series. In *Proceedings of the 34th International Conference on Machine Learning*, PMLR 70, 894–903. https://proceedings.mlr.press/v70/cuturi17a.html — Defines the differentiable soft-DTW value and gradient used for soft-DTW barycenters.
 - Itakura, F. (1975). Minimum Prediction Residual Principle Applied to Speech Recognition. *IEEE TASSP*, 23(1), 67-72.
 

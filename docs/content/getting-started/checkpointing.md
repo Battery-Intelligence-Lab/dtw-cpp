@@ -179,10 +179,10 @@ With `--checkpoint <dir>` the CLI
 2. loads `<dir>/<name>.dtwm` if it exists (`--name`, default the input's file or folder name); a file for
    other data or settings, or a damaged one, stops the run with exit status 1 and
    the reason, before anything is computed;
-3. saves the matrix there after the result files are written, and every
-   `--checkpoint-interval` rows during the fill when that is non-zero. A save that
-   fails (a full disk) stops the run with exit status 1; the results already
-   written stay.
+3. saves the matrix there once the method has finished, before the result files
+   are written, and every `--checkpoint-interval` rows during the fill when that
+   is non-zero. A save that fails (a full disk) is reported after the result
+   files are written: the run stops with exit status 1, and the results stay.
 
 When the matrix is mapped (it does not fit beside the series in what
 `--ram-limit` leaves beside the threads' reserve, the memory plan's data cap),
@@ -196,19 +196,24 @@ Without `--checkpoint`, a mapped matrix is `<name>.dtwm` in the output directory
 dtwc_cl --input large_dataset.csv -k 10 --method pam --checkpoint ./ckpt --verbose
 ```
 
+The checkpoint's lines of the `-v` output, with its other lines left out:
+
 ```
-Data loaded: 2000 series [0.5s]
+Data loaded: 2000 series [0:0.5 min:sec]
 No checkpoint in ./ckpt, starting fresh.
 Running FastPAM (k=10) ...
 ```
 
-After an interruption, run the same command again:
+Run the same command again once a run has saved the checkpoint:
 
 ```
-Data loaded: 2000 series [0.5s]
+Data loaded: 2000 series [0:0.5 min:sec]
 Resumed from checkpoint: ./ckpt
 Running FastPAM (k=10) ...
 ```
 
-The fill skips every pair the checkpoint holds. A run with `--checkpoint-interval`
-saves during the fill, so an interrupted fill resumes from its last block.
+The fill skips every pair the checkpoint holds. Without `--checkpoint-interval`
+the checkpoint is saved once, after the method has finished, so a run
+interrupted during the fill leaves none (a mapped matrix, which is its own
+checkpoint, excepted); a run with `--checkpoint-interval` saves during the
+fill, so an interrupted fill resumes from its last save.

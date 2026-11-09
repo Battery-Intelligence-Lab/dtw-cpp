@@ -19,9 +19,10 @@ Or using [uv](https://docs.astral.sh/uv/):
 uv pip install dtwcpp
 ```
 
-Exact MIP clustering (`method="mip"`) solves with highspy, which dtwcpp requires, so it is
-installed with it (the wheel links no MIP solver; a highspy that cannot be imported makes
-`method="mip"` raise `SolverError`, saying to reinstall dtwcpp).
+Exact MIP clustering (`method="mip"`) and LR-core's Kelley root (`lr_root="kelley"`) solve with
+highspy, which dtwcpp requires, so it is installed with it (the wheel links no MIP solver; a
+highspy that cannot be imported makes `method="mip"` raise `SolverError`, saying to reinstall
+dtwcpp).
 
 For GPU support, build from source with CUDA enabled (there is no `cuda` extra; see [CUDA Setup](cuda-setup.md)):
 
@@ -53,9 +54,7 @@ print(f"Soft-DTW distance: {d_soft}")
 
 Both plain Python lists and NumPy arrays are accepted. Lists are automatically converted to `float64` arrays.
 
-The distance of two series is `dtwcpp.distance.dtw`, for every variant. The
-old root-level distance helpers such as `dtwcpp.dtw_distance(...)` were removed
-in this breaking release.
+The distance of two series is `dtwcpp.distance.dtw`, for every variant.
 
 ### Distance matrix
 
@@ -84,9 +83,9 @@ Parameters:
 
 ## DTWClustering class
 
-`DTWClustering` provides an sklearn-compatible interface for k-medoids clustering with DTW distance. Its fit is
-`dtwcpp.cluster`'s C++ run, FastPAM (Schubert & Rousseeuw, 2021) unless `method` says otherwise, with `n_init` seeded
-restarts on one distance matrix.
+`DTWClustering` provides an sklearn-compatible interface for k-medoids clustering with DTW distance. Its fit sets up
+one `Problem` as `dtwcpp.cluster` does and clusters it in RAM, with FastPAM (Schubert & Rousseeuw, 2021) unless
+`method` says otherwise, and `n_init` seeded restarts on one distance matrix.
 
 ```python
 import numpy as np
@@ -113,7 +112,7 @@ print(f"Iterations:     {clf.n_iter_}")
 |-----------|------|---------|-------------|
 | `n_clusters` | int | `3` | Number of clusters |
 | `method` | str | `"pam"` | Any `dtwcpp.cluster` method; with `metric="precomputed"` one that reads the matrix (`pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`) |
-| `variant` | str | `"standard"` | DTW variant: `"standard"`, `"ddtw"`, `"wdtw"`, `"adtw"`, `"msm"`, `"twe"` |
+| `variant` | str | `"standard"` | DTW variant: `"standard"`, `"ddtw"`, `"wdtw"`, `"adtw"`, `"softdtw"` (gamma 1), `"msm"`, `"twe"` |
 | `band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
 | `max_iter` | int | `100` | Maximum iterations of the method (at least 1) |
 | `n_init` | int | `1` | Seeded restarts `random_state + i`, the best kept (at least 1) |
@@ -152,7 +151,7 @@ Metal execution support Standard, dependent, Error mode with either metric.
 - `medoid_indices_` -- indices of medoid series
 - `cluster_centers_` -- list of medoid time-series arrays
 - `inertia_` -- total within-cluster cost
-- `n_iter_` -- number of FastPAM iterations
+- `n_iter_` -- number of iterations of the method (FastPAM's SWAP iterations by default)
 
 ### Predict on new data
 
@@ -165,8 +164,9 @@ print(f"Predicted labels: {predicted}")
 ## DTW functions
 
 `dtwcpp.distance.dtw(x, y, ...)` computes every variant. Its settings are named as
-the `dtwc_cl` keys, and C++ reads and checks them: an unknown name, a parameter
-outside its domain or a combination no kernel implements raises `InvalidInput`.
+the `dtwc_cl` keys, and C++ reads and checks them: an unknown variant, metric or
+strategy name, a parameter outside its domain or a combination no kernel implements
+raises `InvalidInput`; a keyword that is no setting is Python's `TypeError`.
 Lists and NumPy arrays are accepted.
 
 ```python

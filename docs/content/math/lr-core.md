@@ -11,9 +11,24 @@ rewritten after the implementation outcome. The exception is which Lagrangian
 root certifies more often: the claims made for the Kelley root are replaced by
 what was measured on 2026-10-06 (Task 4.1).
 
+**What ships in 2.0.** `--method lrcore` (`Method::LRCore`) runs the Lagrangian root
+bound, reduced-cost fixing and a branch and bound on the medoid variables. The root is
+the subgradient's by default and needs no solver; `--lr-root kelley` (`lr_root` in
+Python, `LrRoot` in MATLAB) runs a cutting-plane root instead, which needs HiGHS
+(`highspy` in Python). `--lr-max-nodes` (`lr_max_nodes`, `LrMaxNodes`; default 2000000)
+caps the branch and bound, and a run that reaches the cap raises `SolverError` rather
+than return an uncertified answer. `Method::MIP` solves the compact model on HiGHS or
+Gurobi at every N. `dtwc/mip/benders.cpp` (the Benders route) and the PDLP bound no
+longer exist: both were removed before 2.0. **Everything below is the 2026
+investigation record (July to October) and describes the solver as it stood at each
+dated entry**, so each sentence about `benders.cpp`, its automatic use above N = 200,
+or PDLP is history, and the
+file names, line numbers and task numbers in it refer to that time and to the
+project's internal development notes, which are not published.
+
 # Exact k-Medoids Solver — Mathematical Investigation and Design Verdict
 
-**Date:** 2026-07-06 · **Scope:** verify `.claude/UNIMODULAR.md`, extract the implemented formulation, audit previous own-solver attempts, engage the p-median literature, recommend ONE solver architecture with registered predictions. No source code was modified. All experiments live in the session scratchpad (`tu_verify.py`, `tu_verify2.py`, `tu_verify3.py`); their registered bands and verbatim outputs are reproduced in §7.
+**Date:** 2026-07-06 · **Scope:** verify the earlier `UNIMODULAR.md` note, extract the implemented formulation, audit previous own-solver attempts, engage the p-median literature, recommend ONE solver architecture with registered predictions. No source code was modified. All experiments live in the session scratchpad (`tu_verify.py`, `tu_verify2.py`, `tu_verify3.py`); their registered bands and verbatim outputs are reproduced in §7.
 
 **Notation.** N = number of series (UNIMODULAR.md calls this p), k = number of medoids (UNIMODULAR.md's k/Nc). D ∈ R^{N×N} is the DTW distance matrix: dense, symmetric, zero diagonal, **not** guaranteed to satisfy the triangle inequality [Marteau 2009; Jain 2018].
 
@@ -110,7 +125,7 @@ Recovered from history (all code removed in `f7064b3` "removed specialised solve
 | Oct 2023 | **Dense tableau primal simplex** (Eigen `MatrixXd`, Phase I/II, full tableau) + **Gomory cuts** | `Simplex.cpp/.hpp`, commits `5f983c9`, `3f18761` "Working Simplex functions", `98319a7` "gomory, gomoryAlgorithm", `5968fb9` **"Simplex table takes huge space!"** | Tableau is (m+1)×(n+m+1) with n = N², m ≈ N²+N+1 ⇒ ~2N⁴ doubles (N=100 ⇒ ~1.6 GB, N=316 ⇒ ~160 GB); every pivot rewrites it, O(mn) work; basis identified by *scanning for unit columns* (`getRow`, O(mn) per query, brittle at ε=1e-8). Textbook fractional Gomory cuts on a dense tableau are numerically fragile and converge glacially — the known-good cuts for this polytope are the odd-cycle family, never implemented. |
 | Oct–Nov 2023 | **Sparse tableau simplex** (`SparseSimplex`, `SimplexFlatRowTable`, row/flat variants), **dual simplex** graft | `99d1912`, `6f1dba1`, `850d3a3`, `db5063c` "trying to integrate a dual simplex routine", `1ececcd` **"update still not solving but probably simplex issue"** | Still *tableau-updating* (not revised simplex): sparse tableaus fill in after a handful of pivots, so sparsity dies; no LU/product-form basis (`6e3588c` "trial for LU but just started" — abandoned); correctness never achieved. |
 | ~same | **First-order LP attempts**: OSQP/ADMM, conjugate gradient | `3a87ea3` "OSQP and OSLP are removed", `581de25` "epsADMM bugfix", `2f4e8be` "sparse cg with eigen" | ADMM/CG deliver ~1e-3 accuracy; cannot certify vertex optimality or integrality; slow tail convergence — wrong tool for exact certification. |
-| Apr 2026 | **Benders decomposition** (live: `dtwc/mip/benders.cpp`) | tests in `tests/unit/unit_test_benders.cpp` pass; auto-dispatch N > 200 | Works, but is the **iterative** variant: each round solves the full master **MIP to optimality**, then adds up to N dense cuts (O(N) nonzeros each ⇒ O(N²) added nonzeros/round). Modern practice (Duran-Mateluna et al. 2023; Fischetti et al.) embeds cuts lazily in ONE branch-and-bound tree. Also: master warm start via `setSolution` trips the HiGHS ≤1.14 `ub_consistent` assertion (worked around with NDEBUG — `.claude/LESSONS.md:69–72`). |
+| Apr 2026 | **Benders decomposition** (live in 2026-07, since removed: `dtwc/mip/benders.cpp`) | tests in `tests/unit/unit_test_benders.cpp` pass; auto-dispatch N > 200 | Works, but is the **iterative** variant: each round solves the full master **MIP to optimality**, then adds up to N dense cuts (O(N) nonzeros each ⇒ O(N²) added nonzeros/round). Modern practice (Duran-Mateluna et al. 2023; Fischetti et al.) embeds cuts lazily in ONE branch-and-bound tree. Also: master warm start via `setSolution` trips the HiGHS ≤1.14 `ub_consistent` assertion (worked around with NDEBUG). |
 
 **Root-cause summary.** The 2023 attempts failed for one architectural reason with three faces: they tried to solve the **N²-variable compact LP explicitly**, with (i) the wrong simplex representation (tableau, not revised+LU+bounded-variable), (ii) the wrong cuts (Gomory, not odd-cycle — and §2.3.1 now shows even odd-cycle cuts can't finish alone), and (iii) no upper bound / reduced-cost fixing to shrink anything. The correct lesson is not "write a better simplex"; it is **never materialize the x-space LP at all** (§2.4c). The 2026 Benders code is the first attempt pointed the right way.
 
@@ -124,7 +139,7 @@ All items below are from literature knowledge; citation details flagged [verify]
 - **ReVelle–Swain (1970):** original empirical observation that the p-median LP is "almost always integral" on real geographic data. Matches my clustered-regime measurements (100%); refuted on uniform-random (26% at N=20) — the folklore is a statement about *data*, not the polytope.
 - **Cornuejols–Fisher–Nemhauser (1977):** Lagrangian relaxation of the assignment constraints; dual bound = LP bound. The equality holds by **Geoffrion's theorem** because the inner polytope {Σy=k, x_ij ≤ y_i, 0 ≤ x,y ≤ 1} has the integrality property — its matrix is Cardinality+Linking, which is TU **for all N by my §2.2 proof**. This is the single most load-bearing fact for the design: *the cheap dual attains the full LP bound.* [confirmed: derivation §5.1]
 - **Benders / row generation at scale:** Duran-Mateluna, Ales, Elloumi (2023, EJOR): two-phase Benders (LP phase then single-tree branch-and-cut with lazy cuts), instances to 238k points. The repo's Benders is the primitive cousin; upgrade path exists. HiGHS-side blocker: UNIMODULAR.md §6.6 names `kCallbackMipDefineLazyConstraints`; I could not verify that HiGHS exposes lazy-constraint injection as of the vendored version [OPEN — check HiGHS ≥1.8 callback API; Gurobi `addLazy` definitely works].
-- **Radius/ordered formulation (García, Labbé, Marín 2011, INFORMS JoC; solver "ZEBRA" [verify name]):** variables count how many distance *values* (sorted radii) are exceeded; column-and-row generation; solved very large p-median instances exactly, often at the LP root. Exploits ties/quantization in D. Strong alternative to Benders; more implementation effort; benefits shrink for continuous DTW distances with few ties.
+- **Radius/ordered formulation (García, Labbé, Marín 2011, INFORMS JoC; solver "ZEBRA"):** variables count how many distance *values* (sorted radii) are exceeded; column-and-row generation; solved very large p-median instances exactly, often at the LP root. Exploits ties/quantization in D. Strong alternative to Benders; more implementation effort; benefits shrink for continuous DTW distances with few ties.
 - **POPSTAR (Resende–Werneck 2004):** GRASP+path-relinking heuristic — an UB competitor to FastPAM, not an exact method; only worth importing if FastPAM UBs prove loose (they did not, in the repo's UCR runs).
 - **Column generation / branch-and-price** (set-partitioning over clusters; Senne–Lorena–Pereira 2005; du Merle et al. 1999 for MSSC): pricing = per-candidate-medoid scan, O(N²)/round; the LP bound equals the same Lagrangian/LP bound here (identical Dantzig-Wolfe reformulation of the same blocks), so it buys nothing over subgradient except stabilized-master machinery. Rejected: same bound, higher constant, much more code.
 - **Submodularity:** k-median in "max-coverage form" (maximize Σ_j (d_max − service cost)) is monotone submodular under a cardinality constraint ⇒ lazy-greedy gives (1−1/e) on the *shifted* objective and stochastic variants scale to 10⁸ — but guarantees on the shifted objective are weak for the min-form and it is inherently inexact. Use, at most, as a UB seeding alternative. BanditPAM (Tiwari et al. 2020) similarly heuristic-tier.
@@ -205,7 +220,7 @@ Every step is exact because the inner polytope's matrix (Cardinality+Linking) is
 
 Scripts: scratchpad `tu_verify.py`, `tu_verify2.py`, `tu_verify3.py` (numpy + scipy `linprog(method="highs-ds")`, vertex solutions). LP experiments use N ≤ 30 with brute-force IP as oracle; extrapolation to DTW matrices at UCR scale is exactly what P1 tests — [inferred] until then.
 
-**Rollback / most-likely-wrong claim:** nothing was modified outside this report file. The claim most likely to fail is P1's 90% (clustered-line surrogates may flatter DTW matrices, whose non-metric quirks could activate odd-cycle vertices more often); if it fails, the architecture degrades gracefully — the Benders core finish simply does more work, and the LR bound remains valid regardless.
+**Most-likely-wrong claim:** P1's 90% (clustered-line surrogates may flatter DTW matrices, whose non-metric quirks could activate odd-cycle vertices more often); if it fails, the architecture degrades gracefully — the Benders core finish simply does more work, and the LR bound remains valid regardless.
 
 
 ## Implementation outcome and registered-band verdicts
@@ -218,8 +233,6 @@ Source: the derivation above. Math verdict, verified by independent re-derivatio
 - FALSIFIED (registered bands, scipy/HiGHS vertex LPs + brute-force IP oracle): half-integrality of fractional vertices (§3.3); "LP integral 80–90%" as a polytope property — it is data-regime-dependent (clustered non-metric D: 250/250 integral; uniform D: 26% at N=20, max gap 13.7%). User's "almost unimodular" observation = his data lives in the integral regime.
 - Previous attempts (2023, removed in `f7064b3`) all failed by solving the x-space LP explicitly (dense/sparse tableau simplex, Gomory, OSQP/ADMM). Live 2026 `benders.cpp` is directionally right but re-solves the master MIP per round; its "O(pk)" cut generation is actually O(N²).
 - **P4 guard:** odd-cycle cuts alone cannot close instances (cardinality row breaks Baiou–Barahona) — the TODO "odd-cycle cutting planes" item is DEPRIORITISED; do not over-invest.
-
-**Batching (Opus orchestrator):** STRICTLY SEQUENTIAL — 4.1 → 4.2 → 4.3 → 4.4; each consumes the previous, and this is math-heavy work: one Opus-xhigh agent per task with its own gate, no fan-out. Validate every oracle on a NON-degenerate case FIRST (random non-symmetric D — uniform/symmetric instances let sign/factor errors hide; CLAUDE.md §4). A FALSIFIED band (esp. 4.3's wall-time clause) is a deliverable, not a failure — record the numbers, keep the LR root as bound/certificate tool, move on. Note 4.1 prefers the FasterPAM UB from 5.1: if Phase 5 hasn't run yet, use current fast_pam and say so in the report — do NOT block on Phase 5.
 
 ### Task 4.1: Lagrangian root solver [DONE 2026-07-07, commit `fd49ff4`]
 
@@ -243,14 +256,14 @@ Source: the derivation above. Math verdict, verified by independent re-derivatio
 
 **Files:** Created `dtwc::mip::lagrangian_root_exact` in `dtwc/mip/lagrangian_root.{hpp,cpp}` + `[exact]` tests. Consumes 4.1 bound + 4.2 core. **Design note (deviation from "modify benders.cpp"):** the LR dual already equals the LP/Benders master bound (Geoffrion), so there is no N²-column master to re-solve — a lazy-cut tree over a compact master is the wrong tool. Instead the exact solver is an LR-bounded B&B that branches on y over the core, matrix-free. LR-core superseded the legacy `benders.cpp` (re-solve-master-per-round), which was deleted before 2.0.
 
-- [x] Single tree, NOT a per-round master re-solve. Root dual solved once (the subgradient's, or Kelley's with `lr_root = kelley`; which certifies more depends on the data, Task 4.1). Reduced-cost fixing → core + proven-open set. Branch on one candidate's open/close (y) decision; node bound = fixed-root-dual `Σμ*+Σ_S ρ*_i ≤ cost(S)` (O(N) per node, no LP). Node cap → best incumbent with `certified_optimal=false` + loud stderr (no silent wrong answer).
+- [x] Single tree, NOT a per-round master re-solve. Root dual solved once (the subgradient's, or Kelley's with `lr_root = kelley`; which certifies more depends on the data, Task 4.1). Reduced-cost fixing → core + proven-open set. Branch on one candidate's open/close (y) decision; node bound = fixed-root-dual `Σμ*+Σ_S ρ*_i ≤ cost(S)` (O(N) per node, no LP). Node cap → best incumbent with `certified_optimal=false` + loud stderr (no silent wrong answer); `Method::LRCore` turns that into a `SolverError`, so a clustering run never publishes an uncertified incumbent as exact.
 - [x] Gate **MET (correctness):** matches the brute-force IP optimum 1e-6 on ALL instances — 8 clustered (0 nodes, root certifies) + 24 adversarial uniform-D (B&B engages, thousands of nodes, still exact). The root dual bounds the LP relaxation; the B&B closes what the root leaves open.
 - [x] Gate (wall-time, ADVISORY shared machine): exact vs compact HiGHS on clustered data — N=800 **56 ms vs 58 s (~1000×)**, margin widens with N. "Beats at N≥2000" holds on well-separated (real-world) data; expected FALSIFIED on the adversarial large-N regime (integrality gap ⇒ tree growth) — LR root still ships as bound/certificate either way (as the phase permits).
 
 ### Task 4.4: Wire into API + `method="mip"` upgrade [DONE 2026-07-08]
 
 - [x] `Method::LRCore` added. `Problem::cluster()` routes it to `dtwc::LR_core_clustering` (fills D, seeds UB, runs `lagrangian_root_exact`, writes `centroids_ind`/`clusters_ind`). `mip` unchanged (solver-backed exact). Regime documented (dense D in RAM; N·N doubles budget; no external solver needed). Exposed C++/Python (`dtwcpp.Method.LRCore`)/CLI (`--method lrcore`|`lr`). Test `[lrcore][api]`.
-- [x] CHANGELOG done; LESSONS.md entry (killed 2023 ideas + falsified claims) — see `.claude/LESSONS.md`.
+- [x] CHANGELOG done; LESSONS.md entry (killed 2023 ideas + falsified claims).
 
 ### Task 4.5: PDLP first-order LP arbiter [DONE 2026-07-08]
 

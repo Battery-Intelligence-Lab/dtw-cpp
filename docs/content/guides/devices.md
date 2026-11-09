@@ -10,7 +10,7 @@ Select a device once, or override it for one clustering call:
 ```python
 import dtwcpp as dtwc
 
-dtwc.device("cpu")                 # cpu | gpu | gpu:N | cuda | cuda:N | hpc
+dtwc.device("cpu")                 # cpu | gpu | gpu:N | cuda | cuda:N | hpc | hpc:gpu
 result = dtwc.cluster(data, 3)
 result = dtwc.cluster(data, 3, device="gpu:1")
 ```
@@ -18,8 +18,8 @@ result = dtwc.cluster(data, 3, device="gpu:1")
 `gpu` resolves to CUDA where compiled and to Metal on macOS. A request that
 cannot be honoured raises a device error; DTWC++ does not silently run the same
 request on CPU. `onebatch` and `tadpole` compute on the CPU as they go and
-reject a GPU request. `clara` runs on a GPU (below) from `dtwc_cl`, C++ and
-Python alike, on a build with a GPU backend.
+reject a GPU request. `clara` runs on a GPU (below) from `dtwc_cl`, C++, Python
+and MATLAB alike, on a build with a GPU backend.
 
 ## A Problem's device
 
@@ -58,7 +58,7 @@ a device error that names the setting and its value (`variant = WDTW`,
 view). Float64 series that a `Data` only views (an Arrow IPC file read in place,
 a decoded record batch, `set_view_data`) are checked where they lie and uploaded
 as an owned copy, freed when the fill or the assignment returns; `dtwc_cl`'s
-memory plan (`--ram-limit`) prices that copy and the GPU's staging buffer. Metal also
+memory plan (`--ram-limit`) counts that copy and the GPU's staging buffer. Metal also
 rejects precision FP64 (its kernels are FP32);
 `set_device` already refused a GPU index other than 0 there (Metal runs on the
 system default GPU). On every device, a
@@ -67,9 +67,9 @@ longest series is an invalid-argument error naming both series and the smallest
 feasible band: such a pair has no warping path, and its distance would otherwise
 be the finite `1.8e308` sentinel. So is an empty series, which `Data::p_vec` can leave after `set_data`.
 
-On-demand distances and the matrix-free schedules `onebatch` and `tadpole`
-compute through `Problem::dtw_function()`, on the CPU even when a `Problem`'s
-device is a GPU; `dtwc_cl`, C++, Python and MATLAB `cluster(...)` and `DTWClustering`,
+On-demand distances and the schedules `onebatch` and `tadpole`, which compute
+the pairs they need as they go, compute through `Problem::dtw_function()`, on the
+CPU even when a `Problem`'s device is a GPU; `dtwc_cl`, C++, Python and MATLAB `cluster(...)` and `DTWClustering`,
 which hand their settings to a `Problem` through `dtwc::apply`, reject
 `onebatch` and `tadpole` on a GPU instead. FastCLARA on a GPU fills its
 sample matrices there (each sample is a copy of its series, since the GPU
@@ -91,19 +91,20 @@ SLURM_REMOTE_BASE=/data/coml-battery/dtwc-runs
 ```
 
 Passwordless `ssh $SLURM_USER@$SLURM_HOST` must succeed. Python owns the beta
-end-to-end submission route; C++ validates `hpc` selection but directs users to
-the Python or shell transport until a real Oxford ARC validation closes the beta.
+end-to-end submission route; C++, MATLAB and `dtwc_cl` refuse `hpc` with a
+`DeviceError` that names the Python and shell transports, until a real Oxford ARC
+validation closes the beta.
 
 `dtwc.cluster(data, k, device="hpc", **keys)` checks the keys and their values as a
 local run does, writes the run as one `job.toml`, which the cluster's
 `dtwc_cl --config` reads, and returns the labels. `device="hpc:gpu"` runs it on a
 GPU of compute capability 8.0 or newer; `gpu_device="a100"` (or `"a6000"`,
-`"l40s"`, `"h100"`) names one ([SLURM](../getting-started/slurm.md)). A request
+`"l40s"`, `"h100"`) names one ([SLURM](../../getting-started/slurm/)). A request
 that cannot be honoured fails before anything is sent: a value outside its domain
-is an `InvalidInput`, as on the CPU; no `.env` (or no `bash`) is a `DeviceError`
-naming the directory searched, a GPU type below compute capability 8.0 a
-`DeviceError` naming it, and `gpu_device` with a device other than `"hpc:gpu"` an
-`InvalidInput`. A key missing from `.env`, or a value unsafe to pass to `ssh`,
+is an `InvalidInput`, as on the CPU; no `.env` is a `DeviceError`
+naming the directory searched, no `bash` a `DeviceError` too, a GPU type below compute
+capability 8.0 a `DeviceError` naming it, and `gpu_device` with a device other than
+`"hpc:gpu"` an `InvalidInput`. A key missing from `.env`, or a value unsafe to pass to `ssh`,
 stops the wrapper before it connects, naming the key. What only the cluster's GPU
 can judge, a setting its kernels do not compute (a variant other than Standard, a
 missing-data strategy), fails the job with that `DeviceError` in its log

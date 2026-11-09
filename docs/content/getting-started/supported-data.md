@@ -24,7 +24,7 @@ Series already in memory are stored as float64, whatever their own type, unless
 
 ## Reading data from disk
 
-You can specify either a _file path_ or a _folder path_ for your data. The software accommodates `*.csv` and `*.tsv` file extensions.
+You can specify either a _file path_ or a _folder path_ for your data. The delimiter of a text file is inferred from its extension: `.csv` is comma-separated, `.tsv` and `.txt` tab-separated, and any other extension comma-separated; the files of a folder are read as comma-separated. `--delimiter` (`delimiter` in Python, `'Delimiter'` in MATLAB) names another one-character delimiter, for a file or a folder.
 
 ### Specifying a file path
 
@@ -74,7 +74,6 @@ series per row, a scalar Float32/Float64 column one series. Without it, the firs
 top-level column that is Float32/Float64, or a list of them, decides:
 
 - **A list column** (list-per-row): each list cell is one variable-length series.
-  `dtwc-convert` writes this layout.
 - **A scalar column, with other scalar Float32/Float64 columns** (one row per
   series): each row is a series of its values in the file's columns, in file
   order, as a CSV row is read; string columns are not values. Any other column
@@ -132,8 +131,9 @@ as a Float64 column.
 
 ### Metadata-first RAM-limited streaming
 
-`--ram-limit` (0, the default: 90 % of the memory available) plans the run from Parquet
-schema and row-group metadata before the selected payload is materialised. When the conservative decode/materialisation
+`--ram-limit` is the run's soft memory budget, a plan rather than a cap (0, the default: 90 % of
+the memory available). For Parquet it plans the run from the schema and row-group metadata
+before the selected payload is materialised. When the conservative decode/materialisation
 estimate exceeds the data cap (the limit less the threads' reserve), the CLI can stream only a single file of one series
 per row (a list column, or the row layout) through non-full FastCLARA:
 
@@ -142,8 +142,8 @@ dtwc_cl -i data.parquet --column series -k 5 --method clara \
   --sample-size 500 --ram-limit 2GiB
 ```
 
-Under an explicit `--ram-limit`, a one-column file (one series), directories, non-CLARA methods, a sample resolving to all
-N series, and non-full CLARA with CUDA fail loudly while over budget. The automatic
+Under an explicit `--ram-limit`, a one-column file (one series), directories, non-CLARA methods, and a sample resolving to all
+N series stop with an `InvalidInput` while over budget. The automatic
 limit (0) never fails a run: it streams only where FastCLARA can, for a sample smaller
 than N and without `--checkpoint` or `--dist-matrix`, and elsewhere the series load as
 they would without a limit. Parquet
@@ -161,7 +161,7 @@ byte-identical to the resident route's.
 
 ## Arrow IPC (Feather v2)
 
-Arrow IPC (`.arrow` / `.ipc` / `.feather`) is **read in place**, in every build and language, by the C++ reader (the vendored nanoarrow; no Arrow C++ or pyarrow): the file is memory-mapped (in a build without llfio, read once into memory), and each series is a view of its bytes, never copied. A record batch whose buffers cannot be viewed in place is decoded instead, the batches in parallel, into memory the reader holds: compressed (LZ4 or ZSTD; `pyarrow.feather.write_feather` and pandas' `to_feather` compress with LZ4 unless given `compression="uncompressed"`), big-endian, or with a buffer not aligned to its values. A compressed file decodes one batch per core, so it reads fastest written in many batches; an uncompressed one is not decoded at all. A file whose batches declare more decoded bytes than the memory available is refused before any is decoded. `dtwc_cl -v` and the run report name which of these holds a file's series (`mapped`, `read into memory (no llfio)`, `decoded (lz4, 8 record batches)`, or `a copy as float32` for the other `--dtype`). Preferred for repeated clustering runs on the same dataset.
+Arrow IPC (`.arrow` / `.ipc` / `.feather`) is **read in place**, in every build and language, by the C++ reader (the vendored nanoarrow; no Arrow C++ or pyarrow): the file is memory-mapped (in a build without llfio, read once into memory), and each series is a view of its bytes, never copied. A record batch whose buffers cannot be viewed in place is decoded instead, the batches in parallel, into memory the reader holds: compressed (LZ4 or ZSTD; `pyarrow.feather.write_feather` and pandas' `to_feather` compress with LZ4 unless given `compression="uncompressed"`), big-endian, or with a buffer not aligned to its values. A compressed file decodes one batch per core, so it reads fastest written in many batches; an uncompressed one is not decoded at all. A file whose batches declare more decoded bytes than the memory available is refused before any is decoded. `dtwc_cl -v` and the run report name which of these holds a file's series (`mapped`, `read into memory (no llfio)`, `decoded (lz4, 8 record batches)`, or `a copy as float32` for the other `--dtype`). Series that would be held in RAM (decoded, read without llfio, or copied to the other `--dtype`) and do not fit the `--ram-limit` data cap are streamed by non-full FastCLARA, a record batch at a time; a mapped file's series are views, which are not streamed ([Data formats and conversion](../../guides/data-formats/)). Preferred for repeated clustering runs on the same dataset.
 
 CLI:
 
@@ -226,7 +226,7 @@ result = dtwc.cluster(X, 3);
 labels = dtwc.DTWClustering('NClusters', 2).fit_predict({[0 1 2], [5 6]});
 ```
 
-If you are using DTW-C++ directly (e.g., as a library within your software), you might prefer to read data independently or use pre-generated data. DTW-C++ employs the `Data` class to encapsulate a `std::vector<std::vector<data_type>>` data object and `std::vector<std::string>` for their corresponding names. The following example code snippet demonstrates how to input data into a Problem object.
+If you are using DTW-C++ directly (e.g., as a library within your software), you might prefer to read data independently or use pre-generated data. DTW-C++ employs the `Data` class to encapsulate a `std::vector<std::vector<data_t>>` data object and `std::vector<std::string>` for their corresponding names. The following example code snippet demonstrates how to input data into a Problem object.
 
 ```cpp
 // Your data generation routine:

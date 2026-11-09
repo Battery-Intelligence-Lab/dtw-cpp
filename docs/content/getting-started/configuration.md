@@ -55,8 +55,8 @@ should use `n-clusters`.
 
 YAML needs the optional fkYAML dependency, enabled by default
 (`-DDTWC_ENABLE_YAML=ON`). In a build configured with `-DDTWC_ENABLE_YAML=OFF`,
-a YAML file is refused with `built without YAML support; use TOML` rather than
-being misread:
+a YAML file is refused with `<file>: built without YAML support; use TOML, or rebuild with -DDTWC_ENABLE_YAML=ON`
+rather than being misread:
 
 ```bash
 dtwc_cl --config examples/cpp/config.yaml
@@ -65,17 +65,18 @@ dtwc_cl --config examples/cpp/config.yaml
 Keys are spelled exactly as in TOML; only the syntax differs
 (`n-clusters: 5` instead of `n-clusters = 5`). A YAML sequence supplies repeated
 values for one option, and a nested mapping is read the way a TOML table is.
-Anything with no CLI11 equivalent — a nested sequence, a non-mapping document,
-several documents in one file — is rejected with the offending key path. The
-example above mirrors
-[`examples/cpp/config.toml`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/examples/cpp/config.toml)
-key for key.
+Anything with no CLI11 equivalent is rejected: a nested sequence or a null value
+with the offending key path, a non-mapping document or several documents in one
+file with the file's name. The example above is
+the same run as
+[`examples/cpp/config.toml`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/examples/cpp/config.toml),
+written in YAML.
 
 Canonical keys and aliases represented by the live CLI are:
 
 | Area | Long flags / TOML keys |
 |---|---|
-| Input/output | `--input`, `--output`, `--name`, `--column`, `--dtype`, `--data-precision`, `--data-type`, `--skip-rows`, `--skip-cols`, `--delimiter`, `--ram-limit` |
+| Input/output | `--input`, `--output`, `--name`, `--column`, `--dtype`, `--data-precision`, `--data-type`, `--matrix-dtype`, `--skip-rows`, `--skip-cols`, `--delimiter`, `--ram-limit` |
 | Clustering | `--n-clusters`, `--method`, `--max-iter`, `--n-init`, `--seed` |
 | Distances | `--band`, `--metric`, `--variant`, `--missing-strategy`, `--mv-mode`, `--wdtw-g`, `--adtw-penalty`, `--sdtw-gamma`, `--msm-c`, `--twe-nu`, `--twe-lambda` |
 | FastCLARA/OneBatch/TADPole | `--sample-size`, `--n-samples`, `--batch-size`, `--dc` |
@@ -85,7 +86,7 @@ Canonical keys and aliases represented by the live CLI are:
 | Diagnostics | `--verbose`, `--no-report` |
 
 Use canonical keys (`dtype`, `gpu-precision`) rather than their aliases in new
-files. The repository's complete example is
+files. The repository's example is
 [`examples/cpp/config.toml`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/examples/cpp/config.toml).
 
 `checkpoint` names the directory of the distance checkpoint `<name>.dtwm`, which

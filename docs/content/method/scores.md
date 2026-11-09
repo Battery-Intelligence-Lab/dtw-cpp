@@ -8,7 +8,7 @@ weight: 9
 DTW-C++ exposes internal metrics for an already-clustered `Problem` and
 external metrics for two label vectors. The canonical C++ functions are in
 `dtwc::scores` in `scores.hpp`; Python exports the same snake_case names from
-`dtwcpp`.
+`dtwcpp`, and MATLAB from the `dtwc` package.
 
 ## Internal metrics
 
@@ -30,7 +30,8 @@ and $$b(i)$$ is the smallest mean dissimilarity to another non-empty cluster.
 Ordinary finite results lie in $$[-1,1]$$.
 
 The function returns one value per series. An unclustered problem raises
-`InvalidInput`. A singleton cluster
+`InvalidInput`, and so does one with fewer than two non-empty clusters (as its
+subclass `UndefinedScore`), because $$b(i)$$ needs another cluster. A singleton cluster
 member receives `0`. If a non-singleton point has both means equal to zero,
 the `0/0` case is also `0` (Rousseeuw's convention), so the vector is finite.
 
@@ -45,7 +46,8 @@ For cluster medoids $$c_i$$ and mean within-cluster scatter $$S_i$$,
 $$\mathrm{DBI} = \frac{1}{k}\sum_i
   \max_{j\ne i}\frac{S_i+S_j}{d(c_i,c_j)}.$$
 
-This implementation requires at least two clusters. A pair with
+This implementation requires at least two non-empty clusters and raises
+`InvalidInput` otherwise. A pair with
 zero medoid separation is not skipped: its ratio is infinity when the two
 clusters have any scatter and `0` when both have none,
 so the index is infinite when two medoids coincide with spread. Lower finite
@@ -63,7 +65,7 @@ $$\mathrm{Dunn} =
   \frac{\min\{d(x_i,x_j): \ell_i\ne\ell_j\}}
        {\max\{d(x_i,x_j): \ell_i=\ell_j,\ i<j\}}.$$
 
-It requires at least two clusters. If the maximum intra-cluster diameter is
+It requires at least two non-empty clusters. If the maximum intra-cluster diameter is
 zero, it returns positive infinity. Higher finite values indicate greater
 separation relative to cluster diameter.
 
@@ -95,7 +97,7 @@ overall medoid:
 
 $$\mathrm{CH} = \frac{B/(k-1)}{W/(N-k)}.$$
 
-It requires $$k>1$$ and $$N>k$$. If the within term $$W$$ is zero, the function
+It requires $$k>1$$ and $$N>k$$, with $$k$$ the number of non-empty clusters. If the within term $$W$$ is zero, the function
 returns positive infinity.
 
 ## External metrics

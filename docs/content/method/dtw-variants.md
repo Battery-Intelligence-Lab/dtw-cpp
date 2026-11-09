@@ -110,7 +110,7 @@ dtwc_cl -i data.csv -k 3 --variant wdtw --wdtw-g 0.05
 
 ## ADTW (Amerced DTW)
 
-**Reference:** Herrmann & Shifaz, "Amercing: An intuitive and effective constraint for dynamic time warping," Pattern Recognition, 137, 109301, 2023.
+**Reference:** Herrmann & Webb, "Amercing: An intuitive and effective constraint for dynamic time warping," Pattern Recognition, 137, 109333, 2023.
 
 ADTW adds a fixed penalty for non-diagonal (horizontal/vertical) warping steps, discouraging time stretching and compression. The recurrence becomes:
 
@@ -170,6 +170,8 @@ $$C(i,j) = d(x[i], y[j]) + \text{softmin}_\gamma\big(C(i-1,j-1),\; C(i-1,j),\; C
 As $$\gamma \to 0$$, Soft-DTW converges to standard DTW.
 
 **Note:** Soft-DTW can return **negative** values for identical series when $$\gamma > 0$$. The distance keeps one rolling column, $$O(\min(m, n))$$ memory, as standard DTW does; `soft_dtw_gradient` keeps two $$m \times n$$ matrices, which its backward pass reads.
+Soft-DTW is univariate and unbanded: a `Problem`'s band is ignored, and multivariate
+input is refused with `InvalidInput`.
 
 ### C++ API
 
@@ -252,7 +254,7 @@ dtwc_cl -i data.csv -k 3 --variant twe --twe-nu 0.001 --twe-lambda 1.0
 | **DDTW** | Preprocessing (derivative) | -- | Shape-sensitive comparison | $$O(\min(m,n))$$ |
 | **WDTW** | Recurrence (weighted cost) | $$g$$ (steepness) | Penalizing large phase shifts | $$O(\min(m,n))$$ |
 | **ADTW** | Recurrence (penalty) | $$\omega$$ (penalty) | Discouraging stretching/compression | $$O(\min(m,n))$$ |
-| **Soft-DTW** | Recurrence (softmin) | $$\gamma$$ (smoothness) | Differentiable loss, gradient-based learning | $$O(m \times n)$$ |
+| **Soft-DTW** | Recurrence (softmin) | $$\gamma$$ (smoothness) | Differentiable loss, gradient-based learning | $$O(\min(m,n))$$; the gradient $$O(m \times n)$$ |
 | **MSM** | Move/split/merge edit recurrence | $$c$$ | Metric elastic comparison | $$O(\min(m,n))$$ |
 | **TWE** | Stiff edit-distance recurrence | $$\nu,\lambda$$ | Metric elastic comparison with edit penalties | $$O(\min(m,n))$$ |
 
