@@ -88,9 +88,12 @@ Spec `plans/2026-10-09-dtype-and-blocked-access.md` (Volkan's rulings of 10-08, 
   checked twice 11-03) + ☑ S8b2 one set of words for a bad value whatever the input, stale `mip` extra lines (d1f0530f,
   11-03, mine), ☑ S9 MATLAB `cluster()` through `run`, `Result` wraps the run's, `Report`/`NoReport` (d04b61fd, 11-04;
   `brief_s9.md`; G10 660/660 in both MEX trees) + ☑ S9b two contracts pinned, tests only (6f199228, 11-04, mine), ☑ S10a the docs sweep of MM: where series live, batches of
-  a compressed IPC file, what a path Dataset re-reads (95012424, 11-04; `brief_s10a.md`, Sonnet xhigh), ☐ S10 the timing session
-  (waits for Volkan: his MATLAB sessions are open) and his call on the merge.
-  P1–P3, K1, K2 measured first in its timing session; MM merges once, after S10.
+  a compressed IPC file, what a path Dataset re-reads (95012424, 11-04; `brief_s10a.md`, Sonnet xhigh), ☑ S10b the in-RAM FastCLARA plan
+  holds the winner's label copy (0cc84a15, 11-09, mine; Volkan: "Price the copy, net the baseline"), ◐ S10 kit prep (untimed:
+  `s10_kit_plan.md`, `kit/s10/`, data and both WSL trees built, smoke run 11-04, rebuilt on 0cc84a15), ☐ S10 the timing
+  session (waits for Volkan: his MATLAB sessions are open) and his call on the merge.
+  The window's bands are `s10_kit_plan.md` §2 and §7 (Volkan 11-09: A, B, D, E2, F, K's ratio block; M, K's decode sentence,
+  E1 do not; P1, P3, F2/F3, C1–C4, R3 cut); MM merges once, after S10.
 - ☐ HG the GPU on mapped series (a batch pipeline) and CPU + GPU together, measured first (Volkan 10-11: own unit after
   MM; `C:/D/git/wt/tmp/MM/hetero.md`)
 

@@ -346,3 +346,12 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   cut: "Cut it (Recommended)" (only `dtwc_cl -o ""` and C++ `run(Config)` reach it; the bindings bind no checkpoint). The
   S10 timing session (P1-P3, K1, K2; HG's baseline) runs when he says his MATLAB sessions are closed: "Later, I will tell
   you"; until then no speed claim is made for MM and the non-timing work goes on.
+- 2026-11-09 — Volkan (question tool; asked 11-04, answered after a restart) on S10's window (plan
+  `C:/D/git/wt/tmp/MM/s10_kit_plan.md`): merge rule "Speed and safety bands block (Recommended)": A (the in-place Arrow read
+  against the copy), B (in-RAM series at 24/23/1 threads), D (the Parquet stream), E2 (the PAM fill split), F (a file twice
+  the job's memory read once) and K's MM/base ratio must hold before pb/MM merges into design-2.0; M (the memory plan against
+  the measured peak), K's decode-speed sentence and E1 (the report's cost) are recorded and fixed or reworded after.
+  Kit scope "Cut them (Recommended)": F2/F3, P1, P3, C1-C4 and R3 are dropped; the merge is judged against design-2.0's tip.
+  Plan accuracy "Price the copy, net the baseline (Recommended)": the in-RAM FastCLARA plan holds the winner's label copy
+  as the stream's does, M's ratio is registered net of the program's own baseline (a 25-series run), and cli.md says the
+  program's own few MB lie outside the plan.
