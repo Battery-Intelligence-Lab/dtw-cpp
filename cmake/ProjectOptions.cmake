@@ -92,12 +92,16 @@ macro(dtwc_local_options)
   # rather than with a directory-scope add_compile_options() is the whole point:
   # this target is reached only by things that link it, so the flags cannot leak
   # into fetched dependencies — HiGHS, Catch2 and llfio were all picking them up.
+  # C++ only: every source of ours is C++, and the vendored C that dtwc_third_party
+  # compiles (nanoarrow's IPC reader, flatcc, lz4, zstd) keeps the compiler's own
+  # floating-point model; under MSVC's /fp:strict, flatcc's float constant
+  # initialisers are no longer constants (C2099).
   # Optimised configurations only, matching the previous CONFIG generator
   # expressions; Debug is unaffected.
   foreach(_dtwc_fp_flag IN LISTS DTWC_FP_FLAGS)
     target_compile_options(dtwc_options INTERFACE
-      $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_dtwc_fp_flag}>>
-      $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_dtwc_fp_flag}>>)
+      $<$<COMPILE_LANGUAGE:CXX>:$<$<CONFIG:Release>:${_dtwc_fp_flag}>>
+      $<$<COMPILE_LANGUAGE:CXX>:$<$<CONFIG:RelWithDebInfo>:${_dtwc_fp_flag}>>)
   endforeach()
   unset(_dtwc_fp_flag)
 
