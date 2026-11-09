@@ -15,7 +15,6 @@
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
-#include <nanobind/stl/function.h>
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/shared_ptr.h> // _run hands dtwcpp._mip.solve the run's own Problem, to co-own
@@ -52,7 +51,6 @@
 #include <exception>
 #include <filesystem>
 #include <initializer_list>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>

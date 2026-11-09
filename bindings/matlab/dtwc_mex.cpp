@@ -43,13 +43,13 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 
 #include <string>
 #include <vector>
-#include <cstring>
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <cstdint>
-#include <iterator>
+#include <filesystem>
 #include <stdexcept>
 #include <algorithm>
 #include <span>
@@ -89,8 +89,6 @@ public:
   static void drain() {
     map_.clear();
   }
-
-  static size_t size() { return map_.size(); }
 };
 
 template <typename T>

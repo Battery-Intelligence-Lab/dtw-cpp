@@ -49,10 +49,7 @@ def _toml_value(value):
 def _normalize_wait_controls(poll_seconds, timeout_seconds):
     """Validate polling controls before a remote job can be submitted."""
     normalized = []
-    for name, value, minimum, strict in (
-        ("poll_seconds", poll_seconds, 0.0, True),
-        ("timeout_seconds", timeout_seconds, 0.0, True),
-    ):
+    for name, value in (("poll_seconds", poll_seconds), ("timeout_seconds", timeout_seconds)):
         if isinstance(value, (bool, np.bool_)) or not isinstance(
             value, (int, float, np.integer, np.floating)
         ):
@@ -60,9 +57,8 @@ def _normalize_wait_controls(poll_seconds, timeout_seconds):
         value = float(value)
         if not np.isfinite(value):
             raise ValueError(f"{name} must be finite")
-        if value < minimum or (strict and value == minimum):
-            comparator = "greater than zero" if strict else "non-negative"
-            raise ValueError(f"{name} must be {comparator}")
+        if value <= 0.0:
+            raise ValueError(f"{name} must be greater than zero")
         normalized.append(value)
     return tuple(normalized)
 

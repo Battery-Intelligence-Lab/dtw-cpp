@@ -130,8 +130,8 @@ class Dataset:
     def is_path(self):
         return isinstance(self.source, (str, os.PathLike))
 
-    def _as_data(self):
-        """Read the source once, caching the C++ ``dtwc::Data``.
+    def as_data(self):
+        """The C++ :class:`dtwcpp.Data` of the source, read once and cached.
 
         A path is read as dtwc_cl reads it: text by the C++ reader
         (``skip_cols`` drops leading FIELDS before numeric parsing, ``skip_rows``
@@ -163,23 +163,18 @@ class Dataset:
                 self._data = make([row.tolist() for row in rows], names)
         return self._data
 
-    def as_data(self):
-        """The C++ :class:`dtwcpp.Data` (reads the file if a path; an Arrow IPC file's series are views of it).
-        Cached."""
-        return self._as_data()
-
     def as_series(self):
         """A fresh ``list`` view of the series — built from :meth:`as_data` on demand.
 
         Not cached: the C++ ``Data`` is the retained representation, so asking
         for Python floats is an explicit, transient request.
         """
-        data = self._as_data()
+        data = self.as_data()
         return [data.series(i) for i in range(data.size)]
 
     def series_names(self):
         """The loader's name for each series — what C++ ``series_name(i)`` returns."""
-        return self._as_data().p_names
+        return self.as_data().p_names
 
 
 def load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None, dtype="float64"):
