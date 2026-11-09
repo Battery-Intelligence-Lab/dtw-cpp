@@ -13,9 +13,9 @@ DTW-C++ provides a full-featured CLI tool for time series clustering. After comp
 - **DTW variants**: Standard, DDTW, WDTW, ADTW, Soft-DTW, MSM, and TWE
 - **Distance metrics**: L1 (default) and squared Euclidean
 - **GPU acceleration**: the distance matrix on CUDA (NVIDIA) or Metal (macOS), with `--device gpu`
-- **Configuration files**: TOML or YAML (CLI11 native); `--print-config` writes the settings as a file `--config` reads
+- **Configuration files**: TOML or YAML; `--print-config` writes the settings as a file `--config` reads
 - **Checkpointing**: Save and resume distance matrix computation
-- **Flexible I/O**: CSV/TSV plus optional Arrow/Parquet input, configurable row/column skipping, and stable CSV outputs
+- **Flexible I/O**: CSV/TSV and Arrow IPC input, Parquet input in a build with Arrow, configurable row/column skipping, and stable CSV outputs
 
 ## Quick Start
 
@@ -56,7 +56,7 @@ two agree on every default, check and method choice.
 | `--column <name>` | The Parquet scalar/list Float32 or Float64 column to read. If omitted, the first eligible top-level column decides: a list or several scalar columns are one series per row, the only scalar column one series ([Supported data](../supported-data/)) | — |
 | `--dtype <string>` | The precision the series are stored in: `float32` halves their memory, each value read as a double and rounded, with no double copy held. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
 | `--matrix-dtype <string>` | The distance matrix's value type: `float32` halves its memory (N = 100,000: 20 GB, not 40), each distance rounded once to the nearest float, so costs and scores move by about 6e-8 of themselves and medoids and labels can change; a distance beyond float32's range (3.4e38) stops the run. Independent of `--dtype`; value aliases as `--dtype`'s | `float64` |
-| `--ram-limit <size>` | The memory the run may use, e.g. `2GiB`, `500M`, `1.5G`: it decides when the distance matrix is mapped to a file and when Parquet series stream through `clara`; see below | 0: automatic |
+| `--ram-limit <size>` | The memory the run plans for, e.g. `2GiB`, `500M`, `1.5G`: it sets the threads, when the distance matrix is mapped to a file and when Parquet and Arrow IPC series stream through `clara`; see below | 0: automatic |
 
 The option names of DTW-C++ 1.0 (Nc, probName, in, out, skipRows, skipCols, maxIter, Nrep, bandwidth, distMat and
 their other spellings) still work, hidden from `--help`: each prints one warning naming its 2.0 flag. Its range of
@@ -108,7 +108,7 @@ Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias
 |------|-------------|---------|
 | `--sample-size <int>` | Subsample size (-1 = auto) | -1 |
 | `--n-samples <int>` | Number of independent subsamples | 5 |
-| `--seed <int>` | Invocation-local seed for PAM, OneBatchPAM, and CLARA | 42 |
+| `--seed <int>` | Invocation-local seed for stochastic clustering (PAM, OneBatchPAM, CLARA) and the MIP warm start | 42 |
 
 The default seed is identical across the C++, Python, MATLAB, sklearn, and CLI
 seed-aware routes. Supplying `--seed` does not consume the legacy process-global
@@ -129,7 +129,7 @@ MIP's and LR-core's solver memory is not planned.
 
 The run plans once, as soon as it knows its input (an Arrow IPC file's walk, a
 Parquet file's metadata, else the series read). It reserves its threads' working
-set: a thread's scratch for the DTW kernels, priced for the longest series it
+set: a thread's scratch for the DTW kernels, sized for the longest series it
 expects (the longest series read, a mapped Arrow IPC file's longest, else twice
 the mean length), and the method's tables, times the threads, and a tenth more.
 What the reserve leaves is the data cap, for the series, the method's own terms
@@ -236,12 +236,10 @@ load on the threads that fit. An explicit `--ram-limit` is fail-closed:
 
 The data cap covers what the streamed run holds: library metadata and fixed
 process overhead (the code, thread stacks, the allocators' first pages) are
-outside it, and so is a GPU runtime's own host memory (the resident peak of a
-CUDA run rose by about 90 MiB when the runtime started: CUDA 13.0, one run,
-2026-11-03). An Arrow IPC file streams as Parquet does where RAM would hold its
+outside it, and so is a GPU runtime's own host memory. An Arrow IPC file streams as Parquet does where RAM would hold its
 series outside the page cache (decoded, read without LLFIO, or in the other
 `--dtype`): FastCLARA reads it a record batch at a time; a mapped file's values are
-not streamed. With `--device gpu` the plan prices the GPU's staging buffer for
+not streamed. With `--device gpu` the plan counts the GPU's staging buffer for
 every input (CUDA: the series padded to the longest, 8 bytes a value, 4 under
 `--gpu-precision fp32`; Metal: the series and the matrix as floats) and, for an
 Arrow IPC file, whose series are views of it, the owned copy the GPU uploads of
@@ -255,7 +253,7 @@ among it, as it starts and when it ends.
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--batch-size <int>` | OneBatchPAM objective batch size (-1 = logarithmic auto, raised to k); an explicit size below k is an error | -1 |
-| `--dc <float>` | TADPole density cutoff (omitted/negative = deterministic auto-selection) | auto |
+| `--dc <float>` | TADPole density cutoff (omitted/negative = deterministic auto-selection) | -1 (auto) |
 
 ### Hierarchical Clustering Options
 
@@ -301,15 +299,17 @@ negative `--skip-rows` or `--skip-cols`.
 
 The checkpoint is one file, `<dir>/<name>.dtwm` ([Checkpointing](checkpointing.md)). Without `--checkpoint-interval` (or with `0`) it is written once, after clustering. With a non-zero interval, `fill_distance_matrix` saves it after every `<rows>` completed matrix rows (rounded up to the lane width, 16 rows of doubles where the lanes are 128 bytes), so an interrupted run resumes from the last save instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. The first save writes the whole matrix, each later one only the rows filled since, in place: a fill writes at most twice the matrix's bytes, and the end-of-run save once more. A checkpoint for other data or settings, or a damaged one, stops the run with exit status 1 before anything is computed; it is never recomputed over.
 
-A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, with a row count other than the number of input series, or with a negative entry under any `--variant` but `softdtw`, unless `--not-computed negative` reads it as a pair to compute) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes after the result files, so a save that fails there (a full disk) leaves the results written.
+A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, with a row count other than the number of input series, or with a negative entry under any `--variant` but `softdtw`, unless `--not-computed negative` reads it as a pair to compute) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes before the result files, but a save that fails (a full disk) is reported only once they are written, so the results stay.
 
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
 exact/fallback distance still uses the packed cache. It therefore follows
 `--ram-limit` just like matrix-based methods. OneBatchPAM is the exception:
 its fixed O(Nm) table never allocates the Problem distance matrix. If the
-matrix exceeds an explicit `--ram-limit` in a binary built without LLFIO, the
-CLI exits before a heap allocation and tells you to enable LLFIO, raise the
-limit only when the packed matrix fits in RAM, or select `onebatch`.
+series and the matrix do not fit within an explicit `--ram-limit` in a binary
+built without LLFIO, the CLI refuses the run before any distance is computed:
+its message says the build cannot map the matrix (`DTWC_ENABLE_LLFIO=OFF`) and
+names the ways out, raising the limit, `--dtype float32`, `--method clara`
+and, with more than one thread, fewer threads (`OMP_NUM_THREADS`).
 
 Non-full FastCLARA is also parent-matrix-free: only its current subsample PAM
 owns an O(s²) matrix, while full-data assignment evaluates N×k configured DTW
@@ -325,10 +325,10 @@ resumes automatically when its magic, version, exact length, N, SHA-256
 fingerprint of the data and distance settings and value type (`--matrix-dtype`)
 match, the rows it records as written kept and the rest computed; a file of other
 data, settings or value type is `InvalidInput` (the message names the
-`--matrix-dtype` that reads it) and a damaged or earlier-layout one `IOError`, both
+value type that reads it) and a damaged or earlier-layout one `IOError`, both
 before any cached distance is read. A version-4 file, from a 2.0 build before
 `--matrix-dtype`, is read as `float64`. `--dist-matrix` (a CSV matrix) is read into
-RAM: a matrix over an explicit `--ram-limit` is rejected before either path is
+RAM: a matrix over an explicit `--ram-limit` is rejected before the `--dist-matrix` file is
 opened, and the automatic limit keeps it in RAM. CUDA
 mmap and checkpoint runs must select explicit `--gpu-precision fp32` or `fp64`:
 CUDA's `auto` depends on the GPU, so it is not a stable cache identity (Metal's
@@ -357,7 +357,7 @@ writes and submits one, through `bash scripts/slurm/slurm_remote.sh submit-job`
 
 | Flag | Description |
 |------|-------------|
-| `--config <path>` | TOML or YAML configuration file (CLI11 native) |
+| `--config <path>` | TOML or YAML configuration file |
 | `--print-config` | Write every setting, one `key = value` line each, as a TOML file `--config` reads back, and exit |
 
 See [Configuration Files](configuration.md) for full details and examples.
@@ -388,10 +388,10 @@ report is the run's own account, and no other file holds them. On SLURM,
 `slurm_remote.sh download` brings back the whole `results/` directory, reports
 included; a Python `device="hpc"` job's (`download-cluster`) brings back its labels only.
 
-RAM-limited Parquet streaming writes labels and medoids, but deliberately does
+RAM-limited Parquet or Arrow IPC streaming writes labels and medoids, but deliberately does
 not materialise the dense matrix merely to produce distance or silhouette CSVs.
-Rows take their names from the file's first string column, else `series_0`,
-`series_1`, and so on. For the same
+Rows take their names from the file's first string column (an Arrow IPC file's `name`
+column), else `series_0`, `series_1`, and so on. For the same
 seed/configuration, streamed and resident list-column runs produce
 byte-identical label and medoid files.
 
@@ -458,7 +458,8 @@ dtwc_cl --config config.yaml
 ### Distance checkpoint
 
 ```bash
-# Save <name>.dtwm to ./checkpoints and resume from it; a restart uses the same command
+# Save <name>.dtwm to ./checkpoints at the end; the same command, run again, resumes from it
+# (--checkpoint-interval 100 also saves it during the fill)
 dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
 dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
 ```
