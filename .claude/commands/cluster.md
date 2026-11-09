@@ -78,7 +78,7 @@ prob = dc.Problem("cluster_run")
 prob.set_data(data)
 prob.set_variant(dc.DTWVariant.Standard)  # or user choice
 prob.set_band(BAND)
-prob.set_method(dc.Method.Kmedoids)
+prob.set_method(dc.Method.Auto)  # PAM up to 5000 series, CLARA above (Step 3); or the user's choice
 prob.set_n_clusters(K)
 # Missing data?
 # prob.missing_strategy = dc.MissingStrategy.AROW
