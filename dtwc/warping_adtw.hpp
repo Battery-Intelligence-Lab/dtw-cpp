@@ -15,9 +15,9 @@
  *          functor. The loop body itself lives in core/dtw_kernel.hpp (one
  *          copy, shared with Standard + WDTW).
  *
- *          Reference: Herrmann, M. & Shifaz, A. (2023), "Amercing: An intuitive
+ *          Reference: Herrmann, M. & Webb, G. I. (2023), "Amercing: An intuitive
  *          and effective constraint for dynamic time warping." Pattern
- *          Recognition, 137, 109301.
+ *          Recognition, 137, 109333.
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026

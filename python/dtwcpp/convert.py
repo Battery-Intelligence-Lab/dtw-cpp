@@ -9,7 +9,7 @@ Usage::
 
     dtwc-convert input.parquet -o output.arrow
     dtwc-convert input.csv -o output.arrow
-    dtwc-convert input.h5 -o output.arrow --name-column name
+    dtwc-convert input.parquet -o output.arrow --name-column name
 
 @author Volkan Kumtepeli
 @author Claude 4.6

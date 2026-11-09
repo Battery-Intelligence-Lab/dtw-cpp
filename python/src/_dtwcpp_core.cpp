@@ -998,7 +998,7 @@ NB_MODULE(_dtwcpp_core, m) {
        "Create a Problem that computes on `device`: 'cpu' (default), 'gpu',\n"
        "'gpu:N', 'cuda' or 'cuda:N', as for dtwcpp.device(). A Problem does not\n"
        "follow the process-wide dtwcpp.device(). 'gpu' without a GPU backend\n"
-       "raises DeviceError; 'hpc' raises InvalidInput (it is a cluster() option).")
+       "and 'hpc' raise DeviceError ('hpc' is a cluster() option).")
     .def("set_device", [](dtwc::Problem &p, const std::string &device) {
       const auto [selected, index] = dtwc::detail::parse_device(device);
       p.set_device(selected, index);
