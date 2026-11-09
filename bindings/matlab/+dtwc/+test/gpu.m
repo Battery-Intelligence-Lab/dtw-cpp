@@ -1,6 +1,3 @@
-%> @file gpu.m
-%> @brief GPU-backend self-probe (parity with dtwc::test::gpu / dtwcpp.test.gpu).
-%> @author Volkan Kumtepeli
 function report = gpu()
 %GPU Execute a tiny GPU kernel and validate it against a CPU oracle.
 %
@@ -20,6 +17,10 @@ function report = gpu()
 %   silently degrades (2.0 no-silent-fallback rule).
 %
 %   See also dtwc.test.parallelisation, dtwc.gpu_available, dtwc.gpu_info
+
+%> @file gpu.m
+%> @brief GPU-backend self-probe (parity with dtwc::test::gpu / dtwcpp.test.gpu).
+%> @author Volkan Kumtepeli
 
     report = dtwc_mex('test_gpu');
 end

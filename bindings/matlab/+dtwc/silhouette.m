@@ -1,6 +1,3 @@
-%> @file silhouette.m
-%> @brief Compute silhouette scores for each data point.
-%> @author Volkan Kumtepeli
 function s = silhouette(prob)
 %SILHOUETTE Compute silhouette scores for each data point.
 %
@@ -20,6 +17,10 @@ function s = silhouette(prob)
 %       Silhouette score for each data point.
 %
 %   See also dtwc.davies_bouldin, dtwc.fast_pam
+
+%> @file silhouette.m
+%> @brief Compute silhouette scores for each data point.
+%> @author Volkan Kumtepeli
 
     s = dtwc_mex('silhouette', prob.get_handle());
 end

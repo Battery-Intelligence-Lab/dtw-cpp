@@ -1,6 +1,3 @@
-%> @file device.m
-%> @brief Global compute-device get/set.
-%> @author Volkan Kumtepeli
 function out = device(name)
 %DEVICE Get or set the process-wide compute device.
 %
@@ -16,6 +13,10 @@ function out = device(name)
 %   quietly downgraded to CPU.
 %
 %   See also dtwc.cluster, dtwc.DTWClustering
+
+%> @file device.m
+%> @brief Global compute-device get/set.
+%> @author Volkan Kumtepeli
 
     if nargin < 1
         out = dtwc_mex('get_device');

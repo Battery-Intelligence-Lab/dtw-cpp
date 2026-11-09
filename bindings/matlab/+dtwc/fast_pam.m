@@ -1,6 +1,3 @@
-%> @file fast_pam.m
-%> @brief Run FasterPAM k-medoids clustering on a Problem.
-%> @author Volkan Kumtepeli
 function result = fast_pam(prob, k, varargin)
 %FAST_PAM Run FasterPAM k-medoids clustering on a Problem.
 %
@@ -39,6 +36,10 @@ function result = fast_pam(prob, k, varargin)
 %   Reference: Schubert & Rousseeuw (2021), "Fast and eager k-medoids"
 %
 %   See also dtwc.fast_clara, dtwc.silhouette
+
+%> @file fast_pam.m
+%> @brief Run FasterPAM k-medoids clustering on a Problem.
+%> @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'prob');

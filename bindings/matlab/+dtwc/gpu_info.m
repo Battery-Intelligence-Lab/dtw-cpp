@@ -1,6 +1,3 @@
-%> @file gpu_info.m
-%> @brief One line on this build's GPU backend and its GPU.
-%> @author Volkan Kumtepeli
 function info = gpu_info()
 %GPU_INFO One line naming this build's GPU backend and the GPU 'gpu' computes on.
 %
@@ -9,6 +6,10 @@ function info = gpu_info()
 %   'CUDA: <device>' or 'Metal: <device>', or why there is no GPU.
 %
 %   See also dtwc.gpu_available, dtwc.device, dtwc.test.gpu
+
+%> @file gpu_info.m
+%> @brief One line on this build's GPU backend and its GPU.
+%> @author Volkan Kumtepeli
 
     info = dtwc_mex('gpu_info');
 end

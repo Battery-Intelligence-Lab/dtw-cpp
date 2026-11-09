@@ -1,6 +1,3 @@
-%> @file load.m
-%> @brief Lazy dataset loader.
-%> @author Volkan Kumtepeli
 function ds = load(source, varargin)
 %LOAD A lazy dtwc.Dataset of a path or of series already in memory.
 %
@@ -32,6 +29,10 @@ function ds = load(source, varargin)
 %   A Dataset passes through unchanged; it keeps the options it was made with.
 %
 %   See also dtwc.Dataset, dtwc.cluster
+
+%> @file load.m
+%> @brief Lazy dataset loader.
+%> @author Volkan Kumtepeli
 
     if isa(source, 'dtwc.Dataset')
         if ~isempty(varargin)

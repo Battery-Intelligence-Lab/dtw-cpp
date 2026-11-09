@@ -1,6 +1,3 @@
-%> @file build_dendrogram.m
-%> @brief Build a dendrogram from a Problem.
-%> @author Volkan Kumtepeli
 function dend = build_dendrogram(prob, varargin)
 %BUILD_DENDROGRAM Build a dendrogram from a Problem.
 %
@@ -29,6 +26,10 @@ function dend = build_dendrogram(prob, varargin)
 %       n_points  - double scalar
 %
 %   See also dtwc.cut_dendrogram, dtwc.fast_pam
+
+%> @file build_dendrogram.m
+%> @brief Build a dendrogram from a Problem.
+%> @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'prob');
