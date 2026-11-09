@@ -155,8 +155,8 @@ constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
 
 void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision)
 {
-  // The GPU routes upload Float64 series (a fill data_.p_vec or an owned copy of
-  // a view's, CUDA's FastCLARA assignment the series' spans) and run Standard
+  // The GPU routes upload Float64 series (CUDA's fill and FastCLARA assignment
+  // from the series' spans, Metal's fill p_vec or an owned copy of a view's) and run Standard
   // DTW with no missing-data strategy, in L1 or squared L2.
   if (prob.device().first != Device::GPU) return;
   if (series_precision == core::Precision::Float32)
@@ -901,8 +901,8 @@ void Problem::SeriesCheck::finish() const
                        + std::to_string(mark_) + ") is entirely NaN, so MissingStrategy::Interpolate has nothing to "
                        "interpolate from. Use ZeroCost or AROW, or drop the series.");
 
-  // The GPU routes also need univariate Float64 series (a fill uploads a view's as an owned copy; CUDA's FastCLARA
-  // assignment reads them where they lie).
+  // The GPU routes also need univariate Float64 series (CUDA reads them where they lie; Metal's fill uploads a view's
+  // as an owned copy).
   if (problem.device_ != Device::GPU) return;
   validate_gpu_request(where_, problem, problem.data_.precision);
   if (problem.data_.ndim > 1)
@@ -1138,15 +1138,21 @@ void Problem::fill_distance_matrix()
     // L2 is L1 on the univariate series the GPU routes take.
     opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
     opts.verbose = verbose_;
-    // The backends upload owned Float64 series, which a view (a mapped Arrow IPC file's series, a decoded record
-    // batch's) leaves p_vec empty of: it uploads an owned copy, checked above, freed when the fill returns.
+#  if defined(DTWC_HAS_CUDA)
+    // CUDA reads the Float64 series (checked above) where they lie, a view's (a mapped Arrow IPC file's, a decoded
+    // record batch's) or owned: this thread's team pads them into its staging, each its own rows; no copy is made.
+    const auto parallel = [](std::size_t count, const std::function<void(std::size_t)> &task) {
+      run_openmp(task, count, count > 64);
+    };
+    (void)cuda::compute_distance_matrix_cuda(
+      static_cast<std::size_t>(data_.size()), [this](std::size_t i) { return data_.series(i); }, opts, parallel,
+      distMat);
+#  else
+    // Metal uploads owned Float64 series, which a view (a mapped Arrow IPC file's series, a decoded record batch's)
+    // leaves p_vec empty of: it uploads an owned copy, checked above, freed when the fill returns.
     std::optional<Data> copy;
     if (data_.is_view()) copy.emplace(detail::owned_copy(data_, core::Precision::Float64));
-    const auto &series = copy ? copy->p_vec : data_.p_vec;
-#  if defined(DTWC_HAS_CUDA)
-    (void)cuda::compute_distance_matrix_cuda(series, opts, distMat);
-#  else
-    (void)metal::compute_distance_matrix_metal(series, opts, distMat);
+    (void)metal::compute_distance_matrix_metal(copy ? copy->p_vec : data_.p_vec, opts, distMat);
 #  endif
     refuse_float32_overflow(0, distMat.size());
     if (distMat.rows_written() < distMat.size()) // a mapped file's rows are on the device, and it records them

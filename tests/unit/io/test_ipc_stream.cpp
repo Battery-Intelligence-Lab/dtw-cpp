@@ -621,13 +621,18 @@ TEST_CASE("Arrow IPC: a file's names read alone are the in-RAM read's", "[io][ar
 
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
 // In RAM the series are views (of the mapping, of the file read without llfio, of decoded record batches), which
-// a GPU's fill uploads as an owned copy and CUDA's assignment reads where they lie; streamed, views of its record
-// batches, which CUDA's assignment reads where they lie too (Metal assigns on the CPU). The oracle: the same run on the
-// file's CSV twin, whose series are owned and hold the same values. Beyond an explicit limit the planner prices a
-// fill's copy, and names CLARA, which streams on a GPU too.
+// CUDA's fill and assignment read where they lie and Metal's fill uploads as an owned copy; streamed, views of its
+// record batches, which CUDA's assignment reads where they lie too (Metal assigns on the CPU). The oracle: the same run
+// on the file's CSV twin, whose series are owned and hold the same values. Beyond an explicit limit the planner prices
+// Metal's fill's copy (CUDA's none), and names CLARA, which streams on a GPU too.
 TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's clustering",
           "[io][arrow][streaming][gpu]")
 {
+#  if defined(DTWC_HAS_CUDA)
+  constexpr bool copy = false; // the GPU's fill reads the views where they lie
+#  else
+  constexpr bool copy = true; // the GPU's fill uploads an owned copy of the views
+#  endif
   const auto on_gpu = [](const char *file, dtwc::Method method) {
     dtwc::Config config = clara_config(fixture(file));
     config.verbose = false;
@@ -644,18 +649,19 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
   pam.ram_limit = 16000;
   CHECK_THROWS_MATCHES(dtwc::run(pam), dtwc::InvalidInput,
                        Message("Arrow IPC input needs approximately "
-                               + std::to_string(lz4.resident_bytes(Precision::Float64, true))
+                               + std::to_string(lz4.resident_bytes(Precision::Float64, copy))
                                + " bytes of resident series storage, exceeding --ram-limit=16000; method 'pam' cannot "
                                  "stream it. Use --method clara, which reads the file a record batch at a time, or "
                                  "raise --ram-limit."));
-  // Series passed in memory as a view (read_data's of the file): the plan holds their values, the owned copy the GPU
-  // uploads of them, and the GPU's staging of them, the series padded to the longest (4 values each), beside the matrix.
+  // Series passed in memory as a view (read_data's of the file): the plan holds their values (the 1024 values' 8 bytes
+  // each), on Metal the owned copy the GPU uploads of them, and the GPU's staging of them, the series padded to the
+  // longest (4 values each), beside the matrix.
   dtwc::Config memory = on_gpu("clara_256.arrow", dtwc::Method::PAM);
   memory.input.clear();
   memory.ram_limit = 16000;
   const dtwc::Data view = dtwc::read_data(fixture("clara_256.arrow"));
   REQUIRE(view.is_view());
-  const std::size_t series = 1024 * sizeof(double) + dtwc::detail::owned_series_bytes(1024, 256, false);
+  const std::size_t series = 1024 * sizeof(double) + (copy ? dtwc::detail::owned_series_bytes(1024, 256, false) : 0);
 #  if defined(DTWC_HAS_CUDA)
   const std::size_t staging = 256 * 4 * sizeof(double); // FP64
 #  else
@@ -663,21 +669,27 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
 #  endif
   CHECK_THROWS_MATCHES(dtwc::run(memory, view), dtwc::InvalidInput,
                        MessageMatches(ContainsSubstring(
-                         std::to_string(series) + " for the series and the owned copy the GPU uploads of them, "
+                         std::to_string(series) + " for the series"
+                         + (copy ? " and the owned copy the GPU uploads of them" : "") + ", "
                          + std::to_string(staging) + " for the GPU's staging of them, "
                          + std::to_string(dtwc::core::packed_size(256) * sizeof(double)) + " for the distance matrix")));
 #  if defined(DTWC_HAS_MMAP)
-  // A mapped file's values are not streamed: below its views and their copy, the CPU, which holds no copy, is a way out.
+  // A mapped file's values are not streamed: below its views (and on Metal their copy, where the CPU, which holds no
+  // copy, is a way out), refused. On CUDA the refusal is the CPU's, whose float32 way out a GPU refuses (its wording
+  // not yet changed for the GPU, 2026-11-09).
   dtwc::Config mapped = on_gpu("clara_256.arrow", dtwc::Method::PAM);
-  const std::size_t views = dtwc::io::IpcFile(fixture("clara_256.arrow")).resident_bytes(Precision::Float64, true);
+  const std::size_t views = dtwc::io::IpcFile(fixture("clara_256.arrow")).resident_bytes(Precision::Float64, copy);
   mapped.ram_limit = views - 1;
   CHECK_THROWS_MATCHES(dtwc::run(mapped), dtwc::InvalidInput,
                        Message("Arrow IPC input needs approximately " + std::to_string(views)
                                + " bytes of resident series storage, exceeding --ram-limit=" + std::to_string(views - 1)
                                + "; its values are mapped where they lie in the file, and a mapped file's values are "
-                                 "not streamed: the views of its 256 series and the owned copy the GPU uploads of them "
-                                 "are held at once. Raise --ram-limit, or run on the CPU (--device cpu), which holds no "
-                                 "copy."));
+                                 "not streamed: the views of its 256 series "
+                               + (copy ? "and the owned copy the GPU uploads of them are held at once. Raise "
+                                         "--ram-limit, or run on the CPU (--device cpu), which holds no copy."
+                                       : "are held at once. Raise --ram-limit, or read its values as float32 (--dtype "
+                                         "float32) with --method clara, whose copy FastCLARA reads a record batch at "
+                                         "a time.")));
 #  endif
   if (!dtwc::gpu_available()) { // the backend's refusal, never a view's or the stream's
     CHECK_THROWS_MATCHES(dtwc::run(on_gpu("clara_256_lz4.arrow", dtwc::Method::PAM)), dtwc::DeviceError,

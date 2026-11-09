@@ -1219,12 +1219,16 @@ struct Launches {
 /// whatever N is. No launch writes a diagonal slot: the host zeroes the diagonal.
 ///
 /// Pair indices are decoded on the device (decode_pair), so no pair list is
-/// built or uploaded. GPU timing is measured with CUDA events around the
-/// uploads, the launches and the copies.
+/// built or uploaded. The series (series(i), read where they lie) are padded
+/// into the staging buffer by the caller's threads (`parallel`, each its own
+/// rows) and uploaded once: every launch's pairs reach across the series, so
+/// the device holds them all. A failure drains the stream before it leaves, so
+/// no copy is in flight into or out of a buffer the next call reuses. GPU
+/// timing is measured with CUDA events around the uploads, the launches and the
+/// copies.
 template <typename T>
 void launch_dtw_kernel(
-    const std::vector<std::vector<double>> &series,
-    size_t N, size_t max_L,
+    size_t N, const SeriesAt &series, const ParallelFor &parallel, size_t max_L,
     bool use_squared_l2, int band, int device_id, double &gpu_time_sec,
     detail::KernelPath kernel_path, core::DistanceMatrix &out)
 {
@@ -1247,8 +1251,7 @@ void launch_dtw_kernel(
   T *h_flat_series = workspace.host_series.ensure(
       N * max_L, series_bytes >= PINNED_THRESHOLD);
   std::vector<int> lengths(N);
-  for (size_t d = 0; d < N; ++d)
-    lengths[d] = pad_series(h_flat_series + d * max_L, series[N - 1 - d], max_L);
+  parallel(N, [&](size_t d) { lengths[d] = pad_series(h_flat_series + d * max_L, series(N - 1 - d), max_L); });
 
   // Every refusal is behind us and every buffer is allocated: size the
   // caller's matrix. One already N x N, as a mapped one is, keeps its storage.
@@ -1256,50 +1259,57 @@ void launch_dtw_kernel(
 
   auto stream = workspace.stream.get();
 
-  CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), stream));
-  CUDA_CHECK(cudaMemcpyAsync(workspace.d_series.get(), h_flat_series,
-                              series_bytes, cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get(), lengths.data(),
-                              N * sizeof(int), cudaMemcpyHostToDevice, stream));
+  try {
+    CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), stream));
+    CUDA_CHECK(cudaMemcpyAsync(workspace.d_series.get(), h_flat_series,
+                                series_bytes, cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get(), lengths.data(),
+                                N * sizeof(int), cudaMemcpyHostToDevice, stream));
 
-  // The launches take the matrix from the top down, each the range of slots
-  // [first_slot, end): its pairs' slots and the diagonal slots among and above
-  // them; the last range starts at slot 0. The ranges tile the matrix and the
-  // copies are the only writes to it. The device buffer is zeroed first, so
-  // every slot a copy writes is a distance or a diagonal 0: a fill that stops
-  // between launches leaves copied ranges that are right and the rest untouched.
-  std::int64_t end = n * (n + 1) / 2;
-  for (std::int64_t first = 0; first < num_pairs; first += chunk) {
-    const int count = static_cast<int>(std::min(chunk, num_pairs - first));
-    std::int64_t first_slot = 0;
-    if (first + count < num_pairs) {
-      std::int64_t si = 0, sj = 0;
-      decode_pair(first + count - 1, n, si, sj);
-      first_slot = packed_slot(si, sj, n);
-    }
-    const auto span = static_cast<size_t>(end - first_slot);
-    CUDA_CHECK(cudaMemsetAsync(workspace.d_out.get(), 0, span * sizeof(double), stream));
-    launches(workspace, workspace.d_series.get(), workspace.d_lengths.get(), static_cast<int>(N), first, count,
-             first_slot, stream);
-    out.visit([&](auto *values) {
-      using V = std::remove_pointer_t<decltype(values)>;
-      const void *slots = workspace.d_out.get();
-      if constexpr (std::is_same_v<V, float>) {
-        constexpr int block = 256;
-        const auto grid = static_cast<unsigned>(
-          std::min<std::int64_t>((static_cast<std::int64_t>(span) + block - 1) / block, 1 << 16));
-        narrow_kernel<<<grid, block, 0, stream>>>(workspace.d_out.get(), workspace.d_out32.get(),
-                                                  static_cast<std::int64_t>(span));
-        CUDA_CHECK(cudaGetLastError());
-        slots = workspace.d_out32.get();
+    // The launches take the matrix from the top down, each the range of slots
+    // [first_slot, end): its pairs' slots and the diagonal slots among and above
+    // them; the last range starts at slot 0. The ranges tile the matrix and the
+    // copies are the only writes to it. The device buffer is zeroed first, so
+    // every slot a copy writes is a distance or a diagonal 0: a fill that stops
+    // between launches leaves copied ranges that are right and the rest untouched.
+    std::int64_t end = n * (n + 1) / 2;
+    for (std::int64_t first = 0; first < num_pairs; first += chunk) {
+      const int count = static_cast<int>(std::min(chunk, num_pairs - first));
+      std::int64_t first_slot = 0;
+      if (first + count < num_pairs) {
+        std::int64_t si = 0, sj = 0;
+        decode_pair(first + count - 1, n, si, sj);
+        first_slot = packed_slot(si, sj, n);
       }
-      CUDA_CHECK(cudaMemcpyAsync(values + first_slot, slots, span * sizeof(V), cudaMemcpyDeviceToHost, stream));
-    });
-    end = first_slot;
-  }
+      const auto span = static_cast<size_t>(end - first_slot);
+      CUDA_CHECK(cudaMemsetAsync(workspace.d_out.get(), 0, span * sizeof(double), stream));
+      launches(workspace, workspace.d_series.get(), workspace.d_lengths.get(), static_cast<int>(N), first, count,
+               first_slot, stream);
+      out.visit([&](auto *values) {
+        using V = std::remove_pointer_t<decltype(values)>;
+        const void *slots = workspace.d_out.get();
+        if constexpr (std::is_same_v<V, float>) {
+          constexpr int block = 256;
+          const auto grid = static_cast<unsigned>(
+            std::min<std::int64_t>((static_cast<std::int64_t>(span) + block - 1) / block, 1 << 16));
+          narrow_kernel<<<grid, block, 0, stream>>>(workspace.d_out.get(), workspace.d_out32.get(),
+                                                    static_cast<std::int64_t>(span));
+          CUDA_CHECK(cudaGetLastError());
+          slots = workspace.d_out32.get();
+        }
+        CUDA_CHECK(cudaMemcpyAsync(values + first_slot, slots, span * sizeof(V), cudaMemcpyDeviceToHost, stream));
+      });
+      end = first_slot;
+    }
 
-  CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), stream));
-  CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+  } catch (...) {
+    // Outside every OpenMP region (`parallel` joined its own before the first upload); its errors set aside.
+    (void)cudaStreamSynchronize(stream);
+    (void)cudaGetLastError();
+    throw;
+  }
 
   float elapsed_ms = 0.0f;
   CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms,
@@ -1437,7 +1447,19 @@ CUDADistMatResult compute_distance_matrix_cuda(
     const std::vector<std::vector<double>> &series,
     const CUDADistMatOptions &opts, core::DistanceMatrix &out)
 {
-  const size_t N = series.size();
+  return compute_distance_matrix_cuda(
+      series.size(), [&series](size_t i) { return std::span<const double>(series[i]); }, opts,
+      [](size_t count, const std::function<void(size_t)> &task) {
+        for (size_t i = 0; i < count; ++i) task(i);
+      },
+      out);
+}
+
+CUDADistMatResult compute_distance_matrix_cuda(
+    std::size_t N, const SeriesAt &series,
+    const CUDADistMatOptions &opts, const ParallelFor &parallel,
+    core::DistanceMatrix &out)
+{
   // Before `out` is touched: a missing device must not answer with a zero matrix.
   detail::require_cuda_device(cuda_available(), "compute_distance_matrix_cuda");
 
@@ -1453,7 +1475,7 @@ CUDADistMatResult compute_distance_matrix_cuda(
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
   size_t max_L = 0;
-  for (const auto &s : series) max_L = std::max(max_L, s.size());
+  for (size_t i = 0; i < N; ++i) max_L = std::max(max_L, series(i).size());
 
   // An all-zero matrix would read as N identical series.
   if (max_L == 0)
@@ -1465,10 +1487,10 @@ CUDADistMatResult compute_distance_matrix_cuda(
   result.pairs_computed = detail::upper_triangle_pairs(N);
 
   if (use_fp32)
-    launch_dtw_kernel<float>(series, N, max_L, opts.use_squared_l2, opts.band,
+    launch_dtw_kernel<float>(N, series, parallel, max_L, opts.use_squared_l2, opts.band,
                              opts.device_id, result.gpu_time_sec, kernel_path, out);
   else
-    launch_dtw_kernel<double>(series, N, max_L, opts.use_squared_l2, opts.band,
+    launch_dtw_kernel<double>(N, series, parallel, max_L, opts.use_squared_l2, opts.band,
                               opts.device_id, result.gpu_time_sec, kernel_path, out);
 
   if (opts.verbose) {

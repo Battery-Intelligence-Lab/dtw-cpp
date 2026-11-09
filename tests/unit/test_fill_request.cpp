@@ -748,10 +748,11 @@ TEST_CASE("FX-1: a GPU device rejects what its kernels do not implement",
   }
 }
 
-// A view's series (a mapped Arrow IPC file's, a decoded record batch's) leave p_vec empty, so a GPU uploads an
-// owned copy of them: the view fills the matrix the owned store of the same series fills, entry for entry (the same
-// values uploaded), never an empty one. Without a device, the backend's refusal, never the view's.
-TEST_CASE("A view on a GPU fills from an owned copy, as the owned store does", "[gpu]")
+// A view's series (a mapped Arrow IPC file's, a decoded record batch's) leave p_vec empty: CUDA reads them where they
+// lie, Metal uploads an owned copy of them. Either way the view fills the matrix the owned store of the same series
+// fills, entry for entry (the same values uploaded), never an empty one. Without a device, the backend's refusal, never
+// the view's.
+TEST_CASE("A view on a GPU fills the matrix the owned store does", "[gpu]")
 {
   const std::vector<std::vector<double>> owner{ ramp(8, 0.0), ramp(11, 1.0), ramp(9, 2.0), ramp(8, 0.5) };
   std::vector<std::span<const double>> spans(owner.begin(), owner.end());

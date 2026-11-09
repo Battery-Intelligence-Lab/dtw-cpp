@@ -38,7 +38,7 @@ struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   // Inherited from DistMatOptionsBase: band, use_squared_l2, verbose
 };
 
-/// Series i of the medoid entry's series, its Float64 values where they lie (a view's or owned); it does not throw.
+/// Series i of an entry's series, its Float64 values where they lie (a view's or owned); it does not throw.
 using SeriesAt = std::function<std::span<const double>(std::size_t)>;
 
 /// A loop on the caller's threads: for_each(count, task) calls task(i) once for every i in [0, count); task(i) writes
@@ -69,6 +69,17 @@ std::string cuda_device_info(int device_id = 0);
 CUDADistMatResult compute_distance_matrix_cuda(
     const std::vector<std::vector<double>> &series,
     const CUDADistMatOptions &opts, core::DistanceMatrix &out);
+
+/// The same fill of the @p n_series series series(i), read where they lie (a
+/// view's or owned: no copy of them is made): @p parallel pads them into the
+/// launch workspace's staging, from which they are uploaded once, as the
+/// overload above uploads its vectors (which it pads on the calling thread).
+/// A CUDA call that fails throws DeviceError naming it, after the stream has
+/// drained.
+CUDADistMatResult compute_distance_matrix_cuda(
+    std::size_t n_series, const SeriesAt &series,
+    const CUDADistMatOptions &opts, const ParallelFor &parallel,
+    core::DistanceMatrix &out);
 
 /// The DTW distance of each of the @p n_series series (series(i), read where
 /// they lie: no copy of them is made) to each of the k @p medoids on the GPU,

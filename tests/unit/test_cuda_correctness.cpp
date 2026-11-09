@@ -2152,12 +2152,24 @@ std::vector<std::vector<double>> hg0_series(bool narrow)
 const std::vector<dtwc::index_t> hg0_medoids{ 3, 154, 290, 12, 100, 305, 0, 7, 8 };
 constexpr std::size_t hg0_k = 3;
 
-void hg0_configure(dtwc::Problem &prob, const std::vector<std::vector<double>> &series, int band,
-                   dtwc::core::MetricType metric, dtwc::Device device, dtwc::GpuPrecision precision)
-{
-  std::vector<std::string> names(series.size());
+/// The fixtures' names, s0 .. s306.
+const std::vector<std::string> hg0_names = [] {
+  std::vector<std::string> names(307);
   for (std::size_t i = 0; i < names.size(); ++i) names[i] = "s" + std::to_string(i);
-  prob.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::move(names)));
+  return names;
+}();
+
+/// `prob` holding `series`, an owned copy of them or (`view`) a view of them, as a mapped file's (spans into `series`,
+/// which outlives `prob`).
+void hg0_configure(dtwc::Problem &prob, const std::vector<std::vector<double>> &series, int band,
+                   dtwc::core::MetricType metric, dtwc::Device device, dtwc::GpuPrecision precision, bool view = false)
+{
+  if (view)
+    prob.set_view_data(dtwc::Data(std::vector<std::span<const double>>(series.begin(), series.end()),
+                                  std::vector<std::string_view>(hg0_names.begin(), hg0_names.end()), 1,
+                                  std::make_shared<int>(0)));
+  else
+    prob.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::vector<std::string>(hg0_names)));
   prob.set_band(band);
   prob.set_metric(metric);
   prob.set_gpu_precision(precision);
@@ -2277,8 +2289,8 @@ bool same_bits(const std::vector<double> &a, const std::vector<double> &b)
 // HG0, the bit-equality the hybrid assignment (HG3) rests on, as a regression test: on ragged, non-dyadic fixtures
 // (307 series; 17 to 211 samples unbanded, 126 to 128 at band 2 and unbanded), FP64 L1, on one thread and on the
 // default team, the GPU's assignment (assign_on_gpu) gives the CPU pass's labels, nearest distances and objectives
-// (assign_in_blocks over assign_points_cpu, on the same medoids), and the GPU's fill the CPU fill's matrix, byte for
-// byte (memcmp, no tolerance). The CPU pass takes both its routes here: its lanes unbanded (dtw_lanes_packed), the
+// (assign_in_blocks over assign_points_cpu, on the same medoids), and the GPU's fill the CPU fill's matrix, of owned
+// series and of a view of them, byte for byte (memcmp, no tolerance). The CPU pass takes both its routes here: its lanes unbanded (dtw_lanes_packed), the
 // per-pair function under the band, where the lanes take only points as long as the medoid. The kernel is named, so
 // a mutation of its accumulation is known to reach the route that ran. The GPU's pipeline (HG1) runs one block of
 // every series, blocks of 50 (a host budget of exactly their bytes, cuda::detail::medoid_blocks: two series slots,
@@ -2320,7 +2332,15 @@ TEST_CASE("HG0: the GPU's FP64 L1 assignment and fill equal the CPU's bit for bi
   CHECK(on_gpu.labels == on_cpu.labels);
   CHECK(same_bits(on_gpu.nearest, on_cpu.nearest));
   CHECK(same_bits(on_gpu.costs, on_cpu.costs));
-  if (block == 307) CHECK(same_bits(hg0_filled(gpu), hg0_filled(cpu)));
+  if (block == 307) {
+    const auto on_cpu_fill = hg0_filled(cpu);
+    CHECK(same_bits(hg0_filled(gpu), on_cpu_fill));
+    dtwc::Problem view("hg0_view"); // the fill reads a view's series where they lie (HG2), as it reads owned ones
+    hg0_configure(view, series, shape.band, dtwc::core::MetricType::L1, dtwc::Device::GPU, dtwc::GpuPrecision::FP64,
+                  true);
+    REQUIRE(view.data().is_view());
+    CHECK(same_bits(hg0_filled(view), on_cpu_fill));
+  }
 }
 
 // What HG0's bit-equality does not cover, recorded as facts: on HG0's narrow fixture, the GPU's FP32 L1 distances
