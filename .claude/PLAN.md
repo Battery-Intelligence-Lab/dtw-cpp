@@ -43,9 +43,11 @@ differ only where several optimal medoid sets exist, node counts and run times c
    `test_io_readers`, `dtwc_cl` linking libarrow, libparquet and libgomp); the Linux release archive (`cpack` 340 members,
    `smoke_release_archive.py` OK once its one-byte `--ram-limit`, a mapping threshold before the memory plan, became
    `--checkpoint`; `libgomp` is not shipped and `THIRD_PARTY_LICENSES.md` says so); `cpp_conformance` GCC strict 1/1 and
-   fast (in the 102/102). Left: `cpp_conformance` under MSVC strict (the tree `C:/D/git/wt/MM/build-cl-strict` building)
-   and fast (in the CUDA tree's 102/102); F43 (the CI MEX is llfio OFF: the question batch); the docs' final read (charter
-   item 10) and CHANGELOG's, one agent after QP.
+   fast (in the 102/102); `cpp_conformance` under MSVC fast (the CUDA tree's 102/102) and strict: the strict build of the
+   merged tree FAILED in the vendored `flatcc.c` (C2099 under `/fp:strict`: MM's `dtwc_third_party` took our FP flags
+   through `project_options`), fixed by c4271bbf (the flags on C++ only; cl strict 1/1, clang 103 + identity 0 differ,
+   WSL GCC 102). Left: F43 (the CI MEX is llfio OFF: the question batch); the docs' and CHANGELOG's final read (charter
+   item 10), the DOC agent on `pb/DOC` (`C:/D/git/wt/tmp/QP/brief_doc.md`).
 4. ☐ **Timing, advisory** [here, a quiet machine; Volkan 11-04 "Later, I will tell you"]: MM's bands, HG's baseline and
    FM's E1 (ETW counters, `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` run elevated by Volkan); numbers to `baselines/`
    tagged [confirmed]; a FALSIFIED hot-loop band reopens its loop, anything else is fixed or reworded after. Two of MM's
@@ -77,7 +79,8 @@ For Volkan's next answers (asked at the QP merge, one batch): whether HG may bui
 prediction with its measurement advisory under load, as MM merged, or whether "measured first" (10-11) still means a quiet
 window (his MATLAB sessions have been open since 10-21); whether the CI MEX job turns llfio ON (F43: the R2024b crash did not
 reproduce 09-30, the llfio-ON MEX passes here on R2025b 104/104, and CI's R2024b is the only oracle left); the merged units'
-worktrees `C:/D/git/wt/FM` (4.6 GB) and `C:/D/git/wt/TL` (622 MB), clean, their branches merged, to remove on his yes.
+worktrees `C:/D/git/wt/FM` (4.6 GB), `C:/D/git/wt/TL` (622 MB) and `C:/D/git/wt/REL` (two build trees), clean, their
+branches merged, to remove on his yes; HG's four questions (`C:/D/git/wt/tmp/HG/hg_plan.md` §4).
 
 ## Cut, deferred or not scheduled
 
