@@ -166,12 +166,11 @@ void Problem::write_medoid_members(int iter, int rep) const
 
 /**
  *  @brief Writes the distance matrix to a file.
- *  @param name_ The name of the output file. Matches the declaration in
- *         Problem.hpp; the body uses only the parameter, never the member it hides.
+ *  @param file_name The name of the output file, in the output folder.
  */
-void Problem::write_distance_matrix(const std::string &name_) const
+void Problem::write_distance_matrix(const std::string &file_name) const
 {
-  io::write_csv(distMat, output_folder_ / utf8_to_path(name_));
+  io::write_csv(distMat, output_folder_ / utf8_to_path(file_name));
 }
 
 /**

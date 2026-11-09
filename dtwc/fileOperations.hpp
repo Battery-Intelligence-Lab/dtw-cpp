@@ -400,26 +400,26 @@ inline std::ifstream open_text_file(const fs::path &path, std::string_view reade
 /**
  * @brief Reads a file and returns the data as a vector of a specified type.
  *
- * @tparam data_t The data type of the elements to be read.
+ * @tparam T The data type of the elements to be read.
  * @param name Path of the file to read.
  * @param start_row Starting row index for reading the data (default is 0).
  * @param start_col Starting column index for reading the data (default is 0).
  * @param delimiter Delimiter character used in the file (default is ',').
- * @return std::vector<data_t> A vector containing the read data.
+ * @return std::vector<T> A vector containing the read data.
  */
-template <typename data_t>
+template <typename T>
 auto readFile(const fs::path &name, index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
   auto in = text_io_detail::open_text_file(name, "readFile");
 
-  std::vector<data_t> p;
+  std::vector<T> p;
   p.reserve(10000);
   // The legacy `,0` header is a header only when no rows were skipped: after
   // start_row it is the first value, and an empty one is an error.
   bool legacy_header = start_row == 0;
   text_io_detail::for_each_data_line(in, name, start_row, -1,
     [&](std::string_view line, std::size_t row) {
-      const auto value = text_io_detail::parse_series_value_row<data_t>(
+      const auto value = text_io_detail::parse_series_value_row<T>(
         line, name, row, start_col, delimiter, legacy_header);
       legacy_header = false;
       if (value) p.push_back(*value);
@@ -474,26 +474,26 @@ struct LoadOptions {
 /**
  * @brief Loads all files from a given folder and returns their data as vectors along with file names.
  *
- * @tparam data_t The data type of the elements to be read.
+ * @tparam T The data type of the elements to be read.
  * @tparam Tpath Type of the folder path (auto-deduced).
  * @param folder_path Path of the folder containing the files.
  * @param opts See LoadOptions; Ndata is the number of files read (-1: all), start_row and start_col apply to
  *        each file.
- * @return std::pair<std::vector<std::vector<data_t>>, std::vector<std::string>> A pair containing vectors of data and corresponding file names.
+ * @return std::pair<std::vector<std::vector<T>>, std::vector<std::string>> A pair containing vectors of data and corresponding file names.
  */
-template <typename data_t, typename Tpath>
+template <typename T, typename Tpath>
 auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
 {
   validate_ndata(opts.Ndata, "load_folder");
   if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
 
-  std::vector<std::vector<data_t>> p_vec;
+  std::vector<std::vector<T>> p_vec;
   std::vector<std::string> p_names;
 
   for (const auto &file : sorted_directory_files(folder_path)) {
     if (!ndata_wants_more(opts.Ndata, p_vec.size())) break;
 
-    auto p = readFile<data_t>(file, opts.start_row, opts.start_col, opts.delimiter);
+    auto p = readFile<T>(file, opts.start_row, opts.start_col, opts.delimiter);
 
     if (opts.verbose >= 2 || (opts.verbose == 1 && p.empty()))
       std::cout << file << "\tSize: " << p.size() << '\n';
@@ -510,38 +510,38 @@ auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
 
 /// Positional-arg overload retained for backwards compatibility; delegates to
 /// the LoadOptions-based form.
-template <typename data_t, typename Tpath>
+template <typename T, typename Tpath>
 auto load_folder(Tpath &folder_path, index_t Ndata, int verbose = 1,
                  index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
-  return load_folder<data_t>(folder_path,
+  return load_folder<T>(folder_path,
     LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
 }
 
 /**
  * @brief Loads batch data from a single file and returns the data as vectors.
  *
- * @tparam data_t The data type of the elements to be read.
+ * @tparam T The data type of the elements to be read.
  * @param file_path Path of the file containing batch data.
  * @param opts See LoadOptions; Ndata is the number of series (rows) read (-1: all).
- * @return std::pair<std::vector<std::vector<data_t>>, std::vector<std::string>> A pair containing vectors of data and corresponding identifiers.
+ * @return std::pair<std::vector<std::vector<T>>, std::vector<std::string>> A pair containing vectors of data and corresponding identifiers.
  */
-template <typename data_t>
+template <typename T>
 auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
 {
   validate_ndata(opts.Ndata, "load_batch_file");
   if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
 
-  std::vector<std::vector<data_t>> p_vec;
+  std::vector<std::vector<T>> p_vec;
   std::vector<std::string> p_names;
 
   auto in = text_io_detail::open_text_file(file_path, "load_batch_file");
   text_io_detail::for_each_data_line(in, file_path, opts.start_row, opts.Ndata,
     [&](std::string_view line, std::size_t row) {
-      std::vector<data_t> p;
-      text_io_detail::parse_numeric_row<data_t>(
+      std::vector<T> p;
+      text_io_detail::parse_numeric_row<T>(
         line, file_path, row, opts.start_col, opts.delimiter,
-        [&](data_t value) { p.push_back(value); });
+        [&](T value) { p.push_back(value); });
       p.shrink_to_fit();
 
       const auto n_rows = p_vec.size() + 1;
@@ -560,11 +560,11 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
 
 /// Positional-arg overload retained for backwards compatibility; delegates to
 /// the LoadOptions-based form.
-template <typename data_t>
+template <typename T>
 auto load_batch_file(fs::path &file_path, index_t Ndata, int verbose = 1,
                      index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
-  return load_batch_file<data_t>(file_path,
+  return load_batch_file<T>(file_path,
     LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
 }
 

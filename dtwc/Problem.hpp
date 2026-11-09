@@ -604,15 +604,15 @@ public:
   [[deprecated("use print_distance_matrix")]] void printDistanceMatrix() const { print_distance_matrix(); }
 
   // Canonical I/O owns behavior; retained 1.x names are deprecated forwarders.
-  void write_distance_matrix(const std::string &name_) const;
+  void write_distance_matrix(const std::string &file_name) const;
   void write_distance_matrix() const
   {
     write_distance_matrix(name_ + "_distanceMatrix.csv");
   }
   [[deprecated("use write_distance_matrix")]]
-  void writeDistanceMatrix(const std::string &name_) const
+  void writeDistanceMatrix(const std::string &file_name) const
   {
-    write_distance_matrix(name_);
+    write_distance_matrix(file_name);
   }
   [[deprecated("use write_distance_matrix")]]
   void writeDistanceMatrix() const { write_distance_matrix(); }
