@@ -50,10 +50,6 @@
 #include <utility>
 #include <vector>
 
-using Catch::Matchers::ContainsSubstring;
-using Catch::Matchers::MessageMatches;
-using Catch::Matchers::WithinRel;
-
 #ifndef DTWC_HAS_CUDA
 
 TEST_CASE("CUDA not available", "[cuda]")
@@ -62,6 +58,10 @@ TEST_CASE("CUDA not available", "[cuda]")
 }
 
 #else // DTWC_HAS_CUDA
+
+using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::MessageMatches;
+using Catch::Matchers::WithinRel;
 
 namespace {
 
@@ -976,7 +976,7 @@ TEST_CASE("test_gpu_banded_unequal_lengths", "[cuda][banded]")
   // Test banded DTW with series of different lengths
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  std::mt19937 rng(314);
+  std::mt19937 rng(314); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> dist(-5.0, 5.0);
 
   std::vector<std::vector<double>> series(6);
@@ -1107,7 +1107,7 @@ TEST_CASE("test_warp_kernel_variable_short_lengths", "[cuda][warp]")
   // Variable lengths all <= 32 to exercise the warp kernel
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  std::mt19937 rng(4004);
+  std::mt19937 rng(4004); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> dist(-5.0, 5.0);
 
   std::vector<std::vector<double>> series(8);
@@ -1412,7 +1412,7 @@ TEST_CASE("GPU handles variable-length series", "[cuda]")
 
   // Series with different lengths
   std::vector<std::vector<double>> series;
-  std::mt19937 rng(600);
+  std::mt19937 rng(600); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> dist(-1.0, 1.0);
   for (int len : {30, 50, 80, 100, 60, 40}) {
     std::vector<double> s(static_cast<size_t>(len));
@@ -1620,7 +1620,7 @@ TEST_CASE("test_regtile_kernel_variable_lengths", "[cuda][regtile]")
   // Variable lengths spanning the regtile range
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  std::mt19937 rng(10006);
+  std::mt19937 rng(10006); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> dist(-5.0, 5.0);
 
   std::vector<std::vector<double>> series(8);
@@ -1746,7 +1746,7 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
   std::vector<std::vector<double>> series(N);
   std::vector<std::vector<float>> rounded(N);
   std::vector<std::string> names(N);
-  std::mt19937 rng(20260930);
+  std::mt19937 rng(20260930); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> value(-1.0, 1.0);
   for (size_t i = 0; i < N; ++i) {
     series[i].resize(4 + i % 5);
@@ -1811,7 +1811,7 @@ TEST_CASE("CUDA fills over two launches match the host kernel in the regtile and
   REQUIRE(dtwc::cuda::detail::upper_triangle_pairs(N)
           > static_cast<size_t>(dtwc::cuda::detail::kMaxPairsPerLaunch));
   std::vector<std::vector<double>> series(N);
-  std::mt19937 rng(16385);
+  std::mt19937 rng(16385); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> value(-1.0, 1.0);
   for (size_t i = 0; i < N; ++i) {
     series[i].resize(i % 64 == 0 ? family.long_length : 1 + i % 4);
@@ -2034,7 +2034,7 @@ TEST_CASE("CUDA medoid distances arrive in blocks of at most kMaxPairsPerLaunch"
 
   constexpr size_t k = 4096;
   const size_t block = static_cast<size_t>(dtwc::cuda::detail::kMaxPairsPerLaunch) / k;
-  std::mt19937 rng(4096);
+  std::mt19937 rng(4096); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> value(-1.0, 1.0);
   const auto make = [&](size_t count) {
     std::vector<std::vector<double>> made(count);
@@ -2076,7 +2076,7 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  std::mt19937 rng(20261001);
+  std::mt19937 rng(20261001); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> noise(-0.5, 0.5);
   std::vector<std::vector<double>> series;
   for (size_t i = 0; i < 240; ++i) {
@@ -2223,6 +2223,7 @@ std::vector<double> hg0_gpu_distances(const dtwc::Problem &prob, std::size_t sta
 {
   const dtwc::Data &data = prob.data();
   std::vector<std::span<const double>> medoid_series;
+  medoid_series.reserve(hg0_medoids.size());
   for (const dtwc::index_t m : hg0_medoids) medoid_series.push_back(data.series(static_cast<std::size_t>(m)));
   dtwc::cuda::CUDADistMatOptions opts;
   opts.device_id = prob.device().second;
@@ -2258,6 +2259,7 @@ Hg0Pass hg0_gpu_pass(const dtwc::Problem &prob, std::size_t staging, std::string
   const std::size_t slots = hg0_medoids.size();
   Hg0Pass pass = hg0_empty_pass(n);
   std::vector<std::span<const double>> medoid_series;
+  medoid_series.reserve(hg0_medoids.size());
   for (const dtwc::index_t m : hg0_medoids) medoid_series.push_back(data.series(static_cast<std::size_t>(m)));
   std::vector<dtwc::core::detail::OrderedMedoidObjective> costs(samples);
   dtwc::algorithms::detail::assign_on_gpu(prob, data, 0, medoid_series, hg0_medoids, pass.labels, costs, staging);
@@ -2396,7 +2398,7 @@ namespace {
 /// cycle of 32 rows) or 30 to 32 (`narrow`: a band of 2 leaves every pair a path).
 std::vector<std::vector<double>> hg3_series(bool narrow, std::size_t n = 70000)
 {
-  std::mt19937 rng(20261109);
+  std::mt19937 rng(20261109); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> noise(-0.5, 0.5);
   std::vector<std::vector<double>> series(n);
   for (std::size_t i = 0; i < series.size(); ++i) {
@@ -2437,10 +2439,11 @@ bool same_result(const dtwc::core::ClusteringResult &a, const dtwc::core::Cluste
 
 // HG3, the hybrid's contract (DECISIONS 11-09): under FP64 L1 the GPU's distances are the CPU's bit for bit (HG0), so
 // cpu+gpu's labels, medoids and cost equal the CPU-only and the GPU-only runs whatever the split: the GPU's share forced
-// to 0, 0.5 and 1 and measured, compared by memcmp. The measured split's calibration block is the last 65,536 points:
-// of 70,000 the GPU's share reaches into it unless that share is under 6 %, so the pass assigns it again; of 140,000 it
-// lies in the CPU's share unless the GPU's is over 53 %, so the pass keeps it (the output line says which ran). The
-// CPU's lanes run unbanded, its per-pair function at band 2.
+// to 0, 0.5 and 1 and measured, compared by memcmp. Every shape (70,000 and 140,000 series, at least the 69,632 that
+// hold both calibration blocks) runs the measured path: the GPU's block, the first 65,536 points, and the CPU's, the
+// last 4,096, both stand, so the GPU's share lies between them. Forced at 0.5 the GPU's share is one call (fewer than
+// 65,536 points at 70,000), at 1 its first block and then the rest. The CPU's lanes run unbanded, its per-pair
+// function at band 2.
 TEST_CASE("HG3: cpu+gpu's FP64 L1 FastCLARA equals the CPU's and the GPU's whatever the split", "[cuda][clara][hg3]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
@@ -2470,9 +2473,10 @@ TEST_CASE("HG3: cpu+gpu's FP64 L1 FastCLARA equals the CPU's and the GPU's whate
       CHECK((hybrid.hybrid->cpu_rate > 0 || dtwc::get_max_threads() == 1)); // a team of one leaves the CPU none
       CHECK(hybrid.hybrid->gpu_rate > 0);
       const double gpu_points = hybrid.hybrid->gpu_share * static_cast<double>(series.size());
-      std::cout << "HG3 FP64 L1 " << (narrow ? "band 2" : "unbanded") << ", measured: FastCLARA "
-                << dtwc::algorithms::describe(*hybrid.hybrid, series.size()) << "; its calibration block "
-                << (gpu_points <= static_cast<double>(series.size() - 65536) ? "kept" : "assigned again") << "\n";
+      CHECK(gpu_points >= 65536.0);
+      CHECK(gpu_points <= static_cast<double>(series.size() - 4096));
+      std::cout << "HG3 FP64 L1 " << (narrow ? "band 2" : "unbanded") << " on " << series.size()
+                << " series, measured: FastCLARA " << dtwc::algorithms::describe(*hybrid.hybrid, series.size()) << "\n";
     } else {
       CHECK(std::string_view(hybrid.hybrid->source) == "forced");
       CHECK(hybrid.hybrid->gpu_share == share);

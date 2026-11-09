@@ -72,7 +72,8 @@ namespace detail {
         prefix + ": sample_size must be -1 or a positive integer.");
     if (options.max_iter <= 0)
       throw InvalidInput(prefix + ": max_iter must be positive.");
-    if (options.gpu_share != -1.0 && !(options.gpu_share >= 0.0 && options.gpu_share <= 1.0))
+    const double share = options.gpu_share;
+    if (share != -1.0 && (std::isnan(share) || share < 0.0 || share > 1.0))
       throw InvalidInput(prefix + ": gpu_share must be -1 (measured) or in [0, 1].");
   }
 
@@ -208,19 +209,26 @@ namespace detail {
       });
   }
 
-  /// cpu+gpu's share of the points for the GPU where no calibration block is measured (one block would be the whole
+  /// cpu+gpu's share of the points for the GPU where no calibration block is measured (the two blocks would cover the
   /// input): the design's predicted rates at 4.19 M series of 128 steps, band 2, 25 medoid slots, FP64, on an RTX 4000
   /// Ada beside 24 threads (2026-10-11, inferred): the CPU's lanes 55 Gcell/s, the GPU 26 Gcell/s where one thread pads
   /// its blocks from a mapped file.
   constexpr double recorded_gpu_share = 26.0 / (55.0 + 26.0);
 
+  /// The CPU's calibration block under cpu+gpu: the last points of the pass, few, since the GPU idles while the team
+  /// times them, and enough that the team's rate on them is its rate on a whole block (the smallest of 4,096, 8,192 and
+  /// 16,384 within about a tenth of that rate on 65,536 points, measured on 1.1 M series of 200 to 256 steps,
+  /// 2026-11-09, inferred: the machine was loaded).
+  constexpr std::size_t calibration_cpu_points = 4096;
+
   /**
    * FastCLARA's pass on cpu+gpu, as assign_on_gpu and the CPU pass give it (each sample's labels, and its nearest
    * distances into costs[s] in point order): the GPU takes points 0 .. n_gpu - 1, the CPU's team the rest. n_gpu is
-   * opts.gpu_share of the points, rounded; with -1 it is measured, on the last clara_block_points points (fewer points
-   * take recorded_gpu_share): the block assigned on the GPU, its blocks padded and assigned by this thread alone as in
-   * the pass, then on the CPU's team, whose labels and distances stand; the CPU's rate is scaled to the team less the
-   * GPU's driving thread. Where the block lies in the CPU's share the pass keeps it, else assigns it again. Each point's
+   * opts.gpu_share of the points, rounded. With -1 it is measured where the points hold both calibration blocks (fewer
+   * take recorded_gpu_share): the GPU assigns the first clara_block_points points, its blocks padded and assigned by
+   * this thread alone as in the pass, then the CPU's team the last calibration_cpu_points; both blocks stand, so n_gpu
+   * lies between them, and the CPU's rate is scaled to the team less the GPU's driving thread. The GPU's share is
+   * always assigned as its first clara_block_points points and then the rest, measured or forced, and each point's
    * distance is its device's whatever the split (the CPU's lanes are its per-pair function's bits), so a forced share
    * repeats a run exactly. The two shares run at once, in one parallel region (below).
    */
@@ -232,52 +240,58 @@ namespace detail {
   {
     const auto n = static_cast<std::size_t>(data.size());
     const std::size_t samples = costs.size();
-    const auto series = [&data](std::size_t i) { return data.series(i); };
     const auto on_cpu = [&](index_t first, std::size_t count, std::span<double> best, bool team) {
       assign_points_cpu<data_t>(
         first, count, best, medoids, labels, prob.distance(), pair,
         [&data](index_t p) { return data.series(static_cast<std::size_t>(p)); },
         [&medoid_series](index_t j) { return medoid_series[static_cast<std::size_t>(j)]; }, team);
     };
+    // The GPU's points first .. last - 1, their distances into costs.
+    const auto on_gpu = [&](std::size_t first, std::size_t last) {
+      assign_on_gpu(
+        prob, last - first, [&data, first](std::size_t i) { return data.series(first + i); },
+        static_cast<index_t>(first), medoid_series, medoids, labels, costs, opts.gpu_staging_bytes, false);
+    };
     const int threads = get_max_threads();
 
     core::HybridSplit split;
     split.gpu_share = opts.gpu_share;
-    const std::size_t block = std::min(clara_block_points, n), tail = n - block; // the calibration block
-    std::vector<double> calibrated; // its nearest distances on the CPU, [s * block + i]
-    if (opts.gpu_share < 0 && block == n) {
-      split.gpu_share = recorded_gpu_share;
-      split.source = "recorded";
-    } else if (opts.gpu_share < 0) {
+    const std::size_t lead = std::min(clara_block_points, n); // the GPU's first block: its calibration block
+    const bool calibrate = opts.gpu_share < 0 && n >= clara_block_points + calibration_cpu_points;
+    const std::size_t tail = calibrate ? n - calibration_cpu_points : n; // the CPU's calibration block: tail .. n - 1
+    std::vector<double> calibrated; // its nearest distances, [s * (n - tail) + i]
+    std::size_t n_gpu = 0;
+    if (calibrate) {
       using clock = std::chrono::steady_clock;
-      std::vector<core::detail::OrderedMedoidObjective> unused(samples);
       const auto start = clock::now();
-      assign_on_gpu(
-        prob, block, [&data, tail](std::size_t i) { return data.series(tail + i); }, static_cast<index_t>(tail),
-        medoid_series, medoids, labels, unused, opts.gpu_staging_bytes, false);
+      on_gpu(0, lead);
       const auto gpu_done = clock::now();
-      calibrated.resize(samples * block);
-      on_cpu(static_cast<index_t>(tail), block, calibrated, true); // its labels replace the GPU's
-      const std::chrono::duration<double> on_gpu = gpu_done - start, on_team = clock::now() - gpu_done;
-      split.gpu_rate = static_cast<double>(block) / on_gpu.count();
-      split.cpu_rate = static_cast<double>(block) / on_team.count() * (threads - 1) / threads;
-      split.gpu_share = split.gpu_rate / (split.gpu_rate + split.cpu_rate);
+      calibrated.resize(samples * (n - tail));
+      on_cpu(static_cast<index_t>(tail), n - tail, calibrated, true);
+      const std::chrono::duration<double> gpu_time = gpu_done - start, team_time = clock::now() - gpu_done;
+      split.gpu_rate = static_cast<double>(lead) / gpu_time.count();
+      split.cpu_rate = static_cast<double>(n - tail) / team_time.count() * (threads - 1) / threads;
       split.source = "calibrated";
+      n_gpu = std::clamp(static_cast<std::size_t>(std::llround(split.gpu_rate / (split.gpu_rate + split.cpu_rate)
+                                                               * static_cast<double>(n))),
+                         lead, tail);
+    } else {
+      if (opts.gpu_share < 0) {
+        split.gpu_share = recorded_gpu_share;
+        split.source = "recorded";
+      }
+      n_gpu = static_cast<std::size_t>(std::llround(split.gpu_share * static_cast<double>(n)));
     }
-    const auto n_gpu = static_cast<std::size_t>(std::llround(split.gpu_share * static_cast<double>(n)));
     split.gpu_share = static_cast<double>(n_gpu) / static_cast<double>(n);
-    const bool keep = !calibrated.empty() && n_gpu <= tail;
-    if (!keep) std::vector<double>().swap(calibrated);
-    const std::size_t cpu_end = keep ? tail : n;
 
     // One parallel region, nothing nested in it. Thread 0, whose CUDA workspace the samples' fills and the calibration
     // made, drives the GPU's share: its blocks padded and assigned by it alone, their distances added into costs as
     // they come (they lead the point order, and no other thread adds). The team runs the CPU's share in items of at
     // most clara_block_points points, about four a thread, so that the threads finish together whatever the share;
     // each item writes its own label slots and its own nearest distances, added into costs in point order after the
-    // region. Thread 0 takes items too once its share is done. An error is its thread's slot's, the lowest point's
-    // rethrown after the region, as run_openmp does.
-    const std::size_t cpu_points = cpu_end - n_gpu;
+    // region, the CPU's calibration block last. Thread 0 takes items too once its share is done. An error is its
+    // thread's slot's, the lowest point's rethrown after the region, as run_openmp does.
+    const std::size_t cpu_points = tail - n_gpu;
     const auto team = static_cast<std::size_t>(threads);
     const std::size_t item = std::clamp<std::size_t>((cpu_points + 4 * team - 1) / (4 * team), 256, clara_block_points);
     const std::size_t items = (cpu_points + item - 1) / item;
@@ -288,15 +302,17 @@ namespace detail {
     };
     std::vector<Slot> slots(team, Slot{ nullptr, n });
     const auto gpu_share = [&](Slot &slot) {
-      if (n_gpu == 0) return;
+      std::size_t first = calibrate ? lead : 0;
       try {
-        assign_on_gpu(prob, n_gpu, series, 0, medoid_series, medoids, labels, costs, opts.gpu_staging_bytes, false);
+        if (first < std::min(lead, n_gpu)) on_gpu(first, std::min(lead, n_gpu));
+        first = lead;
+        if (n_gpu > lead) on_gpu(lead, n_gpu);
       } catch (...) {
-        slot = { std::current_exception(), 0 };
+        slot = { std::current_exception(), first };
       }
     };
     const auto cpu_item = [&](Slot &slot, std::size_t b) {
-      const std::size_t first = n_gpu + b * item, count = std::min(item, cpu_end - first);
+      const std::size_t first = n_gpu + b * item, count = std::min(item, tail - first);
       if (first > slot.failed_at) return;
       try {
         on_cpu(static_cast<index_t>(first), count, std::span<double>(nearest).subspan(samples * b * item, samples * count),
@@ -326,9 +342,8 @@ namespace detail {
       for (std::size_t s = 0; s < samples; ++s)
         costs[s].add(std::span<const double>(nearest).subspan(samples * b * item + s * count, count));
     }
-    if (keep)
-      for (std::size_t s = 0; s < samples; ++s)
-        costs[s].add(std::span<const double>(calibrated).subspan(s * block, block));
+    for (std::size_t s = 0; s < samples; ++s)
+      costs[s].add(std::span<const double>(calibrated).subspan(s * (n - tail), n - tail));
     return split;
   }
 #else
