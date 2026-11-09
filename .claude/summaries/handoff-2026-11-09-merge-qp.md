@@ -86,8 +86,9 @@
   hot-loop file in the diff, identity 0 differ on its clang binary, the G8 log's six `identical` lines). HG merges once.
   Then (my chain `orch_hg_sync.sh`, green): the main `build/` rebuilt on design-2.0's tip, 103/103 (the identity base is
   current again); design-2.0 merged into `pb/HG` (8892f9b2, clean; MAP differs by HG1's row only; `run.cpp` holds DC's
-  guard and HG1's view path), 103/103, identity 0 differ. HG2 launched on Opus from `brief_hg2.md` (base 8892f9b2; its gate
-  0 reruns HG1's G8 on a real mapping with the CUDA tree llfio ON, and stops on a difference).
+  guard and HG1's view path), 103/103, identity 0 differ. HG2 accepted on `pb/HG` (42f6b12d, abe91544; `report_hg2.md`;
+  my checks: kernel bodies identical to the base, no lock or atomic in the diff, identity 0 differ, the CUDA tree's cache
+  llfio ON, the G8 logs' 17 `identical` lines). HG3 next from `brief_hg3.md` (base abe91544, Opus).
 
 ## Decisions
 

@@ -76,8 +76,12 @@ differ only where several optimal medoid sets exist, node counts and run times c
    byte for byte the CPU's, the `cpu` route unchanged): ☑ HG0 the bit-equality test (908741d9) + ☑ HG1 the two-stream
    pipeline for CLARA's assignment (cb509789, Opus; `report_hg1.md`: kernel bodies identical to the base, G8 byte for byte
    on views of 256, 200k and 1.1M series in RAM and streamed, FP64 and FP32; the plan's new staging terms, a cap that shrinks
-   the blocks under an explicit limit; one sanity run under load [inferred]: no slowdown), ☐ HG2 the fill's preload
-   (`brief_hg2.md`), ☐ HG3 the hybrid assignment, ☐ HG4 the hybrid fill, ☐ HG5 the device word in every language, the docs
+   the blocks under an explicit limit; one sanity run under load [inferred]: no slowdown), ☑ HG2 the CUDA fill reads a
+   view's series through spans (42f6b12d + abe91544, Opus; `report_hg2.md`: its gate 0 reran HG1's G8 on real mappings with
+   the CUDA tree llfio ON, every read line `mapped`, identical; the fill's matrix and the `.dtwm` byte for byte against the
+   base in 15 comparisons, a checkpoint resume identical; one upload from spans, since the launches hold every series on the
+   device: a tile-row pipeline would retile the kernels), ☐ HG3 the hybrid assignment (`brief_hg3.md`; with FastCLARA's GPU
+   sample copies read through spans), ☐ HG4 the hybrid fill, ☐ HG5 the device word in every language, the docs
    HG1 made false (hg_plan.md §4b), CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item 4's
    window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
