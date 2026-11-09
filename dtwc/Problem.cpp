@@ -1105,8 +1105,8 @@ void Problem::fill_distance_matrix()
 {
   if (device_ == Device::CPU_GPU)
     throw DeviceError(detail::hybrid_refused_message(
-      "Problem::fill_distance_matrix", "the distance matrix fills on one device (a FastCLARA sample of every series "
-                                       "is one fill)"));
+      "Problem::fill_distance_matrix", "the distance matrix fills on one device (as a FastCLARA sample of every "
+                                       "series, Result::save and a score that reads the matrix ask for)"));
   validate_checkpoint_settings();
   sync_band();
   // Writes through writable_distance_matrix() commit here: one scan refuses ±inf and a

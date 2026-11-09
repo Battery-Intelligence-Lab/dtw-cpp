@@ -2467,7 +2467,7 @@ TEST_CASE("HG3: cpu+gpu's FP64 L1 FastCLARA equals the CPU's and the GPU's whate
     REQUIRE(hybrid.hybrid);
     if (share < 0) {
       CHECK(std::string_view(hybrid.hybrid->source) == "calibrated");
-      CHECK(hybrid.hybrid->cpu_rate > 0);
+      CHECK((hybrid.hybrid->cpu_rate > 0 || dtwc::get_max_threads() == 1)); // a team of one leaves the CPU none
       CHECK(hybrid.hybrid->gpu_rate > 0);
       const double gpu_points = hybrid.hybrid->gpu_share * static_cast<double>(series.size());
       std::cout << "HG3 FP64 L1 " << (narrow ? "band 2" : "unbanded") << ", measured: FastCLARA "
