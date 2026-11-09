@@ -28,7 +28,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -36,7 +35,6 @@
 #include <iostream>
 #include <map>
 #include <numeric>
-#include <optional>
 #include <regex>
 #include <sstream>
 #include <string>
