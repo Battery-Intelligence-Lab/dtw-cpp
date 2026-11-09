@@ -14,6 +14,10 @@
  * @date 29 Mar 2026
  */
 
+// print_settings reads SLURM's and OpenMP's variables with std::getenv, which the Windows CRT marks deprecated as unsafe
+// (cl's C4996, clang's -Wdeprecated-declarations there): the macro silences it, and must precede the first CRT header.
+#define _CRT_SECURE_NO_WARNINGS 1
+
 #include "base/timing.hpp"
 #include "cli/config.hpp"
 #include "cli/run.hpp"

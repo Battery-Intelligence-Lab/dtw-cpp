@@ -16,7 +16,6 @@
 #pragma once
 
 #include "../config.hpp"
-#include "../algorithms/one_batch_pam.hpp"
 #include "../base/names.hpp"
 
 #include <string>

@@ -22,15 +22,14 @@
 #include "../base/parallelisation.hpp" // get_max_threads, TeamCap
 #include "../base/timing.hpp"
 #include "../checkpoint.hpp"
-#include "../core/dtw_kernel.hpp" // dtw_lanes
-#include "../core/machine.hpp"    // cpu_seconds
-#include "../core/matrix_io.hpp"
+#include "../core/distance_matrix.hpp" // packed_size, value_bytes, group_rows, peak_memory, available_memory
+#include "../core/dtw_kernel.hpp"      // dtw_lanes
+#include "../core/machine.hpp"         // cpu_seconds
 #include "../core/thread_scratch.hpp"
 #include "../detail/result_files.hpp" // WriteTimes
 #include "../fileOperations.hpp"
 #include "../io/arrow_ipc.hpp"
 #include "../io/read_data.hpp"
-#include "../scores.hpp"
 #ifdef DTWC_HAS_ARROW
 #include "../io/read_arrow.hpp"
 #endif
@@ -49,7 +48,6 @@
 #include <iostream>
 #include <memory>
 #include <new> // std::bad_alloc
-#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
