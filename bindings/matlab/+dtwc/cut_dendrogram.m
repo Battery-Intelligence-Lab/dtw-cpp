@@ -1,6 +1,3 @@
-%> @file cut_dendrogram.m
-%> @brief Cut a dendrogram to produce k flat clusters.
-%> @author Volkan Kumtepeli
 function result = cut_dendrogram(dend, prob, k)
 %CUT_DENDROGRAM Cut a dendrogram to produce k flat clusters.
 %
@@ -23,7 +20,10 @@ function result = cut_dendrogram(dend, prob, k)
 %   result : struct (same fields as dtwc.fast_pam)
 %
 %   See also dtwc.build_dendrogram, dtwc.fast_pam
-% @author Volkan Kumtepeli
+
+%> @file cut_dendrogram.m
+%> @brief Cut a dendrogram to produce k flat clusters.
+%> @author Volkan Kumtepeli
 
     validateattributes(k, {'numeric'}, {'scalar', 'positive', 'integer'}, 'cut_dendrogram', 'k');
     result = dtwc_mex('cut_dendrogram', dend, prob.get_handle(), double(k));

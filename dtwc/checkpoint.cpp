@@ -9,15 +9,13 @@
 #include "checkpoint.hpp"
 #include "Problem.hpp"
 #include "base/error.hpp"
-#include "fileOperations.hpp" // utf8_to_path
+#include "fileOperations.hpp" // utf8_to_path, the fs alias
 
 #include <string>
 #include <system_error>
 #include <utility>
 
 namespace dtwc {
-
-namespace fs = std::filesystem;
 
 fs::path checkpoint_path(const Problem &prob, const std::string &directory)
 {

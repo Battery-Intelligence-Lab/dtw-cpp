@@ -36,7 +36,6 @@
 #include <new>
 #include <numeric>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -296,9 +295,6 @@ public:
     return rows_are_series() ? std::max<int64_t>(total_rows_ - row_offset_, 0) : int64_t{1};
   }
 
-  /// Number of rows in a specific row group.
-  int64_t row_group_rows(int rg) const { return rg_row_counts_[rg]; }
-
   /// The bytes `rows` series of `values` values in all hold once read as float
   /// (use_float32) or data_t (dtwc::detail::owned_series_bytes). The one price of
   /// a read: row groups by their metadata, read_rows' series as they are copied out.
@@ -324,8 +320,8 @@ public:
     return decode_overhead * decoded + 2 * page_bytes_;
   }
 
-  /// What FastCLARA's stream prices the reader holding while it is open, beside any read: nothing, as before the
-  /// stream priced an Arrow IPC file's walk (2026-11-01); its metadata is not measured.
+  /// What FastCLARA's stream prices the reader holding while it is open, beside any read: nothing, its metadata is
+  /// not measured (an Arrow IPC file's walk is: IpcFile::open_bytes).
   size_t open_bytes() const { return 0; }
 
   /// The bytes the series of every row group hold once read: what the series
@@ -388,7 +384,7 @@ public:
           *read_groups({ rg }, { layout_.names->parquet_leaf_index }, "series_names")->column(0), row_names);
       for (size_t row = dropped; row < rows; ++row)
         names.push_back(layout_.names && row_names[row] ? std::move(*row_names[row])
-                                                        : "series_" + std::to_string(names.size()));
+                                                        : made_name(names.size()));
     }
     return names;
   }
@@ -526,7 +522,7 @@ public:
             const size_t original = order[next];
             const auto local = static_cast<size_t>(indices[original] - run);
             result_names[original] = layout_.names && row_names[local] ? *row_names[local]
-                                                                       : "series_" + std::to_string(indices[original]);
+                                                                       : made_name(indices[original]);
             retained += series_bytes(series[local].size(), 0, f32) + name_heap_bytes(result_names[original].size(), 1);
             // A duplicate requested index copies the series; its last request takes it.
             const bool repeated = next + 1 < last && indices[order[next + 1]] == indices[original];
@@ -642,7 +638,7 @@ private:
     for (size_t row = 0; row < rows.size(); ++row) {
       vecs.push_back(std::move(rows[row]));
       names.push_back(layout_.names && row_names[row] ? std::move(*row_names[row])
-                                                      : "series_" + std::to_string(first_name + row));
+                                                      : made_name(first_name + row));
     }
     return true;
   }

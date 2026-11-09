@@ -1,6 +1,3 @@
-%> @file adjusted_rand.m
-%> @brief Adjusted Rand index.
-%> @author Volkan Kumtepeli
 function ari = adjusted_rand(labels_true, labels_pred)
 %ADJUSTED_RAND Adjusted Rand index between two labelings (in [-1, 1]).
 %
@@ -11,5 +8,9 @@ function ari = adjusted_rand(labels_true, labels_pred)
 %   included. NaN, Inf or a fractional value raises dtwc:invalidArgument.
 %
 %   See also dtwc.normalized_mutual_info
+
+%> @file adjusted_rand.m
+%> @brief Adjusted Rand index.
+%> @author Volkan Kumtepeli
     ari = dtwc_mex('adjusted_rand', labels_true, labels_pred);
 end

@@ -1,6 +1,3 @@
-%> @file z_normalize.m
-%> @brief Z-normalize a time series (zero mean, unit std dev).
-%> @author Volkan Kumtepeli
 function xn = z_normalize(x)
 %Z_NORMALIZE Z-normalize a time series (zero mean, unit std dev).
 %
@@ -20,6 +17,10 @@ function xn = z_normalize(x)
 %       Z-normalized series.
 %
 %   See also dtwc.derivative_transform
+
+%> @file z_normalize.m
+%> @brief Z-normalize a time series (zero mean, unit std dev).
+%> @author Volkan Kumtepeli
 
     validateattributes(x, {'numeric'}, {'vector', 'nonempty'}, 'z_normalize', 'x');
     xn = dtwc_mex('z_normalize', double(x(:)'));

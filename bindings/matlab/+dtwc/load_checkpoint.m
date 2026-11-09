@@ -1,6 +1,3 @@
-%> @file load_checkpoint.m
-%> @brief Load a Problem distance-matrix checkpoint.
-%> @author Volkan Kumtepeli
 function ok = load_checkpoint(prob, path, metric)
 %LOAD_CHECKPOINT Restore a distance matrix into the Problem from a checkpoint dir.
 %
@@ -18,6 +15,10 @@ function ok = load_checkpoint(prob, path, metric)
 %   load_checkpoint(prob, path, metric).
 %
 %   See also dtwc.save_checkpoint, dtwc.CheckpointOptions
+
+%> @file load_checkpoint.m
+%> @brief Load a Problem distance-matrix checkpoint.
+%> @author Volkan Kumtepeli
     if nargin < 3, metric = 'l1'; end
     ok = dtwc_mex('load_checkpoint', prob.get_handle(), char(path), char(metric));
 end

@@ -1,6 +1,3 @@
-%> @file Dataset.m
-%> @brief Lazy dataset handle returned by dtwc.load.
-%> @author Volkan Kumtepeli
 classdef Dataset < handle
 %DATASET A lazy handle to time series: a path, or series already in memory.
 %
@@ -13,6 +10,10 @@ classdef Dataset < handle
 %   dtwc::run, which reads it at every call.
 %
 %   See also dtwc.load, dtwc.cluster
+
+%> @file Dataset.m
+%> @brief Lazy dataset handle returned by dtwc.load.
+%> @author Volkan Kumtepeli
 
     properties (SetAccess = private)
         Source      % a path, an N x L numeric matrix or a cell of numeric vectors

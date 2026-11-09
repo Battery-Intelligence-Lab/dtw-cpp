@@ -1,6 +1,3 @@
-%> @file gpu_available.m
-%> @brief Whether this build's GPU backend finds a GPU.
-%> @author Volkan Kumtepeli
 function tf = gpu_available()
 %GPU_AVAILABLE True when this build's GPU backend (CUDA, else Metal) finds a GPU.
 %
@@ -10,6 +7,10 @@ function tf = gpu_available()
 %   on that GPU; dtwc.gpu_info() names it.
 %
 %   See also dtwc.gpu_info, dtwc.device, dtwc.test.gpu
+
+%> @file gpu_available.m
+%> @brief Whether this build's GPU backend finds a GPU.
+%> @author Volkan Kumtepeli
 
     tf = dtwc_mex('gpu_available');
 end

@@ -321,6 +321,7 @@ Soft-DTW, Python or CUDA), on the machine named.
 
 - A medoid at distance 0 from another (a duplicate series) keeps its own cluster in every method; v1.0.0's Lloyd gave
   it to the first tied medoid and published its own cluster empty.
+- The verbose lines of Lloyd k-medoids say "Medoid initialisation" (v1.0.0 printed "Metoid").
 - `scores::silhouette` raises `InvalidInput` on an unclustered `Problem` (v1.0.0 printed a line and returned `-1` per
   series) and `UndefinedScore` below two non-empty clusters (v1.0.0 gave every series about 1).
 - `find_total_cost()` and the writers raise `InvalidInput` on an unclustered `Problem` instead of reading empty labels.

@@ -1,6 +1,3 @@
-%> @file DTWClustering.m
-%> @brief K-medoids clustering with DTW distance via DTWC++.
-%> @author Volkan Kumtepeli
 classdef DTWClustering
 %DTWCLUSTERING K-medoids clustering with DTW distance, Python's dtwcpp.DTWClustering.
 %
@@ -32,6 +29,10 @@ classdef DTWClustering
 %   ClusterCenters (the medoid series).
 %
 %   See also dtwc.cluster, dtwc.Problem, dtwc.distance.dtw
+
+%> @file DTWClustering.m
+%> @brief K-medoids clustering with DTW distance via DTWC++.
+%> @author Volkan Kumtepeli
 
     properties
         NClusters = 3

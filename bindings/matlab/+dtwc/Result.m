@@ -1,6 +1,3 @@
-%> @file Result.m
-%> @brief Clustering outcome returned by dtwc.cluster.
-%> @author Volkan Kumtepeli
 classdef Result < handle
 %RESULT Clustering outcome.
 %
@@ -23,6 +20,10 @@ classdef Result < handle
 %             NoReport.
 %
 %   See also dtwc.cluster, dtwc.silhouette
+
+%> @file Result.m
+%> @brief Clustering outcome returned by dtwc.cluster.
+%> @author Volkan Kumtepeli
 
     properties (SetAccess = private)
         labels

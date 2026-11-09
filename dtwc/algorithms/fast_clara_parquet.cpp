@@ -4,8 +4,8 @@
  *
  * @details The RAM-limited route of dtwc_cl --ram-limit. The main Problem holds settings only; each
  *   sample, the medoids and the assignment's row groups are read from the file as they are needed, by
- *   detail::fast_clara_chunked (detail/fast_clara_stream.hpp, which also streams Arrow IPC). It moved out
- *   of fast_clara.cpp so that the core, which the Python module and the MEX link, holds no Parquet.
+ *   detail::fast_clara_chunked (detail/fast_clara_stream.hpp, which also streams Arrow IPC). It lives
+ *   apart from fast_clara.cpp so that the core, which the Python module and the MEX link, holds no Parquet.
  * @author Volkan Kumtepeli
  */
 
@@ -32,7 +32,7 @@ core::ClusteringResult fast_clara_parquet(Problem &prob, const CLARAOptions &opt
     const auto resident_bytes =
       reader.estimated_resident_bytes(opts.use_float32);
 
-    // If data fits in RAM, skip chunked mode
+    // Stream when asked to, or when the series do not fit the limit; if they fit, the in-RAM route below
     if (opts.force_parquet_streaming
         || resident_bytes > opts.ram_limit_bytes) {
       if (prob.size() != 0)

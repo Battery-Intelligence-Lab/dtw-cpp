@@ -177,7 +177,7 @@ TEST_CASE("A run that fails past its checks writes its report up to the failing 
   REQUIRE(fs::exists(path));
   const std::string text = read_text(path);
   CHECK_THAT(text, ContainsSubstring("   status         FAILED in stage read: InvalidInput\n"));
-  // The method the run was asked for, though it failed before resolving it (a defect found 2026-11-03: "method auto").
+  // The method the run was asked for, though it failed before resolving it: not "method auto".
   CHECK_THAT(text, ContainsSubstring("   configuration  method pam, k 7,"));
   CHECK_THAT(text, ContainsSubstring("   error          InvalidInput: " + reported + "\n"));
   const auto rows = stage_rows(lines_of(text));

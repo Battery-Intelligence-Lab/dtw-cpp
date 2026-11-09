@@ -15,7 +15,6 @@
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
-#include <nanobind/stl/function.h>
 #include <nanobind/stl/filesystem.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/shared_ptr.h> // _run hands dtwcpp._mip.solve the run's own Problem, to co-own
@@ -40,7 +39,7 @@
 #include <core/z_normalize.hpp>
 #include <core/dtw_options.hpp>
 #include <core/matrix_io.hpp>
-#include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
+#include <test_api.hpp> // dtwc::test::parallelisation() and gpu(): the capability probes
 #include <mip/mip.hpp>
 #include <mip/decode_assignment.hpp>
 #include <mip/lagrangian_root.hpp>
@@ -52,7 +51,6 @@
 #include <exception>
 #include <filesystem>
 #include <initializer_list>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -73,9 +71,8 @@ namespace {
 /// only then is ownership released to the capsule. Callers hold the GIL, so no
 /// `gil_scoped_acquire` is nested inside a live release.
 ///
-/// `T` is double for the distance matrices and `index_t` (int64) for labels and
-/// medoids; a getter that hands out a Problem's or a result's indices passes a
-/// copy, so the array never aliases state C++ goes on to change.
+/// `T` is double or float for the distance matrices and `index_t` (int64) for labels
+/// and medoids (index_array).
 template <class T>
 nb::ndarray<nb::numpy, T> adopt_as_ndarray(
   std::vector<T> &&values, std::initializer_list<size_t> shape) {
@@ -89,6 +86,13 @@ nb::ndarray<nb::numpy, T> adopt_as_ndarray(
   });
   owned.release(); // the capsule owns the buffer from here on
   return nb::ndarray<nb::numpy, T>(ptr, shape, owner);
+}
+
+/// Labels or medoids as the int64 array Python gets: always a copy, so the array never aliases
+/// state C++ goes on to change.
+nb::ndarray<nb::numpy, dtwc::index_t> index_array(const std::vector<dtwc::index_t> &values)
+{
+  return adopt_as_ndarray(std::vector<dtwc::index_t>(values), {values.size()});
 }
 
 /// A distance matrix as an N x N NumPy array at its stored width, float64 or float32 (matrix_dtype), row-major:
@@ -180,6 +184,13 @@ void set_error(PyObject *type, const char *what)
 /// Problem.variant_params' type: its fields are bound read-only.
 struct FrozenParams : dtwc::core::DTWVariantParams
 {};
+
+/// The delimiter of the text readers: one character, or '\0' for the one the extension implies.
+char delimiter_char(const std::string &delimiter)
+{
+  if (delimiter.size() > 1) throw dtwc::InvalidInput("load: delimiter must be a single character.");
+  return delimiter.empty() ? '\0' : delimiter[0];
+}
 
 /// ram_limit as every language takes it: a byte count, or a size such as "8G"
 /// (dtwc::parse_ram_limit); 0 is automatic.
@@ -295,10 +306,9 @@ dtwc::Result run_released(dtwc::Config config, std::optional<dtwc::Data> data, d
                           dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype,
                           bool external)
 {
-  if (delimiter.size() > 1) throw dtwc::InvalidInput("load: delimiter must be a single character.");
+  config.delimiter = delimiter_char(delimiter);
   config.skip_cols = skip_cols;
   config.skip_rows = skip_rows;
-  config.delimiter = delimiter.empty() ? '\0' : delimiter[0];
   config.dtype = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
   config.output.clear();
   dtwc::ExternalSolver solver;
@@ -421,13 +431,12 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("_read_data",
         [](const std::filesystem::path &source, dtwc::index_t skip_cols,
            dtwc::index_t skip_rows, const std::string &delimiter, const std::string &dtype) {
-    if (delimiter.size() > 1)
-      throw dtwc::InvalidInput("load: delimiter must be a single character.");
+    const char field_delimiter = delimiter_char(delimiter);
     const auto precision = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
     // File I/O and parsing touch no Python object, so the GIL is released for
     // the whole read exactly as every other I/O binding here does.
     nb::gil_scoped_release release;
-    return dtwc::read_data(source, skip_cols, skip_rows, delimiter.empty() ? '\0' : delimiter[0], {}, precision);
+    return dtwc::read_data(source, skip_cols, skip_rows, field_delimiter, {}, precision);
   }, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
      "dtype"_a = std::string("float64"),
      "Read a path with dtwc::read_data, the reader dtwc_cl and C++ dtwc::load\n"
@@ -542,7 +551,7 @@ NB_MODULE(_dtwcpp_core, m) {
   nb::class_<dtwc::algorithms::BarycenterClusteringResult>(m, "BarycenterClusteringResult")
     .def(nb::init<>())
     .def_prop_ro("labels", [](const dtwc::algorithms::BarycenterClusteringResult &r) {
-      return adopt_as_ndarray(std::vector<dtwc::index_t>(r.labels), {r.labels.size()});
+      return index_array(r.labels);
     }, nb::rv_policy::move)
     .def_ro("barycenters", &dtwc::algorithms::BarycenterClusteringResult::barycenters)
     .def_ro("total_cost", &dtwc::algorithms::BarycenterClusteringResult::total_cost)
@@ -750,17 +759,12 @@ NB_MODULE(_dtwcpp_core, m) {
   nb::class_<dtwc::core::ClusteringResult>(m, "ClusteringResult")
     .def(nb::init<>())
     .def_prop_rw("labels",
-      [](const dtwc::core::ClusteringResult &r) {
-        return adopt_as_ndarray(std::vector<dtwc::index_t>(r.labels), {r.labels.size()});
-      },
+      [](const dtwc::core::ClusteringResult &r) { return index_array(r.labels); },
       [](dtwc::core::ClusteringResult &r, std::vector<dtwc::index_t> labels) {
         r.labels = std::move(labels);
       }, nb::rv_policy::move)
     .def_prop_rw("medoid_indices",
-      [](const dtwc::core::ClusteringResult &r) {
-        return adopt_as_ndarray(std::vector<dtwc::index_t>(r.medoid_indices),
-                                {r.medoid_indices.size()});
-      },
+      [](const dtwc::core::ClusteringResult &r) { return index_array(r.medoid_indices); },
       [](dtwc::core::ClusteringResult &r, std::vector<dtwc::index_t> medoids) {
         r.medoid_indices = std::move(medoids);
       }, nb::rv_policy::move)
@@ -905,7 +909,7 @@ NB_MODULE(_dtwcpp_core, m) {
          "Validate that all series flat sizes are divisible by ndim.\n\n"
          "Raises InvalidInput (a ValueError) if any series has incompatible size.");
 
-  // Zero-copy Arrow C Data interface ingest (Task 5.7). Consumes the PyCapsule
+  // Zero-copy Arrow C Data interface ingest. Consumes the PyCapsule
   // protocol `__arrow_c_array__` (polars / DuckDB / pyarrow / pandas) via the
   // vendored nanoarrow — NO pyarrow dependency. Each list element becomes one
   // (univariate) series; see dtwc::io::data_from_arrow for accepted layouts.
@@ -971,12 +975,8 @@ NB_MODULE(_dtwcpp_core, m) {
 
   // Labels and medoids leave as int64 copies: clusters_ind / labels() and
   // centroids_ind / medoids() are the same data under two spellings.
-  const auto labels_of = [](const dtwc::Problem &p) {
-    return adopt_as_ndarray(std::vector<dtwc::index_t>(p.labels()), {p.labels().size()});
-  };
-  const auto medoids_of = [](const dtwc::Problem &p) {
-    return adopt_as_ndarray(std::vector<dtwc::index_t>(p.medoids()), {p.medoids().size()});
-  };
+  const auto labels_of = [](const dtwc::Problem &p) { return index_array(p.labels()); };
+  const auto medoids_of = [](const dtwc::Problem &p) { return index_array(p.medoids()); };
 
   nb::class_<dtwc::Problem>(m, "Problem",
     "A clustering problem: data, configuration, distance matrix and results.\n\n"
@@ -1255,12 +1255,10 @@ NB_MODULE(_dtwcpp_core, m) {
   nb::class_<dtwc::Result>(m, "_Result",
     "What _run returns, C++ dtwc::Result: the run's clustering, its report, and the\n"
     "Problem it clustered, which score, save and _distance_matrix read.")
-    .def_prop_ro("labels", [](const dtwc::Result &r) {
-        return adopt_as_ndarray(std::vector<dtwc::index_t>(r.labels()), {r.labels().size()});
-      }, nb::rv_policy::move, "Cluster label of each series, an int64 array (a copy).")
-    .def_prop_ro("medoids", [](const dtwc::Result &r) {
-        return adopt_as_ndarray(std::vector<dtwc::index_t>(r.medoids()), {r.medoids().size()});
-      }, nb::rv_policy::move, "Medoid series index of each cluster, an int64 array (a copy).")
+    .def_prop_ro("labels", [](const dtwc::Result &r) { return index_array(r.labels()); }, nb::rv_policy::move,
+                 "Cluster label of each series, an int64 array (a copy).")
+    .def_prop_ro("medoids", [](const dtwc::Result &r) { return index_array(r.medoids()); }, nb::rv_policy::move,
+                 "Medoid series index of each cluster, an int64 array (a copy).")
     .def_prop_ro("cost", [](const dtwc::Result &r) { return r.cost(); },
                  "Total distance of the series to their medoids.")
     .def_prop_ro("method", [](const dtwc::Result &r) { return std::string(dtwc::name_of(dtwc::method_names, r.method())); },
@@ -1397,7 +1395,7 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "prob"_a, "n_clusters"_a, "max_iter"_a = 100,
      "seed"_a = dtwc::settings::DEFAULT_RANDOM_SEED,
      "Run FastPAM k-medoids clustering (Schubert & Rousseeuw 2021).\n\n"
-     "The C++ core writes labels/medoids/k back into prob (since 1.6), so\n"
+     "The C++ core writes labels/medoids/k back into prob, so\n"
      "silhouette(prob) and davies_bouldin(prob) work after this call with no\n"
      "wrapper-side wiring.\n\n"
      "max_iter is the SWAP budget: 0 returns the BUILD medoids without a SWAP\n"
@@ -1440,7 +1438,7 @@ NB_MODULE(_dtwcpp_core, m) {
      "Run FastCLARA scalable k-medoids clustering.\n\n"
      "Runs FastPAM on random subsamples and assigns all points to the\n"
      "best medoids found. Avoids O(N^2) memory of full PAM.\n\n"
-     "The C++ core writes labels/medoids/k back into prob (since 1.6), so\n"
+     "The C++ core writes labels/medoids/k back into prob, so\n"
      "silhouette(prob) and davies_bouldin(prob) work after this call.\n\n"
      "Parameters:\n"
      "  prob: Problem with data loaded.\n"
@@ -1619,7 +1617,7 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "dendrogram"_a, "prob"_a, "k"_a,
      "Cut a dendrogram to produce k flat clusters.\n\n"
      "Returns a ClusteringResult with labels, medoid_indices, and total_cost.\n"
-     "The C++ core also writes labels/medoids/k back into prob (since 1.6), so\n"
+     "The C++ core also writes labels/medoids/k back into prob, so\n"
      "silhouette(prob) etc. work after this call with no wrapper wiring.");
 
 
@@ -1650,7 +1648,7 @@ NB_MODULE(_dtwcpp_core, m) {
 #endif
 
   // =========================================================================
-  // dtwc.test introspection API (Task 3.3) — SAME schema/field names as the C++
+  // dtwc.test introspection API — SAME schema/field names as the C++
   // dtwc::test::* structs and the MATLAB dtwc_mex('test_*') structs. Each returns
   // a dict so `except`-free front-end code reads identical keys in all three
   // languages. The heavy probe (a real OpenMP region / a real GPU kernel) runs

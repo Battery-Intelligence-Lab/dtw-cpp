@@ -1,6 +1,3 @@
-%> @file normalized_mutual_info.m
-%> @brief Normalized mutual information.
-%> @author Volkan Kumtepeli
 function nmi = normalized_mutual_info(labels_true, labels_pred)
 %NORMALIZED_MUTUAL_INFO Normalized mutual information between two labelings ([0,1]).
 %
@@ -11,5 +8,9 @@ function nmi = normalized_mutual_info(labels_true, labels_pred)
 %   included. NaN, Inf or a fractional value raises dtwc:invalidArgument.
 %
 %   See also dtwc.adjusted_rand
+
+%> @file normalized_mutual_info.m
+%> @brief Normalized mutual information.
+%> @author Volkan Kumtepeli
     nmi = dtwc_mex('normalized_mutual_info', labels_true, labels_pred);
 end

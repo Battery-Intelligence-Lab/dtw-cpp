@@ -38,6 +38,7 @@
 #include <span>        // std::span
 #include <memory>
 #include <stdexcept>
+#include <tuple>       // std::tuple
 
 #include "checkpoint.hpp" // for CheckpointOptions, load_checkpoint
 
@@ -117,10 +118,11 @@ namespace detail {
  * Parquet or Arrow IPC) names its series by `streamed_names`, the reader's names (else `series_<i>`), and has
  * no matrix or silhouettes to write.
  *
- * @param complete  true (Result::save): fill the matrix first, so all four files are written, and throw
- *                  InvalidInput after the labels and medoids when there is no matrix to fill. false (the
- *                  CLI): write the matrix and silhouettes only if the matrix is already filled, so a
- *                  matrix-free run does not fill O(N^2) for them.
+ * @param complete  true (Result::save of a run held in RAM, the Python save): fill the matrix first, so all
+ *                  four files are written, and throw InvalidInput after the labels and medoids when the
+ *                  Problem holds no series, so there is no matrix to fill. false (the CLI, and Result::save
+ *                  of a streamed run): write the matrix and silhouettes only if the matrix is already filled,
+ *                  so a matrix-free run does not fill O(N^2) for them.
  * @param progress  when set, one line per file written.
  * @throws IOError for a file that cannot be written in full.
  */
@@ -205,6 +207,10 @@ private:
   /// core::validate(config) for `data`'s channels and precision, before a setter
   /// or set_data changes anything.
   static void validate_distance(core::DistanceConfig config, const Data &data);
+  /// set_data and set_view_data: refuse `candidate` (a series whose length ndim does not divide, an empty series, a
+  /// distance setting it cannot take) before anything changes, then take it and drop the clustering and the matrix,
+  /// which describe the old series. `operation` begins a refusal.
+  void adopt_data(Data candidate, std::string_view operation);
   void validate_checkpoint_settings() const;
   /// The one check of a distance request — every device axis, band
   /// feasibility and the series values the missing-data strategy
@@ -241,8 +247,8 @@ private:
   void writeBestRep(int best_rep);
   void writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost);
 
-  /// An empty series has no finite DTW distance to anything, so it clustered
-  /// with DBL_MAX distances and exit 0 (it used to arrive from a blank line).
+  /// An empty series has no finite DTW distance to anything: unrejected, it would
+  /// cluster with DBL_MAX distances.
   static void reject_empty_series(const Data &data, std::string_view operation)
   {
     for (std::size_t i = 0; i < data.size(); ++i)
@@ -292,7 +298,7 @@ public:
   Problem &operator=(Problem &&);
 
   auto size() const { return data_.size(); }
-  /// Number of clusters (canonical 2.0 read accessor; was `cluster_size()`).
+  /// Number of clusters.
   auto n_clusters() const { return Nc; }
   [[deprecated("use n_clusters")]] auto cluster_size() const { return n_clusters(); }
 
@@ -495,27 +501,14 @@ public:
 
   void set_data(dtwc::Data candidate)
   {
-    candidate.validate_ndim();
-    reject_empty_series(candidate, "Problem::set_data");
-    validate_distance(distance_, candidate);
-    data_ = std::move(candidate);
-    distance_.ndim = data_.ndim;
-    clusters_ind.clear(); // a clustering describes the series it was computed on
-    centroids_ind.clear();
-    refresh_distance_matrix();
+    adopt_data(std::move(candidate), "Problem::set_data");
   }
 
-  /// Set view-mode data (non-owning spans). Sizes distance matrix but skips mmap cache.
+  /// As set_data, for series that are views: non-owning spans into storage that outlives them or that
+  /// Data::owner() keeps alive.
   void set_view_data(dtwc::Data candidate)
   {
-    candidate.validate_ndim();
-    reject_empty_series(candidate, "Problem::set_view_data");
-    validate_distance(distance_, candidate);
-    data_ = std::move(candidate);
-    distance_.ndim = data_.ndim;
-    clusters_ind.clear();
-    centroids_ind.clear();
-    refresh_distance_matrix();
+    adopt_data(std::move(candidate), "Problem::set_view_data");
   }
 
   /// Set DTW variant and rebind the distance function.
@@ -611,15 +604,15 @@ public:
   [[deprecated("use print_distance_matrix")]] void printDistanceMatrix() const { print_distance_matrix(); }
 
   // Canonical I/O owns behavior; retained 1.x names are deprecated forwarders.
-  void write_distance_matrix(const std::string &name_) const;
+  void write_distance_matrix(const std::string &file_name) const;
   void write_distance_matrix() const
   {
     write_distance_matrix(name_ + "_distanceMatrix.csv");
   }
   [[deprecated("use write_distance_matrix")]]
-  void writeDistanceMatrix(const std::string &name_) const
+  void writeDistanceMatrix(const std::string &file_name) const
   {
-    write_distance_matrix(name_);
+    write_distance_matrix(file_name);
   }
   [[deprecated("use write_distance_matrix")]]
   void writeDistanceMatrix() const { write_distance_matrix(); }
@@ -657,7 +650,7 @@ public:
 
   void cluster_and_process();
 
-  // Auxillary
+  // Auxiliary
   double find_total_cost();
   [[deprecated("use find_total_cost")]] double findTotalCost() { return find_total_cost(); }
   void assign_clusters();

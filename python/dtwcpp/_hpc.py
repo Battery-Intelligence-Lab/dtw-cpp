@@ -49,10 +49,7 @@ def _toml_value(value):
 def _normalize_wait_controls(poll_seconds, timeout_seconds):
     """Validate polling controls before a remote job can be submitted."""
     normalized = []
-    for name, value, minimum, strict in (
-        ("poll_seconds", poll_seconds, 0.0, True),
-        ("timeout_seconds", timeout_seconds, 0.0, True),
-    ):
+    for name, value in (("poll_seconds", poll_seconds), ("timeout_seconds", timeout_seconds)):
         if isinstance(value, (bool, np.bool_)) or not isinstance(
             value, (int, float, np.integer, np.floating)
         ):
@@ -60,9 +57,8 @@ def _normalize_wait_controls(poll_seconds, timeout_seconds):
         value = float(value)
         if not np.isfinite(value):
             raise ValueError(f"{name} must be finite")
-        if value < minimum or (strict and value == minimum):
-            comparator = "greater than zero" if strict else "non-negative"
-            raise ValueError(f"{name} must be {comparator}")
+        if value <= 0.0:
+            raise ValueError(f"{name} must be greater than zero")
         normalized.append(value)
     return tuple(normalized)
 
@@ -73,7 +69,7 @@ def write_series_tsv(series, path):
     Pure data — no header, no id column — matching ``dtwc_cl --skip-cols 0``.
     Ragged series are allowed (rows may differ in length). Values are written
     with ``repr``, the shortest text that reads back to the same double, so an
-    HPC run clusters the same numbers as a local one (``:.10g`` rounded them).
+    HPC run clusters the same numbers as a local one.
     """
     path = str(path)
     with open(path, "w", newline="") as f:
@@ -103,6 +99,19 @@ def parse_labels_csv(path, n=None):
     for i in range(n):
         labels[i] = mapping[str(i + 1)]          # KeyError if a series is missing
     return labels
+
+
+def _job_id(job_id):
+    """``job_id`` as the decimal text of a Slurm job ID, else ValueError."""
+    job_id = str(job_id)
+    if re.fullmatch(r"[1-9][0-9]*", job_id) is None:
+        raise ValueError("job_id must be a positive decimal Slurm job ID")
+    return job_id
+
+
+def _output_of(completed):
+    """What a wrapper run printed: stdout, then stderr."""
+    return (completed.stdout or "") + (completed.stderr or "")
 
 
 def slurm_wrapper_path():
@@ -179,7 +188,7 @@ class SlurmRemoteRunner:
         request = [] if device != "gpu" else (
             ["--gpu-device", gpu_device] if gpu_device else ["--gpu"])
         res = self._run("submit-job", rundir, *request)
-        out = (res.stdout or "") + (res.stderr or "")
+        out = _output_of(res)
         if res.returncode != 0:
             raise RuntimeError(
                 f"submit-job failed (exit {res.returncode}).\n"
@@ -199,16 +208,13 @@ class SlurmRemoteRunner:
         poll_seconds, timeout_seconds = _normalize_wait_controls(
             poll_seconds, timeout_seconds,
         )
-        job_id = str(job_id)
-        if re.fullmatch(r"[1-9][0-9]*", job_id) is None:
-            raise ValueError("job_id must be a positive decimal Slurm job ID")
+        job_id = _job_id(job_id)
+        expired = f"job {job_id} exceeded the {timeout_seconds:g}s timeout"
         deadline = time.monotonic() + timeout_seconds
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise TimeoutError(
-                    f"job {job_id} exceeded the {timeout_seconds:g}s timeout"
-                )
+                raise TimeoutError(expired)
             try:
                 status = self._run("status", timeout=remaining)
             except subprocess.TimeoutExpired as exc:
@@ -217,15 +223,13 @@ class SlurmRemoteRunner:
                     f"{timeout_seconds:g}s timeout"
                 ) from exc
             if status.returncode != 0:
-                out = (status.stdout or "") + (status.stderr or "")
+                out = _output_of(status)
                 raise RuntimeError(
                     f"status failed (exit {status.returncode}) while waiting for "
                     f"job {job_id}.\nWrapper output:\n{out or '<empty>'}"
                 )
             if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    f"job {job_id} exceeded the {timeout_seconds:g}s timeout"
-                )
+                raise TimeoutError(expired)
             active = re.search(
                 rf"(?m)^\s*{re.escape(job_id)}(?:\s|$)", status.stdout or "",
             )
@@ -233,19 +237,15 @@ class SlurmRemoteRunner:
                 return
             sleep_seconds = min(poll_seconds, deadline - time.monotonic())
             if sleep_seconds <= 0:
-                raise TimeoutError(
-                    f"job {job_id} exceeded the {timeout_seconds:g}s timeout"
-                )
+                raise TimeoutError(expired)
             time.sleep(sleep_seconds)
 
     def download_labels(self, name, job_id):
         """Download job ``job_id``'s labels; return the local ``<name>_labels.csv``."""
-        job_id = str(job_id)
-        if re.fullmatch(r"[1-9][0-9]*", job_id) is None:
-            raise ValueError("job_id must be a positive decimal Slurm job ID")
+        job_id = _job_id(job_id)
         result = self._run("download-cluster", job_id)
         if result.returncode != 0:
-            out = (result.stdout or "") + (result.stderr or "")
+            out = _output_of(result)
             raise RuntimeError(
                 f"download-cluster failed (exit {result.returncode}) for job "
                 f"{job_id}.\nWrapper output:\n{out or '<empty>'}"

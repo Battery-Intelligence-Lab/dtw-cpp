@@ -162,12 +162,12 @@ TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "
                    1e-14));
 }
 
-// MM S6: --dtype float32 meets Float64 series passed in memory (a binding's, a caller's): run() stores them as the
+// --dtype float32 meets Float64 series passed in memory (a binding's, a caller's): run() stores them as the
 // dtype names, each value rounded to float once, whether the Data owns them or only views bytes another owns. Oracle:
 // the same series rounded by hand into a Float32 Data, which no conversion touches.
 TEST_CASE("run with dtype float32 rounds Float64 series passed in memory once, owned or a view, as the same series "
           "rounded by hand",
-          "[run][dtype][mm][s6]")
+          "[run][dtype]")
 {
   const dtwc::Data owned = levels();
   const auto storage = std::make_shared<const std::vector<std::vector<double>>>(owned.p_vec);

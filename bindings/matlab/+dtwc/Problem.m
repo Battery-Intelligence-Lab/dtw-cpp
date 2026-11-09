@@ -1,6 +1,3 @@
-%> @file Problem.m
-%> @brief OOP wrapper for the DTWC++ Problem class.
-%> @author Volkan Kumtepeli
 classdef Problem < handle
 %PROBLEM OOP wrapper for the DTWC++ Problem class.
 %
@@ -16,6 +13,10 @@ classdef Problem < handle
 %       sil = dtwc.silhouette(prob);
 %
 %   See also dtwc.fast_pam, dtwc.silhouette, dtwc.DTWClustering
+
+%> @file Problem.m
+%> @brief OOP wrapper for the DTWC++ Problem class.
+%> @author Volkan Kumtepeli
 
     properties (Access = private)
         Handle uint64 = uint64(0)
@@ -311,7 +312,7 @@ classdef Problem < handle
         % =================================================================
 
         function n = size(obj)
-        %SIZE Number of time series in the Problem (1-based count).
+        %SIZE Number of time series in the Problem.
             n = dtwc_mex('Problem_get_size', obj.Handle);
         end
 

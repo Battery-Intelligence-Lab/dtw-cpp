@@ -2,10 +2,9 @@
  * @file config.cpp
  * @brief cli::bind(), the one key table of dtwc::Config, and the text forms built on it.
  *
- * @details The only translation unit of dtwc++ that includes CLI11 (linked
- * PRIVATE). Config files, TOML or YAML, are read by dtwc::cli::ConfigFile, the
- * reader dtwc_cl uses, so both formats take the same keys and CLI11 keeps
- * precedence (a flag beats the file) and the unknown-key error.
+ * @details Config files, TOML or YAML, are read by dtwc::cli::ConfigFile
+ * (config_file.hpp), which bind() installs, so both formats take the same keys
+ * and CLI11 keeps precedence (a flag beats the file) and the unknown-key error.
  *
  * @author Volkan Kumtepeli
  * @date 24 Sep 2026
@@ -21,12 +20,10 @@
 #include <array>
 #include <cctype>
 #include <charconv>
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <initializer_list>
 #include <iostream>
-#include <limits>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -48,8 +45,7 @@ std::string text_of(const T &value)
   } else if constexpr (std::is_same_v<T, char>) {
     return value == '\0' ? std::string{} : std::string(1, value);
   } else if constexpr (std::is_same_v<T, double>) {
-    std::array<char, 32> buffer{}; // the shortest round-trip form of a double is at most 24 characters
-    return std::string(buffer.data(), std::to_chars(buffer.data(), buffer.data() + buffer.size(), value).ptr);
+    return shortest_text(value);
   } else if constexpr (std::is_integral_v<T>) {
     return std::to_string(value);
   } else {
@@ -292,6 +288,12 @@ void bind(CLI::App &app, Config &config)
 }
 
 } // namespace cli
+
+std::string shortest_text(double value)
+{
+  std::array<char, 32> buffer{}; // the shortest round-trip form of a double is at most 24 characters
+  return std::string(buffer.data(), std::to_chars(buffer.data(), buffer.data() + buffer.size(), value).ptr);
+}
 
 std::string to_config_text(const Config &config)
 {

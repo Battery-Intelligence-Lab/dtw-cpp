@@ -34,6 +34,33 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
+# Optional dependencies
+# ---------------------------------------------------------------------------
+
+def _import_h5py():
+    """h5py, or an ImportError naming how to install it."""
+    try:
+        import h5py
+    except ImportError:
+        raise ImportError(
+            "h5py is required for HDF5 I/O.  Install it with:  uv add h5py"
+        ) from None
+    return h5py
+
+
+def _import_pyarrow():
+    """``(pyarrow, pyarrow.parquet)``, or an ImportError naming how to install pyarrow."""
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        raise ImportError(
+            "pyarrow is required for Parquet I/O.  Install it with:  uv add pyarrow"
+        ) from None
+    return pa, pq
+
+
+# ---------------------------------------------------------------------------
 # Reading series (dtwcpp.load)
 # ---------------------------------------------------------------------------
 
@@ -119,7 +146,7 @@ def _read_parquet(files, skip_cols, skip_rows, value):
                      "name": pa.array(names, pa.string())})
 
 
-def _read_arrow(path, parquet, skip_cols=0, skip_rows=0, dtype="float64"):
+def _read_parquet_data(path, parquet, skip_cols=0, skip_rows=0, dtype="float64"):
     """Parquet files, read by the C++ reader's rule (:func:`_read_parquet`)
     through the installed pyarrow, into the Arrow C stream the compiled-in
     nanoarrow reads, in the precision ``dtype`` names: pyarrow casts the values
@@ -166,7 +193,7 @@ def _read_data(source, skip_cols=0, skip_rows=0, delimiter=None, dtype="float64"
         if delimiter:
             raise InvalidInput("--delimiter (delimiter) splits CSV/TSV text into fields and cannot be "
                                "honoured for this input; drop it, or pass a text input.")
-        return _read_arrow(path, parquet, skip_cols, skip_rows, dtype)
+        return _read_parquet_data(path, parquet, skip_cols, skip_rows, dtype)
     return _dtwcpp_core._read_data(path, skip_cols, skip_rows, delimiter or "", dtype)
 
 
@@ -261,12 +288,7 @@ def save_dataset_hdf5(
     ImportError
         If *h5py* is not installed.
     """
-    try:
-        import h5py
-    except ImportError:
-        raise ImportError(
-            "h5py is required for HDF5 I/O.  Install it with:  uv add h5py"
-        ) from None
+    h5py = _import_h5py()
 
     path = Path(path)
     with h5py.File(path, "w") as f:
@@ -301,12 +323,7 @@ def load_dataset_hdf5(path: str | Path) -> dict[str, Any]:
     ImportError
         If *h5py* is not installed.
     """
-    try:
-        import h5py
-    except ImportError:
-        raise ImportError(
-            "h5py is required for HDF5 I/O.  Install it with:  uv add h5py"
-        ) from None
+    h5py = _import_h5py()
 
     path = Path(path)
     result: dict[str, Any] = {}
@@ -355,13 +372,7 @@ def save_dataset_parquet(
     ImportError
         If *pyarrow* is not installed.
     """
-    try:
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-    except ImportError:
-        raise ImportError(
-            "pyarrow is required for Parquet I/O.  Install it with:  uv add pyarrow"
-        ) from None
+    pa, pq = _import_pyarrow()
 
     path = Path(path)
     columns = names if names and len(names) == data.shape[1] else [
@@ -416,17 +427,14 @@ def load_dataset_parquet(
     ValueError
         If ``column`` is given but does not exist or is not a list type.
     """
-    try:
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-    except ImportError:
-        raise ImportError(
-            "pyarrow is required for Parquet I/O.  Install it with:  uv add pyarrow"
-        ) from None
+    pa, pq = _import_pyarrow()
 
     path = Path(path)
     table = pq.read_table(str(path))
     schema = table.schema
+
+    def is_list(kind):
+        return pa.types.is_list(kind) or pa.types.is_large_list(kind)
 
     list_col_idx: int | None = None
     if column is not None:
@@ -436,7 +444,7 @@ def load_dataset_parquet(
                 f"Column '{column}' not found in Parquet schema: {schema.names}"
             )
         ftype = schema.field(idx).type
-        if not (pa.types.is_list(ftype) or pa.types.is_large_list(ftype)):
+        if not is_list(ftype):
             raise ValueError(
                 f"Column '{column}' has type {ftype}, expected list / large_list. "
                 f"Drop the `column` argument to use the rectangular layout."
@@ -445,7 +453,7 @@ def load_dataset_parquet(
     else:
         for i in range(len(schema)):
             ftype = schema.field(i).type
-            if pa.types.is_list(ftype) or pa.types.is_large_list(ftype):
+            if is_list(ftype):
                 list_col_idx = i
                 break
 

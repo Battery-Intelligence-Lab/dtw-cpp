@@ -66,7 +66,7 @@ public:
   [[deprecated("use start_column")]]
   DataLoader &startColumn(int N) { return start_column(N); }
 
-  //!< Set start row
+  /// Set start row
   DataLoader &start_row(index_t N)
   {
     start_row_ = N;
@@ -75,14 +75,14 @@ public:
   [[deprecated("use start_row")]]
   DataLoader &startRow(int N) { return start_row(N); }
 
-  //!< Set number of series to read (-1 = all). Rejects N < -1.
+  /// Set number of series to read (-1 = all). Rejects N < -1.
   DataLoader &n_data(index_t N)
   {
     validate_ndata(N, "DataLoader::n_data");
     Ndata = N;
     return *this;
   }
-  //!< Set delimiter
+  /// Set delimiter
   DataLoader &delimiter(char delim_)
   {
     delim = delim_;
@@ -115,7 +115,7 @@ public:
     return *this;
   }
 
-  //!< Set verbosity level
+  /// Set verbosity level
   DataLoader &verbosity(int N)
   {
     verbose = N;

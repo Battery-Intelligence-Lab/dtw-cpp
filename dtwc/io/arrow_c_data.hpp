@@ -8,7 +8,7 @@
  * with the vendored, dependency-free nanoarrow (dtwc/extern/nanoarrow), so no
  * Arrow C++ / pyarrow is required at build or run time.
  *
- * Accepted layouts (each becomes univariate series, ndim = 1):
+ * Accepted layouts (data_from_arrow's series are univariate, ndim = 1; data_from_arrow_stream takes an ndim):
  *   - list<floating> / large_list<floating>: one series per list element.
  *   - struct< name: utf8/large_utf8 (optional), <list-of-floating> >: the list
  *     child supplies the series, the utf8 child (if present) supplies names.
@@ -16,9 +16,9 @@
  * Values are copied once into owning storage, as double or, for `dtype` Float32,
  * rounded to float; the borrowed Arrow buffers are never aliased, so the caller may
  * release the ArrowArray as soon as this returns. "Zero-copy" here means the
- * buffer-direct read that avoids both a pyarrow dependency and the per-element
- * Python-object materialisation of the old `list(row) for row in X` path — not that
- * the doubles are aliased in place.
+ * buffer-direct read that avoids both a pyarrow dependency and a per-element
+ * Python-object materialisation (`list(row) for row in X`) — not that the doubles
+ * are aliased in place.
  *
  * The two structs are BORROWED: this function reads them and does NOT call their
  * `release` callbacks. Ownership/release is the caller's responsibility (the

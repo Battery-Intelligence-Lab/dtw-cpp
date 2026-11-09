@@ -1,6 +1,3 @@
-%> @file CheckpointOptions.m
-%> @brief Checkpoint options struct.
-%> @author Volkan Kumtepeli
 function opts = CheckpointOptions(varargin)
 %CHECKPOINTOPTIONS Build a checkpoint-options struct.
 %
@@ -11,6 +8,10 @@ function opts = CheckpointOptions(varargin)
 %   Mirrors dtwc::CheckpointOptions {directory, save_interval, enabled}.
 %
 %   See also dtwc.save_checkpoint, dtwc.load_checkpoint
+
+%> @file CheckpointOptions.m
+%> @brief Checkpoint options struct.
+%> @author Volkan Kumtepeli
     p = inputParser;
     addParameter(p, 'directory', './checkpoints', @(v) ischar(v) || isstring(v));
     addParameter(p, 'save_interval', 100, @(v) isnumeric(v) && isscalar(v));

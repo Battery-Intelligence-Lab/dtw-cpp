@@ -1,6 +1,3 @@
-%> @file inertia.m
-%> @brief Compute the inertia (total within-cluster distance sum).
-%> @author Volkan Kumtepeli
 function val = inertia(prob)
 %INERTIA Compute the inertia (total within-cluster distance sum).
 %
@@ -20,6 +17,10 @@ function val = inertia(prob)
 %       The inertia value.
 %
 %   See also dtwc.silhouette, dtwc.calinski_harabasz
+
+%> @file inertia.m
+%> @brief Compute the inertia (total within-cluster distance sum).
+%> @author Volkan Kumtepeli
 
     val = dtwc_mex('inertia', prob.get_handle());
 end

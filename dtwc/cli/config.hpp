@@ -16,7 +16,6 @@
 #pragma once
 
 #include "../config.hpp"
-#include "../algorithms/one_batch_pam.hpp"
 #include "../base/names.hpp"
 
 #include <string>
@@ -41,6 +40,10 @@ namespace cli {
 void bind(CLI::App &app, Config &config);
 
 } // namespace cli
+
+/// The shortest text that reads back as `value` (std::to_chars): how a double is written in a config file, the run report
+/// and dtwc_cl's cost line.
+std::string shortest_text(double value);
 
 /// Every key of `config`, one `key = value` line each in bind() order: enums by
 /// canonical name, doubles in shortest round-trip form. parse_config() and

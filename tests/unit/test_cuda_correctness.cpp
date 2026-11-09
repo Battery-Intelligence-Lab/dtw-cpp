@@ -2101,7 +2101,7 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
   CHECK(gpu.labels == cpu.labels);
   CHECK(gpu.medoid_indices == cpu.medoid_indices);
   CHECK_THAT(gpu.total_cost, WithinRel(cpu.total_cost, 1e-12));
-  // A view of the same series (a mapped Arrow IPC file's, MM S5) leaves p_vec empty: the assignment reads its series
+  // A view of the same series (a mapped Arrow IPC file's) leaves p_vec empty: the assignment reads its series
   // and medoids from an owned copy of them, so the owned run's labels, medoids and cost, bit for bit.
   const auto view = run(dtwc::Device::GPU, dtwc::GpuPrecision::FP64, false, true);
   CHECK(view.labels == gpu.labels);

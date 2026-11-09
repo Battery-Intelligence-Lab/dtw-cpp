@@ -1,7 +1,3 @@
-%> @file parallelisation.m
-%> @brief OpenMP parallelisation self-probe (parity with dtwc::test::parallelisation
-%>        / dtwcpp.test.parallelisation).
-%> @author Volkan Kumtepeli
 function report = parallelisation()
 %PARALLELISATION Run a REAL OpenMP region and report engaged threads.
 %
@@ -20,6 +16,11 @@ function report = parallelisation()
 %   `reason` names the sequential build — the honest loud answer, never faked.
 %
 %   See also dtwc.test.gpu, dtwc.gpu_info
+
+%> @file parallelisation.m
+%> @brief OpenMP parallelisation self-probe (parity with dtwc::test::parallelisation
+%>        / dtwcpp.test.parallelisation).
+%> @author Volkan Kumtepeli
 
     report = dtwc_mex('test_parallelisation');
 end

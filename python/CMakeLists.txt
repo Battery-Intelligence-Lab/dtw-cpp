@@ -38,14 +38,12 @@ endif()
 # (CMakeLists.txt); the wheel builds with DTWC_ENABLE_YAML=OFF, so no fkYAML (pyproject.toml).
 target_link_libraries(_dtwcpp_core PRIVATE dtwc_cli project_options)
 # The MSVC `/openmp:experimental` flag (and `-fopenmp`/libomp on Clang/GCC) is
-# now attached DIRECTLY to dtwc_core as a PUBLIC usage requirement
-# (dtwc/CMakeLists.txt), so linking `dtwc_core` (through dtwc_cli) is enough for this module to
-# compile against the OpenMP runtime (`_OPENMP`, `omp_get_max_threads`).
-# `project_options` is kept in the link for
-# its other usage requirements and as belt-and-suspenders; the OpenMP behaviour
-# no longer depends on it. Previously the flag rode ONLY on the project_options
-# INTERFACE — dropping it silently serialised every parallel loop on MSVC and
-# left `_OPENMP` undefined, so `dtwcpp.OPENMP_AVAILABLE` reported False even when
-# the underlying static library was built with OpenMP.
+# attached DIRECTLY to dtwc_core as a PUBLIC usage requirement (dtwc/CMakeLists.txt),
+# so linking `dtwc_core` (through dtwc_cli) is enough for this module to compile
+# against the OpenMP runtime (`_OPENMP`, `omp_get_max_threads`). `project_options`
+# is kept in the link for its other usage requirements; the OpenMP behaviour does
+# not depend on it. Without the flag on this module `_OPENMP` is undefined, so
+# `dtwcpp.OPENMP_AVAILABLE` would report False even where the static library was
+# built with OpenMP.
 
 install(TARGETS _dtwcpp_core DESTINATION dtwcpp)

@@ -130,18 +130,14 @@ std::vector<double> Result::distance_matrix() const { return io::to_full_matrix(
 
 void Result::save(const std::filesystem::path &directory) const
 {
-  // save() promises the complete matrix and silhouettes: matrix-free methods
-  // retain their scaling until this explicitly requested operation.
-  // Result::score("silhouette") still throws on one cluster; asking for the
-  // number is a different contract from skipping a file. A streamed run holds no
-  // series: its labels and medoids, with the reader's names, as dtwc_cl writes them.
+  // save() writes the complete matrix and the silhouettes, so a matrix-free method, which left the matrix unfilled,
+  // fills it here, on request. Result::score("silhouette") still throws on one cluster: asking for the number is a
+  // different contract from skipping a file. A streamed run holds no series: its labels and medoids, with the
+  // reader's names, as dtwc_cl writes them.
   detail::write_result_files(*problem_, directory, streamed_names_.empty(), nullptr, streamed_names_);
   // The run's report, last: a save that fails before it writes none.
   if (report_.empty()) return;
-  const auto path = directory / utf8_to_path(problem_->name() + "_report.txt");
-  auto out = open_output(path);
-  out << report_;
-  close_output(out, path);
+  write_text(directory / utf8_to_path(problem_->name() + "_report.txt"), report_);
 }
 
 Result cluster(const Dataset &dataset, index_t k, std::string_view method, int band,

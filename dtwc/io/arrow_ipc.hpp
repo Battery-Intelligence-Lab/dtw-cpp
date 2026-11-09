@@ -102,10 +102,10 @@ public:
   /// rows copied leave no room for one more batch.
   template <typename T>
   Data read_rows(std::vector<index_t> rows, std::size_t ram_budget) const;
-  /// Record batches [first, first + count) as one view Data of T: read in parallel, each handed to check() by the
+  /// Record batches [first, first + count) as one view Data of T: read in parallel, each handed to `piece` by the
   /// thread that read it; the lowest failing batch's error is rethrown (run_openmp), as a serial read raises it.
   template <typename T>
-  Data read_row_groups(int first, int count, const PieceCheck &check) const;
+  Data read_row_groups(int first, int count, const PieceCheck &piece) const;
   /// The record batches a batch of read_row_groups() holds within `ram_budget`, read by a thread each up to the team's
   /// size, each thread but one (decode_bytes) with its scratch: InvalidInput if not one.
   int row_groups_per_batch(std::size_t ram_budget, bool f32) const;

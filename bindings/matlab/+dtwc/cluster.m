@@ -1,6 +1,3 @@
-%> @file cluster.m
-%> @brief High-level clustering entry point.
-%> @author Volkan Kumtepeli
 function res = cluster(data, k, varargin)
 %CLUSTER Cluster time series into k groups with DTW; returns a dtwc.Result.
 %
@@ -44,6 +41,10 @@ function res = cluster(data, k, varargin)
 %   dtwc:invalidArgument naming the valid ones (a device name: dtwc:deviceError).
 %
 %   See also dtwc.load, dtwc.Result, dtwc.device
+
+%> @file cluster.m
+%> @brief High-level clustering entry point.
+%> @author Volkan Kumtepeli
 
     [varargin{:}] = convertStringsToChars(varargin{:});
     key = 2 * find(strcmpi(varargin(1:2:end - 1), 'Dtype')) - 1;   % load's, not the run's

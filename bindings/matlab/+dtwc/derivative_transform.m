@@ -1,6 +1,3 @@
-%> @file derivative_transform.m
-%> @brief Apply the Keogh-Pazzani derivative transform.
-%> @author Volkan Kumtepeli
 function dx = derivative_transform(x)
 %DERIVATIVE_TRANSFORM Apply the Keogh-Pazzani derivative transform.
 %
@@ -28,6 +25,10 @@ function dx = derivative_transform(x)
 %   Reference: Keogh & Pazzani (2001), "Derivative Dynamic Time Warping"
 %
 %   See also dtwc.distance.dtw
+
+%> @file derivative_transform.m
+%> @brief Apply the Keogh-Pazzani derivative transform.
+%> @author Volkan Kumtepeli
 
     validateattributes(x, {'numeric'}, {'vector', 'nonempty'}, 'derivative_transform', 'x');
     dx = dtwc_mex('derivative_transform', double(x(:)'));
