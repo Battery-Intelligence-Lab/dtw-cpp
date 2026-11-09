@@ -139,9 +139,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   the data cap on every thread; else the series load on the most threads whose working set fits, fitted once. `-v`
   prints the plan; `auto` is `clara` also where `pam`'s matrix can be neither held in RAM nor mapped. An explicit limit
   that cannot hold the run is refused before any work (`InvalidInput`): in RAM naming the least limit that runs, on a
-  stream naming what the plan holds, the stream's own floor coming on top; the automatic limit never refuses. It is a
-  plan, not a cap: a run may use about a tenth more, more with series longer than planned; MIP's and LR-core's solver
-  memory is not planned. `dtwc::run` gives its threads' scratch back, CUDA's pinned and device buffers among it, as it
+  stream naming what the plan holds, the stream's own floor coming on top; the automatic limit refuses no plan (a
+  stream's own floor can still refuse). It is a plan, not a cap: a run may use about a tenth more, more with series
+  longer than planned; MIP's and LR-core's solver memory is not planned. `dtwc::run` gives its threads' scratch back, CUDA's pinned and device buffers among it, as it
   starts and when it returns or throws; Tier-2 calls (a fill, `Problem::cluster`, the algorithms) keep theirs, so a
   k-sweep allocates once.
 - A run (`dtwc_cl`, `dtwc::run`, `dtwc::cluster`, Python's and MATLAB's `cluster()`) whose memory the system refuses
@@ -164,11 +164,11 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   each read decoding about 1 MiB of values, or from Arrow IPC a record batch at a time, decoded and checked in
   parallel; each row it reads is checked as the in-RAM run checks its series (NaN, ±inf, an empty list cell or a row
   longer than the band allows, outside the samples, is an `InvalidInput` naming the row). The data cap holds the
-  sampled rows beside one decode and a sample's PAM, then the medoids, 8 bytes of labels and of nearest distance per
-  row and sample, one decode and a batch of row groups, and after the stream every series' name and label: a smaller
+  sampled rows beside one decode and a sample's PAM, then the medoids, 8 bytes of labels per row and sample
+  and of nearest distance per sample for a block of 65,536 rows, one decode and a batch of row groups, and after the stream every series' name and label: a smaller
   one is refused, naming the bytes, and an Arrow IPC record batch larger than the cap before any is decoded (without
   llfio, before its body is read). With CUDA each streamed record batch is uploaded as an owned copy, which the plan
-  counts beside CUDA's staging of it. On Linux the stream returns its freed batches to the system before the results
+  counts beside CUDA's staging of it. On Linux and Windows the stream returns its freed batches to the system before the results
   are written.
 - `Problem::cluster()` returns a `ClusteringResult` (labels, medoids, cost, iterations, converged); `Problem` gains
   `set_method`, `set_device`, `set_distance`, `set_variant`, `set_metric`, `set_result`, `solver()`, `mip_settings`, ...

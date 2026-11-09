@@ -164,7 +164,7 @@ sampled rows, a sample's PAM, a record batch) comes on top: the stream checks it
 within the data cap, and its refusal names the data cap as `--ram-limit` (the
 limit less the reserve, which the refusal then says). A stream keeps the
 requested threads, so fewer threads (`OMP_NUM_THREADS`) make its reserve
-smaller. The automatic limit never refuses. With `--method auto` the run takes
+smaller. The automatic limit refuses no plan (a stream's own floor can still refuse). With `--method auto` the run takes
 `clara` also where `pam`'s matrix can neither stay in RAM nor be mapped: the
 method follows the limit (`clara` below the switch, `pam` above it), and the
 threads and the clustering are each method's, so just above the switch `pam`
@@ -218,8 +218,8 @@ load on the threads that fit. An explicit `--ram-limit` is fail-closed:
   a batch of row groups at a time (the next batch decoding while one is assigned,
   when two fit); every read decodes about 1 MiB of values at a time. The data cap
   must hold the sampled rows beside one decode, a sample's PAM beside them, then
-  the `n_samples` × k medoid series, 8 bytes of labels and of nearest distance
-  per row and sample, one decode and a batch of whole row groups, and the series'
+  the `n_samples` × k medoid series, 8 bytes of labels per row and sample
+  and of nearest distance per sample for a block of 65,536 rows, one decode and a batch of whole row groups, and the series'
   names and labels written after the stream; a smaller one fails, naming the
   bytes (as `--ram-limit`), with guidance to rewrite smaller row groups or raise
   it;
@@ -308,8 +308,7 @@ its fixed O(Nm) table never allocates the Problem distance matrix. If the
 series and the matrix do not fit within an explicit `--ram-limit` in a binary
 built without LLFIO, the CLI refuses the run before any distance is computed:
 its message says the build cannot map the matrix (`DTWC_ENABLE_LLFIO=OFF`) and
-names the ways out, raising the limit, `--dtype float32`, `--method clara`
-and, with more than one thread, fewer threads (`OMP_NUM_THREADS`).
+names the ways out, raising the limit, `--dtype float32` and `--method clara`.
 
 Non-full FastCLARA is also parent-matrix-free: only its current subsample PAM
 owns an O(s²) matrix, while full-data assignment evaluates N×k configured DTW

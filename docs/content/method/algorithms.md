@@ -10,7 +10,7 @@ partitioning time series from elastic distances.
 
 ## FastPAM (k-Medoids)
 
-The Partitioning Around Medoids (PAM) algorithm is what the default `--method auto` runs for up to 5000 series on the CPU, and for any number on a GPU; above 5000 series on the CPU, or where PAM's distance matrix does not fit the memory budget, `auto` runs FastCLARA. Unlike k-means, which uses computed centroids, k-medoids selects actual data points (medoids) as cluster representatives. This is particularly well-suited for DTW-based clustering because computing a meaningful "average" time series under DTW is non-trivial.
+The Partitioning Around Medoids (PAM) algorithm is what the default `--method auto` runs for up to 5000 series on the CPU, and for any number on a GPU; above 5000 series on the CPU, or where PAM's distance matrix can be neither held in RAM nor mapped to a file, `auto` runs FastCLARA. Unlike k-means, which uses computed centroids, k-medoids selects actual data points (medoids) as cluster representatives. This is particularly well-suited for DTW-based clustering because computing a meaningful "average" time series under DTW is non-trivial.
 
 ### Algorithm Overview
 
