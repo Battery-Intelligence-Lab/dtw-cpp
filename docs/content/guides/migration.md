@@ -48,7 +48,8 @@ with a warning. What needs attention is the behaviour listed further down.
 | public fields `method`, `output_folder`, `name`, `data` | `method()` / `set_method`, `output_folder()` / `set_output_folder`, `name()` / `set_name`, `data()` / `set_data` |
 | public fields `maxIter`, `N_repetition`, `band`, `init_fun`, `clusters_ind`, `centroids_ind` | still public (the last two now hold `index_t`); also `set_max_iter`, `set_n_repetitions`, `set_band`, which check their value |
 | `Problem::cluster()` returning `void` | returns the `core::ClusteringResult` (labels, medoids, cost, iterations, converged) |
-| `distMat`, `distMat_t` (Armadillo), `resize()` | `distance_matrix()`, a `core::DistanceMatrix` |
+| `distMat`, `distMat_t` (Armadillo) | `distance_matrix()`, a `core::DistanceMatrix` |
+| `resize()` | none: `set_n_clusters` no longer sizes `clusters_ind` and `centroids_ind`, which stay empty until a clustering writes them |
 | copying a `Problem` | not allowed; a `Problem` moves |
 | `DataLoader::startColumn(n)`, `startRow(n)` | `start_column(n)`, `start_row(n)` |
 | `settings::DEFAULT_BAND_LENGTH` | `settings::DEFAULT_BAND` |
@@ -104,7 +105,7 @@ The v1.0.0 spellings still work: they are hidden from `--help` and print
 | v1.0.0 output | 2.0 `dtwc_cl` output |
 |---|---|
 | `<name>_Nc_<k>.csv` | `<name>_labels.csv` (`name,cluster`) and `<name>_medoids.csv` (`cluster,medoid_index,medoid_name`) |
-| `<name>_silhouettes_Nc_<k>.csv` | `<name>_silhouettes.csv` (`name,cluster,silhouette`) |
+| `<name>_silhouettes_Nc_<k>.csv` | `<name>_silhouettes.csv` (`name,cluster,silhouette`), when the method filled the matrix and k > 1 |
 | `<name>_distanceMatrix.csv` | `<name>_distance_matrix.csv`, when the method filled the matrix |
 | `<name>medoids_rep_<r>.csv`, `<name>_bestRepetition_Nc_<k>.csv` | not written |
 | (none) | `<name>_report.txt`: the run report, written last; `--no-report` writes none |
@@ -131,8 +132,8 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   cluster, where v1.0.0 gave it to the first tied medoid and left its cluster
   empty; a run that stops at `maxIter` assigns the series to its final medoids
   before its cost is taken.
-- The band is the window |i − j| ≤ band for every pair. v1.0.0 widened it along
-  the diagonal of two series of different lengths. In a `Problem`, a band
+- The band is the window |i − j| ≤ band for every pair. v1.0.0 centred it on
+  the line joining the ends of two series of different lengths. In a `Problem`, a band
   narrower than the difference in length of two series is `InvalidInput`,
   naming the smallest band that works; `dtwBanded` and `distance::dtw` return
   the no-path value, `std::numeric_limits<T>::max()`, for such a pair.
@@ -149,8 +150,8 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   square and symmetric, ±inf, and a negative entry (above). The CSV it writes
   carries every digit of a double and LF line endings.
 - Text input: a blank line is no longer an empty series; each file of a folder
-  holds one value per line after `skip_cols` (a pandas `index,value` file needs
-  `start_row(1)` and `start_column(1)`); a folder is read in sorted order; a
+  holds one value per line after the skipped columns (a pandas `index,value` file needs
+  `start_row(1)` and `start_column(1)`, or `--skip-rows 1 --skip-cols 1`); a folder is read in sorted order; a
   `.txt` file is tab-separated unless a delimiter is given (v1.0.0 read it as
   comma-separated). `load_batch_file` with a `start_row` of 1 or more reads the
   series (v1.0.0 read none).
@@ -184,5 +185,3 @@ lengths under a band, and Lloyd k-medoids runs. These change too:
 - **`Method::MIP`** solves the full model with the selected solver at every N,
   as v1.0.0 did; with the start and the gap above, a run that stops at the gap
   can return another clustering within it.
-- The LR-core method's seed and Soft-DTW's summation order also changed during
-  2.0's development; neither existed in v1.0.0.
