@@ -26,8 +26,16 @@ with a warning. What needs attention is the behaviour listed further down.
 - `dtwc++` is now an INTERFACE target over static libraries: link it as before;
   a non-INTERFACE command on it (`target_compile_definitions(dtwc++ PRIVATE ...)`)
   fails at configure time.
-- The `dtwc_main` demo executable is gone, and `dtwc_cl` is built only when
-  DTWC++ is the top-level project.
+- The `dtwc_main` demo executable is gone (`examples/cpp/MIP_single.cpp` runs a
+  MIP clustering of the same sample data, taking the data folder as an
+  argument), and `dtwc_cl` is built only when DTWC++ is the top-level project.
+- A top-level build compiles for its machine's CPU (`-march=native`; MSVC
+  `/arch:AVX2`), and an optimised build of the library uses the `fast`
+  floating-point relaxations; v1.0.0 used neither (`DTWC_ARCH_LEVEL`,
+  `DTWC_FP_MODEL=strict`).
+- The maintainer CMake options are spelled `DTWC_*` (`DTWC_ENABLE_SANITIZER_ADDRESS`,
+  `DTWC_WARNINGS_AS_ERRORS`, ...); v1.0.0's `dtwc_*` names still work for one
+  release, with a warning.
 - Including `dtwc.hpp` under `-ffast-math` stops the build: NaN marks missing
   values, which `-ffinite-math-only` would let the compiler ignore. Add
   `-fno-finite-math-only` after `-ffast-math`.
@@ -53,6 +61,7 @@ with a warning. What needs attention is the behaviour listed further down.
 | copying a `Problem` | not allowed; a `Problem` moves |
 | `DataLoader::startColumn(n)`, `startRow(n)` | `start_column(n)`, `start_row(n)` |
 | `settings::DEFAULT_BAND_LENGTH` | `settings::DEFAULT_BAND` |
+| the `dtwc::solver` MIP helpers that `dtwc.hpp` reached (`Element`, `Triplet`, `RowMajor`, `ColumnMajor`, `isAround`, `isFractional`, ...), `dtwc/types/element_types.hpp`, `types_util.hpp` | none |
 | `settings::root_folder`, `dtwc_folder`, `resultsPath`, `dataPath`, `dtwc_dataPath`, `DTWC_ROOT_FOLDER`, `CURRENT_ROOT_FOLDER` | none: pass paths explicitly; a `Problem`'s output folder is `./results/`, relative to the working directory |
 | `dtwc::randGenerator`, in `settings.hpp` | the same engine, in `base/random_engine.hpp`, which `dtwc.hpp` includes: one engine per program (v1.0.0 had a `static` copy in each translation unit) |
 | `writeMatrix`, `readMatrix` | `io::write_csv`, `io::read_csv` |
@@ -99,8 +108,10 @@ The v1.0.0 spellings still work: they are hidden from `--help` and print
   above. `--method kmedoids` runs v1.0.0's Lloyd k-medoids.
 - An unknown method or solver, a `--dist-matrix` that cannot be read, and
   `--solver gurobi` on a build without Gurobi stop the run with an error, where
-  v1.0.0 printed a message and went on with a default; so does a `--band` below
-  -1, which v1.0.0 ran as full DTW.
+  v1.0.0 printed a message and went on with a default; so do a `--band` below
+  -1, which v1.0.0 ran as full DTW, a negative `--skip-rows` or `--skip-cols`
+  and a failed write.
+- A run prints a summary, not each iteration's cost and every cluster's members.
 
 | v1.0.0 output | 2.0 `dtwc_cl` output |
 |---|---|
@@ -144,8 +155,12 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   k-medoids runs.
 - A NaN or ±inf in a series is `InvalidInput` before any distance is computed,
   unless a missing-data strategy says what NaN means (`set_missing_strategy`).
+  A series with no values is `InvalidInput` too, a blank line in a file of one
+  series per row no longer being one.
 - The scores, `find_total_cost` and the writers raise `InvalidInput` on a
-  `Problem` that holds no clustering.
+  `Problem` that holds no clustering (`scores::silhouette` printed a line and
+  returned `-1` per series). `scores::silhouette` raises `UndefinedScore` below
+  two non-empty clusters, where v1.0.0 gave every series about 1.
 - `read_distance_matrix` refuses a file of another size, a matrix that is not
   square and symmetric, ±inf, and a negative entry (above). The CSV it writes
   carries every digit of a double and LF line endings.
@@ -153,8 +168,19 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   holds one value per line after the skipped columns (a pandas `index,value` file needs
   `start_row(1)` and `start_column(1)`, or `--skip-rows 1 --skip-cols 1`); a folder is read in sorted order; a
   `.txt` file is tab-separated unless a delimiter is given (v1.0.0 read it as
-  comma-separated). `load_batch_file` with a `start_row` of 1 or more reads the
-  series (v1.0.0 read none).
+  comma-separated), and `DataLoader::path()` matches extensions in any case and
+  keeps a delimiter set before it. `load_batch_file` with a `start_row` of 1 or
+  more reads the series (v1.0.0 read none), and `Ndata` 0 reads no series from a
+  folder as from a file (v1.0.0 read the whole folder).
+- A series file that cannot be opened is an `IOError` (v1.0.0 read it as an empty
+  series), and a field that is not a number is an error naming its row and
+  column (v1.0.0 read it as 0 or as the series' end). A folder takes regular
+  files only and skips dot-files. Text is read in binary: a Ctrl-Z byte no
+  longer ends a file on Windows, and a file whose lines end in a bare CR is
+  refused. Numbers are read with fast_float and the matrix CSV is written with
+  `std::to_chars`, whatever the global C++ locale. Names taken from file names
+  are UTF-8 on every platform, and on Windows `dtwc_cl` reads its arguments and
+  paths as UTF-8 (v1.0.0 used the ANSI code page).
 - Every error is a typed exception derived from `dtwc::Error`, itself a
   `std::runtime_error`; v1.0.0 threw integers in places
   ([the error types](../../api/tier-1/)).
@@ -163,7 +189,10 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   `SolverError` when its solver is not built or ends without a proven optimum.
 - The MIP starts from FastPAM's clustering, and both solvers stop at a relative
   gap of 1e-5; v1.0.0 started cold, left HiGHS at its own gap, and set Gurobi's
-  NumericFocus to 3 (now 1). `mip_settings` sets each of them.
+  NumericFocus to 3 (now 1; MIPFocus is 2). `mip_settings` sets each of them.
+- A direct write to the `band` field takes effect at the next
+  `fill_distance_matrix()`; v1.0.0 kept the distances computed under the old
+  band.
 - Series are stored as `double`, as in v1.0.0. Storing them as `float` is new, and
   opt-in where they are loaded: `DataLoader::dtype`, `dtwc::load(..., dtype)`,
   Python's and MATLAB's `load`, `dtwc_cl --dtype float32`. A `float` read from text
