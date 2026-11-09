@@ -355,3 +355,12 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   Plan accuracy "Price the copy, net the baseline (Recommended)": the in-RAM FastCLARA plan holds the winner's label copy
   as the stream's does, M's ratio is registered net of the program's own baseline (a 25-series run), and cli.md says the
   program's own few MB lie outside the plan.
+- 2026-11-09 — Volkan (question tool), after his note "we are not getting anywhere ... code quality passes are very
+  important ... don't try to have final numbers for benchmarking" and the finish plan `plans/2026-11-09-finish-2.0.md`:
+  MM merges on "Correctness gates + one sanity run" (the kit's A and B shapes once under today's load, [inferred], nothing
+  claimed; only a gross slowdown stops it), which supersedes the merge rule above: the bands A, B, D, E2, F and K become
+  advisory, run when the machine is quiet. HG: "All of HG in 2.0" (the pipeline and CPU + GPU together, measured first,
+  after the quality pass and the release list; the tag waits for it). The quality pass: "Bounded pass as written" (finish
+  plan §4.2). Process: "Adopt the cuts" (finish plan §5: full gates at a unit's merge only, one adversarial review per unit,
+  G6 only for kernel, fill, swap or assignment loops, no planner or kit-prep agents, kits of at most six bands, Sonnet
+  xhigh by default, PLAN at most 100 lines and a handoff at most 40).

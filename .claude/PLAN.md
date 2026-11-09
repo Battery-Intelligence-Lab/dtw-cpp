@@ -30,9 +30,9 @@ differ only where several optimal medoid sets exist, node counts and run times c
 
 1. ◐ **MM merge** [here]. pb/MM 0cc84a15 (S1–S10b, 38 commits; worktree `C:/D/git/wt/MM`, work files `C:/D/git/wt/tmp/MM/`)
    into design-2.0 with `--no-ff`: clang, Arrow, MEX (+ `matlab_suite`), CUDA and WSL GCC trees `ctest -j1`, fresh-venv
-   pytest, docs gates, results identical to the base (G10), conformance. A dry-run merge has no conflict (11-09). The
-   11-09 merge rule (bands A, B, D, E2, F and K's ratio block; `s10_kit_plan.md` §2 + §7, kit `kit/s10/`) holds until
-   Volkan answers Q1 of the finish plan; MM merges once.
+   pytest, docs gates, results identical to the base (G10), conformance. A dry-run merge has no conflict (11-09). Volkan
+   11-09: "Correctness gates + one sanity run": the kit's A and B shapes (`kit/s10/`, `s10_kit_plan.md`) once under today's
+   load, [inferred], nothing claimed, only a gross slowdown stops the merge; the bands are advisory (item 4). MM merges once.
 2. ☐ **QP code-quality pass** [here]: scope and stopping rule in the finish plan §4.2 (the five largest own files, the
    repo's `.clang-tidy` over `dtwc/` without `extern/`, MM's new tests under the 09-30 rule); every commit
    behaviour-neutral (`ctest -j1`, conformance digit-identical, pytest); two rounds, then stop.
@@ -41,12 +41,13 @@ differ only where several optimal medoid sets exist, node counts and run times c
    Linux release archives (`cpack` + `scripts/smoke_release_archive.py`; whether `libgomp` ships and the notice says so;
    Windows done: RA, CA); `cpp_conformance` strict and fast under GCC and MSVC redone on the merged tree (passed on
    292a9bd7 and in the pb/MM gate trees); the docs' final read (charter item 10) and CHANGELOG's.
-4. ☐ **Timing, advisory** [here, a quiet machine; Volkan 11-04 "Later, I will tell you"]: MM's bands and FM's E1 (ETW
-   counters, `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` run elevated by Volkan); numbers to `baselines/` tagged
-   [confirmed]; a FALSIFIED hot-loop band reopens its loop, anything else is fixed or reworded after.
-5. ☐ **HG** [decision]: the GPU on mapped series as a batch pipeline, and CPU + GPU together (`C:/D/git/wt/tmp/MM/hetero.md`,
-   design only, nothing built; Volkan 10-11 "own unit after MM", 11-03 "MM and HG both in 2.0"; the finish plan's Q2
-   recommends 2.1). S5's route ships either way: a view uploads an owned Float64 copy; a run beyond the budget is a
+4. ☐ **Timing, advisory** [here, a quiet machine; Volkan 11-04 "Later, I will tell you"]: MM's bands, HG's baseline and
+   FM's E1 (ETW counters, `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` run elevated by Volkan); numbers to `baselines/`
+   tagged [confirmed]; a FALSIFIED hot-loop band reopens its loop, anything else is fixed or reworded after.
+5. ☐ **HG** [here]: the GPU on mapped series as a batch pipeline, and CPU + GPU together (`C:/D/git/wt/tmp/MM/hetero.md`,
+   design only, nothing built; Volkan 10-11 "own unit after MM", 11-03 "MM and HG both in 2.0", 11-09 "All of HG in 2.0"
+   against the finish plan's 2.1 recommendation): measured first (its baseline in item 4's window), one review at its
+   merge; the tag waits for it. Until then S5's route: a view uploads an owned Float64 copy; a run beyond the budget is a
    typed error naming `clara` on `cpu`; a GPU run's host memory (~90 MiB for CUDA) is outside the plan.
 6. [CI] design-2.0's tip green on Volkan's push: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and
    `matlab-mex.yml` on Linux, macOS and Windows, the three unit jobs, `documentation.yml`; whether python-wheels' Linux
