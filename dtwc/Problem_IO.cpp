@@ -3,7 +3,8 @@
  * @brief Implementation of input/output functions for the Problem class.
  *
  * @details These functions handle the writing of medoids, clusters, silhouettes, and
- * distance matrices to files, as well as reading distance matrices from files.
+ * distance matrices to files, as well as reading distance matrices from files, and
+ * detail::write_result_files, the result files of a clustered Problem.
  *
  * @author Volkan Kumtepeli
  * @author Becky Perriment
@@ -190,9 +191,9 @@ void Problem::writeBestRep(int best_rep)
 
 /**
  *  @brief Reads the distance matrix from a file.
- *  @details A read failure is reported to the caller: deciding whether to
- *  continue without a precomputed matrix belongs to the caller, not the reader.
- *  Swallowing it made a failed load indistinguishable from a successful one.
+ *  @details A read failure is reported to the caller: swallowing it would make a
+ *  failed load indistinguishable from a successful one, and whether to continue
+ *  without a precomputed matrix is the caller's decision.
  *  @param distMat_path The file path of the distance matrix.
  *  @param not_computed What marks a pair never computed: NaN (an empty field or
  *         NaN) or Negative (also any value below zero, v1.0.0's -1).
@@ -218,10 +219,9 @@ void Problem::read_distance_matrix(const fs::path &distMat_path, core::NotComput
                        "a Soft-DTW matrix with not_computed = nan, the default: an empty field or NaN marks such a "
                        "pair.");
   // Parsed into a local so a rejected file leaves the matrix untouched. A
-  // matrix of another size describes other series: it used to be kept, then
-  // discarded silently at the first lookup and every distance recomputed.
-  // An empty file loaded nothing, equally silently. A Problem without
-  // series takes any matrix, as before.
+  // matrix of another size, an empty one included, describes other series and
+  // is refused: ignoring it would recompute every distance silently at the
+  // first lookup. A Problem without series takes any matrix.
   core::DistanceMatrix loaded(0, matrix_dtype_);
   io::read_csv(loaded, distMat_path, not_computed);
   if (size() != 0 && loaded.size() != size())

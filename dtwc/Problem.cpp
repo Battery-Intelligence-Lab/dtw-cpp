@@ -2,8 +2,9 @@
  * @file Problem.cpp
  * @brief Implementation of the DTWC (Dynamic Time Warping Clustering) problem encapsulated in a class.
  *
- * @details This file includes the implementation of the Problem class, which contains methods for clustering,
- * initializing clusters, calculating distances, and other functionalities related to the DTWC problem.
+ * @details The Problem session: its setters, the distance functions they bind, the distance-matrix fill and its
+ * cache, the series check, cluster() over the nine methods and Lloyd's k-medoids; also `apply(Config, Problem &)`,
+ * `parse_ram_limit` and the GPU queries. The result files are in Problem_IO.cpp, initialisation in initialisation.cpp.
  *
  * @date 06 Nov 2022
  * @author Volkan Kumtepeli
@@ -13,10 +14,10 @@
 #include "Problem.hpp"
 #include "config.hpp"               // for Config, apply
 #include "base/error.hpp"           // for DeviceError
-#include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byHiGHS
+#include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byHiGHS, LR_core_clustering
 #include "base/parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
-#include "base/settings.hpp"        // for data_t, randGenerator, band, isDebug
+#include "base/settings.hpp"        // for data_t, index_t, settings::DEFAULT_MIP_SOLVER
 #include "core/matrix_io.hpp"  // for operator<<(ostream, DistanceMatrix)
 #include "core/medoid_assignment_policy.hpp" // finite assignment contract
 
@@ -38,7 +39,7 @@
 #include "algorithms/fast_pam.hpp"
 #include "algorithms/one_batch_pam.hpp"
 #include "algorithms/tadpole.hpp"
-#include "io/parse_number.hpp"         // for parse_ram_limit
+#include "io/parse_number.hpp"         // for io::parse_number
 
 
 #include <algorithm> // for min
@@ -105,7 +106,7 @@ void hash_float(FingerprintHash &hash, float value)
   hash_u32(hash, bits);
 }
 
-// Enum spellings for validate_fill_request's messages: the C++ and Python
+// Enum spellings for validate_gpu_request's messages: the C++ and Python
 // enumerator names.
 const char *variant_name(core::DTWVariant v)
 {
@@ -1391,7 +1392,9 @@ void Problem::cluster_by_kmedoids_lloyd()
  * @details This function performs a single run of the Lloyd k-medoids algorithm, updating the medoids and clusters,
  * and calculating the total cost for this run.
  * @param rep The current repetition number.
- * @return A pair containing the status (whether the algorithm converged or not) and the total cost of clustering for this repetition.
+ * @param persist_artifacts Write this repetition's medoids per iteration (writeMedoids).
+ * @return The status (0: the medoids stopped changing, -1: max_iter was reached first), the total cost of this
+ *         repetition's clustering and the iterations run.
  */
 std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
   int rep, bool persist_artifacts)

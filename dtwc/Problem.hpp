@@ -117,10 +117,11 @@ namespace detail {
  * Parquet or Arrow IPC) names its series by `streamed_names`, the reader's names (else `series_<i>`), and has
  * no matrix or silhouettes to write.
  *
- * @param complete  true (Result::save): fill the matrix first, so all four files are written, and throw
- *                  InvalidInput after the labels and medoids when there is no matrix to fill. false (the
- *                  CLI): write the matrix and silhouettes only if the matrix is already filled, so a
- *                  matrix-free run does not fill O(N^2) for them.
+ * @param complete  true (Result::save of a run held in RAM, the Python save): fill the matrix first, so all
+ *                  four files are written, and throw InvalidInput after the labels and medoids when the
+ *                  Problem holds no series, so there is no matrix to fill. false (the CLI, and Result::save
+ *                  of a streamed run): write the matrix and silhouettes only if the matrix is already filled,
+ *                  so a matrix-free run does not fill O(N^2) for them.
  * @param progress  when set, one line per file written.
  * @throws IOError for a file that cannot be written in full.
  */
@@ -241,8 +242,8 @@ private:
   void writeBestRep(int best_rep);
   void writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost);
 
-  /// An empty series has no finite DTW distance to anything, so it clustered
-  /// with DBL_MAX distances and exit 0 (it used to arrive from a blank line).
+  /// An empty series has no finite DTW distance to anything: unrejected, it would
+  /// cluster with DBL_MAX distances.
   static void reject_empty_series(const Data &data, std::string_view operation)
   {
     for (std::size_t i = 0; i < data.size(); ++i)
@@ -292,7 +293,7 @@ public:
   Problem &operator=(Problem &&);
 
   auto size() const { return data_.size(); }
-  /// Number of clusters (canonical 2.0 read accessor; was `cluster_size()`).
+  /// Number of clusters.
   auto n_clusters() const { return Nc; }
   [[deprecated("use n_clusters")]] auto cluster_size() const { return n_clusters(); }
 
@@ -505,7 +506,8 @@ public:
     refresh_distance_matrix();
   }
 
-  /// Set view-mode data (non-owning spans). Sizes distance matrix but skips mmap cache.
+  /// As set_data, for series that are views: non-owning spans into storage that outlives them or that
+  /// Data::owner() keeps alive.
   void set_view_data(dtwc::Data candidate)
   {
     candidate.validate_ndim();
@@ -657,7 +659,7 @@ public:
 
   void cluster_and_process();
 
-  // Auxillary
+  // Auxiliary
   double find_total_cost();
   [[deprecated("use find_total_cost")]] double findTotalCost() { return find_total_cost(); }
   void assign_clusters();
