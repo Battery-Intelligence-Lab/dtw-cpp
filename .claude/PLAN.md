@@ -28,14 +28,16 @@ differ only where several optimal medoid sets exist, node counts and run times c
 
 ## Remaining, in order ([here] this machine, WSL included · [CI] Volkan's push · [Volkan] his actions)
 
-1. ◐ **MM merge** [here]. pb/MM 0cc84a15 (S1–S10b, 38 commits; worktree `C:/D/git/wt/MM`, work files `C:/D/git/wt/tmp/MM/`)
-   into design-2.0 with `--no-ff`: clang, Arrow, MEX (+ `matlab_suite`), CUDA and WSL GCC trees `ctest -j1`, fresh-venv
-   pytest, docs gates, results identical to the base (G10), conformance. A dry-run merge has no conflict (11-09). Volkan
-   11-09: "Correctness gates + one sanity run": the kit's A and B shapes (`kit/s10/`, `s10_kit_plan.md`) once under today's
-   load, [inferred], nothing claimed, only a gross slowdown stops the merge; the bands are advisory (item 4). MM merges once.
-2. ☐ **QP code-quality pass** [here]: scope and stopping rule in the finish plan §4.2 (the five largest own files, the
-   repo's `.clang-tidy` over `dtwc/` without `extern/`, MM's new tests under the 09-30 rule); every commit
-   behaviour-neutral (`ctest -j1`, conformance digit-identical, pytest); two rounds, then stop.
+1. ☑ **MM merged** c4bcefc2 (11-09; pb/MM 0cc84a15, S1–S10b, 38 commits, `--no-ff`; Volkan 11-09 "Correctness gates + one
+   sanity run"). Gates on 0cc84a15: clang 103, Arrow 106, no-llfio 103, no-cpuinfo 103, MEX 104 with `matlab_suite`, CUDA
+   102, WSL GCC 102, fresh-venv pytest 933/19, G10 660/660 (S9); on the merged tree: clang 103, Arrow 106, docs gates. The
+   sanity run (the kit's A and B shapes once, under load, [inferred]: no gross slowdown, MM faster in all seven pairs) is on
+   disk; the bands are advisory (item 4). The worktree `C:/D/git/wt/MM` and its eight build trees are now a merged unit's.
+2. ◐ **QP code-quality pass** [here]: scope and stopping rule in the finish plan §4.2; briefs `C:/D/git/wt/tmp/QP/`
+   (`qp_common.md`, `brief_qp1..5.md`, `brief_qp_review.md`; the identity gate `kit/cli_identity.sh`, 27 CLI cases byte for
+   byte against the base binary). QP1 io and the stream, QP2 cli and api, QP3 the `Problem` session, QP4 the bindings, QP5
+   MM's tests under the 09-30 rule then clang-tidy; one review; branches `pb/QP1..5` from c4bcefc2, gathered on `pb/QP`,
+   full gates once at its merge.
 3. ☐ **Release list** [here]: L2b's open ends (a Windows build with Arrow ON; the Linux link order of `dtwc_core` /
    `dtwc_io`); F43 (the MEX maps no matrix yet; the llfio-ON MEX crash under R2024b did not reproduce 2026-09-30); the
    Linux release archives (`cpack` + `scripts/smoke_release_archive.py`; whether `libgomp` ships and the notice says so;
