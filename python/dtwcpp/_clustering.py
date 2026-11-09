@@ -84,7 +84,8 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         own distances (onebatch, clara, tadpole) are refused.
     variant : str, default="standard"
         DTW variant: ``"standard"``, ``"ddtw"``, ``"wdtw"``, ``"adtw"``,
-        ``"msm"`` or ``"twe"``.
+        ``"softdtw"``, ``"msm"`` or ``"twe"``. The estimator has no
+        ``sdtw_gamma`` parameter, so ``"softdtw"`` runs at the default gamma.
     band : int, default=-1
         Sakoe-Chiba band width. ``-1`` for full (unconstrained) DTW.
     max_iter : int, default=100

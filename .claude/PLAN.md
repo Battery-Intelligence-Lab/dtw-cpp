@@ -55,12 +55,14 @@ differ only where several optimal medoid sets exist, node counts and run times c
    the oracle": a crash there puts the flag back and becomes a tracked item). The docs' and CHANGELOG's final read (charter
    item 10) merged c3f26c47 (`pb/DOC`, 8 commits, 33 files; docs gates on the merged tree PASS; `check_site_links` runs in
    CI). It left ten code-side items (`C:/D/git/wt/tmp/QP/brief_dc.md`): unit DC, below.
-3b. ◐ **DC, the code the docs read found wrong** [here]: Python `save_checkpoint` / `load_checkpoint` defaulting `metric` to
-   L1 where C++ uses the Problem's (rule 17); `--checkpoint` with a method that never allocates the matrix writing an
-   all-NaN `.dtwm`; the stale Doxygen of `.dtwm`'s header and ADTW's citation; the `hpc` docstring's error type; the Arrow
-   option's description; `dtwc-convert`'s usage line; `CONTRIBUTING.md`'s dead reference; two Python docstrings; the
-   `cluster` slash command's method. One Sonnet agent on `pb/DC`; tests only where a contract has none (the two behaviour
-   items); the identity gate, clang `ctest -j1`, fresh-venv pytest, the docs gates.
+3b. ☑ **DC, the code the docs read found wrong** merged 5b01d1fe (11-09; `pb/DC`, three commits, report
+   `C:/D/git/wt/tmp/DC/report_dc.md`): Python's and MATLAB's `save_checkpoint` / `load_checkpoint` take the Problem's metric
+   when none is named (rule 17; one pytest case, the MATLAB identity test extended); a `--checkpoint` run of a method that
+   never allocates the matrix writes no all-NaN `.dtwm` (one CLI test that fails on the previous binary; CHANGELOG; two docs
+   clauses); eight comments, docstrings and descriptions made true. Gates: clang 103, identity 0 differ, pytest 934/19, docs
+   gates, the MEX tree 104/104 with the MATLAB suite (mine). Candidates it left: `save_dataset_csv(names=)` writes a header
+   row `dtwc_cl` cannot read back; `help.md` and `visualize.md` still show `Method.Kmedoids`; TADPole on the mapped route
+   leaves a never-filled `.dtwm`.
 4. ☐ **Timing, advisory** [here, a quiet machine; Volkan 11-04 "Later, I will tell you"]: MM's bands, HG's baseline and
    FM's E1 (ETW counters, `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` run elevated by Volkan); numbers to `baselines/`
    tagged [confirmed]; a FALSIFIED hot-loop band reopens its loop, anything else is fixed or reworded after. Two of MM's
@@ -71,10 +73,16 @@ differ only where several optimal medoid sets exist, node counts and run times c
    `C:/D/git/wt/tmp/MM/hetero.md`; plan `C:/D/git/wt/tmp/HG/hg_plan.md`; Volkan 10-11 "own unit after MM", 11-03 "MM and HG
    both in 2.0", 11-09 "All of HG in 2.0", then "Build on the design's predictions; measure advisory", the device word
    "cpu+gpu", "Rounding errors are fine" for the hybrid). Steps on `pb/HG`, each merging on correctness (GPU FP64 results
-   byte for byte the CPU's, the `cpu` route unchanged): ◐ HG0 the bit-equality test + HG1 the pipeline for CLARA's
-   assignment (`brief_hg1.md`, Opus), ☐ HG2 the fill's preload, ☐ HG3 the hybrid assignment, ☐ HG4 the hybrid fill, ☐ HG5
-   the device word in every language, docs, CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item
-   4's window. Until HG1, S5's route: a view uploads an owned Float64 copy.
+   byte for byte the CPU's, the `cpu` route unchanged): ☑ HG0 the bit-equality test (908741d9) + ☑ HG1 the two-stream
+   pipeline for CLARA's assignment (cb509789, Opus; `report_hg1.md`: kernel bodies identical to the base, G8 byte for byte
+   on views of 256, 200k and 1.1M series in RAM and streamed, FP64 and FP32; the plan's new staging terms, a cap that shrinks
+   the blocks under an explicit limit; one sanity run under load [inferred]: no slowdown), ☐ HG2 the fill's preload
+   (`brief_hg2.md`), ☐ HG3 the hybrid assignment, ☐ HG4 the hybrid fill, ☐ HG5 the device word in every language, the docs
+   HG1 made false (hg_plan.md §4b), CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item 4's
+   window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
+   true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
+   into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
+   gate runs on the merged tree, not the branches alone. Until HG merges, S5's route ships.
 6. [CI] design-2.0's tip green on Volkan's push: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and
    `matlab-mex.yml` on Linux, macOS and Windows, the three unit jobs, `documentation.yml`; whether python-wheels' Linux
    jobs passed before TL (e3cba47d). The Mac: no Metal has been built since S5 (G8b lines: the 11-09 handoff). macOS

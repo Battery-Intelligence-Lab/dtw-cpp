@@ -1,4 +1,4 @@
-# Handoff — 2026-11-09 (Windows) — the finish plan, MM merged, the strict-build fix, the quality pass QP merged; DOC in flight
+# Handoff — 2026-11-09 (Windows) — the finish plan; MM, the strict-build fix, QP and DOC merged; HG1 and DC in flight
 
 ## Base
 
@@ -35,6 +35,10 @@
   (`baselines/2026-11-09-mm-merge-sanity.md`, [inferred]).
 - The identity kit: base against itself 111 files 0 differ; the merged main binary against the MM worktree's 131 files 0
   differ; the report and `-v` cases added after the advisor's note, 153 files over 30 cases, 0 differ.
+- DOC's table: eight rows opened against the code (the checkpoint saved before the result files, `--dc` = -1, highspy for
+  the Kelley root, `.csv` comma and `.tsv`/`.txt` tab, the silhouette's two non-empty clusters, Problem's Kmedoids default,
+  the README badge branch, the CHANGELOG's folded entries), all true; the ADTW citation confirmed against the ADS record
+  and the DOI (Herrmann and Webb, Pattern Recognition 137, 109333).
 - The release list on the merged code in WSL (`~/mm/merge_gcc`, GCC 13.3; my scripts `orch_strict_inner.sh`,
   `orch_linux_arrow_inner.sh`, `orch_linux_archive_inner.sh`): `cpp_conformance` strict 1/1; Arrow ON through the pyarrow
   23.0.1 shim 105/105 with `test_io_readers` listed, `dtwc_cl` linking libarrow, libparquet, libgomp; the Linux archive
@@ -73,9 +77,16 @@
   reverted with a NOLINTNEXTLINE and its reason, `made_name`'s comment made true, the Medoid CHANGELOG line, `list_or`'s
   comment, the conformance test's CRT define; `made_name` stays a template: mixed `size_t` and `int64_t` callers). The
   full gates on 8bd99855 and the fix's clang and GCC gates: PLAN item 2. **QP merged bb440d0e** (74 files, +763 −708).
-- DOC (the docs' and CHANGELOG's final read, `brief_doc.md`, branch `pb/DOC` from 93ef5434) was running; its merge needs
-  the docs gates only (`check_docs`, `check_pins`, `generate_docs --check`, `check_site_links`), then a rebase or merge over
-  bb440d0e (QP changed no docs page; CHANGELOG gained one line under Fixed, which may conflict with DOC's CHANGELOG edits).
+- DOC merged c3f26c47 (`pb/DOC`, 8 commits, 33 files, docs only; the docs gates on the merged tree PASS, 512 flags; its
+  report is in the hand-back, not transcribed: the merge message carries the summary). Its ten code-side items are unit DC.
+- Volkan's batch (DECISIONS §3): HG mode A, the word `cpu+gpu`, "Rounding errors are fine", the CI MEX with llfio
+  (8cdb1b40: `matlab-mex.yml`, the CHANGELOG clause). PLAN items 3, 3b and 5 carry them (9e47fcaa).
+- DC merged 5b01d1fe (`report_dc.md`; my identity run and its MEX tree 104/104). HG0 908741d9 and HG1 cb509789 accepted on
+  `pb/HG` (`report_hg1.md`; my checks: every `__global__` kernel body identical to the base by `orch_kernels_cmp.py`, no
+  hot-loop file in the diff, identity 0 differ on its clang binary, the G8 log's six `identical` lines). HG merges once.
+  Then (my chain `orch_hg_sync.sh`): the main `build/` rebuilt on design-2.0's tip and its ctest; design-2.0 merged into
+  `pb/HG`, that tree rebuilt, ctest and the identity gate against the fresh main binary; `brief_hg2.md` takes the merge's
+  hash as `<HG1-TIP>` and HG2 launches on Opus.
 
 ## Decisions
 
@@ -86,8 +97,13 @@
 
 ## Next steps
 
-1. DOC (PLAN item 3's last entry): accept its report (open the cited lines), run the docs gates on `pb/DOC`, merge
-   `--no-ff` over bb440d0e, push. Then the question batch's answers into DECISIONS §3 and HG's plan (`hg_plan.md`).
+1. DC merged 5b01d1fe (PLAN 3b; my identity run 0 differ and its MEX tree 104/104 with the MATLAB suite). Then rebuild
+   the main `build/` once HG1 has reported (it is HG1's identity base; a rebuild mid-run would race its gate). HG1 (item 5):
+   accept on `pb/HG` only (its `__global__` kernel bodies in `cuda_dtw.cu` must be unchanged against the base: only the
+   host loop and the staging move; HG0's bit-equality test is the backstop); then merge design-2.0 into `pb/HG` (DC's
+   `run.cpp` change meets HG1's), run the identity gate on that tree, and brief HG2 from `pb/HG`'s tip. HG merges once,
+   after HG5, with one review and the full gates. Remaining HG agents, an estimate for the budget: HG2, HG3, HG4 on Opus,
+   HG5 and the review on Sonnet, about 350–470k tokens each as this session's agents ran, so 2–3M tokens plus fix rounds.
 2. The release list (item 3): left are `cpp_conformance` under MSVC strict (`C:/D/git/wt/MM/build-cl-strict` was building;
    a waiter runs `ctest -R cpp_conformance` there and logs `orch_cl_strict_ctest.log`), F43 (the question batch) and the
    docs' and CHANGELOG's final read (one Sonnet agent after QP). HG's draft plan: `C:/D/git/wt/tmp/HG/hg_plan.md`.
@@ -97,7 +113,9 @@
 
 ## Open questions
 
-- Those three for Volkan above. Still his: the history purge, the G6-on-TADPole acceptance, Metal on the Mac, Intel Macs.
+- Volkan's hand: the merged worktrees (`wt/FM`, `wt/TL`, `wt/REL`, `wt/QP1`–`QP5`, `wt/QPR`; `wt/QP` and `wt/DOC` after
+  HG1 lands): the permission classifier refused the agent their deletion. Still his: the history purge, the
+  G6-on-TADPole acceptance, Metal on the Mac, Intel Macs, the CHANGELOG's Performance section (DOC's question).
 
 ## Status honesty
 

@@ -369,7 +369,9 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   `cpu` results unchanged; the six registered bands run in the advisory window with MM's; supersedes 10-11 "measured
   first"). The hybrid's device word in every language: "cpu+gpu". On whether both devices may run together only where their
   distances are proven bit-equal (hetero.md Q8): "Rounding errors are fine" (free text): the hybrid runs under every
-  configuration the GPU takes, a near-tie between medoids may resolve by the split, and the 10-01 "clustering results may
-  not differ" bound holds for the hybrid as between compilers: an epsilon in a distance, never a different method. The CI MEX
+  configuration the GPU takes, with no bit-equality gate. For `cpu+gpu` the 10-01 bound relaxes by this much and no more:
+  its labels and medoids may differ from a single device's run only at a near-tie whose two distances lie within the route
+  bound of each other, its cost within that epsilon; under FP64 L1, where the GPU's distances equal the CPU's bit for bit
+  today, the hybrid's results equal both single-device runs whatever the split (HG0 pins the equality). The CI MEX
   job (`matlab-mex.yml`, R2024b): "Turn llfio ON in CI; its R2024b run is the oracle" (F43: a crash there is a tracked item
   with the CI log as evidence, and the flag goes back).

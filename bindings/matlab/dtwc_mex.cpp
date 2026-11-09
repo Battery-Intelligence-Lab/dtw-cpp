@@ -436,11 +436,12 @@ static dtwc::core::Precision optional_dtype(int nrhs, const mxArray *prhs[], int
                       : dtwc::parse_name(dtwc::core::precision_names, text, "dtype");
 }
 
-/// Optional metric name; absent means L1, matching C++/Python defaults.
+/// Optional metric name; absent or empty means `fallback`, the Problem's own metric: what the C++ checkpoint calls
+/// without a metric and Python's take.
 static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
-                                              int index) {
+                                              int index, dtwc::core::MetricType fallback) {
   const std::string token = optional_string(nrhs, prhs, index, "metric");
-  if (token.empty()) return dtwc::core::MetricType::L1;
+  if (token.empty()) return fallback;
   return dtwc::parse_name(dtwc::core::metric_names, token, "metric");
 }
 
@@ -1185,8 +1186,8 @@ static void cmd_save_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArr
   require_char(prhs[2], "path");
   auto &prob = stored_problem(prhs[1]);
   // The metric is part of the checkpoint identity: an L1 and a SquaredL2 matrix
-  // over the same data are different numbers (C++/Python default to L1 too).
-  dtwc::save_checkpoint(prob, get_string(prhs[2]), optional_metric(nrhs, prhs, 3));
+  // over the same data are different numbers. Unnamed, it is the Problem's own.
+  dtwc::save_checkpoint(prob, get_string(prhs[2]), optional_metric(nrhs, prhs, 3, prob.metric()));
 }
 
 static void cmd_load_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1194,7 +1195,7 @@ static void cmd_load_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArr
   require_char(prhs[2], "path");
   auto &prob = stored_problem(prhs[1]);
   const bool ok = dtwc::load_checkpoint(prob, get_string(prhs[2]),
-                                       optional_metric(nrhs, prhs, 3));
+                                       optional_metric(nrhs, prhs, 3, prob.metric()));
   plhs[0] = mxCreateLogicalScalar(ok);
 }
 

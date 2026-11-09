@@ -9,14 +9,21 @@
  * whichever storage holds the doubles; the storage is chosen once, when the
  * matrix is made.
  *
- * A `.dtwm` file is a 48-byte header and the packed doubles, in the host's byte
- * order (every supported platform is little-endian):
+ * A `.dtwm` file is a 64-byte header and the packed values (binary64 or binary32,
+ * the matrix's width), in the host's byte order (every supported platform is
+ * little-endian). Every write produces version 5:
  *
  *   bytes  0-3   magic "DTWM"
- *   bytes  4-7   version (uint32) = 4; versions 1-3 were earlier cache layouts
+ *   bytes  4-7   version (uint32) = 5; versions 1-3 were earlier cache layouts
  *   bytes  8-15  N (uint64)
  *   bytes 16-47  SHA-256 fingerprint of the data and the distance settings
- *   bytes 48-    double[N(N+1)/2]
+ *   bytes 48-51  bytes of a value (uint32): 8 for binary64, 4 for binary32
+ *   bytes 52-55  zero
+ *   bytes 56-63  rows written R (uint64): rows from R on were never written
+ *   bytes 64-    value[N(N+1)/2]
+ *
+ * A version-4 file (a 48-byte header, binary64 values, every row written) is
+ * still read and mapped, as float64.
  *
  * distance_matrix.cpp, the one translation unit that includes llfio, owns the
  * format: map() (memory-mapped, needs llfio) and read() / write() (plain
@@ -131,11 +138,9 @@ void prefetch_pages(const void *address, size_t bytes);
 /// get() widens what it reads; set() rounds what it stores to the nearest float, where a distance of 2^128 - 2^103
 /// (about 3.4e38) or more becomes inf; visit() hands a loop the values at their width.
 ///
-/// The `.dtwm` layout of version 5, which every write produces: bytes 0-47 as the file header above, with version 5,
-/// then bytes 48-51 the bytes of a value (uint32: 8 binary64, 4 binary32), 52-55 zero, 56-63 the rows written R
-/// (uint64), and the values from byte 64. Rows from R on were never written and hold no distance: a new mapped file
-/// has R = 0 and no NaN written, and a fill records R once its rows are on the device. A version-4 file (48 bytes of
-/// header, binary64, every row written) is read and mapped as float64, and a mapped one stays version 4.
+/// The `.dtwm` layout is the file header's, above. Rows from R (rows written) on hold no distance: a new mapped file
+/// has R = 0 and no NaN written, and a fill records R once its rows are on the device. A mapped version-4 file stays
+/// version 4.
 class DistanceMatrix
 {
 public:
