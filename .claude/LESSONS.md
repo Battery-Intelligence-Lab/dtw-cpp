@@ -270,7 +270,9 @@ Append new entries at the end of their section; keep each to a few lines.
 - **Agent tooling:** in the Bash tool a `\\` inside a quoted heredoc reaches the program as `\`, and non-ASCII text
   piped into Python on Windows is read as cp1252 (write scripts with the Write tool); the Workflow tool rejects a
   `scriptPath` file holding non-ASCII text as "control characters" (escape it to `\uXXXX`); Git Bash has no `bc`
-  (a wait loop on it spins forever), and WSL's `/tmp` empties when the distro idles.
+  (a wait loop on it spins forever), and WSL's `/tmp` empties when the distro idles; `cd X && nohup a & nohup b &`
+  backgrounds the `cd` with `a`, so `b` runs in the old directory (two chains wrote their logs into the repo root, 11-09):
+  launch every chain and its log by absolute path.
 - **On Windows a plain stream cannot open a file llfio holds mapped** (llfio takes delete access): loading a checkpoint
   that another live Problem maps is `IOError`.
 - **Do not export `CPM_SOURCE_CACHE` for a build dir configured without it**: its cached `CPM_DIRECTORY` differs and the
