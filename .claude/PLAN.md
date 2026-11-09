@@ -45,7 +45,10 @@ differ only where several optimal medoid sets exist, node counts and run times c
    292a9bd7 and in the pb/MM gate trees); the docs' final read (charter item 10) and CHANGELOG's.
 4. ☐ **Timing, advisory** [here, a quiet machine; Volkan 11-04 "Later, I will tell you"]: MM's bands, HG's baseline and
    FM's E1 (ETW counters, `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` run elevated by Volkan); numbers to `baselines/`
-   tagged [confirmed]; a FALSIFIED hot-loop band reopens its loop, anything else is fixed or reworded after.
+   tagged [confirmed]; a FALSIFIED hot-loop band reopens its loop, anything else is fixed or reworded after. Two of MM's
+   design risks ride here (its design §7, risks 4 and 7): the mapped route is measured on a local NVMe and on WSL2 only
+   (glibc's retention after a block's trim and llfio's prefetch unmeasured; a WSL2 result may not carry to native Linux),
+   and a mapped file on ARC's file systems is an ARC run (item 7).
 5. ☐ **HG** [here]: the GPU on mapped series as a batch pipeline, and CPU + GPU together (`C:/D/git/wt/tmp/MM/hetero.md`,
    design only, nothing built; Volkan 10-11 "own unit after MM", 11-03 "MM and HG both in 2.0", 11-09 "All of HG in 2.0"
    against the finish plan's 2.1 recommendation): measured first (its baseline in item 4's window), one review at its
@@ -57,7 +60,8 @@ differ only where several optimal medoid sets exist, node counts and run times c
    wheels are arm64 only (x86_64 dropped 2026-07-06: no Intel runner libomp); charter item 5 names Intel Macs: his call.
 7. [Volkan] ARC (rule 11): W9c's remote leg — `test`, the `sinfo` check of `gpu_cc:8.6/8.9/9.0` and the `a100` gres type,
    `upload`, `build htc-cpu`, `build htc-gpu`, `build htc-gpu --gpu-device a100`, three `dtwcpp.cluster` runs (`hpc`,
-   `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`. GitHub history:
+   `hpc:gpu`, `hpc:gpu` + `gpu_device="a100"`), the unknown-key job, `submit-smoke gpu`, and one `dtwc_cl` run on a mapped
+   IPC file on ARC's file system (MM design §7 risk 4). GitHub history:
    `origin/design-2.0` holds 310 baseline files and the charter, and older pushed history the PRIVATE Kasper folder
    (09-28); removing them needs a history rewrite and a force push. The tag (`VERSION` is 2.0.0rc1), the release archives
    and the PyPI upload ("when we are hundred percent sure", charter item 4).
@@ -65,6 +69,12 @@ differ only where several optimal medoid sets exist, node counts and run times c
 Done before the tag already: TADPole's bare `omp parallel` regions carry a refused allocation out (RB3c dff4590c on
 pb/MM, Volkan 11-03 "Fix it before the 2.0 tag"); the Linux wheel's STATIC_TLS import failure (TL e3cba47d, 10-22); F42
 does not reproduce (10-21); the docs audit's 15 findings (485dbeb7) and `verify_results.py`'s row offset (59202f68).
+
+For Volkan's next answers (asked at the QP merge, one batch): whether HG may build hetero.md's route (c) on the design's
+prediction with its measurement advisory under load, as MM merged, or whether "measured first" (10-11) still means a quiet
+window (his MATLAB sessions have been open since 10-21); whether the CI MEX job turns llfio ON (F43: the R2024b crash did not
+reproduce 09-30, the llfio-ON MEX passes here on R2025b 104/104, and CI's R2024b is the only oracle left); the merged units'
+worktrees `C:/D/git/wt/FM` (4.6 GB) and `C:/D/git/wt/TL` (622 MB), clean, their branches merged, to remove on his yes.
 
 ## Cut, deferred or not scheduled
 
