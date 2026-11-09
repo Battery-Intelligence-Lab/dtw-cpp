@@ -38,6 +38,7 @@
 #include <span>        // std::span
 #include <memory>
 #include <stdexcept>
+#include <tuple>       // std::tuple
 
 #include "checkpoint.hpp" // for CheckpointOptions, load_checkpoint
 
@@ -206,6 +207,10 @@ private:
   /// core::validate(config) for `data`'s channels and precision, before a setter
   /// or set_data changes anything.
   static void validate_distance(core::DistanceConfig config, const Data &data);
+  /// set_data and set_view_data: refuse `candidate` (an empty series, a distance setting it cannot take) before
+  /// anything changes, then take it and drop the clustering and the matrix, which describe the old series.
+  /// `operation` begins a refusal.
+  void adopt_data(Data candidate, std::string_view operation);
   void validate_checkpoint_settings() const;
   /// The one check of a distance request — every device axis, band
   /// feasibility and the series values the missing-data strategy
@@ -496,28 +501,14 @@ public:
 
   void set_data(dtwc::Data candidate)
   {
-    candidate.validate_ndim();
-    reject_empty_series(candidate, "Problem::set_data");
-    validate_distance(distance_, candidate);
-    data_ = std::move(candidate);
-    distance_.ndim = data_.ndim;
-    clusters_ind.clear(); // a clustering describes the series it was computed on
-    centroids_ind.clear();
-    refresh_distance_matrix();
+    adopt_data(std::move(candidate), "Problem::set_data");
   }
 
   /// As set_data, for series that are views: non-owning spans into storage that outlives them or that
   /// Data::owner() keeps alive.
   void set_view_data(dtwc::Data candidate)
   {
-    candidate.validate_ndim();
-    reject_empty_series(candidate, "Problem::set_view_data");
-    validate_distance(distance_, candidate);
-    data_ = std::move(candidate);
-    distance_.ndim = data_.ndim;
-    clusters_ind.clear();
-    centroids_ind.clear();
-    refresh_distance_matrix();
+    adopt_data(std::move(candidate), "Problem::set_view_data");
   }
 
   /// Set DTW variant and rebind the distance function.

@@ -409,16 +409,12 @@ void Problem::set_result(const core::ClusteringResult &result)
  */
 bool Problem::set_solver(Solver solver_)
 {
+#ifndef DTWC_ENABLE_GUROBI
   if (solver_ == Solver::Gurobi) {
-#ifdef DTWC_ENABLE_GUROBI
-    mipSolver = Solver::Gurobi;
-    return true;
-#else
     mipSolver = settings::DEFAULT_MIP_SOLVER;
     return false;
-#endif
   }
-
+#endif
   mipSolver = solver_;
   return true;
 }
@@ -565,6 +561,18 @@ void Problem::validate_distance(core::DistanceConfig config, const Data &data)
 {
   config.ndim = data.ndim;
   core::validate(config, data.is_f32());
+}
+
+void Problem::adopt_data(Data candidate, std::string_view operation)
+{
+  candidate.validate_ndim();
+  reject_empty_series(candidate, operation);
+  validate_distance(distance_, candidate);
+  data_ = std::move(candidate);
+  distance_.ndim = data_.ndim;
+  clusters_ind.clear(); // a clustering describes the series it was computed on
+  centroids_ind.clear();
+  refresh_distance_matrix();
 }
 
 const Problem::dtw_fn_t &Problem::dtw_function()
