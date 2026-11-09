@@ -29,7 +29,6 @@ function dend = build_dendrogram(prob, varargin)
 %       n_points  - double scalar
 %
 %   See also dtwc.cut_dendrogram, dtwc.fast_pam
-% @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'prob');

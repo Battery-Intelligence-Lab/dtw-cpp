@@ -39,7 +39,7 @@
 #include <core/z_normalize.hpp>
 #include <core/dtw_options.hpp>
 #include <core/matrix_io.hpp>
-#include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
+#include <test_api.hpp> // dtwc::test::parallelisation() and gpu(): the capability probes
 #include <mip/mip.hpp>
 #include <mip/decode_assignment.hpp>
 #include <mip/lagrangian_root.hpp>
@@ -909,7 +909,7 @@ NB_MODULE(_dtwcpp_core, m) {
          "Validate that all series flat sizes are divisible by ndim.\n\n"
          "Raises InvalidInput (a ValueError) if any series has incompatible size.");
 
-  // Zero-copy Arrow C Data interface ingest (Task 5.7). Consumes the PyCapsule
+  // Zero-copy Arrow C Data interface ingest. Consumes the PyCapsule
   // protocol `__arrow_c_array__` (polars / DuckDB / pyarrow / pandas) via the
   // vendored nanoarrow — NO pyarrow dependency. Each list element becomes one
   // (univariate) series; see dtwc::io::data_from_arrow for accepted layouts.
@@ -1648,7 +1648,7 @@ NB_MODULE(_dtwcpp_core, m) {
 #endif
 
   // =========================================================================
-  // dtwc.test introspection API (Task 3.3) — SAME schema/field names as the C++
+  // dtwc.test introspection API — SAME schema/field names as the C++
   // dtwc::test::* structs and the MATLAB dtwc_mex('test_*') structs. Each returns
   // a dict so `except`-free front-end code reads identical keys in all three
   // languages. The heavy probe (a real OpenMP region / a real GPU kernel) runs

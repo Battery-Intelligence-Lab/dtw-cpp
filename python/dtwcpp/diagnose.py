@@ -1,7 +1,7 @@
 # @author Volkan Kumtepeli
 """Sanity-check helpers for clustering results.
 
-Catches the silent failure modes that bit us on the Kasper analysis:
+Catches the silent failure modes of a clustering:
 
 - **Singleton clusters** that mean the solver is fitting noise.
 - **Idle-dominated medoids** that mean the medoid carries no information.

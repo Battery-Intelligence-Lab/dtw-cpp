@@ -1,12 +1,12 @@
 /**
  * @file dtwc_mex.cpp
- * @brief MATLAB MEX gateway for DTWC++ library (comprehensive OOP bindings).
+ * @brief MATLAB MEX gateway for DTWC++: one entry point, mexFunction, that dispatches on a command string.
  *
  * @details Uses the legacy C MEX API (mex.h / matrix.h) with R2018a+
  *          interleaved complex (mxGetDoubles). mexLock() prevents DLL unload
  *          while handle objects exist. mexAtExit drains all handles.
  *
- *          String-dispatched ~45 commands. See the plan document for full list.
+ *          The commands are the branches of mexFunction at the end of this file.
  *
  * @author Volkan Kumtepeli
  * @date 02 Apr 2026
@@ -38,7 +38,7 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/base/env.hpp"     // detail::parse_device: the device-name grammar
 #include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint
-#include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
+#include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu()
 #include "../../dtwc/base/names.hpp"   // parse_name over the C++ name tables
 
 #include <string>
@@ -97,14 +97,14 @@ template <typename T>
 uint64_t HandleManager<T>::counter_ = 0;
 
 // =========================================================================
-//  Input validation guards (fix: audit CRITICAL #6 -- mxGetDoubles NULL-deref)
+//  Input validation guards
 //
 //  In the R2018a+ interleaved-complex API, mxGetDoubles() returns NULL when the
-//  array is not a REAL DOUBLE (int32/single/logical/char, complex, or sparse).
-//  The previous code fed that NULL straight into the DTW kernels, NULL-dereffing
-//  and crashing MATLAB. Every entry point now validates class / complexity /
-//  shape BEFORE any data-pointer access and throws std::invalid_argument, which
-//  mexFunction maps to mexErrMsgIdAndTxt("dtwc:invalidArgument", ...).
+//  array is not a REAL DOUBLE (int32/single/logical/char, complex, or sparse), and
+//  a NULL data pointer would crash MATLAB in the DTW kernels. So every entry point
+//  validates class / complexity / shape BEFORE any data-pointer access and throws
+//  std::invalid_argument, which mexFunction maps to
+//  mexErrMsgIdAndTxt("dtwc:invalidArgument", ...).
 // =========================================================================
 
 /// Require an argument that is present, real and full (non-sparse): what every numeric
@@ -196,7 +196,7 @@ static void require_char(const mxArray *mx, const char *arg_name) {
 /// MATLAB cell array of numeric vectors -> vector of ragged series, of class
 /// double, or single for T = float. Validates the container is a cell AND every
 /// element is a real, full, non-empty vector of that class BEFORE any data-pointer
-/// access (audit CRITICAL #6 guard).
+/// access.
 template <typename T>
 static std::vector<std::vector<T>> cell_to_series(const mxArray *mx, const char *arg_name = "data") {
   if (mx == nullptr)
@@ -278,8 +278,7 @@ static double get_scalar(const mxArray *mx, const char *arg_name = "argument") {
 
 /// Convert one MATLAB double to `Int` (`int` for the parameters C++ still takes as
 /// an int, `index_t` for counts and indices) without ever invoking an out-of-range
-/// or non-integral float-to-int conversion (both are undefined behaviour, and a
-/// NaN/Inf label silently produced a garbage cluster id before this guard).
+/// or non-integral float-to-int conversion (both are undefined behaviour).
 /// The smallest `Int` is minus a power of two, exact as a double, and the largest
 /// `Int` + 1 is its negation, so `value >= -lowest` is the exact upper bound.
 template <class Int = int>
@@ -720,7 +719,7 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 template <typename T>
 static dtwc::Data series_data(const mxArray *source, const mxArray *names_mx, const mxArray *ndim_mx) {
   // Ragged (cell array) vs rectangular (matrix). Both paths validate class /
-  // complexity / shape BEFORE any data access (audit CRITICAL #6).
+  // complexity / shape BEFORE any data access.
   // No series (an empty cell, a 0 x L matrix) is a dataset too: cluster() refuses
   // it ("cluster: dataset is empty."), as in C++ and Python.
   const bool rows_of_t = std::is_same_v<T, float> ? mxIsSingle(source) : mxIsDouble(source);
@@ -973,7 +972,7 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
 /// have) and on gpu without a backend — NEVER a silent fallback.
 static void cmd_set_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("set_device requires a device-name string.");
-  require_char(prhs[1], "device");   // validate BEFORE mxArrayToString deref
+  require_char(prhs[1], "device");   // validate BEFORE the char array is read
   plhs[0] = mxCreateString(dtwc::device(get_string(prhs[1])).c_str());
 }
 
@@ -983,7 +982,7 @@ static void cmd_get_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
 }
 
 // =========================================================================
-//  dtwc.test introspection API (Task 3.3) — struct with the SAME field names
+//  dtwc.test introspection API — struct with the SAME field names
 //  as C++ dtwc::test::* and Python dtwcpp.test.*. Both take no data arguments
 //  (like get_device / gpu_info), so there is nothing to require_*-validate.
 // =========================================================================
@@ -1020,7 +1019,7 @@ static void cmd_test_gpu(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prh
 }
 
 // =========================================================================
-//  Problem: MIP surface, solver, strategies, output folder, CUDA dispatch
+//  Problem: method, solver, MIP settings, checkpoint, matrix dtype, GPU precision, matrix files
 // =========================================================================
 
 static void cmd_Problem_set_method(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1552,7 +1551,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "get_device") cmd_get_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "gpu_available") plhs[0] = mxCreateLogicalScalar(dtwc::gpu_available());
     else if (cmd == "gpu_info") plhs[0] = mxCreateString(dtwc::gpu_info().c_str());
-    // dtwc.test introspection API (Task 3.3)
+    // dtwc.test introspection API
     else if (cmd == "test_parallelisation") cmd_test_parallelisation(nlhs, plhs, nrhs, prhs);
     else if (cmd == "test_gpu") cmd_test_gpu(nlhs, plhs, nrhs, prhs);
     // Problem lifecycle
@@ -1636,9 +1635,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
   // Error taxonomy: map the dtwc leaf types FIRST, then keep the
   // std fallbacks below them. dtwc::InvalidInput/SolverError/DeviceError/IOError all
   // derive from dtwc::Error : std::runtime_error, so they MUST be caught before
-  // std::runtime_error. The std::invalid_argument catch is preserved below so the
-  // 19 pinned input-validation cases (require_* -> std::invalid_argument) keep
-  // firing dtwc:invalidArgument unchanged.
+  // std::runtime_error. std::invalid_argument (what the require_* guards throw) maps
+  // to dtwc:invalidArgument, as dtwc::InvalidInput does.
   catch (const dtwc::InvalidInput &e) {
     error_id = "dtwc:invalidArgument"; error_msg = e.what();
   } catch (const dtwc::SolverError &e) {
