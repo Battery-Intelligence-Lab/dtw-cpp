@@ -29,7 +29,6 @@ function D = compute_distance_matrix(X, varargin)
 %       D = dtwc.compute_distance_matrix(X, 'Band', 5);
 %
 %   See also dtwc.distance.dtw, dtwc.DTWClustering
-% @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'X');
