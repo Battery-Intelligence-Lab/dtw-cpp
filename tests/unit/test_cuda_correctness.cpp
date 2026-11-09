@@ -2290,8 +2290,9 @@ bool same_bits(const std::vector<double> &a, const std::vector<double> &b)
 // (307 series; 17 to 211 samples unbanded, 126 to 128 at band 2 and unbanded), FP64 L1, on one thread and on the
 // default team, the GPU's assignment (assign_on_gpu) gives the CPU pass's labels, nearest distances and objectives
 // (assign_in_blocks over assign_points_cpu, on the same medoids), and the GPU's fill the CPU fill's matrix, of owned
-// series and of a view of them, byte for byte (memcmp, no tolerance). The CPU pass takes both its routes here: its lanes unbanded (dtw_lanes_packed), the
-// per-pair function under the band, where the lanes take only points as long as the medoid. The kernel is named, so
+// series and of a view of them, byte for byte (memcmp, no tolerance). The CPU pass takes both its routes here: its
+// lanes unbanded (dtw_lanes_packed), the per-pair function under the band, where the lanes take only points as long as
+// the medoid. The kernel is named, so
 // a mutation of its accumulation is known to reach the route that ran. The GPU's pipeline (HG1) runs one block of
 // every series, blocks of 50 (a host budget of exactly their bytes, cuda::detail::medoid_blocks: two series slots,
 // three distance slots, seven blocks) and blocks of one series (a budget of one byte: 307 blocks), the same bits.
