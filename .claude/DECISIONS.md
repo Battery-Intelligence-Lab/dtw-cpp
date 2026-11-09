@@ -364,3 +364,12 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   plan §4.2). Process: "Adopt the cuts" (finish plan §5: full gates at a unit's merge only, one adversarial review per unit,
   G6 only for kernel, fill, swap or assignment loops, no planner or kit-prep agents, kits of at most six bands, Sonnet
   xhigh by default, PLAN at most 100 lines and a handoff at most 40).
+- 2026-11-09 — Volkan (question tool), after MM and QP merged, on HG (`C:/D/git/wt/tmp/HG/hg_plan.md`): "Build on the
+  design's predictions; measure advisory" (each step merges on correctness, GPU FP64 results byte for byte the CPU's and
+  `cpu` results unchanged; the six registered bands run in the advisory window with MM's; supersedes 10-11 "measured
+  first"). The hybrid's device word in every language: "cpu+gpu". On whether both devices may run together only where their
+  distances are proven bit-equal (hetero.md Q8): "Rounding errors are fine" (free text): the hybrid runs under every
+  configuration the GPU takes, a near-tie between medoids may resolve by the split, and the 10-01 "clustering results may
+  not differ" bound holds for the hybrid as between compilers: an epsilon in a distance, never a different method. The CI MEX
+  job (`matlab-mex.yml`, R2024b): "Turn llfio ON in CI; its R2024b run is the oracle" (F43: a crash there is a tracked item
+  with the CI log as evidence, and the flag goes back).

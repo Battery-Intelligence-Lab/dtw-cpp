@@ -51,19 +51,30 @@ differ only where several optimal medoid sets exist, node counts and run times c
    fast (in the 102/102); `cpp_conformance` under MSVC fast (the CUDA tree's 102/102) and strict: the strict build of the
    merged tree FAILED in the vendored `flatcc.c` (C2099 under `/fp:strict`: MM's `dtwc_third_party` took our FP flags
    through `project_options`), fixed by c4271bbf (the flags on C++ only; cl strict 1/1, clang 103 + identity 0 differ,
-   WSL GCC 102). Left: F43 (the CI MEX is llfio OFF: the question batch); the docs' and CHANGELOG's final read (charter
-   item 10), the DOC agent on `pb/DOC` (`C:/D/git/wt/tmp/QP/brief_doc.md`).
+   WSL GCC 102). F43: the CI MEX job builds with llfio since the commit after c3f26c47 (Volkan 11-09 "its R2024b run is
+   the oracle": a crash there puts the flag back and becomes a tracked item). The docs' and CHANGELOG's final read (charter
+   item 10) merged c3f26c47 (`pb/DOC`, 8 commits, 33 files; docs gates on the merged tree PASS; `check_site_links` runs in
+   CI). It left ten code-side items (`C:/D/git/wt/tmp/QP/brief_dc.md`): unit DC, below.
+3b. ◐ **DC, the code the docs read found wrong** [here]: Python `save_checkpoint` / `load_checkpoint` defaulting `metric` to
+   L1 where C++ uses the Problem's (rule 17); `--checkpoint` with a method that never allocates the matrix writing an
+   all-NaN `.dtwm`; the stale Doxygen of `.dtwm`'s header and ADTW's citation; the `hpc` docstring's error type; the Arrow
+   option's description; `dtwc-convert`'s usage line; `CONTRIBUTING.md`'s dead reference; two Python docstrings; the
+   `cluster` slash command's method. One Sonnet agent on `pb/DC`; tests only where a contract has none (the two behaviour
+   items); the identity gate, clang `ctest -j1`, fresh-venv pytest, the docs gates.
 4. ☐ **Timing, advisory** [here, a quiet machine; Volkan 11-04 "Later, I will tell you"]: MM's bands, HG's baseline and
    FM's E1 (ETW counters, `C:/D/git/wt/tmp/FM/kit/profile_fm_etw.cmd` run elevated by Volkan); numbers to `baselines/`
    tagged [confirmed]; a FALSIFIED hot-loop band reopens its loop, anything else is fixed or reworded after. Two of MM's
    design risks ride here (its design §7, risks 4 and 7): the mapped route is measured on a local NVMe and on WSL2 only
    (glibc's retention after a block's trim and llfio's prefetch unmeasured; a WSL2 result may not carry to native Linux),
    and a mapped file on ARC's file systems is an ARC run (item 7).
-5. ☐ **HG** [here]: the GPU on mapped series as a batch pipeline, and CPU + GPU together (`C:/D/git/wt/tmp/MM/hetero.md`,
-   design only, nothing built; Volkan 10-11 "own unit after MM", 11-03 "MM and HG both in 2.0", 11-09 "All of HG in 2.0"
-   against the finish plan's 2.1 recommendation): measured first (its baseline in item 4's window), one review at its
-   merge; the tag waits for it. Until then S5's route: a view uploads an owned Float64 copy; a run beyond the budget is a
-   typed error naming `clara` on `cpu`; a GPU run's host memory (~90 MiB for CUDA) is outside the plan.
+5. ◐ **HG** [here]: the GPU on mapped series as a batch pipeline, and CPU + GPU together (design
+   `C:/D/git/wt/tmp/MM/hetero.md`; plan `C:/D/git/wt/tmp/HG/hg_plan.md`; Volkan 10-11 "own unit after MM", 11-03 "MM and HG
+   both in 2.0", 11-09 "All of HG in 2.0", then "Build on the design's predictions; measure advisory", the device word
+   "cpu+gpu", "Rounding errors are fine" for the hybrid). Steps on `pb/HG`, each merging on correctness (GPU FP64 results
+   byte for byte the CPU's, the `cpu` route unchanged): ◐ HG0 the bit-equality test + HG1 the pipeline for CLARA's
+   assignment (`brief_hg1.md`, Opus), ☐ HG2 the fill's preload, ☐ HG3 the hybrid assignment, ☐ HG4 the hybrid fill, ☐ HG5
+   the device word in every language, docs, CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item
+   4's window. Until HG1, S5's route: a view uploads an owned Float64 copy.
 6. [CI] design-2.0's tip green on Volkan's push: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and
    `matlab-mex.yml` on Linux, macOS and Windows, the three unit jobs, `documentation.yml`; whether python-wheels' Linux
    jobs passed before TL (e3cba47d). The Mac: no Metal has been built since S5 (G8b lines: the 11-09 handoff). macOS
@@ -80,12 +91,11 @@ Done before the tag already: TADPole's bare `omp parallel` regions carry a refus
 pb/MM, Volkan 11-03 "Fix it before the 2.0 tag"); the Linux wheel's STATIC_TLS import failure (TL e3cba47d, 10-22); F42
 does not reproduce (10-21); the docs audit's 15 findings (485dbeb7) and `verify_results.py`'s row offset (59202f68).
 
-For Volkan's next answers (asked at the QP merge, one batch): whether HG may build hetero.md's route (c) on the design's
-prediction with its measurement advisory under load, as MM merged, or whether "measured first" (10-11) still means a quiet
-window (his MATLAB sessions have been open since 10-21); whether the CI MEX job turns llfio ON (F43: the R2024b crash did not
-reproduce 09-30, the llfio-ON MEX passes here on R2025b 104/104, and CI's R2024b is the only oracle left); the merged units'
-worktrees `C:/D/git/wt/FM` (4.6 GB), `C:/D/git/wt/TL` (622 MB) and `C:/D/git/wt/REL` (two build trees), clean, their
-branches merged, to remove on his yes; HG's four questions (`C:/D/git/wt/tmp/HG/hg_plan.md` §4).
+For Volkan's hand: the merged units' worktrees, clean, their branches merged (`C:/D/git/wt/FM` 4.6 GB, `wt/TL` 622 MB,
+`wt/REL`, `wt/QP1`–`wt/QP5`, `wt/QPR`, and `wt/QP` and `wt/DOC` once HG no longer needs `wt/QP/build-cuda` as its base
+binary): `git worktree remove --force <path>` and `git branch -d pb/<id>`; the permission classifier refuses the agent that
+deletion (11-09). The CHANGELOG's Performance section compares 2.0 with earlier 2.0 (no v1.0.0 baseline exists for its
+subjects): keep as the development record it is, or drop (DOC's open question).
 
 ## Cut, deferred or not scheduled
 
