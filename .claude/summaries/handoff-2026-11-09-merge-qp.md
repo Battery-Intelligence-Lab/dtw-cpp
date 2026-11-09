@@ -1,4 +1,4 @@
-# Handoff — 2026-11-09 (Windows), interim — the finish plan, MM merged, the quality pass QP in flight
+# Handoff — 2026-11-09 (Windows) — the finish plan, MM merged, the strict-build fix, the quality pass QP merged; DOC in flight
 
 ## Base
 
@@ -67,9 +67,15 @@
 
 ## Reported by agents, unverified
 
-- QP5 (MM's tests under the 09-30 rule) and DOC (the docs' and CHANGELOG's final read, `brief_doc.md`, branch `pb/DOC`
-  from 93ef5434) were running. Logs: `C:/D/git/wt/tmp/QP/logs/`. The agents' own gate counts in the four accepted reports
-  (GCC, Arrow, CUDA were not theirs to run) are theirs until the QP merge's full gates.
+- QP5 accepted (`report_qp5.md`: three test-only commits, zero deletions, 852 Catch2 cases unchanged) and merged
+  (8bd99855); the review (`report_qp_review.md`, Sonnet xhigh in `wt/QPR`): one blocker (my `reserve` in the guarded
+  `fast_clara_chunked`, proven neutral on clang only), three should-fixes, two nits; closed in 7fc65957 (the `reserve`
+  reverted with a NOLINTNEXTLINE and its reason, `made_name`'s comment made true, the Medoid CHANGELOG line, `list_or`'s
+  comment, the conformance test's CRT define; `made_name` stays a template: mixed `size_t` and `int64_t` callers). The
+  full gates on 8bd99855 and the fix's clang and GCC gates: PLAN item 2. **QP merged bb440d0e** (74 files, +763 −708).
+- DOC (the docs' and CHANGELOG's final read, `brief_doc.md`, branch `pb/DOC` from 93ef5434) was running; its merge needs
+  the docs gates only (`check_docs`, `check_pins`, `generate_docs --check`, `check_site_links`), then a rebase or merge over
+  bb440d0e (QP changed no docs page; CHANGELOG gained one line under Fixed, which may conflict with DOC's CHANGELOG edits).
 
 ## Decisions
 
@@ -80,10 +86,8 @@
 
 ## Next steps
 
-1. QP (PLAN item 2): QP5 as QP1–4 (diff read, identity run, report transcribed), merged into `pb/QP`; the review
-   (`brief_qp_review.md`, one Sonnet agent on `pb/QP`, with `gather_todo.md`'s done list); the full gates once on `pb/QP` in its
-   worktree (clang, Arrow, no-llfio, no-cpuinfo, MEX + matlab_suite, CUDA, WSL GCC, fresh-venv pytest); merge `--no-ff` into
-   design-2.0; push. Then `pb/DOC` the same way (docs gates only).
+1. DOC (PLAN item 3's last entry): accept its report (open the cited lines), run the docs gates on `pb/DOC`, merge
+   `--no-ff` over bb440d0e, push. Then the question batch's answers into DECISIONS §3 and HG's plan (`hg_plan.md`).
 2. The release list (item 3): left are `cpp_conformance` under MSVC strict (`C:/D/git/wt/MM/build-cl-strict` was building;
    a waiter runs `ctest -R cpp_conformance` there and logs `orch_cl_strict_ctest.log`), F43 (the question batch) and the
    docs' and CHANGELOG's final read (one Sonnet agent after QP). HG's draft plan: `C:/D/git/wt/tmp/HG/hg_plan.md`.

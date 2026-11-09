@@ -33,11 +33,16 @@ differ only where several optimal medoid sets exist, node counts and run times c
    102, WSL GCC 102, fresh-venv pytest 933/19, G10 660/660 (S9); on the merged tree: clang 103, Arrow 106, docs gates. The
    sanity run (the kit's A and B shapes once, under load, [inferred]: no gross slowdown, MM faster in all seven pairs) is on
    disk; the bands are advisory (item 4). The worktree `C:/D/git/wt/MM` and its eight build trees are now a merged unit's.
-2. ◐ **QP code-quality pass** [here]: scope and stopping rule in the finish plan §4.2; briefs `C:/D/git/wt/tmp/QP/`
-   (`qp_common.md`, `brief_qp1..5.md`, `brief_qp_review.md`; the identity gate `kit/cli_identity.sh`, 27 CLI cases byte for
-   byte against the base binary). QP1 io and the stream, QP2 cli and api, QP3 the `Problem` session, QP4 the bindings, QP5
-   MM's tests under the 09-30 rule then clang-tidy; one review; branches `pb/QP1..5` from c4bcefc2, gathered on `pb/QP`,
-   full gates once at its merge.
+2. ☑ **QP code-quality pass** merged bb440d0e (11-09; `pb/QP`: five implementers on disjoint files, the orchestrator's
+   gather and the MATLAB help fix, one review whose blocker and should-fixes closed in 7fc65957; briefs, reports and the
+   identity gate in `C:/D/git/wt/tmp/QP/`). Behaviour-neutral but for "Medoid" in Lloyd's verbose lines (CHANGELOG):
+   the identity gate's 30 CLI cases, report and `-v` text included, byte for byte the merge's; gates on the gathered branch
+   clang 103, Arrow 106, no-llfio 103, no-cpuinfo 103, MEX 104 with matlab_suite 154 (the three help tests new), CUDA 102,
+   WSL GCC 102, pytest 933/19, G10 324/324; the review's fix re-gated on clang and GCC. Under rule 19 none of MM's 99 test
+   cases was trivial. Tree-wide clang-tidy: 0 own-code warnings left. Candidates it raised: `arrow_ipc.cpp` cut at its
+   `IpcFile` banner, `NB_MODULE` into `bind_*` functions, a `Data::series<T>(i)`, the test files' shared helpers
+   (`printed()`, `fixture()`, the "needs at least N bytes" parse), two error texts (`--n-init` without "got N"; two
+   "needs approximately N bytes" wordings), `dtwc-convert`'s one batch.
 3. ◐ **Release list** [here]. Done 11-09 on the merged code (WSL `~/mm/merge_gcc`, GCC 13.3): L2b's open ends (Arrow ON
    on Windows: the clang Arrow tree 106/106 at the merge; Arrow ON on Linux through the pyarrow 23.0.1 shim: 105/105 with
    `test_io_readers`, `dtwc_cl` linking libarrow, libparquet and libgomp); the Linux release archive (`cpack` 340 members,
