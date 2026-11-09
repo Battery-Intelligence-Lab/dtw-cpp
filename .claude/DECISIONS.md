@@ -372,6 +372,9 @@ obsolete ones, or already completed ones"); they are in git: `git show 034d8994:
   configuration the GPU takes, with no bit-equality gate. For `cpu+gpu` the 10-01 bound relaxes by this much and no more:
   its labels and medoids may differ from a single device's run only at a near-tie whose two distances lie within the route
   bound of each other, its cost within that epsilon; under FP64 L1, where the GPU's distances equal the CPU's bit for bit
-  today, the hybrid's results equal both single-device runs whatever the split (HG0 pins the equality). The CI MEX
+  today, the hybrid's results equal both single-device runs whatever the split (HG0 pins the equality). A consequence
+  recorded by the orchestrator (11-09): the split comes from a calibration timed at the start of the pass, so under FP32
+  two `cpu+gpu` runs with the same seed may differ at such near-ties; a forced share (`CLARAOptions::gpu_share`, a test
+  hook; whether it becomes a `--gpu-share` key in every language is a question for Volkan) makes a run reproducible. The CI MEX
   job (`matlab-mex.yml`, R2024b): "Turn llfio ON in CI; its R2024b run is the oracle" (F43: a crash there is a tracked item
   with the CI log as evidence, and the flag goes back).

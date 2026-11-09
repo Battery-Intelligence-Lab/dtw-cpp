@@ -109,7 +109,9 @@ binary): `git worktree remove --force <path>` and `git branch -d pb/<id>`; the p
 deletion (11-09). The CHANGELOG's Performance section compares 2.0 with earlier 2.0 (no v1.0.0 baseline exists for its
 subjects): keep as the development record it is, or drop (DOC's open question). At the HG merge batch: when a pinned
 host buffer cannot be allocated the CUDA routes fall back to pageable memory silently and lose the pipeline's overlap
-(HG1 about doubled the pinned demand): a stderr warning always, or a `-v` line only (hg_plan.md §4b).
+(HG1 about doubled the pinned demand): a stderr warning always, or a `-v` line only (hg_plan.md §4b); and whether the
+hybrid's calibrated GPU share becomes a `--gpu-share` key in every language, the one knob that makes an FP32 `cpu+gpu` run
+reproducible (DECISIONS §3, 11-09).
 
 ## Cut, deferred or not scheduled
 
