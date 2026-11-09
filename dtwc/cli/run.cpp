@@ -765,13 +765,13 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   if (stream_payload) stage.note("none: FastCLARA streams them, inside cluster");
   if (!stream_payload) {
     Data series = data ? std::move(*data) : read_input(input, format.value_or(InputFormat::Text), config);
-    const std::string held = std::to_string(series.size()) + " series" + (storage.empty() ? "" : ", " + storage);
+    const std::string loaded = std::to_string(series.size()) + " series" + (storage.empty() ? "" : ", " + storage);
     if (config.verbose) {
       const char *from = !format                            ? " in memory"
                          : format == InputFormat::Parquet  ? " from Parquet"
                          : format == InputFormat::ArrowIPC ? " from Arrow IPC"
                                                            : "";
-      std::cout << "Data loaded" << from << ": " << held << " [" << clk << "]\n";
+      std::cout << "Data loaded" << from << ": " << loaded << " [" << clk << "]\n";
     }
     // A reader stores what --dtype names; Float64 series passed in memory, a view among them, are converted here.
     if (config.dtype == core::Precision::Float32 && !series.is_f32()) {
@@ -786,7 +786,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     }
     const std::size_t value_bytes = elements * (series.is_f32() ? sizeof(float) : sizeof(data_t));
     report_input(static_cast<std::size_t>(series.size()), elements, series.ndim, value_bytes, shortest, longest, false);
-    stage.note(held);
+    stage.note(loaded);
     if (config.verbose && series.size() > 0)
       std::cout << "  Data memory: ~" << (value_bytes / (1ULL << 20)) << " MB (" << series.size() << " series, "
                 << (elements / series.size()) << " avg length, " << name_of(core::precision_names, series.precision)
@@ -890,9 +890,9 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   // own) and the run is MIP on HiGHS or LR-core's Kelley root, tested as Python's Problem.cluster override tests them:
   // the solver's clustering is the run's, published on the Problem, which the Result reads.
   const auto cluster_in_ram = [&] {
-    if (!solver || !((prob.method() == Method::MIP && prob.solver() == Solver::HiGHS)
-                     || (prob.method() == Method::LRCore && prob.mip_settings.lr_root == LRRoot::Kelley)))
-      return prob.cluster();
+    const bool by_solver = solver && ((prob.method() == Method::MIP && prob.solver() == Solver::HiGHS)
+                                      || (prob.method() == Method::LRCore && prob.mip_settings.lr_root == LRRoot::Kelley));
+    if (!by_solver) return prob.cluster();
     core::ClusteringResult solved = solver(problem);
     prob.set_result(solved);
     return solved;
