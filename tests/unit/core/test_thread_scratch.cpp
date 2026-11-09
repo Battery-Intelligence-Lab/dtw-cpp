@@ -429,6 +429,28 @@ TEST_CASE("A refused --ram-limit names the budget, what it holds, the working se
   CHECK(least_limit.cost == unlimited.cost);
 }
 
+TEST_CASE("An in-RAM FastCLARA plan holds the winner's labels that Problem::set_result copies, as the stream's does",
+          "[thread_scratch][run][ram_limit][plan]")
+{
+  // 200 walks of 20 doubles in memory, 5 samples of 50: when the pass ends every sample's labels (200 x 8 bytes each)
+  // and a block of nearest distances (the block is all 200 points) are held, and set_result copies the winner's labels
+  // (200 x 8 bytes) and marks its medoids (200 / 8) beside them. The sample PAM's matrix (50 x 51 / 2 doubles) is the
+  // smaller term.
+  dtwc::Config config;
+  config.method = dtwc::Method::CLARA;
+  config.k = 3;
+  config.sample_size = 50;
+  config.n_samples = 5;
+  config.output.clear();
+  const Runner memory = [](const dtwc::Config &c) { return dtwc::run(c, data_of(walks(200, 20))); };
+  const Attempt one_byte = attempt(config, 1, memory);
+  REQUIRE_FALSE(one_byte.ran);
+  std::smatch m;
+  REQUIRE(std::regex_search(one_byte.refusal, m, std::regex("([0-9]+) for FastCLARA's sample matrix and labels")));
+  const std::size_t n = 200, samples = 5, index = sizeof(dtwc::index_t);
+  CHECK(std::stoull(m[1].str()) == samples * (n * index + n * sizeof(double)) + n * index + n / 8);
+}
+
 TEST_CASE("A stream's refusal names no least limit, and the stream's own refusals say their --ram-limit is the data "
           "cap",
           "[thread_scratch][run][ram_limit][plan]")

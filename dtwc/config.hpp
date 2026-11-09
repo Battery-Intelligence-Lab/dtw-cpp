@@ -44,7 +44,8 @@ struct Config
   core::Precision dtype = core::Precision::Float64; ///< `--dtype`
   /// `--ram-limit`: the memory the run plans for, in bytes (run(): a reserve for its threads, the series and the
   /// matrix in what is left); 0 = automatic, 90 % of what the process may use (core::memory_budget). A plan, not a
-  /// cap: a run may use about a tenth more, more with series longer than planned.
+  /// cap: a run may use about a tenth more, more with series longer than planned, and the program's own few
+  /// megabytes lie outside the plan.
   std::size_t ram_limit = 0;
   /// `--matrix-dtype`: the width of the distance matrix's values, float64 (default) or float32 (half the memory,
   /// each distance rounded to the nearest float); not `dtype`'s, the series'.

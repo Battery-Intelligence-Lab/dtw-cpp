@@ -498,11 +498,14 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
                 << " MB resident estimate exceeds the RAM limit [" << clk << "]\n";
   };
   // CLARA's terms beside the series, in RAM as streamed: a sample PAM's matrix, then every sample's labels and
-  // nearest distances.
+  // nearest distances, and with them the winner's labels that Problem::set_result copies (and the medoid flags it
+  // makes), as the stream's `finish` counts them.
   const auto clara_bytes = [&](const algorithms::detail::ClaraPlan &sample) {
     const std::size_t pam = core::packed_size(static_cast<std::size_t>(sample.sample_size))
                             * core::value_bytes(config.matrix_dtype);
-    return std::max(pam, algorithms::detail::clara_pass_bytes(sample, static_cast<std::size_t>(clara.n_samples)));
+    const auto n = static_cast<std::size_t>(sample.n_points);
+    const std::size_t pass = algorithms::detail::clara_pass_bytes(sample, static_cast<std::size_t>(clara.n_samples));
+    return std::max(pam, pass + n * sizeof(index_t) + n / 8);
   };
 
   // The memory plan (plan_memory), made once where the input's facts are known: an Arrow IPC file's walk, a Parquet

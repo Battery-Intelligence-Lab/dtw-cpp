@@ -123,8 +123,9 @@ overflowing values are errors. `0`, the default, is automatic: 90 % of the
 physical memory available when the run starts, or of the Linux cgroup v2 limit
 of the process when that is lower (which a SLURM job's memory request sets). It
 is a plan, not an operating-system limit on the run's resident memory: a run may
-use about a tenth more, more with series longer than it planned for; MIP's and
-LR-core's solver memory is not planned.
+use about a tenth more, more with series longer than it planned for; the program's
+own memory (its code, libraries and tables, a few megabytes) lies outside the plan;
+MIP's and LR-core's solver memory is not planned.
 
 The run plans once, as soon as it knows its input (an Arrow IPC file's walk, a
 Parquet file's metadata, else the series read). It reserves its threads' working
