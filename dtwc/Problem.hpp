@@ -207,9 +207,9 @@ private:
   /// core::validate(config) for `data`'s channels and precision, before a setter
   /// or set_data changes anything.
   static void validate_distance(core::DistanceConfig config, const Data &data);
-  /// set_data and set_view_data: refuse `candidate` (an empty series, a distance setting it cannot take) before
-  /// anything changes, then take it and drop the clustering and the matrix, which describe the old series.
-  /// `operation` begins a refusal.
+  /// set_data and set_view_data: refuse `candidate` (a series whose length ndim does not divide, an empty series, a
+  /// distance setting it cannot take) before anything changes, then take it and drop the clustering and the matrix,
+  /// which describe the old series. `operation` begins a refusal.
   void adopt_data(Data candidate, std::string_view operation);
   void validate_checkpoint_settings() const;
   /// The one check of a distance request — every device axis, band

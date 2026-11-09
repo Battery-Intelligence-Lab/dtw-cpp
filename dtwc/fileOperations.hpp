@@ -139,8 +139,8 @@ inline void ignoreBOM(std::istream &in, const fs::path &path = {})
 /**
  * @brief One series-count contract for every loader.
  *
- * @details The contract of both loaders: `Ndata == -1` means "all", otherwise
- * stop at exactly `Ndata` (0 reads nothing). Anything below -1 is rejected.
+ * @details The contract of both loaders and of DataLoader::n_data: `Ndata == -1` means "all",
+ * otherwise stop at exactly `Ndata` (0 reads nothing). Anything below -1 is rejected.
  */
 inline void validate_ndata(index_t Ndata, const char *ctx)
 {
