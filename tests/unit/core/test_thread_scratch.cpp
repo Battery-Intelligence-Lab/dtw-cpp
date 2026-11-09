@@ -28,7 +28,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -36,7 +35,6 @@
 #include <iostream>
 #include <map>
 #include <numeric>
-#include <optional>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -218,8 +216,8 @@ TEST_CASE("dtwc::run gives every thread's scratch back as it starts and when it 
 TEST_CASE("Beside a complete --dist-matrix, which no kernel adds to, the matrix stays in RAM within --ram-limit",
           "[thread_scratch][run][ram_limit]")
 {
-  // Reviewer R1's case: 4 series of 100,000 values, FastPAM under a band of 10, results written, --ram-limit 100M and
-  // 10M: no kernel runs beside a complete matrix, and its 80 bytes stay in RAM, as 819e8703 kept them.
+  // 4 series of 100,000 values, FastPAM under a band of 10, results written, --ram-limit 100M and 10M: no kernel runs
+  // beside a complete matrix, and its 80 bytes stay in RAM.
   const dtwc::test_support::ScratchDirectory scratch{ "scratch_dist_matrix" };
   const auto series = [] { return data_of(walks(4, 100000)); };
   dtwc::Config config;
