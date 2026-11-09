@@ -81,10 +81,12 @@
   report is in the hand-back, not transcribed: the merge message carries the summary). Its ten code-side items are unit DC.
 - Volkan's batch (DECISIONS §3): HG mode A, the word `cpu+gpu`, "Rounding errors are fine", the CI MEX with llfio
   (8cdb1b40: `matlab-mex.yml`, the CHANGELOG clause). PLAN items 3, 3b and 5 carry them (9e47fcaa).
-- Launched at the end: HG1 with HG0 (Opus, `C:/D/git/wt/tmp/HG/brief_hg1.md`, worktree `wt/HG`, `pb/HG` from 9e47fcaa) and
-  DC (Sonnet, `C:/D/git/wt/tmp/DC/brief_dc.md`, `wt/DC`, `pb/DC` from 9e47fcaa). Their base binaries: the main `build/`
-  (clang, built at c4bcefc2's code, which QP left behaviour-identical) and `wt/QP/build-cuda` (the CUDA binary of the QP
-  tree). Do not rebuild the main `build/` while they run.
+- DC merged 5b01d1fe (`report_dc.md`; my identity run and its MEX tree 104/104). HG0 908741d9 and HG1 cb509789 accepted on
+  `pb/HG` (`report_hg1.md`; my checks: every `__global__` kernel body identical to the base by `orch_kernels_cmp.py`, no
+  hot-loop file in the diff, identity 0 differ on its clang binary, the G8 log's six `identical` lines). HG merges once.
+  Then (my chain `orch_hg_sync.sh`): the main `build/` rebuilt on design-2.0's tip and its ctest; design-2.0 merged into
+  `pb/HG`, that tree rebuilt, ctest and the identity gate against the fresh main binary; `brief_hg2.md` takes the merge's
+  hash as `<HG1-TIP>` and HG2 launches on Opus.
 
 ## Decisions
 

@@ -73,10 +73,13 @@ differ only where several optimal medoid sets exist, node counts and run times c
    `C:/D/git/wt/tmp/MM/hetero.md`; plan `C:/D/git/wt/tmp/HG/hg_plan.md`; Volkan 10-11 "own unit after MM", 11-03 "MM and HG
    both in 2.0", 11-09 "All of HG in 2.0", then "Build on the design's predictions; measure advisory", the device word
    "cpu+gpu", "Rounding errors are fine" for the hybrid). Steps on `pb/HG`, each merging on correctness (GPU FP64 results
-   byte for byte the CPU's, the `cpu` route unchanged): ◐ HG0 the bit-equality test + HG1 the pipeline for CLARA's
-   assignment (`brief_hg1.md`, Opus), ☐ HG2 the fill's preload, ☐ HG3 the hybrid assignment, ☐ HG4 the hybrid fill, ☐ HG5
-   the device word in every language, docs, CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item
-   4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
+   byte for byte the CPU's, the `cpu` route unchanged): ☑ HG0 the bit-equality test (908741d9) + ☑ HG1 the two-stream
+   pipeline for CLARA's assignment (cb509789, Opus; `report_hg1.md`: kernel bodies identical to the base, G8 byte for byte
+   on views of 256, 200k and 1.1M series in RAM and streamed, FP64 and FP32; the plan's new staging terms, a cap that shrinks
+   the blocks under an explicit limit; one sanity run under load [inferred]: no slowdown), ☐ HG2 the fill's preload
+   (`brief_hg2.md`), ☐ HG3 the hybrid assignment, ☐ HG4 the hybrid fill, ☐ HG5 the device word in every language, the docs
+   HG1 made false (hg_plan.md §4b), CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item 4's
+   window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
    into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
    gate runs on the merged tree, not the branches alone. Until HG merges, S5's route ships.
