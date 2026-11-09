@@ -1540,11 +1540,15 @@ CUDADistMatResult compute_medoid_distances_cuda(
                                  consume);
 
   if (opts.verbose) {
+    const size_t block = detail::medoid_blocks(n_series, medoids.size(), max_L,
+                                               use_fp32 ? sizeof(float) : sizeof(double),
+                                               opts.host_staging_bytes).block;
     std::cout << "CUDA DTW: " << result.pairs_computed << " pairs (" << n_series
               << " series x " << medoids.size() << " medoids)"
               << (use_fp32 ? " [FP32]" : " [FP64]")
               << " in " << result.gpu_time_sec * 1000 << "ms"
-              << " on " << cuda_device_info(opts.device_id) << std::endl;
+              << " on " << cuda_device_info(opts.device_id)
+              << ", in blocks of " << block << " series" << std::endl;
   }
 
   return result;

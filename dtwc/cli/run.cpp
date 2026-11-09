@@ -918,7 +918,12 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   // In RAM the Problem clusters, but where detail::run was given a solver (a binding that links no HiGHS gives its
   // own) and the run is MIP on HiGHS or LR-core's Kelley root, tested as Python's Problem.cluster override tests them:
   // the solver's clustering is the run's, published on the Problem, which the Result reads.
+  // FastCLARA in RAM runs on the run's own options, as its stream does, so the plan's GPU blocks
+  // (clara.gpu_staging_bytes) reach it. Problem::cluster's checks on that path are made before it: k against the series
+  // (require_clusterable, above), the method on cpu+gpu (apply); fast_clara makes its own (validate_clara_request,
+  // resolve_clara_plan), as Problem::cluster's call of it did.
   const auto cluster_in_ram = [&] {
+    if (prob.method() == Method::CLARA) return algorithms::fast_clara(prob, clara);
     const bool by_solver = solver && ((prob.method() == Method::MIP && prob.solver() == Solver::HiGHS)
                                       || (prob.method() == Method::LRCore && prob.mip_settings.lr_root == LRRoot::Kelley));
     if (!by_solver) return prob.cluster();

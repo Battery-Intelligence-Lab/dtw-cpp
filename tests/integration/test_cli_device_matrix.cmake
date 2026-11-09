@@ -12,7 +12,9 @@ cmake_minimum_required(VERSION 3.26)
 #          silent CPU assignment fails here; or the backend refuses on a machine
 #          without the device; onebatch and tadpole are refused; a variant the
 #          kernels lack and (Metal) a GPU index are refused before the input is
-#          read, which does not exist; `cuda` is `gpu`. A build without a GPU
+#          read, which does not exist; `cuda` is `gpu`; on CUDA, clara in RAM
+#          under an explicit --ram-limit assigns in the plan's shrunk blocks
+#          (-v names their size). A build without a GPU
 #          refuses every gpu cell with the message naming the build flag.
 #   cpu+gpu  CUDA's: clara with a sample smaller than N runs, its -v naming the
 #          split; a fill (pam; clara on a sample of every series), a method that
@@ -188,6 +190,25 @@ else()
     else()
         expect_refused(gpu_clara_sample "GPU was detected" -i "${INPUT}" --device gpu --method clara --sample-size 5)
     endif()
+    # In RAM, an explicit --ram-limit a byte below what the GPU's default blocks need shrinks them, and the run assigns
+    # in the plan's blocks (FP64, the precision the plan prices): -v's CUDA line names their size, fewer than the 27
+    # series one default block holds.
+    if(GPU STREQUAL "cuda" AND device STREQUAL "present")
+        run_cli(gpu_clara_limit_probe -i "${INPUT}" -k 3 -o "${WORK_ROOT}/gpu_clara_limit_probe" --name probe
+                --device gpu --gpu-precision fp64 --method clara --sample-size 5 --ram-limit 1000)
+        if(NOT "${err}" MATCHES "it needs at least ([0-9]+) bytes")
+            message(FATAL_ERROR "gpu_clara_limit_probe: no least limit in\nstderr:\n${err}")
+        endif()
+        math(EXPR shrunk_limit "${CMAKE_MATCH_1} - 1")
+        expect_ran(gpu_clara_shrunk clara --device gpu --gpu-precision fp64 --method clara --sample-size 5
+                   --ram-limit ${shrunk_limit} -v)
+        if(NOT "${out}" MATCHES "series x 15 medoids[)][^\n]*, in blocks of ([0-9]+) series"
+           OR NOT CMAKE_MATCH_1 LESS 27)
+            message(FATAL_ERROR "gpu_clara_shrunk: the run did not assign in the plan's shrunk blocks\nstdout:\n${out}")
+        endif()
+    elseif(GPU STREQUAL "cuda")
+        expect_refused(gpu_clara_shrunk "GPU was detected" -i "${INPUT}" --device gpu --method clara --sample-size 5)
+    endif()
     expect_refused(gpu_wdtw "variant = WDTW" -i "${missing_input}" --device gpu --variant wdtw)
     if(GPU STREQUAL "metal")
         expect_refused(gpu_index_1 "GPU index = 1" -i "${missing_input}" --device gpu:1)
@@ -240,7 +261,7 @@ if(GPU STREQUAL "none")
 elseif(GPU STREQUAL "metal")
     math(EXPR expected "${expected} + ${gpu_cells} + 7 + 3")
 else()
-    math(EXPR expected "${expected} + ${gpu_cells} + 6 + 5")
+    math(EXPR expected "${expected} + ${gpu_cells} + 6 + 5 + 1")
 endif()
 if(NOT cells EQUAL expected)
     message(FATAL_ERROR "ran ${cells} cells, expected ${expected}")
