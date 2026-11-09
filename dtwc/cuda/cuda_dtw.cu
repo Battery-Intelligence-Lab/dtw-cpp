@@ -1237,6 +1237,7 @@ struct TriangleFill {
   Launches<T, Pairs::Triangle> launches;
   DTWLaunchWorkspace<T> &workspace;
   std::vector<int> lengths;
+  int device_id;
   bool timed_from_upload = true; ///< the first rows() call's time starts at the upload
 
   TriangleFill(size_t N, const SeriesAt &series, const ParallelFor &parallel, size_t max_length, bool use_squared_l2,
@@ -1244,7 +1245,7 @@ struct TriangleFill {
       : n(static_cast<std::int64_t>(N)), max_L(max_length),
         chunk(std::min(n * (n - 1) / 2, detail::kMaxPairsPerLaunch)),
         launches(kernel_path, max_L, use_squared_l2, band, chunk, device_limits(device_id)),
-        workspace(get_dtw_launch_workspace<T>(device_id)), lengths(N)
+        workspace(get_dtw_launch_workspace<T>(device_id)), lengths(N), device_id(device_id)
   {
     // Every device buffer the launches use is allocated before the caller's
     // matrix, so a device that cannot hold them refuses the fill first. A
@@ -1278,6 +1279,12 @@ struct TriangleFill {
     }
   }
 
+  TriangleFill(const TriangleFill &) = delete;
+  TriangleFill &operator=(const TriangleFill &) = delete;
+  /// A session whose rows were never all filled may leave the upload in flight from the staging buffer the next call
+  /// reuses: it drains first.
+  ~TriangleFill() { (void)cudaStreamSynchronize(workspace.stream.get()); }
+
   /// Packed rows [r0, r1) into out; the pairs computed added to `pairs`, their GPU time to `gpu_time_sec`.
   void rows(size_t r0, size_t r1, core::DistanceMatrix &out, size_t &pairs, double &gpu_time_sec)
   {
@@ -1290,6 +1297,7 @@ struct TriangleFill {
       for (size_t r = r0; r < r1; ++r) out.set(r, r, 0.0);
       return;
     }
+    CUDA_CHECK(cudaSetDevice(device_id)); // the session's device, whichever this thread's current one is
     auto stream = workspace.stream.get();
 
     try {

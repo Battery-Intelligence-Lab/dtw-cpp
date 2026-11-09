@@ -17,6 +17,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -131,6 +132,25 @@ TEST_CASE("IF-1: set_device rejects a negative index", "[if1][device]")
   CHECK_THAT(message_of<dtwc::InvalidInput>([&] { prob.set_device(Device::GPU, -1); }),
              ContainsSubstring("got -1"));
   CHECK(prob.device() == std::pair{ Device::CPU, 0 });
+}
+
+// cpu+gpu's share is -1 (measured) or in [0, 1]; a forced share on a device that would ignore it is refused before
+// any pair, not dropped: the matrix stays unfilled.
+TEST_CASE("HG4: a gpu_share outside [0, 1], or forced on another device, is InvalidInput", "[device][hg4]")
+{
+  auto prob = problem_with_data();
+  for (const double bad : { -0.5, 1.5, std::numeric_limits<double>::quiet_NaN() })
+    CHECK_THAT(message_of<dtwc::InvalidInput>([&] { prob.set_gpu_share(bad); }),
+               ContainsSubstring("must be -1 (measured) or in [0, 1]"));
+  CHECK(prob.gpu_share() == -1.0);
+  prob.set_gpu_share(0.5);
+  CHECK_THAT(message_of<dtwc::InvalidInput>([&] { prob.fill_distance_matrix(); }),
+             ContainsSubstring("gpu_share splits the fill of device cpu+gpu, but the device is cpu"));
+  CHECK_FALSE(prob.is_distance_matrix_filled());
+  prob.set_gpu_share(-1.0);
+  prob.fill_distance_matrix();
+  CHECK(prob.is_distance_matrix_filled());
+  CHECK_FALSE(prob.fill_split()); // a CPU fill has no split
 }
 
 TEST_CASE("IF-1: a Problem does not read the process-wide device", "[if1][device]")

@@ -2719,7 +2719,8 @@ TEST_CASE("HG4: cpu+gpu's FP64 L1 matrix equals the CPU fill's and the GPU fill'
       } else {
         CHECK(std::string_view(split.split.source) == "forced");
         CHECK(split.split.gpu_share == share);
-        CHECK(split.gpu_entries == (share == 0.0 ? 0 : share == 1.0 ? split.entries : split.gpu_entries));
+        if (share == 0.0) CHECK(split.gpu_entries == 0);
+        if (share == 1.0) CHECK(split.gpu_entries == split.entries);
         if (share == 0.5) {
           CHECK(split.gpu_entries > 0);
           CHECK(split.gpu_entries < split.entries);

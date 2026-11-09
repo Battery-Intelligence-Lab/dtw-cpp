@@ -964,7 +964,6 @@ void Problem::fillDistanceMatrix_BruteForce()
   const size_t N = data_.size();
   const bool f32 = data_.is_f32();
   const dtw_fn_f32_t *f32_function = f32 ? &dtw_fn_f32_ : nullptr;
-  fill_split_.reset();
 #ifdef DTWC_HAS_CUDA
   const bool sized = distMat.size() == N; // sized before this fill: it may hold computed entries
   // cpu+gpu: the GPU's session before the matrix is touched, so its refusals come first: the route on the longest
@@ -1307,6 +1306,7 @@ void Problem::fill_distance_matrix()
   }
   if (filled_) return;
   validate_fill_request("Problem::fill_distance_matrix");
+  fill_split_.reset(); // set again by a cpu+gpu fill
 
   // Each fill below sizes the matrix (deferred from set_data /
   // refresh_distance_matrix) only after its own refusals; a mapped matrix is
