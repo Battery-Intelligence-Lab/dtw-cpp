@@ -260,7 +260,9 @@ def main() -> None:
                     "--method", "pam",
                     "--max-iter", "3",
                     "--device", "cpu",
-                    "--ram-limit", "1",  # over 1 byte the distance matrix is mapped (llfio)
+                    # The checkpoint directory maps the distance matrix there (llfio); --ram-limit is the run's
+                    # memory budget, so a tiny limit refuses the run instead of mapping.
+                    "--checkpoint", str(output.resolve()),
                 ],
                 cwd=scratch,
                 text=True,
