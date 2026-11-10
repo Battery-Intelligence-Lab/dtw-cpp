@@ -101,14 +101,30 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   adjusted Rand index and normalised mutual information of two labellings.
 - GPUs: CUDA (compute capability 8.0 or newer, `-DDTWC_ENABLE_CUDA=ON`) and Metal (Apple silicon, built by default on
   macOS) fill the matrix of Standard DTW on univariate series and FastCLARA's samples (`--device gpu`); series that a
-  `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) are uploaded as an owned Float64
-  copy, which `dtwc_cl`'s memory plan counts with the GPU's staging buffer.
-- `--gpu-share <s>` (TOML/YAML key `gpu-share`, C++ `Config::gpu_share` and `Problem::set_gpu_share`, Python
-  `gpu_share=` and `Problem.set_gpu_share`, MATLAB `'GpuShare'` and `Problem.set_gpu_share`): the GPU's share of the work
-  device `cpu+gpu` splits with the CPU; -1, the default, measures it where the work starts, a value in [0, 1] forces it,
-  so a run repeats. Any other value is `InvalidInput`, and so is a forced share on a device other than `cpu+gpu`.
-- A CUDA run whose pinned host buffer cannot be allocated says so once per buffer on stderr (`[dtwc] warning: CUDA
-  could not pin N bytes of host memory; ...`) and goes on with pageable memory: slower copies, the same results.
+  `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) are read where they lie on CUDA and
+  uploaded as an owned Float64 copy on Metal, which `dtwc_cl`'s memory plan counts with the GPU's staging buffer.
+- CUDA reads series that a `Data` only views (a mapped or decoded Arrow IPC file, `set_view_data`) where they lie: its
+  fill, FastCLARA's samples and its assignment, streamed record batches included, pad them straight from the view into
+  the GPU's staging and make no owned copy of them; the memory plan counts the staging alone, and under an explicit
+  `--ram-limit` shrinks FastCLARA's assignment blocks to fit, down to one series. Metal's fill still uploads a copy.
+- FastCLARA's assignment on CUDA runs through a two-stream pipeline: a block of series is padded and uploaded on a copy
+  stream while the block before it computes, and the host assigns a block from one of three pinned slots of distances
+  while the next two compute; the results are the single-stream route's. A CUDA run whose pinned host buffer cannot be
+  allocated says so once per buffer on stderr (`[dtwc] warning: CUDA could not pin N bytes of host memory; ...`) and goes
+  on with pageable memory: slower copies, the same results.
+- `--device cpu+gpu` and `cpu+gpu:N` (C++ `Device::CPU_GPU`, Python `device="cpu+gpu"`, MATLAB `'Device', 'cpu+gpu'`;
+  CUDA only): the distance matrix's fill (`pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, `clara` on a sample of every
+  series) and FastCLARA's assignment pass run on the CPU's threads and the GPU together, and `auto` is `pam` at any size,
+  as on `gpu`. The fill gives the GPU whole blocks of rows, the pass its leading points; the GPU's share is measured where
+  the work starts, or forced with `--gpu-share <s>` (TOML/YAML key `gpu-share`, C++ `Config::gpu_share` and
+  `Problem::set_gpu_share`, Python `gpu_share=` and `Problem.set_gpu_share`, MATLAB `'GpuShare'` and
+  `Problem.set_gpu_share`; -1, the default, measures) so that a run repeats; any other value is `InvalidInput`, and so is a
+  forced share on a device other than `cpu+gpu`. `-v` and the run report print the split and how it was set (C++
+  `Problem::fill_split()`, `ClusteringResult::hybrid`). Under FP64 and L1 the results equal both single-device runs'
+  whatever the split; under FP32, squared L2 and series beyond 256 steps a distance is within the route bound of the other
+  device's, and a label or medoid can differ only at a near-tie within it. `onebatch`, `tadpole`, a run that streams its
+  series and a build without CUDA raise `DeviceError`. `test.gpu()` (C++, Python, MATLAB) reports `hybrid` and
+  `hybrid_reason` as it reports `available` and `reason`.
 - Input: Arrow IPC, the file and the stream format, in every build and language, read by the vendored nanoarrow without
   Arrow C++ or pyarrow, and in place: the file is mapped (without llfio, read once into memory) and each series is a
   view of it (C++ `Data::series(i)` and `name(i)` read it, its `p_vec` and `p_names` are empty; Python's `Data.p_vec`

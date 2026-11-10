@@ -141,8 +141,8 @@ and its parameters (`wdtw_g`, `adtw_penalty`, `sdtw_gamma`, `msm_c`, `twe_nu`,
 `twe_lambda`), `mv_mode`, `missing_strategy`, `max_iter`, `n_init`, `seed`,
 `sample_size`, `n_samples`, `batch_size`, `linkage`, `dc`, `solver`, `mip_gap`,
 `time_limit`, `no_warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`,
-`lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `matrix_dtype`, `ram_limit`, `name` and `verbose`
-(MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'MatrixDtype'`, `'RamLimit'`, ...), and
+`lr_max_nodes`, `lr_root`, `device`, `gpu_precision`, `gpu_share`, `matrix_dtype`, `ram_limit`, `name` and `verbose`
+(MATLAB: `'Method'`, `'Band'`, `'WdtwG'`, `'MaxIter'`, `'NInit'`, `'GpuShare'`, `'MatrixDtype'`, `'RamLimit'`, ...), and
 `no_report` (MATLAB `'NoReport'`; `--no-report`: no run report). `dtype` (MATLAB
 `'Dtype'`) is `load`'s: `cluster()` loads a path or series in memory in it, and
 refuses it beside a `Dataset`, which keeps its own. The others (`input`, `output`,
@@ -158,14 +158,20 @@ of the wrong type is `TypeError`.
 `method` is one of `auto` (the default), `pam`, `onebatch`, `clara`, `kmedoids`,
 `mip`, `lrcore`, `tadpole` and `hierarchical` (also `obp`, `lr` and `hclust`), in
 any case. `auto` is `pam` for up to 5000 series on the CPU and `clara` above
-that; on a GPU it is `pam`. `auto` is also `clara` where `pam`'s distance matrix
+that; on a GPU, and on `cpu+gpu`, it is `pam`. `auto` is also `clara` where `pam`'s distance matrix
 does not fit the run's memory plan (`ram_limit`). A `device` given to `cluster()`
 is for that run only.
 On a GPU, `pam`, `kmedoids`, `mip`, `lrcore` and `hierarchical` run with the GPU
 filling the distance matrix and `clara` with the GPU filling its samples, while
 `onebatch` and `tadpole`, which compute on the CPU as they go, raise
-`DeviceError`. A GPU uploads owned Float64 series, so for an Arrow IPC file, whose series are
-views, it makes an owned copy, which the memory plan counts. `k` below 1 or above the number of series, and an empty dataset,
+`DeviceError`. CUDA reads the series of an Arrow IPC file, which are views, where they lie
+(Metal's fill uploads an owned copy of them, which the memory plan counts). `device="cpu+gpu"`
+(`'cpu+gpu'`, CUDA only) fills the matrix of those methods on the CPU's threads and the GPU
+together and splits `clara`'s assignment pass between them; `onebatch`, `tadpole`, a run
+that streams its series and a build without CUDA raise `DeviceError`. `gpu_share` is
+the GPU's share of that split: `-1`, the default, measures it, a value in [0, 1] forces it so
+that a run repeats, and anything else, or a forced value on another device, is
+`InvalidInput` ([Devices](../../guides/devices/)). `k` below 1 or above the number of series, and an empty dataset,
 are `InvalidInput`.
 
 In Python, `device="hpc"` or `"hpc:gpu"` submits the run as one `job.toml` and

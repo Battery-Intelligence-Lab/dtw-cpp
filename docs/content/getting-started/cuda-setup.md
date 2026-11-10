@@ -126,6 +126,8 @@ cmake --build build --config Release
 | `nvidia-smi` shows driver but `nvcc` is missing | Only the GPU driver is installed, not the toolkit | Install the full CUDA Toolkit (the driver alone is not enough for compilation). |
 | `DeviceError: ... DTWC++ was built with CUDA support, but no usable CUDA GPU was detected` | No NVIDIA GPU, or driver not loaded | Check `lspci \| grep -i nvidia`. Install or update the NVIDIA driver. |
 | `DeviceError: CUDA device 0 has compute capability 7.5; DTWC++ needs 8.0 or newer` | The GPU predates Ampere | Use a GPU of compute capability 8.0 or newer, or `--device cpu`. |
+| `DeviceError: CUDA error at <file>:<line> (<call>): <message>` | A CUDA runtime call failed; the text names the call and CUDA's own message | Act on CUDA's message; the file and line locate the call in `dtwc/cuda/`. |
+| `[dtwc] warning: CUDA could not pin N bytes of host memory; the run continues on pageable memory, ...` on stderr | The CUDA runtime would not pin that many bytes of host memory for a staging buffer | Nothing is wrong with the result: the copies are slower (pageable memory serialises them). Free host memory and rerun if the speed matters. It prints once for each buffer. |
 | CUDA not available on macOS | Apple does not ship NVIDIA drivers | No fix -- use Linux or Windows with an NVIDIA GPU. |
 | `undefined reference to cudaXxx` | CUDA libraries not linked | Ensure `LD_LIBRARY_PATH` includes `/usr/local/cuda/lib64`. |
 

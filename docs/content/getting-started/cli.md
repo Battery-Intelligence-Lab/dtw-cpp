@@ -73,8 +73,8 @@ cluster counts, i..j, is refused: run `dtwc_cl` once per k.
 Available methods: `auto`, `pam`, `onebatch` (alias `obp`), `clara`,
 `kmedoids`, `mip`, `lrcore` (alias `lr`), `hierarchical` (alias `hclust`),
 and `tadpole`. On `--device cpu`, `auto` runs `pam` for up to 5,000 series and
-`clara` above that; on `--device gpu` it runs `pam` at any size, since the GPU
-fills the matrix PAM reads.
+`clara` above that; on `--device gpu` and `--device cpu+gpu` it runs `pam` at any size,
+since the GPU fills the matrix PAM reads (on `cpu+gpu` the CPU's threads fill their part).
 
 ### DTW Options
 
@@ -226,10 +226,11 @@ load on the threads that fit. An explicit `--ram-limit` is fail-closed:
 - a CLARA sample size that resolves to all N series is rejected while the file
   is over budget, because its full-data PAM fallback cannot stream;
 - with `--device gpu` the samples fill on the GPU, and with CUDA each streamed
-  chunk's assignment runs there too, the data cap holding the medoids beside the
-  GPU's staging of them and each chunk beside its staging and, for an Arrow IPC
-  file, the owned copy the GPU uploads of its record batches (Metal assigns on the
-  CPU, which `-v` says); and
+  chunk's assignment runs there too, reading the chunk's series where they lie (an
+  Arrow IPC record batch's too: no copy of them is made), the data cap holding the
+  medoids beside the GPU's staging of them and each chunk beside its staging
+  (Metal assigns on the CPU, which `-v` says); `--device cpu+gpu` does not stream: a
+  streamed batch is assigned on one device, so the run exits 1 naming that; and
 - `--dtype f32` keeps the sample, medoid, and assignment chunks in Float32;
   DTW recurrence arithmetic is Float32, while returned distances and the
   accumulated objective are stored in double.
@@ -241,9 +242,10 @@ series outside the page cache (decoded, read without LLFIO, or in the other
 `--dtype`): FastCLARA reads it a record batch at a time; a mapped file's values are
 not streamed. With `--device gpu` the plan counts the GPU's staging buffer for
 every input (CUDA: the series padded to the longest, 8 bytes a value, 4 under
-`--gpu-precision fp32`; Metal: the series and the matrix as floats) and, for an
-Arrow IPC file, whose series are views of it, the owned copy the GPU uploads of
-them. Other inputs (CSV/TSV, a CSV directory) are
+`--gpu-precision fp32`, or for FastCLARA's assignment its pipeline's pinned
+buffers; Metal: the series and the matrix as floats) and, on Metal only, for an
+Arrow IPC file, whose series are views of it, the owned copy its fill uploads of
+them: CUDA reads the views where they lie and makes no copy. Other inputs (CSV/TSV, a CSV directory) are
 always read whole; the plan then sets the threads and where the distance matrix is
 held. A run gives its threads' scratch back, CUDA's staging and device buffers
 among it, as it starts and when it ends.
@@ -337,9 +339,9 @@ CUDA's `auto` depends on the GPU, so it is not a stable cache identity (Metal's
 
 | Flag                       | Description                                  | Default |
 |----------------------------|----------------------------------------------|---------|
-| `-d, --device <string>`    | Compute device: `cpu`, `gpu`, `gpu:N` (`cuda`, `cuda:N` are the same; CUDA on NVIDIA, Metal on macOS), `cpu+gpu`, `cpu+gpu:N` (FastCLARA's assignment pass split between the CPU and a CUDA GPU) | `cpu`   |
+| `-d, --device <string>`    | Compute device: `cpu`, `gpu`, `gpu:N` (`cuda`, `cuda:N` are the same; CUDA on NVIDIA, Metal on macOS), `cpu+gpu`, `cpu+gpu:N` (the distance matrix's fill and FastCLARA's assignment pass split between the CPU and a CUDA GPU) | `cpu`   |
 | `--gpu-precision <string>` | GPU kernel precision. Alias: `--gpu-dtype`. Values: `auto`, `fp32`/`f32`/`float32`, `fp64`/`f64`/`float64`/`double` | `auto` |
-| `--gpu-share <number>`     | `cpu+gpu`: the GPU's share of the work, in [0, 1]; `-1` measures it at the start of the work. Any other device, and a share outside [0, 1], exit 1 | `-1` |
+| `--gpu-share <number>`     | `cpu+gpu`: the GPU's share of the work, in [0, 1]; `-1` measures it at the start of the work, and a value forces it. A share outside [0, 1], and a forced share on a device other than `cpu+gpu`, exit 1 | `-1` |
 
 On `--device gpu` the GPU fills the distance matrix, so the methods that read one
 run there: `pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara`, whose
@@ -348,7 +350,28 @@ there too). `onebatch` and `tadpole` compute on the CPU as they go, so they exit
 on `gpu` naming the methods that use it. A variant other than `standard`, a missing-data strategy, `--dtype
 float32`, and on Metal a GPU index other than 0 or `--gpu-precision fp64`, exit 1
 before the input is read; a build without a GPU backend refuses `gpu` naming the
-build flag. `--device hpc` exits 1: `dtwc_cl` computes where it runs. A SLURM job
+build flag. `--device hpc` exits 1: `dtwc_cl` computes where it runs.
+
+`--device cpu+gpu` (a CUDA build with a device) fills the distance matrix of those
+methods on the CPU's threads and the GPU at once, and splits FastCLARA's assignment
+pass between them; the samples of a smaller `clara` fill on the GPU alone. It exits 1
+naming why for `onebatch` and `tadpole` (they compute on the CPU as they go), for a
+streamed run, for a build without CUDA (Metal has no kernel for that pass), and for
+what `gpu` refuses. `--gpu-share <s>` sets the split. `-1`, the default, measures the
+share where the work starts; a value in [0, 1] forces it; any other value, and a
+forced one on another device, exits 1. One key serves both uses: for the distance
+matrix the share is a rate share (the GPU's rate over the two devices' sum, which the
+fill rounds to whole blocks of rows), for FastCLARA's pass the fraction of the series
+the GPU takes. A measured share is a timing: it differs a little between runs, and
+under `--gpu-precision fp32` can differ from run to run. `-v` and the run report print
+the share a run used and how it was set (`share 0.3413173652694611, recorded`,
+`calibrated` or `forced`); giving it back as `--gpu-share` repeats the run's split.
+A forced share does not reach everything in a fill: the slabs before the one that
+would measure take a recorded ratio (0.341 under FP64, 0.871 under FP32) in a forced run
+too, so `--gpu-share 0` is not "CPU only" there and `--gpu-share 1` not "GPU only";
+`--device cpu` and `--device gpu` are the ways to run one device. The rule, its
+limits and what the results guarantee are on the [Devices](../../guides/devices/)
+page. A SLURM job
 runs a `job.toml` with `dtwc_cl --config`: Python's `dtwcpp.cluster(..., device="hpc")`
 writes and submits one, through `bash scripts/slurm/slurm_remote.sh submit-job`
 ([SLURM](slurm.md)).

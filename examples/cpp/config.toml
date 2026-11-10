@@ -120,6 +120,9 @@ verbose-solver = false
 # of pam, kmedoids, mip, lrcore, hierarchical, and clara when its sample covers
 # every series; onebatch, tadpole and a smaller clara sample are refused. It
 # takes variant = "standard", missing-strategy = "error" and dtype = "float64".
+# "cpu+gpu" (or "cpu+gpu:N"; CUDA only) fills that matrix on the CPU's threads and
+# the GPU together and splits FastCLARA's assignment pass between them; onebatch,
+# tadpole and a streamed run are refused there too.
 # A run computes where it starts: to submit to SLURM use slurm_remote.sh.
 device = "cpu"
 
@@ -127,6 +130,11 @@ device = "cpu"
 # "fp32"/"f32"/"float32" (fastest, ~1e-5 relative error),
 # "fp64"/"f64"/"float64"/"double" (bit-identical to CPU).
 gpu-precision = "auto"
+
+# cpu+gpu only: the GPU's share of the work, -1 (default) measured where the work
+# starts, or a value in [0, 1] to force it, which repeats a run (-v prints the
+# share a run used). Any other device refuses a forced share.
+gpu-share = -1
 
 # --- Precomputed distance matrix ---
 # Uncomment to load a precomputed distance matrix:
