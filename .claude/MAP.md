@@ -9,7 +9,7 @@ No line numbers: grep for the symbol. Sizes are `git ls-files | xargs cat | wc -
 ```text
 text file / folder, Arrow IPC ──▶ io/read_data (dtwc_core) ─┐
 Parquet ──▶ io/read_arrow (dtwc_io) ────────────────────────┴▶ Data ─▶ Problem ─┬─ bind the DTW function once (dtw_dispatch)
-                                                                       ├─ fill_distance_matrix: CPU lanes | per pair | CUDA | Metal
+                                                                       ├─ fill_distance_matrix: CPU lanes | per pair | CUDA | Metal | cpu+gpu: both, per slab
                                                                        ├─ dist_by_ind(i, j): an O(1) read ◀── algorithms, MIP, scores
                                                                        └─ cluster() ─▶ ClusteringResult, or a free algorithm function
 Tier-1  device() → load() → Dataset → cluster() → run(Config) → Result       CLI  dtwc_cl → cli::bind → Config → run()
@@ -23,7 +23,7 @@ Python  cluster() → _dtwcpp_core._run → run(Config) → Result (estimators: 
 | base | `base/` (+ forwarders at `dtwc/` root), `types/`, `enums/` | 1.1k | errors (`Error` → `InvalidInput`, `DeviceError`, `IOError`, `SolverError`, `UndefinedScore`), settings (`index_t`), OpenMP helpers (`run_openmp`: per-thread failure slots, the lowest-index failure rethrown), `device()` (`env`), names tables, `Index` / `Range` |
 | core | `core/`, `warping*.hpp`, `soft_dtw.hpp`, `distance.hpp`, `Data.hpp`, `detail/decode_pair.hpp` | 5.4k | `dtw_kernel.hpp` (linear: two columns per pass; lanes: 128 bytes on AArch64 and under clang or GCC on x86-64, 64 under cl and elsewhere, each lane its own length when unbanded but under cl; banded; × Cost × Cell), `dtw_dispatch` (bind once), MSM, TWE, envelopes + LB_Keogh, `DistanceMatrix` (packed, heap or mapped `.dtwm`; llfio in `distance_matrix.cpp` and `io/arrow_ipc.cpp`), SHA-256, portable RNG, `kmedoids_pp`; `machine_facts` (`machine.{hpp,cpp}`: host, OS, CPU via cpuinfo, RAM via llfio's `total_memory`/`available_memory`, a GPU run's GPU, the build; `unknown` where not known; `dtwc_cl -v` prints it; `cpu_seconds()`, the process's CPU time) |
 | io | `io/`, `DataLoader.hpp`, `fileOperations.hpp`, `core/matrix_io.hpp` | 2.5k | text reader `read_data` (fast_float via `parse_number`), the Arrow IPC reader `arrow_ipc` (nanoarrow's IPC extension; a mapped file's series are views, `Data::owner()` keeps the bytes; a compressed, big-endian or misaligned batch is decoded, the batches in parallel, into arrays the owner holds, its buffers proven inside the body first), nanoarrow C-Data ingest; in `dtwc_io`: `read_arrow` (Parquet), `parquet_schema` (one layout rule), `parquet_chunk_reader` (row groups) |
-| backends | `cuda/`, `metal/` | 2.9k | GPU fills; CUDA also FastCLARA's assignment. CUDA's fill (`compute_distance_matrix_cuda`, its span overload from `Problem.cpp`) reads the series' spans, owned or viewed, padded by the caller's team (`ParallelFor`) into its staging and uploaded once (HG2); the plan prices that staging (`gpu_staging_bytes`), no copy. Metal's takes `vector<vector<double>>`: a view `Data` (Arrow IPC, decoded batches, `set_view_data`) uploads a `detail::owned_copy` made in `Problem.cpp`'s fill, priced by `run`'s plan beside its staging. CUDA's assignment (`compute_medoid_distances_cuda`) takes the series' spans, owned or viewed: a two-stream pipeline whose blocks the caller's team pads (`ParallelFor`), its host buffers `cuda::detail::medoid_blocks`' (HG1) |
+| backends | `cuda/`, `metal/` | 3.2k | GPU fills; CUDA also FastCLARA's assignment. CUDA reads the series where they lie, owned or viewed (an Arrow IPC mapping, decoded batches, `set_view_data`), through spans: no owned copy of them is made, and the plan (`gpu_staging_bytes`) prices the staging alone. Its fill is a session, `cuda::DistanceFill(N, series, opts, parallel, out)` + `rows(r0, r1, out)` (`compute_distance_matrix_cuda` is the session plus `rows(0, N)`): the caller's team (`ParallelFor`) pads every series into pinned staging, one upload, then flat launches of at most 2^27 pairs, each launch's slots copied to the packed matrix. Its assignment (`compute_medoid_distances_cuda`) is a two-stream pipeline: two series slots padded by the team and uploaded on a copy stream while the block before computes, three pinned distance slots the host reads in point order; blocks are `cuda::detail::medoid_blocks`' (`CLARAOptions::gpu_staging_bytes` shrinks them under an explicit `--ram-limit`). Every CUDA error names its call (`CUDA_CHECK`); `CachedHostBuffer` warns once on stderr where pinned memory is refused. `cpu+gpu` (`Device::CPU_GPU`) is CUDA's: the fill splits whole tile-rows per slab (`Problem.cpp` `fillDistanceMatrix_BruteForce`, `on_both`: thread 0 drives the session, the team runs the CPU's columns, one writer per slot; the share is a rate share, measured once or forced, `Problem::set_gpu_share`, result `fill_split()` / `core::FillSplit`) and the pass splits points (`fast_clara.cpp` `assign_hybrid`, `CLARAOptions::gpu_share`, `ClusteringResult::hybrid`). Metal's takes `vector<vector<double>>`: a view `Data` uploads a `detail::owned_copy` made in `Problem.cpp`'s fill, priced by `run`'s plan beside its staging; it has no assignment kernel and no `cpu+gpu` |
 | algorithms | `algorithms/`, `initialisation.*`, `scores.*` | 4k | FastPAM, FastCLARA (`fast_clara_parquet.cpp`: the stream, in `dtwc_io`), OneBatchPAM, hierarchical, TADPole, barycenter; seeding; seven scores |
 | mip | `mip/` | 1.5k | `mip-solvers`: HiGHS and Gurobi p-median (`build_p_median_model`), LR-core (`lagrangian_root`: dual, the subgradient or Kelley root on a `KelleyMaster`, reduced-cost fixing, branch and bound) |
 | session | `Problem.{hpp,cpp}`, `Problem_IO.cpp`, `checkpoint.*` | 2.3k | the `Problem` session: data, distance binding, matrix cache, clustering state, checkpoints; `apply(Config, Problem&)` |
@@ -89,7 +89,7 @@ own in `dtwcpp/_slurm/`) · `develop/` (contributor-doc sources) · `.claude/com
 ## 6. Target interface (design review §3)
 
 ```cpp
-dtwc::device("gpu");                                    // cpu | gpu | gpu:N (cuda[:N] alias); "hpc" throws, naming Python and slurm_remote.sh
+dtwc::device("gpu");                                    // cpu | gpu | gpu:N | cpu+gpu[:N] (cuda[:N] alias); "hpc" throws, naming Python and slurm_remote.sh
 auto data = dtwc::load("cycles/", 1);                   // skip_cols, skip_rows, delimiter, name; CSV/TSV, folder, Parquet, Arrow
 auto res  = dtwc::cluster(data, 8, "auto", 100);        // method, band, device, max_iter; any other key: dtwc::run(Config)
 res.labels(); res.medoids(); res.cost(); res.score("silhouette"); res.save("out/");
@@ -97,7 +97,7 @@ double d  = dtwc::distance::dtw(x, y, {.variant = DTWVariant::MSM, .msm_c = 0.5}
 ```
 
 ```python
-dtwc.device("hpc:gpu")                                   # cpu | gpu | gpu:N | hpc | hpc:gpu
+dtwc.device("hpc:gpu")                                   # cpu | gpu | gpu:N | cpu+gpu[:N] | hpc | hpc:gpu
 res = dtwc.cluster(dtwc.load("series.parquet"), k=50, band=400)          # kwargs == Config keys
 for k in range(3, 9): prob.set_n_clusters(k); prob.cluster()             # Tier 2: a k-sweep fills once
 est = dtwc.DTWClustering(n_clusters=3, n_init=3).fit(X)  # the one estimator
@@ -108,18 +108,21 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
 ```
 
 - `Config` is flat, keyed by the CLI long names; `cli::bind` is the one key table; TOML / YAML through CLI11.
-  `k` is required, `method = auto` (cpu: `pam` for N ≤ 5000, else `clara`; gpu: `pam`).
+  `k` is required, `method = auto` (cpu: `pam` for N ≤ 5000, else `clara`; gpu and cpu+gpu: `pam`).
 - `Result` in every language: `labels, medoids, cost, device, score(name), save(dir), distance_matrix` and the run
   report (`report`, MATLAB `Report`); C++ adds `method, iterations, converged`, Python and MATLAB `plot()`.
 - Tier-2 (C++, Python, MATLAB alike): `Problem` with the v1 fields; `set_distance / set_band / set_metric /
-  set_variant / set_missing_strategy / set_device / set_gpu_precision` each invalidate the matrix;
+  set_variant / set_missing_strategy / set_device / set_gpu_precision` each invalidate the matrix (`set_gpu_share`
+  does not: the distances do not depend on it);
   `fill_distance_matrix`, O(1) `dist_by_ind`, `cluster()` over nine `Method` values, `set_result`; algorithms
   `fast_pam, fast_clara, one_batch_pam, tadpole, build_dendrogram / cut_dendrogram, dtw_barycenter,
   barycenter_kmeans` (each language's set on the Tier 2 page); the seven scores. The `warping*.hpp` kernels stay
   public C++ and unchecked.
 - Devices: `cpu` (packed matrix in RAM, else the mapped `.dtwm`), `gpu[:N]` (CUDA, else Metal, else
   `DeviceError` naming the build flag and the artefact; never a zero matrix, never a CPU fallback),
-  `hpc[:gpu]` in Python and `slurm_remote.sh` only, submitting `job.toml`.
+  `cpu+gpu[:N]` (CUDA only: the matrix's fill and FastCLARA's pass on the CPU's threads and the GPU; `onebatch`,
+  `tadpole`, a stream and a build without CUDA are `DeviceError`; `gpu_share` / `--gpu-share` / `'GpuShare'` forces the
+  split, a forced share on another device is `InvalidInput`), `hpc[:gpu]` in Python and `slurm_remote.sh` only, submitting `job.toml`.
 - Persistence: one binary matrix file `.dtwm` (magic, version, N, SHA-256 fingerprint, packed doubles, NaN = not
   computed); the mapped cache is the checkpoint. CSV stays for interchange.
 
@@ -136,6 +139,11 @@ dtwc_cl -i cycles/ -k 8 --band 1500 --device gpu -o out        # or --config job
   new buffer joins the list, or it stays held). A list function sits in the source whose kernels use its buffers, so
   under LTO no other module refers to their `thread_local`s; the silhouettes' sums (k x 64 B a thread) stay off it, as
   both accessor forms tried moved their loops. A Cost must not re-enter its kernel.
+- **`cpu+gpu`'s split changes only time under FP64 L1.** There the GPU's distances equal the CPU's bit for bit (tested on
+  series of 17 to 256 steps), so the matrix, labels, medoids and cost equal both single-device runs' whatever the share.
+  Under FP32, squared L2 or series beyond 256 steps a distance is the other device's within the route bound (FP32: the
+  GPU's rows FP32's, the CPU's FP64's) and a label or medoid may differ only at a near-tie within it (Volkan 2026-11-09,
+  "Rounding errors are fine"). A forced share repeats a run; each slab, each point block and each slot has one writer.
 - The dense matrix has **no locks or atomics**; fills partition pairs. `resize()` wipes to NaN, so it stays
   conditional.
 - Bind the distance function **once**; every guard lives in the builder, outside the closure (a throw inside
