@@ -76,10 +76,44 @@ differ only where several optimal medoid sets exist, node counts and run times c
    byte for byte the CPU's, the `cpu` route unchanged): ☑ HG0 the bit-equality test (908741d9) + ☑ HG1 the two-stream
    pipeline for CLARA's assignment (cb509789, Opus; `report_hg1.md`: kernel bodies identical to the base, G8 byte for byte
    on views of 256, 200k and 1.1M series in RAM and streamed, FP64 and FP32; the plan's new staging terms, a cap that shrinks
-   the blocks under an explicit limit; one sanity run under load [inferred]: no slowdown), ☐ HG2 the fill's preload
-   (`brief_hg2.md`), ☐ HG3 the hybrid assignment, ☐ HG4 the hybrid fill, ☐ HG5 the device word in every language, the docs
-   HG1 made false (hg_plan.md §4b), CHANGELOG; one review at the unit's merge; its six bands (hg_plan.md §3) in item 4's
-   window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
+   the blocks under an explicit limit; one sanity run under load [inferred]: no slowdown), ☑ HG2 the CUDA fill reads a
+   view's series through spans (42f6b12d + abe91544, Opus; `report_hg2.md`: its gate 0 reran HG1's G8 on real mappings with
+   the CUDA tree llfio ON, every read line `mapped`, identical; the fill's matrix and the `.dtwm` byte for byte against the
+   base in 15 comparisons, a checkpoint resume identical; one upload from spans, since the launches hold every series on the
+   device: a tile-row pipeline would retile the kernels), ☑ HG3 the hybrid assignment (183a332a, a26c025e, 60b09c03,
+   da6708ca, Opus; `report_hg3.md`: `Device::CPU_GPU` with rule-4 refusals everywhere but FastCLARA's in-RAM pass, one
+   parallel region, `CLARAOptions::gpu_share`; FP64 L1 `cpu+gpu` = `cpu` = `gpu` by memcmp at four shares and by `cmp` on
+   v200k and v1100k, FP32 0 near-ties; the sanity run [inferred]: FP64 0.72 of the GPU, FP32 1.76× the GPU — a gross
+   slowdown, the serial 65,536-point CPU calibration block idling the GPU, which by hg_plan §3 stops the merge until),
+   ☑ HG3e the calibration's cost (abdab042: the GPU's leading 65,536-point block, a 4,096-point trailing CPU block, both
+   kept; the GPU share always [0, 65,536) then the rest, so a forced share repeats the bits; bands [inferred, loaded] FP32
+   v1100k hybrid 1.12× gpu against ≤ 1.2 and FP64 0.75× against ≤ 0.8: both HOLD) + ☑ HG3f (1ccf05be: run.cpp's in-RAM
+   CLARA through `fast_clara(prob, clara)`, so the plan's `gpu_staging_bytes` reach the run; a CLI cell that fails without
+   the routing line; identity 0 differ, mine too), ☑ HG4 the hybrid fill (Opus; HG4a–d 3a2544bd, 5aca61e1, 220cff44, a9d64427:
+   a CUDA fill session uploading once with row-range calls, whole tile-rows to either device, one region per slab,
+   `Problem::set_gpu_share` the one knob, `auto` on cpu+gpu = pam at any N; identity 0 differ, mine too; G8 FP64 `cpu+gpu` =
+   `cpu` = `gpu` by `cmp`; its FP32 sanity band FALSIFIED under the brief's floor-to-whole-tile-row split, 1.92× the GPU
+   against ≤ 1.2) + ☑ HG4e (2c87f2d3; `report_hg4.md`'s HG4e section: per slab the tile-row bound least in
+   max(GPU entries / s, CPU entries / (1 − s)), one s for the fill printed as itself, the calibrating slab found from the
+   bounds so a forced run repeats a measured one, the recorded ratio by precision; my run of its four cases 2,206
+   assertions; bands [inferred, 27 MATLAB processes]: FP32 0.90 and 0.89 × gpu against ≤ 1.2, FP64 0.72 and 0.68 × cpu
+   against ≤ 0.8 (gpu FP64 reference not rerun): both HOLD; a forced share does not reach a slab before the calibrating
+   one, kept and to be stated in the docs), ◐ HG5 the device word and `gpu_share` in every language (Volkan 11-09: "Key
+   in every language"), the pinned buffer's stderr warning ("stderr warning always"), the docs HG1–HG4 made false
+   (hg_plan.md §4b), CHANGELOG (Sonnet, launched 11-09 from 2c87f2d3, `brief_hg5.md`): its code half accepted 11-10
+   (a6983659 on pb/HG, `report_hg5.md`; the diff read by me, its gates the agent's: CUDA 102/102, clang 103/103, identity
+   1 differ = the `gpu-share` line, pytest 937, matlab_suite 156/156), its docs half 11-10 (68c99019; docs gates PASS,
+   Hugo not installed so the pages' build unrun), `test_cuda.py`'s two failures on a CUDA wheel stale since before HG and
+   fixed (80e656a1; 15 passed on the wheel);
+   ☑ RD (11-10, 3eb5c01d on `pb/RD` from pb/HG a6983659, worktree `wt/RD`, logs `C:/D/git/wt/tmp/RD/`): confirmed before
+   the fix, `for_each_data_line` over a stream buffer that throws after two lines returned 2 with no error (v1.0.0
+   shipped the loop; with an allocator refusing 1 MiB, `readFile`, `load_batch_file` and the matrix's `read_csv` returned
+   0 series / 0x0); `text_io_detail::read_line` puts badbit in the exception mask for the `getline`, `bad_alloc` leaves
+   as itself, another failure is an `IOError` naming file and row; its test bites; clang 103/103, identity as pb/HG's
+   (the agent's gates; the diff read by me); merges into pb/HG after the review hands the CUDA tree back; left: a
+   failed `fread` mid-file is still end of file in the MSVC STL's and libc++'s filebuf (no badbit to see), pytest on
+   the merged tree; to verify before the merge: the GPU read check in `test_run_out_of_memory` once RD is in (HG5b's GPU `ways_out` edits are unexercised), MATLAB's
+   forced-share branch (no CUDA MEX tree); ◐ one review, launched 11-10 at 80e656a1 (`brief_hg_review.md`, `wt/HGR`); its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
    into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
    gate runs on the merged tree, not the branches alone. Until HG merges, S5's route ships.

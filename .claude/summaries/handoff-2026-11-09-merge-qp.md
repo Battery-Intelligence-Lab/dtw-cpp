@@ -84,9 +84,14 @@
 - DC merged 5b01d1fe (`report_dc.md`; my identity run and its MEX tree 104/104). HG0 908741d9 and HG1 cb509789 accepted on
   `pb/HG` (`report_hg1.md`; my checks: every `__global__` kernel body identical to the base by `orch_kernels_cmp.py`, no
   hot-loop file in the diff, identity 0 differ on its clang binary, the G8 log's six `identical` lines). HG merges once.
-  Then (my chain `orch_hg_sync.sh`): the main `build/` rebuilt on design-2.0's tip and its ctest; design-2.0 merged into
-  `pb/HG`, that tree rebuilt, ctest and the identity gate against the fresh main binary; `brief_hg2.md` takes the merge's
-  hash as `<HG1-TIP>` and HG2 launches on Opus.
+  Then (my chain `orch_hg_sync.sh`, green): the main `build/` rebuilt on design-2.0's tip, 103/103 (the identity base is
+  current again); design-2.0 merged into `pb/HG` (8892f9b2, clean; MAP differs by HG1's row only; `run.cpp` holds DC's
+  guard and HG1's view path), 103/103, identity 0 differ. HG2 accepted on `pb/HG` (42f6b12d, abe91544; `report_hg2.md`;
+  my checks: kernel bodies identical to the base, no lock or atomic in the diff, identity 0 differ, the CUDA tree's cache
+  llfio ON, the G8 logs' 17 `identical` lines). HG3 launched from `brief_hg3.md` (base abe91544, Opus) after the advisor's
+  four fixes to it: rule 4 refusals for every route without a hybrid, one parallel region without nesting, the
+  `CLARAOptions::gpu_share` hook and its determinism test, the enum value bound in both bindings in the same commit.
+  Drafts for the next steps: `brief_hg5.md` (placeholder `<HG4-TIP>`); HG4's brief is written from HG3's report.
 
 ## Decisions
 
