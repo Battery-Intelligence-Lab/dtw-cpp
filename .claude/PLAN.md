@@ -102,12 +102,14 @@ differ only where several optimal medoid sets exist, node counts and run times c
    in every language"), the pinned buffer's stderr warning ("stderr warning always"), the docs HG1–HG4 made false
    (hg_plan.md §4b), CHANGELOG (Sonnet, launched 11-09 from 2c87f2d3, `brief_hg5.md`): its code half accepted 11-10
    (a6983659 on pb/HG, `report_hg5.md`; the diff read by me, its gates the agent's: CUDA 102/102, clang 103/103, identity
-   1 differ = the `gpu-share` line, pytest 937, matlab_suite 156/156), the docs half sent back to the same agent;
+   1 differ = the `gpu-share` line, pytest 937, matlab_suite 156/156), its docs half 11-10 (68c99019; docs gates PASS,
+   Hugo not installed so the pages' build unrun), `test_cuda.py`'s two failures on a CUDA wheel stale since before HG and
+   fixed (80e656a1; 15 passed on the wheel);
    ◐ RD (11-10, `pb/RD` from pb/HG, worktree `wt/RD`): HG5 saw a capped text read return 0 series ("dataset is empty")
    where it should say out of memory; my reading, to be confirmed, is `fileOperations.hpp` `for_each_data_line` taking a
    `getline` that failed on `bad_alloc` for end of file (a short dataset, no error); to verify before the merge:
-   `test_cuda.py`'s two failures on a CUDA wheel (stale tests or HG's), the GPU read check in `test_run_out_of_memory`
-   once RD is in; ☐ one review at the unit's merge (`brief_hg_review.md`); its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
+   the GPU read check in `test_run_out_of_memory` once RD is in (HG5b's GPU `ways_out` edits are unexercised), MATLAB's
+   forced-share branch (no CUDA MEX tree); ◐ one review, launched 11-10 at 80e656a1 (`brief_hg_review.md`, `wt/HGR`); its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
    into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
    gate runs on the merged tree, not the branches alone. Until HG merges, S5's route ships.
