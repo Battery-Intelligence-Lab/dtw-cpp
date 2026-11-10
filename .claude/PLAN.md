@@ -69,7 +69,7 @@ differ only where several optimal medoid sets exist, node counts and run times c
    design risks ride here (its design §7, risks 4 and 7): the mapped route is measured on a local NVMe and on WSL2 only
    (glibc's retention after a block's trim and llfio's prefetch unmeasured; a WSL2 result may not carry to native Linux),
    and a mapped file on ARC's file systems is an ARC run (item 7).
-5. ◐ **HG** [here]: the GPU on mapped series as a batch pipeline, and CPU + GPU together (design
+5. ☑ **HG merged** bfdb9c3a (11-10, `--no-ff`, with RD) [here]: the GPU on mapped series as a batch pipeline, and CPU + GPU together (design
    `C:/D/git/wt/tmp/MM/hetero.md`; plan `C:/D/git/wt/tmp/HG/hg_plan.md`; Volkan 10-11 "own unit after MM", 11-03 "MM and HG
    both in 2.0", 11-09 "All of HG in 2.0", then "Build on the design's predictions; measure advisory", the device word
    "cpu+gpu", "Rounding errors are fine" for the hybrid). Steps on `pb/HG`, each merging on correctness (GPU FP64 results
@@ -98,7 +98,7 @@ differ only where several optimal medoid sets exist, node counts and run times c
    bounds so a forced run repeats a measured one, the recorded ratio by precision; my run of its four cases 2,206
    assertions; bands [inferred, 27 MATLAB processes]: FP32 0.90 and 0.89 × gpu against ≤ 1.2, FP64 0.72 and 0.68 × cpu
    against ≤ 0.8 (gpu FP64 reference not rerun): both HOLD; a forced share does not reach a slab before the calibrating
-   one, kept and to be stated in the docs), ◐ HG5 the device word and `gpu_share` in every language (Volkan 11-09: "Key
+   one, kept and to be stated in the docs), ☑ HG5 the device word and `gpu_share` in every language (Volkan 11-09: "Key
    in every language"), the pinned buffer's stderr warning ("stderr warning always"), the docs HG1–HG4 made false
    (hg_plan.md §4b), CHANGELOG (Sonnet, launched 11-09 from 2c87f2d3, `brief_hg5.md`): its code half accepted 11-10
    (a6983659 on pb/HG, `report_hg5.md`; the diff read by me, its gates the agent's: CUDA 102/102, clang 103/103, identity
@@ -116,15 +116,18 @@ differ only where several optimal medoid sets exist, node counts and run times c
    (cmp-identical to the pre-HG CUDA binary in 7 configurations); its blocker fixed d989585c (Tier-2 `one_batch_pam` /
    `tadpole` on a Problem refuse cpu+gpu and a forced share), its should-fix 6d036c8d (the fill's line says which ratio
    split the slabs before the calibrating one; that geometry now a fixture), nits N1, N3, N5, N6 fixed, the GPU read
-   check in 447bfd52 (three runs; RD's cause was the anomaly's); each fix shown to bite by mutation; ◐ the unit's
-   gates on 9cecafa3 (design-2.0 merged in). Open after the merge: a Tier-2 Problem on `gpu` still runs onebatch and
+   check in 447bfd52 (three runs; RD's cause was the anomaly's); each fix shown to bite by mutation; ☑ the unit's
+   gates on 9cecafa3 (design-2.0 merged in; run by me): CUDA ctest -j1 102/102 (`test_cuda_correctness` ran, device
+   matrix gpu=cuda device=present 38/38), clang 103/103, MEX 104/104 with `matlab_suite` 156/156, WSL GCC 102/102
+   (`test_io_error_contract` ran on libstdc++) and its Arrow tree 105/105, fresh-venv pytest 937 passed 20 skipped, a
+   CUDA wheel's `test_contract_parity` + `test_cuda` 159 passed, identity 153 files 1 differ (the `gpu-share` line of
+   `--print-config`), check_docs PASS (531 flags), check_pins 0, generated docs current; logs `C:/D/git/wt/tmp/HG/hgU_*`
+   and WSL `~/mm/hgU/`. Not run: Metal, a CUDA MEX, the docs site's build (no Hugo here), any timing. Open after the merge: a Tier-2 Problem on `gpu` still runs onebatch and
    tadpole on the CPU (two pages name the gap; closing it is its own step); cpu+gpu on a mapped fill whose slabs hold
    one tile-row gives each slab whole to one device (rows past about 1,024 L for 1 GiB slabs: a cap on the tile-row
    height is a probe for item 4's window); MATLAB's forced-share branch unrun (no CUDA MEX tree); a mapped resume
-   under cpu+gpu probed once by the review, no fixture; its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
-   true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
-   into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
-   gate runs on the merged tree, not the branches alone. Until HG merges, S5's route ships.
+   under cpu+gpu probed once by the review, no fixture; its six bands (hg_plan.md §3) in item 4's window. The identity gate's base binary (`build/bin/dtwc_cl.exe`) pre-dates this merge: rebuild it before the next unit
+   uses it.
 6. [CI] design-2.0's tip green on Volkan's push: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and
    `matlab-mex.yml` on Linux, macOS and Windows, the three unit jobs, `documentation.yml`; whether python-wheels' Linux
    jobs passed before TL (e3cba47d). The Mac: no Metal has been built since S5 (G8b lines: the 11-09 handoff). macOS
