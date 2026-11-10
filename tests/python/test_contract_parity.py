@@ -251,9 +251,10 @@ def test_cpu_gpu_is_a_device_word_and_refused_as_cpp_refuses_it():
         dtwcpp.device("cpu")
     assert refusal(lambda: dtwcpp.Problem("hybrid", device="cpu+gpu")) == oracle
     assert refusal(lambda: dtwcpp.Problem("hybrid").set_device("cpu+gpu:1")) == oracle
-    assert refusal(lambda: dtwcpp.cluster(_SERIES, 2, device="cpu+gpu", method="pam")) == oracle
     # test.gpu() says of the hybrid what the build says: a CUDA build with a device, else why not.
     report = dtwcpp.test.gpu()
+    if report["backend"] != "cuda":  # a CUDA build selects it and refuses a missing device at the run, as for gpu
+        assert refusal(lambda: dtwcpp.cluster(_SERIES, 2, device="cpu+gpu", method="pam")) == oracle
     if report["hybrid"]:
         assert oracle is None and report["hybrid_reason"] == ""
     else:
