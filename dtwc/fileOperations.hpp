@@ -24,7 +24,10 @@
 #include <cstdlib>    // for size_t
 #include <filesystem> // for operator<<, path, operator/, directory_iterator
 #include <iostream>   // for operator<<, ifstream, basic_ostream, operator>>
+#include <exception>  // for std::exception
+#include <ios>        // for std::ios_base
 #include <limits>
+#include <new>        // for std::bad_alloc
 #include <optional>
 #include <string>     // for string, getline, to_string
 #include <utility>    // for pair
@@ -359,19 +362,45 @@ std::optional<T> parse_series_value_row(std::string_view line,
   return parse_numeric_field<T>(fields[column], path, row, column + 1);
 }
 
+/// std::getline for the readers' loops: true when a line was read, false at the end of the file, and a failure of
+/// the stream is an exception, never the end of the file. std::getline catches what the stream's buffer throws
+/// (a std::bad_alloc growing `line`, a read error) and sets badbit, which `while (std::getline(...))` read as the end
+/// of the file: a read that failed mid-file returned the rows before the failure, with no error. With badbit in the
+/// exception mask the stream rethrows the exception instead ([istream.unformatted]; libstdc++, libc++ and the MSVC
+/// STL alike). A std::bad_alloc leaves as it is, memory the system refused being no fault of the file; any other
+/// failure is an IOError naming the file and `row`, the row being read. The caller's exception mask is restored when
+/// the read returns; after an exception the stream is failed, and its mask is not restored.
+inline bool read_line(std::istream &in, std::string &line, const fs::path &path, std::size_t row)
+{
+  const auto caller_mask = in.exceptions();
+  try {
+    in.exceptions(caller_mask | std::ios_base::badbit); // throws, as the read does, on a stream bad already
+    const bool read = static_cast<bool>(std::getline(in, line));
+    in.exceptions(caller_mask);
+    return read;
+  } catch (const std::bad_alloc &) {
+    throw;
+  } catch (const std::exception &e) {
+    throw IOError(
+      "Error in delimited text file: '" + path_to_utf8(path) + "' row " + std::to_string(row)
+      + " could not be read: " + e.what() + ".");
+  }
+}
+
 /// The line loop of every text reader. Skips `start_row` lines, then calls
 /// `on_line(line, row)` (row 1-based, counting skipped lines) for each data
 /// line until `Ndata` lines were produced (-1 = all); returns that count.
 /// Blank lines after the last data line are ignored. A blank line followed by
 /// data is an error: it would become an empty series in a batch file and
-/// vanish, shifting every later value, in a folder file.
+/// vanish, shifting every later value, in a folder file. A failure of the
+/// stream is an exception (read_line), never a shorter count.
 template <typename OnLine>
 std::size_t for_each_data_line(std::istream &in, const fs::path &path,
                                index_t start_row, index_t Ndata, OnLine &&on_line)
 {
   std::string line;
   std::size_t row = 0, produced = 0, blank_row = 0;
-  while (ndata_wants_more(Ndata, produced) && std::getline(in, line)) {
+  while (ndata_wants_more(Ndata, produced) && read_line(in, line, path, row + 1)) {
     if (!line.empty() && line.back() == '\r') line.pop_back(); // CRLF reads as LF
     ++row;
     if (static_cast<index_t>(row) <= start_row) continue; // a header row
