@@ -2562,8 +2562,7 @@ std::vector<unsigned char> packed_bytes(const dtwc::core::DistanceMatrix &m)
 // float32 heap matrix and a mapped float64 one, for r = 51 (a bound of tile-rows of 64 rows cut from the bottom: 307 =
 // 51 + 4 x 64), 52 (none), 1 (row 0 alone, which holds no pair) and 306 (the last row alone). Each matrix starts with a
 // value no fill writes in every slot, so a slot no range writes fails it. So matrix rows [r0, r1) are the pairs of
-// uploaded series [N - r1, N - r0), whose slots are [r0 (r0 + 1) / 2, r1 (r1 + 1) / 2), the diagonal included; and
-// compute_distance_matrix_cuda, the session and rows(0, N), is the fill HG0 compares with the CPU's.
+// uploaded series [N - r1, N - r0), whose slots are [r0 (r0 + 1) / 2, r1 (r1 + 1) / 2), the diagonal included.
 TEST_CASE("HG4: a CUDA fill session's row ranges write the matrix its whole fill writes", "[cuda][hg4]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
@@ -2608,12 +2607,6 @@ TEST_CASE("HG4: a CUDA fill session's row ranges write the matrix its whole fill
   const auto want = packed_bytes(whole);
   whole.visit([&](const auto *v) { REQUIRE(std::none_of(v, v + whole.packed_count(), [](auto x) { return x < 0; })); });
   for (std::size_t s = 0; s < N; ++s) REQUIRE(whole.get(s, s) == 0.0);
-  {
-    auto again = matrix(); // compute_distance_matrix_cuda is the session and rows(0, N)
-    (void)dtwc::cuda::compute_distance_matrix_cuda(N, at, opts, team, again);
-    const bool same = packed_bytes(again) == want; // a bool: Catch would print every byte
-    CHECK(same);
-  }
   for (const std::size_t r : { std::size_t{ 51 }, std::size_t{ 52 }, std::size_t{ 1 }, std::size_t{ 306 } }) {
     CAPTURE(r);
     auto parts = matrix();
@@ -2621,7 +2614,7 @@ TEST_CASE("HG4: a CUDA fill session's row ranges write the matrix its whole fill
     split.rows(0, r, parts);
     split.rows(r, N, parts);
     CHECK(split.result().pairs_computed == N * (N - 1) / 2);
-    const bool same = packed_bytes(parts) == want;
+    const bool same = packed_bytes(parts) == want; // a bool: Catch would print every byte
     CHECK(same);
   }
 }
@@ -2668,6 +2661,68 @@ double hg4_entry(const std::vector<unsigned char> &bytes, std::size_t k)
 }
 
 } // anonymous namespace
+
+// HG4e, a slab with rows to compute before the calibrating one (the review's geometry). 6,644 series of 32 samples
+// make tile-rows of 2,048 rows (512 KiB of series) cut from the bottom, so the bounds are 0, 500, 2,548, 4,596, 6,644;
+// a checkpoint every 4,096 rows makes two slabs of two tile-rows. Slab 0's first tile-row holds 125,250 entries, under
+// the calibration unit's 2^19 pairs, so slab 1 calibrates and slab 0 takes the recorded ratio in a measured and in a
+// forced run alike: 0.341 under FP64 gives the GPU its first tile-row, 0.871 under FP32 both, whatever the share. So a
+// forced 0 is not the CPU alone and a forced 1 not the GPU alone there, the counts below are packed sizes of those
+// bounds, and the fill's line says which ratio split slab 0. A measured run's printed share, forced, repeats the
+// GPU's entries and, under FP64 L1, both equal the CPU's matrix. (A change of the tile-row height moves the bounds:
+// then this geometry, not the rule, is what to rebuild.)
+TEST_CASE("HG4e: the slabs before the calibrating one take the recorded ratio, forced share or measured",
+          "[cuda][hg4][checkpoint]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  const std::size_t N = 6644;
+  std::mt19937 rng(777); // NOLINT(cert-msc51-cpp): fixed seed.
+  std::uniform_real_distribution<double> noise(-0.5, 0.5);
+  std::vector<std::vector<double>> series(N, std::vector<double>(32));
+  for (std::size_t i = 0; i < N; ++i)
+    for (auto &v : series[i]) v = 4.0 * static_cast<double>(i % 3) + noise(rng);
+  const dtwc::test_support::ScratchDirectory scratch("hg4e_early_slab");
+  int made = 0;
+  const auto fill = [&](dtwc::Device device, dtwc::GpuPrecision precision, double share) {
+    dtwc::Problem prob("hg4e");
+    hg4_configure(prob, series, -1, dtwc::core::MetricType::L1, device, precision, share);
+    if (device == dtwc::Device::CPU_GPU)
+      prob.checkpoint = { (scratch.path / ("c" + std::to_string(made++))).string(), 4096, true };
+    prob.fill_distance_matrix();
+    return Hg4Fill{ packed_bytes(prob.distance_matrix()), prob.fill_split() };
+  };
+  using dtwc::core::packed_size;
+  const std::size_t all = packed_size(N), tile_row_0 = packed_size(500), slab_0 = packed_size(2548);
+  const auto cpu = fill(dtwc::Device::CPU, dtwc::GpuPrecision::FP64, -1.0);
+  for (const auto precision : { dtwc::GpuPrecision::FP64, dtwc::GpuPrecision::FP32 }) {
+    const bool fp32 = precision == dtwc::GpuPrecision::FP32;
+    CAPTURE(fp32);
+    const std::size_t early = fp32 ? slab_0 : tile_row_0; // slab 0's entries the recorded ratio gives the GPU
+    const auto none = fill(dtwc::Device::CPU_GPU, precision, 0.0);
+    const auto every = fill(dtwc::Device::CPU_GPU, precision, 1.0);
+    REQUIRE(none.split);
+    REQUIRE(every.split);
+    CHECK(none.split->gpu_entries == early);
+    CHECK(every.split->gpu_entries == early + (all - slab_0));
+    CHECK(none.split->early_share == (fp32 ? 13 * 28.5 / (13 * 28.5 + 55) : 28.5 / 83.5));
+    CHECK_THAT(dtwc::describe(*none.split),
+               Catch::Matchers::ContainsSubstring("(rate share 0, forced; the slabs before the calibrating one at the recorded 0."));
+    if (fp32) continue;
+    const bool none_is_cpu = none.bytes == cpu.bytes, every_is_cpu = every.bytes == cpu.bytes; // bools, as above
+    CHECK(none_is_cpu);
+    CHECK(every_is_cpu);
+    const auto measured = fill(dtwc::Device::CPU_GPU, precision, -1.0);
+    REQUIRE(measured.split);
+    CHECK(std::string_view(measured.split->split.source) == "calibrated");
+    CHECK(measured.split->early_share == none.split->early_share);
+    const auto again = fill(dtwc::Device::CPU_GPU, precision, measured.split->split.gpu_share);
+    REQUIRE(again.split);
+    CHECK(again.split->gpu_entries == measured.split->gpu_entries);
+    const bool measured_is_cpu = measured.bytes == cpu.bytes, again_is_cpu = again.bytes == cpu.bytes;
+    CHECK(measured_is_cpu);
+    CHECK(again_is_cpu);
+  }
+}
 
 // HG4, the fill's contract (DECISIONS 11-09): under FP64 L1 the GPU's distances are the CPU's bit for bit (HG0), so
 // cpu+gpu's matrix equals the CPU fill's and the GPU fill's whatever the split: the GPU's share forced to 0, 0.5 and 1

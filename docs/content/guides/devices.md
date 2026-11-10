@@ -165,20 +165,27 @@ A forced share does not reach every slab of a fill:
 - The slabs before the calibrating one take the recorded ratio in a forced run too (so
   that a measured run's printed share repeats it). `--gpu-share 0` is not "CPU only"
   there and `1` not "GPU only"; `--device cpu` and `--device gpu` are the ways to run
-  one device.
+  one device. A fill with such a slab says so in its line, measured or forced: `(rate
+  share 0, forced; the slabs before the calibrating one at the recorded
+  0.3413173652694611)`.
 - Where no slab holds both calibration units, the forced share applies to every slab.
 - In the calibrating slab any share above 0 keeps the GPU's calibration tile-rows (a
   forced 0.001 still gives the GPU those).
 - A slab of one tile-row goes whole to one device, the one the share favours (the GPU
   above a half, the CPU at or below it): a checkpoint interval at or below the tile-row's
-  height, a mapped fill's last slabs and a small N give the GPU everything or nothing
-  there. At the recorded ratio that is the CPU under FP64 and the GPU under FP32.
+  height and a small N give the GPU everything or nothing there, and so do a mapped
+  fill's slabs from the row where two tile-rows no longer fit a slab. A tile-row of
+  `h` rows at row `r` holds `h * r` entries, so that is `r` above the slab's bytes over
+  `2 * h` entries: with 1 GiB slabs, a float64 matrix and float64 series of L samples
+  (`h` = 65,536 / L), the rows past about 1,024 L, which is most of a matrix many times
+  that tall. At the recorded ratio that is the CPU under FP64 and the GPU under FP32.
   `-v` reports how many entries the GPU filled.
 
 ### What the split changes
 
 Under FP64 and L1 the GPU's distances equal the CPU's bit for bit in the tests that compare
-them (series of 17 to 256 steps: the warp and register-tile kernels), so the matrix equals the CPU's
+them (series of 17 to 211 steps, on the warp and register-tile kernels, which serve series of up to
+256 steps), so the matrix equals the CPU's
 and the GPU's whatever the split, and labels, medoids and cost equal both single-device
 runs'. Beyond that (FP32, squared L2, series of more than 256 steps) a distance of
 one device is within the route bound of the other's, not equal to it: the matrix mixes

@@ -35,12 +35,15 @@ struct HybridSplit {
 /// first slab with rows to compute as the GPU's entries of that slab over its entries; forced again, it repeats every
 /// slab's split, which rounds it to whole tile-rows) and, where that slab measured it, both rates in pairs a second.
 /// `entries` is the packed triangle's, its diagonal counted. `gpu_fp32`: the GPU computed in float32, so its rows are
-/// float32's and the CPU's float64's.
+/// float32's and the CPU's float64's. `early_share`: the recorded ratio that split the slabs with rows to compute before
+/// the calibrating one, in a measured and in a forced run alike (so `split.gpu_share` did not reach them); -1 where
+/// the fill had no such slab.
 struct FillSplit {
   HybridSplit split;
   std::size_t gpu_entries = 0;
   std::size_t entries = 0;
   bool gpu_fp32 = false;
+  double early_share = -1.0;
 };
 
 /// Result of a clustering algorithm run.

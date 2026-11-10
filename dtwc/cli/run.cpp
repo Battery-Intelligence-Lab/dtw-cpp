@@ -983,6 +983,9 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   if (result.hybrid)
     stage.note(std::string(progress_label(method)) + ", any distances it computes inside; "
                + algorithms::describe(*result.hybrid, result.labels.size()));
+  else if (!fills_first && prob.fill_split()) // the fill inside this stage (hierarchical, mip, lrcore)
+    stage.note(std::string(progress_label(method)) + ", any distances it computes inside; "
+               + dtwc::describe(*prob.fill_split()));
   if (config.verbose) {
     std::cout << progress_label(method);
     if (method == Method::PAM)

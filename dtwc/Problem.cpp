@@ -239,6 +239,8 @@ std::string describe(const core::FillSplit &fill)
   if (fill.split.gpu_rate > 0)
     text << std::setprecision(4) << ": the CPU's team " << fill.split.cpu_rate << " and the GPU "
          << fill.split.gpu_rate << " pairs a second";
+  if (fill.early_share >= 0)
+    text << "; the slabs before the calibrating one at the recorded " << std::setprecision(17) << fill.early_share;
   text << "), the CPU's team the rest";
   return text.str();
 }
@@ -489,6 +491,7 @@ void Problem::refresh_distance_matrix()
   }
   distMat = core::DistanceMatrix(0, matrix_dtype_); // empty, of the width every resize keeps
   filled_ = false;
+  fill_split_.reset(); // the split of the fill that made the matrix dropped here
   rebind_dtw_fn(); // series edited in place may have new lengths (the WDTW table)
 }
 
@@ -1213,7 +1216,9 @@ void Problem::fillDistanceMatrix_BruteForce()
           from = u.ka;
         }
         // Before the calibrating slab, the recorded ratio; with none, s everywhere (forced, or the recorded ratio).
-        const double s_here = calibrating + 1 < slabs.size() && slab < calibrating ? recorded : share;
+        const bool early = calibrating + 1 < slabs.size() && slab < calibrating;
+        const double s_here = early ? recorded : share;
+        if (early) hybrid.early_share = recorded; // said in the fill's line: the share printed did not split this slab
         const auto cost = [&](size_t k) { // the slab's predicted time, its entries over each device's share
           const auto on_gpu = static_cast<double>(entries(kw, k)), on_cpu = static_cast<double>(entries(k, k1));
           return std::max(on_gpu == 0 ? 0.0 : on_gpu / s_here, on_cpu == 0 ? 0.0 : on_cpu / (1.0 - s_here));
@@ -1335,8 +1340,8 @@ void Problem::fill_distance_matrix()
     written_ = false;
   }
   if (filled_) return;
+  fill_split_.reset(); // set again by a cpu+gpu fill; a refused fill leaves none
   validate_fill_request("Problem::fill_distance_matrix");
-  fill_split_.reset(); // set again by a cpu+gpu fill
 
   // Each fill below sizes the matrix (deferred from set_data /
   // refresh_distance_matrix) only after its own refusals; a mapped matrix is

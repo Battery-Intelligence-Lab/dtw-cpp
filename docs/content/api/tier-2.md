@@ -104,7 +104,8 @@ forced share on another device is `InvalidInput` when the `Problem` fills or clu
 `std::optional<core::FillSplit>`: `split` (a `core::HybridSplit`: the `gpu_share`
 the fill used, the two rates in pairs a second where it measured them, and `source`,
 `"forced"`, `"calibrated"` or `"recorded"`), `gpu_entries` and `entries` (the packed
-triangle's, its diagonal counted) and `gpu_fp32` (the GPU's rows are float32); it is
+triangle's, its diagonal counted), `gpu_fp32` (the GPU's rows are float32) and `early_share`
+(the recorded ratio that split the slabs before the calibrating one, -1 with no such slab); it is
 empty before the first fill and after a fill on another device. `dtwc::describe(fill_split)` is
 the `-v` text, and a FastCLARA pass's `ClusteringResult::hybrid` (a `HybridSplit`) has
 `dtwc::algorithms::describe(split, n_points)`. Python and MATLAB bind neither: the run
