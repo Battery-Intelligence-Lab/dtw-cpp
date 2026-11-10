@@ -37,7 +37,8 @@ void validate_streaming_clara_plan(
   const ClaraPlan &plan, std::string_view caller);
 
 /** The bytes FastCLARA's pass holds beside the series, in RAM or streamed:
- *  every sample's labels and its nearest distances, a block of points at a time. */
-[[nodiscard]] std::size_t clara_pass_bytes(const ClaraPlan &plan, std::size_t n_samples);
+ *  every sample's labels and its nearest distances, a block of points at a time; on cpu+gpu (`hybrid`) also every
+ *  nearest distance of the CPU's share, held until the pass adds them in point order, priced as every point's. */
+[[nodiscard]] std::size_t clara_pass_bytes(const ClaraPlan &plan, std::size_t n_samples, bool hybrid = false);
 
 } // namespace dtwc::algorithms::detail

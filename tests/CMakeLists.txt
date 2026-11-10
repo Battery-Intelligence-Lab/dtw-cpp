@@ -319,11 +319,12 @@ if(TARGET dtwc_cl)
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_device_matrix.cmake"
         ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>"
              "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
+             "-DSTREAM_INPUT=${CMAKE_CURRENT_SOURCE_DIR}/data/reader/clara_256_lz4.arrow"
              "-DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_all_fields.toml"
              "-DDEFAULTS=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_defaults.toml"
              "-DGPU=${_dtwc_cl_gpu}" "-DHAS_HIGHS=${_dtwc_cl_highs}"
              "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-device-matrix"
-        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=48 skips=0"
+        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=49 skips=0"
         LABELS integration cli SERIAL TIMEOUT 300)
 endif()
 

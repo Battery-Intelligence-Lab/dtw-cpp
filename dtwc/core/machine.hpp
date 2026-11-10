@@ -44,8 +44,8 @@ struct MachineFacts
   std::string text() const;
 };
 
-/// This computer's facts for a run on `device` (`device_index`: the GPU's ordinal, `gpu:N`); the GPU only for
-/// Device::GPU: CUDA's GPU `device_index`, else gpu_info()'s line.
+/// This computer's facts for a run on `device` (`device_index`: the GPU's ordinal, `gpu:N`); the GPU only for a
+/// device that uses one (gpu, cpu+gpu): CUDA's GPU `device_index`, else gpu_info()'s line.
 MachineFacts machine_facts(Device device = Device::CPU, int device_index = 0);
 
 /// The physical memory of this computer, in bytes: llfio's total, which available_memory() never exceeds; 0 when

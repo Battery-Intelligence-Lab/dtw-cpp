@@ -11,6 +11,7 @@
 #include "../core/dtw_kernel.hpp"
 #include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
+#include "../base/env.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
 
@@ -234,6 +235,13 @@ core::ClusteringResult one_batch_pam(Problem& prob,
                                      const OneBatchPAMOptions& options,
                                      OneBatchPAMStats* stats)
 {
+  // A Problem on cpu+gpu, or one with a forced share, asks for a split this method has no part in (it computes its
+  // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word.
+  if (prob.device().first == Device::CPU_GPU)
+    throw DeviceError(dtwc::detail::hybrid_as_it_goes_message("one_batch_pam", "onebatch"));
+  if (prob.gpu_share() != -1.0)
+    throw InvalidInput(dtwc::detail::share_ignored_message(
+      "one_batch_pam", "the distance matrix's fill and FastCLARA's pass", prob.device().first));
   const std::size_t n = prob.size();
   validate_options(n, options);
   const index_t k = options.n_clusters;

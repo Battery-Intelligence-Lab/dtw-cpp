@@ -1,12 +1,14 @@
 /**
  * @file test_io_error_contract.cpp
- * @brief The file-error rule (a file failure is an IOError) at three seams where it had slipped.
+ * @brief The file-error rule (a file failure is an IOError) at four seams where it had slipped.
  *
  * @details
  *  - Tier-1 load: every reader error became an `IOError`, and `load` added its
  *    `load: failed to read '<path>': ` prefix only to other exceptions, so the
  *    prefix vanished. The type stays `IOError`; the prefix is back.
  *  - `ignoreBOM`: a partial byte-order mark that cannot be handed back named no file.
+ *  - The text reader's line loop: a stream that failed mid-file ended the loop as a
+ *    file that ended there, and the rows before the failure came back as the dataset.
  *  - `dtwc_cl`: Parquet input on a build without Arrow was `InvalidInput`. A
  *    format this build cannot read is `IOError`; Arrow IPC every build reads.
  *
@@ -29,10 +31,13 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <ios>
 #include <istream>
+#include <new>
 #include <optional>
 #include <streambuf>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <system_error>
 
@@ -65,6 +70,30 @@ public:
   explicit OneByteAtATime(std::string bytes) : bytes_(std::move(bytes)) {}
 };
 
+/// Serves `text` whole, then fails as a stream buffer does: std::bad_alloc, the memory the system refused, or
+/// std::ios_base::failure, which libstdc++'s filebuf throws for a read error.
+class FailsAfter : public std::streambuf
+{
+  std::string text_;
+  bool out_of_memory_;
+  bool served_ = false;
+
+protected:
+  int_type underflow() override
+  {
+    if (!served_) {
+      served_ = true;
+      setg(text_.data(), text_.data(), text_.data() + text_.size());
+      return traits_type::to_int_type(*gptr());
+    }
+    if (out_of_memory_) throw std::bad_alloc();
+    throw std::ios_base::failure("read error");
+  }
+
+public:
+  FailsAfter(std::string text, bool out_of_memory) : text_(std::move(text)), out_of_memory_(out_of_memory) {}
+};
+
 } // namespace
 
 TEST_CASE("Tier-1 load: a reader IOError keeps its type and names the load",
@@ -92,6 +121,27 @@ TEST_CASE("ignoreBOM: a partial mark that cannot be handed back names the file",
   CHECK_THROWS_MATCHES(dtwc::ignoreBOM(in, "staged/series.csv"), dtwc::IOError,
                        MessageMatches(ContainsSubstring("'staged/series.csv'")
                                       && ContainsSubstring("partial UTF-8 byte-order mark")));
+}
+
+TEST_CASE("text reader: a stream that fails mid-file is an exception, never a shorter dataset",
+          "[io][error][out_of_memory]")
+{
+  // std::getline catches what a stream buffer throws and sets badbit, which `while (std::getline(...))` reads as the
+  // end of the file: the rows read so far came back as the whole file. The buffer serves two rows, then fails.
+  const auto read = [](bool out_of_memory) {
+    FailsAfter buffer("1,2,3\n4,5,6\n", out_of_memory);
+    std::istream in(&buffer);
+    return dtwc::text_io_detail::for_each_data_line(in, "series.csv", 0, -1, [](std::string_view, std::size_t) {});
+  };
+  SECTION("memory the system refused leaves as std::bad_alloc")
+  {
+    CHECK_THROWS_AS(read(true), std::bad_alloc);
+  }
+  SECTION("any other failure of the stream is an IOError naming the file and the row")
+  {
+    CHECK_THROWS_MATCHES(read(false), dtwc::IOError,
+                         MessageMatches(ContainsSubstring("'series.csv'") && ContainsSubstring("row 3")));
+  }
 }
 
 TEST_CASE("dtwc_cl: an input format this build cannot read is IOError",

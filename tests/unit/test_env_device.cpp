@@ -19,9 +19,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
+#include <utility>
 
 static const std::string kMsgUnknownFoo =
-  "[dtwc] unknown device 'foo'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N).";
+  "[dtwc] unknown device 'foo'. Valid devices: cpu, gpu, gpu:N, cpu+gpu, cpu+gpu:N (aliases cuda, cuda:N).";
 
 static const std::string kMsgGpuNotBuilt =
   "[dtwc] device='gpu' requested but this build has no GPU backend compiled in.\n"
@@ -73,6 +74,29 @@ TEST_CASE("dtwc::device gpu without a GPU build names the flag", "[env][device]"
   REQUIRE(device_error_message("cuda") == kMsgGpuNotBuilt);
   REQUIRE(device_error_message("gpu:0") == kMsgGpuNotBuilt);
   REQUIRE(dtwc::device() == "cpu");
+#endif
+}
+
+TEST_CASE("dtwc::device cpu+gpu is CUDA's, refused elsewhere with the reason", "[env][device]")
+{
+  REQUIRE(dtwc::device("cpu") == "cpu");
+  CHECK(dtwc::detail::parse_device(" CPU+GPU ") == std::pair{ dtwc::Device::CPU_GPU, 0 });
+  CHECK(dtwc::detail::parse_device("cpu+gpu:2") == std::pair{ dtwc::Device::CPU_GPU, 2 });
+#if defined(DTWC_HAS_CUDA)
+  REQUIRE(dtwc::device("cpu+gpu:1") == "cpu+gpu:1");
+  REQUIRE(dtwc::device("cpu") == "cpu");
+#else
+  const std::string message = device_error_message("cpu+gpu");
+  CHECK(message.starts_with("[dtwc] dtwc::device: device 'cpu+gpu' splits FastCLARA's assignment pass and the distance matrix's fill"));
+#  if defined(DTWC_HAS_METAL)
+  CHECK(message.find("Metal has no kernel for that pass") != std::string::npos);
+  CHECK(message.find("Use device cpu or gpu; no single-device fallback") != std::string::npos);
+#  else
+  CHECK(message.find("-DDTWC_ENABLE_CUDA=ON") != std::string::npos);
+  // gpu is refused here too, so the way out names the CPU alone.
+  CHECK(message.find("Use device cpu; no single-device fallback") != std::string::npos);
+#  endif
+  REQUIRE(dtwc::device() == "cpu"); // a rejected request changes nothing
 #endif
 }
 

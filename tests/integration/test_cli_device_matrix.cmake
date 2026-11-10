@@ -12,14 +12,24 @@ cmake_minimum_required(VERSION 3.26)
 #          silent CPU assignment fails here; or the backend refuses on a machine
 #          without the device; onebatch and tadpole are refused; a variant the
 #          kernels lack and (Metal) a GPU index are refused before the input is
-#          read, which does not exist; `cuda` is `gpu`. A build without a GPU
+#          read, which does not exist; `cuda` is `gpu`; on CUDA, clara in RAM
+#          under an explicit --ram-limit assigns in the plan's shrunk blocks
+#          (-v names their size). A build without a GPU
 #          refuses every gpu cell with the message naming the build flag.
+#   cpu+gpu  CUDA's: the matrix methods run (pam; auto, which is pam at any N;
+#          clara on a sample of every series), their -v naming the fill's split,
+#          and clara with a sample smaller than N, its -v naming the pass's; the
+#          methods that compute as they go (onebatch, tadpole) and a streamed
+#          Arrow IPC file are refused, each naming why; a build without CUDA
+#          refuses every cell; --gpu-share forces the split, its -v saying forced
+#          (the fill's line and the pass's), and any build refuses a share out of
+#          range and a forced one on a device other than cpu+gpu
 #   hpc    refused for every method, since it submits a whole run to a SLURM
 #          cluster, which dtwc_cl does not do; an unknown device is refused
 #   --print-config  the golden file reads back to itself (every key, each at a
 #          value that is not its default) and a bare --print-config prints
 #          config_defaults.toml: every default and spelling, pinned on the binary
-foreach(required_var IN ITEMS CLI INPUT GOLDEN DEFAULTS GPU HAS_HIGHS WORK_ROOT)
+foreach(required_var IN ITEMS CLI INPUT STREAM_INPUT GOLDEN DEFAULTS GPU HAS_HIGHS WORK_ROOT)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "missing required -D${required_var}=...")
     endif()
@@ -184,9 +194,101 @@ else()
     else()
         expect_refused(gpu_clara_sample "GPU was detected" -i "${INPUT}" --device gpu --method clara --sample-size 5)
     endif()
+    # In RAM, an explicit --ram-limit a byte below what the GPU's default blocks need shrinks them, and the run assigns
+    # in the plan's blocks (FP64, the precision the plan prices): -v's CUDA line names their size, fewer than the 27
+    # series one default block holds.
+    if(GPU STREQUAL "cuda" AND device STREQUAL "present")
+        run_cli(gpu_clara_limit_probe -i "${INPUT}" -k 3 -o "${WORK_ROOT}/gpu_clara_limit_probe" --name probe
+                --device gpu --gpu-precision fp64 --method clara --sample-size 5 --ram-limit 1000)
+        if(NOT "${err}" MATCHES "it needs at least ([0-9]+) bytes")
+            message(FATAL_ERROR "gpu_clara_limit_probe: no least limit in\nstderr:\n${err}")
+        endif()
+        math(EXPR shrunk_limit "${CMAKE_MATCH_1} - 1")
+        expect_ran(gpu_clara_shrunk clara --device gpu --gpu-precision fp64 --method clara --sample-size 5
+                   --ram-limit ${shrunk_limit} -v)
+        if(NOT "${out}" MATCHES "series x 15 medoids[)][^\n]*, in blocks of ([0-9]+) series"
+           OR NOT CMAKE_MATCH_1 LESS 27)
+            message(FATAL_ERROR "gpu_clara_shrunk: the run did not assign in the plan's shrunk blocks\nstdout:\n${out}")
+        endif()
+    elseif(GPU STREQUAL "cuda")
+        expect_refused(gpu_clara_shrunk "GPU was detected" -i "${INPUT}" --device gpu --method clara --sample-size 5)
+    endif()
     expect_refused(gpu_wdtw "variant = WDTW" -i "${missing_input}" --device gpu --variant wdtw)
     if(GPU STREQUAL "metal")
         expect_refused(gpu_index_1 "GPU index = 1" -i "${missing_input}" --device gpu:1)
+    endif()
+endif()
+
+# ---- cpu+gpu: FastCLARA's pass and the distance matrix's fill split between the CPU and a CUDA GPU ----
+set(hybrid "device 'cpu+gpu' splits FastCLARA's assignment pass and the distance matrix's fill between the CPU and a CUDA GPU, but ")
+# --gpu-share is cpu+gpu's: a share out of range is refused everywhere (the one text of Problem::set_gpu_share), and a forced
+# one on another device is refused by the run, whatever the method (onebatch reaches neither the fill nor the pass).
+expect_refused(gpu_share_range "the share must be -1 (measured) or in [0, 1]; got 1.500000." -i "${INPUT}" --gpu-share 1.5)
+expect_refused(gpu_share_cpu "gpu_share splits the distance matrix's fill and FastCLARA's pass of device cpu+gpu, but the device is cpu, which would ignore it; leave gpu_share at -1."
+               -i "${INPUT}" --device cpu --method onebatch --gpu-share 0.5)
+if(NOT GPU STREQUAL "cuda")
+    foreach(method IN ITEMS auto clara pam)
+        expect_refused(hybrid_${method} "${hybrid}" -i "${INPUT}" --device cpu+gpu --method ${method})
+    endforeach()
+else()
+    foreach(method IN ITEMS onebatch tadpole)
+        expect_refused(hybrid_${method} "${hybrid}method '${method}' computes its distances on the CPU as it goes"
+                       -i "${INPUT}" --device cpu+gpu --method ${method})
+    endforeach()
+    # The matrix methods fill it on both devices, their -v naming the split (27 series: one tile-row of 378 entries,
+    # which holds no calibration unit, so the recorded FP64 share stands, 28.5 / (28.5 + 55), and leaves it to the CPU;
+    # FP32's, 13 x 28.5 / (13 x 28.5 + 55), would give it to the GPU): pam; auto, which is pam at any N as on the GPU;
+    # and clara on a sample of every series, one PAM on the run's matrix.
+    foreach(case IN ITEMS pam auto clara_full)
+        set(method ${case})
+        set(ran ${case})
+        if(case STREQUAL "auto")
+            set(ran pam)
+        elseif(case STREQUAL "clara_full")
+            set(method clara)
+            set(ran clara)
+        endif()
+        if(device STREQUAL "present")
+            expect_ran(hybrid_${case} ${ran} --device cpu+gpu --gpu-precision fp64 --method ${method} -v)
+            if(NOT "${out}" MATCHES
+               "Distance matrix cpu[+]gpu: the GPU filled 0 of 378 entries, the triangle with its diagonal [(]rate share 0[.]3413173652694611, recorded[)]")
+                message(FATAL_ERROR "hybrid_${case}: its -v names no fill split\nstdout:\n${out}")
+            endif()
+        else()
+            expect_refused(hybrid_${case} "GPU was detected" -i "${INPUT}" --device cpu+gpu --method ${method})
+        endif()
+    endforeach()
+    # --gpu-share forces the split: the fill's -v line says forced, at the given rate share; under FP32 it also says the
+    # GPU's rows are float32's and the CPU's float64's.
+    if(device STREQUAL "present")
+        expect_ran(hybrid_forced pam --device cpu+gpu --gpu-precision fp32 --gpu-share 0.5 --method pam -v)
+        if(NOT "${out}" MATCHES
+           "Distance matrix cpu[+]gpu: the GPU filled [0-9]+ of 378 entries, the triangle with its diagonal, its rows in FP32 and the CPU's in FP64 [(]rate share 0[.]5, forced[)]")
+            message(FATAL_ERROR "hybrid_forced: its -v names no forced fill split\nstdout:\n${out}")
+        endif()
+    else()
+        expect_refused(hybrid_forced "GPU was detected" -i "${INPUT}" --device cpu+gpu --gpu-share 0.5 --method pam)
+    endif()
+    # A compressed file beyond --ram-limit streams; a streamed batch is assigned on one device.
+    set(ENV{OMP_NUM_THREADS} 4)
+    expect_refused(hybrid_stream "${hybrid}the series are streamed" -i "${STREAM_INPUT}" --device cpu+gpu
+                   --method clara --sample-size 8 --n-samples 2 --ram-limit 300000)
+    unset(ENV{OMP_NUM_THREADS})
+    if(device STREQUAL "present")
+        expect_ran(hybrid_clara clara --device cpu+gpu --method clara --sample-size 5 -v)
+        string(FIND "${out}" "FastCLARA cpu+gpu: the GPU assigned the first " split_at)
+        if(split_at EQUAL -1 OR NOT "${out}" MATCHES "of 27 series [(]share [0-9.e-]+ of the series, recorded[)]")
+            message(FATAL_ERROR "hybrid_clara: its -v names no split\nstdout:\n${out}")
+        endif()
+        # --gpu-share reaches the pass too (the run calls fast_clara itself): forced at 0.5, the GPU takes 14 of 27.
+        expect_ran(hybrid_clara_forced clara --device cpu+gpu --method clara --sample-size 5 --gpu-share 0.5 -v)
+        if(NOT "${out}" MATCHES "the GPU assigned the first 14 of 27 series [(]share 0[.]5185[0-9]* of the series, forced[)]")
+            message(FATAL_ERROR "hybrid_clara_forced: its -v names no forced split\nstdout:\n${out}")
+        endif()
+    else()
+        expect_refused(hybrid_clara "GPU was detected" -i "${INPUT}" --device cpu+gpu --method clara --sample-size 5)
+        expect_refused(hybrid_clara_forced "GPU was detected" -i "${INPUT}" --device cpu+gpu --method clara
+                       --sample-size 5 --gpu-share 0.5)
     endif()
 endif()
 
@@ -199,14 +301,14 @@ expect_refused(device_tpu "unknown device 'tpu'" -i "${INPUT}" --device tpu)
 
 # ---- every cell ran ----
 list(LENGTH methods cpu_cells)
-math(EXPR expected "${cpu_cells} + 1 + 2 + 3")
+math(EXPR expected "${cpu_cells} + 1 + 2 + 3 + 2")
 list(LENGTH gpu_methods gpu_cells)
 if(GPU STREQUAL "none")
-    math(EXPR expected "${expected} + ${gpu_cells} + 5")
+    math(EXPR expected "${expected} + ${gpu_cells} + 5 + 3")
 elseif(GPU STREQUAL "metal")
-    math(EXPR expected "${expected} + ${gpu_cells} + 7")
+    math(EXPR expected "${expected} + ${gpu_cells} + 7 + 3")
 else()
-    math(EXPR expected "${expected} + ${gpu_cells} + 6")
+    math(EXPR expected "${expected} + ${gpu_cells} + 6 + 7 + 1 + 2")
 endif()
 if(NOT cells EQUAL expected)
     message(FATAL_ERROR "ran ${cells} cells, expected ${expected}")

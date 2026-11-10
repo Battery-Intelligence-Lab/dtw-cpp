@@ -41,6 +41,14 @@ namespace algorithms {
     int n_samples = 5;                                         ///< Number of subsamples to try.
     int max_iter = 100;                                        ///< Max PAM iterations per subsample.
     std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED; ///< Reproducible RNG seed.
+    /// CUDA's assignment: its host buffers within this many bytes, a block down to one series (0: blocks of a
+    /// launch's bound); dtwc_cl's memory plan sets it where an explicit --ram-limit leaves the default blocks no room.
+    size_t gpu_staging_bytes = 0;
+    /// cpu+gpu: the share of the points, the leading ones, whose assignment runs on the GPU, the rest on the CPU's
+    /// team. -1 measures it at the start of the pass (a calibration block timed on each device; the share and both
+    /// rates are the result's `hybrid`); a value in [0, 1] forces it, so a run repeats exactly. Another device refuses
+    /// any value but -1.
+    double gpu_share = -1.0;
 
     // Streaming from Parquet: fast_clara_parquet's (dtwc_io); fast_clara refuses it.
     size_t ram_limit_bytes = 0;         ///< Series-data cap; 0 = no limit.
@@ -64,11 +72,14 @@ namespace algorithms {
    * Non-full assignment evaluates the configured bound DTW function directly;
    * an existing parent distance cache is ignored and left unchanged.
    * Each sample Problem takes `prob`'s distance settings, metric and device
-   * (GPU index, precision). An in-memory sample is a view of `prob`'s series on
-   * the CPU and a copy on a GPU, which uploads owned series. On a GPU device the
+   * (GPU index, precision). An in-memory sample is a view of `prob`'s series,
+   * but a copy on Metal, which uploads owned series. On a GPU device the
    * sample matrices fill on the GPU, and so does the assignment where the GPU
    * is CUDA's; Metal has no kernel for the assignment, which then runs on the
-   * CPU (a verbose line says so).
+   * CPU (a verbose line says so). On cpu+gpu (CUDA) the samples fill on the GPU
+   * and the assignment pass is split: the GPU takes the leading share of the
+   * points (opts.gpu_share), the CPU's team the rest, in one parallel region;
+   * under FP64 L1 the results equal both single-device runs whatever the split.
  * @throws InvalidInput for invalid dimensions/options, and for a Parquet
  *         stream (parquet_path with ram_limit_bytes), which is fast_clara_parquet's;
  *         IOError for force_parquet_streaming: the core's FastCLARA reads no
@@ -77,6 +88,10 @@ namespace algorithms {
  *         variant or missing-data strategy its kernels lack).
  */
   core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);
+
+  /// cpu+gpu's split of a pass over `n_points` series in words: the GPU's points and share (17 digits: forced again,
+  /// it repeats the split), how the share was set and, where measured, both rates. dtwc_cl's -v and run report print it.
+  std::string describe(const core::HybridSplit &split, std::size_t n_points);
 
 #ifdef DTWC_HAS_PARQUET
   /**

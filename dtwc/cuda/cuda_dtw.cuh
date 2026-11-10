@@ -22,6 +22,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
@@ -31,9 +32,19 @@ namespace dtwc::cuda {
 struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   int device_id = 0;                           ///< CUDA device to use
   GpuPrecision precision = GpuPrecision::Auto; ///< Auto: FP32 where FP64 is slow (consumer GPUs)
+  /// compute_medoid_distances_cuda: its pipeline's host buffers within this many bytes, a block down to one series
+  /// (detail::medoid_blocks); 0: blocks of a launch's bound.
+  std::size_t host_staging_bytes = 0;
 
   // Inherited from DistMatOptionsBase: band, use_squared_l2, verbose
 };
+
+/// Series i of an entry's series, its Float64 values where they lie (a view's or owned); it does not throw.
+using SeriesAt = std::function<std::span<const double>(std::size_t)>;
+
+/// A loop on the caller's threads: for_each(count, task) calls task(i) once for every i in [0, count); task(i) writes
+/// only row i's slots and does not throw (CUDA code is compiled without OpenMP, so the caller runs it: run_openmp).
+using ParallelFor = std::function<void(std::size_t count, const std::function<void(std::size_t)> &task)>;
 
 struct CUDADistMatResult : public dtwc::gpu::DistMatResultBase {};
 
@@ -60,20 +71,69 @@ CUDADistMatResult compute_distance_matrix_cuda(
     const std::vector<std::vector<double>> &series,
     const CUDADistMatOptions &opts, core::DistanceMatrix &out);
 
-/// The DTW distance of each of @p series to each of the k @p medoids on the
-/// GPU, on the kernels, route rule and precision of compute_distance_matrix_cuda
+/// The same fill of the @p n_series series series(i), read where they lie (a
+/// view's or owned: no copy of them is made): @p parallel pads them into the
+/// launch workspace's staging, from which they are uploaded once, as the
+/// overload above uploads its vectors (which it pads on the calling thread).
+/// A CUDA call that fails throws DeviceError naming it, after the stream has
+/// drained.
+CUDADistMatResult compute_distance_matrix_cuda(
+    std::size_t n_series, const SeriesAt &series,
+    const CUDADistMatOptions &opts, const ParallelFor &parallel,
+    core::DistanceMatrix &out);
+
+/// compute_distance_matrix_cuda as a session, so that the GPU can fill some rows of a matrix while the CPU fills
+/// the rest (device cpu+gpu): that fill is the session and then rows(0, n_series).
+///
+/// The session is that fill's refusals, its route (the precision and the kernel, chosen on the longest of all the
+/// series, so a pair's distance does not depend on which rows a call fills), its launch workspace and its one upload
+/// of every series (padded by @p parallel); then @p out is sized as that fill sizes it, and its width taken. The
+/// workspace is the calling thread's: make the session and call rows() on one thread.
+class DistanceFill
+{
+public:
+  DistanceFill(std::size_t n_series, const SeriesAt &series, const CUDADistMatOptions &opts,
+               const ParallelFor &parallel, core::DistanceMatrix &out);
+  ~DistanceFill();
+  DistanceFill(const DistanceFill &) = delete;
+  DistanceFill &operator=(const DistanceFill &) = delete;
+
+  /// Packed rows [r0, r1) of @p out, the session's matrix, written whole: each pair's distance, and the diagonal's
+  /// zero. They are the pairs the session's launches number from P(n - r1) to P(n - r0), P(s) = s (n - 1) - s (s - 1)
+  /// / 2 (the series are uploaded last first, see packed_slot), copied into packed slots [r0 (r0 + 1) / 2, r1 (r1 + 1)
+  /// / 2), and nothing else of @p out is written. Returns once they are copied; a CUDA call that fails throws
+  /// DeviceError naming it, after the stream has drained. @pre r0 <= r1 <= n_series.
+  void rows(std::size_t r0, std::size_t r1, core::DistanceMatrix &out);
+
+  /// The kernel, the pairs computed so far and their GPU time: CUDA events from the upload to the end of the first
+  /// rows() call, then around each later one.
+  const CUDADistMatResult &result() const noexcept;
+  bool fp32() const noexcept; ///< the GPU computes in FP32
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+/// The DTW distance of each of the @p n_series series (series(i), read where
+/// they lie: no copy of them is made) to each of the k @p medoids on the GPU,
+/// on the kernels, route rule and precision of compute_distance_matrix_cuda
 /// (the longest of all the series picks the kernel). @p consume takes them a
-/// block of consecutive series at a time, in order, each series once:
-/// consume(first, count, distances), where distances[i * k + m] is the distance
-/// of series first + i to medoid m. A block holds at most kMaxPairsPerLaunch
-/// (launch_prep.hpp) samples and as many distances, which bounds the device's
-/// and this call's memory whatever the number of series. The same refusals as
-/// compute_distance_matrix_cuda come before the first block.
+/// block of consecutive series at a time, in order, each series once, on the
+/// calling thread: consume(first, count, distances), where distances[i * k + m]
+/// is the distance of series first + i to medoid m. A block holds at most
+/// kMaxPairsPerLaunch (launch_prep.hpp) samples and as many distances, fewer
+/// within opts.host_staging_bytes (detail::medoid_blocks), which bounds the
+/// device's and this call's memory whatever the number of series; while the
+/// GPU computes, @p parallel pads the next block from the spans and consume
+/// takes the one before. The same refusals as compute_distance_matrix_cuda come
+/// before the first block; a CUDA call that fails later throws DeviceError
+/// naming it, after both streams have drained.
 /// @pre @p medoids is not empty (k >= 1); with none, no block is handed over.
 CUDADistMatResult compute_medoid_distances_cuda(
-    const std::vector<std::vector<double>> &series,
-    const std::vector<std::vector<double>> &medoids,
-    const CUDADistMatOptions &opts,
+    std::size_t n_series, const SeriesAt &series,
+    const std::vector<std::span<const double>> &medoids,
+    const CUDADistMatOptions &opts, const ParallelFor &parallel,
     const std::function<void(std::size_t first, std::size_t count,
                              std::span<const double> distances)> &consume);
 

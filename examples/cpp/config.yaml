@@ -88,11 +88,15 @@ verbose-solver: false
 
 # --- Compute device ---
 # cpu (default), gpu or gpu:N (cuda, cuda:N are the same): CUDA on NVIDIA, Metal
-# on macOS, for the methods that read a distance matrix (see config.toml).
+# on macOS, for the methods that read a distance matrix (see config.toml); cpu+gpu
+# (CUDA only) uses the CPU's threads and the GPU together.
 device: cpu
 
 # GPU kernel precision: auto, fp32, fp64.
 gpu-precision: auto
+
+# cpu+gpu only: the GPU's share of the work; -1 measures it, [0, 1] forces it.
+gpu-share: -1
 
 # --- Checkpointing ---
 # checkpoint: ./checkpoints

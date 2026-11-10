@@ -388,7 +388,10 @@ def cluster(data, k, **keys):
     ``sdtw_gamma``, ``msm_c``, ``twe_nu``, ``twe_lambda``), ``mv_mode``,
     ``missing_strategy``, ``max_iter``, ``n_init``, ``seed``, ``sample_size``,
     ``n_samples``, ``batch_size``, ``linkage``, ``dc``, ``solver`` and the MIP
-    settings, ``gpu_precision``, ``matrix_dtype`` (``"float32"`` stores the
+    settings, ``gpu_precision``, ``gpu_share`` (``device="cpu+gpu"``: the GPU's
+    share of the work it splits with the CPU; -1, the default, measures it, a
+    value in [0, 1] forces it so a run repeats; another device refuses a
+    forced one), ``matrix_dtype`` (``"float32"`` stores the
     distance matrix at half the memory, each distance rounded to a float),
     ``name``, ``verbose`` (``dtwc_cl -v``'s lines, the memory plan among
     them), ``no_report`` (no run report: ``Result.report`` is ``""``),

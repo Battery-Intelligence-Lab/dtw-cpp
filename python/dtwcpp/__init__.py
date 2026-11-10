@@ -85,9 +85,13 @@ from dtwcpp._dtwcpp_core import (
 def _resolve_device(device):
     """Resolve a requested device to ``(backend, ordinal)``, failing loudly.
 
-    ``backend`` is ``"cpu"``, ``"gpu"`` or ``"hpc"``. The name is parsed by the
-    C++ grammar, where ``cuda`` is a spelling of ``gpu``; ``gpu`` needs a
-    GPU this build's backend finds, and raises ``DeviceError`` without one.
+    ``backend`` is ``"cpu"``, ``"gpu"``, ``"cpu+gpu"`` or ``"hpc"``. The name is
+    parsed by the C++ grammar, where ``cuda`` is a spelling of ``gpu``; ``gpu``
+    needs a GPU this build's backend finds, and raises ``DeviceError`` without
+    one. ``cpu+gpu`` is checked by C++ alone, in the same words in every
+    language: a build without CUDA refuses it where it is selected
+    (``dtwcpp.device``, ``Problem``), a CUDA build without a device at its
+    first use, as C++ and MATLAB do.
     """
     if not isinstance(device, str):
         raise InvalidInput(f"device must be a string, got {type(device).__name__}")
@@ -122,7 +126,9 @@ def device(device=None):
 
     Call with no argument to read the current default; pass a name to set it.
     Accepts ``"cpu"``, ``"gpu"``, ``"gpu:N"``, ``"cuda"``, ``"cuda:N"``,
-    ``"hpc"`` or ``"hpc:gpu"``. A local selection is stored in C++ and the
+    ``"cpu+gpu"`` (FastCLARA's assignment pass and the distance matrix's fill
+    split between the CPU and a CUDA GPU), ``"cpu+gpu:N"``, ``"hpc"`` or
+    ``"hpc:gpu"``. A local selection is stored in C++ and the
     CANONICAL name that ``dtwc::device()`` reports is returned, so
     ``"cuda:0"`` comes back as ``"gpu"`` exactly as it does in C++ and MATLAB.
     An explicit ``device=`` argument always overrides this global default.
@@ -159,7 +165,8 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None, matrix
     metric : str, default='l1'
         Distance metric: 'l1' or 'squared_euclidean'.
     device : str or None, default=None
-        Computation device: 'cpu', 'gpu', 'gpu:N', 'cuda', or 'cuda:N'. ``None`` uses
+        Computation device: 'cpu', 'gpu', 'gpu:N', 'cuda', 'cuda:N', 'cpu+gpu' or
+        'cpu+gpu:N' (the fill on both devices, CUDA only). ``None`` uses
         the global default set via :func:`device` (itself 'cpu' unless changed).
         ``'hpc'`` is rejected here — it offloads the whole job, not just the
         matrix; use the high-level clustering path instead.

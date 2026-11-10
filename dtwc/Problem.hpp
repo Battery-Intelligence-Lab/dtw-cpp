@@ -37,6 +37,7 @@
 #include <limits>      // std::numeric_limits
 #include <span>        // std::span
 #include <memory>
+#include <optional>    // std::optional
 #include <stdexcept>
 #include <tuple>       // std::tuple
 
@@ -103,9 +104,14 @@ bool gpu_available();
 /// 0) computes on — "CUDA: <device>", "Metal: <device>" — or why there is none.
 std::string gpu_info();
 
-/// The method `auto` stands for: pam on a GPU, and on the CPU pam for up to 5000
-/// series, clara above. Any other method is itself.
+/// The method `auto` stands for: pam on a GPU and on cpu+gpu (whose two devices
+/// fill PAM's matrix at least as fast as the GPU alone), and on the CPU pam for
+/// up to 5000 series, clara above. Any other method is itself.
 Method resolve_method(Method method, Device device, std::size_t n_series);
+
+/// cpu+gpu's split of a distance matrix fill in words: the GPU's entries of the matrix's, the share (17 digits: forced
+/// again, it repeats the split), how the share was set and, where measured, both rates. -v and the run report print it.
+std::string describe(const core::FillSplit &fill);
 
 namespace detail {
 
@@ -163,6 +169,8 @@ private:
   Device device_{ Device::CPU };
   int device_index_{ 0 }; ///< The GPU ordinal of Device::GPU.
   GpuPrecision gpu_precision_{ GpuPrecision::Auto };
+  double gpu_share_{ -1.0 }; ///< cpu+gpu's GPU share (set_gpu_share); -1: measured
+  std::optional<core::FillSplit> fill_split_; ///< cpu+gpu's split of the last fill (fill_split)
   /// Bound from distance_ (and, for WDTW, the series lengths) whenever either
   /// changes; each holds copies of the settings it reads. The float32 one is
   /// bound then for float32 series, else by dtw_function_f32() (rebind_dtw_fn).
@@ -449,12 +457,16 @@ public:
   ///         MSM or TWE, whose kernels compute L1 (core::validate).
   void set_metric(core::MetricType metric);
   /// Where this Problem computes distances: the CPU, or GPU `index` of this
-  /// build's GPU backend (CUDA, else Metal), which the fill resolves. A Problem
+  /// build's GPU backend (CUDA, else Metal), which the fill resolves, or (cpu+gpu)
+  /// the CPU and CUDA GPU `index` together on the distance matrix's fill (whole
+  /// tile-rows to either) and FastCLARA's assignment pass, whose samples fill on
+  /// the GPU; OneBatchPAM, TADPole and a streamed FastCLARA refuse cpu+gpu. A Problem
   /// never reads the process-wide default (dtwc::device()); until told
   /// otherwise it computes on the CPU. A change drops the distance matrix.
-  /// @throws DeviceError for `gpu` on a build with no GPU backend, and for a
-  ///         GPU index other than 0 on Metal, which runs on the system default
-  ///         GPU; InvalidInput for a negative index.
+  /// @throws DeviceError for `gpu` on a build with no GPU backend, for cpu+gpu
+  ///         on a build without CUDA, and for a GPU index other than 0 on
+  ///         Metal, which runs on the system default GPU; InvalidInput for a
+  ///         negative index.
   void set_device(Device device, int index = 0);
   /// The device and GPU index set_device recorded.
   std::pair<Device, int> device() const noexcept { return { device_, device_index_ }; }
@@ -467,6 +479,16 @@ public:
     refresh_distance_matrix();
   }
   GpuPrecision gpu_precision() const noexcept { return gpu_precision_; }
+  /// cpu+gpu: the GPU's share of the work it splits with the CPU's team, of each slab's packed entries in a distance
+  /// matrix fill (whole tile-rows, the GPU's leading) and of the points of FastCLARA's pass (CLARAOptions::gpu_share,
+  /// which cluster() passes it). -1, the default, measures it where the work starts (a calibration timed on each
+  /// device); a value in [0, 1] forces it, so a run repeats exactly. Another device refuses any value but -1 when it
+  /// fills or clusters. The distances do not depend on it, so the matrix stays. @throws InvalidInput for another value.
+  void set_gpu_share(double share);
+  double gpu_share() const noexcept { return gpu_share_; }
+  /// cpu+gpu: how the last fill split the distance matrix between the GPU and the CPU's team; empty after a fill on
+  /// another device and before the first.
+  const std::optional<core::FillSplit> &fill_split() const noexcept { return fill_split_; }
   /// The width of the distance matrix's values (`matrix_dtype`): Float64, the default, or Float32, half the memory,
   /// each distance rounded once to the nearest float, so costs and scores move by about 2^-24 of themselves and
   /// medoids and labels can change; a distance beyond float32's range (3.4e38) is refused (InvalidInput). The

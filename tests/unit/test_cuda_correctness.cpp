@@ -14,6 +14,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <dtwc.hpp>
+#include <algorithms/detail/fast_clara_assign.hpp>
 #include <base/parallelisation.hpp>
 #include <cli/run.hpp>
 #include <config.hpp>
@@ -22,6 +23,7 @@
 #include "gpu_fixed_band_oracle.hpp"
 #include "../support/deterministic_series.hpp"
 #include "../support/dtw_route_bound.hpp"
+#include "../support/scratch_directory.hpp"
 
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
@@ -33,11 +35,15 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
+#include <optional>
 #include <random>
 #include <span>
 #include <string>
@@ -45,10 +51,6 @@
 #include <thread>
 #include <utility>
 #include <vector>
-
-using Catch::Matchers::ContainsSubstring;
-using Catch::Matchers::MessageMatches;
-using Catch::Matchers::WithinRel;
 
 #ifndef DTWC_HAS_CUDA
 
@@ -58,6 +60,10 @@ TEST_CASE("CUDA not available", "[cuda]")
 }
 
 #else // DTWC_HAS_CUDA
+
+using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::MessageMatches;
+using Catch::Matchers::WithinRel;
 
 namespace {
 
@@ -77,6 +83,18 @@ GpuFill gpu_fill(const std::vector<std::vector<double>> &series,
   GpuFill fill{ dtwc::cuda::compute_distance_matrix_cuda(series, opts, packed), {} };
   fill.matrix = dtwc::io::to_full_matrix(packed);
   return fill;
+}
+
+/// compute_medoid_distances_cuda on series and medoids held as vectors, their blocks padded by this thread's team.
+dtwc::cuda::CUDADistMatResult medoid_distances(
+    const std::vector<std::vector<double>> &series, const std::vector<std::vector<double>> &medoids,
+    const dtwc::cuda::CUDADistMatOptions &opts,
+    const std::function<void(size_t, size_t, std::span<const double>)> &consume)
+{
+  const std::vector<std::span<const double>> spans(medoids.begin(), medoids.end());
+  return dtwc::cuda::compute_medoid_distances_cuda(
+      series.size(), [&series](size_t i) { return std::span<const double>(series[i]); }, spans, opts,
+      [](size_t count, const std::function<void(size_t)> &task) { dtwc::run_openmp(task, count); }, consume);
 }
 
 /// Compute the full NxN CPU distance matrix using dtwFull_L (L1 metric).
@@ -960,7 +978,7 @@ TEST_CASE("test_gpu_banded_unequal_lengths", "[cuda][banded]")
   // Test banded DTW with series of different lengths
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  std::mt19937 rng(314);
+  std::mt19937 rng(314); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> dist(-5.0, 5.0);
 
   std::vector<std::vector<double>> series(6);
@@ -1091,7 +1109,7 @@ TEST_CASE("test_warp_kernel_variable_short_lengths", "[cuda][warp]")
   // Variable lengths all <= 32 to exercise the warp kernel
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  std::mt19937 rng(4004);
+  std::mt19937 rng(4004); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> dist(-5.0, 5.0);
 
   std::vector<std::vector<double>> series(8);
@@ -1396,7 +1414,7 @@ TEST_CASE("GPU handles variable-length series", "[cuda]")
 
   // Series with different lengths
   std::vector<std::vector<double>> series;
-  std::mt19937 rng(600);
+  std::mt19937 rng(600); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> dist(-1.0, 1.0);
   for (int len : {30, 50, 80, 100, 60, 40}) {
     std::vector<double> s(static_cast<size_t>(len));
@@ -1604,7 +1622,7 @@ TEST_CASE("test_regtile_kernel_variable_lengths", "[cuda][regtile]")
   // Variable lengths spanning the regtile range
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  std::mt19937 rng(10006);
+  std::mt19937 rng(10006); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> dist(-5.0, 5.0);
 
   std::vector<std::vector<double>> series(8);
@@ -1730,7 +1748,7 @@ TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair"
   std::vector<std::vector<double>> series(N);
   std::vector<std::vector<float>> rounded(N);
   std::vector<std::string> names(N);
-  std::mt19937 rng(20260930);
+  std::mt19937 rng(20260930); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> value(-1.0, 1.0);
   for (size_t i = 0; i < N; ++i) {
     series[i].resize(4 + i % 5);
@@ -1795,7 +1813,7 @@ TEST_CASE("CUDA fills over two launches match the host kernel in the regtile and
   REQUIRE(dtwc::cuda::detail::upper_triangle_pairs(N)
           > static_cast<size_t>(dtwc::cuda::detail::kMaxPairsPerLaunch));
   std::vector<std::vector<double>> series(N);
-  std::mt19937 rng(16385);
+  std::mt19937 rng(16385); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> value(-1.0, 1.0);
   for (size_t i = 0; i < N; ++i) {
     series[i].resize(i % 64 == 0 ? family.long_length : 1 + i % 4);
@@ -1966,7 +1984,7 @@ TEST_CASE("CUDA medoid distances match the host kernel in every kernel range",
   opts.band = band;
   std::vector<double> d(series.size() * k);
   size_t next = 0;
-  const auto result = dtwc::cuda::compute_medoid_distances_cuda(
+  const auto result = medoid_distances(
       series, medoids, opts, [&](size_t first, size_t count, std::span<const double> block) {
         REQUIRE(first == next);
         REQUIRE(block.size() == count * k);
@@ -2012,13 +2030,13 @@ TEST_CASE("CUDA medoid distances arrive in blocks of at most kMaxPairsPerLaunch"
 
   bool handed = false;
   const auto none_expected = [&](size_t, size_t, std::span<const double>) { handed = true; };
-  CHECK_THROWS_AS(dtwc::cuda::compute_medoid_distances_cuda({ {}, {} }, { {} }, {}, none_expected),
+  CHECK_THROWS_AS(medoid_distances({ {}, {} }, { {} }, {}, none_expected),
                   dtwc::InvalidInput);
   CHECK_FALSE(handed);
 
   constexpr size_t k = 4096;
   const size_t block = static_cast<size_t>(dtwc::cuda::detail::kMaxPairsPerLaunch) / k;
-  std::mt19937 rng(4096);
+  std::mt19937 rng(4096); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> value(-1.0, 1.0);
   const auto make = [&](size_t count) {
     std::vector<std::vector<double>> made(count);
@@ -2035,7 +2053,7 @@ TEST_CASE("CUDA medoid distances arrive in blocks of at most kMaxPairsPerLaunch"
   opts.precision = dtwc::GpuPrecision::FP64;
   std::vector<std::pair<size_t, size_t>> blocks;
   std::vector<size_t> mismatches(series.size(), 0); // one slot per series: one writer each
-  (void)dtwc::cuda::compute_medoid_distances_cuda(
+  (void)medoid_distances(
       series, medoids, opts, [&](size_t first, size_t count, std::span<const double> d) {
         blocks.emplace_back(first, count);
         auto check = [&](size_t i) {
@@ -2060,7 +2078,7 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  std::mt19937 rng(20261001);
+  std::mt19937 rng(20261001); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> noise(-0.5, 0.5);
   std::vector<std::vector<double>> series;
   for (size_t i = 0; i < 240; ++i) {
@@ -2102,7 +2120,7 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
   CHECK(gpu.medoid_indices == cpu.medoid_indices);
   CHECK_THAT(gpu.total_cost, WithinRel(cpu.total_cost, 1e-12));
   // A view of the same series (a mapped Arrow IPC file's) leaves p_vec empty: the assignment reads its series
-  // and medoids from an owned copy of them, so the owned run's labels, medoids and cost, bit for bit.
+  // and medoids where they lie, so the owned run's labels, medoids and cost, bit for bit.
   const auto view = run(dtwc::Device::GPU, dtwc::GpuPrecision::FP64, false, true);
   CHECK(view.labels == gpu.labels);
   CHECK(view.medoid_indices == gpu.medoid_indices);
@@ -2115,6 +2133,823 @@ TEST_CASE("FastCLARA on a CUDA device assigns its series as the CPU does", "[cud
   // Every point's distance agrees within the route bound of its pair, so the sum
   // agrees within the bound of the longest pair (2 * 60 - 1 samples).
   CHECK(dtwc::test_support::dtw_routes_agree<float>(gpu32.total_cost, cpu32.total_cost, 60, 60));
+}
+
+namespace {
+
+/// HG0's fixtures, seeds fixed: 307 series, row i a benchmark_series draw (seed 20261109 + i) in [-1, 1) moved to 0, 4
+/// or 8 by its group i % 3, of 17 + (i * 119) % 195 samples (`narrow` false: 17 to 211, every length once in a cycle
+/// of 195 rows) or of 126 + i % 3 (`narrow`: 126 to 128, where a band of 2 leaves every pair a path).
+std::vector<std::vector<double>> hg0_series(bool narrow)
+{
+  std::vector<std::vector<double>> series(307);
+  for (std::size_t i = 0; i < series.size(); ++i) {
+    series[i] = dtwc::test_support::benchmark_series(narrow ? 126 + i % 3 : 17 + (i * 119) % 195,
+                                                     static_cast<unsigned>(20261109 + i));
+    for (auto &v : series[i]) v += 4.0 * static_cast<double>(i % 3);
+  }
+  return series;
+}
+
+/// Three samples of three medoids, one of each group a sample: sample s's are slots 3s .. 3s + 2.
+const std::vector<dtwc::index_t> hg0_medoids{ 3, 154, 290, 12, 100, 305, 0, 7, 8 };
+constexpr std::size_t hg0_k = 3;
+
+/// The fixtures' names, s0 .. s306.
+const std::vector<std::string> hg0_names = [] {
+  std::vector<std::string> names(307);
+  for (std::size_t i = 0; i < names.size(); ++i) names[i] = "s" + std::to_string(i);
+  return names;
+}();
+
+/// `prob` holding `series`, an owned copy of them or (`view`) a view of them, as a mapped file's (spans into `series`,
+/// which outlives `prob`).
+void hg0_configure(dtwc::Problem &prob, const std::vector<std::vector<double>> &series, int band,
+                   dtwc::core::MetricType metric, dtwc::Device device, dtwc::GpuPrecision precision, bool view = false)
+{
+  if (view)
+    prob.set_view_data(dtwc::Data(std::vector<std::span<const double>>(series.begin(), series.end()),
+                                  std::vector<std::string_view>(hg0_names.begin(), hg0_names.end()), 1,
+                                  std::make_shared<int>(0)));
+  else
+    prob.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::vector<std::string>(hg0_names)));
+  prob.set_band(band);
+  prob.set_metric(metric);
+  prob.set_gpu_precision(precision);
+  prob.set_device(device);
+}
+
+/// A pass's labels, each sample's nearest distances ([s * N + p]) and each sample's objective.
+struct Hg0Pass {
+  std::vector<std::vector<dtwc::index_t>> labels;
+  std::vector<double> nearest;
+  std::vector<double> costs;
+};
+
+Hg0Pass hg0_empty_pass(std::size_t n)
+{
+  const std::size_t samples = hg0_medoids.size() / hg0_k;
+  return { std::vector<std::vector<dtwc::index_t>>(samples, std::vector<dtwc::index_t>(n)),
+           std::vector<double>(samples * n), {} };
+}
+
+/// FastCLARA's CPU pass (fast_clara.cpp): assign_in_blocks over assign_points_cpu, the nearest distances taken from
+/// each block's `best`.
+Hg0Pass hg0_cpu_pass(dtwc::Problem &prob)
+{
+  const std::size_t n = prob.size(), samples = hg0_medoids.size() / hg0_k;
+  Hg0Pass pass = hg0_empty_pass(n);
+  std::vector<dtwc::core::detail::OrderedMedoidObjective> costs(samples);
+  const auto &data = prob.data();
+  const auto &pair = prob.dtw_function();
+  dtwc::algorithms::detail::assign_in_blocks(
+    0, n, costs, [&](dtwc::index_t first, std::size_t count, std::span<double> best) {
+      dtwc::algorithms::detail::assign_points_cpu<double>(
+        first, count, best, hg0_medoids, pass.labels, prob.distance(), pair,
+        [&](dtwc::index_t p) { return data.series(static_cast<std::size_t>(p)); },
+        [&](dtwc::index_t j) {
+          return data.series(static_cast<std::size_t>(hg0_medoids[static_cast<std::size_t>(j)]));
+        });
+      for (std::size_t s = 0; s < samples; ++s)
+        std::copy_n(best.data() + s * count, count, pass.nearest.data() + s * n + static_cast<std::size_t>(first));
+    });
+  for (const auto &cost : costs) pass.costs.push_back(cost.value());
+  return pass;
+}
+
+/// Every distance of the medoid entry, [p * slots + j], on `prob`'s series and device settings, as assign_on_gpu asks
+/// for them, within `staging` host bytes; `kernel` the kernel it ran and `blocks` the blocks it handed over, each
+/// checked to follow the one before.
+std::vector<double> hg0_gpu_distances(const dtwc::Problem &prob, std::size_t staging, std::string &kernel,
+                                      std::size_t &blocks)
+{
+  const dtwc::Data &data = prob.data();
+  std::vector<std::span<const double>> medoid_series;
+  medoid_series.reserve(hg0_medoids.size());
+  for (const dtwc::index_t m : hg0_medoids) medoid_series.push_back(data.series(static_cast<std::size_t>(m)));
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.device_id = prob.device().second;
+  opts.precision = prob.gpu_precision();
+  opts.band = prob.distance().band;
+  opts.use_squared_l2 = prob.distance().metric == dtwc::core::MetricType::SquaredL2;
+  opts.host_staging_bytes = staging;
+  const std::size_t n = static_cast<std::size_t>(data.size()), slots = hg0_medoids.size();
+  std::vector<double> d(n * slots);
+  std::size_t next = 0;
+  blocks = 0;
+  kernel = dtwc::cuda::compute_medoid_distances_cuda(
+             n, [&data](std::size_t i) { return data.series(i); }, medoid_series, opts,
+             [](std::size_t count, const std::function<void(std::size_t)> &task) { dtwc::run_openmp(task, count); },
+             [&](std::size_t first, std::size_t count, std::span<const double> block) {
+               REQUIRE(first == next);
+               REQUIRE(block.size() == count * slots);
+               std::copy(block.begin(), block.end(), d.begin() + static_cast<std::ptrdiff_t>(first * slots));
+               next = first + count;
+               ++blocks;
+             })
+             .kernel_used;
+  REQUIRE(next == n);
+  return d;
+}
+
+/// assign_on_gpu's pass on `prob` (a GPU device) within `staging` host bytes: its labels and objectives, and each
+/// label's distance from the medoid entry (0 at a medoid itself, as assign_point takes it).
+Hg0Pass hg0_gpu_pass(const dtwc::Problem &prob, std::size_t staging, std::string &kernel, std::size_t &blocks)
+{
+  const dtwc::Data &data = prob.data();
+  const std::size_t n = static_cast<std::size_t>(data.size()), samples = hg0_medoids.size() / hg0_k;
+  const std::size_t slots = hg0_medoids.size();
+  Hg0Pass pass = hg0_empty_pass(n);
+  std::vector<std::span<const double>> medoid_series;
+  medoid_series.reserve(hg0_medoids.size());
+  for (const dtwc::index_t m : hg0_medoids) medoid_series.push_back(data.series(static_cast<std::size_t>(m)));
+  std::vector<dtwc::core::detail::OrderedMedoidObjective> costs(samples);
+  dtwc::algorithms::detail::assign_on_gpu(prob, data, 0, medoid_series, hg0_medoids, pass.labels, costs, staging);
+  for (const auto &cost : costs) pass.costs.push_back(cost.value());
+  const auto d = hg0_gpu_distances(prob, staging, kernel, blocks);
+  for (std::size_t s = 0; s < samples; ++s)
+    for (std::size_t p = 0; p < n; ++p) {
+      const std::size_t slot = s * hg0_k + static_cast<std::size_t>(pass.labels[s][p]);
+      pass.nearest[s * n + p] = static_cast<dtwc::index_t>(p) == hg0_medoids[slot] ? 0.0 : d[p * slots + slot];
+    }
+  return pass;
+}
+
+/// The Problem's distance matrix, filled on its device: its packed values.
+std::vector<double> hg0_filled(dtwc::Problem &prob)
+{
+  prob.fill_distance_matrix();
+  std::vector<double> values;
+  prob.distance_matrix().visit([&](const auto *v) { values.assign(v, v + prob.distance_matrix().packed_count()); });
+  return values;
+}
+
+bool same_bits(const std::vector<double> &a, const std::vector<double> &b)
+{
+  return a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(double)) == 0;
+}
+
+} // anonymous namespace
+
+// HG0, the bit-equality the hybrid assignment (HG3) rests on, as a regression test: on ragged, non-dyadic fixtures
+// (307 series; 17 to 211 samples unbanded, 126 to 128 at band 2 and unbanded), FP64 L1, on one thread and on the
+// default team, the GPU's assignment (assign_on_gpu) gives the CPU pass's labels, nearest distances and objectives
+// (assign_in_blocks over assign_points_cpu, on the same medoids), and the GPU's fill the CPU fill's matrix, of owned
+// series and of a view of them, byte for byte (memcmp, no tolerance). The CPU pass takes both its routes here: its
+// lanes unbanded (dtw_lanes_packed), the per-pair function under the band, where the lanes take only points as long as
+// the medoid. The kernel is named, so
+// a mutation of its accumulation is known to reach the route that ran. The GPU's pipeline (HG1) runs one block of
+// every series, blocks of 50 (a host budget of exactly their bytes, cuda::detail::medoid_blocks: two series slots,
+// three distance slots, seven blocks) and blocks of one series (a budget of one byte: 307 blocks), the same bits.
+TEST_CASE("HG0: the GPU's FP64 L1 assignment and fill equal the CPU's bit for bit", "[cuda][clara][hg0]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  struct Shape {
+    bool narrow;
+    int band;
+    const char *kernel;
+    std::size_t max_L;
+  };
+  const auto shape = GENERATE(values<Shape>({ { false, -1, "regtile_w8", 211 }, { true, 2, "regtile_w4", 128 },
+                                              { true, -1, "regtile_w4", 128 } }));
+  const int threads = GENERATE(1, 0); // 0: the default team
+  const std::size_t block = GENERATE(std::size_t{ 307 }, std::size_t{ 50 }, std::size_t{ 1 });
+  CAPTURE(shape.narrow, shape.band, threads, block);
+  std::optional<dtwc::TeamCap> cap;
+  if (threads == 1) cap.emplace(1);
+  const std::size_t blocks = (307 + block - 1) / block;
+  const std::size_t staging =
+    block == 307 ? 0
+    : block == 1 ? 1
+                 : dtwc::cuda::detail::MedoidBlocks{ block, 2, 3 }.host_bytes(hg0_medoids.size(), shape.max_L, 8);
+  REQUIRE(dtwc::cuda::detail::medoid_blocks(307, hg0_medoids.size(), shape.max_L, 8, staging).block == block);
+
+  const auto series = hg0_series(shape.narrow);
+  dtwc::Problem cpu("hg0_cpu"), gpu("hg0_gpu");
+  hg0_configure(cpu, series, shape.band, dtwc::core::MetricType::L1, dtwc::Device::CPU, dtwc::GpuPrecision::FP64);
+  hg0_configure(gpu, series, shape.band, dtwc::core::MetricType::L1, dtwc::Device::GPU, dtwc::GpuPrecision::FP64);
+
+  std::string kernel;
+  std::size_t handed = 0;
+  const Hg0Pass on_cpu = hg0_cpu_pass(cpu);
+  const Hg0Pass on_gpu = hg0_gpu_pass(gpu, staging, kernel, handed);
+  REQUIRE(kernel == shape.kernel);
+  REQUIRE(handed == blocks);
+  CHECK(on_gpu.labels == on_cpu.labels);
+  CHECK(same_bits(on_gpu.nearest, on_cpu.nearest));
+  CHECK(same_bits(on_gpu.costs, on_cpu.costs));
+  if (block == 307) {
+    const auto on_cpu_fill = hg0_filled(cpu);
+    CHECK(same_bits(hg0_filled(gpu), on_cpu_fill));
+    dtwc::Problem view("hg0_view"); // the fill reads a view's series where they lie (HG2), as it reads owned ones
+    hg0_configure(view, series, shape.band, dtwc::core::MetricType::L1, dtwc::Device::GPU, dtwc::GpuPrecision::FP64,
+                  true);
+    REQUIRE(view.data().is_view());
+    CHECK(same_bits(hg0_filled(view), on_cpu_fill));
+  }
+}
+
+// What HG0's bit-equality does not cover, recorded as facts: on HG0's narrow fixture, the GPU's FP32 L1 distances
+// (against the CPU's FP64) and its FP64 squared-L2 distances agree with the CPU's per-pair function within the route
+// bound (dtw_route_bound.hpp) of each pair, and not bit for bit: on 2026-11-09 (cl 19.50 + nvcc 13.0, an RTX 4000
+// Ada) 2754 of the 2763 FP32 distances differed at band 2 and unbanded, and 646 squared-L2 ones unbanded; at band 2
+// none of the squared-L2 ones did, which is recorded here and not pinned.
+TEST_CASE("HG0: the GPU's FP32 and squared-L2 distances differ from the CPU's within the route bound",
+          "[cuda][clara][hg0]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  struct Route {
+    dtwc::GpuPrecision precision;
+    dtwc::core::MetricType metric;
+  };
+  const auto route = GENERATE(values<Route>({ { dtwc::GpuPrecision::FP32, dtwc::core::MetricType::L1 },
+                                              { dtwc::GpuPrecision::FP64, dtwc::core::MetricType::SquaredL2 } }));
+  const int band = GENERATE(2, -1);
+  CAPTURE(route.precision, route.metric, band);
+  const auto series = hg0_series(true);
+  dtwc::Problem cpu("hg0_cpu"), gpu("hg0_gpu");
+  hg0_configure(cpu, series, band, route.metric, dtwc::Device::CPU, dtwc::GpuPrecision::FP64);
+  hg0_configure(gpu, series, band, route.metric, dtwc::Device::GPU, route.precision);
+
+  std::string kernel;
+  std::size_t blocks = 0;
+  const auto d = hg0_gpu_distances(gpu, 0, kernel, blocks);
+  const auto &pair = cpu.dtw_function();
+  const std::size_t slots = hg0_medoids.size();
+  std::size_t outside = 0, differ = 0;
+  for (std::size_t p = 0; p < series.size(); ++p)
+    for (std::size_t j = 0; j < slots; ++j) {
+      const auto &medoid = series[static_cast<std::size_t>(hg0_medoids[j])];
+      const double on_cpu = pair(series[p], medoid), on_gpu = d[p * slots + j];
+      const std::size_t nx = series[p].size(), ny = medoid.size();
+      const bool agree = route.precision == dtwc::GpuPrecision::FP32
+                           ? dtwc::test_support::dtw_routes_agree<float>(on_gpu, on_cpu, nx, ny)
+                           : dtwc::test_support::dtw_routes_agree<double>(on_gpu, on_cpu, nx, ny);
+      outside += !agree;
+      differ += std::memcmp(&on_cpu, &on_gpu, sizeof(double)) != 0;
+    }
+  CAPTURE(differ);
+  CHECK(outside == 0);
+  if (route.metric == dtwc::core::MetricType::L1 || band < 0) CHECK(differ > 0);
+}
+
+namespace {
+
+/// HG3's fixture: `n` series, more than one calibration block (clara_block_points), in three groups (moved to 0, 4
+/// or 8 by i % 3) of uniform noise in [-0.5, 0.5), seed fixed; lengths 17 to 48 (`narrow` false, each length once in a
+/// cycle of 32 rows) or 30 to 32 (`narrow`: a band of 2 leaves every pair a path).
+std::vector<std::vector<double>> hg3_series(bool narrow, std::size_t n = 70000)
+{
+  std::mt19937 rng(20261109); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
+  std::uniform_real_distribution<double> noise(-0.5, 0.5);
+  std::vector<std::vector<double>> series(n);
+  for (std::size_t i = 0; i < series.size(); ++i) {
+    series[i].resize(narrow ? 30 + i % 3 : 17 + (i * 7) % 32);
+    for (auto &v : series[i]) v = 4.0 * static_cast<double>(i % 3) + noise(rng);
+  }
+  return series;
+}
+
+/// FastCLARA (k 3, three samples of 40) on `series` on `device`, its GPU's host buffers within blocks of 8,192 series
+/// (nine for the whole input), the GPU's share `share` on cpu+gpu.
+dtwc::core::ClusteringResult hg3_run(const std::vector<std::vector<double>> &series, int band,
+                                     dtwc::core::MetricType metric, dtwc::Device device, dtwc::GpuPrecision precision,
+                                     double share)
+{
+  dtwc::Problem prob("hg3");
+  prob.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::vector<std::string>(series.size())));
+  prob.set_band(band);
+  prob.set_metric(metric);
+  prob.set_gpu_precision(precision);
+  prob.set_device(device);
+  dtwc::algorithms::CLARAOptions clara;
+  clara.n_clusters = 3;
+  clara.sample_size = 40;
+  clara.n_samples = 3;
+  clara.gpu_staging_bytes = dtwc::cuda::detail::MedoidBlocks{ 8192, 2, 3 }.host_bytes(9, 48, 8);
+  clara.gpu_share = share;
+  return dtwc::algorithms::fast_clara(prob, clara);
+}
+
+bool same_result(const dtwc::core::ClusteringResult &a, const dtwc::core::ClusteringResult &b)
+{
+  return a.labels == b.labels && a.medoid_indices == b.medoid_indices
+         && std::memcmp(&a.total_cost, &b.total_cost, sizeof(double)) == 0;
+}
+
+} // anonymous namespace
+
+// HG3, the hybrid's contract (DECISIONS 11-09): under FP64 L1 the GPU's distances are the CPU's bit for bit (HG0), so
+// cpu+gpu's labels, medoids and cost equal the CPU-only and the GPU-only runs whatever the split: the GPU's share forced
+// to 0, 0.5 and 1 and measured, compared by memcmp. Every shape (70,000 and 140,000 series, at least the 69,632 that
+// hold both calibration blocks) runs the measured path: the GPU's block, the first 65,536 points, and the CPU's, the
+// last 4,096, both stand, so the GPU's share lies between them. Forced at 0.5 the GPU's share is one call (fewer than
+// 65,536 points at 70,000), at 1 its first block and then the rest. The CPU's lanes run unbanded, its per-pair
+// function at band 2.
+TEST_CASE("HG3: cpu+gpu's FP64 L1 FastCLARA equals the CPU's and the GPU's whatever the split", "[cuda][clara][hg3]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  struct Shape {
+    bool narrow;
+    std::size_t n;
+  };
+  const auto shape = GENERATE(values<Shape>({ { false, 70000 }, { false, 140000 }, { true, 70000 } }));
+  const bool narrow = shape.narrow;
+  const int band = narrow ? 2 : -1;
+  CAPTURE(narrow, band, shape.n);
+  const auto series = hg3_series(narrow, shape.n);
+  const auto run = [&](dtwc::Device device, double share) {
+    return hg3_run(series, band, dtwc::core::MetricType::L1, device, dtwc::GpuPrecision::FP64, share);
+  };
+  const auto cpu = run(dtwc::Device::CPU, -1.0);
+  const auto gpu = run(dtwc::Device::GPU, -1.0);
+  REQUIRE(same_result(gpu, cpu));
+  CHECK_FALSE(cpu.hybrid);
+  for (const double share : { 0.0, -1.0, 0.5, 1.0 }) {
+    CAPTURE(share);
+    const auto hybrid = run(dtwc::Device::CPU_GPU, share);
+    CHECK(same_result(hybrid, cpu));
+    REQUIRE(hybrid.hybrid);
+    if (share < 0) {
+      CHECK(std::string_view(hybrid.hybrid->source) == "calibrated");
+      CHECK((hybrid.hybrid->cpu_rate > 0 || dtwc::get_max_threads() == 1)); // a team of one leaves the CPU none
+      CHECK(hybrid.hybrid->gpu_rate > 0);
+      const double gpu_points = hybrid.hybrid->gpu_share * static_cast<double>(series.size());
+      CHECK(gpu_points >= 65536.0);
+      CHECK(gpu_points <= static_cast<double>(series.size() - 4096));
+      std::cout << "HG3 FP64 L1 " << (narrow ? "band 2" : "unbanded") << " on " << series.size()
+                << " series, measured: FastCLARA " << dtwc::algorithms::describe(*hybrid.hybrid, series.size()) << "\n";
+    } else {
+      CHECK(std::string_view(hybrid.hybrid->source) == "forced");
+      CHECK(hybrid.hybrid->gpu_share == share);
+    }
+  }
+  dtwc::TeamCap one(1); // the region of one thread: thread 0 drives the GPU's share, then runs every CPU item
+  CHECK(same_result(run(dtwc::Device::CPU_GPU, 0.5), cpu));
+}
+
+// Where the GPU's distances are not the CPU's (FP32; squared L2, where the routes contract the product differently):
+// cpu+gpu at share 1 is the GPU-only run byte for byte (the same sample fills, the same assignment), and a forced share
+// repeats byte for byte; at a share of 0.5 and measured, the medoids are the GPU-only run's (the samples fill on the
+// GPU), the cost lies within the route bound of the GPU-only run's, and a label differs only at a near-tie: where the
+// point's CPU (FP64) distances to the two medoids lie within the route bound of each other. The near-ties are counted.
+TEST_CASE("HG3: cpu+gpu under FP32 and squared L2 differs from the GPU only at near-ties", "[cuda][clara][hg3]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  struct Route {
+    dtwc::GpuPrecision precision;
+    dtwc::core::MetricType metric;
+  };
+  const auto route = GENERATE(values<Route>({ { dtwc::GpuPrecision::FP32, dtwc::core::MetricType::L1 },
+                                              { dtwc::GpuPrecision::FP64, dtwc::core::MetricType::SquaredL2 } }));
+  const bool fp32 = route.precision == dtwc::GpuPrecision::FP32;
+  CAPTURE(fp32);
+  const auto series = hg3_series(false);
+  const auto run = [&](dtwc::Device device, double share) {
+    return hg3_run(series, -1, route.metric, device, route.precision, share);
+  };
+  const auto gpu = run(dtwc::Device::GPU, -1.0);
+  CHECK(same_result(run(dtwc::Device::CPU_GPU, 1.0), gpu));
+  const auto half = run(dtwc::Device::CPU_GPU, 0.5);
+  CHECK(same_result(run(dtwc::Device::CPU_GPU, 0.5), half));
+
+  dtwc::Problem cpu("hg3_cpu"); // the CPU's FP64 distance function on the same settings
+  cpu.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::vector<std::string>(series.size())));
+  cpu.set_metric(route.metric);
+  const auto &pair = cpu.dtw_function();
+  const auto agree = [fp32](double a, double b, std::size_t nx, std::size_t ny) {
+    return fp32 ? dtwc::test_support::dtw_routes_agree<float>(a, b, nx, ny)
+                : dtwc::test_support::dtw_routes_agree<double>(a, b, nx, ny);
+  };
+  for (const double share : { 0.5, -1.0 }) {
+    CAPTURE(share);
+    const auto hybrid = share == 0.5 ? half : run(dtwc::Device::CPU_GPU, share);
+    REQUIRE(hybrid.medoid_indices == gpu.medoid_indices);
+    CHECK(agree(hybrid.total_cost, gpu.total_cost, 48, 48));
+    std::size_t near_ties = 0, other = 0;
+    for (std::size_t p = 0; p < series.size(); ++p) {
+      if (hybrid.labels[p] == gpu.labels[p]) continue;
+      const auto &a = series[static_cast<std::size_t>(gpu.medoid_indices[static_cast<std::size_t>(hybrid.labels[p])])];
+      const auto &b = series[static_cast<std::size_t>(gpu.medoid_indices[static_cast<std::size_t>(gpu.labels[p])])];
+      const bool tie = agree(pair(series[p], a), pair(series[p], b), series[p].size(), std::max(a.size(), b.size()));
+      near_ties += tie;
+      other += !tie;
+    }
+    std::cout << "HG3 " << (fp32 ? "FP32 L1" : "FP64 squared L2") << " share " << share << ": " << near_ties
+              << " labels differ from the GPU-only run, each at a near-tie\n";
+    CAPTURE(near_ties);
+    CHECK(other == 0);
+  }
+}
+
+namespace {
+
+/// The bytes of a matrix's packed values, at its width.
+std::vector<unsigned char> packed_bytes(const dtwc::core::DistanceMatrix &m)
+{
+  std::vector<unsigned char> bytes;
+  m.visit([&](const auto *v) {
+    const auto *first = reinterpret_cast<const unsigned char *>(v);
+    bytes.assign(first, first + m.packed_count() * sizeof(*v));
+  });
+  return bytes;
+}
+
+} // anonymous namespace
+
+// HG4's session (cuda::DistanceFill), on HG0's ragged fixture (307 series of 17 to 211 samples): rows(0, r) and then
+// rows(r, N) write the matrix rows(0, N) writes, byte for byte (memcmp), the GPU in FP64 and FP32, into a float64 and a
+// float32 heap matrix and a mapped float64 one, for r = 51 (a bound of tile-rows of 64 rows cut from the bottom: 307 =
+// 51 + 4 x 64), 52 (none), 1 (row 0 alone, which holds no pair) and 306 (the last row alone). Each matrix starts with a
+// value no fill writes in every slot, so a slot no range writes fails it. So matrix rows [r0, r1) are the pairs of
+// uploaded series [N - r1, N - r0), whose slots are [r0 (r0 + 1) / 2, r1 (r1 + 1) / 2), the diagonal included.
+TEST_CASE("HG4: a CUDA fill session's row ranges write the matrix its whole fill writes", "[cuda][hg4]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  using dtwc::core::Precision;
+  struct Storage {
+    Precision width;
+    bool mapped;
+  };
+#ifdef DTWC_HAS_MMAP
+  const auto storage = GENERATE(values<Storage>({ { Precision::Float64, false }, { Precision::Float32, false },
+                                                  { Precision::Float64, true } }));
+#else
+  const auto storage = GENERATE(values<Storage>({ { Precision::Float64, false }, { Precision::Float32, false } }));
+#endif
+  const auto precision = GENERATE(dtwc::GpuPrecision::FP64, dtwc::GpuPrecision::FP32);
+  CAPTURE(storage.width, storage.mapped, precision);
+  const auto series = hg0_series(false);
+  const std::size_t N = series.size();
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = precision;
+  const dtwc::cuda::SeriesAt at = [&series](std::size_t i) { return std::span<const double>(series[i]); };
+  const dtwc::cuda::ParallelFor team = [](std::size_t count, const std::function<void(std::size_t)> &task) {
+    dtwc::run_openmp(task, count);
+  };
+  const dtwc::test_support::ScratchDirectory scratch("hg4_rows");
+  int made = 0;
+  const auto matrix = [&] { // every slot -1, which no fill writes
+    dtwc::core::DistanceMatrix m = storage.mapped ? dtwc::core::DistanceMatrix::map(
+                                                      scratch.path / ("m" + std::to_string(made++) + ".dtwm"), N, {},
+                                                      storage.width)
+                                                  : dtwc::core::DistanceMatrix(N, storage.width);
+    m.visit([&](auto *v) { std::fill(v, v + m.packed_count(), static_cast<std::remove_pointer_t<decltype(v)>>(-1)); });
+    return m;
+  };
+
+  auto whole = matrix();
+  dtwc::cuda::DistanceFill fill(N, at, opts, team, whole);
+  fill.rows(0, N, whole);
+  REQUIRE(fill.result().kernel_used == "regtile_w8");
+  REQUIRE(fill.result().pairs_computed == N * (N - 1) / 2);
+  REQUIRE(fill.fp32() == (precision == dtwc::GpuPrecision::FP32));
+  const auto want = packed_bytes(whole);
+  whole.visit([&](const auto *v) { REQUIRE(std::none_of(v, v + whole.packed_count(), [](auto x) { return x < 0; })); });
+  for (std::size_t s = 0; s < N; ++s) REQUIRE(whole.get(s, s) == 0.0);
+  for (const std::size_t r : { std::size_t{ 51 }, std::size_t{ 52 }, std::size_t{ 1 }, std::size_t{ 306 } }) {
+    CAPTURE(r);
+    auto parts = matrix();
+    dtwc::cuda::DistanceFill split(N, at, opts, team, parts);
+    split.rows(0, r, parts);
+    split.rows(r, N, parts);
+    CHECK(split.result().pairs_computed == N * (N - 1) / 2);
+    const bool same = packed_bytes(parts) == want; // a bool: Catch would print every byte
+    CHECK(same);
+  }
+}
+
+namespace {
+
+/// HG4's fill settings on `prob`: `series` (owned), the band, metric, device and GPU precision, cpu+gpu's share.
+void hg4_configure(dtwc::Problem &prob, const std::vector<std::vector<double>> &series, int band,
+                   dtwc::core::MetricType metric, dtwc::Device device, dtwc::GpuPrecision precision, double share)
+{
+  prob.set_data(dtwc::Data(std::vector<std::vector<double>>(series), std::vector<std::string>(series.size())));
+  prob.set_band(band);
+  prob.set_metric(metric);
+  prob.set_gpu_precision(precision);
+  prob.set_device(device);
+  prob.set_gpu_share(share);
+}
+
+/// A fill's matrix (its packed bytes) and cpu+gpu's split of it.
+struct Hg4Fill {
+  std::vector<unsigned char> bytes;
+  std::optional<dtwc::core::FillSplit> split;
+};
+
+/// `series` filled as hg4_configure sets them, into a heap matrix or (`mapped` not empty) a new `.dtwm` file there.
+Hg4Fill hg4_fill(const std::vector<std::vector<double>> &series, int band, dtwc::core::MetricType metric,
+                 dtwc::Device device, dtwc::GpuPrecision precision, double share,
+                 const std::filesystem::path &mapped = {})
+{
+  dtwc::Problem prob("hg4");
+  hg4_configure(prob, series, band, metric, device, precision, share);
+  if (!mapped.empty()) prob.use_mmap_distance_matrix(mapped);
+  prob.fill_distance_matrix();
+  REQUIRE(prob.distance_matrix().is_mapped() == !mapped.empty());
+  return { packed_bytes(prob.distance_matrix()), prob.fill_split() };
+}
+
+/// Packed entry k of a float64 matrix's bytes.
+double hg4_entry(const std::vector<unsigned char> &bytes, std::size_t k)
+{
+  double v = 0;
+  std::memcpy(&v, bytes.data() + k * sizeof(double), sizeof(double));
+  return v;
+}
+
+} // anonymous namespace
+
+// HG4e, a slab with rows to compute before the calibrating one (the review's geometry). 6,644 series of 32 samples
+// make tile-rows of 2,048 rows (512 KiB of series) cut from the bottom, so the bounds are 0, 500, 2,548, 4,596, 6,644;
+// a checkpoint every 4,096 rows makes two slabs of two tile-rows. Slab 0's first tile-row holds 125,250 entries, under
+// the calibration unit's 2^19 pairs, so slab 1 calibrates and slab 0 takes the recorded ratio in a measured and in a
+// forced run alike: 0.341 under FP64 gives the GPU its first tile-row, 0.871 under FP32 both, whatever the share. So a
+// forced 0 is not the CPU alone and a forced 1 not the GPU alone there, the counts below are packed sizes of those
+// bounds, and the fill's line says which ratio split slab 0. A measured run's printed share, forced, repeats the
+// GPU's entries and, under FP64 L1, both equal the CPU's matrix. (A change of the tile-row height moves the bounds:
+// then this geometry, not the rule, is what to rebuild.)
+TEST_CASE("HG4e: the slabs before the calibrating one take the recorded ratio, forced share or measured",
+          "[cuda][hg4][checkpoint]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  const std::size_t N = 6644;
+  std::mt19937 rng(777); // NOLINT(cert-msc51-cpp): fixed seed.
+  std::uniform_real_distribution<double> noise(-0.5, 0.5);
+  std::vector<std::vector<double>> series(N, std::vector<double>(32));
+  for (std::size_t i = 0; i < N; ++i)
+    for (auto &v : series[i]) v = 4.0 * static_cast<double>(i % 3) + noise(rng);
+  const dtwc::test_support::ScratchDirectory scratch("hg4e_early_slab");
+  int made = 0;
+  const auto fill = [&](dtwc::Device device, dtwc::GpuPrecision precision, double share) {
+    dtwc::Problem prob("hg4e");
+    hg4_configure(prob, series, -1, dtwc::core::MetricType::L1, device, precision, share);
+    if (device == dtwc::Device::CPU_GPU)
+      prob.checkpoint = { (scratch.path / ("c" + std::to_string(made++))).string(), 4096, true };
+    prob.fill_distance_matrix();
+    return Hg4Fill{ packed_bytes(prob.distance_matrix()), prob.fill_split() };
+  };
+  using dtwc::core::packed_size;
+  const std::size_t all = packed_size(N), tile_row_0 = packed_size(500), slab_0 = packed_size(2548);
+  const auto cpu = fill(dtwc::Device::CPU, dtwc::GpuPrecision::FP64, -1.0);
+  for (const auto precision : { dtwc::GpuPrecision::FP64, dtwc::GpuPrecision::FP32 }) {
+    const bool fp32 = precision == dtwc::GpuPrecision::FP32;
+    CAPTURE(fp32);
+    const std::size_t early = fp32 ? slab_0 : tile_row_0; // slab 0's entries the recorded ratio gives the GPU
+    const auto none = fill(dtwc::Device::CPU_GPU, precision, 0.0);
+    const auto every = fill(dtwc::Device::CPU_GPU, precision, 1.0);
+    REQUIRE(none.split);
+    REQUIRE(every.split);
+    CHECK(none.split->gpu_entries == early);
+    CHECK(every.split->gpu_entries == early + (all - slab_0));
+    CHECK(none.split->early_share == (fp32 ? 13 * 28.5 / (13 * 28.5 + 55) : 28.5 / 83.5));
+    CHECK_THAT(dtwc::describe(*none.split),
+               Catch::Matchers::ContainsSubstring("(rate share 0, forced; the slabs before the calibrating one at the recorded 0."));
+    if (fp32) continue;
+    const bool none_is_cpu = none.bytes == cpu.bytes, every_is_cpu = every.bytes == cpu.bytes; // bools, as above
+    CHECK(none_is_cpu);
+    CHECK(every_is_cpu);
+    const auto measured = fill(dtwc::Device::CPU_GPU, precision, -1.0);
+    REQUIRE(measured.split);
+    CHECK(std::string_view(measured.split->split.source) == "calibrated");
+    CHECK(measured.split->early_share == none.split->early_share);
+    const auto again = fill(dtwc::Device::CPU_GPU, precision, measured.split->split.gpu_share);
+    REQUIRE(again.split);
+    CHECK(again.split->gpu_entries == measured.split->gpu_entries);
+    const bool measured_is_cpu = measured.bytes == cpu.bytes, again_is_cpu = again.bytes == cpu.bytes;
+    CHECK(measured_is_cpu);
+    CHECK(again_is_cpu);
+  }
+}
+
+// HG4, the fill's contract (DECISIONS 11-09): under FP64 L1 the GPU's distances are the CPU's bit for bit (HG0), so
+// cpu+gpu's matrix equals the CPU fill's and the GPU fill's whatever the split: the GPU's share forced to 0, 0.5 and 1
+// and measured, into a heap matrix and a mapped `.dtwm`, compared by memcmp; and a team of one at a forced 0.9 (thread
+// 0 fills the GPU's rows, then every CPU task). On 6,007 series of HG3's fixture (17 to 48 samples unbanded, 30 to 32
+// at band 2) the one slab holds three tile-rows: the first holds the GPU's calibration unit (2^19 pairs) and the
+// first columns of the last the CPU's, so the measured path runs ("calibrated"), and this slab is the calibrating one
+// in a forced run too, where the GPU keeps at least the unit's tile-row for any share above 0. The rule (the bound
+// least in max(GPU entries / s, CPU entries / (1 - s))): 0.5 splits the slab inside (two tile-rows to the GPU),
+// 0.999 gives the GPU every tile-row (a floor to whole tile-rows left it two), 0.001 the unit's tile-row alone. The
+// CPU's lanes run unbanded, its per-pair function at band 2. On 900 series (one tile-row, which holds no unit, so the
+// forced share applies with no clamp) 0.001 gives the GPU nothing and 0.999 everything.
+TEST_CASE("HG4: cpu+gpu's FP64 L1 matrix equals the CPU fill's and the GPU fill's whatever the split", "[cuda][hg4]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  const bool narrow = GENERATE(false, true);
+  const int band = narrow ? 2 : -1;
+  CAPTURE(narrow, band);
+  const auto series = hg3_series(narrow, 6007);
+  const auto fill = [&](dtwc::Device device, double share, const std::filesystem::path &mapped = {}) {
+    return hg4_fill(series, band, dtwc::core::MetricType::L1, device, dtwc::GpuPrecision::FP64, share, mapped);
+  };
+  const auto cpu = fill(dtwc::Device::CPU, -1.0);
+  const auto gpu = fill(dtwc::Device::GPU, -1.0);
+  const bool gpu_is_cpu = gpu.bytes == cpu.bytes; // bools: Catch would print every byte
+  REQUIRE(gpu_is_cpu);
+  CHECK_FALSE(cpu.split);
+  CHECK_FALSE(gpu.split);
+  const dtwc::test_support::ScratchDirectory scratch("hg4_split");
+  std::vector<bool> storages{ false };
+#ifdef DTWC_HAS_MMAP
+  storages.push_back(true);
+#endif
+  int files = 0;
+  for (const bool mapped : storages)
+    for (const double share : { 0.0, -1.0, 0.5, 1.0, 0.999, 0.001 }) {
+      CAPTURE(mapped, share);
+      const auto hybrid = fill(dtwc::Device::CPU_GPU, share,
+                               mapped ? scratch.path / ("m" + std::to_string(files++) + ".dtwm") : std::filesystem::path{});
+      const bool same = hybrid.bytes == cpu.bytes;
+      CHECK(same);
+      REQUIRE(hybrid.split);
+      const auto &split = *hybrid.split;
+      CHECK(split.entries == dtwc::core::packed_size(series.size()));
+      if (share < 0) {
+        CHECK(std::string_view(split.split.source) == "calibrated");
+        CHECK(split.split.cpu_rate > 0);
+        CHECK(split.split.gpu_rate > 0);
+        CHECK(split.gpu_entries > 0);
+        CHECK(split.gpu_entries < split.entries);
+        std::cout << "HG4 FP64 L1 " << (narrow ? "band 2" : "unbanded") << (mapped ? ", mapped" : ", heap")
+                  << ", measured: " << dtwc::describe(split) << "\n";
+      } else {
+        CHECK(std::string_view(split.split.source) == "forced");
+        CHECK(split.split.gpu_share == share);
+        if (share == 0.0) CHECK(split.gpu_entries == 0);
+        if (share == 1.0 || share == 0.999) CHECK(split.gpu_entries == split.entries);
+        if (share == 0.5 || share == 0.001) {
+          CHECK(split.gpu_entries > 0);
+          CHECK(split.gpu_entries < split.entries);
+        }
+      }
+    }
+  {
+    dtwc::TeamCap one(1);
+    const auto alone = fill(dtwc::Device::CPU_GPU, 0.5);
+    const bool alone_is_cpu = alone.bytes == cpu.bytes;
+    CHECK(alone_is_cpu);
+    REQUIRE(alone.split);
+    CHECK(alone.split->gpu_entries > 0);
+    CHECK(alone.split->gpu_entries < alone.split->entries);
+  }
+  const auto few = hg3_series(narrow, 900);
+  const auto few_cpu = hg4_fill(few, band, dtwc::core::MetricType::L1, dtwc::Device::CPU, dtwc::GpuPrecision::FP64, -1.0);
+  for (const double share : { 0.001, 0.999 }) {
+    CAPTURE(share);
+    const auto hybrid =
+      hg4_fill(few, band, dtwc::core::MetricType::L1, dtwc::Device::CPU_GPU, dtwc::GpuPrecision::FP64, share);
+    const bool same = hybrid.bytes == few_cpu.bytes;
+    CHECK(same);
+    REQUIRE(hybrid.split);
+    CHECK(hybrid.split->gpu_entries == (share < 0.5 ? 0 : hybrid.split->entries));
+  }
+}
+
+// Where the GPU's distances are not the CPU's (FP32; squared L2, where the routes contract the product differently):
+// cpu+gpu at share 1 is the GPU fill byte for byte (the same session and launches), a forced share repeats byte for
+// byte, and at a share of 0.5 and measured every entry agrees with the GPU fill's within the route bound of its pair
+// (dtw_route_bound.hpp); the entries that differ are counted (the CPU's tile-rows', under FP32 nearly all of them; at
+// 0.5 the CPU takes a tile-row, measured it may take none: FP32's s of about 0.87 gives the GPU the whole slab).
+TEST_CASE("HG4: cpu+gpu's FP32 and squared-L2 matrices agree with the GPU fill's within the route bound",
+          "[cuda][hg4]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  struct Route {
+    dtwc::GpuPrecision precision;
+    dtwc::core::MetricType metric;
+  };
+  const auto route = GENERATE(values<Route>({ { dtwc::GpuPrecision::FP32, dtwc::core::MetricType::L1 },
+                                              { dtwc::GpuPrecision::FP64, dtwc::core::MetricType::SquaredL2 } }));
+  const bool fp32 = route.precision == dtwc::GpuPrecision::FP32;
+  CAPTURE(fp32);
+  const auto series = hg3_series(false, 6007);
+  const auto fill = [&](dtwc::Device device, double share) {
+    return hg4_fill(series, -1, route.metric, device, route.precision, share);
+  };
+  const auto gpu = fill(dtwc::Device::GPU, -1.0);
+  const bool whole_is_gpu = fill(dtwc::Device::CPU_GPU, 1.0).bytes == gpu.bytes;
+  CHECK(whole_is_gpu);
+  const auto half = fill(dtwc::Device::CPU_GPU, 0.5);
+  const bool repeats = fill(dtwc::Device::CPU_GPU, 0.5).bytes == half.bytes;
+  CHECK(repeats);
+  for (const double share : { 0.5, -1.0 }) {
+    CAPTURE(share);
+    const auto hybrid = share == 0.5 ? half : fill(dtwc::Device::CPU_GPU, share);
+    REQUIRE(hybrid.split);
+    if (share < 0) CHECK(std::string_view(hybrid.split->split.source) == "calibrated");
+    std::size_t outside = 0, differ = 0;
+    for (std::size_t i = 0; i < series.size(); ++i)
+      for (std::size_t j = 0; j < i; ++j) {
+        const std::size_t k = dtwc::core::tri_index(i, j);
+        const double a = hg4_entry(hybrid.bytes, k), b = hg4_entry(gpu.bytes, k);
+        if (std::memcmp(&a, &b, sizeof(double)) == 0) continue;
+        ++differ;
+        const bool agree = fp32 ? dtwc::test_support::dtw_routes_agree<float>(a, b, series[i].size(), series[j].size())
+                                : dtwc::test_support::dtw_routes_agree<double>(a, b, series[i].size(), series[j].size());
+        outside += !agree;
+      }
+    std::cout << "HG4 " << (fp32 ? "FP32 L1" : "FP64 squared L2") << " share " << share << ": " << differ << " of "
+              << series.size() * (series.size() - 1) / 2 << " entries differ from the GPU fill's, " << outside
+              << " beyond the route bound; " << dtwc::describe(*hybrid.split) << "\n";
+    CAPTURE(differ);
+    CHECK(outside == 0);
+    if (share == 0.5) CHECK(differ > 0); // the CPU's tile-row, computed on another route
+  }
+}
+
+// HG4, resume: a checkpointed cpu+gpu fill (a save every 4,096 rows: two slabs of two tile-rows on 8,007 series of
+// HG3's fixture, a forced share of 0.5, so the GPU takes the first tile-row of each slab) stopped after its first slab
+// (its save fails: the checkpoint directory is a file, as the CPU fill's test stops one) and resumed in a fresh
+// Problem from that slab's checkpoint equals the uninterrupted fill byte for byte, under FP64 L1 (where it also equals
+// the CPU fill) and under FP32, where the bits prove the device map: the GPU's tile-row of the second slab is the
+// GPU's again. And a resumed fill computes only the missing entries: the stopped slab's entries replaced by values no
+// kernel gives (the distance + 1000) stay, so the GPU, which writes whole rows, took no tile-row with an entry
+// computed. A tile-row that straddles the written rows (a resume under another save interval) is the CPU's by the same
+// rule; it is not tested. On the same two slabs, a measured run's printed share, forced in a fresh Problem, repeats
+// its split in both slabs (the GPU's entries), and under FP32 its matrix byte for byte: the calibrating slab and its
+// GPU unit are the bounds', so the forced run finds them too.
+TEST_CASE("HG4: a cpu+gpu fill stopped after a slab resumes to the uninterrupted matrix", "[cuda][hg4][checkpoint]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  const auto precision = GENERATE(dtwc::GpuPrecision::FP64, dtwc::GpuPrecision::FP32);
+  CAPTURE(precision);
+  const auto series = hg3_series(false, 8007);
+  constexpr int interval = 4096;
+  const auto configure = [&](dtwc::Problem &prob) {
+    hg4_configure(prob, series, -1, dtwc::core::MetricType::L1, dtwc::Device::CPU_GPU, precision, 0.5);
+  };
+  const dtwc::test_support::ScratchDirectory scratch("hg4_resume");
+  dtwc::Problem whole("hg4_resume");
+  configure(whole);
+  whole.checkpoint = { (scratch.path / "whole").string(), interval, true };
+  whole.fill_distance_matrix();
+  const auto want = packed_bytes(whole.distance_matrix());
+  {
+    dtwc::Problem measured("hg4_resume"), forced("hg4_resume");
+    hg4_configure(measured, series, -1, dtwc::core::MetricType::L1, dtwc::Device::CPU_GPU, precision, -1.0);
+    measured.checkpoint = { (scratch.path / "measured").string(), interval, true };
+    measured.fill_distance_matrix();
+    REQUIRE(measured.fill_split());
+    CHECK(std::string_view(measured.fill_split()->split.source) == "calibrated");
+    hg4_configure(forced, series, -1, dtwc::core::MetricType::L1, dtwc::Device::CPU_GPU, precision,
+                  measured.fill_split()->split.gpu_share);
+    forced.checkpoint = { (scratch.path / "forced").string(), interval, true };
+    forced.fill_distance_matrix();
+    REQUIRE(forced.fill_split());
+    CHECK(forced.fill_split()->gpu_entries == measured.fill_split()->gpu_entries);
+    const bool same = packed_bytes(forced.distance_matrix()) == packed_bytes(measured.distance_matrix());
+    CHECK(same); // FP64: whatever the split; FP32: the same split
+    std::cout << "HG4 two slabs " << (precision == dtwc::GpuPrecision::FP32 ? "FP32" : "FP64")
+              << ", measured: " << dtwc::describe(*measured.fill_split()) << "\n";
+  }
+  if (precision == dtwc::GpuPrecision::FP64) {
+    const auto cpu = hg4_fill(series, -1, dtwc::core::MetricType::L1, dtwc::Device::CPU, precision, -1.0);
+    const bool whole_is_cpu = want == cpu.bytes;
+    CHECK(whole_is_cpu);
+  }
+
+  dtwc::Problem stopped("hg4_resume");
+  configure(stopped);
+  std::ofstream(scratch.path / "not_a_directory") << "occupied";
+  stopped.checkpoint = { (scratch.path / "not_a_directory").string(), interval, true };
+  REQUIRE_THROWS_AS(stopped.fill_distance_matrix(), dtwc::IOError);
+  const std::size_t computed = stopped.distance_matrix().count_computed();
+  REQUIRE(computed > 0);
+  REQUIRE(computed < stopped.distance_matrix().packed_count());
+  const auto stopped_bytes = packed_bytes(stopped.distance_matrix());
+  const std::string saved = (scratch.path / "stopped").string();
+  dtwc::save_checkpoint(stopped, saved);
+
+  for (const bool marked : { false, true }) {
+    CAPTURE(marked);
+    dtwc::Problem resumed("hg4_resume");
+    configure(resumed);
+    REQUIRE(dtwc::load_checkpoint(resumed, saved));
+    REQUIRE(resumed.distance_matrix().count_computed() == computed);
+    if (marked)
+      resumed.writable_distance_matrix().visit([&](auto *v) {
+        for (std::size_t k = 0; k < resumed.distance_matrix().packed_count(); ++k)
+          if (!std::isnan(v[k])) v[k] += 1000;
+      });
+    const std::string directory = (scratch.path / (marked ? "marked" : "resumed")).string();
+    std::filesystem::copy(saved, directory, std::filesystem::copy_options::recursive);
+    resumed.checkpoint = { directory, interval, true };
+    resumed.fill_distance_matrix();
+    REQUIRE(resumed.fill_split());
+    CHECK(resumed.fill_split()->gpu_entries > 0); // the GPU filled a tile-row after the stop
+    const auto got = packed_bytes(resumed.distance_matrix());
+    std::size_t wrong = 0;
+    for (std::size_t k = 0; k < resumed.distance_matrix().packed_count(); ++k) {
+      double expect = hg4_entry(want, k);
+      if (marked && !std::isnan(hg4_entry(stopped_bytes, k))) expect += 1000.0; // an entry the stopped fill computed
+      const double value = hg4_entry(got, k);
+      wrong += std::memcmp(&value, &expect, sizeof(double)) != 0;
+    }
+    CHECK(wrong == 0);
+  }
 }
 
 

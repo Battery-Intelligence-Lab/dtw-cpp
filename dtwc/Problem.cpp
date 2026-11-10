@@ -43,14 +43,17 @@
 #include <array>     // for array
 #include <cctype>    // for toupper
 #include <charconv>  // for from_chars
+#include <chrono>    // for steady_clock (cpu+gpu's calibration)
 #include <cmath>     // for ldexp, ceil
 #include <cstdint>   // for uint32_t, uint64_t
 #include <cstring>   // for memcpy
+#include <exception> // for exception_ptr
 #include <iomanip>   // for operator<<, setprecision
 #include <iostream>  // for cout
 #include <limits>    // for numeric_limits
 #include <numeric>   // for iota
 #include <optional>  // for optional
+#include <sstream>   // for ostringstream
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
 #include <utility>   // for pair
@@ -59,6 +62,23 @@
 namespace dtwc {
 
 namespace {
+
+#ifdef DTWC_HAS_CUDA
+/// cpu+gpu's calibration units in a distance matrix fill: the GPU's leading tile-rows and the CPU team's first
+/// columns of the slab's last tile-row each hold at least this many pairs, 2^19. Measured on 20,000 series of 32 to 64
+/// steps (2026-11-09, inferred: the machine was loaded), units of 2^19 to 2^22 pairs: the GPU's rate on its unit lay
+/// within 1-6 % of its rate on the whole fill, FP64 and FP32, the smallest unit closest; the team's 1-18 % above its
+/// rate on the whole fill at every size (its unit's columns run the full height of the last tile-row). So the
+/// smallest, whose sequential cost (the other device idles) is least.
+constexpr std::size_t fill_calibration_pairs = std::size_t{ 1 } << 19;
+/// cpu+gpu's share of the entries for the GPU where none is measured (no slab's tile-rows hold both units; the slabs
+/// before the calibrating one): the design's rates (2026-10-11, inferred): the FP64 fill on an RTX 4000 Ada 28.5
+/// Gcell/s, the CPU's lanes 55 on 24 threads.
+constexpr double recorded_fill_gpu_share = 28.5 / (28.5 + 55.0);
+/// The same where the GPU computes in FP32: its FP32 fill ran at 12.9 times its FP64 one on 20,000 series of 32 to 64
+/// steps (7.88e7 against 6.10e6 pairs a second, 2026-11-09, inferred: the machine was loaded), taken as 13.
+constexpr double recorded_fill_gpu_share_fp32 = 13.0 * 28.5 / (13.0 * 28.5 + 55.0);
+#endif
 
 using FingerprintHash = core::detail::Sha256;
 
@@ -155,9 +175,10 @@ constexpr GpuPrecision resolve_gpu_precision(GpuPrecision precision)
 
 void validate_gpu_request(std::string_view where, const Problem &prob, core::Precision series_precision)
 {
-  // The GPU routes upload owned Float64 series (data_.p_vec, or an owned copy of
-  // a view's) and run Standard DTW with no missing-data strategy, in L1 or squared L2.
-  if (prob.device().first != Device::GPU) return;
+  // The GPU routes upload Float64 series (CUDA's fill and FastCLARA assignment
+  // from the series' spans, Metal's fill p_vec or an owned copy of a view's) and run Standard
+  // DTW with no missing-data strategy, in L1 or squared L2; so does cpu+gpu, whose GPU share is the GPU's.
+  if (!uses_gpu(prob.device().first)) return;
   if (series_precision == core::Precision::Float32)
     reject_gpu_request(where, "computes from Float64 series, but precision = Float32 was requested",
                        "Load the series as Float64, or use device cpu.");
@@ -202,9 +223,26 @@ std::string gpu_info()
 
 Method resolve_method(Method method, Device device, std::size_t n_series)
 {
-  constexpr std::size_t pam_max_series = 5000; // on the CPU; the GPU fills PAM's matrix at any N
+  // On the CPU; the GPU fills PAM's matrix at any N, and cpu+gpu at least as fast as the GPU alone.
+  constexpr std::size_t pam_max_series = 5000;
   if (method != Method::Auto) return method;
-  return device == Device::GPU || n_series <= pam_max_series ? Method::PAM : Method::CLARA;
+  return uses_gpu(device) || n_series <= pam_max_series ? Method::PAM : Method::CLARA;
+}
+
+std::string describe(const core::FillSplit &fill)
+{
+  std::ostringstream text;
+  text << "cpu+gpu: the GPU filled " << fill.gpu_entries << " of " << fill.entries
+       << " entries, the triangle with its diagonal";
+  if (fill.gpu_fp32) text << ", its rows in FP32 and the CPU's in FP64";
+  text << " (rate share " << std::setprecision(17) << fill.split.gpu_share << ", " << fill.split.source;
+  if (fill.split.gpu_rate > 0)
+    text << std::setprecision(4) << ": the CPU's team " << fill.split.cpu_rate << " and the GPU "
+         << fill.split.gpu_rate << " pairs a second";
+  if (fill.early_share >= 0)
+    text << "; the slabs before the calibrating one at the recorded " << std::setprecision(17) << fill.early_share;
+  text << "), the CPU's team the rest";
+  return text.str();
 }
 
 void require_clusterable(index_t k, std::size_t n_series)
@@ -273,8 +311,16 @@ void apply(const Config &config, Problem &prob)
                       + " is not available: this DTWC++ was built without Gurobi. Use --solver highs, or "
                         "rebuild with -DDTWC_ENABLE_GUROBI=ON and GUROBI_HOME set.");
   prob.set_gpu_precision(config.gpu_precision);
+  prob.set_gpu_share(config.gpu_share);
   prob.set_matrix_dtype(config.matrix_dtype);
   prob.set_device(config.device, config.device_index); // gpu without a GPU backend: the DeviceError
+  // Whatever the method, the run reaches a fill or a pass the share would not govern on another device (onebatch and
+  // tadpole, and a stream, reach neither): refuse it here, as the fill and the pass refuse it where they run.
+  if (config.gpu_share != -1.0 && config.device != Device::CPU_GPU)
+    throw InvalidInput(
+      detail::share_ignored_message("run", "the distance matrix's fill and FastCLARA's pass", config.device));
+  if (config.device == Device::CPU_GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
+    throw DeviceError(detail::hybrid_as_it_goes_message("run", name_of(method_names, config.method)));
   if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
     throw DeviceError(
       "run: method '" + std::string(name_of(method_names, config.method))
@@ -445,6 +491,7 @@ void Problem::refresh_distance_matrix()
   }
   distMat = core::DistanceMatrix(0, matrix_dtype_); // empty, of the width every resize keeps
   filled_ = false;
+  fill_split_.reset(); // the split of the fill that made the matrix dropped here
   rebind_dtw_fn(); // series edited in place may have new lengths (the WDTW table)
 }
 
@@ -530,6 +577,8 @@ void Problem::set_device(Device device, int index)
   if (index < 0)
     throw InvalidInput("Problem::set_device: the GPU index must be >= 0; got "
                        + std::to_string(index) + ".");
+  if (device == Device::CPU_GPU && !detail::hybrid_not_built_reason().empty())
+    throw DeviceError(detail::hybrid_refused_message("Problem::set_device", detail::hybrid_not_built_reason()));
   if (device == Device::GPU) {
 #if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
     throw DeviceError(detail::gpu_not_built_message());
@@ -541,11 +590,19 @@ void Problem::set_device(Device device, int index)
                          "Use gpu (index 0).");
 #endif
   }
-  const int gpu_index = device == Device::GPU ? index : 0; // the CPU has no index
+  const int gpu_index = uses_gpu(device) ? index : 0; // the CPU has no index
   if (device_ == device && device_index_ == gpu_index) return;
   device_ = device;
   device_index_ = gpu_index;
   refresh_distance_matrix();
+}
+
+void Problem::set_gpu_share(double share)
+{
+  if (share != -1.0 && (std::isnan(share) || share < 0.0 || share > 1.0))
+    throw InvalidInput("Problem::set_gpu_share: the share must be -1 (measured) or in [0, 1]; got "
+                       + std::to_string(share) + ".");
+  gpu_share_ = share;
 }
 
 void Problem::copy_distance_settings_from(const Problem &other)
@@ -626,7 +683,7 @@ Problem::distance_checkpoint_identity(core::MetricType metric) const
   // rounding, so either's cache serves the other (and GPU 0's serves GPU 1),
   // while FP32 distances in an FP64 run are a loss of precision.
   const GpuPrecision gpu = resolve_gpu_precision(gpu_precision_);
-  if (device_ == Device::GPU && gpu == GpuPrecision::Auto)
+  if (uses_gpu(device_) && gpu == GpuPrecision::Auto)
     throw InvalidInput(
       "A persistent distance cache (a mapped .dtwm or a checkpoint) records the precision "
       "its distances are computed in, but CUDA precision Auto resolves to FP32 or FP64 on the "
@@ -729,7 +786,7 @@ void Problem::validate_checkpoint_settings() const
       "checkpoint.directory.");
   // The autosave records the precision its distances were computed in, which
   // CUDA's Auto leaves open: the identity refuses it here, before any pair.
-  if (device_ == Device::GPU && resolve_gpu_precision(gpu_precision_) == GpuPrecision::Auto)
+  if (uses_gpu(device_) && resolve_gpu_precision(gpu_precision_) == GpuPrecision::Auto)
     (void)distance_checkpoint_identity();
 }
 
@@ -900,8 +957,9 @@ void Problem::SeriesCheck::finish() const
                        + std::to_string(mark_) + ") is entirely NaN, so MissingStrategy::Interpolate has nothing to "
                        "interpolate from. Use ZeroCost or AROW, or drop the series.");
 
-  // The GPU routes also need univariate Float64 series (a view's are uploaded as an owned copy).
-  if (problem.device_ != Device::GPU) return;
+  // The GPU routes also need univariate Float64 series (CUDA reads them where they lie; Metal's fill uploads a view's
+  // as an owned copy).
+  if (!uses_gpu(problem.device_)) return;
   validate_gpu_request(where_, problem, problem.data_.precision);
   if (problem.data_.ndim > 1)
     reject_gpu_request(where_, "is univariate only, but ndim = " + std::to_string(problem.data_.ndim) + " was requested",
@@ -918,6 +976,23 @@ void Problem::fillDistanceMatrix_BruteForce()
   const size_t N = data_.size();
   const bool f32 = data_.is_f32();
   const dtw_fn_f32_t *f32_function = f32 ? &dtw_fn_f32_ : nullptr;
+#ifdef DTWC_HAS_CUDA
+  const bool sized = distMat.size() == N; // sized before this fill: it may hold computed entries
+  // cpu+gpu: the GPU's session before the matrix is touched, so its refusals come first: the route on the longest
+  // series, every series padded by the team and uploaded once (cuda::DistanceFill). The slab loop fills its rows.
+  std::optional<cuda::DistanceFill> gpu;
+  if (device_ == Device::CPU_GPU) {
+    cuda::CUDADistMatOptions opts;
+    opts.device_id = device_index_;
+    opts.band = distance_.band;
+    opts.precision = resolve_gpu_precision(gpu_precision_);
+    opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2; // L2 is L1 on univariate series
+    gpu.emplace(
+      N, [this](std::size_t i) { return data_.series(i); }, opts,
+      [](std::size_t count, const std::function<void(std::size_t)> &pad) { run_openmp(pad, count, count > 64); },
+      distMat);
+  }
+#endif
 
   // resize() re-fills every packed slot with NaN, so it must NOT run when the
   // matrix is already the right size (a mapped one always is): an unconditional
@@ -1049,7 +1124,157 @@ void Problem::fillDistanceMatrix_BruteForce()
   // before it computes them, and a wait that leaves rows on the device records them written (flush_rows).
   const size_t written = distMat.rows_written();
   size_t waiting = 0; // the first row of the slabs whose write-back no wait has covered
+#ifdef DTWC_HAS_CUDA
+  // cpu+gpu: the entries of tile-rows [ka, kb), the diagonal's included (the GPU writes whole rows).
+  const auto entries = [&](size_t ka, size_t kb) {
+    return core::packed_size(bounds[kb]) - core::packed_size(bounds[ka]);
+  };
+  core::FillSplit hybrid;
+  hybrid.entries = core::packed_size(N);
+  hybrid.gpu_fp32 = gpu && gpu->fp32();
+  double share = gpu_share_; // s: forced, else -1 until the calibrating slab measures it (or none can: recorded)
+  hybrid.split.gpu_share = share;
+  const double recorded = gpu && gpu->fp32() ? recorded_fill_gpu_share_fp32 : recorded_fill_gpu_share;
+#endif
   distMat.visit([&](auto *matrix) {
+#ifdef DTWC_HAS_CUDA
+    // The GPU writes whole rows, so it takes only tile-rows with no entry computed: those from a mapped file's first
+    // row never written, or from a heap matrix's last computed entry on (none in one this fill sized). `clean` is the
+    // first packed slot from which nothing is computed.
+    size_t clean = 0;
+    if (gpu && sized) {
+      if (distMat.is_mapped())
+        clean = core::packed_size(written);
+      else
+        for (clean = core::packed_size(N); clean > 0 && std::isnan(matrix[clean - 1]);) --clean;
+    }
+    // cpu+gpu's slab, tile-rows [k0, k1): the GPU takes [kw, kg), the CPU's team the rest; no tile-row is split (the
+    // ragged lanes sort `order` within one). kw is the first with nothing computed, so the tile-rows a resumed fill
+    // wrote stay the CPU's, whose tasks skip computed entries: no entry is computed again, and the device that
+    // computed one does not change on resume. kg is the bound at which the slab's predicted time, max(entries(kw, kg)
+    // / s, entries(kg, k1) / (1 - s)), is least (the smaller kg on a tie; s = 0 gives kw, s = 1 gives k1), for one
+    // share s of the whole fill: forced (gpu_share_), else measured in the calibrating slab, else the recorded ratio.
+    // The calibrating slab is geometry: the first slab with a tile-row to compute whose tile-rows hold both
+    // calibration units (`units`), so a forced run finds the same slab and the same ka; the slabs before it take the
+    // recorded ratio, in both kinds of run, and in it kg >= ka for any s > 0 (a measured run's GPU unit stands). So a
+    // measured run's printed s, forced, repeats every slab's split. The calibration, sequential and before that slab's
+    // region (a measured run only): the GPU fills the leading tile-rows [kw, ka) whose pairs first reach
+    // fill_calibration_pairs, then the team (run_openmp) the first columns of the last tile-row k1 - 1 that hold as
+    // many pairs; both stand (the region scans those columns, or the GPU rewrites them if it takes that tile-row: the
+    // same bits under FP64, the GPU's as a GPU fill writes them under FP32). Rates in pairs a second, the team's scaled
+    // to the threads less the GPU's driver, as FastCLARA's pass does. Then one parallel region: thread 0 (whose CUDA
+    // workspace the session holds) fills the GPU's rows, its copies synchronised before it returns, and then takes
+    // CPU tasks like the rest; the team runs the CPU's tile-rows' column tasks. Every task and every GPU copy writes
+    // its own packed slots. An error is its thread's slot's, the lowest column's rethrown after the region, as
+    // run_openmp does.
+    struct SlabUnits {
+      size_t kw, ka, columns;
+      bool holds; // the slab's tile-rows hold both calibration units
+    };
+    const auto units = [&](size_t k0, size_t k1) {
+      SlabUnits u{ k0, k0, 0, false };
+      while (u.kw < k1 && core::packed_size(bounds[u.kw]) < clean) ++u.kw;
+      if (u.kw == k1) return u;
+      u.ka = u.kw;
+      while (u.ka + 1 < k1 && entries(u.kw, u.ka) < fill_calibration_pairs) ++u.ka;
+      const size_t last_rows = bounds[k1] - bounds[k1 - 1];
+      u.columns = (fill_calibration_pairs + last_rows - 1) / last_rows; // each holds last_rows pairs
+      u.holds = entries(u.kw, u.ka) >= fill_calibration_pairs && u.columns <= bounds[k1 - 1];
+      return u;
+    };
+    size_t calibrating = 0; // the calibrating slab; slabs.size() - 1 where none holds both units
+    while (gpu && calibrating + 1 < slabs.size() && !units(slabs[calibrating], slabs[calibrating + 1]).holds)
+      ++calibrating;
+    if (gpu && calibrating + 1 == slabs.size() && share < 0) {
+      share = recorded;
+      hybrid.split.gpu_share = share;
+      hybrid.split.source = "recorded";
+    }
+    const auto on_both = [&](size_t slab) {
+      const size_t k0 = slabs[slab], k1 = slabs[slab + 1];
+      const SlabUnits u = units(k0, k1);
+      const size_t kw = u.kw;
+      size_t from = kw, kg = kw; // the GPU's tile-rows [kw, kg), of which the region fills [from, kg)
+      if (kw < k1) {
+        if (slab == calibrating && share < 0) {
+          using clock = std::chrono::steady_clock;
+          const auto start = clock::now();
+          gpu->rows(bounds[kw], bounds[u.ka], distMat);
+          const auto gpu_done = clock::now();
+          const size_t g0 = first_column[k1 - 1];
+          auto unit = [&](size_t i) { task(matrix, g0 + i); };
+          run_openmp(unit, u.columns, true, 8);
+          const std::chrono::duration<double> gpu_time = gpu_done - start, team_time = clock::now() - gpu_done;
+          const int threads = get_max_threads();
+          hybrid.split.gpu_rate =
+            static_cast<double>(entries(kw, u.ka) - (bounds[u.ka] - bounds[kw])) / gpu_time.count();
+          hybrid.split.cpu_rate = static_cast<double>(u.columns * (bounds[k1] - bounds[k1 - 1])) / team_time.count()
+                                  * (threads - 1) / threads;
+          hybrid.split.source = "calibrated";
+          share = hybrid.split.gpu_rate / (hybrid.split.gpu_rate + hybrid.split.cpu_rate);
+          hybrid.split.gpu_share = share;
+          from = u.ka;
+        }
+        // Before the calibrating slab, the recorded ratio; with none, s everywhere (forced, or the recorded ratio).
+        const bool early = calibrating + 1 < slabs.size() && slab < calibrating;
+        const double s_here = early ? recorded : share;
+        if (early) hybrid.early_share = recorded; // said in the fill's line: the share printed did not split this slab
+        const auto cost = [&](size_t k) { // the slab's predicted time, its entries over each device's share
+          const auto on_gpu = static_cast<double>(entries(kw, k)), on_cpu = static_cast<double>(entries(k, k1));
+          return std::max(on_gpu == 0 ? 0.0 : on_gpu / s_here, on_cpu == 0 ? 0.0 : on_cpu / (1.0 - s_here));
+        };
+        kg = slab == calibrating && s_here > 0 ? u.ka : kw;
+        for (size_t k = kg + 1; k <= k1; ++k)
+          if (cost(k) < cost(kg)) kg = k;
+        hybrid.gpu_entries += entries(kw, kg);
+      }
+
+      const size_t a0 = first_column[k0], a1 = first_column[kw], b0 = first_column[kg], b1 = first_column[k1];
+      const size_t cpu_tasks = (a1 - a0) + (b1 - b0);
+      const size_t none = first_column[K]; // a slot's failed_at where nothing failed
+      struct Slot {
+        std::exception_ptr failure;
+        size_t failed_at; // the column task of what failed (the GPU's: its first tile-row's first)
+      };
+      std::vector<Slot> slots(static_cast<size_t>(get_max_threads()), Slot{ nullptr, none });
+      const auto gpu_rows = [&](Slot &slot) {
+        if (kg <= from) return;
+        try {
+          gpu->rows(bounds[from], bounds[kg], distMat);
+        } catch (...) {
+          slot = { std::current_exception(), first_column[from] };
+        }
+      };
+      const auto cpu_task = [&](Slot &slot, size_t i) {
+        const size_t g = i < a1 - a0 ? a0 + i : b0 + (i - (a1 - a0));
+        if (g > slot.failed_at) return;
+        try {
+          task(matrix, g);
+        } catch (...) {
+          slot = { std::current_exception(), g };
+        }
+      };
+#  ifdef _OPENMP
+      const auto end = static_cast<index_t>(cpu_tasks);
+      const int threads = static_cast<int>(slots.size());
+      const index_t chunk = omp_chunk_size_for(end, 8, threads);
+#    pragma omp parallel num_threads(threads)
+      {
+        Slot &slot = slots[static_cast<size_t>(omp_get_thread_num())];
+        if (omp_get_thread_num() == 0) gpu_rows(slot);
+#    pragma omp for schedule(dynamic, chunk) nowait
+        for (index_t i = 0; i < end; ++i) cpu_task(slot, static_cast<size_t>(i));
+      }
+#  else
+      gpu_rows(slots[0]);
+      for (size_t i = 0; i < cpu_tasks; ++i) cpu_task(slots[0], i);
+#  endif
+      const Slot *lowest = &slots[0];
+      for (const Slot &slot : slots)
+        if (slot.failed_at < lowest->failed_at) lowest = &slot;
+      if (lowest->failed_at < none) std::rethrow_exception(lowest->failure);
+    };
+#endif
     distMat.prefetch_rows(0, bounds[slabs[1]]);
     for (size_t s = 0; s + 1 < slabs.size(); ++s) {
       const size_t r0 = bounds[slabs[s]], r1 = bounds[slabs[s + 1]];
@@ -1059,7 +1284,12 @@ void Problem::fillDistanceMatrix_BruteForce()
       // column's failure after the join; a failed pair stays uncomputed.
       const size_t first = first_column[slabs[s]];
       auto slab_task = [&](size_t i) { task(matrix, first + i); };
-      run_openmp(slab_task, first_column[slabs[s + 1]] - first, true, 8);
+#ifdef DTWC_HAS_CUDA
+      if (gpu)
+        on_both(s);
+      else
+#endif
+        run_openmp(slab_task, first_column[slabs[s + 1]] - first, true, 8);
       refuse_float32_overflow(r0, r1);
       // On this thread after the join, so a save never sees a slab half written;
       // tagged with metric(), the metric this fill computed (both autosave sites).
@@ -1074,6 +1304,9 @@ void Problem::fillDistanceMatrix_BruteForce()
   });
   if (written < N) // every row on the device: the file records them all written
     distMat.flush_rows(distMat.rows_written(), N, true);
+#ifdef DTWC_HAS_CUDA
+  if (gpu) fill_split_ = hybrid;
+#endif
 }
 
 void Problem::refuse_float32_overflow(size_t r0, size_t r1)
@@ -1094,6 +1327,8 @@ void Problem::refuse_float32_overflow(size_t r0, size_t r1)
  */
 void Problem::fill_distance_matrix()
 {
+  if (gpu_share_ != -1.0 && device_ != Device::CPU_GPU)
+    throw InvalidInput(detail::share_ignored_message("Problem::fill_distance_matrix", "the fill", device_));
   validate_checkpoint_settings();
   sync_band();
   // Writes through writable_distance_matrix() commit here: one scan refuses ±inf and a
@@ -1105,6 +1340,7 @@ void Problem::fill_distance_matrix()
     written_ = false;
   }
   if (filled_) return;
+  fill_split_.reset(); // set again by a cpu+gpu fill; a refused fill leaves none
   validate_fill_request("Problem::fill_distance_matrix");
 
   // Each fill below sizes the matrix (deferred from set_data /
@@ -1117,8 +1353,9 @@ void Problem::fill_distance_matrix()
   // The missing-data pre-scan is part of validate_fill_request, above: it
   // runs before any pair, here and on every other entry point.
 
-  if (device_ == Device::CPU) {
-    fillDistanceMatrix_BruteForce(); // saves a checkpoint after each row block
+  if (device_ == Device::CPU || device_ == Device::CPU_GPU) {
+    fillDistanceMatrix_BruteForce(); // saves a checkpoint after each row block; cpu+gpu's GPU fills some tile-rows
+    if (verbose_ && fill_split_) std::cout << "Distance matrix " << describe(*fill_split_) << '\n';
   } else {
     // Device::GPU is this build's backend: CUDA, else Metal. It writes every
     // entry of distMat in place, and never hands a pair to the CPU.
@@ -1136,15 +1373,21 @@ void Problem::fill_distance_matrix()
     // L2 is L1 on the univariate series the GPU routes take.
     opts.use_squared_l2 = distance_.metric == core::MetricType::SquaredL2;
     opts.verbose = verbose_;
-    // The backends upload owned Float64 series, which a view (a mapped Arrow IPC file's series, a decoded record
-    // batch's) leaves p_vec empty of: it uploads an owned copy, checked above, freed when the fill returns.
+#  if defined(DTWC_HAS_CUDA)
+    // CUDA reads the Float64 series (checked above) where they lie, a view's (a mapped Arrow IPC file's, a decoded
+    // record batch's) or owned: this thread's team pads them into its staging, each its own rows; no copy is made.
+    const auto parallel = [](std::size_t count, const std::function<void(std::size_t)> &task) {
+      run_openmp(task, count, count > 64);
+    };
+    (void)cuda::compute_distance_matrix_cuda(
+      static_cast<std::size_t>(data_.size()), [this](std::size_t i) { return data_.series(i); }, opts, parallel,
+      distMat);
+#  else
+    // Metal uploads owned Float64 series, which a view (a mapped Arrow IPC file's series, a decoded record batch's)
+    // leaves p_vec empty of: it uploads an owned copy, checked above, freed when the fill returns.
     std::optional<Data> copy;
     if (data_.is_view()) copy.emplace(detail::owned_copy(data_, core::Precision::Float64));
-    const auto &series = copy ? copy->p_vec : data_.p_vec;
-#  if defined(DTWC_HAS_CUDA)
-    (void)cuda::compute_distance_matrix_cuda(series, opts, distMat);
-#  else
-    (void)metal::compute_distance_matrix_metal(series, opts, distMat);
+    (void)metal::compute_distance_matrix_metal(copy ? copy->p_vec : data_.p_vec, opts, distMat);
 #  endif
     refuse_float32_overflow(0, distMat.size());
     if (distMat.rows_written() < distMat.size()) // a mapped file's rows are on the device, and it records them
@@ -1167,7 +1410,11 @@ void Problem::fill_distance_matrix()
 core::ClusteringResult Problem::cluster()
 {
   require_clusterable(Nc, size());
+  if (gpu_share_ != -1.0 && device_ != Device::CPU_GPU)
+    throw InvalidInput(detail::share_ignored_message("Problem::cluster", "the fill and FastCLARA's pass", device_));
   const Method method = resolve_method(method_, device_, size());
+  if (device_ == Device::CPU_GPU && (method == Method::OneBatch || method == Method::TADPole))
+    throw DeviceError(detail::hybrid_as_it_goes_message("Problem::cluster", name_of(method_names, method)));
   switch (method) {
   case Method::PAM: {
     // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie
@@ -1185,7 +1432,7 @@ core::ClusteringResult Problem::cluster()
       *this, { .n_clusters = Nc, .batch_size = batch_size_, .max_iter = maxIter, .random_seed = random_seed_ });
   case Method::CLARA:
     return algorithms::fast_clara(*this, { .n_clusters = Nc, .sample_size = sample_size_, .n_samples = n_samples_,
-                                           .max_iter = maxIter, .random_seed = random_seed_ });
+                                           .max_iter = maxIter, .random_seed = random_seed_, .gpu_share = gpu_share_ });
   case Method::Hierarchical:
     return algorithms::cut_dendrogram(algorithms::build_dendrogram(*this, { .linkage = linkage_ }), *this, Nc);
   case Method::Kmedoids: cluster_by_kmedoids_lloyd(); break;

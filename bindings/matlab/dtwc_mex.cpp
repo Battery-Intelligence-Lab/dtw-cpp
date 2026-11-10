@@ -450,8 +450,8 @@ static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
 enum class Key {
   Name, MatrixDtype, RamLimit, Method, Band, Metric, Variant, MaxIter, NInit, Dc, WdtwG, AdtwPenalty, SdtwGamma, MsmC, TweNu,
   TweLambda, MvMode, MissingStrategy, SampleSize, NSamples, Seed, BatchSize, Linkage, Solver, MipGap,
-  TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, LrRoot, Device, GpuPrecision, Verbose,
-  NoReport
+  TimeLimit, NoWarmStart, NumericFocus, MipFocus, VerboseSolver, LrMaxNodes, LrRoot, Device, GpuPrecision, GpuShare,
+  Verbose, NoReport
 };
 
 /// The distance settings: what dtwc.distance.dtw and Problem.set_distance take.
@@ -501,6 +501,7 @@ constexpr dtwc::Name<Key> config_keys[]{
   { "LrRoot", Key::LrRoot },
   { "Device", Key::Device },
   { "GpuPrecision", Key::GpuPrecision },
+  { "GpuShare", Key::GpuShare },
   { "Verbose", Key::Verbose },
   { "NoReport", Key::NoReport },
 };
@@ -549,6 +550,7 @@ static void set_key(dtwc::Config &c, Key key, const std::string &name, const mxA
   case Key::LrRoot: c.mip.lr_root = dtwc::parse_name(dtwc::lr_root_names, text(), "lr root"); break;
   case Key::Device: std::tie(c.device, c.device_index) = dtwc::detail::parse_device(text()); break;
   case Key::GpuPrecision: c.gpu_precision = dtwc::parse_name(dtwc::gpu_precision_names, text(), "gpu precision"); break;
+  case Key::GpuShare: c.gpu_share = get_scalar(value, key_name); break;
   case Key::Verbose: c.verbose = get_logical(value, key_name); break;
   case Key::NoReport: c.report = !get_logical(value, key_name); break;
   }
@@ -1007,13 +1009,17 @@ static void cmd_test_parallelisation(int nlhs, mxArray *plhs[], int nrhs, const 
   plhs[0] = s;
 }
 
-/// test_gpu() -> struct {available, backend, device_name, validated, pass, reason}.
+/// test_gpu() -> struct {available, backend, device_name, validated, pass, reason, hybrid, hybrid_reason}.
 /// Executes a tiny real GPU kernel + CPU-oracle validation via dtwc::test::gpu();
-/// when no GPU backend is compiled in, available=false with a naming reason.
+/// when no GPU backend is compiled in, available=false with a naming reason; hybrid says whether
+/// device 'cpu+gpu' can run, and hybrid_reason why not.
 static void cmd_test_gpu(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   const dtwc::test::GpuReport r = dtwc::test::gpu();
-  const char *fields[] = { "available", "backend", "device_name", "validated", "pass", "reason" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 6, fields);
+  const char *fields[] = { "available", "backend", "device_name", "validated", "pass", "reason", "hybrid",
+                           "hybrid_reason" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 8, fields);
+  mxSetField(s, 0, "hybrid", mxCreateLogicalScalar(r.hybrid));
+  mxSetField(s, 0, "hybrid_reason", mxCreateString(r.hybrid_reason.c_str()));
   mxSetField(s, 0, "available", mxCreateLogicalScalar(r.available));
   mxSetField(s, 0, "backend", mxCreateString(r.backend.c_str()));
   mxSetField(s, 0, "device_name", mxCreateString(r.device_name.c_str()));
@@ -1137,6 +1143,12 @@ static void cmd_Problem_set_matrix_dtype(int nlhs, mxArray *plhs[], int nrhs, co
   require_char(prhs[2], "dtype");
   stored_problem(prhs[1])
     .set_matrix_dtype(dtwc::parse_name(dtwc::core::precision_names, get_string(prhs[2]), "MatrixDtype"));
+}
+
+/// set_gpu_share(share) — the GPU's share of the work device cpu+gpu splits; -1 measures it, C++ checks the value.
+static void cmd_Problem_set_gpu_share(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("Problem_set_gpu_share requires handle and share.");
+  stored_problem(prhs[1]).set_gpu_share(get_scalar(prhs[2], "share"));
 }
 
 /// set_gpu_precision(name) — what a GPU computes in, by the `--gpu-precision` names.
@@ -1264,6 +1276,7 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   if (nrhs > 4) opts.n_samples = get_exact_int(prhs[4], "n_samples");
   if (nrhs > 5) opts.max_iter = get_exact_int(prhs[5], "max_iter");
   if (nrhs > 6) opts.random_seed = get_random_seed(prhs[6]);
+  opts.gpu_share = prob.gpu_share(); // the Problem's, as Problem.cluster() hands it on
 
   auto result = dtwc::algorithms::fast_clara(prob, opts);
   plhs[0] = clustering_result_to_mx(result);
@@ -1585,6 +1598,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_set_mip_settings") cmd_Problem_set_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_mip_settings") cmd_Problem_get_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_gpu_precision") cmd_Problem_set_gpu_precision(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Problem_set_gpu_share") cmd_Problem_set_gpu_share(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_matrix_dtype") cmd_Problem_set_matrix_dtype(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_checkpoint") cmd_Problem_set_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_checkpoint") cmd_Problem_get_checkpoint(nlhs, plhs, nrhs, prhs);

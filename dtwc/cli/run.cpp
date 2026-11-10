@@ -122,19 +122,21 @@ bool holds_matrix(Method method, bool clara_uses_full_sample)
 /// taken as complete), FasterPAM's swap table where the method runs it (a loss per medoid and candidate of a group),
 /// FastCLARA's assignment table (each sample's medoids against a lane block of points), TADPole's count of each of the
 /// `n_series` points' neighbours, and the silhouettes' sums when the results are written (a sum per cluster and point
-/// of a group).
+/// of a group). cpu+gpu prices the CPU's scratch as `cpu` does (its fill's tasks and its pass's points), and its GPU's
+/// staging as `gpu` does (gpu_staging_bytes).
 std::size_t thread_bytes(const Problem &prob, const Config &config, Method method, bool clara_uses_full_sample,
                          std::size_t n_series, std::size_t length, std::size_t ndim, core::Precision precision)
 {
-  const bool gpu = prob.device().first == Device::GPU;
+  const bool gpu = uses_gpu(prob.device().first);
   const bool assigns = method == Method::CLARA && !clara_uses_full_sample;
 #ifdef DTWC_HAS_CUDA
-  const bool cpu_assignment = assigns && !gpu;
+  const bool cpu_assignment = assigns && (!gpu || prob.device().first == Device::CPU_GPU); // cpu+gpu's CPU share
 #else
   const bool cpu_assignment = assigns; // Metal has no kernel for FastCLARA's assignment
 #endif
   std::size_t bytes = 0;
-  if ((config.dist_matrix.empty() && !gpu) || cpu_assignment) {
+  // cpu+gpu fills as the CPU does, the GPU taking some tile-rows: its threads hold the CPU fill's scratch.
+  if ((config.dist_matrix.empty() && (!gpu || prob.device().first == Device::CPU_GPU)) || cpu_assignment) {
     auto distance = prob.distance();
     distance.ndim = ndim; // the input's, which reaches the Problem only with its series
     bytes += core::thread_scratch_bytes(distance, length, precision);
@@ -150,21 +152,34 @@ std::size_t thread_bytes(const Problem &prob, const Config &config, Method metho
   return bytes;
 }
 
+/// Whether a GPU run reads a view's series where they lie: every CUDA route (its fill pads the series from their
+/// spans, FastCLARA's assignment its blocks, and its samples' fills views of them). Metal's fill
+/// uploads an owned copy of a view's series.
+bool gpu_reads_views([[maybe_unused]] const Config &config)
+{
+#if defined(DTWC_HAS_CUDA)
+  return uses_gpu(config.device);
+#else
+  return false;
+#endif
+}
+
 /// What a GPU holds in host memory beside the series and the distance matrix as it computes: the series it uploads,
 /// each padded to the longest of `length` time steps of `ndim` features, in the precision it computes in. CUDA stages
 /// them in its launch workspace (pinned where it can be; kept until the run gives its threads' scratch back), 8 bytes a
-/// value (4 under --gpu-precision fp32): every series for a fill; for FastCLARA's assignment the medoids of every
-/// sample beside a launch's block of series (at most 2^27 values, launch_medoid_kernel) and the block's distances to
-/// them, or a sample's fill where that is larger. Metal's fill holds the series and the matrix as floats in shared
-/// memory while it runs (its FastCLARA assigns on the CPU). Where the longest series is estimated (twice the mean, a
-/// decoded file's), so is this.
+/// value (4 under --gpu-precision fp32): every series for a fill; for FastCLARA's assignment its pipeline
+/// (cuda::detail::medoid_blocks: the medoids of every sample and two slots of a block of series, at most 2^27 values a
+/// block, with their lengths, and three slots of a block's distances to them; one of each where one block holds every
+/// series), its blocks shrunk within `assign_cap` bytes where that is set, or a sample's fill where that is larger.
+/// Metal's fill holds the series and the matrix as floats in shared memory while it runs (its FastCLARA assigns on the
+/// CPU). Where the longest series is estimated (twice the mean, a decoded file's), so is this.
 std::size_t gpu_staging_bytes([[maybe_unused]] const Config &config, [[maybe_unused]] Method method,
                               [[maybe_unused]] const std::optional<algorithms::detail::ClaraPlan> &sample,
                               [[maybe_unused]] std::size_t n_series, [[maybe_unused]] std::size_t length,
-                              [[maybe_unused]] std::size_t ndim)
+                              [[maybe_unused]] std::size_t ndim, [[maybe_unused]] std::size_t assign_cap = 0)
 {
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-  if (config.device != Device::GPU) return 0;
+  if (!uses_gpu(config.device)) return 0; // cpu+gpu's GPU share is priced as if it took every series
   const std::size_t steps = length * ndim;
   const bool assigns = method == Method::CLARA && sample && sample->sample_size < sample->n_points;
   const std::size_t filled = assigns ? static_cast<std::size_t>(sample->sample_size) : n_series; // a fill's series
@@ -173,9 +188,8 @@ std::size_t gpu_staging_bytes([[maybe_unused]] const Config &config, [[maybe_unu
   std::size_t bytes = filled * steps * value;
   if (assigns) {
     const auto medoids = static_cast<std::size_t>(config.k) * static_cast<std::size_t>(config.n_samples);
-    const auto launch = static_cast<std::size_t>(cuda::detail::kMaxPairsPerLaunch);
-    const std::size_t block = std::min(n_series, std::max<std::size_t>(1, launch / std::max(medoids, steps)));
-    bytes = std::max(bytes, (medoids + block) * steps * value + block * medoids * sizeof(double));
+    bytes = std::max(bytes, cuda::detail::medoid_blocks(n_series, medoids, steps, value, assign_cap)
+                              .host_bytes(medoids, steps, value));
   }
   return bytes;
 #  else
@@ -232,7 +246,9 @@ struct SourceFacts
   bool can_stream = false;    ///< FastCLARA can stream the series (an Arrow IPC or Parquet file, a sample below N)
   bool streams = false;       ///< the file is one FastCLARA streams (a list-per-row Parquet file, an Arrow IPC file
                               ///< io::IpcFile::streams), whatever the method
-  bool halves = false;        ///< --dtype float32 halves `series`: float64 values read from text
+  bool halves = false;        ///< --dtype float32 halves `series`: float64 values read from text, on a CPU (a GPU
+                              ///< takes Float64 series only)
+  Device device = Device::CPU; ///< where the run computes: a GPU has no float32 way out, cpu+gpu streams nothing
   std::size_t streamed = 0;   ///< what a streamed run holds after its stream: every series' name and label
   std::size_t n_series = 0;
   std::size_t length = 0;     ///< the time steps of the longest series expected, which a thread's bytes price
@@ -336,7 +352,8 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
   if (budget == 0 || need + reserve <= budget) return plan;
   // The refusal: what the run holds beside the working set of `threads`, and the ways out that apply.
   const auto refuse = [&](const std::string &what, int threads, const std::string &needs) {
-    std::vector<std::string> ways{ "Raise --ram-limit", "read the series as float32 (--dtype float32)" };
+    std::vector<std::string> ways{ "Raise --ram-limit" };
+    if (!uses_gpu(facts.device)) ways.emplace_back("read the series as float32 (--dtype float32)");
     if (!facts.clara_method) ways.emplace_back("use --method clara");
     if (threads > 1) ways.emplace_back("run fewer threads (OMP_NUM_THREADS)");
     plan.route = Route::Refused;
@@ -451,6 +468,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   clara.n_samples = config.n_samples;
   clara.max_iter = config.max_iter;
   clara.random_seed = config.seed;
+  clara.gpu_share = config.gpu_share; // the run calls fast_clara itself, so Problem::cluster's copy of the share is not made
   if (config.method == Method::CLARA) algorithms::detail::validate_clara_controls(clara, "run");
 
   const fs::path input = utf8_to_path(config.input);
@@ -513,7 +531,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     const std::size_t pam = core::packed_size(static_cast<std::size_t>(sample.sample_size))
                             * core::value_bytes(config.matrix_dtype);
     const auto n = static_cast<std::size_t>(sample.n_points);
-    const std::size_t pass = algorithms::detail::clara_pass_bytes(sample, static_cast<std::size_t>(clara.n_samples));
+    const std::size_t pass = algorithms::detail::clara_pass_bytes(sample, static_cast<std::size_t>(clara.n_samples),
+                                                                  config.device == Device::CPU_GPU);
     return std::max(pam, pass + n * sizeof(index_t) + n / 8);
   };
   // FastCLARA's plan where `resolved` is clara and there are series (none otherwise). k above the number of series is
@@ -604,12 +623,26 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     facts.held = held;
     facts.can_stream = can_stream;
     facts.streams = streams;
-    facts.halves = format == InputFormat::Text && precision == core::Precision::Float64;
+    facts.halves = format == InputFormat::Text && precision == core::Precision::Float64 && !uses_gpu(config.device);
+    facts.device = config.device;
     facts.streamed = streamed;
     facts.n_series = n_series;
     facts.length = length;
-    memory = plan_memory(facts, budget, config.ram_limit != 0,
-                         thread_bytes(prob, config, resolved, full, n_series, length, ndim, precision), requested);
+    const std::size_t per_thread = thread_bytes(prob, config, resolved, full, n_series, length, ndim, precision);
+    memory = plan_memory(facts, budget, config.ram_limit != 0, per_thread, requested);
+    // An explicit limit that leaves CUDA's assignment no room for its blocks shrinks them to what it leaves beside one
+    // thread's working set, down to one series (cuda::detail::medoid_blocks); a block of one that does not fit is
+    // refused as before.
+    if (memory->route == Route::Refused && config.ram_limit != 0 && gpu_reads_views(config)
+        && resolved == Method::CLARA && sample && sample->sample_size < sample->n_points) {
+      const std::size_t others = facts.series + facts.clara + facts.fixed + working_set(per_thread, 1);
+      if (budget > others) {
+        facts.staging = gpu_staging_bytes(config, resolved, sample, n_series, length, ndim, budget - others);
+        clara.gpu_staging_bytes = budget - others;
+        memory = plan_memory(facts, budget, true, per_thread, requested);
+        if (memory->route == Route::Refused) clara.gpu_staging_bytes = 0;
+      }
+    }
     if (config.verbose) std::cout << "Memory plan: " << memory->text() << "\n";
     if (stage.report)
       stage.report->plan = detail::RunReport::Plan{ memory->budget,   memory->reserve(), memory->data_cap(),
@@ -693,7 +726,10 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   if (format == InputFormat::ArrowIPC) {
     ipc.emplace(input);
     n_series = static_cast<std::size_t>(ipc->num_rows());
-    const std::size_t ipc_bytes = ipc->resident_bytes(config.dtype, config.device == Device::GPU);
+    // Metal's GPU uploads an owned copy of the views read_arrow_ipc gives in the file's precision (resident_bytes
+    // prices it); CUDA reads them where they lie.
+    const bool reads_views = gpu_reads_views(config);
+    const std::size_t ipc_bytes = ipc->resident_bytes(config.dtype, uses_gpu(config.device) && !reads_views);
     // Series of up to the longest the walk read from a mapped file's offsets, else of twice the mean length.
     std::size_t length = ipc->longest_steps();
     if (length == 0 && n_series > 0) length = 2 * ipc->num_values() / (n_series * ipc->ndim());
@@ -704,8 +740,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     const bool can_stream = can_stream_file(sample, streams);
     // The names are read after the stream, beside the labels: their read is priced with them.
     const std::size_t names_bytes = ipc->series_names_bytes() + ipc->names_read_bytes();
-    // A GPU uploads an owned copy of the views read_arrow_ipc gives in the file's precision (resident_bytes prices it).
-    upload_copy = config.device == Device::GPU && (config.dtype == core::Precision::Float32) == ipc->is_f32();
+    upload_copy = uses_gpu(config.device) && (config.dtype == core::Precision::Float32) == ipc->is_f32()
+                  && !reads_views;
     const MemoryPlan planned = plan_of(resolved, sample, ipc_bytes, ipc->num_values(), length, ipc->ndim(),
                                        config.dtype, can_stream, streams, names_bytes + 2 * n_series * sizeof(index_t));
     method = resolved;
@@ -727,14 +763,17 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
       };
       const std::string other = config.dtype == core::Precision::Float32 ? "float64" : "float32";
       std::string why;
-      if (!streams && config.device == Device::GPU)
+      if (!streams && upload_copy)
         why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
               "views of its " + std::to_string(n_series) + " series and the owned copy the GPU uploads of them are "
               "held at once. Raise --ram-limit, or run on the CPU (--device cpu), which holds no copy.";
       else if (!streams)
+        // A GPU takes Float64 series only, so the other precision is the CPU's way out, not its own.
         why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
               "views of its " + std::to_string(n_series) + " series are held at once. Raise --ram-limit"
-              + (clara_streams() ? ", or read its values as " + other + " (--dtype " + other + ")"
+              + (clara_streams() ? std::string(uses_gpu(config.device) ? ", or run on the CPU (--device cpu) and "
+                                                                       : ", or ")
+                                     + "read its values as " + other + " (--dtype " + other + ")"
                                      + (resolved == Method::CLARA ? "" : " with --method clara")
                                      + ", whose copy FastCLARA reads a record batch at a time."
                                  : std::string("."));
@@ -802,7 +841,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
       method = resolve(value_bytes, longest, ndim, precision);
       std::optional<algorithms::detail::ClaraPlan> sample;
       if (method == Method::CLARA) sample = resolve_clara_plan(static_cast<std::int64_t>(n_series), clara, "run");
-      upload_copy = config.device == Device::GPU && view;
+      upload_copy = uses_gpu(config.device) && view && !gpu_reads_views(config);
       const std::size_t copy = upload_copy ? detail::owned_series_bytes(elements, n_series, false) : 0;
       if (const MemoryPlan planned =
             plan_of(method, sample, value_bytes + copy, elements, longest, ndim, precision, false, false, 0);
@@ -876,19 +915,29 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   stage.begin(fills_first ? "fill" : "cluster");
   if (config.verbose) std::cout << "Running " << progress_label(method) << " (k=" << config.k << ") ...\n";
   if (fills_first) {
-    stage.note(prob.is_distance_matrix_filled()
-                 ? "complete on entry"
-                 : std::to_string(n_series) + " series' matrix on " + device_text(config)
-                     + (config.device == Device::GPU && prob.data().is_view() ? ", from an owned copy of their views"
-                                                                              : ""));
+    const std::string fill_note = prob.is_distance_matrix_filled()
+                                    ? "complete on entry"
+                                    : std::to_string(n_series) + " series' matrix on " + device_text(config)
+                                        + (uses_gpu(config.device) && prob.data().is_view() && !gpu_reads_views(config)
+                                             ? ", from an owned copy of their views"
+                                             : "");
+    stage.note(fill_note);
     prob.fill_distance_matrix();
+    // cpu+gpu's split, which depends on the moment where it is measured: the fill row says it, so forcing its share
+    // repeats the fill.
+    if (prob.fill_split()) stage.note(fill_note + "; " + dtwc::describe(*prob.fill_split()));
     stage.begin("cluster");
   }
   stage.note(std::string(progress_label(method)) + (fills_first ? "" : ", any distances it computes inside"));
   // In RAM the Problem clusters, but where detail::run was given a solver (a binding that links no HiGHS gives its
   // own) and the run is MIP on HiGHS or LR-core's Kelley root, tested as Python's Problem.cluster override tests them:
   // the solver's clustering is the run's, published on the Problem, which the Result reads.
+  // FastCLARA in RAM runs on the run's own options, as its stream does, so the plan's GPU blocks
+  // (clara.gpu_staging_bytes) reach it. Problem::cluster's checks on that path are made before it: k against the series
+  // (require_clusterable, above), the method on cpu+gpu (apply); fast_clara makes its own (validate_clara_request,
+  // resolve_clara_plan), as Problem::cluster's call of it did.
   const auto cluster_in_ram = [&] {
+    if (prob.method() == Method::CLARA) return algorithms::fast_clara(prob, clara);
     const bool by_solver = solver && ((prob.method() == Method::MIP && prob.solver() == Solver::HiGHS)
                                       || (prob.method() == Method::LRCore && prob.mip_settings.lr_root == LRRoot::Kelley));
     if (!by_solver) return prob.cluster();
@@ -929,6 +978,14 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
                        + " threads (-v prints the memory plan); raise --ram-limit by what the stream lacks, or run "
                          "fewer threads (OMP_NUM_THREADS) to shrink the reserve.");
   }
+  // cpu+gpu's split, which depends on the moment where it is measured: the cluster row says it, so forcing its share
+  // repeats the run.
+  if (result.hybrid)
+    stage.note(std::string(progress_label(method)) + ", any distances it computes inside; "
+               + algorithms::describe(*result.hybrid, result.labels.size()));
+  else if (!fills_first && prob.fill_split()) // the fill inside this stage (hierarchical, mip, lrcore)
+    stage.note(std::string(progress_label(method)) + ", any distances it computes inside; "
+               + dtwc::describe(*prob.fill_split()));
   if (config.verbose) {
     std::cout << progress_label(method);
     if (method == Method::PAM)
@@ -1027,7 +1084,7 @@ std::string ways_out(const RunStage &stage, const Config &config)
   std::vector<std::string> ways;
   if (!stage.plan) {
     if (at == "read" && stage.format == InputFormat::Text) {
-      if (config.dtype == core::Precision::Float64) ways.emplace_back("--dtype float32");
+      if (config.dtype == core::Precision::Float64 && !uses_gpu(config.device)) ways.emplace_back("--dtype float32");
 #ifdef DTWC_HAS_MMAP
       ways.emplace_back(std::string("the file converted to Arrow IPC (dtwc-convert), whose values are mapped where they "
                                     "lie") + counted);
@@ -1036,7 +1093,7 @@ std::string ways_out(const RunStage &stage, const Config &config)
   } else if (stage.plan->route == Route::Streamed) {
     ways.emplace_back(std::string("a lower --ram-limit, within which the stream reads") + down_to);
   } else if (at == "read") {
-    if (stage.plan->facts.streams && clara_can)
+    if (stage.plan->facts.streams && clara_can && stage.plan->facts.device != Device::CPU_GPU) // cpu+gpu streams nothing
       ways.emplace_back(std::string(stage.plan->facts.clara_method ? "" : "--method clara with ")
                         + "a lower --ram-limit, which streams the series" + down_to);
   } else if (at == "storage" && !config.dist_matrix.empty()) {

@@ -72,7 +72,7 @@ The Tier-1 flow is Python's: set the device once, load a dataset, cluster it,
 read the result.
 
 ```matlab
-dtwc.device('cpu');                                   % or 'gpu', 'gpu:N'
+dtwc.device('cpu');                                   % or 'gpu', 'gpu:N', 'cpu+gpu'
 data = dtwc.load('cycles.csv', 'SkipCols', 1);        % nothing is read yet
 res = dtwc.cluster(data, 3, 'Band', 10, 'MaxIter', 50);
 res.labels                                            % 1-based cluster of each series
@@ -99,7 +99,9 @@ CLARA), `Method`, `Band`, `Metric`,
 `TweNu`, `TweLambda`), `MvMode`, `MissingStrategy`, `MaxIter`, `NInit`, `Seed`,
 `SampleSize`, `NSamples`, `BatchSize`, `Linkage`, `Dc`, `Solver` and the MIP
 settings (`MipGap`, `TimeLimit`, `NoWarmStart`, `NumericFocus`, `MipFocus`,
-`VerboseSolver`, `LrMaxNodes`, `LrRoot`), `GpuPrecision`, `Device`, `Name`, `Verbose`
+`VerboseSolver`, `LrMaxNodes`, `LrRoot`), `GpuPrecision`, `GpuShare` (the GPU's share of the
+work `'Device', 'cpu+gpu'` splits: `-1`, the default, measures it, a value in [0, 1] forces it so a run
+repeats; `res.Report` prints the share a run used), `Device`, `Name`, `Verbose`
 (`dtwc_cl -v`'s lines, the memory plan among them) and `NoReport` (no run report:
 `res.Report` is `''`); and `Dtype`, `dtwc.load`'s, for a path or series in memory it loads.
 C++ reads and checks them before a series is read; a key not given takes
@@ -300,5 +302,6 @@ snake_case in Python and CamelCase in MATLAB's name-value keys and properties.
 | `clf.inertia_` | `clust.Inertia` | |
 | `prob.band`, `prob.max_iter` | `prob.Band`, `prob.MaxIter` | Read-only in MATLAB: `set_band`, `set_max_iter` |
 | `Problem("p", device="gpu")` | `dtwc.Problem('p', 'Device', 'gpu')` | a `Problem`'s device; it does not follow `dtwc.device()` |
+| `prob.set_gpu_share(0.5)` | `prob.set_gpu_share(0.5)` | the share of the work device `cpu+gpu` splits; `-1` measures it |
 | `prob.set_device("cpu")` | `prob.set_device('cpu')` | same names as `dtwc.device()`; `'hpc'` is an option of Python's `cluster()` and `dtwcpp.device()` only, and is `dtwc:deviceError` here |
 | `prob.read_distance_matrix(path, not_computed="negative")` | `prob.read_distance_matrix(path, 'NotComputed', 'negative')` | a v1.0.0 file's `-1` (any value below 0) marks a pair to compute; the default, `'nan'`, an empty field or NaN |

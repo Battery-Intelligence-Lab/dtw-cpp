@@ -78,7 +78,7 @@ Parameters:
 | `series` | list of list/array | required | Input time series |
 | `band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
 | `metric` | str | `"l1"` | `"l1"` or `"squared_euclidean"` |
-| `device` | str | `None` | `"cpu"`, `"gpu"`, `"gpu:N"` (`"cuda"` / `"cuda:N"` are aliases); `None` uses `dtwcpp.device()` |
+| `device` | str | `None` | `"cpu"`, `"gpu"`, `"gpu:N"` (`"cuda"` / `"cuda:N"` are aliases), `"cpu+gpu"`, `"cpu+gpu:N"` (CUDA only); `None` uses `dtwcpp.device()` |
 | `matrix_dtype` | str | `"float64"` | `"float64"` or `"float32"`: the matrix's value type and the array's dtype; `"float32"` takes half the memory, each distance rounded to a float |
 
 ## DTWClustering class
@@ -126,7 +126,7 @@ print(f"Iterations:     {clf.n_iter_}")
 | `metric` | str | `"l1"` | Pointwise metric: `"l1"` or `"squared_euclidean"`; `"precomputed"`: `X` is an N x N distance matrix for `fit`, M x N for `predict`/`transform`/`score` |
 | `batch_size` | int | `-1` | OneBatchPAM's batch size (`-1`: automatic) |
 | `random_state` | int | `None` | The seed; `None` is `dtwcpp.DEFAULT_RANDOM_SEED` (42) |
-| `device` | str | `None` | Local `"cpu"`/`"gpu"`/`"cuda:N"`, or whole-job `"hpc"` offload |
+| `device` | str | `None` | Local `"cpu"`/`"gpu"`/`"cuda:N"`/`"cpu+gpu"`, or whole-job `"hpc"` offload |
 
 The estimator validates the complete distance contract before computing.
 Squared Euclidean cost is available for Standard DTW and DDTW, and the
@@ -279,7 +279,10 @@ print(dtwcpp.gpu_available())  # True if this build's backend finds a GPU
 print(dtwcpp.gpu_info())       # e.g. "CUDA: <device name and properties>", or why there is none
 ```
 
-`dtwcpp.test.gpu()` runs a small distance matrix on the GPU and checks it against the CPU.
+`dtwcpp.test.gpu()` runs a small distance matrix on the GPU and checks it against the CPU. It
+returns a dict with `available`, `backend`, `device_name`, `validated`, `pass` and
+`reason`, and `hybrid` and `hybrid_reason`: whether device `"cpu+gpu"` can run here (a CUDA
+build with a device) and, if not, why.
 
 ### Use GPU for distance matrix
 
@@ -300,6 +303,24 @@ labels = clf.fit_predict(X)
 `cuda` is a spelling of `gpu`: it runs on this build's GPU (CUDA, else Metal),
 and with no GPU the request raises `dtwcpp.DeviceError`. Select `device="cpu"`
 explicitly if CPU execution is wanted.
+
+`device="cpu+gpu"` (a CUDA build) uses the CPU's threads and the GPU together: it fills the
+distance matrix of `pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical` and of `clara` on a
+sample of every series on both, and splits FastCLARA's assignment pass between them.
+`dtwcpp.device("cpu+gpu")`, `Problem(device="cpu+gpu")` and `cluster(..., device="cpu+gpu")`
+raise `dtwcpp.DeviceError`, in C++'s words, on a build without CUDA; `onebatch`, `tadpole` and
+a run that streams its series raise it too. `gpu_share` splits the work (`-1`, the default,
+measures the share; a value in [0, 1] forces it so a run repeats; the run report,
+`Result.report`, prints the share a run used):
+
+```python
+res = dtwcpp.cluster(series, 3, method="pam", device="cpu+gpu", gpu_share=0.5, verbose=True)
+prob = dtwcpp.Problem("mine", device="cpu+gpu")
+prob.set_gpu_share(0.5)            # beside prob.set_gpu_precision(...)
+```
+
+Anything but -1 or [0, 1] raises `dtwcpp.InvalidInput`, and so does a forced share on
+another device. [Devices](../../guides/devices/) gives the rule.
 
 **Note:** GPU clustering supports Standard, dependent DTW with
 `missing_strategy="error"`; both L1 and squared-Euclidean metrics are available.

@@ -260,11 +260,15 @@ void bind(CLI::App &app, Config &config)
          config.device = device;
          config.device_index = index;
        },
-       "Compute device: cpu, gpu, gpu:N (cuda and cuda:N are the same)")
+       "Compute device: cpu, gpu, gpu:N (cuda and cuda:N are the same), cpu+gpu, cpu+gpu:N (FastCLARA's pass and "
+       "the distance matrix's fill split between the CPU and a CUDA GPU)")
     ->default_function([&config] { return device_text(config); })
     ->capture_default_str();
   key(app, "--gpu-precision,--gpu-dtype", config.gpu_precision, gpu_precision_names, "gpu precision",
       "GPU kernel precision: auto (default), float32/f32/fp32, float64/f64/fp64/double");
+  key(app, "--gpu-share", config.gpu_share,
+      "cpu+gpu: the GPU's share of the work, in [0, 1]; -1 (default) measures it at the start of the work. A "
+      "forced share repeats a run; any other device refuses one");
 
   key(app, "-v,--verbose", config.verbose, "Verbose output");
   app.add_flag_function(

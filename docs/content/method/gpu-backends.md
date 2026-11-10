@@ -41,7 +41,7 @@ raises `DeviceError` naming the setting and its value:
 |---|---|
 | a variant other than Standard, a missing-data strategy, `ndim > 1` | `DeviceError` |
 | Float32 series, owned or a view | `DeviceError` |
-| Float64 series that a `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) | uploaded as an owned copy, freed when the fill or the assignment returns (`dtwc_cl`'s memory plan counts that copy and the GPU's staging buffer) |
+| Float64 series that a `Data` only views (an Arrow IPC file read in place or decoded, `set_view_data`) | CUDA reads them where they lie (its fill, FastCLARA's samples and its assignment pad them from the view; no copy is made); Metal's fill uploads an owned copy, freed when the fill returns (`dtwc_cl`'s memory plan counts the GPU's staging buffer, and on Metal that copy) |
 | squared L2 (`Problem::set_metric(MetricType::SquaredL2)`, dense or mapped) | computed with `use_squared_l2` |
 | Metal: precision FP64, or a GPU index other than 0 (refused by `set_device`) | `DeviceError` |
 | CUDA: precision Auto, FP32 or FP64; any device index | honoured |
@@ -50,13 +50,31 @@ raises `DeviceError` naming the setting and its value:
 The same validator runs in `Problem::dtw_function()`, through which
 OneBatchPAM, FastCLARA's assignment and TADPole compute the pairs they need.
 Known gap: through a Tier-2 `Problem`, OneBatchPAM and TADPole compute on the CPU
-when the device is a GPU (`dtwc_cl` and Tier-1 `cluster()` refuse them on a GPU with
-a `DeviceError`).
+when the device is `gpu` (`dtwc_cl` and Tier-1 `cluster()` refuse them on a GPU with
+a `DeviceError`). On `cpu+gpu` a Tier-2 `Problem` refuses them too, with a `DeviceError`.
 FastCLARA's assignment runs on the GPU with CUDA: `compute_medoid_distances_cuda`
 computes every series against the k medoids on the fill's kernels and route
 rule, one launch per block of series (a block holds at most 2^27 samples and as
-many distances), and the host keeps each series' nearest medoid as the CPU does.
-Metal has no such entry, so its assignment runs on the CPU.
+many distances), and the host keeps each series' nearest medoid as the CPU does,
+in point order. The blocks go through a pipeline of two streams: two host and two
+device slots of series padded to the longest (the caller's threads pad a block into
+host memory pinned where the runtime grants it) so that a block is padded and uploaded on a copy stream while
+the block before it computes on the compute stream, and three host slots (pinned likewise) for
+the blocks' distances, so that the host assigns a block while the next compute. The
+kernels are the fill's; the pipeline reads each series where it lies. The fill reads
+them the same way: the caller's threads pad every series into staging (pinned for
+256 KiB or more, where granted), one upload, then the launches. A failed CUDA call raises `DeviceError` whose text names
+its file, line and call (`CUDA error at <file>:<line> (<call>): <CUDA's message>`);
+where the runtime refuses pinned host memory a buffer is pageable instead (slower
+copies, the same results) and one line on stderr says so. Metal has no such entry, so
+its assignment runs on the CPU.
+
+With `Device::CPU_GPU` (`cpu+gpu`, CUDA only) the fill and the assignment share their
+work between this GPU session and the CPU's threads, in one parallel region per slab
+of the fill and one for the pass; the kernels and the CUDA entry points are the same,
+the GPU's session filling row ranges of the matrix (`cuda::DistanceFill`). The rule
+and its limits are on the [Devices](../../guides/devices/) page; the GPU is Float64 or
+FP32 as on `gpu`, so under FP32 a `cpu+gpu` matrix holds FP32 rows and FP64 rows.
 
 > **Compile-time flags.** CUDA defaults OFF and is enabled with
 > `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON on Apple platforms and

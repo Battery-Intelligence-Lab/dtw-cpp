@@ -3,7 +3,7 @@
 # option block held before Config took its keys (checked key by key), except
 # name ("": the input's file or folder name) and n-clusters (0: not given, which
 # a run refuses); delimiter, lr-max-nodes and lr-root are new keys at the loader's
-# and MIPSettings' own defaults.
+# and MIPSettings' own defaults, and gpu-share is a new key at -1, which measures.
 # tests/integration/test_cli_device_matrix.cmake compares the binary against it.
 # not-computed, a new key, is at the matrix reader's own default (CLI11 writes nan bare).
 input = ""
@@ -52,5 +52,6 @@ lr-max-nodes = 2000000
 lr-root = "subgradient"
 device = "cpu"
 gpu-precision = "auto"
+gpu-share = -1
 verbose = false
 no-report = false

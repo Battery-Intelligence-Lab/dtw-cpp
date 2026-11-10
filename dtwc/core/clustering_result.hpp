@@ -13,9 +13,38 @@
 
 #include "../base/settings.hpp" // index_t
 
+#include <optional>
 #include <vector>
 
 namespace dtwc::core {
+
+/// How FastCLARA's assignment pass was split under cpu+gpu: the GPU took the leading `gpu_share` of the points (the
+/// share of the series, its points / N: forced again, it repeats the split exactly), the CPU's team the rest. The rates,
+/// in points a second, are those that set a calibrated share: the CPU's team less the GPU's driving thread, and the
+/// GPU through its pipeline; 0 where the share was forced or the design's recorded ratio stood in.
+struct HybridSplit {
+  double gpu_share = 0.0;
+  double cpu_rate = 0.0;
+  double gpu_rate = 0.0;
+  const char *source = "forced"; ///< "forced", "calibrated" or "recorded"
+};
+
+/// How a distance matrix fill was split under cpu+gpu (Problem::fill_split): the GPU filled `gpu_entries` of the
+/// matrix's `entries` packed entries (the diagonal counted), whole tile-rows, the CPU's team the rest. `split` is the
+/// share that set every slab's split (a rate share, the GPU's rate over the two devices' sum: forced, or set in the
+/// first slab with rows to compute as the GPU's entries of that slab over its entries; forced again, it repeats every
+/// slab's split, which rounds it to whole tile-rows) and, where that slab measured it, both rates in pairs a second.
+/// `entries` is the packed triangle's, its diagonal counted. `gpu_fp32`: the GPU computed in float32, so its rows are
+/// float32's and the CPU's float64's. `early_share`: the recorded ratio that split the slabs with rows to compute before
+/// the calibrating one, in a measured and in a forced run alike (so `split.gpu_share` did not reach them); -1 where
+/// the fill had no such slab.
+struct FillSplit {
+  HybridSplit split;
+  std::size_t gpu_entries = 0;
+  std::size_t entries = 0;
+  bool gpu_fp32 = false;
+  double early_share = -1.0;
+};
 
 /// Result of a clustering algorithm run.
 struct ClusteringResult {
@@ -24,6 +53,7 @@ struct ClusteringResult {
   double total_cost = 0.0;             ///< Sum of distances to nearest medoid.
   int iterations = 0;                  ///< Number of iterations until convergence.
   bool converged = false;              ///< Whether the algorithm converged.
+  std::optional<HybridSplit> hybrid;   ///< FastCLARA on cpu+gpu: how its pass was split (empty elsewhere).
 
   /// Returns the number of clusters.
   index_t n_clusters() const { return static_cast<index_t>(medoid_indices.size()); }
