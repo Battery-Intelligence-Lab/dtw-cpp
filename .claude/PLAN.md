@@ -105,10 +105,14 @@ differ only where several optimal medoid sets exist, node counts and run times c
    1 differ = the `gpu-share` line, pytest 937, matlab_suite 156/156), its docs half 11-10 (68c99019; docs gates PASS,
    Hugo not installed so the pages' build unrun), `test_cuda.py`'s two failures on a CUDA wheel stale since before HG and
    fixed (80e656a1; 15 passed on the wheel);
-   ◐ RD (11-10, `pb/RD` from pb/HG, worktree `wt/RD`): HG5 saw a capped text read return 0 series ("dataset is empty")
-   where it should say out of memory; my reading, to be confirmed, is `fileOperations.hpp` `for_each_data_line` taking a
-   `getline` that failed on `bad_alloc` for end of file (a short dataset, no error); to verify before the merge:
-   the GPU read check in `test_run_out_of_memory` once RD is in (HG5b's GPU `ways_out` edits are unexercised), MATLAB's
+   ☑ RD (11-10, 3eb5c01d on `pb/RD` from pb/HG a6983659, worktree `wt/RD`, logs `C:/D/git/wt/tmp/RD/`): confirmed before
+   the fix, `for_each_data_line` over a stream buffer that throws after two lines returned 2 with no error (v1.0.0
+   shipped the loop; with an allocator refusing 1 MiB, `readFile`, `load_batch_file` and the matrix's `read_csv` returned
+   0 series / 0x0); `text_io_detail::read_line` puts badbit in the exception mask for the `getline`, `bad_alloc` leaves
+   as itself, another failure is an `IOError` naming file and row; its test bites; clang 103/103, identity as pb/HG's
+   (the agent's gates; the diff read by me); merges into pb/HG after the review hands the CUDA tree back; left: a
+   failed `fread` mid-file is still end of file in the MSVC STL's and libc++'s filebuf (no badbit to see), pytest on
+   the merged tree; to verify before the merge: the GPU read check in `test_run_out_of_memory` once RD is in (HG5b's GPU `ways_out` edits are unexercised), MATLAB's
    forced-share branch (no CUDA MEX tree); ◐ one review, launched 11-10 at 80e656a1 (`brief_hg_review.md`, `wt/HGR`); its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
    into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
