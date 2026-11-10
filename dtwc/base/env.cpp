@@ -116,16 +116,25 @@ std::string gpu_not_built_message()
          "This build will not silently fall back to CPU.";
 }
 
-std::string hybrid_refused_message(std::string_view where, std::string_view why)
+std::string hybrid_refused_message(std::string_view where, std::string_view why, bool gpu_runs)
 {
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-  const char *const instead = "cpu or gpu";
+  const char *const instead = gpu_runs ? "cpu or gpu" : "cpu";
 #else
+  static_cast<void>(gpu_runs);
   const char *const instead = "cpu"; // a build with no GPU backend refuses gpu too
 #endif
   return std::string(where) + ": device 'cpu+gpu' splits FastCLARA's assignment pass and the distance matrix's fill "
          "between the CPU and a CUDA GPU, "
          "but " + std::string(why) + ". Use device " + instead + "; no single-device fallback was attempted.";
+}
+
+std::string hybrid_as_it_goes_message(std::string_view where, std::string_view method)
+{
+  return hybrid_refused_message(
+    where, "method '" + std::string(method) + "' computes its distances on the CPU as it goes, so the GPU would sit "
+           "idle; choose pam, kmedoids, hierarchical, mip, lrcore or clara",
+    false);
 }
 
 std::string share_ignored_message(std::string_view where, std::string_view splits, Device device)

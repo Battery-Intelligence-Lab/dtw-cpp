@@ -50,8 +50,8 @@ raises `DeviceError` naming the setting and its value:
 The same validator runs in `Problem::dtw_function()`, through which
 OneBatchPAM, FastCLARA's assignment and TADPole compute the pairs they need.
 Known gap: through a Tier-2 `Problem`, OneBatchPAM and TADPole compute on the CPU
-when the device is a GPU (`dtwc_cl` and Tier-1 `cluster()` refuse them on a GPU with
-a `DeviceError`).
+when the device is `gpu` (`dtwc_cl` and Tier-1 `cluster()` refuse them on a GPU with
+a `DeviceError`). On `cpu+gpu` a Tier-2 `Problem` refuses them too, with a `DeviceError`.
 FastCLARA's assignment runs on the GPU with CUDA: `compute_medoid_distances_cuda`
 computes every series against the k medoids on the fill's kernels and route
 rule, one launch per block of series (a block holds at most 2^27 samples and as

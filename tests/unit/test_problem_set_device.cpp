@@ -10,6 +10,8 @@
  */
 
 #include <dtwc.hpp>
+#include <algorithms/one_batch_pam.hpp>
+#include <algorithms/tadpole.hpp>
 
 #include "../support/dtw_route_bound.hpp"
 
@@ -151,6 +153,36 @@ TEST_CASE("HG4: a gpu_share outside [0, 1], or forced on another device, is Inva
   prob.fill_distance_matrix();
   CHECK(prob.is_distance_matrix_filled());
   CHECK_FALSE(prob.fill_split()); // a CPU fill has no split
+}
+
+// onebatch and tadpole compute their distances on the CPU as they go, so they have no fill and no pass to split. Called
+// on a Problem (Tier 2) they refuse what Problem::cluster refuses: a forced share on any device and, where this build
+// can select it, device cpu+gpu. Neither runs on the CPU without a word.
+TEST_CASE("HG: one_batch_pam and tadpole on a Problem refuse a forced gpu_share and device cpu+gpu", "[device][hg]")
+{
+  auto prob = problem_with_data();
+  const auto onebatch = [&] { dtwc::algorithms::one_batch_pam(prob, { .n_clusters = 2 }); };
+  const auto tadpole = [&] { dtwc::algorithms::tadpole(prob, 2, 1.0); };
+  prob.set_gpu_share(0.5);
+  CHECK_THAT(message_of<dtwc::InvalidInput>(onebatch),
+             ContainsSubstring("one_batch_pam: gpu_share splits") && ContainsSubstring("but the device is cpu"));
+  CHECK_THAT(message_of<dtwc::InvalidInput>(tadpole),
+             ContainsSubstring("tadpole: gpu_share splits") && ContainsSubstring("but the device is cpu"));
+  prob.set_gpu_share(-1.0);
+  CHECK(dtwc::algorithms::one_batch_pam(prob, { .n_clusters = 2 }).labels.size() == prob.size());
+  CHECK(dtwc::algorithms::tadpole(prob, 2, 1.0).labels.size() == prob.size());
+#if defined(DTWC_HAS_CUDA)
+  prob.set_device(dtwc::Device::CPU_GPU); // selected without a device; a run would ask for one
+  for (const double share : { -1.0, 0.5 }) {
+    prob.set_gpu_share(share);
+    CHECK_THAT(message_of<dtwc::DeviceError>(onebatch),
+               ContainsSubstring("one_batch_pam: device 'cpu+gpu'") && ContainsSubstring("method 'onebatch' computes")
+                 && ContainsSubstring("Use device cpu; no single-device fallback"));
+    CHECK_THAT(message_of<dtwc::DeviceError>(tadpole),
+               ContainsSubstring("tadpole: device 'cpu+gpu'") && ContainsSubstring("method 'tadpole' computes")
+                 && ContainsSubstring("Use device cpu; no single-device fallback"));
+  }
+#endif
 }
 
 TEST_CASE("IF-1: a Problem does not read the process-wide device", "[if1][device]")

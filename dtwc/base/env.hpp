@@ -79,8 +79,13 @@ std::string gpu_not_built_message();
 
 /// @brief The DeviceError text where `cpu+gpu` cannot run: `where` refuses it, `why` says what stands in the way.
 /// The hybrid exists for FastCLARA's in-RAM assignment pass and the distance matrix's fill on CUDA only, so the
-/// text names the devices that run.
-std::string hybrid_refused_message(std::string_view where, std::string_view why);
+/// text names the devices that run: cpu and gpu, or cpu alone where this build has no GPU backend or `gpu_runs` is
+/// false (the request is one a GPU refuses too).
+std::string hybrid_refused_message(std::string_view where, std::string_view why, bool gpu_runs = true);
+
+/// @brief hybrid_refused_message for a method that computes its distances on the CPU as it goes (`method`: onebatch,
+/// tadpole), so has no fill and no pass to split; `gpu` refuses it too.
+std::string hybrid_as_it_goes_message(std::string_view where, std::string_view method);
 
 /// @brief The InvalidInput text where a forced gpu_share meets a device other than cpu+gpu, which would ignore it:
 /// `where` refuses it, `splits` names the work cpu+gpu splits.

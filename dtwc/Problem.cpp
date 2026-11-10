@@ -318,9 +318,7 @@ void apply(const Config &config, Problem &prob)
     throw InvalidInput(
       detail::share_ignored_message("run", "the distance matrix's fill and FastCLARA's pass", config.device));
   if (config.device == Device::CPU_GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
-    throw DeviceError(detail::hybrid_refused_message(
-      "run", "method '" + std::string(name_of(method_names, config.method)) + "' computes its distances on the CPU as "
-               "it goes, so the GPU would sit idle; choose pam, kmedoids, hierarchical, mip, lrcore or clara"));
+    throw DeviceError(detail::hybrid_as_it_goes_message("run", name_of(method_names, config.method)));
   if (config.device == Device::GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
     throw DeviceError(
       "run: method '" + std::string(name_of(method_names, config.method))
@@ -1411,10 +1409,7 @@ core::ClusteringResult Problem::cluster()
     throw InvalidInput(detail::share_ignored_message("Problem::cluster", "the fill and FastCLARA's pass", device_));
   const Method method = resolve_method(method_, device_, size());
   if (device_ == Device::CPU_GPU && (method == Method::OneBatch || method == Method::TADPole))
-    throw DeviceError(detail::hybrid_refused_message(
-      "Problem::cluster", "method '" + std::string(name_of(method_names, method)) + "' computes its distances on the "
-                          "CPU as it goes, so the GPU would sit idle; choose pam, kmedoids, hierarchical, mip, lrcore "
-                          "or clara"));
+    throw DeviceError(detail::hybrid_as_it_goes_message("Problem::cluster", name_of(method_names, method)));
   switch (method) {
   case Method::PAM: {
     // Restart r starts from seed + r; the strictly lowest cost is kept, so a tie

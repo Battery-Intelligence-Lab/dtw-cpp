@@ -76,7 +76,9 @@ On-demand distances and the schedules `onebatch` and `tadpole`, which compute
 the pairs they need as they go, compute through `Problem::dtw_function()`, on the
 CPU even when a `Problem`'s device is a GPU; `dtwc_cl`, C++, Python and MATLAB `cluster(...)` and `DTWClustering`,
 which hand their settings to a `Problem` through `dtwc::apply`, reject
-`onebatch` and `tadpole` on a GPU instead. FastCLARA on a GPU fills its
+`onebatch` and `tadpole` on a GPU instead. On `cpu+gpu`, and with a forced `gpu_share`
+on any device, the two are refused on a `Problem` too (`one_batch_pam(prob)`,
+`tadpole(prob)`, `Problem::cluster`): they have no fill and no pass to split. FastCLARA on a GPU fills its
 sample matrices there (each sample is a view of its series on CUDA, a copy on
 Metal, whose fill uploads owned series) and, with CUDA, assigns every series to
 the medoids there too, a block of series at a time through a two-stream pipeline
