@@ -891,11 +891,15 @@ __global__ void narrow_kernel(const double *in, float *out, std::int64_t count)
     out[k] = static_cast<float>(in[k]);
 }
 
+/// A workspace's host buffer, pinned where the runtime grants it, else pageable. Pageable memory serialises the copies
+/// (the pipeline's overlap is lost) and gives the same results, so a refusal of pinned memory that was asked for is said
+/// once on stderr, by the thread that owns this workspace: it is thread_local, and written to by that thread alone.
 template <typename T>
 struct CachedHostBuffer {
   size_t capacity = 0;
   PinnedPtr<T> pinned;
   std::vector<T> fallback;
+  bool warned = false; ///< the fallback has been reported since pinned memory was last held
 
   T *ensure(size_t count, bool prefer_pinned)
   {
@@ -908,7 +912,14 @@ struct CachedHostBuffer {
         pinned = std::move(new_pinned);
         fallback.clear();
         capacity = count;
+        warned = false;
         return pinned.get();
+      }
+      if (!warned) {
+        std::cerr << "[dtwc] warning: CUDA could not pin " << count * sizeof(T)
+                  << " bytes of host memory; the run continues on pageable memory, with slower copies and the same "
+                     "results.\n";
+        warned = true;
       }
     }
 

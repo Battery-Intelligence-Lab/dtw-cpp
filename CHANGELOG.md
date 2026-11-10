@@ -107,6 +107,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `gpu_share=` and `Problem.set_gpu_share`, MATLAB `'GpuShare'` and `Problem.set_gpu_share`): the GPU's share of the work
   device `cpu+gpu` splits with the CPU; -1, the default, measures it where the work starts, a value in [0, 1] forces it,
   so a run repeats. Any other value is `InvalidInput`, and so is a forced share on a device other than `cpu+gpu`.
+- A CUDA run whose pinned host buffer cannot be allocated says so once per buffer on stderr (`[dtwc] warning: CUDA
+  could not pin N bytes of host memory; ...`) and goes on with pageable memory: slower copies, the same results.
 - Input: Arrow IPC, the file and the stream format, in every build and language, read by the vendored nanoarrow without
   Arrow C++ or pyarrow, and in place: the file is mapped (without llfio, read once into memory) and each series is a
   view of it (C++ `Data::series(i)` and `name(i)` read it, its `p_vec` and `p_names` are empty; Python's `Data.p_vec`
