@@ -522,7 +522,7 @@ function test_gpu_share_is_one_key_with_cpps_range_and_device_refusals(testCase)
     if report.hybrid
         res = dtwc.cluster(testCase.TestData.X, 2, 'Device', 'cpu+gpu', 'Method', 'pam', ...
                            'GpuPrecision', 'fp64', 'GpuShare', 0.5);
-        verifyNotEmpty(testCase, strfind(res.Report, 'share 0.5, forced'));
+        verifyNotEmpty(testCase, strfind(regexprep(res.Report, '\s+', ' '), 'share 0.5, forced')); % the report wraps its notes
     end
 end
 

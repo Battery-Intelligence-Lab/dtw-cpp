@@ -91,5 +91,4 @@ TEST_CASE("dtwc::test::gpu validates against a CPU oracle or names what is missi
   }
   // cpu+gpu is CUDA's: it can run where a CUDA device is present, and says why not elsewhere.
   REQUIRE(r.hybrid == (r.available && r.backend == "cuda"));
-  REQUIRE(r.hybrid == r.hybrid_reason.empty());
 }

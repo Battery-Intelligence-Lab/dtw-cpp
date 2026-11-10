@@ -293,7 +293,7 @@ def test_a_forced_gpu_share_reaches_the_cpp_split():
     if not dtwcpp.test.gpu()["hybrid"]:
         pytest.skip("cpu+gpu needs a CUDA build with a device: " + dtwcpp.test.gpu()["hybrid_reason"])
     result = dtwcpp.cluster(_SERIES, 2, method="pam", device="cpu+gpu", gpu_precision="fp64", gpu_share=0.5)
-    assert "share 0.5, forced" in result.report
+    assert "share 0.5, forced" in " ".join(result.report.split())  # the report wraps its notes
 
 
 # ===========================================================================
