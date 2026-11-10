@@ -75,8 +75,13 @@ class TestCUDADistanceMatrix:
         np.testing.assert_array_almost_equal(np.diag(dm), 0.0)
 
     def test_matches_cpu(self, series):
+        """Under FP64 the GPU's matrix is the CPU's; Auto is FP32 on a consumer GPU, which holds no ten decimals."""
         dm_cpu = dtwcpp.compute_distance_matrix(series, device="cpu")
-        dm_gpu = dtwcpp.compute_distance_matrix(series, device="cuda")
+        prob = dtwcpp.Problem("cuda_fp64", device="cuda")
+        prob.set_data(series, [str(i) for i in range(len(series))])
+        prob.set_gpu_precision(dtwcpp.GpuPrecision.FP64)
+        prob.fill_distance_matrix()
+        dm_gpu = np.array([[prob.dist_by_ind(i, j) for j in range(len(series))] for i in range(len(series))])
         np.testing.assert_array_almost_equal(dm_cpu, dm_gpu, decimal=10)
 
     def test_device_id_syntax(self, series):
@@ -120,7 +125,7 @@ class TestCUDAClustering:
     def test_cuda_variant_error(self, well_separated_data):
         """device='cuda' with non-standard variant should raise."""
         model = dtwcpp.DTWClustering(n_clusters=3, variant="ddtw", device="cuda")
-        with pytest.raises(ValueError, match="only supports variant='standard'"):
+        with pytest.raises(dtwcpp.DeviceError, match="implements Standard DTW only, but variant = DDTW"):
             model.fit(well_separated_data)
 
 
