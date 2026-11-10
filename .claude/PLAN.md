@@ -110,10 +110,18 @@ differ only where several optimal medoid sets exist, node counts and run times c
    shipped the loop; with an allocator refusing 1 MiB, `readFile`, `load_batch_file` and the matrix's `read_csv` returned
    0 series / 0x0); `text_io_detail::read_line` puts badbit in the exception mask for the `getline`, `bad_alloc` leaves
    as itself, another failure is an `IOError` naming file and row; its test bites; clang 103/103, identity as pb/HG's
-   (the agent's gates; the diff read by me); merges into pb/HG after the review hands the CUDA tree back; left: a
-   failed `fread` mid-file is still end of file in the MSVC STL's and libc++'s filebuf (no badbit to see), pytest on
-   the merged tree; to verify before the merge: the GPU read check in `test_run_out_of_memory` once RD is in (HG5b's GPU `ways_out` edits are unexercised), MATLAB's
-   forced-share branch (no CUDA MEX tree); ◐ one review, launched 11-10 at 80e656a1 (`brief_hg_review.md`, `wt/HGR`); its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
+   (the agent's gates; the diff read by me); merged into pb/HG 418e1dec; left: a
+   failed `fread` mid-file is still end of file in the MSVC STL's and libc++'s filebuf (no badbit to see);
+   ☑ one review (11-10 at 80e656a1, `report_hg5.md`): no race, no wrong result, kernels and the `gpu` route unchanged
+   (cmp-identical to the pre-HG CUDA binary in 7 configurations); its blocker fixed d989585c (Tier-2 `one_batch_pam` /
+   `tadpole` on a Problem refuse cpu+gpu and a forced share), its should-fix 6d036c8d (the fill's line says which ratio
+   split the slabs before the calibrating one; that geometry now a fixture), nits N1, N3, N5, N6 fixed, the GPU read
+   check in 447bfd52 (three runs; RD's cause was the anomaly's); each fix shown to bite by mutation; ◐ the unit's
+   gates on 9cecafa3 (design-2.0 merged in). Open after the merge: a Tier-2 Problem on `gpu` still runs onebatch and
+   tadpole on the CPU (two pages name the gap; closing it is its own step); cpu+gpu on a mapped fill whose slabs hold
+   one tile-row gives each slab whole to one device (rows past about 1,024 L for 1 GiB slabs: a cap on the tile-row
+   height is a probe for item 4's window); MATLAB's forced-share branch unrun (no CUDA MEX tree); a mapped resume
+   under cpu+gpu probed once by the review, no fixture; its six bands (hg_plan.md §3) in item 4's window. **HG merges once**: the steps accumulate on `pb/HG` (each implementer branches from its tip) and the docs stay
    true on design-2.0 (a view's series uploaded as an owned copy) until HG5's pages land with the code; design-2.0 is merged
    into `pb/HG` after DC lands (both touch `run.cpp`: DC the checkpoint save, HG1 the GPU memory terms), and the identity
    gate runs on the merged tree, not the branches alone. Until HG merges, S5's route ships.
