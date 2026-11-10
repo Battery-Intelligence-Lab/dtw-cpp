@@ -246,7 +246,9 @@ struct SourceFacts
   bool can_stream = false;    ///< FastCLARA can stream the series (an Arrow IPC or Parquet file, a sample below N)
   bool streams = false;       ///< the file is one FastCLARA streams (a list-per-row Parquet file, an Arrow IPC file
                               ///< io::IpcFile::streams), whatever the method
-  bool halves = false;        ///< --dtype float32 halves `series`: float64 values read from text
+  bool halves = false;        ///< --dtype float32 halves `series`: float64 values read from text, on a CPU (a GPU
+                              ///< takes Float64 series only)
+  Device device = Device::CPU; ///< where the run computes: a GPU has no float32 way out, cpu+gpu streams nothing
   std::size_t streamed = 0;   ///< what a streamed run holds after its stream: every series' name and label
   std::size_t n_series = 0;
   std::size_t length = 0;     ///< the time steps of the longest series expected, which a thread's bytes price
@@ -350,7 +352,8 @@ MemoryPlan plan_memory(const SourceFacts &facts, std::size_t budget, bool explic
   if (budget == 0 || need + reserve <= budget) return plan;
   // The refusal: what the run holds beside the working set of `threads`, and the ways out that apply.
   const auto refuse = [&](const std::string &what, int threads, const std::string &needs) {
-    std::vector<std::string> ways{ "Raise --ram-limit", "read the series as float32 (--dtype float32)" };
+    std::vector<std::string> ways{ "Raise --ram-limit" };
+    if (!uses_gpu(facts.device)) ways.emplace_back("read the series as float32 (--dtype float32)");
     if (!facts.clara_method) ways.emplace_back("use --method clara");
     if (threads > 1) ways.emplace_back("run fewer threads (OMP_NUM_THREADS)");
     plan.route = Route::Refused;
@@ -620,7 +623,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     facts.held = held;
     facts.can_stream = can_stream;
     facts.streams = streams;
-    facts.halves = format == InputFormat::Text && precision == core::Precision::Float64;
+    facts.halves = format == InputFormat::Text && precision == core::Precision::Float64 && !uses_gpu(config.device);
+    facts.device = config.device;
     facts.streamed = streamed;
     facts.n_series = n_series;
     facts.length = length;
@@ -764,9 +768,12 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
               "views of its " + std::to_string(n_series) + " series and the owned copy the GPU uploads of them are "
               "held at once. Raise --ram-limit, or run on the CPU (--device cpu), which holds no copy.";
       else if (!streams)
+        // A GPU takes Float64 series only, so the other precision is the CPU's way out, not its own.
         why = "its values are mapped where they lie in the file, and a mapped file's values are not streamed: the "
               "views of its " + std::to_string(n_series) + " series are held at once. Raise --ram-limit"
-              + (clara_streams() ? ", or read its values as " + other + " (--dtype " + other + ")"
+              + (clara_streams() ? std::string(uses_gpu(config.device) ? ", or run on the CPU (--device cpu) and "
+                                                                       : ", or ")
+                                     + "read its values as " + other + " (--dtype " + other + ")"
                                      + (resolved == Method::CLARA ? "" : " with --method clara")
                                      + ", whose copy FastCLARA reads a record batch at a time."
                                  : std::string("."));
@@ -1074,7 +1081,7 @@ std::string ways_out(const RunStage &stage, const Config &config)
   std::vector<std::string> ways;
   if (!stage.plan) {
     if (at == "read" && stage.format == InputFormat::Text) {
-      if (config.dtype == core::Precision::Float64) ways.emplace_back("--dtype float32");
+      if (config.dtype == core::Precision::Float64 && !uses_gpu(config.device)) ways.emplace_back("--dtype float32");
 #ifdef DTWC_HAS_MMAP
       ways.emplace_back(std::string("the file converted to Arrow IPC (dtwc-convert), whose values are mapped where they "
                                     "lie") + counted);
@@ -1083,7 +1090,7 @@ std::string ways_out(const RunStage &stage, const Config &config)
   } else if (stage.plan->route == Route::Streamed) {
     ways.emplace_back(std::string("a lower --ram-limit, within which the stream reads") + down_to);
   } else if (at == "read") {
-    if (stage.plan->facts.streams && clara_can)
+    if (stage.plan->facts.streams && clara_can && stage.plan->facts.device != Device::CPU_GPU) // cpu+gpu streams nothing
       ways.emplace_back(std::string(stage.plan->facts.clara_method ? "" : "--method clara with ")
                         + "a lower --ram-limit, which streams the series" + down_to);
   } else if (at == "storage" && !config.dist_matrix.empty()) {

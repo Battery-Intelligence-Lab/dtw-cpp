@@ -673,10 +673,13 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
                          + (copy ? " and the owned copy the GPU uploads of them" : "") + ", "
                          + std::to_string(staging) + " for the GPU's staging of them, "
                          + std::to_string(dtwc::core::packed_size(256) * sizeof(double)) + " for the distance matrix")));
+  // A GPU takes Float64 series only, so the ways out it is named omit reading them as float32.
+  CHECK_THROWS_MATCHES(dtwc::run(memory, view), dtwc::InvalidInput,
+                       MessageMatches(!ContainsSubstring("--dtype float32") && ContainsSubstring("use --method clara")));
 #  if defined(DTWC_HAS_MMAP)
   // A mapped file's values are not streamed: below its views (and on Metal their copy, where the CPU, which holds no
-  // copy, is a way out), refused. On CUDA the refusal is the CPU's, whose float32 way out a GPU refuses (its wording
-  // not yet changed for the GPU, 2026-11-09).
+  // copy, is a way out), refused. On CUDA, which holds no copy, the way out is the CPU's float32 read, which a GPU
+  // refuses: the text sends the run to the CPU first. The plan's refusal above names no float32 way out for a GPU either.
   dtwc::Config mapped = on_gpu("clara_256.arrow", dtwc::Method::PAM);
   const std::size_t views = dtwc::io::IpcFile(fixture("clara_256.arrow")).resident_bytes(Precision::Float64, copy);
   mapped.ram_limit = views - 1;
@@ -687,9 +690,9 @@ TEST_CASE("Arrow IPC: a file on a GPU, filled or streamed, gives its CSV twin's 
                                  "not streamed: the views of its 256 series "
                                + (copy ? "and the owned copy the GPU uploads of them are held at once. Raise "
                                          "--ram-limit, or run on the CPU (--device cpu), which holds no copy."
-                                       : "are held at once. Raise --ram-limit, or read its values as float32 (--dtype "
-                                         "float32) with --method clara, whose copy FastCLARA reads a record batch at "
-                                         "a time.")));
+                                       : "are held at once. Raise --ram-limit, or run on the CPU (--device cpu) and "
+                                         "read its values as float32 (--dtype float32) with --method clara, whose copy "
+                                         "FastCLARA reads a record batch at a time.")));
 #  endif
   if (!dtwc::gpu_available()) { // the backend's refusal, never a view's or the stream's
     CHECK_THROWS_MATCHES(dtwc::run(on_gpu("clara_256_lz4.arrow", dtwc::Method::PAM)), dtwc::DeviceError,

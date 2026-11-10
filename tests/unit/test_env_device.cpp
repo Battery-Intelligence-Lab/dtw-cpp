@@ -90,8 +90,11 @@ TEST_CASE("dtwc::device cpu+gpu is CUDA's, refused elsewhere with the reason", "
   CHECK(message.starts_with("[dtwc] dtwc::device: device 'cpu+gpu' splits FastCLARA's assignment pass and the distance matrix's fill"));
 #  if defined(DTWC_HAS_METAL)
   CHECK(message.find("Metal has no kernel for that pass") != std::string::npos);
+  CHECK(message.find("Use device cpu or gpu; no single-device fallback") != std::string::npos);
 #  else
   CHECK(message.find("-DDTWC_ENABLE_CUDA=ON") != std::string::npos);
+  // gpu is refused here too, so the way out names the CPU alone.
+  CHECK(message.find("Use device cpu; no single-device fallback") != std::string::npos);
 #  endif
   REQUIRE(dtwc::device() == "cpu"); // a rejected request changes nothing
 #endif

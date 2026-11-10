@@ -384,7 +384,8 @@ std::string describe(const core::HybridSplit &split, std::size_t n_points)
 {
   std::ostringstream text;
   text << "cpu+gpu: the GPU assigned the first " << std::llround(split.gpu_share * static_cast<double>(n_points))
-       << " of " << n_points << " series (share " << std::setprecision(17) << split.gpu_share << ", " << split.source;
+       << " of " << n_points << " series (share " << std::setprecision(17) << split.gpu_share << " of the series, "
+       << split.source;
   if (split.gpu_rate > 0)
     text << std::setprecision(4) << ": the CPU's team " << split.cpu_rate << " and the GPU " << split.gpu_rate
          << " series a second";

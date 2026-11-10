@@ -118,9 +118,14 @@ std::string gpu_not_built_message()
 
 std::string hybrid_refused_message(std::string_view where, std::string_view why)
 {
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
+  const char *const instead = "cpu or gpu";
+#else
+  const char *const instead = "cpu"; // a build with no GPU backend refuses gpu too
+#endif
   return std::string(where) + ": device 'cpu+gpu' splits FastCLARA's assignment pass and the distance matrix's fill "
          "between the CPU and a CUDA GPU, "
-         "but " + std::string(why) + ". Use device cpu or gpu; no single-device fallback was attempted.";
+         "but " + std::string(why) + ". Use device " + instead + "; no single-device fallback was attempted.";
 }
 
 std::string share_ignored_message(std::string_view where, std::string_view splits, Device device)

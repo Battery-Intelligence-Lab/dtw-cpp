@@ -232,8 +232,10 @@ Method resolve_method(Method method, Device device, std::size_t n_series)
 std::string describe(const core::FillSplit &fill)
 {
   std::ostringstream text;
-  text << "cpu+gpu: the GPU filled " << fill.gpu_entries << " of " << fill.entries << " entries (share "
-       << std::setprecision(17) << fill.split.gpu_share << ", " << fill.split.source;
+  text << "cpu+gpu: the GPU filled " << fill.gpu_entries << " of " << fill.entries
+       << " entries, the triangle with its diagonal";
+  if (fill.gpu_fp32) text << ", its rows in FP32 and the CPU's in FP64";
+  text << " (rate share " << std::setprecision(17) << fill.split.gpu_share << ", " << fill.split.source;
   if (fill.split.gpu_rate > 0)
     text << std::setprecision(4) << ": the CPU's team " << fill.split.cpu_rate << " and the GPU "
          << fill.split.gpu_rate << " pairs a second";
@@ -1128,6 +1130,7 @@ void Problem::fillDistanceMatrix_BruteForce()
   };
   core::FillSplit hybrid;
   hybrid.entries = core::packed_size(N);
+  hybrid.gpu_fp32 = gpu && gpu->fp32();
   double share = gpu_share_; // s: forced, else -1 until the calibrating slab measures it (or none can: recorded)
   hybrid.split.gpu_share = share;
   const double recorded = gpu && gpu->fp32() ? recorded_fill_gpu_share_fp32 : recorded_fill_gpu_share;
