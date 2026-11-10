@@ -110,9 +110,10 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         The seed; ``None`` is :data:`dtwcpp.DEFAULT_RANDOM_SEED` (42), the
         default of every language.
     device : str or None, default=None
-        ``"cpu"``, ``"gpu"``, ``"gpu:N"``, ``"cuda"``/``"cuda:N"`` or
-        ``"hpc"``; ``None`` is :func:`dtwcpp.device`. ``"hpc"`` runs the fit on
-        a SLURM cluster and sets ``labels_`` only.
+        ``"cpu"``, ``"gpu"``, ``"gpu:N"``, ``"cuda"``/``"cuda:N"``,
+        ``"cpu+gpu"``/``"cpu+gpu:N"`` or ``"hpc"``; ``None`` is
+        :func:`dtwcpp.device`. ``"hpc"`` runs the fit on a SLURM cluster and
+        sets ``labels_`` only.
 
     Attributes
     ----------

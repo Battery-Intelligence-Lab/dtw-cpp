@@ -49,5 +49,6 @@ lr-max-nodes = 5000
 lr-root = "kelley"
 device = "gpu:2"
 gpu-precision = "fp64"
+gpu-share = 0.5
 verbose = true
 no-report = true

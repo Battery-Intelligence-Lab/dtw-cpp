@@ -14,7 +14,8 @@
  *   - `gpu()` executes a tiny REAL GPU kernel (a small DTW distance matrix) and
  *     validates it against a CPU oracle (`dtwc::dtwFull_L`) to within
  *     `detail::kGpuOracleTol`. Fields: `available, backend, device_name,
- *     validated, pass, reason`. When no GPU backend is compiled in — or the
+ *     validated, pass, reason, hybrid, hybrid_reason` (the last two say of device
+ *     `cpu+gpu` what `available` and `reason` say of `gpu`). When no GPU backend is compiled in — or the
  *     backend is compiled but no device is present — it returns
  *     `available=false` with a `reason` naming EXACTLY what is missing, and
  *     NEVER throws, NEVER silently degrades (2.0 no-silent-fallback rule).
@@ -67,6 +68,8 @@ struct GpuReport
   bool validated{ false };     ///< GPU kernel matched the CPU oracle within tolerance.
   bool pass{ false };          ///< available && validated.
   std::string reason;          ///< Non-empty explanation when !available or !validated.
+  bool hybrid{ false };        ///< Device cpu+gpu can run: CUDA is compiled in AND a device is present.
+  std::string hybrid_reason;   ///< Non-empty explanation when !hybrid (no CUDA, Metal, or no device).
 };
 
 namespace detail {
@@ -172,9 +175,11 @@ inline ParallelReport parallelisation()
 #endif
 }
 
+namespace detail {
+
 /**
  * @brief Probe a GPU backend by EXECUTING a tiny kernel and validating it.
- * @return A GpuReport. Never throws, never silently degrades.
+ * @return A GpuReport without its hybrid fields (gpu() sets them). Never throws, never silently degrades.
  *
  * Compiles and behaves correctly in BOTH GPU-ON and GPU-OFF builds:
  *   - GPU backend + device present -> run a small DTW distance matrix on the GPU
@@ -182,7 +187,7 @@ inline ParallelReport parallelisation()
  *   - GPU backend compiled but NO device -> `available=false`, `reason` says so.
  *   - No GPU backend compiled -> `available=false`, `reason` names the OFF flags.
  */
-inline GpuReport gpu()
+inline GpuReport gpu_backend()
 {
   GpuReport r{};
 
@@ -270,6 +275,20 @@ inline GpuReport gpu()
              "on macOS, -DDTWC_ENABLE_METAL=ON.";
   return r;
 #endif
+}
+
+} // namespace detail
+
+/// @brief The GPU-backend self-probe (detail::gpu_backend) and whether device cpu+gpu can run: CUDA's, so a CUDA build
+///        with a device present. `hybrid_reason` is why cpu+gpu is refused otherwise (the build's own reason, else the
+///        missing device).
+inline GpuReport gpu()
+{
+  GpuReport r = detail::gpu_backend();
+  r.hybrid_reason = dtwc::detail::hybrid_not_built_reason();
+  if (r.hybrid_reason.empty() && !r.available) r.hybrid_reason = r.reason;
+  r.hybrid = r.hybrid_reason.empty();
+  return r;
 }
 
 } // namespace dtwc::test

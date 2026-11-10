@@ -339,6 +339,7 @@ CUDA's `auto` depends on the GPU, so it is not a stable cache identity (Metal's
 |----------------------------|----------------------------------------------|---------|
 | `-d, --device <string>`    | Compute device: `cpu`, `gpu`, `gpu:N` (`cuda`, `cuda:N` are the same; CUDA on NVIDIA, Metal on macOS), `cpu+gpu`, `cpu+gpu:N` (FastCLARA's assignment pass split between the CPU and a CUDA GPU) | `cpu`   |
 | `--gpu-precision <string>` | GPU kernel precision. Alias: `--gpu-dtype`. Values: `auto`, `fp32`/`f32`/`float32`, `fp64`/`f64`/`float64`/`double` | `auto` |
+| `--gpu-share <number>`     | `cpu+gpu`: the GPU's share of the work, in [0, 1]; `-1` measures it at the start of the work. Any other device, and a share outside [0, 1], exit 1 | `-1` |
 
 On `--device gpu` the GPU fills the distance matrix, so the methods that read one
 run there: `pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara`, whose

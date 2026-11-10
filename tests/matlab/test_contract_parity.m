@@ -75,7 +75,7 @@ function test_diagnostics_return_the_cpp_report_fields(testCase)
     verifyEqual(testCase, ...
         {sort(fieldnames(dtwc.test.parallelisation())'), sort(fieldnames(dtwc.test.gpu())')}, ...
         {sort({'available', 'max_threads', 'threads_engaged', 'pass', 'reason'}), ...
-         sort({'available', 'backend', 'device_name', 'validated', 'pass', 'reason'})});
+         sort({'available', 'backend', 'device_name', 'validated', 'pass', 'reason', 'hybrid', 'hybrid_reason'})});
 end
 
 function test_tier1_device_get_set(testCase)
@@ -358,7 +358,7 @@ function test_keys_are_python_words_in_camel_case(testCase)
         'dc', 'wdtw_g', 'adtw_penalty', 'sdtw_gamma', 'msm_c', 'twe_nu', 'twe_lambda', ...
         'mv_mode', 'missing_strategy', 'sample_size', 'n_samples', 'seed', 'batch_size', ...
         'linkage', 'solver', 'mip_gap', 'time_limit', 'no_warm_start', 'numeric_focus', ...
-        'mip_focus', 'verbose_solver', 'lr_max_nodes', 'lr_root', 'device', 'gpu_precision', 'matrix_dtype', ...
+        'mip_focus', 'verbose_solver', 'lr_max_nodes', 'lr_root', 'device', 'gpu_precision', 'gpu_share', 'matrix_dtype', ...
         'verbose', 'no_report'};
     estimator_words = {'n_clusters', 'method', 'variant', 'band', 'max_iter', 'n_init', ...
         'wdtw_g', 'adtw_penalty', 'msm_c', 'twe_nu', 'twe_lambda', 'mv_mode', ...
@@ -447,7 +447,7 @@ function test_device_names_are_read_by_the_cpp_grammar(testCase)
     restore = onCleanup(@() dtwc.device(previous)); %#ok<NASGU>
     verifyEqual(testCase, dtwc.device(' CPU '), 'cpu');
     unknown = ['[dtwc] unknown device ''gpu:x''. Valid devices: cpu, gpu, ' ...
-               'gpu:N (aliases cuda, cuda:N).'];
+               'gpu:N, cpu+gpu, cpu+gpu:N (aliases cuda, cuda:N).'];
     prob = dtwc.Problem('grammar');
     for request = {@() dtwc.device('gpu:x'), @() prob.set_device('gpu:x')}
         verifyError(testCase, request{1}, 'dtwc:deviceError');
@@ -459,6 +459,71 @@ function test_device_names_are_read_by_the_cpp_grammar(testCase)
     end
     mc = meta.class.fromName('dtwc.DTWClustering');
     verifyFalse(testCase, any(strcmp({mc.MethodList.Name}, 'gpu_index')));
+end
+
+function test_cpu_gpu_is_a_device_word_refused_as_cpp_refuses_it(testCase)
+%   'cpu+gpu' is read by C++'s grammar wherever a device name goes: dtwc.device,
+%   Problem.set_device, Problem's Device key and cluster's. Where this build has
+%   no CUDA each raises C++'s DeviceError (the hybrid refusal) with the reason
+%   dtwc.test.gpu() reports; a CUDA build selects it, and refuses a missing
+%   device at first use, as it does 'gpu'.
+    previous = dtwc.device();
+    restore = onCleanup(@() dtwc.device(previous)); %#ok<NASGU>
+    report = dtwc.test.gpu();
+    verifyEqual(testCase, report.hybrid, isempty(report.hybrid_reason));
+    if strcmp(report.backend, 'cuda'), return, end
+    hybrid = ['device ''cpu+gpu'' splits FastCLARA''s assignment pass and the distance matrix''s fill ' ...
+              'between the CPU and a CUDA GPU, but ' report.hybrid_reason '. Use device cpu'];
+    prob = dtwc.Problem('hybrid');
+    calls = {@() dtwc.device('cpu+gpu'), @() prob.set_device('cpu+gpu:1'), ...
+             @() dtwc.Problem('hybrid_device', 'Device', 'cpu+gpu'), ...
+             @() dtwc.cluster(testCase.TestData.X, 2, 'Device', 'cpu+gpu', 'Method', 'pam')};
+    for i = 1:numel(calls)
+        err = capture_error(calls{i});
+        verifyEqual(testCase, err.identifier, 'dtwc:deviceError', sprintf('call %d', i));
+        verifyNotEmpty(testCase, strfind(err.message, hybrid), sprintf('call %d: %s', i, err.message));
+    end
+    verifyEqual(testCase, dtwc.device(), previous);
+end
+
+function test_gpu_share_is_one_key_with_cpps_range_and_device_refusals(testCase)
+%   GpuShare (cluster's key, Problem.set_gpu_share) reaches C++: a value outside
+%   -1 and [0, 1] and a forced one on a device other than cpu+gpu are
+%   dtwc:invalidArgument in C++'s words, the same as dtwc_cl's --gpu-share and
+%   Python's gpu_share. On a build that runs cpu+gpu a forced share is the
+%   split's, which the run report says.
+    outOfRange = 'the share must be -1 (measured) or in [0, 1]; got 1.500000.';
+    prob = dtwc.Problem('share');
+    err = capture_error(@() prob.set_gpu_share(1.5));
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifyEqual(testCase, err.message, ['Problem::set_gpu_share: ' outOfRange]);
+    err = capture_error(@() dtwc.cluster(testCase.TestData.X, 2, 'GpuShare', 1.5));
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifyNotEmpty(testCase, strfind(err.message, outOfRange));
+
+    refused = ['run: gpu_share splits the distance matrix''s fill and FastCLARA''s pass of device cpu+gpu, ' ...
+               'but the device is cpu, which would ignore it; leave gpu_share at -1.'];
+    err = capture_error(@() dtwc.cluster(testCase.TestData.X, 2, 'Device', 'cpu', 'Method', 'onebatch', ...
+                                         'GpuShare', 0.5));
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifyEqual(testCase, err.message, refused);
+    prob.set_data(testCase.TestData.X);
+    prob.set_n_clusters(2);
+    prob.set_gpu_share(0.5);
+    err = capture_error(@() prob.fill_distance_matrix());
+    verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
+    verifyEqual(testCase, err.message, ['Problem::fill_distance_matrix: gpu_share splits the fill of device ' ...
+                                        'cpu+gpu, but the device is cpu, which would ignore it; leave gpu_share at -1.']);
+    prob.set_gpu_share(-1);
+    prob.fill_distance_matrix();
+    verifyTrue(testCase, prob.is_distance_matrix_filled());
+
+    report = dtwc.test.gpu();
+    if report.hybrid
+        res = dtwc.cluster(testCase.TestData.X, 2, 'Device', 'cpu+gpu', 'Method', 'pam', ...
+                           'GpuPrecision', 'fp64', 'GpuShare', 0.5);
+        verifyNotEmpty(testCase, strfind(res.Report, 'share 0.5, forced'));
+    end
 end
 
 function test_hpc_is_a_device_error_as_in_cpp(testCase)

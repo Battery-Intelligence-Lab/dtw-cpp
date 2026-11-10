@@ -399,7 +399,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("CPU_GPU", dtwc::Device::CPU_GPU);
 
   m.def("device_to_string", [](dtwc::Device d) { return dtwc::to_string(d); }, "device"_a,
-        "Canonical lower-case name of a Device ('cpu'/'gpu').");
+        "Canonical lower-case name of a Device ('cpu'/'gpu'/'cpu+gpu').");
 
   m.def("parse_device", [](const std::string &name) {
         const auto [device, index] = dtwc::detail::parse_device(name);
@@ -413,7 +413,7 @@ NB_MODULE(_dtwcpp_core, m) {
         return dtwc::device(name);
       }, "name"_a,
         "Set the process-wide device and return its CANONICAL name\n"
-        "('cpu'/'gpu'/'gpu:N'), exactly as dtwc::device(name) does.");
+        "('cpu'/'gpu'/'gpu:N'/'cpu+gpu'/'cpu+gpu:N'), exactly as dtwc::device(name) does.");
 
   m.def("device", []() { return dtwc::device(); },
         "Canonical name of the process-wide device (dtwc::device()).");
@@ -676,6 +676,7 @@ NB_MODULE(_dtwcpp_core, m) {
   def_named(config, "solver", [](Config &c) -> dtwc::Solver & { return c.solver; }, dtwc::solver_names);
   def_named(config, "gpu_precision", [](Config &c) -> dtwc::GpuPrecision & { return c.gpu_precision; },
             dtwc::gpu_precision_names);
+  def_field<double>(config, "gpu_share", [](Config &c) -> double & { return c.gpu_share; });
   def_named(config, "matrix_dtype", [](Config &c) -> dtwc::core::Precision & { return c.matrix_dtype; },
             dtwc::core::precision_names);
   def_field<double>(config, "wdtw_g", [](Config &c) -> double & { return c.variant.wdtw_g; });
@@ -997,9 +998,10 @@ NB_MODULE(_dtwcpp_core, m) {
       new (p) dtwc::Problem(std::move(prob));
     }, "name"_a = std::string(), nb::kw_only(), "device"_a = "cpu",
        "Create a Problem that computes on `device`: 'cpu' (default), 'gpu',\n"
-       "'gpu:N', 'cuda' or 'cuda:N', as for dtwcpp.device(). A Problem does not\n"
-       "follow the process-wide dtwcpp.device(). 'gpu' without a GPU backend\n"
-       "and 'hpc' raise DeviceError ('hpc' is a cluster() option).")
+       "'gpu:N', 'cuda', 'cuda:N', 'cpu+gpu' or 'cpu+gpu:N', as for dtwcpp.device().\n"
+       "A Problem does not follow the process-wide dtwcpp.device(). 'gpu' without a\n"
+       "GPU backend, 'cpu+gpu' without CUDA and 'hpc' raise DeviceError ('hpc' is a\n"
+       "cluster() option).")
     .def("set_device", [](dtwc::Problem &p, const std::string &device) {
       const auto [selected, index] = dtwc::detail::parse_device(device);
       p.set_device(selected, index);
@@ -1012,6 +1014,12 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("set_gpu_precision", &dtwc::Problem::set_gpu_precision, "precision"_a,
          "What a GPU computes in: GpuPrecision.Auto (the default; FP32 on consumer\n"
          "CUDA GPUs and on Metal), FP32 or FP64. A change drops the distance matrix.")
+    .def("set_gpu_share", &dtwc::Problem::set_gpu_share, "share"_a,
+         "device='cpu+gpu': the GPU's share of the work it splits with the CPU, of a\n"
+         "distance-matrix fill and of FastCLARA's assignment pass. -1 (the default)\n"
+         "measures it where the work starts; a value in [0, 1] forces it, so a run\n"
+         "repeats. Another value raises InvalidInput, and so does a forced one on a\n"
+         "device other than 'cpu+gpu' when the Problem fills or clusters.")
     .def_prop_rw("matrix_dtype",
                  [](const dtwc::Problem &p) {
                    return std::string(dtwc::name_of(dtwc::core::precision_names, p.matrix_dtype()));
@@ -1432,6 +1440,7 @@ NB_MODULE(_dtwcpp_core, m) {
     opts.n_samples = n_samples;
     opts.max_iter = max_iter;
     opts.random_seed = seed;
+    opts.gpu_share = prob.gpu_share(); // the Problem's, as Problem.cluster() hands it on
     nb::gil_scoped_release release;
     return dtwc::algorithms::fast_clara(prob, opts);
   }, "prob"_a, "n_clusters"_a, "sample_size"_a = -1,
@@ -1692,11 +1701,14 @@ NB_MODULE(_dtwcpp_core, m) {
     d["validated"] = r.validated;
     d["pass"] = r.pass;
     d["reason"] = r.reason;
+    d["hybrid"] = r.hybrid;
+    d["hybrid_reason"] = r.hybrid_reason;
     return d;
   }, "Execute a tiny REAL GPU kernel and validate it against a CPU oracle.\n\n"
-     "Returns a dict {available, backend, device_name, validated, pass, reason} —\n"
-     "the same schema as C++ dtwc::test::gpu() and MATLAB dtwc_mex('test_gpu').\n"
-     "When no GPU backend is compiled in (or no device is present) available=False\n"
-     "and reason names exactly what is missing (never raises, never silently\n"
-     "degrades).");
+     "Returns a dict {available, backend, device_name, validated, pass, reason,\n"
+     "hybrid, hybrid_reason} — the same schema as C++ dtwc::test::gpu() and MATLAB\n"
+     "dtwc_mex('test_gpu'). When no GPU backend is compiled in (or no device is\n"
+     "present) available=False and reason names exactly what is missing (never\n"
+     "raises, never silently degrades). hybrid says whether device 'cpu+gpu' can\n"
+     "run (a CUDA build with a device) and hybrid_reason why not.");
 }

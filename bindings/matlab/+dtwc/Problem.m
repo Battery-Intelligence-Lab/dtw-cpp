@@ -37,11 +37,12 @@ classdef Problem < handle
         %   prob = dtwc.Problem('my_problem')
         %   prob = dtwc.Problem('my_problem', 'Device', 'gpu')
         %
-        %   Device: 'cpu' (default), 'gpu', 'gpu:N', 'cuda' or 'cuda:N' -- the
-        %   names dtwc.device() accepts. A Problem does not follow the
-        %   process-wide dtwc.device(). 'gpu' without a GPU backend raises
-        %   dtwc:deviceError, as does 'hpc' (Python's dtwcpp.device("hpc") submits a
-        %   run to SLURM; MATLAB computes where it starts).
+        %   Device: 'cpu' (default), 'gpu', 'gpu:N', 'cuda', 'cuda:N', 'cpu+gpu' or
+        %   'cpu+gpu:N' -- the names dtwc.device() accepts. A Problem does not
+        %   follow the process-wide dtwc.device(). 'gpu' without a GPU backend and
+        %   'cpu+gpu' without CUDA raise dtwc:deviceError, as does 'hpc' (Python's
+        %   dtwcpp.device("hpc") submits a run to SLURM; MATLAB computes where it
+        %   starts).
             if nargin < 1, name = ''; end
             p = inputParser;
             addParameter(p, 'Device', 'cpu', @(v) ischar(v) || isstring(v));
@@ -140,7 +141,7 @@ classdef Problem < handle
         end
 
         function set_device(obj, device)
-        %SET_DEVICE Compute on a device: 'cpu', 'gpu', 'gpu:N', 'cuda', 'cuda:N'.
+        %SET_DEVICE Compute on a device: 'cpu', 'gpu', 'gpu:N', 'cuda', 'cuda:N', 'cpu+gpu', 'cpu+gpu:N'.
         %   prob.set_device('gpu')
         %   'gpu:N' is GPU N of this build's GPU backend (CUDA, else Metal,
         %   which has GPU 0 only). A request the device cannot honour (a
@@ -165,6 +166,16 @@ classdef Problem < handle
         %   'auto' is FP32 on consumer CUDA GPUs and on Metal. A change drops
         %   the distance matrix.
             dtwc_mex('Problem_set_gpu_precision', obj.Handle, char(precision));
+        end
+
+        function set_gpu_share(obj, share)
+        %SET_GPU_SHARE The GPU's share of the work device 'cpu+gpu' splits: -1 or [0, 1].
+        %   prob.set_gpu_share(0.5)
+        %   -1 (the default) measures the share where the work starts; a value
+        %   in [0, 1] forces it, so a run repeats. Another value is
+        %   dtwc:invalidArgument, and so is a forced one on a device other than
+        %   'cpu+gpu' when the Problem fills or clusters.
+            dtwc_mex('Problem_set_gpu_share', obj.Handle, double(share));
         end
 
         function cost = find_total_cost(obj)

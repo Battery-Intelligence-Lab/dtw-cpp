@@ -37,7 +37,7 @@ constexpr bool has_device_surface = requires { &P::set_device; &P::set_gpu_preci
 
 // The DeviceError strings, verbatim.
 const std::string kMsgUnknownTpu =
-  "[dtwc] unknown device 'tpu'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N).";
+  "[dtwc] unknown device 'tpu'. Valid devices: cpu, gpu, gpu:N, cpu+gpu, cpu+gpu:N (aliases cuda, cuda:N).";
 [[maybe_unused]] const std::string kMsgGpuNotBuilt =
   "[dtwc] device='gpu' requested but this build has no GPU backend compiled in.\n"
   "Rebuild with -DDTWC_ENABLE_CUDA=ON (NVIDIA) or, on macOS, -DDTWC_ENABLE_METAL=ON.\n"

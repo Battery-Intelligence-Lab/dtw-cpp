@@ -307,8 +307,14 @@ void apply(const Config &config, Problem &prob)
                       + " is not available: this DTWC++ was built without Gurobi. Use --solver highs, or "
                         "rebuild with -DDTWC_ENABLE_GUROBI=ON and GUROBI_HOME set.");
   prob.set_gpu_precision(config.gpu_precision);
+  prob.set_gpu_share(config.gpu_share);
   prob.set_matrix_dtype(config.matrix_dtype);
   prob.set_device(config.device, config.device_index); // gpu without a GPU backend: the DeviceError
+  // Whatever the method, the run reaches a fill or a pass the share would not govern on another device (onebatch and
+  // tadpole, and a stream, reach neither): refuse it here, as the fill and the pass refuse it where they run.
+  if (config.gpu_share != -1.0 && config.device != Device::CPU_GPU)
+    throw InvalidInput(
+      detail::share_ignored_message("run", "the distance matrix's fill and FastCLARA's pass", config.device));
   if (config.device == Device::CPU_GPU && (config.method == Method::OneBatch || config.method == Method::TADPole))
     throw DeviceError(detail::hybrid_refused_message(
       "run", "method '" + std::string(name_of(method_names, config.method)) + "' computes its distances on the CPU as "
@@ -1316,8 +1322,7 @@ void Problem::refuse_float32_overflow(size_t r0, size_t r1)
 void Problem::fill_distance_matrix()
 {
   if (gpu_share_ != -1.0 && device_ != Device::CPU_GPU)
-    throw InvalidInput("Problem::fill_distance_matrix: gpu_share splits the fill of device cpu+gpu, but the device is "
-                       + to_string(device_) + ", which would ignore it; leave gpu_share at -1.");
+    throw InvalidInput(detail::share_ignored_message("Problem::fill_distance_matrix", "the fill", device_));
   validate_checkpoint_settings();
   sync_band();
   // Writes through writable_distance_matrix() commit here: one scan refuses ±inf and a
@@ -1399,6 +1404,8 @@ void Problem::fill_distance_matrix()
 core::ClusteringResult Problem::cluster()
 {
   require_clusterable(Nc, size());
+  if (gpu_share_ != -1.0 && device_ != Device::CPU_GPU)
+    throw InvalidInput(detail::share_ignored_message("Problem::cluster", "the fill and FastCLARA's pass", device_));
   const Method method = resolve_method(method_, device_, size());
   if (device_ == Device::CPU_GPU && (method == Method::OneBatch || method == Method::TADPole))
     throw DeviceError(detail::hybrid_refused_message(

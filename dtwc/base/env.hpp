@@ -82,6 +82,10 @@ std::string gpu_not_built_message();
 /// text names the devices that run.
 std::string hybrid_refused_message(std::string_view where, std::string_view why);
 
+/// @brief The InvalidInput text where a forced gpu_share meets a device other than cpu+gpu, which would ignore it:
+/// `where` refuses it, `splits` names the work cpu+gpu splits.
+std::string share_ignored_message(std::string_view where, std::string_view splits, Device device);
+
 /// @brief Why this build refuses `cpu+gpu` ("" where it has CUDA): no CUDA, or Metal, which has no kernel for the
 /// assignment pass (and no session for part of a fill).
 std::string hybrid_not_built_reason();

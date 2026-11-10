@@ -14,7 +14,7 @@ classdef Result < handle
 %   labels  : double row vector, the 1-based cluster of each series.
 %   medoids : double row vector, the 1-based medoid series of each cluster.
 %   cost    : double, the total DTW distance of the series to their medoids.
-%   device  : char, the device the run computed on ('cpu', 'gpu' or 'gpu:N').
+%   device  : char, the device the run computed on ('cpu', 'gpu', 'gpu:N', 'cpu+gpu' or 'cpu+gpu:N').
 %   Report  : char, the run report, the text dtwc_cl writes to <name>_report.txt
 %             (the run's machine, memory plan, stages and result); '' under
 %             NoReport.

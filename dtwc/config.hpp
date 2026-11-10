@@ -72,6 +72,9 @@ struct Config
   Device device = Device::CPU;           ///< `--device`
   int device_index = 0;                  ///< N of `--device gpu:N`
   GpuPrecision gpu_precision = GpuPrecision::Auto; ///< `--gpu-precision`
+  /// `--gpu-share`: the GPU's share of the work `cpu+gpu` splits (Problem::set_gpu_share); -1 measures it, a value in
+  /// [0, 1] forces it. Any other device refuses a forced one.
+  double gpu_share = -1.0;
   // Solver
   Solver solver = Solver::HiGHS;         ///< `--solver`
   MIPSettings mip;                       ///< `--mip-gap`, `--time-limit`, `--lr-max-nodes`, ...
@@ -109,7 +112,9 @@ std::size_t parse_ram_limit(const std::string &text, std::string_view key);
 /// @throws InvalidInput for a value outside its domain or a distance no kernel
 ///         implements; SolverError for gurobi on a build without Gurobi;
 ///         DeviceError for gpu on a build without a GPU backend, and for
-///         onebatch or tadpole on a GPU (they compute on the CPU as they go).
+///         onebatch or tadpole on a GPU (they compute on the CPU as they go);
+///         InvalidInput for a gpu_share outside [0, 1] (-1 apart) and for a
+///         forced one on a device other than cpu+gpu.
 void apply(const Config &config, Problem &prob);
 
 } // namespace dtwc

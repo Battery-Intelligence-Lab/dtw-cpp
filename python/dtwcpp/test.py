@@ -43,7 +43,9 @@ def gpu():
     Returns
     -------
     dict
-        ``{available, backend, device_name, validated, pass, reason}``.
+        ``{available, backend, device_name, validated, pass, reason, hybrid,
+        hybrid_reason}``. ``hybrid`` says whether device ``"cpu+gpu"`` can run
+        (a CUDA build with a device present), ``hybrid_reason`` why not.
         When a GPU backend is compiled in and a device is present, the kernel is
         run and ``validated`` reports whether it matched the CPU oracle within
         tolerance. Otherwise ``available`` is ``False`` and ``reason`` names

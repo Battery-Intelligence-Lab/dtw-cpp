@@ -11,6 +11,8 @@ function report = gpu()
 %     validated   - logical: GPU kernel matched the CPU oracle within tolerance
 %     pass        - logical: available && validated
 %     reason      - char: non-empty explanation when ~available or ~validated
+%     hybrid      - logical: Device 'cpu+gpu' can run (a CUDA build with a device)
+%     hybrid_reason - char: non-empty explanation when ~hybrid
 %
 %   When no GPU backend is compiled in (or no device is present), `available`
 %   is false and `reason` names exactly what is missing. Never errors, never

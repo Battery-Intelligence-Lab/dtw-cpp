@@ -106,7 +106,7 @@ std::pair<Device, int> parse_device(std::string_view name)
       "Python's dtwcpp.device(\"hpc\") and scripts/slurm/slurm_remote.sh do. C++, "
       "MATLAB and dtwc_cl compute where they start: use cpu or gpu.");
   throw DeviceError("[dtwc] unknown device '" + raw
-                    + "'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N).");
+                    + "'. Valid devices: cpu, gpu, gpu:N, cpu+gpu, cpu+gpu:N (aliases cuda, cuda:N).");
 }
 
 std::string gpu_not_built_message()
@@ -121,6 +121,12 @@ std::string hybrid_refused_message(std::string_view where, std::string_view why)
   return std::string(where) + ": device 'cpu+gpu' splits FastCLARA's assignment pass and the distance matrix's fill "
          "between the CPU and a CUDA GPU, "
          "but " + std::string(why) + ". Use device cpu or gpu; no single-device fallback was attempted.";
+}
+
+std::string share_ignored_message(std::string_view where, std::string_view splits, Device device)
+{
+  return std::string(where) + ": gpu_share splits " + std::string(splits) + " of device cpu+gpu, but the device is "
+         + to_string(device) + ", which would ignore it; leave gpu_share at -1.";
 }
 
 std::string hybrid_not_built_reason()

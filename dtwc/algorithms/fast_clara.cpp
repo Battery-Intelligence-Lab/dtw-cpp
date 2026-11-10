@@ -110,8 +110,8 @@ namespace detail {
     // I/O. Dataset-size validation follows against the selected source.
     validate_clara_controls(opts, "fast_clara");
     if (opts.gpu_share != -1.0 && prob.device().first != Device::CPU_GPU)
-      throw InvalidInput("fast_clara: gpu_share splits the assignment pass of device cpu+gpu, but the device is "
-                         + to_string(prob.device().first) + ", which would ignore it; leave gpu_share at -1.");
+      throw InvalidInput(
+        dtwc::detail::share_ignored_message("fast_clara", "the assignment pass", prob.device().first));
     if (opts.force_parquet_streaming
         && (opts.ram_limit_bytes == 0 || opts.parquet_path.empty()))
       throw InvalidInput(

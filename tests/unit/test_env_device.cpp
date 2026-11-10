@@ -22,7 +22,7 @@
 #include <utility>
 
 static const std::string kMsgUnknownFoo =
-  "[dtwc] unknown device 'foo'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N).";
+  "[dtwc] unknown device 'foo'. Valid devices: cpu, gpu, gpu:N, cpu+gpu, cpu+gpu:N (aliases cuda, cuda:N).";
 
 static const std::string kMsgGpuNotBuilt =
   "[dtwc] device='gpu' requested but this build has no GPU backend compiled in.\n"

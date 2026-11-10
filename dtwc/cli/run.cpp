@@ -465,6 +465,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   clara.n_samples = config.n_samples;
   clara.max_iter = config.max_iter;
   clara.random_seed = config.seed;
+  clara.gpu_share = config.gpu_share; // the run calls fast_clara itself, so Problem::cluster's copy of the share is not made
   if (config.method == Method::CLARA) algorithms::detail::validate_clara_controls(clara, "run");
 
   const fs::path input = utf8_to_path(config.input);
