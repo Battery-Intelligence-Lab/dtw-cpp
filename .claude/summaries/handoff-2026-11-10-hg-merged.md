@@ -46,7 +46,8 @@
   the `gpu` route cmp-identical to the pre-HG CUDA binary in 7 configurations; 10 kernel bodies 0 differ; tidy 0 in HG's
   lines). RD's standard-library reading (libstdc++, libc++ from source) and its allocator experiment.
 - The review's model that 58–75 % of a large mapped fill's entries sit in one-tile-row slabs (not a measurement; my
-  derivation from the geometry code is on `devices.md`: rows past about 1,024 L for 1 GiB slabs).
+  derivation from the geometry code is on `devices.md`: rows past min(1,024 L, N / 2) for 1 GiB slabs, at most three
+  quarters of the entries; my first wording, "past about 1,024 L, most of a tall matrix", missed the mapped cap on h).
 
 ## Decisions
 

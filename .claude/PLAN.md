@@ -124,7 +124,8 @@ differ only where several optimal medoid sets exist, node counts and run times c
    `--print-config`), check_docs PASS (531 flags), check_pins 0, generated docs current; logs `C:/D/git/wt/tmp/HG/hgU_*`
    and WSL `~/mm/hgU/`. Not run: Metal, a CUDA MEX, the docs site's build (no Hugo here), any timing. Open after the merge: a Tier-2 Problem on `gpu` still runs onebatch and
    tadpole on the CPU (two pages name the gap; closing it is its own step); cpu+gpu on a mapped fill whose slabs hold
-   one tile-row gives each slab whole to one device (rows past about 1,024 L for 1 GiB slabs: a cap on the tile-row
+   one tile-row gives each slab whole to one device (rows past min(1,024 L, N / 2) for 1 GiB slabs, at most three
+   quarters of the entries: a cap on the tile-row
    height is a probe for item 4's window); MATLAB's forced-share branch unrun (no CUDA MEX tree); a mapped resume
    under cpu+gpu probed once by the review, no fixture; its six bands (hg_plan.md §3) in item 4's window. The identity gate's base binary (`build/bin/dtwc_cl.exe`) pre-dates this merge: rebuild it before the next unit
    uses it.

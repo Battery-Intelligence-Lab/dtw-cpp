@@ -176,9 +176,12 @@ A forced share does not reach every slab of a fill:
   height and a small N give the GPU everything or nothing there, and so do a mapped
   fill's slabs from the row where two tile-rows no longer fit a slab. A tile-row of
   `h` rows at row `r` holds `h * r` entries, so that is `r` above the slab's bytes over
-  `2 * h` entries: with 1 GiB slabs, a float64 matrix and float64 series of L samples
-  (`h` = 65,536 / L), the rows past about 1,024 L, which is most of a matrix many times
-  that tall. At the recorded ratio that is the CPU under FP64 and the GPU under FP32.
+  `2 * h` entries. With 1 GiB slabs, a float64 matrix and float64 series of L samples,
+  `h` is 65,536 / L rows, lowered to 2^27 / N where N series exceed 2,048 L (so that the
+  last tile-row fits a slab): the rows past about 1,024 L, or past N / 2 for such an N,
+  which is no slab of a matrix under 1,024 L rows and at most three quarters of the
+  entries of a taller one. At the recorded ratio that is the CPU under FP64 and the GPU
+  under FP32.
   `-v` reports how many entries the GPU filled.
 
 ### What the split changes

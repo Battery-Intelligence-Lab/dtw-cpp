@@ -122,7 +122,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   forced share on a device other than `cpu+gpu`. `-v` and the run report print the split and how it was set (C++
   `Problem::fill_split()`, `ClusteringResult::hybrid`). Under FP64 and L1 the results equal both single-device runs'
   whatever the split; under FP32, squared L2 and series beyond 256 steps a distance is within the route bound of the other
-  device's, and a label or medoid can differ only at a near-tie within it. `onebatch`, `tadpole`, a run that streams its
+  device's, and a label or medoid can differ only at a near-tie within it. `onebatch`, `tadpole` (C++ `one_batch_pam(prob)`
+  and `tadpole(prob)` on such a `Problem` too), a run that streams its
   series and a build without CUDA raise `DeviceError`. `test.gpu()` (C++, Python, MATLAB) reports `hybrid` and
   `hybrid_reason` as it reports `available` and `reason`.
 - Input: Arrow IPC, the file and the stream format, in every build and language, read by the vendored nanoarrow without
