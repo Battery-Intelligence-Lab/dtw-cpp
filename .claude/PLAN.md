@@ -54,7 +54,12 @@ differ only where several optimal medoid sets exist, node counts and run times c
    WSL GCC 102). F43: the CI MEX job builds with llfio since the commit after c3f26c47 (Volkan 11-09 "its R2024b run is
    the oracle": a crash there puts the flag back and becomes a tracked item). The docs' and CHANGELOG's final read (charter
    item 10) merged c3f26c47 (`pb/DOC`, 8 commits, 33 files; docs gates on the merged tree PASS; `check_site_links` runs in
-   CI). It left ten code-side items (`C:/D/git/wt/tmp/QP/brief_dc.md`): unit DC, below.
+   CI). It left ten code-side items (`C:/D/git/wt/tmp/QP/brief_dc.md`): unit DC, below. Redone 11-10 on the code with HG
+   and RD in (design-2.0 5f8cb5bb; run by me): the main clang tree 103/103 with the docs gates, the Windows Arrow tree
+   106/106 (`test_io_readers` ran), WSL GCC 102/102 and Arrow 105/105 (at 9cecafa3, the same code), GCC strict
+   `cpp_conformance` 1/1, the Linux archive (`cpack` 340 members, `smoke_release_archive.py` OK, libgomp linked from
+   the system as before). Not redone: cl strict (HG adds no C source and no kernel line; the CUDA tree is cl's fast
+   build, 102/102). Left of this item: nothing here; CI (item 6) is the next proof.
 3b. ☑ **DC, the code the docs read found wrong** merged 5b01d1fe (11-09; `pb/DC`, three commits, report
    `C:/D/git/wt/tmp/DC/report_dc.md`): Python's and MATLAB's `save_checkpoint` / `load_checkpoint` take the Problem's metric
    when none is named (rule 17; one pytest case, the MATLAB identity test extended); a `--checkpoint` run of a method that
@@ -127,8 +132,7 @@ differ only where several optimal medoid sets exist, node counts and run times c
    one tile-row gives each slab whole to one device (rows past min(1,024 L, N / 2) for 1 GiB slabs, at most three
    quarters of the entries: a cap on the tile-row
    height is a probe for item 4's window); MATLAB's forced-share branch unrun (no CUDA MEX tree); a mapped resume
-   under cpu+gpu probed once by the review, no fixture; its six bands (hg_plan.md §3) in item 4's window. The identity gate's base binary (`build/bin/dtwc_cl.exe`) pre-dates this merge: rebuild it before the next unit
-   uses it.
+   under cpu+gpu probed once by the review, no fixture; its six bands (hg_plan.md §3) in item 4's window. The identity gate's base binary (`build/bin/dtwc_cl.exe`) was rebuilt on 5f8cb5bb after the merge (11-10).
 6. [CI] design-2.0's tip green on Volkan's push: `python-wheels.yml` (cp39–cp314), `release-artifacts.yml` and
    `matlab-mex.yml` on Linux, macOS and Windows, the three unit jobs, `documentation.yml`; whether python-wheels' Linux
    jobs passed before TL (e3cba47d). The Mac: no Metal has been built since S5 (G8b lines: the 11-09 handoff). macOS

@@ -60,7 +60,9 @@
 ## Next steps
 
 1. PLAN item 3 (release list) and item 4 (timing, when Volkan says): HG's six bands, MM's, the one-tile-row-slab probe.
-2. Before the next unit's identity gate: rebuild `build/bin/dtwc_cl.exe` (it pre-dates this merge).
+2. Done after the push (PLAN item 3, on 5f8cb5bb): the main clang tree rebuilt, 103/103 with the docs gates (so
+   `build/bin/dtwc_cl.exe` is the identity base again); the Windows Arrow tree 106/106; WSL GCC strict
+   `cpp_conformance` 1/1; the Linux archive (`cpack` 340 members, smoke OK). cl strict not redone.
 3. PLAN item 6 (CI on Volkan's push), item 7 (his).
 4. Small steps on offer, each its own: a Tier-2 Problem on `gpu` running onebatch / tadpole on the CPU (close the gap
    with a refusal); a failed `fread` mid-file reading as end of file in the MSVC STL's and libc++'s filebuf.
