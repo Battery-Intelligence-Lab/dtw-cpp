@@ -149,7 +149,8 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
   std::vector<std::vector<Cell>> rows;
 
   std::string line;
-  while (std::getline(file, line)) {
+  // read_line: a failure of the stream is an exception, not the end of the file (`rows.size() + 1` is the row it names).
+  while (text_io_detail::read_line(file, line, path, rows.size() + 1)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
     std::vector<Cell> row;
