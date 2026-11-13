@@ -100,7 +100,6 @@ fast_pam_test*.csv
 
 # CPM cache & local scratch/private directories
 cmake-build-*/_deps/
-/.claude/
 /graphify-out/
 /results/
 /data/test_*

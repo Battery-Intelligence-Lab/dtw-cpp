@@ -243,9 +243,46 @@ file, beyond the memory plan's data cap: `ram_limit`) holds none: its `score` an
 `distance_matrix` (so `plot`) raise `InvalidInput`, and `save` writes the labels and
 medoids, with the reader's names, as `dtwc_cl` writes them, then the report.
 
-A Python `hpc` result holds the labels only: `score` and `save` raise
-`InvalidInput` (the cluster's `dtwc_cl` wrote the files there), and `plot`
-prints the cluster sizes.
+A Python `hpc` result downloads the labels, medoids, total cost (when reported)
+and `<name>_report.txt` from the remote run: `score` and `save` raise
+`InvalidInput` because the series and distance matrix remain on the cluster
+(where `dtwc_cl` already wrote the output files), and `plot` prints the cluster
+sizes.
+
+## CasADi-style workflow: settings, load_data, do_clustering, write_data
+
+For persistent pipelines, crash-safe `.dtwm` checkpointing, or switching a
+script between `"cpu"`, `"gpu"`, `"cpu+gpu"`, and `"hpc"` via a single setting,
+Tier 1 also provides a reusable four-verb workflow:
+
+| Step | C++ | Python | MATLAB |
+|---|---|---|---|
+| 1. Configure | `auto cfg = dtwc::make_settings(k, method, band, device, output)` (or `dtwc::settings::make(...)`) | `cfg = dtwcpp.settings(k=3, method="pam", output="results", ...)` | `cfg = dtwc.settings('K', 3, 'Method', 'pam', 'Output', 'results', ...)` |
+| 2. Load | `auto data = dtwc::load_data(source, ...)` | `data = dtwcpp.load_data(source, ...)` | `data = dtwc.load_data(source, ...)` |
+| 3. Cluster | `auto res = dtwc::do_clustering(data, cfg)` | `res = dtwcpp.do_clustering(data, cfg, **overrides)` | `res = dtwc.do_clustering(data, cfg, ...)` |
+| 4. Write (optional) | `dtwc::write_data(res, dir)` | `dtwcpp.write_data(res, dir)` | `dtwc.write_data(res, dir)` |
+
+By default `settings` sets `output` to `"./results"` so `do_clustering` writes
+labels, medoids, silhouettes, distance matrix (when filled), and the run report
+automatically (plus a resumable `.dtwm` file when `checkpoint` is set). Pass an
+empty `output=""` (`'Output', ''` in MATLAB) to run purely in memory and call
+`write_data` only if needed.
+
+## Cross-collection distances: cdist
+
+`cdist` computes the rectangular `M × N` pairwise DTW distance matrix between
+two collections `X` (`M` series) and `Y` (`N` series) without clustering:
+
+| | C++ | Python | MATLAB |
+|---|---|---|---|
+| call | `dtwc::cdist(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="dtw", metric="euclidean", device=None, matrix_dtype="float64", ...)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'dtw', 'Device', 'cpu', 'MatrixDtype', 'float64', ...)` |
+| returns | `dtwc::core::CrossDistanceMatrix` (`rows()`, `cols()`, `operator()(i, j)`, `values()`) | `np.ndarray` of shape `(M, N)` (`float64` or `float32`) | `M × N` numeric matrix (`double` or `single`) |
+
+Standard univariate DTW dispatches across OpenMP + pre-packed SIMD lanes on
+`cpu`, CUDA wavefront/regtile kernels on `gpu`, and row-partitioned concurrent
+execution on `cpu+gpu` (`gpu_share`). All DTW variants (`ddtw`, `wdtw`, `adtw`,
+`softdtw`, `msm`, `twe`), missing-value strategies, and multivariate modes
+(`dependent`, `independent`) run in parallel on the CPU.
 
 ## The scikit-learn estimator (Python and MATLAB)
 

@@ -37,6 +37,9 @@ cp scripts/slurm/env.example .env
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SLURM_PARTITION` | Single Slurm-name token | `short` |
+| `SLURM_ACCOUNT` | Billing/project account passed to `sbatch -A` | (empty) |
+| `SLURM_QOS` | Quality-of-service token passed to `sbatch` | (empty) |
+| `SLURM_MODULES` | Whitespace- or colon-separated `module load` tokens overriding default toolchain modules | (empty) |
 | `SLURM_CLUSTER` | Single target-cluster token | (empty) |
 | `SLURM_EMAIL` | Conventional ASCII notification address | (empty) |
 
@@ -77,10 +80,11 @@ uv run benchmarks/verify_results.py \
 `DTWClustering(device="hpc")` and `dtwcpp.cluster(..., device="hpc")` send the whole
 clustering job through the same wrapper, which ships inside the `dtwcpp` package, so an
 installed wheel needs no source checkout. Put `.env` in the directory you run Python from,
-or set `DTWC_REPO_ROOT` to the directory that holds it; the labels are downloaded to
-`results/slurm/cluster_<job id>/` there (the labels only: the run report, `<name>_report.txt`,
-stays in `results/cluster_<job id>/` under `SLURM_REMOTE_BASE/src` on the cluster, which
-`slurm_remote.sh download` fetches). `DTWC_REPO_ROOT` steers only this Python route:
+or set `DTWC_REPO_ROOT` to the directory that holds it; the labels, medoids, and
+`<name>_report.txt` are downloaded to `results/slurm/cluster_<job id>/` there and
+hydrated onto the returned `Result`. Pass `upload_input=True` (in `dtwcpp.cluster` or
+`dtwcpp.settings`) when passing a local file path that should be staged to the cluster job
+directory automatically rather than read from a pre-existing cluster path. `DTWC_REPO_ROOT` steers only this Python route:
 `bash scripts/slurm/slurm_remote.sh` always reads the `.env` of, and uploads, its own
 checkout.
 

@@ -21,6 +21,7 @@ project(DTWC++ VERSION "${DTWC_CMAKE_VERSION}"
   DESCRIPTION "A C++ library for fast Dynamic Time Warping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX C)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
 
 include(cmake/StandardProjectSettings.cmake)
 include(CMakeDependentOption)

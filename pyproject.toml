@@ -80,7 +80,7 @@ ninja.version = ">=1.11"
 cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=OFF", "-DDTWC_ENABLE_LLFIO=ON", "-DDTWC_ENABLE_CPUINFO=ON", "-DDTWC_ENABLE_YAML=OFF"]
 wheel.packages = ["python/dtwcpp"]
 wheel.exclude = ["include/**", "lib/**", "bin/**", "share/**"]
-sdist.exclude = ["build/**", "build_*/**", "docs/public*/**", ".claude/**", "tests/**", "benchmarks/**", "results/**"]
+sdist.exclude = ["build/**", "build_*/**", "docs/public*/**", "tests/**", "benchmarks/**", "results/**"]
 
 [[tool.dynamic-metadata]]
 provider = "scikit_build_core.metadata.regex"

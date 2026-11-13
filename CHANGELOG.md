@@ -6,7 +6,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 
 <br/><br/>
-# 2.0.0 (unreleased)
+# DTWC++ v2.0.0
 
 What changed since v1.0.0, for its users; the [migration guide](docs/content/guides/migration.md) maps each v1.0.0
 name, flag and output file to 2.0. The development log stays in git: `git log v1.0.0..`.
@@ -48,7 +48,14 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - The Python package `dtwcpp` and the MATLAB package `+dtwc` (v1.0.0 published neither); `dtwc_cl` archives and wheels
   for Linux and Windows on x86-64-v3 (AVX2, FMA) and macOS 13.3+ on arm64, and wheels for Linux arm64.
 - One four-step API in C++, Python and MATLAB, `device()`, `load()`, `cluster()` and a `Result` (labels, medoids, cost,
-  `score`, `save`, `distance_matrix`; `plot` in Python and MATLAB), on the code `dtwc_cl` runs.
+  `score`, `save`, `distance_matrix`; `plot` in Python and MATLAB), on the code `dtwc_cl` runs, plus a unified
+  CasADi-style workflow (`dtwc::make_settings` / `dtwc::settings::make` in C++, `dtwcpp.settings` in Python,
+  `dtwc.settings` in MATLAB → `load_data` → `do_clustering` → `write_data`) supporting both automatic output and
+  `.dtwm` checkpoint writing (`output="./results"` by default) and pure in-memory execution (`output=""`).
+- Cross-collection pairwise DTW distance matrices (`M × N`) in C++ (`dtwc::cdist` and `dtwc::distance::cdist`), Python
+  (`dtwcpp.cdist` and `dtwcpp.distance.cdist`) and MATLAB (`dtwc.cdist` and `dtwc.distance.cdist`), dispatched across
+  CPU OpenMP + SIMD panels, CUDA (`device="gpu"`), and heterogeneous `device="cpu+gpu"` work-sharing in both `float64`
+  and `float32` (`matrix_dtype`).
 - `dtwc::Config` (a run's settings, keyed by `dtwc_cl`'s long options) and `dtwc::run`. `dtwc_cl --config` reads TOML or
   YAML (a flag beats the file, an unknown key is an error), `--print-config` writes one; `dtwc_cl --version`.
 - Python: `dtwcpp.cluster(data, k, **keys)` takes `dtwc_cl`'s clustering keys (`method`, `band`, `variant`, `seed`, ...)
@@ -214,6 +221,11 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   `no_report=True`, MATLAB `'NoReport', true`) writes none. Python's `Result.report` and MATLAB's `Result.Report` give
   its text and their `save` writes it last.
 - On Windows, `dtwc_cl.exe` states its name, version and copyright in its file properties.
+- WebAssembly (`Emscripten` `wasm-simd128`) and MinGW toolchain support (`dtwc_core`, aligned allocations, and portable
+  SIMD lane configuration).
+- Extended SLURM `.env` integration (`SLURM_ACCOUNT`, `SLURM_QOS`, `SLURM_MODULES`), `upload_input=True` for staging
+  local datasets to remote scratch, and automatic hydration of `medoids`, `cost` and `report` alongside `labels` for
+  `device="hpc"` and `device="hpc:gpu"` runs.
 - The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
   each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
   `dtwc_cl_msvc.exe`), so `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
@@ -328,6 +340,17 @@ Soft-DTW, Python or CUDA), on the machine named.
   1.1–1.5× and an unequal-length distance matrix 1.5× faster.
 - The CUDA fill writes the packed matrix: on an RTX 4000 Ada at N = 20,000 (FP32) host memory 6.0 → 1.6 GiB and GPU
   memory 1.6 → 1.1 GiB; 9,000 series of length 100 fill in 1.16 s, not 1.53 s.
+- Register-blocked CPU SIMD lanes, pre-packed query panels, and vectorized ragged-banded, DDTW (precomputed temporal
+  derivatives) and `MissingStrategy::Interpolate` (single-pass pre-interpolated scratch) kernels eliminate inner-loop
+  function calls and per-pair heap allocations across all four SIMD loops.
+- Band-clipped CUDA wavefront bounds (`d_min..d_max`), fused register-tiled DP cells, and 3-stream medoid assignment
+  overlap avoid out-of-band warps and shared-memory round-trips on Ampere/Ada/Hopper GPUs while preserving bit-exact
+  FP64 CPU/GPU hybrid parity.
+- Zero-copy Erlenkotter dual ascent with exact O(N^2) FastPAM 1-swap primal polish in `lrcore`, O(N^2) Lance-Williams
+  hierarchical clustering (`single`, `complete`, `average` linkages), cascading 3-tier TADPole lower bounds
+  (`LB_KimFL` → O(L) Lemire `LB_Keogh` → exact DTW), and fused single-pass DBA updates.
+- Zero-copy C-contiguous 2-D and 3-D NumPy buffer ingestion (`set_view_data`) and lazy `scikit-learn` imports in
+  `dtwcpp`.
 
 ## Fixed
 
