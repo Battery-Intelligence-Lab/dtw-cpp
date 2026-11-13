@@ -51,6 +51,9 @@ struct CUDADistMatResult : public dtwc::gpu::DistMatResultBase {};
 /// Check if CUDA is available (device count > 0).
 bool cuda_available();
 
+/// True when @p precision resolves to FP32 on @p device_id (safe without a device: returns true only for explicit FP32).
+bool cuda_uses_fp32(GpuPrecision precision, int device_id = 0);
+
 /// The bytes the calling thread's launch workspaces hold, pinned or pageable staging and every device buffer, of both
 /// precisions: what core::release_thread_scratch() gives back (a test hook).
 std::size_t thread_workspace_bytes();

@@ -36,6 +36,7 @@
 #include "../io/parquet_chunk_reader.hpp"
 #endif
 #ifdef DTWC_HAS_CUDA
+#include "../cuda/cuda_dtw.cuh"    // cuda_uses_fp32
 #include "../cuda/launch_prep.hpp" // kMaxPairsPerLaunch
 #endif
 
@@ -184,7 +185,7 @@ std::size_t gpu_staging_bytes([[maybe_unused]] const Config &config, [[maybe_unu
   const bool assigns = method == Method::CLARA && sample && sample->sample_size < sample->n_points;
   const std::size_t filled = assigns ? static_cast<std::size_t>(sample->sample_size) : n_series; // a fill's series
 #  if defined(DTWC_HAS_CUDA)
-  const std::size_t value = config.gpu_precision == GpuPrecision::FP32 ? sizeof(float) : sizeof(double);
+  const std::size_t value = cuda::cuda_uses_fp32(config.gpu_precision, config.device_index) ? sizeof(float) : sizeof(double);
   std::size_t bytes = filled * steps * value;
   if (assigns) {
     const auto medoids = static_cast<std::size_t>(config.k) * static_cast<std::size_t>(config.n_samples);

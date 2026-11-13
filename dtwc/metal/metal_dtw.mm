@@ -381,18 +381,18 @@ static float dtw_regtile_compute(
   const int col_start = (int)simd_lane * TILE_W;
 
   float col_val[TILE_W];
+  #pragma unroll
   for (int tw = 0; tw < TILE_W; ++tw) {
     int j = col_start + tw;
     col_val[tw] = (j < N_len) ? my_col[j] : 0.0f;
   }
 
-  float penalty[TILE_W];
-  float prev_penalty[TILE_W];
+  float dp[TILE_W];
+  #pragma unroll
   for (int tw = 0; tw < TILE_W; ++tw) {
-    penalty[tw] = INF;
-    prev_penalty[tw] = INF;
+    dp[tw] = INF;
   }
-  float prev_last = INF; // saved prev_penalty[TILE_W-1] before overwrite
+  float prev_last = INF; // saved dp[TILE_W-1] from previous row
 
   const int num_col_threads = (N_len + TILE_W - 1) / TILE_W;
   const int total_steps = M + num_col_threads - 1;
@@ -405,7 +405,7 @@ static float dtw_regtile_compute(
     const float row_val = row_valid ? my_row[i] : 0.0f;
 
     // Cross-lane communication (all lanes must participate in shuffles).
-    float penalty_from_left = simd_shuffle_up(penalty[TILE_W - 1], 1);
+    float penalty_from_left = simd_shuffle_up(dp[TILE_W - 1], 1);
     float diag_from_left    = simd_shuffle_up(prev_last, 1);
     if (simd_lane == 0) {
       penalty_from_left = INF; // no left neighbor for lane 0
@@ -413,53 +413,42 @@ static float dtw_regtile_compute(
     }
 
     if (row_valid) {
-      const float saved_prev_last = prev_penalty[TILE_W - 1];
+      const float saved_prev_last = dp[TILE_W - 1];
 
       float left = penalty_from_left; // cost[i][col_start - 1]
       float diag = diag_from_left;    // cost[i-1][col_start - 1]
 
+      #pragma unroll
       for (int tw = 0; tw < TILE_W; ++tw) {
         const int j = col_start + tw;
-        if (j >= N_len) {
-          penalty[tw] = INF;
-          diag = prev_penalty[tw];
-          left = INF;
-          continue;
+        const float above = dp[tw];
+        float new_cost = INF;
+        if (j < N_len) {
+          const float diff = row_val - col_val[tw];
+          const float d    = use_sq_l2 ? (diff * diff) : fabs(diff);
+          if (i == 0 && j == 0) {
+            new_cost = d;
+          } else {
+            const float eff_above = (i == 0)           ? INF : above;
+            const float eff_diag  = (i == 0 || j == 0) ? INF : diag;
+            const float eff_left  = (j == 0)           ? INF : left;
+            new_cost = min(eff_diag, min(eff_above, eff_left)) + d;
+          }
         }
-
-        const float above = prev_penalty[tw];
-        const float diff  = row_val - col_val[tw];
-        const float d     = use_sq_l2 ? (diff * diff) : fabs(diff);
-
-        float new_cost;
-        if (i == 0 && j == 0) {
-          new_cost = d;
-        } else {
-          const float eff_above = (i == 0)              ? INF : above;
-          const float eff_diag  = (i == 0 || j == 0)    ? INF : diag;
-          const float eff_left  = (j == 0)              ? INF : left;
-          new_cost = min(eff_diag, min(eff_above, eff_left)) + d;
-        }
-
-        diag = prev_penalty[tw];
+        diag = above;
         left = new_cost;
-        penalty[tw] = new_cost;
+        dp[tw] = new_cost;
       }
 
       prev_last = saved_prev_last;
-      for (int tw = 0; tw < TILE_W; ++tw) {
-        prev_penalty[tw] = penalty[tw];
-      }
     }
-    // When !row_valid, penalty/prev_penalty/prev_last are untouched; other
-    // lanes' shuffles continue to see stable values from our last valid step.
   }
 
   // Result is cost[M-1][N_len-1].
   const int result_thread = (N_len - 1) / TILE_W;
   const int result_tw     = (N_len - 1) % TILE_W;
   const float my_result =
-      ((int)simd_lane == result_thread) ? penalty[result_tw] : INF;
+      ((int)simd_lane == result_thread) ? dp[result_tw] : INF;
   return simd_shuffle(my_result, (ushort)result_thread);
 }
 
@@ -482,8 +471,10 @@ static void dtw_regtile_kernel_body(
   const long pair_idx  = (long)tg_idx * PAIRS_PER_TG + (long)simd_id + pair_offset;
   if (pair_idx >= num_pairs) return;
 
-  long si, sj;
-  decode_pair(pair_idx, N_series, si, sj);
+  long si0 = 0, sj0 = 0;
+  if (simd_lane == 0) decode_pair(pair_idx, N_series, si0, sj0);
+  const long si = simd_broadcast_first(si0);
+  const long sj = simd_broadcast_first(sj0);
   const int ni = lengths[si];
   const int nj = lengths[sj];
   const device float *x = all_series + si * max_L;
@@ -694,14 +685,15 @@ struct CallObjects
   id<MTLBuffer> series = nil;
   id<MTLBuffer> lengths = nil;
   id<MTLBuffer> out = nil;
-  id<MTLBuffer> scratch = nil;
+  id<MTLBuffer> scratch[2] = { nil, nil };
 
   CallObjects() = default;
   CallObjects(const CallObjects &) = delete;
   CallObjects &operator=(const CallObjects &) = delete;
   ~CallObjects()
   {
-    [scratch release];
+    [scratch[1] release];
+    [scratch[0] release];
     [out release];
     [lengths release];
     [series release];
@@ -762,10 +754,14 @@ MetalDistMatResult compute_distance_matrix_metal(
                     options:MTLResourceStorageModeShared];
     if (!owned.series) throw dtwc::DeviceError("Metal: series buffer allocation failed");
     float *series_ptr = static_cast<float *>([owned.series contents]);
-    std::memset(series_ptr, 0, series_bytes);
     for (size_t s = 0; s < N; ++s) {
-      for (int k = 0; k < lengths[s]; ++k) {
-        series_ptr[s * max_L + k] = static_cast<float>(series[s][k]);
+      float *dst_row = series_ptr + s * static_cast<size_t>(max_L);
+      const int len = lengths[s];
+      for (int k = 0; k < len; ++k) {
+        dst_row[k] = static_cast<float>(series[s][static_cast<size_t>(k)]);
+      }
+      if (len < max_L) {
+        std::memset(dst_row + len, 0, static_cast<size_t>(max_L - len) * sizeof(float));
       }
     }
 
@@ -860,7 +856,9 @@ MetalDistMatResult compute_distance_matrix_metal(
     size_t chunk = std::max<size_t>(1, cells_budget / cells_per_pair);
     if (chunk > num_pairs) chunk = num_pairs;
 
-    // Allocate scratch sized for one chunk (reused across chunks).
+    const size_t num_chunks = (num_pairs + chunk - 1) / chunk;
+    const size_t scratch_slots = (num_chunks > 1) ? 2 : 1;
+    // Allocate scratch sized for one chunk (double-buffered when multiple chunks exist).
     size_t scratch_bytes = 0;
     if (use_global) {
       scratch_bytes = chunk * 3ULL * (size_t)max_L * sizeof(float);
@@ -871,13 +869,17 @@ MetalDistMatResult compute_distance_matrix_metal(
       scratch_bytes = 0;
     }
     if (scratch_bytes > 0) {
-      owned.scratch = [ctx.device newBufferWithLength:scratch_bytes
-                                              options:MTLResourceStorageModePrivate];
-      if (!owned.scratch) {
+      owned.scratch[0] = [ctx.device newBufferWithLength:scratch_bytes
+                                                 options:MTLResourceStorageModePrivate];
+      if (!owned.scratch[0]) {
         throw dtwc::DeviceError(
             "Metal: scratch allocation failed (" + std::to_string(scratch_bytes)
             + " bytes for max_L=" + std::to_string(max_L) + ", chunk="
             + std::to_string(chunk) + "). No CPU fallback was attempted.");
+      }
+      if (scratch_slots == 2) {
+        owned.scratch[1] = [ctx.device newBufferWithLength:scratch_bytes
+                                                   options:MTLResourceStorageModePrivate];
       }
     }
 
@@ -915,12 +917,16 @@ MetalDistMatResult compute_distance_matrix_metal(
       banded_stride = static_cast<int>(ntgs * tg_size);
       scratch_bytes =
           2ULL * (size_t)(2 * band + 1) * (size_t)banded_stride * sizeof(float);
-      owned.scratch = [ctx.device newBufferWithLength:scratch_bytes
-                                              options:MTLResourceStorageModePrivate];
-      if (!owned.scratch) {
+      owned.scratch[0] = [ctx.device newBufferWithLength:scratch_bytes
+                                                 options:MTLResourceStorageModePrivate];
+      if (!owned.scratch[0]) {
         throw dtwc::DeviceError(
             "Metal: banded-row scratch allocation failed ("
             + std::to_string(scratch_bytes) + " bytes). No CPU fallback was attempted.");
+      }
+      if (scratch_slots == 2) {
+        owned.scratch[1] = [ctx.device newBufferWithLength:scratch_bytes
+                                                   options:MTLResourceStorageModePrivate];
       }
     }
 
@@ -935,8 +941,16 @@ MetalDistMatResult compute_distance_matrix_metal(
                                 (desc ? [desc UTF8String] : "unknown"));
       }
     };
+    const bool dual_scratch = owned.scratch[1] != nil;
     std::vector<id<MTLCommandBuffer>> in_flight;
-    for (size_t off = 0; off < num_pairs; off += chunk) {
+    size_t chunk_idx = 0;
+    for (size_t off = 0; off < num_pairs; off += chunk, ++chunk_idx) {
+      if ((use_global || use_banded_row) && dual_scratch && chunk_idx >= 2) {
+        id<MTLCommandBuffer> prev_cmd = in_flight[chunk_idx - 2];
+        [prev_cmd waitUntilCompleted];
+        check(prev_cmd);
+      }
+
       // The kernels read buffer(8) as a 64-bit `long`: typed here, never narrowed.
       const std::int64_t pair_offset = static_cast<std::int64_t>(off);
       const size_t this_chunk = std::min(chunk, num_pairs - off);
@@ -952,7 +966,8 @@ MetalDistMatResult compute_distance_matrix_metal(
       [enc setBytes:&band      length:sizeof(int) atIndex:5];
       [enc setBytes:&use_sq_l2 length:sizeof(int) atIndex:6];
       if (use_global || use_banded_row) {
-        [enc setBuffer:owned.scratch offset:0 atIndex:7];
+        id<MTLBuffer> cur_scratch = dual_scratch ? owned.scratch[chunk_idx % 2] : owned.scratch[0];
+        [enc setBuffer:cur_scratch offset:0 atIndex:7];
       } else if (use_regtile) {
         [enc setThreadgroupMemoryLength:regtile_smem_len atIndex:0];
       } else {
@@ -984,10 +999,7 @@ MetalDistMatResult compute_distance_matrix_metal(
       [enc endEncoding];
       [cmd commit];
 
-      // When scratch is reused across chunks we must wait for each chunk
-      // before launching the next (otherwise the next chunk clobbers
-      // in-flight scratch). Applies to both global and banded-row kernels.
-      if (use_global || use_banded_row) {
+      if ((use_global || use_banded_row) && !dual_scratch) {
         [cmd waitUntilCompleted];
         check(cmd);
       } else {

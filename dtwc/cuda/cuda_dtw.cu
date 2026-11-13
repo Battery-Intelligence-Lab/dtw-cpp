@@ -132,6 +132,23 @@ __device__ __forceinline__ bool fixed_band_contains(int i, int j, int band)
   return (i >= j) ? (i - j <= band) : (j - i <= band);
 }
 
+/// Active row range [i_lo, i_hi] on anti-diagonal k = i + j within the M x N_len grid
+/// and Sakoe-Chiba band |i - j| <= band. Empty (i_lo > i_hi) when k < 0 or no cell lies in band.
+__device__ __forceinline__ void wavefront_band_range(int k, int M, int N_len, int band, int &i_lo, int &i_hi)
+{
+  if (k < 0) {
+    i_lo = 0;
+    i_hi = -1;
+    return;
+  }
+  i_lo = max(0, k - N_len + 1);
+  i_hi = min(k, M - 1);
+  if (band >= 0 && band < N_len - 1) {
+    if (k > band) i_lo = max(i_lo, (k - band + 1) / 2);
+    i_hi = min(i_hi, k / 2 + band / 2 + ((k & 1) & (band & 1)));
+  }
+}
+
 /// What the fill needs to know about a device, and the device's one-time setup.
 struct DeviceLimits {
   int compute_major = 0, compute_minor = 0; ///< compute capability, 8.0 at least
@@ -376,8 +393,8 @@ __global__ void dtw_wavefront_kernel(
     const int M = min(ni, nj);  // rows (short)
     const int N_len = max(ni, nj);  // columns (long)
 
-    // Guard: zero-length series produce INF distance
-    if (M == 0 || N_len == 0) {
+    // Guard: zero-length series or endpoint outside Sakoe-Chiba band produce INF distance in O(1)
+    if (M == 0 || N_len == 0 || (band >= 0 && N_len - M > band)) {
       if (tid == 0)
         out[pair_slot<P>(si, sj, n) - first_slot] = normalize_public_distance(INF);
       // In non-persistent mode, exit; in persistent mode, loop for next pair
@@ -413,11 +430,12 @@ __global__ void dtw_wavefront_kernel(
       // Pre-fetch cost_diag from k-2 buffer into registers before overwriting.
       // Saves max_L*sizeof(T) shared memory → better occupancy for long series.
       for (int k = 0; k < total_diags; ++k) {
-        const int i_min = max(0, k - N_len + 1);
-        const int i_max = min(k, M - 1);
+        int i_min, i_max, lo1, hi1, lo2, hi2;
+        wavefront_band_range(k, M, N_len, band, i_min, i_max);
         const int len_k = i_max - i_min + 1;
-        const int i_min_k1 = max(0, (k - 1) - N_len + 1);
-        const int i_min_k2 = max(0, (k - 2) - N_len + 1);
+        if (len_k <= 0) continue;
+        wavefront_band_range(k - 1, M, N_len, band, lo1, hi1);
+        wavefront_band_range(k - 2, M, N_len, band, lo2, hi2);
 
         T *cur  = diag_buf[k & 1];        // output for k (also holds k-2)
         T *prev = diag_buf[(k & 1) ^ 1];  // k-1
@@ -426,56 +444,52 @@ __global__ void dtw_wavefront_kernel(
         constexpr int MAX_SI = 8;
         T cd[MAX_SI];
         for (int p = tid, s = 0; p < len_k && s < MAX_SI; p += nthreads, ++s) {
-          int i = i_min + p;
-          cd[s] = (k >= 2 && i > 0 && (k - i) > 0)
-                      ? cur[(i - 1) - i_min_k2] : INF;
+          const int i = i_min + p;
+          const int r = i - 1;
+          cd[s] = (r >= lo2 && r <= hi2) ? cur[r - lo2] : INF;
         }
         __syncthreads();
 
-        // Phase 2: compute anti-diag k
+        // Phase 2: compute anti-diag k (all i in [i_min, i_max] satisfy |i - j| <= band)
         for (int p = tid, s = 0; p < len_k && s < MAX_SI; p += nthreads, ++s) {
-          int i = i_min + p, j = k - i;
-          if (!fixed_band_contains(i, j, band)) {
-            cur[p] = INF; continue;
-          }
-          T diff = __ldg(&s_row[i]) - __ldg(&s_col[j]);
-          T d = use_squared_l2 ? (diff * diff) : fabs(diff);
+          const int i = i_min + p, j = k - i;
+          const T diff = __ldg(&s_row[i]) - __ldg(&s_col[j]);
+          const T d = use_squared_l2 ? (diff * diff) : fabs(diff);
           if (i == 0 && j == 0) { cur[p] = d; }
           else {
-            T ca = (i > 0) ? prev[(i-1) - i_min_k1] : INF;
-            T cl = (j > 0) ? prev[i - i_min_k1] : INF;
+            const int ra = i - 1;
+            const T ca = (ra >= lo1 && ra <= hi1) ? prev[ra - lo1] : INF;
+            const T cl = (i >= lo1 && i <= hi1) ? prev[i - lo1] : INF;
             cur[p] = fmin(cd[s], fmin(ca, cl)) + d;
           }
         }
         __syncthreads();
       }
     } else {
-      // ── 3-buffer mode (L <= 1024): classic rotating buffers ──────────
-      // Faster for medium series (no extra sync or register pressure).
+      // ── 3-buffer mode: classic rotating buffers with band-clipped active span ──
       for (int k = 0; k < total_diags; ++k) {
-        const int i_min = max(0, k - N_len + 1);
-        const int i_max = min(k, M - 1);
+        int i_min, i_max, lo1, hi1, lo2, hi2;
+        wavefront_band_range(k, M, N_len, band, i_min, i_max);
         const int len_k = i_max - i_min + 1;
-        const int i_min_k1 = max(0, (k - 1) - N_len + 1);
-        const int i_min_k2 = max(0, (k - 2) - N_len + 1);
+        if (len_k <= 0) continue;
+        wavefront_band_range(k - 1, M, N_len, band, lo1, hi1);
+        wavefront_band_range(k - 2, M, N_len, band, lo2, hi2);
 
         T *cur   = diag_buf[k % 3];
         T *prev  = diag_buf[(k - 1 + 3) % 3];
         T *prev2 = diag_buf[(k - 2 + 3) % 3];
 
         for (int p = tid; p < len_k; p += nthreads) {
-          int i = i_min + p, j = k - i;
-          if (!fixed_band_contains(i, j, band)) {
-            cur[p] = INF; continue;
-          }
-          T diff = preload ? (s_row[i] - s_col[j])
-                           : (__ldg(&s_row[i]) - __ldg(&s_col[j]));
-          T d = use_squared_l2 ? (diff * diff) : fabs(diff);
+          const int i = i_min + p, j = k - i;
+          const T diff = preload ? (s_row[i] - s_col[j])
+                                 : (__ldg(&s_row[i]) - __ldg(&s_col[j]));
+          const T d = use_squared_l2 ? (diff * diff) : fabs(diff);
           if (i == 0 && j == 0) { cur[p] = d; }
           else {
-            T ca = (i > 0) ? prev[(i-1) - i_min_k1] : INF;
-            T cl = (j > 0) ? prev[i - i_min_k1] : INF;
-            T cd = (i > 0 && j > 0) ? prev2[(i-1) - i_min_k2] : INF;
+            const int ra = i - 1;
+            const T ca = (ra >= lo1 && ra <= hi1) ? prev[ra - lo1] : INF;
+            const T cl = (i >= lo1 && i <= hi1) ? prev[i - lo1] : INF;
+            const T cd = (ra >= lo2 && ra <= hi2) ? prev2[ra - lo2] : INF;
             cur[p] = fmin(cd, fmin(ca, cl)) + d;
           }
         }
@@ -535,8 +549,18 @@ __global__ void dtw_warp_kernel(
 
   if (work_idx >= num_pairs) return;
 
-  std::int64_t si, sj;
-  pair_series<P>(first_pair + work_idx, n, si, sj);
+  constexpr unsigned FULL_MASK = 0xFFFFFFFF;
+
+  // Decode pair once on lane 0 and broadcast across the warp (avoids 32 FP64 sqrts on Triangle).
+  long long si_ll = 0, sj_ll = 0;
+  if (lane == 0) {
+    std::int64_t si0, sj0;
+    pair_series<P>(first_pair + work_idx, n, si0, sj0);
+    si_ll = static_cast<long long>(si0);
+    sj_ll = static_cast<long long>(sj0);
+  }
+  const std::int64_t si = static_cast<std::int64_t>(__shfl_sync(FULL_MASK, si_ll, 0));
+  const std::int64_t sj = static_cast<std::int64_t>(__shfl_sync(FULL_MASK, sj_ll, 0));
   const int ni = lengths[si];
   const int nj = lengths[sj];
 
@@ -549,8 +573,8 @@ __global__ void dtw_warp_kernel(
   const int M     = min(ni, nj);
   const int N_len = max(ni, nj);
 
-  // Guard: zero-length series
-  if (M == 0 || N_len == 0) {
+  // Guard: zero-length series or infeasible band
+  if (M == 0 || N_len == 0 || (band >= 0 && N_len - M > band)) {
     if (lane == 0)
       out[pair_slot<P>(si, sj, n) - first_slot] = normalize_public_distance(INF);
     return;
@@ -570,8 +594,6 @@ __global__ void dtw_warp_kernel(
   if (lane < N_len)
     my_col[lane] = col_g[lane];
   __syncwarp();
-
-  const unsigned FULL_MASK = 0xFFFFFFFF;
 
   // Each thread (lane) represents row i = lane.
   // We sweep anti-diagonals k = 0 .. M + N_len - 2.
@@ -679,9 +701,16 @@ __global__ void dtw_regtile_kernel(
 
   if (work_idx >= num_pairs) return;
 
-  // Decode pair from flat upper-triangle index
-  std::int64_t si, sj;
-  pair_series<P>(first_pair + work_idx, n, si, sj);
+  // Decode pair once on lane 0 and broadcast across the warp
+  long long si_ll = 0, sj_ll = 0;
+  if (lane == 0) {
+    std::int64_t si0, sj0;
+    pair_series<P>(first_pair + work_idx, n, si0, sj0);
+    si_ll = static_cast<long long>(si0);
+    sj_ll = static_cast<long long>(sj0);
+  }
+  const std::int64_t si = static_cast<std::int64_t>(__shfl_sync(FULL_MASK, si_ll, 0));
+  const std::int64_t sj = static_cast<std::int64_t>(__shfl_sync(FULL_MASK, sj_ll, 0));
   const int ni = lengths[si];
   const int nj = lengths[sj];
   const T *x = all_series + static_cast<long long>(si) * max_L;
@@ -693,7 +722,7 @@ __global__ void dtw_regtile_kernel(
   const int M     = min(ni, nj);
   const int N_len = max(ni, nj);
 
-  if (M == 0 || N_len == 0) {
+  if (M == 0 || N_len == 0 || (band >= 0 && N_len - M > band)) {
     if (lane == 0)
       out[pair_slot<P>(si, sj, n) - first_slot] = normalize_public_distance(INF_VAL);
     return;
@@ -720,132 +749,82 @@ __global__ void dtw_regtile_kernel(
 
   // Preload column data into registers
   T col_val[TILE_W];
+  #pragma unroll
   for (int tw = 0; tw < TILE_W; ++tw) {
     int j = col_start + tw;
     col_val[tw] = (j < N_len) ? my_col[j] : T(0);
   }
 
-  // Per-thread register state:
-  //   penalty[tw]      = cost[last_row_processed][col_start+tw]
-  //   prev_penalty[tw] = cost[last_row_processed - 1][col_start+tw]
-  //   prev_last        = saved prev_penalty[TILE_W-1] before overwrite
-  //
-  // Wavefront timing: at step s, thread t processes row i = s - t.
-  // Thread t-1 processed row i at step s-1, so at step s:
-  //   - penalty[TILE_W-1] of thread t-1 = cost[i][col_start-1] (left predecessor)
-  //   - prev_last of thread t-1 = cost[i-1][col_start-1] (diagonal predecessor)
-  //
-  // The key subtlety: after step s-1, thread t-1 overwrites prev_penalty with
-  // penalty (both become cost[i][...]). So we cannot shuffle prev_penalty for
-  // the diagonal — we must shuffle the separately saved `prev_last`.
-  T penalty[TILE_W];
-  T prev_penalty[TILE_W];
-  for (int tw = 0; tw < TILE_W; ++tw) {
-    penalty[tw]      = INF_VAL;
-    prev_penalty[tw] = INF_VAL;
-  }
-  T prev_last = INF_VAL;  // saved prev_penalty[TILE_W-1] before overwrite
+  // Fused in-place per-thread register state (halves DP array registers vs two TILE_W arrays):
+  //   dp[tw]    = cost[last_row_processed][col_start + tw]
+  //   prev_last = cost[last_row_processed - 1][col_start + TILE_W - 1]
+  T dp[TILE_W];
+  #pragma unroll
+  for (int tw = 0; tw < TILE_W; ++tw)
+    dp[tw] = INF_VAL;
+  T prev_last = INF_VAL;
 
   // Number of threads covering columns (may be fewer than WARP_SIZE)
   const int num_col_threads = (N_len + TILE_W - 1) / TILE_W;
-
-  // Wavefront sweep: total_steps = M + num_col_threads - 1
-  // At step s, thread t processes row i = s - t (if valid).
-  // Thread t is active when: 0 <= s - t < M  AND  t < num_col_threads
   const int total_steps = M + num_col_threads - 1;
 
   for (int step = 0; step < total_steps; ++step) {
     const int i = step - lane;
     const bool row_valid = (i >= 0) && (i < M) && (lane < num_col_threads);
 
-    // Row value for this thread's row (loaded once per step)
     T row_val = (row_valid) ? my_row[i] : T(0);
 
     // --- Shuffle communication (ALL lanes must participate) ---
-    // penalty[TILE_W-1] from thread t-1 = cost[i][col_start-1] (left boundary)
-    T penalty_from_left = __shfl_sync(FULL_MASK, penalty[TILE_W - 1], lane - 1);
-    // prev_last from thread t-1 = cost[i-1][col_start-1] (diagonal boundary)
-    T diag_from_left = __shfl_sync(FULL_MASK, prev_last, lane - 1);
+    T penalty_from_left = __shfl_sync(FULL_MASK, dp[TILE_W - 1], lane - 1);
+    T diag_from_left    = __shfl_sync(FULL_MASK, prev_last, lane - 1);
 
-    // Thread 0 has no left neighbor
     if (lane == 0) {
       penalty_from_left = INF_VAL;
       diag_from_left    = INF_VAL;
     }
 
     if (row_valid) {
-      // Save prev_penalty[TILE_W-1] before overwrite (for next step's diagonal)
-      T saved_prev_last = prev_penalty[TILE_W - 1];
+      const T saved_prev_last = dp[TILE_W - 1];
 
-      // Process TILE_W columns left-to-right within this thread's stripe
-      T left = penalty_from_left;  // cost[i][col_start - 1]
-      T diag = diag_from_left;     // cost[i-1][col_start - 1]
+      if (band >= 0 && (i - (col_start + TILE_W - 1) > band || col_start - i > band)) {
+        #pragma unroll
+        for (int tw = 0; tw < TILE_W; ++tw) dp[tw] = INF_VAL;
+        prev_last = saved_prev_last;
+      } else {
+        T left = penalty_from_left;
+        T diag = diag_from_left;
 
-      for (int tw = 0; tw < TILE_W; ++tw) {
-        const int j = col_start + tw;
-        if (j >= N_len) {
-          penalty[tw] = INF_VAL;
-          diag = prev_penalty[tw];
-          left = INF_VAL;
-          continue;
+        #pragma unroll
+        for (int tw = 0; tw < TILE_W; ++tw) {
+          const int j = col_start + tw;
+          const T above = dp[tw];
+          T new_cost = INF_VAL;
+          if (j < N_len && fixed_band_contains(i, j, band)) {
+            const T diff = row_val - col_val[tw];
+            const T d = use_squared_l2 ? (diff * diff) : fabs(diff);
+            if (i == 0 && j == 0) {
+              new_cost = d;
+            } else {
+              const T eff_above = (i == 0) ? INF_VAL : above;
+              const T eff_diag  = (i == 0 || j == 0) ? INF_VAL : diag;
+              const T eff_left  = (j == 0) ? INF_VAL : left;
+              new_cost = fmin(eff_diag, fmin(eff_above, eff_left)) + d;
+            }
+          }
+          diag = above;
+          left = new_cost;
+          dp[tw] = new_cost;
         }
 
-        T above = prev_penalty[tw];  // cost[i-1][j]
-
-        if (!fixed_band_contains(i, j, band)) {
-          diag = prev_penalty[tw];
-          left = INF_VAL;
-          penalty[tw] = INF_VAL;
-          continue;
-        }
-
-        T diff = row_val - col_val[tw];
-        T d = use_squared_l2 ? (diff * diff) : fabs(diff);
-
-        T new_cost;
-        if (i == 0 && j == 0) {
-          new_cost = d;
-        } else {
-          // Boundary conditions:
-          // i == 0: no above, no diagonal predecessor
-          // j == 0: no left, no diagonal predecessor
-          T eff_above = (i == 0) ? INF_VAL : above;
-          T eff_diag  = (i == 0 || j == 0) ? INF_VAL : diag;
-          T eff_left  = (j == 0) ? INF_VAL : left;
-          new_cost = fmin(eff_diag, fmin(eff_above, eff_left)) + d;
-        }
-
-        // Advance for next column: current above becomes diagonal,
-        // current cost becomes left
-        diag = prev_penalty[tw];
-        left = new_cost;
-        penalty[tw] = new_cost;
+        prev_last = saved_prev_last;
       }
-
-      // Update prev_last for next step's diagonal shuffle
-      prev_last = saved_prev_last;
-
-      // Update prev_penalty for next row: prev_penalty <- penalty (= cost[i][...])
-      for (int tw = 0; tw < TILE_W; ++tw)
-        prev_penalty[tw] = penalty[tw];
     }
-    // If !row_valid, penalty[], prev_penalty[], and prev_last are unchanged,
-    // which is correct: after a thread finishes its last valid row, the values
-    // persist for result extraction and do not corrupt other threads' shuffles.
   }
 
-  // Result extraction: cost[M-1][N_len-1].
-  // Thread holding column N_len-1 is: result_thread = (N_len-1) / TILE_W
-  // Index within stripe: result_tw = (N_len-1) % TILE_W
-  // That thread processed row M-1 at step = (M-1) + result_thread, after
-  // which row_valid became false for subsequent steps, so penalty[] is
-  // preserved.
   const int result_thread = (N_len - 1) / TILE_W;
   const int result_tw     = (N_len - 1) % TILE_W;
 
-  // Each thread puts its candidate result value; only the result_thread
-  // has the real answer.
-  T my_result = (lane == result_thread) ? penalty[result_tw] : INF_VAL;
+  T my_result = (lane == result_thread) ? dp[result_tw] : INF_VAL;
   T final_result = __shfl_sync(FULL_MASK, my_result, result_thread);
 
   if (lane == 0)
@@ -861,6 +840,23 @@ bool cuda_available()
   int count = 0;
   cudaError_t err = cudaGetDeviceCount(&count);
   return (err == cudaSuccess && count > 0);
+}
+
+bool cuda_uses_fp32(GpuPrecision precision, int device_id)
+{
+  if (precision == GpuPrecision::FP32) return true;
+  if (precision == GpuPrecision::FP64) return false;
+  int count = 0;
+  if (cudaGetDeviceCount(&count) != cudaSuccess || device_id < 0 || device_id >= count) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  int ratio = 0;
+  if (cudaDeviceGetAttribute(&ratio, cudaDevAttrSingleToDoublePrecisionPerfRatio, device_id) != cudaSuccess) {
+    (void)cudaGetLastError();
+    return false;
+  }
+  return ratio > 2;
 }
 
 std::string cuda_device_info(int device_id)
@@ -951,10 +947,11 @@ struct DTWLaunchWorkspace {
   CudaPtr<T> d_scratch; ///< the global wavefront's anti-diagonals, a slice per block
   CudaStream stream;      ///< the launches (the medoid pipeline's compute stream)
   CudaStream copy_stream; ///< the medoid pipeline's uploads
+  CudaStream d2h_stream;  ///< the medoid pipeline's downloads (concurrent with compute and uploads)
   CudaEvent evt_start;
   CudaEvent evt_end;
-  /// The medoid pipeline's order: each series slot's upload and kernel done, each distance slot's download done.
-  std::array<CudaEvent, 2> uploaded, computed;
+  /// The medoid pipeline's order: each series slot's upload and kernel done, each device out slot drained, each host distance slot downloaded.
+  std::array<CudaEvent, 2> uploaded, computed, d_out_free;
   std::array<CudaEvent, 3> downloaded;
 
   /// Its pinned host buffers and every device buffer freed, its streams and events too: what
@@ -967,6 +964,7 @@ struct DTWLaunchWorkspace {
     host_out = CachedHostBuffer<double>{};
     reset_events();
     copy_stream.reset();
+    d2h_stream.reset();
     d_series.reset();
     d_lengths.reset();
     d_out.reset();
@@ -991,6 +989,7 @@ struct DTWLaunchWorkspace {
       d_scratch.reset();
       stream.reset();
       copy_stream.reset();
+      d2h_stream.reset();
       evt_start.reset();
       evt_end.reset();
       reset_events();
@@ -1011,16 +1010,18 @@ struct DTWLaunchWorkspace {
       evt_end = make_cuda_event();
   }
 
-  /// The medoid pipeline's second stream and its events, made on its first use on this thread's device.
+  /// The medoid pipeline's upload/download streams and events, made on its first use on this thread's device.
   void ensure_pipeline()
   {
     if (!copy_stream) copy_stream = make_cuda_stream();
+    if (!d2h_stream) d2h_stream = make_cuda_stream();
     const auto make = [](auto &events) {
       for (auto &event : events)
         if (!event) event = make_cuda_event();
     };
     make(uploaded);
     make(computed);
+    make(d_out_free);
     make(downloaded);
   }
 
@@ -1028,6 +1029,7 @@ struct DTWLaunchWorkspace {
   {
     for (auto &event : uploaded) event.reset();
     for (auto &event : computed) event.reset();
+    for (auto &event : d_out_free) event.reset();
     for (auto &event : downloaded) event.reset();
   }
 };
@@ -1179,10 +1181,11 @@ struct Launches {
   size_t counter_elems() const { return persistent_grid > 0 ? 1 : 0; }
 
   /// Pairs first .. first + count - 1 of the uploaded `series` and their `lengths` on the device (n:
-  /// pair_series'), their distances into the workspace's out buffer from first_slot on.
+  /// pair_series'), their distances into `d_out_dest` (defaults to `workspace.d_out.get()`) from first_slot on.
   void operator()(DTWLaunchWorkspace<T> &workspace, const T *series, const int *lengths, int n, std::int64_t first,
-                  int count, std::int64_t first_slot, cudaStream_t stream) const
+                  int count, std::int64_t first_slot, cudaStream_t stream, double *d_out_dest = nullptr) const
   {
+    double *const out_ptr = d_out_dest ? d_out_dest : workspace.d_out.get();
     // The warp-family kernels run one pair per warp, PAIRS_PER_BLOCK warps per
     // block; each warp stages its pair's two series, `staged` samples apiece,
     // in shared memory.
@@ -1191,7 +1194,7 @@ struct Launches {
           (std::int64_t{ count } + PAIRS_PER_BLOCK - 1) / PAIRS_PER_BLOCK);
       const size_t warp_shared_mem = PAIRS_PER_BLOCK * 2 * staged * sizeof(T);
       kernel<<<grid_size, PAIRS_PER_BLOCK * 32, warp_shared_mem, stream>>>(
-          series, lengths, workspace.d_out.get(),
+          series, lengths, out_ptr,
           n, max_L, count, use_squared_l2, band, first, first_slot);
     };
 
@@ -1206,13 +1209,13 @@ struct Launches {
       if (persistent)
         CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
       shared_kernel<<<persistent ? persistent_grid : count, block_size, shared_mem, stream>>>(
-          series, lengths, workspace.d_out.get(),
+          series, lengths, out_ptr,
           n, max_L, count, use_squared_l2, band,
           persistent ? workspace.d_counter.get() : nullptr, first, first_slot, nullptr);
     } else if (path == detail::KernelPath::WavefrontGlobal) {
       CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
       dtw_wavefront_kernel<T, Wavefront::Global, P><<<global_grid, block_size, 0, stream>>>(
-          series, lengths, workspace.d_out.get(),
+          series, lengths, out_ptr,
           n, max_L, count, use_squared_l2, band,
           workspace.d_counter.get(), first, first_slot, workspace.d_scratch.get());
     } else {
@@ -1408,16 +1411,18 @@ void launch_medoid_kernel(
   auto &workspace = get_dtw_launch_workspace<T>(opts.device_id);
   workspace.ensure_pipeline();
   const size_t device_slot = (k + block) * max_L;
-  ensure_dtw_device_capacity(workspace, plan.series_slots * device_slot, plan.series_slots * (k + block), block * k,
-                             launches.scratch_elems(), launches.counter_elems());
+  ensure_dtw_device_capacity(workspace, plan.series_slots * device_slot, plan.series_slots * (k + block),
+                             plan.series_slots * block * k, launches.scratch_elems(), launches.counter_elems());
   T *const h_series = workspace.host_series.ensure((k + plan.series_slots * block) * max_L, true);
   int *const h_lengths = workspace.host_lengths.ensure(k + plan.series_slots * block, true);
   double *const h_out = workspace.host_out.ensure(plan.distance_slots * block * k, true);
   T *const d_series = workspace.d_series.get();
   int *const d_lengths = workspace.d_lengths.get();
-  const cudaStream_t copy = workspace.copy_stream.get(), compute = workspace.stream.get();
+  double *const d_out = workspace.d_out.get();
+  const cudaStream_t copy = workspace.copy_stream.get(), compute = workspace.stream.get(),
+                     d2h = workspace.d2h_stream.get();
 
-  // Block b: its series first .. first + count - 1 padded, uploaded, computed and downloaded.
+  // Block b: padded into h_series[s], uploaded on `copy`, computed on `compute` into d_out[s], downloaded on `d2h`.
   const auto enqueue = [&](size_t b) {
     const size_t s = b % 2, first = b * block, count = std::min(block, N - first);
     T *const h_slot = h_series + (k + s * block) * max_L;
@@ -1427,16 +1432,21 @@ void launch_medoid_kernel(
     if (b >= 2) CUDA_CHECK(cudaStreamWaitEvent(copy, workspace.computed[s].get(), 0)); // and block b - 2's kernel
     T *const d_slot = d_series + s * device_slot;
     int *const d_slot_lengths = d_lengths + s * (k + block);
+    double *const d_out_slot = d_out + s * block * k;
     CUDA_CHECK(cudaMemcpyAsync(d_slot + k * max_L, h_slot, count * max_L * sizeof(T), cudaMemcpyHostToDevice, copy));
     CUDA_CHECK(cudaMemcpyAsync(d_slot_lengths + k, h_slot_lengths, count * sizeof(int), cudaMemcpyHostToDevice, copy));
     CUDA_CHECK(cudaEventRecord(workspace.uploaded[s].get(), copy));
     CUDA_CHECK(cudaStreamWaitEvent(compute, workspace.uploaded[s].get(), 0));
-    launches(workspace, d_slot, d_slot_lengths, static_cast<int>(k), 0, static_cast<int>(count * k), 0, compute);
+    if (b >= 2) CUDA_CHECK(cudaStreamWaitEvent(compute, workspace.d_out_free[s].get(), 0));
+    launches(workspace, d_slot, d_slot_lengths, static_cast<int>(k), 0, static_cast<int>(count * k), 0, compute,
+             d_out_slot);
     CUDA_CHECK(cudaEventRecord(workspace.computed[s].get(), compute));
+    CUDA_CHECK(cudaStreamWaitEvent(d2h, workspace.computed[s].get(), 0));
     // Distance slot b % 3 was last read by the host's assignment of block b - 3, which returned before this call.
-    CUDA_CHECK(cudaMemcpyAsync(h_out + (b % 3) * block * k, workspace.d_out.get(), count * k * sizeof(double),
-                               cudaMemcpyDeviceToHost, compute));
-    CUDA_CHECK(cudaEventRecord(workspace.downloaded[b % 3].get(), compute));
+    CUDA_CHECK(cudaMemcpyAsync(h_out + (b % 3) * block * k, d_out_slot, count * k * sizeof(double),
+                               cudaMemcpyDeviceToHost, d2h));
+    CUDA_CHECK(cudaEventRecord(workspace.d_out_free[s].get(), d2h));
+    CUDA_CHECK(cudaEventRecord(workspace.downloaded[b % 3].get(), d2h));
   };
 
   try {
@@ -1456,12 +1466,13 @@ void launch_medoid_kernel(
       const size_t first = b * block, count = std::min(block, N - first);
       consume(first, count, std::span<const double>(h_out + (b % 3) * block * k, count * k));
     }
-    CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), compute));
+    CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), d2h));
     CUDA_CHECK(cudaEventSynchronize(workspace.evt_end.get()));
   } catch (...) {
     // Outside every OpenMP region (`parallel` and consume join theirs before they return); their errors set aside.
     (void)cudaStreamSynchronize(copy);
     (void)cudaStreamSynchronize(compute);
+    (void)cudaStreamSynchronize(d2h);
     (void)cudaGetLastError();
     throw;
   }
