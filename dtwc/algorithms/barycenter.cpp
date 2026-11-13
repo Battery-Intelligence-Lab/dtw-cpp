@@ -224,28 +224,79 @@ double relative_change(const Series& before, const Series& after)
   return numerator / std::max(1.0, denominator);
 }
 
+/// Align every series against `center`, accumulate per-coordinate warping sums and counts in
+/// deterministic series order, and return the exact hard squared-DTW objective (reused both for
+/// convergence checking and the next DBA step, cutting DTW alignments per iteration in half).
+double dba_align_and_accumulate(const Series& center, std::span<const SeriesView> series,
+                                std::vector<double>& sums, std::vector<std::size_t>& counts,
+                                const char* entry_point)
+{
+  const std::size_t L = center.size();
+  const std::size_t M = series.size();
+  sums.assign(L, 0.0);
+  counts.assign(L, 0);
+
+  if (M >= 8 && M * L <= 262144) {
+    std::vector<double> all_sums(M * L, 0.0);
+    std::vector<std::size_t> all_counts(M * L, 0);
+    std::vector<double> costs(M, 0.0);
+    auto worker = [&](std::size_t s) {
+      const auto [cost, path] = align_squared(center, series[s], true);
+      costs[s] = cost;
+      double *const dst_sum = all_sums.data() + s * L;
+      std::size_t *const dst_cnt = all_counts.data() + s * L;
+      const auto values = series[s];
+      for (const auto [i, j] : path) {
+        dst_sum[i] += values[j];
+        ++dst_cnt[i];
+      }
+    };
+    run_openmp(worker, M);
+    double objective = 0.0;
+    for (std::size_t s = 0; s < M; ++s) {
+      require_finite(costs[s], entry_point, "squared-DTW cost");
+      objective += costs[s];
+      require_finite(objective, entry_point, "squared-DTW cost");
+      const double *const src_sum = all_sums.data() + s * L;
+      const std::size_t *const src_cnt = all_counts.data() + s * L;
+      for (std::size_t i = 0; i < L; ++i) {
+        sums[i] += src_sum[i];
+        counts[i] += src_cnt[i];
+      }
+    }
+    return objective;
+  }
+
+  double objective = 0.0;
+  for (const auto values : series) {
+    const auto [cost, path] = align_squared(center, values, true);
+    require_finite(cost, entry_point, "squared-DTW cost");
+    objective += cost;
+    require_finite(objective, entry_point, "squared-DTW cost");
+    for (const auto [i, j] : path) {
+      sums[i] += values[j];
+      ++counts[i];
+    }
+  }
+  return objective;
+}
+
 Series dba(std::span<const SeriesView> series, Series center,
            const BarycenterOptions& options, const char* entry_point)
 {
-  double previous = hard_objective(center, series, entry_point);
+  std::vector<double> sums;
+  std::vector<std::size_t> counts;
+  double previous = dba_align_and_accumulate(center, series, sums, counts, entry_point);
   for (int iteration = 0; iteration < options.max_iter; ++iteration) {
-    std::vector<double> sums(center.size(), 0.0);
-    std::vector<std::size_t> counts(center.size(), 0);
-    for (const auto values : series) {
-      const auto [cost, path] = align_squared(center, values, true);
-      require_finite(cost, entry_point, "squared-DTW cost");
-      for (const auto [i, j] : path) {
-        sums[i] += values[j];
-        ++counts[i];
-      }
-    }
     Series next = center;
     for (std::size_t i = 0; i < next.size(); ++i)
       if (counts[i] > 0) next[i] = sums[i] / static_cast<double>(counts[i]);
     require_finite_series(next, entry_point, "barycenter update");
-    const double objective = hard_objective(next, series, entry_point);
     const double change = relative_change(center, next);
     require_finite(change, entry_point, "convergence measure");
+    const double objective = (iteration + 1 < options.max_iter && change > options.tolerance)
+      ? dba_align_and_accumulate(next, series, sums, counts, entry_point)
+      : hard_objective(next, series, entry_point);
     center = std::move(next);
     if (change <= options.tolerance
         || std::abs(previous - objective) <= options.tolerance * std::max(1.0, previous))
@@ -309,10 +360,12 @@ Series ssg(std::span<const SeriesView> series, Series center,
 
 double softmin3(double a, double b, double c, double gamma)
 {
-  const double minimum = std::min(std::min(a, b), c);
-  return minimum - gamma * std::log(std::exp((minimum - a) / gamma)
-                                   + std::exp((minimum - b) / gamma)
-                                   + std::exp((minimum - c) / gamma));
+  double u = b, v = c;
+  double minimum = a;
+  if (b < minimum) { u = minimum; minimum = b; }
+  if (c < minimum) { v = minimum; minimum = c; }
+  return minimum - gamma * std::log1p(std::exp((minimum - u) / gamma)
+                                      + std::exp((minimum - v) / gamma));
 }
 
 } // namespace
@@ -322,10 +375,21 @@ namespace detail {
 SoftDtwValueGradient soft_dtw_squared_value_gradient(
   std::span<const data_t> x, std::span<const data_t> y, double gamma)
 {
+  thread_local std::vector<double> accumulated_buf;
+  thread_local std::vector<double> adjoint_buf;
   const std::size_t nx = x.size();
   const std::size_t ny = y.size();
-  std::vector<double> accumulated(nx * ny, 0.0);
-  auto cell = [&](std::size_t i, std::size_t j) -> double& {
+  const std::size_t cells = nx * ny;
+  if (accumulated_buf.size() < cells) {
+    accumulated_buf.reserve(cells);
+    accumulated_buf.resize(cells);
+  }
+  if (adjoint_buf.size() < cells) {
+    adjoint_buf.reserve(cells);
+    adjoint_buf.resize(cells);
+  }
+  double *const accumulated = accumulated_buf.data();
+  auto cell = [accumulated, ny](std::size_t i, std::size_t j) -> double& {
     return accumulated[i * ny + j];
   };
   for (std::size_t i = 0; i < nx; ++i) {
@@ -340,8 +404,8 @@ SoftDtwValueGradient soft_dtw_squared_value_gradient(
     }
   }
 
-  std::vector<double> adjoint(nx * ny, 0.0);
-  auto gradient_cell = [&](std::size_t i, std::size_t j) -> double& {
+  double *const adjoint = adjoint_buf.data();
+  auto gradient_cell = [adjoint, ny](std::size_t i, std::size_t j) -> double& {
     return adjoint[i * ny + j];
   };
   gradient_cell(nx - 1, ny - 1) = 1.0;
@@ -396,11 +460,24 @@ detail::SoftDtwValueGradient soft_objective(const Series& center,
 {
   detail::SoftDtwValueGradient total;
   total.gradient.assign(center.size(), 0.0);
-  for (const auto values : series) {
-    const auto current = detail::soft_dtw_squared_value_gradient(center, values, gamma);
-    total.value += current.value;
-    for (std::size_t i = 0; i < center.size(); ++i)
-      total.gradient[i] += current.gradient[i];
+  if (series.size() >= 4) {
+    std::vector<detail::SoftDtwValueGradient> parts(series.size());
+    auto worker = [&](std::size_t s) {
+      parts[s] = detail::soft_dtw_squared_value_gradient(center, series[s], gamma);
+    };
+    run_openmp(worker, series.size());
+    for (const auto& current : parts) {
+      total.value += current.value;
+      for (std::size_t i = 0; i < center.size(); ++i)
+        total.gradient[i] += current.gradient[i];
+    }
+  } else {
+    for (const auto values : series) {
+      const auto current = detail::soft_dtw_squared_value_gradient(center, values, gamma);
+      total.value += current.value;
+      for (std::size_t i = 0; i < center.size(); ++i)
+        total.gradient[i] += current.gradient[i];
+    }
   }
   const double inverse = 1.0 / static_cast<double>(series.size());
   total.value *= inverse;

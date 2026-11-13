@@ -610,8 +610,8 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
       facts.fixed_what = prunes ? "TADPole's flag a pair and the series' envelopes" : "TADPole's flag a pair";
       facts.cache = true;
     } else if (resolved == Method::Hierarchical) {
-      facts.fixed = n_series * n_series * sizeof(double);
-      facts.fixed_what = "the hierarchical clustering's dense copy of the matrix";
+      facts.fixed = pairs * sizeof(double);
+      facts.fixed_what = "the hierarchical clustering's packed working copy of the matrix";
     } else if (resolved == Method::OneBatch) {
       const auto log2_steps = static_cast<std::size_t>(std::ceil(std::log2(static_cast<double>(n_series) + 1.0)));
       std::size_t m = config.batch_size > 0 ? static_cast<std::size_t>(config.batch_size)

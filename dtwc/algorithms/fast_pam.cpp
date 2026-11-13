@@ -377,15 +377,13 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<index_t> medoids, i
   result.total_cost = compute_total_cost(nearest_dist);
   result.iterations = iter;
   result.converged = converged;
-
-  prob.set_result(result); // scores::silhouette(prob) etc. read it back
   return result;
 }
 
 } // anonymous namespace
 
 
-core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter, std::uint64_t seed)
+core::ClusteringResult fast_pam_solve(Problem& prob, index_t n_clusters, int max_iter, std::uint64_t seed)
 {
   const index_t N = checked_point_count(prob, n_clusters, max_iter, "fast_pam");
   prob.fill_distance_matrix();
@@ -401,6 +399,13 @@ core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter,
       "fast_pam");
   });
   return swap_phase(prob, std::move(medoids), max_iter);
+}
+
+core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter, std::uint64_t seed)
+{
+  core::ClusteringResult result = fast_pam_solve(prob, n_clusters, max_iter, seed);
+  prob.set_result(result); // scores::silhouette(prob) etc. read it back
+  return result;
 }
 
 std::size_t core::detail::fast_pam_scratch(bool release) noexcept

@@ -277,6 +277,24 @@ inline double lb_keogh_symmetric(
   return std::max(lb1, lb2);
 }
 
+/// Cascading symmetric LB_Keogh >= threshold check: skips the second O(n) pass whenever the first clears `threshold`.
+inline bool lb_keogh_at_least(
+  std::span<const double> x, const Envelope &env_x,
+  std::span<const double> y, const Envelope &env_y,
+  double threshold)
+{
+  return lb_keogh(x, env_y) >= threshold || lb_keogh(y, env_x) >= threshold;
+}
+
+/// Cascading symmetric LB_Keogh > threshold check: skips the second O(n) pass whenever the first strictly exceeds `threshold`.
+inline bool lb_keogh_greater(
+  std::span<const double> x, const Envelope &env_x,
+  std::span<const double> y, const Envelope &env_y,
+  double threshold)
+{
+  return lb_keogh(x, env_y) > threshold || lb_keogh(y, env_x) > threshold;
+}
+
 /// Convenience overload for vectors.
 inline double lb_keogh_symmetric(
   const std::vector<double> &x, const Envelope &env_x,

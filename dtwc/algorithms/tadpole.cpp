@@ -84,7 +84,13 @@ bool bounds_valid(const Problem &prob)
 double diagonal_ub_l1(std::span<const double> x, std::span<const double> y)
 {
   double s = 0.0; // caller guarantees x.size() == y.size()
-  for (std::size_t t = 0; t < x.size(); ++t) s += std::abs(x[t] - y[t]);
+  const double *const xp = x.data();
+  const double *const yp = y.data();
+  const std::size_t n = x.size();
+#if !defined(_MSC_VER)
+  #pragma omp simd reduction(+:s)
+#endif
+  for (std::size_t t = 0; t < n; ++t) s += std::abs(xp[t] - yp[t]);
   return s;
 }
 
@@ -143,15 +149,24 @@ double tadpole_auto_dc(Problem &prob, double percentile)
   if (percentile <= 0.0 || percentile >= 100.0)
     throw InvalidInput("tadpole_auto_dc: percentile must be in (0, 100).");
 
-  // Deterministic subsample: all pairs among the first min(N, cap) series (no
-  // RNG → reproducible). Rodriguez & Laio pick dc so avg neighbours ≈ 1–2% of N.
+  // Deterministic stratified subsample of min(N, cap) series across [0, N) (for
+  // N <= 64 this is every series 0..N-1; for larger N it spans the full dataset
+  // evenly rather than only the first 64 rows, which may belong to one sorted group).
   const index_t cap = std::min<index_t>(N, 64);
+  std::vector<index_t> chosen(static_cast<std::size_t>(cap));
+  if (N <= cap) {
+    std::iota(chosen.begin(), chosen.end(), index_t{ 0 });
+  } else {
+    for (index_t s = 0; s < cap; ++s)
+      chosen[static_cast<std::size_t>(s)] = static_cast<index_t>(
+        (static_cast<std::size_t>(s) * static_cast<std::size_t>(N)) / static_cast<std::size_t>(cap));
+  }
   const auto distance = exact_distance(prob);
   std::vector<std::pair<index_t, index_t>> pairs;
   pairs.reserve(static_cast<std::size_t>(cap * (cap - 1) / 2));
-  for (index_t i = 0; i < cap; ++i)
-    for (index_t j = i + 1; j < cap; ++j)
-      pairs.emplace_back(i, j);
+  for (index_t a = 0; a < cap; ++a)
+    for (index_t b = a + 1; b < cap; ++b)
+      pairs.emplace_back(chosen[static_cast<std::size_t>(a)], chosen[static_cast<std::size_t>(b)]);
   // Up to 2016 exact DTWs, which tadpole() computes again (it keeps its own
   // pair cache): one slot per pair, in parallel.
   std::vector<double> sample(pairs.size());
@@ -218,11 +233,12 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
   std::vector<core::Envelope> envs;
   if (can_prune) {
     envs.resize(static_cast<std::size_t>(N));
-    for (index_t i = 0; i < N; ++i) {
-      auto s = prob.series(static_cast<std::size_t>(i));
+    auto build_env = [&](std::size_t idx_i) {
+      auto s = prob.series(idx_i);
       const int env_band = (band < 0) ? static_cast<int>(s.size()) : band;
-      envs[i] = core::compute_envelope(s, env_band);
-    }
+      envs[idx_i] = core::compute_envelope(s, env_band);
+    };
+    run_openmp(build_env, static_cast<std::size_t>(N), N >= 64);
   }
 
   // ── Stage 1 · local density ρ_i = |{ j≠i : d(i,j) < dc }| (cutoff kernel) ──
@@ -260,8 +276,7 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
             const auto sj = prob.series(static_cast<std::size_t>(j));
             bool neighbour;
             if (si.size() == sj.size()) {
-              const double lb = core::lb_keogh_symmetric(si, envs[i], sj, envs[j]);
-              if (lb >= dc) {                            // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
+              if (core::lb_keogh_at_least(si, envs[i], sj, envs[j], dc)) { // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
                 neighbour = false;
                 ++loc_plb;
               } else {
@@ -318,15 +333,30 @@ core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, boo
       index_t best_parent = -1;
       if (can_prune) { // prob.series() only on the pruning path — see above
         const auto si = prob.series(static_cast<std::size_t>(i));
+        // Seed `best` from any higher-density pairs already evaluated in Stage 1 so LB_Keogh starts with a tight bound.
+        if (cache.size() > 0) {
+          for (index_t q = 0; q < N; ++q) {
+            if (q == i || !higher_density(q, i, rho)) continue;
+            const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>(q);
+            if (cache.is_computed(a, b)) {
+              const double d = cache.get(a, b);
+              if (d < best) { best = d; best_parent = q; }
+            }
+          }
+        }
         for (index_t q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
           if (q == i || !higher_density(q, i, rho)) continue;
+          if (cache.size() > 0 && cache.is_computed(static_cast<std::size_t>(i), static_cast<std::size_t>(q)))
+            continue;
           const auto sq = prob.series(static_cast<std::size_t>(q));
+          const bool wins_tie = (best_parent >= 0 && q < best_parent);
           if (si.size() == sq.size()) {
-            const double lb = core::lb_keogh_symmetric(si, envs[i], sq, envs[q]);
-            if (lb >= best) continue; // d ≥ LB ≥ best ⇒ q cannot lower the min (nor tie-win)
+            const bool pruned = wins_tie ? core::lb_keogh_greater(si, envs[i], sq, envs[q], best)
+                                         : core::lb_keogh_at_least(si, envs[i], sq, envs[q], best);
+            if (pruned) continue;
           }
           const double d = exact(i, q);
-          if (d < best) { best = d; best_parent = q; }
+          if (d < best || (wins_tie && d == best)) { best = d; best_parent = q; }
         }
       } else {
         for (index_t q = 0; q < N; ++q) {

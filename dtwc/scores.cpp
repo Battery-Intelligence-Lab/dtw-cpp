@@ -243,16 +243,37 @@ double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const s
   const index_t N = prob.size();
   const auto Nc = prob.n_clusters();
 
-  // Find overall medoid: point with minimum sum of distances to all other points
+  // Find overall medoid: point with minimum sum of distances to all other points.
+  // Above small N, evaluate 8 rows at a time via core::for_each_point across OpenMP
+  // threads so packed/mapped rows stream in 64-byte cache lines while preserving
+  // exact j = 0..N-1 summation order and smallest-index tie-breaking.
   index_t overall_medoid = 0;
-  double min_row_sum = std::numeric_limits<double>::max();
-  for (index_t i = 0; i < N; ++i) {
-    double row_sum = 0.0;
-    for (index_t j = 0; j < N; ++j)
-      row_sum += matrix[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))];
-    if (row_sum < min_row_sum) {
-      min_row_sum = row_sum;
-      overall_medoid = i;
+  if (N >= 64) {
+    constexpr auto G = static_cast<index_t>(core::group_rows);
+    std::vector<double> row_sums(static_cast<std::size_t>(N), 0.0);
+    auto sum_group = [&](std::size_t q) {
+      const auto first = static_cast<index_t>(q) * G;
+      double sums[G]{};
+      core::for_each_point(matrix, N, first, [&](index_t, const double *d) {
+        for (index_t g = 0; g < G; ++g) sums[g] += d[g];
+      });
+      const index_t valid = std::min(G, N - first);
+      for (index_t g = 0; g < valid; ++g)
+        row_sums[static_cast<std::size_t>(first + g)] = sums[g];
+    };
+    dtwc::run(sum_group, static_cast<std::size_t>((N + G - 1) / G));
+    overall_medoid = static_cast<index_t>(
+      std::min_element(row_sums.begin(), row_sums.end()) - row_sums.begin());
+  } else {
+    double min_row_sum = std::numeric_limits<double>::max();
+    for (index_t i = 0; i < N; ++i) {
+      double row_sum = 0.0;
+      for (index_t j = 0; j < N; ++j)
+        row_sum += matrix[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))];
+      if (row_sum < min_row_sum) {
+        min_row_sum = row_sum;
+        overall_medoid = i;
+      }
     }
   }
 

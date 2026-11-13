@@ -58,4 +58,9 @@ class Problem; // Forward declaration
 core::ClusteringResult fast_pam(Problem& prob, index_t n_clusters, int max_iter = 100,
                                 std::uint64_t seed = settings::DEFAULT_RANDOM_SEED);
 
+/// Run FasterPAM and return the ClusteringResult without mutating `prob`'s clustering state
+/// (used by exact MIP/LR-core warm starts so a failed exact solve leaves `prob` untouched).
+core::ClusteringResult fast_pam_solve(Problem& prob, index_t n_clusters, int max_iter = 100,
+                                      std::uint64_t seed = settings::DEFAULT_RANDOM_SEED);
+
 } // namespace dtwc

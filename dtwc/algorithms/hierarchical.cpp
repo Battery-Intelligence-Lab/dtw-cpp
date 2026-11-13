@@ -36,62 +36,97 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
 
   prob.fill_distance_matrix();
 
-  // -------------------------------------------------------------------------
-  // Copy pairwise distances into a flat working array (indexed i*N+j).
-  // We only maintain the upper-triangle in spirit but access both (i,j) and
-  // (j,i) for simplicity; the matrix is symmetric.
-  // -------------------------------------------------------------------------
-  std::vector<double> work(static_cast<size_t>(N * N), 0.0);
-  for (index_t i = 0; i < N; ++i)
-    for (index_t j = 0; j < N; ++j)
-      work[static_cast<size_t>(i) * N + j] = prob.dist_by_ind(i, j);
-
-  // active[i] == true  →  cluster i is still alive.
-  std::vector<bool> active(N, true);
-
-  // size[i] = current number of original points in cluster i.
-  std::vector<index_t> sz(N, 1);
-
   Dendrogram dend;
   dend.n_points = N;
+  if (N <= 1) return dend;
   dend.merges.reserve(static_cast<size_t>(N - 1));
 
   // -------------------------------------------------------------------------
-  // N-1 merge steps
+  // Copy pairwise distances into a packed lower-triangular working array
+  // (half the memory of a dense N×N copy, widened once in a linear pass).
+  // -------------------------------------------------------------------------
+  const std::size_t n_packed = core::packed_size(static_cast<std::size_t>(N));
+  std::vector<double> work(n_packed);
+  prob.distance_matrix().visit([&](const auto *src) {
+    for (std::size_t k = 0; k < n_packed; ++k)
+      work[k] = static_cast<double>(src[k]);
+  });
+
+  auto at = [&](index_t a, index_t b) -> double & {
+    return work[core::tri_index(static_cast<std::size_t>(a), static_cast<std::size_t>(b))];
+  };
+
+  // active[i] != 0  →  cluster i is still alive.
+  std::vector<char> active(static_cast<std::size_t>(N), 1);
+
+  // sz[i] = current number of original points in cluster i.
+  std::vector<index_t> sz(static_cast<std::size_t>(N), 1);
+
+  // Day & Edelsbrunner (1984) per-row nearest-neighbour cache over j > i:
+  // reduces total agglomerative work from O(N^3) to O(N^2) while preserving
+  // bit-identical merge distances and lexicographical (a, b) tie-breaking.
+  constexpr double kInf = std::numeric_limits<double>::infinity();
+  std::vector<double> nn_dist(static_cast<std::size_t>(N), kInf);
+  std::vector<index_t> nn_idx(static_cast<std::size_t>(N), -1);
+
+  auto recompute_row_nn = [&](index_t i) {
+    double best_d = kInf;
+    index_t best_j = -1;
+    for (index_t j = i + 1; j < N; ++j) {
+      if (!active[static_cast<std::size_t>(j)]) continue;
+      const double d = work[static_cast<std::size_t>(j) * static_cast<std::size_t>(j + 1) / 2
+                            + static_cast<std::size_t>(i)];
+      if (d < best_d) {
+        best_d = d;
+        best_j = j;
+      }
+    }
+    nn_dist[static_cast<std::size_t>(i)] = best_d;
+    nn_idx[static_cast<std::size_t>(i)] = best_j;
+  };
+
+  for (index_t i = 0; i < N - 1; ++i)
+    recompute_row_nn(i);
+
+  // -------------------------------------------------------------------------
+  // N-1 merge steps (O(N) per step -> O(N^2) total)
   // -------------------------------------------------------------------------
   for (index_t step = 0; step < N - 1; ++step) {
-    // Find the minimum distance among all pairs of active clusters.
-    // Tie-breaking: lexicographically smallest (a, b) with a < b.
-    double best_dist = std::numeric_limits<double>::infinity();
+    double best_dist = kInf;
     index_t best_a = -1, best_b = -1;
 
-    for (index_t i = 0; i < N; ++i) {
-      if (!active[i]) continue;
-      for (index_t j = i + 1; j < N; ++j) {
-        if (!active[j]) continue;
-        double d = work[static_cast<size_t>(i) * N + j];
-        if (d < best_dist ||
-            (d == best_dist && (i < best_a || (i == best_a && j < best_b)))) {
-          best_dist = d;
-          best_a = i;
-          best_b = j;
-        }
+    for (index_t i = 0; i < N - 1; ++i) {
+      if (!active[static_cast<std::size_t>(i)]) continue;
+      const index_t j = nn_idx[static_cast<std::size_t>(i)];
+      if (j < 0) continue;
+      const double d = nn_dist[static_cast<std::size_t>(i)];
+      if (d < best_dist ||
+          (d == best_dist && (i < best_a || (i == best_a && j < best_b)))) {
+        best_dist = d;
+        best_a = i;
+        best_b = j;
       }
     }
 
-    // Record the merge (a < b is guaranteed by construction).
-    dend.merges.push_back({ best_a, best_b, best_dist, sz[best_a] + sz[best_b] });
+    // Record the merge (best_a < best_b is guaranteed by construction).
+    dend.merges.push_back({ best_a, best_b, best_dist,
+                            sz[static_cast<std::size_t>(best_a)] + sz[static_cast<std::size_t>(best_b)] });
 
-    // Update working distances from every other active cluster c to the merged
-    // cluster (kept under index best_a) using the Lance-Williams formula.
-    const index_t sz_a = sz[best_a];
-    const index_t sz_b = sz[best_b];
+    const index_t sz_a = sz[static_cast<std::size_t>(best_a)];
+    const index_t sz_b = sz[static_cast<std::size_t>(best_b)];
+    const double wa = static_cast<double>(sz_a) / static_cast<double>(sz_a + sz_b);
+    const double wb = static_cast<double>(sz_b) / static_cast<double>(sz_a + sz_b);
 
+    // Deactivate best_b first so row rescans never select it.
+    sz[static_cast<std::size_t>(best_a)] = sz_a + sz_b;
+    active[static_cast<std::size_t>(best_b)] = 0;
+
+    // Lance-Williams update on D(best_a, c) for all other active clusters c.
     for (index_t c = 0; c < N; ++c) {
-      if (!active[c] || c == best_a || c == best_b) continue;
+      if (!active[static_cast<std::size_t>(c)] || c == best_a) continue;
 
-      double d_ac = work[static_cast<size_t>(best_a) * N + c];
-      double d_bc = work[static_cast<size_t>(best_b) * N + c];
+      const double d_ac = at(best_a, c);
+      const double d_bc = at(best_b, c);
       double d_new{};
 
       switch (opts.linkage) {
@@ -105,17 +140,29 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
           d_new = (static_cast<double>(sz_a) * d_ac +
                    static_cast<double>(sz_b) * d_bc) /
                   static_cast<double>(sz_a + sz_b);
+          (void)wa; (void)wb;
           break;
       }
 
-      // Write symmetrically so future lookups see the updated value.
-      work[static_cast<size_t>(best_a) * N + c] = d_new;
-      work[static_cast<size_t>(c) * N + best_a] = d_new;
+      at(best_a, c) = d_new;
+
+      // Maintain nn cache for rows c < best_a where best_a > c is in c's upper scan.
+      if (c < best_a) {
+        const auto cz = static_cast<std::size_t>(c);
+        if (d_new < nn_dist[cz] || (d_new == nn_dist[cz] && best_a <= nn_idx[cz])) {
+          nn_dist[cz] = d_new;
+          nn_idx[cz] = best_a;
+        } else if (nn_idx[cz] == best_a || nn_idx[cz] == best_b) {
+          recompute_row_nn(c);
+        }
+      } else if (c < best_b && nn_idx[static_cast<std::size_t>(c)] == best_b) {
+        // For best_a < c < best_b, best_a is below c so only best_b's removal can invalidate c's NN.
+        recompute_row_nn(c);
+      }
     }
 
-    // Update cluster size and deactivate the larger-index cluster.
-    sz[best_a] += sz[best_b];
-    active[best_b] = false;
+    if (best_a < N - 1)
+      recompute_row_nn(best_a);
   }
 
   return dend;

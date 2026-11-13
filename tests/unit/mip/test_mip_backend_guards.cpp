@@ -221,3 +221,58 @@ TEST_CASE("A negative mip_gap is rejected as InvalidInput", "[mip][guards]")
   prob.mip_settings.mip_gap = -1e-3;
   REQUIRE_THROWS_AS(prob.cluster(), InvalidInput);
 }
+
+// ---------------------------------------------------------------------------
+// Transactional guarantee: a failed MIP / LR-core solve must never overwrite
+// or partially mutate an existing valid clustering on Problem.
+// ---------------------------------------------------------------------------
+TEST_CASE("Failed MIP and LR-core solves preserve existing Problem clustering", "[lrcore][mip][guards]")
+{
+  const int N = 12, k = 3;
+  int chosen = -1;
+  for (unsigned seed = 1; seed <= 40 && chosen < 0; ++seed) {
+    auto probe = make_uniform_lr_problem(N, k, 9000 + seed);
+    probe.mip_settings.lr_max_nodes = 1;
+    try {
+      probe.cluster();
+    } catch (const SolverError &) {
+      chosen = static_cast<int>(seed);
+    }
+  }
+  REQUIRE(chosen > 0);
+
+  auto prob = make_uniform_lr_problem(N, k, 9000 + static_cast<unsigned>(chosen));
+  prob.cluster(); // certifies under default lr_max_nodes = 2000000
+  const auto saved_centroids = prob.centroids_ind;
+  const auto saved_clusters = prob.clusters_ind;
+  REQUIRE(saved_centroids.size() == static_cast<std::size_t>(k));
+  REQUIRE(saved_clusters.size() == static_cast<std::size_t>(N));
+
+  // 1) LR-core node-cap exhaustion leaves prior clustering intact.
+  prob.set_method(Method::LRCore);
+  prob.mip_settings.lr_max_nodes = 1;
+  REQUIRE_THROWS_AS(prob.cluster(), SolverError);
+  REQUIRE(prob.centroids_ind == saved_centroids);
+  REQUIRE(prob.clusters_ind == saved_clusters);
+
+  // 2) HiGHS invalid option / gap check leaves prior clustering intact.
+  if (highs_solver_available()) {
+    prob.set_method(Method::MIP);
+    REQUIRE(prob.set_solver(Solver::HiGHS));
+    prob.mip_settings.mip_gap = -0.5;
+    REQUIRE_THROWS_AS(prob.cluster(), InvalidInput);
+    prob.mip_settings.mip_gap = 1e-4;
+    REQUIRE(prob.centroids_ind == saved_centroids);
+    REQUIRE(prob.clusters_ind == saved_clusters);
+  }
+
+  // 3) Gurobi rejected option leaves prior clustering intact.
+  prob.set_method(Method::MIP);
+  if (prob.set_solver(Solver::Gurobi)) {
+    prob.mip_settings.numeric_focus = 99;
+    REQUIRE_THROWS_AS(prob.cluster(), SolverError);
+    prob.mip_settings.numeric_focus = -1;
+    REQUIRE(prob.centroids_ind == saved_centroids);
+    REQUIRE(prob.clusters_ind == saved_clusters);
+  }
+}

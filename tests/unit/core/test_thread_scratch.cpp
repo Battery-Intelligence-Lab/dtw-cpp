@@ -516,7 +516,7 @@ TEST_CASE("The plan holds the method's own terms: TADPole's pair flags, cache an
   };
   for (const Case c : { Case{ dtwc::Method::TADPole, true, series + pairs + pairs * sizeof(double) + envelopes },
                         Case{ dtwc::Method::Hierarchical, false,
-                              series + n * n * sizeof(double) + pairs * sizeof(double) },
+                              series + pairs * sizeof(double) + pairs * sizeof(double) },
                         Case{ dtwc::Method::OneBatch, false, series + n * 32 * sizeof(double) } }) {
     dtwc::Config config;
     config.method = c.method;
