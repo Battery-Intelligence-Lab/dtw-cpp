@@ -7,12 +7,17 @@
 #include "api.hpp"
 
 #include "Problem.hpp"
+#include "cdist.hpp"
+#include "cli/config.hpp"
 #include "cli/run.hpp"
 #include "core/matrix_io.hpp"
 #include "base/env.hpp"
 #include "base/error.hpp"
 #include "fileOperations.hpp"
 #include "io/read_data.hpp"
+#ifdef DTWC_HAS_ARROW
+#include "io/read_arrow.hpp"
+#endif
 #include "scores.hpp"
 
 #include <algorithm>
@@ -166,6 +171,156 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
   config.skip_rows = dataset.skip_rows();
   config.delimiter = dataset.delimiter();
   return run(config);
+}
+
+namespace {
+
+std::vector<std::pair<std::string, std::string>>
+to_string_pairs(std::initializer_list<SettingPair> options)
+{
+  std::vector<std::pair<std::string, std::string>> pairs;
+  pairs.reserve(options.size());
+  for (const auto &[k, v] : options) {
+    pairs.emplace_back(std::string(k), std::string(v));
+  }
+  return pairs;
+}
+
+} // namespace
+
+Config make_settings(std::initializer_list<SettingPair> options)
+{
+  Config base;
+  const std::string proc_dev = dtwc::device();
+  std::tie(base.device, base.device_index) = detail::parse_device(proc_dev);
+  return parse_config(std::move(base), to_string_pairs(options));
+}
+
+Config make_settings(Config base, std::initializer_list<SettingPair> overrides)
+{
+  return parse_config(std::move(base), to_string_pairs(overrides));
+}
+
+namespace settings {
+Config make(std::initializer_list<SettingPair> options) { return make_settings(options); }
+Config make(Config base, std::initializer_list<SettingPair> overrides)
+{
+  return make_settings(std::move(base), overrides);
+}
+} // namespace settings
+
+Dataset load_data(const std::filesystem::path &source, const Config &cfg)
+{
+  return load(source, cfg.skip_cols, cfg.skip_rows, cfg.delimiter, cfg.name, cfg.dtype);
+}
+
+Dataset load_data(Dataset::series_type source, const Config &cfg)
+{
+  return load(std::move(source), cfg.skip_cols, cfg.skip_rows, cfg.delimiter, cfg.name, cfg.dtype);
+}
+
+Dataset load_data(const Config &cfg)
+{
+  if (cfg.input.empty()) {
+    throw InvalidInput("load_data: settings.input is empty; pass a source path or set 'input' in settings.");
+  }
+  return load_data(utf8_to_path(cfg.input), cfg);
+}
+
+Dataset load_data(const std::filesystem::path &source, index_t skip_cols, index_t skip_rows,
+                  char delimiter, std::string_view name, core::Precision dtype)
+{
+  return load(source, skip_cols, skip_rows, delimiter, name, dtype);
+}
+
+Dataset load_data(Dataset::series_type source, index_t skip_cols, index_t skip_rows,
+                  char delimiter, std::string_view name, core::Precision dtype)
+{
+  return load(std::move(source), skip_cols, skip_rows, delimiter, name, dtype);
+}
+
+Result do_clustering(const Dataset &dataset, const Config &cfg)
+{
+  return do_clustering(Dataset(dataset), cfg);
+}
+
+Result do_clustering(Dataset &&dataset, const Config &cfg)
+{
+  Config config = cfg;
+  if (config.name.empty()) config.name = dataset.name();
+  if (!dataset.is_path()) {
+    if (dataset.skip_cols() == 0 && config.skip_cols > 0) dataset.skip_cols_ = config.skip_cols;
+    if (dataset.skip_rows() == 0 && config.skip_rows > 0) dataset.skip_rows_ = config.skip_rows;
+    if (dataset.dtype() != core::Precision::Float64 && config.dtype == core::Precision::Float64)
+      config.dtype = dataset.dtype();
+    config.input.clear();
+    config.skip_cols = 0;
+    config.skip_rows = 0;
+    config.delimiter = '\0';
+    config.column.clear();
+    return run(config, std::move(dataset).materialize_local());
+  }
+  config.input = path_to_utf8(dataset.path());
+  if (dataset.skip_cols() != 0 && config.skip_cols == 0) config.skip_cols = dataset.skip_cols();
+  if (dataset.skip_rows() != 0 && config.skip_rows == 0) config.skip_rows = dataset.skip_rows();
+  if (dataset.delimiter() != '\0' && config.delimiter == '\0') config.delimiter = dataset.delimiter();
+  if (dataset.dtype() != core::Precision::Float64 && config.dtype == core::Precision::Float64)
+    config.dtype = dataset.dtype();
+  return run(config);
+}
+
+Result do_clustering(const Dataset &data, const Config &cfg,
+                     std::initializer_list<SettingPair> overrides)
+{
+  return do_clustering(Dataset(data), make_settings(cfg, overrides));
+}
+
+Result do_clustering(Dataset &&data, const Config &cfg,
+                     std::initializer_list<SettingPair> overrides)
+{
+  return do_clustering(std::move(data), make_settings(cfg, overrides));
+}
+
+void write_data(const Result &result, const std::filesystem::path &directory)
+{
+  result.save(directory);
+}
+
+std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg)
+{
+  auto read_ds = [&cfg](const Dataset &ds) -> Data {
+    const index_t skip_cols = ds.skip_cols() != 0 ? ds.skip_cols() : cfg.skip_cols;
+    const index_t skip_rows = ds.skip_rows() != 0 ? ds.skip_rows() : cfg.skip_rows;
+    const char delimiter = ds.delimiter() != '\0' ? ds.delimiter() : cfg.delimiter;
+    const core::Precision dtype =
+      (ds.dtype() != core::Precision::Float64) ? ds.dtype() : cfg.dtype;
+    if (!ds.is_path()) {
+      Dataset copy(ds);
+      copy.skip_cols_ = skip_cols;
+      copy.skip_rows_ = skip_rows;
+      Data out = std::move(copy).materialize_local();
+      return dtype == core::Precision::Float32
+               ? detail::owned_copy(out, core::Precision::Float32)
+               : out;
+    }
+#ifdef DTWC_HAS_ARROW
+    if (io::arrow_format(ds.path())) {
+      return io::read_arrow(ds.path(), cfg.column, skip_cols, skip_rows, dtype);
+    }
+#endif
+    return read_data(ds.path(), skip_cols, skip_rows, delimiter, cfg.column, dtype);
+  };
+  const Data x_data = read_ds(X);
+  const Data y_data = read_ds(Y);
+  return cdist(x_data, y_data, cfg);
+}
+
+std::vector<double> cdist(const Dataset &X, const Dataset &Y)
+{
+  Config cfg;
+  const std::string proc_dev = dtwc::device();
+  std::tie(cfg.device, cfg.device_index) = detail::parse_device(proc_dev);
+  return cdist(X, Y, cfg);
 }
 
 } // namespace dtwc

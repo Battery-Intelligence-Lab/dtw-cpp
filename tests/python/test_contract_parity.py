@@ -33,8 +33,9 @@ import dtwcpp
 _SURFACE = {
     "module": [
         # Tier-1 + top-level classes / functions
-        "device", "load", "cluster", "plot",
-        "Dataset", "Result",
+        "device", "load", "cluster", "plot", "cdist",
+        "settings", "load_data", "do_clustering", "write_data",
+        "Dataset", "Result", "Settings",
         "DTWClustering", "compute_distance_matrix",
         "DEFAULT_RANDOM_SEED",
         # device
@@ -59,7 +60,7 @@ _SURFACE = {
         "adjusted_rand", "normalized_mutual_info",
     ],
     # distance namespace
-    "distance": ["dtw"],
+    "distance": ["dtw", "cdist"],
     # Problem canonical setters / accessors / methods
     "Problem": [
         # config setters

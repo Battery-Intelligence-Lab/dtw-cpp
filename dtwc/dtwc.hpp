@@ -30,6 +30,7 @@
 #include "io/read_arrow.hpp" //!< Parquet (dtwc_io); Arrow IPC is read_data's, in every build
 #endif
 #include "distance.hpp"
+#include "cdist.hpp"
 #include "scores.hpp"
 #include "utility.hpp"
 #include "warping.hpp"

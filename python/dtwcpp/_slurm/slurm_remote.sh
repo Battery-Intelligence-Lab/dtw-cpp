@@ -106,6 +106,23 @@ if [[ -n "${SLURM_EMAIL:-}" ]]; then
         && [[ "${SLURM_EMAIL}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]] \
         || transport_config_error SLURM_EMAIL "${SLURM_EMAIL}"
 fi
+if [[ -n "${SLURM_ACCOUNT:-}" ]]; then
+    (( ${#SLURM_ACCOUNT} <= 64 )) \
+        && [[ "${SLURM_ACCOUNT}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] \
+        || transport_config_error SLURM_ACCOUNT "${SLURM_ACCOUNT}"
+fi
+if [[ -n "${SLURM_QOS:-}" ]]; then
+    (( ${#SLURM_QOS} <= 64 )) \
+        && [[ "${SLURM_QOS}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] \
+        || transport_config_error SLURM_QOS "${SLURM_QOS}"
+fi
+MODULES_EXPORT=""
+if [[ -n "${SLURM_MODULES:-}" ]]; then
+    (( ${#SLURM_MODULES} <= 512 )) \
+        && [[ "${SLURM_MODULES}" =~ ^[A-Za-z0-9_./+-]+([[:space:]:][A-Za-z0-9_./+-]+)*$ ]] \
+        || transport_config_error SLURM_MODULES "${SLURM_MODULES}"
+    MODULES_EXPORT=",DTWC_MODULES=$(printf '%s' "${SLURM_MODULES}" | tr -s '[:space:]' ':')"
+fi
 [[ -z "${SLURM_GPU_GRES:-}" ]] || { echo "ERROR: SLURM_GPU_GRES in .env is no longer read: a run names its GPU with gpu_device= (Python) or --gpu-device (slurm_remote.sh); remove the line" >&2; exit 1; }
 
 SSH_TARGET="${SLURM_USER}@${SLURM_HOST}"
@@ -114,6 +131,14 @@ PARTITION="${SLURM_PARTITION}"
 CLUSTER_FLAG=""
 if [[ -n "${SLURM_CLUSTER:-}" ]]; then
     CLUSTER_FLAG="--clusters=${SLURM_CLUSTER}"
+fi
+ACCOUNT_FLAG=""
+if [[ -n "${SLURM_ACCOUNT:-}" ]]; then
+    ACCOUNT_FLAG="--account=${SLURM_ACCOUNT}"
+fi
+QOS_FLAG=""
+if [[ -n "${SLURM_QOS:-}" ]]; then
+    QOS_FLAG="--qos=${SLURM_QOS}"
 fi
 
 # ── Helper ───────────────────────────────────────────────────────────────
@@ -361,7 +386,7 @@ source scripts/slurm/build-arc.sh "${DTWC_BUILD_PROFILE}"
 '
 
     echo "  Submitting build job..."
-    local EXPORTS="ALL,DTWC_REMOTE_BASE=${REMOTE},DTWC_BUILD_PROFILE=${PROFILE},DTWC_BUILD_DIR=${BUILD_DIR},DTWC_NATIVE_CPU=${NATIVE_CPU}"
+    local EXPORTS="ALL,DTWC_REMOTE_BASE=${REMOTE},DTWC_BUILD_PROFILE=${PROFILE},DTWC_BUILD_DIR=${BUILD_DIR},DTWC_NATIVE_CPU=${NATIVE_CPU}${MODULES_EXPORT}"
     local -a SBATCH_ARGS=(
         sbatch --parsable "--partition=${BUILD_PARTITION}" --time=01:00:00
         --cpus-per-task=8 --mem-per-cpu=4G --job-name=dtwc-build
@@ -370,6 +395,8 @@ source scripts/slurm/build-arc.sh "${DTWC_BUILD_PROFILE}"
         "--export=${EXPORTS}"
     )
     [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
+    [[ -n "${ACCOUNT_FLAG}" ]] && SBATCH_ARGS+=("${ACCOUNT_FLAG}")
+    [[ -n "${QOS_FLAG}" ]] && SBATCH_ARGS+=("${QOS_FLAG}")
     SBATCH_ARGS+=(${GPU_REQUEST[@]+"${GPU_REQUEST[@]}"})
     local SBATCH_COMMAND JOB_ID
     shell_join SBATCH_COMMAND "${SBATCH_ARGS[@]}"
@@ -509,12 +536,14 @@ cmd_submit_job() {
     # The .env partition, which a GPU build (build --gpu-device) uses too.
     local -a SBATCH_ARGS=(sbatch --parsable "--partition=${PARTITION}")
     [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
+    [[ -n "${ACCOUNT_FLAG}" ]] && SBATCH_ARGS+=("${ACCOUNT_FLAG}")
+    [[ -n "${QOS_FLAG}" ]] && SBATCH_ARGS+=("${QOS_FLAG}")
     if [[ -n "${SLURM_EMAIL:-}" ]]; then
         SBATCH_ARGS+=("--mail-type=BEGIN,END,FAIL" "--mail-user=${SLURM_EMAIL}")
     fi
     # ${A[@]+"${A[@]}"}: bash < 4.4 (macOS ships 3.2) calls an empty array unbound under set -u.
     SBATCH_ARGS+=(${GPU_REQUEST[@]+"${GPU_REQUEST[@]}"}
-        "--export=ALL,DTWC_JOB=${REMOTE_JOB_DIR},DTWC_BUILD=${BUILD}"
+        "--export=ALL,DTWC_JOB=${REMOTE_JOB_DIR},DTWC_BUILD=${BUILD}${MODULES_EXPORT}"
         "${REMOTE_JOB_DIR}/cluster_generic.slurm")
 
     local JOB_ID
@@ -570,11 +599,13 @@ cmd_download_cluster() {
     local LOCAL_DIR="${PROJECT_ROOT}/results/slurm/cluster_${JOB_ID}"
     local REMOTE_DIR="${REMOTE}/src/results/cluster_${JOB_ID}"
     mkdir -p "${LOCAL_DIR}"
-    rm -f -- "${LOCAL_DIR}"/*_labels.csv
+    rm -f -- "${LOCAL_DIR}"/*_labels.csv "${LOCAL_DIR}"/*_medoids.csv "${LOCAL_DIR}"/*_report.txt
     if command -v rsync &>/dev/null; then
-        rsync -az --include='*_labels.csv' --exclude='*' -- "${SSH_TARGET}:${REMOTE_DIR}/" "${LOCAL_DIR}/"
+        rsync -az --include='*_labels.csv' --include='*_medoids.csv' --include='*_report.txt' --exclude='*' -- "${SSH_TARGET}:${REMOTE_DIR}/" "${LOCAL_DIR}/"
     else
         scp -- "${SSH_TARGET}:${REMOTE_DIR}/*_labels.csv" "${LOCAL_DIR}/"
+        scp -- "${SSH_TARGET}:${REMOTE_DIR}/*_medoids.csv" "${LOCAL_DIR}/" 2>/dev/null || true
+        scp -- "${SSH_TARGET}:${REMOTE_DIR}/*_report.txt" "${LOCAL_DIR}/" 2>/dev/null || true
     fi
     echo "  Labels downloaded to: ${LOCAL_DIR}"
 }

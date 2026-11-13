@@ -14,10 +14,12 @@
 #include <concepts>
 #include <filesystem>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -63,6 +65,8 @@ private:
   friend Dataset load(const std::filesystem::path &, index_t, index_t, char, std::string_view, core::Precision);
   friend Dataset load(series_type, index_t, index_t, char, std::string_view, core::Precision);
   friend Result cluster(Dataset &&, index_t, std::string_view, int, std::string_view, int);
+  friend Result do_clustering(Dataset &&, const Config &);
+  friend std::vector<double> cdist(const Dataset &, const Dataset &, const Config &);
 
   explicit Dataset(std::filesystem::path source, index_t skip_cols, index_t skip_rows,
                    char delimiter, std::string name, core::Precision dtype);
@@ -167,5 +171,61 @@ Result cluster(const Dataset &data, index_t k, std::string_view method = "auto",
                int band = -1, std::string_view device = "", int max_iter = 100);
 Result cluster(Dataset &&data, index_t k, std::string_view method = "auto",
                int band = -1, std::string_view device = "", int max_iter = 100);
+
+// ── CasADi-style Unified Workflow: make_settings / settings::make -> load_data -> do_clustering -> write_data ──
+
+using SettingPair = std::pair<std::string_view, std::string_view>;
+
+/**
+ * Build a validated `Config` from `(key, value)` pairs through `cli::bind()` (the single
+ * option grammar shared across C++, CLI, TOML/YAML, Python `settings()`, and MATLAB `dtwc.settings()`).
+ *
+ * Defaults match `dtwc_cl` (`output = "./results"` so `do_clustering` writes crash-safe
+ * result files automatically; pass `{"output", ""}` for pure in-memory execution, and
+ * `{"checkpoint", "./ckpt"}` to enable `.dtwm` checkpointing), inheriting the process
+ * default device (`dtwc::device()`) unless `"device"` is specified in `options`.
+ * Note: named `make_settings` (and `dtwc::settings::make`) in C++ because `dtwc::settings`
+ * is the compile-time constants namespace from `<base/settings.hpp>`.
+ */
+Config make_settings(std::initializer_list<SettingPair> options = {});
+
+/** Return a copy of `base` with `(key, value)` `overrides` parsed and applied. */
+Config make_settings(Config base, std::initializer_list<SettingPair> overrides);
+
+namespace settings {
+Config make(std::initializer_list<SettingPair> options = {});
+Config make(Config base, std::initializer_list<SettingPair> overrides);
+} // namespace settings
+
+/** Load a path or in-memory series collection using reader options from `cfg`. */
+Dataset load_data(const std::filesystem::path &source, const Config &cfg);
+Dataset load_data(Dataset::series_type source, const Config &cfg);
+/** Load the path stored in `cfg.input`. */
+Dataset load_data(const Config &cfg);
+/** Convenience `load_data` overloads matching `load(...)` when no `Config` is passed. */
+Dataset load_data(const std::filesystem::path &source, index_t skip_cols = 0,
+                  index_t skip_rows = 0, char delimiter = 0, std::string_view name = "",
+                  core::Precision dtype = core::Precision::Float64);
+Dataset load_data(Dataset::series_type source, index_t skip_cols = 0, index_t skip_rows = 0,
+                  char delimiter = 0, std::string_view name = "",
+                  core::Precision dtype = core::Precision::Float64);
+
+/**
+ * Run clustering on `data` with full `cfg` settings — including `cfg.output` (auto-writing
+ * result files when non-empty; `""` runs purely in memory), `cfg.checkpoint`, and `cfg.device`.
+ */
+Result do_clustering(const Dataset &data, const Config &cfg);
+Result do_clustering(Dataset &&data, const Config &cfg);
+Result do_clustering(const Dataset &data, const Config &cfg,
+                     std::initializer_list<SettingPair> overrides);
+Result do_clustering(Dataset &&data, const Config &cfg,
+                     std::initializer_list<SettingPair> overrides);
+
+/** Write a clustering `Result` (labels, medoids, matrix, silhouettes, report) to `directory`. */
+void write_data(const Result &result, const std::filesystem::path &directory);
+
+/** Cross-collection DTW distance matrix over two `Dataset` handles (path or memory). */
+std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg);
+std::vector<double> cdist(const Dataset &X, const Dataset &Y);
 
 } // namespace dtwc

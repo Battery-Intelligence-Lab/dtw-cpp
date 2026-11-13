@@ -204,11 +204,21 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None, matrix
     return prob.distance_matrix()
 
 
-# The sklearn-compatible estimator
-from dtwcpp._clustering import DTWClustering
-
-# Unified high-level interface: device() -> load() -> cluster() -> result.plot()
-from dtwcpp._api import Dataset, load, cluster, Result, plot
+# Unified high-level interface:
+#   PyTorch-style: device() -> load() -> cluster() -> result.plot()
+#   CasADi-style:  settings() -> load_data() -> do_clustering() -> write_data()
+from dtwcpp._api import (
+    Dataset,
+    load,
+    cluster,
+    Result,
+    plot,
+    Settings,
+    settings,
+    load_data,
+    do_clustering,
+    write_data,
+)
 
 # Pure-Python I/O utilities (CSV always available; HDF5/Parquet optional)
 from dtwcpp.io import (
@@ -225,19 +235,18 @@ _set_data = Problem.set_data
 
 def _problem_set_data(self, series, names=None, ndim=1):
     """Set the time series: a :class:`Data`, a 2-D array (one series per row), a
-    list of 1-D arrays or lists (series of any lengths), a pandas DataFrame (one
-    series per row, named by its index) or an Arrow array. ``names`` default to
-    the series' ordinals; ``ndim > 1`` reads each row as interleaved
-    multivariate steps. A Data carries its own names and ndim."""
+    3-D ``(n_series, n_steps, ndim)`` array when ``ndim > 1``, a list of 1-D
+    arrays or lists (series of any lengths), a pandas DataFrame (one series per
+    row, named by its index) or an Arrow array. ``names`` default to the series'
+    ordinals; ``ndim > 1`` reads each row as interleaved multivariate steps. A
+    Data carries its own names and ndim."""
     if isinstance(series, Data):
         if names is not None or ndim != 1:
             raise TypeError("Problem.set_data: a Data carries its own names and ndim; "
                             "pass names and ndim with raw series only.")
         return _set_data(self, series)
-    from dtwcpp._api import _series
-    rows, ordinals = _series(series)
-    return _set_data(self, [row.tolist() for row in rows],
-                     ordinals if names is None else list(names), ndim)
+    from dtwcpp._api import _to_data
+    return _set_data(self, _to_data(series, names=names, ndim=ndim))
 
 
 Problem.set_data = _problem_set_data
@@ -264,10 +273,24 @@ def _problem_cluster(self):
 Problem.cluster = _problem_cluster
 
 from . import distance
+from .distance import cdist
 from . import preprocess
 from . import diagnose
 from . import features
 from . import test
+
+
+def __getattr__(name):
+    if name == "DTWClustering":
+        from dtwcpp._clustering import DTWClustering
+        globals()["DTWClustering"] = DTWClustering
+        return DTWClustering
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals().keys()) | set(__all__))
+
 
 __all__ = [
     "Method", "Solver", "MetricType", "DTWVariant",
@@ -291,9 +314,10 @@ __all__ = [
     "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
     "adjusted_rand", "normalized_mutual_info",
     "derivative_transform", "z_normalize",
-    "compute_distance_matrix",
+    "compute_distance_matrix", "cdist",
     "device",
     "Dataset", "load", "cluster", "Result", "plot",
+    "Settings", "settings", "load_data", "do_clustering", "write_data",
     "distance",
     "gpu_available", "gpu_info",
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",

@@ -22,6 +22,7 @@ classdef Dataset < handle
         Delimiter   % the field delimiter of text; '' infers it from the extension
         Name        % the name of the run and of its result files
         Dtype       % 'float64' (double) or 'float32' (single): the precision the series are stored in
+        Ndim = 1    % features per timestep (1 = univariate; >1 = interleaved multivariate)
     end
 
     properties (Access = private)
@@ -31,14 +32,20 @@ classdef Dataset < handle
     end
 
     methods
-        function obj = Dataset(source, skipCols, skipRows, delimiter, name, dtype)
-        %DATASET Made by dtwc.load, which documents the arguments.
+        function obj = Dataset(source, skipCols, skipRows, delimiter, name, dtype, ndim)
+        %DATASET Made by dtwc.load / dtwc.load_data, which document the arguments.
+            if nargin < 7 || isempty(ndim)
+                ndim = 1;
+            end
             counts = {'SkipCols', skipCols; 'SkipRows', skipRows};
             for i = 1:2
                 v = counts{i, 2};
                 if ~(isnumeric(v) && isscalar(v) && isreal(v) && isfinite(v) && v >= 0 && v == fix(v))
                     error('dtwc:invalidArgument', 'load: %s must be a non-negative integer.', counts{i, 1});
                 end
+            end
+            if ~(isnumeric(ndim) && isscalar(ndim) && isreal(ndim) && isfinite(ndim) && ndim >= 1 && ndim == fix(ndim))
+                error('dtwc:invalidArgument', 'load: Ndim must be a positive integer.');
             end
             if isstring(source)
                 source = char(source);
@@ -56,21 +63,21 @@ classdef Dataset < handle
             obj.Delimiter = delimiter;
             obj.Name = name;
             obj.Dtype = dtwc_mex('dtype', dtype);   % the C++ table's canonical name
+            obj.Ndim = double(ndim);
         end
 
-        function [series, names] = as_series(obj)
+        function [series, names, ndim] = as_series(obj)
         %AS_SERIES The series, read once. A path gives a cell of rows and, in
         %   NAMES, the reader's name of each; series in memory are the source less
         %   SkipRows and SkipCols, and NAMES is {} (C++ names them 0, 1, ...). With
-        %   Dtype 'float32' the series are single, else a path's are double. The
-        %   rows carry no ndim: an Arrow IPC file whose schema says ndim > 1 comes
-        %   back as univariate series (each row's interleaved values), so
-        %   dtwc.cluster of them is univariate where dtwc.cluster of the path is
-        %   multivariate.
+        %   Dtype 'float32' the series are single, else a path's are double.
             if ~obj.IsRead
                 if ischar(obj.Source)
-                    [obj.Series, obj.Names] = dtwc.Dataset.read_path( ...
+                    [obj.Series, obj.Names, readNdim] = dtwc.Dataset.read_path( ...
                         obj.Source, obj.SkipCols, obj.SkipRows, obj.Delimiter, obj.Dtype);
+                    if obj.Ndim == 1 && readNdim > 1
+                        obj.Ndim = readNdim;
+                    end
                 else
                     obj.Series = obj.trimmed();
                     if strcmp(obj.Dtype, 'float32')
@@ -81,6 +88,7 @@ classdef Dataset < handle
             end
             series = obj.Series;
             names = obj.Names;
+            ndim = obj.Ndim;
         end
     end
 
@@ -112,11 +120,12 @@ classdef Dataset < handle
     end
 
     methods (Static, Access = private)
-        function [series, names] = read_path(path, skipCols, skipRows, delimiter, dtype)
+        function [series, names, ndim] = read_path(path, skipCols, skipRows, delimiter, dtype)
         %READ_PATH Every series a path names, read as dtwc::read_data reads it, in DTYPE.
+            ndim = 1;
             files = dtwc_mex('parquet_files', path);
             if isempty(files)   % text and Arrow IPC: the C++ reader
-                [series, names] = dtwc_mex('read_data', path, skipCols, skipRows, delimiter, dtype);
+                [series, names, ndim] = dtwc_mex('read_data', path, skipCols, skipRows, delimiter, dtype);
                 return
             end
             if ~isempty(delimiter)

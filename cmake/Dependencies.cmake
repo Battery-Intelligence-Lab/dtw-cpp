@@ -239,7 +239,11 @@ function(dtwc_setup_dependencies)
   # superbuild used to fetch unpinned. wg14_signals, ntkernel-error-category,
   # span-lite and byte-lite are the submodule commits that llfio b17613fb and
   # quickcpplib 3c1d8cb5 record; GitHub archives leave submodules out.
-  option(DTWC_ENABLE_LLFIO "Enable llfio memory-mapped distance matrices" ON)
+  set(_dtwc_default_host_hw ON)
+  if(EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(_dtwc_default_host_hw OFF)
+  endif()
+  option(DTWC_ENABLE_LLFIO "Enable llfio memory-mapped distance matrices" ${_dtwc_default_host_hw})
   if(DTWC_ENABLE_LLFIO AND NOT TARGET llfio_hl)
     message(STATUS "  llfio:    fetching (DTWC_ENABLE_LLFIO=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_LLFIO=OFF)")
     CPMAddPackage(NAME llfio DOWNLOAD_ONLY YES
@@ -317,7 +321,7 @@ function(dtwc_setup_dependencies)
   # benchmarks and pkg-config file are not built. Silent: its log calls compile to nothing (CPUINFO_LOG_LEVEL none), so
   # where /sys or /proc is closed to it (an HPC jail) cpuinfo_initialize() fails without a word and the facts read
   # "unknown". Its deps/clog is in the archive but not built.
-  option(DTWC_ENABLE_CPUINFO "Enable cpuinfo: the CPU's model, cores and SIMD extensions in the machine facts" ON)
+  option(DTWC_ENABLE_CPUINFO "Enable cpuinfo: the CPU's model, cores and SIMD extensions in the machine facts" ${_dtwc_default_host_hw})
   if(DTWC_ENABLE_CPUINFO AND NOT TARGET cpuinfo)
     message(STATUS "  cpuinfo:  fetching (DTWC_ENABLE_CPUINFO=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_CPUINFO=OFF)")
     CPMAddPackage(NAME cpuinfo

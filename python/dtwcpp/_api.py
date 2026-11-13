@@ -93,6 +93,137 @@ def _series(source, skip_rows=0):
     return rows, names[skip_rows:] if names is not None else [str(i) for i in range(len(rows))]
 
 
+def _to_data(source, *, skip_rows=0, skip_cols=0, names=None, ndim=1, dtype="float64"):
+    """Construct a C++ :class:`dtwcpp.Data` directly from in-memory series without
+    intermediate Python list-of-floats boxing."""
+    from dtwcpp import InvalidInput, _dtwcpp_core
+
+    if isinstance(ndim, (bool, np.bool_)) or not isinstance(ndim, (int, np.integer)):
+        raise TypeError(f"ndim must be an integer, got {type(ndim).__name__}")
+    if ndim < 1:
+        raise InvalidInput("ndim must be at least 1.")
+    ndim = int(ndim)
+    dtype = _dtwcpp_core._dtype(dtype)
+
+    if isinstance(source, _dtwcpp_core.Data):
+        if (skip_rows == 0 and skip_cols == 0 and names is None
+                and source.ndim == ndim and source.is_f32() == (dtype == "float32")):
+            return source
+        src_names = list(names) if names is not None else list(source.p_names)[skip_rows:]
+        rows = [np.asarray(source.series(i), dtype=np.float64) for i in range(skip_rows, source.size)]
+        if skip_cols > 0:
+            for row in rows:
+                if skip_cols > len(row):
+                    raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
+            rows = [np.ascontiguousarray(row[skip_cols:], dtype=np.float64) for row in rows]
+        else:
+            rows = [np.ascontiguousarray(row, dtype=np.float64) for row in rows]
+        return _dtwcpp_core.Data.from_numpy_list(rows, src_names, ndim, dtype)
+
+    df_names = None
+    if type(source).__module__.split(".")[0] == "pandas" and hasattr(source, "columns"):
+        df_names = [str(label) for label in source.index]
+        source = source.to_numpy()
+    elif hasattr(source, "__arrow_c_array__") or hasattr(source, "__arrow_c_stream__"):
+        if skip_rows == 0 and skip_cols == 0 and names is None and ndim == 1:
+            return _dtwcpp_core.data_from_arrow_c_array(source, dtype)
+        rows, arrow_names = _series(source, skip_rows)
+        if skip_cols > 0:
+            for row in rows:
+                if skip_cols > len(row):
+                    raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
+            rows = [np.ascontiguousarray(row[skip_cols:], dtype=np.float64) for row in rows]
+        else:
+            rows = [np.ascontiguousarray(row, dtype=np.float64) for row in rows]
+        eff_names = list(names) if names is not None else arrow_names
+        return _dtwcpp_core.Data.from_numpy_list(rows, eff_names, ndim, dtype)
+    elif type(source).__module__.startswith("scipy.sparse"):
+        raise TypeError("Sparse input is not supported; provide a dense array.")
+
+    if isinstance(source, (list, tuple)):
+        rows = [_float64(row) for row in source[skip_rows:]]
+        for i, row in enumerate(rows):
+            if row.ndim != 1:
+                raise _NotSeries(f"{_FORMS}; got a list whose element {i} is {row.ndim}-D.")
+            if row.size == 0:
+                raise InvalidInput(f"series {i} is empty; every series needs at least one value.")
+        if skip_cols > 0:
+            for row in rows:
+                if skip_cols > len(row):
+                    raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
+            rows = [np.ascontiguousarray(row[skip_cols:], dtype=np.float64) for row in rows]
+        else:
+            rows = [np.ascontiguousarray(row, dtype=np.float64) for row in rows]
+        eff_names = list(names) if names is not None else (
+            df_names[skip_rows:] if df_names is not None else [str(i) for i in range(len(rows))]
+        )
+        return _dtwcpp_core.Data.from_numpy_list(rows, eff_names, ndim, dtype)
+
+    array = np.asarray(source)
+    if array.dtype.kind == "c":
+        raise _NotSeries("Complex data not supported: " + _FORMS + " of real numbers.")
+
+    if ndim > 1 and array.ndim == 3:
+        if array.shape[2] != ndim:
+            raise InvalidInput(
+                f"3-D multivariate array shape[2] ({array.shape[2]}) must match ndim ({ndim})."
+            )
+        sliced = _float64(array[skip_rows:])
+        if sliced.shape[0] and not sliced.shape[1]:
+            raise InvalidInput(
+                f"every series needs at least one value: 0 feature(s) "
+                f"(shape={sliced.shape}) while a minimum of 1 is required."
+            )
+        if skip_cols > 0:
+            if sliced.shape[0] and skip_cols > sliced.shape[1]:
+                raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
+            sliced = sliced[:, skip_cols:, :]
+        arr_c = np.ascontiguousarray(sliced, dtype=np.float64)
+        eff_names = list(names) if names is not None else (
+            df_names[skip_rows:] if df_names is not None else [str(i) for i in range(arr_c.shape[0])]
+        )
+        return _dtwcpp_core.Data.from_numpy_3d(arr_c, eff_names, dtype)
+
+    if array.ndim != 2:
+        raise _NotSeries(
+            f"{_FORMS}; got a {array.ndim}-D array of shape {array.shape}. "
+            "Reshape your data to (n_series, n_timesteps)."
+        )
+
+    sliced = array[skip_rows:]
+    if sliced.dtype == np.float32:
+        if sliced.shape[0] and not sliced.shape[1]:
+            raise InvalidInput(
+                f"every series needs at least one value: 0 feature(s) "
+                f"(shape={sliced.shape}) while a minimum of 1 is required."
+            )
+        if skip_cols > 0:
+            if sliced.shape[0] and skip_cols > sliced.shape[1]:
+                raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
+            sliced = sliced[:, skip_cols:]
+        arr_c = np.ascontiguousarray(sliced, dtype=np.float32)
+        eff_names = list(names) if names is not None else (
+            df_names[skip_rows:] if df_names is not None else [str(i) for i in range(arr_c.shape[0])]
+        )
+        return _dtwcpp_core.Data.from_numpy_2d_f32(arr_c, eff_names, ndim, dtype)
+
+    sliced = _float64(sliced)
+    if sliced.shape[0] and not sliced.shape[1]:
+        raise InvalidInput(
+            f"every series needs at least one value: 0 feature(s) "
+            f"(shape={sliced.shape}) while a minimum of 1 is required."
+        )
+    if skip_cols > 0:
+        if sliced.shape[0] and skip_cols > sliced.shape[1]:
+            raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
+        sliced = sliced[:, skip_cols:]
+    arr_c = np.ascontiguousarray(sliced, dtype=np.float64)
+    eff_names = list(names) if names is not None else (
+        df_names[skip_rows:] if df_names is not None else [str(i) for i in range(arr_c.shape[0])]
+    )
+    return _dtwcpp_core.Data.from_numpy_2d(arr_c, eff_names, ndim, dtype)
+
+
 class Dataset:
     """A lazy handle to time-series data — a local array or a file path.
 
@@ -124,6 +255,7 @@ class Dataset:
         # dtwc_cl's rule, so a run of "data/" is named "data" in every language.
         self.name = name if name is not None else _dtwcpp_core._default_name(
             os.fspath(source) if self.is_path else "")
+        self._ndim = 1
         self._data = None
 
     @property
@@ -145,22 +277,21 @@ class Dataset:
         The series are stored in ``dtype``, each value rounded once to it.
         """
         if self._data is None:
-            from dtwcpp import _dtwcpp_core, io
+            from dtwcpp import io
             if self.is_path:
                 self._data = io._read_data(self.source, self.skip_cols,
                                            self.skip_rows, self.delimiter, self.dtype)
+                if self._ndim > 1 and self._data.ndim == 1:
+                    self._data.ndim = self._ndim
+                    self._data.validate_ndim()
             else:
-                from dtwcpp import InvalidInput
-                rows, names = _series(self.source, self.skip_rows)
-                if self.skip_cols > 0:
-                    for row in rows:
-                        if self.skip_cols > len(row):
-                            raise InvalidInput(
-                                "load: skip_cols exceeds an in-memory series "
-                                "length.")
-                    rows = [row[self.skip_cols:] for row in rows]
-                make = _dtwcpp_core.Data.from_float32 if self.dtype == "float32" else _dtwcpp_core.Data
-                self._data = make([row.tolist() for row in rows], names)
+                self._data = _to_data(
+                    self.source,
+                    skip_rows=self.skip_rows,
+                    skip_cols=self.skip_cols,
+                    ndim=self._ndim,
+                    dtype=self.dtype,
+                )
         return self._data
 
     def as_series(self):
@@ -213,7 +344,8 @@ class Result:
     """
 
     def __init__(self, labels, *, device, elapsed_s, k, n_series,
-                 medoid_indices=None, cost=None, name="dataset", result=None):
+                 medoid_indices=None, cost=None, name="dataset", result=None,
+                 report_text=None, hpc_result_dir=None):
         self.labels = np.asarray(labels)
         self.device = device
         self.elapsed_s = elapsed_s
@@ -222,8 +354,9 @@ class Result:
         self.medoids = None if medoid_indices is None else np.asarray(medoid_indices)
         self.cost = cost
         self.name = name
-        self.report = None if result is None else result.report
+        self.report = result.report if result is not None else report_text
         self._result = result
+        self._hpc_result_dir = hpc_result_dir
         self._distance_matrix = None
 
     def _clustered(self):
@@ -284,6 +417,18 @@ class Result:
         """
         from dtwcpp import InvalidInput
         if self._result is None:
+            if self._hpc_result_dir is not None and os.path.isdir(self._hpc_result_dir):
+                import shutil
+                out_dir = os.fspath(directory)
+                os.makedirs(out_dir, exist_ok=True)
+                prefix = f"{self.name}_"
+                for fname in os.listdir(self._hpc_result_dir):
+                    if fname.startswith(prefix):
+                        shutil.copy2(
+                            os.path.join(self._hpc_result_dir, fname),
+                            os.path.join(out_dir, fname),
+                        )
+                return directory
             raise InvalidInput(
                 "save: this hpc result holds the labels only; dtwc_cl wrote the "
                 "result files on the cluster.")
@@ -429,10 +574,15 @@ def cluster(data, k, **keys):
         # As a local run, C++ checks every value before anything is written or
         # sent; the device stays the CPU here, since the GPU is the cluster's.
         _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or data.name))
-        labels = _hpc.cluster_on_hpc(data, config, keys, device=eff,
-                                     gpu_device=gpu_device)
+        details = _hpc.cluster_on_hpc(data, config, keys, device=eff,
+                                      gpu_device=gpu_device, return_details=True)
+        labels = details["labels"]
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
-                      k=k, n_series=len(labels), name=config.name or data.name)
+                      k=k, n_series=len(labels),
+                      medoid_indices=details.get("medoids"),
+                      name=config.name or data.name,
+                      report_text=details.get("report"),
+                      hpc_result_dir=details.get("result_dir"))
 
     # C++ checks every value before any series is read, as dtwc::run does, so
     # that a bad one costs no read and reads the same for every input. A path
@@ -443,7 +593,7 @@ def cluster(data, k, **keys):
     # is, else as dtwc_cl names it.
     config.device = eff
     _dtwcpp_core.apply(config, _dtwcpp_core.Problem())
-    if data.is_path and not _dtwcpp_core._parquet_files(os.fspath(data.source)):
+    if data.is_path and data._ndim == 1 and not _dtwcpp_core._parquet_files(os.fspath(data.source)):
         source = os.fspath(data.source)
         reader = {"skip_cols": data.skip_cols, "skip_rows": data.skip_rows,
                   "delimiter": data.delimiter or ""}
@@ -464,3 +614,321 @@ def cluster(data, k, **keys):
 def plot(result, **kwargs):
     """Top-level alias for ``result.plot(...)``."""
     return result.plot(**kwargs)
+
+
+# ---------------------------------------------------------------------------
+# CasADi + PyTorch device= workflow: settings -> load_data -> do_clustering -> write_data
+# ---------------------------------------------------------------------------
+class Settings:
+    """Validated workflow configuration shared across :func:`load_data`,
+    :func:`do_clustering`, and :func:`write_data`.
+
+    Supports both crash-safe persistent output + ``.dtwm`` checkpointing by
+    default (``output="./results"``) and pure in-memory execution
+    (``output=""``), plus PyTorch-style ``device="cpu" | "gpu" | "cpu+gpu" |
+    "hpc" | "hpc:gpu"`` switching.
+    """
+
+    def __init__(self, **kwargs):
+        from dtwcpp import InvalidInput, _dtwcpp_core
+
+        self.input = ""
+        self.skip_cols = 0
+        self.skip_rows = 0
+        self.delimiter = None
+        self.dtype = "float64"
+        self.ndim = 1
+        self.output = "./results"
+        self.checkpoint = ""
+        self.checkpoint_interval = 0
+        self.device = None
+        self.gpu_device = None
+        self.upload_input = False
+        self._config = _dtwcpp_core.Config()
+        self._clustering_keys = []
+        self._update(**kwargs)
+
+    def _update(self, **kwargs):
+        from dtwcpp import InvalidInput, _dtwcpp_core
+
+        if "k" in kwargs and "n_clusters" in kwargs and kwargs["k"] != kwargs["n_clusters"]:
+            raise InvalidInput("settings: k and n_clusters disagree; pass only one.")
+        if "k" in kwargs:
+            kwargs["n_clusters"] = kwargs.pop("k")
+
+        for key, value in kwargs.items():
+            if key == "input":
+                self.input = "" if value is None else os.fspath(value)
+            elif key in ("skip_cols", "skip_rows"):
+                if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                    raise TypeError(f"settings: {key} must be an integer")
+                if value < 0:
+                    raise InvalidInput(f"settings: {key} must be non-negative.")
+                setattr(self, key, int(value))
+            elif key == "delimiter":
+                if value is not None and (not isinstance(value, str) or len(value) > 1):
+                    raise InvalidInput("settings: delimiter must be None or a single character.")
+                self.delimiter = value
+            elif key == "dtype":
+                if not isinstance(value, str):
+                    raise TypeError(f"settings: dtype must be a string, got {type(value).__name__}")
+                self.dtype = _dtwcpp_core._dtype(value)
+            elif key == "ndim":
+                if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                    raise TypeError("settings: ndim must be an integer")
+                if value < 1:
+                    raise InvalidInput("settings: ndim must be at least 1.")
+                self.ndim = int(value)
+            elif key == "output":
+                self.output = "" if value is None else os.fspath(value)
+            elif key == "checkpoint":
+                self.checkpoint = "" if value is None else os.fspath(value)
+            elif key == "checkpoint_interval":
+                if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                    raise TypeError("settings: checkpoint_interval must be an integer")
+                if value < 0:
+                    raise InvalidInput("settings: checkpoint_interval must be non-negative.")
+                self.checkpoint_interval = int(value)
+            elif key == "device":
+                if value is not None:
+                    from dtwcpp import _resolve_device
+                    _resolve_device(value)
+                self.device = value
+            elif key == "gpu_device":
+                if value is not None and not isinstance(value, str):
+                    raise TypeError("settings: gpu_device must be a string or None")
+                self.gpu_device = value
+            elif key == "upload_input":
+                if not isinstance(value, (bool, np.bool_)):
+                    raise TypeError("settings: upload_input must be a bool")
+                self.upload_input = bool(value)
+            else:
+                _set_key(self._config, key, value, name="k" if key == "n_clusters" else key)
+                if key != "n_clusters" and key not in self._clustering_keys:
+                    self._clustering_keys.append(key)
+
+    @property
+    def k(self):
+        return self._config.n_clusters
+
+    @k.setter
+    def k(self, value):
+        _set_key(self._config, "n_clusters", value, name="k")
+
+    def __getattr__(self, name):
+        if not name.startswith("_") and "_config" in self.__dict__ and hasattr(type(self._config), name):
+            return getattr(self._config, name)
+        raise AttributeError(f"'Settings' object has no attribute {name!r}")
+
+    def copy(self, **overrides):
+        """Return a new :class:`Settings` with ``overrides`` applied."""
+        cloned = Settings()
+        cloned.input = self.input
+        cloned.skip_cols = self.skip_cols
+        cloned.skip_rows = self.skip_rows
+        cloned.delimiter = self.delimiter
+        cloned.dtype = self.dtype
+        cloned.ndim = self.ndim
+        cloned.output = self.output
+        cloned.checkpoint = self.checkpoint
+        cloned.checkpoint_interval = self.checkpoint_interval
+        cloned.device = self.device
+        cloned.gpu_device = self.gpu_device
+        cloned.upload_input = self.upload_input
+        if self._config.n_clusters > 0:
+            _set_key(cloned._config, "n_clusters", self._config.n_clusters, name="k")
+        for key in self._clustering_keys:
+            setattr(cloned._config, key, getattr(self._config, key))
+        cloned._clustering_keys = list(self._clustering_keys)
+        if overrides:
+            cloned._update(**overrides)
+        return cloned
+
+    def to_dict(self):
+        """Return all workflow settings as a dictionary."""
+        out = {
+            "input": self.input,
+            "k": self._config.n_clusters,
+            "method": self._config.method,
+            "band": self._config.band,
+            "metric": self._config.metric,
+            "variant": self._config.variant,
+            "device": self.device,
+            "output": self.output,
+            "checkpoint": self.checkpoint,
+            "checkpoint_interval": self.checkpoint_interval,
+            "dtype": self.dtype,
+            "ndim": self.ndim,
+            "skip_cols": self.skip_cols,
+            "skip_rows": self.skip_rows,
+            "delimiter": self.delimiter,
+            "upload_input": self.upload_input,
+        }
+        for key in self._clustering_keys:
+            out[key] = getattr(self._config, key)
+        return out
+
+    def __repr__(self):
+        dev = self.device if self.device is not None else "default"
+        return (f"Settings(k={self.k}, method={self._config.method!r}, "
+                f"device={dev!r}, output={self.output!r})")
+
+
+def settings(base=None, **kwargs):
+    """Build or refine a CasADi-style :class:`Settings` object.
+
+    By default ``output="./results"`` writes result files automatically in
+    :func:`do_clustering`; pass ``output=""`` for pure in-memory clustering.
+    """
+    if base is not None:
+        if not isinstance(base, Settings):
+            raise TypeError(f"settings: base must be a Settings instance, got {type(base).__name__}")
+        return base.copy(**kwargs)
+    return Settings(**kwargs)
+
+
+def load_data(source=None, settings=None, **kwargs):
+    """Create a lazy :class:`Dataset` configured from ``settings`` and/or ``kwargs``.
+
+    On ``device="hpc"`` file paths stay lazy and are read on the SLURM cluster;
+    locally, NumPy arrays and Arrow buffers materialize directly into C++
+    ``Data`` without Python list conversion.
+    """
+    from dtwcpp import InvalidInput
+
+    s = settings if isinstance(settings, Settings) else Settings()
+    if settings is not None and not isinstance(settings, Settings):
+        raise TypeError(f"load_data: settings must be a Settings instance, got {type(settings).__name__}")
+
+    if source is None:
+        if not s.input:
+            raise InvalidInput("load_data: pass source or set input=... in settings().")
+        source = s.input
+
+    if isinstance(source, Dataset):
+        if kwargs:
+            raise InvalidInput(
+                f"load_data: Dataset keeps the options it was made with; unexpected {sorted(kwargs)}."
+            )
+        return source
+
+    skip_cols = kwargs.pop("skip_cols", s.skip_cols)
+    skip_rows = kwargs.pop("skip_rows", s.skip_rows)
+    delimiter = kwargs.pop("delimiter", s.delimiter)
+    name = kwargs.pop("name", s._config.name or None)
+    dtype = kwargs.pop("dtype", s.dtype)
+    ndim = kwargs.pop("ndim", s.ndim)
+    if kwargs:
+        raise InvalidInput(f"load_data: unknown option(s): {', '.join(sorted(kwargs))}.")
+
+    if isinstance(ndim, (bool, np.bool_)) or not isinstance(ndim, (int, np.integer)):
+        raise TypeError("load_data: ndim must be an integer")
+    if ndim < 1:
+        raise InvalidInput("load_data: ndim must be at least 1.")
+
+    ds = Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
+                 delimiter=delimiter, name=name, dtype=dtype)
+    ds._ndim = int(ndim)
+    return ds
+
+
+def do_clustering(data=None, settings=None, **overrides):
+    """Execute clustering using ``settings`` (with optional ``overrides``).
+
+    Supports automatic result file persistence (``output="./results"`` by
+    default), crash-safe ``.dtwm`` checkpoints (``checkpoint=...``), pure
+    in-memory execution (``output=""``), and transparent ``device="cpu" | "gpu"
+    | "cpu+gpu" | "hpc" | "hpc:gpu"`` execution.
+    """
+    import dtwcpp
+    from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
+
+    if isinstance(data, Settings) and settings is None:
+        settings, data = data, None
+    if settings is not None and not isinstance(settings, Settings):
+        raise TypeError(f"do_clustering: settings must be a Settings instance, got {type(settings).__name__}")
+
+    eff = settings.copy(**overrides) if settings is not None else Settings(**overrides)
+    if eff.k < 1:
+        raise InvalidInput("do_clustering: k (n_clusters) must be at least 1.")
+
+    eff_dev = eff.device if eff.device is not None else dtwcpp.device()
+    backend, _ = _resolve_device(eff_dev)
+    if eff.gpu_device is not None and eff_dev.strip().lower() != "hpc:gpu":
+        raise InvalidInput(
+            f"do_clustering: gpu_device names the GPU of a device='hpc:gpu' "
+            f"run, and the device is '{eff_dev}'."
+        )
+
+    dataset = load_data(data, eff)
+    config = eff.copy()._config
+
+    t0 = time.perf_counter()
+    if backend == "hpc":
+        from dtwcpp import _hpc
+        _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or dataset.name))
+        details = _hpc.cluster_on_hpc(
+            dataset,
+            config,
+            eff._clustering_keys,
+            device=eff_dev,
+            gpu_device=eff.gpu_device,
+            upload_input=eff.upload_input,
+            return_details=True,
+        )
+        labels = details["labels"]
+        res = Result(
+            labels,
+            device="hpc",
+            elapsed_s=time.perf_counter() - t0,
+            k=eff.k,
+            n_series=len(labels),
+            medoid_indices=details.get("medoids"),
+            name=config.name or dataset.name,
+            report_text=details.get("report"),
+            hpc_result_dir=details.get("result_dir"),
+        )
+        if eff.output:
+            res.save(eff.output)
+        return res
+
+    config.device = eff_dev
+    _dtwcpp_core.apply(config, _dtwcpp_core.Problem())
+    if dataset.is_path and dataset._ndim == 1 and not _dtwcpp_core._parquet_files(os.fspath(dataset.source)):
+        source = os.fspath(dataset.source)
+        reader = {"skip_cols": dataset.skip_cols, "skip_rows": dataset.skip_rows,
+                  "delimiter": dataset.delimiter or ""}
+    else:
+        source, reader = dataset.as_data(), {}
+    config.name = config.name or dataset.name or _dtwcpp_core._default_name(
+        source if isinstance(source, str) else "")
+
+    result = _dtwcpp_core._run(
+        config,
+        source,
+        dtype=dataset.dtype,
+        external=not dtwcpp.HIGHS_AVAILABLE,
+        output=eff.output,
+        checkpoint=eff.checkpoint,
+        checkpoint_interval=eff.checkpoint_interval,
+        **reader,
+    )
+    return Result(
+        result.labels,
+        device=backend,
+        elapsed_s=time.perf_counter() - t0,
+        k=config.n_clusters,
+        n_series=len(result.labels),
+        medoid_indices=result.medoids,
+        cost=result.cost,
+        name=config.name,
+        result=result,
+    )
+
+
+def write_data(result, directory="./results"):
+    """Write ``result``'s files (labels, medoids, distance matrix, silhouettes,
+    and run report) into ``directory``."""
+    if not isinstance(result, Result):
+        raise TypeError(f"write_data: expected a Result, got {type(result).__name__}")
+    return result.save(directory)

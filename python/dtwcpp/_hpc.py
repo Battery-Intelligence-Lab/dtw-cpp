@@ -101,6 +101,15 @@ def parse_labels_csv(path, n=None):
     return labels
 
 
+def parse_medoids_csv(path):
+    """Parse dtwc_cl's ``NAME_medoids.csv`` (``cluster,medoid_index,medoid_name``)
+    into 0-based medoid indices ordered by cluster id."""
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    rows.sort(key=lambda r: int(r["cluster"]))
+    return np.array([int(r["medoid_index"]) for r in rows], dtype=np.int64)
+
+
 def _job_id(job_id):
     """``job_id`` as the decimal text of a Slurm job ID, else ValueError."""
     job_id = str(job_id)
@@ -264,11 +273,13 @@ class SlurmRemoteRunner:
 
 def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
                    poll_seconds=20, timeout_seconds=86400, repo_root=None,
-                   runner=None):
-    """Cluster ``data`` by ``config`` on a SLURM cluster; return the labels in input order.
+                   runner=None, upload_input=False, return_details=False):
+    """Cluster ``data`` by ``config`` on a SLURM cluster; return the labels in input order
+    (or a details dict including medoids, report, and result_dir when ``return_details=True``).
 
     ``data`` is a :class:`dtwcpp.Dataset`. A path names a file on the cluster,
-    read there and never here, so it is absolute; series in memory travel as
+    read there and never here, so it is absolute unless ``upload_input=True``
+    stages a local file/folder into the job directory; series in memory travel as
     input.tsv. job.toml holds the input, ``n-clusters``, ``name``, ``device``
     (``gpu`` for ``"hpc:gpu"``), a path's ``skip-rows``, ``skip-cols`` and
     ``delimiter`` when set, and the Config keys named in ``keys``, the ones the
@@ -298,13 +309,25 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
             f"cluster: device='hpc' names the run's files <name>_labels.csv, ..., so "
             f"name must be a file name, without '/' or '\\'; got {name!r}.")
     series = None
+    staged_local_path = None
+    staged_rel_name = None
     if data.is_path:
-        source = os.fspath(data.source).replace("\\", "/")
-        if not source.startswith("/"):
-            raise InvalidInput(
-                f"cluster: device='hpc' reads '{source}' on the cluster; give its "
-                "absolute path there.")
-        items = [("input", source)]
+        raw_path = os.fspath(data.source)
+        if upload_input and os.path.exists(raw_path):
+            staged_local_path = raw_path
+            if os.path.isdir(raw_path):
+                staged_rel_name = "input_data"
+            else:
+                ext = os.path.splitext(raw_path)[1] or ".tsv"
+                staged_rel_name = "input" + ext
+            items = [("input", staged_rel_name)]
+        else:
+            source = raw_path.replace("\\", "/")
+            if not source.startswith("/"):
+                raise InvalidInput(
+                    f"cluster: device='hpc' reads '{source}' on the cluster; give its "
+                    "absolute path there.")
+            items = [("input", source)]
     else:
         series = data.as_series()  # load() has dropped skip_rows and skip_cols
         # Problem::cluster()'s guards, which the cluster would meet only after the queue.
@@ -332,6 +355,12 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
     rundir = tempfile.mkdtemp(prefix="job.", dir=runs)  # one per run: no shared path
     if series is not None:
         write_series_tsv(series, os.path.join(rundir, "input.tsv"))
+    elif staged_local_path is not None:
+        dst = os.path.join(rundir, staged_rel_name)
+        if os.path.isdir(staged_local_path):
+            shutil.copytree(staged_local_path, dst)
+        else:
+            shutil.copy2(staged_local_path, dst)
     with open(os.path.join(rundir, "job.toml"), "w", encoding="utf-8",
               newline="\n") as f:
         f.writelines(f"{key} = {_toml_value(value)}\n" for key, value in items)
@@ -342,5 +371,21 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
         os.path.relpath(rundir, repo_root).replace(os.sep, "/"),
         device="gpu" if gpu else "cpu", gpu_device=gpu_device)
     runner.wait(job_id, poll_seconds=poll_seconds, timeout_seconds=timeout_seconds)
-    labels = runner.download_labels(name, job_id)
-    return parse_labels_csv(labels, None if series is None else len(series))
+    labels_path = os.fspath(runner.download_labels(name, job_id))
+    parsed_labels = parse_labels_csv(labels_path, None if series is None else len(series))
+    if not return_details:
+        return parsed_labels
+    result_dir = os.path.dirname(labels_path)
+    medoids_path = os.path.join(result_dir, f"{name}_medoids.csv")
+    report_path = os.path.join(result_dir, f"{name}_report.txt")
+    medoids = parse_medoids_csv(medoids_path) if os.path.isfile(medoids_path) else None
+    report = None
+    if os.path.isfile(report_path):
+        with open(report_path, encoding="utf-8") as rf:
+            report = rf.read()
+    return {
+        "labels": parsed_labels,
+        "medoids": medoids,
+        "report": report,
+        "result_dir": result_dir,
+    }

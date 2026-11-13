@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file distance.hpp
  * @brief Additive distance facade for the public DTWC++ API.
  *
@@ -22,6 +22,7 @@
 
 #include "base/error.hpp"
 #include "base/settings.hpp"
+#include "cdist.hpp"
 #include "core/dtw_options.hpp"
 #include "core/msm.hpp"
 #include "core/twe.hpp"
@@ -264,6 +265,38 @@ T arow(const std::vector<T> &x, const std::vector<T> &y,
        core::MetricType metric = core::MetricType::L1)
 {
   return arow<T>(std::span<const T>{x}, std::span<const T>{y}, band, metric);
+}
+
+using dtwc::cdist;
+
+/// Cross-collection DTW distance matrix over vectors of series (zero-copy view Data).
+template <typename T = dtwc::settings::default_data_t>
+std::vector<double> cdist(const std::vector<std::vector<T>> &X,
+                          const std::vector<std::vector<T>> &Y,
+                          const core::DistanceConfig &distance = {},
+                          Device device = Device::CPU,
+                          int device_index = 0,
+                          GpuPrecision gpu_precision = GpuPrecision::Auto)
+{
+  static_assert(std::is_same_v<T, data_t> || std::is_same_v<T, float>,
+                "distance::cdist supports double (data_t) and float series.");
+  const std::size_t ndim = distance.ndim == 0 ? 1 : distance.ndim;
+  auto make_view = [ndim](const std::vector<std::vector<T>> &vecs,
+                          std::vector<std::string> &names_buf) {
+    names_buf.resize(vecs.size());
+    std::vector<std::span<const T>> spans(vecs.size());
+    std::vector<std::string_view> name_views(vecs.size());
+    for (std::size_t i = 0; i < vecs.size(); ++i) {
+      names_buf[i] = std::to_string(i);
+      spans[i] = std::span<const T>(vecs[i]);
+      name_views[i] = names_buf[i];
+    }
+    return Data(std::move(spans), std::move(name_views), ndim);
+  };
+  std::vector<std::string> x_names, y_names;
+  const Data X_data = make_view(X, x_names);
+  const Data Y_data = make_view(Y, y_names);
+  return dtwc::cdist(X_data, Y_data, distance, device, device_index, gpu_precision);
 }
 
 } // namespace dtwc::distance

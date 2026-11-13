@@ -29,15 +29,15 @@ class App;
 namespace dtwc {
 namespace cli {
 
-/// Adds every Config key to `app`, bound to `config`, plus `--config <file>`
-/// (TOML or YAML, the same keys; flags beat the file; an unknown key is an error).
-/// `--help` shows `config`'s values as the defaults. v1.0.0's option spellings
-/// (`--Nc`, `--probName`, `--skipRows`, ...) are hidden ones that each warn once
-/// on stderr and yield to the canonical spelling.
-/// A value no spelling reads raises during the parse: CLI11's error for a bad
-/// choice or number, InvalidInput for `--ram-limit` / `--delimiter` and for
-/// v1.0.0's `-k`/`--Nc` range `i..j`, DeviceError for `--device`.
-void bind(CLI::App &app, Config &config);
+  /// Adds every Config key to `app`, bound to `config`, plus `--config <file>`
+  /// (TOML or YAML, the same keys; flags beat the file; an unknown key is an error).
+  /// `--help` shows `config`'s values as the defaults. v1.0.0's option spellings
+  /// (`--Nc`, `--probName`, `--skipRows`, ...) are hidden ones that each warn once
+  /// on stderr and yield to the canonical spelling.
+  /// A value no spelling reads raises during the parse: CLI11's error for a bad
+  /// choice or number, InvalidInput for `--ram-limit` / `--delimiter` and for
+  /// v1.0.0's `-k`/`--Nc` range `i..j`, DeviceError for `--device`.
+  void bind(CLI::App &app, Config &config);
 
 } // namespace cli
 
@@ -57,5 +57,8 @@ std::string to_config_text(const Config &config);
 /// spellings and precedence are bind()'s.
 /// @throws InvalidInput for an unknown key or a value CLI11 rejects.
 Config parse_config(const std::vector<std::pair<std::string, std::string>> &pairs);
+
+/// Apply `(key, value)` overrides onto an existing `base` Config through `cli::bind()`.
+Config parse_config(Config base, const std::vector<std::pair<std::string, std::string>> &pairs);
 
 } // namespace dtwc

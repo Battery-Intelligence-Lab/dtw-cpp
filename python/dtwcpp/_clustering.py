@@ -255,15 +255,13 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         # the current settings.
         from dtwcpp._api import _series
         settings = getattr(self, "_fit_distance_", None) or self._distance()
-        queries, _ = _series(X)  # distance.dtw judges NaN and inf
+        queries, _ = _series(X)
         n_features = getattr(self, "n_features_in_", None)
         if n_features is not None and any(row.size != n_features for row in queries):
             raise ValueError(
                 f"X has {queries[0].size} features, but DTWClustering is expecting "
                 f"{n_features} features as input.")
-        return np.array([[distance.dtw(query, center, **settings)
-                          for center in self.cluster_centers_] for query in queries],
-                        dtype=np.float64).reshape(len(queries), len(self.cluster_centers_))
+        return distance.cdist(queries, self.cluster_centers_, device="cpu", **settings)
 
     def predict(self, X):
         """The nearest medoid of each sample of X."""

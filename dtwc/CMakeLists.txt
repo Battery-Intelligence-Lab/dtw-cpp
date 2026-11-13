@@ -77,6 +77,7 @@ target_sources(dtwc_core
   PRIVATE
   Problem.cpp
   Problem_IO.cpp
+  cdist.cpp
   checkpoint.cpp
   initialisation.cpp
   scores.cpp
@@ -84,6 +85,7 @@ target_sources(dtwc_core
   # Top-level headers
   Data.hpp
   DataLoader.hpp
+  cdist.hpp
   checkpoint.hpp
   config.hpp
   distance.hpp

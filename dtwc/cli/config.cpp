@@ -313,8 +313,9 @@ std::string to_config_text(const Config &config)
   return text;
 }
 
-Config parse_config(const std::vector<std::pair<std::string, std::string>> &pairs)
+Config parse_config(Config config, const std::vector<std::pair<std::string, std::string>> &pairs)
 {
+  if (pairs.empty()) return config;
   std::string text;
   for (const auto &[name, value] : pairs) {
     std::string key_name = name;
@@ -328,7 +329,6 @@ Config parse_config(const std::vector<std::pair<std::string, std::string>> &pair
     text += key_name + " = " + config_value(value) + '\n';
   }
 
-  Config config;
   CLI::App app;
   cli::bind(app, config);
   std::istringstream stream(text);
@@ -338,6 +338,11 @@ Config parse_config(const std::vector<std::pair<std::string, std::string>> &pair
     throw InvalidInput(error.what());
   }
   return config;
+}
+
+Config parse_config(const std::vector<std::pair<std::string, std::string>> &pairs)
+{
+  return parse_config(Config{}, pairs);
 }
 
 } // namespace dtwc

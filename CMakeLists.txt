@@ -58,7 +58,11 @@ option(DTWC_ENABLE_YAML "Accept YAML (as well as TOML) files for dtwc_cl --confi
 # defines DTWC_SEQUENTIAL_BUILD on the dtwc targets (consumed by the runtime
 # thread-warning in the parallelisation layer). This keeps "core builds without
 # optional deps" as an EXPLICIT choice, never a silent serial fallback.
-option(DTWC_ALLOW_SEQUENTIAL "Allow configuring without OpenMP (single-threaded, EXTREMELY slow) — explicit opt-out of the parallelism requirement" OFF)
+set(_dtwc_default_sequential OFF)
+if(EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  set(_dtwc_default_sequential ON)
+endif()
+option(DTWC_ALLOW_SEQUENTIAL "Allow configuring without OpenMP (single-threaded, EXTREMELY slow) — explicit opt-out of the parallelism requirement" ${_dtwc_default_sequential})
 
 # A MEX runs inside MATLAB's OWN private msvcp140.dll (R2024b ships 14.36).
 # A std::mutex built by a newer STL's constexpr ctor is all-zeros and faults in

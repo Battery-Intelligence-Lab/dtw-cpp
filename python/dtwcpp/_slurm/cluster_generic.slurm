@@ -22,8 +22,15 @@ DTWC_JOB="${DTWC_JOB:?DTWC_JOB not set}"
 DTWC_BIN="${SLURM_SUBMIT_DIR}/build-${DTWC_BUILD:?DTWC_BUILD not set}/bin/dtwc_cl"
 RESULTS_DIR="${SLURM_SUBMIT_DIR}/results/cluster_${SLURM_JOB_ID}"
 
-module load GCC/13.2.0 2>/dev/null || module load gcc 2>/dev/null || true
-[[ "${DTWC_BUILD}" == htc-cpu ]] || module load CUDA/12.4.0 2>/dev/null || module load cuda 2>/dev/null || true
+if [[ -n "${DTWC_MODULES:-}" ]]; then
+    IFS=: read -r -a _DTWC_MOD_LIST <<< "${DTWC_MODULES}"
+    for _MOD in "${_DTWC_MOD_LIST[@]}"; do
+        [[ -n "${_MOD}" ]] && { module load "${_MOD}" 2>/dev/null || true; }
+    done
+else
+    module load GCC/13.2.0 2>/dev/null || module load gcc 2>/dev/null || true
+    [[ "${DTWC_BUILD}" == htc-cpu ]] || module load CUDA/12.4.0 2>/dev/null || module load cuda 2>/dev/null || true
+fi
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 
 echo "DTWC++ job ${SLURM_JOB_ID} on ${SLURMD_NODENAME:-?}: ${DTWC_BIN} --config ${DTWC_JOB}/job.toml"

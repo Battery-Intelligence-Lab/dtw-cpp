@@ -549,6 +549,18 @@ function test_hpc_is_a_device_error_as_in_cpp(testCase)
     verifyEqual(testCase, dtwc.device(), previous);
 end
 
+function test_tier1_cdist_and_workflow_surface(testCase)
+%   Cross-collection cdist and CasADi workflow functions exist and run on CPU.
+    D = dtwc.cdist(testCase.TestData.X(1:2, :), testCase.TestData.X(3:5, :));
+    verifySize(testCase, D, [2 3]);
+    D2 = dtwc.distance.cdist(testCase.TestData.X(1:2, :), testCase.TestData.X(3:5, :));
+    verifyEqual(testCase, D, D2, 'AbsTol', 1e-12);
+    cfg = dtwc.settings('NClusters', 2, 'Method', 'pam', 'Output', '');
+    ds = dtwc.load_data(testCase.TestData.X, cfg);
+    res = dtwc.do_clustering(ds, cfg);
+    verifyNumElements(testCase, res.labels, 6);
+end
+
 % =========================================================================
 %  Tier 2 — Problem config setters
 % =========================================================================
