@@ -15,14 +15,14 @@
  *
  * is a valid LOWER BOUND on the optimal p-median cost for every μ. Because the
  * inner polytope's matrix (Cardinality + Linking) is totally unimodular for all
- * N (UNIMODULAR.md §8.2), Geoffrion's theorem makes max_μ L(μ) equal the full LP
+ * N (docs/content/math/lr-core.md §2.2), Geoffrion's theorem makes max_μ L(μ) equal the full LP
  * relaxation bound — obtained matrix-free, streaming D once per iteration, never
  * forming the N²-column LP. We maximize L by subgradient ascent with Polyak
  * steps off a heuristic upper bound (FastPAM), repair a feasible primal each
  * iteration (assign to nearest open medoid), and report the gap. On clustered /
  * real data the root typically certifies the heuristic optimal.
  *
- * Full derivation and registered predictions: `.claude/UNIMODULAR.md` §8.3–8.5.
+ * Full derivation: `docs/content/math/lr-core.md`.
  *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026

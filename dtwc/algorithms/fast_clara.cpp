@@ -17,7 +17,6 @@
  *
  * @author Volkan Kumtepeli
  * @author Becky Perriment
- * @author Claude 4.6
  * @date 29 Mar 2026
  */
 

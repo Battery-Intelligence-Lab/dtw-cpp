@@ -12,7 +12,6 @@ Usage::
     dtwc-convert input.parquet -o output.arrow --name-column name
 
 @author Volkan Kumtepeli
-@author Claude 4.6
 @date 08 Apr 2026
 """
 

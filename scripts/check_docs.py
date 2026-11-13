@@ -3,7 +3,7 @@
 """Three documentation gates that compare what users read with what the code does.
 
 1. Every dtwc_cl flag the user docs show exists in the live `dtwc_cl --help`.
-   Scope: docs/content/**/*.md, README.md, .claude/commands/*.md. A flag "the
+   Scope: docs/content/**/*.md, README.md. A flag "the
    docs show" is a -x / --name token in one of three places, and nowhere else:
      a. after a `dtwc_cl` word in a shell command, inside a fenced block or an
         inline code span, up to the next |, &&, ||, ; or # comment;
@@ -89,8 +89,7 @@ def check_cli_flags(binary: Path) -> list[str]:
     help_text = subprocess.run([str(binary), "--help"], capture_output=True, text=True,
                                encoding="utf-8", errors="replace", check=True).stdout
     live = set(FLAG.findall(help_text))
-    pages = [*sorted((ROOT / "docs/content").rglob("*.md")), ROOT / "README.md",
-             *sorted((ROOT / ".claude/commands").glob("*.md"))]
+    pages = [*sorted((ROOT / "docs/content").rglob("*.md")), ROOT / "README.md"]
     errors, count = [], 0
     for page in pages:
         for line, flag in documented_flags(page.read_text(encoding="utf-8").splitlines()):

@@ -199,25 +199,6 @@ option; nothing is turned off silently. Defaults are the ones every platform can
 | `DTWC_ARCH_LEVEL` | `""` | CPU target of x86-64 builds: `native` (`-march=native`; the default for C++ builds), `v3` (x86-64-v3: AVX2+FMA, the default for Python builds and the floor of released wheels and archives), `v4` (AVX-512). arm64 takes no flag from `v3` |
 | `DTWC_CUDA_ARCH_LIST` | `80-real;86-real;89-real;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set (compute capability 8.0 is the floor) |
 
-AI-assisted workflow (Claude Code)
-===========================
-
-DTWC++ ships with Claude Code slash commands in `.claude/commands/` so users can drive the library through their AI assistant:
-
-| Command | Purpose |
-|---------|---------|
-| `/cluster` | Full pipeline: load data, pick method, cluster, evaluate, save |
-| `/distance` | Compute DTW distances (single pair or full pairwise matrix) |
-| `/evaluate` | Silhouette, Davies-Bouldin, Calinski-Harabasz, ARI, NMI |
-| `/convert` | Convert between CSV, Parquet, Arrow IPC, HDF5 |
-| `/visualize` | Plot clusters, silhouette, distance-matrix heatmap, warping path |
-| `/help` | Algorithm selection, variant guide, parameter tuning reference |
-| `/troubleshoot` | Diagnose build errors, runtime crashes, performance |
-
-Example: from within Claude Code, type `/cluster data/ecg.csv -k 5 --variant wdtw` and the assistant generates and runs a complete Python script using the DTWC++ API, then reports results and suggests next steps.
-
-Commands are discovered automatically when Claude Code is launched from the repository root. See [`docs/content/getting-started/ai-commands.md`](docs/content/getting-started/ai-commands.md) for details.
-
 Citation
 ===========================
 

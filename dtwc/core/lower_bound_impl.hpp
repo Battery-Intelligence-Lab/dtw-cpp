@@ -11,7 +11,6 @@
  *            warping," Knowledge and Information Systems 7.3 (2005): 358-386.
  *
  * @author Volkan Kumtepeli
- * @author Claude 4.6
  * @date 28 Mar 2026
  */
 

@@ -58,7 +58,7 @@ node_modules/
 *.pdb
 *.ilk
 
-# Python
+# Python & MATLAB MEX
 *.egg-info/
 __pycache__/
 *.pyc
@@ -81,13 +81,6 @@ uv.lock
 /coverage.xml
 /CMakeUserPresets.json
 
-# Claude Code worktrees and session artifacts (not for version control)
-.claude/worktrees/
-/.claude/scheduled_tasks.lock
-.claude/reports/
-# .claude/summaries/
-# .claude/superpowers/
-
 # Virtual environments
 .venv*/
 venv/
@@ -105,17 +98,14 @@ fast_pam_test*.csv
 # CTest scratch (created when tests run from the repo root)
 /Testing/
 
-# CPM cache
+# CPM cache & local scratch/private directories
 cmake-build-*/_deps/
-.claude/settings.local.json
+/.claude/
+/graphify-out/
+/results/
 /data/test_*
 .env
 .env.*
 !.env.example
 *.aux
 *.log
-
-# The maintainers' run records and charter stay on disk, out of git (Volkan 2026-10-09).
-.claude/baselines/
-.claude/CHARTER.md
-/graphify-out

@@ -87,7 +87,7 @@ class TestDiagnoseClusters:
         assert any("idle-medoid" in f for f in out["flags"])
 
     def test_flags_degenerate_hierarchical_split(self):
-        # 19-vs-1 split (matches the Kasper hierarchical pattern)
+        # 19-vs-1 split (highly imbalanced hierarchical partition)
         series = [[100.0] * 5] * 20
         labels = [0] * 19 + [1]
         out = dx.diagnose_clusters(

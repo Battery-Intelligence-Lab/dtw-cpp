@@ -2,7 +2,7 @@ name: CUDA detection smoke test
 
 on:
   push:
-    branches: [main, develop, Claude]
+    branches: [main, develop]
   pull_request:
     branches: [main]
 

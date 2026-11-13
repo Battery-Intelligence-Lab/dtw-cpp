@@ -4,7 +4,6 @@
  *        the kernels' and algorithms' translation units include, keeps the five-argument form the bindings call.
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 5.5 (RR1b)
  * @date 03 Nov 2026
  */
 

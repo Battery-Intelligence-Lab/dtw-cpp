@@ -9,7 +9,6 @@
  * eight numbered sections of plain ASCII, at most 100 columns. Nothing time-dependent reaches another output.
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 5.5
  * @date 03 Nov 2026
  */
 

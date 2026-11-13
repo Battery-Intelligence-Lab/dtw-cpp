@@ -8,7 +8,6 @@
  *          run's order, their wall seconds summing to no more than the total row's).
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 5.5 (RR1b)
  * @date 03 Nov 2026
  */
 

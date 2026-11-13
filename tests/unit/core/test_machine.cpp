@@ -4,7 +4,6 @@
  *        memory with llfio, the GPU line with a GPU run only. Contracts, never a literal fact of a machine.
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 5.5 (RR1a)
  * @date 03 Nov 2026
  */
 

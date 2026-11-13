@@ -33,7 +33,6 @@
  *          the dispatch + CHANGELOG). The default build is unbanded anyway.
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 4.8
  * @date 2026-07-08
  */
 

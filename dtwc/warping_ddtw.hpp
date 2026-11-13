@@ -17,7 +17,6 @@
  *            SIAM International Conference on Data Mining, 2001.
  *
  * @author Volkan Kumtepeli
- * @author Claude 4.6
  * @date 28 Mar 2026
  */
 

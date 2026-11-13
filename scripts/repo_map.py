@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # @author Volkan Kumtepeli
-"""Regenerate the mechanical half of .claude/MAP.md (read-only, stdlib only).
+"""Inspect the include-layer graph and Doxygen symbols of dtwc/ (read-only, stdlib only).
 
   uv run --no-project python scripts/repo_map.py layers [--max-upward N] [--edges A:B ...]
   uv run --no-project python scripts/repo_map.py symbols <doxygen-xml-dir>

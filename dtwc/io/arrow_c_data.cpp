@@ -4,7 +4,6 @@
  *        into a Data, read with nanoarrow's views (see arrow_c_data.hpp).
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 4.8
  * @date 09 Jul 2026
  */
 

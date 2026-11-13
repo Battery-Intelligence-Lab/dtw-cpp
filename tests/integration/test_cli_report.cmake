@@ -4,7 +4,6 @@ cmake_minimum_required(VERSION 3.26)
 # which are the same bytes with it and without it (--no-report); the run names it on stdout, and --no-report writes
 # and names none. The report's text holds times and the machine's facts: only its first lines are read here.
 # @author Volkan Kumtepeli
-# @author Claude Opus 5.5 (RR1b)
 foreach(required_var IN ITEMS CLI INPUT WORK_ROOT)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "missing required -D${required_var}=...")

@@ -9,7 +9,6 @@
  *          backend.
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 5.5 (RR1a)
  * @date 03 Nov 2026
  */
 

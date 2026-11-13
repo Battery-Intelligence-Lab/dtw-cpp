@@ -21,7 +21,6 @@
  *          Recognition, 44(9), 2231-2240 (2011).
  *
  * @author Volkan Kumtepeli
- * @author Claude 4.6
  * @date 28 Mar 2026
  */
 

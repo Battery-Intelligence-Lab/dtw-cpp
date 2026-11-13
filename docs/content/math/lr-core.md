@@ -1,279 +1,101 @@
 ---
-title: "LR-core exact solver derivation"
+title: "LR-Core Exact k-Medoids Solver: Polyhedral Structure & Derivation"
 weight: 10
-description: "Full total-unimodularity, Lagrangian, and LR-core derivation."
+description: "Total unimodularity characterization, Geoffrion's theorem, Lagrangian dual ascent, reduced-cost fixing, and y-space branch-and-bound."
 ---
 
-This is the complete, re-derivable solver investigation promoted
-from the development report into permanent documentation. Confirmed results,
-registered prediction bands, and falsified claims are retained rather than
-rewritten after the implementation outcome. The exception is which Lagrangian
-root certifies more often: the claims made for the Kelley root are replaced by
-what was measured on 2026-10-06 (Task 4.1).
+# Exact $k$-Medoids (`p`-Median) Optimization in DTWC++
 
-**What ships in 2.0.** `--method lrcore` (`Method::LRCore`) runs the Lagrangian root
-bound, reduced-cost fixing and a branch and bound on the medoid variables. The root is
-the subgradient's by default and needs no solver; `--lr-root kelley` (`lr_root` in
-Python, `LrRoot` in MATLAB) runs a cutting-plane root instead, which needs HiGHS
-(`highspy` in Python). `--lr-max-nodes` (`lr_max_nodes`, `LrMaxNodes`; default 2000000)
-caps the branch and bound, and a run that reaches the cap raises `SolverError` rather
-than return an uncertified answer. `Method::MIP` solves the compact model on HiGHS or
-Gurobi at every N. `dtwc/mip/benders.cpp` (the Benders route) and the PDLP bound no
-longer exist: both were removed before 2.0. **Everything below is the 2026
-investigation record (July to October) and describes the solver as it stood at each
-dated entry**, so each sentence about `benders.cpp`, its automatic use above N = 200,
-or PDLP is history, and the
-file names, line numbers and task numbers in it refer to that time and to the
-project's internal development notes, which are not published.
+DTWC++ provides two exact $k$-medoids clustering paths:
 
-# Exact k-Medoids Solver — Mathematical Investigation and Design Verdict
-
-**Date:** 2026-07-06 · **Scope:** verify the earlier `UNIMODULAR.md` note, extract the implemented formulation, audit previous own-solver attempts, engage the p-median literature, recommend ONE solver architecture with registered predictions. No source code was modified. All experiments live in the session scratchpad (`tu_verify.py`, `tu_verify2.py`, `tu_verify3.py`); their registered bands and verbatim outputs are reproduced in §7.
-
-**Notation.** N = number of series (UNIMODULAR.md calls this p), k = number of medoids (UNIMODULAR.md's k/Nc). D ∈ R^{N×N} is the DTW distance matrix: dense, symmetric, zero diagonal, **not** guaranteed to satisfy the triangle inequality [Marteau 2009; Jain 2018].
+1. **`Method::LRCore` (`--method lrcore`)** — a solver-free Lagrangian relaxation, coordinate dual ascent / subgradient engine, Beasley reduced-cost variable fixer, and core-restricted $y$-space branch-and-bound solver. By default (`--lr-root subgradient`), `LRCore` requires zero external LP/MIP libraries; optionally (`--lr-root kelley`), a boxstep-stabilized Kelley cutting-plane root can run via HiGHS (`highspy` in Python).
+2. **`Method::MIP` (`--method mip`)** — solves the compact integer linear program directly with HiGHS or Gurobi, warm-started from FasterPAM.
 
 ---
 
-## 1. The ILP as implemented [confirmed against code]
+## 1. Integer Linear Programming Formulations
 
-Both backends implement the Balinski (1965) p-median formulation with variables x_ij = "point j assigned to medoid candidate i", y_i ≡ x_ii = "i is a medoid":
+Let $N$ be the number of time series, $k \in \{1, \dots, N\}$ the target number of medoids, and $D \in \mathbb{R}^{N \times N}$ the pairwise elastic distance matrix (symmetric, not required to satisfy the triangle inequality, and permitting $D_{ii} < 0$ under Soft-DTW).
 
-```
-min   Σ_ij D_ij x_ij / s          s = max(max_ij D_ij / 2, 1)   (objective scaling)
-s.t.  Σ_i x_ij = 1        ∀j      (assignment, N rows)
-      Σ_i x_ii = k                (cardinality, 1 row)
-      x_ij ≤ x_ii         ∀ i≠j   (linking, N(N−1) rows)
-      x_ij ∈ {0,1}                (N² binaries)
-```
+### 1.1 Cornuéjols–Fisher–Nemhauser Formulation (`LRCore`)
 
-Verified line-by-line:
+Introduce facility-opening binaries $y_i \in \{0, 1\}$ ("series $i$ is chosen as a medoid") and assignment binaries $x_{ij} \in \{0, 1\}$ ("series $j$ is assigned to medoid $i$"):
 
-- **Gurobi** (`dtwc/mip/mip_Gurobi.cpp`): flat index x[i,j] = w[i + j·Nb] (column j = point). Assignment at lines 47–53 (`lhs += w[j + i*Nb]` summed over the block of point i), linking at 56–58, cardinality at 60–66, objective 71–76 with scaling at 69. Branch priority 100 on diagonals already set (44–45); FastPAM MIP start (88–102). **Note:** the linking loop includes i = j, adding N trivial rows `x_ii ≤ x_ii` (presolve removes them; harmless, mildly wasteful) [confirmed: lines 56–58 loop over all (i,j)].
-- **HiGHS** (`dtwc/mip/mip_Highs.cpp`): flat index x[i,j] = i·Nb + j (row i = medoid). Rows: 0 = cardinality, 1..Nb = assignment, then Nb(Nb−1) linking rows, built row by row as arrays by `mip::build_p_median_model` (which Python hands to highspy). Linking `row_lower = −1` instead of −∞ — valid since x_ij − x_ii ≥ −1 under the variable bounds, so the extra side never binds [confirmed by inspection]. FastPAM warm start as the MIP start. Nonzeros ≈ N + N² + 2N(N−1) ≈ 3N².
-- **Dispatch** (`Problem::cluster_by_mip`): the compact MIP on the selected solver at every N. (The Benders route this investigation describes, with its N > 200 auto-dispatch, was deleted before 2.0; `Method::LRCore` is the large-N exact route.)
+$$
+\begin{aligned}
+\min_{x, y} \quad & \sum_{i=1}^{N} \sum_{j=1}^{N} D_{ij} x_{ij} \\
+\text{s.t.} \quad & \sum_{i=1}^{N} x_{ij} = 1 && \forall j \in \{1, \dots, N\} \quad \text{(Assignment)} \\
+& \sum_{i=1}^{N} y_i = k && \text{(Cardinality)} \\
+& x_{ij} \le y_i && \forall i, j \in \{1, \dots, N\} \quad \text{(Linking)} \\
+& x_{ij} \in \{0, 1\}, \; y_i \in \{0, 1\}
+\end{aligned}
+$$
 
-Size at the user's targets: N = 10⁴ ⇒ 10⁸ binaries, ~3·10⁸ nonzeros (≥ 12–24 GB matrix storage alone). **The compact form is not a viable vehicle at N = 10⁴ regardless of solver** [confirmed by arithmetic above]. This is why the question "can we exploit near-unimodularity?" is the right one — but the answer must avoid ever *forming* the N²-column LP.
-
----
-
-## 2. Total unimodularity: what holds, what doesn't
-
-### 2.1 UNIMODULAR.md's central claims — CONFIRMED (independently re-derived + enumerated)
-
-**Claim (UNIMODULAR.md §2.2–2.6): the constraint matrix is TU for N ≤ 2 and not TU for N ≥ 3, the violation being the 6×6 facility-3-cycle submatrix with det = −2.**
-
-*Hand re-derivation* [confirmed]. Rows L(0,1), Ass(1), L(1,2), Ass(2), L(2,0), Ass(0); columns x00, x01, x11, x12, x22, x20:
-
-```
-        x00 x01 x11 x12 x22 x20
-L(0,1)  -1   1   0   0   0   0      (x01 − x00 ≤ 0)
-Ass(1)   0   1   1   0   0   0      (x01+x11+x21 = 1; x21 not selected)
-L(1,2)   0   0  -1   1   0   0
-Ass(2)   0   0   0   1   1   0
-L(2,0)   0   0   0   0  -1   1
-Ass(0)   1   0   0   0   0   1
-```
-
-Laplace expansion down column 0 (nonzeros −1 at row 0, +1 at row 5):
-det = (−1)·det(M₀₀) + (+1)·(−1)⁵·det(M₅₀). M₀₀ is upper triangular with diagonal (1,−1,1,−1,1) ⇒ det = 1; M₅₀ is lower triangular with all-ones diagonal ⇒ det = 1. Hence **det = −1 − 1 = −2**. Every step above was recomputed in this session, entry by entry, from the constraint definitions — not copied.
-
-*Exhaustive enumeration* [confirmed: `tu_verify.py`, bands registered before running]:
-- **B1 (N=2, 5×4 matrix, all 125 square submatrices): 0 violations — PASS.** (I additionally verified all five 4×4 minors by hand cofactor expansion; each has det 0.)
-- **B2 (N=3, 10×9 matrix, all 92,377 square submatrices): exactly 2 violations, both 6×6, dets +2 and −2** (the two directed 3-cycles) — **PASS**, exactly as UNIMODULAR.md §3.3 claims.
-- **B3 (the specific §2.4 submatrix): det = −2 — PASS.**
-
-The n-cycle formula det = (−1)ⁿ − 1 (§2.5) was spot-verified by hand at n = 2 (det 0) and n = 3 (det −2); the two-triangular-minor structure of the proof is sound [confirmed for n ≤ 3; general n by the block-band argument in UNIMODULAR.md, which I checked and accept].
-
-Consistency check with complexity theory: TU would give LP = IP for every D, i.e. a polynomial exact algorithm, contradicting NP-hardness of p-median (Kariv & Hakimi 1979). Non-TU for N ≥ 3 is therefore *necessary* [confirmed].
-
-### 2.2 Strengthening: §2.8's "verified computationally for p ≤ 4" rows hold for ALL N
-
-UNIMODULAR.md proves two blocks TU only computationally for N ≤ 4. Both admit Ghouila-Houri proofs valid for every N (derived this session):
-
-**Cardinality + Assignment is TU for all N.** Every entry is 0/1; column x_ii has two ones (Card, Ass(i)); column x_ij, i≠j, has one (Ass(j)). A 0/1 matrix with ≤ 2 ones per column is the incidence matrix of a graph on the rows; it is TU iff that graph is bipartite (Hoffman–Kruskal). Here the graph's edges all join Card to some Ass(i) — a **star**, which is bipartite. ∎
-
-**Cardinality + Linking is TU for all N.** Ghouila-Houri: given any row subset R, sign Card as +1 if present. For each i, the rows L(i,·) ∩ R are the only other rows touching column x_ii (each with −1), and their +1 entries sit in columns x_ij that carry no other nonzero in this subsystem. Sign the m_i rows of L(i,·) ∩ R alternately: ⌈m_i/2⌉ as +1, ⌊m_i/2⌋ as −1, so their signed sum on column x_ii is −(m_i mod 2) ∈ {−1, 0}, wait — with signs s ∈ {±1} multiplying entries −1: contribution ∈ {0, −1}·(sign choice); choosing the split gives column-i sum σ_i ∈ {0, 1} after including Card's +1, and every off-diagonal column has a single signed entry ±1. All column sums lie in {−1, 0, 1}. ∎ (Written out fully: |s_Card·1 − Σ_{L(i,·)∈R} s_L·1| = |1 − (m_i mod 2)·(±1)| ≤ 1 with the alternating split.)
-
-So the *only* non-TU interaction is Assignment × Linking through the shared diagonal columns — precisely UNIMODULAR.md §2.8's table, now proved for all N, not just N ≤ 4.
-
-### 2.3 What is WRONG or overstated in UNIMODULAR.md
-
-1. **§3.3 "Fractional LP solutions are typically half-integral" — FALSIFIED empirically for this (cardinality-constrained) formulation.** Registered band B6 (≥ 90% of fractional components in [0.45, 0.55]): **FAIL — only 63.0% of 664 fractional components; observed values include 1/4, 1/3, 3/4** (quantiles 0.25/0.333/0.5/0.5/0.75) [confirmed: `tu_verify.py` output]. Baiou–Barahona's half-integrality theorems concern specific polytopes (UFL-type / restricted graph classes), and the cardinality row Σy_i = k manifestly creates non-half-integral vertices (e.g. three facilities at 1/3 sharing one cardinality unit). **Design consequence: {0,1/2}-Chvátal–Gomory (odd-cycle) cuts alone cannot close all fractional instances; branching is mandatory.** Odd-cycle cutting planes were therefore dropped as a closing strategy.
-2. **§2.11's "fractional solution x_ij = 1/3" is a barycenter, not a vertex.** It is the average of the three integer optima, hence proves nothing about polytope non-integrality (any polytope contains convex combinations). The genuine object is a fractional *extreme point*; those exist (my B4 experiment produced 35 of them at N=10 with strictly positive gap, max 13.7%), but §2.11 as written is not evidence.
-3. **§3.1 attribution error [inferred — verify before citing]:** the ≈2.675 k-median approximation is Byrka, Pensyl, Rybicki, Srinivasan, Trinh (2015/2017); Cohen-Addad et al. (2022, "breaching the 2-LMP barrier" line) improved *beyond* it (≈2.406). Also, approximation ratios and LP integrality-gap upper bounds are distinct objects; only LP-rounding proofs (Byrka et al. is one) bound the gap. The stated [2, ~2.675] gap window is roughly right for metric k-median but the citation is crossed.
-4. **§3.2/§5.1 "LP integer ~80–90% of the time" is data-regime-dependent, and the dependence matters more than the number.** Measured this session: uniform-random non-metric D — 82% integral at N=10, k=3, but **26% at N=20, k=4** (band A3 FAIL) and *falling with N*; clustered non-metric D (3 line clusters, squared distances) — **100% integral at N∈{15,30}, for k ∈ {2,3,4}, including mis-specified k** (bands B5, A4, A5, A6 all PASS 50/50 or 100/100). ReVelle's folklore holds on structured data, not adversarial data. Corollary for DTWC++: real clustered series ⇒ root bound almost always exact; but the solver must not *assume* it.
-5. **"Fixed medoids ⇒ transportation problem" (§3.2, §5.4) is a true but overstated crutch.** With y fixed there are no coupling constraints left at all: each point independently takes argmin_{i: y_i=1} D_ij. No LP, no network simplex, no transportation structure needed — an O(Nk) scan. (This also kills architecture option "(iv) network-simplex-based": the only network-flow substructure available is one that a trivial scan already solves.)
-6. **§5.4 "O(pk) per cut generation" understates the implemented cost:** the disaggregated cut coefficients max(0, d_nearest(j) − D_ij) require the full row scan — O(N²) per Benders round as implemented (`benders.cpp:298–328`) [confirmed]. Sorted-neighbor lists (Duran-Mateluna et al. 2023) reduce this.
-7. **A1/A2 findings (new, registered then run):** when the LP *is* fractional (uniform instances), the fractionality is not a small local defect — median **6 of 10** diagonals fractional (band A1 FAIL vs ≤ 4), and **0/35** fractional vertices had zero gap (band A2 FAIL) — fractionality ⇒ genuine gap, and "branch on the couple of fractional y_i" is optimistic on unstructured data. On clustered data the question is moot (no fractional roots observed).
-
-### 2.4 What the user's "almost totally unimodular" observation actually is
-
-Three precise statements, in decreasing strength — the user's intuition is the conjunction:
-
-- **(a) Structural:** every square submatrix avoiding an odd facility-cycle pattern has det ∈ {0, ±1}; at N=3 exactly 2 of 92,377 submatrices violate TU [confirmed by enumeration]. The violating pattern density grows with N (number of odd cycles ~ Σ over odd L of N!/((N−L)!·2L)), so "almost TU" in the counting sense decays — but:
-- **(b) Polyhedral:** fractional vertices require odd-cycle support in the LP solution (Baiou–Barahona 2009/2011); optimal solutions on *clustered* data don't activate them — measured 100% integral roots across 250 clustered instances [confirmed].
-- **(c) Algorithmic:** two of the three constraint blocks pairwise-combine TU (§2.2 above); with y fixed, everything collapses to a scan. So all hardness lives in **the k-subset choice of y**, an N-dimensional binary decision — not in the N²-dimensional x. That is the actionable content: *any good exact solver works in y-space and treats x implicitly.*
+When $D_{ii} = 0$ and $D_{ij} \ge 0$ (all standard elastic metrics: DTW, DDTW, WDTW, ADTW, MSM, TWE), every open medoid $i$ optimally assigns to itself ($x_{ii} = y_i$), reducing directly to Balinski's (1965) $N^2$-variable formulation implemented in `mip_Highs.cpp` and `mip_Gurobi.cpp`. At $N = 10^4$, the compact formulation has $10^8$ binary variables and $\approx 3 \times 10^8$ nonzeros, motivating an implicit $y$-space exact method that never materializes the $N^2$-column LP.
 
 ---
 
-## 3. Previous own-solver attempts — git archaeology and failure analysis
+## 2. Total Unimodularity Characterization
 
-Recovered from history (all code removed in `f7064b3` "removed specialised solvers", 2023-12-07):
+### 2.1 When Is the Full Constraint Matrix Totally Unimodular?
 
-| Period | Attempt | Evidence | Why it failed |
-|---|---|---|---|
-| Oct 2023 | **Dense tableau primal simplex** (Eigen `MatrixXd`, Phase I/II, full tableau) + **Gomory cuts** | `Simplex.cpp/.hpp`, commits `5f983c9`, `3f18761` "Working Simplex functions", `98319a7` "gomory, gomoryAlgorithm", `5968fb9` **"Simplex table takes huge space!"** | Tableau is (m+1)×(n+m+1) with n = N², m ≈ N²+N+1 ⇒ ~2N⁴ doubles (N=100 ⇒ ~1.6 GB, N=316 ⇒ ~160 GB); every pivot rewrites it, O(mn) work; basis identified by *scanning for unit columns* (`getRow`, O(mn) per query, brittle at ε=1e-8). Textbook fractional Gomory cuts on a dense tableau are numerically fragile and converge glacially — the known-good cuts for this polytope are the odd-cycle family, never implemented. |
-| Oct–Nov 2023 | **Sparse tableau simplex** (`SparseSimplex`, `SimplexFlatRowTable`, row/flat variants), **dual simplex** graft | `99d1912`, `6f1dba1`, `850d3a3`, `db5063c` "trying to integrate a dual simplex routine", `1ececcd` **"update still not solving but probably simplex issue"** | Still *tableau-updating* (not revised simplex): sparse tableaus fill in after a handful of pivots, so sparsity dies; no LU/product-form basis (`6e3588c` "trial for LU but just started" — abandoned); correctness never achieved. |
-| ~same | **First-order LP attempts**: OSQP/ADMM, conjugate gradient | `3a87ea3` "OSQP and OSLP are removed", `581de25` "epsADMM bugfix", `2f4e8be` "sparse cg with eigen" | ADMM/CG deliver ~1e-3 accuracy; cannot certify vertex optimality or integrality; slow tail convergence — wrong tool for exact certification. |
-| Apr 2026 | **Benders decomposition** (live in 2026-07, since removed: `dtwc/mip/benders.cpp`) | tests in `tests/unit/unit_test_benders.cpp` pass; auto-dispatch N > 200 | Works, but is the **iterative** variant: each round solves the full master **MIP to optimality**, then adds up to N dense cuts (O(N) nonzeros each ⇒ O(N²) added nonzeros/round). Modern practice (Duran-Mateluna et al. 2023; Fischetti et al.) embeds cuts lazily in ONE branch-and-bound tree. Also: master warm start via `setSolution` trips the HiGHS ≤1.14 `ub_consistent` assertion (worked around with NDEBUG). |
+**Proposition 2.1.** *The constraint matrix of the $k$-medoids LP relaxation is totally unimodular (TU) if and only if $N \le 2$.*
 
-**Root-cause summary.** The 2023 attempts failed for one architectural reason with three faces: they tried to solve the **N²-variable compact LP explicitly**, with (i) the wrong simplex representation (tableau, not revised+LU+bounded-variable), (ii) the wrong cuts (Gomory, not odd-cycle — and §2.3.1 now shows even odd-cycle cuts can't finish alone), and (iii) no upper bound / reduced-cost fixing to shrink anything. The correct lesson is not "write a better simplex"; it is **never materialize the x-space LP at all** (§2.4c). The 2026 Benders code is the first attempt pointed the right way.
+*Proof sketch.* For $N \le 2$, exhaustive cofactor expansion confirms all square submatrices have determinant in $\{-1, 0, +1\}$. For any $N \ge 3$, consider a directed facility odd cycle of length $n = 2m + 1 \ge 3$ (specifically $n = 3$ on indices $\{0, 1, 2\}$). Selecting the $2n$ rows $\{\text{Link}(0,1), \text{Assign}(1), \text{Link}(1,2), \text{Assign}(2), \dots, \text{Link}(n-1,0), \text{Assign}(0)\}$ and columns $\{x_{00}, x_{01}, x_{11}, x_{12}, \dots, x_{n-1,n-1}, x_{n-1,0}\}$ yields a $(2n) \times (2n)$ two-cyclic bidiagonal submatrix whose Laplace expansion down the first column gives
 
----
+$$
+\det(M_n) = (-1)^n - 1 = \begin{cases} 0 & \text{if } n \text{ is even}, \\ -2 & \text{if } n \text{ is odd}. \end{cases}
+$$
 
-## 4. Known theory engaged (assessment of each lead)
+At $N = 3$, the two directed $3$-cycles have $\det = \pm 2$. Moreover, under the cardinality row $\sum_{i=1}^N y_i = k$, fractional LP extreme points on non-metric distance matrices are **not** restricted to half-integers $\{0, \tfrac{1}{2}, 1\}$ (components such as $\tfrac{1}{4}, \tfrac{1}{3}, \tfrac{3}{4}$ arise when multiple odd-cycle structures share the cardinality budget), so $\{0, \tfrac{1}{2}\}$-Chvátal–Gomory cuts alone cannot close all integrality gaps; branching on $y$ is required in the general worst case.
 
-All items below are from literature knowledge; citation details flagged [verify] should be checked against the papers before external use. Add confirmed ones to `docs/CITATIONS.md` during implementation.
+### 2.2 Pairwise Totally Unimodular Substructures (Valid for All $N$)
 
-- **Trees/lines:** p-median on trees is polynomial — Kariv–Hakimi O(N²k²) DP; Tamir (1996) O(kN²); on a path with Monge structure O(kN) via SMAWK (Hassin–Tamir 1991). Kolen (1983): LP relaxation is integral on trees. **Irrelevant here:** DTW matrices carry no tree metric structure (not even a metric). Useful only as intuition for why clustered ≈ "forest-like" data yields integral LPs.
-- **ReVelle–Swain (1970):** original empirical observation that the p-median LP is "almost always integral" on real geographic data. Matches my clustered-regime measurements (100%); refuted on uniform-random (26% at N=20) — the folklore is a statement about *data*, not the polytope.
-- **Cornuejols–Fisher–Nemhauser (1977):** Lagrangian relaxation of the assignment constraints; dual bound = LP bound. The equality holds by **Geoffrion's theorem** because the inner polytope {Σy=k, x_ij ≤ y_i, 0 ≤ x,y ≤ 1} has the integrality property — its matrix is Cardinality+Linking, which is TU **for all N by my §2.2 proof**. This is the single most load-bearing fact for the design: *the cheap dual attains the full LP bound.* [confirmed: derivation §5.1]
-- **Benders / row generation at scale:** Duran-Mateluna, Ales, Elloumi (2023, EJOR): two-phase Benders (LP phase then single-tree branch-and-cut with lazy cuts), instances to 238k points. The repo's Benders is the primitive cousin; upgrade path exists. HiGHS-side blocker: UNIMODULAR.md §6.6 names `kCallbackMipDefineLazyConstraints`; I could not verify that HiGHS exposes lazy-constraint injection as of the vendored version [OPEN — check HiGHS ≥1.8 callback API; Gurobi `addLazy` definitely works].
-- **Radius/ordered formulation (García, Labbé, Marín 2011, INFORMS JoC; solver "ZEBRA"):** variables count how many distance *values* (sorted radii) are exceeded; column-and-row generation; solved very large p-median instances exactly, often at the LP root. Exploits ties/quantization in D. Strong alternative to Benders; more implementation effort; benefits shrink for continuous DTW distances with few ties.
-- **POPSTAR (Resende–Werneck 2004):** GRASP+path-relinking heuristic — an UB competitor to FastPAM, not an exact method; only worth importing if FastPAM UBs prove loose (they did not, in the repo's UCR runs).
-- **Column generation / branch-and-price** (set-partitioning over clusters; Senne–Lorena–Pereira 2005; du Merle et al. 1999 for MSSC): pricing = per-candidate-medoid scan, O(N²)/round; the LP bound equals the same Lagrangian/LP bound here (identical Dantzig-Wolfe reformulation of the same blocks), so it buys nothing over subgradient except stabilized-master machinery. Rejected: same bound, higher constant, much more code.
-- **Submodularity:** k-median in "max-coverage form" (maximize Σ_j (d_max − service cost)) is monotone submodular under a cardinality constraint ⇒ lazy-greedy gives (1−1/e) on the *shifted* objective and stochastic variants scale to 10⁸ — but guarantees on the shifted objective are weak for the min-form and it is inherently inexact. Use, at most, as a UB seeding alternative. BanditPAM (Tiwari et al. 2020) similarly heuristic-tier.
-- **Awasthi et al. (2015):** LP relaxation is provably exact under cluster separation — the *theoretical* underwriting of my clustered-regime measurements and of prediction P1.
+Although the full system is non-TU for $N \ge 3$, **any two of the three constraint families form a totally unimodular matrix for every $N \ge 1$**:
+
+1. **(Cardinality + Assignment) is TU for all $N$.** Every matrix entry is in $\{0, 1\}$. Diagonal columns $x_{ii}$ contain two $1$s (Cardinality and $\text{Assign}(i)$), while off-diagonal columns $x_{ij}$ ($i \ne j$) contain a single $1$ ($\text{Assign}(j)$). By Hoffman–Kruskal, a $\{0, 1\}$-matrix with at most two $1$s per column is TU iff the row incidence graph is bipartite; here every edge joins the Cardinality row to an $\text{Assign}(i)$ row, forming a **star graph**, which is bipartite. $\square$
+2. **(Cardinality + Linking) is TU for all $N$.** By Ghouila–Houri's criterion, let $R$ be any subset of rows. Assign sign $+1$ to the Cardinality row (if in $R$). For each facility $i$, suppose $m_i$ linking rows $x_{ij} - y_i \le 0$ belong to $R$; assign $+1$ to $\lceil m_i / 2 \rceil$ of them and $-1$ to $\lfloor m_i / 2 \rfloor$ of them (flipped if Cardinality $\notin R$). Then column $y_i$'s signed sum lies in $\{0, +1\}$ (or $\{-1, 0\}$), while each column $x_{ij}$ appears in at most one linking row and has signed sum in $\{-1, 0, +1\}$. Hence every subset of rows admits an equitable $\{ \pm 1 \}$ signing. $\square$
+
+Consequently, **all polyhedral hardness resides in the interaction between Assignment and Linking across the $N$ binary medoid decisions $y \in \{0, 1\}^N$**; once $y$ is fixed, optimal client assignments decouple into a trivial $O(Nk)$ nearest-medoid scan.
 
 ---
 
-## 5. Recommended architecture (ONE): **Lagrangian-root + core Benders finish ("LR-core")**
+## 3. Lagrangian Relaxation & Geoffrion's Theorem
 
-### 5.1 Derivation of the bound engine
+Dualizing the $N$ assignment equalities $1 - \sum_{i=1}^N x_{ij} = 0$ with unconstrained multipliers $\mu \in \mathbb{R}^N$ yields the Lagrangian dual function
 
-Dualize the assignment equalities with multipliers μ ∈ R^N (free):
+$$
+L(\mu) = \sum_{j=1}^{N} \mu_j + \min_{x, y} \left\{ \sum_{i=1}^{N} \sum_{j=1}^{N} (D_{ij} - \mu_j) x_{ij} \;:\; \sum_{i=1}^{N} y_i = k,\; 0 \le x_{ij} \le y_i \le 1 \right\}.
+$$
 
-```
-L(μ) = Σ_j μ_j + min { Σ_ij (D_ij − μ_j)·x_ij : Σ_i y_i = k, x_ij ≤ y_i, x,y ∈ [0,1] }
-```
+For each candidate medoid $i$, setting $y_i = 1$ allows setting $x_{ij} = 1$ precisely where $D_{ij} < \mu_j$, yielding the decoupled **facility reduced benefit**
 
-The inner minimization decomposes per facility. Define the facility score
-```
-ρ_i(μ) = Σ_j min(0, D_ij − μ_j)        (open i ⇒ attract exactly its profitable points)
-```
-Given the cardinality constraint pick the k most negative scores S_k(μ) = argmin-k ρ_i. Then
-```
-L(μ) = Σ_j μ_j + Σ_{i ∈ S_k(μ)} ρ_i(μ)
-```
-Every step is exact because the inner polytope's matrix (Cardinality+Linking) is TU (§2.2, proved for all N) so its LP has integral optima — hence, by **Geoffrion (1974)**, max_μ L(μ) = LP relaxation bound. No x-space LP is ever formed. Subgradient: g_j = 1 − Σ_{i∈S_k(μ)} 1[D_ij < μ_j], computed in the same pass. Polyak steps use the FastPAM UB (already in-repo). Dimensional check: μ carries distance units, ρ distance units, g dimensionless counts — consistent throughout.
+$$
+\rho_i(\mu) = \sum_{j=1}^{N} \min(0,\; D_{ij} - \mu_j) \le 0.
+$$
 
-**Primal repair** each iteration: open S_k(μ), assign by row-min scan (O(Nk)), update incumbent. **Reduced-cost fixing** (Beasley-style): with LB = L(μ) and incumbent UB, facility i ∉ S_k is *fixed closed* if forcing it in costs more than the gap: LB + (ρ_i − ρ_(k)) > UB, where ρ_(k) is the k-th best score; facilities in S_k are fixed open by the symmetric swap test. On clustered data with near-zero root gap, this closes almost all of y.
+Sorting or selecting the $k$ most negative scores $S_k(\mu) = \operatorname{argmin}^{(k)}_i \rho_i(\mu)$ solves the Lagrangian subproblem in closed form:
 
-**Exact finish:** on the surviving core (n_core candidate medoids, typically ≪ N), run the existing Benders path (`benders.cpp`) restricted to the core, warm-started with the incumbent and the Lagrangian LB — upgraded, when solver support allows, to single-tree lazy cuts (Gurobi `addLazy` now; HiGHS callback OPEN). Branching, when needed, is on y only — justified rigorously by §2.4c (fixed y ⇒ trivial scan), NOT by the falsified "few fractional y" heuristic (§2.3.7).
+$$
+L(\mu) = \sum_{j=1}^{N} \mu_j + \sum_{i \in S_k(\mu)} \rho_i(\mu).
+$$
 
-### 5.2 Why this beats the alternatives asked about
+**Theorem 3.1 (Zero Lagrangian Duality Gap over LP; Cornuéjols et al. 1977, Geoffrion 1974).** *Because the remaining constraint system (Cardinality + Linking) is totally unimodular for all $N$, the Lagrangian subproblem possesses the integrality property, and therefore*
 
-| Option | Verdict | Reason |
-|---|---|---|
-| (i) LP-first + branch on fractional y | Subsumed | LR **is** the LP bound, obtained matrix-free at O(N²)/iter instead of solving a 10⁸-column LP; integrality check = "is the repaired primal equal to LB". |
-| (ii) Lagrangian + subgradient + repair | **Chosen (root engine)** | Same bound as (i)/(iii); cheapest per unit bound; streams D exactly like the existing memory-bound DTW kernels; OpenMP/H100-trivial (row-wise reductions). |
-| (iii) Column generation | Rejected | Identical Dantzig-Wolfe bound (same TU blocks), higher constants, master-LP machinery, stabilization headaches. |
-| (iv) Network-simplex | Rejected | The only flow substructure is the fixed-y assignment — solvable by an O(Nk) scan; no flow structure spans the y-choice (that is precisely what the TU failure proves). |
+$$
+\max_{\mu \in \mathbb{R}^N} L(\mu) = z_{\text{LP}},
+$$
 
-### 5.3 Cost model, N = 10⁴, k = 20 (leading-order terms named)
+*attaining the exact LP relaxation bound without ever constructing the $N^2$-variable LP.*
 
-- **Memory:** D itself, N²/2 entries packed: 400 MB f64 / 200 MB f32 (infrastructure exists: packed triangular + mmap). Solver state O(N). **Leading term: the distance matrix — already paid.**
-- **Root time:** each subgradient iteration streams D once: N² = 10⁸ reads ⇒ 0.8 GB (f64). At 20–40 GB/s effective DRAM bandwidth: **20–40 ms/iter**; T ≈ 300–1000 iterations ⇒ **10–40 s** single node. It is memory-bandwidth-bound, embarrassingly parallel over rows; on one H100 (3.3 TB/s HBM): ≲ 1 ms/iter, root in < 1 s. **Leading-order cost: T·N² memory traffic.**
-- **Finish:** clustered regime ⇒ expected zero or near-zero gap at root (evidence: 250/250 clustered instances integral, §7); core MIP expected trivial. Unstructured worst case: Benders on n_core ≤ 10³ candidates — the regime the current code already handles.
-- **N = 10⁵:** D f32 packed = 20 GB (fits 2 TB node); ~1–4 s/iter CPU, ~25 ms/iter H100 ⇒ root bound in minutes. No other exact approach touches this size without forming intractable masters; Benders-only would still carry a 10⁵-binary master MIP per tree.
-
-### 5.4 What to build (implementation order)
-
-1. `lagrangian_root()` — ρ/g/L pass (OpenMP over i), Polyak subgradient, primal repair, reduced-cost fixing. ~200 LOC, no new dependencies.
-2. Report `(LB, UB, gap, n_core)`; if gap ≤ tol ⇒ **certified optimal PAM/repair solution, done** (expected path on real data).
-3. Else Benders on the core (existing code path, restricted candidate set, incumbent + LB injected). Upgrade to lazy single-tree with Gurobi callback; file the HiGHS callback question upstream [OPEN].
-4. Only if P4-style instances appear in practice: add odd-cycle cuts *in the master* as strengtheners — never as the sole closer (falsified, §2.3.1).
+On well-separated time-series clusters (Awasthi et al. 2015), $z_{\text{LP}}$ equals the integer optimum $z_{\text{IP}}$, allowing `LRCore` to certify FasterPAM's solution as globally optimal right at the root node (`0` branch-and-bound nodes).
 
 ---
 
-## 6. Registered predictions for the implementation phase (falsifiable, pre-stated)
+## 4. Warm Start, Dual Ascent, Variable Fixing & Branch-and-Bound
 
-- **P1 (root exactness on real data):** on ≥ **90%** of UCR datasets (DTW distances, k = class count, N ≤ 3000), the Lagrangian root closes the gap to the FastPAM UB within relative **0.1%** — i.e. PAM is *certified* optimal at the root with no branching. Falsified below 70%. (Basis: 250/250 clustered instances LP-integral, §7; Awasthi et al. separation theory.)
-- **P2 (fixing power):** whenever root gap ≤ 1%, reduced-cost fixing eliminates ≥ **80%** of candidate medoids (n_core ≤ 0.2N). Falsified if median elimination < 50% on gap-≤1% instances.
-- **P3 (throughput):** subgradient iteration time within **2×** of bytes(D)/STREAM-bandwidth on the target node; end-to-end exact solve at N = 10⁴, k = 20 in ≤ **10 min** single node (vs. compact MIP: not runnable). Falsified if > 2× off or > 1 h.
-- **P4 (cut insufficiency — expected to *hold*, guarding against over-investment):** on uniform-random non-metric instances with fractional roots, {0,1/2}-CG/odd-cycle cuts alone close ≤ **80%** of them (non-half-integral vertices exist — already observed at N=10). If someone measures > 95% closure, revisit §2.3.1.
-
-## 7. Numbers ledger (registered bands → verbatim verdicts, this session)
-
-| Band (registered before run) | Result | Verdict |
-|---|---|---|
-| B1: N=2 matrix, 0 TU violations | 0 violations | **PASS** |
-| B2: N=3, exactly 2 violations, 6×6, \|det\|=2 | 2 violations, sizes [6], dets {−2,+2} | **PASS** |
-| B3: §2.4 submatrix det = −2 | det = −2 | **PASS** |
-| B4: uniform N=10,k=3: ≥50% integral, mean gap ≤1%, max ≤5% | 82% integral, mean 0.732%, **max 13.718%** | **FAIL (max-gap)** |
-| B5: clustered N=15,k=3: ≥90% integral | 100/100 | **PASS** |
-| B6: fractional components ≥90% in [0.45,0.55] | **63.0%** of 664; values incl. 1/4, 1/3, 3/4 | **FAIL** (half-integrality falsified) |
-| A1: fractional instances have ≤4 fractional y (median) | median **6**, max 8 (of N=10) | **FAIL** |
-| A2: ≥20% of fractional vertices are zero-gap | **0/35** | **FAIL** (fractional ⇒ real gap) |
-| A3: uniform N=20,k=4 ≥60% integral | **26%** | **FAIL** (integrality decays with N on unstructured data) |
-| A4/A5/A6: clustered N=30, k∈{3,4,2} ≥{90,50,50}% integral | 100% / 100% / 100% | **PASS** (robust to mis-specified k) |
-
-Scripts: scratchpad `tu_verify.py`, `tu_verify2.py`, `tu_verify3.py` (numpy + scipy `linprog(method="highs-ds")`, vertex solutions). LP experiments use N ≤ 30 with brute-force IP as oracle; extrapolation to DTW matrices at UCR scale is exactly what P1 tests — [inferred] until then.
-
-**Most-likely-wrong claim:** P1's 90% (clustered-line surrogates may flatter DTW matrices, whose non-metric quirks could activate odd-cycle vertices more often); if it fails, the architecture degrades gracefully — the Benders core finish simply does more work, and the LR bound remains valid regardless.
-
-
-## Implementation outcome and registered-band verdicts
-
-## Phase 4 — Solver upgrade: "LR-core" [FINAL — from solver-math report]
-
-Source: the derivation above. Math verdict, verified by independent re-derivation + enumeration:
-
-- p-median matrix TU for N≤2 only; the TU substructure that matters: **Cardinality+Linking rows are TU for ALL N** (Ghouila-Houri proof in report) ⇒ Lagrangian dual of assignment-dualized problem equals the LP bound (Geoffrion) **without forming the N²-column LP**. All hardness lives in the k-subset choice of y (N binaries); x is an O(Nk) scan once y is fixed.
-- FALSIFIED (registered bands, scipy/HiGHS vertex LPs + brute-force IP oracle): half-integrality of fractional vertices (§3.3); "LP integral 80–90%" as a polytope property — it is data-regime-dependent (clustered non-metric D: 250/250 integral; uniform D: 26% at N=20, max gap 13.7%). User's "almost unimodular" observation = his data lives in the integral regime.
-- Previous attempts (2023, removed in `f7064b3`) all failed by solving the x-space LP explicitly (dense/sparse tableau simplex, Gomory, OSQP/ADMM). Live 2026 `benders.cpp` is directionally right but re-solves the master MIP per round; its "O(pk)" cut generation is actually O(N²).
-- **P4 guard:** odd-cycle cuts alone cannot close instances (cardinality row breaks Baiou–Barahona) — the TODO "odd-cycle cutting planes" item is DEPRIORITISED; do not over-invest.
-
-### Task 4.1: Lagrangian root solver [DONE 2026-07-07, commit `fd49ff4`]
-
-**Files:** Created: `dtwc/mip/lagrangian_root.{hpp,cpp}` (`dtwc::mip::lagrangian_root` — the dense-`D` core), `tests/unit/mip/test_lagrangian_root.cpp`. Returns `{lower_bound, upper_bound, gap, medoids, labels, multipliers, iterations, n_core}`.
-- [x] Inner problem per facility `ρ_i = Σ_j min(0, D_ij − μ_j)`, pick k best; **damped** Polyak subgradient (λ=1.0 — λ=2.0 oscillated on ~25% of separated instances, a step-schedule finding worth keeping); primal repair = k-medoids local search (assign + medoid-update sweeps; assignment-only found the right clusters but not the optimal medoid within each). Beasley reduced-cost fixing reports `n_core`.
-- [x] Leading-order cost = T·N² (one D stream/iter), OpenMP over the ρ pass. **P3** throughput/scale bands NOT yet measured (needs a quiet-machine bench) — deferred with Task 4.4 wiring.
-- [x] Oracle: brute-force IP validated on a hand-computed non-degenerate instance. VALID BOUNDS `lower_bound ≤ opt ≤ upper_bound` on 80 uniform+clustered instances. **P1 MET:** root gap ≤ 0.1% on 40/40 clustered instances; primal recovers the exact optimum 40/40; LR `upper_bound` == brute-force optimum == HiGHS/Gurobi compact-MIP cost to 1e-6. ctest "0 failed out of 87".
-- [x] **Cutting-plane dual ("the right tool", commit `8375aef`):** `dtwc::mip::lagrangian_root_kelley` — same bound via a stabilized (boxstep trust-region) Kelley cutting-plane over the N-dim μ dual (tiny warm-started LP master, needs HiGHS). On the instances of that day it converged where the subgradient stalled: N=800 went 4000 iters/5.8e-5 (subgradient) → **15 major iters/6.6e-14** (Kelley), ~64× faster, ~1000× vs compact MIP; major-iter count ~15 flat in N. Shared oracle/primal/finalize refactor. (Unstabilized Kelley verified to stall — boxstep is essential.) The subgradient stays the solver-free default.
-- [x] Wired into `Problem::cluster()` / `Method::LRCore` by Task 4.4. The root is the subgradient's in every language and build (`MIPSettings::lr_root`, `--lr-root`, default `subgradient`); `kelley` runs this cutting-plane root, its master LP on linked HiGHS or, in Python, on the user's highspy (2026-10-07).
-- Measured 2026-10-06 on 34 synthetic inputs (length 40, full band, L1): wherever both roots close (19 inputs) they give the same cost, medoids and labels, and 13 hit the node cap in both. Kelley certified at the root on 8 of 33 inputs, the subgradient on 11. Kelley certifies more only on constant level-shifted series (a line metric), in 8–13 major iterations, where the subgradient's LR phase is 43–230× slower; on templates with noise and on random walks the subgradient certifies at the root (0 nodes) where Kelley needs 19–487,365 nodes, and its LR phase is the faster.
-
-### Task 4.2: Reduced-cost fixing [DONE 2026-07-07]
-
-**Files:** Created: `dtwc/mip/reduced_cost_fixing.{hpp,cpp}` (Beasley-style, driven by 4.1 dual state; since folded into `lagrangian_root.cpp`), `tests/unit/mip/test_reduced_cost_fixing.cpp`. `LagrangianResult` gains `core` (survivor list, `n_core = core.size()`); `lagrangian_root::finalize` now computes it via the module (inline count removed — one path).
-
-- [x] Two exact conditional tests: force-open `LB+(ρ_i−ρ_(k))>UB ⇒ close i`; force-close `LB+(ρ_(k+1)−ρ_i)>UB ⇒ open i`. Sort-based S_k for deterministic tie handling. Returns `{core, fixed_closed, fixed_open}`. **Numerical guard:** fix only when the bound clears UB by `tol=1e-9·(1+max(|LB|,|UB|))` — without it a certified instance (gap≈0) whose ρ ties ρ_(k) (a legit alternative optimum) is wrongly fixed by a few-ULP `>`. That bug was caught by the correctness test (N=14,k=2) and fixed before merge.
-- [x] Test (correctness, HARD gate): every `fixed_closed` verified ABSENT and every `fixed_open` verified PRESENT in the brute-force optimum on 80 non-degenerate N≤14 instances (clustered + uniform). ctest 88/88.
-- [x] Registered band **P2** (gap≤1% ⇒ ≥80% eliminated for ≥90% of instances): **FALSIFIED as a universal floor, CONFIRMED in the mean.** 36 qualifying clustered instances → mean elim **80.3%**, min **73.3%**, 77.8% reach ≥80%. Cause: within-cluster alternative optima sit in the ≈0-gap band and correctly survive. Recorded, not rescue-tuned (CLAUDE.md §3). Deliverable to 4.3: `result.core`.
-
-### Task 4.3: Core Benders with y-only branching [DONE 2026-07-08]
-
-**Files:** Created `dtwc::mip::lagrangian_root_exact` in `dtwc/mip/lagrangian_root.{hpp,cpp}` + `[exact]` tests. Consumes 4.1 bound + 4.2 core. **Design note (deviation from "modify benders.cpp"):** the LR dual already equals the LP/Benders master bound (Geoffrion), so there is no N²-column master to re-solve — a lazy-cut tree over a compact master is the wrong tool. Instead the exact solver is an LR-bounded B&B that branches on y over the core, matrix-free. LR-core superseded the legacy `benders.cpp` (re-solve-master-per-round), which was deleted before 2.0.
-
-- [x] Single tree, NOT a per-round master re-solve. Root dual solved once (the subgradient's, or Kelley's with `lr_root = kelley`; which certifies more depends on the data, Task 4.1). Reduced-cost fixing → core + proven-open set. Branch on one candidate's open/close (y) decision; node bound = fixed-root-dual `Σμ*+Σ_S ρ*_i ≤ cost(S)` (O(N) per node, no LP). Node cap → best incumbent with `certified_optimal=false` + loud stderr (no silent wrong answer); `Method::LRCore` turns that into a `SolverError`, so a clustering run never publishes an uncertified incumbent as exact.
-- [x] Gate **MET (correctness):** matches the brute-force IP optimum 1e-6 on ALL instances — 8 clustered (0 nodes, root certifies) + 24 adversarial uniform-D (B&B engages, thousands of nodes, still exact). The root dual bounds the LP relaxation; the B&B closes what the root leaves open.
-- [x] Gate (wall-time, ADVISORY shared machine): exact vs compact HiGHS on clustered data — N=800 **56 ms vs 58 s (~1000×)**, margin widens with N. "Beats at N≥2000" holds on well-separated (real-world) data; expected FALSIFIED on the adversarial large-N regime (integrality gap ⇒ tree growth) — LR root still ships as bound/certificate either way (as the phase permits).
-
-### Task 4.4: Wire into API + `method="mip"` upgrade [DONE 2026-07-08]
-
-- [x] `Method::LRCore` added. `Problem::cluster()` routes it to `dtwc::LR_core_clustering` (fills D, seeds UB, runs `lagrangian_root_exact`, writes `centroids_ind`/`clusters_ind`). `mip` unchanged (solver-backed exact). Regime documented (dense D in RAM; N·N doubles budget; no external solver needed). Exposed C++/Python (`dtwcpp.Method.LRCore`)/CLI (`--method lrcore`|`lr`). Test `[lrcore][api]`.
-- [x] CHANGELOG done; LESSONS.md entry (killed 2023 ideas + falsified claims).
-
-### Task 4.5: PDLP first-order LP arbiter [DONE 2026-07-08]
-
-*PDLP, its bindings and `DTWC_HIGHS_GPU` were deleted before 2.0; this record is historical.*
-
-Scope decision (user-directed): the "third solver" is NOT the resurrected 2023 custom OSLP (killed `3a87ea3`: 3× slower than OSQP, cannot certify — reviving it would violate the prefer-libraries rule). Instead, integrate HiGHS's maintained, GPU-capable PDLP as an **LP solver in the LR-core LP machinery** (explicitly "not the MIP path"). Custom OSLP stays retired.
-
-- [x] Bump pinned HiGHS `v1.14.0 → v1.15.1` (cmake/Dependencies.cmake; SHA256 re-pinned `a840d269…`). v1.15.1 ships PDLP (`solver="pdlp"`/`"hipdlp"`) + optional GPU behind HiGHS `CUPDLP_GPU` (default OFF). Bump validated in isolation: build exit 0, ctest **88/88** no regression.
-- [x] `dtwc::mip::pdlp_lp_bound` (dtwc/mip/pdlp_lp.{hpp,cpp}): forms the explicit p-median LP relaxation from dense D, solves with HiGHS PDLP, returns the LP optimum (raw units). LP-only — a lower bound, not a clustering; does not replace LR-core or the compact MIP.
-- [x] **BAND-ARB registered before run:** `|pdlp − kelley_LB| / max(1,|kelley|) ≤ 1e-4` over ≥24 instances (both = the LP-relaxation optimum by Geoffrion; different mathematics). **CONFIRMED, max rel = 7.14e-09.** Plus valid-lower-bound vs the IP oracle, and tight-on-clustered. Test: tests/unit/mip/test_pdlp_lp.cpp. Full gate **89/89**.
-- [x] No-silent-fallback: `use_gpu=true` on a non-`CUPDLP_GPU` build warns to stderr and runs CPU (`gpu_used=false`) — *since 2026-09-24 (GT-4b) it raises `DeviceError` instead*; `DTWC_HIGHS_GPU` build flips it. Runtime capability query `pdlp_gpu_available()` (the compile define does not reach consumer TUs). Test `[pdlp][gpu]`.
-- [x] GPU backend ENABLED + runtime-verified (2026-07-08). New CMake option `DTWC_HIGHS_GPU` (default OFF) forwards `CUPDLP_GPU=ON` + defines the marker. Built with the known-good CUDA recipe (nvcc 13.0 + MSVC host + `-allow-unsupported-compiler`; HiGHS shared on Windows → `highs.dll`/`cudalin.dll`). On the RTX 4000 Ada (sm_89) the cuPDLP CUDA backend actually runs (`gpu_used==true`) and returns the correct LP bound; test suite green on both CPU-PDLP (89/89) and GPU builds. Two toolchain gotchas hit + recorded in LESSONS: MSYS mangles `cmd.exe /c` (use `MSYS_NO_PATHCONV=1`); CUDA 13.0 rejects MSVC 14.50 as "too new" without `-allow-unsupported-compiler`. Default builds unaffected (option OFF).
-- [x] Solver-comparison bench recorded (`[.][pdlp][bench]`, run on both builds, 2026-07-08). Registered bands: agreement (HARD) CONFIRMED (rel ≤ 7.7e-09, band 1e-4); scaling (ADVISORY) CONFIRMED — matrix-free Kelley dominates PDLP on *either* device, `pdlp/kelley` → 945× (CPU) / 126× (GPU) at N=400; GPU prediction PARTIALLY FALSIFIED (deliverable) — GPU-PDLP has a ~255 ms launch floor (67× slower at N=20) but crosses over ~N≈150 and is 7.4× faster than CPU-PDLP by N=400, still 126× slower than Kelley. **Verdict: PDLP is a cross-validation arbiter, not a production p-median solver.** Bench also surfaced + fixed a `gpu_used` honesty bug (HiGHS `CUPDLP_GPU` is a compile-time device switch, so `gpu_used` must reflect the build+variant, not the `use_gpu` request; see LESSONS).
+1. **Second-Nearest Medoid Warm Start & Dual Ascent:** Given FasterPAM's incumbent medoids $M$ with nearest and second-nearest distances $(d_1(j), d_2(j))$ for each series $j$, initializing $\mu_j^{(0)} = d_2(j)$ immediately places $L(\mu^{(0)})$ near $z_{\text{LP}}$, refined via Erlenkotter (`DUALOC`) coordinate dual ascent and damped Polyak subgradient updates $g_j = 1 - \sum_{i \in S_k(\mu)} \mathbb{I}[D_{ij} < \mu_j]$.
+2. **Beasley Reduced-Cost Variable Fixing:** Let $\rho_{(k)}$ and $\rho_{(k+1)}$ denote the $k$-th and $(k+1)$-st smallest values of $\rho_i(\mu^*)$, and $U$ be the best primal incumbent cost:
+   - Any candidate $i \notin S_k(\mu^*)$ with $L(\mu^*) + (\rho_i(\mu^*) - \rho_{(k)}) > U$ cannot appear in any optimal medoid set and is permanently **fixed closed ($y_i = 0$)**.
+   - Any candidate $i \in S_k(\mu^*)$ with $L(\mu^*) + (\rho_{(k+1)} - \rho_i(\mu^*)) > U$ must appear in every optimal medoid set and is permanently **fixed open ($y_i = 1$)**.
+3. **Core-Restricted $y$-Space Branch-and-Bound:** If $(U - L(\mu^*)) / \max(1, |U|) > \varepsilon_{\text{gap}}$, `LRCore` branches only on surviving core candidates $i \in \mathcal{C}$. At a tree node with forced-open medoids $F_1$ ($d_{F_1}(j) = \min_{i \in F_1} D_{ij}$) and forbidden medoids $F_0$, projecting multipliers onto $\tilde{\mu}_j = \min(\mu_j^*, d_{F_1}(j))$ strictly dominates frozen root multipliers by eliminating double-counted client surpluses across $F_1$ and remaining candidates.

@@ -9,7 +9,6 @@
  * suite; this gate pins the reader logic + wiring in C++.
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 4.8
  * @date 09 Jul 2026
  */
 

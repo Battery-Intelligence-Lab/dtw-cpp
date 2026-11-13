@@ -3,7 +3,6 @@
  * @brief Benchmark: float32 vs float64 DTW computation speed.
  *
  * @author Volkan Kumtepeli
- * @author Claude 4.6
  * @date 08 Apr 2026
  */
 

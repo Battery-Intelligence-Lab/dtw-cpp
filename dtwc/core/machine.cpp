@@ -4,7 +4,6 @@
  *        distance_matrix.cpp), the run's GPU (its backend) and the build (this file's own compiler macros).
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 5.5 (RR1a)
  * @date 03 Nov 2026
  */
 

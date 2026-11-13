@@ -6,7 +6,6 @@
  *   including hand-computed values and the degenerate partitions.
  *
  * @author Volkan Kumtepeli
- * @author Claude 4.6
  * @date 02 Apr 2026
  */
 

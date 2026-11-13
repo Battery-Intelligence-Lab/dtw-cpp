@@ -30,7 +30,7 @@ Unbanded DTW, `fillDistanceMatrix/100/1000/-1` (4950 pairs × 1000² cells):
 | 10 (8P + 2E) | 1 838 | 7.95× | 80% |
 | **12 (8P + 4E)** | **1 599** | **9.14×** | **76%** |
 
-`OMP_PROC_BIND` / `OMP_PLACES` pinning sweep at T=12 (default / close / spread on `cores`): 1606 / 1610 / 1609 ms — **identical within 0.3%**. pinning is a no-op on Darwin + Homebrew libomp. E-cores contribute a real +33% over 8P; don't cap to P-cores. (Lesson saved to [`.claude/LESSONS.md`](../.claude/LESSONS.md).)
+`OMP_PROC_BIND` / `OMP_PLACES` pinning sweep at T=12 (default / close / spread on `cores`): 1606 / 1610 / 1609 ms — **identical within 0.3%**. Pinning is a no-op on Darwin + Homebrew libomp. E-cores contribute a real +33% over 8P; don't cap to P-cores.
 
 ---
 

@@ -1,7 +1,6 @@
 /// @file storage.hpp — Series precision enum.
 ///
 /// @author Volkan Kumtepeli
-/// @author Claude 4.6
 /// @date 08 Apr 2026
 #pragma once
 

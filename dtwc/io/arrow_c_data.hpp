@@ -25,7 +25,6 @@
  * Python binding releases after this returns).
  *
  * @author Volkan Kumtepeli
- * @author Claude Opus 4.8
  * @date 09 Jul 2026
  */
 
