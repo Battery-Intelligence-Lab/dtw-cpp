@@ -976,8 +976,8 @@ void Problem::fillDistanceMatrix_BruteForce()
   const size_t N = data_.size();
   const bool f32 = data_.is_f32();
   const dtw_fn_f32_t *f32_function = f32 ? &dtw_fn_f32_ : nullptr;
-#ifdef DTWC_HAS_CUDA
   const bool sized = distMat.size() == N; // sized before this fill: it may hold computed entries
+#ifdef DTWC_HAS_CUDA
   // cpu+gpu: the GPU's session before the matrix is touched, so its refusals come first: the route on the longest
   // series, every series padded by the team and uploaded once (cuda::DistanceFill). The slab loop fills its rows.
   std::optional<cuda::DistanceFill> gpu;
@@ -1052,7 +1052,7 @@ void Problem::fillDistanceMatrix_BruteForce()
   std::vector<size_t> first_column(K + 1, 0); // tile-row k's columns: the tasks from first_column[k]
   for (size_t k = 0; k < K; ++k) first_column[k + 1] = first_column[k] + bounds[k + 1];
 
-  const bool ragged = core::dtw_lanes_packed && distance_.band < 0;
+  const bool ragged = core::dtw_lanes_packed;
   const bool lanes = f32 ? static_cast<bool>(dtw_block_fn_f32_) : static_cast<bool>(dtw_block_fn_);
   std::vector<size_t> order(N);
   std::iota(order.begin(), order.end(), size_t{ 0 });
@@ -1063,16 +1063,60 @@ void Problem::fillDistanceMatrix_BruteForce()
                        [&](size_t a, size_t b) { return data_.series_flat_size(a) > data_.series_flat_size(b); });
   const bool reordered = !std::is_sorted(order.begin(), order.end());
 
+  const auto packed_fn_f64 = core::resolve_dtw_packed_block_fn<data_t>(distance_);
+  const auto packed_fn_f32 = f32 ? core::resolve_dtw_packed_block_fn<float>(distance_)
+                                 : decltype(core::resolve_dtw_packed_block_fn<float>(distance_)){};
+  const size_t written = distMat.rows_written();
+#ifdef DTWC_HAS_CUDA
+  const bool fresh = !gpu && !written_ && (!sized || (distMat.is_mapped() && written == 0));
+#else
+  const bool fresh = !written_ && (!sized || (distMat.is_mapped() && written == 0));
+#endif
+  const bool use_slab_panels = fresh && ragged && lanes && ram_limit_ == 0;
+  std::vector<size_t> tile_panel_offset(K + 1, 0);
+  std::vector<core::PackedLanesPanel<data_t>> panels_f64;
+  std::vector<core::PackedLanesPanel<float>> panels_f32;
+
   // `matrix` holds the values at the matrix's width: a pair is NaN until computed, then its distance rounded to it.
-  auto fill_column = [&](auto *matrix, size_t R0, size_t R1, size_t c, auto column, const auto &block,
-                         const auto &one_pair) {
+  auto fill_column = [&](auto *matrix, size_t k, size_t R0, size_t R1, size_t c, auto column, const auto &block,
+                         const auto &packed_block, const auto *slab_panels, const auto &one_pair) {
     using T = typename decltype(column(c))::value_type;
     using V = std::remove_pointer_t<decltype(matrix)>;
     constexpr size_t Wt = core::dtw_lanes<T>;
     const auto computed = [matrix](size_t i, size_t j) { return !std::isnan(matrix[core::tri_index(i, j)]); };
     const auto store = [matrix](size_t i, size_t j, double v) { matrix[core::tri_index(i, j)] = static_cast<V>(v); };
     const auto x = column(c);
-    if (c >= R0 && !computed(c, c)) store(c, c, 0.0);
+
+    // Fast path for a fresh matrix with pre-packed tile-row panels: skips per-column Y transpose,
+    // skips per-column DDTW/Interpolate preprocessing of y, and avoids reading uncomputed NaN slots.
+    if (slab_panels && packed_block && (!reordered || c < R0)) {
+      if (c >= R0) store(c, c, 0.0);
+      std::array<double, Wt> d;
+      size_t start = (c < R0) ? R0 : (c + 1);
+      const size_t rem = (start - R0) % Wt;
+      if (rem != 0 && start < R1) {
+        const size_t head_end = std::min(R1, start + (Wt - rem));
+        const size_t head_cnt = head_end - start;
+        std::array<std::span<const T>, Wt> ys;
+        for (size_t w = 0; w < Wt; ++w) ys[w] = column(start + std::min(w, head_cnt - 1));
+        block(x, ys, d);
+        for (size_t w = 0; w < head_cnt; ++w) store(c, start + w, d[w]);
+        start = head_end;
+      }
+      if (start < R1) {
+        const auto x_prep = core::prepare_dtw_query<T>(distance_, x);
+        const auto *tile_panels = slab_panels + tile_panel_offset[k];
+        for (size_t b0 = start; b0 < R1; b0 += Wt) {
+          const size_t p = (b0 - R0) / Wt;
+          const size_t cnt = std::min(Wt, R1 - b0);
+          packed_block(x_prep, tile_panels[p].view(), d);
+          for (size_t w = 0; w < cnt; ++w) store(c, order[b0 + w], d[w]);
+        }
+      }
+      return;
+    }
+
+    if (c >= R0 && (fresh || !computed(c, c))) store(c, c, 0.0);
     if (block) {
       std::array<size_t, Wt> rows;
       std::array<std::span<const T>, Wt> ys;
@@ -1081,7 +1125,7 @@ void Problem::fillDistanceMatrix_BruteForce()
       for (size_t b = reordered ? R0 : std::max(R0, c + 1); b < R1;) {
         size_t count = 0;
         for (; count < Wt && b < R1; ++b)
-          if (order[b] > c && !computed(c, order[b])) rows[count++] = order[b];
+          if (order[b] > c && (fresh || !computed(c, order[b]))) rows[count++] = order[b];
         if (count == 0) break;
         bool equal = true;
         for (size_t w = 0; w < Wt; ++w) {
@@ -1093,19 +1137,21 @@ void Problem::fillDistanceMatrix_BruteForce()
         for (size_t w = 0; w < count; ++w) store(c, rows[w], d[w]);
       }
     }
-    for (size_t r = std::max(R0, c + 1); r < R1; ++r)
-      if (!computed(c, r)) store(c, r, one_pair(x, column(r)));
+    if (!(fresh && block && ragged)) {
+      for (size_t r = std::max(R0, c + 1); r < R1; ++r)
+        if (!computed(c, r)) store(c, r, one_pair(x, column(r)));
+    }
   };
   auto task = [&](auto *matrix, size_t g) {
     const size_t k = static_cast<size_t>(std::upper_bound(first_column.begin(), first_column.end(), g)
                                          - first_column.begin()) - 1;
     const size_t c = g - first_column[k];
     if (f32)
-      fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); },
-                  dtw_block_fn_f32_, *f32_function);
+      fill_column(matrix, k, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); },
+                  dtw_block_fn_f32_, packed_fn_f32, use_slab_panels ? panels_f32.data() : nullptr, *f32_function);
     else // Data's accessor, as above: GCC's inline-unit-growth cap leaves the Problem::series wrapper out of line here
-      fill_column(matrix, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series(i); }, dtw_block_fn_,
-                  dtw_fn_);
+      fill_column(matrix, k, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series(i); }, dtw_block_fn_,
+                  packed_fn_f64, use_slab_panels ? panels_f64.data() : nullptr, dtw_fn_);
   };
 
   std::vector<size_t> slabs{ 0 }; // slab s: tile-rows [slabs[s], slabs[s + 1])
@@ -1122,7 +1168,6 @@ void Problem::fillDistanceMatrix_BruteForce()
   const path_t file = checkpoint.enabled ? checkpoint_path(*this, checkpoint.directory) : path_t{};
   // A mapped file's rows from `written` on were never written (no NaN prefill): each slab makes them NaN just
   // before it computes them, and a wait that leaves rows on the device records them written (flush_rows).
-  const size_t written = distMat.rows_written();
   size_t waiting = 0; // the first row of the slabs whose write-back no wait has covered
 #ifdef DTWC_HAS_CUDA
   // cpu+gpu: the entries of tile-rows [ka, kb), the diagonal's included (the GPU writes whole rows).
@@ -1280,6 +1325,37 @@ void Problem::fillDistanceMatrix_BruteForce()
       const size_t r0 = bounds[slabs[s]], r1 = bounds[slabs[s + 1]];
       if (s + 2 < slabs.size()) distMat.prefetch_rows(r1, bounds[slabs[s + 2]]);
       distMat.clear_rows(std::max(r0, written), r1);
+      if (use_slab_panels) {
+        size_t total_panels = 0;
+        for (size_t k = slabs[s]; k < slabs[s + 1]; ++k) {
+          tile_panel_offset[k] = total_panels;
+          total_panels += (bounds[k + 1] - bounds[k] + W - 1) / W;
+        }
+        auto build_slab_panels = [&](auto &panels, auto column) {
+          using T = typename decltype(column(0))::value_type;
+          constexpr size_t Wt = core::dtw_lanes<T>;
+          panels.resize(total_panels);
+          auto pack_one = [&](size_t idx) {
+            size_t k = slabs[s];
+            while (k + 1 < slabs[s + 1]
+                   && idx >= tile_panel_offset[k + 1]) {
+              ++k;
+            }
+            const size_t p = idx - tile_panel_offset[k];
+            const size_t R0 = bounds[k], R1 = bounds[k + 1];
+            const size_t b0 = R0 + p * Wt;
+            const size_t cnt = std::min(Wt, R1 - b0);
+            std::array<std::span<const T>, Wt> ys;
+            for (size_t w = 0; w < Wt; ++w) ys[w] = column(order[b0 + std::min(w, cnt - 1)]);
+            core::pack_dtw_panel<T>(distance_, ys.data(), panels[idx]);
+          };
+          run_openmp(pack_one, total_panels, total_panels > 8);
+        };
+        if (f32)
+          build_slab_panels(panels_f32, [&](size_t i) { return data_.series_f32(i); });
+        else
+          build_slab_panels(panels_f64, [&](size_t i) { return data_.series(i); });
+      }
       // run_openmp catches inside the parallel region and rethrows the lowest
       // column's failure after the join; a failed pair stays uncomputed.
       const size_t first = first_column[slabs[s]];

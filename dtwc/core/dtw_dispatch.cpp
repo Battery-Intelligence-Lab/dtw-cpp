@@ -66,15 +66,6 @@ auto make_zero_cost(const DistanceConfig &c)
   };
 }
 
-/// make_interpolate's two buffers, one pair a T: reached here so that core::release_thread_scratch() can empty them
-/// (detail::dispatch_scratch below); two thread_locals returned as references, as detail::lanes_bufs says why.
-template <typename T>
-std::pair<std::vector<T> &, std::vector<T> &> interpolate_bufs()
-{
-  thread_local std::vector<T> x_buffer, y_buffer;
-  return { x_buffer, y_buffer };
-}
-
 // Univariate: validate() refuses it on ndim > 1. A series without NaN is used as
 // it is; a gappy one is filled into this thread's buffer for its side.
 template <typename T>
@@ -82,7 +73,7 @@ auto make_interpolate(const DistanceConfig &c)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   return [band = c.band, metric = c.metric](std::span<const T> x, std::span<const T> y) -> double {
-    auto [x_buffer, y_buffer] = interpolate_bufs<T>();
+    auto [x_buffer, y_buffer] = dtwc::detail::interpolate_bufs<T>();
     return normalize_public_distance(dtwBanded<T>(interpolate_linear_into(x, x_buffer),
                                                   interpolate_linear_into(y, y_buffer), band, T(-1), metric));
   };
@@ -415,7 +406,8 @@ std::size_t detail::dispatch_scratch(bool release) noexcept
   bytes += pairs(detail::twe_rows<float>()) + pairs(detail::twe_rows<data_t>());
   bytes += pairs(dtwc::detail::channel_bufs<float>()) + pairs(dtwc::detail::channel_bufs<data_t>());
   bytes += pairs(dtwc::detail::derivative_bufs<float>()) + pairs(dtwc::detail::derivative_bufs<data_t>());
-  return bytes + pairs(interpolate_bufs<float>()) + pairs(interpolate_bufs<data_t>());
+  bytes += pairs(dtwc::detail::soft_dtw_grad_bufs<float>()) + pairs(dtwc::detail::soft_dtw_grad_bufs<data_t>());
+  return bytes + pairs(dtwc::detail::interpolate_bufs<float>()) + pairs(dtwc::detail::interpolate_bufs<data_t>());
 }
 
 // Explicit instantiations.

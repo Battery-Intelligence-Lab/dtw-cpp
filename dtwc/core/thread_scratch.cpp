@@ -84,14 +84,15 @@ std::size_t scratch_bytes(const DistanceConfig &c, std::size_t length)
   if (c.band >= 0 && length > static_cast<std::size_t>(c.band) + 1) dp = static_cast<std::size_t>(c.band) + 1 + length;
   dp *= value;
   if (c.variant.mv_mode == MVMode::Independent && c.ndim > 1) return 2 * length * value + dp; // cx, cy (warping.hpp)
+  const std::size_t lanes = c.ndim == 1 ? 2 * length * dtw_lanes<T> * value : 0;
   switch (c.missing) {
   case MissingStrategy::ZeroCost:
   case MissingStrategy::AROW: return dp;
-  case MissingStrategy::Interpolate: return 2 * length * value + dp; // x_buffer, y_buffer (make_interpolate)
+  case MissingStrategy::Interpolate: return 2 * length * value + lanes + dp; // x_buffer, y_buffer + lanes
   case MissingStrategy::Error: break;
   }
   switch (c.variant.variant) {
-  case DTWVariant::DDTW: return 2 * values * value + dp; // dx, dy (warping_ddtw.hpp; make_ddtw's, multivariate)
+  case DTWVariant::DDTW: return 2 * values * value + lanes + dp; // dx, dy + univariate lanes
   case DTWVariant::WDTW: return length * value + dp;     // cached_w: max_dev + 1 weights (warping_wdtw.hpp)
   case DTWVariant::ADTW: return dp;
   case DTWVariant::SoftDTW: return length * value;       // dtw_kernel_linear's column, no band
@@ -100,7 +101,7 @@ std::size_t scratch_bytes(const DistanceConfig &c, std::size_t length)
   case DTWVariant::Standard: break;
   }
   // The lanes (resolve_dtw_block_fn): y_buf and s_buf, a row of dtw_lanes<T> values a time step each.
-  return (c.ndim == 1 ? 2 * length * dtw_lanes<T> * value : 0) + dp;
+  return lanes + dp;
 }
 
 } // namespace

@@ -103,24 +103,64 @@ struct FixedBatchDistances {
     // and drops it.
     std::vector<std::uint64_t> row_evaluations(n, 0);
     std::vector<double> row_maxima(n, 0.0);
-    const auto block_f32 = core::resolve_dtw_block_fn<float>(problem.distance());
-    const auto block_f64 = core::resolve_dtw_block_fn<data_t>(problem.distance());
+    const auto dist_cfg = problem.distance();
+    const auto block_f32 = core::resolve_dtw_block_fn<float>(dist_cfg);
+    const auto block_f64 = core::resolve_dtw_block_fn<data_t>(dist_cfg);
+    const auto packed_f32 = core::resolve_dtw_packed_block_fn<float>(dist_cfg);
+    const auto packed_f64 = core::resolve_dtw_packed_block_fn<data_t>(dist_cfg);
+    // Pre-pack the m batch columns into W-lane panels once when ram_limit is unlimited;
+    // freed immediately after the N rows are computed so peak swap memory is unchanged.
+    const bool prepack = core::dtw_lanes_packed && problem.ram_limit() == 0;
+    std::vector<core::PackedLanesPanel<float>> panels_f32;
+    std::vector<core::PackedLanesPanel<data_t>> panels_f64;
+    if (prepack) {
+      if (problem.data().is_f32() && packed_f32) {
+        constexpr std::size_t W = core::dtw_lanes<float>;
+        panels_f32.resize((m + W - 1) / W);
+        for (std::size_t b = 0; b < panels_f32.size(); ++b) {
+          const std::size_t j0 = b * W, count = std::min(W, m - j0);
+          std::array<std::span<const float>, W> ys;
+          for (std::size_t w = 0; w < W; ++w)
+            ys[w] = problem.data().series_f32(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
+          core::pack_dtw_panel<float>(dist_cfg, ys.data(), panels_f32[b]);
+        }
+      } else if (!problem.data().is_f32() && packed_f64) {
+        constexpr std::size_t W = core::dtw_lanes<data_t>;
+        panels_f64.resize((m + W - 1) / W);
+        for (std::size_t b = 0; b < panels_f64.size(); ++b) {
+          const std::size_t j0 = b * W, count = std::min(W, m - j0);
+          std::array<std::span<const data_t>, W> ys;
+          for (std::size_t w = 0; w < W; ++w)
+            ys[w] = problem.series(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
+          core::pack_dtw_panel<data_t>(dist_cfg, ys.data(), panels_f64[b]);
+        }
+      }
+    }
+
     auto fill_row = [&](std::size_t i) {
       double row_max = 0.0;
       std::uint64_t calls = 0;
-      auto fill_blocks = [&](auto x, auto column, const auto &block) {
+      auto fill_blocks = [&](auto x, auto column, const auto &block, const auto &packed_block, const auto &panels) {
         using T = typename decltype(x)::value_type;
         constexpr std::size_t W = core::dtw_lanes<T>;
         std::array<std::span<const T>, W> ys;
         std::array<double, W> lane;
-        for (std::size_t j0 = 0; j0 < m; j0 += W) {
+        const bool use_panels = !panels.empty() && static_cast<bool>(packed_block);
+        const std::span<const T> x_prep = use_panels ? core::prepare_dtw_query<T>(dist_cfg, x) : x;
+        for (std::size_t j0 = 0, b = 0; j0 < m; j0 += W, ++b) {
           const std::size_t count = std::min(W, m - j0);
-          bool lanes = static_cast<bool>(block);
-          for (std::size_t w = 0; lanes && w < W; ++w) {
-            ys[w] = column(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
-            lanes = (core::dtw_lanes_packed && prob.band < 0) || ys[w].size() == x.size();
+          bool lanes = false;
+          if (use_panels) {
+            packed_block(x_prep, panels[b].view(), lane);
+            lanes = true;
+          } else if (block) {
+            lanes = true;
+            for (std::size_t w = 0; lanes && w < W; ++w) {
+              ys[w] = column(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
+              lanes = core::dtw_lanes_packed || ys[w].size() == x.size();
+            }
+            if (lanes) block(x, ys, lane);
           }
-          if (lanes) block(x, ys, lane);
           for (std::size_t w = 0; w < count; ++w) {
             const auto column_series = static_cast<std::size_t>(sample[j0 + w]);
             double d = 0.0;
@@ -137,13 +177,17 @@ struct FixedBatchDistances {
       };
       if (prob.data().is_f32())
         fill_blocks(prob.data().series_f32(i),
-                    [&](std::size_t c) { return prob.data().series_f32(c); }, block_f32);
+                    [&](std::size_t c) { return prob.data().series_f32(c); }, block_f32, packed_f32, panels_f32);
       else
-        fill_blocks(prob.series(i), [&](std::size_t c) { return prob.series(c); }, block_f64);
+        fill_blocks(prob.series(i), [&](std::size_t c) { return prob.series(c); }, block_f64, packed_f64, panels_f64);
       row_evaluations[i] = calls;
       row_maxima[i] = row_max;
     };
     run_openmp(fill_row, n, n > 64);
+    panels_f32.clear();
+    panels_f32.shrink_to_fit();
+    panels_f64.clear();
+    panels_f64.shrink_to_fit();
     const double table_max = *std::max_element(row_maxima.begin(), row_maxima.end());
     scale = table_max > 0.0 ? table_max : 1.0;
     evaluations = std::accumulate(row_evaluations.begin(), row_evaluations.end(),
@@ -330,8 +374,10 @@ core::ClusteringResult one_batch_pam(Problem& prob,
         removal_gain = base_removal_gain;
 
         double add_gain = 0.0;
-        for (std::size_t j = 0; j < m; ++j) {
-          const double d = distances.estimate(candidate, j);
+        const double *const cand_row = distances.raw.data() + candidate * m;
+        const double *const w_col = distances.weights.data();
+        const double inv_or_scale = distances.scale;
+        const auto accumulate_col = [&](std::size_t j, double d) {
           const index_t slot = nearest[j];
           if (d < nearest_distance[j]) {
             add_gain += nearest_distance[j] - d;
@@ -340,6 +386,18 @@ core::ClusteringResult one_batch_pam(Problem& prob,
           } else if (d < second_distance[j]) {
             removal_gain[static_cast<std::size_t>(slot)] += second_distance[j] - d;
           }
+        };
+        const index_t self_pos = distances.sample_position[candidate];
+        if (self_pos < 0) {
+          for (std::size_t j = 0; j < m; ++j)
+            accumulate_col(j, (cand_row[j] / inv_or_scale) * w_col[j]);
+        } else {
+          const auto self_j = static_cast<std::size_t>(self_pos);
+          for (std::size_t j = 0; j < self_j; ++j)
+            accumulate_col(j, (cand_row[j] / inv_or_scale) * w_col[j]);
+          accumulate_col(self_j, w_col[self_j]);
+          for (std::size_t j = self_j + 1; j < m; ++j)
+            accumulate_col(j, (cand_row[j] / inv_or_scale) * w_col[j]);
         }
 
         const auto best_it = std::max_element(removal_gain.begin(), removal_gain.end());

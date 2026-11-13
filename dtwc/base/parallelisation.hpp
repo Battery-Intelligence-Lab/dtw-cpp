@@ -177,11 +177,11 @@ void run_openmp(Tfun &task_indv, size_t i_end,
  * @tparam Tfun The type of the task function.
  * @param task_indv Reference to the task function to be executed.
  * @param i_end The upper bound of the loop index.
- * @param numMaxParallelWorkers The maximum number of parallel workers (default is 32).
- *        Set to 1 for serial execution.
+ * @param numMaxParallelWorkers The maximum number of parallel workers (default is 0:
+ *        all available OpenMP threads). Set to 1 for serial execution.
  */
 template <typename Tfun>
-void run(Tfun &task_indv, size_t i_end, size_t numMaxParallelWorkers = 32)
+void run(Tfun &task_indv, size_t i_end, size_t numMaxParallelWorkers = 0)
 {
   const bool useParallel = (numMaxParallelWorkers != 1);
 

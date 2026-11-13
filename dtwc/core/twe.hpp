@@ -75,37 +75,43 @@ T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
   orient(b, nb, a, na); // a = long (rows), b = short (cols); a tie keeps a = x
 
   const T del_add = nu + lambda;
-  // Padded accessors: index 0 -> 0.0 (the front pad), index k>0 -> series[k-1].
-  auto ap = [a](std::size_t k) noexcept { return k == 0 ? T(0) : a[k - 1]; };
-  auto bp = [b](std::size_t k) noexcept { return k == 0 ? T(0) : b[k - 1]; };
+  const T two_nu = T(2) * nu;
   auto add = [maxValue](T u, T v) noexcept { return u == maxValue ? maxValue : u + v; };
 
   // Rolling buffers over the padded shorter axis (size nb+1).
+  // Grown without shrinking so warmed worker threads neither reallocate nor re-zero prev_buf.
   auto [prev_buf, curr_buf] = detail::twe_rows<T>();
-  prev_buf.assign(nb + 1, maxValue);
-  curr_buf.assign(nb + 1, maxValue);
+  if (prev_buf.size() < nb + 1) prev_buf.resize(nb + 1);
+  if (curr_buf.size() < nb + 1) curr_buf.resize(nb + 1);
   T* prev = prev_buf.data();
   T* curr = curr_buf.data();
 
   // Padded row i = 0: D[0][0] = 0, rest +inf. Written into `curr` so the
   // first swap below moves it into `prev` (matches the MSM kernel pattern).
   curr[0] = T(0);
+  for (std::size_t j = 1; j <= nb; ++j) curr[j] = maxValue;
 
+  T ai_prev = T(0);
   for (std::size_t i = 1; i <= na; ++i) {
     std::swap(prev, curr);
+    const T ai = a[i - 1];
+    const T step_x = std::abs(ai_prev - ai) + del_add;
     T left = maxValue; // D[i][j-1], carried; D[i][0] = +inf for i > 0
     curr[0] = left;
+    T bj_prev = T(0);
     for (std::size_t j = 1; j <= nb; ++j) {
-      const T del_x = add(prev[j],     std::abs(ap(i - 1) - ap(i)) + del_add);
-      const T del_y = add(left,        std::abs(bp(j - 1) - bp(j)) + del_add);
-      const auto idx_pen = static_cast<T>(
-          std::abs(static_cast<long long>(i) - static_cast<long long>(j)));
+      const T bj = b[j - 1];
+      const T del_x = add(prev[j], step_x);
+      const T del_y = add(left, std::abs(bj_prev - bj) + del_add);
+      const std::size_t idx_diff = (i >= j) ? (i - j) : (j - i);
       const T match = add(prev[j - 1],
-                          std::abs(ap(i) - bp(j)) + std::abs(ap(i - 1) - bp(j - 1))
-                          + T(2) * nu * idx_pen);
+                          std::abs(ai - bj) + std::abs(ai_prev - bj_prev)
+                          + two_nu * static_cast<T>(idx_diff));
       left = std::min(std::min(del_x, del_y), match); // std::min({...}) is a call on the MSVC STL
       curr[j] = left;
+      bj_prev = bj;
     }
+    ai_prev = ai;
   }
   return curr[nb];
 }

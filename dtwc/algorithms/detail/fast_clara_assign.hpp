@@ -135,18 +135,45 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
                        std::vector<std::vector<index_t>> &labels, const core::DistanceConfig &distance,
                        const Pair &pair, const PointOf &point, const MedoidOf &medoid, bool parallel = true)
 {
+  const std::size_t slots = medoids.size(), samples = labels.size(), k = slots / samples;
+  // Deduplicate identical medoid indices across the `samples` subsamples so repeated medoids
+  // copy their distance row in O(1) instead of recomputing DTW.
+  std::vector<std::size_t> first_slot(slots);
+  for (std::size_t j = 0; j < slots; ++j) {
+    first_slot[j] = j;
+    for (std::size_t prev = 0; prev < j; ++prev) {
+      if (medoids[prev] == medoids[j]) {
+        first_slot[j] = prev;
+        break;
+      }
+    }
+  }
+
+  const auto packed_block = core::resolve_dtw_packed_block_fn<T>(distance);
   const auto block = core::resolve_dtw_block_fn<T>(distance);
   const bool unbanded = distance.band < 0;
-  if (!block || (unbanded && !core::dtw_lanes_packed)) {
+  if (!block || (!core::dtw_lanes_packed && unbanded)) {
     assign_points(
       first, n, best, medoids, labels,
-      [&](index_t p) { return [&, x = point(p)](index_t j) { return pair(x, medoid(j)); }; }, parallel);
+      [&](index_t p) {
+        const auto x = point(p);
+        std::vector<double> &table = assign_table();
+        if (table.size() < slots) table.resize(slots);
+        double *const t = table.data();
+        for (std::size_t j = 0; j < slots; ++j) {
+          if (first_slot[j] < j)
+            t[j] = t[first_slot[j]];
+          else
+            t[j] = pair(x, medoid(static_cast<index_t>(j)));
+        }
+        return [t](index_t j) { return t[static_cast<std::size_t>(j)]; };
+      },
+      parallel);
     return;
   }
 
   // static: GCC 13 asks the inner lambda below to capture a local it reads.
   static constexpr std::size_t W = core::dtw_lanes<T>;
-  const std::size_t slots = medoids.size(), samples = labels.size(), k = slots / samples;
   auto assign_block = [&](std::size_t b) {
     const std::size_t i0 = b * W, count = std::min(W, n - i0);
     std::array<std::span<const T>, W> ys;
@@ -159,12 +186,34 @@ void assign_points_cpu(index_t first, std::size_t n, std::span<double> best, std
     std::vector<double> &table = assign_table(); // [j * W + w]: point i0 + w to medoid slot j
     if (table.size() < slots * W) table.resize(slots * W);
     double *const t = table.data();
-    for (std::size_t j = 0; j < slots; ++j) {
-      const auto x = medoid(static_cast<index_t>(j));
-      if (shortest > 0 && (unbanded || (shortest == x.size() && longest == x.size())))
-        block(x, ys, std::span<double>(t + j * W, W));
-      else
-        for (std::size_t w = 0; w < count; ++w) t[j * W + w] = pair(ys[w], x);
+
+    if (core::dtw_lanes_packed && packed_block && shortest > 0) {
+      core::PackedLanesPanel<T> panel;
+      core::pack_dtw_panel<T>(distance, ys.data(), panel);
+      const auto panel_view = panel.view();
+      for (std::size_t j = 0; j < slots; ++j) {
+        if (first_slot[j] < j) {
+          std::copy_n(t + first_slot[j] * W, W, t + j * W);
+          continue;
+        }
+        const auto x = medoid(static_cast<index_t>(j));
+        if (!x.empty())
+          packed_block(core::prepare_dtw_query<T>(distance, x), panel_view, std::span<double>(t + j * W, W));
+        else
+          for (std::size_t w = 0; w < count; ++w) t[j * W + w] = pair(ys[w], x);
+      }
+    } else {
+      for (std::size_t j = 0; j < slots; ++j) {
+        if (first_slot[j] < j) {
+          std::copy_n(t + first_slot[j] * W, W, t + j * W);
+          continue;
+        }
+        const auto x = medoid(static_cast<index_t>(j));
+        if (shortest > 0 && (core::dtw_lanes_packed || (shortest == x.size() && longest == x.size())))
+          block(x, ys, std::span<double>(t + j * W, W));
+        else
+          for (std::size_t w = 0; w < count; ++w) t[j * W + w] = pair(ys[w], x);
+      }
     }
     for (std::size_t w = 0; w < count; ++w) {
       const index_t p = first + static_cast<index_t>(i0 + w);

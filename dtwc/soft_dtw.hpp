@@ -59,16 +59,26 @@ T softmin_gamma_unchecked(
   // gamma values. At the valid denormal boundary the reciprocal overflows;
   // normalise the denominator before scaling so -freciprocal-math cannot turn
   // the fallback back into 0 * Inf. frexp(gamma)=fraction*2^exponent.
+  // At least one of {a, b, c} equals `minimum`, where exp(-0) == 1 is IEEE-754 exact.
   if (!scale.finite_reciprocal) {
-    return minimum - scale.gamma * std::log(
-                                     std::exp(-scale.scaled(a - minimum)) +
-                                     std::exp(-scale.scaled(b - minimum)) +
-                                     std::exp(-scale.scaled(c - minimum)));
+    const T ea = (a == minimum) ? T(1) : std::exp(-scale.scaled(a - minimum));
+    const T eb = (b == minimum) ? T(1) : std::exp(-scale.scaled(b - minimum));
+    const T ec = (c == minimum) ? T(1) : std::exp(-scale.scaled(c - minimum));
+    return minimum - scale.gamma * std::log(ea + eb + ec);
   }
-  return minimum - scale.gamma * std::log(
-                                   std::exp(-(a - minimum) * scale.inv_gamma) +
-                                   std::exp(-(b - minimum) * scale.inv_gamma) +
-                                   std::exp(-(c - minimum) * scale.inv_gamma));
+  const T ea = (a == minimum) ? T(1) : std::exp(-(a - minimum) * scale.inv_gamma);
+  const T eb = (b == minimum) ? T(1) : std::exp(-(b - minimum) * scale.inv_gamma);
+  const T ec = (c == minimum) ? T(1) : std::exp(-(c - minimum) * scale.inv_gamma);
+  return minimum - scale.gamma * std::log(ea + eb + ec);
+}
+
+/// soft_dtw_gradient's forward/backward matrices, one pair per T: reached here so that
+/// core::release_thread_scratch() can empty them (core::detail::dispatch_scratch).
+template <typename T>
+std::pair<std::vector<T> &, std::vector<T> &> soft_dtw_grad_bufs()
+{
+  thread_local std::vector<T> c_buf, e_buf;
+  return { c_buf, e_buf };
 }
 
 } // namespace detail
@@ -135,7 +145,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   // gradient sums each row of E, so both are kept whole. Grown to the exact
   // size (reserve: resize alone may overshoot), never shrunk: a warmed thread
   // allocates nothing.
-  thread_local std::vector<T> c_buf, e_buf;
+  auto [c_buf, e_buf] = detail::soft_dtw_grad_bufs<T>();
   for (auto *buffer : { &c_buf, &e_buf })
     if (buffer->size() < mx * my) {
       buffer->reserve(mx * my);

@@ -18,10 +18,24 @@
 
 #include <cmath>
 #include <type_traits>
+#include <utility>
 #include <vector>
 #include <span>
 
 namespace dtwc {
+
+namespace detail {
+
+/// MissingStrategy::Interpolate's per-thread buffers, one pair per T (shared by dtw_dispatch.cpp and dtw_lanes.cpp;
+/// emptied by core::detail::dispatch_scratch in core/dtw_dispatch.cpp).
+template <typename T>
+std::pair<std::vector<T> &, std::vector<T> &> interpolate_bufs()
+{
+  thread_local std::vector<T> x_buffer, y_buffer;
+  return { x_buffer, y_buffer };
+}
+
+} // namespace detail
 
 /// NaN check — semantic alias for std::isnan for use in missing-data code paths.
 /// Build flags omit -ffinite-math-only so std::isnan() is reliable at all opt levels.

@@ -95,22 +95,23 @@ int lane_mismatches(std::size_t n, int band, MetricType metric, bool ties)
   return bad;
 }
 
-// Without a band each lane has its own length: x and the W series drawn from
-// [1, n] samples, each lane against the per-pair path of its pair.
+// Without a band or under a Sakoe-Chiba band, each lane has its own length: x and
+// the W series drawn from [1, n] samples, each lane against the per-pair path of its pair
+// (including infeasible |nx - ny[w]| > band pairs returning max()).
 template <typename T>
-int ragged_mismatches(std::size_t n, MetricType metric, bool ties)
+int ragged_mismatches(std::size_t n, int band, MetricType metric, bool ties)
 {
   constexpr std::size_t W = dtwc::core::dtw_lanes<T>;
-  std::mt19937_64 rng(2000003u * n + 7919u * W + (ties ? 1 : 0));
+  std::mt19937_64 rng(2000003u * n + 7919u * W + 37u * std::size_t(band + 2) + (ties ? 1 : 0));
   std::uniform_int_distribution<std::size_t> length(1, n);
   const auto x = series<T>(rng, length(rng), ties);
   std::vector<std::vector<T>> y;
   for (std::size_t w = 0; w < W; ++w) y.push_back(series<T>(rng, length(rng), ties));
 
-  const auto lanes = lanes_of<T>(x, y, -1, metric);
+  const auto lanes = lanes_of<T>(x, y, band, metric);
   int bad = 0;
   for (std::size_t w = 0; w < W; ++w)
-    bad += !dtw_routes_agree<T>(lanes[w], dtwc::dtwBanded<T>(x, y[w], -1, T(-1), metric), x.size(),
+    bad += !dtw_routes_agree<T>(lanes[w], dtwc::dtwBanded<T>(x, y[w], band, T(-1), metric), x.size(),
                                 y[w].size());
   return bad;
 }
@@ -133,15 +134,16 @@ TEST_CASE("dtw_kernel_lanes: every lane agrees with the per-pair kernel", "[lane
 {
   SECTION("double") { check_every_configuration<double>(); }
   SECTION("float") { check_every_configuration<float>(); }
-  SECTION("lengths of their own, unbanded")
+  SECTION("lengths of their own, unbanded and banded")
   {
     for (const std::size_t n : { 1u, 2u, 7u, 100u, 1000u })
-      for (const auto metric : { MetricType::L1, MetricType::SquaredL2 })
-        for (const bool ties : { false, true }) {
-          CAPTURE(n, int(metric), ties);
-          CHECK(ragged_mismatches<double>(n, metric, ties) == 0);
-          CHECK(ragged_mismatches<float>(n, metric, ties) == 0);
-        }
+      for (const int band : { -1, 0, 1, 3, int(n / 4) })
+        for (const auto metric : { MetricType::L1, MetricType::SquaredL2 })
+          for (const bool ties : { false, true }) {
+            CAPTURE(n, band, int(metric), ties);
+            CHECK(ragged_mismatches<double>(n, band, metric, ties) == 0);
+            CHECK(ragged_mismatches<float>(n, band, metric, ties) == 0);
+          }
   }
 }
 
@@ -240,11 +242,70 @@ TEST_CASE("fill_distance_matrix: the lanes fill agrees with the per-pair fill", 
     { "float32, band 4, squared L2", true, std::vector<std::size_t>(n32, 40), 4,
       MetricType::SquaredL2, {} },
     { "mixed lengths, unbanded", false, alternating, -1, MetricType::L1, {} },
-    { "two lengths, band 3: mixed blocks fall back", false, halves, 3, MetricType::L1, {} },
+    { "two lengths, band 3: ragged banded lanes", false, halves, 3, MetricType::L1, {} },
     { "partially computed", false, std::vector<std::size_t>(n64, 60), -1, MetricType::L1, known },
   };
   for (const auto &c : cases) {
     CAPTURE(c.name);
     CHECK(fill_mismatches(c) == 0);
+  }
+}
+
+TEST_CASE("fill_distance_matrix: DDTW and Interpolate SIMD lanes agree with per-pair oracle", "[lanes][fill]")
+{
+  constexpr std::size_t N = 2 * dtwc::core::dtw_lanes<double> + 5;
+  std::vector<std::size_t> lengths;
+  for (std::size_t i = 0; i < N; ++i) lengths.push_back(i % 2 ? 44 : 40);
+
+  SECTION("DDTW unbanded and banded")
+  {
+    for (const int band : { -1, 5 }) {
+      for (const auto metric : { MetricType::L1, MetricType::SquaredL2 }) {
+        dtwc::Problem prob("ddtw_lanes");
+        prob.set_data(walks<double>(lengths));
+        prob.set_variant(dtwc::core::DTWVariant::DDTW);
+        prob.set_band(band);
+        prob.set_metric(metric);
+        std::vector<double> want(N * N, 0.0);
+        for (std::size_t i = 0; i < N; ++i)
+          for (std::size_t j = i + 1; j < N; ++j)
+            want[i * N + j] = prob.dtw_function()(prob.series(i), prob.series(j));
+        prob.fill_distance_matrix();
+        const auto &m = prob.distance_matrix();
+        int bad = 0;
+        for (std::size_t i = 0; i < N; ++i)
+          for (std::size_t j = i + 1; j < N; ++j)
+            bad += !dtw_routes_agree<double>(m.get(i, j), want[i * N + j], lengths[i], lengths[j]);
+        CHECK(bad == 0);
+      }
+    }
+  }
+
+  SECTION("MissingStrategy::Interpolate with leading, interior, and trailing NaNs")
+  {
+    auto data = walks<double>(lengths);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (std::size_t i = 0; i < N; i += 3) {
+      data.p_vec[i][0] = nan;
+      data.p_vec[i][10] = nan;
+      data.p_vec[i][11] = nan;
+      data.p_vec[i].back() = nan;
+    }
+    dtwc::Problem prob("interp_lanes");
+    prob.set_missing_strategy(dtwc::core::MissingStrategy::Interpolate);
+    prob.set_data(std::move(data));
+    prob.set_band(6);
+    prob.set_metric(MetricType::SquaredL2);
+    std::vector<double> want(N * N, 0.0);
+    for (std::size_t i = 0; i < N; ++i)
+      for (std::size_t j = i + 1; j < N; ++j)
+        want[i * N + j] = prob.dtw_function()(prob.series(i), prob.series(j));
+    prob.fill_distance_matrix();
+    const auto &m = prob.distance_matrix();
+    int bad = 0;
+    for (std::size_t i = 0; i < N; ++i)
+      for (std::size_t j = i + 1; j < N; ++j)
+        bad += !dtw_routes_agree<double>(m.get(i, j), want[i * N + j], lengths[i], lengths[j]);
+    CHECK(bad == 0);
   }
 }

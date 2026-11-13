@@ -158,7 +158,7 @@ struct SoftCell {
     if (m == maxValue) return maxValue;
 
     const auto contribution = [&](T predecessor) noexcept {
-      return std::exp(-scale.scaled(predecessor - m));
+      return predecessor == m ? T(1) : std::exp(-scale.scaled(predecessor - m));
     };
     // diag, left, up: on dtw_kernel_linear (up = dp[i, j-1], left = dp[i-1, j])
     // the order soft_dtw has always summed in; another order moves a float32
@@ -167,7 +167,7 @@ struct SoftCell {
     if (diag != maxValue) acc += contribution(diag);
     if (left != maxValue) acc += contribution(left);
     if (up   != maxValue) acc += contribution(up);
-    return m - gamma * std::log(acc) + cost;
+    return (acc == T(1) ? m : m - gamma * std::log(acc)) + cost;
   }
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
@@ -366,7 +366,7 @@ T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
     return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
 
   std::vector<T> &col_buf = banded_col_buf<T>();
-  col_buf.assign(n_long, maxValue);
+  if (col_buf.size() < n_long) col_buf.resize(n_long);
   T *col = col_buf.data(); // hoisted out of the loops
   const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
 
@@ -379,12 +379,13 @@ T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
       col[i] = cell.combine(maxValue, maxValue, col[i - 1],
                             cost(0, i), 0, i);
     }
+    if (hi < n_long) col[hi] = maxValue;
   }
   if (abandons(col[0])) return maxValue;
 
   for (std::size_t j = 1; j < n_short; ++j) {
-    // The band's bounds never decrease with j: dp[j-1, first_row-1] lies in the previous
-    // column's band, and a cell that left the band is never read again, so nothing is cleared.
+    // The band's bounds advance by at most 1 per j: dp[j-1, first_row-1] lies in the previous
+    // column's band, and col[high_{j-1}] holds the maxValue boundary sentinel placed above.
     const auto [low, high] = dtw_band_bounds(band, j, n_long);
     const auto first_row = std::max(low, std::size_t{1});
     T diag    = col[first_row - 1];                 // dp[j-1, first_row-1]
@@ -406,6 +407,7 @@ T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
       diag = old_up;
       if constexpr (Abandon) row_min = std::min(row_min, left);
     }
+    if (high < n_long) col[high] = maxValue;
     if (abandons(row_min)) return maxValue;
   }
 
@@ -479,7 +481,15 @@ T run_dtw(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, Cell
 /// disagree. Elsewhere this is StandardCell: x86's fmin is three instructions (minpd,
 /// cmpunordpd, blendvpd) where its min is one. The per-pair kernels keep std::min
 /// on AArch64 too: their scalar fminnm chain measured slower.
-#if defined(__aarch64__)
+#if defined(_MSC_VER)
+#define DTWC_LANES_RESTRICT __restrict
+#elif defined(__GNUC__) || defined(__clang__)
+#define DTWC_LANES_RESTRICT __restrict__
+#else
+#define DTWC_LANES_RESTRICT
+#endif
+
+#if defined(__aarch64__) || defined(_M_ARM64)
 struct LanesCell : StandardCell {
   template <typename T>
   T combine(T diag, T up, T left, T cost,
@@ -489,29 +499,54 @@ struct LanesCell : StandardCell {
   }
 };
 #else
-using LanesCell = StandardCell;
+struct LanesCell : StandardCell {
+  template <typename T>
+  T combine(T diag, T up, T left, T cost,
+            std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    // Value-returning ternary (identical to std::min's `(b < a) ? b : a` ordering)
+    // avoids const-reference stack temporaries that block MSVC/GCC SIMD vectorisation.
+    const T m1 = (up < diag) ? up : diag;
+    const T m2 = (left < m1) ? left : m1;
+    return m2 + cost;
+  }
+};
 #endif
 
 /// Pairs per dtw_kernel_lanes call: enough chains that the FP pipes, not one
 /// chain's min-then-add latency, set the pace. 128 bytes of T (16 doubles, 32
-/// floats) on AArch64 and on x86-64 under clang and GCC, where 64 left the pipes
-/// waiting on that chain (GCC's f64 lanes are scalar with stack traffic at 64,
-/// packed at 128); 64 bytes under cl, whose lanes stay scalar (slower at 128), and
-/// elsewhere (measured 2026-10-06 to 2026-10-08 on an Apple M5 Pro and an Intel Core
-/// Ultra 9 285).
-#if defined(__aarch64__) || defined(__x86_64__)
+/// floats) on AArch64 and on x86-64 under Clang and GCC; 64 bytes of T (8 doubles,
+/// 16 floats) under MSVC x64 and WebAssembly SIMD128 so two-column blocking fits
+/// cleanly in architectural vector registers without stack spills.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__x86_64__)
 template <typename T>
 inline constexpr std::size_t dtw_lanes = 128 / sizeof(T);
-/// Whether the lanes are packed, so beat the one-pair kernel without a band too: there the fill and OneBatchPAM
-/// give them blocks of unequal length (no band), and FastCLARA's assignment takes them unbanded. cl's lanes are
-/// scalar: without a band 3-5 % slower per cell than its one-pair kernel (f64 L1), 9-17 % on blocks of unequal
-/// length; under a band 1.5x faster than its banded one (measured 2026-10-07 and 2026-10-08).
+inline constexpr bool dtw_lanes_packed = true;
+#elif defined(_M_X64) || defined(__wasm_simd128__)
+template <typename T>
+inline constexpr std::size_t dtw_lanes = 64 / sizeof(T);
 inline constexpr bool dtw_lanes_packed = true;
 #else
 template <typename T>
 inline constexpr std::size_t dtw_lanes = 64 / sizeof(T);
 inline constexpr bool dtw_lanes_packed = false;
 #endif
+
+/// Sakoe-Chiba row range [lo, hi) in [0, row_count) at zero-based column `col` for
+/// dtw_kernel_lanes, where `col` may reach or exceed `row_count` when ny[w] > nx.
+inline std::pair<std::size_t, std::size_t>
+dtw_lanes_band_bounds(int band, std::size_t col, std::size_t row_count) noexcept
+{
+  if (band < 0) return {0, row_count};
+  if (row_count == 0) return {0, 0};
+  const auto width = static_cast<std::size_t>(band);
+  const auto lo = (col > width) ? col - width : 0;
+  if (lo >= row_count) return {row_count, row_count};
+  const auto hi = (col >= row_count || width >= row_count - col - 1)
+                    ? row_count
+                    : col + width + 1;
+  return {lo, hi};
+}
 
 namespace detail {
 
@@ -535,32 +570,91 @@ std::pair<std::vector<LanesRow<T>> &, std::vector<LanesRow<T>> &> lanes_bufs()
 
 } // namespace detail
 
-/// DTW between xs and each of ys[0 .. dtw_lanes<T>), with the pointwise distance
-/// dist(xs[i], ys[w][j]). band < 0 is unconstrained and each ys[w] has its own
-/// length; else the Sakoe-Chiba band of dtw_band_bounds, every ys[w] as long as xs.
-/// No ys[w] is empty (the fill refuses an empty series).
+/// Non-owning view of W = dtw_lanes<T> interleaved series [ny_max][W], a lane past
+/// its own length repeating its last sample.
+template <typename T>
+struct PackedLanesView
+{
+  const detail::LanesRow<T> *rows = nullptr;
+  std::array<std::size_t, dtw_lanes<T>> ny{};
+  std::size_t ny_min = 0;
+  std::size_t ny_max = 0;
+};
+
+/// Owning pre-packed panel of W = dtw_lanes<T> series, reusable across many queries x.
+template <typename T>
+struct PackedLanesPanel
+{
+  std::vector<detail::LanesRow<T>> rows;
+  std::array<std::size_t, dtw_lanes<T>> ny{};
+  std::size_t ny_min = 0;
+  std::size_t ny_max = 0;
+
+  PackedLanesView<T> view() const noexcept
+  {
+    return { rows.data(), ny, ny_min, ny_max };
+  }
+};
+
+namespace detail {
+
+template <typename T>
+PackedLanesView<T> pack_lanes_into(const std::span<const T> *ys, std::vector<LanesRow<T>> &buf)
+{
+  constexpr std::size_t W = dtw_lanes<T>;
+  std::array<std::size_t, W> ny{};
+  std::size_t ny_min = std::numeric_limits<std::size_t>::max(), ny_max = 0;
+  for (std::size_t w = 0; w < W; ++w) {
+    ny[w] = ys[w].size();
+    ny_min = std::min(ny_min, ny[w]);
+    ny_max = std::max(ny_max, ny[w]);
+  }
+  if (ny_min == 0) return { nullptr, ny, 0, ny_max };
+  if (buf.size() < ny_max) buf.resize(ny_max);
+  LanesRow<T> * DTWC_LANES_RESTRICT Y = buf.data();
+  for (std::size_t w = 0; w < W; ++w) {
+    const T * DTWC_LANES_RESTRICT yw = ys[w].data();
+    const std::size_t n = ny[w];
+    std::size_t t = 0;
+    for (; t < n; ++t) Y[t].v[w] = yw[t];
+    const T last = yw[n - 1];
+    for (; t < ny_max; ++t) Y[t].v[w] = last;
+  }
+  return { Y, ny, ny_min, ny_max };
+}
+
+} // namespace detail
+
+template <typename T>
+void pack_lanes_panel(const std::span<const T> *ys, PackedLanesPanel<T> &panel)
+{
+  const auto v = detail::pack_lanes_into<T>(ys, panel.rows);
+  panel.ny = v.ny;
+  panel.ny_min = v.ny_min;
+  panel.ny_max = v.ny_max;
+}
+
+/// DTW between xs and a pre-packed panel of W = dtw_lanes<T> series, with pointwise distance
+/// dist(xs[i], panel.rows[j].v[w]). Supports both unbanded (band < 0) and Sakoe-Chiba banded
+/// (band >= 0) execution across equal-length and ragged series.
+/// Register-blocks kCols columns per sweep over s[0..nx) when unbanded (4 on AVX-512, 2 on
+/// AVX2/NEON/WASM), cutting L1D load/store traffic on s[] by 2x-4x with zero register spills.
 template <typename T, typename Dist, typename Cell>
-std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::span<const T> *ys,
-                                             int band, Dist dist, Cell cell)
+std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const PackedLanesView<T> &panel,
+                                                    int band, Dist dist, Cell cell)
 {
   constexpr std::size_t W = dtw_lanes<T>;
   constexpr T maxValue = std::numeric_limits<T>::max();
-  const T *x = xs.data();
+  const T * DTWC_LANES_RESTRICT x = xs.data();
   const std::size_t nx = xs.size();
+  const std::size_t ny_min = panel.ny_min;
+  const std::size_t ny_max = panel.ny_max;
   std::array<T, W> out;
-  if (nx == 0) {
+  if (nx == 0 || ny_min == 0) {
     out.fill(maxValue);
     return out;
   }
-  std::size_t ny[W], ny_max = 0;
-  for (std::size_t w = 0; w < W; ++w) {
-    ny[w] = ys[w].size();
-    ny_max = std::max(ny_max, ny[w]);
-  }
 
-  // [ny_max][W]: the W series interleaved, a lane past its length repeating its
-  // last sample (finite; what those columns compute is never read); and [nx][W]:
-  // the rolling DP column (s[i].v[w] = dp[i, j] of pair w).
   using Row = detail::LanesRow<T>;
   // maxValue in every lane. A row, or the lanes of `left`, is set by copying it whole:
   // Apple clang turns a loop that stores a constant row (or reads this row lane by
@@ -570,37 +664,113 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
     for (T &e : r.v) e = maxValue;
     return r;
   }();
+
   auto [y_buf, s_buf] = detail::lanes_bufs<T>();
-  if (y_buf.size() < ny_max) y_buf.resize(ny_max);
   if (s_buf.size() < nx) s_buf.resize(nx);
-  Row *Y = y_buf.data();
-  Row *s = s_buf.data();
-  for (std::size_t w = 0; w < W; ++w) {
-    const T *yw = ys[w].data();
-    std::size_t t = 0;
-    for (; t < ny[w]; ++t) Y[t].v[w] = yw[t];
-    for (; t < ny_max; ++t) Y[t].v[w] = yw[ny[w] - 1];
+  const bool ragged_tail = (ny_min < ny_max);
+  if (ragged_tail) {
+    const std::size_t tail_count = ny_max - (ny_min - 1);
+    if (y_buf.size() < tail_count) y_buf.resize(tail_count);
   }
+  const Row *Y = panel.rows;
+  Row *end_rows = ragged_tail ? y_buf.data() : nullptr;
+  Row * DTWC_LANES_RESTRICT s = s_buf.data();
 
   // Column 0 (y[0]). The rows above its band hold maxValue: the band only moves
   // up, so a later column first meets such a row as an unreachable `up`.
-  const std::size_t hi0 = dtw_band_bounds(band, 0, nx).second;
-  for (std::size_t w = 0; w < W; ++w) s[0].v[w] = cell.seed(dist(x[0], Y[0].v[w]), 0, 0);
-  for (std::size_t i = 1; i < hi0; ++i)
-    for (std::size_t w = 0; w < W; ++w)
-      s[i].v[w] = cell.combine(maxValue, s[i - 1].v[w], maxValue, dist(x[i], Y[0].v[w]), i, 0);
+  const std::size_t hi0 = dtw_lanes_band_bounds(band, 0, nx).second;
+  {
+    T y0[W];
+    for (std::size_t w = 0; w < W; ++w) y0[w] = Y[0].v[w];
+    for (std::size_t w = 0; w < W; ++w) s[0].v[w] = cell.seed(dist(x[0], y0[w]), 0, 0);
+    for (std::size_t i = 1; i < hi0; ++i) {
+      const T xi = x[i];
+      for (std::size_t w = 0; w < W; ++w)
+        s[i].v[w] = cell.combine(maxValue, s[i - 1].v[w], maxValue, dist(xi, y0[w]), i, 0);
+    }
+  }
   for (std::size_t i = hi0; i < nx; ++i) s[i] = kUnreachable;
+  if (ragged_tail && ny_min == 1) end_rows[0] = s[nx - 1];
 
-  // Lane w's distance is s[nx - 1] once its last column, ny[w] - 1, is done: each
-  // column's last row goes to its Y row, which no later column reads, and lane w takes
-  // Y[ny[w] - 1] at the end. No test in the column loop: one there (a capture when a
-  // lane ended) changed clang's registers in the row loop below, which then ran 4-5 %
-  // slower on long equal-length series (measured 2026-10-08).
-  Y[0] = s[nx - 1];
-  for (std::size_t j = 1; j < ny_max; ++j) {
-    const auto [lo, hi] = dtw_band_bounds(band, j, nx);
-    // Locals, so the compiler keeps them in registers: without type-based
-    // alias analysis (clang's Windows driver) a store to s may alias memory.
+  // Multi-column register-blocked sweep for unconstrained DTW (nx > 1 keeps 1-row matrices
+  // on the 1-column loop so -fassociative-math never regroups across columns without a min).
+  // Stops before ny_min - 1 when ragged_tail is true so every lane-ending column runs in the
+  // 1-column loop below with zero branch inside the multi-column loop.
+  const std::size_t multi_limit = ragged_tail ? (ny_min - 1) : ny_min;
+  std::size_t j = 1;
+#if defined(__AVX512F__)
+  constexpr std::size_t kCols = 4;
+  for (; band < 0 && nx > 1 && j + kCols <= multi_limit; j += kCols) {
+    T y0[W], y1[W], y2[W], y3[W], diag0[W], l0[W], l1[W], l2[W], l3[W];
+    for (std::size_t w = 0; w < W; ++w) {
+      y0[w] = Y[j].v[w];
+      y1[w] = Y[j + 1].v[w];
+      y2[w] = Y[j + 2].v[w];
+      y3[w] = Y[j + 3].v[w];
+    }
+    const T x0 = x[0];
+    for (std::size_t w = 0; w < W; ++w) {
+      const T s0 = s[0].v[w];
+      diag0[w] = s0;
+      l0[w] = cell.combine(maxValue, maxValue, s0,    dist(x0, y0[w]), 0, j);
+      l1[w] = cell.combine(maxValue, maxValue, l0[w], dist(x0, y1[w]), 0, j + 1);
+      l2[w] = cell.combine(maxValue, maxValue, l1[w], dist(x0, y2[w]), 0, j + 2);
+      l3[w] = cell.combine(maxValue, maxValue, l2[w], dist(x0, y3[w]), 0, j + 3);
+      s[0].v[w] = l3[w];
+    }
+    for (std::size_t i = 1; i < nx; ++i) {
+      const T xi = x[i];
+      T * DTWC_LANES_RESTRICT si = s[i].v;
+      for (std::size_t w = 0; w < W; ++w) {
+        const T up0 = si[w];
+        const T n0 = cell.combine(diag0[w], up0, l0[w], dist(xi, y0[w]), i, j);
+        const T n1 = cell.combine(l0[w],    n0,  l1[w], dist(xi, y1[w]), i, j + 1);
+        const T n2 = cell.combine(l1[w],    n1,  l2[w], dist(xi, y2[w]), i, j + 2);
+        const T n3 = cell.combine(l2[w],    n2,  l3[w], dist(xi, y3[w]), i, j + 3);
+        diag0[w] = up0;
+        l0[w] = n0;
+        l1[w] = n1;
+        l2[w] = n2;
+        l3[w] = n3;
+        si[w] = n3;
+      }
+    }
+  }
+#else
+  constexpr std::size_t kCols = 2;
+  for (; band < 0 && nx > 1 && j + kCols <= multi_limit; j += kCols) {
+    T y0[W], y1[W], diag0[W], l0[W], l1[W];
+    for (std::size_t w = 0; w < W; ++w) {
+      y0[w] = Y[j].v[w];
+      y1[w] = Y[j + 1].v[w];
+    }
+    const T x0 = x[0];
+    for (std::size_t w = 0; w < W; ++w) {
+      const T s0 = s[0].v[w];
+      diag0[w] = s0;
+      l0[w] = cell.combine(maxValue, maxValue, s0,    dist(x0, y0[w]), 0, j);
+      l1[w] = cell.combine(maxValue, maxValue, l0[w], dist(x0, y1[w]), 0, j + 1);
+      s[0].v[w] = l1[w];
+    }
+    for (std::size_t i = 1; i < nx; ++i) {
+      const T xi = x[i];
+      T * DTWC_LANES_RESTRICT si = s[i].v;
+      for (std::size_t w = 0; w < W; ++w) {
+        const T up0 = si[w];
+        const T n0 = cell.combine(diag0[w], up0, l0[w], dist(xi, y0[w]), i, j);
+        const T n1 = cell.combine(l0[w],    n0,  l1[w], dist(xi, y1[w]), i, j + 1);
+        diag0[w] = up0;
+        l0[w] = n0;
+        l1[w] = n1;
+        si[w] = n1;
+      }
+    }
+  }
+#endif
+
+  // Remaining columns (1-column tail when unbanded, or every column when banded).
+  for (; j < ny_max; ++j) {
+    const auto [lo, hi] = dtw_lanes_band_bounds(band, j, nx);
     T y[W], diag[W], left[W];
     for (std::size_t w = 0; w < W; ++w) y[w] = Y[j].v[w];
     std::size_t i = lo;
@@ -611,14 +781,16 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
         s[0].v[w] = left[w];
       }
       i = 1;
-    } else {
+    } else if (lo < nx) {
       for (std::size_t w = 0; w < W; ++w)
         diag[w] = s[lo - 1].v[w];           // dp[lo-1, j-1], inside the previous column's band
       std::copy_n(kUnreachable.v, W, left); // dp[lo-1, j], outside this column's band
+    } else {
+      s[nx - 1] = kUnreachable;             // row nx - 1 has left the Sakoe-Chiba band
     }
     for (; i < hi; ++i) {
       const T xi = x[i];
-      T *si = s[i].v;
+      T * DTWC_LANES_RESTRICT si = s[i].v;
       for (std::size_t w = 0; w < W; ++w) {
         const T up = si[w]; // dp[i, j-1]
         left[w] = cell.combine(diag[w], up, left[w], dist(xi, y[w]), i, j);
@@ -626,10 +798,34 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::s
         si[w] = left[w];
       }
     }
-    Y[j] = s[nx - 1];
+    if (ragged_tail && j >= ny_min - 1) end_rows[j - (ny_min - 1)] = s[nx - 1];
   }
-  for (std::size_t w = 0; w < W; ++w) out[w] = Y[ny[w] - 1].v[w];
+
+  if (!ragged_tail) {
+    for (std::size_t w = 0; w < W; ++w) out[w] = s[nx - 1].v[w];
+  } else {
+    for (std::size_t w = 0; w < W; ++w) out[w] = end_rows[panel.ny[w] - ny_min].v[w];
+  }
   return out;
 }
+
+/// DTW between xs and each of ys[0 .. dtw_lanes<T>), with the pointwise distance
+/// dist(xs[i], ys[w][j]). band < 0 is unconstrained and band >= 0 is the Sakoe-Chiba
+/// band |i - j| <= band; in both modes each ys[w] may have its own length.
+template <typename T, typename Dist, typename Cell>
+std::array<T, dtw_lanes<T>> dtw_kernel_lanes(std::span<const T> xs, const std::span<const T> *ys,
+                                             int band, Dist dist, Cell cell)
+{
+  if (xs.empty()) {
+    std::array<T, dtw_lanes<T>> out;
+    out.fill(std::numeric_limits<T>::max());
+    return out;
+  }
+  auto &y_buf = detail::lanes_bufs<T>().first;
+  const auto panel = detail::pack_lanes_into<T>(ys, y_buf);
+  return dtw_kernel_lanes_packed<T>(xs, panel, band, dist, cell);
+}
+
+#undef DTWC_LANES_RESTRICT
 
 } // namespace dtwc::core

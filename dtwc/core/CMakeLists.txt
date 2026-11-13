@@ -29,7 +29,11 @@ target_sources(dtwc_core
   )
 
 # lld-link's LTO backend lacks the SLP vectoriser dtw_kernel_lanes needs, so clang-cl compiles
-# dtw_lanes.cpp to native code. dtwc_core is defined in the parent directory, hence TARGET_DIRECTORY.
+# dtw_lanes.cpp to native code. Under GCC on x86-64, raising max-completely-peel-times to 8 lets
+# the W-lane inner loop peel completely into packed SIMD registers instead of scalar stack traffic.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
   set_source_files_properties(dtw_lanes.cpp TARGET_DIRECTORY dtwc_core PROPERTIES COMPILE_OPTIONS -fno-lto)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+  set_source_files_properties(dtw_lanes.cpp TARGET_DIRECTORY dtwc_core PROPERTIES
+    COMPILE_OPTIONS "--param=max-completely-peel-times=8")
 endif()

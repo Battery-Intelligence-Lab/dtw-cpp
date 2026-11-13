@@ -80,7 +80,14 @@ TEST_CASE("Functionality of run", "[run]")
   std::vector<int> results(100, 0);
   auto task = [&](size_t i) { results[i] = 1; };
 
-  // Test with parallel execution
+  // Test with default worker count (0: all available OpenMP threads)
+  dtwc::run(task, results.size());
+  for (int res : results) {
+    REQUIRE(res == 1);
+  }
+
+  // Reset and test with explicit parallel cap
+  std::fill(results.begin(), results.end(), 0);
   dtwc::run(task, results.size(), 32);
   for (int res : results) {
     REQUIRE(res == 1);
