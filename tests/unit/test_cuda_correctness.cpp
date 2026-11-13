@@ -1730,7 +1730,7 @@ TEST_CASE("test_regtile_kernel_squared_l2_L80", "[cuda][regtile]")
 // against the host kernel run in FP32 on the float-rounded series (the exact
 // standard of the kernel-range test above).
 TEST_CASE("A15 CUDA fill above N = 65,536 matches the host kernel on every pair",
-          "[cuda][A15][large]")
+          "[.][cuda][A15][large]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 

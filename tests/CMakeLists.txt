@@ -128,43 +128,66 @@ dtwc_add_test(NAME unit_test_deterministic_series SOURCE ${_dtwc_test_source_uni
 dtwc_add_test(NAME test_io_readers SOURCE ${_dtwc_test_source_test_io_readers}
     REQUIRES DTWC_HAS_ARROW)
 
-# Capability-dependent tests: skip tolerance only in the build that lacks the
+# Conformance suite stays a standalone target for cross-language oracle gates.
+dtwc_add_test(NAME cpp_conformance SOURCE ${_dtwc_test_source_cpp_conformance})
+
+# Capability-dependent grouped suites: skip tolerance only in the build that lacks the
 # capability; strict everywhere else.
-foreach(_dtwc_mmap_test IN ITEMS
-        unit_test_mmap_distance_matrix
-        unit_test_problem_semantic_transactions
-        unit_test_cli_args unit_test_dtw_function_semantics
-        unit_test_variant_precision unit_test_variant_distmat)
-    dtwc_add_test(NAME ${_dtwc_mmap_test} SOURCE ${_dtwc_test_source_${_dtwc_mmap_test}} ${_dtwc_mmap_skip})
-endforeach()
-foreach(_dtwc_highs_test IN ITEMS
-        test_lagrangian_root test_mip_backend_guards unit_test_mip)
-    dtwc_add_test(NAME ${_dtwc_highs_test} SOURCE ${_dtwc_test_source_${_dtwc_highs_test}} ${_dtwc_highs_skip})
-endforeach()
+dtwc_add_test(NAME dtwc_unit_mmap
+    SOURCE
+        ${_dtwc_test_source_unit_test_mmap_distance_matrix}
+        ${_dtwc_test_source_unit_test_problem_semantic_transactions}
+        ${_dtwc_test_source_unit_test_cli_args}
+        ${_dtwc_test_source_unit_test_dtw_function_semantics}
+        ${_dtwc_test_source_unit_test_variant_precision}
+        ${_dtwc_test_source_unit_test_variant_distmat}
+    ${_dtwc_mmap_skip})
+
+dtwc_add_test(NAME dtwc_unit_mip
+    SOURCE
+        ${_dtwc_test_source_test_lagrangian_root}
+        ${_dtwc_test_source_test_mip_backend_guards}
+        ${_dtwc_test_source_unit_test_mip}
+    ${_dtwc_highs_skip})
+
 dtwc_add_test(NAME unit_test_parallelisation SOURCE ${_dtwc_test_source_unit_test_parallelisation} ${_dtwc_seq_skip})
 
-# Device tests: no CUDA/Metal device in any CI matrix, so each may skip; its
-# SKIP message names the missing device.
-foreach(_dtwc_device_test IN ITEMS
-        test_cuda_correctness test_cuda_launch_guards
-        test_metal_correctness test_metal_mmap)
-    dtwc_add_test(NAME ${_dtwc_device_test} SOURCE ${_dtwc_test_source_${_dtwc_device_test}} MAY_SKIP)
-endforeach()
+# Device tests grouped into one binary: no CUDA/Metal device in standard CI, so may skip.
+dtwc_add_test(NAME dtwc_unit_gpu
+    SOURCE
+        ${_dtwc_test_source_test_cuda_correctness}
+        ${_dtwc_test_source_test_cuda_launch_guards}
+        ${_dtwc_test_source_test_metal_correctness}
+        ${_dtwc_test_source_test_metal_mmap}
+    MAY_SKIP)
 
-# Pass 2: everything else, strict. A name already handled above stays handled
-# even when REQUIRES declined to register it.
+# Pass 2: group all remaining strict unit tests into 3 fast Catch2 binaries
+# (core, algorithms, api_io) instead of linking ~70 separate executables.
+set(_dtwc_suite_core "")
+set(_dtwc_suite_algo "")
+set(_dtwc_suite_api_io "")
 foreach(TEST_SOURCE ${TEST_SOURCES})
     get_filename_component(_dtwc_test_name ${TEST_SOURCE} NAME_WE)
     if(NOT "${_dtwc_test_name}" IN_LIST DTWC_TEST_REGISTERED)
-        dtwc_add_test(NAME ${_dtwc_test_name} SOURCE ${TEST_SOURCE})
+        if(TEST_SOURCE MATCHES "^unit/core/|^unit/types/|ddtw|wdtw|soft_dtw|arow|missing|multivariate|mv_|z_normalize")
+            list(APPEND _dtwc_suite_core ${TEST_SOURCE})
+        elseif(TEST_SOURCE MATCHES "^unit/algorithms/|^unit/mip/|clustering|scores")
+            list(APPEND _dtwc_suite_algo ${TEST_SOURCE})
+        else()
+            list(APPEND _dtwc_suite_api_io ${TEST_SOURCE})
+        endif()
     endif()
 endforeach()
 
+dtwc_add_test(NAME dtwc_unit_core SOURCE ${_dtwc_suite_core})
+dtwc_add_test(NAME dtwc_unit_algorithms SOURCE ${_dtwc_suite_algo})
+dtwc_add_test(NAME dtwc_unit_api_io SOURCE ${_dtwc_suite_api_io})
+
 # The Arrow C Data ingest test synthesises ArrowSchema/ArrowArray structs with the
 # vendored nanoarrow builder (the symbols are linked in via dtwc_core). nanoarrow is
-# a PRIVATE include of dtwc_core, so grant this one test target the include path.
-if(TARGET test_arrow_c_data)
-    target_include_directories(test_arrow_c_data PRIVATE ${CMAKE_SOURCE_DIR}/dtwc/extern)
+# a PRIVATE include of dtwc_core, so grant the api_io suite target the include path.
+if(TARGET dtwc_unit_api_io)
+    target_include_directories(dtwc_unit_api_io PRIVATE ${CMAKE_SOURCE_DIR}/dtwc/extern)
 endif()
 
 # Public reachability: compare a real native Result::save with resident CLI

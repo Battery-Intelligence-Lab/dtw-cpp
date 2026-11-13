@@ -52,8 +52,8 @@ endfunction()
 #     otherwise the subject is absent by construction and nothing is added.
 function(dtwc_add_test)
   set(options MAY_SKIP MARKER_ONLY SERIAL)
-  set(one NAME SOURCE MARKER PROCESSORS TIMEOUT FIXTURE_ROOT FIXTURE_DEFINE)
-  set(multi REQUIRES LAUNCHER ENVIRONMENT LABELS COMPILE_DEFINITIONS)
+  set(one NAME MARKER PROCESSORS TIMEOUT FIXTURE_ROOT FIXTURE_DEFINE)
+  set(multi REQUIRES SOURCE LAUNCHER ENVIRONMENT LABELS COMPILE_DEFINITIONS)
   cmake_parse_arguments(ARG "${options}" "${one}" "${multi}" ${ARGN})
   if(ARG_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "dtwc_add_test(${ARG_NAME}): unknown arguments ${ARG_UNPARSED_ARGUMENTS}")
@@ -62,9 +62,14 @@ function(dtwc_add_test)
     message(FATAL_ERROR "dtwc_add_test: NAME and SOURCE are required")
   endif()
 
-  # Record every name handled here, including ones REQUIRES declines below, so a
-  # caller's catch-all pass cannot silently re-register them with the defaults.
+  # Record every name and source basename handled here, including ones REQUIRES declines below,
+  # so a caller's catch-all pass cannot silently re-register them with the defaults.
   list(APPEND DTWC_TEST_REGISTERED ${ARG_NAME})
+  foreach(_src IN LISTS ARG_SOURCE)
+    get_filename_component(_src_we ${_src} NAME_WE)
+    list(APPEND DTWC_TEST_REGISTERED ${_src_we})
+  endforeach()
+  list(REMOVE_DUPLICATES DTWC_TEST_REGISTERED)
   set(DTWC_TEST_REGISTERED "${DTWC_TEST_REGISTERED}" PARENT_SCOPE)
 
   dtwc_public_definitions(_public_defs)
