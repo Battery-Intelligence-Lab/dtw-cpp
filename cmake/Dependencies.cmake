@@ -16,13 +16,10 @@ function(dtwc_setup_dependencies)
     GIT_TAG ca42334d561b83e499b11cf55fe05d97a0767fb9 # v0.0.7
   )
 
-  if(DTWC_BUILD_TESTING AND NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
+  if(DTWC_BUILD_TESTING AND NOT TARGET Catch2::Catch2WithMain)
     CPMAddPackage(
       NAME Catch2
       URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.13.0.tar.gz"
-      # SHA256 pinned. Computed from the tarball CPM
-      # downloaded, cached at build/_deps/catch2-subbuild/.../v3.13.0.tar.gz,
-      # on 2026-07-07. Immutable release tag -> GitHub serves identical bytes.
       URL_HASH SHA256=650795f6501af514f806e78c554729847b98db6935e69076f36bb03ed2e985ef
       OPTIONS
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
@@ -101,18 +98,16 @@ function(dtwc_setup_dependencies)
   endif()
 
   if (NOT TARGET CLI11::CLI11)
-  CPMAddPackage(
-    NAME CLI11
-    URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.6.2.tar.gz"
-    # SHA256 pinned. Computed 2026-07-07 from cached tarball
-    # build/_deps/cli11-subbuild/.../v2.6.2.tar.gz. Immutable release tag.
-    URL_HASH SHA256=c6ea6b2e5608b3ea8617999bd5f47420c71b2ebdb8dc4767c1034d1da5785711
-    DOWNLOAD_ONLY YES
-  )
+    CPMAddPackage(
+      NAME CLI11
+      URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.6.2.tar.gz"
+      URL_HASH SHA256=c6ea6b2e5608b3ea8617999bd5f47420c71b2ebdb8dc4767c1034d1da5785711
+      DOWNLOAD_ONLY YES
+    )
 
-   add_library(CLI11::CLI11 INTERFACE IMPORTED)
-  set_target_properties(CLI11::CLI11 PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
+    add_library(CLI11::CLI11 INTERFACE IMPORTED)
+    set_target_properties(CLI11::CLI11 PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
   # lz4 1.10.0 (BSD-2-Clause) and zstd 1.5.7 (BSD-3-Clause): the decoders of compressed Arrow IPC record batches
@@ -155,14 +150,6 @@ function(dtwc_setup_dependencies)
   # nanobind — Python bindings (BSD-3, by Wenzel Jakob)
   # find_package(Python) and nanobind discovery are handled in python/CMakeLists.txt
   # to ensure scikit-build-core has configured paths first.
-
-  # Eigen was removed. It was the project's only copyleft dependency
-  # (MPL-2.0) and the only MPL obligation in the Python wheel, and it was carried
-  # for exactly two uses: ScratchMatrix's base class and a to_full_matrix return
-  # type that every caller immediately copied into a std::vector. Both are now
-  # plain standard library. The CMake rationale here had also gone stale — it
-  # claimed "zero-copy Map" and dense distance-matrix internals, and there was no
-  # Eigen::Map anywhere and the matrix was already std::vector<double>.
 
   # PMU counters. Every route by which this could fail to deliver
   # counters is a FATAL_ERROR, because Google Benchmark's own runtime guard cannot
@@ -385,11 +372,6 @@ function(dtwc_setup_dependencies)
       # 2. Build minimal Arrow+Parquet from source via CPM
       message(STATUS "  Arrow:    not found — building from source via CPM (first build takes ~5 min)")
 
-      # Workaround: Arrow's ExternalProject passes CMAKE_CXX_FLAGS_* to sub-builds
-      # (snappy, zstd, thrift). On Windows+Clang, flags like "-Xclang --dependent-lib=msvcrt"
-      # and "-D_DLL -D_MT" contain spaces that break CMake argument parsing in ExternalProject.
-      # Strip these from ALL flag variables before Arrow configure, restore after.
-      # Flag stripping not needed — Windows+Clang never reaches the CPM build (the guard below stops it)
       # NOTE: On Windows+Clang, Arrow's ExternalProject sub-builds fail because
       # CMake's platform module sets "-Xclang --dependent-lib=msvcrt" in default
       # flags, and the space breaks ExternalProject's semicolon-separated command.

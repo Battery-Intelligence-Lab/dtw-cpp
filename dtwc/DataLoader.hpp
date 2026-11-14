@@ -43,13 +43,13 @@ public:
   }
 
   // Accessor methods
-  auto startColumn() { return start_col_; } //!< Get the starting column for data loading.
-  auto startRow() { return start_row_; }    //!< Get the starting row for data loading.
-  auto n_data() { return Ndata; }          //!< Get the number of data points to load.
-  auto delimiter() { return delim; }       //!< Get the delimiter used in data files.
-  auto path() { return data_path; }        //!< Get the path of the data file or directory.
-  auto verbosity() { return verbose; }     //!< Get the verbosity level for data loading.
-  auto dtype() { return dtype_; }          //!< Get the precision the series are stored in.
+  auto startColumn() const noexcept { return start_col_; }                 //!< Get the starting column for data loading.
+  auto startRow() const noexcept { return start_row_; }                    //!< Get the starting row for data loading.
+  auto n_data() const noexcept { return Ndata; }                           //!< Get the number of data points to load.
+  auto delimiter() const noexcept { return delim; }                        //!< Get the delimiter used in data files.
+  const std::filesystem::path &path() const noexcept { return data_path; } //!< Get the path of the data file or directory.
+  auto verbosity() const noexcept { return verbose; }                      //!< Get the verbosity level for data loading.
+  auto dtype() const noexcept { return dtype_; }                           //!< Get the precision the series are stored in.
 
   // Setters with chaining
 

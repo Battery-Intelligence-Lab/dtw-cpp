@@ -27,21 +27,22 @@
 namespace dtwc {
 namespace {
 
-void validate_skips(index_t skip_cols, index_t skip_rows)
-{
-  if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
-  if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
-}
+  void validate_skips(index_t skip_cols, index_t skip_rows)
+  {
+    if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
+    if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
+  }
 
-/// A streamed run's Result (`streamed_names` its series' names) refuses `what`: FastCLARA read its series a record
-/// batch at a time within --ram-limit, and its Problem holds none, so it has no distances.
-void refuse_if_streamed(const std::vector<std::string> &streamed_names, const char *what)
-{
-  if (streamed_names.empty()) return;
-  throw InvalidInput("Result::" + std::string(what) + ": the run streamed its " + std::to_string(streamed_names.size())
-                     + " series (FastCLARA read them a record batch at a time within --ram-limit) and holds none, so "
+  /// A streamed run's Result (`streamed_names` its series' names) refuses `what`: FastCLARA read its series a record
+  /// batch at a time within --ram-limit, and its Problem holds none, so it has no distances.
+  void refuse_if_streamed(const std::vector<std::string> &streamed_names, const char *what)
+  {
+    if (streamed_names.empty()) return;
+    throw InvalidInput("Result::" + std::string(what) + ": the run streamed its " + std::to_string(streamed_names.size())
+                       +
+                       " series (FastCLARA read them a record batch at a time within --ram-limit) and holds none, so "
                        "it has no distances; a run whose --ram-limit holds the series in RAM, or with none, has them.");
-}
+  }
 
 } // namespace
 
@@ -101,8 +102,7 @@ Dataset load(Dataset::series_type source, index_t skip_cols, index_t skip_rows,
              char delimiter, std::string_view name, core::Precision dtype)
 {
   validate_skips(skip_cols, skip_rows);
-  return Dataset(std::move(source), skip_cols, skip_rows, delimiter,
-                 name.empty() ? "dataset" : std::string(name), dtype);
+  return Dataset(std::move(source), skip_cols, skip_rows, delimiter, name.empty() ? "dataset" : std::string(name), dtype);
 }
 
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
@@ -161,7 +161,7 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
   config.max_iter = max_iter;
   config.output.clear(); // Result::save writes; cluster() does not
   config.name = dataset.name();
-  config.dtype = dataset.dtype(); // run() reads a path in it and converts series in memory to it
+  config.dtype = dataset.dtype();                    // run() reads a path in it and converts series in memory to it
   const std::string process_device = dtwc::device(); // used when `device` is ""
   std::tie(config.device, config.device_index) =
     detail::parse_device(device.empty() ? std::string_view(process_device) : device);
@@ -175,16 +175,16 @@ Result cluster(Dataset &&dataset, index_t k, std::string_view method, int band,
 
 namespace {
 
-std::vector<std::pair<std::string, std::string>>
-to_string_pairs(std::initializer_list<SettingPair> options)
-{
-  std::vector<std::pair<std::string, std::string>> pairs;
-  pairs.reserve(options.size());
-  for (const auto &[k, v] : options) {
-    pairs.emplace_back(std::string(k), std::string(v));
+  std::vector<std::pair<std::string, std::string>>
+    to_string_pairs(std::initializer_list<SettingPair> options)
+  {
+    std::vector<std::pair<std::string, std::string>> pairs;
+    pairs.reserve(options.size());
+    for (const auto &[k, v] : options) {
+      pairs.emplace_back(std::string(k), std::string(v));
+    }
+    return pairs;
   }
-  return pairs;
-}
 
 } // namespace
 
@@ -202,11 +202,11 @@ Config make_settings(Config base, std::initializer_list<SettingPair> overrides)
 }
 
 namespace settings {
-Config make(std::initializer_list<SettingPair> options) { return make_settings(options); }
-Config make(Config base, std::initializer_list<SettingPair> overrides)
-{
-  return make_settings(std::move(base), overrides);
-}
+  Config make(std::initializer_list<SettingPair> options) { return make_settings(options); }
+  Config make(Config base, std::initializer_list<SettingPair> overrides)
+  {
+    return make_settings(std::move(base), overrides);
+  }
 } // namespace settings
 
 Dataset load_data(const std::filesystem::path &source, const Config &cfg)
@@ -251,8 +251,7 @@ Result do_clustering(Dataset &&dataset, const Config &cfg)
   if (!dataset.is_path()) {
     if (dataset.skip_cols() == 0 && config.skip_cols > 0) dataset.skip_cols_ = config.skip_cols;
     if (dataset.skip_rows() == 0 && config.skip_rows > 0) dataset.skip_rows_ = config.skip_rows;
-    if (dataset.dtype() != core::Precision::Float64 && config.dtype == core::Precision::Float64)
-      config.dtype = dataset.dtype();
+    if (dataset.dtype() != core::Precision::Float64) config.dtype = dataset.dtype();
     config.input.clear();
     config.skip_cols = 0;
     config.skip_rows = 0;
@@ -261,11 +260,10 @@ Result do_clustering(Dataset &&dataset, const Config &cfg)
     return run(config, std::move(dataset).materialize_local());
   }
   config.input = path_to_utf8(dataset.path());
-  if (dataset.skip_cols() != 0 && config.skip_cols == 0) config.skip_cols = dataset.skip_cols();
-  if (dataset.skip_rows() != 0 && config.skip_rows == 0) config.skip_rows = dataset.skip_rows();
-  if (dataset.delimiter() != '\0' && config.delimiter == '\0') config.delimiter = dataset.delimiter();
-  if (dataset.dtype() != core::Precision::Float64 && config.dtype == core::Precision::Float64)
-    config.dtype = dataset.dtype();
+  if (dataset.skip_cols() != 0) config.skip_cols = dataset.skip_cols();
+  if (dataset.skip_rows() != 0) config.skip_rows = dataset.skip_rows();
+  if (dataset.delimiter() != '\0') config.delimiter = dataset.delimiter();
+  if (dataset.dtype() != core::Precision::Float64) config.dtype = dataset.dtype();
   return run(config);
 }
 

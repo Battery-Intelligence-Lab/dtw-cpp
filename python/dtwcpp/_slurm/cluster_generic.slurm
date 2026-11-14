@@ -25,7 +25,7 @@ RESULTS_DIR="${SLURM_SUBMIT_DIR}/results/cluster_${SLURM_JOB_ID}"
 if [[ -n "${DTWC_MODULES:-}" ]]; then
     IFS=: read -r -a _DTWC_MOD_LIST <<< "${DTWC_MODULES}"
     for _MOD in "${_DTWC_MOD_LIST[@]}"; do
-        [[ -n "${_MOD}" ]] && { module load "${_MOD}" 2>/dev/null || true; }
+        [[ -n "${_MOD}" ]] && module load "${_MOD}"
     done
 else
     module load GCC/13.2.0 2>/dev/null || module load gcc 2>/dev/null || true

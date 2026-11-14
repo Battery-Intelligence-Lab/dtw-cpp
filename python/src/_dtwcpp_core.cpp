@@ -804,7 +804,7 @@ NB_MODULE(_dtwcpp_core, m)
         "Compute Soft-DTW gradient w.r.t. first series x (zero-copy from numpy).\n\n"
         "NaN or +-inf in x or y raises InvalidInput.");
 
-  m.def("_cdist", [](const dtwc::Data &X, const dtwc::Data &Y, const std::string &variant, int band, const std::string &metric, const std::string &missing_strategy, double wdtw_g, double adtw_penalty, double sdtw_gamma, double msm_c, double twe_nu, double twe_lambda, const std::string &mv_mode, const std::string &device, const std::string &gpu_precision, const std::string &matrix_dtype) -> nb::object {
+  m.def("_cdist", [](const dtwc::Data &X, const dtwc::Data &Y, const std::string &variant, int band, const std::string &metric, const std::string &missing_strategy, double wdtw_g, double adtw_penalty, double sdtw_gamma, double msm_c, double twe_nu, double twe_lambda, const std::string &mv_mode, const std::string &device, const std::string &gpu_precision, double gpu_share, const std::string &matrix_dtype) -> nb::object {
     auto c = distance_config(variant, band, metric, missing_strategy, wdtw_g,
                              adtw_penalty, sdtw_gamma, msm_c, twe_nu, twe_lambda);
     c.variant.mv_mode = dtwc::parse_name(dtwc::core::mv_mode_names, mv_mode, "mv_mode");
@@ -817,7 +817,7 @@ NB_MODULE(_dtwcpp_core, m)
     std::vector<float> f32;
     {
       nb::gil_scoped_release release;
-      f64 = dtwc::cdist(X, Y, c, dev, dev_idx, gprec);
+      f64 = dtwc::cdist(X, Y, c, dev, dev_idx, gprec, gpu_share);
       if (out_prec == dtwc::core::Precision::Float32) {
         f32.resize(f64.size());
         for (std::size_t idx = 0; idx < f64.size(); ++idx) {
@@ -832,7 +832,7 @@ NB_MODULE(_dtwcpp_core, m)
     }
     if (out_prec == dtwc::core::Precision::Float32)
       return nb::cast(adopt_as_ndarray(std::move(f32), { n_x, n_y }));
-    return nb::cast(adopt_as_ndarray(std::move(f64), { n_x, n_y })); }, "X"_a, "Y"_a, nb::kw_only(), "variant"_a = "standard", "band"_a = dtwc::settings::DEFAULT_BAND, "metric"_a = "l1", "missing_strategy"_a = "error", "wdtw_g"_a = defaults.wdtw_g, "adtw_penalty"_a = defaults.adtw_penalty, "sdtw_gamma"_a = defaults.sdtw_gamma, "msm_c"_a = defaults.msm_c, "twe_nu"_a = defaults.twe_nu, "twe_lambda"_a = defaults.twe_lambda, "mv_mode"_a = "dependent", "device"_a = "cpu", "gpu_precision"_a = "auto", "matrix_dtype"_a = "float64", "Compute cross-collection (n_X x n_Y) DTW distance matrix in C++/CUDA.");
+    return nb::cast(adopt_as_ndarray(std::move(f64), { n_x, n_y })); }, "X"_a, "Y"_a, nb::kw_only(), "variant"_a = "standard", "band"_a = dtwc::settings::DEFAULT_BAND, "metric"_a = "l1", "missing_strategy"_a = "error", "wdtw_g"_a = defaults.wdtw_g, "adtw_penalty"_a = defaults.adtw_penalty, "sdtw_gamma"_a = defaults.sdtw_gamma, "msm_c"_a = defaults.msm_c, "twe_nu"_a = defaults.twe_nu, "twe_lambda"_a = defaults.twe_lambda, "mv_mode"_a = "dependent", "device"_a = "cpu", "gpu_precision"_a = "auto", "gpu_share"_a = -1.0, "matrix_dtype"_a = "float64", "Compute cross-collection (n_X x n_Y) DTW distance matrix in C++/CUDA.");
 
   // =========================================================================
   // Utility functions
@@ -843,6 +843,11 @@ NB_MODULE(_dtwcpp_core, m)
   m.def("z_normalize", [](std::vector<double> x) {
     dtwc::core::z_normalize(x.data(), x.size());
     return x; }, "x"_a, "Return z-normalized copy (zero mean, unit stddev).");
+
+  m.def("_z_normalize_1d", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x) {
+    std::vector<double> out(x.data(), x.data() + x.size());
+    dtwc::core::z_normalize(out.data(), out.size());
+    return adopt_as_ndarray(std::move(out), { x.size() }); }, "x"_a, "Return z-normalized 1-D float64 ndarray without Python list boxing.");
 
   // =========================================================================
   // Data
@@ -937,7 +942,9 @@ NB_MODULE(_dtwcpp_core, m)
     .def_prop_ro("size", &dtwc::Data::size)
     .def("is_f32", &dtwc::Data::is_f32, "True if series are stored as float32.")
     .def("is_view", &dtwc::Data::is_view, "True if data is a non-owning view (spans).")
-    .def("series_length", &dtwc::Data::series_length, "i"_a, "Return the number of timesteps for series i (flat size / ndim).")
+    .def("series_length", [](const dtwc::Data &d, std::int64_t i) {
+      require_index("Data.series_length", "i", i, static_cast<size_t>(d.size()));
+      return d.series_length(static_cast<size_t>(i)); }, "i"_a, "Return the number of timesteps for series i (flat size / ndim).\n\nRaises InvalidInput if i is outside [0, N).")
     .def("validate_ndim", &dtwc::Data::validate_ndim,
          "Validate that all series flat sizes are divisible by ndim.\n\n"
          "Raises InvalidInput (a ValueError) if any series has incompatible size.");
@@ -1250,7 +1257,8 @@ NB_MODULE(_dtwcpp_core, m)
     "path C++ reads (CSV/TSV, a folder or Arrow IPC; skip_cols, skip_rows, delimiter\n"
     "and dtype as dtwcpp.load takes them) or a Data, copied (the run refuses a\n"
     "reader option beside series in memory; dtype float32 converts float64 ones).\n"
-    "The run takes a copy of config: it writes no files (output cleared) and is named\n"
+    "The run takes a copy of config: it writes result files only when output is\n"
+    "non-empty (empty by default) and is named\n"
     "config.name, else as dtwc_cl names it. The GIL is released for the whole run.\n"
     "external (a build without HiGHS) solves Method.MIP on HiGHS and LR-core's kelley\n"
     "root with dtwcpp._mip.solve(prob), prob the run's own Problem, co-owned; an\n"

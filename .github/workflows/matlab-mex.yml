@@ -58,6 +58,7 @@ jobs:
             fullfile(pwd,'tests','matlab','test_mex_input_validation.m'),
             fullfile(pwd,'tests','matlab','test_contract_parity.m'),
             fullfile(pwd,'tests','matlab','test_tier1_route_parity.m'),
+            fullfile(pwd,'tests','matlab','test_cdist_and_workflow.m'),
             fullfile(pwd,'tests','matlab','test_help_text.m'),
             fullfile(pwd,'tests','conformance','test_conformance.m')};
             r=runtests(files); assertSuccess(r);

@@ -42,6 +42,10 @@ function test_cdist_rectangular_and_self_match_oracle(testCase)
     D_xx = dtwc.cdist(X, X, 'Band', 3, 'Metric', 'squared_euclidean');
     verifyEqual(testCase, D_self, D_xx, 'RelTol', 1e-12);
 
+    % Empty non-omitted Y collections return [n_X, 0] rather than triggering self-cdist
+    verifySize(testCase, dtwc.cdist(X, zeros(0, 12)), [5 0]);
+    verifySize(testCase, dtwc.cdist(X, {}), [5 0]);
+
     % Float32 output matrix
     D_f32 = dtwc.cdist(X, Y, 'Band', 3, 'Metric', 'squared_euclidean', 'MatrixDtype', 'float32');
     verifyClass(testCase, D_f32, 'single');
@@ -110,5 +114,17 @@ function test_casadi_workflow_persistent_and_in_memory(testCase)
     dtwc.write_data(mem_res, manual_out);
     verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_labels.csv')));
     verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_medoids.csv')));
+
+    % Post-init struct field mutation on settings is reconciled and validated
+    mut = dtwc.settings('NClusters', 3, 'Method', 'kmedoids', 'Band', -1, 'Output', '', 'Checkpoint', '');
+    mut.NClusters = 2;
+    mut.Method = 'pam';
+    mut.Band = 1;
+    mut_res = dtwc.do_clustering(ds, mut);
+    verifyNumElements(testCase, mut_res.medoids, 2);
+
+    bad = mut;
+    bad.UnknownField = 42;
+    verifyError(testCase, @() dtwc.do_clustering(ds, bad), 'dtwc:invalidArgument');
 end
 

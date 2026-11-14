@@ -1,6 +1,7 @@
 # @author Volkan Kumtepeli
 """Release-version single-source-of-truth regression tests."""
 
+import importlib.metadata
 from pathlib import Path
 import subprocess
 
@@ -14,6 +15,7 @@ def test_version_file_python_metadata_and_cli_match(dtwc_cl):
     expected = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     assert expected == "2.0.0"
     assert dtwcpp.__version__ == expected
+    assert importlib.metadata.version("dtwcpp") == expected
     completed = subprocess.run(
         [dtwc_cl, "--version"], capture_output=True, text=True, check=True
     )

@@ -339,8 +339,9 @@ class Result:
     result keeps and which fills its matrix on demand after a matrix-free
     OneBatchPAM/CLARA/TADPole run. A run that streamed an Arrow IPC file under
     ``ram_limit`` holds no series: its ``score`` and ``distance_matrix`` raise
-    :class:`dtwcpp.InvalidInput`. An ``hpc`` run returns labels only, and its
-    ``report`` is ``None``.
+    :class:`dtwcpp.InvalidInput`. An ``hpc`` run populates ``labels``,
+    ``medoids`` (when written), and ``report`` (when downloaded); its
+    ``distance_matrix`` is ``None``.
     """
 
     def __init__(self, labels, *, device, elapsed_s, k, n_series,
@@ -629,24 +630,44 @@ class Settings:
     "hpc" | "hpc:gpu"`` switching.
     """
 
-    def __init__(self, **kwargs):
-        from dtwcpp import InvalidInput, _dtwcpp_core
+    _WORKFLOW_ATTRS = frozenset({
+        "input", "skip_cols", "skip_rows", "delimiter", "dtype", "ndim",
+        "output", "checkpoint", "checkpoint_interval", "device",
+        "gpu_device", "upload_input",
+    })
 
-        self.input = ""
-        self.skip_cols = 0
-        self.skip_rows = 0
-        self.delimiter = None
-        self.dtype = "float64"
-        self.ndim = 1
-        self.output = "./results"
-        self.checkpoint = ""
-        self.checkpoint_interval = 0
-        self.device = None
-        self.gpu_device = None
-        self.upload_input = False
-        self._config = _dtwcpp_core.Config()
-        self._clustering_keys = []
+    def __init__(self, **kwargs):
+        from dtwcpp import _dtwcpp_core
+
+        object.__setattr__(self, "_ready", False)
+        object.__setattr__(self, "input", "")
+        object.__setattr__(self, "skip_cols", 0)
+        object.__setattr__(self, "skip_rows", 0)
+        object.__setattr__(self, "delimiter", None)
+        object.__setattr__(self, "dtype", "float64")
+        object.__setattr__(self, "ndim", 1)
+        object.__setattr__(self, "output", "./results")
+        object.__setattr__(self, "checkpoint", "")
+        object.__setattr__(self, "checkpoint_interval", 0)
+        object.__setattr__(self, "device", None)
+        object.__setattr__(self, "gpu_device", None)
+        object.__setattr__(self, "upload_input", False)
+        object.__setattr__(self, "_config", _dtwcpp_core.Config())
+        object.__setattr__(self, "_clustering_keys", [])
         self._update(**kwargs)
+        object.__setattr__(self, "_ready", True)
+
+    def __setattr__(self, name, value):
+        if name.startswith("_") or not self.__dict__.get("_ready", False):
+            object.__setattr__(self, name, value)
+            return
+        if (
+            name != "k"
+            and name not in self._WORKFLOW_ATTRS
+            and not hasattr(type(self._config), name)
+        ):
+            raise AttributeError(f"Unknown settings attribute {name!r}")
+        self._update(**{name: value})
 
     def _update(self, **kwargs):
         from dtwcpp import InvalidInput, _dtwcpp_core
@@ -656,56 +677,79 @@ class Settings:
         if "k" in kwargs:
             kwargs["n_clusters"] = kwargs.pop("k")
 
-        for key, value in kwargs.items():
-            if key == "input":
-                self.input = "" if value is None else os.fspath(value)
-            elif key in ("skip_cols", "skip_rows"):
-                if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
-                    raise TypeError(f"settings: {key} must be an integer")
-                if value < 0:
-                    raise InvalidInput(f"settings: {key} must be non-negative.")
-                setattr(self, key, int(value))
-            elif key == "delimiter":
-                if value is not None and (not isinstance(value, str) or len(value) > 1):
-                    raise InvalidInput("settings: delimiter must be None or a single character.")
-                self.delimiter = value
-            elif key == "dtype":
-                if not isinstance(value, str):
-                    raise TypeError(f"settings: dtype must be a string, got {type(value).__name__}")
-                self.dtype = _dtwcpp_core._dtype(value)
-            elif key == "ndim":
-                if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
-                    raise TypeError("settings: ndim must be an integer")
-                if value < 1:
-                    raise InvalidInput("settings: ndim must be at least 1.")
-                self.ndim = int(value)
-            elif key == "output":
-                self.output = "" if value is None else os.fspath(value)
-            elif key == "checkpoint":
-                self.checkpoint = "" if value is None else os.fspath(value)
-            elif key == "checkpoint_interval":
-                if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
-                    raise TypeError("settings: checkpoint_interval must be an integer")
-                if value < 0:
-                    raise InvalidInput("settings: checkpoint_interval must be non-negative.")
-                self.checkpoint_interval = int(value)
-            elif key == "device":
-                if value is not None:
-                    from dtwcpp import _resolve_device
-                    _resolve_device(value)
-                self.device = value
-            elif key == "gpu_device":
-                if value is not None and not isinstance(value, str):
-                    raise TypeError("settings: gpu_device must be a string or None")
-                self.gpu_device = value
-            elif key == "upload_input":
-                if not isinstance(value, (bool, np.bool_)):
-                    raise TypeError("settings: upload_input must be a bool")
-                self.upload_input = bool(value)
-            else:
-                _set_key(self._config, key, value, name="k" if key == "n_clusters" else key)
-                if key != "n_clusters" and key not in self._clustering_keys:
-                    self._clustering_keys.append(key)
+        touched_config = []
+        prev_config = {}
+        try:
+            for key, value in kwargs.items():
+                if key == "input":
+                    object.__setattr__(self, "input", "" if value is None else os.fspath(value))
+                elif key in ("skip_cols", "skip_rows"):
+                    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                        raise TypeError(f"settings: {key} must be an integer")
+                    if value < 0:
+                        raise InvalidInput(f"settings: {key} must be non-negative.")
+                    object.__setattr__(self, key, int(value))
+                elif key == "delimiter":
+                    if value is not None and (not isinstance(value, str) or len(value) > 1):
+                        raise InvalidInput("settings: delimiter must be None or a single character.")
+                    object.__setattr__(self, "delimiter", value)
+                elif key == "dtype":
+                    if not isinstance(value, str):
+                        raise TypeError(f"settings: dtype must be a string, got {type(value).__name__}")
+                    object.__setattr__(self, "dtype", _dtwcpp_core._dtype(value))
+                elif key == "ndim":
+                    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                        raise TypeError("settings: ndim must be an integer")
+                    if value < 1:
+                        raise InvalidInput("settings: ndim must be at least 1.")
+                    object.__setattr__(self, "ndim", int(value))
+                elif key == "output":
+                    object.__setattr__(self, "output", "" if value is None else os.fspath(value))
+                elif key == "checkpoint":
+                    object.__setattr__(self, "checkpoint", "" if value is None else os.fspath(value))
+                elif key == "checkpoint_interval":
+                    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                        raise TypeError("settings: checkpoint_interval must be an integer")
+                    if value < 0:
+                        raise InvalidInput("settings: checkpoint_interval must be non-negative.")
+                    object.__setattr__(self, "checkpoint_interval", int(value))
+                elif key == "device":
+                    if value is not None:
+                        from dtwcpp import _resolve_device
+                        _resolve_device(value)
+                    object.__setattr__(self, "device", value)
+                elif key == "gpu_device":
+                    if value is not None and not isinstance(value, str):
+                        raise TypeError("settings: gpu_device must be a string or None")
+                    object.__setattr__(self, "gpu_device", value)
+                elif key == "upload_input":
+                    if not isinstance(value, (bool, np.bool_)):
+                        raise TypeError("settings: upload_input must be a bool")
+                    object.__setattr__(self, "upload_input", bool(value))
+                else:
+                    if hasattr(self._config, key) and key not in prev_config:
+                        prev_config[key] = getattr(self._config, key)
+                    _set_key(self._config, key, value, name="k" if key == "n_clusters" else key)
+                    if key == "n_clusters" and self._config.n_clusters < 1:
+                        raise InvalidInput("settings: k (n_clusters) must be at least 1.")
+                    touched_config.append(key)
+
+            if touched_config:
+                saved_k = self._config.n_clusters
+                try:
+                    if saved_k < 1:
+                        self._config.n_clusters = 1
+                    _dtwcpp_core.apply(self._config, _dtwcpp_core.Problem())
+                finally:
+                    if saved_k < 1:
+                        self._config.n_clusters = saved_k
+                for key in touched_config:
+                    if key != "n_clusters" and key not in self._clustering_keys:
+                        self._clustering_keys.append(key)
+        except Exception:
+            for key, old_val in prev_config.items():
+                setattr(self._config, key, old_val)
+            raise
 
     @property
     def k(self):
@@ -713,7 +757,7 @@ class Settings:
 
     @k.setter
     def k(self, value):
-        _set_key(self._config, "n_clusters", value, name="k")
+        self._update(k=value)
 
     def __getattr__(self, name):
         if not name.startswith("_") and "_config" in self.__dict__ and hasattr(type(self._config), name):
@@ -723,23 +767,13 @@ class Settings:
     def copy(self, **overrides):
         """Return a new :class:`Settings` with ``overrides`` applied."""
         cloned = Settings()
-        cloned.input = self.input
-        cloned.skip_cols = self.skip_cols
-        cloned.skip_rows = self.skip_rows
-        cloned.delimiter = self.delimiter
-        cloned.dtype = self.dtype
-        cloned.ndim = self.ndim
-        cloned.output = self.output
-        cloned.checkpoint = self.checkpoint
-        cloned.checkpoint_interval = self.checkpoint_interval
-        cloned.device = self.device
-        cloned.gpu_device = self.gpu_device
-        cloned.upload_input = self.upload_input
+        for attr in self._WORKFLOW_ATTRS:
+            object.__setattr__(cloned, attr, getattr(self, attr))
         if self._config.n_clusters > 0:
             _set_key(cloned._config, "n_clusters", self._config.n_clusters, name="k")
         for key in self._clustering_keys:
             setattr(cloned._config, key, getattr(self._config, key))
-        cloned._clustering_keys = list(self._clustering_keys)
+        object.__setattr__(cloned, "_clustering_keys", list(self._clustering_keys))
         if overrides:
             cloned._update(**overrides)
         return cloned
@@ -861,7 +895,7 @@ def do_clustering(data=None, settings=None, **overrides):
         )
 
     dataset = load_data(data, eff)
-    config = eff.copy()._config
+    config = eff._config
 
     t0 = time.perf_counter()
     if backend == "hpc":

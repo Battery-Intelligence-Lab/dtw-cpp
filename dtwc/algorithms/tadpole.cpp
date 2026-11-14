@@ -54,407 +54,428 @@
 namespace dtwc {
 namespace algorithms {
 
-namespace {
+  namespace {
 
-/// Configuration-only predicate for the regime where LB_Keogh + the diagonal L1
-/// upper bound can be valid: plain Standard DTW, univariate, float64, no NaN
-/// handling — the case where dispatch binds L1 `dtwBanded` (dtw_dispatch.cpp
-/// make_standard). It does not inspect samples for finiteness or check that a
-/// series length fits the integer envelope-radius API.
-///
-/// Float32 is excluded because the prune would not be ADMISSIBLE: the bound path
-/// reads Data::series() (float64 storage) while the exact side computes on the
-/// stored Float32 series — the two sides of the bound would come from different
-/// data. Float32 therefore takes the exact path everywhere, a slowdown
-/// TADPoleStats::pruning_enabled reports.
-bool bounds_valid(const Problem &prob)
-{
-  // The bounds are L1: under Problem::set_metric(SquaredL2) the LB can exceed
-  // the exact distance, so another metric takes the exact path too.
-  return prob.variant_params().variant == core::DTWVariant::Standard
-         && prob.metric() == core::MetricType::L1
-         && prob.data().ndim == 1
-         && !prob.data().is_f32()
-         && prob.missing_strategy() == core::MissingStrategy::Error;
-}
+    /// Configuration-only predicate for the regime where LB_Keogh + the diagonal L1
+    /// upper bound can be valid: plain Standard DTW, univariate, float64, no NaN
+    /// handling — the case where dispatch binds L1 `dtwBanded` (dtw_dispatch.cpp
+    /// make_standard). It does not inspect samples for finiteness or check that a
+    /// series length fits the integer envelope-radius API.
+    ///
+    /// Float32 is excluded because the prune would not be ADMISSIBLE: the bound path
+    /// reads Data::series() (float64 storage) while the exact side computes on the
+    /// stored Float32 series — the two sides of the bound would come from different
+    /// data. Float32 therefore takes the exact path everywhere, a slowdown
+    /// TADPoleStats::pruning_enabled reports.
+    bool bounds_valid(const Problem &prob)
+    {
+      // The bounds are L1: under Problem::set_metric(SquaredL2) the LB can exceed
+      // the exact distance, so another metric takes the exact path too.
+      return prob.variant_params().variant == core::DTWVariant::Standard
+             && prob.metric() == core::MetricType::L1
+             && prob.data().ndim == 1
+             && !prob.data().is_f32()
+             && prob.missing_strategy() == core::MissingStrategy::Error;
+    }
 
-/// No-warp diagonal cost Σ_t |x_t − y_t| — a valid DTW upper bound for
-/// equal-length series (the diagonal always satisfies the Sakoe-Chiba band). L1,
-/// matching the Standard-DTW metric the dispatch uses.
-double diagonal_ub_l1(std::span<const double> x, std::span<const double> y)
-{
-  double s = 0.0; // caller guarantees x.size() == y.size()
-  const double *const xp = x.data();
-  const double *const yp = y.data();
-  const std::size_t n = x.size();
+    /// No-warp diagonal cost Σ_t |x_t − y_t| — a valid DTW upper bound for
+    /// equal-length series (the diagonal always satisfies the Sakoe-Chiba band). L1,
+    /// matching the Standard-DTW metric the dispatch uses.
+    double diagonal_ub_l1(std::span<const double> x, std::span<const double> y)
+    {
+      double s = 0.0; // caller guarantees x.size() == y.size()
+      const double *const xp = x.data();
+      const double *const yp = y.data();
+      const std::size_t n = x.size();
 #if !defined(_MSC_VER)
-  #pragma omp simd reduction(+:s)
+#pragma omp simd reduction(+ : s)
 #endif
-  for (std::size_t t = 0; t < n; ++t) s += std::abs(xp[t] - yp[t]);
-  return s;
-}
+      for (std::size_t t = 0; t < n; ++t) s += std::abs(xp[t] - yp[t]);
+      return s;
+    }
 
-/// The exact distance of a pair: the Problem's matrix when it is filled (a
-/// matrix read from a file included), else the bound DTW function on the stored
-/// series, whose request is checked here, once, serially. Neither writes, so
-/// the parallel stages may call it for disjoint pairs.
-auto exact_distance(Problem &prob)
-{
-  const bool filled = prob.is_distance_matrix_filled();
-  const bool f32 = prob.data().is_f32();
-  const Problem::dtw_fn_t *f64_fn = filled || f32 ? nullptr : &prob.dtw_function();
-  const Problem::dtw_fn_f32_t *f32_fn = filled || !f32 ? nullptr : &prob.dtw_function_f32();
-  return [&prob, f64_fn, f32_fn](index_t i, index_t j) -> double {
-    if (f64_fn) return (*f64_fn)(prob.series(static_cast<std::size_t>(i)),
-                                 prob.series(static_cast<std::size_t>(j)));
-    if (f32_fn) return (*f32_fn)(prob.data().series_f32(static_cast<std::size_t>(i)),
-                                 prob.data().series_f32(static_cast<std::size_t>(j)));
-    return prob.dist_by_ind(i, j);
-  };
-}
+    /// The exact distance of a pair: the Problem's matrix when it is filled (a
+    /// matrix read from a file included), else the bound DTW function on the stored
+    /// series, whose request is checked here, once, serially. Neither writes, so
+    /// the parallel stages may call it for disjoint pairs.
+    auto exact_distance(Problem &prob)
+    {
+      const bool filled = prob.is_distance_matrix_filled();
+      const bool f32 = prob.data().is_f32();
+      const Problem::dtw_fn_t *f64_fn = filled || f32 ? nullptr : &prob.dtw_function();
+      const Problem::dtw_fn_f32_t *f32_fn = filled || !f32 ? nullptr : &prob.dtw_function_f32();
+      return [&prob, f64_fn, f32_fn](index_t i, index_t j) -> double {
+        if (f64_fn) return (*f64_fn)(prob.series(static_cast<std::size_t>(i)),
+                                     prob.series(static_cast<std::size_t>(j)));
+        if (f32_fn) return (*f32_fn)(prob.data().series_f32(static_cast<std::size_t>(i)),
+                                     prob.data().series_f32(static_cast<std::size_t>(j)));
+        return prob.dist_by_ind(i, j);
+      };
+    }
 
-/// Strict total order that makes "higher density" well-defined under ρ-ties:
-/// a ranks above b iff ρ_a > ρ_b, or (ρ_a == ρ_b and a < b). Deterministic, so
-/// pruned / brute / oracle agree on δ, parents, γ-ranking and labels.
-inline bool higher_density(index_t a, index_t b, const std::vector<index_t> &rho)
-{
-  return rho[a] > rho[b] || (rho[a] == rho[b] && a < b);
-}
+    /// Strict total order that makes "higher density" well-defined under ρ-ties:
+    /// a ranks above b iff ρ_a > ρ_b, or (ρ_a == ρ_b and a < b). Deterministic, so
+    /// pruned / brute / oracle agree on δ, parents, γ-ranking and labels.
+    inline bool higher_density(index_t a, index_t b, const std::vector<index_t> &rho)
+    {
+      return rho[a] > rho[b] || (rho[a] == rho[b] && a < b);
+    }
 
-/// A thread's failure in a parallel stage, as run_openmp keeps it (parallelisation.hpp, which says why): an exception
-/// may not leave an OpenMP region, so each thread keeps the failure of the lowest index it saw fail and skips only the
-/// indices above it; `failed_at` (the stage's end: none) is what the loop tests.
-struct Failure
-{
-  std::exception_ptr failure;
-  index_t failed_at;
-};
-
-/// After a stage's join: the failure with the lowest index over every thread, rethrown unchanged, the one a serial
-/// run raises.
-void rethrow_lowest(const std::vector<Failure> &failures, index_t end)
-{
-  const auto lowest = std::min_element(failures.begin(), failures.end(),
-                                       [](const Failure &a, const Failure &b) { return a.failed_at < b.failed_at; });
-  if (lowest->failed_at < end) std::rethrow_exception(lowest->failure);
-}
-
-} // anonymous namespace
-
-
-double tadpole_auto_dc(Problem &prob, double percentile)
-{
-  const index_t N = prob.size();
-  if (N < 2) return 1.0; // degenerate: any positive dc
-  if (percentile <= 0.0 || percentile >= 100.0)
-    throw InvalidInput("tadpole_auto_dc: percentile must be in (0, 100).");
-
-  // Deterministic stratified subsample of min(N, cap) series across [0, N) (for
-  // N <= 64 this is every series 0..N-1; for larger N it spans the full dataset
-  // evenly rather than only the first 64 rows, which may belong to one sorted group).
-  const index_t cap = std::min<index_t>(N, 64);
-  std::vector<index_t> chosen(static_cast<std::size_t>(cap));
-  if (N <= cap) {
-    std::iota(chosen.begin(), chosen.end(), index_t{ 0 });
-  } else {
-    for (index_t s = 0; s < cap; ++s)
-      chosen[static_cast<std::size_t>(s)] = static_cast<index_t>(
-        (static_cast<std::size_t>(s) * static_cast<std::size_t>(N)) / static_cast<std::size_t>(cap));
-  }
-  const auto distance = exact_distance(prob);
-  std::vector<std::pair<index_t, index_t>> pairs;
-  pairs.reserve(static_cast<std::size_t>(cap * (cap - 1) / 2));
-  for (index_t a = 0; a < cap; ++a)
-    for (index_t b = a + 1; b < cap; ++b)
-      pairs.emplace_back(chosen[static_cast<std::size_t>(a)], chosen[static_cast<std::size_t>(b)]);
-  // Up to 2016 exact DTWs, which tadpole() computes again (it keeps its own
-  // pair cache): one slot per pair, in parallel.
-  std::vector<double> sample(pairs.size());
-  auto sample_pair = [&](std::size_t p) { sample[p] = distance(pairs[p].first, pairs[p].second); };
-  run_openmp(sample_pair, pairs.size());
-
-  std::size_t idx = static_cast<std::size_t>(percentile / 100.0 * (sample.size() - 1));
-  if (idx >= sample.size()) idx = sample.size() - 1;
-  std::nth_element(sample.begin(), sample.begin() + idx, sample.end());
-  double dc = sample[idx];
-
-  if (!(dc > 0.0)) { // percentile fell on zero (many identical series): use smallest positive
-    double mn = std::numeric_limits<double>::max();
-    for (double v : sample)
-      if (v > 0.0 && v < mn) mn = v;
-    dc = (mn == std::numeric_limits<double>::max()) ? 1.0 : mn;
-  }
-  return dc;
-}
-
-
-core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, bool prune, TADPoleStats *stats)
-{
-  // A Problem on cpu+gpu, or one with a forced share, asks for a split this method has no part in (it computes its
-  // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word.
-  if (prob.device().first == Device::CPU_GPU)
-    throw DeviceError(dtwc::detail::hybrid_as_it_goes_message("tadpole", "tadpole"));
-  if (prob.gpu_share() != -1.0)
-    throw InvalidInput(dtwc::detail::share_ignored_message(
-      "tadpole", "the distance matrix's fill and FastCLARA's pass", prob.device().first));
-  const index_t N = prob.size();
-  const index_t k = n_clusters;
-  if (N <= 0) throw InvalidInput("tadpole: Problem has no data points.");
-  if (k <= 0 || k > N)
-    throw InvalidInput("tadpole: n_clusters must be in [1, N]. Got k="
-                       + std::to_string(k) + ", N=" + std::to_string(N) + ".");
-  if (!(dc > 0.0)) throw InvalidInput("tadpole: dc must be > 0.");
-
-  const auto distance = exact_distance(prob); // before the band is read: it takes a direct write
-  const int band = prob.band;
-  const bool can_prune = prune && bounds_valid(prob);
-
-  const std::size_t M = core::packed_size(static_cast<std::size_t>(N)); // incl. diagonal slots
-  std::vector<char> computed(M, 0); // first-touch flag per pair (dedup + exact-call count)
-  // The pairs computed so far, when the Problem's matrix does not hold them.
-  core::DistanceMatrix cache(prob.is_distance_matrix_filled() ? 0 : static_cast<std::size_t>(N), prob.matrix_dtype());
-
-  // Exact DTW with dedup. computed[p] and the cache slot are written by exactly
-  // one thread per pair (each unordered pair is visited by a single owner in
-  // every stage, and the stages are barrier-separated), so no lock is needed; a
-  // pair touched twice is computed once.
-  auto exact = [&](index_t i, index_t j) -> double {
-    computed[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))] = 1;
-    if (cache.size() == 0) return distance(i, j);
-    const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>(j);
-    if (!cache.is_computed(a, b)) cache.set(a, b, distance(i, j));
-    return cache.get(a, b);
-  };
-
-  // Per-series LB_Keogh envelopes, reused across ALL pairs (Begum's cached
-  // envelope). For full DTW (band<0) the valid envelope is the GLOBAL min/max
-  // (window ≥ n), which the series length as the window gives (compute_envelopes
-  // reads a negative band the same way).
-  std::vector<core::Envelope> envs;
-  if (can_prune) {
-    envs.resize(static_cast<std::size_t>(N));
-    auto build_env = [&](std::size_t idx_i) {
-      auto s = prob.series(idx_i);
-      const int env_band = (band < 0) ? static_cast<int>(s.size()) : band;
-      envs[idx_i] = core::compute_envelope(s, env_band);
+    /// A thread's failure in a parallel stage, as run_openmp keeps it (parallelisation.hpp, which says why): an exception
+    /// may not leave an OpenMP region, so each thread keeps the failure of the lowest index it saw fail and skips only the
+    /// indices above it; `failed_at` (the stage's end: none) is what the loop tests.
+    struct Failure
+    {
+      std::exception_ptr failure;
+      index_t failed_at;
     };
-    run_openmp(build_env, static_cast<std::size_t>(N), N >= 64);
+
+    /// After a stage's join: the failure with the lowest index over every thread, rethrown unchanged, the one a serial
+    /// run raises.
+    void rethrow_lowest(const std::vector<Failure> &failures, index_t end)
+    {
+      const auto lowest = std::min_element(failures.begin(), failures.end(), [](const Failure &a, const Failure &b) { return a.failed_at < b.failed_at; });
+      if (lowest->failed_at < end) std::rethrow_exception(lowest->failure);
+    }
+
+  } // anonymous namespace
+
+
+  double tadpole_auto_dc(Problem &prob, double percentile)
+  {
+    const index_t N = prob.size();
+    if (N < 2) return 1.0; // degenerate: any positive dc
+    if (percentile <= 0.0 || percentile >= 100.0)
+      throw InvalidInput("tadpole_auto_dc: percentile must be in (0, 100).");
+
+    // Deterministic stratified subsample of min(N, cap) series across [0, N) (for
+    // N <= 64 this is every series 0..N-1; for larger N it spans the full dataset
+    // evenly rather than only the first 64 rows, which may belong to one sorted group).
+    const index_t cap = std::min<index_t>(N, 64);
+    std::vector<index_t> chosen(static_cast<std::size_t>(cap));
+    if (N <= cap) {
+      std::iota(chosen.begin(), chosen.end(), index_t{ 0 });
+    } else {
+      for (index_t s = 0; s < cap; ++s)
+        chosen[static_cast<std::size_t>(s)] = static_cast<index_t>(
+          (static_cast<std::size_t>(s) * static_cast<std::size_t>(N)) / static_cast<std::size_t>(cap));
+    }
+    const auto distance = exact_distance(prob);
+    std::vector<std::pair<index_t, index_t>> pairs;
+    pairs.reserve(static_cast<std::size_t>(cap * (cap - 1) / 2));
+    for (index_t a = 0; a < cap; ++a)
+      for (index_t b = a + 1; b < cap; ++b)
+        pairs.emplace_back(chosen[static_cast<std::size_t>(a)], chosen[static_cast<std::size_t>(b)]);
+    // Up to 2016 exact DTWs, which tadpole() computes again (it keeps its own
+    // pair cache): one slot per pair, in parallel.
+    std::vector<double> sample(pairs.size());
+    auto sample_pair = [&](std::size_t p) { sample[p] = distance(pairs[p].first, pairs[p].second); };
+    run_openmp(sample_pair, pairs.size());
+
+    std::size_t idx = static_cast<std::size_t>(percentile / 100.0 * (sample.size() - 1));
+    if (idx >= sample.size()) idx = sample.size() - 1;
+    std::nth_element(sample.begin(), sample.begin() + idx, sample.end());
+    double dc = sample[idx];
+
+    if (!(dc > 0.0)) { // percentile fell on zero (many identical series): use smallest positive
+      double mn = std::numeric_limits<double>::max();
+      for (double v : sample)
+        if (v > 0.0 && v < mn) mn = v;
+      dc = (mn == std::numeric_limits<double>::max()) ? 1.0 : mn;
+    }
+    return dc;
   }
 
-  // ── Stage 1 · local density ρ_i = |{ j≠i : d(i,j) < dc }| (cutoff kernel) ──
-  // Each thread owns one count row and one pair of tallies (LB / UB pruning),
-  // so the region has no shared write; the rows are summed serially after it.
-  // A thread's failure waits in its own slot (Failure) until the join, in both stages.
-  const int n_threads = get_max_threads();
-  const auto threads = static_cast<std::size_t>(n_threads);
-  const auto points = static_cast<std::size_t>(N);
-  std::vector<index_t> rho_rows(threads * points, 0);
-  std::vector<std::size_t> plb_by_thread(threads, 0), pub_by_thread(threads, 0);
-  std::vector<Failure> failures(threads, Failure{ nullptr, N });
 
-  #pragma omp parallel num_threads(n_threads)
+  core::ClusteringResult tadpole(Problem &prob, index_t n_clusters, double dc, bool prune, TADPoleStats *stats)
   {
-#ifdef _OPENMP
-    const auto thread = static_cast<std::size_t>(omp_get_thread_num());
-#else
-    const std::size_t thread = 0;
-#endif
-    index_t *const rho_local = rho_rows.data() + thread * points;
-    std::size_t loc_plb = 0, loc_pub = 0;
-    Failure &slot = failures[thread];
+    // A Problem on cpu+gpu, or one with a forced share, asks for a split this method has no part in (it computes its
+    // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word.
+    if (prob.device().first == Device::CPU_GPU)
+      throw DeviceError(dtwc::detail::hybrid_as_it_goes_message("tadpole", "tadpole"));
+    if (prob.gpu_share() != -1.0)
+      throw InvalidInput(dtwc::detail::share_ignored_message(
+        "tadpole", "the distance matrix's fill and FastCLARA's pass", prob.device().first));
+    const index_t N = prob.size();
+    const index_t k = n_clusters;
+    if (N <= 0) throw InvalidInput("tadpole: Problem has no data points.");
+    if (k <= 0 || k > N)
+      throw InvalidInput("tadpole: n_clusters must be in [1, N]. Got k="
+                         + std::to_string(k) + ", N=" + std::to_string(N) + ".");
+    if (!(dc > 0.0)) throw InvalidInput("tadpole: dc must be > 0.");
 
-    // `can_prune` is loop-invariant, so it selects the whole i-body once rather
-    // than being retested per pair, and keeps prob.series() — which throws under
-    // Float32 — strictly inside the pruning branch.
-    #pragma omp for schedule(dynamic, 8) nowait
+    const auto distance = exact_distance(prob); // before the band is read: it takes a direct write
+    const int band = prob.band;
+    const bool can_prune = prune && bounds_valid(prob);
+
+    const std::size_t M = core::packed_size(static_cast<std::size_t>(N)); // incl. diagonal slots
+    std::vector<char> computed(M, 0);                                     // first-touch flag per pair (dedup + exact-call count)
+    // The pairs computed so far, when the Problem's matrix does not hold them.
+    core::DistanceMatrix cache(prob.is_distance_matrix_filled() ? 0 : static_cast<std::size_t>(N), prob.matrix_dtype());
+
+    // Exact DTW with dedup. computed[p] and the cache slot are written by exactly
+    // one thread per pair (each unordered pair is visited by a single owner in
+    // every stage, and the stages are barrier-separated), so no lock is needed; a
+    // pair touched twice is computed once.
+    auto exact = [&](index_t i, index_t j) -> double {
+      computed[core::tri_index(static_cast<std::size_t>(i), static_cast<std::size_t>(j))] = 1;
+      if (cache.size() == 0) return distance(i, j);
+      const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>(j);
+      if (!cache.is_computed(a, b)) cache.set(a, b, distance(i, j));
+      return cache.get(a, b);
+    };
+
+    // Per-series LB_Keogh envelopes, reused across ALL pairs (Begum's cached
+    // envelope). For full DTW (band<0) the valid envelope is the GLOBAL min/max
+    // (window ≥ n), which the series length as the window gives (compute_envelopes
+    // reads a negative band the same way).
+    std::vector<core::Envelope> envs;
+    if (can_prune) {
+      envs.resize(static_cast<std::size_t>(N));
+      auto build_env = [&](std::size_t idx_i) {
+        auto s = prob.series(idx_i);
+        const int env_band = (band < 0) ? static_cast<int>(s.size()) : band;
+        envs[idx_i] = core::compute_envelope(s, env_band);
+      };
+      run_openmp(build_env, static_cast<std::size_t>(N), N >= 64);
+    }
+
+    // ── Stage 1 · local density ρ_i = |{ j≠i : d(i,j) < dc }| (cutoff kernel) ──
+    // Each thread owns one count row and one pair of tallies (LB / UB pruning),
+    // so the region has no shared write; the rows are summed serially after it.
+    // A thread's failure waits in its own slot (Failure) until the join, in both stages.
+    const int n_threads = get_max_threads();
+    const auto threads = static_cast<std::size_t>(n_threads);
+    const auto points = static_cast<std::size_t>(N);
+    std::vector<index_t> rho_rows(threads * points, 0);
+    std::vector<std::size_t> plb_by_thread(threads, 0), pub_by_thread(threads, 0);
+    std::vector<Failure> failures(threads, Failure{ nullptr, N });
+
+#pragma omp parallel num_threads(n_threads)
+    {
+#ifdef _OPENMP
+      const auto thread = static_cast<std::size_t>(omp_get_thread_num());
+#else
+      const std::size_t thread = 0;
+#endif
+      index_t *const rho_local = rho_rows.data() + thread * points;
+      std::size_t loc_plb = 0, loc_pub = 0;
+      Failure &slot = failures[thread];
+
+// `can_prune` is loop-invariant, so it selects the whole i-body once rather
+// than being retested per pair, and keeps prob.series() — which throws under
+// Float32 — strictly inside the pruning branch.
+#pragma omp for schedule(dynamic, 8) nowait
+      for (index_t i = 0; i < N; ++i) {
+        if (i > slot.failed_at) continue;
+        try {
+          if (can_prune) {
+            const auto si = prob.series(static_cast<std::size_t>(i));
+            for (index_t j = i + 1; j < N; ++j) {
+              const auto sj = prob.series(static_cast<std::size_t>(j));
+              bool neighbour;
+              if (si.size() == sj.size()) {
+                if (core::lb_keogh_at_least(si, envs[i], sj, envs[j], dc)) { // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
+                  neighbour = false;
+                  ++loc_plb;
+                } else {
+                  const double ub = diagonal_ub_l1(si, sj);
+                  if (ub < dc) { // Case B: d ≤ UB < dc ⇒ neighbour
+                    neighbour = true;
+                    ++loc_pub;
+                  } else { // Case D: bounds straddle dc ⇒ exact
+                    neighbour = (exact(i, j) < dc);
+                  }
+                }
+              } else {
+                neighbour = (exact(i, j) < dc);
+              }
+              if (neighbour) {
+                ++rho_local[i];
+                ++rho_local[j];
+              }
+            }
+          } else {
+            for (index_t j = i + 1; j < N; ++j)
+              if (exact(i, j) < dc) {
+                ++rho_local[i];
+                ++rho_local[j];
+              }
+          }
+        } catch (...) {
+          slot.failure = std::current_exception();
+          slot.failed_at = i;
+        }
+      }
+      plb_by_thread[thread] = loc_plb;
+      pub_by_thread[thread] = loc_pub;
+    }
+    rethrow_lowest(failures, N);
+
+    std::vector<index_t> rho(N, 0);
+    for (std::size_t t = 0; t < threads; ++t)
+      for (std::size_t i = 0; i < points; ++i) rho[i] += rho_rows[t * points + i];
+    const std::size_t plb = std::accumulate(plb_by_thread.begin(), plb_by_thread.end(), std::size_t{ 0 });
+    const std::size_t pub = std::accumulate(pub_by_thread.begin(), pub_by_thread.end(), std::size_t{ 0 });
+
+    // ── Stage 2 · separation δ_i = min distance to a higher-density point, and
+    //    parent = that nearest higher-density neighbour (with LB pruning) ──
+    constexpr double kInf = std::numeric_limits<double>::max();
+    std::vector<double> delta(N, kInf);
+    std::vector<index_t> parent(N, -1);
+
+    const bool f32_matrix = (prob.matrix_dtype() == core::Precision::Float32);
+// The slots are Stage 1's, every one empty again: a failure there was rethrown above.
+#pragma omp parallel for schedule(dynamic, 8) num_threads(n_threads)
     for (index_t i = 0; i < N; ++i) {
+#ifdef _OPENMP
+      Failure &slot = failures[static_cast<std::size_t>(omp_get_thread_num())];
+#else
+      Failure &slot = failures[0];
+#endif
       if (i > slot.failed_at) continue;
       try {
-        if (can_prune) {
+        double best = kInf;
+        index_t best_parent = -1;
+        if (can_prune) { // prob.series() only on the pruning path — see above
           const auto si = prob.series(static_cast<std::size_t>(i));
-          for (index_t j = i + 1; j < N; ++j) {
-            const auto sj = prob.series(static_cast<std::size_t>(j));
-            bool neighbour;
-            if (si.size() == sj.size()) {
-              if (core::lb_keogh_at_least(si, envs[i], sj, envs[j], dc)) { // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
-                neighbour = false;
-                ++loc_plb;
-              } else {
-                const double ub = diagonal_ub_l1(si, sj);
-                if (ub < dc) {                           // Case B: d ≤ UB < dc ⇒ neighbour
-                  neighbour = true;
-                  ++loc_pub;
-                } else {                                 // Case D: bounds straddle dc ⇒ exact
-                  neighbour = (exact(i, j) < dc);
+          // Seed `best` from any higher-density pairs already evaluated in Stage 1 so LB_Keogh starts with a tight bound.
+          if (cache.size() > 0) {
+            for (index_t q = 0; q < N; ++q) {
+              if (q == i || !higher_density(q, i, rho)) continue;
+              const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>(q);
+              if (cache.is_computed(a, b)) {
+                const double d = cache.get(a, b);
+                if (d < best) {
+                  best = d;
+                  best_parent = q;
                 }
               }
-            } else {
-              neighbour = (exact(i, j) < dc);
             }
-            if (neighbour) { ++rho_local[i]; ++rho_local[j]; }
+          }
+          for (index_t q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
+            if (q == i || !higher_density(q, i, rho)) continue;
+            if (cache.size() > 0 && cache.is_computed(static_cast<std::size_t>(i), static_cast<std::size_t>(q)))
+              continue;
+            const auto sq = prob.series(static_cast<std::size_t>(q));
+            const bool wins_tie = (best_parent >= 0 && q < best_parent);
+            if (si.size() == sq.size()) {
+              const double tie_bound = (f32_matrix && std::isfinite(best))
+                                         ? static_cast<double>(std::nextafter(static_cast<float>(best), std::numeric_limits<float>::infinity()))
+                                         : best;
+              const bool pruned = wins_tie ? core::lb_keogh_greater(si, envs[i], sq, envs[q], tie_bound)
+                                           : core::lb_keogh_at_least(si, envs[i], sq, envs[q], best);
+              if (pruned) continue;
+            }
+            const double d = exact(i, q);
+            if (d < best || (wins_tie && d == best)) {
+              best = d;
+              best_parent = q;
+            }
           }
         } else {
-          for (index_t j = i + 1; j < N; ++j)
-            if (exact(i, j) < dc) { ++rho_local[i]; ++rho_local[j]; }
+          for (index_t q = 0; q < N; ++q) {
+            if (q == i || !higher_density(q, i, rho)) continue;
+            const double d = exact(i, q);
+            if (d < best) {
+              best = d;
+              best_parent = q;
+            }
+          }
         }
+        delta[i] = best;
+        parent[i] = best_parent;
       } catch (...) {
         slot.failure = std::current_exception();
         slot.failed_at = i;
       }
     }
-    plb_by_thread[thread] = loc_plb;
-    pub_by_thread[thread] = loc_pub;
-  }
-  rethrow_lowest(failures, N);
+    rethrow_lowest(failures, N);
 
-  std::vector<index_t> rho(N, 0);
-  for (std::size_t t = 0; t < threads; ++t)
-    for (std::size_t i = 0; i < points; ++i) rho[i] += rho_rows[t * points + i];
-  const std::size_t plb = std::accumulate(plb_by_thread.begin(), plb_by_thread.end(), std::size_t{ 0 });
-  const std::size_t pub = std::accumulate(pub_by_thread.begin(), pub_by_thread.end(), std::size_t{ 0 });
-
-  // ── Stage 2 · separation δ_i = min distance to a higher-density point, and
-  //    parent = that nearest higher-density neighbour (with LB pruning) ──
-  constexpr double kInf = std::numeric_limits<double>::max();
-  std::vector<double> delta(N, kInf);
-  std::vector<index_t> parent(N, -1);
-
-  // The slots are Stage 1's, every one empty again: a failure there was rethrown above.
-  #pragma omp parallel for schedule(dynamic, 8) num_threads(n_threads)
-  for (index_t i = 0; i < N; ++i) {
-#ifdef _OPENMP
-    Failure &slot = failures[static_cast<std::size_t>(omp_get_thread_num())];
-#else
-    Failure &slot = failures[0];
-#endif
-    if (i > slot.failed_at) continue;
-    try {
-      double best = kInf;
-      index_t best_parent = -1;
-      if (can_prune) { // prob.series() only on the pruning path — see above
-        const auto si = prob.series(static_cast<std::size_t>(i));
-        // Seed `best` from any higher-density pairs already evaluated in Stage 1 so LB_Keogh starts with a tight bound.
-        if (cache.size() > 0) {
-          for (index_t q = 0; q < N; ++q) {
-            if (q == i || !higher_density(q, i, rho)) continue;
-            const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>(q);
-            if (cache.is_computed(a, b)) {
-              const double d = cache.get(a, b);
-              if (d < best) { best = d; best_parent = q; }
-            }
-          }
-        }
-        for (index_t q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
-          if (q == i || !higher_density(q, i, rho)) continue;
-          if (cache.size() > 0 && cache.is_computed(static_cast<std::size_t>(i), static_cast<std::size_t>(q)))
-            continue;
-          const auto sq = prob.series(static_cast<std::size_t>(q));
-          const bool wins_tie = (best_parent >= 0 && q < best_parent);
-          if (si.size() == sq.size()) {
-            const bool pruned = wins_tie ? core::lb_keogh_greater(si, envs[i], sq, envs[q], best)
-                                         : core::lb_keogh_at_least(si, envs[i], sq, envs[q], best);
-            if (pruned) continue;
-          }
-          const double d = exact(i, q);
-          if (d < best || (wins_tie && d == best)) { best = d; best_parent = q; }
-        }
-      } else {
-        for (index_t q = 0; q < N; ++q) {
-          if (q == i || !higher_density(q, i, rho)) continue;
-          const double d = exact(i, q);
-          if (d < best) { best = d; best_parent = q; }
-        }
-      }
-      delta[i] = best;
-      parent[i] = best_parent;
-    } catch (...) {
-      slot.failure = std::current_exception();
-      slot.failed_at = i;
-    }
-  }
-  rethrow_lowest(failures, N);
-
-  // Global densest point (unique under the strict order: no higher-density
-  // neighbour ⇒ parent == -1): δ = max of all other points' δ (Begum's
-  // convention δ(sortIndex(1)) = max(δ(2:n))).
-  index_t densest = -1;
-  for (index_t i = 0; i < N; ++i)
-    if (parent[i] < 0) { densest = i; break; }
-  if (densest >= 0) {
-    double mx = 0.0;
+    // Global densest point (unique under the strict order: no higher-density
+    // neighbour ⇒ parent == -1): δ = max of all other points' δ (Begum's
+    // convention δ(sortIndex(1)) = max(δ(2:n))).
+    index_t densest = -1;
     for (index_t i = 0; i < N; ++i)
-      if (i != densest && delta[i] < kInf) mx = std::max(mx, delta[i]);
-    delta[densest] = mx;
+      if (parent[i] < 0) {
+        densest = i;
+        break;
+      }
+    if (densest >= 0) {
+      double mx = 0.0;
+      for (index_t i = 0; i < N; ++i)
+        if (i != densest && delta[i] < kInf) mx = std::max(mx, delta[i]);
+      delta[densest] = mx;
+    }
+
+    // ── Cluster centers = top-k by γ_i = ρ_i · δ_i (descending, ties by index) ──
+    std::vector<double> gamma(N);
+    for (index_t i = 0; i < N; ++i) gamma[i] = static_cast<double>(rho[i]) * delta[i];
+
+    std::vector<index_t> by_gamma(N);
+    std::iota(by_gamma.begin(), by_gamma.end(), index_t{ 0 });
+    std::sort(by_gamma.begin(), by_gamma.end(), [&](index_t a, index_t b) {
+      return gamma[a] != gamma[b] ? gamma[a] > gamma[b] : a < b;
+    });
+
+    std::vector<char> is_center(N, 0);
+    std::vector<index_t> label(N, -1);
+    std::vector<index_t> center_of_label(k);
+    for (index_t c = 0; c < k; ++c) {
+      const index_t ci = by_gamma[c];
+      is_center[ci] = 1;
+      label[ci] = c;
+      center_of_label[c] = ci;
+    }
+
+    // ── Assignment · descending density; each non-center inherits its parent's
+    //    (higher-density, already-labelled) cluster (single non-iterative pass) ──
+    std::vector<index_t> order(N);
+    std::iota(order.begin(), order.end(), index_t{ 0 });
+    std::sort(order.begin(), order.end(), [&](index_t a, index_t b) {
+      return rho[a] != rho[b] ? rho[a] > rho[b] : a < b;
+    });
+    for (index_t r = 0; r < N; ++r) {
+      const index_t p = order[r];
+      if (is_center[p]) continue; // keeps its center label
+      const index_t par = parent[p];
+      // parent ranks strictly higher ⇒ already labelled; the densest point is always
+      // a center (γ maximal), so a non-center always has a valid parent — guard anyway.
+      label[p] = (par >= 0 && label[par] >= 0) ? label[par] : 0;
+    }
+
+    // Objective: Σ_i d(i, its cluster's center).
+    double total_cost = 0.0;
+    for (index_t i = 0; i < N; ++i) {
+      const index_t c = center_of_label[label[i]];
+      if (i != c) total_cost += exact(i, c);
+    }
+    // A float32 cache stores a distance beyond its range as inf, which no result may rest on.
+    if (cache.width() == core::Precision::Float32)
+      if (const auto [i, j] = cache.first_infinite(0, cache.size()); i < cache.size())
+        core::refuse_float32_range("tadpole", i, j, distance(static_cast<index_t>(j), static_cast<index_t>(i)));
+
+    if (stats) {
+      std::size_t uniq = 0;
+      for (char c : computed) uniq += (c != 0); // diagonal slots never set
+      stats->total_pairs = static_cast<std::size_t>(N * (N - 1) / 2);
+      stats->dtw_calls = uniq;
+      stats->pruned_by_lb = plb;
+      stats->pruned_by_ub = pub;
+      stats->dc = dc;
+      stats->pruning_enabled = can_prune;
+    }
+
+    core::ClusteringResult result;
+    result.labels = label;
+    result.medoid_indices = center_of_label;
+    result.total_cost = total_cost;
+    result.iterations = 1; // single non-iterative pass
+    result.converged = true;
+
+    prob.set_result(result); // scores::silhouette(prob) etc. read it back
+    return result;
   }
-
-  // ── Cluster centers = top-k by γ_i = ρ_i · δ_i (descending, ties by index) ──
-  std::vector<double> gamma(N);
-  for (index_t i = 0; i < N; ++i) gamma[i] = static_cast<double>(rho[i]) * delta[i];
-
-  std::vector<index_t> by_gamma(N);
-  std::iota(by_gamma.begin(), by_gamma.end(), index_t{ 0 });
-  std::sort(by_gamma.begin(), by_gamma.end(), [&](index_t a, index_t b) {
-    return gamma[a] != gamma[b] ? gamma[a] > gamma[b] : a < b;
-  });
-
-  std::vector<char> is_center(N, 0);
-  std::vector<index_t> label(N, -1);
-  std::vector<index_t> center_of_label(k);
-  for (index_t c = 0; c < k; ++c) {
-    const index_t ci = by_gamma[c];
-    is_center[ci] = 1;
-    label[ci] = c;
-    center_of_label[c] = ci;
-  }
-
-  // ── Assignment · descending density; each non-center inherits its parent's
-  //    (higher-density, already-labelled) cluster (single non-iterative pass) ──
-  std::vector<index_t> order(N);
-  std::iota(order.begin(), order.end(), index_t{ 0 });
-  std::sort(order.begin(), order.end(), [&](index_t a, index_t b) {
-    return rho[a] != rho[b] ? rho[a] > rho[b] : a < b;
-  });
-  for (index_t r = 0; r < N; ++r) {
-    const index_t p = order[r];
-    if (is_center[p]) continue; // keeps its center label
-    const index_t par = parent[p];
-    // parent ranks strictly higher ⇒ already labelled; the densest point is always
-    // a center (γ maximal), so a non-center always has a valid parent — guard anyway.
-    label[p] = (par >= 0 && label[par] >= 0) ? label[par] : 0;
-  }
-
-  // Objective: Σ_i d(i, its cluster's center).
-  double total_cost = 0.0;
-  for (index_t i = 0; i < N; ++i) {
-    const index_t c = center_of_label[label[i]];
-    if (i != c) total_cost += exact(i, c);
-  }
-  // A float32 cache stores a distance beyond its range as inf, which no result may rest on.
-  if (cache.width() == core::Precision::Float32)
-    if (const auto [i, j] = cache.first_infinite(0, cache.size()); i < cache.size())
-      core::refuse_float32_range("tadpole", i, j, distance(static_cast<index_t>(j), static_cast<index_t>(i)));
-
-  if (stats) {
-    std::size_t uniq = 0;
-    for (char c : computed) uniq += (c != 0); // diagonal slots never set
-    stats->total_pairs = static_cast<std::size_t>(N * (N - 1) / 2);
-    stats->dtw_calls = uniq;
-    stats->pruned_by_lb = plb;
-    stats->pruned_by_ub = pub;
-    stats->dc = dc;
-    stats->pruning_enabled = can_prune;
-  }
-
-  core::ClusteringResult result;
-  result.labels = label;
-  result.medoid_indices = center_of_label;
-  result.total_cost = total_cost;
-  result.iterations = 1; // single non-iterative pass
-  result.converged = true;
-
-  prob.set_result(result); // scores::silhouette(prob) etc. read it back
-  return result;
-}
 
 } // namespace algorithms
 } // namespace dtwc

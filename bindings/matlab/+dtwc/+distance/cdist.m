@@ -15,6 +15,7 @@ function D = cdist(X, varargin)
 %> @brief Cross-collection DTW distance matrix.
 %> @author Volkan Kumtepeli
 
+    hasY = false;
     if isempty(varargin)
         Y = [];
         opts = {};
@@ -23,6 +24,7 @@ function D = cdist(X, varargin)
         Y = [];
         opts = varargin;
     else
+        hasY = true;
         Y = varargin{1};
         opts = varargin(2:end);
     end
@@ -47,7 +49,8 @@ function D = cdist(X, varargin)
     mexOpts = opts(keep);
 
     [xSeries, xDtype, xNdim] = materialize_for_cdist(X, dtype, ndim);
-    if isempty(Y)
+    isOmittedY = ~hasY || (isa(Y, 'double') && isequal(size(Y), [0, 0]));
+    if isOmittedY
         ySeries = xSeries;
         yDtype = xDtype;
         yNdim = xNdim;

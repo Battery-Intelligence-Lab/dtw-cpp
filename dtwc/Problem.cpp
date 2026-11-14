@@ -64,19 +64,10 @@ namespace dtwc {
 namespace {
 
 #ifdef DTWC_HAS_CUDA
-/// cpu+gpu's calibration units in a distance matrix fill: the GPU's leading tile-rows and the CPU team's first
-/// columns of the slab's last tile-row each hold at least this many pairs, 2^19. Measured on 20,000 series of 32 to 64
-/// steps (2026-11-09, inferred: the machine was loaded), units of 2^19 to 2^22 pairs: the GPU's rate on its unit lay
-/// within 1-6 % of its rate on the whole fill, FP64 and FP32, the smallest unit closest; the team's 1-18 % above its
-/// rate on the whole fill at every size (its unit's columns run the full height of the last tile-row). So the
-/// smallest, whose sequential cost (the other device idles) is least.
+/// Minimum pairs per calibration unit (GPU leading tile-rows and CPU initial columns) in a cpu+gpu matrix fill.
 constexpr std::size_t fill_calibration_pairs = std::size_t{ 1 } << 19;
-/// cpu+gpu's share of the entries for the GPU where none is measured (no slab's tile-rows hold both units; the slabs
-/// before the calibrating one): the design's rates (2026-10-11, inferred): the FP64 fill on an RTX 4000 Ada 28.5
-/// Gcell/s, the CPU's lanes 55 on 24 threads.
+/// Default GPU pair-throughput share before calibration (FP64 and FP32).
 constexpr double recorded_fill_gpu_share = 28.5 / (28.5 + 55.0);
-/// The same where the GPU computes in FP32: its FP32 fill ran at 12.9 times its FP64 one on 20,000 series of 32 to 64
-/// steps (7.88e7 against 6.10e6 pairs a second, 2026-11-09, inferred: the machine was loaded), taken as 13.
 constexpr double recorded_fill_gpu_share_fp32 = 13.0 * 28.5 / (13.0 * 28.5 + 55.0);
 #endif
 
@@ -1000,37 +991,21 @@ void Problem::fillDistanceMatrix_BruteForce()
   if (distMat.size() != N) distMat.resize(N);
   if (N == 0) return;
 
-  // Blocked as a matrix multiplication is. Tile-rows: packed rows [R0, R1), each
-  // one contiguous byte range of the matrix, cut at N - h, N - 2h, ... (only the
-  // one holding row 0 is shorter). A task is a column c of a tile-row: the pairs
-  // (c, r), r in R, c < r, and (c, c) if c is in R, so every pair has one task and
-  // the tasks share no write and no lock. A thread's chunk of consecutive columns
-  // writes one slot in each of R's packed rows, then the slot beside it: a cache
-  // line comes from memory once for its eight entries, and R's series stay in L2
-  // from one column to the next (h keeps them within 512 KiB, half an E-core's
-  // share of its cluster's 4 MB L2, and at least 16 lane blocks). A slab, whole
-  // tile-rows, is one parallel loop: the whole matrix in RAM; the rows between two
-  // checkpoint saves; for a mapped matrix an eighth of what the series leave of
-  // the memory budget (three slabs are in flight: filled, prefetched, written
-  // back), so each page is written once, while its slab runs.
-  //
-  // In a column x = series c, the smaller index, as every per-pair call takes it;
-  // R's series not yet paired with it go to the lane function W at a time (a short
-  // last block repeats its last series in the lanes past it, whose results are
-  // dropped). A lane's value depends on x, its own series and the band only, so a
-  // pair gets the same bits in any block: the per-pair one, bit for bit, unless a
-  // compiler contracts a multiply-add in one kernel and not the other. Without a
-  // band, where the lanes are packed (core::dtw_lanes_packed), they take series of
-  // any lengths, each lane running to its block's longest, so R's rows go longest
-  // first (equal lengths in index order); otherwise a block goes to the lanes only
-  // if its series are as long as x. The per-pair loop fills the rest.
+  // Cache-blocked lower-triangle fill: tile-rows [R0, R1) of height h (~512 KiB of
+  // series so R stays L2-resident across consecutive column tasks c) grouped into
+  // slabs for parallel execution, checkpointing, and bounded mapped-matrix flushes.
+  // Within each tile-row, series are ordered longest-first when packed SIMD lanes
+  // are active so W-lane ragged/banded blocks minimize wasted tail steps.
   const size_t W = f32 ? core::dtw_lanes<float> : core::dtw_lanes<data_t>;
   size_t values = 0;
   for (size_t i = 0; i < N; ++i) values += data_.series_flat_size(i);
   const size_t series_bytes = values * (f32 ? sizeof(float) : sizeof(data_t));
   const size_t entry_bytes = core::value_bytes(distMat.width());
-  constexpr size_t tile_series_bytes = size_t{ 512 } << 10;
-  size_t h = std::max(16 * W, tile_series_bytes * N / series_bytes / W * W);
+  constexpr std::uint64_t tile_series_bytes = std::uint64_t{ 512 } << 10;
+  const auto raw_h = static_cast<size_t>(
+    std::min<std::uint64_t>(static_cast<std::uint64_t>(N) + W,
+                            (tile_series_bytes * static_cast<std::uint64_t>(N)) / std::max<std::uint64_t>(1, series_bytes)));
+  size_t h = std::max(16 * W, raw_h / W * W);
   size_t slab_bytes = std::numeric_limits<size_t>::max();
   if (distMat.is_mapped()) {
     const size_t budget = ram_limit_ != 0 ? ram_limit_ : core::available_memory(); // 0: unknown, no limit
@@ -1072,7 +1047,9 @@ void Problem::fillDistanceMatrix_BruteForce()
 #else
   const bool fresh = !written_ && (!sized || (distMat.is_mapped() && written == 0));
 #endif
-  const bool use_slab_panels = fresh && ragged && lanes && ram_limit_ == 0;
+  const bool use_slab_panels = fresh && ragged && lanes && ram_limit_ == 0 && !data_.is_mapped();
+  constexpr size_t kMaxSlabPanelBytes = size_t{ 64 } << 20;
+  bool slab_panels_ready = false;
   std::vector<size_t> tile_panel_offset(K + 1, 0);
   std::vector<core::PackedLanesPanel<data_t>> panels_f64;
   std::vector<core::PackedLanesPanel<float>> panels_f32;
@@ -1148,10 +1125,10 @@ void Problem::fillDistanceMatrix_BruteForce()
     const size_t c = g - first_column[k];
     if (f32)
       fill_column(matrix, k, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series_f32(i); },
-                  dtw_block_fn_f32_, packed_fn_f32, use_slab_panels ? panels_f32.data() : nullptr, *f32_function);
+                  dtw_block_fn_f32_, packed_fn_f32, slab_panels_ready ? panels_f32.data() : nullptr, *f32_function);
     else // Data's accessor, as above: GCC's inline-unit-growth cap leaves the Problem::series wrapper out of line here
       fill_column(matrix, k, bounds[k], bounds[k + 1], c, [&](size_t i) { return data_.series(i); }, dtw_block_fn_,
-                  packed_fn_f64, use_slab_panels ? panels_f64.data() : nullptr, dtw_fn_);
+                  packed_fn_f64, slab_panels_ready ? panels_f64.data() : nullptr, dtw_fn_);
   };
 
   std::vector<size_t> slabs{ 0 }; // slab s: tile-rows [slabs[s], slabs[s + 1])
@@ -1193,25 +1170,12 @@ void Problem::fillDistanceMatrix_BruteForce()
       else
         for (clean = core::packed_size(N); clean > 0 && std::isnan(matrix[clean - 1]);) --clean;
     }
-    // cpu+gpu's slab, tile-rows [k0, k1): the GPU takes [kw, kg), the CPU's team the rest; no tile-row is split (the
-    // ragged lanes sort `order` within one). kw is the first with nothing computed, so the tile-rows a resumed fill
-    // wrote stay the CPU's, whose tasks skip computed entries: no entry is computed again, and the device that
-    // computed one does not change on resume. kg is the bound at which the slab's predicted time, max(entries(kw, kg)
-    // / s, entries(kg, k1) / (1 - s)), is least (the smaller kg on a tie; s = 0 gives kw, s = 1 gives k1), for one
-    // share s of the whole fill: forced (gpu_share_), else measured in the calibrating slab, else the recorded ratio.
-    // The calibrating slab is geometry: the first slab with a tile-row to compute whose tile-rows hold both
-    // calibration units (`units`), so a forced run finds the same slab and the same ka; the slabs before it take the
-    // recorded ratio, in both kinds of run, and in it kg >= ka for any s > 0 (a measured run's GPU unit stands). So a
-    // measured run's printed s, forced, repeats every slab's split. The calibration, sequential and before that slab's
-    // region (a measured run only): the GPU fills the leading tile-rows [kw, ka) whose pairs first reach
-    // fill_calibration_pairs, then the team (run_openmp) the first columns of the last tile-row k1 - 1 that hold as
-    // many pairs; both stand (the region scans those columns, or the GPU rewrites them if it takes that tile-row: the
-    // same bits under FP64, the GPU's as a GPU fill writes them under FP32). Rates in pairs a second, the team's scaled
-    // to the threads less the GPU's driver, as FastCLARA's pass does. Then one parallel region: thread 0 (whose CUDA
-    // workspace the session holds) fills the GPU's rows, its copies synchronised before it returns, and then takes
-    // CPU tasks like the rest; the team runs the CPU's tile-rows' column tasks. Every task and every GPU copy writes
-    // its own packed slots. An error is its thread's slot's, the lowest column's rethrown after the region, as
-    // run_openmp does.
+    // Hybrid cpu+gpu slab partitioning over tile-rows [k0, k1):
+    //   - Tile-rows are assigned whole: GPU fills [kw, kg), CPU fills the rest.
+    //   - kw skips any already-computed prefix so resumed fills never recompute entries.
+    //   - If gpu_share_ < 0, the first slab holding both calibration units measures
+    //     sequential GPU and CPU pair rates before launching the concurrent OpenMP
+    //     region (thread 0 drives CUDA; all threads drain remaining CPU column tasks).
     struct SlabUnits {
       size_t kw, ka, columns;
       bool holds; // the slab's tile-rows hold both calibration units
@@ -1325,36 +1289,56 @@ void Problem::fillDistanceMatrix_BruteForce()
       const size_t r0 = bounds[slabs[s]], r1 = bounds[slabs[s + 1]];
       if (s + 2 < slabs.size()) distMat.prefetch_rows(r1, bounds[slabs[s + 2]]);
       distMat.clear_rows(std::max(r0, written), r1);
+      slab_panels_ready = false;
       if (use_slab_panels) {
+        const size_t val_bytes = f32 ? sizeof(float) : sizeof(data_t);
         size_t total_panels = 0;
+        size_t slab_panel_bytes = 0;
+        bool fits = true;
         for (size_t k = slabs[s]; k < slabs[s + 1]; ++k) {
           tile_panel_offset[k] = total_panels;
-          total_panels += (bounds[k + 1] - bounds[k] + W - 1) / W;
+          const size_t R0 = bounds[k], R1 = bounds[k + 1];
+          const size_t k_panels = (R1 - R0 + W - 1) / W;
+          total_panels += k_panels;
+          for (size_t p = 0; p < k_panels && fits; ++p) {
+            const size_t p_max_len = data_.series_flat_size(order[R0 + p * W]); // sorted longest-first
+            const size_t row_bytes = W * val_bytes;
+            if (p_max_len > (kMaxSlabPanelBytes - slab_panel_bytes) / row_bytes)
+              fits = false;
+            else
+              slab_panel_bytes += p_max_len * row_bytes;
+          }
         }
-        auto build_slab_panels = [&](auto &panels, auto column) {
-          using T = typename decltype(column(0))::value_type;
-          constexpr size_t Wt = core::dtw_lanes<T>;
-          panels.resize(total_panels);
-          auto pack_one = [&](size_t idx) {
-            size_t k = slabs[s];
-            while (k + 1 < slabs[s + 1]
-                   && idx >= tile_panel_offset[k + 1]) {
-              ++k;
-            }
-            const size_t p = idx - tile_panel_offset[k];
-            const size_t R0 = bounds[k], R1 = bounds[k + 1];
-            const size_t b0 = R0 + p * Wt;
-            const size_t cnt = std::min(Wt, R1 - b0);
-            std::array<std::span<const T>, Wt> ys;
-            for (size_t w = 0; w < Wt; ++w) ys[w] = column(order[b0 + std::min(w, cnt - 1)]);
-            core::pack_dtw_panel<T>(distance_, ys.data(), panels[idx]);
+        if (fits) {
+          auto build_slab_panels = [&](auto &panels, auto column) {
+            using T = typename decltype(column(0))::value_type;
+            constexpr size_t Wt = core::dtw_lanes<T>;
+            panels.resize(total_panels);
+            auto pack_one = [&](size_t idx) {
+              size_t k = slabs[s];
+              while (k + 1 < slabs[s + 1]
+                     && idx >= tile_panel_offset[k + 1]) {
+                ++k;
+              }
+              const size_t p = idx - tile_panel_offset[k];
+              const size_t R0 = bounds[k], R1 = bounds[k + 1];
+              const size_t b0 = R0 + p * Wt;
+              const size_t cnt = std::min(Wt, R1 - b0);
+              std::array<std::span<const T>, Wt> ys;
+              for (size_t w = 0; w < Wt; ++w) ys[w] = column(order[b0 + std::min(w, cnt - 1)]);
+              core::pack_dtw_panel<T>(distance_, ys.data(), panels[idx]);
+            };
+            run_openmp(pack_one, total_panels, total_panels > 8);
           };
-          run_openmp(pack_one, total_panels, total_panels > 8);
-        };
-        if (f32)
-          build_slab_panels(panels_f32, [&](size_t i) { return data_.series_f32(i); });
-        else
-          build_slab_panels(panels_f64, [&](size_t i) { return data_.series(i); });
+          if (f32)
+            build_slab_panels(panels_f32, [&](size_t i) { return data_.series_f32(i); });
+          else
+            build_slab_panels(panels_f64, [&](size_t i) { return data_.series(i); });
+          slab_panels_ready = true;
+        } else {
+          panels_f32.clear();
+          panels_f64.clear();
+        }
       }
       // run_openmp catches inside the parallel region and rethrows the lowest
       // column's failure after the join; a failed pair stays uncomputed.
@@ -1625,10 +1609,7 @@ void Problem::calculate_medoids()
   distMat.visit([&](const auto *matrix) {
     auto findBetterMedoidTask = [&](size_t i_p) // i_p is point index.
     {
-      // The values' pointer is read at each pair summed, as dist_by_ind read it. Held in a register (a capture by
-      // value), clang 21 vectorised the sum: another order. Read through the capture, GCC 13 and cl 19.50 loaded
-      // the capture too at each pair (2026-10-11). The float32 sum clang vectorised even so, with masked gathers and
-      // spills, at 0.49x the float64 sum's speed in Lloyd (2026-10-21).
+      // Keep sequential accumulation order across compilers so equal-cost medoid ties are deterministic.
       const auto *const *const values = &matrix;
       double sum{ 0 };
 #if defined(__clang__)

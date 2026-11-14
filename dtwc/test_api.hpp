@@ -17,8 +17,8 @@
  *     validated, pass, reason, hybrid, hybrid_reason` (the last two say of device
  *     `cpu+gpu` what `available` and `reason` say of `gpu`). When no GPU backend is compiled in — or the
  *     backend is compiled but no device is present — it returns
- *     `available=false` with a `reason` naming EXACTLY what is missing, and
- *     NEVER throws, NEVER silently degrades (2.0 no-silent-fallback rule).
+ *     available=false with a `reason` naming EXACTLY what is missing, and
+ *     NEVER throws, NEVER silently degrades.
  *
  * Header-only by design: it adds NO new source file to any CMake target list.
  * The SAME source compiles and works in both GPU-ON and GPU-OFF builds — the
@@ -82,7 +82,7 @@ inline constexpr double kGpuOracleTol = 1e-12;
 /// @brief Oracle tolerance for the Metal path. Metal has no FP64, so the kernel
 ///        accumulates in FP32; a 1e-12 bound would be a guaranteed false-negative
 ///        on legitimate Apple hardware. This FP32-appropriate absolute bound is
-///        used ONLY for the Metal branch (compiled-but-verified-on-macOS-CI).
+///        used ONLY for the Metal branch.
 inline constexpr double kMetalOracleTol = 1e-4;
 
 /// @brief Deterministic, non-degenerate probe series for the GPU-vs-CPU check.

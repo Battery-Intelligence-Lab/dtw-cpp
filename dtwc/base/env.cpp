@@ -58,7 +58,15 @@ std::string to_string(Device d)
 
 namespace {
 /// The process-wide default device: what device(name) set, the CPU until then.
+std::mutex g_device_mutex;
 std::pair<Device, int> g_device{ Device::CPU, 0 };
+
+std::string format_device(std::pair<Device, int> dev)
+{
+  std::string out = to_string(dev.first);
+  if (uses_gpu(dev.first) && dev.second != 0) out += ":" + std::to_string(dev.second);
+  return out;
+}
 } // namespace
 
 std::string device(std::string_view name)
@@ -69,15 +77,15 @@ std::string device(std::string_view name)
 #endif
   if (selected.first == Device::CPU_GPU && !detail::hybrid_not_built_reason().empty())
     throw DeviceError(detail::hybrid_refused_message("[dtwc] dtwc::device", detail::hybrid_not_built_reason()));
+  std::lock_guard<std::mutex> lk(g_device_mutex);
   g_device = selected;
-  return device();
+  return format_device(g_device);
 }
 
 std::string device()
 {
-  std::string out = to_string(g_device.first);
-  if (uses_gpu(g_device.first) && g_device.second != 0) out += ":" + std::to_string(g_device.second);
-  return out;
+  std::lock_guard<std::mutex> lk(g_device_mutex);
+  return format_device(g_device);
 }
 
 namespace detail {

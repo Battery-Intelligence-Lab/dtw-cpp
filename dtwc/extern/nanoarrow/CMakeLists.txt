@@ -5,3 +5,10 @@
 # (dtwc/CMakeLists.txt), with its include directories.
 target_sources(dtwc_core PRIVATE nanoarrow.c)
 target_sources(dtwc_third_party PRIVATE nanoarrow_ipc.c flatcc.c)
+# flatcc's paligned_alloc.h calls _aligned_malloc/_aligned_free on MSVC/MinGW without including
+# <malloc.h>; force-include it via CMake so vendored nanoarrow sources stay unmodified upstream.
+if(MSVC)
+  set_source_files_properties(nanoarrow_ipc.c flatcc.c PROPERTIES COMPILE_OPTIONS "/FImalloc.h")
+elseif(MINGW)
+  set_source_files_properties(nanoarrow_ipc.c flatcc.c PROPERTIES COMPILE_OPTIONS "-include;malloc.h")
+endif()

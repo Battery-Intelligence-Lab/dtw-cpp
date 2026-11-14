@@ -28,9 +28,8 @@
  *          matters for the long-series target (a full O(n·m) matrix would be
  *          hundreds of MB per thread at n≈8k).
  *
- *          v1 scope: univariate, unbanded (window=None). The Sakoe-Chiba band
- *          is NOT applied here — MSM/TWE ignore `Problem::band` (documented in
- *          the dispatch + CHANGELOG). The default build is unbanded anyway.
+ *          Scope: univariate, unbanded (`band == -1`); `Problem` ignores
+ *          positive `band` settings when `DTWVariant::MSM` is selected.
  *
  * @author Volkan Kumtepeli
  * @date 2026-07-08
@@ -60,20 +59,20 @@ inline T msm_cost(T nv, T a, T b, T c) noexcept
 
 namespace detail {
 
-/// msm_distance's two rolling rows, one pair a T: reached here so that core::release_thread_scratch() can empty them
-/// (detail::dispatch_scratch, core/dtw_dispatch.cpp); two thread_locals returned as references, as detail::lanes_bufs (dtw_kernel.hpp) says why.
-template <typename T>
-std::pair<std::vector<T> &, std::vector<T> &> msm_rows()
-{
-  thread_local std::vector<T> prev_buf, curr_buf;
-  return { prev_buf, curr_buf };
-}
+  /// msm_distance's two rolling rows, one pair a T: reached here so that core::release_thread_scratch() can empty them
+  /// (detail::dispatch_scratch, core/dtw_dispatch.cpp); two thread_locals returned as references, as detail::lanes_bufs (dtw_kernel.hpp) says why.
+  template <typename T>
+  std::pair<std::vector<T> &, std::vector<T> &> msm_rows()
+  {
+    thread_local std::vector<T> prev_buf, curr_buf;
+    return { prev_buf, curr_buf };
+  }
 
 } // namespace detail
 
 /// MSM distance (pointer + length). Univariate, unbanded, exact; c > 0, unchecked.
 template <typename T = dtwc::settings::default_data_t>
-T msm_distance(const T* x, std::size_t nx, const T* y, std::size_t ny, T c = T(1))
+T msm_distance(const T *x, std::size_t nx, const T *y, std::size_t ny, T c = T(1))
 {
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (nx == 0 || ny == 0) return maxValue;
@@ -87,8 +86,8 @@ T msm_distance(const T* x, std::size_t nx, const T* y, std::size_t ny, T c = T(1
   auto [prev_buf, curr_buf] = detail::msm_rows<T>();
   prev_buf.resize(nb);
   curr_buf.resize(nb);
-  T* prev = prev_buf.data();
-  T* curr = curr_buf.data();
+  T *prev = prev_buf.data();
+  T *curr = curr_buf.data();
 
   // Row i = 0.
   curr[0] = std::abs(a[0] - b[0]);
@@ -101,9 +100,9 @@ T msm_distance(const T* x, std::size_t nx, const T* y, std::size_t ny, T c = T(1
     T left = prev[0] + msm_cost<T>(a[i], a[i - 1], b[0], c); // M[i][j-1], carried
     curr[0] = left;
     for (std::size_t j = 1; j < nb; ++j) {
-      const T move  = prev[j - 1] + std::abs(a[i] - b[j]);
-      const T del_a = prev[j]     + msm_cost<T>(a[i], a[i - 1], b[j], c);
-      const T del_b = left        + msm_cost<T>(b[j], a[i], b[j - 1], c);
+      const T move = prev[j - 1] + std::abs(a[i] - b[j]);
+      const T del_a = prev[j] + msm_cost<T>(a[i], a[i - 1], b[j], c);
+      const T del_b = left + msm_cost<T>(b[j], a[i], b[j - 1], c);
       left = std::min(std::min(move, del_a), del_b); // std::min({...}) is a call on the MSVC STL
       curr[j] = left;
     }
@@ -118,7 +117,7 @@ T msm_distance(std::span<const T> x, std::span<const T> y, T c = T(1))
 }
 
 template <typename T = dtwc::settings::default_data_t>
-T msm_distance(const std::vector<T>& x, const std::vector<T>& y, T c = T(1))
+T msm_distance(const std::vector<T> &x, const std::vector<T> &y, T c = T(1))
 {
   return msm_distance<T>(x.data(), x.size(), y.data(), y.size(), c);
 }

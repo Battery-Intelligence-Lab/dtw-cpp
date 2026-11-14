@@ -7,8 +7,7 @@
  * fire without an optional dependency lives OUTSIDE that dependency's
  * `#ifdef`), and none needs a GPU to be tested.
  *
- * A missing device is a hard error, never a fallback: it previously produced an
- * all-zero N*N matrix — a valid-looking wrong answer.
+ * A missing device is a hard error (`DeviceError`), never a fallback to CPU.
  *
  * @author Volkan Kumtepeli
  * @date 02 Sep 2026
@@ -37,7 +36,8 @@ inline constexpr std::int64_t kMaxPairsPerLaunch = std::int64_t{ 1 } << 27;
 /// device buffers of a block's series padded to the longest (two, so that a block is padded and uploaded while the one
 /// before computes; one where a block holds every series) and `distance_slots` pinned host buffers of a block's
 /// distances (three, so that the host assigns a block while the next two compute; fewer where there are fewer blocks).
-struct MedoidBlocks {
+struct MedoidBlocks
+{
   std::size_t block = 0, series_slots = 0, distance_slots = 0;
 
   /// The host bytes the pipeline stages for k medoids and series of up to max_L samples of `value` bytes each: the
@@ -48,9 +48,9 @@ struct MedoidBlocks {
   }
 };
 
-/// The pipeline's blocks for n >= 1 series against k >= 1 medoids, the longest of max_L samples of `value` bytes: a
-/// block holds at most kMaxPairsPerLaunch / max(k, max_L) series (a launch's samples and its distances) and at least
-/// one. Where `host_cap` > 0 and those blocks stage more than host_cap bytes, a block shrinks to the most series that
+/// The pipeline's blocks for n >= 1 series against k >= 1 medoids, the longest of max_L samples of `value` bytes:
+/// total device output slots (`series_slots * block * k`) stay within `kMaxPairsPerLaunch` (<= 1 GiB of doubles).
+/// Where `host_cap` > 0 and those blocks stage more than host_cap bytes, a block shrinks to the most series that
 /// fit it (priced with two series slots and three distance slots), down to one series, which may stage more.
 inline MedoidBlocks medoid_blocks(std::size_t n, std::size_t k, std::size_t max_L, std::size_t value,
                                   std::size_t host_cap = 0)
@@ -59,8 +59,12 @@ inline MedoidBlocks medoid_blocks(std::size_t n, std::size_t k, std::size_t max_
     const std::size_t blocks = (n + block - 1) / block;
     return MedoidBlocks{ block, std::min<std::size_t>(2, blocks), std::min<std::size_t>(3, blocks) };
   };
-  const std::size_t launch =
-    std::clamp<std::size_t>(static_cast<std::size_t>(kMaxPairsPerLaunch) / std::max(k, max_L), 1, n);
+  const std::size_t denom = std::max(k, max_L);
+  const std::size_t one_slot =
+    std::clamp<std::size_t>(static_cast<std::size_t>(kMaxPairsPerLaunch) / denom, 1, n);
+  const std::size_t launch = (one_slot >= n)
+                               ? one_slot
+                               : std::clamp<std::size_t>(static_cast<std::size_t>(kMaxPairsPerLaunch / 2) / denom, 1, n);
   if (host_cap == 0 || of(launch).host_bytes(k, max_L, value) <= host_cap) return of(launch);
   const std::size_t row = max_L * value + sizeof(int), medoids = k * row;
   const std::size_t per_series = 2 * row + 3 * k * sizeof(double);
@@ -84,8 +88,9 @@ inline void require_compute_capability(int major, int minor, int device_id)
     throw dtwc::DeviceError(
       "CUDA device " + std::to_string(device_id) + " has compute capability "
       + std::to_string(major) + "." + std::to_string(minor)
-      + "; DTWC++ needs 8.0 or newer (Ampere, 2021: A30, A100, RTX 30 and later). "
-        "No CPU fallback was attempted.");
+      +
+      "; DTWC++ needs 8.0 or newer (Ampere, 2021: A30, A100, RTX 30 and later). "
+      "No CPU fallback was attempted.");
 }
 
 /// @brief Reject a CUDA call on a host with no usable device.
@@ -94,7 +99,8 @@ inline void require_cuda_device(bool available, const char *entry)
 {
   if (!available)
     throw dtwc::DeviceError(
-      std::string(entry) + ": DTWC++ was built with CUDA support, but no "
+      std::string(entry) +
+      ": DTWC++ was built with CUDA support, but no "
       "usable CUDA GPU was detected. No CPU fallback was attempted.");
 }
 

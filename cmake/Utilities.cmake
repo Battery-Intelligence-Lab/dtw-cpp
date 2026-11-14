@@ -76,8 +76,9 @@ function(set_env_from_string env_string)
       set(ENV{${env_name}} "${env_value}")
 
       # update cmake program path
-      if("${env_name}" EQUAL "PATH")
+      if("${env_name}" STREQUAL "PATH")
         list(APPEND CMAKE_PROGRAM_PATH ${env_value})
+        set(CMAKE_PROGRAM_PATH "${CMAKE_PROGRAM_PATH}" PARENT_SCOPE)
       endif()
     endif()
   endforeach()
@@ -125,9 +126,9 @@ macro(get_all_targets_recursive targets dir)
 endmacro()
 
 function(is_verbose var)
-  if("CMAKE_MESSAGE_LOG_LEVEL" STREQUAL "VERBOSE"
-     OR "CMAKE_MESSAGE_LOG_LEVEL" STREQUAL "DEBUG"
-     OR "CMAKE_MESSAGE_LOG_LEVEL" STREQUAL "TRACE")
+  if("${CMAKE_MESSAGE_LOG_LEVEL}" STREQUAL "VERBOSE"
+     OR "${CMAKE_MESSAGE_LOG_LEVEL}" STREQUAL "DEBUG"
+     OR "${CMAKE_MESSAGE_LOG_LEVEL}" STREQUAL "TRACE")
     set(${var}
         ON
         PARENT_SCOPE)

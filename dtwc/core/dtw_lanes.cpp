@@ -99,12 +99,39 @@ PackedLanesView<T> pack_transformed_into(const DistanceConfig &c, const std::spa
   return { Y, ny, ny_min, ny_max };
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64)
+template <typename T>
+bool panel_or_query_has_nonfinite(std::span<const T> x, const PackedLanesView<T> &panel) noexcept
+{
+  for (T v : x)
+    if (!std::isfinite(v)) return true;
+  if (panel.Y == nullptr) return false;
+  for (std::size_t t = 0; t < panel.ny_max; ++t)
+    for (std::size_t w = 0; w < dtw_lanes<T>; ++w)
+      if (!std::isfinite(panel.Y[t].v[w])) return true;
+  return false;
+}
+#endif
+
+template <typename T, typename Dist>
+std::array<T, dtw_lanes<T>> run_lanes_packed(std::span<const T> x, const PackedLanesView<T> &panel,
+                                             int band, [[maybe_unused]] bool check_nonfinite, Dist dist)
+{
+#if defined(__aarch64__) || defined(_M_ARM64)
+  if (check_nonfinite && panel_or_query_has_nonfinite(x, panel))
+    return dtw_kernel_lanes_packed<T>(x, panel, band, dist, StandardCell{});
+#endif
+  return dtw_kernel_lanes_packed<T>(x, panel, band, dist, LanesCell{});
+}
+
 template <typename T, typename Dist>
 std::function<void(std::span<const T>, const PackedLanesView<T> &, std::span<double>)>
-packed_block_fn(int band, Dist dist)
+packed_block_fn(const DistanceConfig &config, Dist dist)
 {
-  return [band, dist](std::span<const T> x, const PackedLanesView<T> &panel, std::span<double> out) {
-    const auto d = dtw_kernel_lanes_packed<T>(x, panel, band, dist, LanesCell{});
+  const int band = config.band;
+  const bool is_ddtw = (config.variant.variant == DTWVariant::DDTW);
+  return [band, is_ddtw, dist](std::span<const T> x, const PackedLanesView<T> &panel, std::span<double> out) {
+    const auto d = run_lanes_packed<T>(x, panel, band, is_ddtw, dist);
     for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
   };
 }
@@ -113,11 +140,12 @@ template <typename T, typename Dist>
 std::function<void(std::span<const T>, std::span<const std::span<const T>>, std::span<double>)>
 block_fn(DistanceConfig config, Dist dist)
 {
-  return [config, dist](std::span<const T> x, std::span<const std::span<const T>> ys, std::span<double> out) {
+  const bool is_ddtw = (config.variant.variant == DTWVariant::DDTW);
+  return [config, is_ddtw, dist](std::span<const T> x, std::span<const std::span<const T>> ys, std::span<double> out) {
     const std::span<const T> x_prep = prepare_dtw_query<T>(config, x);
     auto &y_buf = detail::lanes_bufs<T>().first;
     const auto panel = pack_transformed_into<T>(config, ys.data(), y_buf);
-    const auto d = dtw_kernel_lanes_packed<T>(x_prep, panel, config.band, dist, LanesCell{});
+    const auto d = run_lanes_packed<T>(x_prep, panel, config.band, is_ddtw, dist);
     for (std::size_t w = 0; w < dtw_lanes<T>; ++w) out[w] = normalize_public_distance(d[w]);
   };
 }
@@ -148,11 +176,11 @@ resolve_dtw_packed_block_fn(const DistanceConfig &config)
 {
   if (!supports_lanes(config)) return {};
   if (config.metric == MetricType::SquaredL2)
-    return packed_block_fn<T>(config.band, [](T a, T b) {
+    return packed_block_fn<T>(config, [](T a, T b) {
       const T d = a - b;
       return d * d;
     });
-  return packed_block_fn<T>(config.band, [](T a, T b) { return std::abs(a - b); });
+  return packed_block_fn<T>(config, [](T a, T b) { return std::abs(a - b); });
 }
 
 template <typename T>

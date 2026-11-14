@@ -132,16 +132,24 @@ dtwc_add_test(NAME test_io_readers SOURCE ${_dtwc_test_source_test_io_readers}
 dtwc_add_test(NAME cpp_conformance SOURCE ${_dtwc_test_source_cpp_conformance})
 
 # Capability-dependent grouped suites: skip tolerance only in the build that lacks the
-# capability; strict everywhere else.
+# capability; strict everywhere else. Non-skipping tag slices are also registered strictly
+# when the suite itself allows skips, so capability-free cases can never silently skip.
 dtwc_add_test(NAME dtwc_unit_mmap
     SOURCE
         ${_dtwc_test_source_unit_test_mmap_distance_matrix}
         ${_dtwc_test_source_unit_test_problem_semantic_transactions}
         ${_dtwc_test_source_unit_test_cli_args}
         ${_dtwc_test_source_unit_test_dtw_function_semantics}
-        ${_dtwc_test_source_unit_test_variant_precision}
         ${_dtwc_test_source_unit_test_variant_distmat}
     ${_dtwc_mmap_skip})
+if(NOT _dtwc_has_mmap)
+    add_test(NAME test_mmap_suite_non_mmap_strict
+             COMMAND $<TARGET_FILE:dtwc_unit_mmap> "~[mmap]"
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(test_mmap_suite_non_mmap_strict PROPERTIES
+        FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}"
+        PASS_REGULAR_EXPRESSION "All tests passed \\([1-9][0-9]* assertions? in [1-9][0-9]* test cases?\\)")
+endif()
 
 dtwc_add_test(NAME dtwc_unit_mip
     SOURCE
@@ -149,10 +157,19 @@ dtwc_add_test(NAME dtwc_unit_mip
         ${_dtwc_test_source_test_mip_backend_guards}
         ${_dtwc_test_source_unit_test_mip}
     ${_dtwc_highs_skip})
+if(NOT (DTWC_ENABLE_HIGHS AND TARGET highs::highs))
+    add_test(NAME test_lrcore_strict
+             COMMAND $<TARGET_FILE:dtwc_unit_mip> "[lrcore],[lagrangian]~[compare]~[kelley]"
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(test_lrcore_strict PROPERTIES
+        FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}"
+        PASS_REGULAR_EXPRESSION "All tests passed \\([1-9][0-9]* assertions? in [1-9][0-9]* test cases?\\)")
+endif()
 
 dtwc_add_test(NAME unit_test_parallelisation SOURCE ${_dtwc_test_source_unit_test_parallelisation} ${_dtwc_seq_skip})
 
-# Device tests grouped into one binary: no CUDA/Metal device in standard CI, so may skip.
+# Device tests grouped into one binary: no CUDA/Metal device in standard CI, so may skip,
+# while host-only launch-guard preconditions run strictly in every build.
 dtwc_add_test(NAME dtwc_unit_gpu
     SOURCE
         ${_dtwc_test_source_test_cuda_correctness}
@@ -160,6 +177,12 @@ dtwc_add_test(NAME dtwc_unit_gpu
         ${_dtwc_test_source_test_metal_correctness}
         ${_dtwc_test_source_test_metal_mmap}
     MAY_SKIP)
+add_test(NAME test_cuda_launch_guards_host
+         COMMAND $<TARGET_FILE:dtwc_unit_gpu> "[launch_guard][host]"
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(test_cuda_launch_guards_host PROPERTIES
+    FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}"
+    PASS_REGULAR_EXPRESSION "All tests passed \\([1-9][0-9]* assertions? in [1-9][0-9]* test cases?\\)")
 
 # Pass 2: group all remaining strict unit tests into 3 fast Catch2 binaries
 # (core, algorithms, api_io) instead of linking ~70 separate executables.

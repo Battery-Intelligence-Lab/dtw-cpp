@@ -158,19 +158,24 @@ auto make_ddtw(const DistanceConfig &c)
 // indexed by |i-j| in [0, m-1]), max(steps_x, steps_y) - 1 multivariate. A
 // length the series do not have (a DBA centroid) takes the thread's cached table.
 template <typename T>
-auto make_wdtw(const DistanceConfig &c, const Data &data)
+auto make_wdtw(const DistanceConfig &c, const Data &data, const Data *other)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
   const int band = c.band;
   const auto g = static_cast<T>(c.variant.wdtw_g);
   const std::size_t ndim = c.ndim;
   std::unordered_map<std::size_t, std::vector<T>> weights;
-  for (std::size_t i = 0; i < data.size(); ++i) {
-    const std::size_t steps = data.series_flat_size(i) / ndim;
-    if (steps == 0) continue;
-    const auto [it, fresh] = weights.try_emplace(steps - 1); // one table per length
-    if (fresh) it->second = wdtw_weights<T>(static_cast<int>(steps - 1), g);
-  }
+  auto add_lengths = [&](const Data &d) {
+    const auto n = static_cast<std::size_t>(d.size());
+    for (std::size_t i = 0; i < n; ++i) {
+      const std::size_t steps = d.series_flat_size(i) / ndim;
+      if (steps == 0) continue;
+      const auto [it, fresh] = weights.try_emplace(steps - 1); // one table per length
+      if (fresh) it->second = wdtw_weights<T>(static_cast<int>(steps - 1), g);
+    }
+  };
+  add_lengths(data);
+  if (other != nullptr && other != &data) add_lengths(*other);
   return [band, g, ndim, weights = std::move(weights)](std::span<const T> x, std::span<const T> y) -> double {
     const auto x_steps = x.size() / ndim;
     const auto y_steps = y.size() / ndim;
@@ -361,7 +366,7 @@ void validate(const DistanceConfig &c, bool f32)
 
 template <typename T>
 std::function<double(std::span<const T>, std::span<const T>)>
-resolve_dtw_fn(const DistanceConfig &c, const Data &data)
+resolve_dtw_fn(const DistanceConfig &c, const Data &data, const Data *other)
 {
   // Independent multivariate mode intercepts before every other axis: it is a
   // per-channel decomposition, not a cell-cost or missing-data choice.
@@ -378,7 +383,7 @@ resolve_dtw_fn(const DistanceConfig &c, const Data &data)
 
   switch (c.variant.variant) {
   case DTWVariant::DDTW:    return make_ddtw<T>(c);
-  case DTWVariant::WDTW:    return make_wdtw<T>(c, data);
+  case DTWVariant::WDTW:    return make_wdtw<T>(c, data, other);
   case DTWVariant::ADTW:    return make_adtw<T>(c);
   case DTWVariant::SoftDTW: return make_soft_dtw<T>(c);
   case DTWVariant::MSM:     return make_msm<T>(c);
@@ -412,8 +417,8 @@ std::size_t detail::dispatch_scratch(bool release) noexcept
 
 // Explicit instantiations.
 template std::function<double(std::span<const data_t>, std::span<const data_t>)>
-resolve_dtw_fn<data_t>(const DistanceConfig &, const Data &);
+resolve_dtw_fn<data_t>(const DistanceConfig &, const Data &, const Data *);
 template std::function<double(std::span<const float>, std::span<const float>)>
-resolve_dtw_fn<float>(const DistanceConfig &, const Data &);
+resolve_dtw_fn<float>(const DistanceConfig &, const Data &, const Data *);
 
 } // namespace dtwc::core

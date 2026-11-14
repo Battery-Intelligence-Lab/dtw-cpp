@@ -39,12 +39,13 @@ template <typename T>
 struct PackedLanesPanel;
 
 /// The per-pair DTW distance function for `config`, templated on element type
-/// (T = data_t or float). `data` sizes the WDTW weight table to the lengths of
-/// the series the function will meet; no other variant reads it.
+/// (T = data_t or float). `data` (and optional `other` for cross-collection
+/// `cdist`) sizes the WDTW weight table to the series lengths the function will
+/// meet; no other variant reads them.
 /// `config` must have passed validate(config, T is float): nothing here checks it.
 template <typename T>
 std::function<double(std::span<const T>, std::span<const T>)>
-resolve_dtw_fn(const DistanceConfig &config, const Data &data);
+resolve_dtw_fn(const DistanceConfig &config, const Data &data, const Data *other = nullptr);
 
 /// The brute-force fill's block function: x and W = core::dtw_lanes<T> series in
 /// `ys`, none empty, of any lengths (both unconstrained and Sakoe-Chiba banded);
@@ -72,9 +73,9 @@ resolve_dtw_packed_block_fn(const DistanceConfig &config);
 
 // Instantiated in dtw_dispatch.cpp and dtw_lanes.cpp — no other Ts are supported.
 extern template std::function<double(std::span<const data_t>, std::span<const data_t>)>
-resolve_dtw_fn<data_t>(const DistanceConfig &, const Data &);
+resolve_dtw_fn<data_t>(const DistanceConfig &, const Data &, const Data *);
 extern template std::function<double(std::span<const float>, std::span<const float>)>
-resolve_dtw_fn<float>(const DistanceConfig &, const Data &);
+resolve_dtw_fn<float>(const DistanceConfig &, const Data &, const Data *);
 extern template std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
                                    std::span<double>)>
 resolve_dtw_block_fn<data_t>(const DistanceConfig &);

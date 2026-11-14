@@ -318,7 +318,7 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
             if os.path.isdir(raw_path):
                 staged_rel_name = "input_data"
             else:
-                ext = os.path.splitext(raw_path)[1] or ".tsv"
+                ext = os.path.splitext(raw_path)[1]
                 staged_rel_name = "input" + ext
             items = [("input", staged_rel_name)]
         else:

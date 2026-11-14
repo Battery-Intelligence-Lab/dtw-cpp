@@ -16,6 +16,7 @@
  */
 
 #include <dtwc.hpp>
+#include <algorithms/barycenter.hpp>
 #include <algorithms/tadpole.hpp>
 #include <base/parallelisation.hpp>
 #include <cli/run.hpp>
@@ -211,6 +212,20 @@ TEST_CASE("dtwc::run gives every thread's scratch back as it starts and when it 
   dtwc::core::release_thread_scratch();
   CHECK(all_threads_bytes() == 0);
   CHECK(dtwc::wdtwBanded<double>(pair[0], pair[1], -1, 0.05) == wdtw);
+
+  // Barycenter DP and Soft-DTW thread_local workspaces are registered on closed_list and freed on release.
+  dtwc::Problem bary_prob{ "bary_scratch" };
+  bary_prob.set_data(data_of(walks(8, 32)));
+  const std::vector<dtwc::index_t> idx{ 0, 1, 2, 3, 4, 5, 6, 7 };
+  for (const auto method : { dtwc::algorithms::BarycenterMethod::DBA,
+                             dtwc::algorithms::BarycenterMethod::SoftDTW }) {
+    const auto center = dtwc::algorithms::dtw_barycenter(
+      bary_prob, idx, 32, { .method = method, .max_iter = 2 });
+    CHECK(center.size() == 32);
+    CHECK(all_threads_bytes() > 0);
+    dtwc::core::release_thread_scratch();
+    CHECK(all_threads_bytes() == 0);
+  }
 }
 
 TEST_CASE("Beside a complete --dist-matrix, which no kernel adds to, the matrix stays in RAM within --ram-limit",

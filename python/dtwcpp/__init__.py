@@ -51,6 +51,7 @@ from dtwcpp._dtwcpp_core import (
     build_dendrogram,
     cut_dendrogram,
     # Scores (canonical 2.0 names)
+    score,
     silhouette,
     davies_bouldin,
     dunn,
@@ -190,7 +191,7 @@ def compute_distance_matrix(series, band=-1, metric="l1", *, device=None, matrix
         device = _current_device()
     backend, _ = _resolve_device(device)
     if backend == "hpc":
-        raise ValueError(
+        raise InvalidInput(
             "device='hpc' offloads the entire clustering job to a cluster and is "
             "not a local compute backend. Use DTWClustering(device='hpc').fit(X) "
             "or examples/python/09_device_clustering.py hpc."
@@ -311,7 +312,7 @@ __all__ = [
     "dtw_barycenter", "barycenter_kmeans",
     "build_dendrogram", "cut_dendrogram",
     # Scores (canonical 2.0 names)
-    "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
+    "score", "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
     "adjusted_rand", "normalized_mutual_info",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix", "cdist",

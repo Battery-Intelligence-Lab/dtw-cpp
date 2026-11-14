@@ -1,6 +1,6 @@
 /**
  * @file mip_Gurobi.cpp
- * @brief Encapsulating Gurobi-related mixed-integer programming functions in a class.
+ * @brief Exact k-medoids p-median MIP solver backed by Gurobi.
  * @author Volkan Kumtepeli
  * @author Becky Perriment
  * @date 25 Dec 2022
@@ -44,16 +44,17 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // GRBModel::addVars takes an `int` count: an N*N above INT_MAX would narrow
     // into a wrong-sized (or negative) model.
-    if (Nb * Nb > std::numeric_limits<int>::max())
+    const auto n_uz = static_cast<std::size_t>(Nb);
+    if (n_uz > static_cast<std::size_t>(std::numeric_limits<int>::max()) / std::max<std::size_t>(n_uz, 1))
       throw SolverError("Gurobi: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX variables; use Method::LRCore.");
 
     // Create variables
-    std::unique_ptr<GRBVar[]> w{ model.addVars(static_cast<int>(Nb * Nb), GRB_BINARY) };
+    std::unique_ptr<GRBVar[]> w{ model.addVars(static_cast<int>(n_uz * n_uz), GRB_BINARY) };
 
     // Branch on medoid selection first — once A[i,i] is fixed,
     // assignment is a transportation problem (TU) and LP-integral.
-    for (size_t i = 0; i < Nb; ++i)
-      w[i * (Nb + 1)].set(GRB_IntAttr_BranchPriority, 100);
+    for (std::size_t i = 0; i < n_uz; ++i)
+      w[i * (n_uz + 1)].set(GRB_IntAttr_BranchPriority, 100);
 
     for (auto i : Range(Nb)) {
       GRBLinExpr lhs = 0;
@@ -99,16 +100,16 @@ void MIP_clustering_byGurobi(Problem &prob)
     if (prob.mip_settings.warm_start) {
       const auto pam_result = fast_pam_solve(prob, Nc, settings::DEFAULT_MAX_ITER, prob.random_seed());
 
-      for (size_t idx = 0; idx < Nb * Nb; ++idx)
+      for (std::size_t idx = 0; idx < n_uz * n_uz; ++idx)
         w[idx].set(GRB_DoubleAttr_Start, 0.0);
 
-      for (int med : pam_result.medoid_indices)
-        w[static_cast<size_t>(med) * (Nb + 1)].set(GRB_DoubleAttr_Start, 1.0);
+      for (index_t med : pam_result.medoid_indices)
+        w[static_cast<std::size_t>(med) * (n_uz + 1)].set(GRB_DoubleAttr_Start, 1.0);
 
       // Gurobi indexing: A[i,j] at flat index i + j * Nb (column-major)
-      for (size_t j = 0; j < Nb; ++j) {
-        int med = pam_result.medoid_indices[pam_result.labels[j]];
-        w[static_cast<size_t>(med) + j * Nb].set(GRB_DoubleAttr_Start, 1.0);
+      for (std::size_t j = 0; j < n_uz; ++j) {
+        const index_t med = pam_result.medoid_indices[static_cast<std::size_t>(pam_result.labels[j])];
+        w[static_cast<std::size_t>(med) + j * n_uz].set(GRB_DoubleAttr_Start, 1.0);
       }
     }
 
@@ -117,18 +118,14 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     model.optimize();
 
-    // The old code read GRB_DoubleAttr_X with no
-    // status check. On a non-optimal solve (infeasible / unbounded / limit hit)
-    // Gurobi has no solution, so .get(X) throws GRBException, which the catch
-    // below swallowed — leaving empty centroids_ind and no error. Check the
-    // optimisation status explicitly and fail loudly before extracting.
+    // Verify optimality before reading GRB_DoubleAttr_X; non-optimal solves have no primal solution.
     const int opt_status = model.get(GRB_IntAttr_Status);
     if (opt_status != GRB_OPTIMAL)
       throw SolverError(
         "Gurobi MIP did not solve to optimality (status code "
         + std::to_string(opt_status) + "). No valid clustering produced.");
 
-    std::vector<double> solution(Nb * Nb);
+    std::vector<double> solution(n_uz * n_uz);
     for (std::size_t index = 0; index < solution.size(); ++index)
       solution[index] = w[index].get(GRB_DoubleAttr_X);
 
@@ -149,7 +146,7 @@ void MIP_clustering_byGurobi(Problem &prob)
   }
 #else
   throw SolverError(
-      "Gurobi solver is unavailable; rebuild with -DDTWC_ENABLE_GUROBI=ON");
+    "Gurobi solver is unavailable; rebuild with -DDTWC_ENABLE_GUROBI=ON");
 #endif
 }
 

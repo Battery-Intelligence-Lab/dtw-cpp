@@ -47,13 +47,13 @@
 
 #pragma once
 
-#include <algorithm>    // std::min, std::max
-#include <array>        // std::array
-#include <cmath>        // std::ceil, std::floor, std::round, std::fmin
-#include <cstddef>      // size_t
-#include <limits>       // std::numeric_limits
-#include <span>         // std::span
-#include <utility>      // std::pair
+#include <algorithm> // std::min, std::max
+#include <array>     // std::array
+#include <cmath>     // std::ceil, std::floor, std::round, std::fmin
+#include <cstddef>   // size_t
+#include <limits>    // std::numeric_limits
+#include <span>      // std::span
+#include <utility>   // std::pair
 #include <vector>
 
 namespace dtwc::core {
@@ -68,7 +68,8 @@ namespace dtwc::core {
 // result is unchanged, NaN ordering included.
 
 /// Standard DTW recurrence: min(diag, up, left) + cost.
-struct StandardCell {
+struct StandardCell
+{
   template <typename T>
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -85,7 +86,8 @@ struct StandardCell {
 /// ADTW (Amerced DTW): penalty on non-diagonal (horizontal/vertical) steps.
 ///   dp[i,j] = min(dp[i-1,j-1], dp[i-1,j]+penalty, dp[i,j-1]+penalty) + cost
 template <typename T>
-struct ADTWCell {
+struct ADTWCell
+{
   T penalty;
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -100,30 +102,31 @@ struct ADTWCell {
 
 namespace detail {
 
-/** Precomputed gamma scaling for validated Soft-DTW inner loops. */
-template <typename T>
-struct SoftGammaScale {
-  T gamma;
-  T inv_gamma;
-  bool finite_reciprocal;
-  T gamma_fraction{T(1)};
-  int gamma_exponent{0};
-
-  explicit SoftGammaScale(T value) noexcept
-    : gamma(value), inv_gamma(T(1) / value),
-      finite_reciprocal(std::isfinite(inv_gamma))
+  /** Precomputed gamma scaling for validated Soft-DTW inner loops. */
+  template <typename T>
+  struct SoftGammaScale
   {
-    if (!finite_reciprocal)
-      gamma_fraction = std::frexp(gamma, &gamma_exponent);
-  }
+    T gamma;
+    T inv_gamma;
+    bool finite_reciprocal;
+    T gamma_fraction{ T(1) };
+    int gamma_exponent{ 0 };
 
-  T scaled(T delta) const noexcept
-  {
-    return finite_reciprocal
-      ? delta * inv_gamma
-      : std::scalbn(delta / gamma_fraction, -gamma_exponent);
-  }
-};
+    explicit SoftGammaScale(T value) noexcept
+      : gamma(value), inv_gamma(T(1) / value),
+        finite_reciprocal(std::isfinite(inv_gamma))
+    {
+      if (!finite_reciprocal)
+        gamma_fraction = std::frexp(gamma, &gamma_exponent);
+    }
+
+    T scaled(T delta) const noexcept
+    {
+      return finite_reciprocal
+               ? delta * inv_gamma
+               : std::scalbn(delta / gamma_fraction, -gamma_exponent);
+    }
+  };
 
 } // namespace detail
 
@@ -141,7 +144,8 @@ struct SoftGammaScale {
 /// The value needs only dtw_kernel_linear's rolling column; soft_dtw_gradient
 /// keeps the full matrices its backward pass reads.
 template <typename T>
-struct SoftCell {
+struct SoftCell
+{
   T gamma;
   detail::SoftGammaScale<T> scale;
 
@@ -153,7 +157,7 @@ struct SoftCell {
     constexpr T maxValue = std::numeric_limits<T>::max();
     T m = maxValue;
     if (diag < m) m = diag;
-    if (up   < m) m = up;
+    if (up < m) m = up;
     if (left < m) m = left;
     if (m == maxValue) return maxValue;
 
@@ -166,7 +170,7 @@ struct SoftCell {
     T acc = T(0);
     if (diag != maxValue) acc += contribution(diag);
     if (left != maxValue) acc += contribution(left);
-    if (up   != maxValue) acc += contribution(up);
+    if (up != maxValue) acc += contribution(up);
     return (acc == T(1) ? m : m - gamma * std::log(acc)) + cost;
   }
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -180,7 +184,8 @@ struct SoftCell {
 /// standard min-of-3 + cost. Boundary treatment: when only one predecessor is
 /// available (i.e. first row/column), that predecessor is used; at (0,0) with
 /// no predecessors, `seed(NaN, 0, 0)` returns 0 — the DP anchor.
-struct AROWCell {
+struct AROWCell
+{
   template <typename T>
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -188,7 +193,7 @@ struct AROWCell {
     constexpr T maxValue = std::numeric_limits<T>::max();
     if (std::isnan(cost)) { // NaN -> missing pair.
       if (diag != maxValue) return diag;
-      if (up   != maxValue) return up;
+      if (up != maxValue) return up;
       if (left != maxValue) return left;
       return T(0);
     }
@@ -210,11 +215,11 @@ struct AROWCell {
 /// The adjustment window is |row-column| <= band. Bounds are clamped here so
 /// callers never narrow sequence indices to `int` or overflow `row+band+1`.
 inline std::pair<std::size_t, std::size_t>
-dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
+  dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 {
-  if (band < 0) return {0, column_count}; // every row, of a matrix of any shape
+  if (band < 0) return { 0, column_count }; // every row, of a matrix of any shape
   if (column_count == 0 || row >= column_count)
-    return {column_count, column_count};
+    return { column_count, column_count };
 
   const auto width = static_cast<std::size_t>(band);
   const auto lo = (row > width) ? row - width : 0;
@@ -223,7 +228,7 @@ dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
   const auto hi = (width >= column_count - row - 1)
                     ? column_count
                     : row + width + 1;
-  return {lo, hi};
+  return { lo, hi };
 }
 
 // ===========================================================================
@@ -233,96 +238,95 @@ dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 
 namespace detail {
 
-/// The per-pair kernels' thread_local buffers, one of each a T (every kernel of that T shares it): reached here so
-/// that core::release_thread_scratch() can empty them (detail::dispatch_scratch, core/dtw_dispatch.cpp).
-template <typename T>
-std::vector<T> &linear_short_buf()
-{
-  thread_local std::vector<T> short_buf;
-  return short_buf;
-}
+  /// The per-pair kernels' thread_local buffers, one of each a T (every kernel of that T shares it): reached here so
+  /// that core::release_thread_scratch() can empty them (detail::dispatch_scratch, core/dtw_dispatch.cpp).
+  template <typename T>
+  std::vector<T> &linear_short_buf()
+  {
+    thread_local std::vector<T> short_buf;
+    return short_buf;
+  }
 
-template <typename T>
-std::vector<T> &banded_col_buf()
-{
-  thread_local std::vector<T> col_buf;
-  return col_buf;
-}
+  template <typename T>
+  std::vector<T> &banded_col_buf()
+  {
+    thread_local std::vector<T> col_buf;
+    return col_buf;
+  }
 
-/// dtw_kernel_linear with the early-abandon test known at compile time.
-template <bool Abandon, typename T, typename Cost, typename Cell>
-T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell, T early_abandon)
-{
-  const Cost cost = cost_in; // in registers: see the file comment
-  constexpr T maxValue = std::numeric_limits<T>::max();
-  if (n_short == 0 || n_long == 0) return maxValue;
+  /// dtw_kernel_linear with the early-abandon test known at compile time.
+  template <bool Abandon, typename T, typename Cost, typename Cell>
+  T dtw_linear(std::size_t n_short, std::size_t n_long, Cost cost_in, Cell cell, T early_abandon)
+  {
+    const Cost cost = cost_in; // in registers: see the file comment
+    constexpr T maxValue = std::numeric_limits<T>::max();
+    if (n_short == 0 || n_long == 0) return maxValue;
 
-  std::vector<T> &short_buf = linear_short_buf<T>();
-  short_buf.resize(n_short);
-  T *short_side = short_buf.data(); // hoisted out of the loops
+    std::vector<T> &short_buf = linear_short_buf<T>();
+    short_buf.resize(n_short);
+    T *short_side = short_buf.data(); // hoisted out of the loops
 
-  // First column (long_idx = 0): accumulate along short axis, no diag/left.
-  short_side[0] = cell.seed(cost(0, 0), 0, 0);
-  for (std::size_t i = 1; i < n_short; ++i)
-    short_side[i] = cell.combine(maxValue, short_side[i - 1], maxValue,
-                                 cost(i, 0), i, 0);
+    // First column (long_idx = 0): accumulate along short axis, no diag/left.
+    short_side[0] = cell.seed(cost(0, 0), 0, 0);
+    for (std::size_t i = 1; i < n_short; ++i)
+      short_side[i] = cell.combine(maxValue, short_side[i - 1], maxValue, cost(i, 0), i, 0);
 
-  // A column whose minimum exceeds the threshold abandons the pair.
-  const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
+    // A column whose minimum exceeds the threshold abandons the pair.
+    const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
 
-  // Columns j and j + 1 per pass: two chains of min-then-add side by side, where
-  // one column is one chain whose latency, not the core, sets the pace. Each cell
-  // gets the neighbours, in the same roles, that the one-column loop below gives
-  // it, and the pair is abandoned iff some column's minimum exceeds the threshold.
-  // The library's -fassociative-math may still regroup a chain of adds: on a
-  // one-row matrix a pass's two cells form one, and clang moved ADTW's
-  // left + penalty by an ulp in float there, so a one-row matrix stays on the
-  // one-column loop. Elsewhere each cell's value also feeds the next row, and the
-  // results matched the one-column loop's bit for bit (Apple clang 21).
-  std::size_t j = 1;
-  for (; n_short > 1 && j + 1 < n_long; j += 2) {
-    T diag = short_side[0];
-    T left = cell.combine(maxValue, maxValue, short_side[0], cost(0, j), 0, j);
-    T next_left = cell.combine(maxValue, maxValue, left, cost(0, j + 1), 0, j + 1);
-    short_side[0] = next_left;
-    T row_min = left, next_row_min = next_left;
+    // Columns j and j + 1 per pass: two chains of min-then-add side by side, where
+    // one column is one chain whose latency, not the core, sets the pace. Each cell
+    // gets the neighbours, in the same roles, that the one-column loop below gives
+    // it, and the pair is abandoned iff some column's minimum exceeds the threshold.
+    // The library's -fassociative-math may still regroup a chain of adds: on a
+    // one-row matrix a pass's two cells form one, and clang moved ADTW's
+    // left + penalty by an ulp in float there, so a one-row matrix stays on the
+    // one-column loop. Elsewhere each cell's value also feeds the next row, and the
+    // results matched the one-column loop's bit for bit (Apple clang 21).
+    std::size_t j = 1;
+    for (; n_short > 1 && j + 1 < n_long; j += 2) {
+      T diag = short_side[0];
+      T left = cell.combine(maxValue, maxValue, short_side[0], cost(0, j), 0, j);
+      T next_left = cell.combine(maxValue, maxValue, left, cost(0, j + 1), 0, j + 1);
+      short_side[0] = next_left;
+      T row_min = left, next_row_min = next_left;
 
-    for (std::size_t i = 1; i < n_short; ++i) {
-      const T old_up = short_side[i];                                       // dp[i, j-1]
-      const T here = cell.combine(diag, old_up, left, cost(i, j), i, j);    // dp[i, j]
-      next_left = cell.combine(left, here, next_left, cost(i, j + 1), i, j + 1); // dp[i, j+1]
-      diag = old_up;
-      left = here;
-      short_side[i] = next_left;
-      if constexpr (Abandon) {
-        row_min = std::min(row_min, here);
-        next_row_min = std::min(next_row_min, next_left);
+      for (std::size_t i = 1; i < n_short; ++i) {
+        const T old_up = short_side[i];                                            // dp[i, j-1]
+        const T here = cell.combine(diag, old_up, left, cost(i, j), i, j);         // dp[i, j]
+        next_left = cell.combine(left, here, next_left, cost(i, j + 1), i, j + 1); // dp[i, j+1]
+        diag = old_up;
+        left = here;
+        short_side[i] = next_left;
+        if constexpr (Abandon) {
+          row_min = std::min(row_min, here);
+          next_row_min = std::min(next_row_min, next_left);
+        }
       }
+      if (abandons(row_min) || abandons(next_row_min)) return maxValue;
     }
-    if (abandons(row_min) || abandons(next_row_min)) return maxValue;
-  }
 
-  for (; j < n_long; ++j) { // the last column when n_long - 1 is odd; a one-row matrix
-    T diag = short_side[0];
-    // First row of new column: no up, no diag (they'd be from out-of-bounds
-    // previous column/row). Only `left` (short_side[0] == dp[0, j-1]) is valid.
-    T left = cell.combine(maxValue, maxValue, short_side[0], cost(0, j), 0, j);
-    short_side[0] = left;
-    T row_min = left;
+    for (; j < n_long; ++j) { // the last column when n_long - 1 is odd; a one-row matrix
+      T diag = short_side[0];
+      // First row of new column: no up, no diag (they'd be from out-of-bounds
+      // previous column/row). Only `left` (short_side[0] == dp[0, j-1]) is valid.
+      T left = cell.combine(maxValue, maxValue, short_side[0], cost(0, j), 0, j);
+      short_side[0] = left;
+      T row_min = left;
 
-    for (std::size_t i = 1; i < n_short; ++i) {
-      const T old_up = short_side[i]; // dp[i, j-1]
-      // dp[i, j]; carried as the next cell's left (dp[i-1, j]) instead of reloaded.
-      left = cell.combine(diag, old_up, left, cost(i, j), i, j);
-      diag = old_up;
-      short_side[i] = left;
-      if constexpr (Abandon) row_min = std::min(row_min, left);
+      for (std::size_t i = 1; i < n_short; ++i) {
+        const T old_up = short_side[i]; // dp[i, j-1]
+        // dp[i, j]; carried as the next cell's left (dp[i-1, j]) instead of reloaded.
+        left = cell.combine(diag, old_up, left, cost(i, j), i, j);
+        diag = old_up;
+        short_side[i] = left;
+        if constexpr (Abandon) row_min = std::min(row_min, left);
+      }
+      if (abandons(row_min)) return maxValue;
     }
-    if (abandons(row_min)) return maxValue;
-  }
 
-  return short_side[n_short - 1];
-}
+    return short_side[n_short - 1];
+  }
 
 } // namespace detail
 
@@ -345,74 +349,73 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
 
 namespace detail {
 
-/// dtw_kernel_banded with the early-abandon test known at compile time.
-template <bool Abandon, typename T, typename Cost, typename Cell>
-T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
-             Cost cost_in, Cell cell, T early_abandon)
-{
-  const Cost cost = cost_in; // in registers: see the file comment
-  constexpr T maxValue = std::numeric_limits<T>::max();
-  if (n_short == 0 || n_long == 0) return maxValue;
-  if (band < 0)
-    return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
-
-  const auto band_width = static_cast<std::size_t>(band);
-
-  // The fixed terminal cell must lie inside |short_idx-long_idx| <= band.
-  if (n_long - n_short > band_width) return maxValue;
-
-  // Degenerate length-one path, or a band covering the complete matrix.
-  if (n_short == 1 || n_long == 1 || band_width >= n_long - 1)
-    return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
-
-  std::vector<T> &col_buf = banded_col_buf<T>();
-  if (col_buf.size() < n_long) col_buf.resize(n_long);
-  T *col = col_buf.data(); // hoisted out of the loops
-  const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
-
-  // First short-step (j_short = 0): fill col along long axis. Only `left`
-  // (col[i-1]) is available — diag and up are out-of-bounds (maxValue).
-  col[0] = cell.seed(cost(0, 0), 0, 0);
+  /// dtw_kernel_banded with the early-abandon test known at compile time.
+  template <bool Abandon, typename T, typename Cost, typename Cell>
+  T dtw_banded(std::size_t n_short, std::size_t n_long, int band,
+               Cost cost_in, Cell cell, T early_abandon)
   {
-    const auto hi = dtw_band_bounds(band, 0, n_long).second;
-    for (std::size_t i = 1; i < hi; ++i) {
-      col[i] = cell.combine(maxValue, maxValue, col[i - 1],
-                            cost(0, i), 0, i);
+    const Cost cost = cost_in; // in registers: see the file comment
+    constexpr T maxValue = std::numeric_limits<T>::max();
+    if (n_short == 0 || n_long == 0) return maxValue;
+    if (band < 0)
+      return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
+
+    const auto band_width = static_cast<std::size_t>(band);
+
+    // The fixed terminal cell must lie inside |short_idx-long_idx| <= band.
+    if (n_long - n_short > band_width) return maxValue;
+
+    // Degenerate length-one path, or a band covering the complete matrix.
+    if (n_short == 1 || n_long == 1 || band_width >= n_long - 1)
+      return dtw_linear<Abandon, T>(n_short, n_long, cost, cell, early_abandon);
+
+    std::vector<T> &col_buf = banded_col_buf<T>();
+    if (col_buf.size() < n_long) col_buf.resize(n_long);
+    T *col = col_buf.data(); // hoisted out of the loops
+    const auto abandons = [early_abandon](T column_min) { return Abandon && column_min > early_abandon; };
+
+    // First short-step (j_short = 0): fill col along long axis. Only `left`
+    // (col[i-1]) is available — diag and up are out-of-bounds (maxValue).
+    col[0] = cell.seed(cost(0, 0), 0, 0);
+    {
+      const auto hi = dtw_band_bounds(band, 0, n_long).second;
+      for (std::size_t i = 1; i < hi; ++i) {
+        col[i] = cell.combine(maxValue, maxValue, col[i - 1], cost(0, i), 0, i);
+      }
+      if (hi < n_long) col[hi] = maxValue;
     }
-    if (hi < n_long) col[hi] = maxValue;
+    if (abandons(col[0])) return maxValue;
+
+    for (std::size_t j = 1; j < n_short; ++j) {
+      // The band's bounds advance by at most 1 per j: dp[j-1, first_row-1] lies in the previous
+      // column's band, and col[high_{j-1}] holds the maxValue boundary sentinel placed above.
+      const auto [low, high] = dtw_band_bounds(band, j, n_long);
+      const auto first_row = std::max(low, std::size_t{ 1 });
+      T diag = col[first_row - 1]; // dp[j-1, first_row-1]
+      T row_min = maxValue;
+
+      if (low == 0) {
+        // Row 0 of new column: only `left` (col[0] from previous j-step).
+        col[0] = cell.combine(maxValue, maxValue, col[0], cost(j, 0), j, 0);
+        row_min = col[0];
+      }
+
+      // Below the band, dp[j, first_row-1] is unreachable: maxValue.
+      T left = (low == 0) ? col[0] : maxValue; // dp[j, first_row-1]
+      for (std::size_t i = first_row; i < high; ++i) {
+        const T old_up = col[i]; // dp[j-1, i]
+        // dp[j, i]; carried as the next cell's left instead of reloaded.
+        left = cell.combine(diag, old_up, left, cost(j, i), j, i);
+        col[i] = left;
+        diag = old_up;
+        if constexpr (Abandon) row_min = std::min(row_min, left);
+      }
+      if (high < n_long) col[high] = maxValue;
+      if (abandons(row_min)) return maxValue;
+    }
+
+    return col[n_long - 1];
   }
-  if (abandons(col[0])) return maxValue;
-
-  for (std::size_t j = 1; j < n_short; ++j) {
-    // The band's bounds advance by at most 1 per j: dp[j-1, first_row-1] lies in the previous
-    // column's band, and col[high_{j-1}] holds the maxValue boundary sentinel placed above.
-    const auto [low, high] = dtw_band_bounds(band, j, n_long);
-    const auto first_row = std::max(low, std::size_t{1});
-    T diag    = col[first_row - 1];                 // dp[j-1, first_row-1]
-    T row_min = maxValue;
-
-    if (low == 0) {
-      // Row 0 of new column: only `left` (col[0] from previous j-step).
-      col[0] = cell.combine(maxValue, maxValue, col[0], cost(j, 0), j, 0);
-      row_min = col[0];
-    }
-
-    // Below the band, dp[j, first_row-1] is unreachable: maxValue.
-    T left = (low == 0) ? col[0] : maxValue;        // dp[j, first_row-1]
-    for (std::size_t i = first_row; i < high; ++i) {
-      const T old_up = col[i];                      // dp[j-1, i]
-      // dp[j, i]; carried as the next cell's left instead of reloaded.
-      left = cell.combine(diag, old_up, left, cost(j, i), j, i);
-      col[i] = left;
-      diag = old_up;
-      if constexpr (Abandon) row_min = std::min(row_min, left);
-    }
-    if (high < n_long) col[high] = maxValue;
-    if (abandons(row_min)) return maxValue;
-  }
-
-  return col[n_long - 1];
-}
 
 } // namespace detail
 
@@ -473,14 +476,13 @@ T run_dtw(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, Cell
 /// The fill's Cell for dtw_kernel_lanes: StandardCell, but on AArch64 its min is
 /// std::fmin, one fminnm, where std::min is a compare and a select (fcmgt + bif)
 /// on the chain from one row's `left` to the next. fminnm differs from std::min
-/// only for NaN and for the sign of zero, and the fill's lanes meet neither:
-/// Problem::validate_fill_request refuses NaN and ±inf before any lane runs, a
-/// cost is |a - b| or d * d (never -0, and never NaN from finite values), and the
-/// boundary is max(). A cost that overflows is +inf, which both mins order alike.
-/// On input the fill refuses (NaN, ±inf) the lanes and the per-pair kernel can
-/// disagree. Elsewhere this is StandardCell: x86's fmin is three instructions (minpd,
-/// cmpunordpd, blendvpd) where its min is one. The per-pair kernels keep std::min
-/// on AArch64 too: their scalar fminnm chain measured slower.
+/// only for NaN and for the sign of zero, and finite query/panel values meet neither:
+/// input validation refuses NaN and ±inf before any lane runs, a cost on finite
+/// values is |a - b| or d * d (never -0, never NaN), and a cost that overflows is
+/// +inf, which both mins order alike. When DDTW derivatives overflow to ±inf on
+/// AArch64, dtw_lanes.cpp dispatches StandardCell so |+inf - (+inf)| = NaN matches
+/// the scalar kernel. Elsewhere this is StandardCell: x86's fmin is three instructions
+/// (minpd, cmpunordpd, blendvpd) where its min is one.
 #if defined(_MSC_VER)
 #define DTWC_LANES_RESTRICT __restrict
 #elif defined(__GNUC__) || defined(__clang__)
@@ -490,7 +492,8 @@ T run_dtw(const T *x, std::size_t nx, const T *y, std::size_t ny, int band, Cell
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)
-struct LanesCell : StandardCell {
+struct LanesCell : StandardCell
+{
   template <typename T>
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -499,7 +502,8 @@ struct LanesCell : StandardCell {
   }
 };
 #else
-struct LanesCell : StandardCell {
+struct LanesCell : StandardCell
+{
   template <typename T>
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
@@ -535,38 +539,38 @@ inline constexpr bool dtw_lanes_packed = false;
 /// Sakoe-Chiba row range [lo, hi) in [0, row_count) at zero-based column `col` for
 /// dtw_kernel_lanes, where `col` may reach or exceed `row_count` when ny[w] > nx.
 inline std::pair<std::size_t, std::size_t>
-dtw_lanes_band_bounds(int band, std::size_t col, std::size_t row_count) noexcept
+  dtw_lanes_band_bounds(int band, std::size_t col, std::size_t row_count) noexcept
 {
-  if (band < 0) return {0, row_count};
-  if (row_count == 0) return {0, 0};
+  if (band < 0) return { 0, row_count };
+  if (row_count == 0) return { 0, 0 };
   const auto width = static_cast<std::size_t>(band);
   const auto lo = (col > width) ? col - width : 0;
-  if (lo >= row_count) return {row_count, row_count};
+  if (lo >= row_count) return { row_count, row_count };
   const auto hi = (col >= row_count || width >= row_count - col - 1)
                     ? row_count
                     : col + width + 1;
-  return {lo, hi};
+  return { lo, hi };
 }
 
 namespace detail {
 
-/// A row of the lanes' buffers: one value a lane.
-template <typename T>
-struct alignas(64) LanesRow
-{
-  T v[dtw_lanes<T>];
-};
+  /// A row of the lanes' buffers: one value a lane.
+  template <typename T>
+  struct alignas(64) LanesRow
+  {
+    T v[dtw_lanes<T>];
+  };
 
-/// The lanes kernel's two thread_local buffers, one pair a T (both of its distances share them): reached here so
-/// that core::release_thread_scratch() can empty them (detail::lanes_scratch, core/dtw_lanes.cpp). Two thread_locals,
-/// as the kernel declared them, returned as references (`auto [y_buf, s_buf]` binds the buffers): one pair object
-/// moved a column loop of the lanes, and a cell loop of TWE's, under GCC (2026-11-02).
-template <typename T>
-std::pair<std::vector<LanesRow<T>> &, std::vector<LanesRow<T>> &> lanes_bufs()
-{
-  thread_local std::vector<LanesRow<T>> y_buf, s_buf;
-  return { y_buf, s_buf };
-}
+  /// The lanes kernel's two thread_local buffers, one pair a T (both of its distances share them): reached here so
+  /// that core::release_thread_scratch() can empty them (detail::lanes_scratch, core/dtw_lanes.cpp). Two thread_locals,
+  /// as the kernel declared them, returned as references (`auto [y_buf, s_buf]` binds the buffers): one pair object
+  /// moved a column loop of the lanes, and a cell loop of TWE's, under GCC (2026-11-02).
+  template <typename T>
+  std::pair<std::vector<LanesRow<T>> &, std::vector<LanesRow<T>> &> lanes_bufs()
+  {
+    thread_local std::vector<LanesRow<T>> y_buf, s_buf;
+    return { y_buf, s_buf };
+  }
 
 } // namespace detail
 
@@ -598,30 +602,30 @@ struct PackedLanesPanel
 
 namespace detail {
 
-template <typename T>
-PackedLanesView<T> pack_lanes_into(const std::span<const T> *ys, std::vector<LanesRow<T>> &buf)
-{
-  constexpr std::size_t W = dtw_lanes<T>;
-  std::array<std::size_t, W> ny{};
-  std::size_t ny_min = std::numeric_limits<std::size_t>::max(), ny_max = 0;
-  for (std::size_t w = 0; w < W; ++w) {
-    ny[w] = ys[w].size();
-    ny_min = std::min(ny_min, ny[w]);
-    ny_max = std::max(ny_max, ny[w]);
+  template <typename T>
+  PackedLanesView<T> pack_lanes_into(const std::span<const T> *ys, std::vector<LanesRow<T>> &buf)
+  {
+    constexpr std::size_t W = dtw_lanes<T>;
+    std::array<std::size_t, W> ny{};
+    std::size_t ny_min = std::numeric_limits<std::size_t>::max(), ny_max = 0;
+    for (std::size_t w = 0; w < W; ++w) {
+      ny[w] = ys[w].size();
+      ny_min = std::min(ny_min, ny[w]);
+      ny_max = std::max(ny_max, ny[w]);
+    }
+    if (ny_min == 0) return { nullptr, ny, 0, ny_max };
+    if (buf.size() < ny_max) buf.resize(ny_max);
+    LanesRow<T> *DTWC_LANES_RESTRICT Y = buf.data();
+    for (std::size_t w = 0; w < W; ++w) {
+      const T *DTWC_LANES_RESTRICT yw = ys[w].data();
+      const std::size_t n = ny[w];
+      std::size_t t = 0;
+      for (; t < n; ++t) Y[t].v[w] = yw[t];
+      const T last = yw[n - 1];
+      for (; t < ny_max; ++t) Y[t].v[w] = last;
+    }
+    return { Y, ny, ny_min, ny_max };
   }
-  if (ny_min == 0) return { nullptr, ny, 0, ny_max };
-  if (buf.size() < ny_max) buf.resize(ny_max);
-  LanesRow<T> * DTWC_LANES_RESTRICT Y = buf.data();
-  for (std::size_t w = 0; w < W; ++w) {
-    const T * DTWC_LANES_RESTRICT yw = ys[w].data();
-    const std::size_t n = ny[w];
-    std::size_t t = 0;
-    for (; t < n; ++t) Y[t].v[w] = yw[t];
-    const T last = yw[n - 1];
-    for (; t < ny_max; ++t) Y[t].v[w] = last;
-  }
-  return { Y, ny, ny_min, ny_max };
-}
 
 } // namespace detail
 
@@ -645,7 +649,7 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
 {
   constexpr std::size_t W = dtw_lanes<T>;
   constexpr T maxValue = std::numeric_limits<T>::max();
-  const T * DTWC_LANES_RESTRICT x = xs.data();
+  const T *DTWC_LANES_RESTRICT x = xs.data();
   const std::size_t nx = xs.size();
   const std::size_t ny_min = panel.ny_min;
   const std::size_t ny_max = panel.ny_max;
@@ -674,7 +678,7 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
   }
   const Row *Y = panel.rows;
   Row *end_rows = ragged_tail ? y_buf.data() : nullptr;
-  Row * DTWC_LANES_RESTRICT s = s_buf.data();
+  Row *DTWC_LANES_RESTRICT s = s_buf.data();
 
   // Column 0 (y[0]). The rows above its band hold maxValue: the band only moves
   // up, so a later column first meets such a row as an unreachable `up`.
@@ -712,7 +716,7 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
     for (std::size_t w = 0; w < W; ++w) {
       const T s0 = s[0].v[w];
       diag0[w] = s0;
-      l0[w] = cell.combine(maxValue, maxValue, s0,    dist(x0, y0[w]), 0, j);
+      l0[w] = cell.combine(maxValue, maxValue, s0, dist(x0, y0[w]), 0, j);
       l1[w] = cell.combine(maxValue, maxValue, l0[w], dist(x0, y1[w]), 0, j + 1);
       l2[w] = cell.combine(maxValue, maxValue, l1[w], dist(x0, y2[w]), 0, j + 2);
       l3[w] = cell.combine(maxValue, maxValue, l2[w], dist(x0, y3[w]), 0, j + 3);
@@ -720,13 +724,13 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
     }
     for (std::size_t i = 1; i < nx; ++i) {
       const T xi = x[i];
-      T * DTWC_LANES_RESTRICT si = s[i].v;
+      T *DTWC_LANES_RESTRICT si = s[i].v;
       for (std::size_t w = 0; w < W; ++w) {
         const T up0 = si[w];
         const T n0 = cell.combine(diag0[w], up0, l0[w], dist(xi, y0[w]), i, j);
-        const T n1 = cell.combine(l0[w],    n0,  l1[w], dist(xi, y1[w]), i, j + 1);
-        const T n2 = cell.combine(l1[w],    n1,  l2[w], dist(xi, y2[w]), i, j + 2);
-        const T n3 = cell.combine(l2[w],    n2,  l3[w], dist(xi, y3[w]), i, j + 3);
+        const T n1 = cell.combine(l0[w], n0, l1[w], dist(xi, y1[w]), i, j + 1);
+        const T n2 = cell.combine(l1[w], n1, l2[w], dist(xi, y2[w]), i, j + 2);
+        const T n3 = cell.combine(l2[w], n2, l3[w], dist(xi, y3[w]), i, j + 3);
         diag0[w] = up0;
         l0[w] = n0;
         l1[w] = n1;
@@ -748,17 +752,17 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
     for (std::size_t w = 0; w < W; ++w) {
       const T s0 = s[0].v[w];
       diag0[w] = s0;
-      l0[w] = cell.combine(maxValue, maxValue, s0,    dist(x0, y0[w]), 0, j);
+      l0[w] = cell.combine(maxValue, maxValue, s0, dist(x0, y0[w]), 0, j);
       l1[w] = cell.combine(maxValue, maxValue, l0[w], dist(x0, y1[w]), 0, j + 1);
       s[0].v[w] = l1[w];
     }
     for (std::size_t i = 1; i < nx; ++i) {
       const T xi = x[i];
-      T * DTWC_LANES_RESTRICT si = s[i].v;
+      T *DTWC_LANES_RESTRICT si = s[i].v;
       for (std::size_t w = 0; w < W; ++w) {
         const T up0 = si[w];
         const T n0 = cell.combine(diag0[w], up0, l0[w], dist(xi, y0[w]), i, j);
-        const T n1 = cell.combine(l0[w],    n0,  l1[w], dist(xi, y1[w]), i, j + 1);
+        const T n1 = cell.combine(l0[w], n0, l1[w], dist(xi, y1[w]), i, j + 1);
         diag0[w] = up0;
         l0[w] = n0;
         l1[w] = n1;
@@ -786,11 +790,11 @@ std::array<T, dtw_lanes<T>> dtw_kernel_lanes_packed(std::span<const T> xs, const
         diag[w] = s[lo - 1].v[w];           // dp[lo-1, j-1], inside the previous column's band
       std::copy_n(kUnreachable.v, W, left); // dp[lo-1, j], outside this column's band
     } else {
-      s[nx - 1] = kUnreachable;             // row nx - 1 has left the Sakoe-Chiba band
+      s[nx - 1] = kUnreachable; // row nx - 1 has left the Sakoe-Chiba band
     }
     for (; i < hi; ++i) {
       const T xi = x[i];
-      T * DTWC_LANES_RESTRICT si = s[i].v;
+      T *DTWC_LANES_RESTRICT si = s[i].v;
       for (std::size_t w = 0; w < W; ++w) {
         const T up = si[w]; // dp[i, j-1]
         left[w] = cell.combine(diag[w], up, left[w], dist(xi, y[w]), i, j);

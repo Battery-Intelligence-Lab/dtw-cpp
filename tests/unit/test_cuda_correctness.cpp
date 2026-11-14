@@ -2019,10 +2019,12 @@ TEST_CASE("CUDA medoid distances match the host kernel in every kernel range",
   }
 }
 
-// A block holds at most kMaxPairsPerLaunch distances (and samples): with 4096
-// medoids that is 32,768 series, so 32,769 take two blocks, handed over in
-// order, every distance the host kernel's. The refusals come first: all-empty
-// series hand over no block.
+// Total device output slots (`series_slots * block * k`) are capped at
+// kMaxPairsPerLaunch: with 4096 medoids a single launch holds up to 32,768
+// series (`series_slots == 1`), while 32,769 series use double-buffered device
+// slots (`series_slots == 2`, 16,384 series per block -> three blocks handed
+// over in order), every distance matching the host kernel's. The refusals come
+// first: all-empty series hand over no block.
 TEST_CASE("CUDA medoid distances arrive in blocks of at most kMaxPairsPerLaunch",
           "[cuda][medoids][blocks]")
 {
@@ -2036,6 +2038,7 @@ TEST_CASE("CUDA medoid distances arrive in blocks of at most kMaxPairsPerLaunch"
 
   constexpr size_t k = 4096;
   const size_t block = static_cast<size_t>(dtwc::cuda::detail::kMaxPairsPerLaunch) / k;
+  const size_t half = static_cast<size_t>(dtwc::cuda::detail::kMaxPairsPerLaunch / 2) / k;
   std::mt19937 rng(4096); // NOLINT(cert-msc51-cpp): fixed seed, reproducible.
   std::uniform_real_distribution<double> value(-1.0, 1.0);
   const auto make = [&](size_t count) {
@@ -2064,7 +2067,7 @@ TEST_CASE("CUDA medoid distances arrive in blocks of at most kMaxPairsPerLaunch"
         };
         dtwc::run_openmp(check, count);
       });
-  CHECK(blocks == std::vector<std::pair<size_t, size_t>>{ { 0, block }, { block, 1 } });
+  CHECK(blocks == std::vector<std::pair<size_t, size_t>>{ { 0, half }, { half, half }, { 2 * half, 1 } });
   REQUIRE(std::accumulate(mismatches.begin(), mismatches.end(), size_t{ 0 }) == 0);
 }
 

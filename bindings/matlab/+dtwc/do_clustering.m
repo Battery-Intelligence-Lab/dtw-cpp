@@ -41,9 +41,6 @@ function res = do_clustering(varargin)
                        data.Name, s.Output, s.Checkpoint, s.CheckpointInterval, ...
                        s.K, s.ClusterArgs{:});
     else
-        prob = dtwc.Problem();
-        cleaner = onCleanup(@() delete(prob));
-        dtwc_mex('apply', prob.get_handle(), s.K, s.ClusterArgs{:});
         [series, names, effNdim] = data.as_series();
         out = dtwc_mex('run_workflow', cast_series(series, data.Dtype), names, double(effNdim), ...
                        0, 0, '', data.Dtype, data.Name, s.Output, s.Checkpoint, ...

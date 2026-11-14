@@ -33,11 +33,11 @@ function dend = build_dendrogram(prob, varargin)
 
     p = inputParser;
     addRequired(p, 'prob');
-    addParameter(p, 'Linkage', 'average', @ischar);
+    addParameter(p, 'Linkage', 'average', @(v) ischar(v) || (isstring(v) && isscalar(v)));
     addParameter(p, 'MaxPoints', 2000, @(v) isnumeric(v) && isscalar(v) && v > 0);
     parse(p, prob, varargin{:});
 
     dend = dtwc_mex('build_dendrogram', prob.get_handle(), ...
-        p.Results.Linkage, ...
+        char(p.Results.Linkage), ...
         double(p.Results.MaxPoints));
 end

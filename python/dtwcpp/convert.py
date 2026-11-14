@@ -85,7 +85,8 @@ def _load_parquet(path: Path, columns: list[str] | None, name_col: str | None):
                     raise ValueError(
                         f"NaN found in series at row {len(all_series)}. "
                         "Fill or drop NaN values before conversion.")
-                assert series.ndim == 1, f"Expected 1D series, got shape {series.shape}"
+                if series.ndim != 1:
+                    raise ValueError(f"Expected 1D series, got shape {series.shape}")
                 all_series.append(series)
         else:
             # Columnar layout: each column is a timestep, vectorize with numpy

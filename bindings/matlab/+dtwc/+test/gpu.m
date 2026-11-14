@@ -16,7 +16,7 @@ function report = gpu()
 %
 %   When no GPU backend is compiled in (or no device is present), `available`
 %   is false and `reason` names exactly what is missing. Never errors, never
-%   silently degrades (2.0 no-silent-fallback rule).
+%   silently degrades.
 %
 %   See also dtwc.test.parallelisation, dtwc.gpu_available, dtwc.gpu_info
 

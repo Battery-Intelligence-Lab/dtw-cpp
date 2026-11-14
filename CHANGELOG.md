@@ -257,7 +257,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - `dtwc::randGenerator` is one engine per program, in `dtwc/base/random_engine.hpp`, which `dtwc.hpp` includes and
   `settings.hpp` no longer does; v1.0.0 had a `static` copy in each translation unit.
 - `Index::difference_type` (what `operator-` returns) is `std::ptrdiff_t`, where v1.0.0's was `size_t`.
-- `run(task, n, numMaxParallelWorkers = 32)` applies its limit; v1.0.0 used every OpenMP thread for any value but 1.
+- `run(task, n, numMaxParallelWorkers = 0)` uses all available OpenMP threads when 0 and applies a positive limit;
+  v1.0.0 used every OpenMP thread for any value but 1.
 - A `.txt` file is tab-separated unless a delimiter is given (v1.0.0: comma); `DataLoader::path()` matches extensions
   in any case and keeps a delimiter set before it.
 - A top-level build compiles for its machine's CPU (`-march=native`; MSVC `/arch:AVX2`), and an optimised build of the
@@ -286,16 +287,16 @@ Soft-DTW, Python or CUDA), on the machine named.
 - On x86-64 the lanes of a clang or GCC build hold 16 doubles (32 floats) too: on an Intel Core Ultra 9 285 clang is up
   to 1.97× faster on one thread and 1.17–1.19× in a 24-thread fill of equal-length series; GCC 13.3 (in WSL) 1.36–3.87×
   on one thread and 2.39× and 2.54× in the fills, a ragged fill unchanged; bit for bit, but for GCC's squared L2 (the
-  multiply-add caveat above), whose clusterings were unchanged. MSVC builds are unchanged.
-- Without a band the lanes of a clang or GCC build take series of different lengths too, each lane stopping at its
+  multiply-add caveat above), whose clusterings were unchanged. MSVC x64 builds use 64-byte register-blocked lanes (8 doubles, 16 floats).
+- Without a band the lanes take series of different lengths too, each lane stopping at its
   own, each row of the fill taking the series after it longest first: on an Intel Core Ultra 9 285 clang's ragged
   fills run 6.8–6.9× faster on one thread and 3.3–3.6× at 24 threads, GCC 13.3's 8.1–8.7× and 4.9–5.5×, equal-length
-  fills unchanged; OneBatchPAM's batch table too; bit for bit, but for GCC's squared L2. MSVC builds keep the
-  one-pair route for series of different lengths.
+  fills unchanged; OneBatchPAM's batch table too; bit for bit, but for GCC's squared L2 (and FMA contraction where
+  enabled).
 - FastCLARA's CPU assignment computes each medoid against 16 series at once (32 in `float32`) in the same SIMD lanes,
   in RAM and streamed from Parquet: on an Intel Core Ultra 9 285 3.4–3.8× faster at 24 threads and 7.8× on one thread
   under clang, 4.8–5.7× and 10.0× under GCC 13.3 (`float32` 7.4× and 7.9×; under a band 6.3× and 6.6×, MSVC's 1.29×);
-  the same labels, medoids and costs, but for GCC's squared L2. MSVC builds take the lanes there only under a band.
+  the same labels, medoids and costs, but for GCC's squared L2.
 - The CPU fill goes block by block, as matrix multiplication does: rows of the packed matrix whose series stay in a
   core's L2, each thread taking consecutive columns of them, so a cache line of the matrix comes from memory once for
   its eight entries; the NaN prefill runs on every thread. On an Intel Core Ultra 9 285 at 24 threads, for 8,000
@@ -340,17 +341,21 @@ Soft-DTW, Python or CUDA), on the machine named.
   1.1–1.5× and an unequal-length distance matrix 1.5× faster.
 - The CUDA fill writes the packed matrix: on an RTX 4000 Ada at N = 20,000 (FP32) host memory 6.0 → 1.6 GiB and GPU
   memory 1.6 → 1.1 GiB; 9,000 series of length 100 fill in 1.16 s, not 1.53 s.
-- Register-blocked CPU SIMD lanes, pre-packed query panels, and vectorized ragged-banded, DDTW (precomputed temporal
-  derivatives) and `MissingStrategy::Interpolate` (single-pass pre-interpolated scratch) kernels eliminate inner-loop
-  function calls and per-pair heap allocations across all four SIMD loops.
+- Register-blocked 64-byte CPU SIMD lanes across GCC/Clang/MSVC and WebAssembly SIMD128, capped pre-packed query panels
+  (`<= 64 MiB`), and vectorized ragged-banded, DDTW (precomputed temporal derivatives) and
+  `MissingStrategy::Interpolate` (single-pass pre-interpolated scratch) kernels eliminate inner-loop function calls and
+  per-pair heap allocations across all four SIMD loops; `dtwc::run` now engages all available OpenMP threads by default.
 - Band-clipped CUDA wavefront bounds (`d_min..d_max`), fused register-tiled DP cells, and 3-stream medoid assignment
   overlap avoid out-of-band warps and shared-memory round-trips on Ampere/Ada/Hopper GPUs while preserving bit-exact
-  FP64 CPU/GPU hybrid parity.
-- Zero-copy Erlenkotter dual ascent with exact O(N^2) FastPAM 1-swap primal polish in `lrcore`, O(N^2) Lance-Williams
-  hierarchical clustering (`single`, `complete`, `average` linkages), cascading 3-tier TADPole lower bounds
-  (`LB_KimFL` → O(L) Lemire `LB_Keogh` → exact DTW), and fused single-pass DBA updates.
-- Zero-copy C-contiguous 2-D and 3-D NumPy buffer ingestion (`set_view_data`) and lazy `scikit-learn` imports in
-  `dtwcpp`.
+  FP64 `L1` parity and FMA-contraction-bounded `SquaredL2` agreement across CPU and GPU (`cdist` on `device="cpu+gpu"`
+  resolves `Auto` precision to uniform `FP64`).
+- Zero-copy Erlenkotter dual ascent with exact O(N^2) FastPAM 1-swap primal polish in `lrcore`, Day & Edelsbrunner
+  per-row nearest-neighbour Lance-Williams hierarchical clustering (`single`, `complete`, `average` linkages; O(N^2)
+  typical), two-sided O(L) Lemire `LB_Keogh` cascading TADPole pruning with Stage-1 distance seeding and stratified `dc`
+  subsampling (`N > 64`), and single-pass DBA accumulation with `log1p` softmin and closed-list thread scratch release.
+- Direct C-contiguous 2-D and 3-D NumPy buffer `memcpy` ingestion without Python list boxing (`Data.from_numpy_2d` /
+  `from_numpy_3d`, complementing zero-copy `set_view_data` for C++ span views and memory-mapped Arrow IPC) and lazy
+  `scikit-learn` imports in `dtwcpp`.
 
 ## Fixed
 

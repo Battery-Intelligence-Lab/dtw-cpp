@@ -269,8 +269,8 @@ classdef Problem < handle
         %   the matrix (rounded up to the lane width): the first save writes the
         %   whole matrix, each later one the rows filled since, in place. Fields
         %   are optional; any omitted field keeps its current value. enabled
-        %   requires dense storage and save_interval >= 1, both checked before
-        %   any distance is computed.
+        %   requires a non-empty directory and save_interval >= 1, both checked
+        %   before any distance is computed.
             dtwc_mex('Problem_set_checkpoint', obj.Handle, opts);
         end
 

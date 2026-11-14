@@ -11,7 +11,6 @@
 
 #pragma once
 
-#include <ctime>
 #include <iostream>
 #include <cmath>
 #include <chrono>

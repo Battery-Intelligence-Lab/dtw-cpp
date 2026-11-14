@@ -1,6 +1,6 @@
-﻿/**
+/**
  * @file warping_adtw.hpp
- * @brief Amerced Dynamic Time Warping (ADTW) â€” thin wrappers over the unified DTW kernel.
+ * @brief Amerced Dynamic Time Warping (ADTW) — thin wrappers over the unified DTW kernel.
  *
  * @details ADTW adds a penalty for non-diagonal (horizontal/vertical) warping
  *          steps, discouraging time stretching/compression:

@@ -46,10 +46,16 @@ def _mapped_matrix_persists(dtwcpp):
 
 
 def run():
-    """Assert compiled parallelism, a real MIP solve with highspy (the wheel links no
-    HiGHS; highspy is a dependency of dtwcpp) and a mapped matrix."""
+    """Assert compiled parallelism, package metadata version, a real MIP solve with highspy
+    (the wheel links no HiGHS; highspy is a dependency of dtwcpp) and a mapped matrix."""
+    import importlib.metadata
+
     import dtwcpp
     import dtwcpp.test
+
+    dist_version = importlib.metadata.version("dtwcpp")
+    assert dtwcpp.__version__ != "0.0.0", dtwcpp.__version__
+    assert dist_version == dtwcpp.__version__, (dist_version, dtwcpp.__version__)
 
     parallel = dtwcpp.test.parallelisation()
     assert parallel["available"], parallel["reason"]

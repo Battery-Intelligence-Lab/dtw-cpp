@@ -536,7 +536,7 @@ constexpr dtwc::Name<Key> distance_keys[]{
   { "TweLambda", Key::TweLambda },
 };
 
-/// Cross-collection cdist settings: distance_keys + MvMode, Device, GpuPrecision, MatrixDtype.
+/// Cross-collection cdist settings: distance_keys + MvMode, Device, GpuPrecision, GpuShare, MatrixDtype.
 constexpr dtwc::Name<Key> cdist_keys[]{
   { "Variant", Key::Variant },
   { "Band", Key::Band },
@@ -551,6 +551,7 @@ constexpr dtwc::Name<Key> cdist_keys[]{
   { "MvMode", Key::MvMode },
   { "Device", Key::Device },
   { "GpuPrecision", Key::GpuPrecision },
+  { "GpuShare", Key::GpuShare },
   { "MatrixDtype", Key::MatrixDtype },
 };
 
@@ -1153,6 +1154,11 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   if (N != prob.size())
     throw std::invalid_argument("Distance matrix size does not match problem size.");
 
+  if (prob.distance_matrix().is_mapped())
+    throw dtwc::InvalidInput(
+      "Problem.set_distance_matrix: this Problem's distance matrix is "
+      "memory-mapped (use_mmap_distance_matrix), and a supplied matrix is "
+      "kept in RAM only; call refresh_distance_matrix() first.");
   auto &dm = prob.writable_distance_matrix();
   dm.resize(N);
   const auto copy = [&](const auto *data) {
@@ -1280,7 +1286,7 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (mxArray *f = mxGetField(s, 0, "mip_focus")) m.mip_focus = get_exact_int(f, "mip_focus");
   if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = (get_scalar(f, "verbose_solver") != 0.0);
   if (mxArray *f = mxGetField(s, 0, "lr_max_nodes"))
-    m.lr_max_nodes = get_exact_int(f, "lr_max_nodes");
+    m.lr_max_nodes = get_exact_int<std::int64_t>(f, "lr_max_nodes");
   if (mxArray *f = mxGetField(s, 0, "lr_root")) {
     require_char(f, "lr_root");
     m.lr_root = dtwc::parse_name(dtwc::lr_root_names, get_string(f), "lr root");
@@ -1481,7 +1487,7 @@ static void cmd_cdist(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]
   const auto n_x = static_cast<std::size_t>(X_data.size());
   const auto n_y = static_cast<std::size_t>(Y_data.size());
   const std::vector<double> dists =
-    dtwc::cdist(X_data, Y_data, dist_cfg, cfg.device, cfg.device_index, cfg.gpu_precision);
+    dtwc::cdist(X_data, Y_data, dist_cfg, cfg.device, cfg.device_index, cfg.gpu_precision, cfg.gpu_share);
 
   if (cfg.matrix_dtype == dtwc::core::Precision::Float32) {
     mxArray *out = mxCreateNumericMatrix(n_x, n_y, mxSINGLE_CLASS, mxREAL);

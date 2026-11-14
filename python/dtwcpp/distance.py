@@ -63,6 +63,7 @@ def cdist(
     matrix_dtype="float64",
     device=None,
     gpu_precision="auto",
+    gpu_share=-1.0,
 ):
     """Compute cross-collection ``(n_X, n_Y)`` DTW distance matrix in C++/SIMD/CUDA.
 
@@ -120,6 +121,7 @@ def cdist(
         mv_mode=mv_mode,
         device=eff_device,
         gpu_precision=gpu_precision,
+        gpu_share=float(gpu_share),
         matrix_dtype=matrix_dtype,
     )
 

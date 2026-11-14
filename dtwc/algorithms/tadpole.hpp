@@ -22,8 +22,7 @@
  *   Σ exp(-(d/dc)²) is deliberately not used: it needs every exact distance.
  *
  *   LB = symmetric LB_Keogh (reuses each series' envelope across ALL pairs —
- *   Begum's "reuse cached envelope"). LB_Webb, 23 % tighter on average,
- *   pruned no more pairs on the N = 200 bench fixture and was deleted.
+ *   Begum's "reuse cached envelope").
  *   UB = the no-warp diagonal cost Σ_t metric(x_t, y_t) for equal-length series
  *   (a valid DTW upper bound: the diagonal always satisfies the Sakoe-Chiba band).
  *
@@ -51,7 +50,7 @@ class Problem; // Forward declaration
 
 namespace algorithms {
 
-/// Pruning ledger for a TADPole run — the numbers behind the ≥50% pruning band.
+/// Pruning ledger for a TADPole run.
 ///
 /// The comparable baseline is brute-force density-peaks, which computes every one
 /// of the N(N-1)/2 unordered pairs exactly. `dtw_calls` counts the UNIQUE pairs
@@ -101,8 +100,8 @@ struct TADPoleStats {
  *         density-peak centers, total_cost = Σ_i d(i, its center).
  * @throws InvalidInput on n_clusters ∉ [1, N] or dc ≤ 0.
  *
- * @note Writes the result back into `prob` (clusters_ind / centroids_ind /
- *       n_clusters), matching fast_pam's Task-1.6 write-back contract.
+ * @note Writes the result back into `prob` (`clusters_ind`, `centroids_ind`,
+ *       `n_clusters`) via `prob.set_result(...)`.
  */
 core::ClusteringResult tadpole(Problem& prob, index_t n_clusters, double dc,
                                bool prune = true, TADPoleStats* stats = nullptr);
@@ -111,9 +110,9 @@ core::ClusteringResult tadpole(Problem& prob, index_t n_clusters, double dc,
  * @brief Choose dc as a percentile of a deterministic exact-DTW subsample.
  *
  * @details Rodriguez & Laio pick dc so the average neighbour count is ≈1–2% of
- *   N. Estimating that needs the distance distribution; we sample it from the
- *   pairs among the first `min(N, cap)` series (a fixed, reproducible subset —
- *   no RNG), compute their exact DTW, and return the `percentile`-th percentile.
+ *   N. Estimating that needs the distance distribution; we sample a deterministic,
+ *   evenly spaced subset of `min(N, 64)` series across `[0, N)` (no RNG), compute
+ *   their exact pairwise DTW distances, and return the `percentile`-th percentile.
  *   These subsample DTWs are counted honestly if a caller tracks the budget.
  *
  * @param prob        Problem with data loaded.

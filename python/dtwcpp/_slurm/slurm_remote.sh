@@ -376,8 +376,22 @@ cmd_build() {
     # quoted sbatch argv/environment entries rather than executable shell text.
     local BUILD_SCRIPT='#!/bin/bash
 set -euo pipefail
-module load CMake/3.27.6 GCC/13.2.0 CUDA/12.4.0 2>/dev/null || true
-module load cmake gcc cuda 2>/dev/null || true
+if [[ -n "${DTWC_MODULES:-}" ]]; then
+    IFS=: read -r -a _DTWC_MOD_LIST <<< "${DTWC_MODULES}"
+    _HAS_CMAKE=0
+    for _MOD in "${_DTWC_MOD_LIST[@]}"; do
+        [[ "${_MOD,,}" == cmake* ]] && _HAS_CMAKE=1
+    done
+    if (( ! _HAS_CMAKE )); then
+        module load CMake/3.27.6 2>/dev/null || module load cmake 2>/dev/null || true
+    fi
+    for _MOD in "${_DTWC_MOD_LIST[@]}"; do
+        [[ -n "${_MOD}" ]] && module load "${_MOD}"
+    done
+else
+    module load CMake/3.27.6 GCC/13.2.0 CUDA/12.4.0 2>/dev/null || true
+    module load cmake gcc cuda 2>/dev/null || true
+fi
 cd "${DTWC_REMOTE_BASE}/src"
 # Disable testing (tests/ not uploaded); Arrow off until include path fix
 export DTWC_BUILD_TESTING=OFF

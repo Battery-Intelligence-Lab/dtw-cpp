@@ -15,9 +15,9 @@ namespace dtwc {
 /// The clustering method, as Problem::cluster(), dtwc::run and `--method` take it.
 /// v1.0.0's values keep their numbers: new values go at the end.
 enum class Method {
-  Kmedoids, //<! Kmedoids (Lloyd) heuristic classification
-  MIP,      //<! Mixed integer programming — solver-backed exact (Gurobi/HiGHS)
-  LRCore,   //<! LR-core exact: Lagrangian-dual bound + reduced-cost fixing + y-branching. Regime: dense D held in RAM (N·N doubles is the memory budget).
+  Kmedoids, ///< Kmedoids (Lloyd) heuristic classification
+  MIP,      ///< Mixed integer programming — solver-backed exact (Gurobi/HiGHS)
+  LRCore,   ///< LR-core exact: Erlenkotter dual + reduced-cost fixing + y-branching (dense RAM or packed/mapped .dtwm)
   /**
    * Density peaks with conditionally admissible LB/UB pruning.
    * Exact-arithmetic identity covers finite, nonempty, equal-length Standard-L1
@@ -25,11 +25,11 @@ enum class Method {
    * and empty series are outside the guarantee.
    */
   TADPole,
-  Auto,        //<! pam on a GPU and for up to 5000 series on the CPU, clara above
-  PAM,         //<! FasterPAM over the full distance matrix
-  OneBatch,    //<! OneBatchPAM: one N x m batch table, no N x N matrix
-  CLARA,       //<! FastCLARA: FasterPAM on subsamples, every series assigned
-  Hierarchical //<! Agglomerative clustering cut at k clusters
+  Auto,        ///< pam on a GPU and for up to 5000 series on the CPU, clara above
+  PAM,         ///< FasterPAM over the full distance matrix
+  OneBatch,    ///< OneBatchPAM: one N x m batch table, no N x N matrix
+  CLARA,       ///< FastCLARA: FasterPAM on subsamples, every series assigned
+  Hierarchical ///< Agglomerative clustering cut at k clusters
 };
 
 /// The one table of method names, in the order error messages list them.

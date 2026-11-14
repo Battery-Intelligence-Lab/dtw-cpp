@@ -15,9 +15,7 @@
 #include "../enums/enums.hpp"
 
 #include <cstdint>
-// <string> is unused here; kept because 24 TUs (incl. examples/ and
-// benchmarks/, which are OFF in every configured gate) use std::string
-// without including it, so removal cannot be build-proven from here.
+// Retained for downstream TUs that rely on transitive <string> visibility.
 #include <string>
 #include <filesystem>
 
@@ -25,10 +23,10 @@ namespace dtwc {
 // Data type settings:
 
 namespace settings {
-/// @brief Default scalar type for public templated APIs.
-/// @details This controls default template arguments such as
-///          `template <typename T = settings::default_data_t>`.
-using default_data_t = double;
+  /// @brief Default scalar type for public templated APIs.
+  /// @details This controls default template arguments such as
+  ///          `template <typename T = settings::default_data_t>`.
+  using default_data_t = double;
 } // namespace settings
 
 /// @brief Alias for the core storage / internal precision type.

@@ -2,19 +2,13 @@
  * @file thread_scratch.hpp
  * @brief The thread_local scratch of the DTW kernels and the algorithms, given back when a top-level call returns.
  *
- * @details The scratch buffers a dtwc::run route grows are block-scope thread_locals of accessors beside their kernels
- *          and algorithms (dtw_kernel.hpp, msm.hpp, twe.hpp, warping.hpp, warping_ddtw.hpp, warping_wdtw.hpp,
- *          dtw_dispatch.cpp, fast_pam.cpp, fast_clara_assign.hpp; with CUDA, cuda_dtw.cu's launch workspace), the
- *          kernels' lines otherwise 819e8703's. They are on thread_scratch.cpp's closed list: one function a group of
- *          buffers, which returns the bytes they hold and, when asked, empties them, defined in the source whose code
- *          uses them (dtw_dispatch.cpp, dtw_lanes.cpp, fast_pam.cpp, fast_clara.cpp), so that under LTO no other module
- *          refers to their thread_locals: referred to from this file's module, they changed a kernel's register
- *          allocation (2026-11-02). A buffer grows as its kernel sizes it and never shrinks within a call.
- *          release_thread_scratch() empties every buffer on the list on every thread of the OpenMP team: dtwc::run calls
- *          it as it starts and when it returns or throws (ScratchRelease); Tier-2 calls keep their scratch, so a k-sweep
- *          allocates once. Off the list: DBA's buffers (barycenter.cpp) and Soft-DTW's gradient's (soft_dtw.hpp), which no
- *          dtwc::run route grows, and the silhouettes' sums (scores.cpp: k x 64 bytes a thread), whose loops every
- *          accessor form tried moved (2026-11-02).
+ * @details Per-thread scratch buffers for DTW kernels and clustering/barycenter algorithms are kept as block-scope
+ *          `thread_local` vectors inside the translation units that use them (`dtw_dispatch.cpp`, `dtw_lanes.cpp`,
+ *          `fast_pam.cpp`, `fast_clara.cpp`, `barycenter.cpp`, plus CUDA's launch workspace in `cuda_dtw.cu`), keeping
+ *          TLS accesses local to each compilation unit under LTO. Buffers grow monotonically within a call so warmed
+ *          threads do not reallocate. `release_thread_scratch()` empties every registered buffer across the OpenMP
+ *          team (`ScratchRelease` invokes it at entry and exit of `dtwc::run`, while Tier-2 calls retain scratch across
+ *          sweeps). Silhouette per-cluster accumulators (`scores.cpp`, `k * 64` bytes/thread) remain inline.
  * @author Volkan Kumtepeli
  */
 
@@ -56,6 +50,7 @@ std::size_t dispatch_scratch(bool release) noexcept;     ///< dtw_dispatch.cpp: 
 std::size_t lanes_scratch(bool release) noexcept;        ///< dtw_lanes.cpp: the lanes' rows
 std::size_t fast_pam_scratch(bool release) noexcept;     ///< fast_pam.cpp: FasterPAM's per-slot losses
 std::size_t clara_assign_scratch(bool release) noexcept; ///< fast_clara.cpp: FastCLARA's assignment table
+std::size_t barycenter_scratch(bool release) noexcept;   ///< barycenter.cpp: DBA and Soft-DTW barycenter matrices
 
 } // namespace detail
 

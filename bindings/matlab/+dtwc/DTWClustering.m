@@ -94,6 +94,7 @@ classdef DTWClustering
         %FIT Cluster X: an N x L numeric matrix (a series per row) or a cell of
         %   numeric vectors. obj = obj.fit(X)
             prob = dtwc.Problem('dtw_clustering');
+            cleaner = onCleanup(@() delete(prob));
             settings = obj.given([obj.DistanceKeys, obj.RunKeys]);
             if ~isempty(obj.RandomState)
                 settings = [settings, {'Seed', obj.RandomState}];
@@ -125,16 +126,10 @@ classdef DTWClustering
             if isempty(obj.ClusterCenters)
                 error('dtwc:notFitted', 'DTWClustering is not fitted; call fit first.');
             end
-            dtwc.Problem('dtw_clustering').set_data(X);   % the one conversion: refuses what fit refuses
-            if ~iscell(X)
-                X = num2cell(X, 2);
-            end
-            D = zeros(numel(X), numel(obj.ClusterCenters));
-            for i = 1:numel(X)
-                for j = 1:numel(obj.ClusterCenters)
-                    D(i, j) = dtwc.distance.dtw(X{i}, obj.ClusterCenters{j}, obj.FitDistance{:});
-                end
-            end
+            prob = dtwc.Problem('dtw_clustering');
+            cleaner = onCleanup(@() delete(prob));
+            prob.set_data(X);   % the one conversion: refuses what fit refuses
+            D = dtwc.distance.cdist(X, obj.ClusterCenters, 'Device', 'cpu', obj.FitDistance{:});
         end
 
         function labels = predict(obj, X)

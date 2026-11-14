@@ -51,9 +51,7 @@ namespace dtwc::metal {
 // This MSL source holds only the kernels. The metal_stdlib include, the
 // `using namespace metal;`, and the SSOT decode_pair() are prepended at
 // library-compile time from dtwc::detail::kDecodePairMSL (see context()), so
-// the decode lives in exactly one place across the host, CUDA and Metal. The retired
-// inline copy used an FP32 sqrt + int32 arithmetic (wrong / OOB for N > ~4096;
-// overflow at N >= 46341).
+// the decode lives in one place across host, CUDA, and Metal.
 static NSString *const kDTWMetalKernelSource = @R"METAL(
 // The slot of pair (i, j), i < j, in the packed lower triangle the kernels
 // write: DistanceMatrix's layout, row j holding columns 0..j.
@@ -97,10 +95,14 @@ static inline void dtw_wavefront_body(
 
   const int La = lengths[a_idx];
   const int Lb = lengths[b_idx];
+  const float INF = 3.402823466e+38f; // FLT_MAX
+  if (La <= 0 || Lb <= 0) {
+    if (tid == 0) out_matrix[packed_slot(a_idx, b_idx)] = INF;
+    return;
+  }
   const device float *a = all_series + a_idx * max_L;
   const device float *b = all_series + b_idx * max_L;
 
-  const float INF = 3.402823466e+38f; // FLT_MAX
   const int K = La + Lb - 1;          // number of anti-diagonals
 
   // Three rotating buffers, each of length max_L:
@@ -264,11 +266,15 @@ kernel void dtw_banded_row(
 
   const int La = lengths[a_idx];
   const int Lb = lengths[b_idx];
+  const float INF = 3.402823466e+38f;
+  if (La <= 0 || Lb <= 0) {
+    out_matrix[packed_slot(a_idx, b_idx)] = INF;
+    return;
+  }
   const device float *a = all_series + a_idx * max_L;
   const device float *b = all_series + b_idx * max_L;
 
   const int W = 2 * band + 1;                // strip width
-  const float INF = 3.402823466e+38f;
 
   // Interleaved coalesced layout: this thread's prev[r] is scratch[0 + r*stride + gid];
   // cur[r] is scratch[W*stride + r*stride + gid]. Pointer arithmetic:
@@ -353,7 +359,7 @@ kernel void dtw_banded_row(
 //
 // Adapted from Schmidt & Hundt, "cuDTW++: Ultra-Fast Dynamic Time Warping on
 // CUDA-Enabled GPUs" (Euro-Par 2020, LNCS 12247), translated from the CUDA
-// reference in dtwc/cuda/cuda_dtw.cu (`dtw_regtile_kernel`, lines 543-780).
+// reference in dtwc/cuda/cuda_dtw.cu (`dtw_regtile_kernel`).
 //
 // One SIMD-group (32 threads) per pair, PAIRS_PER_TG warps per threadgroup.
 // Each thread holds TILE_W columns in registers; 32 threads cover 32*TILE_W

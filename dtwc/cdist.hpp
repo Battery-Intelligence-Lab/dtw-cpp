@@ -36,7 +36,8 @@ std::vector<double> cdist(const Data &X, const Data &Y,
                           const core::DistanceConfig &distance = {},
                           Device device = Device::CPU,
                           int device_index = 0,
-                          GpuPrecision gpu_precision = GpuPrecision::Auto);
+                          GpuPrecision gpu_precision = GpuPrecision::Auto,
+                          double gpu_share = -1.0);
 
 /**
  * @brief Cross-collection DTW distance matrix reading distance and device settings from `config`.
@@ -44,4 +45,3 @@ std::vector<double> cdist(const Data &X, const Data &Y,
 std::vector<double> cdist(const Data &X, const Data &Y, const Config &config);
 
 } // namespace dtwc
-

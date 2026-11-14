@@ -141,6 +141,30 @@ class TestCasadiWorkflowAndFastIngest:
         assert (manual_out / "sensor_labels.csv").is_file()
         assert (manual_out / "sensor_medoids.csv").is_file()
 
+    def test_settings_post_init_attribute_mutation_and_validation(self):
+        rng = np.random.default_rng(31)
+        X = np.vstack([rng.normal(0.0, 0.1, size=(4, 10)), rng.normal(6.0, 0.1, size=(4, 10))])
+        ds = dtwcpp.load_data(X)
+
+        cfg = dtwcpp.settings(k=3, method="kmedoids", band=-1, output="", checkpoint="")
+        cfg.k = 2
+        cfg.method = "pam"
+        cfg.band = 1
+        assert cfg.to_dict()["k"] == 2
+        assert cfg.to_dict()["method"] == "pam"
+        assert cfg.to_dict()["band"] == 1
+        assert cfg.copy().band == 1
+
+        res = dtwcpp.do_clustering(ds, cfg)
+        assert len(res.medoids) == 2
+
+        with pytest.raises(dtwcpp.InvalidInput):
+            cfg.band = -5
+        assert cfg.band == 1
+
+        with pytest.raises(AttributeError, match="Unknown settings attribute"):
+            cfg.unknown_key = 123
+
     def test_direct_numpy_and_3d_ingest_and_estimator_transform(self):
         rng = np.random.default_rng(5)
         X_f32 = np.vstack([
@@ -228,6 +252,14 @@ class TestHpcWorkflowExtensions:
         assert (saved_dir / "staged_labels.csv").is_file()
         assert (saved_dir / "staged_medoids.csv").is_file()
         assert (saved_dir / "staged_report.txt").is_file()
+
+        # Extensionless local input stages as "input" (comma default), never "input.tsv"
+        raw_input = tmp_path / "sensor_rows"
+        raw_input.write_text("0.0,0.1\n0.1,0.0\n9.0,9.1\n9.1,9.0\n", encoding="utf-8")
+        ds_raw = dtwcpp.load_data(raw_input, cfg)
+        dtwcpp.do_clustering(ds_raw, cfg)
+        assert captured["files"] == ["input", "job.toml"]
+        assert 'input = "input"' in captured["job_toml"]
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_slurm_account_qos_and_modules_validation(self, tmp_path):

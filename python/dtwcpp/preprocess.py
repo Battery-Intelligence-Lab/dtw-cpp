@@ -30,7 +30,7 @@ from typing import Sequence
 
 import numpy as np
 
-from dtwcpp._dtwcpp_core import z_normalize as _z_normalize_cpp
+from dtwcpp._dtwcpp_core import _z_normalize_1d
 
 
 def strip_idle(s: Sequence[float], threshold: float = 10.0) -> np.ndarray:
@@ -92,7 +92,7 @@ def derivative(s: Sequence[float]) -> np.ndarray:
 
 def z_normalize(s: Sequence[float]) -> np.ndarray:
     """Per-series z-normalisation (zero mean, unit std). Wraps C++ ``z_normalize``."""
-    return np.asarray(_z_normalize_cpp(list(map(float, s))), dtype=np.float64)
+    return _z_normalize_1d(np.ascontiguousarray(s, dtype=np.float64))
 
 
 def power_signal(

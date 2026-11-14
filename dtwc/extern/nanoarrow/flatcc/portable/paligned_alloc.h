@@ -1,9 +1,5 @@
 #ifndef PALIGNED_ALLOC_H
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
-#include <malloc.h>
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif

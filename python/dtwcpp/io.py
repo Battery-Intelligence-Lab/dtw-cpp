@@ -244,10 +244,11 @@ def load_dataset_csv(path: str | Path) -> tuple[np.ndarray, list[str]]:
         Column names from the header (empty list if no header).
     """
     path = Path(path)
+    delim = "\t" if path.suffix.lower() in (".tsv", ".txt") else ","
     # utf-8-sig drops a byte-order mark (Excel's "CSV UTF-8"), which otherwise
     # made the first data row look like a header and dropped the first series.
     with open(path, newline="", encoding="utf-8-sig") as f:
-        first_row = next(csv.reader(f), [])
+        first_row = next(csv.reader(f, delimiter=delim), [])
 
     try:
         [float(value) for value in first_row]
@@ -257,7 +258,7 @@ def load_dataset_csv(path: str | Path) -> tuple[np.ndarray, list[str]]:
         names_out, skip_rows = [], 0
 
     from dtwcpp import _dtwcpp_core
-    data = _dtwcpp_core._read_data(str(path), 0, skip_rows, ",")
+    data = _dtwcpp_core._read_data(str(path), 0, skip_rows, delim)
     rows = [data.series(i) for i in range(data.size)]
     return np.array([row for row in rows if row], dtype=np.float64), names_out
 

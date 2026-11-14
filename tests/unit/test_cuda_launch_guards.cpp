@@ -41,6 +41,7 @@
 
 #include <cstddef>
 #include <limits>
+#include <tuple>
 #include <vector>
 
 TEST_CASE("A15 CUDA pair count is 64-bit and launches split it into int counts",
@@ -126,7 +127,7 @@ TEST_CASE("CUDA kernel choice follows the longest series length and the shared m
   using dtwc::cuda::detail::select_kernel;
 
   // Each range's kernel beats every other kernel that accepts the range by at
-  // least 15 % on the RTX 4000 Ada (measured 2026-09-29).
+  // least 15 % on the RTX 4000 Ada.
   // Above L = 2048 the wavefront keeps its three anti-diagonals in shared memory
   // only while three blocks fit an SM, each also taking the kernel's 16 static
   // bytes and the runtime's 1,024 reserved ones. The RTX 4000 Ada's SM has
@@ -158,6 +159,37 @@ TEST_CASE("CUDA kernel choice follows the longest series length and the shared m
   CHECK(kernel_path_name(KernelPath::RegTileW8) == "regtile_w8");
   CHECK(kernel_path_name(KernelPath::Wavefront) == "wavefront");
   CHECK(kernel_path_name(KernelPath::WavefrontGlobal) == "wavefront_global");
+#endif
+}
+
+TEST_CASE("CUDA medoid_blocks caps double-buffered device output slots at kMaxPairsPerLaunch",
+          "[cuda][launch_guard][host]")
+{
+#if !DTWC_HAS_CUDA_LAUNCH_PREP_SEAM
+  FAIL("CUDA launch preconditions must be exposed through a host-testable seam");
+#else
+  using dtwc::cuda::detail::kMaxPairsPerLaunch;
+  using dtwc::cuda::detail::medoid_blocks;
+
+  constexpr auto max_slots = static_cast<std::size_t>(kMaxPairsPerLaunch);
+
+  // Single-block launch uses 1 series slot and fits within kMaxPairsPerLaunch.
+  const auto single = medoid_blocks(64, 8, 32, sizeof(double));
+  CHECK(single.block == 64u);
+  CHECK(single.series_slots == 1u);
+  CHECK(single.series_slots * single.block * 8u <= max_slots);
+
+  // Multi-block launches use 2 series slots (double-buffered d_out = 2 * block * k);
+  // total device slots must never exceed kMaxPairsPerLaunch.
+  for (const auto &[n, k, max_L] : {
+         std::tuple<std::size_t, std::size_t, std::size_t>{ 200000u, 1024u, 64u },
+         std::tuple<std::size_t, std::size_t, std::size_t>{ 600000u, 256u, 128u },
+         std::tuple<std::size_t, std::size_t, std::size_t>{ 2000000u, 128u, 512u } }) {
+    const auto mb = medoid_blocks(n, k, max_L, sizeof(double));
+    CAPTURE(n, k, max_L, mb.block, mb.series_slots, mb.distance_slots);
+    CHECK(mb.series_slots == 2u);
+    CHECK(mb.series_slots * mb.block * k <= max_slots);
+  }
 #endif
 }
 

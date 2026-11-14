@@ -1,8 +1,6 @@
 /**
  * @file report.hpp
- * @brief The run report: dtwc::run's plain-text account of a run, Result::report()'s text and `<name>_report.txt`
- *        (Volkan 2026-11-02: how long it took, on which computer, the utilisation, each stage's time, the stopping
- *        criterion).
+ * @brief The run report: dtwc::run's plain-text account of a run, Result::report()'s text and `<name>_report.txt`.
  *
  * @details run.cpp sets a RunReport's plain values as the run goes: each stage's wall and CPU time and the process's
  * peak resident memory at its end, the memory plan's figures, the input's and the result's; render() prints them in

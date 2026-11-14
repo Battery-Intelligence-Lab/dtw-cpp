@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file warping_missing_arow.hpp
  * @brief DTW-AROW: diagonal-only alignment for missing values (NaN-aware).
  *
@@ -23,10 +23,7 @@
  *
  * Implementation: these wrappers delegate to the unified DTW kernel
  * (`core::run_dtw`) parameterised on `SpanAROW*Cost` (NaN-propagating pointwise cost) +
- * `AROWCell` (diagonal-carry recurrence). The legacy hand-rolled AROW impls lived here earlier;
- * they were folded into the unified kernel family with bit-for-bit cross-
- * validation on {no-NaN, interior-NaN, leading-NaN, trailing-NaN, all-NaN}
- * inputs over bands {1..4}.
+ * `AROWCell` (diagonal-carry recurrence).
  *
  * Reference: Yurtman, A., Soenen, J., Meert, W. & Blockeel, H. (2023).
  *            "Estimating DTW Distance Between Time Series with Missing Data."

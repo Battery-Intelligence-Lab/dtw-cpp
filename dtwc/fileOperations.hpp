@@ -15,7 +15,7 @@
 #pragma once
 
 #include "base/error.hpp"
-#include "base/settings.hpp" // for index_t
+#include "base/settings.hpp"   // for index_t
 #include "io/parse_number.hpp" // exact, locale-free floating-point parsing
 
 #include <algorithm>  // for std::sort
@@ -27,11 +27,11 @@
 #include <exception>  // for std::exception
 #include <ios>        // for std::ios_base
 #include <limits>
-#include <new>        // for std::bad_alloc
+#include <new> // for std::bad_alloc
 #include <optional>
-#include <string>     // for string, getline, to_string
-#include <utility>    // for pair
-#include <vector>     // for vector
+#include <string>  // for string, getline, to_string
+#include <utility> // for pair
+#include <vector>  // for vector
 #include <fstream>
 #include <system_error> // for std::system_error (utf8_to_path fallback)
 #include <string_view>
@@ -109,8 +109,9 @@ inline void close_output(std::ofstream &file, const fs::path &path)
   file.close();
   if (!file)
     throw IOError("Write error on '" + path_to_utf8(path)
-                  + "': the file is incomplete (disk full or file-size quota?). Free space or choose another "
-                    "directory, then rerun.");
+                  +
+                  "': the file is incomplete (disk full or file-size quota?). Free space or choose another "
+                  "directory, then rerun.");
 }
 
 /// Write `text` to `path` as one file, checked on open and on close (open_output, close_output): the run's report,
@@ -144,7 +145,8 @@ inline void ignoreBOM(std::istream &in, const fs::path &path = {})
   while (matched-- > 0) in.unget();
   if (!in)
     throw IOError(
-      "Error in delimited text file: '" + path_to_utf8(path) + "': cannot re-read the "
+      "Error in delimited text file: '" + path_to_utf8(path) +
+      "': cannot re-read the "
       "first bytes of a non-seekable stream after a partial UTF-8 byte-order mark.");
 }
 
@@ -158,8 +160,10 @@ inline void validate_ndata(index_t Ndata, const char *ctx)
 {
   if (Ndata < -1)
     throw InvalidInput(
-      std::string(ctx) + ": Ndata must be -1 (read all) or a non-negative "
-      "count; got " + std::to_string(Ndata));
+      std::string(ctx) +
+      ": Ndata must be -1 (read all) or a non-negative "
+      "count; got "
+      + std::to_string(Ndata));
 }
 
 /// True while another series may still be produced.
@@ -170,268 +174,269 @@ inline bool ndata_wants_more(index_t Ndata, std::size_t produced)
 
 namespace text_io_detail {
 
-/// ASCII whitespace but CR. Not std::isspace: that reads LC_CTYPE, so a locale
-/// could make byte 0xA0 a space and one file parse differently per
-/// process. A CR ends a line only before its LF (for_each_data_line drops it
-/// there); anywhere else it is a byte of a field, which then fails to parse, so
-/// a CR-only file is refused rather than read as one line of numbers.
-constexpr bool is_ascii_space(char c) noexcept
-{
-  return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f';
-}
+  /// ASCII whitespace but CR. Not std::isspace: that reads LC_CTYPE, so a locale
+  /// could make byte 0xA0 a space and one file parse differently per
+  /// process. A CR ends a line only before its LF (for_each_data_line drops it
+  /// there); anywhere else it is a byte of a field, which then fails to parse, so
+  /// a CR-only file is refused rather than read as one line of numbers.
+  constexpr bool is_ascii_space(char c) noexcept
+  {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f';
+  }
 
-/// ASCII lowercase; like is_ascii_space, independent of the C locale.
-constexpr char to_lower_ascii(char c) noexcept
-{
-  return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
-}
+  /// ASCII lowercase; like is_ascii_space, independent of the C locale.
+  constexpr char to_lower_ascii(char c) noexcept
+  {
+    return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+  }
 
-inline std::string_view trim_ascii(std::string_view token)
-{
-  while (!token.empty() && is_ascii_space(token.front())) token.remove_prefix(1);
-  while (!token.empty() && is_ascii_space(token.back())) token.remove_suffix(1);
-  return token;
-}
+  inline std::string_view trim_ascii(std::string_view token)
+  {
+    while (!token.empty() && is_ascii_space(token.front())) token.remove_prefix(1);
+    while (!token.empty() && is_ascii_space(token.back())) token.remove_suffix(1);
+    return token;
+  }
 
-inline std::vector<std::string_view> split_fields(std::string_view line,
-                                                  char delimiter)
-{
-  std::vector<std::string_view> fields;
-  if (delimiter == ' ') { // runs of spaces and tabs separate the fields
-    const auto blank = [](char c) { return c == ' ' || c == '\t'; };
-    std::size_t pos = 0;
-    while (pos < line.size()) {
-      while (pos < line.size() && blank(line[pos])) ++pos;
-      const std::size_t start = pos;
-      while (pos < line.size() && !blank(line[pos])) ++pos;
-      if (start != pos) fields.emplace_back(line.substr(start, pos - start));
+  inline std::vector<std::string_view> split_fields(std::string_view line,
+                                                    char delimiter)
+  {
+    std::vector<std::string_view> fields;
+    if (delimiter == ' ') { // runs of spaces and tabs separate the fields
+      const auto blank = [](char c) { return c == ' ' || c == '\t'; };
+      std::size_t pos = 0;
+      while (pos < line.size()) {
+        while (pos < line.size() && blank(line[pos])) ++pos;
+        const std::size_t start = pos;
+        while (pos < line.size() && !blank(line[pos])) ++pos;
+        if (start != pos) fields.emplace_back(line.substr(start, pos - start));
+      }
+      return fields;
+    }
+
+    std::size_t start = 0;
+    while (true) {
+      const std::size_t end = line.find(delimiter, start);
+      if (end == std::string_view::npos) {
+        fields.emplace_back(line.substr(start));
+        break;
+      }
+      fields.emplace_back(line.substr(start, end - start));
+      start = end + 1;
     }
     return fields;
   }
 
-  std::size_t start = 0;
-  while (true) {
-    const std::size_t end = line.find(delimiter, start);
-    if (end == std::string_view::npos) {
-      fields.emplace_back(line.substr(start));
-      break;
-    }
-    fields.emplace_back(line.substr(start, end - start));
-    start = end + 1;
+  inline std::string lower_ascii(std::string_view token)
+  {
+    std::string result;
+    result.reserve(token.size());
+    for (const char c : token) result.push_back(to_lower_ascii(c));
+    return result;
   }
-  return fields;
-}
 
-inline std::string lower_ascii(std::string_view token)
-{
-  std::string result;
-  result.reserve(token.size());
-  for (const char c : token) result.push_back(to_lower_ascii(c));
-  return result;
-}
+  /// ASCII case-insensitive equality without allocating a lowered copy.
+  /// `lower` must already be lowercase; used on the per-field hot path.
+  inline bool equals_ascii_ci(std::string_view token, std::string_view lower)
+  {
+    if (token.size() != lower.size()) return false;
+    for (std::size_t i = 0; i < token.size(); ++i)
+      if (to_lower_ascii(token[i]) != lower[i]) return false;
+    return true;
+  }
 
-/// ASCII case-insensitive equality without allocating a lowered copy.
-/// `lower` must already be lowercase; used on the per-field hot path.
-inline bool equals_ascii_ci(std::string_view token, std::string_view lower)
-{
-  if (token.size() != lower.size()) return false;
-  for (std::size_t i = 0; i < token.size(); ++i)
-    if (to_lower_ascii(token[i]) != lower[i]) return false;
-  return true;
-}
+  [[noreturn]] inline void throw_numeric_field_error(
+    const fs::path &path, std::size_t row, std::size_t column,
+    std::string_view reason, std::string_view token)
+  {
+    constexpr std::size_t max_token_chars = 64;
+    std::string shown(token.substr(0, max_token_chars));
+    if (token.size() > max_token_chars) shown += "...";
+    throw IOError(
+      "Error in delimited text file: '" + path_to_utf8(path) + "' row "
+      + std::to_string(row) + ", column " + std::to_string(column)
+      + ": " + std::string(reason) + " '" + shown + "'.");
+  }
 
-[[noreturn]] inline void throw_numeric_field_error(
-  const fs::path &path, std::size_t row, std::size_t column,
-  std::string_view reason, std::string_view token)
-{
-  constexpr std::size_t max_token_chars = 64;
-  std::string shown(token.substr(0, max_token_chars));
-  if (token.size() > max_token_chars) shown += "...";
-  throw IOError(
-    "Error in delimited text file: '" + path_to_utf8(path) + "' row "
-    + std::to_string(row) + ", column " + std::to_string(column)
-    + ": " + std::string(reason) + " '" + shown + "'.");
-}
+  template <typename T>
+  T parse_numeric_field(std::string_view raw_token, const fs::path &path,
+                        std::size_t row, std::size_t column)
+  {
+    // A float is the double parse rounded to float, as every float32 route rounds a
+    // double (pyarrow's cast, MATLAB's single): one text is one float series everywhere.
+    if constexpr (std::is_same_v<T, float>)
+      return static_cast<float>(parse_numeric_field<double>(raw_token, path, row, column));
 
-template <typename T>
-T parse_numeric_field(std::string_view raw_token, const fs::path &path,
-                      std::size_t row, std::size_t column)
-{
-  // A float is the double parse rounded to float, as every float32 route rounds a
-  // double (pyarrow's cast, MATLAB's single): one text is one float series everywhere.
-  if constexpr (std::is_same_v<T, float>)
-    return static_cast<float>(parse_numeric_field<double>(raw_token, path, row, column));
+    const std::string_view token = trim_ascii(raw_token);
+    if (token.empty())
+      throw_numeric_field_error(path, row, column, "empty numeric field", token);
 
-  const std::string_view token = trim_ascii(raw_token);
-  if (token.empty())
-    throw_numeric_field_error(path, row, column, "empty numeric field", token);
+    if (equals_ascii_ci(token, "nan")) {
+      if constexpr (std::is_floating_point_v<T>)
+        return std::numeric_limits<T>::quiet_NaN();
+      else
+        throw_numeric_field_error(path, row, column, "NaN is invalid for an integer field", token);
+    }
 
-  if (equals_ascii_ci(token, "nan")) {
+    std::string_view parsed = token;
+    // One leading '+' is accepted; "+-1" is not a number.
+    if (parsed.size() > 1 && parsed.front() == '+' && parsed[1] != '-')
+      parsed.remove_prefix(1);
+    T value{};
+    const char *const last = parsed.data() + parsed.size();
+    std::from_chars_result result;
     if constexpr (std::is_floating_point_v<T>)
-      return std::numeric_limits<T>::quiet_NaN();
+      result = io::parse_number(parsed.data(), last, value); // not std::from_chars: macOS 26+ only
     else
-      throw_numeric_field_error(path, row, column,
-                                "NaN is invalid for an integer field", token);
-  }
+      result = std::from_chars(parsed.data(), last, value);
 
-  std::string_view parsed = token;
-  // One leading '+' is accepted; "+-1" is not a number.
-  if (parsed.size() > 1 && parsed.front() == '+' && parsed[1] != '-')
-    parsed.remove_prefix(1);
-  T value{};
-  const char *const last = parsed.data() + parsed.size();
-  std::from_chars_result result;
-  if constexpr (std::is_floating_point_v<T>)
-    result = io::parse_number(parsed.data(), last, value); // not std::from_chars: macOS 26+ only
-  else
-    result = std::from_chars(parsed.data(), last, value);
-
-  if (result.ec == std::errc::result_out_of_range)
-    throw_numeric_field_error(path, row, column, "numeric field is out of range", token);
-  if (result.ec != std::errc{} || result.ptr != last)
-    throw_numeric_field_error(path, row, column, "invalid numeric field", token);
-  if constexpr (std::is_floating_point_v<T>) {
-    if (!std::isfinite(value))
-      throw_numeric_field_error(path, row, column,
-                                "unapproved non-finite numeric field", token);
-  }
-  return value;
-}
-
-template <typename T, typename Consumer>
-std::size_t parse_numeric_row(std::string_view line, const fs::path &path,
-                              std::size_t row, index_t start_column,
-                              char delimiter, Consumer &&consume)
-{
-  if (start_column < 0)
-    throw InvalidInput("Error in delimited text file: start_col must be non-negative.");
-  // Blank lines never get here (for_each_data_line); an empty field is an error.
-  const auto fields = split_fields(line, delimiter);
-  const auto first = static_cast<std::size_t>(start_column);
-  // Too wide a start_col is the request's mistake, as it is for an in-memory
-  // source, not a failed read: InvalidInput.
-  if (first > fields.size()) {
-    throw InvalidInput(
-      "Error in delimited text file: '" + path_to_utf8(path) + "' row "
-      + std::to_string(row) + " has only " + std::to_string(fields.size())
-      + " fields, fewer than start_col=" + std::to_string(start_column) + ".");
-  }
-
-  std::size_t count = 0;
-  for (std::size_t i = first; i < fields.size(); ++i) {
-    consume(parse_numeric_field<T>(fields[i], path, row, i + 1));
-    ++count;
-  }
-  return count;
-}
-
-template <typename T>
-std::optional<T> parse_series_value_row(std::string_view line,
-                                        const fs::path &path,
-                                        std::size_t row, index_t start_column,
-                                        char delimiter,
-                                        bool allow_legacy_empty_header)
-{
-  if (start_column < 0)
-    throw InvalidInput("Error in delimited text file: start_col must be non-negative.");
-  const auto fields = split_fields(line, delimiter);
-  const auto column = static_cast<std::size_t>(start_column);
-  if (column >= fields.size()) { // too wide a start_col: InvalidInput, as above
-    throw InvalidInput(
-      "Error in delimited text file: '" + path_to_utf8(path) + "' row "
-      + std::to_string(row) + " has only " + std::to_string(fields.size())
-      + " fields, fewer than required column " + std::to_string(column + 1)
-      + ".");
-  }
-  // Preserve the repository's historical `,0` directory-file header only.
-  // Textual first-row values are not guessed to be headers: callers with a
-  // named header must opt in explicitly via start_row=1, so malformed data
-  // cannot disappear merely because it occurs on the first row.
-  if (allow_legacy_empty_header && trim_ascii(fields[column]).empty())
-    return std::nullopt;
-  // One value per line: dropping the fields after it silently would cluster the
-  // index of a two-column `index,value` file read without start_col=1.
-  if (fields.size() > column + 1) {
-    throw IOError(
-      "Error in delimited text file: '" + path_to_utf8(path) + "' row "
-      + std::to_string(row) + " has " + std::to_string(fields.size())
-      + " fields; a file in a one-series-per-file folder holds one value per "
-        "line, here in column " + std::to_string(column + 1)
-      + " (skip leading columns with --skip-cols / start_col).");
-  }
-  return parse_numeric_field<T>(fields[column], path, row, column + 1);
-}
-
-/// std::getline for the readers' loops: true when a line was read, false at the end of the file, and a failure of
-/// the stream is an exception, never the end of the file. std::getline catches what the stream's buffer throws
-/// (a std::bad_alloc growing `line`, a read error) and sets badbit, which `while (std::getline(...))` read as the end
-/// of the file: a read that failed mid-file returned the rows before the failure, with no error. With badbit in the
-/// exception mask the stream rethrows the exception instead ([istream.unformatted]; libstdc++, libc++ and the MSVC
-/// STL alike). A std::bad_alloc leaves as it is, memory the system refused being no fault of the file; any other
-/// failure is an IOError naming the file and `row`, the row being read. The caller's exception mask is restored when
-/// the read returns; after an exception the stream is failed, and its mask is not restored.
-inline bool read_line(std::istream &in, std::string &line, const fs::path &path, std::size_t row)
-{
-  const auto caller_mask = in.exceptions();
-  try {
-    in.exceptions(caller_mask | std::ios_base::badbit); // throws, as the read does, on a stream bad already
-    const bool read = static_cast<bool>(std::getline(in, line));
-    in.exceptions(caller_mask);
-    return read;
-  } catch (const std::bad_alloc &) {
-    throw;
-  } catch (const std::exception &e) {
-    throw IOError(
-      "Error in delimited text file: '" + path_to_utf8(path) + "' row " + std::to_string(row)
-      + " could not be read: " + e.what() + ".");
-  }
-}
-
-/// The line loop of every text reader. Skips `start_row` lines, then calls
-/// `on_line(line, row)` (row 1-based, counting skipped lines) for each data
-/// line until `Ndata` lines were produced (-1 = all); returns that count.
-/// Blank lines after the last data line are ignored. A blank line followed by
-/// data is an error: it would become an empty series in a batch file and
-/// vanish, shifting every later value, in a folder file. A failure of the
-/// stream is an exception (read_line), never a shorter count.
-template <typename OnLine>
-std::size_t for_each_data_line(std::istream &in, const fs::path &path,
-                               index_t start_row, index_t Ndata, OnLine &&on_line)
-{
-  std::string line;
-  std::size_t row = 0, produced = 0, blank_row = 0;
-  while (ndata_wants_more(Ndata, produced) && read_line(in, line, path, row + 1)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back(); // CRLF reads as LF
-    ++row;
-    if (static_cast<index_t>(row) <= start_row) continue; // a header row
-    if (trim_ascii(line).empty()) {
-      if (blank_row == 0) blank_row = row;
-      continue;
+    if (result.ec == std::errc::result_out_of_range)
+      throw_numeric_field_error(path, row, column, "numeric field is out of range", token);
+    if (result.ec != std::errc{} || result.ptr != last)
+      throw_numeric_field_error(path, row, column, "invalid numeric field", token);
+    if constexpr (std::is_floating_point_v<T>) {
+      if (!std::isfinite(value))
+        throw_numeric_field_error(path, row, column, "unapproved non-finite numeric field", token);
     }
-    if (blank_row != 0)
+    return value;
+  }
+
+  template <typename T, typename Consumer>
+  std::size_t parse_numeric_row(std::string_view line, const fs::path &path,
+                                std::size_t row, index_t start_column,
+                                char delimiter, Consumer &&consume)
+  {
+    if (start_column < 0)
+      throw InvalidInput("Error in delimited text file: start_col must be non-negative.");
+    // Blank lines never get here (for_each_data_line); an empty field is an error.
+    const auto fields = split_fields(line, delimiter);
+    const auto first = static_cast<std::size_t>(start_column);
+    // Too wide a start_col is the request's mistake, as it is for an in-memory
+    // source, not a failed read: InvalidInput.
+    if (first > fields.size()) {
+      throw InvalidInput(
+        "Error in delimited text file: '" + path_to_utf8(path) + "' row "
+        + std::to_string(row) + " has only " + std::to_string(fields.size())
+        + " fields, fewer than start_col=" + std::to_string(start_column) + ".");
+    }
+
+    std::size_t count = 0;
+    for (std::size_t i = first; i < fields.size(); ++i) {
+      consume(parse_numeric_field<T>(fields[i], path, row, i + 1));
+      ++count;
+    }
+    return count;
+  }
+
+  template <typename T>
+  std::optional<T> parse_series_value_row(std::string_view line,
+                                          const fs::path &path,
+                                          std::size_t row, index_t start_column,
+                                          char delimiter,
+                                          bool allow_legacy_empty_header)
+  {
+    if (start_column < 0)
+      throw InvalidInput("Error in delimited text file: start_col must be non-negative.");
+    const auto fields = split_fields(line, delimiter);
+    const auto column = static_cast<std::size_t>(start_column);
+    if (column >= fields.size()) { // too wide a start_col: InvalidInput, as above
+      throw InvalidInput(
+        "Error in delimited text file: '" + path_to_utf8(path) + "' row "
+        + std::to_string(row) + " has only " + std::to_string(fields.size())
+        + " fields, fewer than required column " + std::to_string(column + 1)
+        + ".");
+    }
+    // Preserve the repository's historical `,0` directory-file header only.
+    // Textual first-row values are not guessed to be headers: callers with a
+    // named header must opt in explicitly via start_row=1, so malformed data
+    // cannot disappear merely because it occurs on the first row.
+    if (allow_legacy_empty_header && trim_ascii(fields[column]).empty())
+      return std::nullopt;
+    // One value per line: dropping the fields after it silently would cluster the
+    // index of a two-column `index,value` file read without start_col=1.
+    if (fields.size() > column + 1) {
       throw IOError(
         "Error in delimited text file: '" + path_to_utf8(path) + "' row "
-        + std::to_string(blank_row) + " is empty; an empty line is neither a "
-          "series nor a value (write a missing value as nan).");
-    on_line(std::string_view(line), row);
-    ++produced;
+        + std::to_string(row) + " has " + std::to_string(fields.size())
+        +
+        " fields; a file in a one-series-per-file folder holds one value per "
+        "line, here in column "
+        + std::to_string(column + 1)
+        + " (skip leading columns with --skip-cols / start_col).");
+    }
+    return parse_numeric_field<T>(fields[column], path, row, column + 1);
   }
-  return produced;
-}
 
-/// Open a text file for reading, positioned after any UTF-8 byte-order mark.
-/// Binary, so every platform reads the same bytes: a text-mode stream on Windows
-/// ends the file at a 0x1A byte and drops the rows after it silently. The CR
-/// of a CRLF line end is dropped by for_each_data_line.
-inline std::ifstream open_text_file(const fs::path &path, std::string_view reader)
-{
-  std::ifstream in(path, std::ios_base::in | std::ios_base::binary);
-  if (!in.good())
-    throw IOError("Error in " + std::string(reader) + ": File "
-                  + path_to_utf8(path) + " could not be opened.");
-  ignoreBOM(in, path);
-  return in;
-}
+  /// std::getline for the readers' loops: true when a line was read, false at the end of the file, and a failure of
+  /// the stream is an exception, never the end of the file. std::getline catches what the stream's buffer throws
+  /// (a std::bad_alloc growing `line`, a read error) and sets badbit, which `while (std::getline(...))` read as the end
+  /// of the file: a read that failed mid-file returned the rows before the failure, with no error. With badbit in the
+  /// exception mask the stream rethrows the exception instead ([istream.unformatted]; libstdc++, libc++ and the MSVC
+  /// STL alike). A std::bad_alloc leaves as it is, memory the system refused being no fault of the file; any other
+  /// failure is an IOError naming the file and `row`, the row being read. The caller's exception mask is restored when
+  /// the read returns; after an exception the stream is failed, and its mask is not restored.
+  inline bool read_line(std::istream &in, std::string &line, const fs::path &path, std::size_t row)
+  {
+    const auto caller_mask = in.exceptions();
+    try {
+      in.exceptions(caller_mask | std::ios_base::badbit); // throws, as the read does, on a stream bad already
+      const bool read = static_cast<bool>(std::getline(in, line));
+      in.exceptions(caller_mask);
+      return read;
+    } catch (const std::bad_alloc &) {
+      throw;
+    } catch (const std::exception &e) {
+      throw IOError(
+        "Error in delimited text file: '" + path_to_utf8(path) + "' row " + std::to_string(row)
+        + " could not be read: " + e.what() + ".");
+    }
+  }
+
+  /// The line loop of every text reader. Skips `start_row` lines, then calls
+  /// `on_line(line, row)` (row 1-based, counting skipped lines) for each data
+  /// line until `Ndata` lines were produced (-1 = all); returns that count.
+  /// Blank lines after the last data line are ignored. A blank line followed by
+  /// data is an error: it would become an empty series in a batch file and
+  /// vanish, shifting every later value, in a folder file. A failure of the
+  /// stream is an exception (read_line), never a shorter count.
+  template <typename OnLine>
+  std::size_t for_each_data_line(std::istream &in, const fs::path &path,
+                                 index_t start_row, index_t Ndata, OnLine &&on_line)
+  {
+    std::string line;
+    std::size_t row = 0, produced = 0, blank_row = 0;
+    while (ndata_wants_more(Ndata, produced) && read_line(in, line, path, row + 1)) {
+      if (!line.empty() && line.back() == '\r') line.pop_back(); // CRLF reads as LF
+      ++row;
+      if (static_cast<index_t>(row) <= start_row) continue; // a header row
+      if (trim_ascii(line).empty()) {
+        if (blank_row == 0) blank_row = row;
+        continue;
+      }
+      if (blank_row != 0)
+        throw IOError(
+          "Error in delimited text file: '" + path_to_utf8(path) + "' row "
+          + std::to_string(blank_row) +
+          " is empty; an empty line is neither a "
+          "series nor a value (write a missing value as nan).");
+      on_line(std::string_view(line), row);
+      ++produced;
+    }
+    return produced;
+  }
+
+  /// Open a text file for reading, positioned after any UTF-8 byte-order mark.
+  /// Binary, so every platform reads the same bytes: a text-mode stream on Windows
+  /// ends the file at a 0x1A byte and drops the rows after it silently. The CR
+  /// of a CRLF line end is dropped by for_each_data_line.
+  inline std::ifstream open_text_file(const fs::path &path, std::string_view reader)
+  {
+    std::ifstream in(path, std::ios_base::in | std::ios_base::binary);
+    if (!in.good())
+      throw IOError("Error in " + std::string(reader) + ": File "
+                    + path_to_utf8(path) + " could not be opened.");
+    ignoreBOM(in, path);
+    return in;
+  }
 
 } // namespace text_io_detail
 
@@ -455,13 +460,12 @@ auto readFile(const fs::path &name, index_t start_row = 0, index_t start_col = 0
   // The legacy `,0` header is a header only when no rows were skipped: after
   // start_row it is the first value, and an empty one is an error.
   bool legacy_header = start_row == 0;
-  text_io_detail::for_each_data_line(in, name, start_row, -1,
-    [&](std::string_view line, std::size_t row) {
-      const auto value = text_io_detail::parse_series_value_row<T>(
-        line, name, row, start_col, delimiter, legacy_header);
-      legacy_header = false;
-      if (value) p.push_back(*value);
-    });
+  text_io_detail::for_each_data_line(in, name, start_row, -1, [&](std::string_view line, std::size_t row) {
+    const auto value = text_io_detail::parse_series_value_row<T>(
+      line, name, row, start_col, delimiter, legacy_header);
+    legacy_header = false;
+    if (value) p.push_back(*value);
+  });
 
   p.shrink_to_fit();
   return p;
@@ -501,12 +505,13 @@ inline std::vector<fs::path> sorted_directory_files(const fs::path &folder_path)
  * The positional-arg overloads are kept for v1.0.0 callers; they delegate to
  * the struct-based form.
  */
-struct LoadOptions {
-  index_t Ndata = -1;     //!< Max number of series to read; -1 = all.
-  int verbose = 1;        //!< Verbosity level for logging.
-  index_t start_row = 0;  //!< First row to read (skip headers).
-  index_t start_col = 0;  //!< First column to read (skip ID columns).
-  char delimiter = ','; //!< Field delimiter character.
+struct LoadOptions
+{
+  index_t Ndata = -1;    //!< Max number of series to read; -1 = all.
+  int verbose = 1;       //!< Verbosity level for logging.
+  index_t start_row = 0; //!< First row to read (skip headers).
+  index_t start_col = 0; //!< First column to read (skip ID columns).
+  char delimiter = ',';  //!< Field delimiter character.
 };
 
 /**
@@ -520,7 +525,7 @@ struct LoadOptions {
  * @return std::pair<std::vector<std::vector<T>>, std::vector<std::string>> A pair containing vectors of data and corresponding file names.
  */
 template <typename T, typename Tpath>
-auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
+auto load_folder(const Tpath &folder_path, const LoadOptions &opts = {})
 {
   validate_ndata(opts.Ndata, "load_folder");
   if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
@@ -549,11 +554,11 @@ auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
 /// Positional-arg overload retained for backwards compatibility; delegates to
 /// the LoadOptions-based form.
 template <typename T, typename Tpath>
-auto load_folder(Tpath &folder_path, index_t Ndata, int verbose = 1,
+auto load_folder(const Tpath &folder_path, index_t Ndata, int verbose = 1,
                  index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
   return load_folder<T>(folder_path,
-    LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
+                        LoadOptions{ Ndata, verbose, start_row, start_col, delimiter });
 }
 
 /**
@@ -565,7 +570,7 @@ auto load_folder(Tpath &folder_path, index_t Ndata, int verbose = 1,
  * @return std::pair<std::vector<std::vector<T>>, std::vector<std::string>> A pair containing vectors of data and corresponding identifiers.
  */
 template <typename T>
-auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
+auto load_batch_file(const fs::path &file_path, const LoadOptions &opts = {})
 {
   validate_ndata(opts.Ndata, "load_batch_file");
   if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
@@ -574,21 +579,19 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
   std::vector<std::string> p_names;
 
   auto in = text_io_detail::open_text_file(file_path, "load_batch_file");
-  text_io_detail::for_each_data_line(in, file_path, opts.start_row, opts.Ndata,
-    [&](std::string_view line, std::size_t row) {
-      std::vector<T> p;
-      text_io_detail::parse_numeric_row<T>(
-        line, file_path, row, opts.start_col, opts.delimiter,
-        [&](T value) { p.push_back(value); });
-      p.shrink_to_fit();
+  text_io_detail::for_each_data_line(in, file_path, opts.start_row, opts.Ndata, [&](std::string_view line, std::size_t row) {
+    std::vector<T> p;
+    text_io_detail::parse_numeric_row<T>(
+      line, file_path, row, opts.start_col, opts.delimiter, [&](T value) { p.push_back(value); });
+    p.shrink_to_fit();
 
-      const auto n_rows = p_vec.size() + 1;
-      if (opts.verbose >= 2 || (opts.verbose == 1 && p.empty()))
-        std::cout << file_path << '\t' << "data: " << n_rows << " Size: " << p.size() << '\n';
+    const auto n_rows = p_vec.size() + 1;
+    if (opts.verbose >= 2 || (opts.verbose == 1 && p.empty()))
+      std::cout << file_path << '\t' << "data: " << n_rows << " Size: " << p.size() << '\n';
 
-      p_vec.push_back(std::move(p));
-      p_names.push_back(std::to_string(n_rows));
-    });
+    p_vec.push_back(std::move(p));
+    p_names.push_back(std::to_string(n_rows));
+  });
 
   if (opts.verbose > 0)
     std::cout << p_vec.size() << " time-series data are read.\n";
@@ -599,11 +602,11 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
 /// Positional-arg overload retained for backwards compatibility; delegates to
 /// the LoadOptions-based form.
 template <typename T>
-auto load_batch_file(fs::path &file_path, index_t Ndata, int verbose = 1,
+auto load_batch_file(const fs::path &file_path, index_t Ndata, int verbose = 1,
                      index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
   return load_batch_file<T>(file_path,
-    LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
+                            LoadOptions{ Ndata, verbose, start_row, start_col, delimiter });
 }
 
 } // namespace dtwc

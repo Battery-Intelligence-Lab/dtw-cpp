@@ -150,12 +150,4 @@ macro(dtwc_local_options)
     dtwc_enable_cppcheck(${DTWC_WARNINGS_AS_ERRORS} "" # override cppcheck options
     )
   endif()
-
-  if(DTWC_WARNINGS_AS_ERRORS)
-    check_cxx_compiler_flag("-Wl,--fatal-warnings" LINKER_FATAL_WARNINGS)
-    if(LINKER_FATAL_WARNINGS)
-      # This is not working consistently, so disabling for now
-      # target_link_options(dtwc_options INTERFACE -Wl,--fatal-warnings)
-    endif()
-  endif()
 endmacro()

@@ -18,39 +18,41 @@ function s = settings(varargin)
 %> @author Volkan Kumtepeli
 
     if ~isempty(varargin) && isstruct(varargin{1}) && isfield(varargin{1}, 'IsDtwcSettings')
-        s = varargin{1};
-        args = varargin(2:end);
+        sIn = varargin{1};
+        extraArgs = varargin(2:end);
+        [extraArgs{:}] = convertStringsToChars(extraArgs{:});
+        if mod(numel(extraArgs), 2) ~= 0
+            error('dtwc:invalidArgument', 'settings: options must be given as Name-Value pairs.');
+        end
+        s = default_settings_struct();
+        fn = fieldnames(sIn);
+        structPairs = {};
+        for idx = 1:numel(fn)
+            f = fn{idx};
+            if strcmp(f, 'IsDtwcSettings') || strcmp(f, 'ClusterArgs')
+                continue;
+            end
+            if strcmp(f, 'K') && isequal(sIn.K, 0)
+                continue;
+            end
+            if strcmp(f, 'Name') && isempty(sIn.Name)
+                continue;
+            end
+            structPairs(end + 1:end + 2) = {f, sIn.(f)}; %#ok<AGROW>
+        end
+        [structPairs{:}] = convertStringsToChars(structPairs{:});
+        args = [sIn.ClusterArgs, structPairs, extraArgs];
     else
-        s = struct( ...
-            'IsDtwcSettings', true, ...
-            'Input', '', ...
-            'SkipCols', 0, ...
-            'SkipRows', 0, ...
-            'Delimiter', '', ...
-            'Name', '', ...
-            'Dtype', 'float64', ...
-            'Ndim', 1, ...
-            'Output', './results', ...
-            'Checkpoint', '', ...
-            'CheckpointInterval', 0, ...
-            'K', 0, ...
-            'ClusterArgs', {{}} ...
-        );
+        s = default_settings_struct();
         args = varargin;
-    end
-
-    [args{:}] = convertStringsToChars(args{:});
-    if mod(numel(args), 2) ~= 0
-        error('dtwc:invalidArgument', 'settings: options must be given as Name-Value pairs.');
+        [args{:}] = convertStringsToChars(args{:});
+        if mod(numel(args), 2) ~= 0
+            error('dtwc:invalidArgument', 'settings: options must be given as Name-Value pairs.');
+        end
     end
 
     clusterMap = containers.Map('KeyType', 'char', 'ValueType', 'any');
     order = {};
-    for i = 1:2:numel(s.ClusterArgs)
-        lk = lower(s.ClusterArgs{i});
-        clusterMap(lk) = {s.ClusterArgs{i}, s.ClusterArgs{i + 1}};
-        order{end + 1} = lk; %#ok<AGROW>
-    end
 
     for i = 1:2:numel(args)
         key = args{i};
@@ -128,5 +130,31 @@ function s = settings(varargin)
     prob = dtwc.Problem();
     cleaner = onCleanup(@() delete(prob));
     dtwc_mex('apply', prob.get_handle(), checkK, s.ClusterArgs{:});
+
+    % Mirror validated clustering options onto top-level struct fields so
+    % inspection (s.Band) and direct struct mutation (s.Band = 10) stay in sync.
+    for idx = 1:numel(order)
+        pair = clusterMap(order{idx});
+        if ~strcmpi(pair{1}, 'Name') && isvarname(pair{1})
+            s.(pair{1}) = pair{2};
+        end
+    end
 end
 
+function s = default_settings_struct()
+    s = struct( ...
+        'IsDtwcSettings', true, ...
+        'Input', '', ...
+        'SkipCols', 0, ...
+        'SkipRows', 0, ...
+        'Delimiter', '', ...
+        'Name', '', ...
+        'Dtype', 'float64', ...
+        'Ndim', 1, ...
+        'Output', './results', ...
+        'Checkpoint', '', ...
+        'CheckpointInterval', 0, ...
+        'K', 0, ...
+        'ClusterArgs', {{}} ...
+    );
+end

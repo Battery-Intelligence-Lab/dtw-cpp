@@ -87,9 +87,8 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts = {})
  *         cluster id outside [0, n_points), or a merge list that does not
  *         reduce N points to k components.
  *
- * @note 2.0: writes the result back into `prob` (clusters_ind,
- *       centroids_ind, n_clusters) so scores work with no manual wiring. 1.x
- *       left prob untouched (and the bindings did not wire cut_dendrogram).
+ * @note Writes the result back into `prob` (`clusters_ind`, `centroids_ind`,
+ *       `n_clusters`) so validation scores work directly on `prob`.
  */
 core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, index_t k);
 

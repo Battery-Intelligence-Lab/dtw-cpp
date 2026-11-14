@@ -29,6 +29,7 @@ constexpr std::size_t (*closed_list[])(bool) noexcept = {
   detail::lanes_scratch,
   detail::fast_pam_scratch,
   detail::clara_assign_scratch,
+  detail::barycenter_scratch,
 };
 
 /// What the closed list holds on the calling thread; each buffer emptied when `release`, and CUDA's launch workspaces

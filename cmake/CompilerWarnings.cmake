@@ -108,7 +108,6 @@ function(
     set(PROJECT_WARNINGS_CXX ${GCC_WARNINGS})
   else()
     message(AUTHOR_WARNING "No compiler warnings set for CXX compiler: '${CMAKE_CXX_COMPILER_ID}'")
-    # TODO support Intel compiler
   endif()
 
   # use the same warning flags for C

@@ -167,3 +167,27 @@ jobs:
             echo '::error::F8 parity target skipped instead of executing.'
             exit 1
           fi
+
+  wasm-simd128:
+    name: WebAssembly SIMD128 (Emscripten)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Install Emscripten and Ninja
+        run: |
+          sudo apt update
+          sudo apt install -y emscripten ninja-build
+
+      - name: Configure and build dtwc_core + dtwc_cli for wasm-simd128
+        run: |
+          emcmake cmake -S . -B build_wasm -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDTWC_ALLOW_SEQUENTIAL=ON \
+            -DDTWC_BUILD_TESTING=OFF \
+            -DDTWC_ENABLE_HIGHS=OFF \
+            -DDTWC_ENABLE_GUROBI=OFF \
+            -DDTWC_ENABLE_LLFIO=OFF \
+            -DDTWC_ENABLE_CPUINFO=OFF \
+            -DDTWC_ENABLE_YAML=OFF
+          cmake --build build_wasm --target dtwc_core dtwc_cli --parallel 2

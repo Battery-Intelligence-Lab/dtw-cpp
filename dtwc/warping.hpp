@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file warping.hpp
  * @brief Time warping functions.
  *
@@ -126,7 +126,7 @@ void require_finite(std::span<const data_t> x, std::span<const data_t> y,
 } // namespace detail
 
 // =========================================================================
-//  Public API â€” pointer + length overloads (zero-copy for bindings)
+//  Public API — pointer + length overloads (zero-copy for bindings)
 // =========================================================================
 
 /**
@@ -201,7 +201,7 @@ data_t dtwFull(const data_t* x, size_t nx, const data_t* y, size_t ny,
 }
 
 // =========================================================================
-//  Public API â€” vector overloads (forward to pointer versions)
+//  Public API — vector overloads (forward to pointer versions)
 // =========================================================================
 
 /// Full DTW, the v1 name of dtwFull_L (span overload).
@@ -257,7 +257,7 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
 }
 
 // =========================================================================
-//  Public API â€” multivariate (interleaved layout: [t0_f0, t0_f1, ..., t1_f0, ...])
+//  Public API — multivariate (interleaved layout: [t0_f0, t0_f1, ..., t1_f0, ...])
 // =========================================================================
 
 /**

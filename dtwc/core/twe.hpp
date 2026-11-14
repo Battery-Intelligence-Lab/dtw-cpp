@@ -25,8 +25,8 @@
  *          guarded addition. This avoids overflow from `MAX + cost` and matches
  *          the no-neighbour sentinel convention used by the DTW kernels.
  *
- *          v1 scope: univariate, unbanded (window=None); MSM/TWE ignore
- *          `Problem::band` (documented in the dispatch + CHANGELOG).
+ *          Scope: univariate, unbanded (`band == -1`); `Problem` ignores
+ *          positive `band` settings when `DTWVariant::TWE` is selected.
  *
  * @author Volkan Kumtepeli
  * @date 2026-07-08
@@ -40,7 +40,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <cstdlib>   // std::abs(long)
 #include <limits>
 #include <span>
 #include <vector>
@@ -49,20 +48,20 @@ namespace dtwc::core {
 
 namespace detail {
 
-/// twe_distance's two rolling rows, one pair a T: reached here so that core::release_thread_scratch() can empty them
-/// (detail::dispatch_scratch, core/dtw_dispatch.cpp); two thread_locals returned as references, as detail::lanes_bufs (dtw_kernel.hpp) says why.
-template <typename T>
-std::pair<std::vector<T> &, std::vector<T> &> twe_rows()
-{
-  thread_local std::vector<T> prev_buf, curr_buf;
-  return { prev_buf, curr_buf };
-}
+  /// twe_distance's two rolling rows, one pair a T: reached here so that core::release_thread_scratch() can empty them
+  /// (detail::dispatch_scratch, core/dtw_dispatch.cpp); two thread_locals returned as references, as detail::lanes_bufs (dtw_kernel.hpp) says why.
+  template <typename T>
+  std::pair<std::vector<T> &, std::vector<T> &> twe_rows()
+  {
+    thread_local std::vector<T> prev_buf, curr_buf;
+    return { prev_buf, curr_buf };
+  }
 
 } // namespace detail
 
 /// TWE distance (pointer + length). Univariate, unbanded, exact; nu, lambda > 0, unchecked.
 template <typename T = dtwc::settings::default_data_t>
-T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
+T twe_distance(const T *x, std::size_t nx, const T *y, std::size_t ny,
                T nu = T(0.001), T lambda = T(1))
 {
   constexpr T maxValue = std::numeric_limits<T>::max();
@@ -83,8 +82,8 @@ T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
   auto [prev_buf, curr_buf] = detail::twe_rows<T>();
   if (prev_buf.size() < nb + 1) prev_buf.resize(nb + 1);
   if (curr_buf.size() < nb + 1) curr_buf.resize(nb + 1);
-  T* prev = prev_buf.data();
-  T* curr = curr_buf.data();
+  T *prev = prev_buf.data();
+  T *curr = curr_buf.data();
 
   // Padded row i = 0: D[0][0] = 0, rest +inf. Written into `curr` so the
   // first swap below moves it into `prev` (matches the MSM kernel pattern).
@@ -106,7 +105,7 @@ T twe_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
       const std::size_t idx_diff = (i >= j) ? (i - j) : (j - i);
       const T match = add(prev[j - 1],
                           std::abs(ai - bj) + std::abs(ai_prev - bj_prev)
-                          + two_nu * static_cast<T>(idx_diff));
+                            + two_nu * static_cast<T>(idx_diff));
       left = std::min(std::min(del_x, del_y), match); // std::min({...}) is a call on the MSVC STL
       curr[j] = left;
       bj_prev = bj;
@@ -124,7 +123,7 @@ T twe_distance(std::span<const T> x, std::span<const T> y,
 }
 
 template <typename T = dtwc::settings::default_data_t>
-T twe_distance(const std::vector<T>& x, const std::vector<T>& y,
+T twe_distance(const std::vector<T> &x, const std::vector<T> &y,
                T nu = T(0.001), T lambda = T(1))
 {
   return twe_distance<T>(x.data(), x.size(), y.data(), y.size(), nu, lambda);

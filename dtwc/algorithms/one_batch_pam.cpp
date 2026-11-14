@@ -30,254 +30,266 @@
 namespace dtwc::algorithms {
 namespace {
 
-std::size_t automatic_batch_size(std::size_t n)
-{
-  if (n <= 1) return n;
-  const auto logarithmic = static_cast<std::size_t>(
-    20.0 * std::ceil(std::log2(static_cast<double>(n) + 1.0)));
-  return std::min(n, std::max<std::size_t>(64, logarithmic));
-}
-
-void validate_options(std::size_t n, const OneBatchPAMOptions& options)
-{
-  if (n == 0)
-    throw InvalidInput("one_batch_pam: Problem has no data points.");
-  if (options.n_clusters <= 0 || static_cast<std::size_t>(options.n_clusters) > n) {
-    throw InvalidInput(
-      "one_batch_pam: n_clusters must be in [1, N]. Got n_clusters="
-      + std::to_string(options.n_clusters) + ", N=" + std::to_string(n) + ".");
-  }
-  if (options.batch_size == 0 || options.batch_size < -1)
-    throw InvalidInput("one_batch_pam: batch_size must be -1 or a positive integer.");
-  // The O(Nm) promise assumes m >= k; an explicit batch below k is refused, not
-  // silently raised.
-  if (options.batch_size > 0 && options.batch_size < options.n_clusters)
-    throw InvalidInput("one_batch_pam: batch_size must be at least n_clusters. Got batch_size="
-                       + std::to_string(options.batch_size) + ", n_clusters="
-                       + std::to_string(options.n_clusters) + ".");
-  if (options.max_iter <= 0)
-    throw InvalidInput("one_batch_pam: max_iter must be positive.");
-  if (!std::isfinite(options.relative_tolerance) || options.relative_tolerance < 0.0)
-    throw InvalidInput("one_batch_pam: relative_tolerance must be finite and non-negative.");
-}
-
-struct FixedBatchDistances {
-  Problem& prob;
-  // The dispatcher for the stored precision, resolved once and serially before
-  // any OpenMP region: a legacy raw semantic mutation may require the mutable
-  // getter to rebind once, and its first call validates the request (band
-  // feasibility, non-finite values) with a typed error that must not be thrown
-  // inside a parallel region. Workers read the stable function object; none calls
-  // the accessor. Only the getter for the stored precision: the Float32 one also
-  // rejects variant parameters Float64 data never narrows.
-  const Problem::dtw_fn_f32_t *dtw_f32;
-  const Problem::dtw_fn_t *dtw_f64;
-  std::size_t n;
-  std::size_t m;
-  std::vector<index_t> sample;
-  std::vector<index_t> sample_position;
-  std::vector<double> raw;
-  std::vector<double> weights;
-  double scale = 1.0;
-  std::uint64_t evaluations = 0;
-
-  FixedBatchDistances(Problem& problem, std::vector<index_t> batch)
-    : prob(problem),
-      dtw_f32(problem.data().is_f32() ? &problem.dtw_function_f32() : nullptr),
-      dtw_f64(problem.data().is_f32() ? nullptr : &problem.dtw_function()),
-      n(problem.size()), m(batch.size()), sample(std::move(batch)),
-      sample_position(n, -1), raw(n * m, 0.0), weights(m, 0.0)
+  std::size_t automatic_batch_size(std::size_t n)
   {
-    for (std::size_t j = 0; j < m; ++j)
-      sample_position[static_cast<std::size_t>(sample[j])] = static_cast<index_t>(j);
+    if (n <= 1) return n;
+    const auto logarithmic = static_cast<std::size_t>(
+      20.0 * std::ceil(std::log2(static_cast<double>(n) + 1.0)));
+    return std::min(n, std::max<std::size_t>(64, logarithmic));
+  }
 
-    // Each worker writes a disjoint row. Row i takes its batch columns W at a
-    // time through the lane function (the entry Problem's fill uses, resolved
-    // once here; each of its distances is bitwise the per-pair one) where there
-    // is no band and the lanes are packed (core::dtw_lanes_packed), or the
-    // block's series are as long as series i; every other column, and every
-    // request the lanes do not cover, goes pair by pair. The columns stay in
-    // batch order, so a block's lanes all run to its longest series. The block
-    // at the end of the batch repeats its last column in the lanes past it, whose
-    // results are dropped, and a block holding series i computes that self-pair
-    // and drops it.
-    std::vector<std::uint64_t> row_evaluations(n, 0);
-    std::vector<double> row_maxima(n, 0.0);
-    const auto dist_cfg = problem.distance();
-    const auto block_f32 = core::resolve_dtw_block_fn<float>(dist_cfg);
-    const auto block_f64 = core::resolve_dtw_block_fn<data_t>(dist_cfg);
-    const auto packed_f32 = core::resolve_dtw_packed_block_fn<float>(dist_cfg);
-    const auto packed_f64 = core::resolve_dtw_packed_block_fn<data_t>(dist_cfg);
-    // Pre-pack the m batch columns into W-lane panels once when ram_limit is unlimited;
-    // freed immediately after the N rows are computed so peak swap memory is unchanged.
-    const bool prepack = core::dtw_lanes_packed && problem.ram_limit() == 0;
-    std::vector<core::PackedLanesPanel<float>> panels_f32;
-    std::vector<core::PackedLanesPanel<data_t>> panels_f64;
-    if (prepack) {
-      if (problem.data().is_f32() && packed_f32) {
-        constexpr std::size_t W = core::dtw_lanes<float>;
-        panels_f32.resize((m + W - 1) / W);
-        for (std::size_t b = 0; b < panels_f32.size(); ++b) {
-          const std::size_t j0 = b * W, count = std::min(W, m - j0);
-          std::array<std::span<const float>, W> ys;
-          for (std::size_t w = 0; w < W; ++w)
-            ys[w] = problem.data().series_f32(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
-          core::pack_dtw_panel<float>(dist_cfg, ys.data(), panels_f32[b]);
-        }
-      } else if (!problem.data().is_f32() && packed_f64) {
-        constexpr std::size_t W = core::dtw_lanes<data_t>;
-        panels_f64.resize((m + W - 1) / W);
-        for (std::size_t b = 0; b < panels_f64.size(); ++b) {
-          const std::size_t j0 = b * W, count = std::min(W, m - j0);
-          std::array<std::span<const data_t>, W> ys;
-          for (std::size_t w = 0; w < W; ++w)
-            ys[w] = problem.series(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
-          core::pack_dtw_panel<data_t>(dist_cfg, ys.data(), panels_f64[b]);
+  void validate_options(std::size_t n, const OneBatchPAMOptions &options)
+  {
+    if (n == 0)
+      throw InvalidInput("one_batch_pam: Problem has no data points.");
+    if (options.n_clusters <= 0 || static_cast<std::size_t>(options.n_clusters) > n) {
+      throw InvalidInput(
+        "one_batch_pam: n_clusters must be in [1, N]. Got n_clusters="
+        + std::to_string(options.n_clusters) + ", N=" + std::to_string(n) + ".");
+    }
+    if (options.batch_size == 0 || options.batch_size < -1)
+      throw InvalidInput("one_batch_pam: batch_size must be -1 or a positive integer.");
+    // The O(Nm) promise assumes m >= k; an explicit batch below k is refused, not
+    // silently raised.
+    if (options.batch_size > 0 && options.batch_size < options.n_clusters)
+      throw InvalidInput("one_batch_pam: batch_size must be at least n_clusters. Got batch_size="
+                         + std::to_string(options.batch_size) + ", n_clusters="
+                         + std::to_string(options.n_clusters) + ".");
+    if (options.max_iter <= 0)
+      throw InvalidInput("one_batch_pam: max_iter must be positive.");
+    if (!std::isfinite(options.relative_tolerance) || options.relative_tolerance < 0.0)
+      throw InvalidInput("one_batch_pam: relative_tolerance must be finite and non-negative.");
+  }
+
+  struct FixedBatchDistances
+  {
+    Problem &prob;
+    // The dispatcher for the stored precision, resolved once and serially before
+    // any OpenMP region: a legacy raw semantic mutation may require the mutable
+    // getter to rebind once, and its first call validates the request (band
+    // feasibility, non-finite values) with a typed error that must not be thrown
+    // inside a parallel region. Workers read the stable function object; none calls
+    // the accessor. Only the getter for the stored precision: the Float32 one also
+    // rejects variant parameters Float64 data never narrows.
+    const Problem::dtw_fn_f32_t *dtw_f32;
+    const Problem::dtw_fn_t *dtw_f64;
+    std::size_t n;
+    std::size_t m;
+    std::vector<index_t> sample;
+    std::vector<index_t> sample_position;
+    std::vector<double> raw;
+    std::vector<double> weights;
+    double scale = 1.0;
+    std::uint64_t evaluations = 0;
+
+    FixedBatchDistances(Problem &problem, std::vector<index_t> batch)
+      : prob(problem),
+        dtw_f32(problem.data().is_f32() ? &problem.dtw_function_f32() : nullptr),
+        dtw_f64(problem.data().is_f32() ? nullptr : &problem.dtw_function()),
+        n(problem.size()), m(batch.size()), sample(std::move(batch)),
+        sample_position(n, -1), raw(n * m, 0.0), weights(m, 0.0)
+    {
+      for (std::size_t j = 0; j < m; ++j)
+        sample_position[static_cast<std::size_t>(sample[j])] = static_cast<index_t>(j);
+
+      // Each worker writes a disjoint row. Row i takes its batch columns W at a
+      // time through the lane function (the entry Problem's fill uses, resolved
+      // once here; each of its distances is bitwise the per-pair one) where there
+      // is no band and the lanes are packed (core::dtw_lanes_packed), or the
+      // block's series are as long as series i; every other column, and every
+      // request the lanes do not cover, goes pair by pair. The columns stay in
+      // batch order, so a block's lanes all run to its longest series. The block
+      // at the end of the batch repeats its last column in the lanes past it, whose
+      // results are dropped, and a block holding series i computes that self-pair
+      // and drops it.
+      std::vector<std::uint64_t> row_evaluations(n, 0);
+      std::vector<double> row_maxima(n, 0.0);
+      const auto dist_cfg = problem.distance();
+      const auto block_f32 = core::resolve_dtw_block_fn<float>(dist_cfg);
+      const auto block_f64 = core::resolve_dtw_block_fn<data_t>(dist_cfg);
+      const auto packed_f32 = core::resolve_dtw_packed_block_fn<float>(dist_cfg);
+      const auto packed_f64 = core::resolve_dtw_packed_block_fn<data_t>(dist_cfg);
+      // Pre-pack the m batch columns into W-lane panels once when the data is in RAM,
+      // ram_limit is unset, and the panel footprint fits 64 MiB; freed immediately
+      // after the N rows are computed so peak swap memory is unchanged.
+      constexpr std::size_t kMaxBatchPrepackBytes = std::size_t{ 64 } << 20;
+      const std::size_t elem_bytes = problem.data().is_f32() ? sizeof(float) : sizeof(data_t);
+      const std::size_t lane_w = problem.data().is_f32() ? core::dtw_lanes<float> : core::dtw_lanes<data_t>;
+      std::size_t max_sample_len = 0;
+      for (std::size_t j = 0; j < m; ++j)
+        max_sample_len = std::max(max_sample_len, problem.data().series_flat_size(static_cast<std::size_t>(sample[j])));
+      const std::size_t n_batch_panels = (m + lane_w - 1) / lane_w;
+      const bool prepack = core::dtw_lanes_packed && problem.ram_limit() == 0 && !problem.data().is_mapped()
+                           && n_batch_panels > 0
+                           && max_sample_len <= kMaxBatchPrepackBytes / (n_batch_panels * lane_w * elem_bytes);
+      std::vector<core::PackedLanesPanel<float>> panels_f32;
+      std::vector<core::PackedLanesPanel<data_t>> panels_f64;
+      if (prepack) {
+        if (problem.data().is_f32() && packed_f32) {
+          constexpr std::size_t W = core::dtw_lanes<float>;
+          panels_f32.resize((m + W - 1) / W);
+          for (std::size_t b = 0; b < panels_f32.size(); ++b) {
+            const std::size_t j0 = b * W, count = std::min(W, m - j0);
+            std::array<std::span<const float>, W> ys;
+            for (std::size_t w = 0; w < W; ++w)
+              ys[w] = problem.data().series_f32(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
+            core::pack_dtw_panel<float>(dist_cfg, ys.data(), panels_f32[b]);
+          }
+        } else if (!problem.data().is_f32() && packed_f64) {
+          constexpr std::size_t W = core::dtw_lanes<data_t>;
+          panels_f64.resize((m + W - 1) / W);
+          for (std::size_t b = 0; b < panels_f64.size(); ++b) {
+            const std::size_t j0 = b * W, count = std::min(W, m - j0);
+            std::array<std::span<const data_t>, W> ys;
+            for (std::size_t w = 0; w < W; ++w)
+              ys[w] = problem.series(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
+            core::pack_dtw_panel<data_t>(dist_cfg, ys.data(), panels_f64[b]);
+          }
         }
       }
-    }
 
-    auto fill_row = [&](std::size_t i) {
-      double row_max = 0.0;
-      std::uint64_t calls = 0;
-      auto fill_blocks = [&](auto x, auto column, const auto &block, const auto &packed_block, const auto &panels) {
-        using T = typename decltype(x)::value_type;
-        constexpr std::size_t W = core::dtw_lanes<T>;
-        std::array<std::span<const T>, W> ys;
-        std::array<double, W> lane;
-        const bool use_panels = !panels.empty() && static_cast<bool>(packed_block);
-        const std::span<const T> x_prep = use_panels ? core::prepare_dtw_query<T>(dist_cfg, x) : x;
-        for (std::size_t j0 = 0, b = 0; j0 < m; j0 += W, ++b) {
-          const std::size_t count = std::min(W, m - j0);
-          bool lanes = false;
-          if (use_panels) {
-            packed_block(x_prep, panels[b].view(), lane);
-            lanes = true;
-          } else if (block) {
-            lanes = true;
-            for (std::size_t w = 0; lanes && w < W; ++w) {
-              ys[w] = column(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
-              lanes = core::dtw_lanes_packed || ys[w].size() == x.size();
+      auto fill_row = [&](std::size_t i) {
+        double row_max = 0.0;
+        std::uint64_t calls = 0;
+        auto fill_blocks = [&](auto x, auto column, const auto &block, const auto &packed_block, const auto &panels) {
+          using T = typename decltype(x)::value_type;
+          constexpr std::size_t W = core::dtw_lanes<T>;
+          std::array<std::span<const T>, W> ys;
+          std::array<double, W> lane;
+          const bool use_panels = !panels.empty() && static_cast<bool>(packed_block);
+          const std::span<const T> x_prep = use_panels ? core::prepare_dtw_query<T>(dist_cfg, x) : x;
+          for (std::size_t j0 = 0, b = 0; j0 < m; j0 += W, ++b) {
+            const std::size_t count = std::min(W, m - j0);
+            bool lanes = false;
+            if (use_panels) {
+              packed_block(x_prep, panels[b].view(), lane);
+              lanes = true;
+            } else if (block) {
+              lanes = true;
+              for (std::size_t w = 0; lanes && w < W; ++w) {
+                ys[w] = column(static_cast<std::size_t>(sample[j0 + std::min(w, count - 1)]));
+                lanes = core::dtw_lanes_packed || ys[w].size() == x.size();
+              }
+              if (lanes) block(x, ys, lane);
             }
-            if (lanes) block(x, ys, lane);
-          }
-          for (std::size_t w = 0; w < count; ++w) {
-            const auto column_series = static_cast<std::size_t>(sample[j0 + w]);
-            double d = 0.0;
-            if (i != column_series) {
-              d = lanes ? lane[w] : dtw(i, column_series);
-              ++calls;
+            for (std::size_t w = 0; w < count; ++w) {
+              const auto column_series = static_cast<std::size_t>(sample[j0 + w]);
+              double d = 0.0;
+              if (i != column_series) {
+                d = lanes ? lane[w] : dtw(i, column_series);
+                ++calls;
+              }
+              if (!std::isfinite(d) || d < 0.0)
+                throw InvalidInput("one_batch_pam: distance function returned a non-finite or negative value.");
+              raw[i * m + j0 + w] = d;
+              row_max = std::max(row_max, d);
             }
-            if (!std::isfinite(d) || d < 0.0)
-              throw InvalidInput("one_batch_pam: distance function returned a non-finite or negative value.");
-            raw[i * m + j0 + w] = d;
-            row_max = std::max(row_max, d);
           }
-        }
+        };
+        if (prob.data().is_f32())
+          fill_blocks(prob.data().series_f32(i), [&](std::size_t c) { return prob.data().series_f32(c); }, block_f32, packed_f32, panels_f32);
+        else
+          fill_blocks(prob.series(i), [&](std::size_t c) { return prob.series(c); }, block_f64, packed_f64, panels_f64);
+        row_evaluations[i] = calls;
+        row_maxima[i] = row_max;
       };
-      if (prob.data().is_f32())
-        fill_blocks(prob.data().series_f32(i),
-                    [&](std::size_t c) { return prob.data().series_f32(c); }, block_f32, packed_f32, panels_f32);
-      else
-        fill_blocks(prob.series(i), [&](std::size_t c) { return prob.series(c); }, block_f64, packed_f64, panels_f64);
-      row_evaluations[i] = calls;
-      row_maxima[i] = row_max;
-    };
-    run_openmp(fill_row, n, n > 64);
-    panels_f32.clear();
-    panels_f32.shrink_to_fit();
-    panels_f64.clear();
-    panels_f64.shrink_to_fit();
-    const double table_max = *std::max_element(row_maxima.begin(), row_maxima.end());
-    scale = table_max > 0.0 ? table_max : 1.0;
-    evaluations = std::accumulate(row_evaluations.begin(), row_evaluations.end(),
-                                  std::uint64_t{0});
+      run_openmp(fill_row, n, n > 64);
+      panels_f32.clear();
+      panels_f32.shrink_to_fit();
+      panels_f64.clear();
+      panels_f64.shrink_to_fit();
+      const double table_max = *std::max_element(row_maxima.begin(), row_maxima.end());
+      scale = table_max > 0.0 ? table_max : 1.0;
+      evaluations = std::accumulate(row_evaluations.begin(), row_evaluations.end(), std::uint64_t{ 0 });
 
-    // Count/mean NNIW (Loog 2012): the fixed table already contains everything
-    // needed to estimate each sampled point's Voronoi-cell mass. This is
-    // deliberately combined with the obpam experiment code's
-    // finite-table-maximum diagonal correction in estimate(). The paper's
-    // literal +infinity and maintained OneBatchPAM v0.1.0 do not describe this
-    // exact hybrid estimator.
-    for (std::size_t i = 0; i < n; ++i) {
-      std::size_t nearest = 0;
-      double best = raw[i * m];
-      for (std::size_t j = 1; j < m; ++j) {
-        const double d = raw[i * m + j];
-        if (d < best) { best = d; nearest = j; }
+      // Count/mean NNIW (Loog 2012): the fixed table already contains everything
+      // needed to estimate each sampled point's Voronoi-cell mass. This is
+      // deliberately combined with the obpam experiment code's
+      // finite-table-maximum diagonal correction in estimate(). The paper's
+      // literal +infinity and maintained OneBatchPAM v0.1.0 do not describe this
+      // exact hybrid estimator.
+      for (std::size_t i = 0; i < n; ++i) {
+        std::size_t nearest = 0;
+        double best = raw[i * m];
+        for (std::size_t j = 1; j < m; ++j) {
+          const double d = raw[i * m + j];
+          if (d < best) {
+            best = d;
+            nearest = j;
+          }
+        }
+        weights[nearest] += 1.0;
       }
-      weights[nearest] += 1.0;
+      const double mean = static_cast<double>(n) / static_cast<double>(m);
+      for (double &weight : weights) weight /= mean;
     }
-    const double mean = static_cast<double>(n) / static_cast<double>(m);
-    for (double& weight : weights) weight /= mean;
-  }
 
-  double dtw(std::size_t a, std::size_t b) const
+    double dtw(std::size_t a, std::size_t b) const
+    {
+      if (dtw_f32)
+        return (*dtw_f32)(prob.data().series_f32(a), prob.data().series_f32(b));
+      return (*dtw_f64)(prob.series(a), prob.series(b));
+    }
+
+    double estimate(std::size_t candidate, std::size_t batch_column) const
+    {
+      // The authors' obpam experiment code replaces d(x,x)=0 by the actual finite
+      // table maximum, i.e. exactly 1 after normalization. Do not use the
+      // zero-table fallback scale as an unnormalized replacement value.
+      if (candidate == static_cast<std::size_t>(sample[batch_column]))
+        return weights[batch_column];
+      return (raw[candidate * m + batch_column] / scale) * weights[batch_column];
+    }
+
+    /// Distance of a point to a medoid: the table entry when the medoid is in the
+    /// batch, else one DTW call, added to the caller's own tally `calls`. Const,
+    /// so every worker may call it on its own point.
+    double exact(std::size_t point, index_t medoid, std::uint64_t &calls) const
+    {
+      const index_t column = sample_position[static_cast<std::size_t>(medoid)];
+      if (column >= 0)
+        return raw[point * m + static_cast<std::size_t>(column)];
+      if (point == static_cast<std::size_t>(medoid)) return 0.0;
+      ++calls;
+      return dtw(point, static_cast<std::size_t>(medoid));
+    }
+  };
+
+  void nearest_two(const FixedBatchDistances &distances,
+                   const std::vector<index_t> &medoids,
+                   std::vector<index_t> &nearest,
+                   std::vector<double> &nearest_distance,
+                   std::vector<double> &second_distance)
   {
-    if (dtw_f32)
-      return (*dtw_f32)(prob.data().series_f32(a), prob.data().series_f32(b));
-    return (*dtw_f64)(prob.series(a), prob.series(b));
-  }
-
-  double estimate(std::size_t candidate, std::size_t batch_column) const
-  {
-    // The authors' obpam experiment code replaces d(x,x)=0 by the actual finite
-    // table maximum, i.e. exactly 1 after normalization. Do not use the
-    // zero-table fallback scale as an unnormalized replacement value.
-    if (candidate == static_cast<std::size_t>(sample[batch_column]))
-      return weights[batch_column];
-    return (raw[candidate * m + batch_column] / scale) * weights[batch_column];
-  }
-
-  /// Distance of a point to a medoid: the table entry when the medoid is in the
-  /// batch, else one DTW call, added to the caller's own tally `calls`. Const,
-  /// so every worker may call it on its own point.
-  double exact(std::size_t point, index_t medoid, std::uint64_t& calls) const
-  {
-    const index_t column = sample_position[static_cast<std::size_t>(medoid)];
-    if (column >= 0)
-      return raw[point * m + static_cast<std::size_t>(column)];
-    if (point == static_cast<std::size_t>(medoid)) return 0.0;
-    ++calls;
-    return dtw(point, static_cast<std::size_t>(medoid));
-  }
-};
-
-void nearest_two(const FixedBatchDistances& distances,
-                 const std::vector<index_t>& medoids,
-                 std::vector<index_t>& nearest,
-                 std::vector<double>& nearest_distance,
-                 std::vector<double>& second_distance)
-{
-  const std::size_t m = distances.m;
-  const auto k = static_cast<index_t>(medoids.size());
-  nearest.assign(m, 0);
-  nearest_distance.assign(m, std::numeric_limits<double>::infinity());
-  second_distance.assign(m, std::numeric_limits<double>::infinity());
-  for (std::size_t j = 0; j < m; ++j) {
-    for (index_t slot = 0; slot < k; ++slot) {
-      const double d = distances.estimate(static_cast<std::size_t>(medoids[slot]), j);
-      if (d < nearest_distance[j]) {
-        second_distance[j] = nearest_distance[j];
-        nearest_distance[j] = d;
-        nearest[j] = slot;
-      } else if (d < second_distance[j]) {
-        second_distance[j] = d;
+    const std::size_t m = distances.m;
+    const auto k = static_cast<index_t>(medoids.size());
+    nearest.assign(m, 0);
+    nearest_distance.assign(m, std::numeric_limits<double>::infinity());
+    second_distance.assign(m, std::numeric_limits<double>::infinity());
+    for (std::size_t j = 0; j < m; ++j) {
+      for (index_t slot = 0; slot < k; ++slot) {
+        const double d = distances.estimate(static_cast<std::size_t>(medoids[slot]), j);
+        if (d < nearest_distance[j]) {
+          second_distance[j] = nearest_distance[j];
+          nearest_distance[j] = d;
+          nearest[j] = slot;
+        } else if (d < second_distance[j]) {
+          second_distance[j] = d;
+        }
       }
     }
   }
-}
 
-double estimated_cost(const std::vector<double>& nearest_distance)
-{
-  return std::accumulate(nearest_distance.begin(), nearest_distance.end(), 0.0);
-}
+  double estimated_cost(const std::vector<double> &nearest_distance)
+  {
+    return std::accumulate(nearest_distance.begin(), nearest_distance.end(), 0.0);
+  }
 
 } // namespace
 
-core::ClusteringResult one_batch_pam(Problem& prob,
-                                     const OneBatchPAMOptions& options,
-                                     OneBatchPAMStats* stats)
+core::ClusteringResult one_batch_pam(Problem &prob,
+                                     const OneBatchPAMOptions &options,
+                                     OneBatchPAMStats *stats)
 {
   // A Problem on cpu+gpu, or one with a forced share, asks for a split this method has no part in (it computes its
   // distances on the CPU as it goes): refused here, as Problem::cluster refuses it, not run on the CPU without a word.
@@ -348,20 +360,14 @@ core::ClusteringResult one_batch_pam(Problem& prob,
     converged = true;
     sweeps = 1;
   } else {
-    // `base_removal_gain` and `tolerance` depend only on (nearest,
-    // nearest_distance, second_distance), so they change exactly when a swap is
-    // accepted — not once per candidate. Hoisting them out of the candidate loop
-    // removes one heap allocation and one O(m) pass per candidate (N of each per
-    // sweep); both scratch vectors are allocated once and reused. The
-    // accumulation order over j is unchanged, so the result is digit-identical.
+    // Recompute removal gains and tolerance only after an accepted swap.
     std::vector<double> base_removal_gain(static_cast<std::size_t>(k), 0.0);
     std::vector<double> removal_gain(static_cast<std::size_t>(k), 0.0);
     double tolerance = 0.0;
     const auto refresh_swap_state = [&] {
       std::fill(base_removal_gain.begin(), base_removal_gain.end(), 0.0);
       for (std::size_t j = 0; j < m; ++j)
-        base_removal_gain[static_cast<std::size_t>(nearest[j])]
-          += nearest_distance[j] - second_distance[j];
+        base_removal_gain[static_cast<std::size_t>(nearest[j])] += nearest_distance[j] - second_distance[j];
       tolerance = options.relative_tolerance * estimated_cost(nearest_distance);
     };
     refresh_swap_state();
@@ -381,8 +387,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
           const index_t slot = nearest[j];
           if (d < nearest_distance[j]) {
             add_gain += nearest_distance[j] - d;
-            removal_gain[static_cast<std::size_t>(slot)]
-              += second_distance[j] - nearest_distance[j];
+            removal_gain[static_cast<std::size_t>(slot)] += second_distance[j] - nearest_distance[j];
           } else if (d < second_distance[j]) {
             removal_gain[static_cast<std::size_t>(slot)] += second_distance[j] - d;
           }
@@ -413,7 +418,11 @@ core::ClusteringResult one_batch_pam(Problem& prob,
           changed = true;
         }
       }
-      if (!changed) { converged = true; ++sweeps; break; }
+      if (!changed) {
+        converged = true;
+        ++sweeps;
+        break;
+      }
     }
   }
 
@@ -440,17 +449,18 @@ core::ClusteringResult one_batch_pam(Problem& prob,
     std::uint64_t calls = 0;
     for (index_t slot = 0; slot < k; ++slot) {
       const double d = core::detail::require_finite_medoid_distance(
-        distances.exact(point, medoids[slot], calls), "one_batch_pam", point, slot,
-        medoids[slot]);
-      if (d < best) { best = d; label = slot; }
+        distances.exact(point, medoids[slot], calls), "one_batch_pam", point, slot, medoids[slot]);
+      if (d < best) {
+        best = d;
+        label = slot;
+      }
     }
     result.labels[point] = label;
     point_cost[point] = best;
     point_evaluations[point] = calls;
   };
   run_openmp(assign_point, n, n > 64);
-  distances.evaluations += std::accumulate(point_evaluations.begin(), point_evaluations.end(),
-                                           std::uint64_t{0});
+  distances.evaluations += std::accumulate(point_evaluations.begin(), point_evaluations.end(), std::uint64_t{ 0 });
   // A medoid tied with another medoid (a duplicate series) serves itself, or its
   // own cluster would be published empty. Its own distance is exactly 0, so a
   // best of 0 is that tie. After the scan, so the scan's min stays branch-free.
@@ -472,8 +482,8 @@ core::ClusteringResult one_batch_pam(Problem& prob,
     stats->distance_evaluations = distances.evaluations;
     const long double denominator = static_cast<long double>(n) * static_cast<long double>(n);
     stats->full_matrix_fraction = denominator > 0.0L
-      ? static_cast<double>(static_cast<long double>(distances.evaluations) / denominator)
-      : 0.0;
+                                    ? static_cast<double>(static_cast<long double>(distances.evaluations) / denominator)
+                                    : 0.0;
     stats->estimated_objective = estimated_cost(nearest_distance);
     stats->accepted_swaps = accepted_swaps;
   }
