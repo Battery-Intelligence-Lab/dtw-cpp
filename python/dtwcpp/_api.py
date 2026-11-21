@@ -473,6 +473,8 @@ class Result:
         print(f"plot saved -> {png}")
         if show and "agg" not in matplotlib.get_backend().lower():
             plt.show()
+        else:
+            plt.close(fig)  # not shown: the saved file is what plot gives back
         return png
 
 

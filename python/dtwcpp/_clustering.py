@@ -12,6 +12,7 @@
 """
 import numpy as np
 from dtwcpp import distance
+from dtwcpp._api import _float64
 from dtwcpp._dtwcpp_core import DEFAULT_RANDOM_SEED
 
 try:  # scikit-learn is an optional dependency of the base wheel.
@@ -49,7 +50,7 @@ _READS_THE_MATRIX = ("pam", "kmedoids", "mip", "lrcore", "hierarchical")
 def _precomputed_matrix(X, *, square=False, n_train=None):
     if type(X).__module__.startswith("scipy.sparse"):
         raise TypeError("Sparse input is not supported; provide a dense array.")
-    matrix = np.asarray(X, dtype=np.float64)
+    matrix = _float64(X)
     if matrix.ndim != 2:
         raise ValueError("precomputed distances must be a 2D array")
     if square and matrix.shape[0] != matrix.shape[1]:
