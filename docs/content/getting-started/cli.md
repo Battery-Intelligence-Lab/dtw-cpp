@@ -148,8 +148,8 @@ matrix is stored) and the distance matrix:
   written while its slab runs and not again. A new file is not written before
   its fill: its header records the rows written, which a slab advances once the
   slab before it is on the disk. A run without an output directory (even with
-  `--checkpoint`), one that reads `--dist-matrix`, and a binary built without
-  LLFIO hold the matrix in RAM;
+  `--checkpoint`), one that reads `--dist-matrix`, a CUDA run with `--gpu-precision auto`
+  and a binary built without LLFIO hold the matrix in RAM;
 - otherwise FastCLARA streams a Parquet or Arrow IPC file within the data cap on
   every thread, where it can (below);
 - otherwise the series load on the most threads whose working set fits beside
@@ -301,12 +301,13 @@ negative `--skip-rows` or `--skip-cols`.
 
 The checkpoint is one file, `<dir>/<name>.dtwm` ([Checkpointing](checkpointing.md)). Without `--checkpoint-interval` (or with `0`) it is written once, after clustering (a method that computes no distance matrix, `onebatch` and `tadpole` while its matrix is not mapped, writes no checkpoint). With a non-zero interval, `fill_distance_matrix` saves it after every `<rows>` completed matrix rows (rounded up to the lane width, 16 rows of doubles where the lanes are 128 bytes), so an interrupted run resumes from the last save instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. The first save writes the whole matrix, each later one only the rows filled since, in place: a fill writes at most twice the matrix's bytes, and the end-of-run save once more. A checkpoint for other data or settings, or a damaged one, stops the run with exit status 1 before anything is computed; it is never recomputed over.
 
-A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, with a row count other than the number of input series, or with a negative entry, which no `--variant` gives (under `softdtw` the matrix holds the Soft-DTW divergence), unless `--not-computed negative` reads it as a pair to compute) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes before the result files, but a save that fails (a full disk) is reported only once they are written, so the results stay.
+A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, with a row count other than the number of input series, or with a negative entry, which no `--variant` gives (under `softdtw` the matrix holds the Soft-DTW divergence), unless `--not-computed negative` reads it as a pair to compute) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes before the result files, but a save that fails (a full disk) is reported only once they are written, so the results stay. `--dist-matrix` and `--checkpoint` each supply the matrix: given both, `dtwc_cl` exits 1 before any data is read.
 
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
 exact/fallback distance still uses the packed cache. It therefore follows
 `--ram-limit` just like matrix-based methods. OneBatchPAM is the exception:
-its fixed O(Nm) table never allocates the Problem distance matrix. If the
+its fixed O(Nm) table never allocates the Problem distance matrix, so it refuses
+`--dist-matrix` and neither reads nor writes a `--checkpoint`. If the
 series and the matrix do not fit within an explicit `--ram-limit` in a binary
 built without LLFIO, the CLI refuses the run before any distance is computed:
 its message says the build cannot map the matrix (`DTWC_ENABLE_LLFIO=OFF`) and
@@ -397,6 +398,9 @@ The CLI writes the following files to the output directory:
 | `<name>_distance_matrix.csv` | Full pairwise distance matrix (only when materialised) |
 | `<name>_report.txt` | The run report, written last (none with `--no-report`): plain text in eight sections, the run (status, start and end, version and build, the resolved configuration, the command that repeats it, wrapped at 100 columns: join its lines), the machine (host, OS, CPU and cores, SIMD, RAM, a GPU run's GPU), the memory plan (budget, reserve, data cap, route, what the plan holds in RAM, the process's peak resident memory, mapped files included), the input, a table of the stages (`check`, `plan`, `read`, `storage`, `fill`, `cluster`, `write` and the silhouettes within it: wall seconds, share, CPU utilisation, peak memory), the algorithm (iterations, the stopping criterion), the result (cost, mean silhouette, cluster sizes, medoids) and notes. `dtwc_cl` prints its path as `Report:` |
 
+In the labels, medoids and silhouettes files a series name that holds a comma, a
+double quote or a line break is quoted, as RFC 4180 does.
+
 If an output file cannot be written in full (an unwritable directory, a full
 disk, a file-size quota), `dtwc_cl` exits 1 and names the file; a file named in
 that message is incomplete. A silhouette that is undefined (fewer than two clusters
@@ -409,7 +413,7 @@ a failure in `check` (a missing `-k`, a `--checkpoint` that is no directory) wri
 no report. The stage table's times and the machine's facts differ from run to run: the
 report is the run's own account, and no other file holds them. On SLURM,
 `slurm_remote.sh download` brings back the whole `results/` directory, reports
-included; a Python `device="hpc"` job's (`download-cluster`) brings back its labels only.
+included; a Python `device="hpc"` job's (`download-cluster`) brings back its labels, medoids and report.
 
 RAM-limited Parquet or Arrow IPC streaming writes labels and medoids, but deliberately does
 not materialise the dense matrix merely to produce distance or silhouette CSVs.

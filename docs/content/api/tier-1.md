@@ -175,7 +175,7 @@ that a run repeats, and anything else, or a forced value on another device, is
 are `InvalidInput`.
 
 In Python, `device="hpc"` or `"hpc:gpu"` submits the run as one `job.toml` and
-returns a `Result` holding the labels only; `gpu_device` (`"a100"`, `"a6000"`,
+returns a `Result` holding the labels, medoids and run report; `gpu_device` (`"a100"`, `"a6000"`,
 `"l40s"`, `"h100"`) picks the GPU of an `hpc:gpu` run.
 
 ### Every setting in C++: Config
@@ -210,7 +210,7 @@ const dtwc::Result result = dtwc::run(config, dtwc::Data{ std::move(series), std
 | a quality score | `score(name)` | `score(name)` | `score(name)` |
 | the N×N distances | `distance_matrix()`, row-major | `distance_matrix` | `distance_matrix()` |
 | write the result files | `save(dir)` | `save(dir)` | `save(dir)` |
-| the run report | `report()`: the text of `<name>_report.txt` | `report` (`None` for an `hpc` run) | `Report` |
+| the run report | `report()`: the text of `<name>_report.txt` | `report` (`None` for an `hpc` run that wrote none) | `Report` |
 | plot | (plot the files `save` writes) | `plot(png="clusters_2d.png", show=True)` | `plot()` |
 | run details | `method()` (`auto` resolved), `iterations()`, `converged()` | `summary()`, `elapsed_s`, `k`, `n_series`, `name` | |
 
@@ -274,8 +274,8 @@ A `Dataset` is read with the reader options it was made with: `skip_cols`, `skip
 `delimiter`, `dtype` and, in Python and MATLAB, `ndim`. Settings or overrides that give
 one of them a value other than its default and the Dataset's are `InvalidInput` (MATLAB
 `dtwc:invalidArgument`) naming the option and both values: pass it to `load_data`, or leave
-it out. The same settings given to `load_data` and `do_clustering` agree, and C++
-`cdist(X, Y, cfg)` checks each `Dataset` alike. A path or array passed to `do_clustering`
+it out. The same settings given to `load_data` and `do_clustering` agree, and `cdist`
+checks each `Dataset` alike: C++ `cdist(X, Y, cfg)`, and Python's and MATLAB's for `dtype`. A path or array passed to `do_clustering`
 itself (Python, MATLAB) is read with the settings' options. A C++ `Dataset` holds no
 `column`: a path's read takes the Config's, and series in memory refuse one. In Python and
 MATLAB, an `ndim` given for an Arrow IPC file whose metadata gives another `ndim` above 1 is

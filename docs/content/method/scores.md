@@ -80,8 +80,8 @@ to its assigned medoid:
 
 $$\mathrm{Inertia} = \sum_i d(x_i,c_{\ell_i}).$$
 
-The result is nonnegative only when the selected dissimilarity itself is
-nonnegative. Lower values mean a smaller total medoid-assignment cost for the
+Every stored dissimilarity is nonnegative (Soft-DTW's is its divergence), so
+the result is too. Lower values mean a smaller total medoid-assignment cost for the
 same dissimilarity contract.
 
 ### Calinski-Harabasz

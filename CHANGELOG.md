@@ -31,7 +31,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - `dtwc_cl` writes `<name>_labels.csv` and `<name>_medoids.csv`, and `<name>_distance_matrix.csv` and
   `<name>_silhouettes.csv` when its method filled the matrix; v1.0.0 wrote `<name>_Nc_<k>.csv` and per-repetition files.
 - `set_n_clusters` (v1.0.0's `set_numberOfClusters`) below 1 is `InvalidInput`, and so is a band below -1, set or
-  written to `band` (v1.0.0 ran full DTW). A ±inf in a series is refused, a NaN unless a missing-data strategy applies.
+  written to `band` (v1.0.0 ran full DTW), and a `set_clusters` medoid outside [0, N), which v1.0.0 took. A ±inf in a
+  series is refused, a NaN unless a missing-data strategy applies.
 - A series with no values is `InvalidInput`, and a blank line in a file of one series per row is no longer an empty
   series. Every `Problem` fill and `dtw_function()` refuses one, for a series emptied through `Data::p_vec` after
   `set_data` too.
@@ -40,8 +41,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - `read_distance_matrix` (`--dist-matrix`) refuses a matrix of another size, one not square and symmetric, and ±inf.
 - A negative distance-matrix entry (v1.0.0's `-1`, a pair it never computed) is read as not computed only with
   `--not-computed negative` (C++ `NotComputed::Negative`, Python `not_computed="negative"`, MATLAB
-  `'NotComputed','negative'`), and refused otherwise under every variant but Soft-DTW; v1.0.0 read every negative entry
-  as not computed. 2.0 reads and writes an uncomputed pair as an empty field.
+  `'NotComputed','negative'`), and refused otherwise under every variant; v1.0.0 read every negative entry as not
+  computed. 2.0 reads and writes an uncomputed pair as an empty field.
 
 ## Added
 
@@ -81,7 +82,8 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   report); a GPU request the device cannot compute is refused before a text or Arrow IPC file is read; an Arrow IPC
   file's series keep its `ndim` (multivariate), where the MEX's read gave every series one feature; and the
   `dtwc.Result` carries the run report, `Report` (`'NoReport', true` makes none), which `save` writes last.
-- DTW variants DDTW, WDTW, ADTW, Soft-DTW, MSM and TWE (`--variant`; Soft-DTW, MSM and TWE ignore the band), a squared
+- DTW variants DDTW, WDTW, ADTW, Soft-DTW, MSM and TWE (`--variant`; Soft-DTW, MSM and TWE ignore the band, and
+  Soft-DTW clusters on its divergence, never negative, while the distance functions give its raw value), a squared
   Euclidean local cost for Standard DTW and DDTW (`--metric`), and `dtwc::distance::dtw` for one pair.
 - Missing values as NaN (`--missing-strategy zero_cost`, `arow` or `interpolate`) and multivariate series (`ndim` values
   per step, `--mv-mode dependent` or `independent`).
@@ -224,7 +226,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - WebAssembly (`Emscripten` `wasm-simd128`) and MinGW toolchain support (`dtwc_core`, aligned allocations, and portable
   SIMD lane configuration).
 - Extended SLURM `.env` integration (`SLURM_ACCOUNT`, `SLURM_QOS`, `SLURM_MODULES`), `upload_input=True` for staging
-  local datasets to remote scratch, and automatic hydration of `medoids`, `cost` and `report` alongside `labels` for
+  local datasets to remote scratch, and automatic hydration of `medoids` and `report` alongside `labels` for
   `device="hpc"` and `device="hpc:gpu"` runs.
 - The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
   each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
@@ -241,7 +243,9 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
 - `init::random(prob)` and `init::Kmeanspp(prob)` take one draw of `randGenerator` as the seed of a sampler that picks
   the same medoids on every platform, never one twice: they pick other medoids than v1.0.0 did.
 - The MIP starts from FastPAM's clustering, both solvers stop at a relative gap of 1e-5, and Gurobi runs NumericFocus 1
-  and MIPFocus 2 (v1.0.0: a cold start, HiGHS's own gap, NumericFocus 3); `mip_settings` sets each.
+  and MIPFocus 2 (v1.0.0: a cold start, HiGHS's own gap, NumericFocus 3); `mip_settings` sets each. Its costs are
+  scaled so that the largest is 2 at any distance scale (v1.0.0 left them unscaled where the largest distance was
+  below 2).
 - v1.0.0's flag spellings (`--Nc`, `--skipRows`, `--bandwidth`, ...) still work, hidden from `--help`, each printing a
   warning that names its 2.0 flag (`--n-clusters`, `--skip-rows`, `--band`, ...).
 - `dtwc_cl -o` defaults to `./results` and `--name` to the input's file or folder name (v1.0.0: `.` and `dtwc`); a run

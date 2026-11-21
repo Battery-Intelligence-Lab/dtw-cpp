@@ -140,6 +140,10 @@ By default, FastPAM is run first and its solution is fed to the MIP solver as a 
 
 The MIP is the compact $$N^2$$-variable model on the selected solver at every $$N$$. For large $$N$$ use [LR-core](#lr-core) (`--method lrcore`), which is exact without forming that model. A Problem with no data, or with $$k$$ outside $$[1, N]$$, raises `InvalidInput`.
 
+### Distance scale
+
+FastPAM, the MIP and LR-core measure their gains and gaps relative to the costs, so a clustering does not depend on the distances' units: distances scaled by a power of two give the same one. The MIP scales its costs so that the largest is 2 and then rests on its solver's tolerances, so where the distances that decide the clustering lie many orders of magnitude below the largest entry, as WDTW's can for series of very different lengths ([DTW variants](../dtw-variants/)), its optimum is not reliable (WDTW on `data/dummy`, k = 3: with `--no-warm-start` HiGHS returned 5.7e33 times the optimum as optimal); LR-core is exact there.
+
 ### MIP Solver Settings
 
 | Parameter | CLI Flag | Default | Description |
@@ -169,9 +173,10 @@ kelley` selects a cutting-plane root, which needs HiGHS (`highspy` in Python).
 
 TADPole implements density-peaks clustering with lower/upper-bound pruning.
 For finite, nonempty, equal-length Standard-L1 pairs whose series length is
-representable by the integer band API (and float64, univariate, with no missing-data
-strategy: `--dtype float32` series take the exact route), TADPole can classify some cutoff
-comparisons without an exact DTW. In its density stage, `LB >= dc` proves that
+representable by the integer band API (and float64 series and matrix, univariate, with no
+missing-data strategy: `--dtype float32` series and `--matrix-dtype float32` take the exact route,
+and a complete matrix, from `--dist-matrix` or a checkpoint, is read instead), TADPole can classify
+some cutoff comparisons without an exact DTW. In its density stage, `LB >= dc` proves that
 a pair is not a neighbour, while `UB < dc` proves that it is; a bound interval
 that straddles `dc` triggers exact DTW. In its separation stage, `LB >= best`
 proves that a candidate cannot improve the current nearest-higher-density

@@ -82,9 +82,10 @@ clustering job through the same wrapper, which ships inside the `dtwcpp` package
 installed wheel needs no source checkout. Put `.env` in the directory you run Python from,
 or set `DTWC_REPO_ROOT` to the directory that holds it; the labels, medoids, and
 `<name>_report.txt` are downloaded to `results/slurm/cluster_<job id>/` there and
-hydrated onto the returned `Result`. Pass `upload_input=True` (in `dtwcpp.cluster` or
-`dtwcpp.settings`) when passing a local file path that should be staged to the cluster job
-directory automatically rather than read from a pre-existing cluster path. `DTWC_REPO_ROOT` steers only this Python route:
+hydrated onto the returned `Result`. Pass `upload_input=True` (in `dtwcpp.settings`, or to
+`do_clustering`) when passing a local file path that should be staged to the cluster job
+directory automatically rather than read from a pre-existing cluster path; a path that does not
+exist locally is then a `FileNotFoundError`. `DTWC_REPO_ROOT` steers only this Python route:
 `bash scripts/slurm/slurm_remote.sh` always reads the `.env` of, and uploads, its own
 checkout.
 

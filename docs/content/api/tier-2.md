@@ -136,8 +136,8 @@ loop can call it: fill the matrix first, as every method that reads it does.
 Python and MATLAB check the indices, and their `distance_matrix()` fills the
 matrix first and returns a copy at the matrix's value type (`matrix_dtype`, below);
 `set_distance_matrix` takes either type and stores it at that one. A matrix that is read or set must be the
-`Problem`'s size and finite, and not negative under any variant but Soft-DTW;
-NaN marks a pair still to compute. v1.0.0 wrote `-1` for such a pair: read its
+`Problem`'s size, finite and not negative, under every variant (Soft-DTW's holds its
+[divergence](../../method/dtw-variants/#soft-dtw)); NaN marks a pair still to compute. v1.0.0 wrote `-1` for such a pair: read its
 files with `not_computed` set to `negative` (C++ `core::NotComputed::Negative`),
 which reads every value below 0 as a pair to compute; the default, `nan`, reads
 only an empty field or NaN so.

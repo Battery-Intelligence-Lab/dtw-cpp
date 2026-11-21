@@ -122,7 +122,8 @@ moment: a process that dies keeps the rows the file records as written (every
 slab but the last one or two, which a resume computes again), and reopening the
 file with the same data and settings resumes. A `Problem` mapped to
 `<directory>/<name>.dtwm` saves by flushing the mapping in place, so
-`CheckpointOptions` with that directory flushes the rows of every save. A mapped
+`CheckpointOptions` with that directory flushes the rows of every save; with another
+directory, `fill_distance_matrix()` raises `InvalidInput` before any distance is computed. A mapped
 matrix is filled in slabs of an eighth of what the series leave of the
 `Problem`'s `ram_limit` (0, the default: the memory available), at most 1 GiB:
 the next slab is read ahead while one fills, and a finished one is written back.
@@ -178,7 +179,8 @@ With `--checkpoint <dir>` the CLI
 
 1. creates the directory before any data is read, and stops with exit status 1
    if the path is not a directory;
-2. loads `<dir>/<name>.dtwm` if it exists (`--name`, default the input's file or folder name); a file for
+2. loads `<dir>/<name>.dtwm` (`--name`, default the input's file or folder name) if it exists, unless the
+   method holds no distance matrix (`onebatch`); a file for
    other data or settings, or a damaged one, stops the run with exit status 1 and
    the reason, before anything is computed;
 3. saves the matrix there once the method has finished, before the result files

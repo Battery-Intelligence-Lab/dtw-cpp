@@ -226,11 +226,13 @@ validation closes the beta.
 
 `dtwc.cluster(data, k, device="hpc", **keys)` checks the keys and their values as a
 local run does, writes the run as one `job.toml`, which the cluster's
-`dtwc_cl --config` reads, and returns the labels. `device="hpc:gpu"` runs it on a
+`dtwc_cl --config` reads, and returns a `Result` of the labels, medoids and run report. `device="hpc:gpu"` runs it on a
 GPU of compute capability 8.0 or newer; `gpu_device="a100"` (or `"a6000"`,
 `"l40s"`, `"h100"`) names one ([SLURM](../../getting-started/slurm/)). A request
 that cannot be honoured fails before anything is sent: a value outside its domain
-is an `InvalidInput`, as on the CPU; no `.env` is a `DeviceError`
+is an `InvalidInput`, as on the CPU, and so are series of `ndim` above 1, which `job.toml`
+cannot carry (an Arrow IPC file's own `ndim` travels in the file), and `do_clustering`'s
+`checkpoint` or `checkpoint_interval`, which the cluster's run would ignore; no `.env` is a `DeviceError`
 naming the directory searched, no `bash` a `DeviceError` too, a GPU type below compute
 capability 8.0 a `DeviceError` naming it, and `gpu_device` with a device other than
 `"hpc:gpu"` an `InvalidInput`. A key missing from `.env`, or a value unsafe to pass to `ssh`,
