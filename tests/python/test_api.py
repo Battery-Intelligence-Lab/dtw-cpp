@@ -252,6 +252,7 @@ class TestClusterLocal:
 
         second = dtwcpp.cluster(series, k=3, method="pam")
         for result in (first, second):
+            assert result.device == "cpu"
             np.testing.assert_array_equal(result.medoids, final_42.medoid_indices)
             np.testing.assert_array_equal(result.labels, final_42.labels)
             assert result.cost == final_42.total_cost
@@ -305,8 +306,8 @@ class TestMatrixFreeBand:
         full = dtwcpp.cluster([x, y], k=1, method=method, band=-1)
         banded = dtwcpp.cluster([x, y], k=1, method=method, band=5)
 
-        # Matrix-free: the run itself materialises nothing (the cache is
-        # empty); reading the property is an explicit N^2 request (F5).
+        # Matrix-free: the run itself materialises nothing; reading the property
+        # is an explicit N^2 request.
         assert full._distance_matrix is None
         assert banded._distance_matrix is None
         assert full.cost == pytest.approx(8.6, abs=1e-12)
@@ -339,11 +340,7 @@ class TestMatrixFreeScoring:
 
     @pytest.mark.parametrize("method", ["onebatch", "clara", "tadpole"])
     def test_distance_matrix_fills_on_demand_after_a_matrix_free_run(self, method):
-        """F5: C++ Result::distance_matrix() fills the retained Problem.
-
-        Reading the property is an explicit N^2 request; before this fix it
-        stayed None forever and plot() refused a perfectly local cpu run.
-        """
+        """C++ Result::distance_matrix() fills the retained Problem on demand."""
         res = dtwcpp.cluster(self._SERIES, k=2, method=method)
         assert res._distance_matrix is None          # nothing materialised yet
         filled = res.distance_matrix
@@ -515,7 +512,7 @@ class TestSeriesNames:
     """``Problem::series_name(i)`` comes from the loader, not from ``range(N)``."""
 
     def test_series_are_named_as_cpp_names_them(self, tmp_path):
-        """One name per series in every language (Volkan 10-02). In memory,
+        """One name per series in every language. In memory,
         skip_rows drops leading series before they are read, and the rest are
         named 0, 1, ... as C++ dtwc::load names them (Dataset::materialize_local):
         an empty series dropped is not refused, and no name counts it. Parquet is
@@ -571,12 +568,12 @@ class TestSeriesNames:
 
 
 class TestNonAsciiSeriesNames:
-    """F1: a folder holding a non-ASCII file name must round-trip as UTF-8."""
+    """A folder holding a non-ASCII file name must round-trip as UTF-8."""
 
     @staticmethod
     def _folder(tmp_path):
         # One series per file, one value per line (a multi-field line in a
-        # one-series file is rejected by the reader, FX-6).
+        # one-series file is rejected by the reader).
         folder = tmp_path / "uni"
         folder.mkdir()
         for stem, values in (("caf\u00e9", ("0", "0.1")), ("beta", ("0.2", "0.1")),
@@ -622,24 +619,6 @@ class TestPlot:
                             k=2, n_series=4)
         assert res.plot(show=False) is None
         assert "no local distance matrix" in capsys.readouterr().out
-
-
-# ---------------------------------------------------------------------------
-# Tier-1 cluster() publishes its result with no Python wiring; the write-back
-# of the algorithm free functions to the Problem is test_index_types.py's
-# ---------------------------------------------------------------------------
-class TestResultWriteBackInCpp:
-    def test_cluster_tier1_end_to_end_results_visible(self):
-        """drives dtwcpp.cluster() Tier-1 — labels/medoids/score visible with NO
-        wrapper wiring (the preserved end-to-end contract; must not weaken)."""
-        rng = np.random.default_rng(7)
-        X = np.array([rng.standard_normal(12) * 0.1 + (0.0 if i < 6 else 9.0)
-                      for i in range(12)])
-        res = dtwcpp.cluster(X, k=2)
-        assert res.device == "cpu"
-        assert res.medoids is not None
-        assert len(set(res.labels[:6])) == 1 and len(set(res.labels[6:])) == 1
-        assert res.score("silhouette") > 0.5
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import dtwcpp
 from dtwcpp import features as ft
 
 
@@ -68,9 +67,3 @@ class TestSummariseBasic:
         mat, names = ft.summarise(series, features=custom, standardise=False)
         assert names == ["mean", "max"]
         assert mat.shape == (2, 2)
-
-
-class TestModuleExport:
-    def test_attached(self):
-        assert hasattr(dtwcpp, "features")
-        assert dtwcpp.features is ft

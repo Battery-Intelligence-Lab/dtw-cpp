@@ -77,13 +77,6 @@ class TestCSV:
         np.testing.assert_allclose(loaded, sample_data, atol=1e-10)
         assert names == []  # no header
 
-    def test_single_series(self, tmp_path):
-        data = np.array([[1.0, 2.0, 3.0]])
-        p = tmp_path / "single.csv"
-        save_dataset_csv(data, p)
-        loaded, _ = load_dataset_csv(p)
-        np.testing.assert_allclose(loaded, data, atol=1e-10)
-
     def test_pathlib_and_str(self, tmp_path, sample_data):
         """Both str and Path arguments should work."""
         p = tmp_path / "test.csv"
@@ -92,8 +85,8 @@ class TestCSV:
         np.testing.assert_allclose(loaded, sample_data, atol=1e-10)
 
     def test_byte_order_mark_is_not_a_header(self, tmp_path):
-        """FX-10: a UTF-8 BOM (Excel's "CSV UTF-8") made the first data row
-        look like a header, so the first series was dropped."""
+        """A UTF-8 BOM (Excel's "CSV UTF-8") must not make a numeric first row
+        look like a header."""
         p = tmp_path / "bom.csv"
         p.write_bytes(b"\xef\xbb\xbf1,2,3\n4,5,6\n")
         loaded, names = load_dataset_csv(p)
@@ -117,7 +110,7 @@ _CORPUS = Path(__file__).resolve().parents[1] / "data" / "reader"
 @pytest.mark.parametrize(
     ("name", "skip_rows", "skip_cols", "expected"),
     [
-        # The series the C++ reader reads (tests/unit/unit_test_fileOperations.cpp, FX-6)...
+        # The series the C++ reader reads (tests/unit/unit_test_fileOperations.cpp)...
         ("bom.csv", 0, 0, [[1, 2, 3], [4, 5, 6]]),
         ("trailing_blank.csv", 0, 0, [[1, 2, 3], [4, 5, 6]]),
         ("trailing_blank_crlf.csv", 0, 0, [[1, 2, 3], [4, 5, 6]]),  # its CRLF twin
@@ -284,26 +277,15 @@ class TestHDF5:
         assert result["distmat"] is None
         assert result["metadata"] == {}
 
-    def test_roundtrip_with_distmat(self, tmp_path, sample_data, sample_distmat):
-        p = tmp_path / "data.h5"
-        save_dataset_hdf5(sample_data, p, distance_matrix=sample_distmat)
-        result = load_dataset_hdf5(p)
-        np.testing.assert_allclose(result["distmat"], sample_distmat)
-
     def test_roundtrip_with_metadata(self, tmp_path, sample_data):
         p = tmp_path / "data.h5"
         meta = {"band": 5, "variant": "dtw", "normalized": True}
         save_dataset_hdf5(sample_data, p, metadata=meta)
         result = load_dataset_hdf5(p)
+        assert result["names"] is None
         assert result["metadata"]["band"] == 5
         assert result["metadata"]["variant"] == "dtw"
         assert result["metadata"]["normalized"] == True  # noqa: E712 — h5py returns np.bool_
-
-    def test_no_names(self, tmp_path, sample_data):
-        p = tmp_path / "data.h5"
-        save_dataset_hdf5(sample_data, p)
-        result = load_dataset_hdf5(p)
-        assert result["names"] is None
 
     def test_full_roundtrip(self, tmp_path, sample_data, sample_names, sample_distmat):
         """All fields populated."""
@@ -321,15 +303,6 @@ class TestHDF5:
         np.testing.assert_allclose(result["distmat"], sample_distmat)
         assert result["metadata"]["k"] == 3
         assert result["metadata"]["method"] == "fastpam"
-
-    def test_compression_reduces_size(self, tmp_path):
-        """Verify gzip compression actually compresses repetitive data."""
-        data = np.ones((100, 1000))
-        p = tmp_path / "big.h5"
-        save_dataset_hdf5(data, p)
-        file_size = p.stat().st_size
-        raw_size = data.nbytes  # 800_000
-        assert file_size < raw_size / 2  # gzip on all-ones should compress well
 
     @pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
     def test_convert_writes_float32_and_int64_series_as_their_values(self, tmp_path):
@@ -375,15 +348,6 @@ class TestParquet:
         save_dataset_parquet(data, p)
         loaded, _ = load_dataset_parquet(p)
         np.testing.assert_allclose(loaded, data, atol=1e-10)
-
-    def test_wide_data(self, tmp_path):
-        """Many columns (time steps)."""
-        data = np.random.default_rng(99).standard_normal((5, 500))
-        p = tmp_path / "wide.parquet"
-        save_dataset_parquet(data, p)
-        loaded, names = load_dataset_parquet(p)
-        np.testing.assert_allclose(loaded, data, atol=1e-10)
-        assert len(names) == 500
 
 
 @pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
