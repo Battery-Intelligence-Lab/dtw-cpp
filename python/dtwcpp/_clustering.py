@@ -70,6 +70,14 @@ def _precomputed_matrix(X, *, square=False, n_train=None):
     return np.ascontiguousarray(matrix)
 
 
+def _is_soft_dtw(variant):
+    """Whether ``variant`` names Soft-DTW, as C++ reads the name (either spelling, any case)."""
+    from dtwcpp import _dtwcpp_core
+    config = _dtwcpp_core.Config()
+    config.variant = variant
+    return config.variant == "softdtw"
+
+
 class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
     """K-medoids clustering with DTW distance, sklearn-compatible.
 
@@ -244,7 +252,8 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
         return self
 
     def transform(self, X):
-        """Distances from each sample of X to each medoid (M x k)."""
+        """Distances from each sample of X to each medoid (M x k): under Soft-DTW
+        the divergence the fit clustered on, not cdist's raw value."""
         fitted = "medoid_indices_" if self._precomputed() else "cluster_centers_"
         if getattr(self, fitted, None) is None:
             raise NotFittedError(
@@ -262,7 +271,16 @@ class DTWClustering(ClusterMixin, TransformerMixin, BaseEstimator):
             raise ValueError(
                 f"X has {queries[0].size} features, but DTWClustering is expecting "
                 f"{n_features} features as input.")
-        return distance.cdist(queries, self.cluster_centers_, device="cpu", **settings)
+        D = distance.cdist(queries, self.cluster_centers_, device="cpu", **settings)
+        if _is_soft_dtw(settings["variant"]):
+            # A Problem clusters Soft-DTW's divergence, sdtw(x, m) - (sdtw(x, x) + sdtw(m, m)) / 2,
+            # never negative; cdist returns sdtw(x, m).
+            def self_term(s):
+                return distance.dtw(s, s, **settings)
+            D -= (np.array([self_term(q) for q in queries])[:, None]
+                  + np.array([self_term(m) for m in self.cluster_centers_])[None, :]) / 2
+            D[D < 0] = 0.0  # rounding; a NaN stays NaN
+        return D
 
     def predict(self, X):
         """The nearest medoid of each sample of X."""
