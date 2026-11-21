@@ -213,8 +213,8 @@ void bind(CLI::App &app, Config &config)
       "Hierarchical linkage: single, complete, average");
 
   // CSV parsing
-  key(app, "--skip-rows", config.skip_rows, "Number of header rows to skip");
-  key(app, "--skip-cols", config.skip_cols, "Number of leading columns to skip");
+  key(app, "--skip-rows", config.skip_rows, "Number of header rows to skip")->check(CLI::NonNegativeNumber);
+  key(app, "--skip-cols", config.skip_cols, "Number of leading columns to skip")->check(CLI::NonNegativeNumber);
   app.add_option_function<std::string>(
        "--delimiter",
        [&config](const std::string &text) {
