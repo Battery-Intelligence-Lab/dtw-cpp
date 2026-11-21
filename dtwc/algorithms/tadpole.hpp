@@ -86,7 +86,8 @@ struct TADPoleStats {
  *                    false → compute every DTW (independent brute-force oracle).
  *                    The predicate rejects anything but Standard, univariate,
  *                    float64, MissingStrategy::Error with Problem::metric() L1
- *                    (the bounds are L1) — in particular there is NO
+ *                    (the bounds are L1), on a float64 matrix not yet filled (a
+ *                    filled one is read, not bounded) — in particular there is NO
  *                    PRUNING ON FLOAT32 DATA (bounds from float64 storage against
  *                    an exact side that branches on is_f32() are inadmissible),
  *                    where prune=true costs the same as prune=false and
