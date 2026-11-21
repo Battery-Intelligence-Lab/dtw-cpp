@@ -56,12 +56,10 @@ FastCLARA's assignment runs on the GPU with CUDA: `compute_medoid_distances_cuda
 computes every series against the k medoids on the fill's kernels and route
 rule, one launch per block of series (a block holds at most 2^27 samples and as
 many distances), and the host keeps each series' nearest medoid as the CPU does,
-in point order. The blocks go through a pipeline of two streams: two host and two
-device slots of series padded to the longest (the caller's threads pad a block into
-host memory pinned where the runtime grants it) so that a block is padded and uploaded on a copy stream while
-the block before it computes on the compute stream, and three host slots (pinned likewise) for
-the blocks' distances, so that the host assigns a block while the next compute. The
-kernels are the fill's; the pipeline reads each series where it lies. The fill reads
+in point order. The blocks go through the two-stream pipeline the
+[Devices](../../guides/devices/) page describes, so that a block is padded and uploaded
+while the block before it computes and the host assigns a block while the next
+compute. The kernels are the fill's; the pipeline reads each series where it lies. The fill reads
 them the same way: the caller's threads pad every series into staging (pinned for
 256 KiB or more, where granted), one upload, then the launches. A failed CUDA call raises `DeviceError` whose text names
 its file, line and call (`CUDA error at <file>:<line> (<call>): <CUDA's message>`);
@@ -141,7 +139,7 @@ Both option structs inherit `band`, `use_squared_l2` and `verbose`, and take a
 
 ## Historical measurements (Apple M2 Max, 38-core GPU)
 
-These 2026-04-12 results are historical, advisory measurements from a different
+These results are historical, advisory measurements from a different
 machine; they are not a current release gate. The originating record is
 `benchmarks/mac_metal_benchmarks.md`, with raw Google Benchmark output in
 `benchmarks/results/mac_m2max/metal_vs_cpu.json`. The CPU baseline used 12

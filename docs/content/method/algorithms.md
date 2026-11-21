@@ -194,11 +194,6 @@ not establish bit-level identity when floating reductions straddle `dc` or
 are in the
 [D2 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/02-envelopes-lb-keogh.md).
 
-Empty series are a known exception: exact DTW returns the no-path
-sentinel, while the current empty envelope and diagonal upper bound both
-return zero. Do not rely on pruned/brute TADPole identity for data containing
-empty series.
-
 **CLI:** `dtwc_cl -i data.csv -k 5 --method tadpole --dc 2.0`
 
 ## Algorithm Comparison
@@ -212,4 +207,4 @@ empty series.
 | Lloyd's (`kmedoids`) | Local optimum | Uses configured distance storage | Dense | Simple assignment/update |
 | MIP | Certified when solved to optimality | $$O(N^2)$$ distance storage plus solver model | Dense | Solver-backed exact result |
 | LR-core | Certified or loud failure | $$O(N^2)$$ distance storage | Dense | In-tree exact result |
-| TADPole | Exact-arithmetic identity for finite, nonempty supported inputs with integer-representable lengths; exactly representable regression confirmed; floating thresholds and empty series not covered (above) | $$O(N^2)$$ pair flags and pair cache, held in RAM; pruning saves DTW calls, not memory | Density/cutoff search | Admissible pair pruning |
+| TADPole | Exact-arithmetic identity for finite, nonempty supported inputs with integer-representable lengths; exactly representable regression confirmed; floating thresholds not covered (above) | $$O(N^2)$$ pair flags and pair cache, held in RAM; pruning saves DTW calls, not memory | Density/cutoff search | Admissible pair pruning |
