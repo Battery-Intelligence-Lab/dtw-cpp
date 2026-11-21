@@ -81,12 +81,15 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
     fail("data_from_arrow: list elements must be float32 or float64.");
 
   const ArrowArrayView *values = list_view->children[0];
-  const int64_t n = list_view->length;
-  if (name_view != nullptr && name_view->length != n) name_view = nullptr;
+  // A struct's row i is row offset + i of its children, which a slice keeps whole: its own offset and length say
+  // which rows it holds (SetArray's validation holds every child to offset + length rows), and its validity which
+  // are null. A bare list is the view itself, whose accessors add its offset.
+  const int64_t base = list_view == &view ? 0 : view.offset;
+  const int64_t n = view.length;
   const int64_t first = static_cast<int64_t>(series.size());
 
   for (int64_t i = 0; i < n; ++i) {
-    if (ArrowArrayViewIsNull(list_view, i))
+    if (ArrowArrayViewIsNull(&view, i) || ArrowArrayViewIsNull(list_view, base + i)) // a null struct row or list
       fail("data_from_arrow: null series at row " + std::to_string(first + i) +
            " (drop or fill nulls before clustering).");
 
@@ -95,8 +98,8 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
     // offsets are IOError, as a Parquet file's are. A slice's offsets start at its
     // offset, which ArrowArrayViewListChildOffset, unlike the other accessors, does
     // not add.
-    const int64_t start = ArrowArrayViewListChildOffset(list_view, list_view->offset + i);
-    const int64_t end = ArrowArrayViewListChildOffset(list_view, list_view->offset + i + 1);
+    const int64_t start = ArrowArrayViewListChildOffset(list_view, list_view->offset + base + i);
+    const int64_t end = ArrowArrayViewListChildOffset(list_view, list_view->offset + base + i + 1);
     if (start < 0 || end < start || end > values->length)
       throw dtwc::IOError("data_from_arrow: list offset [" + std::to_string(start) + ", " + std::to_string(end) +
                           ") of the series at row " + std::to_string(first + i) + " is outside the values [0, " +
@@ -112,8 +115,8 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
     }
     series.push_back(std::move(s));
 
-    if (name_view != nullptr && !ArrowArrayViewIsNull(name_view, i)) {
-      const ArrowStringView sv = ArrowArrayViewGetStringUnsafe(name_view, i);
+    if (name_view != nullptr && !ArrowArrayViewIsNull(name_view, base + i)) {
+      const ArrowStringView sv = ArrowArrayViewGetStringUnsafe(name_view, base + i);
       names.emplace_back(sv.data, static_cast<size_t>(sv.size_bytes));
     } else {
       names.emplace_back(made_name(first + i));
