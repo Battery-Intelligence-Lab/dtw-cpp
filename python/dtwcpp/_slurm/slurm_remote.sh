@@ -293,7 +293,7 @@ cmd_upload() {
     echo "[2/5] Uploading cmake/ + build files..."
     _upload_dir "${SOURCE_ROOT}/cmake" "${REMOTE}/src/cmake"
     _upload_dir "${SOURCE_ROOT}/scripts/slurm" "${REMOTE}/src/scripts/slurm"
-    for f in CMakeLists.txt CMakePresets.json VERSION; do
+    for f in CMakeLists.txt CMakePresets.json VERSION LICENSE README.md THIRD_PARTY_LICENSES.md; do
         [[ -f "${SOURCE_ROOT}/${f}" ]] && _upload_file "${SOURCE_ROOT}/${f}" "${REMOTE}/src/${f}"
     done
 
