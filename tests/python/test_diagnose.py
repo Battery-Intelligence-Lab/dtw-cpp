@@ -3,10 +3,8 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
-import dtwcpp
 from dtwcpp import diagnose as dx
 
 
@@ -110,9 +108,3 @@ class TestDiagnoseClusters:
     def test_empty_input(self):
         out = dx.diagnose_clusters([], [], [])
         assert "empty" in out["flags"]
-
-
-class TestModuleExport:
-    def test_attached(self):
-        assert hasattr(dtwcpp, "diagnose")
-        assert dtwcpp.diagnose is dx

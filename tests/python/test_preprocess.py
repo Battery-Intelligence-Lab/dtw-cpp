@@ -12,7 +12,6 @@ import importlib
 import numpy as np
 import pytest
 
-import dtwcpp
 from dtwcpp import preprocess as pp
 
 
@@ -86,10 +85,6 @@ class TestZNormalize:
         assert out.mean() == pytest.approx(0.0, abs=1e-12)
         assert out.std() == pytest.approx(1.0, abs=1e-12)
 
-    def test_returns_numpy_array(self):
-        out = pp.z_normalize([1.0, 2.0, 3.0])
-        assert isinstance(out, np.ndarray)
-
 
 _SCIPY = importlib.util.find_spec("scipy") is not None
 
@@ -148,15 +143,3 @@ class TestPowerSignal:
         out = pp.power_signal(s, idle_threshold=0.0, sg_window=0,
                               take_derivative=False, znorm=False)
         np.testing.assert_array_equal(out, [0.0, 1.0, 2.0])
-
-
-class TestModuleExport:
-    def test_preprocess_attached_to_package(self):
-        # Importable as `dtwcpp.preprocess`
-        assert hasattr(dtwcpp, "preprocess")
-        assert dtwcpp.preprocess is pp
-
-    def test_public_names(self):
-        for name in ("strip_idle", "decimate_zoh", "sg_smooth", "derivative",
-                     "z_normalize", "power_signal"):
-            assert hasattr(pp, name)

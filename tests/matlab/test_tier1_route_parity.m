@@ -1,13 +1,10 @@
 function tests = test_tier1_route_parity
-%TEST_TIER1_ROUTE_PARITY MATLAB Tier-1 must delegate every decision to C++.
+%TEST_TIER1_ROUTE_PARITY MATLAB Tier-1 delegates routing and I/O semantics to C++.
 %
-%   The MATLAB Tier-1 layer used to re-implement dtwc::cluster()'s routing in
-%   .m and drifted from it. These tests pin the CasADi rule: the same names, signatures
-%   AND behaviour in C++, Python and MATLAB, with C++ as the reference.
-%
-%   Each test names the drift item it closes. Oracles are the Tier-2 entry
-%   points Problem::cluster() itself calls, so a MATLAB-side re-implementation
-%   cannot satisfy them by accident.
+%   Verifies that MATLAB Tier-1 matches C++ and Python names, signatures, and
+%   behaviour against Tier-2 and cross-language fixture oracles. The Tier-2
+%   oracles are the entry points Problem::cluster() itself calls, so a
+%   MATLAB-side re-implementation cannot satisfy them by accident.
 %
 %   Run with: results = runtests('test_tier1_route_parity');
 
@@ -50,20 +47,15 @@ function prob = problem_with(X, name)
 end
 
 % =========================================================================
-%  Drift 1/2/7: method routing lives in C++, and every C++ name is reachable
+%  Method routing lives in C++, and every C++ name is reachable
 % =========================================================================
 
 function test_every_cpp_method_name_is_reachable(testCase)
-%   Drift 2: 'onebatch', 'lrcore' and 'tadpole' are valid in C++/Python but
-%   raised dtwc:invalidArgument in MATLAB.
     X = testCase.TestData.X;
     k = testCase.TestData.k;
     cwdCleanup = scratch_working_directory(); %#ok<NASGU>
     names = {'pam', 'kmedoids', 'clara', 'onebatch', 'lrcore', 'tadpole', ...
              'hierarchical', 'hclust', 'auto'};
-    % 'mip' is the tenth C++ name; it needs an exact MIP backend compiled in,
-    % so it is capability-gated -- but this build has HiGHS ON, so the
-    % assumption below must HOLD and the printed count must read 10/10.
     skipped = 0;
     if mip_backend_available()
         names{end + 1} = 'mip';
@@ -76,14 +68,12 @@ function test_every_cpp_method_name_is_reachable(testCase)
         verifyNumElements(testCase, res.medoids, k, names{i});
         verifyNumElements(testCase, res.labels, size(X, 1), names{i});
     end
-    fprintf('TIER1_METHODS routed=%d/%d skips=%d\n', ...
-            numel(names), numel(names) + skipped, skipped);
     assumeTrue(testCase, skipped == 0, ...
         'no exact MIP backend in this MEX - ''mip'' was not routed');
 end
 
 % =========================================================================
-%  S4: ragged in-memory sources (cell of series), as C++ and Python accept
+%  Ragged in-memory sources (cell of series), as C++ and Python accept
 % =========================================================================
 
 function test_ragged_cell_source_matches_the_tier2_route(testCase)
@@ -731,9 +721,9 @@ end
 
 function cleaner = scratch_working_directory()
 %SCRATCH_WORKING_DIRECTORY cd into a fresh temp directory for the caller's life.
-%   The Kmedoids route persists Lloyd artifacts under './results', a path
-%   relative to the process working directory; concurrent gate runs collide
-%   there (LESSONS F45). Restored, and removed, by the returned onCleanup.
+%   The Kmedoids route persists Lloyd artifacts under './results', relative to
+%   the process working directory, where concurrent runs would collide.
+%   Restored and removed by the returned onCleanup.
     previous = pwd;
     scratch = [tempname '_dtwc_cwd'];
     mkdir(scratch);

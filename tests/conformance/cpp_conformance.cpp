@@ -2,28 +2,11 @@
  * @file cpp_conformance.cpp
  * @brief C++ route of the cross-language conformance fixture.
  *
- * This is the PERMANENT cross-language parity gate. It drives
- * the LIVE Tier-2 public pipeline in-process:
- *
- *     DataLoader::load()            (load the recorded CSV, the exact CLI path)
- *   -> Problem::set_band(3)         (fixed Sakoe-Chiba band -> banded DTW kernel)
- *   -> Problem::fill_distance_matrix()
- *   -> dtwc::fast_pam(prob, 3, 100) (FastPAM k=3, writes labels/medoids back)
- *   -> scores::silhouette / davies_bouldin / dunn
- *
- * The C++ route is the REFERENCE producer: on first run (or with
- * DTWC_CONFORMANCE_REGEN=1) it records its canonical output into
- * tests/conformance/conformance_reference.txt; on every run it recomputes and
- * asserts digit-identical labels/medoids and scores within 1e-12 relative. The
- * Python, MATLAB and CLI routes assert against the SAME recorded reference, so
- * all four agree bit-for-bit on the clustering and to 1e-12 on the scores.
- *
- * Determinism: the recorded dataset (tests/conformance/data/
- * generate_conformance_data.py) is engineered so the FastPAM optimum is unique
- * and init-independent; the result is canonicalised (sorted medoid SET; each
- * point labelled by the rank of its assigned medoid) so RNG-dependent medoid
- * array order / cluster-id numbering cannot make identical clusterings compare
- * unequal.
+ * Drives the live Tier-2 pipeline (DataLoader -> Problem::set_band(3) ->
+ * fill_distance_matrix -> fast_pam(k=3, seed=29) -> silhouette / davies_bouldin
+ * / dunn) on conformance_series.csv and asserts digit-identical canonical
+ * labels/medoids and scores within 1e-12 relative against conformance_reference.txt
+ * (shared with Python, MATLAB, and CLI routes).
  *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026
@@ -66,7 +49,7 @@ constexpr int kMaxIter = 100;
 constexpr std::uint64_t kSeed = 29; // the FastPAM BUILD seed the reference header records
 
 /// Repo-root/tests/conformance — located from the compile-time DTWC_TEST_DATA_DIR
-/// (== "<repo>/data"), never a runtime-relative path (Global Constraint #1).
+/// (== "<repo>/data"), never a runtime-relative path.
 fs::path conformance_dir()
 {
   return fs::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "conformance";
@@ -211,23 +194,15 @@ TEST_CASE("Cross-language conformance: C++ route matches recorded reference",
 
   const CanonicalResult live = run_pipeline();
 
-  // Regeneration is explicit-only. It used to also trigger on a missing
-  // reference file, which made this test certify itself: it wrote what it had
-  // just computed, read it straight back, and compared it to itself, so every
-  // assertion below passed trivially and the only signal was a WARN — which
-  // does not fail a Catch2 test. This is the gate the "a no-op must be
-  // digit-identical" rule rests on, so a missing reference is a failure, not an
-  // invitation to invent one.
+  // Regeneration is explicit-only: writing a missing reference would let this test
+  // certify itself (it would compare what it just computed with itself), so a
+  // missing reference is a failure, not an invitation to invent one.
   const bool regen = std::getenv("DTWC_CONFORMANCE_REGEN") != nullptr
                      && std::string(std::getenv("DTWC_CONFORMANCE_REGEN")) == "1";
 
   if (regen) {
-    // A regeneration run records; it does not verify. Reporting success here
-    // would let a genuine regression be laundered into a new baseline by
-    // re-running with the env var until the test goes green, so this run fails
-    // on purpose. The planned end state is a separate regen program that shares
-    // the pipeline header, leaving this binary with no way to write the
-    // reference at all.
+    // Recording is not verification: fail intentionally so a regeneration run
+    // cannot pass CI without committing and re-running normally.
     write_reference(live);
     FAIL("Recorded conformance reference -> "
          << reference_file().string()
