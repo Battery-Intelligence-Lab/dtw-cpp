@@ -46,8 +46,7 @@ For cluster medoids $$c_i$$ and mean within-cluster scatter $$S_i$$,
 $$\mathrm{DBI} = \frac{1}{k}\sum_i
   \max_{j\ne i}\frac{S_i+S_j}{d(c_i,c_j)}.$$
 
-This implementation requires at least two non-empty clusters and raises
-`InvalidInput` otherwise. A pair with
+Requires at least two non-empty clusters (`InvalidInput` when `n_clusters() < 2`, `UndefinedScore` when fewer than two clusters are non-empty). A pair with
 zero medoid separation is not skipped: its ratio is infinity when the two
 clusters have any scatter and `0` when both have none,
 so the index is infinite when two medoids coincide with spread. Lower finite
@@ -65,7 +64,7 @@ $$\mathrm{Dunn} =
   \frac{\min\{d(x_i,x_j): \ell_i\ne\ell_j\}}
        {\max\{d(x_i,x_j): \ell_i=\ell_j,\ i<j\}}.$$
 
-It requires at least two non-empty clusters. If the maximum intra-cluster diameter is
+Requires at least two non-empty clusters (`UndefinedScore` otherwise). If the maximum intra-cluster diameter is
 zero, it returns positive infinity. Higher finite values indicate greater
 separation relative to cluster diameter.
 
@@ -114,7 +113,7 @@ double dtwc::scores::adjusted_rand(
 
 The Adjusted Rand score compares the pair-count contingency table after its
 chance correction. Identical non-degenerate partitions return `1`; a
-denominator-zero case also returns `1` in the current implementation.
+denominator-zero case also returns `1`.
 
 ### Normalized mutual information
 

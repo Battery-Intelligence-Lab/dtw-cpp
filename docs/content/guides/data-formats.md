@@ -12,7 +12,7 @@ Rows represent time series unless a format stores an explicit list column.
 | CSV / TSV / text | Core, CLI, all bindings | One series per row; use `skip_cols` for identifiers. A file's `.tsv` and `.txt` extensions read as tab-separated and any other as comma-separated, and the files of a folder as comma-separated, unless a delimiter is given. |
 | Arrow IPC / Feather | Core, CLI, all bindings | List/large-list Float32 or Float64 columns, read in place (memory-mapped) by the native reader; compressed (LZ4, ZSTD) and big-endian files decoded. |
 | Parquet | CLI with Arrow/Parquet enabled; Python via `pyarrow`; MATLAB via `parquetread` | Each List/LargeList Float32/64 row = one series; several scalar Float32/64 columns = one series per row, as CSV; the only scalar Float32/64 column = one whole series. Rows are named by the first string column. `--column` reads one column ([Supported data](../../getting-started/supported-data/)). |
-| HDF5 | Python conversion/I/O utilities | Optional `h5py`: a `series` dataset of any real dtype, 2-D or ragged (`h5py.vlen_dtype`), read as float64; convert before using the native CLI. |
+| HDF5 | Python conversion/I/O utilities | Optional `h5py`: a `series` dataset, 2-D or ragged (`h5py.vlen_dtype`). `dtwc-convert` reads one of any real dtype as float64; `io.load_dataset_hdf5` returns it in its stored dtype. Convert before using the native CLI. |
 
 Convert from CSV, Parquet, or HDF5 to Arrow IPC:
 
@@ -57,8 +57,9 @@ Where the series live depends on the input:
   for the threads; 0 plans with 90 % of the memory available), non-full FastCLARA (`--method clara`, or `auto` where
   PAM's matrix does not fit) streams it, one record batch at a time; a mapped file is not streamed.
 - A Parquet file is read whole into RAM, or, in a native build with Arrow (`dtwc_cl`, C++ `dtwc::run`),
-  streamed through non-full FastCLARA a batch of row groups at a time where it does not fit the data cap
-  (below). Python and MATLAB read it before the run, with `pyarrow` and `parquetread`, and pass the series in
+  streamed through non-full FastCLARA a batch of whole row groups at a time, decoded about 1 MiB of values at a
+  time, where it does not fit the data cap ([Supported data](../../getting-started/supported-data/#metadata-first-ram-limited-streaming)
+  gives the rules). Python and MATLAB read it before the run, with `pyarrow` and `parquetread`, and pass the series in
   memory: whatever `ram_limit` says, it is read whole, and memory the system refuses fails the run there
   (Python `MemoryError`; MATLAB `dtwc:internal` when the MEX's copy of the series is refused:
   [Tier 1](../../api/tier-1/)). Convert a file too large for that to Arrow IPC
@@ -76,15 +77,3 @@ at half the bytes, each distance rounded to a float.
 For data larger than an all-pairs matrix, choose a method that holds no parent matrix,
 OneBatchPAM or non-full CLARA (TADPole keeps the pairs it computes in a packed matrix),
 rather than changing only the input container.
-
-The native CLI plans `--ram-limit` (0: 90 % of the memory available) for Parquet before
-payload materialisation. If the conservative selected-column estimate exceeds the data cap,
-only non-full FastCLARA over a single file of one series per row (a list column,
-or several Float32/Float64 columns) can stream row groups; under an explicit
-`--ram-limit`, a one-column file, directories, and other methods stop with an `InvalidInput`
-before loading the payload. The automatic cap never fails a run: elsewhere the series load as they
-would without a limit.
-A batch holds whole row groups, decoded about 1 MiB of values at a time, and the
-data cap covers what the stream holds rather than all process memory. The streaming route emits labels and medoids
-without constructing dense distance or silhouette CSVs; storage requested with `--dtype f32` remains Float32 throughout the
-sample, medoid, and assignment payloads.

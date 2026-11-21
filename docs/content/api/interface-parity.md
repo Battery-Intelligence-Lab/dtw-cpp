@@ -72,23 +72,18 @@ Use the generated Doxygen site for the structural view:
 
 The generated Python reference is limited to the checked-in Python sources.
 `dtwcpp.Problem` comes from the extension module, so Doxygen does not emit a
-standalone Python class page for it.
-
-## Generated structure snapshots
-
-Collaboration and call graphs are linked from the generated class pages when
-Graphviz is available in the documentation build.
+standalone Python class page for it. Collaboration and call graphs are linked
+from the generated class pages when Graphviz is available in the documentation
+build.
 
 ## Shared flow
 
-The recommended flow is intentionally similar across the stateful APIs:
+The CLI and `cluster()` in C++, Python and MATLAB are config-first: their settings become a `dtwc::Config`
+that `dtwc::run` runs. The Tier-2 APIs (`Problem`, the algorithms, the estimators) are Problem-first:
 
 ```text
 settings -> data -> Problem -> clustering algorithm -> scores / outputs
 ```
-
-The CLI and `cluster()` in C++, Python and MATLAB are config-first: their settings become a `dtwc::Config`
-that `dtwc::run` runs. The Tier-2 APIs (`Problem`, the algorithms, the estimators) are Problem-first.
 
 ## Surface map
 
@@ -100,11 +95,11 @@ that `dtwc::run` runs. The Tier-2 APIs (`Problem`, the algorithms, the estimator
 | FastPAM entry point | `--method pam` | `dtwc::fast_pam(prob, ...)` | `dtwcpp.fast_pam(prob, ...)` or `DTWClustering.fit()` | `dtwc.fast_pam(prob, ...)` or `DTWClustering.fit()` |
 | Hierarchical clustering | `--method hierarchical` | `build_dendrogram` / `cut_dendrogram` | same names | same names |
 | Missing-data strategy | `--missing-strategy` | `Problem::set_missing_strategy(...)` | `Problem.missing_strategy`, `DTWClustering(missing_strategy=...)` | `Problem.set_missing_strategy(...)`, `DTWClustering('MissingStrategy', ...)` |
-| A `Problem`'s device | `--device` (`cpu`, `gpu`, `gpu:N`; `cuda`, `cuda:N` alike) | `Problem::set_device(Device, index)` | `Problem(..., device=...)`, `Problem.set_device(name)` | `dtwc.Problem(name, 'Device', d)`, `Problem.set_device(name)` |
+| A `Problem`'s device | `--device` (`cpu`, `gpu`, `gpu:N`, `cpu+gpu`, `cpu+gpu:N`; `cuda`, `cuda:N` alike) | `Problem::set_device(Device, index)` | `Problem(..., device=...)`, `Problem.set_device(name)` | `dtwc.Problem(name, 'Device', d)`, `Problem.set_device(name)` |
 
-## Recommended usage split
+## Pairwise distance vs stateful `Problem`
 
-Use the `distance` namespace for pairwise distances:
+Use `distance.dtw` for single-pair distances (Python and MATLAB validate settings through the shared C++ name tables):
 
 ```cpp
 double d = dtwc::distance::dtw(x, y, 10);
@@ -173,18 +168,4 @@ prob.set_n_clusters(2);
 result = dtwc.fast_pam(prob, 2);
 sil = dtwc.silhouette(prob);
 ```
-
-## Current divergences
-
-These are real API differences today, not just documentation differences:
-
-1. The CLI and C++ (`dtwc::Config`, `dtwc::run`) are the surfaces with first-class configuration files; Python and MATLAB take their typed APIs.
-2. Python `Problem` is extension-backed, so Doxygen does not emit a standalone `dtwcpp.Problem` page the way it can for pure-Python classes.
-3. Python's `dtwcpp.distance.dtw` and MATLAB's `dtwc.distance.dtw` each call `dtwc::distance::dtw` through one binding entry, which reads the settings with the C++ name tables; C++ checks them.
-
-## Present guidance
-
-Use `distance.dtw` for pairwise calculations and `Problem` for stateful
-clustering in each language. Configuration-file input is currently the CLI's
-and C++'s (`dtwc::run`); the bindings take configuration through their typed APIs.
 

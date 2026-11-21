@@ -15,23 +15,21 @@ weight: 3
 
 ### Code editor
 
-We recommend using [Visual Studio Code (VS Code)](https://learn.microsoft.com/dotnet/core/tutorials/with-visual-studio-code). Enable `format on save` to automatically enforce `.clang-format`.
+We recommend using [Visual Studio Code (VS Code)](https://code.visualstudio.com/). Enable `format on save` to automatically enforce `.clang-format`.
 
 ## Copyright
-- Verify that the code and libraries do not violate any copyright conditions.
-- Our software is licensed under a non-copyleft license, and we aim to avoid incorporating copyleft libraries.
+- Verify that contributed code and dependencies respect all license terms.
+- Our software uses a permissive BSD-3-Clause license; avoid incorporating copyleft libraries.
 - Report any copyright violations by opening an issue immediately. We will remove any infringing content as soon as possible.
 - Using AI tools to help write code is acceptable as long as it is thoroughly reviewed by a human developer and does not infringe on copyrights.
 
 ## Versioning
 
-We use semantic versioning with MAJOR.MINOR.PATCH where:
+We follow semantic versioning (`MAJOR.MINOR.PATCH`):
 
-- PATCH: Backwards compatible bug fix without introducing a new feature. 
-- MINOR: Backwards compatible new feature. 
-- MAJOR: Incompatible changes, especially on API. 
-
-For a detailed tutorial on versioning, see [this video](https://www.youtube.com/watch?v=xvPiZyx0cDc).
+- `PATCH`: Backwards-compatible bug fixes.
+- `MINOR`: Backwards-compatible new features.
+- `MAJOR`: Incompatible API or behaviour changes.
 
 ## Issue management
 
@@ -39,4 +37,4 @@ As a small library developed by a small team, we review issues informally. To av
 
 ## Commenting
 
-We are transitioning to Doxygen-compatible comments. Feel free to update any incompatible comments you encounter. Refer to the [Doxygen guidelines](https://doxygen.nl/manual/docblocks.html) for commenting best practices.
+Use Doxygen-compatible comments, and feel free to update any incompatible comments you encounter. Refer to the [Doxygen guidelines](https://doxygen.nl/manual/docblocks.html) for commenting best practices.

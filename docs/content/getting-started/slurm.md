@@ -81,8 +81,11 @@ uv run benchmarks/verify_results.py \
 clustering job through the same wrapper, which ships inside the `dtwcpp` package, so an
 installed wheel needs no source checkout. Put `.env` in the directory you run Python from,
 or set `DTWC_REPO_ROOT` to the directory that holds it; the labels, medoids, and
-`<name>_report.txt` are downloaded to `results/slurm/cluster_<job id>/` there and
-hydrated onto the returned `Result`. Pass `upload_input=True` (in `dtwcpp.settings`, or to
+`<name>_report.txt` are downloaded to `results/slurm/cluster_<job id>/` there.
+`cluster()` and `do_clustering()` hydrate all three onto the returned `Result`;
+`DTWClustering.fit()` sets `labels_` only (its `medoid_indices_`, `cluster_centers_`,
+`inertia_` and `n_iter_` are `None`, so `predict`, `transform` and `score` raise
+`NotFittedError`). Pass `upload_input=True` (in `dtwcpp.settings`, or to
 `do_clustering`) when passing a local file path that should be staged to the cluster job
 directory automatically rather than read from a pre-existing cluster path; a path that does not
 exist locally is then a `FileNotFoundError`. `DTWC_REPO_ROOT` steers only this Python route:
@@ -210,8 +213,6 @@ L40S (8.9) and H100 (9.0). The P100 (6.0), V100 (7.0), RTX8000 and Titan RTX (7.
 submitting, and the requests of the table above never land on them; a job script of your own that asks for
 `#SBATCH --gres=gpu:1` alone may be given one. The MI210 is not a CUDA device, and the GH200 node is AArch64 (the
 `grace` profile builds without CUDA).
-
-Co-investment GPU nodes are limited to the **short** partition (12-hour maximum).
 
 ### Storage
 

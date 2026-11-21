@@ -142,7 +142,7 @@ The MIP is the compact $$N^2$$-variable model on the selected solver at every $$
 
 ### Distance scale
 
-FastPAM, the MIP and LR-core measure their gains and gaps relative to the costs, so a clustering does not depend on the distances' units: distances scaled by a power of two give the same one. The MIP scales its costs so that the largest is 2 and then rests on its solver's tolerances, so where the distances that decide the clustering lie many orders of magnitude below the largest entry, as WDTW's can for series of very different lengths ([DTW variants](../dtw-variants/)), its optimum is not reliable (WDTW on `data/dummy`, k = 3: with `--no-warm-start` HiGHS returned 5.7e33 times the optimum as optimal); LR-core is exact there.
+FastPAM, the MIP and LR-core with its default subgradient root measure their gains and gaps relative to the costs, so a clustering does not depend on the distances' units: distances scaled by a power of two give the same one. LR-core's Kelley root (`--lr-root kelley`) solves its master LP, whose bounds are the distances themselves, with the LP solver's absolute tolerances, so it carries no such guarantee. The MIP scales its costs so that the largest is 2 and then rests on its solver's tolerances, so where the distances that decide the clustering lie many orders of magnitude below the largest entry, as WDTW's can for series of very different lengths ([DTW variants](../dtw-variants/)), its optimum is not reliable (WDTW on `data/dummy`, k = 3: with `--no-warm-start` HiGHS returned 5.7e33 times the optimum as optimal); LR-core is exact there.
 
 ### MIP Solver Settings
 
@@ -194,11 +194,6 @@ not establish bit-level identity when floating reductions straddle `dc` or
 are in the
 [D2 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/02-envelopes-lb-keogh.md).
 
-Empty series are a known exception: exact DTW returns the no-path
-sentinel, while the current empty envelope and diagonal upper bound both
-return zero. Do not rely on pruned/brute TADPole identity for data containing
-empty series.
-
 **CLI:** `dtwc_cl -i data.csv -k 5 --method tadpole --dc 2.0`
 
 ## Algorithm Comparison
@@ -212,4 +207,4 @@ empty series.
 | Lloyd's (`kmedoids`) | Local optimum | Uses configured distance storage | Dense | Simple assignment/update |
 | MIP | Certified when solved to optimality | $$O(N^2)$$ distance storage plus solver model | Dense | Solver-backed exact result |
 | LR-core | Certified or loud failure | $$O(N^2)$$ distance storage | Dense | In-tree exact result |
-| TADPole | Exact-arithmetic identity for finite, nonempty supported inputs with integer-representable lengths; exactly representable regression confirmed; floating thresholds and empty series not covered (above) | $$O(N^2)$$ pair flags and pair cache, held in RAM; pruning saves DTW calls, not memory | Density/cutoff search | Admissible pair pruning |
+| TADPole | Exact-arithmetic identity for finite, nonempty supported inputs with integer-representable lengths; exactly representable regression confirmed; floating thresholds not covered (above) | $$O(N^2)$$ pair flags and pair cache, held in RAM; pruning saves DTW calls, not memory | Density/cutoff search | Admissible pair pruning |

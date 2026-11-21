@@ -24,8 +24,7 @@ cmake -S . -B build -DDTWC_ENABLE_GUROBI=ON
 ```
 
 Point `GUROBI_HOME` at the installation; with the option on and no installation
-found, the configure stops with an error that names the option. v1.0.0 linked
-Gurobi whenever it found it.
+found, the configure stops with an error that names the option.
 
 The Python wheels do not bundle Gurobi. Use a source build linked against your
 licensed SDK.

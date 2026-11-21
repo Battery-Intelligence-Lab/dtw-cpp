@@ -4,8 +4,6 @@ DTW-C++
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.13551469.svg)](https://doi.org/10.5281/zenodo.13551469)
 [![Website](https://img.shields.io/website?url=https%3A%2F%2FBattery-Intelligence-Lab.github.io%2Fdtw-cpp%2F)](https://Battery-Intelligence-Lab.github.io/dtw-cpp/)
 
-
-
 [![Ubuntu unit](https://github.com/Battery-Intelligence-Lab/dtw-cpp/workflows/Ubuntu%20unit/badge.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions)
 [![macOS unit](https://github.com/Battery-Intelligence-Lab/dtw-cpp/workflows/macOS%20unit/badge.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions)
 [![Windows unit](https://github.com/Battery-Intelligence-Lab/dtw-cpp/workflows/Windows%20unit/badge.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions)
@@ -21,7 +19,7 @@ DTW-C++
 ![GitHub all releases](https://img.shields.io/github/downloads/Battery-Intelligence-Lab/dtw-cpp/total) 
 [![](https://img.shields.io/badge/license-BSD--3--like-5AC451.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/LICENSE)
 
-There is separate [detailed documentation](https://Battery-Intelligence-Lab.github.io/dtw-cpp/) available for this project; this `readme.md` file only gives a short summary. 
+Full documentation is at <https://Battery-Intelligence-Lab.github.io/dtw-cpp/>.
 
 Introduction
 ===========================
@@ -193,7 +191,7 @@ option; nothing is turned off silently. Defaults are the ones every platform can
 | `DTWC_ENABLE_LLFIO` | ON (OFF under Emscripten) | Enable llfio-backed memory-mapped distance matrices |
 | `DTWC_ENABLE_CPUINFO` | ON (OFF under Emscripten) | The CPU's model, cores and SIMD extensions in `dtwc_cl -v`'s machine facts (pytorch/cpuinfo, static); without it they read `unknown` |
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
-| `DTWC_ENABLE_GUROBI` | OFF | Link the Gurobi MIP solver (needs an install, see `GUROBI_HOME`; the binary then needs the Gurobi library to load). v1.0.0 linked Gurobi when it found it |
+| `DTWC_ENABLE_GUROBI` | OFF | Link the Gurobi MIP solver (needs an install, see `GUROBI_HOME`; the binary then needs the Gurobi library to load) |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
 | `DTWC_REPRODUCIBLE_BUILD` | OFF | Strip source/build paths from supported compiler outputs |
 | `DTWC_FP_MODEL` | `fast` | Floating-point policy of optimised builds: `fast` (selected relaxations, never `-ffinite-math-only`) or `strict` (none). It governs the C++ code only: the CUDA and Metal kernels keep their compilers' defaults in either mode |

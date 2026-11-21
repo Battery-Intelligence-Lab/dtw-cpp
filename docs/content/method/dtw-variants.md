@@ -228,8 +228,8 @@ Series," IEEE TKDE, 2013.
 
 MSM is a metric edit distance whose move, split, and merge operations are
 controlled by a positive cost $$c$$. DTWC++ implements the exact univariate,
-unbanded recurrence with $$O(\min(m,n))$$ rolling scratch. In this release MSM
-rejects multivariate input and ignores the `Problem` band by contract.
+unbanded recurrence with $$O(\min(m,n))$$ rolling scratch; multivariate input is
+rejected (`InvalidInput`) and the `Problem` band is ignored.
 
 ```cpp
 #include <distance.hpp>
@@ -250,8 +250,8 @@ Time Series Matching," IEEE TPAMI, 2009.
 
 TWE combines edit operations with a positive stiffness $$\nu$$ and positive
 edit penalty $$\lambda$$. DTWC++ implements the exact univariate, unbanded
-recurrence with $$O(\min(m,n))$$ rolling scratch. Multivariate input is rejected
-and the Sakoe–Chiba band is not applied in this release.
+recurrence with $$O(\min(m,n))$$ rolling scratch; multivariate input is rejected
+(`InvalidInput`) and the `Problem` band is ignored.
 
 ```cpp
 #include <distance.hpp>

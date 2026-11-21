@@ -6,12 +6,7 @@ weight: 3
 
 # Supported data formats
 
-DTW-C++ supports importing data from several data structures. The core
-`Data`/`Problem` APIs support both univariate and multivariate series, but the
-row-oriented file examples on this page are still mostly univariate. Input data
-can either be read from multiple files (one per series), or from a single
-file, where each time series is represented row-wise or through one of the
-columnar formats below.
+DTW-C++ reads univariate and multivariate time series from single files (one series per row, or columnar layouts below) or from folders (one series per file).
 
 Series are stored as float64 unless you ask for float32, half the memory, where
 they are loaded: `--dtype float32` for `dtwc_cl`, `dtype="float32"` in Python's
@@ -132,7 +127,7 @@ as a Float64 column.
 ### Metadata-first RAM-limited streaming
 
 `--ram-limit` is the run's soft memory budget, a plan rather than a cap (0, the default: 90 % of
-the memory available). For Parquet it plans the run from the schema and row-group metadata
+the memory available; [the memory limit](../cli/#the-memory-limit)). For Parquet it plans the run from the schema and row-group metadata
 before the selected payload is materialised. When the conservative decode/materialisation
 estimate exceeds the data cap (the limit less the threads' reserve), the CLI can stream only a single file of one series
 per row (a list column, or the row layout) through non-full FastCLARA:

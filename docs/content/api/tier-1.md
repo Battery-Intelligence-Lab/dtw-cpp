@@ -57,15 +57,16 @@ res.save('results');
 | set | `dtwc::device("gpu")` | `dtwcpp.device("gpu")` | `dtwc.device('gpu')` |
 | read | `dtwc::device()` | `dtwcpp.device()` | `dtwc.device()` |
 
-The names are `cpu` (the default), `gpu`, `gpu:N`, `cuda` and `cuda:N`, in any
-case; `cuda` is another spelling of `gpu`, which means CUDA where it is built and
-Metal on macOS. Setting a device returns its canonical name, so `cuda:0` comes
-back as `gpu`. An unknown name, or `gpu` on a build without a GPU backend,
-raises `DeviceError` (Python also checks that the machine has a GPU); no request
-falls back to the CPU. Python also takes `hpc`
-and `hpc:gpu`, which send the whole run to a SLURM cluster
-([SLURM](../../getting-started/slurm/)); C++ and MATLAB refuse them with
-`DeviceError`.
+The names are `cpu` (the default), `gpu`, `gpu:N`, `cuda`, `cuda:N`, `cpu+gpu`,
+and `cpu+gpu:N`, in any case; `cuda` is another spelling of `gpu`, which means
+CUDA where it is built and Metal on macOS, and `cpu+gpu` splits matrix fills and
+FastCLARA assignment between the CPU and a CUDA GPU. Setting a device returns its
+canonical name, so `cuda:0` comes back as `gpu`. An unknown name, `gpu` on a
+build without a GPU backend, or `cpu+gpu` without CUDA raises `DeviceError`
+(Python also checks that the machine has a GPU for `gpu`); no request falls back
+to the CPU. Python also takes `hpc` and `hpc:gpu`, which send the whole run to a
+SLURM cluster ([SLURM](../../getting-started/slurm/)); C++ and MATLAB refuse them
+with `DeviceError`.
 
 The process device is what `cluster()` uses when it is not given one. A Tier-2
 `Problem` keeps its own device and ignores it ([Devices](../../guides/devices/)).
@@ -274,12 +275,18 @@ A `Dataset` is read with the reader options it was made with: `skip_cols`, `skip
 `delimiter`, `dtype` and, in Python and MATLAB, `ndim`. Settings or overrides that give
 one of them a value other than its default and the Dataset's are `InvalidInput` (MATLAB
 `dtwc:invalidArgument`) naming the option and both values: pass it to `load_data`, or leave
-it out. The same settings given to `load_data` and `do_clustering` agree, and `cdist`
-checks each `Dataset` alike: C++ `cdist(X, Y, cfg)`, and Python's and MATLAB's for `dtype`. A path or array passed to `do_clustering`
+it out. The same settings given to `load_data` and `do_clustering` agree. Reader options
+passed beside a `Dataset` to Python's `load` (any but its default) or `load_data` (any, as
+keywords), or to MATLAB's `dtwc.load` (any), are refused whatever the Dataset holds; MATLAB's
+`load_data` reads its name-value pairs as settings, by the rule above. `cdist` checks each
+`Dataset` alike: C++ `cdist(X, Y, cfg)`, and Python's and MATLAB's for `dtype` and `ndim`
+(Python's checks a `Data`'s `ndim` too). A path or array passed to `do_clustering`
 itself (Python, MATLAB) is read with the settings' options. A C++ `Dataset` holds no
 `column`: a path's read takes the Config's, and series in memory refuse one. In Python and
 MATLAB, an `ndim` given for an Arrow IPC file whose metadata gives another `ndim` above 1 is
-refused too.
+refused too, when the file is read. Given none, the series take the file's `ndim`; MATLAB's
+Dataset then holds it as its `Ndim`, which the rule above compares, while Python's keeps the
+`ndim` it was made with.
 
 ## Cross-collection distances: cdist
 
