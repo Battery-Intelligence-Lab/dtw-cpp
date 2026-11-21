@@ -127,22 +127,26 @@ std::string one_number_of_clusters(std::string &text)
 
 /// v1.0.0's spellings of the option `canonical`, hidden from --help. Each warns
 /// and hands its value to that option, through its conversion and checks, unless
-/// the option was given itself: the canonical spelling wins.
+/// the option was given itself: the canonical spelling wins. Typed on the command
+/// line, a spelling beats a config file's value, as every flag does.
 void v1_spellings(CLI::App &app, const std::string &canonical, std::initializer_list<const char *> spellings)
 {
   CLI::Option *option = app.get_option(canonical);
+  const auto file = std::dynamic_pointer_cast<const cli::ConfigFile>(app.get_config_formatter());
   for (const std::string spelling : spellings)
     app
       .add_option_function<std::string>(
         spelling,
-        [option, spelling](const std::string &value) {
+        [option, spelling, file](const std::string &value) {
           warn_deprecated(spelling, option->get_name());
-          if (option->count() > 0) return;
+          const bool typed = file != nullptr && file->given(spelling); // on the command line, beside a config file
+          if (typed ? file->given(option->get_name()) : option->count() > 0) return;
+          option->clear(); // a typed spelling replaces the file's value
           option->add_result(value);
           option->run_callback();
-          // Still "not given": a config file applies a key only to an option no
-          // one gave, so its canonical key, read after this one, must still win.
-          option->clear();
+          // From a file, still "not given": a config file applies a key only to an
+          // option no one gave, so its canonical key, read after this one, must still win.
+          if (!typed) option->clear();
         },
         "v1.0.0 spelling of " + option->get_name())
       ->group("");

@@ -79,6 +79,11 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
 
   if (list_view->n_children < 1 || !is_floating(list_view->children[0]->storage_type))
     fail("data_from_arrow: list elements must be float32 or float64.");
+  // The producer's offsets index the values and names directly, and SetArray's DEFAULT validation checks only each
+  // column's first and last; FULL checks every one is in order, so each row lies inside them (a struct's columns over
+  // all their rows, a slice's among them). Corrupt offsets are IOError, as a Parquet file's are.
+  if (ArrowArrayViewValidate(&view, NANOARROW_VALIDATION_LEVEL_FULL, &error) != NANOARROW_OK)
+    throw dtwc::IOError(std::string("data_from_arrow: the array is corrupt: ") + ArrowErrorMessage(&error));
 
   const ArrowArrayView *values = list_view->children[0];
   // A struct's row i is row offset + i of its children, which a slice keeps whole: its own offset and length say
@@ -93,17 +98,10 @@ void append_series(const ArrowSchema *schema, const ArrowArray *array,
       fail("data_from_arrow: null series at row " + std::to_string(first + i) +
            " (drop or fill nulls before clustering).");
 
-    // The offsets come from the producer (a file, for Arrow IPC) and index the
-    // values directly; validation checks only the first and the last. Corrupt
-    // offsets are IOError, as a Parquet file's are. A slice's offsets start at its
-    // offset, which ArrowArrayViewListChildOffset, unlike the other accessors, does
+    // A slice's offsets start at its offset, which ArrowArrayViewListChildOffset, unlike the other accessors, does
     // not add.
     const int64_t start = ArrowArrayViewListChildOffset(list_view, list_view->offset + base + i);
     const int64_t end = ArrowArrayViewListChildOffset(list_view, list_view->offset + base + i + 1);
-    if (start < 0 || end < start || end > values->length)
-      throw dtwc::IOError("data_from_arrow: list offset [" + std::to_string(start) + ", " + std::to_string(end) +
-                          ") of the series at row " + std::to_string(first + i) + " is outside the values [0, " +
-                          std::to_string(values->length) + ").");
 
     std::vector<T> s;
     s.reserve(static_cast<size_t>(end - start));

@@ -602,8 +602,9 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     facts.matrix = holds_matrix(resolved, full) ? pairs * core::value_bytes(config.matrix_dtype) : 0;
     // The method's own terms, in RAM whatever the matrix's storage: TADPole's flag a pair (tadpole.cpp's `computed`),
     // its cache of the matrix's pairs (`cache`, unless a complete --dist-matrix is read in its place) and, where it
-    // prunes (`can_prune`: bounds_valid's Standard DTW under L1 on univariate float64 series, no missing-data
-    // strategy), each series' envelope (`envs`: an upper and a lower vector of its values); the hierarchical
+    // prunes (`can_prune`: bounds_valid's Standard DTW under L1 on univariate float64 series into a float64 matrix, no
+    // missing-data strategy, no complete --dist-matrix, which is not read yet: the plan prices the envelopes beside
+    // any), each series' envelope (`envs`: an upper and a lower vector of its values); the hierarchical
     // clustering's dense copy of N x N doubles (hierarchical.cpp's `work`); OneBatchPAM's batch table, N x m doubles,
     // m as one_batch_pam.cpp's automatic_batch_size or --batch-size takes it, and its per-point vectors, at most 8
     // doubles a point. MIP's and LR-core's solver memory is not planned: MIP's outweighs the matrix (150 series of 10
@@ -615,6 +616,7 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
       const bool prunes = distance.variant.variant == core::DTWVariant::Standard
                           && distance.metric == core::MetricType::L1 && ndim == 1
                           && precision != core::Precision::Float32
+                          && config.matrix_dtype != core::Precision::Float32
                           && distance.missing == core::MissingStrategy::Error;
       facts.fixed = pairs + (prunes ? 2 * (values * sizeof(double) + n_series * sizeof(std::vector<double>)) : 0);
       facts.fixed_what = prunes ? "TADPole's flag a pair and the series' envelopes" : "TADPole's flag a pair";

@@ -578,8 +578,8 @@ void declared_bytes(const ArrowArrayView *view, ArrowIpcCompressionType codec, c
     declared_bytes(view->children[i], codec, body, where, out, scratch);
 }
 
-/// What the walk learns of a record batch it cannot view: its rows (its root's length, unbounded: its columns bound it
-/// once decoded), the bytes decoding its used columns will allocate and the most the codec holds decoding one of their
+/// What the walk learns of a record batch it cannot view: its rows (its root's length, each used column's length too),
+/// the bytes decoding its used columns will allocate and the most the codec holds decoding one of their
 /// buffers, the values of its 'data' column, and its 'name' column's decoded bytes, its characters' bytes and the
 /// body's bytes its buffers span (0 without one), each from its header's lengths and its buffers' declared sizes, and
 /// whether it holds a validity buffer (without one no name is null).
@@ -626,6 +626,7 @@ Proof prove_batch(Decoder &decoder, const Body &body, const Used &used, bool swa
                            "writers align every buffer to 8 bytes: rewrite the file with one)");
     Declared declared;
     declared_bytes(views[c], codec, body, where, declared, scratch);
+    check_rows(views[c], root->length, where); // the batch's rows, which the walk sums and plans on, are its columns'
     proof.declared = sum(proof.declared, declared.bytes);
     proof.scratch = std::max(proof.scratch, declared.scratch);
     if (std::string_view(used[c].name) == "data") {
@@ -738,9 +739,11 @@ std::int64_t longest_span(const ArrowArrayView *column, std::int64_t bound)
     column->storage_type == NANOARROW_TYPE_LARGE_STRING || column->storage_type == NANOARROW_TYPE_LARGE_LIST;
   const ArrowBufferView &offsets = column->buffer_views[1];
   std::int64_t longest = 0;
-  for (std::int64_t i = column->offset; i < column->offset + column->length; ++i)
-    longest = std::max(longest, large ? offsets.data.as_int64[i + 1] - offsets.data.as_int64[i]
-                                      : std::int64_t{ offsets.data.as_int32[i + 1] } - offsets.data.as_int32[i]);
+  for (std::int64_t i = column->offset; i < column->offset + column->length; ++i) {
+    const std::int64_t start = large ? offsets.data.as_int64[i] : offsets.data.as_int32[i];
+    const std::int64_t end = large ? offsets.data.as_int64[i + 1] : offsets.data.as_int32[i + 1];
+    if (start >= 0 && end >= start) longest = std::max(longest, end - start); // in order: the difference fits
+  }
   return std::min(longest, bound);
 }
 
