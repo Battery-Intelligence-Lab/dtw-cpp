@@ -1,8 +1,6 @@
 /**
  * @file timing.hpp
- * @brief Timing functions
- *
- * @details Contains the definition and implementation of a Clock structure for timing purposes.
+ * @brief High-resolution wall-clock timer.
  *
  * @author Volkan Kumtepeli
  * @author Becky Perriment
@@ -17,11 +15,6 @@
 
 namespace dtwc {
 
-/**
- * @brief Structure representing a high-resolution clock.
- *
- * Clock structure to measure time intervals with high resolution.
- */
 struct Clock
 {
   std::chrono::time_point<std::chrono::high_resolution_clock> tstart{ std::chrono::high_resolution_clock::now() };
@@ -29,42 +22,22 @@ struct Clock
   auto now() const { return std::chrono::high_resolution_clock::now(); }
   auto start() const { return tstart; }
 
-  /**
-   * @brief Calculates the duration since the clock started.
-   * @return Duration in seconds.
-   */
+  /// Elapsed time in seconds since construction.
   double duration() const
   {
-    std::chrono::duration<double> elapsed_seconds = now() - start();
-    return elapsed_seconds.count();
+    return std::chrono::duration<double>(now() - start()).count();
   }
 
-  /**
-   * @brief Prints the duration in minutes and seconds format.
-   * @param ofs Output stream to print the duration.
-   * @param duration Duration in seconds.
-   */
   static void print_duration(std::ostream &ofs, double duration)
   {
-    ofs << std::floor(duration / 60) << ":"
-        << duration - std::floor(duration / 60) * 60
-        << " min:sec\n";
+    const double mins = std::floor(duration / 60);
+    ofs << mins << ":" << duration - mins * 60 << " min:sec\n";
   }
 };
 
-/**
- * @brief Overloads the << operator for the Clock structure.
- * @param ofs Output stream.
- * @param clk Clock instance.
- * @return Reference to the output stream.
- */
 inline std::ostream &operator<<(std::ostream &ofs, const Clock &clk)
 {
-  const auto duration = clk.duration();
-  ofs << std::floor(duration / 60) << ":"
-      << duration - std::floor(duration / 60) * 60
-      << " min:sec";
-
-  return ofs;
+  const double d = clk.duration(), mins = std::floor(d / 60);
+  return ofs << mins << ":" << d - mins * 60 << " min:sec";
 }
 } // namespace dtwc

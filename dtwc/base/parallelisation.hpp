@@ -45,12 +45,11 @@ inline thread_local int team_cap = 0;
 ///        warning text lives in env.cpp (warn_if_single_threaded).
 inline int get_max_threads()
 {
-#ifdef _OPENMP
   warn_if_single_threaded();
+#ifdef _OPENMP
   const int available = omp_get_max_threads();
   return detail::team_cap > 0 && detail::team_cap < available ? detail::team_cap : available;
 #else
-  warn_if_single_threaded();
   return 1;
 #endif
 }
@@ -167,34 +166,15 @@ void run_openmp(Tfun &task_indv, size_t i_end,
     task_indv(static_cast<size_t>(i));
 }
 
-/**
- * @brief A wrapper function to control the degree of parallelism in task execution.
- *
- * @details This function provides a higher level of control for parallel task execution.
- * It decides whether to use parallelism based on the provided maximum number of parallel workers.
- * When numMaxParallelWorkers > 1, it sets the OpenMP thread count accordingly.
- *
- * @tparam Tfun The type of the task function.
- * @param task_indv Reference to the task function to be executed.
- * @param i_end The upper bound of the loop index.
- * @param numMaxParallelWorkers The maximum number of parallel workers (default is 0:
- *        all available OpenMP threads). Set to 1 for serial execution.
- */
+/// Run `task_indv(i)` for `i` in `[0, i_end)`: serially when `numMaxParallelWorkers == 1`,
+/// on all available OpenMP threads when `0`, or capped at `numMaxParallelWorkers` for this region.
 template <typename Tfun>
 void run(Tfun &task_indv, size_t i_end, size_t numMaxParallelWorkers = 0)
 {
-  const bool useParallel = (numMaxParallelWorkers != 1);
-
-  // Region-local limit only, so a later unconstrained fill still sees the
-  // machine's full thread count.
-  int requestedThreads = 0;
-  if (useParallel && numMaxParallelWorkers > 0) {
-    const int maxThreads = get_max_threads();
-    requestedThreads = static_cast<int>(std::min(
-      numMaxParallelWorkers, static_cast<size_t>(maxThreads)));
-  }
-
-  run_openmp(task_indv, i_end, useParallel, 4, requestedThreads);
+  const int max_workers = (numMaxParallelWorkers > 1)
+    ? static_cast<int>(std::min<size_t>(numMaxParallelWorkers, static_cast<size_t>(get_max_threads())))
+    : 0;
+  run_openmp(task_indv, i_end, numMaxParallelWorkers != 1, 4, max_workers);
 }
 
 } // namespace dtwc
