@@ -32,20 +32,16 @@ References used during development. Verify each citation independently before pu
   Proposition 1 proves `LB_Keogh(Q,C) <= DTW(Q,C)` for sequences of the same
   length under a global window `j-r <= i <= j+r`. The paper uses squared
   point contributions and takes a square root for both distances. It is not
-  cited as a verbatim source for DTWC++'s L1, unrooted-squared,
-  unequal-prefix, symmetric-maximum, or multivariate extensions; those are
-  derived in D2.
+  cited as a verbatim source for DTWC++'s L1, unequal-prefix, or
+  symmetric-maximum forms; those are derived in D2.
 - Kim, S.-W., Park, S., & Chu, W. W. (2001). An Index-Based Approach for
   Similarity Search Supporting Time Warping in Large Sequence Databases.
   *Proceedings of the 17th International Conference on Data Engineering*,
   607–614. https://doi.org/10.1109/ICDE.2001.914875 —
   **[confirmed]** The bibliographic metadata, DOI, and closed-access status
-  were verified through DBLP. **[inferred]** Formula-level
-  compatibility with DTWC++: the closed/paywalled full text was not accessed,
-  so this citation does not prove that either current `lb_kim` overload
-  matches the paper's objective or units. Rakthanmanon et al. independently
-  describe the original four-feature bound and their reduced endpoint-only
-  `LB_KimFL`.
+  were verified through DBLP; the closed full text was not accessed.
+  Rakthanmanon et al. independently describe the original four-feature bound
+  and their reduced endpoint-only `LB_KimFL`. DTWC++ has no LB_Kim bound.
 - Rakthanmanon, T., Campana, B., Mueen, A., Batista, G. E. A. P. A.,
   Westover, M. B., Zhu, Q., Zakaria, J., & Keogh, E. (2012). Searching and
   Mining Trillions of Time Series Subsequences under Dynamic Time Warping.
@@ -76,7 +72,7 @@ References used during development. Verify each citation independently before pu
 - Jeong, Y.-S., Jeong, M. K., & Omitaomu, O. A. (2011). Weighted dynamic time warping for time series classification. *Pattern Recognition*, 44(9), 2231-2240.
 - Herrmann, M. & Webb, G. I. (2023). Amercing: An intuitive and effective constraint for dynamic time warping. *Pattern Recognition*, 137, 109333. https://doi.org/10.1016/j.patcog.2023.109333 — ADTW. **[inferred]** Authors, journal, volume and article number from a web search that returned the ADS record (bibcode 2023PatRe.13709333H) and the arXiv preprint 2111.13314 (an earlier title with "Elegant"); neither page's text was opened and the full text was not read, so the page states the recurrence as `warping_adtw.hpp` implements it.
 - Cuturi, M. & Blondel, M. (2017). Soft-DTW: a Differentiable Loss Function for Time-Series. In *Proceedings of the 34th International Conference on Machine Learning*, PMLR 70, 894–903. https://proceedings.mlr.press/v70/cuturi17a.html — Defines the differentiable soft-DTW value and gradient used for soft-DTW barycenters.
-- Blondel, M., Mensch, A., & Vert, J.-P. (2021). Differentiable Divergences Between Time Series. *AISTATS 2021*, PMLR 130. — The Soft-DTW divergence that clustering under `softdtw` uses.
+- Blondel, M., Mensch, A., & Vert, J.-P. (2021). Differentiable Divergences Between Time Series. *AISTATS 2021*, PMLR 130, 3853–3861. https://proceedings.mlr.press/v130/blondel21a.html — The Soft-DTW divergence that clustering under `softdtw` uses.
 - Itakura, F. (1975). Minimum Prediction Residual Principle Applied to Speech Recognition. *IEEE TASSP*, 23(1), 67-72.
 
 ## Clustering and k-Medoids
@@ -87,7 +83,7 @@ References used during development. Verify each citation independently before pu
 - Davies, D. L. & Bouldin, D. W. (1979). A Cluster Separation Measure. *IEEE TPAMI*, PAMI-1(2), 224-227. — DB index; M_ij = 0 limit follows from monotonicity in M plus axiom 3 (scores.cpp).
 - Caliński, T. & Harabasz, J. (1974). A dendrite method for cluster analysis. *Communications in Statistics*, 3(1), 1-27. — CH index with realised k in both (k-1) and (N-k).
 - Dunn, J. C. (1974). Well-Separated Clusters and Optimal Fuzzy Partitions. *J. Cybernetics*, 4(1), 95-104. — Dunn index (min inter / max intra).
-- Day, W. H. E. & Edelsbrunner, H. (1984). Efficient algorithms for agglomerative hierarchical clustering methods. *Journal of Classification*, 1(1), 7–24. — The per-row nearest-neighbour cache of the hierarchical clustering (`hierarchical.cpp`).
+- Day, W. H. E. & Edelsbrunner, H. (1984). Efficient algorithms for agglomerative hierarchical clustering methods. *Journal of Classification*, 1(1), 7–24. https://doi.org/10.1007/BF01890115 — The per-row nearest-neighbour cache of the hierarchical clustering (`hierarchical.cpp`).
 - Schubert, E. & Rousseeuw, P. J. (2021). Fast and eager k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS algorithms. *Information Systems*, 101, 101804. https://doi.org/10.1016/j.is.2021.101804; arXiv:2008.05171 (https://arxiv.org/abs/2008.05171). — Canonical FasterPAM/FasterCLARA paper; the 2019 SISAP paper (arXiv:1810.05691) is its conference precursor.
 - Ng, R. T. & Han, J. (2002). CLARANS: A Method for Clustering Objects for Spatial Data Mining. *IEEE TKDE*, 14(5), 1003-1016.
 - Charikar, M., Guha, S., Tardos, E., & Shmoys, D. B. (2002). A constant-factor approximation algorithm for the k-median problem. *Journal of Computer and System Sciences*, 65(1), 129-149.
@@ -103,8 +99,8 @@ References used during development. Verify each citation independently before pu
 - ReVelle, C. S. & Swain, R. W. (1970). “Central Facilities Location.” *Geographical Analysis*, 2(1), 30-42. https://doi.org/10.1111/j.1538-4632.1970.tb00142.x — **[confirmed]** Source of the classical complete discrete p-median assignment/cardinality/linking MILP specialized by DTWC++; later p-median histories credit this as the first integer-linear formulation.
 - Vinod, H. D. (1969). “Integer Programming and the Theory of Grouping.” *Journal of the American Statistical Association*, 64(326), 506-519. https://doi.org/10.1080/01621459.1969.10500990 — **[confirmed]** Early statistics-side integer-programming treatment of partitional clustering. The author-page abstract confirms formulations for partitioning n elements into m mutually exclusive groups and the string-property result for the one-dimensional minimum-within-group-sum-of-squares case. Cite this for optimization-based clustering history, not for DTWC++'s exact diagonal p-median constraint matrix.
 - Marín, A. & Pelegrín, M. (2020). “p-Median Problems.” In *Location Science*, 25-50. https://doi.org/10.1007/978-3-030-32177-2_2 — Historical attribution source used to distinguish the Hakimi p-median origins, Balinski linking inequalities, ReVelle-Swain complete MILP, and Vinod clustering application.
-- Cornuéjols, G., Fisher, M. L., & Nemhauser, G. L. (1977). Location of Bank Accounts to Optimize Float: An Analytic Study of Exact and Approximate Algorithms. *Management Science*, 23(8), 789–810. — The Lagrangian formulation LR-core's root bound relaxes ([LR-core](content/math/lr-core.md)).
-- Erlenkotter, D. (1978). A Dual-Based Procedure for Uncapacitated Facility Location. *Operations Research*, 26(6), 992–1009. — The dual ascent (`DUALOC`) and second-nearest warm start of LR-core's root (`lagrangian_root.cpp`).
+- Cornuéjols, G., Fisher, M. L., & Nemhauser, G. L. (1977). Location of Bank Accounts to Optimize Float: An Analytic Study of Exact and Approximate Algorithms. *Management Science*, 23(8), 789–810. https://doi.org/10.1287/mnsc.23.8.789 — The Lagrangian formulation LR-core's root bound relaxes ([LR-core](content/math/lr-core.md)).
+- Erlenkotter, D. (1978). A Dual-Based Procedure for Uncapacitated Facility Location. *Operations Research*, 26(6), 992–1009. https://doi.org/10.1287/opre.26.6.992 — The second-nearest warm start of LR-core's root multipliers, μ_j = d_(2)(j), and the client-floor tightening of its branch-and-bound (`lagrangian_root.cpp`). **[inferred]** The record was checked through Crossref and the full text was not read: this states what `lagrangian_root.cpp` takes from the paper, not the paper's own procedure.
 
 ## Cross-Language Binding Design
 
@@ -171,7 +167,7 @@ References used during development. Verify each citation independently before pu
 - Wu, R. & Keogh, E. (2022). FastDTW is approximate and Generally Slower than the Algorithm it Approximates. *IEEE TKDE*, 34(8), 3779-3785 (also ICDE 2021). arXiv:2003.11246 — verbatim: "In any realistic data mining application, the approximate FastDTW is much slower than the exact DTW." Do not add FastDTW.
 - Herrmann, M. & Webb, G. I. (2021). Early abandoning and pruning for elastic distances including dynamic time warping (EAPruned). *Data Mining and Knowledge Discovery* 35(6). arXiv:2102.05221 — covers DTW, CDTW, WDTW, ERP, MSM, TWE; reference C++ impl: https://github.com/MonashTS/tempo (GPL — NOT ported). DTW-specific precursor: Herrmann & Webb (2020), Early Abandoning PrunedDTW, arXiv:2010.05371. **Exact-mode use:** seed the prune with UB = the cost of ONE concrete warping path (the diagonal/L-path); every optimal-path cell has partial-cost ≤ DTW ≤ UB, so pruning cells above UB is provably exact. The headline ~2.88× is NN-search with a tightening cutoff; exact all-pairs (diagonal UB, no NN cutoff) prunes only near-diagonal pairs — data-cohesion-dependent, not a flat multiplier. Composes with a Sakoe-Chiba band but a tight band already excises the prunable region. DTWC++ has no EAPruned kernel.
 - Silva, D. F. & Batista, G. E. A. P. A. (2016). Speeding Up All-Pairwise Dynamic Time Warping Matrix Calculation (PrunedDTW). *SIAM SDM 2016*.
-- Tan, C. W., Petitjean, F., & Webb, G. I. (2019). Elastic bands across the path: A new framework and method to lower bound DTW (LB_Enhanced). *Proceedings of the 2019 SIAM International Conference on Data Mining*, 522–530. DOI `10.1137/1.9781611975673.59`; author preprint arXiv:1808.09617 (https://arxiv.org/pdf/1808.09617). **[confirmed from the SIAM record and complete preprint]** Theorem 3.1 supplies the elastic-cut crossing construction; Eq. 3.7 and Theorem 3.2 establish admissibility from disjoint selected sets. The paper explicitly calls `LB_Enhanced^1` uniformly tighter than LB_Keogh. DTWC++'s no-ordering claim for effective `V>=2` is supported by its own exact counterexamples, not attributed to this source.
+- Tan, C. W., Petitjean, F., & Webb, G. I. (2019). Elastic bands across the path: A new framework and method to lower bound DTW (LB_Enhanced). *Proceedings of the 2019 SIAM International Conference on Data Mining*, 522–530. DOI `10.1137/1.9781611975673.59`; author preprint arXiv:1808.09617 (https://arxiv.org/pdf/1808.09617). **[confirmed from the SIAM record and complete preprint]** Theorem 3.1 supplies the elastic-cut crossing construction; Eq. 3.7 and Theorem 3.2 establish admissibility from disjoint selected sets. The paper explicitly calls `LB_Enhanced^1` uniformly tighter than LB_Keogh. DTWC++ has no LB_Enhanced bound.
 - Webb, G. I. & Petitjean, F. (2021). Tight lower bounds for Dynamic Time Warping (LB_Petitjean, LB_Webb). *Pattern Recognition*, 115, 107895. DOI `10.1016/j.patcog.2021.107895`; accepted preprint arXiv:2102.07076 (https://arxiv.org/pdf/2102.07076). **[confirmed from the journal record and complete preprint]** Theorem 2 and Eqs. 26–43 give the four-point bridge/correction condition and case partition; Algorithm 2 defines full LB_Webb with `MinLRPaths`, while the later `LB_Webb_NoLR` formula applies the bridge and corrections over all indices. The paper proves LB_Webb always at least LB_Keogh. Its Wafer table reports NoLR tightness 0.96904 versus full Webb 0.96891, so omitting `MinLRPaths` does not have a universal loosening direction.
 - Ratanamahatana, C. A. & Keogh, E. (2004). Everything you know about Dynamic Time Warping is Wrong. *KDD Workshop on Mining Temporal and Sequential Data* — narrow bands (~10%) typically match or beat full DTW.
 - Tan, C. W., Herrmann, M., & Webb, G. I. (2021). Ultra fast warping window optimization for Dynamic Time Warping (UltraFastWWSearch). *IEEE ICDM 2021*.
