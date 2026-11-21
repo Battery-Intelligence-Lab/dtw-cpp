@@ -186,9 +186,10 @@ With `--checkpoint <dir>` the CLI
    the reason, before anything is computed;
 3. saves the matrix there once the method has finished, before the result files
    are written (a method that computes no distance matrix writes no checkpoint:
-   `onebatch`, and `tadpole`, which keeps the pairs it computes in RAM, so where
-   its matrix is mapped the `.dtwm` it saves records no row and a later run
-   computes every pair again), and every
+   `onebatch`, and `tadpole`, which keeps the pairs it computes in RAM; where
+   `tadpole`'s matrix is mapped, or the directory already holds `<name>.dtwm`,
+   the run still saves that file, but it holds none of the pairs TADPole
+   computed, so a later run computes them again), and every
    `--checkpoint-interval` rows during the fill when that
    is non-zero. A save that fails (a full disk) is reported after the result
    files are written: the run stops with exit status 1, and the results stay.
