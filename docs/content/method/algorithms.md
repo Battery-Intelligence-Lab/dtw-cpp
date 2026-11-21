@@ -142,7 +142,7 @@ The MIP is the compact $$N^2$$-variable model on the selected solver at every $$
 
 ### Distance scale
 
-FastPAM, the MIP and LR-core measure their gains and gaps relative to the costs, so a clustering does not depend on the distances' units: distances scaled by a power of two give the same one. The MIP scales its costs so that the largest is 2 and then rests on its solver's tolerances, so where the distances that decide the clustering lie many orders of magnitude below the largest entry, as WDTW's can for series of very different lengths ([DTW variants](../dtw-variants/)), its optimum is not reliable (WDTW on `data/dummy`, k = 3: with `--no-warm-start` HiGHS returned 5.7e33 times the optimum as optimal); LR-core is exact there.
+FastPAM, the MIP and LR-core with its default subgradient root measure their gains and gaps relative to the costs, so a clustering does not depend on the distances' units: distances scaled by a power of two give the same one. LR-core's Kelley root (`--lr-root kelley`) solves its master LP, whose bounds are the distances themselves, with the LP solver's absolute tolerances, so it carries no such guarantee. The MIP scales its costs so that the largest is 2 and then rests on its solver's tolerances, so where the distances that decide the clustering lie many orders of magnitude below the largest entry, as WDTW's can for series of very different lengths ([DTW variants](../dtw-variants/)), its optimum is not reliable (WDTW on `data/dummy`, k = 3: with `--no-warm-start` HiGHS returned 5.7e33 times the optimum as optimal); LR-core is exact there.
 
 ### MIP Solver Settings
 
