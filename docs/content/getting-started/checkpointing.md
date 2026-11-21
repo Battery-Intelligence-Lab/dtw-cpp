@@ -180,12 +180,15 @@ With `--checkpoint <dir>` the CLI
 1. creates the directory before any data is read, and stops with exit status 1
    if the path is not a directory;
 2. loads `<dir>/<name>.dtwm` (`--name`, default the input's file or folder name) if it exists, unless the
-   method holds no distance matrix (`onebatch`); a file for
+   method holds no distance matrix (`onebatch`; `clara` on a sample smaller than N refuses `--checkpoint`
+   with exit status 1 before any distance is computed); a file for
    other data or settings, or a damaged one, stops the run with exit status 1 and
    the reason, before anything is computed;
 3. saves the matrix there once the method has finished, before the result files
-   are written (a method that computes no distance matrix, `onebatch` and
-   `tadpole` while its matrix is not mapped, writes no checkpoint), and every
+   are written (a method that computes no distance matrix writes no checkpoint:
+   `onebatch`, and `tadpole`, which keeps the pairs it computes in RAM, so where
+   its matrix is mapped the `.dtwm` it saves records no row and a later run
+   computes every pair again), and every
    `--checkpoint-interval` rows during the fill when that
    is non-zero. A save that fails (a full disk) is reported after the result
    files are written: the run stops with exit status 1, and the results stay.
