@@ -75,6 +75,9 @@ TEST_CASE("Metal gives no path for a pair whose length gap exceeds the band with
 }
 ```
 
+Rebuild (`cmake --build build -j`) and run `./build/bin/dtwc_unit_gpu "[metal][banded]" --success`: the new case
+must pass for both lengths, beside the existing route test.
+
 Checked off the Mac: the file's Metal branch, with this case, passes `clang++ -fsyntax-only -DDTWC_HAS_METAL`; the
 CPU half holds (`dtwBanded` gives the sentinel for both lengths, in either order); and the kernels named are the
 ones `metal_dtw.mm` selects. A failure here is therefore Metal's, unless the route assertion fails, which means the
