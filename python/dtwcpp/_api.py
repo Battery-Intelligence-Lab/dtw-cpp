@@ -105,48 +105,28 @@ def _to_data(source, *, skip_rows=0, skip_cols=0, names=None, ndim=1, dtype="flo
     ndim = int(ndim)
     dtype = _dtwcpp_core._dtype(dtype)
 
+    rows = None
+    df_names = None
     if isinstance(source, _dtwcpp_core.Data):
         if (skip_rows == 0 and skip_cols == 0 and names is None
                 and source.ndim == ndim and source.is_f32() == (dtype == "float32")):
             return source
-        src_names = list(names) if names is not None else list(source.p_names)[skip_rows:]
+        names = None if names is None else list(names)  # a bad names fails before the series are copied
         rows = [np.asarray(source.series(i), dtype=np.float64) for i in range(skip_rows, source.size)]
-        if skip_cols > 0:
-            for row in rows:
-                if skip_cols > len(row):
-                    raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
-            rows = [np.ascontiguousarray(row[skip_cols:], dtype=np.float64) for row in rows]
-        else:
-            rows = [np.ascontiguousarray(row, dtype=np.float64) for row in rows]
-        return _dtwcpp_core.Data.from_numpy_list(rows, src_names, ndim, dtype)
-
-    df_names = None
-    if type(source).__module__.split(".")[0] == "pandas" and hasattr(source, "columns"):
+        default_names = list(source.p_names)[skip_rows:]
+    elif type(source).__module__.split(".")[0] == "pandas" and hasattr(source, "columns"):
         df_names = [str(label) for label in source.index]
         source = source.to_numpy()
     elif hasattr(source, "__arrow_c_array__") or hasattr(source, "__arrow_c_stream__"):
         if skip_rows == 0 and skip_cols == 0 and names is None and ndim == 1:
             return _dtwcpp_core.data_from_arrow_c_array(source, dtype)
-        rows, arrow_names = _series(source, skip_rows)
-        if skip_cols > 0:
-            for row in rows:
-                if skip_cols > len(row):
-                    raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
-            rows = [np.ascontiguousarray(row[skip_cols:], dtype=np.float64) for row in rows]
-        else:
-            rows = [np.ascontiguousarray(row, dtype=np.float64) for row in rows]
-        eff_names = list(names) if names is not None else arrow_names
-        return _dtwcpp_core.Data.from_numpy_list(rows, eff_names, ndim, dtype)
+        rows, default_names = _series(source, skip_rows)
     elif type(source).__module__.startswith("scipy.sparse"):
         raise TypeError("Sparse input is not supported; provide a dense array.")
+    elif isinstance(source, (list, tuple)):
+        rows, default_names = _series(source, skip_rows)
 
-    if isinstance(source, (list, tuple)):
-        rows = [_float64(row) for row in source[skip_rows:]]
-        for i, row in enumerate(rows):
-            if row.ndim != 1:
-                raise _NotSeries(f"{_FORMS}; got a list whose element {i} is {row.ndim}-D.")
-            if row.size == 0:
-                raise InvalidInput(f"series {i} is empty; every series needs at least one value.")
+    if rows is not None:
         if skip_cols > 0:
             for row in rows:
                 if skip_cols > len(row):
@@ -154,60 +134,26 @@ def _to_data(source, *, skip_rows=0, skip_cols=0, names=None, ndim=1, dtype="flo
             rows = [np.ascontiguousarray(row[skip_cols:], dtype=np.float64) for row in rows]
         else:
             rows = [np.ascontiguousarray(row, dtype=np.float64) for row in rows]
-        eff_names = list(names) if names is not None else (
-            df_names[skip_rows:] if df_names is not None else [str(i) for i in range(len(rows))]
-        )
+        eff_names = list(names) if names is not None else default_names
         return _dtwcpp_core.Data.from_numpy_list(rows, eff_names, ndim, dtype)
 
     array = np.asarray(source)
     if array.dtype.kind == "c":
         raise _NotSeries("Complex data not supported: " + _FORMS + " of real numbers.")
-
     if ndim > 1 and array.ndim == 3:
         if array.shape[2] != ndim:
             raise InvalidInput(
                 f"3-D multivariate array shape[2] ({array.shape[2]}) must match ndim ({ndim})."
             )
-        sliced = _float64(array[skip_rows:])
-        if sliced.shape[0] and not sliced.shape[1]:
-            raise InvalidInput(
-                f"every series needs at least one value: 0 feature(s) "
-                f"(shape={sliced.shape}) while a minimum of 1 is required."
-            )
-        if skip_cols > 0:
-            if sliced.shape[0] and skip_cols > sliced.shape[1]:
-                raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
-            sliced = sliced[:, skip_cols:, :]
-        arr_c = np.ascontiguousarray(sliced, dtype=np.float64)
-        eff_names = list(names) if names is not None else (
-            df_names[skip_rows:] if df_names is not None else [str(i) for i in range(arr_c.shape[0])]
-        )
-        return _dtwcpp_core.Data.from_numpy_3d(arr_c, eff_names, dtype)
-
-    if array.ndim != 2:
+    elif array.ndim != 2:
         raise _NotSeries(
             f"{_FORMS}; got a {array.ndim}-D array of shape {array.shape}. "
             "Reshape your data to (n_series, n_timesteps)."
         )
 
     sliced = array[skip_rows:]
-    if sliced.dtype == np.float32:
-        if sliced.shape[0] and not sliced.shape[1]:
-            raise InvalidInput(
-                f"every series needs at least one value: 0 feature(s) "
-                f"(shape={sliced.shape}) while a minimum of 1 is required."
-            )
-        if skip_cols > 0:
-            if sliced.shape[0] and skip_cols > sliced.shape[1]:
-                raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
-            sliced = sliced[:, skip_cols:]
-        arr_c = np.ascontiguousarray(sliced, dtype=np.float32)
-        eff_names = list(names) if names is not None else (
-            df_names[skip_rows:] if df_names is not None else [str(i) for i in range(arr_c.shape[0])]
-        )
-        return _dtwcpp_core.Data.from_numpy_2d_f32(arr_c, eff_names, ndim, dtype)
-
-    sliced = _float64(sliced)
+    if not (sliced.ndim == 2 and sliced.dtype == np.float32):
+        sliced = _float64(sliced)
     if sliced.shape[0] and not sliced.shape[1]:
         raise InvalidInput(
             f"every series needs at least one value: 0 feature(s) "
@@ -217,10 +163,14 @@ def _to_data(source, *, skip_rows=0, skip_cols=0, names=None, ndim=1, dtype="flo
         if sliced.shape[0] and skip_cols > sliced.shape[1]:
             raise InvalidInput("load: skip_cols exceeds an in-memory series length.")
         sliced = sliced[:, skip_cols:]
-    arr_c = np.ascontiguousarray(sliced, dtype=np.float64)
+    arr_c = np.ascontiguousarray(sliced)
     eff_names = list(names) if names is not None else (
         df_names[skip_rows:] if df_names is not None else [str(i) for i in range(arr_c.shape[0])]
     )
+    if arr_c.ndim == 3:
+        return _dtwcpp_core.Data.from_numpy_3d(arr_c, eff_names, dtype)
+    if arr_c.dtype == np.float32:
+        return _dtwcpp_core.Data.from_numpy_2d_f32(arr_c, eff_names, ndim, dtype)
     return _dtwcpp_core.Data.from_numpy_2d(arr_c, eff_names, ndim, dtype)
 
 
@@ -527,6 +477,40 @@ def _config(k, keys):
     return config
 
 
+def _run_local(dataset, config, device, backend, *, output="", checkpoint="", checkpoint_interval=0):
+    """The local run of :func:`cluster` and :func:`do_clustering`: C++ ``dtwc::run`` on ``device``."""
+    import dtwcpp
+    from dtwcpp import _dtwcpp_core
+    t0 = time.perf_counter()
+    # C++ checks every value before any series is read, as dtwc::run does, so
+    # that a bad one costs no read and reads the same for every input. A path
+    # C++ reads goes as the path, with the Dataset's reader options (its memory
+    # plan may stream an Arrow IPC file); Parquet, which pyarrow reads, and
+    # series in memory go as the Data, their skips applied (run refuses a
+    # reader option beside series in memory). The run is named as the Dataset
+    # is, else as dtwc_cl names it.
+    config.device = device
+    _dtwcpp_core.apply(config, _dtwcpp_core.Problem())
+    if dataset.is_path and dataset._ndim == 1 and not _dtwcpp_core._parquet_files(os.fspath(dataset.source)):
+        source = os.fspath(dataset.source)
+        reader = {"skip_cols": dataset.skip_cols, "skip_rows": dataset.skip_rows,
+                  "delimiter": dataset.delimiter or ""}
+    else:
+        source, reader = dataset.as_data(), {}
+    config.name = config.name or dataset.name or _dtwcpp_core._default_name(
+        source if isinstance(source, str) else "")
+    # An extension that links no HiGHS (the wheel) hands MIP on HiGHS and
+    # LR-core's kelley root to dtwcpp._mip.solve, on highspy.
+    result = _dtwcpp_core._run(config, source, dtype=dataset.dtype,
+                               external=not dtwcpp.HIGHS_AVAILABLE, output=output,
+                               checkpoint=checkpoint, checkpoint_interval=checkpoint_interval,
+                               **reader)
+    return Result(result.labels, device=backend,
+                  elapsed_s=time.perf_counter() - t0, k=config.n_clusters,
+                  n_series=len(result.labels), medoid_indices=result.medoids,
+                  cost=result.cost, name=config.name, result=result)
+
+
 def cluster(data, k, **keys):
     """Cluster a dataset into ``k`` clusters with DTW, on the global or given device.
 
@@ -576,8 +560,8 @@ def cluster(data, k, **keys):
                            f"run, and the device is '{eff}'.")
     data = load(data, dtype=dtype)
 
-    t0 = time.perf_counter()
     if backend == "hpc":
+        t0 = time.perf_counter()
         from dtwcpp import _hpc
         # As a local run, C++ checks every value before anything is written or
         # sent; the device stays the CPU here, since the GPU is the cluster's.
@@ -591,32 +575,7 @@ def cluster(data, k, **keys):
                       name=config.name or data.name,
                       report_text=details.get("report"),
                       hpc_result_dir=details.get("result_dir"))
-
-    # C++ checks every value before any series is read, as dtwc::run does, so
-    # that a bad one costs no read and reads the same for every input. A path
-    # C++ reads goes as the path, with the Dataset's reader options (its memory
-    # plan may stream an Arrow IPC file); Parquet, which pyarrow reads, and
-    # series in memory go as the Data, their skips applied (run refuses a
-    # reader option beside series in memory). The run is named as the Dataset
-    # is, else as dtwc_cl names it.
-    config.device = eff
-    _dtwcpp_core.apply(config, _dtwcpp_core.Problem())
-    if data.is_path and data._ndim == 1 and not _dtwcpp_core._parquet_files(os.fspath(data.source)):
-        source = os.fspath(data.source)
-        reader = {"skip_cols": data.skip_cols, "skip_rows": data.skip_rows,
-                  "delimiter": data.delimiter or ""}
-    else:
-        source, reader = data.as_data(), {}
-    config.name = config.name or data.name or _dtwcpp_core._default_name(
-        source if isinstance(source, str) else "")
-    # An extension that links no HiGHS (the wheel) hands MIP on HiGHS and
-    # LR-core's kelley root to dtwcpp._mip.solve, on highspy.
-    result = _dtwcpp_core._run(config, source, dtype=data.dtype,
-                               external=not dtwcpp.HIGHS_AVAILABLE, **reader)
-    return Result(result.labels, device=backend,
-                  elapsed_s=time.perf_counter() - t0, k=config.n_clusters,
-                  n_series=len(result.labels), medoid_indices=result.medoids,
-                  cost=result.cost, name=config.name, result=result)
+    return _run_local(data, config, eff, backend)
 
 
 def plot(result, **kwargs):
@@ -690,14 +649,20 @@ class Settings:
         prev_attrs = dict(self.__dict__)  # a refused update leaves the Settings as it was
         try:
             for key, value in kwargs.items():
-                if key == "input":
-                    object.__setattr__(self, "input", "" if value is None else os.fspath(value))
-                elif key in ("skip_cols", "skip_rows"):
+                if key in ("input", "output", "checkpoint"):
+                    object.__setattr__(self, key, "" if value is None else os.fspath(value))
+                elif key in ("skip_cols", "skip_rows", "checkpoint_interval"):
                     if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
                         raise TypeError(f"settings: {key} must be an integer")
                     if value < 0:
                         raise InvalidInput(f"settings: {key} must be non-negative.")
                     object.__setattr__(self, key, int(value))
+                elif key == "ndim":
+                    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                        raise TypeError("settings: ndim must be an integer")
+                    if value < 1:
+                        raise InvalidInput("settings: ndim must be at least 1.")
+                    object.__setattr__(self, "ndim", int(value))
                 elif key == "delimiter":
                     if value is not None and (not isinstance(value, str) or len(value) > 1):
                         raise InvalidInput("settings: delimiter must be None or a single character.")
@@ -706,22 +671,6 @@ class Settings:
                     if not isinstance(value, str):
                         raise TypeError(f"settings: dtype must be a string, got {type(value).__name__}")
                     object.__setattr__(self, "dtype", _dtwcpp_core._dtype(value))
-                elif key == "ndim":
-                    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
-                        raise TypeError("settings: ndim must be an integer")
-                    if value < 1:
-                        raise InvalidInput("settings: ndim must be at least 1.")
-                    object.__setattr__(self, "ndim", int(value))
-                elif key == "output":
-                    object.__setattr__(self, "output", "" if value is None else os.fspath(value))
-                elif key == "checkpoint":
-                    object.__setattr__(self, "checkpoint", "" if value is None else os.fspath(value))
-                elif key == "checkpoint_interval":
-                    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
-                        raise TypeError("settings: checkpoint_interval must be an integer")
-                    if value < 0:
-                        raise InvalidInput("settings: checkpoint_interval must be non-negative.")
-                    object.__setattr__(self, "checkpoint_interval", int(value))
                 elif key == "device":
                     if value is not None:
                         _resolve_device(value)
@@ -925,8 +874,8 @@ def do_clustering(data=None, settings=None, **overrides):
     dataset = load_data(data, eff)
     config = eff._config
 
-    t0 = time.perf_counter()
     if backend == "hpc":
+        t0 = time.perf_counter()
         from dtwcpp import _hpc
         if eff.checkpoint or eff.checkpoint_interval:  # the run is the cluster's: a local path names nothing there
             raise InvalidInput("do_clustering: device='hpc' runs on the cluster, which would ignore a local "
@@ -957,38 +906,8 @@ def do_clustering(data=None, settings=None, **overrides):
             res.save(eff.output)
         return res
 
-    config.device = eff_dev
-    _dtwcpp_core.apply(config, _dtwcpp_core.Problem())
-    if dataset.is_path and dataset._ndim == 1 and not _dtwcpp_core._parquet_files(os.fspath(dataset.source)):
-        source = os.fspath(dataset.source)
-        reader = {"skip_cols": dataset.skip_cols, "skip_rows": dataset.skip_rows,
-                  "delimiter": dataset.delimiter or ""}
-    else:
-        source, reader = dataset.as_data(), {}
-    config.name = config.name or dataset.name or _dtwcpp_core._default_name(
-        source if isinstance(source, str) else "")
-
-    result = _dtwcpp_core._run(
-        config,
-        source,
-        dtype=dataset.dtype,
-        external=not dtwcpp.HIGHS_AVAILABLE,
-        output=eff.output,
-        checkpoint=eff.checkpoint,
-        checkpoint_interval=eff.checkpoint_interval,
-        **reader,
-    )
-    return Result(
-        result.labels,
-        device=backend,
-        elapsed_s=time.perf_counter() - t0,
-        k=config.n_clusters,
-        n_series=len(result.labels),
-        medoid_indices=result.medoids,
-        cost=result.cost,
-        name=config.name,
-        result=result,
-    )
+    return _run_local(dataset, config, eff_dev, backend, output=eff.output,
+                      checkpoint=eff.checkpoint, checkpoint_interval=eff.checkpoint_interval)
 
 
 def write_data(result, directory="./results"):
