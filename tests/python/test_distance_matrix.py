@@ -349,9 +349,9 @@ def test_a_band_narrower_than_the_length_difference_is_refused():
 
 
 class TestNotComputed:
-    """v1.0.0 wrote -1 for a pair it never computed; 2.0 marks one NaN. Under every
-    variant but Soft-DTW, whose distances can be negative, a negative entry is
-    refused with the way to mark the pair, never clustered as a distance."""
+    """v1.0.0 wrote -1 for a pair it never computed; 2.0 marks one NaN. No distance
+    is negative (Soft-DTW's is its divergence), so a negative entry is refused with
+    the way to mark the pair, never clustered as a distance."""
 
     SERIES = [[0.0, 1.0, 3.0, 2.0], [1.0, 2.0, 0.0, 1.0], [4.0, 0.0, 2.0, 2.0]]
 
