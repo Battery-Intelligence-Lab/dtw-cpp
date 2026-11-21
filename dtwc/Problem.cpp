@@ -395,12 +395,16 @@ int Problem::n_repetitions() const
  * @brief Sets the initial centroids for clustering.
  *
  * @param candidate_centroids A vector containing the indices of candidate centroids.
- * @throws InvalidInput if the size of candidate_centroids is not equal to Nc.
+ * @throws InvalidInput if the size of candidate_centroids is not equal to Nc, or an index is outside [0, N).
  */
 void Problem::set_clusters(const std::vector<index_t> &candidate_centroids)
 {
   if (candidate_centroids.size() != static_cast<size_t>(Nc))
     throw InvalidInput("Set cluster has failed as number of centroids is not same as the number of indices in candidate centroids vector.\n");
+  for (const index_t medoid : candidate_centroids)
+    if (medoid < 0 || medoid >= size())
+      throw InvalidInput("Problem::set_clusters: medoid " + std::to_string(medoid) + " is outside [0, N), N = "
+                         + std::to_string(size()) + ".");
 
   centroids_ind = candidate_centroids;
 }
