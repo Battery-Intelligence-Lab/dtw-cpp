@@ -30,12 +30,6 @@
 
 namespace dtwc {
 
-/**
- *  @brief Writes the medoids and their corresponding total cost to a CSV file.
- *  @param centroids_all A vector of vectors containing all centroid indices.
- *  @param rep The current repetition number.
- *  @param total_cost The total cost associated with the medoids.
- */
 void Problem::writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int rep, double total_cost)
 {
   const auto outPath = output_folder_
@@ -53,10 +47,6 @@ void Problem::writeMedoids(std::vector<std::vector<index_t>> &centroids_all, int
   close_output(medoidsFile, outPath);
 }
 
-/**
- *  @brief Prints cluster information to the standard output.
- *  @details Displays each centroid and its members.
- */
 void Problem::print_clusters() const
 {
   require_clustered("print_clusters");
@@ -77,15 +67,10 @@ void Problem::print_clusters() const
   }
 }
 
-/**
- *  @brief Writes cluster information to a CSV file.
- *  @details The file includes cluster centroids and members, and the total cost.
- */
 void Problem::write_clusters()
 {
   require_clustered("write_clusters"); // before the file is opened: a refusal leaves none behind
-  const auto file_name = name_ + "_Nc_" + std::to_string(Nc) + ".csv";
-  const auto path = output_folder_ / utf8_to_path(file_name);
+  const auto path = output_folder_ / utf8_to_path(name_ + "_Nc_" + std::to_string(Nc) + ".csv");
   std::ofstream myFile = open_output(path);
 
   myFile << "Cluster centroids:\n";
@@ -96,8 +81,7 @@ void Problem::write_clusters()
     myFile << series_name(centroids_ind[i]);
   }
 
-  myFile << "\n\n"
-         << "Data" << ',' << "its cluster\n";
+  myFile << "\n\nData,its cluster\n";
 
   for (const auto i : Range(size()))
     myFile << series_name(i) << ',' << series_name(centroid_of(static_cast<index_t>(i))) << '\n';
@@ -126,11 +110,7 @@ void Problem::write_silhouettes()
     return;
   }
 
-  std::string silhouette_name{ name_ + "_silhouettes_Nc_" };
-
-  silhouette_name += std::to_string(n_clusters()) + ".csv";
-
-  const auto path = output_folder_ / utf8_to_path(silhouette_name);
+  const auto path = output_folder_ / utf8_to_path(name_ + "_silhouettes_Nc_" + std::to_string(Nc) + ".csv");
   std::ofstream myFile = open_output(path);
 
   myFile << "Silhouettes:\n";
@@ -140,20 +120,14 @@ void Problem::write_silhouettes()
   close_output(myFile, path);
 }
 
-/**
- *  @brief Writes the members of each medoid to a CSV file.
- *  @param iter The current iteration number.
- *  @param rep The current repetition number.
- */
 void Problem::write_medoid_members(int iter, int rep) const
 {
   require_clustered("write_medoid_members");
-  const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
-                                  + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
-
-  const auto path = output_folder_ / utf8_to_path(medoid_name);
+  const auto path = output_folder_
+    / utf8_to_path("medoidMembers_Nc_" + std::to_string(Nc) + "_rep_" + std::to_string(rep)
+                   + "_iter_" + std::to_string(iter) + ".csv");
   std::ofstream medoidMembers = open_output(path);
-  for (const auto i_c : Range(n_clusters())) {
+  for (const auto i_c : Range(Nc)) {
     for (const auto i_p : Range(size()))
       if (clusters_ind[i_p] == i_c)
         medoidMembers << series_name(i_p) << ',';
@@ -164,19 +138,11 @@ void Problem::write_medoid_members(int iter, int rep) const
   close_output(medoidMembers, path);
 }
 
-/**
- *  @brief Writes the distance matrix to a file.
- *  @param file_name The name of the output file, in the output folder.
- */
 void Problem::write_distance_matrix(const std::string &file_name) const
 {
   io::write_csv(distMat, output_folder_ / utf8_to_path(file_name));
 }
 
-/**
- *  @brief Writes the number of the best repetition to a file and prints it to the console.
- *  @param best_rep The best repetition number.
- */
 void Problem::writeBestRep(int best_rep)
 {
   const auto path = output_folder_
