@@ -1909,11 +1909,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
     mexErrMsgIdAndTxt("dtwc:invalidArgument",
                       "First argument must be a command string.");
 
-  std::string cmd = get_string(prhs[0]);
-
-  // longjmp-safe: catch C++ exceptions, exit scope, THEN call mexErrMsgIdAndTxt
-  std::string error_id, error_msg;
+  // longjmp-safe: catch C++ exceptions, exit scope, THEN call mexErrMsgIdAndTxt. It does not
+  // return, so the error text lives in static storage, which the jump leaves alone, and cmd
+  // inside the try, gone before a handler runs.
+  static std::string error_id, error_msg;
+  error_id.clear();
+  error_msg.clear();
   try {
+    std::string cmd = get_string(prhs[0]);
     // Device
     if (cmd == "version") {
       if (nlhs > 0) plhs[0] = mxCreateString(DTWC_VERSION_STRING);
@@ -2120,7 +2123,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     error_msg = "Unknown C++ exception";
   }
 
-  // All C++ RAII objects are destroyed before longjmp
-  if (!error_msg.empty())
+  // No object with a destructor is alive in this frame here: the jump skips none
+  if (!error_id.empty())
     mexErrMsgIdAndTxt(error_id.c_str(), "%s", error_msg.c_str());
 }
