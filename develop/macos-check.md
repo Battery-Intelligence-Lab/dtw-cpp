@@ -16,7 +16,11 @@ cmake --build build -j
 ```
 
 Metal is on by default on Apple. A compile error in `dtwc/metal/metal_dtw.mm` or in a Metal test is the first thing
-to fix: those files have never been compiled since the edits listed in step 5.
+to fix: those files have never been compiled since the edits listed in step 5. Off the Mac, every C++ translation
+unit of a Windows build (513) passes `clang++ -fsyntax-only -DDTWC_HAS_METAL`, so a build error most likely sits in
+the Objective-C++ of `metal_dtw.mm`. Its kernels (MSL source) are compiled at run time by `newLibraryWithSource`: a
+shader error is no build error, it makes `Metal backend is available` skip with the Metal compiler's message, and
+step 2 counts that skip as a failure.
 
 ## 2. The full suite
 
@@ -38,23 +42,32 @@ assertions, not `DTWC_HAS_METAL not defined`.
 `dtw_banded_row` and the wavefront body had no early exit for `|La - Lb| > band`, which the CUDA kernels have: with
 the longer series at the lower index, `banded_row` wrote before its scratch buffer, and the wavefront returned a
 stale finite cost. Only a direct backend call reaches it (Problem, the CLI and the bindings refuse such data first).
-The existing fixed-band test puts the long filler last, so it misses the trigger. Add this case at the end of
-`tests/unit/test_metal_correctness.cpp` (it uses that file's `gpu_fill` and `fixed_band` helpers):
+The existing fixed-band test puts the long filler last, so it misses the trigger. Add this case to
+`tests/unit/test_metal_correctness.cpp` just above its last line, `#endif // DTWC_HAS_METAL`: it uses the Metal-only
+`gpu_fill` and `fixed_band` helpers defined there, and below that line it would break every build without Metal.
 
 ```cpp
-TEST_CASE("Metal gives no path for a pair whose length gap exceeds the band, the longer series first",
+TEST_CASE("Metal gives no path for a pair whose length gap exceeds the band with the longer series first",
           "[metal][banded]")
 {
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
   // The longer series at the lower index: banded_row wrote before its scratch buffer and the wavefront returned a
-  // stale finite cost. Both must give the CPU's no-path value.
+  // stale finite cost. Both must give the CPU's no-path value. At band 1, banded_row takes a batch whose longest
+  // series has more than 20 samples (band * 20 < max_L), the threadgroup wavefront a shorter one.
+  struct Route {
+    std::size_t longer;
+    const char *kernel_name;
+  };
   const std::vector<double> shorter{ 0, 1, 0, 2, 0 };
-  for (const std::size_t longer : { std::size_t{ 12 }, std::size_t{ 64 } }) { // wavefront; banded_row (band * 20 < 64)
-    const std::vector<std::vector<double>> series{ fixed_band::filler(longer), shorter };
+  for (const auto &route : { Route{ 12, "wavefront" }, Route{ 64, "banded_row" } }) {
+    const std::vector<std::vector<double>> series{ fixed_band::filler(route.longer), shorter };
     dtwc::metal::MetalDistMatOptions opts;
     opts.band = 1;
     const auto gpu = gpu_fill(series, opts);
     const double cpu = dtwc::dtwBanded<double>(series[0], series[1], 1);
-    INFO("kernel=" << gpu.kernel_used << " longer=" << longer);
+    INFO("kernel=" << gpu.kernel_used << " longer=" << route.longer);
+    REQUIRE(gpu.kernel_used == route.kernel_name);
     REQUIRE(cpu == fixed_band::public_no_path_sentinel);
     REQUIRE(gpu.matrix[1] == cpu);
     REQUIRE(gpu.matrix[2] == cpu);
@@ -62,9 +75,16 @@ TEST_CASE("Metal gives no path for a pair whose length gap exceeds the band, the
 }
 ```
 
-Check that the two iterations really used `wavefront` and `banded_row` (print `gpu.kernel_used`; adjust the lengths if
-the route selection differs). If quick, show the case fails without the guards: `git revert --no-commit bc30b29f`,
-rebuild, run `./build/bin/dtwc_unit_gpu "[metal][banded]"`, then `git revert --abort` (or `git checkout -- dtwc/metal`).
+Checked off the Mac: the file's Metal branch, with this case, passes `clang++ -fsyntax-only -DDTWC_HAS_METAL`; the
+CPU half holds (`dtwBanded` gives the sentinel for both lengths, in either order); and the kernels named are the
+ones `metal_dtw.mm` selects. A failure here is therefore Metal's, unless the route assertion fails, which means the
+route selection changed: adjust the lengths. The test name has no comma, which Catch2 would read as a separator.
+
+If quick, show the case fails without the guards: `git revert --no-commit bc30b29f` (it applies cleanly to this
+branch), rebuild, and run `./build/bin/dtwc_unit_gpu "[metal][banded]"`: the new case must fail. Then restore the
+guards with `git revert --abort` (it keeps the uncommitted test case and clears the revert state; a `git checkout`
+of the file would leave that state behind and turn the step-7 commit into a revert), rebuild, and rerun the same
+filter: it must pass before step 4.
 
 ## 4. GPU results equal the CPU's
 
@@ -76,21 +96,25 @@ for m in pam clara; do
 done
 ```
 
-Metal computes in float32, so the distance matrices differ in the last digits; labels and medoids must be equal.
+Metal computes in float32, so the distance matrices differ in the last digits; labels and medoids must be equal
+(CUDA in float32, `--gpu-precision fp32`, gives the CPU's labels and medoids on this file for both methods).
 
 ## 5. Metal-reachable code changed without a Metal build
 
 Covered by steps 2 and 4 if they pass; look here first if they fail:
-- the Metal route of `Problem`'s fill (a view's owned copy goes to `metal::compute_distance_matrix_metal`);
+
+- the Metal route of `Problem`'s fill in `dtwc/Problem.cpp` (a view's owned copy goes to
+  `metal::compute_distance_matrix_metal`);
 - `gpu_staging_bytes` in `dtwc/cli/run.cpp` (the Metal formula: the floats plus a float32 matrix);
-- `fast_clara_stream.hpp` (`on_gpu` is false on Metal: the assignment runs on the CPU);
-- `tests/unit/test_fill_request.cpp` (Auto means float32 on Metal) and `tests/unit/test_ipc_stream.cpp`;
+- `dtwc/algorithms/detail/fast_clara_stream.hpp` (`on_gpu` is false on Metal: the assignment runs on the CPU);
+- `tests/unit/test_fill_request.cpp` (Auto means float32 on Metal) and `tests/unit/io/test_ipc_stream.cpp`;
 - `tests/unit/test_metal_mmap.cpp`.
 
 ## 6. The rest of the Mac build
 
-- cpuinfo builds on arm64, `test_machine` finds a known CPU model, and `./build/bin/dtwc_cl -v ...` prints sensible
-  machine lines.
+- cpuinfo builds on arm64; `./build/bin/dtwc_unit_core "[machine]"` passes (with cpuinfo on,
+  `tests/unit/core/test_machine.cpp` asserts a known CPU model; 34 assertions in 2 test cases on Windows); and
+  `./build/bin/dtwc_cl -v ...` prints sensible machine lines.
 - `cpp_conformance` passes (part of step 2).
 - The Python package: `uv venv .venv-mac && uv pip install --python .venv-mac/bin/python . numpy scipy h5py pyarrow
   scikit-learn matplotlib pandas pytest`, then
