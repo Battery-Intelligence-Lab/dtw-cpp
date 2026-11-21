@@ -63,7 +63,12 @@ while IFS= read -r line || [[ -n "${line}" ]]; do
         echo "ERROR: invalid .env key: ${key}" >&2
         exit 1
     }
-    export "${key}=${value}"
+    # Only the keys this script reads: another tool's key, or PATH, LD_PRELOAD,
+    # RSYNC_RSH, SCRIPT_DIR, ..., is skipped, so it cannot change what runs here.
+    case "${key}" in
+        SLURM_USER|SLURM_HOST|SLURM_REMOTE_BASE|SLURM_PARTITION|SLURM_CLUSTER|SLURM_EMAIL|SLURM_ACCOUNT|SLURM_QOS|SLURM_MODULES|SLURM_GPU_GRES)
+            export "${key}=${value}" ;;
+    esac
 done < "${ENV_FILE}"
 
 # ── Validate required variables ──────────────────────────────────────────

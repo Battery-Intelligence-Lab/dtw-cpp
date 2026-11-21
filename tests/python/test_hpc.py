@@ -870,7 +870,7 @@ class TestSlurmLastMile:
     def test_safe_optional_config_reaches_sbatch_as_single_argv(self, tmp_path):
         """The optional settings, the .env partition and the GPU request, its
         constraint's '|' included, reach sbatch as single arguments; the job
-        runs build-l40s."""
+        runs build-l40s. Keys the wrapper does not read change nothing."""
         wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
         cluster = "arc-prod"
         email = "first.last+dtwc@eng.ox.ac.uk"
@@ -880,6 +880,7 @@ class TestSlurmLastMile:
                 f"SLURM_CLUSTER={cluster}\n"
                 f"SLURM_EMAIL={email}\n"
                 "SLURM_PARTITION=medium\n"
+                "PATH=/nonexistent\nSCRIPT_DIR=/nonexistent\nSLURM_GATEWAY=gw.example.invalid\n"
             )
         binary = tmp_path / "remote/src/build-l40s/bin/dtwc_cl"
         binary.parent.mkdir(parents=True)
