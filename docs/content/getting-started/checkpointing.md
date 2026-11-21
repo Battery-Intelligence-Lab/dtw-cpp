@@ -43,7 +43,9 @@ other `matrix_dtype` is refused, naming the one that reads it, and never
 converted. The device is not: FP64
 distances from the CPU and from a GPU differ by rounding only, so either one's
 file serves the other, and GPU 0's serves GPU 1; an FP32 file is refused by an
-FP64 run. On Metal, which has no FP64, precision `auto` is FP32. On CUDA it
+FP64 run. `cpu+gpu` counts as a GPU here: with `fp32` its file is marked FP32,
+although the CPU's share of the rows is computed in FP64, so it and a `gpu`
+`fp32` file serve each other. On Metal, which has no FP64, precision `auto` is FP32. On CUDA it
 resolves on the GPU a fill meets, so a CUDA run with `auto` cannot write or read
 a file: select `fp32` or `fp64`. Series names are not part of it. Integers and doubles are in the host byte order, which is
 little-endian on every supported platform.
