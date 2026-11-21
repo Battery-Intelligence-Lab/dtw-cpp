@@ -56,10 +56,8 @@ struct Data
   /// Returns the number of data points (series count).
   index_t size() const
   {
-    if (is_view_)
-      return static_cast<index_t>(is_f32() ? p_spans_f32_.size() : p_spans_.size());
-    return static_cast<index_t>(
-      (precision == core::Precision::Float32) ? p_vec_f32.size() : p_vec.size());
+    if (is_view_) return static_cast<index_t>(is_f32() ? p_spans_f32_.size() : p_spans_.size());
+    return static_cast<index_t>(is_f32() ? p_vec_f32.size() : p_vec.size());
   }
 
   /// Returns the number of timesteps for series i.
@@ -87,7 +85,7 @@ struct Data
   size_t series_flat_size(size_t i) const
   {
     if (is_view_) return is_f32() ? p_spans_f32_[i].size() : p_spans_[i].size();
-    return (precision == core::Precision::Float32) ? p_vec_f32[i].size() : p_vec[i].size();
+    return is_f32() ? p_vec_f32[i].size() : p_vec[i].size();
   }
 
   /// Returns the name of series i as a string_view.

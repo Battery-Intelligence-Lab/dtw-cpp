@@ -33,13 +33,12 @@ class DataLoader
   std::filesystem::path data_path{ "." }; //!< Path to data file or folder
 
 public:
-  // Constructors
-  DataLoader() = default;                                  //!< Default constructor.
-  DataLoader(const fs::path &path_) { this->path(path_); } //!< Constructor with path initialization.
+  DataLoader() = default;
+  DataLoader(const fs::path &path_) { path(path_); }
   DataLoader(const fs::path &path_, index_t Ndata_)
   {
-    this->path(path_);
-    this->n_data(Ndata_);
+    path(path_);
+    n_data(Ndata_);
   }
 
   // Accessor methods

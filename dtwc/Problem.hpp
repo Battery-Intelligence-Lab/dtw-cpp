@@ -12,36 +12,33 @@
 
 #pragma once
 
-#include "Data.hpp"           // for Data
-#include "DataLoader.hpp"     // for DataLoader
-#include "base/settings.hpp"       // for data_t, DEFAULT_BAND
-#include "base/env.hpp"            // for Device, GpuPrecision
-#include "base/error.hpp"          // for InvalidInput
-#include "enums/enums.hpp"    // for using Enum types.
-#include "initialisation.hpp" // for init functions
-#include "core/dtw_options.hpp" // for DTWVariant
-#include "core/storage.hpp"     // for Precision
-#include "core/distance_matrix.hpp" // for DistanceMatrix
-#include "core/clustering_result.hpp" // for set_result
-#include "algorithms/hierarchical.hpp" // for Linkage
+#include "Data.hpp"
+#include "DataLoader.hpp"
+#include "base/settings.hpp"
+#include "base/env.hpp"
+#include "base/error.hpp"
+#include "enums/enums.hpp"
+#include "initialisation.hpp"
+#include "core/dtw_options.hpp"
+#include "core/storage.hpp"
+#include "core/distance_matrix.hpp"
+#include "core/clustering_result.hpp"
+#include "algorithms/hierarchical.hpp"
+#include "checkpoint.hpp"
 
-#include <cstddef>     // for size_t
-#include <cstdint>     // for uint64_t, int64_t
-#include <filesystem>  // for operator/, path
-#include <string>      // for char_traits, operator+, operator<<
-#include <string_view> // for string_view
-#include <utility>     // for pair
-#include <vector>      // for vector, allocator
-#include <functional>  // std::function
-#include <iosfwd>      // std::ostream
-#include <limits>      // std::numeric_limits
-#include <span>        // std::span
-#include <memory>
-#include <optional>    // std::optional
-#include <stdexcept>
-#include <tuple>       // std::tuple
-
-#include "checkpoint.hpp" // for CheckpointOptions, load_checkpoint
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <functional>
+#include <iosfwd>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 namespace dtwc {
 
@@ -443,10 +440,10 @@ public:
   /// @throws InvalidInput for n < 1: no iteration would report the initial
   ///         medoids' cost as a clustering result.
   void set_max_iter(int n);
-  int max_iter() const;
+  int max_iter() const { return maxIter; }
   /// @throws InvalidInput for n < 1: at least one run is needed.
   void set_n_repetitions(int n);
-  int n_repetitions() const;
+  int n_repetitions() const { return N_repetition; }
   void set_random_seed(std::uint64_t seed) { random_seed_ = seed; }
   void set_tadpole_dc(double dc) { tadpole_dc_ = dc; }
   /// CLARA's subsample size and count, OneBatchPAM's batch size and the hierarchical

@@ -20,7 +20,7 @@ namespace dtwc {
 fs::path checkpoint_path(const Problem &prob, const std::string &directory)
 {
   const std::string &name = prob.name();
-  return utf8_to_path(directory) / utf8_to_path((name.empty() ? std::string("distances") : name) + ".dtwm");
+  return utf8_to_path(directory) / utf8_to_path(name.empty() ? "distances.dtwm" : name + ".dtwm");
 }
 
 void save_checkpoint(const Problem &prob, const std::string &path)

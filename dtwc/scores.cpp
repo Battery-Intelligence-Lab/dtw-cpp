@@ -21,12 +21,10 @@
 #include <algorithm>      // for std::max, std::count_if
 #include <cmath>          // for std::log
 #include <cstddef>
-#include <cstdint>        // for int64_t
-#include <limits>         // for std::numeric_limits
+#include <limits>
 #include <map>
-#include <stdexcept>
-#include <string>         // for std::to_string
-#include <utility>        // for pair
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace dtwc::scores {
@@ -47,7 +45,7 @@ std::vector<index_t> cluster_counts_checked(const Problem &prob, const char *who
   const auto N = prob.size();
   const index_t Nc = prob.n_clusters();
 
-  std::vector<index_t> counts(static_cast<std::size_t>(std::max<index_t>(Nc, 0)), 0);
+  std::vector<index_t> counts(static_cast<std::size_t>(Nc), 0);
   for (auto i : Range(N)) {
     const index_t c = prob.clusters_ind[i];
     if (c < 0 || c >= Nc)
@@ -318,12 +316,8 @@ double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const s
  */
 std::vector<double> silhouette(Problem &prob)
 {
-  const auto Nb = prob.size();         //!< Number of profiles
-
   // v1.0.0 printed a line and returned N copies of -1, a valid-looking score.
   prob.require_clustered("silhouette");
-
-  std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
 
   // s(i) is only defined when a SECOND non-empty cluster supplies b(i);
   // otherwise `min` stays at DBL_MAX and (min - a)/min evaluates to ~ +1.0 — a
@@ -333,7 +327,8 @@ std::vector<double> silhouette(Problem &prob)
                        "b(i) is the mean distance to the nearest OTHER cluster, which does not "
                        "exist for a single realised cluster.");
 
-  prob.fill_distance_matrix(); //!< We need all pairwise distance for silhouette score.
+  prob.fill_distance_matrix();
+  std::vector<double> silhouettes(prob.size()); // silhouette_of writes every point's
   prob.distance_matrix().visit([&](const auto *matrix) { silhouette_of(matrix, prob, counts, silhouettes); });
   return silhouettes;
 }
@@ -584,7 +579,7 @@ double score(Problem &prob, std::string_view name)
     const auto values = silhouette(prob);
     double sum = 0.0;
     for (const double value : values) sum += value;
-    return values.empty() ? 0.0 : sum / static_cast<double>(values.size());
+    return sum / static_cast<double>(values.size());
   }
   if (key == "davies_bouldin") return davies_bouldin(prob);
   if (key == "dunn") return dunn(prob);

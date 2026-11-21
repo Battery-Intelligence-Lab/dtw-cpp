@@ -392,11 +392,6 @@ void Problem::set_max_iter(int n)
   maxIter = n;
 }
 
-int Problem::max_iter() const
-{
-  return maxIter;
-}
-
 void Problem::set_n_repetitions(int n)
 {
   if (n < 1)
@@ -405,11 +400,6 @@ void Problem::set_n_repetitions(int n)
       + std::to_string(n) + ". It counts the random restarts, and one run is the "
         "minimum.");
   N_repetition = n;
-}
-
-int Problem::n_repetitions() const
-{
-  return N_repetition;
 }
 
 /**

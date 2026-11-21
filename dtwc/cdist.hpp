@@ -10,7 +10,6 @@
 #include "base/env.hpp"
 #include "core/dtw_options.hpp"
 
-#include <string>
 #include <vector>
 
 namespace dtwc {
