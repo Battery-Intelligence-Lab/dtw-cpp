@@ -3,28 +3,13 @@
  * @brief TADPole density-peaks clustering with conditionally admissible DTW pruning.
  *
  * @details Implements dtwc::algorithms::tadpole (see tadpole.hpp). Algorithm and
- *   pruning follow Begum, Ulanova, Dau, Wang & Keogh, arXiv:1612.00637 (extended
- *   TADPole / KDD 2015), density-peaks core from Rodriguez & Laio, *Science* 2014.
+ *   pruning follow Begum, Ulanova, Dau, Wang & Keogh, arXiv:1612.00637 (KDD 2015),
+ *   with the density-peaks core from Rodriguez & Laio, *Science* 2014.
  *
- *   ── Pruning admissibility inside the supported finite/nonempty domain ──
- *   For finite, nonempty, equal-length Standard-L1 univariate series whose
- *   length fits the integer band API, the following decisions preserve the
- *   brute-force result.
- *   ρ_i uses the CUTOFF kernel ρ_i = |{ j≠i : d(i,j) < dc }| — a binary "d<dc"
- *   test per pair. With LB ≤ d ≤ UB:
- *     • LB ≥ dc  ⇒ d ≥ dc ⇒ NOT (d<dc)              → not a neighbour, skip DTW
- *     • UB < dc  ⇒ d < dc                            → a neighbour,     skip DTW
- *     • else                                          compute the exact DTW
- *   `≥ dc` (not the paper's `> dc`) is used for the LB case: it is still admissible
- *   (d ≥ LB ≥ dc) and agrees with the brute path's strict `d < dc`. The δ step
- *   prunes a candidate q when LB(i,q) ≥ best-so-far (Begum Table 7): d(i,q) ≥ LB ≥
- *   best ⇒ q cannot lower the running minimum, so skipping it cannot change δ_i or
- *   the parent. In exact arithmetic those decisions preserve the brute-force
- *   result; the permanent exactly representable regression confirms that
- *   regime. Bit-level identity when a floating reduction lands near `dc` or
- *   `best` is not proved. Empty series are outside the guarantee, and the
- *   configuration predicate does not yet validate finiteness or integer length
- *   representability.
+ *   Stage 1 uses `LB ≥ dc` (rather than the paper's `> dc`) because the cutoff
+ *   kernel tests strict `d < dc`, so `d ≥ LB ≥ dc` already rules out a neighbour.
+ *   Stage 2 prunes candidate q when `LB(i, q) ≥ best` (or `> best` when `q` would
+ *   win a tie against `best_parent`; Begum Table 7).
  *
  * @author Volkan Kumtepeli
  * @date 8 Jul 2026
@@ -46,7 +31,6 @@
 #include <limits>
 #include <numeric>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -56,24 +40,14 @@ namespace algorithms {
 
   namespace {
 
-    /// Configuration-only predicate for the regime where LB_Keogh + the diagonal L1
-    /// upper bound can be valid: plain Standard DTW, univariate, float64, no NaN
-    /// handling — the case where dispatch binds L1 `dtwBanded` (dtw_dispatch.cpp
-    /// make_standard). It does not inspect samples for finiteness or check that a
-    /// series length fits the integer envelope-radius API.
-    ///
-    /// Float32 is excluded because the prune would not be ADMISSIBLE: the bound path
-    /// reads Data::series() (float64 storage) while the exact side computes on the
-    /// stored Float32 series — the two sides of the bound would come from different
-    /// data. Float32 therefore takes the exact path everywhere, a slowdown
-    /// TADPoleStats::pruning_enabled reports. So does a Float32 matrix: its distances
-    /// are rounded to float, the bounds are not. A filled matrix takes it too: the
-    /// matrix may hold other distances than the series' DTW (one read from a file or
-    /// set by the caller), and its every pair is a lookup, so pruning saves nothing.
+    /// True when the L1 bounds (LB_Keogh and the diagonal UB; under another metric the
+    /// LB can exceed the exact distance) are admissible against `exact_distance`:
+    /// Standard L1 univariate float64 DTW with `MissingStrategy::Error` and an unfilled
+    /// float64 matrix. Float32 series/matrices are excluded so float64 bounds never
+    /// prune float32-rounded distances, and a pre-filled matrix is already O(1) lookup
+    /// (and may hold user-supplied non-DTW distances).
     bool bounds_valid(const Problem &prob)
     {
-      // The bounds are L1: under Problem::set_metric(SquaredL2) the LB can exceed
-      // the exact distance, so another metric takes the exact path too.
       return prob.variant_params().variant == core::DTWVariant::Standard
              && prob.metric() == core::MetricType::L1
              && prob.data().ndim == 1
@@ -151,18 +125,14 @@ namespace algorithms {
     if (percentile <= 0.0 || percentile >= 100.0)
       throw InvalidInput("tadpole_auto_dc: percentile must be in (0, 100).");
 
-    // Deterministic stratified subsample of min(N, cap) series across [0, N) (for
-    // N <= 64 this is every series 0..N-1; for larger N it spans the full dataset
-    // evenly rather than only the first 64 rows, which may belong to one sorted group).
+    // Deterministic evenly spaced subsample of min(N, 64) series across [0, N): every
+    // series when N <= 64 (s * N / N = s), and for larger N the whole dataset rather
+    // than its first 64 rows, which may belong to one sorted group.
     const index_t cap = std::min<index_t>(N, 64);
     std::vector<index_t> chosen(static_cast<std::size_t>(cap));
-    if (N <= cap) {
-      std::iota(chosen.begin(), chosen.end(), index_t{ 0 });
-    } else {
-      for (index_t s = 0; s < cap; ++s)
-        chosen[static_cast<std::size_t>(s)] = static_cast<index_t>(
-          (static_cast<std::size_t>(s) * static_cast<std::size_t>(N)) / static_cast<std::size_t>(cap));
-    }
+    for (index_t s = 0; s < cap; ++s)
+      chosen[static_cast<std::size_t>(s)] = static_cast<index_t>(
+        (static_cast<std::size_t>(s) * static_cast<std::size_t>(N)) / static_cast<std::size_t>(cap));
     const auto distance = exact_distance(prob);
     std::vector<std::pair<index_t, index_t>> pairs;
     pairs.reserve(static_cast<std::size_t>(cap * (cap - 1) / 2));
@@ -466,8 +436,8 @@ namespace algorithms {
     }
 
     core::ClusteringResult result;
-    result.labels = label;
-    result.medoid_indices = center_of_label;
+    result.labels = std::move(label);
+    result.medoid_indices = std::move(center_of_label);
     result.total_cost = total_cost;
     result.iterations = 1; // single non-iterative pass
     result.converged = true;

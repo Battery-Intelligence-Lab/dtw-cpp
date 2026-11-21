@@ -617,8 +617,6 @@ Series compute_barycenter(std::span<const SeriesView> series, std::size_t target
                           const BarycenterOptions& options, SeriesView initial,
                           const char* entry_point)
 {
-  validate_series(series);
-  validate_options(options);
   Series center = resample_linear(initial, target_length);
   require_finite_series(center, entry_point, "barycenter initialization");
   switch (options.method) {
@@ -653,7 +651,7 @@ double assign(std::span<const SeriesView> data, const std::vector<Series>& cente
     require_finite(cost, "barycenter_kmeans", "assignment cost");
   const double total = std::accumulate(local_costs.begin(), local_costs.end(), 0.0);
   require_finite(total, "barycenter_kmeans", "assignment cost");
-  if (costs) *costs = local_costs;
+  if (costs) *costs = std::move(local_costs);
   return total;
 }
 
@@ -671,6 +669,7 @@ std::vector<data_t> dtw_barycenter(const Problem& prob,
     if (index < 0 || index >= prob.size())
       throw InvalidInput("dtw_barycenter: series index out of range.");
   const auto selected = problem_series(prob, series_indices);
+  validate_options(options);
   return compute_barycenter(
     selected.views, target_length, options, selected.views.front(), "dtw_barycenter");
 }
@@ -716,14 +715,10 @@ BarycenterClusteringResult barycenter_kmeans(
   for (int iteration = 0; iteration < options.max_iter; ++iteration) {
     std::vector<double> point_costs;
     const double cost = assign(data, centers, result.labels, &point_costs);
-    const bool has_previous_assignment = iteration > 0
-      && std::isfinite(previous_cost);
-    const bool labels_stable = has_previous_assignment
-      && result.labels == previous_labels;
-    const bool cost_stable = has_previous_assignment
-      && std::abs(previous_cost - cost)
-           <= options.barycenter.tolerance * std::max(1.0, previous_cost);
-    if (labels_stable || cost_stable) {
+    if (iteration > 0
+        && (result.labels == previous_labels
+            || std::abs(previous_cost - cost)
+                 <= options.barycenter.tolerance * std::max(1.0, previous_cost))) {
       result.converged = true;
       result.iterations = iteration;
       result.total_cost = cost;
@@ -781,12 +776,8 @@ BarycenterClusteringResult barycenter_kmeans(
     centers = std::move(next_centers);
     result.iterations = iteration + 1;
   }
-  // On the converged path the loop already stored `result.labels` and
-  // `result.total_cost` from that iteration's assign(), and `centers` has not
-  // changed since (the break precedes the centre update), so re-assigning would
-  // repeat a full N*k DBA-DTW pass for an identical answer. Only the
-  // max_iter-exhausted path needs it: there the last iteration did update
-  // `centers` after its assign().
+  // Re-assign only when max_iter ended after a centre update; on convergence,
+  // `result.labels` and `result.total_cost` already match the final `centers`.
   if (!result.converged)
     result.total_cost = assign(data, centers, result.labels);
   result.barycenters = std::move(centers);
