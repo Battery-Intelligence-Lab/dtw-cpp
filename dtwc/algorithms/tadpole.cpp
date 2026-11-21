@@ -332,7 +332,6 @@ namespace algorithms {
     std::vector<double> delta(N, kInf);
     std::vector<index_t> parent(N, -1);
 
-    const bool f32_matrix = (prob.matrix_dtype() == core::Precision::Float32);
 // The slots are Stage 1's, every one empty again: a failure there was rethrown above.
 #pragma omp parallel for schedule(dynamic, 8) num_threads(n_threads)
     for (index_t i = 0; i < N; ++i) {
@@ -368,10 +367,7 @@ namespace algorithms {
             const auto sq = prob.series(static_cast<std::size_t>(q));
             const bool wins_tie = (best_parent >= 0 && q < best_parent);
             if (si.size() == sq.size()) {
-              const double tie_bound = (f32_matrix && std::isfinite(best))
-                                         ? static_cast<double>(std::nextafter(static_cast<float>(best), std::numeric_limits<float>::infinity()))
-                                         : best;
-              const bool pruned = wins_tie ? core::lb_keogh_greater(si, envs[i], sq, envs[q], tie_bound)
+              const bool pruned = wins_tie ? core::lb_keogh_greater(si, envs[i], sq, envs[q], best)
                                            : core::lb_keogh_at_least(si, envs[i], sq, envs[q], best);
               if (pruned) continue;
             }
