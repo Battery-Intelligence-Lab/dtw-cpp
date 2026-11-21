@@ -268,6 +268,17 @@ automatically (plus a resumable `.dtwm` file when `checkpoint` is set). Pass an
 empty `output=""` (`'Output', ''` in MATLAB) to run purely in memory and call
 `write_data` only if needed.
 
+A `Dataset` is read with the reader options it was made with: `skip_cols`, `skip_rows`,
+`delimiter`, `dtype` and, in Python and MATLAB, `ndim`. Settings or overrides that give
+one of them a value other than its default and the Dataset's are `InvalidInput` (MATLAB
+`dtwc:invalidArgument`) naming the option and both values: pass it to `load_data`, or leave
+it out. The same settings given to `load_data` and `do_clustering` agree, and C++
+`cdist(X, Y, cfg)` checks each `Dataset` alike. A path or array passed to `do_clustering`
+itself (Python, MATLAB) is read with the settings' options. A C++ `Dataset` holds no
+`column`: a path's read takes the Config's, and series in memory refuse one. In Python and
+MATLAB, an `ndim` given for an Arrow IPC file whose metadata gives another `ndim` above 1 is
+refused too.
+
 ## Cross-collection distances: cdist
 
 `cdist` computes the rectangular `M × N` pairwise DTW distance matrix between

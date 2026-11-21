@@ -22,7 +22,7 @@ dtw.__doc__ = _dtw.__doc__
 
 
 def _as_cdist_data(source, *, ndim: int, dtype: str):
-    from dtwcpp import Data, InvalidInput
+    from dtwcpp import Data, InvalidInput, _dtwcpp_core
     from dtwcpp._api import Dataset, _to_data, load_data
 
     if isinstance(source, Data):
@@ -32,6 +32,12 @@ def _as_cdist_data(source, *, ndim: int, dtype: str):
             )
         return source
     if isinstance(source, Dataset):
+        given = _dtwcpp_core._dtype(dtype)  # a Dataset keeps its own: refuse another, never drop it
+        if given not in ("float64", source.dtype):
+            raise InvalidInput(
+                f"cdist: the Dataset was made with dtype={source.dtype!r} and the settings give dtype={given!r}; "
+                "a Dataset keeps the options it was made with, so pass dtype to load_data, or leave it out "
+                "of the settings.")
         data = source.as_data()
         if ndim != 1 and data.ndim != ndim:
             raise InvalidInput(

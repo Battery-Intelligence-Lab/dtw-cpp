@@ -77,6 +77,9 @@ classdef Dataset < handle
                         obj.Source, obj.SkipCols, obj.SkipRows, obj.Delimiter, obj.Dtype);
                     if obj.Ndim == 1 && readNdim > 1
                         obj.Ndim = readNdim;
+                    elseif readNdim > 1 && readNdim ~= obj.Ndim   % an Arrow IPC file's metadata ndim
+                        error('dtwc:invalidArgument', ['load: the Arrow IPC file''s metadata gives Ndim %d and ' ...
+                              'Ndim %d was given; pass Ndim %d, or leave Ndim out.'], readNdim, obj.Ndim, readNdim);
                     end
                 else
                     obj.Series = obj.trimmed();

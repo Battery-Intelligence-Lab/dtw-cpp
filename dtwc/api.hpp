@@ -213,6 +213,9 @@ Dataset load_data(Dataset::series_type source, index_t skip_cols = 0, index_t sk
 /**
  * Run clustering on `data` with full `cfg` settings — including `cfg.output` (auto-writing
  * result files when non-empty; `""` runs purely in memory), `cfg.checkpoint`, and `cfg.device`.
+ * `data` is read with the reader options it was made with: one `cfg` gives (skip_cols, skip_rows,
+ * delimiter, dtype) that is not at its default and differs from the Dataset's is InvalidInput, as is
+ * a `column` beside series in memory.
  */
 Result do_clustering(const Dataset &data, const Config &cfg);
 Result do_clustering(Dataset &&data, const Config &cfg);
@@ -224,7 +227,8 @@ Result do_clustering(Dataset &&data, const Config &cfg,
 /** Write a clustering `Result` (labels, medoids, matrix, silhouettes, report) to `directory`. */
 void write_data(const Result &result, const std::filesystem::path &directory);
 
-/** Cross-collection DTW distance matrix over two `Dataset` handles (path or memory). */
+/** Cross-collection DTW distance matrix over two `Dataset` handles (path or memory), each read with the
+ *  reader options it was made with; `cfg`'s are checked against them as do_clustering checks them. */
 std::vector<double> cdist(const Dataset &X, const Dataset &Y, const Config &cfg);
 std::vector<double> cdist(const Dataset &X, const Dataset &Y);
 

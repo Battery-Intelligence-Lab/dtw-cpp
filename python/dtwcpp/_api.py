@@ -279,11 +279,16 @@ class Dataset:
         if self._data is None:
             from dtwcpp import io
             if self.is_path:
-                self._data = io._read_data(self.source, self.skip_cols,
-                                           self.skip_rows, self.delimiter, self.dtype)
-                if self._ndim > 1 and self._data.ndim == 1:
-                    self._data.ndim = self._ndim
-                    self._data.validate_ndim()
+                data = io._read_data(self.source, self.skip_cols,
+                                     self.skip_rows, self.delimiter, self.dtype)
+                if self._ndim > 1 and data.ndim not in (1, self._ndim):  # an Arrow IPC file's metadata ndim
+                    from dtwcpp import InvalidInput
+                    raise InvalidInput(f"load: the Arrow IPC file's metadata gives ndim={data.ndim} and "
+                                       f"ndim={self._ndim} was given; pass ndim={data.ndim}, or leave ndim out.")
+                if self._ndim > 1 and data.ndim == 1:
+                    data.ndim = self._ndim
+                    data.validate_ndim()
+                self._data = data
             else:
                 self._data = _to_data(
                     self.source,
@@ -832,7 +837,10 @@ def load_data(source=None, settings=None, **kwargs):
 
     On ``device="hpc"`` file paths stay lazy and are read on the SLURM cluster;
     locally, NumPy arrays and Arrow buffers materialize directly into C++
-    ``Data`` without Python list conversion.
+    ``Data`` without Python list conversion. A :class:`Dataset` passes through
+    with the reader options it was made with: settings that give one of them
+    (``skip_cols``, ``skip_rows``, ``delimiter``, ``dtype``, ``ndim``) a value
+    other than its default and the Dataset's raise :class:`dtwcpp.InvalidInput`.
     """
     from dtwcpp import InvalidInput
 
@@ -850,6 +858,16 @@ def load_data(source=None, settings=None, **kwargs):
             raise InvalidInput(
                 f"load_data: Dataset keeps the options it was made with; unexpected {sorted(kwargs)}."
             )
+        # It is read with its own reader options: one the settings give, not at its default, must be the same.
+        for key, given, made, default in (
+                ("skip_cols", s.skip_cols, source.skip_cols, 0), ("skip_rows", s.skip_rows, source.skip_rows, 0),
+                ("delimiter", s.delimiter or None, source.delimiter or None, None),
+                ("dtype", s.dtype, source.dtype, "float64"), ("ndim", s.ndim, source._ndim, 1)):
+            if given != default and given != made:
+                raise InvalidInput(
+                    f"load_data: the Dataset was made with {key}={made!r} and the settings give {key}={given!r}; "
+                    f"a Dataset keeps the options it was made with, so pass {key} to load_data, or leave it out "
+                    "of the settings.")
         return source
 
     skip_cols = kwargs.pop("skip_cols", s.skip_cols)
