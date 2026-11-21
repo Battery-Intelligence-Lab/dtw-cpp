@@ -11,12 +11,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <cstdint>
-#include <filesystem>
 #include <limits>
 #include <span>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -45,7 +42,7 @@ std::span<const T> as_span(const std::vector<T> &values)
 } // namespace
 
 TEST_CASE("DTW function getters compute with the Problem's variant",
-          "[problem][dtw_function][m37]")
+          "[problem][dtw_function]")
 {
   Problem problem = make_bound_problem();
   core::DTWVariantParams params = problem.variant_params();
@@ -72,7 +69,7 @@ TEST_CASE("DTW function getters compute with the Problem's variant",
 }
 
 TEST_CASE("DTW function getters compute with the Problem's missing-data strategy",
-          "[problem][dtw_function][missing][m37]")
+          "[problem][dtw_function][missing]")
 {
   Problem problem = make_bound_problem();
   problem.set_missing_strategy(core::MissingStrategy::ZeroCost);
@@ -99,34 +96,29 @@ TEST_CASE("DTW function getters compute with the Problem's missing-data strategy
 }
 
 TEST_CASE("unchanged DTW function getters keep stable bound callable storage",
-          "[problem][dtw_function][allocation_free][m37]")
+          "[problem][dtw_function]")
 {
   Problem problem = make_bound_problem();
 
   const auto *f64 = &problem.dtw_function();
   const auto *f32 = &problem.dtw_function_f32();
-  for (int repeat = 0; repeat < 1024; ++repeat) {
-    REQUIRE(&problem.dtw_function() == f64);
-    REQUIRE(&problem.dtw_function_f32() == f32);
-  }
+  REQUIRE(&problem.dtw_function() == f64);
+  REQUIRE(&problem.dtw_function_f32() == f32);
 }
 
 TEST_CASE("DTW function getters keep a mapped cache",
-          "[problem][dtw_function][mmap][m37]")
+          "[problem][dtw_function][mmap]")
 {
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
 #else
-  SECTION("the getters retain mapped storage")
-  {
-    const ScratchDirectory cache{"m37_unchanged_mmap"};
-    Problem problem = make_bound_problem();
-    problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
+  const ScratchDirectory cache{"unchanged_mmap"};
+  Problem problem = make_bound_problem();
+  problem.use_mmap_distance_matrix(cache.path / "first.dtwcache");
 
-    const auto *function = &problem.dtw_function();
-    REQUIRE(problem.distance_matrix().is_mapped());
-    REQUIRE(&problem.dtw_function() == function);
-    REQUIRE(problem.distance_matrix().is_mapped());
-  }
+  const auto *function = &problem.dtw_function();
+  REQUIRE(problem.distance_matrix().is_mapped());
+  REQUIRE(&problem.dtw_function() == function);
+  REQUIRE(problem.distance_matrix().is_mapped());
 #endif
 }

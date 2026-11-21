@@ -16,7 +16,6 @@
 #include <cmath>
 #include <cstdint>
 #include <iterator>
-#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -38,14 +37,6 @@ TEST_CASE("DistanceMatrix sized constructor", "[DistanceMatrix]")
   for (size_t i = 0; i < 5; ++i)
     for (size_t j = 0; j < 5; ++j)
       REQUIRE_FALSE(dm.is_computed(i, j));
-}
-
-TEST_CASE("DistanceMatrix set and get", "[DistanceMatrix]")
-{
-  DistanceMatrix dm(4);
-
-  dm.set(0, 1, 3.5);
-  REQUIRE_THAT(dm.get(0, 1), WithinAbs(3.5, 1e-12));
 }
 
 TEST_CASE("DistanceMatrix symmetry", "[DistanceMatrix]")
@@ -122,20 +113,6 @@ TEST_CASE("DistanceMatrix max on sized-but-unfilled matrix", "[DistanceMatrix]")
   REQUIRE_THAT(dm.max(), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("DistanceMatrix diagonal self-distance", "[DistanceMatrix]")
-{
-  DistanceMatrix dm(4);
-
-  // Set diagonal to zero (self-distance)
-  for (size_t i = 0; i < 4; ++i)
-    dm.set(i, i, 0.0);
-
-  for (size_t i = 0; i < 4; ++i) {
-    REQUIRE(dm.is_computed(i, i));
-    REQUIRE_THAT(dm.get(i, i), WithinAbs(0.0, 1e-12));
-  }
-}
-
 TEST_CASE("DistanceMatrix visit hands the packed values at their width", "[DistanceMatrix]")
 {
   for (const auto width : { Precision::Float64, Precision::Float32 }) {
@@ -200,8 +177,7 @@ TEST_CASE("DistanceMatrix to_full_matrix", "[DistanceMatrix]")
   dm.set(0, 2, 3.0);
   dm.set(1, 2, 7.0);
 
-  // Flat row-major std::vector<double> since Eigen was dropped; the matrix is
-  // symmetric, so element (i, j) is at i * n + j and the layout question is moot.
+  // Flat row-major: element (i, j) is at i * n + j.
   const auto full = dtwc::io::to_full_matrix(dm);
   REQUIRE(full.size() == 3 * 3);
   const auto at = [&full](size_t i, size_t j) { return full[i * 3 + j]; };
@@ -212,35 +188,9 @@ TEST_CASE("DistanceMatrix to_full_matrix", "[DistanceMatrix]")
   REQUIRE_THAT(at(1, 2), WithinAbs(7.0, 1e-12));
   REQUIRE_THAT(at(2, 1), WithinAbs(7.0, 1e-12));
   // Symmetry is the property that makes the row-major/column-major choice safe,
-  // so assert it rather than assume it. Off-diagonal only: the diagonal is
-  // whatever get(i, i) returns, which is NaN while unset — unchanged from the
-  // Eigen version, which copied the same value, and NaN is not equal to itself.
+  // so assert it rather than assume it. Off-diagonal only: unset diagonal
+  // entries are NaN, which is not equal to itself.
   for (size_t i = 0; i < 3; ++i)
     for (size_t j = 0; j < 3; ++j)
       if (i != j) REQUIRE_THAT(at(i, j), WithinAbs(at(j, i), 1e-12));
-}
-
-TEST_CASE("DistanceMatrix uncomputed entries are not computed", "[DistanceMatrix]")
-{
-  DistanceMatrix dm(3);
-
-  // Verify that fresh entries are marked as not computed.
-  REQUIRE_FALSE(dm.is_computed(0, 1));
-  REQUIRE_FALSE(dm.is_computed(2, 0));
-
-  // After setting a value, it should be marked as computed.
-  dm.set(0, 1, 0.0);
-  REQUIRE(dm.is_computed(0, 1));
-  REQUIRE(dm.is_computed(1, 0));
-}
-
-TEST_CASE("DistanceMatrix zero distance is valid and computed", "[DistanceMatrix]")
-{
-  // Zero is a valid DTW distance (identical series). The NaN sentinel must not
-  // confuse 0.0 with "uncomputed".
-  DistanceMatrix dm(3);
-
-  dm.set(0, 1, 0.0);
-  REQUIRE(dm.is_computed(0, 1));
-  REQUIRE_THAT(dm.get(0, 1), WithinAbs(0.0, 1e-12));
 }

@@ -370,7 +370,7 @@ TEST_CASE("open rejects N that overflows packed size", "[DistanceMatrix][mmap][s
 }
 
 TEST_CASE("A distance matrix stored for other data is InvalidInput, CSV and cache alike",
-          "[DistanceMatrix][mmap][fingerprint][error][gt4b]")
+          "[DistanceMatrix][mmap][fingerprint][error]")
 {
   // The oracle is read_distance_matrix: a CSV matrix computed for other series
   // is InvalidInput. A cache computed for other series is the same request.
@@ -450,7 +450,7 @@ public:
 } // namespace
 
 TEST_CASE("Creating a cache over a file-size quota is IOError naming the path",
-          "[DistanceMatrix][mmap][error][gt4b]")
+          "[DistanceMatrix][mmap][error]")
 {
   // llfio's own error is no dtwc::Error: Python saw RuntimeError and MATLAB
   // dtwc:runtime; the contract is IOError.
