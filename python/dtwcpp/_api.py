@@ -255,7 +255,7 @@ class Dataset:
         # dtwc_cl's rule, so a run of "data/" is named "data" in every language.
         self.name = name if name is not None else _dtwcpp_core._default_name(
             os.fspath(source) if self.is_path else "")
-        self._ndim = 1
+        self._ndim = source.ndim if isinstance(source, _dtwcpp_core.Data) else 1  # a Data carries its own
         self._data = None
 
     @property
@@ -890,7 +890,7 @@ def load_data(source=None, settings=None, **kwargs):
 
     ds = Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
                  delimiter=delimiter, name=name, dtype=dtype)
-    ds._ndim = int(ndim)
+    ds._ndim = int(ndim) if ndim != 1 else ds._ndim  # a Data keeps its own ndim unless one is given
     return ds
 
 
@@ -928,9 +928,9 @@ def do_clustering(data=None, settings=None, **overrides):
     t0 = time.perf_counter()
     if backend == "hpc":
         from dtwcpp import _hpc
-        if eff.checkpoint:  # the run is the cluster's: a local path names nothing there
-            raise InvalidInput("do_clustering: device='hpc' runs on the cluster, which would "
-                               "ignore a local checkpoint; leave checkpoint empty.")
+        if eff.checkpoint or eff.checkpoint_interval:  # the run is the cluster's: a local path names nothing there
+            raise InvalidInput("do_clustering: device='hpc' runs on the cluster, which would ignore a local "
+                               "checkpoint; leave checkpoint empty and checkpoint_interval at 0.")
         _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or dataset.name))
         details = _hpc.cluster_on_hpc(
             dataset,
