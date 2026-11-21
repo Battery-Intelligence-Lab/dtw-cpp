@@ -101,21 +101,17 @@ inline std::ofstream open_output(const fs::path &path, std::ios::openmode mode =
   return file;
 }
 
-/// Close an output file and check it again: a full disk or a file-size quota
-/// fails the writes after a successful open, which an open-only check reports
-/// as success over a truncated file.
+/// Close `file` and check stream state so disk-full / quota truncation after open is caught.
 inline void close_output(std::ofstream &file, const fs::path &path)
 {
   file.close();
   if (!file)
     throw IOError("Write error on '" + path_to_utf8(path)
-                  +
-                  "': the file is incomplete (disk full or file-size quota?). Free space or choose another "
-                  "directory, then rerun.");
+                  + "': the file is incomplete (disk full or file-size quota?). Free space or choose another "
+                    "directory, then rerun.");
 }
 
-/// Write `text` to `path` as one file, checked on open and on close (open_output, close_output): the run's report,
-/// which dtwc_cl writes at the end of a run and Result::save beside the result files.
+/// Write `text` to `path`, checked on both open and close.
 inline void write_text(const fs::path &path, const std::string &text)
 {
   std::ofstream out = open_output(path);
@@ -144,10 +140,8 @@ inline void ignoreBOM(std::istream &in, const fs::path &path = {})
   // e.g. in a header row: hand the bytes back.
   while (matched-- > 0) in.unget();
   if (!in)
-    throw IOError(
-      "Error in delimited text file: '" + path_to_utf8(path) +
-      "': cannot re-read the "
-      "first bytes of a non-seekable stream after a partial UTF-8 byte-order mark.");
+    throw IOError("Error in delimited text file: '" + path_to_utf8(path)
+                  + "': cannot re-read the first bytes of a non-seekable stream after a partial UTF-8 byte-order mark.");
 }
 
 /**
@@ -159,14 +153,10 @@ inline void ignoreBOM(std::istream &in, const fs::path &path = {})
 inline void validate_ndata(index_t Ndata, const char *ctx)
 {
   if (Ndata < -1)
-    throw InvalidInput(
-      std::string(ctx) +
-      ": Ndata must be -1 (read all) or a non-negative "
-      "count; got "
-      + std::to_string(Ndata));
+    throw InvalidInput(std::string(ctx) + ": Ndata must be -1 (read all) or a non-negative count; got "
+                       + std::to_string(Ndata));
 }
 
-/// True while another series may still be produced.
 inline bool ndata_wants_more(index_t Ndata, std::size_t produced)
 {
   return Ndata < 0 || produced < static_cast<std::size_t>(Ndata);
@@ -413,11 +403,9 @@ namespace text_io_detail {
         continue;
       }
       if (blank_row != 0)
-        throw IOError(
-          "Error in delimited text file: '" + path_to_utf8(path) + "' row "
-          + std::to_string(blank_row) +
-          " is empty; an empty line is neither a "
-          "series nor a value (write a missing value as nan).");
+        throw IOError("Error in delimited text file: '" + path_to_utf8(path) + "' row "
+                      + std::to_string(blank_row)
+                      + " is empty; an empty line is neither a series nor a value (write a missing value as nan).");
       on_line(std::string_view(line), row);
       ++produced;
     }
@@ -440,16 +428,7 @@ namespace text_io_detail {
 
 } // namespace text_io_detail
 
-/**
- * @brief Reads a file and returns the data as a vector of a specified type.
- *
- * @tparam T The data type of the elements to be read.
- * @param name Path of the file to read.
- * @param start_row Starting row index for reading the data (default is 0).
- * @param start_col Starting column index for reading the data (default is 0).
- * @param delimiter Delimiter character used in the file (default is ',').
- * @return std::vector<T> A vector containing the read data.
- */
+/// Read a one-value-per-line text file into `std::vector<T>`.
 template <typename T>
 auto readFile(const fs::path &name, index_t start_row = 0, index_t start_col = 0, char delimiter = ',')
 {
@@ -493,18 +472,7 @@ inline std::vector<fs::path> sorted_directory_files(const fs::path &folder_path)
   return files;
 }
 
-/**
- * @brief Options for load_folder / load_batch_file.
- *
- * @details Bundles the five auxiliary parameters (Ndata, verbose, start_row,
- * start_col, delimiter) that the positional-arg overloads take after the path.
- * C++20 designated initialisers make call sites self-documenting:
- *
- *   load_folder<double>(path, {.Ndata = 1000, .start_row = 1});
- *
- * The positional-arg overloads are kept for v1.0.0 callers; they delegate to
- * the struct-based form.
- */
+/// Options for `load_folder` / `load_batch_file`.
 struct LoadOptions
 {
   index_t Ndata = -1;    //!< Max number of series to read; -1 = all.
@@ -514,21 +482,12 @@ struct LoadOptions
   char delimiter = ',';  //!< Field delimiter character.
 };
 
-/**
- * @brief Loads all files from a given folder and returns their data as vectors along with file names.
- *
- * @tparam T The data type of the elements to be read.
- * @tparam Tpath Type of the folder path (auto-deduced).
- * @param folder_path Path of the folder containing the files.
- * @param opts See LoadOptions; Ndata is the number of files read (-1: all), start_row and start_col apply to
- *        each file.
- * @return std::pair<std::vector<std::vector<T>>, std::vector<std::string>> A pair containing vectors of data and corresponding file names.
- */
+/// Load one-series-per-file data from `folder_path`, returning `{series, stem_names}`.
 template <typename T, typename Tpath>
 auto load_folder(const Tpath &folder_path, const LoadOptions &opts = {})
 {
   validate_ndata(opts.Ndata, "load_folder");
-  if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
+  if (opts.verbose > 0) std::cout << "Reading data:\n";
 
   std::vector<std::vector<T>> p_vec;
   std::vector<std::string> p_names;
@@ -561,19 +520,12 @@ auto load_folder(const Tpath &folder_path, index_t Ndata, int verbose = 1,
                         LoadOptions{ Ndata, verbose, start_row, start_col, delimiter });
 }
 
-/**
- * @brief Loads batch data from a single file and returns the data as vectors.
- *
- * @tparam T The data type of the elements to be read.
- * @param file_path Path of the file containing batch data.
- * @param opts See LoadOptions; Ndata is the number of series (rows) read (-1: all).
- * @return std::pair<std::vector<std::vector<T>>, std::vector<std::string>> A pair containing vectors of data and corresponding identifiers.
- */
+/// Load one-series-per-row batch data from `file_path`, returning `{series, 1_based_names}`.
 template <typename T>
 auto load_batch_file(const fs::path &file_path, const LoadOptions &opts = {})
 {
   validate_ndata(opts.Ndata, "load_batch_file");
-  if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
+  if (opts.verbose > 0) std::cout << "Reading data:\n";
 
   std::vector<std::vector<T>> p_vec;
   std::vector<std::string> p_names;
