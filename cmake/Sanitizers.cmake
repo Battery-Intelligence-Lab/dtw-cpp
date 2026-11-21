@@ -55,32 +55,23 @@ function(
     endif()
   endif()
 
-  list(
-    JOIN
-    SANITIZERS
-    ","
-    LIST_OF_SANITIZERS)
+  list(JOIN SANITIZERS "," LIST_OF_SANITIZERS)
 
   if(LIST_OF_SANITIZERS)
-    if(NOT
-       "${LIST_OF_SANITIZERS}"
-       STREQUAL
-       "")
-      if(NOT MSVC)
-        target_compile_options(${project_name} INTERFACE -fsanitize=${LIST_OF_SANITIZERS})
-        target_link_options(${project_name} INTERFACE -fsanitize=${LIST_OF_SANITIZERS})
-      else()
-        string(FIND "$ENV{PATH}" "$ENV{VSINSTALLDIR}" index_of_vs_install_dir)
-        if("${index_of_vs_install_dir}" STREQUAL "-1")
-          message(
-            SEND_ERROR
-              "Using MSVC sanitizers requires setting the MSVC environment before building the project. Please manually open the MSVC command prompt and rebuild the project."
-          )
-        endif()
-        target_compile_options(${project_name} INTERFACE /fsanitize=${LIST_OF_SANITIZERS} /Zi)
-        target_compile_definitions(${project_name} INTERFACE _DISABLE_VECTOR_ANNOTATION _DISABLE_STRING_ANNOTATION)
-        target_link_options(${project_name} INTERFACE /INCREMENTAL:NO)
+    if(NOT MSVC)
+      target_compile_options(${project_name} INTERFACE -fsanitize=${LIST_OF_SANITIZERS})
+      target_link_options(${project_name} INTERFACE -fsanitize=${LIST_OF_SANITIZERS})
+    else()
+      string(FIND "$ENV{PATH}" "$ENV{VSINSTALLDIR}" index_of_vs_install_dir)
+      if("${index_of_vs_install_dir}" STREQUAL "-1")
+        message(
+          SEND_ERROR
+            "Using MSVC sanitizers requires setting the MSVC environment before building the project. Please manually open the MSVC command prompt and rebuild the project."
+        )
       endif()
+      target_compile_options(${project_name} INTERFACE /fsanitize=${LIST_OF_SANITIZERS} /Zi)
+      target_compile_definitions(${project_name} INTERFACE _DISABLE_VECTOR_ANNOTATION _DISABLE_STRING_ANNOTATION)
+      target_link_options(${project_name} INTERFACE /INCREMENTAL:NO)
     endif()
   endif()
 

@@ -1,14 +1,7 @@
-# This cmake file is to add external dependency projects.
-# Adapted from https://github.com/cpp-best-practices/cmake_tecomplate/tree/main
 include(cmake/CPM.cmake)
 
-# Done as a function so that updates to variables like
-# CMAKE_CXX_FLAGS don't propagate out to other
-# targets
-
+# Function scope keeps dependency-local variables (e.g. BUILD_SHARED_LIBS) from leaking out.
 function(dtwc_setup_dependencies)
-  # For each dependency, see if it's
-  # already been provided to us by a parent project
   CPMAddPackage(
     NAME CPMLicenses.cmake
     GITHUB_REPOSITORY cpm-cmake/CPMLicenses.cmake
@@ -26,8 +19,7 @@ function(dtwc_setup_dependencies)
     )
   endif()
 
-  # HiGHS library:
-  if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)# HiGHS library:
+  if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)
   # HiGHS's cuPDLP GPU backend stays off: nothing here uses PDLP, and ON would
   # force HiGHS shared on Windows and pull cudart/cublas/cusparse.
   set(CUPDLP_GPU OFF CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
@@ -52,8 +44,6 @@ function(dtwc_setup_dependencies)
   CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
-    # SHA256 pinned. Computed 2026-07-08 from the GitHub release
-    # tarball for the immutable tag v1.15.1 (`curl -sL … | sha256sum`).
     URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
     SYSTEM
     EXCLUDE_FROM_ALL
@@ -110,10 +100,8 @@ function(dtwc_setup_dependencies)
       INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
-  # lz4 1.10.0 (BSD-2-Clause) and zstd 1.5.7 (BSD-3-Clause): the decoders of compressed Arrow IPC record batches
-  # (LZ4_FRAME, ZSTD), which the vendored nanoarrow IPC extension calls. Downloaded only: dtwc/CMakeLists.txt compiles
-  # lz4's library and zstd's decoder into dtwc_third_party. The release archives each project uploaded, pinned by the
-  # SHA-256 its release publishes (two downloads identical, 2026-10-22).
+  # lz4 1.10.0 and zstd 1.5.7: decoders for compressed Arrow IPC record batches,
+  # compiled into dtwc_third_party by dtwc/CMakeLists.txt.
   CPMAddPackage(NAME lz4 DOWNLOAD_ONLY YES
     URL "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz"
     URL_HASH SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b)
@@ -123,17 +111,13 @@ function(dtwc_setup_dependencies)
   set(lz4_SOURCE_DIR "${lz4_SOURCE_DIR}" PARENT_SCOPE)
   set(zstd_SOURCE_DIR "${zstd_SOURCE_DIR}" PARENT_SCOPE)
 
-  # fkYAML — single-header YAML 1.2 parser (MIT). OPTIONAL: it only feeds
-  # dtwc/cli/config_file.hpp, which turns a YAML `--config` file into CLI11
-  # ConfigItems. With DTWC_ENABLE_YAML=OFF the CLI still builds and rejects YAML
-  # config files with a typed error instead of parsing them.
+  # fkYAML — single-header YAML 1.2 parser (MIT) for dtwc/cli/config_file.hpp.
+  # With DTWC_ENABLE_YAML=OFF the CLI rejects YAML config files with a typed error.
   if(DTWC_ENABLE_YAML AND NOT TARGET fkYAML::fkYAML)
     message(STATUS "  YAML:     fetching fkYAML (DTWC_ENABLE_YAML=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_YAML=OFF)")
     CPMAddPackage(
       NAME fkYAML
       URL "https://github.com/fktn-k/fkYAML/archive/refs/tags/v0.4.4.tar.gz"
-      # SHA256 pinned. Computed 2026-09-02 from two independent downloads of the
-      # immutable release tag v0.4.4 (`curl -sL … | sha256sum`, identical bytes).
       URL_HASH SHA256=75fa1ce37480ac2ef47b820bfdba04894d4f19ac122ad59d892601553aa45c4e
       DOWNLOAD_ONLY YES
     )
@@ -146,10 +130,6 @@ function(dtwc_setup_dependencies)
   else()
     message(STATUS "  YAML:     OFF (DTWC_ENABLE_YAML=OFF) — --config accepts TOML only.")
   endif()
-
-  # nanobind — Python bindings (BSD-3, by Wenzel Jakob)
-  # find_package(Python) and nanobind discovery are handled in python/CMakeLists.txt
-  # to ensure scikit-build-core has configured paths first.
 
   # PMU counters. Every route by which this could fail to deliver
   # counters is a FATAL_ERROR, because Google Benchmark's own runtime guard cannot
@@ -208,16 +188,15 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
-  # llfio — memory-mapped I/O for large distance matrices (OPTIONAL). With
-  # DTWC_ENABLE_LLFIO=OFF there is no llfio_hl target, dtwc/CMakeLists.txt then
-  # leaves DTWC_HAS_MMAP undefined, and a request for mmap storage raises a typed
-  # error. Only dtwc/core/distance_matrix.cpp includes llfio.
+  # llfio — memory-mapped I/O for large distance matrices and Arrow IPC files
+  # (OPTIONAL). With DTWC_ENABLE_LLFIO=OFF there is no llfio_hl target,
+  # dtwc/CMakeLists.txt then leaves DTWC_HAS_MMAP undefined, and a request for mmap
+  # storage raises a typed error. dtwc/core/distance_matrix.cpp and
+  # dtwc/io/arrow_ipc.cpp include llfio.
   #
   # Header-only, from pinned archives: no llfio CMake, no quickcpplib bootstrap,
   # no nested build. llfio_hl carries what llfio's own header-only target carried
-  # through quickcpplib::hl, outcome::hl and, on Windows, ntkernel-error-category::hl;
-  # the preprocessed <llfio/v2.0/llfio.hpp> is line for line the one the former
-  # superbuild produced (clang 21, Windows, 2026-09-28).
+  # through quickcpplib::hl, outcome::hl and, on Windows, ntkernel-error-category::hl.
   #
   # Pins. llfio b17613fb is 5 commits past its newest tag, 20260506, and is kept
   # for 284ba8d9 (PR #178, a libc++ char8_t codecvt fix that AppleClang needs);
@@ -298,16 +277,9 @@ function(dtwc_setup_dependencies)
     message(STATUS "  llfio:    OFF (DTWC_ENABLE_LLFIO=OFF) — mmap disabled.")
   endif()
 
-  # cpuinfo (BSD-2-Clause) — the CPU's model, its physical and logical cores and SIMD extensions, which the machine
-  # facts report (OPTIONAL). With DTWC_ENABLE_CPUINFO=OFF there is no cpuinfo target, dtwc/CMakeLists.txt then leaves
-  # DTWC_HAS_CPUINFO undefined, and those facts read "unknown". Only dtwc/core/machine.cpp includes it.
-  #
-  # pytorch/cpuinfo publishes no tags or releases, so a commit is the pin: e9320ce3 (2026-10-30), its main on
-  # 2026-11-03; the archive's SHA-256 from two downloads, identical bytes. A static library, position-independent (the
-  # Python module and the MEX are shared objects), outside `all` and the install (EXCLUDE_FROM_ALL): its tools, tests,
-  # benchmarks and pkg-config file are not built. Silent: its log calls compile to nothing (CPUINFO_LOG_LEVEL none), so
-  # where /sys or /proc is closed to it (an HPC jail) cpuinfo_initialize() fails without a word and the facts read
-  # "unknown". Its deps/clog is in the archive but not built.
+  # cpuinfo (BSD-2-Clause, optional) — CPU model, cores and SIMD extensions for
+  # dtwc/core/machine.cpp; when OFF or blocked by a sandbox, facts read "unknown".
+  # Pinned by commit (upstream publishes no tags), built static and silent.
   option(DTWC_ENABLE_CPUINFO "Enable cpuinfo: the CPU's model, cores and SIMD extensions in the machine facts" ${_dtwc_default_host_hw})
   if(DTWC_ENABLE_CPUINFO AND NOT TARGET cpuinfo)
     message(STATUS "  cpuinfo:  fetching (DTWC_ENABLE_CPUINFO=ON; if it cannot be fetched, configure with -DDTWC_ENABLE_CPUINFO=OFF)")
@@ -362,11 +334,10 @@ function(dtwc_setup_dependencies)
       set(Arrow_FOUND TRUE PARENT_SCOPE)
       if(Parquet_FOUND)
         message(STATUS "  Parquet:  YES (v${Parquet_VERSION}) — system install")
-        # find_package() runs inside this function.  Export the package result
-        # alongside the existing capability flag so the parent directory can
-        # link Parquet::parquet_shared and publish DTWC_HAS_PARQUET.
+        # find_package() runs inside this function. Export the package result so
+        # the parent directory can link Parquet::parquet_shared and publish
+        # DTWC_HAS_PARQUET.
         set(Parquet_FOUND TRUE PARENT_SCOPE)
-        set(DTWC_HAS_PARQUET_LIB TRUE PARENT_SCOPE)
       endif()
     else()
       # 2. Build minimal Arrow+Parquet from source via CPM
@@ -438,7 +409,6 @@ function(dtwc_setup_dependencies)
       if(TARGET arrow_static)
         set(Arrow_FOUND TRUE PARENT_SCOPE)
         set(DTWC_ARROW_FROM_CPM TRUE PARENT_SCOPE)
-        set(DTWC_HAS_PARQUET_LIB TRUE PARENT_SCOPE)
         message(STATUS "  Arrow:    built from source (static, IPC + Parquet)")
       else()
         message(FATAL_ERROR "DTWC_ENABLE_ARROW=ON: the CPM build of Arrow made no arrow_static target.\n"
@@ -446,8 +416,4 @@ function(dtwc_setup_dependencies)
       endif()
     endif()
   endif()
-
-  # CUDA detection is done in root CMakeLists.txt (enable_language requires
-  # directory scope). CUDAToolkit is already found there.
-
 endfunction()

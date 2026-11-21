@@ -164,9 +164,5 @@ if(TARGET Gurobi::GurobiC AND GUROBI_CXX_SRC AND NOT TARGET Gurobi::GurobiCXX)
 
 endif()
 
-# legacy support:
-set(GUROBI_INCLUDE_DIRS "${GUROBI_INCLUDE_DIR}")
-set(GUROBI_LIBRARIES Gurobi::GurobiC Gurobi::GurobiCXX)
-
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(Gurobi  DEFAULT_MSG GUROBI_LIBRARY GUROBI_INCLUDE_DIR GUROBI_SRC_DIR)

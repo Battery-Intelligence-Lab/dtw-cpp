@@ -1,20 +1,3 @@
-include(CheckCXXCompilerFlag)
-
-
-macro(dtwc_supports_sanitizers)
-  if((CMAKE_CXX_COMPILER_ID MATCHES ".*Clang.*" OR CMAKE_CXX_COMPILER_ID MATCHES ".*GNU.*") AND NOT WIN32)
-    set(SUPPORTS_UBSAN ON)
-  else()
-    set(SUPPORTS_UBSAN OFF)
-  endif()
-
-  if((CMAKE_CXX_COMPILER_ID MATCHES ".*Clang.*" OR CMAKE_CXX_COMPILER_ID MATCHES ".*GNU.*") AND WIN32)
-    set(SUPPORTS_ASAN OFF)
-  else()
-    set(SUPPORTS_ASAN ON)
-  endif()
-endmacro()
-
 # The maintainer options carry the same `DTWC_` prefix
 # as every other cache variable in the project. The lowercase `dtwc_` spellings
 # are still accepted for one release.
@@ -41,8 +24,6 @@ macro(_dtwc_maintainer_option name docstring default)
 endmacro()
 
 macro(dtwc_setup_options)
-  dtwc_supports_sanitizers()
-
   _dtwc_maintainer_option(ENABLE_IPO "Enable IPO/LTO for dtwc targets" ${PROJECT_IS_TOP_LEVEL})
   _dtwc_maintainer_option(ENABLE_COMPILER_WARNINGS "Enable maintainer warning set for dtwc targets" ${DTWC_DEV_MODE})
   _dtwc_maintainer_option(WARNINGS_AS_ERRORS "Treat maintainer warnings as errors" ${DTWC_DEV_MODE})
@@ -105,13 +86,7 @@ macro(dtwc_local_options)
 
   if(DTWC_ENABLE_COMPILER_WARNINGS)
     include(cmake/CompilerWarnings.cmake)
-    dtwc_set_project_warnings(
-      dtwc_warnings
-      ${DTWC_WARNINGS_AS_ERRORS}
-      ""
-      ""
-      ""
-      "")
+    dtwc_set_project_warnings(dtwc_warnings ${DTWC_WARNINGS_AS_ERRORS})
   endif()
 
   include(cmake/Sanitizers.cmake)
@@ -143,7 +118,6 @@ macro(dtwc_local_options)
   endif()
 
   if(DTWC_ENABLE_CPPCHECK)
-    dtwc_enable_cppcheck(${DTWC_WARNINGS_AS_ERRORS} "" # override cppcheck options
-    )
+    dtwc_enable_cppcheck(${DTWC_WARNINGS_AS_ERRORS})
   endif()
 endmacro()

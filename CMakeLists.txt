@@ -1,11 +1,5 @@
 cmake_minimum_required(VERSION 3.26)
 
-# This CMake file is adapted from https://github.com/cpp-best-practices/cmake_template
-
-# This template attempts to be "fetch_content"-able
-# so that it works well with tools like CPM or other
-# manual dependency management
-
 # Read the full PEP 440 release string from the single source of truth. CMake's
 # project(VERSION) grammar accepts numeric components only, so prerelease tags
 # (for example 2.0.0rc1) are stripped only for PROJECT_VERSION;
@@ -24,7 +18,6 @@ project(DTWC++ VERSION "${DTWC_CMAKE_VERSION}"
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
 
 include(cmake/StandardProjectSettings.cmake)
-include(CMakeDependentOption)
 
 option(DTWC_BUILD_EXAMPLES "Build example programs" OFF)
 option(DTWC_BUILD_TESTING "Build unit tests" OFF)
@@ -122,10 +115,7 @@ if(DTWC_ENABLE_CUDA)
               set(ENV{${_env_name}} "${_vdir_cmake}")
               message(STATUS "Set missing ${_env_name} = ${_vdir_cmake}")
             endif()
-            # Track the best (newest) version that the driver can run.
-            # nvidia-smi reports the max supported toolkit version in the
-            # driver; building with a newer toolkit causes runtime failures.
-            # Prefer CUDA_PATH's version if set, otherwise pick the newest.
+            # Track the newest installed toolkit for the fallback when CUDA_PATH is unset.
             if("${_major}.${_minor}" VERSION_GREATER "${_cuda_best_ver}")
               set(_cuda_best_ver "${_major}.${_minor}")
               set(_cuda_best_path "${_vdir}")
@@ -237,7 +227,7 @@ if(DTWC_ENABLE_METAL)
   message(STATUS "Metal enabled — dtwc/metal will be built")
 endif()
 
-include(cmake/Dependencies.cmake) # Include external projects
+include(cmake/Dependencies.cmake)
 if(DTWC_ENABLE_GUROBI)
   include(cmake/FindGUROBI.cmake)
   if(NOT TARGET Gurobi::GurobiCXX)
@@ -273,15 +263,9 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
   target_link_libraries(dtwc_cl
     PRIVATE
     dtwc_cli
-    CLI11::CLI11
     project_warnings
     project_options
   )
-
-  if(TARGET fkYAML::fkYAML)
-    target_link_libraries(dtwc_cl PRIVATE fkYAML::fkYAML)
-    target_compile_definitions(dtwc_cl PRIVATE DTWC_HAS_YAML)
-  endif()
 
   # File properties (name, version, copyright) of dtwc_cl.exe. FILEVERSION takes
   # four integers, so the prerelease tag stays out of them and in the text fields.
@@ -402,7 +386,6 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
   endif()
 endif()
 
-# Adding the tests:
 include(CTest)
 if(DTWC_BUILD_TESTING)
   include(cmake/DtwcTest.cmake)

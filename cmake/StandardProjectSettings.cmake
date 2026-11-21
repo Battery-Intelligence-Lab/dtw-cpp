@@ -1,11 +1,8 @@
-# Set a default build type if none was specified
-set(default_build_type "Release")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to 'Release' as none was specified.")
   set(CMAKE_BUILD_TYPE
       Release
       CACHE STRING "Choose the type of build." FORCE)
-  # Set the possible values of build type for cmake-gui, ccmake
   set_property(
     CACHE CMAKE_BUILD_TYPE
     PROPERTY STRINGS
@@ -15,32 +12,22 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
              "RelWithDebInfo")
 endif()
 
-# Generate compile_commands.json to make it easier to work with clang based tools
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# strongly encouraged to enable this globally to avoid conflicts between
-# -Wpedantic being enabled and -std=c++20 and -std=gnu++20 for example
-# when compiling with PCH enabled
+# Avoid conflicts between -Wpedantic and GNU extensions (e.g. -std=gnu++20 with PCH).
 set(CMAKE_CXX_EXTENSIONS OFF)
-# Set C++ standard globally — needed for OBJECT libraries (mip-solvers) that
-# don't transitively inherit target_compile_features from the main target.
+# Global C++20 for OBJECT libraries (mip-solvers) that do not inherit target_compile_features.
 set(CMAKE_CXX_STANDARD 20)
-#set(CMAKE_VERBOSE_MAKEFILE ON) -> activate if compilation command for every file is needed.
- 
 
-
-# Enhance error reporting and compiler messages
+# Guard with COMPILE_LANGUAGE so host flags do not leak into nvcc.
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-  # Guard with COMPILE_LANGUAGE to prevent leaking to nvcc (which doesn't understand these flags)
-  add_compile_options($<$<COMPILE_LANGUAGE:C>:-fcolor-diagnostics> $<$<COMPILE_LANGUAGE:CXX>:-fcolor-diagnostics>)
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fcolor-diagnostics>)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  add_compile_options($<$<COMPILE_LANGUAGE:C>:-fdiagnostics-color=always>
-                      $<$<COMPILE_LANGUAGE:CXX>:-fdiagnostics-color=always>)
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fdiagnostics-color=always>)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION GREATER 1900)
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/diagnostics:column>)
 else()
   message(STATUS "No colored compiler diagnostic set for '${CMAKE_CXX_COMPILER_ID}' compiler.")
 endif()
-
 
 # Selected floating-point relaxations for optimised builds.
 #
@@ -215,7 +202,6 @@ if(DTWC_REPRODUCIBLE_BUILD)
   endif()
 endif()
 
-# run vcvarsall when msvc is used
 include("${CMAKE_CURRENT_LIST_DIR}/VCEnvironment.cmake")
 run_vcvarsall()
 
