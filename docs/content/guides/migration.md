@@ -131,9 +131,9 @@ The library's writers (`write_clusters`, `write_silhouettes`,
   Read it with `--not-computed negative` (`read_distance_matrix(path,
   core::NotComputed::Negative)`): every value below 0 is then a pair still to
   compute. By default 2.0 marks such a pair with an empty field or NaN, as it
-  writes one, and refuses a negative entry, naming the pair and the option,
-  under every variant but Soft-DTW, whose distances can be negative. v1.0.0
-  read every negative entry as not computed.
+  writes one, and refuses a negative entry, naming the pair and the option: no
+  distance is negative, Soft-DTW's being its divergence. v1.0.0 read every
+  negative entry as not computed.
 - `cluster()` writes no files, and prints only after `set_verbose(true)`.
   `cluster_and_process()` clusters and writes the files, as before.
 - Lloyd's k-medoids fills the whole distance matrix first. Its repetitions start
