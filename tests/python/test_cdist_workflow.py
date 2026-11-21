@@ -143,18 +143,27 @@ class TestCasadiWorkflowAndFastIngest:
 
     def test_a_dataset_refuses_reader_options_it_was_not_made_with(self):
         """A Dataset is read with the options it was made with: settings or overrides
-        that give one another value are refused, naming it; the same value or the
-        default runs."""
+        that give one another value are refused, naming it, an override even at its
+        default; the same value, or a setting left at its default, runs."""
         ds = dtwcpp.load(np.vstack([np.zeros((3, 6)), np.full((3, 6), 9.0)]), skip_rows=1)
         cfg = dtwcpp.settings(k=2, output="")
         with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and the settings give skip_rows=2"):
             dtwcpp.do_clustering(ds, cfg, skip_rows=2)
+        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows=1 and the settings give skip_rows=0"):
+            dtwcpp.do_clustering(ds, cfg, skip_rows=0)
         with pytest.raises(dtwcpp.InvalidInput, match="dtype='float64' and the settings give dtype='float32'"):
             dtwcpp.do_clustering(ds, dtwcpp.settings(cfg, dtype="float32"))
         with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Dataset was made with dtype='float64'"):
             dtwcpp.cdist(ds, dtype="float32")
+        with pytest.raises(dtwcpp.InvalidInput, match="dtype='float32' and the settings give dtype='float64'"):
+            dtwcpp.cdist(dtwcpp.load(ds.source, dtype="float32"), dtype="float64")
+        with pytest.raises(dtwcpp.InvalidInput, match="cdist: the Data was made with dtype='float64'"):
+            dtwcpp.cdist(ds.as_data(), dtype="float32")
+        with pytest.raises(dtwcpp.InvalidInput, match="Data already carries ndim=2, which disagrees with ndim=3"):
+            dtwcpp.load_data(dtwcpp.load_data(ds.source, ndim=2).as_data(), ndim=3)
         assert dtwcpp.do_clustering(ds, cfg, skip_rows=1).n_series == 5
         assert dtwcpp.do_clustering(ds, cfg).n_series == 5
+        assert dtwcpp.load_data(ds, skip_rows=1) is ds
 
     def test_settings_post_init_attribute_mutation_and_validation(self):
         rng = np.random.default_rng(31)
@@ -191,13 +200,10 @@ class TestCasadiWorkflowAndFastIngest:
             assert "device 'cpu+gpu' splits FastCLARA's assignment pass" in str(exc)
         else:
             assert cfg.gpu_share == 0.5
-        cfg = dtwcpp.settings(k=2)
-        try:
+        cfg = dtwcpp.settings(k=2, method="onebatch")  # onebatch refuses cpu+gpu on every build
+        with pytest.raises(dtwcpp.DeviceError):
             cfg.device = "cpu+gpu"
-        except dtwcpp.DeviceError:
-            assert cfg.device is None
-        else:
-            assert dtwcpp.test.gpu()["backend"] == "cuda"  # only a CUDA build selects cpu+gpu
+        assert cfg.device is None
         real_device = dtwcpp.device
         monkeypatch.setattr(dtwcpp, "device", lambda *name: real_device(*name) if name else "cpu+gpu")
         try:

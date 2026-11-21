@@ -21,10 +21,19 @@ def dtw(x, y, **settings):
 dtw.__doc__ = _dtw.__doc__
 
 
-def _as_cdist_data(source, *, ndim: int, dtype: str):
+def _as_cdist_data(source, *, ndim: int, dtype):
     from dtwcpp import Data, InvalidInput, _dtwcpp_core
     from dtwcpp._api import Dataset, _to_data, load_data
 
+    if isinstance(source, (Data, Dataset)):  # each keeps its own dtype: refuse another, never drop it
+        kind, own = (("Dataset", source.dtype) if isinstance(source, Dataset)
+                     else ("Data", "float32" if source.is_f32() else "float64"))
+        given = own if dtype is None else _dtwcpp_core._dtype(dtype)
+        if given != own:
+            raise InvalidInput(
+                f"cdist: the {kind} was made with dtype={own!r} and the settings give dtype={given!r}; "
+                f"a {kind} keeps the options it was made with, so pass dtype to load_data, or leave it out "
+                "of the settings.")
     if isinstance(source, Data):
         if ndim != 1 and source.ndim != ndim:
             raise InvalidInput(
@@ -32,18 +41,13 @@ def _as_cdist_data(source, *, ndim: int, dtype: str):
             )
         return source
     if isinstance(source, Dataset):
-        given = _dtwcpp_core._dtype(dtype)  # a Dataset keeps its own: refuse another, never drop it
-        if given not in ("float64", source.dtype):
-            raise InvalidInput(
-                f"cdist: the Dataset was made with dtype={source.dtype!r} and the settings give dtype={given!r}; "
-                "a Dataset keeps the options it was made with, so pass dtype to load_data, or leave it out "
-                "of the settings.")
         data = source.as_data()
         if ndim != 1 and data.ndim != ndim:
             raise InvalidInput(
                 f"cdist: Dataset carries ndim={data.ndim}, which disagrees with ndim={ndim}."
             )
         return data
+    dtype = "float64" if dtype is None else dtype
     if isinstance(source, (str, os.PathLike)):
         return load_data(source, ndim=ndim, dtype=dtype).as_data()
     return _to_data(source, ndim=ndim, dtype=dtype)
@@ -65,7 +69,7 @@ def cdist(
     twe_lambda=1.0,
     mv_mode="dependent",
     ndim=1,
-    dtype="float64",
+    dtype=None,
     matrix_dtype="float64",
     device=None,
     gpu_precision="auto",
@@ -83,8 +87,9 @@ def cdist(
         DTW family settings (same names and defaults as :func:`dtw` and :func:`dtwcpp.cluster`).
     ndim : int, default=1
         Number of channels per timestep for multivariate series.
-    dtype : str, default='float64'
-        Storage precision for converted inputs (``'float64'`` or ``'float32'``).
+    dtype : str or None, default=None
+        Storage precision for converted inputs (``'float64'`` or ``'float32'``; None: ``'float64'``).
+        A Dataset or Data keeps its own: a dtype other than its own raises :class:`dtwcpp.InvalidInput`.
     matrix_dtype : str, default='float64'
         Output NumPy array dtype (``'float64'`` or ``'float32'``).
     device : str or None, default=None

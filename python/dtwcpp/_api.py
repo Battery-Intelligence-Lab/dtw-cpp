@@ -785,17 +785,23 @@ def settings(base=None, **kwargs):
     return Settings(**kwargs)
 
 
+_READER_OPTIONS = ("skip_cols", "skip_rows", "delimiter", "dtype", "ndim")  # a Dataset is read with its own
+
+
 def load_data(source=None, settings=None, **kwargs):
     """Create a lazy :class:`Dataset` configured from ``settings`` and/or ``kwargs``.
 
     On ``device="hpc"`` file paths stay lazy and are read on the SLURM cluster;
     locally, NumPy arrays and Arrow buffers materialize directly into C++
     ``Data`` without Python list conversion. A :class:`Dataset` passes through
-    with the reader options it was made with: settings that give one of them
-    (``skip_cols``, ``skip_rows``, ``delimiter``, ``dtype``, ``ndim``) a value
-    other than its default and the Dataset's raise :class:`dtwcpp.InvalidInput`.
+    with the reader options it was made with (``skip_cols``, ``skip_rows``,
+    ``delimiter``, ``dtype``, ``ndim``; once it has read an Arrow IPC file, the
+    file's ``ndim``): one of them given here, or one the settings give other
+    than its default, that differs from the Dataset's raises
+    :class:`dtwcpp.InvalidInput`. A :class:`Data` keeps
+    its own ``ndim``: one given, or one the settings give other than 1, that differs is refused too.
     """
-    from dtwcpp import InvalidInput
+    from dtwcpp import InvalidInput, _dtwcpp_core
 
     s = settings if isinstance(settings, Settings) else Settings()
     if settings is not None and not isinstance(settings, Settings):
@@ -807,22 +813,27 @@ def load_data(source=None, settings=None, **kwargs):
         source = s.input
 
     if isinstance(source, Dataset):
-        if kwargs:
+        unexpected = sorted(set(kwargs) - set(_READER_OPTIONS))
+        if unexpected:
             raise InvalidInput(
-                f"load_data: Dataset keeps the options it was made with; unexpected {sorted(kwargs)}."
+                f"load_data: Dataset keeps the options it was made with; unexpected {unexpected}."
             )
-        # It is read with its own reader options: one the settings give, not at its default, must be the same.
+        # It is read with its own reader options: one given here, or one the settings give other than its
+        # default, must be the same.
+        s = s.copy(**kwargs)  # the options given, checked as settings() checks them
+        made_ndim = source._ndim if source._data is None else source._data.ndim
         for key, given, made, default in (
                 ("skip_cols", s.skip_cols, source.skip_cols, 0), ("skip_rows", s.skip_rows, source.skip_rows, 0),
                 ("delimiter", s.delimiter or None, source.delimiter or None, None),
-                ("dtype", s.dtype, source.dtype, "float64"), ("ndim", s.ndim, source._ndim, 1)):
-            if given != default and given != made:
+                ("dtype", s.dtype, source.dtype, "float64"), ("ndim", s.ndim, made_ndim, 1)):
+            if (key in kwargs or given != default) and given != made:
                 raise InvalidInput(
                     f"load_data: the Dataset was made with {key}={made!r} and the settings give {key}={given!r}; "
                     f"a Dataset keeps the options it was made with, so pass {key} to load_data, or leave it out "
                     "of the settings.")
         return source
 
+    ndim_given = "ndim" in kwargs
     skip_cols = kwargs.pop("skip_cols", s.skip_cols)
     skip_rows = kwargs.pop("skip_rows", s.skip_rows)
     delimiter = kwargs.pop("delimiter", s.delimiter)
@@ -836,10 +847,12 @@ def load_data(source=None, settings=None, **kwargs):
         raise TypeError("load_data: ndim must be an integer")
     if ndim < 1:
         raise InvalidInput("load_data: ndim must be at least 1.")
+    if isinstance(source, _dtwcpp_core.Data) and (ndim_given or ndim != 1) and ndim != source.ndim:
+        raise InvalidInput(f"load_data: Data already carries ndim={source.ndim}, which disagrees with ndim={ndim}.")
 
     ds = Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
                  delimiter=delimiter, name=name, dtype=dtype)
-    ds._ndim = int(ndim) if ndim != 1 else ds._ndim  # a Data keeps its own ndim unless one is given
+    ds._ndim = int(ndim) if ndim != 1 else ds._ndim  # a Data keeps its own ndim (a given one equals it)
     return ds
 
 
@@ -871,7 +884,7 @@ def do_clustering(data=None, settings=None, **overrides):
             f"run, and the device is '{eff_dev}'."
         )
 
-    dataset = load_data(data, eff)
+    dataset = load_data(data, eff, **{key: overrides[key] for key in _READER_OPTIONS if key in overrides})
     config = eff._config
 
     if backend == "hpc":

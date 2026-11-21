@@ -122,6 +122,8 @@ def _load_hdf5(path: Path):
     for row in map(np.asarray, data):
         if row.dtype.kind not in "biuf":
             raise ValueError(f"HDF5 'series' must hold real numbers, got dtype {row.dtype}.")
+        if row.ndim != 1:
+            raise ValueError(f"Expected 1D series, got shape {row.shape}")
         series_list.append(row.astype(np.float64, copy=False))  # the writer reads the bytes as native float64
     return series_list, names
 

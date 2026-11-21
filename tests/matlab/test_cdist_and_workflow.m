@@ -70,6 +70,11 @@ function test_cdist_ragged_cells_and_multivariate(testCase)
     Y_mv = randn(3, 12);
     D_mv = dtwc.cdist(X_mv, Y_mv, 'Ndim', 2, 'MvMode', 'dependent', 'Band', 2);
     verifySize(testCase, D_mv, [4 3]);
+
+    % dtwc.cluster clusters a Dataset in its Ndim, as dtwc.do_clustering does
+    mv = dtwc.load_data(X_mv, dtwc.settings('Ndim', 2));
+    verifyEqual(testCase, dtwc.cluster(mv, 2, 'Method', 'pam').cost, ...
+                dtwc.do_clustering(mv, dtwc.settings('K', 2, 'Method', 'pam', 'Output', '')).cost);
 end
 
 function test_casadi_workflow_persistent_and_in_memory(testCase)
@@ -112,7 +117,7 @@ function test_casadi_workflow_persistent_and_in_memory(testCase)
     verifyEqual(testCase, mem_res.cost, res.cost, 'RelTol', 1e-12);
 
     % A Dataset is read with the options it was made with: settings that give one another value are
-    % refused, naming it; the same value (above) or the default runs.
+    % refused, naming it, an override even at its default; the same value (above) runs.
     try
         dtwc.do_clustering(ds, cfg, 'Output', '', 'Checkpoint', '', 'SkipRows', 2);
         verifyFail(testCase, 'SkipRows 2 beside a Dataset made with SkipRows 1 ran');
@@ -120,9 +125,11 @@ function test_casadi_workflow_persistent_and_in_memory(testCase)
         verifyEqual(testCase, err.identifier, 'dtwc:invalidArgument');
         verifySubstring(testCase, err.message, 'SkipRows 1 and the settings give SkipRows 2');
     end
-    def_res = dtwc.do_clustering(ds, cfg, 'Output', '', 'Checkpoint', '', 'SkipRows', 0);
-    verifyEqual(testCase, def_res.labels, res.labels);
+    verifyError(testCase, @() dtwc.do_clustering(ds, cfg, 'Output', '', 'Checkpoint', '', 'SkipRows', 0), ...
+                'dtwc:invalidArgument');
     verifyError(testCase, @() dtwc.cdist(ds, 'Dtype', 'float32'), 'dtwc:invalidArgument');
+    verifyError(testCase, @() dtwc.cdist(dtwc.load_data(csv_file, cfg, 'Dtype', 'float32'), 'Dtype', 'float64'), ...
+                'dtwc:invalidArgument');
 
     dtwc.write_data(mem_res, manual_out);
     verifyTrue(testCase, isfile(fullfile(manual_out, 'sensor_labels.csv')));

@@ -6,8 +6,8 @@ classdef Dataset < handle
 %   C++ reader (dtwc::read_data, in the MEX); Parquet (a .parquet/.pq file, or a
 %   folder of them) by MATLAB's parquetread, by the C++ reader's rule
 %   (read_parquet). as_series reads a path once and keeps its series, which
-%   dtwc.cluster takes for Parquet; any other path dtwc.cluster hands to C++
-%   dtwc::run, which reads it at every call.
+%   dtwc.cluster takes for Parquet and at Ndim above 1; any other path
+%   dtwc.cluster hands to C++ dtwc::run, which reads it at every call.
 %
 %   See also dtwc.load, dtwc.cluster
 
