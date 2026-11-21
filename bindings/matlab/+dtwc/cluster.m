@@ -53,18 +53,19 @@ function res = cluster(data, k, varargin)
     loadArgs = varargin(sort([key, key + 1]));
     varargin([key, key + 1]) = [];
     data = dtwc.load(data, loadArgs{:});
-    if ischar(data.Source) && isempty(dtwc_mex('parquet_files', data.Source))
+    if ischar(data.Source) && data.Ndim == 1 && isempty(dtwc_mex('parquet_files', data.Source))
         % C++ reads the path, after it has checked the keys.
         out = dtwc_mex('run', data.Source, {}, data.SkipCols, data.SkipRows, data.Delimiter, data.Dtype, ...
                        data.Name, k, varargin{:});
     else
-        % The keys are checked before parquetread reads a file, as for a path.
+        % The keys are checked before parquetread reads a file, as for a path. The series go with their
+        % Ndim, which run_workflow takes (no output, no checkpoint: the run cluster makes).
         settings = dtwc.Problem();
         dtwc_mex('apply', settings.get_handle(), k, varargin{:});
         delete(settings);
-        [series, names] = data.as_series();
-        out = dtwc_mex('run', cast_series(series, data.Dtype), names, 0, 0, '', data.Dtype, data.Name, k, ...
-                       varargin{:});
+        [series, names, ndim] = data.as_series();
+        out = dtwc_mex('run_workflow', cast_series(series, data.Dtype), names, ndim, 0, 0, '', data.Dtype, ...
+                       data.Name, '', '', 0, k, varargin{:});
     end
     res = dtwc.Result(out);
 end

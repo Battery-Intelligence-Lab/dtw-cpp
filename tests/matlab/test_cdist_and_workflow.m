@@ -70,6 +70,11 @@ function test_cdist_ragged_cells_and_multivariate(testCase)
     Y_mv = randn(3, 12);
     D_mv = dtwc.cdist(X_mv, Y_mv, 'Ndim', 2, 'MvMode', 'dependent', 'Band', 2);
     verifySize(testCase, D_mv, [4 3]);
+
+    % dtwc.cluster clusters a Dataset in its Ndim, as dtwc.do_clustering does
+    mv = dtwc.load_data(X_mv, dtwc.settings('Ndim', 2));
+    verifyEqual(testCase, dtwc.cluster(mv, 2, 'Method', 'pam').cost, ...
+                dtwc.do_clustering(mv, dtwc.settings('K', 2, 'Method', 'pam', 'Output', '')).cost);
 end
 
 function test_casadi_workflow_persistent_and_in_memory(testCase)
