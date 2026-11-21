@@ -257,7 +257,7 @@ Tier 1 also provides a reusable four-verb workflow:
 
 | Step | C++ | Python | MATLAB |
 |---|---|---|---|
-| 1. Configure | `auto cfg = dtwc::make_settings(k, method, band, device, output)` (or `dtwc::settings::make(...)`) | `cfg = dtwcpp.settings(k=3, method="pam", output="results", ...)` | `cfg = dtwc.settings('K', 3, 'Method', 'pam', 'Output', 'results', ...)` |
+| 1. Configure | `auto cfg = dtwc::make_settings({{"n-clusters", "3"}, {"method", "pam"}, {"output", "results"}})` (or `dtwc::settings::make(...)`) | `cfg = dtwcpp.settings(k=3, method="pam", output="results", ...)` | `cfg = dtwc.settings('K', 3, 'Method', 'pam', 'Output', 'results', ...)` |
 | 2. Load | `auto data = dtwc::load_data(source, ...)` | `data = dtwcpp.load_data(source, ...)` | `data = dtwc.load_data(source, ...)` |
 | 3. Cluster | `auto res = dtwc::do_clustering(data, cfg)` | `res = dtwcpp.do_clustering(data, cfg, **overrides)` | `res = dtwc.do_clustering(data, cfg, ...)` |
 | 4. Write (optional) | `dtwc::write_data(res, dir)` | `dtwcpp.write_data(res, dir)` | `dtwc.write_data(res, dir)` |
@@ -275,8 +275,8 @@ two collections `X` (`M` series) and `Y` (`N` series) without clustering:
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
-| call | `dtwc::cdist(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="dtw", metric="euclidean", device=None, matrix_dtype="float64", ...)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'dtw', 'Device', 'cpu', 'MatrixDtype', 'float64', ...)` |
-| returns | `dtwc::core::CrossDistanceMatrix` (`rows()`, `cols()`, `operator()(i, j)`, `values()`) | `np.ndarray` of shape `(M, N)` (`float64` or `float32`) | `M × N` numeric matrix (`double` or `single`) |
+| call | `dtwc::cdist(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="standard", metric="l1", device=None, matrix_dtype="float64", ...)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'standard', 'Device', 'cpu', 'MatrixDtype', 'float64', ...)` |
+| returns | `std::vector<double>` of `M × N` values, row-major: element `i * N + j` is the distance from `X[i]` to `Y[j]` | `np.ndarray` of shape `(M, N)` (`float64` or `float32`) | `M × N` numeric matrix (`double` or `single`) |
 
 Standard univariate DTW dispatches across OpenMP + pre-packed SIMD lanes on
 `cpu`, CUDA wavefront/regtile kernels on `gpu`, and row-partitioned concurrent
