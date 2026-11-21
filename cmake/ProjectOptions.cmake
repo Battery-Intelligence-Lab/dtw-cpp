@@ -23,7 +23,7 @@ endmacro()
 # so the notice appears once for each place that actually sets one rather than on
 # every configure for the rest of the build directory's life. The warning is
 # raised only when the legacy value differs from the new default: an existing
-# build tree carries all thirteen legacy entries left by `option()` itself, and
+# build tree carries the legacy entries left by `option()` itself, and
 # warning about those would be noise about something the user never chose.
 macro(_dtwc_maintainer_option name docstring default)
   set(_dtwc_opt_default "${default}")
@@ -51,7 +51,6 @@ macro(dtwc_setup_options)
   _dtwc_maintainer_option(ENABLE_SANITIZER_UNDEFINED "Enable undefined sanitizer" OFF)
   _dtwc_maintainer_option(ENABLE_SANITIZER_THREAD "Enable thread sanitizer" OFF)
   _dtwc_maintainer_option(ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
-  _dtwc_maintainer_option(ENABLE_UNITY_BUILD "Enable unity builds" OFF)
   _dtwc_maintainer_option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis" ${DTWC_DEV_MODE})
   _dtwc_maintainer_option(ENABLE_CPPCHECK "Enable cppcheck analysis" ${DTWC_DEV_MODE})
   _dtwc_maintainer_option(ENABLE_PCH "Enable precompiled headers" OFF)
@@ -67,7 +66,6 @@ macro(dtwc_setup_options)
       DTWC_ENABLE_SANITIZER_UNDEFINED
       DTWC_ENABLE_SANITIZER_THREAD
       DTWC_ENABLE_SANITIZER_MEMORY
-      DTWC_ENABLE_UNITY_BUILD
       DTWC_ENABLE_CLANG_TIDY
       DTWC_ENABLE_CPPCHECK
       DTWC_ENABLE_PCH
@@ -124,8 +122,6 @@ macro(dtwc_local_options)
     ${DTWC_ENABLE_SANITIZER_UNDEFINED}
     ${DTWC_ENABLE_SANITIZER_THREAD}
     ${DTWC_ENABLE_SANITIZER_MEMORY})
-
-  set_target_properties(dtwc_options PROPERTIES UNITY_BUILD ${DTWC_ENABLE_UNITY_BUILD})
 
   if(DTWC_ENABLE_PCH)
     target_precompile_headers(

@@ -5,10 +5,10 @@
 Demonstrates: save_checkpoint(), load_checkpoint() for long-running
 computations that may need to survive crashes or interruptions.
 
-Checkpoint format: one file, <dir>/<name>.dtwm -- a 48-byte header (magic,
-version, N, SHA-256 of the data and distance settings) and the packed lower
-triangle of doubles, NaN for uncomputed entries. A memory-mapped matrix
-(Problem.use_mmap_distance_matrix) uses the same file.
+Checkpoint format: one file, <dir>/<name>.dtwm -- a 64-byte header (magic,
+version, N, SHA-256 of the data and distance settings, value width, rows
+written) and the packed lower triangle of doubles, NaN for uncomputed entries.
+A memory-mapped matrix (Problem.use_mmap_distance_matrix) uses the same file.
 @author Volkan Kumtepeli
 """
 

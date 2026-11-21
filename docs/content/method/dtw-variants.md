@@ -72,6 +72,8 @@ $$C(i,j) = w(|i-j|) \cdot d(x[i], y[j]) + \min(C(i-1,j-1),\; C(i-1,j),\; C(i,j-1
 
 **Important:** WDTW modifies the DTW recurrence itself, not just the pointwise metric. It cannot be implemented as a simple metric swap.
 
+With float32 data (`--dtype float32` for `dtwc_cl`, `dtype="float32"` in Python) the weights are float32 too, and for long series the smallest ones underflow to zero: once $$g \cdot (n-1)/2$$ exceeds about 88, where $$n$$ is the longer series' length (about 3550 steps at the default $$g = 0.05$$), the weights near the diagonal vanish and every WDTW distance collapses to 0. Use float64 data for long series with WDTW.
+
 ### C++ API
 
 ```cpp

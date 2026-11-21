@@ -58,7 +58,7 @@ jobs:
         run: |
           if [ "${{ matrix.sanitizer }}" = "true" ]; then
             cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON \
-              -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+              -DDTWC_ENABLE_SANITIZER_ADDRESS=ON -DDTWC_ENABLE_SANITIZER_UNDEFINED=ON
           else
             cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON
           fi

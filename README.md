@@ -182,20 +182,21 @@ option; nothing is turned off silently. Defaults are the ones every platform can
 | `DTWC_BUILD_EXAMPLES` | OFF | Build example programs |
 | `DTWC_BUILD_TESTING` | OFF | Build unit tests (Catch2) |
 | `DTWC_BUILD_BENCHMARK` | OFF | Build benchmarks (Google Benchmark) |
+| `DTWC_BENCHMARK_PMU` | OFF | PMU counters in the benchmarks (Google Benchmark with libpfm4): bare-metal Linux with `DTWC_BUILD_BENCHMARK` only, an error elsewhere |
 | `DTWC_BUILD_PYTHON` | OFF | Build Python bindings (nanobind) |
 | `DTWC_BUILD_MATLAB` | OFF | Build MATLAB MEX bindings |
 | `DTWC_DEV_MODE` | OFF | Enable developer-only warnings, analyzers, and expose sanitizer options |
-| `DTWC_ALLOW_SEQUENTIAL` | OFF | Explicitly permit a build without OpenMP; otherwise missing OpenMP is an error |
+| `DTWC_ALLOW_SEQUENTIAL` | OFF (ON under Emscripten) | Explicitly permit a build without OpenMP; otherwise missing OpenMP is an error |
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration (an error without `nvcc`, and on macOS) |
 | `DTWC_ENABLE_METAL` | ON on Apple platforms, OFF elsewhere | Enable the Metal backend (an error off Apple platforms) |
 | `DTWC_ENABLE_ARROW` | OFF | Enable Parquet I/O through Apache Arrow C++ (system packages or CPM); Arrow IPC needs no Arrow C++. An error with `DTWC_BUILD_PYTHON` or `DTWC_BUILD_MATLAB`, which read Parquet through pyarrow and `parquetread` |
-| `DTWC_ENABLE_LLFIO` | ON | Enable llfio-backed memory-mapped distance matrices |
-| `DTWC_ENABLE_CPUINFO` | ON | The CPU's model, cores and SIMD extensions in `dtwc_cl -v`'s machine facts (pytorch/cpuinfo, static); without it they read `unknown` |
+| `DTWC_ENABLE_LLFIO` | ON (OFF under Emscripten) | Enable llfio-backed memory-mapped distance matrices |
+| `DTWC_ENABLE_CPUINFO` | ON (OFF under Emscripten) | The CPU's model, cores and SIMD extensions in `dtwc_cl -v`'s machine facts (pytorch/cpuinfo, static); without it they read `unknown` |
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
 | `DTWC_ENABLE_GUROBI` | OFF | Link the Gurobi MIP solver (needs an install, see `GUROBI_HOME`; the binary then needs the Gurobi library to load). v1.0.0 linked Gurobi when it found it |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
 | `DTWC_REPRODUCIBLE_BUILD` | OFF | Strip source/build paths from supported compiler outputs |
-| `DTWC_FP_MODEL` | `fast` | Floating-point policy of optimised builds: `fast` (selected relaxations, never `-ffinite-math-only`) or `strict` (none) |
+| `DTWC_FP_MODEL` | `fast` | Floating-point policy of optimised builds: `fast` (selected relaxations, never `-ffinite-math-only`) or `strict` (none). It governs the C++ code only: the CUDA and Metal kernels keep their compilers' defaults in either mode |
 | `DTWC_ARCH_LEVEL` | `""` | CPU target of x86-64 builds: `native` (`-march=native`; the default for C++ builds), `v3` (x86-64-v3: AVX2+FMA, the default for Python builds and the floor of released wheels and archives), `v4` (AVX-512). arm64 takes no flag from `v3` |
 | `DTWC_CUDA_ARCH_LIST` | `80-real;86-real;89-real;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set (compute capability 8.0 is the floor) |
 

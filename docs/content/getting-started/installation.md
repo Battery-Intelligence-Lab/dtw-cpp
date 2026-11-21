@@ -37,7 +37,12 @@ The following dependencies are installed by the CPM package manager:
 - [HiGHS](https://highs.dev/) as an open source MIP solver alternative to Gurobi.
 - [CLI11](https://github.com/CLIUtils/CLI11) (for command line interface)
 - [cpuinfo](https://github.com/pytorch/cpuinfo) (optional: the CPU's model, cores and SIMD extensions in `dtwc_cl -v`, which read `unknown` in a build configured with `-DDTWC_ENABLE_CPUINFO=OFF`)
-- [Catch2](https://github.com/catchorg/Catch2/) (for testing)
+- [lz4](https://github.com/lz4/lz4) and [zstd](https://github.com/facebook/zstd) (for compressed Arrow IPC input)
+- [fkYAML](https://github.com/fktn-k/fkYAML) (optional: YAML `--config` files)
+- [llfio](https://github.com/ned14/llfio) with quickcpplib, outcome, span-lite, byte-lite and wg14_signals, and ntkernel-error-category on Windows (optional: memory-mapped distance matrices)
+- [CPMLicenses.cmake](https://github.com/cpm-cmake/CPMLicenses.cmake) (the `write-licenses` target)
+- [Catch2](https://github.com/catchorg/Catch2/) (for testing) and [Google Benchmark](https://github.com/google/benchmark) (for benchmarks)
+- [Apache Arrow](https://github.com/apache/arrow), with `-DDTWC_ENABLE_ARROW=ON` when no installed Arrow is found
 
 ### CMake and compilers
 
@@ -54,7 +59,7 @@ DTW-C++ aims to be compatible with different compilers and platforms. You may ea
 
 ### Linux (Debian / Ubuntu 20.04+)
 
-DTWC++ requires CMake 3.26 or newer and a C++20-capable compiler. Distribution packages that do not meet those floors must be upgraded before configuring the project. Please refer to [install a newer version of GCC](https://linuxize.com/post/how-to-install-gcc-compiler-on-ubuntu-18-04/) when the distribution compiler is too old.
+DTWC++ requires CMake 3.26 or newer and a C++20-capable compiler. Distribution packages that do not meet those floors must be upgraded before configuring the project. Install a newer GCC when the distribution compiler is too old; CI builds with GCC 11 and 12.
 
 1. Install the essential libraries for building the project
 
@@ -145,7 +150,7 @@ In case you encounter sudden crash of the program, you may also try to complile 
 On Windows platforms, you probably need to install CMake and a C++ compiler:
 
 1. Install the latest version of the [CMake binary](https://cmake.org/download/#latest).
-2. You can then install a compiler of your choice. We suggest installing MVSC and/or Clang via [Visual Studio Community](https://visualstudio.microsoft.com/vs/community/) even though you do not use the IDE which comes with its own compiler. Otherwise, for `GCC`, easiest way is to install package manager [chocolatey](https://docs.chocolatey.org/en-us/choco/setup/#non-administrative-install) then run `choco install mingw` command. 
+2. You can then install a compiler of your choice. We suggest installing MSVC and/or Clang via [Visual Studio Community](https://visualstudio.microsoft.com/vs/community/) even though you do not use the IDE which comes with its own compiler. Otherwise, for `GCC`, easiest way is to install package manager [chocolatey](https://docs.chocolatey.org/en-us/choco/setup/#non-administrative-install) then run `choco install mingw` command. 
 3. Download the repository as a [*.zip file](https://github.com/battery-intelligence-lab/dtw-cpp/archive/refs/heads/main.zip), or if you have [git](https://git-scm.com/download/win) installed you may run the following command in the git bash: 
     ```bash
     git clone https://github.com/battery-intelligence-lab/dtw-cpp.git
@@ -159,7 +164,7 @@ On Windows platforms, you probably need to install CMake and a C++ compiler:
 4. Then, create compilation files by running:
     ```bash
     cmake -G "MinGW Makefiles" .. # if you use MinGW GCC compiler.
-    cmake -G "Visual Studio 16 2019" ..  # if you use Visual Studio's compiler.
+    cmake -G "Visual Studio 17 2022" ..  # if you use Visual Studio's compiler.
     ```
 5. Compile the files. Here `-j4` command specifies the number of parallel jobs (threads) to use during the build process and `4` is given as example. For a more powerful computer with many cores you may opt for up to double number of the processors you have. 
     ```bash

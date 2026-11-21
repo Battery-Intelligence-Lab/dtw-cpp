@@ -1,6 +1,6 @@
 ﻿"""
 @file 01_quickstart.py
-@brief DTWC++ Quick Start â€” DTW distance and clustering in 10 lines.
+@brief DTWC++ Quick Start — DTW distance and clustering in 10 lines.
 @details Install: pip install dtwcpp
 @author Volkan Kumtepeli
 """
@@ -15,7 +15,7 @@ y = [2.0, 4.0, 6.0, 3.0, 1.0]
 d = dtwcpp.distance.dtw(x, y)
 print(f"DTW distance: {d}")
 
-# Banded DTW (Sakoe-Chiba constraint) â€” much faster for long series
+# Banded DTW (Sakoe-Chiba constraint) — much faster for long series
 d_banded = dtwcpp.distance.dtw(x, y, band=2)
 print(f"DTW distance (band=2): {d_banded}")
 

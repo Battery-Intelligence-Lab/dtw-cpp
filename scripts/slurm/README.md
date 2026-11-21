@@ -43,7 +43,7 @@ bash scripts/slurm/slurm_remote.sh download
 # 8. Verify
 uv run benchmarks/verify_results.py \
     --true data/benchmark/UCRArchive_2018/Coffee/Coffee_TRAIN.tsv \
-    --predicted results/slurm/smoke_cpu_JOBID/coffee_k2/coffee_labels.csv -k 2
+    --predicted results/slurm/smoke_cpu_JOBID/coffee_k2/coffee_labels.csv --k 2
 ```
 
 ## Build Profiles
