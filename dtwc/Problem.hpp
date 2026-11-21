@@ -195,6 +195,7 @@ private:
   Method method_{ Method::Kmedoids };
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
   int last_iterations_{ 0 };
+  bool last_converged_{ false }; ///< Lloyd's kept repetition stopped on unchanged medoids, not on max_iter
   double tadpole_dc_{ -1.0 };
   index_t sample_size_{ -1 }; ///< CLARA's subsample size; -1: its automatic size
   int n_samples_{ 5 };        ///< CLARA's subsamples

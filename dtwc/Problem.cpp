@@ -1509,7 +1509,7 @@ core::ClusteringResult Problem::cluster()
   result.total_cost = find_total_cost();
   // Lloyd counts its iterations; the exact methods and TADPole run to the end.
   result.iterations = method == Method::Kmedoids ? last_iterations_ : 0;
-  result.converged = method != Method::Kmedoids || last_iterations_ < maxIter;
+  result.converged = method != Method::Kmedoids || last_converged_;
   return result;
 }
 
@@ -1681,6 +1681,7 @@ void Problem::cluster_by_kmedoids_lloyd()
       best_cost = total_cost;
       best_rep = i_rand;
       best_iterations = iters;
+      last_converged_ = status == 0;
       best_medoids = centroids_ind;
       best_labels = clusters_ind;
     }
