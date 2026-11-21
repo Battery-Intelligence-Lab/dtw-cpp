@@ -226,7 +226,7 @@ validation closes the beta.
 
 `dtwc.cluster(data, k, device="hpc", **keys)` checks the keys and their values as a
 local run does, writes the run as one `job.toml`, which the cluster's
-`dtwc_cl --config` reads, and returns the labels. `device="hpc:gpu"` runs it on a
+`dtwc_cl --config` reads, and returns a `Result` of the labels, medoids and run report. `device="hpc:gpu"` runs it on a
 GPU of compute capability 8.0 or newer; `gpu_device="a100"` (or `"a6000"`,
 `"l40s"`, `"h100"`) names one ([SLURM](../../getting-started/slurm/)). A request
 that cannot be honoured fails before anything is sent: a value outside its domain
