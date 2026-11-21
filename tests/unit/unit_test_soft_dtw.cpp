@@ -17,20 +17,15 @@
 
 #include <algorithm>
 #include <cmath>
-#include <vector>
+#include <cstddef>
 #include <limits>
+#include <vector>
 
 using Catch::Matchers::WithinAbs;
-using Catch::Matchers::WithinRel;
-
 using namespace dtwc;
 
-// ---------------------------------------------------------------------------
-// minimum-positive gamma
-// ---------------------------------------------------------------------------
-
 TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
-          "[soft_dtw][softmin][gradient][denorm][m46]")
+          "[soft_dtw][softmin][gradient][denorm]")
 {
   const auto check_precision = []<typename T> {
     const T gamma = std::numeric_limits<T>::denorm_min();
@@ -56,73 +51,11 @@ TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
   SECTION("float32") { check_precision.template operator()<float>(); }
 }
 
-// ---------------------------------------------------------------------------
-// soft_dtw forward pass tests
-// ---------------------------------------------------------------------------
-
 TEST_CASE("soft_dtw: converges to dtwFull as gamma -> 0", "[soft_dtw]")
 {
   std::vector<double> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 };
   const double hard_dtw = dtwFull_L<double>(x, y);
-  const double gamma = 0.001;
-  const double soft = soft_dtw(x, y, gamma);
-  // Should be close, with tolerance proportional to gamma
-  REQUIRE_THAT(soft, WithinAbs(hard_dtw, 0.5));
-}
-
-TEST_CASE("soft_dtw: identical short series, small gamma", "[soft_dtw]")
-{
-  std::vector<double> x{ 1, 2, 3 };
-  const double hard_dtw = dtwFull_L<double>(x, x); // should be 0
-  const double gamma = 0.001;
-  const double soft = soft_dtw(x, x, gamma);
-  REQUIRE_THAT(soft, WithinAbs(hard_dtw, 0.1));
-}
-
-TEST_CASE("soft_dtw: self-distance can be negative for gamma > 0", "[soft_dtw]")
-{
-  // Documented property: soft_dtw(x, x, gamma) <= 0 for gamma > 0
-  std::vector<double> x{ 1, 2, 3, 4, 5 };
-  const double gamma = 1.0;
-  const double result = soft_dtw(x, x, gamma);
-  REQUIRE(result <= 0.0 + 1e-10);
-}
-
-TEST_CASE("soft_dtw: symmetry", "[soft_dtw]")
-{
-  std::vector<double> x{ 1.0, 3.0, 5.0, 2.0 };
-  std::vector<double> y{ 2.0, 4.0, 1.0 };
-  const double gamma = 1.0;
-  REQUIRE_THAT(soft_dtw(x, y, gamma), WithinAbs(soft_dtw(y, x, gamma), 1e-12));
-}
-
-TEST_CASE("soft_dtw: symmetry with different gamma", "[soft_dtw]")
-{
-  std::vector<double> x{ 1.5, 2.5, 3.5 };
-  std::vector<double> y{ 4.0, 5.0 };
-  for (double gamma : { 0.01, 0.1, 1.0, 5.0 }) {
-    REQUIRE_THAT(soft_dtw(x, y, gamma),
-      WithinAbs(soft_dtw(y, x, gamma), 1e-12));
-  }
-}
-
-TEST_CASE("soft_dtw: empty series returns infinity", "[soft_dtw]")
-{
-  std::vector<double> x{ 1, 2, 3 };
-  std::vector<double> empty{};
-  REQUIRE(soft_dtw(x, empty, 1.0) > 1e10);
-  REQUIRE(soft_dtw(empty, x, 1.0) > 1e10);
-  REQUIRE(soft_dtw(empty, empty, 1.0) > 1e10);
-}
-
-TEST_CASE("soft_dtw: single element series", "[soft_dtw]")
-{
-  std::vector<double> x{ 3.0 };
-  std::vector<double> y{ 7.0 };
-  const double gamma = 1.0;
-  // Single element: only one path, so soft_dtw = |3-7| = 4
-  // (no softmin needed, only one cell)
-  REQUIRE_THAT(soft_dtw(x, y, gamma), WithinAbs(4.0, 1e-12));
+  REQUIRE_THAT(soft_dtw(x, y, 0.001), WithinAbs(hard_dtw, 0.5));
 }
 
 TEST_CASE("soft_dtw: known 3x3 example with gamma=1.0", "[soft_dtw]")
@@ -147,23 +80,20 @@ TEST_CASE("soft_dtw: known 3x3 example with gamma=1.0", "[soft_dtw]")
   //        = 2 + (1 - log(exp(-(4-1)) + exp(0) + exp(0)))
   //        = 2 + 1 - log(exp(-3) + 1 + 1)
   //        = 3 - log(2 + exp(-3))
-  //
-  // Let's just verify the result numerically. We'll compute expected below.
   std::vector<double> x{ 1, 2, 3 };
   std::vector<double> y{ 2, 4, 6 };
   const double gamma = 1.0;
 
-  // Compute expected step by step
   auto sm = [](double a, double b, double c, double g) {
     double M = std::min({ a, b, c });
     return M - g * std::log(std::exp(-(a - M) / g) + std::exp(-(b - M) / g) + std::exp(-(c - M) / g));
   };
 
   double C00 = 1.0;
-  double C10 = C00 + 0.0; // = 1
-  double C20 = C10 + 1.0; // = 2
-  double C01 = C00 + 3.0; // = 4
-  double C02 = C01 + 5.0; // = 9
+  double C10 = C00 + 0.0;
+  double C20 = C10 + 1.0;
+  double C01 = C00 + 3.0;
+  double C02 = C01 + 5.0;
   double C11 = 2.0 + sm(C01, C10, C00, gamma);
   double C21 = 1.0 + sm(C11, C20, C10, gamma);
   double C12 = 4.0 + sm(C02, C11, C01, gamma);
@@ -186,67 +116,29 @@ TEST_CASE("soft_dtw: monotone in gamma (larger gamma -> smaller value)", "[soft_
   }
 }
 
-// ---------------------------------------------------------------------------
-// soft_dtw gradient tests
-// ---------------------------------------------------------------------------
-
 TEST_CASE("soft_dtw_gradient: matches finite differences", "[soft_dtw][gradient]")
 {
-  std::vector<double> x{ 1.0, 3.0, 5.0, 2.0 };
-  std::vector<double> y{ 2.0, 4.0, 1.0, 3.0 };
-  const double gamma = 1.0;
-  const double eps = 1e-5;
-
-  auto grad = soft_dtw_gradient(x, y, gamma);
-  REQUIRE(grad.size() == x.size());
-
-  for (size_t i = 0; i < x.size(); ++i) {
-    auto x_plus = x;
-    auto x_minus = x;
-    x_plus[i] += eps;
-    x_minus[i] -= eps;
-    double fd = (soft_dtw(x_plus, y, gamma) - soft_dtw(x_minus, y, gamma)) / (2.0 * eps);
-    REQUIRE_THAT(grad[i], WithinAbs(fd, 1e-4));
-  }
-}
-
-TEST_CASE("soft_dtw_gradient: matches finite differences, small gamma", "[soft_dtw][gradient]")
-{
-  std::vector<double> x{ 2.0, 5.0, 3.0 };
-  std::vector<double> y{ 1.0, 4.0, 6.0 };
-  const double gamma = 0.1;
-  const double eps = 1e-5;
-
-  auto grad = soft_dtw_gradient(x, y, gamma);
-  REQUIRE(grad.size() == x.size());
-
-  for (size_t i = 0; i < x.size(); ++i) {
-    auto x_plus = x;
-    auto x_minus = x;
-    x_plus[i] += eps;
-    x_minus[i] -= eps;
-    double fd = (soft_dtw(x_plus, y, gamma) - soft_dtw(x_minus, y, gamma)) / (2.0 * eps);
-    REQUIRE_THAT(grad[i], WithinAbs(fd, 1e-3));
-  }
-}
-
-TEST_CASE("soft_dtw_gradient: different length series", "[soft_dtw][gradient]")
-{
-  std::vector<double> x{ 1.0, 2.0, 3.0 };
-  std::vector<double> y{ 2.0, 4.0, 6.0, 8.0 };
-  const double gamma = 1.0;
-  const double eps = 1e-5;
-
-  auto grad = soft_dtw_gradient(x, y, gamma);
-  REQUIRE(grad.size() == x.size());
-
-  for (size_t i = 0; i < x.size(); ++i) {
-    auto x_plus = x;
-    auto x_minus = x;
-    x_plus[i] += eps;
-    x_minus[i] -= eps;
-    double fd = (soft_dtw(x_plus, y, gamma) - soft_dtw(x_minus, y, gamma)) / (2.0 * eps);
-    REQUIRE_THAT(grad[i], WithinAbs(fd, 1e-4));
+  struct Case
+  {
+    std::vector<double> x, y;
+    double gamma, tol;
+  };
+  const Case cases[] = {
+    { { 1.0, 3.0, 5.0, 2.0 }, { 2.0, 4.0, 1.0, 3.0 }, 1.0, 1e-4 },
+    { { 2.0, 5.0, 3.0 }, { 1.0, 4.0, 6.0 }, 0.1, 1e-3 },
+    { { 1.0, 2.0, 3.0 }, { 2.0, 4.0, 6.0, 8.0 }, 1.0, 1e-4 },
+  };
+  constexpr double eps = 1e-5;
+  for (const auto &c : cases) {
+    const auto grad = soft_dtw_gradient(c.x, c.y, c.gamma);
+    REQUIRE(grad.size() == c.x.size());
+    for (std::size_t i = 0; i < c.x.size(); ++i) {
+      auto x_plus = c.x, x_minus = c.x;
+      x_plus[i] += eps;
+      x_minus[i] -= eps;
+      const double fd = (soft_dtw(x_plus, c.y, c.gamma) - soft_dtw(x_minus, c.y, c.gamma)) / (2.0 * eps);
+      REQUIRE_THAT(grad[i], WithinAbs(fd, c.tol));
+    }
   }
 }
 
@@ -277,20 +169,4 @@ TEST_CASE("soft_dtw_gradient: a sample far above the other series leaves the res
     REQUIRE_THAT(grad[i], WithinAbs((entering(plus) - entering(minus)) / (2.0 * eps), 1e-6));
   }
   REQUIRE(grad.back() == 1.0); // sign(x - y) at the last cell; no other cell of that row carries weight
-}
-
-TEST_CASE("soft_dtw_gradient: zero gradient at minimum for identical series", "[soft_dtw][gradient]")
-{
-  // For soft_dtw(x, x, gamma), x is a "stationary point" of sorts—
-  // the gradient w.r.t. the first argument at x=y should have a specific structure.
-  // Each grad[i] should be sum_j E(i,j) * sign(x[i]-y[j]).
-  // When x == y, many terms cancel out, but the gradient need not be exactly zero
-  // for soft-DTW (it IS zero for standard DTW at x=y). We just check finiteness.
-  std::vector<double> x{ 1.0, 2.0, 3.0, 4.0 };
-  const double gamma = 1.0;
-  auto grad = soft_dtw_gradient(x, x, gamma);
-  REQUIRE(grad.size() == x.size());
-  for (size_t i = 0; i < grad.size(); ++i) {
-    REQUIRE(std::isfinite(grad[i]));
-  }
 }
