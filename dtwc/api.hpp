@@ -215,7 +215,8 @@ Dataset load_data(Dataset::series_type source, index_t skip_cols = 0, index_t sk
  * result files when non-empty; `""` runs purely in memory), `cfg.checkpoint`, and `cfg.device`.
  * `data` is read with the reader options it was made with: one `cfg` gives (skip_cols, skip_rows,
  * delimiter, dtype) that is not at its default and differs from the Dataset's is InvalidInput, as is
- * a `column` beside series in memory.
+ * a `column` beside series in memory. An override names its option: one that differs from the
+ * Dataset's is InvalidInput, at its default too.
  */
 Result do_clustering(const Dataset &data, const Config &cfg);
 Result do_clustering(Dataset &&data, const Config &cfg);
