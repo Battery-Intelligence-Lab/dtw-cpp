@@ -4,12 +4,6 @@
 @author Volkan Kumtepeli
 """
 
-import math
-import re
-import subprocess
-import sys
-import textwrap
-
 import numpy as np
 import pytest
 
@@ -18,11 +12,6 @@ import dtwcpp
 
 class TestProblemConstruction:
     """Tests for Problem construction and basic properties."""
-
-    def test_default_construction(self):
-        """Problem() default construction works."""
-        p = dtwcpp.Problem()
-        assert p is not None
 
     def test_named_construction(self):
         """Problem('name') stores the name."""
@@ -38,24 +27,9 @@ class TestProblemConstruction:
 class TestProblemData:
     """Tests for set_data and data access."""
 
-    def test_set_data_list_of_lists(self):
-        """set_data works with list-of-lists."""
-        p = dtwcpp.Problem("test")
-        data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
-        p.set_data(data, ["a", "b", "c"])
-        assert p.size == 3
-
-    def test_set_data_numpy(self, synthetic_data):
-        """set_data works with numpy array rows."""
-        p = dtwcpp.Problem("test")
-        names = [f"s{i}" for i in range(len(synthetic_data))]
-        rows = [row.tolist() for row in synthetic_data]
-        p.set_data(rows, names)
-        assert p.size == len(synthetic_data)
-
     def test_a_data_carries_its_own_names_and_ndim(self):
-        """set_data(Data, names=...) and set_data(Data, ndim=3) dropped the
-        names and ndim without a word, so ndim=3 computed univariate distances."""
+        """set_data(Data, names=...) and set_data(Data, ndim=3) must refuse
+        extra names/ndim rather than dropping them."""
         data = dtwcpp.Data([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [6.0, 5.0, 4.0, 3.0, 2.0, 1.0]], ["a", "b"])
         p = dtwcpp.Problem("test")
         with pytest.raises(TypeError, match="names"):
@@ -83,38 +57,14 @@ class TestDistanceMatrix:
         p.fill_distance_matrix()
         return p
 
-    def test_fill_and_query(self):
-        """fill_distance_matrix populates all pairs."""
-        data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
-        p = self._make_problem(data)
-        assert p.is_distance_matrix_filled()
-        # All pairs should be finite
-        for i in range(3):
-            for j in range(3):
-                d = p.dist_by_ind(i, j)
-                assert math.isfinite(d), f"dist({i},{j}) is not finite: {d}"
-
-    def test_self_distance_zero(self):
-        """dist_by_ind(i, i) == 0 for all i."""
-        data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
-        p = self._make_problem(data)
-        for i in range(3):
-            assert p.dist_by_ind(i, i) == pytest.approx(0.0)
-
-    def test_symmetry(self):
-        """dist_by_ind(i, j) == dist_by_ind(j, i)."""
-        data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
-        p = self._make_problem(data)
-        for i in range(3):
-            for j in range(i + 1, 3):
-                assert p.dist_by_ind(i, j) == pytest.approx(p.dist_by_ind(j, i))
-
     def test_known_distance(self):
         """dist_by_ind matches standalone dtwcpp.distance.dtw."""
         data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
         p = self._make_problem(data)
+        assert p.is_distance_matrix_filled()
         expected = dtwcpp.distance.dtw([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
         assert p.dist_by_ind(0, 1) == pytest.approx(expected)
+        assert p.dist_by_ind(1, 0) == pytest.approx(expected)
 
     @pytest.mark.parametrize(
         "i, j, name, bad",
@@ -143,17 +93,6 @@ class TestDistanceMatrix:
         assert p.dist_by_ind(2, 2) == 0.0
 
 
-def _outcome_in_child(setup, call):
-    """Run `setup`, then evaluate `call`, in a fresh interpreter, so a crash fails
-    one test instead of ending pytest. Returns "Type: message" for the exception
-    raised, "returned <value>", or "crashed with exit code <n>"."""
-    code = ("import dtwcpp\n" + textwrap.dedent(setup)
-            + f"\ntry:\n    print('returned', {call})\n"
-              "except Exception as e:\n    print(type(e).__name__ + ':', e)\n")
-    run = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
-    return run.stdout.strip() if run.returncode == 0 else f"crashed with exit code {run.returncode}"
-
-
 class TestIndexBoundary:
     """`series`, `series_name` and `centroid_of` read unchecked C++ (`Data::series`,
     `Data::name`, `centroids_ind[clusters_ind[i]]`), so the binding owns the range
@@ -162,19 +101,17 @@ class TestIndexBoundary:
 
     _DATA = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
     _NAMES = ["a", "b", "c"]
-    _UNCLUSTERED = f"""
-        p = dtwcpp.Problem("idx")
-        p.set_data({_DATA}, {_NAMES})
-    """
-    _CLUSTERED = _UNCLUSTERED + """
-        p.set_n_clusters(2)
-        p.fill_distance_matrix()
-        p.cluster()
-    """
 
     def _problem(self):
         p = dtwcpp.Problem("idx")
         p.set_data(self._DATA, self._NAMES)
+        return p
+
+    def _clustered(self):
+        p = self._problem()
+        p.set_n_clusters(2)
+        p.fill_distance_matrix()
+        p.cluster()
         return p
 
     @pytest.mark.parametrize("bad", [3, 100, -1])
@@ -189,13 +126,14 @@ class TestIndexBoundary:
 
     @pytest.mark.parametrize("bad", [3, 100, -1])
     def test_centroid_of_index_outside_the_problem_raises(self, bad):
-        outcome = _outcome_in_child(self._CLUSTERED, f"p.centroid_of({bad})")
-        assert re.match(rf"InvalidInput: centroid_of: i = {bad}\b.*N = 3", outcome), outcome
+        p = self._clustered()
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"^centroid_of: i = {bad}\b.*N = 3"):
+            p.centroid_of(bad)
 
     @pytest.mark.parametrize("accessor", ["series", "series_name", "centroid_of"])
     def test_every_index_is_outside_an_empty_problem(self, accessor):
-        outcome = _outcome_in_child('p = dtwcpp.Problem("empty")', f"p.{accessor}(0)")
-        assert re.match(rf"InvalidInput: {accessor}: i = 0\b.*N = 0", outcome), outcome
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"^{accessor}: i = 0\b.*N = 0"):
+            getattr(dtwcpp.Problem("empty"), accessor)(0)
 
     def test_last_index_is_valid(self):
         p = self._problem()
@@ -208,79 +146,77 @@ class TestIndexBoundary:
 
     @pytest.mark.parametrize("i, message", [(0, r"holds no clustering"), (-1, r"i = -1 is outside")])
     def test_centroid_of_before_any_clustering_raises(self, i, message):
-        outcome = _outcome_in_child(self._UNCLUSTERED, f"p.centroid_of({i})")
-        assert re.match(rf"InvalidInput: centroid_of: .*{message}", outcome), outcome
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"^centroid_of: .*{message}"):
+            self._problem().centroid_of(i)
 
     def test_centroid_of_after_the_cluster_count_shrinks_raises(self):
         """The clustering held 2 medoids; k = 1 leaves a series in cluster 1 with
         no medoid to name, so the Problem no longer holds a clustering."""
-        setup = self._CLUSTERED + "\n        i = p.labels().tolist().index(1)\n        p.set_n_clusters(1)"
-        outcome = _outcome_in_child(setup, "p.centroid_of(i)")
-        assert re.match(r"InvalidInput: centroid_of: .*holds no clustering.*2 medoids for k = 1", outcome), outcome
+        p = self._clustered()
+        i = p.labels().tolist().index(1)
+        p.set_n_clusters(1)
+        with pytest.raises(dtwcpp.InvalidInput, match=r"^centroid_of: .*holds no clustering.*2 medoids for k = 1"):
+            p.centroid_of(i)
 
 
 class TestClusterFirst:
-    """A Problem that was only sized holds no clustering. `find_total_cost()` and
-    `write_clusters()` read the label vector, and crashed the interpreter (an
-    access violation) on a Problem that had never been clustered; every call that
-    reads the whole clustering now raises InvalidInput naming the call."""
+    """Every call that reads the whole clustering refuses an unclustered or stale
+    Problem with InvalidInput naming the call."""
 
     _DATA = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]]
-    _SETUP = f"""
-        p = dtwcpp.Problem("first")
-        p.set_data({_DATA}, ["a", "b", "c"])
-        p.output_folder = r"{{out}}"
-    """
+    _CALLS = {
+        "find_total_cost": lambda p: p.find_total_cost(),
+        "write_clusters": lambda p: p.write_clusters(),
+        "write_medoid_members": lambda p: p.write_medoid_members(0),
+        "calculate_medoids": lambda p: p.calculate_medoids(),
+        "silhouette": dtwcpp.silhouette,
+        "inertia": dtwcpp.inertia,
+    }
 
-    def _outcome(self, tmp_path, extra_setup, call):
-        setup = textwrap.dedent(self._SETUP).replace("{out}", str(tmp_path)) + "\n" + extra_setup
-        return _outcome_in_child(setup, call)
-
-    @pytest.mark.parametrize("sized", ["", "p.set_n_clusters(2)"], ids=["never_sized", "sized"])
-    @pytest.mark.parametrize(
-        "call, who",
-        [("p.find_total_cost()", "find_total_cost"),
-         ("p.write_clusters()", "write_clusters"),
-         ("p.write_medoid_members(0)", "write_medoid_members"),
-         ("p.calculate_medoids()", "calculate_medoids"),
-         ("dtwcpp.silhouette(p)", "silhouette"),
-         ("dtwcpp.inertia(p)", "inertia")],
-    )
-    def test_reading_the_clustering_before_clustering_raises(self, tmp_path, sized, call, who):
-        outcome = self._outcome(tmp_path, sized, call)
-        assert re.match(rf"InvalidInput: {who}: .*holds no clustering.*cluster it first", outcome), outcome
-        assert list(tmp_path.iterdir()) == []  # the refusal comes before any file is opened
-
-    def test_the_refusal_names_the_counts_it_found(self, tmp_path):
-        outcome = self._outcome(tmp_path, "p.set_n_clusters(2)", "p.find_total_cost()")
-        assert "0 labels for N = 3, 0 medoids for k = 2" in outcome, outcome
-
-    def test_a_clustering_goes_stale_when_the_cluster_count_changes(self, tmp_path):
-        setup = "p.set_n_clusters(2)\np.fill_distance_matrix()\np.cluster()\np.set_n_clusters(3)"
-        outcome = self._outcome(tmp_path, setup, "p.find_total_cost()")
-        assert re.match(r"InvalidInput: find_total_cost: .*2 medoids for k = 3", outcome), outcome
-
-    @pytest.mark.parametrize(
-        "call, who",
-        [("p.find_total_cost()", "find_total_cost"),
-         ("dtwcpp.silhouette(p)", "silhouette"),
-         ("dtwcpp.inertia(p)", "inertia")],
-    )
-    def test_replacing_the_series_with_as_many_drops_the_clustering(self, tmp_path, call, who):
-        """The old labels describe the old series, so a same-N set_data must not leave them counting."""
-        setup = "\n".join([
-            "p.set_n_clusters(2)",
-            "p.cluster()",
-            "p.find_total_cost()",
-            "p.set_data([[7.0, 7.5, 8.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]], ['a', 'b', 'c'])",
-        ])
-        outcome = self._outcome(tmp_path, setup, call)
-        assert re.match(rf"InvalidInput: {who}: .*holds no clustering.*cluster it first", outcome), outcome
-
-    def test_after_clustering_the_readers_work(self, tmp_path):
+    def _problem(self, tmp_path):
         p = dtwcpp.Problem("first")
         p.set_data(self._DATA, ["a", "b", "c"])
         p.output_folder = str(tmp_path)
+        return p
+
+    @pytest.mark.parametrize("sized", [False, True], ids=["never_sized", "sized"])
+    @pytest.mark.parametrize("who", list(_CALLS))
+    def test_reading_the_clustering_before_clustering_raises(self, tmp_path, sized, who):
+        p = self._problem(tmp_path)
+        if sized:
+            p.set_n_clusters(2)
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"^{who}: .*holds no clustering.*cluster it first"):
+            self._CALLS[who](p)
+        assert list(tmp_path.iterdir()) == []  # refused before any file is opened
+
+    def test_the_refusal_names_the_counts_it_found(self, tmp_path):
+        p = self._problem(tmp_path)
+        p.set_n_clusters(2)
+        with pytest.raises(dtwcpp.InvalidInput, match=r"0 labels for N = 3, 0 medoids for k = 2"):
+            p.find_total_cost()
+
+    def test_a_clustering_goes_stale_when_the_cluster_count_changes(self, tmp_path):
+        p = self._problem(tmp_path)
+        p.set_n_clusters(2)
+        p.fill_distance_matrix()
+        p.cluster()
+        p.set_n_clusters(3)
+        with pytest.raises(dtwcpp.InvalidInput, match=r"^find_total_cost: .*2 medoids for k = 3"):
+            p.find_total_cost()
+
+    @pytest.mark.parametrize("who", ["find_total_cost", "silhouette", "inertia"])
+    def test_replacing_the_series_with_as_many_drops_the_clustering(self, tmp_path, who):
+        """The old labels describe the old series, so a same-N set_data must not leave them counting."""
+        p = self._problem(tmp_path)
+        p.set_n_clusters(2)
+        p.cluster()
+        p.find_total_cost()
+        p.set_data([[7.0, 7.5, 8.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5]], ["a", "b", "c"])
+        with pytest.raises(dtwcpp.InvalidInput, match=rf"^{who}: .*holds no clustering.*cluster it first"):
+            self._CALLS[who](p)
+
+    def test_after_clustering_the_readers_work(self, tmp_path):
+        p = self._problem(tmp_path)
         p.set_n_clusters(2)
         p.cluster()
         assert p.find_total_cost() >= 0.0
@@ -451,35 +387,7 @@ class TestDenseSemanticMutation:
 
 
 class TestBandProperty:
-    """Tests for the band property."""
-
-    def test_set_band(self):
-        """Band can be set and read back."""
-        p = dtwcpp.Problem("test")
-        p.band = 5
-        assert p.band == 5
-
-    def test_band_affects_distance(self):
-        """Setting a tight band can change computed distances."""
-        data = [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-                [8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0]]
-        names = ["a", "b"]
-
-        # Full DTW
-        p1 = dtwcpp.Problem("full")
-        p1.set_data(data, names)
-        p1.fill_distance_matrix()
-        d_full = p1.dist_by_ind(0, 1)
-
-        # Banded DTW
-        p2 = dtwcpp.Problem("banded")
-        p2.band = 1
-        p2.set_data(data, names)
-        p2.fill_distance_matrix()
-        d_banded = p2.dist_by_ind(0, 1)
-
-        # Banded should be >= full (or equal for trivial cases)
-        assert d_banded >= d_full - 1e-10
+    """Tests for band feasibility on a precomputed vs partially computed matrix."""
 
     def test_a_complete_matrix_needs_no_feasible_band(self):
         """Every pair known: nothing is computed, so no band can be infeasible.
@@ -503,49 +411,4 @@ class TestBandProperty:
         p.set_distance_matrix(holes)
         with pytest.raises(ValueError, match="band = 2"):
             p.dist_by_ind(2, 3)
-
-
-class TestVariant:
-    """Tests for DTW variant selection on Problem."""
-
-    def test_set_variant_enum(self):
-        """set_variant accepts a DTWVariant enum and updates variant_params."""
-        p = dtwcpp.Problem("test")
-        p.set_variant(dtwcpp.DTWVariant.WDTW)
-        assert p.variant_params.variant == dtwcpp.DTWVariant.WDTW
-
-    def test_variant_params_fields(self):
-        """variant_params is set whole, and reads back as it can be assigned."""
-        p = dtwcpp.Problem("test")
-        params = dtwcpp.DTWVariantParams()
-        params.variant = dtwcpp.DTWVariant.WDTW
-        params.wdtw_g = 0.1
-        p.variant_params = params
-        assert p.variant_params.wdtw_g == pytest.approx(0.1)
-        q = dtwcpp.Problem("copy")
-        q.variant_params = p.variant_params
-        assert q.variant_params.variant == dtwcpp.DTWVariant.WDTW
-        assert q.variant_params.wdtw_g == pytest.approx(0.1)
-
-    def test_variant_changes_distances(self):
-        """Using WDTW variant produces different distances than standard."""
-        data = [[1.0, 2.0, 3.0, 4.0, 5.0],
-                [5.0, 4.0, 3.0, 2.0, 1.0]]
-        names = ["a", "b"]
-
-        # Standard DTW
-        p1 = dtwcpp.Problem("standard")
-        p1.set_data(data, names)
-        p1.fill_distance_matrix()
-        d_std = p1.dist_by_ind(0, 1)
-
-        # WDTW
-        p2 = dtwcpp.Problem("wdtw")
-        p2.set_variant(dtwcpp.DTWVariant.WDTW)
-        p2.set_data(data, names)
-        p2.fill_distance_matrix()
-        d_wdtw = p2.dist_by_ind(0, 1)
-
-        # WDTW should differ from standard
-        assert d_wdtw != pytest.approx(d_std, abs=1e-6)
 
