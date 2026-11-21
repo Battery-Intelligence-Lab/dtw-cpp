@@ -464,6 +464,9 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
     throw InvalidInput("--not-computed says how a --dist-matrix file marks a pair, and requires --dist-matrix <path>.");
   if (!config.dist_matrix.empty() && !config.checkpoint.empty())
     throw InvalidInput("--dist-matrix and --checkpoint each supply the distance matrix; give one.");
+  if (config.report && config.metric == core::MetricType::L2) // the report names the metric, and L2 has no name
+    throw InvalidInput("run: the run report names the metric, and MetricType::L2 has none; use MetricType::L1, the "
+                       "same on univariate series, or set report = false.");
 
   auto problem = std::make_shared<Problem>(run_name(config));
   Problem &prob = *problem;
