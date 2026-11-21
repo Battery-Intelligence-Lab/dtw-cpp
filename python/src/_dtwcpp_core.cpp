@@ -28,18 +28,6 @@
 #include <base/env.hpp>
 #include <base/error.hpp>
 #include <io/arrow_c_data.hpp>
-#include <checkpoint.hpp>
-#include <warping_ddtw.hpp>
-#include <soft_dtw.hpp>
-#include <algorithms/fast_pam.hpp>
-#include <algorithms/fast_clara.hpp>
-#include <algorithms/one_batch_pam.hpp>
-#include <algorithms/barycenter.hpp>
-#include <algorithms/hierarchical.hpp>
-#include <scores.hpp>
-#include <core/z_normalize.hpp>
-#include <core/dtw_options.hpp>
-#include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation() and gpu(): the capability probes
 #include <mip/mip.hpp>
 #include <mip/decode_assignment.hpp>
@@ -349,6 +337,15 @@ dtwc::Data data_from_2d_buffer(const SrcT *ptr, std::size_t n, std::size_t cols,
     }
   }
   return dtwc::Data(std::move(series), std::move(names), ndim);
+}
+
+template <typename SrcT>
+dtwc::Data data_from_2d_buffer(const SrcT *ptr, std::size_t n, std::size_t cols,
+                               std::vector<std::string> &&names, std::size_t ndim, const std::string &dtype)
+{
+  if (dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype") == dtwc::core::Precision::Float32)
+    return data_from_2d_buffer<SrcT, float>(ptr, n, cols, std::move(names), ndim);
+  return data_from_2d_buffer<SrcT, dtwc::data_t>(ptr, n, cols, std::move(names), ndim);
 }
 
 } // namespace
@@ -870,24 +867,13 @@ NB_MODULE(_dtwcpp_core, m)
                 "are rounded to float32 and the DTW recurrence runs in float32; the\n"
                 "distances are returned and stored as double.")
     .def_static("from_numpy_2d", [](nb::ndarray<const double, nb::ndim<2>, nb::c_contig> arr, std::vector<std::string> names, size_t ndim, const std::string &dtype) {
-                  const auto prec = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
-                  if (prec == dtwc::core::Precision::Float32)
-                    return data_from_2d_buffer<double, float>(arr.data(), arr.shape(0), arr.shape(1), std::move(names), ndim);
-                  return data_from_2d_buffer<double, dtwc::data_t>(arr.data(), arr.shape(0), arr.shape(1), std::move(names), ndim); }, "arr"_a, "names"_a, "ndim"_a = 1, "dtype"_a = std::string("float64"), "Construct Data directly from a contiguous 2-D float64 NumPy array without Python list conversion.")
+                  return data_from_2d_buffer(arr.data(), arr.shape(0), arr.shape(1), std::move(names), ndim, dtype); }, "arr"_a, "names"_a, "ndim"_a = 1, "dtype"_a = std::string("float64"), "Construct Data directly from a contiguous 2-D float64 NumPy array without Python list conversion.")
     .def_static("from_numpy_2d_f32", [](nb::ndarray<const float, nb::ndim<2>, nb::c_contig> arr, std::vector<std::string> names, size_t ndim, const std::string &dtype) {
-                  const auto prec = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
-                  if (prec == dtwc::core::Precision::Float32)
-                    return data_from_2d_buffer<float, float>(arr.data(), arr.shape(0), arr.shape(1), std::move(names), ndim);
-                  return data_from_2d_buffer<float, dtwc::data_t>(arr.data(), arr.shape(0), arr.shape(1), std::move(names), ndim); }, "arr"_a, "names"_a, "ndim"_a = 1, "dtype"_a = std::string("float64"), "Construct Data directly from a contiguous 2-D float32 NumPy array without Python list conversion.")
+                  return data_from_2d_buffer(arr.data(), arr.shape(0), arr.shape(1), std::move(names), ndim, dtype); }, "arr"_a, "names"_a, "ndim"_a = 1, "dtype"_a = std::string("float64"), "Construct Data directly from a contiguous 2-D float32 NumPy array without Python list conversion.")
     .def_static("from_numpy_3d", [](nb::ndarray<const double, nb::ndim<3>, nb::c_contig> arr, std::vector<std::string> names, const std::string &dtype) {
-                  const size_t n = arr.shape(0);
-                  const size_t steps = arr.shape(1);
                   const size_t channels = arr.shape(2);
                   if (channels == 0) throw dtwc::InvalidInput("Data.from_numpy_3d: ndim (shape[2]) must be at least 1");
-                  const auto prec = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
-                  if (prec == dtwc::core::Precision::Float32)
-                    return data_from_2d_buffer<double, float>(arr.data(), n, steps * channels, std::move(names), channels);
-                  return data_from_2d_buffer<double, dtwc::data_t>(arr.data(), n, steps * channels, std::move(names), channels); }, "arr"_a, "names"_a, "dtype"_a = std::string("float64"), "Construct multivariate Data directly from a contiguous 3-D (n_series, n_steps, ndim) float64 NumPy array.")
+                  return data_from_2d_buffer(arr.data(), arr.shape(0), arr.shape(1) * channels, std::move(names), channels, dtype); }, "arr"_a, "names"_a, "dtype"_a = std::string("float64"), "Construct multivariate Data directly from a contiguous 3-D (n_series, n_steps, ndim) float64 NumPy array.")
     .def_static("from_numpy_list", [](nb::sequence rows, std::vector<std::string> names, size_t ndim, const std::string &dtype) {
                   const auto prec = dtwc::parse_name(dtwc::core::precision_names, dtype, "dtype");
                   const size_t n = nb::len(rows);
@@ -1488,7 +1474,6 @@ NB_MODULE(_dtwcpp_core, m)
   // Scores
   // =========================================================================
 
-  // Score names drop the `Index`/`Information` noun.
   m.def("silhouette", [](dtwc::Problem &prob) {
     nb::gil_scoped_release release;
     return dtwc::scores::silhouette(prob); }, "prob"_a, "Compute silhouette score for each data point.");
