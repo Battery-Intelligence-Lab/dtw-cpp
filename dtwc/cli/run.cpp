@@ -867,6 +867,13 @@ Outcome execute(const Config &config, std::optional<Data> data, const ExternalSo
   plan_clara();
   prob.set_method(method);
   if (stage.report) stage.report->method = method;
+#ifdef DTWC_HAS_CUDA
+  // A mapped matrix or a checkpoint records the precision its distances are computed in, which CUDA's Auto leaves to
+  // the fill: chosen here as every CUDA fill chooses it (FP32 where the GPU's FP64 is slow), on this run's GPU.
+  if (uses_gpu(config.device) && config.gpu_precision == GpuPrecision::Auto)
+    prob.set_gpu_precision(cuda::cuda_uses_fp32(config.gpu_precision, config.device_index) ? GpuPrecision::FP32
+                                                                                          : GpuPrecision::FP64);
+#endif
 
   // ---- 4. Distance storage, once every distance setting is in place ----
   // A mapped matrix is <name>.dtwm in the --checkpoint directory, where it is
