@@ -227,7 +227,7 @@ name, flag and output file to 2.0. The development log stays in git: `git log v1
   SIMD lane configuration).
 - Extended SLURM `.env` integration (`SLURM_ACCOUNT`, `SLURM_QOS`, `SLURM_MODULES`), `upload_input=True` for staging
   local datasets to remote scratch, and automatic hydration of `medoids` and `report` alongside `labels` for
-  `device="hpc"` and `device="hpc:gpu"` runs.
+  `cluster()` and `do_clustering()` on `device="hpc"` and `device="hpc:gpu"` (an hpc `DTWClustering.fit()` sets `labels_` only).
 - The Windows wheels and `dtwc_cl` archive carry the runtime DLLs they import (MSVC's C++ runtime, `msvcp140`, and
   each build's OpenMP runtime: LLVM's `libomp` beside clang-cl's builds, MSVC's `vcomp140` beside
   `dtwc_cl_msvc.exe`), so `import dtwcpp` and `dtwc_cl` run on a machine without the Visual C++ Redistributable.
