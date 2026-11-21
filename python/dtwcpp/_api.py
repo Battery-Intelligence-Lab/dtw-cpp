@@ -906,6 +906,9 @@ def do_clustering(data=None, settings=None, **overrides):
     t0 = time.perf_counter()
     if backend == "hpc":
         from dtwcpp import _hpc
+        if eff.checkpoint:  # the run is the cluster's: a local path names nothing there
+            raise InvalidInput("do_clustering: device='hpc' runs on the cluster, which would "
+                               "ignore a local checkpoint; leave checkpoint empty.")
         _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or dataset.name))
         details = _hpc.cluster_on_hpc(
             dataset,

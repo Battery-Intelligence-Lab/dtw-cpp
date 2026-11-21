@@ -243,11 +243,11 @@ file, beyond the memory plan's data cap: `ram_limit`) holds none: its `score` an
 `distance_matrix` (so `plot`) raise `InvalidInput`, and `save` writes the labels and
 medoids, with the reader's names, as `dtwc_cl` writes them, then the report.
 
-A Python `hpc` result downloads the labels, medoids, total cost (when reported)
-and `<name>_report.txt` from the remote run: `score` and `save` raise
-`InvalidInput` because the series and distance matrix remain on the cluster
-(where `dtwc_cl` already wrote the output files), and `plot` prints the cluster
-sizes.
+A Python `hpc` result downloads the labels, medoids and `<name>_report.txt` from
+the remote run: `score` raises `InvalidInput` because the series and distance
+matrix remain on the cluster (where `dtwc_cl` already wrote the output files),
+`save` copies the downloaded files into its directory, and `plot` prints the
+cluster sizes.
 
 ## CasADi-style workflow: settings, load_data, do_clustering, write_data
 

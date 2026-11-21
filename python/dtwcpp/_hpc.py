@@ -308,6 +308,12 @@ def cluster_on_hpc(data, config, keys, *, device="hpc", gpu_device=None,
         raise InvalidInput(
             f"cluster: device='hpc' names the run's files <name>_labels.csv, ..., so "
             f"name must be a file name, without '/' or '\\'; got {name!r}.")
+    if data._ndim > 1:  # dtwc_cl takes ndim from an Arrow IPC file's metadata only
+        raise InvalidInput(
+            f"cluster: device='hpc' cannot send ndim={data._ndim}: job.toml has no ndim, so the "
+            "cluster's dtwc_cl would read each series as one univariate series of its channels "
+            "interleaved. Cluster multivariate series locally (an Arrow IPC file that records its "
+            "ndim needs none here).")
     series = None
     staged_local_path = None
     staged_rel_name = None

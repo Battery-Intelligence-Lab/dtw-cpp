@@ -201,6 +201,20 @@ class TestJobToml:
             dtwcpp.cluster([[0.0, 1.0], [1.0, 0.0]], device="hpc", **{"k": 2, **keys})
         assert not (tmp_path / "results").exists()
 
+    def test_ndim_and_a_checkpoint_fail_before_anything_is_written(self, monkeypatch, tmp_path):
+        """job.toml has no ndim, so the cluster would read multivariate series as
+        univariate ones, and a local checkpoint path names nothing there: both are
+        refused before a run directory is written or the wrapper runs."""
+        monkeypatch.setenv("DTWC_REPO_ROOT", str(tmp_path))
+        monkeypatch.setattr(_hpc, "SlurmRemoteRunner",
+                            lambda repo_root: pytest.fail("the wrapper was reached"))
+        with pytest.raises(dtwcpp.InvalidInput, match="ndim=3"):
+            dtwcpp.do_clustering(np.zeros((4, 5, 3)), dtwcpp.settings(k=2, ndim=3, device="hpc", output=""))
+        with pytest.raises(dtwcpp.InvalidInput, match="checkpoint"):
+            dtwcpp.do_clustering(np.zeros((4, 5)), dtwcpp.settings(
+                k=2, device="hpc", output="", checkpoint=str(tmp_path / "ckpt")))
+        assert not (tmp_path / "results").exists()
+
     def test_the_estimator_sends_its_parameters(self, monkeypatch, tmp_path):
         """DTWClustering(device='hpc') sends every parameter, its own defaults
         included (method pam; random_state None is seed 42), and batch_size,
