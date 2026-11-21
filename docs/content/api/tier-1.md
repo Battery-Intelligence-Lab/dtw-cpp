@@ -275,12 +275,18 @@ A `Dataset` is read with the reader options it was made with: `skip_cols`, `skip
 `delimiter`, `dtype` and, in Python and MATLAB, `ndim`. Settings or overrides that give
 one of them a value other than its default and the Dataset's are `InvalidInput` (MATLAB
 `dtwc:invalidArgument`) naming the option and both values: pass it to `load_data`, or leave
-it out. The same settings given to `load_data` and `do_clustering` agree, and `cdist`
-checks each `Dataset` alike: C++ `cdist(X, Y, cfg)`, and Python's and MATLAB's for `dtype`. A path or array passed to `do_clustering`
+it out. The same settings given to `load_data` and `do_clustering` agree. Reader options
+passed beside a `Dataset` to Python's `load` (any but its default) or `load_data` (any, as
+keywords), or to MATLAB's `dtwc.load` (any), are refused whatever the Dataset holds; MATLAB's
+`load_data` reads its name-value pairs as settings, by the rule above. `cdist` checks each
+`Dataset` alike: C++ `cdist(X, Y, cfg)`, and Python's and MATLAB's for `dtype` and `ndim`
+(Python's checks a `Data`'s `ndim` too). A path or array passed to `do_clustering`
 itself (Python, MATLAB) is read with the settings' options. A C++ `Dataset` holds no
 `column`: a path's read takes the Config's, and series in memory refuse one. In Python and
 MATLAB, an `ndim` given for an Arrow IPC file whose metadata gives another `ndim` above 1 is
-refused too.
+refused too, when the file is read. Given none, the series take the file's `ndim`; MATLAB's
+Dataset then holds it as its `Ndim`, which the rule above compares, while Python's keeps the
+`ndim` it was made with.
 
 ## Cross-collection distances: cdist
 

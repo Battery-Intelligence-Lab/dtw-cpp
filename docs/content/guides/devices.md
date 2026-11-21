@@ -230,8 +230,9 @@ local run does, writes the run as one `job.toml`, which the cluster's
 GPU of compute capability 8.0 or newer; `gpu_device="a100"` (or `"a6000"`,
 `"l40s"`, `"h100"`) names one ([SLURM](../../getting-started/slurm/)). A request
 that cannot be honoured fails before anything is sent: a value outside its domain
-is an `InvalidInput`, as on the CPU, and so are series of `ndim` above 1, which `job.toml`
-cannot carry (an Arrow IPC file's own `ndim` travels in the file), and `do_clustering`'s
+is an `InvalidInput`, as on the CPU, and so is a `Dataset` or `Data` of `ndim` above 1, which `job.toml`
+cannot carry (an Arrow IPC file's own `ndim` travels in the file; a raw 3-D array is refused as
+it is locally, with an error that is both a `TypeError` and a `ValueError`), and `do_clustering`'s
 `checkpoint` or `checkpoint_interval`, which the cluster's run would ignore; no `.env` is a `DeviceError`
 naming the directory searched, no `bash` a `DeviceError` too, a GPU type below compute
 capability 8.0 a `DeviceError` naming it, and `gpu_device` with a device other than
