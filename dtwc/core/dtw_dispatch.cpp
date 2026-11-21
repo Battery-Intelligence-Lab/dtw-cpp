@@ -44,9 +44,8 @@ namespace {
 // accepted the configuration, so none of them checks it again.
 
 // ----------------------------------------------------------------------------
-// Missing-strategy lambdas. These are strategy-specific; the variant axis is
-// suppressed (e.g. ZeroCost always runs the NaN-aware kernel, regardless of
-// the variant — matches the pre-refactor behaviour).
+// Missing-strategy lambdas. Missing strategies override the variant axis
+// (validate() enforces variant == Standard when missing != Error).
 // ----------------------------------------------------------------------------
 
 template <typename T>
@@ -373,7 +372,6 @@ resolve_dtw_fn(const DistanceConfig &c, const Data &data, const Data *other)
   if (c.variant.mv_mode == MVMode::Independent && c.ndim > 1)
     return make_independent<T>(c);
 
-  // Missing-data strategies override variant dispatch — pre-refactor behaviour.
   switch (c.missing) {
   case MissingStrategy::ZeroCost:    return make_zero_cost<T>(c);
   case MissingStrategy::Interpolate: return make_interpolate<T>(c);

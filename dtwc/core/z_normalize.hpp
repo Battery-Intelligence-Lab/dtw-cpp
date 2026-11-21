@@ -11,13 +11,9 @@
  *   Pass 2: compute stddev = sqrt(sum((x-mean)²) / n)
  *   Pass 3: normalize in place: (x - mean) * inv_stddev
  *
- * The SIMD variant (z_normalize_simd.cpp) fuses passes 1+2 via the
- * König-Huygens identity (var = E[x²] - mean²), halving memory passes.
- * The scalar version keeps the three-pass approach for numerical stability:
- * - König-Huygens suffers catastrophic cancellation when mean >> stddev
- *   (e.g. a series at offset 1e12 with small variation loses all variance bits).
- * - The three-pass approach computes (x - mean) exactly for constant series,
- *   giving exact zero output rather than a tiny FP residual.
+ * Three passes avoid the catastrophic cancellation of König-Huygens
+ * (var = E[x²] - mean²) when mean >> stddev, and compute (x - mean) == 0
+ * exactly on constant series.
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026

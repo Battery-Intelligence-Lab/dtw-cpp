@@ -120,7 +120,7 @@ size_t peak_memory();
 /// Return to the system the memory this process's allocator keeps after it was freed, as a hint: glibc's
 /// malloc_trim(0); on Windows HeapOptimizeResources on every heap (its heap keeps freed blocks committed: an Arrow IPC
 /// stream of 9,600 record batches at --ram-limit 48 MB, read without llfio, peaked 33 MB over the limit without the
-/// call and at most 3.1 MB over it with the call after each block, measured 2026-11-01); nothing elsewhere.
+/// call and at most 3.1 MB over it with the call after each block); nothing elsewhere.
 void release_free_memory();
 
 /// Start reading the pages of bytes [address, address + bytes) of a mapped file into memory, and return: a hint

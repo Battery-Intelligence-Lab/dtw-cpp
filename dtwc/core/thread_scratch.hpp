@@ -22,14 +22,10 @@
 
 namespace dtwc::core {
 
-/// What the kernels of `config`'s bound distance (resolve_dtw_fn, and resolve_dtw_block_fn's lanes where it has them)
-/// size their thread_local scratch to for series of up to `length` time steps of `precision`, from each buffer's
-/// sizing rule (a vector's capacity can exceed its size by the vector's growth): run_dtw's two rolling columns:
-/// dtw_linear's of the shorter series (without a band; under one, only of a pair it covers whole, the longer series at
-/// most band + 1 long), and dtw_banded's of the longer; the lanes' 2 x `length` rows of dtw_lanes<T> values; the
-/// missing data's and DDTW's two copies (DDTW's of the series' values, every feature), the independent channels' two,
-/// WDTW's weight table, MSM's two rows of the shorter series, TWE's two of it and one more; Soft-DTW's value one
-/// column, never its gradient's matrices. A planner adds the algorithms' tables.
+/// Per-thread scratch budget (bytes) for `config`'s bound distance (including univariate lane buffers when active) on
+/// series of up to `length` time steps at `precision`. Counts kernel rolling buffers, preprocessing/channel copies, and
+/// WDTW's cached weight table (vector capacities may exceed these sizes by growth factor); Soft-DTW counts its value's
+/// one column, never its gradient's matrices. Planners add algorithm tables.
 std::size_t thread_scratch_bytes(const DistanceConfig &config, std::size_t length, Precision precision);
 
 namespace detail {

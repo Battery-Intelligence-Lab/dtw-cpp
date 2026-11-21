@@ -41,7 +41,7 @@ namespace dtwc::detail {
  *
  * FP64 seed (exact for N up to ~5.7e7, where every relevant integer is < 2^53)
  * plus a 64-bit integer correction loop, so the intermediate i*(2N-i-1) never
- * overflows (the retired int32 copies wrapped at N >= 46341).
+ * overflows.
  *
  * @pre 0 <= k < N*(N-1)/2  and  N >= 2.
  */
@@ -64,9 +64,8 @@ DTWC_DECODE_PAIR_HD inline void decode_pair(std::int64_t k, std::int64_t N,
   // pair, not a fresh multiply and divide.
   std::int64_t row_start = row * (2 * N - row - 1) / 2;
 
-  // Correct down, then up. Both loops are `while`, not `if`: a seed off by
-  // more than one is recoverable (the MSL sibling's integer isqrt can
-  // overshoot, and a single-`if` up-correction was the retired CUDA/Metal bug).
+  // Correct down, then up. Both loops are `while`, not `if`, so a seed off by
+  // more than one is recoverable.
   while (row > 0 && row_start > k) {
     --row;
     row_start = row * (2 * N - row - 1) / 2;

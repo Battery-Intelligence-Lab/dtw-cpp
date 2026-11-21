@@ -50,7 +50,7 @@
 namespace dtwc {
 
 // =========================================================================
-//  Public API â€” DTW-AROW
+//  Public API — DTW-AROW
 // =========================================================================
 
 /**
@@ -86,7 +86,7 @@ data_t dtwAROW_banded(const data_t* x, std::size_t nx, const data_t* y, std::siz
  *
  * @details When x[i] or y[j] is NaN, the warping path is restricted to the
  * diagonal direction only (zero local cost), preventing free stretching through
- * missing regions. Uses O(min(m,n)) space â€” no backtracking.
+ * missing regions. Uses O(min(m,n)) space — no backtracking.
  *
  * @tparam data_t Data type of the elements in the sequences.
  * @param x First sequence (may contain NaN for missing values).

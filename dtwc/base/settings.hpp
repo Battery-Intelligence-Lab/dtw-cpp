@@ -29,11 +29,8 @@ namespace settings {
   using default_data_t = double;
 } // namespace settings
 
-/// @brief Alias for the core storage / internal precision type.
-/// @note As of DTWC++ 2.0 this coincides in type with `settings::default_data_t`
-///       (both `double`); the names stay separate by role — `data_t` is the
-///       internal storage/accumulation type, `settings::default_data_t` the
-///       default template argument on public distance helpers.
+/// @brief Core storage / internal accumulation scalar type. The same type as `settings::default_data_t`, the default
+///        template argument of the public distance helpers; the two names stay separate by role.
 using data_t = double;
 
 /// Counts and indices of series, clusters and rows: 64-bit, so no count needs a
@@ -43,42 +40,24 @@ using index_t = std::int64_t;
 
 
 namespace dtwc::settings {
-// Filesystem settings:
-
 /// @brief Namespace alias for std::filesystem.
 namespace fs = std::filesystem;
 
-// No process-wide data or results path: a Problem writes to its own
-// output_folder() (default "./results/", set_output_folder), and every loader
-// takes its data path as an argument.
-
 /// @brief Flag for debug mode for developers.
-/// @details When set to true, the program may output additional debug information.
 constexpr bool isDebug = false;
 
-/// Invocation-local default seed for deterministic Tier-1 sampling algorithms.
-///
-/// The mutable `dtwc::randGenerator` (now in random_engine.hpp) is a legacy
-/// Tier-2 facility whose
-/// seed remains 29 for source/behaviour compatibility.  Tier-1 entry points do
-/// not read, reseed, or otherwise consume that process-global engine.
+/// Invocation-local default seed for deterministic sampling algorithms (distinct from legacy `dtwc::randGenerator`).
 inline constexpr std::uint64_t DEFAULT_RANDOM_SEED = 42;
 
-/// @brief Default band length.
-/// @details If no band is required, this value should be set to -1.
+/// @brief Default Sakoe-Chiba band half-width (-1 = unconstrained).
 constexpr int DEFAULT_BAND = -1;
 
-// Default settings:
-
 /// @brief Default mixed-integer programming solver.
-/// @note Please do not modify here, you can modify the relevant Problem class member to use a different MIP solver.
 constexpr dtwc::Solver DEFAULT_MIP_SOLVER = dtwc::Solver::HiGHS;
 
 /// @brief Default method for clustering.
-/// @note Please do not modify here; use Problem::set_method() to select a different clustering method.
 constexpr dtwc::Method DEFAULT_CLUSTERING_METHOD = dtwc::Method::Kmedoids;
 
 /// @brief Default maximum number of iterations.
-/// @details Used in iterative algorithms where a limit on iterations is necessary.
 constexpr int DEFAULT_MAX_ITER = 100;
 } // namespace dtwc::settings
