@@ -559,12 +559,9 @@ std::vector<double> cdist(const Data &X_in, const Data &Y_in,
 
 std::vector<double> cdist(const Data &X, const Data &Y, const Config &config)
 {
-  core::DistanceConfig dist;
-  dist.variant = config.variant;
-  dist.metric = config.metric;
-  dist.missing = config.missing;
-  dist.band = config.band;
-  return cdist(X, Y, dist, config.device, config.device_index, config.gpu_precision, config.gpu_share);
+  return cdist(X, Y,
+               { .variant = config.variant, .metric = config.metric, .missing = config.missing, .band = config.band },
+               config.device, config.device_index, config.gpu_precision, config.gpu_share);
 }
 
 } // namespace dtwc
