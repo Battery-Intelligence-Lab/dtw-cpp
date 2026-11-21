@@ -129,17 +129,17 @@ std::string one_number_of_clusters(std::string &text)
 /// and hands its value to that option, through its conversion and checks, unless
 /// the option was given itself: the canonical spelling wins. Typed on the command
 /// line, a spelling beats a config file's value, as every flag does.
-void v1_spellings(CLI::App &app, const std::string &canonical, std::initializer_list<const char *> spellings)
+void v1_spellings(CLI::App &app, const std::shared_ptr<const cli::ConfigFile> &file,
+                  const std::string &canonical, std::initializer_list<const char *> spellings)
 {
   CLI::Option *option = app.get_option(canonical);
-  const auto file = std::dynamic_pointer_cast<const cli::ConfigFile>(app.get_config_formatter());
   for (const std::string spelling : spellings)
     app
       .add_option_function<std::string>(
         spelling,
         [option, spelling, file](const std::string &value) {
           warn_deprecated(spelling, option->get_name());
-          const bool typed = file != nullptr && file->given(spelling); // on the command line, beside a config file
+          const bool typed = file->given(spelling); // on the command line, beside a config file
           if (typed ? file->given(option->get_name()) : option->count() > 0) return;
           option->clear(); // a typed spelling replaces the file's value
           option->add_result(value);
@@ -159,7 +159,8 @@ namespace cli {
 void bind(CLI::App &app, Config &config)
 {
   app.set_config("--config", "", "Read TOML or YAML configuration file");
-  app.config_formatter(std::make_shared<ConfigFile>(&app));
+  const auto file = std::make_shared<ConfigFile>(&app);
+  app.config_formatter(file);
   // A key CLI11 cannot map to an option is a typo, not a comment.
   app.allow_config_extras(CLI::config_extras_mode::error);
 
@@ -282,17 +283,17 @@ void bind(CLI::App &app, Config &config)
     ->capture_default_str();
 
   // v1.0.0's spellings (its --method values kMedoids and MIP read already, case aside).
-  v1_spellings(app, "--n-clusters", { "--Nc", "--clusters", "--number_of_clusters" });
-  v1_spellings(app, "--name", { "--probName" });
-  v1_spellings(app, "--input", { "--in" });
-  v1_spellings(app, "--output", { "--out" });
-  v1_spellings(app, "--skip-rows", { "--skipRows" });
-  v1_spellings(app, "--skip-cols", { "--skipCols", "--skipColumns" });
-  v1_spellings(app, "--max-iter", { "--maxIter", "--iter" });
-  v1_spellings(app, "--n-init", { "--repeat", "--Nrepeat", "--Nrepetition", "--Nrep" });
-  v1_spellings(app, "--solver", { "--mip_solver", "--mipSolver" });
-  v1_spellings(app, "--band", { "--bandwidth", "--bandw", "--bandlength" });
-  v1_spellings(app, "--dist-matrix", { "--distMat", "--distance_matrix", "--distances" });
+  v1_spellings(app, file, "--n-clusters", { "--Nc", "--clusters", "--number_of_clusters" });
+  v1_spellings(app, file, "--name", { "--probName" });
+  v1_spellings(app, file, "--input", { "--in" });
+  v1_spellings(app, file, "--output", { "--out" });
+  v1_spellings(app, file, "--skip-rows", { "--skipRows" });
+  v1_spellings(app, file, "--skip-cols", { "--skipCols", "--skipColumns" });
+  v1_spellings(app, file, "--max-iter", { "--maxIter", "--iter" });
+  v1_spellings(app, file, "--n-init", { "--repeat", "--Nrepeat", "--Nrepetition", "--Nrep" });
+  v1_spellings(app, file, "--solver", { "--mip_solver", "--mipSolver" });
+  v1_spellings(app, file, "--band", { "--bandwidth", "--bandw", "--bandlength" });
+  v1_spellings(app, file, "--dist-matrix", { "--distMat", "--distance_matrix", "--distances" });
 }
 
 } // namespace cli
