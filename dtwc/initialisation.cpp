@@ -1,21 +1,6 @@
 /**
  * @file initialisation.cpp
- *
- * @brief Implementation of initialization algorithms for clustering problems.
- * This file includes functions for random initialization and K-means++ initialization
- * of clusters in a clustering problem.
- *
- * @details
- * The functions defined in this file provide means to initialize cluster centroids
- * for a given Problem instance. The initialization is a critical step in clustering
- * algorithms, impacting their performance and outcomes. Two methods are implemented:
- * 1. Random initialization, where cluster centroids are randomly chosen.
- * 2. K-means++ initialization, which is a smarter way to initialize centroids
- *    by considering distances between data points.
- *
- * Each runs from a seed: the one-argument functions draw it from
- * dtwc::randGenerator, and Lloyd's restarts pass their own (Problem::init_with_seed,
- * defined here beside the two initialisers it seeds).
+ * @brief Medoid initialisation (random and k-medoids++) and Problem::init_with_seed.
  *
  * @date 19 Jan 2021
  * @author Volkan Kumtepeli
@@ -25,16 +10,16 @@
 #include "initialisation.hpp"
 #include "base/error.hpp"
 #include "core/portable_random.hpp"
-#include "core/distance_sampling_weights.hpp" // kmedoids_pp
-#include "base/random_engine.hpp"             // for randGenerator
+#include "core/distance_sampling_weights.hpp"
+#include "base/random_engine.hpp"
 #include "base/settings.hpp"
 #include "Problem.hpp"
 
-#include <cstddef> // for size_t
-#include <cstdint> // for uint64_t
-#include <numeric> // for iota
-#include <random>  // for mt19937_64
-#include <vector>  // for vector
+#include <cstddef>
+#include <cstdint>
+#include <numeric>
+#include <random>
+#include <vector>
 
 namespace dtwc::init {
 

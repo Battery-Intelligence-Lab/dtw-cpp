@@ -9,28 +9,25 @@
 
 #pragma once
 
-#include "Data.hpp"           //!< For Data class
-#include "fileOperations.hpp" //!< For load_batch_file(), load_folder()
-#include "base/settings.hpp"  //!< For data_t type
-#include "core/storage.hpp"   //!< For core::Precision
+#include "Data.hpp"
+#include "fileOperations.hpp"
+#include "base/settings.hpp"
+#include "core/storage.hpp"
 
-#include <filesystem> //!< For filesystem objects like path
+#include <filesystem>
 
 namespace dtwc {
 
-/**
- * @brief Data loader class
- */
 class DataLoader
 {
-  index_t start_col_{ 0 };                //!< Starting column for data extraction
-  index_t start_row_{ 0 };                //!< Starting row for data extraction
-  index_t Ndata{ -1 };                    //!< Number of data rows to load
-  int verbose{ 1 };                       //!< Verbosity level
-  char delim{ ',' };                      //!< Column delimiter character
-  bool delim_explicit_{ false };          //!< True once delimiter() was called; path() must not override it.
-  core::Precision dtype_{ core::Precision::Float64 }; //!< The precision the series are stored in
-  std::filesystem::path data_path{ "." }; //!< Path to data file or folder
+  index_t start_col_{ 0 };
+  index_t start_row_{ 0 };
+  index_t Ndata{ -1 };
+  int verbose{ 1 };
+  char delim{ ',' };
+  bool delim_explicit_{ false }; ///< True once delimiter() was called; path() must not override it.
+  core::Precision dtype_{ core::Precision::Float64 };
+  std::filesystem::path data_path{ "." };
 
 public:
   DataLoader() = default;
@@ -41,22 +38,14 @@ public:
     n_data(Ndata_);
   }
 
-  // Accessor methods
-  auto startColumn() const noexcept { return start_col_; }                 //!< Get the starting column for data loading.
-  auto startRow() const noexcept { return start_row_; }                    //!< Get the starting row for data loading.
-  auto n_data() const noexcept { return Ndata; }                           //!< Get the number of data points to load.
-  auto delimiter() const noexcept { return delim; }                        //!< Get the delimiter used in data files.
-  const std::filesystem::path &path() const noexcept { return data_path; } //!< Get the path of the data file or directory.
-  auto verbosity() const noexcept { return verbose; }                      //!< Get the verbosity level for data loading.
-  auto dtype() const noexcept { return dtype_; }                           //!< Get the precision the series are stored in.
+  auto startColumn() const noexcept { return start_col_; }
+  auto startRow() const noexcept { return start_row_; }
+  auto n_data() const noexcept { return Ndata; }
+  auto delimiter() const noexcept { return delim; }
+  const std::filesystem::path &path() const noexcept { return data_path; }
+  auto verbosity() const noexcept { return verbose; }
+  auto dtype() const noexcept { return dtype_; }
 
-  // Setters with chaining
-
-  /**
-   * @brief Set start column
-   * @param N Starting column
-   * @return Reference to self for chaining
-   */
   DataLoader &start_column(index_t N)
   {
     start_col_ = N;
@@ -65,7 +54,6 @@ public:
   [[deprecated("use start_column")]]
   DataLoader &startColumn(int N) { return start_column(N); }
 
-  /// Set start row
   DataLoader &start_row(index_t N)
   {
     start_row_ = N;
@@ -81,7 +69,7 @@ public:
     Ndata = N;
     return *this;
   }
-  /// Set delimiter
+
   DataLoader &delimiter(char delim_)
   {
     delim = delim_;
@@ -89,22 +77,13 @@ public:
     return *this;
   }
 
-  /**
-   * @brief Set data path
-   *
-   * Sets delimiter based on file extension
-   *
-   * @param data_path_ Path to data
-   * @return Reference to self for chaining
-   */
+  /// Set data path and infer delimiter from extension unless delimiter() was called explicitly.
   DataLoader &path(const std::filesystem::path &data_path_)
   {
     data_path = data_path_;
-    // An explicit delimiter() wins over extension inference; the extension
-    // match is case-insensitive so ".TSV" is not silently left on ','. The
-    // extension is read as UTF-8: path::string() converts to the Windows ANSI
-    // code page and throws for an extension it cannot map.
     if (delim_explicit_) return *this;
+    // The extension match is case-insensitive, so ".TSV" is not silently left on ','. The extension is read as
+    // UTF-8: path::string() converts to the Windows ANSI code page and throws for an extension it cannot map.
     const auto ext =
       text_io_detail::lower_ascii(path_to_utf8(data_path_.extension()));
     if (ext == ".csv")
@@ -114,29 +93,21 @@ public:
     return *this;
   }
 
-  /// Set verbosity level
   DataLoader &verbosity(int N)
   {
     verbose = N;
     return *this;
   }
 
-  /**
-   * @brief Set the precision the series are stored in: Float64 (the default), or
-   *        Float32 at half the memory, each value the double parse rounded to float.
-   * @return Reference to self for chaining
-   */
+  /// Set the precision the series are stored in: Float64 (the default), or Float32 at half the memory, each value
+  /// the double parse rounded to float.
   DataLoader &dtype(core::Precision precision)
   {
     dtype_ = precision;
     return *this;
   }
 
-  /**
-   * @brief Load data into RAM, in the precision dtype() names.
-   * @details Calls the appropriate loader based on the path being a file or folder.
-   * @return Loaded data.
-   */
+  /// Load data from a batch file or folder in precision dtype().
   Data load()
   {
     const LoadOptions opts{ Ndata, verbose, start_row_, start_col_, delim };

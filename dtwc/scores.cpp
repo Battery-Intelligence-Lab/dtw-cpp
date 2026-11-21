@@ -1,11 +1,6 @@
 /**
  * @file scores.cpp
- * @brief Header file for calculating different types of scores in clustering algorithms.
- *
- * This file contains the declarations of functions used for calculating different types
- * of scores, focusing primarily on the silhouette score for clustering analysis. The
- * silhouette score is a measure of how well an object lies within its cluster and is
- * a common method to evaluate the validity of a clustering solution.
+ * @brief Internal and external clustering validity scores.
  *
  * @date 06 Nov 2022
  * @author Volkan Kumtepeli
@@ -18,8 +13,8 @@
 #include "base/parallelisation.hpp"
 #include "types/Range.hpp"
 
-#include <algorithm>      // for std::max, std::count_if
-#include <cmath>          // for std::log
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <map>
@@ -82,7 +77,7 @@ index_t require_two_realised(const std::vector<index_t> &counts, const char *who
 // The scores' loops over the packed distances at their width (`matrix`, from DistanceMatrix::visit); every sum runs
 // in double. Function templates, not generic lambdas: in a generic lambda cl 19.50 read the captures through the
 // closure, even a constexpr one, and left the loops without the unrolling and FMA contraction it gives them here, so
-// Calinski-Harabasz's last bits moved (2026-10-11).
+// Calinski-Harabasz's last bits moved.
 
 /// The silhouette of each point of a clustered `prob` into `silhouettes`; `counts` holds each cluster's size.
 template <typename T>
@@ -233,7 +228,7 @@ double inertia_of(const T *matrix, const Problem &prob)
 
 /// The medoid-adapted Calinski-Harabasz index of a clustered `prob` with `k` non-empty clusters of sizes
 /// `cluster_counts`. The values' pointer comes by reference: by value, clang 21 reloaded a constant of the row sum
-/// once per 8 entries, which it keeps in a register here (2026-10-11).
+/// once per 8 entries, which it keeps in a register here.
 template <typename T>
 double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const std::vector<index_t> &cluster_counts,
                             index_t k)
@@ -284,7 +279,7 @@ double calinski_harabasz_of(const T *const &matrix, const Problem &prob, const s
   }
 
   // Between-cluster scatter B = sum_c |c| * d(medoid_c, overall_medoid)^2
-  const index_t *const centroid = prob.centroids_ind.data(); // GCC 13 reloaded it at each cluster (2026-10-11)
+  const index_t *const centroid = prob.centroids_ind.data(); // GCC 13 reloaded it at each cluster
   double B = 0.0;
   for (index_t c = 0; c < Nc; ++c) {
     if (cluster_counts[c] == 0) continue; // an empty cluster has no medoid
@@ -348,8 +343,7 @@ std::vector<double> silhouette(Problem &prob)
  */
 double davies_bouldin(Problem &prob)
 {
-  const auto Nc = prob.n_clusters(); //!< Number of clusters
-
+  const auto Nc = prob.n_clusters();
   prob.require_clustered("davies_bouldin");
 
   // The Davies-Bouldin index is undefined for a single cluster: R_ij needs a
@@ -369,8 +363,7 @@ double davies_bouldin(Problem &prob)
     "R_ij needs a second cluster j != i, so the index is undefined "
     "for a single realised cluster.");
 
-  prob.fill_distance_matrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
-
+  prob.fill_distance_matrix();
   return prob.distance_matrix().visit(
     [&](const auto *matrix) { return davies_bouldin_of(matrix, prob, cluster_counts, k_realised); });
 }
@@ -414,9 +407,7 @@ double dunn(Problem &prob)
 double inertia(Problem &prob)
 {
   prob.require_clustered("inertia");
-
   prob.fill_distance_matrix();
-
   return prob.distance_matrix().visit([&](const auto *matrix) { return inertia_of(matrix, prob); });
 }
 
@@ -448,7 +439,6 @@ double calinski_harabasz(Problem &prob)
     throw InvalidInput("Calinski-Harabasz Index requires more points than clusters");
 
   prob.fill_distance_matrix();
-
   return prob.distance_matrix().visit(
     [&](const auto *matrix) { return calinski_harabasz_of(matrix, prob, cluster_counts, k); });
 }

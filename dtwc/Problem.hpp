@@ -43,7 +43,7 @@
 namespace dtwc {
 
 /// The root dual of Method::LRCore. Both bound the same LP relaxation; which one certifies at the root, with
-/// no branching, depends on the data (measured 2026-10-06: the subgradient on noisy series, Kelley on a line metric).
+/// no branching, depends on the data (measured: the subgradient on noisy series, Kelley on a line metric).
 enum class LRRoot {
   Subgradient, ///< Polyak subgradient steps; needs no LP solver.
   Kelley       ///< Kelley's cutting planes; its master LP solves on linked HiGHS (Python: the user's highspy).
@@ -252,7 +252,6 @@ private:
   /// refused (core::refuse_float32_range, its value computed again in double). A float64 matrix is not scanned.
   void refuse_float32_overflow(size_t r0, size_t r1);
 
-  // Private functions:
   friend bool load_checkpoint(Problem &prob, const std::string &path,
                               core::MetricType metric);
   void init_with_seed(std::uint64_t seed); // in initialisation.cpp, beside what it seeds

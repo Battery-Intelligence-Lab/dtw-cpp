@@ -14,15 +14,15 @@
 #include "base/settings.hpp"
 #include "core/storage.hpp"
 
-#include <cstddef>      // for size_t
-#include <memory>       // for shared_ptr
-#include <span>         // for span
-#include <string>       // for string
-#include <string_view>  // for string_view
-#include <utility>      // for move
-#include <vector>       // for vector
+#include <cstddef>
+#include <memory>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
-// GCC's inline-unit-growth cap in Problem.cpp left series() and series_f32() out of line in the fill (2026-10-21).
+// GCC's inline-unit-growth cap in Problem.cpp can leave series() and series_f32() out of line in the fill.
 #if defined(__GNUC__)
 #define DTWC_ALWAYS_INLINE [[gnu::always_inline]] inline
 #else
@@ -40,11 +40,6 @@ std::string made_name(I i)
   return "series_" + std::to_string(i);
 }
 
-/**
- * @brief Struct to encapsulate DTWC data.
- *        This struct holds data vectors and their corresponding names, providing
- *        functionalities to manage and access the data.
- */
 struct Data
 {
   std::vector<std::vector<data_t>> p_vec; //!< Float64 series (default)
@@ -223,12 +218,12 @@ inline Data owned_copy(const Data &data, core::Precision precision)
   return precision == core::Precision::Float32 ? copy(float{}) : copy(data_t{});
 }
 
-/// What the allocator adds to each block a series' vector or name takes, beyond an eighth of it (measured 2026-10-09).
+/// What the allocator adds to each block a series' vector or name takes, beyond an eighth of it (measured).
 inline constexpr size_t series_block_overhead_bytes = 16;
 
 /// The bytes `rows` owned series of `values` values in all hold, as float (`f32`) or data_t: the values, each series'
 /// vector and name objects, and the allocator's rounding of each series' block (an eighth of it and
-/// series_block_overhead_bytes more, measured 2026-10-09). The price the streams give a copy of their series.
+/// series_block_overhead_bytes more, measured). The price the streams give a copy of their series.
 inline size_t owned_series_bytes(size_t values, size_t rows, bool f32)
 {
   const size_t width = f32 ? sizeof(float) : sizeof(data_t);
@@ -239,7 +234,7 @@ inline size_t owned_series_bytes(size_t values, size_t rows, bool f32)
 
 /// What a view Data holds for a series beside its values: a span and a name view (16 bytes each), and the name
 /// series_<i> made for a row that has none (14 characters at a few million rows): 45.7 bytes a row measured on 4.2
-/// million mapped rows (2026-10-10). A mapped view's values are the page cache's (Data::is_mapped).
+/// million mapped rows. A mapped view's values are the page cache's (Data::is_mapped).
 inline constexpr size_t view_series_bytes = 46;
 
 } // namespace detail

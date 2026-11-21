@@ -39,25 +39,25 @@
 #include "io/parse_number.hpp"         // for io::parse_number
 
 
-#include <algorithm> // for min
-#include <array>     // for array
-#include <cctype>    // for toupper
-#include <charconv>  // for from_chars
-#include <chrono>    // for steady_clock (cpu+gpu's calibration)
-#include <cmath>     // for ldexp, ceil
-#include <cstdint>   // for uint32_t, uint64_t
-#include <cstring>   // for memcpy
-#include <exception> // for exception_ptr
-#include <iomanip>   // for operator<<, setprecision
-#include <iostream>  // for cout
-#include <limits>    // for numeric_limits
-#include <numeric>   // for iota
-#include <optional>  // for optional
-#include <sstream>   // for ostringstream
-#include <string>    // for allocator, char_traits, operator+
-#include <type_traits> // for underlying_type_t
-#include <utility>   // for pair
-#include <vector>    // for vector, operator==
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <charconv>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <numeric>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace dtwc {
 
@@ -448,13 +448,6 @@ void Problem::set_result(const core::ClusteringResult &result)
   clusters_ind = labels;
 }
 
-/**
- * @brief Sets the solver to be used for clustering.
- *
- * @param solver_ The solver to use.
- * @return True if the solver is set successfully,
- * False otherwise (e.g., if Gurobi is not available and a default solver is used instead).
- */
 bool Problem::set_solver(Solver solver_)
 {
 #ifndef DTWC_ENABLE_GUROBI
@@ -467,10 +460,6 @@ bool Problem::set_solver(Solver solver_)
   return true;
 }
 
-/**
- * @brief Prints the current distance matrix to the standard output.
- * @details Outputs the distance matrix in a human-readable format, useful for debugging and verification.
- */
 void Problem::print_distance_matrix() const
 {
   std::cout << distMat;
@@ -1571,16 +1560,12 @@ void Problem::cluster_and_process()
     ~ArtifactScope() { flag = false; }
   } artifact_scope{ persist_run_artifacts_ };
   cluster();
-  print_clusters(); // Prints to screen.
+  print_clusters();
   write_distance_matrix();
-  write_clusters(); // Prints to file.
+  write_clusters();
   write_silhouettes();
 }
 
-/**
- *@brief Clusters the data using Mixed Integer Programming (MIP) based on the chosen solver.
- *@details Uses either Gurobi or HiGHS solver for MIP clustering, depending on the solver set in the Problem instance.
- */
 void Problem::cluster_by_mip()
 {
   // A negative `mip_gap` would otherwise reach HiGHS as an out-of-domain option
@@ -1599,11 +1584,6 @@ void Problem::cluster_by_mip()
   }
 }
 
-
-/**
- * @brief Assigns each data point to the nearest cluster centroid.
- * @details Iterates over each data point, calculating its distance to each centroid, and assigns it to the nearest one.
- */
 void Problem::assign_clusters()
 {
   fill_distance_matrix(); // every point against every medoid: a read each
@@ -1638,11 +1618,6 @@ void Problem::assign_clusters()
   clusters_ind = std::move(labels);
 }
 
-/**
- * @brief Calculates and updates the medoids of each cluster.
- * @details This function iterates through each data point and calculates the total cost of designating that point
- * as the medoid of its cluster. The point with the minimum total cost is set as the new medoid for that cluster.
- */
 void Problem::calculate_medoids()
 {
   require_clustered("calculate_medoids");
