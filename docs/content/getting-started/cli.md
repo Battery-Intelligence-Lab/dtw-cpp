@@ -141,7 +141,8 @@ and the distance matrix:
 - the series go into RAM on every thread where they fit in the data cap beside
   the distance matrix's N(N+1)/2 values (8 bytes each, 4 under
   `--matrix-dtype float32`);
-- a matrix that does not fit beside them is mapped to `<name>.dtwm` where the
+- a matrix that does not fit beside them is mapped to `<name>.dtwm` (but not
+  TADPole's, whose cache of the pairs stays in RAM) where the
   run has an output directory: in the `--checkpoint` directory when one is
   given, else in the output directory. It is filled slab by slab: a slab is an
   eighth of what the series leave of the limit, at most 1 GiB, the next one
@@ -300,14 +301,14 @@ negative `--skip-rows` or `--skip-cols`.
 | `--checkpoint <path>` | Checkpoint directory: `<name>.dtwm` is saved there and resumed from | — |
 | `--checkpoint-interval <rows>` | Needs `--checkpoint`: save the checkpoint every N completed distance-matrix rows | 0 (save once, at the end) |
 
-The checkpoint is one file, `<dir>/<name>.dtwm` ([Checkpointing](checkpointing.md)). Without `--checkpoint-interval` (or with `0`) it is written once, after clustering (a method that computes no distance matrix writes no checkpoint: `onebatch`, and `tadpole`, which keeps the pairs it computes in RAM; where `tadpole`'s matrix is mapped, or `<dir>` already holds `<name>.dtwm`, the run still saves that file, but it holds none of the pairs TADPole computed, so a later run computes them again; non-full `clara` refuses `--checkpoint`, below). With a non-zero interval, `fill_distance_matrix` saves it after every `<rows>` completed matrix rows (rounded up to the lane width, 16 rows of doubles where the lanes are 128 bytes), so an interrupted run resumes from the last save instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. The first save writes the whole matrix, each later one only the rows filled since, in place: a fill writes at most twice the matrix's bytes, and the end-of-run save once more. A checkpoint for other data or settings, or a damaged one, stops the run with exit status 1 before anything is computed; it is never recomputed over.
+The checkpoint is one file, `<dir>/<name>.dtwm` ([Checkpointing](checkpointing.md)). Without `--checkpoint-interval` (or with `0`) it is written once, after clustering (a method that computes no distance matrix writes no checkpoint: `onebatch`; `tadpole` keeps the pairs it computes in a cache of its own and exits 1 on `--checkpoint` before any data is read, so give it a complete matrix with `--dist-matrix` instead; non-full `clara` refuses `--checkpoint`, below). With a non-zero interval, `fill_distance_matrix` saves it after every `<rows>` completed matrix rows (rounded up to the lane width, 16 rows of doubles where the lanes are 128 bytes), so an interrupted run resumes from the last save instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. The first save writes the whole matrix, each later one only the rows filled since, in place: a fill writes at most twice the matrix's bytes, and the end-of-run save once more. A checkpoint for other data or settings, or a damaged one, stops the run with exit status 1 before anything is computed; it is never recomputed over.
 
 A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, with a row count other than the number of input series, or with a negative entry, which no `--variant` gives (under `softdtw` the matrix holds the Soft-DTW divergence), unless `--not-computed negative` reads it as a pair to compute) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes before the result files, but a save that fails (a full disk) is reported only once they are written, so the results stay. `--dist-matrix` and `--checkpoint` each supply the matrix: given both, `dtwc_cl` exits 1 before any data is read.
 
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
 exact/fallback distance still goes into its packed cache, which it keeps in RAM:
-the memory plan counts the cache there even where it maps the matrix, which
-TADPole then leaves unwritten. OneBatchPAM is the exception:
+the memory plan counts the cache there, and TADPole's matrix is never mapped.
+OneBatchPAM is the exception:
 its fixed O(Nm) table never allocates the Problem distance matrix, so it refuses
 `--dist-matrix` and neither reads nor writes a `--checkpoint`. If the
 series and the matrix do not fit within an explicit `--ram-limit` in a binary

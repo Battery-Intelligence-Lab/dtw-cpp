@@ -281,9 +281,9 @@ endif()
 # so the expected case count is pinned per platform.
 if(TARGET dtwc_cl)
     if(WIN32)
-        set(_dtwc_cl_loud_marker "cases=18/18 efbig=unavailable")
+        set(_dtwc_cl_loud_marker "cases=19/19 efbig=unavailable")
     else()
-        set(_dtwc_cl_loud_marker "cases=19/19 efbig=ran")
+        set(_dtwc_cl_loud_marker "cases=20/20 efbig=ran")
     endif()
     # ON without Gurobi stops the configure, so the option says whether dtwc_cl has it.
     if(DTWC_ENABLE_GUROBI)
