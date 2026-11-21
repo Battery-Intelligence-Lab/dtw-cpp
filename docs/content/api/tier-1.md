@@ -89,8 +89,9 @@ without llfio, it is decoded or read into memory). Parquet is read by C++ in a b
 MATLAB through `parquetread`.
 
 A `Dataset` of a path keeps no series: every `cluster()` call on it reads the
-file again. The exception is Parquet in Python and MATLAB, which `pyarrow` or
-`parquetread` reads once and the `Dataset` keeps. To read a file once for several
+file again. The exceptions, in Python and MATLAB, are Parquet, which `pyarrow` or
+`parquetread` reads, and a `Dataset` made with an `ndim` above 1: each is read once
+and the `Dataset` keeps its series. To read a file once for several
 runs, read its series into memory first and cluster those: C++
 `dtwc::run(config, dtwc::read_data(path))`, Python `dtwcpp.cluster(data.as_series(), k)`,
 MATLAB `dtwc.cluster(data.as_series(), k)` (with `dtype` given again for float32). The
@@ -272,21 +273,24 @@ empty `output=""` (`'Output', ''` in MATLAB) to run purely in memory and call
 `write_data` only if needed.
 
 A `Dataset` is read with the reader options it was made with: `skip_cols`, `skip_rows`,
-`delimiter`, `dtype` and, in Python and MATLAB, `ndim`. Settings or overrides that give
-one of them a value other than its default and the Dataset's are `InvalidInput` (MATLAB
+`delimiter`, `dtype` and, in Python and MATLAB, `ndim`. Beside a `Dataset`, `do_clustering`
+and, in Python and MATLAB, `load_data` refuse one of them that differs from the Dataset's
+own: one given to the call itself (a keyword or override in Python, a name-value pair in
+MATLAB, an override in C++) whenever it differs, its default value included, and one the
+settings give only when it is not at its default. That is `InvalidInput` (MATLAB
 `dtwc:invalidArgument`) naming the option and both values: pass it to `load_data`, or leave
-it out. The same settings given to `load_data` and `do_clustering` agree. Reader options
-passed beside a `Dataset` to Python's `load` (any but its default) or `load_data` (any, as
-keywords), or to MATLAB's `dtwc.load` (any), are refused whatever the Dataset holds; MATLAB's
-`load_data` reads its name-value pairs as settings, by the rule above. `cdist` checks each
-`Dataset` alike: C++ `cdist(X, Y, cfg)`, and Python's and MATLAB's for `dtype` and `ndim`
-(Python's checks a `Data`'s `ndim` too). A path or array passed to `do_clustering`
-itself (Python, MATLAB) is read with the settings' options. A C++ `Dataset` holds no
-`column`: a path's read takes the Config's, and series in memory refuse one. In Python and
-MATLAB, an `ndim` given for an Arrow IPC file whose metadata gives another `ndim` above 1 is
-refused too, when the file is read. Given none, the series take the file's `ndim`; MATLAB's
-Dataset then holds it as its `Ndim`, which the rule above compares, while Python's keeps the
-`ndim` it was made with.
+it out. One equal to the Dataset's own runs, and one not given is never refused. Once the
+`Dataset` has read an Arrow IPC file, the `ndim` compared is the file's; Python's
+`load_data` also refuses an `ndim` other than a `Data`'s own. The same settings given to
+`load_data` and `do_clustering` agree. `cdist` checks each `Dataset` by the settings' rule:
+C++ `cdist(X, Y, cfg)`, and Python's and MATLAB's for `ndim` (Python's checks a `Data`'s
+`ndim` too). Their `dtype` (MATLAB `'Dtype'`) is not given unless passed (Python `None`,
+MATLAB `''`): a `Dataset`, or in Python a `Data`, refuses one other than its own, and other
+series are stored as `float64` unless it says otherwise. A path or array passed to
+`do_clustering` itself (Python, MATLAB) is read with the settings' options. A C++ `Dataset`
+holds no `column`: a path's read takes the Config's, and series in memory refuse one. In
+Python and MATLAB, an `ndim` given for an Arrow IPC file whose metadata gives another `ndim`
+above 1 is refused too, when the file is read; given none, the series take the file's `ndim`.
 
 ## Cross-collection distances: cdist
 
@@ -295,7 +299,7 @@ two collections `X` (`M` series) and `Y` (`N` series) without clustering:
 
 | | C++ | Python | MATLAB |
 |---|---|---|---|
-| call | `dtwc::cdist(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="standard", metric="l1", device=None, matrix_dtype="float64", ...)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'standard', 'Device', 'cpu', 'MatrixDtype', 'float64', ...)` |
+| call | `dtwc::cdist(X, Y, opts)` | `dtwcpp.cdist(X, Y, *, band=-1, variant="standard", metric="l1", device=None, dtype=None, matrix_dtype="float64", ...)` | `dtwc.cdist(X, Y, 'Band', -1, 'Variant', 'standard', 'Device', 'cpu', 'Dtype', '', 'MatrixDtype', 'float64', ...)` |
 | returns | `std::vector<double>` of `M × N` values, row-major: element `i * N + j` is the distance from `X[i]` to `Y[j]` | `np.ndarray` of shape `(M, N)` (`float64` or `float32`) | `M × N` numeric matrix (`double` or `single`) |
 
 Standard univariate DTW dispatches across OpenMP + pre-packed SIMD lanes on
