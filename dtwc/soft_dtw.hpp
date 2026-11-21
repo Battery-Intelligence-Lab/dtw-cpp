@@ -141,7 +141,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   detail::require_finite<T>(x, y, "soft_dtw_gradient");
 
   // The cost matrix C (forward pass) and the alignment matrix E (backward
-  // pass), column-major: the backward pass reads C at every successor and the
+  // pass), column-major: the backward pass reads C at every predecessor and the
   // gradient sums each row of E, so both are kept whole. Grown to the exact
   // size (reserve: resize alone may overshoot), never shrunk: a warmed thread
   // allocates nothing.
@@ -174,65 +174,29 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
     }
   }
 
-  // Backward pass: compute alignment matrix E.
-  //
-  // The Jacobian of softmin S = softmin(a,b,c) w.r.t. argument a is:
-  //   dS/da = exp((S - a) / gamma)
-  //
-  // In the DTW recurrence C(i',j') = d(i',j') + S where S = softmin of predecessors,
-  // so S = C(i',j') - d(i',j'). For predecessor (i,j) of successor (i',j'):
-  //   weight = exp((C(i',j') - d(i',j') - C(i,j)) / gamma)
-  //
-  // E(i,j) = sum over successors (i',j') of: E(i',j') * weight
-  //
-  // Special cases: first row/col successors have only one predecessor each,
-  // so the weight is 1.0 (the derivative of the identity).
+  // Backward pass: the alignment matrix E(i,j) = dC(mx-1,my-1)/dC(i,j). In reverse
+  // order a cell's E is complete (its successors are done) and is pushed to its
+  // predecessors, weighted by the softmin's Jacobian: the softmax of their stored
+  // values, w_q = exp(-(q - m)/gamma) / sum, m their minimum. The weights lie in
+  // [0, 1] and sum to 1, and no local cost is subtracted from a cumulative one. A
+  // first-row or first-column cell has one predecessor, weight 1.
   std::fill_n(e_buf.begin(), mx * my, T{0});
   E(mx - 1, my - 1) = T(1);
-
-  const auto jacobian_weight = [&](T soft, T predecessor) noexcept {
-    return std::exp(gamma_scale.scaled(soft - predecessor));
-  };
-
   for (std::size_t j = my; j-- > 0;) {
     for (std::size_t i = mx; i-- > 0;) {
-      if (i == mx - 1 && j == my - 1) continue; // already set
-
-      T val = T(0);
-
-      // Successor (i+1, j): (i,j) was "C(i-1,j)" predecessor at cell (i+1,j)
-      if (i + 1 < mx) {
-        if (j == 0) {
-          // First column: C(i+1,0) = C(i,0) + d(...), only one predecessor, weight = 1
-          val += E(i + 1, j);
-        } else {
-          const T S = C(i + 1, j) - dist(x[i + 1], y[j]); // softmin value at successor
-          const T w = jacobian_weight(S, C(i, j));
-          val += E(i + 1, j) * w;
-        }
-      }
-
-      // Successor (i, j+1): (i,j) was "C(i,j-1)" predecessor at cell (i,j+1)
-      if (j + 1 < my) {
-        if (i == 0) {
-          // First row: C(0,j+1) = C(0,j) + d(...), only one predecessor, weight = 1
-          val += E(i, j + 1);
-        } else {
-          const T S = C(i, j + 1) - dist(x[i], y[j + 1]);
-          const T w = jacobian_weight(S, C(i, j));
-          val += E(i, j + 1) * w;
-        }
-      }
-
-      // Successor (i+1, j+1): (i,j) was "C(i-1,j-1)" predecessor at cell (i+1,j+1)
-      if (i + 1 < mx && j + 1 < my) {
-        // Diagonal successor only exists for interior cells (i+1>=1 and j+1>=1)
-        const T S = C(i + 1, j + 1) - dist(x[i + 1], y[j + 1]);
-        const T w = jacobian_weight(S, C(i, j));
-        val += E(i + 1, j + 1) * w;
-      }
-
-      E(i, j) = val;
+      const T e = E(i, j);
+      if (i == 0 && j == 0) continue;
+      if (i == 0) { E(0, j - 1) += e; continue; }
+      if (j == 0) { E(i - 1, 0) += e; continue; }
+      const T up = C(i - 1, j), left = C(i, j - 1), diag = C(i - 1, j - 1);
+      const T m = std::min(up, std::min(left, diag)); // its weight is exp(-0) == 1
+      const T w_up = (up == m) ? T(1) : std::exp(gamma_scale.scaled(m - up));
+      const T w_left = (left == m) ? T(1) : std::exp(gamma_scale.scaled(m - left));
+      const T w_diag = (diag == m) ? T(1) : std::exp(gamma_scale.scaled(m - diag));
+      const T share = e / (w_up + w_left + w_diag);
+      E(i - 1, j) += share * w_up;
+      E(i, j - 1) += share * w_left;
+      E(i - 1, j - 1) += share * w_diag;
     }
   }
 
