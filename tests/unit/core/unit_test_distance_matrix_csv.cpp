@@ -723,13 +723,17 @@ TEST_CASE("The matrix reader skips a UTF-8 byte-order mark and the spaces around
   // Excel's "CSV UTF-8" and pandas' encoding="utf-8-sig" start the file with EF BB BF; numpy.savetxt with
   // delimiter=", " pads every field after the first.
   const auto path = fresh_path("bom-padded.csv");
-  seed_binary(path, "\xEF\xBB\xBF" "0, 1.5\n1.5 ,\t0\n");
+  seed_binary(path, "\xEF\xBB\xBF" "0, 1.5\n1.5 ,\t0\n \t\n"); // its last line, of spaces only, is a blank line
   dtwc::core::DistanceMatrix loaded;
   dtwc::io::read_csv(loaded, path);
   REQUIRE(loaded.size() == 2);
   CHECK(loaded.get(0, 0) == 0.0);
   CHECK(loaded.get(0, 1) == 1.5);
   CHECK(loaded.get(1, 1) == 0.0);
+  seed_binary(path, "  \n"); // as is a file's only line
+  dtwc::core::DistanceMatrix blank;
+  dtwc::io::read_csv(blank, path);
+  CHECK(blank.size() == 0);
 }
 
 TEST_CASE("A matrix reader error names its file in UTF-8, whatever the file is called", "[csv][dense][read]")

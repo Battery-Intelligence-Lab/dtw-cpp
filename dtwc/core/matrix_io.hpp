@@ -153,7 +153,7 @@ inline void read_csv(core::DistanceMatrix &dm, const std::filesystem::path &path
   // read_line: a failure of the stream is an exception, not the end of the file (`rows.size() + 1` is the row it names).
   while (text_io_detail::read_line(file, line, path, rows.size() + 1)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty()) continue;
+    if (text_io_detail::trim_ascii(line).empty()) continue; // a blank line, spaces only included
     std::vector<Cell> row;
     // Locale-independent like the writer (std::stod honours LC_NUMERIC, so a
     // de_DE locale read "1.5" back as 1); a partial parse is an error. Every
