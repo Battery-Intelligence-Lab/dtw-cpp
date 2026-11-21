@@ -279,11 +279,16 @@ class Dataset:
         if self._data is None:
             from dtwcpp import io
             if self.is_path:
-                self._data = io._read_data(self.source, self.skip_cols,
-                                           self.skip_rows, self.delimiter, self.dtype)
-                if self._ndim > 1 and self._data.ndim == 1:
-                    self._data.ndim = self._ndim
-                    self._data.validate_ndim()
+                data = io._read_data(self.source, self.skip_cols,
+                                     self.skip_rows, self.delimiter, self.dtype)
+                if self._ndim > 1 and data.ndim not in (1, self._ndim):  # an Arrow IPC file's metadata ndim
+                    from dtwcpp import InvalidInput
+                    raise InvalidInput(f"load: the Arrow IPC file's metadata gives ndim={data.ndim} and "
+                                       f"ndim={self._ndim} was given; pass ndim={data.ndim}, or leave ndim out.")
+                if self._ndim > 1 and data.ndim == 1:
+                    data.ndim = self._ndim
+                    data.validate_ndim()
+                self._data = data
             else:
                 self._data = _to_data(
                     self.source,

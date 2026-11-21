@@ -275,7 +275,9 @@ one of them a value other than its default and the Dataset's are `InvalidInput` 
 it out. The same settings given to `load_data` and `do_clustering` agree, and C++
 `cdist(X, Y, cfg)` checks each `Dataset` alike. A path or array passed to `do_clustering`
 itself (Python, MATLAB) is read with the settings' options. A C++ `Dataset` holds no
-`column`: a path's read takes the Config's, and series in memory refuse one.
+`column`: a path's read takes the Config's, and series in memory refuse one. In Python and
+MATLAB, an `ndim` given for an Arrow IPC file whose metadata gives another `ndim` above 1 is
+refused too.
 
 ## Cross-collection distances: cdist
 
