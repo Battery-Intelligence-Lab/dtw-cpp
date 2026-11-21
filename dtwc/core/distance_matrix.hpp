@@ -231,6 +231,8 @@ public:
   /// or visit() of such a row reads what the file holds there, 0 in a new file.
   size_t rows_written() const noexcept { return rows_; }
   bool is_mapped() const noexcept { return mapping_ != nullptr; }
+  /// Whether this matrix is mapped to the file `path` names (the test write() makes).
+  bool is_mapped_to(const std::filesystem::path &path) const;
 
   /// Become an n x n heap matrix of the same width, every entry NaN. A mapped matrix lets go of
   /// its file and leaves it as it is.

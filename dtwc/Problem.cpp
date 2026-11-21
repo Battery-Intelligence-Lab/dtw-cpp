@@ -775,6 +775,9 @@ void Problem::validate_checkpoint_settings() const
     throw InvalidInput(
       "Problem::fill_distance_matrix: checkpoint.enabled requires a non-empty "
       "checkpoint.directory.");
+  if (distMat.is_mapped() && !distMat.is_mapped_to(checkpoint_path(*this, checkpoint.directory)))
+    throw InvalidInput("Problem::fill_distance_matrix: the matrix is mapped to another file than checkpoint.directory's, "
+                       "where a fill's saves keep no row; map that checkpoint file itself, or disable checkpointing.");
   // The autosave records the precision its distances were computed in, which
   // CUDA's Auto leaves open: the identity refuses it here, before any pair.
   if (uses_gpu(device_) && resolve_gpu_precision(gpu_precision_) == GpuPrecision::Auto)

@@ -543,6 +543,12 @@ DistanceMatrix DistanceMatrix::read(const fs::path &path, size_t n, const finger
   return matrix;
 }
 
+bool DistanceMatrix::is_mapped_to(const fs::path &path) const
+{
+  std::error_code ec;
+  return mapping_ && fs::equivalent(mapping_->path, path, ec);
+}
+
 void DistanceMatrix::write(const fs::path &path, const fingerprint_type &fingerprint) const
 {
   std::error_code ec;
