@@ -58,6 +58,18 @@ void* operator new[](std::size_t size)
   return allocation_probe::allocate(size);
 }
 
+// The nothrow forms, through which std::stable_sort takes its buffer, count as the others do and allocate with
+// malloc, as the deletes below expect: memory from a sanitizer's own nothrow new would reach free() as a mismatch.
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept
+{
+  try { return allocation_probe::allocate(size); } catch (const std::bad_alloc&) { return nullptr; }
+}
+
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept
+{
+  try { return allocation_probe::allocate(size); } catch (const std::bad_alloc&) { return nullptr; }
+}
+
 void operator delete(void* memory) noexcept { std::free(memory); }
 void operator delete[](void* memory) noexcept { std::free(memory); }
 void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
