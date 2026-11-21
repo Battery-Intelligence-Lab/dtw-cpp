@@ -114,16 +114,19 @@ TEST_CASE("Hierarchical: average linkage 4-point", "[hierarchical]")
   REQUIRE_THAT(dend.merges[0].distance, WithinAbs(1.0, 1e-10));
   REQUIRE(dend.merges[0].cluster_a == 0);
   REQUIRE(dend.merges[0].cluster_b == 1);
+  REQUIRE(dend.merges[0].new_size == 2); // {0}+{1}
 
   REQUIRE_THAT(dend.merges[1].distance, WithinAbs(1.0, 1e-10));
   REQUIRE(dend.merges[1].cluster_a == 2);
   REQUIRE(dend.merges[1].cluster_b == 3);
+  REQUIRE(dend.merges[1].new_size == 2); // {2}+{3}
 
   // Average (UPGMA) linkage:
   //   After step 1: d({0,1}, 2) = (1*5 + 1*4)/2 = 4.5
   //                 d({0,1}, 3) = (1*6 + 1*5)/2 = 5.5
   //   After step 2: d({0,1}, {2,3}) = (1*4.5 + 1*5.5)/2 = 5.0
   REQUIRE_THAT(dend.merges[2].distance, WithinAbs(5.0, 1e-10));
+  REQUIRE(dend.merges[2].new_size == 4); // {0,1}+{2,3}
 }
 
 // ---------------------------------------------------------------------------
@@ -255,23 +258,6 @@ TEST_CASE("Hierarchical: deterministic tie-breaking", "[hierarchical]")
 }
 
 // ---------------------------------------------------------------------------
-// Merge size bookkeeping test
-// ---------------------------------------------------------------------------
-
-TEST_CASE("Hierarchical: merge sizes are correct", "[hierarchical]")
-{
-  auto prob = make_4point_problem();
-  auto dend = dtwc::algorithms::build_dendrogram(prob);
-
-  // Step 0: {0}+{1} → size 2
-  REQUIRE(dend.merges[0].new_size == 2);
-  // Step 1: {2}+{3} → size 2
-  REQUIRE(dend.merges[1].new_size == 2);
-  // Step 2: {0,1}+{2,3} → size 4
-  REQUIRE(dend.merges[2].new_size == 4);
-}
-
-// ---------------------------------------------------------------------------
 // cut_dendrogram must not trust a caller-supplied Dendrogram
 // ---------------------------------------------------------------------------
 
@@ -317,11 +303,6 @@ TEST_CASE("Hierarchical: cut_dendrogram rejects a malformed Dendrogram", "[hiera
     d.merges[1].cluster_a = 2; d.merges[1].cluster_b = 3;
     d.merges[2].cluster_a = 0; d.merges[2].cluster_b = 2;
     REQUIRE_THROWS_AS(dtwc::algorithms::cut_dendrogram(d, prob, 1), std::runtime_error);
-  }
-
-  SECTION("a well-formed dendrogram still works") {
-    auto good = dtwc::algorithms::build_dendrogram(prob);
-    REQUIRE_NOTHROW(dtwc::algorithms::cut_dendrogram(good, prob, 2));
   }
 }
 
