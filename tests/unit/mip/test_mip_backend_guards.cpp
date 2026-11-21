@@ -4,8 +4,6 @@
  *
  * Each case pins one guard that did not exist before:
  *
- *   LR-core publishes through Problem::set_result, so its result satisfies
- *       the same invariants as the HiGHS/Gurobi backends.
  *   Method::MIP runs the selected solver at every N (a removed large-N route
  *       used to hand a Gurobi request to HiGHS).
  *
@@ -59,29 +57,6 @@ const std::vector<double> kTwoGroups = { 0.0, 1.0, 2.0, 10.0, 11.0, 12.0 };
 
 } // namespace
 
-
-// ---------------------------------------------------------------------------
-// LR-core publishes a validated exact result.
-// ---------------------------------------------------------------------------
-TEST_CASE("LR-core publishes a transaction-validated clustering", "[lrcore][mip][guards]")
-{
-  const std::vector<double> values = { 0, 1, 2, 30, 31, 32, 60, 61, 62 };
-  const int k = 3;
-  auto prob = make_problem(values, k);
-  prob.set_method(Method::LRCore);
-  prob.cluster();
-
-  // The invariants of an exact p-median clustering.
-  REQUIRE(prob.centroids_ind.size() == static_cast<std::size_t>(k));
-  auto sorted = prob.centroids_ind;
-  std::sort(sorted.begin(), sorted.end());
-  REQUIRE(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
-  REQUIRE(prob.clusters_ind.size() == static_cast<std::size_t>(values.size()));
-  for (int cluster = 0; cluster < k; ++cluster) {
-    const auto medoid = static_cast<std::size_t>(prob.centroids_ind[static_cast<std::size_t>(cluster)]);
-    REQUIRE(prob.clusters_ind[medoid] == cluster); // medoid in its own cluster.
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Method::MIP above N = 200 runs the selected solver. The removed Benders route
@@ -175,37 +150,41 @@ Problem make_uniform_lr_problem(int N, int k, unsigned seed)
   return prob;
 }
 
+/// The seed of make_uniform_lr_problem whose root dual does not certify, so the node cap is
+/// reachable at all (on separable data the root certifies and the tree is a single node).
+unsigned uncertified_root_seed(int N, int k)
+{
+  for (unsigned seed = 9001; seed <= 9040; ++seed) {
+    auto probe = make_uniform_lr_problem(N, k, seed);
+    probe.mip_settings.lr_max_nodes = 1;
+    try {
+      probe.cluster();
+    } catch (const SolverError &) {
+      return seed;
+    }
+  }
+  FAIL("the adversarial regime must occur within 40 seeds");
+  return 0;
+}
+
 } // namespace
 
 TEST_CASE("LR-core honours MIPSettings::lr_max_nodes", "[lrcore][mip][guards]")
 {
   const int N = 12, k = 3;
+  const unsigned seed = uncertified_root_seed(N, k);
 
-  // Locate a seed whose root dual does not certify, so the node cap is reachable
-  // at all (on separable data the root certifies and the tree is a single node).
-  int chosen = -1;
-  for (unsigned seed = 1; seed <= 40 && chosen < 0; ++seed) {
-    auto probe = make_uniform_lr_problem(N, k, 9000 + seed);
-    probe.mip_settings.lr_max_nodes = 1;
-    try {
-      probe.cluster();
-    } catch (const SolverError &) {
-      chosen = static_cast<int>(seed);
-    }
-  }
-  REQUIRE(chosen > 0); // the adversarial regime must occur within 40 seeds.
-
-  auto capped = make_uniform_lr_problem(N, k, 9000 + static_cast<unsigned>(chosen));
+  auto capped = make_uniform_lr_problem(N, k, seed);
   capped.mip_settings.lr_max_nodes = 1;
   REQUIRE_THROWS_AS(capped.cluster(), SolverError);
 
-  auto full = make_uniform_lr_problem(N, k, 9000 + static_cast<unsigned>(chosen));
+  auto full = make_uniform_lr_problem(N, k, seed);
   REQUIRE(full.mip_settings.lr_max_nodes == 2000000); // the shipped default
   full.cluster();                                     // certifies => publishes
   REQUIRE(full.centroids_ind.size() == static_cast<std::size_t>(k));
 
   // A cap below one node is an input error, not a solver failure.
-  auto invalid = make_uniform_lr_problem(N, k, 9000 + static_cast<unsigned>(chosen));
+  auto invalid = make_uniform_lr_problem(N, k, seed);
   invalid.mip_settings.lr_max_nodes = 0;
   REQUIRE_THROWS_AS(invalid.cluster(), InvalidInput);
 }
@@ -229,19 +208,7 @@ TEST_CASE("A negative mip_gap is rejected as InvalidInput", "[mip][guards]")
 TEST_CASE("Failed MIP and LR-core solves preserve existing Problem clustering", "[lrcore][mip][guards]")
 {
   const int N = 12, k = 3;
-  int chosen = -1;
-  for (unsigned seed = 1; seed <= 40 && chosen < 0; ++seed) {
-    auto probe = make_uniform_lr_problem(N, k, 9000 + seed);
-    probe.mip_settings.lr_max_nodes = 1;
-    try {
-      probe.cluster();
-    } catch (const SolverError &) {
-      chosen = static_cast<int>(seed);
-    }
-  }
-  REQUIRE(chosen > 0);
-
-  auto prob = make_uniform_lr_problem(N, k, 9000 + static_cast<unsigned>(chosen));
+  auto prob = make_uniform_lr_problem(N, k, uncertified_root_seed(N, k));
   prob.cluster(); // certifies under default lr_max_nodes = 2000000
   const auto saved_centroids = prob.centroids_ind;
   const auto saved_clusters = prob.clusters_ind;

@@ -110,17 +110,6 @@ TEST_CASE("MIPSettings: struct has correct defaults", "[mip]")
   REQUIRE(s.verbose_solver == false);
 }
 
-TEST_CASE("MIPSettings: Problem member accessible", "[mip]")
-{
-  auto prob = make_small_problem(4, 10);
-  prob.mip_settings.mip_gap = 0.01;
-  prob.mip_settings.warm_start = false;
-  prob.mip_settings.time_limit_sec = 60;
-  REQUIRE(prob.mip_settings.mip_gap == 0.01);
-  REQUIRE(prob.mip_settings.warm_start == false);
-  REQUIRE(prob.mip_settings.time_limit_sec == 60);
-}
-
 TEST_CASE("The MIP warm start (seeded FastPAM) ignores the legacy RNG",
           "[mip][seed][warm-start]")
 {
@@ -256,6 +245,7 @@ TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
   auto prob = make_small_problem(8, 20);
   prob.set_n_clusters(2);
   prob.mip_settings.warm_start = true;
+  prob.mip_settings.time_limit_sec = 30; // the time_limit option is passed to HiGHS only when positive
   prob.mip_settings.verbose_solver = false;
   REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
   prob.set_method(dtwc::Method::MIP);
@@ -265,11 +255,7 @@ TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
   CHECK(dtwc::randGenerator == legacy_rng_before);
   dtwc::randGenerator = legacy_rng_original;
 
-  // If HiGHS is not compiled in, cluster() prints a warning and returns
-  // with empty centroids_ind. Only check if solver actually ran.
-  if (!prob.centroids_ind.empty()) {
-    require_valid_exact_clustering(prob, 2);
-  }
+  require_valid_exact_clustering(prob, 2);
 }
 
 TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
@@ -282,10 +268,6 @@ TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
   REQUIRE(prob1.set_solver(dtwc::Solver::HiGHS));
   prob1.set_method(dtwc::Method::MIP);
   prob1.cluster();
-
-  // Skip if HiGHS not available
-  if (prob1.centroids_ind.empty()) return;
-
   double cold_cost = prob1.find_total_cost();
 
   auto prob2 = make_small_problem(8, 20);
@@ -301,20 +283,6 @@ TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
   REQUIRE(warm_cost <= cold_cost + 1e-6);
 }
 
-TEST_CASE("MIP HiGHS: settings propagate without crash", "[mip][highs]")
-{
-  require_highs_solver();
-  auto prob = make_small_problem(6, 15);
-  prob.set_n_clusters(2);
-  prob.mip_settings.mip_gap = 0.01;
-  prob.mip_settings.time_limit_sec = 30;
-  prob.mip_settings.verbose_solver = false;
-  REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
-  prob.set_method(dtwc::Method::MIP);
-
-  REQUIRE_NOTHROW(prob.cluster());
-}
-
 TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
 {
   require_highs_solver();
@@ -326,54 +294,14 @@ TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
   prob.set_method(dtwc::Method::MIP);
   prob.cluster();
 
-  if (!prob.centroids_ind.empty()) {
-    REQUIRE(prob.centroids_ind.size() == 1);
-    for (auto c : prob.clusters_ind)
-      REQUIRE(c == 0);
-  }
+  REQUIRE(prob.centroids_ind.size() == 1);
+  for (auto c : prob.clusters_ind)
+    REQUIRE(c == 0);
 }
 
-// ---------------------------------------------------------------------------
-// Regression: MIP status handling — assert() → real error path.
-//
-// mip_Highs.cpp guarded the HiGHS model status with
-//     assert(model_status == HighsModelStatus::kOptimal);
-// which is a NO-OP under NDEBUG (release builds). A non-optimal solve therefore
-// fell through to extract_mip_solution(), which reads an empty/invalid solution
-// vector and returns garbage / empty centroids (and indexes an empty
-// centroids_ind out of bounds -> UB). The fix replaces the assert with an
-// explicit status check that throws std::runtime_error carrying the solver
-// status text. This test drives an INFEASIBLE p-median instance (more clusters
-// than series, so the cardinality constraint "sum of N diagonal binaries == k"
-// with k > N cannot hold) and requires a throw.
-//
-// Why the UNFIXED code fails this test: pre-fix, MIP_clustering_byHiGHS returns
-// normally (assert compiled out) instead of throwing, so REQUIRE_THROWS_AS
-// fails. Post-fix it throws. (Gurobi's analogous status/catch path is fixed the
-// same way but is not exercised here — Gurobi requires a licensed install that
-// this build does not have; the HiGHS path is the one wired in CI.)
-// ---------------------------------------------------------------------------
 TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty result", "[mip][highs]")
 {
   require_highs_solver();
-  // DTWC_ENABLE_HIGHS is defined PUBLIC on the mip-solvers object library, which
-  // links PRIVATE into dtwc++, so the macro is NOT visible in this test TU.
-  // Detect HiGHS availability at runtime: a feasible instance produces a
-  // non-empty result only when HiGHS is actually compiled in (otherwise the
-  // #else branch merely warns and returns empty).
-  {
-    auto probe = make_small_problem(6, 15);
-    probe.set_n_clusters(2);
-    probe.mip_settings.warm_start = false;
-    probe.mip_settings.verbose_solver = false;
-    REQUIRE(probe.set_solver(dtwc::Solver::HiGHS));
-    probe.set_method(dtwc::Method::MIP);
-    probe.cluster();
-    if (probe.centroids_ind.empty())
-      return; // HiGHS not compiled into this build — nothing to exercise.
-    REQUIRE(probe.centroids_ind.size() == 2); // sanity: the solver really ran.
-  }
-
   // Infeasible instance: 4 series but 5 clusters requested. warm_start=false so
   // we bypass fast_pam (which independently rejects k>N) and drive the solver
   // status path directly.

@@ -321,7 +321,6 @@ TEST_CASE("Lagrangian root certifies optimum on clustered data (P1)", "[lagrangi
 TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][compare]")
 {
   require_highs_solver();
-  int compared = 0;
 
   for (unsigned seed = 1; seed <= 6; ++seed) {
     const int k = 3;
@@ -336,10 +335,7 @@ TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][comp
     Problem prob = make_problem_1d(pos, k);
     REQUIRE(prob.set_solver(Solver::HiGHS));
     prob.cluster();
-    if (!has_solution(prob)) {
-      WARN("HiGHS/Gurobi not available; skipping MIP comparison for seed " << seed);
-      continue;
-    }
+    REQUIRE(has_solution(prob));
     const double mip_cost = cost_of(prob.centroids_ind, D, N);
 
     const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost));
@@ -348,10 +344,7 @@ TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][comp
     REQUIRE_THAT(lr.upper_bound, WithinAbs(orc.cost, tol)); // LR primal == optimum
     REQUIRE_THAT(mip_cost, WithinAbs(orc.cost, tol));       // MIP == optimum
     REQUIRE(lr.lower_bound <= orc.cost + tol);              // LR bound valid
-    ++compared;
   }
-
-  REQUIRE(compared >= 0); // at least ran; WARN documents any solver-absent skip
 }
 
 // ===========================================================================
@@ -433,7 +426,10 @@ TEST_CASE("Exact LR-core B&B matches the oracle on the adversarial regime from e
 // ===========================================================================
 TEST_CASE("Lagrangian root (Kelley cutting-plane) matches the optimum", "[lagrangian][kelley]")
 {
-  int checked = 0;
+  if (!highs_solver_available()) {
+    WARN("HiGHS not available; skipping Kelley cutting-plane test.");
+    return;
+  }
   for (unsigned seed = 1; seed <= 20; ++seed) {
     const int N = 8 + static_cast<int>(seed % 7); // 8..14
     const int k = 2 + static_cast<int>(seed % 3); // 2..4
@@ -441,13 +437,8 @@ TEST_CASE("Lagrangian root (Kelley cutting-plane) matches the optimum", "[lagran
       (seed % 2 == 0) ? uniform_D(N, seed) : D_from_positions(clustered_positions(N, k, seed));
     const auto orc = brute_force_pmedian(D, N, k);
 
-    LagrangianResult r;
-    try {
-      r = lagrangian_root_kelley(D.data(), N, k, -1.0, *dtwc::mip::highs_kelley_master());
-    } catch (const dtwc::SolverError &) {
-      WARN("HiGHS not available; skipping Kelley cutting-plane test.");
-      return;
-    }
+    const LagrangianResult r =
+      lagrangian_root_kelley(D.data(), N, k, -1.0, *dtwc::mip::highs_kelley_master());
 
     const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost)) + 1e-9;
     INFO("seed=" << seed << " N=" << N << " k=" << k << " LB=" << r.lower_bound
@@ -456,9 +447,7 @@ TEST_CASE("Lagrangian root (Kelley cutting-plane) matches the optimum", "[lagran
     REQUIRE(r.upper_bound >= orc.cost - tol);           // valid upper bound
     REQUIRE(std::abs(r.upper_bound - orc.cost) <= tol); // primal exactly optimal
     REQUIRE(static_cast<int>(r.medoids.size()) == k);
-    ++checked;
   }
-  REQUIRE(checked == 20);
 }
 
 // ===========================================================================
@@ -594,6 +583,12 @@ TEST_CASE("Method::LRCore clusters a Problem to the proven optimum", "[lagrangia
       INFO("root=" << name_of(lr_root_names, root) << " seed=" << seed << " oracle=" << orc.cost
                    << " lrcore=" << cost_of(prob.centroids_ind, D, N));
       REQUIRE_THAT(cost_of(prob.centroids_ind, D, N), WithinAbs(orc.cost, tol));
+      // The invariants of an exact p-median clustering: distinct medoids, each in its own cluster.
+      auto sorted = prob.centroids_ind;
+      std::sort(sorted.begin(), sorted.end());
+      REQUIRE(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
+      for (int c = 0; c < k; ++c)
+        REQUIRE(prob.clusters_ind[static_cast<std::size_t>(prob.centroids_ind[static_cast<std::size_t>(c)])] == c);
       // clusters_ind[j] indexes into centroids_ind ⇒ each label is a valid cluster.
       for (int j = 0; j < N; ++j) {
         REQUIRE(prob.clusters_ind[static_cast<std::size_t>(j)] >= 0);
