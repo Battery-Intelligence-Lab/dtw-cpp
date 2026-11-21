@@ -66,7 +66,10 @@ namespace algorithms {
     /// reads Data::series() (float64 storage) while the exact side computes on the
     /// stored Float32 series — the two sides of the bound would come from different
     /// data. Float32 therefore takes the exact path everywhere, a slowdown
-    /// TADPoleStats::pruning_enabled reports.
+    /// TADPoleStats::pruning_enabled reports. So does a Float32 matrix: its distances
+    /// are rounded to float, the bounds are not. A filled matrix takes it too: the
+    /// matrix may hold other distances than the series' DTW (one read from a file or
+    /// set by the caller), and its every pair is a lookup, so pruning saves nothing.
     bool bounds_valid(const Problem &prob)
     {
       // The bounds are L1: under Problem::set_metric(SquaredL2) the LB can exceed
@@ -75,6 +78,8 @@ namespace algorithms {
              && prob.metric() == core::MetricType::L1
              && prob.data().ndim == 1
              && !prob.data().is_f32()
+             && prob.matrix_dtype() != core::Precision::Float32
+             && !prob.is_distance_matrix_filled()
              && prob.missing_strategy() == core::MissingStrategy::Error;
     }
 
