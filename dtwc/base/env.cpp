@@ -145,6 +145,14 @@ std::string hybrid_as_it_goes_message(std::string_view where, std::string_view m
     false);
 }
 
+std::string gpu_as_it_goes_message(std::string_view where, std::string_view method)
+{
+  return std::string(where) + ": method '" + std::string(method)
+         + "' computes its distances on the CPU as it goes, so device 'gpu' would sit idle; the GPU fills the "
+           "distance matrix that pam, kmedoids, mip, lrcore and hierarchical use, and clara's sample matrices. "
+           "Choose one of those, or device 'cpu'. No CPU fallback was attempted.";
+}
+
 std::string share_ignored_message(std::string_view where, std::string_view splits, Device device)
 {
   return std::string(where) + ": gpu_share splits " + std::string(splits) + " of device cpu+gpu, but the device is "
