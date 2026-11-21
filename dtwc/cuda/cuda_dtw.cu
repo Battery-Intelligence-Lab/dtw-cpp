@@ -835,10 +835,13 @@ __global__ void dtw_regtile_kernel(
 // Host functions
 // =========================================================================
 
+// Each probe here consumes the error of a call that fails, as CUDA_CHECK does: the runtime keeps it as the thread's
+// last error, and the thread's next launch, checked with cudaGetLastError, would report it as its own.
 bool cuda_available()
 {
   int count = 0;
   cudaError_t err = cudaGetDeviceCount(&count);
+  if (err != cudaSuccess) (void)cudaGetLastError();
   return (err == cudaSuccess && count > 0);
 }
 
@@ -863,7 +866,10 @@ std::string cuda_device_info(int device_id)
 {
   cudaDeviceProp prop;
   cudaError_t err = cudaGetDeviceProperties(&prop, device_id);
-  if (err != cudaSuccess) return "No CUDA device";
+  if (err != cudaSuccess) {
+    (void)cudaGetLastError();
+    return "No CUDA device";
+  }
 
   return std::string(prop.name) + " (compute " +
          std::to_string(prop.major) + "." + std::to_string(prop.minor) +
