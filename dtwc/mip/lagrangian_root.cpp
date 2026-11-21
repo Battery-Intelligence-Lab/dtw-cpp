@@ -61,7 +61,9 @@
 namespace dtwc::mip {
 
 namespace {
-  constexpr double kEps = 1e-12; // relative-gap denominator floor.
+  /// A sum's rounding, per term and relative to the size of its terms. Times both, it floors a tolerance that compares
+  /// sums which cancel: the floor scales with the distances and stays above the rounding where the cost is zero.
+  constexpr double kRounding = 64.0 * std::numeric_limits<double>::epsilon();
 
   /// evaluate_dual forks its first loop (rho, N^2 work) over OpenMP threads from this N up; below it the fork and join (one per subgradient
   /// iteration, about 50 us with 18 threads on an Apple M5 Pro) cost more than the loop. Measured break-even there: between N = 240 and 280.
@@ -74,7 +76,7 @@ namespace {
   struct LagrangianParams
   {
     int max_iters = 4000;       ///< Subgradient iteration cap.
-    double rel_gap_tol = 1e-6;  ///< Certify optimal when (UB − LB)/max(|UB|,ε) ≤ this.
+    double rel_gap_tol = 1e-6;  ///< Certify optimal when UB − LB ≤ this × |UB|.
     double lambda0 = 1.0;       ///< Initial Polyak step scale λ ∈ (0, 2] (1.0 = damped, well inside the convergent range).
     int stall_halve = 20;       ///< Halve λ after this many iters with no LB improvement.
     double lambda_min = 1e-4;   ///< Floor for λ — CLAMPED here (never frozen), so diminishing steps keep converging.
@@ -283,7 +285,7 @@ namespace {
                              ? rho[static_cast<std::size_t>(order[static_cast<std::size_t>(k)])]
                              : std::numeric_limits<double>::infinity();
 
-    const double tol = 1e-9 * (1.0 + std::max(std::abs(lower_bound), std::abs(upper_bound)));
+    const double tol = 1e-9 * std::max(std::abs(lower_bound), std::abs(upper_bound));
     const double fix_rhs = upper_bound + tol;
 
     std::vector<char> in_Sk(static_cast<std::size_t>(N), 0);
@@ -452,8 +454,11 @@ namespace {
           }
         }
 
-        const double tol = 1e-12 * (1.0 + std::abs(cur_cost));
-        if (best_r < 0 || !(best_delta < -tol)) break;
+        if (best_r < 0) break;
+        // A swap's gain must exceed the rounding of the cost and of the removal loss the gain cancels against.
+        const double tol = std::max(1e-12 * std::abs(cur_cost),
+                                    kRounding * static_cast<double>(N) * removal_loss[static_cast<std::size_t>(best_r)]);
+        if (!(best_delta < -tol)) break;
         is_medoid[static_cast<std::size_t>(medoids[static_cast<std::size_t>(best_r)])] = 0;
         is_medoid[static_cast<std::size_t>(best_c)] = 1;
         medoids[static_cast<std::size_t>(best_r)] = best_c;
@@ -585,8 +590,7 @@ namespace {
     LagrangianResult r;
     r.lower_bound = (best_lb == -inf) ? 0.0 : best_lb;
     r.upper_bound = best_primal;
-    const double denom = std::max(std::abs(best_primal), kEps);
-    r.gap = (best_primal - r.lower_bound) / denom;
+    r.gap = best_primal == r.lower_bound ? 0.0 : (best_primal - r.lower_bound) / std::abs(best_primal);
     r.certified_optimal = (r.gap <= rel_gap_tol);
     r.medoids = std::move(best_medoids);
     r.labels = std::move(best_labels);
@@ -664,8 +668,7 @@ namespace {
         try_primal(mat, N, k, vol_idx.data(), vol_polish, best_primal, best_medoids, best_labels, cheap_lab);
       }
 
-      const double denom = std::max(std::abs(best_primal), kEps);
-      if (best_primal - best_lb <= params.rel_gap_tol * denom) {
+      if (best_primal - best_lb <= params.rel_gap_tol * std::abs(best_primal)) {
         ++iter;
         break;
       }
@@ -818,7 +821,7 @@ namespace {
         best_lb = L_new;
         rho_at_best = rho;
       }
-      if (L_new > L_hat + 1e-12 * std::max(1.0, std::abs(L_hat))) {
+      if (L_new > L_hat + 1e-12 * std::abs(L_hat)) {
         mu_hat = mu;
         L_hat = L_new;
         delta = std::min(delta * 2.0, box_span);
@@ -826,11 +829,8 @@ namespace {
         delta *= 0.5;
       }
 
-      const double denom = std::max(std::abs(best_primal), kEps);
-      if (best_primal - best_lb <= params.rel_gap_tol * denom) break;
-      if (delta >= box_span
-          && theta_master - best_lb <= params.rel_gap_tol * std::max(std::abs(theta_master), kEps))
-        break;
+      if (best_primal - best_lb <= params.rel_gap_tol * std::abs(best_primal)) break;
+      if (delta >= box_span && theta_master - best_lb <= params.rel_gap_tol * std::abs(theta_master)) break;
       if (delta < box_span * 1e-12) break;
     }
 
@@ -930,7 +930,9 @@ namespace {
 
     double best_cost = root.upper_bound;
     std::vector<index_t> best_medoids = root.medoids;
-    const double tol = 1e-9 * (1.0 + std::abs(best_cost));
+    double mu_size = 0.0; // the size of the multipliers a node bound sums, whose rounding floors the tolerance
+    for (const double m : mu) mu_size += std::abs(m);
+    const double tol = std::max(1e-9 * std::abs(best_cost), kRounding * static_cast<double>(N) * mu_size);
 
     struct Frame
     {
@@ -1027,8 +1029,7 @@ namespace {
     r.nodes = nodes;
     if (capped) {
       r.lower_bound = root.lower_bound;
-      const double denom = std::max(std::abs(best_cost), kEps);
-      r.gap = (best_cost - r.lower_bound) / denom;
+      r.gap = best_cost == r.lower_bound ? 0.0 : (best_cost - r.lower_bound) / std::abs(best_cost);
       r.certified_optimal = false;
       std::fprintf(stderr,
                    "lagrangian_root_exact: node cap %lld reached at N=%lld k=%lld before the tree "
