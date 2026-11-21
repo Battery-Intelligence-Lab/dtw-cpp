@@ -94,13 +94,11 @@ def _load_parquet(path: Path, columns: list[str] | None, name_col: str | None):
             matrix = np.column_stack(cols)  # (n_rows, n_cols)
             # Check for NaN/NULL (None becomes NaN in numpy)
             if np.any(np.isnan(matrix)):
-                for i in range(n_rows):
-                    if np.any(np.isnan(matrix[i])):
-                        raise ValueError(
-                            f"NaN/NULL found in series at row {len(all_series) + i}. "
-                            "Fill or drop NaN values before conversion.")
-            for i in range(n_rows):
-                all_series.append(matrix[i])
+                bad = int(np.flatnonzero(np.isnan(matrix).any(axis=1))[0])
+                raise ValueError(
+                    f"NaN/NULL found in series at row {len(all_series) + bad}. "
+                    "Fill or drop NaN values before conversion.")
+            all_series.extend(matrix)
 
     return all_series, all_names
 
@@ -110,10 +108,7 @@ def _load_csv(path: Path):
     from .io import load_dataset_csv
 
     data, names = load_dataset_csv(path)
-    series_list = [data[i] for i in range(data.shape[0])]
-    if not names:
-        names = [f"series_{i}" for i in range(len(series_list))]
-    return series_list, names
+    return list(data), names or [f"series_{i}" for i in range(len(data))]
 
 
 def _load_hdf5(path: Path):

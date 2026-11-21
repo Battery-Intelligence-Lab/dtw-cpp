@@ -332,23 +332,17 @@ def load_dataset_hdf5(path: str | Path) -> dict[str, Any]:
     h5py = _import_h5py()
 
     path = Path(path)
-    result: dict[str, Any] = {}
     with h5py.File(path, "r") as f:
-        result["series"] = f["series"][:]
-        if "names" in f:
-            raw = f["names"][:]
-            result["names"] = [
-                n.decode("utf-8") if isinstance(n, bytes) else str(n)
-                for n in raw
-            ]
-        else:
-            result["names"] = None
-        if "distmat" in f:
-            result["distmat"] = f["distmat"][:]
-        else:
-            result["distmat"] = None
-        result["metadata"] = dict(f.attrs)
-    return result
+        series = f["series"][:]
+        names = f["names"][:] if "names" in f else None
+        return {
+            "series": series,
+            "names": None if names is None else [
+                n.decode("utf-8") if isinstance(n, bytes) else str(n) for n in names
+            ],
+            "distmat": f["distmat"][:] if "distmat" in f else None,
+            "metadata": dict(f.attrs),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -457,11 +451,7 @@ def load_dataset_parquet(
             )
         list_col_idx = idx
     else:
-        for i in range(len(schema)):
-            ftype = schema.field(i).type
-            if is_list(ftype):
-                list_col_idx = i
-                break
+        list_col_idx = next((i for i, f in enumerate(schema) if is_list(f.type)), None)
 
     if list_col_idx is not None:
         col = table.column(list_col_idx).to_pylist()

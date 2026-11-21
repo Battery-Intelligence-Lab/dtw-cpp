@@ -133,19 +133,17 @@ def diagnose_clusters(
     if any_singleton:
         flags.append(f"singleton: smallest cluster has {min_size} members")
 
-    if medoid_indices is not None:
-        medoid_idle = medoid_idle_fractions(series, medoid_indices, idle_threshold)
-        max_idle = max(medoid_idle) if medoid_idle else 0.0
-        any_idle = max_idle > idle_medoid_fraction
-        if any_idle:
-            flags.append(
-                f"idle-medoid: a medoid is {max_idle:.0%} idle "
-                f"(>{idle_medoid_fraction:.0%})"
-            )
-    else:
-        medoid_idle = []
-        max_idle = 0.0
-        any_idle = False
+    medoid_idle = (
+        medoid_idle_fractions(series, medoid_indices, idle_threshold)
+        if medoid_indices is not None else []
+    )
+    max_idle = max(medoid_idle, default=0.0)
+    any_idle = medoid_indices is not None and max_idle > idle_medoid_fraction
+    if any_idle:
+        flags.append(
+            f"idle-medoid: a medoid is {max_idle:.0%} idle "
+            f"(>{idle_medoid_fraction:.0%})"
+        )
 
     lens = [len(s) for s in series]
     L_arr = np.asarray(lens, dtype=np.float64)
