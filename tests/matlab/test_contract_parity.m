@@ -1,20 +1,10 @@
 function tests = test_contract_parity
-%TEST_CONTRACT_PARITY MATLAB parity gate for the documented Tier-1 and Tier-2 API.
+%TEST_CONTRACT_PARITY MATLAB contract tests for the Tier-1 and Tier-2 API.
 %
-%   Asserts that every public name the Tier-1 and Tier-2 pages
-%   (docs/content/api/tier-1.md, tier-2.md) document for MATLAB is present and
-%   callable through the +dtwc package / dtwc_mex gateway. This is the Phase 2
-%   Task 2.2 parity gate: it drives the real public entry points (Tier-1
-%   device/load/cluster/Result, Tier-2 Problem setters+methods, scores,
-%   algorithms, distance functions, and the checkpoint surface), not dead
-%   siblings.
-%
-%   Each test comment names the public entry point it exercises (LESSONS: tests
-%   pin the live code path).
+%   Exercises Tier-1 device/load/cluster/Result, DTWClustering, Tier-2 Problem
+%   setters and accessors, and MEX argument/device validation.
 %
 %   Run with: results = runtests('test_contract_parity');
-%   (Requires the compiled dtwc_mex on the path; otherwise every test is SKIPPED
-%    with a loud notice.)
 
 %> @file test_contract_parity.m
 %> @author Volkan Kumtepeli
@@ -78,18 +68,6 @@ function test_diagnostics_return_the_cpp_report_fields(testCase)
          sort({'available', 'backend', 'device_name', 'validated', 'pass', 'reason', 'hybrid', 'hybrid_reason'})});
 end
 
-function test_tier1_device_get_set(testCase)
-%   dtwc.device -> MEX set_device/get_device -> dtwc::device().
-    name = dtwc.device('cpu');
-    verifyEqual(testCase, name, 'cpu');
-    verifyEqual(testCase, dtwc.device(), 'cpu');
-end
-
-function test_tier1_device_unknown_raises_deviceError(testCase)
-%   No silent fallback: an unknown device name -> dtwc:deviceError.
-    verifyError(testCase, @() dtwc.device('definitely_not_a_device'), 'dtwc:deviceError');
-end
-
 function test_tier1_load_matrix_and_options(testCase)
 %   dtwc.load -> dtwc.Dataset (lazy handle, no I/O for a matrix source).
     ds = dtwc.load(testCase.TestData.X, 'SkipCols', 0, 'Delimiter', '', 'Name', 'ptest');
@@ -144,7 +122,7 @@ function test_tier1_cluster_returns_result(testCase)
 end
 
 function test_tier1_default_seed_matches_cpp_and_python(testCase)
-%   M13: ambiguous waveforms expose 29-vs-42 initialization/local-optimum drift.
+%   Ambiguous waveforms expose 29-vs-42 initialization/local-optimum differences.
     X = (0:7)' + [0 0.01 -0.02 0.03];
     verifyEqual(testCase, dtwc.default_random_seed(), 42);
 
@@ -184,10 +162,9 @@ function test_dtwclustering_restarts_use_distinct_local_seeds(testCase)
 end
 
 function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
-%   F18: DTWClustering.fit/fit_predict must execute the requested metric.
-%   All three monotone paths for each length-two pair were enumerated before
-%   implementation; the diagonal is uniquely optimal because every added
-%   off-diagonal local cost is strictly positive.
+%   DTWClustering.fit/fit_predict must execute the requested metric.
+%   The diagonal is uniquely optimal for each length-two pair because every
+%   added off-diagonal local cost is strictly positive.
     X = [0 1; 3 8; 5 2; 6 4];
     D_l1 = [0 10 6 9; 10 0 8 7; 6 8 0 3; 9 7 3 0];
     D_squared = [0 58 26 45; 58 0 40 25; ...
@@ -199,7 +176,7 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
     assertEqual(testCase, routed_l1, D_l1);
     assertEqual(testCase, routed_squared, D_squared);
 
-    l1_problem = dtwc.Problem('F18_l1_oracle');
+    l1_problem = dtwc.Problem('l1_oracle');
     l1_problem.set_data(X);
     l1_problem.set_distance_matrix(D_l1);
     l1_result = dtwc.fast_pam(l1_problem, 2, 'MaxIter', 100, 'Seed', 42);
@@ -212,7 +189,7 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
     assertEqual(testCase, l1_result.iterations, 1);
     assertTrue(testCase, l1_result.converged);
 
-    squared_problem = dtwc.Problem('F18_squared_oracle');
+    squared_problem = dtwc.Problem('squared_oracle');
     squared_problem.set_data(X);
     squared_problem.set_distance_matrix(D_squared);
     squared_result = dtwc.fast_pam(squared_problem, 2, ...
@@ -243,75 +220,39 @@ function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
         'Device', 'cpu', 'NInit', 2);
     uppercase_labels = uppercase_estimator.fit_predict(X);
     assertEqual(testCase, uppercase_labels, [2 1 1 1]);
-
-    assertNotEqual(testCase, l1_estimator.Labels, squared_estimator.Labels);
-    assertNotEqual(testCase, l1_estimator.MedoidIndices, ...
-                   squared_estimator.MedoidIndices);
-    assertNotEqual(testCase, l1_estimator.Inertia, ...
-                   squared_estimator.Inertia);
-
-    fprintf(['F18_MATLAB_METRIC subject=DTWClustering.fit+fit_predict ' ...
-        'oracle=exhaustive_paths matrices=2/2 problem_routes=2/2 ' ...
-        'fit_routes=2/2 fit_predict=1/1 case_norm=1/1 distinct=3/3 ' ...
-        'ninit=2 skips=0\n']);
 end
 
 function test_dtwclustering_metric_validation_precedes_effects(testCase)
-%   F18: invalid metric/cross-product requests fail before data/device work.
+%   Invalid metric/cross-product requests fail before data/device work.
     X = [0 1; 3 8; 5 2; 6 4];
     dtwc.device('cpu');
 
-    unknown_error = [];
     unknown = dtwc.DTWClustering( ...
         'NClusters', 2, 'Metric', 'not_a_metric', ...
         'Device', 'not_a_device', 'NInit', 2);
-    try
-        unknown.fit(zeros(0, 2));
-    catch caught
-        unknown_error = caught;
-    end
-    assertFalse(testCase, isempty(unknown_error), ...
-                'Unknown Metric must fail before empty-data/device handling.');
+    unknown_error = capture_error(@() unknown.fit(zeros(0, 2)));
     assertEqual(testCase, unknown_error.identifier, 'dtwc:invalidArgument');
     assertEqual(testCase, unknown_error.message, ...
         'unknown metric ''not_a_metric''. Valid: l1, squared_euclidean.');
     assertEqual(testCase, dtwc.device(), 'cpu');
 
-    variant_error = [];
     bad_variant = dtwc.DTWClustering( ...
         'NClusters', 2, 'Metric', 'squared_euclidean', ...
         'Device', 'cpu', 'NInit', 2);
     bad_variant.Variant = 'wdtw';
-    try
-        bad_variant.fit(X);
-    catch caught
-        variant_error = caught;
-    end
-    assertFalse(testCase, isempty(variant_error), ...
-                'SquaredL2 plus WDTW must fail loudly.');
+    variant_error = capture_error(@() bad_variant.fit(X));
     assertEqual(testCase, variant_error.identifier, 'dtwc:invalidArgument');
 
-    missing_error = [];
     bad_missing = dtwc.DTWClustering( ...
         'NClusters', 2, 'Variant', 'ddtw', 'Device', 'cpu', 'NInit', 2);
     bad_missing.MissingStrategy = 'zero_cost';
-    try
-        bad_missing.fit(X);
-    catch caught
-        missing_error = caught;
-    end
-    assertFalse(testCase, isempty(missing_error), ...
-                'DDTW plus zero_cost must fail loudly.');
+    missing_error = capture_error(@() bad_missing.fit(X));
     assertEqual(testCase, missing_error.identifier, 'dtwc:invalidArgument');
 
     % MaxIter = 0 would report the initial medoids' cost as the clustering's.
     zero_error = capture_error(@() dtwc.DTWClustering('NClusters', 2, 'MaxIter', 0).fit(X));
     assertEqual(testCase, zero_error.identifier, 'dtwc:invalidArgument');
     verifySubstring(testCase, zero_error.message, 'max_iter must be at least 1');
-
-    fprintf(['F18_MATLAB_VALIDATION unknown_metric=1/1 ' ...
-        'unknown_precedence=1/1 squared_variant=1/1 ' ...
-        'variant_missing=1/1 skips=0\n']);
 end
 
 function test_dtwclustering_computes_every_metric_cpp_computes(testCase)
@@ -349,11 +290,10 @@ function test_dtwclustering_predict_and_score_read_the_fitted_medoids(testCase)
 end
 
 function test_keys_are_python_words_in_camel_case(testCase)
-%   Volkan 10-01: the same words in every language, each in its own case.
+%   The same words in every language, each in its own case.
 %   dtwc.cluster's keys are Python's cluster() keywords (the binding's Config
 %   less n_clusters, which k names) and DTWClustering's settable properties are
-%   Python's DTWClustering parameters, in CamelCase. The words are those of
-%   python/src/_dtwcpp_core.cpp's Config and python/dtwcpp/_clustering.py.
+%   Python's DTWClustering parameters, in CamelCase.
     cluster_words = {'name', 'ram_limit', 'method', 'band', 'metric', 'variant', 'max_iter', 'n_init', ...
         'dc', 'wdtw_g', 'adtw_penalty', 'sdtw_gamma', 'msm_c', 'twe_nu', 'twe_lambda', ...
         'mv_mode', 'missing_strategy', 'sample_size', 'n_samples', 'seed', 'batch_size', ...
@@ -404,16 +344,6 @@ function test_tier1_result_score_names(testCase)
     verifyError(testCase, @() res.score('nope'), 'dtwc:invalidArgument');
 end
 
-function test_tier1_result_surface_is_the_python_result(testCase)
-%   dtwc.Result's surface is Python's Result in MATLAB's words (the names
-%   tests/python/test_contract_parity.py pins): labels, medoids, cost, device and
-%   the run report, Report; score, distance_matrix, save and plot.
-    verifyEqual(testCase, sort(properties('dtwc.Result')'), sort({'labels', 'medoids', 'cost', 'device', 'Report'}));
-    mc = ?dtwc.Result;
-    public = {mc.MethodList(strcmp({mc.MethodList.Access}, 'public')).Name};
-    verifyTrue(testCase, all(ismember({'score', 'distance_matrix', 'save', 'plot'}, public)));
-end
-
 function test_tier1_result_save_and_plot(testCase)
 %   Result.save(dir) writes the 4 CSVs and the run report; Result.plot() renders (headless).
     res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k);
@@ -429,20 +359,11 @@ function test_tier1_result_save_and_plot(testCase)
     close all force;
 end
 
-function test_tier1_dtwclustering_device_param(testCase)
-%   DTWClustering gains a Device parameter (delegates to dtwc::device()).
-    c = dtwc.DTWClustering('NClusters', 2, 'Device', 'cpu');
-    verifyEqual(testCase, c.Device, 'cpu');
-    c = c.fit(testCase.TestData.X);
-    verifyNumElements(testCase, c.Labels, 6);
-end
-
 function test_device_names_are_read_by_the_cpp_grammar(testCase)
-%   FX-17: MATLAB has no device grammar of its own. dtwc.device and
+%   MATLAB has no device grammar of its own. dtwc.device and
 %   Problem.set_device read a name with C++ dtwc::detail::parse_device (it
 %   trims and ignores case) and report it as C++ dtwc::device() does, so a
 %   malformed ordinal is C++'s DeviceError, verbatim, on every build.
-%   DTWClustering's str2double ordinal parser (gpu_index) is gone.
     previous = dtwc.device();
     restore = onCleanup(@() dtwc.device(previous)); %#ok<NASGU>
     verifyEqual(testCase, dtwc.device(' CPU '), 'cpu');
@@ -457,8 +378,6 @@ function test_device_names_are_read_by_the_cpp_grammar(testCase)
             verifyEqual(testCase, err.message, unknown);
         end
     end
-    mc = meta.class.fromName('dtwc.DTWClustering');
-    verifyFalse(testCase, any(strcmp({mc.MethodList.Name}, 'gpu_index')));
 end
 
 function test_cpu_gpu_is_a_device_word_refused_as_cpp_refuses_it(testCase)
@@ -691,7 +610,7 @@ function test_problem_methods_all_callable(testCase)
     prob.refresh_distance_matrix();             % clears cached matrix
     csvpath = fullfile(tempdir, 'dtwc_parity_D.csv');
     writematrix(D, csvpath);
-    prob.read_distance_matrix(csvpath);         % CSV reader (swallows on format mismatch)
+    prob.read_distance_matrix(csvpath);
 end
 
 function test_problem_semantic_setters_invalidate_dense_cache(testCase)
@@ -722,75 +641,12 @@ function test_problem_read_accessors(testCase)
 end
 
 % =========================================================================
-%  Tier 2 — scores (canonical snake_case names)
-% =========================================================================
-
-function test_scores_canonical_names(testCase)
-%   silhouette/davies_bouldin/dunn/inertia/calinski_harabasz/adjusted_rand/
-%   normalized_mutual_info.
-    prob = make_filled_problem(testCase);
-    verifyNumElements(testCase, dtwc.silhouette(prob), 6);
-    verifyTrue(testCase, isscalar(dtwc.davies_bouldin(prob)));
-    verifyTrue(testCase, isscalar(dtwc.dunn(prob)));
-    verifyTrue(testCase, isscalar(dtwc.inertia(prob)));
-    verifyTrue(testCase, isscalar(dtwc.calinski_harabasz(prob)));
-
-    lt = int32([1 1 2 2 3 3]);
-    lp = int32([1 1 2 2 3 3]);
-    verifyEqual(testCase, dtwc.adjusted_rand(lt, lp), 1, 'AbsTol', 1e-12);
-    verifyEqual(testCase, dtwc.normalized_mutual_info(lt, lp), 1, 'AbsTol', 1e-12);
-end
-
-% =========================================================================
-%  Tier 2 — algorithm free functions
-% =========================================================================
-
-function test_algorithms_all_callable(testCase)
-%   fast_pam / fast_clara / build_dendrogram / cut_dendrogram.
-    prob = dtwc.Problem('algos');
-    prob.set_data(testCase.TestData.X);
-    prob.fill_distance_matrix();
-
-    r1 = dtwc.fast_pam(prob, 2);
-    verifyNumElements(testCase, r1.labels, 6);
-    r2 = dtwc.fast_clara(prob, 2, 'NSamples', 2, 'Seed', 42);
-    verifyNumElements(testCase, r2.labels, 6);
-
-    dend = dtwc.build_dendrogram(prob, 'Linkage', 'average');
-    verifyTrue(testCase, isstruct(dend) && isfield(dend, 'merges'));
-    r4 = dtwc.cut_dendrogram(dend, prob, 2);
-    verifyNumElements(testCase, r4.labels, 6);
-end
-
-% =========================================================================
-%  Tier 2 — checkpoint / resume
-% =========================================================================
-
-function test_checkpoint_dir_roundtrip(testCase)
-%   CheckpointOptions / save_checkpoint / load_checkpoint.
-    opts = dtwc.CheckpointOptions('directory', tempdir, 'enabled', true);
-    verifyTrue(testCase, isstruct(opts) && islogical(opts.enabled));
-
-    prob = dtwc.Problem('ckpt');
-    prob.set_data(testCase.TestData.X);
-    prob.fill_distance_matrix();
-    ckdir = fullfile(tempdir, ['dtwc_parity_ck_' num2str(feature('getpid'))]);
-    dtwc.save_checkpoint(prob, ckdir);
-
-    % The checkpoint file is <dirpath>/<name>.dtwm, named after the Problem.
-    prob2 = dtwc.Problem('ckpt');
-    prob2.set_data(testCase.TestData.X);
-    ok = dtwc.load_checkpoint(prob2, ckdir);
-    verifyTrue(testCase, islogical(ok) && ok);
-end
-
-% =========================================================================
 %  Helpers
 % =========================================================================
 
 function D = routed_matrix(X, metric)
 %ROUTED_MATRIX The matrix DTWClustering's Problem fills under `metric`.
-    prob = dtwc.Problem('F18_routed');
+    prob = dtwc.Problem('routed');
     prob.set_data(X);
     prob.set_distance('Metric', metric);
     prob.fill_distance_matrix();

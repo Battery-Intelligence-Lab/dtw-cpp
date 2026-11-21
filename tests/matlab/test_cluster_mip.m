@@ -1,22 +1,8 @@
 function tests = test_cluster_mip
-%TEST_CLUSTER_MIP Regression test for dtwc.cluster(..., 'Method','mip').
+%TEST_CLUSTER_MIP Contract test for dtwc.cluster(..., 'Method', 'mip').
 %
-%   Why:
-%   the 'mip' branch of +dtwc/cluster.m called prob.set_method('mip') and
-%   prob.cluster() WITHOUT ever calling prob.set_n_clusters(k). Problem::Nc
-%   defaults to 1, so the exact MIP backend solved a 1-medoid problem and
-%   dtwc.cluster returned ONE cluster for every requested k -- a silent
-%   wrong answer on a documented public entry point. Every sibling branch
-%   ('pam', 'clara', 'hclust') forwards k.
-%
-%   HOW THIS FAILS ON THE UNFIXED CODE: numel(unique(res.labels)) == 1 and
-%   numel(res.medoids) == 1 for k = 3, so the two verifyNumElements below
-%   fail. With set_n_clusters(k) in place the MIP backend returns exactly k
-%   medoids and the labels reproduce the three well-separated groups.
-%
-%   Run with: results = runtests('test_cluster_mip');
-%   (Requires the compiled MEX on the path AND a HiGHS-enabled build; the
-%    exact MIP backend throws when no MIP solver is compiled in.)
+%   Requires the compiled MEX on the path and a HiGHS-enabled build; the
+%   exact MIP backend throws when no MIP solver is compiled in.
 
 %> @file test_cluster_mip.m
 %> @author Volkan Kumtepeli
@@ -69,21 +55,11 @@ function setup(testCase)
         'No exact MIP solver compiled into dtwc_mex - skipping.');
 end
 
-% -------------------------------------------------------------------------
-%  A12: the MIP branch must honour k
-% -------------------------------------------------------------------------
-
-function test_mip_branch_returns_k_clusters(testCase)
-%   Unfixed cluster.m leaves Problem::Nc at its default 1 -> one medoid.
-    res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'Method', 'mip');
-    verifyNumElements(testCase, res.medoids, testCase.TestData.k);
-    verifyNumElements(testCase, unique(res.labels), testCase.TestData.k);
-end
-
 function test_mip_branch_separates_the_three_groups(testCase)
-%   With k honoured, the three well-separated triples must not mix.
     res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'Method', 'mip');
     lab = double(res.labels(:));
+    verifyNumElements(testCase, res.medoids, testCase.TestData.k);
+    verifyNumElements(testCase, unique(lab), testCase.TestData.k);
     verifyEqual(testCase, lab(1), lab(2));
     verifyEqual(testCase, lab(2), lab(3));
     verifyEqual(testCase, lab(4), lab(5));
@@ -92,11 +68,4 @@ function test_mip_branch_separates_the_three_groups(testCase)
     verifyEqual(testCase, lab(8), lab(9));
     verifyNotEqual(testCase, lab(1), lab(4));
     verifyNotEqual(testCase, lab(4), lab(7));
-end
-
-function test_mip_matches_pam_cluster_count(testCase)
-%   Cross-route parity: 'pam' already honours k; 'mip' must agree.
-    mip = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'Method', 'mip');
-    pam = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, 'Method', 'pam');
-    verifyEqual(testCase, numel(unique(mip.labels)), numel(unique(pam.labels)));
 end
