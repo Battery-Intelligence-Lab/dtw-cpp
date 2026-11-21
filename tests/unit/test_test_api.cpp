@@ -92,3 +92,10 @@ TEST_CASE("dtwc::test::gpu validates against a CPU oracle or names what is missi
   // cpu+gpu is CUDA's: it can run where a CUDA device is present, and says why not elsewhere.
   REQUIRE(r.hybrid == (r.available && r.backend == "cuda"));
 }
+
+TEST_CASE("dtwc::test::gpu fails a matrix entry the GPU left unwritten", "[test_api][gpu]")
+{
+  const dtwc::core::DistanceMatrix unwritten(3); // every entry NaN until a kernel writes it
+  CHECK_FALSE(dtwc::test::detail::gpu_matrix_max_abs_error(dtwc::test::detail::gpu_probe_series(), unwritten)
+              <= dtwc::test::detail::kGpuOracleTol);
+}

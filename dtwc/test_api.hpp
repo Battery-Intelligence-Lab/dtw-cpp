@@ -97,7 +97,8 @@ inline std::vector<std::vector<double>> gpu_probe_series()
   };
 }
 
-/// @brief Max abs deviation of a GPU-filled matrix from the CPU oracle.
+/// @brief Max abs deviation of a GPU-filled matrix from the CPU oracle, NaN when an
+///        entry is NaN (one the GPU never wrote), which then fails every tolerance.
 ///        CPU oracle = full (band=-1) L1 DTW via the LIVE public `dtwc::dtwFull_L`.
 inline double gpu_matrix_max_abs_error(const std::vector<std::vector<double>> &series,
                                        const dtwc::core::DistanceMatrix &gpu_matrix)
@@ -108,7 +109,9 @@ inline double gpu_matrix_max_abs_error(const std::vector<std::vector<double>> &s
     for (std::size_t j = i + 1; j < N; ++j) {
       const double oracle =
         dtwc::dtwFull_L<double>(series[i], series[j], -1.0, dtwc::core::MetricType::L1);
-      max_abs = std::max(max_abs, std::abs(gpu_matrix.get(i, j) - oracle));
+      const double error = std::abs(gpu_matrix.get(i, j) - oracle);
+      if (std::isnan(error)) return error; // std::max would drop it
+      max_abs = std::max(max_abs, error);
     }
   return max_abs;
 }
