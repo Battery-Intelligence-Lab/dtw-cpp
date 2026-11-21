@@ -255,7 +255,7 @@ class Dataset:
         # dtwc_cl's rule, so a run of "data/" is named "data" in every language.
         self.name = name if name is not None else _dtwcpp_core._default_name(
             os.fspath(source) if self.is_path else "")
-        self._ndim = 1
+        self._ndim = source.ndim if isinstance(source, _dtwcpp_core.Data) else 1  # a Data carries its own
         self._data = None
 
     @property
@@ -677,6 +677,7 @@ class Settings:
         self._update(**{name: value})
 
     def _update(self, **kwargs):
+        import dtwcpp
         from dtwcpp import InvalidInput, _dtwcpp_core, _resolve_device
 
         if "k" in kwargs and "n_clusters" in kwargs and kwargs["k"] != kwargs["n_clusters"]:
@@ -686,6 +687,7 @@ class Settings:
 
         touched_config = []
         prev_config = {}
+        prev_attrs = dict(self.__dict__)  # a refused update leaves the Settings as it was
         try:
             for key, value in kwargs.items():
                 if key == "input":
@@ -740,14 +742,15 @@ class Settings:
                         raise InvalidInput("settings: k (n_clusters) must be at least 1.")
                     touched_config.append(key)
 
-            if touched_config:
+            if touched_config or "device" in kwargs:
                 saved_k, saved_device = self._config.n_clusters, self._config.device
                 try:
                     if saved_k < 1:
                         self._config.n_clusters = 1
-                    # Checked on the device chosen here, as do_clustering checks them; hpc on the CPU.
-                    if self.device is not None and _resolve_device(self.device)[0] != "hpc":
-                        self._config.device = self.device
+                    # Checked on the device do_clustering runs on, the global one when none is set; hpc on the CPU.
+                    device = self.device if self.device is not None else dtwcpp.device()
+                    if _resolve_device(device)[0] != "hpc":
+                        self._config.device = device
                     _dtwcpp_core.apply(self._config, _dtwcpp_core.Problem())
                 finally:
                     if saved_k < 1:
@@ -757,6 +760,7 @@ class Settings:
                     if key != "n_clusters" and key not in self._clustering_keys:
                         self._clustering_keys.append(key)
         except Exception:
+            self.__dict__.update(prev_attrs)
             for key, old_val in prev_config.items():
                 setattr(self._config, key, old_val)
             raise
@@ -886,7 +890,7 @@ def load_data(source=None, settings=None, **kwargs):
 
     ds = Dataset(source, skip_cols=skip_cols, skip_rows=skip_rows,
                  delimiter=delimiter, name=name, dtype=dtype)
-    ds._ndim = int(ndim)
+    ds._ndim = int(ndim) if ndim != 1 else ds._ndim  # a Data keeps its own ndim unless one is given
     return ds
 
 
@@ -924,9 +928,9 @@ def do_clustering(data=None, settings=None, **overrides):
     t0 = time.perf_counter()
     if backend == "hpc":
         from dtwcpp import _hpc
-        if eff.checkpoint:  # the run is the cluster's: a local path names nothing there
-            raise InvalidInput("do_clustering: device='hpc' runs on the cluster, which would "
-                               "ignore a local checkpoint; leave checkpoint empty.")
+        if eff.checkpoint or eff.checkpoint_interval:  # the run is the cluster's: a local path names nothing there
+            raise InvalidInput("do_clustering: device='hpc' runs on the cluster, which would ignore a local "
+                               "checkpoint; leave checkpoint empty and checkpoint_interval at 0.")
         _dtwcpp_core.apply(config, _dtwcpp_core.Problem(config.name or dataset.name))
         details = _hpc.cluster_on_hpc(
             dataset,

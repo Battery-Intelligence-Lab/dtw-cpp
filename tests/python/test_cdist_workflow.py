@@ -180,15 +180,30 @@ class TestCasadiWorkflowAndFastIngest:
         with pytest.raises(AttributeError, match="Unknown settings attribute"):
             cfg.unknown_key = 123
 
-    def test_settings_check_a_forced_gpu_share_on_their_own_device(self):
-        """settings() checks gpu_share on device="cpu+gpu", the device it names, not on the
-        CPU: what is left to refuse is the build's own lack of cpu+gpu, as cluster() refuses it."""
+    def test_settings_check_a_forced_gpu_share_on_their_own_device(self, monkeypatch):
+        """settings() checks gpu_share on device="cpu+gpu", the device it names (or, with none, the
+        global one do_clustering runs on), not on the CPU: what is left to refuse is the build's own
+        lack of cpu+gpu, as cluster() refuses it. A device assigned later is checked too, and a refused
+        assignment leaves the Settings as it was."""
         try:
             cfg = dtwcpp.settings(k=2, device="cpu+gpu", gpu_share=0.5)
         except dtwcpp.DeviceError as exc:
             assert "device 'cpu+gpu' splits FastCLARA's assignment pass" in str(exc)
         else:
             assert cfg.gpu_share == 0.5
+        cfg = dtwcpp.settings(k=2)
+        try:
+            cfg.device = "cpu+gpu"
+        except dtwcpp.DeviceError:
+            assert cfg.device is None
+        else:
+            assert dtwcpp.test.gpu()["backend"] == "cuda"  # only a CUDA build selects cpu+gpu
+        real_device = dtwcpp.device
+        monkeypatch.setattr(dtwcpp, "device", lambda *name: real_device(*name) if name else "cpu+gpu")
+        try:
+            dtwcpp.settings(k=2, gpu_share=0.5)
+        except dtwcpp.DeviceError as exc:
+            assert "device 'cpu+gpu' splits FastCLARA's assignment pass" in str(exc)
 
     def test_direct_numpy_and_3d_ingest_and_estimator_transform(self):
         rng = np.random.default_rng(5)
