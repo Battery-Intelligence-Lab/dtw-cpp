@@ -292,12 +292,10 @@ std::size_t parse_ram_limit(const std::string &text, std::string_view key)
 
 void apply(const Config &config, Problem &prob)
 {
-  // Each setter checks its value: parameter domains, variant x missing
-  // strategy x metric, the cluster count and the iteration limits.
-  prob.set_variant(config.variant);
-  prob.set_missing_strategy(config.missing);
-  prob.set_metric(config.metric);
-  prob.set_band(config.band);
+  // Each setter checks its value: the distance in one call (parameter domains, variant x missing strategy x metric,
+  // the band), so no part of it meets the Problem's old ones, then the cluster count and the iteration limits.
+  prob.set_distance(
+    { .variant = config.variant, .metric = config.metric, .missing = config.missing, .band = config.band });
   prob.set_n_clusters(config.k);
   prob.set_max_iter(config.max_iter);
   prob.set_n_repetitions(config.n_init);

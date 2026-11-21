@@ -8,8 +8,9 @@
  *          facade takes no channels), in double and float. Registered before the run:
  *          20 configurations are accepted (Standard with every metric and strategy: 12;
  *          DDTW with every metric: 3; WDTW, ADTW, Soft-DTW, MSM and TWE with L1: 5) and
- *          both entries refuse the other 64. Where accepted, the fill and the facade agree
- *          on every pair within dtw_routes_agree (tests/support/dtw_route_bound.hpp).
+ *          both entries refuse the other 64. Where accepted, the fill, the Problem's pair
+ *          function and the facade agree on every pair within dtw_routes_agree
+ *          (tests/support/dtw_route_bound.hpp).
  *          The table of refusals has one row per rule of core::validate.
  * @author Volkan Kumtepeli
  */
@@ -26,6 +27,7 @@
 #include <limits>
 #include <span>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace ts = dtwc::test_support;
@@ -119,11 +121,18 @@ TEMPLATE_TEST_CASE("the facade and a Problem's fill accept the same configuratio
                                               band, metric, missing);
               };
               double facade = dtw(i, j);
-              // Under Soft-DTW a Problem holds the divergence sdtw(x, y) - (sdtw(x, x) + sdtw(y, y)) / 2.
+              // Under Soft-DTW a Problem holds the divergence sdtw(x, y) - (sdtw(x, x) + sdtw(y, y)) / 2, and its
+              // pair function gives it.
               if (variant == DTWVariant::SoftDTW) facade -= (dtw(i, i) + dtw(j, j)) / 2;
+              const double handed = [&] { // the pair function the Problem hands out
+                if constexpr (std::is_same_v<T, float>) return problem.dtw_function_f32()(series[i], series[j]);
+                else return problem.dtw_function()(series[i], series[j]);
+              }();
               ++pairs;
-              INFO("band " << band << ", pair " << i << "," << j << ": fill " << fill << ", facade " << facade);
+              INFO("band " << band << ", pair " << i << "," << j << ": fill " << fill << ", pair function " << handed
+                           << ", facade " << facade);
               CHECK(ts::dtw_routes_agree<T>(fill, facade, series[i].size(), series[j].size()));
+              CHECK(ts::dtw_routes_agree<T>(handed, facade, series[i].size(), series[j].size()));
             }
         }
       }

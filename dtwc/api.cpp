@@ -33,13 +33,14 @@ namespace {
     if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
   }
 
-  /// Refuse a reader option of `cfg` (skip_cols, skip_rows, delimiter, dtype) that is not at its default and differs
-  /// from the one `dataset` was made with: the Dataset is read with its own, so the Config's would be dropped without
-  /// a word. A Dataset holds no column: a path's read takes the Config's, as run() does, and series in memory cannot
-  /// honour one.
-  void require_options_made_with(const Dataset &dataset, const Config &cfg, const char *where)
+  /// Refuse a reader option of `cfg` (skip_cols, skip_rows, delimiter, dtype) that is not at its value in `defaults`
+  /// and differs from the one `dataset` was made with: the Dataset is read with its own, so the Config's would be
+  /// dropped without a word. A Config cannot say which options were given, so its defaults stand for "not given".
+  /// A Dataset holds no column: a path's read takes the Config's, as run() does, and series in memory cannot honour
+  /// one.
+  void require_options_made_with(const Dataset &dataset, const Config &cfg, const char *where,
+                                 const Config &defaults = Config{})
   {
-    const Config defaults;
     const auto quoted = [](char c) { return c == '\0' ? std::string("''") : std::string{ '\'', c, '\'' }; };
     const auto dtype = [](core::Precision p) { return std::string(name_of(core::precision_names, p)); };
     for (const auto &[key, given, standard, made] :
@@ -283,12 +284,20 @@ Result do_clustering(Dataset &&dataset, const Config &cfg)
 Result do_clustering(const Dataset &data, const Config &cfg,
                      std::initializer_list<SettingPair> overrides)
 {
-  return do_clustering(Dataset(data), make_settings(cfg, overrides));
+  return do_clustering(Dataset(data), cfg, overrides);
 }
 
 Result do_clustering(Dataset &&data, const Config &cfg,
                      std::initializer_list<SettingPair> overrides)
 {
+  // An override names its option, so even one at its default conflicts with another value the Dataset was made
+  // with: given over the Dataset's own options, it must leave them as they are.
+  Config own = cfg;
+  own.skip_cols = data.skip_cols();
+  own.skip_rows = data.skip_rows();
+  own.delimiter = data.delimiter();
+  own.dtype = data.dtype();
+  require_options_made_with(data, make_settings(own, overrides), "do_clustering", own);
   return do_clustering(std::move(data), make_settings(cfg, overrides));
 }
 
