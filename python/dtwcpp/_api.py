@@ -419,7 +419,7 @@ class Result:
         With one cluster the silhouette is undefined and no silhouettes file is
         written; a partition with fewer than two realised clusters prints
         ``Warning: silhouettes skipped: ...`` on ``stderr``. An ``hpc`` result
-        holds labels only: the remote ``dtwc_cl`` wrote its files.
+        copies the files it downloaded (labels, medoids, report) into ``directory``.
         """
         from dtwcpp import InvalidInput
         if self._result is None:

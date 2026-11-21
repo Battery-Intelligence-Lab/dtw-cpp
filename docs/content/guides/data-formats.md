@@ -12,7 +12,7 @@ Rows represent time series unless a format stores an explicit list column.
 | CSV / TSV / text | Core, CLI, all bindings | One series per row; use `skip_cols` for identifiers. A file's `.tsv` and `.txt` extensions read as tab-separated and any other as comma-separated, and the files of a folder as comma-separated, unless a delimiter is given. |
 | Arrow IPC / Feather | Core, CLI, all bindings | List/large-list Float32 or Float64 columns, read in place (memory-mapped) by the native reader; compressed (LZ4, ZSTD) and big-endian files decoded. |
 | Parquet | CLI with Arrow/Parquet enabled; Python via `pyarrow`; MATLAB via `parquetread` | Each List/LargeList Float32/64 row = one series; several scalar Float32/64 columns = one series per row, as CSV; the only scalar Float32/64 column = one whole series. Rows are named by the first string column. `--column` reads one column ([Supported data](../../getting-started/supported-data/)). |
-| HDF5 | Python conversion/I/O utilities | Optional `h5py`; convert before using the native CLI. |
+| HDF5 | Python conversion/I/O utilities | Optional `h5py`: a `series` dataset of any real dtype, 2-D or ragged (`h5py.vlen_dtype`), read as float64; convert before using the native CLI. |
 
 Convert from CSV, Parquet, or HDF5 to Arrow IPC:
 
