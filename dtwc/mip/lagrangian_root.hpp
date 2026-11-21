@@ -106,8 +106,8 @@ std::unique_ptr<KelleyMaster> highs_kelley_master();
  * θ. Kelley converges FINITELY on a piecewise-linear function — a handful of
  * major iterations close gaps the subgradient cannot. The master LP is tiny
  * (N+1 columns, one row per major iteration), warm-started across iterations —
- * NOT the intractable N²-column compact LP. Measured 2026-10-06, it certifies
- * more roots than the subgradient only on a line metric.
+ * NOT the intractable N²-column compact LP. Measured, it certifies more roots
+ * than the subgradient only on a line metric.
  *
  * @param D,N,k,initial_ub  As lagrangian_root.
  * @param master  The master LP, fresh: highs_kelley_master(), or the Python extension's.
@@ -127,15 +127,12 @@ LagrangianResult lagrangian_root_kelley(const double *D, index_t N, index_t k, d
  * branch-and-bound that branches on the open/close (y) decision of a single
  * candidate at a time. Each node's lower bound is the fixed-root-dual value
  * `Σμ* + Σ_{S}ρ*_i ≤ cost(S)` (valid for every candidate open set S), so a node
- * is pruned as soon as its bound reaches the incumbent. Because the optimum is
- * a subset of the core (reduced-cost fixing never removes an optimal medoid,
- * verified in tests), the tree is exact.
+ * is pruned as soon as its bound reaches the incumbent. Because reduced-cost
+ * fixing never removes an optimal medoid, the tree is exact.
  *
  * On well-separated data the root certifies immediately and the tree is a single
- * node (the well-separated regime). On the adversarial regime (uniform non-metric D, large
- * integrality gap) the tree can grow; @p max_nodes caps it and the routine
- * then returns the best incumbent with `certified_optimal = false` (never a silent
- * wrong answer).
+ * node. When a large integrality gap makes the tree grow, @p max_nodes caps it
+ * and the routine returns the best incumbent with `certified_optimal = false`.
  *
  * @param D,N,k,initial_ub  As lagrangian_root.
  * @param max_nodes  Branch-and-bound node cap (MIPSettings::lr_max_nodes).

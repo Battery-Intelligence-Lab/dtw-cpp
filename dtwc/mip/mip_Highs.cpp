@@ -10,7 +10,7 @@
 #include "highs_support.hpp"
 #include "decode_assignment.hpp"
 #include "../algorithms/fast_pam.hpp"
-#include "../base/error.hpp"       // for SolverError
+#include "../base/error.hpp"
 #include "../Problem.hpp"
 #include "../base/settings.hpp"
 
@@ -18,11 +18,11 @@
 #include <Highs.h>
 #endif
 
-#include <algorithm> // for max, fill_n
-#include <cstddef>   // for size_t
-#include <iostream>  // for operator<<, basic_ostream, ost...
-#include <limits>    // for numeric_limits
-#include <string>    // for operator<<, std::to_string
+#include <algorithm>
+#include <cstddef>
+#include <iostream>
+#include <limits>
+#include <string>
 
 namespace dtwc {
 
@@ -109,12 +109,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
 #ifdef DTWC_ENABLE_HIGHS
   const auto model = mip::build_p_median_model(prob);
-
-  // Create a Highs instance
   Highs highs;
 
-  // Solver tuning from MIPSettings. A rejected option must never be ignored:
-  // the solve would then silently run on HiGHS defaults.
   mip::set_highs_option(highs, "mip_rel_gap", prob.mip_settings.mip_gap, "HiGHS");
   if (prob.mip_settings.time_limit_sec > 0)
     mip::set_highs_option(highs, "time_limit",
@@ -139,16 +135,11 @@ void MIP_clustering_byHiGHS(Problem &prob)
     highs.setSolution(sol);
   }
 
-  return_status = highs.run(); // Solve the model
+  return_status = highs.run();
   if (return_status != HighsStatus::kOk)
     throw SolverError("HiGHS failed to solve the MIP (run returned status "
                       + std::to_string(static_cast<int>(return_status)) + ").");
 
-  // Get the model status. This guard used to be
-  // assert(model_status == kOptimal), which is a no-op under NDEBUG (release
-  // builds). A non-optimal solve (infeasible, unbounded, time/iteration limit)
-  // then fell through to decoding an empty/invalid solution vector and returned
-  // garbage or empty centroids (UB). Fail loudly.
   const HighsModelStatus &model_status = highs.getModelStatus();
   if (model_status != HighsModelStatus::kOptimal)
     throw SolverError("HiGHS MIP did not solve to optimality. Model status: "

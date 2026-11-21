@@ -21,7 +21,6 @@
  * @date 07 Jul 2026
  */
 
-#include <cstdint>
 #include "lagrangian_root.hpp"
 
 #include "mip.hpp" // LR_core_clustering
@@ -41,6 +40,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <limits>
@@ -65,8 +65,8 @@ namespace {
   /// sums which cancel: the floor scales with the distances and stays above the rounding where the cost is zero.
   constexpr double kRounding = 64.0 * std::numeric_limits<double>::epsilon();
 
-  /// evaluate_dual forks its first loop (rho, N^2 work) over OpenMP threads from this N up; below it the fork and join (one per subgradient
-  /// iteration, about 50 us with 18 threads on an Apple M5 Pro) cost more than the loop. Measured break-even there: between N = 240 and 280.
+  /// OpenMP threshold for the O(N^2) rho loops: below it the fork and join (one per subgradient iteration, about 50 us
+  /// with 18 threads on an Apple M5 Pro) cost more than the loop. Measured break-even there: between N = 240 and 280.
   [[maybe_unused]] constexpr index_t kParallelMinN = 280;
 
   /// Maximum `(C + 1) * N` doubles (~32 MiB) for precomputing B&B candidate suffix minima.
@@ -247,13 +247,11 @@ namespace {
     }
   };
 
-  /// Partition of the candidate facilities {0..N-1} after reduced-cost fixing:
-  /// `core ∪ fixed_closed = {0..N-1}`, `fixed_open ⊆ core`, each ascending.
+  /// Candidate facilities surviving Beasley reduced-cost fixing (`fixed_open ⊆ core`, ascending).
   struct FixingResult
   {
-    std::vector<index_t> core;         ///< survivors (facilities NOT proven closed).
-    std::vector<index_t> fixed_closed; ///< facilities proven closed in every optimum.
-    std::vector<index_t> fixed_open;   ///< facilities proven open in every optimum.
+    std::vector<index_t> core;       ///< survivors (facilities NOT proven closed).
+    std::vector<index_t> fixed_open; ///< facilities proven open in every optimum.
   };
 
   /**
@@ -296,11 +294,8 @@ namespace {
       if (in_Sk[static_cast<std::size_t>(i)]) {
         if (lower_bound + (rho_kp1 - ri) > fix_rhs) out.fixed_open.push_back(i);
         out.core.push_back(i);
-      } else {
-        if (lower_bound + (ri - rho_k) > fix_rhs)
-          out.fixed_closed.push_back(i);
-        else
-          out.core.push_back(i);
+      } else if (!(lower_bound + (ri - rho_k) > fix_rhs)) {
+        out.core.push_back(i);
       }
     }
     return out;
@@ -474,7 +469,7 @@ namespace {
   template <typename Mat>
   double evaluate_dual(const Mat &mat, index_t N, index_t k,
                        const std::vector<double> &mu, std::vector<double> &rho,
-                       std::vector<double> &g, std::vector<index_t> &idx, double &rho_k)
+                       std::vector<double> &g, std::vector<index_t> &idx)
   {
     mat.compute_rho(mu, rho);
 
@@ -484,7 +479,6 @@ namespace {
       const double rb = rho[static_cast<std::size_t>(b)];
       return ra < rb || (ra == rb && a < b);
     });
-    rho_k = rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(k - 1)])];
 
     double sum_mu = 0.0;
     for (index_t j = 0; j < N; ++j) sum_mu += mu[static_cast<std::size_t>(j)];
@@ -637,8 +631,7 @@ namespace {
     warn_if_single_threaded();
 
     for (iter = 0; iter < params.max_iters; ++iter) {
-      double rho_k = 0.0;
-      const double L = evaluate_dual(mat, N, k, mu, rho, g, idx, rho_k);
+      const double L = evaluate_dual(mat, N, k, mu, rho, g, idx);
 
       if (L > best_lb) {
         best_lb = L;
@@ -769,8 +762,7 @@ namespace {
 
     // Seed cuts at μ = 0 (clamped to box) and at Erlenkotter d_(2) warm start.
     for (std::size_t j = 0; j < Nz; ++j) mu[j] = std::clamp(0.0, min_mu, max_mu);
-    double rho_k = 0.0;
-    best_lb = evaluate_dual(mat, N, k, mu, rho, g, idx, rho_k);
+    best_lb = evaluate_dual(mat, N, k, mu, rho, g, idx);
     rho_at_best = rho;
     try_primal(mat, N, k, idx.data(), /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
     add_cut(best_lb);
@@ -782,7 +774,7 @@ namespace {
     mat.compute_initial_mu(k, mu_d2);
     for (std::size_t j = 0; j < Nz; ++j) mu[j] = std::clamp(mu_d2[j], min_mu, max_mu);
     if (mu != mu_hat) {
-      const double L_d2 = evaluate_dual(mat, N, k, mu, rho, g, idx, rho_k);
+      const double L_d2 = evaluate_dual(mat, N, k, mu, rho, g, idx);
       try_primal(mat, N, k, idx.data(), /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
       add_cut(L_d2);
       if (L_d2 > best_lb) {
@@ -808,7 +800,7 @@ namespace {
       const double theta_master = sol[Nz];
       for (index_t j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] = sol[static_cast<std::size_t>(j)];
 
-      const double L_new = evaluate_dual(mat, N, k, mu, rho, g, idx, rho_k);
+      const double L_new = evaluate_dual(mat, N, k, mu, rho, g, idx);
       try_primal(mat, N, k, idx.data(), /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
       const double cur_ub = std::min(best_primal, seed_ub);
       if (cur_ub < prev_ub) {
@@ -881,10 +873,6 @@ namespace {
     });
     const auto C = static_cast<index_t>(cand.size());
     const index_t need = k - static_cast<index_t>(forced.size());
-    if (need < 0)
-      throw SolverError("lagrangian_root_exact: reduced-cost fixing proved "
-                        + std::to_string(forced.size()) + " facilities open for k=" + std::to_string(k)
-                        + "; the lower/upper bound pair driving the fixing is inconsistent.");
 
     double forced_rho = 0.0;
     for (index_t f : forced) forced_rho += rho[static_cast<std::size_t>(f)];
@@ -944,7 +932,7 @@ namespace {
     std::vector<Frame> stack;
     stack.reserve(static_cast<std::size_t>(2 * C + 2));
     stack.push_back({ 0, 0, -1, 0.0 });
-    std::vector<index_t> chosen(static_cast<std::size_t>(std::max<index_t>(need, 0)), 0);
+    std::vector<index_t> chosen(static_cast<std::size_t>(need), 0);
     std::vector<index_t> leaf_S;
     leaf_S.reserve(static_cast<std::size_t>(k));
 
